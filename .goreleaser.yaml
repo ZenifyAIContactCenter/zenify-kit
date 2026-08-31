@@ -22,7 +22,7 @@ archives:
         formats: [zip]
 checksum:
   name_template: checksums.txt
-brews:
+homebrew_casks:
   - repository:
       owner: ZenifyAIContactCenter
       name: homebrew-tap
