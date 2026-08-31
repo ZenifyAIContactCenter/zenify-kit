@@ -1,0 +1,24 @@
+version: 2
+project_name: zenify
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: zenify
+    main: ./cmd/zenify
+    binary: zenify
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/ZenifyAIContactCenter/zenify-kit/internal/version.Version={{.Version}}
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+archives:
+  - id: zenify
+    name_template: "zenify_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+checksum:
+  name_template: checksums.txt
