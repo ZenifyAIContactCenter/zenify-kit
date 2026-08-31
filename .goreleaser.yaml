@@ -22,3 +22,27 @@ archives:
         formats: [zip]
 checksum:
   name_template: checksums.txt
+brews:
+  - repository:
+      owner: ZenifyAIContactCenter
+      name: homebrew-tap
+    name: zenify
+    homepage: https://github.com/ZenifyAIContactCenter/zenify-kit
+    description: Portable zenify workspace toolkit
+    skip_upload: auto
+scoops:
+  - repository:
+      owner: ZenifyAIContactCenter
+      name: scoop-bucket
+    name: zenify
+    skip_upload: auto
+winget:
+  - name: zenify
+    publisher: ZenifyAIContactCenter
+    license: proprietary
+    short_description: Portable zenify workspace toolkit
+    homepage: https://github.com/ZenifyAIContactCenter/zenify-kit
+    repository:
+      owner: ZenifyAIContactCenter
+      name: winget-pkgs-fork
+    skip_upload: auto
