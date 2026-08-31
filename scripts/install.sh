@@ -13,6 +13,10 @@ if [ "$ver" = latest ]; then
   ver=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
         | grep '"tag_name"' | head -1 | cut -d'"' -f4)
 fi
+if [ -z "$ver" ]; then
+  echo "zenify: could not resolve the latest release version (no releases yet, or GitHub API unavailable)" >&2
+  exit 1
+fi
 url="https://github.com/$REPO/releases/download/$ver/zenify_${os}_${arch}.tar.gz"
 tmp=$(mktemp -d)
 echo "Downloading $url"
