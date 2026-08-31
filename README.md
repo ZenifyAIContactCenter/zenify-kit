@@ -13,7 +13,36 @@ The binary is published for macOS, Linux, and Windows (amd64 + arm64) on every r
 > The method below uses the [GitHub CLI](https://cli.github.com) (`gh`), which every
 > teammate already has authenticated.
 
-### macOS / Linux / Windows (via `gh`)
+### Install scripts (recommended)
+
+Both scripts authenticate through your existing `gh` login (no token handling), pick the
+right OS/arch asset, and install the binary to your `PATH`.
+
+**macOS / Linux** — clone the repo, then:
+
+```sh
+./scripts/install.sh
+```
+
+Installs to `~/.local/bin/zenify`. Override with `ZENIFY_BIN=/usr/local/bin`; pin a version
+with `ZENIFY_VERSION=v0.1.0`. Requires `gh` installed and `gh auth login` completed.
+
+**Windows (PowerShell)** — clone the repo, then:
+
+```powershell
+./scripts/install.ps1
+```
+
+Installs to `%LOCALAPPDATA%\Programs\zenify`.
+
+Once these scripts are merged to `main`, they can also be run without cloning:
+
+```sh
+gh api repos/ZenifyAIContactCenter/zenify-kit/contents/scripts/install.sh --jq .content \
+  | base64 --decode | sh
+```
+
+### Manual download (via `gh`)
 
 ```sh
 # darwin_arm64 | darwin_amd64 | linux_amd64 | linux_arm64 | windows_amd64 | windows_arm64
@@ -23,12 +52,6 @@ tar xzf zenify_darwin_arm64.tar.gz          # or unzip the .zip on Windows
 install -m 0755 zenify ~/.local/bin/zenify  # somewhere on your PATH
 zenify --version
 ```
-
-### Install scripts (`scripts/install.sh`, `install.ps1`)
-
-These exist but assume **public** release assets — they do not authenticate, so they will
-404 against this private repo as-is. A `gh`-authenticated installer is planned for the
-onboarding milestone. Until then use the `gh release download` method above.
 
 ### Package managers (not yet live)
 
