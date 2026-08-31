@@ -6,37 +6,36 @@ that ships the team's shared CLI (`version`, `doctor`, and more to come).
 > **Status:** M0 Foundation. The commands available today are `version` and `doctor`.
 > Onboarding, gate, and managed-file subcommands land in later milestones.
 
-## Install
-
 The binary is published for macOS, Linux, and Windows (amd64 + arm64) on every release.
 
-### macOS / Linux
+> **This repository is private.** Release assets require GitHub authentication with access
+> to the `ZenifyAIContactCenter` org. Unauthenticated `curl` / `irm` downloads return 404.
+> The method below uses the [GitHub CLI](https://cli.github.com) (`gh`), which every
+> teammate already has authenticated.
+
+### macOS / Linux / Windows (via `gh`)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/main/scripts/install.sh | sh
+# darwin_arm64 | darwin_amd64 | linux_amd64 | linux_arm64 | windows_amd64 | windows_arm64
+gh release download v0.1.0 --repo ZenifyAIContactCenter/zenify-kit \
+  --pattern 'zenify_darwin_arm64.tar.gz'
+tar xzf zenify_darwin_arm64.tar.gz          # or unzip the .zip on Windows
+install -m 0755 zenify ~/.local/bin/zenify  # somewhere on your PATH
+zenify --version
 ```
 
-Installs to `~/.local/bin/zenify` by default. Override with `ZENIFY_BIN=/usr/local/bin`,
-or pin a version with `ZENIFY_VERSION=v0.1.0`. Make sure the install dir is on your `PATH`.
+### Install scripts (`scripts/install.sh`, `install.ps1`)
 
-### Windows (PowerShell)
+These exist but assume **public** release assets — they do not authenticate, so they will
+404 against this private repo as-is. A `gh`-authenticated installer is planned for the
+onboarding milestone. Until then use the `gh release download` method above.
 
-```powershell
-irm https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/main/scripts/install.ps1 | iex
-```
+### Package managers (not yet live)
 
-Installs to `%LOCALAPPDATA%\Programs\zenify`. Pin a version with `$env:ZENIFY_VERSION = 'v0.1.0'`.
-
-### Manual download
-
-Grab the archive for your OS/arch from the
-[Releases page](https://github.com/ZenifyAIContactCenter/zenify-kit/releases), extract, and
-put `zenify` (or `zenify.exe`) somewhere on your `PATH`.
-
-### Package managers (coming soon)
-
-`brew` (macOS + Linux), `scoop` and `winget` (Windows) are configured but not yet live —
-they need their tap/bucket repositories created first. Until then, use the install scripts above.
+`brew` (macOS + Linux), `scoop` and `winget` (Windows) are configured in `.goreleaser.yaml`
+but disabled. They need their tap/bucket repositories created first, and public package
+catalogs (winget especially) do not accept a private tool — so these depend on the
+distribution decision taken during onboarding.
 
 ## Usage
 
