@@ -22,10 +22,13 @@ archives:
         formats: [zip]
 checksum:
   name_template: checksums.txt
+# The public zenify-kit repo doubles as its own Homebrew tap and Scoop bucket:
+# GoReleaser commits Casks/zenify.rb and the Scoop manifest here on each release,
+# and the release assets are public, so brew/scoop download them with no auth.
 homebrew_casks:
   - repository:
       owner: ZenifyAIContactCenter
-      name: homebrew-tap
+      name: zenify-kit
     name: zenify
     homepage: https://github.com/ZenifyAIContactCenter/zenify-kit
     description: Portable zenify workspace toolkit
@@ -33,16 +36,6 @@ homebrew_casks:
 scoops:
   - repository:
       owner: ZenifyAIContactCenter
-      name: scoop-bucket
+      name: zenify-kit
     name: zenify
-    skip_upload: auto
-winget:
-  - name: zenify
-    publisher: ZenifyAIContactCenter
-    license: proprietary
-    short_description: Portable zenify workspace toolkit
-    homepage: https://github.com/ZenifyAIContactCenter/zenify-kit
-    repository:
-      owner: ZenifyAIContactCenter
-      name: winget-pkgs-fork
     skip_upload: auto
