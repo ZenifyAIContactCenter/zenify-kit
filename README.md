@@ -13,11 +13,12 @@ which is why the repository and its binaries are public and install with no auth
 ### Homebrew (macOS + Linux)
 
 ```sh
-brew tap zenify https://github.com/ZenifyAIContactCenter/zenify-kit
-brew install zenify
+brew tap zenifyaicontactcenter/zenify-kit https://github.com/ZenifyAIContactCenter/zenify-kit
+brew trust zenifyaicontactcenter/zenify-kit   # one-time: Homebrew requires trusting a third-party cask tap
+brew install --cask zenify
 ```
 
-Upgrade later with `brew upgrade zenify`.
+Upgrade later with `brew upgrade --cask zenify`.
 
 ### Scoop (Windows)
 
