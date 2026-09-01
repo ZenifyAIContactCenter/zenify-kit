@@ -80,8 +80,8 @@ func TestRunRm_RefusesUnmerged(t *testing.T) {
 	s := &rmStub{
 		out: map[string]string{
 			wtPath + "|symbolic-ref --quiet --short HEAD": "namph/feat/foo",
-			wtPath + "|status --porcelain":                "", // clean
-			root + "|diff origin/main..namph/feat/foo":     "d", // non-empty diff
+			wtPath + "|status --porcelain":                "",  // clean
+			root + "|diff origin/main..namph/feat/foo":    "d", // non-empty diff
 		},
 		err: map[string]error{root + "|merge-base --is-ancestor namph/feat/foo origin/main": errors.New("no")},
 	}
@@ -97,7 +97,7 @@ func TestRunRm_RemovesMergedCleanAndCleansCaches(t *testing.T) {
 		out: map[string]string{
 			wtPath + "|symbolic-ref --quiet --short HEAD": "namph/feat/foo",
 			wtPath + "|status --porcelain":                "",
-			root + "|diff origin/main..namph/feat/foo":     "", // empty diff → merged
+			root + "|diff origin/main..namph/feat/foo":    "", // empty diff → merged
 		},
 		err: map[string]error{root + "|merge-base --is-ancestor namph/feat/foo origin/main": errors.New("not ancestor")},
 	}
