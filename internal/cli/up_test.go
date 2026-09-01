@@ -167,3 +167,22 @@ func TestRunApply_PartialFailure_SavesManifestAndReturnsFail(t *testing.T) {
 		t.Errorf("ownership manifest not saved after a partial failure: %v", statErr)
 	}
 }
+
+func TestDryRunApplyConflict(t *testing.T) {
+	// default: dry-run true (not explicitly set), no --apply → no conflict
+	if err := dryRunApplyConflict(false, false); err != nil {
+		t.Fatalf("default (no apply, dry-run unset): unexpected error %v", err)
+	}
+	// --apply alone (dry-run not explicitly set) → allowed
+	if err := dryRunApplyConflict(true, false); err != nil {
+		t.Fatalf("apply alone: unexpected error %v", err)
+	}
+	// explicit --dry-run alone → allowed
+	if err := dryRunApplyConflict(false, true); err != nil {
+		t.Fatalf("explicit dry-run alone: unexpected error %v", err)
+	}
+	// --apply together with an explicit --dry-run → rejected
+	if err := dryRunApplyConflict(true, true); err == nil {
+		t.Fatal("apply + explicit dry-run: expected a conflict error, got nil")
+	}
+}

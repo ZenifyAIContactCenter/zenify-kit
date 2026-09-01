@@ -177,18 +177,35 @@ func snapshotTargets(plans []reconcile.RepoPlan, workspace string) []string {
 // clock directly; the sidecar time is not asserted).
 func applyNow() int64 { return time.Now().Unix() }
 
+// dryRunApplyConflict rejects `--apply --dry-run` together: --apply mutates and
+// --dry-run (FR-050) is the non-mutating preview, so combining them is a
+// contradiction. dryRunChanged is cmd.Flags().Changed("dry-run") — true only
+// when the user set --dry-run explicitly, so the default (dry-run true, no
+// --apply) is never a conflict.
+func dryRunApplyConflict(apply, dryRunChanged bool) error {
+	if apply && dryRunChanged {
+		return fmt.Errorf("cannot combine --apply with --dry-run: --apply mutates, --dry-run only previews")
+	}
+	return nil
+}
+
 func newUpCmd() *cobra.Command {
 	var (
-		jsonOut      bool
-		workspace    string
-		manifestPath string
-		overlayPath  string
-		applyFlag    bool
+		jsonOut        bool
+		nonInteractive bool
+		dryRun         bool
+		workspace      string
+		manifestPath   string
+		overlayPath    string
+		applyFlag      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
 		Short: "Discover repos and print the onboarding plan (dry-run; use --apply to execute)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := dryRunApplyConflict(applyFlag, cmd.Flags().Changed("dry-run")); err != nil {
+				return exitcode.New(exitcode.BadArgs, err)
+			}
 			if manifestPath == "" {
 				// The manifest is versioned inside the kit checkout, not the
 				// scanned workspace — default relative to cwd, not --workspace.
@@ -223,7 +240,9 @@ func newUpCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit the plan as a JSON envelope")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit the plan as a JSON envelope (implies --non-interactive)")
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "never prompt — reserved for CI; the interactive TUI is not present in this build (FR-050)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "compute and print the plan without acting (the default; cannot be combined with --apply) (FR-050)")
 	cmd.Flags().StringVar(&workspace, "workspace", ".", "workspace root directory")
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default manifest/repos.yaml relative to the kit checkout)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
