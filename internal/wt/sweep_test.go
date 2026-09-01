@@ -100,8 +100,8 @@ func TestSweepPlan_DetachedKept(t *testing.T) {
 	root := "/repo"
 	list := swList("/repo/.worktrees/det")
 	s := swStub{out: map[string]string{
-		root + "|worktree list --porcelain":                     list,
-		"/repo/.worktrees/det|config --get wt.slug":             "det",
+		root + "|worktree list --porcelain":                      list,
+		"/repo/.worktrees/det|config --get wt.slug":              "det",
 		"/repo/.worktrees/det|symbolic-ref --quiet --short HEAD": "", // detached
 	}}
 	items, _ := sweepPlan(s, root, "origin/main", ".worktrees/")
