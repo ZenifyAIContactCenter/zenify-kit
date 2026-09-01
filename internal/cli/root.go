@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,10 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// A flag-parse error is a usage error → exit 2 (BadArgs), not 1.
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return exitcode.New(exitcode.BadArgs, err)
+	})
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newUpCmd())
