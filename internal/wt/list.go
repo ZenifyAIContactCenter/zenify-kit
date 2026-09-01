@@ -42,13 +42,18 @@ func List(r gitx.Runner, repoRoot string, cfg *Config) ([]Row, error) {
 			portByPath[w.Path] = w.Ports[0]
 		}
 	}
-	wtPrefix := filepath.Join(repoRoot, cfg.WorktreeDir) + string(filepath.Separator)
+	// git reports canonical paths (on macOS the repo root resolves through
+	// /private/var), while repoRoot may still carry an unresolved symlink; canon
+	// both sides so the "inside worktreeDir" filter compares like with like.
+	canonRoot := canon(repoRoot)
+	wtPrefix := filepath.Join(canonRoot, cfg.WorktreeDir) + string(filepath.Separator)
 
 	var rows []Row
 	var curPath, curBranch string
 	flush := func() []Row {
 		defer func() { curPath, curBranch = "", "" }()
-		if curPath == "" || curPath == repoRoot || !strings.HasPrefix(curPath, wtPrefix) {
+		cp := canon(curPath)
+		if curPath == "" || cp == canonRoot || !strings.HasPrefix(cp, wtPrefix) {
 			return nil
 		}
 		slug := cfgGet(r, curPath, "wt.slug")
@@ -99,6 +104,15 @@ func List(r gitx.Runner, repoRoot string, cfg *Config) ([]Row, error) {
 	}
 	rows = append(rows, flush()...)
 	return rows, nil
+}
+
+// canon resolves symlinks in p (so /var vs /private/var comparisons match),
+// falling back to p unchanged when the path does not exist yet.
+func canon(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return p
 }
 
 // cfgGet reads a worktree-scoped git config value with dir=worktreePath, or ""
