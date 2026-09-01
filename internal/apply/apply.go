@@ -66,7 +66,7 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 			r.Wrote, r.Err = wrote, err
 		default:
 			// OK, DRIFT:skip-dirty, wrong-remote, SKIP:no-access, SKIP,
-			// MIGRATE-layout (→ B2b-2): report, do nothing.
+			// MIGRATE-layout (automated flip deferred to M2): report, do nothing.
 			r.Skipped = true
 			r.Action = "skipped (" + string(p.State) + ")"
 		}

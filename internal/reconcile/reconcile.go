@@ -52,9 +52,9 @@ func Build(m *manifest.Manifest, access map[string]ghx.RemoteRepo, scans map[str
 		case remoteMismatch(r.URL, st.NormalizedRemote):
 			p.State, p.Reason = WrongRemote, fmt.Sprintf("remote %s ≠ manifest %s — report only", st.NormalizedRemote, canonical(r.URL))
 		case st.Layout == "old":
-			p.State, p.Reason = Migrate, "gitignore hides .claude — layout flip pending (B2)"
+			p.State, p.Reason = Migrate, "gitignore hides .claude — automated flip deferred to M2 (flip by hand meanwhile)"
 		case !st.HasClaude:
-			p.State, p.Reason = Wire, "no .claude/ — config wiring pending (B2)"
+			p.State, p.Reason = Wire, "no .claude/ — would wire config"
 		case st.HasClaude && st.Layout == "new" && onBase(r.Base, st.Branch):
 			p.State, p.Reason = OK, "adopted, clean, on base"
 		default:
