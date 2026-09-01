@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -67,11 +68,12 @@ func copyTree(src, dst string) error {
 	return nil
 }
 
-// WritePortEnv sets <portEnv>=<port> in envPath: replacing an existing line for
-// that key, or appending one (guaranteeing a newline before the appended line).
-// A missing file is created with just the single line.
-func WritePortEnv(envPath, portEnv string, port int) error {
-	line := fmt.Sprintf("%s=%d", portEnv, port)
+// upsertEnvVar sets key=value in envPath: replacing an existing line for that key,
+// or appending one (guaranteeing a newline before the appended line). A missing
+// file is created with just the single line. This is the replace-or-append core
+// WritePortEnv previously inlined.
+func upsertEnvVar(envPath, key, value string) error {
+	line := key + "=" + value
 	b, err := os.ReadFile(envPath)
 	if os.IsNotExist(err) {
 		return os.WriteFile(envPath, []byte(line+"\n"), 0o644)
@@ -83,7 +85,7 @@ func WritePortEnv(envPath, portEnv string, port int) error {
 	lines := strings.Split(content, "\n")
 	replaced := false
 	for i, l := range lines {
-		if strings.HasPrefix(l, portEnv+"=") {
+		if strings.HasPrefix(l, key+"=") {
 			lines[i] = line
 			replaced = true
 			break
@@ -98,6 +100,37 @@ func WritePortEnv(envPath, portEnv string, port int) error {
 	}
 	content += line + "\n"
 	return os.WriteFile(envPath, []byte(content), 0o644)
+}
+
+// WritePortEnv sets <portEnv>=<port> in envPath: replacing an existing line for
+// that key, or appending one (guaranteeing a newline before the appended line).
+// A missing file is created with just the single line.
+func WritePortEnv(envPath, portEnv string, port int) error {
+	return upsertEnvVar(envPath, portEnv, strconv.Itoa(port))
+}
+
+// SeedIdentityEnv writes the FR-038 identity variables into the worktree env file
+// so parallel worktrees of one repo do not collide on the shared, stateful infra
+// that a per-worktree port cannot isolate (Docker Compose project, Redis/BullMQ
+// key space): WT_SLUG, COMPOSE_PROJECT_NAME=<abbrev>-<slug>, and — only when the
+// config names the env var to hold it — a Redis key-prefix <abbrev>-<slug>:.
+func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
+	compose := slug
+	if cfg.Abbrev != "" {
+		compose = cfg.Abbrev + "-" + slug
+	}
+	if err := upsertEnvVar(envPath, "WT_SLUG", slug); err != nil {
+		return err
+	}
+	if err := upsertEnvVar(envPath, "COMPOSE_PROJECT_NAME", compose); err != nil {
+		return err
+	}
+	if cfg.RedisPrefixEnv != "" {
+		if err := upsertEnvVar(envPath, cfg.RedisPrefixEnv, compose+":"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ApplyDeps sets up the dependency dir (e.g. node_modules) in the worktree per
