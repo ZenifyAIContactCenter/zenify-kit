@@ -69,6 +69,36 @@ func TestEnsureGuardHookBrokenJSON(t *testing.T) {
 	}
 }
 
+func TestEnsureGuardHookSplicesLegacyKeepsSibling(t *testing.T) {
+	in := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"~/.claude/hooks/guard-git-deploy.sh"},{"type":"command","command":"some-other-hook"}]}]}}`
+	out, changed, err := ensureGuardHook([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Error("phải báo changed khi bỏ legacy hook")
+	}
+	s := string(out)
+	if !strings.Contains(s, "some-other-hook") {
+		t.Error("hook anh em (some-other-hook) trong cùng entry phải được giữ nguyên")
+	}
+	if strings.Contains(s, "guard-git-deploy.sh") {
+		t.Error("hook legacy phải bị xoá")
+	}
+	if !strings.Contains(s, "zenify git-guard") {
+		t.Error("phải trỏ zenify git-guard")
+	}
+
+	// Second pass must be idempotent now that the guard is present.
+	_, changed2, err := ensureGuardHook(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed2 {
+		t.Error("lần 2 phải idempotent (changed=false)")
+	}
+}
+
 // --- Extra coverage beyond the brief's minimum ---
 
 func TestEnsureGuardHookEmptyInput(t *testing.T) {

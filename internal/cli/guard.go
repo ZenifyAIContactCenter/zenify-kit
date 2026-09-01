@@ -43,15 +43,19 @@ func ensureGuardHook(raw []byte) ([]byte, bool, error) {
 
 	found := false
 	changed := false
-	for i, e := range pre {
+	newPre := make([]any, 0, len(pre)+1)
+	for _, e := range pre {
 		entry, _ := e.(map[string]any)
 		if entry == nil {
+			newPre = append(newPre, e)
 			continue
 		}
 		hs, _ := entry["hooks"].([]any)
+		newHs := make([]any, 0, len(hs))
 		for _, h := range hs {
 			hm, _ := h.(map[string]any)
 			if hm == nil {
+				newHs = append(newHs, h)
 				continue
 			}
 			cmd, _ := hm["command"].(string)
@@ -59,12 +63,24 @@ func ensureGuardHook(raw []byte) ([]byte, bool, error) {
 				found = true
 			}
 			if strings.Contains(cmd, legacyGuard) {
-				pre[i] = newEntry
-				found = true
+				// Splice out only this individual legacy hook — keep any
+				// sibling hooks in the same entry, and keep the entry's
+				// original matcher untouched.
 				changed = true
+				continue
 			}
+			newHs = append(newHs, h)
 		}
+		if len(newHs) == 0 {
+			// Dropping the legacy hook left this entry with zero hooks —
+			// drop the whole entry rather than leaving a matcher with an
+			// empty hooks array.
+			continue
+		}
+		entry["hooks"] = newHs
+		newPre = append(newPre, entry)
 	}
+	pre = newPre
 	if !found {
 		pre = append(pre, newEntry)
 		changed = true
