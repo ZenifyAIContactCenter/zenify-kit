@@ -15,30 +15,34 @@ import (
 // Config is the resolved .claude/worktree.json for one repo. Keys absent on
 // disk take the documented defaults (matching the bash wt).
 type Config struct {
-	Abbrev      string
-	BaseRef     string
-	WorktreeDir string
-	PortEnv     string
-	Deps        string
-	Install     string
-	User        string
-	PortRange   [2]int
-	Copy        []string
+	Abbrev        string
+	BaseRef       string
+	WorktreeDir   string
+	PortEnv       string
+	Deps          string
+	Install       string
+	User          string
+	PortRange     [2]int
+	Copy          []string
+	EnvFile       string
+	HotfixBaseRef string
 }
 
 // rawConfig mirrors the on-disk JSON. PortRange is deferred to json.RawMessage
 // because it appears BOTH as an array [lo,hi] (real files) and as a legacy
 // "lo hi" string (old default).
 type rawConfig struct {
-	Abbrev      string          `json:"abbrev"`
-	BaseRef     string          `json:"baseRef"`
-	WorktreeDir string          `json:"worktreeDir"`
-	PortEnv     string          `json:"portEnv"`
-	Deps        string          `json:"deps"`
-	Install     string          `json:"install"`
-	User        string          `json:"user"`
-	PortRange   json.RawMessage `json:"portRange"`
-	Copy        []string        `json:"copy"`
+	Abbrev        string          `json:"abbrev"`
+	BaseRef       string          `json:"baseRef"`
+	WorktreeDir   string          `json:"worktreeDir"`
+	PortEnv       string          `json:"portEnv"`
+	Deps          string          `json:"deps"`
+	Install       string          `json:"install"`
+	User          string          `json:"user"`
+	PortRange     json.RawMessage `json:"portRange"`
+	Copy          []string        `json:"copy"`
+	EnvFile       string          `json:"envFile"`
+	HotfixBaseRef string          `json:"hotfixBaseRef"`
 }
 
 // Load reads <repoRoot>/.claude/worktree.json and resolves defaults. A missing
@@ -58,15 +62,17 @@ func Load(repoRoot string) (*Config, error) {
 		return nil, fmt.Errorf("wt: %s portRange: %w", path, err)
 	}
 	c := &Config{
-		Abbrev:      orDefault(raw.Abbrev, filepath.Base(repoRoot)),
-		BaseRef:     orDefault(raw.BaseRef, "origin/main"),
-		WorktreeDir: orDefault(raw.WorktreeDir, ".worktrees/"),
-		PortEnv:     orDefault(raw.PortEnv, "PORT"),
-		Deps:        orDefault(raw.Deps, "install"),
-		Install:     raw.Install,
-		User:        orDefault(raw.User, "namph"),
-		PortRange:   pr,
-		Copy:        raw.Copy,
+		Abbrev:        orDefault(raw.Abbrev, filepath.Base(repoRoot)),
+		BaseRef:       orDefault(raw.BaseRef, "origin/main"),
+		WorktreeDir:   orDefault(raw.WorktreeDir, ".worktrees/"),
+		PortEnv:       orDefault(raw.PortEnv, "PORT"),
+		Deps:          orDefault(raw.Deps, "install"),
+		Install:       raw.Install,
+		User:          orDefault(raw.User, "namph"),
+		PortRange:     pr,
+		Copy:          raw.Copy,
+		EnvFile:       raw.EnvFile,
+		HotfixBaseRef: raw.HotfixBaseRef,
 	}
 	return c, nil
 }
