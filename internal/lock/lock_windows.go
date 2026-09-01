@@ -57,7 +57,6 @@ func flockUnlock(f *os.File) error {
 	r, _, err := procUnlockFile.Call(
 		uintptr(f.Fd()),
 		0,
-		0,
 		uintptr(^uint32(0)),
 		uintptr(^uint32(0)),
 		uintptr(unsafe.Pointer(&ol)),
