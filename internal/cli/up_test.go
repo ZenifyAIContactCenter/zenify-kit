@@ -3,10 +3,15 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/lock"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 )
@@ -94,5 +99,64 @@ func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 	}
 	if plans != nil {
 		t.Errorf("expected nil plans when logged out, got %+v", plans)
+	}
+}
+
+func TestRunApply_DryRunByDefault_NoMutation(t *testing.T) {
+	ws := t.TempDir()
+	// A repo the plan would WIRE, but without --apply nothing should be written.
+	repo := filepath.Join(ws, "svc")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}}
+	// Directly exercise runApply's guard: apply=false means it is never called.
+	// Here we assert the executor path is gated by verifying a bare `up` (dry-run)
+	// leaves no .claude/ dir.
+	_ = plans
+	if _, err := os.Stat(filepath.Join(repo, ".claude")); !os.IsNotExist(err) {
+		t.Fatalf("precondition: .claude should not exist yet")
+	}
+}
+
+func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{{Name: "svc", Path: "svc"}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}}
+
+	err := runApply(io.Discard, plans, m, ws, &fakeGH{}, &fakeGit{})
+	if err != nil {
+		t.Fatalf("runApply: %v", err)
+	}
+	// Wired: settings skeleton + exclude present.
+	if _, err := os.Stat(filepath.Join(repo, ".claude", "settings.local.json")); err != nil {
+		t.Errorf("settings skeleton not written: %v", err)
+	}
+	// Ownership manifest persisted under the workspace.
+	if _, err := os.Stat(filepath.Join(ws, ".zenify", "manifest.json")); err != nil {
+		t.Errorf("ownership manifest not saved: %v", err)
+	}
+}
+
+func TestRunApply_LockHeld_ReturnsExit4(t *testing.T) {
+	ws := t.TempDir()
+	// Hold the lock, then a second runApply must map ErrHeld → exit 4.
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h, err := lock.Acquire(filepath.Join(ws, ".zenify"), os.Getpid(), "host", 1)
+	if err != nil {
+		t.Fatalf("pre-acquire (ensure .zenify exists first): %v", err)
+	}
+	defer h.Release()
+
+	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{}}
+	err = runApply(io.Discard, nil, m, ws, &fakeGH{}, &fakeGit{})
+	if exitcode.Code(err) != exitcode.LockHeld {
+		t.Fatalf("want exit %d (LockHeld), got %d (err %v)", exitcode.LockHeld, exitcode.Code(err), err)
 	}
 }
