@@ -64,6 +64,29 @@ func TestSeedCopyFiles_CopiesPresentWarnsMissing(t *testing.T) {
 	}
 }
 
+func TestSeedCopyFiles_DirectoryTargetNotNested(t *testing.T) {
+	// A directory copy target must land FLAT at dst, not nested as
+	// dst/<basename>/... — the cp-into-existing-dir gotcha copyTree guards.
+	repo := t.TempDir()
+	wtp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".claude", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".claude", "sub", "f.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SeedCopyFiles(repo, wtp, []string{".claude"}); err != nil {
+		t.Fatal(err)
+	}
+	// Flat: the file is at wtp/.claude/sub/f.txt, NOT wtp/.claude/.claude/...
+	if _, err := os.Stat(filepath.Join(wtp, ".claude", "sub", "f.txt")); err != nil {
+		t.Fatalf("directory target not copied flat: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wtp, ".claude", ".claude")); err == nil {
+		t.Fatal("directory target nested one level too deep")
+	}
+}
+
 func TestApplyDeps_Symlink(t *testing.T) {
 	repo := t.TempDir()
 	wtp := t.TempDir()

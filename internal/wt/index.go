@@ -56,6 +56,13 @@ func writeIndexAtomic(path string, idx map[string][]string) error {
 		os.Remove(tmpName)
 		return err
 	}
+	// CreateTemp makes the file 0600; normalise to 0644 to match every other
+	// file this package writes (state.json, seeded files) rather than leaving
+	// the index a lone 0600 outlier.
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
 	if err := os.Rename(tmpName, path); err != nil {
 		os.Remove(tmpName)
 		return fmt.Errorf("wt: rename %s: %w", path, err)

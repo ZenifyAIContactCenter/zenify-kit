@@ -38,11 +38,33 @@ func SeedCopyFiles(repoRoot, worktreePath string, copyList []string) ([]string, 
 
 // copyTree copies src→dst preferring APFS copy-on-write (`cp -c -R`), falling
 // back to a plain recursive copy. Shelling to cp keeps CoW that a Go copy loses.
+//
+// The first attempt can fail partway through a large tree (ENOSPC, a file
+// vanishing mid-walk, a permission on one entry) and leave dst half-populated.
+// Because `cp -R src dst` copies INTO dst when dst already exists — producing a
+// nested dst/<basename(src)> instead of populating dst — the fallback MUST start
+// from the same clean precondition as the first attempt, so remove any partial
+// dst first. cp's own stderr is captured into the returned error: without it a
+// real failure (disk full, cross-device) surfaces only as "exit status 1".
 func copyTree(src, dst string) error {
 	if err := exec.Command("cp", "-c", "-R", src, dst).Run(); err == nil {
 		return nil
 	}
-	return exec.Command("cp", "-R", src, dst).Run()
+	// Clear whatever the failed CoW attempt may have left, so the fallback does
+	// not nest into an existing dst.
+	if err := os.RemoveAll(dst); err != nil {
+		return fmt.Errorf("clear partial copy at %s: %w", dst, err)
+	}
+	var stderr strings.Builder
+	cmd := exec.Command("cp", "-R", src, dst)
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
 }
 
 // WritePortEnv sets <portEnv>=<port> in envPath: replacing an existing line for
