@@ -28,3 +28,33 @@ repos:
     path: notification
     base: origin/staging
     tags: [realtime]
+  - name: change-stream-subscriber
+    url: git@github.com:ZenifyAIContactCenter/change-stream-subscriber.git
+    path: change-stream-subscriber
+    base: origin/staging
+    tags: [infra, realtime]
+  - name: lumi-agent
+    url: git@github.com:ZenifyAIContactCenter/lumi-agent.git
+    path: lumi-agent
+    base: origin/staging
+    tags: [ai]
+  - name: notification-hub-be
+    url: git@github.com:ZenifyAIContactCenter/notification-hub-be.git
+    path: notification-hub-be
+    base: origin/staging
+    tags: [backend, comm-hub]
+  - name: notification-hub-web
+    url: git@github.com:ZenifyAIContactCenter/notification-hub-web.git
+    path: notification-hub-web
+    base: origin/staging
+    tags: [frontend, comm-hub]
+  - name: ott-gateway
+    url: git@github.com:ZenifyAIContactCenter/ott-gateway.git
+    path: ott-gateway
+    base: origin/staging
+    tags: [backend, gateway]
+  - name: personal-zalo-gateway
+    url: git@github.com:ZenifyAIContactCenter/personal-zalo-gateway.git
+    path: personal-zalo-gateway
+    base: origin/staging
+    tags: [backend, gateway]
