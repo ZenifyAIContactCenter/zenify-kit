@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
@@ -15,6 +17,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/lock"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
@@ -159,10 +162,39 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	if err := owned.Save(manifestPath); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
+
+	// Provision the Playwright MCP + browsers when onboarding a frontend repo
+	// (FR-014). NON-FATAL: a failure warns but does not fail onboarding or the
+	// failed-count return — mirrors the gh-scope warning.
+	if hasFrontendRepo(m) {
+		po := playwright.Options{
+			Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() },
+			Getenv: os.Getenv,
+			GOOS:   runtime.GOOS,
+			Stdout: w,
+		}
+		if err := playwright.Bootstrap(po); err != nil {
+			fmt.Fprintf(w, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
+		}
+	}
+
 	if failed > 0 {
 		return exitcode.New(exitcode.Fail, fmt.Errorf("apply: %d repo(s) failed", failed))
 	}
 	return nil
+}
+
+// hasFrontendRepo reports whether the manifest onboards any frontend repo,
+// gating Playwright provisioning (FR-014) to FE workspaces.
+func hasFrontendRepo(m *manifest.Manifest) bool {
+	for _, r := range m.Repos {
+		for _, t := range r.Tags {
+			if t == "frontend" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // snapshotTargets lists the files an apply run touches, so Snapshot can capture

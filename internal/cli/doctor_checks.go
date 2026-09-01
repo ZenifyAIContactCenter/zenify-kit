@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 )
 
 // secretPresenceCheck reports which DB credential KEYS are resolvable (env or
@@ -57,11 +59,31 @@ func toolPresenceCheck(tools []string) Check {
 	}
 }
 
+// playwrightCheck reports whether the Playwright MCP is registered and whether
+// browser binaries are present — READ-ONLY, it never launches a browser (FR-012/
+// FR-066). ok = MCP registered; browser absence is surfaced in the detail rather
+// than failing, since the MCP server lazy-installs.
+func playwrightCheck() Check {
+	return Check{
+		Name: "playwright",
+		Run: func() (bool, string) {
+			o := playwright.Options{
+				Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() },
+				Getenv: os.Getenv,
+				GOOS:   runtime.GOOS,
+			}
+			reg, _, detail := playwright.Status(o)
+			return reg, detail // ok = MCP registered; browser absence shown in detail
+		},
+	}
+}
+
 // registerDefaultChecks wires the foundation-layer checks. Called once at root
 // construction. Uses os.Getenv and the workspace default settings path.
 func registerDefaultChecks() {
 	RegisterCheck(secretPresenceCheck(os.Getenv, defaultDoctorSettingsPath(os.Getenv)))
 	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
+	RegisterCheck(playwrightCheck())
 }
 
 func defaultDoctorSettingsPath(getenv func(string) string) string {
