@@ -29,6 +29,11 @@ type Config struct {
 	HotfixBaseRef  string
 	RedisPrefixEnv string
 	Peers          map[string]PeerSpec
+
+	HotfixBaseStrategy string
+	GateSharedStore    bool
+	GateAccessPatterns []string
+	GateDBAccessor     string
 }
 
 // PeerSpec is one entry of the peers map, keyed by the env var it sets.
@@ -55,6 +60,20 @@ type rawConfig struct {
 	HotfixBaseRef  string              `json:"hotfixBaseRef"`
 	RedisPrefixEnv string              `json:"redisPrefixEnv"`
 	Peers          map[string]PeerSpec `json:"peers"`
+	Hotfix         rawHotfix           `json:"hotfix"`
+	Gate           rawGate             `json:"gate"`
+}
+
+// rawHotfix mirrors the on-disk "hotfix" stanza.
+type rawHotfix struct {
+	BaseStrategy string `json:"baseStrategy"`
+}
+
+// rawGate mirrors the on-disk "gate" stanza.
+type rawGate struct {
+	SharedStore    bool     `json:"sharedStore"`
+	AccessPatterns []string `json:"accessPatterns"`
+	DBAccessor     string   `json:"dbAccessor"`
 }
 
 // Load reads <repoRoot>/.claude/worktree.json and resolves defaults. A missing
@@ -89,6 +108,10 @@ func Load(repoRoot string) (*Config, error) {
 		RedisPrefixEnv: raw.RedisPrefixEnv,
 		Peers:          raw.Peers,
 	}
+	c.HotfixBaseStrategy = orDefault(raw.Hotfix.BaseStrategy, "staging")
+	c.GateSharedStore = raw.Gate.SharedStore
+	c.GateAccessPatterns = raw.Gate.AccessPatterns
+	c.GateDBAccessor = raw.Gate.DBAccessor
 	return c, nil
 }
 

@@ -65,3 +65,35 @@ func TestLoad_NullPortRangeUsesDefault(t *testing.T) {
 		t.Fatalf("null portRange wrong: %v", c.PortRange)
 	}
 }
+
+func TestConfigGateHotfixStanza(t *testing.T) {
+	dir := t.TempDir()
+	body := `{
+	  "abbrev":"lumi","baseRef":"origin/staging",
+	  "hotfix":{"baseStrategy":"standalone"},
+	  "gate":{"sharedStore":false}
+	}`
+	writeWorktreeJSON(t, dir, body)
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.HotfixBaseStrategy != "standalone" {
+		t.Fatalf("baseStrategy=%q, want standalone", c.HotfixBaseStrategy)
+	}
+	if c.GateSharedStore {
+		t.Fatal("lumi-agent phải sharedStore=false")
+	}
+}
+
+func TestConfigHotfixDefaultsStaging(t *testing.T) {
+	dir := t.TempDir()
+	writeWorktreeJSON(t, dir, `{"abbrev":"x"}`)
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.HotfixBaseStrategy != "staging" {
+		t.Fatalf("default baseStrategy=%q, want staging", c.HotfixBaseStrategy)
+	}
+}
