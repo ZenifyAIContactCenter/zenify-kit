@@ -71,7 +71,10 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 					return nil
 				}
 			case managed.DecisionKeepUserAdded:
-				// target trên đĩa nhưng không trong manifest → ghi đè an toàn (nằm trong znf/).
+				// file có ở target nhưng không do ta record → file người dùng tự đặt trong znf/;
+				// additive (FR-M2A-02): GIỮ nguyên, không ghi đè.
+				res.Kept = append(res.Kept, target)
+				return nil
 			}
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {

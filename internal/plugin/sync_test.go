@@ -44,3 +44,33 @@ func TestSyncNeverEscapesDest(t *testing.T) {
 		}
 	}
 }
+
+func TestSyncKeepsUserAddedFile(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	// user tự tạo file trùng path một asset TRƯỚC khi sync, không qua manifest
+	victim := filepath.Join(dest, ".claude-plugin", "plugin.json")
+	if err := os.MkdirAll(filepath.Dir(victim), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	userContent := []byte(`{"name":"user-edited"}`)
+	if err := os.WriteFile(victim, userContent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Sync(dest, man)
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if got, _ := os.ReadFile(victim); string(got) != string(userContent) {
+		t.Fatalf("file người dùng bị ghi đè: %q", got)
+	}
+	var inKept bool
+	for _, p := range res.Kept {
+		if p == victim {
+			inKept = true
+		}
+	}
+	if !inKept {
+		t.Fatalf("victim không nằm trong Kept: %v", res.Kept)
+	}
+}
