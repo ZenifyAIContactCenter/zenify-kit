@@ -20,7 +20,7 @@ func newWtCmd() *cobra.Command {
 		Use:   "wt",
 		Short: "Git worktree + dev-env manager (read-only surface in this build)",
 	}
-	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd())
+	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd(), newWtSweepCmd())
 	return cmd
 }
 
@@ -264,5 +264,31 @@ func newWtRmCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	c.Flags().BoolVarP(&force, "force", "f", false, "remove even if dirty, detached, or unmerged")
+	return c
+}
+
+func newWtSweepCmd() *cobra.Command {
+	var dry, fetch bool
+	c := &cobra.Command{
+		Use:   "sweep",
+		Short: "Tear down every merged, clean worktree in this repo",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			root, err := repoRoot()
+			if err != nil {
+				return err
+			}
+			host, _ := os.Hostname()
+			return wt.RunSweep(wt.SweepOptions{
+				RepoRoot: root, Host: host, DryRun: dry, Fetch: fetch,
+				Pid: os.Getpid(), Now: time.Now().Unix(),
+				Runner: gitx.ExecRunner(), Stdout: cmd.OutOrStdout(), Stderr: cmd.ErrOrStderr(),
+			})
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	c.Flags().BoolVarP(&dry, "dry-run", "n", false, "report what would be removed without touching anything")
+	c.Flags().BoolVarP(&fetch, "fetch", "f", false, "fetch origin first so merge state is current")
 	return c
 }
