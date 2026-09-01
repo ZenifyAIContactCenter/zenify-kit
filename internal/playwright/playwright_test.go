@@ -47,7 +47,7 @@ func TestBrowsersDirPerOS(t *testing.T) {
 func TestStatusRegisteredAndBrowsersPresent(t *testing.T) {
 	dir := t.TempDir()
 	// a non-empty browsers dir
-	if err := os.WriteFile(filepath.Join(dir, "chromium-1234"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "chromium-1234"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	o := Options{

@@ -17,11 +17,11 @@ func promoteFixture(t *testing.T) (root, wtPath string) {
 	t.Helper()
 	root = t.TempDir()
 	writeWorktreeJSON(t, root, `{"abbrev":"myrepo","user":"namph","portRange":[3200,3249],"deps":"clone"}`)
-	if err := os.MkdirAll(filepath.Join(root, "node_modules"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "node_modules"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	wtPath = filepath.Join(root, ".worktrees", "my-task")
-	if err := os.MkdirAll(wtPath, 0o755); err != nil {
+	if err := os.MkdirAll(wtPath, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := SaveWorktree(root, Worktree{Slug: "my-task", Path: wtPath}, 1, "h", 1); err != nil {
@@ -66,7 +66,7 @@ func TestRunPromote_SymlinkPromoted(t *testing.T) {
 func TestRunPromote_AlreadyPrivate_NoOp(t *testing.T) {
 	root, wtPath := promoteFixture(t)
 	dst := filepath.Join(wtPath, "node_modules")
-	if err := os.MkdirAll(dst, 0o755); err != nil {
+	if err := os.MkdirAll(dst, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	g := &gitStub{out: map[string]string{}, err: map[string]error{}}

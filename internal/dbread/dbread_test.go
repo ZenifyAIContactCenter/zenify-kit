@@ -91,7 +91,7 @@ func TestLoadCreds_MissingFileNoError(t *testing.T) {
 func TestLoadCreds_MalformedJSONNoError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.local.json")
-	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	creds, err := LoadCreds(func(string) string { return "" }, path)
@@ -110,7 +110,7 @@ func writeSettings(t *testing.T, path string, env map[string]string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, b, 0o644); err != nil {
+	if err := os.WriteFile(path, b, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -130,7 +130,7 @@ func baseOptions(t *testing.T, env map[string]string) (*Options, *bytes.Buffer, 
 	return o, &stdout, &stderr
 }
 
-const fakeMongoURL = "mongodb://u:p@1.2.3.4:27017/?authSource=3csoft"
+const fakeMongoURL = "mongodb://u:p@1.2.3.4:27017/?authSource=3csoft" //nolint:gosec // G101 -- test fixture literal, not a real credential
 const fakeMysqlPassword = "s3cr3t-pw"
 
 func fakeEnv() map[string]string {
@@ -151,7 +151,7 @@ func TestRun_Collections_ExactEvalAndArgs(t *testing.T) {
 	o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
 		capturedName = name
 		capturedArgs = args
-		fmt.Fprint(o.Stdout, "chat_rooms\nusers\ntickets\n")
+		_, _ = fmt.Fprint(o.Stdout, "chat_rooms\nusers\ntickets\n")
 		return nil
 	})
 	o.Cmd = "collections"
@@ -179,7 +179,7 @@ func TestRun_Collections_ExactEvalAndArgs(t *testing.T) {
 func TestRun_Collections_ArgFilters(t *testing.T) {
 	o, stdout, _ := baseOptions(t, fakeEnv())
 	o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-		fmt.Fprint(o.Stdout, "chat_rooms\nusers\ntickets\nchat_messages\n")
+		_, _ = fmt.Fprint(o.Stdout, "chat_rooms\nusers\ntickets\nchat_messages\n")
 		return nil
 	})
 	o.Cmd = "collections"
@@ -255,7 +255,7 @@ func TestRun_SQL_ReadPassesThroughWithPassword(t *testing.T) {
 		capturedName = name
 		capturedArgs = args
 		capturedExtraEnv = extraEnv
-		fmt.Fprint(o.Stdout, "agents\n")
+		_, _ = fmt.Fprint(o.Stdout, "agents\n")
 		return nil
 	})
 	o.Cmd = "sql"
@@ -338,7 +338,7 @@ func TestRun_FR041_NoSecretLeak(t *testing.T) {
 	for _, setup := range scenarios {
 		o, stdout, stderr := baseOptions(t, fakeEnv())
 		o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-			fmt.Fprint(o.Stdout, "some-output\n")
+			_, _ = fmt.Fprint(o.Stdout, "some-output\n")
 			return nil
 		})
 		setup(o)

@@ -186,7 +186,7 @@ func loadDeny(root string) []string {
 }
 
 func runGit(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", args...) //nolint:gosec // G204 -- fixed "git" binary, args are internally-computed git subcommands, not attacker-controlled shell input
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	return string(out), err
@@ -195,7 +195,7 @@ func runGit(dir string, args ...string) (string, error) {
 // readLines đọc file, bỏ dòng comment '#' và dòng rỗng; ok=false khi file
 // không tồn tại (hoặc không đọc được).
 func readLines(path string) ([]string, bool) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is the repo's own .claude/deploy-branches config location, not attacker-controlled
 	if err != nil {
 		return nil, false
 	}

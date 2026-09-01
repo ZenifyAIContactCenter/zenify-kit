@@ -68,7 +68,7 @@ func playwrightCheck() Check {
 		Name: "playwright",
 		Run: func() (bool, string) {
 			o := playwright.Options{
-				Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() },
+				Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() }, //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 				Getenv: os.Getenv,
 				GOOS:   runtime.GOOS,
 			}

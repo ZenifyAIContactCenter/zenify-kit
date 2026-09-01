@@ -13,26 +13,34 @@ import (
 func gitInit(t *testing.T, dir, branch string, deny []string) {
 	t.Helper()
 	run := func(a ...string) {
-		c := exec.Command("git", a...)
+		c := exec.Command("git", a...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 		c.Dir = dir
 		if out, err := c.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", a, err, out)
 		}
 	}
-	os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
 	run("init", "-q", "-b", branch)
 	run("config", "user.email", "t@e.com")
 	run("config", "user.name", "T")
-	os.WriteFile(filepath.Join(dir, "f"), []byte("x\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "f"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	run("add", "f")
 	run("commit", "-q", "-m", "init")
 	if deny != nil {
-		os.MkdirAll(filepath.Join(dir, ".claude"), 0o755)
+		if err := os.MkdirAll(filepath.Join(dir, ".claude"), 0o750); err != nil {
+			t.Fatal(err)
+		}
 		body := ""
 		for _, b := range deny {
 			body += b + "\n"
 		}
-		os.WriteFile(filepath.Join(dir, ".claude", "deploy-branches"), []byte(body), 0o644)
+		if err := os.WriteFile(filepath.Join(dir, ".claude", "deploy-branches"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -93,10 +101,10 @@ func TestGitGuardCmdExit2(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "r")
 	gitInit(t, repo, "main", []string{"main"})
 	bin := filepath.Join(t.TempDir(), "zenify")
-	if out, err := exec.Command("go", "build", "-o", bin, "../../cmd/zenify").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", bin, "../../cmd/zenify").CombinedOutput(); err != nil { //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 		t.Fatalf("build: %v\n%s", err, out)
 	}
-	c := exec.Command(bin, "git-guard")
+	c := exec.Command(bin, "git-guard") //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 	c.Stdin = strings.NewReader(`{"cwd":"` + repo + `","tool_input":{"command":"git commit -m x"}}`)
 	err := c.Run()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 2 {
@@ -118,9 +126,9 @@ func TestDecideFromPayload_SecretsIntegration(t *testing.T) {
 	t.Run("deny on staged secret", func(t *testing.T) {
 		repo := filepath.Join(t.TempDir(), "r")
 		gitInit(t, repo, "work", nil) // no deploy-branches file: commit itself is allowed on this branch
-		os.WriteFile(filepath.Join(repo, "creds.txt"), []byte("aws_key = \""+secret+"\"\n"), 0o644)
+		_ = os.WriteFile(filepath.Join(repo, "creds.txt"), []byte("aws_key = \""+secret+"\"\n"), 0o600)
 		run := func(a ...string) {
-			c := exec.Command("git", a...)
+			c := exec.Command("git", a...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 			c.Dir = repo
 			if out, err := c.CombinedOutput(); err != nil {
 				t.Fatalf("git %v: %v\n%s", a, err, out)
@@ -141,9 +149,9 @@ func TestDecideFromPayload_SecretsIntegration(t *testing.T) {
 	t.Run("allow on clean staged file", func(t *testing.T) {
 		repo := filepath.Join(t.TempDir(), "r")
 		gitInit(t, repo, "work", nil)
-		os.WriteFile(filepath.Join(repo, "readme.txt"), []byte("hello world\n"), 0o644)
+		_ = os.WriteFile(filepath.Join(repo, "readme.txt"), []byte("hello world\n"), 0o600)
 		run := func(a ...string) {
-			c := exec.Command("git", a...)
+			c := exec.Command("git", a...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 			c.Dir = repo
 			if out, err := c.CombinedOutput(); err != nil {
 				t.Fatalf("git %v: %v\n%s", a, err, out)

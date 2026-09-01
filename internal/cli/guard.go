@@ -104,9 +104,9 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -130,7 +130,7 @@ func newGuardCmd() *cobra.Command {
 				return fmt.Errorf("guard install: không xác định được HOME: %w", err)
 			}
 			path := filepath.Join(home, ".claude", "settings.json")
-			raw, err := os.ReadFile(path)
+			raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
 			if err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("guard install: đọc %s: %w", path, err)
 			}
@@ -139,16 +139,16 @@ func newGuardCmd() *cobra.Command {
 				return err
 			}
 			if !changed {
-				fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã cấu hình sẵn (idempotent).")
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã cấu hình sẵn (idempotent).")
 				return nil
 			}
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 				return fmt.Errorf("guard install: tạo thư mục %s: %w", filepath.Dir(path), err)
 			}
 			if err := writeFileAtomic(path, out, 0o644); err != nil {
 				return fmt.Errorf("guard install: ghi %s: %w", path, err)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã trỏ PreToolUse → zenify git-guard.")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã trỏ PreToolUse → zenify git-guard.")
 			return nil
 		},
 	}

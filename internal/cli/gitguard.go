@@ -53,7 +53,7 @@ func decideFromPayload(payload []byte, getenv func(string) string) gitguard.Deci
 func runGitGuard(stdin io.Reader, stderr io.Writer, getenv func(string) string, decide func([]byte, func(string) string) gitguard.Decision) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintln(stderr, "🚫 [git-guard] internal error — failing open (allow)")
+			_, _ = fmt.Fprintln(stderr, "🚫 [git-guard] internal error — failing open (allow)")
 			code = 0
 		}
 	}()
@@ -63,7 +63,7 @@ func runGitGuard(stdin io.Reader, stderr io.Writer, getenv func(string) string, 
 	}
 	d := decide(payload, getenv)
 	if d.Deny {
-		fmt.Fprintln(stderr, d.Message)
+		_, _ = fmt.Fprintln(stderr, d.Message)
 		return 2
 	}
 	return 0

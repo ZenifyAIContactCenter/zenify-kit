@@ -112,7 +112,7 @@ func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
-	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{{Name: "svc", Path: "svc"}}}
@@ -135,14 +135,14 @@ func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 func TestRunApply_LockHeld_ReturnsExit4(t *testing.T) {
 	ws := t.TempDir()
 	// Hold the lock, then a second runApply must map ErrHeld → exit 4.
-	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	h, err := lock.Acquire(filepath.Join(ws, ".zenify"), os.Getpid(), "host", 1)
 	if err != nil {
 		t.Fatalf("pre-acquire (ensure .zenify exists first): %v", err)
 	}
-	defer h.Release()
+	defer func() { _ = h.Release() }()
 
 	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{}}
 	err = runApply(io.Discard, nil, m, ws, &fakeGH{}, &fakeGit{})

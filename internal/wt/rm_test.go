@@ -39,15 +39,15 @@ func (s *rmStub) ran(k string) bool {
 func rmRepo(t *testing.T, slug, branch string) (root string) {
 	t.Helper()
 	root = t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	cfg := `{"abbrev":"tst","baseRef":"origin/main","worktreeDir":".worktrees/","portEnv":"PORT","portRange":[3200,3249],"user":"namph"}`
-	if err := os.WriteFile(filepath.Join(root, ".claude", "worktree.json"), []byte(cfg), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".claude", "worktree.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	wtPath := filepath.Join(root, ".worktrees", slug)
-	if err := os.MkdirAll(wtPath, 0o755); err != nil {
+	if err := os.MkdirAll(wtPath, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := SaveWorktree(root, Worktree{Slug: slug, Type: "feat", Branch: branch, Path: wtPath, Ports: []int{3207}}, 111, "h", 1); err != nil {

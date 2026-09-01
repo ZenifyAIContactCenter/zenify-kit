@@ -62,7 +62,7 @@ func RunPromote(o PromoteOptions) error {
 	fi, lerr := os.Lstat(dst)
 	// Exists and is NOT a symlink → already a private tree; nothing to do.
 	if lerr == nil && fi.Mode()&os.ModeSymlink == 0 {
-		fmt.Fprintf(o.Stdout, "wt: %q already has a private %s — nothing to do\n", o.Slug, nm)
+		_, _ = fmt.Fprintf(o.Stdout, "wt: %q already has a private %s — nothing to do\n", o.Slug, nm)
 		return nil
 	}
 	// Not a symlink (and not the private case above) → there is nothing to promote.
@@ -82,15 +82,15 @@ func RunPromote(o PromoteOptions) error {
 	// of the promote — reporting it as failure would invite a re-run that hits the
 	// already-private branch and never records anything.
 	if _, err := r.Run(path, "config", "--worktree", "wt.deps", "clone"); err != nil {
-		fmt.Fprintf(o.Stderr, "wt: %q now has a private %s — the copy succeeded\n", o.Slug, nm)
-		fmt.Fprintf(o.Stderr, "wt: warning — could not record wt.deps=clone; 'wt ls' will show deps as '-' until you run:\n")
-		fmt.Fprintf(o.Stderr, "      git -C %s config --worktree wt.deps clone\n", path)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: %q now has a private %s — the copy succeeded\n", o.Slug, nm)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not record wt.deps=clone; 'wt ls' will show deps as '-' until you run:\n")
+		_, _ = fmt.Fprintf(o.Stderr, "      git -C %s config --worktree wt.deps clone\n", path)
 		if ierr := runInstall(path, cfg.Install); ierr != nil {
 			return fmt.Errorf("wt: install failed in %s: %w", path, ierr)
 		}
 		return fmt.Errorf("wt: promote of %q completed but wt.deps bookkeeping was not recorded", o.Slug)
 	}
-	fmt.Fprintf(o.Stdout, "wt: %q promoted to a private %s\n", o.Slug, nm)
+	_, _ = fmt.Fprintf(o.Stdout, "wt: %q promoted to a private %s\n", o.Slug, nm)
 	if err := runInstall(path, cfg.Install); err != nil {
 		return fmt.Errorf("wt: install failed in %s: %w", path, err)
 	}

@@ -28,7 +28,7 @@ type Manifest struct {
 // Load parses a manifest YAML file. A missing file, empty org, or empty repo
 // list is an error — the manifest is required input, not optional.
 func Load(path string) (*Manifest, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		return nil, fmt.Errorf("read manifest: %w", err)
 	}
@@ -52,7 +52,7 @@ func LoadWithOverlay(basePath, overlayPath string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
-	ob, err := os.ReadFile(overlayPath)
+	ob, err := os.ReadFile(overlayPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if os.IsNotExist(err) {
 		return m, nil
 	}

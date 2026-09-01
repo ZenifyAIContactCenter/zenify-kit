@@ -30,7 +30,7 @@ func newDBReadCmd() *cobra.Command {
 				Env:    os.Getenv,
 			}
 			o.SetRun(func(name string, args []string, extraEnv []string, _ string) error {
-				c := exec.Command(name, args...)
+				c := exec.Command(name, args...) //nolint:gosec // G204 -- name is always "mongosh" or "mysql" from this package's own callers, args are internally-computed subcommands, not attacker-controlled shell input
 				c.Env = append(os.Environ(), extraEnv...)
 				c.Stdout = o.Stdout
 				c.Stderr = o.Stderr

@@ -34,7 +34,7 @@ func newSecretScanCmd() *cobra.Command {
 			}
 			w := cmd.OutOrStdout()
 			for _, f := range findings {
-				fmt.Fprintf(w, "%s:%d  %s  %s\n", f.File, f.StartLine, f.RuleID, f.Redacted)
+				_, _ = fmt.Fprintf(w, "%s:%d  %s  %s\n", f.File, f.StartLine, f.RuleID, f.Redacted)
 			}
 			if len(findings) > 0 {
 				return exitcode.New(exitcode.Fail, fmt.Errorf("secret-scan: %d finding", len(findings)))

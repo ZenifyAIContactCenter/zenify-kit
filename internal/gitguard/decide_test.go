@@ -9,7 +9,7 @@ import (
 
 func git(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", args...) //nolint:gosec // G204 -- test helper, args are fixed test literals, not attacker-controlled
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
@@ -18,20 +18,28 @@ func git(t *testing.T, dir string, args ...string) {
 
 func mkRepo(t *testing.T, dir, branch string, deny []string) {
 	t.Helper()
-	os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
 	git(t, dir, "init", "-q", "-b", branch)
 	git(t, dir, "config", "user.email", "test@example.com")
 	git(t, dir, "config", "user.name", "Test")
-	os.WriteFile(filepath.Join(dir, "f"), []byte("x\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "f"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	git(t, dir, "add", "f")
 	git(t, dir, "commit", "-q", "-m", "init")
 	if deny != nil {
-		os.MkdirAll(filepath.Join(dir, ".claude"), 0o755)
+		if err := os.MkdirAll(filepath.Join(dir, ".claude"), 0o750); err != nil {
+			t.Fatal(err)
+		}
 		body := ""
 		for _, b := range deny {
 			body += b + "\n"
 		}
-		os.WriteFile(filepath.Join(dir, ".claude", "deploy-branches"), []byte(body), 0o644)
+		if err := os.WriteFile(filepath.Join(dir, ".claude", "deploy-branches"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 // so an integration test can push a branch ahead of base deterministically.
 func gitInWorktree(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	c := exec.Command("git", args...)
+	c := exec.Command("git", args...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 	c.Dir = dir
 	c.Env = append(os.Environ(),
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
@@ -38,7 +38,7 @@ func TestWtRm_Integration(t *testing.T) {
 	// base = "merged". Push it genuinely ahead with a REAL file change (an empty
 	// commit leaves `diff base..branch` empty, which BranchMerged reads as merged)
 	// so the "unmerged → refused" assertion is deterministic.
-	if err := os.WriteFile(filepath.Join(wtPath, "work.txt"), []byte("wip"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wtPath, "work.txt"), []byte("wip"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	gitInWorktree(t, wtPath, "add", "work.txt")

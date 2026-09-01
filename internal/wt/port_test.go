@@ -35,7 +35,7 @@ func TestAllocate_ProbesPastListeningPort(t *testing.T) {
 	if err != nil {
 		t.Skipf("cannot occupy port %d: %v", start, err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	got, ok := Allocate("busy", 3400, 3449, nil)
 	if !ok || got == start {
 		t.Fatalf("did not probe past listening port %d (got %d)", start, got)

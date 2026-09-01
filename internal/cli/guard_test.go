@@ -181,7 +181,7 @@ func TestWriteFileAtomic(t *testing.T) {
 	if err := writeFileAtomic(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := os.ReadFile(path)
+	got, err := os.ReadFile(path) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestWriteFileAtomic(t *testing.T) {
 	if err := writeFileAtomic(path, data2, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got2, err := os.ReadFile(path)
+	got2, err := os.ReadFile(path) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,11 +217,11 @@ func TestGuardInstallUsesTempHOME(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	claudeDir := filepath.Join(tmpHome, ".claude")
-	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+	if err := os.MkdirAll(claudeDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	settingsPath := filepath.Join(claudeDir, "settings.json")
-	if err := os.WriteFile(settingsPath, []byte(`{"hooks":{"PreToolUse":[]}}`), 0o644); err != nil {
+	if err := os.WriteFile(settingsPath, []byte(`{"hooks":{"PreToolUse":[]}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -234,7 +234,7 @@ func TestGuardInstallUsesTempHOME(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := os.ReadFile(settingsPath)
+	got, err := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatal(err)
 	}

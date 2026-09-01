@@ -45,7 +45,7 @@ func RunWire(o WireOptions) error {
 		return fmt.Errorf("wt: not inside a wt worktree — wire rewrites a worktree's env file, and the main checkout must keep its baseline")
 	}
 	if len(cfg.Peers) == 0 {
-		fmt.Fprintf(o.Stdout, "wt: this repo declares no peers — nothing to wire\n")
+		_, _ = fmt.Fprintf(o.Stdout, "wt: this repo declares no peers — nothing to wire\n")
 		return nil
 	}
 	envFile := orEnvFile(cfg)
@@ -53,13 +53,13 @@ func RunWire(o WireOptions) error {
 	mainEnv := filepath.Join(o.RepoRoot, envFile)
 	workspace := filepath.Dir(o.RepoRoot)
 
-	b, err := os.ReadFile(wtEnv)
+	b, err := os.ReadFile(wtEnv) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		return fmt.Errorf("wt: no %s in this worktree — nothing to rewrite", envFile)
 	}
 	lines := strings.Split(string(b), "\n")
 	baseline := ""
-	if mb, e := os.ReadFile(mainEnv); e == nil {
+	if mb, e := os.ReadFile(mainEnv); e == nil { //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 		baseline = string(mb)
 	}
 
@@ -78,7 +78,7 @@ func RunWire(o WireOptions) error {
 		if wtp := peerWorktreePath(workspace, spec.Repo, slug); wtp != "" {
 			port := cfgGet(r, wtp, "wt.port")
 			if port == "" {
-				fmt.Fprintf(o.Stderr, "wt:   %s — %s/%s has no wt.port recorded, left as is\n", name, spec.Repo, slug)
+				_, _ = fmt.Fprintf(o.Stderr, "wt:   %s — %s/%s has no wt.port recorded, left as is\n", name, spec.Repo, slug)
 				continue
 			}
 			url := spec.URL
@@ -90,7 +90,7 @@ func RunWire(o WireOptions) error {
 		} else {
 			v, ok := readVar(baseline, name)
 			if !ok {
-				fmt.Fprintf(o.Stderr, "wt:   %s — no worktree for %s and no baseline in the main %s, left as is\n", name, spec.Repo, envFile)
+				_, _ = fmt.Fprintf(o.Stderr, "wt:   %s — no worktree for %s and no baseline in the main %s, left as is\n", name, spec.Repo, envFile)
 				continue
 			}
 			value = v
@@ -98,7 +98,7 @@ func RunWire(o WireOptions) error {
 		}
 		current, has := readVar(strings.Join(lines, "\n"), name)
 		if has && current == value {
-			fmt.Fprintf(o.Stdout, "wt:   %s already %s (%s)\n", name, value, why)
+			_, _ = fmt.Fprintf(o.Stdout, "wt:   %s already %s (%s)\n", name, value, why)
 			continue
 		}
 		if !has {
@@ -110,24 +110,24 @@ func RunWire(o WireOptions) error {
 				}
 			}
 		}
-		fmt.Fprintf(o.Stdout, "wt:   %s=%s  (%s)\n", name, value, why)
+		_, _ = fmt.Fprintf(o.Stdout, "wt:   %s=%s  (%s)\n", name, value, why)
 		changed++
 	}
 	if !o.DryRun && changed > 0 {
-		if err := os.WriteFile(wtEnv, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		if err := os.WriteFile(wtEnv, []byte(strings.Join(lines, "\n")), 0o600); err != nil { //nolint:gosec // G703 -- wtEnv is the worktree's own env file, computed internally from the repo's configured worktree path, not externally-tainted input
 			return fmt.Errorf("wt: write %s: %w", wtEnv, err)
 		}
 	}
 	if o.DryRun {
-		fmt.Fprintf(o.Stdout, "wt: %d would change\n", changed)
+		_, _ = fmt.Fprintf(o.Stdout, "wt: %d would change\n", changed)
 	} else {
-		fmt.Fprintf(o.Stdout, "wt: %d rewritten in %s\n", changed, envFile)
+		_, _ = fmt.Fprintf(o.Stdout, "wt: %d rewritten in %s\n", changed, envFile)
 	}
 	// The env file is expected gitignored. If rewriting dirtied a TRACKED file,
 	// warn — wire must not be what commits a localhost URL.
 	if !o.DryRun && changed > 0 {
 		if d, _ := r.Run(o.WorktreePath, "status", "--porcelain", "--", envFile); strings.TrimSpace(string(d)) != "" {
-			fmt.Fprintf(o.Stderr, "wt: WARNING — %s is TRACKED in this repo, so wiring dirtied the branch\n", envFile)
+			_, _ = fmt.Fprintf(o.Stderr, "wt: WARNING — %s is TRACKED in this repo, so wiring dirtied the branch\n", envFile)
 		}
 	}
 	return nil
@@ -150,7 +150,7 @@ func readVar(text, name string) (string, bool) {
 func peerWorktreePath(workspace, repo, slug string) string {
 	root := filepath.Join(workspace, repo)
 	dir := ".worktrees/"
-	if cb, err := os.ReadFile(filepath.Join(root, ".claude", "worktree.json")); err == nil {
+	if cb, err := os.ReadFile(filepath.Join(root, ".claude", "worktree.json")); err == nil { //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 		var pc struct {
 			WorktreeDir string `json:"worktreeDir"`
 		}

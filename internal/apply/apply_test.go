@@ -39,7 +39,7 @@ func (g *fakeGit) Run(dir string, args ...string) ([]byte, error) {
 // initBareRepoDir makes dir look like a clone: a .git/ with an info/ dir.
 func initClonedRepo(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Join(dir, ".git", "info"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".git", "info"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -90,7 +90,7 @@ func TestApply_Wire_Idempotent(t *testing.T) {
 	if _, err := Apply(plan, opts, &fakeGH{}, &fakeGit{}); err != nil {
 		t.Fatalf("second wire: %v", err)
 	}
-	b, _ := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
+	b, _ := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if strings.Count(string(b), ".worktrees/") != 1 {
 		t.Errorf("exclude has %d .worktrees/ lines, want 1:\n%s", strings.Count(string(b), ".worktrees/"), b)
 	}
@@ -100,12 +100,12 @@ func TestApply_Wire_PreservesExistingSettings(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	initClonedRepo(t, repo)
-	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	existing := `{"env":{"SECRET":"keep-me"},"custom":true}`
 	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
-	if err := os.WriteFile(settingsPath, []byte(existing), 0o644); err != nil {
+	if err := os.WriteFile(settingsPath, []byte(existing), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	owned := &managed.Manifest{}
@@ -118,7 +118,7 @@ func TestApply_Wire_PreservesExistingSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wire: %v", err)
 	}
-	got, _ := os.ReadFile(settingsPath)
+	got, _ := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if string(got) != existing {
 		t.Errorf("existing settings must be untouched (FR-041/FR-064d):\n got  %s\n want %s", got, existing)
 	}
@@ -159,12 +159,12 @@ func TestApply_Wire_MergesMissingSecretKeys(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	initClonedRepo(t, repo)
-	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
 	// MONGO_URL already has a value; custom is an unrelated top-level field.
-	if err := os.WriteFile(settingsPath, []byte(`{"env":{"MONGO_URL":"keep-me"},"custom":true}`), 0o644); err != nil {
+	if err := os.WriteFile(settingsPath, []byte(`{"env":{"MONGO_URL":"keep-me"},"custom":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	owned := &managed.Manifest{}
@@ -186,7 +186,7 @@ func TestApply_Wire_MergesMissingSecretKeys(t *testing.T) {
 	}
 	// Unrelated top-level fields survive the merge.
 	var root map[string]any
-	b, _ := os.ReadFile(settingsPath)
+	b, _ := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err := json.Unmarshal(b, &root); err != nil {
 		t.Fatalf("merged settings not valid JSON: %v", err)
 	}
@@ -203,13 +203,13 @@ func TestApply_Wire_MergePreservesValueBytes_NoHTMLEscape(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	initClonedRepo(t, repo)
-	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
 	// A realistic Mongo URL: option separator "&" must survive the merge verbatim.
 	mongo := "mongodb://h:27017/db?replicaSet=rs0&authSource=admin"
-	if err := os.WriteFile(settingsPath, []byte(`{"env":{"MONGO_URL":"`+mongo+`"}}`), 0o644); err != nil {
+	if err := os.WriteFile(settingsPath, []byte(`{"env":{"MONGO_URL":"`+mongo+`"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err := Apply(
@@ -221,7 +221,7 @@ func TestApply_Wire_MergePreservesValueBytes_NoHTMLEscape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wire: %v", err)
 	}
-	raw, _ := os.ReadFile(settingsPath)
+	raw, _ := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if !strings.Contains(string(raw), "&authSource") {
 		t.Errorf("literal & must be preserved (no HTML-escape):\n%s", raw)
 	}
@@ -238,12 +238,12 @@ func TestApply_Wire_InvalidExistingSettings_SurfacesError(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	initClonedRepo(t, repo)
-	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
 	garbage := []byte(`{not json`)
-	if err := os.WriteFile(settingsPath, garbage, 0o644); err != nil {
+	if err := os.WriteFile(settingsPath, garbage, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	res, err := Apply(
@@ -259,7 +259,7 @@ func TestApply_Wire_InvalidExistingSettings_SurfacesError(t *testing.T) {
 		t.Error("an unparseable settings file must surface as the repo's error, not be silently ignored")
 	}
 	// The unparseable file must be left exactly as it was.
-	got, _ := os.ReadFile(settingsPath)
+	got, _ := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if string(got) != string(garbage) {
 		t.Errorf("invalid file must be left untouched:\n got %s", got)
 	}
@@ -269,12 +269,12 @@ func TestApply_Adopt_RecordsExistingWithoutModifying(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	initClonedRepo(t, repo)
-	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
 	existing := `{"env":{"SECRET":"live-value"},"note":"adopt me"}`
-	if err := os.WriteFile(settingsPath, []byte(existing), 0o644); err != nil {
+	if err := os.WriteFile(settingsPath, []byte(existing), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	owned := &managed.Manifest{}
@@ -288,7 +288,7 @@ func TestApply_Adopt_RecordsExistingWithoutModifying(t *testing.T) {
 		t.Fatalf("Apply adopt: %v", err)
 	}
 	// The existing settings must be byte-for-byte unchanged (FR-041).
-	got, _ := os.ReadFile(settingsPath)
+	got, _ := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if string(got) != existing {
 		t.Errorf("adopt must not modify existing settings:\n got  %s\n want %s", got, existing)
 	}
@@ -325,7 +325,7 @@ func TestApply_NoopStates_DoNothing(t *testing.T) {
 
 func assertExcludeHasWorktrees(t *testing.T, repo string) {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
+	b, err := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read exclude: %v", err)
 	}
@@ -337,7 +337,7 @@ func assertExcludeHasWorktrees(t *testing.T, repo string) {
 // readEnv reads settings.local.json and returns its env block as string→string.
 func readEnv(t *testing.T, settingsPath string) map[string]string {
 	t.Helper()
-	b, err := os.ReadFile(settingsPath)
+	b, err := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
 	}
@@ -352,7 +352,7 @@ func readEnv(t *testing.T, settingsPath string) map[string]string {
 
 func assertSettingsSkeleton(t *testing.T, repo string) {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(repo, ".claude", "settings.local.json"))
+	b, err := os.ReadFile(filepath.Join(repo, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
 	}

@@ -73,7 +73,7 @@ func newWtPathCmd() *cobra.Command {
 			if !filepath.IsAbs(p) {
 				p = filepath.Join(root, p)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), p)
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), p)
 			return nil
 		},
 		SilenceUsage:  true,
@@ -113,10 +113,10 @@ func newWtConfigCmd() *cobra.Command {
 				if !ok {
 					return fmt.Errorf("wt: no free port in %v for %q", cfg.PortRange, portKey)
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), p)
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), p)
 				return nil
 			}
-			fmt.Fprintf(cmd.OutOrStdout(),
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"abbrev=%s\nbaseRef=%s\nworktreeDir=%s\nportEnv=%s\nportRange=%d %d\ndeps=%s\nuser=%s\n",
 				cfg.Abbrev, cfg.BaseRef, cfg.WorktreeDir, cfg.PortEnv,
 				cfg.PortRange[0], cfg.PortRange[1], cfg.Deps, cfg.User)
@@ -195,12 +195,12 @@ func newWtLsCmd() *cobra.Command {
 				return enc.Encode(rows)
 			}
 			if len(rows) == 0 {
-				fmt.Fprintln(w, "wt: no tasks in this repo")
+				_, _ = fmt.Fprintln(w, "wt: no tasks in this repo")
 				return nil
 			}
-			fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %s\n", "SLUG", "BRANCH", "PORT", "DEPS", "MERGED", "RUNNING", "PATH")
+			_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %s\n", "SLUG", "BRANCH", "PORT", "DEPS", "MERGED", "RUNNING", "PATH")
 			for _, r := range rows {
-				fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %s\n", r.Slug, r.Branch, r.Port, r.Deps, r.Merged, r.Running, r.Path)
+				_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %s\n", r.Slug, r.Branch, r.Port, r.Deps, r.Merged, r.Running, r.Path)
 			}
 			return nil
 		},
@@ -229,7 +229,7 @@ func newWtUrlCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), u) // exact stdout contract, like `wt path`
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), u) // exact stdout contract, like `wt path`
 			return nil
 		},
 		SilenceUsage:  true,

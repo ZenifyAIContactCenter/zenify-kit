@@ -72,7 +72,7 @@ func (g *gitleaksScanner) ScanPath(root string) ([]Finding, error) {
 			}
 			return nil
 		}
-		b, rerr := os.ReadFile(path)
+		b, rerr := os.ReadFile(path) //nolint:gosec // G304 -- path comes from filepath.WalkDir over the caller-specified scan root, not attacker-controlled input
 		if rerr != nil {
 			return nil
 		}
@@ -127,7 +127,7 @@ func stagedDiff(repoDir string) (string, error) {
 }
 
 func gitOut(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", args...) //nolint:gosec // G204 -- fixed "git" binary, args are internally-computed git subcommands, not attacker-controlled shell input
 	cmd.Dir = dir
 	b, err := cmd.Output()
 	return string(b), err

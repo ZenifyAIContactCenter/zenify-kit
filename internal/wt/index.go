@@ -18,14 +18,14 @@ func withIndexLock(pid int, host string, now int64, mutate func(map[string][]str
 		return err
 	}
 	dir := filepath.Dir(p)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("wt: mkdir %s: %w", dir, err)
 	}
 	h, err := lock.Acquire(dir, pid, host, now)
 	if err != nil {
 		return err
 	}
-	defer h.Release()
+	defer func() { _ = h.Release() }()
 	idx, err := ReadIndex()
 	if err != nil {
 		return err
@@ -48,23 +48,23 @@ func writeIndexAtomic(path string, idx map[string][]string) error {
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	// CreateTemp makes the file 0600; normalise to 0644 to match every other
 	// file this package writes (state.json, seeded files) rather than leaving
 	// the index a lone 0600 outlier.
-	if err := os.Chmod(tmpName, 0o644); err != nil {
-		os.Remove(tmpName)
+	if err := os.Chmod(tmpName, 0o644); err != nil { //nolint:gosec // G302 -- index.json is not a secret; 0644 is a deliberate match to the other non-secret files this package writes (state.json, seeded files)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("wt: rename %s: %w", path, err)
 	}
 	return nil

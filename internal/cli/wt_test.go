@@ -27,14 +27,14 @@ func seedRepo(t *testing.T, root string) {
 	cdir := filepath.Join(root, ".claude")
 	wdir := filepath.Join(root, ".wt")
 	for _, d := range []string{cdir, wdir} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(d, 0o750); err != nil {
 			t.Fatal(err)
 		}
 	}
-	os.WriteFile(filepath.Join(cdir, "worktree.json"),
-		[]byte(`{"abbrev":"ccbe","portRange":[3200,3249]}`), 0o644)
-	os.WriteFile(filepath.Join(wdir, "state.json"),
-		[]byte(`{"version":1,"worktrees":[{"slug":"foo","path":".worktrees/foo","ports":[3207]}]}`), 0o644)
+	_ = os.WriteFile(filepath.Join(cdir, "worktree.json"),
+		[]byte(`{"abbrev":"ccbe","portRange":[3200,3249]}`), 0o600)
+	_ = os.WriteFile(filepath.Join(wdir, "state.json"),
+		[]byte(`{"version":1,"worktrees":[{"slug":"foo","path":".worktrees/foo","ports":[3207]}]}`), 0o600)
 }
 
 func TestWtPath_ExactStdoutContract(t *testing.T) {
@@ -87,16 +87,16 @@ func TestWtPath_EmptyPathInStateErrors(t *testing.T) {
 	cdir := filepath.Join(root, ".claude")
 	wdir := filepath.Join(root, ".wt")
 	for _, d := range []string{cdir, wdir} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(d, 0o750); err != nil {
 			t.Fatal(err)
 		}
 	}
-	os.WriteFile(filepath.Join(cdir, "worktree.json"),
-		[]byte(`{"abbrev":"ccbe","portRange":[3200,3249]}`), 0o644)
+	_ = os.WriteFile(filepath.Join(cdir, "worktree.json"),
+		[]byte(`{"abbrev":"ccbe","portRange":[3200,3249]}`), 0o600)
 	// A malformed entry with an empty path must error, not print the repo root
 	// (filepath.Join(root, "") == root).
-	os.WriteFile(filepath.Join(wdir, "state.json"),
-		[]byte(`{"version":1,"worktrees":[{"slug":"foo","path":"","ports":[3207]}]}`), 0o644)
+	_ = os.WriteFile(filepath.Join(wdir, "state.json"),
+		[]byte(`{"version":1,"worktrees":[{"slug":"foo","path":"","ports":[3207]}]}`), 0o600)
 	out, err := runWt(t, root, "path", "foo")
 	if err == nil {
 		t.Fatalf("want error for empty path in state, got stdout %q", out)

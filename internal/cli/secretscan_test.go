@@ -20,7 +20,7 @@ const testSecret = "AKIA" + "QWERTYUIOPASDFGH"
 
 func TestSecretScanCmdFindsAndRedacts(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "leak.txt"), []byte("k = "+testSecret+"\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "leak.txt"), []byte("k = "+testSecret+"\n"), 0o600)
 	cmd := newSecretScanCmd()
 	var out, errb bytes.Buffer
 	cmd.SetOut(&out)
@@ -41,7 +41,7 @@ func TestSecretScanCmdFindsAndRedacts(t *testing.T) {
 
 func TestSecretScanCmdClean(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "ok.txt"), []byte("hello world\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "ok.txt"), []byte("hello world\n"), 0o600)
 	cmd := newSecretScanCmd()
 	cmd.SetArgs([]string{dir})
 	if err := cmd.Execute(); err != nil {

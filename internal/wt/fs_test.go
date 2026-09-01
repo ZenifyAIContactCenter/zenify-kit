@@ -11,13 +11,13 @@ func TestWritePortEnv_ReplaceAndAppend(t *testing.T) {
 	dir := t.TempDir()
 	env := filepath.Join(dir, ".env")
 	// append into a file with no trailing newline
-	if err := os.WriteFile(env, []byte("FOO=1"), 0o644); err != nil {
+	if err := os.WriteFile(env, []byte("FOO=1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := WritePortEnv(env, "PORT", 3207); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(env)
+	b, _ := os.ReadFile(env) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if !strings.Contains(string(b), "FOO=1\n") || !strings.Contains(string(b), "PORT=3207") {
 		t.Fatalf("append wrong: %q", b)
 	}
@@ -25,7 +25,7 @@ func TestWritePortEnv_ReplaceAndAppend(t *testing.T) {
 	if err := WritePortEnv(env, "PORT", 3210); err != nil {
 		t.Fatal(err)
 	}
-	b, _ = os.ReadFile(env)
+	b, _ = os.ReadFile(env) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if strings.Count(string(b), "PORT=") != 1 || !strings.Contains(string(b), "PORT=3210") {
 		t.Fatalf("replace wrong: %q", b)
 	}
@@ -36,7 +36,7 @@ func TestWritePortEnv_CreatesFile(t *testing.T) {
 	if err := WritePortEnv(env, "PORT", 3300); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(env)
+	b, _ := os.ReadFile(env) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if strings.TrimSpace(string(b)) != "PORT=3300" {
 		t.Fatalf("create wrong: %q", b)
 	}
@@ -46,10 +46,10 @@ func TestSeedCopyFiles_CopiesPresentWarnsMissing(t *testing.T) {
 	repo := t.TempDir()
 	wtp := t.TempDir()
 	// present: a nested file
-	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repo, ".claude", "settings.local.json"), []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, ".claude", "settings.local.json"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	warns, err := SeedCopyFiles(repo, wtp, []string{".claude/settings.local.json", "CLAUDE.md"})
@@ -69,10 +69,10 @@ func TestSeedCopyFiles_DirectoryTargetNotNested(t *testing.T) {
 	// dst/<basename>/... — the cp-into-existing-dir gotcha copyTree guards.
 	repo := t.TempDir()
 	wtp := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(repo, ".claude", "sub"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, ".claude", "sub"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repo, ".claude", "sub", "f.txt"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, ".claude", "sub", "f.txt"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := SeedCopyFiles(repo, wtp, []string{".claude"}); err != nil {
@@ -90,7 +90,7 @@ func TestSeedCopyFiles_DirectoryTargetNotNested(t *testing.T) {
 func TestApplyDeps_Symlink(t *testing.T) {
 	repo := t.TempDir()
 	wtp := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(repo, "node_modules", "pkg"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, "node_modules", "pkg"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
@@ -115,14 +115,14 @@ func TestSeedIdentityEnv_WritesSlugAndCompose(t *testing.T) {
 	dir := t.TempDir()
 	env := filepath.Join(dir, ".env")
 	// pre-existing content to prove upsert appends without clobbering
-	if err := os.WriteFile(env, []byte("PORT=3207\n"), 0o644); err != nil {
+	if err := os.WriteFile(env, []byte("PORT=3207\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &Config{Abbrev: "cch", EnvFile: ".env"} // no RedisPrefixEnv → no redis line
 	if err := SeedIdentityEnv(env, cfg, "my-task"); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(env)
+	b, _ := os.ReadFile(env) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	got := string(b)
 	for _, want := range []string{"PORT=3207", "WT_SLUG=my-task", "COMPOSE_PROJECT_NAME=cch-my-task"} {
 		if !strings.Contains(got, want) {
@@ -141,7 +141,7 @@ func TestSeedIdentityEnv_RedisPrefixWhenConfigured(t *testing.T) {
 	if err := SeedIdentityEnv(env, cfg, "my-task"); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(env)
+	b, _ := os.ReadFile(env) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if !strings.Contains(string(b), "REDIS_PREFIX=cch-my-task:") {
 		t.Errorf("expected REDIS_PREFIX=cch-my-task: ; got:\n%s", string(b))
 	}
@@ -154,7 +154,7 @@ func TestSeedIdentityEnv_EmptyAbbrevUsesSlugOnly(t *testing.T) {
 	if err := SeedIdentityEnv(env, cfg, "solo"); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(env)
+	b, _ := os.ReadFile(env) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if !strings.Contains(string(b), "COMPOSE_PROJECT_NAME=solo\n") {
 		t.Errorf("empty abbrev should yield COMPOSE_PROJECT_NAME=solo; got:\n%s", string(b))
 	}
@@ -163,13 +163,13 @@ func TestSeedIdentityEnv_EmptyAbbrevUsesSlugOnly(t *testing.T) {
 func TestUpsertEnvVar_ReplacesExisting(t *testing.T) {
 	dir := t.TempDir()
 	env := filepath.Join(dir, ".env")
-	if err := os.WriteFile(env, []byte("WT_SLUG=old\nOTHER=x\n"), 0o644); err != nil {
+	if err := os.WriteFile(env, []byte("WT_SLUG=old\nOTHER=x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := upsertEnvVar(env, "WT_SLUG", "new"); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(env)
+	b, _ := os.ReadFile(env) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	got := string(b)
 	if strings.Contains(got, "WT_SLUG=old") || !strings.Contains(got, "WT_SLUG=new") {
 		t.Errorf("upsert should replace old→new; got:\n%s", got)

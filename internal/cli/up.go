@@ -66,12 +66,12 @@ func renderPlanJSON(w io.Writer, plans []reconcile.RepoPlan, auth ghx.Auth) erro
 }
 
 func renderPlanTable(w io.Writer, plans []reconcile.RepoPlan, auth ghx.Auth) {
-	fmt.Fprintf(w, "Account: %s\n\n", auth.Account)
-	fmt.Fprintf(w, "%-22s %-16s %s\n", "REPO", "STATE", "REASON")
+	_, _ = fmt.Fprintf(w, "Account: %s\n\n", auth.Account)
+	_, _ = fmt.Fprintf(w, "%-22s %-16s %s\n", "REPO", "STATE", "REASON")
 	for _, p := range plans {
-		fmt.Fprintf(w, "%-22s %-16s %s\n", p.Name, p.State, p.Reason)
+		_, _ = fmt.Fprintf(w, "%-22s %-16s %s\n", p.Name, p.State, p.Reason)
 	}
-	fmt.Fprintln(w, "\n(dry-run — apply lands in a later build; nothing was changed)")
+	_, _ = fmt.Fprintln(w, "\n(dry-run — apply lands in a later build; nothing was changed)")
 }
 
 // minVersionFloor is the binary version that introduced the apply path. A
@@ -91,7 +91,7 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	}
 
 	zenifyDir := filepath.Join(workspace, ".zenify")
-	if err := os.MkdirAll(zenifyDir, 0o755); err != nil {
+	if err := os.MkdirAll(zenifyDir, 0o750); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
 
@@ -103,7 +103,7 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 		}
 		return exitcode.New(exitcode.Fail, err)
 	}
-	defer h.Release()
+	defer func() { _ = h.Release() }()
 
 	// Load (or start) the ownership manifest, then write a pre-mutation snapshot
 	// of the files this run touches (FR-022 capture half; a future `zenify
@@ -153,10 +153,10 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	for _, r := range results {
 		if r.Err != nil {
 			failed++
-			fmt.Fprintf(w, "%-22s %-16s ERROR: %v\n", r.Repo, r.State, r.Err)
+			_, _ = fmt.Fprintf(w, "%-22s %-16s ERROR: %v\n", r.Repo, r.State, r.Err)
 			continue
 		}
-		fmt.Fprintf(w, "%-22s %-16s %s\n", r.Repo, r.State, r.Action)
+		_, _ = fmt.Fprintf(w, "%-22s %-16s %s\n", r.Repo, r.State, r.Action)
 	}
 
 	if err := owned.Save(manifestPath); err != nil {
@@ -168,13 +168,13 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	// failed-count return — mirrors the gh-scope warning.
 	if hasFrontendRepo(m) {
 		po := playwright.Options{
-			Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() },
+			Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() }, //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 			Getenv: os.Getenv,
 			GOOS:   runtime.GOOS,
 			Stdout: w,
 		}
 		if err := playwright.Bootstrap(po); err != nil {
-			fmt.Fprintf(w, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
+			_, _ = fmt.Fprintf(w, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
 		}
 	}
 
@@ -273,7 +273,7 @@ func newUpCmd() *cobra.Command {
 					fmt.Errorf("not logged in to GitHub — run `gh auth login` (need scopes read:org, repo)"))
 			}
 			if !auth.HasScopes("read:org", "repo") {
-				fmt.Fprintln(cmd.ErrOrStderr(),
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
 					"warning: gh token missing read:org or repo scope; discovery may be incomplete")
 			}
 			if applyFlag {

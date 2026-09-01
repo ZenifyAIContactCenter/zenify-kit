@@ -19,12 +19,12 @@ func TestReadState_MissingIsEmpty(t *testing.T) {
 func TestReadState_FindBySlug(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, ".wt")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	body := `{"version":1,"worktrees":[
 		{"slug":"b2b2-restore","type":"feat","branch":"namph/feat/x","ports":[3251],"portBase":3251,"path":".worktrees/b2b2-restore","createdAt":"2026-09-01T00:00:00Z"}]}`
-	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	s, err := ReadState(root)

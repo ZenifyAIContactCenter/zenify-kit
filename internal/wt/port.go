@@ -17,7 +17,7 @@ func Allocate(key string, lo, hi int, taken map[int]bool) (int, bool) {
 		return 0, false
 	}
 	span := hi - lo + 1
-	start := int(hashKey(key) % uint32(span))
+	start := int(hashKey(key) % uint32(span)) //nolint:gosec // G115 -- span is hi-lo+1 and both callers already guard hi>=lo above, so span is always positive and well within uint32 range here
 	for i := 0; i < span; i++ {
 		p := lo + (start+i)%span
 		if taken[p] {
@@ -45,7 +45,7 @@ func AllocateRange(key string, lo, hi, count int, taken map[int]bool) ([]int, bo
 		return nil, false
 	}
 	span := hi - lo + 1
-	start := int(hashKey(key) % uint32(span))
+	start := int(hashKey(key) % uint32(span)) //nolint:gosec // G115 -- span is hi-lo+1 and both callers already guard hi>=lo above, so span is always positive and well within uint32 range here
 	// A block cannot start so late it would run past hi; only bases with room for
 	// the whole block are candidates. Probe those in hashed order.
 	for i := 0; i < span; i++ {

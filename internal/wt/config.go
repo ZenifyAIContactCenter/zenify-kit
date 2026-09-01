@@ -61,7 +61,7 @@ type rawConfig struct {
 // file is an error: wt cannot operate on a repo that does not declare one.
 func Load(repoRoot string) (*Config, error) {
 	path := filepath.Join(repoRoot, ".claude", "worktree.json")
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		return nil, fmt.Errorf("wt: read %s: %w", path, err)
 	}
