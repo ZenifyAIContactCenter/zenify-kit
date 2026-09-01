@@ -216,7 +216,7 @@ func newUpCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit the plan as a JSON envelope (implies --non-interactive)")
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "never prompt")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "compute and print the plan without acting (always on in this build)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "compute and print the plan without acting (default; use --apply to execute)")
 	cmd.Flags().StringVar(&workspace, "workspace", ".", "workspace root directory")
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default manifest/repos.yaml relative to the kit checkout)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,9 +17,15 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 )
 
-type fakeGH struct{ auth, list []byte }
+type fakeGH struct {
+	auth, list []byte
+	cloneErr   bool
+}
 
 func (f fakeGH) Run(args ...string) ([]byte, error) {
+	if len(args) > 1 && args[0] == "repo" && args[1] == "clone" && f.cloneErr {
+		return nil, fmt.Errorf("clone failed")
+	}
 	if len(args) > 1 && args[0] == "auth" {
 		return f.auth, nil
 	}
@@ -102,23 +109,6 @@ func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 	}
 }
 
-func TestRunApply_DryRunByDefault_NoMutation(t *testing.T) {
-	ws := t.TempDir()
-	// A repo the plan would WIRE, but without --apply nothing should be written.
-	repo := filepath.Join(ws, "svc")
-	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}}
-	// Directly exercise runApply's guard: apply=false means it is never called.
-	// Here we assert the executor path is gated by verifying a bare `up` (dry-run)
-	// leaves no .claude/ dir.
-	_ = plans
-	if _, err := os.Stat(filepath.Join(repo, ".claude")); !os.IsNotExist(err) {
-		t.Fatalf("precondition: .claude should not exist yet")
-	}
-}
-
 func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
@@ -158,5 +148,22 @@ func TestRunApply_LockHeld_ReturnsExit4(t *testing.T) {
 	err = runApply(io.Discard, nil, m, ws, &fakeGH{}, &fakeGit{})
 	if exitcode.Code(err) != exitcode.LockHeld {
 		t.Fatalf("want exit %d (LockHeld), got %d (err %v)", exitcode.LockHeld, exitcode.Code(err), err)
+	}
+}
+
+func TestRunApply_PartialFailure_SavesManifestAndReturnsFail(t *testing.T) {
+	ws := t.TempDir()
+	// A CLONE plan whose gh clone fails → the repo's Result.Err is set.
+	gh := &fakeGH{cloneErr: true}
+	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{{Name: "svc", Path: "svc"}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Clone, Path: "svc"}}
+
+	err := runApply(io.Discard, plans, m, ws, gh, &fakeGit{})
+	if exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("want exit %d (Fail) on a failed repo, got %d (err %v)", exitcode.Fail, exitcode.Code(err), err)
+	}
+	// The ownership manifest must still be persisted (succeeded repos are recorded).
+	if _, statErr := os.Stat(filepath.Join(ws, ".zenify", "manifest.json")); statErr != nil {
+		t.Errorf("ownership manifest not saved after a partial failure: %v", statErr)
 	}
 }
