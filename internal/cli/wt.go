@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
@@ -18,7 +19,7 @@ func newWtCmd() *cobra.Command {
 		Use:   "wt",
 		Short: "Git worktree + dev-env manager (read-only surface in this build)",
 	}
-	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd())
+	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd())
 	return cmd
 }
 
@@ -124,5 +125,42 @@ func newWtConfigCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	c.Flags().StringVar(&portKey, "port", "", "print the allocated port for this key instead of the full config")
+	return c
+}
+
+func newWtNewCmd() *cobra.Command {
+	var typ, base string
+	var forceInstall, another bool
+	c := &cobra.Command{
+		Use:   "new <slug>",
+		Short: "Create a worktree: branch + port + seeded env + deps",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := repoRoot()
+			if err != nil {
+				return err
+			}
+			host, _ := os.Hostname()
+			return wt.RunNew(wt.NewOptions{
+				RepoRoot:     root,
+				Slug:         args[0],
+				Type:         typ,
+				BaseOverride: base,
+				ForceInstall: forceInstall,
+				Another:      another,
+				Host:         host,
+				Pid:          os.Getpid(),
+				Now:          time.Now().Unix(),
+				Runner:       gitx.ExecRunner(),
+				Stderr:       cmd.ErrOrStderr(),
+			})
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	c.Flags().StringVar(&typ, "type", "feat", "feat|fix|chore|hotfix")
+	c.Flags().StringVar(&base, "base", "", "override the base ref (e.g. this week's release)")
+	c.Flags().BoolVar(&forceInstall, "install", false, "force deps=install even if config says symlink/clone")
+	c.Flags().BoolVar(&another, "another", false, "allow a second concurrent task in this repo")
 	return c
 }
