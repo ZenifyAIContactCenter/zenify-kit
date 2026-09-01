@@ -110,14 +110,15 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	// is safe and re-running reconciles it — auto-rollback would wrongly undo
 	// repos that wired cleanly. Auto-restore lands in B2b-2, where MIGRATE
 	// performs the first destructive overwrite that makes it meaningful. The
-	// snapshot id is unique per run so a rerun never overwrites an earlier
-	// capture.
+	// snapshot id is unique per run — the unix second plus the pid, which differs
+	// across sequential process invocations, so even two runs within one second
+	// never overwrite an earlier capture.
 	manifestPath := filepath.Join(zenifyDir, "manifest.json")
 	owned, err := managed.Load(manifestPath)
 	if err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
-	snapshotID := fmt.Sprintf("apply-%d", applyNow())
+	snapshotID := fmt.Sprintf("apply-%d-%d", applyNow(), os.Getpid())
 	if _, err := managed.Snapshot(snapshotID, snapshotTargets(plans, workspace), filepath.Join(zenifyDir, "snapshots")); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
