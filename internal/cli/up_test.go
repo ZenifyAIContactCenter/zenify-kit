@@ -79,3 +79,20 @@ func TestRenderJSON(t *testing.T) {
 		t.Errorf("json missing state:\n%s", buf.String())
 	}
 }
+
+func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
+	gh := fakeGH{
+		auth: []byte("You are not logged into any GitHub hosts. Run gh auth login to authenticate.\n"),
+		list: []byte(`[]`),
+	}
+	plans, auth, err := buildPlan(testManifest(), gh, fakeGit{}, t.TempDir())
+	if err != nil {
+		t.Fatalf("buildPlan: %v", err)
+	}
+	if auth.LoggedIn {
+		t.Errorf("expected LoggedIn=false, got %+v", auth)
+	}
+	if plans != nil {
+		t.Errorf("expected nil plans when logged out, got %+v", plans)
+	}
+}
