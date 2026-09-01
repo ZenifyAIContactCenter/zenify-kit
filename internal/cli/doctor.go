@@ -5,10 +5,34 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Check is one read-only diagnostic. B/C/D register more via RegisterCheck.
+// Check is one read-only diagnostic. B/C/D/F register more via RegisterCheck.
+// Fix is an optional mutating repair, run ONLY under `doctor --fix`; nil means
+// the check reports but cannot self-repair. Run must never mutate.
 type Check struct {
 	Name string
 	Run  func() (ok bool, detail string)
+	Fix  func() (fixed bool, detail string)
+}
+
+// CheckResult is one check's outcome, ready for either renderer.
+type CheckResult struct {
+	Name   string
+	OK     bool
+	Detail string
+}
+
+// runChecks runs every registered check's Run in order and reports whether all
+// passed. Pure: no output, no mutation — the renderers (human/JSON) consume it.
+func runChecks() (results []CheckResult, healthy bool) {
+	healthy = true
+	for _, c := range checks {
+		ok, detail := c.Run()
+		if !ok {
+			healthy = false
+		}
+		results = append(results, CheckResult{Name: c.Name, OK: ok, Detail: detail})
+	}
+	return results, healthy
 }
 
 var checks = []Check{
