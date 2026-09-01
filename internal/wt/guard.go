@@ -64,7 +64,11 @@ func RepoOpenTasks(r gitx.Runner, repoRoot, user, worktreeDir, base string) ([]O
 	if err != nil {
 		return nil, err
 	}
-	wtPrefix := filepath.Join(repoRoot, worktreeDir)
+	// Trailing separator on purpose: filepath.Join strips worktreeDir's slash, so
+	// a bare HasPrefix would also match a sibling like ".worktrees-backup/" whose
+	// name merely starts with the same string. Requiring the separator forces a
+	// full path-segment boundary — only paths genuinely inside the dir match.
+	wtPrefix := filepath.Join(repoRoot, worktreeDir) + string(filepath.Separator)
 	var tasks []OpenTask
 	var curPath, curBranch string
 	flush := func() {

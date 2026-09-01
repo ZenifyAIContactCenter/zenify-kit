@@ -107,3 +107,28 @@ func TestRepoOpenTasks_FiltersUserAndMerged(t *testing.T) {
 		t.Fatalf("want only unmerged namph task 'open', got %+v", tasks)
 	}
 }
+
+func TestRepoOpenTasks_SiblingPrefixDirNotMatched(t *testing.T) {
+	// A sibling dir whose NAME starts with the worktree-dir string
+	// (".worktrees-backup") must NOT be treated as a managed worktree — the
+	// prefix match requires a path-separator boundary.
+	list := strings.Join([]string{
+		"worktree /repo",
+		"branch refs/heads/staging",
+		"",
+		"worktree /repo/.worktrees-backup/ghost",
+		"branch refs/heads/namph/feat/ghost",
+		"",
+	}, "\n")
+	r := fakeRunner{
+		out: map[string]string{"/repo|worktree list --porcelain": list},
+		err: map[string]error{},
+	}
+	tasks, err := RepoOpenTasks(r, "/repo", "namph", ".worktrees/", "origin/staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("sibling-prefix dir must not be matched, got %+v", tasks)
+	}
+}
