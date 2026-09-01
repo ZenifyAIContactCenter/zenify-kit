@@ -1,10 +1,14 @@
 package cli
 
 import (
+	"sync"
+
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
 )
+
+var defaultChecksOnce sync.Once
 
 // NewRootCmd builds the top-level `zenify` command. Subcommands attach here.
 func NewRootCmd() *cobra.Command {
@@ -20,6 +24,7 @@ func NewRootCmd() *cobra.Command {
 		return exitcode.New(exitcode.BadArgs, err)
 	})
 	root.AddCommand(newVersionCmd())
+	defaultChecksOnce.Do(registerDefaultChecks)
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newUpCmd())
 	root.AddCommand(newWtCmd())
