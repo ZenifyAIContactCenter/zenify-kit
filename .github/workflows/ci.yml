@@ -13,6 +13,12 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test ./... -race -count=1
+      - name: lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+      - name: secret-scan (self)
+        run: go run ./cmd/zenify secret-scan .
       - name: cross-compile smoke (all 6 targets build)
         run: |
           for goos in darwin linux windows; do
