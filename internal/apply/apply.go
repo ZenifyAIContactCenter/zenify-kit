@@ -93,6 +93,11 @@ func cloneRepo(gh ghx.Runner, org, name, dest string) error {
 // FR-041). Returns the paths written (for the caller's summary/manifest).
 func wireRepo(repoDir string, owned *managed.Manifest) ([]string, error) {
 	var wrote []string
+	// The exclude file is reported in Wrote (it changed on disk this run) but is
+	// deliberately NOT Record'd into the ownership manifest: the kit owns only the
+	// single ".worktrees/" line it appended, not the whole git-local file, so
+	// fingerprinting the whole file would false-flag on any user edit. Only files
+	// the kit owns in full (the settings skeleton) are Record'd.
 	w, err := ensureExclude(repoDir)
 	if err != nil {
 		return wrote, err

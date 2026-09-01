@@ -102,14 +102,23 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	}
 	defer h.Release()
 
-	// Load (or start) the ownership manifest, and snapshot the files WIRE will
-	// touch so a failed run can be rolled back (FR-022).
+	// Load (or start) the ownership manifest, then write a pre-mutation snapshot
+	// of the files this run touches (FR-022 capture half; a future `zenify
+	// backups restore`, FR-052, is the consumer). Automatic restore-on-failure
+	// is deliberately NOT wired here: every B2b-1 action is create-if-absent
+	// (settings skeleton, clone) or append-if-absent (exclude), so a partial run
+	// is safe and re-running reconciles it — auto-rollback would wrongly undo
+	// repos that wired cleanly. Auto-restore lands in B2b-2, where MIGRATE
+	// performs the first destructive overwrite that makes it meaningful. The
+	// snapshot id is unique per run so a rerun never overwrites an earlier
+	// capture.
 	manifestPath := filepath.Join(zenifyDir, "manifest.json")
 	owned, err := managed.Load(manifestPath)
 	if err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
-	if _, err := managed.Snapshot("apply", snapshotTargets(plans, workspace), filepath.Join(zenifyDir, "snapshots")); err != nil {
+	snapshotID := fmt.Sprintf("apply-%d", applyNow())
+	if _, err := managed.Snapshot(snapshotID, snapshotTargets(plans, workspace), filepath.Join(zenifyDir, "snapshots")); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
 
@@ -143,9 +152,10 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	return nil
 }
 
-// snapshotTargets lists the files a WIRE/CLONE run may overwrite, so Snapshot
-// can capture their pre-mutation state. It lists settings.local.json and the
-// exclude file per actionable repo; Snapshot skips any that do not yet exist.
+// snapshotTargets lists the files an apply run touches, so Snapshot can capture
+// their pre-mutation state for recovery. It lists settings.local.json and the
+// exclude file per actionable repo; Snapshot skips any that do not yet exist,
+// so a freshly created skeleton or a fresh clone contributes nothing to capture.
 func snapshotTargets(plans []reconcile.RepoPlan, workspace string) []string {
 	var files []string
 	for _, p := range plans {
@@ -168,17 +178,15 @@ func applyNow() int64 { return time.Now().Unix() }
 
 func newUpCmd() *cobra.Command {
 	var (
-		jsonOut        bool
-		nonInteractive bool
-		dryRun         bool
-		workspace      string
-		manifestPath   string
-		overlayPath    string
-		applyFlag      bool
+		jsonOut      bool
+		workspace    string
+		manifestPath string
+		overlayPath  string
+		applyFlag    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
-		Short: "Discover repos and print the onboarding plan (read-only in this build)",
+		Short: "Discover repos and print the onboarding plan (dry-run; use --apply to execute)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if manifestPath == "" {
 				// The manifest is versioned inside the kit checkout, not the
@@ -214,9 +222,7 @@ func newUpCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit the plan as a JSON envelope (implies --non-interactive)")
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "never prompt")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "compute and print the plan without acting (default; use --apply to execute)")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit the plan as a JSON envelope")
 	cmd.Flags().StringVar(&workspace, "workspace", ".", "workspace root directory")
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default manifest/repos.yaml relative to the kit checkout)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
