@@ -138,10 +138,15 @@ func RunNew(o NewOptions) error {
 		}
 	}
 	key := fmt.Sprintf("%s:%s:%s", filepath.Base(o.RepoRoot), o.Slug, cfg.PortEnv)
-	port, ok := Allocate(key, cfg.PortRange[0], cfg.PortRange[1], taken)
-	if !ok {
-		return fmt.Errorf("wt: no free port in %v", cfg.PortRange)
+	count := cfg.PortCount
+	if count < 1 {
+		count = 1
 	}
+	ports, ok := AllocateRange(key, cfg.PortRange[0], cfg.PortRange[1], count, taken)
+	if !ok {
+		return fmt.Errorf("wt: no free %d-port block in %v", count, cfg.PortRange)
+	}
+	port := ports[0] // primary port: portEnv, wt.port, url all use the block's base
 
 	deps := cfg.Deps
 	if o.ForceInstall {
@@ -182,6 +187,13 @@ func RunNew(o NewOptions) error {
 	if err := WritePortEnv(envPath, cfg.PortEnv, port); err != nil {
 		return abort(fmt.Errorf("wt: write %s: %w", cfg.PortEnv, err))
 	}
+	// A monorepo worktree gets a contiguous block; seed the base so each app can
+	// derive its own port with +offset. A single-port worktree gets no such line.
+	if len(ports) > 1 {
+		if err := upsertEnvVar(envPath, "WT_PORT_BASE", fmt.Sprintf("%d", port)); err != nil {
+			return abort(fmt.Errorf("wt: seed WT_PORT_BASE: %w", err))
+		}
+	}
 	if err := SeedIdentityEnv(envPath, cfg, o.Slug); err != nil {
 		return abort(fmt.Errorf("wt: seed identity env: %w", err))
 	}
@@ -198,7 +210,10 @@ func RunNew(o NewOptions) error {
 	}
 
 	// Persist to the rebuildable caches (state + global index).
-	wtRec := Worktree{Slug: o.Slug, Type: o.Type, Branch: branch, Path: path, Ports: []int{port}}
+	wtRec := Worktree{Slug: o.Slug, Type: o.Type, Branch: branch, Path: path, Ports: ports}
+	if len(ports) > 1 {
+		wtRec.PortBase = port
+	}
 	if err := SaveWorktree(o.RepoRoot, wtRec, o.Pid, o.Host, o.Now); err != nil {
 		return abort(err)
 	}
