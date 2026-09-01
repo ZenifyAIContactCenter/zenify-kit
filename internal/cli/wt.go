@@ -20,7 +20,7 @@ func newWtCmd() *cobra.Command {
 		Use:   "wt",
 		Short: "Git worktree + dev-env manager (read-only surface in this build)",
 	}
-	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd(), newWtSweepCmd(), newWtWireCmd())
+	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd(), newWtSweepCmd(), newWtWireCmd(), newWtPromoteCmd())
 	return cmd
 }
 
@@ -265,6 +265,29 @@ func newWtRmCmd() *cobra.Command {
 	}
 	c.Flags().BoolVarP(&force, "force", "f", false, "remove even if dirty, detached, or unmerged")
 	return c
+}
+
+func newWtPromoteCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "promote <slug>",
+		Short: "convert a worktree's symlinked node_modules into a private CoW copy",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := repoRoot()
+			if err != nil {
+				return err
+			}
+			return wt.RunPromote(wt.PromoteOptions{
+				RepoRoot: root,
+				Slug:     args[0],
+				Runner:   gitx.ExecRunner(),
+				Stdout:   cmd.OutOrStdout(),
+				Stderr:   cmd.ErrOrStderr(),
+			})
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
 }
 
 func newWtSweepCmd() *cobra.Command {
