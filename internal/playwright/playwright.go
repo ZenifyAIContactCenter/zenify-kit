@@ -61,3 +61,28 @@ func Status(o Options) (mcpRegistered bool, browsersPresent bool, detail string)
 	}
 	return mcpRegistered, browsersPresent, fmt.Sprintf("mcp=%s browsers=%s", reg, br)
 }
+
+// Bootstrap registers the Playwright MCP (idempotently) and ensures chromium is
+// installed. Registration uses the grounded reference config: user scope, stdio
+// `npx @playwright/mcp@latest`. Callers decide whether a returned error is fatal
+// — in `zenify up` it is non-fatal (a warning).
+func Bootstrap(o Options) error {
+	note := func(format string, a ...any) {
+		if o.Stdout != nil {
+			fmt.Fprintf(o.Stdout, format+"\n", a...)
+		}
+	}
+	if o.Runner("claude", []string{"mcp", "get", "playwright"}) != nil {
+		note("playwright: registering MCP server (user scope)")
+		if err := o.Runner("claude", []string{"mcp", "add", "playwright", "-s", "user", "--", "npx", "@playwright/mcp@latest"}); err != nil {
+			return fmt.Errorf("register playwright MCP: %w", err)
+		}
+	} else {
+		note("playwright: MCP server already registered")
+	}
+	note("playwright: ensuring chromium is installed")
+	if err := o.Runner("npx", []string{"playwright", "install", "chromium"}); err != nil {
+		return fmt.Errorf("install chromium: %w", err)
+	}
+	return nil
+}
