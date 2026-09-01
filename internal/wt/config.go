@@ -27,24 +27,32 @@ type Config struct {
 	EnvFile        string
 	HotfixBaseRef  string
 	RedisPrefixEnv string
+	Peers          map[string]PeerSpec
+}
+
+// PeerSpec is one entry of the peers map, keyed by the env var it sets.
+type PeerSpec struct {
+	Repo string `json:"repo"`
+	URL  string `json:"url"`
 }
 
 // rawConfig mirrors the on-disk JSON. PortRange is deferred to json.RawMessage
 // because it appears BOTH as an array [lo,hi] (real files) and as a legacy
 // "lo hi" string (old default).
 type rawConfig struct {
-	Abbrev         string          `json:"abbrev"`
-	BaseRef        string          `json:"baseRef"`
-	WorktreeDir    string          `json:"worktreeDir"`
-	PortEnv        string          `json:"portEnv"`
-	Deps           string          `json:"deps"`
-	Install        string          `json:"install"`
-	User           string          `json:"user"`
-	PortRange      json.RawMessage `json:"portRange"`
-	Copy           []string        `json:"copy"`
-	EnvFile        string          `json:"envFile"`
-	HotfixBaseRef  string          `json:"hotfixBaseRef"`
-	RedisPrefixEnv string          `json:"redisPrefixEnv"`
+	Abbrev         string              `json:"abbrev"`
+	BaseRef        string              `json:"baseRef"`
+	WorktreeDir    string              `json:"worktreeDir"`
+	PortEnv        string              `json:"portEnv"`
+	Deps           string              `json:"deps"`
+	Install        string              `json:"install"`
+	User           string              `json:"user"`
+	PortRange      json.RawMessage     `json:"portRange"`
+	Copy           []string            `json:"copy"`
+	EnvFile        string              `json:"envFile"`
+	HotfixBaseRef  string              `json:"hotfixBaseRef"`
+	RedisPrefixEnv string              `json:"redisPrefixEnv"`
+	Peers          map[string]PeerSpec `json:"peers"`
 }
 
 // Load reads <repoRoot>/.claude/worktree.json and resolves defaults. A missing
@@ -76,6 +84,7 @@ func Load(repoRoot string) (*Config, error) {
 		EnvFile:        raw.EnvFile,
 		HotfixBaseRef:  raw.HotfixBaseRef,
 		RedisPrefixEnv: raw.RedisPrefixEnv,
+		Peers:          raw.Peers,
 	}
 	return c, nil
 }
