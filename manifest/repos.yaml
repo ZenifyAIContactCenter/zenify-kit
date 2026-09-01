@@ -1,0 +1,30 @@
+# Repo manifest (FR-068) — desired set of repos zenify onboarding may wire.
+# Versioned in the kit; adding a repo is one commit, teammates re-run to pick up the delta.
+# `path` is relative to the workspace root and overridable per-dev via a local overlay.
+org: ZenifyAIContactCenter
+repos:
+  - name: contact-center-be
+    url: git@github.com:ZenifyAIContactCenter/contact-center-be.git
+    path: contact-center-be
+    base: origin/staging
+    tags: [primary, backend]
+  - name: contact-center-web
+    url: git@github.com:ZenifyAIContactCenter/contact-center-web.git
+    path: contact-center-web
+    base: origin/staging
+    tags: [primary, frontend]
+  - name: contact-center-hub
+    url: git@github.com:ZenifyAIContactCenter/contact-center-hub.git
+    path: contact-center-hub
+    base: origin/staging
+    tags: [primary, backend]
+  - name: chatting
+    url: git@github.com:ZenifyAIContactCenter/chatting.git
+    path: chatting
+    base: origin/staging
+    tags: [primary, realtime]
+  - name: notification
+    url: git@github.com:ZenifyAIContactCenter/notification.git
+    path: notification
+    base: origin/staging
+    tags: [realtime]
