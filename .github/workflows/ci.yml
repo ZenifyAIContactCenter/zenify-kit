@@ -14,9 +14,15 @@ jobs:
       - run: go vet ./...
       - run: go test ./... -race -count=1
       - name: lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+        # Build golangci-lint from source with the repo's own Go toolchain.
+        # The prebuilt golangci-lint-action binaries lag bleeding-edge Go and
+        # refuse a module whose `go` directive is newer than their build
+        # toolchain ("Go language version used to build golangci-lint is lower
+        # than the targeted Go version"). Building from source pins the build
+        # toolchain to CI's Go, so the check always passes.
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+          golangci-lint run ./...
       - name: secret-scan (self)
         run: go run ./cmd/zenify secret-scan .
       - name: cross-compile smoke (all 6 targets build)
