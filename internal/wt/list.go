@@ -137,6 +137,12 @@ func URLFor(r gitx.Runner, repoRoot string, cfg *Config, slug string) (string, e
 			if row.Port == "-" {
 				return "", fmt.Errorf("wt: worktree %q has no recorded port", slug)
 			}
+			// row.Port may be raw git-config text (hand-edited/corrupt); the URL
+			// is a stdout contract callers pipe into a browser, so refuse to emit
+			// a non-numeric port rather than build http://localhost:<garbage>.
+			if _, err := strconv.Atoi(row.Port); err != nil {
+				return "", fmt.Errorf("wt: worktree %q has a non-numeric port %q", slug, row.Port)
+			}
 			return "http://localhost:" + row.Port, nil
 		}
 	}

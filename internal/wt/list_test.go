@@ -36,7 +36,7 @@ func TestList_JoinsGitAndConfig(t *testing.T) {
 	}, "\n")
 	s := lsStub{
 		out: map[string]string{
-			root + "|worktree list --porcelain":        list,
+			root + "|worktree list --porcelain":         list,
 			"/repo/.worktrees/foo|config --get wt.slug": "foo",
 			"/repo/.worktrees/foo|config --get wt.port": "3207",
 			"/repo/.worktrees/foo|config --get wt.deps": "clone",
@@ -74,7 +74,7 @@ func TestList_MergedAndUnmanaged(t *testing.T) {
 	}, "\n")
 	s := lsStub{
 		out: map[string]string{
-			root + "|worktree list --porcelain":         list,
+			root + "|worktree list --porcelain":          list,
 			"/repo/.worktrees/done|config --get wt.slug": "", // unmanaged (no slug)
 			"/repo/.worktrees/done|config --get wt.port": "",
 			"/repo/.worktrees/done|config --get wt.deps": "",
@@ -102,7 +102,7 @@ func TestURLFor(t *testing.T) {
 	}, "\n")
 	s := lsStub{
 		out: map[string]string{
-			root + "|worktree list --porcelain":        list,
+			root + "|worktree list --porcelain":         list,
 			"/repo/.worktrees/foo|config --get wt.slug": "foo",
 			"/repo/.worktrees/foo|config --get wt.port": "3207",
 			"/repo/.worktrees/foo|config --get wt.deps": "install",
@@ -119,5 +119,45 @@ func TestURLFor(t *testing.T) {
 	}
 	if _, err := URLFor(s, root, lsCfg(), "nope"); err == nil {
 		t.Fatal("unknown slug must error")
+	}
+}
+
+func TestURLFor_NonNumericPortRejected(t *testing.T) {
+	root := "/repo"
+	list := strings.Join([]string{
+		"worktree /repo/.worktrees/foo",
+		"branch refs/heads/namph/feat/foo",
+		"",
+	}, "\n")
+	s := lsStub{
+		out: map[string]string{
+			root + "|worktree list --porcelain":         list,
+			"/repo/.worktrees/foo|config --get wt.slug": "foo",
+			"/repo/.worktrees/foo|config --get wt.port": "not-a-port", // corrupt/hand-edited config
+			"/repo/.worktrees/foo|config --get wt.deps": "install",
+			root + "|diff origin/main..namph/feat/foo":  "d",
+		},
+		err: map[string]error{root + "|merge-base --is-ancestor namph/feat/foo origin/main": errors.New("x")},
+	}
+	if _, err := URLFor(s, root, lsCfg(), "foo"); err == nil {
+		t.Fatal("non-numeric port must error, not emit http://localhost:not-a-port")
+	}
+}
+
+func TestList_EmptyWhenNoWorktrees(t *testing.T) {
+	root := "/repo"
+	// Only the main checkout, no worktrees under worktreeDir.
+	list := strings.Join([]string{
+		"worktree /repo",
+		"branch refs/heads/staging",
+		"",
+	}, "\n")
+	s := lsStub{out: map[string]string{root + "|worktree list --porcelain": list}}
+	rows, err := List(s, root, lsCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("want 0 rows for a repo with no worktrees, got %d: %+v", len(rows), rows)
 	}
 }
