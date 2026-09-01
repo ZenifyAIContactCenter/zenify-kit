@@ -57,6 +57,13 @@ func newWtPathCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("wt: no worktree %q", args[0])
 			}
+			// Guard empty Path: filepath.Join(root, "") == root, which would print
+			// the repo root as if it were a valid worktree path. A state entry with
+			// no path is malformed — fail loudly rather than emit a plausible lie.
+			// (C2 starts writing state.json; this closes the hole before then.)
+			if strings.TrimSpace(w.Path) == "" {
+				return fmt.Errorf("wt: worktree %q has no path in state", args[0])
+			}
 			// Output contract: EXACTLY the path + one newline, nothing else —
 			// /cook captures this stdout as a path. Fprintln adds the newline;
 			// keep every diagnostic on stderr (SilenceUsage below).

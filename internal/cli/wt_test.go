@@ -58,6 +58,54 @@ func TestWtPath_UnknownSlugErrors(t *testing.T) {
 	}
 }
 
+func TestWtConfig_PlainOutput(t *testing.T) {
+	root := t.TempDir()
+	seedRepo(t, root)
+	out, err := runWt(t, root, "config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// worktree.json seeds abbrev + portRange; every other key falls to its
+	// documented default. Assert the rendered lines match that resolution.
+	for _, want := range []string{
+		"abbrev=ccbe",
+		"baseRef=origin/main",
+		"worktreeDir=.worktrees/",
+		"portEnv=PORT",
+		"portRange=3200 3249",
+		"deps=install",
+		"user=namph",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("config output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestWtPath_EmptyPathInStateErrors(t *testing.T) {
+	root := t.TempDir()
+	cdir := filepath.Join(root, ".claude")
+	wdir := filepath.Join(root, ".wt")
+	for _, d := range []string{cdir, wdir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	os.WriteFile(filepath.Join(cdir, "worktree.json"),
+		[]byte(`{"abbrev":"ccbe","portRange":[3200,3249]}`), 0o644)
+	// A malformed entry with an empty path must error, not print the repo root
+	// (filepath.Join(root, "") == root).
+	os.WriteFile(filepath.Join(wdir, "state.json"),
+		[]byte(`{"version":1,"worktrees":[{"slug":"foo","path":"","ports":[3207]}]}`), 0o644)
+	out, err := runWt(t, root, "path", "foo")
+	if err == nil {
+		t.Fatalf("want error for empty path in state, got stdout %q", out)
+	}
+	if strings.TrimSpace(out) == root {
+		t.Fatalf("printed repo root as if valid: %q", out)
+	}
+}
+
 func TestWtConfigPort_Deterministic(t *testing.T) {
 	root := t.TempDir()
 	seedRepo(t, root)
