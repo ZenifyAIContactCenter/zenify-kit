@@ -26,6 +26,7 @@ type Config struct {
 	Copy          []string
 	EnvFile       string
 	HotfixBaseRef string
+	RedisPrefixEnv string
 }
 
 // rawConfig mirrors the on-disk JSON. PortRange is deferred to json.RawMessage
@@ -43,6 +44,7 @@ type rawConfig struct {
 	Copy          []string        `json:"copy"`
 	EnvFile       string          `json:"envFile"`
 	HotfixBaseRef string          `json:"hotfixBaseRef"`
+	RedisPrefixEnv string         `json:"redisPrefixEnv"`
 }
 
 // Load reads <repoRoot>/.claude/worktree.json and resolves defaults. A missing
@@ -73,6 +75,7 @@ func Load(repoRoot string) (*Config, error) {
 		Copy:          raw.Copy,
 		EnvFile:       raw.EnvFile,
 		HotfixBaseRef: raw.HotfixBaseRef,
+		RedisPrefixEnv: raw.RedisPrefixEnv,
 	}
 	return c, nil
 }

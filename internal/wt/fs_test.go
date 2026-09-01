@@ -110,3 +110,71 @@ func TestApplyDeps_SymlinkMissingSourceErrors(t *testing.T) {
 		t.Fatal("symlink with no source node_modules must error")
 	}
 }
+
+func TestSeedIdentityEnv_WritesSlugAndCompose(t *testing.T) {
+	dir := t.TempDir()
+	env := filepath.Join(dir, ".env")
+	// pre-existing content to prove upsert appends without clobbering
+	if err := os.WriteFile(env, []byte("PORT=3207\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{Abbrev: "cch", EnvFile: ".env"} // no RedisPrefixEnv → no redis line
+	if err := SeedIdentityEnv(env, cfg, "my-task"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(env)
+	got := string(b)
+	for _, want := range []string{"PORT=3207", "WT_SLUG=my-task", "COMPOSE_PROJECT_NAME=cch-my-task"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("env missing %q; got:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "REDIS") {
+		t.Errorf("no RedisPrefixEnv configured, so no redis line expected; got:\n%s", got)
+	}
+}
+
+func TestSeedIdentityEnv_RedisPrefixWhenConfigured(t *testing.T) {
+	dir := t.TempDir()
+	env := filepath.Join(dir, ".env")
+	cfg := &Config{Abbrev: "cch", EnvFile: ".env", RedisPrefixEnv: "REDIS_PREFIX"}
+	if err := SeedIdentityEnv(env, cfg, "my-task"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(env)
+	if !strings.Contains(string(b), "REDIS_PREFIX=cch-my-task:") {
+		t.Errorf("expected REDIS_PREFIX=cch-my-task: ; got:\n%s", string(b))
+	}
+}
+
+func TestSeedIdentityEnv_EmptyAbbrevUsesSlugOnly(t *testing.T) {
+	dir := t.TempDir()
+	env := filepath.Join(dir, ".env")
+	cfg := &Config{Abbrev: "", EnvFile: ".env"}
+	if err := SeedIdentityEnv(env, cfg, "solo"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(env)
+	if !strings.Contains(string(b), "COMPOSE_PROJECT_NAME=solo\n") {
+		t.Errorf("empty abbrev should yield COMPOSE_PROJECT_NAME=solo; got:\n%s", string(b))
+	}
+}
+
+func TestUpsertEnvVar_ReplacesExisting(t *testing.T) {
+	dir := t.TempDir()
+	env := filepath.Join(dir, ".env")
+	if err := os.WriteFile(env, []byte("WT_SLUG=old\nOTHER=x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := upsertEnvVar(env, "WT_SLUG", "new"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(env)
+	got := string(b)
+	if strings.Contains(got, "WT_SLUG=old") || !strings.Contains(got, "WT_SLUG=new") {
+		t.Errorf("upsert should replace old→new; got:\n%s", got)
+	}
+	if !strings.Contains(got, "OTHER=x") {
+		t.Errorf("upsert must not drop other keys; got:\n%s", got)
+	}
+}
