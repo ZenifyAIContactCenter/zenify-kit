@@ -116,7 +116,7 @@ func pluginCheckAt(dest string) Check {
 	}
 }
 
-// countDirs đếm thư mục con trực tiếp; lỗi → 0.
+// countDirs đếm thư mục con CÓ SKILL.md (skill thực); dir phụ như _shared bị bỏ; lỗi → 0.
 func countDirs(dir string) int {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -124,7 +124,10 @@ func countDirs(dir string) int {
 	}
 	n := 0
 	for _, e := range entries {
-		if e.IsDir() {
+		if !e.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, e.Name(), "SKILL.md")); err == nil {
 			n++
 		}
 	}

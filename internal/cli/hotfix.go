@@ -20,7 +20,7 @@ func resolveHotfixBaseRef(repoRoot string, git gitx.Runner) (string, error) {
 	}
 	switch c.HotfixBaseStrategy {
 	case "standalone", "staging":
-		return "staging", nil
+		return "origin/staging", nil
 	case "custom":
 		if c.HotfixBaseRef == "" {
 			return "", fmt.Errorf("baseStrategy=custom nhưng thiếu hotfixBaseRef")
@@ -29,7 +29,7 @@ func resolveHotfixBaseRef(repoRoot string, git gitx.Runner) (string, error) {
 	case "release-latest":
 		return latestRelease(git, repoRoot)
 	default:
-		return "staging", nil
+		return "origin/staging", nil
 	}
 }
 

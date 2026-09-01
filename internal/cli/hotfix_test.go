@@ -25,8 +25,8 @@ func TestHotfixBaserefStandalone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "staging" {
-		t.Fatalf("standalone → %q, want staging", out)
+	if out != "origin/staging" {
+		t.Fatalf("standalone → %q, want origin/staging", out)
 	}
 }
 
