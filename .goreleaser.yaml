@@ -33,6 +33,17 @@ homebrew_casks:
     homepage: https://github.com/ZenifyAIContactCenter/zenify-kit
     description: Portable zenify workspace toolkit
     skip_upload: auto
+    # Strip the quarantine flag brew stamps on download. The binaries are only
+    # adhoc/linker-signed (Go default, no Developer ID), so on Apple Silicon a
+    # quarantined adhoc binary is SIGKILLed by Gatekeeper on first run. This
+    # postflight self-heals every install, so a plain `brew install --cask
+    # zenify` works with no --no-quarantine needed.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/zenify"]
+          end
 scoops:
   - repository:
       owner: ZenifyAIContactCenter
