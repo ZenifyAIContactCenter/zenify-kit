@@ -23,5 +23,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newUpCmd())
 	root.AddCommand(newWtCmd())
+	root.AddCommand(newDBReadCmd())
 	return root
 }
