@@ -36,14 +36,10 @@ func New() (Scanner, error) {
 	return &gitleaksScanner{d: d}, nil
 }
 
-// redact rút gọn secret thành dạng an toàn: 4 ký tự đầu + "…" (không bao giờ
-// in đủ). match là chuỗi khớp thô từ gitleaks — KHÔNG trả nguyên.
-func redact(match string) string {
-	m := strings.TrimSpace(match)
-	if len(m) <= 4 {
-		return "****"
-	}
-	return m[:4] + "…(redacted)"
+// redact luôn trả một mask hằng số, không chứa bất kỳ ký tự nào của secret
+// (FR-041: chỉ báo file+rule-id+line, không lộ giá trị secret dù một phần).
+func redact(_ string) string {
+	return "(redacted)"
 }
 
 func (g *gitleaksScanner) ScanText(name, content string) []Finding {

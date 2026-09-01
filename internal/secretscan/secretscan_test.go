@@ -27,9 +27,15 @@ func TestScanTextFindsSecret(t *testing.T) {
 		if f.RuleID == "" {
 			t.Error("finding thiếu RuleID")
 		}
-		// FR-041: không lộ value nguyên.
+		if f.Redacted == "" {
+			t.Error("Redacted không được rỗng")
+		}
+		// FR-041: không lộ value nguyên, kể cả một phần (vd. 4 ký tự đầu).
 		if strings.Contains(f.Redacted, secret) {
 			t.Error("Redacted lộ secret nguyên")
+		}
+		if strings.Contains(f.Redacted, secret[:4]) {
+			t.Error("Redacted lộ một phần secret (prefix)")
 		}
 	}
 }

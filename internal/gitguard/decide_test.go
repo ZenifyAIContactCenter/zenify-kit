@@ -89,6 +89,47 @@ func TestDecide(t *testing.T) {
 	}
 }
 
+func TestDecidePushRefspecEdgeCases(t *testing.T) {
+	root := t.TempDir()
+	deny := filepath.Join(root, "deny")     // deploy=main
+	other := filepath.Join(root, "other")   // development-2, release*, staging
+	nodeny := filepath.Join(root, "nodeny") // deploy-branches rỗng → không có nhánh cấm
+	mkRepo(t, deny, "main", []string{"main"})
+	mkRepo(t, other, "staging", []string{"development-2", "release*", "staging"})
+	mkRepo(t, nodeny, "main", []string{"# none"})
+
+	getenv := func(string) string { return "" }
+	dec := func(cwd, cmd string) bool {
+		return Decide(cmd, cwd, getenv, nil).Deny
+	}
+	cases := []struct {
+		want     bool
+		cwd, cmd string
+	}{
+		// "git push origin HEAD" resolves against the current branch.
+		{true, deny, "git push origin HEAD"},
+		{false, deny, "cd " + nodeny + " && git push origin HEAD"},
+		// Force-push with a leading '+' still checked against its target.
+		{true, other, "git push origin +staging"},
+		{false, other, "git push origin +namph/feat/x"},
+		// "src:dst" refspec — branch UPDATED on the remote is dst.
+		{true, deny, "git push origin feat:main"},
+		{false, deny, "git push origin main:feat"},
+		// Combined force + HEAD + colon.
+		{true, deny, "git push origin +HEAD:main"},
+		// --mirror pushes every ref, treated like --all.
+		{true, deny, "git push --mirror origin"},
+		{true, other, "git push --mirror origin"},
+		// Sanity: a normal feature-branch push still allows.
+		{false, deny, "git push origin feature-x"},
+	}
+	for _, tc := range cases {
+		if got := dec(tc.cwd, tc.cmd); got != tc.want {
+			t.Errorf("Deny=%v want %v | %s", got, tc.want, tc.cmd)
+		}
+	}
+}
+
 func TestDecideWorktreeOwnBranch(t *testing.T) {
 	root := t.TempDir()
 	deny := filepath.Join(root, "deny")

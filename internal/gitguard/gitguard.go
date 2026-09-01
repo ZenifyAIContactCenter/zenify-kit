@@ -52,7 +52,7 @@ func Decide(command, callCwd string, getenv func(string) string, onCommit func(r
 		switch c.Sub {
 		case "push":
 			if hasAllFlag(c.Args) {
-				return deny("push", "'git push --all' could push deploy branches")
+				return deny("push", "'git push --all/--mirror' could push deploy branches")
 			}
 			target := pushTarget(c.Args, branch)
 			if matchDeny(target, patterns) {
@@ -98,7 +98,7 @@ func resolveDir(base, dir string, getenv func(string) string) string {
 
 func hasAllFlag(args []string) bool {
 	for _, a := range args {
-		if a == "--all" {
+		if a == "--all" || a == "--mirror" {
 			return true
 		}
 	}
@@ -106,7 +106,9 @@ func hasAllFlag(args []string) bool {
 }
 
 // pushTarget: refspec đầu tiên không phải flag và không phải remote; nếu không
-// có → nhánh hiện tại; "src:dst" → dst.
+// có → nhánh hiện tại; "src:dst" → dst; "+dst" (force) → dst (bỏ '+' đầu);
+// "HEAD" (literal, sau khi bỏ '+') → nhánh hiện tại (branch được resolve tại
+// caller, không phải literal "HEAD").
 func pushTarget(args []string, branch string) string {
 	var pos []string
 	for _, a := range args {
@@ -120,8 +122,12 @@ func pushTarget(args []string, branch string) string {
 		return branch
 	}
 	ref := pos[1]
+	ref = strings.TrimPrefix(ref, "+")
 	if i := strings.LastIndex(ref, ":"); i >= 0 {
-		return ref[i+1:]
+		ref = ref[i+1:]
+	}
+	if ref == "HEAD" {
+		return branch
 	}
 	return ref
 }

@@ -210,6 +210,40 @@ func TestWriteFileAtomic(t *testing.T) {
 	}
 }
 
+func TestGuardInstallPreservesExistingFileMode(t *testing.T) {
+	// A pre-existing settings.json with a restrictive mode (0o600) must keep
+	// that mode after install — install must never silently widen it to the
+	// 0o644 default used for a brand-new file.
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	claudeDir := filepath.Join(tmpHome, ".claude")
+	if err := os.MkdirAll(claudeDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"hooks":{"PreToolUse":[]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newGuardCmd()
+	cmd.SetArgs([]string{"install"})
+	var out strings.Builder
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	fi, err := os.Stat(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Errorf("mode after install = %o, want %o (preserved)", fi.Mode().Perm(), 0o600)
+	}
+}
+
 func TestGuardInstallUsesTempHOME(t *testing.T) {
 	// Never touches the real ~/.claude/settings.json — HOME is redirected to
 	// a throwaway TempDir for the duration of this test.

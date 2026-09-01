@@ -145,7 +145,11 @@ func newGuardCmd() *cobra.Command {
 			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 				return fmt.Errorf("guard install: tạo thư mục %s: %w", filepath.Dir(path), err)
 			}
-			if err := writeFileAtomic(path, out, 0o644); err != nil {
+			perm := os.FileMode(0o644)
+			if fi, statErr := os.Stat(path); statErr == nil {
+				perm = fi.Mode().Perm()
+			}
+			if err := writeFileAtomic(path, out, perm); err != nil {
 				return fmt.Errorf("guard install: ghi %s: %w", path, err)
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã trỏ PreToolUse → zenify git-guard.")
