@@ -5,11 +5,13 @@ import (
 	"os"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/cli"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
 
 func main() {
 	if err := cli.NewRootCmd().Execute(); err != nil {
+		// root sets SilenceErrors, so print here, then translate to an exit code.
 		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+		os.Exit(exitcode.Code(err))
 	}
 }
