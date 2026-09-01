@@ -20,7 +20,7 @@ func newWtCmd() *cobra.Command {
 		Use:   "wt",
 		Short: "Git worktree + dev-env manager (read-only surface in this build)",
 	}
-	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd())
+	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd())
 	return cmd
 }
 
@@ -235,4 +235,34 @@ func newWtUrlCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+}
+
+func newWtRmCmd() *cobra.Command {
+	var force bool
+	c := &cobra.Command{
+		Use:   "rm <slug>",
+		Short: "Remove a worktree (refuses a dirty/detached/unmerged one without --force)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := repoRoot()
+			if err != nil {
+				return err
+			}
+			host, _ := os.Hostname()
+			return wt.RunRm(wt.RmOptions{
+				RepoRoot: root,
+				Slug:     args[0],
+				Force:    force,
+				Host:     host,
+				Pid:      os.Getpid(),
+				Now:      time.Now().Unix(),
+				Runner:   gitx.ExecRunner(),
+				Stderr:   cmd.ErrOrStderr(),
+			})
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	c.Flags().BoolVarP(&force, "force", "f", false, "remove even if dirty, detached, or unmerged")
+	return c
 }
