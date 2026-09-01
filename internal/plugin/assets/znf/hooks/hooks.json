@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "type": "command", "command": "cat \"$CLAUDE_PLUGIN_ROOT/skills/using-superpowers/BOOTSTRAP.txt\" 2>/dev/null || true" }
+    ]
+  }
+}
