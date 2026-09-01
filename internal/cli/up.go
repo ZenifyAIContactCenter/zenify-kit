@@ -104,15 +104,27 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 
 	// Load (or start) the ownership manifest, then write a pre-mutation snapshot
 	// of the files this run touches (FR-022 capture half; a future `zenify
-	// backups restore`, FR-052, is the consumer). Automatic restore-on-failure
-	// is deliberately NOT wired here: every B2b-1 action is create-if-absent
-	// (settings skeleton, clone) or append-if-absent (exclude), so a partial run
-	// is safe and re-running reconciles it — auto-rollback would wrongly undo
-	// repos that wired cleanly. Auto-restore lands in B2b-2, where MIGRATE
-	// performs the first destructive overwrite that makes it meaningful. The
-	// snapshot id is unique per run — the unix second plus the pid, which differs
-	// across sequential process invocations, so even two runs within one second
-	// never overwrite an earlier capture.
+	// backups restore`, FR-052, is the consumer). Auto-restore-on-failure is
+	// deliberately NOT wired: a correct auto-restore can only be built ALONGSIDE
+	// the destructive MIGRATE flip, whose shape defines what the restore must do,
+	// and that flip is deferred to M2 (the team standardises .claude layout by
+	// hand first). Every action here is create-if-absent (settings skeleton,
+	// clone) or append-if-absent (exclude), so a partial run is safe to re-run and
+	// there is nothing destructive to roll back.
+	//
+	// Two things M2 MUST add when it implements the flip, or the restore is a
+	// false safety net (both surfaced reviewing this slice):
+	//   1. Extend snapshotTargets with a reconcile.Migrate case that captures the
+	//      files the flip overwrites (the repo's .gitignore). Today it captures
+	//      only the WIRE/CLONE pair, so a Migrate rollback would have NO data for
+	//      the very file it destroyed.
+	//   2. Make restore per-repo, not whole-snapshot: managed.Restore reverts
+	//      EVERY file in the shared snapshot, so a blanket restore triggered by one
+	//      repo's failed flip would also undo the .git/info/exclude a sibling
+	//      repo's WIRE appended successfully. Scope it to the failed repo's paths.
+	//
+	// The snapshot id is unique per run — the unix second plus the pid — so even
+	// two runs within one second never overwrite an earlier capture.
 	manifestPath := filepath.Join(zenifyDir, "manifest.json")
 	owned, err := managed.Load(manifestPath)
 	if err != nil {
