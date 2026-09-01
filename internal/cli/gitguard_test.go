@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitguard"
 )
 
 func gitInit(t *testing.T, dir, branch string, deny []string) {
@@ -59,6 +61,31 @@ func TestDecideDegenerate(t *testing.T) {
 	for _, cmd := range []string{"sudo", "env", "-", "git", "cd", "cd &&", "git -C", "git -C -C -C push", "cd cd cd && git push"} {
 		p := `{"cwd":".","tool_input":{"command":"` + cmd + `"}}`
 		_ = decideFromPayload([]byte(p), getenv) // chỉ cần không panic/treo
+	}
+}
+
+// TestRunGitGuardPanicFailsOpen closes the fail-open invariant: a panic
+// anywhere inside decide (gitguard.Decide / secretscan) must never surface
+// as exit code 2 (a bare panic's default exit code, indistinguishable from
+// a deliberate DENY to the hook contract). It must fall open to allow (0).
+// The `decide` parameter of runGitGuard is a test-only injection seam — the
+// production call site (newGitGuardCmd's RunE) always passes decideFromPayload.
+func TestRunGitGuardPanicFailsOpen(t *testing.T) {
+	panicky := func([]byte, func(string) string) gitguard.Decision {
+		panic("boom: simulated internal panic")
+	}
+	var stderr strings.Builder
+	code := runGitGuard(
+		strings.NewReader(`{"cwd":".","tool_input":{"command":"git commit -m x"}}`),
+		&stderr,
+		func(string) string { return "" },
+		panicky,
+	)
+	if code != 0 {
+		t.Fatalf("panic phải fail-open (exit 0), được exit %d", code)
+	}
+	if strings.Contains(stderr.String(), "boom") {
+		t.Fatalf("stderr không được lộ chi tiết panic (payload/secret): %q", stderr.String())
 	}
 }
 

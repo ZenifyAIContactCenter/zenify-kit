@@ -43,6 +43,32 @@ func decideFromPayload(payload []byte, getenv func(string) string) gitguard.Deci
 	return gitguard.Decide(p.ToolInput.Command, p.Cwd, getenv, onCommit)
 }
 
+// runGitGuard is the process-exit-code core, factored out of RunE so tests
+// can inject a decide func that panics without exec'ing the built binary.
+// A deferred recover() guarantees a panic anywhere in decide (gitguard.Decide
+// / secretscan) falls open to allow (0), never to 2 — a Go panic's default
+// exit code is also 2, which the hook contract reads as a deliberate DENY.
+// The recovered value is never printed: it could echo payload/secret text
+// (FR-041), so only a generic diagnostic goes to stderr.
+func runGitGuard(stdin io.Reader, stderr io.Writer, getenv func(string) string, decide func([]byte, func(string) string) gitguard.Decision) (code int) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintln(stderr, "🚫 [git-guard] internal error — failing open (allow)")
+			code = 0
+		}
+	}()
+	payload, err := io.ReadAll(stdin)
+	if err != nil {
+		return 0 // fail-open
+	}
+	d := decide(payload, getenv)
+	if d.Deny {
+		fmt.Fprintln(stderr, d.Message)
+		return 2
+	}
+	return 0
+}
+
 func newGitGuardCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "git-guard",
@@ -50,14 +76,9 @@ func newGitGuardCmd() *cobra.Command {
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			payload, err := io.ReadAll(cmd.InOrStdin())
-			if err != nil {
-				return nil // fail-open
-			}
-			d := decideFromPayload(payload, os.Getenv)
-			if d.Deny {
-				fmt.Fprintln(cmd.ErrOrStderr(), d.Message)
-				os.Exit(2) // DENY per Claude Code hook contract — NOT via exitcode package
+			code := runGitGuard(cmd.InOrStdin(), cmd.ErrOrStderr(), os.Getenv, decideFromPayload)
+			if code != 0 {
+				os.Exit(code) // DENY per Claude Code hook contract — NOT via exitcode package
 			}
 			return nil // allow (exit 0)
 		},
