@@ -44,3 +44,15 @@ func TestToolPresenceReportsMissing(t *testing.T) {
 		t.Fatalf("should name the missing tool: %q", detail)
 	}
 }
+
+func TestPlaywrightCheckIsReadOnlyRegistered(t *testing.T) {
+	c := playwrightCheck()
+	if c.Name != "playwright" {
+		t.Fatalf("name: %q", c.Name)
+	}
+	// Run must not panic and must return a detail mentioning mcp state.
+	_, detail := c.Run()
+	if !strings.Contains(detail, "mcp=") {
+		t.Fatalf("detail should report mcp state: %q", detail)
+	}
+}

@@ -191,3 +191,17 @@ func TestDryRunApplyConflict(t *testing.T) {
 		t.Fatal("apply + explicit --dry-run=true: expected a conflict error, got nil")
 	}
 }
+
+func TestHasFrontendRepo(t *testing.T) {
+	m := &manifest.Manifest{Repos: []manifest.Repo{
+		{Name: "be", Tags: []string{"primary", "backend"}},
+		{Name: "web", Tags: []string{"primary", "frontend"}},
+	}}
+	if !hasFrontendRepo(m) {
+		t.Fatal("should detect the frontend repo")
+	}
+	m2 := &manifest.Manifest{Repos: []manifest.Repo{{Name: "be", Tags: []string{"backend"}}}}
+	if hasFrontendRepo(m2) {
+		t.Fatal("no frontend repo → false")
+	}
+}
