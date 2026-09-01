@@ -1,15 +1,19 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 )
 
 // secretPresenceCheck reports which DB credential KEYS are resolvable (env or
@@ -78,12 +82,77 @@ func playwrightCheck() Check {
 	}
 }
 
+// pluginCheck báo plugin znf đã materialize chưa: plugin.json tồn tại + hợp lệ,
+// số skill/agent ship ra, và số file managed.
+func pluginCheck() Check {
+	dest, _ := plugin.DefaultDest()
+	return pluginCheckAt(dest)
+}
+
+func pluginCheckAt(dest string) Check {
+	return Check{
+		Name: "znf-plugin",
+		Run: func() (bool, string) {
+			manifestPath := filepath.Join(dest, ".manifest.json")
+			pj := filepath.Join(dest, ".claude-plugin", "plugin.json")
+			b, err := os.ReadFile(pj) //nolint:gosec // G304 -- dest nội bộ
+			if err != nil {
+				return false, "znf chưa cài (chạy `zenify skills sync`)"
+			}
+			var meta struct {
+				Name string `json:"name"`
+			}
+			if json.Unmarshal(b, &meta) != nil || meta.Name != "znf" {
+				return false, "plugin.json không hợp lệ"
+			}
+			m, err := managed.Load(manifestPath)
+			if err != nil {
+				return true, "ok — plugin.json hợp lệ (manifest không đọc được)"
+			}
+			skills := countDirs(filepath.Join(dest, "skills"))
+			agents := countFiles(filepath.Join(dest, "agents"))
+			return true, fmt.Sprintf("ok — %d skill, %d agent, %d file managed", skills, agents, len(m.Entries))
+		},
+	}
+}
+
+// countDirs đếm thư mục con trực tiếp; lỗi → 0.
+func countDirs(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			n++
+		}
+	}
+	return n
+}
+
+// countFiles đếm file thường trực tiếp; lỗi → 0.
+func countFiles(dir string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			n++
+		}
+	}
+	return n
+}
+
 // registerDefaultChecks wires the foundation-layer checks. Called once at root
 // construction. Uses os.Getenv and the workspace default settings path.
 func registerDefaultChecks() {
 	RegisterCheck(secretPresenceCheck(os.Getenv, defaultDoctorSettingsPath(os.Getenv)))
 	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
 	RegisterCheck(playwrightCheck())
+	RegisterCheck(pluginCheck())
 }
 
 func defaultDoctorSettingsPath(getenv func(string) string) string {
