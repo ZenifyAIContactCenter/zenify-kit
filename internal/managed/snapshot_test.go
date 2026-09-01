@@ -70,7 +70,7 @@ func TestRestore_AllOrNothing_OnUnwritableTarget(t *testing.T) {
 		t.Fatalf("snapshot: %v", err)
 	}
 
-	// Mutate both live files, then make badDir unwritable so writeFileAtomic fails there.
+	// Mutate both live files, then make badDir unwritable so WriteFileAtomic fails there.
 	if err := os.WriteFile(okFile, []byte("v2"), 0o644); err != nil {
 		t.Fatal(err)
 	}
