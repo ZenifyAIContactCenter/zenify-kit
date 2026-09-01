@@ -1,6 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
+	"errors"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -43,20 +47,57 @@ var checks = []Check{
 // diagnostics without editing this file.
 func RegisterCheck(c Check) { checks = append(checks, c) }
 
+const doctorSchemaVersion = 1
+
+type doctorCheckJSON struct {
+	Name   string `json:"name"`
+	OK     bool   `json:"ok"`
+	Detail string `json:"detail"`
+}
+type doctorData struct {
+	Healthy bool              `json:"healthy"`
+	Checks  []doctorCheckJSON `json:"checks"`
+}
+type doctorEnvelope struct {
+	SchemaVersion int        `json:"schema_version"`
+	Data          doctorData `json:"data"`
+}
+
 func newDoctorCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "doctor",
-		Short: "Read-only environment health check (never mutates, never prints secrets)",
+	var asJSON, exitOnFail bool
+	cmd := &cobra.Command{
+		Use:           "doctor",
+		Short:         "Read-only environment health check (never mutates, never prints secrets)",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			for _, c := range checks {
-				ok, detail := c.Run()
-				mark := "✓"
-				if !ok {
-					mark = "✗"
+			results, healthy := runChecks()
+			if asJSON {
+				env := doctorEnvelope{SchemaVersion: doctorSchemaVersion, Data: doctorData{Healthy: healthy}}
+				for _, r := range results {
+					env.Data.Checks = append(env.Data.Checks, doctorCheckJSON(r))
 				}
-				cmd.Printf("%s %s: %s\n", mark, c.Name, detail)
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				if err := enc.Encode(env); err != nil {
+					return err
+				}
+			} else {
+				for _, r := range results {
+					mark := "✓"
+					if !r.OK {
+						mark = "✗"
+					}
+					cmd.Printf("%s %s: %s\n", mark, r.Name, r.Detail)
+				}
+			}
+			if exitOnFail && !healthy {
+				return exitcode.New(exitcode.Fail, errors.New("doctor: one or more checks failed"))
 			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit a machine-readable JSON envelope")
+	cmd.Flags().BoolVar(&exitOnFail, "exit-on-fail", false, "exit non-zero if any check fails")
+	return cmd
 }
