@@ -153,8 +153,16 @@ func RunNew(o NewOptions) error {
 		return fmt.Errorf("wt: git worktree add failed: %w", err)
 	}
 	abort := func(cause error) error {
-		r.Run(o.RepoRoot, "worktree", "remove", "--force", path)
-		r.Run(o.RepoRoot, "branch", "-D", branch)
+		// Best-effort cleanup, but not silent: if cleanup itself fails, a
+		// half-built worktree or dangling branch survives, and the next
+		// `wt new <same-slug>` would trip the duplicate check with no visible
+		// reason. Warn so the leftover is at least diagnosable.
+		if _, e := r.Run(o.RepoRoot, "worktree", "remove", "--force", path); e != nil {
+			fmt.Fprintf(o.Stderr, "wt: warning — could not remove worktree %s during cleanup; remove it by hand: %v\n", path, e)
+		}
+		if _, e := r.Run(o.RepoRoot, "branch", "-D", branch); e != nil {
+			fmt.Fprintf(o.Stderr, "wt: warning — could not delete branch %s during cleanup; delete it by hand: %v\n", branch, e)
+		}
 		return cause
 	}
 
