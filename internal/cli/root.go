@@ -29,5 +29,8 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newUpCmd())
 	root.AddCommand(newWtCmd())
 	root.AddCommand(newDBReadCmd())
+	root.AddCommand(newGitGuardCmd())
+	root.AddCommand(newSecretScanCmd())
+	root.AddCommand(newGuardCmd())
 	return root
 }

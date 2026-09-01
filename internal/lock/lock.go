@@ -43,20 +43,20 @@ type Handle struct {
 // file-lock version so callers and tests stay stable.
 func Acquire(dir string, pid int, host string, now int64) (*Handle, error) {
 	p := filepath.Join(dir, lockName)
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		return nil, err
 	}
 
 	locked, err := flockExclusive(f)
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, err
 	}
 	if !locked {
 		// Someone else holds it. Best-effort read of the sidecar for the message.
 		held, rerr := readInfo(p)
-		f.Close()
+		_ = f.Close()
 		if rerr == nil {
 			return nil, fmt.Errorf("%w (pid %d on %s)", ErrHeld, held.PID, held.Host)
 		}
@@ -66,25 +66,25 @@ func Acquire(dir string, pid int, host string, now int64) (*Handle, error) {
 	// We hold the lock. Overwrite the sidecar with our diagnostics.
 	body, err := json.Marshal(Info{PID: pid, Host: host, CreatedAt: now})
 	if err != nil {
-		flockUnlock(f)
-		f.Close()
+		_ = flockUnlock(f)
+		_ = f.Close()
 		return nil, err
 	}
 	if err := f.Truncate(0); err != nil {
-		flockUnlock(f)
-		f.Close()
+		_ = flockUnlock(f)
+		_ = f.Close()
 		return nil, err
 	}
 	if _, err := f.WriteAt(body, 0); err != nil {
-		flockUnlock(f)
-		f.Close()
+		_ = flockUnlock(f)
+		_ = f.Close()
 		return nil, err
 	}
 	return &Handle{f: f, path: p}, nil
 }
 
 func readInfo(p string) (Info, error) {
-	b, err := os.ReadFile(p)
+	b, err := os.ReadFile(p) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		return Info{}, err
 	}

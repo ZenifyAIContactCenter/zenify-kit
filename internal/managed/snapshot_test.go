@@ -10,7 +10,7 @@ import (
 func TestSnapshotAndRestore(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "conf.txt")
-	if err := os.WriteFile(target, []byte("v1"), 0o644); err != nil {
+	if err := os.WriteFile(target, []byte("v1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	snapRoot := filepath.Join(dir, ".snap")
@@ -20,13 +20,13 @@ func TestSnapshotAndRestore(t *testing.T) {
 		t.Fatalf("snapshot: %v", err)
 	}
 	// mutate the live file
-	if err := os.WriteFile(target, []byte("v2-broken"), 0o644); err != nil {
+	if err := os.WriteFile(target, []byte("v2-broken"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := Restore(snap); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	got, _ := os.ReadFile(target)
+	got, _ := os.ReadFile(target) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if string(got) != "v1" {
 		t.Errorf("after restore = %q, want v1", got)
 	}
@@ -51,16 +51,16 @@ func TestRestore_AllOrNothing_OnUnwritableTarget(t *testing.T) {
 	okDir := filepath.Join(dir, "ok")
 	badDir := filepath.Join(dir, "bad")
 	for _, d := range []string{okDir, badDir} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(d, 0o750); err != nil {
 			t.Fatal(err)
 		}
 	}
 	okFile := filepath.Join(okDir, "a.txt")
 	badFile := filepath.Join(badDir, "b.txt")
-	if err := os.WriteFile(okFile, []byte("v1"), 0o644); err != nil {
+	if err := os.WriteFile(okFile, []byte("v1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(badFile, []byte("v1"), 0o644); err != nil {
+	if err := os.WriteFile(badFile, []byte("v1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -71,22 +71,22 @@ func TestRestore_AllOrNothing_OnUnwritableTarget(t *testing.T) {
 	}
 
 	// Mutate both live files, then make badDir unwritable so WriteFileAtomic fails there.
-	if err := os.WriteFile(okFile, []byte("v2"), 0o644); err != nil {
+	if err := os.WriteFile(okFile, []byte("v2"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(badFile, []byte("v2"), 0o644); err != nil {
+	if err := os.WriteFile(badFile, []byte("v2"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(badDir, 0o500); err != nil {
+	if err := os.Chmod(badDir, 0o500); err != nil { //nolint:gosec // G302 -- intentionally unwritable test directory (owner r-x, needed to enter/list); this is what the test exercises
 		t.Fatal(err)
 	}
-	defer os.Chmod(badDir, 0o755) // let t.TempDir cleanup succeed
+	defer func() { _ = os.Chmod(badDir, 0o755) }() //nolint:gosec // G302 -- restoring a test directory to a normal, non-secret permission so t.TempDir cleanup can traverse and remove it
 
 	if err := Restore(snap); err == nil {
 		t.Fatal("expected Restore to fail on unwritable target")
 	}
 	// All-or-nothing: the writable file must NOT be left in the restored ("v1") state.
-	got, _ := os.ReadFile(okFile)
+	got, _ := os.ReadFile(okFile) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if string(got) != "v2" {
 		t.Errorf("okFile = %q, want v2 (rolled back to pre-restore state)", got)
 	}
@@ -95,14 +95,14 @@ func TestRestore_AllOrNothing_OnUnwritableTarget(t *testing.T) {
 func TestRestore_LeavesNoTempFiles(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "conf.txt")
-	if err := os.WriteFile(target, []byte("v1"), 0o644); err != nil {
+	if err := os.WriteFile(target, []byte("v1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	snap, err := Snapshot("run-y", []string{target}, snapRoot(dir))
 	if err != nil {
 		t.Fatalf("snapshot: %v", err)
 	}
-	if err := os.WriteFile(target, []byte("v2"), 0o644); err != nil {
+	if err := os.WriteFile(target, []byte("v2"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := Restore(snap); err != nil {
@@ -122,12 +122,12 @@ func TestRestore_LeavesNoTempFiles(t *testing.T) {
 func TestRestore_PreservesFileMode(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "conf.txt")
-	if err := os.WriteFile(target, []byte("v1"), 0o644); err != nil {
+	if err := os.WriteFile(target, []byte("v1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Give the destination a non-default mode that differs from both 0o644
 	// and the 0o600 that os.CreateTemp would use, so a silent narrowing is caught.
-	if err := os.Chmod(target, 0o640); err != nil {
+	if err := os.Chmod(target, 0o640); err != nil { //nolint:gosec // G302 -- deliberately non-0600 test fixture: this test asserts Restore PRESERVES an arbitrary existing mode rather than narrowing it, so the value must differ from 0600
 		t.Fatal(err)
 	}
 	snap, err := Snapshot("run-z", []string{target}, snapRoot(dir))
@@ -136,13 +136,13 @@ func TestRestore_PreservesFileMode(t *testing.T) {
 	}
 	// Mutate the live file's content; os.WriteFile does not change the mode
 	// of an existing file, so the destination's mode stays 0o640 going into Restore.
-	if err := os.WriteFile(target, []byte("v2"), 0o644); err != nil {
+	if err := os.WriteFile(target, []byte("v2"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := Restore(snap); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	got, _ := os.ReadFile(target)
+	got, _ := os.ReadFile(target) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if string(got) != "v1" {
 		t.Errorf("after restore content = %q, want v1", got)
 	}

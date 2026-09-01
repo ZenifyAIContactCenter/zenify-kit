@@ -30,7 +30,7 @@ func TestAcquire_HeldByLiveHandle_ReturnsErrHeld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Acquire: %v", err)
 	}
-	defer h1.Release()
+	defer func() { _ = h1.Release() }()
 
 	// Second acquire while the first handle still holds the flock must fail.
 	_, err = Acquire(dir, os.Getpid()+1, "host-b", 2000)
@@ -52,7 +52,7 @@ func TestAcquire_AfterRelease_Succeeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-acquire after release: %v", err)
 	}
-	h2.Release()
+	_ = h2.Release()
 }
 
 func TestAcquire_WritesDiagnosticInfo(t *testing.T) {
@@ -61,7 +61,7 @@ func TestAcquire_WritesDiagnosticInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire: %v", err)
 	}
-	defer h.Release()
+	defer func() { _ = h.Release() }()
 
 	// The sidecar Info is readable (flock is advisory; it does not block reads).
 	got, err := readInfo(filepath.Join(dir, lockName))

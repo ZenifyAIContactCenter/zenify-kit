@@ -27,7 +27,7 @@ func SeedCopyFiles(repoRoot, worktreePath string, copyList []string) ([]string, 
 			continue
 		}
 		dst := filepath.Join(worktreePath, f)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil {
 			return warns, fmt.Errorf("wt: parent dir for copy target %q: %w", f, err)
 		}
 		if err := copyTree(src, dst); err != nil {
@@ -48,7 +48,7 @@ func SeedCopyFiles(repoRoot, worktreePath string, copyList []string) ([]string, 
 // dst first. cp's own stderr is captured into the returned error: without it a
 // real failure (disk full, cross-device) surfaces only as "exit status 1".
 func copyTree(src, dst string) error {
-	if err := exec.Command("cp", "-c", "-R", src, dst).Run(); err == nil {
+	if err := exec.Command("cp", "-c", "-R", src, dst).Run(); err == nil { //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 		return nil
 	}
 	// Clear whatever the failed CoW attempt may have left, so the fallback does
@@ -57,7 +57,7 @@ func copyTree(src, dst string) error {
 		return fmt.Errorf("clear partial copy at %s: %w", dst, err)
 	}
 	var stderr strings.Builder
-	cmd := exec.Command("cp", "-R", src, dst)
+	cmd := exec.Command("cp", "-R", src, dst) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
@@ -74,9 +74,9 @@ func copyTree(src, dst string) error {
 // WritePortEnv previously inlined.
 func upsertEnvVar(envPath, key, value string) error {
 	line := key + "=" + value
-	b, err := os.ReadFile(envPath)
+	b, err := os.ReadFile(envPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if os.IsNotExist(err) {
-		return os.WriteFile(envPath, []byte(line+"\n"), 0o644)
+		return os.WriteFile(envPath, []byte(line+"\n"), 0o600)
 	}
 	if err != nil {
 		return err
@@ -92,14 +92,14 @@ func upsertEnvVar(envPath, key, value string) error {
 		}
 	}
 	if replaced {
-		return os.WriteFile(envPath, []byte(strings.Join(lines, "\n")), 0o644)
+		return os.WriteFile(envPath, []byte(strings.Join(lines, "\n")), 0o600) //nolint:gosec // G703 -- envPath is the worktree's own env file, computed internally from the repo's configured worktree path, not externally-tainted input
 	}
 	// append, ensuring exactly one separating newline
 	if len(content) > 0 && !strings.HasSuffix(content, "\n") {
 		content += "\n"
 	}
 	content += line + "\n"
-	return os.WriteFile(envPath, []byte(content), 0o644)
+	return os.WriteFile(envPath, []byte(content), 0o600) //nolint:gosec // G703 -- envPath is the worktree's own env file, computed internally from the repo's configured worktree path, not externally-tainted input
 }
 
 // WritePortEnv sets <portEnv>=<port> in envPath: replacing an existing line for
@@ -167,7 +167,7 @@ func runInstall(dir, installCmd string) error {
 	if strings.TrimSpace(installCmd) == "" {
 		return nil
 	}
-	cmd := exec.Command("sh", "-c", installCmd)
+	cmd := exec.Command("sh", "-c", installCmd) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 	cmd.Dir = dir
 	cmd.Stdout = os.Stderr // install chatter goes to stderr, never stdout (path contract)
 	cmd.Stderr = os.Stderr

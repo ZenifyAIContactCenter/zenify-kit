@@ -131,7 +131,7 @@ func RunSweep(o SweepOptions) error {
 	}
 	if o.Fetch {
 		if _, e := r.Run(o.RepoRoot, "fetch", "origin", "--quiet"); e != nil {
-			fmt.Fprintln(o.Stderr, "wt: fetch failed — merge state may be stale, so nothing may look removable")
+			_, _ = fmt.Fprintln(o.Stderr, "wt: fetch failed — merge state may be stale, so nothing may look removable")
 		}
 	}
 	items, err := sweepPlan(r, o.RepoRoot, cfg.BaseRef, cfg.WorktreeDir)
@@ -141,29 +141,29 @@ func RunSweep(o SweepOptions) error {
 	removed, kept := 0, 0
 	for _, it := range items {
 		if !it.Remove {
-			fmt.Fprintf(o.Stdout, "wt: %s — %s, left alone\n", orDash(it.Slug), it.Reason)
+			_, _ = fmt.Fprintf(o.Stdout, "wt: %s — %s, left alone\n", orDash(it.Slug), it.Reason)
 			kept++
 			continue
 		}
 		if o.DryRun {
-			fmt.Fprintf(o.Stdout, "wt: %s — would stop port %s and remove (%s)\n", it.Slug, orDash(it.Port), it.Branch)
+			_, _ = fmt.Fprintf(o.Stdout, "wt: %s — would stop port %s and remove (%s)\n", it.Slug, orDash(it.Port), it.Branch)
 			removed++
 			continue
 		}
-		fmt.Fprintf(o.Stdout, "wt: sweeping %s (%s)\n", it.Slug, it.Branch)
+		_, _ = fmt.Fprintf(o.Stdout, "wt: sweeping %s (%s)\n", it.Slug, it.Branch)
 		stopServer(it.Path, o.Stdout)
 		closeWorkspace(it.Path, o.Stdout)
 		if e := RunRm(RmOptions{RepoRoot: o.RepoRoot, Slug: it.Slug, Host: o.Host, Pid: o.Pid, Now: o.Now, Runner: r, Stderr: o.Stderr}); e != nil {
-			fmt.Fprintf(o.Stderr, "wt:   could not remove %s: %v\n", it.Slug, e)
+			_, _ = fmt.Fprintf(o.Stderr, "wt:   could not remove %s: %v\n", it.Slug, e)
 			kept++
 			continue
 		}
 		removed++
 	}
 	if o.DryRun {
-		fmt.Fprintf(o.Stdout, "wt: %d would be removed, %d left alone\n", removed, kept)
+		_, _ = fmt.Fprintf(o.Stdout, "wt: %d would be removed, %d left alone\n", removed, kept)
 	} else {
-		fmt.Fprintf(o.Stdout, "wt: swept %d, left %d\n", removed, kept)
+		_, _ = fmt.Fprintf(o.Stdout, "wt: swept %d, left %d\n", removed, kept)
 	}
 	return nil
 }
@@ -225,14 +225,14 @@ func stopServer(path string, out io.Writer) {
 		if !gone {
 			_ = proc.Kill()
 		}
-		fmt.Fprintf(out, "wt:   stopped pid %s under %s\n", pid, path)
+		_, _ = fmt.Fprintf(out, "wt:   stopped pid %s under %s\n", pid, path)
 	}
 }
 
 // lsofCwd returns the cwd of pid via `lsof -p <pid> -a -d cwd -Fn` (the `-a` is
 // load-bearing: lsof ORs selectors otherwise). "" on any failure.
 func lsofCwd(pid string) string {
-	out, err := exec.Command("lsof", "-p", pid, "-a", "-d", "cwd", "-Fn").Output()
+	out, err := exec.Command("lsof", "-p", pid, "-a", "-d", "cwd", "-Fn").Output() //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 	if err != nil {
 		return ""
 	}
@@ -263,11 +263,11 @@ func closeWorkspace(path string, out io.Writer) {
 		return
 	}
 	if cur := os.Getenv("HERDR_WORKSPACE_ID"); cur != "" && cur == ws {
-		fmt.Fprintf(out, "wt:   workspace %s is the one you are in — left open, close it yourself\n", ws)
+		_, _ = fmt.Fprintf(out, "wt:   workspace %s is the one you are in — left open, close it yourself\n", ws)
 		return
 	}
-	if e := exec.Command("herdr", "workspace", "close", ws).Run(); e == nil {
-		fmt.Fprintf(out, "wt:   closed herdr workspace %s\n", ws)
+	if e := exec.Command("herdr", "workspace", "close", ws).Run(); e == nil { //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+		_, _ = fmt.Fprintf(out, "wt:   closed herdr workspace %s\n", ws)
 	}
 }
 

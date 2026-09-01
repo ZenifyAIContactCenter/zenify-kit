@@ -106,29 +106,29 @@ func RunRm(o RmOptions) error {
 	}
 
 	if branch == "" {
-		fmt.Fprintf(o.Stderr, "wt: %q was on a detached HEAD — no branch to delete\n", o.Slug)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: %q was on a detached HEAD — no branch to delete\n", o.Slug)
 	} else if _, e := r.Run(o.RepoRoot, "branch", "-D", branch); e != nil {
-		fmt.Fprintf(o.Stderr, "wt: warning — could not delete branch %s, delete it by hand: %v\n", branch, e)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete branch %s, delete it by hand: %v\n", branch, e)
 	}
 
 	// Clear the rebuildable caches. Best-effort: a cache-write failure must not
 	// leave the (already removed) worktree looking un-removed to the user.
 	if _, e := RemoveWorktree(o.RepoRoot, o.Slug, o.Pid, o.Host, o.Now); e != nil {
-		fmt.Fprintf(o.Stderr, "wt: warning — could not update state.json: %v\n", e)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not update state.json: %v\n", e)
 	}
 	if e := IndexRemove(o.RepoRoot, o.Slug, o.Pid, o.Host, o.Now); e != nil {
-		fmt.Fprintf(o.Stderr, "wt: warning — could not update the global index: %v\n", e)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not update the global index: %v\n", e)
 	}
 
 	// Release the session pointer if it names the slug just removed, so the next
 	// task in this repo is not refused in favour of one that is gone.
 	if ptr, active := SessionPtr(o.RepoRoot); active {
-		if b, e := os.ReadFile(ptr); e == nil && strings.TrimSpace(string(b)) == o.Slug {
-			os.Remove(ptr)
+		if b, e := os.ReadFile(ptr); e == nil && strings.TrimSpace(string(b)) == o.Slug { //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
+			_ = os.Remove(ptr)
 		}
 	}
 
-	fmt.Fprintf(o.Stderr, "wt: removed %q\n", o.Slug)
+	_, _ = fmt.Fprintf(o.Stderr, "wt: removed %q\n", o.Slug)
 	return nil
 }
 

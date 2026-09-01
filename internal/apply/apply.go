@@ -147,11 +147,11 @@ func adoptRepo(repoDir string, owned *managed.Manifest) ([]string, error) {
 // covered.
 func ensureExclude(repoDir string) (string, error) {
 	infoDir := filepath.Join(repoDir, ".git", "info")
-	if err := os.MkdirAll(infoDir, 0o755); err != nil {
+	if err := os.MkdirAll(infoDir, 0o750); err != nil {
 		return "", err
 	}
 	excludePath := filepath.Join(infoDir, "exclude")
-	b, err := os.ReadFile(excludePath)
+	b, err := os.ReadFile(excludePath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil && !os.IsNotExist(err) {
 		return "", err
 	}
@@ -165,7 +165,7 @@ func ensureExclude(repoDir string) (string, error) {
 		content += "\n"
 	}
 	content += ".worktrees/\n"
-	if err := os.WriteFile(excludePath, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(excludePath, []byte(content), 0o600); err != nil { //nolint:gosec // G703 -- excludePath is the repo's own .git/info/exclude, computed internally, not externally-tainted input
 		return "", err
 	}
 	return excludePath, nil
@@ -190,7 +190,7 @@ func ensureSettingsSkeleton(repoDir string, owned *managed.Manifest, secretKeys 
 	claudeDir := filepath.Join(repoDir, ".claude")
 	settingsPath := filepath.Join(claudeDir, "settings.local.json")
 
-	b, err := os.ReadFile(settingsPath)
+	b, err := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	switch {
 	case err == nil:
 		return mergeSettingsKeys(settingsPath, b, secretKeys)
@@ -199,7 +199,7 @@ func ensureSettingsSkeleton(repoDir string, owned *managed.Manifest, secretKeys 
 	}
 
 	// Absent — create with the required keys as empty placeholders.
-	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+	if err := os.MkdirAll(claudeDir, 0o750); err != nil {
 		return "", err
 	}
 	env := make(map[string]any, len(secretKeys))

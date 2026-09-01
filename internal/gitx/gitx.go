@@ -18,7 +18,7 @@ type execRunner struct{}
 
 func (execRunner) Run(dir string, args ...string) ([]byte, error) {
 	full := append([]string{"-C", dir}, args...)
-	return exec.Command("git", full...).Output()
+	return exec.Command("git", full...).Output() //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 }
 
 // ExecRunner returns the default Runner that shells to `git`.
@@ -121,7 +121,7 @@ func readInsteadOf(r Runner, dir string) map[string]string {
 }
 
 func perRepoDeploy(dir, branch string) bool {
-	b, err := os.ReadFile(filepath.Join(dir, ".claude", "deploy-branches"))
+	b, err := os.ReadFile(filepath.Join(dir, ".claude", "deploy-branches")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		return false
 	}
@@ -136,7 +136,7 @@ func perRepoDeploy(dir, branch string) bool {
 // detectLayout classifies the .gitignore: "new" if it commits .claude (only
 // ignores secret/local files), "old" if it ignores /.claude wholesale, else "none".
 func detectLayout(dir string) string {
-	b, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	b, err := os.ReadFile(filepath.Join(dir, ".gitignore")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		return "none"
 	}

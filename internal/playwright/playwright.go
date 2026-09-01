@@ -69,7 +69,7 @@ func Status(o Options) (mcpRegistered bool, browsersPresent bool, detail string)
 func Bootstrap(o Options) error {
 	note := func(format string, a ...any) {
 		if o.Stdout != nil {
-			fmt.Fprintf(o.Stdout, format+"\n", a...)
+			_, _ = fmt.Fprintf(o.Stdout, format+"\n", a...)
 		}
 	}
 	if o.Runner("claude", []string{"mcp", "get", "playwright"}) != nil {

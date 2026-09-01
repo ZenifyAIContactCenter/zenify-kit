@@ -32,7 +32,8 @@ func validSlug(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+		ok := r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-'
+		if !ok {
 			return false
 		}
 	}
@@ -77,7 +78,7 @@ func RunNew(o NewOptions) error {
 		if cfg.HotfixBaseRef != "" {
 			base = cfg.HotfixBaseRef
 		} else {
-			fmt.Fprintf(o.Stderr, "wt: no hotfixBaseRef declared — branching this hotfix from %s\n", base)
+			_, _ = fmt.Fprintf(o.Stderr, "wt: no hotfixBaseRef declared — branching this hotfix from %s\n", base)
 		}
 	}
 
@@ -92,14 +93,14 @@ func RunNew(o NewOptions) error {
 	// Guard tier 1: one task per repo per session (self-healing stale pointer).
 	ptr, active := SessionPtr(o.RepoRoot)
 	if active && o.Type != "hotfix" && !o.Another {
-		if prev, e := os.ReadFile(ptr); e == nil {
+		if prev, e := os.ReadFile(ptr); e == nil { //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 			prevSlug := strings.TrimSpace(string(prev))
 			if prevSlug != "" && prevSlug != o.Slug {
 				prevPath := filepath.Join(o.RepoRoot, cfg.WorktreeDir, prevSlug)
-				if _, e := os.Stat(prevPath); e == nil {
+				if _, e := os.Stat(prevPath); e == nil { //nolint:gosec // G703 -- prevPath is built from a slug read out of this repo's own session pointer file (previously validated by validSlug when it was written), joined under the repo's own configured worktree dir; not externally-tainted input
 					return fmt.Errorf("wt: this session already opened task %q in this repo\n  continue there:   cd %s\n  separate task:    wt new %s --another\n  production fix:   wt new %s --type hotfix", prevSlug, prevPath, o.Slug, o.Slug)
 				}
-				os.Remove(ptr) // stale: recorded worktree is gone
+				_ = os.Remove(ptr) // stale: recorded worktree is gone
 			}
 		}
 	}
@@ -163,10 +164,10 @@ func RunNew(o NewOptions) error {
 		// `wt new <same-slug>` would trip the duplicate check with no visible
 		// reason. Warn so the leftover is at least diagnosable.
 		if _, e := r.Run(o.RepoRoot, "worktree", "remove", "--force", path); e != nil {
-			fmt.Fprintf(o.Stderr, "wt: warning — could not remove worktree %s during cleanup; remove it by hand: %v\n", path, e)
+			_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not remove worktree %s during cleanup; remove it by hand: %v\n", path, e)
 		}
 		if _, e := r.Run(o.RepoRoot, "branch", "-D", branch); e != nil {
-			fmt.Fprintf(o.Stderr, "wt: warning — could not delete branch %s during cleanup; delete it by hand: %v\n", branch, e)
+			_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete branch %s during cleanup; delete it by hand: %v\n", branch, e)
 		}
 		return cause
 	}
@@ -180,7 +181,7 @@ func RunNew(o NewOptions) error {
 		return abort(err)
 	}
 	for _, w := range warns {
-		fmt.Fprintf(o.Stderr, "wt: warning — %s\n", w)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — %s\n", w)
 	}
 
 	envPath := filepath.Join(path, orEnvFile(cfg))
@@ -223,11 +224,11 @@ func RunNew(o NewOptions) error {
 
 	// Only past every abort: record the session pointer (a failed run leaves none).
 	if active {
-		os.WriteFile(ptr, []byte(o.Slug+"\n"), 0o644)
+		_ = os.WriteFile(ptr, []byte(o.Slug+"\n"), 0o600)
 	}
 
-	fmt.Fprintf(o.Stderr, "wt: %s → %s\n", o.Slug, path)
-	fmt.Fprintf(o.Stderr, "wt: branch %s, %s=%d, deps=%s\n", branch, cfg.PortEnv, port, deps)
+	_, _ = fmt.Fprintf(o.Stderr, "wt: %s → %s\n", o.Slug, path)
+	_, _ = fmt.Fprintf(o.Stderr, "wt: branch %s, %s=%d, deps=%s\n", branch, cfg.PortEnv, port, deps)
 	return nil
 }
 

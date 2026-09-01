@@ -17,7 +17,7 @@ type Runner interface {
 type execRunner struct{}
 
 func (execRunner) Run(args ...string) ([]byte, error) {
-	cmd := exec.Command("gh", args...)
+	cmd := exec.Command("gh", args...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 	if len(args) > 0 && args[0] == "auth" {
 		// `gh auth status` writes its success output to stderr on gh < 2.33.0;
 		// capture both so CheckAuth still sees it. `repo list --json` must stay

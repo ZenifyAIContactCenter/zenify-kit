@@ -9,10 +9,10 @@ import (
 func writeWorktreeJSON(t *testing.T, root, body string) {
 	t.Helper()
 	dir := filepath.Join(root, ".claude")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "worktree.json"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "worktree.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

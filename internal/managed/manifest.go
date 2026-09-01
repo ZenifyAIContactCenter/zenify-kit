@@ -26,7 +26,7 @@ func Fingerprint(b []byte) string {
 
 // Load reads a manifest from disk; a missing file yields an empty manifest.
 func Load(path string) (*Manifest, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if os.IsNotExist(err) {
 		return &Manifest{Entries: map[string]Entry{}}, nil
 	}
@@ -52,7 +52,7 @@ func (m *Manifest) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o644)
+	return os.WriteFile(path, b, 0o600)
 }
 
 // Record reads filePath, fingerprints it, and stores/updates its entry.
@@ -60,7 +60,7 @@ func (m *Manifest) Record(filePath string) error {
 	if m.Entries == nil {
 		m.Entries = map[string]Entry{}
 	}
-	b, err := os.ReadFile(filePath)
+	b, err := os.ReadFile(filePath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		return err
 	}

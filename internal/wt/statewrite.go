@@ -39,7 +39,7 @@ func writeStateAtomic(dir string, s *StateFile) error {
 	if s.Version == 0 {
 		s.Version = 1
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("wt: mkdir %s: %w", dir, err)
 	}
 	data, err := json.MarshalIndent(s, "", "  ")
@@ -53,16 +53,16 @@ func writeStateAtomic(dir string, s *StateFile) error {
 	}
 	tmpName := tmp.Name()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return err
 	}
 	if err := os.Rename(tmpName, filepath.Join(dir, "state.json")); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("wt: rename state.json in %s: %w", dir, err)
 	}
 	return nil
@@ -73,14 +73,14 @@ func writeStateAtomic(dir string, s *StateFile) error {
 // concurrent holder makes mutate return lock.ErrHeld rather than corrupt state.
 func withStateLock(repoRoot string, pid int, host string, now int64, mutate func(*StateFile) error) error {
 	dir := filepath.Join(repoRoot, ".wt")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("wt: mkdir %s: %w", dir, err)
 	}
 	h, err := lock.Acquire(dir, pid, host, now)
 	if err != nil {
 		return err
 	}
-	defer h.Release()
+	defer func() { _ = h.Release() }()
 	st, err := ReadState(repoRoot)
 	if err != nil {
 		return err

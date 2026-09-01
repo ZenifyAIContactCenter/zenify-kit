@@ -17,7 +17,7 @@ func TestFingerprint_Stable(t *testing.T) {
 func TestManifest_RecordAndRoundtrip(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "seed.txt")
-	if err := os.WriteFile(f, []byte("content-v1"), 0o644); err != nil {
+	if err := os.WriteFile(f, []byte("content-v1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	m := &Manifest{}

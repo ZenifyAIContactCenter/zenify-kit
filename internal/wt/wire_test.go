@@ -16,12 +16,12 @@ func wireFixture(t *testing.T, peersJSON string) (root, wtPath string) {
 	t.Helper()
 	workspace := t.TempDir()
 	root = filepath.Join(workspace, "myrepo")
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	if err := os.MkdirAll(root, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	writeWorktreeJSON(t, root, `{"abbrev":"myrepo","user":"namph","portRange":[3200,3249],"deps":"install","peers":`+peersJSON+`}`)
 	wtPath = filepath.Join(root, ".worktrees", "my-task")
-	if err := os.MkdirAll(wtPath, 0o755); err != nil {
+	if err := os.MkdirAll(wtPath, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	return root, wtPath
@@ -42,10 +42,10 @@ func TestRunWire_PeerWorktreeExists(t *testing.T) {
 	root, wtPath := wireFixture(t, `{"API_URL":{"repo":"peer","url":"http://localhost:{port}"}}`)
 	workspace := filepath.Dir(root)
 	peerWt := filepath.Join(workspace, "peer", ".worktrees", "my-task")
-	if err := os.MkdirAll(peerWt, 0o755); err != nil {
+	if err := os.MkdirAll(peerWt, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
@@ -56,7 +56,7 @@ func TestRunWire_PeerWorktreeExists(t *testing.T) {
 	if err := RunWire(wireOpts(root, wtPath, g, false)); err != nil {
 		t.Fatalf("RunWire: %v", err)
 	}
-	b, err := os.ReadFile(filepath.Join(wtPath, ".env"))
+	b, err := os.ReadFile(filepath.Join(wtPath, ".env")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,10 +67,10 @@ func TestRunWire_PeerWorktreeExists(t *testing.T) {
 
 func TestRunWire_NoPeerWorktree_FallsBackToBaseline(t *testing.T) {
 	root, wtPath := wireFixture(t, `{"API_URL":{"repo":"peer","url":"http://localhost:{port}"}}`)
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("API_URL=http://localhost:9999\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("API_URL=http://localhost:9999\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
@@ -80,7 +80,7 @@ func TestRunWire_NoPeerWorktree_FallsBackToBaseline(t *testing.T) {
 	if err := RunWire(wireOpts(root, wtPath, g, false)); err != nil {
 		t.Fatalf("RunWire: %v", err)
 	}
-	b, err := os.ReadFile(filepath.Join(wtPath, ".env"))
+	b, err := os.ReadFile(filepath.Join(wtPath, ".env")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestRunWire_NoPeerWorktree_FallsBackToBaseline(t *testing.T) {
 
 func TestRunWire_NoPeerNoBaseline_LeftAsIs(t *testing.T) {
 	root, wtPath := wireFixture(t, `{"API_URL":{"repo":"peer","url":"http://localhost:{port}"}}`)
-	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
@@ -100,7 +100,7 @@ func TestRunWire_NoPeerNoBaseline_LeftAsIs(t *testing.T) {
 	if err := RunWire(wireOpts(root, wtPath, g, false)); err != nil {
 		t.Fatalf("RunWire: %v", err)
 	}
-	b, err := os.ReadFile(filepath.Join(wtPath, ".env"))
+	b, err := os.ReadFile(filepath.Join(wtPath, ".env")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,11 +113,11 @@ func TestRunWire_AlreadyCorrect_NoChange(t *testing.T) {
 	root, wtPath := wireFixture(t, `{"API_URL":{"repo":"peer","url":"http://localhost:{port}"}}`)
 	workspace := filepath.Dir(root)
 	peerWt := filepath.Join(workspace, "peer", ".worktrees", "my-task")
-	if err := os.MkdirAll(peerWt, 0o755); err != nil {
+	if err := os.MkdirAll(peerWt, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	original := "FOO=bar\nAPI_URL=http://localhost:3311"
-	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte(original), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte(original), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
@@ -127,7 +127,7 @@ func TestRunWire_AlreadyCorrect_NoChange(t *testing.T) {
 	if err := RunWire(wireOpts(root, wtPath, g, false)); err != nil {
 		t.Fatalf("RunWire: %v", err)
 	}
-	b, err := os.ReadFile(filepath.Join(wtPath, ".env"))
+	b, err := os.ReadFile(filepath.Join(wtPath, ".env")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,11 +140,11 @@ func TestRunWire_DryRun_LeavesDiskUntouched(t *testing.T) {
 	root, wtPath := wireFixture(t, `{"API_URL":{"repo":"peer","url":"http://localhost:{port}"}}`)
 	workspace := filepath.Dir(root)
 	peerWt := filepath.Join(workspace, "peer", ".worktrees", "my-task")
-	if err := os.MkdirAll(peerWt, 0o755); err != nil {
+	if err := os.MkdirAll(peerWt, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	original := "FOO=bar\n"
-	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte(original), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte(original), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
@@ -154,7 +154,7 @@ func TestRunWire_DryRun_LeavesDiskUntouched(t *testing.T) {
 	if err := RunWire(wireOpts(root, wtPath, g, true)); err != nil {
 		t.Fatalf("RunWire: %v", err)
 	}
-	b, err := os.ReadFile(filepath.Join(wtPath, ".env"))
+	b, err := os.ReadFile(filepath.Join(wtPath, ".env")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestRunWire_DryRun_LeavesDiskUntouched(t *testing.T) {
 
 func TestRunWire_NoPeersDeclared(t *testing.T) {
 	root, wtPath := wireFixture(t, `{}`)
-	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
@@ -191,10 +191,10 @@ func TestRunWire_DeterministicOrder(t *testing.T) {
 	root, wtPath := wireFixture(t, `{"B_URL":{"repo":"peer","url":"http://localhost:{port}"},"A_URL":{"repo":"peer","url":"http://localhost:{port}"}}`)
 	workspace := filepath.Dir(root)
 	peerWt := filepath.Join(workspace, "peer", ".worktrees", "my-task")
-	if err := os.MkdirAll(peerWt, 0o755); err != nil {
+	if err := os.MkdirAll(peerWt, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(wtPath, ".env"), []byte("FOO=bar\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	g := &gitStub{out: map[string]string{}, err: map[string]error{}}

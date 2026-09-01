@@ -9,7 +9,7 @@ import (
 
 func readStateRaw(t *testing.T, repoRoot string) *StateFile {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(repoRoot, ".wt", "state.json"))
+	b, err := os.ReadFile(filepath.Join(repoRoot, ".wt", "state.json")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if err != nil {
 		t.Fatal(err)
 	}

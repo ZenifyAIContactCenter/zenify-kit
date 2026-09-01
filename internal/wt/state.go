@@ -31,7 +31,7 @@ type StateFile struct {
 // repo with no wt worktrees yet reads as an empty state.
 func ReadState(repoRoot string) (*StateFile, error) {
 	path := filepath.Join(repoRoot, ".wt", "state.json")
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if os.IsNotExist(err) {
 		return &StateFile{Version: 1}, nil
 	}
@@ -76,7 +76,7 @@ func ReadIndex() (map[string][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if os.IsNotExist(err) {
 		return map[string][]string{}, nil
 	}
