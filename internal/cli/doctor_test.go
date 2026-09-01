@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
@@ -72,5 +73,38 @@ func TestDoctorNoExitByDefault(t *testing.T) {
 	cmd.SetArgs([]string{})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("default run must not error on unhealthy: %v", err)
+	}
+}
+
+func TestDoctorFixRunsOnlyFailingWithFixer(t *testing.T) {
+	saved := checks
+	defer func() { checks = saved }()
+	fixed := false
+	ranNilFix := false // guard: a passing check's Fix must never run
+	checks = []Check{
+		{Name: "repairable", Run: func() (bool, string) {
+			if fixed {
+				return true, "now ok"
+			}
+			return false, "needs fix"
+		}, Fix: func() (bool, string) { fixed = true; return true, "repaired" }},
+		{Name: "healthy", Run: func() (bool, string) { return true, "fine" },
+			Fix: func() (bool, string) { ranNilFix = true; return true, "" }},
+	}
+	cmd := newDoctorCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--fix"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !fixed {
+		t.Fatal("Fix on the failing check should have run")
+	}
+	if ranNilFix {
+		t.Fatal("Fix on an already-passing check must NOT run")
+	}
+	if !strings.Contains(out.String(), "now ok") {
+		t.Fatalf("post-fix state not rendered: %s", out.String())
 	}
 }

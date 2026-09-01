@@ -64,13 +64,28 @@ type doctorEnvelope struct {
 }
 
 func newDoctorCmd() *cobra.Command {
-	var asJSON, exitOnFail bool
+	var asJSON, exitOnFail, doFix bool
 	cmd := &cobra.Command{
 		Use:           "doctor",
 		Short:         "Read-only environment health check (never mutates, never prints secrets)",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if doFix {
+				results, _ := runChecks()
+				for i, r := range results {
+					if !r.OK && checks[i].Fix != nil {
+						ok, detail := checks[i].Fix()
+						mark := "⚙"
+						if !ok {
+							mark = "✗"
+						}
+						if !asJSON {
+							cmd.Printf("%s %s: %s\n", mark, checks[i].Name, detail)
+						}
+					}
+				}
+			}
 			results, healthy := runChecks()
 			if asJSON {
 				env := doctorEnvelope{SchemaVersion: doctorSchemaVersion, Data: doctorData{Healthy: healthy}}
@@ -99,5 +114,6 @@ func newDoctorCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit a machine-readable JSON envelope")
 	cmd.Flags().BoolVar(&exitOnFail, "exit-on-fail", false, "exit non-zero if any check fails")
+	cmd.Flags().BoolVar(&doFix, "fix", false, "apply the safe-subset of automatic repairs, then re-check")
 	return cmd
 }
