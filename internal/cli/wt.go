@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
@@ -18,7 +20,7 @@ func newWtCmd() *cobra.Command {
 		Use:   "wt",
 		Short: "Git worktree + dev-env manager (read-only surface in this build)",
 	}
-	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd())
+	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd())
 	return cmd
 }
 
@@ -125,4 +127,112 @@ func newWtConfigCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&portKey, "port", "", "print the allocated port for this key instead of the full config")
 	return c
+}
+
+func newWtNewCmd() *cobra.Command {
+	var typ, base string
+	var forceInstall, another bool
+	c := &cobra.Command{
+		Use:   "new <slug>",
+		Short: "Create a worktree: branch + port + seeded env + deps",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := repoRoot()
+			if err != nil {
+				return err
+			}
+			host, _ := os.Hostname()
+			return wt.RunNew(wt.NewOptions{
+				RepoRoot:     root,
+				Slug:         args[0],
+				Type:         typ,
+				BaseOverride: base,
+				ForceInstall: forceInstall,
+				Another:      another,
+				Host:         host,
+				Pid:          os.Getpid(),
+				Now:          time.Now().Unix(),
+				Runner:       gitx.ExecRunner(),
+				Stderr:       cmd.ErrOrStderr(),
+			})
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	c.Flags().StringVar(&typ, "type", "feat", "feat|fix|chore|hotfix")
+	c.Flags().StringVar(&base, "base", "", "override the base ref (e.g. this week's release)")
+	c.Flags().BoolVar(&forceInstall, "install", false, "force deps=install even if config says symlink/clone")
+	c.Flags().BoolVar(&another, "another", false, "allow a second concurrent task in this repo")
+	return c
+}
+
+func newWtLsCmd() *cobra.Command {
+	var asJSON bool
+	c := &cobra.Command{
+		Use:   "ls",
+		Short: "List worktrees in this repo (git ⋈ state), with running/merged status",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			root, err := repoRoot()
+			if err != nil {
+				return err
+			}
+			cfg, err := wt.Load(root)
+			if err != nil {
+				return err
+			}
+			rows, err := wt.List(gitx.ExecRunner(), root, cfg)
+			if err != nil {
+				return err
+			}
+			w := cmd.OutOrStdout()
+			if asJSON {
+				enc := json.NewEncoder(w)
+				enc.SetIndent("", "  ")
+				if rows == nil {
+					rows = []wt.Row{}
+				}
+				return enc.Encode(rows)
+			}
+			if len(rows) == 0 {
+				fmt.Fprintln(w, "wt: no tasks in this repo")
+				return nil
+			}
+			fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %s\n", "SLUG", "BRANCH", "PORT", "DEPS", "MERGED", "RUNNING", "PATH")
+			for _, r := range rows {
+				fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %s\n", r.Slug, r.Branch, r.Port, r.Deps, r.Merged, r.Running, r.Path)
+			}
+			return nil
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	c.Flags().BoolVar(&asJSON, "json", false, "emit the rows as a JSON array (editor-agnostic)")
+	return c
+}
+
+func newWtUrlCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "url <slug>",
+		Short: "Print http://localhost:<port> for a slug",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := repoRoot()
+			if err != nil {
+				return err
+			}
+			cfg, err := wt.Load(root)
+			if err != nil {
+				return err
+			}
+			u, err := wt.URLFor(gitx.ExecRunner(), root, cfg, args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), u) // exact stdout contract, like `wt path`
+			return nil
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
 }
