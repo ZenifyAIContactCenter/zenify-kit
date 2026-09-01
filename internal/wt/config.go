@@ -23,6 +23,7 @@ type Config struct {
 	Install        string
 	User           string
 	PortRange      [2]int
+	PortCount      int
 	Copy           []string
 	EnvFile        string
 	HotfixBaseRef  string
@@ -48,6 +49,7 @@ type rawConfig struct {
 	Install        string              `json:"install"`
 	User           string              `json:"user"`
 	PortRange      json.RawMessage     `json:"portRange"`
+	PortCount      int                 `json:"portCount"`
 	Copy           []string            `json:"copy"`
 	EnvFile        string              `json:"envFile"`
 	HotfixBaseRef  string              `json:"hotfixBaseRef"`
@@ -80,6 +82,7 @@ func Load(repoRoot string) (*Config, error) {
 		Install:        raw.Install,
 		User:           orDefault(raw.User, "namph"),
 		PortRange:      pr,
+		PortCount:      orInt(raw.PortCount, 1),
 		Copy:           raw.Copy,
 		EnvFile:        raw.EnvFile,
 		HotfixBaseRef:  raw.HotfixBaseRef,
@@ -94,6 +97,14 @@ func orDefault(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// orInt returns v when positive, else def. A missing JSON int is 0 → default.
+func orInt(v, def int) int {
+	if v > 0 {
+		return v
+	}
+	return def
 }
 
 // parsePortRange accepts [lo,hi], "lo hi", or empty (→ default [3100,3999]).
