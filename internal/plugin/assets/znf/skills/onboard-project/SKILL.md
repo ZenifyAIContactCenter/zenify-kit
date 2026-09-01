@@ -104,5 +104,5 @@ After the standard MAP/BOOTSTRAP steps above, wire the global kit:
 Step 8 used to say "inform the `project-manager` agent". That agent is gone, and the step was hollow
 anyway: it wrote a status file into `~/.claude/plans/`, which nothing reads. A project's status lives in
 its own spec and plan files under `docs/superpowers/` and in the SDD ledger at
-`.superpowers/sdd/<plan>/progress.md`, both produced as a side effect of doing the work — so there is
+`.znf/sdd/<plan>/progress.md`, both produced as a side effect of doing the work — so there is
 nothing to register by hand.

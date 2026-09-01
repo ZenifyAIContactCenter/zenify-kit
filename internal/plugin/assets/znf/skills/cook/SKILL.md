@@ -479,7 +479,7 @@ to switch executor.
 
 ### The ledger's "review clean" does not cover appearance
 
-The receipt for this step is SDD's ledger — `<repo-root>/.superpowers/sdd/<plan>/progress.md`, one
+The receipt for this step is SDD's ledger — `<repo-root>/.znf/sdd/<plan>/progress.md`, one
 `Task <N>: complete (commits a1b2c3d..d4e5f6a, review clean)` per task. Read it, but know exactly what
 that phrase does and does not certify.
 

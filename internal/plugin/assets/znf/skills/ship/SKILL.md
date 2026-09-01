@@ -212,7 +212,7 @@ start early, and that section says why.
    ## Ground      db_read doc <each-real-collection-the-diff-touches>
                   db_read sql 'DESCRIBE <each-real-table-it-touches>'
    ## Deferred    every `minor (deferred)` line from the SDD ledger, verbatim:
-                    rg -n 'minor \(deferred\)' .superpowers/sdd/*/progress.md
+                    rg -n 'minor \(deferred\)' .znf/sdd/*/progress.md
                   omit this block entirely when there is no ledger (/fix, /hotfix)
    ```
 
