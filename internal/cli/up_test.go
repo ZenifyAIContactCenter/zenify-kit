@@ -169,20 +169,25 @@ func TestRunApply_PartialFailure_SavesManifestAndReturnsFail(t *testing.T) {
 }
 
 func TestDryRunApplyConflict(t *testing.T) {
-	// default: dry-run true (not explicitly set), no --apply → no conflict
-	if err := dryRunApplyConflict(false, false); err != nil {
+	// args: (apply, dryRunChanged, dryRun)
+	// default: dry-run true by default but not explicitly set, no --apply → ok
+	if err := dryRunApplyConflict(false, false, true); err != nil {
 		t.Fatalf("default (no apply, dry-run unset): unexpected error %v", err)
 	}
 	// --apply alone (dry-run not explicitly set) → allowed
-	if err := dryRunApplyConflict(true, false); err != nil {
+	if err := dryRunApplyConflict(true, false, true); err != nil {
 		t.Fatalf("apply alone: unexpected error %v", err)
 	}
-	// explicit --dry-run alone → allowed
-	if err := dryRunApplyConflict(false, true); err != nil {
+	// explicit --dry-run (true) alone → allowed
+	if err := dryRunApplyConflict(false, true, true); err != nil {
 		t.Fatalf("explicit dry-run alone: unexpected error %v", err)
 	}
-	// --apply together with an explicit --dry-run → rejected
-	if err := dryRunApplyConflict(true, true); err == nil {
-		t.Fatal("apply + explicit dry-run: expected a conflict error, got nil")
+	// --apply with an explicit --dry-run=false → coherent mutate request, allowed
+	if err := dryRunApplyConflict(true, true, false); err != nil {
+		t.Fatalf("apply + explicit --dry-run=false: unexpected error %v", err)
+	}
+	// --apply with an explicit --dry-run(=true) → contradiction, rejected
+	if err := dryRunApplyConflict(true, true, true); err == nil {
+		t.Fatal("apply + explicit --dry-run=true: expected a conflict error, got nil")
 	}
 }
