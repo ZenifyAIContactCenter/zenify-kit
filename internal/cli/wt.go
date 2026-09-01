@@ -20,7 +20,7 @@ func newWtCmd() *cobra.Command {
 		Use:   "wt",
 		Short: "Git worktree + dev-env manager (read-only surface in this build)",
 	}
-	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd(), newWtSweepCmd())
+	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd(), newWtSweepCmd(), newWtWireCmd())
 	return cmd
 }
 
@@ -291,4 +291,50 @@ func newWtSweepCmd() *cobra.Command {
 	c.Flags().BoolVarP(&dry, "dry-run", "n", false, "report what would be removed without touching anything")
 	c.Flags().BoolVarP(&fetch, "fetch", "f", false, "fetch origin first so merge state is current")
 	return c
+}
+
+// mainCheckoutOf returns the main checkout root given any worktree toplevel wt.
+// git-common-dir points at the shared .git; its parent is the main checkout. A
+// relative result (".git") means wt already IS the main checkout.
+func mainCheckoutOf(wtTop string) (string, error) {
+	b, err := gitx.ExecRunner().Run(wtTop, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	cd := strings.TrimSpace(string(b))
+	if !filepath.IsAbs(cd) {
+		cd = filepath.Join(wtTop, cd) // ".git" → <wtTop>/.git
+	}
+	return filepath.Dir(cd), nil
+}
+
+func newWtWireCmd() *cobra.Command {
+	var dryRun bool
+	cmd := &cobra.Command{
+		Use:   "wire",
+		Short: "point this worktree's env file at peer services being changed",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			wtTop, err := repoRoot() // from inside a worktree = the worktree toplevel
+			if err != nil {
+				return err
+			}
+			mainRoot, err := mainCheckoutOf(wtTop)
+			if err != nil {
+				return err
+			}
+			return wt.RunWire(wt.WireOptions{
+				RepoRoot:     mainRoot,
+				WorktreePath: wtTop,
+				DryRun:       dryRun,
+				Runner:       gitx.ExecRunner(),
+				Stdout:       cmd.OutOrStdout(),
+				Stderr:       cmd.ErrOrStderr(),
+			})
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	cmd.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "show what would change without writing")
+	return cmd
 }
