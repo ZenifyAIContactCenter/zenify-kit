@@ -20,8 +20,9 @@ type Repo struct {
 
 // Manifest is the full desired-set plus the GitHub org that owns it.
 type Manifest struct {
-	Org   string `yaml:"org"`
-	Repos []Repo `yaml:"repos"`
+	Org        string   `yaml:"org"`
+	Repos      []Repo   `yaml:"repos"`
+	SecretKeys []string `yaml:"secretKeys"` // env keys the kit scaffolds as empty placeholders (FR-065); values never distributed
 }
 
 // Load parses a manifest YAML file. A missing file, empty org, or empty repo

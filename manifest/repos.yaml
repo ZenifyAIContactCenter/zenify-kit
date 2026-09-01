@@ -2,6 +2,22 @@
 # Versioned in the kit; adding a repo is one commit, teammates re-run to pick up the delta.
 # `path` is relative to the workspace root and overridable per-dev via a local overlay.
 org: ZenifyAIContactCenter
+# Env keys the kit scaffolds into each repo's .claude/settings.local.json as
+# EMPTY placeholders (FR-065). Only the key NAMES are versioned here — a secret
+# VALUE is never stored, distributed, or read by the kit (FR-041). A developer
+# fills the values locally; an existing settings file keeps its values and only
+# gains the keys it is missing.
+secretKeys:
+  - MONGO_URL
+  - MYSQL_HOST
+  - MYSQL_PORT
+  - MYSQL_USER
+  - MYSQL_PASSWORD
+  - MYSQL_DATABASE
+  - E2E_DOMAIN
+  - E2E_EMAIL
+  - E2E_PASSWORD
+  - POSTHOG_API_KEY
 repos:
   - name: contact-center-be
     url: git@github.com:ZenifyAIContactCenter/contact-center-be.git

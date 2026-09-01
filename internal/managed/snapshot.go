@@ -78,7 +78,7 @@ func Restore(snapDir string) error {
 		for i := len(done) - 1; i >= 0; i-- {
 			u := done[i]
 			if u.existed {
-				_ = writeFileAtomic(u.path, u.data)
+				_ = WriteFileAtomic(u.path, u.data)
 			} else {
 				_ = os.Remove(u.path)
 			}
@@ -91,7 +91,7 @@ func Restore(snapDir string) error {
 			rollback()
 			return rerr
 		}
-		if err := writeFileAtomic(orig, data); err != nil {
+		if err := WriteFileAtomic(orig, data); err != nil {
 			rollback()
 			return err
 		}
@@ -100,12 +100,12 @@ func Restore(snapDir string) error {
 	return nil
 }
 
-// writeFileAtomic writes data to path by creating a temp file in the same
+// WriteFileAtomic writes data to path by creating a temp file in the same
 // directory and renaming it over path, so a reader never sees a partial file.
 // It preserves the destination's existing file mode (os.CreateTemp defaults to
 // 0600, which would otherwise silently narrow permissions on every write);
 // if the destination does not yet exist, it falls back to 0o644.
-func writeFileAtomic(path string, data []byte) error {
+func WriteFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
 
 	mode := os.FileMode(0o644)

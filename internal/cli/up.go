@@ -140,7 +140,7 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 		repoByName[r.Name] = r
 	}
 	results, err := apply.Apply(plans, apply.Options{
-		Workspace: workspace, Org: m.Org, Owned: owned, RepoByName: repoByName,
+		Workspace: workspace, Org: m.Org, Owned: owned, RepoByName: repoByName, SecretKeys: m.SecretKeys,
 	}, gh, git)
 	if err != nil {
 		return exitcode.New(exitcode.Fail, err)
