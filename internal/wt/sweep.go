@@ -197,7 +197,11 @@ func stopServer(path string, out io.Writer) {
 		}
 		seen[pid] = true
 		cwd := lsofCwd(pid)
-		if cwd == "" || !strings.HasPrefix(cwd, real) {
+		// cwd must be the worktree itself or genuinely inside it. A bare prefix
+		// match (as bash does) would treat sibling ".../foobar" as inside ".../foo"
+		// and kill the wrong dev server — the separator boundary captures the real
+		// intent ("cwd under this worktree") without that false match.
+		if cwd == "" || (cwd != real && !strings.HasPrefix(cwd, real+string(filepath.Separator))) {
 			continue
 		}
 		n, e := strconv.Atoi(pid)
