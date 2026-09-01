@@ -28,10 +28,10 @@ const (
 
 // RepoPlan is the classified action for one manifest repo.
 type RepoPlan struct {
-	Name   string
-	State  State
-	Reason string
-	Path   string
+	Name   string `json:"name"`
+	State  State  `json:"state"`
+	Reason string `json:"reason"`
+	Path   string `json:"path"`
 }
 
 // Build classifies each manifest repo. It is pure: same inputs, same output,

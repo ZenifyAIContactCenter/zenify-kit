@@ -17,7 +17,14 @@ type Runner interface {
 type execRunner struct{}
 
 func (execRunner) Run(args ...string) ([]byte, error) {
-	return exec.Command("gh", args...).Output()
+	cmd := exec.Command("gh", args...)
+	if len(args) > 0 && args[0] == "auth" {
+		// `gh auth status` writes its success output to stderr on gh < 2.33.0;
+		// capture both so CheckAuth still sees it. `repo list --json` must stay
+		// stdout-only so gh's stderr warnings never corrupt the JSON.
+		return cmd.CombinedOutput()
+	}
+	return cmd.Output()
 }
 
 // ExecRunner returns the default Runner that shells to `gh`.
@@ -65,7 +72,9 @@ func CheckAuth(r Runner) (Auth, error) {
 			// "✓ Logged in to github.com account natepxn (keyring)"
 			if i := strings.Index(line, "account "); i >= 0 {
 				rest := strings.TrimSpace(line[i+len("account "):])
-				a.Account = strings.Fields(rest)[0]
+				if fields := strings.Fields(rest); len(fields) > 0 {
+					a.Account = fields[0]
+				}
 			}
 		case strings.HasPrefix(line, "- Git operations protocol:"):
 			a.Protocol = strings.TrimSpace(strings.TrimPrefix(line, "- Git operations protocol:"))

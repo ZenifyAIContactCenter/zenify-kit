@@ -20,6 +20,9 @@ func buildPlan(m *manifest.Manifest, gh ghx.Runner, git gitx.Runner, workspace s
 	if err != nil {
 		return nil, auth, err
 	}
+	if !auth.LoggedIn {
+		return nil, auth, nil // let the caller emit the friendly gh-auth-login message
+	}
 	remote, err := ghx.ListRepos(gh, m.Org)
 	if err != nil {
 		return nil, auth, err
