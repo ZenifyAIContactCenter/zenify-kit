@@ -182,6 +182,9 @@ func RunNew(o NewOptions) error {
 	if err := WritePortEnv(envPath, cfg.PortEnv, port); err != nil {
 		return abort(fmt.Errorf("wt: write %s: %w", cfg.PortEnv, err))
 	}
+	if err := SeedIdentityEnv(envPath, cfg, o.Slug); err != nil {
+		return abort(fmt.Errorf("wt: seed identity env: %w", err))
+	}
 
 	if err := ApplyDeps(o.RepoRoot, path, deps, "node_modules", cfg.Install); err != nil {
 		return abort(fmt.Errorf("wt: deps setup failed: %w", err))

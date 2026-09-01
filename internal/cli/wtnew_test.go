@@ -64,3 +64,25 @@ func TestWtNew_Integration_CreatesWorktree(t *testing.T) {
 		t.Fatalf("state.json did not record the worktree: err=%v content=%q", err, stateRaw)
 	}
 }
+
+func TestWtNew_SeedsIdentityEnv(t *testing.T) {
+	requireGit(t)
+	t.Setenv("WT_SESSION", "")
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	root := initGitRepo(t) // worktree.json abbrev=ccbe
+	t.Setenv("WT_REPO_ROOT", root)
+	if _, err := runWt(t, root, "new", "id-task", "--type", "feat"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, ".worktrees", "id-task", ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	if !strings.Contains(got, "WT_SLUG=id-task") {
+		t.Errorf("env missing WT_SLUG; got:\n%s", got)
+	}
+	if !strings.Contains(got, "COMPOSE_PROJECT_NAME=ccbe-id-task") {
+		t.Errorf("env missing COMPOSE_PROJECT_NAME=ccbe-id-task; got:\n%s", got)
+	}
+}
