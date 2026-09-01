@@ -80,7 +80,10 @@ func orDefault(v, def string) string {
 
 // parsePortRange accepts [lo,hi], "lo hi", or empty (→ default [3100,3999]).
 func parsePortRange(raw json.RawMessage) ([2]int, error) {
-	if len(raw) == 0 {
+	// Absent key, or an explicit JSON null, both mean "use the default". Without
+	// the null check, `"portRange": null` unmarshals into a nil []int and falls
+	// into the array branch as "0 elements", masking the default with an error.
+	if len(raw) == 0 || string(raw) == "null" {
 		return [2]int{3100, 3999}, nil
 	}
 	var arr []int

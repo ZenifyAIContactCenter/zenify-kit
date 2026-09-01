@@ -41,6 +41,11 @@ func hashKey(s string) uint32 {
 // This is best-effort by nature: a port can be grabbed between check and use —
 // the mutating slice that actually binds it must handle that race.
 func portFree(p int) bool {
+	// Guard p<=0: net.Listen(":0") asks the OS for an arbitrary ephemeral port
+	// and would report 0 as "free" — never a real, re-bindable port.
+	if p <= 0 {
+		return false
+	}
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", p))
 	if err != nil {
 		return false

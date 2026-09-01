@@ -53,3 +53,15 @@ func TestLoad_MissingFile(t *testing.T) {
 		t.Fatal("want error for missing worktree.json")
 	}
 }
+
+func TestLoad_NullPortRangeUsesDefault(t *testing.T) {
+	root := t.TempDir()
+	writeWorktreeJSON(t, root, `{"portRange":null}`)
+	c, err := Load(root)
+	if err != nil {
+		t.Fatalf("explicit null portRange must fall back to default, got err: %v", err)
+	}
+	if c.PortRange != [2]int{3100, 3999} {
+		t.Fatalf("null portRange wrong: %v", c.PortRange)
+	}
+}
