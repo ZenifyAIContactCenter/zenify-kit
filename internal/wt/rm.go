@@ -47,15 +47,31 @@ func RunRm(o RmOptions) error {
 
 	// Resolve the branch: from the checkout when it exists, else from state.json
 	// (which recorded it at wt new time) so a hand-deleted dir can still be cleaned.
+	// An existing checkout directory is itself proof of registration; a gone dir is
+	// only cleanable if the slug was actually a worktree once — confirmed from the
+	// caches git can rebuild from (state.json, then git's own registration, which
+	// outlives a hand-deleted directory until `worktree prune`).
 	branch := ""
+	registered := !gone
 	if gone {
 		if st, e := ReadState(o.RepoRoot); e == nil {
 			for _, w := range st.Worktrees {
 				if w.Slug == o.Slug {
-					branch = w.Branch
+					branch, registered = w.Branch, true
 					break
 				}
 			}
+		}
+		if !registered {
+			if out, e := r.Run(o.RepoRoot, "worktree", "list", "--porcelain"); e == nil && worktreeListHasPath(string(out), path) {
+				registered = true
+			}
+		}
+		// A slug that was never a worktree (a typo, or one never created) must not
+		// fall through to a repo-wide `worktree prune` and a false "removed" report.
+		// Mirrors bash cmd_rm's `wt_registration || die`; --force cannot bypass it.
+		if !registered {
+			return fmt.Errorf("wt: no worktree %q — nothing at %s and no registration to clean up", o.Slug, path)
 		}
 	} else {
 		if b, e := r.Run(path, "symbolic-ref", "--quiet", "--short", "HEAD"); e == nil {
@@ -114,4 +130,19 @@ func RunRm(o RmOptions) error {
 
 	fmt.Fprintf(o.Stderr, "wt: removed %q\n", o.Slug)
 	return nil
+}
+
+// worktreeListHasPath reports whether git's porcelain worktree listing registers
+// a worktree at path. Both sides are canonicalized so a symlinked repo root (macOS
+// /var vs /private/var) still matches git's canonical path.
+func worktreeListHasPath(porcelain, path string) bool {
+	cp := canon(path)
+	for _, line := range strings.Split(porcelain, "\n") {
+		if strings.HasPrefix(line, "worktree ") {
+			if canon(strings.TrimPrefix(line, "worktree ")) == cp {
+				return true
+			}
+		}
+	}
+	return false
 }

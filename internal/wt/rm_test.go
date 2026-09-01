@@ -157,3 +157,15 @@ func TestRunRm_GoneNeedsForce(t *testing.T) {
 		t.Fatal("gone+force should delete the branch named in state")
 	}
 }
+
+func TestRunRm_GoneUnregisteredErrorsEvenWithForce(t *testing.T) {
+	root := rmRepo(t, "real", "namph/feat/real") // only "real" is registered
+	// "ghost" was never a worktree: no dir, no state entry, not in git's list.
+	s := &rmStub{out: map[string]string{root + "|worktree list --porcelain": "worktree " + root + "\n"}}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "ghost", Force: true, Runner: s, Stderr: io.Discard, Pid: 1, Now: 2, Host: "h"}); err == nil {
+		t.Fatal("a never-registered slug must error even with --force, not prune the repo")
+	}
+	if s.ran(root + "|worktree prune") {
+		t.Fatal("must NOT run repo-wide worktree prune for a never-registered slug")
+	}
+}
