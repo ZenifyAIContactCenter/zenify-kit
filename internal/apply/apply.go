@@ -1,8 +1,9 @@
 // Package apply executes the actionable states of a reconcile plan. It is the
 // first caller of the b2a safety infra. It never commits to a repo, never
-// switches branches, and never reads or copies a secret value: WIRE seeds only
-// an empty settings skeleton and a local .git/info/exclude entry. worktree.json
-// seeding is deferred to wt-v2 (it needs port-range allocation).
+// switches branches, and never merges or copies a secret value: WIRE seeds only
+// an empty settings skeleton, and ADOPT only fingerprints an existing file's
+// bytes for drift-tracking (the content is never persisted or logged).
+// worktree.json seeding is deferred to wt-v2 (it needs port-range allocation).
 package apply
 
 import (

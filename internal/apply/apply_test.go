@@ -124,6 +124,39 @@ func TestApply_Wire_PreservesExistingSettings(t *testing.T) {
 	}
 }
 
+func TestApply_Adopt_RecordsExistingWithoutModifying(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	initClonedRepo(t, repo)
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
+	existing := `{"env":{"SECRET":"live-value"},"note":"adopt me"}`
+	if err := os.WriteFile(settingsPath, []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	owned := &managed.Manifest{}
+	_, err := Apply(
+		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Adopt, Path: "svc"}},
+		Options{Workspace: ws, Owned: owned,
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc"}}},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil {
+		t.Fatalf("Apply adopt: %v", err)
+	}
+	// The existing settings must be byte-for-byte unchanged (FR-041).
+	got, _ := os.ReadFile(settingsPath)
+	if string(got) != existing {
+		t.Errorf("adopt must not modify existing settings:\n got  %s\n want %s", got, existing)
+	}
+	// And it must be recorded in the ownership manifest for drift-tracking.
+	if _, ok := owned.Get(settingsPath); !ok {
+		t.Errorf("adopt should record existing settings in the ownership manifest")
+	}
+}
+
 func TestApply_NoopStates_DoNothing(t *testing.T) {
 	ws := t.TempDir()
 	gh := &fakeGH{}
