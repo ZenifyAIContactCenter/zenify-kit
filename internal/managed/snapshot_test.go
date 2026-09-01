@@ -3,6 +3,7 @@ package managed
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -39,3 +40,83 @@ func TestSnapshot_SkipsMissingFiles(t *testing.T) {
 		t.Errorf("snapshot of missing file errored: %v", err)
 	}
 }
+
+func TestRestore_AllOrNothing_OnUnwritableTarget(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses directory permissions")
+	}
+	dir := t.TempDir()
+
+	// Two targets in two subdirs; one subdir will be made unwritable.
+	okDir := filepath.Join(dir, "ok")
+	badDir := filepath.Join(dir, "bad")
+	for _, d := range []string{okDir, badDir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	okFile := filepath.Join(okDir, "a.txt")
+	badFile := filepath.Join(badDir, "b.txt")
+	if err := os.WriteFile(okFile, []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(badFile, []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	snapRoot := filepath.Join(dir, ".snap")
+	snap, err := Snapshot("run-x", []string{okFile, badFile}, snapRoot)
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+
+	// Mutate both live files, then make badDir unwritable so writeFileAtomic fails there.
+	if err := os.WriteFile(okFile, []byte("v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(badFile, []byte("v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(badDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(badDir, 0o755) // let t.TempDir cleanup succeed
+
+	if err := Restore(snap); err == nil {
+		t.Fatal("expected Restore to fail on unwritable target")
+	}
+	// All-or-nothing: the writable file must NOT be left in the restored ("v1") state.
+	got, _ := os.ReadFile(okFile)
+	if string(got) != "v2" {
+		t.Errorf("okFile = %q, want v2 (rolled back to pre-restore state)", got)
+	}
+}
+
+func TestRestore_LeavesNoTempFiles(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "conf.txt")
+	if err := os.WriteFile(target, []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := Snapshot("run-y", []string{target}, snapRoot(dir))
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if err := os.WriteFile(target, []byte("v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore(snap); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".zenify-restore-") {
+			t.Errorf("leftover temp file: %s", e.Name())
+		}
+	}
+}
+
+func snapRoot(dir string) string { return filepath.Join(dir, ".snap") }
