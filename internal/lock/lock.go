@@ -1,7 +1,12 @@
 // Package lock provides a best-effort advisory lock over a workspace directory
-// so two `zenify` mutation runs cannot act on the same workspace at once. The
-// lock is a JSON lockfile recording the holding PID; a lock whose PID is no
-// longer alive is treated as stale and replaced.
+// so two `zenify` mutation runs cannot act on the same workspace at once.
+//
+// Exclusion is provided by an OS advisory lock (flock on unix, LockFileEx on
+// Windows) held on an open file descriptor for the lifetime of the Handle. The
+// kernel releases the lock automatically if the process dies, so there is no
+// stale-lockfile class to reason about, and Release only ever unlocks the fd
+// this process owns. The JSON body of the lockfile is a diagnostic sidecar
+// (who holds it) recorded for the ErrHeld message; it is not the lock.
 package lock
 
 import (
@@ -10,81 +15,72 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 // lockName is the lockfile basename inside the workspace directory.
 const lockName = ".zenify.lock"
 
-// Info is the content of a lockfile.
+// Info is the diagnostic content of a lockfile.
 type Info struct {
 	PID       int    `json:"pid"`
 	Host      string `json:"host"`
 	CreatedAt int64  `json:"created_at"` // unix seconds, injected by the caller
 }
 
-// ErrHeld reports that another live process holds the lock.
+// ErrHeld reports that another process holds the lock.
 var ErrHeld = errors.New("workspace is locked by another zenify process")
 
-// Handle is an acquired lock. Call Release to free it.
+// Handle is an acquired lock. Call Release to free it. It holds the locked file
+// descriptor open; releasing (or the process exiting) unlocks it.
 type Handle struct {
+	f    *os.File
 	path string
 }
 
-// Acquire creates the workspace lockfile atomically. If a lockfile already
-// exists and its recorded PID is still alive (and is not pid), Acquire returns
-// ErrHeld. A stale lock (dead PID), our own leftover, or a corrupt lockfile is
-// removed and replaced. now is the unix timestamp to record, injected so tests
-// stay deterministic.
+// Acquire takes an exclusive advisory lock on the workspace lockfile. If another
+// process already holds it, Acquire returns ErrHeld. now/pid/host are recorded
+// in the lockfile as diagnostics only. The signature is unchanged from the
+// file-lock version so callers and tests stay stable.
 func Acquire(dir string, pid int, host string, now int64) (*Handle, error) {
 	p := filepath.Join(dir, lockName)
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+
+	locked, err := flockExclusive(f)
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !locked {
+		// Someone else holds it. Best-effort read of the sidecar for the message.
+		held, rerr := readInfo(p)
+		f.Close()
+		if rerr == nil {
+			return nil, fmt.Errorf("%w (pid %d on %s)", ErrHeld, held.PID, held.Host)
+		}
+		return nil, ErrHeld
+	}
+
+	// We hold the lock. Overwrite the sidecar with our diagnostics.
 	body, err := json.Marshal(Info{PID: pid, Host: host, CreatedAt: now})
 	if err != nil {
+		flockUnlock(f)
+		f.Close()
 		return nil, err
 	}
-
-	h, err := create(p, body)
-	if err == nil {
-		return h, nil
-	}
-	if !errors.Is(err, os.ErrExist) {
+	if err := f.Truncate(0); err != nil {
+		flockUnlock(f)
+		f.Close()
 		return nil, err
 	}
-
-	// A lockfile already exists — decide whether it is stale.
-	held, rerr := readInfo(p)
-	if rerr == nil && held.PID != pid && processAlive(held.PID) {
-		return nil, fmt.Errorf("%w (pid %d on %s)", ErrHeld, held.PID, held.Host)
-	}
-	// Stale, our own leftover, or corrupt: replace it.
-	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if _, err := f.WriteAt(body, 0); err != nil {
+		flockUnlock(f)
+		f.Close()
 		return nil, err
 	}
-	h, err = create(p, body)
-	if errors.Is(err, os.ErrExist) {
-		return nil, ErrHeld // lost a race to another acquirer
-	}
-	return h, err
-}
-
-// create writes body to a new lockfile at p using O_CREATE|O_EXCL, so an
-// existing file yields os.ErrExist rather than a silent overwrite.
-func create(p string, body []byte) (*Handle, error) {
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-	if err != nil {
-		return nil, err
-	}
-	_, werr := f.Write(body)
-	cerr := f.Close()
-	if werr != nil {
-		os.Remove(p)
-		return nil, werr
-	}
-	if cerr != nil {
-		os.Remove(p)
-		return nil, cerr
-	}
-	return &Handle{path: p}, nil
+	return &Handle{f: f, path: p}, nil
 }
 
 func readInfo(p string) (Info, error) {
@@ -99,28 +95,18 @@ func readInfo(p string) (Info, error) {
 	return i, nil
 }
 
-// processAlive reports whether a process with the given PID exists. On Unix it
-// sends signal 0, which probes existence without affecting the process; EPERM
-// means the process exists but is owned by another user.
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = proc.Signal(syscall.Signal(0))
-	if err == nil {
-		return true
-	}
-	return errors.Is(err, syscall.EPERM)
-}
-
-// Release removes the lockfile. A nil Handle releases nothing.
+// Release unlocks and closes the held descriptor. A nil Handle releases nothing.
+// The lockfile itself is intentionally left on disk: the flock, not the file's
+// presence, is what excludes, so removing it would only reintroduce a race.
 func (h *Handle) Release() error {
-	if h == nil {
+	if h == nil || h.f == nil {
 		return nil
 	}
-	return os.Remove(h.path)
+	uerr := flockUnlock(h.f)
+	cerr := h.f.Close()
+	h.f = nil
+	if uerr != nil {
+		return uerr
+	}
+	return cerr
 }
