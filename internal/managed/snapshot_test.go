@@ -119,4 +119,40 @@ func TestRestore_LeavesNoTempFiles(t *testing.T) {
 	}
 }
 
+func TestRestore_PreservesFileMode(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "conf.txt")
+	if err := os.WriteFile(target, []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Give the destination a non-default mode that differs from both 0o644
+	// and the 0o600 that os.CreateTemp would use, so a silent narrowing is caught.
+	if err := os.Chmod(target, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := Snapshot("run-z", []string{target}, snapRoot(dir))
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	// Mutate the live file's content; os.WriteFile does not change the mode
+	// of an existing file, so the destination's mode stays 0o640 going into Restore.
+	if err := os.WriteFile(target, []byte("v2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore(snap); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	got, _ := os.ReadFile(target)
+	if string(got) != "v1" {
+		t.Errorf("after restore content = %q, want v1", got)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Errorf("after restore mode = %o, want 0640 (preserved, not narrowed to temp-file default 0600)", info.Mode().Perm())
+	}
+}
+
 func snapRoot(dir string) string { return filepath.Join(dir, ".snap") }

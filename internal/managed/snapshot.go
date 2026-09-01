@@ -102,8 +102,19 @@ func Restore(snapDir string) error {
 
 // writeFileAtomic writes data to path by creating a temp file in the same
 // directory and renaming it over path, so a reader never sees a partial file.
+// It preserves the destination's existing file mode (os.CreateTemp defaults to
+// 0600, which would otherwise silently narrow permissions on every write);
+// if the destination does not yet exist, it falls back to 0o644.
 func writeFileAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)
+
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
 	tmp, err := os.CreateTemp(dir, ".zenify-restore-*")
 	if err != nil {
 		return err
@@ -115,6 +126,10 @@ func writeFileAtomic(path string, data []byte) error {
 		return err
 	}
 	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
 		os.Remove(tmpName)
 		return err
 	}
