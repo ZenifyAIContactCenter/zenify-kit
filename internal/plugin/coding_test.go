@@ -20,6 +20,7 @@ var codingAnchors = map[string][]string{
 	"mongoose-modeling":        {"schema", "index", "backfill"},
 	"nestjs-patterns":          {"module", "guard", "controller"},
 	"express-service-patterns": {"middleware", "controller", "envelope"},
+	"react-patterns":           {"component", "hook", "form"},
 }
 
 func readCodingFile(t *testing.T, skill string) string {
