@@ -21,6 +21,7 @@ var codingAnchors = map[string][]string{
 	"nestjs-patterns":          {"module", "guard", "controller"},
 	"express-service-patterns": {"middleware", "controller", "envelope"},
 	"react-patterns":           {"component", "hook", "form"},
+	"service-integration":      {"idempoten", "publish", "contract"},
 }
 
 func readCodingFile(t *testing.T, skill string) string {
