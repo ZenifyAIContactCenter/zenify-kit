@@ -82,6 +82,13 @@ func RunNew(o NewOptions) error {
 		}
 	}
 
+	// Auto-fetch so origin/<base> reflects the remote before we resolve, guard,
+	// and fast-forward against it. Warn on failure (e.g. offline) but never
+	// abort — the base-ref check below still catches a genuinely missing base.
+	if _, err := r.Run(o.RepoRoot, "fetch", "origin", "--quiet"); err != nil {
+		fmt.Fprintf(o.Stderr, "wt: fetch failed (%v) — continuing with local refs; base may be stale\n", err)
+	}
+
 	// Duplicate checks (keyed on the exact slug/branch).
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("wt: task %q already exists at %s", o.Slug, path)
@@ -125,6 +132,12 @@ func RunNew(o NewOptions) error {
 	// base ref must exist.
 	if _, err := r.Run(o.RepoRoot, "rev-parse", "--verify", "--quiet", base); err != nil {
 		return fmt.Errorf("wt: base ref %q not found — fetch first", base)
+	}
+
+	// Base exists and origin is freshly fetched: bring the matching local branch
+	// forward so a later read of the main checkout's base is not stale.
+	if lb := strings.TrimPrefix(base, "origin/"); lb != base {
+		ffLocalBase(r, o.RepoRoot, lb, o.Stderr)
 	}
 
 	// Allocate the port up front (a full range fails before touching disk).
@@ -230,6 +243,35 @@ func RunNew(o NewOptions) error {
 	_, _ = fmt.Fprintf(o.Stderr, "wt: %s → %s\n", o.Slug, path)
 	_, _ = fmt.Fprintf(o.Stderr, "wt: branch %s, %s=%d, deps=%s\n", branch, cfg.PortEnv, port, deps)
 	return nil
+}
+
+// ffLocalBase advances the local branch lb to origin/lb when it can be done
+// safely, so a later read of the main checkout's base branch is not stale.
+// Every failure is a warning; wt new still succeeds, because the worktree is
+// based on the freshly fetched origin/lb regardless.
+func ffLocalBase(r gitx.Runner, repoRoot, lb string, stderr io.Writer) {
+	if _, err := r.Run(repoRoot, "show-ref", "--verify", "--quiet", "refs/heads/"+lb); err != nil {
+		return // no local branch to advance
+	}
+	cur, _ := r.Run(repoRoot, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if strings.TrimSpace(string(cur)) == lb {
+		// base branch is checked out: fast-forward only when the tree is clean.
+		st, _ := r.Run(repoRoot, "status", "--porcelain")
+		if strings.TrimSpace(string(st)) != "" {
+			fmt.Fprintf(stderr, "wt: %s is checked out and dirty — left as is, not fast-forwarded\n", lb)
+			return
+		}
+		if _, err := r.Run(repoRoot, "merge", "--ff-only", "origin/"+lb); err != nil {
+			fmt.Fprintf(stderr, "wt: could not fast-forward %s to origin/%s: %v\n", lb, lb, err)
+		}
+		return
+	}
+	// base branch is not checked out (or detached HEAD): update the ref directly.
+	// A plain refspec fetch is fast-forward-only and fails loudly on divergence
+	// without moving the branch.
+	if _, err := r.Run(repoRoot, "fetch", "origin", lb+":"+lb); err != nil {
+		fmt.Fprintf(stderr, "wt: could not fast-forward %s to origin/%s: %v\n", lb, lb, err)
+	}
 }
 
 // orEnvFile returns the configured envFile or the default ".env".

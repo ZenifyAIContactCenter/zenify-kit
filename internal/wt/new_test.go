@@ -108,3 +108,79 @@ func TestRunNew_GuardTier2BlocksSecondUnmergedTask(t *testing.T) {
 		t.Fatalf("tier-2 guard must block a second unmerged task, got %v", err)
 	}
 }
+
+// seenContains reports whether the stub recorded a command whose joined args
+// equal key. Note: seen stores only strings.Join(args, " ") — no dir prefix.
+func seenContains(g *gitStub, key string) bool {
+	for _, c := range g.seen {
+		if c == key {
+			return true
+		}
+	}
+	return false
+}
+
+func TestFfLocalBase_NoLocalBranch(t *testing.T) {
+	root := t.TempDir()
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	g.err[root+"|show-ref --verify --quiet refs/heads/main"] = errors.New("no ref")
+	ffLocalBase(g, root, "main", io.Discard)
+	for _, c := range g.seen {
+		if strings.Contains(c, "merge --ff-only") || strings.Contains(c, "fetch origin main:main") {
+			t.Fatalf("no local branch: must not advance anything, got %q", c)
+		}
+	}
+}
+
+func TestFfLocalBase_CurrentAndClean_MergesFfOnly(t *testing.T) {
+	root := t.TempDir()
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	g.out[root+"|symbolic-ref --quiet --short HEAD"] = "main\n"
+	g.out[root+"|status --porcelain"] = ""
+	ffLocalBase(g, root, "main", io.Discard)
+	if !seenContains(g, "merge --ff-only origin/main") {
+		t.Fatalf("clean+current: expected merge --ff-only origin/main, seen=%v", g.seen)
+	}
+}
+
+func TestFfLocalBase_CurrentAndDirty_Skips(t *testing.T) {
+	root := t.TempDir()
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	g.out[root+"|symbolic-ref --quiet --short HEAD"] = "main\n"
+	g.out[root+"|status --porcelain"] = " M internal/wt/new.go\n"
+	ffLocalBase(g, root, "main", io.Discard)
+	for _, c := range g.seen {
+		if strings.Contains(c, "merge --ff-only") {
+			t.Fatalf("dirty+current: must not merge, got %q", c)
+		}
+	}
+}
+
+func TestFfLocalBase_NotCurrent_FetchesRefspec(t *testing.T) {
+	root := t.TempDir()
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	g.out[root+"|symbolic-ref --quiet --short HEAD"] = "namph/feat/other\n"
+	ffLocalBase(g, root, "main", io.Discard)
+	if !seenContains(g, "fetch origin main:main") {
+		t.Fatalf("not current: expected fetch origin main:main, seen=%v", g.seen)
+	}
+	for _, c := range g.seen {
+		if strings.Contains(c, "merge --ff-only") {
+			t.Fatalf("not current: must not merge, got %q", c)
+		}
+	}
+}
+
+func TestRunNew_FetchesBeforeResolvingBase(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	seedCfg(t, root)
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	g.err[root+"|rev-parse --verify --quiet origin/main"] = errors.New("bad rev")
+	o := baseOpts(root, g)
+	o.BaseOverride = "origin/main"
+	_ = RunNew(o) // expected to error at the base-ref check; we only assert the fetch ran
+	if !seenContains(g, "fetch origin --quiet") {
+		t.Fatalf("expected auto-fetch before base resolution, seen=%v", g.seen)
+	}
+}
