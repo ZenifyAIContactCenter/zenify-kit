@@ -17,6 +17,7 @@ var forbiddenTokens = []string{
 // skill dir -> lowercase anchors phải xuất hiện trong SKILL.md của skill đó
 var codingAnchors = map[string][]string{
 	"mongo-data-safety": {"tenant", "strict", "distinct"},
+	"mongoose-modeling": {"schema", "index", "backfill"},
 }
 
 func readCodingFile(t *testing.T, skill string) string {
