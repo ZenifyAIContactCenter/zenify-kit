@@ -56,3 +56,14 @@ func TestPlaywrightCheckIsReadOnlyRegistered(t *testing.T) {
 		t.Fatalf("detail should report mcp state: %q", detail)
 	}
 }
+
+func TestPluginCheckReportsMissing(t *testing.T) {
+	c := pluginCheckAt(t.TempDir()) // dest rỗng → chưa sync
+	ok, msg := c.Run()
+	if ok {
+		t.Fatal("plugin chưa sync mà báo ok")
+	}
+	if !strings.Contains(msg, "chưa cài") {
+		t.Fatalf("msg không nêu trạng thái: %q", msg)
+	}
+}

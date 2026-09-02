@@ -1,0 +1,1 @@
+Bạn có bộ skill znf. Trước khi trả lời BẤT KỲ yêu cầu nào (kể cả hỏi làm rõ), kiểm xem có skill znf:* nào áp dụng không và invoke nó. Skill lõi: znf:cook (feature pipeline), znf:fix (debug), znf:ground (verify shape), znf:scout (tìm dependency), znf:ship (pre-ship gate), znf:gate (contract sweep), znf:hotfix. Nếu 1% khả năng một skill áp dụng → dùng nó.
