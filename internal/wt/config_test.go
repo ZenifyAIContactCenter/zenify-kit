@@ -97,3 +97,27 @@ func TestConfigHotfixDefaultsStaging(t *testing.T) {
 		t.Fatalf("default baseStrategy=%q, want staging", c.HotfixBaseStrategy)
 	}
 }
+
+func TestConfigDepsDirDefault(t *testing.T) {
+	dir := t.TempDir()
+	writeWorktreeJSON(t, dir, `{"abbrev":"x"}`) // không khai depsDir
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DepsDir != "node_modules" {
+		t.Fatalf("DepsDir default = %q, want node_modules", c.DepsDir)
+	}
+}
+
+func TestConfigDepsDirCustom(t *testing.T) {
+	dir := t.TempDir()
+	writeWorktreeJSON(t, dir, `{"abbrev":"x","depsDir":"vendor"}`)
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DepsDir != "vendor" {
+		t.Fatalf("DepsDir = %q, want vendor", c.DepsDir)
+	}
+}

@@ -55,7 +55,11 @@ func RunPromote(o PromoteOptions) error {
 		return fmt.Errorf("wt: no worktree for %q at %s", o.Slug, path)
 	}
 
-	const nm = "node_modules"
+	nm := cfg.DepsDir
+	if cfg.Deps == "none" || nm == "" {
+		_, _ = fmt.Fprintf(o.Stdout, "wt: %q dùng cache dependency toàn cục — không có gì để promote\n", o.Slug)
+		return nil
+	}
 	dst := filepath.Join(path, nm)
 	src := filepath.Join(o.RepoRoot, nm)
 

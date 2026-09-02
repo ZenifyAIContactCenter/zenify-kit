@@ -20,6 +20,7 @@ type Config struct {
 	WorktreeDir    string
 	PortEnv        string
 	Deps           string
+	DepsDir        string
 	Install        string
 	User           string
 	PortRange      [2]int
@@ -51,6 +52,7 @@ type rawConfig struct {
 	WorktreeDir    string              `json:"worktreeDir"`
 	PortEnv        string              `json:"portEnv"`
 	Deps           string              `json:"deps"`
+	DepsDir        string              `json:"depsDir"`
 	Install        string              `json:"install"`
 	User           string              `json:"user"`
 	PortRange      json.RawMessage     `json:"portRange"`
@@ -98,6 +100,7 @@ func Load(repoRoot string) (*Config, error) {
 		WorktreeDir:    orDefault(raw.WorktreeDir, ".worktrees/"),
 		PortEnv:        orDefault(raw.PortEnv, "PORT"),
 		Deps:           orDefault(raw.Deps, "install"),
+		DepsDir:        orDefault(raw.DepsDir, "node_modules"),
 		Install:        raw.Install,
 		User:           orDefault(raw.User, "namph"),
 		PortRange:      pr,

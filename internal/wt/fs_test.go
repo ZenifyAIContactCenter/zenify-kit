@@ -105,6 +105,21 @@ func TestApplyDeps_Symlink(t *testing.T) {
 	}
 }
 
+func TestApplyDepsNone(t *testing.T) {
+	repo := t.TempDir()
+	wtp := t.TempDir()
+	// mode none: không tạo deps dir, không install, trả nil.
+	if err := ApplyDeps(repo, wtp, "none", "node_modules", "echo SHOULD_NOT_RUN > "+filepath.Join(wtp, "ran.txt")); err != nil {
+		t.Fatalf("ApplyDeps none → err %v, want nil", err)
+	}
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules")); !os.IsNotExist(err) {
+		t.Fatalf("none tạo node_modules — không được")
+	}
+	if _, err := os.Stat(filepath.Join(wtp, "ran.txt")); !os.IsNotExist(err) {
+		t.Fatalf("none đã chạy install — không được")
+	}
+}
+
 func TestApplyDeps_SymlinkMissingSourceErrors(t *testing.T) {
 	if err := ApplyDeps(t.TempDir(), t.TempDir(), "symlink", "node_modules", ""); err == nil {
 		t.Fatal("symlink with no source node_modules must error")
