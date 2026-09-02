@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -38,5 +39,8 @@ func TestSkillsInstallSubset(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dest, "nestjs-patterns")); !os.IsNotExist(err) {
 		t.Fatalf("web KHÔNG được có nestjs-patterns")
+	}
+	if !strings.Contains(out.String(), "vercel-labs/agent-skills") {
+		t.Fatalf("output thiếu khuyến nghị leg-2 vercel-labs/agent-skills: %s", out.String())
 	}
 }

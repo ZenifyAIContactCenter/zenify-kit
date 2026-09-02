@@ -62,6 +62,12 @@ func newSkillsCmd() *cobra.Command {
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "install %s: %d ghi, %d giữ, %d không đổi → %s\n",
 				repo, len(res.Written), len(res.Kept), len(res.Skipped), dest)
+			if recs := plugin.Leg2ForRepo(repo); len(recs) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "\nKhuyến nghị third-party (chạy thủ công rồi commit):\n")
+				for _, r := range recs {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", r)
+				}
+			}
 			return nil
 		},
 	}

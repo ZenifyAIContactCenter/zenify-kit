@@ -1,6 +1,9 @@
 package plugin
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSkillsForRepoCore(t *testing.T) {
 	cases := map[string][]string{
@@ -25,5 +28,22 @@ func TestSkillsForRepoCore(t *testing.T) {
 				t.Errorf("%s map tới skill không tồn tại: %s", repo, s)
 			}
 		}
+	}
+}
+
+func TestLeg2ForRepo(t *testing.T) {
+	for repo := range RepoSkills {
+		if len(Leg2ForRepo(repo)) == 0 {
+			t.Errorf("repo core %s không có khuyến nghị leg-2", repo)
+		}
+	}
+	web := Leg2ForRepo("contact-center-web")
+	joined := strings.Join(web, "\n")
+	if !strings.Contains(joined, "vercel-labs/agent-skills") {
+		t.Errorf("web thiếu vercel react-best-practices: %v", web)
+	}
+	be := strings.Join(Leg2ForRepo("contact-center-be"), "\n")
+	if !strings.Contains(be, "mongodb/agent-skills") || !strings.Contains(be, "redis/agent-skills") {
+		t.Errorf("be thiếu mongodb/redis official: %s", be)
 	}
 }
