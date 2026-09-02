@@ -25,3 +25,13 @@ func TestDisciplineSkillIsAgnostic(t *testing.T) {
 		}
 	}
 }
+
+func TestDisciplinePointsToCraft(t *testing.T) {
+	b, err := assets.ReadFile("assets/znf/skills/discipline/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "coding skill") {
+		t.Fatal("discipline chưa chỉ điểm bộ coding craft repo-scoped")
+	}
+}

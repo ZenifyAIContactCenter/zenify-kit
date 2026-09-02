@@ -78,6 +78,7 @@ Red flags — thinking any of these means you are rationalising:
 - Do not add error-handling, abstraction, config, options, or new files that weren't asked for. No speculative future-proofing.
 - Prefer editing an existing file over creating a new one.
 - For greenfield projects the same rule bites hardest: scaffold the minimum that runs, not a kitchen-sink boilerplate.
+- When writing or changing code in a repo, prefer its repo-scoped **coding skill** set (installed under `.claude/skills/`) for the stack idiom before improvising.
 
 ## 3 — Verify before claiming done
 - Never say "done / fixed / works" without evidence. State what you ran and the result.
