@@ -8,8 +8,8 @@ import (
 func TestSkillsForRepoCore(t *testing.T) {
 	cases := map[string][]string{
 		"contact-center-web": {"react-patterns"},
-		"contact-center-be":  {"express-service-patterns", "mongoose-modeling", "mongo-data-safety", "service-integration"},
-		"contact-center-hub": {"nestjs-patterns", "mongoose-modeling", "mongo-data-safety", "service-integration"},
+		"contact-center-be":  {"express-service-patterns", "mongoose-modeling", "mongo-data-safety", "sql-data-safety", "service-integration"},
+		"contact-center-hub": {"nestjs-patterns", "mongoose-modeling", "mongo-data-safety", "sql-data-safety", "service-integration"},
 	}
 	for repo, want := range cases {
 		got := SkillsForRepo(repo)
