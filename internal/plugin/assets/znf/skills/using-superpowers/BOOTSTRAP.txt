@@ -1,1 +1,16 @@
-Bạn có bộ skill znf. Trước khi trả lời BẤT KỲ yêu cầu nào (kể cả hỏi làm rõ), kiểm xem có skill znf:* nào áp dụng không và invoke nó. Skill lõi: znf:cook (feature pipeline), znf:fix (debug), znf:ground (verify shape), znf:scout (tìm dependency), znf:ship (pre-ship gate), znf:gate (contract sweep), znf:hotfix. Nếu 1% khả năng một skill áp dụng → dùng nó.
+# znf workflow kit — session digest
+
+You have the `znf:*` workflow skills. This is a short reminder of the working discipline; invoke `znf:discipline` for the full text, and the named skill for a step.
+
+- Route by blast radius: shared resource → contract gate; cross-repo → znf:ship. Unknown what/how → znf:cook; broken with unknown cause → znf:fix.
+- No fabrication: never cite a file/field/endpoint you have not read this session; verify against the real source; cite file:line.
+- Verify before "done": show real output from the real path — "it builds" is not verification. A dispatched agent going idle is not a result.
+- Worktree per change, no conditions: branch before the first edit; spec and plan stay in the main checkout.
+- Smallest diff that works: match the surrounding style; no speculative abstraction or unasked options.
+- Plan anything over ~3 steps with a TodoWrite list; one item per dispatched agent, ticked only when its report is in hand.
+- Memory: save the reusable rule (not the event) when you had to dig for it or were corrected; MEMORY.md is an index, never content.
+- Git: commit and push feature branches freely; never commit/push/merge deploy branches; never open PRs or merge — report the branch and stop.
+- External facts (library API, a version, "latest", pricing): search first and cite fetched text; never invent a citation from memory.
+- Decomposable research → fan out parallel agents, bounded; collect each by name, because silence is not a clean result.
+
+The `znf:*` workflow skills are available here. For depth, invoke `znf:discipline`.
