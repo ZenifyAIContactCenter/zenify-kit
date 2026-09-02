@@ -1,6 +1,11 @@
 package cli
 
-import "testing"
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestNewSkillsCmdHasSync(t *testing.T) {
 	c := newSkillsCmd()
@@ -15,5 +20,23 @@ func TestNewSkillsCmdHasSync(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("thiếu subcommand sync")
+	}
+}
+
+func TestSkillsInstallSubset(t *testing.T) {
+	dest := t.TempDir()
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"skills", "install", "--repo", "contact-center-web", "--dest", dest})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "react-patterns", "SKILL.md")); err != nil {
+		t.Fatalf("react-patterns chưa materialize: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "nestjs-patterns")); !os.IsNotExist(err) {
+		t.Fatalf("web KHÔNG được có nestjs-patterns")
 	}
 }
