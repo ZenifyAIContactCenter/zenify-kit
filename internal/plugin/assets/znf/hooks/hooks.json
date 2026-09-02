@@ -5,6 +5,9 @@
     ],
     "PreToolUse": [
       { "matcher": "Task", "hooks": [ { "type": "command", "command": "zenify observe count" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Task|Bash|WebFetch|WebSearch|Read", "hooks": [ { "type": "command", "command": "zenify observe meter" } ] }
     ]
   }
 }
