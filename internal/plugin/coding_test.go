@@ -34,7 +34,15 @@ func readCodingFile(t *testing.T, skill string) string {
 }
 
 func TestCodingSkillsAreAgnostic(t *testing.T) {
-	for skill, anchors := range codingAnchors {
+	// Lặp theo CodingSkills() (nguồn thật từ embed) chứ không theo codingAnchors,
+	// để một skill mới thêm vào mà quên khai anchor sẽ FAIL ở đây thay vì lọt
+	// cả token-check lẫn anchor-check.
+	for _, skill := range CodingSkills() {
+		anchors, ok := codingAnchors[skill]
+		if !ok {
+			t.Errorf("skill %s chưa có entry trong codingAnchors — thêm anchor để guard kiểm được", skill)
+			continue
+		}
 		body := readCodingFile(t, skill)
 		low := strings.ToLower(body)
 		for _, tok := range forbiddenTokens {
