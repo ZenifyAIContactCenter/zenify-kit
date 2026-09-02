@@ -96,8 +96,9 @@ State, per repo, one line: declared base · is the checkout on it · commits beh
 repo is off-base or dirty, say so rather than reading through it silently — that is the difference
 between grounding and guessing which code you grounded.
 
-(The `.worktrees/` name and the `wt new` that creates it are in Step 6. `wt` never fetches, so
-Step 6 fetches again: brainstorm and planning take real time, and the base moves while they do.)
+(The `.worktrees/` name and the `wt new` that creates it are in Step 6. Current `wt` fetches before
+resolving the base, but Step 6 still fetches explicitly — belt-and-suspenders, and required on older
+builds — because brainstorm and planning take real time and the base moves while they do.)
 
 ## Every step must leave a named line
 
@@ -301,13 +302,15 @@ plan is agreed, so this is the moment the first line of repo code gets written. 
 `git status --porcelain` to decide, because there is no decision.
 
 ```bash
-git -C <repo> fetch origin                                    # again — wt does NOT fetch
+git -C <repo> fetch origin                                    # belt-and-suspenders — current wt fetches too, older builds do not
 cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
 ```
 
-**Fetch again even though Step 0 fetched.** `wt` contains no `git fetch`, and the base moved while
-brainstorming and planning happened — that gap is exactly what the reordering introduced. Skip it
-and you get a worktree that looks freshly based and is not, discovered at merge time.
+**Fetch again even though Step 0 fetched.** The base moved while brainstorming and planning
+happened — that gap is exactly what the reordering introduced. Current `wt` fetches before resolving
+the base, but keep this explicit fetch: it is required on older builds and harmless on new ones. Skip
+it on an older build and you get a worktree that looks freshly based and is not, discovered at merge
+time.
 
 **Polyrepo:** one worktree per affected repo, **same slug** in every one.
 

@@ -43,7 +43,9 @@ confirmation, you were on the wide path all along.
    Which strategy each repo uses is a project fact, not something to infer here.
 
    **The fetch order matters and getting it wrong is silent.** Remote-tracking refs (including
-   any `origin/release*` branches) are only as current as the last fetch, and `wt` never fetches.
+   any `origin/release*` branches) are only as current as the last fetch. `wt`'s own fetch (on
+   recent builds) runs after you have already resolved and passed `--base`, so it cannot help here —
+   you must fetch yourself before resolving the release ref.
    Resolve the base ref before fetching and you can miss a release cut this morning — then
    branch, scout, and fix against the wrong version, with everything looking correct the whole
    way.

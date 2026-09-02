@@ -28,13 +28,14 @@ Step 2, you were on the wide path all along — go run it, do not patch the symp
 The main checkout stays clean.
 
 ```bash
-git -C <repo> fetch origin                                   # wt does NOT fetch
+git -C <repo> fetch origin                                   # belt-and-suspenders — current wt fetches too, older builds do not
 cd <repo> && wt new <slug> --type fix --base origin/staging
 ```
 
-The `fetch` is load-bearing: `wt` contains no `git fetch`, so `--base origin/staging` otherwise
-resolves against a local ref that may be weeks old, and you write the fix on top of code that has
-already moved. One worktree per affected repo, same slug.
+Keep the explicit `fetch`: current `wt` fetches before resolving the base, but older builds contain
+no `git fetch`, so on those `--base origin/staging` resolves against a local ref that may be weeks
+old and you write the fix on top of code that has already moved. One worktree per affected repo, same
+slug.
 
 **No workspace handoff here, unlike `/cook` — and the reason is the artifact.** `/cook` can move
 Step 6 into a workspace of its own because what crosses over is a **plan file** that
