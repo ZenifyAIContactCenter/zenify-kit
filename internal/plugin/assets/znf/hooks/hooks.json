@@ -2,6 +2,9 @@
   "hooks": {
     "SessionStart": [
       { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-start.sh\"" }
+    ],
+    "PreToolUse": [
+      { "matcher": "Task", "hooks": [ { "type": "command", "command": "zenify observe count" } ] }
     ]
   }
 }
