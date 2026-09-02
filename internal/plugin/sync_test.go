@@ -45,6 +45,22 @@ func TestSyncNeverEscapesDest(t *testing.T) {
 	}
 }
 
+func TestSyncMaterializesDiscipline(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	for _, p := range []string{
+		"skills/discipline/SKILL.md",
+		"hooks/session-start.sh",
+	} {
+		if _, err := os.Stat(filepath.Join(dest, p)); err != nil {
+			t.Errorf("expected materialized %s: %v", p, err)
+		}
+	}
+}
+
 func TestSyncKeepsUserAddedFile(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
