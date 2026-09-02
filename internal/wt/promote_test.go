@@ -107,6 +107,31 @@ func TestRunPromote_UnknownSlug(t *testing.T) {
 	}
 }
 
+func TestPromoteNoneIsNoop(t *testing.T) {
+	root := t.TempDir()
+	writeWorktreeJSON(t, root, `{"abbrev":"myrepo","user":"namph","portRange":[3200,3249],"deps":"none"}`)
+	wtPath := filepath.Join(root, ".worktrees", "my-task")
+	if err := os.MkdirAll(wtPath, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveWorktree(root, Worktree{Slug: "my-task", Path: wtPath}, 1, "h", 1); err != nil {
+		t.Fatal(err)
+	}
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+
+	if err := RunPromote(promoteOpts(root, g)); err != nil {
+		t.Fatalf("RunPromote deps:none → err %v, want nil", err)
+	}
+	if _, statErr := os.Lstat(filepath.Join(wtPath, "node_modules")); statErr == nil {
+		t.Fatal("deps:none must not create/touch node_modules")
+	}
+	for _, s := range g.seen {
+		if strings.HasPrefix(s, "config") {
+			t.Fatalf("Runner must not be called for config with deps:none, seen: %v", g.seen)
+		}
+	}
+}
+
 func TestRunPromote_BookkeepingFailure(t *testing.T) {
 	root, wtPath := promoteFixture(t)
 	dst := filepath.Join(wtPath, "node_modules")

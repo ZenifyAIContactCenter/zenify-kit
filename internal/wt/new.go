@@ -199,7 +199,7 @@ func RunNew(o NewOptions) error {
 		return abort(fmt.Errorf("wt: seed identity env: %w", err))
 	}
 
-	if err := ApplyDeps(o.RepoRoot, path, deps, "node_modules", cfg.Install); err != nil {
+	if err := ApplyDeps(o.RepoRoot, path, deps, cfg.DepsDir, cfg.Install); err != nil {
 		return abort(fmt.Errorf("wt: deps setup failed: %w", err))
 	}
 
