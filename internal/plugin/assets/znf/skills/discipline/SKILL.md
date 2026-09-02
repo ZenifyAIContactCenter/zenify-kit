@@ -59,7 +59,7 @@ Red flags — thinking any of these means you are rationalising:
 | "I'll route after it works" | Too late. The worktree must exist before the first edit. |
 | "It's one file, the main checkout is fine" | Rule #8 has no size clause. Fetch and branch. |
 | "I'll pipe the worktree command through a pager to keep it short" | A tool that exits early can send SIGPIPE and kill the worktree command mid-run, past the point where its own cleanup can fire — leaving a half-built worktree with no config. Redirect to a file and read the file instead. |
-| "the base flag is enough" | Not without a `fetch` first — the worktree tool never fetches on its own, so that ref may be weeks old. |
+| "the base flag is enough" | Current builds fetch before resolving the base, but do not lean on that alone — an explicit `fetch` first stays correct on any build, and a local base branch is never guaranteed current: read `origin/<base>`. |
 | "a spec for this is overkill" | The exact sentence a brainstorming/planning skill forbids. Short spec ≠ no spec. |
 | "it looks local to me" | Judgement is not the gate. Run the gate. |
 | "now I'm changing something else, so a new worktree" | One worktree per **slug**, not per edit. `cd` into the one already open; the tool will refuse a duplicate anyway. |
@@ -158,6 +158,9 @@ can branch from the wrong release entirely.
   neither.
 - It removes the stale-base failure entirely. Branching from a local base branch inherits however
   old that branch is; branching from a freshly fetched remote ref after a fetch cannot.
+- A merged task does not advance your local base branch — the merge lands on the remote, not on
+  the local ref your main checkout reads. So the next task re-fetches and reads `origin/<base>`;
+  never treat a local base branch as current just because a previous task merged.
 - A permanently clean main checkout turns any session-start git-state report into a real alarm.
   While several repos sit dirty, "dirty" is background noise; once it should never happen, it means
   something went wrong.
@@ -188,9 +191,11 @@ can branch from the wrong release entirely.
   real isolation, which is exactly the shortfall already accepted when the specialized tool cannot
   run. Pass an explicit base ref and path since there is no config to read defaults from.
 
-Also worth knowing before the first worktree of a session: the worktree tool likely never fetches on
-its own, it needs its config file, and the directory it creates must be ignored, or the checkout you
-just cleaned goes dirty again with an untracked worktree directory.
+Also worth knowing before the first worktree of a session: current builds of the worktree tool fetch
+before resolving the base, but older ones do not — so an explicit fetch first is still the safe habit,
+and a local base branch is never assumed current regardless. The tool needs its config file, and the
+directory it creates must be ignored, or the checkout you just cleaned goes dirty again with an
+untracked worktree directory.
 
 **Consequence for spec and plan files: they are written in the MAIN checkout, never in the worktree.**
 The worktree holds code only. Specs and plans are the record of the work, not of the branch, and
