@@ -616,8 +616,8 @@ after every `/fix`. SDD's own rule is the correct one and it is stated plainly t
 choose the model … scaled to the diff's size, complexity, and risk. A small mechanical diff does not need
 the most capable model."* So `/ship` passes `model` explicitly **only to scale down** — sonnet for a small
 diff and for the scoped re-review — and **omits it** for anything large or touching a shared contract, auth,
-or tenant scoping, so that dispatch inherits the session model. Do not pass `'opus'`: that alias resolves to
-the newest opus and would override the version pinned in `~/.claude/settings.json`. Never below sonnet:
+or tenant scoping, so that dispatch inherits the session model. Do not pass `'opus'` (Step 6 gives the
+reason — the alias resolves to the newest opus, overriding the pinned version). Never below sonnet:
 *"turn count beats token price"*, and the cheapest tier takes 2-3× the turns while reviewing worse.
 
 **Floor and ceiling.** The floor is **sonnet**, not the cheapest tier — see Step 6 for why (haiku 4.5
@@ -625,14 +625,12 @@ is not xhigh-capable, so it silently discards the dial that matters most for cod
 `opus-4-8`, for architecture, for a task needing broad codebase understanding, and for the final
 whole-branch review.
 
-**How to name each one is asymmetric, and this is the part that gets it wrong.** Scaling *down* means
-passing `model: 'sonnet'`. Scaling *up* means **omitting `model` entirely** so the dispatch inherits the
-session — because the Agent tool's `model` parameter is an enum (`sonnet | opus | haiku | fable`) and the
-`opus` alias resolves to the *newest* opus, overriding the version pinned in `~/.claude/settings.json`.
-SDD's *"always specify the model explicitly"* was written for a session default that is the most
-expensive model; here the session default **is** the intended ceiling, so omission is the correct way to
-reach it rather than an oversight. State in the dispatch note which one you meant, so an omission is
-never read as forgetting.
+**Naming is asymmetric:** scale *down* by passing `model: 'sonnet'`; scale *up* by **omitting `model`**
+so the dispatch inherits the session (Step 6 gives the mechanism — the `opus` alias resolves to the
+*newest* opus and would override the pinned version). SDD's *"always specify the model explicitly"* assumed
+a session default that is the most expensive model; here the session default **is** the intended ceiling,
+so omission is the correct way to reach it rather than an oversight. State in the dispatch note which one
+you meant, so an omission is never read as forgetting.
 
 ## Constraints preserved from house rules
 
