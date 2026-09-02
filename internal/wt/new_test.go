@@ -171,6 +171,22 @@ func TestFfLocalBase_NotCurrent_FetchesRefspec(t *testing.T) {
 	}
 }
 
+func TestFfLocalBase_DetachedHead_FetchesRefspec(t *testing.T) {
+	root := t.TempDir()
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	// detached HEAD: symbolic-ref errors and yields empty output.
+	g.err[root+"|symbolic-ref --quiet --short HEAD"] = errors.New("detached")
+	ffLocalBase(g, root, "main", io.Discard)
+	if !seenContains(g, "fetch origin main:main") {
+		t.Fatalf("detached HEAD: expected fetch origin main:main, seen=%v", g.seen)
+	}
+	for _, c := range g.seen {
+		if strings.Contains(c, "merge --ff-only") {
+			t.Fatalf("detached HEAD: must not merge, got %q", c)
+		}
+	}
+}
+
 func TestRunNew_FetchesBeforeResolvingBase(t *testing.T) {
 	t.Setenv("WT_SESSION", "")
 	root := t.TempDir()

@@ -86,7 +86,7 @@ func RunNew(o NewOptions) error {
 	// and fast-forward against it. Warn on failure (e.g. offline) but never
 	// abort — the base-ref check below still catches a genuinely missing base.
 	if _, err := r.Run(o.RepoRoot, "fetch", "origin", "--quiet"); err != nil {
-		fmt.Fprintf(o.Stderr, "wt: fetch failed (%v) — continuing with local refs; base may be stale\n", err)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: fetch failed (%v) — continuing with local refs; base may be stale\n", err)
 	}
 
 	// Duplicate checks (keyed on the exact slug/branch).
@@ -131,7 +131,7 @@ func RunNew(o NewOptions) error {
 
 	// base ref must exist.
 	if _, err := r.Run(o.RepoRoot, "rev-parse", "--verify", "--quiet", base); err != nil {
-		return fmt.Errorf("wt: base ref %q not found — fetch first", base)
+		return fmt.Errorf("wt: base ref %q not found on origin or locally — check the name", base)
 	}
 
 	// Base exists and origin is freshly fetched: bring the matching local branch
@@ -258,11 +258,11 @@ func ffLocalBase(r gitx.Runner, repoRoot, lb string, stderr io.Writer) {
 		// base branch is checked out: fast-forward only when the tree is clean.
 		st, _ := r.Run(repoRoot, "status", "--porcelain")
 		if strings.TrimSpace(string(st)) != "" {
-			fmt.Fprintf(stderr, "wt: %s is checked out and dirty — left as is, not fast-forwarded\n", lb)
+			_, _ = fmt.Fprintf(stderr, "wt: %s is checked out and dirty — left as is, not fast-forwarded\n", lb)
 			return
 		}
 		if _, err := r.Run(repoRoot, "merge", "--ff-only", "origin/"+lb); err != nil {
-			fmt.Fprintf(stderr, "wt: could not fast-forward %s to origin/%s: %v\n", lb, lb, err)
+			_, _ = fmt.Fprintf(stderr, "wt: could not fast-forward %s to origin/%s: %v\n", lb, lb, err)
 		}
 		return
 	}
@@ -270,7 +270,7 @@ func ffLocalBase(r gitx.Runner, repoRoot, lb string, stderr io.Writer) {
 	// A plain refspec fetch is fast-forward-only and fails loudly on divergence
 	// without moving the branch.
 	if _, err := r.Run(repoRoot, "fetch", "origin", lb+":"+lb); err != nil {
-		fmt.Fprintf(stderr, "wt: could not fast-forward %s to origin/%s: %v\n", lb, lb, err)
+		_, _ = fmt.Fprintf(stderr, "wt: could not fast-forward %s to origin/%s: %v\n", lb, lb, err)
 	}
 }
 
