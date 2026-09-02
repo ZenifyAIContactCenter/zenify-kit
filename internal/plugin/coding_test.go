@@ -18,6 +18,7 @@ var forbiddenTokens = []string{
 var codingAnchors = map[string][]string{
 	"mongo-data-safety": {"tenant", "strict", "distinct"},
 	"mongoose-modeling": {"schema", "index", "backfill"},
+	"nestjs-patterns":   {"module", "guard", "controller"},
 }
 
 func readCodingFile(t *testing.T, skill string) string {
