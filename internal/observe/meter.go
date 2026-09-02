@@ -51,6 +51,35 @@ func writeMeter(path string, m Meter) error {
 	return os.WriteFile(path, b, 0o600)
 }
 
+// LoadMeter returns a session's tool-output accounting for display, WITHOUT the
+// lock (a read-only snapshot). Same ok semantics as LoadState: absent → fresh
+// session (Meter{}, true); torn/corrupt read → (Meter{}, false).
+func LoadMeter(sessionID string) (Meter, bool) {
+	base, err := dir()
+	if err != nil {
+		return Meter{}, false
+	}
+	return readMeter(meterPath(base, sanitizeSession(sessionID)))
+}
+
+// TotalBytes sums metered response bytes across all tools.
+func (m Meter) TotalBytes() int64 {
+	var t int64
+	for _, b := range m.Bytes {
+		t += b
+	}
+	return t
+}
+
+// TotalCalls sums metered calls across all tools.
+func (m Meter) TotalCalls() int {
+	var t int
+	for _, c := range m.Calls {
+		t += c
+	}
+	return t
+}
+
 // Record adds one tool call of respBytes to the session meter. The
 // read-modify-write runs under the same per-session flock as Bump (non-blocking
 // with bounded retry); any error or persistent contention falls open silently so
