@@ -70,24 +70,31 @@ func sessDir(base, sess string) string { return filepath.Join(base, sess) }
 // sessPath is the counter file for a session.
 func sessPath(base, sess string) string { return filepath.Join(sessDir(base, sess), "count.json") }
 
-func readState(path string) State {
+// readState returns (State{}, true) when the file does not exist (a normal
+// fresh session), (st, true) on a successful read, and (State{}, false) on any
+// other read error or a JSON-unmarshal error (corruption/unreadable) — the
+// caller must fail open on false rather than proceed with a zero State.
+func readState(path string) (State, bool) {
 	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path computed internally from XDG state dir + sanitized session id
 	if err != nil {
-		return State{}
+		if os.IsNotExist(err) {
+			return State{}, true
+		}
+		return State{}, false
 	}
 	var st State
 	if err := json.Unmarshal(b, &st); err != nil {
-		return State{}
+		return State{}, false
 	}
-	return st
+	return st, true
 }
 
-func writeState(path string, st State) {
+func writeState(path string, st State) error {
 	b, err := json.Marshal(st)
 	if err != nil {
-		return
+		return err
 	}
-	_ = os.WriteFile(path, b, 0o600)
+	return os.WriteFile(path, b, 0o600)
 }
 
 // Bump loads the session counter, applies one dispatch, persists it, prunes
@@ -122,9 +129,14 @@ func Bump(sessionID string, softCap int, now time.Time) Decision {
 	}
 	defer func() { _ = h.Release() }()
 
-	st := readState(sessPath(base, sess))
+	st, ok := readState(sessPath(base, sess))
+	if !ok {
+		return Decision{} // corrupt or unreadable state file → fail open
+	}
 	st, dec := Evaluate(st, softCap)
-	writeState(sessPath(base, sess), st)
+	if err := writeState(sessPath(base, sess), st); err != nil {
+		return Decision{} // could not persist → never warn on this dispatch
+	}
 	prune(base, now)
 	return dec
 }

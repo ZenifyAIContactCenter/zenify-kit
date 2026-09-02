@@ -1,6 +1,7 @@
 package observe
 
 import (
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -63,5 +64,28 @@ func readForTest(t *testing.T, sessionID string) State {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return readState(sessPath(d, sanitizeSession(sessionID)))
+	st, _ := readState(sessPath(d, sanitizeSession(sessionID)))
+	return st
+}
+
+func TestBump_CorruptStateFailsOpen(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	sid := "sess-corrupt"
+	now := time.Now()
+
+	base, err := dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sd := sessDir(base, sanitizeSession(sid))
+	if err := os.MkdirAll(sd, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sessPath(base, sanitizeSession(sid)), []byte("{not valid json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := Bump(sid, 1, now); got.Warn {
+		t.Fatalf("Bump on corrupt state should fail open, got Warn=%v", got.Warn)
+	}
 }
