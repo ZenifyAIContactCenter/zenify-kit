@@ -113,6 +113,17 @@ func TestSync_MaterializesReviewWorkflow(t *testing.T) {
 	}
 }
 
+func TestSync_MaterializesMechanicalGate(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "skills/review/scripts/mechanical-gate")); err != nil {
+		t.Fatalf("mechanical-gate chưa materialize: %v", err)
+	}
+}
+
 func TestSync_MaterializesReviewSkill(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
