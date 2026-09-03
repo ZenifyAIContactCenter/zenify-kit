@@ -44,8 +44,13 @@ func humanBytes(n int64) string {
 // that errors or prints nothing is worse than one that shows less. The loaders
 // supply this kit's own per-session data (dispatch count + tool-output volume),
 // which the stdin JSON does not carry; everything else comes from stdin.
+//
+// segmentOnly renders JUST the two kit-unique segments (⟳dispatches · ↓tool-out)
+// with no leading/trailing separator, for splicing into a statusline the user
+// already owns — the model/ctx/cost segments are dropped because that existing
+// line already shows them. Full mode renders every segment as a standalone line.
 func runObserveStatusline(
-	stdin io.Reader, stdout io.Writer,
+	stdin io.Reader, stdout io.Writer, segmentOnly bool,
 	loadState func(string) (observe.State, bool),
 	loadMeter func(string) (observe.Meter, bool),
 ) (code int) {
@@ -61,10 +66,10 @@ func runObserveStatusline(
 	}
 
 	var seg []string
-	if p.Model.DisplayName != "" {
+	if !segmentOnly && p.Model.DisplayName != "" {
 		seg = append(seg, p.Model.DisplayName)
 	}
-	if p.ContextWindow.UsedPercentage > 0 {
+	if !segmentOnly && p.ContextWindow.UsedPercentage > 0 {
 		seg = append(seg, fmt.Sprintf("ctx %.0f%%", p.ContextWindow.UsedPercentage))
 	}
 	if st, ok := loadState(p.SessionID); ok && st.Count > 0 {
@@ -75,7 +80,7 @@ func runObserveStatusline(
 			seg = append(seg, fmt.Sprintf("↓%s/%d", humanBytes(b), m.TotalCalls()))
 		}
 	}
-	if p.Cost.TotalCostUSD > 0 {
+	if !segmentOnly && p.Cost.TotalCostUSD > 0 {
 		seg = append(seg, fmt.Sprintf("$%.4f", p.Cost.TotalCostUSD))
 	}
 
@@ -93,18 +98,29 @@ existing one):
 
   "statusLine": { "type": "command", "command": "zenify observe statusline" }
 
-Segments (each hidden when absent): model · ctx% · ⟳dispatches · ↓tool-output/calls · $cost.`
+Segments (each hidden when absent): model · ctx% · ⟳dispatches · ↓tool-output/calls · $cost.
+
+--segment renders ONLY this kit's own two segments (⟳dispatches · ↓tool-output)
+and drops model/ctx/cost. Use it when you already have a statusline you like:
+keep your script, pipe its same stdin JSON to this, and append the output — e.g.
+
+  seg=$(printf '%s' "$input" | zenify observe statusline --segment)
+  [ -n "$seg" ] && line2+="  |  $seg"`
 
 func newStatuslineCmd() *cobra.Command {
-	return &cobra.Command{
+	var segmentOnly bool
+	c := &cobra.Command{
 		Use:   "statusline",
 		Short: "Statusline HUD: model · ctx% · ⟳dispatch · ↓tool-output · $cost",
 		Long:  statuslineLong,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_ = runObserveStatusline(cmd.InOrStdin(), cmd.OutOrStdout(),
+			_ = runObserveStatusline(cmd.InOrStdin(), cmd.OutOrStdout(), segmentOnly,
 				observe.LoadState, observe.LoadMeter)
 			return nil
 		},
 	}
+	c.Flags().BoolVar(&segmentOnly, "segment", false,
+		"render only ⟳dispatch · ↓tool-output, for splicing into an existing statusline")
+	return c
 }
