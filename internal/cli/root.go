@@ -38,5 +38,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newObserveCmd())
 	root.AddCommand(newReviewVerifyCmd())
 	root.AddCommand(newReviewBundleCmd())
+	root.AddCommand(newReviewDoctrineCmd())
 	return root
 }

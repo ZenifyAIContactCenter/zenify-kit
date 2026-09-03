@@ -137,3 +137,45 @@ func TestReviewVerify_Registered(t *testing.T) {
 		t.Errorf("review-verify chưa đăng ký trong root")
 	}
 }
+
+func TestRunReviewDoctrine_StripsVerdict(t *testing.T) {
+	var out, errb bytes.Buffer
+	in := strings.NewReader("✅ all good\n12/12 pass — pm test src/x")
+	if err := runReviewDoctrine(in, &out, &errb); err != nil {
+		t.Fatalf("err=%v, want nil", err)
+	}
+	var r doctrineResult
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatalf("bad json: %v; out=%s", err, out.String())
+	}
+	if r.Verified != "12/12 pass — pm test src/x" {
+		t.Fatalf("verified=%q", r.Verified)
+	}
+	if len(r.Stripped) != 1 || r.Stripped[0] != "✅ all good" {
+		t.Fatalf("stripped=%v", r.Stripped)
+	}
+}
+
+func TestRunReviewDoctrine_FailOpenEmpty(t *testing.T) {
+	var out, errb bytes.Buffer
+	if err := runReviewDoctrine(strings.NewReader(""), &out, &errb); err != nil {
+		t.Fatalf("err=%v, want nil", err)
+	}
+	var r doctrineResult
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatalf("bad json: %v", err)
+	}
+	if r.Verified != "" || len(r.Stripped) != 0 {
+		t.Fatalf("want empty; got %q / %v", r.Verified, r.Stripped)
+	}
+}
+
+func TestReviewDoctrineCmd_Hidden(t *testing.T) {
+	c := newReviewDoctrineCmd()
+	if !c.Hidden {
+		t.Fatal("review-doctrine phải Hidden")
+	}
+	if c.Use != "review-doctrine" {
+		t.Fatalf("Use=%q", c.Use)
+	}
+}
