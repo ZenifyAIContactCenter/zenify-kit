@@ -9,11 +9,11 @@ export const meta = {
 }
 
 const DIMENSIONS = [
-  { key: 'bugs', prompt: 'Review this diff for CORRECTNESS bugs: wrong field names in dynamic code, off-by-one errors, null/undefined propagation, race conditions, wrong async handling. Return only confirmed bugs with file:line. diff:\n\n' + args.diff },
-  { key: 'security', prompt: 'Review this diff for SECURITY issues: OWASP Top 10, missing auth/authz, injection (SQL/NoSQL/command), secrets in code, IDOR, insecure defaults. Return only real security issues with severity. diff:\n\n' + args.diff },
-  { key: 'perf', prompt: 'Review this diff for PERFORMANCE issues: N+1 queries, missing indexes, unbounded loops, large in-memory operations. Return only confirmed issues with impact estimate. diff:\n\n' + args.diff },
-  { key: 'contracts', prompt: 'Review this diff for CONTRACT MISMATCHES: does the response shape match what callers expect? Do DB writes match what readers expect? Are queue/event payloads compatible with consumers? Context: ' + (args.context || 'no extra context') + '\n\ndiff:\n\n' + args.diff },
-  { key: 'types', prompt: 'Review this diff for TYPE SAFETY issues in dynamic code: field names used without verification, API responses used without checking shape, assumed object structures. diff:\n\n' + args.diff },
+  { key: 'bugs', prompt: 'Review this diff for CORRECTNESS bugs: wrong field names in dynamic code, off-by-one errors, null/undefined propagation, race conditions, wrong async handling. Return only confirmed bugs with file:line, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'security', prompt: 'Review this diff for SECURITY issues: OWASP Top 10, missing auth/authz, injection (SQL/NoSQL/command), secrets in code, IDOR, insecure defaults. Return only real security issues with severity, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'perf', prompt: 'Review this diff for PERFORMANCE issues: N+1 queries, missing indexes, unbounded loops, large in-memory operations. Return only confirmed issues with impact estimate, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'contracts', prompt: 'Review this diff for CONTRACT MISMATCHES: does the response shape match what callers expect? Do DB writes match what readers expect? Are queue/event payloads compatible with consumers? For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. Context: ' + (args.context || 'no extra context') + '\n\ndiff:\n\n' + args.diff },
+  { key: 'types', prompt: 'Review this diff for TYPE SAFETY issues in dynamic code: field names used without verification, API responses used without checking shape, assumed object structures. For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
 ]
 
 const FINDING_SCHEMA = {
@@ -31,6 +31,7 @@ const FINDING_SCHEMA = {
           line: { type: 'string' },
           issue: { type: 'string' },
           fix: { type: 'string' },
+          evidence: { type: 'string', description: 'the exact code line content, verbatim, WITHOUT the diff +/- marker, matching file:line — required when file+line is set' },
         },
         required: ['dimension', 'severity', 'title', 'issue', 'fix'],
       },

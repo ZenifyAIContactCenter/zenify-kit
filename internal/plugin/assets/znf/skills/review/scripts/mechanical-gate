@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# PRE mechanical-gate cho znf:review: chạy CƠ HỌC (không LLM) build/lint theo stack +
+# quét anti-pattern trên diff. In JSON {"verdict":"pass|block","findings":[...]} ra STDOUT;
+# output build/lint đi STDERR (không lẫn vào JSON).
+# usage: mechanical-gate BASE     (STATIC_OK=1 → bỏ build/lint, chỉ quét anti-pattern)
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+  echo "usage: mechanical-gate BASE" >&2
+  exit 2
+fi
+BASE=$1
+
+verdict=pass
+findings=()
+
+# emit SEVERITY DIMENSION TITLE ISSUE FIX FILE LINE  — mọi field text do gate tự viết
+# (không chứa dấu ngoặc kép); chỉ FILE cần escape \ và ".
+emit() {
+  local file_esc
+  file_esc=$(printf '%s' "${6:-}" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  findings+=("{\"dimension\":\"$2\",\"severity\":\"$1\",\"title\":\"$3\",\"issue\":\"$4\",\"fix\":\"$5\",\"file\":\"$file_esc\",\"line\":\"${7:-}\",\"evidence\":\"\"}")
+}
+
+run_static=1
+[ "${STATIC_OK:-0}" = "1" ] && run_static=0
+
+if [ "$run_static" = "1" ]; then
+  if [ -f go.mod ]; then
+    if command -v go >/dev/null 2>&1; then
+      if ! go build ./... 1>&2; then
+        emit CRITICAL bugs "build fail" "go build ./... thất bại (xem stderr)" "sửa lỗi build" "" ""
+        verdict=block
+      fi
+      if ! go vet ./... 1>&2; then
+        emit HIGH bugs "vet fail" "go vet ./... báo lỗi (xem stderr)" "sửa cảnh báo vet" "" ""
+        verdict=block
+      fi
+    else
+      emit LOW bugs "skip build" "skipped: go unavailable" "cài Go toolchain" "" ""
+    fi
+  elif [ -f package.json ]; then
+    if command -v pm >/dev/null 2>&1; then
+      if grep -q '"build"' package.json && ! pm run build 1>&2; then
+        emit CRITICAL bugs "build fail" "pm run build thất bại (xem stderr)" "sửa lỗi build" "" ""
+        verdict=block
+      fi
+      if grep -q '"lint"' package.json && ! pm run lint 1>&2; then
+        emit HIGH bugs "lint fail" "pm run lint báo lỗi (xem stderr)" "sửa cảnh báo lint" "" ""
+        verdict=block
+      fi
+    else
+      emit LOW bugs "skip build" "skipped: pm unavailable" "cài pm (kit)" "" ""
+    fi
+  fi
+fi
+
+# Quét anti-pattern trên các dòng ADDED của diff (bỏ header +++).
+added=$(git diff "$BASE" 2>/dev/null | grep '^+' | grep -v '^+++' || true)
+
+# Conflict marker: chỉ dùng <<<<<<< và >>>>>>> (không dùng ======= để tránh trùng
+# gạch dưới tiêu đề markdown). Hai dấu góc này gần như không bao giờ hợp lệ trong code.
+if printf '%s\n' "$added" | grep -qE '^\+(<<<<<<<|>>>>>>>)'; then
+  emit CRITICAL bugs "conflict marker" "merge conflict marker còn trong diff" "resolve conflict trước khi review" "" ""
+  verdict=block
+fi
+if printf '%s\n' "$added" | grep -qE '\.only\(|fdescribe\(|fit\('; then
+  emit HIGH bugs "focused test" "test focus (.only/fdescribe/fit) khoá các test anh em" "bỏ .only/fdescribe/fit" "" ""
+fi
+if printf '%s\n' "$added" | grep -qE '(^|[^A-Za-z_])debugger([^A-Za-z_]|$)'; then
+  emit HIGH bugs "debugger" "leftover debugger còn trong diff" "xoá debugger" "" ""
+fi
+
+IFS=,
+body="${findings[*]:-}"
+unset IFS
+printf '{"verdict":"%s","findings":[%s]}\n' "$verdict" "$body"

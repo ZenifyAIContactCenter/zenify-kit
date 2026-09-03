@@ -1,7 +1,7 @@
 ---
 name: review
 description: Engine review hợp nhất của kit. Chọn tier cơ học theo diff, dispatch reviewer (T1 solo / T2 fan-out / T3 adversarial), trả finding theo schema chung. Cửa chính cho /review và cho ship step 5.
-allowed-tools: Bash(git *) Bash(rg *) Bash(bash *) Bash(test *) Bash(awk *) Agent Workflow
+allowed-tools: Bash(git *) Bash(rg *) Bash(bash *) Bash(test *) Bash(awk *) Bash(zenify *) Agent Workflow
 ---
 
 # znf:review — engine review hợp nhất
@@ -14,10 +14,10 @@ Finding theo `_shared/finding-schema.md` (nguồn schema duy nhất — mọi ti
 Engine chạy 5 chốt theo thứ tự. M4a chỉ làm REVIEW (3); 4 chốt kia là **stub inert**
 (no-op, hành vi = như review hiện tại) và sẽ được các slice sau thay:
 
-1. **PRE** — mechanical-gate (M4b). M4a: bỏ qua.
+1. **PRE** — mechanical-gate (M4b, **live**). Chạy build/lint theo stack + anti-pattern scan CƠ HỌC trước khi tốn LLM; fail → short-circuit.
 2. **BUNDLE** — smart-bundling diff lớn (M4c). M4a: T3 review nguyên khối.
 3. **REVIEW** — dispatch theo tier (phần thịt M4a, bên dưới).
-4. **VERIFY** — finding-verifier vs file thật (M4b). M4a: T3 giữ adversarial-LLM sẵn có; T1/T2 không verify.
+4. **VERIFY** — finding-verifier cơ học `zenify review-verify` (M4b, **live**, mọi tier): bác finding có evidence không khớp file thật. T3 vẫn giữ adversarial-LLM bên trong workflow (chồng lên, kiểm việc khác).
 5. **POST** — learning-capture (M4e) + doctrine no-claim/anti-groupthink (M4d) + advisory (M4f). M4a: chỉ tổng hợp report.
 
 ## Bước 1 — tính input cho tier (cơ học)
@@ -29,6 +29,18 @@ ADDED=$(git diff --numstat "$BASE" | awk '{a+=$1+$2} END{print a+0}')
 SHARED=$(git diff "$BASE" | rg -c 'collection\(|@InjectModel|emit\(|publish\(|subscribe\(|\.route\(|router\.(get|post|put|delete)' >/dev/null && echo 1 || echo 0)
 CRITICAL=0                    # caller (ship/user) set 1 nếu vùng nhạy cảm (auth/tenant/migration)
 ```
+
+## Bước 1b — PRE mechanical-gate (short-circuit)
+
+Chạy gate CƠ HỌC trước khi dispatch LLM. Khi được **ship** gọi (ship-pack có block `## Verified` xác nhận build/lint đã pass ở ship step 2), engine tự set `STATIC_OK=1` ngay trên dòng lệnh gate để tránh build/lint hai lần. Standalone `/review` (không có ship-pack) → để `STATIC_OK=0`, gate chạy full build/lint:
+
+```bash
+GATE=$(STATIC_OK=${STATIC_OK:-0} bash ~/.claude/skills/znf/skills/review/scripts/mechanical-gate "$BASE")
+echo "$GATE"   # {"verdict":"pass|block","findings":[...]}
+```
+
+- `verdict=block` (build/lint fail hoặc conflict-marker) → **DỪNG**: đưa `findings` của gate vào report, `shippable:false`, in lý do dừng, KHÔNG dispatch REVIEW.
+- `verdict=pass` → giữ `findings` cơ học (nếu có: focused-test/debugger) để gộp vào report cuối, rồi sang Bước 2.
 
 ## Bước 2 — chọn tier (KHÔNG để LLM đoán)
 
@@ -59,10 +71,19 @@ Dòng 1 = `T1|T2|T3`, dòng 2 = lý do. **In tier + lý do ra report** trước 
   - **missing** (teammate chưa `skills sync`, hoặc file bị xoá) → **degrade về T2** và ghi rõ
     trên report: "T3 degrade→T2: workflow vắng". KHÔNG gãy im lặng.
 
-## Bước 4 — VERIFY / POST (stub M4a)
+> Mọi finding có `file+line` PHẢI kèm `evidence` — trích **verbatim** MỘT dòng code lỗi (nguyên văn nội dung dòng trong file, KHÔNG kèm dấu `+`/`-` của diff) để `zenify review-verify` kiểm chứng; finding bịa dòng/quote sẽ bị bác ở VERIFY.
 
-VERIFY: T3 đã verify trong workflow; T1/T2 chưa (M4b sẽ thêm). POST: tổng hợp `findings[]`,
-rank theo severity, kết luận `shippable` (không CRITICAL/HIGH chưa xử lý).
+## Bước 4 — VERIFY (cơ học, mọi tier) + POST
+
+VERIFY: gộp `findings[]` của REVIEW (mọi tier) rồi verify citation cơ học — bác finding có `evidence` không khớp file thật:
+
+```bash
+VERIFIED=$(printf '%s' "$FINDINGS_JSON" | zenify review-verify)   # {"findings":[kept],"kept":N,"refuted":M}
+```
+
+Nếu `command -v zenify` vắng → bỏ qua VERIFY kèm note "verify unavailable" (KHÔNG gãy, giữ nguyên findings). T3 vẫn giữ adversarial-LLM trong workflow.
+
+POST: gộp findings kept + findings cơ học của gate (Bước 1b), rank theo severity, kết luận `shippable` (không CRITICAL/HIGH chưa xử lý).
 
 ## Report trả về
 
