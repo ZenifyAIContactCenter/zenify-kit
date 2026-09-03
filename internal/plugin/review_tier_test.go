@@ -26,8 +26,8 @@ func TestSelectTier(t *testing.T) {
 		{"350", "0", "0", "T2"},
 		{"600", "0", "0", "T2"},
 		{"900", "0", "0", "T3"},
-		{"50", "1", "0", "T3"},  // shared force T3
-		{"50", "0", "1", "T3"},  // critical force T3
+		{"50", "1", "0", "T3"}, // shared force T3
+		{"50", "0", "1", "T3"}, // critical force T3
 	}
 	for _, c := range cases {
 		if got := runTier(t, c.loc, c.shared, c.critical); got != c.want {
