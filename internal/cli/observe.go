@@ -120,5 +120,6 @@ func newObserveCmd() *cobra.Command {
 	}
 	c.AddCommand(count)
 	c.AddCommand(meter)
+	c.AddCommand(newStatuslineCmd())
 	return c
 }

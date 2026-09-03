@@ -97,6 +97,19 @@ func writeState(path string, st State) error {
 	return os.WriteFile(path, b, 0o600)
 }
 
+// LoadState returns a session's counter for display, WITHOUT taking the lock —
+// a read-only snapshot. ok is false only on an unexpected read/unmarshal error
+// (a torn mid-write read); an absent file is a fresh session and returns
+// (State{}, true). The statusline shows nothing rather than a wrong number when
+// ok is false.
+func LoadState(sessionID string) (State, bool) {
+	base, err := dir()
+	if err != nil {
+		return State{}, false
+	}
+	return readState(sessPath(base, sanitizeSession(sessionID)))
+}
+
 // Bump loads the session counter, applies one dispatch, persists it, prunes
 // stale sessions, and returns the Decision. The read-modify-write runs under a
 // per-session flock (internal/lock, non-blocking) with bounded retry; any error
