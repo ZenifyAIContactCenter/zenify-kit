@@ -5,6 +5,8 @@ disable-model-invocation: true
 allowed-tools: Bash(git *) Agent
 ---
 
+> **Vai trò:** đây là T3 backend nội bộ của `znf:review`. Người dùng nên vào `/review` (engine tự chọn tier); chỉ tier T3 mới chạy workflow này.
+
 **Explicit opt-in only** — this workflow is token-heavy. Use for diffs larger than ~200 lines or when correctness is critical.
 
 ## How to run
@@ -17,7 +19,7 @@ git diff HEAD   # or git diff <base>..<head>
 2. Run the `review-changes` workflow:
 ```
 Invoke Workflow tool with:
-  scriptPath: "/Users/believe/.claude/workflows/review-changes.js"
+  scriptPath: "~/.claude/skills/znf/workflows/review-changes.js"
   args: {
     diff: <the git diff output>,
     context: "<optional: task intent, relevant contracts, API shapes>"

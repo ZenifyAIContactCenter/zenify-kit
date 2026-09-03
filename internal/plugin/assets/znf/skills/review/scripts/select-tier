@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Chọn tier review CƠ HỌC (không LLM đoán) cho znf:review.
+# Input: ADDED_LOC (số dòng thêm+sửa), SHARED (0|1 chạm shared contract), CRITICAL (0|1).
+# Output: dòng 1 = T1|T2|T3 ; dòng 2 = reason: <lý do>.
+# Ngưỡng: T1 <=200 & !shared & !critical ; T2 201..600 ; T3 >600 | shared | critical.
+set -euo pipefail
+
+if [ $# -ne 3 ]; then
+  echo "usage: select-tier ADDED_LOC SHARED CRITICAL" >&2
+  exit 2
+fi
+loc=$1; shared=$2; critical=$3
+case "$loc" in ''|*[!0-9]*) echo "ADDED_LOC phải là số: $loc" >&2; exit 2;; esac
+
+if [ "$shared" = "1" ] || [ "$critical" = "1" ]; then
+  echo "T3"
+  echo "reason: chạm shared contract hoặc critical → adversarial verify"
+  exit 0
+fi
+if [ "$loc" -le 200 ]; then
+  echo "T1"; echo "reason: diff nhỏ (<=200 LOC), không shared → 1 reviewer"
+elif [ "$loc" -le 600 ]; then
+  echo "T2"; echo "reason: diff vừa (201-600 LOC) → fan-out 5 chiều"
+else
+  echo "T3"; echo "reason: diff lớn (>600 LOC) → adversarial verify"
+fi

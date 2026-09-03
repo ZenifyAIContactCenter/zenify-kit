@@ -182,18 +182,13 @@ start early, and that section says why.
 
 5. **Independent review.**
 
-   **Check the diff size first — it decides whether review is even possible.** Detection collapses
-   with diff size, consistently across studies: 200-400 LOC reviewed over 60-90 minutes finds
-   70-90% of defects, and above ~500 LOC-per-hour the defect density found drops below average in
-   87% of cases (Cisco/SmartBear, 2,500 reviews over 3.2M LOC).
-
-   ```
-   diff ≤ ~400 LOC   → review it
-   diff > ~400 LOC   → THE FINDING IS THE DIFF. Report that it is too large to review
-                       reliably and propose the split. Do not escalate to a heavier
-                       reviewer — the limit is the diff, not the reviewer, so reviewing a
-                       big diff harder buys nothing the evidence can detect.
-   ```
+   **Dispatch qua the engine, không tự chọn reviewer.** Xây ship-pack như dưới, rồi
+   gọi **`Skill(znf:review)`** với `BASE=<base>` và ship-pack làm context. Engine tự
+   chọn tier (T1 solo / T2 fan-out / T3 adversarial) theo kích thước + shared-touch —
+   kể cả case diff lớn: engine bundle/adversarial thay vì ship tự "báo split & dừng".
+   Engine trả `findings[]` (schema `znf:review/_shared/finding-schema.md`) + `shippable`.
+   CRITICAL/HIGH vào fix-loop; MEDIUM/LOW lên board. `## Deferred` của ship-pack vẫn do
+   engine chuyển cho reviewer một-dòng-mỗi-mục như cũ.
 
    **Build the ship-pack** — one file, so the reviewer reads it in a single call and the diff never
    lands in your context. Write it to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md` (scratch, so it can never
@@ -246,36 +241,8 @@ start early, and that section says why.
    `## Ground` is what lets it check field names against reality; the agent has no Bash of its own, by
    design, so the data must be handed to it.
 
-   Then dispatch the `code-reviewer` agent with that path — **and pass an explicit `model`, scaled to the
-   diff.** The agent definition pins `opus`, which is right for the hard cases and wasteful for the
-   common one; the Agent tool's `model` parameter overrides that pin, so use it:
-
-   ```
-   diff < ~50 LOC, no shared contract touched   → model: 'sonnet'
-   larger, or touches a shared collection /      → omit model  (inherits the session)
-     endpoint / queue / auth / tenant scoping
-   scoped re-review of a fix diff (the loop)     → model: 'sonnet'
-   ```
-
-   **The top tier is "omit `model`", not `'opus'`.** The Agent tool's `model` parameter is an enum —
-   `sonnet | opus | haiku | fable` — and the `opus` alias always resolves to the *newest* opus, which is
-   not necessarily the one pinned as the session default in `~/.claude/settings.json`. Passing `'opus'`
-   therefore silently overrides that pin. Omitting the parameter inherits the session model, which is the
-   pinned one. So: name a model only when scaling **down**; never to reach the top tier.
-
-   This follows SDD's own rule rather than contradicting it: *"Review tasks: choose the model … scaled to
-   the diff's size, complexity, and risk. A small mechanical diff does not need the most capable model …
-   Scoped re-reviews of small fix diffs take a cheap-to-mid tier."* Pinning opus for every review meant a
-   one-line typo fix was reviewed at the top tier, on the gate that runs after *every* `/fix`.
-
-   Do not scale below sonnet. SDD's other warning applies — *"turn count beats token price"* — and the
-   cheapest tier takes 2-3× the turns on multi-step work, so it costs more overall while reviewing worse.
-
-   **One reviewer, not more.** Two is the measured optimum and additional reviewers do not pay for
-   themselves; individual expertise predicts defects found far better than reviewer count
-   (Sauer et al.). The re-review in the loop below is the second pass.
-
-   Findings: **CRITICAL / HIGH** enter the loop. **MEDIUM / LOW** go on the board and never enter it.
+   Model scaling, reviewer count, and CRITICAL/HIGH-vs-MEDIUM/LOW routing are now the engine's
+   decisions (`znf:review`) — ship no longer picks a model or a reviewer count itself.
 
 6. **Deploy order** (multi-service only): schema/migration → backend → subscriber → frontend;
    subscriber before publisher for breaking pub/sub changes.
@@ -291,7 +258,7 @@ only the diff, and one is genuinely downstream.
 2. ONE message dispatching:   the gate's per-repo sweeps  ‖  ui-verifier
 3. inline, while they work:   pm run lint · pm run build · the three data checks
 4. collect 2's reports BY NAME
-5. THEN dispatch code-reviewer — it cannot start earlier, see below
+5. THEN invoke Skill(znf:review) — it cannot start earlier, see below
 6. read the board
 ```
 
