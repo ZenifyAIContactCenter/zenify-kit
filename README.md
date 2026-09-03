@@ -1,10 +1,12 @@
 # zenify
 
 Portable workspace toolkit for the Zenify polyrepo — a single self-contained Go binary
-that ships the team's shared CLI (`version`, `doctor`, and more to come).
+that ships the team's shared CLI: worktrees (`wt`), guards (`guard`, `secret-scan`),
+onboarding (`up`), db access (`db-read`), plugin + skills sync (`skills`), and
+observability (`observe`).
 
-> **Status:** M0 Foundation. The commands available today are `version` and `doctor`.
-> Onboarding, gate, and managed-file subcommands land in later milestones.
+> **Status:** M0–M3 shipped. Run `zenify --help` for the full command list, and
+> `zenify <command> --help` for any command's flags and behaviour.
 
 The binary is published for macOS, Linux, and Windows (amd64 + arm64) on every release.
 The source contains no workspace-specific data (see [ARCHITECTURE.md](ARCHITECTURE.md)),
