@@ -136,6 +136,10 @@ VERIFIED=$(printf '%s' "$FINDINGS_JSON" | zenify review-verify)   # {"findings":
 
 Nếu `command -v zenify` vắng → bỏ qua VERIFY kèm note "verify unavailable" (KHÔNG gãy, giữ nguyên findings). T3 vẫn giữ adversarial-LLM trong workflow.
 
+```bash
+KEPT_JSON=$(printf '%s' "${VERIFIED:-}" | jq -c '.findings' 2>/dev/null); { [ -z "$KEPT_JSON" ] || [ "$KEPT_JSON" = null ]; } && KEPT_JSON="$FINDINGS_JSON"   # kept sau VERIFY; fallback FINDINGS_JSON khi verify bị bỏ qua
+```
+
 POST: gộp findings kept + findings cơ học của gate (Bước 1b), rank theo severity, kết luận `shippable` (không CRITICAL/HIGH chưa xử lý).
 
 POST-advisory (M4f, **live**): sau khi có `SHIPPABLE`, dựng `AdviseInput` rồi chạy gate cơ học quyết có gọi adviser không:
@@ -144,13 +148,13 @@ POST-advisory (M4f, **live**): sau khi có `SHIPPABLE`, dựng `AdviseInput` r�
 ADVISE_IN=$(printf '{"shared":%s,"critical":%s,"added":%s,"findings":%s,"shippable":%s}' \
   "$([ "$SHARED" = 1 ] && echo true || echo false)" \
   "$([ "$CRITICAL" = 1 ] && echo true || echo false)" \
-  "${ADDED:-0}" "${FINDINGS_JSON:-[]}" "${SHIPPABLE:-false}")
+  "${ADDED:-0}" "${KEPT_JSON:-[]}" "${SHIPPABLE:-false}")
 ADVISE=$(printf '%s' "$ADVISE_IN" | zenify review-advise-gate 2>/dev/null)   # {"advise":..,"signals":[..]}
 ````
 
 - `command -v zenify` vắng, gate lỗi, hoặc `.advise` != `true` → BỎ QUA adviser, report như cũ (KHÔNG block).
 - `.advise == true` → chạy adviser (read-only, KHÔNG đổi shippable):
-  1. Ghi file input adviser: `$FINDINGS_JSON` + `git diff --stat "$BASE"` + `SHIPPABLE` + `.signals` của gate.
+  1. Ghi file input adviser: `$KEPT_JSON` + `git diff --stat "$BASE"` + `SHIPPABLE` + `.signals` của gate.
   2. Dispatch `znf:code-reviewer` (Agent tool) với prompt = nội dung `_shared/adviser-prompt.md` + đường dẫn file input; override model tier sonnet.
   3. Trích đúng mục `## Advisory` từ output adviser, gắn vào report dưới nhãn "advisory — read-only, không ảnh hưởng shippable". CHỈ trích text `## Advisory`; BỎ mọi findings/verdict adviser lỡ trả — `shippable` KHÔNG đổi.
 - Adviser vắng (chưa `zenify skills sync`) hoặc đi idle không trả report → report ghi "advisory skipped (adviser unavailable)", KHÔNG block, KHÔNG coi im lặng là sạch (CLAUDE.md §3).
