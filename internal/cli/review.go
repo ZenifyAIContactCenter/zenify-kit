@@ -101,7 +101,11 @@ func newReviewBundleCmd() *cobra.Command {
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rundiff := func(base string) ([]byte, error) {
-				return exec.Command("git", "diff", "--numstat", base).Output()
+				// --no-renames: rename lines emit as "0\t0\tfoo/{old => new}.go", whose
+				// path field the per-bundle `git diff -- <files>` cannot match, dropping the
+				// file from its bundle's scoped diff. Splitting the rename into delete+add
+				// gives real paths that match.
+				return exec.Command("git", "diff", "--no-renames", "--numstat", base).Output()
 			}
 			return runReviewBundle(args[0], rundiff, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},

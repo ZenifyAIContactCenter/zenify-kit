@@ -73,7 +73,7 @@ func TestRunReviewBundle_Passthrough(t *testing.T) {
 }
 
 func TestRunReviewBundle_Bundle(t *testing.T) {
-	// 6 file 500/500 = 6000 > 2000 → bundle.
+	// 6 file 250/250 = 3000 > 2000 → bundle.
 	var lines string
 	for i := 0; i < 6; i++ {
 		lines += "250\t250\tpkg/f" + string(rune('a'+i)) + ".go\n"
