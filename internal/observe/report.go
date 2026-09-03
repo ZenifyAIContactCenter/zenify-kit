@@ -9,10 +9,10 @@ import (
 // SessionSummary is one session's observe totals for the report command.
 type SessionSummary struct {
 	ID      string    `json:"id"`
-	Count   int       `json:"dispatches"`   // subagent dispatches (count.json)
-	Calls   int       `json:"tool_calls"`   // metered tool calls (meter.json)
-	Bytes   int64     `json:"tool_bytes"`   // total tool-output bytes (meter.json)
-	ModTime time.Time `json:"last_active"`  // newest of count.json / meter.json mtime
+	Count   int       `json:"dispatches"`  // subagent dispatches (count.json)
+	Calls   int       `json:"tool_calls"`  // metered tool calls (meter.json)
+	Bytes   int64     `json:"tool_bytes"`  // total tool-output bytes (meter.json)
+	ModTime time.Time `json:"last_active"` // newest of count.json / meter.json mtime
 }
 
 // ListSessions enumerates every session dir under the observe state dir and
