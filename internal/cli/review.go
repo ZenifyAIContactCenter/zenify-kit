@@ -130,6 +130,52 @@ func newReviewDoctrineCmd() *cobra.Command {
 	}
 }
 
+type adviseResult struct {
+	Advise  bool     `json:"advise"`
+	Signals []string `json:"signals"`
+}
+
+// runReviewAdviseGate: stdin = AdviseInput JSON → {"advise":..,"signals":[..]}.
+// Cơ học quyết định có gọi adviser LLM không ở POST. Fail-open: đọc/parse lỗi
+// hoặc rỗng → {"advise":false,"signals":[]}, exit 0.
+func runReviewAdviseGate(stdin io.Reader, stdout, stderr io.Writer) error {
+	emit := func(advise bool, signals []string) error {
+		if signals == nil {
+			signals = []string{}
+		}
+		enc := json.NewEncoder(stdout)
+		enc.SetEscapeHTML(false)
+		return enc.Encode(adviseResult{Advise: advise, Signals: signals})
+	}
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, "review-advise-gate: lỗi đọc stdin, fail-open:", err)
+		return emit(false, nil)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return emit(false, nil)
+	}
+	var in review.AdviseInput
+	if err := json.Unmarshal(data, &in); err != nil {
+		fmt.Fprintln(stderr, "review-advise-gate: stdin không phải JSON AdviseInput, fail-open:", err)
+		return emit(false, nil)
+	}
+	advise, signals := review.AdviseGate(in)
+	return emit(advise, signals)
+}
+
+func newReviewAdviseGateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "review-advise-gate",
+		Short:  "Cơ học quyết định có gọi adviser LLM không ở POST của znf:review (AdviseInput JSON qua stdin, seam POST)",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runReviewAdviseGate(cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
+		},
+	}
+}
+
 func newReviewBundleCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "review-bundle",

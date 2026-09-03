@@ -179,3 +179,71 @@ func TestReviewDoctrineCmd_Hidden(t *testing.T) {
 		t.Fatalf("Use=%q", c.Use)
 	}
 }
+
+func contains(ss []string, s string) bool {
+	for _, x := range ss {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRunReviewAdviseGate_Advises(t *testing.T) {
+	in := `{"shared":true,"added":10,"findings":[],"shippable":true}`
+	var out, errb bytes.Buffer
+	if err := runReviewAdviseGate(strings.NewReader(in), &out, &errb); err != nil {
+		t.Fatal(err)
+	}
+	var res adviseResult
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("output không phải JSON: %v (%s)", err, out.String())
+	}
+	if !res.Advise {
+		t.Error("shared phải advise")
+	}
+	if !contains(res.Signals, "shared-contract touched") {
+		t.Errorf("thiếu signal: %v", res.Signals)
+	}
+}
+
+func TestRunReviewAdviseGate_FailOpenEmpty(t *testing.T) {
+	var out, errb bytes.Buffer
+	if err := runReviewAdviseGate(strings.NewReader(""), &out, &errb); err != nil {
+		t.Fatal(err)
+	}
+	var res adviseResult
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("empty phải emit JSON hợp lệ: %v", err)
+	}
+	if res.Advise {
+		t.Error("empty → advise=false")
+	}
+	if res.Signals == nil {
+		t.Error("signals phải [] không null")
+	}
+}
+
+func TestRunReviewAdviseGate_FailOpenMalformed(t *testing.T) {
+	var out, errb bytes.Buffer
+	if err := runReviewAdviseGate(strings.NewReader("{not json"), &out, &errb); err != nil {
+		t.Fatal(err)
+	}
+	var res adviseResult
+	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
+		t.Fatalf("malformed phải fail-open JSON: %v", err)
+	}
+	if res.Advise {
+		t.Error("malformed → advise=false")
+	}
+}
+
+func TestReviewAdviseGateCmd_Hidden(t *testing.T) {
+	c := newReviewAdviseGateCmd()
+	if !c.Hidden {
+		t.Error("phải Hidden")
+	}
+	if c.Use != "review-advise-gate" {
+		t.Errorf("Use = %q", c.Use)
+	}
+}

@@ -39,5 +39,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newReviewVerifyCmd())
 	root.AddCommand(newReviewBundleCmd())
 	root.AddCommand(newReviewDoctrineCmd())
+	root.AddCommand(newReviewAdviseGateCmd())
 	return root
 }
