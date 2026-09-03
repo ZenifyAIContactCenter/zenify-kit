@@ -15,7 +15,7 @@ Engine chạy 5 chốt theo thứ tự. M4a chỉ làm REVIEW (3); 4 chốt kia 
 (no-op, hành vi = như review hiện tại) và sẽ được các slice sau thay:
 
 1. **PRE** — mechanical-gate (M4b, **live**). Chạy build/lint theo stack + anti-pattern scan CƠ HỌC trước khi tốn LLM; fail → short-circuit.
-2. **BUNDLE** — smart-bundling diff lớn (M4c). M4a: T3 review nguyên khối.
+2. **BUNDLE** — smart-bundling diff lớn (M4c, **live**). ADDED>2000 → `zenify review-bundle` chia cụm-file (cap 600, tối đa 8), review per-bundle rồi gộp; ≤2000 giữ nguyên.
 3. **REVIEW** — dispatch theo tier (phần thịt M4a, bên dưới).
 4. **VERIFY** — finding-verifier cơ học `zenify review-verify` (M4b, **live**, mọi tier): bác finding có evidence không khớp file thật. T3 vẫn giữ adversarial-LLM bên trong workflow (chồng lên, kiểm việc khác).
 5. **POST** — learning-capture (M4e) + doctrine no-claim/anti-groupthink (M4d) + advisory (M4f). M4a: chỉ tổng hợp report.
@@ -41,6 +41,39 @@ echo "$GATE"   # {"verdict":"pass|block","findings":[...]}
 
 - `verdict=block` (build/lint fail hoặc conflict-marker) → **DỪNG**: đưa `findings` của gate vào report, `shippable:false`, in lý do dừng, KHÔNG dispatch REVIEW.
 - `verdict=pass` → giữ `findings` cơ học (nếu có: focused-test/debugger) để gộp vào report cuối, rồi sang Bước 2.
+
+## Bước 1c — BUNDLE (chia diff lớn, seam BUNDLE — M4c)
+
+Chỉ chạy khi `ADDED > 2000`. Diff nhỏ hơn (đại đa số) bỏ qua bước này, sang thẳng Bước 2 (select-tier trên NGUYÊN diff) như cũ.
+
+```bash
+if [ "$ADDED" -le 2000 ]; then
+  :   # skip bundling — đi tiếp Bước 2 trên nguyên diff
+elif ! command -v zenify >/dev/null 2>&1; then
+  # bundler vắng (build cũ) → không bundle được → giữ hành vi cũ
+  echo "diff > 2000 LOC nhưng review-bundle vắng → quá lớn, dừng (tách PR)"; exit 0
+else
+  PLAN=$(zenify review-bundle "$BASE")   # {"verdict":..,"bundles":[{id,loc,files}],"total_loc":X}
+  echo "$PLAN"
+fi
+```
+
+Xử lý theo `verdict` của `$PLAN`:
+
+- `too-large` → **DỪNG**: in "quá lớn kể cả sau khi chia bundle (> 8 cụm) — tách PR rồi review lại", KHÔNG dispatch. `shippable:false`.
+- `bundle` → review **per-bundle** rồi gộp:
+  1. `MANIFEST=$(git diff --name-only "$BASE")` — danh sách path TẤT CẢ file đổi; truyền làm context cho MỌI bundle reviewer (để reviewer biết nửa kia của một contract có thể đổi ở bundle khác — chống mù cross-bundle).
+  2. Với MỖI bundle `b` trong `PLAN.bundles`:
+     - `ADDED_b = b.loc`
+     - `SHARED_b` = tín hiệu shared-contract tính trên `git diff "$BASE" -- <b.files>` (cùng regex Bước 1).
+     - `TIER_b` = `bash .../select-tier "$ADDED_b" "$SHARED_b" "$CRITICAL"` (in tier + lý do cho bundle này ra report).
+     - Dispatch REVIEW theo `TIER_b` (Bước 3), phạm vi diff = `git diff "$BASE" -- <b.files>`, kèm `MANIFEST` làm context. Degrade-safe T3→T2 vẫn áp dụng per-bundle.
+     - Thu `findings[]` của bundle.
+  3. Gộp findings mọi bundle, dedup theo `title+file`.
+  4. Bỏ qua Bước 2 (đã select-tier per-bundle) và đi tiếp **Bước 4** (VERIFY + POST) trên hợp findings.
+- `passthrough` (không kỳ vọng khi ADDED>2000) → đi tiếp Bước 2 trên nguyên diff.
+
+**Report phải in**: đã bundle mấy cụm, LOC + tier mỗi cụm, TRƯỚC khi dispatch — minh bạch như "in tier + lý do".
 
 ## Bước 2 — chọn tier (KHÔNG để LLM đoán)
 
@@ -99,4 +132,4 @@ POST: gộp findings kept + findings cơ học của gate (Bước 1b), rank the
 ## Không có gì để review
 
 Không phải git repo / diff rỗng → in "nothing to review" và dừng, không dispatch.
-Diff cực lớn (>~2000 LOC) vượt cả T3 → báo "quá lớn, chờ M4c smart-bundling" và dừng (M4a không tự bundle).
+Diff cực lớn (>2000 LOC) → seam BUNDLE (Bước 1c) chia thành bundle cụm-file rồi review từng cụm. Chỉ dừng khi cần > 8 bundle (`verdict=too-large`) hoặc `review-bundle` vắng trên PATH — khi đó báo "quá lớn, tách PR".

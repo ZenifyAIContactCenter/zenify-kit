@@ -56,6 +56,31 @@ func TestReviewSkill_M4bWiring(t *testing.T) {
 	}
 }
 
+func TestReviewSkill_M4cWiring(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	skill := filepath.Join(dest, "skills", "review", "SKILL.md")
+	b, err := os.ReadFile(skill)
+	if err != nil {
+		t.Fatalf("đọc SKILL.md: %v", err)
+	}
+	s := string(b)
+	for _, want := range []string{
+		"review-bundle", // gọi subcommand bundler
+		"BUNDLE",        // seam có tên
+		"2000",          // ngưỡng kích hoạt
+		"too-large",     // nhánh dừng "tách PR"
+		"per-bundle",    // review từng bundle
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("SKILL.md thiếu wiring M4c: %q", want)
+		}
+	}
+}
+
 func TestShipStep5_DelegatesToReview(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
