@@ -60,6 +60,25 @@ zenify skills sync
 them by hand; Claude Code invokes them per tool call. `observe report` and
 `observe statusline` are user-facing.
 
+## Rolling out to a team
+
+Three of the four pieces scale to every developer through the **normal kit install**,
+with no per-machine editing:
+
+- **count + meter** ride in the znf plugin's embedded `hooks.json`. A dev who installs
+  the kit binary and runs `zenify skills sync` gets them automatically, in **both** the
+  CLI and the VS Code extension.
+- **report** is just a CLI command — anyone with the binary runs it.
+
+Only **statusline** needs a per-developer opt-in, because the statusLine slot is unique
+and each dev may already own one:
+
+| Developer | How they get the statusline |
+|---|---|
+| terminal, no statusline yet | `zenify observe statusline install` (one command) |
+| terminal, already has a statusline | one-time `--segment` splice into their own script (below) |
+| VS Code / JetBrains extension | not available — the extension does not render statusLine (but they still get count + meter + report) |
+
 ## Usage
 
 ### report — the in-stack dashboard
@@ -71,9 +90,17 @@ zenify observe report --json   # machine-readable, newest-active first
 
 ### statusline — opt-in HUD (CLI/TUI only)
 
-**Full line** (for a fresh setup with no statusline). This is a settings.json key —
-a plugin cannot ship one, and only ONE statusLine slot exists, so this **replaces**
-any existing statusline:
+**Full line, fresh setup (no statusline yet).** One command writes the settings.json
+key for you — but ONLY when the single statusLine slot is empty; it refuses to
+clobber a statusline you already have (use `--segment` below for that, or `--force`
+to overwrite anyway):
+
+```bash
+zenify observe statusline install          # writes the key iff the slot is empty
+zenify observe statusline install --force  # overwrite an existing statusLine (keeps other keys)
+```
+
+That leaves settings.json holding:
 
 ```json
 "statusLine": { "type": "command", "command": "zenify observe statusline" }
