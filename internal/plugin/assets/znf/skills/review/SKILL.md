@@ -32,7 +32,7 @@ CRITICAL=0                    # caller (ship/user) set 1 nếu vùng nhạy cả
 
 ## Bước 1b — PRE mechanical-gate (short-circuit)
 
-Chạy gate CƠ HỌC trước khi dispatch LLM. Khi ship gọi (step 5 đã chạy lint/build), truyền `STATIC_OK=1` để gate chỉ quét anti-pattern:
+Chạy gate CƠ HỌC trước khi dispatch LLM. Khi được **ship** gọi (ship-pack có block `## Verified` xác nhận build/lint đã pass ở ship step 2), engine tự set `STATIC_OK=1` ngay trên dòng lệnh gate để tránh build/lint hai lần. Standalone `/review` (không có ship-pack) → để `STATIC_OK=0`, gate chạy full build/lint:
 
 ```bash
 GATE=$(STATIC_OK=${STATIC_OK:-0} bash ~/.claude/skills/znf/skills/review/scripts/mechanical-gate "$BASE")
@@ -71,7 +71,7 @@ Dòng 1 = `T1|T2|T3`, dòng 2 = lý do. **In tier + lý do ra report** trước 
   - **missing** (teammate chưa `skills sync`, hoặc file bị xoá) → **degrade về T2** và ghi rõ
     trên report: "T3 degrade→T2: workflow vắng". KHÔNG gãy im lặng.
 
-> Mọi finding có `file+line` PHẢI kèm `evidence` — trích **verbatim** dòng code lỗi (nguyên văn) để `zenify review-verify` kiểm chứng; finding bịa dòng/quote sẽ bị bác ở VERIFY.
+> Mọi finding có `file+line` PHẢI kèm `evidence` — trích **verbatim** MỘT dòng code lỗi (nguyên văn nội dung dòng trong file, KHÔNG kèm dấu `+`/`-` của diff) để `zenify review-verify` kiểm chứng; finding bịa dòng/quote sẽ bị bác ở VERIFY.
 
 ## Bước 4 — VERIFY (cơ học, mọi tier) + POST
 

@@ -100,3 +100,66 @@ func TestGate_ConflictMarkerBlocks(t *testing.T) {
 		t.Errorf("verdict=%q, want block (conflict marker)", res.Verdict)
 	}
 }
+
+// SC-02: STATIC_OK=1 bỏ qua build → một go.mod hỏng vẫn pass (build không chạy), không có "build fail".
+func TestGate_StaticOKSkipsBuild(t *testing.T) {
+	dir, base := gitInit(t)
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module tmptest\n\ngo 1.21\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "broken.go"), []byte("package main\nfunc main() { this is not go }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, dir)
+	res := runGate(t, dir, base, "STATIC_OK=1")
+	if res.Verdict != "pass" {
+		t.Errorf("verdict=%q, want pass (STATIC_OK phải bỏ build)", res.Verdict)
+	}
+	for _, f := range res.Findings {
+		if f["title"] == "build fail" {
+			t.Errorf("gặp finding build fail dù STATIC_OK=1 (build đáng ra bị bỏ)")
+		}
+	}
+}
+
+// SC-01: build fail → block. Cần go trên PATH; broken.go làm `go build ./...` fail.
+func TestGate_BuildFailBlocks(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go không có trên PATH")
+	}
+	dir, base := gitInit(t)
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module tmptest\n\ngo 1.21\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "broken.go"), []byte("package main\nfunc main() { this is not go }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, dir)
+	res := runGate(t, dir, base) // STATIC_OK mặc định 0 → chạy build
+	if res.Verdict != "block" {
+		t.Errorf("verdict=%q, want block (build fail)", res.Verdict)
+	}
+}
+
+// FR-03: focused test (.only) + debugger trong diff → có finding (HIGH, không block).
+func TestGate_FocusedTestAndDebugger(t *testing.T) {
+	dir, base := gitInit(t)
+	body := "test.only('x', () => { debugger; });\n"
+	if err := os.WriteFile(filepath.Join(dir, "a.test.js"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAll(t, dir)
+	res := runGate(t, dir, base, "STATIC_OK=1") // bỏ build; chỉ quét anti-pattern
+	var focused, dbg bool
+	for _, f := range res.Findings {
+		switch f["title"] {
+		case "focused test":
+			focused = true
+		case "debugger":
+			dbg = true
+		}
+	}
+	if !focused || !dbg {
+		t.Errorf("focused=%v debugger=%v, want cả hai true", focused, dbg)
+	}
+}

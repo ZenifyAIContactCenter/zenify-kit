@@ -83,3 +83,11 @@ func TestVerify_WhitespaceInsensitive(t *testing.T) {
 		t.Fatalf("kept=%d, want 1 (whitespace-insensitive)", res.Kept)
 	}
 }
+
+func TestVerify_KeepDiffPrefixedEvidence(t *testing.T) {
+	rf := func(string) ([]byte, error) { return []byte("line1\n\tfoo()\nline3\n"), nil }
+	res := Verify([]Finding{{File: "x.go", Line: "2", Evidence: "+\tfoo()"}}, rf)
+	if res.Kept != 1 || res.Refuted != 0 {
+		t.Fatalf("kept=%d refuted=%d, want 1/0 (dấu + của diff phải bị bỏ)", res.Kept, res.Refuted)
+	}
+}

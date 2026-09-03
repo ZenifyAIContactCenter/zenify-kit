@@ -66,7 +66,7 @@ func verifyOne(f Finding, readFile func(string) ([]byte, error)) (bool, Finding)
 		return false, f
 	}
 	lines := strings.Split(string(data), "\n")
-	target := normalize(f.Evidence)
+	target := normalize(stripDiffMarker(f.Evidence))
 	lo := n - window
 	if lo < 1 {
 		lo = 1
@@ -87,6 +87,16 @@ func verifyOne(f Finding, readFile func(string) ([]byte, error)) (bool, Finding)
 // normalize gom mọi run khoảng trắng thành một space và trim, để so khớp không lệ thuộc indent.
 func normalize(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// stripDiffMarker bỏ MỘT ký tự dấu diff (+ hoặc -) ở đầu evidence nếu reviewer trích nguyên
+// dòng từ unified diff (cột 0 của dòng diff là +/-/space). File thật không mang dấu này, nên
+// bỏ nó trước khi so khớp; strip rộng hơn chỉ làm Contains khoan dung hơn, không bao giờ bác nhầm.
+func stripDiffMarker(s string) string {
+	if len(s) > 0 && (s[0] == '+' || s[0] == '-') {
+		return s[1:]
+	}
+	return s
 }
 
 // parseLine lấy run chữ số đầu tiên của "N" hoặc "N-M". false nếu không có chữ số.
