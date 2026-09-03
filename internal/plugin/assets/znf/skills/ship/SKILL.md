@@ -258,7 +258,7 @@ only the diff, and one is genuinely downstream.
 2. ONE message dispatching:   the gate's per-repo sweeps  ‖  ui-verifier
 3. inline, while they work:   pm run lint · pm run build · the three data checks
 4. collect 2's reports BY NAME
-5. THEN dispatch code-reviewer — it cannot start earlier, see below
+5. THEN invoke Skill(znf:review) — it cannot start earlier, see below
 6. read the board
 ```
 
