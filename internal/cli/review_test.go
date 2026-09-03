@@ -3,9 +3,12 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/review"
 )
 
 func TestReviewVerify_RoundTrip(t *testing.T) {
@@ -48,6 +51,76 @@ func TestReviewVerify_EmptyStdin(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"kept":0`) {
 		t.Errorf("empty stdin phải ra kept 0, được: %q", out.String())
+	}
+}
+
+func TestRunReviewBundle_Passthrough(t *testing.T) {
+	// numstat tổng 300 <= 2000 → passthrough.
+	rundiff := func(string) ([]byte, error) {
+		return []byte("100\t50\ta/x.go\n100\t50\ta/y.go\n"), nil
+	}
+	var out, errb bytes.Buffer
+	if err := runReviewBundle("HEAD", rundiff, &out, &errb); err != nil {
+		t.Fatalf("err=%v, want nil (fail-open)", err)
+	}
+	var p review.Plan
+	if err := json.Unmarshal(out.Bytes(), &p); err != nil {
+		t.Fatalf("stdout không phải JSON Plan: %v (%q)", err, out.String())
+	}
+	if p.Verdict != "passthrough" {
+		t.Errorf("verdict=%q, want passthrough", p.Verdict)
+	}
+}
+
+func TestRunReviewBundle_Bundle(t *testing.T) {
+	// 6 file 250/250 = 3000 > 2000 → bundle.
+	var lines string
+	for i := 0; i < 6; i++ {
+		lines += "250\t250\tpkg/f" + string(rune('a'+i)) + ".go\n"
+	}
+	rundiff := func(string) ([]byte, error) { return []byte(lines), nil }
+	var out, errb bytes.Buffer
+	if err := runReviewBundle("HEAD", rundiff, &out, &errb); err != nil {
+		t.Fatalf("err=%v, want nil", err)
+	}
+	var p review.Plan
+	if err := json.Unmarshal(out.Bytes(), &p); err != nil {
+		t.Fatalf("stdout không phải JSON: %v", err)
+	}
+	if p.Verdict != "bundle" || len(p.Bundles) == 0 {
+		t.Errorf("verdict=%q bundles=%d, want bundle với >=1 bundle", p.Verdict, len(p.Bundles))
+	}
+}
+
+func TestRunReviewBundle_FailOpenOnDiffError(t *testing.T) {
+	// git diff lỗi (vd ngoài git repo) → passthrough, KHÔNG trả error.
+	rundiff := func(string) ([]byte, error) { return nil, errors.New("not a git repo") }
+	var out, errb bytes.Buffer
+	if err := runReviewBundle("HEAD", rundiff, &out, &errb); err != nil {
+		t.Fatalf("err=%v, want nil (fail-open)", err)
+	}
+	var p review.Plan
+	if err := json.Unmarshal(out.Bytes(), &p); err != nil {
+		t.Fatalf("stdout không phải JSON: %v (%q)", err, out.String())
+	}
+	if p.Verdict != "passthrough" {
+		t.Errorf("verdict=%q, want passthrough khi diff lỗi", p.Verdict)
+	}
+}
+
+func TestReviewBundle_BinaryLineParsedAsZero(t *testing.T) {
+	// dòng binary "-\t-\tpath" → LOC 0; chỉ file text đẩy tổng.
+	rundiff := func(string) ([]byte, error) {
+		return []byte("-\t-\tassets/logo.png\n1500\t600\ta/big.go\n"), nil
+	}
+	var out, errb bytes.Buffer
+	if err := runReviewBundle("HEAD", rundiff, &out, &errb); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	var p review.Plan
+	_ = json.Unmarshal(out.Bytes(), &p)
+	if p.TotalLOC != 2100 {
+		t.Errorf("total=%d, want 2100 (binary đếm 0)", p.TotalLOC)
 	}
 }
 

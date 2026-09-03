@@ -37,5 +37,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newHotfixCmd())
 	root.AddCommand(newObserveCmd())
 	root.AddCommand(newReviewVerifyCmd())
+	root.AddCommand(newReviewBundleCmd())
 	return root
 }
