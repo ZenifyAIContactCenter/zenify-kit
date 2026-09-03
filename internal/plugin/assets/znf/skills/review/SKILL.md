@@ -18,7 +18,9 @@ Engine chạy 5 chốt theo thứ tự. M4a chỉ làm REVIEW (3); 4 chốt kia 
 2. **BUNDLE** — smart-bundling diff lớn (M4c, **live**). ADDED>2000 → `zenify review-bundle` chia cụm-file (cap 600, tối đa 8), review per-bundle rồi gộp; ≤2000 giữ nguyên.
 3. **REVIEW** — dispatch theo tier (phần thịt M4a, bên dưới).
 4. **VERIFY** — finding-verifier cơ học `zenify review-verify` (M4b, **live**, mọi tier): bác finding có evidence không khớp file thật. T3 vẫn giữ adversarial-LLM bên trong workflow (chồng lên, kiểm việc khác).
-5. **POST** — learning-capture (M4e) + doctrine no-claim/anti-groupthink (M4d) + advisory (M4f). M4a: chỉ tổng hợp report.
+5. **POST** — learning-capture (M4e) + advisory (M4f). Hiện chỉ tổng hợp report.
+
+> **Doctrine (M4d, live):** KHÔNG ở POST mà là lớp **dispatch-time** — sanitize `## Verified` (Bước 1b-doctrine) + tiêm preamble reviewer (Bước 3). Xem hai bước đó.
 
 ## Bước 1 — tính input cho tier (cơ học)
 
@@ -41,6 +43,20 @@ echo "$GATE"   # {"verdict":"pass|block","findings":[...]}
 
 - `verdict=block` (build/lint fail hoặc conflict-marker) → **DỪNG**: đưa `findings` của gate vào report, `shippable:false`, in lý do dừng, KHÔNG dispatch REVIEW.
 - `verdict=pass` → giữ `findings` cơ học (nếu có: focused-test/debugger) để gộp vào report cuối, rồi sang Bước 2.
+
+## Bước 1b-doctrine — DOCTRINE sanitize ## Verified (no-claim, M4d)
+
+Chỉ khi caller là **ship** (context có block `## Verified`). Chạy MỘT LẦN ở đây — trước MỌI nhánh dispatch (cả Bước 1c bundle lẫn Bước 2→3) — nên mọi reviewer sau đó đều thấy Verified đã sạch.
+
+Lấy nội dung block `## Verified` từ ship-pack trong context, pipe qua subcommand:
+
+```bash
+printf '%s' "$VERIFIED_TEXT" | zenify review-doctrine   # {"verified":..,"stripped":[..]}
+```
+
+- Thay block `## Verified` trong context đưa reviewer bằng trường `.verified`.
+- `.stripped[]` không rỗng → in lên report: "doctrine: đã gỡ N claim khỏi ## Verified: [...]".
+- `zenify` vắng trên PATH, hoặc standalone `/review` (không có ship-pack) → **skip, no-op** kèm note "doctrine sanitize skipped". Fail-open: không bao giờ dừng review.
 
 ## Bước 1c — BUNDLE (chia diff lớn, seam BUNDLE — M4c)
 
@@ -87,6 +103,10 @@ Dòng 1 = `T1|T2|T3`, dòng 2 = lý do. **In tier + lý do ra report** trước 
 
 ## Bước 3 — REVIEW dispatch theo tier
 
+**Doctrine preamble (M4d):** đọc nguồn preamble một lần —
+`DOCTRINE=$(awk '{print}' ~/.claude/skills/znf/skills/review/_shared/reviewer-doctrine.md 2>/dev/null)`
+(file vắng → `DOCTRINE=""` + note "doctrine preamble unavailable"; fail-open). **Prepend `DOCTRINE` vào ĐẦU brief của MỌI reviewer** dispatch dưới đây — T1 solo, cả 5 agent T2 — và truyền `args.doctrine="$DOCTRINE"` cho Workflow T3. Điểm tiêm này dùng chung cho cả reviewer per-bundle ở Bước 1c.
+
 - **T1 (solo):** dispatch 1 agent `code-reviewer` (template `requesting-code-review/code-reviewer.md`),
   model `sonnet` cho diff <50 LOC / mid cho phần còn lại. Trả `findings[]` theo schema chung.
 - **T2 (fan-out):** dispatch song song (MỘT message) 5 agent, mỗi agent 1 chiều
@@ -99,7 +119,7 @@ Dòng 1 = `T1|T2|T3`, dòng 2 = lý do. **In tier + lý do ra report** trước 
   ```
 
   - **present** → chạy Workflow tool `scriptPath: ~/.claude/skills/znf/workflows/review-changes.js`,
-    `args: {diff: <git diff BASE..HEAD>, context: <ship-pack intent nếu có>}`. Workflow tự
+    `args: {diff: <git diff BASE..HEAD>, context: <ship-pack intent nếu có>, doctrine: <DOCTRINE>}`. Workflow tự
     fan-out + adversarial verify (3 skeptic, ≥2 confirm).
   - **missing** (teammate chưa `skills sync`, hoặc file bị xoá) → **degrade về T2** và ghi rõ
     trên report: "T3 degrade→T2: workflow vắng". KHÔNG gãy im lặng.

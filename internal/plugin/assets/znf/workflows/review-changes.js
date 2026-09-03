@@ -8,12 +8,15 @@ export const meta = {
   ],
 }
 
+// M4d doctrine: preamble no-claim/skeptic tiêm vào mọi reviewer. Absent → '' (back-compat).
+const DOCTRINE = args.doctrine ? args.doctrine + '\n\n' : ''
+
 const DIMENSIONS = [
-  { key: 'bugs', prompt: 'Review this diff for CORRECTNESS bugs: wrong field names in dynamic code, off-by-one errors, null/undefined propagation, race conditions, wrong async handling. Return only confirmed bugs with file:line, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
-  { key: 'security', prompt: 'Review this diff for SECURITY issues: OWASP Top 10, missing auth/authz, injection (SQL/NoSQL/command), secrets in code, IDOR, insecure defaults. Return only real security issues with severity, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
-  { key: 'perf', prompt: 'Review this diff for PERFORMANCE issues: N+1 queries, missing indexes, unbounded loops, large in-memory operations. Return only confirmed issues with impact estimate, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
-  { key: 'contracts', prompt: 'Review this diff for CONTRACT MISMATCHES: does the response shape match what callers expect? Do DB writes match what readers expect? Are queue/event payloads compatible with consumers? For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. Context: ' + (args.context || 'no extra context') + '\n\ndiff:\n\n' + args.diff },
-  { key: 'types', prompt: 'Review this diff for TYPE SAFETY issues in dynamic code: field names used without verification, API responses used without checking shape, assumed object structures. For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'bugs', prompt: DOCTRINE + 'Review this diff for CORRECTNESS bugs: wrong field names in dynamic code, off-by-one errors, null/undefined propagation, race conditions, wrong async handling. Return only confirmed bugs with file:line, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'security', prompt: DOCTRINE + 'Review this diff for SECURITY issues: OWASP Top 10, missing auth/authz, injection (SQL/NoSQL/command), secrets in code, IDOR, insecure defaults. Return only real security issues with severity, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'perf', prompt: DOCTRINE + 'Review this diff for PERFORMANCE issues: N+1 queries, missing indexes, unbounded loops, large in-memory operations. Return only confirmed issues with impact estimate, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'contracts', prompt: DOCTRINE + 'Review this diff for CONTRACT MISMATCHES: does the response shape match what callers expect? Do DB writes match what readers expect? Are queue/event payloads compatible with consumers? For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. Context: ' + (args.context || 'no extra context') + '\n\ndiff:\n\n' + args.diff },
+  { key: 'types', prompt: DOCTRINE + 'Review this diff for TYPE SAFETY issues in dynamic code: field names used without verification, API responses used without checking shape, assumed object structures. For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
 ]
 
 const FINDING_SCHEMA = {
@@ -82,9 +85,9 @@ phase('Verify')
 const verified = await pipeline(
   deduped,
   finding => parallel([
-    () => agent(`Try to REFUTE this code review finding. Default to refuted=true if uncertain.\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-1:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
-    () => agent(`Try to REFUTE this code review finding. Default to refuted=true if uncertain. Focus on: is this actually reachable/exploitable in this codebase?\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-2:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
-    () => agent(`Try to REFUTE this code review finding. Default to refuted=true if uncertain. Focus on: does the fix actually solve the root cause?\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-3:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
+    () => agent(DOCTRINE + `Try to REFUTE this code review finding. Default to refuted=true if uncertain.\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-1:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
+    () => agent(DOCTRINE + `Try to REFUTE this code review finding. Default to refuted=true if uncertain. Focus on: is this actually reachable/exploitable in this codebase?\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-2:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
+    () => agent(DOCTRINE + `Try to REFUTE this code review finding. Default to refuted=true if uncertain. Focus on: does the fix actually solve the root cause?\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-3:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
   ]).then(votes => {
     const confirmed = votes.filter(Boolean).filter(v => !v.refuted).length
     return { ...finding, confirmed: confirmed >= 2 }

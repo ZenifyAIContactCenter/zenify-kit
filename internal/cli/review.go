@@ -93,6 +93,43 @@ func atoiOr0(s string) int {
 	return n
 }
 
+type doctrineResult struct {
+	Verified string   `json:"verified"`
+	Stripped []string `json:"stripped"`
+}
+
+// runReviewDoctrine: stdin = text (thường là block ## Verified) → JSON đã sanitize.
+// Fail-open: đọc lỗi → emit rỗng, exit 0.
+func runReviewDoctrine(stdin io.Reader, stdout, stderr io.Writer) error {
+	emit := func(clean string, stripped []string) error {
+		if stripped == nil {
+			stripped = []string{}
+		}
+		enc := json.NewEncoder(stdout)
+		enc.SetEscapeHTML(false)
+		return enc.Encode(doctrineResult{Verified: clean, Stripped: stripped})
+	}
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, "review-doctrine: lỗi đọc stdin, fail-open:", err)
+		return emit("", nil)
+	}
+	clean, stripped := review.SanitizeVerified(string(data))
+	return emit(clean, stripped)
+}
+
+func newReviewDoctrineCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:    "review-doctrine",
+		Short:  "Cơ học strip dòng chỉ-verdict khỏi ## Verified của ship-pack (text qua stdin, seam doctrine)",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runReviewDoctrine(cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
+		},
+	}
+}
+
 func newReviewBundleCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "review-bundle",
