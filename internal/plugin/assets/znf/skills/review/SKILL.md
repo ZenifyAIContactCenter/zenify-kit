@@ -18,7 +18,7 @@ Engine chạy 5 chốt theo thứ tự. M4a chỉ làm REVIEW (3); 4 chốt kia 
 2. **BUNDLE** — smart-bundling diff lớn (M4c, **live**). ADDED>2000 → `zenify review-bundle` chia cụm-file (cap 600, tối đa 8), review per-bundle rồi gộp; ≤2000 giữ nguyên.
 3. **REVIEW** — dispatch theo tier (phần thịt M4a, bên dưới).
 4. **VERIFY** — finding-verifier cơ học `zenify review-verify` (M4b, **live**, mọi tier): bác finding có evidence không khớp file thật. T3 vẫn giữ adversarial-LLM bên trong workflow (chồng lên, kiểm việc khác).
-5. **POST** — learning-capture (M4e) + advisory (M4f). Hiện chỉ tổng hợp report.
+5. **POST** — advisory (M4f, **live**): sau khi có `shippable`, gate cơ học `zenify review-advise-gate` quyết có risk-signal không; nếu có → dispatch `znf:code-reviewer` (prompt adviser read-only `_shared/adviser-prompt.md`) thêm mục `## Advisory`, KHÔNG đổi `shippable`. learning-capture (M4e) còn pending.
 
 > **Doctrine (M4d, live):** KHÔNG ở POST mà là lớp **dispatch-time** — sanitize `## Verified` (Bước 1b-doctrine) + tiêm preamble reviewer (Bước 3). Xem hai bước đó.
 
@@ -138,11 +138,29 @@ Nếu `command -v zenify` vắng → bỏ qua VERIFY kèm note "verify unavailab
 
 POST: gộp findings kept + findings cơ học của gate (Bước 1b), rank theo severity, kết luận `shippable` (không CRITICAL/HIGH chưa xử lý).
 
+POST-advisory (M4f, **live**): sau khi có `SHIPPABLE`, dựng `AdviseInput` rồi chạy gate cơ học quyết có gọi adviser không:
+
+````bash
+ADVISE_IN=$(printf '{"shared":%s,"critical":%s,"added":%s,"findings":%s,"shippable":%s}' \
+  "$([ "$SHARED" = 1 ] && echo true || echo false)" \
+  "$([ "$CRITICAL" = 1 ] && echo true || echo false)" \
+  "${ADDED:-0}" "${FINDINGS_JSON:-[]}" "${SHIPPABLE:-false}")
+ADVISE=$(printf '%s' "$ADVISE_IN" | zenify review-advise-gate 2>/dev/null)   # {"advise":..,"signals":[..]}
+````
+
+- `command -v zenify` vắng, gate lỗi, hoặc `.advise` != `true` → BỎ QUA adviser, report như cũ (KHÔNG block).
+- `.advise == true` → chạy adviser (read-only, KHÔNG đổi shippable):
+  1. Ghi file input adviser: `$FINDINGS_JSON` + `git diff --stat "$BASE"` + `SHIPPABLE` + `.signals` của gate.
+  2. Dispatch `znf:code-reviewer` (Agent tool) với prompt = nội dung `_shared/adviser-prompt.md` + đường dẫn file input; override model tier sonnet.
+  3. Trích đúng mục `## Advisory` từ output adviser, gắn vào report dưới nhãn "advisory — read-only, không ảnh hưởng shippable". CHỈ trích text `## Advisory`; BỎ mọi findings/verdict adviser lỡ trả — `shippable` KHÔNG đổi.
+- Adviser vắng (chưa `zenify skills sync`) hoặc đi idle không trả report → report ghi "advisory skipped (adviser unavailable)", KHÔNG block, KHÔNG coi im lặng là sạch (CLAUDE.md §3).
+
 ## Report trả về
 
 - tier đã chọn + lý do (+ "degrade→T2" nếu có)
 - `findings[]` theo `_shared/finding-schema.md`, rank CRITICAL→LOW
 - `shippable: true|false`
+- `## Advisory` (M4f, nếu gate bật): 1–4 note read-only, KHÔNG ảnh hưởng `shippable`
 
 ## Ai gọi engine
 

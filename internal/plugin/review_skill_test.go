@@ -110,6 +110,38 @@ func TestReviewSkill_M4dWiring(t *testing.T) {
 	}
 }
 
+func TestReviewSkill_M4fWiring(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	read := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(dest, rel))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+		return string(b)
+	}
+	skill := read("skills/review/SKILL.md")
+	for _, want := range []string{"review-advise-gate", "znf:code-reviewer", "## Advisory", "adviser-prompt.md"} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("SKILL.md thiếu %q", want)
+		}
+	}
+	prompt := read("skills/review/_shared/adviser-prompt.md")
+	low := strings.ToLower(prompt)
+	if !strings.Contains(low, "read-only") {
+		t.Error("adviser-prompt.md thiếu wording read-only")
+	}
+	if !strings.Contains(low, "không phải reviewer") {
+		t.Error("adviser-prompt.md thiếu câu đè danh tính 'không phải reviewer'")
+	}
+	if !strings.Contains(prompt, "## Advisory") {
+		t.Error("adviser-prompt.md thiếu mục ## Advisory")
+	}
+}
+
 func TestShipStep5_DelegatesToReview(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
