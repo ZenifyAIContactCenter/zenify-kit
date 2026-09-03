@@ -125,3 +125,18 @@ func TestSync_MaterializesReviewSkill(t *testing.T) {
 		}
 	}
 }
+
+func TestSync_SchemaHasEvidenceField(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dest, "skills/review/_shared/finding-schema.md"))
+	if err != nil {
+		t.Fatalf("đọc finding-schema.md: %v", err)
+	}
+	if !strings.Contains(string(b), "evidence") {
+		t.Errorf("finding-schema.md thiếu field 'evidence'")
+	}
+}
