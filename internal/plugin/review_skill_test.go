@@ -81,6 +81,35 @@ func TestReviewSkill_M4cWiring(t *testing.T) {
 	}
 }
 
+func TestReviewSkill_M4dWiring(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	read := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(dest, rel))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+		return string(b)
+	}
+	skill := read("skills/review/SKILL.md")
+	for _, want := range []string{"review-doctrine", "DOCTRINE", "reviewer-doctrine.md", "args.doctrine"} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("SKILL.md thiếu %q", want)
+		}
+	}
+	doc := read("skills/review/_shared/reviewer-doctrine.md")
+	if !strings.Contains(strings.ToLower(doc), "claim") {
+		t.Error("reviewer-doctrine.md thiếu wording no-claim")
+	}
+	wf := read("workflows/review-changes.js")
+	if !strings.Contains(wf, "args.doctrine") || !strings.Contains(wf, "DOCTRINE") {
+		t.Error("review-changes.js thiếu wiring args.doctrine")
+	}
+}
+
 func TestShipStep5_DelegatesToReview(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
