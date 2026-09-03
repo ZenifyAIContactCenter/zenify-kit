@@ -112,3 +112,16 @@ func TestSync_MaterializesReviewWorkflow(t *testing.T) {
 		t.Fatalf("review-changes.js chưa materialize: %v", err)
 	}
 }
+
+func TestSync_MaterializesReviewSkill(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	for _, p := range []string{"skills/review/SKILL.md", "skills/review/scripts/select-tier"} {
+		if _, err := os.Stat(filepath.Join(dest, p)); err != nil {
+			t.Fatalf("%s chưa materialize: %v", p, err)
+		}
+	}
+}
