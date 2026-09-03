@@ -30,3 +30,19 @@ func TestReviewSkill_Materialized_HasKeyParts(t *testing.T) {
 		}
 	}
 }
+
+func TestShipStep5_DelegatesToReview(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dest, "skills/ship/SKILL.md"))
+	if err != nil {
+		t.Fatalf("ship/SKILL.md: %v", err)
+	}
+	s := string(b)
+	if !strings.Contains(s, "znf:review") {
+		t.Error("ship step 5 chưa delegate sang znf:review")
+	}
+}
