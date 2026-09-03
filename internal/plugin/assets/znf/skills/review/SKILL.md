@@ -1,7 +1,7 @@
 ---
 name: review
 description: Engine review hợp nhất của kit. Chọn tier cơ học theo diff, dispatch reviewer (T1 solo / T2 fan-out / T3 adversarial), trả finding theo schema chung. Cửa chính cho /review và cho ship step 5.
-allowed-tools: Bash(git *) Bash(rg *) Agent Workflow
+allowed-tools: Bash(git *) Bash(rg *) Bash(bash *) Bash(test *) Bash(awk *) Agent Workflow
 ---
 
 # znf:review — engine review hợp nhất
