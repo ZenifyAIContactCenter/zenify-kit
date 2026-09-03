@@ -90,3 +90,14 @@ func TestSyncKeepsUserAddedFile(t *testing.T) {
 		t.Fatalf("victim không nằm trong Kept: %v", res.Kept)
 	}
 }
+
+func TestSync_MaterializesReviewSchema(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "skills/review/_shared/finding-schema.md")); err != nil {
+		t.Fatalf("finding-schema.md chưa materialize: %v", err)
+	}
+}
