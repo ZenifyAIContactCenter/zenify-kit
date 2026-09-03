@@ -101,10 +101,14 @@ func newReviewBundleCmd() *cobra.Command {
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rundiff := func(base string) ([]byte, error) {
-				// --no-renames: rename lines emit as "0\t0\tfoo/{old => new}.go", whose
-				// path field the per-bundle `git diff -- <files>` cannot match, dropping the
-				// file from its bundle's scoped diff. Splitting the rename into delete+add
-				// gives real paths that match.
+				// --no-renames: with rename detection, a rename emits an arrow-form path
+				// ("… foo/{old => new}.go") that the per-bundle `git diff -- <files>` cannot
+				// match, silently dropping a renamed-with-content file from its bundle's
+				// scoped diff. --no-renames splits every rename into a delete + an add, each
+				// with a real path that matches. Accepted tradeoff: a rename now counts its
+				// LOC on BOTH lines (a pure rename → 2×filesize, not 0), inflating TotalLOC —
+				// but only ever in the over-bundle (safe) direction; correct diff matching
+				// beats exact LOC accounting.
 				return exec.Command("git", "diff", "--no-renames", "--numstat", base).Output()
 			}
 			return runReviewBundle(args[0], rundiff, cmd.OutOrStdout(), cmd.ErrOrStderr())
