@@ -115,6 +115,53 @@ func TestStatusline_SegmentModeEmptyWhenNoState(t *testing.T) {
 	}
 }
 
+func TestEnsureStatusline_InstallsIntoEmpty(t *testing.T) {
+	out, action, err := ensureStatusline(nil, false)
+	if err != nil || action != "installed" {
+		t.Fatalf("action=%q err=%v, want installed", action, err)
+	}
+	if !strings.Contains(string(out), `"command": "zenify observe statusline"`) {
+		t.Fatalf("out missing command: %s", out)
+	}
+}
+
+func TestEnsureStatusline_IdempotentWhenAlreadyOurs(t *testing.T) {
+	in := `{"statusLine":{"type":"command","command":"zenify observe statusline"}}`
+	out, action, err := ensureStatusline([]byte(in), false)
+	if err != nil || action != "already" || out != nil {
+		t.Fatalf("action=%q out=%v err=%v, want already/nil", action, out, err)
+	}
+}
+
+func TestEnsureStatusline_RefusesToClobberWithoutForce(t *testing.T) {
+	in := `{"statusLine":{"type":"command","command":"~/.claude/statusline.sh"},"theme":"dark"}`
+	out, action, err := ensureStatusline([]byte(in), false)
+	if err != nil || action != "occupied" || out != nil {
+		t.Fatalf("action=%q err=%v, want occupied and no write", action, err)
+	}
+}
+
+func TestEnsureStatusline_ForceOverwritesButKeepsOtherKeys(t *testing.T) {
+	in := `{"statusLine":{"type":"command","command":"~/.claude/statusline.sh"},"theme":"dark"}`
+	out, action, err := ensureStatusline([]byte(in), true)
+	if err != nil || action != "forced" {
+		t.Fatalf("action=%q err=%v, want forced", action, err)
+	}
+	s := string(out)
+	if !strings.Contains(s, `"command": "zenify observe statusline"`) {
+		t.Fatalf("force did not set our command: %s", s)
+	}
+	if !strings.Contains(s, `"theme": "dark"`) {
+		t.Fatalf("force dropped an unrelated key: %s", s)
+	}
+}
+
+func TestEnsureStatusline_BrokenJSONErrors(t *testing.T) {
+	if _, _, err := ensureStatusline([]byte(`{not json`), false); err == nil {
+		t.Fatal("broken JSON must error, not silently overwrite")
+	}
+}
+
 func TestHumanBytes(t *testing.T) {
 	cases := map[int64]string{0: "0B", 512: "512B", 2048: "2KB", 1048576: "1.0MB", 1572864: "1.5MB"}
 	for in, want := range cases {
