@@ -158,13 +158,12 @@ start early, and that section says why.
 
    Report which you ran and which the diff could not trigger.
 
-   - **The diff adds or changes a DB query → read its plan.** Dev data is small enough that a missing
-     index is invisible; only production volume surfaces it. Mongo:
-     `db_read eval 'db.getCollection("<real-name>").find({…}).explain("executionStats")'` — `IXSCAN`
-     is fine, **`COLLSCAN` on a large collection is the finding**. An index existing does not mean it
-     is used: a non-selective field, the wrong compound-index column order, or an `$in`/`$or` shape
-     can still force a scan. Relational: `EXPLAIN ANALYZE`, and a `Seq Scan` on a big table is the
-     same finding.
+   - **The diff adds or changes a DB query → read its plan** (`COLLSCAN` / `Seq Scan` on a large
+     collection or table is the finding). Delegate the full size-aware rubric to
+     **`Skill(znf:explain-plan)`** — it greps the query call-sites, runs
+     `db_read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE` per site, and reports which
+     scan a full table. An index existing does not mean it is used (non-selective field, wrong
+     compound-index column order, `$in`/`$or`). Advisory — it does not block.
    - **The diff touches a query on a tenant-scoped collection → assert the negative.** Query tenant
      B's context against a row known to belong to tenant A and assert **zero rows**. One test case,
      and it exercises the whole mandatory-filter path. Nothing substitutes for it: a query missing its
