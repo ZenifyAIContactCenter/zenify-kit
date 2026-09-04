@@ -301,6 +301,17 @@ Subagent-Driven. Do not ask.** `executing-plans` is not used here — it defers 
 when subagents are available, and it has no code review of any kind: no per-task reviewer,
 no fix loop, no final review.
 
+## Step 5b: Soi spec+plan (`znf:analyze`) — advisory
+
+Sau khi plan xong và **trước** khi dispatch SDD, gọi **`Skill(znf:analyze)`** trên cặp spec+plan
+(đường dẫn tuyệt đối trong workspace chính). Nó chạy `zenify analyze` (coverage FR→task, marker
+sót, structural Brief) rồi thêm phán đoán (SC-testable, necessity, db-3).
+
+**Đây là advisory — KHÔNG chặn.** Nếu có finding CRITICAL/HIGH (orphan FR, marker sót), nêu ra và
+để người dùng quyết: sửa spec/plan rồi chạy lại, hay chấp nhận và tiếp. Một named line
+`Skill(znf:analyze)` phải xuất hiện ở bước này; thiếu = bước bị bỏ. Command fail-open nên bước này
+không bao giờ tự làm hỏng luồng cook.
+
 ## Step 6: Implement (`znf:subagent-driven-development`)
 
 ### First, the worktree — this is the step that writes code
