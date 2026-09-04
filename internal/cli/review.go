@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -197,6 +198,132 @@ func newReviewBundleCmd() *cobra.Command {
 			return runReviewBundle(args[0], rundiff, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
+}
+
+// gitCommonDirRun chạy `git <args>` thật (seam để test inject).
+func gitCommonDirRun(args ...string) ([]byte, error) {
+	return exec.Command("git", args...).Output()
+}
+
+// reviewLogDir resolve store learning-capture ở MAIN checkout: parent của
+// git-common-dir + /.znf/review-log. Từ worktree git-common-dir trỏ <main>/.git
+// nên parent = main checkout → record sống sót `wt rm`.
+func reviewLogDir(run func(...string) ([]byte, error)) (string, error) {
+	out, err := run("rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	gcd := strings.TrimSpace(string(out))
+	if gcd == "" {
+		return "", fmt.Errorf("empty git-common-dir")
+	}
+	if !filepath.IsAbs(gcd) {
+		abs, err := filepath.Abs(gcd)
+		if err != nil {
+			return "", err
+		}
+		gcd = abs
+	}
+	return filepath.Join(filepath.Dir(gcd), ".znf", "review-log"), nil
+}
+
+func defaultReviewLogDir() (string, error) { return reviewLogDir(gitCommonDirRun) }
+
+// runReviewLogRecord: stdin = Record JSON → ghi vào store. Best-effort, LUÔN
+// exit 0: rỗng/hỏng/resolve-dir lỗi/write lỗi → bỏ qua im lặng (note stderr),
+// KHÔNG stdout, KHÔNG trả error. Capture không bao giờ chặn review.
+func runReviewLogRecord(stdin io.Reader, stderr io.Writer, dirFn func() (string, error)) error {
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, "review-log record: đọc stdin lỗi, bỏ qua:", err)
+		return nil
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil
+	}
+	var r review.Record
+	if err := json.Unmarshal(data, &r); err != nil {
+		fmt.Fprintln(stderr, "review-log record: JSON hỏng, bỏ qua:", err)
+		return nil
+	}
+	dir, err := dirFn()
+	if err != nil {
+		fmt.Fprintln(stderr, "review-log record: không resolve store (không phải git repo?), bỏ qua:", err)
+		return nil
+	}
+	if _, err := review.WriteRecord(dir, r); err != nil {
+		fmt.Fprintln(stderr, "review-log record: ghi lỗi, bỏ qua:", err)
+		return nil
+	}
+	return nil
+}
+
+// runReviewLogShow đọc store → summary người-đọc; --json → mảng record đầy đủ
+// (cho M6). Dir rỗng/thiếu/lỗi → "no reviews logged yet", exit 0. Read-only.
+func runReviewLogShow(stdout, stderr io.Writer, asJSON bool, dirFn func() (string, error)) error {
+	none := func() error { fmt.Fprintln(stdout, "no reviews logged yet"); return nil }
+	dir, err := dirFn()
+	if err != nil {
+		return none()
+	}
+	recs, err := review.LoadRecords(dir)
+	if err != nil {
+		return none()
+	}
+	if asJSON {
+		enc := json.NewEncoder(stdout)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		return enc.Encode(recs)
+	}
+	if len(recs) == 0 {
+		return none()
+	}
+	s := review.Summarize(recs)
+	fmt.Fprintf(stdout, "reviews: %d\n", s.Total)
+	for _, tier := range []string{"T1", "T2", "T3"} {
+		if n := s.ByTier[tier]; n > 0 {
+			fmt.Fprintf(stdout, "  %s: %d\n", tier, n)
+		}
+	}
+	fmt.Fprintf(stdout, "findings (kept): C%d H%d M%d L%d\n", s.Findings.Critical, s.Findings.High, s.Findings.Medium, s.Findings.Low)
+	fmt.Fprintf(stdout, "kept %d / refuted %d (refute rate %.0f%%)\n", s.Kept, s.Refuted, s.RefuteRate*100)
+	fmt.Fprintf(stdout, "shippable: %d/%d\n", s.ShippableN, s.Total)
+	if len(s.TopCategory) > 0 {
+		fmt.Fprint(stdout, "top categories:")
+		for i, c := range s.TopCategory {
+			if i >= 5 {
+				break
+			}
+			fmt.Fprintf(stdout, " %s(%d)", c.Name, c.N)
+		}
+		fmt.Fprintln(stdout)
+	}
+	return nil
+}
+
+func newReviewLogCmd() *cobra.Command {
+	var asJSON bool
+	c := &cobra.Command{
+		Use:   "review-log",
+		Short: "Xem learning-capture log của znf:review (summary local; --json cho M6)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runReviewLogShow(cmd.OutOrStdout(), cmd.ErrOrStderr(), asJSON, defaultReviewLogDir)
+		},
+	}
+	c.Flags().BoolVar(&asJSON, "json", false, "in toàn bộ record JSON (cho M6 sync)")
+	record := &cobra.Command{
+		Use:    "record",
+		Short:  "Ghi một review record vào store local (Record JSON qua stdin, seam POST)",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runReviewLogRecord(cmd.InOrStdin(), cmd.ErrOrStderr(), defaultReviewLogDir)
+		},
+	}
+	c.AddCommand(record)
+	return c
 }
 
 func newReviewVerifyCmd() *cobra.Command {

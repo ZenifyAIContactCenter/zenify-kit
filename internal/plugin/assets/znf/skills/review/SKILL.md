@@ -18,7 +18,7 @@ Engine chạy 5 chốt theo thứ tự. M4a chỉ làm REVIEW (3); 4 chốt kia 
 2. **BUNDLE** — smart-bundling diff lớn (M4c, **live**). ADDED>2000 → `zenify review-bundle` chia cụm-file (cap 600, tối đa 8), review per-bundle rồi gộp; ≤2000 giữ nguyên.
 3. **REVIEW** — dispatch theo tier (phần thịt M4a, bên dưới).
 4. **VERIFY** — finding-verifier cơ học `zenify review-verify` (M4b, **live**, mọi tier): bác finding có evidence không khớp file thật. T3 vẫn giữ adversarial-LLM bên trong workflow (chồng lên, kiểm việc khác).
-5. **POST** — advisory (M4f, **live**): sau khi có `shippable`, gate cơ học `zenify review-advise-gate` quyết có risk-signal không; nếu có → dispatch `znf:code-reviewer` (prompt adviser read-only `_shared/adviser-prompt.md`) thêm mục `## Advisory`, KHÔNG đổi `shippable`. learning-capture (M4e) còn pending.
+5. **POST** — advisory (M4f) + learning-capture (M4e), **cả hai live**: gate `zenify review-advise-gate` quyết có gọi adviser read-only (`## Advisory`) không; rồi ghi record review vào store local `.znf/review-log/` qua `zenify review-log record` (best-effort). Cả hai KHÔNG đổi `shippable`.
 
 > **Doctrine (M4d, live):** KHÔNG ở POST mà là lớp **dispatch-time** — sanitize `## Verified` (Bước 1b-doctrine) + tiêm preamble reviewer (Bước 3). Xem hai bước đó.
 
@@ -96,7 +96,9 @@ Xử lý theo `verdict` của `$PLAN`:
 Chạy script cơ học qua `bash` (file materialize ở 0o600, không có +x — luôn gọi bằng `bash`), đọc dòng đầu:
 
 ```bash
-bash ~/.claude/skills/znf/skills/review/scripts/select-tier "$ADDED" "$SHARED" "$CRITICAL"
+SELECT_TIER=$(bash ~/.claude/skills/znf/skills/review/scripts/select-tier "$ADDED" "$SHARED" "$CRITICAL")
+TIER=$(printf '%s\n' "$SELECT_TIER" | sed -n '1p')   # T1|T2|T3 — reused by POST learning-capture (Bước 4)
+printf '%s\n' "$SELECT_TIER"                          # vẫn in tier + lý do ra report
 ```
 
 Dòng 1 = `T1|T2|T3`, dòng 2 = lý do. **In tier + lý do ra report** trước khi dispatch.
@@ -158,6 +160,32 @@ ADVISE=$(printf '%s' "$ADVISE_IN" | zenify review-advise-gate 2>/dev/null)   # {
   2. Dispatch `znf:code-reviewer` (Agent tool) với prompt = nội dung `_shared/adviser-prompt.md` + đường dẫn file input; override model tier sonnet.
   3. Trích đúng mục `## Advisory` từ output adviser, gắn vào report dưới nhãn "advisory — read-only, không ảnh hưởng shippable". CHỈ trích text `## Advisory`; BỎ mọi findings/verdict adviser lỡ trả — `shippable` KHÔNG đổi.
 - Adviser vắng (chưa `zenify skills sync`) hoặc đi idle không trả report → report ghi "advisory skipped (adviser unavailable)", KHÔNG block, KHÔNG coi im lặng là sạch (CLAUDE.md §3).
+
+POST-capture (M4e, **live**): cuối cùng, ghi lại review vào store local `.znf/review-log/` (main checkout) — **best-effort, KHÔNG chặn**:
+
+````bash
+command -v zenify >/dev/null && command -v jq >/dev/null && {
+  REFUTED=$(printf '%s' "${VERIFIED:-}" | jq -r '.refuted // 0' 2>/dev/null); [ -n "$REFUTED" ] || REFUTED=0
+  SIGNALS_JSON=$(printf '%s' "${ADVISE:-}" | jq -c '.signals // []' 2>/dev/null); { [ -n "$SIGNALS_JSON" ] && [ "$SIGNALS_JSON" != null ]; } || SIGNALS_JSON='[]'
+  REC=$(printf '%s' "${KEPT_JSON:-[]}" | jq -c \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg repo "$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)" \
+    --arg base "${BASE:-}" --arg head "$(git rev-parse --short HEAD 2>/dev/null)" \
+    --arg tier "${TIER:-unknown}" --argjson refuted "$REFUTED" \
+    --argjson shippable "${SHIPPABLE:-false}" --argjson signals "$SIGNALS_JSON" '
+    { ts:$ts, repo:$repo, base:$base, head:$head, tier:$tier, outcome:"reviewed",
+      findings:{ critical:([.[]|select(.severity=="CRITICAL")]|length),
+                 high:([.[]|select(.severity=="HIGH")]|length),
+                 medium:([.[]|select(.severity=="MEDIUM")]|length),
+                 low:([.[]|select(.severity=="LOW")]|length) },
+      kept:length, refuted:$refuted, shippable:$shippable, signals:$signals,
+      categories:[.[].dimension] }' 2>/dev/null)
+  [ -n "$REC" ] && printf '%s' "$REC" | zenify review-log record 2>/dev/null || true
+} || true
+````
+
+- `zenify`/`jq` vắng, bất kỳ lệnh lỗi → BỎ QUA im lặng (`|| true`), review kết thúc bình thường. Capture KHÔNG đổi `shippable`, KHÔNG in report.
+- Xem lại bằng `zenify review-log` (summary) hoặc `zenify review-log --json` (cho M6 sync).
 
 ## Report trả về
 

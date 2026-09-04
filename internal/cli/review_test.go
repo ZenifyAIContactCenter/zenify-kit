@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/review"
+	"github.com/spf13/cobra"
 )
 
 func TestReviewVerify_RoundTrip(t *testing.T) {
@@ -245,5 +247,112 @@ func TestReviewAdviseGateCmd_Hidden(t *testing.T) {
 	}
 	if c.Use != "review-advise-gate" {
 		t.Errorf("Use = %q", c.Use)
+	}
+}
+
+func TestReviewLogDir_UsesGitCommonDir(t *testing.T) {
+	// inject fake git → gcd tuyệt đối "/x/y/.git" → dir = /x/y/.znf/review-log
+	dir, err := reviewLogDir(func(args ...string) ([]byte, error) {
+		return []byte("/x/y/.git\n"), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != filepath.Join("/x/y", ".znf", "review-log") {
+		t.Errorf("dir = %s", dir)
+	}
+}
+
+func TestReviewLogDir_GitError(t *testing.T) {
+	_, err := reviewLogDir(func(args ...string) ([]byte, error) {
+		return nil, os.ErrNotExist
+	})
+	if err == nil {
+		t.Error("git lỗi phải trả error để caller fail-open")
+	}
+}
+
+func TestRunReviewLogRecord_WritesThenFailOpen(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "rl")
+	dirFn := func() (string, error) { return dir, nil }
+	rec := `{"ts":"2026-09-04T01:00:00Z","repo":"r","base":"a","head":"deadbeef","tier":"T2","outcome":"reviewed","findings":{"high":1},"kept":1,"refuted":0,"shippable":true,"signals":[],"categories":["bugs"]}`
+	var errb bytes.Buffer
+	if err := runReviewLogRecord(strings.NewReader(rec), &errb, dirFn); err != nil {
+		t.Fatalf("record hợp lệ phải nil err: %v", err)
+	}
+	recs, _ := review.LoadRecords(dir)
+	if len(recs) != 1 {
+		t.Fatalf("chưa ghi record: %d", len(recs))
+	}
+	// empty stdin → không ghi thêm, vẫn nil
+	if err := runReviewLogRecord(strings.NewReader(""), &errb, dirFn); err != nil {
+		t.Fatalf("empty phải nil: %v", err)
+	}
+	// malformed → không ghi thêm, vẫn nil
+	if err := runReviewLogRecord(strings.NewReader("{bad"), &errb, dirFn); err != nil {
+		t.Fatalf("malformed phải nil: %v", err)
+	}
+	recs, _ = review.LoadRecords(dir)
+	if len(recs) != 1 {
+		t.Errorf("empty/malformed không được ghi thêm, còn %d", len(recs))
+	}
+}
+
+func TestRunReviewLogRecord_DirErrorFailOpen(t *testing.T) {
+	dirFn := func() (string, error) { return "", os.ErrNotExist }
+	rec := `{"ts":"t","head":"h","tier":"T1"}`
+	var errb bytes.Buffer
+	if err := runReviewLogRecord(strings.NewReader(rec), &errb, dirFn); err != nil {
+		t.Errorf("resolve-dir lỗi phải nil (fail-open): %v", err)
+	}
+}
+
+func TestRunReviewLogShow_Empty(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "empty")
+	dirFn := func() (string, error) { return dir, nil }
+	var out, errb bytes.Buffer
+	if err := runReviewLogShow(&out, &errb, false, dirFn); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "no reviews logged yet") {
+		t.Errorf("empty phải báo no reviews: %q", out.String())
+	}
+}
+
+func TestRunReviewLogShow_JSON(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "rl")
+	if _, err := review.WriteRecord(dir, review.Record{TS: "2026-09-04T01:00:00Z", Head: "abc12345", Tier: "T2", Kept: 1, Categories: []string{"bugs"}}); err != nil {
+		t.Fatal(err)
+	}
+	dirFn := func() (string, error) { return dir, nil }
+	var out, errb bytes.Buffer
+	if err := runReviewLogShow(&out, &errb, true, dirFn); err != nil {
+		t.Fatal(err)
+	}
+	var recs []review.Record
+	if err := json.Unmarshal(out.Bytes(), &recs); err != nil {
+		t.Fatalf("--json phải in mảng record: %v (%s)", err, out.String())
+	}
+	if len(recs) != 1 || recs[0].Tier != "T2" {
+		t.Errorf("json sai: %+v", recs)
+	}
+}
+
+func TestReviewLogCmd_RecordChildHidden(t *testing.T) {
+	c := newReviewLogCmd()
+	if c.Use != "review-log" {
+		t.Errorf("parent Use = %q", c.Use)
+	}
+	var rec *cobra.Command
+	for _, sub := range c.Commands() {
+		if sub.Use == "record" {
+			rec = sub
+		}
+	}
+	if rec == nil {
+		t.Fatal("thiếu child record")
+	}
+	if !rec.Hidden {
+		t.Error("record phải Hidden")
 	}
 }
