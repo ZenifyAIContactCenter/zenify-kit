@@ -166,10 +166,11 @@ Every step must contain the actual content an engineer needs. These are **plan f
 
 Constitution P6 (necessity ladder) applies at plan time too. If a task builds MORE than the
 smallest thing that works — a new abstraction, a new dependency, an extra layer — justify it in
-one row, and only then:
+three labeled lines, and only then:
 
-| What is built | Why it is needed | Simpler alternative rejected because |
-|---|---|---|
+- What is built: the extra abstraction / dependency / layer
+- Why it is needed: the concrete reason the smallest thing does not suffice
+- Simpler alternative rejected because: why the one-line / stdlib / existing-path option fails
 
 No violation → omit the section. This is the plan-time forcing function against over-engineering
 (adapted from spec-kit's Complexity Tracking): a deviation must name the simpler thing it rejected
