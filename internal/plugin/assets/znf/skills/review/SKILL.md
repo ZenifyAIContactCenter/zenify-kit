@@ -181,7 +181,7 @@ command -v zenify >/dev/null && command -v jq >/dev/null && {
       kept:length, refuted:$refuted, shippable:$shippable, signals:$signals,
       categories:[.[].dimension] }' 2>/dev/null)
   [ -n "$REC" ] && printf '%s' "$REC" | zenify review-log record 2>/dev/null || true
-}
+} || true
 ````
 
 - `zenify`/`jq` vắng, bất kỳ lệnh lỗi → BỎ QUA im lặng (`|| true`), review kết thúc bình thường. Capture KHÔNG đổi `shippable`, KHÔNG in report.

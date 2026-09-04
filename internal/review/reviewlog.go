@@ -67,13 +67,10 @@ func sanitizeHead(s string) string {
 	return string(out)
 }
 
-// tsForFilename bỏ ký tự không an toàn tên file khỏi ts (RFC3339 có ':').
+// tsForFilename giữ chỉ [a-zA-Z0-9] khỏi ts, giống sanitizeHead — chặn escape
+// dir qua ts độc hại (vd "../../..."). Không truncate (chỉ Head bị cắt 8 ký tự).
 func tsForFilename(ts string) string {
-	out := strings.NewReplacer(":", "", "-", "").Replace(ts)
-	if out == "" {
-		return "unknown"
-	}
-	return out
+	return sanitizeHead(ts)
 }
 
 // ensureDir tạo dir + self-ignoring .gitignore ("*") nếu chưa có (pattern SDD).

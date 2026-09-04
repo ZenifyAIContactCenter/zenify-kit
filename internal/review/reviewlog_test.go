@@ -1,7 +1,6 @@
 package review
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,6 +84,21 @@ func TestWriteRecord_SanitizeHead(t *testing.T) {
 	}
 }
 
+func TestWriteRecord_SanitizeTS(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "rl")
+	r := sampleRecord()
+	r.TS = "../../etc/passwd"
+	r.Head = "abcd1234"
+	path, err := WriteRecord(dir, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// file phải nằm TRONG dir, không escape
+	if filepath.Dir(path) != dir {
+		t.Errorf("ts độc hại escape dir: %s", path)
+	}
+}
+
 func TestLoadRecords_MissingDir(t *testing.T) {
 	recs, err := LoadRecords(filepath.Join(t.TempDir(), "khong-ton-tai"))
 	if err != nil {
@@ -149,5 +163,3 @@ func TestSummarize_RefuteRateZeroDenom(t *testing.T) {
 		t.Errorf("mẫu số 0 → RefuteRate 0, được %v", s.RefuteRate)
 	}
 }
-
-var _ = json.Marshal // giữ import nếu chưa dùng trực tiếp
