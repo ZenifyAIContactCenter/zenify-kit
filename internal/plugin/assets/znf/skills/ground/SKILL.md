@@ -116,6 +116,14 @@ which predicate appears in every one of them — and carry it. If the project ha
 middleware layer that injects the filter, use it; a hand-built query that takes the tenant as an
 optional parameter is the failure waiting to happen.
 
+### Ground the query plan (shift-left)
+
+Grounding a query is the cheapest moment to see its plan — earlier than `/ship`. If the change
+adds or touches a DB query, delegate to **`Skill(znf:explain-plan)`**: it reads each query's plan
+(`db_read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE`) and flags a `COLLSCAN` /
+`Seq Scan` on a large collection before the code is even written. Advisory, best-effort — it
+never blocks grounding.
+
 ### Config values, not just config key names
 
 Treat config with the same suspicion as env vars: **read the value that is live**, not the key
