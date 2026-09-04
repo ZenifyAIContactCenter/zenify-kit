@@ -19,9 +19,28 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 **Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
 - (User preferences for plan location override this default)
 
+**Author plans against the shared references.** Format, language, and diagram rules follow
+`znf:_shared/artifact-style` (a plan is as much a human-read artifact as the spec). The plan
+discipline — stable IDs flowing through, testable steps, traceability — follows
+`znf:_shared/constitution`.
+
 ## Scope Check
 
 If the spec covers multiple independent subsystems, it should have been broken into sub-project specs during brainstorming. If it wasn't, suggest breaking this into separate plans — one per subsystem. Each plan should produce working, testable software on its own.
+
+**When the plans span several repos, declare the dependency edges.** Each sub-plan opens with a
+small block naming its repo and what it must wait for:
+
+```
+Repo: <repo name>
+Waits for: <other repo> : contract-frozen      (omit this line if the repo is independent)
+```
+
+The edge is **contract-frozen** — the other repo has committed the endpoint + shape — not
+whole-repo-done. A sub-plan with no `Waits for:` line is **independent** and runs in parallel from
+the start. Subagent-Driven Development reads this block to schedule the repos: independent ones
+concurrently, dependent ones gated on their contract-freeze. See its "Cross-worktree parallelism
+(polyrepo)" section.
 
 ## File Structure
 
@@ -95,6 +114,10 @@ include this section.]
 - Produces: [what later tasks rely on — exact function names, parameter
   and return types. A task's implementer sees only their own task; this
   block is how they learn the names and types neighboring tasks use.]
+- `_Requirements: FR-N[, SC-M]_` — the spec requirement IDs this task implements (constitution
+  P8 traceability). Every task carries one; every FR in the spec must appear in at least one
+  task's line. This is what lets a coverage check assert no requirement is orphaned and no task
+  is unmotivated.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -138,6 +161,20 @@ Every step must contain the actual content an engineer needs. These are **plan f
 - "Similar to Task N" (repeat the code — the engineer may be reading tasks out of order)
 - Steps that describe what to do without showing how (code blocks required for code steps)
 - References to types, functions, or methods not defined in any task
+
+## Necessity Note (fill only on violation)
+
+Constitution P6 (necessity ladder) applies at plan time too. If a task builds MORE than the
+smallest thing that works — a new abstraction, a new dependency, an extra layer — justify it in
+three labeled lines, and only then:
+
+- What is built: the extra abstraction / dependency / layer
+- Why it is needed: the concrete reason the smallest thing does not suffice
+- Simpler alternative rejected because: why the one-line / stdlib / existing-path option fails
+
+No violation → omit the section. This is the plan-time forcing function against over-engineering
+(adapted from spec-kit's Complexity Tracking): a deviation must name the simpler thing it rejected
+and why.
 
 ## Self-Review
 

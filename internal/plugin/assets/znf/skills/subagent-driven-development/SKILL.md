@@ -229,6 +229,26 @@ its change, send the whole batch to a single subagent, and review its diff
 as one unit. Reserve one-dispatch-per-task for work that needs its own
 judgment, its own tests, or its own review surface.
 
+**Cross-worktree parallelism (polyrepo).** A feature that spans repos runs as several
+worktrees, one per repo (same slug) — the conflict rule above is about writers in the SAME
+worktree; across repos, each has its own git working directory and index, so two implementers
+writing into two repos cannot collide. Run them in parallel.
+
+- Read the plan's per-repo `Repo:` / `Waits for:` block (writing-plans authors it). Dispatch
+  **one implementer per repo**, concurrently for every repo whose dependency edges are all
+  satisfied. A repo with no `Waits for:` line is independent — start it immediately.
+- **Gate on contract-freeze, not on the whole repo.** A repo whose block says
+  `Waits for: <X> : contract-frozen` starts as soon as X commits the endpoint + shape (a
+  specific commit you record), NOT after X's whole plan finishes. This is where the wall-clock
+  is won: the dependent repo overlaps the rest of X.
+- **One ledger, repo-tagged.** Keep the single plan ledger; tag each task line with its repo
+  (`[be] Task 3: complete`). Each repo's review loop runs on its own stream.
+- **Collect each stream by name** — you must collect each repo-stream's report and treat
+  silence as incomplete, never as clean (CLAUDE.md §3). Keep one TodoWrite line per repo-stream.
+  A stream that went quiet is NOT done.
+- **Within one repo, tasks stay sequential** — the rule above is unchanged; only the
+  across-repo case is the exception.
+
 Everything you paste into a dispatch prompt — and everything a subagent
 prints back — stays resident in your context for the rest of the session
 and is re-read on every later turn. Hand artifacts over as files.
@@ -280,7 +300,7 @@ and fix-round diffs need it.
   a pointer to that ledger entry in the dispatch.
 - Record the implementer's agent identity from the dispatch result —
   fix-loop rounds 1-3 resume this agent.
-- Never dispatch multiple implementation subagents in parallel (conflicts).
+- Never dispatch multiple implementation subagents in parallel **into the same worktree** (conflicts). Across repos, each with its own worktree, see "Cross-worktree parallelism (polyrepo)" below.
 
 Template: [implementer-prompt.md](implementer-prompt.md)
 
