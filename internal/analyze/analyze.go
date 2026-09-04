@@ -9,6 +9,7 @@ package analyze
 import (
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -49,12 +50,12 @@ type Result struct {
 }
 
 var (
-	frRe          = regexp.MustCompile(`\bFR-\d+(?:\.\d+)*\b`)
-	scRe          = regexp.MustCompile(`\bSC-\d+(?:\.\d+)*\b`)
+	frRe          = regexp.MustCompile(`\bFR-\d+(?:\.\d+)*`)
+	scRe          = regexp.MustCompile(`\bSC-\d+(?:\.\d+)*`)
 	taskRe        = regexp.MustCompile(`^###\s+Task\b`)
 	numberedRe    = regexp.MustCompile(`^\s*\d+\.\s`)
 	briefRe       = regexp.MustCompile(`(?i)^##\s+brief\b`)
-	nextSectionRe = regexp.MustCompile(`^##\s`)
+	nextSectionRe = regexp.MustCompile(`^#{1,2}\s`)
 	reqLinePrefix = "_Requirements:"
 	markerToken   = "[NEEDS CLARIFICATION"
 )
@@ -131,21 +132,21 @@ func Analyze(specText, planText string) Result {
 	for _, id := range r.SpecFRs {
 		if !refSet[id] {
 			r.add(Finding{Severity: Critical, Kind: "orphan-fr", ID: id,
-				Message: "FR không task nào thực thi (orphan)"})
+				Message: "FR has no implementing task (orphan)"})
 		}
 	}
 	// --- orphan task (HIGH): task block with no _Requirements: line ---
 	for _, b := range blocks {
 		if !b.hasReqs {
 			r.add(Finding{Severity: High, Kind: "orphan-task", Location: b.title,
-				Message: "task không khai _Requirements:"})
+				Message: "task declares no _Requirements:"})
 		}
 	}
 	// --- dangling ref (HIGH): plan cites an FR the spec never declares ---
 	for _, id := range r.PlanRefs {
 		if strings.HasPrefix(id, "FR-") && !frSet[id] {
 			r.add(Finding{Severity: High, Kind: "dangling-ref", ID: id,
-				Message: "plan cite FR không có trong spec"})
+				Message: "plan cites an FR not declared in the spec"})
 		}
 	}
 
@@ -155,8 +156,8 @@ func Analyze(specText, planText string) Result {
 			if strings.Contains(ln, markerToken) {
 				m := Marker{File: file, Line: i + 1, Text: strings.TrimSpace(ln)}
 				r.Markers = append(r.Markers, m)
-				r.add(Finding{Severity: High, Kind: "marker", Location: file + ":" + itoa(i+1),
-					Message: "marker chưa-rõ còn sót"})
+				r.add(Finding{Severity: High, Kind: "marker", Location: file + ":" + strconv.Itoa(i+1),
+					Message: "unresolved clarification marker"})
 			}
 		}
 	}
@@ -186,27 +187,4 @@ func Analyze(specText, planText string) Result {
 func (r *Result) add(f Finding) {
 	r.Findings = append(r.Findings, f)
 	r.SeverityCounts[string(f.Severity)]++
-}
-
-// itoa avoids importing strconv for one call site.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		b[i] = '-'
-	}
-	return string(b[i:])
 }

@@ -9,7 +9,7 @@ import (
 // SC-1: FR-2 không được cite trong plan → orphan FR (CRITICAL); FR-1 có cite → không orphan.
 func TestAnalyze_OrphanFR(t *testing.T) {
 	spec := "**FR-1.** làm X\n- FR-1.1: chi tiết\n**FR-2.** làm Y\n"
-	plan := "### Task 1: X\n_Requirements: FR-1\ncode\n"
+	plan := "### Task 1: X\n_Requirements: FR-1_\ncode\n"
 	r := Analyze(spec, plan)
 	if !hasFinding(r, "orphan-fr", "FR-2", Critical) {
 		t.Errorf("thiếu orphan-fr FR-2 (CRITICAL); findings=%+v", r.Findings)
@@ -22,7 +22,7 @@ func TestAnalyze_OrphanFR(t *testing.T) {
 // SC-2: task không có _Requirements: → orphan-task; ref tới FR-9 không có trong spec → dangling-ref.
 func TestAnalyze_OrphanTaskAndDangling(t *testing.T) {
 	spec := "**FR-1.** làm X\n"
-	plan := "### Task 1: X\n_Requirements: FR-1\n### Task 2: Y\nkhông khai gì\n### Task 3: Z\n_Requirements: FR-9\n"
+	plan := "### Task 1: X\n_Requirements: FR-1_\n### Task 2: Y\nkhông khai gì\n### Task 3: Z\n_Requirements: FR-9_\n"
 	r := Analyze(spec, plan)
 	if !hasFinding(r, "orphan-task", "", High) {
 		t.Errorf("thiếu orphan-task (HIGH); findings=%+v", r.Findings)
@@ -62,7 +62,7 @@ func TestAnalyze_StructuralBrief(t *testing.T) {
 // Coverage ở mức top-level: FR-1.1 trong spec, plan cite FR-1 → FR-1 KHÔNG orphan.
 func TestAnalyze_TopLevelNormalization(t *testing.T) {
 	spec := "**FR-1.** X\n- FR-1.1: a\n- FR-1.2: b\n"
-	plan := "### Task 1\n_Requirements: FR-1\n"
+	plan := "### Task 1\n_Requirements: FR-1_\n"
 	r := Analyze(spec, plan)
 	if hasFinding(r, "orphan-fr", "FR-1", Critical) {
 		t.Errorf("FR-1 đã cite (qua chính FR-1) — không được orphan")
@@ -77,7 +77,7 @@ func TestAnalyze_TopLevelNormalization(t *testing.T) {
 // SeverityCounts phản ánh đúng findings.
 func TestAnalyze_SeverityCounts(t *testing.T) {
 	spec := "**FR-1.** X\n**FR-2.** Y\n"
-	plan := "### Task 1\n_Requirements: FR-1\n"
+	plan := "### Task 1\n_Requirements: FR-1_\n"
 	r := Analyze(spec, plan)
 	if r.SeverityCounts["CRITICAL"] < 1 {
 		t.Errorf("muốn ≥1 CRITICAL (FR-2 orphan), có %v", r.SeverityCounts)
