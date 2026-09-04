@@ -117,7 +117,8 @@ include this section.]
 - `_Requirements: FR-N[, SC-M]_` — the spec requirement IDs this task implements (constitution
   P8 traceability). Every task carries one; every FR in the spec must appear in at least one
   task's line. This is what lets a coverage check assert no requirement is orphaned and no task
-  is unmotivated.
+  is unmotivated — `znf:analyze` (cited at `cook` Step 5b) is that check. Keep the tag on its
+  own bullet line, in this backtick-wrapped form, so the check detects it.
 
 - [ ] **Step 1: Write the failing test**
 

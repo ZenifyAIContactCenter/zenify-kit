@@ -32,6 +32,23 @@ func TestAnalyze_OrphanTaskAndDangling(t *testing.T) {
 	}
 }
 
+// Seam fix: writing-plans authors the tag as a markdown bullet with the tag wrapped in
+// backticks (`- ` + "`_Requirements: FR-1_`"), NOT a bare line-start tag. That
+// template-compliant form must be detected — otherwise a real SDD plan reports every task
+// as orphan. Bare line-start tags (used by the other tests) must keep matching too.
+func TestAnalyze_RequirementsTagBulletedBacktick(t *testing.T) {
+	spec := "**FR-1.** làm X\n"
+	// exactly the writing-plans Task Structure format: bullet under **Interfaces:**, backtick-wrapped.
+	plan := "### Task 1: X\n**Interfaces:**\n- `_Requirements: FR-1_`\ncode\n"
+	r := Analyze(spec, plan)
+	if hasFinding(r, "orphan-fr", "FR-1", Critical) {
+		t.Errorf("FR-1 cite qua tag bullet+backtick — KHÔNG được orphan; findings=%+v", r.Findings)
+	}
+	if hasFinding(r, "orphan-task", "", High) {
+		t.Errorf("task CÓ tag (bullet+backtick) — KHÔNG được orphan-task; findings=%+v", r.Findings)
+	}
+}
+
 // SC-3: hai marker [NEEDS CLARIFICATION] → đếm đúng 2, kèm số dòng.
 func TestAnalyze_MarkerScan(t *testing.T) {
 	spec := "dòng 1\n[NEEDS CLARIFICATION: a]\ndòng 3\n[NEEDS CLARIFICATION: b]\n"
