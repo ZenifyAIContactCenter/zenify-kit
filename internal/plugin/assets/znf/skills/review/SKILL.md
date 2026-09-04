@@ -96,7 +96,9 @@ Xử lý theo `verdict` của `$PLAN`:
 Chạy script cơ học qua `bash` (file materialize ở 0o600, không có +x — luôn gọi bằng `bash`), đọc dòng đầu:
 
 ```bash
-bash ~/.claude/skills/znf/skills/review/scripts/select-tier "$ADDED" "$SHARED" "$CRITICAL"
+SELECT_TIER=$(bash ~/.claude/skills/znf/skills/review/scripts/select-tier "$ADDED" "$SHARED" "$CRITICAL")
+TIER=$(printf '%s\n' "$SELECT_TIER" | sed -n '1p')   # T1|T2|T3 — reused by POST learning-capture (Bước 4)
+printf '%s\n' "$SELECT_TIER"                          # vẫn in tier + lý do ra report
 ```
 
 Dòng 1 = `T1|T2|T3`, dòng 2 = lý do. **In tier + lý do ra report** trước khi dispatch.
@@ -180,11 +182,10 @@ command -v zenify >/dev/null && command -v jq >/dev/null && {
       categories:[.[].dimension] }' 2>/dev/null)
   [ -n "$REC" ] && printf '%s' "$REC" | zenify review-log record 2>/dev/null || true
 }
-```
+````
 
 - `zenify`/`jq` vắng, bất kỳ lệnh lỗi → BỎ QUA im lặng (`|| true`), review kết thúc bình thường. Capture KHÔNG đổi `shippable`, KHÔNG in report.
 - Xem lại bằng `zenify review-log` (summary) hoặc `zenify review-log --json` (cho M6 sync).
-````
 
 ## Report trả về
 
