@@ -42,3 +42,27 @@ func TestPolyrepoDoctrine_Cook(t *testing.T) {
 		}
 	}
 }
+
+func TestPolyrepoDoctrine_SDD(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dest, "skills/subagent-driven-development/SKILL.md"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	s := string(b)
+	for _, want := range []string{
+		"same worktree",
+		"Cross-worktree parallelism",
+		"contract-frozen",
+		"one implementer per repo",
+		"collect", "silence",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("SDD SKILL.md thiếu %q (polyrepo doctrine)", want)
+		}
+	}
+}
