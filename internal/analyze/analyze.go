@@ -56,8 +56,12 @@ var (
 	numberedRe    = regexp.MustCompile(`^\s*\d+\.\s`)
 	briefRe       = regexp.MustCompile(`(?i)^##\s+brief\b`)
 	nextSectionRe = regexp.MustCompile(`^#{1,2}\s`)
-	reqLinePrefix = "_Requirements:"
-	markerToken   = "[NEEDS CLARIFICATION"
+	// A _Requirements: line as writing-plans authors it is a markdown bullet with the
+	// tag wrapped in backticks — `- ` + "`_Requirements: FR-N_`". Tolerate an optional
+	// leading list marker and any backtick/emphasis run before the literal tag, so a
+	// template-compliant plan is detected (a bare line-start tag still matches too).
+	reqLineRe   = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_Requirements:")
+	markerToken = "[NEEDS CLARIFICATION"
 )
 
 // topLevel strips a sub-part: FR-1.2 -> FR-1, SC-3 -> SC-3.
@@ -100,7 +104,7 @@ func Analyze(specText, planText string) Result {
 			cur = len(blocks) - 1
 			continue
 		}
-		if strings.HasPrefix(strings.TrimSpace(ln), reqLinePrefix) {
+		if reqLineRe.MatchString(ln) {
 			ids := append(frRe.FindAllString(ln, -1), scRe.FindAllString(ln, -1)...)
 			for _, id := range ids {
 				tl := topLevel(id)
