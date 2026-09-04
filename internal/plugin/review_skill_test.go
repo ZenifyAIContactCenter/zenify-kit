@@ -142,6 +142,24 @@ func TestReviewSkill_M4fWiring(t *testing.T) {
 	}
 }
 
+func TestReviewSkill_M4eWiring(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dest, "skills/review/SKILL.md"))
+	if err != nil {
+		t.Fatalf("read SKILL.md: %v", err)
+	}
+	skill := string(b)
+	for _, want := range []string{"review-log record", "outcome", "categories", "refuted", "command -v zenify", "|| true"} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("SKILL.md thiếu %q (M4e wiring)", want)
+		}
+	}
+}
+
 func TestShipStep5_DelegatesToReview(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
