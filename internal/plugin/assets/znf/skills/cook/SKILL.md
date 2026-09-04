@@ -577,6 +577,15 @@ about concurrency, and there is none here.
 None of this edits the plugin. It is a constraint on the brief you hand SDD and on when you write the
 ledger line, both of which are yours.
 
+## Step 6b: Soi test-traceability (`znf:standards`) — advisory
+
+Sau khi SDD implement xong (Step 6) và **trước** `/ship`, gọi **`Skill(znf:standards)`** trên
+spec + plan + root worktree. Nó đối chiếu mỗi FR với test thật trên đĩa: một requirement được
+implement nhưng không có test (`untested-fr`), một test file khai mà thiếu (`missing-test-file`),
+hay một file test rỗng (`empty-test-file`). Đây là bức tranh cross-cutting mà review theo-từng-task
+của SDD không cho — nó chỉ thấy một task, không thấy "mọi FR đều có test". Advisory: surface findings
+cho người quyết, không chặn. Một dòng `Skill(znf:standards)` là bằng chứng bước này đã chạy.
+
 ## Step 7: Pre-ship gate
 
 Run `/ship`: lint + build → the project's contract gate → behavioural verification → the contract review
