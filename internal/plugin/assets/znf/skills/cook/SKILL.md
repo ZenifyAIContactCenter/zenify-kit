@@ -167,6 +167,10 @@ Khi viết spec/plan, tuân `znf:_shared/artifact-style` (reference dùng chung:
 value`, không markdown table, không diagram viewer-không-render, title theo ngôn ngữ prose giữ
 jargon). Xem file đó.
 
+Và tuân kỷ luật spec: viết spec theo `znf:_shared/spec-template`, theo nguyên tắc
+`znf:_shared/constitution` (Brief-first, FR/SC có ID, SC testable, đánh dấu chỗ chưa rõ,
+necessity ladder, safety floor, traceability). artifact-style lo format; hai asset này lo *nội dung* spec.
+
 **Do not commit the spec, and do not `git add -f` it.** Step 6 of that skill says to commit
 the design document; this project deliberately blocks it with `.gitignore` instead. Three
 consequences to respect:
@@ -250,6 +254,10 @@ checkout, same reason as the spec** (rule #8), and hand SDD the absolute path.
 **Apply the same artifact-quality rules as the spec** — `znf:_shared/artifact-style`, cited under
 Step 2. The plan is as much a human-read artifact as the spec.
 
+The plan follows the same discipline as the spec — `znf:_shared/constitution` and
+`znf:_shared/spec-template` — so requirement IDs flow into `_Requirements:` task lines
+(traceability P8) and the necessity note guards over-engineering at plan time.
+
 **Decide here, once, which tasks are worth a browser run — and write it into their definition of done.**
 This is the *only* thing that triggers a per-task UI check; Step 6 does not infer it from file
 extensions.
@@ -313,6 +321,12 @@ it on an older build and you get a worktree that looks freshly based and is not,
 time.
 
 **Polyrepo:** one worktree per affected repo, **same slug** in every one.
+
+When the plan spans repos, do not run them one after another by default. Hand SDD the whole set:
+it dispatches **one implementer per repo in parallel**, gating a dependent repo on the other's
+**contract-frozen** commit (not on its whole plan). Independent repos run concurrently from the
+start. See SDD's "Cross-worktree parallelism (polyrepo)" section; the per-repo `Waits for:` edges
+come from the plan.
 
 **Re-entering `/cook` mid-task does not mean a second worktree.** If this feature already has one,
 `cd` into it — `wt new` will refuse and print the path (house rule #8). The slug belongs to the whole
