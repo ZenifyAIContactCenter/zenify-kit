@@ -28,6 +28,16 @@ func TestResolveFromConfig(t *testing.T) {
 	}
 }
 
+func TestResolveConfigSkipsComments(t *testing.T) {
+	readFile := func(p string) ([]byte, error) {
+		return []byte("# header\ncontact-center-be\n  # indented comment\nchatting\n"), nil
+	}
+	got, err := Resolve(nil, "/ws", 84, readFile, nil)
+	if err != nil || len(got) != 2 || got[0] != "contact-center-be" || got[1] != "chatting" {
+		t.Fatalf("comment lines phải bị bỏ: got=%v err=%v", got, err)
+	}
+}
+
 func TestResolveAutoDetect(t *testing.T) {
 	readFile := func(p string) ([]byte, error) { return nil, errors.New("no file") }
 	readDir := func(p string) ([]string, error) { return []string{"repoA", "repoB"}, nil }

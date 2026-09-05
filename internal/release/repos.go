@@ -16,9 +16,11 @@ func Resolve(r gitx.Runner, workspace string, n int,
 	if b, err := readFile(filepath.Join(workspace, ".znf", "release-repos.txt")); err == nil {
 		var repos []string
 		for _, l := range strings.Split(string(b), "\n") {
-			if s := strings.TrimSpace(l); s != "" {
-				repos = append(repos, s)
+			s := strings.TrimSpace(l)
+			if s == "" || strings.HasPrefix(s, "#") {
+				continue
 			}
+			repos = append(repos, s)
 		}
 		return repos, nil
 	}
