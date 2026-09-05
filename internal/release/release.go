@@ -36,11 +36,11 @@ func Build(r gitx.Runner, workspace string, repos []string, n int, loadPatterns 
 		}
 		prev, ok := PrevRelease(nums, n)
 		if !ok {
-			rep.Repos = append(rep.Repos, RepoReport{Name: name, Participated: true, Err: "không tìm được release trước"})
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không tìm được release trước"})
 			continue
 		}
 		relPrev := fmt.Sprintf("origin/release%d", prev)
-		rr := RepoReport{Name: name, Participated: true, PrevRelease: prev, TypeCounts: map[string]int{}}
+		rr := RepoReport{Name: name, PrevRelease: prev, TypeCounts: map[string]int{}}
 		rr.CutDate, _ = CutDate(r, dir, n)
 		if cs, err := RangeCommits(r, dir, relPrev, relN); err == nil {
 			rr.Commits = cs

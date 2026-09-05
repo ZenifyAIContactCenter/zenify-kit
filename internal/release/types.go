@@ -12,7 +12,6 @@ type Commit struct {
 // RepoReport là phần report cho một repo trong một release.
 type RepoReport struct {
 	Name                 string
-	Participated         bool
 	PrevRelease          int
 	CutDate              string
 	Commits              []Commit

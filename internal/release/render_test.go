@@ -9,7 +9,7 @@ func TestRenderRequiredSections(t *testing.T) {
 	rep := Report{
 		N: 84, GeneratedAt: "2026-09-05 16:10",
 		Repos: []RepoReport{{
-			Name: "be", Participated: true, PrevRelease: 83, CutDate: "2026-08-26",
+			Name: "be", PrevRelease: 83, CutDate: "2026-08-26",
 			TypeCounts: map[string]int{"fix": 1}, HasMigration: false, HasTestTouch: true,
 			SharedHits: []string{"**/chat_*"},
 			Regression: []Commit{{SHA: "9dc", Subject: "temporary disable report api"}},
@@ -34,7 +34,7 @@ func TestRenderRegressionUncomputedDistinct(t *testing.T) {
 	rep := Report{
 		N: 84, GeneratedAt: "x",
 		Repos: []RepoReport{{
-			Name: "web", Participated: true, PrevRelease: 83, CutDate: "2026-08-26",
+			Name: "web", PrevRelease: 83, CutDate: "2026-08-26",
 			TypeCounts: map[string]int{}, RegressionUncomputed: true,
 		}},
 		SharedCrossRepo: map[string][]string{},

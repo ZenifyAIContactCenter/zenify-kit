@@ -98,7 +98,7 @@ func newReleaseReportCmd() *cobra.Command {
 					}
 				}
 			}
-			if n == 0 {
+			if n <= 0 {
 				fmt.Fprintln(cmd.ErrOrStderr(), "release-report: không xác định được release N (fail-open)")
 				return nil
 			}
