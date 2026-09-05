@@ -40,7 +40,7 @@ func escapesRoot(p string) bool {
 }
 
 // ParseManifest đọc các dòng "<source> <dest>". Bỏ dòng #-đầu và dòng trắng.
-// Dòng chỉ có một trường (thiếu dest) → thêm note, bỏ qua (không lỗi).
+// Dòng không đúng đúng 2 trường (thiếu dest, hoặc dư trường) → thêm note, bỏ qua (không lỗi).
 func ParseManifest(b []byte) ([]Pair, []string) {
 	var pairs []Pair
 	var notes []string
