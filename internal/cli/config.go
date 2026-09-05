@@ -33,23 +33,20 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 	}
 	readSource := func(rel string) ([]byte, error) { return os.ReadFile(filepath.Join(configDir, rel)) }
 	readDest := func(rel string) ([]byte, error) { return os.ReadFile(filepath.Join(workspace, rel)) }
-	plans := distribute.Plan(pairs, readSource, readDest)
+	plans := distribute.Plan(pairs, readSource, readDest, os.IsNotExist)
 
 	fmt.Fprintf(stdout, "config dir: %s\n\n", configDir)
-	var nCreate, nUpdate, nSame, nSkip int
+	var nSame, nSkip int
 	for _, p := range plans {
 		fmt.Fprintf(stdout, "  %-7s %s → %s\n", p.State, p.Source, p.Dest)
 		switch p.State {
-		case distribute.Create:
-			nCreate++
 		case distribute.Update:
-			nUpdate++
 			fmt.Fprintln(stdout, indentBlock(p.Diff))
 		case distribute.Same:
 			nSame++
 		case distribute.Skip:
 			nSkip++
-			fmt.Fprintf(stderr, "config: bỏ %s — không đọc được nguồn\n", p.Source)
+			fmt.Fprintf(stderr, "config: bỏ %s → %s — %s\n", p.Source, p.Dest, p.Reason)
 		}
 	}
 
@@ -61,16 +58,29 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 			}
 			return os.WriteFile(full, data, 0o644)
 		}
+		nWritten := 0
 		for _, n := range distribute.Apply(plans, readSource, writeDest) {
 			fmt.Fprintln(stdout, "  "+n)
+			if strings.HasPrefix(n, "đã ghi ") {
+				nWritten++
+			}
 		}
-		fmt.Fprintf(stdout, "\nĐã áp dụng: %d tạo, %d cập nhật (%d giữ nguyên, %d bỏ).\n", nCreate, nUpdate, nSame, nSkip)
+		fmt.Fprintf(stdout, "\nĐã áp dụng: %d ghi (%d giữ nguyên, %d bỏ).\n", nWritten, nSame, nSkip)
 		return nil
 	}
-	if nCreate+nUpdate == 0 {
+
+	nChange := 0
+	for _, p := range plans {
+		if p.State == distribute.Create || p.State == distribute.Update {
+			nChange++
+		}
+	}
+	if len(plans) == 0 {
+		fmt.Fprintln(stdout, "\nManifest trống — không có cặp nào để phân phối.")
+	} else if nChange == 0 {
 		fmt.Fprintln(stdout, "\nTất cả đã đồng bộ. (dry-run — dùng --apply để ghi)")
 	} else {
-		fmt.Fprintf(stdout, "\n%d CREATE, %d UPDATE, %d SAME. (dry-run — dùng --apply để ghi)\n", nCreate, nUpdate, nSame)
+		fmt.Fprintf(stdout, "\n%d thay đổi, %d giữ nguyên, %d bỏ. (dry-run — dùng --apply để ghi)\n", nChange, nSame, nSkip)
 	}
 	return nil
 }

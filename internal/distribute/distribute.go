@@ -4,6 +4,7 @@ package distribute
 
 import (
 	"bytes"
+	"path/filepath"
 	"strings"
 
 	"github.com/pmezard/go-difflib/difflib"
@@ -26,6 +27,16 @@ type FilePlan struct {
 	Source, Dest string
 	State        State
 	Diff         string // unified diff cho UPDATE; "" nếu không
+	Reason       string // lý do khi SKIP; "" nếu không
+}
+
+// escapesRoot báo path rỗng, tuyệt đối, hoặc thoát khỏi thư mục gốc bằng "..".
+func escapesRoot(p string) bool {
+	if p == "" || filepath.IsAbs(p) {
+		return true
+	}
+	c := filepath.Clean(p)
+	return c == ".." || strings.HasPrefix(c, ".."+string(filepath.Separator))
 }
 
 // ParseManifest đọc các dòng "<source> <dest>". Bỏ dòng #-đầu và dòng trắng.
@@ -39,8 +50,8 @@ func ParseManifest(b []byte) ([]Pair, []string) {
 			continue
 		}
 		f := strings.Fields(s)
-		if len(f) < 2 {
-			notes = append(notes, "bỏ dòng manifest thiếu đích: "+s)
+		if len(f) != 2 {
+			notes = append(notes, "bỏ dòng manifest không đúng 2 trường: "+s)
 			continue
 		}
 		pairs = append(pairs, Pair{Source: f[0], Dest: f[1]})
@@ -50,19 +61,31 @@ func ParseManifest(b []byte) ([]Pair, []string) {
 
 // Plan phân loại mỗi Pair bằng cách so nội dung nguồn vs đích. Thuần: mọi I/O
 // được inject để test. config/ là nguồn → diff hướng dest→source.
-func Plan(pairs []Pair, readSource, readDest func(string) ([]byte, error)) []FilePlan {
+func Plan(pairs []Pair, readSource, readDest func(string) ([]byte, error), isNotFound func(error) bool) []FilePlan {
 	out := make([]FilePlan, 0, len(pairs))
 	for _, p := range pairs {
 		fp := FilePlan{Source: p.Source, Dest: p.Dest}
+		if escapesRoot(p.Source) || escapesRoot(p.Dest) {
+			fp.State = Skip
+			fp.Reason = "path thoát khỏi gốc (tuyệt đối hoặc ..)"
+			out = append(out, fp)
+			continue
+		}
 		srcB, err := readSource(p.Source)
 		if err != nil {
 			fp.State = Skip
+			fp.Reason = "không đọc được nguồn"
 			out = append(out, fp)
 			continue
 		}
 		dstB, err := readDest(p.Dest)
 		if err != nil {
-			fp.State = Create
+			if isNotFound(err) {
+				fp.State = Create
+			} else {
+				fp.State = Skip
+				fp.Reason = "không đọc được đích"
+			}
 			out = append(out, fp)
 			continue
 		}

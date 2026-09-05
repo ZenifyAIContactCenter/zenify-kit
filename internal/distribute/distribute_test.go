@@ -54,7 +54,7 @@ func TestPlanClassifies(t *testing.T) {
 		{"NEW.md", "new/file.md"},
 		{"MISSING.md", "whatever.md"},
 	}
-	got := Plan(pairs, readSrc, readDst)
+	got := Plan(pairs, readSrc, readDst, func(err error) bool { return err == errNotFound })
 	want := []State{Update, Same, Create, Skip}
 	for i, w := range want {
 		if got[i].State != w {
@@ -66,6 +66,26 @@ func TestPlanClassifies(t *testing.T) {
 	}
 	if got[1].Diff != "" {
 		t.Error("SAME must have empty diff")
+	}
+}
+
+func TestPlanSkipsEscapingPaths(t *testing.T) {
+	read := func(p string) ([]byte, error) { return []byte("x"), nil }
+	pairs := []Pair{{"../evil", "ok.md"}, {"ok.md", "/etc/passwd"}, {"ok.md", "../../out.md"}}
+	got := Plan(pairs, read, read, func(error) bool { return false })
+	for i, p := range got {
+		if p.State != Skip || p.Reason == "" {
+			t.Errorf("cặp %d thoát-gốc phải SKIP kèm Reason, got %s %q", i, p.State, p.Reason)
+		}
+	}
+}
+
+func TestPlanDestUnreadableIsSkipNotCreate(t *testing.T) {
+	read := func(p string) ([]byte, error) { return []byte("x"), nil }
+	readDstErr := func(p string) ([]byte, error) { return nil, errTest("permission denied") }
+	got := Plan([]Pair{{"a", "b"}}, read, readDstErr, func(err error) bool { return err == errNotFound })
+	if got[0].State != Skip || got[0].Reason == "" {
+		t.Fatalf("dest tồn-tại-không-đọc-được phải SKIP (không CREATE), got %s", got[0].State)
 	}
 }
 
