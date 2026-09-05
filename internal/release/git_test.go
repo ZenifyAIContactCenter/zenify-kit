@@ -39,6 +39,16 @@ func TestReleaseNumsAndPrev(t *testing.T) {
 	}
 }
 
+func TestReleaseNumsIgnoresVariantRefs(t *testing.T) {
+	f := fakeRunner{out: map[string]string{
+		"branch -r": "  origin/release84-hotfix\n  origin/release83.1\n  origin/release82\n  origin/staging\n",
+	}}
+	nums, err := ReleaseNums(f, "/x")
+	if err != nil || len(nums) != 1 || nums[0] != 82 {
+		t.Fatalf("biến thể release84-hotfix/release83.1 phải bị bỏ: nums=%v err=%v", nums, err)
+	}
+}
+
 func TestRangeCommits(t *testing.T) {
 	f := fakeRunner{out: map[string]string{
 		"log --format=%h\x1f%s origin/release83..origin/release84": "5ed5aa1\x1ffix: a\na8601ee\x1fMerge pull request #1 from org/hungnk/hotfix/x\n",

@@ -30,6 +30,24 @@ func TestRenderRequiredSections(t *testing.T) {
 	}
 }
 
+func TestRenderRegressionUncomputedDistinct(t *testing.T) {
+	rep := Report{
+		N: 84, GeneratedAt: "x",
+		Repos: []RepoReport{{
+			Name: "web", Participated: true, PrevRelease: 83, CutDate: "2026-08-26",
+			TypeCounts: map[string]int{}, RegressionUncomputed: true,
+		}},
+		SharedCrossRepo: map[string][]string{},
+	}
+	out := Render(rep)
+	if !strings.Contains(out, "chưa tính được") {
+		t.Errorf("regression chưa-tính-được phải hiển thị khác 'sạch': %s", out)
+	}
+	if strings.Contains(out, "commit chưa có trên staging") {
+		t.Errorf("không được render list regression khi uncomputed: %s", out)
+	}
+}
+
 func TestRenderEmptyReportNoPanic(t *testing.T) {
 	out := Render(Report{N: 84, GeneratedAt: "x", SharedCrossRepo: map[string][]string{}})
 	if !strings.Contains(out, "# Release 84") {

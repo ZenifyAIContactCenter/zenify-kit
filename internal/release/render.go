@@ -9,7 +9,7 @@ import (
 var tmpl = template.Must(template.New("r").Funcs(template.FuncMap{
 	"join": strings.Join,
 }).Parse(`# Release {{.N}} — risk report
-Ngày cắt: {{if .Repos}}{{(index .Repos 0).CutDate}}{{else}}?{{end}} · Sinh lúc: {{.GeneratedAt}}
+Sinh lúc: {{.GeneratedAt}}
 {{if .NotShipped}}Không ship tuần này: {{join .NotShipped ", "}}{{end}}
 
 ## Tổng quan
@@ -18,10 +18,12 @@ Ngày cắt: {{if .Repos}}{{(index .Repos 0).CutDate}}{{else}}?{{end}} · Sinh l
 {{end}}
 {{range .Repos}}## {{.Name}}   (release{{.PrevRelease}}..release{{$.N}})
 {{if .Err}}- ⚠ {{.Err}}
-{{else}}- Ship: {{len .Commits}} commit{{range $t, $c := .TypeCounts}} · {{$t}} {{$c}}{{end}}
+{{else}}- Ngày cắt: {{if .CutDate}}{{.CutDate}}{{else}}chưa xác định{{end}}
+- Ship: {{len .Commits}} commit{{range $t, $c := .TypeCounts}} · {{$t}} {{$c}}{{end}}
 - Migration: {{if .HasMigration}}CÓ{{else}}không{{end}}    Test: {{if .HasTestTouch}}có đụng{{else}}không{{end}}
 {{if .SharedHits}}- Shared-collection: {{join .SharedHits ", "}}
-{{end}}{{if .Regression}}- ⭐ Regression — {{len .Regression}} commit chưa có trên staging (kiểm tra cherry-pick):
+{{end}}{{if .RegressionUncomputed}}- ⭐ Regression: chưa tính được (không so sánh được với origin/staging)
+{{else if .Regression}}- ⭐ Regression — {{len .Regression}} commit chưa có trên staging (kiểm tra cherry-pick):
 {{range .Regression}}    {{.SHA}} {{.Subject}}
 {{end}}{{end}}{{if .Hotfixes}}- Hotfix trên release: {{len .Hotfixes}}
 {{range .Hotfixes}}    {{.SHA}} {{.Subject}}

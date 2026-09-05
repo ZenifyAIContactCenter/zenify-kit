@@ -12,7 +12,8 @@ import (
 
 const sep = "\x1f" // unit separator giữa sha và subject trong --format
 
-var relNumRe = regexp.MustCompile(`origin/release(\d+)\b`)
+// Chốt cuối là whitespace/EOL để KHÔNG khớp biến thể như origin/release84-hotfix hay release84.1.
+var relNumRe = regexp.MustCompile(`(?m)origin/release(\d+)(?:\s|$)`)
 
 // ReleaseNums liệt kê các số release từ `git branch -r` (chỉ origin/release<N>), tăng dần.
 func ReleaseNums(r gitx.Runner, dir string) ([]int, error) {

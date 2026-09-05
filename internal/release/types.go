@@ -11,18 +11,19 @@ type Commit struct {
 
 // RepoReport là phần report cho một repo trong một release.
 type RepoReport struct {
-	Name         string
-	Participated bool
-	PrevRelease  int
-	CutDate      string
-	Commits      []Commit
-	TypeCounts   map[string]int
-	HasMigration bool
-	SharedHits   []string // glob patterns khớp
-	HasTestTouch bool
-	Regression   []Commit
-	Hotfixes     []Commit
-	Err          string // note fail-open; "" nếu ok
+	Name                 string
+	Participated         bool
+	PrevRelease          int
+	CutDate              string
+	Commits              []Commit
+	TypeCounts           map[string]int
+	HasMigration         bool
+	SharedHits           []string // glob patterns khớp
+	HasTestTouch         bool
+	Regression           []Commit
+	RegressionUncomputed bool // true nếu so sánh với staging KHÔNG chạy được (khác với "sạch")
+	Hotfixes             []Commit
+	Err                  string // note fail-open; "" nếu ok
 }
 
 // Report là toàn bộ report của một release.

@@ -12,8 +12,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// defaultOutSubdir là nơi ghi report mặc định — quy ước record-layer của workspace (M6a).
+// Override bằng cờ --out-dir cho workspace khác (giữ kit project-agnostic).
+const defaultOutRepo = "zenify-knowledge"
+const defaultOutSub = "releases"
+
 // runReleaseReport là lõi test được. FAIL-OPEN: luôn trả nil; mọi lỗi thành note in ra stderr.
-func runReleaseReport(workspace string, n int, noFetch bool, r gitx.Runner, stdout, stderr io.Writer) error {
+// outDir rỗng → mặc định <workspace>/zenify-knowledge/releases.
+func runReleaseReport(workspace string, n int, noFetch bool, outDir string, r gitx.Runner, stdout, stderr io.Writer) error {
 	loadPatterns := func(dir string) []string {
 		c, err := wt.Load(dir)
 		if err != nil {
@@ -45,7 +51,9 @@ func runReleaseReport(workspace string, n int, noFetch bool, r gitx.Runner, stdo
 	}
 	rep := release.Build(r, workspace, repos, n, loadPatterns)
 	out := release.Render(rep)
-	outDir := filepath.Join(workspace, "zenify-knowledge", "releases")
+	if outDir == "" {
+		outDir = filepath.Join(workspace, defaultOutRepo, defaultOutSub)
+	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintf(stderr, "release-report: không tạo được thư mục out: %v (fail-open)\n", err)
 		return nil
@@ -62,6 +70,7 @@ func runReleaseReport(workspace string, n int, noFetch bool, r gitx.Runner, stdo
 func newReleaseReportCmd() *cobra.Command {
 	var workspace string
 	var noFetch bool
+	var outDir string
 	cmd := &cobra.Command{
 		Use:   "release-report [N]",
 		Short: "sinh report rủi ro cho một release (chỉ-đọc, ghi zenify-knowledge/releases/R<N>.md)",
@@ -93,10 +102,11 @@ func newReleaseReportCmd() *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), "release-report: không xác định được release N (fail-open)")
 				return nil
 			}
-			return runReleaseReport(workspace, n, noFetch, r, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runReleaseReport(workspace, n, noFetch, outDir, r, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "thư mục workspace (mặc định cwd)")
 	cmd.Flags().BoolVar(&noFetch, "no-fetch", false, "bỏ git fetch, dùng ref local")
+	cmd.Flags().StringVar(&outDir, "out-dir", "", "thư mục ghi report (mặc định <workspace>/zenify-knowledge/releases)")
 	return cmd
 }

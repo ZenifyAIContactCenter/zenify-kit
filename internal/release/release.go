@@ -74,6 +74,8 @@ func Build(r gitx.Runner, workspace string, repos []string, n int, loadPatterns 
 		}
 		if cs, err := NotInStaging(r, dir, relPrev, relN, "origin/staging"); err == nil {
 			rr.Regression = cs
+		} else {
+			rr.RegressionUncomputed = true
 		}
 		rep.Repos = append(rep.Repos, rr)
 	}

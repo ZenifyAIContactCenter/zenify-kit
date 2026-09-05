@@ -16,6 +16,9 @@ func (nopRunner) Run(dir string, args ...string) ([]byte, error) { return nil, n
 // SC-7: source production (không tính _test.go) của internal/release + internal/cli
 // KHÔNG được hardcode định danh repo zenify → kit giữ project-agnostic.
 func TestNoZenifyRepoIdentifiersInSource(t *testing.T) {
+	// Cấm định danh repo THAM GIA release (danh sách này phải sống trong .znf/release-repos.txt).
+	// Ngoại lệ có chủ đích: "zenify-knowledge" là repo record-layer (M6a) dùng làm out-dir mặc định,
+	// và đã có cờ --out-dir để override cho workspace khác → không cấm.
 	banned := []string{
 		"contact-center-be", "contact-center-hub", "contact-center-web",
 		"chatting", "notification", "personal-zalo-gateway", "change-stream-subscriber",
@@ -49,7 +52,7 @@ func TestNoZenifyRepoIdentifiersInSource(t *testing.T) {
 func TestRunReleaseReportFailOpenEmptyWorkspace(t *testing.T) {
 	ws := t.TempDir()
 	var out, errb bytes.Buffer
-	if err := runReleaseReport(ws, 84, true, nopRunner{}, &out, &errb); err != nil {
+	if err := runReleaseReport(ws, 84, true, "", nopRunner{}, &out, &errb); err != nil {
 		t.Fatalf("fail-open vi phạm: trả err %v", err)
 	}
 	path := filepath.Join(ws, "zenify-knowledge", "releases", "R84.md")
