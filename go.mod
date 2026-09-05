@@ -3,6 +3,7 @@ module github.com/ZenifyAIContactCenter/zenify-kit
 go 1.27.0
 
 require (
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/spf13/cobra v1.10.2
 	github.com/zricethezav/gitleaks/v8 v8.30.1
 	golang.org/x/mod v0.40.0
