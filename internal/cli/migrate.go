@@ -97,13 +97,24 @@ func repointSymlink(wtOld, wtNew, mainOld, mainNew string) error {
 	if err != nil {
 		return nil // không phải symlink / không có → không cần xử
 	}
-	if target != filepath.Join(mainOld, "node_modules") {
+	want := filepath.Join(mainOld, "node_modules")
+	if target != want && !sameResolvedPath(target, want) {
 		return nil // trỏ chỗ khác → để nguyên
 	}
 	if err := os.Remove(nm); err != nil {
 		return err
 	}
 	return os.Symlink(filepath.Join(mainNew, "node_modules"), nm)
+}
+
+// sameResolvedPath so khớp target/want khi raw compare lệch: mainOld có thể là path THÔ
+// (it.From) trong khi symlink node_modules có thể lưu target ĐÃ resolve (hoặc ngược lại,
+// vd workspace dưới macOS /var→/private/var). Cả hai resolve được và bằng nhau → coi là
+// khớp; lỗi EvalSymlinks (target đã không còn tồn tại) → coi là KHÔNG khớp, không panic.
+func sameResolvedPath(target, want string) bool {
+	rt, errT := filepath.EvalSymlinks(target)
+	rw, errW := filepath.EvalSymlinks(want)
+	return errT == nil && errW == nil && rt == rw
 }
 
 // readDeps đọc field "deps" từ <repoDir>/.claude/worktree.json. Không đọc được → "".

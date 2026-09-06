@@ -184,6 +184,56 @@ func TestApplyPartialWorktreeFailureRestoresEarlierOnes(t *testing.T) {
 	}
 }
 
+// TestApplyRepointFailAtBoundaryWorktreeIncludedInRestore: worktree #2 PASSES Repair (its
+// gitdir link now points into it.To) but then FAILS Repoint. Before the Finding-A fix,
+// okCount was only incremented after BOTH Repair and Repoint succeeded, so worktree #2 was
+// excluded from the restore loop — after move-back it stayed dangling (gitdir link pointing
+// at a now-gone it.To) with no un-repair and no honest note about it.
+func TestApplyRepointFailAtBoundaryWorktreeIncludedInRestore(t *testing.T) {
+	items := []Item{{Name: "alpha", From: "/ws/alpha", To: "/ws/repos/alpha", Action: Move}}
+	var moves, repairs, yaml []string
+	io := ApplyIO{
+		ListWT: func(d string) ([]string, error) {
+			return []string{d + "/.worktrees/w1", d + "/.worktrees/w2"}, nil
+		},
+		Move:     func(from, to string) error { moves = append(moves, from+"->"+to); return nil },
+		MkdirAll: func(d string) error { return nil },
+		Repair: func(repo, wt string) error {
+			repairs = append(repairs, repo+"|"+wt)
+			return nil // Repair luôn PASS cả 2 worktree — lỗi chỉ xảy ra ở Repoint.
+		},
+		Repoint: func(wtOld, wtNew, mainOld, mainNew string) error {
+			// w2 fail CHỈ ở hướng forward (mainNew=it.To); hướng restore (mainNew=it.From)
+			// phải PASS để test được nhánh un-repair cho worktree biên.
+			if strings.Contains(wtOld, "w2") && mainNew == "/ws/repos/alpha" {
+				return fmt.Errorf("repoint w2 boom")
+			}
+			return nil
+		},
+		UpdateYAML: func(name, np string) error { yaml = append(yaml, name); return nil },
+		Resolve:    func(p string) string { return p },
+	}
+	notes := Apply(items, io)
+
+	if len(moves) != 2 || moves[1] != "/ws/repos/alpha->/ws/alpha" {
+		t.Fatalf("muốn move đi rồi move-back: %v", moves)
+	}
+	if !containsSub(repairs, "/ws/alpha|/ws/alpha/.worktrees/w1") {
+		t.Fatalf("thiếu Repair khôi phục w1 (worktree TRƯỚC worktree lỗi): %v", repairs)
+	}
+	// Đây là điều Finding A sửa: worktree BIÊN (w2 — Repair pass, chỉ Repoint fail) cũng
+	// phải được un-repair, không được bỏ sót khỏi restore loop.
+	if !containsSub(repairs, "/ws/alpha|/ws/alpha/.worktrees/w2") {
+		t.Fatalf("thiếu Repair khôi phục w2 (worktree biên, Repair pass nhưng Repoint fail): %v", repairs)
+	}
+	if len(yaml) != 0 {
+		t.Fatalf("repoint fail thì KHÔNG update YAML: %v", yaml)
+	}
+	if !containsSub(notes, "rollback") {
+		t.Fatalf("note phải nhắc rollback: %v", notes)
+	}
+}
+
 func containsSub(ss []string, sub string) bool {
 	for _, s := range ss {
 		if strings.Contains(s, sub) {

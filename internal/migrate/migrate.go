@@ -118,6 +118,7 @@ func Apply(items []Item, io ApplyIO) []string {
 			}
 			if err := io.Repoint(wt, wtNew, it.From, it.To); err != nil {
 				failed = "re-point symlink " + wt + ": " + err.Error()
+				okCount++ // Repair đã thành công cho wt này → tính vào để restore loop un-repair nó
 				break
 			}
 			okCount++
