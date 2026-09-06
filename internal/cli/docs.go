@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// defaultDocsRepo: tên dir repo docs mặc định (Task 7 đổi sang "docs").
+// defaultDocsRepo: tên dir repo docs mặc định.
 // Override bằng --dir cho workspace khác (giữ project-agnostic).
-const defaultDocsRepo = "zenify-knowledge"
+const defaultDocsRepo = "docs"
 
 func newDocsCmd() *cobra.Command {
 	var workspaceDir, dir string

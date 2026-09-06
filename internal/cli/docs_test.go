@@ -9,7 +9,7 @@ import (
 // docs sync resolve dir repo qua discovery (repos/<repo> hoặc phẳng).
 func TestDocsDirResolves(t *testing.T) {
 	ws := t.TempDir()
-	repo := filepath.Join(ws, "zenify-knowledge")
+	repo := filepath.Join(ws, "docs")
 	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}

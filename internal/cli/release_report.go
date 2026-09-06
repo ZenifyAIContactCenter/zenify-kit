@@ -15,11 +15,11 @@ import (
 
 // defaultOutSubdir là nơi ghi report mặc định — quy ước record-layer của workspace (M6a).
 // Override bằng cờ --out-dir cho workspace khác (giữ kit project-agnostic).
-const defaultOutRepo = "zenify-knowledge"
+const defaultOutRepo = "docs"
 const defaultOutSub = "releases"
 
 // runReleaseReport là lõi test được. FAIL-OPEN: luôn trả nil; mọi lỗi thành note in ra stderr.
-// outDir rỗng → mặc định repo zenify-knowledge/releases (đường dẫn repo tự tìm theo layout,
+// outDir rỗng → mặc định repo docs/releases (đường dẫn repo tự tìm theo layout,
 // phẳng hoặc repos/<repo> sau `zenify migrate`).
 func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, r gitx.Runner, stdout, stderr io.Writer) error {
 	loadPatterns := func(dir string) []string {
@@ -69,7 +69,7 @@ func newReleaseReportCmd() *cobra.Command {
 	var outDir string
 	cmd := &cobra.Command{
 		Use:   "release-report [N]",
-		Short: "sinh report rủi ro cho một release (chỉ-đọc, ghi zenify-knowledge/releases/R<N>.md)",
+		Short: "sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R<N>.md)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r := gitx.ExecRunner()
@@ -99,6 +99,6 @@ func newReleaseReportCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)")
 	cmd.Flags().BoolVar(&noFetch, "no-fetch", false, "bỏ git fetch, dùng ref local")
-	cmd.Flags().StringVar(&outDir, "out-dir", "", "thư mục ghi report (mặc định repo zenify-knowledge/releases, tự tìm theo layout)")
+	cmd.Flags().StringVar(&outDir, "out-dir", "", "thư mục ghi report (mặc định repo docs/releases, tự tìm theo layout)")
 	return cmd
 }
