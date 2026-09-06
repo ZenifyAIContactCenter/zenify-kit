@@ -30,10 +30,11 @@ zenify analyze --spec <spec-path> --plan <plan-path>
   `_Requirements:`, HIGH), dangling ref (plan cite FR spec không có, HIGH).
 - **Marker** — mọi `[NEEDS CLARIFICATION` còn sót (HIGH), kèm số dòng.
 - **Brief** — có `## Brief` không, mấy/7 mục.
+- **Risk-metadata** — Brief thiếu tag `_Blast-radius:` / `_DB:` / `_Rollback:` (HIGH mỗi tag).
 
 Command fail-open: nếu nó báo "không phân tích được", ghi nhận và tiếp — đừng coi là lỗi chặn.
 
-## Bước 2 — ba pass phán đoán (thứ command không làm được)
+## Bước 2 — bốn pass phán đoán (thứ command không làm được)
 
 Đọc spec+plan bằng mắt và phán đoán, mỗi phát hiện severity **MEDIUM**:
 
@@ -44,6 +45,10 @@ Command fail-open: nếu nó báo "không phân tích được", ghi nhận và 
 3. **db-3 + comprehension floor (P7).** Khối DB-guarantees có thật (nêu query-plan / tenant-scope /
    keyset, hoặc N/A có lý do) hay hand-wave? Spec có mô tả luồng thật + blast-radius trước khi đề
    xuất cắt gì không? Thiếu → MEDIUM.
+4. **Risk-metadata substance (P9).** Ba tag có thực chất không (mechanical chỉ check có/rỗng —
+   substance là việc của pass này): `_Blast-radius:` nêu đúng repo sẽ vỡ; `_DB:` chạm đủ concern
+   áp dụng (query-plan / tenant-scope / keyset) hoặc `N/A` chính đáng; `_Rollback:` khả thi và có
+   nêu prod-watch signal. Hand-wave → MEDIUM.
 
 ## Bước 3 — báo cáo
 
