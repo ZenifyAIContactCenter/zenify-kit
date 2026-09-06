@@ -26,6 +26,7 @@ func TestSpecDiscipline_Constitution(t *testing.T) {
 		"Comprehension floor",
 		"Traceability", "_Requirements:",
 		"Governance",
+		"P9", "Risk-metadata", "_Blast-radius:", "_Rollback:",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("constitution.md thiếu %q", want)
@@ -60,6 +61,7 @@ func TestSpecDiscipline_Template(t *testing.T) {
 		"SC-1", "Given", "When", "Then",
 		"EARS note", "the system SHALL",
 		"smallest check", "artifact-style", "[NEEDS CLARIFICATION",
+		"Rollback", "_Blast-radius:", "_DB:", "_Rollback:",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("spec-template.md thiếu %q", want)

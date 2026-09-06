@@ -1,6 +1,6 @@
 # Spec constitution — shared reference
 
-**Last updated:** 2026-09-04
+**Last updated:** 2026-09-07
 
 The governing principles every spec a skill authors must follow. Skills such as
 `znf:brainstorming`, `znf:writing-plans`, and `znf:cook` cite this file at their
@@ -40,7 +40,15 @@ detailed checks — dials up at the architectural tier and nearly off for spike 
 - **P8 — Traceability.** Every FR MUST be implemented by at least one plan task, and every task
   MUST name the FR/SC it serves. Plans mark this with a `_Requirements: FR-N[, SC-M]_` line per
   task. The IDs P2 assigns are only worth assigning if they flow through to the plan; without this
-  link, coverage analysis has nothing to check.
+  link, coverage analysis has nothing to check. A commit that implements a spec SHOULD name the
+  FR/spec it serves in its message, extending the same FR→task→commit chain (doctrine — no
+  mechanism enforces it here).
+- **P9 — Risk-metadata tags.** An architectural spec's Brief MUST carry three machine-readable
+  line-start tags: `_Blast-radius:` (the repos/services that break — the blast radius the P7
+  comprehension floor already demands), `_DB:` (the P7 DB guarantees, or `N/A`), and `_Rollback:`
+  (how to undo the change, plus the prod-watch signal to check after deploy). These make the risk
+  surface machine-checkable rather than prose-only. When the blast radius is cross-repo, the
+  rollout MUST go through the contract gate (`/gate`) — a doctrine, not a mechanism here.
 - **Format, language, diagrams:** follow `znf:_shared/artifact-style`. Not restated here.
 
 ## Governance

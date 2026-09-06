@@ -9,8 +9,11 @@ Any unsettled point uses the marker `[NEEDS CLARIFICATION: …]`.
 
 ## Brief
 
-Seven fields, in order. The **floor** fields — required at every tier — are 1, 2, 5, 6. Fields
-3, 4, and 7 are filled in full only at the architectural tier.
+Eight fields, in order. The **floor** fields — required at every tier — are 1, 2, 5, 6, 8. Fields
+3, 4, and 7 are filled in full only at the architectural tier. Floor fields 5, 6, and 8 each carry
+a machine-readable line-start tag (`_Blast-radius:`, `_DB:`, `_Rollback:`) so the risk surface is
+checkable, not merely prose; the tag tolerates a leading list marker or backtick wrapper, exactly
+like the plan's `_Requirements:` tag.
 
 1. **Problem.** What is wrong or missing today, and the consequence. (floor)
 2. **Approach.** How you will fix it — and a necessity check: *which existing path already
@@ -18,14 +21,17 @@ Seven fields, in order. The **floor** fields — required at every tier — are 
 3. **Timing.** Sequencing, dependencies, resumability.
 4. **Phase.** Where this sits in the milestone breakdown.
 5. **Service / blast-radius.** Which services or repos this touches; what breaks if the shape
-   changes. (floor)
+   changes. Record it as a tag line (floor): `_Blast-radius: <repos + what breaks>`. (floor)
 6. **DB guarantees.** query-plan (no full collection scan) · tenant-scope negative assertion ·
-   keyset (not offset) pagination; write **N/A** explicitly when no DB is touched. (floor)
+   keyset (not offset) pagination; write **N/A** explicitly when no DB is touched. Record as a tag
+   line (floor): `_DB: <value or N/A>`. (floor)
 7. **Flow.** A diagram following `znf:_shared/artifact-style` (its conditional-diagram rule); do
    not hardcode a diagram syntax here.
+8. **Rollback.** How to undo the change, and the prod-watch signal to check after deploy. Record
+   as a tag line (floor): `_Rollback: <undo plan + prod-watch signal>`. (floor)
 
-**Mini-brief (bounded tasks).** A bounded change does not fill all seven fields. Use three lines:
-Problem · Approach + necessity · Blast-radius + DB.
+**Mini-brief (bounded tasks).** A bounded change does not fill all eight fields. Use three lines:
+Problem · Approach + necessity · Blast-radius + DB + Rollback.
 
 ## Goals / Non-goals
 
