@@ -27,6 +27,7 @@ func TestSpecDiscipline_Constitution(t *testing.T) {
 		"Traceability", "_Requirements:",
 		"Governance",
 		"P9", "Risk-metadata", "_Blast-radius:", "_Rollback:",
+		"knowledge-doctrine",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("constitution.md thiếu %q", want)
