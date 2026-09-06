@@ -33,8 +33,15 @@ type OnboardConfig struct {
 	PlanOnly bool
 	// AutoConfirm skips the apply confirmation prompt (Task 11).
 	AutoConfirm bool
-	PlanFn      func() ([]reconcile.RepoPlan, error)
-	ApplyFn     func(selected []string) error
+	// PlanFooter holds pre-rendered synthetic summary rows (HOOKS,
+	// DOCS-STORE) appended after the plan table. Computed cli-side
+	// (hooksRowState/docsRowState via planFooterRows) so this package never
+	// calls apply.EnsureGlobalHooks/resolveDocsStore itself — it only
+	// renders the strings handed to it, keeping reconcile/apply logic out
+	// of internal/tui (no cli<->tui import cycle).
+	PlanFooter []string
+	PlanFn     func() ([]reconcile.RepoPlan, error)
+	ApplyFn    func(selected []string) error
 	// DetectGHFn and AuthStatusFn override the real gh preflight/identity
 	// checks (detectGH / ghAuthStatus) for tests, so RunOnboard never shells
 	// out to a real `gh` in a test run. Nil uses the real implementation,
@@ -69,7 +76,7 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	}
 	res.Plan = plan
 
-	renderPlan(os.Stdout, plan, cfg.Accessible)
+	renderPlan(os.Stdout, plan, cfg.Accessible, cfg.PlanFooter)
 
 	if cfg.PlanOnly {
 		return res, nil
@@ -222,16 +229,25 @@ var (
 	stateStyle  = lipgloss.NewStyle().Faint(true)
 )
 
-// renderPlan prints the plan as a simple table. Accessible mode (and any
-// non-interactive run) uses plain text with no styling.
-func renderPlan(w *os.File, plan []reconcile.RepoPlan, accessible bool) {
+// renderPlan prints the plan as a simple table, followed by the synthetic
+// footer rows (HOOKS, DOCS-STORE — see PlanFooter). Accessible mode (and any
+// non-interactive run) uses plain text with no styling. The footer prints
+// regardless of the plan itself being empty, since it is manifest/plan
+// independent.
+func renderPlan(w *os.File, plan []reconcile.RepoPlan, accessible bool, footer []string) {
 	if len(plan) == 0 {
 		fmt.Fprintln(w, "no repos to onboard")
+		for _, r := range footer {
+			fmt.Fprintln(w, r)
+		}
 		return
 	}
 	if accessible {
 		for _, p := range plan {
 			fmt.Fprintf(w, "%-22s %-8s %s\n", p.Name, p.State, p.Reason)
+		}
+		for _, r := range footer {
+			fmt.Fprintln(w, r)
 		}
 		return
 	}
@@ -242,6 +258,10 @@ func renderPlan(w *os.File, plan []reconcile.RepoPlan, accessible bool) {
 		b.WriteString(fmt.Sprintf("%-22s ", p.Name))
 		b.WriteString(stateStyle.Render(fmt.Sprintf("%-8s", string(p.State))))
 		b.WriteString(" " + p.Reason)
+		b.WriteByte('\n')
+	}
+	for _, r := range footer {
+		b.WriteString(r)
 		b.WriteByte('\n')
 	}
 	fmt.Fprint(w, b.String())

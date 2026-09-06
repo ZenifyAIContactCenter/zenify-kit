@@ -317,15 +317,32 @@ func newUpCmd() *cobra.Command {
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
 			}
+			w := cmd.OutOrStdout()
+			// A preview invocation (anything short of --apply) must show the
+			// HOOKS / DOCS-STORE synthetic rows even when the manifest fails
+			// to load or buildPlan errors below — both rows are derived from
+			// home dir + workspace only (manifest/gh-independent), so there
+			// is no reason to gate them behind a successful repo-plan build
+			// (SC-10 dry-run parity).
+			isPreview := !applyFlag
 			m, err := manifest.LoadWithOverlay(manifestPath, overlayPath)
 			if err != nil {
+				if isPreview {
+					printPlanFooterRows(w, workspace)
+				}
 				return exitcode.New(exitcode.Fail, err)
 			}
 			plans, auth, err := buildPlan(m, ghx.ExecRunner(), gitx.ExecRunner(), workspace)
 			if err != nil {
+				if isPreview {
+					printPlanFooterRows(w, workspace)
+				}
 				return exitcode.New(exitcode.Fail, err)
 			}
 			if !auth.LoggedIn {
+				if isPreview {
+					printPlanFooterRows(w, workspace)
+				}
 				return exitcode.New(exitcode.Fail,
 					fmt.Errorf("not logged in to GitHub — run `gh auth login` (need scopes read:org, repo)"))
 			}
@@ -333,7 +350,6 @@ func newUpCmd() *cobra.Command {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
 					"warning: gh token missing read:org or repo scope; discovery may be incomplete")
 			}
-			w := cmd.OutOrStdout()
 			isTTY := term.IsTerminal(int(os.Stdout.Fd()))
 			switch decideMode(isTTY, applyFlag, cmd.Flags().Changed("dry-run"), dryRun, jsonOut, nonInteractive) {
 			case modeWizard:
@@ -345,6 +361,7 @@ func newUpCmd() *cobra.Command {
 					return renderPlanJSON(w, plans, auth)
 				}
 				renderPlanTable(w, plans, auth)
+				printPlanFooterRows(w, workspace)
 				return nil
 			}
 		},

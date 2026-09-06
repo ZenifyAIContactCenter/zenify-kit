@@ -361,3 +361,33 @@ func TestSnapshotTargets_IncludesSettings(t *testing.T) {
 		t.Fatalf("snapshotTargets missing %q; got %v", want, targets)
 	}
 }
+
+// TestDryRun_ShowsHooksAndDocsRows is the SC-10 dry-run parity check (Task
+// 12): the HOOKS + DOCS-STORE synthetic rows must print on a headless
+// `up --dry-run` even when it errors early (no --manifest here, so
+// manifest.LoadWithOverlay fails against the test package's cwd before
+// buildPlan/decideMode ever run) — and dry-run must never write
+// ~/.claude/settings.json.
+func TestDryRun_ShowsHooksAndDocsRows(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	ws := t.TempDir()
+
+	cmd := newUpCmd()
+	cmd.SetArgs([]string{"--dry-run", "--workspace", ws})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	_ = cmd.Execute() // dry-run may error on gh/manifest; tolerate, assert rows present regardless
+
+	s := out.String()
+	if !strings.Contains(s, "HOOKS") {
+		t.Fatalf("dry-run output missing HOOKS row:\n%s", s)
+	}
+	if !strings.Contains(s, "DOCS-STORE") {
+		t.Fatalf("dry-run output missing DOCS-STORE row:\n%s", s)
+	}
+	// SC-10: no settings.json written by dry-run
+	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {
+		t.Fatal("dry-run wrote settings.json")
+	}
+}
