@@ -54,12 +54,18 @@ func BuildPlan(root, toDir string, repos []workspace.Repo) []Item {
 
 // ApplyIO gộp mọi I/O inject cho Apply (test bằng fake, thật bằng gitx+os ở CLI).
 type ApplyIO struct {
-	ListWT     func(repoDir string) ([]string, error)          // liệt kê worktree TRƯỚC move
-	Move       func(from, to string) error                     // os.Rename
-	MkdirAll   func(dir string) error                          // tạo thư mục đích
-	Repair     func(repoDir, wtPath string) error               // git worktree repair <path-mới>
+	ListWT     func(repoDir string) ([]string, error)            // liệt kê worktree TRƯỚC move
+	Move       func(from, to string) error                       // os.Rename
+	MkdirAll   func(dir string) error                            // tạo thư mục đích
+	Repair     func(repoDir, wtPath string) error                // git worktree repair <path-mới>
 	Repoint    func(wtOld, wtNew, mainOld, mainNew string) error // re-point symlink node_modules
-	UpdateYAML func(name, newPath string) error                 // cập nhật repos.yaml
+	UpdateYAML func(name, newPath string) error                  // cập nhật repos.yaml
+	// Resolve trả path đã resolve symlink (filepath.EvalSymlinks + fallback Clean ở CLI).
+	// `git worktree list` trả path ĐÃ resolve symlink, còn it.From (từ workspace.Discover)
+	// là path THÔ — nên phải resolve it.From trước khi so khớp prefix trong newWorktreePath,
+	// nếu không worktree nội bộ dưới workspace symlink (vd macOS /var→/private/var) bị
+	// tưởng nhầm là ngoài repo.
+	Resolve func(path string) string
 }
 
 // newWorktreePath ánh xạ path worktree cũ → path sau move. Worktree nội bộ (nằm dưới
@@ -90,6 +96,10 @@ func Apply(items []Item, io ApplyIO) []string {
 			notes = append(notes, "bỏ qua "+it.Name+": không liệt kê được worktree: "+err.Error())
 			continue
 		}
+		// Resolve TRƯỚC move (khi it.From còn tồn tại) — wts đến từ `git worktree list`
+		// nên ĐÃ resolve symlink; phải so khớp repoOld cùng dạng resolve, không thì
+		// newWorktreePath lệch prefix ở root và coi nhầm worktree nội bộ là ngoài repo.
+		repoOldResolved := io.Resolve(it.From)
 		if err := io.MkdirAll(filepath.Dir(it.To)); err != nil {
 			notes = append(notes, "không tạo được thư mục cho "+it.Name+": "+err.Error())
 			continue
@@ -99,8 +109,9 @@ func Apply(items []Item, io ApplyIO) []string {
 			continue
 		}
 		failed := ""
+		okCount := 0
 		for _, wt := range wts {
-			wtNew := newWorktreePath(wt, it.From, it.To)
+			wtNew := newWorktreePath(wt, repoOldResolved, it.To)
 			if err := io.Repair(it.To, wtNew); err != nil {
 				failed = "repair worktree " + wt + ": " + err.Error()
 				break
@@ -109,12 +120,33 @@ func Apply(items []Item, io ApplyIO) []string {
 				failed = "re-point symlink " + wt + ": " + err.Error()
 				break
 			}
+			okCount++
 		}
 		if failed != "" {
-			if err := io.Move(it.To, it.From); err != nil {
-				notes = append(notes, "NGHIÊM TRỌNG "+it.Name+": "+failed+" VÀ rollback fail: "+err.Error()+" — kiểm tra tay")
-			} else {
-				notes = append(notes, "refuse "+it.Name+": "+failed+" (đã rollback về chỗ cũ)")
+			moveBackErr := io.Move(it.To, it.From)
+			restoreErr := ""
+			if moveBackErr == nil {
+				// Các worktree TRƯỚC worktree lỗi đã repair+repoint xong vào it.To —
+				// move-back đưa repo về it.From nên chúng giờ dangling. Un-repair từng
+				// cái về path cũ (đảo ngược hướng repoint) để KHÔNG để lại state nửa vời.
+				for _, wt := range wts[:okCount] {
+					wtNew := newWorktreePath(wt, repoOldResolved, it.To)
+					if err := io.Repair(it.From, wt); err != nil {
+						restoreErr += "; " + wt + ": " + err.Error()
+						continue
+					}
+					if err := io.Repoint(wtNew, wt, it.To, it.From); err != nil {
+						restoreErr += "; " + wt + ": " + err.Error()
+					}
+				}
+			}
+			switch {
+			case moveBackErr != nil:
+				notes = append(notes, "NGHIÊM TRỌNG "+it.Name+": "+failed+" VÀ rollback fail: "+moveBackErr.Error()+" — kiểm tra tay")
+			case restoreErr != "":
+				notes = append(notes, "refuse "+it.Name+": "+failed+" (đã rollback về chỗ cũ, NHƯNG còn worktree CHƯA khôi phục"+restoreErr+" — kiểm tra tay: git worktree repair)")
+			default:
+				notes = append(notes, "refuse "+it.Name+": "+failed+" (đã rollback về chỗ cũ, đã khôi phục "+strconv.Itoa(okCount)+" worktree đã repair trước đó)")
 			}
 			continue
 		}

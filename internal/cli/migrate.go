@@ -65,12 +65,23 @@ func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error 
 		Repair:     func(repoDir, wt string) error { return gitx.RepairWorktree(r, repoDir, wt) },
 		Repoint:    repointSymlink,
 		UpdateYAML: updateYAML,
+		Resolve:    resolvePath,
 	}
 	for _, note := range migrate.Apply(items, io) {
 		fmt.Fprintln(stdout, "  "+note)
 	}
 	fmt.Fprintln(stdout, "\nXong. Worktree đã được repair; nhớ restart dev server / herdr workspace của các repo đã move (process cũ vẫn trỏ path cũ).")
 	return nil
+}
+
+// resolvePath resolve symlink (vd macOS /var → /private/var, cũng là dạng đường dẫn mà
+// `git worktree list` trả về) để so khớp prefix đúng trong migrate.newWorktreePath.
+// Không resolve được → giữ nguyên (Clean).
+func resolvePath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return filepath.Clean(p)
 }
 
 // repointSymlink re-point node_modules symlink của worktree deps:symlink sau khi repo
