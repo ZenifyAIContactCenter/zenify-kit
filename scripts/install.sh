@@ -72,3 +72,17 @@ case ":$PATH:" in
     echo "    export PATH=\"$dest:\$PATH\""
     ;;
 esac
+
+# --- znf onboarding bootstrap (fail-open) ---
+# 1) ensure gh is present (device-flow login in `zenify up` needs it)
+if ! command -v gh >/dev/null 2>&1; then
+  if command -v brew >/dev/null 2>&1; then
+    echo "Installing GitHub CLI (gh) via brew..."
+    brew install gh || echo "note: 'brew install gh' failed — install gh manually: https://cli.github.com"
+  else
+    echo "note: GitHub CLI (gh) not found and no brew detected — install gh: https://cli.github.com"
+  fi
+fi
+# 2) wire znf skills + hooks ($dest may not be on PATH yet, so call it directly)
+echo "Wiring znf skills + hooks..."
+"$dest/zenify" skills sync || echo "note: 'zenify skills sync' skipped (run it manually later)"
