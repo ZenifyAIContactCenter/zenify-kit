@@ -18,14 +18,31 @@ type Repo struct {
 
 // isRepo: thư mục chứa entry ".git" dạng THƯ MỤC (main checkout), HOẶC chứa
 // ".claude/worktree.json". Linked worktree có ".git" là file → không đếm là repo.
-func isRepo(dir string, entries []os.DirEntry) bool {
+// Đọc qua readDir được inject, không gọi thẳng os.Stat, để giữ hàm thuần/testable.
+func isRepo(dir string, entries []os.DirEntry, readDir func(string) ([]os.DirEntry, error)) bool {
 	for _, e := range entries {
 		if e.Name() == ".git" && e.IsDir() {
 			return true
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".claude", "worktree.json")); err == nil {
-		return true
+	hasClaudeDir := false
+	for _, e := range entries {
+		if e.Name() == ".claude" && e.IsDir() {
+			hasClaudeDir = true
+			break
+		}
+	}
+	if !hasClaudeDir {
+		return false
+	}
+	claudeEntries, err := readDir(filepath.Join(dir, ".claude"))
+	if err != nil {
+		return false
+	}
+	for _, e := range claudeEntries {
+		if e.Name() == "worktree.json" && !e.IsDir() {
+			return true
+		}
 	}
 	return false
 }
@@ -43,7 +60,7 @@ func Discover(root string, maxDepth int, readDir func(string) ([]os.DirEntry, er
 		if err != nil {
 			return
 		}
-		if depth >= 1 && isRepo(dir, entries) {
+		if depth >= 1 && isRepo(dir, entries, readDir) {
 			out = append(out, Repo{Name: filepath.Base(dir), Path: dir})
 			return
 		}
