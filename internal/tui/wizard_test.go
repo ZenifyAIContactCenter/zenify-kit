@@ -32,6 +32,7 @@ func TestRunOnboard_AccessiblePlanOnly(t *testing.T) {
 }
 
 func TestRunOnboard_ApplyInvokesApplyFn(t *testing.T) {
+	t.Setenv("HOME", t.TempDir()) // isolate printDone's read of ~/.claude/settings.json
 	applied := false
 	cfg := OnboardConfig{
 		Workspace:   t.TempDir(),

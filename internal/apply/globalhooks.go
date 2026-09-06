@@ -47,12 +47,14 @@ func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 // Only the "hooks" subtree is decoded and normalized — every other top-level
 // key (permissions, env, model, ...) is kept as its raw json.RawMessage
 // instead of being round-tripped through map[string]any. That preserves each
-// foreign value's content AND key order exactly as written (a map round-trip
-// would alphabetize keys via encoding/json's map-key sort, silently
-// reordering e.g. "permissions"). The file's whitespace/indentation is still
-// normalized on every write, same as the rest of this package (see
-// mergeSettingsKeys, apply.go:226, which reformats the whole file by design)
-// — so this is content-and-order preservation, not byte-for-byte identity.
+// foreign value's content AND its internal key order exactly as written (a map
+// round-trip would alphabetize the nested keys via encoding/json's map-key sort,
+// silently reordering e.g. the inside of "permissions"). The top-level keys are
+// still emitted in sorted order (root is itself a map), and the file's
+// whitespace/indentation is normalized on every write, same as the rest of this
+// package (see mergeSettingsKeys, apply.go:226, which reformats the whole file
+// by design) — so this is foreign-value content-and-order preservation, not
+// byte-for-byte identity or top-level key-order preservation.
 func EnsureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
 	path := filepath.Join(home, ".claude", "settings.json")
 

@@ -41,6 +41,9 @@ func runApplySelected(w io.Writer, m *manifest.Manifest, workspace string, selec
 	if err != nil {
 		return err
 	}
+	// An empty selection applies the full plan. Unreachable from the TUI today
+	// (RunOnboard returns before ApplyFn when nothing is picked), but kept as the
+	// documented headless-parity contract: a non-TUI caller passing nil applies all.
 	filtered := plans
 	if len(selected) > 0 {
 		want := make(map[string]bool, len(selected))

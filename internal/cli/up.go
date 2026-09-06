@@ -227,8 +227,10 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		if ch, herr := apply.EnsureGlobalHooks(home, false); herr != nil {
 			_, _ = fmt.Fprintf(w, "warning: hook wiring skipped: %v\n", herr)
-		} else {
-			_, _ = fmt.Fprintf(w, "wired %d znf hooks\n", ch.Total())
+		} else if n := ch.Added + ch.Updated; n > 0 {
+			// Only report when something changed (see skills.go) — avoids a
+			// "wired N" line on every up-to-date apply.
+			_, _ = fmt.Fprintf(w, "wired %d znf hooks\n", n)
 		}
 	}
 
