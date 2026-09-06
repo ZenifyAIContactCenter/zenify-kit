@@ -38,7 +38,8 @@ failure as a stale memory, but worse, because a higher layer is read more often 
 
 Two axes decide the layer:
 
-- **Scope** — one repo → L1 memory; every project → L2 global CLAUDE.md; the kit's own workflow → L3.
+- **Scope** — one repo, recalled by relevance → L1 memory; one repo, must fire every session → L2
+  project CLAUDE.md; every project → L2 global CLAUDE.md; the kit's own workflow → L3.
 - **Trigger** — recalled by relevance (L1) · read ambiently every session (L2) · read at a specific
   action point (L3).
 
