@@ -123,6 +123,9 @@ func ListWorktrees(r Runner, dir string) ([]string, error) {
 	}
 	var paths []string
 	main := filepath.Clean(dir)
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		main = filepath.Clean(resolved) // git resolves symlinks (e.g. macOS /var -> /private/var) in its output
+	}
 	for _, ln := range strings.Split(string(out), "\n") {
 		if !strings.HasPrefix(ln, "worktree ") {
 			continue

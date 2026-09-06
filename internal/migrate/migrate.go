@@ -4,6 +4,8 @@ package migrate
 
 import (
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 )
@@ -50,40 +52,86 @@ func BuildPlan(root, toDir string, repos []workspace.Repo) []Item {
 	return items
 }
 
-// Apply thực hiện MOVE trong HAI PASS để tách vị trí manifest khỏi thứ tự move:
-// pass 1 move hết mọi repo (kể cả repo chứa manifest), pass 2 mới cập nhật repos.yaml
-// — nên khi updateYAML resolve đường dẫn manifest thì mọi repo đã ở vị trí cuối.
-// Lỗi một repo thành note, tiếp tục repo sau (fail-open). Repo move lỗi thì KHÔNG update YAML.
-func Apply(items []Item, move func(from, to string) error,
-	mkdirAll func(string) error, updateYAML func(name, newPath string) error) []string {
+// ApplyIO gộp mọi I/O inject cho Apply (test bằng fake, thật bằng gitx+os ở CLI).
+type ApplyIO struct {
+	ListWT     func(repoDir string) ([]string, error)          // liệt kê worktree TRƯỚC move
+	Move       func(from, to string) error                     // os.Rename
+	MkdirAll   func(dir string) error                          // tạo thư mục đích
+	Repair     func(repoDir, wtPath string) error               // git worktree repair <path-mới>
+	Repoint    func(wtOld, wtNew, mainOld, mainNew string) error // re-point symlink node_modules
+	UpdateYAML func(name, newPath string) error                 // cập nhật repos.yaml
+}
 
+// newWorktreePath ánh xạ path worktree cũ → path sau move. Worktree nội bộ (nằm dưới
+// repoOld) rebase sang repoNew; worktree ngoài repo (herdr) giữ nguyên (không di chuyển).
+func newWorktreePath(wtOld, repoOld, repoNew string) string {
+	rel, err := filepath.Rel(repoOld, wtOld)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return wtOld // ngoài repoOld → không đổi
+	}
+	return filepath.Join(repoNew, rel)
+}
+
+// Apply thực hiện move-and-repair, HAI PASS cho repos.yaml (manifest ở vị trí cuối sau
+// khi mọi move settle). Mỗi repo atomic: liệt-kê-worktree → move → repair+repoint từng
+// worktree → rollback move-back nếu bước nào fail (repo đó Refuse, không update YAML).
+// Fail-open giữa các repo. Trả về các note.
+func Apply(items []Item, io ApplyIO) []string {
 	var notes []string
-	var moved []Item // các item move thành công → mới được update YAML ở pass 2
+	var moved []Item
 
-	// Pass 1: move hết.
+	// Pass 1: move + repair từng repo (atomic).
 	for _, it := range items {
 		if it.Action != Move {
 			continue
 		}
-		if err := mkdirAll(filepath.Dir(it.To)); err != nil {
+		wts, err := io.ListWT(it.From)
+		if err != nil {
+			notes = append(notes, "bỏ qua "+it.Name+": không liệt kê được worktree: "+err.Error())
+			continue
+		}
+		if err := io.MkdirAll(filepath.Dir(it.To)); err != nil {
 			notes = append(notes, "không tạo được thư mục cho "+it.Name+": "+err.Error())
 			continue
 		}
-		if err := move(it.From, it.To); err != nil {
+		if err := io.Move(it.From, it.To); err != nil {
 			notes = append(notes, "không move được "+it.Name+": "+err.Error())
 			continue
 		}
+		failed := ""
+		for _, wt := range wts {
+			wtNew := newWorktreePath(wt, it.From, it.To)
+			if err := io.Repair(it.To, wtNew); err != nil {
+				failed = "repair worktree " + wt + ": " + err.Error()
+				break
+			}
+			if err := io.Repoint(wt, wtNew, it.From, it.To); err != nil {
+				failed = "re-point symlink " + wt + ": " + err.Error()
+				break
+			}
+		}
+		if failed != "" {
+			if err := io.Move(it.To, it.From); err != nil {
+				notes = append(notes, "NGHIÊM TRỌNG "+it.Name+": "+failed+" VÀ rollback fail: "+err.Error()+" — kiểm tra tay")
+			} else {
+				notes = append(notes, "refuse "+it.Name+": "+failed+" (đã rollback về chỗ cũ)")
+			}
+			continue
+		}
 		moved = append(moved, it)
+		if len(wts) > 0 {
+			notes = append(notes, "đã move "+it.Name+" + repair "+strconv.Itoa(len(wts))+" worktree")
+		}
 	}
 
-	// Pass 2: mọi move đã settle → manifest ở vị trí cuối, giờ mới cập nhật repos.yaml.
+	// Pass 2: mọi move/repair đã settle → cập nhật repos.yaml.
 	for _, it := range moved {
 		newPath := filepath.Base(filepath.Dir(it.To)) + "/" + it.Name
-		if err := updateYAML(it.Name, newPath); err != nil {
+		if err := io.UpdateYAML(it.Name, newPath); err != nil {
 			notes = append(notes, "đã move "+it.Name+" nhưng không cập nhật được repos.yaml: "+err.Error())
 			continue
 		}
-		notes = append(notes, "đã move "+it.Name+" → "+newPath)
+		notes = append(notes, "đã cập nhật repos.yaml: "+it.Name+" → "+newPath)
 	}
 	return notes
 }

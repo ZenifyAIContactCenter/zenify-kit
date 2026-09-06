@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/migrate"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 	"github.com/spf13/cobra"
@@ -14,6 +16,7 @@ import (
 
 // runMigrate là lõi test được. FAIL-OPEN: luôn trả nil.
 func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error {
+	r := gitx.ExecRunner()
 	repos := workspace.Discover(root, workspace.DefaultMaxDepth, os.ReadDir)
 	items := migrate.BuildPlan(root, toDir, repos)
 
@@ -55,11 +58,54 @@ func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error 
 		}
 		return updateRepoPathInYAML(p, name, newPath)
 	}
-	for _, note := range migrate.Apply(items, os.Rename, func(d string) error { return os.MkdirAll(d, 0o755) }, updateYAML) {
+	io := migrate.ApplyIO{
+		ListWT:     func(dir string) ([]string, error) { return gitx.ListWorktrees(r, dir) },
+		Move:       os.Rename,
+		MkdirAll:   func(d string) error { return os.MkdirAll(d, 0o755) },
+		Repair:     func(repoDir, wt string) error { return gitx.RepairWorktree(r, repoDir, wt) },
+		Repoint:    repointSymlink,
+		UpdateYAML: updateYAML,
+	}
+	for _, note := range migrate.Apply(items, io) {
 		fmt.Fprintln(stdout, "  "+note)
 	}
-	fmt.Fprintln(stdout, "\nXong. Nhớ restart dev server / herdr workspace của các repo đã move.")
+	fmt.Fprintln(stdout, "\nXong. Worktree đã được repair; nhớ restart dev server / herdr workspace của các repo đã move (process cũ vẫn trỏ path cũ).")
 	return nil
+}
+
+// repointSymlink re-point node_modules symlink của worktree deps:symlink sau khi repo
+// move: nếu deps của repo (đọc ở vị trí MỚI) là "symlink" và node_modules worktree là
+// symlink trỏ đúng <main-cũ>/node_modules thì trỏ lại <main-mới>/node_modules.
+// Mọi trường hợp khác → no-op (không đoán). Fail-open: lỗi trả ra để Apply rollback.
+func repointSymlink(wtOld, wtNew, mainOld, mainNew string) error {
+	if readDeps(mainNew) != "symlink" {
+		return nil
+	}
+	nm := filepath.Join(wtNew, "node_modules")
+	target, err := os.Readlink(nm)
+	if err != nil {
+		return nil // không phải symlink / không có → không cần xử
+	}
+	if target != filepath.Join(mainOld, "node_modules") {
+		return nil // trỏ chỗ khác → để nguyên
+	}
+	if err := os.Remove(nm); err != nil {
+		return err
+	}
+	return os.Symlink(filepath.Join(mainNew, "node_modules"), nm)
+}
+
+// readDeps đọc field "deps" từ <repoDir>/.claude/worktree.json. Không đọc được → "".
+func readDeps(repoDir string) string {
+	b, err := os.ReadFile(filepath.Join(repoDir, ".claude", "worktree.json")) //nolint:gosec // G304 -- path computed internally from workspace state
+	if err != nil {
+		return ""
+	}
+	var c struct {
+		Deps string `json:"deps"`
+	}
+	_ = json.Unmarshal(b, &c)
+	return c.Deps
 }
 
 // findManifest tìm repos.yaml trên layout SAU move: quét repo dưới root, trả về đường dẫn
@@ -107,7 +153,7 @@ func newMigrateCmd() *cobra.Command {
 	var apply bool
 	cmd := &cobra.Command{
 		Use:   "migrate",
-		Short: "gom repo vào một thư mục con (dry-run mặc định, refuse repo dirty/còn worktree)",
+		Short: "gom repo vào một thư mục con (dry-run mặc định; move-and-repair: gom được cả repo dirty và repo còn worktree)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if root == "" {
