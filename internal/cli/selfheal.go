@@ -23,6 +23,10 @@ func selfHeal(home string) error {
 	}
 
 	stamp := ""
+	// A Load error (including the expected first-run case where the manifest
+	// doesn't exist yet) leaves stamp=="" — which correctly falls through to
+	// the resync path below. "load error" and "no stamp yet" are
+	// intentionally treated the same here.
 	if m, err := managed.Load(manifestPath); err == nil {
 		stamp = m.Version
 	}
