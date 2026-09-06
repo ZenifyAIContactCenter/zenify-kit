@@ -169,7 +169,9 @@ func repoRoot(dir string) string {
 }
 
 // loadDeny union .claude/deploy-branches từ root lên mọi ancestor; không file
-// nào → baseline.
+// nào → baseline. Một cấp khai token NONE (đứng riêng) = "subtree này KHÔNG có
+// deploy branch": dừng union tại đó, đóng góp 0 branch (opt-out explicit,
+// fail-safe: file rỗng/thiếu KHÔNG exempt).
 func loadDeny(root string) []string {
 	var out []string
 	found := false
@@ -178,6 +180,13 @@ func loadDeny(root string) []string {
 		f := filepath.Join(d, ".claude", "deploy-branches")
 		if lines, ok := readLines(f); ok {
 			found = true
+			if hasNone(lines) {
+				// Dừng union tại đây. Giả định: một cây thư mục đã khai NONE
+				// KHÔNG chứa repo git lồng bên trong không có deploy-branches
+				// riêng — nếu có, repo lồng đó sẽ mất baseline. Đúng với layout
+				// sibling-dưới-repos/ (docs là sibling, không lồng repo nào).
+				return out
+			}
 			out = append(out, lines...)
 		}
 		if d == "/" || d == filepath.Dir(d) {
@@ -189,6 +198,16 @@ func loadDeny(root string) []string {
 		return baselineDeny
 	}
 	return out
+}
+
+// hasNone true nếu có dòng đúng bằng "NONE" (opt-out sentinel).
+func hasNone(lines []string) bool {
+	for _, l := range lines {
+		if l == "NONE" {
+			return true
+		}
+	}
+	return false
 }
 
 func runGit(dir string, args ...string) (string, error) {

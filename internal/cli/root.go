@@ -46,5 +46,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newReleaseReportCmd())
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newMigrateCmd())
+	root.AddCommand(newDocsCmd())
 	return root
 }
