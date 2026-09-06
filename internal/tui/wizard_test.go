@@ -30,3 +30,24 @@ func TestRunOnboard_AccessiblePlanOnly(t *testing.T) {
 		t.Fatalf("plan not surfaced: %+v", res.Plan)
 	}
 }
+
+func TestRunOnboard_ApplyInvokesApplyFn(t *testing.T) {
+	applied := false
+	cfg := OnboardConfig{
+		Workspace:   t.TempDir(),
+		Accessible:  true,
+		AutoConfirm: true, // parity for -y / headless
+		PlanFn: func() ([]reconcile.RepoPlan, error) {
+			return []reconcile.RepoPlan{{Name: "notification", State: "OK"}}, nil
+		},
+		ApplyFn:      func(sel []string) error { applied = true; return nil },
+		DetectGHFn:   func() error { return nil },
+		AuthStatusFn: func() (string, bool) { return "test", true },
+	}
+	if _, err := RunOnboard(cfg); err != nil {
+		t.Fatalf("RunOnboard: %v", err)
+	}
+	if !applied {
+		t.Fatal("ApplyFn not called despite AutoConfirm")
+	}
+}

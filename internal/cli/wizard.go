@@ -29,8 +29,29 @@ func runWizard(w io.Writer, m *manifest.Manifest, workspace string) error {
 	return err
 }
 
-// runApplySelected applies the user's selected repos from the wizard. It is
-// a stub in this task — Task 11 fills in the real apply-with-progress body.
+// runApplySelected applies the user's selected repos from the wizard: it
+// rebuilds the plan the same way the dry-run path does, filters it down to
+// the repos the user picked, then hands the filtered plan to the same
+// runApply core the headless `--apply` path uses (lock, snapshot, apply,
+// hook wiring, docs store — no logic duplicated here). An empty selection
+// applies the full (unfiltered) plan rather than silently no-op'ing.
 func runApplySelected(w io.Writer, m *manifest.Manifest, workspace string, selected []string, gh ghx.Runner, git gitx.Runner) error {
-	return nil
+	plans, _, err := buildPlan(m, gh, git, workspace)
+	if err != nil {
+		return err
+	}
+	filtered := plans
+	if len(selected) > 0 {
+		want := make(map[string]bool, len(selected))
+		for _, s := range selected {
+			want[s] = true
+		}
+		filtered = make([]reconcile.RepoPlan, 0, len(plans))
+		for _, p := range plans {
+			if want[p.Name] {
+				filtered = append(filtered, p)
+			}
+		}
+	}
+	return runApply(w, filtered, m, workspace, gh, git)
 }

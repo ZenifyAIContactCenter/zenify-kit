@@ -11,7 +11,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -42,11 +44,12 @@ type OnboardConfig struct {
 	AuthStatusFn func() (string, bool)
 }
 
-// OnboardResult carries the plan (and, once Task 11 wires apply, the
-// selected repos) back to the caller.
+// OnboardResult carries the plan, the selected repos, and whether apply ran
+// to completion back to the caller.
 type OnboardResult struct {
 	Plan     []reconcile.RepoPlan
 	Selected []string
+	Done     bool
 }
 
 // RunOnboard runs the discover → select → scan → plan wizard. In PlanOnly
@@ -72,19 +75,74 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 		return res, nil
 	}
 
-	selected, err := selectRepos(plan, cfg.Accessible)
-	if err != nil {
-		return res, err
+	var selected []string
+	if cfg.AutoConfirm {
+		// Headless / -y parity: apply the full plan, never block on an
+		// interactive multiselect that has no terminal to read from.
+		for _, p := range plan {
+			selected = append(selected, p.Name)
+		}
+	} else {
+		selected, err = selectRepos(plan, cfg.Accessible)
+		if err != nil {
+			return res, err
+		}
 	}
 	res.Selected = selected
 
 	if cfg.ApplyFn == nil || len(selected) == 0 {
 		return res, nil
 	}
-	if err := cfg.ApplyFn(selected); err != nil {
-		return res, err
+
+	if !cfg.AutoConfirm {
+		proceed := true
+		if err := huh.NewForm(huh.NewGroup(
+			huh.NewConfirm().Title("Proceed?").Value(&proceed),
+		)).WithAccessible(cfg.Accessible).Run(); err != nil {
+			return res, err
+		}
+		if !proceed {
+			return res, nil // clean, no-apply return (FR-3.1)
+		}
 	}
+
+	done := showApplyProgress(os.Stdout, cfg.Accessible)
+	applyErr := cfg.ApplyFn(selected)
+	done()
+	if applyErr != nil {
+		return res, applyErr
+	}
+	res.Done = true
+	printDone(os.Stdout)
 	return res, nil
+}
+
+// showApplyProgress prints a start indicator and returns a func to print the
+// finished state. ApplyFn runs synchronously to completion in one call, so
+// there is no incremental percentage to animate — the bar just moves from
+// empty to full around the blocking call.
+func showApplyProgress(w *os.File, accessible bool) func() {
+	if accessible {
+		fmt.Fprintln(w, "applying...")
+		return func() { fmt.Fprintln(w, "done") }
+	}
+	p := progress.New(progress.WithDefaultGradient())
+	fmt.Fprintln(w, p.ViewAs(0))
+	return func() { fmt.Fprintln(w, p.ViewAs(1)) }
+}
+
+// printDone renders the verify/done summary (FR-3.5): the znf-hook wiring
+// count and a nudge toward the next isolated-worktree step. It re-reads the
+// hook count via a dry-run EnsureGlobalHooks call rather than parsing
+// runApply's stdout text, so it never triggers a second real write.
+func printDone(w *os.File) {
+	fmt.Fprintln(w, "onboarding complete")
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if ch, err := apply.EnsureGlobalHooks(home, true); err == nil {
+			fmt.Fprintf(w, "wired %d znf hooks into ~/.claude/settings.json\n", ch.Total())
+		}
+	}
+	fmt.Fprintln(w, "next: run `wt new <task>` to start your first isolated feature branch")
 }
 
 // loginStep runs the gh preflight (FR-1.1) and identity check (FR-1.2)
