@@ -2,6 +2,7 @@ package gitx
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -74,4 +75,78 @@ func TestHasWorktrees(t *testing.T) {
 	if _, err := HasWorktrees(errRunner, "/a"); err == nil {
 		t.Fatalf("expected error to propagate")
 	}
+}
+
+// recRunner ghi lại lần Run cuối để assert args, và trả out/err cấu hình sẵn.
+type recRunner struct {
+	out     []byte
+	err     error
+	gotDir  string
+	gotArgs []string
+}
+
+func (r *recRunner) Run(dir string, args ...string) ([]byte, error) {
+	r.gotDir = dir
+	r.gotArgs = args
+	return r.out, r.err
+}
+
+func TestListWorktrees(t *testing.T) {
+	// porcelain: main trước, rồi 2 linked worktree.
+	out := "worktree /ws/repo\nHEAD a\nbranch refs/heads/main\n\n" +
+		"worktree /ws/repo/.worktrees/wt1\nHEAD b\nbranch refs/heads/feat\n\n" +
+		"worktree /home/u/.herdr/worktrees/repo/wc\nHEAD c\nbranch refs/heads/fix\n"
+	got, err := ListWorktrees(&recRunner{out: []byte(out)}, "/ws/repo")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	want := []string{"/ws/repo/.worktrees/wt1", "/home/u/.herdr/worktrees/repo/wc"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d]=%q want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestListWorktreesNoneBeyondMain(t *testing.T) {
+	out := "worktree /ws/repo\nHEAD a\nbranch refs/heads/main\n"
+	got, err := ListWorktrees(&recRunner{out: []byte(out)}, "/ws/repo")
+	if err != nil || len(got) != 0 {
+		t.Fatalf("got %v err %v — muốn rỗng", got, err)
+	}
+}
+
+func TestListWorktreesRunnerErr(t *testing.T) {
+	_, err := ListWorktrees(&recRunner{err: errStub}, "/ws/repo")
+	if err == nil {
+		t.Fatal("muốn propagate lỗi Runner")
+	}
+}
+
+func TestRepairWorktree(t *testing.T) {
+	rr := &recRunner{}
+	if err := RepairWorktree(rr, "/ws/repos/repo", "/ws/repos/repo/.worktrees/wt1"); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	wantArgs := []string{"worktree", "repair", "/ws/repos/repo/.worktrees/wt1"}
+	if rr.gotDir != "/ws/repos/repo" || !equalStr(rr.gotArgs, wantArgs) {
+		t.Fatalf("gotDir=%q gotArgs=%v", rr.gotDir, rr.gotArgs)
+	}
+}
+
+var errStub = fmt.Errorf("stub error")
+
+func equalStr(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
