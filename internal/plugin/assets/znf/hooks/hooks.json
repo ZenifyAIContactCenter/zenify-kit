@@ -1,7 +1,11 @@
 {
   "hooks": {
     "SessionStart": [
-      { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-start.sh\"" }
+      { "type": "command", "command": "bash \"$CLAUDE_PLUGIN_ROOT/hooks/session-start.sh\"" },
+      { "type": "command", "command": "zenify docs sync" }
+    ],
+    "Stop": [
+      { "type": "command", "command": "zenify docs sync" }
     ],
     "PreToolUse": [
       { "matcher": "Task", "hooks": [ { "type": "command", "command": "zenify observe count" } ] }
