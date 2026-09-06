@@ -44,3 +44,23 @@ func TestSkillsInstallSubset(t *testing.T) {
 		t.Fatalf("output thiếu khuyến nghị leg-2 vercel-labs/agent-skills: %s", out.String())
 	}
 }
+
+func TestSkillsSync_WiresHooks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cmd := newSkillsCmd()
+	cmd.SetArgs([]string{"sync"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("skills sync: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatalf("settings.json not written: %v", err)
+	}
+	if !strings.Contains(string(raw), "zenify hooks-run docs-sync") {
+		t.Fatal("skills sync did not wire znf hooks")
+	}
+}
