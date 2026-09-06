@@ -181,6 +181,10 @@ func loadDeny(root string) []string {
 		if lines, ok := readLines(f); ok {
 			found = true
 			if hasNone(lines) {
+				// Dừng union tại đây. Giả định: một cây thư mục đã khai NONE
+				// KHÔNG chứa repo git lồng bên trong không có deploy-branches
+				// riêng — nếu có, repo lồng đó sẽ mất baseline. Đúng với layout
+				// sibling-dưới-repos/ (docs là sibling, không lồng repo nào).
 				return out
 			}
 			out = append(out, lines...)
