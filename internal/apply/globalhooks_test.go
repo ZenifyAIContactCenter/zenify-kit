@@ -144,30 +144,63 @@ func TestEnsureGlobalHooks_DryRunNoWrite(t *testing.T) {
 	}
 }
 
-// Review fix round 1, finding 1 (Important): foreign top-level settings values
-// must never be edited, reordered, or dropped — only the "hooks" subtree is
-// decoded/normalized. The seed below is already in the canonical 2-space
-// indent that marshalNoEscape produces, so the "permissions" block's bytes
-// must survive verbatim in the output.
-func TestEnsureGlobalHooks_PreservesForeignSettingsBytes(t *testing.T) {
+// Review fix round 1, finding 1 (Important) / round 2 rewrite: foreign
+// top-level settings values must never be edited, reordered, or dropped —
+// only the "hooks" subtree is decoded/normalized. An earlier version of this
+// test seeded a "permissions" block that was already in canonical,
+// alphabetically-sorted 2-space form, so it passed even against a
+// map[string]any round-trip (which alphabetizes keys) — it asserted nothing
+// that actually distinguishes the two approaches. This version seeds a
+// foreign object with deliberately NON-alphabetical key order (zebra, alpha,
+// mango) plus a nested array, and checks both content and order survive.
+// Reverting ensureGlobalHooks to decode/re-encode the whole root as
+// map[string]any (instead of keeping foreign top-level values as
+// json.RawMessage) would re-sort these keys to alpha, mango, zebra on
+// marshal and break this test.
+func TestEnsureGlobalHooks_PreservesForeignValueContentAndKeyOrder(t *testing.T) {
 	home := t.TempDir()
-	permissionsBlock := `"permissions": {
-    "allow": [
-      "Bash(ls:*)",
-      "Read"
-    ],
-    "deny": []
-  }`
 	writeSettings(t, home, `{
   "hooks": {},
-  `+permissionsBlock+`
+  "permissions": {
+    "zebra": 1,
+    "alpha": 2,
+    "mango": [3, 1, 4]
+  }
 }`)
 	if _, err := ensureGlobalHooks(home, false); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
-	if !strings.Contains(string(raw), permissionsBlock) {
-		t.Fatalf("foreign \"permissions\" block was reformatted or dropped; got:\n%s", raw)
+	s := string(raw)
+
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &root); err != nil {
+		t.Fatalf("output not valid json: %v", err)
+	}
+	var perms map[string]json.RawMessage
+	if err := json.Unmarshal(root["permissions"], &perms); err != nil {
+		t.Fatalf("\"permissions\" missing or invalid: %v", err)
+	}
+
+	// Content: scalar values and nested array order unchanged.
+	if string(perms["zebra"]) != "1" || string(perms["alpha"]) != "2" {
+		t.Fatalf("scalar content changed: zebra=%s alpha=%s", perms["zebra"], perms["alpha"])
+	}
+	var mango []int
+	if err := json.Unmarshal(perms["mango"], &mango); err != nil || len(mango) != 3 || mango[0] != 3 || mango[1] != 1 || mango[2] != 4 {
+		t.Fatalf("nested array content/order changed: %v (err=%v)", mango, err)
+	}
+
+	// Key ORDER within the "permissions" object: source declared zebra, then
+	// alpha, then mango. Assert the output preserves that exact order.
+	iZebra := strings.Index(s, `"zebra"`)
+	iAlpha := strings.Index(s, `"alpha"`)
+	iMango := strings.Index(s, `"mango"`)
+	if iZebra < 0 || iAlpha < 0 || iMango < 0 {
+		t.Fatalf("expected keys missing from output:\n%s", s)
+	}
+	if !(iZebra < iAlpha && iAlpha < iMango) {
+		t.Fatalf("foreign object key order not preserved (want zebra<alpha<mango, got offsets %d,%d,%d):\n%s", iZebra, iAlpha, iMango, s)
 	}
 }
 

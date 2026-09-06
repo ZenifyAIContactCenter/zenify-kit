@@ -45,10 +45,14 @@ func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 // Idempotent by marker; atomic write; fail-open on malformed input.
 //
 // Only the "hooks" subtree is decoded and normalized — every other top-level
-// key (permissions, env, model, ...) is kept as its raw json.RawMessage bytes
-// and passed through untouched, so a developer's existing settings are never
-// edited, reordered, or dropped (mirrors the RawMessage technique in
-// mergeSettingsKeys, apply.go:226).
+// key (permissions, env, model, ...) is kept as its raw json.RawMessage
+// instead of being round-tripped through map[string]any. That preserves each
+// foreign value's content AND key order exactly as written (a map round-trip
+// would alphabetize keys via encoding/json's map-key sort, silently
+// reordering e.g. "permissions"). The file's whitespace/indentation is still
+// normalized on every write, same as the rest of this package (see
+// mergeSettingsKeys, apply.go:226, which reformats the whole file by design)
+// — so this is content-and-order preservation, not byte-for-byte identity.
 func ensureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
 	path := filepath.Join(home, ".claude", "settings.json")
 
