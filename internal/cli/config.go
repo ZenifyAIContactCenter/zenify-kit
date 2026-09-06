@@ -11,17 +11,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// defaultConfigRepo/Sub: config dir mặc định = repo docs, subdir ẩn .config
+// defaultConfigSub: config dir mặc định = store docs (resolveDocsStore), subdir ẩn .config
 // (docs layer agent-managed; config ẩn để dev chỉ thấy spec/plan/handoff/release).
-// Đường dẫn repo tự tìm theo layout (phẳng hoặc repos/<repo> sau `zenify migrate`).
+// Store tự tìm qua $ZENIFY_HOME/~/.zenify/knowledge/workspace fallback (Task 1).
 // Override bằng --config-dir cho workspace khác.
-const defaultConfigRepo = "docs"
 const defaultConfigSub = ".config"
 
 // runConfig là lõi test được. FAIL-OPEN: luôn trả nil; lỗi thành note ra stderr.
 func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer) error {
 	if configDir == "" {
-		configDir = resolveWorkspaceRepoDir(workspace, defaultConfigRepo, defaultConfigSub, os.ReadDir)
+		configDir = filepath.Join(resolveDocsStore(workspace, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultConfigSub)
 	}
 	manifestPath := filepath.Join(configDir, "distribution.txt")
 	mb, err := os.ReadFile(manifestPath)

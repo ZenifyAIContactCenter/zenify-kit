@@ -49,13 +49,16 @@ func TestNoZenifyRepoIdentifiersInSource(t *testing.T) {
 }
 
 // FAIL-OPEN: workspace không có repo nào → vẫn ghi report rỗng, exit 0 (FR-5.2).
+// ZENIFY_HOME=t.TempDir() để cô lập khỏi ~/.zenify/knowledge thật của máy chạy test.
 func TestRunReleaseReportFailOpenEmptyWorkspace(t *testing.T) {
 	ws := t.TempDir()
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
 	var out, errb bytes.Buffer
 	if err := runReleaseReport(ws, 84, true, "", nopRunner{}, &out, &errb); err != nil {
 		t.Fatalf("fail-open vi phạm: trả err %v", err)
 	}
-	path := filepath.Join(ws, "docs", "releases", "R84.md")
+	path := filepath.Join(zh, "knowledge", "releases", "R84.md")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("report rỗng vẫn phải được ghi: %v", err)

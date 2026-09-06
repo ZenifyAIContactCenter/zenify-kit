@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// defaultOutSubdir là nơi ghi report mặc định — quy ước record-layer của workspace (M6a).
-// Override bằng cờ --out-dir cho workspace khác (giữ kit project-agnostic).
-const defaultOutRepo = "docs"
+// defaultOutSub là nơi ghi report mặc định — quy ước record-layer của workspace (M6a).
+// Store tự tìm qua resolveDocsStore (Task 1). Override bằng cờ --out-dir cho workspace khác
+// (giữ kit project-agnostic).
 const defaultOutSub = "releases"
 
 // runReleaseReport là lõi test được. FAIL-OPEN: luôn trả nil; mọi lỗi thành note in ra stderr.
@@ -48,7 +48,7 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, r
 	rep := release.Build(r, resolve, repos, n, loadPatterns)
 	out := release.Render(rep)
 	if outDir == "" {
-		outDir = resolveWorkspaceRepoDir(workspaceDir, defaultOutRepo, defaultOutSub, os.ReadDir)
+		outDir = filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultOutSub)
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintf(stderr, "release-report: không tạo được thư mục out: %v (fail-open)\n", err)
