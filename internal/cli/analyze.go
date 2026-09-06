@@ -46,7 +46,7 @@ func runAnalyze(specPath, planPath string, asJSON bool, readFile func(string) ([
 	// human-readable
 	fmt.Fprintf(stdout, "Brief: ")
 	if res.BriefFound {
-		fmt.Fprintf(stdout, "found, %d/7 numbered fields\n", res.BriefFields)
+		fmt.Fprintf(stdout, "found, %d/8 numbered fields\n", res.BriefFields)
 	} else {
 		fmt.Fprintf(stdout, "absent\n")
 	}
