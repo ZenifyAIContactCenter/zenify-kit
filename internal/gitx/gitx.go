@@ -97,6 +97,22 @@ func Scan(r Runner, dir string) (RepoState, error) {
 	return st, nil
 }
 
+// HasWorktrees reports whether the repo at dir has any linked worktree
+// beyond its main checkout.
+func HasWorktrees(r Runner, dir string) (bool, error) {
+	out, err := r.Run(dir, "worktree", "list", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	count := 0
+	for _, ln := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(ln, "worktree ") {
+			count++
+		}
+	}
+	return count > 1, nil
+}
+
 // readInsteadOf collects url.<base>.insteadOf rewrites configured in the repo.
 func readInsteadOf(r Runner, dir string) map[string]string {
 	m := map[string]string{}

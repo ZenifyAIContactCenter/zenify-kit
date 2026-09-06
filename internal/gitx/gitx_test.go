@@ -1,6 +1,7 @@
 package gitx
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -43,5 +44,34 @@ func TestScanNotCloned(t *testing.T) {
 	}
 	if st.Cloned {
 		t.Errorf("empty dir should be not-cloned")
+	}
+}
+
+// stubRunner adapts a func to Runner.
+type stubRunner func(string, ...string) ([]byte, error)
+
+func (f stubRunner) Run(d string, a ...string) ([]byte, error) { return f(d, a...) }
+
+func TestHasWorktrees(t *testing.T) {
+	// 1 worktree (main) → false; nhiều → true
+	one := stubRunner(func(dir string, args ...string) ([]byte, error) {
+		return []byte("worktree /a\nHEAD abc\nbranch refs/heads/main\n"), nil
+	})
+	got, err := HasWorktrees(one, "/a")
+	if err != nil || got {
+		t.Fatalf("1 worktree phải false, got=%v err=%v", got, err)
+	}
+	many := stubRunner(func(dir string, args ...string) ([]byte, error) {
+		return []byte("worktree /a\nHEAD abc\n\nworktree /a/.worktrees/x\nHEAD def\n"), nil
+	})
+	got, err = HasWorktrees(many, "/a")
+	if err != nil || !got {
+		t.Fatalf("2 worktree phải true, got=%v err=%v", got, err)
+	}
+	errRunner := stubRunner(func(dir string, args ...string) ([]byte, error) {
+		return nil, errors.New("git failed")
+	})
+	if _, err := HasWorktrees(errRunner, "/a"); err == nil {
+		t.Fatalf("expected error to propagate")
 	}
 }
