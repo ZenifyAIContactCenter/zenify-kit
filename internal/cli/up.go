@@ -22,6 +22,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // buildPlan runs the read-only reconciler core: auth → list → scan → classify.
@@ -303,7 +304,7 @@ func newUpCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
-		Short: "Discover repos and print the onboarding plan (dry-run; use --apply to execute)",
+		Short: "Onboard the workspace: interactive wizard in a terminal, dry-run plan otherwise (use --apply to execute headless)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := dryRunApplyConflict(applyFlag, cmd.Flags().Changed("dry-run"), dryRun); err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
@@ -332,22 +333,28 @@ func newUpCmd() *cobra.Command {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
 					"warning: gh token missing read:org or repo scope; discovery may be incomplete")
 			}
-			if applyFlag {
-				return runApply(cmd.OutOrStdout(), plans, m, workspace, ghx.ExecRunner(), gitx.ExecRunner())
+			w := cmd.OutOrStdout()
+			isTTY := term.IsTerminal(int(os.Stdout.Fd()))
+			switch decideMode(isTTY, applyFlag, cmd.Flags().Changed("dry-run"), dryRun, jsonOut, nonInteractive) {
+			case modeWizard:
+				return runWizard(w, m, workspace)
+			case modeApply:
+				return runApply(w, plans, m, workspace, ghx.ExecRunner(), gitx.ExecRunner())
+			default: // modeDryRun
+				if jsonOut {
+					return renderPlanJSON(w, plans, auth)
+				}
+				renderPlanTable(w, plans, auth)
+				return nil
 			}
-			if jsonOut {
-				return renderPlanJSON(cmd.OutOrStdout(), plans, auth)
-			}
-			renderPlanTable(cmd.OutOrStdout(), plans, auth)
-			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit the plan as a JSON envelope")
-	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "never prompt — reserved for CI; the interactive TUI is not present in this build (FR-050)")
-	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "compute and print the plan without acting (the default; cannot be combined with --apply) (FR-050)")
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "never prompt — forces the headless dry-run/apply path instead of the interactive wizard")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "preview the plan without making changes")
 	cmd.Flags().StringVar(&workspace, "workspace", ".", "workspace root directory")
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default manifest/repos.yaml relative to the kit checkout)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
-	cmd.Flags().BoolVar(&applyFlag, "apply", false, "execute the plan (clone/wire/adopt); without this, up is dry-run")
+	cmd.Flags().BoolVar(&applyFlag, "apply", false, "apply changes without the interactive wizard (required for non-interactive/CI runs)")
 	return cmd
 }
