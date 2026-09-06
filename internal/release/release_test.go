@@ -14,8 +14,9 @@ func TestBuildParticipationAndFlags(t *testing.T) {
 	notif := fakeRunner{out: map[string]string{"branch -r": "  origin/release83\n  origin/staging\n"}}
 	router := dirRouter{per: map[string]fakeRunner{"/ws/be": be, "/ws/notif": notif}}
 	loadPatterns := func(dir string) []string { return []string{"**/chat_*"} }
+	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
 
-	rep := Build(router, "/ws", []string{"be", "notif"}, 84, loadPatterns)
+	rep := Build(router, resolve, []string{"be", "notif"}, 84, loadPatterns)
 
 	if len(rep.Repos) != 1 || rep.Repos[0].Name != "be" {
 		t.Fatalf("participating=%v", rep.Repos)
@@ -38,8 +39,30 @@ func TestBuildParticipationAndFlags(t *testing.T) {
 func TestBuildFailOpenPerRepo(t *testing.T) {
 	bad := fakeRunner{err: map[string]string{"branch -r": "boom"}}
 	router := dirRouter{per: map[string]fakeRunner{"/ws/bad": bad}}
-	rep := Build(router, "/ws", []string{"bad"}, 84, func(string) []string { return nil })
+	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
+	rep := Build(router, resolve, []string{"bad"}, 84, func(string) []string { return nil })
 	if len(rep.Repos) != 1 || rep.Repos[0].Err == "" {
 		t.Errorf("expected fail-open note, got %+v", rep.Repos)
+	}
+}
+
+func TestBuildUsesResolverNotFlatJoin(t *testing.T) {
+	// resolve trả path tùy ý (giả nested); Build phải gọi ReleaseNums trên path đó.
+	seen := map[string]bool{}
+	resolve := func(name string) (string, bool) {
+		return "/ws/repos/" + name, true
+	}
+	r := fakeRunner{calls: seen}
+	_ = Build(r, resolve, []string{"svc-a"}, 84, func(dir string) []string { return nil })
+	if !seen["/ws/repos/svc-a"] {
+		t.Fatalf("Build phải dùng path từ resolver, các dir đã gọi: %+v", seen)
+	}
+}
+
+func TestBuildResolveMiss(t *testing.T) {
+	resolve := func(name string) (string, bool) { return "", false }
+	rep := Build(fakeRunner{}, resolve, []string{"ghost"}, 84, func(string) []string { return nil })
+	if len(rep.Repos) != 1 || rep.Repos[0].Err == "" {
+		t.Errorf("expected resolve-miss fail-open note, got %+v", rep.Repos)
 	}
 }

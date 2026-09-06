@@ -2,7 +2,6 @@ package release
 
 import (
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
@@ -10,7 +9,9 @@ import (
 
 // Build ráp report cho release n từ danh sách repo. Fail-open mỗi repo: lỗi một repo
 // không làm hỏng cả report. loadPatterns inject để test không phụ thuộc worktree.json thật.
-func Build(r gitx.Runner, workspace string, repos []string, n int, loadPatterns func(dir string) []string) Report {
+// resolve định vị dir thật của mỗi repo (qua workspace.Resolve) — không giả định repo là
+// con trực tiếp của workspace, nesting-safe.
+func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, loadPatterns func(dir string) []string) Report {
 	rep := Report{
 		N:               n,
 		GeneratedAt:     time.Now().Format("2006-01-02 15:04"),
@@ -18,7 +19,11 @@ func Build(r gitx.Runner, workspace string, repos []string, n int, loadPatterns 
 	}
 	relN := fmt.Sprintf("origin/release%d", n)
 	for _, name := range repos {
-		dir := filepath.Join(workspace, name)
+		dir, ok := resolve(name)
+		if !ok {
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không định vị được repo trong workspace"})
+			continue
+		}
 		nums, err := ReleaseNums(r, dir)
 		if err != nil {
 			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không đọc được release branches: " + err.Error()})
