@@ -2,7 +2,9 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsview"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsync"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/spf13/cobra"
@@ -27,10 +29,17 @@ func newDocsCmd() *cobra.Command {
 				workspaceDir, _ = os.Getwd()
 			}
 			if dir == "" {
-				dir = resolveWorkspaceRepoDir(workspaceDir, defaultDocsRepo, "", os.ReadDir)
+				dir = resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir)
 			}
 			for _, n := range docsync.Sync(gitx.ExecRunner(), dir) {
 				cmd.PrintErrln(n)
+			}
+			// view link farm — chạy mọi OS (unix symlink / windows junction, gói trong OSFS)
+			viewDir := filepath.Join(workspaceDir, defaultDocsRepo)
+			if viewDir != dir { // chỉ khi store ĐÃ tách khỏi workspace (đã migrate)
+				for _, n := range docsview.EnsureView(docsview.OSFS{}, dir, viewDir) {
+					cmd.PrintErrln(n)
+				}
 			}
 			return nil
 		},
