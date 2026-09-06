@@ -136,3 +136,76 @@ func TestAnalyze_ProductionSourceAgnostic(t *testing.T) {
 		}
 	}
 }
+
+// SC-1: Brief đủ 3 tag non-empty → 0 finding missing-*.
+func TestAnalyze_RiskMetadataAllPresent(t *testing.T) {
+	spec := "## Brief\n_Blast-radius: single-repo — foo\n_DB: N/A\n_Rollback: revert the diff\n## Goals\n"
+	r := Analyze(spec, "")
+	for _, k := range []string{"missing-blast-radius", "missing-db-guarantee", "missing-rollback"} {
+		if countKind(r, k) != 0 {
+			t.Errorf("tag đủ mà vẫn có %s: %+v", k, r.Findings)
+		}
+	}
+}
+
+// SC-2: thiếu _Rollback: → đúng 1 missing-rollback (HIGH); blast/DB có tag → không flag.
+func TestAnalyze_MissingRollback(t *testing.T) {
+	spec := "## Brief\n_Blast-radius: x\n_DB: N/A\n## Goals\n"
+	r := Analyze(spec, "")
+	if !hasFinding(r, "missing-rollback", "", High) {
+		t.Errorf("thiếu missing-rollback (HIGH); findings=%+v", r.Findings)
+	}
+	if countKind(r, "missing-rollback") != 1 {
+		t.Errorf("muốn đúng 1 missing-rollback, có %d", countKind(r, "missing-rollback"))
+	}
+	if hasFinding(r, "missing-blast-radius", "", High) || hasFinding(r, "missing-db-guarantee", "", High) {
+		t.Errorf("blast/DB có tag — không được flag: %+v", r.Findings)
+	}
+}
+
+// SC-3: _Blast-radius: content rỗng → missing-blast-radius.
+func TestAnalyze_EmptyBlastRadius(t *testing.T) {
+	spec := "## Brief\n_Blast-radius:   \n_DB: N/A\n_Rollback: revert\n## Goals\n"
+	r := Analyze(spec, "")
+	if !hasFinding(r, "missing-blast-radius", "", High) {
+		t.Errorf("_Blast-radius rỗng phải flag; findings=%+v", r.Findings)
+	}
+}
+
+// SC-4: _DB: N/A không flag; _DB non-empty dù thiếu keyword → vẫn KHÔNG flag mechanical.
+func TestAnalyze_DBPresenceOnly(t *testing.T) {
+	na := Analyze("## Brief\n_Blast-radius: x\n_DB: N/A\n_Rollback: y\n## Goals\n", "")
+	if countKind(na, "missing-db-guarantee") != 0 {
+		t.Errorf("_DB: N/A không được flag: %+v", na.Findings)
+	}
+	partial := Analyze("## Brief\n_Blast-radius: x\n_DB: query-plan only\n_Rollback: y\n## Goals\n", "")
+	if countKind(partial, "missing-db-guarantee") != 0 {
+		t.Errorf("_DB non-empty (dù thiếu keyword) KHÔNG được flag mechanical: %+v", partial.Findings)
+	}
+}
+
+// SC-5: không có ## Brief → 0 finding risk-metadata + FR→task không regress.
+func TestAnalyze_NoBriefNoRiskFindings(t *testing.T) {
+	spec := "**FR-1.** X\n**FR-2.** Y\n"
+	plan := "### Task 1\n_Requirements: FR-1_\n"
+	r := Analyze(spec, plan)
+	for _, k := range []string{"missing-blast-radius", "missing-db-guarantee", "missing-rollback"} {
+		if countKind(r, k) != 0 {
+			t.Errorf("không có ## Brief mà vẫn %s: %+v", k, r.Findings)
+		}
+	}
+	if !hasFinding(r, "orphan-fr", "FR-2", Critical) {
+		t.Errorf("regression: mất orphan-fr FR-2; findings=%+v", r.Findings)
+	}
+}
+
+// Tag nhận diện qua backtick-wrapping (`- `_DB: N/A``) — mirror seam _Requirements:.
+func TestAnalyze_RiskTagBacktickWrapped(t *testing.T) {
+	spec := "## Brief\n- `_Blast-radius: x`\n- `_DB: N/A`\n- `_Rollback: revert`\n## Goals\n"
+	r := Analyze(spec, "")
+	for _, k := range []string{"missing-blast-radius", "missing-db-guarantee", "missing-rollback"} {
+		if countKind(r, k) != 0 {
+			t.Errorf("tag backtick-wrapped phải nhận diện, %s bị flag nhầm: %+v", k, r.Findings)
+		}
+	}
+}

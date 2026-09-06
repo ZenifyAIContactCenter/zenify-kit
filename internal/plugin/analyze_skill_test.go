@@ -26,6 +26,7 @@ func TestAnalyzeSkill_Materialized_HasKeyParts(t *testing.T) {
 		"SC-testable",                // pass phán đoán P3
 		"necessity",                  // pass phán đoán P6
 		"db-3",                       // pass phán đoán P7
+		"_Blast-radius:",             // risk-metadata judgment pass (M6c1)
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("analyze/SKILL.md thiếu %q", want)

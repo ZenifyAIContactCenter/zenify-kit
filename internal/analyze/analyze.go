@@ -30,7 +30,7 @@ type Marker struct {
 // Finding is one mechanical defect.
 type Finding struct {
 	Severity Severity `json:"severity"`
-	Kind     string   `json:"kind"` // orphan-fr | orphan-task | dangling-ref | marker
+	Kind     string   `json:"kind"` // orphan-fr | orphan-task | dangling-ref | marker | missing-blast-radius | missing-db-guarantee | missing-rollback
 	ID       string   `json:"id,omitempty"`
 	Location string   `json:"location,omitempty"`
 	Message  string   `json:"message"`
@@ -62,7 +62,20 @@ var (
 	// template-compliant plan is detected (a bare line-start tag still matches too).
 	reqLineRe   = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_Requirements:")
 	markerToken = "[NEEDS CLARIFICATION"
+
+	// Risk-metadata tags (M6c1): line-start markers inside ## Brief, same tolerance as
+	// reqLineRe — an optional list marker and any backtick/emphasis run before the literal
+	// tag. Capture group 1 is the value (may carry a trailing wrapper to trim).
+	blastTagRe    = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_Blast-radius:\\s*(.*)$")
+	dbTagRe       = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_DB:\\s*(.*)$")
+	rollbackTagRe = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_Rollback:\\s*(.*)$")
 )
+
+// tagValue strips a risk-metadata tag value of trailing backtick/emphasis wrappers and
+// surrounding space; "" means the tag carried no content (treated as absent).
+func tagValue(s string) string {
+	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(s), "`*"))
+}
 
 // topLevel strips a sub-part: FR-1.2 -> FR-1, SC-3 -> SC-3.
 func topLevel(id string) string {
@@ -168,11 +181,12 @@ func Analyze(specText, planText string) Result {
 	scanMarkers(specText, "spec")
 	scanMarkers(planText, "plan")
 
-	// --- structural Brief ---
+	// --- structural Brief + risk-metadata tags (M6c1) ---
 	specLines := strings.Split(specText, "\n")
 	for i, ln := range specLines {
 		if briefRe.MatchString(ln) {
 			r.BriefFound = true
+			var haveBlast, haveDB, haveRollback bool
 			for _, bl := range specLines[i+1:] {
 				if nextSectionRe.MatchString(bl) {
 					break
@@ -180,6 +194,27 @@ func Analyze(specText, planText string) Result {
 				if numberedRe.MatchString(bl) {
 					r.BriefFields++
 				}
+				if m := blastTagRe.FindStringSubmatch(bl); m != nil && tagValue(m[1]) != "" {
+					haveBlast = true
+				}
+				if m := dbTagRe.FindStringSubmatch(bl); m != nil && tagValue(m[1]) != "" {
+					haveDB = true
+				}
+				if m := rollbackTagRe.FindStringSubmatch(bl); m != nil && tagValue(m[1]) != "" {
+					haveRollback = true
+				}
+			}
+			if !haveBlast {
+				r.add(Finding{Severity: High, Kind: "missing-blast-radius", Location: "spec:Brief",
+					Message: "Brief has no non-empty _Blast-radius: tag"})
+			}
+			if !haveDB {
+				r.add(Finding{Severity: High, Kind: "missing-db-guarantee", Location: "spec:Brief",
+					Message: "Brief has no non-empty _DB: tag (write N/A when no DB is touched)"})
+			}
+			if !haveRollback {
+				r.add(Finding{Severity: High, Kind: "missing-rollback", Location: "spec:Brief",
+					Message: "Brief has no non-empty _Rollback: tag"})
 			}
 			break
 		}
