@@ -110,3 +110,101 @@ func TestMigrateManifestInsideRepo(t *testing.T) {
 		t.Errorf("repos.yaml phải cập nhật path→repos/svc-a: %s", s)
 	}
 }
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	c := exec.Command("git", args...)
+	if dir != "" {
+		c.Dir = dir
+	}
+	if o, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, o)
+	}
+}
+func writeFile(t *testing.T, p, s string) {
+	t.Helper()
+	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+func readFile(t *testing.T, p string) string {
+	t.Helper()
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+func mkdir(t *testing.T, p string) {
+	t.Helper()
+	if err := os.MkdirAll(p, 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestMigrateApplyRealGitWorktreeAndSymlink là bằng chứng end-to-end (rule #3): move
+// một repo có worktree nội bộ dirty + node_modules symlink (deps:symlink) qua git thật,
+// xác nhận sau --apply repo/worktree/symlink/repos.yaml đều đúng.
+func TestMigrateApplyRealGitWorktreeAndSymlink(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("cần git")
+	}
+	root := t.TempDir()
+	repo := filepath.Join(root, "svc")
+	runGit(t, "", "init", "-q", repo)
+	runGit(t, repo, "config", "user.email", "t@t")
+	runGit(t, repo, "config", "user.name", "t")
+	writeFile(t, filepath.Join(repo, "f.txt"), "v1\n")
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-qm", "init")
+	// worktree nội bộ dưới .worktrees/
+	runGit(t, repo, "worktree", "add", "-q", filepath.Join(repo, ".worktrees", "wt1"), "-b", "feat")
+	// main dirty + việc dở trong worktree
+	writeFile(t, filepath.Join(repo, "f.txt"), "v1\ndirty\n")
+	writeFile(t, filepath.Join(repo, ".worktrees", "wt1", "g.txt"), "wtwork\n")
+	// giả node_modules + worktree.json deps:symlink + symlink node_modules trong worktree
+	mkdir(t, filepath.Join(repo, "node_modules"))
+	mkdir(t, filepath.Join(repo, ".claude"))
+	writeFile(t, filepath.Join(repo, ".claude", "worktree.json"), `{"deps":"symlink"}`)
+	if err := os.Symlink(filepath.Join(repo, "node_modules"), filepath.Join(repo, ".worktrees", "wt1", "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	// manifest để updateYAML có chỗ ghi (repo này tự chứa manifest)
+	mkdir(t, filepath.Join(repo, "manifest"))
+	writeFile(t, filepath.Join(repo, "manifest", "repos.yaml"),
+		"repos:\n  - name: svc\n    path: svc\n")
+
+	var out, errb bytes.Buffer
+	if err := runMigrate(root, "repos", true, &out, &errb); err != nil {
+		t.Fatalf("runMigrate trả lỗi (phải fail-open nil): %v", err)
+	}
+
+	newRepo := filepath.Join(root, "repos", "svc")
+	newWT := filepath.Join(newRepo, ".worktrees", "wt1")
+
+	// (1) repo đã ở repos/
+	if _, err := os.Stat(filepath.Join(newRepo, ".git")); err != nil {
+		t.Fatalf("repo chưa vào repos/: %v", err)
+	}
+	// (2) main dirty còn nguyên
+	if b := readFile(t, filepath.Join(newRepo, "f.txt")); !strings.Contains(b, "dirty") {
+		t.Fatalf("mất thay đổi dirty: %q", b)
+	}
+	// (3) worktree linkage sống sau repair
+	if o, err := exec.Command("git", "-C", newWT, "status", "--short").CombinedOutput(); err != nil {
+		t.Fatalf("worktree hỏng sau move: %v\n%s", err, o)
+	}
+	// (4) việc dở trong worktree còn
+	if _, err := os.Stat(filepath.Join(newWT, "g.txt")); err != nil {
+		t.Fatalf("mất việc dở worktree: %v", err)
+	}
+	// (5) symlink node_modules re-point sang main mới
+	if tgt, err := os.Readlink(filepath.Join(newWT, "node_modules")); err != nil ||
+		tgt != filepath.Join(newRepo, "node_modules") {
+		t.Fatalf("symlink chưa re-point: tgt=%q err=%v", tgt, err)
+	}
+	// (6) repos.yaml cập nhật path
+	if y := readFile(t, filepath.Join(newRepo, "manifest", "repos.yaml")); !strings.Contains(y, "path: repos/svc") {
+		t.Fatalf("repos.yaml chưa cập nhật: %q", y)
+	}
+}
