@@ -16,6 +16,8 @@ func TestRunOnboard_AccessiblePlanOnly(t *testing.T) {
 			called = true
 			return []reconcile.RepoPlan{{Name: "contact-center-be", State: "CLONE", Reason: "not on disk"}}, nil
 		},
+		DetectGHFn:   func() error { return nil },
+		AuthStatusFn: func() (string, bool) { return "test", true },
 	}
 	res, err := RunOnboard(cfg)
 	if err != nil {
