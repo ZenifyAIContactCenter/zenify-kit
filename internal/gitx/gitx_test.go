@@ -1,6 +1,8 @@
 package gitx
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -44,4 +46,107 @@ func TestScanNotCloned(t *testing.T) {
 	if st.Cloned {
 		t.Errorf("empty dir should be not-cloned")
 	}
+}
+
+// stubRunner adapts a func to Runner.
+type stubRunner func(string, ...string) ([]byte, error)
+
+func (f stubRunner) Run(d string, a ...string) ([]byte, error) { return f(d, a...) }
+
+func TestHasWorktrees(t *testing.T) {
+	// 1 worktree (main) → false; nhiều → true
+	one := stubRunner(func(dir string, args ...string) ([]byte, error) {
+		return []byte("worktree /a\nHEAD abc\nbranch refs/heads/main\n"), nil
+	})
+	got, err := HasWorktrees(one, "/a")
+	if err != nil || got {
+		t.Fatalf("1 worktree phải false, got=%v err=%v", got, err)
+	}
+	many := stubRunner(func(dir string, args ...string) ([]byte, error) {
+		return []byte("worktree /a\nHEAD abc\n\nworktree /a/.worktrees/x\nHEAD def\n"), nil
+	})
+	got, err = HasWorktrees(many, "/a")
+	if err != nil || !got {
+		t.Fatalf("2 worktree phải true, got=%v err=%v", got, err)
+	}
+	errRunner := stubRunner(func(dir string, args ...string) ([]byte, error) {
+		return nil, errors.New("git failed")
+	})
+	if _, err := HasWorktrees(errRunner, "/a"); err == nil {
+		t.Fatalf("expected error to propagate")
+	}
+}
+
+// recRunner ghi lại lần Run cuối để assert args, và trả out/err cấu hình sẵn.
+type recRunner struct {
+	out     []byte
+	err     error
+	gotDir  string
+	gotArgs []string
+}
+
+func (r *recRunner) Run(dir string, args ...string) ([]byte, error) {
+	r.gotDir = dir
+	r.gotArgs = args
+	return r.out, r.err
+}
+
+func TestListWorktrees(t *testing.T) {
+	// porcelain: main trước, rồi 2 linked worktree.
+	out := "worktree /ws/repo\nHEAD a\nbranch refs/heads/main\n\n" +
+		"worktree /ws/repo/.worktrees/wt1\nHEAD b\nbranch refs/heads/feat\n\n" +
+		"worktree /home/u/.herdr/worktrees/repo/wc\nHEAD c\nbranch refs/heads/fix\n"
+	got, err := ListWorktrees(&recRunner{out: []byte(out)}, "/ws/repo")
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	want := []string{"/ws/repo/.worktrees/wt1", "/home/u/.herdr/worktrees/repo/wc"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d]=%q want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestListWorktreesNoneBeyondMain(t *testing.T) {
+	out := "worktree /ws/repo\nHEAD a\nbranch refs/heads/main\n"
+	got, err := ListWorktrees(&recRunner{out: []byte(out)}, "/ws/repo")
+	if err != nil || len(got) != 0 {
+		t.Fatalf("got %v err %v — muốn rỗng", got, err)
+	}
+}
+
+func TestListWorktreesRunnerErr(t *testing.T) {
+	_, err := ListWorktrees(&recRunner{err: errStub}, "/ws/repo")
+	if err == nil {
+		t.Fatal("muốn propagate lỗi Runner")
+	}
+}
+
+func TestRepairWorktree(t *testing.T) {
+	rr := &recRunner{}
+	if err := RepairWorktree(rr, "/ws/repos/repo", "/ws/repos/repo/.worktrees/wt1"); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	wantArgs := []string{"worktree", "repair", "/ws/repos/repo/.worktrees/wt1"}
+	if rr.gotDir != "/ws/repos/repo" || !equalStr(rr.gotArgs, wantArgs) {
+		t.Fatalf("gotDir=%q gotArgs=%v", rr.gotDir, rr.gotArgs)
+	}
+}
+
+var errStub = fmt.Errorf("stub error")
+
+func equalStr(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

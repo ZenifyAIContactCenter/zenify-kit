@@ -1,5 +1,6 @@
-// Package gitx is a read-only adapter over `git`: per-repo working-tree state
-// and remote-URL normalization. It never mutates a repo.
+// Package gitx is an adapter over `git`: per-repo working-tree state and
+// remote-URL normalization (read-only), plus worktree-linkage repair used by
+// migrate (the one mutating operation, RepairWorktree).
 package gitx
 
 import (
@@ -95,6 +96,55 @@ func Scan(r Runner, dir string) (RepoState, error) {
 	}
 	st.Layout = detectLayout(dir)
 	return st, nil
+}
+
+// HasWorktrees reports whether the repo at dir has any linked worktree
+// beyond its main checkout.
+func HasWorktrees(r Runner, dir string) (bool, error) {
+	out, err := r.Run(dir, "worktree", "list", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+	count := 0
+	for _, ln := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(ln, "worktree ") {
+			count++
+		}
+	}
+	return count > 1, nil
+}
+
+// ListWorktrees returns the paths of every linked worktree of the repo at dir,
+// excluding the main checkout itself. Parsed from `git worktree list --porcelain`.
+func ListWorktrees(r Runner, dir string) ([]string, error) {
+	out, err := r.Run(dir, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	main := filepath.Clean(dir)
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		main = filepath.Clean(resolved) // git resolves symlinks (e.g. macOS /var -> /private/var) in its output
+	}
+	for _, ln := range strings.Split(string(out), "\n") {
+		if !strings.HasPrefix(ln, "worktree ") {
+			continue
+		}
+		p := strings.TrimSpace(strings.TrimPrefix(ln, "worktree "))
+		if p == "" || filepath.Clean(p) == main {
+			continue
+		}
+		paths = append(paths, p)
+	}
+	return paths, nil
+}
+
+// RepairWorktree runs `git -C dir worktree repair path`, fixing the absolute-path
+// linkage of a worktree after its main checkout (or the worktree) has moved.
+// The bare form (no path) does not fix a moved worktree — the path is required.
+func RepairWorktree(r Runner, dir, path string) error {
+	_, err := r.Run(dir, "worktree", "repair", path)
+	return err
 }
 
 // readInsteadOf collects url.<base>.insteadOf rewrites configured in the repo.

@@ -28,6 +28,28 @@ func TestGateParticipantsFiltersSharedStore(t *testing.T) {
 	}
 }
 
+func TestGateParticipantsFindsNested(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repos", "svc-a")
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"abbrev":"a","baseRef":"origin/staging","gate":{"sharedStore":true,"accessPatterns":["users"]}}`
+	if err := os.WriteFile(filepath.Join(repo, ".claude", "worktree.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ps, err := gateParticipants(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ps) != 1 || ps[0].Name != "svc-a" {
+		t.Fatalf("phải tìm thấy svc-a ở repos/, được %+v", ps)
+	}
+}
+
 func mkRepo(t *testing.T, ws, name, cfg string) {
 	t.Helper()
 	dir := filepath.Join(ws, name, ".claude")

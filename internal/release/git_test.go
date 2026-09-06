@@ -9,11 +9,15 @@ import (
 // fakeRunner: khớp gitx.Runner, trả output cố định theo args (join bằng khoảng trắng).
 // Dùng chung cho git_test / repos_test / release_test.
 type fakeRunner struct {
-	out map[string]string
-	err map[string]string
+	out   map[string]string
+	err   map[string]string
+	calls map[string]bool // dir đã được Run gọi, dùng để verify Build dùng resolver
 }
 
 func (f fakeRunner) Run(dir string, args ...string) ([]byte, error) {
+	if f.calls != nil {
+		f.calls[dir] = true
+	}
 	key := strings.Join(args, " ")
 	if f.err != nil {
 		if e, ok := f.err[key]; ok {

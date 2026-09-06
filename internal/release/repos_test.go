@@ -3,6 +3,8 @@ package release
 import (
 	"errors"
 	"testing"
+
+	wspkg "github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 )
 
 // dirRouter: fake Runner trả output khác nhau theo dir. Dùng chung repos_test/release_test.
@@ -40,12 +42,15 @@ func TestResolveConfigSkipsComments(t *testing.T) {
 
 func TestResolveAutoDetect(t *testing.T) {
 	readFile := func(p string) ([]byte, error) { return nil, errors.New("no file") }
-	readDir := func(p string) ([]string, error) { return []string{"repoA", "repoB"}, nil }
+	discovered := []wspkg.Repo{
+		{Name: "repoA", Path: "/ws/repoA"},
+		{Name: "repoB", Path: "/ws/repoB"},
+	}
 	fr := dirRouter{per: map[string]fakeRunner{
 		"/ws/repoA": {out: map[string]string{"branch -r": "  origin/release84\n"}},
 		"/ws/repoB": {out: map[string]string{"branch -r": "  origin/release83\n"}},
 	}}
-	got, err := Resolve(fr, "/ws", 84, readFile, readDir)
+	got, err := Resolve(fr, "/ws", 84, readFile, discovered)
 	if err != nil || len(got) != 1 || got[0] != "repoA" {
 		t.Fatalf("got=%v err=%v", got, err)
 	}
