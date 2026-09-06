@@ -245,6 +245,43 @@ func TestEnsureDocsStore_ClonesWhenAbsent(t *testing.T) {
 	}
 }
 
+// TestEnsureDocsStore_CreatesMissingParentBeforeClone covers the genuinely
+// fresh-machine path: ZENIFY_HOME points at a directory that does NOT yet
+// exist, so filepath.Dir(store) (its parent) is also absent — the exact
+// shape of a brand-new machine's real ~/.zenify. gitx.Runner always runs
+// `git -C <dir> ...`, and `git -C` on a non-existent <dir> fails before ever
+// touching the network, so without an explicit mkdir the clone would silently
+// no-op (fail-open swallowing the error) and the store would never be
+// created — defeating the whole point of this task.
+func TestEnsureDocsStore_CreatesMissingParentBeforeClone(t *testing.T) {
+	ws := t.TempDir()
+	zh := filepath.Join(t.TempDir(), "fresh") // NOT created — parent of `knowledge` is absent too
+	t.Setenv("ZENIFY_HOME", zh)
+	wantStore := filepath.Join(zh, "knowledge")
+
+	if _, err := os.Stat(zh); err == nil {
+		t.Fatalf("test setup broken: %q must not exist yet", zh)
+	}
+
+	git := &recordingGit{}
+	var buf bytes.Buffer
+	ensureDocsStore(&buf, git, ws)
+
+	remote, dest, ok := git.cloned()
+	if !ok {
+		t.Fatalf("expected a clone call, got calls=%v", git.calls)
+	}
+	if remote != docsRemote {
+		t.Errorf("clone remote = %q, want %q", remote, docsRemote)
+	}
+	if dest != wantStore {
+		t.Errorf("clone dest = %q, want %q (resolveDocsStore)", dest, wantStore)
+	}
+	if _, err := os.Stat(filepath.Dir(wantStore)); err != nil {
+		t.Errorf("expected the store's parent dir to have been created before the clone call: %v", err)
+	}
+}
+
 func TestEnsureDocsStore_SkipsCloneWhenPresent(t *testing.T) {
 	ws := t.TempDir()
 	zh := t.TempDir()

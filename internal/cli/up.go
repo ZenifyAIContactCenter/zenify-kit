@@ -98,6 +98,16 @@ const docsRemote = "git@github.com:ZenifyAIContactCenter/zenify-knowledge.git"
 func ensureDocsStore(w io.Writer, git gitx.Runner, workspace string) {
 	store := resolveDocsStore(workspace, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir)
 	if fi, err := os.Stat(filepath.Join(store, ".git")); err != nil || !fi.IsDir() {
+		// gitx.Runner always runs `git -C <dir> ...`, and `git -C` fails
+		// immediately if <dir> does not exist yet. On a genuinely fresh
+		// machine (no prior ~/.zenify at all) filepath.Dir(store) is
+		// ~/.zenify, which nothing else creates — so the parent must be
+		// created before the clone can run. Failure here is itself
+		// fail-open: git.Run below will just fail (and warn) the same way
+		// it would for any other clone error.
+		if err := os.MkdirAll(filepath.Dir(store), 0o750); err != nil {
+			_, _ = fmt.Fprintf(w, "warning: docs store parent dir: %v (onboarding otherwise succeeded)\n", err)
+		}
 		if _, err := git.Run(filepath.Dir(store), "clone", docsRemote, store); err != nil {
 			_, _ = fmt.Fprintf(w, "warning: docs store clone: %v (onboarding otherwise succeeded)\n", err)
 		}
