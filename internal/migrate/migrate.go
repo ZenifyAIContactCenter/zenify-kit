@@ -55,12 +55,17 @@ func BuildPlan(root, toDir string, repos []workspace.Repo,
 	return items
 }
 
-// Apply thực hiện MOVE: mkdir toDir, move từng repo, cập nhật repos.yaml path.
-// Lỗi một repo thành note, tiếp tục repo sau (fail-open).
+// Apply thực hiện MOVE trong HAI PASS để tách vị trí manifest khỏi thứ tự move:
+// pass 1 move hết mọi repo (kể cả repo chứa manifest), pass 2 mới cập nhật repos.yaml
+// — nên khi updateYAML resolve đường dẫn manifest thì mọi repo đã ở vị trí cuối.
+// Lỗi một repo thành note, tiếp tục repo sau (fail-open). Repo move lỗi thì KHÔNG update YAML.
 func Apply(items []Item, move func(from, to string) error,
 	mkdirAll func(string) error, updateYAML func(name, newPath string) error) []string {
 
 	var notes []string
+	var moved []Item // các item move thành công → mới được update YAML ở pass 2
+
+	// Pass 1: move hết.
 	for _, it := range items {
 		if it.Action != Move {
 			continue
@@ -73,6 +78,11 @@ func Apply(items []Item, move func(from, to string) error,
 			notes = append(notes, "không move được "+it.Name+": "+err.Error())
 			continue
 		}
+		moved = append(moved, it)
+	}
+
+	// Pass 2: mọi move đã settle → manifest ở vị trí cuối, giờ mới cập nhật repos.yaml.
+	for _, it := range moved {
 		newPath := filepath.Base(filepath.Dir(it.To)) + "/" + it.Name
 		if err := updateYAML(it.Name, newPath); err != nil {
 			notes = append(notes, "đã move "+it.Name+" nhưng không cập nhật được repos.yaml: "+err.Error())

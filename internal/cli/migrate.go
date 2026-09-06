@@ -42,14 +42,43 @@ func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error 
 		return nil
 	}
 
+	// Manifest sống BÊN TRONG repo kit, không ở workspace root — và repo kit tự nó
+	// cũng bị move trong pass 1. Nên resolve LƯỜI (lần gọi updateYAML đầu tiên, sau
+	// khi mọi move đã xong nhờ Apply 2-pass) rồi memoize. Cấu trúc, KHÔNG hardcode tên repo.
+	var manifestPath string
+	var manifestErr error
+	var resolved bool
+	resolveManifest := func() (string, error) {
+		if !resolved {
+			resolved = true
+			manifestPath, manifestErr = findManifest(root)
+		}
+		return manifestPath, manifestErr
+	}
 	updateYAML := func(name, newPath string) error {
-		return updateRepoPathInYAML(filepath.Join(root, "manifest", "repos.yaml"), name, newPath)
+		p, err := resolveManifest()
+		if err != nil {
+			return err
+		}
+		return updateRepoPathInYAML(p, name, newPath)
 	}
 	for _, note := range migrate.Apply(items, os.Rename, func(d string) error { return os.MkdirAll(d, 0o755) }, updateYAML) {
 		fmt.Fprintln(stdout, "  "+note)
 	}
 	fmt.Fprintln(stdout, "\nXong. Nhớ restart dev server / herdr workspace của các repo đã move.")
 	return nil
+}
+
+// findManifest tìm repos.yaml trên layout SAU move: quét repo dưới root, trả về đường dẫn
+// tuyệt đối của repo đầu tiên có "manifest/repos.yaml". Cấu trúc — KHÔNG hardcode tên repo kit.
+func findManifest(root string) (string, error) {
+	for _, rp := range workspace.Discover(root, workspace.DefaultMaxDepth, os.ReadDir) {
+		p := filepath.Join(rp.Path, "manifest", "repos.yaml")
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("không thấy repo nào chứa manifest/repos.yaml dưới %s", root)
 }
 
 // updateRepoPathInYAML sửa dòng "    path: <cũ>" NGAY SAU "  - name: <name>".
