@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsview"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
@@ -81,6 +82,34 @@ func renderPlanTable(w io.Writer, plans []reconcile.RepoPlan, auth ghx.Auth) {
 // current public floor so the gate is real (a pre-0.3.0 binary is blocked) yet
 // can never self-block: any release carrying apply is >= v0.3.0.
 const minVersionFloor = "v0.3.0"
+
+// docsRemote is the knowledge-store repo `zenify up --apply` clones on a
+// brand-new machine when the store is absent. The on-disk store is named
+// "docs" (M6a; see defaultDocsRepo in docs.go), but the GitHub repo itself
+// is still named zenify-knowledge — that split is intentional, not a
+// mismatch to "fix".
+const docsRemote = "git@github.com:ZenifyAIContactCenter/zenify-knowledge.git"
+
+// ensureDocsStore clones the docs knowledge store to its resolved path
+// (resolveDocsStore) when absent, then reconciles the workspace view
+// (docsview.EnsureView) against it. Onboarding convenience: FAIL-OPEN. A
+// clone failure or a view failure only warns — it must never abort `up
+// --apply`, which is why this returns nothing.
+func ensureDocsStore(w io.Writer, git gitx.Runner, workspace string) {
+	store := resolveDocsStore(workspace, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir)
+	if fi, err := os.Stat(filepath.Join(store, ".git")); err != nil || !fi.IsDir() {
+		if _, err := git.Run(filepath.Dir(store), "clone", docsRemote, store); err != nil {
+			_, _ = fmt.Fprintf(w, "warning: docs store clone: %v (onboarding otherwise succeeded)\n", err)
+		}
+	}
+	viewDir := filepath.Join(workspace, defaultDocsRepo)
+	if viewDir == store {
+		return // not migrated yet — store IS the workspace docs dir, nothing to link
+	}
+	for _, n := range docsview.EnsureView(docsview.OSFS{}, store, viewDir) {
+		_, _ = fmt.Fprintln(w, n)
+	}
+}
 
 // runApply executes the actionable plans under the full b2a safety sequence:
 // version gate → workspace lock → pre-mutation snapshot → apply → persist the
@@ -177,6 +206,11 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 			_, _ = fmt.Fprintf(w, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
 		}
 	}
+
+	// Onboarding convenience (Task 5): clone the docs knowledge store on a
+	// brand-new machine when it's absent, then reconcile the workspace view.
+	// FAIL-OPEN — never affects `failed` or the return below.
+	ensureDocsStore(w, git, workspace)
 
 	if failed > 0 {
 		return exitcode.New(exitcode.Fail, fmt.Errorf("apply: %d repo(s) failed", failed))
