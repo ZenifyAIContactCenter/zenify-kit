@@ -1,7 +1,6 @@
 package migrate
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
@@ -10,30 +9,27 @@ import (
 func TestBuildPlanClassifies(t *testing.T) {
 	root := "/ws"
 	repos := []workspace.Repo{
-		{Name: "clean", Path: "/ws/clean"},
-		{Name: "dirty", Path: "/ws/dirty"},
-		{Name: "haswt", Path: "/ws/haswt"},
-		{Name: "already", Path: "/ws/repos/already"},
+		{Name: "alpha", Path: "/ws/alpha"},     // Move
+		{Name: "beta", Path: "/ws/repos/beta"}, // Skip — đã ở repos/
+		{Name: "dup", Path: "/ws/dup"},         // Refuse — trùng basename
+		{Name: "dup", Path: "/ws/repos/dup"},   // Refuse — trùng basename
 	}
-	dirty := func(dir string) (bool, error) { return dir == "/ws/dirty", nil }
-	hasWT := func(dir string) (bool, error) { return dir == "/ws/haswt", nil }
+	items := BuildPlan(root, "repos", repos)
 
-	items := BuildPlan(root, "repos", repos, dirty, hasWT)
 	by := map[string]Item{}
 	for _, it := range items {
-		by[it.Name] = it
+		by[it.Name+"|"+it.From] = it
 	}
-	if by["clean"].Action != Move || by["clean"].To != filepath.Join(root, "repos", "clean") {
-		t.Errorf("clean phải MOVE: %+v", by["clean"])
+	if it := by["alpha|/ws/alpha"]; it.Action != Move || it.To != "/ws/repos/alpha" {
+		t.Fatalf("alpha: %+v", it)
 	}
-	if by["dirty"].Action != Refuse || by["dirty"].Reason == "" {
-		t.Errorf("dirty phải REFUSE kèm reason: %+v", by["dirty"])
+	if it := by["beta|/ws/repos/beta"]; it.Action != Skip {
+		t.Fatalf("beta muốn Skip: %+v", it)
 	}
-	if by["haswt"].Action != Refuse {
-		t.Errorf("haswt phải REFUSE: %+v", by["haswt"])
-	}
-	if by["already"].Action != Skip {
-		t.Errorf("already trong repos/ phải SKIP: %+v", by["already"])
+	for _, k := range []string{"dup|/ws/dup", "dup|/ws/repos/dup"} {
+		if it := by[k]; it.Action != Refuse {
+			t.Fatalf("%s muốn Refuse (trùng basename): %+v", k, it)
+		}
 	}
 }
 

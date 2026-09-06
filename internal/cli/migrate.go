@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/migrate"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 	"github.com/spf13/cobra"
@@ -15,14 +14,8 @@ import (
 
 // runMigrate là lõi test được. FAIL-OPEN: luôn trả nil.
 func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error {
-	r := gitx.ExecRunner()
 	repos := workspace.Discover(root, workspace.DefaultMaxDepth, os.ReadDir)
-	dirty := func(dir string) (bool, error) {
-		st, err := gitx.Scan(r, dir)
-		return st.Dirty, err
-	}
-	hasWT := func(dir string) (bool, error) { return gitx.HasWorktrees(r, dir) }
-	items := migrate.BuildPlan(root, toDir, repos, dirty, hasWT)
+	items := migrate.BuildPlan(root, toDir, repos)
 
 	for _, it := range items {
 		fmt.Fprintf(stdout, "  %-7s %s\n", it.Action, it.Name)

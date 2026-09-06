@@ -22,34 +22,29 @@ type Item struct {
 	Reason         string
 }
 
-// BuildPlan phân loại mỗi repo. REFUSE nếu dirty hoặc có worktree. SKIP nếu đã ở toDir.
-func BuildPlan(root, toDir string, repos []workspace.Repo,
-	dirty func(dir string) (bool, error), hasWT func(dir string) (bool, error)) []Item {
-
+// BuildPlan phân loại mỗi repo: SKIP nếu đã ở toDir; REFUSE nếu trùng basename ở
+// nhiều nơi (không gom tự động được); còn lại MOVE. KHÔNG còn gate dirty/worktree —
+// v2 move repo dirty (os.Rename mang theo) và repair worktree sau move (xem Apply).
+func BuildPlan(root, toDir string, repos []workspace.Repo) []Item {
 	target := filepath.Join(root, toDir)
+	seen := map[string]int{}
+	for _, rp := range repos {
+		seen[rp.Name]++
+	}
 	var items []Item
 	for _, rp := range repos {
 		it := Item{Name: rp.Name, From: rp.Path}
-		if filepath.Dir(rp.Path) == target {
+		switch {
+		case seen[rp.Name] > 1:
+			it.Action = Refuse
+			it.Reason = "trùng tên repo ở nhiều nơi — không gom tự động, xử tay"
+		case filepath.Dir(rp.Path) == target:
 			it.Action = Skip
 			it.Reason = "đã ở " + toDir + "/"
-			items = append(items, it)
-			continue
+		default:
+			it.To = filepath.Join(target, rp.Name)
+			it.Action = Move
 		}
-		if d, err := dirty(rp.Path); err != nil || d {
-			it.Action = Refuse
-			it.Reason = "main checkout dirty — commit trước"
-			items = append(items, it)
-			continue
-		}
-		if w, err := hasWT(rp.Path); err != nil || w {
-			it.Action = Refuse
-			it.Reason = "còn worktree — `wt sweep`/merge sạch trước"
-			items = append(items, it)
-			continue
-		}
-		it.To = filepath.Join(target, rp.Name)
-		it.Action = Move
 		items = append(items, it)
 	}
 	return items
