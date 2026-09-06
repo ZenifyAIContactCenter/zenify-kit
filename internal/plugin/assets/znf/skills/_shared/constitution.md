@@ -55,3 +55,8 @@ detailed checks — dials up at the architectural tier and nearly off for spike 
 
 Edit this file like any other doc — git history is its version. Downstream `znf:` skills read it
 at runtime; there is no cached copy to bump.
+
+Where a learned thing belongs — which of the three layers (memory, CLAUDE.md, skill-rule /
+constitution) it lives in, and when to promote or retire it — is decided by
+`znf:_shared/knowledge-doctrine`. Read it before recording a rule at this layer: a principle added
+here must be the lowest layer that still reaches every context where it must fire.
