@@ -143,3 +143,70 @@ func TestEnsureGlobalHooks_DryRunNoWrite(t *testing.T) {
 		t.Fatal("dryRun should still report planned Added>0")
 	}
 }
+
+// Review fix round 1, finding 1 (Important): foreign top-level settings values
+// must never be edited, reordered, or dropped — only the "hooks" subtree is
+// decoded/normalized. The seed below is already in the canonical 2-space
+// indent that marshalNoEscape produces, so the "permissions" block's bytes
+// must survive verbatim in the output.
+func TestEnsureGlobalHooks_PreservesForeignSettingsBytes(t *testing.T) {
+	home := t.TempDir()
+	permissionsBlock := `"permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Read"
+    ],
+    "deny": []
+  }`
+	writeSettings(t, home, `{
+  "hooks": {},
+  `+permissionsBlock+`
+}`)
+	if _, err := ensureGlobalHooks(home, false); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	raw, _ := os.ReadFile(settingsPath(home))
+	if !strings.Contains(string(raw), permissionsBlock) {
+		t.Fatalf("foreign \"permissions\" block was reformatted or dropped; got:\n%s", raw)
+	}
+}
+
+// Review fix round 1, finding 2 (Minor): file mode of a pre-existing
+// settings.json must be preserved across a write, not silently narrowed to
+// os.CreateTemp's default 0600.
+func TestEnsureGlobalHooks_PreservesFileMode(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{}`)
+	if err := os.Chmod(settingsPath(home), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ensureGlobalHooks(home, false); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	fi, err := os.Stat(settingsPath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o644 {
+		t.Fatalf("file mode changed: got %o, want %o", fi.Mode().Perm(), 0o644)
+	}
+}
+
+// Review fix round 1, finding 3 (Minor): a non-object "hooks" value (string,
+// array, number, null) must never be replaced or dropped — fail-open the
+// same way as malformed JSON.
+func TestEnsureGlobalHooks_NonObjectHooksSkips(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{"hooks": "not-an-object"}`)
+	ch, err := ensureGlobalHooks(home, false)
+	if err == nil {
+		t.Fatal("expected error on non-object \"hooks\"")
+	}
+	if !ch.Skipped {
+		t.Fatal("expected Skipped=true")
+	}
+	raw, _ := os.ReadFile(settingsPath(home))
+	if string(raw) != `{"hooks": "not-an-object"}` {
+		t.Fatal("settings.json was overwritten despite non-object \"hooks\"")
+	}
+}

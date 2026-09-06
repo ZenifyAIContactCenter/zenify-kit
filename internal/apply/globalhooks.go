@@ -43,32 +43,48 @@ func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 
 // ensureGlobalHooks merges the znf hook entries into <home>/.claude/settings.json.
 // Idempotent by marker; atomic write; fail-open on malformed input.
+//
+// Only the "hooks" subtree is decoded and normalized — every other top-level
+// key (permissions, env, model, ...) is kept as its raw json.RawMessage bytes
+// and passed through untouched, so a developer's existing settings are never
+// edited, reordered, or dropped (mirrors the RawMessage technique in
+// mergeSettingsKeys, apply.go:226).
 func ensureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
 	path := filepath.Join(home, ".claude", "settings.json")
 
-	root := map[string]any{}
+	root := map[string]json.RawMessage{}
+	mode := os.FileMode(0o644)
 	existing, readErr := os.ReadFile(path)
-	if readErr == nil {
+	switch {
+	case readErr == nil:
 		if err := json.Unmarshal(existing, &root); err != nil {
 			// Malformed: do NOT touch. Caller fail-opens.
 			return HookChanges{Skipped: true}, fmt.Errorf("settings.json malformed, skipping hook wiring: %w", err)
 		}
-	} else if !os.IsNotExist(readErr) {
+		if fi, statErr := os.Stat(path); statErr == nil {
+			mode = fi.Mode().Perm()
+		}
+	case !os.IsNotExist(readErr):
 		return HookChanges{Skipped: true}, fmt.Errorf("read settings.json: %w", readErr)
 	}
 
-	hooks, _ := root["hooks"].(map[string]any)
-	if hooks == nil {
-		hooks = map[string]any{}
+	hooks := map[string]any{}
+	if raw, ok := root["hooks"]; ok {
+		if err := json.Unmarshal(raw, &hooks); err != nil {
+			// Non-object "hooks" (string/array/number): do NOT touch. Caller fail-opens.
+			return HookChanges{Skipped: true}, fmt.Errorf("settings.json \"hooks\" is not an object, skipping hook wiring: %w", err)
+		}
+		if hooks == nil {
+			// "hooks": null unmarshals without error but clears the map — treat the
+			// same as a non-object value rather than silently replacing it.
+			return HookChanges{Skipped: true}, fmt.Errorf("settings.json \"hooks\" is null, skipping hook wiring")
+		}
 	}
 
 	var ch HookChanges
 	for _, spec := range znfHookSpecs() {
-		if mergeOneHook(hooks, spec, &ch) {
-			// mutated
-		}
+		mergeOneHook(hooks, spec, &ch)
 	}
-	root["hooks"] = hooks
 
 	if dryRun {
 		return ch, nil
@@ -77,11 +93,17 @@ func ensureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
 		return ch, nil // nothing to write => byte-identical (idempotent)
 	}
 
+	hooksOut, err := marshalNoEscape(hooks)
+	if err != nil {
+		return ch, err
+	}
+	root["hooks"] = json.RawMessage(bytes.TrimSpace(hooksOut))
+
 	out, err := marshalNoEscape(root)
 	if err != nil {
 		return ch, err
 	}
-	if err := writeAtomic(path, out); err != nil {
+	if err := writeAtomic(path, out, mode); err != nil {
 		return ch, err
 	}
 	return ch, nil
@@ -183,8 +205,10 @@ func marshalNoEscape(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// writeAtomic writes via temp file + rename in the same dir.
-func writeAtomic(path string, data []byte) error {
+// writeAtomic writes via temp file + rename in the same dir, chmod'd to mode
+// so a pre-existing file's permissions survive (os.CreateTemp defaults to
+// 0600, which would otherwise silently narrow e.g. an existing 0644 file).
+func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -200,6 +224,9 @@ func writeAtomic(path string, data []byte) error {
 		return err
 	}
 	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
 		return err
 	}
 	return os.Rename(tmpName, path)
