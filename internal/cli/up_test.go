@@ -135,6 +135,8 @@ func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 
 func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", t.TempDir()) // isolate the Task 5 docs-store step from the real machine
+	home := t.TempDir()
+	t.Setenv("HOME", home) // isolate the Task 7 global-hooks step from the real ~/.claude
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -154,6 +156,14 @@ func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	// Ownership manifest persisted under the workspace.
 	if _, err := os.Stat(filepath.Join(ws, ".zenify", "manifest.json")); err != nil {
 		t.Errorf("ownership manifest not saved: %v", err)
+	}
+	// znf hooks wired into the (isolated) global settings.json.
+	globalSettings, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatalf("global settings.json not written: %v", err)
+	}
+	if !strings.Contains(string(globalSettings), "zenify hooks-run") {
+		t.Errorf("global settings.json missing znf hooks, got %q", globalSettings)
 	}
 }
 
@@ -178,6 +188,7 @@ func TestRunApply_LockHeld_ReturnsExit4(t *testing.T) {
 
 func TestRunApply_PartialFailure_SavesManifestAndReturnsFail(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", t.TempDir()) // isolate the Task 5 docs-store step from the real machine
+	t.Setenv("HOME", t.TempDir())        // isolate the Task 7 global-hooks step from the real ~/.claude
 	ws := t.TempDir()
 	// A CLONE plan whose gh clone fails → the repo's Result.Err is set.
 	gh := &fakeGH{cloneErr: true}
@@ -331,5 +342,22 @@ func TestHasFrontendRepo(t *testing.T) {
 	m2 := &manifest.Manifest{Repos: []manifest.Repo{{Name: "be", Tags: []string{"backend"}}}}
 	if hasFrontendRepo(m2) {
 		t.Fatal("no frontend repo → false")
+	}
+}
+
+func TestSnapshotTargets_IncludesSettings(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	ws := t.TempDir()
+	targets := snapshotTargets(nil, ws)
+	want := filepath.Join(home, ".claude", "settings.json")
+	found := false
+	for _, p := range targets {
+		if p == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("snapshotTargets missing %q; got %v", want, targets)
 	}
 }

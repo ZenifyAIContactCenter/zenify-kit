@@ -222,6 +222,15 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	// FAIL-OPEN — never affects `failed` or the return below.
 	ensureDocsStore(w, git, workspace)
 
+	// Wire znf hooks into ~/.claude/settings.json (fail-open; never affects `failed`).
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if ch, herr := apply.EnsureGlobalHooks(home, false); herr != nil {
+			_, _ = fmt.Fprintf(w, "warning: hook wiring skipped: %v\n", herr)
+		} else {
+			_, _ = fmt.Fprintf(w, "wired %d znf hooks\n", ch.Total())
+		}
+	}
+
 	if failed > 0 {
 		return exitcode.New(exitcode.Fail, fmt.Errorf("apply: %d repo(s) failed", failed))
 	}
@@ -256,6 +265,9 @@ func snapshotTargets(plans []reconcile.RepoPlan, workspace string) []string {
 				filepath.Join(repoDir, ".git", "info", "exclude"),
 			)
 		}
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		files = append(files, filepath.Join(home, ".claude", "settings.json"))
 	}
 	return files
 }
