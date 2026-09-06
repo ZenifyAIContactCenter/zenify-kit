@@ -48,7 +48,9 @@ func runObserveHook(wsRoot, kind string, w io.Writer) int {
 // session-start.sh AND `zenify docs sync` on SessionStart.
 func runSessionStart(wsRoot string, w io.Writer) int {
 	defer failOpen(w)
-	// Task 5 inserts selfHeal(wsRoot) here
+	if home, err := os.UserHomeDir(); err == nil {
+		_ = selfHeal(home)
+	}
 	if err := docsSyncCore(wsRoot, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "znf docs-sync:", err)
 	}

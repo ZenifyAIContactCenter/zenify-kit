@@ -31,7 +31,7 @@ func znfHookSpecs() []hookSpec {
 
 func (s hookSpec) command() string { return hookMarker + s.ID }
 
-// HookChanges reports what ensureGlobalHooks did (or would do in dryRun).
+// HookChanges reports what EnsureGlobalHooks did (or would do in dryRun).
 type HookChanges struct {
 	Added     int
 	Updated   int
@@ -41,7 +41,7 @@ type HookChanges struct {
 
 func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 
-// ensureGlobalHooks merges the znf hook entries into <home>/.claude/settings.json.
+// EnsureGlobalHooks merges the znf hook entries into <home>/.claude/settings.json.
 // Idempotent by marker; atomic write; fail-open on malformed input.
 //
 // Only the "hooks" subtree is decoded and normalized — every other top-level
@@ -53,7 +53,7 @@ func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 // normalized on every write, same as the rest of this package (see
 // mergeSettingsKeys, apply.go:226, which reformats the whole file by design)
 // — so this is content-and-order preservation, not byte-for-byte identity.
-func ensureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
+func EnsureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
 	path := filepath.Join(home, ".claude", "settings.json")
 
 	root := map[string]json.RawMessage{}

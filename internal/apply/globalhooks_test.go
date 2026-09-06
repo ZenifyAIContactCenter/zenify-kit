@@ -33,7 +33,7 @@ func TestEnsureGlobalHooks_PreservesForeignHooks(t *testing.T) {
     ]
   }
 }`)
-	if _, err := ensureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
@@ -52,11 +52,11 @@ func TestEnsureGlobalHooks_PreservesForeignHooks(t *testing.T) {
 // SC-4: second run with nothing changed => 0 changes, byte-identical.
 func TestEnsureGlobalHooks_Idempotent(t *testing.T) {
 	home := t.TempDir()
-	if _, err := ensureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
 		t.Fatal(err)
 	}
 	first, _ := os.ReadFile(settingsPath(home))
-	ch, err := ensureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(home, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestEnsureGlobalHooks_Idempotent(t *testing.T) {
 func TestEnsureGlobalHooks_MalformedSkips(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{ this is not json `)
-	ch, err := ensureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(home, false)
 	if err == nil {
 		t.Fatal("expected error on malformed settings")
 	}
@@ -96,7 +96,7 @@ func TestEnsureGlobalHooks_ReplacesStaleMarker(t *testing.T) {
     ]
   }
 }`)
-	ch, err := ensureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(home, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestEnsureGlobalHooks_ReplacesStaleMarker(t *testing.T) {
 // FR-4.4: byte-write must not HTML-escape matcher special chars.
 func TestEnsureGlobalHooks_NoHTMLEscape(t *testing.T) {
 	home := t.TempDir()
-	if _, err := ensureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
@@ -132,7 +132,7 @@ func TestEnsureGlobalHooks_NoHTMLEscape(t *testing.T) {
 // FR-4.3 (part): dryRun does not write.
 func TestEnsureGlobalHooks_DryRunNoWrite(t *testing.T) {
 	home := t.TempDir()
-	ch, err := ensureGlobalHooks(home, true)
+	ch, err := EnsureGlobalHooks(home, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestEnsureGlobalHooks_DryRunNoWrite(t *testing.T) {
 // that actually distinguishes the two approaches. This version seeds a
 // foreign object with deliberately NON-alphabetical key order (zebra, alpha,
 // mango) plus a nested array, and checks both content and order survive.
-// Reverting ensureGlobalHooks to decode/re-encode the whole root as
+// Reverting EnsureGlobalHooks to decode/re-encode the whole root as
 // map[string]any (instead of keeping foreign top-level values as
 // json.RawMessage) would re-sort these keys to alpha, mango, zebra on
 // marshal and break this test.
@@ -167,7 +167,7 @@ func TestEnsureGlobalHooks_PreservesForeignValueContentAndKeyOrder(t *testing.T)
     "mango": [3, 1, 4]
   }
 }`)
-	if _, err := ensureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
@@ -213,7 +213,7 @@ func TestEnsureGlobalHooks_PreservesFileMode(t *testing.T) {
 	if err := os.Chmod(settingsPath(home), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ensureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
 	fi, err := os.Stat(settingsPath(home))
@@ -231,7 +231,7 @@ func TestEnsureGlobalHooks_PreservesFileMode(t *testing.T) {
 func TestEnsureGlobalHooks_NonObjectHooksSkips(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"hooks": "not-an-object"}`)
-	ch, err := ensureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(home, false)
 	if err == nil {
 		t.Fatal("expected error on non-object \"hooks\"")
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 )
 
 func TestSyncMaterializesTree(t *testing.T) {
@@ -134,6 +135,22 @@ func TestSync_MaterializesReviewSkill(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dest, p)); err != nil {
 			t.Fatalf("%s chưa materialize: %v", p, err)
 		}
+	}
+}
+
+// FR-6.1: Sync stamps the manifest with the running binary's version.
+func TestSync_StampsVersion(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	m, err := managed.Load(man)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	if m.Version != version.Current() {
+		t.Fatalf("manifest version = %q, want %q", m.Version, version.Current())
 	}
 }
 
