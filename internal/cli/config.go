@@ -11,15 +11,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// defaultConfigRepo/Sub: config dir mặc định = <workspace>/zenify-knowledge/config
-// (quy ước record-layer M6a). Override bằng --config-dir cho workspace khác.
+// defaultConfigRepo/Sub: config dir mặc định = repo zenify-knowledge, subdir config
+// (quy ước record-layer M6a). Đường dẫn repo tự tìm theo layout (phẳng hoặc repos/<repo>
+// sau `zenify migrate`). Override bằng --config-dir cho workspace khác.
 const defaultConfigRepo = "zenify-knowledge"
 const defaultConfigSub = "config"
 
 // runConfig là lõi test được. FAIL-OPEN: luôn trả nil; lỗi thành note ra stderr.
 func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer) error {
 	if configDir == "" {
-		configDir = filepath.Join(workspace, defaultConfigRepo, defaultConfigSub)
+		configDir = resolveWorkspaceRepoDir(workspace, defaultConfigRepo, defaultConfigSub, os.ReadDir)
 	}
 	manifestPath := filepath.Join(configDir, "distribution.txt")
 	mb, err := os.ReadFile(manifestPath)
@@ -108,7 +109,7 @@ func newConfigCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "thư mục workspace (mặc định cwd)")
-	cmd.Flags().StringVar(&configDir, "config-dir", "", "thư mục config nguồn (mặc định <workspace>/zenify-knowledge/config)")
+	cmd.Flags().StringVar(&configDir, "config-dir", "", "thư mục config nguồn (mặc định repo zenify-knowledge/config, tự tìm theo layout)")
 	cmd.Flags().BoolVar(&apply, "apply", false, "ghi thay đổi (mặc định chỉ dry-run)")
 	return cmd
 }

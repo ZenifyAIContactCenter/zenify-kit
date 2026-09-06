@@ -19,7 +19,8 @@ const defaultOutRepo = "zenify-knowledge"
 const defaultOutSub = "releases"
 
 // runReleaseReport là lõi test được. FAIL-OPEN: luôn trả nil; mọi lỗi thành note in ra stderr.
-// outDir rỗng → mặc định <workspaceDir>/zenify-knowledge/releases.
+// outDir rỗng → mặc định repo zenify-knowledge/releases (đường dẫn repo tự tìm theo layout,
+// phẳng hoặc repos/<repo> sau `zenify migrate`).
 func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, r gitx.Runner, stdout, stderr io.Writer) error {
 	loadPatterns := func(dir string) []string {
 		c, err := wt.Load(dir)
@@ -47,7 +48,7 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, r
 	rep := release.Build(r, resolve, repos, n, loadPatterns)
 	out := release.Render(rep)
 	if outDir == "" {
-		outDir = filepath.Join(workspaceDir, defaultOutRepo, defaultOutSub)
+		outDir = resolveWorkspaceRepoDir(workspaceDir, defaultOutRepo, defaultOutSub, os.ReadDir)
 	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fmt.Fprintf(stderr, "release-report: không tạo được thư mục out: %v (fail-open)\n", err)
@@ -98,6 +99,6 @@ func newReleaseReportCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)")
 	cmd.Flags().BoolVar(&noFetch, "no-fetch", false, "bỏ git fetch, dùng ref local")
-	cmd.Flags().StringVar(&outDir, "out-dir", "", "thư mục ghi report (mặc định <workspace>/zenify-knowledge/releases)")
+	cmd.Flags().StringVar(&outDir, "out-dir", "", "thư mục ghi report (mặc định repo zenify-knowledge/releases, tự tìm theo layout)")
 	return cmd
 }
