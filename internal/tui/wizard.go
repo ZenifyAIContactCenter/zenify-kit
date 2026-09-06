@@ -6,6 +6,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -32,6 +33,13 @@ type OnboardConfig struct {
 	AutoConfirm bool
 	PlanFn      func() ([]reconcile.RepoPlan, error)
 	ApplyFn     func(selected []string) error
+	// DetectGHFn and AuthStatusFn override the real gh preflight/identity
+	// checks (detectGH / ghAuthStatus) for tests, so RunOnboard never shells
+	// out to a real `gh` in a test run. Nil uses the real implementation,
+	// which is what TestRunOnboard_AccessiblePlanOnly relies on (this
+	// workstation has `gh` installed and is logged in).
+	DetectGHFn   func() error
+	AuthStatusFn func() (string, bool)
 }
 
 // OnboardResult carries the plan (and, once Task 11 wires apply, the
@@ -47,6 +55,10 @@ type OnboardResult struct {
 // interactive multiselect + apply confirmation on top of this skeleton.
 func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	var res OnboardResult
+
+	if err := loginStep(cfg); err != nil {
+		return res, err
+	}
 
 	plan, err := cfg.PlanFn()
 	if err != nil {
@@ -73,6 +85,55 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 		return res, err
 	}
 	return res, nil
+}
+
+// loginStep runs the gh preflight (FR-1.1) and identity check (FR-1.2)
+// before discover/select/plan ever run, so a bare `zenify up` with no gh
+// auth reaches this step instead of failing deep inside buildPlan.
+//
+// Not a running bubbletea Program at this point (huh.Form.Run manages its
+// own Program per call, and RunOnboard itself never starts one), so
+// tea.ExecProcess — which sends a Cmd into an already-running Program's
+// Update loop — has nothing to suspend/resume. Instead the interactive path
+// runs `gh auth login --web` directly via cmd.Run() with stdio attached to
+// the real terminal, which gives the same effect: the wizard blocks here,
+// the browser login happens, and RunOnboard continues once it returns.
+func loginStep(cfg OnboardConfig) error {
+	detect := cfg.DetectGHFn
+	if detect == nil {
+		detect = detectGH
+	}
+	if err := detect(); err != nil {
+		return err
+	}
+
+	authStatus := cfg.AuthStatusFn
+	if authStatus == nil {
+		authStatus = ghAuthStatus
+	}
+	if _, ok := authStatus(); ok {
+		return nil
+	}
+
+	if cfg.Accessible {
+		// Headless / non-TTY path (FR-1.4): never open a browser, fail
+		// with a friendly instruction instead.
+		return errors.New("not logged in — run: gh auth login")
+	}
+
+	// Interactive path: suspend the wizard, run gh's browser login, then
+	// re-check status once it returns.
+	cmd := loginCmd()
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	if _, ok := authStatus(); !ok {
+		return errors.New("not logged in — run: gh auth login")
+	}
+	return nil
 }
 
 // selectRepos prompts the user to pick which planned repos to onboard, via a
