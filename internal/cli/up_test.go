@@ -36,6 +36,30 @@ type fakeGit struct{}
 
 func (fakeGit) Run(dir string, args ...string) ([]byte, error) { return nil, nil }
 
+// recordingGit records every call so tests can assert on the clone-runner
+// invocation (Task 5) without shelling out to a real git.
+type recordingGit struct {
+	calls    [][]string
+	cloneErr bool
+}
+
+func (r *recordingGit) Run(dir string, args ...string) ([]byte, error) {
+	r.calls = append(r.calls, append([]string{dir}, args...))
+	if len(args) > 0 && args[0] == "clone" && r.cloneErr {
+		return nil, fmt.Errorf("clone failed")
+	}
+	return nil, nil
+}
+
+func (r *recordingGit) cloned() (remote, dest string, ok bool) {
+	for _, c := range r.calls {
+		if len(c) >= 4 && c[1] == "clone" {
+			return c[2], c[3], true
+		}
+	}
+	return "", "", false
+}
+
 func testManifest() *manifest.Manifest {
 	return &manifest.Manifest{Org: "ZenifyAIContactCenter", Repos: []manifest.Repo{
 		{Name: "contact-center-be", URL: "git@github.com:ZenifyAIContactCenter/contact-center-be.git", Path: "contact-center-be", Base: "origin/staging"},
@@ -110,6 +134,7 @@ func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 }
 
 func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir()) // isolate the Task 5 docs-store step from the real machine
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -152,6 +177,7 @@ func TestRunApply_LockHeld_ReturnsExit4(t *testing.T) {
 }
 
 func TestRunApply_PartialFailure_SavesManifestAndReturnsFail(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir()) // isolate the Task 5 docs-store step from the real machine
 	ws := t.TempDir()
 	// A CLONE plan whose gh clone fails → the repo's Result.Err is set.
 	gh := &fakeGH{cloneErr: true}
@@ -189,6 +215,108 @@ func TestDryRunApplyConflict(t *testing.T) {
 	// --apply with an explicit --dry-run(=true) → contradiction, rejected
 	if err := dryRunApplyConflict(true, true, true); err == nil {
 		t.Fatal("apply + explicit --dry-run=true: expected a conflict error, got nil")
+	}
+}
+
+func TestEnsureDocsStore_ClonesWhenAbsent(t *testing.T) {
+	ws := t.TempDir()
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
+	wantStore := filepath.Join(zh, "knowledge")
+
+	git := &recordingGit{}
+	var buf bytes.Buffer
+	ensureDocsStore(&buf, git, ws)
+
+	remote, dest, ok := git.cloned()
+	if !ok {
+		t.Fatalf("expected a clone call, got calls=%v", git.calls)
+	}
+	if remote != docsRemote {
+		t.Errorf("clone remote = %q, want %q", remote, docsRemote)
+	}
+	if dest != wantStore {
+		t.Errorf("clone dest = %q, want %q (resolveDocsStore)", dest, wantStore)
+	}
+	// EnsureView is always attempted, even though the (faked) clone left no
+	// real store on disk — it fails open with a note rather than panicking.
+	if !strings.Contains(buf.String(), "docs view") {
+		t.Errorf("expected EnsureView to have been attempted, got %q", buf.String())
+	}
+}
+
+// TestEnsureDocsStore_CreatesMissingParentBeforeClone covers the genuinely
+// fresh-machine path: ZENIFY_HOME points at a directory that does NOT yet
+// exist, so filepath.Dir(store) (its parent) is also absent — the exact
+// shape of a brand-new machine's real ~/.zenify. gitx.Runner always runs
+// `git -C <dir> ...`, and `git -C` on a non-existent <dir> fails before ever
+// touching the network, so without an explicit mkdir the clone would silently
+// no-op (fail-open swallowing the error) and the store would never be
+// created — defeating the whole point of this task.
+func TestEnsureDocsStore_CreatesMissingParentBeforeClone(t *testing.T) {
+	ws := t.TempDir()
+	zh := filepath.Join(t.TempDir(), "fresh") // NOT created — parent of `knowledge` is absent too
+	t.Setenv("ZENIFY_HOME", zh)
+	wantStore := filepath.Join(zh, "knowledge")
+
+	if _, err := os.Stat(zh); err == nil {
+		t.Fatalf("test setup broken: %q must not exist yet", zh)
+	}
+
+	git := &recordingGit{}
+	var buf bytes.Buffer
+	ensureDocsStore(&buf, git, ws)
+
+	remote, dest, ok := git.cloned()
+	if !ok {
+		t.Fatalf("expected a clone call, got calls=%v", git.calls)
+	}
+	if remote != docsRemote {
+		t.Errorf("clone remote = %q, want %q", remote, docsRemote)
+	}
+	if dest != wantStore {
+		t.Errorf("clone dest = %q, want %q (resolveDocsStore)", dest, wantStore)
+	}
+	if _, err := os.Stat(filepath.Dir(wantStore)); err != nil {
+		t.Errorf("expected the store's parent dir to have been created before the clone call: %v", err)
+	}
+}
+
+func TestEnsureDocsStore_SkipsCloneWhenPresent(t *testing.T) {
+	ws := t.TempDir()
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
+	store := filepath.Join(zh, "knowledge")
+	if err := os.MkdirAll(filepath.Join(store, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(store, "specs"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	git := &recordingGit{}
+	var buf bytes.Buffer
+	ensureDocsStore(&buf, git, ws)
+
+	if _, _, ok := git.cloned(); ok {
+		t.Fatalf("clone must not be invoked when the store is already present, calls=%v", git.calls)
+	}
+	// EnsureView should still have run and linked the real store's "specs" dir.
+	if _, err := os.Lstat(filepath.Join(ws, "docs", "specs")); err != nil {
+		t.Errorf("expected docs view link for specs: %v", err)
+	}
+}
+
+func TestEnsureDocsStore_CloneErrorFailsOpen(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+
+	git := &recordingGit{cloneErr: true}
+	var buf bytes.Buffer
+	ensureDocsStore(&buf, git, ws) // must not panic on a clone error
+
+	if !strings.Contains(buf.String(), "docs store clone") {
+		t.Errorf("expected a fail-open warning note, got %q", buf.String())
 	}
 }
 
