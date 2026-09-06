@@ -8,8 +8,8 @@ allowed-tools: Read Grep Bash(zenify analyze *)
 
 **Announce:** "Using znf:analyze to inspect the spec+plan before implementation."
 
-Kiểm một cặp spec+plan đã viết, đối chiếu với `znf:_shared/constitution` (P1–P8) và
-`znf:_shared/spec-template` (Brief 7-trường). **Advisory:** báo findings, KHÔNG chặn tiến độ.
+Kiểm một cặp spec+plan đã viết, đối chiếu với `znf:_shared/constitution` (P1–P9) và
+`znf:_shared/spec-template` (Brief 8-trường). **Advisory:** báo findings, KHÔNG chặn tiến độ.
 Hai lớp — cơ học (command) rồi phán đoán (skill).
 
 ## Khi nào dùng
@@ -29,7 +29,7 @@ zenify analyze --spec <spec-path> --plan <plan-path>
 - **Coverage** — orphan FR (yêu cầu không task nào làm, CRITICAL), orphan task (task không khai
   `_Requirements:`, HIGH), dangling ref (plan cite FR spec không có, HIGH).
 - **Marker** — mọi `[NEEDS CLARIFICATION` còn sót (HIGH), kèm số dòng.
-- **Brief** — có `## Brief` không, mấy/7 mục.
+- **Brief** — có `## Brief` không, mấy/8 mục.
 - **Risk-metadata** — Brief thiếu tag `_Blast-radius:` / `_DB:` / `_Rollback:` (HIGH mỗi tag).
 
 Command fail-open: nếu nó báo "không phân tích được", ghi nhận và tiếp — đừng coi là lỗi chặn.

@@ -13,7 +13,7 @@ detailed checks — dials up at the architectural tier and nearly off for spike 
 
 ## Principles
 
-- **P1 — Brief-first.** An architectural spec MUST open with the seven-field Brief
+- **P1 — Brief-first.** An architectural spec MUST open with the eight-field Brief
   (`znf:_shared/spec-template`).
 - **P2 — Stable IDs.** Every functional requirement (FR) and success criterion (SC) MUST carry
   a stable ID (`FR-1`, `FR-1.1`, `SC-1`).
