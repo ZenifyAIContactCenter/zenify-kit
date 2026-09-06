@@ -1,4 +1,4 @@
-// Package distribute phân phối file config workspace-level từ zenify-knowledge/config/
+// Package distribute phân phối file config workspace-level từ docs/.config/
 // xuống workspace theo một manifest. Nguồn = config/, một chiều. Fail-open.
 package distribute
 
