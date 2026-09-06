@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
 )
@@ -17,24 +17,17 @@ type participant struct {
 	DBAccessor     string   `json:"dbAccessor"`
 }
 
-// gateParticipants scan subdir trực tiếp của workspace; repo nào có worktree.json
-// với gate.sharedStore=true thì là participant. Repo Load lỗi (không có worktree.json)
-// hoặc sharedStore=false → bỏ qua.
-func gateParticipants(workspace string) ([]participant, error) {
-	entries, err := os.ReadDir(workspace)
-	if err != nil {
-		return nil, err
-	}
+// gateParticipants tìm repo trong workspaceDir tới độ sâu workspace.DefaultMaxDepth
+// (không chỉ con trực tiếp); repo nào có worktree.json với gate.sharedStore=true thì
+// là participant. Repo Load lỗi (không có worktree.json) hoặc sharedStore=false → bỏ qua.
+func gateParticipants(workspaceDir string) ([]participant, error) {
 	var ps []participant
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		c, err := wt.Load(filepath.Join(workspace, e.Name()))
+	for _, repo := range workspace.Discover(workspaceDir, workspace.DefaultMaxDepth, os.ReadDir) {
+		c, err := wt.Load(repo.Path)
 		if err != nil || !c.GateSharedStore {
 			continue
 		}
-		ps = append(ps, participant{Name: e.Name(), AccessPatterns: c.GateAccessPatterns, DBAccessor: c.GateDBAccessor})
+		ps = append(ps, participant{Name: repo.Name, AccessPatterns: c.GateAccessPatterns, DBAccessor: c.GateDBAccessor})
 	}
 	return ps, nil
 }
