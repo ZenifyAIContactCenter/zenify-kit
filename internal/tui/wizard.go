@@ -57,6 +57,11 @@ type OnboardConfig struct {
 	InstallRunner func(tool string) error
 	// lookPath overrides exec.LookPath inside offerInstallGH (test seam).
 	lookPath func(string) (string, error)
+
+	// SecretKeys là các env key B8 prompt masked (subset bootstrap). Rỗng → secretStep no-op.
+	SecretKeys []string
+	// SecretPromptFn override prompt masked (test seam). Nil → huh EchoModePassword thật.
+	SecretPromptFn func(keys []string) (map[string]string, error)
 }
 
 // OnboardResult carries the plan, the selected repos, and whether apply ran
