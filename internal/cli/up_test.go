@@ -13,6 +13,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/lock"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 )
@@ -200,8 +201,20 @@ func TestRunApply_PartialFailure_SavesManifestAndReturnsFail(t *testing.T) {
 		t.Fatalf("want exit %d (Fail) on a failed repo, got %d (err %v)", exitcode.Fail, exitcode.Code(err), err)
 	}
 	// The ownership manifest must still be persisted (succeeded repos are recorded).
-	if _, statErr := os.Stat(filepath.Join(ws, ".zenify", "manifest.json")); statErr != nil {
+	manifestPath := filepath.Join(ws, ".zenify", "manifest.json")
+	if _, statErr := os.Stat(manifestPath); statErr != nil {
 		t.Errorf("ownership manifest not saved after a partial failure: %v", statErr)
+	}
+	// Per-repo transaction invariant: the failed repo must NOT be Record'd in the
+	// persisted manifest (clone fail → no settings written; revert drops any
+	// in-memory key). Read the manifest back from disk and assert its absence.
+	got, err := managed.Load(manifestPath)
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	failedSettings := filepath.Join(ws, "svc", ".claude", "settings.local.json")
+	if _, ok := got.Get(failedSettings); ok {
+		t.Errorf("repo fail KHÔNG được có trong manifest")
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
@@ -28,6 +29,28 @@ type Options struct {
 	Owned      *managed.Manifest        // ownership manifest to Record written files into
 	RepoByName map[string]manifest.Repo // manifest entry per repo name (for URL/base)
 	SecretKeys []string                 // env keys to scaffold as empty placeholders (FR-065); values never distributed
+
+	// FR-9a/b: bật per-repo transaction khi SnapshotRoot != "". Rỗng cả hai =
+	// hành vi legacy (apply + Record in-memory, caller tự Save) để test cũ
+	// trong apply_test.go (không set các field này) chạy nguyên.
+	SnapshotRoot string                                     // .zenify/snapshots — nơi chứa per-repo snapshot
+	ManifestPath string                                     // .zenify/manifest.json — Save sau mỗi repo promote
+	Now          func() int64                               // clock cho snapshot id (nil → time.Now)
+	VerifyRepoFn func(repoDir string, wrote []string) error // nil → defaultVerifyRepo
+}
+
+func (o Options) now() int64 {
+	if o.Now != nil {
+		return o.Now()
+	}
+	return time.Now().Unix()
+}
+
+func (o Options) verify(repoDir string, wrote []string) error {
+	if o.VerifyRepoFn != nil {
+		return o.VerifyRepoFn(repoDir, wrote)
+	}
+	return defaultVerifyRepo(wrote)
 }
 
 // Result is the outcome for one repo.
@@ -49,32 +72,174 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 	for _, p := range plans {
 		r := Result{Repo: p.Name, State: p.State}
 		repoDir := filepath.Join(opts.Workspace, p.Path)
-		switch p.State {
-		case reconcile.Clone:
-			r.Action = "clone + wire"
-			if err := cloneRepo(gh, opts.Org, p.Name, repoDir); err != nil {
-				r.Err = err
-				break
-			}
-			wrote, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
-			r.Wrote, r.Err = wrote, err
-		case reconcile.Wire:
-			r.Action = "wire config"
-			wrote, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
-			r.Wrote, r.Err = wrote, err
-		case reconcile.Adopt:
-			r.Action = "adopt in place"
-			wrote, err := adoptRepo(repoDir, opts.Owned)
-			r.Wrote, r.Err = wrote, err
-		default:
+
+		if !isActionable(p.State) {
 			// OK, DRIFT:skip-dirty, wrong-remote, SKIP:no-access, SKIP,
 			// MIGRATE-layout (automated flip deferred to M2): report, do nothing.
 			r.Skipped = true
 			r.Action = "skipped (" + string(p.State) + ")"
+			results = append(results, r)
+			continue
+		}
+
+		transact := opts.SnapshotRoot != ""
+		repoFiles := []string{
+			filepath.Join(repoDir, ".claude", "settings.local.json"),
+			filepath.Join(repoDir, ".git", "info", "exclude"),
+		}
+
+		var (
+			snapDir       string
+			existedBefore map[string]bool
+			priorKeys     map[string]struct{}
+		)
+		if transact {
+			existedBefore = statSet(repoFiles)
+			priorKeys = ownedKeySet(opts.Owned)
+			id := fmt.Sprintf("txn-%s-%d", p.Name, opts.now())
+			sd, serr := managed.Snapshot(id, repoFiles, opts.SnapshotRoot)
+			if serr != nil {
+				r.Err = fmt.Errorf("snapshot %s: %w", p.Name, serr)
+				results = append(results, r)
+				continue
+			}
+			snapDir = sd
+		}
+
+		r.Action, r.Wrote, r.Err = applyOne(p, repoDir, opts, gh, git)
+		if r.Err == nil && transact {
+			r.Err = opts.verify(repoDir, r.Wrote)
+		}
+
+		if transact {
+			if r.Err != nil {
+				revertRepo(snapDir, repoFiles, existedBefore)
+				revertOwnedKeys(opts.Owned, priorKeys)
+			} else if opts.ManifestPath != "" {
+				if serr := opts.Owned.Save(opts.ManifestPath); serr != nil {
+					r.Err = fmt.Errorf("promote %s: %w", p.Name, serr)
+				}
+			}
 		}
 		results = append(results, r)
 	}
 	return results, nil
+}
+
+// applyOne chạy đúng thao tác ghi theo state (nội dung switch cũ). gh/git chỉ
+// dùng cho Clone; Wire/Adopt không đụng tới.
+func applyOne(p reconcile.RepoPlan, repoDir string, opts Options, gh ghx.Runner, git gitx.Runner) (string, []string, error) {
+	switch p.State {
+	case reconcile.Clone:
+		if err := cloneRepo(gh, opts.Org, p.Name, repoDir); err != nil {
+			return "clone + wire", nil, err
+		}
+		wrote, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
+		return "clone + wire", wrote, err
+	case reconcile.Wire:
+		wrote, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
+		return "wire config", wrote, err
+	case reconcile.Adopt:
+		wrote, err := adoptRepo(repoDir, opts.Owned)
+		return "adopt in place", wrote, err
+	default:
+		return "skipped (" + string(p.State) + ")", nil, nil
+	}
+}
+
+func isActionable(s reconcile.State) bool {
+	return s == reconcile.Clone || s == reconcile.Wire || s == reconcile.Adopt
+}
+
+// defaultVerifyRepo kiểm mỗi file repo vừa ghi tồn tại + parse được:
+// settings.local.json là JSON có "env" object; .git/info/exclude chứa dòng
+// .worktrees/. Chỉ kiểm các file trong `wrote` (thứ repo này thực sự đụng).
+func defaultVerifyRepo(wrote []string) error {
+	for _, f := range wrote {
+		switch {
+		case strings.HasSuffix(f, "settings.local.json"):
+			b, err := os.ReadFile(f) //nolint:gosec // G304 -- path computed internally from workspace/plan, not externally-tainted
+			if err != nil {
+				return fmt.Errorf("verify %s: %w", f, err)
+			}
+			var root map[string]any
+			if err := json.Unmarshal(b, &root); err != nil {
+				return fmt.Errorf("verify %s: not valid JSON: %w", f, err)
+			}
+			if _, ok := root["env"].(map[string]any); !ok {
+				return fmt.Errorf("verify %s: missing env object", f)
+			}
+		case strings.HasSuffix(f, filepath.Join("info", "exclude")):
+			b, err := os.ReadFile(f) //nolint:gosec // G304 -- path computed internally from workspace/plan, not externally-tainted
+			if err != nil {
+				return fmt.Errorf("verify %s: %w", f, err)
+			}
+			found := false
+			for _, ln := range strings.Split(string(b), "\n") {
+				if strings.TrimSpace(ln) == ".worktrees/" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("verify %s: missing .worktrees/ line", f)
+			}
+		}
+	}
+	return nil
+}
+
+// statSet trả tập file đã tồn tại trong danh sách.
+func statSet(files []string) map[string]bool {
+	m := map[string]bool{}
+	for _, f := range files {
+		if _, err := os.Stat(f); err == nil {
+			m[f] = true
+		}
+	}
+	return m
+}
+
+// revertRepo hoàn nguyên đúng phạm vi repo này: restore file đã tồn tại-từ-trước
+// về nội dung snapshot, rồi xoá file repo này MỚI tạo (không có trong snapshot
+// vì managed.Snapshot bỏ qua file vắng — nên Restore không tự xoá chúng).
+func revertRepo(snapDir string, repoFiles []string, existedBefore map[string]bool) {
+	if snapDir != "" {
+		_ = managed.Restore(snapDir)
+	}
+	for _, f := range repoFiles {
+		if existedBefore[f] {
+			continue
+		}
+		if _, err := os.Stat(f); err == nil {
+			_ = os.Remove(f)
+		}
+	}
+}
+
+// ownedKeySet chụp tập key manifest trước khi apply một repo.
+func ownedKeySet(m *managed.Manifest) map[string]struct{} {
+	s := map[string]struct{}{}
+	if m == nil {
+		return s
+	}
+	for k := range m.Entries {
+		s[k] = struct{}{}
+	}
+	return s
+}
+
+// revertOwnedKeys bỏ mọi key được Record in-memory trong repo vừa fail (key
+// không có trong ảnh chụp trước-apply), để Save của repo sau không persist nhầm.
+func revertOwnedKeys(m *managed.Manifest, prior map[string]struct{}) {
+	if m == nil {
+		return
+	}
+	for k := range m.Entries {
+		if _, ok := prior[k]; !ok {
+			delete(m.Entries, k)
+		}
+	}
 }
 
 // cloneRepo clones via gh, respecting the developer's configured gh protocol

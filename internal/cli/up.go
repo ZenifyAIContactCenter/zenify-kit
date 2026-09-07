@@ -184,6 +184,9 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	}
 	results, err := apply.Apply(plans, apply.Options{
 		Workspace: workspace, Org: m.Org, Owned: owned, RepoByName: repoByName, SecretKeys: m.SecretKeys,
+		SnapshotRoot: filepath.Join(zenifyDir, "snapshots"),
+		ManifestPath: manifestPath,
+		Now:          applyNow,
 	}, gh, git)
 	if err != nil {
 		return exitcode.New(exitcode.Fail, err)
