@@ -22,7 +22,7 @@ const defaultOutSub = "releases"
 // runReleaseReport là lõi test được. FAIL-OPEN: luôn trả nil; mọi lỗi thành note in ra stderr.
 // outDir rỗng → mặc định repo docs/releases (đường dẫn repo tự tìm theo layout,
 // phẳng hoặc repos/<repo> sau `zenify migrate`).
-func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, verbose bool, r gitx.Runner, stdout, stderr io.Writer) error {
+func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, verbose, unreleased bool, r gitx.Runner, stdout, stderr io.Writer) error {
 	loadPatterns := func(dir string) []string {
 		c, err := wt.Load(dir)
 		if err != nil {
@@ -67,7 +67,12 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 		}
 		return out
 	}
-	rep := release.Build(r, resolve, repos, n, loadPatterns, loadSpecs)
+	var rep release.Report
+	if unreleased {
+		rep = release.BuildUnreleased(r, resolve, repos, n, loadPatterns, loadSpecs)
+	} else {
+		rep = release.Build(r, resolve, repos, n, loadPatterns, loadSpecs)
+	}
 	out := release.Render(rep, verbose)
 	if outDir == "" {
 		outDir = filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultOutSub)
@@ -76,12 +81,24 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 		fmt.Fprintf(stderr, "release-report: không tạo được thư mục out: %v (fail-open)\n", err)
 		return nil
 	}
-	path := filepath.Join(outDir, fmt.Sprintf("R%d.md", n))
+	fname := fmt.Sprintf("R%d.md", n)
+	if unreleased {
+		fname = "unreleased.md"
+	}
+	path := filepath.Join(outDir, fname)
 	if err := os.WriteFile(path, []byte(out), 0o600); err != nil {
 		fmt.Fprintf(stderr, "release-report: không ghi được report: %v (fail-open)\n", err)
 		return nil
 	}
 	fmt.Fprintln(stdout, path)
+	// FR-4.3: lúc chốt (finalize, không --unreleased), đóng sổ unreleased.md — regenerate view
+	// theo mốc mới (range release<n>..staging, gần rỗng ngay sau cắt). Best-effort, fail-open.
+	if !unreleased {
+		repFresh := release.BuildUnreleased(r, resolve, repos, n, loadPatterns, loadSpecs)
+		if e := os.WriteFile(filepath.Join(outDir, "unreleased.md"), []byte(release.Render(repFresh, false)), 0o600); e != nil {
+			fmt.Fprintf(stderr, "release-report: không reset được unreleased.md: %v (fail-open)\n", e)
+		}
+	}
 	return nil
 }
 
@@ -90,6 +107,7 @@ func newReleaseReportCmd() *cobra.Command {
 	var noFetch bool
 	var outDir string
 	var verbose bool
+	var unreleased bool
 	cmd := &cobra.Command{
 		Use:   "release-report [N]",
 		Short: "sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R<N>.md)",
@@ -119,12 +137,13 @@ func newReleaseReportCmd() *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), "release-report: không xác định được release N (fail-open)")
 				return nil
 			}
-			return runReleaseReport(workspaceDir, n, noFetch, outDir, verbose, r, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runReleaseReport(workspaceDir, n, noFetch, outDir, verbose, unreleased, r, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)")
 	cmd.Flags().BoolVar(&noFetch, "no-fetch", false, "bỏ git fetch, dùng ref local")
 	cmd.Flags().StringVar(&outDir, "out-dir", "", "thư mục ghi report (mặc định repo docs/releases, tự tìm theo layout)")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "hiện chore + commit chi tiết")
+	cmd.Flags().BoolVar(&unreleased, "unreleased", false, "ghi view release đang hình thành (release<latest>..staging) ra unreleased.md")
 	return cmd
 }
