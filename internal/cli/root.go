@@ -27,6 +27,7 @@ func NewRootCmd() *cobra.Command {
 	defaultChecksOnce.Do(registerDefaultChecks)
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newUpCmd())
+	root.AddCommand(newDownCmd())
 	root.AddCommand(newWtCmd())
 	root.AddCommand(newDBReadCmd())
 	root.AddCommand(newGitGuardCmd())
