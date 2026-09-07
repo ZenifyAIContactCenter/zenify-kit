@@ -150,6 +150,10 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 		return res, applyErr
 	}
 	res.Done = true
+	if err := secretStep(cfg); err != nil {
+		// fail-open: apply đã xong, đừng làm hỏng onboard vì lỗi ghi secret.
+		fmt.Fprintln(os.Stderr, "secrets: bỏ qua vì lỗi:", err)
+	}
 	printDone(os.Stdout)
 	return res, nil
 }

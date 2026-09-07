@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -88,6 +90,52 @@ func TestLoginStep_HeadlessGHMissingNoPrompt(t *testing.T) {
 	if err := loginStep(cfg); err == nil {
 		t.Fatal("expected guide error in headless when gh missing")
 	}
+}
+
+func TestRunOnboard_RunsSecretStepAfterApply(t *testing.T) {
+	ws := t.TempDir()
+	dir := filepath.Join(ws, ".claude")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.local.json"), []byte(`{"env":{"E2E_EMAIL":""}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	applied := false
+	cfg := OnboardConfig{
+		Workspace:   ws,
+		Accessible:  false, // secretStep chỉ chạy khi !Accessible
+		AutoConfirm: true,  // bỏ qua confirm Proceed?
+		SecretKeys:  []string{"E2E_EMAIL"},
+		SecretPromptFn: func(keys []string) (map[string]string, error) {
+			return map[string]string{"E2E_EMAIL": "x@y.com"}, nil
+		},
+		PlanFn:  func() ([]reconcile.RepoPlan, error) { return []reconcile.RepoPlan{{Name: "r1"}}, nil },
+		ApplyFn: func(sel []string) error { applied = true; return nil },
+		// Các seam preflight (DetectGHFn/AuthStatusFn…) để nil → dùng gh thật của máy
+		// (như TestRunOnboard_AccessiblePlanOnly). Nếu CI không có gh, set seam giả:
+		DetectGHFn:   func() error { return nil },
+		AuthStatusFn: func() (string, authState) { return "acct", authLoggedIn },
+	}
+	if _, err := RunOnboard(cfg); err != nil {
+		t.Fatalf("RunOnboard: %v", err)
+	}
+	if !applied {
+		t.Fatal("ApplyFn không chạy")
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "settings.local.json"))
+	if !strContainsWZ(string(b), "x@y.com") {
+		t.Errorf("secretStep không ghi value sau apply: %s", b)
+	}
+}
+
+func strContainsWZ(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }
 
 func TestWelcomeNote_SkippedWhenAccessible(t *testing.T) {
