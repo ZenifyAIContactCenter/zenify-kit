@@ -40,3 +40,35 @@ func TestManifest_RecordAndRoundtrip(t *testing.T) {
 		t.Errorf("recorded sha %q != fingerprint of content", e.SHA256)
 	}
 }
+
+func TestManifestVersionRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".manifest.json")
+
+	m := &Manifest{Entries: map[string]Entry{}, Version: "v0.9.0"}
+	if err := m.Save(path); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got.Version != "v0.9.0" {
+		t.Fatalf("version = %q, want v0.9.0", got.Version)
+	}
+}
+
+func TestManifestLoadLegacyNoVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".manifest.json")
+	if err := os.WriteFile(path, []byte(`{"entries":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("load legacy: %v", err)
+	}
+	if got.Version != "" {
+		t.Fatalf("legacy version = %q, want empty", got.Version)
+	}
+}

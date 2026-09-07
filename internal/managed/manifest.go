@@ -16,6 +16,7 @@ type Entry struct {
 // Manifest is the set of files zenify owns on this machine.
 type Manifest struct {
 	Entries map[string]Entry `json:"entries"`
+	Version string           `json:"version,omitempty"` // binary version stamp (self-heal)
 }
 
 // Fingerprint returns the hex sha256 of b.

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 )
 
 //go:embed all:assets/znf
@@ -92,6 +93,7 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 	if err != nil {
 		return res, err
 	}
+	m.Version = version.Current()
 	if err := m.Save(manifestPath); err != nil {
 		return res, err
 	}

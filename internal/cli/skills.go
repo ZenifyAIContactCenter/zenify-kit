@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/spf13/cobra"
@@ -30,6 +31,20 @@ func newSkillsCmd() *cobra.Command {
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "znf sync: %d ghi, %d giữ (user sửa), %d không đổi → %s\n",
 				len(res.Written), len(res.Kept), len(res.Skipped), dest)
+
+			home, _ := os.UserHomeDir()
+			if home != "" {
+				ch, err := apply.EnsureGlobalHooks(home, false)
+				if err != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "warning: could not wire znf hooks:", err)
+				} else if n := ch.Added + ch.Updated; n > 0 {
+					// Only announce when something actually changed — an
+					// already-wired session would otherwise print a "wired N"
+					// line on every run (all Unchanged), which reads as noise.
+					fmt.Fprintf(cmd.OutOrStdout(),
+						"wired %d znf hooks into ~/.claude/settings.json\n", n)
+				}
+			}
 			return nil
 		},
 	}
