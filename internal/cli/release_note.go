@@ -24,6 +24,7 @@ func buildNoteMessage(slug, note, blast, db, rollback, spec string) string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "chore(release): note %s\n\n", slug)
+	fmt.Fprintf(&b, "_Release-Slug: %s\n", slug)
 	fmt.Fprintf(&b, "_Release-Note: %s\n", note)
 	fmt.Fprintf(&b, "_Blast-radius: %s\n", blast)
 	fmt.Fprintf(&b, "_DB: %s\n", db)

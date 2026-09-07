@@ -71,9 +71,18 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 		if !unreleased {
 			rr.CutDate, _ = CutDate(r, dir, n)
 		}
+		var notes []Commit
 		if cs, err := RangeCommits(r, dir, relPrev, relN); err == nil {
-			rr.Commits = cs
+			var feats []Commit
 			for _, c := range cs {
+				if IsReleaseNote(c) {
+					notes = append(notes, c)
+				} else {
+					feats = append(feats, c)
+				}
+			}
+			rr.Commits = feats
+			for _, c := range feats {
 				rr.TypeCounts[c.Type]++
 				if c.Merge && IsHotfixBranch(c.Branch) {
 					rr.Hotfixes = append(rr.Hotfixes, c)
@@ -116,8 +125,9 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 		}
 		rr.Changes = Aggregate(rr.Commits, notStaging)
 		specs := loadSpecs(name)
+		noteMap := NoteRiskBySlug(notes)
 		for i := range rr.Changes {
-			rr.Changes[i].Risk = LinkSpec(rr.Changes[i], specs)
+			rr.Changes[i].Risk = LinkSpec(rr.Changes[i], specs, noteMap)
 		}
 		rep.Repos = append(rep.Repos, rr)
 	}

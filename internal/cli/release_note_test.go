@@ -9,6 +9,7 @@ func TestBuildNoteMessageTagsAndDefaults(t *testing.T) {
 	m := buildNoteMessage("report-table", "add table", "", "", "", "")
 	for _, want := range []string{
 		"chore(release): note report-table",
+		"_Release-Slug: report-table",
 		"_Release-Note: add table",
 		"_Blast-radius: unknown", // default khi rỗng
 		"_DB: N/A",

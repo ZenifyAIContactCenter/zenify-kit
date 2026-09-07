@@ -72,19 +72,41 @@ func noteRisk(bodies string) (RiskMeta, bool) {
 	return RiskMeta{SpecPath: sp, BlastRadius: b, DB: d, Rollback: rb}, true
 }
 
-// LinkSpec: tier-0 note-trailer → tier-1 Spec-trailer → tier-2 slug-match → rỗng.
-// Trả RiskMeta (SpecPath="" = unknown).
-func LinkSpec(ch Change, specs []SpecMeta) RiskMeta {
+// releaseSlugRe rút slug liên-kết từ trailer "_Release-Slug: <slug>" của note-commit.
+var releaseSlugRe = regexp.MustCompile(`(?m)^_Release-Slug:\s*(\S+)\s*$`)
+
+// IsReleaseNote: commit là một release-note-commit (mang trailer _Release-Slug:).
+func IsReleaseNote(c Commit) bool { return releaseSlugRe.MatchString(c.Body) }
+
+// NoteRiskBySlug quét các note-commit → map[normalizedSlug]RiskMeta. Chỉ thêm khi noteRisk ok
+// (có ≥1 trong 3 risk tag). Slug chuẩn-hoá bằng NormalizeKey để khớp Change.Slug.
+func NoteRiskBySlug(notes []Commit) map[string]RiskMeta {
+	m := map[string]RiskMeta{}
+	for _, c := range notes {
+		sm := releaseSlugRe.FindStringSubmatch(c.Body)
+		if sm == nil {
+			continue
+		}
+		if rm, ok := noteRisk(c.Body); ok {
+			m[NormalizeKey(sm[1])] = rm
+		}
+	}
+	return m
+}
+
+// LinkSpec: tier-0 note-by-slug (map, gom ngoài Aggregate) → tier-1 Spec-trailer → tier-2
+// slug-match → rỗng. Trả RiskMeta (SpecPath="" = unknown).
+func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
+	// (0) tier-0: risk từ note-commit liên-kết theo slug.
+	if rm, ok := notes[NormalizeKey(ch.Slug)]; ok {
+		return rm
+	}
 	var b strings.Builder
 	for _, c := range ch.Commits {
 		b.WriteString(c.Body)
 		b.WriteString("\n")
 	}
 	bodies := b.String()
-	// (0) tier-0: risk trực tiếp từ note-commit.
-	if rm, ok := noteRisk(bodies); ok {
-		return rm
-	}
 	// (1) trailer Spec: trong body.
 	if tp := specTrailer(bodies); tp != "" {
 		for _, s := range specs {
