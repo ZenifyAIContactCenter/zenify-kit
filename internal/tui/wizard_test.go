@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
@@ -92,5 +93,38 @@ func TestLoginStep_HeadlessGHMissingNoPrompt(t *testing.T) {
 func TestWelcomeNote_SkippedWhenAccessible(t *testing.T) {
 	if err := welcomeNote(true); err != nil {
 		t.Fatalf("welcomeNote(accessible) must be a no-op, got %v", err)
+	}
+}
+
+// FR-7.1 no-browser guarantee at loginStep level: an unreachable auth status
+// must return the network error and NEVER reach loginCmd() (which shells real
+// gh). Guards against a future reorder of the switch vs the browser block.
+func TestLoginStep_UnreachableSkipsBrowser(t *testing.T) {
+	cfg := OnboardConfig{
+		Accessible:   false,
+		DetectGitFn:  func() error { return nil },
+		DetectGHFn:   func() error { return nil },
+		AuthStatusFn: func() (string, authState) { return "", authUnreachable },
+	}
+	err := loginStep(cfg)
+	if err == nil {
+		t.Fatal("expected unreachable error, got nil (would have opened browser)")
+	}
+	if !strings.Contains(err.Error(), "không kết nối") {
+		t.Fatalf("expected network error message, got %v", err)
+	}
+}
+
+// SC-13 at loginStep level: git missing is guide-only — must return the error
+// without prompting or auto-installing.
+func TestLoginStep_GitMissingNoPromptNoInstall(t *testing.T) {
+	cfg := OnboardConfig{
+		Accessible:    false,
+		DetectGitFn:   func() error { return errNotFound },
+		ConfirmFn:     func(string) (bool, error) { t.Fatal("must not prompt when git missing"); return false, nil },
+		InstallRunner: func(string) error { t.Fatal("must not install when git missing"); return nil },
+	}
+	if err := loginStep(cfg); err == nil {
+		t.Fatal("expected git guide error")
 	}
 }

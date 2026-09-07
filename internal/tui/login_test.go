@@ -33,6 +33,7 @@ func TestParseAuthState(t *testing.T) {
 		{"offline-refused", "could not connect to github.com: connection refused", errors.New("exit status 1"), "", authUnreachable},
 		{"offline-timeout", "dial tcp 140.82.121.3:443: i/o timeout", errors.New("exit status 1"), "", authUnreachable},
 		{"auth-timeout-not-network", "SAML authorization timed out; you are not logged into github.com", errors.New("exit status 1"), "", authLoggedOut},
+		{"offline-client-timeout", `Get "https://api.github.com": net/http: request canceled (Client.Timeout exceeded while awaiting headers)`, errors.New("exit status 1"), "", authUnreachable},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

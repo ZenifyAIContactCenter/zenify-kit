@@ -107,6 +107,7 @@ var networkMarkers = []string{
 	"connection refused",
 	"i/o timeout",
 	"context deadline exceeded",
+	"client.timeout exceeded",
 	"network is unreachable",
 }
 
