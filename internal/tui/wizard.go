@@ -49,6 +49,14 @@ type OnboardConfig struct {
 	// workstation has `gh` installed and is logged in).
 	DetectGHFn   func() error
 	AuthStatusFn func() (string, authState)
+	// DetectGitFn overrides detectGit for tests. Nil uses the real impl.
+	DetectGitFn func() error
+	// ConfirmFn overrides the interactive yes/no prompt (offerInstallGH).
+	ConfirmFn func(prompt string) (bool, error)
+	// InstallRunner overrides the real `brew install <tool>` (offerInstallGH).
+	InstallRunner func(tool string) error
+	// lookPath overrides exec.LookPath inside offerInstallGH (test seam).
+	lookPath func(string) (string, error)
 }
 
 // OnboardResult carries the plan, the selected repos, and whether apply ran
@@ -164,12 +172,25 @@ func printDone(w *os.File) {
 // the real terminal, which gives the same effect: the wizard blocks here,
 // the browser login happens, and RunOnboard continues once it returns.
 func loginStep(cfg OnboardConfig) error {
+	detectGitFn := cfg.DetectGitFn
+	if detectGitFn == nil {
+		detectGitFn = detectGit
+	}
+	if err := detectGitFn(); err != nil {
+		return err // guide-only, không auto-install
+	}
+
 	detect := cfg.DetectGHFn
 	if detect == nil {
 		detect = detectGH
 	}
 	if err := detect(); err != nil {
-		return err
+		if cfg.Accessible {
+			return err // headless: giữ lỗi guide cũ, KHÔNG prompt
+		}
+		if err := offerInstallGH(cfg); err != nil {
+			return err
+		}
 	}
 
 	authStatus := cfg.AuthStatusFn
