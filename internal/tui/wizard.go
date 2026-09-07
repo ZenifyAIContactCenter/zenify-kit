@@ -200,6 +200,9 @@ func loginStep(cfg OnboardConfig) error {
 		return err
 	}
 	if _, st := authStatus(); st != authLoggedIn {
+		if st == authUnreachable {
+			return errors.New("không kết nối được GitHub — kiểm tra mạng rồi chạy lại `zenify up`")
+		}
 		return errors.New("not logged in — run: gh auth login")
 	}
 	return nil

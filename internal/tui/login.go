@@ -32,7 +32,8 @@ var networkMarkers = []string{
 	"dial tcp",
 	"no such host",
 	"connection refused",
-	"timeout",
+	"i/o timeout",
+	"context deadline exceeded",
 	"network is unreachable",
 }
 
