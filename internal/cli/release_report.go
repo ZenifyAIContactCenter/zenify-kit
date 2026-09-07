@@ -59,7 +59,7 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 			if e.IsDir() || !strings.HasSuffix(e.Name(), "-design.md") {
 				continue
 			}
-			b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			b, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 			if err != nil {
 				continue
 			}
