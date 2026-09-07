@@ -1,19 +1,19 @@
 {
-    "version": "0.10.0",
+    "version": "0.11.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/ZenifyAIContactCenter/zenify-kit/releases/download/v0.10.0/zenify_windows_amd64.zip",
+            "url": "https://github.com/ZenifyAIContactCenter/zenify-kit/releases/download/v0.11.0/zenify_windows_amd64.zip",
             "bin": [
                 "zenify.exe"
             ],
-            "hash": "6e16a34237babd88b70198ec62346edf6b6158cfafda5a175f24e81e461862bf"
+            "hash": "35b9c2a0b8cf14baf6ef5b7c0395b054a3bcadfc3f1ae820f29c69be07cabb41"
         },
         "arm64": {
-            "url": "https://github.com/ZenifyAIContactCenter/zenify-kit/releases/download/v0.10.0/zenify_windows_arm64.zip",
+            "url": "https://github.com/ZenifyAIContactCenter/zenify-kit/releases/download/v0.11.0/zenify_windows_arm64.zip",
             "bin": [
                 "zenify.exe"
             ],
-            "hash": "f148f77e3671b75ab252ee238ba9b4387ade291049d52bb7693ecac1933d2d61"
+            "hash": "14b911a56beb779364c394c56ff4262bb72126cbfdf2ec25fd16f1195fa78bb8"
         }
     }
 }
