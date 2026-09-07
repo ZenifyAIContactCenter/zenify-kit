@@ -55,15 +55,38 @@ func specTrailer(bodies string) string {
 	return ""
 }
 
-// LinkSpec: trailer → slug-match → rỗng. Trả RiskMeta (SpecPath="" = unknown).
+// noteRisk đọc risk-metadata trực tiếp từ body note-commit (tier-0). Trả (RiskMeta, true)
+// nếu có ÍT NHẤT một trong ba tag. SpecPath = trailer "Spec:" nếu có, else sentinel "note"
+// (khác rỗng để Build đếm là "có spec"; humanRisk chỉ kiểm rỗng/khác-rỗng, không in path).
+func noteRisk(bodies string) (RiskMeta, bool) {
+	b := firstGroup(blastRe, bodies)
+	d := firstGroup(dbRe, bodies)
+	rb := firstGroup(rollbackRe, bodies)
+	if b == "" && d == "" && rb == "" {
+		return RiskMeta{}, false
+	}
+	sp := specTrailer(bodies)
+	if sp == "" {
+		sp = "note"
+	}
+	return RiskMeta{SpecPath: sp, BlastRadius: b, DB: d, Rollback: rb}, true
+}
+
+// LinkSpec: tier-0 note-trailer → tier-1 Spec-trailer → tier-2 slug-match → rỗng.
+// Trả RiskMeta (SpecPath="" = unknown).
 func LinkSpec(ch Change, specs []SpecMeta) RiskMeta {
-	// (1) trailer trong body các commit của change.
 	var b strings.Builder
 	for _, c := range ch.Commits {
 		b.WriteString(c.Body)
 		b.WriteString("\n")
 	}
-	if tp := specTrailer(b.String()); tp != "" {
+	bodies := b.String()
+	// (0) tier-0: risk trực tiếp từ note-commit.
+	if rm, ok := noteRisk(bodies); ok {
+		return rm
+	}
+	// (1) trailer Spec: trong body.
+	if tp := specTrailer(bodies); tp != "" {
 		for _, s := range specs {
 			if s.Path == tp || strings.HasSuffix(s.Path, tp) || strings.HasSuffix(tp, s.Path) {
 				return risk(s)

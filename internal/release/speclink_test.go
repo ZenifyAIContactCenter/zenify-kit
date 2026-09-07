@@ -43,3 +43,27 @@ func TestLinkSpecNoMatch(t *testing.T) {
 		t.Fatalf("no-match phải rỗng: %+v", r)
 	}
 }
+
+func TestLinkSpecNoteTrailerWins(t *testing.T) {
+	// note-commit mang tag risk → tier-0 thắng, KHÔNG cần file spec.
+	ch := Change{Slug: "whatever", Commits: []Commit{
+		{Body: "_Release-Note: add X\n_Blast-radius: be+web\n_DB: N/A\n_Rollback: revert PR\n"},
+	}}
+	rm := LinkSpec(ch, nil)
+	if rm.BlastRadius != "be+web" || rm.DB != "N/A" || rm.Rollback != "revert PR" {
+		t.Fatalf("tier-0 phải lấy risk từ note-commit: %+v", rm)
+	}
+	if rm.SpecPath == "" {
+		t.Errorf("tier-0 phải set SpecPath khác rỗng (đếm coverage): %+v", rm)
+	}
+}
+
+func TestLinkSpecNoteTrailerSpecPath(t *testing.T) {
+	ch := Change{Slug: "x", Commits: []Commit{
+		{Body: "_Blast-radius: hub\n_DB: N/A\n_Rollback: revert\nSpec: specs/zenify-kit/2026-09-07-x-design.md\n"},
+	}}
+	rm := LinkSpec(ch, nil)
+	if rm.SpecPath != "specs/zenify-kit/2026-09-07-x-design.md" {
+		t.Errorf("tier-0 lấy SpecPath từ Spec: trailer khi có: %+v", rm)
+	}
+}
