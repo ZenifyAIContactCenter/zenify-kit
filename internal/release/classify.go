@@ -48,6 +48,46 @@ func IsTestPath(p string) bool {
 		strings.HasSuffix(base, "_test.go") || strings.Contains(p, "/__tests__/")
 }
 
+// scopeRe rút scope trong feat(<scope>): — group 1.
+var scopeRe = regexp.MustCompile(`^(?:feat|fix|perf|refactor|chore)\(([^)]+)\)!?:`)
+
+// ParseScope trả scope của conventional-commit ("" nếu không có scope).
+func ParseScope(subject string) string {
+	if m := scopeRe.FindStringSubmatch(subject); m != nil {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
+// NormalizeKey chuẩn-hoá branch/scope về một key gom nhóm: last path-segment, lowercase, _→-.
+func NormalizeKey(s string) string {
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	s = strings.ToLower(strings.TrimSpace(s))
+	return strings.ReplaceAll(s, "_", "-")
+}
+
+// HumanizeTitle biến slug kebab thành câu người đọc: "linked-fields" → "Linked fields".
+func HumanizeTitle(slug string) string {
+	s := strings.ReplaceAll(slug, "-", " ")
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+var prNumRe = regexp.MustCompile(`Merge pull request #(\d+)`)
+
+// ParsePRNum rút số PR từ subject merge-commit ("" nếu không có).
+func ParsePRNum(subject string) string {
+	if m := prNumRe.FindStringSubmatch(subject); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 // MatchesAny khớp path với danh sách glob patterns (hỗ trợ prefix "**/"), trả pattern khớp đầu tiên + true.
 func MatchesAny(p string, patterns []string) (string, bool) {
 	for _, pat := range patterns {
