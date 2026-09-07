@@ -135,6 +135,71 @@ func TestSecretStep_DoesNotEscapeSpecialChars(t *testing.T) {
 	}
 }
 
+// Secret-loss guard: readEnvBlock phải validate (JSON hỏng / env không phải
+// object) và trả lỗi TRƯỚC khi secretStep prompt hay ghi gì — khoá thứ tự
+// read-validate-trước-write để tương lai reorder vô tình không làm mất secret.
+func TestSecretStep_CorruptJSON_LeavesFileUnchanged(t *testing.T) {
+	ws := t.TempDir()
+	writeWSSettings(t, ws, `{"env": {`)
+	before, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("read before: %v", err)
+	}
+	prompted := false
+	cfg := OnboardConfig{
+		Workspace:  ws,
+		SecretKeys: []string{"MONGO_URL"},
+		SecretPromptFn: func(keys []string) (map[string]string, error) {
+			prompted = true
+			return map[string]string{"MONGO_URL": "mongodb://should-not-write"}, nil
+		},
+	}
+	if err := secretStep(cfg); err == nil {
+		t.Fatal("secretStep: expected error on corrupt JSON, got nil")
+	}
+	if prompted {
+		t.Error("SecretPromptFn được gọi dù JSON hỏng phải fail trước prompt")
+	}
+	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("read after: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("file bị đổi khi JSON hỏng: before=%q after=%q", before, after)
+	}
+}
+
+func TestSecretStep_NonObjectEnv_LeavesFileUnchanged(t *testing.T) {
+	ws := t.TempDir()
+	writeWSSettings(t, ws, `{"env":"oops"}`)
+	before, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("read before: %v", err)
+	}
+	prompted := false
+	cfg := OnboardConfig{
+		Workspace:  ws,
+		SecretKeys: []string{"MONGO_URL"},
+		SecretPromptFn: func(keys []string) (map[string]string, error) {
+			prompted = true
+			return map[string]string{"MONGO_URL": "mongodb://should-not-write"}, nil
+		},
+	}
+	if err := secretStep(cfg); err == nil {
+		t.Fatal("secretStep: expected error when env is not an object, got nil")
+	}
+	if prompted {
+		t.Error("SecretPromptFn được gọi dù env không phải object phải fail trước prompt")
+	}
+	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	if err != nil {
+		t.Fatalf("read after: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("file bị đổi khi env không phải object: before=%q after=%q", before, after)
+	}
+}
+
 func strContains(s, sub string) bool {
 	return len(s) >= len(sub) && (func() bool {
 		for i := 0; i+len(sub) <= len(s); i++ {
