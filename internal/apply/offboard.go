@@ -118,6 +118,10 @@ func RemoveExclude(repoDir string, dryRun bool) (bool, error) {
 		}
 		return false, err
 	}
+	var mode os.FileMode = 0o644
+	if fi, statErr := os.Stat(excl); statErr == nil {
+		mode = fi.Mode().Perm()
+	}
 	lines := strings.Split(string(b), "\n")
 	out := make([]string, 0, len(lines))
 	removed := false
@@ -131,7 +135,7 @@ func RemoveExclude(repoDir string, dryRun bool) (bool, error) {
 	if !removed || dryRun {
 		return removed, nil
 	}
-	if err := os.WriteFile(excl, []byte(strings.Join(out, "\n")), 0o600); err != nil { //nolint:gosec // G306 -- git-local exclude file, computed path
+	if err := writeAtomic(excl, []byte(strings.Join(out, "\n")), mode); err != nil {
 		return removed, err
 	}
 	return removed, nil
