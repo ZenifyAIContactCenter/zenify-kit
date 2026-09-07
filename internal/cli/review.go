@@ -193,7 +193,7 @@ func newReviewBundleCmd() *cobra.Command {
 				// LOC on BOTH lines (a pure rename → 2×filesize, not 0), inflating TotalLOC —
 				// but only ever in the over-bundle (safe) direction; correct diff matching
 				// beats exact LOC accounting.
-				return exec.Command("git", "diff", "--no-renames", "--numstat", base).Output()
+				return exec.Command("git", "diff", "--no-renames", "--numstat", base).Output() //nolint:gosec // G204 -- fixed git subcommand; base is a validated ref, not shell input
 			}
 			return runReviewBundle(args[0], rundiff, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
@@ -202,7 +202,7 @@ func newReviewBundleCmd() *cobra.Command {
 
 // gitCommonDirRun chạy `git <args>` thật (seam để test inject).
 func gitCommonDirRun(args ...string) ([]byte, error) {
-	return exec.Command("git", args...).Output()
+	return exec.Command("git", args...).Output() //nolint:gosec // G204 -- fixed 'git' binary; args are internal, not user shell input
 }
 
 // reviewLogDir resolve store learning-capture ở MAIN checkout: parent của

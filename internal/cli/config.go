@@ -23,7 +23,7 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 		configDir = filepath.Join(resolveDocsStore(workspace, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultConfigSub)
 	}
 	manifestPath := filepath.Join(configDir, "distribution.txt")
-	mb, err := os.ReadFile(manifestPath)
+	mb, err := os.ReadFile(manifestPath) //nolint:gosec // G304 -- manifestPath is inside the trusted config dir, not user input
 	if err != nil {
 		fmt.Fprintf(stderr, "config: không đọc được manifest %s: %v (fail-open)\n", manifestPath, err)
 		return nil
@@ -32,8 +32,8 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 	for _, n := range notes {
 		fmt.Fprintln(stderr, "config: "+n)
 	}
-	readSource := func(rel string) ([]byte, error) { return os.ReadFile(filepath.Join(configDir, rel)) }
-	readDest := func(rel string) ([]byte, error) { return os.ReadFile(filepath.Join(workspace, rel)) }
+	readSource := func(rel string) ([]byte, error) { return os.ReadFile(filepath.Join(configDir, rel)) } //nolint:gosec // G304 -- rel comes from the trusted manifest, joined under configDir
+	readDest := func(rel string) ([]byte, error) { return os.ReadFile(filepath.Join(workspace, rel)) }   //nolint:gosec // G304 -- rel comes from the trusted manifest, joined under the workspace
 	plans := distribute.Plan(pairs, readSource, readDest, os.IsNotExist)
 
 	fmt.Fprintf(stdout, "config dir: %s\n\n", configDir)
@@ -54,10 +54,10 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 	if apply {
 		writeDest := func(rel string, data []byte) error {
 			full := filepath.Join(workspace, rel)
-			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 				return err
 			}
-			return os.WriteFile(full, data, 0o644)
+			return os.WriteFile(full, data, 0o600)
 		}
 		nWritten := 0
 		for _, n := range distribute.Apply(plans, readSource, writeDest) {

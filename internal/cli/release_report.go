@@ -50,12 +50,12 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, r
 	if outDir == "" {
 		outDir = filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultOutSub)
 	}
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		fmt.Fprintf(stderr, "release-report: không tạo được thư mục out: %v (fail-open)\n", err)
 		return nil
 	}
 	path := filepath.Join(outDir, fmt.Sprintf("R%d.md", n))
-	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(out), 0o600); err != nil {
 		fmt.Fprintf(stderr, "release-report: không ghi được report: %v (fail-open)\n", err)
 		return nil
 	}
@@ -78,7 +78,9 @@ func newReleaseReportCmd() *cobra.Command {
 			}
 			n := 0
 			if len(args) == 1 {
-				fmt.Sscanf(args[0], "%d", &n)
+				if _, err := fmt.Sscanf(args[0], "%d", &n); err != nil {
+					return fmt.Errorf("release number không hợp lệ %q: %w", args[0], err)
+				}
 			} else {
 				for _, rp := range workspace.Discover(workspaceDir, workspace.DefaultMaxDepth, os.ReadDir) {
 					if nums, err := release.ReleaseNums(r, rp.Path); err == nil {

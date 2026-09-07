@@ -86,7 +86,7 @@ func TestSync_DirtyCommitsThenRebasesThenPushes(t *testing.T) {
 		t.Fatalf("dirty phải add+commit+pull--rebase+push; calls=%v", f.calls)
 	}
 	// commit phải đứng TRƯỚC pull (commit-first, để rebase conflict abort được).
-	var ci, pi int = -1, -1
+	var ci, pi = -1, -1
 	for i, c := range f.calls {
 		j := strings.Join(c, " ")
 		if strings.HasPrefix(j, "commit") {

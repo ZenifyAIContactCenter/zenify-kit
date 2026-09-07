@@ -319,7 +319,7 @@ func renderPlan(w *os.File, plan []reconcile.RepoPlan, accessible bool, footer [
 	b.WriteString(headerStyle.Render(fmt.Sprintf("%-22s %-8s %s", "REPO", "STATE", "REASON")))
 	b.WriteByte('\n')
 	for _, p := range plan {
-		b.WriteString(fmt.Sprintf("%-22s ", p.Name))
+		fmt.Fprintf(&b, "%-22s ", p.Name)
 		b.WriteString(stateStyle.Render(fmt.Sprintf("%-8s", string(p.State))))
 		b.WriteString(" " + p.Reason)
 		b.WriteByte('\n')

@@ -69,7 +69,7 @@ func sentinelPresent() bool {
 	if err != nil {
 		return false
 	}
-	raw, err := os.ReadFile(filepath.Join(home, ".claude", "CLAUDE.md"))
+	raw, err := os.ReadFile(filepath.Join(home, ".claude", "CLAUDE.md")) //nolint:gosec // G304 -- path is ~/.claude/CLAUDE.md, computed from home, not user input
 	if err != nil {
 		return false
 	}
@@ -82,7 +82,7 @@ func readBootstrapDigest() string {
 		return ""
 	}
 	p := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-superpowers", "BOOTSTRAP.txt")
-	raw, err := os.ReadFile(p)
+	raw, err := os.ReadFile(p) //nolint:gosec // G304 -- p is a fixed path under ~/.claude, computed from home, not user input
 	if err != nil {
 		return ""
 	}

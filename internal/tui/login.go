@@ -15,7 +15,7 @@ func detectGH() error { return detectGHWith(exec.LookPath) }
 
 func detectGHWith(lookPath func(string) (string, error)) error {
 	if _, err := lookPath("gh"); err != nil {
-		return ghGuideErr // single source of the gh-missing guide message
+		return errGHGuide // single source of the gh-missing guide message
 	}
 	return nil
 }
@@ -29,19 +29,19 @@ func detectGitWith(lookPath func(string) (string, error)) error {
 	return nil
 }
 
-// ghGuideErr là lỗi guide-only khi thiếu gh (giữ nguyên thông điệp P1).
-var ghGuideErr = errors.New("GitHub CLI (gh) not found — install: https://cli.github.com then re-run `zenify up`")
+// errGHGuide là lỗi guide-only khi thiếu gh (giữ nguyên thông điệp P1).
+var errGHGuide = errors.New("GitHub CLI (gh) not found — install: https://cli.github.com then re-run `zenify up`")
 
 // offerInstallGH chạy khi gh thiếu ở chế độ interactive: hỏi cài qua Homebrew,
 // nếu có brew và user đồng ý thì chạy InstallRunner rồi re-detect. Mọi đường
-// khác (không brew / từ chối) trả ghGuideErr.
+// khác (không brew / từ chối) trả errGHGuide.
 func offerInstallGH(cfg OnboardConfig) error {
 	lookPath := cfg.lookPath
 	if lookPath == nil {
 		lookPath = exec.LookPath
 	}
 	if _, err := lookPath("brew"); err != nil {
-		return ghGuideErr // không có brew → không tự cài được
+		return errGHGuide // không có brew → không tự cài được
 	}
 
 	confirm := cfg.ConfirmFn
@@ -53,7 +53,7 @@ func offerInstallGH(cfg OnboardConfig) error {
 		return err
 	}
 	if !ok {
-		return ghGuideErr
+		return errGHGuide
 	}
 
 	run := cfg.InstallRunner
@@ -83,7 +83,7 @@ func huhConfirm(prompt string) (bool, error) {
 // brewInstall là InstallRunner thật: chạy `brew install <tool>` với stdio bám
 // terminal để user thấy tiến trình.
 func brewInstall(tool string) error {
-	cmd := exec.Command("brew", "install", tool)
+	cmd := exec.Command("brew", "install", tool) //nolint:gosec // G204 -- fixed 'brew install'; tool is an internal constant, not user shell input
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

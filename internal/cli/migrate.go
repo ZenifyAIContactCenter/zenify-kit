@@ -61,7 +61,7 @@ func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error 
 	io := migrate.ApplyIO{
 		ListWT:     func(dir string) ([]string, error) { return gitx.ListWorktrees(r, dir) },
 		Move:       os.Rename,
-		MkdirAll:   func(d string) error { return os.MkdirAll(d, 0o755) },
+		MkdirAll:   func(d string) error { return os.MkdirAll(d, 0o750) },
 		Repair:     func(repoDir, wt string) error { return gitx.RepairWorktree(r, repoDir, wt) },
 		Repoint:    repointSymlink,
 		UpdateYAML: updateYAML,
@@ -167,7 +167,7 @@ func updateRepoPathInYAML(path, name, newPath string) error {
 	if !changed {
 		return fmt.Errorf("không thấy path cho repo %s", name)
 	}
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o600) //nolint:gosec // G703 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 }
 
 func newMigrateCmd() *cobra.Command {
