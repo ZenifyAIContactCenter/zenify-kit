@@ -33,6 +33,7 @@ func TestRenderHeadlineAndSections(t *testing.T) {
 	for _, want := range []string{
 		"# Release 84", "Quyết định nhanh", "notification", // không ship
 		"migration → BE", "**/chat_*", // shared + deploy order
+		"Shared-collection: **/chat_*",            // FR-3.4 per-repo risk-proxy
 		"### Features", "Linked fields", "be+web", // feature + risk từ spec
 		"### Fixes", "Report tz",
 		"### Hotfixes", "CHƯA trên staging", // hotfix cờ

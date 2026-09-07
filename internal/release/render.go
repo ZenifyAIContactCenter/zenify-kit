@@ -53,6 +53,9 @@ func Render(rep Report, verbose bool) string {
 			yesNo(rr.HasMigration, "CÓ", "không"),
 			yesNo(rr.HasTestTouch, "đụng", "không"),
 			len(rr.Commits), len(rr.Changes))
+		if len(rr.SharedHits) > 0 {
+			fmt.Fprintf(&b, "- ⚠ Shared-collection: %s\n", strings.Join(rr.SharedHits, ", "))
+		}
 		if rr.RegressionUncomputed {
 			b.WriteString("- ⚠ Regression: không so được staging\n")
 		}

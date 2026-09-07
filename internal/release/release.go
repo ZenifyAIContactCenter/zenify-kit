@@ -94,12 +94,14 @@ func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []stri
 		}
 		rep.Repos = append(rep.Repos, rr)
 	}
-	rep.DeployOrderNote = len(rep.Repos) > 1
 	for p, rs := range rep.SharedCrossRepo {
 		if len(rs) < 2 {
 			delete(rep.SharedCrossRepo, p)
 		}
 	}
+	// FR-1.3: dòng thứ tự deploy chỉ nêu khi có ≥2 repo cùng chạm một shared-collection
+	// (tính SAU prune), không phải bất cứ khi nào >1 repo ship.
+	rep.DeployOrderNote = len(rep.SharedCrossRepo) > 0
 	// headline aggregates: chỉ tính trên repo tham gia không lỗi.
 	for _, rr := range rep.Repos {
 		if rr.Err != "" {
