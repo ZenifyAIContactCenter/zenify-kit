@@ -94,10 +94,19 @@ func TestNoteRiskBySlugSkipsNoRiskTag(t *testing.T) {
 }
 
 func TestIsReleaseNote(t *testing.T) {
-	if !IsReleaseNote(Commit{Body: "_Release-Slug: x\n"}) {
-		t.Errorf("commit mang trailer phải nhận diện là release note")
+	if !IsReleaseNote(Commit{Subject: "chore(release): note x", Body: "_Release-Slug: x\n"}) {
+		t.Errorf("commit đúng subject + trailer phải nhận diện là release note")
 	}
-	if IsReleaseNote(Commit{Body: "feat: bình thường\n"}) {
+	if IsReleaseNote(Commit{Subject: "feat: bình thường", Body: "feat: bình thường\n"}) {
 		t.Errorf("commit thường không phải release note")
+	}
+}
+
+func TestIsReleaseNoteRequiresSubjectNotJustTrailer(t *testing.T) {
+	// squash-merge có thể nuốt trailer _Release-Slug: vào body của feat-commit — subject
+	// KHÔNG phải "chore(release): note" nên KHÔNG được nhận nhầm là note (mất khỏi changelog).
+	squashed := Commit{Subject: "feat(foo): implement foo", Body: "_Release-Slug: foo\n_Blast-radius: be\n"}
+	if IsReleaseNote(squashed) {
+		t.Errorf("feat-commit lỡ mang trailer _Release-Slug: KHÔNG được coi là note-commit: %+v", squashed)
 	}
 }

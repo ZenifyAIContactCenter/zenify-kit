@@ -75,8 +75,15 @@ func noteRisk(bodies string) (RiskMeta, bool) {
 // releaseSlugRe rút slug liên-kết từ trailer "_Release-Slug: <slug>" của note-commit.
 var releaseSlugRe = regexp.MustCompile(`(?m)^_Release-Slug:\s*(\S+)\s*$`)
 
-// IsReleaseNote: commit là một release-note-commit (mang trailer _Release-Slug:).
-func IsReleaseNote(c Commit) bool { return releaseSlugRe.MatchString(c.Body) }
+// noteSubjectRe: chỉ note-commit chuyên dụng do release-note tạo mang subject này.
+var noteSubjectRe = regexp.MustCompile(`^chore\(release\): note\b`)
+
+// IsReleaseNote: một release-note-commit = subject chore(release): note DÀNH RIÊNG + trailer
+// _Release-Slug:. Đòi CẢ HAI để một feat-commit lỡ nuốt trailer (vd squash-merge) không bị
+// nhận nhầm là note và bị lọc khỏi changelog.
+func IsReleaseNote(c Commit) bool {
+	return noteSubjectRe.MatchString(c.Subject) && releaseSlugRe.MatchString(c.Body)
+}
 
 // NoteRiskBySlug quét các note-commit → map[normalizedSlug]RiskMeta. Chỉ thêm khi noteRisk ok
 // (có ≥1 trong 3 risk tag). Slug chuẩn-hoá bằng NormalizeKey để khớp Change.Slug.
