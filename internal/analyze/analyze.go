@@ -61,7 +61,7 @@ var (
 	// leading list marker and any backtick/emphasis run before the literal tag, so a
 	// template-compliant plan is detected (a bare line-start tag still matches too).
 	reqLineRe   = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_Requirements:")
-	markerToken = "[NEEDS CLARIFICATION"
+	markerToken = "[NEEDS CLARIFICATION" //nolint:gosec // G101 -- a spec marker string the scanner looks for, not a credential
 
 	// Risk-metadata tags (M6c1): line-start markers inside ## Brief, same tolerance as
 	// reqLineRe — an optional list marker and any backtick/emphasis run before the literal

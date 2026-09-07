@@ -2,3 +2,20 @@ version: "2"
 linters:
   enable:
     - gosec
+  settings:
+    errcheck:
+      # Writes to stdout/stderr (fmt.Fprint*) are fire-and-forget in a CLI:
+      # a failed console write is neither actionable nor worth branching on.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+  exclusions:
+    rules:
+      # Test files: gosec's perm/path/subprocess heuristics fire on fixtures
+      # (t.TempDir paths, 0644 scaffolding, exec of the test's own git/bash),
+      # and an unchecked setup error surfaces as the test failing anyway.
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck

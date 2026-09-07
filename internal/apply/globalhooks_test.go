@@ -199,7 +199,7 @@ func TestEnsureGlobalHooks_PreservesForeignValueContentAndKeyOrder(t *testing.T)
 	if iZebra < 0 || iAlpha < 0 || iMango < 0 {
 		t.Fatalf("expected keys missing from output:\n%s", s)
 	}
-	if !(iZebra < iAlpha && iAlpha < iMango) {
+	if iZebra >= iAlpha || iAlpha >= iMango {
 		t.Fatalf("foreign object key order not preserved (want zebra<alpha<mango, got offsets %d,%d,%d):\n%s", iZebra, iAlpha, iMango, s)
 	}
 }

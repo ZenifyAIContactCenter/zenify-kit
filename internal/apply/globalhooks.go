@@ -60,7 +60,7 @@ func EnsureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
 
 	root := map[string]json.RawMessage{}
 	mode := os.FileMode(0o644)
-	existing, readErr := os.ReadFile(path)
+	existing, readErr := os.ReadFile(path) //nolint:gosec // G304 -- path is ~/.claude/settings.json, computed from the caller's home dir, not user input
 	switch {
 	case readErr == nil:
 		if err := json.Unmarshal(existing, &root); err != nil {
@@ -216,7 +216,7 @@ func marshalNoEscape(v any) ([]byte, error) {
 // 0600, which would otherwise silently narrow e.g. an existing 0644 file).
 func writeAtomic(path string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	tmp, err := os.CreateTemp(dir, ".settings-*.tmp")
@@ -224,9 +224,9 @@ func writeAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
