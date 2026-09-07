@@ -147,24 +147,23 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 
 	// Load (or start) the ownership manifest, then write a pre-mutation snapshot
 	// of the files this run touches (FR-022 capture half; a future `zenify
-	// backups restore`, FR-052, is the consumer). Auto-restore-on-failure is
-	// deliberately NOT wired: a correct auto-restore can only be built ALONGSIDE
-	// the destructive MIGRATE flip, whose shape defines what the restore must do,
-	// and that flip is deferred to M2 (the team standardises .claude layout by
-	// hand first). Every action here is create-if-absent (settings skeleton,
-	// clone) or append-if-absent (exclude), so a partial run is safe to re-run and
-	// there is nothing destructive to roll back.
+	// backups restore`, FR-052, is the consumer). This whole-run snapshot stays a
+	// manual-restore-only backup: nothing here auto-restores from it on failure.
+	// FR-9a has since wired per-repo auto-restore-on-failure (stage → verify →
+	// restore inside apply.Apply), but it operates on a SEPARATE per-repo
+	// "txn-<name>" snapshot (see apply.go), not on the whole-run snapshot taken
+	// here — so item #2 below (scope restore to the failed repo's paths) is DONE
+	// there, not a TODO. Every action here is create-if-absent (settings
+	// skeleton, clone) or append-if-absent (exclude), so a partial run is safe to
+	// re-run and there is nothing destructive to roll back.
 	//
-	// Two things M2 MUST add when it implements the flip, or the restore is a
-	// false safety net (both surfaced reviewing this slice):
+	// One thing M2 MUST still add when it implements the destructive MIGRATE
+	// flip (deferred: the team standardises .claude layout by hand first), or
+	// the whole-run restore is a false safety net for that flip:
 	//   1. Extend snapshotTargets with a reconcile.Migrate case that captures the
 	//      files the flip overwrites (the repo's .gitignore). Today it captures
 	//      only the WIRE/CLONE pair, so a Migrate rollback would have NO data for
 	//      the very file it destroyed.
-	//   2. Make restore per-repo, not whole-snapshot: managed.Restore reverts
-	//      EVERY file in the shared snapshot, so a blanket restore triggered by one
-	//      repo's failed flip would also undo the .git/info/exclude a sibling
-	//      repo's WIRE appended successfully. Scope it to the failed repo's paths.
 	//
 	// The snapshot id is unique per run — the unix second plus the pid — so even
 	// two runs within one second never overwrite an earlier capture.
@@ -184,6 +183,9 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	}
 	results, err := apply.Apply(plans, apply.Options{
 		Workspace: workspace, Org: m.Org, Owned: owned, RepoByName: repoByName, SecretKeys: m.SecretKeys,
+		SnapshotRoot: filepath.Join(zenifyDir, "snapshots"),
+		ManifestPath: manifestPath,
+		Now:          applyNow,
 	}, gh, git)
 	if err != nil {
 		return exitcode.New(exitcode.Fail, err)

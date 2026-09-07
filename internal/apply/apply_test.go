@@ -2,6 +2,7 @@ package apply
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +42,127 @@ func initClonedRepo(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, ".git", "info"), 0o750); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// mkWirePlan tạo một RepoPlan Wire trỏ tới <workspace>/<name>, và mkdir repo .git để ensureExclude chạy.
+func mkWirePlan(t *testing.T, ws, name string) reconcile.RepoPlan {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(ws, name, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	return reconcile.RepoPlan{Name: name, State: reconcile.Wire, Path: name}
+}
+
+func TestApply_PerRepoPromote_SavesManifestEachRepo(t *testing.T) {
+	ws := t.TempDir()
+	snapRoot := filepath.Join(t.TempDir(), "snaps")
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	owned := &managed.Manifest{Entries: map[string]managed.Entry{}}
+	plans := []reconcile.RepoPlan{mkWirePlan(t, ws, "repoA"), mkWirePlan(t, ws, "repoB")}
+
+	results, err := Apply(plans, Options{
+		Workspace: ws, SecretKeys: []string{"MONGO_URL"},
+		Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+		Now: func() int64 { return 1 },
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	for _, r := range results {
+		if r.Err != nil {
+			t.Fatalf("%s: unexpected err %v", r.Repo, r.Err)
+		}
+	}
+	// Đọc LẠI manifest từ đĩa: cả hai repo phải đã được promote (Save per-repo).
+	got, err := managed.Load(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"repoA", "repoB"} {
+		p := filepath.Join(ws, name, ".claude", "settings.local.json")
+		if _, ok := got.Get(p); !ok {
+			t.Errorf("manifest thiếu entry cho %s", p)
+		}
+	}
+}
+
+func TestApply_PerRepoRestore_ScopedToFailedRepo(t *testing.T) {
+	ws := t.TempDir()
+	snapRoot := filepath.Join(t.TempDir(), "snaps")
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	owned := &managed.Manifest{Entries: map[string]managed.Entry{}}
+	plans := []reconcile.RepoPlan{mkWirePlan(t, ws, "repoA"), mkWirePlan(t, ws, "repoB")}
+
+	results, err := Apply(plans, Options{
+		Workspace: ws, SecretKeys: []string{"MONGO_URL"},
+		Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+		Now: func() int64 { return 2 },
+		VerifyRepoFn: func(repoDir string, wrote []string) error {
+			if strings.HasSuffix(repoDir, "repoB") {
+				return fmt.Errorf("forced verify fail")
+			}
+			return nil
+		},
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+
+	// repoA: settings được GIỮ; repoB: bị revert (file mới tạo bị xoá).
+	aSettings := filepath.Join(ws, "repoA", ".claude", "settings.local.json")
+	if _, err := os.Stat(aSettings); err != nil {
+		t.Errorf("repoA settings phải còn: %v", err)
+	}
+	bSettings := filepath.Join(ws, "repoB", ".claude", "settings.local.json")
+	if _, err := os.Stat(bSettings); err == nil {
+		t.Errorf("repoB settings phải bị xoá khi verify fail")
+	}
+	// Manifest trên đĩa: có A, KHÔNG có B.
+	got, _ := managed.Load(manifestPath)
+	if _, ok := got.Get(aSettings); !ok {
+		t.Errorf("manifest phải có repoA")
+	}
+	if _, ok := got.Get(bSettings); ok {
+		t.Errorf("manifest KHÔNG được có repoB")
+	}
+	// Result của B mang Err.
+	for _, r := range results {
+		if r.Repo == "repoB" && r.Err == nil {
+			t.Errorf("repoB phải mang Err")
+		}
+	}
+}
+
+func TestApply_CrashSafe_ManifestDurableForPromotedRepo(t *testing.T) {
+	ws := t.TempDir()
+	snapRoot := filepath.Join(t.TempDir(), "snaps")
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	owned := &managed.Manifest{Entries: map[string]managed.Entry{}}
+	plans := []reconcile.RepoPlan{mkWirePlan(t, ws, "repo1"), mkWirePlan(t, ws, "repo2")}
+
+	// repo2 fail → mô phỏng "ngắt sau khi repo1 promote". repo1 phải đã bền.
+	_, err := Apply(plans, Options{
+		Workspace: ws, SecretKeys: []string{"MONGO_URL"},
+		Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+		Now: func() int64 { return 3 },
+		VerifyRepoFn: func(repoDir string, wrote []string) error {
+			if strings.HasSuffix(repoDir, "repo2") {
+				return fmt.Errorf("interrupt at repo2")
+			}
+			return nil
+		},
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	got, err := managed.Load(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p1 := filepath.Join(ws, "repo1", ".claude", "settings.local.json")
+	if _, ok := got.Get(p1); !ok {
+		t.Errorf("repo1 phải bền vững trong manifest sau khi promote (crash-safe)")
 	}
 }
 
