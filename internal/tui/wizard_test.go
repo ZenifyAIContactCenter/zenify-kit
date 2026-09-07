@@ -112,10 +112,11 @@ func TestRunOnboard_RunsSecretStepAfterApply(t *testing.T) {
 		},
 		PlanFn:  func() ([]reconcile.RepoPlan, error) { return []reconcile.RepoPlan{{Name: "r1"}}, nil },
 		ApplyFn: func(sel []string) error { applied = true; return nil },
-		// Các seam preflight (DetectGHFn/AuthStatusFn…) để nil → dùng gh thật của máy
-		// (như TestRunOnboard_AccessiblePlanOnly). Nếu CI không có gh, set seam giả:
-		DetectGHFn:   func() error { return nil },
-		AuthStatusFn: func() (string, authState) { return "acct", authLoggedIn },
+		// welcomeNote(false) thật mở huh.Form.Run() cần /dev/tty thật — stub seam
+		// này để test hermetic, không phụ thuộc TTY của máy chạy test.
+		WelcomeNoteFn: func(bool) error { return nil },
+		DetectGHFn:    func() error { return nil },
+		AuthStatusFn:  func() (string, authState) { return "acct", authLoggedIn },
 	}
 	if _, err := RunOnboard(cfg); err != nil {
 		t.Fatalf("RunOnboard: %v", err)

@@ -62,6 +62,12 @@ type OnboardConfig struct {
 	SecretKeys []string
 	// SecretPromptFn override prompt masked (test seam). Nil → huh EchoModePassword thật.
 	SecretPromptFn func(keys []string) (map[string]string, error)
+	// WelcomeNoteFn overrides welcomeNote (test seam). welcomeNote(false) opens a
+	// real huh.Form.Run() that needs an actual /dev/tty, so any test exercising
+	// RunOnboard with Accessible:false (needed to reach secretStep, which no-ops
+	// when Accessible) must stub this out to stay hermetic. Nil uses the real
+	// welcomeNote.
+	WelcomeNoteFn func(accessible bool) error
 }
 
 // OnboardResult carries the plan, the selected repos, and whether apply ran
@@ -92,7 +98,11 @@ func welcomeNote(accessible bool) error {
 func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	var res OnboardResult
 
-	if err := welcomeNote(cfg.Accessible); err != nil {
+	welcome := welcomeNote
+	if cfg.WelcomeNoteFn != nil {
+		welcome = cfg.WelcomeNoteFn
+	}
+	if err := welcome(cfg.Accessible); err != nil {
 		return res, err
 	}
 
