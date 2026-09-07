@@ -49,8 +49,11 @@ func TestRenderHeadlineAndSections(t *testing.T) {
 			t.Errorf("render thiếu %q\n---\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "### Chores\n") && !strings.Contains(out, "ẩn 1") {
-		t.Errorf("chore phải gập với count khi !verbose")
+	if strings.Contains(out, "### Chores") {
+		t.Errorf("non-verbose KHÔNG được in section Chores (nhiễu cho go/no-go)")
+	}
+	if strings.Contains(out, "— go/no-go") {
+		t.Errorf("H1 không được gắn gloss '— go/no-go'")
 	}
 	if strings.Contains(out, "fix(report): tz offset") {
 		t.Errorf("non-verbose KHÔNG được in commit list mỗi thay đổi")

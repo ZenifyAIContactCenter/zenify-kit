@@ -13,7 +13,7 @@ func Render(rep Report, verbose bool) string {
 	var b strings.Builder
 
 	// Header.
-	fmt.Fprintf(&b, "# Release %d — go/no-go\n", rep.N)
+	fmt.Fprintf(&b, "# Release %d\n", rep.N)
 	fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)
 
 	// Headline — quyết định nhanh.
@@ -64,12 +64,10 @@ func Render(rep Report, verbose bool) string {
 		renderChangeSection(&b, "### Features", feats, verbose)
 		renderChangeSection(&b, "### Fixes", fixes, verbose)
 		renderChangeSection(&b, "### Hotfixes", hotfixes, verbose)
-		if len(chores) > 0 {
-			if verbose {
-				renderChangeSection(&b, "### Chores", chores, verbose)
-			} else {
-				fmt.Fprintf(&b, "### Chores (ẩn %d — --verbose)\n", len(chores))
-			}
+		// Chore không ảnh hưởng quyết định ship → chỉ hiện khi --verbose (count đã ngầm ở
+		// dòng "N commit → M thay đổi"). Mặc định bỏ hẳn để report gọn.
+		if verbose {
+			renderChangeSection(&b, "### Chores", chores, verbose)
 		}
 	}
 
