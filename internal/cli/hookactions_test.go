@@ -15,7 +15,7 @@ const bootstrapMarker = "BOOTSTRAP-DIGEST-MARKER"
 // exercise emission/suppression instead of passing because the file is absent.
 func seedBootstrap(t *testing.T, home string) {
 	t.Helper()
-	dir := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-superpowers")
+	dir := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-zenify-kit")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

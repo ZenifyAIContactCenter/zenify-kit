@@ -6,7 +6,7 @@ import (
 )
 
 func TestBootstrapIsDigestNotGlobalMandate(t *testing.T) {
-	b, err := assets.ReadFile("assets/znf/skills/using-superpowers/BOOTSTRAP.txt")
+	b, err := assets.ReadFile("assets/znf/skills/using-zenify-kit/BOOTSTRAP.txt")
 	if err != nil {
 		t.Fatalf("BOOTSTRAP.txt not embedded: %v", err)
 	}
