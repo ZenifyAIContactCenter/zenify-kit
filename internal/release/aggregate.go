@@ -53,11 +53,23 @@ func Aggregate(commits []Commit, notStaging map[string]bool) []Change {
 	return out
 }
 
-// changeAuthors: dev distinct theo thứ tự gặp đầu, bỏ tên rỗng.
+// changeAuthors: dev viết code (distinct, thứ tự gặp đầu). Bỏ merge-commit vì %an của nó là
+// người BẤM merge, không phải tác giả code. Nếu change CHỈ có merge commit (không có commit
+// thường trong khoảng) thì mới dùng tác giả merge làm best-available.
 func changeAuthors(ch Change) []string {
+	if a := collectAuthors(ch.Commits, true); len(a) > 0 {
+		return a
+	}
+	return collectAuthors(ch.Commits, false)
+}
+
+func collectAuthors(commits []Commit, skipMerge bool) []string {
 	seen := map[string]bool{}
 	var authors []string
-	for _, c := range ch.Commits {
+	for _, c := range commits {
+		if skipMerge && c.Merge {
+			continue
+		}
 		a := strings.TrimSpace(c.Author)
 		if a == "" || seen[a] {
 			continue
@@ -72,7 +84,7 @@ func changeAuthors(ch Change) []string {
 var convPrefixRe = regexp.MustCompile(`^(?:feat|fix|perf|refactor|chore)(?:\([^)]*\))?!?:\s*`)
 
 // changeDesc: subject của commit non-merge đầu tiên, đã cắt prefix type(scope):.
-// Không có commit non-merge → dùng subject non-merge-branch bất kỳ đã cắt prefix; rỗng thì "".
+// Không có commit non-merge (hoặc mọi subject rỗng sau khi cắt prefix) → "".
 func changeDesc(ch Change) string {
 	for _, c := range ch.Commits {
 		if c.Merge {

@@ -53,10 +53,30 @@ func TestAggregateMiscBucketNoCommitLost(t *testing.T) {
 
 func TestAggregateHotfixAndNotOnStaging(t *testing.T) {
 	cs := []Commit{
-		{SHA: "9", Subject: "Merge pull request #9 from x/hotfix/urgent", Type: "other", Merge: true, Branch: "hotfix/urgent"},
+		{SHA: "9", Subject: "Merge pull request #9 from x/hotfix/urgent", Type: "other", Merge: true, Branch: "hotfix/urgent", Author: "admin"},
 	}
 	ch := Aggregate(cs, map[string]bool{"9": true})
 	if len(ch) != 1 || !ch[0].IsHotfix || ch[0].Type != "hotfix" || !ch[0].NotOnStaging {
 		t.Fatalf("hotfix/notOnStaging: %+v", ch)
+	}
+	// Chỉ có merge commit → dùng tác giả merge làm best-available (không để trống Dev).
+	if len(ch[0].Authors) != 1 || ch[0].Authors[0] != "admin" {
+		t.Errorf("pure-merge change phải fallback về tác giả merge: %+v", ch[0].Authors)
+	}
+}
+
+func TestAggregateAuthorsExcludeMergeClicker(t *testing.T) {
+	// hungnk viết code; admin chỉ bấm merge → Dev KHÔNG được liệt admin.
+	cs := []Commit{
+		{SHA: "1", Subject: "feat(x): a1", Type: "feat", Author: "hungnk"},
+		{SHA: "2", Subject: "feat(x): a2", Type: "feat", Author: "hungnk"},
+		{SHA: "3", Subject: "Merge pull request #5 from o/feat/x", Type: "other", Merge: true, Branch: "feat/x", Author: "admin"},
+	}
+	ch := Aggregate(cs, nil)
+	if len(ch) != 1 {
+		t.Fatalf("muốn 1 change: %+v", ch)
+	}
+	if len(ch[0].Authors) != 1 || ch[0].Authors[0] != "hungnk" {
+		t.Errorf("người bấm merge (admin) không được vào Dev: %+v", ch[0].Authors)
 	}
 }
