@@ -16,7 +16,7 @@ func TestBuildParticipationAndFlags(t *testing.T) {
 	loadPatterns := func(dir string) []string { return []string{"**/chat_*"} }
 	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
 
-	rep := Build(router, resolve, []string{"be", "notif"}, 84, loadPatterns)
+	rep := Build(router, resolve, []string{"be", "notif"}, 84, loadPatterns, func(string) []SpecMeta { return nil })
 
 	if len(rep.Repos) != 1 || rep.Repos[0].Name != "be" {
 		t.Fatalf("participating=%v", rep.Repos)
@@ -34,13 +34,23 @@ func TestBuildParticipationAndFlags(t *testing.T) {
 	if len(rep.NotShipped) != 1 || rep.NotShipped[0] != "notif" {
 		t.Errorf("notshipped: %v", rep.NotShipped)
 	}
+	if len(be0.Changes) == 0 {
+		t.Errorf("phải có Changes sau aggregate")
+	}
+	if len(rep.ShippingRepos) != 1 || rep.ShippingRepos[0] != "be" {
+		t.Errorf("shipping: %v", rep.ShippingRepos)
+	}
+	// hotfix change 'x' có commit '9dc'? — notStaging đánh dấu qua SHA; ở đây hotfix merge 'aaa'
+	if rep.TotalHotfix < 1 {
+		t.Errorf("TotalHotfix: %d", rep.TotalHotfix)
+	}
 }
 
 func TestBuildFailOpenPerRepo(t *testing.T) {
 	bad := fakeRunner{err: map[string]string{"branch -r": "boom"}}
 	router := dirRouter{per: map[string]fakeRunner{"/ws/bad": bad}}
 	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
-	rep := Build(router, resolve, []string{"bad"}, 84, func(string) []string { return nil })
+	rep := Build(router, resolve, []string{"bad"}, 84, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
 	if len(rep.Repos) != 1 || rep.Repos[0].Err == "" {
 		t.Errorf("expected fail-open note, got %+v", rep.Repos)
 	}
@@ -53,7 +63,7 @@ func TestBuildUsesResolverNotFlatJoin(t *testing.T) {
 		return "/ws/repos/" + name, true
 	}
 	r := fakeRunner{calls: seen}
-	_ = Build(r, resolve, []string{"svc-a"}, 84, func(dir string) []string { return nil })
+	_ = Build(r, resolve, []string{"svc-a"}, 84, func(dir string) []string { return nil }, func(string) []SpecMeta { return nil })
 	if !seen["/ws/repos/svc-a"] {
 		t.Fatalf("Build phải dùng path từ resolver, các dir đã gọi: %+v", seen)
 	}
@@ -61,7 +71,7 @@ func TestBuildUsesResolverNotFlatJoin(t *testing.T) {
 
 func TestBuildResolveMiss(t *testing.T) {
 	resolve := func(name string) (string, bool) { return "", false }
-	rep := Build(fakeRunner{}, resolve, []string{"ghost"}, 84, func(string) []string { return nil })
+	rep := Build(fakeRunner{}, resolve, []string{"ghost"}, 84, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
 	if len(rep.Repos) != 1 || rep.Repos[0].Err == "" {
 		t.Errorf("expected resolve-miss fail-open note, got %+v", rep.Repos)
 	}
