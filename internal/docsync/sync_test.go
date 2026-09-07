@@ -8,6 +8,7 @@ import (
 type fakeRunner struct {
 	calls  [][]string
 	status string // giá trị trả cho `status --porcelain`
+	ahead  string // giá trị trả cho `rev-list --count @{upstream}..HEAD` (rỗng = không xác định → 0)
 	failOn string // arg[0] sẽ trả lỗi (rỗng = không lỗi)
 }
 
@@ -18,6 +19,9 @@ func (f *fakeRunner) Run(dir string, args ...string) ([]byte, error) {
 	}
 	if len(args) >= 2 && args[0] == "status" {
 		return []byte(f.status), nil
+	}
+	if len(args) > 0 && args[0] == "rev-list" {
+		return []byte(f.ahead), nil
 	}
 	return nil, nil
 }
@@ -36,16 +40,40 @@ func ran(calls [][]string, sub string) bool {
 	return false
 }
 
-// Sạch → CHỈ status (local), KHÔNG network: không pull, không commit, không push.
-// Đây là bảo chứng cho hook Stop chạy mỗi turn không tốn round-trip mạng.
+// Sạch + ahead=0 → chỉ status + rev-list (đều LOCAL), KHÔNG network mutate:
+// không pull, không commit, không push. Bảo chứng hook Stop chạy mỗi turn
+// (sạch, up-to-date) không tốn round-trip mạng nào.
 func TestSync_CleanIsLocalOnly(t *testing.T) {
-	f := &fakeRunner{status: ""}
+	f := &fakeRunner{status: "", ahead: "0"}
 	Sync(f, "/docs")
 	if ran(f.calls, "commit") || ran(f.calls, "pull") || ran(f.calls, "push") {
-		t.Fatalf("turn sạch chỉ được chạy status (không network); calls=%v", f.calls)
+		t.Fatalf("turn sạch+up-to-date không được pull/commit/push; calls=%v", f.calls)
 	}
 	if !ran(f.calls, "status --porcelain") {
 		t.Fatalf("phải kiểm tra status; calls=%v", f.calls)
+	}
+}
+
+// Sạch nhưng CÒN commit chưa push (clean-but-ahead) → KHÔNG commit thừa,
+// nhưng phải pull --rebase + push để đẩy nốt commit kẹt từ lần trước.
+func TestSync_CleanButAheadPushesPending(t *testing.T) {
+	f := &fakeRunner{status: "", ahead: "2"}
+	Sync(f, "/docs")
+	if ran(f.calls, "add -A") || ran(f.calls, "commit") {
+		t.Fatalf("sạch thì KHÔNG được add/commit thừa; calls=%v", f.calls)
+	}
+	if !ran(f.calls, "pull --rebase") || !ran(f.calls, "push") {
+		t.Fatalf("clean-but-ahead phải pull--rebase+push commit kẹt; calls=%v", f.calls)
+	}
+}
+
+// ahead không xác định (chưa set upstream → rev-list lỗi) → fail-safe về clean,
+// KHÔNG đụng mạng (giữ nguyên hành vi cũ khi không biết ahead).
+func TestSync_CleanAheadUnknownStaysLocal(t *testing.T) {
+	f := &fakeRunner{status: "", failOn: "rev-list"}
+	Sync(f, "/docs")
+	if ran(f.calls, "pull") || ran(f.calls, "push") {
+		t.Fatalf("không xác định ahead phải giữ local, không network; calls=%v", f.calls)
 	}
 }
 
