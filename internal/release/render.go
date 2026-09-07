@@ -13,7 +13,11 @@ func Render(rep Report, verbose bool) string {
 	var b strings.Builder
 
 	// Header.
-	fmt.Fprintf(&b, "# Release %d\n", rep.N)
+	if rep.Unreleased {
+		fmt.Fprintf(&b, "# Release đang hình thành (sau R%d)\n", rep.N)
+	} else {
+		fmt.Fprintf(&b, "# Release %d\n", rep.N)
+	}
 	fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)
 
 	// Headline — quyết định nhanh.
@@ -48,7 +52,11 @@ func Render(rep Report, verbose bool) string {
 			fmt.Fprintf(&b, "- ⚠ %s\n", rr.Err)
 			continue
 		}
-		fmt.Fprintf(&b, "## %s (rel%d..%d, cắt %s)\n", rr.Name, rr.PrevRelease, rep.N, cutOr(rr.CutDate))
+		if rep.Unreleased {
+			fmt.Fprintf(&b, "## %s (rel%d..staging)\n", rr.Name, rr.PrevRelease)
+		} else {
+			fmt.Fprintf(&b, "## %s (rel%d..%d, cắt %s)\n", rr.Name, rr.PrevRelease, rep.N, cutOr(rr.CutDate))
+		}
 		fmt.Fprintf(&b, "- Migration %s · Test %s · %d commit → %d thay đổi\n",
 			yesNo(rr.HasMigration, "CÓ", "không"),
 			yesNo(rr.HasTestTouch, "đụng", "không"),

@@ -76,4 +76,6 @@ type Report struct {
 	Migrations        []string // repo có migration
 	SpecLinked        int      // số Change link được spec
 	SpecTotal         int      // tổng Change (mọi type trừ chore? — xem Task 5)
+
+	Unreleased bool // true khi report là view "release đang hình thành" (range release<latest>..staging)
 }
