@@ -52,3 +52,39 @@ func TestRunOnboard_ApplyInvokesApplyFn(t *testing.T) {
 		t.Fatal("ApplyFn not called despite AutoConfirm")
 	}
 }
+
+// loginStep-level wiring: when gh is missing in interactive mode, loginStep
+// must actually reach offerInstallGH (not just leave it unit-tested but
+// unwired). Guards against a future reorder of the Accessible check.
+func TestLoginStep_OffersInstallWhenGHMissing(t *testing.T) {
+	installed := false
+	cfg := OnboardConfig{
+		Accessible:    false,
+		DetectGitFn:   func() error { return nil },
+		DetectGHFn:    func() error { if installed { return nil }; return errNotFound },
+		ConfirmFn:     func(string) (bool, error) { return true, nil },
+		InstallRunner: func(string) error { installed = true; return nil },
+		lookPath:      func(name string) (string, error) { return "/opt/homebrew/bin/" + name, nil },
+		AuthStatusFn:  func() (string, authState) { return "namph", authLoggedIn },
+	}
+	if err := loginStep(cfg); err != nil {
+		t.Fatalf("loginStep should succeed after install, got %v", err)
+	}
+	if !installed {
+		t.Fatal("expected offerInstallGH to run install from loginStep")
+	}
+}
+
+// Headless (Accessible) with gh missing must return the guide error WITHOUT
+// prompting — the ConfirmFn t.Fatal fires if loginStep ever prompts here.
+func TestLoginStep_HeadlessGHMissingNoPrompt(t *testing.T) {
+	cfg := OnboardConfig{
+		Accessible:  true,
+		DetectGitFn: func() error { return nil },
+		DetectGHFn:  func() error { return errNotFound },
+		ConfirmFn:   func(string) (bool, error) { t.Fatal("must not prompt in headless"); return false, nil },
+	}
+	if err := loginStep(cfg); err == nil {
+		t.Fatal("expected guide error in headless when gh missing")
+	}
+}

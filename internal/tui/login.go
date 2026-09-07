@@ -15,7 +15,7 @@ func detectGH() error { return detectGHWith(exec.LookPath) }
 
 func detectGHWith(lookPath func(string) (string, error)) error {
 	if _, err := lookPath("gh"); err != nil {
-		return errors.New("GitHub CLI (gh) not found — install: https://cli.github.com then re-run `zenify up`")
+		return ghGuideErr // single source of the gh-missing guide message
 	}
 	return nil
 }
