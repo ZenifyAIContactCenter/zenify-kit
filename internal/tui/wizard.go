@@ -57,6 +57,17 @@ type OnboardConfig struct {
 	InstallRunner func(tool string) error
 	// lookPath overrides exec.LookPath inside offerInstallGH (test seam).
 	lookPath func(string) (string, error)
+
+	// SecretKeys là các env key B8 prompt masked (subset bootstrap). Rỗng → secretStep no-op.
+	SecretKeys []string
+	// SecretPromptFn override prompt masked (test seam). Nil → huh EchoModePassword thật.
+	SecretPromptFn func(keys []string) (map[string]string, error)
+	// WelcomeNoteFn overrides welcomeNote (test seam). welcomeNote(false) opens a
+	// real huh.Form.Run() that needs an actual /dev/tty, so any test exercising
+	// RunOnboard with Accessible:false (needed to reach secretStep, which no-ops
+	// when Accessible) must stub this out to stay hermetic. Nil uses the real
+	// welcomeNote.
+	WelcomeNoteFn func(accessible bool) error
 }
 
 // OnboardResult carries the plan, the selected repos, and whether apply ran
@@ -87,7 +98,11 @@ func welcomeNote(accessible bool) error {
 func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	var res OnboardResult
 
-	if err := welcomeNote(cfg.Accessible); err != nil {
+	welcome := welcomeNote
+	if cfg.WelcomeNoteFn != nil {
+		welcome = cfg.WelcomeNoteFn
+	}
+	if err := welcome(cfg.Accessible); err != nil {
 		return res, err
 	}
 
@@ -145,6 +160,10 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 		return res, applyErr
 	}
 	res.Done = true
+	if err := secretStep(cfg); err != nil {
+		// fail-open: apply đã xong, đừng làm hỏng onboard vì lỗi ghi secret.
+		fmt.Fprintln(os.Stderr, "secrets: bỏ qua vì lỗi:", err)
+	}
 	printDone(os.Stdout)
 	return res, nil
 }
