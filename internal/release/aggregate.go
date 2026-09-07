@@ -1,6 +1,9 @@
 package release
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // Aggregate gom []Commit thành []Change theo key chuẩn-hoá (last-segment branch ∪ scope).
 // Merge-commit và commit lẻ cùng slug gom chung. Commit không branch/scope → bucket "misc:<type>".
@@ -44,8 +47,43 @@ func Aggregate(commits []Commit, notStaging map[string]bool) []Change {
 	for i := range out {
 		out[i].Type = changeType(out[i])
 		out[i].Title = changeTitle(out[i])
+		out[i].Authors = changeAuthors(out[i])
+		out[i].Desc = changeDesc(out[i])
 	}
 	return out
+}
+
+// changeAuthors: dev distinct theo thứ tự gặp đầu, bỏ tên rỗng.
+func changeAuthors(ch Change) []string {
+	seen := map[string]bool{}
+	var authors []string
+	for _, c := range ch.Commits {
+		a := strings.TrimSpace(c.Author)
+		if a == "" || seen[a] {
+			continue
+		}
+		seen[a] = true
+		authors = append(authors, a)
+	}
+	return authors
+}
+
+// convPrefixRe khớp prefix conventional-commit để cắt lấy phần mô tả: "feat(x): foo" → "foo".
+var convPrefixRe = regexp.MustCompile(`^(?:feat|fix|perf|refactor|chore)(?:\([^)]*\))?!?:\s*`)
+
+// changeDesc: subject của commit non-merge đầu tiên, đã cắt prefix type(scope):.
+// Không có commit non-merge → dùng subject non-merge-branch bất kỳ đã cắt prefix; rỗng thì "".
+func changeDesc(ch Change) string {
+	for _, c := range ch.Commits {
+		if c.Merge {
+			continue
+		}
+		s := convPrefixRe.ReplaceAllString(strings.TrimSpace(c.Subject), "")
+		if s = strings.TrimSpace(s); s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // changeType: hotfix nếu IsHotfix; else loại "mạnh nhất" trong các commit (feat > fix/perf/refactor > chore > other).

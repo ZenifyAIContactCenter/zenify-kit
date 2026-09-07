@@ -4,6 +4,7 @@ package release
 type Commit struct {
 	SHA     string // short sha
 	Subject string
+	Author  string // git author name (%an)
 	Type    string // feat|fix|perf|refactor|chore|other
 	Merge   bool
 	Branch  string // branch nguồn parse từ merge subject; "" nếu không có
@@ -34,6 +35,8 @@ type Change struct {
 	Type         string   // feat|fix|hotfix|chore|other
 	PRNum        string   // "" nếu không parse được
 	Commits      []Commit // các commit attribute vào thay đổi này
+	Authors      []string // dev đã làm (distinct, first-seen order)
+	Desc         string   // mô tả đại diện (subject commit non-merge đầu, bỏ prefix type(scope):)
 	IsHotfix     bool
 	NotOnStaging bool // có commit thuộc tập NotInStaging
 	Risk         RiskMeta

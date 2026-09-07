@@ -4,9 +4,9 @@ import "testing"
 
 func TestAggregateGroupsBranchAndScope(t *testing.T) {
 	cs := []Commit{
-		{SHA: "1", Subject: "feat(alpha): a1", Type: "feat"},
-		{SHA: "2", Subject: "feat(alpha): a2", Type: "feat"},
-		{SHA: "3", Subject: "Merge pull request #7 from x/feat/alpha", Type: "other", Merge: true, Branch: "feat/alpha"},
+		{SHA: "1", Subject: "feat(alpha): a1", Type: "feat", Author: "namph"},
+		{SHA: "2", Subject: "feat(alpha): a2", Type: "feat", Author: "hungnk"},
+		{SHA: "3", Subject: "Merge pull request #7 from x/feat/alpha", Type: "other", Merge: true, Branch: "feat/alpha", Author: "namph"},
 		{SHA: "4", Subject: "fix(beta): b1", Type: "fix"},
 		{SHA: "5", Subject: "fix(beta): b2", Type: "fix"},
 	}
@@ -21,6 +21,14 @@ func TestAggregateGroupsBranchAndScope(t *testing.T) {
 	a := byslug["alpha"]
 	if a.Type != "feat" || len(a.Commits) != 3 || a.PRNum != "7" || a.Title != "Alpha" {
 		t.Errorf("alpha gom sai: %+v", a)
+	}
+	// Authors: distinct theo thứ tự gặp đầu, bỏ rỗng.
+	if len(a.Authors) != 2 || a.Authors[0] != "namph" || a.Authors[1] != "hungnk" {
+		t.Errorf("authors distinct first-seen: %+v", a.Authors)
+	}
+	// Desc: subject non-merge đầu, cắt prefix conventional-commit.
+	if a.Desc != "a1" {
+		t.Errorf("desc phải cắt prefix type(scope): được %q", a.Desc)
 	}
 	if byslug["beta"].Type != "fix" || len(byslug["beta"].Commits) != 2 {
 		t.Errorf("beta: %+v", byslug["beta"])

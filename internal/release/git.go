@@ -13,7 +13,8 @@ import (
 const sep = "\x1f"    // unit separator giữa field
 const recSep = "\x1e" // record separator giữa commit (body có thể nhiều dòng)
 
-const logFormat = "--format=%h" + sep + "%s" + sep + "%b" + recSep
+// %b PHẢI đứng cuối (body nhiều dòng); %an chèn giữa subject và body.
+const logFormat = "--format=%h" + sep + "%s" + sep + "%an" + sep + "%b" + recSep
 
 // Chốt cuối là whitespace/EOL để KHÔNG khớp biến thể như origin/release84-hotfix hay release84.1.
 var relNumRe = regexp.MustCompile(`(?m)origin/release(\d+)(?:\s|$)`)
@@ -62,15 +63,19 @@ func parseCommits(out []byte) []Commit {
 		if rec == "" {
 			continue
 		}
-		parts := strings.SplitN(rec, sep, 3)
+		parts := strings.SplitN(rec, sep, 4)
 		if len(parts) < 2 {
 			continue
 		}
-		body := ""
-		if len(parts) == 3 {
-			body = strings.TrimRight(parts[2], "\n")
+		author := ""
+		if len(parts) >= 3 {
+			author = parts[2]
 		}
-		c := Commit{SHA: parts[0], Subject: parts[1], Body: body, Type: ClassifyType(parts[1])}
+		body := ""
+		if len(parts) == 4 {
+			body = strings.TrimRight(parts[3], "\n")
+		}
+		c := Commit{SHA: parts[0], Subject: parts[1], Author: author, Body: body, Type: ClassifyType(parts[1])}
 		if b := ParseMergeBranch(parts[1]); b != "" {
 			c.Merge, c.Branch = true, b
 		}

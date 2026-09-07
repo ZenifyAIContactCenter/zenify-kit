@@ -99,28 +99,72 @@ func renderChangeSection(b *strings.Builder, header string, changes []Change, ve
 		return
 	}
 	b.WriteString(header + "\n")
+	// Bảng: mỗi thay đổi một dòng — quét nhanh hơn danh sách dàn trải.
+	b.WriteString("| Thay đổi | # | Dev | Spec / Risk | Staging |\n")
+	b.WriteString("|---|---|---|---|---|\n")
 	for _, ch := range changes {
-		fmt.Fprintf(b, "- **%s**%s (%d commit)\n", ch.Title, prNum(ch.PRNum), len(ch.Commits))
-		fmt.Fprintf(b, "  %s\n", humanRisk(ch.Risk))
-		if ch.NotOnStaging {
-			b.WriteString("  ⚠ CHƯA trên staging → cần cherry-pick về staging\n")
-		}
-		// FR-5.2: verbose in danh sách commit của mỗi thay đổi (bỏ subject rỗng).
-		if verbose {
+		fmt.Fprintf(b, "| %s | %d | %s | %s | %s |\n",
+			cell(changeCol(ch)),
+			len(ch.Commits),
+			cell(devCol(ch.Authors)),
+			cell(humanRisk(ch.Risk)),
+			cell(stagingCol(ch.NotOnStaging)))
+	}
+	// FR-5.2: verbose liệt kê commit của từng thay đổi bên dưới bảng (bảng không lồng được).
+	if verbose {
+		for _, ch := range changes {
+			var subs []string
 			for _, c := range ch.Commits {
-				if c.Subject == "" {
-					continue
+				if c.Subject != "" {
+					subs = append(subs, c.Subject)
 				}
-				fmt.Fprintf(b, "  - %s\n", c.Subject)
+			}
+			if len(subs) == 0 {
+				continue
+			}
+			fmt.Fprintf(b, "\n**%s**%s\n", ch.Title, prNum(ch.PRNum))
+			for _, s := range subs {
+				fmt.Fprintf(b, "- %s\n", s)
 			}
 		}
 	}
 }
 
-// humanRisk render dòng risk từ RiskMeta. SpecPath rỗng = "unknown — no spec".
+// changeCol dựng ô "Thay đổi": **Title**[ #PR] — Desc (bỏ "— Desc" khi Desc rỗng).
+func changeCol(ch Change) string {
+	s := "**" + ch.Title + "**" + prNum(ch.PRNum)
+	if ch.Desc != "" {
+		s += " — " + ch.Desc
+	}
+	return s
+}
+
+// devCol join Authors; rỗng → "—".
+func devCol(authors []string) string {
+	if len(authors) == 0 {
+		return "—"
+	}
+	return strings.Join(authors, ", ")
+}
+
+// stagingCol: NotOnStaging → cảnh báo chưa sync; else ok.
+func stagingCol(notOnStaging bool) string {
+	if notOnStaging {
+		return "⚠ chưa sync"
+	}
+	return "ok"
+}
+
+// cell escape ký tự phá bảng markdown: `|` và xuống dòng.
+func cell(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.ReplaceAll(s, "|", "\\|")
+}
+
+// humanRisk render risk gọn cho ô bảng. SpecPath rỗng = "unknown — no spec".
 func humanRisk(r RiskMeta) string {
 	if r.SpecPath == "" {
-		return "Blast: unknown — no spec · DB: — · Rollback: —"
+		return "unknown — no spec"
 	}
 	return fmt.Sprintf("Blast: %s · DB: %s · Rollback: %s", r.BlastRadius, r.DB, r.Rollback)
 }
