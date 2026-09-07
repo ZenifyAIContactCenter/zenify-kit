@@ -17,7 +17,7 @@ func sampleReport() Report {
 			Changes: []Change{
 				{Title: "Linked fields", Slug: "linked-fields", Type: "feat", PRNum: "12", Commits: make([]Commit, 20),
 					Risk: RiskMeta{SpecPath: "specs/be/x-design.md", BlastRadius: "be+web", DB: "N/A", Rollback: "revert"}},
-				{Title: "Report tz", Slug: "report-tz", Type: "fix", Commits: make([]Commit, 2)},
+				{Title: "Report tz", Slug: "report-tz", Type: "fix", Commits: []Commit{{Subject: "fix(report): tz offset"}, {Subject: "test: tz case"}}},
 				{Title: "Urgent", Slug: "urgent", Type: "hotfix", Commits: make([]Commit, 1), IsHotfix: true, NotOnStaging: true},
 				{Title: "Khác (chore)", Slug: "misc:chore", Type: "chore", Commits: make([]Commit, 3)},
 			},
@@ -47,12 +47,18 @@ func TestRenderHeadlineAndSections(t *testing.T) {
 	if strings.Contains(out, "### Chores\n") && !strings.Contains(out, "ẩn 1") {
 		t.Errorf("chore phải gập với count khi !verbose")
 	}
+	if strings.Contains(out, "fix(report): tz offset") {
+		t.Errorf("non-verbose KHÔNG được in commit list mỗi thay đổi")
+	}
 }
 
 func TestRenderVerboseExpandsChore(t *testing.T) {
 	out := Render(sampleReport(), true)
 	if !strings.Contains(out, "Khác (chore)") {
 		t.Errorf("verbose phải liệt kê chore")
+	}
+	if !strings.Contains(out, "fix(report): tz offset") {
+		t.Errorf("verbose phải in commit list mỗi thay đổi (FR-5.2)")
 	}
 }
 

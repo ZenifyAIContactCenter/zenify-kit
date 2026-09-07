@@ -61,12 +61,12 @@ func Render(rep Report, verbose bool) string {
 		}
 
 		feats, fixes, hotfixes, chores := bucketChanges(rr.Changes)
-		renderChangeSection(&b, "### Features", feats)
-		renderChangeSection(&b, "### Fixes", fixes)
-		renderChangeSection(&b, "### Hotfixes", hotfixes)
+		renderChangeSection(&b, "### Features", feats, verbose)
+		renderChangeSection(&b, "### Fixes", fixes, verbose)
+		renderChangeSection(&b, "### Hotfixes", hotfixes, verbose)
 		if len(chores) > 0 {
 			if verbose {
-				renderChangeSection(&b, "### Chores", chores)
+				renderChangeSection(&b, "### Chores", chores, verbose)
 			} else {
 				fmt.Fprintf(&b, "### Chores (ẩn %d — --verbose)\n", len(chores))
 			}
@@ -94,7 +94,7 @@ func bucketChanges(changes []Change) (feats, fixes, hotfixes, chores []Change) {
 	return
 }
 
-func renderChangeSection(b *strings.Builder, header string, changes []Change) {
+func renderChangeSection(b *strings.Builder, header string, changes []Change, verbose bool) {
 	if len(changes) == 0 {
 		return
 	}
@@ -104,6 +104,15 @@ func renderChangeSection(b *strings.Builder, header string, changes []Change) {
 		fmt.Fprintf(b, "  %s\n", humanRisk(ch.Risk))
 		if ch.NotOnStaging {
 			b.WriteString("  ⚠ CHƯA trên staging → cần cherry-pick về staging\n")
+		}
+		// FR-5.2: verbose in danh sách commit của mỗi thay đổi (bỏ subject rỗng).
+		if verbose {
+			for _, c := range ch.Commits {
+				if c.Subject == "" {
+					continue
+				}
+				fmt.Fprintf(b, "  - %s\n", c.Subject)
+			}
 		}
 	}
 }
