@@ -48,7 +48,15 @@ type OnboardConfig struct {
 	// which is what TestRunOnboard_AccessiblePlanOnly relies on (this
 	// workstation has `gh` installed and is logged in).
 	DetectGHFn   func() error
-	AuthStatusFn func() (string, bool)
+	AuthStatusFn func() (string, authState)
+	// DetectGitFn overrides detectGit for tests. Nil uses the real impl.
+	DetectGitFn func() error
+	// ConfirmFn overrides the interactive yes/no prompt (offerInstallGH).
+	ConfirmFn func(prompt string) (bool, error)
+	// InstallRunner overrides the real `brew install <tool>` (offerInstallGH).
+	InstallRunner func(tool string) error
+	// lookPath overrides exec.LookPath inside offerInstallGH (test seam).
+	lookPath func(string) (string, error)
 }
 
 // OnboardResult carries the plan, the selected repos, and whether apply ran
@@ -59,12 +67,29 @@ type OnboardResult struct {
 	Done     bool
 }
 
+// welcomeNote hiện màn giới thiệu ngắn quy trình `up`. Headless (accessible)
+// bỏ qua để không chặn luồng máy đọc.
+func welcomeNote(accessible bool) error {
+	if accessible {
+		return nil
+	}
+	return huh.NewForm(huh.NewGroup(
+		huh.NewNote().
+			Title("Chào mừng tới zenify").
+			Description("`zenify up` sẽ: kiểm tra công cụ (gh/git) → đăng nhập GitHub → chọn repo → xem plan → apply (wire hook + docs). Nhấn Enter để bắt đầu."),
+	)).Run()
+}
+
 // RunOnboard runs the discover → select → scan → plan wizard. In PlanOnly
 // (or headless Accessible) mode it builds the plan via PlanFn, renders it,
 // and returns without prompting or applying — later tasks add the
 // interactive multiselect + apply confirmation on top of this skeleton.
 func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	var res OnboardResult
+
+	if err := welcomeNote(cfg.Accessible); err != nil {
+		return res, err
+	}
 
 	if err := loginStep(cfg); err != nil {
 		return res, err
@@ -164,21 +189,38 @@ func printDone(w *os.File) {
 // the real terminal, which gives the same effect: the wizard blocks here,
 // the browser login happens, and RunOnboard continues once it returns.
 func loginStep(cfg OnboardConfig) error {
+	detectGitFn := cfg.DetectGitFn
+	if detectGitFn == nil {
+		detectGitFn = detectGit
+	}
+	if err := detectGitFn(); err != nil {
+		return err // guide-only, không auto-install
+	}
+
 	detect := cfg.DetectGHFn
 	if detect == nil {
 		detect = detectGH
 	}
 	if err := detect(); err != nil {
-		return err
+		if cfg.Accessible {
+			return err // headless: giữ lỗi guide cũ, KHÔNG prompt
+		}
+		if err := offerInstallGH(cfg); err != nil {
+			return err
+		}
 	}
 
 	authStatus := cfg.AuthStatusFn
 	if authStatus == nil {
 		authStatus = ghAuthStatus
 	}
-	if _, ok := authStatus(); ok {
+	switch _, st := authStatus(); st {
+	case authLoggedIn:
 		return nil
+	case authUnreachable:
+		return errors.New("không kết nối được GitHub — kiểm tra mạng rồi chạy lại `zenify up`")
 	}
+	// authLoggedOut → luồng login bên dưới (giữ nguyên P1)
 
 	if cfg.Accessible {
 		// Headless / non-TTY path (FR-1.4): never open a browser, fail
@@ -195,7 +237,10 @@ func loginStep(cfg OnboardConfig) error {
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-	if _, ok := authStatus(); !ok {
+	if _, st := authStatus(); st != authLoggedIn {
+		if st == authUnreachable {
+			return errors.New("không kết nối được GitHub — kiểm tra mạng rồi chạy lại `zenify up`")
+		}
 		return errors.New("not logged in — run: gh auth login")
 	}
 	return nil
