@@ -1,19 +1,48 @@
 package tui
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestGHAuthStatus_Parse(t *testing.T) {
-	// runner injected so no real gh call.
-	account, ok := parseAuthStatus("github.com\n  ✓ Logged in to github.com account namph (keyring)\n")
-	if !ok {
-		t.Fatal("expected ok=true")
+	account, st := parseAuthState("github.com\n  ✓ Logged in to github.com account namph (keyring)\n", nil)
+	if st != authLoggedIn {
+		t.Fatal("expected authLoggedIn")
 	}
 	if account != "namph" {
 		t.Fatalf("account = %q, want namph", account)
 	}
-	_, ok2 := parseAuthStatus("You are not logged into any GitHub hosts.")
-	if ok2 {
-		t.Fatal("expected ok=false for logged-out")
+	_, st2 := parseAuthState("You are not logged into any GitHub hosts.", errors.New("exit status 1"))
+	if st2 != authLoggedOut {
+		t.Fatal("expected authLoggedOut for logged-out")
+	}
+}
+
+func TestParseAuthState(t *testing.T) {
+	cases := []struct {
+		name    string
+		out     string
+		err     error
+		wantAcc string
+		want    authState
+	}{
+		{"logged-in", "github.com\n  ✓ Logged in to github.com account namph (keyring)\n", nil, "namph", authLoggedIn},
+		{"logged-out", "You are not logged into any GitHub hosts.", errors.New("exit status 1"), "", authLoggedOut},
+		{"offline-dial", "error connecting to github.com\ndial tcp: lookup github.com: no such host", errors.New("exit status 1"), "", authUnreachable},
+		{"offline-refused", "could not connect to github.com: connection refused", errors.New("exit status 1"), "", authUnreachable},
+		{"offline-timeout", "request to github.com failed: timeout", errors.New("exit status 1"), "", authUnreachable},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			acc, st := parseAuthState(c.out, c.err)
+			if st != c.want {
+				t.Fatalf("state = %d, want %d", st, c.want)
+			}
+			if acc != c.wantAcc {
+				t.Fatalf("account = %q, want %q", acc, c.wantAcc)
+			}
+		})
 	}
 }
 

@@ -17,7 +17,7 @@ func TestRunOnboard_AccessiblePlanOnly(t *testing.T) {
 			return []reconcile.RepoPlan{{Name: "contact-center-be", State: "CLONE", Reason: "not on disk"}}, nil
 		},
 		DetectGHFn:   func() error { return nil },
-		AuthStatusFn: func() (string, bool) { return "test", true },
+		AuthStatusFn: func() (string, authState) { return "test", authLoggedIn },
 	}
 	res, err := RunOnboard(cfg)
 	if err != nil {
@@ -43,7 +43,7 @@ func TestRunOnboard_ApplyInvokesApplyFn(t *testing.T) {
 		},
 		ApplyFn:      func(sel []string) error { applied = true; return nil },
 		DetectGHFn:   func() error { return nil },
-		AuthStatusFn: func() (string, bool) { return "test", true },
+		AuthStatusFn: func() (string, authState) { return "test", authLoggedIn },
 	}
 	if _, err := RunOnboard(cfg); err != nil {
 		t.Fatalf("RunOnboard: %v", err)

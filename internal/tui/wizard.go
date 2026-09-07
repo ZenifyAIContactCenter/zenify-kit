@@ -48,7 +48,7 @@ type OnboardConfig struct {
 	// which is what TestRunOnboard_AccessiblePlanOnly relies on (this
 	// workstation has `gh` installed and is logged in).
 	DetectGHFn   func() error
-	AuthStatusFn func() (string, bool)
+	AuthStatusFn func() (string, authState)
 }
 
 // OnboardResult carries the plan, the selected repos, and whether apply ran
@@ -176,9 +176,13 @@ func loginStep(cfg OnboardConfig) error {
 	if authStatus == nil {
 		authStatus = ghAuthStatus
 	}
-	if _, ok := authStatus(); ok {
+	switch _, st := authStatus(); st {
+	case authLoggedIn:
 		return nil
+	case authUnreachable:
+		return errors.New("không kết nối được GitHub — kiểm tra mạng rồi chạy lại `zenify up`")
 	}
+	// authLoggedOut → luồng login bên dưới (giữ nguyên P1)
 
 	if cfg.Accessible {
 		// Headless / non-TTY path (FR-1.4): never open a browser, fail
@@ -195,7 +199,7 @@ func loginStep(cfg OnboardConfig) error {
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-	if _, ok := authStatus(); !ok {
+	if _, st := authStatus(); st != authLoggedIn {
 		return errors.New("not logged in — run: gh auth login")
 	}
 	return nil
