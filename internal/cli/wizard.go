@@ -17,10 +17,10 @@ import (
 func runWizard(w io.Writer, m *manifest.Manifest, workspace string) error {
 	gh, git := ghx.ExecRunner(), gitx.ExecRunner()
 	res, err := tui.RunOnboard(tui.OnboardConfig{
-		Workspace:   workspace,
-		Accessible:  false,
-		PlanFooter:  planFooterRows(workspace),
-		SecretKeys:  []string{"MONGO_URL", "E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"},
+		Workspace:  workspace,
+		Accessible: false,
+		PlanFooter: planFooterRows(workspace),
+		SecretKeys: []string{"MONGO_URL", "E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"},
 		PlanFn: func() ([]reconcile.RepoPlan, error) {
 			plans, _, perr := buildPlan(m, gh, git, workspace)
 			return plans, perr

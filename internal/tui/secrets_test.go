@@ -10,7 +10,7 @@ import (
 // readWSEnv đọc env block của settings.local.json trong workspace test.
 func readWSEnv(t *testing.T, ws string) map[string]string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	b, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestSecretStep_BlankInputKeepsPlaceholder(t *testing.T) {
 func TestSecretStep_AccessibleNoOp(t *testing.T) {
 	ws := t.TempDir()
 	writeWSSettings(t, ws, `{"env":{"E2E_EMAIL":""}}`)
-	before, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	before, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	called := false
 	cfg := OnboardConfig{
 		Workspace:  ws,
@@ -105,7 +105,7 @@ func TestSecretStep_AccessibleNoOp(t *testing.T) {
 	if called {
 		t.Error("Accessible=true nhưng vẫn prompt")
 	}
-	after, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	after, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if string(before) != string(after) {
 		t.Error("file bị đổi trong chế độ Accessible")
 	}
@@ -129,7 +129,7 @@ func TestSecretStep_DoesNotEscapeSpecialChars(t *testing.T) {
 	if got := readWSEnv(t, ws)["MONGO_URL"]; got != url {
 		t.Errorf("value bị mangle: %q != %q", got, url)
 	}
-	raw, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	raw, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if !strContains(string(raw), "a=1&b=2") {
 		t.Errorf("byte trên đĩa bị escape: %s", raw)
 	}
@@ -141,7 +141,7 @@ func TestSecretStep_DoesNotEscapeSpecialChars(t *testing.T) {
 func TestSecretStep_CorruptJSON_LeavesFileUnchanged(t *testing.T) {
 	ws := t.TempDir()
 	writeWSSettings(t, ws, `{"env": {`)
-	before, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	before, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read before: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestSecretStep_CorruptJSON_LeavesFileUnchanged(t *testing.T) {
 	if prompted {
 		t.Error("SecretPromptFn được gọi dù JSON hỏng phải fail trước prompt")
 	}
-	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read after: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestSecretStep_CorruptJSON_LeavesFileUnchanged(t *testing.T) {
 func TestSecretStep_NonObjectEnv_LeavesFileUnchanged(t *testing.T) {
 	ws := t.TempDir()
 	writeWSSettings(t, ws, `{"env":"oops"}`)
-	before, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	before, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read before: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestSecretStep_NonObjectEnv_LeavesFileUnchanged(t *testing.T) {
 	if prompted {
 		t.Error("SecretPromptFn được gọi dù env không phải object phải fail trước prompt")
 	}
-	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
+	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read after: %v", err)
 	}

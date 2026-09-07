@@ -32,7 +32,7 @@ func secretStep(cfg OnboardConfig) error {
 		}
 	}
 	if len(missing) == 0 {
-		fmt.Fprintln(os.Stdout, "secrets: đã đủ, giữ nguyên")
+		_, _ = fmt.Fprintln(os.Stdout, "secrets: đã đủ, giữ nguyên")
 		return nil
 	}
 	values, err := promptSecrets(cfg, missing)
