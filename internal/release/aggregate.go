@@ -13,6 +13,10 @@ func Aggregate(commits []Commit, notStaging map[string]bool) []Change {
 	var out []Change
 
 	keyOf := func(c Commit) (key, slug string) {
+		if c.PRBranch != "" {
+			s := NormalizeKey(c.PRBranch)
+			return s, s
+		}
 		if c.Merge && c.Branch != "" {
 			s := NormalizeKey(c.Branch)
 			return s, s
@@ -98,21 +102,55 @@ func changeDesc(ch Change) string {
 	return ""
 }
 
-// changeType: hotfix nếu IsHotfix; else loại "mạnh nhất" trong các commit (feat > fix/perf/refactor > chore > other).
+var typeRank = map[string]int{"feat": 4, "fix": 3, "perf": 3, "refactor": 3, "chore": 1, "other": 0}
+
+// branchTypeFloor suy type tối thiểu từ prefix branch của PR: segment feat|fix|perf|refactor|chore.
+// hotfix đã xử lý bởi ch.IsHotfix ở đầu changeType nên bỏ qua ở đây.
+func branchTypeFloor(branch string) string {
+	for _, seg := range strings.Split(branch, "/") {
+		switch seg {
+		case "feat", "fix", "perf", "refactor", "chore":
+			return seg
+		}
+	}
+	return ""
+}
+
+// changeType: hotfix nếu IsHotfix; else loại "mạnh nhất" trong các commit (feat > fix/perf/refactor > chore > other),
+// với sàn theo branch-prefix để PR feat/* luôn hiện dù commit bung toàn chore.
 func changeType(ch Change) string {
 	if ch.IsHotfix {
 		return "hotfix"
 	}
-	rank := map[string]int{"feat": 4, "fix": 3, "perf": 3, "refactor": 3, "chore": 1, "other": 0}
 	best, bestType := -1, "other"
 	for _, c := range ch.Commits {
 		t := c.Type
 		if t == "perf" || t == "refactor" {
 			t = "fix"
 		}
-		r := rank[c.Type]
+		r := typeRank[c.Type]
 		if r > best {
 			best, bestType = r, t
+		}
+	}
+	branch := ""
+	for _, c := range ch.Commits {
+		if c.Merge && c.Branch != "" {
+			branch = c.Branch
+			break
+		}
+		if c.PRBranch != "" {
+			branch = c.PRBranch
+			break
+		}
+	}
+	if floor := branchTypeFloor(branch); floor != "" {
+		t := floor
+		if t == "perf" || t == "refactor" {
+			t = "fix"
+		}
+		if typeRank[floor] > best {
+			bestType = t
 		}
 	}
 	return bestType

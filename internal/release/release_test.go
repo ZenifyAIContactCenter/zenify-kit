@@ -9,6 +9,7 @@ func TestBuildParticipationAndFlags(t *testing.T) {
 	be := fakeRunner{out: map[string]string{
 		"branch -r": "  origin/release83\n  origin/release84\n  origin/staging\n",
 		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84":                      "5ed\x1ffix: a\x1fnamph\x1f\x1e" + "aaa\x1fMerge pull request #1 from o/hungnk/hotfix/x\x1fhungnk\x1f\x1e",
+		"log --first-parent --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84":       "5ed\x1ffix: a\x1fnamph\x1f\x1e" + "aaa\x1fMerge pull request #1 from o/hungnk/hotfix/x\x1fhungnk\x1f\x1e",
 		"diff --name-only origin/release83..origin/release84":                                          "db/migrations/1.js\napp/models/chat_message.js\nfoo_test.go\n",
 		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84 --not origin/staging": "9dc\x1ftemporary disable report api\x1fnamph\x1f\x1e",
 		"merge-base origin/release84 origin/staging":                                              "base1\n",

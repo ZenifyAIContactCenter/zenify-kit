@@ -123,7 +123,17 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 		for _, c := range rr.Regression {
 			notStaging[c.SHA] = true
 		}
-		rr.Changes = Aggregate(rr.Commits, notStaging)
+		aggIn := rr.Commits // fallback phẳng (degrade-safe)
+		if gcs, err := RangeCommitsGrouped(r, dir, relPrev, relN); err == nil {
+			var gfeats []Commit
+			for _, c := range gcs {
+				if !IsReleaseNote(c) { // note-commit KHÔNG vào bucket (giữ option B)
+					gfeats = append(gfeats, c)
+				}
+			}
+			aggIn = gfeats
+		}
+		rr.Changes = Aggregate(aggIn, notStaging)
 		specs := loadSpecs(name)
 		noteMap := NoteRiskBySlug(notes)
 		for i := range rr.Changes {

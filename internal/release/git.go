@@ -93,6 +93,37 @@ func RangeCommits(r gitx.Runner, dir, from, to string) ([]Commit, error) {
 	return parseCommits(out), nil
 }
 
+// RangeCommitsGrouped trả các commit trong from..to đã GẮN NHÃN PR: đi mainline bằng
+// --first-parent; với mỗi merge-commit là PR (ParseMergeBranch khớp) thì set PRBranch=branch
+// lên merge-commit RỒI bung git log <merge>^1..<merge>^2 và set PRBranch=branch lên từng commit
+// bung. Commit mainline không phải PR (đẩy thẳng, hoặc merge không-PR như back-merge) giữ
+// PRBranch="". Dùng cho aggregation group-by-PR; counts/regression vẫn dùng RangeCommits phẳng.
+func RangeCommitsGrouped(r gitx.Runner, dir, from, to string) ([]Commit, error) {
+	out, err := r.Run(dir, "log", "--first-parent", logFormat, from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	mainline := parseCommits(out)
+	var cs []Commit
+	for _, m := range mainline {
+		if m.Merge && m.Branch != "" {
+			m.PRBranch = m.Branch
+			cs = append(cs, m)
+			bout, err := r.Run(dir, "log", logFormat, m.SHA+"^1.."+m.SHA+"^2")
+			if err != nil {
+				continue
+			}
+			for _, child := range parseCommits(bout) {
+				child.PRBranch = m.Branch
+				cs = append(cs, child)
+			}
+			continue
+		}
+		cs = append(cs, m)
+	}
+	return cs, nil
+}
+
 // ChangedFiles trả danh sách file đổi trong from..to.
 func ChangedFiles(r gitx.Runner, dir, from, to string) ([]string, error) {
 	out, err := r.Run(dir, "diff", "--name-only", from+".."+to)
