@@ -5,51 +5,58 @@ import (
 	"testing"
 )
 
-func TestRenderRequiredSections(t *testing.T) {
-	rep := Report{
+func sampleReport() Report {
+	return Report{
 		N: 84, GeneratedAt: "2026-09-05 16:10",
+		ShippingRepos: []string{"be"},
+		TotalFeat:     1, TotalFix: 1, TotalHotfix: 1, HotfixesNotSynced: 1,
+		Migrations: []string{"be"}, SpecLinked: 1, SpecTotal: 3,
 		Repos: []RepoReport{{
 			Name: "be", PrevRelease: 83, CutDate: "2026-08-26",
-			TypeCounts: map[string]int{"fix": 1}, HasMigration: false, HasTestTouch: true,
-			SharedHits: []string{"**/chat_*"},
-			Regression: []Commit{{SHA: "9dc", Subject: "temporary disable report api"}},
-			Hotfixes:   []Commit{{SHA: "aaa", Subject: "Merge ... hotfix/x", Branch: "hungnk/hotfix/x"}},
+			HasMigration: true, HasTestTouch: true, SharedHits: []string{"**/chat_*"},
+			Changes: []Change{
+				{Title: "Linked fields", Slug: "linked-fields", Type: "feat", PRNum: "12", Commits: make([]Commit, 20),
+					Risk: RiskMeta{SpecPath: "specs/be/x-design.md", BlastRadius: "be+web", DB: "N/A", Rollback: "revert"}},
+				{Title: "Report tz", Slug: "report-tz", Type: "fix", Commits: make([]Commit, 2)},
+				{Title: "Urgent", Slug: "urgent", Type: "hotfix", Commits: make([]Commit, 1), IsHotfix: true, NotOnStaging: true},
+				{Title: "Khác (chore)", Slug: "misc:chore", Type: "chore", Commits: make([]Commit, 3)},
+			},
 		}},
 		NotShipped:      []string{"notification"},
 		SharedCrossRepo: map[string][]string{"**/chat_*": {"be", "chatting"}},
 		DeployOrderNote: true,
 	}
-	out := Render(rep)
+}
+
+func TestRenderHeadlineAndSections(t *testing.T) {
+	out := Render(sampleReport(), false)
 	for _, want := range []string{
-		"# Release 84", "Ngày cắt", "## be", "Regression", "9dc",
-		"Hotfix", "notification", "migration → BE", "**/chat_*",
+		"# Release 84", "Quyết định nhanh", "notification", // không ship
+		"migration → BE", "**/chat_*", // shared + deploy order
+		"### Features", "Linked fields", "be+web", // feature + risk từ spec
+		"### Fixes", "Report tz",
+		"### Hotfixes", "CHƯA trên staging", // hotfix cờ
+		"unknown — no spec", // fix không spec
+		"1/3",               // spec coverage
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("render thiếu %q\n---\n%s", want, out)
 		}
 	}
+	if strings.Contains(out, "### Chores\n") && !strings.Contains(out, "ẩn 1") {
+		t.Errorf("chore phải gập với count khi !verbose")
+	}
 }
 
-func TestRenderRegressionUncomputedDistinct(t *testing.T) {
-	rep := Report{
-		N: 84, GeneratedAt: "x",
-		Repos: []RepoReport{{
-			Name: "web", PrevRelease: 83, CutDate: "2026-08-26",
-			TypeCounts: map[string]int{}, RegressionUncomputed: true,
-		}},
-		SharedCrossRepo: map[string][]string{},
-	}
-	out := Render(rep)
-	if !strings.Contains(out, "chưa tính được") {
-		t.Errorf("regression chưa-tính-được phải hiển thị khác 'sạch': %s", out)
-	}
-	if strings.Contains(out, "commit chưa có trên staging") {
-		t.Errorf("không được render list regression khi uncomputed: %s", out)
+func TestRenderVerboseExpandsChore(t *testing.T) {
+	out := Render(sampleReport(), true)
+	if !strings.Contains(out, "Khác (chore)") {
+		t.Errorf("verbose phải liệt kê chore")
 	}
 }
 
 func TestRenderEmptyReportNoPanic(t *testing.T) {
-	out := Render(Report{N: 84, GeneratedAt: "x", SharedCrossRepo: map[string][]string{}})
+	out := Render(Report{N: 84, GeneratedAt: "x", SharedCrossRepo: map[string][]string{}}, false)
 	if !strings.Contains(out, "# Release 84") {
 		t.Errorf("empty render missing header: %s", out)
 	}

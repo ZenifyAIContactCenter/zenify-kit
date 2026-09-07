@@ -55,7 +55,7 @@ func TestRunReleaseReportFailOpenEmptyWorkspace(t *testing.T) {
 	zh := t.TempDir()
 	t.Setenv("ZENIFY_HOME", zh)
 	var out, errb bytes.Buffer
-	if err := runReleaseReport(ws, 84, true, "", nopRunner{}, &out, &errb); err != nil {
+	if err := runReleaseReport(ws, 84, true, "", false, nopRunner{}, &out, &errb); err != nil {
 		t.Fatalf("fail-open vi phạm: trả err %v", err)
 	}
 	path := filepath.Join(zh, "knowledge", "releases", "R84.md")
@@ -65,5 +65,20 @@ func TestRunReleaseReportFailOpenEmptyWorkspace(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "# Release 84") {
 		t.Errorf("report thiếu header: %s", b)
+	}
+}
+
+// verbose=true trên workspace rỗng: vẫn fail-open, ghi được report, không panic (FR-5.3).
+func TestRunReleaseReportVerboseFailOpen(t *testing.T) {
+	ws := t.TempDir()
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
+	var out, errb bytes.Buffer
+	if err := runReleaseReport(ws, 84, true, "", true, nopRunner{}, &out, &errb); err != nil {
+		t.Fatalf("fail-open vi phạm (verbose): trả err %v", err)
+	}
+	path := filepath.Join(zh, "knowledge", "releases", "R84.md")
+	if _, err := os.ReadFile(path); err != nil {
+		t.Fatalf("report verbose vẫn phải được ghi: %v", err)
 	}
 }
