@@ -67,12 +67,29 @@ type OnboardResult struct {
 	Done     bool
 }
 
+// welcomeNote hiện màn giới thiệu ngắn quy trình `up`. Headless (accessible)
+// bỏ qua để không chặn luồng máy đọc.
+func welcomeNote(accessible bool) error {
+	if accessible {
+		return nil
+	}
+	return huh.NewForm(huh.NewGroup(
+		huh.NewNote().
+			Title("Chào mừng tới zenify").
+			Description("`zenify up` sẽ: kiểm tra công cụ (gh/git) → đăng nhập GitHub → chọn repo → xem plan → apply (wire hook + docs). Nhấn Enter để bắt đầu."),
+	)).Run()
+}
+
 // RunOnboard runs the discover → select → scan → plan wizard. In PlanOnly
 // (or headless Accessible) mode it builds the plan via PlanFn, renders it,
 // and returns without prompting or applying — later tasks add the
 // interactive multiselect + apply confirmation on top of this skeleton.
 func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	var res OnboardResult
+
+	if err := welcomeNote(cfg.Accessible); err != nil {
+		return res, err
+	}
 
 	if err := loginStep(cfg); err != nil {
 		return res, err

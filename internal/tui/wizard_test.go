@@ -88,3 +88,9 @@ func TestLoginStep_HeadlessGHMissingNoPrompt(t *testing.T) {
 		t.Fatal("expected guide error in headless when gh missing")
 	}
 }
+
+func TestWelcomeNote_SkippedWhenAccessible(t *testing.T) {
+	if err := welcomeNote(true); err != nil {
+		t.Fatalf("welcomeNote(accessible) must be a no-op, got %v", err)
+	}
+}
