@@ -23,17 +23,24 @@ Write each field as `**Label:** value` — the label in bold, the value immediat
 **Status:** Draft — awaiting approval
 ```
 
-Three things this is NOT, each an actual mistake that has been caught:
+Three things this is NOT, each an actual mistake that has been caught. **All three are about the
+header metadata block only** — they are not a ban on tables (or on `·`) anywhere else in the
+document:
 
-1. **Never a markdown table.** GFM always renders a header row, so a table header — whether
-   labelled (`| Field | Value |`, which reads like a database dump) or blanked (`|  |  |`, which
-   renders as an ugly empty grey bar) — is wrong every time. There is no table form that avoids
-   the header row.
-2. **Never a single `·`-separated line** (`Status: … · Date: … · Author: …`). It reads as a dense
-   wall.
+1. **Never a markdown table for the header block.** GFM always renders a header row, so a table
+   header — whether labelled (`| Field | Value |`, which reads like a database dump) or blanked
+   (`|  |  |`, which renders as an ugly empty grey bar) — is wrong for the header every time. There
+   is no table form that avoids the header row.
+2. **Never a single `·`-separated line** (`Status: … · Date: … · Author: …`) for the header. It
+   reads as a dense wall.
 3. **Never a lone bold label with the value indented on the line below.** That doubles the
    vertical whitespace and splits the label from its value, so it looks empty and disjointed. The
    label and its value share one line.
+
+Everywhere else in the body, a markdown table is fine — and is the right choice wherever tabular
+data scans better than prose or a list: a per-item matrix, a comparison, or a set of rows sharing
+the same columns. Use one there without hesitation. The rule above is about the header, not the
+document.
 
 ## Diagrams
 
