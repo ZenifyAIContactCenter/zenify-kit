@@ -58,3 +58,46 @@ func TestPathMatchers(t *testing.T) {
 		t.Error("MatchesAny should hit")
 	}
 }
+
+func TestParseScope(t *testing.T) {
+	cases := map[string]string{
+		"feat(linked-fields): add x": "linked-fields",
+		"fix(report): tz":            "report",
+		"chore: bump":                "",
+		"feat: no scope":             "",
+		"random subject":             "",
+	}
+	for in, want := range cases {
+		if got := ParseScope(in); got != want {
+			t.Errorf("ParseScope(%q)=%q want %q", in, got, want)
+		}
+	}
+}
+
+func TestNormalizeKeyMergesBranchAndScope(t *testing.T) {
+	// last-segment của branch phải == scope để gom chung.
+	if NormalizeKey("namph/feat/linked-fields") != "linked-fields" {
+		t.Errorf("branch last-segment: %q", NormalizeKey("namph/feat/linked-fields"))
+	}
+	if NormalizeKey("linked-fields") != "linked-fields" {
+		t.Errorf("scope passthrough")
+	}
+	if NormalizeKey("Feature/Linked_Fields") != "linked-fields" {
+		t.Errorf("case+underscore normalize: %q", NormalizeKey("Feature/Linked_Fields"))
+	}
+}
+
+func TestHumanizeTitle(t *testing.T) {
+	if HumanizeTitle("linked-fields") != "Linked fields" {
+		t.Errorf("got %q", HumanizeTitle("linked-fields"))
+	}
+}
+
+func TestParsePRNum(t *testing.T) {
+	if ParsePRNum("Merge pull request #2001 from o/x/y") != "2001" {
+		t.Errorf("pr parse")
+	}
+	if ParsePRNum("feat: no pr") != "" {
+		t.Errorf("no pr expected empty")
+	}
+}

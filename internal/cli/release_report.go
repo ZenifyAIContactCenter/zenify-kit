@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/release"
@@ -21,7 +22,7 @@ const defaultOutSub = "releases"
 // runReleaseReport là lõi test được. FAIL-OPEN: luôn trả nil; mọi lỗi thành note in ra stderr.
 // outDir rỗng → mặc định repo docs/releases (đường dẫn repo tự tìm theo layout,
 // phẳng hoặc repos/<repo> sau `zenify migrate`).
-func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, r gitx.Runner, stdout, stderr io.Writer) error {
+func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, verbose bool, r gitx.Runner, stdout, stderr io.Writer) error {
 	loadPatterns := func(dir string) []string {
 		c, err := wt.Load(dir)
 		if err != nil {
@@ -45,8 +46,29 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, r
 			}
 		}
 	}
-	rep := release.Build(r, resolve, repos, n, loadPatterns)
-	out := release.Render(rep)
+	// loadSpecs đọc specs/<repo>/*-design.md từ docs-store, parse Brief. Fail-open: lỗi → nil.
+	storeSpecs := filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), "specs")
+	loadSpecs := func(repo string) []release.SpecMeta {
+		dir := filepath.Join(storeSpecs, repo)
+		ents, err := os.ReadDir(dir)
+		if err != nil {
+			return nil
+		}
+		var out []release.SpecMeta
+		for _, e := range ents {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), "-design.md") {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			if err != nil {
+				continue
+			}
+			out = append(out, release.ParseSpecBrief(filepath.Join("specs", repo, e.Name()), b))
+		}
+		return out
+	}
+	rep := release.Build(r, resolve, repos, n, loadPatterns, loadSpecs)
+	out := release.Render(rep, verbose)
 	if outDir == "" {
 		outDir = filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultOutSub)
 	}
@@ -67,6 +89,7 @@ func newReleaseReportCmd() *cobra.Command {
 	var workspaceDir string
 	var noFetch bool
 	var outDir string
+	var verbose bool
 	cmd := &cobra.Command{
 		Use:   "release-report [N]",
 		Short: "sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R<N>.md)",
@@ -96,11 +119,12 @@ func newReleaseReportCmd() *cobra.Command {
 				fmt.Fprintln(cmd.ErrOrStderr(), "release-report: không xác định được release N (fail-open)")
 				return nil
 			}
-			return runReleaseReport(workspaceDir, n, noFetch, outDir, r, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runReleaseReport(workspaceDir, n, noFetch, outDir, verbose, r, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)")
 	cmd.Flags().BoolVar(&noFetch, "no-fetch", false, "bỏ git fetch, dùng ref local")
 	cmd.Flags().StringVar(&outDir, "out-dir", "", "thư mục ghi report (mặc định repo docs/releases, tự tìm theo layout)")
+	cmd.Flags().BoolVar(&verbose, "verbose", false, "hiện chore + commit chi tiết")
 	return cmd
 }

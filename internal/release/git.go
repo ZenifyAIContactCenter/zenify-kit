@@ -10,7 +10,10 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
-const sep = "\x1f" // unit separator giữa sha và subject trong --format
+const sep = "\x1f"    // unit separator giữa field
+const recSep = "\x1e" // record separator giữa commit (body có thể nhiều dòng)
+
+const logFormat = "--format=%h" + sep + "%s" + sep + "%b" + recSep
 
 // Chốt cuối là whitespace/EOL để KHÔNG khớp biến thể như origin/release84-hotfix hay release84.1.
 var relNumRe = regexp.MustCompile(`(?m)origin/release(\d+)(?:\s|$)`)
@@ -54,15 +57,20 @@ func Fetch(r gitx.Runner, dir string, refs ...string) error {
 
 func parseCommits(out []byte) []Commit {
 	var cs []Commit
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-		if line == "" {
+	for _, rec := range strings.Split(string(out), recSep) {
+		rec = strings.Trim(rec, "\n")
+		if rec == "" {
 			continue
 		}
-		parts := strings.SplitN(line, sep, 2)
-		if len(parts) != 2 {
+		parts := strings.SplitN(rec, sep, 3)
+		if len(parts) < 2 {
 			continue
 		}
-		c := Commit{SHA: parts[0], Subject: parts[1], Type: ClassifyType(parts[1])}
+		body := ""
+		if len(parts) == 3 {
+			body = strings.TrimRight(parts[2], "\n")
+		}
+		c := Commit{SHA: parts[0], Subject: parts[1], Body: body, Type: ClassifyType(parts[1])}
 		if b := ParseMergeBranch(parts[1]); b != "" {
 			c.Merge, c.Branch = true, b
 		}
@@ -73,7 +81,7 @@ func parseCommits(out []byte) []Commit {
 
 // RangeCommits trả các commit trong from..to (giữ cả merge để bắt PR/hotfix).
 func RangeCommits(r gitx.Runner, dir, from, to string) ([]Commit, error) {
-	out, err := r.Run(dir, "log", "--format=%h"+sep+"%s", from+".."+to)
+	out, err := r.Run(dir, "log", logFormat, from+".."+to)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +105,7 @@ func ChangedFiles(r gitx.Runner, dir, from, to string) ([]string, error) {
 
 // NotInStaging trả các commit trong from..to KHÔNG reachable từ staging (rủi ro regression).
 func NotInStaging(r gitx.Runner, dir, from, to, staging string) ([]Commit, error) {
-	out, err := r.Run(dir, "log", "--format=%h"+sep+"%s", from+".."+to, "--not", staging)
+	out, err := r.Run(dir, "log", logFormat, from+".."+to, "--not", staging)
 	if err != nil {
 		return nil, err
 	}
