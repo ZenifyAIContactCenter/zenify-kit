@@ -1,6 +1,9 @@
 package release
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // Aggregate gom []Commit thành []Change theo key chuẩn-hoá (last-segment branch ∪ scope).
 // Merge-commit và commit lẻ cùng slug gom chung. Commit không branch/scope → bucket "misc:<type>".
@@ -44,8 +47,55 @@ func Aggregate(commits []Commit, notStaging map[string]bool) []Change {
 	for i := range out {
 		out[i].Type = changeType(out[i])
 		out[i].Title = changeTitle(out[i])
+		out[i].Authors = changeAuthors(out[i])
+		out[i].Desc = changeDesc(out[i])
 	}
 	return out
+}
+
+// changeAuthors: dev viết code (distinct, thứ tự gặp đầu). Bỏ merge-commit vì %an của nó là
+// người BẤM merge, không phải tác giả code. Nếu change CHỈ có merge commit (không có commit
+// thường trong khoảng) thì mới dùng tác giả merge làm best-available.
+func changeAuthors(ch Change) []string {
+	if a := collectAuthors(ch.Commits, true); len(a) > 0 {
+		return a
+	}
+	return collectAuthors(ch.Commits, false)
+}
+
+func collectAuthors(commits []Commit, skipMerge bool) []string {
+	seen := map[string]bool{}
+	var authors []string
+	for _, c := range commits {
+		if skipMerge && c.Merge {
+			continue
+		}
+		a := strings.TrimSpace(c.Author)
+		if a == "" || seen[a] {
+			continue
+		}
+		seen[a] = true
+		authors = append(authors, a)
+	}
+	return authors
+}
+
+// convPrefixRe khớp prefix conventional-commit để cắt lấy phần mô tả: "feat(x): foo" → "foo".
+var convPrefixRe = regexp.MustCompile(`^(?:feat|fix|perf|refactor|chore)(?:\([^)]*\))?!?:\s*`)
+
+// changeDesc: subject của commit non-merge đầu tiên, đã cắt prefix type(scope):.
+// Không có commit non-merge (hoặc mọi subject rỗng sau khi cắt prefix) → "".
+func changeDesc(ch Change) string {
+	for _, c := range ch.Commits {
+		if c.Merge {
+			continue
+		}
+		s := convPrefixRe.ReplaceAllString(strings.TrimSpace(c.Subject), "")
+		if s = strings.TrimSpace(s); s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // changeType: hotfix nếu IsHotfix; else loại "mạnh nhất" trong các commit (feat > fix/perf/refactor > chore > other).

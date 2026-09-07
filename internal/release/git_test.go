@@ -55,8 +55,8 @@ func TestReleaseNumsIgnoresVariantRefs(t *testing.T) {
 
 func TestRangeCommits(t *testing.T) {
 	f := fakeRunner{out: map[string]string{
-		"log --format=%h\x1f%s\x1f%b\x1e origin/release83..origin/release84": "5ed5aa1\x1ffix: a\x1fbody line1\nbody line2\x1e" +
-			"a8601ee\x1fMerge pull request #1 from org/hungnk/hotfix/x\x1f\x1e",
+		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84": "5ed5aa1\x1ffix: a\x1fnamph\x1fbody line1\nbody line2\x1e" +
+			"a8601ee\x1fMerge pull request #1 from org/hungnk/hotfix/x\x1fhungnk\x1f\x1e",
 	}}
 	cs, err := RangeCommits(f, "/x", "origin/release83", "origin/release84")
 	if err != nil || len(cs) != 2 {
@@ -64,6 +64,9 @@ func TestRangeCommits(t *testing.T) {
 	}
 	if cs[0].Type != "fix" || cs[0].Subject != "fix: a" {
 		t.Fatalf("subject cũ không được đổi: %+v", cs[0])
+	}
+	if cs[0].Author != "namph" {
+		t.Fatalf("author %%an: %q", cs[0].Author)
 	}
 	if cs[0].Body != "body line1\nbody line2" {
 		t.Fatalf("body nhiều dòng: %q", cs[0].Body)
@@ -75,7 +78,7 @@ func TestRangeCommits(t *testing.T) {
 
 func TestNotInStaging(t *testing.T) {
 	f := fakeRunner{out: map[string]string{
-		"log --format=%h\x1f%s\x1f%b\x1e origin/release83..origin/release84 --not origin/staging": "9dcc752\x1ftemporary disable report api\x1f\x1e",
+		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84 --not origin/staging": "9dcc752\x1ftemporary disable report api\x1fdev1\x1f\x1e",
 	}}
 	cs, err := NotInStaging(f, "/x", "origin/release83", "origin/release84", "origin/staging")
 	if err != nil || len(cs) != 1 || cs[0].SHA != "9dcc752" {
