@@ -81,7 +81,7 @@ func readBootstrapDigest() string {
 	if err != nil {
 		return ""
 	}
-	p := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-superpowers", "BOOTSTRAP.txt")
+	p := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-zenify-kit", "BOOTSTRAP.txt")
 	raw, err := os.ReadFile(p) //nolint:gosec // G304 -- p is a fixed path under ~/.claude, computed from home, not user input
 	if err != nil {
 		return ""
