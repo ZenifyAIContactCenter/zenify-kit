@@ -5,6 +5,7 @@ package docsync
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,13 +23,23 @@ import (
 //     nguyên vẹn (chỉ chưa push), và ta KHÔNG bao giờ add/commit đè lên
 //     conflict marker rồi push rác lên repo chung.
 //  4. push.
+//
+// Sạch nhưng CÒN commit chưa push (đường clean-but-ahead): một lần pull/rebase
+// fail transient trước đó khiến commit đã tạo bị kẹt local. Turn sau tree sạch,
+// nên nếu "sạch → trả ngay" thì commit kẹt vĩnh viễn. Vì vậy khi sạch ta vẫn
+// đếm ahead bằng rev-list LOCAL (không network); chỉ khi ahead>0 mới đụng mạng
+// để đẩy nốt qua đúng đường rebase+push.
 func Sync(r gitx.Runner, dir string) []string {
 	st, err := r.Run(dir, "status", "--porcelain")
 	if err != nil {
 		return note(fmt.Sprintf("docs sync: status lỗi: %v (fail-open)", err))
 	}
 	if strings.TrimSpace(string(st)) == "" {
-		return note("docs sync: clean") // không network, không commit
+		// Không có gì để commit — nhưng có thể còn commit local chưa push.
+		if aheadCommits(r, dir) == 0 {
+			return note("docs sync: clean") // không network, không commit
+		}
+		return pushPending(r, dir) // commit kẹt từ lần trước → đẩy nốt
 	}
 	if _, err := r.Run(dir, "add", "-A"); err != nil {
 		return note(fmt.Sprintf("docs sync: add lỗi: %v (fail-open)", err))
@@ -37,6 +48,28 @@ func Sync(r gitx.Runner, dir string) []string {
 	if _, err := r.Run(dir, "commit", "-m", msg); err != nil {
 		return note(fmt.Sprintf("docs sync: commit lỗi: %v (fail-open)", err))
 	}
+	return pushPending(r, dir)
+}
+
+// aheadCommits đếm commit local chưa có trên upstream, THUẦN LOCAL (không
+// network — dùng ref remote-tracking sẵn có). Không xác định được (chưa set
+// upstream, output không parse) → 0, để giữ fast-path "sạch = không đụng mạng".
+func aheadCommits(r gitx.Runner, dir string) int {
+	out, err := r.Run(dir, "rev-list", "--count", "@{upstream}..HEAD")
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// pushPending rebase commit local lên remote rồi push. Conflict → abort, giữ
+// commit local nguyên vẹn (chưa push), fail-open. Dùng chung cho đường dirty
+// (vừa commit) và đường clean-but-ahead (commit kẹt từ lần trước).
+func pushPending(r gitx.Runner, dir string) []string {
 	if _, err := r.Run(dir, "pull", "--rebase"); err != nil {
 		// Nhiều khả năng là rebase conflict. KHÔNG commit đè marker: abort để
 		// quay lại commit của ta (an toàn, chưa push), báo và bỏ qua lần này.
