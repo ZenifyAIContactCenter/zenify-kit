@@ -45,6 +45,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newAnalyzeCmd())
 	root.AddCommand(newStandardsCmd())
 	root.AddCommand(newReleaseReportCmd())
+	root.AddCommand(newReleaseNoteCmd())
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newMigrateCmd())
 	root.AddCommand(newDocsCmd())
