@@ -64,6 +64,7 @@ test('tạo ticket persist đúng field [FR-x, SC-y]', async ({ page, apiClient,
 ## Quy tắc cứng (lint fail nếu vi phạm)
 
 - Có `// @domain-assert:<entity>` sau khối thao tác UI; sau nó phải có `apiClient` re-fetch + `expect` trên field thật (không chỉ `expect(page)`).
+- **Đúng MỘT** marker `// @domain-assert:<entity>` mỗi scenario — lint FAIL nếu có 2 marker trở lên. Flow đa-entity (assert cả ticket lẫn activity log liên quan) vẫn re-fetch bằng `apiClient` cho entity phụ, nhưng KHÔNG gắn thêm marker thứ hai — marker chỉ đặt tên domain-outcome CHÍNH của scenario.
 - KHÔNG `networkidle`, KHÔNG `waitForTimeout` — dùng web-first `await expect(...)`.
 - Selector ổn định: `getByTestId`/`getByRole`/`getByLabel`/`getByPlaceholder` — KHÔNG xpath/nth-child.
 - Có `cleanupTracker.add(...)` (hoặc `test.afterEach`) xoá entity đã tạo.
