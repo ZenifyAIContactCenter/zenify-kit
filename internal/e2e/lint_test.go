@@ -1,0 +1,90 @@
+// internal/e2e/lint_test.go
+package e2e
+
+import "testing"
+
+const passing = `
+import { test, expect } from '../../fixtures';
+test('tạo ticket [FR-6]', async ({ page, apiClient, cleanupTracker }) => {
+  await page.getByRole('button', { name: 'Tạo mới' }).click();
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/abc');
+  expect((await r.json()).subject).toBe('x');
+  cleanupTracker.add(async () => { await apiClient.put('/v2/ticket/abc', { data: { is_deleted: true } }); });
+});
+`
+
+func rules(findings []Finding) map[string]bool {
+	m := map[string]bool{}
+	for _, f := range findings {
+		m[f.Rule] = true
+	}
+	return m
+}
+
+func TestLint_PassingCleans(t *testing.T) {
+	if fs := LintSource("ok.spec.ts", passing); len(fs) != 0 {
+		t.Fatalf("spec sạch phải 0 finding, got %+v", fs)
+	}
+}
+
+func TestLint_MissingRefetch(t *testing.T) {
+	src := `import { test, expect } from '../../fixtures';
+test('x [FR-1]', async ({ page, cleanupTracker }) => {
+  await page.click('text=go');
+  // @domain-assert:ticket
+  await expect(page).toHaveURL(/ok/);
+  cleanupTracker.add(async () => {});
+});`
+	if !rules(LintSource("a.spec.ts", src))["refetch"] {
+		t.Fatal("thiếu apiClient re-fetch phải bị bắt")
+	}
+}
+
+func TestLint_Networkidle(t *testing.T) {
+	src := `import { test } from '../../fixtures';
+test('x [SC-1]', async ({ page, apiClient, cleanupTracker }) => {
+  await page.waitForLoadState('networkidle');
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
+  cleanupTracker.add(async () => {});
+});`
+	if !rules(LintSource("a.spec.ts", src))["no-networkidle"] {
+		t.Fatal("networkidle phải bị bắt")
+	}
+}
+
+func TestLint_MissingCleanup(t *testing.T) {
+	src := `import { test } from '../../fixtures';
+test('x [FR-1]', async ({ page, apiClient }) => {
+  await page.click('text=go');
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
+});`
+	if !rules(LintSource("a.spec.ts", src))["cleanup"] {
+		t.Fatal("thiếu cleanup phải bị bắt")
+	}
+}
+
+func TestLint_MissingMarker(t *testing.T) {
+	src := `import { test } from '../../fixtures';
+test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
+  const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
+  cleanupTracker.add(async () => {});
+});`
+	if !rules(LintSource("a.spec.ts", src))["marker"] {
+		t.Fatal("thiếu @domain-assert phải bị bắt")
+	}
+}
+
+func TestLint_MissingTraceability(t *testing.T) {
+	src := `import { test } from '../../fixtures';
+test('không ref', async ({ page, apiClient, cleanupTracker }) => {
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
+  cleanupTracker.add(async () => {});
+});`
+	if !rules(LintSource("a.spec.ts", src))["traceability"] {
+		t.Fatal("thiếu FR/SC ref phải bị bắt")
+	}
+}
