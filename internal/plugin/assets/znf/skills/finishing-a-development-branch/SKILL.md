@@ -82,6 +82,11 @@ human partner explicitly asking for it (see "If your human partner asks to
 discard the work" below). Wait for their answer; the integration decision
 is theirs.
 
+**Before you present the menu:** if this session did work worth resuming — traps hit, decisions made
+in chat, work left in flight — record a **session-handoff** first, per `znf:_shared/handoff-doctrine`
+(reference the spec/plan/PR, do not copy them). Finishing a branch is exactly the boundary that
+doctrine names for a session-handoff.
+
 ## Step 5: Execute Choice
 
 ### Option 1: Merge Locally
