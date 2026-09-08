@@ -236,6 +236,15 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 		}
 	}
 
+	// Pin the workspace default model to the one the znf workflow is calibrated
+	// for (fail-open; never affects `failed`). Scoped to <workspace>/.claude, so
+	// it leaves other projects alone; enforced every apply; idempotent.
+	if ch, merr := apply.EnsureWorkspaceModel(workspace, false); merr != nil {
+		_, _ = fmt.Fprintf(w, "warning: model default skipped: %v\n", merr)
+	} else if ch {
+		_, _ = fmt.Fprintf(w, "pinned workspace model → %s\n", apply.DefaultModel)
+	}
+
 	if failed > 0 {
 		return exitcode.New(exitcode.Fail, fmt.Errorf("apply: %d repo(s) failed", failed))
 	}
