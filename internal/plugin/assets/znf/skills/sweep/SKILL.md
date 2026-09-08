@@ -1,6 +1,6 @@
 ---
 name: sweep
-description: Tear down a finished task — stop its dev servers, close its herdr workspaces, remove its worktrees and branches, across every repo it touched. Use when work has landed and the workspace should go back to clean, or when asked to clean up / dọn dẹp after a task. Refuses to report success when nothing has actually merged yet, and says what is still needed instead.
+description: Tear down a finished task — stop its dev servers, close its herdr workspaces, remove its worktrees and branches, across every repo it touched. Use when work has landed and the workspace should go back to clean, or when asked to clean up or tidy up after a task. Refuses to report success when nothing has actually merged yet, and says what is still needed instead.
 allowed-tools: Bash(wt *) Bash(git *) Bash(herdr *) Bash(hcall *) Bash(node *) Bash(ls *) Read
 ---
 

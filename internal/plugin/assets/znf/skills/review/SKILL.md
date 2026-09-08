@@ -1,150 +1,150 @@
 ---
 name: review
-description: Engine review hợp nhất của kit. Chọn tier cơ học theo diff, dispatch reviewer (T1 solo / T2 fan-out / T3 adversarial), trả finding theo schema chung. Cửa chính cho /review và cho ship step 5.
+description: The kit's unified review engine. Mechanically selects a tier based on the diff, dispatches reviewers (T1 solo / T2 fan-out / T3 adversarial), and returns findings per the shared schema. The main gate for /review and for ship step 5.
 allowed-tools: Bash(git *) Bash(rg *) Bash(bash *) Bash(test *) Bash(awk *) Bash(zenify *) Agent Workflow
 ---
 
-# znf:review — engine review hợp nhất
+# znf:review — unified review engine
 
-Một engine review DUY NHẤT. Standalone `/review`, và ship step 5 delegate vào đây.
-Finding theo `_shared/finding-schema.md` (nguồn schema duy nhất — mọi tier cùng shape).
+A SINGLE review engine. Standalone `/review`, and ship step 5 delegates into here.
+Findings follow `_shared/finding-schema.md` (the single schema source — every tier shares the same shape).
 
-## Lifecycle 5 chốt (seam)
+## 5-gate lifecycle (seam)
 
-Engine chạy 5 chốt theo thứ tự. M4a chỉ làm REVIEW (3); 4 chốt kia là **stub inert**
-(no-op, hành vi = như review hiện tại) và sẽ được các slice sau thay:
+The engine runs 5 gates in order. M4a implements only REVIEW (3); the other 4 gates are **inert stubs**
+(no-op, behavior = same as the current review) and will be replaced by later slices:
 
-1. **PRE** — mechanical-gate (M4b, **live**). Chạy build/lint theo stack + anti-pattern scan CƠ HỌC trước khi tốn LLM; fail → short-circuit.
-2. **BUNDLE** — smart-bundling diff lớn (M4c, **live**). ADDED>2000 → `zenify review-bundle` chia cụm-file (cap 600, tối đa 8), review per-bundle rồi gộp; ≤2000 giữ nguyên.
-3. **REVIEW** — dispatch theo tier (phần thịt M4a, bên dưới).
-4. **VERIFY** — finding-verifier cơ học `zenify review-verify` (M4b, **live**, mọi tier): bác finding có evidence không khớp file thật. T3 vẫn giữ adversarial-LLM bên trong workflow (chồng lên, kiểm việc khác).
-5. **POST** — advisory (M4f) + learning-capture (M4e), **cả hai live**: gate `zenify review-advise-gate` quyết có gọi adviser read-only (`## Advisory`) không; rồi ghi record review vào store local `.znf/review-log/` qua `zenify review-log record` (best-effort). Cả hai KHÔNG đổi `shippable`.
+1. **PRE** — mechanical-gate (M4b, **live**). Runs build/lint per stack + a MECHANICAL anti-pattern scan before spending any LLM budget; fail → short-circuit.
+2. **BUNDLE** — smart-bundling for large diffs (M4c, **live**). ADDED>2000 → `zenify review-bundle` splits into file-bundles (cap 600, max 8), reviews per-bundle then merges; ≤2000 stays as-is.
+3. **REVIEW** — dispatch by tier (the meat of M4a, below).
+4. **VERIFY** — mechanical finding-verifier `zenify review-verify` (M4b, **live**, every tier): rejects findings whose evidence doesn't match the real file. T3 still keeps the adversarial-LLM inside the workflow (layered on top, checking something different).
+5. **POST** — advisory (M4f) + learning-capture (M4e), **both live**: the `zenify review-advise-gate` gate decides whether to call the read-only adviser (`## Advisory`); then it records the review into the local store `.znf/review-log/` via `zenify review-log record` (best-effort). Neither changes `shippable`.
 
-> **Doctrine (M4d, live):** KHÔNG ở POST mà là lớp **dispatch-time** — sanitize `## Verified` (Bước 1b-doctrine) + tiêm preamble reviewer (Bước 3). Xem hai bước đó.
+> **Doctrine (M4d, live):** NOT at POST but a **dispatch-time** layer — sanitizes `## Verified` (Step 1b-doctrine) + injects the reviewer preamble (Step 3). See those two steps.
 
-## Bước 1 — tính input cho tier (cơ học)
+## Step 1 — compute tier input (mechanical)
 
 ```bash
-BASE=${BASE:-HEAD}            # ship truyền base; standalone dùng HEAD
+BASE=${BASE:-HEAD}            # ship passes base; standalone uses HEAD
 ADDED=$(git diff --numstat "$BASE" | awk '{a+=$1+$2} END{print a+0}')
-# shared contract: tái dùng tín hiệu của gate (DB collection/endpoint/queue/pub-sub)
+# shared contract: reuse the gate's signal (DB collection/endpoint/queue/pub-sub)
 SHARED=$(git diff "$BASE" | rg -c 'collection\(|@InjectModel|emit\(|publish\(|subscribe\(|\.route\(|router\.(get|post|put|delete)' >/dev/null && echo 1 || echo 0)
-CRITICAL=0                    # caller (ship/user) set 1 nếu vùng nhạy cảm (auth/tenant/migration)
+CRITICAL=0                    # caller (ship/user) sets 1 if a sensitive area (auth/tenant/migration)
 ```
 
-## Bước 1b — PRE mechanical-gate (short-circuit)
+## Step 1b — PRE mechanical-gate (short-circuit)
 
-Chạy gate CƠ HỌC trước khi dispatch LLM. Khi được **ship** gọi (ship-pack có block `## Verified` xác nhận build/lint đã pass ở ship step 2), engine tự set `STATIC_OK=1` ngay trên dòng lệnh gate để tránh build/lint hai lần. Standalone `/review` (không có ship-pack) → để `STATIC_OK=0`, gate chạy full build/lint:
+Run the MECHANICAL gate before dispatching to the LLM. When called by **ship** (ship-pack has a `## Verified` block confirming build/lint already passed at ship step 2), the engine sets `STATIC_OK=1` directly on the gate command line to avoid running build/lint twice. Standalone `/review` (no ship-pack) → leaves `STATIC_OK=0`, the gate runs full build/lint:
 
 ```bash
 GATE=$(STATIC_OK=${STATIC_OK:-0} bash ~/.claude/skills/znf/skills/review/scripts/mechanical-gate "$BASE")
 echo "$GATE"   # {"verdict":"pass|block","findings":[...]}
 ```
 
-- `verdict=block` (build/lint fail hoặc conflict-marker) → **DỪNG**: đưa `findings` của gate vào report, `shippable:false`, in lý do dừng, KHÔNG dispatch REVIEW.
-- `verdict=pass` → giữ `findings` cơ học (nếu có: focused-test/debugger) để gộp vào report cuối, rồi sang Bước 2.
+- `verdict=block` (build/lint fail or conflict-marker) → **STOP**: put the gate's `findings` into the report, `shippable:false`, print the stop reason, do NOT dispatch REVIEW.
+- `verdict=pass` → keep the mechanical `findings` (if any: focused-test/debugger) to merge into the final report, then move to Step 2.
 
-## Bước 1b-doctrine — DOCTRINE sanitize ## Verified (no-claim, M4d)
+## Step 1b-doctrine — DOCTRINE sanitize ## Verified (no-claim, M4d)
 
-Chỉ khi caller là **ship** (context có block `## Verified`). Chạy MỘT LẦN ở đây — trước MỌI nhánh dispatch (cả Bước 1c bundle lẫn Bước 2→3) — nên mọi reviewer sau đó đều thấy Verified đã sạch.
+Only when the caller is **ship** (context has a `## Verified` block). Runs ONCE here — before ANY dispatch branch (both the Step 1c bundle and Step 2→3) — so every reviewer afterward sees an already-sanitized Verified.
 
-Lấy nội dung block `## Verified` từ ship-pack trong context, pipe qua subcommand:
+Take the `## Verified` block content from the ship-pack in context, pipe it through the subcommand:
 
 ```bash
 printf '%s' "$VERIFIED_TEXT" | zenify review-doctrine   # {"verified":..,"stripped":[..]}
 ```
 
-- Thay block `## Verified` trong context đưa reviewer bằng trường `.verified`.
-- `.stripped[]` không rỗng → in lên report: "doctrine: đã gỡ N claim khỏi ## Verified: [...]".
-- `zenify` vắng trên PATH, hoặc standalone `/review` (không có ship-pack) → **skip, no-op** kèm note "doctrine sanitize skipped". Fail-open: không bao giờ dừng review.
+- Replace the `## Verified` block in the context handed to the reviewer with the `.verified` field.
+- `.stripped[]` non-empty → print on the report: "doctrine: stripped N claims from ## Verified: [...]".
+- `zenify` missing from PATH, or standalone `/review` (no ship-pack) → **skip, no-op** with the note "doctrine sanitize skipped". Fail-open: never stops the review.
 
-## Bước 1c — BUNDLE (chia diff lớn, seam BUNDLE — M4c)
+## Step 1c — BUNDLE (split a large diff, seam BUNDLE — M4c)
 
-Chỉ chạy khi `ADDED > 2000`. Diff nhỏ hơn (đại đa số) bỏ qua bước này, sang thẳng Bước 2 (select-tier trên NGUYÊN diff) như cũ.
+Only runs when `ADDED > 2000`. Smaller diffs (the vast majority) skip this step and go straight to Step 2 (select-tier on the WHOLE diff) as before.
 
 ```bash
 if [ "$ADDED" -le 2000 ]; then
-  :   # skip bundling — đi tiếp Bước 2 trên nguyên diff
+  :   # skip bundling — proceed to Step 2 on the whole diff
 elif ! command -v zenify >/dev/null 2>&1; then
-  # bundler vắng (build cũ) → không bundle được → giữ hành vi cũ
-  echo "diff > 2000 LOC nhưng review-bundle vắng → quá lớn, dừng (tách PR)"; exit 0
+  # bundler missing (older build) → cannot bundle → keep old behavior
+  echo "diff > 2000 LOC but review-bundle is missing → too large, stop (split the PR)"; exit 0
 else
   PLAN=$(zenify review-bundle "$BASE")   # {"verdict":..,"bundles":[{id,loc,files}],"total_loc":X}
   echo "$PLAN"
 fi
 ```
 
-Xử lý theo `verdict` của `$PLAN`:
+Handle based on `$PLAN`'s `verdict`:
 
-- `too-large` → **DỪNG**: in "quá lớn kể cả sau khi chia bundle (> 8 cụm) — tách PR rồi review lại", KHÔNG dispatch. `shippable:false`.
-- `bundle` → review **per-bundle** rồi gộp:
-  1. `MANIFEST=$(git diff --name-only "$BASE")` — danh sách path TẤT CẢ file đổi; truyền làm context cho MỌI bundle reviewer (để reviewer biết nửa kia của một contract có thể đổi ở bundle khác — chống mù cross-bundle).
-  2. Với MỖI bundle `b` trong `PLAN.bundles`:
+- `too-large` → **STOP**: print "too large even after bundling (> 8 clusters) — split the PR then review again", do NOT dispatch. `shippable:false`.
+- `bundle` → review **per-bundle** then merge:
+  1. `MANIFEST=$(git diff --name-only "$BASE")` — the list of paths for ALL changed files; passed as context to EVERY bundle reviewer (so the reviewer knows the other half of a contract may have changed in a different bundle — guards against cross-bundle blindness).
+  2. For EACH bundle `b` in `PLAN.bundles`:
      - `ADDED_b = b.loc`
-     - `SHARED_b` = tín hiệu shared-contract tính trên `git diff "$BASE" -- <b.files>` (cùng regex Bước 1).
-     - `TIER_b` = `bash .../select-tier "$ADDED_b" "$SHARED_b" "$CRITICAL"` (in tier + lý do cho bundle này ra report).
-     - Dispatch REVIEW theo `TIER_b` (Bước 3), phạm vi diff = `git diff "$BASE" -- <b.files>`, kèm `MANIFEST` làm context. Degrade-safe T3→T2 vẫn áp dụng per-bundle.
-     - Thu `findings[]` của bundle.
-  3. Gộp findings mọi bundle, dedup theo `title+file`.
-  4. Bỏ qua Bước 2 (đã select-tier per-bundle) và đi tiếp **Bước 4** (VERIFY + POST) trên hợp findings.
-- `passthrough` (không kỳ vọng khi ADDED>2000) → đi tiếp Bước 2 trên nguyên diff.
+     - `SHARED_b` = the shared-contract signal computed on `git diff "$BASE" -- <b.files>` (same regex as Step 1).
+     - `TIER_b` = `bash .../select-tier "$ADDED_b" "$SHARED_b" "$CRITICAL"` (print the tier + reason for this bundle on the report).
+     - Dispatch REVIEW by `TIER_b` (Step 3), diff scope = `git diff "$BASE" -- <b.files>`, with `MANIFEST` as context. Degrade-safe T3→T2 still applies per-bundle.
+     - Collect the bundle's `findings[]`.
+  3. Merge findings from every bundle, dedup by `title+file`.
+  4. Skip Step 2 (tier already selected per-bundle) and proceed to **Step 4** (VERIFY + POST) on the union of findings.
+- `passthrough` (not expected when ADDED>2000) → proceed to Step 2 on the whole diff.
 
-**Report phải in**: đã bundle mấy cụm, LOC + tier mỗi cụm, TRƯỚC khi dispatch — minh bạch như "in tier + lý do".
+**The report must print**: how many clusters were bundled, LOC + tier for each cluster, BEFORE dispatching — transparent like "print tier + reason".
 
-## Bước 2 — chọn tier (KHÔNG để LLM đoán)
+## Step 2 — select tier (do NOT let the LLM guess)
 
-Chạy script cơ học qua `bash` (file materialize ở 0o600, không có +x — luôn gọi bằng `bash`), đọc dòng đầu:
+Run the mechanical script via `bash` (the file materializes at 0o600, without +x — always invoke it with `bash`), read the first line:
 
 ```bash
 SELECT_TIER=$(bash ~/.claude/skills/znf/skills/review/scripts/select-tier "$ADDED" "$SHARED" "$CRITICAL")
-TIER=$(printf '%s\n' "$SELECT_TIER" | sed -n '1p')   # T1|T2|T3 — reused by POST learning-capture (Bước 4)
-printf '%s\n' "$SELECT_TIER"                          # vẫn in tier + lý do ra report
+TIER=$(printf '%s\n' "$SELECT_TIER" | sed -n '1p')   # T1|T2|T3 — reused by POST learning-capture (Step 4)
+printf '%s\n' "$SELECT_TIER"                          # still print tier + reason on the report
 ```
 
-Dòng 1 = `T1|T2|T3`, dòng 2 = lý do. **In tier + lý do ra report** trước khi dispatch.
+Line 1 = `T1|T2|T3`, line 2 = the reason. **Print tier + reason on the report** before dispatching.
 
-## Bước 3 — REVIEW dispatch theo tier
+## Step 3 — REVIEW dispatch by tier
 
-**Doctrine preamble (M4d):** đọc nguồn preamble một lần —
+**Doctrine preamble (M4d):** read the preamble source once —
 `DOCTRINE=$(awk '{print}' ~/.claude/skills/znf/skills/review/_shared/reviewer-doctrine.md 2>/dev/null)`
-(file vắng → `DOCTRINE=""` + note "doctrine preamble unavailable"; fail-open). **Prepend `DOCTRINE` vào ĐẦU brief của MỌI reviewer** dispatch dưới đây — T1 solo, cả 5 agent T2 — và truyền `args.doctrine="$DOCTRINE"` cho Workflow T3. Điểm tiêm này dùng chung cho cả reviewer per-bundle ở Bước 1c.
+(file missing → `DOCTRINE=""` + note "doctrine preamble unavailable"; fail-open). **Prepend `DOCTRINE` to the START of every reviewer's brief** dispatched below — T1 solo, all 5 T2 agents — and pass `args.doctrine="$DOCTRINE"` to the T3 Workflow. This injection point is shared with the per-bundle reviewers in Step 1c.
 
-- **T1 (solo):** dispatch 1 agent `code-reviewer` (template `requesting-code-review/code-reviewer.md`),
-  model `sonnet` cho diff <50 LOC / mid cho phần còn lại. Trả `findings[]` theo schema chung.
-- **T2 (fan-out):** dispatch song song (MỘT message) 5 agent, mỗi agent 1 chiều
-  (bugs / security / perf / contracts / types), mỗi agent trả `findings[]` theo schema.
-  Gộp, dedup theo `title+file`. KHÔNG dùng Workflow tool ở tier này.
-- **T3 (adversarial):** kiểm tồn tại workflow trước:
+- **T1 (solo):** dispatch 1 `code-reviewer` agent (template `requesting-code-review/code-reviewer.md`),
+  model `sonnet` for diff <50 LOC / mid for the rest. Returns `findings[]` per the shared schema.
+- **T2 (fan-out):** dispatch 5 agents in parallel (ONE message), each agent covering 1 dimension
+  (bugs / security / perf / contracts / types), each agent returns `findings[]` per the schema.
+  Merge, dedup by `title+file`. Do NOT use the Workflow tool at this tier.
+- **T3 (adversarial):** check the workflow exists first:
 
   ```bash
   test -f "$HOME/.claude/skills/znf/workflows/review-changes.js" && echo present || echo missing
   ```
 
-  - **present** → chạy Workflow tool `scriptPath: ~/.claude/skills/znf/workflows/review-changes.js`,
-    `args: {diff: <git diff BASE..HEAD>, context: <ship-pack intent nếu có>, doctrine: <DOCTRINE>}`. Workflow tự
-    fan-out + adversarial verify (3 skeptic, ≥2 confirm).
-  - **missing** (teammate chưa `skills sync`, hoặc file bị xoá) → **degrade về T2** và ghi rõ
-    trên report: "T3 degrade→T2: workflow vắng". KHÔNG gãy im lặng.
+  - **present** → run the Workflow tool `scriptPath: ~/.claude/skills/znf/workflows/review-changes.js`,
+    `args: {diff: <git diff BASE..HEAD>, context: <ship-pack intent if any>, doctrine: <DOCTRINE>}`. The workflow
+    handles its own fan-out + adversarial verify (3 skeptics, ≥2 confirm).
+  - **missing** (teammate hasn't run `skills sync`, or the file was deleted) → **degrade to T2** and clearly note
+    on the report: "T3 degrade→T2: workflow missing". Do NOT fail silently.
 
-> Mọi finding có `file+line` PHẢI kèm `evidence` — trích **verbatim** MỘT dòng code lỗi (nguyên văn nội dung dòng trong file, KHÔNG kèm dấu `+`/`-` của diff) để `zenify review-verify` kiểm chứng; finding bịa dòng/quote sẽ bị bác ở VERIFY.
+> Every finding with `file+line` MUST include `evidence` — a **verbatim** quote of ONE offending line of code (the exact line content in the file, WITHOUT the diff's `+`/`-` marker) so `zenify review-verify` can verify it; a finding that fabricates a line/quote will be rejected at VERIFY.
 
-## Bước 4 — VERIFY (cơ học, mọi tier) + POST
+## Step 4 — VERIFY (mechanical, every tier) + POST
 
-VERIFY: gộp `findings[]` của REVIEW (mọi tier) rồi verify citation cơ học — bác finding có `evidence` không khớp file thật:
+VERIFY: merge REVIEW's `findings[]` (every tier) then mechanically verify the citation — reject findings whose `evidence` doesn't match the real file:
 
 ```bash
 VERIFIED=$(printf '%s' "$FINDINGS_JSON" | zenify review-verify)   # {"findings":[kept],"kept":N,"refuted":M}
 ```
 
-Nếu `command -v zenify` vắng → bỏ qua VERIFY kèm note "verify unavailable" (KHÔNG gãy, giữ nguyên findings). T3 vẫn giữ adversarial-LLM trong workflow.
+If `command -v zenify` is missing → skip VERIFY with the note "verify unavailable" (does NOT fail, findings are kept as-is). T3 still keeps the adversarial-LLM inside the workflow.
 
 ```bash
-KEPT_JSON=$(printf '%s' "${VERIFIED:-}" | jq -c '.findings' 2>/dev/null); { [ -z "$KEPT_JSON" ] || [ "$KEPT_JSON" = null ]; } && KEPT_JSON="$FINDINGS_JSON"   # kept sau VERIFY; fallback FINDINGS_JSON khi verify bị bỏ qua
+KEPT_JSON=$(printf '%s' "${VERIFIED:-}" | jq -c '.findings' 2>/dev/null); { [ -z "$KEPT_JSON" ] || [ "$KEPT_JSON" = null ]; } && KEPT_JSON="$FINDINGS_JSON"   # kept after VERIFY; falls back to FINDINGS_JSON when verify is skipped
 ```
 
-POST: gộp findings kept + findings cơ học của gate (Bước 1b), rank theo severity, kết luận `shippable` (không CRITICAL/HIGH chưa xử lý).
+POST: merge the kept findings + the gate's mechanical findings (Step 1b), rank by severity, conclude `shippable` (no unresolved CRITICAL/HIGH).
 
-POST-advisory (M4f, **live**): sau khi có `SHIPPABLE`, dựng `AdviseInput` rồi chạy gate cơ học quyết có gọi adviser không:
+POST-advisory (M4f, **live**): once `SHIPPABLE` is available, build `AdviseInput` then run the mechanical gate to decide whether to call the adviser:
 
 ````bash
 ADVISE_IN=$(printf '{"shared":%s,"critical":%s,"added":%s,"findings":%s,"shippable":%s}' \
@@ -154,14 +154,14 @@ ADVISE_IN=$(printf '{"shared":%s,"critical":%s,"added":%s,"findings":%s,"shippab
 ADVISE=$(printf '%s' "$ADVISE_IN" | zenify review-advise-gate 2>/dev/null)   # {"advise":..,"signals":[..]}
 ````
 
-- `command -v zenify` vắng, gate lỗi, hoặc `.advise` != `true` → BỎ QUA adviser, report như cũ (KHÔNG block).
-- `.advise == true` → chạy adviser (read-only, KHÔNG đổi shippable):
-  1. Ghi file input adviser: `$KEPT_JSON` + `git diff --stat "$BASE"` + `SHIPPABLE` + `.signals` của gate.
-  2. Dispatch `znf:code-reviewer` (Agent tool) với prompt = nội dung `_shared/adviser-prompt.md` + đường dẫn file input; override model tier sonnet.
-  3. Trích đúng mục `## Advisory` từ output adviser, gắn vào report dưới nhãn "advisory — read-only, không ảnh hưởng shippable". CHỈ trích text `## Advisory`; BỎ mọi findings/verdict adviser lỡ trả — `shippable` KHÔNG đổi.
-- Adviser vắng (chưa `zenify skills sync`) hoặc đi idle không trả report → report ghi "advisory skipped (adviser unavailable)", KHÔNG block, KHÔNG coi im lặng là sạch (CLAUDE.md §3).
+- `command -v zenify` missing, gate errors, or `.advise` != `true` → SKIP the adviser, report as before (do NOT block).
+- `.advise == true` → run the adviser (read-only, does NOT change shippable):
+  1. Write the adviser input file: `$KEPT_JSON` + `git diff --stat "$BASE"` + `SHIPPABLE` + the gate's `.signals`.
+  2. Dispatch `znf:code-reviewer` (Agent tool) with prompt = the content of `_shared/adviser-prompt.md` + the input file path; override the model tier to sonnet.
+  3. Extract exactly the `## Advisory` section from the adviser's output, attach it to the report under the label "advisory — read-only, does not affect shippable". ONLY extract the `## Advisory` text; DISCARD any findings/verdict the adviser mistakenly returns — `shippable` does NOT change.
+- Adviser missing (`zenify skills sync` not run) or goes idle without returning a report → the report notes "advisory skipped (adviser unavailable)", does NOT block, does NOT treat silence as clean (CLAUDE.md §3).
 
-POST-capture (M4e, **live**): cuối cùng, ghi lại review vào store local `.znf/review-log/` (main checkout) — **best-effort, KHÔNG chặn**:
+POST-capture (M4e, **live**): finally, record the review into the local store `.znf/review-log/` (main checkout) — **best-effort, does NOT block**:
 
 ````bash
 command -v zenify >/dev/null && command -v jq >/dev/null && {
@@ -184,22 +184,23 @@ command -v zenify >/dev/null && command -v jq >/dev/null && {
 } || true
 ````
 
-- `zenify`/`jq` vắng, bất kỳ lệnh lỗi → BỎ QUA im lặng (`|| true`), review kết thúc bình thường. Capture KHÔNG đổi `shippable`, KHÔNG in report.
-- Xem lại bằng `zenify review-log` (summary) hoặc `zenify review-log --json` (cho M6 sync).
+- `zenify`/`jq` missing, any command errors → SKIP silently (`|| true`), the review ends normally. Capture does NOT change `shippable`, does NOT print on the report.
+- Review it later with `zenify review-log` (summary) or `zenify review-log --json` (for M6 sync).
 
-## Report trả về
+## Report returned
 
-- tier đã chọn + lý do (+ "degrade→T2" nếu có)
-- `findings[]` theo `_shared/finding-schema.md`, rank CRITICAL→LOW
+- the selected tier + reason (+ "degrade→T2" if any)
+- `findings[]` per `_shared/finding-schema.md`, ranked CRITICAL→LOW
 - `shippable: true|false`
-- `## Advisory` (M4f, nếu gate bật): 1–4 note read-only, KHÔNG ảnh hưởng `shippable`
+- `## Advisory` (M4f, if the gate is on): 1–4 read-only notes, does NOT affect `shippable`
 
-## Ai gọi engine
+## Who calls the engine
 
-- **Standalone `/review`** — review `git diff HEAD` (hoặc range chỉ định qua `BASE`).
-- **ship step 5** — truyền `BASE` + ship-pack làm context; đưa CRITICAL/HIGH vào fix-loop của ship.
+- **Standalone `/review`** — reviews `git diff HEAD` (or a range specified via `BASE`).
+- **ship step 5** — passes `BASE` + the ship-pack as context; feeds CRITICAL/HIGH into ship's fix-loop.
 
-## Không có gì để review
+## Nothing to review
 
-Không phải git repo / diff rỗng → in "nothing to review" và dừng, không dispatch.
-Diff cực lớn (>2000 LOC) → seam BUNDLE (Bước 1c) chia thành bundle cụm-file rồi review từng cụm. Chỉ dừng khi cần > 8 bundle (`verdict=too-large`) hoặc `review-bundle` vắng trên PATH — khi đó báo "quá lớn, tách PR".
+Not a git repo / empty diff → print "nothing to review" and stop, no dispatch.
+An extremely large diff (>2000 LOC) → the BUNDLE seam (Step 1c) splits it into file-cluster bundles then reviews each cluster. Only stops when it would need > 8 bundles (`verdict=too-large`) or `review-bundle` is missing from PATH — in which case it reports "too large, split the PR".
+</content>

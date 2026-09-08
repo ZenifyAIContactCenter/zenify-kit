@@ -190,13 +190,13 @@ start early, and that section says why.
 
 5. **Independent review.**
 
-   **Dispatch qua the engine, không tự chọn reviewer.** Xây ship-pack như dưới, rồi
-   gọi **`Skill(znf:review)`** với `BASE=<base>` và ship-pack làm context. Engine tự
-   chọn tier (T1 solo / T2 fan-out / T3 adversarial) theo kích thước + shared-touch —
-   kể cả case diff lớn: engine bundle/adversarial thay vì ship tự "báo split & dừng".
-   Engine trả `findings[]` (schema `znf:review/_shared/finding-schema.md`) + `shippable`.
-   CRITICAL/HIGH vào fix-loop; MEDIUM/LOW lên board. `## Deferred` của ship-pack vẫn do
-   engine chuyển cho reviewer một-dòng-mỗi-mục như cũ.
+   **Dispatch through the engine, don't pick the reviewer yourself.** Build the ship-pack as below, then
+   call **`Skill(znf:review)`** with `BASE=<base>` and the ship-pack as context. The engine itself
+   picks the tier (T1 solo / T2 fan-out / T3 adversarial) by size + shared-touch —
+   including the large-diff case: the engine bundles/goes adversarial instead of ship itself "reporting split & stop".
+   The engine returns `findings[]` (schema `znf:review/_shared/finding-schema.md`) + `shippable`.
+   CRITICAL/HIGH go into the fix-loop; MEDIUM/LOW go on the board. The ship-pack's `## Deferred` still gets
+   passed to the reviewer one-line-per-item by the engine, as before.
 
    **Build the ship-pack** — one file, so the reviewer reads it in a single call and the diff never
    lands in your context. Write it to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md` (scratch, so it can never
@@ -405,24 +405,24 @@ drift silently; duplicating the board cannot drift, because it is generated here
 Only call it shippable when every applicable line is ✅ **at the current fingerprint**, each backed by
 output you actually saw. If anything was skipped, say so explicitly.
 
-**7b. Ghi release-note + cập nhật unreleased.md (release-log-at-ship).**
+**7b. Write the release-note + update unreleased.md (release-log-at-ship).**
 
-Trước khi push feature branch, ghi một note-commit mang risk-metadata để release doc có sẵn
-thay đổi này (không cần nhớ log tay). Lấy giá trị từ ship-pack `## Intent` + Brief spec (nếu
-`/cook` có spec): `_Blast-radius:`/`_DB:`/`_Rollback:` copy từ ba tag Brief; không có spec →
-để trống, command tự điền default (`unknown` / `N/A` / `revert PR`).
+Before pushing the feature branch, write a note-commit carrying risk-metadata so the release doc already has
+this change (no need to remember to log it by hand). Take the values from the ship-pack's `## Intent` + the Brief spec (if
+`/cook` has a spec): `_Blast-radius:`/`_DB:`/`_Rollback:` copied from the three Brief tags; no spec →
+leave blank, the command fills in the default itself (`unknown` / `N/A` / `revert PR`).
 
-    zenify release-note --slug "<slug>" --note "<mô tả một dòng>" \
+    zenify release-note --slug "<slug>" --note "<one-line description>" \
       --blast "<Brief _Blast-radius>" --db "<Brief _DB>" --rollback "<Brief _Rollback>" \
-      --spec "<đường-dẫn-spec nếu có>"
+      --spec "<spec path if any>"
 
-Rồi push feature branch (note-commit đi kèm). Sau khi push xong, regenerate view liên tục:
+Then push the feature branch (note-commit comes along). After pushing, regenerate the view right away:
 
     zenify release-report --unreleased --workspace "<workspace root>"
-    zenify docs sync   # đẩy unreleased.md vào knowledge store (chủ động, không chờ Stop-hook)
+    zenify docs sync   # push unreleased.md into the knowledge store (proactively, don't wait for the Stop-hook)
 
-Fail-open: cả hai command tự trả về sạch nếu lỗi — KHÔNG chặn `/ship`. `unreleased.md` là view
-dẫn xuất-từ-git; thay đổi vừa ship hiện sau khi merge vào staging (git là nguồn sự thật lúc chốt).
+Fail-open: both commands return clean on their own if they error — they do NOT block `/ship`. `unreleased.md` is a view
+derived-from-git; the change just shipped appears once merged into staging (git is the source of truth at settle time).
 
 **On all-green you commit and push to the FEATURE branch** — same branch name across repos, clear
 message, following the repo's existing convention (infer it from recent `git log --oneline` and branch

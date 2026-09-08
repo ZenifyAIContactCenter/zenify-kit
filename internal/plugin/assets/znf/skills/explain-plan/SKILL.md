@@ -4,63 +4,65 @@ description: Use when a diff adds or changes a DB query — reads each query's p
 allowed-tools: Read Grep Bash(db_read *)
 ---
 
-# znf:explain-plan — soi query-plan, bắt COLLSCAN sớm
+# znf:explain-plan — inspect query plans, catch COLLSCAN early
 
 **Announce:** "Using znf:explain-plan to check query plans in this diff."
 
-Một query thiếu index dùng được là **vô hình trên dữ liệu dev** (vài nghìn document, scan toàn
-bộ vẫn nhanh) và chỉ cắn ở volume production. Skill này đọc plan của từng query trong diff và
-báo `COLLSCAN` (Mongo) / `Seq Scan` (SQL) trên collection/table lớn. **Advisory:** báo findings,
-KHÔNG chặn tiến độ. Fail-open — thiếu `db_read` hay không có query thì dừng sạch, không báo lỗi.
+A query missing a usable index is **invisible on dev data** (a few thousand documents, a full scan
+is still fast) and only bites at production volume. This skill reads the plan of every query in the
+diff and reports a `COLLSCAN` (Mongo) / `Seq Scan` (SQL) on a large collection/table. **Advisory:**
+reports findings, does NOT block progress. Fails open — missing `db_read` or no query means a clean
+stop, no error reported.
 
-## Khi nào dùng
+## When to use
 
-- Khi ground hoặc ship một thay đổi chạm DB (cook/ship/ground gọi ở đây).
-- Hoặc gọi tay trên một diff bất kỳ có thêm/sửa query.
+- When grounding or shipping a change that touches the DB (cook/ship/ground call it here).
+- Or invoke by hand on any diff that adds/changes a query.
 
-## Bước 1 — trigger cơ học (từ diff)
+## Step 1 — mechanical trigger (from the diff)
 
-Đếm call-site query trong diff. Không có `db_read` trên PATH thì skill không áp dụng ở project này.
+Count query call-sites in the diff. If `db_read` isn't on PATH, this skill doesn't apply to this project.
 
 ```bash
-command -v db_read >/dev/null || echo "no db_read on PATH — skill này không áp dụng ở đây"
+command -v db_read >/dev/null || echo "no db_read on PATH — this skill doesn't apply in this project"
 git diff HEAD | rg -c '\.find\(|\.aggregate\(|\.findOne\(|\.updateMany\(|\.skip\(|OFFSET|JOIN'
 ```
 
-Non-zero → sang Bước 2. Zero → viết "no query in this diff" rồi dừng sạch.
+Non-zero → move to Step 2. Zero → write "no query in this diff" and stop cleanly.
 
-## Bước 2 — chạy explain per-site
+## Step 2 — run explain per site
 
-Với mỗi call-site: xác định collection/table **thật** (đừng đoán — liệt kê từ DB) và shape filter,
-rồi chạy plan. Skill KHÔNG hardcode tên nào; mọi tên đến từ diff đang soi.
+For each call-site: identify the **real** collection/table (don't guess — list it from the DB) and
+the filter shape, then run the plan. This skill does NOT hardcode any name; every name comes from
+the diff being inspected.
 
 ```bash
 # Mongo
 db_read eval 'db.getCollection("<real-name>").find({…}).explain("executionStats")'
-# Quan hệ (MySQL/Postgres)
-db_read sql 'EXPLAIN ANALYZE <câu-thật>'
+# Relational (MySQL/Postgres)
+db_read sql 'EXPLAIN ANALYZE <real-statement>'
 ```
 
-Filter là biến/builder-chain (không dựng thẳng được) thì đọc code, dựng lại giá trị đại diện tay.
+If the filter is a variable/builder-chain (can't be built directly), read the code and reconstruct a representative value by hand.
 
-## Bước 3 — đọc plan theo rubric size-aware
+## Step 3 — read the plan with a size-aware rubric
 
-| Plan thấy | Kết luận |
+| Plan shows | Conclusion |
 |---|---|
-| `IXSCAN` / index được dùng | ok |
-| `COLLSCAN` trên collection LỚN | FINDING |
-| `Seq Scan` trên bảng LỚN | FINDING |
+| `IXSCAN` / index used | ok |
+| `COLLSCAN` on a LARGE collection | FINDING |
+| `Seq Scan` on a LARGE table | FINDING |
 
-Lưu ý quan trọng: **index tồn tại ≠ được dùng**. Vẫn có thể quét toàn bộ dù đã có index khi:
-sai thứ tự cột trong compound index · shape `$in` / `$or` · field không tuyển (non-selective).
-Nên đọc `IXSCAN` thật trong plan, đừng suy ra từ "collection này có index".
+Important note: **an index existing ≠ an index being used**. A full scan can still happen even with
+an index present when: the compound index has the wrong column order · the shape is `$in` / `$or` ·
+the field is non-selective. Read the actual `IXSCAN` in the plan — don't infer it from "this collection has an index."
 
-## Bước 4 — báo cáo advisory
+## Step 4 — advisory report
 
-Mở đầu: "Advisory — không chặn tiến độ." Mỗi finding một dòng:
+Open with: "Advisory — does not block progress." One line per finding:
 
 ```
-<file:line> · <collection/table> · verb quét (COLLSCAN/Seq Scan) · gợi ý index nên thêm
+<file:line> · <collection/table> · scan verb (COLLSCAN/Seq Scan) · suggested index to add
 ```
 
-Không có finding → nói rõ đã soi N site, tất cả IXSCAN. Không block dù có finding.
+No findings → state clearly that N sites were inspected, all IXSCAN. Never blocks, even with findings.

@@ -5,7 +5,7 @@ disable-model-invocation: true
 allowed-tools: Bash(git *) Agent
 ---
 
-> **Vai trò:** đây là T3 backend nội bộ của `znf:review`. Người dùng nên vào `/review` (engine tự chọn tier); chỉ tier T3 mới chạy workflow này.
+> **Role:** this is the internal T3 backend of `znf:review`. Users should enter via `/review` (the engine picks the tier); only tier T3 runs this workflow.
 
 **Explicit opt-in only** — this workflow is token-heavy. Use for diffs larger than ~200 lines or when correctness is critical.
 

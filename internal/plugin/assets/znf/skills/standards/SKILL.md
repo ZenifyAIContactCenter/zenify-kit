@@ -4,42 +4,45 @@ description: Use after implementing a plan — checks test-traceability: every F
 allowed-tools: Read Bash(zenify standards *)
 ---
 
-# znf:standards — mỗi requirement có test thật
+# znf:standards — every requirement has a real test
 
 **Announce:** "Using znf:standards to check test-traceability."
 
-M5b kiểm một SC **có dạng** testable; skill này kiểm requirement **có test thật** trong code —
-chạy **sau khi implement**. Đối chiếu FR/SC ↔ test file khai trong plan, kiểm trên đĩa.
-**Advisory:** báo findings, KHÔNG chặn tiến độ. Hai lớp — cơ học (command) rồi phán đoán (skill).
+M5b checks that an SC **is shaped as** testable; this skill checks that the requirement **has a real
+test** in the code — runs **after implementation**. Cross-checks FR/SC ↔ the test file declared in
+the plan, verified on disk. **Advisory:** reports findings, does NOT block progress. Two layers —
+mechanical (command) then judgment (skill).
 
-## Khi nào dùng
+## When to use
 
-- Sau khi SDD implement xong plan, trước/tại ship (cook gọi ở Step 6b).
-- Hoặc gọi tay: `/standards <spec.md> <plan.md>` trên một cặp đã implement.
+- After SDD has finished implementing the plan, before/at ship (cook calls it at Step 6b).
+- Or invoke by hand: `/standards <spec.md> <plan.md>` on an already-implemented pair.
 
-## Bước 1 — quét cơ học (tất định)
+## Step 1 — mechanical scan (deterministic)
 
 ```
 zenify standards --spec <spec-path> --plan <plan-path> --root <repo-root>
 ```
 
-Command tái dùng coverage FR→task của `znf:analyze`, thêm kiểm test file trên đĩa:
-- `untested-fr` (HIGH) — FR có task phủ nhưng task đó không khai test nào.
-- `missing-test-file` (HIGH) — path test khai trong plan không có trên đĩa.
-- `empty-test-file` (MEDIUM) — file test tồn tại nhưng không có test func (language-aware).
-- `unchecked-lang` (INFO) — đuôi lạ, chỉ kiểm tồn tại, không kiểm nội dung.
+The command reuses the FR→task coverage from `znf:analyze`, plus checks the test file on disk:
+- `untested-fr` (HIGH) — an FR has a covering task, but that task declares no test.
+- `missing-test-file` (HIGH) — the test path declared in the plan doesn't exist on disk.
+- `empty-test-file` (MEDIUM) — the test file exists but has no test func (language-aware).
+- `unchecked-lang` (INFO) — unrecognized extension, only existence is checked, not content.
 
-Fail-open: command luôn exit 0, không bao giờ chặn.
+Fails open: the command always exits 0, never blocks.
 
-## Bước 2 — phán đoán (2 pass, MEDIUM, skill làm — command không làm được)
+## Step 2 — judgment (2 passes, MEDIUM, done by the skill — the command can't do this)
 
-- **Pass A — test có THẬT SỰ assert requirement không.** Đọc (`Read`) vài test file KHÔNG bị flag:
-  một `func TestX` rỗng hay chỉ `assert True`/`expect(true)` vẫn qua Bước 1 nhưng không kiểm gì.
-  Báo test nào tồn tại mà assertion trống/trivial so với FR nó gắn.
-- **Pass B — mỗi SC Given/When/Then có một assertion tương ứng không.** Đối chiếu SC trong spec với
-  assertion trong test: một nhánh When/Then không có test tương ứng là lỗ, dù FR tổng thể "có test".
+- **Pass A — does the test ACTUALLY assert the requirement.** Read (`Read`) a few test files that
+  were NOT flagged: an empty `func TestX` or one that's just `assert True`/`expect(true)` still passes
+  Step 1 but checks nothing. Report which tests exist but have an empty/trivial assertion relative to
+  the FR they're attached to.
+- **Pass B — does each SC Given/When/Then have a corresponding assertion.** Cross-check the SC in the
+  spec against the assertion in the test: a When/Then branch with no corresponding test is a gap, even
+  when the overall FR "has a test."
 
-## Bước 3 — báo cáo advisory
+## Step 3 — advisory report
 
-Mở đầu: "Advisory — không chặn tiến độ." Liệt kê findings cơ học + phán đoán, mỗi cái một dòng
-(kind · FR/path · vì sao). Không block; người quyết chấp nhận hoặc sửa.
+Open with: "Advisory — does not block progress." List mechanical + judgment findings, one line each
+(kind · FR/path · why). Never blocks; the decision-maker accepts or fixes.
