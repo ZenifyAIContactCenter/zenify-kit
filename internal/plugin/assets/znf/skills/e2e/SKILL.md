@@ -38,13 +38,20 @@ test('tạo ticket persist đúng field [FR-x, SC-y]', async ({ page, apiClient,
 
   // --- thao tác UI thật ---
   await page.goto(`/tickets/new-${runId}?customerId=${cfg.contactId}`);
-  await page.getByTestId('ticket-subject-input').fill(marker);
-  // ...điền field bắt buộc khác...
+  // Subject: locator user-facing (placeholder), KHÔNG testid — xem "Chuẩn chọn locator".
+  await page.getByPlaceholder('Nhập tiêu đề').first().fill(marker);
+  // Editor TinyMCE render trong IFRAME → getByRole không xuyên được; testid chỉ làm
+  // ANCHOR để frameLocator bấu vào (ca fallback hợp lệ #1, xem "Chuẩn chọn locator").
+  await page.getByTestId('ticket-comment-editor')
+    .frameLocator('iframe.tox-edit-area__iframe').locator('body').fill('E2E smoke content');
   const [resp] = await Promise.all([
     page.waitForResponse((r) => r.url().includes('/v2/ticket') && r.request().method() === 'POST'),
     page.getByTestId('ticket-submit-btn').click(),
   ]);
-  await expect(page.getByText('Tạo ticket mới thành công')).toBeVisible();
+  // Tín hiệu thành công = POST trả 200. KHÔNG assert toast thành công: verified LIVE
+  // toast tan quá nhanh, bắt không ổn định → journey flaky. Bằng chứng domain thật
+  // là re-fetch bên dưới.
+  expect(resp.status()).toBe(200);
   const id = (await resp.json())._id ?? (await resp.json()).data?._id;
 
   // --- assert domain-outcome qua API (đây là chỗ 'deep') ---
@@ -66,9 +73,29 @@ test('tạo ticket persist đúng field [FR-x, SC-y]', async ({ page, apiClient,
 - Có `// @domain-assert:<entity>` sau khối thao tác UI; sau nó phải có `apiClient` re-fetch + `expect` trên field thật (không chỉ `expect(page)`).
 - **Đúng MỘT** marker `// @domain-assert:<entity>` mỗi scenario — lint FAIL nếu có 2 marker trở lên. Flow đa-entity (assert cả ticket lẫn activity log liên quan) vẫn re-fetch bằng `apiClient` cho entity phụ, nhưng KHÔNG gắn thêm marker thứ hai — marker chỉ đặt tên domain-outcome CHÍNH của scenario.
 - KHÔNG `networkidle`, KHÔNG `waitForTimeout` — dùng web-first `await expect(...)`.
-- Selector ổn định: `getByTestId`/`getByRole`/`getByLabel`/`getByPlaceholder` — KHÔNG xpath/nth-child.
+- Selector theo **Chuẩn chọn locator** bên dưới (user-facing trước, testid là fallback có điều kiện) — KHÔNG xpath/`nth-child`/CSS bám cấu trúc.
 - Có `cleanupTracker.add(...)` (hoặc `test.afterEach`) xoá entity đã tạo.
 - Header scenario có ref `FR-`/`SC-`.
+
+## Chuẩn chọn locator (thứ tự bắt buộc — testid là fallback, KHÔNG phải mặc định)
+
+Chuẩn Playwright/Testing Library: ưu tiên locator theo góc nhìn người dùng, `data-testid` chỉ là
+phương án cuối. Đây là chuẩn của kit — mọi journey theo đúng thang này, không cãi lại từng lần:
+
+1. `getByRole` (kèm name) · `getByLabel` · `getByPlaceholder` · `getByText` — **MẶC ĐỊNH**. Bền với
+   đổi DOM/CSS.
+2. `getByTestId` — **CHỈ khi** trúng một trong ba ca fallback, và ghi rõ lý do ngay tại chỗ:
+   - element trong **iframe / shadow-DOM** (getByRole không xuyên được) — vd TinyMCE editor;
+   - **không có accessible name ổn định** để bấu vào;
+   - **label do i18n sinh** và test phải độc-lập-ngôn-ngữ — `getByRole({name})` gãy khi đổi VI→EN,
+     vd nút submit `t('common:action.create')`. Trong app i18n-100% như zenify, đây là ca hợp lệ.
+3. **KHÔNG BAO GIỜ**: xpath, `nth-child`, CSS bám cấu trúc — lint chặn.
+
+**Thêm testid vào code sản phẩm — hai luật giữ codebase sạch:**
+- **Component dùng chung**: KHÔNG hardcode testid feature-specific lên nó. Truyền qua prop
+  (vd `dataTestId`) để chỉ chỗ gọi cụ thể mới render — testid không rò sang 12+ nơi dùng khác.
+- **Gỡ testid chết**: testid thêm rồi đổi selector không xài nữa phải gỡ khỏi codebase — đừng để
+  lại làm người sau tưởng nó là anchor thật.
 
 ## Chạy & verify
 
