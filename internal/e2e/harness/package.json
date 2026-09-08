@@ -1,0 +1,7 @@
+{
+  "name": "znf-e2e-harness",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "1.55.0"
+  }
+}
