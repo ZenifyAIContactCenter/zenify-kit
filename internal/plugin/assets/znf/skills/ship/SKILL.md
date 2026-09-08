@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Pre-ship gate. Use when work is complete and about to be committed — runs lint/build on the changed areas, the cross-service contract gate, behavioural verification, and an independent review, with one fix-and-re-verify loop over all of them, then commits and pushes the feature branch. Does not open the PR. Invoked unconditionally by /cook, /fix and /hotfix.
+description: Pre-ship gate. Use when work is complete and about to be committed — runs lint/build on the changed areas, the cross-service contract gate, behavioural verification, and an independent review, with one fix-and-re-verify loop over all of them, then commits and pushes the feature branch and opens the PR (never merges). Invoked unconditionally by /cook, /fix and /hotfix.
 allowed-tools: Bash(git *) Bash(pm *) Bash(db_read *) Bash(rg *) Bash(printf *) Bash(cat *) Bash(tail *) Bash(wc *) Read Grep Agent
 ---
 
@@ -420,7 +420,14 @@ message, following the repo's existing convention (infer it from recent `git log
 names if CLAUDE.md doesn't state it; don't invent a style). House rule #7 authorises this without
 asking: pushing a feature branch deploys nothing.
 
-**Do NOT create the PR** — that is the user's review decision. Report the pushed branch and the
-suggested PR target. **NEVER push to or merge into a deploy/protected branch**; the project's
-CLAUDE.md or `.claude/deploy-branches` lists them, and the git-guard hook enforces it. If anything is
-❌, do not commit — fix first.
+**Open the PR yourself, then stop** — the release report is derived **per-PR**, so a well-formed
+PR is what keeps the changelog clean. After pushing, run `gh pr create` with a clean conventional
+title and a structured body following the repo's PR template/convention (one PR per repo, same
+branch, targeting the repo's base — a deploy/protected base is fine here: opening a PR against it
+deploys nothing). Report each PR URL and stop.
+
+**Merging is the user's deploy decision — NEVER merge, including a PR you opened.** No `gh pr merge`,
+no merge into a deploy/protected branch. The git-guard hook blocks the local-git path, but
+`gh pr merge` is server-side, so this is a behavioural rule too. **NEVER push to or merge into a
+deploy/protected branch** (the project's CLAUDE.md or `.claude/deploy-branches` lists them). If
+anything is ❌, do not commit — fix first.
