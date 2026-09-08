@@ -43,11 +43,18 @@ func BuildArgs(o Options, cfg RunConfig) []string {
 		"-v", cfg.SnapshotsDir+":/harness/.znf/visual",
 		"-e", fmt.Sprintf("BASE_URL=http://host.docker.internal:%d", cfg.Port),
 		"-e", "E2E_DOMAIN", "-e", "E2E_EMAIL", "-e", "E2E_PASSWORD",
+		// Browsers đã có sẵn trong image → npm install KHÔNG tải lại browser.
+		"-e", "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1",
 	)
-	args = append(args, Image(), "npx", "playwright", "test")
+	// `npx playwright test` trong /harness không resolve được @playwright/test (image
+	// chỉ cấp browsers, không cấp npm package trên đường node resolve từ cwd tuỳ ý). Cài
+	// @playwright/test pinned từ harness/package.json vào /harness (mount rw, throwaway)
+	// rồi mới chạy — version khoá bởi package.json, browsers lấy từ image.
+	cmd := "npm install --no-audit --no-fund --no-save --silent && npx playwright test"
 	if cfg.Update {
-		args = append(args, "--update-snapshots")
+		cmd += " --update-snapshots"
 	}
+	args = append(args, Image(), "sh", "-c", cmd)
 	return args
 }
 
