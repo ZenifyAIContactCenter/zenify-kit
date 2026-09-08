@@ -121,14 +121,14 @@ one. Where a repo has none configured, say so rather than guessing at a query to
 - **Also needs changing:** files, if any
 - **Deploy order:** subscriber before publisher for breaking pub/sub changes
 
-### Domain-E2E backstop (khi có journey phủ)
+### Domain-E2E backstop (when a journey covers it)
 
-Sweep tĩnh chứng minh **shape** không vỡ; nó KHÔNG chứng minh **hành vi** còn đúng. Nếu resource
-vừa đổi là shared HTTP endpoint / collection mà repo có journey phủ nó (`.znf/e2e/` chạm entity
-đó), **gợi ý chạy `zenify e2e run --repo <repo> --port <N>`** cho journey liên quan — re-fetch
-domain của nó là bằng chứng hành vi mà grep không thay được (đúng bài học "live run bắt bug lint
-pass"). **Advisory**: chỉ gợi ý khi journey đã tồn tại, KHÔNG chặn gate — `run` cần dev-server +
-Docker + creds, nặng hơn một inline pass. Xem `znf:e2e`.
+A static sweep proves the **shape** holds; it does NOT prove **behaviour** still works. If the
+changed resource is a shared HTTP endpoint / collection covered by a journey (`.znf/e2e/` touches
+that entity), **suggest running `zenify e2e run --repo <repo> --port <N>`** for the relevant journey
+— its domain re-fetch is behavioural evidence that grep cannot replace (the "a live run catches what
+lint passes" lesson). **Advisory only**: suggested when a journey already exists, never blocks the
+gate — `run` needs a dev-server + Docker + creds, heavier than one inline pass. See `znf:e2e`.
 
 ---
 

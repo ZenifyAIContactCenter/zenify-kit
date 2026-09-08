@@ -15,10 +15,10 @@ func TestE2eSkill_Materialized(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dest, "skills/e2e/SKILL.md"))
 	if err != nil {
-		t.Fatalf("e2e/SKILL.md chưa materialize: %v", err)
+		t.Fatalf("e2e/SKILL.md not materialized: %v", err)
 	}
 	if !strings.Contains(string(b), "@domain-assert") {
-		t.Error("e2e/SKILL.md phải dạy marker @domain-assert")
+		t.Error("e2e/SKILL.md must teach the @domain-assert marker")
 	}
 }
 
@@ -31,17 +31,17 @@ func TestE2eSkill_CookAndShipWiring(t *testing.T) {
 	// Step 5 (Plan) decides whether a task needs an E2E journey, alongside the visual browser-run decision.
 	cook, err := os.ReadFile(filepath.Join(dest, "skills/cook/SKILL.md"))
 	if err != nil {
-		t.Fatalf("cook/SKILL.md chưa materialize: %v", err)
+		t.Fatalf("cook/SKILL.md not materialized: %v", err)
 	}
-	if !strings.Contains(string(cook), "quyết định E2E journey") {
-		t.Error("cook/SKILL.md thiếu hook e2e ở Step 5 ('quyết định E2E journey')")
+	if !strings.Contains(string(cook), "decide the E2E journey") {
+		t.Error("cook/SKILL.md missing the e2e hook at Step 5 ('decide the E2E journey')")
 	}
 	// The ship lint step runs `zenify e2e lint` when the repo carries `.znf/e2e/`.
 	ship, err := os.ReadFile(filepath.Join(dest, "skills/ship/SKILL.md"))
 	if err != nil {
-		t.Fatalf("ship/SKILL.md chưa materialize: %v", err)
+		t.Fatalf("ship/SKILL.md not materialized: %v", err)
 	}
 	if !strings.Contains(string(ship), "zenify e2e lint") {
-		t.Error("ship/SKILL.md thiếu hook 'zenify e2e lint'")
+		t.Error("ship/SKILL.md missing the 'zenify e2e lint' hook")
 	}
 }

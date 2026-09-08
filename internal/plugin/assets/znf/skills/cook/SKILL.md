@@ -278,10 +278,10 @@ Getting this wrong in the cheap direction is fine — a task you did not flag is
 gate, just without attribution to a task. Getting it wrong in the expensive direction costs a browser run
 per task plus a report to chase, on the pipeline you run most.
 
-**Cùng chỗ này, quyết định E2E journey.** Nếu task có luồng UI→BE làm đổi trạng thái một entity,
-ghi vào definition-of-done: "Done when … và có `.znf/e2e/<journey>.spec.ts` qua `zenify e2e lint`,
-chạy `zenify e2e run` xanh." Xem skill `znf:e2e`. Tiêu chí giống visual: chỉ khi deliverable là một
-luồng nghiệp vụ, không phải mọi task.
+**At this same point, decide the E2E journey.** If a task has a UI→BE flow that changes an entity's
+state, write it into the definition of done: "Done when … and a `.znf/e2e/<journey>.spec.ts` passes
+`zenify e2e lint` and `zenify e2e run` is green." See the `znf:e2e` skill. Same criterion as visual:
+only when the deliverable is a business flow, not for every task.
 
 This belongs in the plan and not only in Step 6's rules, because `scripts/task-brief` extracts each
 task's text **from the plan file** with `awk`, and SDD calls that brief *"the single source of
