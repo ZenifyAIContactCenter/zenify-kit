@@ -149,12 +149,37 @@ func countFiles(dir string) int {
 	return n
 }
 
+// dockerCheck báo Docker có sẵn cho `zenify visual` không: docker trên PATH +
+// daemon chạy (`docker info`). Docker là prerequisite của visual-regression;
+// KHÔNG auto-cài (daemon hệ thống, cần admin/reboot/license per-OS) — chỉ báo.
+func dockerCheck() Check {
+	return dockerCheckWith(exec.LookPath, func() error {
+		return exec.Command("docker", "info").Run() //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+	})
+}
+
+func dockerCheckWith(lookPath func(string) (string, error), info func() error) Check {
+	return Check{
+		Name: "docker",
+		Run: func() (bool, string) {
+			if _, err := lookPath("docker"); err != nil {
+				return false, "docker=missing — cài để dùng `zenify visual` (mac: brew install --cask docker · win: winget install Docker.DockerDesktop · linux: apt install docker.io)"
+			}
+			if err := info(); err != nil {
+				return false, "docker=installed daemon=down — mở Docker Desktop / start dockerd"
+			}
+			return true, "docker=ok daemon=up"
+		},
+	}
+}
+
 // registerDefaultChecks wires the foundation-layer checks. Called once at root
 // construction. Uses os.Getenv and the workspace default settings path.
 func registerDefaultChecks() {
 	RegisterCheck(secretPresenceCheck(os.Getenv, defaultDoctorSettingsPath(os.Getenv)))
 	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
 	RegisterCheck(playwrightCheck())
+	RegisterCheck(dockerCheck())
 	RegisterCheck(pluginCheck())
 }
 
