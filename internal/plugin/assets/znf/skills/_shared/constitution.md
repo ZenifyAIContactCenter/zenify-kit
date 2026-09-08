@@ -60,3 +60,7 @@ Where a learned thing belongs — which of the three layers (memory, CLAUDE.md, 
 constitution) it lives in, and when to promote or retire it — is decided by
 `znf:_shared/knowledge-doctrine`. Read it before recording a rule at this layer: a principle added
 here must be the lowest layer that still reaches every context where it must fire.
+
+Where a *handoff* belongs — an ephemeral session-handoff versus a committed milestone-record — is a
+sibling question, decided by `znf:_shared/handoff-doctrine`. Knowledge-doctrine places a learned
+rule; handoff-doctrine places a record of session or milestone state.

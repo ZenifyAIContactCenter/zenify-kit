@@ -37,3 +37,27 @@ func TestHandoffDoctrine_Materialized(t *testing.T) {
 		}
 	}
 }
+
+func TestHandoffDoctrine_Wired(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	// SC-2: constitution ## Governance cites the handoff doctrine.
+	con, err := os.ReadFile(filepath.Join(dest, "skills/_shared/constitution.md"))
+	if err != nil {
+		t.Fatalf("constitution.md chưa materialize: %v", err)
+	}
+	if !strings.Contains(string(con), "handoff-doctrine") {
+		t.Error("constitution.md ## Governance thiếu pointer 'handoff-doctrine' (SC-2)")
+	}
+	// SC-3: the branch-finish seam cites the doctrine — a real firing context.
+	fin, err := os.ReadFile(filepath.Join(dest, "skills/finishing-a-development-branch/SKILL.md"))
+	if err != nil {
+		t.Fatalf("finishing-a-development-branch/SKILL.md chưa materialize: %v", err)
+	}
+	if !strings.Contains(string(fin), "handoff-doctrine") {
+		t.Error("finishing-a-development-branch/SKILL.md thiếu cite 'handoff-doctrine' (SC-3)")
+	}
+}
