@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -65,5 +66,27 @@ func TestPluginCheckReportsMissing(t *testing.T) {
 	}
 	if !strings.Contains(msg, "chưa cài") {
 		t.Fatalf("msg không nêu trạng thái: %q", msg)
+	}
+}
+
+func TestDockerCheck_PresentAndRunning(t *testing.T) {
+	c := dockerCheckWith(
+		func(string) (string, error) { return "/usr/bin/docker", nil },
+		func() error { return nil },
+	)
+	ok, detail := c.Run()
+	if !ok {
+		t.Errorf("docker present + info ok phải OK, detail=%q", detail)
+	}
+}
+
+func TestDockerCheck_Missing(t *testing.T) {
+	c := dockerCheckWith(
+		func(string) (string, error) { return "", errors.New("not found") },
+		func() error { return nil },
+	)
+	ok, detail := c.Run()
+	if ok || !strings.Contains(detail, "docker=missing") {
+		t.Errorf("docker thiếu phải !ok + detail chứa docker=missing, got ok=%v detail=%q", ok, detail)
 	}
 }

@@ -91,6 +91,13 @@ start early, and that section says why.
    exists for exactly this and says why in its own description: it *"keeps heavy browser output out of
    the main context"*.
 
+   **If the target repo has `.znf/visual/routes.json`, run `zenify visual check --repo <path> --port <P>`
+   FIRST** — golden-diff catches visual regression in regions *unrelated* to the diff, which the
+   single-element `ui-verifier` measurement cannot. It renders in a pinned Docker image so the baseline
+   is OS-independent. A non-zero exit is a hard gate: fix before shipping. This is the local half; CI runs
+   the same check as a backstop. Then still dispatch `ui-verifier` for the changed element's overflow
+   measurement — the two are complementary, not substitutes.
+
    **Log in yourself first, then hand the live session over.** Neither verifier can get past a login:
    they have the eight ordinary browser tools and **not** `browser_run_code_unsafe`, and their attempt to
    read credentials is classifier-blocked. So the main session logs in — `browser_snapshot` for the refs,

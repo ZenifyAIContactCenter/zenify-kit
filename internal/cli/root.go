@@ -49,6 +49,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newMigrateCmd())
 	root.AddCommand(newDocsCmd())
+	root.AddCommand(newVisualCmd())
 	root.AddCommand(newHooksRunCmd())
 	return root
 }
