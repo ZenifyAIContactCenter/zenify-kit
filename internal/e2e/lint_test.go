@@ -88,3 +88,54 @@ test('không ref', async ({ page, apiClient, cleanupTracker }) => {
 		t.Fatal("thiếu FR/SC ref phải bị bắt")
 	}
 }
+
+func TestLint_MultipleMarkers(t *testing.T) {
+	src := `import { test } from '../../fixtures';
+test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
+  // @domain-assert:ticket
+  const r2 = await apiClient.get('/v2/ticket/2'); expect(r2.ok()).toBeTruthy();
+  cleanupTracker.add(async () => {});
+});`
+	if !rules(LintSource("a.spec.ts", src))["marker"] {
+		t.Fatal("hai @domain-assert trong một scenario phải bị bắt")
+	}
+}
+
+func TestLint_HardWait(t *testing.T) {
+	src := `import { test } from '../../fixtures';
+test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
+  await page.waitForTimeout(2000);
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
+  cleanupTracker.add(async () => {});
+});`
+	if !rules(LintSource("a.spec.ts", src))["no-hardwait"] {
+		t.Fatal("waitForTimeout phải bị bắt")
+	}
+}
+
+func TestLint_FragileSelector(t *testing.T) {
+	xpath := `import { test } from '../../fixtures';
+test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
+  await page.locator('xpath=//button').click();
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
+  cleanupTracker.add(async () => {});
+});`
+	if !rules(LintSource("a.spec.ts", xpath))["no-fragile-selector"] {
+		t.Fatal("xpath= phải bị bắt")
+	}
+
+	nthChild := `import { test } from '../../fixtures';
+test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
+  await page.locator('li:nth-child(3)').click();
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
+  cleanupTracker.add(async () => {});
+});`
+	if !rules(LintSource("a.spec.ts", nthChild))["no-fragile-selector"] {
+		t.Fatal("nth-child( phải bị bắt")
+	}
+}

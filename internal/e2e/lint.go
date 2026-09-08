@@ -19,10 +19,10 @@ type Finding struct {
 }
 
 var (
-	reTestBlock = regexp.MustCompile(`(?s)\btest\s*\(\s*['"` + "`" + `](.*?)['"` + "`" + `]`)
-	reMarker    = regexp.MustCompile(`//\s*@domain-assert:`)
-	reExpect    = regexp.MustCompile(`\bexpect\s*\(`)
-	reExpectPg  = regexp.MustCompile(`\bexpect\s*\(\s*page\b`)
+	reTestBlock  = regexp.MustCompile(`(?s)\btest\s*\(\s*['"` + "`" + `](.*?)['"` + "`" + `]`)
+	reMarker     = regexp.MustCompile(`//\s*@domain-assert:`)
+	reExpect     = regexp.MustCompile(`\bexpect\s*\(`)
+	reExpectPgAt = regexp.MustCompile(`^\bexpect\s*\(\s*page\b`)
 )
 
 // splitTests cắt file thành các khối test theo vị trí `test(`. Khối i chạy từ đầu match i
@@ -71,17 +71,21 @@ func LintSource(name, src string) []Finding {
 		}
 		// marker
 		markers := reMarker.FindAllStringIndex(block, -1)
-		if len(markers) == 0 {
+		switch {
+		case len(markers) == 0:
 			add(base, "marker", "thiếu // @domain-assert:<entity> sau thao tác UI")
 			// không có marker thì không xét refetch theo-sau-marker
-		} else {
+		case len(markers) > 1:
+			add(base, "marker", "chỉ được đúng một // @domain-assert:<entity> mỗi scenario")
+			fallthrough
+		default:
 			mOff := markers[0][1]
 			after := block[markers[0][0]:]
 			hasClient := strings.Contains(after, "apiClient.")
 			// một expect nào đó sau marker không phải expect(page
 			realExpect := false
 			for _, e := range reExpect.FindAllStringIndex(after, -1) {
-				if !reExpectPg.MatchString(after[e[0]:min(e[0]+20, len(after))]) {
+				if !reExpectPgAt.MatchString(after[e[0]:]) {
 					realExpect = true
 					break
 				}
