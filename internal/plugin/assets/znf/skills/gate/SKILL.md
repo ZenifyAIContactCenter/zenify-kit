@@ -121,6 +121,15 @@ one. Where a repo has none configured, say so rather than guessing at a query to
 - **Also needs changing:** files, if any
 - **Deploy order:** subscriber before publisher for breaking pub/sub changes
 
+### Domain-E2E backstop (khi có journey phủ)
+
+Sweep tĩnh chứng minh **shape** không vỡ; nó KHÔNG chứng minh **hành vi** còn đúng. Nếu resource
+vừa đổi là shared HTTP endpoint / collection mà repo có journey phủ nó (`.znf/e2e/` chạm entity
+đó), **gợi ý chạy `zenify e2e run --repo <repo> --port <N>`** cho journey liên quan — re-fetch
+domain của nó là bằng chứng hành vi mà grep không thay được (đúng bài học "live run bắt bug lint
+pass"). **Advisory**: chỉ gợi ý khi journey đã tồn tại, KHÔNG chặn gate — `run` cần dev-server +
+Docker + creds, nặng hơn một inline pass. Xem `znf:e2e`.
+
 ---
 
 ## This is the default gate. When to escalate
