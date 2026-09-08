@@ -1,11 +1,15 @@
 package release
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestBuildParticipationAndFlags(t *testing.T) {
 	be := fakeRunner{out: map[string]string{
 		"branch -r": "  origin/release83\n  origin/release84\n  origin/staging\n",
 		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84":                      "5ed\x1ffix: a\x1fnamph\x1f\x1e" + "aaa\x1fMerge pull request #1 from o/hungnk/hotfix/x\x1fhungnk\x1f\x1e",
+		"log --first-parent --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84":       "5ed\x1ffix: a\x1fnamph\x1f\x1e" + "aaa\x1fMerge pull request #1 from o/hungnk/hotfix/x\x1fhungnk\x1f\x1e",
 		"diff --name-only origin/release83..origin/release84":                                          "db/migrations/1.js\napp/models/chat_message.js\nfoo_test.go\n",
 		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84 --not origin/staging": "9dc\x1ftemporary disable report api\x1fnamph\x1f\x1e",
 		"merge-base origin/release84 origin/staging":                                              "base1\n",
@@ -66,6 +70,34 @@ func TestBuildUsesResolverNotFlatJoin(t *testing.T) {
 	_ = Build(r, resolve, []string{"svc-a"}, 84, func(dir string) []string { return nil }, func(string) []SpecMeta { return nil })
 	if !seen["/ws/repos/svc-a"] {
 		t.Fatalf("Build phải dùng path từ resolver, các dir đã gọi: %+v", seen)
+	}
+}
+
+func TestBuildUnreleasedRangeStagingDeterministic(t *testing.T) {
+	// release88 là cao nhất; range incremental = origin/release88..origin/staging.
+	fr := fakeRunner{out: map[string]string{
+		"branch -r": "  origin/release87\n  origin/release88\n  origin/staging\n",
+		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release88..origin/staging": "h1\x1ffeat(alpha): a\x1fnamph\x1f\x1e",
+	}}
+	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
+	noPatterns := func(string) []string { return nil }
+	noSpecs := func(string) []SpecMeta { return nil }
+
+	rep := BuildUnreleased(fr, resolve, []string{"be"}, 88, noPatterns, noSpecs)
+	if !rep.Unreleased {
+		t.Fatalf("Report.Unreleased phải true")
+	}
+	if rep.N != 88 {
+		t.Fatalf("N phải là latest cut (88) để render 'sau R88': %d", rep.N)
+	}
+	// deterministic: chạy hai lần cùng state → render giống hệt.
+	a := Render(rep, false)
+	b := Render(BuildUnreleased(fr, resolve, []string{"be"}, 88, noPatterns, noSpecs), false)
+	if a != b {
+		t.Errorf("render incremental phải deterministic")
+	}
+	if !strings.Contains(a, "hình thành") {
+		t.Errorf("header unreleased phải khác '# Release N': %s", a)
 	}
 }
 

@@ -55,7 +55,7 @@ func TestRunReleaseReportFailOpenEmptyWorkspace(t *testing.T) {
 	zh := t.TempDir()
 	t.Setenv("ZENIFY_HOME", zh)
 	var out, errb bytes.Buffer
-	if err := runReleaseReport(ws, 84, true, "", false, nopRunner{}, &out, &errb); err != nil {
+	if err := runReleaseReport(ws, 84, true, "", false, false, nopRunner{}, &out, &errb); err != nil {
 		t.Fatalf("fail-open vi phạm: trả err %v", err)
 	}
 	path := filepath.Join(zh, "knowledge", "releases", "R84.md")
@@ -74,11 +74,49 @@ func TestRunReleaseReportVerboseFailOpen(t *testing.T) {
 	zh := t.TempDir()
 	t.Setenv("ZENIFY_HOME", zh)
 	var out, errb bytes.Buffer
-	if err := runReleaseReport(ws, 84, true, "", true, nopRunner{}, &out, &errb); err != nil {
+	if err := runReleaseReport(ws, 84, true, "", true, false, nopRunner{}, &out, &errb); err != nil {
 		t.Fatalf("fail-open vi phạm (verbose): trả err %v", err)
 	}
 	path := filepath.Join(zh, "knowledge", "releases", "R84.md")
 	if _, err := os.ReadFile(path); err != nil {
 		t.Fatalf("report verbose vẫn phải được ghi: %v", err)
+	}
+}
+
+// --unreleased: ghi unreleased.md (KHÔNG R<n>.md) — FR-3/FR-4, SC-5.
+func TestRunReleaseReportUnreleasedWritesUnreleasedFile(t *testing.T) {
+	ws := t.TempDir()
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
+	var out, errb bytes.Buffer
+	if err := runReleaseReport(ws, 88, true, "", false, true, nopRunner{}, &out, &errb); err != nil {
+		t.Fatalf("fail-open vi phạm: trả err %v", err)
+	}
+	unrelPath := filepath.Join(zh, "knowledge", "releases", "unreleased.md")
+	if _, err := os.ReadFile(unrelPath); err != nil {
+		t.Fatalf("phải ghi unreleased.md: %v", err)
+	}
+	rPath := filepath.Join(zh, "knowledge", "releases", "R88.md")
+	if _, err := os.ReadFile(rPath); err == nil {
+		t.Errorf("--unreleased KHÔNG được ghi R88.md")
+	}
+}
+
+// FR-4.3: cắt release (finalize, không --unreleased) đồng thời reset unreleased.md — fail-open.
+func TestRunReleaseReportFinalizeResetsUnreleasedFile(t *testing.T) {
+	ws := t.TempDir()
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
+	var out, errb bytes.Buffer
+	if err := runReleaseReport(ws, 89, true, "", false, false, nopRunner{}, &out, &errb); err != nil {
+		t.Fatalf("fail-open vi phạm: trả err %v", err)
+	}
+	rPath := filepath.Join(zh, "knowledge", "releases", "R89.md")
+	if _, err := os.ReadFile(rPath); err != nil {
+		t.Fatalf("phải ghi R89.md: %v", err)
+	}
+	unrelPath := filepath.Join(zh, "knowledge", "releases", "unreleased.md")
+	if _, err := os.ReadFile(unrelPath); err != nil {
+		t.Fatalf("finalize phải reset unreleased.md: %v", err)
 	}
 }

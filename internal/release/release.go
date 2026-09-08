@@ -12,12 +12,23 @@ import (
 // resolve định vị dir thật của mỗi repo (qua workspace.Resolve) — không giả định repo là
 // con trực tiếp của workspace, nesting-safe.
 func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
+	return buildReport(r, resolve, repos, n, false, loadPatterns, loadSpecs)
+}
+
+// BuildUnreleased ráp report "đang hình thành" cho range release<latestN>..origin/staging —
+// view những gì sẽ vào release kế tiếp, chưa cắt. Cùng lõi buildReport, không tính regression
+// (to==staging nên NotInStaging luôn rỗng) và không có CutDate (chưa cắt).
+func BuildUnreleased(r gitx.Runner, resolve func(name string) (string, bool), repos []string, latestN int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
+	return buildReport(r, resolve, repos, latestN, true, loadPatterns, loadSpecs)
+}
+
+func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, unreleased bool, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
 	rep := Report{
 		N:               n,
 		GeneratedAt:     time.Now().Format("2006-01-02 15:04"),
 		SharedCrossRepo: map[string][]string{},
+		Unreleased:      unreleased,
 	}
-	relN := fmt.Sprintf("origin/release%d", n)
 	for _, name := range repos {
 		dir, ok := resolve(name)
 		if !ok {
@@ -39,17 +50,39 @@ func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []stri
 			rep.NotShipped = append(rep.NotShipped, name)
 			continue
 		}
-		prev, ok := PrevRelease(nums, n)
-		if !ok {
-			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không tìm được release trước"})
-			continue
+		var relPrev, relN string
+		var prevForReport int
+		if unreleased {
+			// range = release<latestN>..staging. Repo phải có release<n> làm mốc dưới (đã check ở trên).
+			relPrev = fmt.Sprintf("origin/release%d", n)
+			relN = "origin/staging"
+			prevForReport = n
+		} else {
+			prev, ok := PrevRelease(nums, n)
+			if !ok {
+				rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không tìm được release trước"})
+				continue
+			}
+			relPrev = fmt.Sprintf("origin/release%d", prev)
+			relN = fmt.Sprintf("origin/release%d", n)
+			prevForReport = prev
 		}
-		relPrev := fmt.Sprintf("origin/release%d", prev)
-		rr := RepoReport{Name: name, PrevRelease: prev, TypeCounts: map[string]int{}}
-		rr.CutDate, _ = CutDate(r, dir, n)
+		rr := RepoReport{Name: name, PrevRelease: prevForReport, TypeCounts: map[string]int{}}
+		if !unreleased {
+			rr.CutDate, _ = CutDate(r, dir, n)
+		}
+		var notes []Commit
 		if cs, err := RangeCommits(r, dir, relPrev, relN); err == nil {
-			rr.Commits = cs
+			var feats []Commit
 			for _, c := range cs {
+				if IsReleaseNote(c) {
+					notes = append(notes, c)
+				} else {
+					feats = append(feats, c)
+				}
+			}
+			rr.Commits = feats
+			for _, c := range feats {
 				rr.TypeCounts[c.Type]++
 				if c.Merge && IsHotfixBranch(c.Branch) {
 					rr.Hotfixes = append(rr.Hotfixes, c)
@@ -77,20 +110,34 @@ func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []stri
 				rep.SharedCrossRepo[p] = append(rep.SharedCrossRepo[p], name)
 			}
 		}
-		if cs, err := NotInStaging(r, dir, relPrev, relN, "origin/staging"); err == nil {
-			rr.Regression = cs
-		} else {
-			rr.RegressionUncomputed = true
+		// regression: khi unreleased, to==staging → NotInStaging luôn rỗng, khỏi gọi.
+		if !unreleased {
+			if cs, err := NotInStaging(r, dir, relPrev, relN, "origin/staging"); err == nil {
+				rr.Regression = cs
+			} else {
+				rr.RegressionUncomputed = true
+			}
 		}
 		// tập SHA chưa-trên-staging để đánh dấu Change.
 		notStaging := map[string]bool{}
 		for _, c := range rr.Regression {
 			notStaging[c.SHA] = true
 		}
-		rr.Changes = Aggregate(rr.Commits, notStaging)
+		aggIn := rr.Commits // fallback phẳng (degrade-safe)
+		if gcs, err := RangeCommitsGrouped(r, dir, relPrev, relN); err == nil {
+			var gfeats []Commit
+			for _, c := range gcs {
+				if !IsReleaseNote(c) { // note-commit KHÔNG vào bucket (giữ option B)
+					gfeats = append(gfeats, c)
+				}
+			}
+			aggIn = gfeats
+		}
+		rr.Changes = Aggregate(aggIn, notStaging)
 		specs := loadSpecs(name)
+		noteMap := NoteRiskBySlug(notes)
 		for i := range rr.Changes {
-			rr.Changes[i].Risk = LinkSpec(rr.Changes[i], specs)
+			rr.Changes[i].Risk = LinkSpec(rr.Changes[i], specs, noteMap)
 		}
 		rep.Repos = append(rep.Repos, rr)
 	}

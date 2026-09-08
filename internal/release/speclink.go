@@ -55,15 +55,67 @@ func specTrailer(bodies string) string {
 	return ""
 }
 
-// LinkSpec: trailer → slug-match → rỗng. Trả RiskMeta (SpecPath="" = unknown).
-func LinkSpec(ch Change, specs []SpecMeta) RiskMeta {
-	// (1) trailer trong body các commit của change.
+// noteRisk đọc risk-metadata trực tiếp từ body note-commit (tier-0). Trả (RiskMeta, true)
+// nếu có ÍT NHẤT một trong ba tag. SpecPath = trailer "Spec:" nếu có, else sentinel "note"
+// (khác rỗng để Build đếm là "có spec"; humanRisk chỉ kiểm rỗng/khác-rỗng, không in path).
+func noteRisk(bodies string) (RiskMeta, bool) {
+	b := firstGroup(blastRe, bodies)
+	d := firstGroup(dbRe, bodies)
+	rb := firstGroup(rollbackRe, bodies)
+	if b == "" && d == "" && rb == "" {
+		return RiskMeta{}, false
+	}
+	sp := specTrailer(bodies)
+	if sp == "" {
+		sp = "note"
+	}
+	return RiskMeta{SpecPath: sp, BlastRadius: b, DB: d, Rollback: rb}, true
+}
+
+// releaseSlugRe rút slug liên-kết từ trailer "_Release-Slug: <slug>" của note-commit.
+var releaseSlugRe = regexp.MustCompile(`(?m)^_Release-Slug:\s*(\S+)\s*$`)
+
+// noteSubjectRe: chỉ note-commit chuyên dụng do release-note tạo mang subject này.
+var noteSubjectRe = regexp.MustCompile(`^chore\(release\): note\b`)
+
+// IsReleaseNote: một release-note-commit = subject chore(release): note DÀNH RIÊNG + trailer
+// _Release-Slug:. Đòi CẢ HAI để một feat-commit lỡ nuốt trailer (vd squash-merge) không bị
+// nhận nhầm là note và bị lọc khỏi changelog.
+func IsReleaseNote(c Commit) bool {
+	return noteSubjectRe.MatchString(c.Subject) && releaseSlugRe.MatchString(c.Body)
+}
+
+// NoteRiskBySlug quét các note-commit → map[normalizedSlug]RiskMeta. Chỉ thêm khi noteRisk ok
+// (có ≥1 trong 3 risk tag). Slug chuẩn-hoá bằng NormalizeKey để khớp Change.Slug.
+func NoteRiskBySlug(notes []Commit) map[string]RiskMeta {
+	m := map[string]RiskMeta{}
+	for _, c := range notes {
+		sm := releaseSlugRe.FindStringSubmatch(c.Body)
+		if sm == nil {
+			continue
+		}
+		if rm, ok := noteRisk(c.Body); ok {
+			m[NormalizeKey(sm[1])] = rm
+		}
+	}
+	return m
+}
+
+// LinkSpec: tier-0 note-by-slug (map, gom ngoài Aggregate) → tier-1 Spec-trailer → tier-2
+// slug-match → rỗng. Trả RiskMeta (SpecPath="" = unknown).
+func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
+	// (0) tier-0: risk từ note-commit liên-kết theo slug.
+	if rm, ok := notes[NormalizeKey(ch.Slug)]; ok {
+		return rm
+	}
 	var b strings.Builder
 	for _, c := range ch.Commits {
 		b.WriteString(c.Body)
 		b.WriteString("\n")
 	}
-	if tp := specTrailer(b.String()); tp != "" {
+	bodies := b.String()
+	// (1) trailer Spec: trong body.
+	if tp := specTrailer(bodies); tp != "" {
 		for _, s := range specs {
 			if s.Path == tp || strings.HasSuffix(s.Path, tp) || strings.HasSuffix(tp, s.Path) {
 				return risk(s)

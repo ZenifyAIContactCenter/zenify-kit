@@ -396,6 +396,25 @@ drift silently; duplicating the board cannot drift, because it is generated here
 Only call it shippable when every applicable line is ✅ **at the current fingerprint**, each backed by
 output you actually saw. If anything was skipped, say so explicitly.
 
+**7b. Ghi release-note + cập nhật unreleased.md (release-log-at-ship).**
+
+Trước khi push feature branch, ghi một note-commit mang risk-metadata để release doc có sẵn
+thay đổi này (không cần nhớ log tay). Lấy giá trị từ ship-pack `## Intent` + Brief spec (nếu
+`/cook` có spec): `_Blast-radius:`/`_DB:`/`_Rollback:` copy từ ba tag Brief; không có spec →
+để trống, command tự điền default (`unknown` / `N/A` / `revert PR`).
+
+    zenify release-note --slug "<slug>" --note "<mô tả một dòng>" \
+      --blast "<Brief _Blast-radius>" --db "<Brief _DB>" --rollback "<Brief _Rollback>" \
+      --spec "<đường-dẫn-spec nếu có>"
+
+Rồi push feature branch (note-commit đi kèm). Sau khi push xong, regenerate view liên tục:
+
+    zenify release-report --unreleased --workspace "<workspace root>"
+    zenify docs sync   # đẩy unreleased.md vào knowledge store (chủ động, không chờ Stop-hook)
+
+Fail-open: cả hai command tự trả về sạch nếu lỗi — KHÔNG chặn `/ship`. `unreleased.md` là view
+dẫn xuất-từ-git; thay đổi vừa ship hiện sau khi merge vào staging (git là nguồn sự thật lúc chốt).
+
 **On all-green you commit and push to the FEATURE branch** — same branch name across repos, clear
 message, following the repo's existing convention (infer it from recent `git log --oneline` and branch
 names if CLAUDE.md doesn't state it; don't invent a style). House rule #7 authorises this without

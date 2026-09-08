@@ -70,6 +70,22 @@ func TestRenderVerboseExpandsChore(t *testing.T) {
 	}
 }
 
+// LOW-1 fix: view unreleased KHÔNG in "Sinh <time.Now>" (tránh churn commit no-op mỗi ship,
+// giữ deterministic theo git-state, SC-6); view cắt R<N>.md VẪN giữ "Sinh".
+func TestRenderUnreleasedOmitsTimestamp(t *testing.T) {
+	un := Render(Report{N: 84, Unreleased: true, GeneratedAt: "2026-09-08 10:00", SharedCrossRepo: map[string][]string{}}, false)
+	if strings.Contains(un, "Sinh ") {
+		t.Errorf("view unreleased KHÔNG được in timestamp (churn): %s", un)
+	}
+	if !strings.Contains(un, "# Release đang hình thành (sau R84)") {
+		t.Errorf("unreleased thiếu header: %s", un)
+	}
+	cut := Render(Report{N: 84, GeneratedAt: "2026-09-08 10:00", SharedCrossRepo: map[string][]string{}}, false)
+	if !strings.Contains(cut, "Sinh 2026-09-08 10:00") {
+		t.Errorf("view cắt R<N>.md phải giữ 'Sinh': %s", cut)
+	}
+}
+
 func TestRenderEmptyReportNoPanic(t *testing.T) {
 	out := Render(Report{N: 84, GeneratedAt: "x", SharedCrossRepo: map[string][]string{}}, false)
 	if !strings.Contains(out, "# Release 84") {

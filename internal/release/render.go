@@ -13,8 +13,15 @@ func Render(rep Report, verbose bool) string {
 	var b strings.Builder
 
 	// Header.
-	fmt.Fprintf(&b, "# Release %d\n", rep.N)
-	fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)
+	if rep.Unreleased {
+		// View unreleased regen mỗi /ship + docs-sync → KHÔNG in timestamp time.Now()
+		// (churn commit no-op chỉ-đổi-giờ trong store). Thời điểm đã nằm trong git-log của
+		// store; giữ output deterministic theo git-state (SC-6). R<N>.md cắt-1-lần vẫn giữ "Sinh".
+		fmt.Fprintf(&b, "# Release đang hình thành (sau R%d)\n\n", rep.N)
+	} else {
+		fmt.Fprintf(&b, "# Release %d\n", rep.N)
+		fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)
+	}
 
 	// Headline — quyết định nhanh.
 	b.WriteString("## Quyết định nhanh\n")
@@ -48,7 +55,11 @@ func Render(rep Report, verbose bool) string {
 			fmt.Fprintf(&b, "- ⚠ %s\n", rr.Err)
 			continue
 		}
-		fmt.Fprintf(&b, "## %s (rel%d..%d, cắt %s)\n", rr.Name, rr.PrevRelease, rep.N, cutOr(rr.CutDate))
+		if rep.Unreleased {
+			fmt.Fprintf(&b, "## %s (rel%d..staging)\n", rr.Name, rr.PrevRelease)
+		} else {
+			fmt.Fprintf(&b, "## %s (rel%d..%d, cắt %s)\n", rr.Name, rr.PrevRelease, rep.N, cutOr(rr.CutDate))
+		}
 		fmt.Fprintf(&b, "- Migration %s · Test %s · %d commit → %d thay đổi\n",
 			yesNo(rr.HasMigration, "CÓ", "không"),
 			yesNo(rr.HasTestTouch, "đụng", "không"),

@@ -2,13 +2,14 @@ package release
 
 // Commit là một commit trong khoảng release, đã phân loại.
 type Commit struct {
-	SHA     string // short sha
-	Subject string
-	Author  string // git author name (%an)
-	Type    string // feat|fix|perf|refactor|chore|other
-	Merge   bool
-	Branch  string // branch nguồn parse từ merge subject; "" nếu không có
-	Body    string
+	SHA      string // short sha
+	Subject  string
+	Author   string // git author name (%an)
+	Type     string // feat|fix|perf|refactor|chore|other
+	Merge    bool
+	Branch   string // branch nguồn parse từ merge subject; "" nếu không có
+	Body     string
+	PRBranch string // branch của PR mà commit này thuộc về (set bởi RangeCommitsGrouped); "" nếu commit lẻ không thuộc PR
 }
 
 // RepoReport là phần report cho một repo trong một release.
@@ -76,4 +77,6 @@ type Report struct {
 	Migrations        []string // repo có migration
 	SpecLinked        int      // số Change link được spec
 	SpecTotal         int      // tổng Change (mọi type trừ chore? — xem Task 5)
+
+	Unreleased bool // true khi report là view "release đang hình thành" (range release<latest>..staging)
 }
