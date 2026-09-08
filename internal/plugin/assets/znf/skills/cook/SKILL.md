@@ -278,6 +278,11 @@ Getting this wrong in the cheap direction is fine — a task you did not flag is
 gate, just without attribution to a task. Getting it wrong in the expensive direction costs a browser run
 per task plus a report to chase, on the pipeline you run most.
 
+**Cùng chỗ này, quyết định E2E journey.** Nếu task có luồng UI→BE làm đổi trạng thái một entity,
+ghi vào definition-of-done: "Done when … và có `.znf/e2e/<journey>.spec.ts` qua `zenify e2e lint`,
+chạy `zenify e2e run` xanh." Xem skill `znf:e2e`. Tiêu chí giống visual: chỉ khi deliverable là một
+luồng nghiệp vụ, không phải mọi task.
+
 This belongs in the plan and not only in Step 6's rules, because `scripts/task-brief` extracts each
 task's text **from the plan file** with `awk`, and SDD calls that brief *"the single source of
 requirements"*. A requirement written into the plan therefore arrives in front of you at dispatch time;

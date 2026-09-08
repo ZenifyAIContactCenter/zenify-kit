@@ -98,6 +98,8 @@ start early, and that section says why.
    the same check as a backstop. Then still dispatch `ui-verifier` for the changed element's overflow
    measurement — the two are complementary, not substitutes.
 
+   Nếu repo có `.znf/e2e/`, chạy `zenify e2e lint` — chặn journey 'hợt' trước khi mở PR.
+
    **Log in yourself first, then hand the live session over.** Neither verifier can get past a login:
    they have the eight ordinary browser tools and **not** `browser_run_code_unsafe`, and their attempt to
    read credentials is classifier-blocked. So the main session logs in — `browser_snapshot` for the refs,
