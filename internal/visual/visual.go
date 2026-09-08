@@ -6,22 +6,17 @@ package visual
 
 import (
 	"fmt"
-	"io"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/pwdocker"
 )
 
-// PlaywrightVersion khoá lockstep giữa image Docker và @playwright/test trong
-// harness/package.json (FR-2). Bump cả hai cùng lúc, không thì baseline lệch.
-const PlaywrightVersion = "v1.55.0"
+// Forwarding: visual_test.go (package visual) gọi các tên này không qualify.
+const PlaywrightVersion = pwdocker.PlaywrightVersion
 
-// Image trả tag image Playwright pinned (biến thể -noble = Ubuntu 24.04).
-func Image() string { return "mcr.microsoft.com/playwright:" + PlaywrightVersion + "-noble" }
+func Image() string { return pwdocker.Image() }
 
-type Options struct {
-	Runner func(name string, args []string) error
-	Getenv func(string) string
-	GOOS   string
-	Stdout io.Writer
-}
+// Options/RunConfig giữ nguyên trong package visual (visual_test.go dùng).
+type Options = pwdocker.Options
 
 type RunConfig struct {
 	HarnessDir   string // tmp dir đã ghi harness embedded (mount rw vào /harness (Playwright ghi .last-run.json vào cwd))
@@ -34,18 +29,15 @@ type RunConfig struct {
 // o.Runner("docker", args). Per-OS: Linux cần --add-host để host.docker.internal
 // giải được; Docker Desktop (darwin/windows) cung cấp sẵn nên KHÔNG thêm.
 func BuildArgs(o Options, cfg RunConfig) []string {
-	args := []string{"run", "--rm", "-w", "/harness"}
-	if o.GOOS != "darwin" && o.GOOS != "windows" {
-		args = append(args, "--add-host=host.docker.internal:host-gateway")
-	}
+	args := pwdocker.BaseArgs(o.GOOS)
 	args = append(args,
 		"-v", cfg.HarnessDir+":/harness",
 		"-v", cfg.SnapshotsDir+":/harness/.znf/visual",
 		"-e", fmt.Sprintf("BASE_URL=http://host.docker.internal:%d", cfg.Port),
-		"-e", "E2E_DOMAIN", "-e", "E2E_EMAIL", "-e", "E2E_PASSWORD",
-		// Browsers đã có sẵn trong image → npm install KHÔNG tải lại browser.
-		"-e", "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1",
 	)
+	args = append(args, pwdocker.AuthEnvArgs()...)
+	// Browsers đã có sẵn trong image → npm install KHÔNG tải lại browser.
+	args = append(args, "-e", "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1")
 	// `npx playwright test` trong /harness không resolve được @playwright/test (image
 	// chỉ cấp browsers, không cấp npm package trên đường node resolve từ cwd tuỳ ý). Cài
 	// @playwright/test pinned từ harness/package.json vào /harness (mount rw, throwaway)
@@ -54,7 +46,7 @@ func BuildArgs(o Options, cfg RunConfig) []string {
 	if cfg.Update {
 		cmd += " --update-snapshots"
 	}
-	args = append(args, Image(), "sh", "-c", cmd)
+	args = append(args, pwdocker.Image(), "sh", "-c", cmd)
 	return args
 }
 
