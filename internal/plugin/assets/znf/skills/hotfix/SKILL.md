@@ -1,6 +1,6 @@
 ---
 name: hotfix
-description: Handle a live production bug in a polyrepo workspace — diagnose first, then decide the response with the user (revert, disable, or fix forward), and only for a forward fix create an isolated worktree branched from the repo's configured hotfix base ref (never the default feature base). Scouts what depends on the code, verifies, gates and ships. Commits + pushes the hotfix branch once verified, but never creates PRs or merges. User-invoked only (whether something is a hotfix is the user's urgency call). If a bug looks live-critical, you may SUGGEST running /hotfix, but don't run it automatically.
+description: Handle a live production bug in a polyrepo workspace — diagnose first, then decide the response with the user (revert, disable, or fix forward), and only for a forward fix create an isolated worktree branched from the repo's configured hotfix base ref (never the default feature base). Scouts what depends on the code, verifies, gates and ships. Commits + pushes the hotfix branch once verified and opens the PR, but never merges. User-invoked only (whether something is a hotfix is the user's urgency call). If a bug looks live-critical, you may SUGGEST running /hotfix, but don't run it automatically.
 disable-model-invocation: true
 argument-hint: "[short-kebab-desc]"
 allowed-tools: Bash(git *) Bash(wt *) Bash(zenify *) Read Grep Bash(rg *) Bash(cat *) Agent
@@ -184,7 +184,7 @@ Pushed: <username>/hotfix/<desc> → origin.
     Not "/ship: ✅ all green". -->
 ---
 
-Next (yours): create PR → <base ref> by hand → merge (= deploy) → sync fix back to the normal
+PR opened: <url> → <base ref>. Next (yours): merge (= deploy) → sync fix back to the normal
 feature base.
 ```
 

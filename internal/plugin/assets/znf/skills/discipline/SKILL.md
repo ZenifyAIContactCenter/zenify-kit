@@ -107,7 +107,7 @@ Red flags — thinking any of these means you are rationalising:
 ## 7 — Git safety
 - **Feature branches: commit + push freely**, no need to ask — that work is cheap to undo. Verify first (rule #3), then commit atomically with a clear message following the repo's existing convention (infer from the commit log). If you're on a deploy branch, branch off before you start.
 - **Deploy branches: never commit, push, or merge into them.** Which branches deploy is a per-project fact declared in the project's own config (baseline fallback: main/master/staging/develop/production). A git-guard hook should enforce this deterministically — if it blocks you, don't work around it, tell the user.
-- **Never create PRs and never merge** — opening the PR and merging are the user's review/deploy decisions, done by hand. Report the pushed branch + suggested PR target and stop.
+- **Open the PR, but never merge.** After pushing a feature branch, open the PR yourself (`gh pr create`) with a clean conventional title and a structured body following the repo's PR template/convention — the release report is derived **per-PR**, so a well-formed PR is what keeps the changelog clean. Report the PR URL and stop. **Merging is the user's deploy decision — never merge, including a PR you opened** (no `gh pr merge`, no merge into a deploy branch; git-guard blocks the local-git path but `gh pr merge` is server-side, so this is a behavioural rule too).
 - Never force-push or rewrite pushed history without being asked.
 
 ## 8 — Isolate every code change in a worktree

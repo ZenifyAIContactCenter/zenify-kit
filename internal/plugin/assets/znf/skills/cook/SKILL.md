@@ -589,7 +589,7 @@ cho người quyết, không chặn. Một dòng `Skill(znf:standards)` là bằ
 ## Step 7: Pre-ship gate
 
 Run `/ship`: lint + build → the project's contract gate → behavioural verification → the contract review
-lens → deploy order → commit + push the feature branch. It does **not** open the PR.
+lens → deploy order → commit + push the feature branch, then **open the PR** (never merge).
 
 There is no separate review step before this. SDD's final whole-branch review already
 covered generic quality; `/ship`'s reviewer covers what that one does not — cross-service
