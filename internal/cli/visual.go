@@ -50,6 +50,20 @@ func runVisualCheck(o visualOpts) error {
 	return nil
 }
 
+// dockerPreflight kiểm docker sẵn sàng TRƯỚC khi chạy container (FR-5.5): thiếu binary hoặc
+// daemon chưa chạy → thông báo rõ thay vì để lỗi hạ tầng giả dạng "visual mismatch".
+func dockerPreflight(lookPath func(string) (string, error), info func() error) error {
+	if _, err := lookPath("docker"); err != nil {
+		return exitcode.New(exitcode.BadArgs,
+			fmt.Errorf("docker chưa cài — cài Docker rồi chạy `zenify doctor` để kiểm"))
+	}
+	if err := info(); err != nil {
+		return exitcode.New(exitcode.BadArgs,
+			fmt.Errorf("docker daemon chưa chạy — khởi động Docker Desktop rồi thử lại"))
+	}
+	return nil
+}
+
 func newVisualCmd() *cobra.Command {
 	var repo string
 	var port int
@@ -66,6 +80,15 @@ func newVisualCmd() *cobra.Command {
 				repo, _ = os.Getwd()
 			}
 			out := cmd.OutOrStdout()
+			if port == 0 {
+				return exitcode.New(exitcode.BadArgs,
+					fmt.Errorf("cần --port <port dev-server trên host>"))
+			}
+			if err := dockerPreflight(exec.LookPath, func() error {
+				return exec.Command("docker", "info").Run() //nolint:gosec // G204 -- fixed args
+			}); err != nil {
+				return err
+			}
 			runner := func(name string, args []string) error {
 				c := exec.Command(name, args...) //nolint:gosec // G204 -- fixed "docker"; args internally computed
 				c.Stdout = out

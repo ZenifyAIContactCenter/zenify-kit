@@ -49,3 +49,20 @@ func TestVisualCheck_MismatchIsFail(t *testing.T) {
 		t.Errorf("error phải trỏ ảnh diff, got %q", err.Error())
 	}
 }
+
+func TestDockerPreflight(t *testing.T) {
+	okLook := func(string) (string, error) { return "/usr/bin/docker", nil }
+	// missing binary → BadArgs
+	if err := dockerPreflight(func(string) (string, error) { return "", errors.New("not found") },
+		func() error { return nil }); exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("missing docker → BadArgs, got %v", err)
+	}
+	// daemon down → BadArgs
+	if err := dockerPreflight(okLook, func() error { return errors.New("cannot connect") }); exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("daemon down → BadArgs, got %v", err)
+	}
+	// all ok → nil
+	if err := dockerPreflight(okLook, func() error { return nil }); err != nil {
+		t.Errorf("docker ready → nil, got %v", err)
+	}
+}

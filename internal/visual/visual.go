@@ -24,7 +24,7 @@ type Options struct {
 }
 
 type RunConfig struct {
-	HarnessDir   string // tmp dir đã ghi harness embedded (mount ro vào /harness)
+	HarnessDir   string // tmp dir đã ghi harness embedded (mount rw vào /harness (Playwright ghi .last-run.json vào cwd))
 	SnapshotsDir string // <repo>/.znf/visual (mount rw — chứa routes.json + __snapshots__)
 	Port         int    // port dev-server trên host
 	Update       bool   // true = ghi baseline (--update-snapshots)
@@ -39,7 +39,7 @@ func BuildArgs(o Options, cfg RunConfig) []string {
 		args = append(args, "--add-host=host.docker.internal:host-gateway")
 	}
 	args = append(args,
-		"-v", cfg.HarnessDir+":/harness:ro",
+		"-v", cfg.HarnessDir+":/harness",
 		"-v", cfg.SnapshotsDir+":/harness/.znf/visual",
 		"-e", fmt.Sprintf("BASE_URL=http://host.docker.internal:%d", cfg.Port),
 		"-e", "E2E_DOMAIN", "-e", "E2E_EMAIL", "-e", "E2E_PASSWORD",
