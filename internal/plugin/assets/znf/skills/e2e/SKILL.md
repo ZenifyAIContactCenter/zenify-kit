@@ -27,17 +27,41 @@ chỉ-FE không chạm dữ liệu. Quyết định này thuộc plan-time (/coo
 Fixtures generic do kit cấp (materialize lúc `run`): `page` (đã login qua storageState),
 `apiClient` (HTTP đã auth — `Authorization` token thô), `cleanupTracker` (`.add(undo)`).
 
+## Nguyên tắc lõi — vòng đời test-data (mỗi test tự sở hữu data của nó)
+
+Chuẩn thế giới cho E2E trên **môi trường chung** (staging nhiều dev + nhiều test song song): mỗi
+test tự tạo–tự dọn data, cô lập bằng marker duy nhất, không đụng data của test khác.
+
+1. **Seed điều kiện đầu vào QUA API, không qua UI.** Chỉ **luồng đang test** mới đi qua trình
+   duyệt; mọi tiền đề (contact, user, config…) tạo/resolve bằng `apiClient` — nhanh, ổn định, không
+   flaky. (Bấm 10 màn dựng data trong mỗi test là anti-pattern phổ biến nhất của test do AI viết.)
+2. **Cô lập bằng marker duy nhất mỗi run** (`runId`/UUID nhét vào subject/tên). Nhờ vậy nhiều run
+   song song trên cùng staging không giẫm nhau — tiền đề để bật `fullyParallel` khi suite lớn.
+3. **Assert domain-outcome qua API re-fetch** (chỗ 'deep') — không dừng ở dấu hiệu UI.
+4. **Dọn qua API ở cuối** (`cleanupTracker`), chạy **kể cả khi test fail** (harness lo, xem dưới).
+
+`apiClient` không chỉ để assert — nó là **công cụ seed + cleanup**. Đây là ranh giới quyết định
+'sâu vs hợt': UI kiểm *trải nghiệm người dùng*, API kiểm *sự thật domain*.
+
 ## Khuôn một scenario sâu (BẮT BUỘC qua lint)
 
 ```ts
 import { test, expect } from '../../fixtures';
 
-test('tạo ticket persist đúng field [FR-x, SC-y]', async ({ page, apiClient, cleanupTracker, cfg }) => {
+test('tạo ticket persist đúng field [FR-x, SC-y]', async ({ page, apiClient, cleanupTracker }) => {
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const marker = `[e2e-${runId}] smoke`;
 
-  // --- thao tác UI thật ---
-  await page.goto(`/tickets/new-${runId}?customerId=${cfg.contactId}`);
+  // --- seed điều kiện đầu vào QUA API (không qua UI) — xem "Vòng đời test-data" ---
+  // Resolve requester TẠI RUNTIME; đừng pin id tĩnh trong config (id pin có thể bị
+  // soft-delete trên staging chung → test rot âm thầm).
+  const res = await apiClient.post('/v2/contacts/search', {
+    data: { crm_type: 'contact', limit: 1, offset: 0 },
+  });
+  const requester = (await res.json()).data.list[0];
+
+  // --- thao tác UI thật: CHỈ luồng đang test (tạo ticket) mới đi qua UI ---
+  await page.goto(`/tickets/new-${runId}?customerId=${requester._id}`);
   // Subject: locator user-facing (placeholder), KHÔNG testid — xem "Chuẩn chọn locator".
   await page.getByPlaceholder('Nhập tiêu đề').first().fill(marker);
   // Editor TinyMCE render trong IFRAME → getByRole không xuyên được; testid chỉ làm
@@ -60,6 +84,7 @@ test('tạo ticket persist đúng field [FR-x, SC-y]', async ({ page, apiClient,
   const doc = (await got.json()).data ?? (await got.json());
   expect(doc.subject).toBe(marker);
   expect(typeof doc.status).toBe('number'); // status là Number (enum 1..5), KHÔNG phải string
+  expect(doc.tenant_id).toBe(requester.tenant_id); // same-tenant guard, chống cross-tenant leak
 
   // --- cleanup: soft-delete theo run ---
   cleanupTracker.add(async () => {
@@ -76,6 +101,21 @@ test('tạo ticket persist đúng field [FR-x, SC-y]', async ({ page, apiClient,
 - Selector theo **Chuẩn chọn locator** bên dưới (user-facing trước, testid là fallback có điều kiện) — KHÔNG xpath/`nth-child`/CSS bám cấu trúc.
 - Có `cleanupTracker.add(...)` (hoặc `test.afterEach`) xoá entity đã tạo.
 - Header scenario có ref `FR-`/`SC-`.
+
+## Quy tắc doctrine (chuẩn thế giới — lint chưa bắt hết, người viết + review phải giữ)
+
+Những lỗi test do AI/người viết hay mắc mà lint cơ học chưa chặn được — vi phạm là 'hợt':
+
+- **KHÔNG `if`/`try` để giấu fail.** `if (await x.isVisible())` bọc thao tác = test tự bỏ qua khi
+  UI đổi → xanh giả (lỗi #1 của test do AI viết). Assert thẳng trạng thái kỳ vọng; sai thì để đỏ.
+- **Web-first assertion, luôn `await`.** `await expect(locator).toBeVisible()` — KHÔNG
+  `expect(await locator.isVisible()).toBe(true)` (không auto-retry → flaky).
+- **Assert thứ người dùng thấy + sự thật domain, KHÔNG assert implementation** (class CSS, state
+  nội bộ, thứ tự DOM).
+- **BE eventually-consistent?** Nếu entity chưa đọc được ngay sau khi write trả về (search index,
+  replica trễ), dùng `await expect.poll(() => apiClient.get(...))` — KHÔNG `waitForTimeout`.
+- **Helper/page-object mỏng**: chỉ locator + thao tác, KHÔNG nhét assert vào trong (giấu kỳ vọng
+  khỏi test). Ở quy mô này ưu tiên **fixtures** hơn Page Object Model.
 
 ## Chuẩn chọn locator (thứ tự bắt buộc — testid là fallback, KHÔNG phải mặc định)
 
@@ -97,9 +137,27 @@ phương án cuối. Đây là chuẩn của kit — mọi journey theo đúng t
 - **Gỡ testid chết**: testid thêm rồi đổi selector không xài nữa phải gỡ khỏi codebase — đừng để
   lại làm người sau tưởng nó là anchor thật.
 
+## Harness lo sẵn gì (đừng tự dựng lại)
+
+- **Auth**: login một lần qua `auth.setup.ts` (setup project), lưu `storageState`; mọi test khởi
+  động đã đăng nhập — KHÔNG login lại trong từng test. `apiClient` lấy token thô từ storageState.
+- **Cleanup chạy kể cả khi fail**: `cleanupTracker` dọn ở teardown fixture (sau `use()`), nên run
+  lỗi vẫn không rò data trên staging chung. Undo lỗi chỉ warn, không sập test khác.
+- **Trace**: `trace: 'retain-on-failure'` — mỗi test fail có trace, mở bằng
+  `npx playwright show-trace`. (Không `on-first-retry` vì suite chạy `retries=0`.)
+- **Isolation**: mỗi test là browser context mới (cookies/storage sạch). `fullyParallel:false` mặc
+  định an toàn cho staging chung; bật parallel khi mọi journey đã cô lập bằng marker (nguyên tắc #2).
+
 ## Chạy & verify
 
 ```bash
 zenify e2e lint --repo <repo>            # cổng cơ học, chạy trước
 zenify e2e run --repo <repo> --port <N>  # chạy thật trong Docker (dev-server ở port N)
 ```
+
+## Chuẩn tham khảo (authoritative)
+
+- Best Practices — playwright.dev/docs/best-practices (locator priority, web-first, isolation, trace)
+- Locators & test-id — playwright.dev/docs/locators (`getByRole → … → getByTestId`; testid là cuối)
+- API testing (seed / assert / cleanup qua API) — playwright.dev/docs/api-testing
+- Auth `storageState` — playwright.dev/docs/auth · Fixtures — playwright.dev/docs/test-fixtures
