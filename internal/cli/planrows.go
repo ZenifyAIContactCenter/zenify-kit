@@ -34,7 +34,21 @@ func docsRowState(workspace string) string {
 	return "store: " + store
 }
 
-// planFooterRows renders the two synthetic HOOKS/DOCS-STORE rows appended to
+// modelRowState reports the MODEL plan row's state via a dry-run
+// EnsureWorkspaceModel call — never writes (SC-10). A malformed settings.json
+// is reported as a skip, matching EnsureWorkspaceModel's fail-open contract.
+func modelRowState(workspace string) string {
+	changed, err := apply.EnsureWorkspaceModel(workspace, true) // dryRun
+	if err != nil {
+		return "skip: settings.json malformed"
+	}
+	if !changed {
+		return "current: " + apply.DefaultModel
+	}
+	return "to pin → " + apply.DefaultModel
+}
+
+// planFooterRows renders the synthetic HOOKS/DOCS-STORE/MODEL rows appended to
 // every plan render (headless dry-run text and the TUI plan render alike).
 // Home-dir resolution failure (practically never) degrades to the same
 // "malformed" skip state rather than erroring the whole row out.
@@ -46,6 +60,7 @@ func planFooterRows(workspace string) []string {
 	return []string{
 		fmt.Sprintf("%-12s %s", "HOOKS", hooks),
 		fmt.Sprintf("%-12s %s", "DOCS-STORE", docsRowState(workspace)),
+		fmt.Sprintf("%-12s %s", "MODEL", modelRowState(workspace)),
 	}
 }
 
