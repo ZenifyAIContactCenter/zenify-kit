@@ -41,6 +41,44 @@ test('x [FR-1]', async ({ page, cleanupTracker }) => {
 	}
 }
 
+// I-2: apiClient chỉ xuất hiện trong closure cleanup (không hề re-fetch/assert domain)
+// KHÔNG được tính là "có re-fetch" — nếu tính, test shallow này vẫn qua rule.
+func TestLint_CleanupOnlyApiClientFails(t *testing.T) {
+	src := `import { test, expect } from '../../fixtures';
+test('shallow [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
+  await page.getByTestId('submit').click();
+  // @domain-assert:ticket
+  expect(1).toBe(1);
+  cleanupTracker.add(async () => { await apiClient.put('/v2/ticket/x', { data: { is_deleted: true } }); });
+});`
+	if !rules(LintSource("a.spec.ts", src))["refetch"] {
+		t.Fatal("apiClient chỉ nằm trong cleanup closure — phải bị bắt refetch")
+	}
+}
+
+// I-3: scenario test.only(...) phải được soi như test thường, không được bypass gate.
+func TestLint_TestOnlyIsLinted(t *testing.T) {
+	src := `import { test } from '../../fixtures';
+test.only('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
+  const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
+  cleanupTracker.add(async () => {});
+});`
+	// thiếu // @domain-assert marker → phải bị bắt (chứng minh test.only được soi)
+	if !rules(LintSource("a.spec.ts", src))["marker"] {
+		t.Fatal("test.only thiếu @domain-assert phải bị bắt — không được bypass")
+	}
+}
+
+// I-3b: một *.spec.ts không có scenario test(...) nào không được đọc là sạch.
+func TestLint_ZeroTestBlocksFlagged(t *testing.T) {
+	src := `import { test } from '../../fixtures';
+// mọi scenario bị comment hết
+const helper = 1;`
+	if !rules(LintSource("empty.spec.ts", src))["no-test"] {
+		t.Fatal("*.spec.ts không có test(...) phải bị bắt no-test")
+	}
+}
+
 func TestLint_Networkidle(t *testing.T) {
 	src := `import { test } from '../../fixtures';
 test('x [SC-1]', async ({ page, apiClient, cleanupTracker }) => {

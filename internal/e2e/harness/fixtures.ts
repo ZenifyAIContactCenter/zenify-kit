@@ -3,7 +3,10 @@
 import { test as base, expect, request, type APIRequestContext, type Page } from '@playwright/test';
 import { readFileSync } from 'fs';
 
-type E2EConfig = { apiBaseUrl: string; contactId: string };
+// contactId optional: journey nên resolve entity phụ (vd requester contact) TẠI RUNTIME
+// qua API — id pin cứng trong config có thể bị soft-delete và làm test rot âm thầm. Giữ
+// field cho repo nào muốn pin, nhưng không bắt buộc (config thật có thể chỉ có apiBaseUrl).
+type E2EConfig = { apiBaseUrl: string; contactId?: string };
 
 function loadConfig(): E2EConfig {
   return JSON.parse(readFileSync('.znf/e2e/e2e.config.json', 'utf8'));

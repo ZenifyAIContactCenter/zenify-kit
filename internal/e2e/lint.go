@@ -19,7 +19,9 @@ type Finding struct {
 }
 
 var (
-	reTestBlock  = regexp.MustCompile(`(?s)\btest\s*\(\s*['"` + "`" + `](.*?)['"` + "`" + `]`)
+	// Khớp cả test.only/.skip/.fixme — nếu không, một scenario `test.only(...)` sẽ
+	// KHÔNG match, splitTests trả rỗng và cả gate bỏ qua nó (bypass toàn bộ rule).
+	reTestBlock  = regexp.MustCompile(`(?s)\btest(?:\.(?:only|skip|fixme))?\s*\(\s*['"` + "`" + `](.*?)['"` + "`" + `]`)
 	reMarker     = regexp.MustCompile(`//\s*@domain-assert:`)
 	reExpect     = regexp.MustCompile(`\bexpect\s*\(`)
 	reExpectPgAt = regexp.MustCompile(`^\bexpect\s*\(\s*page\b`)
@@ -49,7 +51,15 @@ func LintSource(name, src string) []Finding {
 	add := func(off int, rule, msg string) {
 		out = append(out, Finding{File: name, Line: lineAt(src, off), Rule: rule, Msg: msg})
 	}
-	for _, sp := range splitTests(src) {
+	spans := splitTests(src)
+	// Một *.spec.ts không có scenario test(...) nào (vd bị comment hết, hoặc chỉ còn
+	// test.describe rỗng) KHÔNG được đọc là "sạch" — không có gì để soi marker/refetch,
+	// nên phải báo thay vì trả 0 finding im lặng.
+	if len(spans) == 0 {
+		add(0, "no-test", "*.spec.ts không có scenario test(...) nào để soi")
+		return out
+	}
+	for _, sp := range spans {
 		block := src[sp[0]:sp[1]]
 		base := sp[0]
 
@@ -81,11 +91,19 @@ func LintSource(name, src string) []Finding {
 		default:
 			mOff := markers[0][1]
 			after := block[markers[0][0]:]
-			hasClient := strings.Contains(after, "apiClient.")
-			// một expect nào đó sau marker không phải expect(page
+			// Loại phần thân cleanupTracker.add(...) khỏi cửa sổ soi: `apiClient.put`
+			// trong closure cleanup KHÔNG phải re-fetch — nếu tính, một test shallow chỉ
+			// có cleanup (không hề re-fetch/assert domain) vẫn qua rule. Re-fetch + assert
+			// field thật phải nằm TRƯỚC khi đăng ký cleanup (đúng khuôn exemplar).
+			scan := after
+			if i := strings.Index(after, "cleanupTracker.add("); i >= 0 {
+				scan = after[:i]
+			}
+			hasClient := strings.Contains(scan, "apiClient.")
+			// một expect nào đó sau marker (trước cleanup) không phải expect(page
 			realExpect := false
-			for _, e := range reExpect.FindAllStringIndex(after, -1) {
-				if !reExpectPgAt.MatchString(after[e[0]:]) {
+			for _, e := range reExpect.FindAllStringIndex(scan, -1) {
+				if !reExpectPgAt.MatchString(scan[e[0]:]) {
 					realExpect = true
 					break
 				}
