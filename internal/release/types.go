@@ -49,6 +49,7 @@ type RiskMeta struct {
 	BlastRadius string
 	DB          string
 	Rollback    string
+	Note        string // mô tả một dòng (prose, thường tiếng Việt) từ trailer _Release-Note của note-commit; "" khi risk đến từ spec, không từ note
 }
 
 // SpecMeta = spec đã parse sẵn (path + slug tokens + 3 tag Brief) để LinkSpec khớp thuần.
