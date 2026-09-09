@@ -433,6 +433,12 @@ Then push the feature branch (note-commit comes along). After pushing, regenerat
 Fail-open: both commands return clean on their own if they error — they do NOT block `/ship`. `unreleased.md` is a view
 derived-from-git; the change just shipped appears once merged into staging (git is the source of truth at settle time).
 
+**Encouraged, not enforced — the `Spec:` commit trailer.** When a change implements a spec, add a
+trailer line `Spec: specs/<repo>/<date>-<topic>-design.md` to the commit (or squash-merge) body.
+`zenify spec status` then marks that spec `built` (a precise link) instead of `built?` (a fuzzy
+slug guess). This is doctrine, never a gate — a missing trailer only downgrades the confidence of
+one lifecycle row.
+
 **On all-green you commit and push to the FEATURE branch** — same branch name across repos, clear
 message, following the repo's existing convention (infer it from recent `git log --oneline` and branch
 names if CLAUDE.md doesn't state it; don't invent a style). House rule #7 authorises this without

@@ -30,6 +30,11 @@ like the plan's `_Requirements:` tag.
 8. **Rollback.** How to undo the change, and the prod-watch signal to check after deploy. Record
    as a tag line (floor): `_Rollback: <undo plan + prod-watch signal>`. (floor)
 
+- `_Supersedes: <old-spec-slug>` — OPTIONAL. Only when this spec replaces an earlier one. Names
+  the superseded spec's slug (the `<topic>` of its `…-<topic>-design.md` file). This is the single
+  lifecycle fact the tooling cannot derive from git; `zenify spec status` reads it to mark the old
+  spec `superseded`. Omit it for a net-new spec.
+
 **Mini-brief (bounded tasks).** A bounded change does not fill all eight fields. Use three lines:
 Problem · Approach + necessity · Blast-radius + DB + Rollback.
 
