@@ -93,6 +93,17 @@ func RangeCommits(r gitx.Runner, dir, from, to string) ([]Commit, error) {
 	return parseCommits(out), nil
 }
 
+// ReachableCommits returns every commit reachable from ref (merges kept, newest first). Used by
+// spec-status: a merged feature's commit carries the Spec: trailer or a slug that links its spec,
+// so scanning the whole base branch tells which specs have shipped.
+func ReachableCommits(r gitx.Runner, dir, ref string) ([]Commit, error) {
+	out, err := r.Run(dir, "log", logFormat, ref)
+	if err != nil {
+		return nil, err
+	}
+	return parseCommits(out), nil
+}
+
 // RangeCommitsGrouped returns the commits in from..to with PR LABELS attached: it walks the
 // mainline with --first-parent; for each merge-commit that is a PR (ParseMergeBranch matches),
 // it sets PRBranch=branch on the merge-commit, THEN expands git log <merge>^1..<merge>^2 and
