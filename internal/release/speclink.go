@@ -16,6 +16,7 @@ var specSlugRe = regexp.MustCompile(`^(?:\d{4}-\d{2}-\d{2}-)?(.+?)-design$`)
 var blastRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Blast-radius:\\s*(.*)$")
 var dbRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_DB:\\s*(.*)$")
 var rollbackRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Rollback:\\s*(.*)$")
+
 // Capture group is non-greedy with an optional trailing run of `*_` stripped from the match
 // (not just via tagValue, which only trims backtick/asterisk): unlike the other Brief tags,
 // _Supersedes: is commonly written wrapped in markdown italic (a closing "_"), and a literal
