@@ -59,6 +59,7 @@ type SpecMeta struct {
 	BlastRadius string
 	DB          string
 	Rollback    string
+	Supersedes  string // raw slug from the _Supersedes: Brief tag; "" if none (the only non-derivable lifecycle input)
 }
 
 // Report is the whole report for one release.
