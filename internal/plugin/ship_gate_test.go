@@ -18,11 +18,14 @@ func TestShipGate_RunsRulesLint(t *testing.T) {
 	if !strings.Contains(s, "zenify rules lint") {
 		t.Error("ship SKILL.md missing the rules-lint gate")
 	}
-	// The gate that /ship actually runs is scoped to the distributed rules,
-	// not the full kit tree. (The doc separately names --include-go when
-	// explaining the deferral, so assert the active command is the scoped one
-	// rather than the mere absence of the flag anywhere in the file.)
+	// Two active gates: the distributed-rules gate runs on every /ship (any repo),
+	// and the full-tree gate runs when shipping the kit repo itself (the
+	// language-retrofit milestone translated the kit's Go + skill assets, so this
+	// is enforced now rather than deferred).
 	if !strings.Contains(s, "zenify rules lint ~/.zenify/knowledge/.config/rules") {
 		t.Error("ship gate must run the rules-lint scoped to the distributed rules dir")
+	}
+	if !strings.Contains(s, "zenify rules lint --include-go") {
+		t.Error("ship gate must run the full-tree --include-go gate for the kit repo")
 	}
 }
