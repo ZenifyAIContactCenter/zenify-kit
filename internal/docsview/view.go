@@ -6,31 +6,34 @@ import (
 	"strings"
 )
 
-// FS gói mọi thao tác OS-specific SAU seam để EnsureView OS-agnostic.
-// OSFS (Task 3) cài: unix dùng os.Symlink; windows dùng directory junction (mklink /J).
+// FS wraps every OS-specific operation BEHIND this seam so EnsureView stays OS-agnostic.
+// OSFS (Task 3) implements it: unix uses os.Symlink; windows uses a directory junction
+// (mklink /J).
 type FS interface {
 	ReadDir(string) ([]os.DirEntry, error)
 	MkdirAll(string, os.FileMode) error
 	Remove(string) error
-	// Link tạo link từ link→target (symlink unix / junction windows).
+	// Link creates a link from link→target (symlink on unix / junction on windows).
 	Link(target, link string) error
-	// IsManagedLink: path là link mình quản (symlink/junction), KHÔNG phải dir/file thật?
+	// IsManagedLink: is path a link we manage (symlink/junction), NOT a real dir/file?
 	IsManagedLink(path string) (bool, error)
-	// SameTarget: link có resolve về đúng target? (EvalSymlinks compare; lỗi nếu link chết).
+	// SameTarget: does the link resolve to the expected target? (EvalSymlinks compare;
+	// errors if the link is dead).
 	SameTarget(link, target string) (bool, error)
 }
 
-// EnsureView đảm bảo viewDir chỉ chứa link tới mỗi top-level DIR không-chấm của store.
-// Idempotent: tạo thiếu, sửa sai target, dọn link chết. KHÔNG đụng dir/file THẬT trong
-// viewDir (chỉ thao tác link mình quản). Fail-open: lỗi → note, không panic.
+// EnsureView guarantees viewDir contains only a link to each non-dot top-level DIR of
+// store. Idempotent: creates what's missing, fixes a wrong target, prunes dead links.
+// Does NOT touch a REAL dir/file inside viewDir (only operates on links it manages).
+// Fail-open: an error becomes a note, never a panic.
 func EnsureView(fs FS, store, viewDir string) []string {
 	var notes []string
 	entries, err := fs.ReadDir(store)
 	if err != nil {
-		return []string{"docs view: không đọc được store " + store + ": " + err.Error()}
+		return []string{"docs view: could not read store " + store + ": " + err.Error()}
 	}
 	if err := fs.MkdirAll(viewDir, 0o755); err != nil {
-		return []string{"docs view: mkdir viewDir lỗi: " + err.Error()}
+		return []string{"docs view: mkdir viewDir failed: " + err.Error()}
 	}
 	want := map[string]bool{}
 	for _, e := range entries {
@@ -42,16 +45,16 @@ func EnsureView(fs FS, store, viewDir string) []string {
 		target := filepath.Join(store, e.Name())
 		if managed, _ := fs.IsManagedLink(link); managed {
 			if same, _ := fs.SameTarget(link, target); same {
-				continue // đã đúng
+				continue // already correct
 			}
-			_ = fs.Remove(link) // link sai target → gỡ, tạo lại (chỉ gỡ 1 link, an toàn với junction)
+			_ = fs.Remove(link) // wrong target → remove and recreate (removes only the link, safe with junctions)
 		} else if _, err := fs.ReadDir(link); err == nil {
-			// có dir/file THẬT chiếm chỗ → KHÔNG clobber, chỉ note
-			notes = append(notes, "docs view: "+link+" là dir/file thật (không phải link) — bỏ qua")
+			// a REAL dir/file occupies the spot → do NOT clobber it, just note
+			notes = append(notes, "docs view: "+link+" is a real dir/file (not a link) — skipping")
 			continue
 		}
 		if err := fs.Link(target, link); err != nil {
-			notes = append(notes, "docs view: tạo link "+link+" lỗi: "+err.Error())
+			notes = append(notes, "docs view: creating link "+link+" failed: "+err.Error())
 		}
 	}
 	if vents, err := fs.ReadDir(viewDir); err == nil {
@@ -61,8 +64,8 @@ func EnsureView(fs FS, store, viewDir string) []string {
 			}
 			link := filepath.Join(viewDir, v.Name())
 			if managed, _ := fs.IsManagedLink(link); managed {
-				_ = fs.Remove(link) // KHÔNG RemoveAll: chỉ gỡ link, không xoá nội dung store
-				notes = append(notes, "docs view: dọn link chết "+v.Name())
+				_ = fs.Remove(link) // NOT RemoveAll: only removes the link, never the store contents
+				notes = append(notes, "docs view: pruned dead link "+v.Name())
 			}
 		}
 	}

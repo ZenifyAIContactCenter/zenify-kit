@@ -27,7 +27,7 @@ func TestOSFSEnsureViewIntegration(t *testing.T) {
 		t.Logf("note: %s", n)
 	}
 
-	// view/specs/a.md phải đọc được, resolve xuống store.
+	// view/specs/a.md must be readable, resolving down to store.
 	got, err := os.ReadFile(filepath.Join(view, "specs", "a.md"))
 	if err != nil {
 		t.Fatalf("read view/specs/a.md: %v", err)
@@ -36,9 +36,9 @@ func TestOSFSEnsureViewIntegration(t *testing.T) {
 		t.Fatalf("content mismatch: got %q", got)
 	}
 
-	// view/.config KHÔNG tồn tại (chỉ link top-level dir không-chấm).
+	// view/.config must NOT exist (only non-dot top-level dirs get linked).
 	if _, err := os.Stat(filepath.Join(view, ".config")); !os.IsNotExist(err) {
-		t.Fatalf("view/.config phải không tồn tại, got err=%v", err)
+		t.Fatalf("view/.config must not exist, got err=%v", err)
 	}
 
 	// SameTarget(view/specs, store/specs) == true.

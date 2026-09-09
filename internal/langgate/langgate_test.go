@@ -20,7 +20,7 @@ func write(t *testing.T, dir, name, body string) string {
 
 func TestScan_FlagsVietnameseComment(t *testing.T) {
 	d := t.TempDir()
-	write(t, d, "a.go", "package a\n// đây là comment tiếng Việt\nvar X = 1\n")
+	write(t, d, "a.go", "package a\n// đây là comment tiếng Việt\nvar X = 1\n") //znf:allow-lang
 	v, err := Scan([]string{d}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +50,7 @@ func TestScan_AllowLangMarkerExempts(t *testing.T) {
 
 func TestScan_MdCodeFenceExempt(t *testing.T) {
 	d := t.TempDir()
-	write(t, d, "a.md", "English prose here\n```\n'Nhập tiêu đề'\n```\nmore English\n")
+	write(t, d, "a.md", "English prose here\n```\n'Nhập tiêu đề'\n```\nmore English\n") //znf:allow-lang
 	v, _ := Scan([]string{d}, false)
 	if len(v) != 0 {
 		t.Fatalf("code fence must be exempt, got %+v", v)
@@ -59,7 +59,7 @@ func TestScan_MdCodeFenceExempt(t *testing.T) {
 
 func TestScan_MdInlineCodeExempt(t *testing.T) {
 	d := t.TempDir()
-	write(t, d, "a.md", "The literal `'Nhập tiêu đề'` is a data string.\n")
+	write(t, d, "a.md", "The literal `'Nhập tiêu đề'` is a data string.\n") //znf:allow-lang
 	v, _ := Scan([]string{d}, false)
 	if len(v) != 0 {
 		t.Fatalf("inline code must be exempt, got %+v", v)
@@ -68,7 +68,7 @@ func TestScan_MdInlineCodeExempt(t *testing.T) {
 
 func TestScan_MdProseVietnameseFlagged(t *testing.T) {
 	d := t.TempDir()
-	write(t, d, "a.md", "Đây là prose tiếng Việt ngoài code.\n")
+	write(t, d, "a.md", "Đây là prose tiếng Việt ngoài code.\n") //znf:allow-lang
 	v, _ := Scan([]string{d}, false)
 	if len(v) != 1 {
 		t.Fatalf("VN prose in .md must be flagged, got %+v", v)
@@ -77,7 +77,7 @@ func TestScan_MdProseVietnameseFlagged(t *testing.T) {
 
 func TestScan_GoSkippedWhenIncludeGoFalse(t *testing.T) {
 	d := t.TempDir()
-	write(t, d, "a.go", "package a\n// tiếng Việt\n")
+	write(t, d, "a.go", "package a\n// tiếng Việt\n") //znf:allow-lang
 	v, _ := Scan([]string{d}, false)
 	if len(v) != 0 {
 		t.Fatalf("go must be skipped when includeGo=false, got %+v", v)

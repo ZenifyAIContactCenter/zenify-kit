@@ -157,8 +157,8 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 	case "install":
 		return runInstall(worktreePath, installCmd)
 	case "none":
-		// Repo dùng cache dependency toàn cục (vd Maven ~/.m2): không có thư mục
-		// deps per-project để clone/symlink, không có bước install per-worktree.
+		// Repo uses a global dependency cache (e.g. Maven ~/.m2): there is no
+		// per-project deps dir to clone/symlink, and no per-worktree install step.
 		return nil
 	default:
 		return fmt.Errorf("wt: unknown deps mode: %s", mode)

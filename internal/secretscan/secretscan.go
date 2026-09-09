@@ -1,5 +1,5 @@
-// Package secretscan bọc gitleaks làm library để phát hiện secret, chỉ báo
-// vị trí + rule, không bao giờ trả value nguyên (FR-041).
+// Package secretscan wraps gitleaks as a library to detect secrets, reporting
+// only location + rule, never the raw value (FR-041).
 package secretscan
 
 import (
@@ -36,8 +36,8 @@ func New() (Scanner, error) {
 	return &gitleaksScanner{d: d}, nil
 }
 
-// redact luôn trả một mask hằng số, không chứa bất kỳ ký tự nào của secret
-// (FR-041: chỉ báo file+rule-id+line, không lộ giá trị secret dù một phần).
+// redact always returns a constant mask, containing none of the secret's
+// characters (FR-041: report only file+rule-id+line, never leak the secret value even partially).
 func redact(_ string) string {
 	return "(redacted)"
 }
@@ -60,7 +60,7 @@ func (g *gitleaksScanner) ScanPath(root string) ([]Finding, error) {
 	var out []Finding
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil // bỏ qua lỗi lẻ, không dừng cả cây
+			return nil // skip the one-off error, don't stop the whole tree walk
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" || d.Name() == "node_modules" {
@@ -79,27 +79,27 @@ func (g *gitleaksScanner) ScanPath(root string) ([]Finding, error) {
 	return out, err
 }
 
-// Staged quét diff đã stage + tên file staged. deny=true nếu có secret hoặc
-// settings.local.json bị stage. err chỉ khi bước quét lỗi (caller fail-open).
+// Staged scans the staged diff + staged file names. deny=true if there's a secret or
+// settings.local.json is staged. err only when the scan step itself fails (caller fails open).
 func Staged(repoDir string, s Scanner) (bool, string, error) {
-	// 1. Tên file staged: chặn settings.local.json.
+	// 1. Staged file names: block settings.local.json.
 	names, err := stagedNames(repoDir)
 	if err != nil {
 		return false, "", err
 	}
 	for _, n := range names {
 		if filepath.Base(n) == "settings.local.json" {
-			return true, "🚫 [git-guard] BLOCKED — 'settings.local.json' bị stage (chứa secret, không được commit).", nil
+			return true, "🚫 [git-guard] BLOCKED — 'settings.local.json' is staged (contains secrets, must not be committed).", nil
 		}
 	}
-	// 2. Nội dung staged diff.
+	// 2. Staged diff content.
 	diff, err := stagedDiff(repoDir)
 	if err != nil {
 		return false, "", err
 	}
 	fs := s.ScanText("<staged>", diff)
 	if len(fs) > 0 {
-		return true, fmt.Sprintf("🚫 [git-guard] BLOCKED — staged diff chứa secret khả nghi (%s, dòng %d). Gỡ rồi re-stage.", fs[0].RuleID, fs[0].StartLine), nil
+		return true, fmt.Sprintf("🚫 [git-guard] BLOCKED — staged diff contains a suspected secret (%s, line %d). Remove it and re-stage.", fs[0].RuleID, fs[0].StartLine), nil
 	}
 	return false, "", nil
 }

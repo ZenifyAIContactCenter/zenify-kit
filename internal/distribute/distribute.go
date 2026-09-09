@@ -1,5 +1,5 @@
-// Package distribute phân phối file config workspace-level từ docs/.config/
-// xuống workspace theo một manifest. Nguồn = config/, một chiều. Fail-open.
+// Package distribute distributes workspace-level config files from docs/.config/
+// down into the workspace via a manifest. Source = config/, one-way. Fail-open.
 package distribute
 
 import (
@@ -19,18 +19,18 @@ const (
 	Skip   State = "SKIP"
 )
 
-// Pair là một dòng manifest: file nguồn (trong config dir) → đích (trong workspace).
+// Pair is one manifest line: source file (in the config dir) → dest (in the workspace).
 type Pair struct{ Source, Dest string }
 
-// FilePlan là phân loại cho một Pair sau khi so nội dung.
+// FilePlan is the classification for one Pair after comparing content.
 type FilePlan struct {
 	Source, Dest string
 	State        State
-	Diff         string // unified diff cho UPDATE; "" nếu không
-	Reason       string // lý do khi SKIP; "" nếu không
+	Diff         string // unified diff for UPDATE; "" otherwise
+	Reason       string // reason when SKIP; "" otherwise
 }
 
-// escapesRoot báo path rỗng, tuyệt đối, hoặc thoát khỏi thư mục gốc bằng "..".
+// escapesRoot reports an empty path, an absolute path, or one that escapes the root dir via "..".
 func escapesRoot(p string) bool {
 	if p == "" || filepath.IsAbs(p) {
 		return true
@@ -39,8 +39,8 @@ func escapesRoot(p string) bool {
 	return c == ".." || strings.HasPrefix(c, ".."+string(filepath.Separator))
 }
 
-// ParseManifest đọc các dòng "<source> <dest>". Bỏ dòng #-đầu và dòng trắng.
-// Dòng không đúng đúng 2 trường (thiếu dest, hoặc dư trường) → thêm note, bỏ qua (không lỗi).
+// ParseManifest reads "<source> <dest>" lines. Skips #-prefixed and blank lines.
+// A line without exactly 2 fields (missing dest, or extra fields) → adds a note, skips it (not an error).
 func ParseManifest(b []byte) ([]Pair, []string) {
 	var pairs []Pair
 	var notes []string
@@ -51,7 +51,7 @@ func ParseManifest(b []byte) ([]Pair, []string) {
 		}
 		f := strings.Fields(s)
 		if len(f) != 2 {
-			notes = append(notes, "bỏ dòng manifest không đúng 2 trường: "+s)
+			notes = append(notes, "skipping manifest line without exactly 2 fields: "+s)
 			continue
 		}
 		pairs = append(pairs, Pair{Source: f[0], Dest: f[1]})
@@ -59,22 +59,22 @@ func ParseManifest(b []byte) ([]Pair, []string) {
 	return pairs, notes
 }
 
-// Plan phân loại mỗi Pair bằng cách so nội dung nguồn vs đích. Thuần: mọi I/O
-// được inject để test. config/ là nguồn → diff hướng dest→source.
+// Plan classifies each Pair by comparing source vs dest content. Pure: all I/O
+// is injected for testing. config/ is the source → diff runs dest→source.
 func Plan(pairs []Pair, readSource, readDest func(string) ([]byte, error), isNotFound func(error) bool) []FilePlan {
 	out := make([]FilePlan, 0, len(pairs))
 	for _, p := range pairs {
 		fp := FilePlan{Source: p.Source, Dest: p.Dest}
 		if escapesRoot(p.Source) || escapesRoot(p.Dest) {
 			fp.State = Skip
-			fp.Reason = "path thoát khỏi gốc (tuyệt đối hoặc ..)"
+			fp.Reason = "path escapes root (absolute or ..)"
 			out = append(out, fp)
 			continue
 		}
 		srcB, err := readSource(p.Source)
 		if err != nil {
 			fp.State = Skip
-			fp.Reason = "không đọc được nguồn"
+			fp.Reason = "could not read source"
 			out = append(out, fp)
 			continue
 		}
@@ -84,7 +84,7 @@ func Plan(pairs []Pair, readSource, readDest func(string) ([]byte, error), isNot
 				fp.State = Create
 			} else {
 				fp.State = Skip
-				fp.Reason = "không đọc được đích"
+				fp.Reason = "could not read dest"
 			}
 			out = append(out, fp)
 			continue
@@ -135,8 +135,8 @@ func ExpandDirPairs(pairs []Pair, listDir func(string) ([]string, error)) ([]Pai
 	return out, notes
 }
 
-// Apply ghi các file CREATE/UPDATE (đọc lại nguồn qua readSource, ghi qua writeDest).
-// SAME/SKIP không ghi. Fail-open: lỗi ghi/đọc thành note, không dừng.
+// Apply writes CREATE/UPDATE files (re-reads source via readSource, writes via writeDest).
+// SAME/SKIP write nothing. Fail-open: read/write errors become a note, do not stop.
 func Apply(plans []FilePlan, readSource func(string) ([]byte, error), writeDest func(dest string, data []byte) error) []string {
 	var notes []string
 	for _, p := range plans {
@@ -145,14 +145,14 @@ func Apply(plans []FilePlan, readSource func(string) ([]byte, error), writeDest 
 		}
 		b, err := readSource(p.Source)
 		if err != nil {
-			notes = append(notes, "không đọc được nguồn "+p.Source+": "+err.Error())
+			notes = append(notes, "could not read source "+p.Source+": "+err.Error())
 			continue
 		}
 		if err := writeDest(p.Dest, b); err != nil {
-			notes = append(notes, "không ghi được "+p.Dest+": "+err.Error())
+			notes = append(notes, "could not write "+p.Dest+": "+err.Error())
 			continue
 		}
-		notes = append(notes, "đã ghi "+p.Dest)
+		notes = append(notes, "đã ghi "+p.Dest) //znf:allow-lang
 	}
 	return notes
 }
