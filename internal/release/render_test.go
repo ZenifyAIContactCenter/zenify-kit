@@ -98,6 +98,46 @@ func TestRenderUnreleasedOmitsTimestamp(t *testing.T) {
 	}
 }
 
+// Khối rủi ro phải loại chore/other (dòng bảng của chúng bị verbose-gate) — nếu không
+// non-verbose sẽ có khối rủi ro trỏ tới thay đổi không hiện ở bảng nào. Mirror release.go:175.
+func TestRenderRiskDetailExcludesChore(t *testing.T) {
+	rep := Report{N: 84, SharedCrossRepo: map[string][]string{}, Repos: []RepoReport{{
+		Name: "be", Changes: []Change{
+			{Title: "Choreish", Slug: "cho", Type: "chore", PRNum: "9", Commits: make([]Commit, 1),
+				Risk: RiskMeta{SpecPath: "note", BlastRadius: "x"}},
+		},
+	}}}
+	out := Render(rep, false)
+	if strings.Contains(out, "#### Rủi ro") {
+		t.Errorf("chore có spec KHÔNG được tạo khối rủi ro: %s", out)
+	}
+}
+
+// Khối rủi ro: header Title-only khi không có PR, và oneLine trim emphasis rìa (** leak
+// từ tag "**_Label:**"). Hai nhánh này trước đó không có test.
+func TestRenderRiskDetailTrimAndHeaderNoPR(t *testing.T) {
+	rep := Report{N: 84, SharedCrossRepo: map[string][]string{}, Repos: []RepoReport{{
+		Name: "be", Changes: []Change{
+			{Title: "No PR change", Slug: "npr", Type: "feat", Commits: make([]Commit, 1),
+				Risk: RiskMeta{SpecPath: "specs/x.md", BlastRadius: "** be leaked *", DB: "", Rollback: "revert"}},
+		},
+	}}}
+	out := Render(rep, false)
+	if !strings.Contains(out, "**No PR change**") || strings.Contains(out, "#—") || strings.Contains(out, "# — No PR change") {
+		t.Errorf("header không-PR phải là **Title** trần: %s", out)
+	}
+	if !strings.Contains(out, "- **Blast-radius:** be leaked") {
+		t.Errorf("oneLine phải trim '**' rìa: %s", out)
+	}
+	// Dạng raw "** be leaked *" (leading/trailing emphasis) phải biến mất sau trim.
+	if strings.Contains(out, "** be leaked *") || strings.Contains(out, "be leaked *") {
+		t.Errorf("value vẫn còn emphasis rìa chưa trim: %s", out)
+	}
+	if !strings.Contains(out, "- **DB:** —") {
+		t.Errorf("value rỗng phải thành '—': %s", out)
+	}
+}
+
 func TestRenderEmptyReportNoPanic(t *testing.T) {
 	out := Render(Report{N: 84, GeneratedAt: "x", SharedCrossRepo: map[string][]string{}}, false)
 	if !strings.Contains(out, "# Release 84") {

@@ -184,6 +184,12 @@ func specCol(r RiskMeta) string {
 func renderRiskDetail(b *strings.Builder, changes []Change) {
 	var spec []Change
 	for _, ch := range changes {
+		// Loại chore/other GIỐNG headline SpecTotal (release.go:175): dòng bảng của
+		// chúng bị verbose-gate ở "### Chores", nên khối rủi ro non-verbose sẽ tham
+		// chiếu một thay đổi không hiện ở bảng nào phía trên.
+		if ch.Type == "chore" || ch.Type == "other" {
+			continue
+		}
 		if ch.Risk.SpecPath != "" {
 			spec = append(spec, ch)
 		}
