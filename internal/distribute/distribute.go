@@ -112,6 +112,29 @@ func unifiedDiff(dst, src []byte, fromName, toName string) string {
 	return strings.TrimRight(text, "\n")
 }
 
+// ExpandDirPairs replaces each directory pair (Source ending in "/") with one
+// file pair per entry that listDir returns; file pairs pass through unchanged.
+// Fail-open: a listDir error drops that dir pair with a note, no error returned.
+func ExpandDirPairs(pairs []Pair, listDir func(string) ([]string, error)) ([]Pair, []string) {
+	var out []Pair
+	var notes []string
+	for _, p := range pairs {
+		if !strings.HasSuffix(p.Source, "/") {
+			out = append(out, p)
+			continue
+		}
+		entries, err := listDir(p.Source)
+		if err != nil {
+			notes = append(notes, "bỏ dir-pair "+p.Source+": "+err.Error()) //znf:allow-lang
+			continue
+		}
+		for _, e := range entries {
+			out = append(out, Pair{Source: p.Source + e, Dest: p.Dest + e})
+		}
+	}
+	return out, notes
+}
+
 // Apply ghi các file CREATE/UPDATE (đọc lại nguồn qua readSource, ghi qua writeDest).
 // SAME/SKIP không ghi. Fail-open: lỗi ghi/đọc thành note, không dừng.
 func Apply(plans []FilePlan, readSource func(string) ([]byte, error), writeDest func(dest string, data []byte) error) []string {

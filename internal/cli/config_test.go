@@ -65,3 +65,23 @@ func TestRunConfigDryRunThenApplyIdempotent(t *testing.T) {
 		t.Fatalf("chạy lại phải là SAME (SC-2): %s", o3.String())
 	}
 }
+
+// FR-03: một dòng manifest dir-pair ("rules/ .claude/rules/") phải được expand
+// thành một file-pair cho mỗi entry .md trong config dir, rồi apply ghi đúng đích.
+func TestRunConfigDirPairExpandsAndApplies(t *testing.T) {
+	ws := t.TempDir()
+	cfg := filepath.Join(ws, "cfgdir")
+	if err := os.MkdirAll(filepath.Join(cfg, "rules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(cfg, "rules", "00-constitution.md"), []byte("constitution\n"), 0o644)
+	os.WriteFile(filepath.Join(cfg, "distribution.txt"), []byte("rules/ .claude/rules/\n"), 0o644)
+	dest := filepath.Join(ws, ".claude", "rules", "00-constitution.md")
+
+	var o1, e1 bytes.Buffer
+	runConfig(ws, cfg, true, &o1, &e1)
+	b, err := os.ReadFile(dest)
+	if err != nil || string(b) != "constitution\n" {
+		t.Fatalf("apply phải tạo %s với đúng nội dung: %v %q", dest, err, b)
+	}
+}

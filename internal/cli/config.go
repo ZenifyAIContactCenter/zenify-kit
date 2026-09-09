@@ -29,6 +29,21 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 		return nil
 	}
 	pairs, notes := distribute.ParseManifest(mb)
+	listDir := func(rel string) ([]string, error) {
+		ents, err := os.ReadDir(filepath.Join(configDir, rel))
+		if err != nil {
+			return nil, err
+		}
+		var names []string
+		for _, e := range ents {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+				names = append(names, e.Name())
+			}
+		}
+		return names, nil
+	}
+	pairs, dnotes := distribute.ExpandDirPairs(pairs, listDir)
+	notes = append(notes, dnotes...)
 	for _, n := range notes {
 		fmt.Fprintln(stderr, "config: "+n)
 	}

@@ -57,6 +57,14 @@ start early, and that section says why.
    `packageManager` field then the lockfile, and refuses rather than guessing:
    `pm run lint`, `pm run build`. Never claim a pass without the output.
 
+   - Run the agent-read language gate on the distributed team rules:
+     `zenify rules lint ~/.zenify/knowledge/.config/rules`. The rules that reach teammates must be
+     English so they stay portable and reviewable; any Vietnamese in a rule `.md` (outside a
+     code-fence, inline-code, or a `<!-- znf:allow-lang -->` line) fails the gate — fix it before
+     opening the PR. Full-tree enforcement over the kit's own skill assets and Go source
+     (`zenify rules lint --include-go`) is deferred to the language-retrofit milestone, which
+     translates the existing Vietnamese in those files before that scope is turned on here.
+
 3. **Contract gate**: if the change touched anything shared across services — a DB collection, an
    HTTP endpoint between services, a queue, a pub/sub channel — run the project's contract gate,
    where it defines one, and report which repos it found. Do not decide by judgement that a change

@@ -1,6 +1,7 @@
 package distribute
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -111,6 +112,44 @@ func TestApplyWritesOnlyCreateUpdate(t *testing.T) {
 	}
 	if len(notes) != 2 {
 		t.Errorf("want 2 write notes, got %v", notes)
+	}
+}
+
+func TestExpandDirPairs(t *testing.T) {
+	list := func(src string) ([]string, error) {
+		if src == "rules/" {
+			return []string{"00-constitution.md", "web-conventions.md"}, nil
+		}
+		return nil, nil
+	}
+	in := []Pair{
+		{Source: "CLAUDE.md", Dest: "CLAUDE.md"},
+		{Source: "rules/", Dest: ".claude/rules/"},
+	}
+	out, notes := ExpandDirPairs(in, list)
+	if len(notes) != 0 {
+		t.Fatalf("unexpected notes: %v", notes)
+	}
+	want := []Pair{
+		{Source: "CLAUDE.md", Dest: "CLAUDE.md"},
+		{Source: "rules/00-constitution.md", Dest: ".claude/rules/00-constitution.md"},
+		{Source: "rules/web-conventions.md", Dest: ".claude/rules/web-conventions.md"},
+	}
+	if len(out) != len(want) {
+		t.Fatalf("want %d pairs, got %d: %+v", len(want), len(out), out)
+	}
+	for i := range want {
+		if out[i] != want[i] {
+			t.Errorf("pair %d: want %+v got %+v", i, want[i], out[i])
+		}
+	}
+}
+
+func TestExpandDirPairs_ListErrorFailOpen(t *testing.T) {
+	list := func(string) ([]string, error) { return nil, errors.New("boom") }
+	out, notes := ExpandDirPairs([]Pair{{Source: "rules/", Dest: ".claude/rules/"}}, list)
+	if len(out) != 0 || len(notes) != 1 {
+		t.Fatalf("want 0 pairs + 1 note, got %d/%d", len(out), len(notes))
 	}
 }
 
