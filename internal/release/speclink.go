@@ -41,7 +41,7 @@ func firstGroup(re *regexp.Regexp, s string) string {
 	return ""
 }
 
-// ParseSpecBrief reads an already-loaded spec file → SpecMeta (slug from the file name + the 3 Brief tags).
+// ParseSpecBrief reads an already-loaded spec file → SpecMeta (slug from the file name + the 4 Brief tags).
 func ParseSpecBrief(p string, content []byte) SpecMeta {
 	base := strings.TrimSuffix(path.Base(p), ".md")
 	slug := base

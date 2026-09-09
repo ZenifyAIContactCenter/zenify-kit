@@ -1,10 +1,32 @@
 package speclife
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/release"
 )
+
+// TestJSONKeysAreLowercase guards FR-01.6 / FR-02.4: the machine-readable output must use the
+// documented lowercase keys, not Go's capitalized field names.
+func TestJSONKeysAreLowercase(t *testing.T) {
+	sb, _ := json.Marshal(Status{})
+	for _, k := range []string{`"slug"`, `"path"`, `"state"`} {
+		if !strings.Contains(string(sb), k) {
+			t.Errorf("Status JSON missing key %s: %s", k, sb)
+		}
+	}
+	if strings.Contains(string(sb), `"State"`) {
+		t.Errorf("Status JSON leaks capitalized key: %s", sb)
+	}
+	cb, _ := json.Marshal(Contract{})
+	for _, k := range []string{`"path"`, `"repo"`, `"blast_radius"`, `"db"`} {
+		if !strings.Contains(string(cb), k) {
+			t.Errorf("Contract JSON missing key %s: %s", k, cb)
+		}
+	}
+}
 
 func TestClassify(t *testing.T) {
 	cases := []struct {

@@ -35,6 +35,38 @@ func TestRunSpecStatus_EmptyStoreExitsClean(t *testing.T) {
 	}
 }
 
+func TestRunSpecStatus_EmptyStorePrintsMessage(t *testing.T) {
+	store := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(store, "specs"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	// jsonOut=false → table mode must print the empty-state message (SC-06).
+	err := runSpecStatus(store, "", false, false, "", true,
+		func(string) (string, bool) { return "", false },
+		func(string) string { return "origin/main" },
+		&fakeGit{}, &out, &errb)
+	if err != nil {
+		t.Fatalf("err = %v, want nil (fail-open)", err)
+	}
+	if !strings.Contains(out.String(), "không có spec") {
+		t.Fatalf("empty store did not print the no-spec message (SC-06):\n%s", out.String())
+	}
+}
+
+func TestRunSpecContracts_EmptyPrintsMessage(t *testing.T) {
+	store := t.TempDir()
+	writeSpec(t, store, "zenify-kit", "2026-09-09-b-design.md", "## Brief\n(no tags)\n")
+	var out, errb bytes.Buffer
+	err := runSpecContracts(store, "", "", false, &out, &errb)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if !strings.Contains(out.String(), "không có contract") {
+		t.Fatalf("empty registry did not print the no-contract message:\n%s", out.String())
+	}
+}
+
 func TestRunSpecContracts_MissingTagCounted(t *testing.T) {
 	store := t.TempDir()
 	writeSpec(t, store, "zenify-kit", "2026-09-09-a-design.md",

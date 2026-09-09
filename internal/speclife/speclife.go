@@ -46,13 +46,13 @@ func Classify(hasPlan bool, tier release.LinkTier, gitEvaluable, superseded bool
 
 // Status is one spec's computed lifecycle row.
 type Status struct {
-	Path         string
-	Repo         string
-	Slug         string
-	State        State
-	Tier         release.LinkTier
-	HasPlan      bool
-	GitEvaluable bool
+	Path         string           `json:"path"`
+	Repo         string           `json:"repo"`
+	Slug         string           `json:"slug"`
+	State        State            `json:"state"`
+	Tier         release.LinkTier `json:"tier"`
+	HasPlan      bool             `json:"has_plan"`
+	GitEvaluable bool             `json:"git_evaluable"`
 }
 
 // RepoOf returns the <repo> segment of a "specs/<repo>/<file>" path ("" if the shape doesn't match).

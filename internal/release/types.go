@@ -52,7 +52,7 @@ type RiskMeta struct {
 	Note        string // one-line description (prose, usually Vietnamese) from the note-commit's _Release-Note trailer; "" when the risk came from a spec, not a note
 }
 
-// SpecMeta = a pre-parsed spec (path + slug tokens + the 3 Brief tags) so LinkSpec can match purely.
+// SpecMeta = a pre-parsed spec (path + slug tokens + the 4 Brief tags) so LinkSpec can match purely.
 type SpecMeta struct {
 	Path        string
 	Slug        string // token from the file name, used for fuzzy-matching

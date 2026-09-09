@@ -149,6 +149,10 @@ func runSpecStatus(
 		}
 		return nil
 	}
+	if len(statuses) == 0 {
+		fmt.Fprintln(stdout, "không có spec trong store.") //znf:allow-lang
+		return nil
+	}
 	for _, s := range statuses {
 		fmt.Fprintf(stdout, "%-12s %-40s %s\n", s.State, s.Slug, s.Path)
 	}
@@ -173,6 +177,10 @@ func runSpecContracts(storeDir, repo, collection string, jsonOut bool, stdout, s
 		if err := enc.Encode(contracts); err != nil {
 			fmt.Fprintf(stderr, "spec contracts: không mã hoá JSON: %v (fail-open)\n", err) //znf:allow-lang
 		}
+		return nil
+	}
+	if len(contracts) == 0 {
+		fmt.Fprintf(stdout, "không có contract (%d spec bỏ qua — thiếu tag _Blast-radius:/_DB:).\n", skipped) //znf:allow-lang
 		return nil
 	}
 	for _, c := range contracts {

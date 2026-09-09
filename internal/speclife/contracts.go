@@ -9,10 +9,10 @@ import (
 // Contract is the registry row for one spec: the repos it says it can break (_Blast-radius:) and
 // the DB surface it touches (_DB:). Derived purely from the spec Brief tags — no validation.
 type Contract struct {
-	SpecPath    string
-	Repo        string
-	BlastRadius string
-	DB          string
+	SpecPath    string `json:"path"`
+	Repo        string `json:"repo"`
+	BlastRadius string `json:"blast_radius"`
+	DB          string `json:"db"`
 }
 
 // BuildContracts returns one Contract per spec carrying a _Blast-radius: or _DB: tag. Specs with
