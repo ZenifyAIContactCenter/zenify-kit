@@ -57,6 +57,11 @@ start early, and that section says why.
    `packageManager` field then the lockfile, and refuses rather than guessing:
    `pm run lint`, `pm run build`. Never claim a pass without the output.
 
+   - Run the agent-read language gate: `zenify rules lint --include-go` (from the repo root). Any
+     Vietnamese in a comment, identifier, test assertion, skill/rule `.md`, or Go source fails the
+     gate — fix it before opening the PR. User-facing CLI output strings are exempt only with a
+     `//znf:allow-lang` marker on the line.
+
 3. **Contract gate**: if the change touched anything shared across services — a DB collection, an
    HTTP endpoint between services, a queue, a pub/sub channel — run the project's contract gate,
    where it defines one, and report which repos it found. Do not decide by judgement that a change
