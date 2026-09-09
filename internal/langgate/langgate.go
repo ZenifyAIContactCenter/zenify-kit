@@ -62,9 +62,11 @@ func Scan(roots []string, includeGo bool) ([]Violation, error) {
 	return out, nil
 }
 
-// hasVietnamese reports whether s contains a letter rune outside ASCII —
-// Vietnamese diacritics are letters; em dash, arrow and middle dot are not.
-func hasVietnamese(s string) bool {
+// hasNonASCIILetter reports whether s contains a non-ASCII letter rune —
+// accented Latin and Vietnamese diacritics are letters, so this doubles as an
+// "English/ASCII-only" check; em dash, arrow and middle dot are punctuation, not
+// letters, so they pass.
+func hasNonASCIILetter(s string) bool {
 	for _, r := range s {
 		if r > 127 && unicode.IsLetter(r) {
 			return true
@@ -78,7 +80,7 @@ func scanGo(path string) ([]Violation, error) {
 		if strings.Contains(line, goMarker) {
 			return false
 		}
-		return hasVietnamese(line)
+		return hasNonASCIILetter(line)
 	})
 }
 
@@ -106,7 +108,7 @@ func scanMarkdown(path string) ([]Violation, error) {
 		if strings.Contains(line, mdMarker) {
 			continue
 		}
-		if hasVietnamese(stripInlineCode(line)) {
+		if hasNonASCIILetter(stripInlineCode(line)) {
 			out = append(out, Violation{File: path, Line: ln, Text: line})
 		}
 	}

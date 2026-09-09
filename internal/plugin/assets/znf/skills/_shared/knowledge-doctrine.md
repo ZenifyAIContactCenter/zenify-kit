@@ -1,6 +1,6 @@
 # Knowledge doctrine
 
-**Last updated:** 2026-09-07
+**Last updated:** 2026-09-09
 
 Where a learned thing lives, when it moves up, and when it is retired. Downstream `znf:` skills and
 any agent deciding where to record something read this at runtime; there is no cached copy to bump
@@ -8,10 +8,10 @@ any agent deciding where to record something read this at runtime; there is no c
 promotion candidates automatically from review-log volume is a separate slice (M6d); handoff
 placement (ephemeral session-handoff vs committed milestone-record) is another (M6e).
 
-## The three layers
+## The layers
 
 A learned thing is a fact or rule you did not have at the start of the session — read from a file or
-the DB, or given as a correction. It lives in exactly one of three layers.
+the DB, or given as a correction. It lives in exactly one layer.
 
 - **L1 — auto memory** (`.claude/memory/`, keyed per repo; type `user` / `feedback` / `project` /
   `reference`). Holds a fact or rule that changes a future decision and is specific to one repo or to
@@ -28,6 +28,10 @@ the DB, or given as a correction. It lives in exactly one of three layers.
   body). Holds a rule that is procedural — it changes HOW a workflow runs — or universal to the kit's
   domain, and needs to be read at the point of a specific action rather than as ambient context. The
   constitution is the spec-discipline authority; a skill body is a step of a workflow.
+
+- **L4 — mechanical gate** (a `zenify` verb or a hook). Holds a norm that is both machine-checkable and
+  load-bearing enough that "remembered" is not good enough — it is enforced at an action point rather
+  than merely read. The highest layer; see Team-reach below for the fuller discussion.
 
 ## Team-reach — does this thing reach the whole team, or only me?
 
@@ -59,14 +63,19 @@ is the necessity ladder (constitution P6) applied to knowledge: do not place hig
 rule placed too high is asserted confidently on every match even after it goes stale — the same
 failure as a stale memory, but worse, because a higher layer is read more often and trusted more.
 
-Two axes decide the layer:
+Three axes decide the layer:
 
 - **Scope** — one repo, recalled by relevance → L1 memory; one repo, must fire every session → L2
   project CLAUDE.md; every project → L2 global CLAUDE.md; the kit's own workflow → L3.
 - **Trigger** — recalled by relevance (L1) · read ambiently every session (L2) · read at a specific
-  action point (L3).
+  action point (L3) · enforced at an action point, not merely read (L4).
+- **Team-reach** — does it need to reach only me, or the whole team? Personal reach stays at L1/L2
+  personal CLAUDE.md; distributed reach needs a form the kit ships to every teammate — an F1/F2 rule
+  file, an L3 skill/constitution, or an L4 gate.
 
-When the two axes disagree, scope decides the floor and trigger decides between L2 and L3.
+When the axes disagree, scope decides the floor and trigger decides between L2 and L3. A norm that
+must be enforced at write-time / is machine-checkable and load-bearing enough that "remembered" is
+not good enough → L4, regardless of scope.
 
 ## Promotion — moving a thing UP a layer
 
