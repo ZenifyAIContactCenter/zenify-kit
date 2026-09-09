@@ -35,15 +35,19 @@ func TestRenderHeadlineAndSections(t *testing.T) {
 	for _, want := range []string{
 		"# Release 84", "Quyết định nhanh", "notification", // không ship
 		"migration → BE", "**/chat_*", // shared + deploy order
-		"Shared-collection: **/chat_*", // FR-3.4 per-repo risk-proxy
-		"| Thay đổi | # | Dev | Spec / Risk | Staging |", // bảng header
-		"### Features", "Linked fields", "be+web",        // feature + risk từ spec
-		"add linked field type",                          // Desc trong ô Thay đổi
-		"namph, hungnk",                                  // Dev column
+		"Shared-collection: **/chat_*",             // FR-3.4 per-repo risk-proxy
+		"| Thay đổi | # | Dev | Spec | Staging |", // bảng header (cột Spec cờ gọn)
+		"### Features", "Linked fields",           // feature title trong ô Thay đổi
+		"namph, hungnk",                           // Dev column
 		"### Fixes", "Report tz",
 		"### Hotfixes", "⚠ chưa sync", // hotfix cờ staging trong ô bảng
-		"unknown — no spec", // fix không spec
-		"1/3",               // spec coverage
+		"1/3",                          // spec coverage
+		// Khối rủi ro dưới bảng, chỉ cho thay đổi CÓ spec — mỗi tag một dòng **Label:**.
+		"#### Rủi ro (thay đổi có spec)",
+		"**#12 — Linked fields**",
+		"- **Blast-radius:** be+web",
+		"- **DB:** N/A",
+		"- **Rollback:** revert",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("render thiếu %q\n---\n%s", want, out)
@@ -57,6 +61,14 @@ func TestRenderHeadlineAndSections(t *testing.T) {
 	}
 	if strings.Contains(out, "fix(report): tz offset") {
 		t.Errorf("non-verbose KHÔNG được in commit list mỗi thay đổi")
+	}
+	// Desc (subject commit) KHÔNG còn dán vào ô bảng — chỉ ở --verbose.
+	if strings.Contains(out, "add linked field type") {
+		t.Errorf("non-verbose KHÔNG được in Desc trong ô Thay đổi")
+	}
+	// Cột Spec là cờ, KHÔNG còn nhồi prose "unknown — no spec" vào ô bảng.
+	if strings.Contains(out, "unknown — no spec") {
+		t.Errorf("bảng KHÔNG được chứa prose risk cũ 'unknown — no spec'")
 	}
 }
 
