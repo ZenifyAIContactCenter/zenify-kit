@@ -50,6 +50,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newMigrateCmd())
 	root.AddCommand(newDocsCmd())
 	root.AddCommand(newVisualCmd())
+	root.AddCommand(newE2eCmd())
 	root.AddCommand(newHooksRunCmd())
 	return root
 }

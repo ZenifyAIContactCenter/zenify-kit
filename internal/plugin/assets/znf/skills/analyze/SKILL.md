@@ -4,54 +4,54 @@ description: Use to inspect a written spec+plan pair BEFORE implementing — mec
 allowed-tools: Read Grep Bash(zenify analyze *)
 ---
 
-# znf:analyze — soi spec+plan trước khi code
+# znf:analyze — inspect spec+plan before coding
 
 **Announce:** "Using znf:analyze to inspect the spec+plan before implementation."
 
-Kiểm một cặp spec+plan đã viết, đối chiếu với `znf:_shared/constitution` (P1–P9) và
-`znf:_shared/spec-template` (Brief 8-trường). **Advisory:** báo findings, KHÔNG chặn tiến độ.
-Hai lớp — cơ học (command) rồi phán đoán (skill).
+Checks a written spec+plan pair against `znf:_shared/constitution` (P1–P9) and
+`znf:_shared/spec-template` (8-field Brief). **Advisory:** reports findings, does NOT block progress.
+Two layers — mechanical (command) then judgment (skill).
 
-## Khi nào dùng
+## When to use
 
-- Sau khi có spec **và** plan, trước khi dispatch implementer (cook gọi ở đây).
-- Hoặc gọi tay: `/analyze <spec.md> <plan.md>` trên bất kỳ cặp nào.
+- After the spec **and** plan both exist, before dispatching the implementer (cook calls it here).
+- Or invoke by hand: `/analyze <spec.md> <plan.md>` on any pair.
 
-## Bước 1 — quét cơ học (tất định)
+## Step 1 — mechanical scan (deterministic)
 
-Chạy command đọc coverage/marker/structural — phần này KHÔNG để LLM đếm tay:
+Run the command that reads coverage/marker/structural checks — this part must NOT be left to the LLM to count by hand:
 
 ```
 zenify analyze --spec <spec-path> --plan <plan-path>
 ```
 
-Đọc output:
-- **Coverage** — orphan FR (yêu cầu không task nào làm, CRITICAL), orphan task (task không khai
-  `_Requirements:`, HIGH), dangling ref (plan cite FR spec không có, HIGH).
-- **Marker** — mọi `[NEEDS CLARIFICATION` còn sót (HIGH), kèm số dòng.
-- **Brief** — có `## Brief` không, mấy/8 mục.
-- **Risk-metadata** — Brief thiếu tag `_Blast-radius:` / `_DB:` / `_Rollback:` (HIGH mỗi tag).
+Read the output:
+- **Coverage** — orphan FR (a requirement no task covers, CRITICAL), orphan task (a task that
+  declares no `_Requirements:`, HIGH), dangling ref (plan cites an FR the spec doesn't have, HIGH).
+- **Marker** — any leftover `[NEEDS CLARIFICATION` (HIGH), with line numbers.
+- **Brief** — whether `## Brief` exists, and how many of the 8 fields are present.
+- **Risk-metadata** — Brief missing the `_Blast-radius:` / `_DB:` / `_Rollback:` tag (HIGH per tag).
 
-Command fail-open: nếu nó báo "không phân tích được", ghi nhận và tiếp — đừng coi là lỗi chặn.
+The command fails open: if it reports "could not analyze," note it and move on — don't treat it as a blocking error.
 
-## Bước 2 — bốn pass phán đoán (thứ command không làm được)
+## Step 2 — four judgment passes (what the command can't do)
 
-Đọc spec+plan bằng mắt và phán đoán, mỗi phát hiện severity **MEDIUM**:
+Read the spec+plan by eye and use judgment; each finding is severity **MEDIUM**:
 
-1. **SC-testable (constitution P3).** Mỗi SC có dạng Given/When/Then hoặc một câu "the system
-   shall" kiểm được không? SC prose-only, không kiểm được → MEDIUM.
-2. **Necessity (P6).** Trường "cách làm" của Brief có justify *đường có sẵn nào chưa lo được việc
-   này* không (necessity ladder)? Thiếu justify khi có xây mới → MEDIUM.
-3. **db-3 + comprehension floor (P7).** Khối DB-guarantees có thật (nêu query-plan / tenant-scope /
-   keyset, hoặc N/A có lý do) hay hand-wave? Spec có mô tả luồng thật + blast-radius trước khi đề
-   xuất cắt gì không? Thiếu → MEDIUM.
-4. **Risk-metadata substance (P9).** Ba tag có thực chất không (mechanical chỉ check có/rỗng —
-   substance là việc của pass này): `_Blast-radius:` nêu đúng repo sẽ vỡ; `_DB:` chạm đủ concern
-   áp dụng (query-plan / tenant-scope / keyset) hoặc `N/A` chính đáng; `_Rollback:` khả thi và có
-   nêu prod-watch signal. Hand-wave → MEDIUM.
+1. **SC-testable (constitution P3).** Is each SC shaped as Given/When/Then, or an "the system
+   shall" sentence that can actually be checked? An SC that's prose-only and not checkable → MEDIUM.
+2. **Necessity (P6).** Does the Brief's "approach" field justify *which existing path can't already
+   handle this* (necessity ladder)? Missing that justification when something new is being built → MEDIUM.
+3. **db-3 + comprehension floor (P7).** Is the DB-guarantees block real (states query-plan / tenant-scope /
+   keyset, or a justified N/A) or hand-waved? Does the spec describe the real flow + blast-radius before
+   proposing any cut? Missing → MEDIUM.
+4. **Risk-metadata substance (P9).** Do the three tags have real substance (the mechanical check only
+   checks presence/emptiness — substance is this pass's job): does `_Blast-radius:` name the actual repos
+   that would break; does `_DB:` cover every applicable concern (query-plan / tenant-scope / keyset) or
+   carry a legitimate `N/A`; is `_Rollback:` feasible and does it name a prod-watch signal. Hand-waved → MEDIUM.
 
-## Bước 3 — báo cáo
+## Step 3 — report
 
-Gộp findings cơ học + phán đoán, sắp theo severity (CRITICAL → HIGH → MEDIUM), in gọn.
-**Mở đầu báo cáo bằng: "Advisory — không chặn tiến độ."** Skill này không có quyền dừng luồng;
-nêu findings để người dùng (hoặc cook) quyết sửa spec/plan hay tiếp.
+Merge mechanical + judgment findings, sort by severity (CRITICAL → HIGH → MEDIUM), print concisely.
+**Open the report with: "Advisory — does not block progress."** This skill has no authority to halt
+the flow; it states findings so the user (or cook) can decide whether to fix the spec/plan or continue.

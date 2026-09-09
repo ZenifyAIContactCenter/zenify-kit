@@ -121,6 +121,15 @@ one. Where a repo has none configured, say so rather than guessing at a query to
 - **Also needs changing:** files, if any
 - **Deploy order:** subscriber before publisher for breaking pub/sub changes
 
+### Domain-E2E backstop (when a journey covers it)
+
+A static sweep proves the **shape** holds; it does NOT prove **behaviour** still works. If the
+changed resource is a shared HTTP endpoint / collection covered by a journey (`.znf/e2e/` touches
+that entity), **suggest running `zenify e2e run --repo <repo> --port <N>`** for the relevant journey
+— its domain re-fetch is behavioural evidence that grep cannot replace (the "a live run catches what
+lint passes" lesson). **Advisory only**: suggested when a journey already exists, never blocks the
+gate — `run` needs a dev-server + Docker + creds, heavier than one inline pass. See `znf:e2e`.
+
 ---
 
 ## This is the default gate. When to escalate

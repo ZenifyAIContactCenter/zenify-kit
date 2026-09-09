@@ -1,24 +1,25 @@
-# Finding schema — dùng chung cho mọi tier của znf:review
+# Finding schema — shared across every tier of znf:review
 
-Mọi tier (T1/T2/T3) và mọi capability (M4b finding-verifier, M4e learning-capture)
-trả finding theo CÙNG một shape. Đây là nguồn schema duy nhất — không định nghĩa lại nơi khác.
+Every tier (T1/T2/T3) and every capability (M4b finding-verifier, M4e learning-capture)
+returns findings in the SAME shape. This is the single schema source — do not redefine it elsewhere.
 
 ## Finding
 
 - `dimension` (string): `bugs | security | perf | contracts | types`
 - `severity` (string): `CRITICAL | HIGH | MEDIUM | LOW`
-- `title` (string): nhãn ngắn
-- `file` (string): path repo-relative
-- `line` (string): dòng (hoặc range) finding neo vào
-- `issue` (string): một câu mô tả lỗi
-- `fix` (string): cách sửa đề xuất
-- `evidence` (string): trích **verbatim** MỘT dòng code mà finding trỏ tới (nguyên văn nội dung dòng trong file, KHÔNG kèm dấu `+`/`-` của diff — verifier so khớp với file thật). **Bắt buộc khi có `file+line`**.
+- `title` (string): short label
+- `file` (string): repo-relative path
+- `line` (string): the line (or range) the finding anchors to
+- `issue` (string): one-sentence description of the bug
+- `fix` (string): suggested fix
+- `evidence` (string): a **verbatim** quote of ONE line of code the finding points to (the exact line content in the file, WITHOUT the diff's `+`/`-` marker — the verifier matches it against the real file). **Required when `file+line` is present**.
 
-Bắt buộc: `dimension, severity, title, issue, fix`. `file/line` khuyến nghị khi có vị trí; `evidence` bắt buộc khi có `file+line` (để `zenify review-verify` kiểm chứng citation).
+Required: `dimension, severity, title, issue, fix`. `file/line` recommended when a location exists; `evidence` required when `file+line` is present (so `zenify review-verify` can verify the citation).
 
-## Verdict (adversarial verify — T3, và M4b finding-verifier về sau)
+## Verdict (adversarial verify — T3, and later M4b finding-verifier)
 
-- `refuted` (bool): finding bị bác?
-- `reason` (string): lý do
+- `refuted` (bool): was the finding rejected?
+- `reason` (string): why
 
-Chỉ finding KHÔNG bị bác (đủ số skeptic confirm ở T3) mới vào report.
+Only findings that are NOT refuted (confirmed by enough skeptics in T3) make it into the report.
+</content>

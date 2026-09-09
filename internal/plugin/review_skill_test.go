@@ -132,13 +132,13 @@ func TestReviewSkill_M4fWiring(t *testing.T) {
 	prompt := read("skills/review/_shared/adviser-prompt.md")
 	low := strings.ToLower(prompt)
 	if !strings.Contains(low, "read-only") {
-		t.Error("adviser-prompt.md thiếu wording read-only")
+		t.Error("adviser-prompt.md missing read-only wording")
 	}
-	if !strings.Contains(low, "không phải reviewer") {
-		t.Error("adviser-prompt.md thiếu câu đè danh tính 'không phải reviewer'")
+	if !strings.Contains(low, "not a bug-hunting reviewer") {
+		t.Error("adviser-prompt.md missing the identity-override line 'not a bug-hunting reviewer'")
 	}
 	if !strings.Contains(prompt, "## Advisory") {
-		t.Error("adviser-prompt.md thiếu mục ## Advisory")
+		t.Error("adviser-prompt.md missing the ## Advisory section")
 	}
 }
 

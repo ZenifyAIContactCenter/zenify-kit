@@ -163,13 +163,13 @@ contract boundaries, what breaks.
 **When you WRITE the spec file (and the plan file at Step 5), these are project-AGNOSTIC
 artifact-quality rules — a badly-formatted spec defeats its own purpose:**
 
-Khi viết spec/plan, tuân `znf:_shared/artifact-style` (reference dùng chung: header `**Label:**
-value`, không markdown table, không diagram viewer-không-render, title theo ngôn ngữ prose giữ
-jargon). Xem file đó.
+When you write the spec/plan, follow `znf:_shared/artifact-style` (the shared reference: `**Label:**
+value` headers, no markdown tables, no diagram-viewer-that-doesn't-render, title in the prose language
+keeping jargon). See that file.
 
-Và tuân kỷ luật spec: viết spec theo `znf:_shared/spec-template`, theo nguyên tắc
-`znf:_shared/constitution` (Brief-first, FR/SC có ID, SC testable, đánh dấu chỗ chưa rõ,
-necessity ladder, safety floor, traceability). artifact-style lo format; hai asset này lo *nội dung* spec.
+And follow spec discipline: write the spec per `znf:_shared/spec-template`, per the principles in
+`znf:_shared/constitution` (Brief-first, FR/SC have IDs, SC testable, mark unclear spots,
+necessity ladder, safety floor, traceability). artifact-style handles format; these two assets handle spec *content*.
 
 **Do not commit the spec, and do not `git add -f` it.** Step 6 of that skill says to commit
 the design document; this project deliberately blocks it with `.gitignore` instead. Three
@@ -278,6 +278,11 @@ Getting this wrong in the cheap direction is fine — a task you did not flag is
 gate, just without attribution to a task. Getting it wrong in the expensive direction costs a browser run
 per task plus a report to chase, on the pipeline you run most.
 
+**At this same point, decide the E2E journey.** If a task has a UI→BE flow that changes an entity's
+state, write it into the definition of done: "Done when … and a `.znf/e2e/<journey>.spec.ts` passes
+`zenify e2e lint` and `zenify e2e run` is green." See the `znf:e2e` skill. Same criterion as visual:
+only when the deliverable is a business flow, not for every task.
+
 This belongs in the plan and not only in Step 6's rules, because `scripts/task-brief` extracts each
 task's text **from the plan file** with `awk`, and SDD calls that brief *"the single source of
 requirements"*. A requirement written into the plan therefore arrives in front of you at dispatch time;
@@ -301,16 +306,16 @@ Subagent-Driven. Do not ask.** `executing-plans` is not used here — it defers 
 when subagents are available, and it has no code review of any kind: no per-task reviewer,
 no fix loop, no final review.
 
-## Step 5b: Soi spec+plan (`znf:analyze`) — advisory
+## Step 5b: Inspect spec+plan (`znf:analyze`) — advisory
 
-Sau khi plan xong và **trước** khi dispatch SDD, gọi **`Skill(znf:analyze)`** trên cặp spec+plan
-(đường dẫn tuyệt đối trong workspace chính). Nó chạy `zenify analyze` (coverage FR→task, marker
-sót, structural Brief) rồi thêm phán đoán (SC-testable, necessity, db-3).
+After the plan is done and **before** dispatching SDD, call **`Skill(znf:analyze)`** on the spec+plan
+pair (absolute path, in the main workspace). It runs `zenify analyze` (coverage FR→task, leftover
+markers, structural Brief) then adds judgment (SC-testable, necessity, db-3).
 
-**Đây là advisory — KHÔNG chặn.** Nếu có finding CRITICAL/HIGH (orphan FR, marker sót), nêu ra và
-để người dùng quyết: sửa spec/plan rồi chạy lại, hay chấp nhận và tiếp. Một named line
-`Skill(znf:analyze)` phải xuất hiện ở bước này; thiếu = bước bị bỏ. Command fail-open nên bước này
-không bao giờ tự làm hỏng luồng cook.
+**This is advisory — it does NOT block.** If there's a CRITICAL/HIGH finding (orphan FR, leftover
+marker), surface it and let the user decide: fix the spec/plan and rerun, or accept and continue. A
+named line `Skill(znf:analyze)` must appear at this step; its absence = the step was skipped. The
+command is fail-open, so this step should never itself break the cook flow.
 
 ## Step 6: Implement (`znf:subagent-driven-development`)
 
@@ -577,14 +582,15 @@ about concurrency, and there is none here.
 None of this edits the plugin. It is a constraint on the brief you hand SDD and on when you write the
 ledger line, both of which are yours.
 
-## Step 6b: Soi test-traceability (`znf:standards`) — advisory
+## Step 6b: Inspect test-traceability (`znf:standards`) — advisory
 
-Sau khi SDD implement xong (Step 6) và **trước** `/ship`, gọi **`Skill(znf:standards)`** trên
-spec + plan + root worktree. Nó đối chiếu mỗi FR với test thật trên đĩa: một requirement được
-implement nhưng không có test (`untested-fr`), một test file khai mà thiếu (`missing-test-file`),
-hay một file test rỗng (`empty-test-file`). Đây là bức tranh cross-cutting mà review theo-từng-task
-của SDD không cho — nó chỉ thấy một task, không thấy "mọi FR đều có test". Advisory: surface findings
-cho người quyết, không chặn. Một dòng `Skill(znf:standards)` là bằng chứng bước này đã chạy.
+After SDD finishes implementing (Step 6) and **before** `/ship`, call **`Skill(znf:standards)`** on
+the spec + plan + root worktree. It cross-checks each FR against a real test on disk: a requirement
+that was implemented but has no test (`untested-fr`), a declared test file that's missing
+(`missing-test-file`), or an empty test file (`empty-test-file`). This is the cross-cutting picture
+that SDD's per-task review does not give — it only sees one task, not "does every FR have a test".
+Advisory: surface findings for the user to decide, does not block. A `Skill(znf:standards)` line is
+the evidence this step ran.
 
 ## Step 7: Pre-ship gate
 

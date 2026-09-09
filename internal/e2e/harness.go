@@ -1,4 +1,5 @@
-package visual
+// internal/e2e/harness.go
+package e2e
 
 import (
 	"embed"
@@ -9,5 +10,5 @@ import (
 //go:embed harness
 var harnessFS embed.FS
 
-// WriteHarness giữ chữ ký cũ (harness_test.go package visual gọi không qualify) — forward.
+// WriteHarness ghi cây harness e2e (fixtures/config/auth.setup/package.json) ra dir.
 func WriteHarness(dir string) error { return pwdocker.WriteHarness(harnessFS, "harness", dir) }
