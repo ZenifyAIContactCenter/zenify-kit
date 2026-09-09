@@ -29,6 +29,29 @@ the DB, or given as a correction. It lives in exactly one of three layers.
   domain, and needs to be read at the point of a specific action rather than as ambient context. The
   constitution is the spec-discipline authority; a skill body is a step of a workflow.
 
+## Team-reach — does this thing reach the whole team, or only me?
+
+A second axis, orthogonal to scope. A learned thing lives in one of two reaches:
+
+- **Personal reach** — `~/.claude/CLAUDE.md`, `~/.claude/rules/`, and auto memory
+  (`.claude/memory/`). ALL of these reach only the session of the person who wrote them:
+  memory is not synced, and `~/.claude` is per-machine. A binding TEAM norm parked here is
+  invisible to teammates — they never had it, so they repeat the mistake it was meant to stop.
+- **Distributed reach** — a rule form the kit ships to every teammate: an F1/F2 rule file under
+  `.config/rules/` (delivered to each workspace `.claude/rules/` by `zenify config`), an
+  L3 skill/constitution (delivered by `zenify skills sync`), or an L4 gate (delivered by the
+  global-hooks channel). Only these actually reach the team.
+
+**Memory is a flat store.** `.claude/memory/` is one flat, per-user set of working notes — no
+`personal/` vs `shared/` split (a `shared/` subfolder does NOT reach the team; memory is not
+synced, so it was theatre). Team-reach is achieved by **promoting** a note into a rule form,
+never by a subfolder.
+
+- **L4 — mechanical gate** — a deterministic check (a `zenify` verb or a hook) that ENFORCES a
+  rule rather than asking the agent to remember it. The highest layer: read at an action point and
+  fails the action on violation. Distributed by the global-hooks channel. Use it for a norm that is
+  both machine-checkable and load-bearing enough that "remembered" is not good enough.
+
 ## Placement test
 
 Put a learned thing at the **lowest layer that still reaches every context where it must fire.** This
@@ -65,6 +88,22 @@ a one-line pointer to the new home.
 
 Detecting promotion candidates automatically — aggregating the review-log to surface a rule candidate
 — is out of scope here; that is M6d.
+
+## Promotion order for a machine-checkable norm
+
+When a norm CAN be checked by a machine, prefer the lower-ceremony form that still fires everywhere
+it must: **F3 > F2 > F1** — an F3 gate (enforced) beats an F2 path-scoped rule (attached on Read of
+a matching file) beats an F1 constitution line (ambient prose). Promote a `type: feedback` memory to
+the right form, then **retire it from memory (MOVE, not a COPY)** so the rule has one home.
+
+## Nominate → ratify — how a new rule enters
+
+A rule is never created fully automatically (a false rule is asserted confidently forever — worse
+than a missing one). An agent NOMINATES a candidate; a human RATIFIES it before it becomes a rule.
+
+- Candidate is written to the synced store `reference/rule-candidates/<author>.md`, per-author.
+- Ratify-gate: a candidate becomes a rule only when a reviewer flips its `Status: pending` to
+  `ratified` and promotes it into F1/F2/F3. The agent does not create a rule from a candidate.
 
 ## Retirement — taking a thing OUT
 
