@@ -36,14 +36,14 @@ func TestRenderHeadlineAndSections(t *testing.T) {
 	for _, want := range []string{
 		"# Release 84", "Quyết định nhanh", "notification", // không ship
 		"migration → BE", "**/chat_*", // shared + deploy order
-		"Shared-collection: **/chat_*",                     // FR-3.4 per-repo risk-proxy
+		"Shared-collection: **/chat_*",                    // FR-3.4 per-repo risk-proxy
 		"| Thay đổi | Mô tả | # | Dev | Spec | Staging |", // bảng header (cột Mô tả từ _Release-Note)
-		"### Features", "Linked fields",                   // feature title trong ô Thay đổi
-		"thêm loại trường liên kết cho form ticket",       // cột Mô tả từ Risk.Note
-		"namph, hungnk",                                   // Dev column
+		"### Features", "Linked fields", // feature title trong ô Thay đổi
+		"thêm loại trường liên kết cho form ticket", // cột Mô tả từ Risk.Note
+		"namph, hungnk", // Dev column
 		"### Fixes", "Report tz",
 		"### Hotfixes", "⚠ chưa sync", // hotfix cờ staging trong ô bảng
-		"1/3",                          // spec coverage
+		"1/3", // spec coverage
 		// Khối rủi ro dưới bảng, chỉ cho thay đổi CÓ spec — mỗi tag một dòng **Label:**.
 		"#### Rủi ro (thay đổi có spec)",
 		"**#12 — Linked fields**",

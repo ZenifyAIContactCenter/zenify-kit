@@ -10,10 +10,10 @@ func TestBuildParticipationAndFlags(t *testing.T) {
 		"branch -r": "  origin/release83\n  origin/release84\n  origin/staging\n",
 		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84":                      "5ed\x1ffix: a\x1fnamph\x1f\x1e" + "aaa\x1fMerge pull request #1 from o/hungnk/hotfix/x\x1fhungnk\x1f\x1e",
 		"log --first-parent --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84":       "5ed\x1ffix: a\x1fnamph\x1f\x1e" + "aaa\x1fMerge pull request #1 from o/hungnk/hotfix/x\x1fhungnk\x1f\x1e",
-		"diff --name-only origin/release83..origin/release84":                                          "db/migrations/1.js\napp/models/chat_message.js\nfoo_test.go\n",
+		"diff --name-only origin/release83..origin/release84":                                            "db/migrations/1.js\napp/models/chat_message.js\nfoo_test.go\n",
 		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84 --not origin/staging": "9dc\x1ftemporary disable report api\x1fnamph\x1f\x1e",
-		"merge-base origin/release84 origin/staging":                                              "base1\n",
-		"log -1 --format=%ci base1":                                                               "2026-08-26 17:55:55 +0700\n",
+		"merge-base origin/release84 origin/staging":                                                     "base1\n",
+		"log -1 --format=%ci base1":                                                                      "2026-08-26 17:55:55 +0700\n",
 	}}
 	notif := fakeRunner{out: map[string]string{"branch -r": "  origin/release83\n  origin/staging\n"}}
 	router := dirRouter{per: map[string]fakeRunner{"/ws/be": be, "/ws/notif": notif}}
@@ -123,6 +123,36 @@ func TestBuildUnreleasedBaseIsPrevNotForming(t *testing.T) {
 	}
 	if !strings.Contains(out, "# Release đang hình thành: R85 (chưa deploy)") {
 		t.Errorf("header phải ghi R85 đang hình thành: %s", out)
+	}
+}
+
+// unreleased là view "pending deploy hằng ngày": một repo CHƯA cắt release<n> (forming) nhưng có
+// commit staging > release đã-deploy của nó VẪN phải hiện, base = release max của nó (= release lớn
+// nhất < n). Đây là ca chính user chỉ ra: change-stream ở release84, chưa có release85, nhưng 7
+// commit staging phải xuất hiện.
+func TestBuildUnreleasedIncludesRepoWithoutFormingRelease(t *testing.T) {
+	fr := fakeRunner{out: map[string]string{
+		"branch -r": "  origin/release82\n  origin/release84\n  origin/staging\n",
+		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release84..origin/staging": "h1\x1ffeat(x): pending\x1fnamph\x1f\x1e",
+	}}
+	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
+	rep := BuildUnreleased(fr, resolve, []string{"csub"}, 85, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
+	out := Render(rep, false)
+	if !strings.Contains(out, "## csub (rel84..staging)") {
+		t.Errorf("repo chưa cắt release85 vẫn phải hiện với base=release84 của nó: %s", out)
+	}
+}
+
+// unreleased bỏ repo không có gì pending (staging == release đã-deploy → 0 commit) để doc gọn.
+func TestBuildUnreleasedOmitsRepoWithNoPending(t *testing.T) {
+	fr := fakeRunner{out: map[string]string{
+		"branch -r": "  origin/release84\n  origin/release85\n  origin/staging\n",
+		// range release84..staging KHÔNG set → 0 commit pending.
+	}}
+	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
+	rep := BuildUnreleased(fr, resolve, []string{"quiet"}, 85, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
+	if len(rep.Repos) != 0 {
+		t.Errorf("repo 0 commit pending phải bị bỏ khỏi unreleased: %+v", rep.Repos)
 	}
 }
 
