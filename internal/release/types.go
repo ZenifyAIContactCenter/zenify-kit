@@ -52,14 +52,28 @@ type RiskMeta struct {
 	Note        string // one-line description (prose, usually Vietnamese) from the note-commit's _Release-Note trailer; "" when the risk came from a spec, not a note
 }
 
-// SpecMeta = a pre-parsed spec (path + slug tokens + the 3 Brief tags) so LinkSpec can match purely.
+// SpecMeta = a pre-parsed spec (path + slug tokens + the 4 Brief tags) so LinkSpec can match purely.
 type SpecMeta struct {
 	Path        string
 	Slug        string // token from the file name, used for fuzzy-matching
 	BlastRadius string
 	DB          string
 	Rollback    string
+	Supersedes  string // raw slug from the _Supersedes: Brief tag; "" if none (the only non-derivable lifecycle input)
 }
+
+// LinkTier records which rule linked a Change to a spec. Ordered by strength (higher wins) so a
+// caller can take the max across several Changes: a note beats a Spec: trailer, which beats an
+// exact slug, which beats a fuzzy slug. Mirrors the match order in LinkSpecTier.
+type LinkTier int
+
+const (
+	TierNone      LinkTier = iota // no link
+	TierSlugFuzzy                 // slug substring match
+	TierSlugExact                 // slug equality
+	TierTrailer                   // Spec: <path> commit trailer
+	TierNote                      // release note-commit linked by slug
+)
 
 // Report is the whole report for one release.
 type Report struct {

@@ -17,6 +17,12 @@ var blastRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Blast-radius:\\s*
 var dbRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_DB:\\s*(.*)$")
 var rollbackRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Rollback:\\s*(.*)$")
 
+// Capture group is non-greedy with an optional trailing run of `*_` stripped from the match
+// (not just via tagValue, which only trims backtick/asterisk): unlike the other Brief tags,
+// _Supersedes: is commonly written wrapped in markdown italic (a closing "_"), and a literal
+// greedy (.*)$ would swallow that closing underscore into the captured slug.
+var supersedesRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Supersedes:\\s*(.*?)[`*_]*$")
+
 // noteDescRe captures the _Release-Note trailer (a one-line description written by /ship via
 // `release-note --note`). Same shape as the 3 risk tags so it tolerates [-*] bullets / emphasis.
 // This is the READ side that was missing from the _Release-Note mechanism (the write-side already
@@ -35,7 +41,7 @@ func firstGroup(re *regexp.Regexp, s string) string {
 	return ""
 }
 
-// ParseSpecBrief reads an already-loaded spec file → SpecMeta (slug from the file name + the 3 Brief tags).
+// ParseSpecBrief reads an already-loaded spec file → SpecMeta (slug from the file name + the 4 Brief tags).
 func ParseSpecBrief(p string, content []byte) SpecMeta {
 	base := strings.TrimSuffix(path.Base(p), ".md")
 	slug := base
@@ -49,6 +55,7 @@ func ParseSpecBrief(p string, content []byte) SpecMeta {
 		BlastRadius: firstGroup(blastRe, s),
 		DB:          firstGroup(dbRe, s),
 		Rollback:    firstGroup(rollbackRe, s),
+		Supersedes:  firstGroup(supersedesRe, s),
 	}
 }
 
@@ -109,12 +116,13 @@ func NoteRiskBySlug(notes []Commit) map[string]RiskMeta {
 	return m
 }
 
-// LinkSpec: tier-0 note-by-slug (map, gathered outside Aggregate) → tier-1 Spec-trailer → tier-2
-// slug-match → empty. Returns RiskMeta (SpecPath="" = unknown).
-func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
+// LinkSpecTier is LinkSpec plus the tier that matched. Match order MUST stay note → trailer →
+// slug-exact → slug-fuzzy (a precedence bug-fixed once in 8c73cf8); the existing LinkSpec tests
+// are the guard against reordering.
+func LinkSpecTier(ch Change, specs []SpecMeta, notes map[string]RiskMeta) (RiskMeta, LinkTier) {
 	// (0) tier-0: risk from a note-commit linked by slug.
 	if rm, ok := notes[NormalizeKey(ch.Slug)]; ok {
-		return rm
+		return rm, TierNote
 	}
 	var b strings.Builder
 	for _, c := range ch.Commits {
@@ -126,7 +134,7 @@ func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
 	if tp := specTrailer(bodies); tp != "" {
 		for _, s := range specs {
 			if s.Path == tp || strings.HasSuffix(s.Path, tp) || strings.HasSuffix(tp, s.Path) {
-				return risk(s)
+				return risk(s), TierTrailer
 			}
 		}
 	}
@@ -134,15 +142,21 @@ func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
 	want := NormalizeKey(ch.Slug)
 	for _, s := range specs {
 		if s.Slug == want {
-			return risk(s)
+			return risk(s), TierSlugExact
 		}
 	}
 	for _, s := range specs {
 		if want != "" && (strings.Contains(s.Slug, want) || strings.Contains(want, s.Slug)) {
-			return risk(s)
+			return risk(s), TierSlugFuzzy
 		}
 	}
-	return RiskMeta{}
+	return RiskMeta{}, TierNone
+}
+
+// LinkSpec keeps its original signature (11 call sites depend on it) and discards the tier.
+func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
+	rm, _ := LinkSpecTier(ch, specs, notes)
+	return rm
 }
 
 func risk(s SpecMeta) RiskMeta {

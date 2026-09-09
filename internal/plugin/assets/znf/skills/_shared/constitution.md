@@ -49,6 +49,9 @@ detailed checks — dials up at the architectural tier and nearly off for spike 
   (how to undo the change, plus the prod-watch signal to check after deploy). These make the risk
   surface machine-checkable rather than prose-only. When the blast radius is cross-repo, the
   rollout MUST go through the contract gate (`/gate`) — a doctrine, not a mechanism here.
+- Lifecycle state (planned/built/superseded) is DERIVED — never hand-maintained — except
+  `_Supersedes:`, the one fact git cannot reveal. Write that tag when a spec replaces another;
+  everything else `zenify spec status` computes.
 - **Format, language, diagrams:** follow `znf:_shared/artifact-style`. Not restated here.
 
 ## Governance
