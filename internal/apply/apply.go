@@ -30,12 +30,12 @@ type Options struct {
 	RepoByName map[string]manifest.Repo // manifest entry per repo name (for URL/base)
 	SecretKeys []string                 // env keys to scaffold as empty placeholders (FR-065); values never distributed
 
-	// FR-9a/b: bật per-repo transaction khi SnapshotRoot != "". Rỗng cả hai =
-	// hành vi legacy (apply + Record in-memory, caller tự Save) để test cũ
-	// trong apply_test.go (không set các field này) chạy nguyên.
-	SnapshotRoot string                                     // .zenify/snapshots — nơi chứa per-repo snapshot
-	ManifestPath string                                     // .zenify/manifest.json — Save sau mỗi repo promote
-	Now          func() int64                               // clock cho snapshot id (nil → time.Now)
+	// FR-9a/b: enables the per-repo transaction when SnapshotRoot != "". Both
+	// empty = legacy behavior (apply + Record in-memory, caller does its own Save)
+	// so the old tests in apply_test.go (which don't set these fields) keep working.
+	SnapshotRoot string                                     // .zenify/snapshots — where per-repo snapshots live
+	ManifestPath string                                     // .zenify/manifest.json — Save after each repo promote
+	Now          func() int64                               // clock for the snapshot id (nil → time.Now)
 	VerifyRepoFn func(repoDir string, wrote []string) error // nil → defaultVerifyRepo
 }
 
@@ -126,8 +126,8 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 	return results, nil
 }
 
-// applyOne chạy đúng thao tác ghi theo state (nội dung switch cũ). gh/git chỉ
-// dùng cho Clone; Wire/Adopt không đụng tới.
+// applyOne runs the write operation matching the state (same content as the old
+// switch). gh/git are only used for Clone; Wire/Adopt don't touch them.
 func applyOne(p reconcile.RepoPlan, repoDir string, opts Options, gh ghx.Runner, git gitx.Runner) (string, []string, error) {
 	switch p.State {
 	case reconcile.Clone:
@@ -151,9 +151,10 @@ func isActionable(s reconcile.State) bool {
 	return s == reconcile.Clone || s == reconcile.Wire || s == reconcile.Adopt
 }
 
-// defaultVerifyRepo kiểm mỗi file repo vừa ghi tồn tại + parse được:
-// settings.local.json là JSON có "env" object; .git/info/exclude chứa dòng
-// .worktrees/. Chỉ kiểm các file trong `wrote` (thứ repo này thực sự đụng).
+// defaultVerifyRepo checks that each file the repo just wrote exists and
+// parses: settings.local.json is JSON with an "env" object; .git/info/exclude
+// contains a .worktrees/ line. Only checks files in `wrote` (what this repo
+// actually touched).
 func defaultVerifyRepo(wrote []string) error {
 	for _, f := range wrote {
 		switch {
@@ -189,7 +190,7 @@ func defaultVerifyRepo(wrote []string) error {
 	return nil
 }
 
-// statSet trả tập file đã tồn tại trong danh sách.
+// statSet returns the subset of the list that already exists on disk.
 func statSet(files []string) map[string]bool {
 	m := map[string]bool{}
 	for _, f := range files {
@@ -200,9 +201,10 @@ func statSet(files []string) map[string]bool {
 	return m
 }
 
-// revertRepo hoàn nguyên đúng phạm vi repo này: restore file đã tồn tại-từ-trước
-// về nội dung snapshot, rồi xoá file repo này MỚI tạo (không có trong snapshot
-// vì managed.Snapshot bỏ qua file vắng — nên Restore không tự xoá chúng).
+// revertRepo undoes exactly this repo's scope: restores files that already
+// existed before back to their snapshot content, then removes files this repo
+// just created (absent from the snapshot because managed.Snapshot skips
+// missing files — so Restore doesn't delete them on its own).
 func revertRepo(snapDir string, repoFiles []string, existedBefore map[string]bool) {
 	if snapDir != "" {
 		_ = managed.Restore(snapDir)
@@ -217,7 +219,7 @@ func revertRepo(snapDir string, repoFiles []string, existedBefore map[string]boo
 	}
 }
 
-// ownedKeySet chụp tập key manifest trước khi apply một repo.
+// ownedKeySet snapshots the manifest's key set before applying a repo.
 func ownedKeySet(m *managed.Manifest) map[string]struct{} {
 	s := map[string]struct{}{}
 	if m == nil {
@@ -229,8 +231,9 @@ func ownedKeySet(m *managed.Manifest) map[string]struct{} {
 	return s
 }
 
-// revertOwnedKeys bỏ mọi key được Record in-memory trong repo vừa fail (key
-// không có trong ảnh chụp trước-apply), để Save của repo sau không persist nhầm.
+// revertOwnedKeys drops every key that was Record'd in-memory during the repo
+// that just failed (keys absent from the pre-apply snapshot), so a later
+// repo's Save doesn't persist them by mistake.
 func revertOwnedKeys(m *managed.Manifest, prior map[string]struct{}) {
 	if m == nil {
 		return

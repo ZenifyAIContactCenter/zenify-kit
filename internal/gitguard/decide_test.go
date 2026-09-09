@@ -47,7 +47,7 @@ func TestDecide(t *testing.T) {
 	root := t.TempDir()
 	deny := filepath.Join(root, "deny")     // deploy=main
 	other := filepath.Join(root, "other")   // development-2, release*, staging
-	nodeny := filepath.Join(root, "nodeny") // deploy-branches rỗng → không có nhánh cấm
+	nodeny := filepath.Join(root, "nodeny") // deploy-branches empty → no forbidden branch
 	mkRepo(t, deny, "main", []string{"main"})
 	mkRepo(t, other, "main", []string{"development-2", "release*", "staging"})
 	mkRepo(t, nodeny, "main", []string{"# none"})
@@ -93,7 +93,7 @@ func TestDecidePushRefspecEdgeCases(t *testing.T) {
 	root := t.TempDir()
 	deny := filepath.Join(root, "deny")     // deploy=main
 	other := filepath.Join(root, "other")   // development-2, release*, staging
-	nodeny := filepath.Join(root, "nodeny") // deploy-branches rỗng → không có nhánh cấm
+	nodeny := filepath.Join(root, "nodeny") // deploy-branches empty → no forbidden branch
 	mkRepo(t, deny, "main", []string{"main"})
 	mkRepo(t, other, "staging", []string{"development-2", "release*", "staging"})
 	mkRepo(t, nodeny, "main", []string{"# none"})
@@ -137,6 +137,6 @@ func TestDecideWorktreeOwnBranch(t *testing.T) {
 	wt := filepath.Join(root, "deny-wt")
 	git(t, deny, "worktree", "add", "-q", wt, "-b", "namph/feat/wt-case")
 	if Decide("git commit -m wf", wt, func(string) string { return "" }, nil).Deny {
-		t.Fatal("worktree trên feature branch phải allow commit")
+		t.Fatal("worktree on a feature branch must allow commit")
 	}
 }

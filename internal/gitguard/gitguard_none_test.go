@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// writeDeny tạo <dir>/.claude/deploy-branches với nội dung cho trước.
+// writeDeny creates <dir>/.claude/deploy-branches with the given content.
 func writeDeny(t *testing.T, dir, content string) {
 	t.Helper()
 	cd := filepath.Join(dir, ".claude")
@@ -27,7 +27,7 @@ func hasBranch(list []string, b string) bool {
 	return false
 }
 
-// NONE ở cấp repo → deny rỗng, KHÔNG union ancestor (dù ancestor có 'main').
+// NONE at the repo level → empty deny, does NOT union ancestors (even if an ancestor has 'main').
 func TestLoadDeny_NoneExempts(t *testing.T) {
 	ws := t.TempDir()
 	writeDeny(t, ws, "main\nstaging")
@@ -35,11 +35,11 @@ func TestLoadDeny_NoneExempts(t *testing.T) {
 	writeDeny(t, repo, "NONE")
 	got := loadDeny(repo)
 	if len(got) != 0 {
-		t.Fatalf("NONE phải cho deny rỗng, got %v", got)
+		t.Fatalf("NONE must produce empty deny, got %v", got)
 	}
 }
 
-// Control: repo KHÔNG có file, ancestor có 'main' → vẫn union 'main' (giữ cũ).
+// Control: repo has NO file, ancestor has 'main' → still unions 'main' (unchanged).
 func TestLoadDeny_UnionUnchanged(t *testing.T) {
 	ws := t.TempDir()
 	writeDeny(t, ws, "main")
@@ -49,18 +49,18 @@ func TestLoadDeny_UnionUnchanged(t *testing.T) {
 	}
 	got := loadDeny(repo)
 	if !hasBranch(got, "main") {
-		t.Fatalf("union ancestor phải giữ 'main', got %v", got)
+		t.Fatalf("union with ancestor must keep 'main', got %v", got)
 	}
 }
 
-// File rỗng (chỉ comment) KHÔNG exempt — vẫn union ancestor (fail-safe).
+// An empty file (comment only) does NOT exempt — still unions the ancestor (fail-safe).
 func TestLoadDeny_EmptyFileStillUnions(t *testing.T) {
 	ws := t.TempDir()
 	writeDeny(t, ws, "main")
 	repo := filepath.Join(ws, "docs")
-	writeDeny(t, repo, "# chỉ comment, không có NONE")
+	writeDeny(t, repo, "# comment only, no NONE")
 	got := loadDeny(repo)
 	if !hasBranch(got, "main") {
-		t.Fatalf("file rỗng KHÔNG được exempt (phải giữ 'main'), got %v", got)
+		t.Fatalf("empty file must NOT be exempt (must keep 'main'), got %v", got)
 	}
 }

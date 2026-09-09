@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// readWSEnv đọc env block của settings.local.json trong workspace test.
+// readWSEnv reads the env block of settings.local.json in the test workspace.
 func readWSEnv(t *testing.T, ws string) map[string]string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
@@ -34,7 +34,7 @@ func writeWSSettings(t *testing.T, ws, body string) {
 	}
 }
 
-// SC-15: chỉ key rỗng/thiếu vào prompt-set; key có value giữ nguyên.
+// SC-15: only empty/missing keys go to prompt-set; keys with a value are kept as-is.
 func TestSecretStep_OnlyPromptsEmpty_PreservesFilled(t *testing.T) {
 	ws := t.TempDir()
 	writeWSSettings(t, ws, `{"env":{"MONGO_URL":"mongodb://live","E2E_EMAIL":""}}`)
@@ -50,22 +50,22 @@ func TestSecretStep_OnlyPromptsEmpty_PreservesFilled(t *testing.T) {
 	if err := secretStep(cfg); err != nil {
 		t.Fatalf("secretStep: %v", err)
 	}
-	// MONGO_URL đã có value → KHÔNG được hỏi.
+	// MONGO_URL already has a value → must NOT be prompted.
 	for _, k := range asked {
 		if k == "MONGO_URL" {
-			t.Fatalf("MONGO_URL đã có value nhưng vẫn bị prompt: %v", asked)
+			t.Fatalf("MONGO_URL already has a value but was still prompted: %v", asked)
 		}
 	}
 	env := readWSEnv(t, ws)
 	if env["MONGO_URL"] != "mongodb://live" {
-		t.Errorf("MONGO_URL bị đổi: %q", env["MONGO_URL"])
+		t.Errorf("MONGO_URL was changed: %q", env["MONGO_URL"])
 	}
 	if env["E2E_EMAIL"] != "a@b.com" || env["E2E_PASSWORD"] != "pw" {
-		t.Errorf("value mới không được ghi: %+v", env)
+		t.Errorf("new value was not written: %+v", env)
 	}
 }
 
-// SC-16: input trống → giữ placeholder rỗng, không đè.
+// SC-16: blank input → keeps the empty placeholder, no overwrite.
 func TestSecretStep_BlankInputKeepsPlaceholder(t *testing.T) {
 	ws := t.TempDir()
 	writeWSSettings(t, ws, `{"env":{"E2E_EMAIL":""}}`)
@@ -73,18 +73,18 @@ func TestSecretStep_BlankInputKeepsPlaceholder(t *testing.T) {
 		Workspace:  ws,
 		SecretKeys: []string{"E2E_EMAIL"},
 		SecretPromptFn: func(keys []string) (map[string]string, error) {
-			return map[string]string{"E2E_EMAIL": ""}, nil // dev gõ trống
+			return map[string]string{"E2E_EMAIL": ""}, nil // dev types blank
 		},
 	}
 	if err := secretStep(cfg); err != nil {
 		t.Fatalf("secretStep: %v", err)
 	}
 	if got := readWSEnv(t, ws)["E2E_EMAIL"]; got != "" {
-		t.Errorf("gõ trống nhưng key đổi: %q", got)
+		t.Errorf("blank input but key changed: %q", got)
 	}
 }
 
-// SC-17: Accessible → no-op, file bất biến.
+// SC-17: Accessible → no-op, file untouched.
 func TestSecretStep_AccessibleNoOp(t *testing.T) {
 	ws := t.TempDir()
 	writeWSSettings(t, ws, `{"env":{"E2E_EMAIL":""}}`)
@@ -103,15 +103,15 @@ func TestSecretStep_AccessibleNoOp(t *testing.T) {
 		t.Fatalf("secretStep: %v", err)
 	}
 	if called {
-		t.Error("Accessible=true nhưng vẫn prompt")
+		t.Error("Accessible=true but still prompted")
 	}
 	after, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if string(before) != string(after) {
-		t.Error("file bị đổi trong chế độ Accessible")
+		t.Error("file changed in Accessible mode")
 	}
 }
 
-// SC-18: value chứa & / < giữ nguyên byte (SetEscapeHTML off).
+// SC-18: value containing & / < is preserved byte-for-byte (SetEscapeHTML off).
 func TestSecretStep_DoesNotEscapeSpecialChars(t *testing.T) {
 	ws := t.TempDir()
 	writeWSSettings(t, ws, `{"env":{"MONGO_URL":""}}`)
@@ -127,17 +127,17 @@ func TestSecretStep_DoesNotEscapeSpecialChars(t *testing.T) {
 		t.Fatalf("secretStep: %v", err)
 	}
 	if got := readWSEnv(t, ws)["MONGO_URL"]; got != url {
-		t.Errorf("value bị mangle: %q != %q", got, url)
+		t.Errorf("value was mangled: %q != %q", got, url)
 	}
 	raw, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if !strContains(string(raw), "a=1&b=2") {
-		t.Errorf("byte trên đĩa bị escape: %s", raw)
+		t.Errorf("bytes on disk were escaped: %s", raw)
 	}
 }
 
-// Secret-loss guard: readEnvBlock phải validate (JSON hỏng / env không phải
-// object) và trả lỗi TRƯỚC khi secretStep prompt hay ghi gì — khoá thứ tự
-// read-validate-trước-write để tương lai reorder vô tình không làm mất secret.
+// Secret-loss guard: readEnvBlock must validate (malformed JSON / env not an
+// object) and return an error BEFORE secretStep prompts or writes anything — locking in the
+// read-validate-before-write order so a future accidental reorder can't lose a secret.
 func TestSecretStep_CorruptJSON_LeavesFileUnchanged(t *testing.T) {
 	ws := t.TempDir()
 	writeWSSettings(t, ws, `{"env": {`)
@@ -158,14 +158,14 @@ func TestSecretStep_CorruptJSON_LeavesFileUnchanged(t *testing.T) {
 		t.Fatal("secretStep: expected error on corrupt JSON, got nil")
 	}
 	if prompted {
-		t.Error("SecretPromptFn được gọi dù JSON hỏng phải fail trước prompt")
+		t.Error("SecretPromptFn was called even though malformed JSON must fail before prompting")
 	}
 	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read after: %v", err)
 	}
 	if string(before) != string(after) {
-		t.Errorf("file bị đổi khi JSON hỏng: before=%q after=%q", before, after)
+		t.Errorf("file changed on malformed JSON: before=%q after=%q", before, after)
 	}
 }
 
@@ -189,14 +189,14 @@ func TestSecretStep_NonObjectEnv_LeavesFileUnchanged(t *testing.T) {
 		t.Fatal("secretStep: expected error when env is not an object, got nil")
 	}
 	if prompted {
-		t.Error("SecretPromptFn được gọi dù env không phải object phải fail trước prompt")
+		t.Error("SecretPromptFn was called even though a non-object env must fail before prompting")
 	}
 	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	if err != nil {
 		t.Fatalf("read after: %v", err)
 	}
 	if string(before) != string(after) {
-		t.Errorf("file bị đổi khi env không phải object: before=%q after=%q", before, after)
+		t.Errorf("file changed when env isn't an object: before=%q after=%q", before, after)
 	}
 }
 

@@ -62,9 +62,14 @@ func TestRunOnboard_ApplyInvokesApplyFn(t *testing.T) {
 func TestLoginStep_OffersInstallWhenGHMissing(t *testing.T) {
 	installed := false
 	cfg := OnboardConfig{
-		Accessible:    false,
-		DetectGitFn:   func() error { return nil },
-		DetectGHFn:    func() error { if installed { return nil }; return errNotFound },
+		Accessible:  false,
+		DetectGitFn: func() error { return nil },
+		DetectGHFn: func() error {
+			if installed {
+				return nil
+			}
+			return errNotFound
+		},
 		ConfirmFn:     func(string) (bool, error) { return true, nil },
 		InstallRunner: func(string) error { installed = true; return nil },
 		lookPath:      func(name string) (string, error) { return "/opt/homebrew/bin/" + name, nil },
@@ -104,16 +109,16 @@ func TestRunOnboard_RunsSecretStepAfterApply(t *testing.T) {
 	applied := false
 	cfg := OnboardConfig{
 		Workspace:   ws,
-		Accessible:  false, // secretStep chỉ chạy khi !Accessible
-		AutoConfirm: true,  // bỏ qua confirm Proceed?
+		Accessible:  false, // secretStep only runs when !Accessible
+		AutoConfirm: true,  // skip the Proceed? confirm
 		SecretKeys:  []string{"E2E_EMAIL"},
 		SecretPromptFn: func(keys []string) (map[string]string, error) {
 			return map[string]string{"E2E_EMAIL": "x@y.com"}, nil
 		},
 		PlanFn:  func() ([]reconcile.RepoPlan, error) { return []reconcile.RepoPlan{{Name: "r1"}}, nil },
 		ApplyFn: func(sel []string) error { applied = true; return nil },
-		// welcomeNote(false) thật mở huh.Form.Run() cần /dev/tty thật — stub seam
-		// này để test hermetic, không phụ thuộc TTY của máy chạy test.
+		// welcomeNote(false) for real opens huh.Form.Run() which needs a real /dev/tty — stub this
+		// seam so the test stays hermetic, independent of the test runner's TTY.
 		WelcomeNoteFn: func(bool) error { return nil },
 		DetectGHFn:    func() error { return nil },
 		AuthStatusFn:  func() (string, authState) { return "acct", authLoggedIn },
@@ -122,11 +127,11 @@ func TestRunOnboard_RunsSecretStepAfterApply(t *testing.T) {
 		t.Fatalf("RunOnboard: %v", err)
 	}
 	if !applied {
-		t.Fatal("ApplyFn không chạy")
+		t.Fatal("ApplyFn did not run")
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "settings.local.json"))
 	if !strContainsWZ(string(b), "x@y.com") {
-		t.Errorf("secretStep không ghi value sau apply: %s", b)
+		t.Errorf("secretStep did not write the value after apply: %s", b)
 	}
 }
 
@@ -159,7 +164,7 @@ func TestLoginStep_UnreachableSkipsBrowser(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected unreachable error, got nil (would have opened browser)")
 	}
-	if !strings.Contains(err.Error(), "không kết nối") {
+	if !strings.Contains(err.Error(), "could not connect") {
 		t.Fatalf("expected network error message, got %v", err)
 	}
 }

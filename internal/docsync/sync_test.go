@@ -7,9 +7,9 @@ import (
 
 type fakeRunner struct {
 	calls  [][]string
-	status string // giá trị trả cho `status --porcelain`
-	ahead  string // giá trị trả cho `rev-list --count @{upstream}..HEAD` (rỗng = không xác định → 0)
-	failOn string // arg[0] sẽ trả lỗi (rỗng = không lỗi)
+	status string // value returned for `status --porcelain`
+	ahead  string // value returned for `rev-list --count @{upstream}..HEAD` (empty = undetermined → 0)
+	failOn string // arg[0] that will return an error (empty = no error)
 }
 
 func (f *fakeRunner) Run(dir string, args ...string) ([]byte, error) {
@@ -40,52 +40,52 @@ func ran(calls [][]string, sub string) bool {
 	return false
 }
 
-// Sạch + ahead=0 → chỉ status + rev-list (đều LOCAL), KHÔNG network mutate:
-// không pull, không commit, không push. Bảo chứng hook Stop chạy mỗi turn
-// (sạch, up-to-date) không tốn round-trip mạng nào.
+// Clean + ahead=0 → only status + rev-list (both LOCAL), NO network mutation:
+// no pull, no commit, no push. Guarantees the Stop hook running every turn
+// (clean, up-to-date) costs no network round-trip.
 func TestSync_CleanIsLocalOnly(t *testing.T) {
 	f := &fakeRunner{status: "", ahead: "0"}
 	Sync(f, "/docs")
 	if ran(f.calls, "commit") || ran(f.calls, "pull") || ran(f.calls, "push") {
-		t.Fatalf("turn sạch+up-to-date không được pull/commit/push; calls=%v", f.calls)
+		t.Fatalf("a clean+up-to-date turn must not pull/commit/push; calls=%v", f.calls)
 	}
 	if !ran(f.calls, "status --porcelain") {
-		t.Fatalf("phải kiểm tra status; calls=%v", f.calls)
+		t.Fatalf("must check status; calls=%v", f.calls)
 	}
 }
 
-// Sạch nhưng CÒN commit chưa push (clean-but-ahead) → KHÔNG commit thừa,
-// nhưng phải pull --rebase + push để đẩy nốt commit kẹt từ lần trước.
+// Clean but STILL has an unpushed commit (clean-but-ahead) → must NOT commit
+// extra, but must pull --rebase + push to push through the commit stuck from before.
 func TestSync_CleanButAheadPushesPending(t *testing.T) {
 	f := &fakeRunner{status: "", ahead: "2"}
 	Sync(f, "/docs")
 	if ran(f.calls, "add -A") || ran(f.calls, "commit") {
-		t.Fatalf("sạch thì KHÔNG được add/commit thừa; calls=%v", f.calls)
+		t.Fatalf("when clean must NOT add/commit extra; calls=%v", f.calls)
 	}
 	if !ran(f.calls, "pull --rebase") || !ran(f.calls, "push") {
-		t.Fatalf("clean-but-ahead phải pull--rebase+push commit kẹt; calls=%v", f.calls)
+		t.Fatalf("clean-but-ahead must pull--rebase+push the stuck commit; calls=%v", f.calls)
 	}
 }
 
-// ahead không xác định (chưa set upstream → rev-list lỗi) → fail-safe về clean,
-// KHÔNG đụng mạng (giữ nguyên hành vi cũ khi không biết ahead).
+// ahead undetermined (upstream not set → rev-list errors) → fail-safe to clean,
+// NO network touch (preserve old behavior when ahead is unknown).
 func TestSync_CleanAheadUnknownStaysLocal(t *testing.T) {
 	f := &fakeRunner{status: "", failOn: "rev-list"}
 	Sync(f, "/docs")
 	if ran(f.calls, "pull") || ran(f.calls, "push") {
-		t.Fatalf("không xác định ahead phải giữ local, không network; calls=%v", f.calls)
+		t.Fatalf("undetermined ahead must stay local, no network; calls=%v", f.calls)
 	}
 }
 
-// Dirty → commit TRƯỚC, rồi pull --rebase, rồi push (thứ tự commit-first).
+// Dirty → commit FIRST, then pull --rebase, then push (commit-first order).
 func TestSync_DirtyCommitsThenRebasesThenPushes(t *testing.T) {
 	f := &fakeRunner{status: " M specs/x.md"}
 	Sync(f, "/docs")
 	if !ran(f.calls, "add -A") || !ran(f.calls, "commit") ||
 		!ran(f.calls, "pull --rebase") || !ran(f.calls, "push") {
-		t.Fatalf("dirty phải add+commit+pull--rebase+push; calls=%v", f.calls)
+		t.Fatalf("dirty must add+commit+pull--rebase+push; calls=%v", f.calls)
 	}
-	// commit phải đứng TRƯỚC pull (commit-first, để rebase conflict abort được).
+	// commit must come BEFORE pull (commit-first, so a rebase conflict can be aborted).
 	var ci, pi = -1, -1
 	for i, c := range f.calls {
 		j := strings.Join(c, " ")
@@ -97,30 +97,30 @@ func TestSync_DirtyCommitsThenRebasesThenPushes(t *testing.T) {
 		}
 	}
 	if ci == -1 || pi == -1 || ci > pi {
-		t.Fatalf("commit phải trước pull; commit@%d pull@%d calls=%v", ci, pi, f.calls)
+		t.Fatalf("commit must be before pull; commit@%d pull@%d calls=%v", ci, pi, f.calls)
 	}
 }
 
-// Rebase conflict (pull lỗi) → rebase --abort, KHÔNG push (không publish marker).
+// Rebase conflict (pull errors) → rebase --abort, NO push (no publishing the marker).
 func TestSync_RebaseConflictAbortsNoPush(t *testing.T) {
 	f := &fakeRunner{status: " M specs/x.md", failOn: "pull"}
 	Sync(f, "/docs")
 	if !ran(f.calls, "rebase --abort") {
-		t.Fatalf("pull lỗi phải rebase --abort; calls=%v", f.calls)
+		t.Fatalf("pull error must rebase --abort; calls=%v", f.calls)
 	}
 	if ran(f.calls, "push") {
-		t.Fatalf("pull lỗi KHÔNG được push (tránh publish rác); calls=%v", f.calls)
+		t.Fatalf("pull error must NOT push (avoid publishing garbage); calls=%v", f.calls)
 	}
 }
 
-// Fail-open: status lỗi vẫn trả notes, không panic, không network.
+// Fail-open: status error still returns notes, no panic, no network.
 func TestSync_StatusFailOpen(t *testing.T) {
 	f := &fakeRunner{failOn: "status"}
 	notes := Sync(f, "/docs")
 	if len(notes) == 0 {
-		t.Fatal("status lỗi phải sinh note")
+		t.Fatal("status error must produce a note")
 	}
 	if ran(f.calls, "commit") || ran(f.calls, "push") {
-		t.Fatalf("status lỗi không được commit/push; calls=%v", f.calls)
+		t.Fatalf("status error must not commit/push; calls=%v", f.calls)
 	}
 }

@@ -24,31 +24,31 @@ func detectGit() error { return detectGitWith(exec.LookPath) }
 
 func detectGitWith(lookPath func(string) (string, error)) error {
 	if _, err := lookPath("git"); err != nil {
-		return errors.New("git không tìm thấy — cài Xcode Command Line Tools (`xcode-select --install`) hoặc git rồi chạy lại `zenify up`")
+		return errors.New("git not found — install Xcode Command Line Tools (`xcode-select --install`) or git, then re-run `zenify up`")
 	}
 	return nil
 }
 
-// errGHGuide là lỗi guide-only khi thiếu gh (giữ nguyên thông điệp P1).
+// errGHGuide is the guide-only error when gh is missing (keeps the P1 message).
 var errGHGuide = errors.New("GitHub CLI (gh) not found — install: https://cli.github.com then re-run `zenify up`")
 
-// offerInstallGH chạy khi gh thiếu ở chế độ interactive: hỏi cài qua Homebrew,
-// nếu có brew và user đồng ý thì chạy InstallRunner rồi re-detect. Mọi đường
-// khác (không brew / từ chối) trả errGHGuide.
+// offerInstallGH runs when gh is missing in interactive mode: asks to install via Homebrew,
+// and if brew is present and the user agrees, runs InstallRunner then re-detects. Every other
+// path (no brew / declined) returns errGHGuide.
 func offerInstallGH(cfg OnboardConfig) error {
 	lookPath := cfg.lookPath
 	if lookPath == nil {
 		lookPath = exec.LookPath
 	}
 	if _, err := lookPath("brew"); err != nil {
-		return errGHGuide // không có brew → không tự cài được
+		return errGHGuide // no brew → can't auto-install
 	}
 
 	confirm := cfg.ConfirmFn
 	if confirm == nil {
 		confirm = huhConfirm
 	}
-	ok, err := confirm("gh chưa có. Cài gh qua Homebrew ngay?")
+	ok, err := confirm("gh chưa có. Cài gh qua Homebrew ngay?") //znf:allow-lang
 	if err != nil {
 		return err
 	}
@@ -68,10 +68,10 @@ func offerInstallGH(cfg OnboardConfig) error {
 	if detect == nil {
 		detect = detectGH
 	}
-	return detect() // re-detect sau khi cài
+	return detect() // re-detect after install
 }
 
-// huhConfirm là ConfirmFn thật dùng huh.
+// huhConfirm is the real ConfirmFn, using huh.
 func huhConfirm(prompt string) (bool, error) {
 	v := false
 	err := huh.NewForm(huh.NewGroup(
@@ -80,8 +80,8 @@ func huhConfirm(prompt string) (bool, error) {
 	return v, err
 }
 
-// brewInstall là InstallRunner thật: chạy `brew install <tool>` với stdio bám
-// terminal để user thấy tiến trình.
+// brewInstall is the real InstallRunner: runs `brew install <tool>` with stdio attached to
+// the terminal so the user sees progress.
 func brewInstall(tool string) error {
 	cmd := exec.Command("brew", "install", tool) //nolint:gosec // G204 -- fixed 'brew install'; tool is an internal constant, not user shell input
 	cmd.Stdin = os.Stdin
@@ -98,8 +98,8 @@ const (
 	authUnreachable
 )
 
-// networkMarkers là các chuỗi xuất hiện trong output `gh auth status` khi
-// máy không kết nối được GitHub (phân biệt với chưa-login).
+// networkMarkers are the strings that appear in `gh auth status` output when
+// the machine can't reach GitHub (distinguishing it from not-logged-in).
 var networkMarkers = []string{
 	"could not connect",
 	"dial tcp",
@@ -111,10 +111,10 @@ var networkMarkers = []string{
 	"network is unreachable",
 }
 
-// parseAuthState phân loại output `gh auth status` thành 3 trạng thái. err là
-// lỗi process của `gh auth status` (non-nil khi exit≠0). offline được nhận
-// diện bằng err≠nil KÈM một marker mạng trong output; nếu không có marker thì
-// coi như chưa-login (an toàn: đẩy về luồng login).
+// parseAuthState classifies `gh auth status` output into 3 states. err is
+// the process error from `gh auth status` (non-nil when exit≠0). offline is
+// recognized by err≠nil PLUS a network marker in the output; without a marker it's
+// treated as not-logged-in (safe: falls through to the login flow).
 func parseAuthState(out string, err error) (account string, state authState) {
 	lower := strings.ToLower(out)
 	if err != nil {

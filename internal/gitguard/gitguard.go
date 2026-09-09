@@ -14,13 +14,13 @@ type Decision struct {
 
 var baselineDeny = []string{"main", "master", "production", "staging", "develop"}
 
-// Decide là quyết định cuối cho một command.
+// Decide is the final decision for one command.
 func Decide(command, callCwd string, getenv func(string) string, onCommit func(repoDir string) Decision) Decision {
 	calls := ParseGitCalls(command)
 	if len(calls) == 0 {
 		return Decision{}
 	}
-	// Chỉ quan tâm commit/merge/push.
+	// Only cares about commit/merge/push.
 	var relevant []GitCall
 	for _, c := range calls {
 		switch c.Sub {
@@ -32,7 +32,7 @@ func Decide(command, callCwd string, getenv func(string) string, onCommit func(r
 		return Decision{}
 	}
 
-	// Anchor: -C thắng cd thắng cwd thắng CLAUDE_PROJECT_DIR thắng PWD.
+	// Anchor: -C wins over cd wins over cwd wins over CLAUDE_PROJECT_DIR wins over PWD.
 	base := firstNonEmpty(callCwd, getenv("CLAUDE_PROJECT_DIR"), getenv("PWD"))
 	if cd := LeadingCd(command); cd != "" {
 		base = resolveDir(base, cd, getenv)
@@ -44,7 +44,7 @@ func Decide(command, callCwd string, getenv func(string) string, onCommit func(r
 		}
 		branch := gitBranch(repodir)
 		if branch == "" || branch == "HEAD" {
-			continue // detached / not-a-repo → allow lời gọi này
+			continue // detached / not-a-repo → allow this call
 		}
 		root := repoRoot(repodir)
 		patterns := loadDeny(root)
@@ -105,10 +105,10 @@ func hasAllFlag(args []string) bool {
 	return false
 }
 
-// pushTarget: refspec đầu tiên không phải flag và không phải remote; nếu không
-// có → nhánh hiện tại; "src:dst" → dst; "+dst" (force) → dst (bỏ '+' đầu);
-// "HEAD" (literal, sau khi bỏ '+') → nhánh hiện tại (branch được resolve tại
-// caller, không phải literal "HEAD").
+// pushTarget: the first refspec that is neither a flag nor the remote; if
+// there is none → current branch; "src:dst" → dst; "+dst" (force) → dst
+// (leading '+' stripped); "HEAD" (literal, after stripping '+') → current
+// branch (the branch is resolved by the caller, not the literal "HEAD").
 func pushTarget(args []string, branch string) string {
 	var pos []string
 	for _, a := range args {
@@ -117,7 +117,7 @@ func pushTarget(args []string, branch string) string {
 		}
 		pos = append(pos, a)
 	}
-	// pos[0] = remote, pos[1] = refspec (nếu có).
+	// pos[0] = remote, pos[1] = refspec (if any).
 	if len(pos) < 2 {
 		return branch
 	}
@@ -168,10 +168,11 @@ func repoRoot(dir string) string {
 	return filepath.Dir(common)
 }
 
-// loadDeny union .claude/deploy-branches từ root lên mọi ancestor; không file
-// nào → baseline. Một cấp khai token NONE (đứng riêng) = "subtree này KHÔNG có
-// deploy branch": dừng union tại đó, đóng góp 0 branch (opt-out explicit,
-// fail-safe: file rỗng/thiếu KHÔNG exempt).
+// loadDeny unions .claude/deploy-branches from root up through every
+// ancestor; no file at all → baseline. A level declaring the NONE token
+// (standalone) means "this subtree has NO deploy branch": stop the union
+// there, contributing 0 branches (explicit opt-out, fail-safe: an
+// empty/missing file does NOT exempt).
 func loadDeny(root string) []string {
 	var out []string
 	found := false
@@ -181,10 +182,11 @@ func loadDeny(root string) []string {
 		if lines, ok := readLines(f); ok {
 			found = true
 			if hasNone(lines) {
-				// Dừng union tại đây. Giả định: một cây thư mục đã khai NONE
-				// KHÔNG chứa repo git lồng bên trong không có deploy-branches
-				// riêng — nếu có, repo lồng đó sẽ mất baseline. Đúng với layout
-				// sibling-dưới-repos/ (docs là sibling, không lồng repo nào).
+				// Stop the union here. Assumption: a directory tree that has
+				// declared NONE does NOT contain a nested git repo inside it
+				// without its own deploy-branches — if it did, that nested
+				// repo would lose the baseline. True for the
+				// sibling-under-repos/ layout (docs is a sibling, nests no repo).
 				return out
 			}
 			out = append(out, lines...)
@@ -200,7 +202,7 @@ func loadDeny(root string) []string {
 	return out
 }
 
-// hasNone true nếu có dòng đúng bằng "NONE" (opt-out sentinel).
+// hasNone is true if a line is exactly "NONE" (opt-out sentinel).
 func hasNone(lines []string) bool {
 	for _, l := range lines {
 		if l == "NONE" {
@@ -217,8 +219,8 @@ func runGit(dir string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// readLines đọc file, bỏ dòng comment '#' và dòng rỗng; ok=false khi file
-// không tồn tại (hoặc không đọc được).
+// readLines reads the file, skipping '#' comment lines and blank lines;
+// ok=false when the file doesn't exist (or can't be read).
 func readLines(path string) ([]string, bool) {
 	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is the repo's own .claude/deploy-branches config location, not attacker-controlled
 	if err != nil {

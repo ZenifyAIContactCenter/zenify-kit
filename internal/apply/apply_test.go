@@ -45,7 +45,7 @@ func initClonedRepo(t *testing.T, dir string) {
 	}
 }
 
-// mkWirePlan tạo một RepoPlan Wire trỏ tới <workspace>/<name>, và mkdir repo .git để ensureExclude chạy.
+// mkWirePlan creates a Wire RepoPlan pointing at <workspace>/<name>, and mkdirs the repo .git so ensureExclude can run.
 func mkWirePlan(t *testing.T, ws, name string) reconcile.RepoPlan {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(ws, name, ".git", "info"), 0o750); err != nil {
@@ -74,7 +74,7 @@ func TestApply_PerRepoPromote_SavesManifestEachRepo(t *testing.T) {
 			t.Fatalf("%s: unexpected err %v", r.Repo, r.Err)
 		}
 	}
-	// Đọc LẠI manifest từ đĩa: cả hai repo phải đã được promote (Save per-repo).
+	// Read the manifest back from disk: both repos must have been promoted (Save per-repo).
 	got, err := managed.Load(manifestPath)
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestApply_PerRepoPromote_SavesManifestEachRepo(t *testing.T) {
 	for _, name := range []string{"repoA", "repoB"} {
 		p := filepath.Join(ws, name, ".claude", "settings.local.json")
 		if _, ok := got.Get(p); !ok {
-			t.Errorf("manifest thiếu entry cho %s", p)
+			t.Errorf("manifest missing entry for %s", p)
 		}
 	}
 }
@@ -109,27 +109,27 @@ func TestApply_PerRepoRestore_ScopedToFailedRepo(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 
-	// repoA: settings được GIỮ; repoB: bị revert (file mới tạo bị xoá).
+	// repoA: settings must be KEPT; repoB: reverted (its newly-created file removed).
 	aSettings := filepath.Join(ws, "repoA", ".claude", "settings.local.json")
 	if _, err := os.Stat(aSettings); err != nil {
-		t.Errorf("repoA settings phải còn: %v", err)
+		t.Errorf("repoA settings must remain: %v", err)
 	}
 	bSettings := filepath.Join(ws, "repoB", ".claude", "settings.local.json")
 	if _, err := os.Stat(bSettings); err == nil {
-		t.Errorf("repoB settings phải bị xoá khi verify fail")
+		t.Errorf("repoB settings must be removed when verify fails")
 	}
-	// Manifest trên đĩa: có A, KHÔNG có B.
+	// Manifest on disk: has A, does NOT have B.
 	got, _ := managed.Load(manifestPath)
 	if _, ok := got.Get(aSettings); !ok {
-		t.Errorf("manifest phải có repoA")
+		t.Errorf("manifest must have repoA")
 	}
 	if _, ok := got.Get(bSettings); ok {
-		t.Errorf("manifest KHÔNG được có repoB")
+		t.Errorf("manifest must NOT have repoB")
 	}
-	// Result của B mang Err.
+	// repoB's Result carries Err.
 	for _, r := range results {
 		if r.Repo == "repoB" && r.Err == nil {
-			t.Errorf("repoB phải mang Err")
+			t.Errorf("repoB must carry Err")
 		}
 	}
 }
@@ -141,7 +141,7 @@ func TestApply_CrashSafe_ManifestDurableForPromotedRepo(t *testing.T) {
 	owned := &managed.Manifest{Entries: map[string]managed.Entry{}}
 	plans := []reconcile.RepoPlan{mkWirePlan(t, ws, "repo1"), mkWirePlan(t, ws, "repo2")}
 
-	// repo2 fail → mô phỏng "ngắt sau khi repo1 promote". repo1 phải đã bền.
+	// repo2 fails → simulates "interrupted after repo1 promoted". repo1 must already be durable.
 	_, err := Apply(plans, Options{
 		Workspace: ws, SecretKeys: []string{"MONGO_URL"},
 		Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
@@ -162,7 +162,7 @@ func TestApply_CrashSafe_ManifestDurableForPromotedRepo(t *testing.T) {
 	}
 	p1 := filepath.Join(ws, "repo1", ".claude", "settings.local.json")
 	if _, ok := got.Get(p1); !ok {
-		t.Errorf("repo1 phải bền vững trong manifest sau khi promote (crash-safe)")
+		t.Errorf("repo1 must be durable in the manifest after promote (crash-safe)")
 	}
 }
 

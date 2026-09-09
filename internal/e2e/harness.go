@@ -10,5 +10,5 @@ import (
 //go:embed harness
 var harnessFS embed.FS
 
-// WriteHarness ghi cây harness e2e (fixtures/config/auth.setup/package.json) ra dir.
+// WriteHarness writes the e2e harness tree (fixtures/config/auth.setup/package.json) to dir.
 func WriteHarness(dir string) error { return pwdocker.WriteHarness(harnessFS, "harness", dir) }
