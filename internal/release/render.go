@@ -75,6 +75,9 @@ func Render(rep Report, verbose bool) string {
 		renderChangeSection(&b, "### Features", feats, verbose)
 		renderChangeSection(&b, "### Fixes", fixes, verbose)
 		renderChangeSection(&b, "### Hotfixes", hotfixes, verbose)
+		// Risk-metadata (Blast/DB/Rollback) sống dưới bảng dạng **Label:** value —
+		// prose nhiều câu không nhét vừa ô bảng. Chỉ thay đổi CÓ spec mới có khối này.
+		renderRiskDetail(&b, rr.Changes)
 		// Chore không ảnh hưởng quyết định ship → chỉ hiện khi --verbose (count đã ngầm ở
 		// dòng "N commit → M thay đổi"). Mặc định bỏ hẳn để report gọn.
 		if verbose {
@@ -108,15 +111,16 @@ func renderChangeSection(b *strings.Builder, header string, changes []Change, ve
 		return
 	}
 	b.WriteString(header + "\n")
-	// Bảng: mỗi thay đổi một dòng — quét nhanh hơn danh sách dàn trải.
-	b.WriteString("| Thay đổi | # | Dev | Spec / Risk | Staging |\n")
+	// Bảng = tầng lướt nhanh: mỗi dòng ngắn đều nhau. Cột Spec chỉ cờ ✓/— (chi tiết
+	// rủi ro nằm ở khối "#### Rủi ro" dưới bảng, không nhồi prose vào ô).
+	b.WriteString("| Thay đổi | # | Dev | Spec | Staging |\n")
 	b.WriteString("|---|---|---|---|---|\n")
 	for _, ch := range changes {
 		fmt.Fprintf(b, "| %s | %d | %s | %s | %s |\n",
 			cell(changeCol(ch)),
 			len(ch.Commits),
 			cell(devCol(ch.Authors)),
-			cell(humanRisk(ch.Risk)),
+			specCol(ch.Risk),
 			cell(stagingCol(ch.NotOnStaging)))
 	}
 	// FR-5.2: verbose liệt kê commit của từng thay đổi bên dưới bảng (bảng không lồng được).
@@ -139,13 +143,10 @@ func renderChangeSection(b *strings.Builder, header string, changes []Change, ve
 	}
 }
 
-// changeCol dựng ô "Thay đổi": **Title**[ #PR] — Desc (bỏ "— Desc" khi Desc rỗng).
+// changeCol dựng ô "Thay đổi": **Title**[ #PR] — nhãn ngắn để lướt. Desc (subject
+// commit, hay lẫn Anh/Việt và dài) KHÔNG dán vào đây nữa; nó chỉ hiện ở --verbose.
 func changeCol(ch Change) string {
-	s := "**" + ch.Title + "**" + prNum(ch.PRNum)
-	if ch.Desc != "" {
-		s += " — " + ch.Desc
-	}
-	return s
+	return "**" + ch.Title + "**" + prNum(ch.PRNum)
 }
 
 // devCol join Authors; rỗng → "—".
@@ -170,12 +171,58 @@ func cell(s string) string {
 	return strings.ReplaceAll(s, "|", "\\|")
 }
 
-// humanRisk render risk gọn cho ô bảng. SpecPath rỗng = "unknown — no spec".
-func humanRisk(r RiskMeta) string {
+// specCol: cờ gọn cho cột Spec — ✓ nếu link được spec, — nếu không.
+func specCol(r RiskMeta) string {
 	if r.SpecPath == "" {
-		return "unknown — no spec"
+		return "—"
 	}
-	return fmt.Sprintf("Blast: %s · DB: %s · Rollback: %s", r.BlastRadius, r.DB, r.Rollback)
+	return "✓"
+}
+
+// renderRiskDetail in khối "#### Rủi ro" dưới bảng cho các thay đổi CÓ spec, mỗi tag
+// một dòng **Label:** value (đúng artifact-style). Không có thay đổi nào có spec → bỏ hẳn.
+func renderRiskDetail(b *strings.Builder, changes []Change) {
+	var spec []Change
+	for _, ch := range changes {
+		// Loại chore/other GIỐNG headline SpecTotal (release.go:175): dòng bảng của
+		// chúng bị verbose-gate ở "### Chores", nên khối rủi ro non-verbose sẽ tham
+		// chiếu một thay đổi không hiện ở bảng nào phía trên.
+		if ch.Type == "chore" || ch.Type == "other" {
+			continue
+		}
+		if ch.Risk.SpecPath != "" {
+			spec = append(spec, ch)
+		}
+	}
+	if len(spec) == 0 {
+		return
+	}
+	b.WriteString("\n#### Rủi ro (thay đổi có spec)\n")
+	for _, ch := range spec {
+		fmt.Fprintf(b, "\n**%s**\n", riskHeader(ch))
+		fmt.Fprintf(b, "- **Blast-radius:** %s\n", oneLine(ch.Risk.BlastRadius))
+		fmt.Fprintf(b, "- **DB:** %s\n", oneLine(ch.Risk.DB))
+		fmt.Fprintf(b, "- **Rollback:** %s\n", oneLine(ch.Risk.Rollback))
+	}
+}
+
+// riskHeader: "#PR — Title" khi có PR, else chỉ Title.
+func riskHeader(ch Change) string {
+	if ch.PRNum != "" {
+		return "#" + ch.PRNum + " — " + ch.Title
+	}
+	return ch.Title
+}
+
+// oneLine gộp xuống-dòng thành khoảng trắng để value nằm gọn một dòng bullet; "" → "—".
+// Cũng trim emphasis/backtick rìa: speclink regex bắt tag "**_Label:**" chỉ tới "_Label:"
+// nên "**" ĐÓNG của label lọt vào đầu value ("** contact…"); trim ở đây cho sạch hiển thị.
+func oneLine(s string) string {
+	s = strings.Trim(strings.ReplaceAll(s, "\n", " "), "`* ")
+	if s == "" {
+		return "—"
+	}
+	return s
 }
 
 func prNum(pr string) string {
