@@ -16,6 +16,11 @@ var blastRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Blast-radius:\\s*
 var dbRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_DB:\\s*(.*)$")
 var rollbackRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Rollback:\\s*(.*)$")
 
+// noteDescRe bắt trailer _Release-Note (mô tả một dòng do /ship ghi qua `release-note --note`).
+// Cùng khuôn với 3 tag risk để chịu được [-*] rìa / emphasis. Đây là phía ĐỌC còn thiếu của
+// cơ chế _Release-Note (write-side đã có ở cli/release_note.go); không có → Note rỗng.
+var noteDescRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Release-Note:\\s*(.*)$")
+
 // tagValue mirror analyze.go: trim trailing backtick/emphasis + space quanh value.
 func tagValue(s string) string {
 	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(s), "`*"))
@@ -69,7 +74,7 @@ func noteRisk(bodies string) (RiskMeta, bool) {
 	if sp == "" {
 		sp = "note"
 	}
-	return RiskMeta{SpecPath: sp, BlastRadius: b, DB: d, Rollback: rb}, true
+	return RiskMeta{SpecPath: sp, BlastRadius: b, DB: d, Rollback: rb, Note: firstGroup(noteDescRe, bodies)}, true
 }
 
 // releaseSlugRe rút slug liên-kết từ trailer "_Release-Slug: <slug>" của note-commit.

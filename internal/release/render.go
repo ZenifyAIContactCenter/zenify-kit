@@ -17,7 +17,7 @@ func Render(rep Report, verbose bool) string {
 		// View unreleased regen mỗi /ship + docs-sync → KHÔNG in timestamp time.Now()
 		// (churn commit no-op chỉ-đổi-giờ trong store). Thời điểm đã nằm trong git-log của
 		// store; giữ output deterministic theo git-state (SC-6). R<N>.md cắt-1-lần vẫn giữ "Sinh".
-		fmt.Fprintf(&b, "# Release đang hình thành (sau R%d)\n\n", rep.N)
+		fmt.Fprintf(&b, "# Release đang hình thành: R%d (chưa deploy)\n\n", rep.N)
 	} else {
 		fmt.Fprintf(&b, "# Release %d\n", rep.N)
 		fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)
@@ -111,13 +111,15 @@ func renderChangeSection(b *strings.Builder, header string, changes []Change, ve
 		return
 	}
 	b.WriteString(header + "\n")
-	// Bảng = tầng lướt nhanh: mỗi dòng ngắn đều nhau. Cột Spec chỉ cờ ✓/— (chi tiết
-	// rủi ro nằm ở khối "#### Rủi ro" dưới bảng, không nhồi prose vào ô).
-	b.WriteString("| Thay đổi | # | Dev | Spec | Staging |\n")
-	b.WriteString("|---|---|---|---|---|\n")
+	// Bảng = tầng lướt nhanh: mỗi dòng ngắn đều nhau. Cột "Mô tả" là prose một dòng (thường
+	// tiếng Việt) lấy từ trailer _Release-Note do /ship ghi — để đọc doc là hiểu PR làm gì mà
+	// không phải mở PR. Cột Spec chỉ cờ ✓/— (chi tiết rủi ro nằm ở khối "#### Rủi ro" dưới bảng).
+	b.WriteString("| Thay đổi | Mô tả | # | Dev | Spec | Staging |\n")
+	b.WriteString("|---|---|---|---|---|---|\n")
 	for _, ch := range changes {
-		fmt.Fprintf(b, "| %s | %d | %s | %s | %s |\n",
+		fmt.Fprintf(b, "| %s | %s | %d | %s | %s | %s |\n",
 			cell(changeCol(ch)),
+			cell(descCol(ch)),
 			len(ch.Commits),
 			cell(devCol(ch.Authors)),
 			specCol(ch.Risk),
@@ -147,6 +149,16 @@ func renderChangeSection(b *strings.Builder, header string, changes []Change, ve
 // commit, hay lẫn Anh/Việt và dài) KHÔNG dán vào đây nữa; nó chỉ hiện ở --verbose.
 func changeCol(ch Change) string {
 	return "**" + ch.Title + "**" + prNum(ch.PRNum)
+}
+
+// descCol dựng ô "Mô tả": mô tả một dòng từ _Release-Note (Risk.Note). Rỗng (change không
+// có note-commit, hoặc risk đến từ spec) → "—". KHÔNG fallback về Change.Desc (subject commit,
+// hay lẫn Anh/Việt) — đó chính là thứ bảng này cố tránh; ô để trống nhắc /ship ghi --note.
+func descCol(ch Change) string {
+	if ch.Risk.Note == "" {
+		return "—"
+	}
+	return ch.Risk.Note
 }
 
 // devCol join Authors; rỗng → "—".

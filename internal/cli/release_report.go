@@ -34,7 +34,14 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 	resolve := func(name string) (string, bool) {
 		return workspace.Resolve(workspaceDir, name, workspace.DefaultMaxDepth, os.ReadDir)
 	}
-	repos, err := release.Resolve(r, workspaceDir, n, os.ReadFile, disc)
+	// unreleased view = mọi repo deploy (ResolveUnreleased); finalize = repo có release<n> (Resolve).
+	var repos []string
+	var err error
+	if unreleased {
+		repos, err = release.ResolveUnreleased(r, workspaceDir, os.ReadFile, disc)
+	} else {
+		repos, err = release.Resolve(r, workspaceDir, n, os.ReadFile, disc)
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "release-report: không phân giải repo: %v (fail-open)\n", err)
 		return nil
@@ -42,7 +49,13 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 	if !noFetch {
 		for _, name := range repos {
 			if dir, ok := resolve(name); ok {
-				_ = release.Fetch(r, dir, fmt.Sprintf("release%d", n), "staging")
+				if unreleased {
+					// unreleased chỉ cần staging tươi (mốc base = release cũ, gần như bất biến,
+					// đã có local). Fetch release<n> vô nghĩa với repo tuần này chưa cắt release<n>.
+					_ = release.Fetch(r, dir, "staging")
+				} else {
+					_ = release.Fetch(r, dir, fmt.Sprintf("release%d", n), "staging")
+				}
 			}
 		}
 	}
@@ -94,7 +107,10 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 	// FR-4.3: lúc chốt (finalize, không --unreleased), đóng sổ unreleased.md — regenerate view
 	// theo mốc mới (range release<n>..staging, gần rỗng ngay sau cắt). Best-effort, fail-open.
 	if !unreleased {
-		repFresh := release.BuildUnreleased(r, resolve, repos, n, loadPatterns, loadSpecs)
+		// reset dùng scope UNRELEASED (mọi repo deploy), KHÔNG phải `repos` finalize (chỉ repo có
+		// release<n>) — nếu không unreleased.md sau reset sẽ thiếu repo chưa cắt release<n>.
+		unrepos, _ := release.ResolveUnreleased(r, workspaceDir, os.ReadFile, disc)
+		repFresh := release.BuildUnreleased(r, resolve, unrepos, n, loadPatterns, loadSpecs)
 		if e := os.WriteFile(filepath.Join(outDir, "unreleased.md"), []byte(release.Render(repFresh, false)), 0o600); e != nil {
 			fmt.Fprintf(stderr, "release-report: không reset được unreleased.md: %v (fail-open)\n", e)
 		}

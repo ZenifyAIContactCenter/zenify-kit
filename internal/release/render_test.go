@@ -17,7 +17,8 @@ func sampleReport() Report {
 			Changes: []Change{
 				{Title: "Linked fields", Slug: "linked-fields", Type: "feat", PRNum: "12", Commits: make([]Commit, 20),
 					Authors: []string{"namph", "hungnk"}, Desc: "add linked field type",
-					Risk: RiskMeta{SpecPath: "specs/be/x-design.md", BlastRadius: "be+web", DB: "N/A", Rollback: "revert"}},
+					Risk: RiskMeta{SpecPath: "specs/be/x-design.md", BlastRadius: "be+web", DB: "N/A", Rollback: "revert",
+						Note: "thêm loại trường liên kết cho form ticket"}},
 				{Title: "Report tz", Slug: "report-tz", Type: "fix", Authors: []string{"namph"},
 					Commits: []Commit{{Subject: "fix(report): tz offset"}, {Subject: "test: tz case"}}},
 				{Title: "Urgent", Slug: "urgent", Type: "hotfix", Commits: make([]Commit, 1), IsHotfix: true, NotOnStaging: true},
@@ -35,13 +36,14 @@ func TestRenderHeadlineAndSections(t *testing.T) {
 	for _, want := range []string{
 		"# Release 84", "Quyết định nhanh", "notification", // không ship
 		"migration → BE", "**/chat_*", // shared + deploy order
-		"Shared-collection: **/chat_*",             // FR-3.4 per-repo risk-proxy
-		"| Thay đổi | # | Dev | Spec | Staging |", // bảng header (cột Spec cờ gọn)
-		"### Features", "Linked fields",           // feature title trong ô Thay đổi
-		"namph, hungnk",                           // Dev column
+		"Shared-collection: **/chat_*",                    // FR-3.4 per-repo risk-proxy
+		"| Thay đổi | Mô tả | # | Dev | Spec | Staging |", // bảng header (cột Mô tả từ _Release-Note)
+		"### Features", "Linked fields", // feature title trong ô Thay đổi
+		"thêm loại trường liên kết cho form ticket", // cột Mô tả từ Risk.Note
+		"namph, hungnk", // Dev column
 		"### Fixes", "Report tz",
 		"### Hotfixes", "⚠ chưa sync", // hotfix cờ staging trong ô bảng
-		"1/3",                          // spec coverage
+		"1/3", // spec coverage
 		// Khối rủi ro dưới bảng, chỉ cho thay đổi CÓ spec — mỗi tag một dòng **Label:**.
 		"#### Rủi ro (thay đổi có spec)",
 		"**#12 — Linked fields**",
@@ -89,7 +91,7 @@ func TestRenderUnreleasedOmitsTimestamp(t *testing.T) {
 	if strings.Contains(un, "Sinh ") {
 		t.Errorf("view unreleased KHÔNG được in timestamp (churn): %s", un)
 	}
-	if !strings.Contains(un, "# Release đang hình thành (sau R84)") {
+	if !strings.Contains(un, "# Release đang hình thành: R84 (chưa deploy)") {
 		t.Errorf("unreleased thiếu header: %s", un)
 	}
 	cut := Render(Report{N: 84, GeneratedAt: "2026-09-08 10:00", SharedCrossRepo: map[string][]string{}}, false)

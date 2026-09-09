@@ -93,6 +93,18 @@ func TestNoteRiskBySlugSkipsNoRiskTag(t *testing.T) {
 	}
 }
 
+// Phía đọc còn thiếu của cơ chế _Release-Note: mô tả một dòng (do /ship ghi qua --note) phải
+// được kéo vào RiskMeta.Note để render cột "Mô tả". buildNoteMessage LUÔN điền default 3 risk
+// tag nên note thật luôn có risk → Note luôn đi kèm.
+func TestNoteRiskCarriesReleaseNote(t *testing.T) {
+	notes := []Commit{{Body: "_Release-Slug: foo\n_Release-Note: thêm loại trường liên kết\n_Blast-radius: be+web\n_DB: N/A\n_Rollback: revert PR\n"}}
+	m := NoteRiskBySlug(notes)
+	rm := LinkSpec(Change{Slug: "foo"}, nil, m)
+	if rm.Note != "thêm loại trường liên kết" {
+		t.Errorf("RiskMeta.Note phải kéo từ trailer _Release-Note: %+v", rm)
+	}
+}
+
 func TestIsReleaseNote(t *testing.T) {
 	if !IsReleaseNote(Commit{Subject: "chore(release): note x", Body: "_Release-Slug: x\n"}) {
 		t.Errorf("commit đúng subject + trailer phải nhận diện là release note")

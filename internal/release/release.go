@@ -15,9 +15,10 @@ func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []stri
 	return buildReport(r, resolve, repos, n, false, loadPatterns, loadSpecs)
 }
 
-// BuildUnreleased ráp report "đang hình thành" cho range release<latestN>..origin/staging —
-// view những gì sẽ vào release kế tiếp, chưa cắt. Cùng lõi buildReport, không tính regression
-// (to==staging nên NotInStaging luôn rỗng) và không có CutDate (chưa cắt).
+// BuildUnreleased ráp report "đang hình thành" cho release latestN (release đang gom, chưa
+// deploy — convention A). Range = release<prev>..origin/staging với prev = release đã-deploy
+// gần nhất, tức toàn bộ delta của release đang hình thành so với production. Cùng lõi buildReport,
+// không tính regression (to==staging nên NotInStaging luôn rỗng) và không có CutDate (chưa cắt).
 func BuildUnreleased(r gitx.Runner, resolve func(name string) (string, bool), repos []string, latestN int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
 	return buildReport(r, resolve, repos, latestN, true, loadPatterns, loadSpecs)
 }
@@ -40,24 +41,35 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không đọc được release branches: " + err.Error()})
 			continue
 		}
-		has := false
-		for _, x := range nums {
-			if x == n {
-				has = true
-			}
-		}
-		if !has {
-			rep.NotShipped = append(rep.NotShipped, name)
-			continue
-		}
 		var relPrev, relN string
 		var prevForReport int
 		if unreleased {
-			// range = release<latestN>..staging. Repo phải có release<n> làm mốc dưới (đã check ở trên).
-			relPrev = fmt.Sprintf("origin/release%d", n)
+			// unreleased = view "pending deploy" cập nhật theo staging HẰNG NGÀY cho MỌI repo
+			// deploy — KHÔNG đòi repo phải cắt release<n>. Mốc dưới = release ĐÃ-DEPLOY gần nhất
+			// của CHÍNH repo = release tồn-tại lớn nhất < n (forming): với repo đang gom R<n> đó là
+			// release cắt trước; với repo tuần này chưa gom (chưa có release<n>) đó chính là release
+			// max của nó. PrevRelease(nums,n) trả đúng cả hai. (n = forming = release cao nhất toàn
+			// workspace; numbering dùng chung một dãy.) Repo chỉ có release>=n (mới tinh, không mốc
+			// so) → bỏ qua.
+			prev, ok := PrevRelease(nums, n)
+			if !ok {
+				continue
+			}
+			relPrev = fmt.Sprintf("origin/release%d", prev)
 			relN = "origin/staging"
-			prevForReport = n
+			prevForReport = prev
 		} else {
+			// finalize R<n>: một repo tham gia release n iff có nhánh release<n>.
+			has := false
+			for _, x := range nums {
+				if x == n {
+					has = true
+				}
+			}
+			if !has {
+				rep.NotShipped = append(rep.NotShipped, name)
+				continue
+			}
 			prev, ok := PrevRelease(nums, n)
 			if !ok {
 				rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không tìm được release trước"})
@@ -138,6 +150,12 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 		noteMap := NoteRiskBySlug(notes)
 		for i := range rr.Changes {
 			rr.Changes[i].Risk = LinkSpec(rr.Changes[i], specs, noteMap)
+		}
+		// unreleased: repo không có commit nào pending (staging == release đã-deploy của nó) →
+		// bỏ khỏi view, không liệt kê section rỗng (giữ doc gọn, đúng "không đổi thì bỏ qua").
+		// Repo lỗi (rr.Err) vẫn giữ để lộ sự cố.
+		if unreleased && rr.Err == "" && len(rr.Commits) == 0 {
+			continue
 		}
 		rep.Repos = append(rep.Repos, rr)
 	}
