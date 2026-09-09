@@ -11,13 +11,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// defaultConfigSub: config dir mặc định = store docs (resolveDocsStore), subdir ẩn .config
-// (docs layer agent-managed; config ẩn để dev chỉ thấy spec/plan/handoff/release).
-// Store tự tìm qua $ZENIFY_HOME/~/.zenify/knowledge/workspace fallback (Task 1).
-// Override bằng --config-dir cho workspace khác.
+// defaultConfigSub: default config dir = docs store (resolveDocsStore), hidden .config subdir
+// (docs layer is agent-managed; config is hidden so devs only see spec/plan/handoff/release).
+// Store auto-resolves via $ZENIFY_HOME/~/.zenify/knowledge/workspace fallback (Task 1).
+// Override with --config-dir for a different workspace.
 const defaultConfigSub = ".config"
 
-// runConfig là lõi test được. FAIL-OPEN: luôn trả nil; lỗi thành note ra stderr.
+// runConfig is the testable core. FAIL-OPEN: always returns nil; errors become a note to stderr.
 func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer) error {
 	if configDir == "" {
 		configDir = filepath.Join(resolveDocsStore(workspace, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultConfigSub)
@@ -25,7 +25,7 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 	manifestPath := filepath.Join(configDir, "distribution.txt")
 	mb, err := os.ReadFile(manifestPath) //nolint:gosec // G304 -- manifestPath is inside the trusted config dir, not user input
 	if err != nil {
-		fmt.Fprintf(stderr, "config: không đọc được manifest %s: %v (fail-open)\n", manifestPath, err)
+		fmt.Fprintf(stderr, "config: không đọc được manifest %s: %v (fail-open)\n", manifestPath, err) //znf:allow-lang
 		return nil
 	}
 	pairs, notes := distribute.ParseManifest(mb)
@@ -62,7 +62,7 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 			nSame++
 		case distribute.Skip:
 			nSkip++
-			fmt.Fprintf(stderr, "config: bỏ %s → %s — %s\n", p.Source, p.Dest, p.Reason)
+			fmt.Fprintf(stderr, "config: bỏ %s → %s — %s\n", p.Source, p.Dest, p.Reason) //znf:allow-lang
 		}
 	}
 
@@ -77,11 +77,11 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 		nWritten := 0
 		for _, n := range distribute.Apply(plans, readSource, writeDest) {
 			fmt.Fprintln(stdout, "  "+n)
-			if strings.HasPrefix(n, "đã ghi ") {
+			if strings.HasPrefix(n, "đã ghi ") { //znf:allow-lang
 				nWritten++
 			}
 		}
-		fmt.Fprintf(stdout, "\nĐã áp dụng: %d ghi (%d giữ nguyên, %d bỏ).\n", nWritten, nSame, nSkip)
+		fmt.Fprintf(stdout, "\nĐã áp dụng: %d ghi (%d giữ nguyên, %d bỏ).\n", nWritten, nSame, nSkip) //znf:allow-lang
 		return nil
 	}
 
@@ -92,16 +92,16 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 		}
 	}
 	if len(plans) == 0 {
-		fmt.Fprintln(stdout, "\nManifest trống — không có cặp nào để phân phối.")
+		fmt.Fprintln(stdout, "\nManifest trống — không có cặp nào để phân phối.") //znf:allow-lang
 	} else if nChange == 0 {
-		fmt.Fprintln(stdout, "\nTất cả đã đồng bộ. (dry-run — dùng --apply để ghi)")
+		fmt.Fprintln(stdout, "\nTất cả đã đồng bộ. (dry-run — dùng --apply để ghi)") //znf:allow-lang
 	} else {
-		fmt.Fprintf(stdout, "\n%d thay đổi, %d giữ nguyên, %d bỏ. (dry-run — dùng --apply để ghi)\n", nChange, nSame, nSkip)
+		fmt.Fprintf(stdout, "\n%d thay đổi, %d giữ nguyên, %d bỏ. (dry-run — dùng --apply để ghi)\n", nChange, nSame, nSkip) //znf:allow-lang
 	}
 	return nil
 }
 
-// indentBlock thụt mỗi dòng của khối diff 4 khoảng trắng.
+// indentBlock indents each line of the diff block by 4 spaces.
 func indentBlock(s string) string {
 	if s == "" {
 		return ""
@@ -114,7 +114,7 @@ func newConfigCmd() *cobra.Command {
 	var apply bool
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "phân phối config workspace-level từ docs/.config (dry-run mặc định)",
+		Short: "phân phối config workspace-level từ docs/.config (dry-run mặc định)", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if workspace == "" {
@@ -123,8 +123,8 @@ func newConfigCmd() *cobra.Command {
 			return runConfig(workspace, configDir, apply, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", "thư mục workspace (mặc định cwd)")
-	cmd.Flags().StringVar(&configDir, "config-dir", "", "thư mục config nguồn (mặc định repo docs/.config, tự tìm theo layout)")
-	cmd.Flags().BoolVar(&apply, "apply", false, "ghi thay đổi (mặc định chỉ dry-run)")
+	cmd.Flags().StringVar(&workspace, "workspace", "", "thư mục workspace (mặc định cwd)")                                       //znf:allow-lang
+	cmd.Flags().StringVar(&configDir, "config-dir", "", "thư mục config nguồn (mặc định repo docs/.config, tự tìm theo layout)") //znf:allow-lang
+	cmd.Flags().BoolVar(&apply, "apply", false, "ghi thay đổi (mặc định chỉ dry-run)")                                           //znf:allow-lang
 	return cmd
 }

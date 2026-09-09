@@ -57,7 +57,7 @@ func RunPromote(o PromoteOptions) error {
 
 	nm := cfg.DepsDir
 	if cfg.Deps == "none" || nm == "" {
-		_, _ = fmt.Fprintf(o.Stdout, "wt: %q dùng cache dependency toàn cục — không có gì để promote\n", o.Slug)
+		_, _ = fmt.Fprintf(o.Stdout, "wt: %q dùng cache dependency toàn cục — không có gì để promote\n", o.Slug) //znf:allow-lang
 		return nil
 	}
 	dst := filepath.Join(path, nm)

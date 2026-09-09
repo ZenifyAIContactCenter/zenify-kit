@@ -16,7 +16,7 @@ var codingAssets embed.FS
 
 const codingRoot = "assets/coding"
 
-// CodingSkills liệt kê tên thư mục skill dưới assets/coding (động, không đăng ký).
+// CodingSkills lists the skill directory names under assets/coding (dynamic, unregistered).
 func CodingSkills() []string {
 	entries, err := fs.ReadDir(codingAssets, codingRoot)
 	if err != nil {
@@ -32,8 +32,8 @@ func CodingSkills() []string {
 	return out
 }
 
-// InstallCoding materialize CHỈ các skill có tên trong `skills` từ assets/coding
-// vào destRoot, additive/refresh-safe (giống Sync). Bỏ qua tên không tồn tại.
+// InstallCoding materializes ONLY the skills named in `skills` from assets/coding
+// into destRoot, additive/refresh-safe (like Sync). Skips names that don't exist.
 func InstallCoding(destRoot, manifestPath string, skills []string) (Result, error) {
 	var res Result
 	want := map[string]bool{}

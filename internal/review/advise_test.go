@@ -14,10 +14,10 @@ func adviseContains(ss []string, s string) bool {
 func TestAdviseGate_Shared(t *testing.T) {
 	advise, signals := AdviseGate(AdviseInput{Shared: true})
 	if !advise {
-		t.Fatal("shared phải bật advise")
+		t.Fatal("shared must turn advise on")
 	}
 	if !adviseContains(signals, "shared-contract touched") {
-		t.Errorf("thiếu signal shared: %v", signals)
+		t.Errorf("missing shared signal: %v", signals)
 	}
 }
 
@@ -36,21 +36,21 @@ func TestAdviseGate_CleanLargeDiff(t *testing.T) {
 }
 
 func TestAdviseGate_CleanAtThreshold_NoAdvise(t *testing.T) {
-	// added == 200 (không > ngưỡng LargeCleanLOC) → không bật
+	// added == 200 (not > LargeCleanLOC threshold) → should not fire
 	advise, _ := AdviseGate(AdviseInput{Added: 200})
 	if advise {
-		t.Error("diff == ngưỡng, sạch → không nên advise")
+		t.Error("diff == threshold, clean → should not advise")
 	}
 }
 
 func TestAdviseGate_CleanLargeIgnoredWhenFindingsPresent(t *testing.T) {
-	// diff lớn nhưng CÓ finding → không phải "clean review", không bật signal clean-large
+	// large diff but HAS findings → not a "clean review", clean-large signal should not fire
 	advise, signals := AdviseGate(AdviseInput{Added: 500, Findings: []AdviseFinding{{Dimension: "bugs", Severity: "LOW"}}})
 	if advise {
-		t.Errorf("1 finding + diff lớn nhưng dưới ManyFindings → không nên advise: %v", signals)
+		t.Errorf("1 finding + large diff but below ManyFindings → should not advise: %v", signals)
 	}
 	if adviseContains(signals, "clean review on large diff") {
-		t.Error("có finding thì không được coi là clean")
+		t.Error("a diff with findings must not be treated as clean")
 	}
 }
 
@@ -70,9 +70,9 @@ func TestAdviseGate_ManyFindings(t *testing.T) {
 func TestAdviseGate_None(t *testing.T) {
 	advise, signals := AdviseGate(AdviseInput{Added: 50, Findings: []AdviseFinding{{Dimension: "bugs", Severity: "LOW"}}})
 	if advise {
-		t.Error("không tín hiệu → không advise")
+		t.Error("no signals → should not advise")
 	}
 	if len(signals) != 0 {
-		t.Errorf("signals phải rỗng: %v", signals)
+		t.Errorf("signals must be empty: %v", signals)
 	}
 }

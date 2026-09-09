@@ -12,7 +12,7 @@ func TestAggregateGroupsBranchAndScope(t *testing.T) {
 	}
 	ch := Aggregate(cs, nil)
 	if len(ch) != 2 {
-		t.Fatalf("muốn 2 change, được %d: %+v", len(ch), ch)
+		t.Fatalf("want 2 changes, got %d: %+v", len(ch), ch)
 	}
 	byslug := map[string]Change{}
 	for _, c := range ch {
@@ -20,15 +20,15 @@ func TestAggregateGroupsBranchAndScope(t *testing.T) {
 	}
 	a := byslug["alpha"]
 	if a.Type != "feat" || len(a.Commits) != 3 || a.PRNum != "7" || a.Title != "Alpha" {
-		t.Errorf("alpha gom sai: %+v", a)
+		t.Errorf("alpha grouped wrong: %+v", a)
 	}
-	// Authors: distinct theo thứ tự gặp đầu, bỏ rỗng.
+	// Authors: distinct, first-seen order, empties dropped.
 	if len(a.Authors) != 2 || a.Authors[0] != "namph" || a.Authors[1] != "hungnk" {
 		t.Errorf("authors distinct first-seen: %+v", a.Authors)
 	}
-	// Desc: subject non-merge đầu, cắt prefix conventional-commit.
+	// Desc: first non-merge subject, conventional-commit prefix stripped.
 	if a.Desc != "a1" {
-		t.Errorf("desc phải cắt prefix type(scope): được %q", a.Desc)
+		t.Errorf("desc must strip the type(scope): prefix, got %q", a.Desc)
 	}
 	if byslug["beta"].Type != "fix" || len(byslug["beta"].Commits) != 2 {
 		t.Errorf("beta: %+v", byslug["beta"])
@@ -47,7 +47,7 @@ func TestAggregateMiscBucketNoCommitLost(t *testing.T) {
 		total += len(c.Commits)
 	}
 	if total != 3 {
-		t.Fatalf("mất commit: tổng=%d", total)
+		t.Fatalf("lost a commit: total=%d", total)
 	}
 }
 
@@ -59,14 +59,14 @@ func TestAggregateHotfixAndNotOnStaging(t *testing.T) {
 	if len(ch) != 1 || !ch[0].IsHotfix || ch[0].Type != "hotfix" || !ch[0].NotOnStaging {
 		t.Fatalf("hotfix/notOnStaging: %+v", ch)
 	}
-	// Chỉ có merge commit → dùng tác giả merge làm best-available (không để trống Dev).
+	// Only a merge commit present → fall back to the merger's name as best-available (never leave Dev empty).
 	if len(ch[0].Authors) != 1 || ch[0].Authors[0] != "admin" {
-		t.Errorf("pure-merge change phải fallback về tác giả merge: %+v", ch[0].Authors)
+		t.Errorf("a pure-merge change must fall back to the merger's name: %+v", ch[0].Authors)
 	}
 }
 
 func TestAggregateAuthorsExcludeMergeClicker(t *testing.T) {
-	// hungnk viết code; admin chỉ bấm merge → Dev KHÔNG được liệt admin.
+	// hungnk wrote the code; admin only clicked merge → Dev must NOT list admin.
 	cs := []Commit{
 		{SHA: "1", Subject: "feat(x): a1", Type: "feat", Author: "hungnk"},
 		{SHA: "2", Subject: "feat(x): a2", Type: "feat", Author: "hungnk"},
@@ -74,9 +74,9 @@ func TestAggregateAuthorsExcludeMergeClicker(t *testing.T) {
 	}
 	ch := Aggregate(cs, nil)
 	if len(ch) != 1 {
-		t.Fatalf("muốn 1 change: %+v", ch)
+		t.Fatalf("want 1 change: %+v", ch)
 	}
 	if len(ch[0].Authors) != 1 || ch[0].Authors[0] != "hungnk" {
-		t.Errorf("người bấm merge (admin) không được vào Dev: %+v", ch[0].Authors)
+		t.Errorf("the merger (admin) must not appear in Dev: %+v", ch[0].Authors)
 	}
 }

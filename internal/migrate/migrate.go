@@ -1,5 +1,5 @@
-// Package migrate lập kế hoạch + thực hiện gom repo vào một thư mục con (repos/).
-// Thuần: mọi I/O + kiểm tra git đều inject. Fail-open.
+// Package migrate plans and performs consolidating repos into one subdirectory (repos/).
+// Pure: all I/O and git checks are injected. Fail-open.
 package migrate
 
 import (
@@ -15,7 +15,7 @@ type Action string
 const (
 	Move   Action = "MOVE"
 	Refuse Action = "REFUSE"
-	Skip   Action = "SKIP" // đã ở trong toDir → bỏ qua (idempotent)
+	Skip   Action = "SKIP" // already in toDir → skip (idempotent)
 )
 
 type Item struct {
@@ -24,9 +24,10 @@ type Item struct {
 	Reason         string
 }
 
-// BuildPlan phân loại mỗi repo: SKIP nếu đã ở toDir; REFUSE nếu trùng basename ở
-// nhiều nơi (không gom tự động được); còn lại MOVE. KHÔNG còn gate dirty/worktree —
-// v2 move repo dirty (os.Rename mang theo) và repair worktree sau move (xem Apply).
+// BuildPlan classifies each repo: SKIP if already in toDir; REFUSE if the basename
+// collides in multiple places (can't consolidate automatically); otherwise MOVE. No more
+// dirty/worktree gate — v2 moves a dirty repo (os.Rename carries it along) and repairs
+// worktrees after the move (see Apply).
 func BuildPlan(root, toDir string, repos []workspace.Repo) []Item {
 	target := filepath.Join(root, toDir)
 	seen := map[string]int{}
@@ -39,10 +40,10 @@ func BuildPlan(root, toDir string, repos []workspace.Repo) []Item {
 		switch {
 		case seen[rp.Name] > 1:
 			it.Action = Refuse
-			it.Reason = "trùng tên repo ở nhiều nơi — không gom tự động, xử tay"
+			it.Reason = "repo name collides in multiple places — can't consolidate automatically, handle manually"
 		case filepath.Dir(rp.Path) == target:
 			it.Action = Skip
-			it.Reason = "đã ở " + toDir + "/"
+			it.Reason = "already in " + toDir + "/"
 		default:
 			it.To = filepath.Join(target, rp.Name)
 			it.Action = Move
@@ -52,60 +53,62 @@ func BuildPlan(root, toDir string, repos []workspace.Repo) []Item {
 	return items
 }
 
-// ApplyIO gộp mọi I/O inject cho Apply (test bằng fake, thật bằng gitx+os ở CLI).
+// ApplyIO bundles all injected I/O for Apply (tests use fakes, real use gitx+os in the CLI).
 type ApplyIO struct {
-	ListWT     func(repoDir string) ([]string, error)            // liệt kê worktree TRƯỚC move
+	ListWT     func(repoDir string) ([]string, error)            // list worktrees BEFORE the move
 	Move       func(from, to string) error                       // os.Rename
-	MkdirAll   func(dir string) error                            // tạo thư mục đích
-	Repair     func(repoDir, wtPath string) error                // git worktree repair <path-mới>
+	MkdirAll   func(dir string) error                            // create the destination directory
+	Repair     func(repoDir, wtPath string) error                // git worktree repair <new-path>
 	Repoint    func(wtOld, wtNew, mainOld, mainNew string) error // re-point symlink node_modules
-	UpdateYAML func(name, newPath string) error                  // cập nhật repos.yaml
-	// Resolve trả path đã resolve symlink (filepath.EvalSymlinks + fallback Clean ở CLI).
-	// `git worktree list` trả path ĐÃ resolve symlink, còn it.From (từ workspace.Discover)
-	// là path THÔ — nên phải resolve it.From trước khi so khớp prefix trong newWorktreePath,
-	// nếu không worktree nội bộ dưới workspace symlink (vd macOS /var→/private/var) bị
-	// tưởng nhầm là ngoài repo.
+	UpdateYAML func(name, newPath string) error                  // update repos.yaml
+	// Resolve returns the symlink-resolved path (filepath.EvalSymlinks + fallback Clean in the
+	// CLI). `git worktree list` returns an ALREADY symlink-resolved path, while it.From (from
+	// workspace.Discover) is a RAW path — so it.From must be resolved before prefix-matching in
+	// newWorktreePath, otherwise an internal worktree under a workspace symlink (e.g. macOS
+	// /var→/private/var) gets mistaken for one outside the repo.
 	Resolve func(path string) string
 }
 
-// newWorktreePath ánh xạ path worktree cũ → path sau move. Worktree nội bộ (nằm dưới
-// repoOld) rebase sang repoNew; worktree ngoài repo (herdr) giữ nguyên (không di chuyển).
+// newWorktreePath maps the old worktree path → the path after the move. An internal
+// worktree (under repoOld) is rebased onto repoNew; a worktree outside the repo (herdr)
+// stays unchanged (not moved).
 func newWorktreePath(wtOld, repoOld, repoNew string) string {
 	rel, err := filepath.Rel(repoOld, wtOld)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return wtOld // ngoài repoOld → không đổi
+		return wtOld // outside repoOld → unchanged
 	}
 	return filepath.Join(repoNew, rel)
 }
 
-// Apply thực hiện move-and-repair, HAI PASS cho repos.yaml (manifest ở vị trí cuối sau
-// khi mọi move settle). Mỗi repo atomic: liệt-kê-worktree → move → repair+repoint từng
-// worktree → rollback move-back nếu bước nào fail (repo đó Refuse, không update YAML).
-// Fail-open giữa các repo. Trả về các note.
+// Apply performs the move-and-repair, in TWO PASSES for repos.yaml (the manifest is
+// updated last, after every move has settled). Each repo is atomic: list-worktrees → move
+// → repair+repoint each worktree → move back on rollback if any step fails (that repo is
+// Refused, YAML not updated). Fail-open across repos. Returns the notes.
 func Apply(items []Item, io ApplyIO) []string {
 	var notes []string
 	var moved []Item
 
-	// Pass 1: move + repair từng repo (atomic).
+	// Pass 1: move + repair each repo (atomic).
 	for _, it := range items {
 		if it.Action != Move {
 			continue
 		}
 		wts, err := io.ListWT(it.From)
 		if err != nil {
-			notes = append(notes, "bỏ qua "+it.Name+": không liệt kê được worktree: "+err.Error())
+			notes = append(notes, "skipping "+it.Name+": couldn't list worktrees: "+err.Error())
 			continue
 		}
-		// Resolve TRƯỚC move (khi it.From còn tồn tại) — wts đến từ `git worktree list`
-		// nên ĐÃ resolve symlink; phải so khớp repoOld cùng dạng resolve, không thì
-		// newWorktreePath lệch prefix ở root và coi nhầm worktree nội bộ là ngoài repo.
+		// Resolve BEFORE the move (while it.From still exists) — wts come from
+		// `git worktree list` so they are ALREADY symlink-resolved; repoOld must be matched in
+		// the same resolved form, otherwise newWorktreePath's prefix is off at the root and an
+		// internal worktree gets mistaken for one outside the repo.
 		repoOldResolved := io.Resolve(it.From)
 		if err := io.MkdirAll(filepath.Dir(it.To)); err != nil {
-			notes = append(notes, "không tạo được thư mục cho "+it.Name+": "+err.Error())
+			notes = append(notes, "couldn't create directory for "+it.Name+": "+err.Error())
 			continue
 		}
 		if err := io.Move(it.From, it.To); err != nil {
-			notes = append(notes, "không move được "+it.Name+": "+err.Error())
+			notes = append(notes, "couldn't move "+it.Name+": "+err.Error())
 			continue
 		}
 		failed := ""
@@ -118,7 +121,7 @@ func Apply(items []Item, io ApplyIO) []string {
 			}
 			if err := io.Repoint(wt, wtNew, it.From, it.To); err != nil {
 				failed = "re-point symlink " + wt + ": " + err.Error()
-				okCount++ // Repair đã thành công cho wt này → tính vào để restore loop un-repair nó
+				okCount++ // Repair succeeded for this wt → count it so the restore loop un-repairs it
 				break
 			}
 			okCount++
@@ -127,9 +130,10 @@ func Apply(items []Item, io ApplyIO) []string {
 			moveBackErr := io.Move(it.To, it.From)
 			restoreErr := ""
 			if moveBackErr == nil {
-				// Các worktree TRƯỚC worktree lỗi đã repair+repoint xong vào it.To —
-				// move-back đưa repo về it.From nên chúng giờ dangling. Un-repair từng
-				// cái về path cũ (đảo ngược hướng repoint) để KHÔNG để lại state nửa vời.
+				// Worktrees BEFORE the failing one already finished repair+repoint into it.To —
+				// moving back returns the repo to it.From, so they are now dangling. Un-repair each
+				// one back to its old path (reversing the repoint direction) so we do NOT leave a
+				// half-done state behind.
 				for _, wt := range wts[:okCount] {
 					wtNew := newWorktreePath(wt, repoOldResolved, it.To)
 					if err := io.Repair(it.From, wt); err != nil {
@@ -143,28 +147,28 @@ func Apply(items []Item, io ApplyIO) []string {
 			}
 			switch {
 			case moveBackErr != nil:
-				notes = append(notes, "NGHIÊM TRỌNG "+it.Name+": "+failed+" VÀ rollback fail: "+moveBackErr.Error()+" — kiểm tra tay")
+				notes = append(notes, "CRITICAL "+it.Name+": "+failed+" AND rollback failed: "+moveBackErr.Error()+" — check manually")
 			case restoreErr != "":
-				notes = append(notes, "refuse "+it.Name+": "+failed+" (đã rollback về chỗ cũ, NHƯNG còn worktree CHƯA khôi phục"+restoreErr+" — kiểm tra tay: git worktree repair)")
+				notes = append(notes, "refuse "+it.Name+": "+failed+" (rollback done, BUT some worktrees are NOT restored"+restoreErr+" — check manually: git worktree repair)")
 			default:
-				notes = append(notes, "refuse "+it.Name+": "+failed+" (đã rollback về chỗ cũ, đã khôi phục "+strconv.Itoa(okCount)+" worktree đã repair trước đó)")
+				notes = append(notes, "refuse "+it.Name+": "+failed+" (rollback done, restored "+strconv.Itoa(okCount)+" previously repaired worktrees)")
 			}
 			continue
 		}
 		moved = append(moved, it)
 		if len(wts) > 0 {
-			notes = append(notes, "đã move "+it.Name+" + repair "+strconv.Itoa(len(wts))+" worktree")
+			notes = append(notes, "moved "+it.Name+" + repaired "+strconv.Itoa(len(wts))+" worktree(s)")
 		}
 	}
 
-	// Pass 2: mọi move/repair đã settle → cập nhật repos.yaml.
+	// Pass 2: all moves/repairs have settled → update repos.yaml.
 	for _, it := range moved {
 		newPath := filepath.Base(filepath.Dir(it.To)) + "/" + it.Name
 		if err := io.UpdateYAML(it.Name, newPath); err != nil {
-			notes = append(notes, "đã move "+it.Name+" nhưng không cập nhật được repos.yaml: "+err.Error())
+			notes = append(notes, "moved "+it.Name+" but couldn't update repos.yaml: "+err.Error())
 			continue
 		}
-		notes = append(notes, "đã cập nhật repos.yaml: "+it.Name+" → "+newPath)
+		notes = append(notes, "updated repos.yaml: "+it.Name+" → "+newPath)
 	}
 	return notes
 }

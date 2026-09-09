@@ -16,20 +16,20 @@ import (
 
 func e2eDir(repo string) string { return filepath.Join(repo, ".znf", "e2e") }
 
-// runE2eLint quét .znf/e2e của repo qua e2e.Lint, map exit code.
+// runE2eLint scans the repo's .znf/e2e via e2e.Lint, mapping the exit code.
 func runE2eLint(dir string, out io.Writer) error {
 	_, err := e2e.Lint(dir, out)
 	return err
 }
 
-// runE2eRun ghi harness ra tmp, dựng RunConfig, gọi e2e.Check.
+// runE2eRun writes the harness to tmp, builds a RunConfig, and calls e2e.Check.
 func runE2eRun(runner func(string, []string) error, goos, repo string, port int, out io.Writer) error {
 	dir := e2eDir(repo)
 	if _, err := os.Stat(filepath.Join(dir, "e2e.config.json")); err != nil {
 		return exitcode.New(exitcode.BadArgs,
-			fmt.Errorf("không thấy %s — repo chưa cấu hình e2e", filepath.Join(dir, "e2e.config.json")))
+			fmt.Errorf("not found %s — repo has no e2e configured", filepath.Join(dir, "e2e.config.json")))
 	}
-	// lint trước khi chạy: một journey 'hợt' không đáng tốn một lần chạy Docker.
+	// lint before running: a shallow journey isn't worth spending a Docker run on.
 	if _, err := e2e.Lint(dir, out); err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func newE2eCmd() *cobra.Command {
 	var port int
 	c := &cobra.Command{
 		Use:   "e2e",
-		Short: "E2E functional (Playwright journey thật trong Docker) + lint chống test hợt",
+		Short: "E2E functional (Playwright journey thật trong Docker) + lint chống test hợt", //znf:allow-lang
 	}
 	resolveRepo := func() string {
 		if repo == "" {
@@ -64,11 +64,11 @@ func newE2eCmd() *cobra.Command {
 	}
 	run := &cobra.Command{
 		Use:   "run",
-		Short: "Chạy journey .znf/e2e trong Docker (cần --port dev-server host)",
+		Short: "Chạy journey .znf/e2e trong Docker (cần --port dev-server host)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
 			if port == 0 {
-				return exitcode.New(exitcode.BadArgs, fmt.Errorf("cần --port <port dev-server host>"))
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need --port <dev-server host port>"))
 			}
 			if err := dockerPreflight(exec.LookPath, func() error {
 				return exec.Command("docker", "info").Run() //nolint:gosec // G204 -- fixed args
@@ -86,14 +86,14 @@ func newE2eCmd() *cobra.Command {
 	}
 	lint := &cobra.Command{
 		Use:   "lint",
-		Short: "Chặn cơ học journey 'hợt' (thiếu re-fetch/assert/cleanup, dùng anti-pattern)",
+		Short: "Chặn cơ học journey 'hợt' (thiếu re-fetch/assert/cleanup, dùng anti-pattern)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runE2eLint(e2eDir(resolveRepo()), cmd.OutOrStdout())
 		},
 	}
-	run.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")
-	run.Flags().IntVar(&port, "port", 0, "port dev-server trên host")
-	lint.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")
+	run.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")  //znf:allow-lang
+	run.Flags().IntVar(&port, "port", 0, "port dev-server trên host")            //znf:allow-lang
+	lint.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)") //znf:allow-lang
 	c.AddCommand(run, lint)
 	return c
 }

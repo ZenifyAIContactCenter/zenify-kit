@@ -9,5 +9,5 @@ import (
 //go:embed harness
 var harnessFS embed.FS
 
-// WriteHarness giữ chữ ký cũ (harness_test.go package visual gọi không qualify) — forward.
+// WriteHarness keeps the old signature (harness_test.go in package visual calls it unqualified) — forwards.
 func WriteHarness(dir string) error { return pwdocker.WriteHarness(harnessFS, "harness", dir) }

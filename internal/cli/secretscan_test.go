@@ -28,14 +28,14 @@ func TestSecretScanCmdFindsAndRedacts(t *testing.T) {
 	cmd.SetArgs([]string{dir})
 	err := cmd.Execute()
 	if err == nil {
-		t.Error("có secret phải trả lỗi (exit non-zero)")
+		t.Error("a secret must return an error (exit non-zero)")
 	}
 	combined := out.String() + errb.String()
 	if !strings.Contains(combined, "leak.txt") {
-		t.Errorf("output phải nêu file, được: %s", combined)
+		t.Errorf("output must name the file, got: %s", combined)
 	}
 	if strings.Contains(combined, testSecret) {
-		t.Error("output lộ secret nguyên (vi phạm FR-041)")
+		t.Error("output leaks the raw secret (violates FR-041)")
 	}
 }
 
@@ -45,6 +45,6 @@ func TestSecretScanCmdClean(t *testing.T) {
 	cmd := newSecretScanCmd()
 	cmd.SetArgs([]string{dir})
 	if err := cmd.Execute(); err != nil {
-		t.Errorf("cây sạch phải exit 0, được %v", err)
+		t.Errorf("a clean tree must exit 0, got %v", err)
 	}
 }

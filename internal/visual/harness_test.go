@@ -42,10 +42,10 @@ func TestHarness_VersionLockstep(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg := readFile(t, filepath.Join(dir, "package.json"))
-	// PlaywrightVersion là "v1.55.0"; package.json dùng dạng không "v".
+	// PlaywrightVersion is "v1.55.0"; package.json uses the form without "v".
 	want := strings.TrimPrefix(PlaywrightVersion, "v")
 	if !strings.Contains(pkg, want) {
-		t.Errorf("package.json phải pin @playwright/test %s (lockstep image), got:\n%s", want, pkg)
+		t.Errorf("package.json must pin @playwright/test %s (lockstep image), got:\n%s", want, pkg)
 	}
 }
 

@@ -17,7 +17,7 @@ func TestSkillsForRepoCore(t *testing.T) {
 			t.Fatalf("%s: got %v want %v", repo, got, want)
 		}
 	}
-	// tên skill phải tồn tại trong CodingSkills()
+	// skill name must exist in CodingSkills()
 	valid := map[string]bool{}
 	for _, s := range CodingSkills() {
 		valid[s] = true
@@ -25,7 +25,7 @@ func TestSkillsForRepoCore(t *testing.T) {
 	for repo := range cases {
 		for _, s := range SkillsForRepo(repo) {
 			if !valid[s] {
-				t.Errorf("%s map tới skill không tồn tại: %s", repo, s)
+				t.Errorf("%s maps to a nonexistent skill: %s", repo, s)
 			}
 		}
 	}
@@ -34,16 +34,16 @@ func TestSkillsForRepoCore(t *testing.T) {
 func TestLeg2ForRepo(t *testing.T) {
 	for repo := range RepoSkills {
 		if len(Leg2ForRepo(repo)) == 0 {
-			t.Errorf("repo core %s không có khuyến nghị leg-2", repo)
+			t.Errorf("repo core %s has no leg-2 recommendation", repo)
 		}
 	}
 	web := Leg2ForRepo("contact-center-web")
 	joined := strings.Join(web, "\n")
 	if !strings.Contains(joined, "vercel-labs/agent-skills") {
-		t.Errorf("web thiếu vercel react-best-practices: %v", web)
+		t.Errorf("web missing vercel react-best-practices: %v", web)
 	}
 	be := strings.Join(Leg2ForRepo("contact-center-be"), "\n")
 	if !strings.Contains(be, "mongodb/agent-skills") || !strings.Contains(be, "redis/agent-skills") {
-		t.Errorf("be thiếu mongodb/redis official: %s", be)
+		t.Errorf("be missing mongodb/redis official: %s", be)
 	}
 }

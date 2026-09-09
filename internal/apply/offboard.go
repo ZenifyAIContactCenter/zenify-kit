@@ -12,22 +12,23 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 )
 
-// HookRemoval mô tả kết quả gỡ znf hook.
+// HookRemoval describes the outcome of removing znf hooks.
 type HookRemoval struct {
 	Removed int
-	Skipped bool // settings.json malformed → để nguyên
+	Skipped bool // settings.json malformed → left untouched
 }
 
-// RemoveGlobalHooks gỡ mọi hook entry do zenify wire (command bắt đầu hookMarker)
-// khỏi <home>/.claude/settings.json. Đảo ngược EnsureGlobalHooks: giữ nguyên mọi
-// foreign hook và mọi top-level key khác; nhóm/nhánh rỗng sau khi gỡ thì bỏ.
-// Atomic write; fail-open (malformed → Skipped, không sửa). Trong dryRun chỉ đếm.
+// RemoveGlobalHooks removes every hook entry zenify wired (command starting with
+// hookMarker) from <home>/.claude/settings.json. Reverses EnsureGlobalHooks:
+// keeps every foreign hook and every other top-level key intact; a group/event
+// left empty after removal is dropped. Atomic write; fail-open (malformed →
+// Skipped, no edit). In dryRun it only counts.
 func RemoveGlobalHooks(home string, dryRun bool) (HookRemoval, error) {
 	path := filepath.Join(home, ".claude", "settings.json")
 	existing, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed ~/.claude path, not externally-tainted
 	if err != nil {
 		if os.IsNotExist(err) {
-			return HookRemoval{}, nil // không có gì để gỡ
+			return HookRemoval{}, nil // nothing to remove
 		}
 		return HookRemoval{Skipped: true}, fmt.Errorf("read settings.json: %w", err)
 	}
@@ -70,18 +71,18 @@ func RemoveGlobalHooks(home string, dryRun bool) (HookRemoval, error) {
 				cmd, _ := hm["command"].(string)
 				if isZnfMarked(cmd) {
 					removed++
-					continue // gỡ
+					continue // remove
 				}
 				kept = append(kept, h)
 			}
 			if len(kept) == 0 {
-				continue // nhóm rỗng → bỏ
+				continue // empty group → drop
 			}
 			gm["hooks"] = kept
 			newGroups = append(newGroups, gm)
 		}
 		if len(newGroups) == 0 {
-			delete(hooks, event) // event rỗng → bỏ
+			delete(hooks, event) // empty event → drop
 		} else {
 			hooks[event] = newGroups
 		}
@@ -106,9 +107,11 @@ func RemoveGlobalHooks(home string, dryRun bool) (HookRemoval, error) {
 	return HookRemoval{Removed: removed}, nil
 }
 
-// RemoveExclude gỡ đúng dòng ".worktrees/" khỏi repo .git/info/exclude, giữ mọi
-// dòng khác. Trả (true) nếu dòng có mặt và (đã) gỡ. File không có dòng → (false,nil).
-// File trống sau khi gỡ vẫn để lại (không xoá file git-local). dryRun → không ghi.
+// RemoveExclude removes exactly the ".worktrees/" line from the repo's
+// .git/info/exclude, keeping every other line. Returns (true) if the line was
+// present and (was) removed. File without the line → (false, nil). A file left
+// empty after removal is still kept (the git-local file itself is never
+// deleted). dryRun → no write.
 func RemoveExclude(repoDir string, dryRun bool) (bool, error) {
 	excl := filepath.Join(repoDir, ".git", "info", "exclude")
 	b, err := os.ReadFile(excl) //nolint:gosec // G304 -- path computed from repoDir, not externally-tainted
@@ -141,9 +144,9 @@ func RemoveExclude(repoDir string, dryRun bool) (bool, error) {
 	return removed, nil
 }
 
-// RemoveOwnedSettings dùng DecideRefresh để quyết mỗi settings.local.json owned:
-// unchanged (khớp fingerprint) → xoá; modified (user sửa, vd secret) → giữ; entry
-// không có/đĩa vắng → skip. dryRun → không xoá thật.
+// RemoveOwnedSettings uses DecideRefresh to decide each owned settings.local.json:
+// unchanged (fingerprint matches) → remove; modified (user edited it, e.g. a
+// secret) → keep; entry absent/file missing → skip. dryRun → no actual removal.
 func RemoveOwnedSettings(settingsPath string, owned *managed.Manifest, dryRun bool) (string, error) {
 	if _, ok := owned.Get(settingsPath); !ok {
 		return "skipped (not owned)", nil

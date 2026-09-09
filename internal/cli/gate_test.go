@@ -12,7 +12,7 @@ func TestGateParticipantsFiltersSharedStore(t *testing.T) {
 	mkRepo(t, ws, "repoA", `{"abbrev":"a","gate":{"sharedStore":true,"dbAccessor":"db_read","accessPatterns":["models.mongo.*"]}}`)
 	// repo B: sharedStore false
 	mkRepo(t, ws, "repoB", `{"abbrev":"b","gate":{"sharedStore":false}}`)
-	// thư mục rác không phải repo (không có .claude/worktree.json) → bỏ qua
+	// junk directory that isn't a repo (no .claude/worktree.json) → skipped
 	if err := os.MkdirAll(filepath.Join(ws, "notarepo"), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -21,10 +21,10 @@ func TestGateParticipantsFiltersSharedStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(ps) != 1 || ps[0].Name != "repoA" {
-		t.Fatalf("participants = %+v, want chỉ repoA", ps)
+		t.Fatalf("participants = %+v, want only repoA", ps)
 	}
 	if ps[0].DBAccessor != "db_read" || len(ps[0].AccessPatterns) != 1 {
-		t.Fatalf("repoA thiếu accessPatterns/dbAccessor: %+v", ps[0])
+		t.Fatalf("repoA missing accessPatterns/dbAccessor: %+v", ps[0])
 	}
 }
 
@@ -46,7 +46,7 @@ func TestGateParticipantsFindsNested(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(ps) != 1 || ps[0].Name != "svc-a" {
-		t.Fatalf("phải tìm thấy svc-a ở repos/, được %+v", ps)
+		t.Fatalf("should find svc-a under repos/, got %+v", ps)
 	}
 }
 

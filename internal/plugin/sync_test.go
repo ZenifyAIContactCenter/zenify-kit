@@ -18,17 +18,17 @@ func TestSyncMaterializesTree(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, ".claude-plugin", "plugin.json")); err != nil {
-		t.Fatalf("plugin.json không được ghi: %v", err)
+		t.Fatalf("plugin.json was not written: %v", err)
 	}
 	if len(res.Written) == 0 {
-		t.Fatal("Written rỗng — không có file nào materialize")
+		t.Fatal("Written is empty — no file was materialized")
 	}
 	res2, err := Sync(dest, man)
 	if err != nil {
-		t.Fatalf("Sync lần 2: %v", err)
+		t.Fatalf("Sync 2nd run: %v", err)
 	}
 	if len(res2.Written) != 0 {
-		t.Fatalf("sync idempotent phải Written=0, được %d", len(res2.Written))
+		t.Fatalf("idempotent sync must have Written=0, got %d", len(res2.Written))
 	}
 }
 
@@ -41,7 +41,7 @@ func TestSyncNeverEscapesDest(t *testing.T) {
 	m, _ := managed.Load(man)
 	for p := range m.Entries {
 		if !strings.HasPrefix(p, dest) {
-			t.Fatalf("ghi ra ngoài dest: %s", p)
+			t.Fatalf("wrote outside dest: %s", p)
 		}
 	}
 }
@@ -65,7 +65,7 @@ func TestSyncMaterializesDiscipline(t *testing.T) {
 func TestSyncKeepsUserAddedFile(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
-	// user tự tạo file trùng path một asset TRƯỚC khi sync, không qua manifest
+	// user creates a file at an asset's path themselves BEFORE sync, outside the manifest
 	victim := filepath.Join(dest, ".claude-plugin", "plugin.json")
 	if err := os.MkdirAll(filepath.Dir(victim), 0o750); err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestSyncKeepsUserAddedFile(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 	if got, _ := os.ReadFile(victim); string(got) != string(userContent) {
-		t.Fatalf("file người dùng bị ghi đè: %q", got)
+		t.Fatalf("user file was overwritten: %q", got)
 	}
 	var inKept bool
 	for _, p := range res.Kept {
@@ -88,7 +88,7 @@ func TestSyncKeepsUserAddedFile(t *testing.T) {
 		}
 	}
 	if !inKept {
-		t.Fatalf("victim không nằm trong Kept: %v", res.Kept)
+		t.Fatalf("victim not found in Kept: %v", res.Kept)
 	}
 }
 
@@ -99,7 +99,7 @@ func TestSync_MaterializesReviewSchema(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "skills/review/_shared/finding-schema.md")); err != nil {
-		t.Fatalf("finding-schema.md chưa materialize: %v", err)
+		t.Fatalf("finding-schema.md not materialized: %v", err)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestSync_MaterializesReviewWorkflow(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "workflows/review-changes.js")); err != nil {
-		t.Fatalf("review-changes.js chưa materialize: %v", err)
+		t.Fatalf("review-changes.js not materialized: %v", err)
 	}
 }
 
@@ -121,7 +121,7 @@ func TestSync_MaterializesMechanicalGate(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "skills/review/scripts/mechanical-gate")); err != nil {
-		t.Fatalf("mechanical-gate chưa materialize: %v", err)
+		t.Fatalf("mechanical-gate not materialized: %v", err)
 	}
 }
 
@@ -133,7 +133,7 @@ func TestSync_MaterializesReviewSkill(t *testing.T) {
 	}
 	for _, p := range []string{"skills/review/SKILL.md", "skills/review/scripts/select-tier"} {
 		if _, err := os.Stat(filepath.Join(dest, p)); err != nil {
-			t.Fatalf("%s chưa materialize: %v", p, err)
+			t.Fatalf("%s not materialized: %v", p, err)
 		}
 	}
 }
@@ -162,9 +162,9 @@ func TestSync_SchemaHasEvidenceField(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dest, "skills/review/_shared/finding-schema.md"))
 	if err != nil {
-		t.Fatalf("đọc finding-schema.md: %v", err)
+		t.Fatalf("read finding-schema.md: %v", err)
 	}
 	if !strings.Contains(string(b), "evidence") {
-		t.Errorf("finding-schema.md thiếu field 'evidence'")
+		t.Errorf("finding-schema.md missing field 'evidence'")
 	}
 }

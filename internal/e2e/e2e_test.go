@@ -15,7 +15,7 @@ func args(goos string) string {
 
 func TestBuildArgs_MountsE2EDir(t *testing.T) {
 	if !strings.Contains(args("linux"), "/repo/.znf/e2e:/harness/.znf/e2e") {
-		t.Fatalf("phải mount repo .znf/e2e, got %q", args("linux"))
+		t.Fatalf("must mount repo .znf/e2e, got %q", args("linux"))
 	}
 }
 
@@ -27,15 +27,15 @@ func TestBuildArgs_BaseURLPort(t *testing.T) {
 
 func TestBuildArgs_StorageStateEnv(t *testing.T) {
 	if !strings.Contains(args("linux"), "STORAGE_STATE=/tmp/znf-e2e-storage.json") {
-		t.Fatal("phải set STORAGE_STATE cho e2e")
+		t.Fatal("must set STORAGE_STATE for e2e")
 	}
 }
 
 func TestBuildArgs_LinuxAddHost(t *testing.T) {
 	if !strings.Contains(args("linux"), "--add-host=host.docker.internal:host-gateway") {
-		t.Fatal("linux thiếu --add-host")
+		t.Fatal("linux missing --add-host")
 	}
 	if strings.Contains(args("darwin"), "--add-host") {
-		t.Fatal("darwin thừa --add-host")
+		t.Fatal("darwin has extra --add-host")
 	}
 }

@@ -61,9 +61,10 @@ start early, and that section says why.
      `zenify rules lint ~/.zenify/knowledge/.config/rules`. The rules that reach teammates must be
      English so they stay portable and reviewable; any Vietnamese in a rule `.md` (outside a
      code-fence, inline-code, or a `<!-- znf:allow-lang -->` line) fails the gate — fix it before
-     opening the PR. Full-tree enforcement over the kit's own skill assets and Go source
-     (`zenify rules lint --include-go`) is deferred to the language-retrofit milestone, which
-     translates the existing Vietnamese in those files before that scope is turned on here.
+     opening the PR. When the change is to the kit repo itself, also run the full-tree gate over its
+     own skill assets and Go source: `zenify rules lint --include-go`. Agent-read comments, error
+     values and test assertions must be English; only human-facing CLI output kept in Vietnamese is
+     allowed, and each such line must carry a `//znf:allow-lang` marker.
 
 3. **Contract gate**: if the change touched anything shared across services — a DB collection, an
    HTTP endpoint between services, a queue, a pub/sub channel — run the project's contract gate,

@@ -28,7 +28,7 @@ func TestReviewVerify_RoundTrip(t *testing.T) {
 		Kept, Refuted int
 	}
 	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
-		t.Fatalf("stdout không phải JSON: %v (%q)", err, out.String())
+		t.Fatalf("stdout is not JSON: %v (%q)", err, out.String())
 	}
 	if res.Kept != 1 || res.Refuted != 1 {
 		t.Errorf("kept=%d refuted=%d, want 1/1", res.Kept, res.Refuted)
@@ -39,10 +39,10 @@ func TestReviewVerify_FailOpenBadJSON(t *testing.T) {
 	in := "khong-phai-json"
 	var out, errb bytes.Buffer
 	if err := runReviewVerify(strings.NewReader(in), &out, &errb, os.ReadFile); err != nil {
-		t.Fatalf("fail-open không được trả err: %v", err)
+		t.Fatalf("fail-open must not return err: %v", err)
 	}
 	if !strings.Contains(out.String(), "khong-phai-json") {
-		t.Errorf("fail-open phải echo nguyên input, được: %q", out.String())
+		t.Errorf("fail-open must echo the input verbatim, got: %q", out.String())
 	}
 }
 
@@ -52,12 +52,12 @@ func TestReviewVerify_EmptyStdin(t *testing.T) {
 		t.Fatalf("empty stdin: %v", err)
 	}
 	if !strings.Contains(out.String(), `"kept":0`) {
-		t.Errorf("empty stdin phải ra kept 0, được: %q", out.String())
+		t.Errorf("empty stdin must yield kept 0, got: %q", out.String())
 	}
 }
 
 func TestRunReviewBundle_Passthrough(t *testing.T) {
-	// numstat tổng 300 <= 2000 → passthrough.
+	// numstat total 300 <= 2000 → passthrough.
 	rundiff := func(string) ([]byte, error) {
 		return []byte("100\t50\ta/x.go\n100\t50\ta/y.go\n"), nil
 	}
@@ -67,7 +67,7 @@ func TestRunReviewBundle_Passthrough(t *testing.T) {
 	}
 	var p review.Plan
 	if err := json.Unmarshal(out.Bytes(), &p); err != nil {
-		t.Fatalf("stdout không phải JSON Plan: %v (%q)", err, out.String())
+		t.Fatalf("stdout is not JSON Plan: %v (%q)", err, out.String())
 	}
 	if p.Verdict != "passthrough" {
 		t.Errorf("verdict=%q, want passthrough", p.Verdict)
@@ -87,15 +87,15 @@ func TestRunReviewBundle_Bundle(t *testing.T) {
 	}
 	var p review.Plan
 	if err := json.Unmarshal(out.Bytes(), &p); err != nil {
-		t.Fatalf("stdout không phải JSON: %v", err)
+		t.Fatalf("stdout is not JSON: %v", err)
 	}
 	if p.Verdict != "bundle" || len(p.Bundles) == 0 {
-		t.Errorf("verdict=%q bundles=%d, want bundle với >=1 bundle", p.Verdict, len(p.Bundles))
+		t.Errorf("verdict=%q bundles=%d, want bundle with >=1 bundle", p.Verdict, len(p.Bundles))
 	}
 }
 
 func TestRunReviewBundle_FailOpenOnDiffError(t *testing.T) {
-	// git diff lỗi (vd ngoài git repo) → passthrough, KHÔNG trả error.
+	// git diff error (e.g. outside a git repo) → passthrough, does NOT return an error.
 	rundiff := func(string) ([]byte, error) { return nil, errors.New("not a git repo") }
 	var out, errb bytes.Buffer
 	if err := runReviewBundle("HEAD", rundiff, &out, &errb); err != nil {
@@ -103,15 +103,15 @@ func TestRunReviewBundle_FailOpenOnDiffError(t *testing.T) {
 	}
 	var p review.Plan
 	if err := json.Unmarshal(out.Bytes(), &p); err != nil {
-		t.Fatalf("stdout không phải JSON: %v (%q)", err, out.String())
+		t.Fatalf("stdout is not JSON: %v (%q)", err, out.String())
 	}
 	if p.Verdict != "passthrough" {
-		t.Errorf("verdict=%q, want passthrough khi diff lỗi", p.Verdict)
+		t.Errorf("verdict=%q, want passthrough when diff errors", p.Verdict)
 	}
 }
 
 func TestReviewBundle_BinaryLineParsedAsZero(t *testing.T) {
-	// dòng binary "-\t-\tpath" → LOC 0; chỉ file text đẩy tổng.
+	// a binary line "-\t-\tpath" → LOC 0; only text files push up the total.
 	rundiff := func(string) ([]byte, error) {
 		return []byte("-\t-\tassets/logo.png\n1500\t600\ta/big.go\n"), nil
 	}
@@ -122,7 +122,7 @@ func TestReviewBundle_BinaryLineParsedAsZero(t *testing.T) {
 	var p review.Plan
 	_ = json.Unmarshal(out.Bytes(), &p)
 	if p.TotalLOC != 2100 {
-		t.Errorf("total=%d, want 2100 (binary đếm 0)", p.TotalLOC)
+		t.Errorf("total=%d, want 2100 (binary counts 0)", p.TotalLOC)
 	}
 }
 
@@ -136,7 +136,7 @@ func TestReviewVerify_Registered(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("review-verify chưa đăng ký trong root")
+		t.Errorf("review-verify not registered in root")
 	}
 }
 
@@ -175,7 +175,7 @@ func TestRunReviewDoctrine_FailOpenEmpty(t *testing.T) {
 func TestReviewDoctrineCmd_Hidden(t *testing.T) {
 	c := newReviewDoctrineCmd()
 	if !c.Hidden {
-		t.Fatal("review-doctrine phải Hidden")
+		t.Fatal("review-doctrine must be Hidden")
 	}
 	if c.Use != "review-doctrine" {
 		t.Fatalf("Use=%q", c.Use)
@@ -199,13 +199,13 @@ func TestRunReviewAdviseGate_Advises(t *testing.T) {
 	}
 	var res adviseResult
 	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
-		t.Fatalf("output không phải JSON: %v (%s)", err, out.String())
+		t.Fatalf("output is not JSON: %v (%s)", err, out.String())
 	}
 	if !res.Advise {
-		t.Error("shared phải advise")
+		t.Error("shared must advise")
 	}
 	if !contains(res.Signals, "shared-contract touched") {
-		t.Errorf("thiếu signal: %v", res.Signals)
+		t.Errorf("missing signal: %v", res.Signals)
 	}
 }
 
@@ -216,13 +216,13 @@ func TestRunReviewAdviseGate_FailOpenEmpty(t *testing.T) {
 	}
 	var res adviseResult
 	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
-		t.Fatalf("empty phải emit JSON hợp lệ: %v", err)
+		t.Fatalf("empty must emit valid JSON: %v", err)
 	}
 	if res.Advise {
 		t.Error("empty → advise=false")
 	}
 	if res.Signals == nil {
-		t.Error("signals phải [] không null")
+		t.Error("signals must be [] not null")
 	}
 }
 
@@ -233,7 +233,7 @@ func TestRunReviewAdviseGate_FailOpenMalformed(t *testing.T) {
 	}
 	var res adviseResult
 	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
-		t.Fatalf("malformed phải fail-open JSON: %v", err)
+		t.Fatalf("malformed must fail-open JSON: %v", err)
 	}
 	if res.Advise {
 		t.Error("malformed → advise=false")
@@ -243,7 +243,7 @@ func TestRunReviewAdviseGate_FailOpenMalformed(t *testing.T) {
 func TestReviewAdviseGateCmd_Hidden(t *testing.T) {
 	c := newReviewAdviseGateCmd()
 	if !c.Hidden {
-		t.Error("phải Hidden")
+		t.Error("must be Hidden")
 	}
 	if c.Use != "review-advise-gate" {
 		t.Errorf("Use = %q", c.Use)
@@ -251,7 +251,7 @@ func TestReviewAdviseGateCmd_Hidden(t *testing.T) {
 }
 
 func TestReviewLogDir_UsesGitCommonDir(t *testing.T) {
-	// inject fake git → gcd tuyệt đối "/x/y/.git" → dir = /x/y/.znf/review-log
+	// inject fake git → absolute gcd "/x/y/.git" → dir = /x/y/.znf/review-log
 	dir, err := reviewLogDir(func(args ...string) ([]byte, error) {
 		return []byte("/x/y/.git\n"), nil
 	})
@@ -268,7 +268,7 @@ func TestReviewLogDir_GitError(t *testing.T) {
 		return nil, os.ErrNotExist
 	})
 	if err == nil {
-		t.Error("git lỗi phải trả error để caller fail-open")
+		t.Error("git error must return an error so the caller can fail-open")
 	}
 }
 
@@ -278,23 +278,23 @@ func TestRunReviewLogRecord_WritesThenFailOpen(t *testing.T) {
 	rec := `{"ts":"2026-09-04T01:00:00Z","repo":"r","base":"a","head":"deadbeef","tier":"T2","outcome":"reviewed","findings":{"high":1},"kept":1,"refuted":0,"shippable":true,"signals":[],"categories":["bugs"]}`
 	var errb bytes.Buffer
 	if err := runReviewLogRecord(strings.NewReader(rec), &errb, dirFn); err != nil {
-		t.Fatalf("record hợp lệ phải nil err: %v", err)
+		t.Fatalf("a valid record must have nil err: %v", err)
 	}
 	recs, _ := review.LoadRecords(dir)
 	if len(recs) != 1 {
-		t.Fatalf("chưa ghi record: %d", len(recs))
+		t.Fatalf("record not written: %d", len(recs))
 	}
-	// empty stdin → không ghi thêm, vẫn nil
+	// empty stdin → nothing more written, still nil
 	if err := runReviewLogRecord(strings.NewReader(""), &errb, dirFn); err != nil {
-		t.Fatalf("empty phải nil: %v", err)
+		t.Fatalf("empty must be nil: %v", err)
 	}
-	// malformed → không ghi thêm, vẫn nil
+	// malformed → nothing more written, still nil
 	if err := runReviewLogRecord(strings.NewReader("{bad"), &errb, dirFn); err != nil {
-		t.Fatalf("malformed phải nil: %v", err)
+		t.Fatalf("malformed must be nil: %v", err)
 	}
 	recs, _ = review.LoadRecords(dir)
 	if len(recs) != 1 {
-		t.Errorf("empty/malformed không được ghi thêm, còn %d", len(recs))
+		t.Errorf("empty/malformed must not write more, still have %d", len(recs))
 	}
 }
 
@@ -303,7 +303,7 @@ func TestRunReviewLogRecord_DirErrorFailOpen(t *testing.T) {
 	rec := `{"ts":"t","head":"h","tier":"T1"}`
 	var errb bytes.Buffer
 	if err := runReviewLogRecord(strings.NewReader(rec), &errb, dirFn); err != nil {
-		t.Errorf("resolve-dir lỗi phải nil (fail-open): %v", err)
+		t.Errorf("resolve-dir error must be nil (fail-open): %v", err)
 	}
 }
 
@@ -315,7 +315,7 @@ func TestRunReviewLogShow_Empty(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "no reviews logged yet") {
-		t.Errorf("empty phải báo no reviews: %q", out.String())
+		t.Errorf("empty must report no reviews: %q", out.String())
 	}
 }
 
@@ -331,7 +331,7 @@ func TestRunReviewLogShow_JSON(t *testing.T) {
 	}
 	var recs []review.Record
 	if err := json.Unmarshal(out.Bytes(), &recs); err != nil {
-		t.Fatalf("--json phải in mảng record: %v (%s)", err, out.String())
+		t.Fatalf("--json must print the record array: %v (%s)", err, out.String())
 	}
 	if len(recs) != 1 || recs[0].Tier != "T2" {
 		t.Errorf("json sai: %+v", recs)
@@ -350,9 +350,9 @@ func TestReviewLogCmd_RecordChildHidden(t *testing.T) {
 		}
 	}
 	if rec == nil {
-		t.Fatal("thiếu child record")
+		t.Fatal("missing child record")
 	}
 	if !rec.Hidden {
-		t.Error("record phải Hidden")
+		t.Error("record must be Hidden")
 	}
 }

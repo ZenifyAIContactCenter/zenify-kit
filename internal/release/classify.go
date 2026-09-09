@@ -8,7 +8,7 @@ import (
 
 var typeRe = regexp.MustCompile(`^(feat|fix|perf|refactor|chore)(\([^)]*\))?!?:`)
 
-// ClassifyType trả về loại conventional-commit của subject: feat|fix|perf|refactor|chore, else "other".
+// ClassifyType returns the conventional-commit type of a subject: feat|fix|perf|refactor|chore, else "other".
 func ClassifyType(subject string) string {
 	if m := typeRe.FindStringSubmatch(subject); m != nil {
 		return m[1]
@@ -19,7 +19,7 @@ func ClassifyType(subject string) string {
 var prMergeRe = regexp.MustCompile(`^Merge pull request #\d+ from [^/]+/(.+)$`)
 var branchMergeRe = regexp.MustCompile(`^Merge branch '([^']+)'`)
 
-// ParseMergeBranch rút tên branch nguồn từ subject của merge-commit; "" nếu không phải merge.
+// ParseMergeBranch extracts the source branch name from a merge-commit subject; "" if it isn't a merge.
 func ParseMergeBranch(subject string) string {
 	if m := prMergeRe.FindStringSubmatch(subject); m != nil {
 		return strings.TrimSpace(m[1])
@@ -30,7 +30,7 @@ func ParseMergeBranch(subject string) string {
 	return ""
 }
 
-// IsHotfixBranch: branch mang dấu hiệu vá gấp (hotfix / cherry-pick).
+// IsHotfixBranch: the branch carries a sign of an urgent patch (hotfix / cherry-pick).
 func IsHotfixBranch(branch string) bool {
 	b := strings.ToLower(branch)
 	return strings.Contains(b, "hotfix") || strings.Contains(b, "cherry-pick")
@@ -38,20 +38,20 @@ func IsHotfixBranch(branch string) bool {
 
 var migrationRe = regexp.MustCompile(`(^|/)(migrations?|migrate)(/|$)`)
 
-// IsMigrationPath: path nằm trong thư mục migration.
+// IsMigrationPath: the path lives under a migration directory.
 func IsMigrationPath(p string) bool { return migrationRe.MatchString(p) }
 
-// IsTestPath: path là file test.
+// IsTestPath: the path is a test file.
 func IsTestPath(p string) bool {
 	base := path.Base(p)
 	return strings.Contains(base, ".test.") || strings.Contains(base, ".spec.") ||
 		strings.HasSuffix(base, "_test.go") || strings.Contains(p, "/__tests__/")
 }
 
-// scopeRe rút scope trong feat(<scope>): — group 1.
+// scopeRe extracts the scope in feat(<scope>): — group 1.
 var scopeRe = regexp.MustCompile(`^(?:feat|fix|perf|refactor|chore)\(([^)]+)\)!?:`)
 
-// ParseScope trả scope của conventional-commit ("" nếu không có scope).
+// ParseScope returns the scope of a conventional-commit ("" if there is no scope).
 func ParseScope(subject string) string {
 	if m := scopeRe.FindStringSubmatch(subject); m != nil {
 		return strings.TrimSpace(m[1])
@@ -59,7 +59,7 @@ func ParseScope(subject string) string {
 	return ""
 }
 
-// NormalizeKey chuẩn-hoá branch/scope về một key gom nhóm: last path-segment, lowercase, _→-.
+// NormalizeKey normalizes a branch/scope into one grouping key: last path-segment, lowercase, _→-.
 func NormalizeKey(s string) string {
 	if i := strings.LastIndex(s, "/"); i >= 0 {
 		s = s[i+1:]
@@ -68,7 +68,7 @@ func NormalizeKey(s string) string {
 	return strings.ReplaceAll(s, "_", "-")
 }
 
-// HumanizeTitle biến slug kebab thành câu người đọc: "linked-fields" → "Linked fields".
+// HumanizeTitle turns a kebab slug into a readable phrase: "linked-fields" → "Linked fields".
 func HumanizeTitle(slug string) string {
 	s := strings.ReplaceAll(slug, "-", " ")
 	s = strings.TrimSpace(s)
@@ -80,7 +80,7 @@ func HumanizeTitle(slug string) string {
 
 var prNumRe = regexp.MustCompile(`Merge pull request #(\d+)`)
 
-// ParsePRNum rút số PR từ subject merge-commit ("" nếu không có).
+// ParsePRNum extracts the PR number from a merge-commit subject ("" if none).
 func ParsePRNum(subject string) string {
 	if m := prNumRe.FindStringSubmatch(subject); m != nil {
 		return m[1]
@@ -88,7 +88,7 @@ func ParsePRNum(subject string) string {
 	return ""
 }
 
-// MatchesAny khớp path với danh sách glob patterns (hỗ trợ prefix "**/"), trả pattern khớp đầu tiên + true.
+// MatchesAny matches a path against a list of glob patterns (supports a "**/" prefix), returning the first matching pattern + true.
 func MatchesAny(p string, patterns []string) (string, bool) {
 	for _, pat := range patterns {
 		if ok, _ := path.Match(pat, p); ok {

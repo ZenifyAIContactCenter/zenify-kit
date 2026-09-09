@@ -6,15 +6,16 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
-// GitCall là một lời gọi `git` đã parse từ AST.
+// GitCall is one `git` invocation parsed from the AST.
 type GitCall struct {
-	Sub       string   // subcommand thật (vd "commit","push","merge")
-	Args      []string // các token literal sau subcommand
-	RepoFlagC string   // giá trị của -C <dir> nếu có, rỗng nếu không
+	Sub       string   // the real subcommand (e.g. "commit","push","merge")
+	Args      []string // literal tokens after the subcommand
+	RepoFlagC string   // value of -C <dir> if present, empty otherwise
 }
 
-// litWords chuyển []*syntax.Word thành []string literal; word không thuần
-// literal (subst, biến) trả "" — an toàn vì ta chỉ so khớp literal đã biết.
+// litWords converts []*syntax.Word into []string literals; a word that isn't
+// pure literal (substitution, variable) returns "" — safe because we only
+// match against already-known literals.
 func litWords(words []*syntax.Word) []string {
 	out := make([]string, len(words))
 	for i, w := range words {
@@ -23,16 +24,17 @@ func litWords(words []*syntax.Word) []string {
 	return out
 }
 
-// isGitBinary nhận "git" hoặc đường dẫn kết thúc "/git".
+// isGitBinary accepts "git" or a path ending in "/git".
 func isGitBinary(tok string) bool {
 	return tok == "git" || strings.HasSuffix(tok, "/git")
 }
 
-// parseGitCall dựng GitCall từ Args của một CallExpr đã biết là gọi git.
-// Bỏ qua global option và arg của option (giữ đúng semantics guard bash).
+// parseGitCall builds a GitCall from the Args of a CallExpr already known to
+// call git. Skips global options and their option args (keeps the same
+// semantics as the bash guard).
 func parseGitCall(args []string) (GitCall, bool) {
-	// args[0] là "git" hoặc "*/git" (đã lọc env-prefix ở caller nếu CallExpr
-	// dùng Assigns; env-as-word xử lý ở caller).
+	// args[0] is "git" or "*/git" (env-prefix already filtered by the caller
+	// if the CallExpr uses Assigns; env-as-word is handled by the caller).
 	i := 1
 	gc := GitCall{}
 	for i < len(args) {
@@ -40,21 +42,21 @@ func parseGitCall(args []string) (GitCall, bool) {
 		switch {
 		case tok == "-C" || tok == "-c" || tok == "--git-dir" ||
 			tok == "--work-tree" || tok == "--namespace" || tok == "--exec-path":
-			// Chỉ ăn arg của flag này nếu vẫn còn chỗ cho một token sau đó —
-			// tránh nuốt mất subcommand thật khi gặp -C lặp lại thoái hoá
-			// (vd "git -C -C -C push" phải nhận ra "push", không phải nuốt
-			// nó làm giá trị của -C cuối cùng).
+			// Only consume this flag's arg if there's still room for a token
+			// after it — avoids swallowing the real subcommand on a
+			// degenerate repeated -C (e.g. "git -C -C -C push" must
+			// recognize "push", not swallow it as the value of the last -C).
 			if i+2 < len(args) {
 				if tok == "-C" {
 					gc.RepoFlagC = args[i+1]
 				}
-				i += 2 // bỏ flag + arg của nó
+				i += 2 // skip the flag + its arg
 				continue
 			}
 			i++
 			continue
 		case strings.HasPrefix(tok, "-"):
-			i++ // global flag khác không nhận arg
+			i++ // other global flags take no arg
 			continue
 		default:
 			gc.Sub = tok
@@ -62,11 +64,12 @@ func parseGitCall(args []string) (GitCall, bool) {
 			return gc, true
 		}
 	}
-	return gc, false // không có subcommand thật
+	return gc, false // no real subcommand
 }
 
-// ParseGitCalls parse command thành AST và trả mọi lời gọi git thật.
-// RecoverErrors để không gãy trên lệnh dở; lỗi parse → best-effort.
+// ParseGitCalls parses the command into an AST and returns every real git
+// call. RecoverErrors so it doesn't break on a malformed command; parse
+// errors → best-effort.
 func ParseGitCalls(command string) []GitCall {
 	parser := syntax.NewParser(syntax.RecoverErrors(4))
 	file, err := parser.Parse(strings.NewReader(command), "")
@@ -80,8 +83,8 @@ func ParseGitCalls(command string) []GitCall {
 			return true
 		}
 		words := litWords(ce.Args)
-		// Tiền tố "env VAR=val ..." dạng word: bỏ "env" + các token có '='
-		// tới khi gặp "git".
+		// "env VAR=val ..." prefix as a word: skip "env" + tokens containing
+		// '=' until "git" is reached.
 		start := 0
 		if words[0] == "env" {
 			start = 1
@@ -100,7 +103,7 @@ func ParseGitCalls(command string) []GitCall {
 	return calls
 }
 
-// LeadingCd trích đích của `cd <dir>` dẫn đầu command (nếu có).
+// LeadingCd extracts the target of a leading `cd <dir>` in the command (if any).
 func LeadingCd(command string) string {
 	parser := syntax.NewParser(syntax.RecoverErrors(4))
 	file, err := parser.Parse(strings.NewReader(command), "")

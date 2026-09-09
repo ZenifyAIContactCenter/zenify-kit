@@ -17,9 +17,9 @@ type participant struct {
 	DBAccessor     string   `json:"dbAccessor"`
 }
 
-// gateParticipants tìm repo trong workspaceDir tới độ sâu workspace.DefaultMaxDepth
-// (không chỉ con trực tiếp); repo nào có worktree.json với gate.sharedStore=true thì
-// là participant. Repo Load lỗi (không có worktree.json) hoặc sharedStore=false → bỏ qua.
+// gateParticipants finds repos in workspaceDir down to workspace.DefaultMaxDepth
+// (not just direct children); a repo whose worktree.json has gate.sharedStore=true
+// is a participant. A repo whose Load fails (no worktree.json) or sharedStore=false is skipped.
 func gateParticipants(workspaceDir string) ([]participant, error) {
 	var ps []participant
 	for _, repo := range workspace.Discover(workspaceDir, workspace.DefaultMaxDepth, os.ReadDir) {
@@ -35,10 +35,10 @@ func gateParticipants(workspaceDir string) ([]participant, error) {
 func newGateCmd() *cobra.Command {
 	var workspace string
 	var asJSON bool
-	cmd := &cobra.Command{Use: "gate", Short: "trợ giúp gate (contract sweep)"}
+	cmd := &cobra.Command{Use: "gate", Short: "trợ giúp gate (contract sweep)"} //znf:allow-lang
 	participants := &cobra.Command{
 		Use:   "participants",
-		Short: "list repo chia sẻ shared store (gate.sharedStore=true) trong workspace",
+		Short: "list repo chia sẻ shared store (gate.sharedStore=true) trong workspace", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ps, err := gateParticipants(workspace)
 			if err != nil {
@@ -55,7 +55,7 @@ func newGateCmd() *cobra.Command {
 		},
 	}
 	participants.Flags().StringVar(&workspace, "workspace", ".", "workspace root")
-	participants.Flags().BoolVar(&asJSON, "json", false, "xuất JSON")
+	participants.Flags().BoolVar(&asJSON, "json", false, "xuất JSON") //znf:allow-lang
 	cmd.AddCommand(participants)
 	return cmd
 }

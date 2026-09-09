@@ -75,7 +75,7 @@ func TestParseScope(t *testing.T) {
 }
 
 func TestNormalizeKeyMergesBranchAndScope(t *testing.T) {
-	// last-segment của branch phải == scope để gom chung.
+	// A branch's last-segment must == scope so they group together.
 	if NormalizeKey("namph/feat/linked-fields") != "linked-fields" {
 		t.Errorf("branch last-segment: %q", NormalizeKey("namph/feat/linked-fields"))
 	}

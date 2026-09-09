@@ -1,5 +1,5 @@
-// Package plugin nhúng cây plugin `znf` và materialize nó vào ~/.claude/skills/znf,
-// theo dõi bằng managed.Manifest riêng để refresh tôn trọng sửa tay của user.
+// Package plugin embeds the `znf` plugin tree and materializes it into ~/.claude/skills/znf,
+// tracked via a dedicated managed.Manifest so refresh respects the user's manual edits.
 package plugin
 
 import (
@@ -40,8 +40,8 @@ func DefaultManifest() (string, error) {
 	return filepath.Join(dest, ".manifest.json"), nil
 }
 
-// Sync ghi mọi file trong embed ra destRoot, record vào manifest tại manifestPath.
-// Additive: chỉ ghi TRONG destRoot. Refresh-safe qua managed.DecideRefresh.
+// Sync writes every file in the embed out to destRoot, recording it in the manifest at manifestPath.
+// Additive: only writes WITHIN destRoot. Refresh-safe via managed.DecideRefresh.
 func Sync(destRoot, manifestPath string) (Result, error) {
 	var res Result
 	m, err := managed.Load(manifestPath)
@@ -61,7 +61,7 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 		if err != nil {
 			return err
 		}
-		if existing, err := os.ReadFile(target); err == nil { //nolint:gosec // G304 -- target computed từ destRoot nội bộ
+		if existing, err := os.ReadFile(target); err == nil { //nolint:gosec // G304 -- target computed from destRoot internally
 			switch m.DecideRefresh(target, existing) {
 			case managed.DecisionKeepModified:
 				res.Kept = append(res.Kept, target)
@@ -72,8 +72,8 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 					return nil
 				}
 			case managed.DecisionKeepUserAdded:
-				// file có ở target nhưng không do ta record → file người dùng tự đặt trong znf/;
-				// additive (FR-M2A-02): GIỮ nguyên, không ghi đè.
+				// file exists at target but was not recorded by us → the user placed it in znf/ themselves;
+				// additive (FR-M2A-02): KEEP it as-is, don't overwrite.
 				res.Kept = append(res.Kept, target)
 				return nil
 			}

@@ -10,7 +10,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsview"
 )
 
-// docs sync resolve dir repo qua discovery (repos/<repo> hoặc phẳng).
+// docs sync resolves the repo dir via discovery (repos/<repo> or flat).
 func TestDocsDirResolves(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "docs")
@@ -23,12 +23,12 @@ func TestDocsDirResolves(t *testing.T) {
 	}
 }
 
-// --dir override phải thắng: resolveDocsStore không được tư vấn, và store
-// thật sự dùng chính là --dir (không phải path resolveDocsStore sẽ trả), thể
-// hiện qua link farm được tạo dưới workspace/docs → --dir/specs.
+// --dir override must win: resolveDocsStore must not be consulted, and the store
+// actually used is exactly --dir (not the path resolveDocsStore would return),
+// shown via the link farm created under workspace/docs → --dir/specs.
 func TestDocsSyncDirFlagWins(t *testing.T) {
 	ws := t.TempDir()
-	store := t.TempDir() // KHÔNG phải là git repo, KHÔNG nằm dưới ws — khác hẳn nơi resolveDocsStore sẽ trỏ tới
+	store := t.TempDir() // NOT a git repo, NOT under ws — entirely different from where resolveDocsStore would point
 	if err := os.MkdirAll(filepath.Join(store, "specs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -41,19 +41,19 @@ func TestDocsSyncDirFlagWins(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	// viewDir = ws/docs, phải khác store nên EnsureView chạy và link tới store/specs.
+	// viewDir = ws/docs, must differ from store so EnsureView runs and links to store/specs.
 	viewDir := filepath.Join(ws, defaultDocsRepo)
 	if _, err := os.Stat(filepath.Join(viewDir, "specs")); err != nil {
-		t.Fatalf("view farm không tạo tại %s: %v (--dir có thể đã KHÔNG thắng)", viewDir, err)
+		t.Fatalf("view farm not created at %s: %v (--dir may NOT have won)", viewDir, err)
 	}
 	same, err := (docsview.OSFS{}).SameTarget(filepath.Join(viewDir, "specs"), filepath.Join(store, "specs"))
 	if err != nil || !same {
-		t.Fatalf("view/specs không trỏ về --dir/specs: same=%v err=%v", same, err)
+		t.Fatalf("view/specs does not point to --dir/specs: same=%v err=%v", same, err)
 	}
 }
 
-// EnsureView phải KHÔNG chạy khi viewDir == dir (chưa migrate: docs store vẫn
-// nằm ngay trong workspace) — không có note "docs view:" nào được in ra.
+// EnsureView must NOT run when viewDir == dir (not migrated: docs store still
+// lives right in the workspace) — no "docs view:" note is printed.
 func TestDocsSyncEnsureViewSkippedWhenViewEqualsDir(t *testing.T) {
 	ws := t.TempDir()
 	dir := filepath.Join(ws, defaultDocsRepo) // == viewDir
@@ -70,6 +70,6 @@ func TestDocsSyncEnsureViewSkippedWhenViewEqualsDir(t *testing.T) {
 	}
 
 	if strings.Contains(errBuf.String(), "docs view:") {
-		t.Fatalf("EnsureView phải bị skip khi viewDir==dir, nhưng có note: %s", errBuf.String())
+		t.Fatalf("EnsureView must be skipped when viewDir==dir, but got note: %s", errBuf.String())
 	}
 }

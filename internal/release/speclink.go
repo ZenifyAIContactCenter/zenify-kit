@@ -6,22 +6,24 @@ import (
 	"strings"
 )
 
-// specSlugRe rút token chủ đề từ tên file spec: <date>-<topic>-design.md → <topic>.
+// specSlugRe extracts the topic token from a spec file name: <date>-<topic>-design.md → <topic>.
 var specSlugRe = regexp.MustCompile(`^(?:\d{4}-\d{2}-\d{2}-)?(.+?)-design$`)
 
 // Tag regex + tagValue MIRROR internal/analyze/analyze.go:69-71 (M6c1) VERBATIM so speclink
-// extracts the same tag values that analyze validates. Cannot import (khác package, unexported)
-// → duplicate pattern có chủ đích; nếu analyze đổi format, đổi cả đây. `(?m)` để quét nhiều dòng.
+// extracts the same tag values that analyze validates. Cannot import (different package,
+// unexported) → the duplicated pattern is intentional; if analyze changes format, change this
+// too. `(?m)` to scan multiple lines.
 var blastRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Blast-radius:\\s*(.*)$")
 var dbRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_DB:\\s*(.*)$")
 var rollbackRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Rollback:\\s*(.*)$")
 
-// noteDescRe bắt trailer _Release-Note (mô tả một dòng do /ship ghi qua `release-note --note`).
-// Cùng khuôn với 3 tag risk để chịu được [-*] rìa / emphasis. Đây là phía ĐỌC còn thiếu của
-// cơ chế _Release-Note (write-side đã có ở cli/release_note.go); không có → Note rỗng.
+// noteDescRe captures the _Release-Note trailer (a one-line description written by /ship via
+// `release-note --note`). Same shape as the 3 risk tags so it tolerates [-*] bullets / emphasis.
+// This is the READ side that was missing from the _Release-Note mechanism (the write-side already
+// exists in cli/release_note.go); if absent → Note is empty.
 var noteDescRe = regexp.MustCompile("(?m)^\\s*(?:[-*+]\\s+)?[`*]*_Release-Note:\\s*(.*)$")
 
-// tagValue mirror analyze.go: trim trailing backtick/emphasis + space quanh value.
+// tagValue mirrors analyze.go: trim trailing backtick/emphasis + surrounding whitespace.
 func tagValue(s string) string {
 	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(s), "`*"))
 }
@@ -33,7 +35,7 @@ func firstGroup(re *regexp.Regexp, s string) string {
 	return ""
 }
 
-// ParseSpecBrief đọc một file spec đã load → SpecMeta (slug từ tên file + 3 tag Brief).
+// ParseSpecBrief reads an already-loaded spec file → SpecMeta (slug from the file name + the 3 Brief tags).
 func ParseSpecBrief(p string, content []byte) SpecMeta {
 	base := strings.TrimSuffix(path.Base(p), ".md")
 	slug := base
@@ -52,7 +54,7 @@ func ParseSpecBrief(p string, content []byte) SpecMeta {
 
 var trailerRe = regexp.MustCompile(`(?m)^Spec:\s*(\S+)\s*$`)
 
-// specTrailer rút path từ trailer "Spec: <path>" trong body commit ("" nếu không có).
+// specTrailer extracts the path from a "Spec: <path>" trailer in a commit body ("" if none).
 func specTrailer(bodies string) string {
 	if m := trailerRe.FindStringSubmatch(bodies); m != nil {
 		return strings.TrimSpace(m[1])
@@ -60,9 +62,10 @@ func specTrailer(bodies string) string {
 	return ""
 }
 
-// noteRisk đọc risk-metadata trực tiếp từ body note-commit (tier-0). Trả (RiskMeta, true)
-// nếu có ÍT NHẤT một trong ba tag. SpecPath = trailer "Spec:" nếu có, else sentinel "note"
-// (khác rỗng để Build đếm là "có spec"; humanRisk chỉ kiểm rỗng/khác-rỗng, không in path).
+// noteRisk reads risk metadata directly from a note-commit's body (tier-0). Returns (RiskMeta,
+// true) if AT LEAST one of the three tags is present. SpecPath = the "Spec:" trailer if present,
+// else the sentinel "note" (non-empty so Build counts it as "has a spec"; humanRisk only checks
+// empty/non-empty, it never prints the path).
 func noteRisk(bodies string) (RiskMeta, bool) {
 	b := firstGroup(blastRe, bodies)
 	d := firstGroup(dbRe, bodies)
@@ -77,21 +80,21 @@ func noteRisk(bodies string) (RiskMeta, bool) {
 	return RiskMeta{SpecPath: sp, BlastRadius: b, DB: d, Rollback: rb, Note: firstGroup(noteDescRe, bodies)}, true
 }
 
-// releaseSlugRe rút slug liên-kết từ trailer "_Release-Slug: <slug>" của note-commit.
+// releaseSlugRe extracts the linking slug from a note-commit's "_Release-Slug: <slug>" trailer.
 var releaseSlugRe = regexp.MustCompile(`(?m)^_Release-Slug:\s*(\S+)\s*$`)
 
-// noteSubjectRe: chỉ note-commit chuyên dụng do release-note tạo mang subject này.
+// noteSubjectRe: only the dedicated note-commit created by release-note carries this subject.
 var noteSubjectRe = regexp.MustCompile(`^chore\(release\): note\b`)
 
-// IsReleaseNote: một release-note-commit = subject chore(release): note DÀNH RIÊNG + trailer
-// _Release-Slug:. Đòi CẢ HAI để một feat-commit lỡ nuốt trailer (vd squash-merge) không bị
-// nhận nhầm là note và bị lọc khỏi changelog.
+// IsReleaseNote: a release-note-commit = the DEDICATED subject chore(release): note + the
+// _Release-Slug: trailer. BOTH are required so a feat-commit that accidentally swallowed the
+// trailer (e.g. a squash-merge) isn't mistaken for a note and filtered out of the changelog.
 func IsReleaseNote(c Commit) bool {
 	return noteSubjectRe.MatchString(c.Subject) && releaseSlugRe.MatchString(c.Body)
 }
 
-// NoteRiskBySlug quét các note-commit → map[normalizedSlug]RiskMeta. Chỉ thêm khi noteRisk ok
-// (có ≥1 trong 3 risk tag). Slug chuẩn-hoá bằng NormalizeKey để khớp Change.Slug.
+// NoteRiskBySlug scans the note-commits → map[normalizedSlug]RiskMeta. Only added when noteRisk
+// is ok (≥1 of the 3 risk tags present). The slug is normalized with NormalizeKey to match Change.Slug.
 func NoteRiskBySlug(notes []Commit) map[string]RiskMeta {
 	m := map[string]RiskMeta{}
 	for _, c := range notes {
@@ -106,10 +109,10 @@ func NoteRiskBySlug(notes []Commit) map[string]RiskMeta {
 	return m
 }
 
-// LinkSpec: tier-0 note-by-slug (map, gom ngoài Aggregate) → tier-1 Spec-trailer → tier-2
-// slug-match → rỗng. Trả RiskMeta (SpecPath="" = unknown).
+// LinkSpec: tier-0 note-by-slug (map, gathered outside Aggregate) → tier-1 Spec-trailer → tier-2
+// slug-match → empty. Returns RiskMeta (SpecPath="" = unknown).
 func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
-	// (0) tier-0: risk từ note-commit liên-kết theo slug.
+	// (0) tier-0: risk from a note-commit linked by slug.
 	if rm, ok := notes[NormalizeKey(ch.Slug)]; ok {
 		return rm
 	}
@@ -119,7 +122,7 @@ func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
 		b.WriteString("\n")
 	}
 	bodies := b.String()
-	// (1) trailer Spec: trong body.
+	// (1) the Spec: trailer in the body.
 	if tp := specTrailer(bodies); tp != "" {
 		for _, s := range specs {
 			if s.Path == tp || strings.HasSuffix(s.Path, tp) || strings.HasSuffix(tp, s.Path) {

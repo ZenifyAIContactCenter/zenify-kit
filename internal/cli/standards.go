@@ -19,7 +19,7 @@ func runStandards(specPath, planPath, root string, asJSON bool, readFile func(st
 		}
 		b, err := readFile(p)
 		if err != nil {
-			fmt.Fprintf(stderr, "standards: không đọc được %q: %v (fail-open)\n", p, err)
+			fmt.Fprintf(stderr, "standards: không đọc được %q: %v (fail-open)\n", p, err) //znf:allow-lang
 			return ""
 		}
 		return string(b)
@@ -27,7 +27,7 @@ func runStandards(specPath, planPath, root string, asJSON bool, readFile func(st
 	specText := read(specPath)
 	planText := read(planPath)
 	if specText == "" || planText == "" {
-		fmt.Fprintln(stderr, "standards: cần cả spec lẫn plan để đối chiếu FR↔test (fail-open)")
+		fmt.Fprintln(stderr, "standards: cần cả spec lẫn plan để đối chiếu FR↔test (fail-open)") //znf:allow-lang
 		return nil
 	}
 	if root == "" {
@@ -38,7 +38,7 @@ func runStandards(specPath, planPath, root string, asJSON bool, readFile func(st
 	if asJSON {
 		b, err := json.Marshal(res)
 		if err != nil {
-			fmt.Fprintln(stderr, "standards: marshal lỗi (fail-open)")
+			fmt.Fprintln(stderr, "standards: marshal lỗi (fail-open)") //znf:allow-lang
 			return nil
 		}
 		fmt.Fprintln(stdout, string(b))

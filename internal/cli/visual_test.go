@@ -25,7 +25,7 @@ func TestVisualCmd_Registered(t *testing.T) {
 }
 
 func TestVisualCheck_MismatchIsFail(t *testing.T) {
-	// Runner giả lập docker exit≠0 (mismatch).
+	// Runner simulates docker exit≠0 (mismatch).
 	repo := t.TempDir()
 	snap := filepath.Join(repo, ".znf", "visual")
 	if err := os.MkdirAll(snap, 0o755); err != nil {
@@ -40,13 +40,13 @@ func TestVisualCheck_MismatchIsFail(t *testing.T) {
 		out: &bytes.Buffer{},
 	})
 	if err == nil {
-		t.Fatal("mismatch phải trả error")
+		t.Fatal("mismatch should return an error")
 	}
 	if exitcode.Code(err) != exitcode.Fail {
-		t.Errorf("mismatch phải map Fail(1), got code %d", exitcode.Code(err))
+		t.Errorf("mismatch should map to Fail(1), got code %d", exitcode.Code(err))
 	}
 	if !strings.Contains(err.Error(), "__diff__") {
-		t.Errorf("error phải trỏ ảnh diff, got %q", err.Error())
+		t.Errorf("error should point at the diff image, got %q", err.Error())
 	}
 }
 

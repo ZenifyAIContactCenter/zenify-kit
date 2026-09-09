@@ -22,12 +22,12 @@ type visualOpts struct {
 	out    io.Writer
 }
 
-// runVisualCheck ghi harness ra tmp, dựng RunConfig, gọi visual.Check, map lỗi.
+// runVisualCheck writes the harness to tmp, builds a RunConfig, calls visual.Check, maps the error.
 func runVisualCheck(o visualOpts) error {
 	snap := filepath.Join(o.repo, ".znf", "visual")
 	if _, err := os.Stat(filepath.Join(snap, "routes.json")); err != nil {
 		return exitcode.New(exitcode.BadArgs,
-			fmt.Errorf("không thấy %s — repo chưa cấu hình visual", filepath.Join(snap, "routes.json")))
+			fmt.Errorf("%s not found — repo has no visual config", filepath.Join(snap, "routes.json")))
 	}
 	harnessDir, err := os.MkdirTemp("", "znf-visual-*")
 	if err != nil {
@@ -45,21 +45,22 @@ func runVisualCheck(o visualOpts) error {
 		}
 		diff := filepath.Join(snap, "__diff__")
 		return exitcode.New(exitcode.Fail,
-			fmt.Errorf("visual mismatch — xem ảnh diff tại %s: %w", diff, err))
+			fmt.Errorf("visual mismatch — see diff image at %s: %w", diff, err))
 	}
 	return nil
 }
 
-// dockerPreflight kiểm docker sẵn sàng TRƯỚC khi chạy container (FR-5.5): thiếu binary hoặc
-// daemon chưa chạy → thông báo rõ thay vì để lỗi hạ tầng giả dạng "visual mismatch".
+// dockerPreflight checks docker is ready BEFORE running the container (FR-5.5): a missing
+// binary or a daemon that isn't running → report clearly instead of an infra error
+// disguised as "visual mismatch".
 func dockerPreflight(lookPath func(string) (string, error), info func() error) error {
 	if _, err := lookPath("docker"); err != nil {
 		return exitcode.New(exitcode.BadArgs,
-			fmt.Errorf("docker chưa cài — cài Docker rồi chạy `zenify doctor` để kiểm"))
+			fmt.Errorf("docker not installed — install Docker then run `zenify doctor` to check"))
 	}
 	if err := info(); err != nil {
 		return exitcode.New(exitcode.BadArgs,
-			fmt.Errorf("docker daemon chưa chạy — khởi động Docker Desktop rồi thử lại"))
+			fmt.Errorf("docker daemon not running — start Docker Desktop then try again"))
 	}
 	return nil
 }
@@ -70,11 +71,11 @@ func newVisualCmd() *cobra.Command {
 	var update bool
 	c := &cobra.Command{
 		Use:   "visual",
-		Short: "Visual-regression golden-diff (Playwright trong Docker pinned)",
+		Short: "Visual-regression golden-diff (Playwright trong Docker pinned)", //znf:allow-lang
 	}
 	check := &cobra.Command{
 		Use:   "check",
-		Short: "So từng route với baseline; --update để chụp lại baseline",
+		Short: "So từng route với baseline; --update để chụp lại baseline", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if repo == "" {
 				repo, _ = os.Getwd()
@@ -82,7 +83,7 @@ func newVisualCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 			if port == 0 {
 				return exitcode.New(exitcode.BadArgs,
-					fmt.Errorf("cần --port <port dev-server trên host>"))
+					fmt.Errorf("need --port <host dev-server port>"))
 			}
 			if err := dockerPreflight(exec.LookPath, func() error {
 				return exec.Command("docker", "info").Run() //nolint:gosec // G204 -- fixed args
@@ -101,9 +102,9 @@ func newVisualCmd() *cobra.Command {
 			})
 		},
 	}
-	check.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")
-	check.Flags().IntVar(&port, "port", 0, "port dev-server trên host")
-	check.Flags().BoolVar(&update, "update", false, "chụp lại baseline thay vì so")
+	check.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")   //znf:allow-lang
+	check.Flags().IntVar(&port, "port", 0, "port dev-server trên host")             //znf:allow-lang
+	check.Flags().BoolVar(&update, "update", false, "chụp lại baseline thay vì so") //znf:allow-lang
 	c.AddCommand(check)
 	return c
 }

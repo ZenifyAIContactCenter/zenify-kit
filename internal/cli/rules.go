@@ -21,8 +21,8 @@ func newRulesLintCmd() *cobra.Command {
 	var includeGo bool
 	cmd := &cobra.Command{
 		Use:   "lint [roots...]",
-		Short: "chặn tiếng Việt trong file agent-read (skill .md, Go, rules)", //znf:allow-lang
-		Long:  "Không tham số thì quét asset skill của kit (internal/plugin/assets/znf) — phần này còn tiếng Việt chưa dịch nên sẽ đỏ tới khi milestone dịch xong; trong lúc đó truyền path cụ thể, vd: zenify rules lint ~/.zenify/knowledge/.config/rules", //znf:allow-lang
+		Short: "chặn tiếng Việt trong file agent-read (skill .md, Go, rules)",                                                                                                                                                                                  //znf:allow-lang
+		Long:  "Không tham số thì quét asset skill của kit (internal/plugin/assets/znf); thêm --include-go để quét cả internal/**/*.go (đã dịch xong, gate bật). Truyền path cụ thể để quét nơi khác, vd: zenify rules lint ~/.zenify/knowledge/.config/rules", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, args []string) error {
 			roots := args
 			if len(roots) == 0 {

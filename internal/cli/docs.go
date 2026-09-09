@@ -12,8 +12,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// defaultDocsRepo: tên dir repo docs mặc định.
-// Override bằng --dir cho workspace khác (giữ project-agnostic).
+// defaultDocsRepo: default docs repo dir name.
+// Override with --dir for a different workspace (stays project-agnostic).
 const defaultDocsRepo = "docs"
 
 // docsSyncCore is the callable core of `docs sync`, extracted so hook
@@ -29,9 +29,9 @@ func docsSyncCore(workspace string, errW io.Writer) error {
 	for _, n := range docsync.Sync(gitx.ExecRunner(), dir) {
 		fmt.Fprintln(errW, n)
 	}
-	// view link farm — chạy mọi OS (unix symlink / windows junction, gói trong OSFS)
+	// view link farm — runs on every OS (unix symlink / windows junction, wrapped in OSFS)
 	viewDir := filepath.Join(workspace, defaultDocsRepo)
-	if viewDir != dir { // chỉ khi store ĐÃ tách khỏi workspace (đã migrate)
+	if viewDir != dir { // only when the store HAS separated from the workspace (already migrated)
 		for _, n := range docsview.EnsureView(docsview.OSFS{}, dir, viewDir) {
 			fmt.Fprintln(errW, n)
 		}
@@ -43,18 +43,18 @@ func newDocsCmd() *cobra.Command {
 	var workspaceDir, dir string
 	cmd := &cobra.Command{
 		Use:   "docs",
-		Short: "quản lý docs layer (agent-managed, dev read-only)",
+		Short: "quản lý docs layer (agent-managed, dev read-only)", //znf:allow-lang
 	}
 	sync := &cobra.Command{
 		Use:   "sync",
-		Short: "đồng bộ docs: pull + commit + push (fail-open)",
+		Short: "đồng bộ docs: pull + commit + push (fail-open)", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if workspaceDir == "" {
 				workspaceDir, _ = os.Getwd()
 			}
-			// --dir override thắng resolveDocsStore, giữ nguyên hành vi cũ:
-			// chỉ khi --dir KHÔNG được set thì mới tự resolve trong core.
+			// --dir override wins over resolveDocsStore, preserving the old behavior:
+			// only when --dir is NOT set does it auto-resolve in the core.
 			if dir != "" {
 				for _, n := range docsync.Sync(gitx.ExecRunner(), dir) {
 					cmd.PrintErrln(n)
@@ -70,8 +70,8 @@ func newDocsCmd() *cobra.Command {
 			return docsSyncCore(workspaceDir, cmd.ErrOrStderr())
 		},
 	}
-	sync.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)")
-	sync.Flags().StringVar(&dir, "dir", "", "thư mục repo docs (mặc định tự tìm theo layout)")
+	sync.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)") //znf:allow-lang
+	sync.Flags().StringVar(&dir, "dir", "", "thư mục repo docs (mặc định tự tìm theo layout)") //znf:allow-lang
 	cmd.AddCommand(sync)
 	return cmd
 }

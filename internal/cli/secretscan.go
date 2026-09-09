@@ -15,7 +15,7 @@ import (
 func newSecretScanCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:           "secret-scan [path]",
-		Short:         "Quét secret trong cây thư mục (dùng cho CI + kiểm tra tay)",
+		Short:         "Quét secret trong cây thư mục (dùng cho CI + kiểm tra tay)", //znf:allow-lang
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

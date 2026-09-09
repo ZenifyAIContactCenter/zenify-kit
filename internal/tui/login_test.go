@@ -64,13 +64,18 @@ func TestDetectGit_MissingBinary(t *testing.T) {
 }
 
 func TestOfferInstallGH(t *testing.T) {
-	// brew có mặt + user đồng ý + runner cài xong → nil (re-detect ok)
+	// brew present + user agrees + runner installs successfully → nil (re-detect ok)
 	installed := false
 	cfg := OnboardConfig{
 		ConfirmFn:     func(string) (bool, error) { return true, nil },
 		InstallRunner: func(tool string) error { installed = true; return nil },
-		DetectGHFn:    func() error { if installed { return nil }; return errNotFound },
-		lookPath:      func(name string) (string, error) { return "/opt/homebrew/bin/" + name, nil },
+		DetectGHFn: func() error {
+			if installed {
+				return nil
+			}
+			return errNotFound
+		},
+		lookPath: func(name string) (string, error) { return "/opt/homebrew/bin/" + name, nil },
 	}
 	if err := offerInstallGH(cfg); err != nil {
 		t.Fatalf("expected success after install, got %v", err)
@@ -79,7 +84,7 @@ func TestOfferInstallGH(t *testing.T) {
 		t.Fatal("expected InstallRunner to be called")
 	}
 
-	// user từ chối → lỗi guide, runner KHÔNG chạy
+	// user declines → guide error, runner does NOT run
 	ran := false
 	cfg2 := OnboardConfig{
 		ConfirmFn:     func(string) (bool, error) { return false, nil },
@@ -93,7 +98,7 @@ func TestOfferInstallGH(t *testing.T) {
 		t.Fatal("InstallRunner must not run when declined")
 	}
 
-	// brew vắng → lỗi guide, không hỏi
+	// brew absent → guide error, no prompt
 	cfg3 := OnboardConfig{
 		ConfirmFn:     func(string) (bool, error) { t.Fatal("must not prompt when brew absent"); return false, nil },
 		InstallRunner: func(string) error { return nil },

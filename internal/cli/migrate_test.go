@@ -9,8 +9,8 @@ import (
 	"testing"
 )
 
-// initRepo: git init THẬT (mkdir .git trơ khiến `git worktree list` lỗi "not a git
-// repository", nên hasWT trả err → BuildPlan REFUSE oan).
+// initRepo: a REAL git init (a bare `mkdir .git` makes `git worktree list` error "not a git
+// repository", so hasWT returns err → BuildPlan wrongly REFUSEs).
 func initRepo(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -21,8 +21,9 @@ func initRepo(t *testing.T, dir string) {
 	}
 }
 
-// commitAll add+commit mọi thứ để repo SẠCH (không thì file manifest untracked làm dirty
-// → BuildPlan REFUSE). Dùng -c để không phụ thuộc git config toàn cục của máy chạy test.
+// commitAll adds+commits everything so the repo is CLEAN (otherwise the untracked manifest
+// file makes it dirty → BuildPlan REFUSEs). Uses -c so it doesn't depend on the test
+// machine's global git config.
 func commitAll(t *testing.T, dir string) {
 	t.Helper()
 	if out, err := exec.Command("git", "-C", dir, "add", "-A").CombinedOutput(); err != nil {
@@ -40,7 +41,7 @@ func TestMigrateDryRunThenApply(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "svc-a")
 	initRepo(t, repo)
-	// repos.yaml sống BÊN TRONG repo (như thực tế), commit để repo sạch.
+	// repos.yaml lives INSIDE the repo (as it really does), commit so the repo is clean.
 	man := filepath.Join(repo, "manifest")
 	os.MkdirAll(man, 0o755)
 	os.WriteFile(filepath.Join(man, "repos.yaml"),
@@ -51,63 +52,64 @@ func TestMigrateDryRunThenApply(t *testing.T) {
 	// dry-run
 	runMigrate(root, "repos", false, &out, &errb)
 	if _, err := os.Stat(filepath.Join(root, "repos", "svc-a")); err == nil {
-		t.Fatal("dry-run KHÔNG được move")
+		t.Fatal("dry-run must NOT move")
 	}
 	// apply
 	out.Reset()
 	runMigrate(root, "repos", true, &out, &errb)
 	if _, err := os.Stat(filepath.Join(root, "repos", "svc-a", ".git")); err != nil {
-		t.Fatalf("--apply phải move repo vào repos/: %v", err)
+		t.Fatalf("--apply must move the repo into repos/: %v", err)
 	}
-	// repos.yaml đọc ở VỊ TRÍ MỚI (trong repo đã move).
+	// repos.yaml is read at its NEW location (inside the moved repo).
 	b, _ := os.ReadFile(filepath.Join(root, "repos", "svc-a", "manifest", "repos.yaml"))
 	if !strings.Contains(string(b), "path: repos/svc-a") {
-		t.Errorf("repos.yaml phải cập nhật path→repos/svc-a: %s", b)
+		t.Errorf("repos.yaml must update path→repos/svc-a: %s", b)
 	}
 }
 
-// TestMigrateManifestInsideRepo phản ánh THỰC TẾ: manifest/repos.yaml sống BÊN TRONG
-// một repo con (kit), KHÔNG ở workspace root — và repo kit đó tự nó cũng bị move.
-// Sau --apply: kit phải được move vào repos/, và repos.yaml (ở vị trí MỚI) phải có
-// path: của MỌI repo đã move → repos/<name>. Test này FAIL trên code cũ (nó ghi vào
-// <root>/manifest/repos.yaml không tồn tại) và PASS sau fix (resolve lười theo cấu trúc).
+// TestMigrateManifestInsideRepo reflects REALITY: manifest/repos.yaml lives INSIDE a
+// sub-repo (kit), NOT at the workspace root — and that kit repo itself also gets moved.
+// After --apply: kit must be moved into repos/, and repos.yaml (at its NEW location) must
+// have path: → repos/<name> for EVERY moved repo. This test FAILs on the old code (it
+// writes to <root>/manifest/repos.yaml, which doesn't exist) and PASSes after the fix
+// (structural lazy resolve).
 func TestMigrateManifestInsideRepo(t *testing.T) {
 	root := t.TempDir()
 
-	// kit là repo con SỞ HỮU manifest.
+	// kit is the sub-repo that OWNS the manifest.
 	kit := filepath.Join(root, "kit")
 	initRepo(t, kit)
 	man := filepath.Join(kit, "manifest")
 	os.MkdirAll(man, 0o755)
 	os.WriteFile(filepath.Join(man, "repos.yaml"),
 		[]byte("repos:\n  - name: kit\n    path: kit\n  - name: svc-a\n    path: svc-a\n"), 0o644)
-	commitAll(t, kit) // sạch → không bị REFUSE
+	commitAll(t, kit) // clean → not REFUSEd
 
-	// một repo thường khác.
+	// another ordinary repo.
 	initRepo(t, filepath.Join(root, "svc-a"))
 
 	var out, errb bytes.Buffer
 	runMigrate(root, "repos", true, &out, &errb)
 
-	// repo kit (chủ manifest) phải được move vào repos/.
+	// the kit repo (manifest owner) must be moved into repos/.
 	if _, err := os.Stat(filepath.Join(root, "repos", "kit", ".git")); err != nil {
-		t.Fatalf("--apply phải move repo kit vào repos/: %v", err)
+		t.Fatalf("--apply must move the kit repo into repos/: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "repos", "svc-a", ".git")); err != nil {
-		t.Fatalf("--apply phải move repo svc-a vào repos/: %v", err)
+		t.Fatalf("--apply must move the svc-a repo into repos/: %v", err)
 	}
-	// repos.yaml ở VỊ TRÍ MỚI phải cập nhật path cho mọi repo đã move.
+	// repos.yaml at its NEW location must update path for every moved repo.
 	newMan := filepath.Join(root, "repos", "kit", "manifest", "repos.yaml")
 	b, err := os.ReadFile(newMan)
 	if err != nil {
-		t.Fatalf("đọc repos.yaml ở vị trí mới: %v", err)
+		t.Fatalf("read repos.yaml at its new location: %v", err)
 	}
 	s := string(b)
 	if !strings.Contains(s, "path: repos/kit") {
-		t.Errorf("repos.yaml phải cập nhật path→repos/kit: %s", s)
+		t.Errorf("repos.yaml must update path→repos/kit: %s", s)
 	}
 	if !strings.Contains(s, "path: repos/svc-a") {
-		t.Errorf("repos.yaml phải cập nhật path→repos/svc-a: %s", s)
+		t.Errorf("repos.yaml must update path→repos/svc-a: %s", s)
 	}
 }
 
@@ -142,12 +144,12 @@ func mkdir(t *testing.T, p string) {
 	}
 }
 
-// TestMigrateApplyRealGitWorktreeAndSymlink là bằng chứng end-to-end (rule #3): move
-// một repo có worktree nội bộ dirty + node_modules symlink (deps:symlink) qua git thật,
-// xác nhận sau --apply repo/worktree/symlink/repos.yaml đều đúng.
+// TestMigrateApplyRealGitWorktreeAndSymlink is the end-to-end proof (rule #3): moves a
+// repo with a dirty internal worktree + node_modules symlink (deps:symlink) through real
+// git, confirms that after --apply the repo/worktree/symlink/repos.yaml are all correct.
 func TestMigrateApplyRealGitWorktreeAndSymlink(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("cần git")
+		t.Skip("requires git")
 	}
 	root := t.TempDir()
 	repo := filepath.Join(root, "svc")
@@ -157,54 +159,54 @@ func TestMigrateApplyRealGitWorktreeAndSymlink(t *testing.T) {
 	writeFile(t, filepath.Join(repo, "f.txt"), "v1\n")
 	runGit(t, repo, "add", ".")
 	runGit(t, repo, "commit", "-qm", "init")
-	// worktree nội bộ dưới .worktrees/
+	// internal worktree under .worktrees/
 	runGit(t, repo, "worktree", "add", "-q", filepath.Join(repo, ".worktrees", "wt1"), "-b", "feat")
-	// main dirty + việc dở trong worktree
+	// dirty main + work-in-progress in the worktree
 	writeFile(t, filepath.Join(repo, "f.txt"), "v1\ndirty\n")
 	writeFile(t, filepath.Join(repo, ".worktrees", "wt1", "g.txt"), "wtwork\n")
-	// giả node_modules + worktree.json deps:symlink + symlink node_modules trong worktree
+	// fake node_modules + worktree.json deps:symlink + node_modules symlink in the worktree
 	mkdir(t, filepath.Join(repo, "node_modules"))
 	mkdir(t, filepath.Join(repo, ".claude"))
 	writeFile(t, filepath.Join(repo, ".claude", "worktree.json"), `{"deps":"symlink"}`)
 	if err := os.Symlink(filepath.Join(repo, "node_modules"), filepath.Join(repo, ".worktrees", "wt1", "node_modules")); err != nil {
 		t.Fatal(err)
 	}
-	// manifest để updateYAML có chỗ ghi (repo này tự chứa manifest)
+	// manifest so updateYAML has somewhere to write (this repo contains its own manifest)
 	mkdir(t, filepath.Join(repo, "manifest"))
 	writeFile(t, filepath.Join(repo, "manifest", "repos.yaml"),
 		"repos:\n  - name: svc\n    path: svc\n")
 
 	var out, errb bytes.Buffer
 	if err := runMigrate(root, "repos", true, &out, &errb); err != nil {
-		t.Fatalf("runMigrate trả lỗi (phải fail-open nil): %v", err)
+		t.Fatalf("runMigrate returned an error (should fail-open nil): %v", err)
 	}
 
 	newRepo := filepath.Join(root, "repos", "svc")
 	newWT := filepath.Join(newRepo, ".worktrees", "wt1")
 
-	// (1) repo đã ở repos/
+	// (1) repo is now under repos/
 	if _, err := os.Stat(filepath.Join(newRepo, ".git")); err != nil {
-		t.Fatalf("repo chưa vào repos/: %v", err)
+		t.Fatalf("repo not moved into repos/: %v", err)
 	}
-	// (2) main dirty còn nguyên
+	// (2) dirty main change survived
 	if b := readFile(t, filepath.Join(newRepo, "f.txt")); !strings.Contains(b, "dirty") {
-		t.Fatalf("mất thay đổi dirty: %q", b)
+		t.Fatalf("lost dirty change: %q", b)
 	}
-	// (3) worktree linkage sống sau repair
+	// (3) worktree linkage survives the repair
 	if o, err := exec.Command("git", "-C", newWT, "status", "--short").CombinedOutput(); err != nil {
-		t.Fatalf("worktree hỏng sau move: %v\n%s", err, o)
+		t.Fatalf("worktree broken after move: %v\n%s", err, o)
 	}
-	// (4) việc dở trong worktree còn
+	// (4) work-in-progress in the worktree survived
 	if _, err := os.Stat(filepath.Join(newWT, "g.txt")); err != nil {
-		t.Fatalf("mất việc dở worktree: %v", err)
+		t.Fatalf("lost worktree work-in-progress: %v", err)
 	}
-	// (5) symlink node_modules re-point sang main mới
+	// (5) node_modules symlink re-points to the new main
 	if tgt, err := os.Readlink(filepath.Join(newWT, "node_modules")); err != nil ||
 		tgt != filepath.Join(newRepo, "node_modules") {
-		t.Fatalf("symlink chưa re-point: tgt=%q err=%v", tgt, err)
+		t.Fatalf("symlink not re-pointed: tgt=%q err=%v", tgt, err)
 	}
-	// (6) repos.yaml cập nhật path
+	// (6) repos.yaml updated the path
 	if y := readFile(t, filepath.Join(newRepo, "manifest", "repos.yaml")); !strings.Contains(y, "path: repos/svc") {
-		t.Fatalf("repos.yaml chưa cập nhật: %q", y)
+		t.Fatalf("repos.yaml not updated: %q", y)
 	}
 }

@@ -30,8 +30,8 @@ func TestPlanClassifies(t *testing.T) {
 	src := map[string][]byte{
 		"CLAUDE.md":     []byte("new content\n"),
 		"SYSTEM-MAP.md": []byte("same\n"),
-		"NEW.md":        []byte("brand new\n"), // nguồn có, đích vắng → CREATE
-		// "MISSING.md" cố tình vắng → SKIP
+		"NEW.md":        []byte("brand new\n"), // source exists, dest missing → CREATE
+		// "MISSING.md" deliberately missing → SKIP
 	}
 	dst := map[string][]byte{
 		"CLAUDE.md":             []byte("old content\n"),
@@ -76,7 +76,7 @@ func TestPlanSkipsEscapingPaths(t *testing.T) {
 	got := Plan(pairs, read, read, func(error) bool { return false })
 	for i, p := range got {
 		if p.State != Skip || p.Reason == "" {
-			t.Errorf("cặp %d thoát-gốc phải SKIP kèm Reason, got %s %q", i, p.State, p.Reason)
+			t.Errorf("pair %d escaping-root must SKIP with Reason, got %s %q", i, p.State, p.Reason)
 		}
 	}
 }
@@ -86,7 +86,7 @@ func TestPlanDestUnreadableIsSkipNotCreate(t *testing.T) {
 	readDstErr := func(p string) ([]byte, error) { return nil, errTest("permission denied") }
 	got := Plan([]Pair{{"a", "b"}}, read, readDstErr, func(err error) bool { return err == errNotFound })
 	if got[0].State != Skip || got[0].Reason == "" {
-		t.Fatalf("dest tồn-tại-không-đọc-được phải SKIP (không CREATE), got %s", got[0].State)
+		t.Fatalf("dest exists-but-unreadable must SKIP (not CREATE), got %s", got[0].State)
 	}
 }
 

@@ -39,12 +39,12 @@ func TestBuildParticipationAndFlags(t *testing.T) {
 		t.Errorf("notshipped: %v", rep.NotShipped)
 	}
 	if len(be0.Changes) == 0 {
-		t.Errorf("phải có Changes sau aggregate")
+		t.Errorf("must have Changes after aggregate")
 	}
 	if len(rep.ShippingRepos) != 1 || rep.ShippingRepos[0] != "be" {
 		t.Errorf("shipping: %v", rep.ShippingRepos)
 	}
-	// hotfix change 'x' có commit '9dc'? — notStaging đánh dấu qua SHA; ở đây hotfix merge 'aaa'
+	// does the hotfix change 'x' have commit '9dc'? — notStaging marks by SHA; here the hotfix merge 'aaa'
 	if rep.TotalHotfix < 1 {
 		t.Errorf("TotalHotfix: %d", rep.TotalHotfix)
 	}
@@ -61,7 +61,7 @@ func TestBuildFailOpenPerRepo(t *testing.T) {
 }
 
 func TestBuildUsesResolverNotFlatJoin(t *testing.T) {
-	// resolve trả path tùy ý (giả nested); Build phải gọi ReleaseNums trên path đó.
+	// resolve returns an arbitrary path (simulating nesting); Build must call ReleaseNums on that path.
 	seen := map[string]bool{}
 	resolve := func(name string) (string, bool) {
 		return "/ws/repos/" + name, true
@@ -69,14 +69,14 @@ func TestBuildUsesResolverNotFlatJoin(t *testing.T) {
 	r := fakeRunner{calls: seen}
 	_ = Build(r, resolve, []string{"svc-a"}, 84, func(dir string) []string { return nil }, func(string) []SpecMeta { return nil })
 	if !seen["/ws/repos/svc-a"] {
-		t.Fatalf("Build phải dùng path từ resolver, các dir đã gọi: %+v", seen)
+		t.Fatalf("Build must use the resolver's path, dirs called: %+v", seen)
 	}
 }
 
 func TestBuildUnreleasedRangeStagingDeterministic(t *testing.T) {
-	// release88 = release ĐANG HÌNH THÀNH (cao nhất, chưa deploy); base = release87 (đã deploy
-	// gần nhất). Convention (A): range đúng = origin/release87..origin/staging, KHÔNG phải
-	// release88..staging.
+	// release88 = the release STILL FORMING (highest, not yet deployed); base = release87 (most
+	// recently deployed). Convention (A): the correct range = origin/release87..origin/staging,
+	// NOT release88..staging.
 	fr := fakeRunner{out: map[string]string{
 		"branch -r": "  origin/release87\n  origin/release88\n  origin/staging\n",
 		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release87..origin/staging": "h1\x1ffeat(alpha): a\x1fnamph\x1f\x1e",
@@ -87,25 +87,25 @@ func TestBuildUnreleasedRangeStagingDeterministic(t *testing.T) {
 
 	rep := BuildUnreleased(fr, resolve, []string{"be"}, 88, noPatterns, noSpecs)
 	if !rep.Unreleased {
-		t.Fatalf("Report.Unreleased phải true")
+		t.Fatalf("Report.Unreleased must be true")
 	}
 	if rep.N != 88 {
-		t.Fatalf("N phải là số release đang hình thành (88): %d", rep.N)
+		t.Fatalf("N must be the number of the forming release (88): %d", rep.N)
 	}
-	// deterministic: chạy hai lần cùng state → render giống hệt.
+	// deterministic: running twice with the same state → identical render.
 	a := Render(rep, false)
 	b := Render(BuildUnreleased(fr, resolve, []string{"be"}, 88, noPatterns, noSpecs), false)
 	if a != b {
-		t.Errorf("render incremental phải deterministic")
+		t.Errorf("incremental render must be deterministic")
 	}
-	if !strings.Contains(a, "hình thành") {
-		t.Errorf("header unreleased phải khác '# Release N': %s", a)
+	if !strings.Contains(a, "hình thành") { //znf:allow-lang
+		t.Errorf("unreleased header must differ from '# Release N': %s", a)
 	}
 }
 
-// Regression (off-by-one nhãn release): base của unreleased PHẢI là release trước (đã deploy),
-// KHÔNG phải release<n> (đang hình thành). Stub cả hai range với commit khác nhau; per-repo
-// header phải ghi "(rel84..staging)" (base=84) và tuyệt đối không "(rel85..staging)".
+// Regression (off-by-one release labeling): unreleased's base MUST be the previous (deployed)
+// release, NOT release<n> (the one forming). Stub both ranges with different commits; the per-repo
+// header must read "(rel84..staging)" (base=84) and absolutely not "(rel85..staging)".
 func TestBuildUnreleasedBaseIsPrevNotForming(t *testing.T) {
 	fr := fakeRunner{out: map[string]string{
 		"branch -r": "  origin/release84\n  origin/release85\n  origin/staging\n",
@@ -116,20 +116,20 @@ func TestBuildUnreleasedBaseIsPrevNotForming(t *testing.T) {
 	rep := BuildUnreleased(fr, resolve, []string{"be"}, 85, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
 	out := Render(rep, false)
 	if !strings.Contains(out, "(rel84..staging)") {
-		t.Errorf("base unreleased phải là release trước 84: %s", out)
+		t.Errorf("unreleased's base must be the previous release 84: %s", out)
 	}
 	if strings.Contains(out, "(rel85..staging)") {
-		t.Errorf("base KHÔNG được là release đang hình thành 85: %s", out)
+		t.Errorf("base must NOT be the forming release 85: %s", out)
 	}
-	if !strings.Contains(out, "# Release đang hình thành: R85 (chưa deploy)") {
-		t.Errorf("header phải ghi R85 đang hình thành: %s", out)
+	if !strings.Contains(out, "# Release đang hình thành: R85 (chưa deploy)") { //znf:allow-lang
+		t.Errorf("header must say R85 forming: %s", out)
 	}
 }
 
-// unreleased là view "pending deploy hằng ngày": một repo CHƯA cắt release<n> (forming) nhưng có
-// commit staging > release đã-deploy của nó VẪN phải hiện, base = release max của nó (= release lớn
-// nhất < n). Đây là ca chính user chỉ ra: change-stream ở release84, chưa có release85, nhưng 7
-// commit staging phải xuất hiện.
+// unreleased is the "daily pending deploy" view: a repo that has NOT cut release<n> (forming) but
+// has staging commits > its own deployed release must STILL show up, with base = its max release
+// (= the highest release < n). This is the exact case the user pointed out: change-stream is on
+// release84, has no release85 yet, but its 7 staging commits must still appear.
 func TestBuildUnreleasedIncludesRepoWithoutFormingRelease(t *testing.T) {
 	fr := fakeRunner{out: map[string]string{
 		"branch -r": "  origin/release82\n  origin/release84\n  origin/staging\n",
@@ -139,20 +139,20 @@ func TestBuildUnreleasedIncludesRepoWithoutFormingRelease(t *testing.T) {
 	rep := BuildUnreleased(fr, resolve, []string{"csub"}, 85, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
 	out := Render(rep, false)
 	if !strings.Contains(out, "## csub (rel84..staging)") {
-		t.Errorf("repo chưa cắt release85 vẫn phải hiện với base=release84 của nó: %s", out)
+		t.Errorf("a repo without release85 cut yet must still show up with its base=release84: %s", out)
 	}
 }
 
-// unreleased bỏ repo không có gì pending (staging == release đã-deploy → 0 commit) để doc gọn.
+// unreleased drops a repo with nothing pending (staging == its deployed release → 0 commits) to keep the doc terse.
 func TestBuildUnreleasedOmitsRepoWithNoPending(t *testing.T) {
 	fr := fakeRunner{out: map[string]string{
 		"branch -r": "  origin/release84\n  origin/release85\n  origin/staging\n",
-		// range release84..staging KHÔNG set → 0 commit pending.
+		// range release84..staging is NOT set → 0 pending commits.
 	}}
 	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
 	rep := BuildUnreleased(fr, resolve, []string{"quiet"}, 85, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
 	if len(rep.Repos) != 0 {
-		t.Errorf("repo 0 commit pending phải bị bỏ khỏi unreleased: %+v", rep.Repos)
+		t.Errorf("a repo with 0 pending commits must be dropped from unreleased: %+v", rep.Repos)
 	}
 }
 

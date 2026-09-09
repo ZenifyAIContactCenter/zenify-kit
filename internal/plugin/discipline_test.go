@@ -32,6 +32,6 @@ func TestDisciplinePointsToCraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(b), "coding skill") {
-		t.Fatal("discipline chưa chỉ điểm bộ coding craft repo-scoped")
+		t.Fatal("discipline does not yet point to the repo-scoped coding craft set")
 	}
 }

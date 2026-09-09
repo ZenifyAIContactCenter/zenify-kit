@@ -14,7 +14,7 @@ func TestParseGitCalls(t *testing.T) {
 	cases := []struct {
 		name string
 		cmd  string
-		want []string // subcommands, theo thứ tự
+		want []string // subcommands, in order
 	}{
 		{"plain commit", "git commit -m x", []string{"commit"}},
 		{"global flag before sub", "git --no-pager commit -m x", []string{"commit"}},

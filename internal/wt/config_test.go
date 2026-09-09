@@ -82,7 +82,7 @@ func TestConfigGateHotfixStanza(t *testing.T) {
 		t.Fatalf("baseStrategy=%q, want standalone", c.HotfixBaseStrategy)
 	}
 	if c.GateSharedStore {
-		t.Fatal("lumi-agent phải sharedStore=false")
+		t.Fatal("lumi-agent must have sharedStore=false")
 	}
 }
 
@@ -100,7 +100,7 @@ func TestConfigHotfixDefaultsStaging(t *testing.T) {
 
 func TestConfigDepsDirDefault(t *testing.T) {
 	dir := t.TempDir()
-	writeWorktreeJSON(t, dir, `{"abbrev":"x"}`) // không khai depsDir
+	writeWorktreeJSON(t, dir, `{"abbrev":"x"}`) // depsDir not declared
 	c, err := Load(dir)
 	if err != nil {
 		t.Fatal(err)

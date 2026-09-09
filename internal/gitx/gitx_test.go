@@ -54,20 +54,20 @@ type stubRunner func(string, ...string) ([]byte, error)
 func (f stubRunner) Run(d string, a ...string) ([]byte, error) { return f(d, a...) }
 
 func TestHasWorktrees(t *testing.T) {
-	// 1 worktree (main) → false; nhiều → true
+	// 1 worktree (main) → false; more than one → true
 	one := stubRunner(func(dir string, args ...string) ([]byte, error) {
 		return []byte("worktree /a\nHEAD abc\nbranch refs/heads/main\n"), nil
 	})
 	got, err := HasWorktrees(one, "/a")
 	if err != nil || got {
-		t.Fatalf("1 worktree phải false, got=%v err=%v", got, err)
+		t.Fatalf("1 worktree must be false, got=%v err=%v", got, err)
 	}
 	many := stubRunner(func(dir string, args ...string) ([]byte, error) {
 		return []byte("worktree /a\nHEAD abc\n\nworktree /a/.worktrees/x\nHEAD def\n"), nil
 	})
 	got, err = HasWorktrees(many, "/a")
 	if err != nil || !got {
-		t.Fatalf("2 worktree phải true, got=%v err=%v", got, err)
+		t.Fatalf("2 worktrees must be true, got=%v err=%v", got, err)
 	}
 	errRunner := stubRunner(func(dir string, args ...string) ([]byte, error) {
 		return nil, errors.New("git failed")
@@ -77,7 +77,7 @@ func TestHasWorktrees(t *testing.T) {
 	}
 }
 
-// recRunner ghi lại lần Run cuối để assert args, và trả out/err cấu hình sẵn.
+// recRunner records the last Run call to assert args, and returns preconfigured out/err.
 type recRunner struct {
 	out     []byte
 	err     error
@@ -92,7 +92,7 @@ func (r *recRunner) Run(dir string, args ...string) ([]byte, error) {
 }
 
 func TestListWorktrees(t *testing.T) {
-	// porcelain: main trước, rồi 2 linked worktree.
+	// porcelain: main first, then 2 linked worktrees.
 	out := "worktree /ws/repo\nHEAD a\nbranch refs/heads/main\n\n" +
 		"worktree /ws/repo/.worktrees/wt1\nHEAD b\nbranch refs/heads/feat\n\n" +
 		"worktree /home/u/.herdr/worktrees/repo/wc\nHEAD c\nbranch refs/heads/fix\n"
@@ -115,14 +115,14 @@ func TestListWorktreesNoneBeyondMain(t *testing.T) {
 	out := "worktree /ws/repo\nHEAD a\nbranch refs/heads/main\n"
 	got, err := ListWorktrees(&recRunner{out: []byte(out)}, "/ws/repo")
 	if err != nil || len(got) != 0 {
-		t.Fatalf("got %v err %v — muốn rỗng", got, err)
+		t.Fatalf("got %v err %v — want empty", got, err)
 	}
 }
 
 func TestListWorktreesRunnerErr(t *testing.T) {
 	_, err := ListWorktrees(&recRunner{err: errStub}, "/ws/repo")
 	if err == nil {
-		t.Fatal("muốn propagate lỗi Runner")
+		t.Fatal("want the Runner error to propagate")
 	}
 }
 

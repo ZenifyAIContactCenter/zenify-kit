@@ -34,7 +34,7 @@ func env(kv map[string]string) func(string) string {
 
 func TestObserveCount_TaskWarnsWithAdditionalContext(t *testing.T) {
 	b := stubBump()
-	_, _ = run(t, `{"session_id":"s","tool_name":"Task"}`, env(nil), b) // 1st: silent
+	_, _ = run(t, `{"session_id":"s","tool_name":"Task"}`, env(nil), b)       // 1st: silent
 	out, code := run(t, `{"session_id":"s","tool_name":"Task"}`, env(nil), b) // 2nd: warn
 	if code != 0 {
 		t.Fatalf("code = %d, want 0", code)
@@ -47,7 +47,10 @@ func TestObserveCount_TaskWarnsWithAdditionalContext(t *testing.T) {
 
 func TestObserveCount_NonTaskIsNoop(t *testing.T) {
 	out, code := run(t, `{"session_id":"s","tool_name":"Bash"}`, env(nil),
-		func(string, int, time.Time) observe.Decision { t.Fatal("bump must not be called"); return observe.Decision{} })
+		func(string, int, time.Time) observe.Decision {
+			t.Fatal("bump must not be called")
+			return observe.Decision{}
+		})
 	if code != 0 || out != "" {
 		t.Fatalf("want silent exit 0, got out=%q code=%d", out, code)
 	}
@@ -55,7 +58,10 @@ func TestObserveCount_NonTaskIsNoop(t *testing.T) {
 
 func TestObserveCount_MalformedJSONExit0Silent(t *testing.T) {
 	out, code := run(t, `{not json`, env(nil),
-		func(string, int, time.Time) observe.Decision { t.Fatal("bump must not be called"); return observe.Decision{} })
+		func(string, int, time.Time) observe.Decision {
+			t.Fatal("bump must not be called")
+			return observe.Decision{}
+		})
 	if code != 0 || out != "" {
 		t.Fatalf("want silent exit 0 on bad json, got out=%q code=%d", out, code)
 	}
@@ -64,7 +70,10 @@ func TestObserveCount_MalformedJSONExit0Silent(t *testing.T) {
 func TestObserveCount_DisabledCapIsNoop(t *testing.T) {
 	out, code := run(t, `{"session_id":"s","tool_name":"Task"}`,
 		env(map[string]string{"ZENIFY_DISPATCH_SOFTCAP": "0"}),
-		func(string, int, time.Time) observe.Decision { t.Fatal("bump must not be called when disabled"); return observe.Decision{} })
+		func(string, int, time.Time) observe.Decision {
+			t.Fatal("bump must not be called when disabled")
+			return observe.Decision{}
+		})
 	if code != 0 || out != "" {
 		t.Fatalf("want silent exit 0 when disabled, got out=%q code=%d", out, code)
 	}

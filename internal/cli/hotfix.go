@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// resolveHotfixBaseRef ánh xạ chiến lược hotfix của repo → ref cụ thể.
+// resolveHotfixBaseRef maps the repo's hotfix strategy → a concrete ref.
 func resolveHotfixBaseRef(repoRoot string, git gitx.Runner) (string, error) {
 	c, err := wt.Load(repoRoot)
 	if err != nil {
@@ -23,7 +23,7 @@ func resolveHotfixBaseRef(repoRoot string, git gitx.Runner) (string, error) {
 		return "origin/staging", nil
 	case "custom":
 		if c.HotfixBaseRef == "" {
-			return "", fmt.Errorf("baseStrategy=custom nhưng thiếu hotfixBaseRef")
+			return "", fmt.Errorf("baseStrategy=custom but hotfixBaseRef is missing")
 		}
 		return c.HotfixBaseRef, nil
 	case "release-latest":
@@ -35,10 +35,10 @@ func resolveHotfixBaseRef(repoRoot string, git gitx.Runner) (string, error) {
 
 var releaseRe = regexp.MustCompile(`release([0-9]+)`)
 
-// latestRelease chạy `git -C <root> branch -r`, lọc release<N>, trả origin/release<N> cao nhất.
+// latestRelease runs `git -C <root> branch -r`, filters release<N>, and returns the highest origin/release<N>.
 func latestRelease(git gitx.Runner, repoRoot string) (string, error) {
 	if git == nil {
-		return "", fmt.Errorf("release-latest cần git runner")
+		return "", fmt.Errorf("release-latest needs a git runner")
 	}
 	out, err := git.Run(repoRoot, "branch", "-r")
 	if err != nil {
@@ -56,16 +56,16 @@ func latestRelease(git gitx.Runner, repoRoot string) (string, error) {
 		}
 	}
 	if best < 0 {
-		return "", fmt.Errorf("không thấy branch release* trong %s", repoRoot)
+		return "", fmt.Errorf("no release* branch found in %s", repoRoot)
 	}
 	return fmt.Sprintf("origin/release%d", best), nil
 }
 
 func newHotfixCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "hotfix", Short: "trợ giúp hotfix"}
+	cmd := &cobra.Command{Use: "hotfix", Short: "trợ giúp hotfix"} //znf:allow-lang
 	baseref := &cobra.Command{
 		Use:   "baseref <repoPath>",
-		Short: "in base ref hotfix đã resolve theo chiến lược trong worktree.json",
+		Short: "in base ref hotfix đã resolve theo chiến lược trong worktree.json", //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ref, err := resolveHotfixBaseRef(args[0], gitx.ExecRunner())

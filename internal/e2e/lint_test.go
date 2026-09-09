@@ -5,8 +5,8 @@ import "testing"
 
 const passing = `
 import { test, expect } from '../../fixtures';
-test('tạo ticket [FR-6]', async ({ page, apiClient, cleanupTracker }) => {
-  await page.getByRole('button', { name: 'Tạo mới' }).click();
+test('create ticket [FR-6]', async ({ page, apiClient, cleanupTracker }) => {
+  await page.getByRole('button', { name: 'Create new' }).click();
   // @domain-assert:ticket
   const r = await apiClient.get('/v2/ticket/abc');
   expect((await r.json()).subject).toBe('x');
@@ -24,7 +24,7 @@ func rules(findings []Finding) map[string]bool {
 
 func TestLint_PassingCleans(t *testing.T) {
 	if fs := LintSource("ok.spec.ts", passing); len(fs) != 0 {
-		t.Fatalf("spec sạch phải 0 finding, got %+v", fs)
+		t.Fatalf("clean spec must have 0 findings, got %+v", fs)
 	}
 }
 
@@ -37,12 +37,12 @@ test('x [FR-1]', async ({ page, cleanupTracker }) => {
   cleanupTracker.add(async () => {});
 });`
 	if !rules(LintSource("a.spec.ts", src))["refetch"] {
-		t.Fatal("thiếu apiClient re-fetch phải bị bắt")
+		t.Fatal("missing apiClient re-fetch must be caught")
 	}
 }
 
-// I-2: apiClient chỉ xuất hiện trong closure cleanup (không hề re-fetch/assert domain)
-// KHÔNG được tính là "có re-fetch" — nếu tính, test shallow này vẫn qua rule.
+// I-2: apiClient appearing only in the cleanup closure (no actual re-fetch/domain assertion)
+// must NOT count as "has re-fetch" — if it did, this shallow test would still pass the rule.
 func TestLint_CleanupOnlyApiClientFails(t *testing.T) {
 	src := `import { test, expect } from '../../fixtures';
 test('shallow [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
@@ -52,30 +52,30 @@ test('shallow [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   cleanupTracker.add(async () => { await apiClient.put('/v2/ticket/x', { data: { is_deleted: true } }); });
 });`
 	if !rules(LintSource("a.spec.ts", src))["refetch"] {
-		t.Fatal("apiClient chỉ nằm trong cleanup closure — phải bị bắt refetch")
+		t.Fatal("apiClient only inside cleanup closure — must be caught as missing refetch")
 	}
 }
 
-// I-3: scenario test.only(...) phải được soi như test thường, không được bypass gate.
+// I-3: a test.only(...) scenario must be scanned like a normal test — must not bypass the gate.
 func TestLint_TestOnlyIsLinted(t *testing.T) {
 	src := `import { test } from '../../fixtures';
 test.only('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
   cleanupTracker.add(async () => {});
 });`
-	// thiếu // @domain-assert marker → phải bị bắt (chứng minh test.only được soi)
+	// missing // @domain-assert marker → must be caught (proves test.only is scanned)
 	if !rules(LintSource("a.spec.ts", src))["marker"] {
-		t.Fatal("test.only thiếu @domain-assert phải bị bắt — không được bypass")
+		t.Fatal("test.only missing @domain-assert must be caught — must not bypass")
 	}
 }
 
-// I-3b: một *.spec.ts không có scenario test(...) nào không được đọc là sạch.
+// I-3b: a *.spec.ts with no test(...) scenario at all must not be read as clean.
 func TestLint_ZeroTestBlocksFlagged(t *testing.T) {
 	src := `import { test } from '../../fixtures';
-// mọi scenario bị comment hết
+// every scenario is commented out
 const helper = 1;`
 	if !rules(LintSource("empty.spec.ts", src))["no-test"] {
-		t.Fatal("*.spec.ts không có test(...) phải bị bắt no-test")
+		t.Fatal("*.spec.ts with no test(...) must be caught as no-test")
 	}
 }
 
@@ -88,7 +88,7 @@ test('x [SC-1]', async ({ page, apiClient, cleanupTracker }) => {
   cleanupTracker.add(async () => {});
 });`
 	if !rules(LintSource("a.spec.ts", src))["no-networkidle"] {
-		t.Fatal("networkidle phải bị bắt")
+		t.Fatal("networkidle must be caught")
 	}
 }
 
@@ -100,7 +100,7 @@ test('x [FR-1]', async ({ page, apiClient }) => {
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
 });`
 	if !rules(LintSource("a.spec.ts", src))["cleanup"] {
-		t.Fatal("thiếu cleanup phải bị bắt")
+		t.Fatal("missing cleanup must be caught")
 	}
 }
 
@@ -111,19 +111,19 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   cleanupTracker.add(async () => {});
 });`
 	if !rules(LintSource("a.spec.ts", src))["marker"] {
-		t.Fatal("thiếu @domain-assert phải bị bắt")
+		t.Fatal("missing @domain-assert must be caught")
 	}
 }
 
 func TestLint_MissingTraceability(t *testing.T) {
 	src := `import { test } from '../../fixtures';
-test('không ref', async ({ page, apiClient, cleanupTracker }) => {
+test('no ref', async ({ page, apiClient, cleanupTracker }) => {
   // @domain-assert:ticket
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
   cleanupTracker.add(async () => {});
 });`
 	if !rules(LintSource("a.spec.ts", src))["traceability"] {
-		t.Fatal("thiếu FR/SC ref phải bị bắt")
+		t.Fatal("missing FR/SC ref must be caught")
 	}
 }
 
@@ -137,7 +137,7 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   cleanupTracker.add(async () => {});
 });`
 	if !rules(LintSource("a.spec.ts", src))["marker"] {
-		t.Fatal("hai @domain-assert trong một scenario phải bị bắt")
+		t.Fatal("two @domain-assert in one scenario must be caught")
 	}
 }
 
@@ -150,7 +150,7 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   cleanupTracker.add(async () => {});
 });`
 	if !rules(LintSource("a.spec.ts", src))["no-hardwait"] {
-		t.Fatal("waitForTimeout phải bị bắt")
+		t.Fatal("waitForTimeout must be caught")
 	}
 }
 
@@ -163,7 +163,7 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   cleanupTracker.add(async () => {});
 });`
 	if !rules(LintSource("a.spec.ts", xpath))["no-fragile-selector"] {
-		t.Fatal("xpath= phải bị bắt")
+		t.Fatal("xpath= must be caught")
 	}
 
 	nthChild := `import { test } from '../../fixtures';
@@ -174,6 +174,6 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   cleanupTracker.add(async () => {});
 });`
 	if !rules(LintSource("a.spec.ts", nthChild))["no-fragile-selector"] {
-		t.Fatal("nth-child( phải bị bắt")
+		t.Fatal("nth-child( must be caught")
 	}
 }

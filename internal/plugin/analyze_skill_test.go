@@ -15,27 +15,27 @@ func TestAnalyzeSkill_Materialized_HasKeyParts(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dest, "skills/analyze/SKILL.md"))
 	if err != nil {
-		t.Fatalf("analyze/SKILL.md chưa materialize: %v", err)
+		t.Fatalf("analyze/SKILL.md not materialized: %v", err)
 	}
 	s := string(b)
 	for _, want := range []string{
-		"znf:_shared/constitution",   // cite constitution
-		"znf:_shared/spec-template",  // cite template
-		"zenify analyze",             // gọi command cơ học
-		"advisory",                   // khai không-chặn
-		"SC-testable",                // pass phán đoán P3
-		"necessity",                  // pass phán đoán P6
-		"db-3",                       // pass phán đoán P7
-		"_Blast-radius:",             // risk-metadata judgment pass (M6c1)
+		"znf:_shared/constitution",  // cites constitution
+		"znf:_shared/spec-template", // cites template
+		"zenify analyze",            // calls the mechanical command
+		"advisory",                  // declares non-blocking
+		"SC-testable",               // judgment pass P3
+		"necessity",                 // judgment pass P6
+		"db-3",                      // judgment pass P7
+		"_Blast-radius:",            // risk-metadata judgment pass (M6c1)
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("analyze/SKILL.md thiếu %q", want)
+			t.Errorf("analyze/SKILL.md missing %q", want)
 		}
 	}
-	// Agnostic: skill KHÔNG mandate mermaid.
+	// Agnostic: skill must NOT mandate mermaid.
 	for _, forbidden := range []string{"mermaid"} {
 		if strings.Contains(s, forbidden) {
-			t.Errorf("analyze/SKILL.md KHÔNG được chứa %q (agnostic)", forbidden)
+			t.Errorf("analyze/SKILL.md must NOT contain %q (agnostic)", forbidden)
 		}
 	}
 }
@@ -53,7 +53,7 @@ func TestAnalyzeSkill_CookWiring(t *testing.T) {
 	s := string(b)
 	for _, want := range []string{"znf:analyze", "advisory"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("cook/SKILL.md thiếu %q (analyze wiring)", want)
+			t.Errorf("cook/SKILL.md missing %q (analyze wiring)", want)
 		}
 	}
 }

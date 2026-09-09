@@ -6,46 +6,47 @@ import (
 	"strings"
 )
 
-// Render dựng markdown report dạng decision-artifact (go/no-go). verbose=true liệt kê
-// chore + commit chi tiết; mặc định gập chore. Không trả lỗi/không panic (fail-open):
-// người gọi luôn nhận được chuỗi, kể cả report rỗng.
+// Render builds a decision-artifact-style markdown report (go/no-go). verbose=true lists chores
+// + detailed commits; by default chores are collapsed. It never returns an error/never panics
+// (fail-open): the caller always gets a string back, even for an empty report.
 func Render(rep Report, verbose bool) string {
 	var b strings.Builder
 
 	// Header.
 	if rep.Unreleased {
-		// View unreleased regen mỗi /ship + docs-sync → KHÔNG in timestamp time.Now()
-		// (churn commit no-op chỉ-đổi-giờ trong store). Thời điểm đã nằm trong git-log của
-		// store; giữ output deterministic theo git-state (SC-6). R<N>.md cắt-1-lần vẫn giữ "Sinh".
-		fmt.Fprintf(&b, "# Release đang hình thành: R%d (chưa deploy)\n\n", rep.N)
+		// The unreleased view regenerates on every /ship + docs-sync → do NOT print a
+		// time.Now() timestamp (that would produce a no-op churn commit that only changes the
+		// time, in the store). The moment is already in the store's git-log; this keeps output
+		// deterministic against git-state (SC-6). A once-cut R<N>.md still keeps its "Sinh" line.
+		fmt.Fprintf(&b, "# Release đang hình thành: R%d (chưa deploy)\n\n", rep.N) //znf:allow-lang
 	} else {
 		fmt.Fprintf(&b, "# Release %d\n", rep.N)
 		fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)
 	}
 
-	// Headline — quyết định nhanh.
-	b.WriteString("## Quyết định nhanh\n")
+	// Headline — quick decision.
+	b.WriteString("## Quyết định nhanh\n") //znf:allow-lang
 	if len(rep.ShippingRepos) > 0 {
 		fmt.Fprintf(&b, "- Ship: %s\n", strings.Join(rep.ShippingRepos, ", "))
 	}
 	if len(rep.NotShipped) > 0 {
-		fmt.Fprintf(&b, "- Không ship: %s\n", strings.Join(rep.NotShipped, ", "))
+		fmt.Fprintf(&b, "- Không ship: %s\n", strings.Join(rep.NotShipped, ", ")) //znf:allow-lang
 	}
-	fmt.Fprintf(&b, "- Tổng: %d feature · %d fix · %d hotfix\n", rep.TotalFeat, rep.TotalFix, rep.TotalHotfix)
-	// text/template range trên map tự sort key; ở đây sort thủ công để output ổn định.
+	fmt.Fprintf(&b, "- Tổng: %d feature · %d fix · %d hotfix\n", rep.TotalFeat, rep.TotalFix, rep.TotalHotfix) //znf:allow-lang
+	// text/template's map range auto-sorts keys; here we sort manually for stable output.
 	for _, p := range sortedKeys(rep.SharedCrossRepo) {
 		fmt.Fprintf(&b, "- Shared-contract %s (%s)\n", p, strings.Join(rep.SharedCrossRepo[p], ", "))
 	}
 	if rep.DeployOrderNote {
-		b.WriteString("- Thứ tự deploy: migration → BE → subscriber → FE\n")
+		b.WriteString("- Thứ tự deploy: migration → BE → subscriber → FE\n") //znf:allow-lang
 	}
 	if rep.HotfixesNotSynced > 0 {
-		fmt.Fprintf(&b, "- ⚠ %d hotfix chưa sync staging\n", rep.HotfixesNotSynced)
+		fmt.Fprintf(&b, "- ⚠ %d hotfix chưa sync staging\n", rep.HotfixesNotSynced) //znf:allow-lang
 	}
 	if len(rep.Migrations) > 0 {
 		fmt.Fprintf(&b, "- ⚠ migration: %s\n", strings.Join(rep.Migrations, ", "))
 	}
-	fmt.Fprintf(&b, "- ℹ %d/%d thay đổi có spec\n", rep.SpecLinked, rep.SpecTotal)
+	fmt.Fprintf(&b, "- ℹ %d/%d thay đổi có spec\n", rep.SpecLinked, rep.SpecTotal) //znf:allow-lang
 
 	// Per-repo sections.
 	for _, rr := range rep.Repos {
@@ -58,28 +59,28 @@ func Render(rep Report, verbose bool) string {
 		if rep.Unreleased {
 			fmt.Fprintf(&b, "## %s (rel%d..staging)\n", rr.Name, rr.PrevRelease)
 		} else {
-			fmt.Fprintf(&b, "## %s (rel%d..%d, cắt %s)\n", rr.Name, rr.PrevRelease, rep.N, cutOr(rr.CutDate))
+			fmt.Fprintf(&b, "## %s (rel%d..%d, cắt %s)\n", rr.Name, rr.PrevRelease, rep.N, cutOr(rr.CutDate)) //znf:allow-lang
 		}
-		fmt.Fprintf(&b, "- Migration %s · Test %s · %d commit → %d thay đổi\n",
-			yesNo(rr.HasMigration, "CÓ", "không"),
-			yesNo(rr.HasTestTouch, "đụng", "không"),
+		fmt.Fprintf(&b, "- Migration %s · Test %s · %d commit → %d thay đổi\n", //znf:allow-lang
+			yesNo(rr.HasMigration, "CÓ", "không"),   //znf:allow-lang
+			yesNo(rr.HasTestTouch, "đụng", "không"), //znf:allow-lang
 			len(rr.Commits), len(rr.Changes))
 		if len(rr.SharedHits) > 0 {
 			fmt.Fprintf(&b, "- ⚠ Shared-collection: %s\n", strings.Join(rr.SharedHits, ", "))
 		}
 		if rr.RegressionUncomputed {
-			b.WriteString("- ⚠ Regression: không so được staging\n")
+			b.WriteString("- ⚠ Regression: không so được staging\n") //znf:allow-lang
 		}
 
 		feats, fixes, hotfixes, chores := bucketChanges(rr.Changes)
 		renderChangeSection(&b, "### Features", feats, verbose)
 		renderChangeSection(&b, "### Fixes", fixes, verbose)
 		renderChangeSection(&b, "### Hotfixes", hotfixes, verbose)
-		// Risk-metadata (Blast/DB/Rollback) sống dưới bảng dạng **Label:** value —
-		// prose nhiều câu không nhét vừa ô bảng. Chỉ thay đổi CÓ spec mới có khối này.
+		// Risk metadata (Blast/DB/Rollback) lives below the table as **Label:** value lines —
+		// multi-sentence prose doesn't fit in a table cell. Only a change WITH a spec gets this block.
 		renderRiskDetail(&b, rr.Changes)
-		// Chore không ảnh hưởng quyết định ship → chỉ hiện khi --verbose (count đã ngầm ở
-		// dòng "N commit → M thay đổi"). Mặc định bỏ hẳn để report gọn.
+		// A chore does not affect the ship decision → only shown with --verbose (its count is
+		// already implicit in the "N commit → M change" line). Dropped entirely by default to keep the report terse.
 		if verbose {
 			renderChangeSection(&b, "### Chores", chores, verbose)
 		}
@@ -88,8 +89,8 @@ func Render(rep Report, verbose bool) string {
 	return b.String()
 }
 
-// bucketChanges chia changes theo type: feat→Features, fix→Fixes, hotfix→Hotfixes,
-// còn lại (chore/other)→Chores.
+// bucketChanges splits changes by type: feat→Features, fix→Fixes, hotfix→Hotfixes,
+// everything else (chore/other)→Chores.
 func bucketChanges(changes []Change) (feats, fixes, hotfixes, chores []Change) {
 	for _, ch := range changes {
 		switch ch.Type {
@@ -111,10 +112,11 @@ func renderChangeSection(b *strings.Builder, header string, changes []Change, ve
 		return
 	}
 	b.WriteString(header + "\n")
-	// Bảng = tầng lướt nhanh: mỗi dòng ngắn đều nhau. Cột "Mô tả" là prose một dòng (thường
-	// tiếng Việt) lấy từ trailer _Release-Note do /ship ghi — để đọc doc là hiểu PR làm gì mà
-	// không phải mở PR. Cột Spec chỉ cờ ✓/— (chi tiết rủi ro nằm ở khối "#### Rủi ro" dưới bảng).
-	b.WriteString("| Thay đổi | Mô tả | # | Dev | Spec | Staging |\n")
+	// Table = the quick-scan layer: every row is short and even. The "Mô tả" column is a one-line //znf:allow-lang
+	// prose (usually Vietnamese) taken from the _Release-Note trailer written by /ship — so
+	// reading the doc tells you what the PR does without opening it. The Spec column is just a
+	// ✓/— flag (risk detail lives in the "#### Rủi ro" block below the table). //znf:allow-lang
+	b.WriteString("| Thay đổi | Mô tả | # | Dev | Spec | Staging |\n") //znf:allow-lang
 	b.WriteString("|---|---|---|---|---|---|\n")
 	for _, ch := range changes {
 		fmt.Fprintf(b, "| %s | %s | %d | %s | %s | %s |\n",
@@ -125,7 +127,7 @@ func renderChangeSection(b *strings.Builder, header string, changes []Change, ve
 			specCol(ch.Risk),
 			cell(stagingCol(ch.NotOnStaging)))
 	}
-	// FR-5.2: verbose liệt kê commit của từng thay đổi bên dưới bảng (bảng không lồng được).
+	// FR-5.2: verbose lists each change's commits below the table (a table can't nest one).
 	if verbose {
 		for _, ch := range changes {
 			var subs []string
@@ -145,15 +147,16 @@ func renderChangeSection(b *strings.Builder, header string, changes []Change, ve
 	}
 }
 
-// changeCol dựng ô "Thay đổi": **Title**[ #PR] — nhãn ngắn để lướt. Desc (subject
-// commit, hay lẫn Anh/Việt và dài) KHÔNG dán vào đây nữa; nó chỉ hiện ở --verbose.
+// changeCol builds the "Thay đổi" cell: **Title**[ #PR] — a short label for scanning. Desc (the //znf:allow-lang
+// commit subject, often a mix of English/Vietnamese and long) is NO LONGER pasted in here; it only shows with --verbose.
 func changeCol(ch Change) string {
 	return "**" + ch.Title + "**" + prNum(ch.PRNum)
 }
 
-// descCol dựng ô "Mô tả": mô tả một dòng từ _Release-Note (Risk.Note). Rỗng (change không
-// có note-commit, hoặc risk đến từ spec) → "—". KHÔNG fallback về Change.Desc (subject commit,
-// hay lẫn Anh/Việt) — đó chính là thứ bảng này cố tránh; ô để trống nhắc /ship ghi --note.
+// descCol builds the "Mô tả" cell: a one-line description from _Release-Note (Risk.Note). Empty //znf:allow-lang
+// (the change has no note-commit, or its risk came from a spec) → "—". It does NOT fall back to
+// Change.Desc (the commit subject, often a mix of English/Vietnamese) — that is exactly what this
+// table is trying to avoid; a blank cell is a nudge for /ship to write --note.
 func descCol(ch Change) string {
 	if ch.Risk.Note == "" {
 		return "—"
@@ -161,7 +164,7 @@ func descCol(ch Change) string {
 	return ch.Risk.Note
 }
 
-// devCol join Authors; rỗng → "—".
+// devCol joins Authors; empty → "—".
 func devCol(authors []string) string {
 	if len(authors) == 0 {
 		return "—"
@@ -169,21 +172,21 @@ func devCol(authors []string) string {
 	return strings.Join(authors, ", ")
 }
 
-// stagingCol: NotOnStaging → cảnh báo chưa sync; else ok.
+// stagingCol: NotOnStaging → a not-synced warning; else ok.
 func stagingCol(notOnStaging bool) string {
 	if notOnStaging {
-		return "⚠ chưa sync"
+		return "⚠ chưa sync" //znf:allow-lang
 	}
 	return "ok"
 }
 
-// cell escape ký tự phá bảng markdown: `|` và xuống dòng.
+// cell escapes characters that would break a markdown table: `|` and newlines.
 func cell(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	return strings.ReplaceAll(s, "|", "\\|")
 }
 
-// specCol: cờ gọn cho cột Spec — ✓ nếu link được spec, — nếu không.
+// specCol: a compact flag for the Spec column — ✓ if linked to a spec, — if not.
 func specCol(r RiskMeta) string {
 	if r.SpecPath == "" {
 		return "—"
@@ -191,14 +194,14 @@ func specCol(r RiskMeta) string {
 	return "✓"
 }
 
-// renderRiskDetail in khối "#### Rủi ro" dưới bảng cho các thay đổi CÓ spec, mỗi tag
-// một dòng **Label:** value (đúng artifact-style). Không có thay đổi nào có spec → bỏ hẳn.
+// renderRiskDetail prints the "#### Rủi ro" block below the table for changes WITH a spec, each //znf:allow-lang
+// tag as one **Label:** value line (matching artifact-style). No change has a spec → skip entirely.
 func renderRiskDetail(b *strings.Builder, changes []Change) {
 	var spec []Change
 	for _, ch := range changes {
-		// Loại chore/other GIỐNG headline SpecTotal (release.go:175): dòng bảng của
-		// chúng bị verbose-gate ở "### Chores", nên khối rủi ro non-verbose sẽ tham
-		// chiếu một thay đổi không hiện ở bảng nào phía trên.
+		// Excluding chore/other MIRRORS the headline SpecTotal (release.go:175): their table row
+		// is verbose-gated under "### Chores", so a non-verbose risk block would otherwise
+		// reference a change that doesn't appear in any table above it.
 		if ch.Type == "chore" || ch.Type == "other" {
 			continue
 		}
@@ -209,7 +212,7 @@ func renderRiskDetail(b *strings.Builder, changes []Change) {
 	if len(spec) == 0 {
 		return
 	}
-	b.WriteString("\n#### Rủi ro (thay đổi có spec)\n")
+	b.WriteString("\n#### Rủi ro (thay đổi có spec)\n") //znf:allow-lang
 	for _, ch := range spec {
 		fmt.Fprintf(b, "\n**%s**\n", riskHeader(ch))
 		fmt.Fprintf(b, "- **Blast-radius:** %s\n", oneLine(ch.Risk.BlastRadius))
@@ -218,7 +221,7 @@ func renderRiskDetail(b *strings.Builder, changes []Change) {
 	}
 }
 
-// riskHeader: "#PR — Title" khi có PR, else chỉ Title.
+// riskHeader: "#PR — Title" when there's a PR, else just Title.
 func riskHeader(ch Change) string {
 	if ch.PRNum != "" {
 		return "#" + ch.PRNum + " — " + ch.Title
@@ -226,9 +229,10 @@ func riskHeader(ch Change) string {
 	return ch.Title
 }
 
-// oneLine gộp xuống-dòng thành khoảng trắng để value nằm gọn một dòng bullet; "" → "—".
-// Cũng trim emphasis/backtick rìa: speclink regex bắt tag "**_Label:**" chỉ tới "_Label:"
-// nên "**" ĐÓNG của label lọt vào đầu value ("** contact…"); trim ở đây cho sạch hiển thị.
+// oneLine collapses newlines into spaces so the value fits neatly on one bullet line; "" → "—".
+// It also trims trailing emphasis/backtick markers: the speclink regex captures the "**_Label:**"
+// tag only up to "_Label:", so the label's CLOSING "**" leaks into the start of the value
+// ("** contact…"); trimming here keeps the display clean.
 func oneLine(s string) string {
 	s = strings.Trim(strings.ReplaceAll(s, "\n", " "), "`* ")
 	if s == "" {
@@ -253,12 +257,12 @@ func yesNo(b bool, yes, no string) string {
 
 func cutOr(cut string) string {
 	if cut == "" {
-		return "chưa xác định"
+		return "chưa xác định" //znf:allow-lang
 	}
 	return cut
 }
 
-// sortedKeys trả key của map đã sort (thay cho text/template auto-sort cũ).
+// sortedKeys returns the map's keys sorted (replacing text/template's old auto-sort).
 func sortedKeys(m map[string][]string) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

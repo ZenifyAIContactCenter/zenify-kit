@@ -82,8 +82,8 @@ func playwrightCheck() Check {
 	}
 }
 
-// pluginCheck báo plugin znf đã materialize chưa: plugin.json tồn tại + hợp lệ,
-// số skill/agent ship ra, và số file managed.
+// pluginCheck reports whether the znf plugin has materialized: plugin.json exists
+// + is valid, the number of skills/agents shipped, and the number of files managed.
 func pluginCheck() Check {
 	dest, _ := plugin.DefaultDest()
 	return pluginCheckAt(dest)
@@ -95,19 +95,19 @@ func pluginCheckAt(dest string) Check {
 		Run: func() (bool, string) {
 			manifestPath := filepath.Join(dest, ".manifest.json")
 			pj := filepath.Join(dest, ".claude-plugin", "plugin.json")
-			b, err := os.ReadFile(pj) //nolint:gosec // G304 -- dest nội bộ
+			b, err := os.ReadFile(pj) //nolint:gosec // G304 -- internal dest
 			if err != nil {
-				return false, "znf chưa cài (chạy `zenify skills sync`)"
+				return false, "znf chưa cài (chạy `zenify skills sync`)" //znf:allow-lang
 			}
 			var meta struct {
 				Name string `json:"name"`
 			}
 			if json.Unmarshal(b, &meta) != nil || meta.Name != "znf" {
-				return false, "plugin.json không hợp lệ"
+				return false, "plugin.json không hợp lệ" //znf:allow-lang
 			}
 			m, err := managed.Load(manifestPath)
 			if err != nil {
-				return true, "ok — plugin.json hợp lệ (manifest không đọc được)"
+				return true, "ok — plugin.json hợp lệ (manifest không đọc được)" //znf:allow-lang
 			}
 			skills := countDirs(filepath.Join(dest, "skills"))
 			agents := countFiles(filepath.Join(dest, "agents"))
@@ -116,7 +116,8 @@ func pluginCheckAt(dest string) Check {
 	}
 }
 
-// countDirs đếm thư mục con CÓ SKILL.md (skill thực); dir phụ như _shared bị bỏ; lỗi → 0.
+// countDirs counts child directories that HAVE a SKILL.md (real skills); auxiliary
+// dirs like _shared are skipped; error → 0.
 func countDirs(dir string) int {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -134,7 +135,7 @@ func countDirs(dir string) int {
 	return n
 }
 
-// countFiles đếm file thường trực tiếp; lỗi → 0.
+// countFiles counts direct regular files; error → 0.
 func countFiles(dir string) int {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -149,9 +150,10 @@ func countFiles(dir string) int {
 	return n
 }
 
-// dockerCheck báo Docker có sẵn cho `zenify visual` không: docker trên PATH +
-// daemon chạy (`docker info`). Docker là prerequisite của visual-regression;
-// KHÔNG auto-cài (daemon hệ thống, cần admin/reboot/license per-OS) — chỉ báo.
+// dockerCheck reports whether Docker is available for `zenify visual`: docker on
+// PATH + daemon running (`docker info`). Docker is a prerequisite of visual-regression;
+// it is NOT auto-installed (system daemon, needs admin/reboot/license per-OS) — this
+// only reports.
 func dockerCheck() Check {
 	return dockerCheckWith(exec.LookPath, func() error {
 		return exec.Command("docker", "info").Run() //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
@@ -163,10 +165,10 @@ func dockerCheckWith(lookPath func(string) (string, error), info func() error) C
 		Name: "docker",
 		Run: func() (bool, string) {
 			if _, err := lookPath("docker"); err != nil {
-				return false, "docker=missing — cài để dùng `zenify visual` (mac: brew install --cask docker · win: winget install Docker.DockerDesktop · linux: apt install docker.io)"
+				return false, "docker=missing — cài để dùng `zenify visual` (mac: brew install --cask docker · win: winget install Docker.DockerDesktop · linux: apt install docker.io)" //znf:allow-lang
 			}
 			if err := info(); err != nil {
-				return false, "docker=installed daemon=down — mở Docker Desktop / start dockerd"
+				return false, "docker=installed daemon=down — mở Docker Desktop / start dockerd" //znf:allow-lang
 			}
 			return true, "docker=ok daemon=up"
 		},

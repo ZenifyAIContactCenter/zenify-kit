@@ -11,11 +11,11 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-// secretStep prompt masked các bootstrap secret key còn rỗng trong
-// settings.local.json cấp workspace và ghi value đã nhập trở lại. KHÔNG bao
-// giờ đọc-để-log, KHÔNG đè key đã có value (FR-069g). Headless/Accessible →
-// no-op (prompt masked cần TTY thật); chỉ đạt tới từ wizard TTY interactive
-// (runWizard set Accessible=false), path headless không gọi RunOnboard.
+// secretStep prompts (masked) for bootstrap secret keys still empty in the
+// workspace-level settings.local.json and writes the entered value back. NEVER
+// reads-to-log, NEVER overwrites a key that already has a value (FR-069g). Headless/Accessible →
+// no-op (masked prompt needs a real TTY); only reachable from the wizard's interactive TTY path
+// (runWizard sets Accessible=false); the headless path never calls RunOnboard.
 func secretStep(cfg OnboardConfig) error {
 	if cfg.Accessible || len(cfg.SecretKeys) == 0 {
 		return nil
@@ -32,7 +32,7 @@ func secretStep(cfg OnboardConfig) error {
 		}
 	}
 	if len(missing) == 0 {
-		_, _ = fmt.Fprintln(os.Stdout, "secrets: đã đủ, giữ nguyên")
+		_, _ = fmt.Fprintln(os.Stdout, "secrets: đã đủ, giữ nguyên") //znf:allow-lang
 		return nil
 	}
 	values, err := promptSecrets(cfg, missing)
@@ -41,7 +41,7 @@ func secretStep(cfg OnboardConfig) error {
 	}
 	changed := false
 	for _, k := range missing {
-		if v := values[k]; v != "" { // gõ trống → để nguyên placeholder
+		if v := values[k]; v != "" { // blank input → leave the placeholder as-is
 			env[k] = v
 			changed = true
 		}
@@ -53,8 +53,8 @@ func secretStep(cfg OnboardConfig) error {
 	return writeSettingsAtomic(settingsPath, root)
 }
 
-// promptSecrets hiện một form huh với một Input masked mỗi key. Seam
-// SecretPromptFn thay thế trong test để không mở prompt thật.
+// promptSecrets shows a huh form with one masked Input per key. The
+// SecretPromptFn seam replaces this in tests so no real prompt opens.
 func promptSecrets(cfg OnboardConfig, keys []string) (map[string]string, error) {
 	if cfg.SecretPromptFn != nil {
 		return cfg.SecretPromptFn(keys)
@@ -66,7 +66,7 @@ func promptSecrets(cfg OnboardConfig, keys []string) (map[string]string, error) 
 		vals[i] = &s
 		fields = append(fields, huh.NewInput().
 			Title(k).
-			Description("để trống nếu điền sau").
+			Description("để trống nếu điền sau"). //znf:allow-lang
 			EchoMode(huh.EchoModePassword).
 			Value(&s))
 	}
@@ -80,9 +80,9 @@ func promptSecrets(cfg OnboardConfig, keys []string) (map[string]string, error) 
 	return out, nil
 }
 
-// readEnvBlock đọc settings.local.json và trả env map + root map. File vắng →
-// root/env rỗng. JSON hỏng hoặc "env" không phải object → lỗi (để nguyên file,
-// không đụng secret live).
+// readEnvBlock reads settings.local.json and returns the env map + root map. Missing file →
+// empty root/env. Malformed JSON or "env" not an object → error (leaves the file as-is,
+// doesn't touch the live secret).
 func readEnvBlock(path string) (map[string]any, map[string]any, error) {
 	raw, err := os.ReadFile(path) //nolint:gosec // G304 -- path computed internally from cfg.Workspace
 	if err != nil {
@@ -94,7 +94,7 @@ func readEnvBlock(path string) (map[string]any, map[string]any, error) {
 	}
 	var root map[string]any
 	if err := json.Unmarshal(raw, &root); err != nil {
-		return nil, nil, fmt.Errorf("settings %s không phải JSON hợp lệ, để nguyên: %w", path, err)
+		return nil, nil, fmt.Errorf("settings %s is not valid JSON, left as-is: %w", path, err)
 	}
 	if root == nil {
 		root = map[string]any{}
@@ -102,7 +102,7 @@ func readEnvBlock(path string) (map[string]any, map[string]any, error) {
 	env, ok := root["env"].(map[string]any)
 	if !ok {
 		if _, present := root["env"]; present {
-			return nil, nil, fmt.Errorf("settings %s có \"env\" không phải object, để nguyên", path)
+			return nil, nil, fmt.Errorf("settings %s has \"env\" that isn't an object, left as-is", path)
 		}
 		env = map[string]any{}
 		root["env"] = env
@@ -110,8 +110,8 @@ func readEnvBlock(path string) (map[string]any, map[string]any, error) {
 	return env, root, nil
 }
 
-// writeSettingsAtomic mã hoá canonical (2-space, HTML-escape OFF để giữ nguyên
-// '&' trong MONGO_URL) rồi ghi atomic temp+rename qua managed.WriteFileAtomic.
+// writeSettingsAtomic encodes canonically (2-space indent, HTML-escape OFF to preserve
+// '&' in MONGO_URL) then writes atomically via temp+rename through managed.WriteFileAtomic.
 func writeSettingsAtomic(path string, root map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err

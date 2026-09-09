@@ -14,7 +14,7 @@ func TestWriteHarness_MaterializesFixtures(t *testing.T) {
 	}
 	for _, f := range []string{"fixtures.ts", "playwright.config.ts", "package.json", "auth.setup.ts"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
-			t.Fatalf("%s phải tồn tại: %v", f, err)
+			t.Fatalf("%s must exist: %v", f, err)
 		}
 	}
 }

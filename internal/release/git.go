@@ -10,16 +10,16 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
-const sep = "\x1f"    // unit separator giữa field
-const recSep = "\x1e" // record separator giữa commit (body có thể nhiều dòng)
+const sep = "\x1f"    // unit separator between fields
+const recSep = "\x1e" // record separator between commits (body can span multiple lines)
 
-// %b PHẢI đứng cuối (body nhiều dòng); %an chèn giữa subject và body.
+// %b MUST come last (multi-line body); %an is inserted between subject and body.
 const logFormat = "--format=%h" + sep + "%s" + sep + "%an" + sep + "%b" + recSep
 
-// Chốt cuối là whitespace/EOL để KHÔNG khớp biến thể như origin/release84-hotfix hay release84.1.
+// The trailing anchor is whitespace/EOL so it does NOT match variants like origin/release84-hotfix or release84.1.
 var relNumRe = regexp.MustCompile(`(?m)origin/release(\d+)(?:\s|$)`)
 
-// ReleaseNums liệt kê các số release từ `git branch -r` (chỉ origin/release<N>), tăng dần.
+// ReleaseNums lists the release numbers from `git branch -r` (origin/release<N> only), ascending.
 func ReleaseNums(r gitx.Runner, dir string) ([]int, error) {
 	out, err := r.Run(dir, "branch", "-r")
 	if err != nil {
@@ -38,7 +38,7 @@ func ReleaseNums(r gitx.Runner, dir string) ([]int, error) {
 	return nums, nil
 }
 
-// PrevRelease trả số release cao nhất < n trong nums.
+// PrevRelease returns the highest release number < n in nums.
 func PrevRelease(nums []int, n int) (int, bool) {
 	prev, ok := 0, false
 	for _, x := range nums {
@@ -49,7 +49,7 @@ func PrevRelease(nums []int, n int) (int, bool) {
 	return prev, ok
 }
 
-// Fetch chạy `git fetch origin <refs...>`.
+// Fetch runs `git fetch origin <refs...>`.
 func Fetch(r gitx.Runner, dir string, refs ...string) error {
 	args := append([]string{"fetch", "origin"}, refs...)
 	_, err := r.Run(dir, args...)
@@ -84,7 +84,7 @@ func parseCommits(out []byte) []Commit {
 	return cs
 }
 
-// RangeCommits trả các commit trong from..to (giữ cả merge để bắt PR/hotfix).
+// RangeCommits returns the commits in from..to (merges kept, to catch PR/hotfix).
 func RangeCommits(r gitx.Runner, dir, from, to string) ([]Commit, error) {
 	out, err := r.Run(dir, "log", logFormat, from+".."+to)
 	if err != nil {
@@ -93,11 +93,12 @@ func RangeCommits(r gitx.Runner, dir, from, to string) ([]Commit, error) {
 	return parseCommits(out), nil
 }
 
-// RangeCommitsGrouped trả các commit trong from..to đã GẮN NHÃN PR: đi mainline bằng
-// --first-parent; với mỗi merge-commit là PR (ParseMergeBranch khớp) thì set PRBranch=branch
-// lên merge-commit RỒI bung git log <merge>^1..<merge>^2 và set PRBranch=branch lên từng commit
-// bung. Commit mainline không phải PR (đẩy thẳng, hoặc merge không-PR như back-merge) giữ
-// PRBranch="". Dùng cho aggregation group-by-PR; counts/regression vẫn dùng RangeCommits phẳng.
+// RangeCommitsGrouped returns the commits in from..to with PR LABELS attached: it walks the
+// mainline with --first-parent; for each merge-commit that is a PR (ParseMergeBranch matches),
+// it sets PRBranch=branch on the merge-commit, THEN expands git log <merge>^1..<merge>^2 and
+// sets PRBranch=branch on each expanded commit. A mainline commit that is not a PR (a direct
+// push, or a non-PR merge like a back-merge) keeps PRBranch="". Used for group-by-PR
+// aggregation; counts/regression still use the flat RangeCommits.
 func RangeCommitsGrouped(r gitx.Runner, dir, from, to string) ([]Commit, error) {
 	out, err := r.Run(dir, "log", "--first-parent", logFormat, from+".."+to)
 	if err != nil {
@@ -124,7 +125,7 @@ func RangeCommitsGrouped(r gitx.Runner, dir, from, to string) ([]Commit, error) 
 	return cs, nil
 }
 
-// ChangedFiles trả danh sách file đổi trong from..to.
+// ChangedFiles returns the list of files changed in from..to.
 func ChangedFiles(r gitx.Runner, dir, from, to string) ([]string, error) {
 	out, err := r.Run(dir, "diff", "--name-only", from+".."+to)
 	if err != nil {
@@ -139,7 +140,7 @@ func ChangedFiles(r gitx.Runner, dir, from, to string) ([]string, error) {
 	return fs, nil
 }
 
-// NotInStaging trả các commit trong from..to KHÔNG reachable từ staging (rủi ro regression).
+// NotInStaging returns the commits in from..to that are NOT reachable from staging (regression risk).
 func NotInStaging(r gitx.Runner, dir, from, to, staging string) ([]Commit, error) {
 	out, err := r.Run(dir, "log", logFormat, from+".."+to, "--not", staging)
 	if err != nil {
@@ -148,7 +149,7 @@ func NotInStaging(r gitx.Runner, dir, from, to, staging string) ([]Commit, error
 	return parseCommits(out), nil
 }
 
-// CutDate trả ngày (YYYY-MM-DD) của merge-base giữa release<n> và origin/staging.
+// CutDate returns the date (YYYY-MM-DD) of the merge-base between release<n> and origin/staging.
 func CutDate(r gitx.Runner, dir string, n int) (string, error) {
 	rel := fmt.Sprintf("origin/release%d", n)
 	base, err := r.Run(dir, "merge-base", rel, "origin/staging")

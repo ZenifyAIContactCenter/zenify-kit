@@ -1,18 +1,18 @@
 package release
 
-// Commit là một commit trong khoảng release, đã phân loại.
+// Commit is one commit within a release range, already classified.
 type Commit struct {
 	SHA      string // short sha
 	Subject  string
 	Author   string // git author name (%an)
 	Type     string // feat|fix|perf|refactor|chore|other
 	Merge    bool
-	Branch   string // branch nguồn parse từ merge subject; "" nếu không có
+	Branch   string // source branch parsed from the merge subject; "" if none
 	Body     string
-	PRBranch string // branch của PR mà commit này thuộc về (set bởi RangeCommitsGrouped); "" nếu commit lẻ không thuộc PR
+	PRBranch string // the branch of the PR this commit belongs to (set by RangeCommitsGrouped); "" if a standalone commit not in a PR
 }
 
-// RepoReport là phần report cho một repo trong một release.
+// RepoReport is the report section for one repo in one release.
 type RepoReport struct {
 	Name                 string
 	PrevRelease          int
@@ -20,64 +20,64 @@ type RepoReport struct {
 	Commits              []Commit
 	TypeCounts           map[string]int
 	HasMigration         bool
-	SharedHits           []string // glob patterns khớp
+	SharedHits           []string // matched glob patterns
 	HasTestTouch         bool
 	Regression           []Commit
-	RegressionUncomputed bool // true nếu so sánh với staging KHÔNG chạy được (khác với "sạch")
+	RegressionUncomputed bool // true if the comparison against staging could NOT run (different from "clean")
 	Hotfixes             []Commit
-	Err                  string // note fail-open; "" nếu ok
+	Err                  string // fail-open note; "" if ok
 	Changes              []Change
 }
 
-// Change = một "thay đổi" (feature/fix/hotfix) gom từ nhiều commit cùng branch-slug/scope.
+// Change = one "change" (feature/fix/hotfix) grouped from several commits sharing a branch-slug/scope.
 type Change struct {
-	Title        string   // humanize từ Slug
-	Slug         string   // key chuẩn-hoá (last-segment branch ∪ scope)
+	Title        string   // humanized from Slug
+	Slug         string   // normalized key (last-segment branch ∪ scope)
 	Type         string   // feat|fix|hotfix|chore|other
-	PRNum        string   // "" nếu không parse được
-	Commits      []Commit // các commit attribute vào thay đổi này
-	Authors      []string // dev đã làm (distinct, first-seen order)
-	Desc         string   // mô tả đại diện (subject commit non-merge đầu, bỏ prefix type(scope):)
+	PRNum        string   // "" if it couldn't be parsed
+	Commits      []Commit // the commits attributed to this change
+	Authors      []string // the devs who worked on it (distinct, first-seen order)
+	Desc         string   // representative description (first non-merge commit subject, type(scope): prefix stripped)
 	IsHotfix     bool
-	NotOnStaging bool // có commit thuộc tập NotInStaging
+	NotOnStaging bool // has a commit in the NotInStaging set
 	Risk         RiskMeta
 }
 
-// RiskMeta = risk-metadata kéo từ spec Brief (M6c1). SpecPath rỗng = "unknown — no spec".
+// RiskMeta = risk metadata pulled from the spec Brief (M6c1). An empty SpecPath = "unknown — no spec".
 type RiskMeta struct {
 	SpecPath    string
 	BlastRadius string
 	DB          string
 	Rollback    string
-	Note        string // mô tả một dòng (prose, thường tiếng Việt) từ trailer _Release-Note của note-commit; "" khi risk đến từ spec, không từ note
+	Note        string // one-line description (prose, usually Vietnamese) from the note-commit's _Release-Note trailer; "" when the risk came from a spec, not a note
 }
 
-// SpecMeta = spec đã parse sẵn (path + slug tokens + 3 tag Brief) để LinkSpec khớp thuần.
+// SpecMeta = a pre-parsed spec (path + slug tokens + the 3 Brief tags) so LinkSpec can match purely.
 type SpecMeta struct {
 	Path        string
-	Slug        string // token từ tên file, dùng fuzzy-match
+	Slug        string // token from the file name, used for fuzzy-matching
 	BlastRadius string
 	DB          string
 	Rollback    string
 }
 
-// Report là toàn bộ report của một release.
+// Report is the whole report for one release.
 type Report struct {
 	N               int
 	GeneratedAt     string
-	Repos           []RepoReport        // repo tham gia
-	NotShipped      []string            // repo theo dõi mà không có release<N>
+	Repos           []RepoReport        // repos included
+	NotShipped      []string            // tracked repos with no release<N>
 	SharedCrossRepo map[string][]string // pattern -> repos (>=2)
 	DeployOrderNote bool
 
-	ShippingRepos     []string // repo có release<N>
+	ShippingRepos     []string // repos with release<N>
 	TotalFeat         int
 	TotalFix          int
 	TotalHotfix       int
-	HotfixesNotSynced int      // hotfix có commit chưa trên staging
-	Migrations        []string // repo có migration
-	SpecLinked        int      // số Change link được spec
-	SpecTotal         int      // tổng Change (mọi type trừ chore? — xem Task 5)
+	HotfixesNotSynced int      // hotfixes with a commit not yet on staging
+	Migrations        []string // repos with a migration
+	SpecLinked        int      // number of Changes linked to a spec
+	SpecTotal         int      // total Changes (every type except chore? — see Task 5)
 
-	Unreleased bool // true khi report là view "release đang hình thành" (range release<latest>..staging)
+	Unreleased bool // true when the report is the "release still forming" view (range release<latest>..staging)
 }

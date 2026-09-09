@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// mkGitRepoDir tạo <parent>/<name>/.git (thư mục) để workspace.Discover nhận là repo.
+// mkGitRepoDir creates <parent>/<name>/.git (a directory) so workspace.Discover treats it as a repo.
 func mkGitRepoDir(t *testing.T, parent, name string) string {
 	t.Helper()
 	dir := filepath.Join(parent, name)
@@ -16,8 +16,8 @@ func mkGitRepoDir(t *testing.T, parent, name string) string {
 	return dir
 }
 
-// Regression sau `zenify migrate`: repo nằm ở <ws>/repos/<repo> → default phải trỏ
-// vào đó, KHÔNG phải path phẳng <ws>/<repo> (bug làm config/release-report gãy default).
+// Regression after `zenify migrate`: repo lives at <ws>/repos/<repo> → the default must
+// point there, NOT the flat path <ws>/<repo> (a bug that broke config/release-report defaults).
 func TestResolveWorkspaceRepoDir_ReposLayout(t *testing.T) {
 	ws := t.TempDir()
 	repoDir := mkGitRepoDir(t, filepath.Join(ws, "repos"), "zenify-knowledge")
@@ -29,7 +29,7 @@ func TestResolveWorkspaceRepoDir_ReposLayout(t *testing.T) {
 	}
 }
 
-// Layout phẳng cũ (<ws>/<repo>) vẫn phải hoạt động (tương thích ngược).
+// The old flat layout (<ws>/<repo>) must still work (backward compatibility).
 func TestResolveWorkspaceRepoDir_FlatLayout(t *testing.T) {
 	ws := t.TempDir()
 	repoDir := mkGitRepoDir(t, ws, "zenify-knowledge")
@@ -37,12 +37,12 @@ func TestResolveWorkspaceRepoDir_FlatLayout(t *testing.T) {
 	got := resolveWorkspaceRepoDir(ws, "zenify-knowledge", "releases", os.ReadDir)
 	want := filepath.Join(repoDir, "releases")
 	if got != want {
-		t.Fatalf("layout phẳng: got %q, want %q", got, want)
+		t.Fatalf("flat layout: got %q, want %q", got, want)
 	}
 }
 
-// Không tìm thấy repo → fallback path phẳng <ws>/<repo>/sub (fail-open: caller tự xử
-// path không tồn tại). KHÔNG panic, KHÔNG trả rỗng.
+// Repo not found → falls back to the flat path <ws>/<repo>/sub (fail-open: the caller
+// itself handles a nonexistent path). Must NOT panic, must NOT return empty.
 func TestResolveWorkspaceRepoDir_FallbackWhenAbsent(t *testing.T) {
 	ws := t.TempDir()
 

@@ -58,9 +58,9 @@ type OnboardConfig struct {
 	// lookPath overrides exec.LookPath inside offerInstallGH (test seam).
 	lookPath func(string) (string, error)
 
-	// SecretKeys là các env key B8 prompt masked (subset bootstrap). Rỗng → secretStep no-op.
+	// SecretKeys are the B8 env keys prompted masked (bootstrap subset). Empty → secretStep no-op.
 	SecretKeys []string
-	// SecretPromptFn override prompt masked (test seam). Nil → huh EchoModePassword thật.
+	// SecretPromptFn overrides the masked prompt (test seam). Nil → the real huh EchoModePassword.
 	SecretPromptFn func(keys []string) (map[string]string, error)
 	// WelcomeNoteFn overrides welcomeNote (test seam). welcomeNote(false) opens a
 	// real huh.Form.Run() that needs an actual /dev/tty, so any test exercising
@@ -78,16 +78,16 @@ type OnboardResult struct {
 	Done     bool
 }
 
-// welcomeNote hiện màn giới thiệu ngắn quy trình `up`. Headless (accessible)
-// bỏ qua để không chặn luồng máy đọc.
+// welcomeNote shows a short intro screen for the `up` flow. Headless (accessible)
+// skips it so it doesn't block a machine-driven run.
 func welcomeNote(accessible bool) error {
 	if accessible {
 		return nil
 	}
 	return huh.NewForm(huh.NewGroup(
 		huh.NewNote().
-			Title("Chào mừng tới zenify").
-			Description("`zenify up` sẽ: kiểm tra công cụ (gh/git) → đăng nhập GitHub → chọn repo → xem plan → apply (wire hook + docs). Nhấn Enter để bắt đầu."),
+			Title("Chào mừng tới zenify").                                                                                                                         //znf:allow-lang
+			Description("`zenify up` sẽ: kiểm tra công cụ (gh/git) → đăng nhập GitHub → chọn repo → xem plan → apply (wire hook + docs). Nhấn Enter để bắt đầu."), //znf:allow-lang
 	)).Run()
 }
 
@@ -161,8 +161,8 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	}
 	res.Done = true
 	if err := secretStep(cfg); err != nil {
-		// fail-open: apply đã xong, đừng làm hỏng onboard vì lỗi ghi secret.
-		fmt.Fprintln(os.Stderr, "secrets: bỏ qua vì lỗi:", err)
+		// fail-open: apply already finished, don't fail onboarding over a secret-write error.
+		fmt.Fprintln(os.Stderr, "secrets: bỏ qua vì lỗi:", err) //znf:allow-lang
 	}
 	printDone(os.Stdout)
 	return res, nil
@@ -213,7 +213,7 @@ func loginStep(cfg OnboardConfig) error {
 		detectGitFn = detectGit
 	}
 	if err := detectGitFn(); err != nil {
-		return err // guide-only, không auto-install
+		return err // guide-only, no auto-install
 	}
 
 	detect := cfg.DetectGHFn
@@ -222,7 +222,7 @@ func loginStep(cfg OnboardConfig) error {
 	}
 	if err := detect(); err != nil {
 		if cfg.Accessible {
-			return err // headless: giữ lỗi guide cũ, KHÔNG prompt
+			return err // headless: keep the old guide error, DO NOT prompt
 		}
 		if err := offerInstallGH(cfg); err != nil {
 			return err
@@ -237,9 +237,9 @@ func loginStep(cfg OnboardConfig) error {
 	case authLoggedIn:
 		return nil
 	case authUnreachable:
-		return errors.New("không kết nối được GitHub — kiểm tra mạng rồi chạy lại `zenify up`")
+		return errors.New("could not connect to GitHub — check your network then re-run `zenify up`")
 	}
-	// authLoggedOut → luồng login bên dưới (giữ nguyên P1)
+	// authLoggedOut → login flow below (keeps P1)
 
 	if cfg.Accessible {
 		// Headless / non-TTY path (FR-1.4): never open a browser, fail
@@ -258,7 +258,7 @@ func loginStep(cfg OnboardConfig) error {
 	}
 	if _, st := authStatus(); st != authLoggedIn {
 		if st == authUnreachable {
-			return errors.New("không kết nối được GitHub — kiểm tra mạng rồi chạy lại `zenify up`")
+			return errors.New("could not connect to GitHub — check your network then re-run `zenify up`")
 		}
 		return errors.New("not logged in — run: gh auth login")
 	}

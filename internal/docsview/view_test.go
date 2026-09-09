@@ -6,13 +6,14 @@ import (
 	"testing"
 )
 
-// fakeFS: store có specs/ plans/ .config/ .git/ README.md ; view chứa link (map link→target).
-// "managed link" = key có trong links. "same target" = links[link]==target VÀ target còn trong wantExists.
+// fakeFS: store has specs/ plans/ .config/ .git/ README.md ; view holds links (map link→target).
+// "managed link" = key present in links. "same target" = links[link]==target AND target is
+// still in wantExists.
 type fakeFS struct {
-	dirs       map[string][]string // path → tên entry con
-	isDir      map[string]bool     // tên entry → là dir?
+	dirs       map[string][]string // path → child entry names
+	isDir      map[string]bool     // entry name → is a dir?
 	links      map[string]string   // link path → target path
-	targetGone map[string]bool     // target path đã biến mất (để test dead-link)
+	targetGone map[string]bool     // target path is gone (for testing a dead link)
 }
 
 func (f *fakeFS) ReadDir(p string) ([]os.DirEntry, error) {
@@ -37,7 +38,7 @@ func (f *fakeFS) SameTarget(link, target string) (bool, error) {
 	}
 	if f.targetGone[cur] {
 		return false, nil
-	} // target biến mất → link chết
+	} // target gone → dead link
 	return cur == target, nil
 }
 
@@ -59,11 +60,11 @@ func TestEnsureView_LinksOnlyNonDotDirs(t *testing.T) {
 	}
 	EnsureView(fs, "/store", "/view")
 	if fs.links["/view/specs"] != "/store/specs" || fs.links["/view/plans"] != "/store/plans" {
-		t.Fatalf("thiếu link content: %v", fs.links)
+		t.Fatalf("missing content link: %v", fs.links)
 	}
 	for bad := range fs.links {
 		if strings.Contains(bad, ".config") || strings.Contains(bad, ".git") || strings.Contains(bad, "README") {
-			t.Fatalf("KHÔNG được link dotfile/file: %s", bad)
+			t.Fatalf("must NOT link a dotfile/file: %s", bad)
 		}
 	}
 }
@@ -76,7 +77,7 @@ func TestEnsureView_FixesWrongTarget(t *testing.T) {
 	}
 	EnsureView(fs, "/store", "/view")
 	if fs.links["/view/specs"] != "/store/specs" {
-		t.Fatalf("target sai chưa sửa: %v", fs.links)
+		t.Fatalf("wrong target not fixed: %v", fs.links)
 	}
 }
 
@@ -89,6 +90,6 @@ func TestEnsureView_PrunesDeadLink(t *testing.T) {
 	}
 	EnsureView(fs, "/store", "/view")
 	if _, ok := fs.links["/view/gone"]; ok {
-		t.Fatalf("link chết chưa được dọn")
+		t.Fatalf("dead link was not pruned")
 	}
 }

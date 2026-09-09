@@ -1,6 +1,7 @@
-// Package pwdocker giữ các primitive Docker+Playwright dùng chung giữa visual
-// (golden-diff) và e2e (functional): pin version, image, arg per-OS, và materialize
-// harness embed. Tách ra một nơi để hai capability không lệch version.
+// Package pwdocker holds the Docker+Playwright primitives shared between visual
+// (golden-diff) and e2e (functional): version pin, image, per-OS args, and
+// materializing the embedded harness. Kept in one place so the two capabilities
+// don't drift on version.
 package pwdocker
 
 import (
@@ -11,14 +12,14 @@ import (
 	"path/filepath"
 )
 
-// PlaywrightVersion khoá lockstep giữa image Docker và @playwright/test trong
-// harness/package.json. Bump cả hai cùng lúc.
+// PlaywrightVersion locks step between the Docker image and @playwright/test in
+// harness/package.json. Bump both at the same time.
 const PlaywrightVersion = "v1.55.0"
 
-// Image trả tag image Playwright pinned (-noble = Ubuntu 24.04).
+// Image returns the pinned Playwright image tag (-noble = Ubuntu 24.04).
 func Image() string { return "mcr.microsoft.com/playwright:" + PlaywrightVersion + "-noble" }
 
-// Options gom seam inject để mọi path unit-test được mà không chạm docker.
+// Options gathers the injected seams so every path is unit-testable without touching docker.
 type Options struct {
 	Runner func(name string, args []string) error
 	Getenv func(string) string
@@ -26,8 +27,8 @@ type Options struct {
 	Stdout io.Writer
 }
 
-// BaseArgs mở đầu args `docker run` (chưa gồm "docker"): chạy, tự xoá, cwd /harness.
-// Linux cần --add-host để host.docker.internal giải được; Docker Desktop có sẵn nên KHÔNG thêm.
+// BaseArgs starts the `docker run` args (not including "docker"): run, self-remove, cwd /harness.
+// Linux needs --add-host for host.docker.internal to resolve; Docker Desktop already provides it, so it is NOT added.
 func BaseArgs(goos string) []string {
 	args := []string{"run", "--rm", "-w", "/harness"}
 	if goos != "darwin" && goos != "windows" {
@@ -36,12 +37,12 @@ func BaseArgs(goos string) []string {
 	return args
 }
 
-// AuthEnvArgs passthrough credential E2E vào container (giá trị lấy từ môi trường host).
+// AuthEnvArgs passes E2E credentials through into the container (values read from the host environment).
 func AuthEnvArgs() []string {
 	return []string{"-e", "E2E_DOMAIN", "-e", "E2E_EMAIL", "-e", "E2E_PASSWORD"}
 }
 
-// WriteHarness ghi cây embed (rooted ở `root`) ra dir, phẳng (bỏ prefix root).
+// WriteHarness writes the embedded tree (rooted at `root`) out to dir, flattened (dropping the root prefix).
 func WriteHarness(fsys embed.FS, root, dir string) error {
 	return fs.WalkDir(fsys, root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {

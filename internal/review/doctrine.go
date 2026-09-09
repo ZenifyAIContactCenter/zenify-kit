@@ -1,26 +1,26 @@
-// Package review — phần doctrine (seam doctrine của znf:review, M4d).
-// SanitizeVerified gỡ các dòng CHỈ-verdict khỏi block ## Verified của ship-pack,
-// giữ dòng mang facts, để reviewer không bị anchor theo kết luận của tác giả.
-// Cơ học, fail-open; KHÔNG dùng LLM.
+// Package review — the doctrine part (doctrine seam of znf:review, M4d).
+// SanitizeVerified strips verdict-ONLY lines from a ship-pack's ## Verified block,
+// keeping lines that carry facts, so the reviewer isn't anchored to the author's own conclusion.
+// Mechanical, fail-open; does NOT use an LLM.
 package review
 
 import "strings"
 
-// verdictPhrases: dấu hiệu một dòng là CLAIM code-đúng (so khớp lowercase).
-// KHÔNG có bare "correct" — quá rộng (đụng "correctness"); dùng cụm rõ nghĩa.
+// verdictPhrases: signals that a line is a CLAIM the code is correct (matched lowercase).
+// NO bare "correct" — too broad (collides with "correctness"); use unambiguous phrases instead.
 var verdictPhrases = []string{
 	"✅", "verified", "looks good", "lgtm", "no issues", "no problem",
 	"all correct", "works correctly", "passes review", "ready to ship",
 	"shippable", "all good",
 }
 
-// gapPhrases: dòng nói VỀ chỗ THIẾU test — dòng giá trị nhất, KHÔNG bao giờ strip.
+// gapPhrases: a line ABOUT a missing test — the most valuable kind of line, never stripped.
 var gapPhrases = []string{
 	"no test", "not covered", "untested", "no coverage",
-	"chưa có test", "không có test", "không test",
+	"chưa có test", "không có test", "không test", //znf:allow-lang
 }
 
-// hasFactToken: dòng có bằng chứng cụ thể (số / path / lệnh) → giữ dù có verdict-phrase.
+// hasFactToken: the line carries concrete evidence (number / path / command) → keep it even with a verdict-phrase.
 func hasFactToken(line string) bool {
 	for _, r := range line {
 		if r >= '0' && r <= '9' {
@@ -53,9 +53,9 @@ func containsAny(lower string, phrases []string) bool {
 	return false
 }
 
-// SanitizeVerified gỡ các dòng chỉ-verdict. clean giữ nguyên thứ tự + dòng trắng;
-// stripped là các dòng đã gỡ (đã trim). Fail-open: text rỗng → "", nil.
-// Một dòng bị gỡ khi: có verdict-phrase, KHÔNG có fact-token, và KHÔNG phải dòng gap.
+// SanitizeVerified strips verdict-only lines. clean keeps the original order + blank lines;
+// stripped is the removed lines (trimmed). Fail-open: empty text → "", nil.
+// A line is stripped when: it has a verdict-phrase, has NO fact-token, and is NOT a gap line.
 func SanitizeVerified(text string) (clean string, stripped []string) {
 	if text == "" {
 		return "", nil

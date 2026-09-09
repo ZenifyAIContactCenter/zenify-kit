@@ -15,18 +15,18 @@ func TestReviewSkill_Materialized_HasKeyParts(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dest, "skills/review/SKILL.md"))
 	if err != nil {
-		t.Fatalf("review/SKILL.md chưa materialize: %v", err)
+		t.Fatalf("review/SKILL.md not materialized: %v", err)
 	}
 	s := string(b)
 	for _, want := range []string{
-		"select-tier",    // gọi script tier
-		"T1", "T2", "T3", // 3 tier
-		"PRE", "BUNDLE", "REVIEW", "VERIFY", "POST", // 5 seam
+		"select-tier",    // calls the tier script
+		"T1", "T2", "T3", // 3 tiers
+		"PRE", "BUNDLE", "REVIEW", "VERIFY", "POST", // 5 seams
 		"degrade",           // fallback T3->T2
-		"finding-schema.md", // tham chiếu schema chung
+		"finding-schema.md", // references the shared schema
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("review/SKILL.md thiếu %q", want)
+			t.Errorf("review/SKILL.md missing %q", want)
 		}
 	}
 }
@@ -39,20 +39,20 @@ func TestReviewSkill_M4bWiring(t *testing.T) {
 	}
 	skill, err := os.ReadFile(filepath.Join(dest, "skills/review/SKILL.md"))
 	if err != nil {
-		t.Fatalf("đọc SKILL.md: %v", err)
+		t.Fatalf("read SKILL.md: %v", err)
 	}
 	s := string(skill)
 	for _, want := range []string{"mechanical-gate", "review-verify", "evidence", "Bash(zenify *)"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("SKILL.md thiếu %q (M4b wiring)", want)
+			t.Errorf("SKILL.md missing %q (M4b wiring)", want)
 		}
 	}
 	wf, err := os.ReadFile(filepath.Join(dest, "workflows/review-changes.js"))
 	if err != nil {
-		t.Fatalf("đọc review-changes.js: %v", err)
+		t.Fatalf("read review-changes.js: %v", err)
 	}
 	if !strings.Contains(string(wf), "evidence") {
-		t.Errorf("review-changes.js chưa yêu cầu evidence")
+		t.Errorf("review-changes.js does not require evidence")
 	}
 }
 
@@ -65,18 +65,18 @@ func TestReviewSkill_M4cWiring(t *testing.T) {
 	skill := filepath.Join(dest, "skills", "review", "SKILL.md")
 	b, err := os.ReadFile(skill)
 	if err != nil {
-		t.Fatalf("đọc SKILL.md: %v", err)
+		t.Fatalf("read SKILL.md: %v", err)
 	}
 	s := string(b)
 	for _, want := range []string{
-		"review-bundle", // gọi subcommand bundler
-		"BUNDLE",        // seam có tên
-		"2000",          // ngưỡng kích hoạt
-		"too-large",     // nhánh dừng "tách PR"
-		"per-bundle",    // review từng bundle
+		"review-bundle", // calls the bundler subcommand
+		"BUNDLE",        // the seam has a name
+		"2000",          // activation threshold
+		"too-large",     // "split the PR" stop branch
+		"per-bundle",    // review each bundle
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("SKILL.md thiếu wiring M4c: %q", want)
+			t.Errorf("SKILL.md missing M4c wiring: %q", want)
 		}
 	}
 }
@@ -97,16 +97,16 @@ func TestReviewSkill_M4dWiring(t *testing.T) {
 	skill := read("skills/review/SKILL.md")
 	for _, want := range []string{"review-doctrine", "DOCTRINE", "reviewer-doctrine.md", "args.doctrine"} {
 		if !strings.Contains(skill, want) {
-			t.Errorf("SKILL.md thiếu %q", want)
+			t.Errorf("SKILL.md missing %q", want)
 		}
 	}
 	doc := read("skills/review/_shared/reviewer-doctrine.md")
 	if !strings.Contains(strings.ToLower(doc), "claim") {
-		t.Error("reviewer-doctrine.md thiếu wording no-claim")
+		t.Error("reviewer-doctrine.md missing no-claim wording")
 	}
 	wf := read("workflows/review-changes.js")
 	if !strings.Contains(wf, "args.doctrine") || !strings.Contains(wf, "DOCTRINE") {
-		t.Error("review-changes.js thiếu wiring args.doctrine")
+		t.Error("review-changes.js missing args.doctrine wiring")
 	}
 }
 
@@ -126,7 +126,7 @@ func TestReviewSkill_M4fWiring(t *testing.T) {
 	skill := read("skills/review/SKILL.md")
 	for _, want := range []string{"review-advise-gate", "znf:code-reviewer", "## Advisory", "adviser-prompt.md"} {
 		if !strings.Contains(skill, want) {
-			t.Errorf("SKILL.md thiếu %q", want)
+			t.Errorf("SKILL.md missing %q", want)
 		}
 	}
 	prompt := read("skills/review/_shared/adviser-prompt.md")
@@ -155,7 +155,7 @@ func TestReviewSkill_M4eWiring(t *testing.T) {
 	skill := string(b)
 	for _, want := range []string{"review-log record", "outcome", "categories", "refuted", "command -v zenify", "|| true"} {
 		if !strings.Contains(skill, want) {
-			t.Errorf("SKILL.md thiếu %q (M4e wiring)", want)
+			t.Errorf("SKILL.md missing %q (M4e wiring)", want)
 		}
 	}
 }
@@ -172,6 +172,6 @@ func TestShipStep5_DelegatesToReview(t *testing.T) {
 	}
 	s := string(b)
 	if !strings.Contains(s, "znf:review") {
-		t.Error("ship step 5 chưa delegate sang znf:review")
+		t.Error("ship step 5 does not yet delegate to znf:review")
 	}
 }

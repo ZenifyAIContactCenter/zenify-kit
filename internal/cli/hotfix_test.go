@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// seedRepoCfg ghi .claude/worktree.json cho repo giả, trả repoRoot.
+// seedRepoCfg writes .claude/worktree.json for a fake repo, returning repoRoot.
 func seedRepoCfg(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -21,7 +21,7 @@ func seedRepoCfg(t *testing.T, body string) string {
 
 func TestHotfixBaserefStandalone(t *testing.T) {
 	dir := seedRepoCfg(t, `{"abbrev":"lumi","hotfix":{"baseStrategy":"standalone"}}`)
-	out, err := resolveHotfixBaseRef(dir, nil) // standalone không cần git
+	out, err := resolveHotfixBaseRef(dir, nil) // standalone doesn't need git
 	if err != nil {
 		t.Fatal(err)
 	}

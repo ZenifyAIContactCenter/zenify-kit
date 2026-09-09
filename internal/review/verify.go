@@ -1,6 +1,6 @@
-// Package review cung cấp finding-verifier cơ học cho engine znf:review (seam VERIFY).
-// Nó KHÔNG đánh giá finding có phải lỗi thật hay không (đó là việc của reviewer LLM);
-// nó chỉ kiểm chứng CITATION: dòng+trích dẫn của finding có khớp file thật không.
+// Package review provides a mechanical finding-verifier for the znf:review engine (VERIFY seam).
+// It does NOT judge whether a finding is a real bug (that's the LLM reviewer's job);
+// it only verifies the CITATION: whether the finding's line+quote match the real file.
 package review
 
 import (
@@ -8,10 +8,11 @@ import (
 	"strings"
 )
 
-// window là số dòng lệch cho phép hai bên `line` khi tìm evidence (số dòng trôi sau edit).
+// window is the number of lines of drift allowed on either side of `line` when looking for
+// evidence (lines shift after edits).
 const window = 3
 
-// Finding theo _shared/finding-schema.md. Mọi field omitempty để round-trip không phình.
+// Finding follows _shared/finding-schema.md. Every field is omitempty so round-tripping doesn't bloat it.
 type Finding struct {
 	Dimension string `json:"dimension,omitempty"`
 	Severity  string `json:"severity,omitempty"`
@@ -25,14 +26,14 @@ type Finding struct {
 	Reason    string `json:"reason,omitempty"`
 }
 
-// Result: findings CHỈ chứa finding kept; refuted bị loại và đếm riêng.
+// Result: findings contains ONLY kept findings; refuted ones are removed and counted separately.
 type Result struct {
 	Findings []Finding `json:"findings"`
 	Kept     int       `json:"kept"`
 	Refuted  int       `json:"refuted"`
 }
 
-// Verify kiểm chứng từng finding. readFile được inject để test (cli truyền os.ReadFile).
+// Verify checks each finding. readFile is injected for testing (the CLI passes os.ReadFile).
 func Verify(findings []Finding, readFile func(string) ([]byte, error)) Result {
 	res := Result{Findings: []Finding{}}
 	for _, f := range findings {
@@ -47,13 +48,13 @@ func Verify(findings []Finding, readFile func(string) ([]byte, error)) Result {
 }
 
 func verifyOne(f Finding, readFile func(string) ([]byte, error)) (bool, Finding) {
-	// Không định vị được → không thể verify cơ học, giữ nguyên.
+	// Cannot be located → cannot verify mechanically, leave as-is.
 	if f.File == "" || f.Line == "" {
 		return true, f
 	}
 	n, ok := parseLine(f.Line)
 	if !ok {
-		f.Reason = "refuted: line không parse được: " + f.Line
+		f.Reason = "refuted: line did not parse: " + f.Line
 		return false, f
 	}
 	if f.Evidence == "" {
@@ -62,7 +63,7 @@ func verifyOne(f Finding, readFile func(string) ([]byte, error)) (bool, Finding)
 	}
 	data, err := readFile(f.File)
 	if err != nil {
-		f.Reason = "refuted: file không đọc được: " + f.File
+		f.Reason = "refuted: could not read file: " + f.File
 		return false, f
 	}
 	lines := strings.Split(string(data), "\n")
@@ -80,18 +81,19 @@ func verifyOne(f Finding, readFile func(string) ([]byte, error)) (bool, Finding)
 			return true, f
 		}
 	}
-	f.Reason = "refuted: evidence không thấy quanh dòng " + f.Line
+	f.Reason = "refuted: evidence not found around line " + f.Line
 	return false, f
 }
 
-// normalize gom mọi run khoảng trắng thành một space và trim, để so khớp không lệ thuộc indent.
+// normalize collapses every run of whitespace into one space and trims, so matching doesn't depend on indent.
 func normalize(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// stripDiffMarker bỏ MỘT ký tự dấu diff (+ hoặc -) ở đầu evidence nếu reviewer trích nguyên
-// dòng từ unified diff (cột 0 của dòng diff là +/-/space). File thật không mang dấu này, nên
-// bỏ nó trước khi so khớp; strip rộng hơn chỉ làm Contains khoan dung hơn, không bao giờ bác nhầm.
+// stripDiffMarker strips ONE diff-mark character (+ or -) from the start of evidence, in case
+// the reviewer quoted a raw line from a unified diff (column 0 of a diff line is +/-/space). The
+// real file doesn't carry this mark, so it's stripped before matching; a broader strip only makes
+// Contains more lenient, it never causes a false refute.
 func stripDiffMarker(s string) string {
 	if len(s) > 0 && (s[0] == '+' || s[0] == '-') {
 		return s[1:]
@@ -99,7 +101,7 @@ func stripDiffMarker(s string) string {
 	return s
 }
 
-// parseLine lấy run chữ số đầu tiên của "N" hoặc "N-M". false nếu không có chữ số.
+// parseLine takes the first run of digits from "N" or "N-M". false if there are no digits.
 func parseLine(s string) (int, bool) {
 	start := -1
 	for i := 0; i < len(s); i++ {

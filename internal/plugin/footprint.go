@@ -16,7 +16,7 @@ func SkillsForRepo(repo string) []string {
 	return RepoSkills[repo]
 }
 
-// Leg2Recommendations: repo → lệnh `npx skills add` khuyến nghị (chỉ vendor license sạch).
+// Leg2Recommendations: repo → recommended `npx skills add` command (clean-license vendors only).
 // mongodb Apache-2.0, redis MIT, vercel-labs react-best-practices (permissive).
 var Leg2Recommendations = map[string][]string{
 	"contact-center-hub":       {"npx skills add mongodb/agent-skills", "npx skills add redis/agent-skills"},

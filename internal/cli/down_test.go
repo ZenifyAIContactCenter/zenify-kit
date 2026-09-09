@@ -9,13 +9,13 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 )
 
-// SC-25: default preview KHÔNG ghi. SC-26: non-goals nguyên vẹn.
+// SC-25: default preview does NOT write. SC-26: non-goals stay untouched.
 func TestDown_DryRun_NoWritesAndNonGoalsUntouched(t *testing.T) {
 	ws := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	// settings.json global có 1 znf hook.
+	// global settings.json has 1 znf hook.
 	gs := filepath.Join(home, ".claude", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(gs), 0o750); err != nil {
 		t.Fatal(err)
@@ -25,7 +25,7 @@ func TestDown_DryRun_NoWritesAndNonGoalsUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// manifest repos.yaml tối thiểu 1 repo "svc" + repo dir với exclude + settings.
+	// manifest repos.yaml minimally 1 repo "svc" + repo dir with exclude + settings.
 	repoDir := filepath.Join(ws, "svc")
 	excl := filepath.Join(repoDir, ".git", "info", "exclude")
 	if err := os.MkdirAll(filepath.Dir(excl), 0o750); err != nil {
@@ -41,7 +41,7 @@ func TestDown_DryRun_NoWritesAndNonGoalsUntouched(t *testing.T) {
 	if err := os.WriteFile(settings, []byte(`{"env":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// ownership manifest ghi settings là owned.
+	// ownership manifest records settings as owned.
 	zdir := filepath.Join(ws, ".zenify")
 	if err := os.MkdirAll(zdir, 0o750); err != nil {
 		t.Fatal(err)
@@ -60,33 +60,33 @@ func TestDown_DryRun_NoWritesAndNonGoalsUntouched(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(repos), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	// tối thiểu hợp lệ cho manifest.LoadWithOverlay — 1 repo path "svc".
+	// minimal valid input for manifest.LoadWithOverlay — 1 repo path "svc".
 	if err := os.WriteFile(repos, []byte("org: TestOrg\nrepos:\n  - name: svc\n    path: svc\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	cmd := newDownCmd()
 	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetArgs([]string{"--workspace", ws, "--manifest", repos}) // KHÔNG --apply → preview
+	cmd.SetArgs([]string{"--workspace", ws, "--manifest", repos}) // NO --apply → preview
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("down preview: %v", err)
 	}
 
-	// SC-25: không ghi — settings.json global, exclude, settings.local.json y nguyên.
+	// SC-25: must not write — global settings.json, exclude, settings.local.json unchanged.
 	if b, _ := os.ReadFile(gs); !bytes.Equal(b, gsBody) { //nolint:gosec // G304 -- test-local path under t.TempDir, not externally-tainted
-		t.Error("preview KHÔNG được sửa settings.json global")
+		t.Error("preview must NOT modify global settings.json")
 	}
 	if b, _ := os.ReadFile(excl); string(b) != ".worktrees/\n" { //nolint:gosec // G304 -- test-local path under t.TempDir, not externally-tainted
-		t.Error("preview KHÔNG được sửa exclude")
+		t.Error("preview must NOT modify exclude")
 	}
 	if _, err := os.Stat(settings); err != nil {
-		t.Error("preview KHÔNG được xoá settings.local.json")
+		t.Error("preview must NOT delete settings.local.json")
 	}
-	// SC-26: non-goals nguyên vẹn.
+	// SC-26: non-goals stay untouched.
 	if _, err := os.Stat(code); err != nil {
-		t.Error("cloned code file phải nguyên vẹn")
+		t.Error("cloned code file must stay untouched")
 	}
 	if _, err := os.Stat(filepath.Join(zdir, "manifest.json")); err != nil {
-		t.Error(".zenify/manifest.json phải nguyên vẹn")
+		t.Error(".zenify/manifest.json must stay untouched")
 	}
 }

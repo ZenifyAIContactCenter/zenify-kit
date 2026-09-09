@@ -20,7 +20,7 @@ func TestPolyrepoDoctrine_WritingPlans(t *testing.T) {
 	s := string(b)
 	for _, want := range []string{"Waits for:", "contract-frozen", "independent"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("writing-plans/SKILL.md thiếu %q (polyrepo DAG)", want)
+			t.Errorf("writing-plans/SKILL.md missing %q (polyrepo DAG)", want)
 		}
 	}
 }
@@ -38,7 +38,7 @@ func TestPolyrepoDoctrine_Cook(t *testing.T) {
 	s := string(b)
 	for _, want := range []string{"Cross-worktree parallelism", "contract-frozen"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("cook/SKILL.md thiếu %q (polyrepo pointer)", want)
+			t.Errorf("cook/SKILL.md missing %q (polyrepo pointer)", want)
 		}
 	}
 }
@@ -62,7 +62,7 @@ func TestPolyrepoDoctrine_SDD(t *testing.T) {
 		"collect", "silence",
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("SDD SKILL.md thiếu %q (polyrepo doctrine)", want)
+			t.Errorf("SDD SKILL.md missing %q (polyrepo doctrine)", want)
 		}
 	}
 }
