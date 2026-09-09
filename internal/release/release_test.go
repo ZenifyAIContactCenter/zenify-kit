@@ -74,10 +74,12 @@ func TestBuildUsesResolverNotFlatJoin(t *testing.T) {
 }
 
 func TestBuildUnreleasedRangeStagingDeterministic(t *testing.T) {
-	// release88 là cao nhất; range incremental = origin/release88..origin/staging.
+	// release88 = release ĐANG HÌNH THÀNH (cao nhất, chưa deploy); base = release87 (đã deploy
+	// gần nhất). Convention (A): range đúng = origin/release87..origin/staging, KHÔNG phải
+	// release88..staging.
 	fr := fakeRunner{out: map[string]string{
 		"branch -r": "  origin/release87\n  origin/release88\n  origin/staging\n",
-		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release88..origin/staging": "h1\x1ffeat(alpha): a\x1fnamph\x1f\x1e",
+		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release87..origin/staging": "h1\x1ffeat(alpha): a\x1fnamph\x1f\x1e",
 	}}
 	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
 	noPatterns := func(string) []string { return nil }
@@ -88,7 +90,7 @@ func TestBuildUnreleasedRangeStagingDeterministic(t *testing.T) {
 		t.Fatalf("Report.Unreleased phải true")
 	}
 	if rep.N != 88 {
-		t.Fatalf("N phải là latest cut (88) để render 'sau R88': %d", rep.N)
+		t.Fatalf("N phải là số release đang hình thành (88): %d", rep.N)
 	}
 	// deterministic: chạy hai lần cùng state → render giống hệt.
 	a := Render(rep, false)
@@ -98,6 +100,29 @@ func TestBuildUnreleasedRangeStagingDeterministic(t *testing.T) {
 	}
 	if !strings.Contains(a, "hình thành") {
 		t.Errorf("header unreleased phải khác '# Release N': %s", a)
+	}
+}
+
+// Regression (off-by-one nhãn release): base của unreleased PHẢI là release trước (đã deploy),
+// KHÔNG phải release<n> (đang hình thành). Stub cả hai range với commit khác nhau; per-repo
+// header phải ghi "(rel84..staging)" (base=84) và tuyệt đối không "(rel85..staging)".
+func TestBuildUnreleasedBaseIsPrevNotForming(t *testing.T) {
+	fr := fakeRunner{out: map[string]string{
+		"branch -r": "  origin/release84\n  origin/release85\n  origin/staging\n",
+		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release84..origin/staging": "h1\x1ffeat(a): real\x1fnamph\x1f\x1e",
+		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release85..origin/staging": "h2\x1ffeat(b): wrong\x1fnamph\x1f\x1e",
+	}}
+	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
+	rep := BuildUnreleased(fr, resolve, []string{"be"}, 85, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
+	out := Render(rep, false)
+	if !strings.Contains(out, "(rel84..staging)") {
+		t.Errorf("base unreleased phải là release trước 84: %s", out)
+	}
+	if strings.Contains(out, "(rel85..staging)") {
+		t.Errorf("base KHÔNG được là release đang hình thành 85: %s", out)
+	}
+	if !strings.Contains(out, "# Release đang hình thành: R85 (chưa deploy)") {
+		t.Errorf("header phải ghi R85 đang hình thành: %s", out)
 	}
 }
 

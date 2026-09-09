@@ -89,7 +89,7 @@ func TestRenderUnreleasedOmitsTimestamp(t *testing.T) {
 	if strings.Contains(un, "Sinh ") {
 		t.Errorf("view unreleased KHÔNG được in timestamp (churn): %s", un)
 	}
-	if !strings.Contains(un, "# Release đang hình thành (sau R84)") {
+	if !strings.Contains(un, "# Release đang hình thành: R84 (chưa deploy)") {
 		t.Errorf("unreleased thiếu header: %s", un)
 	}
 	cut := Render(Report{N: 84, GeneratedAt: "2026-09-08 10:00", SharedCrossRepo: map[string][]string{}}, false)

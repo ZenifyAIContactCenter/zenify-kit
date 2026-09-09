@@ -17,7 +17,7 @@ func Render(rep Report, verbose bool) string {
 		// View unreleased regen mỗi /ship + docs-sync → KHÔNG in timestamp time.Now()
 		// (churn commit no-op chỉ-đổi-giờ trong store). Thời điểm đã nằm trong git-log của
 		// store; giữ output deterministic theo git-state (SC-6). R<N>.md cắt-1-lần vẫn giữ "Sinh".
-		fmt.Fprintf(&b, "# Release đang hình thành (sau R%d)\n\n", rep.N)
+		fmt.Fprintf(&b, "# Release đang hình thành: R%d (chưa deploy)\n\n", rep.N)
 	} else {
 		fmt.Fprintf(&b, "# Release %d\n", rep.N)
 		fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)

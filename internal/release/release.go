@@ -15,9 +15,10 @@ func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []stri
 	return buildReport(r, resolve, repos, n, false, loadPatterns, loadSpecs)
 }
 
-// BuildUnreleased ráp report "đang hình thành" cho range release<latestN>..origin/staging —
-// view những gì sẽ vào release kế tiếp, chưa cắt. Cùng lõi buildReport, không tính regression
-// (to==staging nên NotInStaging luôn rỗng) và không có CutDate (chưa cắt).
+// BuildUnreleased ráp report "đang hình thành" cho release latestN (release đang gom, chưa
+// deploy — convention A). Range = release<prev>..origin/staging với prev = release đã-deploy
+// gần nhất, tức toàn bộ delta của release đang hình thành so với production. Cùng lõi buildReport,
+// không tính regression (to==staging nên NotInStaging luôn rỗng) và không có CutDate (chưa cắt).
 func BuildUnreleased(r gitx.Runner, resolve func(name string) (string, bool), repos []string, latestN int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
 	return buildReport(r, resolve, repos, latestN, true, loadPatterns, loadSpecs)
 }
@@ -53,10 +54,21 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 		var relPrev, relN string
 		var prevForReport int
 		if unreleased {
-			// range = release<latestN>..staging. Repo phải có release<n> làm mốc dưới (đã check ở trên).
-			relPrev = fmt.Sprintf("origin/release%d", n)
+			// Convention (A): team tạo branch release<n> lúc BẮT ĐẦU gom release n (mở PR gom,
+			// dev merge nốt tồn đọng ở staging, rồi mới merge lên production + deploy). Nên
+			// release<n> = release ĐANG HÌNH THÀNH (chưa deploy); production vẫn ở release trước.
+			// View go/no-go đúng = toàn bộ delta so với release ĐÃ-deploy gần nhất →
+			// range release<prev>..staging. (release<n>..staging chỉ là "phần còn phải gom vào
+			// release<n>", và trước đây bị gán nhãn sai thành "sau R<n>".) rep.N giữ = n = số
+			// release đang hình thành, để header ghi "R<n> đang hình thành".
+			prev, ok := PrevRelease(nums, n)
+			if !ok {
+				rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không tìm được release trước để làm mốc unreleased"})
+				continue
+			}
+			relPrev = fmt.Sprintf("origin/release%d", prev)
 			relN = "origin/staging"
-			prevForReport = n
+			prevForReport = prev
 		} else {
 			prev, ok := PrevRelease(nums, n)
 			if !ok {
