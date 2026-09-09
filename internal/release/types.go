@@ -62,6 +62,19 @@ type SpecMeta struct {
 	Supersedes  string // raw slug from the _Supersedes: Brief tag; "" if none (the only non-derivable lifecycle input)
 }
 
+// LinkTier records which rule linked a Change to a spec. Ordered by strength (higher wins) so a
+// caller can take the max across several Changes: a note beats a Spec: trailer, which beats an
+// exact slug, which beats a fuzzy slug. Mirrors the match order in LinkSpecTier.
+type LinkTier int
+
+const (
+	TierNone      LinkTier = iota // no link
+	TierSlugFuzzy                 // slug substring match
+	TierSlugExact                 // slug equality
+	TierTrailer                   // Spec: <path> commit trailer
+	TierNote                      // release note-commit linked by slug
+)
+
 // Report is the whole report for one release.
 type Report struct {
 	N               int

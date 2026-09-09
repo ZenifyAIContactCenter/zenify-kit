@@ -115,12 +115,13 @@ func NoteRiskBySlug(notes []Commit) map[string]RiskMeta {
 	return m
 }
 
-// LinkSpec: tier-0 note-by-slug (map, gathered outside Aggregate) → tier-1 Spec-trailer → tier-2
-// slug-match → empty. Returns RiskMeta (SpecPath="" = unknown).
-func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
+// LinkSpecTier is LinkSpec plus the tier that matched. Match order MUST stay note → trailer →
+// slug-exact → slug-fuzzy (a precedence bug-fixed once in 8c73cf8); the existing LinkSpec tests
+// are the guard against reordering.
+func LinkSpecTier(ch Change, specs []SpecMeta, notes map[string]RiskMeta) (RiskMeta, LinkTier) {
 	// (0) tier-0: risk from a note-commit linked by slug.
 	if rm, ok := notes[NormalizeKey(ch.Slug)]; ok {
-		return rm
+		return rm, TierNote
 	}
 	var b strings.Builder
 	for _, c := range ch.Commits {
@@ -132,7 +133,7 @@ func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
 	if tp := specTrailer(bodies); tp != "" {
 		for _, s := range specs {
 			if s.Path == tp || strings.HasSuffix(s.Path, tp) || strings.HasSuffix(tp, s.Path) {
-				return risk(s)
+				return risk(s), TierTrailer
 			}
 		}
 	}
@@ -140,15 +141,21 @@ func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
 	want := NormalizeKey(ch.Slug)
 	for _, s := range specs {
 		if s.Slug == want {
-			return risk(s)
+			return risk(s), TierSlugExact
 		}
 	}
 	for _, s := range specs {
 		if want != "" && (strings.Contains(s.Slug, want) || strings.Contains(want, s.Slug)) {
-			return risk(s)
+			return risk(s), TierSlugFuzzy
 		}
 	}
-	return RiskMeta{}
+	return RiskMeta{}, TierNone
+}
+
+// LinkSpec keeps its original signature (11 call sites depend on it) and discards the tier.
+func LinkSpec(ch Change, specs []SpecMeta, notes map[string]RiskMeta) RiskMeta {
+	rm, _ := LinkSpecTier(ch, specs, notes)
+	return rm
 }
 
 func risk(s SpecMeta) RiskMeta {
