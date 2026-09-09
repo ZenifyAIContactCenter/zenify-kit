@@ -14,7 +14,7 @@ var forbiddenTokens = []string{
 	"VITE_", "namph", "zenify",
 }
 
-// skill dir -> lowercase anchors phải xuất hiện trong SKILL.md của skill đó
+// skill dir -> lowercase anchors that must appear in that skill's SKILL.md
 var codingAnchors = map[string][]string{
 	"mongo-data-safety":        {"tenant", "strict", "distinct"},
 	"sql-data-safety":          {"tenant", "parameter", "pool"},
@@ -35,25 +35,25 @@ func readCodingFile(t *testing.T, skill string) string {
 }
 
 func TestCodingSkillsAreAgnostic(t *testing.T) {
-	// Lặp theo CodingSkills() (nguồn thật từ embed) chứ không theo codingAnchors,
-	// để một skill mới thêm vào mà quên khai anchor sẽ FAIL ở đây thay vì lọt
-	// cả token-check lẫn anchor-check.
+	// Iterate over CodingSkills() (the real source, from embed) rather than codingAnchors,
+	// so a newly added skill that forgets to declare an anchor FAILS here instead of slipping
+	// past both the token-check and the anchor-check.
 	for _, skill := range CodingSkills() {
 		anchors, ok := codingAnchors[skill]
 		if !ok {
-			t.Errorf("skill %s chưa có entry trong codingAnchors — thêm anchor để guard kiểm được", skill)
+			t.Errorf("skill %s has no entry in codingAnchors — add an anchor so the guard can check it", skill)
 			continue
 		}
 		body := readCodingFile(t, skill)
 		low := strings.ToLower(body)
 		for _, tok := range forbiddenTokens {
 			if strings.Contains(low, strings.ToLower(tok)) {
-				t.Errorf("skill %s chứa token cấm %q", skill, tok)
+				t.Errorf("skill %s contains forbidden token %q", skill, tok)
 			}
 		}
 		for _, a := range anchors {
 			if !strings.Contains(low, a) {
-				t.Errorf("skill %s thiếu anchor %q", skill, a)
+				t.Errorf("skill %s missing anchor %q", skill, a)
 			}
 		}
 	}
@@ -68,7 +68,7 @@ func TestCodingSkillsListed(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("CodingSkills() không có mongo-data-safety: %v", got)
+		t.Fatalf("CodingSkills() missing mongo-data-safety: %v", got)
 	}
 }
 
@@ -79,6 +79,6 @@ func TestGlobalSyncSkipsCoding(t *testing.T) {
 		t.Fatalf("Sync: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "coding")); !os.IsNotExist(err) {
-		t.Fatalf("Sync global không được materialize assets/coding (err=%v)", err)
+		t.Fatalf("global Sync must NOT materialize assets/coding (err=%v)", err)
 	}
 }

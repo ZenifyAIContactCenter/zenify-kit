@@ -59,13 +59,13 @@ func TestPlaywrightCheckIsReadOnlyRegistered(t *testing.T) {
 }
 
 func TestPluginCheckReportsMissing(t *testing.T) {
-	c := pluginCheckAt(t.TempDir()) // dest rỗng → chưa sync
+	c := pluginCheckAt(t.TempDir()) // empty dest → not synced
 	ok, msg := c.Run()
 	if ok {
-		t.Fatal("plugin chưa sync mà báo ok")
+		t.Fatal("plugin not synced but reports ok")
 	}
-	if !strings.Contains(msg, "chưa cài") {
-		t.Fatalf("msg không nêu trạng thái: %q", msg)
+	if !strings.Contains(msg, "chưa cài") { //znf:allow-lang
+		t.Fatalf("msg should state the status: %q", msg)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestDockerCheck_PresentAndRunning(t *testing.T) {
 	)
 	ok, detail := c.Run()
 	if !ok {
-		t.Errorf("docker present + info ok phải OK, detail=%q", detail)
+		t.Errorf("docker present + info ok should be OK, detail=%q", detail)
 	}
 }
 
@@ -87,6 +87,6 @@ func TestDockerCheck_Missing(t *testing.T) {
 	)
 	ok, detail := c.Run()
 	if ok || !strings.Contains(detail, "docker=missing") {
-		t.Errorf("docker thiếu phải !ok + detail chứa docker=missing, got ok=%v detail=%q", ok, detail)
+		t.Errorf("docker missing should be !ok + detail containing docker=missing, got ok=%v detail=%q", ok, detail)
 	}
 }

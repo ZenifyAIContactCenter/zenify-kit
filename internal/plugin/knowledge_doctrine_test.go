@@ -15,7 +15,7 @@ func TestKnowledgeDoctrine_Materialized(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dest, "skills/_shared/knowledge-doctrine.md"))
 	if err != nil {
-		t.Fatalf("knowledge-doctrine.md chưa materialize: %v", err)
+		t.Fatalf("knowledge-doctrine.md not materialized: %v", err)
 	}
 	s := string(b)
 	for _, want := range []string{
@@ -29,12 +29,12 @@ func TestKnowledgeDoctrine_Materialized(t *testing.T) {
 		"Retirement", "prune-memory",
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("knowledge-doctrine.md thiếu %q", want)
+			t.Errorf("knowledge-doctrine.md missing %q", want)
 		}
 	}
-	for _, forbidden := range []string{"mermaid", "tiếng Việt", "Vietnamese"} {
+	for _, forbidden := range []string{"mermaid", "tiếng Việt", "Vietnamese"} { //znf:allow-lang -- literal being tested for absence, not translatable
 		if strings.Contains(s, forbidden) {
-			t.Errorf("knowledge-doctrine.md KHÔNG được chứa %q (English-only agent file)", forbidden)
+			t.Errorf("knowledge-doctrine.md must NOT contain %q (English-only agent file)", forbidden)
 		}
 	}
 }

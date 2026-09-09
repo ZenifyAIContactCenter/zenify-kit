@@ -22,7 +22,7 @@ func ensureGuardHook(raw []byte) ([]byte, bool, error) {
 	root := map[string]any{}
 	if len(strings.TrimSpace(string(raw))) > 0 {
 		if err := json.Unmarshal(raw, &root); err != nil {
-			return nil, false, fmt.Errorf("guard install: settings.json không parse được: %w", err)
+			return nil, false, fmt.Errorf("guard install: could not parse settings.json: %w", err)
 		}
 	}
 
@@ -119,40 +119,40 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 }
 
 func newGuardCmd() *cobra.Command {
-	c := &cobra.Command{Use: "guard", Short: "Quản lý git-guard hook"}
+	c := &cobra.Command{Use: "guard", Short: "Quản lý git-guard hook"} //znf:allow-lang
 	install := &cobra.Command{
 		Use:   "install",
-		Short: "Đăng ký PreToolUse hook trỏ `zenify git-guard` trong ~/.claude/settings.json",
+		Short: "Đăng ký PreToolUse hook trỏ `zenify git-guard` trong ~/.claude/settings.json", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				return fmt.Errorf("guard install: không xác định được HOME: %w", err)
+				return fmt.Errorf("guard install: could not determine HOME: %w", err)
 			}
 			path := filepath.Join(home, ".claude", "settings.json")
 			raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
 			if err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("guard install: đọc %s: %w", path, err)
+				return fmt.Errorf("guard install: reading %s: %w", path, err)
 			}
 			out, changed, err := ensureGuardHook(raw)
 			if err != nil {
 				return err
 			}
 			if !changed {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã cấu hình sẵn (idempotent).")
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã cấu hình sẵn (idempotent).") //znf:allow-lang
 				return nil
 			}
 			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-				return fmt.Errorf("guard install: tạo thư mục %s: %w", filepath.Dir(path), err)
+				return fmt.Errorf("guard install: creating directory %s: %w", filepath.Dir(path), err)
 			}
 			perm := os.FileMode(0o644)
 			if fi, statErr := os.Stat(path); statErr == nil {
 				perm = fi.Mode().Perm()
 			}
 			if err := writeFileAtomic(path, out, perm); err != nil {
-				return fmt.Errorf("guard install: ghi %s: %w", path, err)
+				return fmt.Errorf("guard install: writing %s: %w", path, err)
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã trỏ PreToolUse → zenify git-guard.")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã trỏ PreToolUse → zenify git-guard.") //znf:allow-lang
 			return nil
 		},
 	}

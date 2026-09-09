@@ -9,19 +9,19 @@ import (
 	"testing"
 )
 
-// SC-5: file spec không tồn tại → fail-open: note + KHÔNG error, exit qua RunE = nil.
+// SC-5: spec file does not exist → fail-open: note + NO error, exit via RunE = nil.
 func TestRunAnalyze_MissingFileFailOpen(t *testing.T) {
 	var out, errb bytes.Buffer
 	rf := func(p string) ([]byte, error) { return nil, errors.New("no such file") }
 	if err := runAnalyze("/no/spec.md", "/no/plan.md", false, rf, &out, &errb); err != nil {
-		t.Fatalf("fail-open bị vi phạm: runAnalyze trả error %v", err)
+		t.Fatalf("fail-open violated: runAnalyze returned error %v", err)
 	}
-	if !strings.Contains(errb.String()+out.String(), "không phân tích được") {
-		t.Errorf("thiếu note fail-open; out=%q err=%q", out.String(), errb.String())
+	if !strings.Contains(errb.String()+out.String(), "không phân tích được") { //znf:allow-lang
+		t.Errorf("missing fail-open note; out=%q err=%q", out.String(), errb.String())
 	}
 }
 
-// Đường hạnh phúc + --json: orphan FR-2 hiện trong output JSON.
+// Happy path + --json: orphan FR-2 appears in the JSON output.
 func TestRunAnalyze_JSONOutput(t *testing.T) {
 	dir := t.TempDir()
 	spec := filepath.Join(dir, "spec.md")
@@ -38,11 +38,11 @@ func TestRunAnalyze_JSONOutput(t *testing.T) {
 	}
 	s := out.String()
 	if !strings.Contains(s, "orphan-fr") || !strings.Contains(s, "FR-2") {
-		t.Errorf("JSON output thiếu orphan-fr FR-2: %s", s)
+		t.Errorf("JSON output missing orphan-fr FR-2: %s", s)
 	}
 }
 
-// Human output nêu số finding.
+// Human output states the finding count.
 func TestRunAnalyze_HumanOutput(t *testing.T) {
 	dir := t.TempDir()
 	spec := filepath.Join(dir, "spec.md")
@@ -54,6 +54,6 @@ func TestRunAnalyze_HumanOutput(t *testing.T) {
 		t.Fatalf("runAnalyze: %v", err)
 	}
 	if !strings.Contains(strings.ToLower(out.String()), "brief") {
-		t.Errorf("human output thiếu dòng Brief: %s", out.String())
+		t.Errorf("human output missing Brief line: %s", out.String())
 	}
 }

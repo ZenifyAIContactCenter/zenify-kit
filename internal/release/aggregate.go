@@ -5,9 +5,10 @@ import (
 	"strings"
 )
 
-// Aggregate gom []Commit thành []Change theo key chuẩn-hoá (last-segment branch ∪ scope).
-// Merge-commit và commit lẻ cùng slug gom chung. Commit không branch/scope → bucket "misc:<type>".
-// notStaging: set SHA (short) thuộc tập NotInStaging → đánh dấu Change.NotOnStaging.
+// Aggregate groups []Commit into []Change by a normalized key (last-segment branch ∪ scope).
+// A merge commit and its standalone commits with the same slug are grouped together. A commit
+// with no branch/scope → bucket "misc:<type>".
+// notStaging: the set of (short) SHAs in NotInStaging → marks Change.NotOnStaging.
 func Aggregate(commits []Commit, notStaging map[string]bool) []Change {
 	idx := map[string]int{}
 	var out []Change
@@ -57,9 +58,9 @@ func Aggregate(commits []Commit, notStaging map[string]bool) []Change {
 	return out
 }
 
-// changeAuthors: dev viết code (distinct, thứ tự gặp đầu). Bỏ merge-commit vì %an của nó là
-// người BẤM merge, không phải tác giả code. Nếu change CHỈ có merge commit (không có commit
-// thường trong khoảng) thì mới dùng tác giả merge làm best-available.
+// changeAuthors: the devs who wrote the code (distinct, first-seen order). Merge commits are
+// skipped because their %an is whoever CLICKED merge, not the code author. Only when a change
+// has ONLY merge commits (no regular commit in range) do we fall back to the merger's name.
 func changeAuthors(ch Change) []string {
 	if a := collectAuthors(ch.Commits, true); len(a) > 0 {
 		return a
@@ -84,11 +85,11 @@ func collectAuthors(commits []Commit, skipMerge bool) []string {
 	return authors
 }
 
-// convPrefixRe khớp prefix conventional-commit để cắt lấy phần mô tả: "feat(x): foo" → "foo".
+// convPrefixRe matches a conventional-commit prefix so it can be stripped to get the description: "feat(x): foo" → "foo".
 var convPrefixRe = regexp.MustCompile(`^(?:feat|fix|perf|refactor|chore)(?:\([^)]*\))?!?:\s*`)
 
-// changeDesc: subject của commit non-merge đầu tiên, đã cắt prefix type(scope):.
-// Không có commit non-merge (hoặc mọi subject rỗng sau khi cắt prefix) → "".
+// changeDesc: the subject of the first non-merge commit, with the type(scope): prefix stripped.
+// No non-merge commit (or every subject is empty after stripping the prefix) → "".
 func changeDesc(ch Change) string {
 	for _, c := range ch.Commits {
 		if c.Merge {
@@ -104,8 +105,8 @@ func changeDesc(ch Change) string {
 
 var typeRank = map[string]int{"feat": 4, "fix": 3, "perf": 3, "refactor": 3, "chore": 1, "other": 0}
 
-// branchTypeFloor suy type tối thiểu từ prefix branch của PR: segment feat|fix|perf|refactor|chore.
-// hotfix đã xử lý bởi ch.IsHotfix ở đầu changeType nên bỏ qua ở đây.
+// branchTypeFloor infers a minimum type from the PR's branch prefix: segment feat|fix|perf|refactor|chore.
+// hotfix is already handled by ch.IsHotfix at the top of changeType, so it is skipped here.
 func branchTypeFloor(branch string) string {
 	for _, seg := range strings.Split(branch, "/") {
 		switch seg {
@@ -116,8 +117,8 @@ func branchTypeFloor(branch string) string {
 	return ""
 }
 
-// changeType: hotfix nếu IsHotfix; else loại "mạnh nhất" trong các commit (feat > fix/perf/refactor > chore > other),
-// với sàn theo branch-prefix để PR feat/* luôn hiện dù commit bung toàn chore.
+// changeType: hotfix if IsHotfix; else the "strongest" type among the commits (feat > fix/perf/refactor > chore > other),
+// with a branch-prefix floor so a feat/* PR always shows as feat even if its commits are all chore.
 func changeType(ch Change) string {
 	if ch.IsHotfix {
 		return "hotfix"
@@ -158,7 +159,7 @@ func changeType(ch Change) string {
 
 func changeTitle(ch Change) string {
 	if strings.HasPrefix(ch.Slug, "misc:") {
-		return "Khác (" + strings.TrimPrefix(ch.Slug, "misc:") + ")"
+		return "Khác (" + strings.TrimPrefix(ch.Slug, "misc:") + ")" //znf:allow-lang
 	}
 	return HumanizeTitle(ch.Slug)
 }

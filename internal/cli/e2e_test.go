@@ -13,7 +13,7 @@ func TestRunE2eLint_NoSpecs_BadArgs(t *testing.T) {
 	dir := t.TempDir()
 	err := runE2eLint(dir, &bytes.Buffer{})
 	if exitcode.Code(err) != exitcode.BadArgs {
-		t.Fatalf("thiếu spec phải BadArgs, got %v", err)
+		t.Fatalf("missing spec should be BadArgs, got %v", err)
 	}
 }
 
@@ -23,7 +23,7 @@ func TestRunE2eLint_Violations_Fail(t *testing.T) {
 		[]byte("test('x', async ({page}) => { await page.waitForTimeout(1); });"), 0o644)
 	err := runE2eLint(dir, &bytes.Buffer{})
 	if exitcode.Code(err) != exitcode.Fail {
-		t.Fatalf("vi phạm phải Fail, got %v", err)
+		t.Fatalf("violation should be Fail, got %v", err)
 	}
 }
 
@@ -37,6 +37,6 @@ func TestRunE2eLint_Clean_OK(t *testing.T) {
 });`
 	os.WriteFile(filepath.Join(dir, "ok.spec.ts"), []byte(clean), 0o644)
 	if err := runE2eLint(dir, &bytes.Buffer{}); err != nil {
-		t.Fatalf("spec sạch phải OK, got %v", err)
+		t.Fatalf("clean spec should be OK, got %v", err)
 	}
 }

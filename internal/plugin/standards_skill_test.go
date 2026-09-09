@@ -15,21 +15,21 @@ func TestStandardsSkill_Materialized_HasKeyParts(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dest, "skills/standards/SKILL.md"))
 	if err != nil {
-		t.Fatalf("standards/SKILL.md chưa materialize: %v", err)
+		t.Fatalf("standards/SKILL.md not materialized: %v", err)
 	}
 	s := string(b)
 	for _, want := range []string{
-		"advisory",         // khai không-chặn
-		"zenify standards", // gọi command cơ học
+		"advisory",         // declares non-blocking
+		"zenify standards", // calls the mechanical command
 		"untested-fr",      // rubric
-		"assert",           // pass phán đoán: test có thật sự assert
+		"assert",           // judgment pass: does the test actually assert
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("standards/SKILL.md thiếu %q", want)
+			t.Errorf("standards/SKILL.md missing %q", want)
 		}
 	}
 	if strings.Contains(s, "mermaid") {
-		t.Errorf("standards/SKILL.md KHÔNG được chứa \"mermaid\" (agnostic)")
+		t.Errorf("standards/SKILL.md must NOT contain \"mermaid\" (agnostic)")
 	}
 }
 
@@ -44,6 +44,6 @@ func TestStandardsSkill_CookWiring(t *testing.T) {
 		t.Fatalf("read cook: %v", err)
 	}
 	if !strings.Contains(string(b), "znf:standards") {
-		t.Errorf("cook/SKILL.md thiếu znf:standards (Step 6b wiring)")
+		t.Errorf("cook/SKILL.md missing znf:standards (Step 6b wiring)")
 	}
 }

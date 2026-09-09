@@ -12,7 +12,7 @@ import (
 
 func TestRulesLint_FlagsAndExits(t *testing.T) {
 	d := t.TempDir()
-	os.WriteFile(filepath.Join(d, "bad.go"), []byte("package a\n// tiếng Việt\n"), 0o644)
+	os.WriteFile(filepath.Join(d, "bad.go"), []byte("package a\n// tiếng Việt\n"), 0o644) //znf:allow-lang
 	cmd := newRulesCmd()
 	var out, errb bytes.Buffer
 	cmd.SetOut(&out)

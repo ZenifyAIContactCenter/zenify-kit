@@ -18,11 +18,11 @@ func sampleReport() Report {
 				{Title: "Linked fields", Slug: "linked-fields", Type: "feat", PRNum: "12", Commits: make([]Commit, 20),
 					Authors: []string{"namph", "hungnk"}, Desc: "add linked field type",
 					Risk: RiskMeta{SpecPath: "specs/be/x-design.md", BlastRadius: "be+web", DB: "N/A", Rollback: "revert",
-						Note: "thêm loại trường liên kết cho form ticket"}},
+						Note: "thêm loại trường liên kết cho form ticket"}}, //znf:allow-lang
 				{Title: "Report tz", Slug: "report-tz", Type: "fix", Authors: []string{"namph"},
 					Commits: []Commit{{Subject: "fix(report): tz offset"}, {Subject: "test: tz case"}}},
 				{Title: "Urgent", Slug: "urgent", Type: "hotfix", Commits: make([]Commit, 1), IsHotfix: true, NotOnStaging: true},
-				{Title: "Khác (chore)", Slug: "misc:chore", Type: "chore", Commits: make([]Commit, 3)},
+				{Title: "Khác (chore)", Slug: "misc:chore", Type: "chore", Commits: make([]Commit, 3)}, //znf:allow-lang
 			},
 		}},
 		NotShipped:      []string{"notification"},
@@ -34,74 +34,74 @@ func sampleReport() Report {
 func TestRenderHeadlineAndSections(t *testing.T) {
 	out := Render(sampleReport(), false)
 	for _, want := range []string{
-		"# Release 84", "Quyết định nhanh", "notification", // không ship
+		"# Release 84", "Quyết định nhanh", "notification", // not shipped //znf:allow-lang
 		"migration → BE", "**/chat_*", // shared + deploy order
 		"Shared-collection: **/chat_*",                    // FR-3.4 per-repo risk-proxy
-		"| Thay đổi | Mô tả | # | Dev | Spec | Staging |", // bảng header (cột Mô tả từ _Release-Note)
-		"### Features", "Linked fields", // feature title trong ô Thay đổi
-		"thêm loại trường liên kết cho form ticket", // cột Mô tả từ Risk.Note
+		"| Thay đổi | Mô tả | # | Dev | Spec | Staging |", // table header (Mô tả column from _Release-Note) //znf:allow-lang
+		"### Features", "Linked fields", // feature title in the Thay đổi cell //znf:allow-lang
+		"thêm loại trường liên kết cho form ticket", // Mô tả column from Risk.Note //znf:allow-lang
 		"namph, hungnk", // Dev column
 		"### Fixes", "Report tz",
-		"### Hotfixes", "⚠ chưa sync", // hotfix cờ staging trong ô bảng
+		"### Hotfixes", "⚠ chưa sync", // hotfix staging flag in the table cell //znf:allow-lang
 		"1/3", // spec coverage
-		// Khối rủi ro dưới bảng, chỉ cho thay đổi CÓ spec — mỗi tag một dòng **Label:**.
-		"#### Rủi ro (thay đổi có spec)",
+		// Risk block below the table, only for changes WITH a spec — each tag one **Label:** line.
+		"#### Rủi ro (thay đổi có spec)", //znf:allow-lang
 		"**#12 — Linked fields**",
 		"- **Blast-radius:** be+web",
 		"- **DB:** N/A",
 		"- **Rollback:** revert",
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("render thiếu %q\n---\n%s", want, out)
+			t.Errorf("render missing %q\n---\n%s", want, out)
 		}
 	}
 	if strings.Contains(out, "### Chores") {
-		t.Errorf("non-verbose KHÔNG được in section Chores (nhiễu cho go/no-go)")
+		t.Errorf("non-verbose must NOT print the Chores section (noise for go/no-go)")
 	}
 	if strings.Contains(out, "— go/no-go") {
-		t.Errorf("H1 không được gắn gloss '— go/no-go'")
+		t.Errorf("H1 must not carry the '— go/no-go' gloss")
 	}
 	if strings.Contains(out, "fix(report): tz offset") {
-		t.Errorf("non-verbose KHÔNG được in commit list mỗi thay đổi")
+		t.Errorf("non-verbose must NOT print each change's commit list")
 	}
-	// Desc (subject commit) KHÔNG còn dán vào ô bảng — chỉ ở --verbose.
+	// Desc (the commit subject) is no longer pasted into the table cell — only with --verbose.
 	if strings.Contains(out, "add linked field type") {
-		t.Errorf("non-verbose KHÔNG được in Desc trong ô Thay đổi")
+		t.Errorf("non-verbose must NOT print Desc in the Thay đổi cell") //znf:allow-lang
 	}
-	// Cột Spec là cờ, KHÔNG còn nhồi prose "unknown — no spec" vào ô bảng.
+	// The Spec column is a flag, no longer stuffed with the old "unknown — no spec" prose.
 	if strings.Contains(out, "unknown — no spec") {
-		t.Errorf("bảng KHÔNG được chứa prose risk cũ 'unknown — no spec'")
+		t.Errorf("the table must NOT contain the old risk prose 'unknown — no spec'")
 	}
 }
 
 func TestRenderVerboseExpandsChore(t *testing.T) {
 	out := Render(sampleReport(), true)
-	if !strings.Contains(out, "Khác (chore)") {
-		t.Errorf("verbose phải liệt kê chore")
+	if !strings.Contains(out, "Khác (chore)") { //znf:allow-lang
+		t.Errorf("verbose must list chores")
 	}
 	if !strings.Contains(out, "fix(report): tz offset") {
-		t.Errorf("verbose phải in commit list mỗi thay đổi (FR-5.2)")
+		t.Errorf("verbose must print each change's commit list (FR-5.2)")
 	}
 }
 
-// LOW-1 fix: view unreleased KHÔNG in "Sinh <time.Now>" (tránh churn commit no-op mỗi ship,
-// giữ deterministic theo git-state, SC-6); view cắt R<N>.md VẪN giữ "Sinh".
+// LOW-1 fix: the unreleased view does NOT print "Sinh <time.Now>" (avoids a no-op churn commit on
+// every ship, keeping it deterministic against git-state, SC-6); a cut R<N>.md STILL keeps "Sinh".
 func TestRenderUnreleasedOmitsTimestamp(t *testing.T) {
 	un := Render(Report{N: 84, Unreleased: true, GeneratedAt: "2026-09-08 10:00", SharedCrossRepo: map[string][]string{}}, false)
 	if strings.Contains(un, "Sinh ") {
-		t.Errorf("view unreleased KHÔNG được in timestamp (churn): %s", un)
+		t.Errorf("the unreleased view must NOT print a timestamp (churn): %s", un)
 	}
-	if !strings.Contains(un, "# Release đang hình thành: R84 (chưa deploy)") {
-		t.Errorf("unreleased thiếu header: %s", un)
+	if !strings.Contains(un, "# Release đang hình thành: R84 (chưa deploy)") { //znf:allow-lang
+		t.Errorf("unreleased header missing: %s", un)
 	}
 	cut := Render(Report{N: 84, GeneratedAt: "2026-09-08 10:00", SharedCrossRepo: map[string][]string{}}, false)
 	if !strings.Contains(cut, "Sinh 2026-09-08 10:00") {
-		t.Errorf("view cắt R<N>.md phải giữ 'Sinh': %s", cut)
+		t.Errorf("a cut R<N>.md view must keep 'Sinh': %s", cut)
 	}
 }
 
-// Khối rủi ro phải loại chore/other (dòng bảng của chúng bị verbose-gate) — nếu không
-// non-verbose sẽ có khối rủi ro trỏ tới thay đổi không hiện ở bảng nào. Mirror release.go:175.
+// The risk block must exclude chore/other (their table row is verbose-gated) — otherwise
+// non-verbose would have a risk block pointing to a change that appears in no table. Mirror release.go:175.
 func TestRenderRiskDetailExcludesChore(t *testing.T) {
 	rep := Report{N: 84, SharedCrossRepo: map[string][]string{}, Repos: []RepoReport{{
 		Name: "be", Changes: []Change{
@@ -110,13 +110,13 @@ func TestRenderRiskDetailExcludesChore(t *testing.T) {
 		},
 	}}}
 	out := Render(rep, false)
-	if strings.Contains(out, "#### Rủi ro") {
-		t.Errorf("chore có spec KHÔNG được tạo khối rủi ro: %s", out)
+	if strings.Contains(out, "#### Rủi ro") { //znf:allow-lang
+		t.Errorf("a chore with a spec must NOT create a risk block: %s", out)
 	}
 }
 
-// Khối rủi ro: header Title-only khi không có PR, và oneLine trim emphasis rìa (** leak
-// từ tag "**_Label:**"). Hai nhánh này trước đó không có test.
+// Risk block: a Title-only header when there's no PR, and oneLine trims trailing emphasis (** leaking
+// from the "**_Label:**" tag). These two branches had no test before.
 func TestRenderRiskDetailTrimAndHeaderNoPR(t *testing.T) {
 	rep := Report{N: 84, SharedCrossRepo: map[string][]string{}, Repos: []RepoReport{{
 		Name: "be", Changes: []Change{
@@ -126,17 +126,17 @@ func TestRenderRiskDetailTrimAndHeaderNoPR(t *testing.T) {
 	}}}
 	out := Render(rep, false)
 	if !strings.Contains(out, "**No PR change**") || strings.Contains(out, "#—") || strings.Contains(out, "# — No PR change") {
-		t.Errorf("header không-PR phải là **Title** trần: %s", out)
+		t.Errorf("the no-PR header must be a bare **Title**: %s", out)
 	}
 	if !strings.Contains(out, "- **Blast-radius:** be leaked") {
-		t.Errorf("oneLine phải trim '**' rìa: %s", out)
+		t.Errorf("oneLine must trim trailing '**': %s", out)
 	}
-	// Dạng raw "** be leaked *" (leading/trailing emphasis) phải biến mất sau trim.
+	// The raw form "** be leaked *" (leading/trailing emphasis) must be gone after trimming.
 	if strings.Contains(out, "** be leaked *") || strings.Contains(out, "be leaked *") {
-		t.Errorf("value vẫn còn emphasis rìa chưa trim: %s", out)
+		t.Errorf("value still has untrimmed trailing emphasis: %s", out)
 	}
 	if !strings.Contains(out, "- **DB:** —") {
-		t.Errorf("value rỗng phải thành '—': %s", out)
+		t.Errorf("an empty value must become '—': %s", out)
 	}
 }
 

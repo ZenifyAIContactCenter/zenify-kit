@@ -15,7 +15,7 @@ func TestSpecDiscipline_Constitution(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dest, "skills/_shared/constitution.md"))
 	if err != nil {
-		t.Fatalf("constitution.md chưa materialize: %v", err)
+		t.Fatalf("constitution.md not materialized: %v", err)
 	}
 	s := string(b)
 	for _, want := range []string{
@@ -30,16 +30,16 @@ func TestSpecDiscipline_Constitution(t *testing.T) {
 		"knowledge-doctrine",
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("constitution.md thiếu %q", want)
+			t.Errorf("constitution.md missing %q", want)
 		}
 	}
-	for _, forbidden := range []string{"Sync Impact Report", "Vietnamese", "tiếng Việt", "mermaid"} {
+	for _, forbidden := range []string{"Sync Impact Report", "Vietnamese", "tiếng Việt", "mermaid"} { //znf:allow-lang -- literal being tested for absence, not translatable
 		if strings.Contains(s, forbidden) {
-			t.Errorf("constitution.md KHÔNG được chứa %q (agnostic/lean)", forbidden)
+			t.Errorf("constitution.md must NOT contain %q (agnostic/lean)", forbidden)
 		}
 	}
 	if strings.Contains(s, "1.0.0") || strings.Contains(s, "**Version:**") {
-		t.Error("constitution.md KHÔNG được mang semver (version = git history)")
+		t.Error("constitution.md must NOT carry semver (version = git history)")
 	}
 }
 
@@ -51,7 +51,7 @@ func TestSpecDiscipline_Template(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dest, "skills/_shared/spec-template.md"))
 	if err != nil {
-		t.Fatalf("spec-template.md chưa materialize: %v", err)
+		t.Fatalf("spec-template.md not materialized: %v", err)
 	}
 	s := string(b)
 	for _, want := range []string{
@@ -65,12 +65,12 @@ func TestSpecDiscipline_Template(t *testing.T) {
 		"Rollback", "_Blast-radius:", "_DB:", "_Rollback:",
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("spec-template.md thiếu %q", want)
+			t.Errorf("spec-template.md missing %q", want)
 		}
 	}
-	for _, forbidden := range []string{"mermaid", "Vietnamese", "tiếng Việt"} {
+	for _, forbidden := range []string{"mermaid", "Vietnamese", "tiếng Việt"} { //znf:allow-lang -- literal being tested for absence, not translatable
 		if strings.Contains(s, forbidden) {
-			t.Errorf("spec-template.md KHÔNG được hardcode %q", forbidden)
+			t.Errorf("spec-template.md must NOT hardcode %q", forbidden)
 		}
 	}
 }
@@ -92,7 +92,7 @@ func TestSpecDiscipline_BrainstormingWiring(t *testing.T) {
 		"Clarify-lite",
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("brainstorming/SKILL.md thiếu %q", want)
+			t.Errorf("brainstorming/SKILL.md missing %q", want)
 		}
 	}
 }
@@ -111,11 +111,11 @@ func TestSpecDiscipline_PlanWiring(t *testing.T) {
 	for _, want := range []string{
 		"znf:_shared/artifact-style",
 		"znf:_shared/constitution",
-		"_Requirements:",              // traceability tag (P8)
-		"Simpler alternative",         // necessity note (Complexity Tracking)
+		"_Requirements:",      // traceability tag (P8)
+		"Simpler alternative", // necessity note (Complexity Tracking)
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("writing-plans/SKILL.md thiếu %q (plan-half)", want)
+			t.Errorf("writing-plans/SKILL.md missing %q (plan-half)", want)
 		}
 	}
 }
@@ -131,10 +131,10 @@ func TestSpecDiscipline_CookWiring(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 	s := string(b)
-	// Cả hai asset phải được cite ít nhất một lần trong cook (step 2 spec + step 5 plan)
+	// Both assets must be cited at least once in cook (step 2 spec + step 5 plan)
 	for _, want := range []string{"znf:_shared/constitution", "znf:_shared/spec-template"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("cook/SKILL.md thiếu %q", want)
+			t.Errorf("cook/SKILL.md missing %q", want)
 		}
 	}
 }

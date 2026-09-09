@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// SC-7: non-test Go source của internal/distribute + cli/config.go không hardcode định danh repo zenify.
+// SC-7: non-test Go source of internal/distribute + cli/config.go does not hardcode zenify repo identifiers.
 func TestConfigNoZenifyRepoIdentifiers(t *testing.T) {
 	banned := []string{
 		"contact-center-be", "contact-center-hub", "contact-center-web",
@@ -22,22 +22,22 @@ func TestConfigNoZenifyRepoIdentifiers(t *testing.T) {
 		}
 		for _, id := range banned {
 			if strings.Contains(string(b), id) {
-				t.Errorf("%s chứa định danh repo zenify %q — path phải nằm trong manifest", f, id)
+				t.Errorf("%s contains zenify repo identifier %q — path must live in the manifest", f, id)
 			}
 		}
 	}
 }
 
-// FAIL-OPEN: config dir không tồn tại → exit 0, không panic.
+// FAIL-OPEN: config dir does not exist → exit 0, no panic.
 func TestRunConfigFailOpenNoConfigDir(t *testing.T) {
 	ws := t.TempDir()
 	var out, errb bytes.Buffer
 	if err := runConfig(ws, filepath.Join(ws, "nope"), false, &out, &errb); err != nil {
-		t.Fatalf("fail-open vi phạm: %v", err)
+		t.Fatalf("fail-open violated: %v", err)
 	}
 }
 
-// SC-1 + SC-2 + SC-3: dry-run không ghi; apply tạo CREATE; chạy lại = SAME (idempotent).
+// SC-1 + SC-2 + SC-3: dry-run does not write; apply creates CREATE; re-running = SAME (idempotent).
 func TestRunConfigDryRunThenApplyIdempotent(t *testing.T) {
 	ws := t.TempDir()
 	cfg := filepath.Join(ws, "cfgdir")
@@ -51,23 +51,23 @@ func TestRunConfigDryRunThenApplyIdempotent(t *testing.T) {
 	var o1, e1 bytes.Buffer
 	runConfig(ws, cfg, false, &o1, &e1)
 	if _, err := os.Stat(dest); !os.IsNotExist(err) {
-		t.Fatal("dry-run phải không ghi (SC-1)")
+		t.Fatal("dry-run must not write (SC-1)")
 	}
 	var o2, e2 bytes.Buffer
 	runConfig(ws, cfg, true, &o2, &e2)
 	b, err := os.ReadFile(dest)
 	if err != nil || string(b) != "hello\n" {
-		t.Fatalf("apply phải tạo dest với đúng nội dung: %v %q", err, b)
+		t.Fatalf("apply must create dest with the right content: %v %q", err, b)
 	}
 	var o3, e3 bytes.Buffer
 	runConfig(ws, cfg, false, &o3, &e3)
 	if !strings.Contains(o3.String(), "SAME") {
-		t.Fatalf("chạy lại phải là SAME (SC-2): %s", o3.String())
+		t.Fatalf("re-running must be SAME (SC-2): %s", o3.String())
 	}
 }
 
-// FR-03: một dòng manifest dir-pair ("rules/ .claude/rules/") phải được expand
-// thành một file-pair cho mỗi entry .md trong config dir, rồi apply ghi đúng đích.
+// FR-03: a manifest dir-pair line ("rules/ .claude/rules/") must be expanded
+// into a file-pair for each .md entry in the config dir, then apply writes to the right dest.
 func TestRunConfigDirPairExpandsAndApplies(t *testing.T) {
 	ws := t.TempDir()
 	cfg := filepath.Join(ws, "cfgdir")
@@ -82,6 +82,6 @@ func TestRunConfigDirPairExpandsAndApplies(t *testing.T) {
 	runConfig(ws, cfg, true, &o1, &e1)
 	b, err := os.ReadFile(dest)
 	if err != nil || string(b) != "constitution\n" {
-		t.Fatalf("apply phải tạo %s với đúng nội dung: %v %q", dest, err, b)
+		t.Fatalf("apply must create %s with the right content: %v %q", dest, err, b)
 	}
 }

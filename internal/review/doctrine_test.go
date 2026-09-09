@@ -38,7 +38,7 @@ func TestSanitizeVerified_KeepsPlainFactsAndBlanks(t *testing.T) {
 }
 
 func TestSanitizeVerified_KeepsUntestedGapLineWithVerdictWord(t *testing.T) {
-	// dòng "no test" là dòng giá trị nhất — KHÔNG được strip dù có verdict-word.
+	// a "no test" line is the most valuable kind — must NOT be stripped even with a verdict-word.
 	in := "not verified: no test covers this branch"
 	clean, stripped := SanitizeVerified(in)
 	if clean != in {

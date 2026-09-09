@@ -20,7 +20,7 @@ func runAnalyze(specPath, planPath string, asJSON bool, readFile func(string) ([
 		}
 		b, err := readFile(p)
 		if err != nil {
-			fmt.Fprintf(stderr, "analyze: không phân tích được %q: %v (fail-open)\n", p, err)
+			fmt.Fprintf(stderr, "analyze: không phân tích được %q: %v (fail-open)\n", p, err) //znf:allow-lang
 			return ""
 		}
 		return string(b)
@@ -28,7 +28,7 @@ func runAnalyze(specPath, planPath string, asJSON bool, readFile func(string) ([
 	specText := read(specPath)
 	planText := read(planPath)
 	if specText == "" && planText == "" {
-		fmt.Fprintln(stderr, "analyze: không phân tích được: không đọc được spec lẫn plan (fail-open)")
+		fmt.Fprintln(stderr, "analyze: không phân tích được: không đọc được spec lẫn plan (fail-open)") //znf:allow-lang
 		return nil
 	}
 	res := analyze.Analyze(specText, planText)
@@ -36,7 +36,7 @@ func runAnalyze(specPath, planPath string, asJSON bool, readFile func(string) ([
 	if asJSON {
 		b, err := json.Marshal(res)
 		if err != nil {
-			fmt.Fprintln(stderr, "analyze: không phân tích được: marshal lỗi (fail-open)")
+			fmt.Fprintln(stderr, "analyze: không phân tích được: marshal lỗi (fail-open)") //znf:allow-lang
 			return nil
 		}
 		fmt.Fprintln(stdout, string(b))

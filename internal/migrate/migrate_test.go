@@ -12,9 +12,9 @@ func TestBuildPlanClassifies(t *testing.T) {
 	root := "/ws"
 	repos := []workspace.Repo{
 		{Name: "alpha", Path: "/ws/alpha"},     // Move
-		{Name: "beta", Path: "/ws/repos/beta"}, // Skip — đã ở repos/
-		{Name: "dup", Path: "/ws/dup"},         // Refuse — trùng basename
-		{Name: "dup", Path: "/ws/repos/dup"},   // Refuse — trùng basename
+		{Name: "beta", Path: "/ws/repos/beta"}, // Skip — already in repos/
+		{Name: "dup", Path: "/ws/dup"},         // Refuse — basename collision
+		{Name: "dup", Path: "/ws/repos/dup"},   // Refuse — basename collision
 	}
 	items := BuildPlan(root, "repos", repos)
 
@@ -26,22 +26,22 @@ func TestBuildPlanClassifies(t *testing.T) {
 		t.Fatalf("alpha: %+v", it)
 	}
 	if it := by["beta|/ws/repos/beta"]; it.Action != Skip {
-		t.Fatalf("beta muốn Skip: %+v", it)
+		t.Fatalf("beta should be Skip: %+v", it)
 	}
 	for _, k := range []string{"dup|/ws/dup", "dup|/ws/repos/dup"} {
 		if it := by[k]; it.Action != Refuse {
-			t.Fatalf("%s muốn Refuse (trùng basename): %+v", k, it)
+			t.Fatalf("%s should be Refuse (basename collision): %+v", k, it)
 		}
 	}
 }
 
 func TestNewWorktreePath(t *testing.T) {
-	// nội bộ: rebase prefix
+	// internal: rebase prefix
 	got := newWorktreePath("/ws/repo/.worktrees/wt1", "/ws/repo", "/ws/repos/repo")
 	if got != "/ws/repos/repo/.worktrees/wt1" {
 		t.Fatalf("internal: got %q", got)
 	}
-	// ngoài (herdr): giữ nguyên
+	// external (herdr): unchanged
 	got = newWorktreePath("/home/u/.herdr/worktrees/repo/wc", "/ws/repo", "/ws/repos/repo")
 	if got != "/home/u/.herdr/worktrees/repo/wc" {
 		t.Fatalf("external: got %q", got)
@@ -64,7 +64,7 @@ func TestApplyMoveRepairSuccess(t *testing.T) {
 		Resolve:    func(p string) string { return p },
 	}
 	Apply(items, io)
-	// chỉ alpha move; worktree của nó được repair tại path mới; YAML cập nhật alpha.
+	// only alpha moves; its worktree is repaired at the new path; YAML updates alpha.
 	if len(moves) != 1 || moves[0] != "/ws/alpha->/ws/repos/alpha" {
 		t.Fatalf("moves: %v", moves)
 	}
@@ -92,22 +92,23 @@ func TestApplyRepairFailRollsBack(t *testing.T) {
 		Resolve:    func(p string) string { return p },
 	}
 	notes := Apply(items, io)
-	// move đi rồi move-back → 2 lời gọi Move; KHÔNG update YAML.
+	// moved out then moved back → 2 Move calls; YAML NOT updated.
 	if len(moves) != 2 || moves[1] != "/ws/repos/alpha->/ws/alpha" {
-		t.Fatalf("muốn rollback move-back, moves=%v", moves)
+		t.Fatalf("expected rollback move-back, moves=%v", moves)
 	}
 	if len(yaml) != 0 {
-		t.Fatalf("repair fail thì KHÔNG update YAML, yaml=%v", yaml)
+		t.Fatalf("repair failure must NOT update YAML, yaml=%v", yaml)
 	}
 	if !containsSub(notes, "rollback") {
-		t.Fatalf("note phải nhắc rollback: %v", notes)
+		t.Fatalf("note must mention rollback: %v", notes)
 	}
 }
 
-// TestApplyResolvesRepoOldForWorktreeClassification: ListWT (git worktree list) trả path
-// ĐÃ resolve symlink, còn it.From (workspace.Discover) là path THÔ — nếu Apply so khớp
-// prefix bằng it.From thô thì worktree nội bộ dưới workspace symlink (macOS /var→/private/var)
-// bị coi nhầm là ngoài repo, Repair chạy sai path và repo bị refuse+rollback oan.
+// TestApplyResolvesRepoOldForWorktreeClassification: ListWT (git worktree list) returns a
+// path that is ALREADY symlink-resolved, while it.From (workspace.Discover) is a RAW path —
+// if Apply prefix-matches using the raw it.From, an internal worktree under a workspace
+// symlink (macOS /var→/private/var) is mistaken for one outside the repo, Repair runs
+// against the wrong path, and the repo gets wrongly refused+rolled back.
 func TestApplyResolvesRepoOldForWorktreeClassification(t *testing.T) {
 	items := []Item{{Name: "alpha", From: "/var/ws/alpha", To: "/var/ws/repos/alpha", Action: Move}}
 	var repairs []string
@@ -128,15 +129,16 @@ func TestApplyResolvesRepoOldForWorktreeClassification(t *testing.T) {
 	Apply(items, io)
 	want := "/var/ws/repos/alpha|/var/ws/repos/alpha/.worktrees/w1"
 	if len(repairs) != 1 || repairs[0] != want {
-		t.Fatalf("worktree phải được coi NỘI BỘ + repair tại path mới dưới it.To: %v (muốn %q)", repairs, want)
+		t.Fatalf("worktree must be classified INTERNAL + repaired at the new path under it.To: %v (want %q)", repairs, want)
 	}
 }
 
-// TestApplyPartialWorktreeFailureRestoresEarlierOnes: repo có 2 worktree, worktree THỨ 2
-// fail repair → move-back cả repo, nhưng worktree THỨ NHẤT đã repair+repoint xong TRƯỚC đó
-// giờ dangling (còn trỏ vào it.To đã không còn ở đó) — Apply phải un-repair nó về path cũ,
-// và note phải phản ánh đúng việc đã khôi phục (không được nói dối "hoàn toàn như cũ" mà
-// không kiểm chứng).
+// TestApplyPartialWorktreeFailureRestoresEarlierOnes: a repo has 2 worktrees, the 2nd
+// worktree fails repair → the whole repo moves back, but the 1st worktree, already
+// repaired+repointed before that, is now dangling (still pointing at it.To, which is no
+// longer there) — Apply must un-repair it back to the old path, and the note must
+// accurately reflect that it was restored (must not falsely claim "fully back to how it
+// was" without verifying).
 func TestApplyPartialWorktreeFailureRestoresEarlierOnes(t *testing.T) {
 	items := []Item{{Name: "alpha", From: "/ws/alpha", To: "/ws/repos/alpha", Action: Move}}
 	var moves, repairs, repoints, yaml []string
@@ -148,8 +150,8 @@ func TestApplyPartialWorktreeFailureRestoresEarlierOnes(t *testing.T) {
 		MkdirAll: func(d string) error { return nil },
 		Repair: func(repo, wt string) error {
 			repairs = append(repairs, repo+"|"+wt)
-			// w2 fail CHỈ ở hướng forward (repo=it.To); hướng restore (repo=it.From) phải
-			// thành công để test được cả nhánh un-repair.
+			// w2 fails ONLY in the forward direction (repo=it.To); the restore direction
+			// (repo=it.From) must succeed so the un-repair branch is also exercised.
 			if repo == "/ws/repos/alpha" && strings.Contains(wt, "w2") {
 				return fmt.Errorf("repair w2 boom")
 			}
@@ -161,26 +163,26 @@ func TestApplyPartialWorktreeFailureRestoresEarlierOnes(t *testing.T) {
 	}
 	notes := Apply(items, io)
 
-	// (a) move-back đã xảy ra.
+	// (a) move-back happened.
 	if len(moves) != 2 || moves[0] != "/ws/alpha->/ws/repos/alpha" || moves[1] != "/ws/repos/alpha->/ws/alpha" {
-		t.Fatalf("muốn move đi rồi move-back: %v", moves)
+		t.Fatalf("expected move out then move-back: %v", moves)
 	}
-	// (b) w1 (đã repair thành công trước khi w2 fail) phải có lời gọi Repair KHÔI PHỤC
-	// tại path cũ (repo=it.From, wt=path worktree cũ).
+	// (b) w1 (already repaired successfully before w2 failed) must have a RESTORING Repair
+	// call at the old path (repo=it.From, wt=old worktree path).
 	if !containsSub(repairs, "/ws/alpha|/ws/alpha/.worktrees/w1") {
-		t.Fatalf("thiếu lời gọi Repair khôi phục w1 tại path cũ: %v", repairs)
+		t.Fatalf("missing restoring Repair call for w1 at the old path: %v", repairs)
 	}
-	// (c) node_modules của w1 phải được repoint NGƯỢC (mainNew→mainOld đảo thành mainOld→mainNew args).
+	// (c) w1's node_modules must be repointed BACKWARD (mainNew→mainOld reversed to mainOld→mainNew args).
 	if !containsSub(repoints, "/ws/repos/alpha/.worktrees/w1>/ws/alpha/.worktrees/w1") {
-		t.Fatalf("thiếu repoint khôi phục cho w1: %v", repoints)
+		t.Fatalf("missing restoring repoint for w1: %v", repoints)
 	}
-	// (d) KHÔNG update YAML.
+	// (d) YAML NOT updated.
 	if len(yaml) != 0 {
-		t.Fatalf("repair fail thì KHÔNG update YAML, yaml=%v", yaml)
+		t.Fatalf("repair failure must NOT update YAML, yaml=%v", yaml)
 	}
-	// (e) note phải nói thật là đã khôi phục (không chỉ "rollback" trơn, phải nhắc khôi phục).
-	if !containsSub(notes, "rollback") || !containsSub(notes, "khôi phục") {
-		t.Fatalf("note phải nhắc rollback VÀ đã khôi phục worktree trước đó: %v", notes)
+	// (e) note must honestly say it was restored (not just plain "rollback", must mention restored).
+	if !containsSub(notes, "rollback") || !containsSub(notes, "restored") {
+		t.Fatalf("note must mention rollback AND that earlier worktrees were restored: %v", notes)
 	}
 }
 
@@ -200,11 +202,12 @@ func TestApplyRepointFailAtBoundaryWorktreeIncludedInRestore(t *testing.T) {
 		MkdirAll: func(d string) error { return nil },
 		Repair: func(repo, wt string) error {
 			repairs = append(repairs, repo+"|"+wt)
-			return nil // Repair luôn PASS cả 2 worktree — lỗi chỉ xảy ra ở Repoint.
+			return nil // Repair always PASSES both worktrees — the failure only happens at Repoint.
 		},
 		Repoint: func(wtOld, wtNew, mainOld, mainNew string) error {
-			// w2 fail CHỈ ở hướng forward (mainNew=it.To); hướng restore (mainNew=it.From)
-			// phải PASS để test được nhánh un-repair cho worktree biên.
+			// w2 fails ONLY in the forward direction (mainNew=it.To); the restore direction
+			// (mainNew=it.From) must PASS so the un-repair branch for the boundary worktree is
+			// also exercised.
 			if strings.Contains(wtOld, "w2") && mainNew == "/ws/repos/alpha" {
 				return fmt.Errorf("repoint w2 boom")
 			}
@@ -216,21 +219,21 @@ func TestApplyRepointFailAtBoundaryWorktreeIncludedInRestore(t *testing.T) {
 	notes := Apply(items, io)
 
 	if len(moves) != 2 || moves[1] != "/ws/repos/alpha->/ws/alpha" {
-		t.Fatalf("muốn move đi rồi move-back: %v", moves)
+		t.Fatalf("expected move out then move-back: %v", moves)
 	}
 	if !containsSub(repairs, "/ws/alpha|/ws/alpha/.worktrees/w1") {
-		t.Fatalf("thiếu Repair khôi phục w1 (worktree TRƯỚC worktree lỗi): %v", repairs)
+		t.Fatalf("missing restoring Repair for w1 (worktree BEFORE the failing one): %v", repairs)
 	}
-	// Đây là điều Finding A sửa: worktree BIÊN (w2 — Repair pass, chỉ Repoint fail) cũng
-	// phải được un-repair, không được bỏ sót khỏi restore loop.
+	// This is what Finding A fixes: the BOUNDARY worktree (w2 — Repair passes, only Repoint
+	// fails) must also be un-repaired, not left out of the restore loop.
 	if !containsSub(repairs, "/ws/alpha|/ws/alpha/.worktrees/w2") {
-		t.Fatalf("thiếu Repair khôi phục w2 (worktree biên, Repair pass nhưng Repoint fail): %v", repairs)
+		t.Fatalf("missing restoring Repair for w2 (boundary worktree, Repair passes but Repoint fails): %v", repairs)
 	}
 	if len(yaml) != 0 {
-		t.Fatalf("repoint fail thì KHÔNG update YAML: %v", yaml)
+		t.Fatalf("repoint failure must NOT update YAML: %v", yaml)
 	}
 	if !containsSub(notes, "rollback") {
-		t.Fatalf("note phải nhắc rollback: %v", notes)
+		t.Fatalf("note must mention rollback: %v", notes)
 	}
 }
 

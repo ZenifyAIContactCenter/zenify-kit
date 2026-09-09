@@ -27,7 +27,7 @@ func TestVerify_KeepExactMatch(t *testing.T) {
 }
 
 func TestVerify_KeepWithinDrift(t *testing.T) {
-	// evidence ở dòng 5, finding khai line 3 → trong cửa sổ ±3
+	// evidence is on line 5, finding declares line 3 → within the ±3 window
 	fs := fakeFS(map[string]string{"a.go": "1\n2\n3\n4\nneedle()\n6\n"})
 	res := Verify([]Finding{{File: "a.go", Line: "3", Evidence: "needle()"}}, fs)
 	if res.Kept != 1 {
@@ -37,7 +37,7 @@ func TestVerify_KeepWithinDrift(t *testing.T) {
 
 func TestVerify_RefuteNotFound(t *testing.T) {
 	fs := fakeFS(map[string]string{"a.go": "1\n2\n3\n"})
-	res := Verify([]Finding{{File: "a.go", Line: "2", Evidence: "khong-ton-tai"}}, fs)
+	res := Verify([]Finding{{File: "a.go", Line: "2", Evidence: "does-not-exist"}}, fs)
 	if res.Kept != 0 || res.Refuted != 1 {
 		t.Fatalf("kept=%d refuted=%d, want 0/1", res.Kept, res.Refuted)
 	}
@@ -62,9 +62,9 @@ func TestVerify_KeepNoEvidence(t *testing.T) {
 }
 
 func TestVerify_KeepNoLocation(t *testing.T) {
-	res := Verify([]Finding{{Title: "kiến trúc tổng thể", Issue: "x"}}, fakeFS(nil))
+	res := Verify([]Finding{{Title: "overall architecture", Issue: "x"}}, fakeFS(nil))
 	if res.Kept != 1 {
-		t.Fatalf("kept=%d, want 1 (không file+line → skip verify)", res.Kept)
+		t.Fatalf("kept=%d, want 1 (no file+line → skip verify)", res.Kept)
 	}
 }
 
@@ -88,6 +88,6 @@ func TestVerify_KeepDiffPrefixedEvidence(t *testing.T) {
 	rf := func(string) ([]byte, error) { return []byte("line1\n\tfoo()\nline3\n"), nil }
 	res := Verify([]Finding{{File: "x.go", Line: "2", Evidence: "+\tfoo()"}}, rf)
 	if res.Kept != 1 || res.Refuted != 0 {
-		t.Fatalf("kept=%d refuted=%d, want 1/0 (dấu + của diff phải bị bỏ)", res.Kept, res.Refuted)
+		t.Fatalf("kept=%d refuted=%d, want 1/0 (diff's + marker must be stripped)", res.Kept, res.Refuted)
 	}
 }

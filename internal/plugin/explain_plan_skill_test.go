@@ -15,25 +15,25 @@ func TestExplainPlanSkill_Materialized_HasKeyParts(t *testing.T) {
 	}
 	b, err := os.ReadFile(filepath.Join(dest, "skills/explain-plan/SKILL.md"))
 	if err != nil {
-		t.Fatalf("explain-plan/SKILL.md chưa materialize: %v", err)
+		t.Fatalf("explain-plan/SKILL.md not materialized: %v", err)
 	}
 	s := string(b)
-	// SC-1: rubric tokens phải có mặt.
+	// SC-1: rubric tokens must be present.
 	for _, want := range []string{
-		"advisory",                  // advisory / không chặn (FR-1.4)
-		"COLLSCAN",                  // rubric Mongo
-		`explain("executionStats")`, // cách chạy explain Mongo
-		"Seq Scan",                  // rubric SQL
-		"db_read",                   // tool chạy explain
+		"advisory",                  // advisory / non-blocking (FR-1.4)
+		"COLLSCAN",                  // Mongo rubric
+		`explain("executionStats")`, // how to run explain on Mongo
+		"Seq Scan",                  // SQL rubric
+		"db_read",                   // tool that runs explain
 	} {
 		if !strings.Contains(s, want) {
-			t.Errorf("explain-plan/SKILL.md thiếu %q", want)
+			t.Errorf("explain-plan/SKILL.md missing %q", want)
 		}
 	}
-	// SC-2: agnostic — không mermaid, không tên collection project cụ thể.
+	// SC-2: agnostic — no mermaid, no project-specific collection names.
 	for _, forbidden := range []string{"mermaid", "chat_rooms", "tickets"} {
 		if strings.Contains(s, forbidden) {
-			t.Errorf("explain-plan/SKILL.md KHÔNG được chứa %q (agnostic/public repo)", forbidden)
+			t.Errorf("explain-plan/SKILL.md must NOT contain %q (agnostic/public repo)", forbidden)
 		}
 	}
 }
@@ -49,10 +49,10 @@ func TestExplainPlanSkill_ShipWiring(t *testing.T) {
 		t.Fatalf("read ship: %v", err)
 	}
 	s := string(b)
-	// SC-3: ship delegate vào skill VÀ giữ COLLSCAN làm trigger-pointer.
+	// SC-3: ship delegates to the skill AND keeps COLLSCAN as the trigger pointer.
 	for _, want := range []string{"znf:explain-plan", "COLLSCAN"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("ship/SKILL.md thiếu %q (explain-plan wiring)", want)
+			t.Errorf("ship/SKILL.md missing %q (explain-plan wiring)", want)
 		}
 	}
 }
@@ -68,6 +68,6 @@ func TestExplainPlanSkill_GroundWiring(t *testing.T) {
 		t.Fatalf("read ground: %v", err)
 	}
 	if !strings.Contains(string(b), "znf:explain-plan") {
-		t.Errorf("ground/SKILL.md thiếu znf:explain-plan (shift-left wiring)")
+		t.Errorf("ground/SKILL.md missing znf:explain-plan (shift-left wiring)")
 	}
 }

@@ -7,18 +7,19 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
-// Build ráp report cho release n từ danh sách repo. Fail-open mỗi repo: lỗi một repo
-// không làm hỏng cả report. loadPatterns inject để test không phụ thuộc worktree.json thật.
-// resolve định vị dir thật của mỗi repo (qua workspace.Resolve) — không giả định repo là
-// con trực tiếp của workspace, nesting-safe.
+// Build assembles the report for release n from a list of repos. Fail-open per repo: one repo's
+// error does not break the whole report. loadPatterns is injected so tests don't depend on a real
+// worktree.json. resolve locates each repo's real dir (via workspace.Resolve) — it does not assume
+// a repo is a direct child of the workspace, so it is nesting-safe.
 func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
 	return buildReport(r, resolve, repos, n, false, loadPatterns, loadSpecs)
 }
 
-// BuildUnreleased ráp report "đang hình thành" cho release latestN (release đang gom, chưa
-// deploy — convention A). Range = release<prev>..origin/staging với prev = release đã-deploy
-// gần nhất, tức toàn bộ delta của release đang hình thành so với production. Cùng lõi buildReport,
-// không tính regression (to==staging nên NotInStaging luôn rỗng) và không có CutDate (chưa cắt).
+// BuildUnreleased assembles the "still forming" report for release latestN (the release currently
+// being gathered, not yet deployed — convention A). Range = release<prev>..origin/staging with
+// prev = the most recently deployed release, i.e. the whole delta of the forming release versus
+// production. Shares buildReport's core; skips regression (to==staging so NotInStaging is always
+// empty) and has no CutDate (not cut yet).
 func BuildUnreleased(r gitx.Runner, resolve func(name string) (string, bool), repos []string, latestN int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
 	return buildReport(r, resolve, repos, latestN, true, loadPatterns, loadSpecs)
 }
@@ -33,24 +34,25 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 	for _, name := range repos {
 		dir, ok := resolve(name)
 		if !ok {
-			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không định vị được repo trong workspace"})
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not locate repo in workspace"})
 			continue
 		}
 		nums, err := ReleaseNums(r, dir)
 		if err != nil {
-			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không đọc được release branches: " + err.Error()})
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not read release branches: " + err.Error()})
 			continue
 		}
 		var relPrev, relN string
 		var prevForReport int
 		if unreleased {
-			// unreleased = view "pending deploy" cập nhật theo staging HẰNG NGÀY cho MỌI repo
-			// deploy — KHÔNG đòi repo phải cắt release<n>. Mốc dưới = release ĐÃ-DEPLOY gần nhất
-			// của CHÍNH repo = release tồn-tại lớn nhất < n (forming): với repo đang gom R<n> đó là
-			// release cắt trước; với repo tuần này chưa gom (chưa có release<n>) đó chính là release
-			// max của nó. PrevRelease(nums,n) trả đúng cả hai. (n = forming = release cao nhất toàn
-			// workspace; numbering dùng chung một dãy.) Repo chỉ có release>=n (mới tinh, không mốc
-			// so) → bỏ qua.
+			// unreleased = the "pending deploy" view, updated against staging DAILY for EVERY
+			// deployed repo — it does NOT require the repo to have cut release<n>. The lower bound
+			// = that repo's own most recently DEPLOYED release = its highest existing release < n
+			// (forming): for a repo currently gathering R<n> that's the previously cut release; for
+			// a repo that hasn't gathered anything this week (no release<n> yet) that's simply its
+			// max release. PrevRelease(nums,n) returns the right answer for both cases. (n =
+			// forming = the highest release across the whole workspace; numbering shares one
+			// sequence.) A repo with only release>=n (brand new, no baseline to compare) → skipped.
 			prev, ok := PrevRelease(nums, n)
 			if !ok {
 				continue
@@ -59,7 +61,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 			relN = "origin/staging"
 			prevForReport = prev
 		} else {
-			// finalize R<n>: một repo tham gia release n iff có nhánh release<n>.
+			// finalize R<n>: a repo participates in release n iff it has a release<n> branch.
 			has := false
 			for _, x := range nums {
 				if x == n {
@@ -72,7 +74,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 			}
 			prev, ok := PrevRelease(nums, n)
 			if !ok {
-				rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không tìm được release trước"})
+				rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not find the previous release"})
 				continue
 			}
 			relPrev = fmt.Sprintf("origin/release%d", prev)
@@ -101,7 +103,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 				}
 			}
 		} else {
-			rr.Err = "log lỗi: " + err.Error()
+			rr.Err = "log error: " + err.Error()
 		}
 		if fs, err := ChangedFiles(r, dir, relPrev, relN); err == nil {
 			pats := loadPatterns(dir)
@@ -122,7 +124,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 				rep.SharedCrossRepo[p] = append(rep.SharedCrossRepo[p], name)
 			}
 		}
-		// regression: khi unreleased, to==staging → NotInStaging luôn rỗng, khỏi gọi.
+		// regression: when unreleased, to==staging → NotInStaging is always empty, so skip calling it.
 		if !unreleased {
 			if cs, err := NotInStaging(r, dir, relPrev, relN, "origin/staging"); err == nil {
 				rr.Regression = cs
@@ -130,16 +132,16 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 				rr.RegressionUncomputed = true
 			}
 		}
-		// tập SHA chưa-trên-staging để đánh dấu Change.
+		// the set of SHAs not-yet-on-staging, used to mark a Change.
 		notStaging := map[string]bool{}
 		for _, c := range rr.Regression {
 			notStaging[c.SHA] = true
 		}
-		aggIn := rr.Commits // fallback phẳng (degrade-safe)
+		aggIn := rr.Commits // flat fallback (degrade-safe)
 		if gcs, err := RangeCommitsGrouped(r, dir, relPrev, relN); err == nil {
 			var gfeats []Commit
 			for _, c := range gcs {
-				if !IsReleaseNote(c) { // note-commit KHÔNG vào bucket (giữ option B)
+				if !IsReleaseNote(c) { // a note-commit does NOT go into a bucket (keeping option B)
 					gfeats = append(gfeats, c)
 				}
 			}
@@ -151,9 +153,9 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 		for i := range rr.Changes {
 			rr.Changes[i].Risk = LinkSpec(rr.Changes[i], specs, noteMap)
 		}
-		// unreleased: repo không có commit nào pending (staging == release đã-deploy của nó) →
-		// bỏ khỏi view, không liệt kê section rỗng (giữ doc gọn, đúng "không đổi thì bỏ qua").
-		// Repo lỗi (rr.Err) vẫn giữ để lộ sự cố.
+		// unreleased: a repo with no pending commits (staging == its own deployed release) →
+		// dropped from the view, no empty section listed (keeps the doc terse, per "no change
+		// means skip it"). A repo with an error (rr.Err) is still kept so the failure surfaces.
 		if unreleased && rr.Err == "" && len(rr.Commits) == 0 {
 			continue
 		}
@@ -164,10 +166,10 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 			delete(rep.SharedCrossRepo, p)
 		}
 	}
-	// FR-1.3: dòng thứ tự deploy chỉ nêu khi có ≥2 repo cùng chạm một shared-collection
-	// (tính SAU prune), không phải bất cứ khi nào >1 repo ship.
+	// FR-1.3: the deploy-order line is shown only when ≥2 repos touch the same shared collection
+	// (computed AFTER pruning), not whenever >1 repo ships.
 	rep.DeployOrderNote = len(rep.SharedCrossRepo) > 0
-	// headline aggregates: chỉ tính trên repo tham gia không lỗi.
+	// headline aggregates: computed only over participating repos without errors.
 	for _, rr := range rep.Repos {
 		if rr.Err != "" {
 			continue
@@ -186,7 +188,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 					rep.HotfixesNotSynced++
 				}
 			case "chore", "other":
-				// không đếm vào headline
+				// not counted toward the headline
 			default:
 				rep.TotalFix++
 			}

@@ -24,7 +24,7 @@ func TestWriteRecord_RoundTrip(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	if !strings.HasSuffix(path, ".json") {
-		t.Errorf("path không .json: %s", path)
+		t.Errorf("path is not .json: %s", path)
 	}
 	// 0600
 	fi, err := os.Stat(path)
@@ -32,22 +32,22 @@ func TestWriteRecord_RoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if fi.Mode().Perm() != 0o600 {
-		t.Errorf("perm = %o, muốn 600", fi.Mode().Perm())
+		t.Errorf("perm = %o, want 600", fi.Mode().Perm())
 	}
 	// .gitignore self-ignore
 	gi, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
 	if err != nil {
-		t.Fatalf(".gitignore chưa tạo: %v", err)
+		t.Fatalf(".gitignore not created: %v", err)
 	}
 	if strings.TrimSpace(string(gi)) != "*" {
-		t.Errorf(".gitignore = %q, muốn *", string(gi))
+		t.Errorf(".gitignore = %q, want *", string(gi))
 	}
 	recs, err := LoadRecords(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(recs) != 1 || recs[0].Tier != "T2" || recs[0].Kept != 3 {
-		t.Errorf("round-trip sai: %+v", recs)
+		t.Errorf("round-trip wrong: %+v", recs)
 	}
 }
 
@@ -63,10 +63,10 @@ func TestWriteRecord_NilSlicesEncodeEmpty(t *testing.T) {
 	b, _ := os.ReadFile(path)
 	s := string(b)
 	if strings.Contains(s, "null") {
-		t.Errorf("encode ra null: %s", s)
+		t.Errorf("encoded as null: %s", s)
 	}
 	if !strings.Contains(s, `"signals":[]`) || !strings.Contains(s, `"categories":[]`) {
-		t.Errorf("nil slice không thành []: %s", s)
+		t.Errorf("nil slice did not become []: %s", s)
 	}
 }
 
@@ -78,9 +78,9 @@ func TestWriteRecord_SanitizeHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// file phải nằm TRONG dir, không escape
+	// file must sit INSIDE dir, not escape it
 	if filepath.Dir(path) != dir {
-		t.Errorf("head độc hại escape dir: %s", path)
+		t.Errorf("malicious head escaped dir: %s", path)
 	}
 }
 
@@ -93,19 +93,19 @@ func TestWriteRecord_SanitizeTS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// file phải nằm TRONG dir, không escape
+	// file must sit INSIDE dir, not escape it
 	if filepath.Dir(path) != dir {
-		t.Errorf("ts độc hại escape dir: %s", path)
+		t.Errorf("malicious ts escaped dir: %s", path)
 	}
 }
 
 func TestLoadRecords_MissingDir(t *testing.T) {
-	recs, err := LoadRecords(filepath.Join(t.TempDir(), "khong-ton-tai"))
+	recs, err := LoadRecords(filepath.Join(t.TempDir(), "does-not-exist"))
 	if err != nil {
-		t.Fatalf("dir thiếu phải nil err: %v", err)
+		t.Fatalf("missing dir must give nil err: %v", err)
 	}
 	if len(recs) != 0 {
-		t.Errorf("muốn rỗng: %v", recs)
+		t.Errorf("want empty: %v", recs)
 	}
 }
 
@@ -122,7 +122,7 @@ func TestLoadRecords_SkipsCorrupt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(recs) != 1 {
-		t.Errorf("file hỏng phải bị skip, giữ 1 record: %d", len(recs))
+		t.Errorf("corrupt file should be skipped, keep 1 record: %d", len(recs))
 	}
 }
 
@@ -153,13 +153,13 @@ func TestSummarize_Math(t *testing.T) {
 		t.Errorf("ShippableN=%d", s.ShippableN)
 	}
 	if len(s.TopCategory) == 0 || s.TopCategory[0].Name != "bugs" || s.TopCategory[0].N != 2 {
-		t.Errorf("TopCategory[0] phải bugs/2: %+v", s.TopCategory)
+		t.Errorf("TopCategory[0] must be bugs/2: %+v", s.TopCategory)
 	}
 }
 
 func TestSummarize_RefuteRateZeroDenom(t *testing.T) {
 	s := Summarize([]Record{{Tier: "T1", Kept: 0, Refuted: 0}})
 	if s.RefuteRate != 0 {
-		t.Errorf("mẫu số 0 → RefuteRate 0, được %v", s.RefuteRate)
+		t.Errorf("zero denominator → RefuteRate 0, got %v", s.RefuteRate)
 	}
 }

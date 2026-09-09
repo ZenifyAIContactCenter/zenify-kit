@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// FindingCounts: số finding kept theo severity.
+// FindingCounts: count of kept findings by severity.
 type FindingCounts struct {
 	Critical int `json:"critical"`
 	High     int `json:"high"`
@@ -17,8 +17,8 @@ type FindingCounts struct {
 	Low      int `json:"low"`
 }
 
-// Record: một review đã chạy, ghi ở POST (M4e learning-capture). KHÔNG lưu full
-// findings — chỉ counts + categories (dimension mỗi kept finding).
+// Record: one completed review run, written at POST (M4e learning-capture). Does NOT store
+// full findings — only counts + categories (the dimension of each kept finding).
 type Record struct {
 	TS         string        `json:"ts"`
 	Repo       string        `json:"repo"`
@@ -34,13 +34,13 @@ type Record struct {
 	Categories []string      `json:"categories"`
 }
 
-// CategoryCount: một dimension và số lần xuất hiện (cho Summary).
+// CategoryCount: one dimension and its occurrence count (for Summary).
 type CategoryCount struct {
 	Name string `json:"name"`
 	N    int    `json:"n"`
 }
 
-// Summary: tổng hợp nhiều record cho lệnh đọc.
+// Summary: aggregate of multiple records for a read command.
 type Summary struct {
 	Total       int             `json:"total"`
 	ByTier      map[string]int  `json:"by_tier"`
@@ -52,7 +52,7 @@ type Summary struct {
 	TopCategory []CategoryCount `json:"top_category"`
 }
 
-// sanitizeHead giữ chỉ [a-zA-Z0-9] cho an toàn tên file; rỗng → "unknown".
+// sanitizeHead keeps only [a-zA-Z0-9] for filename safety; empty → "unknown".
 func sanitizeHead(s string) string {
 	out := make([]rune, 0, len(s))
 	for _, r := range s {
@@ -67,13 +67,13 @@ func sanitizeHead(s string) string {
 	return string(out)
 }
 
-// tsForFilename giữ chỉ [a-zA-Z0-9] khỏi ts, giống sanitizeHead — chặn escape
-// dir qua ts độc hại (vd "../../..."). Không truncate (chỉ Head bị cắt 8 ký tự).
+// tsForFilename keeps only [a-zA-Z0-9] from ts, same as sanitizeHead — blocks a dir
+// escape via a malicious ts (e.g. "../../..."). No truncation (only Head is cut to 8 chars).
 func tsForFilename(ts string) string {
 	return sanitizeHead(ts)
 }
 
-// ensureDir tạo dir + self-ignoring .gitignore ("*") nếu chưa có (pattern SDD).
+// ensureDir creates the dir + a self-ignoring .gitignore ("*") if not present (SDD pattern).
 func ensureDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
@@ -85,9 +85,9 @@ func ensureDir(dir string) error {
 	return nil
 }
 
-// WriteRecord ghi một record thành file <ts>-<head8>.json trong dir (tạo dir +
-// self-ignore nếu chưa có). nil slice → [] trước encode; SetEscapeHTML(false);
-// head sanitize để không escape dir; 0600.
+// WriteRecord writes one record as file <ts>-<head8>.json in dir (creates the dir +
+// self-ignore if not present). nil slice → [] before encode; SetEscapeHTML(false);
+// head is sanitized to prevent a dir escape; 0600.
 func WriteRecord(dir string, r Record) (string, error) {
 	if r.Signals == nil {
 		r.Signals = []string{}
@@ -116,8 +116,8 @@ func WriteRecord(dir string, r Record) (string, error) {
 	return path, nil
 }
 
-// LoadRecords đọc mọi *.json trong dir. dir thiếu → ([],nil). File hỏng → bỏ
-// file đó, giữ phần còn lại (không drop cả tập).
+// LoadRecords reads every *.json in dir. Missing dir → ([], nil). A corrupt file is
+// dropped, keeping the rest (does not drop the whole set).
 func LoadRecords(dir string) ([]Record, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -131,7 +131,7 @@ func LoadRecords(dir string) ([]Record, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // path từ ReadDir của dir nội bộ
+		b, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // path comes from ReadDir of an internal dir
 		if err != nil {
 			continue
 		}
@@ -144,8 +144,8 @@ func LoadRecords(dir string) ([]Record, error) {
 	return recs, nil
 }
 
-// Summarize cộng dồn record. RefuteRate = refuted/(kept+refuted), 0 nếu mẫu số 0.
-// TopCategory giảm dần theo count, tie-break theo tên.
+// Summarize aggregates records. RefuteRate = refuted/(kept+refuted), 0 if the denominator is 0.
+// TopCategory sorts descending by count, tie-broken by name.
 func Summarize(recs []Record) Summary {
 	s := Summary{ByTier: map[string]int{}, TopCategory: []CategoryCount{}}
 	catN := map[string]int{}

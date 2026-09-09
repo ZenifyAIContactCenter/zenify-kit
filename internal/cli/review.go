@@ -15,12 +15,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runReviewVerify là core testable: đọc mảng findings JSON từ stdin, verify cơ học,
-// in Result JSON ra stdout. FAIL-OPEN: input rỗng/hỏng → không mất finding, không lỗi.
+// runReviewVerify is the testable core: reads a JSON array of findings from stdin, verifies
+// mechanically, prints the Result JSON to stdout. FAIL-OPEN: empty/corrupt input → no finding
+// is lost, no error.
 func runReviewVerify(stdin io.Reader, stdout, stderr io.Writer, readFile func(string) ([]byte, error)) error {
 	data, err := io.ReadAll(stdin)
 	if err != nil {
-		fmt.Fprintln(stderr, "review-verify: đọc stdin lỗi — fail-open (giữ nguyên)")
+		fmt.Fprintln(stderr, "review-verify: đọc stdin lỗi — fail-open (giữ nguyên)") //znf:allow-lang
 		return nil
 	}
 	if len(bytes.TrimSpace(data)) == 0 {
@@ -29,14 +30,14 @@ func runReviewVerify(stdin io.Reader, stdout, stderr io.Writer, readFile func(st
 	}
 	var findings []review.Finding
 	if err := json.Unmarshal(data, &findings); err != nil {
-		fmt.Fprintln(stderr, "review-verify: stdin không phải JSON findings — fail-open (giữ nguyên)")
+		fmt.Fprintln(stderr, "review-verify: stdin không phải JSON findings — fail-open (giữ nguyên)") //znf:allow-lang
 		_, _ = stdout.Write(data)
 		return nil
 	}
 	res := review.Verify(findings, readFile)
 	out, err := json.Marshal(res)
 	if err != nil {
-		fmt.Fprintln(stderr, "review-verify: marshal lỗi — fail-open (giữ nguyên)")
+		fmt.Fprintln(stderr, "review-verify: marshal lỗi — fail-open (giữ nguyên)") //znf:allow-lang
 		_, _ = stdout.Write(data)
 		return nil
 	}
@@ -44,9 +45,10 @@ func runReviewVerify(stdin io.Reader, stdout, stderr io.Writer, readFile func(st
 	return nil
 }
 
-// runReviewBundle là core testable: chạy rundiff(base) lấy `git diff --numstat`,
-// parse thành FileStat, chia bundle, in Plan JSON ra stdout.
-// FAIL-OPEN: diff lỗi/marshal lỗi → in passthrough, KHÔNG trả error (engine rơi về đường cũ).
+// runReviewBundle is the testable core: runs rundiff(base) to get `git diff --numstat`,
+// parses it into FileStat, splits into bundles, prints the Plan JSON to stdout.
+// FAIL-OPEN: diff error/marshal error → prints passthrough, does NOT return an error (the
+// engine falls back to the old path).
 func runReviewBundle(base string, rundiff func(string) ([]byte, error), stdout, stderr io.Writer) error {
 	passthrough := func(note string) error {
 		if note != "" {
@@ -57,19 +59,19 @@ func runReviewBundle(base string, rundiff func(string) ([]byte, error), stdout, 
 	}
 	out, err := rundiff(base)
 	if err != nil {
-		return passthrough("review-bundle: git diff lỗi — fail-open (passthrough)")
+		return passthrough("review-bundle: git diff lỗi — fail-open (passthrough)") //znf:allow-lang
 	}
 	plan := review.PlanBundles(parseNumstat(out), 2000, 600, 8)
 	b, err := json.Marshal(plan)
 	if err != nil {
-		return passthrough("review-bundle: marshal lỗi — fail-open (passthrough)")
+		return passthrough("review-bundle: marshal lỗi — fail-open (passthrough)") //znf:allow-lang
 	}
 	fmt.Fprintln(stdout, string(b))
 	return nil
 }
 
-// parseNumstat đọc output `git diff --numstat`: mỗi dòng "<added>\t<deleted>\t<path>".
-// Dòng binary là "-\t-\t<path>" → LOC 0. Bỏ dòng rỗng/không đủ cột.
+// parseNumstat reads the output of `git diff --numstat`: each line is "<added>\t<deleted>\t<path>".
+// A binary line is "-\t-\t<path>" → LOC 0. Skip empty lines or lines with too few columns.
 func parseNumstat(out []byte) []review.FileStat {
 	var files []review.FileStat
 	for _, line := range strings.Split(string(out), "\n") {
@@ -99,8 +101,8 @@ type doctrineResult struct {
 	Stripped []string `json:"stripped"`
 }
 
-// runReviewDoctrine: stdin = text (thường là block ## Verified) → JSON đã sanitize.
-// Fail-open: đọc lỗi → emit rỗng, exit 0.
+// runReviewDoctrine: stdin = text (usually the ## Verified block) → sanitized JSON.
+// Fail-open: read error → emit empty, exit 0.
 func runReviewDoctrine(stdin io.Reader, stdout, stderr io.Writer) error {
 	emit := func(clean string, stripped []string) error {
 		if stripped == nil {
@@ -112,7 +114,7 @@ func runReviewDoctrine(stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	data, err := io.ReadAll(stdin)
 	if err != nil {
-		fmt.Fprintln(stderr, "review-doctrine: lỗi đọc stdin, fail-open:", err)
+		fmt.Fprintln(stderr, "review-doctrine: lỗi đọc stdin, fail-open:", err) //znf:allow-lang
 		return emit("", nil)
 	}
 	clean, stripped := review.SanitizeVerified(string(data))
@@ -122,7 +124,7 @@ func runReviewDoctrine(stdin io.Reader, stdout, stderr io.Writer) error {
 func newReviewDoctrineCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "review-doctrine",
-		Short:  "Cơ học strip dòng chỉ-verdict khỏi ## Verified của ship-pack (text qua stdin, seam doctrine)",
+		Short:  "Cơ học strip dòng chỉ-verdict khỏi ## Verified của ship-pack (text qua stdin, seam doctrine)", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -137,8 +139,8 @@ type adviseResult struct {
 }
 
 // runReviewAdviseGate: stdin = AdviseInput JSON → {"advise":..,"signals":[..]}.
-// Cơ học quyết định có gọi adviser LLM không ở POST. Fail-open: đọc/parse lỗi
-// hoặc rỗng → {"advise":false,"signals":[]}, exit 0.
+// Mechanically decides whether to call the adviser LLM at POST. Fail-open: read/parse error
+// or empty → {"advise":false,"signals":[]}, exit 0.
 func runReviewAdviseGate(stdin io.Reader, stdout, stderr io.Writer) error {
 	emit := func(advise bool, signals []string) error {
 		if signals == nil {
@@ -150,7 +152,7 @@ func runReviewAdviseGate(stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	data, err := io.ReadAll(stdin)
 	if err != nil {
-		fmt.Fprintln(stderr, "review-advise-gate: lỗi đọc stdin, fail-open:", err)
+		fmt.Fprintln(stderr, "review-advise-gate: lỗi đọc stdin, fail-open:", err) //znf:allow-lang
 		return emit(false, nil)
 	}
 	if len(bytes.TrimSpace(data)) == 0 {
@@ -158,7 +160,7 @@ func runReviewAdviseGate(stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	var in review.AdviseInput
 	if err := json.Unmarshal(data, &in); err != nil {
-		fmt.Fprintln(stderr, "review-advise-gate: stdin không phải JSON AdviseInput, fail-open:", err)
+		fmt.Fprintln(stderr, "review-advise-gate: stdin không phải JSON AdviseInput, fail-open:", err) //znf:allow-lang
 		return emit(false, nil)
 	}
 	advise, signals := review.AdviseGate(in)
@@ -168,7 +170,7 @@ func runReviewAdviseGate(stdin io.Reader, stdout, stderr io.Writer) error {
 func newReviewAdviseGateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "review-advise-gate",
-		Short:  "Cơ học quyết định có gọi adviser LLM không ở POST của znf:review (AdviseInput JSON qua stdin, seam POST)",
+		Short:  "Cơ học quyết định có gọi adviser LLM không ở POST của znf:review (AdviseInput JSON qua stdin, seam POST)", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -180,7 +182,7 @@ func newReviewAdviseGateCmd() *cobra.Command {
 func newReviewBundleCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "review-bundle",
-		Short:  "Cơ học chia diff lớn thành bundle cụm-file cho znf:review (seam BUNDLE)",
+		Short:  "Cơ học chia diff lớn thành bundle cụm-file cho znf:review (seam BUNDLE)", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -200,14 +202,14 @@ func newReviewBundleCmd() *cobra.Command {
 	}
 }
 
-// gitCommonDirRun chạy `git <args>` thật (seam để test inject).
+// gitCommonDirRun runs the real `git <args>` (a seam for test injection).
 func gitCommonDirRun(args ...string) ([]byte, error) {
 	return exec.Command("git", args...).Output() //nolint:gosec // G204 -- fixed 'git' binary; args are internal, not user shell input
 }
 
-// reviewLogDir resolve store learning-capture ở MAIN checkout: parent của
-// git-common-dir + /.znf/review-log. Từ worktree git-common-dir trỏ <main>/.git
-// nên parent = main checkout → record sống sót `wt rm`.
+// reviewLogDir resolves the learning-capture store at the MAIN checkout: the parent of
+// git-common-dir + /.znf/review-log. From a worktree, git-common-dir points at <main>/.git,
+// so parent = main checkout → the record survives `wt rm`.
 func reviewLogDir(run func(...string) ([]byte, error)) (string, error) {
 	out, err := run("rev-parse", "--git-common-dir")
 	if err != nil {
@@ -229,13 +231,13 @@ func reviewLogDir(run func(...string) ([]byte, error)) (string, error) {
 
 func defaultReviewLogDir() (string, error) { return reviewLogDir(gitCommonDirRun) }
 
-// runReviewLogRecord: stdin = Record JSON → ghi vào store. Best-effort, LUÔN
-// exit 0: rỗng/hỏng/resolve-dir lỗi/write lỗi → bỏ qua im lặng (note stderr),
-// KHÔNG stdout, KHÔNG trả error. Capture không bao giờ chặn review.
+// runReviewLogRecord: stdin = Record JSON → writes it to the store. Best-effort, ALWAYS
+// exits 0: empty/corrupt/resolve-dir error/write error → silently skipped (note to stderr),
+// NO stdout, NO returned error. Capture must never block a review.
 func runReviewLogRecord(stdin io.Reader, stderr io.Writer, dirFn func() (string, error)) error {
 	data, err := io.ReadAll(stdin)
 	if err != nil {
-		fmt.Fprintln(stderr, "review-log record: đọc stdin lỗi, bỏ qua:", err)
+		fmt.Fprintln(stderr, "review-log record: đọc stdin lỗi, bỏ qua:", err) //znf:allow-lang
 		return nil
 	}
 	if len(bytes.TrimSpace(data)) == 0 {
@@ -243,23 +245,23 @@ func runReviewLogRecord(stdin io.Reader, stderr io.Writer, dirFn func() (string,
 	}
 	var r review.Record
 	if err := json.Unmarshal(data, &r); err != nil {
-		fmt.Fprintln(stderr, "review-log record: JSON hỏng, bỏ qua:", err)
+		fmt.Fprintln(stderr, "review-log record: JSON hỏng, bỏ qua:", err) //znf:allow-lang
 		return nil
 	}
 	dir, err := dirFn()
 	if err != nil {
-		fmt.Fprintln(stderr, "review-log record: không resolve store (không phải git repo?), bỏ qua:", err)
+		fmt.Fprintln(stderr, "review-log record: không resolve store (không phải git repo?), bỏ qua:", err) //znf:allow-lang
 		return nil
 	}
 	if _, err := review.WriteRecord(dir, r); err != nil {
-		fmt.Fprintln(stderr, "review-log record: ghi lỗi, bỏ qua:", err)
+		fmt.Fprintln(stderr, "review-log record: ghi lỗi, bỏ qua:", err) //znf:allow-lang
 		return nil
 	}
 	return nil
 }
 
-// runReviewLogShow đọc store → summary người-đọc; --json → mảng record đầy đủ
-// (cho M6). Dir rỗng/thiếu/lỗi → "no reviews logged yet", exit 0. Read-only.
+// runReviewLogShow reads the store → a human-readable summary; --json → the full record array
+// (for M6). Empty/missing/errored dir → "no reviews logged yet", exit 0. Read-only.
 func runReviewLogShow(stdout, stderr io.Writer, asJSON bool, dirFn func() (string, error)) error {
 	none := func() error { fmt.Fprintln(stdout, "no reviews logged yet"); return nil }
 	dir, err := dirFn()
@@ -306,16 +308,16 @@ func newReviewLogCmd() *cobra.Command {
 	var asJSON bool
 	c := &cobra.Command{
 		Use:   "review-log",
-		Short: "Xem learning-capture log của znf:review (summary local; --json cho M6)",
+		Short: "Xem learning-capture log của znf:review (summary local; --json cho M6)", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runReviewLogShow(cmd.OutOrStdout(), cmd.ErrOrStderr(), asJSON, defaultReviewLogDir)
 		},
 	}
-	c.Flags().BoolVar(&asJSON, "json", false, "in toàn bộ record JSON (cho M6 sync)")
+	c.Flags().BoolVar(&asJSON, "json", false, "in toàn bộ record JSON (cho M6 sync)") //znf:allow-lang
 	record := &cobra.Command{
 		Use:    "record",
-		Short:  "Ghi một review record vào store local (Record JSON qua stdin, seam POST)",
+		Short:  "Ghi một review record vào store local (Record JSON qua stdin, seam POST)", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -329,7 +331,7 @@ func newReviewLogCmd() *cobra.Command {
 func newReviewVerifyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "review-verify",
-		Short:  "Cơ học verify findings của znf:review vs file thật (findings JSON qua stdin, seam VERIFY)",
+		Short:  "Cơ học verify findings của znf:review vs file thật (findings JSON qua stdin, seam VERIFY)", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

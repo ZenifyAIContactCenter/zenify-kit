@@ -15,10 +15,10 @@ func TestEnsureGuardHookAddsEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !changed {
-		t.Error("phải báo changed khi thêm entry")
+		t.Error("must report changed when adding an entry")
 	}
 	if !strings.Contains(string(out), "zenify git-guard") {
-		t.Error("phải chèn command 'zenify git-guard'")
+		t.Error("must insert command 'zenify git-guard'")
 	}
 }
 
@@ -26,13 +26,13 @@ func TestEnsureGuardHookReplacesBash(t *testing.T) {
 	in := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"~/.claude/hooks/guard-git-deploy.sh"}]}]}}`
 	out, changed, _ := ensureGuardHook([]byte(in))
 	if !changed {
-		t.Error("phải thay entry bash cũ")
+		t.Error("must replace the old bash entry")
 	}
 	if strings.Contains(string(out), "guard-git-deploy.sh") {
-		t.Error("không được còn tham chiếu bash guard")
+		t.Error("must not still reference the bash guard")
 	}
 	if !strings.Contains(string(out), "zenify git-guard") {
-		t.Error("phải trỏ zenify git-guard")
+		t.Error("must point at zenify git-guard")
 	}
 }
 
@@ -44,7 +44,7 @@ func TestEnsureGuardHookIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if changed {
-		t.Error("lần 2 phải idempotent (changed=false)")
+		t.Error("second pass must be idempotent (changed=false)")
 	}
 }
 
@@ -56,16 +56,16 @@ func TestEnsureGuardHookPreservesOthers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m["model"] != "x" {
-		t.Error("phải giữ nguyên field khác (model)")
+		t.Error("must preserve other fields (model)")
 	}
 	if !strings.Contains(string(out), "other.sh") {
-		t.Error("phải giữ nguyên hook khác")
+		t.Error("must preserve the other hook")
 	}
 }
 
 func TestEnsureGuardHookBrokenJSON(t *testing.T) {
 	if _, _, err := ensureGuardHook([]byte("{not json")); err == nil {
-		t.Error("JSON hỏng phải trả lỗi, không ghi đè")
+		t.Error("broken JSON must return an error, not overwrite")
 	}
 }
 
@@ -76,17 +76,17 @@ func TestEnsureGuardHookSplicesLegacyKeepsSibling(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !changed {
-		t.Error("phải báo changed khi bỏ legacy hook")
+		t.Error("must report changed when dropping the legacy hook")
 	}
 	s := string(out)
 	if !strings.Contains(s, "some-other-hook") {
-		t.Error("hook anh em (some-other-hook) trong cùng entry phải được giữ nguyên")
+		t.Error("the sibling hook (some-other-hook) in the same entry must be preserved")
 	}
 	if strings.Contains(s, "guard-git-deploy.sh") {
-		t.Error("hook legacy phải bị xoá")
+		t.Error("the legacy hook must be removed")
 	}
 	if !strings.Contains(s, "zenify git-guard") {
-		t.Error("phải trỏ zenify git-guard")
+		t.Error("must point at zenify git-guard")
 	}
 
 	// Second pass must be idempotent now that the guard is present.
@@ -95,7 +95,7 @@ func TestEnsureGuardHookSplicesLegacyKeepsSibling(t *testing.T) {
 		t.Fatal(err)
 	}
 	if changed2 {
-		t.Error("lần 2 phải idempotent (changed=false)")
+		t.Error("second pass must be idempotent (changed=false)")
 	}
 }
 
@@ -107,14 +107,14 @@ func TestEnsureGuardHookEmptyInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !changed {
-		t.Error("empty input phải tạo hook mới → changed=true")
+		t.Error("empty input must create a new hook → changed=true")
 	}
 	var m map[string]any
 	if err := json.Unmarshal(out, &m); err != nil {
-		t.Fatalf("output phải là JSON hợp lệ: %v", err)
+		t.Fatalf("output must be valid JSON: %v", err)
 	}
 	if !strings.Contains(string(out), "zenify git-guard") {
-		t.Error("phải chèn command 'zenify git-guard'")
+		t.Error("must insert command 'zenify git-guard'")
 	}
 }
 
@@ -136,26 +136,26 @@ func TestEnsureGuardHookPreservesMcpServersAndOtherMatchers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !changed {
-		t.Error("phải thêm entry mới")
+		t.Error("must add a new entry")
 	}
 	var m map[string]any
 	if err := json.Unmarshal(out, &m); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := m["mcpServers"]; !ok {
-		t.Error("phải giữ nguyên mcpServers")
+		t.Error("must preserve mcpServers")
 	}
 	if _, ok := m["enabledPlugins"]; !ok {
-		t.Error("phải giữ nguyên enabledPlugins")
+		t.Error("must preserve enabledPlugins")
 	}
 	if !strings.Contains(string(out), "some-other-hook") {
-		t.Error("phải giữ nguyên matcher Write khác")
+		t.Error("must preserve the other Write matcher")
 	}
 	if !strings.Contains(string(out), "post-hook") {
-		t.Error("phải giữ nguyên PostToolUse")
+		t.Error("must preserve PostToolUse")
 	}
 	if !strings.Contains(string(out), "zenify git-guard") {
-		t.Error("phải chèn command 'zenify git-guard'")
+		t.Error("must insert command 'zenify git-guard'")
 	}
 
 	// Second pass must be idempotent, and everything must still be intact.
@@ -164,13 +164,13 @@ func TestEnsureGuardHookPreservesMcpServersAndOtherMatchers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if changed2 {
-		t.Error("lần 2 phải idempotent (changed=false)")
+		t.Error("second pass must be idempotent (changed=false)")
 	}
 	if !strings.Contains(string(out2), "mcpServers") || !strings.Contains(string(out2), "enabledPlugins") {
-		t.Error("phải giữ nguyên mcpServers/enabledPlugins sau lần 2")
+		t.Error("must preserve mcpServers/enabledPlugins after the second pass")
 	}
 	if !strings.Contains(string(out2), "some-other-hook") || !strings.Contains(string(out2), "post-hook") {
-		t.Error("phải giữ nguyên các hook khác sau lần 2")
+		t.Error("must preserve the other hooks after the second pass")
 	}
 }
 
@@ -273,7 +273,7 @@ func TestGuardInstallUsesTempHOME(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(got), "zenify git-guard") {
-		t.Error("settings.json phải chứa command zenify git-guard sau khi install")
+		t.Error("settings.json must contain the zenify git-guard command after install")
 	}
 
 	// Second run: idempotent, should report "already present".

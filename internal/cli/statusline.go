@@ -122,7 +122,7 @@ func ensureStatusline(raw []byte, force bool) (out []byte, action string, err er
 	root := map[string]any{}
 	if len(strings.TrimSpace(string(raw))) > 0 {
 		if err := json.Unmarshal(raw, &root); err != nil {
-			return nil, "", fmt.Errorf("statusline install: settings.json không parse được: %w", err)
+			return nil, "", fmt.Errorf("statusline install: could not parse settings.json: %w", err)
 		}
 	}
 
@@ -152,17 +152,17 @@ func newStatuslineInstallCmd() *cobra.Command {
 	var force bool
 	c := &cobra.Command{
 		Use:   "install",
-		Short: "Ghi key statusLine → `zenify observe statusline` vào ~/.claude/settings.json (chỉ khi trống)",
+		Short: "Ghi key statusLine → `zenify observe statusline` vào ~/.claude/settings.json (chỉ khi trống)", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			home, err := os.UserHomeDir()
 			if err != nil {
-				return fmt.Errorf("statusline install: không xác định được HOME: %w", err)
+				return fmt.Errorf("statusline install: could not determine HOME: %w", err)
 			}
 			path := filepath.Join(home, ".claude", "settings.json")
 			raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME
 			if err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("statusline install: đọc %s: %w", path, err)
+				return fmt.Errorf("statusline install: reading %s: %w", path, err)
 			}
 			out, action, err := ensureStatusline(raw, force)
 			if err != nil {
@@ -171,16 +171,16 @@ func newStatuslineInstallCmd() *cobra.Command {
 			w := cmd.OutOrStdout()
 			switch action {
 			case "already":
-				_, _ = fmt.Fprintln(w, "statusline install: đã cấu hình sẵn (idempotent).")
+				_, _ = fmt.Fprintln(w, "statusline install: đã cấu hình sẵn (idempotent).") //znf:allow-lang
 				return nil
 			case "occupied":
-				_, _ = fmt.Fprintln(w, "statusline install: settings.json đã có statusLine khác — KHÔNG đè.")
-				_, _ = fmt.Fprintln(w, "  Giữ statusline của bạn và chèn segment: `zenify observe statusline --segment` (xem `--help`).")
-				_, _ = fmt.Fprintln(w, "  Hoặc đè hẳn bằng: `zenify observe statusline install --force`.")
+				_, _ = fmt.Fprintln(w, "statusline install: settings.json đã có statusLine khác — KHÔNG đè.")                             //znf:allow-lang
+				_, _ = fmt.Fprintln(w, "  Giữ statusline của bạn và chèn segment: `zenify observe statusline --segment` (xem `--help`).") //znf:allow-lang
+				_, _ = fmt.Fprintln(w, "  Hoặc đè hẳn bằng: `zenify observe statusline install --force`.")                                //znf:allow-lang
 				return nil
 			}
 			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-				return fmt.Errorf("statusline install: tạo thư mục %s: %w", filepath.Dir(path), err)
+				return fmt.Errorf("statusline install: creating directory %s: %w", filepath.Dir(path), err)
 			}
 			perm := os.FileMode(0o644)
 			if fi, statErr := os.Stat(path); statErr == nil {
@@ -190,14 +190,14 @@ func newStatuslineInstallCmd() *cobra.Command {
 				return fmt.Errorf("statusline install: ghi %s: %w", path, err)
 			}
 			if action == "forced" {
-				_, _ = fmt.Fprintln(w, "statusline install: đã ĐÈ statusLine → zenify observe statusline (--force).")
+				_, _ = fmt.Fprintln(w, "statusline install: đã ĐÈ statusLine → zenify observe statusline (--force).") //znf:allow-lang
 			} else {
-				_, _ = fmt.Fprintln(w, "statusline install: đã đặt statusLine → zenify observe statusline.")
+				_, _ = fmt.Fprintln(w, "statusline install: đã đặt statusLine → zenify observe statusline.") //znf:allow-lang
 			}
 			return nil
 		},
 	}
-	c.Flags().BoolVar(&force, "force", false, "đè statusLine hiện có (mặc định từ chối nếu đã có cái khác)")
+	c.Flags().BoolVar(&force, "force", false, "đè statusLine hiện có (mặc định từ chối nếu đã có cái khác)") //znf:allow-lang
 	return c
 }
 

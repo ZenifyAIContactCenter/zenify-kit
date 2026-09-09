@@ -14,14 +14,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// defaultOutSub là nơi ghi report mặc định — quy ước record-layer của workspace (M6a).
-// Store tự tìm qua resolveDocsStore (Task 1). Override bằng cờ --out-dir cho workspace khác
-// (giữ kit project-agnostic).
+// defaultOutSub is where the report is written by default — the workspace's record-layer
+// convention (M6a). The store is found via resolveDocsStore (Task 1). Override with the
+// --out-dir flag for a different workspace (keeps the kit project-agnostic).
 const defaultOutSub = "releases"
 
-// runReleaseReport là lõi test được. FAIL-OPEN: luôn trả nil; mọi lỗi thành note in ra stderr.
-// outDir rỗng → mặc định repo docs/releases (đường dẫn repo tự tìm theo layout,
-// phẳng hoặc repos/<repo> sau `zenify migrate`).
+// runReleaseReport is the testable core. FAIL-OPEN: always returns nil; every error becomes
+// a note printed to stderr.
+// outDir empty → defaults to the repo's docs/releases (the repo path is auto-discovered per
+// layout, flat or repos/<repo> after `zenify migrate`).
 func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, verbose, unreleased bool, r gitx.Runner, stdout, stderr io.Writer) error {
 	loadPatterns := func(dir string) []string {
 		c, err := wt.Load(dir)
@@ -34,7 +35,7 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 	resolve := func(name string) (string, bool) {
 		return workspace.Resolve(workspaceDir, name, workspace.DefaultMaxDepth, os.ReadDir)
 	}
-	// unreleased view = mọi repo deploy (ResolveUnreleased); finalize = repo có release<n> (Resolve).
+	// unreleased view = every deploy repo (ResolveUnreleased); finalize = repos with release<n> (Resolve).
 	var repos []string
 	var err error
 	if unreleased {
@@ -43,15 +44,16 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 		repos, err = release.Resolve(r, workspaceDir, n, os.ReadFile, disc)
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "release-report: không phân giải repo: %v (fail-open)\n", err)
+		fmt.Fprintf(stderr, "release-report: không phân giải repo: %v (fail-open)\n", err) //znf:allow-lang
 		return nil
 	}
 	if !noFetch {
 		for _, name := range repos {
 			if dir, ok := resolve(name); ok {
 				if unreleased {
-					// unreleased chỉ cần staging tươi (mốc base = release cũ, gần như bất biến,
-					// đã có local). Fetch release<n> vô nghĩa với repo tuần này chưa cắt release<n>.
+					// unreleased only needs staging fresh (the base marker = old release, nearly
+					// immutable, already local). Fetching release<n> is meaningless for a repo
+					// that hasn't cut release<n> this week.
 					_ = release.Fetch(r, dir, "staging")
 				} else {
 					_ = release.Fetch(r, dir, fmt.Sprintf("release%d", n), "staging")
@@ -59,7 +61,7 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 			}
 		}
 	}
-	// loadSpecs đọc specs/<repo>/*-design.md từ docs-store, parse Brief. Fail-open: lỗi → nil.
+	// loadSpecs reads specs/<repo>/*-design.md from the docs-store, parses the Brief. Fail-open: error → nil.
 	storeSpecs := filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), "specs")
 	loadSpecs := func(repo string) []release.SpecMeta {
 		dir := filepath.Join(storeSpecs, repo)
@@ -91,7 +93,7 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 		outDir = filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultOutSub)
 	}
 	if err := os.MkdirAll(outDir, 0o750); err != nil {
-		fmt.Fprintf(stderr, "release-report: không tạo được thư mục out: %v (fail-open)\n", err)
+		fmt.Fprintf(stderr, "release-report: không tạo được thư mục out: %v (fail-open)\n", err) //znf:allow-lang
 		return nil
 	}
 	fname := fmt.Sprintf("R%d.md", n)
@@ -100,19 +102,21 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 	}
 	path := filepath.Join(outDir, fname)
 	if err := os.WriteFile(path, []byte(out), 0o600); err != nil {
-		fmt.Fprintf(stderr, "release-report: không ghi được report: %v (fail-open)\n", err)
+		fmt.Fprintf(stderr, "release-report: không ghi được report: %v (fail-open)\n", err) //znf:allow-lang
 		return nil
 	}
 	fmt.Fprintln(stdout, path)
-	// FR-4.3: lúc chốt (finalize, không --unreleased), đóng sổ unreleased.md — regenerate view
-	// theo mốc mới (range release<n>..staging, gần rỗng ngay sau cắt). Best-effort, fail-open.
+	// FR-4.3: at finalize (finalize, not --unreleased), close out unreleased.md — regenerate the
+	// view against the new marker (range release<n>..staging, nearly empty right after the cut).
+	// Best-effort, fail-open.
 	if !unreleased {
-		// reset dùng scope UNRELEASED (mọi repo deploy), KHÔNG phải `repos` finalize (chỉ repo có
-		// release<n>) — nếu không unreleased.md sau reset sẽ thiếu repo chưa cắt release<n>.
+		// reset uses the UNRELEASED scope (every deploy repo), NOT `repos` finalize (only repos
+		// with release<n>) — otherwise unreleased.md after reset would miss repos that haven't
+		// cut release<n> yet.
 		unrepos, _ := release.ResolveUnreleased(r, workspaceDir, os.ReadFile, disc)
 		repFresh := release.BuildUnreleased(r, resolve, unrepos, n, loadPatterns, loadSpecs)
 		if e := os.WriteFile(filepath.Join(outDir, "unreleased.md"), []byte(release.Render(repFresh, false)), 0o600); e != nil {
-			fmt.Fprintf(stderr, "release-report: không reset được unreleased.md: %v (fail-open)\n", e)
+			fmt.Fprintf(stderr, "release-report: không reset được unreleased.md: %v (fail-open)\n", e) //znf:allow-lang
 		}
 	}
 	return nil
@@ -126,7 +130,7 @@ func newReleaseReportCmd() *cobra.Command {
 	var unreleased bool
 	cmd := &cobra.Command{
 		Use:   "release-report [N]",
-		Short: "sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R<N>.md)",
+		Short: "sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R<N>.md)", //znf:allow-lang
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r := gitx.ExecRunner()
@@ -136,7 +140,7 @@ func newReleaseReportCmd() *cobra.Command {
 			n := 0
 			if len(args) == 1 {
 				if _, err := fmt.Sscanf(args[0], "%d", &n); err != nil {
-					return fmt.Errorf("release number không hợp lệ %q: %w", args[0], err)
+					return fmt.Errorf("invalid release number %q: %w", args[0], err)
 				}
 			} else {
 				for _, rp := range workspace.Discover(workspaceDir, workspace.DefaultMaxDepth, os.ReadDir) {
@@ -150,16 +154,16 @@ func newReleaseReportCmd() *cobra.Command {
 				}
 			}
 			if n <= 0 {
-				fmt.Fprintln(cmd.ErrOrStderr(), "release-report: không xác định được release N (fail-open)")
+				fmt.Fprintln(cmd.ErrOrStderr(), "release-report: không xác định được release N (fail-open)") //znf:allow-lang
 				return nil
 			}
 			return runReleaseReport(workspaceDir, n, noFetch, outDir, verbose, unreleased, r, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
-	cmd.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)")
-	cmd.Flags().BoolVar(&noFetch, "no-fetch", false, "bỏ git fetch, dùng ref local")
-	cmd.Flags().StringVar(&outDir, "out-dir", "", "thư mục ghi report (mặc định repo docs/releases, tự tìm theo layout)")
-	cmd.Flags().BoolVar(&verbose, "verbose", false, "hiện chore + commit chi tiết")
-	cmd.Flags().BoolVar(&unreleased, "unreleased", false, "ghi view release đang hình thành (release<latest>..staging) ra unreleased.md")
+	cmd.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)")                                             //znf:allow-lang
+	cmd.Flags().BoolVar(&noFetch, "no-fetch", false, "bỏ git fetch, dùng ref local")                                                      //znf:allow-lang
+	cmd.Flags().StringVar(&outDir, "out-dir", "", "thư mục ghi report (mặc định repo docs/releases, tự tìm theo layout)")                 //znf:allow-lang
+	cmd.Flags().BoolVar(&verbose, "verbose", false, "hiện chore + commit chi tiết")                                                       //znf:allow-lang
+	cmd.Flags().BoolVar(&unreleased, "unreleased", false, "ghi view release đang hình thành (release<latest>..staging) ra unreleased.md") //znf:allow-lang
 	return cmd
 }

@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 )
 
-// resolveDocsStore trả path repo store THẬT (chứa .git/.config/.claude).
-// Thứ tự resolve (dừng ở cái đầu tiên TỒN TẠI): $ZENIFY_HOME/knowledge →
-// ~/.zenify/knowledge → fallback workspace docs (máy chưa migrate). Nếu không
-// cái nào tồn tại → trả đường CHUẨN (env hoặc ~/.zenify/knowledge) để onboarding
-// clone tạo. Toàn bộ I/O inject để test thuần.
+// resolveDocsStore returns the path to the REAL store repo (containing .git/.config/.claude).
+// Resolve order (stops at the first one that EXISTS): $ZENIFY_HOME/knowledge →
+// ~/.zenify/knowledge → fallback workspace docs (machine not migrated yet). If none
+// exists → return the STANDARD path (env or ~/.zenify/knowledge) for onboarding
+// to clone into. All I/O is injected to keep tests pure.
 func resolveDocsStore(workspaceDir string, getenv func(string) string, userHome func() (string, error), stat func(string) (os.FileInfo, error), readDir func(string) ([]os.DirEntry, error)) string {
 	home, _ := userHome()
 	target := filepath.Join(home, ".zenify", "knowledge")

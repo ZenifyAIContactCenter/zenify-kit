@@ -51,24 +51,24 @@ func TestDecideFromPayload(t *testing.T) {
 
 	deny := `{"cwd":"` + repo + `","tool_input":{"command":"git commit -m x"}}`
 	if !decideFromPayload([]byte(deny), getenv).Deny {
-		t.Error("commit trên main phải deny")
+		t.Error("commit on main must deny")
 	}
 	allow := `{"cwd":"` + repo + `","tool_input":{"command":"git status"}}`
 	if decideFromPayload([]byte(allow), getenv).Deny {
-		t.Error("git status phải allow")
+		t.Error("git status must allow")
 	}
-	// Fail-open: JSON hỏng → allow.
+	// Fail-open: broken JSON → allow.
 	if decideFromPayload([]byte("{not json"), getenv).Deny {
-		t.Error("JSON hỏng phải fail-open (allow)")
+		t.Error("broken JSON must fail-open (allow)")
 	}
 }
 
-// Degenerate input không được treo/panic (port test-hooks-hang.sh).
+// Degenerate input must not hang/panic (port of test-hooks-hang.sh).
 func TestDecideDegenerate(t *testing.T) {
 	getenv := func(string) string { return "" }
 	for _, cmd := range []string{"sudo", "env", "-", "git", "cd", "cd &&", "git -C", "git -C -C -C push", "cd cd cd && git push"} {
 		p := `{"cwd":".","tool_input":{"command":"` + cmd + `"}}`
-		_ = decideFromPayload([]byte(p), getenv) // chỉ cần không panic/treo
+		_ = decideFromPayload([]byte(p), getenv) // only needs to not panic/hang
 	}
 }
 
@@ -90,10 +90,10 @@ func TestRunGitGuardPanicFailsOpen(t *testing.T) {
 		panicky,
 	)
 	if code != 0 {
-		t.Fatalf("panic phải fail-open (exit 0), được exit %d", code)
+		t.Fatalf("panic must fail-open (exit 0), got exit %d", code)
 	}
 	if strings.Contains(stderr.String(), "boom") {
-		t.Fatalf("stderr không được lộ chi tiết panic (payload/secret): %q", stderr.String())
+		t.Fatalf("stderr must not leak panic details (payload/secret): %q", stderr.String())
 	}
 }
 
@@ -108,7 +108,7 @@ func TestGitGuardCmdExit2(t *testing.T) {
 	c.Stdin = strings.NewReader(`{"cwd":"` + repo + `","tool_input":{"command":"git commit -m x"}}`)
 	err := c.Run()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 2 {
-		t.Fatalf("phải exit 2 (deny), được %v", err)
+		t.Fatalf("must exit 2 (deny), got %v", err)
 	}
 }
 
@@ -139,10 +139,10 @@ func TestDecideFromPayload_SecretsIntegration(t *testing.T) {
 		p := `{"cwd":"` + repo + `","tool_input":{"command":"git commit -m x"}}`
 		d := decideFromPayload([]byte(p), getenv)
 		if !d.Deny {
-			t.Fatal("staged secret phải deny")
+			t.Fatal("staged secret must deny")
 		}
 		if strings.Contains(d.Message, secret) {
-			t.Fatalf("deny message chứa raw secret: %q", d.Message)
+			t.Fatalf("deny message contains the raw secret: %q", d.Message)
 		}
 	})
 
@@ -162,7 +162,7 @@ func TestDecideFromPayload_SecretsIntegration(t *testing.T) {
 		p := `{"cwd":"` + repo + `","tool_input":{"command":"git commit -m x"}}`
 		d := decideFromPayload([]byte(p), getenv)
 		if d.Deny {
-			t.Fatalf("clean staged file phải allow, được deny: %q", d.Message)
+			t.Fatalf("clean staged file must allow, got deny: %q", d.Message)
 		}
 	})
 }

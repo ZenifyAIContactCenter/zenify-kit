@@ -97,10 +97,10 @@ func runObserveMeter(stdin io.Reader, record func(string, string, int64, time.Ti
 }
 
 func newObserveCmd() *cobra.Command {
-	c := &cobra.Command{Use: "observe", Short: "Observability: đếm/nhắc fan-out subagent"}
+	c := &cobra.Command{Use: "observe", Short: "Observability: đếm/nhắc fan-out subagent"} //znf:allow-lang
 	count := &cobra.Command{
 		Use:    "count",
-		Short:  "PreToolUse hook: đếm dispatch Task + soft-cap warn (không chặn)",
+		Short:  "PreToolUse hook: đếm dispatch Task + soft-cap warn (không chặn)", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -110,7 +110,7 @@ func newObserveCmd() *cobra.Command {
 	}
 	meter := &cobra.Command{
 		Use:    "meter",
-		Short:  "PostToolUse hook: đo lượng tool-output per-session (passive, không sửa output)",
+		Short:  "PostToolUse hook: đo lượng tool-output per-session (passive, không sửa output)", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

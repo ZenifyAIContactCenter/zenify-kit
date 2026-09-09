@@ -78,7 +78,7 @@ func newReportCmd() *cobra.Command {
 	var asJSON bool
 	c := &cobra.Command{
 		Use:   "report",
-		Short: "Tóm tắt observe theo session (dispatch + tool-output)",
+		Short: "Tóm tắt observe theo session (dispatch + tool-output)", //znf:allow-lang
 		Long:  reportLong,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

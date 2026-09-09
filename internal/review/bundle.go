@@ -1,37 +1,38 @@
-// Package review — phần smart-bundling (seam BUNDLE của znf:review, M4c).
-// Chia một diff lớn thành các bundle cụm-file đủ nhỏ để review tốt. Cơ học,
-// deterministic; KHÔNG dùng LLM (doctrine seam).
+// Package review — the smart-bundling part (BUNDLE seam of znf:review, M4c).
+// Splits a large diff into file-cluster bundles small enough to review well. Mechanical,
+// deterministic; does NOT use an LLM (doctrine seam).
 package review
 
 import "sort"
 
-// FileStat: một file trong diff với LOC = added + deleted.
+// FileStat: one file in the diff, with LOC = added + deleted.
 type FileStat struct {
 	Path string `json:"path"`
 	LOC  int    `json:"loc"`
 }
 
-// Bundle: một cụm file để review cùng nhau.
+// Bundle: a cluster of files to review together.
 type Bundle struct {
 	ID    int      `json:"id"`
 	LOC   int      `json:"loc"`
 	Files []string `json:"files"`
 }
 
-// Plan: kết quả chia bundle. Verdict ∈ "passthrough" | "bundle" | "too-large".
+// Plan: the bundling result. Verdict ∈ "passthrough" | "bundle" | "too-large".
 type Plan struct {
 	Verdict  string   `json:"verdict"`
 	Bundles  []Bundle `json:"bundles"`
 	TotalLOC int      `json:"total_loc"`
 }
 
-// PlanBundles chia files thành bundle theo path + size-cap greedy.
-//   - tổng <= trigger  → "passthrough" (không cần bundle).
-//   - capLOC           → LOC tối đa mỗi bundle; một file > cap tự thành bundle riêng.
-//   - max              → quá số bundle này → "too-large".
+// PlanBundles splits files into bundles by path + greedy size-cap.
+//   - total <= trigger → "passthrough" (no bundling needed).
+//   - capLOC           → max LOC per bundle; a file > cap becomes its own bundle.
+//   - max              → more bundles than this → "too-large".
 //
-// Sort theo Path trước khi gói → file cùng thư mục nằm liền nhau, gói vào cùng
-// bundle (giảm mù cross-bundle), và làm kết quả deterministic bất kể thứ tự input.
+// Sort by Path before packing → files in the same directory sit next to each other and
+// pack into the same bundle (reduces cross-bundle blindness), and makes the result
+// deterministic regardless of input order.
 func PlanBundles(files []FileStat, trigger, capLOC, max int) Plan {
 	total := 0
 	for _, f := range files {

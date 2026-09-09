@@ -8,10 +8,10 @@ import (
 	wspkg "github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 )
 
-// Resolve trả danh sách repo được-theo-dõi-release. Nếu <workspace>/.znf/release-repos.txt
-// đọc được → dùng các dòng non-empty. Ngược lại auto-detect trên `discovered` (kết quả
-// workspace.Discover) — repo nào có origin/release<n>. readFile inject để test
-// (CLI truyền os.ReadFile).
+// Resolve returns the list of release-tracked repos. If <workspace>/.znf/release-repos.txt can
+// be read → use its non-empty lines. Otherwise auto-detect over `discovered` (the result of
+// workspace.Discover) — any repo that has origin/release<n>. readFile is injected for testing
+// (the CLI passes os.ReadFile).
 func Resolve(r gitx.Runner, workspace string, n int,
 	readFile func(string) ([]byte, error), discovered []wspkg.Repo) ([]string, error) {
 
@@ -34,11 +34,12 @@ func Resolve(r gitx.Runner, workspace string, n int,
 	return repos, nil
 }
 
-// ResolveUnreleased trả repo cho VIEW UNRELEASED. Vẫn ưu tiên pin `.znf/release-repos.txt` (nếu có).
-// Auto-detect KHÁC Resolve: lấy MỌI repo có ÍT NHẤT một nhánh release (không đòi release<n>) — vì
-// unreleased là "pending deploy hằng ngày" của mọi repo deploy, không phụ thuộc repo đã cắt release
-// tuần này chưa. Repo có commit staging chưa deploy sẽ hiện; repo không có gì pending bị buildReport
-// bỏ (section rỗng).
+// ResolveUnreleased returns the repos for the UNRELEASED VIEW. It still honors the
+// `.znf/release-repos.txt` pin (if present). Its auto-detect DIFFERS from Resolve: it takes EVERY
+// repo with AT LEAST one release branch (not requiring release<n>) — because unreleased is the
+// "daily pending deploy" of every deployed repo, regardless of whether that repo cut a release
+// this week. A repo with staging commits not yet deployed shows up; a repo with nothing pending
+// is dropped by buildReport (empty section).
 func ResolveUnreleased(r gitx.Runner, workspace string,
 	readFile func(string) ([]byte, error), discovered []wspkg.Repo) ([]string, error) {
 
@@ -54,9 +55,10 @@ func ResolveUnreleased(r gitx.Runner, workspace string,
 	return repos, nil
 }
 
-// pinList đọc `.znf/release-repos.txt` (một repo/dòng, `#`=comment). ok=false nếu file không đọc
-// được (→ caller auto-detect). ⚠ File TỒN TẠI nhưng chỉ comment → ok=true với list RỖNG (quét 0
-// repo) — có chủ đích: pin rỗng nghĩa là "không repo nào", muốn auto-detect thì XOÁ file.
+// pinList reads `.znf/release-repos.txt` (one repo per line, `#`=comment). ok=false if the file
+// cannot be read (→ caller auto-detects). Warning: the file EXISTS but is comments-only → ok=true
+// with an EMPTY list (scans 0 repos) — this is intentional: an empty pin means "no repos"; to get
+// auto-detect back, DELETE the file.
 func pinList(workspace string, readFile func(string) ([]byte, error)) ([]string, bool) {
 	b, err := readFile(filepath.Join(workspace, ".znf", "release-repos.txt"))
 	if err != nil {

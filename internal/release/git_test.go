@@ -6,12 +6,12 @@ import (
 	"testing"
 )
 
-// fakeRunner: khớp gitx.Runner, trả output cố định theo args (join bằng khoảng trắng).
-// Dùng chung cho git_test / repos_test / release_test.
+// fakeRunner: satisfies gitx.Runner, returns fixed output keyed by args (joined with spaces).
+// Shared by git_test / repos_test / release_test.
 type fakeRunner struct {
 	out   map[string]string
 	err   map[string]string
-	calls map[string]bool // dir đã được Run gọi, dùng để verify Build dùng resolver
+	calls map[string]bool // dirs Run was called with, used to verify Build uses the resolver
 }
 
 func (f fakeRunner) Run(dir string, args ...string) ([]byte, error) {
@@ -49,7 +49,7 @@ func TestReleaseNumsIgnoresVariantRefs(t *testing.T) {
 	}}
 	nums, err := ReleaseNums(f, "/x")
 	if err != nil || len(nums) != 1 || nums[0] != 82 {
-		t.Fatalf("biến thể release84-hotfix/release83.1 phải bị bỏ: nums=%v err=%v", nums, err)
+		t.Fatalf("variants release84-hotfix/release83.1 must be dropped: nums=%v err=%v", nums, err)
 	}
 }
 
@@ -63,13 +63,13 @@ func TestRangeCommits(t *testing.T) {
 		t.Fatalf("cs=%v err=%v", cs, err)
 	}
 	if cs[0].Type != "fix" || cs[0].Subject != "fix: a" {
-		t.Fatalf("subject cũ không được đổi: %+v", cs[0])
+		t.Fatalf("original subject must not change: %+v", cs[0])
 	}
 	if cs[0].Author != "namph" {
 		t.Fatalf("author %%an: %q", cs[0].Author)
 	}
 	if cs[0].Body != "body line1\nbody line2" {
-		t.Fatalf("body nhiều dòng: %q", cs[0].Body)
+		t.Fatalf("multi-line body: %q", cs[0].Body)
 	}
 	if cs[1].Merge != true || cs[1].Branch != "hungnk/hotfix/x" {
 		t.Fatalf("merge parse: %+v", cs[1])

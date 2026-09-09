@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// hooks.json phải hợp lệ và có Stop + SessionStart chạy `zenify docs sync`.
+// hooks.json must be valid and have Stop + SessionStart running `zenify docs sync`.
 func TestHooksJSONHasDocsSync(t *testing.T) {
 	b, err := os.ReadFile("assets/znf/hooks/hooks.json")
 	if err != nil {
@@ -15,16 +15,16 @@ func TestHooksJSONHasDocsSync(t *testing.T) {
 	}
 	var root map[string]any
 	if err := json.Unmarshal(b, &root); err != nil {
-		t.Fatalf("hooks.json không parse: %v", err)
+		t.Fatalf("hooks.json failed to parse: %v", err)
 	}
 	if !strings.Contains(string(b), "zenify docs sync") {
-		t.Fatal("thiếu lệnh 'zenify docs sync'")
+		t.Fatal("missing command 'zenify docs sync'")
 	}
 	hooks, _ := root["hooks"].(map[string]any)
 	if _, ok := hooks["Stop"]; !ok {
-		t.Fatal("thiếu hook Stop")
+		t.Fatal("missing Stop hook")
 	}
 	if _, ok := hooks["SessionStart"]; !ok {
-		t.Fatal("thiếu hook SessionStart")
+		t.Fatal("missing SessionStart hook")
 	}
 }

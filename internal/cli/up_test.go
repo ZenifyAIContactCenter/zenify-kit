@@ -214,7 +214,7 @@ func TestRunApply_PartialFailure_SavesManifestAndReturnsFail(t *testing.T) {
 	}
 	failedSettings := filepath.Join(ws, "svc", ".claude", "settings.local.json")
 	if _, ok := got.Get(failedSettings); ok {
-		t.Errorf("repo fail KHÔNG được có trong manifest")
+		t.Errorf("failed repo must NOT be in the manifest")
 	}
 }
 

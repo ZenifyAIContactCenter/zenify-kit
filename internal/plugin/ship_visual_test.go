@@ -18,9 +18,9 @@ func TestShipStep4_CitesVisualCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(b), "zenify visual check") {
-		t.Error("ship step-4 chưa cite `zenify visual check`")
+		t.Error("ship step-4 does not yet cite `zenify visual check`")
 	}
 	if !strings.Contains(string(b), "znf:review") {
-		t.Error("ship SKILL mất znf:review sau khi sửa")
+		t.Error("ship SKILL lost znf:review after the edit")
 	}
 }
