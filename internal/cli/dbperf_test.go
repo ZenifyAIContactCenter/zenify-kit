@@ -19,7 +19,7 @@ func TestRunDbPerfNoQueryIsNoop(t *testing.T) {
 	}
 }
 
-func TestRunDbPerfBlockingExitsNonZeroViaFlag(t *testing.T) {
+func TestRunDbPerfJSONEmitsBlockingTier(t *testing.T) {
 	var out, errb bytes.Buffer
 	diff := "+++ b/s.js\n@@ -1 +1,2 @@\n+Model.find({s:1}).sort({t:-1})\n"
 	_ = runDbPerf(diff, dbperf.Defaults(), true, &out, &errb)
