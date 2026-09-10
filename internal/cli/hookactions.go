@@ -42,17 +42,19 @@ func runObserveHook(wsRoot, kind string, w io.Writer) int {
 	return 0
 }
 
-// runSessionStart ports session-start.sh into Go (it must run as a global
-// hook, where $CLAUDE_PLUGIN_ROOT is unset, so the materialized skill path is
-// used directly). It ALSO runs docs-sync — the original wiring invoked both
-// session-start.sh AND `zenify docs sync` on SessionStart.
+// runSessionStart is the Go body of the SessionStart hook (it runs as a global
+// hook, so no $CLAUDE_PLUGIN_ROOT is available; the materialized skill path is
+// used directly). Order matters: docs-sync first so the store is current, then
+// ensureWorkspace so freshly pulled rules land in .claude/rules before the
+// session reads them, then the BOOTSTRAP digest for machines without the
+// discipline sentinel.
 func runSessionStart(wsRoot string, w io.Writer) int {
 	defer failOpen(w)
-	if home, err := os.UserHomeDir(); err == nil {
-		_ = selfHeal(home)
-	}
 	if err := docsSyncCore(wsRoot, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "znf docs-sync:", err)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		ensureWorkspace(wsRoot, home, w, os.Stderr)
 	}
 	if !sentinelPresent() {
 		digest := readBootstrapDigest()

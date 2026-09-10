@@ -225,24 +225,10 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	// FAIL-OPEN — never affects `failed` or the return below.
 	ensureDocsStore(w, git, workspace)
 
-	// Wire znf hooks into ~/.claude/settings.json (fail-open; never affects `failed`).
+	// Hooks + model pin + store config distribution, all fail-open (W0 FR-01.4);
+	// never affects `failed`.
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		if ch, herr := apply.EnsureGlobalHooks(home, false); herr != nil {
-			_, _ = fmt.Fprintf(w, "warning: hook wiring skipped: %v\n", herr)
-		} else if n := ch.Added + ch.Updated; n > 0 {
-			// Only report when something changed (see skills.go) — avoids a
-			// "wired N" line on every up-to-date apply.
-			_, _ = fmt.Fprintf(w, "wired %d znf hooks\n", n)
-		}
-	}
-
-	// Pin the workspace default model to the one the znf workflow is calibrated
-	// for (fail-open; never affects `failed`). Scoped to <workspace>/.claude, so
-	// it leaves other projects alone; enforced every apply; idempotent.
-	if ch, merr := apply.EnsureWorkspaceModel(workspace, false); merr != nil {
-		_, _ = fmt.Fprintf(w, "warning: model default skipped: %v\n", merr)
-	} else if ch {
-		_, _ = fmt.Fprintf(w, "pinned workspace model → %s\n", apply.DefaultModel)
+		ensureWorkspace(workspace, home, w, os.Stderr)
 	}
 
 	if failed > 0 {
