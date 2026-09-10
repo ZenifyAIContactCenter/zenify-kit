@@ -3,6 +3,7 @@ package dbperf
 import (
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 var (
@@ -61,6 +62,31 @@ func ScanStatic(added []AddedLine, cfg Config) Result {
 		}
 		if projFindRe.MatchString(a.Text) {
 			add(Advisory, "missing-projection", "", "find không projection: kéo cả document") //znf:allow-lang
+		}
+	}
+	return applyWaive(added, r)
+}
+
+var waiveRe = regexp.MustCompile(`//\s*znf:db-perf-ok:\s*(\S.*)$`)
+
+// applyWaive downgrades a BLOCKING finding to WAIVED when its own line carries a
+// non-empty `// znf:db-perf-ok: <reason>` marker, recording the reason in Hint.
+// An empty reason does not waive.
+func applyWaive(added []AddedLine, r Result) Result {
+	byLine := map[string]string{} // "file:line" -> reason
+	for _, a := range added {
+		if m := waiveRe.FindStringSubmatch(a.Text); m != nil {
+			byLine[a.File+":"+strconv.Itoa(a.Line)] = strings.TrimSpace(m[1])
+		}
+	}
+	for i := range r.Findings {
+		f := &r.Findings[i]
+		if f.Tier != Blocking {
+			continue
+		}
+		if reason, ok := byLine[f.File+":"+strconv.Itoa(f.Line)]; ok && reason != "" {
+			f.Tier = Waived
+			f.Hint = f.Hint + " [waived: " + reason + "]"
 		}
 	}
 	return r
