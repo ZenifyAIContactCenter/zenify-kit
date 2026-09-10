@@ -176,12 +176,14 @@ start early, and that section says why.
 
    Report which you ran and which the diff could not trigger.
 
-   - **The diff adds or changes a DB query → read its plan** (`COLLSCAN` / `Seq Scan` on a large
-     collection or table is the finding). Delegate the full size-aware rubric to
-     **`Skill(znf:explain-plan)`** — it greps the query call-sites, runs
-     `db_read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE` per site, and reports which
-     scan a full table. An index existing does not mean it is used (non-selective field, wrong
-     compound-index column order, `$in`/`$or`). Advisory — it does not block.
+   - **The diff adds or changes a DB query → run the two-tier DB-perf gate** (`COLLSCAN` /
+     `Seq Scan` on a large collection or table is one of the findings). Delegate the full
+     size-aware rubric to **`Skill(znf:explain-plan)`** — it runs `zenify db-perf` plus
+     `db_read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE` per site. An index existing
+     does not mean it is used (non-selective field, wrong compound-index column order, `$in`/`$or`).
+     A **BLOCKING** finding that is not waived (`// znf:db-perf-ok: <reason>` on the query line)
+     means **ship does not complete** — list each one with its fix. ADVISORY findings print under
+     `## DB-Perf` and do not block.
    - **The diff touches a query on a tenant-scoped collection → assert the negative.** Query tenant
      B's context against a row known to belong to tenant A and assert **zero rows**. One test case,
      and it exercises the whole mandatory-filter path. Nothing substitutes for it: a query missing its

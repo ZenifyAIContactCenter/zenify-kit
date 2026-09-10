@@ -194,6 +194,10 @@ SDD then hands implementers the brief with "the exact values to use verbatim". G
 the plan grounds a contaminated requirement. This is the path that put three empty junk
 collections into a shared production database.
 
+**When the plan's diff will touch a backend query, `Skill(znf:explain-plan)` is mandatory here**
+(shift-left, advisory) and again at Step 7 (`/ship`, with teeth) — it runs the two-tier DB-perf
+gate (`zenify db-perf` + dynamic explain).
+
 Ground all six categories, not just the DB:
 
 - DB collections/tables and fields — **list the real names, never type one from memory**
