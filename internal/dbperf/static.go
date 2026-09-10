@@ -15,7 +15,7 @@ var (
 	negationRe        = regexp.MustCompile(`\$ne\b|\$nin\b`)
 	inRe              = regexp.MustCompile(`\$in\s*:\s*\[([^\]]*)\]`)
 	countRe           = regexp.MustCompile(`\.countDocuments\(\s*\{[^}]`)
-	projFindRe        = regexp.MustCompile(`\.find\(\s*\{[^)]*\}\s*\)`) // .find(filter) with no 2nd arg
+	projFindRe        = regexp.MustCompile(`\.find\(\s*\{[^{}]*\}\s*\)`) // .find(filter) with no 2nd arg; [^{}] stops at filter's close so a projection arg does not match
 )
 
 // ScanStatic scans added lines for query call-sites and text-detectable
@@ -30,7 +30,7 @@ func ScanStatic(added []AddedLine, cfg Config) Result {
 		add := func(tier Tier, sig, hint string) {
 			r.Findings = append(r.Findings, Finding{Tier: tier, Signal: sig, File: a.File, Line: a.Line, Hint: hint})
 		}
-		// TĨNH-BLOCKING
+		// static BLOCKING signals
 		if m := skipRe.FindStringSubmatch(a.Text); m != nil {
 			if n, _ := strconv.Atoi(m[1]); n > cfg.SkipLarge {
 				add(Blocking, "skip-deep", "deep pagination: dùng keyset (_id > lastSeen) thay cho skip lớn") //znf:allow-lang
@@ -39,7 +39,7 @@ func ScanStatic(added []AddedLine, cfg Config) Result {
 		if sortRe.MatchString(a.Text) && !limitRe.MatchString(a.Text) {
 			add(Blocking, "unbounded-list", "list query thiếu .limit(): giới hạn số kết quả trả về") //znf:allow-lang
 		}
-		// TĨNH-ADVISORY
+		// static ADVISORY signals
 		if regexUnanchoredRe.MatchString(a.Text) || regexIRe.MatchString(a.Text) {
 			add(Advisory, "regex-unanchored", "$regex không anchor ^ hoặc cờ i: không dùng được index range") //znf:allow-lang
 		}

@@ -51,3 +51,19 @@ func TestSortWithLimitSuppressesUnbounded(t *testing.T) {
 		t.Fatal(".limit() present must suppress unbounded-list")
 	}
 }
+
+func TestBareFindFlagsMissingProjection(t *testing.T) {
+	r := ScanStatic(mk("c.find({s:1})"), Defaults())
+	if !hasSignal(r, "missing-projection", Advisory) {
+		t.Fatalf("want missing-projection ADVISORY on bare find: %+v", r.Findings)
+	}
+}
+
+func TestFindWithProjectionNotMissingProjection(t *testing.T) {
+	// find(filter, projection) has a projection arg; [^{}] must stop at the
+	// filter's close brace so the chained .sort brace pair is not matched.
+	r := ScanStatic(mk("c.find({s:1},{name:1}).sort({t:-1})"), Defaults())
+	if hasSignal(r, "missing-projection", Advisory) {
+		t.Fatalf("find with projection must not flag missing-projection: %+v", r.Findings)
+	}
+}
