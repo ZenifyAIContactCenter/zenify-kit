@@ -32,15 +32,21 @@ func Load(path string) (*Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read manifest: %w", err)
 	}
+	return Parse(b, path)
+}
+
+// Parse parses manifest YAML bytes. label names the source in error messages
+// (a file path, or "embedded" for the compiled-in default).
+func Parse(b []byte, label string) (*Manifest, error) {
 	var m Manifest
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
 	if m.Org == "" {
-		return nil, fmt.Errorf("manifest %s: org is required", path)
+		return nil, fmt.Errorf("manifest %s: org is required", label)
 	}
 	if len(m.Repos) == 0 {
-		return nil, fmt.Errorf("manifest %s: repos is empty", path)
+		return nil, fmt.Errorf("manifest %s: repos is empty", label)
 	}
 	return &m, nil
 }
@@ -52,6 +58,20 @@ func LoadWithOverlay(basePath, overlayPath string) (*Manifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	return applyOverlay(m, overlayPath)
+}
+
+// ParseWithOverlay is LoadWithOverlay for in-memory manifest bytes (the
+// embedded default). Same overlay semantics.
+func ParseWithOverlay(b []byte, label, overlayPath string) (*Manifest, error) {
+	m, err := Parse(b, label)
+	if err != nil {
+		return nil, err
+	}
+	return applyOverlay(m, overlayPath)
+}
+
+func applyOverlay(m *Manifest, overlayPath string) (*Manifest, error) {
 	ob, err := os.ReadFile(overlayPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
 	if os.IsNotExist(err) {
 		return m, nil

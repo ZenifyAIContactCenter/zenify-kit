@@ -8,7 +8,6 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/spf13/cobra"
 )
 
@@ -23,16 +22,13 @@ func newDownCmd() *cobra.Command {
 		Use:   "down",
 		Short: "Offboard: gỡ znf global hooks, .worktrees/ excludes, và owned settings skeletons (preview mặc định; --apply để thực thi)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if manifestPath == "" {
-				manifestPath = filepath.Join("manifest", "repos.yaml")
-			}
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
 			}
 			w := cmd.OutOrStdout()
 			dryRun := !applyFlag
 
-			m, err := manifest.LoadWithOverlay(manifestPath, overlayPath)
+			m, _, err := loadKitManifest(manifestPath, overlayPath)
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
@@ -82,7 +78,7 @@ func newDownCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "thực thi gỡ (mặc định chỉ preview)") //znf:allow-lang
 	cmd.Flags().StringVar(&workspace, "workspace", ".", "workspace root directory")
-	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default manifest/repos.yaml)")
+	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default: manifest/repos.yaml under cwd when present, else the copy embedded in the binary)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay")
 	return cmd
 }

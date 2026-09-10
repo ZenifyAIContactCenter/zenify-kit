@@ -322,11 +322,6 @@ func newUpCmd() *cobra.Command {
 			if err := dryRunApplyConflict(applyFlag, cmd.Flags().Changed("dry-run"), dryRun); err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
-			if manifestPath == "" {
-				// The manifest is versioned inside the kit checkout, not the
-				// scanned workspace — default relative to cwd, not --workspace.
-				manifestPath = filepath.Join("manifest", "repos.yaml")
-			}
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
 			}
@@ -338,7 +333,7 @@ func newUpCmd() *cobra.Command {
 			// is no reason to gate them behind a successful repo-plan build
 			// (SC-10 dry-run parity).
 			isPreview := !applyFlag
-			m, err := manifest.LoadWithOverlay(manifestPath, overlayPath)
+			m, _, err := loadKitManifest(manifestPath, overlayPath)
 			if err != nil {
 				if isPreview {
 					printPlanFooterRows(w, workspace)
@@ -383,7 +378,7 @@ func newUpCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "never prompt — forces the headless dry-run/apply path instead of the interactive wizard")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "preview the plan without making changes")
 	cmd.Flags().StringVar(&workspace, "workspace", ".", "workspace root directory")
-	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default manifest/repos.yaml relative to the kit checkout)")
+	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default: manifest/repos.yaml under cwd when present, else the copy embedded in the binary)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "apply changes without the interactive wizard (required for non-interactive/CI runs)")
 	return cmd
