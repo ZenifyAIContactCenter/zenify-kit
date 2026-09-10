@@ -37,7 +37,7 @@ func runE2eRun(runner func(string, []string) error, goos, repo string, port int,
 	if err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
-	defer os.RemoveAll(harnessDir)
+	defer func() { _ = os.RemoveAll(harnessDir) }()
 	if err := e2e.WriteHarness(harnessDir); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}

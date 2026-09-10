@@ -57,7 +57,7 @@ func newDbPerfCmd() *cobra.Command {
 			cfg := loadDbPerfConfig(cmd.ErrOrStderr())
 			diff := ""
 			if diffFile != "" {
-				b, err := os.ReadFile(diffFile)
+				b, err := os.ReadFile(diffFile) //nolint:gosec // G304 -- diffFile is the explicit --diff-file flag from the invoking user, not externally-tainted
 				if err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "db-perf: không đọc được diff-file (fail-open): %v\n", err) //znf:allow-lang
 				} else {

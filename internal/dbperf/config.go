@@ -30,7 +30,7 @@ func Defaults() Config {
 // error (fail-open): the gate must run with defaults even before the store exists.
 func Load(path string) (Config, error) {
 	c := Defaults()
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is the knowledge-store config location computed by resolveDocsStore, not externally-tainted
 	if err != nil {
 		if os.IsNotExist(err) {
 			return c, nil
