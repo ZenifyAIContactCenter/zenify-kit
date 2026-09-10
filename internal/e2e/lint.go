@@ -132,7 +132,7 @@ func Lint(specDir string, out io.Writer) (int, error) {
 	}
 	total := 0
 	for _, f := range entries {
-		b, err := os.ReadFile(f)
+		b, err := os.ReadFile(f) //nolint:gosec // G304 -- f is a lint-target path enumerated internally from the scan root, not externally-tainted
 		if err != nil {
 			return total, exitcode.New(exitcode.Fail, err)
 		}

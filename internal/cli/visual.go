@@ -33,7 +33,7 @@ func runVisualCheck(o visualOpts) error {
 	if err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
-	defer os.RemoveAll(harnessDir)
+	defer func() { _ = os.RemoveAll(harnessDir) }()
 	if err := visual.WriteHarness(harnessDir); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}

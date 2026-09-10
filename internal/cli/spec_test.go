@@ -49,7 +49,7 @@ func TestRunSpecStatus_EmptyStorePrintsMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v, want nil (fail-open)", err)
 	}
-	if !strings.Contains(out.String(), "không có spec") {
+	if !strings.Contains(out.String(), "không có spec") { //znf:allow-lang
 		t.Fatalf("empty store did not print the no-spec message (SC-06):\n%s", out.String())
 	}
 }
@@ -62,7 +62,7 @@ func TestRunSpecContracts_EmptyPrintsMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	if !strings.Contains(out.String(), "không có contract") {
+	if !strings.Contains(out.String(), "không có contract") { //znf:allow-lang
 		t.Fatalf("empty registry did not print the no-contract message:\n%s", out.String())
 	}
 }
