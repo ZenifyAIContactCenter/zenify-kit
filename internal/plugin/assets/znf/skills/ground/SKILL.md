@@ -118,11 +118,14 @@ optional parameter is the failure waiting to happen.
 
 ### Ground the query plan (shift-left)
 
-Grounding a query is the cheapest moment to see its plan — earlier than `/ship`. If the change
-adds or touches a DB query, delegate to **`Skill(znf:explain-plan)`**: it reads each query's plan
-(`db_read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE`) and flags a `COLLSCAN` /
-`Seq Scan` on a large collection before the code is even written. Advisory, best-effort — it
-never blocks grounding.
+Grounding a query is the cheapest moment to see its plan — earlier than `/ship`. This is the
+**mandatory** DB-perf gate: when the change adds or touches a backend DB query, delegate to
+**`Skill(znf:explain-plan)`** — it runs `zenify db-perf` (the static two-tier scan, no DB needed)
+plus the dynamic explain, reading each query's plan
+(`db_read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE`) and flagging a `COLLSCAN` /
+`Seq Scan` on a large collection before the code is even written. At ground time the gate is
+shift-left and advisory; the **same** gate runs with teeth at `/ship`. A missing
+`Skill(znf:explain-plan)` line here when the diff touches a query means the gate was skipped.
 
 ### Config values, not just config key names
 
