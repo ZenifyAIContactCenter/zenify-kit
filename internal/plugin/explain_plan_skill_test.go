@@ -18,19 +18,22 @@ func TestExplainPlanSkill_Materialized_HasKeyParts(t *testing.T) {
 		t.Fatalf("explain-plan/SKILL.md not materialized: %v", err)
 	}
 	s := string(b)
-	// SC-1: rubric tokens must be present.
+	// Two-tier DB-perf gate contract (FR-02/FR-03) + retained dynamic rubric tokens.
 	for _, want := range []string{
-		"advisory",                  // advisory / non-blocking (FR-1.4)
+		"zenify db-perf",            // static layer call (FR-01)
+		"dynamic layer skipped",     // degrade note when DB unreachable (FR-03.3)
+		"scan-ratio",                // enriched dynamic rubric (FR-02.3)
+		"BLOCKING",                  // two-tier severity
 		"COLLSCAN",                  // Mongo rubric
+		"Seq Scan",                  // SQL rubric (relational still covered)
 		`explain("executionStats")`, // how to run explain on Mongo
-		"Seq Scan",                  // SQL rubric
 		"db_read",                   // tool that runs explain
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("explain-plan/SKILL.md missing %q", want)
 		}
 	}
-	// SC-2: agnostic — no mermaid, no project-specific collection names.
+	// Agnostic — no mermaid, no project-specific collection names (public repo).
 	for _, forbidden := range []string{"mermaid", "chat_rooms", "tickets"} {
 		if strings.Contains(s, forbidden) {
 			t.Errorf("explain-plan/SKILL.md must NOT contain %q (agnostic/public repo)", forbidden)
@@ -49,7 +52,7 @@ func TestExplainPlanSkill_ShipWiring(t *testing.T) {
 		t.Fatalf("read ship: %v", err)
 	}
 	s := string(b)
-	// SC-3: ship delegates to the skill AND keeps COLLSCAN as the trigger pointer.
+	// ship delegates to the skill AND keeps COLLSCAN as the trigger pointer.
 	for _, want := range []string{"znf:explain-plan", "COLLSCAN"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("ship/SKILL.md missing %q (explain-plan wiring)", want)

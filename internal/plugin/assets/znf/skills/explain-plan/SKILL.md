@@ -1,68 +1,69 @@
 ---
 name: explain-plan
-description: Use when a diff adds or changes a DB query — reads each query's plan and flags a missing-index scan (COLLSCAN / Seq Scan) on a large collection before it hits production. advisory only, never blocks.
-allowed-tools: Read Grep Bash(db_read *)
+description: Use when a diff adds or changes a DB query — the mandatory two-tier DB-perf gate. Runs a static scan (no DB needed) plus a per-query explain plan, and classifies findings BLOCKING (surface as must-fix at ship) vs ADVISORY. Degrades cleanly when the DB is unreachable.
+allowed-tools: Read Grep Bash(db_read *) Bash(zenify db-perf *) Bash(git diff *)
 ---
 
-# znf:explain-plan — inspect query plans, catch COLLSCAN early
+# znf:explain-plan — two-tier DB-perf gate
 
-**Announce:** "Using znf:explain-plan to check query plans in this diff."
+**Announce:** "Using znf:explain-plan to run the two-tier DB-perf gate on this diff."
 
-A query missing a usable index is **invisible on dev data** (a few thousand documents, a full scan
-is still fast) and only bites at production volume. This skill reads the plan of every query in the
-diff and reports a `COLLSCAN` (Mongo) / `Seq Scan` (SQL) on a large collection/table. **Advisory:**
-reports findings, does NOT block progress. Fails open — missing `db_read` or no query means a clean
-stop, no error reported.
+A query missing a usable index, an unbounded list, a missing tenant filter, or a deep skip is
+**invisible on dev data** and only bites at production volume. This gate combines a static scan
+(text-detectable anti-patterns, no DB) with a dynamic explain (COLLSCAN / scan-ratio / SORT), and
+classifies each finding **BLOCKING** or **ADVISORY**. Static findings run even with no DB.
 
-## When to use
-
-- When grounding or shipping a change that touches the DB (cook/ship/ground call it here).
-- Or invoke by hand on any diff that adds/changes a query.
-
-## Step 1 — mechanical trigger (from the diff)
-
-Count query call-sites in the diff. If `db_read` isn't on PATH, this skill doesn't apply to this project.
+## Step 1 — static layer (always runs, no DB)
 
 ```bash
-command -v db_read >/dev/null || echo "no db_read on PATH — this skill doesn't apply in this project"
-git diff HEAD | rg -c '\.find\(|\.aggregate\(|\.findOne\(|\.updateMany\(|\.skip\(|OFFSET|JOIN'
+zenify db-perf --json           # scans origin/staging..HEAD by default
 ```
 
-Non-zero → move to Step 2. Zero → write "no query in this diff" and stop cleanly.
+Read the JSON `findings[]`: each has `tier` (BLOCKING/ADVISORY/WAIVED), `signal`, `file`, `line`,
+`collection`, `hint`. If `sites_scanned == 0`, write "no query in this diff", print the named line,
+and stop cleanly.
 
-## Step 2 — run explain per site
-
-For each call-site: identify the **real** collection/table (don't guess — list it from the DB) and
-the filter shape, then run the plan. This skill does NOT hardcode any name; every name comes from
-the diff being inspected.
+## Step 2 — dynamic layer (only if the DB is reachable)
 
 ```bash
-# Mongo
+command -v db_read >/dev/null || echo "dynamic layer skipped: no db_read on PATH"
+```
+
+For each query call-site, identify the **real** collection (list it from the DB, never guess) and
+run the plan. If `db_read` is missing or times out, print **"dynamic layer skipped: DB unreachable"**
+and keep only the static findings — never fail.
+
+```bash
 db_read eval 'db.getCollection("<real-name>").find({…}).explain("executionStats")'
-# Relational (MySQL/Postgres)
-db_read sql 'EXPLAIN ANALYZE <real-statement>'
+db_read sql  'EXPLAIN ANALYZE <real-statement>'
 ```
 
-If the filter is a variable/builder-chain (can't be built directly), read the code and reconstruct a representative value by hand.
+## Step 3 — dynamic rubric (two-tier)
 
-## Step 3 — read the plan with a size-aware rubric
+Read `executionStats`: `stage`, `nReturned`, `totalDocsExamined`, `totalKeysExamined`.
 
-| Plan shows | Conclusion |
+| Plan shows | Tier |
 |---|---|
-| `IXSCAN` / index used | ok |
-| `COLLSCAN` on a LARGE collection | FINDING |
-| `Seq Scan` on a LARGE table | FINDING |
+| `IXSCAN`, ratio `totalDocsExamined/nReturned` ≤ 10 | ok |
+| `COLLSCAN` on a large collection (`db_read count` > 100k) | BLOCKING |
+| `Seq Scan` (SQL) on a large table | BLOCKING |
+| scan-ratio > 100 | BLOCKING |
+| scan-ratio 10–100 | ADVISORY |
+| `SORT` stage present despite `IXSCAN` (ESR violation) | ADVISORY |
+| `$lookup` whose foreign collection shows `COLLSCAN` | ADVISORY |
 
-Important note: **an index existing ≠ an index being used**. A full scan can still happen even with
-an index present when: the compound index has the wrong column order · the shape is `$in` / `$or` ·
-the field is non-selective. Read the actual `IXSCAN` in the plan — don't infer it from "this collection has an index."
+**An index existing ≠ an index being used.** A COLLSCAN can still happen with an index present
+(wrong compound order, `$in`/`$or`, non-selective field, `$ne`/`$nin`). Read the actual `IXSCAN`
+in the plan; do not infer it.
 
-## Step 4 — advisory report
+## Step 4 — merged two-tier verdict
 
-Open with: "Advisory — does not block progress." One line per finding:
+Print one block `## DB-Perf` merging static + dynamic findings, ordered BLOCKING first. Open with
+exactly one of:
 
-```
-<file:line> · <collection/table> · scan verb (COLLSCAN/Seq Scan) · suggested index to add
-```
+- "Advisory — no BLOCKING finding." (only advisory/waived), or
+- "BLOCKING — <N> finding(s) must be fixed or waived before ship."
 
-No findings → state clearly that N sites were inspected, all IXSCAN. Never blocks, even with findings.
+One line per finding: `<tier> · <signal> · <file:line> · <collection> · <hint>`. A WAIVED finding
+prints its logged reason. This block is what `ship` reads to decide whether to block completion; a
+BLOCKING finding that is not waived means ship does not complete.
