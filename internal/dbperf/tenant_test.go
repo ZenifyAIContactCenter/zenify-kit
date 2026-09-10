@@ -43,3 +43,35 @@ func TestTenantDynamicFilterIsAdvisory(t *testing.T) {
 		t.Fatalf("dynamic filter on tenant coll → ADVISORY: %+v", r.Findings)
 	}
 }
+
+// Nested sub-object before the tenant key must NOT falsely block: a single
+// regex bounded by [^}]* truncated the filter at the first nested `}`.
+func TestNestedObjectBeforeTenantKeyNotBlocking(t *testing.T) {
+	r := ScanStatic(mk("db.collection('tickets').find({created_at:{$gte:a,$lte:b}, tenant_id:t})"), cfgLists())
+	if hasSignal(r, "missing-tenant-filter", Blocking) {
+		t.Fatalf("tenant_id present after a nested sub-object must not block: %+v", r.Findings)
+	}
+}
+
+func TestOrClauseBeforeTenantKeyNotBlocking(t *testing.T) {
+	r := ScanStatic(mk("db.collection('tickets').find({$or:[{a:1},{b:2}], tenant_id:t})"), cfgLists())
+	if hasSignal(r, "missing-tenant-filter", Blocking) {
+		t.Fatalf("tenant_id present after $or must not block: %+v", r.Findings)
+	}
+}
+
+func TestNestedFilterTrulyMissingTenantBlocks(t *testing.T) {
+	r := ScanStatic(mk("db.collection('tickets').find({created_at:{$gte:a,$lte:b}})"), cfgLists())
+	if !hasSignal(r, "missing-tenant-filter", Blocking) {
+		t.Fatalf("nested filter with no tenant key must still block: %+v", r.Findings)
+	}
+}
+
+// A value merely containing the tenant-key substring must not suppress a real
+// missing-filter finding (tenantKeyRe requires the trailing colon of a key).
+func TestTenantSubstringInValueStillBlocks(t *testing.T) {
+	r := ScanStatic(mk("db.collection('tickets').find({name:\"tenant_id_field\"})"), cfgLists())
+	if !hasSignal(r, "missing-tenant-filter", Blocking) {
+		t.Fatalf("tenant_id as a value substring must not suppress the finding: %+v", r.Findings)
+	}
+}

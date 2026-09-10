@@ -17,9 +17,9 @@ var (
 	countRe           = regexp.MustCompile(`\.countDocuments\(\s*\{[^}]`)
 	projFindRe        = regexp.MustCompile(`\.find\(\s*\{[^{}]*\}\s*\)`) // .find(filter) with no 2nd arg; [^{}] stops at filter's close so a projection arg does not match
 
-	collRe        = regexp.MustCompile(`(?:\.collection|getCollection)\(\s*['"](\w+)['"]\s*\)`)
-	literalFindRe = regexp.MustCompile(`\.(?:find|findOne|updateMany|updateOne|deleteMany|countDocuments)\(\s*\{([^}]*)\}`)
-	tenantKeyRe   = regexp.MustCompile(`tenant_?[iI]d|tenantId`)
+	collRe      = regexp.MustCompile(`(?:\.collection|getCollection)\(\s*['"](\w+)['"]\s*\)`)
+	queryCallRe = regexp.MustCompile(`\.(?:find|findOne|updateMany|updateOne|deleteMany|countDocuments)\(`)
+	tenantKeyRe = regexp.MustCompile(`tenant_?[iI]d\s*:`) // key position (trailing colon) so a value substring does not match
 )
 
 // ScanStatic scans added lines for query call-sites and text-detectable
@@ -81,17 +81,51 @@ func classifyTenant(a AddedLine, cfg Config, add func(Tier, string, string, stri
 			"collection chưa phân loại — thêm vào tenant_scoped hoặc global list ở knowledge store") //znf:allow-lang
 		return
 	}
-	// tenant-scoped: check the filter literal for a tenant key
-	if lm := literalFindRe.FindStringSubmatch(a.Text); lm != nil {
-		if !tenantKeyRe.MatchString(lm[1]) {
+	// tenant-scoped: check the first-arg filter literal for a tenant key.
+	// Brace-balanced scan (not a regex) so a nested sub-object before the
+	// tenant key does not truncate the filter and falsely block.
+	if lit, ok := filterLiteral(a.Text); ok {
+		if !tenantKeyRe.MatchString(lit) {
 			add(Blocking, "missing-tenant-filter", name,
 				"query raw literal trên collection tenant-scoped thiếu tenant filter (leak + perf)") //znf:allow-lang
 		}
 		return
 	}
-	// dynamic filter builder: cannot verify statically
+	// dynamic filter builder (or line truncated): cannot verify statically
 	add(Advisory, "missing-tenant-filter", name,
 		"không xác minh được tenant scope ở đây (filter động) — kiểm tay") //znf:allow-lang
+}
+
+// filterLiteral returns the balanced {...} object passed as the first argument
+// to the first raw-driver query call on the line, and true, when that argument
+// is a literal object. It returns ("", false) when the first argument is not a
+// literal (a dynamic builder) or the braces do not balance on this line.
+func filterLiteral(text string) (string, bool) {
+	loc := queryCallRe.FindStringIndex(text)
+	if loc == nil {
+		return "", false
+	}
+	i := loc[1] // just past '('
+	for i < len(text) && (text[i] == ' ' || text[i] == '\t') {
+		i++
+	}
+	if i >= len(text) || text[i] != '{' {
+		return "", false // first arg is not a literal object
+	}
+	depth := 0
+	start := i
+	for ; i < len(text); i++ {
+		switch text[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return text[start : i+1], true
+			}
+		}
+	}
+	return "", false // unbalanced on this line
 }
 
 func inList(name string, list []string) bool {
