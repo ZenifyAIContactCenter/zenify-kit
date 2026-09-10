@@ -32,7 +32,7 @@ func TestConfigNoZenifyRepoIdentifiers(t *testing.T) {
 func TestRunConfigFailOpenNoConfigDir(t *testing.T) {
 	ws := t.TempDir()
 	var out, errb bytes.Buffer
-	if err := runConfig(ws, filepath.Join(ws, "nope"), false, &out, &errb); err != nil {
+	if _, err := runConfig(ws, filepath.Join(ws, "nope"), false, &out, &errb); err != nil {
 		t.Fatalf("fail-open violated: %v", err)
 	}
 }
@@ -63,6 +63,32 @@ func TestRunConfigDryRunThenApplyIdempotent(t *testing.T) {
 	runConfig(ws, cfg, false, &o3, &e3)
 	if !strings.Contains(o3.String(), "SAME") {
 		t.Fatalf("re-running must be SAME (SC-2): %s", o3.String())
+	}
+}
+
+// FR-01.5: runConfig reports how many files it wrote so ensureWorkspace can
+// stay silent when nothing changed.
+func TestRunConfigReturnsWrittenCount(t *testing.T) {
+	ws := t.TempDir()
+	cfg := filepath.Join(ws, "cfgdir")
+	if err := os.MkdirAll(cfg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(cfg, "CLAUDE.md"), []byte("hello\n"), 0o644)
+	os.WriteFile(filepath.Join(cfg, "distribution.txt"), []byte("CLAUDE.md CLAUDE.md\n"), 0o644)
+
+	var o, e bytes.Buffer
+	n, err := runConfig(ws, cfg, true, &o, &e)
+	if err != nil || n != 1 {
+		t.Fatalf("first apply: written=%d err=%v, want 1", n, err)
+	}
+	n, err = runConfig(ws, cfg, true, &o, &e)
+	if err != nil || n != 0 {
+		t.Fatalf("second apply: written=%d err=%v, want 0", n, err)
+	}
+	n, err = runConfig(ws, cfg, false, &o, &e)
+	if err != nil || n != 0 {
+		t.Fatalf("dry-run must report 0 written, got %d err=%v", n, err)
 	}
 }
 

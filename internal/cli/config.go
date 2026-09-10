@@ -17,8 +17,10 @@ import (
 // Override with --config-dir for a different workspace.
 const defaultConfigSub = ".config"
 
-// runConfig is the testable core. FAIL-OPEN: always returns nil; errors become a note to stderr.
-func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer) error {
+// runConfig is the testable core. FAIL-OPEN: always returns a nil error; errors become a note to stderr.
+// The int return is the number of files written (0 outside --apply), so callers like
+// ensureWorkspace can stay silent when nothing changed.
+func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer) (int, error) {
 	if configDir == "" {
 		configDir = filepath.Join(resolveDocsStore(workspace, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultConfigSub)
 	}
@@ -26,7 +28,7 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 	mb, err := os.ReadFile(manifestPath) //nolint:gosec // G304 -- manifestPath is inside the trusted config dir, not user input
 	if err != nil {
 		fmt.Fprintf(stderr, "config: không đọc được manifest %s: %v (fail-open)\n", manifestPath, err) //znf:allow-lang
-		return nil
+		return 0, nil
 	}
 	pairs, notes := distribute.ParseManifest(mb)
 	listDir := func(rel string) ([]string, error) {
@@ -82,7 +84,7 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 			}
 		}
 		fmt.Fprintf(stdout, "\nĐã áp dụng: %d ghi (%d giữ nguyên, %d bỏ).\n", nWritten, nSame, nSkip) //znf:allow-lang
-		return nil
+		return nWritten, nil
 	}
 
 	nChange := 0
@@ -98,7 +100,7 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 	} else {
 		fmt.Fprintf(stdout, "\n%d thay đổi, %d giữ nguyên, %d bỏ. (dry-run — dùng --apply để ghi)\n", nChange, nSame, nSkip) //znf:allow-lang
 	}
-	return nil
+	return 0, nil
 }
 
 // indentBlock indents each line of the diff block by 4 spaces.
@@ -120,7 +122,8 @@ func newConfigCmd() *cobra.Command {
 			if workspace == "" {
 				workspace, _ = os.Getwd()
 			}
-			return runConfig(workspace, configDir, apply, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			_, err := runConfig(workspace, configDir, apply, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return err
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "thư mục workspace (mặc định cwd)")                                       //znf:allow-lang
