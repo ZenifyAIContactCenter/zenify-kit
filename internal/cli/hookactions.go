@@ -1,4 +1,4 @@
-// internal/cli/hookactions.go  (Task 4: real bodies, replacing Task 3 stubs)
+// internal/cli/hookactions.go
 package cli
 
 import (

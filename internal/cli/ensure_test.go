@@ -192,11 +192,29 @@ func TestEnsureWorkspace_WriteAndSkipBothReported(t *testing.T) {
 	if !strings.Contains(o.String(), "znf config: đã ghi 1 file") {
 		t.Fatalf("stdout missing the write-count line despite a written file: %s", o.String())
 	}
-	if !strings.Contains(e.String(), "znf ensure: config:") {
-		t.Fatalf("stderr missing the skip note: %q", e.String())
+	if !strings.Contains(e.String(), "znf ensure: config: bỏ") {
+		t.Fatalf("stderr missing the skip note (single 'config:' prefix): %q", e.String())
 	}
-	if !strings.Contains(e.String(), "bỏ") {
-		t.Fatalf("stderr skip note doesn't mention the skipped pair: %q", e.String())
+}
+
+// Important #2 (final-review.md): a config write must be visible, not just
+// counted — the CREATE/UPDATE plan lines runConfig prints to stdout should be
+// forwarded so the overwrite shows up in the session's additional context.
+func TestEnsureWorkspace_AnnouncesConfigWrites(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	storeFixture(t)
+	ws := t.TempDir()
+
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e)
+
+	if !strings.Contains(o.String(), "CREATE") {
+		t.Fatalf("stdout missing the CREATE plan line for the written file: %s", o.String())
+	}
+	if !strings.Contains(o.String(), filepath.Join(".claude", "rules", "00-constitution.md")) {
+		t.Fatalf("stdout missing the written dest path: %s", o.String())
 	}
 }
 

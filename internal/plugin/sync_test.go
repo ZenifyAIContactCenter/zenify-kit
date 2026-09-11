@@ -203,6 +203,53 @@ func TestSync_PrunesRecordedFilesMissingFromEmbed(t *testing.T) {
 	}
 }
 
+// Important #1 (final-review.md): prune must not delete a recorded file the
+// user has since edited — same DecideRefresh contract the write path honors.
+func TestSync_PruneKeepsUserModifiedFile(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatal(err)
+	}
+	// Plant a stale, recorded file (as if the embed shipped it once), then
+	// modify its content so the on-disk SHA no longer matches the recorded one.
+	stale := filepath.Join(dest, "hooks", "hooks.json")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := managed.Load(man)
+	if err := m.Record(stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Save(man); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte(`{"user":"edited"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Sync(dest, man)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); err != nil {
+		t.Fatalf("user-modified stale file must survive prune: %v", err)
+	}
+	if len(res.Removed) != 0 {
+		t.Fatalf("Removed = %v, want empty (kept, not removed)", res.Removed)
+	}
+	if len(res.Kept) != 1 || res.Kept[0] != stale {
+		t.Fatalf("Kept = %v, want [%s]", res.Kept, stale)
+	}
+	m2, _ := managed.Load(man)
+	if _, ok := m2.Get(stale); !ok {
+		t.Fatal("manifest entry for a kept user-modified file must survive")
+	}
+}
+
 // FR-06.4: Removed is sorted deterministically — map iteration order would
 // otherwise vary run to run.
 func TestSync_RemovedIsSorted(t *testing.T) {

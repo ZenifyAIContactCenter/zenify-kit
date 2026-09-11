@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"path/filepath"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
@@ -30,7 +32,7 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) {
 		}
 	}()
 
-	resyncPluginIfStale(stderr)
+	resyncPluginIfStale(home, stderr)
 
 	if ch, err := apply.EnsureGlobalHooks(home, false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: hooks:", err)
@@ -44,32 +46,42 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) {
 		fmt.Fprintf(stdout, "pinned workspace model → %s\n", apply.DefaultModel)
 	}
 
-	// runConfig prints its whole plan to stdout; ensure only wants the count,
-	// and its stderr fail-open note ("không đọc được manifest ... fail-open")
-	// needs to surface as a "znf ensure:" line rather than being lost.
-	var cfgErr bytes.Buffer
-	n, err := runConfig(workspace, "", true, io.Discard, &cfgErr)
+	// runConfig prints its whole plan to stdout; ensure only wants the count
+	// plus the CREATE/UPDATE lines (so the overwrite is visible in the
+	// session's additional context — see final-review.md Important #2), and
+	// its stderr fail-open note (the manifest-unreadable line) needs to
+	// surface as a "znf ensure:" line rather than being lost.
+	var cfgOut, cfgErr bytes.Buffer
+	n, err := runConfig(workspace, "", true, &cfgOut, &cfgErr)
 	if cfgErr.Len() > 0 {
-		fmt.Fprint(stderr, "znf ensure: config: "+cfgErr.String())
+		for _, line := range strings.Split(strings.TrimRight(cfgErr.String(), "\n"), "\n") {
+			if line == "" {
+				continue
+			}
+			fmt.Fprintln(stderr, "znf ensure: "+line)
+		}
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "znf ensure: config:", err)
 	} else if n > 0 {
 		fmt.Fprintf(stdout, "znf config: đã ghi %d file\n", n) //znf:allow-lang
+		for _, line := range strings.Split(cfgOut.String(), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "CREATE") || strings.HasPrefix(trimmed, "UPDATE") {
+				fmt.Fprintln(stdout, line)
+			}
+		}
 	}
 }
 
 // resyncPluginIfStale is the former selfHeal body: when the plugin manifest's
 // version stamp differs from the binary, re-run plugin.Sync. Fail-open.
-func resyncPluginIfStale(stderr io.Writer) {
-	dest, err := plugin.DefaultDest()
-	if err != nil {
-		return
-	}
-	manifestPath, err := plugin.DefaultManifest()
-	if err != nil {
-		return
-	}
+// dest/manifestPath are derived from home so this stays in step with the
+// sibling ensureWorkspace steps, which all key off the same home parameter
+// (plugin.DefaultDest/DefaultManifest independently call os.UserHomeDir).
+func resyncPluginIfStale(home string, stderr io.Writer) {
+	dest := filepath.Join(home, ".claude", "skills", "znf")
+	manifestPath := filepath.Join(dest, ".manifest.json")
 	stamp := ""
 	if m, err := managed.Load(manifestPath); err == nil {
 		stamp = m.Version

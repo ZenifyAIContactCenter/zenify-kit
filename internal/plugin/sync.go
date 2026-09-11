@@ -107,11 +107,20 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 			continue
 		}
 		rel, err := filepath.Rel(destRoot, path)
-		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			// Outside destRoot: leave the entry inert rather than deleting the
 			// record for a file we refuse to touch — never repaired, but also
 			// never silently forgotten.
 			continue
+		}
+		if existing, rerr := os.ReadFile(path); rerr == nil { //nolint:gosec // G304 -- path comes from our own manifest entries, joined under destRoot
+			if m.DecideRefresh(path, existing) == managed.DecisionKeepModified {
+				// The embed dropped this file, but the user edited it since we
+				// last wrote it — same "don't clobber a manual edit" contract
+				// the write path honors above; keep the file and its entry.
+				res.Kept = append(res.Kept, path)
+				continue
+			}
 		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			continue
