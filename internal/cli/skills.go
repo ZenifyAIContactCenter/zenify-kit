@@ -29,8 +29,8 @@ func newSkillsCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "znf sync: %d ghi, %d giữ (user sửa), %d không đổi → %s\n", //znf:allow-lang
-				len(res.Written), len(res.Kept), len(res.Skipped), dest)
+			fmt.Fprintf(cmd.OutOrStdout(), "znf sync: %d ghi, %d giữ (user sửa), %d không đổi, %d gỡ → %s\n", //znf:allow-lang
+				len(res.Written), len(res.Kept), len(res.Skipped), len(res.Removed), dest)
 
 			home, _ := os.UserHomeDir()
 			if home != "" {

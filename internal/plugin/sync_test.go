@@ -54,7 +54,6 @@ func TestSyncMaterializesDiscipline(t *testing.T) {
 	}
 	for _, p := range []string{
 		"skills/discipline/SKILL.md",
-		"hooks/session-start.sh",
 	} {
 		if _, err := os.Stat(filepath.Join(dest, p)); err != nil {
 			t.Errorf("expected materialized %s: %v", p, err)
@@ -151,6 +150,65 @@ func TestSync_StampsVersion(t *testing.T) {
 	}
 	if m.Version != version.Current() {
 		t.Fatalf("manifest version = %q, want %q", m.Version, version.Current())
+	}
+}
+
+// FR-06.4: a file we recorded earlier that the embed no longer ships is
+// removed and its manifest entry dropped; an unrecorded (user) file survives.
+func TestSync_PrunesRecordedFilesMissingFromEmbed(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatal(err)
+	}
+	// Plant a stale, recorded file (what an old install left behind).
+	stale := filepath.Join(dest, "hooks", "hooks.json")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := managed.Load(man)
+	if err := m.Record(stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Save(man); err != nil {
+		t.Fatal(err)
+	}
+	// And an unrecorded user file that must survive.
+	user := filepath.Join(dest, "hooks", "mine.sh")
+	if err := os.WriteFile(user, []byte("#!/bin/sh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Sync(dest, man)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Removed) != 1 || res.Removed[0] != stale {
+		t.Fatalf("Removed = %v, want [%s]", res.Removed, stale)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatal("stale recorded file must be deleted")
+	}
+	if _, err := os.Stat(user); err != nil {
+		t.Fatal("unrecorded user file must survive")
+	}
+	m2, _ := managed.Load(man)
+	if _, ok := m2.Get(stale); ok {
+		t.Fatal("manifest entry for the pruned file must be dropped")
+	}
+}
+
+// Guard: nothing under assets/znf/hooks is shipped any more (FR-06.1).
+func TestSync_ShipsNoHooksDir(t *testing.T) {
+	dest := t.TempDir()
+	if _, err := Sync(dest, filepath.Join(dest, ".manifest.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "hooks")); !os.IsNotExist(err) {
+		t.Fatalf("hooks/ must not be materialized (err=%v)", err)
 	}
 }
 

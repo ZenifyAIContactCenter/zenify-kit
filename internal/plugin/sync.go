@@ -22,6 +22,7 @@ type Result struct {
 	Written []string
 	Kept    []string
 	Skipped []string
+	Removed []string // recorded files the embed no longer ships (pruned)
 }
 
 func DefaultDest() (string, error) {
@@ -41,13 +42,14 @@ func DefaultManifest() (string, error) {
 }
 
 // Sync writes every file in the embed out to destRoot, recording it in the manifest at manifestPath.
-// Additive: only writes WITHIN destRoot. Refresh-safe via managed.DecideRefresh.
+// Writes and prunes only WITHIN destRoot; prune touches recorded files only. Refresh-safe via managed.DecideRefresh.
 func Sync(destRoot, manifestPath string) (Result, error) {
 	var res Result
 	m, err := managed.Load(manifestPath)
 	if err != nil {
 		return res, err
 	}
+	present := map[string]bool{}
 	err = fs.WalkDir(assets, embedRoot, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -57,6 +59,7 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 		}
 		rel := strings.TrimPrefix(p, embedRoot+"/")
 		target := filepath.Join(destRoot, rel)
+		present[target] = true
 		content, err := assets.ReadFile(p)
 		if err != nil {
 			return err
@@ -92,6 +95,24 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 	})
 	if err != nil {
 		return res, err
+	}
+	// Prune (W0 FR-06.4): a file we recorded in an earlier sync that the embed
+	// no longer contains is dead — remove it and forget it. Only paths under
+	// destRoot are considered, and only recorded ones: a user-placed file is
+	// never recorded, so it is never touched.
+	for path := range m.Entries {
+		if present[path] {
+			continue
+		}
+		rel, err := filepath.Rel(destRoot, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			continue
+		}
+		delete(m.Entries, path)
+		res.Removed = append(res.Removed, path)
 	}
 	m.Version = version.Current()
 	if err := m.Save(manifestPath); err != nil {
