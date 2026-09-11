@@ -146,7 +146,7 @@ func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{{Name: "svc", Path: "svc"}}}
 	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}}
 
-	err := runApply(io.Discard, plans, m, ws, &fakeGH{}, &fakeGit{})
+	err := runApply(io.Discard, io.Discard, plans, m, ws, &fakeGH{}, &fakeGit{})
 	if err != nil {
 		t.Fatalf("runApply: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestRunApply_LockHeld_ReturnsExit4(t *testing.T) {
 	defer func() { _ = h.Release() }()
 
 	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{}}
-	err = runApply(io.Discard, nil, m, ws, &fakeGH{}, &fakeGit{})
+	err = runApply(io.Discard, io.Discard, nil, m, ws, &fakeGH{}, &fakeGit{})
 	if exitcode.Code(err) != exitcode.LockHeld {
 		t.Fatalf("want exit %d (LockHeld), got %d (err %v)", exitcode.LockHeld, exitcode.Code(err), err)
 	}
@@ -196,7 +196,7 @@ func TestRunApply_PartialFailure_SavesManifestAndReturnsFail(t *testing.T) {
 	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{{Name: "svc", Path: "svc"}}}
 	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Clone, Path: "svc"}}
 
-	err := runApply(io.Discard, plans, m, ws, gh, &fakeGit{})
+	err := runApply(io.Discard, io.Discard, plans, m, ws, gh, &fakeGit{})
 	if exitcode.Code(err) != exitcode.Fail {
 		t.Fatalf("want exit %d (Fail) on a failed repo, got %d (err %v)", exitcode.Fail, exitcode.Code(err), err)
 	}
@@ -250,7 +250,7 @@ func TestEnsureDocsStore_ClonesWhenAbsent(t *testing.T) {
 
 	git := &recordingGit{}
 	var buf bytes.Buffer
-	ensureDocsStore(&buf, git, ws)
+	ensureDocsStore(&buf, io.Discard, git, ws)
 
 	remote, dest, ok := git.cloned()
 	if !ok {
@@ -289,7 +289,7 @@ func TestEnsureDocsStore_CreatesMissingParentBeforeClone(t *testing.T) {
 
 	git := &recordingGit{}
 	var buf bytes.Buffer
-	ensureDocsStore(&buf, git, ws)
+	ensureDocsStore(&buf, io.Discard, git, ws)
 
 	remote, dest, ok := git.cloned()
 	if !ok {
@@ -320,7 +320,7 @@ func TestEnsureDocsStore_SkipsCloneWhenPresent(t *testing.T) {
 
 	git := &recordingGit{}
 	var buf bytes.Buffer
-	ensureDocsStore(&buf, git, ws)
+	ensureDocsStore(&buf, io.Discard, git, ws)
 
 	if _, _, ok := git.cloned(); ok {
 		t.Fatalf("clone must not be invoked when the store is already present, calls=%v", git.calls)
@@ -336,11 +336,15 @@ func TestEnsureDocsStore_CloneErrorFailsOpen(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 
 	git := &recordingGit{cloneErr: true}
-	var buf bytes.Buffer
-	ensureDocsStore(&buf, git, ws) // must not panic on a clone error
+	var buf, errb bytes.Buffer
+	ensureDocsStore(&buf, &errb, git, ws) // must not panic on a clone error
 
-	if !strings.Contains(buf.String(), "docs store clone") {
-		t.Errorf("expected a fail-open warning note, got %q", buf.String())
+	// D4: the fail-open warning goes to the err writer, not stdout.
+	if !strings.Contains(errb.String(), "docs store clone") {
+		t.Errorf("expected a fail-open warning note on errW, got %q", errb.String())
+	}
+	if strings.Contains(buf.String(), "docs store clone") {
+		t.Errorf("clone warning must not leak to stdout, got %q", buf.String())
 	}
 }
 

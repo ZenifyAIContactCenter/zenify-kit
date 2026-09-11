@@ -58,5 +58,5 @@ func runApplySelected(w io.Writer, m *manifest.Manifest, workspace string, selec
 			}
 		}
 	}
-	return runApply(w, filtered, m, workspace, gh, git)
+	return runApply(w, w, filtered, m, workspace, gh, git)
 }
