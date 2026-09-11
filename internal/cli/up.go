@@ -96,7 +96,7 @@ const docsRemote = "git@github.com:ZenifyAIContactCenter/zenify-knowledge.git"
 // (docsview.EnsureView) against it. Onboarding convenience: FAIL-OPEN. A
 // clone failure or a view failure only warns — it must never abort `up
 // --apply`, which is why this returns nothing.
-func ensureDocsStore(w io.Writer, git gitx.Runner, workspace string) {
+func ensureDocsStore(w io.Writer, errW io.Writer, git gitx.Runner, workspace string) {
 	store := resolveDocsStore(workspace, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir)
 	if fi, err := os.Stat(filepath.Join(store, ".git")); err != nil || !fi.IsDir() {
 		// gitx.Runner always runs `git -C <dir> ...`, and `git -C` fails
@@ -107,10 +107,10 @@ func ensureDocsStore(w io.Writer, git gitx.Runner, workspace string) {
 		// fail-open: git.Run below will just fail (and warn) the same way
 		// it would for any other clone error.
 		if err := os.MkdirAll(filepath.Dir(store), 0o750); err != nil {
-			_, _ = fmt.Fprintf(w, "warning: docs store parent dir: %v (onboarding otherwise succeeded)\n", err)
+			_, _ = fmt.Fprintf(errW, "warning: docs store parent dir: %v (onboarding otherwise succeeded)\n", err)
 		}
 		if _, err := git.Run(filepath.Dir(store), "clone", docsRemote, store); err != nil {
-			_, _ = fmt.Fprintf(w, "warning: docs store clone: %v (onboarding otherwise succeeded)\n", err)
+			_, _ = fmt.Fprintf(errW, "warning: docs store clone: %v (onboarding otherwise succeeded)\n", err)
 		}
 	}
 	viewDir := filepath.Join(workspace, defaultDocsRepo)
@@ -125,7 +125,7 @@ func ensureDocsStore(w io.Writer, git gitx.Runner, workspace string) {
 // runApply executes the actionable plans under the full b2a safety sequence:
 // version gate → workspace lock → pre-mutation snapshot → apply → persist the
 // ownership manifest. The lock is released on return.
-func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, workspace string, gh ghx.Runner, git gitx.Runner) error {
+func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, workspace string, gh ghx.Runner, git gitx.Runner) error {
 	if err := version.GuardMutation(version.Current(), minVersionFloor); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
@@ -216,19 +216,19 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 			Stdout: w,
 		}
 		if err := playwright.Bootstrap(po); err != nil {
-			_, _ = fmt.Fprintf(w, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
+			_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
 		}
 	}
 
 	// Onboarding convenience (Task 5): clone the docs knowledge store on a
 	// brand-new machine when it's absent, then reconcile the workspace view.
 	// FAIL-OPEN — never affects `failed` or the return below.
-	ensureDocsStore(w, git, workspace)
+	ensureDocsStore(w, errW, git, workspace)
 
 	// Hooks + model pin + store config distribution, all fail-open (W0 FR-01.4);
 	// never affects `failed`.
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		ensureWorkspace(workspace, home, w, os.Stderr)
+		ensureWorkspace(workspace, home, w, errW)
 	}
 
 	if failed > 0 {
@@ -349,7 +349,7 @@ func newUpCmd() *cobra.Command {
 			case modeWizard:
 				return runWizard(w, m, workspace)
 			case modeApply:
-				return runApply(w, plans, m, workspace, ghx.ExecRunner(), gitx.ExecRunner())
+				return runApply(w, cmd.ErrOrStderr(), plans, m, workspace, ghx.ExecRunner(), gitx.ExecRunner())
 			default: // modeDryRun
 				if jsonOut {
 					return renderPlanJSON(w, plans, auth)

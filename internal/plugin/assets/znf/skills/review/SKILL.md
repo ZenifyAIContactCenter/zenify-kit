@@ -27,8 +27,15 @@ The engine runs 5 gates in order. M4a implements only REVIEW (3); the other 4 ga
 ```bash
 BASE=${BASE:-HEAD}            # ship passes base; standalone uses HEAD
 ADDED=$(git diff --numstat "$BASE" | awk '{a+=$1+$2} END{print a+0}')
-# shared contract: reuse the gate's signal (DB collection/endpoint/queue/pub-sub)
-SHARED=$(git diff "$BASE" | rg -c 'collection\(|@InjectModel|emit\(|publish\(|subscribe\(|\.route\(|router\.(get|post|put|delete)' >/dev/null && echo 1 || echo 0)
+# shared contract: reuse the gate's signal (DB collection/endpoint/queue/pub-sub).
+# Scan CODE lines only (git diff '+' added and '-' removed lines, minus the
+# '+++ '/'--- ' file headers) so a contract DELETION still escalates the tier, and
+# skip data files (json/md/lock/snap) — otherwise a data string such as `.collection(`
+# in a JSON fixture falsely sets SHARED=1. `.md` is excluded specifically so this very
+# SKILL.md (which quotes the rg pattern below) does not self-match — do not re-include it.
+SHARED=$(git diff "$BASE" -- ':(exclude)*.json' ':(exclude)*.md' ':(exclude)*.lock' ':(exclude)*.snap' \
+  | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' \
+  | rg -c 'collection\(|@InjectModel|emit\(|publish\(|subscribe\(|\.route\(|router\.(get|post|put|delete)' >/dev/null && echo 1 || echo 0)
 CRITICAL=0                    # caller (ship/user) sets 1 if a sensitive area (auth/tenant/migration)
 ```
 
