@@ -18,14 +18,17 @@ type hookSpec struct {
 	ID      string // hooks-run dispatch id, e.g. "docs-sync"
 }
 
-// znfHookSpecs mirrors internal/plugin/assets/znf/hooks/hooks.json, but the
-// command is the external dispatcher form `zenify hooks-run <id>`.
+// znfHookSpecs is the single source of truth for the hooks the kit wires into
+// ~/.claude/settings.json (the command is the dispatcher form
+// `zenify hooks-run <id>`). PreToolUse/PostToolUse matchers name the harness
+// tool names: the subagent tool was `Task` and is `Agent` in current builds,
+// so every subagent-scoped matcher (observe-count AND observe-meter) names both.
 func znfHookSpecs() []hookSpec {
 	return []hookSpec{
 		{Event: "SessionStart", Matcher: "", ID: "session-start"},
 		{Event: "Stop", Matcher: "", ID: "docs-sync"},
-		{Event: "PreToolUse", Matcher: "Task", ID: "observe-count"},
-		{Event: "PostToolUse", Matcher: "Task|Bash|WebFetch|WebSearch|Read", ID: "observe-meter"},
+		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count"},
+		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter"},
 	}
 }
 
@@ -115,10 +118,19 @@ func EnsureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
 	return ch, nil
 }
 
-// mergeOneHook ensures one (event,matcher,command) exists exactly once.
-// Returns true if it mutated the tree.
+// mergeOneHook ensures spec's command sits in the group whose matcher equals
+// spec.Matcher. Before that, any znf entry with the same ID living under a
+// DIFFERENT matcher of the same event is removed (matcher migration, W0
+// FR-02.2); a group emptied that way is dropped. Foreign hooks are never
+// touched. A migration counts once, as Updated. Returns true when anything
+// changed.
 func mergeOneHook(hooks map[string]any, spec hookSpec, ch *HookChanges) bool {
 	groups, _ := hooks[spec.Event].([]any)
+
+	groups, migrated := pruneStaleMatcherGroups(groups, spec)
+	if migrated {
+		hooks[spec.Event] = groups
+	}
 
 	// Find a group matching this matcher.
 	var group map[string]any
@@ -158,6 +170,10 @@ func mergeOneHook(hooks map[string]any, spec hookSpec, ch *HookChanges) bool {
 		// Same dispatch id? (compare the id token, tolerate flag drift)
 		if znfID(cmd) == spec.ID {
 			if cmd == want {
+				if migrated {
+					ch.Updated++
+					return true
+				}
 				ch.Unchanged++
 				return false
 			}
@@ -172,8 +188,48 @@ func mergeOneHook(hooks map[string]any, spec hookSpec, ch *HookChanges) bool {
 
 	inner = append(inner, map[string]any{"type": "command", "command": want})
 	group["hooks"] = inner
-	ch.Added++
+	if migrated {
+		ch.Updated++
+	} else {
+		ch.Added++
+	}
 	return true
+}
+
+// pruneStaleMatcherGroups removes spec.ID's znf entry from every group of the
+// event whose matcher differs from spec.Matcher. Groups left empty by that
+// removal are dropped; groups that were already empty, and every foreign
+// hook, are left exactly as found. Reports whether anything was removed.
+func pruneStaleMatcherGroups(groups []any, spec hookSpec) ([]any, bool) {
+	out := make([]any, 0, len(groups))
+	removed := false
+	for _, g := range groups {
+		gm, ok := g.(map[string]any)
+		if !ok || matcherOf(gm) == spec.Matcher {
+			out = append(out, g)
+			continue
+		}
+		inner, _ := gm["hooks"].([]any)
+		kept := make([]any, 0, len(inner))
+		for _, h := range inner {
+			if hm, ok := h.(map[string]any); ok {
+				cmd, _ := hm["command"].(string)
+				if isZnfMarked(cmd) && znfID(cmd) == spec.ID {
+					removed = true
+					continue
+				}
+			}
+			kept = append(kept, h)
+		}
+		if len(kept) != len(inner) {
+			if len(kept) == 0 {
+				continue // group emptied by the migration → drop it
+			}
+			gm["hooks"] = kept
+		}
+		out = append(out, gm)
+	}
+	return out, removed
 }
 
 func matcherOf(group map[string]any) string {

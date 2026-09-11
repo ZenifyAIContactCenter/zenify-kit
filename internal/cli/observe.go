@@ -45,7 +45,7 @@ func runObserveCount(stdin io.Reader, stdout io.Writer, getenv func(string) stri
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return 0
 	}
-	if p.ToolName != "Task" {
+	if p.ToolName != "Task" && p.ToolName != "Agent" { // subagent tool: legacy and current name
 		return 0
 	}
 	softCap := observe.ResolveCap(getenv)
@@ -73,8 +73,8 @@ func runObserveCount(stdin io.Reader, stdout io.Writer, getenv func(string) stri
 // runObserveMeter is the exit-code core for the PostToolUse meter hook, factored
 // out (like runObserveCount) so tests inject record without exec'ing the binary.
 // It ALWAYS returns 0 — metering is passive and never blocks — and a deferred
-// recover keeps even a panic at exit 0. Tool scoping is done by the hooks.json
-// matcher, not here, so the matcher can change without a recompile.
+// recover keeps even a panic at exit 0. Tool scoping is done by the PostToolUse matcher
+// in internal/apply/globalhooks.go (znfHookSpecs), not here.
 func runObserveMeter(stdin io.Reader, record func(string, string, int64, time.Time)) (code int) {
 	defer func() {
 		if r := recover(); r != nil {

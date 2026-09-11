@@ -87,3 +87,22 @@ repos:
 		t.Errorf("missing overlay should not error: %v", err)
 	}
 }
+
+func TestParseWithOverlay_FromBytes(t *testing.T) {
+	base := []byte("org: acme\nrepos:\n  - name: a\n    path: repos/a\n")
+	dir := t.TempDir()
+	ov := filepath.Join(dir, "overlay.yaml")
+	if err := os.WriteFile(ov, []byte("repos:\n  - name: a\n    path: elsewhere/a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := ParseWithOverlay(base, "embedded", ov)
+	if err != nil {
+		t.Fatalf("ParseWithOverlay: %v", err)
+	}
+	if m.Repos[0].Path != "elsewhere/a" {
+		t.Fatalf("overlay not applied: %+v", m.Repos[0])
+	}
+	if _, err := Parse([]byte("repos: []\n"), "embedded"); err == nil {
+		t.Fatal("empty org must error")
+	}
+}

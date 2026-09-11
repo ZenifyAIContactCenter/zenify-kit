@@ -39,13 +39,13 @@ func dispatchHook(id, wsRoot string, w io.Writer) int {
 	}
 	switch id {
 	case "session-start":
-		return runSessionStart(wsRoot, w) // Task 4/5
+		return runSessionStart(wsRoot, w)
 	case "docs-sync":
-		return runDocsSyncHook(wsRoot, w) // Task 4
+		return runDocsSyncHook(wsRoot, w)
 	case "observe-count":
-		return runObserveHook(wsRoot, "count", w) // Task 4
+		return runObserveHook(wsRoot, "count", w)
 	case "observe-meter":
-		return runObserveHook(wsRoot, "meter", w) // Task 4
+		return runObserveHook(wsRoot, "meter", w)
 	default:
 		return noop() // unknown id: fail-open
 	}

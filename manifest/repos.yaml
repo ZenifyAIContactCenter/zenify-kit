@@ -1,6 +1,6 @@
 # Repo manifest (FR-068) — desired set of repos zenify onboarding may wire.
 # Versioned in the kit; adding a repo is one commit, teammates re-run to pick up the delta.
-# `path` is relative to the workspace root and overridable per-dev via a local overlay.
+# `path` is relative to the workspace root (team layout: `repos/<name>`, see `zenify migrate`) and overridable per-dev via a local overlay.
 org: ZenifyAIContactCenter
 # Env keys the kit scaffolds into each repo's .claude/settings.local.json as
 # EMPTY placeholders (FR-065). Only the key NAMES are versioned here — a secret
@@ -21,56 +21,56 @@ secretKeys:
 repos:
   - name: contact-center-be
     url: git@github.com:ZenifyAIContactCenter/contact-center-be.git
-    path: contact-center-be
+    path: repos/contact-center-be
     base: origin/staging
     tags: [primary, backend]
   - name: contact-center-web
     url: git@github.com:ZenifyAIContactCenter/contact-center-web.git
-    path: contact-center-web
+    path: repos/contact-center-web
     base: origin/staging
     tags: [primary, frontend]
   - name: contact-center-hub
     url: git@github.com:ZenifyAIContactCenter/contact-center-hub.git
-    path: contact-center-hub
+    path: repos/contact-center-hub
     base: origin/staging
     tags: [primary, backend]
   - name: chatting
     url: git@github.com:ZenifyAIContactCenter/chatting.git
-    path: chatting
+    path: repos/chatting
     base: origin/staging
     tags: [primary, realtime]
   - name: notification
     url: git@github.com:ZenifyAIContactCenter/notification.git
-    path: notification
+    path: repos/notification
     base: origin/staging
     tags: [realtime]
   - name: change-stream-subscriber
     url: git@github.com:ZenifyAIContactCenter/change-stream-subscriber.git
-    path: change-stream-subscriber
+    path: repos/change-stream-subscriber
     base: origin/staging
     tags: [infra, realtime]
   - name: lumi-agent
     url: git@github.com:ZenifyAIContactCenter/lumi-agent.git
-    path: lumi-agent
+    path: repos/lumi-agent
     base: origin/staging
     tags: [ai]
   - name: notification-hub-be
     url: git@github.com:ZenifyAIContactCenter/notification-hub-be.git
-    path: notification-hub-be
+    path: repos/notification-hub-be
     base: origin/staging
     tags: [backend, comm-hub]
   - name: notification-hub-web
     url: git@github.com:ZenifyAIContactCenter/notification-hub-web.git
-    path: notification-hub-web
+    path: repos/notification-hub-web
     base: origin/staging
     tags: [frontend, comm-hub]
   - name: ott-gateway
     url: git@github.com:ZenifyAIContactCenter/ott-gateway.git
-    path: ott-gateway
+    path: repos/ott-gateway
     base: origin/staging
     tags: [backend, gateway]
   - name: personal-zalo-gateway
     url: git@github.com:ZenifyAIContactCenter/personal-zalo-gateway.git
-    path: personal-zalo-gateway
+    path: repos/personal-zalo-gateway
     base: origin/staging
     tags: [backend, gateway]

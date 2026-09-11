@@ -225,24 +225,10 @@ func runApply(w io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, wor
 	// FAIL-OPEN — never affects `failed` or the return below.
 	ensureDocsStore(w, git, workspace)
 
-	// Wire znf hooks into ~/.claude/settings.json (fail-open; never affects `failed`).
+	// Hooks + model pin + store config distribution, all fail-open (W0 FR-01.4);
+	// never affects `failed`.
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		if ch, herr := apply.EnsureGlobalHooks(home, false); herr != nil {
-			_, _ = fmt.Fprintf(w, "warning: hook wiring skipped: %v\n", herr)
-		} else if n := ch.Added + ch.Updated; n > 0 {
-			// Only report when something changed (see skills.go) — avoids a
-			// "wired N" line on every up-to-date apply.
-			_, _ = fmt.Fprintf(w, "wired %d znf hooks\n", n)
-		}
-	}
-
-	// Pin the workspace default model to the one the znf workflow is calibrated
-	// for (fail-open; never affects `failed`). Scoped to <workspace>/.claude, so
-	// it leaves other projects alone; enforced every apply; idempotent.
-	if ch, merr := apply.EnsureWorkspaceModel(workspace, false); merr != nil {
-		_, _ = fmt.Fprintf(w, "warning: model default skipped: %v\n", merr)
-	} else if ch {
-		_, _ = fmt.Fprintf(w, "pinned workspace model → %s\n", apply.DefaultModel)
+		ensureWorkspace(workspace, home, w, os.Stderr)
 	}
 
 	if failed > 0 {
@@ -322,11 +308,6 @@ func newUpCmd() *cobra.Command {
 			if err := dryRunApplyConflict(applyFlag, cmd.Flags().Changed("dry-run"), dryRun); err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
-			if manifestPath == "" {
-				// The manifest is versioned inside the kit checkout, not the
-				// scanned workspace — default relative to cwd, not --workspace.
-				manifestPath = filepath.Join("manifest", "repos.yaml")
-			}
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
 			}
@@ -338,7 +319,7 @@ func newUpCmd() *cobra.Command {
 			// is no reason to gate them behind a successful repo-plan build
 			// (SC-10 dry-run parity).
 			isPreview := !applyFlag
-			m, err := manifest.LoadWithOverlay(manifestPath, overlayPath)
+			m, _, err := loadKitManifest(manifestPath, overlayPath)
 			if err != nil {
 				if isPreview {
 					printPlanFooterRows(w, workspace)
@@ -383,7 +364,7 @@ func newUpCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "never prompt — forces the headless dry-run/apply path instead of the interactive wizard")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "preview the plan without making changes")
 	cmd.Flags().StringVar(&workspace, "workspace", ".", "workspace root directory")
-	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default manifest/repos.yaml relative to the kit checkout)")
+	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default: manifest/repos.yaml under cwd when present, else the copy embedded in the binary)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "apply changes without the interactive wizard (required for non-interactive/CI runs)")
 	return cmd

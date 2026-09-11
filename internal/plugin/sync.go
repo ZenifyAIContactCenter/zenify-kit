@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
@@ -22,6 +23,7 @@ type Result struct {
 	Written []string
 	Kept    []string
 	Skipped []string
+	Removed []string // recorded files the embed no longer ships (pruned)
 }
 
 func DefaultDest() (string, error) {
@@ -41,13 +43,14 @@ func DefaultManifest() (string, error) {
 }
 
 // Sync writes every file in the embed out to destRoot, recording it in the manifest at manifestPath.
-// Additive: only writes WITHIN destRoot. Refresh-safe via managed.DecideRefresh.
+// Writes and prunes only WITHIN destRoot; prune touches recorded files only. Refresh-safe via managed.DecideRefresh.
 func Sync(destRoot, manifestPath string) (Result, error) {
 	var res Result
 	m, err := managed.Load(manifestPath)
 	if err != nil {
 		return res, err
 	}
+	present := map[string]bool{}
 	err = fs.WalkDir(assets, embedRoot, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -57,6 +60,7 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 		}
 		rel := strings.TrimPrefix(p, embedRoot+"/")
 		target := filepath.Join(destRoot, rel)
+		present[target] = true
 		content, err := assets.ReadFile(p)
 		if err != nil {
 			return err
@@ -93,6 +97,49 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 	if err != nil {
 		return res, err
 	}
+	// Prune (W0 FR-06.4): a file we recorded in an earlier sync that the embed
+	// no longer contains is dead — remove it and forget it. Only paths under
+	// destRoot are considered, and only recorded ones: a user-placed file is
+	// never recorded, so it is never touched.
+	destRootClean := filepath.Clean(destRoot)
+	for path := range m.Entries {
+		if present[path] {
+			continue
+		}
+		rel, err := filepath.Rel(destRoot, path)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			// Outside destRoot: leave the entry inert rather than deleting the
+			// record for a file we refuse to touch — never repaired, but also
+			// never silently forgotten.
+			continue
+		}
+		if existing, rerr := os.ReadFile(path); rerr == nil { //nolint:gosec // G304 -- path comes from our own manifest entries, joined under destRoot
+			if m.DecideRefresh(path, existing) == managed.DecisionKeepModified {
+				// The embed dropped this file, but the user edited it since we
+				// last wrote it — same "don't clobber a manual edit" contract
+				// the write path honors above; keep the file and its entry.
+				res.Kept = append(res.Kept, path)
+				continue
+			}
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			continue
+		}
+		delete(m.Entries, path)
+		res.Removed = append(res.Removed, path)
+		// A prune can leave an empty parent directory behind (e.g. hooks/ after
+		// its last file goes) — clean those up too, never above destRoot.
+		for dir := filepath.Dir(path); dir != destRootClean; dir = filepath.Dir(dir) {
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) > 0 {
+				break
+			}
+			if err := os.Remove(dir); err != nil {
+				break
+			}
+		}
+	}
+	sort.Strings(res.Removed)
 	m.Version = version.Current()
 	if err := m.Save(manifestPath); err != nil {
 		return res, err
