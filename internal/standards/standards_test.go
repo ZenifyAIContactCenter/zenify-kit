@@ -125,6 +125,30 @@ func TestTestPathsByTask_CollectsTestFileUnderCreateBullet(t *testing.T) {
 	}
 }
 
+// D1 regression: testFileNameRe mirrors testFuncRe's languages — a *_test.py
+// (pytest suffix), a .mjs test, and a Minitest *_test.rb under a Create: bullet
+// must all be collected, or the false untested-fr this fix kills returns for non-Go.
+func TestTestPathsByTask_CollectsNonGoTestConventions(t *testing.T) {
+	plan := "### Task 1: polyglot\n" +
+		"**Files:**\n" +
+		"- Create: `svc/foo_test.py`\n" +
+		"- Create: `web/foo.test.mjs`\n" +
+		"- Create: `lib/foo_test.rb`\n" +
+		"- Create: `svc/foo.py`\n"
+	var all []string
+	for _, ps := range testPathsByTask(plan) {
+		all = append(all, ps...)
+	}
+	for _, want := range []string{"svc/foo_test.py", "web/foo.test.mjs", "lib/foo_test.rb"} {
+		if !stdContains(all, want) {
+			t.Fatalf("expected %s collected, got %v", want, all)
+		}
+	}
+	if stdContains(all, "svc/foo.py") {
+		t.Fatalf("production file must NOT be collected as a test path: %v", all)
+	}
+}
+
 // D1 regression: the legacy "Test:" label path still works.
 func TestTestPathsByTask_LegacyTestLabelStillWorks(t *testing.T) {
 	plan := "### Task 2: legacy\n" +

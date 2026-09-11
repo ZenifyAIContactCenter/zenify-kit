@@ -40,10 +40,11 @@ var (
 	// bulletRe matches any Markdown list item (-, *, +).
 	bulletRe = regexp.MustCompile(`^\s*[-*+]\s+`)
 	// testFileNameRe matches a path whose basename looks like a test file, in any
-	// language testFuncRe covers. It picks test files out of Files-block bullets
-	// whose label does NOT contain "Test" (e.g. "Create:"/"Modify:"), without
-	// pulling production paths listed alongside them.
-	testFileNameRe = regexp.MustCompile(`(?:_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|_spec\.rb|(?:^|/)test_[^/]+\.py)$`)
+	// language testFuncRe covers: *_test.{go,py,rb}, test_*.py, *.{test,spec}.[cm]?[jt]sx?,
+	// *_spec.rb. It picks test files out of Files-block bullets whose label does NOT
+	// contain "Test" (e.g. "Create:"/"Modify:"), without pulling production paths
+	// listed alongside them.
+	testFileNameRe = regexp.MustCompile(`(?:_test\.(?:go|py|rb)|(?:\.test|\.spec)\.[cm]?[jt]sx?|_spec\.rb|(?:^|/)test_[^/]+\.py)$`)
 
 	// language-aware "does this file contain a test function?" detectors, by extension.
 	jsTestRe   = regexp.MustCompile(`\b(it|test|describe)\s*\(`)
