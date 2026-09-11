@@ -325,6 +325,8 @@ command is fail-open, so this step should never itself break the cook flow.
 
 ### First, the worktree — this is the step that writes code
 
+> **Isolation & base-ref doctrine → znf:discipline §8** (single source): worktree is unconditional; the base is the repo's declared baseRef, read never hardcoded; fetch before resolving the base; the carve-outs live there. Below is only what `/cook` adds operationally at this step.
+
 **A worktree, always — house rule #8, no conditions.** It belongs *here*, not at Step 0: the
 plan is agreed, so this is the moment the first line of repo code gets written. Nothing inspects
 `git status --porcelain` to decide, because there is no decision.
@@ -334,11 +336,10 @@ git -C <repo> fetch origin                                    # belt-and-suspend
 cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
 ```
 
-**Fetch again even though Step 0 fetched.** The base moved while brainstorming and planning
-happened — that gap is exactly what the reordering introduced. Current `wt` fetches before resolving
-the base, but keep this explicit fetch: it is required on older builds and harmless on new ones. Skip
-it on an older build and you get a worktree that looks freshly based and is not, discovered at merge
-time.
+**Fetch again even though Step 0 fetched — this is the cook-specific reason.** The base moved while
+brainstorming and planning happened, which is real time; that gap is exactly what the Step-0/Step-6
+split introduced. Keep the explicit fetch above; why it stays load-bearing across `wt` builds is the
+base-ref rule in znf:discipline §8.
 
 **Polyrepo:** one worktree per affected repo, **same slug** in every one.
 
