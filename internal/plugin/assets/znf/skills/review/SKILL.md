@@ -27,8 +27,13 @@ The engine runs 5 gates in order. M4a implements only REVIEW (3); the other 4 ga
 ```bash
 BASE=${BASE:-HEAD}            # ship passes base; standalone uses HEAD
 ADDED=$(git diff --numstat "$BASE" | awk '{a+=$1+$2} END{print a+0}')
-# shared contract: reuse the gate's signal (DB collection/endpoint/queue/pub-sub)
-SHARED=$(git diff "$BASE" | rg -c 'collection\(|@InjectModel|emit\(|publish\(|subscribe\(|\.route\(|router\.(get|post|put|delete)' >/dev/null && echo 1 || echo 0)
+# shared contract: reuse the gate's signal (DB collection/endpoint/queue/pub-sub).
+# Scan ADDED code lines only (git diff '+' lines, minus the '+++' file header),
+# and skip data files (json/md/lock/snap) — otherwise a data string such as
+# `.collection(` inside a JSON fixture falsely sets SHARED=1 and escalates the tier.
+SHARED=$(git diff "$BASE" -- ':(exclude)*.json' ':(exclude)*.md' ':(exclude)*.lock' ':(exclude)*.snap' \
+  | grep -E '^\+' | grep -vE '^\+\+\+' \
+  | rg -c 'collection\(|@InjectModel|emit\(|publish\(|subscribe\(|\.route\(|router\.(get|post|put|delete)' >/dev/null && echo 1 || echo 0)
 CRITICAL=0                    # caller (ship/user) sets 1 if a sensitive area (auth/tenant/migration)
 ```
 
