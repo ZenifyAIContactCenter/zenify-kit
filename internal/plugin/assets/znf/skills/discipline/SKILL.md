@@ -132,6 +132,12 @@ the only reason to open another — not "this bit feels different", which is how
 work becomes many branches in a day. A hotfix is exempt automatically: different base ref, and
 mid-feature is exactly when production breaks.
 
+**The base is the repo's DECLARED base ref, and it is read, never hardcoded.** A repo declares
+its base in its worktree config; feature and fix work take that declared base, and a **hotfix
+overrides it** to the latest release ref, resolved *after* the fetch (below). A skill that pastes a
+literal branch name instead of reading the declared base is the drift this rule exists to stop — the
+name is right for one repo and silently wrong for the next.
+
 ```bash
 # feature or fix — base is the latest integration branch
 git fetch origin
