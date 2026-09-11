@@ -225,6 +225,74 @@ func TestEnsureGlobalHooks_PreservesFileMode(t *testing.T) {
 	}
 }
 
+// SC-2: an observe-count entry planted under the old "Task" matcher moves to
+// "Task|Agent"; a foreign hook sharing the old group stays; counted once as
+// Updated; a second run is Unchanged.
+func TestEnsureGlobalHooks_MigratesMatcher(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{"hooks":{"PreToolUse":[
+	  {"matcher":"Task","hooks":[
+	    {"type":"command","command":"zenify hooks-run observe-count"},
+	    {"type":"command","command":"echo foreign"}
+	  ]}
+	]}}`)
+	ch, err := EnsureGlobalHooks(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Updated != 1 {
+		t.Fatalf("Updated = %d, want 1 (migration counted once): %+v", ch.Updated, ch)
+	}
+	raw, _ := os.ReadFile(settingsPath(home))
+	var root struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &root); err != nil {
+		t.Fatal(err)
+	}
+	byMatcher := map[string][]string{}
+	for _, g := range root.Hooks["PreToolUse"] {
+		for _, h := range g.Hooks {
+			byMatcher[g.Matcher] = append(byMatcher[g.Matcher], h.Command)
+		}
+	}
+	if got := byMatcher["Task"]; len(got) != 1 || got[0] != "echo foreign" {
+		t.Fatalf("old group must keep only the foreign hook, got %v", got)
+	}
+	if got := byMatcher["Task|Agent"]; len(got) != 1 || got[0] != "zenify hooks-run observe-count" {
+		t.Fatalf("new group must hold observe-count, got %v", got)
+	}
+
+	ch2, err := EnsureGlobalHooks(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch2.Added != 0 || ch2.Updated != 0 {
+		t.Fatalf("second run must be idempotent, got %+v", ch2)
+	}
+}
+
+// FR-02.2: when the old group held only the znf entry, the emptied group is
+// dropped rather than left as an empty matcher block.
+func TestEnsureGlobalHooks_MigrationDropsEmptiedGroup(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{"hooks":{"PreToolUse":[
+	  {"matcher":"Task","hooks":[{"type":"command","command":"zenify hooks-run observe-count"}]}
+	]}}`)
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(settingsPath(home))
+	if strings.Contains(string(raw), `"matcher": "Task"`) {
+		t.Fatalf("emptied Task group must be removed:\n%s", raw)
+	}
+}
+
 // Review fix round 1, finding 3 (Minor): a non-object "hooks" value (string,
 // array, number, null) must never be replaced or dropped — fail-open the
 // same way as malformed JSON.
