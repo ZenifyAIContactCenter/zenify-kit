@@ -14,7 +14,7 @@ var defaultManifestRel = filepath.Join("manifest", "repos.yaml")
 
 // loadKitManifest resolves the repos manifest for `up` and `down` (FR-05):
 //  1. explicit != "" → that file, errors surface (no fallback);
-//  2. manifest/repos.yaml under cwd → that file (kit dev loop);
+//  2. a regular file manifest/repos.yaml under cwd → that file (kit dev loop);
 //  3. otherwise the embedded default compiled into the binary.
 //
 // The second return value names the source ("embedded" or the path) so the
@@ -24,7 +24,7 @@ func loadKitManifest(explicit, overlayPath string) (*manifest.Manifest, string, 
 		m, err := manifest.LoadWithOverlay(explicit, overlayPath)
 		return m, explicit, err
 	}
-	if _, err := os.Stat(defaultManifestRel); err == nil {
+	if fi, err := os.Stat(defaultManifestRel); err == nil && fi.Mode().IsRegular() {
 		m, err := manifest.LoadWithOverlay(defaultManifestRel, overlayPath)
 		return m, defaultManifestRel, err
 	}

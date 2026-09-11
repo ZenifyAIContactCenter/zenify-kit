@@ -45,9 +45,12 @@ func runObserveHook(wsRoot, kind string, w io.Writer) int {
 // runSessionStart is the Go body of the SessionStart hook (it runs as a global
 // hook, so no $CLAUDE_PLUGIN_ROOT is available; the materialized skill path is
 // used directly). Order matters: docs-sync first so the store is current, then
-// ensureWorkspace so freshly pulled rules land in .claude/rules before the
-// session reads them, then the BOOTSTRAP digest for machines without the
-// discipline sentinel.
+// ensureWorkspace so freshly pulled rules land in .claude/rules — the harness
+// has already loaded this session's settings/rules by the time SessionStart
+// fires, so the writes take effect from the next session; the CREATE/UPDATE
+// lines forwarded to stdout are what tell the CURRENT session its on-disk
+// rules are newer than what it loaded. Then the BOOTSTRAP digest for machines
+// without the discipline sentinel.
 func runSessionStart(wsRoot string, w io.Writer) int {
 	defer failOpen(w)
 	if err := docsSyncCore(wsRoot, os.Stderr); err != nil {

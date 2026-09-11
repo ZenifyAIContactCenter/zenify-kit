@@ -66,3 +66,20 @@ func TestLoadKitManifest_ExplicitWins(t *testing.T) {
 		t.Fatal("explicit missing path must error, not fall back")
 	}
 }
+
+// Ship-review finding: a DIRECTORY named manifest/repos.yaml under cwd must not
+// hijack the fallback — only a regular file wins over the embed.
+func TestLoadKitManifest_DirectoryNamedManifestFallsBackToEmbed(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, defaultManifestRel), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m, src, err := loadKitManifest("", filepath.Join(t.TempDir(), "none.yaml"))
+	if err != nil {
+		t.Fatalf("loadKitManifest: %v", err)
+	}
+	if src != "embedded" || len(m.Repos) == 0 {
+		t.Fatalf("want embedded manifest, got src=%q repos=%d", src, len(m.Repos))
+	}
+}

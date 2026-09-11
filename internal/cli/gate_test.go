@@ -136,3 +136,36 @@ func TestGateParticipants_CorruptStoreFileIgnored(t *testing.T) {
 		t.Fatalf("expected a stderr note naming the file, got %q", e.String())
 	}
 }
+
+// Ship-review finding: a read failure that is NOT "file missing" (here EISDIR —
+// the participants file is a directory) must be reported, not treated as an
+// empty list.
+func TestGateParticipants_UnreadableStoreFileReported(t *testing.T) {
+	storeWithParticipants(t, "")
+	cfg := filepath.Join(os.Getenv("ZENIFY_HOME"), "knowledge", ".config")
+	if err := os.Mkdir(filepath.Join(cfg, gateParticipantsFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var e bytes.Buffer
+	if got := storeParticipants(t.TempDir(), &e); len(got) != 0 {
+		t.Fatalf("unreadable file must yield nothing, got %+v", got)
+	}
+	if !strings.Contains(e.String(), gateParticipantsFile) {
+		t.Fatalf("expected a stderr note naming the file, got %q", e.String())
+	}
+}
+
+// Ship-review finding: a store entry with no checkout under the workspace
+// stays listed (the team list is the contract) — the missing-directory case is
+// covered by the stderr note in gateParticipants, exercised here for the list
+// shape only since that function writes to os.Stderr.
+func TestGateParticipants_StoreEntryWithoutCheckoutStaysListed(t *testing.T) {
+	storeWithParticipants(t, `[{"name":"ghost","accessPatterns":[".collection("],"dbAccessor":"zenify db-read"}]`)
+	ps, err := gateParticipants(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ps) != 1 || ps[0].Name != "ghost" {
+		t.Fatalf("store entry must stay listed even without a checkout, got %+v", ps)
+	}
+}
