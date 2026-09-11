@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
@@ -100,12 +101,16 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 	// no longer contains is dead — remove it and forget it. Only paths under
 	// destRoot are considered, and only recorded ones: a user-placed file is
 	// never recorded, so it is never touched.
+	destRootClean := filepath.Clean(destRoot)
 	for path := range m.Entries {
 		if present[path] {
 			continue
 		}
 		rel, err := filepath.Rel(destRoot, path)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			// Outside destRoot: leave the entry inert rather than deleting the
+			// record for a file we refuse to touch — never repaired, but also
+			// never silently forgotten.
 			continue
 		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
@@ -113,7 +118,19 @@ func Sync(destRoot, manifestPath string) (Result, error) {
 		}
 		delete(m.Entries, path)
 		res.Removed = append(res.Removed, path)
+		// A prune can leave an empty parent directory behind (e.g. hooks/ after
+		// its last file goes) — clean those up too, never above destRoot.
+		for dir := filepath.Dir(path); dir != destRootClean; dir = filepath.Dir(dir) {
+			entries, err := os.ReadDir(dir)
+			if err != nil || len(entries) > 0 {
+				break
+			}
+			if err := os.Remove(dir); err != nil {
+				break
+			}
+		}
 	}
+	sort.Strings(res.Removed)
 	m.Version = version.Current()
 	if err := m.Save(manifestPath); err != nil {
 		return res, err
