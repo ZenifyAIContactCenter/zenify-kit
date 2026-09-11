@@ -25,17 +25,16 @@ State which path and why (one line). If the narrow path's single hypothesis does
 Step 2, you were on the wide path all along — go run it, do not patch the symptom.
 
 **Isolation (house rule #8): a worktree, always — no conditions, whatever the size of the fix.**
-The main checkout stays clean.
+
+> **Isolation & base-ref doctrine → znf:discipline §8** (single source): worktree is unconditional; the base is the repo's declared baseRef, read never hardcoded; fetch before resolving the base; the carve-outs (not-a-repo / gitignored / no worktree-config → herdr / unsupported toolchain) live there too. What follows is only `/fix`'s operational step.
 
 ```bash
-git -C <repo> fetch origin                                   # belt-and-suspenders — current wt fetches too, older builds do not
-cd <repo> && wt new <slug> --type fix --base origin/staging
+git -C <repo> fetch origin                                   # before resolving the base — see znf:discipline §8
+cd <repo> && wt new <slug> --type fix --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
 ```
 
-Keep the explicit `fetch`: current `wt` fetches before resolving the base, but older builds contain
-no `git fetch`, so on those `--base origin/staging` resolves against a local ref that may be weeks
-old and you write the fix on top of code that has already moved. One worktree per affected repo, same
-slug.
+The base is read from the repo's `worktree.json` `baseRef` — never a hardcoded branch — so `/fix`
+lands on whatever integration base that repo actually declares. One worktree per affected repo, same slug.
 
 **No workspace handoff here, unlike `/cook` — and the reason is the artifact.** `/cook` can move
 Step 6 into a workspace of its own because what crosses over is a **plan file** that
