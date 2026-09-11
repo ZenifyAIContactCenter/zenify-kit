@@ -137,7 +137,10 @@ func ExpandDirPairs(pairs []Pair, listDir func(string) ([]string, error)) ([]Pai
 
 // Apply writes CREATE/UPDATE files (re-reads source via readSource, writes via writeDest).
 // SAME/SKIP write nothing. Fail-open: read/write errors become a note, do not stop.
-func Apply(plans []FilePlan, readSource func(string) ([]byte, error), writeDest func(dest string, data []byte) error) []string {
+// Returns the number of files written successfully (typed count, so callers need not
+// parse the human-readable notes) alongside those notes.
+func Apply(plans []FilePlan, readSource func(string) ([]byte, error), writeDest func(dest string, data []byte) error) (int, []string) {
+	written := 0
 	var notes []string
 	for _, p := range plans {
 		if p.State != Create && p.State != Update {
@@ -152,7 +155,8 @@ func Apply(plans []FilePlan, readSource func(string) ([]byte, error), writeDest 
 			notes = append(notes, "could not write "+p.Dest+": "+err.Error())
 			continue
 		}
+		written++
 		notes = append(notes, "đã ghi "+p.Dest) //znf:allow-lang
 	}
-	return notes
+	return written, notes
 }

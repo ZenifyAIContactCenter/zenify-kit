@@ -76,12 +76,9 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 			}
 			return os.WriteFile(full, data, 0o600)
 		}
-		nWritten := 0
-		for _, n := range distribute.Apply(plans, readSource, writeDest) {
+		nWritten, notes := distribute.Apply(plans, readSource, writeDest)
+		for _, n := range notes {
 			fmt.Fprintln(stdout, "  "+n)
-			if strings.HasPrefix(n, "đã ghi ") { //znf:allow-lang
-				nWritten++
-			}
 		}
 		fmt.Fprintf(stdout, "\nĐã áp dụng: %d ghi (%d giữ nguyên, %d bỏ).\n", nWritten, nSame, nSkip) //znf:allow-lang
 		return nWritten, nil

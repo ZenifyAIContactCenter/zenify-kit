@@ -102,7 +102,7 @@ func TestApplyWritesOnlyCreateUpdate(t *testing.T) {
 	readSrc := func(p string) ([]byte, error) { return src[p], nil }
 	writeDst := func(dest string, data []byte) error { written[dest] = data; return nil }
 
-	notes := Apply(plans, readSrc, writeDst)
+	n, notes := Apply(plans, readSrc, writeDst)
 
 	if len(written) != 2 || string(written["da"]) != "A" || string(written["db"]) != "B" {
 		t.Fatalf("only CREATE+UPDATE should write: %v", written)
@@ -112,6 +112,9 @@ func TestApplyWritesOnlyCreateUpdate(t *testing.T) {
 	}
 	if len(notes) != 2 {
 		t.Errorf("want 2 write notes, got %v", notes)
+	}
+	if n != 2 {
+		t.Errorf("want typed written count 2, got %d", n)
 	}
 }
 
@@ -157,8 +160,11 @@ func TestApplyWriteFailureIsNote(t *testing.T) {
 	plans := []FilePlan{{Source: "a", Dest: "da", State: Create}}
 	readSrc := func(p string) ([]byte, error) { return []byte("A"), nil }
 	writeDst := func(dest string, data []byte) error { return errTest("disk full") }
-	notes := Apply(plans, readSrc, writeDst)
+	n, notes := Apply(plans, readSrc, writeDst)
 	if len(notes) != 1 || !strings.Contains(notes[0], "disk full") {
 		t.Fatalf("write failure must be a note, got %v", notes)
+	}
+	if n != 0 {
+		t.Fatalf("a failed write must not count as written, got %d", n)
 	}
 }
