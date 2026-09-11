@@ -37,6 +37,13 @@ var (
 	// covers "- Test:" and the compound "- Create/Test:". No colon/backtick in the label.
 	testBulletRe = regexp.MustCompile("^\\s*[-*+]\\s+[^:`]*Test[^:`]*:")
 	backtickRe   = regexp.MustCompile("`([^`]+)`")
+	// bulletRe matches any Markdown list item (-, *, +).
+	bulletRe = regexp.MustCompile(`^\s*[-*+]\s+`)
+	// testFileNameRe matches a path whose basename looks like a test file, in any
+	// language testFuncRe covers. It picks test files out of Files-block bullets
+	// whose label does NOT contain "Test" (e.g. "Create:"/"Modify:"), without
+	// pulling production paths listed alongside them.
+	testFileNameRe = regexp.MustCompile(`(?:_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|_spec\.rb|(?:^|/)test_[^/]+\.py)$`)
 
 	// language-aware "does this file contain a test function?" detectors, by extension.
 	jsTestRe   = regexp.MustCompile(`\b(it|test|describe)\s*\(`)
@@ -69,9 +76,25 @@ func testPathsByTask(planText string) map[string][]string {
 			cur = strings.TrimSpace(ln)
 			continue
 		}
-		if cur != "" && testBulletRe.MatchString(ln) {
+		if cur == "" {
+			continue
+		}
+		// (a) legacy: a bullet whose LABEL contains "Test:" — take its first path.
+		if testBulletRe.MatchString(ln) {
 			if m := backtickRe.FindStringSubmatch(ln); m != nil {
 				out[cur] = append(out[cur], strings.TrimSpace(m[1]))
+			}
+			continue
+		}
+		// (b) any other bullet (Create:/Modify:/…): collect backtick paths whose
+		// basename looks like a test file, so a _test.go listed there still counts
+		// as coverage — but never a production path listed alongside it.
+		if bulletRe.MatchString(ln) {
+			for _, m := range backtickRe.FindAllStringSubmatch(ln, -1) {
+				p := strings.TrimSpace(m[1])
+				if testFileNameRe.MatchString(p) {
+					out[cur] = append(out[cur], p)
+				}
 			}
 		}
 	}

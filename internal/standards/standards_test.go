@@ -105,3 +105,44 @@ func TestCheck_LangDetect_JSAndPy(t *testing.T) {
 		t.Fatalf("want exactly 1 empty-test-file (the .py), got %+v", r.Findings)
 	}
 }
+
+// D1: a _test.go listed under a Create:/Modify: bullet (label not "Test") must
+// still be collected as a test path, while a production file alongside it must not.
+func TestTestPathsByTask_CollectsTestFileUnderCreateBullet(t *testing.T) {
+	plan := "### Task 1: thing\n" +
+		"**Files:**\n" +
+		"- Create: `internal/x/x.go`\n" +
+		"- Create: `internal/x/x_test.go`\n"
+	var all []string
+	for _, ps := range testPathsByTask(plan) {
+		all = append(all, ps...)
+	}
+	if !stdContains(all, "internal/x/x_test.go") {
+		t.Fatalf("expected x_test.go collected, got %v", all)
+	}
+	if stdContains(all, "internal/x/x.go") {
+		t.Fatalf("production file must NOT be collected as a test path: %v", all)
+	}
+}
+
+// D1 regression: the legacy "Test:" label path still works.
+func TestTestPathsByTask_LegacyTestLabelStillWorks(t *testing.T) {
+	plan := "### Task 2: legacy\n" +
+		"- Test: `pkg/foo_test.go`\n"
+	var all []string
+	for _, ps := range testPathsByTask(plan) {
+		all = append(all, ps...)
+	}
+	if !stdContains(all, "pkg/foo_test.go") {
+		t.Fatalf("legacy Test: label path lost, got %v", all)
+	}
+}
+
+func stdContains(ss []string, s string) bool {
+	for _, x := range ss {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
