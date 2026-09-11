@@ -255,3 +255,33 @@ func TestEnsureWorkspace_UpToDateStampNoResync(t *testing.T) {
 		t.Fatalf("resync ran despite up-to-date stamp: %d entries", len(ents))
 	}
 }
+
+// Review finding (ship): a failed config write is a distribute.Apply stdout
+// note, not an error and not counted — when every write fails n == 0 and the
+// old code printed nothing anywhere. The failure note must reach stderr.
+func TestEnsureWorkspace_FailedConfigWriteIsReported(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	storeFixture(t)
+	ws := t.TempDir()
+	// Dest dir exists but is read-only → the plan says CREATE, the write fails.
+	rules := filepath.Join(ws, ".claude", "rules")
+	if err := os.MkdirAll(rules, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(rules, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(rules, 0o755) })
+
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e)
+
+	if strings.Contains(o.String(), "znf config: đã ghi") {
+		t.Fatalf("nothing was written, stdout must not claim a write: %s", o.String())
+	}
+	if !strings.Contains(e.String(), "znf ensure: config: could not write") {
+		t.Fatalf("stderr must carry the failed-write note, got %q", e.String())
+	}
+}

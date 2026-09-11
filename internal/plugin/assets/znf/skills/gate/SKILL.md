@@ -17,8 +17,12 @@ anyone updating this file:
 zenify gate participants --json
 ```
 
-This lists every repo in the workspace whose `.claude/worktree.json` declares
-`gate.sharedStore=true`, each with `accessPatterns` (the kinds of access that repo uses to
+This lists the gate participants from two sources, merged by repo name: first the
+knowledge store's `.config/gate-participants.json` (the team-maintained list, which wins on a
+duplicate name), then every repo in the workspace whose `.claude/worktree.json` declares
+`gate.sharedStore=true` and is not already listed. A repo can therefore appear with no
+`worktree.json` flag of its own — that is the store speaking, not an error — and a repo that
+is unexpectedly missing is added to the store file, not to this skill. Each entry carries `accessPatterns` (the kinds of access that repo uses to
 reach the shared store — DI injection, a model/registry symbol, the raw driver, whatever
 that repo's own config says) and `dbAccessor` (the read-only tool/command for querying the
 real store from that repo, if one is configured). Sweep against **this output**, not against

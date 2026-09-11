@@ -61,6 +61,15 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) {
 			fmt.Fprintln(stderr, "znf ensure: "+line)
 		}
 	}
+	// distribute.Apply reports per-pair write failures as stdout notes
+	// ("could not read source …" / "could not write …"), not as an error and
+	// not in the written count — forward them to stderr regardless of n so a
+	// run in which every write failed still leaves a signal.
+	for _, line := range strings.Split(cfgOut.String(), "\n") {
+		if trimmed := strings.TrimSpace(line); strings.HasPrefix(trimmed, "could not ") {
+			fmt.Fprintln(stderr, "znf ensure: config: "+trimmed)
+		}
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, "znf ensure: config:", err)
 	} else if n > 0 {

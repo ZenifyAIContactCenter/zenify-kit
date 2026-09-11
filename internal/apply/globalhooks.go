@@ -22,13 +22,13 @@ type hookSpec struct {
 // ~/.claude/settings.json (the command is the dispatcher form
 // `zenify hooks-run <id>`). PreToolUse/PostToolUse matchers name the harness
 // tool names: the subagent tool was `Task` and is `Agent` in current builds,
-// so observe-count matches both.
+// so every subagent-scoped matcher (observe-count AND observe-meter) names both.
 func znfHookSpecs() []hookSpec {
 	return []hookSpec{
 		{Event: "SessionStart", Matcher: "", ID: "session-start"},
 		{Event: "Stop", Matcher: "", ID: "docs-sync"},
 		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count"},
-		{Event: "PostToolUse", Matcher: "Task|Bash|WebFetch|WebSearch|Read", ID: "observe-meter"},
+		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter"},
 	}
 }
 

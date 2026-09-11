@@ -311,3 +311,23 @@ func TestEnsureGlobalHooks_NonObjectHooksSkips(t *testing.T) {
 		t.Fatal("settings.json was overwritten despite non-object \"hooks\"")
 	}
 }
+
+// Review finding (ship): the harness renamed the subagent tool Task→Agent, so
+// EVERY subagent-scoped matcher must name both — observe-meter does no tool
+// filtering of its own and would otherwise silently drop all subagent output
+// from the meter.
+func TestZnfHookSpecs_SubagentMatchersNameBothToolNames(t *testing.T) {
+	for _, s := range znfHookSpecs() {
+		if s.Event != "PreToolUse" && s.Event != "PostToolUse" {
+			continue
+		}
+		parts := strings.Split(s.Matcher, "|")
+		has := map[string]bool{}
+		for _, p := range parts {
+			has[p] = true
+		}
+		if !has["Task"] || !has["Agent"] {
+			t.Fatalf("%s/%s matcher %q must name both Task and Agent", s.Event, s.ID, s.Matcher)
+		}
+	}
+}
