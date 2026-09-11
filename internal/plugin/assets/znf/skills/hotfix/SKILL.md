@@ -42,13 +42,10 @@ confirmation, you were on the wide path all along.
    `release-latest`-strategy repo scans `origin/release<N>` branches and returns the highest one.
    Which strategy each repo uses is a project fact, not something to infer here.
 
-   **The fetch order matters and getting it wrong is silent.** Remote-tracking refs (including
-   any `origin/release*` branches) are only as current as the last fetch. `wt`'s own fetch (on
-   recent builds) runs after you have already resolved and passed `--base`, so it cannot help here —
-   you must fetch yourself before resolving the release ref.
-   Resolve the base ref before fetching and you can miss a release cut this morning — then
-   branch, scout, and fix against the wrong version, with everything looking correct the whole
-   way.
+   **Fetch BEFORE resolving the release ref — the reasoning (and why the tool's own fetch is too
+   late) lives in znf:discipline §8's base-ref rule.** For a hotfix the base overrides the declared
+   integration base to the latest release ref, so resolving it against a stale local ref branches
+   from the wrong release entirely — hence the fetch above comes first.
 
    You need this ref now even if you never branch from it: step 4 and step 6 both depend on
    knowing which code is actually running.
