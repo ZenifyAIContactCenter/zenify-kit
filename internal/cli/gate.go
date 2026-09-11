@@ -3,7 +3,9 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
@@ -17,19 +19,54 @@ type participant struct {
 	DBAccessor     string   `json:"dbAccessor"`
 }
 
-// gateParticipants finds repos in workspaceDir down to workspace.DefaultMaxDepth
-// (not just direct children); a repo whose worktree.json has gate.sharedStore=true
-// is a participant. A repo whose Load fails (no worktree.json) or sharedStore=false is skipped.
+// gateParticipantsFile is the store-side participant list, distributed with
+// the rest of <store>/.config (W0 FR-04). It is the primary source; a repo's
+// worktree.json gate.sharedStore=true adds to it without duplicating a name.
+const gateParticipantsFile = "gate-participants.json"
+
+// gateParticipants returns the repos whose changes must go through the
+// contract gate: the store file first (in file order), then any repo under
+// workspaceDir (to workspace.DefaultMaxDepth) whose worktree.json declares
+// gate.sharedStore=true and whose name is not already listed. Never returns a
+// nil slice so --json prints [] for an empty set.
 func gateParticipants(workspaceDir string) ([]participant, error) {
-	var ps []participant
+	ps := storeParticipants(workspaceDir, os.Stderr)
+	seen := make(map[string]bool, len(ps))
+	for _, p := range ps {
+		seen[p.Name] = true
+	}
 	for _, repo := range workspace.Discover(workspaceDir, workspace.DefaultMaxDepth, os.ReadDir) {
+		if seen[repo.Name] {
+			continue
+		}
 		c, err := wt.Load(repo.Path)
 		if err != nil || !c.GateSharedStore {
 			continue
 		}
 		ps = append(ps, participant{Name: repo.Name, AccessPatterns: c.GateAccessPatterns, DBAccessor: c.GateDBAccessor})
+		seen[repo.Name] = true
+	}
+	if ps == nil {
+		ps = []participant{}
 	}
 	return ps, nil
+}
+
+// storeParticipants reads <store>/.config/gate-participants.json. A missing
+// file is an empty list; a corrupt file is one stderr line and an empty list.
+func storeParticipants(workspaceDir string, stderr io.Writer) []participant {
+	dir := filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultConfigSub)
+	path := filepath.Join(dir, gateParticipantsFile)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is inside the trusted store config dir, not user input
+	if err != nil {
+		return nil
+	}
+	var ps []participant
+	if err := json.Unmarshal(b, &ps); err != nil {
+		fmt.Fprintf(stderr, "gate: %s không đọc được: %v\n", path, err) //znf:allow-lang
+		return nil
+	}
+	return ps
 }
 
 func newGateCmd() *cobra.Command {
@@ -38,7 +75,7 @@ func newGateCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "gate", Short: "trợ giúp gate (contract sweep)"} //znf:allow-lang
 	participants := &cobra.Command{
 		Use:   "participants",
-		Short: "list repo chia sẻ shared store (gate.sharedStore=true) trong workspace", //znf:allow-lang
+		Short: "list repo tham gia contract gate (store gate-participants.json + worktree.json gate.sharedStore=true)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ps, err := gateParticipants(workspace)
 			if err != nil {
