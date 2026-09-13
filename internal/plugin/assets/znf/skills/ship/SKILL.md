@@ -131,7 +131,7 @@ start early, and that section says why.
    **Trigger them mechanically, not by remembering which project you are in:**
 
    ```bash
-   command -v zenify db-read >/dev/null || echo "no zenify db-read on PATH — these three do not apply here"
+   command -v zenify >/dev/null || echo "no zenify db-read on PATH — these three do not apply here"
    git diff HEAD | rg -c '\.find\(|\.aggregate\(|\.skip\(|OFFSET|findOne\(|updateMany\('
    ```
 

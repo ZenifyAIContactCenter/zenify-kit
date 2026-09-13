@@ -26,7 +26,7 @@ and stop cleanly.
 ## Step 2 — dynamic layer (only if the DB is reachable)
 
 ```bash
-command -v zenify db-read >/dev/null || echo "dynamic layer skipped: no zenify db-read on PATH"
+command -v zenify >/dev/null || echo "dynamic layer skipped: no zenify db-read on PATH"
 ```
 
 For each query call-site, identify the **real** collection (list it from the DB, never guess) and
