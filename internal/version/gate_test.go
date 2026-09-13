@@ -13,7 +13,10 @@ func TestMeetsMin(t *testing.T) {
 		{"v1.2.3", "v1.2.0", true},
 		{"v1.2.0", "v1.2.0", true},
 		{"v1.1.9", "v1.2.0", false},
-		{"dev", "v9.9.9", true}, // local build never blocked
+		{"dev", "v9.9.9", true},    // local build never blocked
+		{"0.17.2", "v0.3.0", true}, // goreleaser {{.Version}} has no "v" prefix
+		{"0.2.9", "v0.3.0", false},
+		{"v0.17.2", "0.3.0", true}, // min without prefix is accepted too
 	}
 	for _, c := range cases {
 		got, err := MeetsMin(c.current, c.min)
