@@ -199,7 +199,7 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	if _, err := managed.Snapshot(snapshotID, snapshotTargets(plans, workspace), filepath.Join(zenifyDir, "snapshots")); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
-	writeRelocateLog(filepath.Join(zenifyDir, "snapshots", snapshotID), plans, errW)
+	writeRelocateLog(filepath.Join(zenifyDir, "snapshots", snapshotID), workspace, plans, errW)
 
 	repoByName := map[string]manifest.Repo{}
 	for _, r := range m.Repos {
@@ -304,13 +304,16 @@ func snapshotTargets(plans []reconcile.RepoPlan, workspace string) []string {
 }
 
 // writeRelocateLog records every planned move next to the run's snapshot, so
-// a hand rollback knows what was moved where (FR-4.4). Fail-open.
-func writeRelocateLog(snapDir string, plans []reconcile.RepoPlan, errW io.Writer) {
+// a hand rollback knows what was moved where (FR-4.4). To is the workspace-
+// absolute destination (workspace joined with the manifest-relative Path),
+// not the manifest-relative path alone, so the log is directly usable for a
+// rollback without re-resolving it against the workspace root. Fail-open.
+func writeRelocateLog(snapDir, workspace string, plans []reconcile.RepoPlan, errW io.Writer) {
 	type mv struct{ From, To string }
 	var moves []mv
 	for _, p := range plans {
 		if p.State == reconcile.Relocate {
-			moves = append(moves, mv{From: p.From, To: p.Path})
+			moves = append(moves, mv{From: p.From, To: filepath.Join(workspace, p.Path)})
 		}
 	}
 	if len(moves) == 0 {

@@ -444,3 +444,25 @@ func TestUp_HeadlessNoWorkspace_BadArgs(t *testing.T) {
 		t.Fatalf("headless must not create anything: %v", entries)
 	}
 }
+
+// F2: writeRelocateLog's "To" is workspace-absolute (workspace joined with the
+// manifest-relative Path), not the manifest-relative path alone, so the log
+// is directly usable without the reader re-resolving it against a workspace root.
+func TestWriteRelocateLog_ToIsWorkspaceAbsolute(t *testing.T) {
+	snapDir := t.TempDir()
+	workspace := string(filepath.Separator) + "ws"
+	plans := []reconcile.RepoPlan{
+		{Name: "x", State: reconcile.Relocate, Path: "repos/x", From: string(filepath.Separator) + filepath.Join("old", "x")},
+	}
+	var errb bytes.Buffer
+	writeRelocateLog(snapDir, workspace, plans, &errb)
+
+	b, err := os.ReadFile(filepath.Join(snapDir, "relocate.json"))
+	if err != nil {
+		t.Fatalf("read relocate.json: %v", err)
+	}
+	wantTo := filepath.Join(workspace, "repos/x")
+	if !strings.Contains(string(b), fmt.Sprintf("%q", wantTo)) {
+		t.Fatalf("relocate.json missing workspace-absolute To %q:\n%s", wantTo, b)
+	}
+}
