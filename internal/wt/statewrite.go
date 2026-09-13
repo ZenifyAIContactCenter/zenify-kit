@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/lock"
 )
 
@@ -76,6 +77,10 @@ func withStateLock(repoRoot string, pid int, host string, now int64, mutate func
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("wt: mkdir %s: %w", dir, err)
 	}
+	// FR-5.1: .wt/ is wt's own state dir — never let it show up as "?? .wt/"
+	// in the repo it manages. Fail-open: an exclude write error must not block
+	// the state write (a repo without .git/ in tests has nothing to exclude in).
+	_, _ = gitx.EnsureExclude(repoRoot, ".wt/")
 	h, err := lock.Acquire(dir, pid, host, now)
 	if err != nil {
 		return err

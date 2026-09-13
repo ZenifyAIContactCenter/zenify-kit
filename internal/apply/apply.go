@@ -308,35 +308,11 @@ func adoptRepo(repoDir string, owned *managed.Manifest) ([]string, error) {
 	return wrote, nil
 }
 
-// ensureExclude appends ".worktrees/" to the repo's .git/info/exclude if it is
-// not already present. Returns the exclude path if it was modified, "" if it
-// already contained the entry. The .git/info directory is assumed to exist in a
-// real clone; ensureExclude creates it if missing so a freshly cloned repo is
-// covered.
+// ensureExclude keeps the kit's git-local exclusions in place: ".worktrees/"
+// (OQ-5, worktree dir) and ".wt/" (wt's per-repo state, FR-5.1). Returns the
+// exclude path if modified, "" if both lines were already present.
 func ensureExclude(repoDir string) (string, error) {
-	infoDir := filepath.Join(repoDir, ".git", "info")
-	if err := os.MkdirAll(infoDir, 0o750); err != nil {
-		return "", err
-	}
-	excludePath := filepath.Join(infoDir, "exclude")
-	b, err := os.ReadFile(excludePath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
-	if err != nil && !os.IsNotExist(err) {
-		return "", err
-	}
-	for _, line := range strings.Split(string(b), "\n") {
-		if strings.TrimSpace(line) == ".worktrees/" {
-			return "", nil // already present
-		}
-	}
-	content := string(b)
-	if content != "" && !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-	content += ".worktrees/\n"
-	if err := os.WriteFile(excludePath, []byte(content), 0o600); err != nil { //nolint:gosec // G703 -- excludePath is the repo's own .git/info/exclude, computed internally, not externally-tainted input
-		return "", err
-	}
-	return excludePath, nil
+	return gitx.EnsureExclude(repoDir, ".worktrees/", ".wt/")
 }
 
 // ensureSettingsSkeleton makes .claude/settings.local.json carry every required

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -69,5 +70,23 @@ func TestWriteStateAtomic_NoTempLeftBehind(t *testing.T) {
 		if filepath.Ext(e.Name()) == ".tmp" || len(e.Name()) > 10 && e.Name()[:6] == "state." && e.Name() != "state.json" {
 			t.Fatalf("temp file left behind: %s", e.Name())
 		}
+	}
+}
+
+func TestSaveWorktree_ExcludesWtDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	w := Worktree{Slug: "foo", Type: "feat", Branch: "namph/feat/foo", Path: ".worktrees/foo", Ports: []int{3207}}
+	if err := SaveWorktree(root, w, 111, "h", 1); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, ".git", "info", "exclude"))
+	if err != nil {
+		t.Fatalf("exclude not written: %v", err)
+	}
+	if !strings.Contains(string(b), ".wt/\n") {
+		t.Fatalf("exclude missing .wt/: %q", b)
 	}
 }
