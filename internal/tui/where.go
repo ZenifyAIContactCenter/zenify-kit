@@ -34,10 +34,14 @@ type WhereResult struct {
 func RunWhere(cfg WhereConfig) (WhereResult, error) {
 	sel, in := cfg.SelectFn, cfg.InputFn
 	if sel == nil {
-		sel = func(title string, opts []huh.Option[string]) (string, error) { return huhSelect(title, opts, cfg.Accessible) }
+		sel = func(title string, opts []huh.Option[string]) (string, error) {
+			return huhSelect(title, opts, cfg.Accessible)
+		}
 	}
 	if in == nil {
-		in = func(title, ph string, v func(string) error) (string, error) { return huhInput(title, ph, v, cfg.Accessible) }
+		in = func(title, ph string, v func(string) error) (string, error) {
+			return huhInput(title, ph, v, cfg.Accessible)
+		}
 	}
 	cwdOK := cfg.Validate(cfg.Cwd) == nil
 
@@ -69,23 +73,41 @@ func RunWhere(cfg WhereConfig) (WhereResult, error) {
 	case "default":
 		ws = cfg.OSDefault
 	case "custom":
-		ws, err = in("Đường dẫn workspace", cfg.OSDefault, cfg.Validate) //znf:allow-lang
+		ws, err = in("Đường dẫn workspace", cfg.OSDefault, requireOrOptional(false, cfg.Validate)) //znf:allow-lang
 		if err != nil {
 			return WhereResult{}, err
 		}
 	default:
 		return WhereResult{}, fmt.Errorf("unknown choice %q", choice)
 	}
+	ws = strings.TrimSpace(ws)
 	if choice != "existing" {
 		if err := cfg.Validate(ws); err != nil {
 			return WhereResult{}, err
 		}
 	}
-	src, err := in("Bạn đã clone repo Zenify nào sẵn chưa? Nhập thư mục cha (bỏ trống nếu chưa)", "", func(string) error { return nil }) //znf:allow-lang
+	src, err := in("Bạn đã clone repo Zenify nào sẵn chưa? Nhập thư mục cha (bỏ trống nếu chưa)", "", requireOrOptional(true, func(string) error { return nil })) //znf:allow-lang
 	if err != nil {
 		return WhereResult{}, err
 	}
 	return WhereResult{Workspace: ws, SourcesDir: strings.TrimSpace(src)}, nil
+}
+
+// requireOrOptional wraps validate so an empty (trimmed) input is accepted
+// when optional is true, and rejected with a plain error otherwise — the
+// custom-path input can no longer slip an empty string past validate() just
+// because its placeholder happens to equal the OS default (FR-3.4).
+func requireOrOptional(optional bool, validate func(string) error) func(string) error {
+	return func(s string) error {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			if optional {
+				return nil
+			}
+			return errors.New("đường dẫn không được để trống") //znf:allow-lang
+		}
+		return validate(s)
+	}
 }
 
 // IsAborted reports whether err is (or wraps) huh.ErrUserAborted, so cli can

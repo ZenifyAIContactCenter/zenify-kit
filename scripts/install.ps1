@@ -35,7 +35,9 @@ Move-Item -Force (Join-Path $tmp 'zenify.exe') (Join-Path $dest 'zenify.exe')
 Remove-Item -Recurse -Force $tmp
 Write-Host "Installed zenify to $dest"
 $exe = Join-Path $dest 'zenify.exe'
-$installedVer = (& $exe version 2>$null | Select-Object -Last 1) -replace '^.*\s', ''
+try {
+  $installedVer = (& $exe version 2>$null | Select-Object -Last 1) -replace '^.*\s', ''
+} catch { $installedVer = $null }
 if (-not $installedVer) { $installedVer = $ver }
 
 # --- PATH: User scope only (FR-1.3). Read the User value back, never $env:Path,

@@ -24,6 +24,8 @@ func scanSources(m *manifest.Manifest, git gitx.Runner, dir string) map[string]r
 	}
 	want := map[string]string{} // owner/repo → manifest name
 	for _, r := range m.Repos {
+		// manifest URLs are canonical on purpose — no insteadOf applied here;
+		// the scanned side goes through the real insteadOf in gitx.Scan below.
 		want[gitx.NormalizeRemote(r.URL, nil)] = r.Name
 	}
 	for _, rp := range workspace.Discover(dir, sourcesScanDepth, os.ReadDir) {

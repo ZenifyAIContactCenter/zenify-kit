@@ -162,6 +162,47 @@ func TestOSDefaultWorkspace(t *testing.T) {
 	}
 }
 
+func TestWhereNeeded(t *testing.T) {
+	cases := []struct {
+		name       string
+		wantWizard bool
+		src        wsSource
+		ok         bool
+		want       bool
+	}{
+		{"headless never asks, even with no workspace", false, "", false, false},
+		{"headless never asks, even with a pointer", false, wsFromPointer, true, false},
+		{"wizard + no workspace at all → ask", true, "", false, true},
+		{"wizard + pointer-only → ask (FR-3.2/SC-2)", true, wsFromPointer, true, true},
+		{"wizard + marker → skip, already confirmed", true, wsFromMarker, true, false},
+		{"wizard + explicit flag → skip, already confirmed", true, wsFromFlag, true, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := whereNeeded(c.wantWizard, c.src, c.ok); got != c.want {
+				t.Fatalf("whereNeeded(%v,%q,%v) = %v, want %v", c.wantWizard, c.src, c.ok, got, c.want)
+			}
+		})
+	}
+}
+
+func TestExpandHome(t *testing.T) {
+	home := "/Users/u"
+	cases := []struct{ in, want string }{
+		{"~", "/Users/u"},
+		{"~/x/y", "/Users/u/x/y"},
+		{"/abs/path", "/abs/path"},
+		{"rel/path", "rel/path"},
+		{"~user", "~user"}, // another user's home — not this one, leave alone
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := expandHome(c.in, home); got != c.want {
+			t.Fatalf("expandHome(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestValidateWorkspaceDir(t *testing.T) {
 	home := t.TempDir()
 	notGit := func(string) (string, error) { return "", errors.New("not a git repository") }

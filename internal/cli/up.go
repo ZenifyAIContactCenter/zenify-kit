@@ -61,6 +61,7 @@ func buildPlan(m *manifest.Manifest, gh ghx.Runner, git gitx.Runner, workspace s
 	for k, v := range sources {
 		merged[k] = v // an explicit Where answer wins over the flat-layout guess
 	}
+	merged = dropInPlaceSources(m, workspace, merged)
 	plans := reconcile.Build(m, access, scans, merged)
 	return orderRelocateFirst(plans), auth, nil
 }
@@ -361,19 +362,22 @@ func newUpCmd() *cobra.Command {
 			isTTY := term.IsTerminal(int(os.Stdout.Fd()))
 			wantWizard := decideMode(isTTY, applyFlag, cmd.Flags().Changed("dry-run"), dryRun, jsonOut, nonInteractive) == modeWizard
 			var sources map[string]reconcile.Source
-			ws, _, ok := resolveWorkspace(cwd, workspace, os.Getenv, os.UserHomeDir)
+			ws, src, ok := resolveWorkspace(cwd, workspace, os.Getenv, os.UserHomeDir)
 			var sourcesDir string
-			if !ok {
-				if !wantWizard {
-					return exitcode.New(exitcode.BadArgs, errors.New("chưa có workspace: dùng --workspace <dir> hoặc chạy zenify up có terminal")) //znf:allow-lang
-				}
+			if !ok && !wantWizard {
+				return exitcode.New(exitcode.BadArgs, errors.New("chưa có workspace: dùng --workspace <dir> hoặc chạy zenify up có terminal")) //znf:allow-lang
+			}
+			if whereNeeded(wantWizard, src, ok) {
 				home, _ := os.UserHomeDir()
-				existing, _ := readWorkspacePointer(os.Getenv, os.UserHomeDir)
+				existing := ""
+				if ok {
+					existing = ws // pointer target (FR-3.2/SC-2)
+				}
 				res, werr := tui.RunWhere(tui.WhereConfig{
 					Cwd:       cwd,
 					Existing:  existing,
 					OSDefault: osDefaultWorkspace(runtime.GOOS, home),
-					Validate:  func(d string) error { return validateWorkspaceDir(d, home, gitToplevel) },
+					Validate:  func(d string) error { return validateWorkspaceDir(expandHome(d, home), home, gitToplevel) },
 				})
 				if werr != nil {
 					if tui.IsAborted(werr) {
@@ -381,6 +385,8 @@ func newUpCmd() *cobra.Command {
 					}
 					return exitcode.New(exitcode.BadArgs, werr)
 				}
+				res.Workspace = expandHome(res.Workspace, home)
+				res.SourcesDir = expandHome(res.SourcesDir, home)
 				if err := os.MkdirAll(res.Workspace, 0o750); err != nil {
 					return exitcode.New(exitcode.Fail, err)
 				}

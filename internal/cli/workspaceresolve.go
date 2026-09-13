@@ -10,6 +10,8 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 )
 
 // wsSource says which rule resolved the workspace (for messages and tests).
@@ -178,4 +180,58 @@ func gitToplevel(dir string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(b)), nil
+}
+
+// whereNeeded reports whether the Where step (tui.RunWhere) must run (FR-3.1):
+// in the wizard, whenever cwd resolved to no workspace at all, OR resolved
+// only via the pointer — the pointer is a soft "last workspace used" default,
+// not a confirmed choice, so it still needs the "use existing / create here"
+// prompt (FR-3.2/SC-2). A marker or an explicit --workspace flag is already a
+// confirmed answer and skips the step; headless (wantWizard=false) never asks.
+func whereNeeded(wantWizard bool, src wsSource, ok bool) bool {
+	return wantWizard && (!ok || src == wsFromPointer)
+}
+
+// expandHome expands a leading "~" in p to home (SC-5: a literal "~/projects"
+// typed into the Where prompts must resolve, since the shell never expands it
+// for a TUI input). "~" alone becomes home; "~/rest" (or the OS separator
+// variant) becomes home joined with rest; anything else — including "~user"
+// and an empty string — passes through unchanged.
+func expandHome(p, home string) string {
+	if p == "" {
+		return p
+	}
+	if p == "~" {
+		return home
+	}
+	if strings.HasPrefix(p, "~/") {
+		return filepath.Join(home, p[2:])
+	}
+	if strings.HasPrefix(p, "~"+string(os.PathSeparator)) {
+		return filepath.Join(home, p[2:])
+	}
+	return p
+}
+
+// dropInPlaceSources removes any source whose path is already at the
+// manifest's own destination for that repo — a source dir that happens to
+// contain the workspace itself (e.g. sources dir ~/Developer, workspace
+// ~/Developer/zenify) would otherwise resolve to <ws>/repos/<name>, which
+// reconcile.Build then classifies SKIP instead of the real WIRE/ADOPT.
+func dropInPlaceSources(m *manifest.Manifest, workspace string, sources map[string]reconcile.Source) map[string]reconcile.Source {
+	out := make(map[string]reconcile.Source, len(sources))
+	for name, s := range sources {
+		r, ok := m.ByName(name)
+		if !ok {
+			out[name] = s
+			continue
+		}
+		dest, err1 := filepath.Abs(filepath.Join(workspace, r.Path))
+		src, err2 := filepath.Abs(s.Path)
+		if err1 == nil && err2 == nil && filepath.Clean(dest) == filepath.Clean(src) {
+			continue
+		}
+		out[name] = s
+	}
+	return out
 }
