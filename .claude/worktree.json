@@ -1,0 +1,9 @@
+{
+  "abbrev": "kit",
+  "baseRef": "origin/main",
+  "worktreeDir": ".worktrees/",
+  "copy": [".claude/settings.local.json"],
+  "deps": "none",
+  "portEnv": "PORT",
+  "portRange": [3750, 3799]
+}
