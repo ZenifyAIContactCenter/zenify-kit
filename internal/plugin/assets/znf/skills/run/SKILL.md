@@ -1,7 +1,7 @@
 ---
 name: run
 description: Launch the app and produce real output from the real code path, so a change can be verified rather than asserted. Use when a change is behavioural and there are no tests covering it, before claiming it works, and before dispatching znf:ui-verifier (which needs the URL this produces). Reads the port the worktree was allocated instead of hunting for a free one.
-allowed-tools: Read Grep Glob Bash(git *) Bash(rg *) Bash(herdr *) Bash(hcall *) Bash(cat *) Bash(nc *) Bash(curl *) Bash(node *) Bash(tail *) Bash(grep *)
+allowed-tools: Read Grep Glob Bash(git *) Bash(rg *) Bash(cat *) Bash(nc *) Bash(curl *) Bash(node *) Bash(tail *) Bash(grep *)
 ---
 
 `CLAUDE.md` rule #3: *"When there are no tests, produce output from the real code path and show
@@ -155,56 +155,24 @@ and concluding there is none is a mistake this skill made on its first run. Read
 node -e 'console.log(Object.keys(require("./package.json").scripts).join("\n"))'
 ```
 
-`--debug` in that command also means the Node inspector binds its default 9229, which **is not
-per-worktree** — a second watch server in another worktree collides there even when the HTTP port
-is correct.
-
-## Step 4: Run it in a pane, not in this session
+## Step 4: Run it detached, not in this session
 
 A dev server is long-lived. Started from the session's Bash it either blocks the turn or is
-orphaned, and its output lands nowhere anyone can look at again. When herdr is present, give it
-a pane — **in a split below the agent, not in a new tab.**
-
-**Reuse before creating, on both axes.** A pane already running this repo's server is the answer
-to "where does it go"; a second pane for the same repo is how you end up with two servers and one
-of them on a drifted port.
+orphaned, and its output lands nowhere anyone can look at again. Run it detached into a log file
+whose name carries the repo and the port, then read the log:
 
 ```bash
-herdr pane layout --pane "$HERDR_PANE_ID"      # what is already in this tab
+nohup <dev command> > "${TMPDIR:-/tmp}/run-<repo>-$PORT.log" 2>&1 &
 ```
 
-Then, in order:
+Say the log path in the report so the user can tail it.
 
-1. **A pane for this service already exists** → send the command there, or nothing if Step 1 found
-   it already serving.
-2. **No service column yet** → split the agent's pane **right**, so the agent keeps its **full
-   height**:
-   ```bash
-   herdr pane split --pane "$HERDR_PANE_ID" --direction right --ratio 0.66 --cwd "$PWD" --no-focus
-   ```
-3. **A column exists** → split the **bottom pane of the column** downward. Ratios that come out
-   even, measured rather than derived at runtime:
-
-   | Services in the column | Splits |
-   |---|---|
-   | 2 | `down 0.5` |
-   | 3 | `down 0.34` then `down 0.5` |
-   | 4 | `down 0.25`, `down 0.34`, `down 0.5` |
-
-4. **Only past four** → `herdr tab create --label dev`. At 62 rows a fifth pane leaves each under
-   13 rows, which is less than a stack trace.
-
-Note `herdr pane split` rejects `--json`; it prints JSON regardless.
-
-Label every pane after its repo — `herdr pane rename <pane_id> <repo-short-name>` — because the
-branch name is identical across repos and the path is truncated in the border.
-
-```bash
-hcall pane.send_text "{\"pane_id\":\"<pane_id>\",\"text\":\"<dev command>\n\"}"
-```
+**Reuse before creating.** A server already serving this repo's port (Step 1) is the answer to
+"where does it go"; a second one for the same repo is how you end up with two servers and one of
+them on a drifted port.
 
 **The unit is a service, not a repo.** A monorepo runs several apps from one checkout, each on its
-own port, so one repo can need three panes by itself and "how many repos does the task touch"
+own port, so one repo can need three servers by itself and "how many repos does the task touch"
 answers the wrong question. Count services you are actually starting.
 
 **`wt` allocates one port per worktree — a real gap, not a convention.** A worktree running a
@@ -213,36 +181,29 @@ gitignored override the third shape above uses, chosen from the repo's declared 
 the repo's `CLAUDE.md` for which apps it runs and which key each takes its port from; do not assume
 the app you know is the only one.
 
-> Why: see `references/pane-layout-rationale.md` — column-vs-band measurement and why the layout was wrong twice.
-
-`--no-focus` throughout, and afterwards `herdr workspace focus "$HERDR_WORKSPACE_ID"`
-unconditionally — whether anything steals focus measured differently on two runs, and restoring
-costs one call either way.
-
 **Send the bare command. Never pipe a watch server through `tail` or `head`.** `tail` waits for
 EOF, which a `--watch` process never reaches, so `npm run hub 2>&1 | tail -40` produces **no output
 at all** — and then the readiness wait times out and the app looks broken while it is running fine.
 Measured, on the first attempt at exactly this. If output volume is the worry, bound it by reading
-fewer lines back (`pane.read --lines N`), not by filtering at the source.
+fewer lines back (`tail -n N` on the log file), not by filtering at the source.
 
-**Without herdr** — a plain terminal, or a subagent — run it detached and read the log:
+`--debug` in a Node watch command also means the inspector binds its default 9229, which **is not
+per-worktree** — a second watch server in another worktree collides there even when the HTTP port
+is correct.
 
-```bash
-nohup <dev command> > "${TMPDIR:-/tmp}/run-<repo>-$PORT.log" 2>&1 &
-```
-
-Then poll that file for the same readiness line Step 5 describes. The `nohup` form is the
-fallback, not the default: nothing surfaces its failure to the user.
+If your terminal has a pane/workspace manager, a personal skill may wrap this step to give the
+server its own pane. That is ergonomics on top of this recipe, never a replacement for the log file.
 
 ## Step 5: Wait for readiness — with a pattern the command cannot satisfy
 
 ```bash
-hcall pane.wait_for_output "{\"pane_id\":\"<pane_id>\",\"source\":\"recent\",
-  \"match\":{\"type\":\"regex\",\"value\":\"<ready pattern>\"},\"timeout_ms\":90000}"
+LOG="${TMPDIR:-/tmp}/run-<repo>-$PORT.log"
+for i in $(seq 1 90); do grep -qE '<ready pattern>' "$LOG" && break; sleep 1; done
+grep -qE '<ready pattern>' "$LOG" || { echo "not ready after 90s"; tail -n 40 "$LOG"; }
 ```
 
-**The pane's scrollback contains the command you just sent, so a careless pattern matches
-instantly and reports ready before anything started.** Measured: waiting for `READY-PROBE-[0-9]+`
+**Whatever you wait on may already contain the command you just ran (a shell echo, a pane's
+scrollback), so a careless pattern matches instantly and reports ready before anything started.** Measured: waiting for `READY-PROBE-[0-9]+`
 matched the echoed `echo READY-PROBE-3338` command line, not its output. Therefore:
 
 - **Never wait on the port number** if the command mentions it. `PORT=3338 npm run dev` + a wait
@@ -329,9 +290,8 @@ there is real output to paste, not when the server started.
 | "This table tells me how the port works" | It names shapes, not repos. Which one applies is a project fact — read the config. |
 | "UI verify is done, I'll tidy up and stop the server" | Not yours to stop. It is live infra the user may still want. Teardown belongs to `/sweep` (after the work lands) or an explicit request — leave it running and report the URL. |
 
-Stopping a server started this way: `hcall pane.send_keys '{"pane_id":"…","keys":["C-c"]}'`
-(`ctrl-c` is rejected as `invalid_key`; `C-c` and `ctrl+c` are both accepted) — but **only when
-the user asks, or at `/sweep`**. Do NOT stop it on your own as end-of-task cleanup: not after the
+Stopping a server started this way: `kill` the pid from `lsof -nP -iTCP:$PORT -sTCP:LISTEN -t` —
+but **only when the user asks, or at `/sweep`**. Do NOT stop it on your own as end-of-task cleanup: not after the
 UI verify, not while a review agent runs, not at the end of `/fix`/`/ship`. A running dev server
 is live infrastructure the user may still want to look at; the sanctioned teardown point is
 `/sweep`, which runs *after* the work has merged and stops dev servers itself.
@@ -342,5 +302,4 @@ Materialized at `~/.claude/skills/znf/skills/run/references/`. Read a file only 
 
 - `references/why-this-skill-exists.md` — read when you wonder why `/run` is a skill and not a bash line.
 - `references/port-wiring-rationale.md` — read when the port you allocated is not the port the app listens on, or peers still point at main-checkout ports.
-- `references/pane-layout-rationale.md` — read when you are about to change the pane geometry.
 - `references/sandbox-port-checks.md` — read when `nc`/`curl` says a port is closed.

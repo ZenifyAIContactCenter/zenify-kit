@@ -248,11 +248,8 @@ one worktree per repo.
 **Spec and plan stay in the MAIN checkout, and are already written by now.** The worktree holds
 code only. Every path handed to SDD must therefore be **absolute**.
 
-**If `$HERDR_WORKSPACE_ID` is set, hand the slug its own herdr workspace, then stop — do not run
-SDD in the originating workspace; recipe in `references/worktree-and-handoff.md`.**
-
-> Why: see `references/worktree-and-handoff.md` — refetch reason, SDD Setup's assumption, when
-> `$HERDR_WORKSPACE_ID` is set or a second worktree.
+> Why: see `references/worktree-and-handoff.md` — refetch reason, SDD Setup's assumption, and
+> what to do before a second worktree.
 
 ### Start the app once, if anything in the plan has to be exercised
 
@@ -390,7 +387,7 @@ Materialized at `~/.claude/skills/znf/skills/cook/references/`. Read a file only
 - `references/base-ref-archaeology.md` — read when the checkout is on someone's branch and you are unsure what to read.
 - `references/grounding-and-scout-rationale.md` — read when Step 1/3/4 feel redundant.
 - `references/spec-and-plan-rationale.md` — read when you consider skipping the spec or changing the execution choice.
-- `references/worktree-and-handoff.md` — read when `$HERDR_WORKSPACE_ID` is set (workspace handoff recipe) or before a second worktree.
+- `references/worktree-and-handoff.md` — read before a second worktree, or when SDD Setup wants to create its own.
 - `references/step6-implementation-notes.md` — read when you want to change a model tier, run implementers in parallel, or skip the per-task UI look.
 
 ## Constraints preserved from house rules

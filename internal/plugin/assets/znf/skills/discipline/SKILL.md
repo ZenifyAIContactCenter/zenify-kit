@@ -162,7 +162,7 @@ can branch from the wrong release entirely.
 
 **Polyrepo:** one worktree per affected repo, same slug in all of them.
 
-> Why: see `references/worktree-rationale.md` — why the rule is unconditional, and the four carve-outs (not a repo, gitignored, no worktree config, non-node toolchain).
+> Why: see `references/worktree-rationale.md` — why the rule is unconditional, and the three carve-outs (not a repo, gitignored, no worktree config) and why "not a Node repo" is no longer one.
 
 **Consequence for spec and plan files: they are written in the MAIN checkout, never in the worktree.**
 The worktree holds code only. Specs and plans are the record of the work, not of the branch, and

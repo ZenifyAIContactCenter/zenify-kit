@@ -33,12 +33,13 @@
   workspace uses. Put any local settings and the repo's own docs in whatever the tool's "copy on
   create" list is, or every worktree silently writes state to a *separate* store with nothing to
   warn you.
-- **The worktree tool doesn't support this repo's toolchain.** A worktree tool built around one
-  package manager cannot serve a repo built with a different one (Maven, Gradle, Cargo, Go, …). Do
-  not try to force it, and do not read its failure as a mistake on your part. In that case, fall back
-  to a plain `git worktree add` — no port, no seeded environment, no dependency handling, but still
-  real isolation, which is exactly the shortfall already accepted when the specialized tool cannot
-  run. Pass an explicit base ref and path since there is no config to read defaults from.
+- **The repo is not a Node project.** This used to be a carve-out; it is not one any more. `wt`
+  reads `"deps"` from the repo's worktree config and `"none"` means "nothing to seed per-worktree"
+  (Maven with a global `~/.m2`, Go modules, a Python venv you recreate, …). Give the repo a
+  `.claude/worktree.json` with `"deps": "none"` and its own port block, and `wt new` works there
+  like anywhere else. Do not fall back to a bare `git worktree add` or to a personal terminal tool:
+  a worktree `wt` did not create is invisible to `wt ls`/`wt rm`/`wt sweep`, so it never gets torn
+  down. If `wt` refuses because the config is missing, the fix is the config, not a different tool.
 
 Also worth knowing before the first worktree of a session: current builds of the worktree tool fetch
 before resolving the base, but older ones do not — so an explicit fetch first is still the safe habit,
