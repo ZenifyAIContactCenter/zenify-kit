@@ -87,9 +87,9 @@ func TestBuild_RelocateFromSources(t *testing.T) {
 		"old": {Cloned: true, Layout: "old", NormalizedRemote: "X/old"},
 	}
 	sources := map[string]Source{
-		"be":  {Path: "/home/u/projects/be"},                     // dirty or not — still relocates
+		"be":  {Path: "/home/u/projects/be"},                      // dirty or not — still relocates
 		"web": {Path: "/home/u/projects/web", HasWorktrees: true}, // blocker
-		"hub": {Path: "/home/u/projects/hub"},                    // dest already cloned → blocker
+		"hub": {Path: "/home/u/projects/hub"},                     // dest already cloned → blocker
 	}
 	got := Build(m, access, scans, sources)
 	byName := map[string]RepoPlan{}

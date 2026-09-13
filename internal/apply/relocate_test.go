@@ -174,7 +174,9 @@ func TestApply_Relocate_CrossDeviceIsFriendlyError(t *testing.T) {
 	plans := []reconcile.RepoPlan{{Name: "be", State: reconcile.Relocate, Path: "repos/be", From: src}}
 	res, _ := Apply(plans, Options{
 		Workspace: ws, Owned: &managed.Manifest{}, RepoByName: map[string]manifest.Repo{},
-		RenameFn: func(from, to string) error { return &os.LinkError{Op: "rename", Old: from, New: to, Err: syscall.EXDEV} },
+		RenameFn: func(from, to string) error {
+			return &os.LinkError{Op: "rename", Old: from, New: to, Err: syscall.EXDEV}
+		},
 	}, &fakeGH{}, &fakeGit{})
 	if res[0].Err == nil || res[0].Err.Error() != "different volume — move by hand then re-run" {
 		t.Fatalf("err = %v", res[0].Err)
