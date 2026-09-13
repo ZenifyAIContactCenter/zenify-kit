@@ -188,7 +188,7 @@ a rendering file:
 
 ```
 worth it        a new screen · a new component · a layout or grid change · a modal
-                → "Done when … and `ui-verifier` reports it renders correctly, with the
+                → "Done when … and `znf:ui-verifier` reports it renders correctly, with the
                    overflow measurement of the changed element against its container."
 NOT worth it    a copy change · a colour token · a css file touched in passing · wiring an
                 existing component to a new endpoint
@@ -310,9 +310,9 @@ The receipt for this step is SDD's ledger — `<repo-root>/.znf/sdd/<plan>/progr
 
 ### A task the plan flagged gets looked at before its ledger line is written
 
-**The trigger is the plan, and only the plan.** If the task's definition of done asks for a `ui-verifier`
+**The trigger is the plan, and only the plan.** If the task's definition of done asks for a `znf:ui-verifier`
 verdict (Step 5 decided that), then after the task reviewer passes and **before** appending
-`Task <N>: complete`, dispatch `ui-verifier` scoped to **that task's deliverable only**, not the
+`Task <N>: complete`, dispatch `znf:ui-verifier` scoped to **that task's deliverable only**, not the
 whole feature. Its verdict joins the ledger line.
 
 **This check does not parallelise, even when the implementers around it do.** The Playwright
@@ -368,9 +368,9 @@ for `/cook`. Brainstorming cannot be delegated: it needs back-and-forth with the
 | 6 Fix loop r4-5 | fresh implementer, +1 tier | omit `model` → `opus-4-8` | **`xhigh`** |
 | 6 Task review | subagents via SDD | `sonnet`, or omit for a high-risk diff (SDD's rule) | default |
 | 6 Final review | subagent via SDD | omit `model` → `opus-4-8` (the ceiling) | default |
-| 6 UI check, flagged tasks | `ui-verifier` agent | sonnet (pinned) | default |
+| 6 UI check, flagged tasks | `znf:ui-verifier` agent | sonnet (pinned) | default |
 | 7 Ship review | `code-reviewer` agent | **pass `model` explicitly, scaled to the diff** — see `/ship` step 5 | default (`high`) |
-| 7 Ship UI check | `ui-verifier` agent | sonnet (pinned) | default |
+| 7 Ship UI check | `znf:ui-verifier` agent | sonnet (pinned) | default |
 
 > Why: see `references/step6-implementation-notes.md` — why no separate review, why `cat` not
 > summarise, delegation, ship reviewer's scaling rule.

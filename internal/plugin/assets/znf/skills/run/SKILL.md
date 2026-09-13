@@ -1,6 +1,6 @@
 ---
 name: run
-description: Launch the app and produce real output from the real code path, so a change can be verified rather than asserted. Use when a change is behavioural and there are no tests covering it, before claiming it works, and before dispatching ui-verifier (which needs the URL this produces). Reads the port the worktree was allocated instead of hunting for a free one.
+description: Launch the app and produce real output from the real code path, so a change can be verified rather than asserted. Use when a change is behavioural and there are no tests covering it, before claiming it works, and before dispatching znf:ui-verifier (which needs the URL this produces). Reads the port the worktree was allocated instead of hunting for a free one.
 allowed-tools: Read Grep Glob Bash(git *) Bash(rg *) Bash(herdr *) Bash(hcall *) Bash(cat *) Bash(nc *) Bash(curl *) Bash(node *) Bash(tail *) Bash(grep *)
 ---
 
@@ -28,7 +28,7 @@ lsof -nP -iTCP:"$PORT" -sTCP:LISTEN            # never `nc` — see Step 5
 ```
 
 Something there → do **not** start a second one. A second Vite prints `Port 3338 is in use, trying
-another one...` and comes up on 3339, after which every URL you report is wrong and `ui-verifier`
+another one...` and comes up on 3339, after which every URL you report is wrong and `znf:ui-verifier`
 exercises the *first* server — the one without your change.
 
 **But reusing it depends on whose code it is running, and that has to be checked.** Ask the process,
@@ -261,7 +261,7 @@ Port 3338 is in use, trying another one...
   ➜  Local:   http://localhost:3339/
 ```
 
-so the app came up on **3339** while every downstream claim would have said 3338. `ui-verifier`
+so the app came up on **3339** while every downstream claim would have said 3338. `znf:ui-verifier`
 pointed at 3338 would then have failed in a way that reads exactly like a broken change. Vite's
 `server.strictPort: true` turns that drift into an error; without it the fallback is silent by
 design. So: **take the port from the startup line, not from `wt.port`,** and report the drift when
@@ -292,7 +292,7 @@ State, in the reply:
 <the actual startup line, quoted>
 ```
 
-The URL is not decoration — `ui-verifier` is project-agnostic and takes it from the caller, so
+The URL is not decoration — `znf:ui-verifier` is project-agnostic and takes it from the caller, so
 the port read in Step 1 has to arrive there. A verifier pointed at the wrong port fails in a way
 that reads exactly like a broken change.
 

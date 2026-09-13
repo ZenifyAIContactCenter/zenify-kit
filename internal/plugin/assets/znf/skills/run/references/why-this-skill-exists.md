@@ -5,7 +5,7 @@
 — including rule #3 itself and a `WORKFLOW.md` row claiming *"Agent-invocable, so skills can rely
 on it"* — while `skills/run/` did not exist. The visible consequence: with nothing owning "which
 port does this app use", agents improvised a port hunt, which silently discards the port `wt`
-allocated and puts the app somewhere `ui-verifier` is not looking.
+allocated and puts the app somewhere `znf:ui-verifier` is not looking.
 
 ### From § Step 3: The launch command comes from the project, not from memory
 **Stop when the recipe is ambiguous, not merely when `CLAUDE.md` is absent** — that distinction cost
