@@ -20,7 +20,7 @@ func newDownCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "down",
-		Short: "Offboard: gỡ znf global hooks, .worktrees/ excludes, và owned settings skeletons (preview mặc định; --apply để thực thi)", //znf:allow-lang
+		Short: "Offboard: gỡ znf global hooks, .worktrees/ + .wt/ excludes, và owned settings skeletons (preview mặc định; --apply để thực thi)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
@@ -62,7 +62,7 @@ func newDownCmd() *cobra.Command {
 				if removed, eerr := apply.RemoveExclude(repoDir, dryRun); eerr != nil {
 					_, _ = fmt.Fprintf(w, "  %s exclude: lỗi %v\n", r.Name, eerr) //znf:allow-lang
 				} else if removed {
-					_, _ = fmt.Fprintf(w, "  %s: gỡ dòng .worktrees/\n", r.Name) //znf:allow-lang
+					_, _ = fmt.Fprintf(w, "  %s: gỡ dòng .worktrees/ + .wt/\n", r.Name) //znf:allow-lang
 				}
 				settings := filepath.Join(repoDir, ".claude", "settings.local.json")
 				if act, serr := apply.RemoveOwnedSettings(settings, owned, dryRun); serr != nil {

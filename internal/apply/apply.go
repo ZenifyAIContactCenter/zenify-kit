@@ -396,11 +396,11 @@ func adoptRepo(repoDir string, owned *managed.Manifest) ([]string, error) {
 	return wrote, nil
 }
 
-// ensureExclude keeps the kit's git-local exclusions in place: ".worktrees/"
-// (OQ-5, worktree dir) and ".wt/" (wt's per-repo state, FR-5.1). Returns the
-// exclude path if modified, "" if both lines were already present.
+// ensureExclude keeps the kit's git-local exclusions in place (ExcludeLines:
+// ".worktrees/", OQ-5 worktree dir, and ".wt/", wt's per-repo state, FR-5.1).
+// Returns the exclude path if modified, "" if all lines were already present.
 func ensureExclude(repoDir string) (string, error) {
-	return gitx.EnsureExclude(repoDir, ".worktrees/", ".wt/")
+	return gitx.EnsureExclude(repoDir, ExcludeLines...)
 }
 
 // ensureSettingsSkeleton makes .claude/settings.local.json carry every required

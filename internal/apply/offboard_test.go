@@ -67,7 +67,7 @@ func TestRemoveGlobalHooks_RemovesZnfKeepsForeign(t *testing.T) {
 	}
 }
 
-// SC-23: removes exactly the .worktrees/ line in exclude.
+// SC-23: removes exactly the .worktrees/ line in exclude, when .wt/ is absent.
 func TestRemoveExclude_RemovesOnlyWorktreesLine(t *testing.T) {
 	repoDir := t.TempDir()
 	excl := filepath.Join(repoDir, ".git", "info", "exclude")
@@ -75,6 +75,27 @@ func TestRemoveExclude_RemovesOnlyWorktreesLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(excl, []byte("node_modules/\n.worktrees/\n.DS_Store\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := RemoveExclude(repoDir, false)
+	if err != nil || !removed {
+		t.Fatalf("RemoveExclude removed=%v err=%v", removed, err)
+	}
+	b, _ := os.ReadFile(excl) //nolint:gosec // G304 -- test-local path under t.TempDir, not externally-tainted
+	if string(b) != "node_modules/\n.DS_Store\n" {
+		t.Errorf("exclude wrong after removal: %q", b)
+	}
+}
+
+// F1: RemoveExclude and ensureExclude's EnsureExclude call share ExcludeLines,
+// so a file carrying both ".worktrees/" and ".wt/" ends up with neither.
+func TestRemoveExclude_RemovesBothWorktreesAndWtLines(t *testing.T) {
+	repoDir := t.TempDir()
+	excl := filepath.Join(repoDir, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(excl), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(excl, []byte("node_modules/\n.worktrees/\n.wt/\n.DS_Store\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	removed, err := RemoveExclude(repoDir, false)
