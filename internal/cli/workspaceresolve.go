@@ -70,7 +70,7 @@ func readWorkspacePointer(getenv func(string) string, userHome func() (string, e
 	if p == "" || !filepath.IsAbs(p) {
 		return "", false
 	}
-	if fi, err := os.Stat(filepath.Join(p, ".zenify", "manifest.json")); err != nil || fi.IsDir() {
+	if fi, err := os.Stat(filepath.Join(p, ".zenify", "manifest.json")); err != nil || fi.IsDir() { //nolint:gosec // G703 -- p comes from the kit-owned pointer file under ~/.zenify, validated absolute above, and is only probed for the workspace marker
 		return "", false
 	}
 	return p, true
