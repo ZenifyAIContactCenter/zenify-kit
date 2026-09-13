@@ -59,11 +59,32 @@ var (
 		".py":  regexp.MustCompile(`(?m)^\s*(def\s+test_|class\s+Test)`),
 		".rb":  regexp.MustCompile(`(?m)^\s*(def\s+test_|it\s+['"])`),
 	}
+
+	// lineSuffixRe strips a trailing ":<line>" or ":<from>-<to>" that plan
+	// authors append to point at a region ("a/b_test.go:20-31").
+	lineSuffixRe = regexp.MustCompile(`:\d+(?:-\d+)?$`)
 )
 
 func (r *Result) add(f Finding) {
 	r.Findings = append(r.Findings, f)
 	r.SeverityCounts[f.Severity]++
+}
+
+// asTestPath normalises one backtick value from a Files-block bullet into a
+// candidate file path. It rejects values that cannot be a path — a command
+// ("go test ./..."), a glob ("*.test.js"), a bare identifier ("TestX") — and
+// strips a trailing line suffix. A bare file name ("ensure_test.go") is kept;
+// Check resolves it by unique basename under root.
+func asTestPath(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	s = lineSuffixRe.ReplaceAllString(s, "")
+	if s == "" || strings.ContainsAny(s, " \t*?[") {
+		return "", false
+	}
+	if !strings.ContainsAny(s, "/.") {
+		return "", false
+	}
+	return s, true
 }
 
 // testPathsByTask walks the plan and maps each task title (trimmed "### Task N: …"
@@ -80,10 +101,14 @@ func testPathsByTask(planText string) map[string][]string {
 		if cur == "" {
 			continue
 		}
-		// (a) legacy: a bullet whose LABEL contains "Test:" — take its first path.
+		// (a) legacy: a bullet whose LABEL contains "Test:" — take the first
+		// backtick value that is a path (a command or glob before it is skipped).
 		if testBulletRe.MatchString(ln) {
-			if m := backtickRe.FindStringSubmatch(ln); m != nil {
-				out[cur] = append(out[cur], strings.TrimSpace(m[1]))
+			for _, m := range backtickRe.FindAllStringSubmatch(ln, -1) {
+				if p, ok := asTestPath(m[1]); ok {
+					out[cur] = append(out[cur], p)
+					break
+				}
 			}
 			continue
 		}
@@ -92,8 +117,8 @@ func testPathsByTask(planText string) map[string][]string {
 		// as coverage — but never a production path listed alongside it.
 		if bulletRe.MatchString(ln) {
 			for _, m := range backtickRe.FindAllStringSubmatch(ln, -1) {
-				p := strings.TrimSpace(m[1])
-				if testFileNameRe.MatchString(p) {
+				p, ok := asTestPath(m[1])
+				if ok && testFileNameRe.MatchString(p) {
 					out[cur] = append(out[cur], p)
 				}
 			}
