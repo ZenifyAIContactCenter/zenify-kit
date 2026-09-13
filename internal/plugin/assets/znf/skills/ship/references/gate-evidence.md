@@ -27,7 +27,18 @@ check the working tree is dirty by definition and HEAD is not what you tested. V
 tracked file, and adding an untracked one, both leave HEAD unchanged. `git stash create` is not a fix
 either — it ignores untracked files.
 
+### From § Start the agents before the inline work — the two costs
+**A failing check voids the concurrent work.** Any fix changes `fp`, so every stamp taken in that
+round is VOID and the loop re-runs them. Concurrency pays off on the pass path — which is the
+common one — and is wasted on the fail path. Worth it, not free.
+
+3 of 5 dispatches in one measured session finished without their report arriving (`CLAUDE.md §3`).
+With four out at once, expecting all four back unprompted is optimistic.
+
 ### From § The fix loop — it wraps every check, not just the review
+This used to live inside step 5, which meant a behaviour fix was never re-reviewed and a lint fix had
+no defined re-verification at all — even though both are code changes.
+
 **Two rounds, not five.** SDD's five-round cap is for a development loop over one task, with a ledger
 and later tasks still to run. This is the last gate: the next action is a push. If two attempts cannot
 close a CRITICAL, the problem is in the design, and that is the user's call.
@@ -41,6 +52,14 @@ requests found 12.2% introduced new bugs *despite* passing lint, tests, regressi
 review, and multi-file fixes regressed more often. No study isolates what a re-review adds for this
 case. The loop exists because without it the board prints ✅ earned on a diff that no longer exists —
 that is a smaller and provable claim.
+
+### From § Step 7: Record the outcome, then commit
+That is the measured signature of an approval board that approves everything — and the honest
+conclusion would be that these checks are costing time without filtering anything, not that the
+work has been flawless.
+
+### From § Output — pushing the feature branch
+House rule #7 authorises this without asking: pushing a feature branch deploys nothing.
 
 ### From § Output
 This is the difference between an instruction and a mechanism, and the instruction alone does not hold:

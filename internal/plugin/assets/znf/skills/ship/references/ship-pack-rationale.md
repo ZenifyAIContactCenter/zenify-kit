@@ -31,6 +31,15 @@ and it would leave this block empty.
 `## Ground` is what lets it check field names against reality; the agent has no Bash of its own, by
 design, so the data must be handed to it.
 
+### From § Output — the `Spec:` commit trailer
+`zenify spec status` then marks that spec `built` (a precise link) instead of `built?` (a fuzzy
+slug guess). This is doctrine, never a gate — a missing trailer only downgrades the confidence of
+one lifecycle row.
+
+### From § Start the agents before the inline work — the browser parallelism
+It parallelises fine against the gate sweeps (different resources) — the reviewer is sequenced
+after it for the separate reason above, not because of the browser.
+
 ### From § Start the agents before the inline work — why the reviewer is last
 **Why the reviewer is last and stays last.** Its ship-pack's `## Verified` block is *what steps 2-4
 actually produced* — the real command output, which test files ran by name, and which changed

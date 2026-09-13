@@ -6,11 +6,11 @@ allowed-tools: Bash(git *) Bash(pm *) Bash(db_read *) Bash(rg *) Bash(printf *) 
 
 ## What this gate is actually for
 
-> Rationale moved: see [references/gate-evidence.md](references/gate-evidence.md) — which parts carry weight, and the evidence behind it.
+> Why: see `references/gate-evidence.md` — which parts carry weight.
 
 ## Working tree — fingerprint the tree, not HEAD
 
-> Rationale moved: see [references/gate-evidence.md](references/gate-evidence.md) — why HEAD is not what you tested.
+> Why: see `references/gate-evidence.md` — why HEAD is not what you tested.
 
 ```bash
 git status --short && git diff --name-only        # what changed
@@ -56,7 +56,7 @@ start early, and that section says why.
    URL it reports is what `ui-verifier` needs. A `Skill(znf:run)` line is checkable; "I ran the app" is
    the shape that dissolves into unnamed `Bash` calls.
 
-   > Rationale moved: see [references/ui-verification-notes.md](references/ui-verification-notes.md) — why this pass is authoritative, vs `/cook` step 6.
+   > Why: see `references/ui-verification-notes.md` — why this pass is authoritative.
 
    **Trigger it mechanically, not by judgement:**
 
@@ -67,7 +67,7 @@ start early, and that section says why.
    Non-zero → dispatch **`ui-verifier`** (`~/.claude/agents/ui-verifier.md`) and **do not drive the
    browser yourself**. Zero → write "nothing renders in this diff" on the board and move on.
 
-   > Rationale moved: see [references/ui-verification-notes.md](references/ui-verification-notes.md) — why the agent exists.
+   > Why: see `references/ui-verification-notes.md` — why the agent exists.
 
    **If the target repo has `.znf/visual/routes.json`, run `zenify visual check --repo <path> --port <P>`
    FIRST** — golden-diff catches visual regression in regions *unrelated* to the diff, which the
@@ -87,7 +87,7 @@ start early, and that section says why.
    says: retry, do not start building a way around it. Tell the verifier **not** to clear
    `localStorage` or cookies — one logged itself out mid-run.
 
-   > Rationale moved: see [references/ui-verification-notes.md](references/ui-verification-notes.md) — the incidents this avoids.
+   > Why: see `references/ui-verification-notes.md` — the incidents this avoids.
 
    Tell it the dev URL,
    how to log in, which screen, and what changed; require **both** a screenshot **and** a measurement of
@@ -105,7 +105,7 @@ start early, and that section says why.
    produce far more than you need — pipe them (`2>&1 | tail -20`, or grep the error lines) rather than
    delegating them.
 
-   > Rationale moved: see [references/false-green-and-data.md](references/false-green-and-data.md) — why delegating the summary is wrong.
+   > Why: see `references/false-green-and-data.md` — why delegating the summary is wrong.
 
    **A suite that ran nothing is not a pass.** `0 tests`, `passWithNoTests`, "No tests found" — all
    render as green and mean nothing. Report the test count, and if it is zero say so and fall back to
@@ -123,7 +123,7 @@ start early, and that section says why.
    | a wrapper tool: "not found" / "none" / "not a repo" | run the underlying tool directly |
    | a connection failed | `nc -z <host> <port>` first — separate network from credential before theorising. **Sandbox disabled, and say so:** inside it `nc`/`curl` call every port closed. Local port → `lsof -nP -iTCP:<port> -sTCP:LISTEN` |
 
-   > Rationale moved: see [references/false-green-and-data.md](references/false-green-and-data.md) — the CI-provider `null` incident.
+   > Why: see `references/false-green-and-data.md` — the CI-provider `null` incident.
 
    **Three data checks — cheap, and almost never run.** Each catches a class that
    development-sized data hides completely, so passing tests say nothing about them.
@@ -137,7 +137,7 @@ start early, and that section says why.
 
    Both true → run them. Either false → say which and why, and move on.
 
-   > Rationale moved: see [references/false-green-and-data.md](references/false-green-and-data.md) — why a command, not a note.
+   > Why: see `references/false-green-and-data.md` — why a command, not a note.
 
    Report which you ran and which the diff could not trigger.
 
@@ -158,7 +158,7 @@ start early, and that section says why.
      on page 1 forever, quietly linear until someone asks for page 500 in production. No error, just a
      growing tail. Keyset pagination (`WHERE id > last_seen`) stays flat.
 
-   > Rationale moved: see [references/false-green-and-data.md](references/false-green-and-data.md) — why not a project-level skill.
+   > Why: see `references/false-green-and-data.md` — why not a project-level skill.
 
 5. **Independent review.**
 
@@ -191,7 +191,7 @@ start early, and that section says why.
                   omit this block entirely when there is no ledger (/fix, /hotfix)
    ```
 
-   > Rationale moved: see [references/ship-pack-rationale.md](references/ship-pack-rationale.md) — why each field exists.
+   > Why: see `references/ship-pack-rationale.md` — why each field exists.
 
    Model scaling, reviewer count, and CRITICAL/HIGH-vs-MEDIUM/LOW routing are now the engine's
    decisions (`znf:review`) — ship no longer picks a model or a reviewer count itself.
@@ -216,29 +216,28 @@ only the diff, and one is genuinely downstream.
 
 Step 2 must be a **single message**. Separate messages run the agents in sequence and buy nothing.
 
-> Rationale moved: see [references/ship-pack-rationale.md](references/ship-pack-rationale.md) — why the reviewer is last.
+> Why: see `references/ship-pack-rationale.md` — why the reviewer is last.
 
 **One exclusive resource: the browser.** The Playwright instance is **shared and single** — never two
 browser-driving agents at once, and the main session must not touch Playwright while `ui-verifier`
-runs. It parallelises fine against the gate sweeps (different resources) — the reviewer is sequenced
-after it for the separate reason above, not because of the browser. What it never parallelises against
+runs. What it never parallelises against
 is **itself**: a multi-screen change is one verifier covering several screens, not several verifiers.
+
+> Why: see `references/ship-pack-rationale.md` — why the browser doesn't clash with the sweeps.
 
 **Two costs, both real:**
 
-- **A failing check voids the concurrent work.** Any fix changes `fp`, so every stamp taken in that
-  round is VOID and the loop re-runs them. Concurrency pays off on the pass path — which is the
-  common one — and is wasted on the fail path. Worth it, not free.
-- **Lost reports multiply.** 3 of 5 dispatches in one measured session finished without their report
-  arriving (`CLAUDE.md §3`). With four out at once, expecting all four back unprompted is optimistic.
-  **Ask each by name.** A report that never came makes this gate **incomplete** — never write ✅ for a
-  check whose agent went quiet, because silence and a clean result are indistinguishable from here.
+> Why: see `references/gate-evidence.md` — the two costs, in full.
+
+- **Lost reports multiply. Ask each by name.** A report that never came makes this gate **incomplete** —
+  never write ✅ for a check whose agent went quiet, because silence and a clean result are
+  indistinguishable from here.
 
 ## The fix loop — it wraps every check, not just the review
 
 **Any check failing enters the same loop**, whether it was lint, the gate, behaviour, or the review.
-This used to live inside step 5, which meant a behaviour fix was never re-reviewed and a lint fix had
-no defined re-verification at all — even though both are code changes.
+
+> Why: see `references/gate-evidence.md` — why the loop wraps every check.
 
 ```
 round R = 1..2:
@@ -259,7 +258,7 @@ still open after round 2 -> STOP. Do not commit. Report to the user: the finding
 tried, and your own assessment of whether it is load-bearing.
 ```
 
-> Rationale moved: see [references/gate-evidence.md](references/gate-evidence.md) — why two rounds, not five.
+> Why: see `references/gate-evidence.md` — why two rounds, not five.
 
 ## Step 7: Record the outcome, then commit
 
@@ -271,9 +270,9 @@ printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(basename "$PWD")" "$(fp)" 
 ```
 
 Then read it back: `tail -30 ~/.cache/claude-ship-gate.tsv`. **If this gate has run many times and
-never once blocked, say so to the user plainly.** That is the measured signature of an approval board
-that approves everything — and the honest conclusion would be that these checks are costing time
-without filtering anything, not that the work has been flawless.
+never once blocked, say so to the user plainly.**
+
+> Why: see `references/gate-evidence.md` — what a 0%-block rate actually signals.
 
 ## Output
 
@@ -314,7 +313,7 @@ cat "$BOARD"                                     # and report this path to the c
 Only call it shippable when every applicable line is ✅ **at the current fingerprint**, each backed by
 output you actually saw. If anything was skipped, say so explicitly.
 
-> Rationale moved: see [references/gate-evidence.md](references/gate-evidence.md) — why the board must be `cat`ed.
+> Why: see `references/gate-evidence.md` — why the board must be `cat`ed.
 
 **7b. Write the release-note + update unreleased.md (release-log-at-ship).**
 
@@ -337,14 +336,14 @@ derived-from-git; the change just shipped appears once merged into staging (git 
 
 **Encouraged, not enforced — the `Spec:` commit trailer.** When a change implements a spec, add a
 trailer line `Spec: specs/<repo>/<date>-<topic>-design.md` to the commit (or squash-merge) body.
-`zenify spec status` then marks that spec `built` (a precise link) instead of `built?` (a fuzzy
-slug guess). This is doctrine, never a gate — a missing trailer only downgrades the confidence of
-one lifecycle row.
+
+> Why: see `references/ship-pack-rationale.md` — what the trailer buys `zenify spec status`.
 
 **On all-green you commit and push to the FEATURE branch** — same branch name across repos, clear
 message, following the repo's existing convention (infer it from recent `git log --oneline` and branch
-names if CLAUDE.md doesn't state it; don't invent a style). House rule #7 authorises this without
-asking: pushing a feature branch deploys nothing.
+names if CLAUDE.md doesn't state it; don't invent a style).
+
+> Why: see `references/gate-evidence.md` — the house rule that authorises this.
 
 **Open the PR yourself, then stop** — the release report is derived **per-PR**, so a well-formed
 PR is what keeps the changelog clean. After pushing, run `gh pr create` with a clean conventional
