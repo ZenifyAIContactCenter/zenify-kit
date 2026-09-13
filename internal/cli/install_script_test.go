@@ -47,8 +47,41 @@ func TestInstallSh_PathLineIdempotentAndFooter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `export PATH="` + dest + `:$PATH" # zenify-kit`
+	want := `export PATH='` + dest + `':"$PATH" # zenify-kit`
 	if strings.Count(string(rc), want) != 1 {
 		t.Fatalf(".zshrc after two runs:\n%s", rc)
+	}
+}
+
+// F4: a ZENIFY_BIN containing a single quote must be refused before any
+// install step runs, since the profile PATH line single-quotes it verbatim.
+func TestInstallSh_RefusesQuoteInZenifyBin(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("requires sh")
+	}
+	if _, err := exec.LookPath("tar"); err != nil {
+		t.Skip("requires tar")
+	}
+	home := t.TempDir()
+	fake := filepath.Join(t.TempDir(), "zenify")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho 'zenify v9.9.9'\n"), 0o755); err != nil { //nolint:gosec
+		t.Fatal(err)
+	}
+	tar := filepath.Join(t.TempDir(), "zenify_test.tar.gz")
+	if o, err := exec.Command("tar", "-czf", tar, "-C", filepath.Dir(fake), "zenify").CombinedOutput(); err != nil {
+		t.Fatalf("tar: %v\n%s", err, o)
+	}
+	dest := filepath.Join(home, "a'b")
+	cmd := exec.Command("sh", filepath.Join("..", "..", "scripts", "install.sh"))
+	cmd.Env = []string{"HOME=" + home, "SHELL=/bin/zsh", "PATH=/usr/bin:/bin", "ZENIFY_BIN=" + dest, "ZENIFY_INSTALL_FROM=" + tar}
+	o, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("install.sh should have refused a quoted ZENIFY_BIN, got:\n%s", o)
+	}
+	if !strings.Contains(string(o), "must not contain quotes or newlines") {
+		t.Fatalf("unexpected error output:\n%s", o)
+	}
+	if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+		t.Fatalf("install.sh must not have created %s before refusing", dest)
 	}
 }

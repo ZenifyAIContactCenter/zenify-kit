@@ -62,6 +62,20 @@ else
 fi
 
 dest="${ZENIFY_BIN:-$HOME/.local/bin}"
+# The profile PATH line below single-quotes $dest verbatim (no expansion, no
+# quote-breaking), so a literal single quote or embedded newline in it would
+# either break out of that quoting or corrupt the profile file. Refuse both
+# before anything is installed.
+case "$dest" in
+  *"'"*)
+    echo "install: ZENIFY_BIN must not contain quotes or newlines" >&2
+    exit 1
+    ;;
+esac
+if [ "$(printf '%s' "$dest" | wc -l)" -gt 0 ]; then
+  echo "install: ZENIFY_BIN must not contain quotes or newlines" >&2
+  exit 1
+fi
 mkdir -p "$dest"
 mv "$tmp/zenify" "$dest/zenify"
 chmod +x "$dest/zenify"
@@ -71,7 +85,11 @@ installed_ver=$("$dest/zenify" version 2>/dev/null | awk '{print $NF}')
 [ -n "$installed_ver" ] || installed_ver="$ver"
 
 # --- PATH: write it ourselves (FR-1.1), idempotent via the marker comment ---
-path_line="export PATH=\"$dest:\$PATH\" # zenify-kit"
+# $dest is single-quoted literally (already validated above to hold no single
+# quote or newline) so it can never break out of its quoting or have its
+# contents re-interpreted; $PATH stays double-quoted so it expands at login,
+# not now.
+path_line=$(printf 'export PATH='\''%s'\'':"$PATH" # zenify-kit' "$dest")
 case ":$PATH:" in
   *":$dest:"*) ;;
   *)
