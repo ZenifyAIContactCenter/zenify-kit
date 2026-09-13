@@ -118,7 +118,7 @@ Tier rule (W3, size-aware — the script is the source, this is the summary): `C
 `DOCTRINE=$(awk '{print}' ~/.claude/skills/znf/skills/review/_shared/reviewer-doctrine.md 2>/dev/null)`
 (file missing → `DOCTRINE=""` + note "doctrine preamble unavailable"; fail-open). **Prepend `DOCTRINE` to the START of every reviewer's brief** dispatched below — T1 solo, all 5 T2 agents — and pass `args.doctrine="$DOCTRINE"` to the T3 Workflow. This injection point is shared with the per-bundle reviewers in Step 1c.
 
-- **T1 (solo):** dispatch 1 `code-reviewer` agent (template `requesting-code-review/code-reviewer.md`),
+- **T1 (solo):** dispatch 1 `code-reviewer` agent (template `subagent-driven-development/code-reviewer-template.md`),
   model `sonnet` for diff <50 LOC / mid for the rest. Returns `findings[]` per the shared schema.
 - **T2 (fan-out):** dispatch 5 agents in parallel (ONE message), each agent covering 1 dimension
   (bugs / security / perf / contracts / types), each agent returns `findings[]` per the schema.

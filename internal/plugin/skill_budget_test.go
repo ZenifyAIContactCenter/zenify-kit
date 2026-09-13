@@ -13,7 +13,8 @@ import (
 var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 
 // W4 skill budget. Anthropic's skill-authoring guidance keeps a SKILL.md body
-// under 500 lines (writing-skills/anthropic-best-practices.md, "Token budgets").
+// under 500 lines (docs/authoring/writing-skills/anthropic-best-practices.md, "Token budgets" —
+// kit-author reference, not shipped).
 // Bytes are the tokenizer-free proxy for the ~5k-token target: English markdown
 // runs ~4.2 bytes/token, so 22000 bytes ≈ 5.2k tokens. Measured on the whole
 // file — every skill's frontmatter is ≤ 6 lines, so a body split is not needed.
@@ -39,8 +40,8 @@ func skillDirs(t *testing.T) []string {
 		}
 		out = append(out, path.Join(root, e.Name()))
 	}
-	if len(out) < 30 {
-		t.Fatalf("expected ≥30 skills, found %d", len(out))
+	if len(out) < 25 {
+		t.Fatalf("expected ≥25 skills, found %d", len(out))
 	}
 	return out
 }

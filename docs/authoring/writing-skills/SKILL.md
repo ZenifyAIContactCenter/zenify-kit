@@ -2,6 +2,7 @@
 name: writing-skills
 description: Use when creating new skills, editing existing skills, or verifying skills work before deployment
 ---
+<!-- Kit-author reference, NOT shipped in the znf plugin since W5 (2026-09-13). Read when writing or editing a skill in internal/plugin/assets/znf. -->
 <!-- Vendored from obra/superpowers (MIT). Adapted for the znf plugin. -->
 
 # Writing Skills
