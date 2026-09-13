@@ -376,7 +376,10 @@ func newUpCmd() *cobra.Command {
 					Validate:  func(d string) error { return validateWorkspaceDir(d, home, gitToplevel) },
 				})
 				if werr != nil {
-					return exitcode.New(exitcode.Cancelled, werr)
+					if tui.IsAborted(werr) {
+						return exitcode.New(exitcode.Cancelled, werr)
+					}
+					return exitcode.New(exitcode.BadArgs, werr)
 				}
 				if err := os.MkdirAll(res.Workspace, 0o750); err != nil {
 					return exitcode.New(exitcode.Fail, err)

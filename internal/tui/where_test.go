@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/charmbracelet/huh"
@@ -54,6 +55,42 @@ func TestRunWhere_PointerDefaultsToExisting(t *testing.T) {
 	}
 	if len(seen) != 2 || seen[0] != "existing" || seen[1] != "cwd" {
 		t.Fatalf("options = %v", seen)
+	}
+}
+
+func TestRunWhere_DefaultFailsValidation(t *testing.T) {
+	wantErr := errors.New("thư mục không rỗng")
+	res, err := RunWhere(WhereConfig{
+		Cwd: "/tmp", OSDefault: "/x",
+		Validate: func(d string) error {
+			if d == "/x" {
+				return wantErr
+			}
+			return nil
+		},
+		SelectFn: func(string, []huh.Option[string]) (string, error) { return "default", nil },
+		InputFn:  func(_, _ string, _ func(string) error) (string, error) { return "", nil },
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want %v", err, wantErr)
+	}
+	if IsAborted(err) {
+		t.Fatalf("a validation refusal must not be reported as aborted: %v", err)
+	}
+	if res != (WhereResult{}) {
+		t.Fatalf("result must be zero on error: %+v", res)
+	}
+}
+
+func TestIsAborted(t *testing.T) {
+	if !IsAborted(huh.ErrUserAborted) {
+		t.Fatal("huh.ErrUserAborted must be aborted")
+	}
+	if !IsAborted(fmt.Errorf("wrapped: %w", huh.ErrUserAborted)) {
+		t.Fatal("a wrapped huh.ErrUserAborted must still be aborted")
+	}
+	if IsAborted(errors.New("x")) {
+		t.Fatal("a plain error must not be aborted")
 	}
 }
 

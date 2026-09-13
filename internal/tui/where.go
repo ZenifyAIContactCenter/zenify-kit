@@ -88,6 +88,13 @@ func RunWhere(cfg WhereConfig) (WhereResult, error) {
 	return WhereResult{Workspace: ws, SourcesDir: strings.TrimSpace(src)}, nil
 }
 
+// IsAborted reports whether err is (or wraps) huh.ErrUserAborted, so cli can
+// tell a real user cancel apart from a validation refusal without importing
+// huh itself.
+func IsAborted(err error) bool {
+	return errors.Is(err, huh.ErrUserAborted)
+}
+
 func huhSelect(title string, opts []huh.Option[string], accessible bool) (string, error) {
 	if len(opts) == 0 {
 		return "", errors.New("no options")
