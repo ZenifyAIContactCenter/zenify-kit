@@ -7,11 +7,7 @@ allowed-tools: Read Grep Glob Bash(git *) Bash(rg *) Bash(herdr *) Bash(hcall *)
 `CLAUDE.md` rule #3: *"When there are no tests, produce output from the real code path and show
 it."* This skill is how. It does not judge the output — it makes output exist.
 
-**This skill existed as a name before it existed as a file.** Eight places referenced `/run`
-— including rule #3 itself and a `WORKFLOW.md` row claiming *"Agent-invocable, so skills can rely
-on it"* — while `skills/run/` did not exist. The visible consequence: with nothing owning "which
-port does this app use", agents improvised a port hunt, which silently discards the port `wt`
-allocated and puts the app somewhere `ui-verifier` is not looking.
+> Rationale moved: see [references/why-this-skill-exists.md](references/why-this-skill-exists.md) — read when you wonder why `/run` is a skill and not a bash line.
 
 ## Step 1: The port is already decided — read it, never hunt for it
 
@@ -49,15 +45,15 @@ lsof -a -p "$PID" -d cwd -Fn | grep '^n' | sed 's/^n//'      # `-a`, or lsof ORs
 | **your own worktree** | reuse it. It is your code |
 | **another worktree** | **do not reuse.** That is another task's uncommitted code, and testing against it passes or fails for reasons that have nothing to do with your change. Say whose it is and stop |
 
-The third row is the one that bites, because reuse looks free and the contamination is invisible:
-your change verified green against a server running someone else's half-finished edit.
+> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — why the third row is the one that bites.
 
 **A task only needs a local server for a repo it actually touched.** An untouched repo has the same
 code for every task, so it does not need a per-task copy — and where the project points its
 frontend at a deployed environment by default, it does not need a local copy at all. Read the
 frontend's env file before starting a backend: if it points at staging, a local backend on the
-default port is serving nobody. Measured, on this skill's own demo run — `be` and `hub` were started
-locally while the frontend's `.env` pointed both of them at `*-staging`, so both ran for nothing.
+default port is serving nobody.
+
+> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — this skill's own demo run where both servers ran for nothing.
 
 ## Step 2: How the port reaches the app is per-repo, and must be read from code
 
@@ -73,15 +69,8 @@ variable. Three shapes, each met in a real repo:
 
 **Which shape a repo is, is a project fact — look it up, never carry it between projects.** It
 belongs in that repo's `CLAUDE.md`; this table only says which shapes exist and what each implies.
-An earlier version listed repos by name and asserted one of them read `PORT` via Next. It was Vite,
-the default was not the one stated, and the value arrived through the env *file* rather than the
-environment — three wrong claims in one row, none of which mattered until they did. A named row is
-exactly the thing that stops being true, quietly, while still reading as authority.
 
-The third one is the trap, and it is invisible from config alone: hub's `.env` contains
-`PORT=3002`, which *matches the hardcoded default*, so the setup looks wired when nothing reads
-it. Every hub worktree then listens on 3002 — colliding with the main checkout and with every
-other hub worktree.
+> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — the earlier version's three wrong claims, and hub's PORT=3002 trap.
 
 **For that shape, write a gitignored per-worktree override — do not skip it and do not reach for an
 env var.** node-config loads `local.EXT` after `default.EXT`
@@ -104,10 +93,9 @@ lives; the socket is where the claim lands. Verified once end-to-end: the overri
 allocated port, the worktree's server took it, and the main checkout's kept its own — two instances
 at once, impossible before.
 
-**What not to do: teach the config library to read environment variables.** Adding a global
-env-variable mapping makes every documented-but-inert name live in *all* environments at once,
-including production, where a `.env` written to match a stale README may already set one. That is a
-deployment change disguised as a dev-environment fix, and it is the user's call, not this skill's.
+**What not to do: teach the config library to read environment variables.**
+
+> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — why that's a deployment change disguised as a dev-environment fix.
 
 **A repo whose config directory is gitignored cannot run from a bare checkout.** Seed it the same
 way `.env` is seeded — `wt`'s `copy` list takes directories (`cp -c -R`, `wt:410`). Without it the
@@ -128,9 +116,7 @@ Find what the code reads. Then make the allocated port reach *that*.
 wt wire            # --dry-run first if you want to see it
 ```
 
-Getting the app's **own** port right is only half of it. The other half is where it looks for the
-*other* services, and that is where the silent pass lives: a frontend worktree whose env still
-points at the baseline is testing against the **unchanged** backend, and it goes green.
+> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — why the app's own port is only half of it.
 
 `wt wire` recomputes each declared peer variable from scratch — the peer's worktree port when a
 worktree of **this slug** exists, otherwise the value the main checkout has. So it is idempotent,
@@ -142,11 +128,9 @@ repo, keyed by env var rather than by repo, because one repo can serve several s
 "peers": { "VITE_HUB_URL": { "repo": "…", "url": "http://localhost:{port}" } }
 ```
 
-**Run it even when the task touches only one repo.** A worktree's env file is copied at creation
-and frozen there, while the main checkout's moves on. Measured on a real worktree three days old:
-it still carried `localhost:3001` / `localhost:3002` after the baseline had been changed to point
-at a deployed environment — so it was aimed at whatever happened to be occupying those ports.
-Re-syncing the baseline is the same command.
+**Run it even when the task touches only one repo.**
+
+> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — the three-day-old worktree measurement.
 
 **Before the server starts, not after.** A bundler reads its env files at config time
 (`loadEnv(...)`), so a wire that lands after the dev server booted changes nothing until a restart —
@@ -155,14 +139,12 @@ and the restart is the part nobody remembers.
 ## Step 3: The launch command comes from the project, not from memory
 
 Read the `Commands` section of the repo's `CLAUDE.md`. **Stop when the recipe is ambiguous, not
-merely when `CLAUDE.md` is absent** — that distinction cost this skill its first run, where it was
-about to refuse a repo that had no `CLAUDE.md` and exactly one dev script. Refusing there is the
+merely when `CLAUDE.md` is absent.** Refusing there is the
 rule serving itself. Stop and say so when there are several plausible candidates, or none — and
 note the missing recipe either way, so it gets written. A wrong launch command produces a failure
 that looks like a broken change; an unambiguous one that happens to be undocumented does not.
 
-Filling the gap belongs to `/onboard-project`, which is already told to record the launch command
-and port for exactly this reason.
+> Rationale moved: see [references/why-this-skill-exists.md](references/why-this-skill-exists.md) — this skill's first run and `/onboard-project`.
 
 **"No `dev` script" does not mean no dev command.** Scripts are often named after the **app**
 rather than the mode — in a monorepo, one entry per deployable — so searching for `dev`/`start:dev`
@@ -231,29 +213,7 @@ gitignored override the third shape above uses, chosen from the repo's declared 
 the repo's `CLAUDE.md` for which apps it runs and which key each takes its port from; do not assume
 the app you know is the only one.
 
-**Why the column and not a band across the bottom.** Both were built and measured at 203×62:
-
-```
-column (right)   agent 134x62   ·  three services 69x21, 69x21, 69x20   → 3 fit, no tab
-band (bottom)    agent 203x47   ·  two services 102x15, 101x15          → 3rd needs a tab
-```
-
-The column wins on the axis that matters most and the one nobody counts: **the agent pane is what
-you read continuously**, and 62 rows against 47 is a third more conversation on screen. The service
-panes trade width (69 vs 102) for height (21 vs 15) and for all three fitting at once — and for a
-dev log you read the tail, so height is what shows you a stack trace.
-
-**The count that decides overflow is panes in the column, not repos in the task.** Panes-in-column
-is state you can measure and it corrects itself when one is closed; repos-in-task is a guess made up
-front that goes wrong the moment the task grows — and it is the wrong unit anyway, since one
-monorepo can want three of these on its own.
-
-This file has now had the layout wrong twice, in opposite directions, and both times from
-over-generalising one measurement. First *"a tab rather than a split: a split leaves each dev pane
-~62 columns"* — true of a **vertical** split (agent 121 | dev 62) and then applied to splitting in
-general. Then a bottom band, which does give each pane full width but takes 15 rows off the agent
-and caps the column at two. The measurement that settles it is the one above: build both, read the
-geometry, prefer the layout that protects the pane you actually read.
+> Rationale moved: see [references/pane-layout-rationale.md](references/pane-layout-rationale.md) — column-vs-band measurement and why the layout was wrong twice.
 
 `--no-focus` throughout, and afterwards `herdr workspace focus "$HERDR_WORKSPACE_ID"`
 unconditionally — whether anything steals focus measured differently on two runs, and restoring
@@ -314,20 +274,14 @@ lsof -nP -iTCP:"$PORT" -sTCP:LISTEN        # works under the sandbox
 ```
 
 **`nc -z` and `curl` report every port as closed inside the command sandbox**, because the sandbox
-allows outbound connections only to an allowlisted host — and localhost is not on it. Measured
-against two ports that were genuinely listening: `nc -z` said both were free, `curl` returned
-`http 000`, and `lsof` got both right. A check that always answers "free" is worse than no check,
-since it launders a wrong port into something that looks verified. `lsof` queries the kernel's
-socket table instead of dialling, which is why it survives.
+allows outbound connections only to an allowlisted host — and localhost is not on it.
+
+> Rationale moved: see [references/sandbox-port-checks.md](references/sandbox-port-checks.md) — measured `nc`/`curl` failure and the wait-primitive analogy.
 
 The same defect sits in `/fix` and `/ship`, which recommend `nc -z <host> <port>` to separate a
 network failure from a credential failure. That advice is sound outside the sandbox and inverted
 inside it: for a **remote** host there is no `lsof` equivalent, so run those with the sandbox
 disabled and say that you did.
-
-This is the same failure as `herdr agent prompt --wait --until idle` returning at once because
-the agent was already idle. Any wait primitive can be satisfied by state that predates the thing
-you are waiting for; make the condition impossible to meet before the event.
 
 ## Step 6: Report the URL and the evidence
 
@@ -381,3 +335,12 @@ the user asks, or at `/sweep`**. Do NOT stop it on your own as end-of-task clean
 UI verify, not while a review agent runs, not at the end of `/fix`/`/ship`. A running dev server
 is live infrastructure the user may still want to look at; the sanctioned teardown point is
 `/sweep`, which runs *after* the work has merged and stops dev servers itself.
+
+## References
+
+Materialized at `~/.claude/skills/znf/skills/run/references/`. Read a file only when its trigger fires.
+
+- `references/why-this-skill-exists.md` — read when you wonder why `/run` is a skill and not a bash line.
+- `references/port-wiring-rationale.md` — read when the port you allocated is not the port the app listens on, or peers still point at main-checkout ports.
+- `references/pane-layout-rationale.md` — read when you are about to change the pane geometry.
+- `references/sandbox-port-checks.md` — read when `nc`/`curl` says a port is closed.
