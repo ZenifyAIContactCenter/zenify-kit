@@ -135,18 +135,18 @@ func Run(o *Options) error {
 	creds, _ := LoadCreds(o.Env, o.SettingsPath)
 	mongoURL := creds["MONGO_URL"]
 	if mongoURL == "" {
-		_, _ = fmt.Fprintf(o.Stderr, "db_read: $MONGO_URL is not set and %s did not supply it.\n", o.SettingsPath)
-		_, _ = fmt.Fprintln(o.Stderr, "db_read: it belongs in the env block of that file, next to E2E_PASSWORD.")
-		return fmt.Errorf("db_read: MONGO_URL not set")
+		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $MONGO_URL is not set and %s did not supply it.\n", o.SettingsPath)
+		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: it belongs in the env block of that file, next to E2E_PASSWORD.")
+		return fmt.Errorf("zenify db-read: MONGO_URL not set")
 	}
 
 	mongoEval := func(js string) error {
 		err := o.run("mongosh", []string{mongoURL, "--quiet", "--eval", js}, nil, "")
 		if err != nil {
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: mongosh failed. Separate network from credential before theorising:")
-			_, _ = fmt.Fprintf(o.Stderr, "db_read:   nc -z %s 27017   # needs no credential\n", mongoHost)
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: port open  -> auth, or a stale $MONGO_URL in settings.local.json")
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: port shut  -> network. This host is reachable directly, no VPN.")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: mongosh failed. Separate network from credential before theorising:")
+			_, _ = fmt.Fprintf(o.Stderr, "zenify db-read:   nc -z %s 27017   # needs no credential\n", mongoHost)
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port open  -> auth, or a stale $MONGO_URL in settings.local.json")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port shut  -> network. This host is reachable directly, no VPN.")
 		}
 		return err
 	}
@@ -154,8 +154,8 @@ func Run(o *Options) error {
 	mysqlRun := func(sql string) error {
 		host := creds["MYSQL_HOST"]
 		if host == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: $MYSQL_HOST is not set — same source as $MONGO_URL, see above.")
-			return fmt.Errorf("db_read: MYSQL_HOST not set")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: $MYSQL_HOST is not set — same source as $MONGO_URL, see above.")
+			return fmt.Errorf("zenify db-read: MYSQL_HOST not set")
 		}
 		port := creds["MYSQL_PORT"]
 		if port == "" {
@@ -198,36 +198,36 @@ func Run(o *Options) error {
 		})
 	case "doc":
 		if o.Arg == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: doc needs a collection name — run 'db_read collections' first")
-			return fmt.Errorf("db_read: arg required")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: doc needs a collection name — run 'zenify db-read collections' first")
+			return fmt.Errorf("zenify db-read: arg required")
 		}
 		return mongoEval(fmt.Sprintf("printjson(db.getSiblingDB('3csoft').getCollection('%s').findOne())", o.Arg))
 	case "count":
 		if o.Arg == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: count needs a collection name")
-			return fmt.Errorf("db_read: arg required")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: count needs a collection name")
+			return fmt.Errorf("zenify db-read: arg required")
 		}
 		return mongoEval(fmt.Sprintf("print(db.getSiblingDB('3csoft').getCollection('%s').estimatedDocumentCount())", o.Arg))
 	case "eval":
 		if o.Arg == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: eval needs a JS expression")
-			return fmt.Errorf("db_read: arg required")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: eval needs a JS expression")
+			return fmt.Errorf("zenify db-read: arg required")
 		}
 		if RefuseWrites(o.Arg) {
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: refusing — this looks like a write.")
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: writes go in a script that connects and runs, never in a direct query.")
-			return fmt.Errorf("db_read: refused write")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: refusing — this looks like a write.")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: writes go in a script that connects and runs, never in a direct query.")
+			return fmt.Errorf("zenify db-read: refused write")
 		}
 		return mongoEval(fmt.Sprintf("db = db.getSiblingDB('3csoft'); %s", o.Arg))
 	case "sql":
 		if o.Arg == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: sql needs a query")
-			return fmt.Errorf("db_read: arg required")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: sql needs a query")
+			return fmt.Errorf("zenify db-read: arg required")
 		}
 		if RefuseWrites(o.Arg) {
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: refusing — this looks like a write.")
-			_, _ = fmt.Fprintln(o.Stderr, "db_read: writes go in a script that connects and runs, never in a direct query.")
-			return fmt.Errorf("db_read: refused write")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: refusing — this looks like a write.")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: writes go in a script that connects and runs, never in a direct query.")
+			return fmt.Errorf("zenify db-read: refused write")
 		}
 		return mysqlRun(o.Arg)
 	default:
@@ -240,7 +240,7 @@ func Run(o *Options) error {
 		_, _ = fmt.Fprintln(o.Stderr, "  db-read count <collection>     estimated document count")
 		_, _ = fmt.Fprintln(o.Stderr, "  db-read eval '<js>'            read-only mongosh expression, with `db` already = 3csoft")
 		_, _ = fmt.Fprintln(o.Stderr, "  db-read sql '<query>'          read-only MySQL query")
-		return fmt.Errorf("db_read: unknown subcommand %q", o.Cmd)
+		return fmt.Errorf("zenify db-read: unknown subcommand %q", o.Cmd)
 	}
 }
 

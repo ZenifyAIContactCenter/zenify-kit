@@ -1,7 +1,7 @@
 ---
 name: explain-plan
 description: Use when a diff adds or changes a DB query — the mandatory two-tier DB-perf gate. Runs a static scan (no DB needed) plus a per-query explain plan, and classifies findings BLOCKING (surface as must-fix at ship) vs ADVISORY. Degrades cleanly when the DB is unreachable.
-allowed-tools: Read Grep Bash(db_read *) Bash(zenify db-perf *) Bash(git diff *)
+allowed-tools: Read Grep Bash(zenify db-read *) Bash(zenify db-perf *) Bash(git diff *)
 ---
 
 # znf:explain-plan — two-tier DB-perf gate
@@ -26,16 +26,16 @@ and stop cleanly.
 ## Step 2 — dynamic layer (only if the DB is reachable)
 
 ```bash
-command -v db_read >/dev/null || echo "dynamic layer skipped: no db_read on PATH"
+command -v zenify >/dev/null || echo "dynamic layer skipped: no zenify db-read on PATH"
 ```
 
 For each query call-site, identify the **real** collection (list it from the DB, never guess) and
-run the plan. If `db_read` is missing or times out, print **"dynamic layer skipped: DB unreachable"**
+run the plan. If `zenify db-read` is missing or times out, print **"dynamic layer skipped: DB unreachable"**
 and keep only the static findings — never fail.
 
 ```bash
-db_read eval 'db.getCollection("<real-name>").find({…}).explain("executionStats")'
-db_read sql  'EXPLAIN ANALYZE <real-statement>'
+zenify db-read eval 'db.getCollection("<real-name>").find({…}).explain("executionStats")'
+zenify db-read sql  'EXPLAIN ANALYZE <real-statement>'
 ```
 
 ## Step 3 — dynamic rubric (two-tier)
@@ -45,7 +45,7 @@ Read `executionStats`: `stage`, `nReturned`, `totalDocsExamined`, `totalKeysExam
 | Plan shows | Tier |
 |---|---|
 | `IXSCAN`, ratio `totalDocsExamined/nReturned` ≤ 10 | ok |
-| `COLLSCAN` on a large collection (`db_read count` > 100k) | BLOCKING |
+| `COLLSCAN` on a large collection (`zenify db-read count` > 100k) | BLOCKING |
 | `Seq Scan` (SQL) on a large table | BLOCKING |
 | scan-ratio > 100 | BLOCKING |
 | scan-ratio 10–100 | ADVISORY |

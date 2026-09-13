@@ -12,7 +12,7 @@ never touches the new path is not that output.
 ### From § Start the app once, if anything in the plan has to be exercised
 
 **`Skill(znf:run)` here, not only at the UI check.** Until this was added, `/run` was reachable from
-exactly two places — the per-task `ui-verifier` check, and `/ship` step 4, which prefers tests when
+exactly two places — the per-task `znf:ui-verifier` check, and `/ship` step 4, which prefers tests when
 they exist. A backend task therefore reached neither: hub has 81 MCP specs, so step 4 runs those and
 never starts anything, and there is no UI to verify. The observed result was a `/cook` run with no dev
 server anywhere, which is also why nothing appeared in a `dev` pane.
@@ -98,7 +98,7 @@ Started once, it stays up for the rest of the run; later tasks reuse it rather t
 
 ### From § A task the plan flagged — why the exact URL and why a tool call (extra, tier two)
 
-`ui-verifier` is project-agnostic: it drives whatever URL the caller hands it, so a wrong port
+`znf:ui-verifier` is project-agnostic: it drives whatever URL the caller hands it, so a wrong port
 produces a failure indistinguishable from a broken change. `/run` starts the server in a pane
 beside the agent, which keeps its full height — reusing whatever is already serving that port
 rather than starting a second copy. Invoke it as a tool, not as an intention — the same

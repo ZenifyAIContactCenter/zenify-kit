@@ -11,13 +11,13 @@ outside this project: a CI provider's instrumentation returned `null` instead of
 fired, and it was caught 3.5 hours later by someone reading a dashboard.
 
 ### From § 4f: trigger the data checks mechanically
-The condition is written as a command on purpose: it self-disables in a project without `db_read`,
+The condition is written as a command on purpose: it self-disables in a project without `zenify db-read`,
 instead of relying on you to read a "skip unless the project matches" note and act on it. That note
 was the earlier version of this paragraph, and a note is exactly the form that four separate attempts
 today failed to make stick.
 
 ### From § 4g: the three data checks
-These three assume MongoDB, `tenant_id` and `db_read`, so they are project-specific content in a
+These three assume MongoDB, `tenant_id` and `zenify db-read`, so they are project-specific content in a
 global skill. Moving them to a project-level skill was considered and rejected: it needs a
 cross-file reference that can go stale — one was created and had to be repaired inside this very
 file — and whether a same-named skill at project scope overrides one at user scope is not

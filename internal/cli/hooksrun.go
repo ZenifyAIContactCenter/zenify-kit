@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
 	"github.com/spf13/cobra"
 )
 
@@ -46,6 +47,10 @@ func dispatchHook(id, wsRoot string, w io.Writer) int {
 		return runObserveHook(wsRoot, "count", w)
 	case "observe-meter":
 		return runObserveHook(wsRoot, "meter", w)
+	case "git-state":
+		return runGitStateHook(wsRoot, gitstate.Session, w)
+	case "git-state-stop":
+		return runGitStateHook(wsRoot, gitstate.Stop, w)
 	default:
 		return noop() // unknown id: fail-open
 	}

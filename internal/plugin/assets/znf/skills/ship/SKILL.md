@@ -1,7 +1,7 @@
 ---
 name: ship
 description: Pre-ship gate. Use when work is complete and about to be committed — runs lint/build on the changed areas, the cross-service contract gate, behavioural verification, and an independent review, with one fix-and-re-verify loop over all of them, then commits and pushes the feature branch and opens the PR (never merges). Invoked unconditionally by /cook, /fix and /hotfix.
-allowed-tools: Bash(git *) Bash(pm *) Bash(db_read *) Bash(rg *) Bash(printf *) Bash(cat *) Bash(tail *) Bash(wc *) Read Grep Agent
+allowed-tools: Bash(git *) Bash(pm *) Bash(zenify db-read *) Bash(rg *) Bash(printf *) Bash(cat *) Bash(tail *) Bash(wc *) Read Grep Agent
 ---
 
 ## What this gate is actually for
@@ -53,7 +53,7 @@ start early, and that section says why.
 4. **Behavioural verification**: confirm the change actually works. Tests if they exist; otherwise
    **`Skill(znf:run)`** and observe the real code path — "it builds" is not "it works". Invoke it as a
    tool: it reads the port this worktree was allocated rather than hunting for a free one, and the
-   URL it reports is what `ui-verifier` needs. A `Skill(znf:run)` line is checkable; "I ran the app" is
+   URL it reports is what `znf:ui-verifier` needs. A `Skill(znf:run)` line is checkable; "I ran the app" is
    the shape that dissolves into unnamed `Bash` calls.
 
    > Why: see `references/ui-verification-notes.md` — why this pass is authoritative.
@@ -64,15 +64,15 @@ start early, and that section says why.
    git diff --name-only HEAD | rg -c '\.(tsx|jsx|vue|svelte|css|scss|less)$|components?/|pages?/|views?/'
    ```
 
-   Non-zero → dispatch **`ui-verifier`** (`~/.claude/agents/ui-verifier.md`) and **do not drive the
+   Non-zero → dispatch **`znf:ui-verifier`** (the plugin agent) and **do not drive the
    browser yourself**. Zero → write "nothing renders in this diff" on the board and move on.
 
    > Why: see `references/ui-verification-notes.md` — why the agent exists.
 
    **If the target repo has `.znf/visual/routes.json`, run `zenify visual check --repo <path> --port <P>`
    FIRST** — golden-diff catches visual regression in regions *unrelated* to the diff, which the
-   single-element `ui-verifier` measurement cannot. A non-zero exit is a hard gate: fix before shipping. This is the local half; CI runs
-   the same check as a backstop. Then still dispatch `ui-verifier` for the changed element's overflow
+   single-element `znf:ui-verifier` measurement cannot. A non-zero exit is a hard gate: fix before shipping. This is the local half; CI runs
+   the same check as a backstop. Then still dispatch `znf:ui-verifier` for the changed element's overflow
    measurement — the two are complementary, not substitutes.
 
    If the repo has `.znf/e2e/`, run `zenify e2e lint` — it blocks a shallow journey before the PR is opened.
@@ -131,7 +131,7 @@ start early, and that section says why.
    **Trigger them mechanically, not by remembering which project you are in:**
 
    ```bash
-   command -v db_read >/dev/null || echo "no db_read on PATH — these three do not apply here"
+   command -v zenify >/dev/null || echo "no zenify db-read on PATH — these three do not apply here"
    git diff HEAD | rg -c '\.find\(|\.aggregate\(|\.skip\(|OFFSET|findOne\(|updateMany\('
    ```
 
@@ -144,7 +144,7 @@ start early, and that section says why.
    - **The diff adds or changes a DB query → run the two-tier DB-perf gate** (`COLLSCAN` /
      `Seq Scan` on a large collection or table is one of the findings). Delegate the full
      size-aware rubric to **`Skill(znf:explain-plan)`** — it runs `zenify db-perf` plus
-     `db_read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE` per site. An index existing
+     `zenify db-read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE` per site. An index existing
      does not mean it is used (non-selective field, wrong compound-index column order, `$in`/`$or`).
      A **BLOCKING** finding that is not waived (`// znf:db-perf-ok: <reason>` on the query line)
      means **ship does not complete** — list each one with its fix. ADVISORY findings print under
@@ -184,8 +184,8 @@ start early, and that section says why.
                     the commands run and their real output (test counts, lint result)
                     which test files ran, by name
                     which changed behaviour NO test touches
-   ## Ground      db_read doc <each-real-collection-the-diff-touches>
-                  db_read sql 'DESCRIBE <each-real-table-it-touches>'
+   ## Ground      zenify db-read doc <each-real-collection-the-diff-touches>
+                  zenify db-read sql 'DESCRIBE <each-real-table-it-touches>'
    ## Deferred    every `minor (deferred)` line from the SDD ledger, verbatim:
                     rg -n 'minor \(deferred\)' .znf/sdd/*/progress.md
                   omit this block entirely when there is no ledger (/fix, /hotfix)
@@ -201,13 +201,13 @@ start early, and that section says why.
 
 ## Start the agents before the inline work
 
-The inline work — `pm run lint`, `pm run build`, `db_read` — **blocks this loop while it runs**, so
+The inline work — `pm run lint`, `pm run build`, `zenify db-read` — **blocks this loop while it runs**, so
 starting it first idles every agent behind it. But the agents are not all startable at once: two need
 only the diff, and one is genuinely downstream.
 
 ```
 1. log in to the app          inline, blocking — the verifier cannot authenticate itself
-2. ONE message dispatching:   the gate's per-repo sweeps  ‖  ui-verifier
+2. ONE message dispatching:   the gate's per-repo sweeps  ‖  znf:ui-verifier
 3. inline, while they work:   pm run lint · pm run build · the three data checks
 4. collect 2's reports BY NAME
 5. THEN invoke Skill(znf:review) — it cannot start earlier, see below
@@ -219,7 +219,7 @@ Step 2 must be a **single message**. Separate messages run the agents in sequenc
 > Why: see `references/ship-pack-rationale.md` — why the reviewer is last.
 
 **One exclusive resource: the browser.** The Playwright instance is **shared and single** — never two
-browser-driving agents at once, and the main session must not touch Playwright while `ui-verifier`
+browser-driving agents at once, and the main session must not touch Playwright while `znf:ui-verifier`
 runs. What it never parallelises against
 is **itself**: a multi-screen change is one verifier covering several screens, not several verifiers.
 
@@ -283,7 +283,7 @@ Verified at fingerprint = <fp10>
 ✅/❌ Build / typecheck    (<fp10>)  <command run>
 ✅/❌ Contract gate        (<fp10>)  /gate: <N repos impacted, or clean>
 ✅/❌ Behaviour verified   (<fp10>)  <N tests passed — or what /run showed>
-      look: <ui-verifier verdict + the overflow numbers — or "nothing renders in this diff">
+      look: <znf:ui-verifier verdict + the overflow numbers — or "nothing renders in this diff">
       data checks: <which of the project-specific ones ran; which the diff could not trigger>
 ✅/❌ Independent review   (<fp10>)  round <R>: <N CRITICAL/HIGH → addressed> · diff <N> LOC
       not blocking: <MEDIUM/LOW findings, plus any out-of-scope observations>

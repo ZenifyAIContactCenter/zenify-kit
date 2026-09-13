@@ -372,3 +372,41 @@ func TestSync_SchemaHasEvidenceField(t *testing.T) {
 		t.Errorf("finding-schema.md missing field 'evidence'")
 	}
 }
+
+// FR-8.1/8.4: the seven generic skills are gone from the embed, and a
+// teammate's stale materialized copy is pruned on the next sync.
+func TestSync_UnshippedGenericSkillsPruned(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatal(err)
+	}
+	gone := []string{"verification-before-completion", "receiving-code-review", "test-driven-development",
+		"requesting-code-review", "find-skills", "coding-level", "writing-skills"}
+	// Plant a recorded stale copy of one of them, as an old install would have.
+	stale := filepath.Join(dest, "skills", "coding-level", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := managed.Load(man)
+	if err := m.Record(stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Save(man); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range gone {
+		if _, err := os.Stat(filepath.Join(dest, "skills", g)); !os.IsNotExist(err) {
+			t.Errorf("skills/%s must not exist after sync", g)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dest, "skills", "subagent-driven-development", "code-reviewer-template.md")); err != nil {
+		t.Error("code-reviewer-template.md must ship inside subagent-driven-development")
+	}
+}

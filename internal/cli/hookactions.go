@@ -2,12 +2,14 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
 )
 
@@ -18,7 +20,7 @@ const znfDisciplineSentinel = "znf-discipline-local"
 // hook's required "{}" so Claude Code's hook-output parser is satisfied.
 // Fail-open: any error from the core is logged, never surfaced as a failure.
 func runDocsSyncHook(wsRoot string, w io.Writer) int {
-	defer failOpen(w)
+	defer failOpen(w, nil)
 	if err := docsSyncCore(wsRoot, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "znf docs-sync:", err)
 	}
@@ -52,7 +54,7 @@ func runObserveHook(wsRoot, kind string, w io.Writer) int {
 // rules are newer than what it loaded. Then the BOOTSTRAP digest for machines
 // without the discipline sentinel.
 func runSessionStart(wsRoot string, w io.Writer) int {
-	defer failOpen(w)
+	defer failOpen(w, nil)
 	if err := docsSyncCore(wsRoot, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "znf docs-sync:", err)
 	}
@@ -94,10 +96,56 @@ func readBootstrapDigest() string {
 	return string(raw)
 }
 
+// runGitStateHook prints the repo-state report for the workspace (FR-6).
+// Session mode: plain text — Claude Code adds SessionStart stdout to context.
+// Stop mode: Claude Code does NOT surface plain Stop stdout, so the standing
+// alarm travels as {"systemMessage": ...}; a clean workspace prints "{}".
+// Scope base is $CLAUDE_PROJECT_DIR when set (the directory the session was
+// opened in), else wsRoot; deploy tiers stop at wsRoot's own .claude/deploy-branches
+// (stopAt is inclusive — nothing above wsRoot is read).
+func runGitStateHook(wsRoot string, mode gitstate.Mode, w io.Writer) int {
+	var wrote bool
+	defer failOpen(w, &wrote)
+	base := os.Getenv("CLAUDE_PROJECT_DIR")
+	if base == "" {
+		base = wsRoot
+	}
+	report := gitstate.Run(base, wsRoot, mode)
+	// Built into a string and written once at the end (rather than at each
+	// early return) so failOpen can tell, via wrote, whether a panic during
+	// gitstate.Run left the hook's contract unfulfilled.
+	var out string
+	switch {
+	case mode == gitstate.Stop && report == "":
+		out = "{}\n"
+	case mode == gitstate.Stop:
+		b, _ := json.Marshal(map[string]string{"systemMessage": report})
+		out = string(b) + "\n"
+	case report == "":
+		// Session mode, nothing to report: SessionStart stdout is injected
+		// verbatim as context, so a literal "{}" would land in the model's
+		// context as noise — print nothing instead.
+	default:
+		out = report
+	}
+	wrote = true
+	if out != "" {
+		fmt.Fprint(w, out)
+	}
+	return 0
+}
+
 // failOpen guarantees the hook never crashes the user's session: a panic is
-// recovered and swallowed so dispatchHook's caller still sees exit 0.
-func failOpen(w io.Writer) {
+// recovered and swallowed so dispatchHook's caller still sees exit 0. wrote
+// tracks whether the caller had already written its output before the panic;
+// when non-nil and still false, a bare "{}" is emitted so a hook whose
+// contract requires JSON (e.g. the Stop hook) never comes back empty. Pass
+// nil to opt out — used by callers whose contract has no such requirement.
+func failOpen(w io.Writer, wrote *bool) {
 	if r := recover(); r != nil {
 		fmt.Fprintln(os.Stderr, "znf hook recovered:", r)
+		if wrote != nil && !*wrote {
+			fmt.Fprintln(w, "{}")
+		}
 	}
 }

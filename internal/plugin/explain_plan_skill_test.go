@@ -27,11 +27,14 @@ func TestExplainPlanSkill_Materialized_HasKeyParts(t *testing.T) {
 		"COLLSCAN",                  // Mongo rubric
 		"Seq Scan",                  // SQL rubric (relational still covered)
 		`explain("executionStats")`, // how to run explain on Mongo
-		"db_read",                   // tool that runs explain
+		"zenify db-read",            // tool that runs explain
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("explain-plan/SKILL.md missing %q", want)
 		}
+	}
+	if strings.Contains(s, "db_read") {
+		t.Error("explain-plan/SKILL.md still says db_read; the shipped accessor is `zenify db-read`")
 	}
 	// Agnostic — no mermaid, no project-specific collection names (public repo).
 	for _, forbidden := range []string{"mermaid", "chat_rooms", "tickets"} {

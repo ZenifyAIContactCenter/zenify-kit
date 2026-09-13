@@ -1,7 +1,7 @@
 ---
 name: ground
 description: Verify real shapes and real values before writing code. Use when about to write code that touches a DB field, API payload, queue message, external library API, in-repo function/symbol/component props, a config key or an env var — fetch the ACTUAL shape from its real source first, including which values a field really holds and which filters every query must carry. Answers "what is X?" only; for "what depends on X?" use /scout.
-allowed-tools: Read Grep Glob Bash(db_read *) Bash(mongosh *) Bash(mysql *) Bash(psql *) Bash(grep *) Bash(find *) Agent
+allowed-tools: Read Grep Glob Bash(zenify db-read *) Bash(mongosh *) Bash(mysql *) Bash(psql *) Bash(grep *) Bash(find *) Agent
 ---
 
 **Rigid discipline.** This skill enforces one rule: **read before write**.
@@ -35,6 +35,9 @@ State which data shapes are unverified:
 - In-repo code you will call into: function/method signatures, exported symbol names, component props, config keys
 - Env var names — **and config values**, read live, not from a file
 
+If the workspace has `.claude/GLOSSARY.md`, read it when a domain term in the request is
+unclear — a term you cannot define is a shape you cannot ground.
+
 ## Step 2: Fetch the real shape
 
 **DB — resolve the NAME before you query it.** Never type a collection or table name
@@ -45,15 +48,14 @@ then pick one.** MongoDB creates a collection silently on first write, so a wron
 returns zero rows with no error at all.
 
 Use the project's documented read-only accessor. It takes credentials from a designated
-store, so none is extracted by hand, passed as an argument, or printed. **Its name is in the
-project's `CLAUDE.md`** — `/onboard-project` step 7 is what puts it there. The commands below use
-`db_read` as the placeholder name; substitute whatever this project calls it:
+store, so none is extracted by hand, passed as an argument, or printed. The kit ships
+`zenify db-read`; if the project's `CLAUDE.md` names a different accessor, use that name:
 
 ```bash
-db_read collections <substr>              # real Mongo names — start here, never guess one
-db_read doc <a-name-from-that-list>       # one real document
-db_read tables <substr>                   # real MySQL table names
-db_read sql 'DESCRIBE <a-real-table>'     # real MySQL columns
+zenify db-read collections <substr>              # real Mongo names — start here, never guess one
+zenify db-read doc <a-name-from-that-list>       # one real document
+zenify db-read tables <substr>                   # real MySQL table names
+zenify db-read sql 'DESCRIBE <a-real-table>'     # real MySQL columns
 ```
 
 If a project has no such accessor, read its CLAUDE.md for how to reach real data and
@@ -85,8 +87,8 @@ and quote it with the number: `rg -l --glob '*.{js,ts}' 'strict:\s*false' | wc -
 So for any field a condition, `switch`, or enum comparison will read:
 
 ```bash
-db_read eval 'db.getCollection("<a-real-name>").distinct("<field>")'   # every value that exists
-db_read count <a-real-name>                                            # how much data you are landing on
+zenify db-read eval 'db.getCollection("<a-real-name>").distinct("<field>")'   # every value that exists
+zenify db-read count <a-real-name>                                            # how much data you are landing on
 ```
 
 If `distinct` returns a value your new code has no branch for, that is a bug already written.
@@ -122,7 +124,7 @@ Grounding a query is the cheapest moment to see its plan — earlier than `/ship
 **mandatory** DB-perf gate: when the change adds or touches a backend DB query, delegate to
 **`Skill(znf:explain-plan)`** — it runs `zenify db-perf` (the static two-tier scan, no DB needed)
 plus the dynamic explain, reading each query's plan
-(`db_read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE`) and flagging a `COLLSCAN` /
+(`zenify db-read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE`) and flagging a `COLLSCAN` /
 `Seq Scan` on a large collection before the code is even written. At ground time the gate is
 shift-left and advisory; the **same** gate runs with teeth at `/ship`. A missing
 `Skill(znf:explain-plan)` line here when the diff touches a query means the gate was skipped.
@@ -178,7 +180,7 @@ It was deleted after **0 dispatches across 1427 session transcripts**. The wordi
 shape that has recurred throughout this kit. But the outcome was also correct: inline is the right
 place, so the honest fix was to remove the option rather than add a trigger for it.
 
-Several collections is still not a reason to delegate — it is a reason to run several `db_read` calls.
+Several collections is still not a reason to delegate — it is a reason to run several `zenify db-read` calls.
 They are independent, cheap, and their output is the evidence.
 
 ## Red-flag table (stop if any apply)

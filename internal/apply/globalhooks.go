@@ -26,7 +26,9 @@ type hookSpec struct {
 func znfHookSpecs() []hookSpec {
 	return []hookSpec{
 		{Event: "SessionStart", Matcher: "", ID: "session-start"},
+		{Event: "SessionStart", Matcher: "", ID: "git-state"},
 		{Event: "Stop", Matcher: "", ID: "docs-sync"},
+		{Event: "Stop", Matcher: "", ID: "git-state-stop"},
 		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count"},
 		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter"},
 	}

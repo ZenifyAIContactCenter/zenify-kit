@@ -3,7 +3,7 @@
 The rules every human-read artifact a skill produces must follow: specs, plans, design docs,
 review write-ups. A badly-formatted artifact defeats its own purpose, so these are not optional
 polish — they are part of "done". Skills such as `znf:brainstorming`, `znf:writing-plans`,
-`znf:cook`, and `znf:writing-skills` cite this file instead of restating the rules.
+and `znf:cook` cite this file instead of restating the rules.
 
 These rules are project-agnostic. A project's own prose language and any domain term table live
 in the project's convention, not here.
