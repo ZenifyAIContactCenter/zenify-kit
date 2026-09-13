@@ -1,7 +1,7 @@
 ---
 name: sweep
-description: Tear down a finished task — stop its dev servers, close its herdr workspaces, remove its worktrees and branches, across every repo it touched. Use when work has landed and the workspace should go back to clean, or when asked to clean up or tidy up after a task. Refuses to report success when nothing has actually merged yet, and says what is still needed instead.
-allowed-tools: Bash(wt *) Bash(git *) Bash(herdr *) Bash(hcall *) Bash(node *) Bash(ls *) Read
+description: Tear down a finished task — stop its dev servers, close its terminal workspaces (when a workspace manager is present), remove its worktrees and branches, across every repo it touched. Use when work has landed and the workspace should go back to clean, or when asked to clean up or tidy up after a task. Refuses to report success when nothing has actually merged yet, and says what is still needed instead.
+allowed-tools: Bash(wt *) Bash(git *) Bash(node *) Bash(ls *) Read
 ---
 
 **The destructive work is `wt sweep`, not this file.** Everything that stops a process or deletes a
@@ -79,9 +79,10 @@ uncommitted changes mean someone's work is in there, and no merge trace means it
 The kept lines are the useful half. A sweep that removed 2 of 5 and reported only the 2 hides three
 worktrees that need a decision.
 
-**One thing `wt sweep` will not do, by design:** it never closes the herdr workspace it is *running
-in*, because that would kill the shell mid-sweep and the removal after it would never happen. It says
-so; that pane is yours to close.
+**One thing `wt sweep` will not do, by design:** when a terminal workspace manager is present it
+closes the workspace bound to each removed worktree, but never the one it is *running in*, because
+that would kill the shell mid-sweep and the removal after it would never happen. It says so; that
+pane is yours to close. No workspace manager → this part is skipped silently.
 
 ## Red flags
 

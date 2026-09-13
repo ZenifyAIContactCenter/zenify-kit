@@ -26,7 +26,7 @@ Step 2, you were on the wide path all along — go run it, do not patch the symp
 
 **Isolation (house rule #8): a worktree, always — no conditions, whatever the size of the fix.**
 
-> **Isolation & base-ref doctrine → znf:discipline §8** (single source): worktree is unconditional; the base is the repo's declared baseRef, read never hardcoded; fetch before resolving the base; the carve-outs (not-a-repo / gitignored / no worktree-config → herdr / unsupported toolchain) live there too. What follows is only `/fix`'s operational step.
+> **Isolation & base-ref doctrine → znf:discipline §8** (single source): worktree is unconditional; the base is the repo's declared baseRef, read never hardcoded; fetch before resolving the base; the carve-outs (not-a-repo / gitignored / no worktree-config → add the config, `deps: none` for non-Node repos) live there too. What follows is only `/fix`'s operational step.
 
 ```bash
 git -C <repo> fetch origin                                   # before resolving the base — see znf:discipline §8

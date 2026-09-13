@@ -5,6 +5,6 @@ Measured against two ports that were genuinely listening: `nc -z` said both were
 since it launders a wrong port into something that looks verified. `lsof` queries the kernel's
 socket table instead of dialling, which is why it survives.
 
-This is the same failure as `herdr agent prompt --wait --until idle` returning at once because
+This is the same failure as a "wait until the agent is idle" primitive returning at once because
 the agent was already idle. Any wait primitive can be satisfied by state that predates the thing
 you are waiting for; make the condition impossible to meet before the event.

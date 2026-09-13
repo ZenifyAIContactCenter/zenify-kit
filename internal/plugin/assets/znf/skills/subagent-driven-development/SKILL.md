@@ -43,7 +43,7 @@ stop and ask.
 > Why: see `references/setup-rationale.md` — losing your place.
 
 Ensure the work happens in an isolated workspace: use
-worktree (wt/herdr, house-rule #8) to create one or verify the existing one.
+`wt new` (znf:discipline §8) to create one or verify the existing one.
 Never start implementation on a main/master branch without your human
 partner's explicit consent.
 
