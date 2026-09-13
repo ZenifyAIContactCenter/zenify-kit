@@ -78,8 +78,8 @@ func renderPlanTable(w io.Writer, plans []reconcile.RepoPlan, auth ghx.Auth) {
 
 // minVersionFloor is the binary version that introduced the apply path. A
 // binary older than this refuses to mutate (FR-004). A "dev" build is never
-// blocked (see version.MeetsMin). Format is v-prefixed semver to match
-// version.Current() (goreleaser injects {{.Version}} like "v0.3.0"). Set to the
+// blocked (see version.MeetsMin). Written v-prefixed; goreleaser injects
+// {{.Version}} WITHOUT the prefix ("0.17.2") and MeetsMin normalises both. Set to the
 // current public floor so the gate is real (a pre-0.3.0 binary is blocked) yet
 // can never self-block: any release carrying apply is >= v0.3.0.
 const minVersionFloor = "v0.3.0"
