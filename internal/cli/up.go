@@ -53,7 +53,7 @@ func buildPlan(m *manifest.Manifest, gh ghx.Runner, git gitx.Runner, workspace s
 		}
 		scans[r.Name] = st
 	}
-	return reconcile.Build(m, access, scans), auth, nil
+	return reconcile.Build(m, access, scans, nil), auth, nil
 }
 
 // planData is the JSON payload for `up --json`.
