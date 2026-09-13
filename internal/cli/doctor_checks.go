@@ -25,9 +25,6 @@ func secretPresenceCheck(getenv func(string) string, settingsPath func() string)
 		Name: "secrets",
 		Run: func() (bool, string) {
 			path := settingsPath()
-			if path == "" {
-				return false, "no workspace — run `zenify up` (or cd into the workspace)"
-			}
 			creds, _ := dbread.LoadCreds(getenv, path)
 			keys := []string{"MONGO_URL", "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"}
 			var parts []string
@@ -38,8 +35,12 @@ func secretPresenceCheck(getenv func(string) string, settingsPath func() string)
 				}
 				parts = append(parts, k+"="+state) // key + state only; NEVER the value
 			}
+			detail := strings.Join(parts, " ")
+			if creds["MONGO_URL"] == "" && path == "" {
+				detail += " — no workspace: run `zenify up` (or cd into the workspace)"
+			}
 			ok := creds["MONGO_URL"] != ""
-			return ok, strings.Join(parts, " ")
+			return ok, detail
 		},
 	}
 }

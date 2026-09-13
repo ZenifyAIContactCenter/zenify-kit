@@ -35,6 +35,39 @@ func TestSecretPresenceReportsAbsent(t *testing.T) {
 	}
 }
 
+// F3: an exported MONGO_URL must count even when no workspace resolves
+// (settingsPath returns "") — LoadCreds reads env first regardless of path.
+func TestSecretPresenceCheck_EnvMongoUrlCountsWithNoWorkspace(t *testing.T) {
+	getenv := func(k string) string {
+		if k == "MONGO_URL" {
+			return "mongodb://x"
+		}
+		return ""
+	}
+	c := secretPresenceCheck(getenv, func() string { return "" })
+	ok, detail := c.Run()
+	if !ok {
+		t.Fatalf("MONGO_URL is set in env, ok should be true; detail=%q", detail)
+	}
+	if strings.Contains(detail, "no workspace") {
+		t.Fatalf("MONGO_URL present should not append the no-workspace hint: %q", detail)
+	}
+}
+
+// F3: with neither env nor a workspace, the check stays not-ok and now
+// explains why via the no-workspace hint (previously an early return with a
+// fixed message that ignored env entirely).
+func TestSecretPresenceCheck_NoEnvNoWorkspace(t *testing.T) {
+	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "" })
+	ok, detail := c.Run()
+	if ok {
+		t.Fatal("no MONGO_URL and no workspace → check should be not-ok")
+	}
+	if !strings.Contains(detail, "no workspace") {
+		t.Fatalf("detail should explain no workspace: %q", detail)
+	}
+}
+
 func TestToolPresenceReportsMissing(t *testing.T) {
 	c := toolPresenceCheck([]string{"this-binary-does-not-exist-zzz"})
 	ok, detail := c.Run()
