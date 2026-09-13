@@ -23,11 +23,12 @@ func newDBReadCmd() *cobra.Command {
 				arg = args[1]
 			}
 			o := &dbread.Options{
-				Cmd:    args[0],
-				Arg:    arg,
-				Stdout: cmd.OutOrStdout(),
-				Stderr: cmd.ErrOrStderr(),
-				Env:    os.Getenv,
+				Cmd:          args[0],
+				Arg:          arg,
+				Stdout:       cmd.OutOrStdout(),
+				Stderr:       cmd.ErrOrStderr(),
+				Env:          os.Getenv,
+				SettingsPath: workspaceSettingsPath(),
 			}
 			o.SetRun(func(name string, args []string, extraEnv []string, _ string) error {
 				c := exec.Command(name, args...) //nolint:gosec // G204 -- name is always "mongosh" or "mysql" from this package's own callers, args are internally-computed subcommands, not attacker-controlled shell input

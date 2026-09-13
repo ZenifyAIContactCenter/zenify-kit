@@ -3,6 +3,8 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -91,5 +93,58 @@ func TestResolveWorkspace_Table(t *testing.T) {
 	// nothing at all → not ok
 	if _, _, ok := resolveWorkspace(plain, "", noEnv, func() (string, error) { return t.TempDir(), nil }); ok {
 		t.Fatal("no flag/marker/pointer must be !ok")
+	}
+}
+
+func TestWorkspaceSettingsPath_FollowsResolvedWorkspace(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ZENIFY_HOME", filepath.Join(home, ".zenify"))
+	ws := filepath.Join(home, "Developer", "zenify")
+	mkMarker(t, ws)
+	if err := writeWorkspacePointer(os.Getenv, os.UserHomeDir, ws); err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := os.Getwd()
+	t.Chdir(t.TempDir()) // cwd is NOT inside the workspace
+	defer func() { _ = os.Chdir(wd) }()
+	if got := workspaceSettingsPath(); got != filepath.Join(ws, ".claude", "settings.local.json") {
+		t.Fatalf("settings path = %q", got)
+	}
+}
+
+func TestSecretPresenceCheck_ReadsWorkspaceSettings(t *testing.T) {
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(ws, ".claude", "settings.local.json")
+	if err := os.WriteFile(settings, []byte(`{"env":{"MONGO_URL":"mongodb://x"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := secretPresenceCheck(func(string) string { return "" }, func() string { return settings })
+	ok, detail := c.Run()
+	if !ok || !strings.Contains(detail, "MONGO_URL=present") {
+		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+}
+
+func TestNoMaintainerPathInBinary(t *testing.T) {
+	root := filepath.Join("..", "..", "internal")
+	var hits []string
+	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		b, _ := os.ReadFile(p)
+		for i, ln := range strings.Split(string(b), "\n") {
+			if strings.Contains(ln, "WorkingSpace/zenify") && !strings.Contains(strings.TrimSpace(ln), "//") {
+				hits = append(hits, p+":"+strconv.Itoa(i+1))
+			}
+		}
+		return nil
+	})
+	if len(hits) > 0 {
+		t.Fatalf("maintainer path still hardcoded: %v", hits)
 	}
 }

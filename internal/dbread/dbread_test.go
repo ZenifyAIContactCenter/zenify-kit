@@ -367,3 +367,13 @@ func TestFilterLines(t *testing.T) {
 		t.Errorf("filterLines empty substr = %q, want unchanged", got)
 	}
 }
+
+func TestRun_NoWorkspaceNoEnv_FriendlyError(t *testing.T) {
+	var out, errb bytes.Buffer
+	o := &Options{Cmd: "collections", Stdout: &out, Stderr: &errb, Env: func(string) string { return "" }}
+	o.SetRun(func(string, []string, []string, string) error { t.Fatal("must not run mongosh"); return nil })
+	err := Run(o)
+	if err == nil || !strings.Contains(errb.String(), "chưa có workspace") {
+		t.Fatalf("err=%v stderr=%q", err, errb.String())
+	}
+}

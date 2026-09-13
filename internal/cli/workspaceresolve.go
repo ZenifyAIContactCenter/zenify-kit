@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,4 +90,27 @@ func writeWorkspacePointer(getenv func(string) string, userHome func() (string, 
 	// WriteFileAtomic keeps an existing file's mode and defaults a NEW file to
 	// 0o644 (snapshot.go:111) — the pointer is per-user state, so pin 0o600.
 	return os.Chmod(p, 0o600)
+}
+
+// workspaceSettingsPath is <workspace>/.claude/settings.local.json for the
+// workspace resolved from the current cwd, or "" when there is none (FR-2.3).
+func workspaceSettingsPath() string {
+	cwd, _ := os.Getwd()
+	ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
+	if !ok {
+		return ""
+	}
+	return filepath.Join(ws, ".claude", "settings.local.json")
+}
+
+// workspaceOrCwd resolves the workspace for commands that used to default to
+// cwd (docs sync, config). Falls back to cwd with one warning so an
+// un-migrated machine keeps working (FR-2.4).
+func workspaceOrCwd(flag string, errW io.Writer) string {
+	cwd, _ := os.Getwd()
+	if ws, _, ok := resolveWorkspace(cwd, flag, os.Getenv, os.UserHomeDir); ok {
+		return ws
+	}
+	fmt.Fprintln(errW, "zenify: chưa có workspace (không thấy .zenify/manifest.json hay ~/.zenify/workspace) — dùng thư mục hiện tại") //znf:allow-lang
+	return cwd
 }

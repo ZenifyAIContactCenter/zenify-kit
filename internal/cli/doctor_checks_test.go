@@ -13,7 +13,7 @@ func TestSecretPresenceNamesOnlyNeverLeaksValue(t *testing.T) {
 		}
 		return ""
 	}
-	c := secretPresenceCheck(getenv, "/nonexistent/settings.local.json")
+	c := secretPresenceCheck(getenv, func() string { return "/nonexistent/settings.local.json" })
 	ok, detail := c.Run()
 	if strings.Contains(detail, "secretpass") || strings.Contains(detail, "10.0.0.1") || strings.Contains(detail, "mongodb://") {
 		t.Fatalf("FR-041 VIOLATION: secret value leaked into detail: %q", detail)
@@ -25,7 +25,7 @@ func TestSecretPresenceNamesOnlyNeverLeaksValue(t *testing.T) {
 }
 
 func TestSecretPresenceReportsAbsent(t *testing.T) {
-	c := secretPresenceCheck(func(string) string { return "" }, "/nonexistent/settings.local.json")
+	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "/nonexistent/settings.local.json" })
 	ok, detail := c.Run()
 	if ok {
 		t.Fatal("no MONGO_URL anywhere → check should be not-ok")
