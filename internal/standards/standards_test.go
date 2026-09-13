@@ -178,20 +178,36 @@ func TestAsTestPath_FiltersCommandsGlobsAndLineSuffix(t *testing.T) {
 		want string
 		ok   bool
 	}{
-		{"go test ./...", "", false},                // command: whitespace
-		{"*.test.js", "", false},                    // glob
-		{"*/**/*.spec.ts", "", false},                // glob
-		{"a/b_test.go:20-31", "a/b_test.go", true},  // line range suffix stripped
-		{"a/b_test.go:7", "a/b_test.go", true},      // single line suffix stripped
-		{"TestX", "", false},                        // bare identifier: no / and no .
-		{"a/b_test.go", "a/b_test.go", true},        // plain path unchanged
-		{" ensure_test.go ", "ensure_test.go", true}, // bare file name kept (resolved later)
+		{"go test ./...", "", false},                     // command: whitespace
+		{"*.test.js", "", false},                         // glob
+		{"*/**/*.spec.ts", "", false},                    // glob
+		{"a/b_test.go:20-31", "a/b_test.go", true},       // line range suffix stripped
+		{"a/b_test.go:7", "a/b_test.go", true},           // single line suffix stripped
+		{"TestX", "", false},                             // bare identifier: no / and no .
+		{"a/b_test.go", "a/b_test.go", true},             // plain path unchanged
+		{" ensure_test.go ", "ensure_test.go", true},     // bare file name kept (resolved later)
+		{"../../etc/passwd", "", false},                  // escapes root
+		{"../x_test.go", "", false},                      // escapes root
+		{"_test.go", "", false},                          // bare suffix mention, not a file
+		{".test.js", "", false},                          // bare suffix mention, not a file
+		{".claude/x_test.go", ".claude/x_test.go", true}, // dot-dir with a slash is a real path
 	}
 	for _, c := range cases {
 		got, ok := asTestPath(c.in)
 		if ok != c.ok || got != c.want {
 			t.Errorf("asTestPath(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.want, c.ok)
 		}
+	}
+}
+
+func TestTestPathsByTask_DeleteBulletIsNotADeclaration(t *testing.T) {
+	plan := "### Task 9: remove\n" +
+		"- Delete: `internal/cli/selfheal.go`, `internal/cli/selfheal_test.go`\n" +
+		"- Remove: `internal/plugin/hooks_json_test.go`\n" +
+		"- Create: `internal/cli/ensure_test.go`\n"
+	got := testPathsByTask(plan)["### Task 9: remove"]
+	if len(got) != 1 || got[0] != "internal/cli/ensure_test.go" {
+		t.Fatalf("Delete:/Remove: bullets must contribute nothing, got %v", got)
 	}
 }
 

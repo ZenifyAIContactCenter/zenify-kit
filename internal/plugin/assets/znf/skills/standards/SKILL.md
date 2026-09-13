@@ -26,7 +26,7 @@ zenify standards --spec <spec-path> --plan <plan-path> --root <repo-root>
 
 The command reuses the FR→task coverage from `znf:analyze`, plus checks the test file on disk:
 - `untested-fr` (HIGH) — an FR has a covering task, but that task declares no test.
-- `missing-test-file` (HIGH) — the test path declared in the plan doesn't exist on disk.
+- `missing-test-file` (HIGH) — the test path declared in the plan doesn't exist on disk. A bare file name (`x_test.go`, no directory) is resolved by unique basename under `--root`; 2+ matches raise this same kind with a message asking the plan to declare the directory. Only path-shaped backtick values count (commands, globs, bare identifiers, `..` escapes and suffix mentions like `_test.go` are ignored), and `Delete:`/`Remove:` bullets are never test declarations.
 - `empty-test-file` (MEDIUM) — the test file exists but has no test func (language-aware).
 - `unchecked-lang` (INFO) — unrecognized extension, only existence is checked, not content.
 
