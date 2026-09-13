@@ -15,6 +15,10 @@ checkouts are mostly not sitting on their base**: measured once across a 13-repo
 on someone's feature or hotfix branch and 3 were dirty. A `pull` there either fails or advances the
 wrong branch, and a `checkout` would abandon work in flight.
 
+The base is *declared*, not guessed — `baseRef` in each repo's `.claude/worktree.json`, and it
+differs between repos in the same workspace, so read it per repo and never carry one repo's answer
+to another.
+
 ### From § Step 0 — consequence for Step 1 (extra, tier two)
 
 Reading a file out of the main checkout gives you whatever branch that checkout is on. Ground a

@@ -7,7 +7,7 @@ allowed-tools: Read Grep Glob Bash(git *) Bash(rg *) Bash(herdr *) Bash(hcall *)
 `CLAUDE.md` rule #3: *"When there are no tests, produce output from the real code path and show
 it."* This skill is how. It does not judge the output — it makes output exist.
 
-> Rationale moved: see [references/why-this-skill-exists.md](references/why-this-skill-exists.md) — read when you wonder why `/run` is a skill and not a bash line.
+> Why: see `references/why-this-skill-exists.md` — read when you wonder why `/run` is a skill and not a bash line.
 
 ## Step 1: The port is already decided — read it, never hunt for it
 
@@ -45,7 +45,7 @@ lsof -a -p "$PID" -d cwd -Fn | grep '^n' | sed 's/^n//'      # `-a`, or lsof ORs
 | **your own worktree** | reuse it. It is your code |
 | **another worktree** | **do not reuse.** That is another task's uncommitted code, and testing against it passes or fails for reasons that have nothing to do with your change. Say whose it is and stop |
 
-> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — why the third row is the one that bites.
+> Why: see `references/port-wiring-rationale.md` — why the third row is the one that bites.
 
 **A task only needs a local server for a repo it actually touched.** An untouched repo has the same
 code for every task, so it does not need a per-task copy — and where the project points its
@@ -53,7 +53,7 @@ frontend at a deployed environment by default, it does not need a local copy at 
 frontend's env file before starting a backend: if it points at staging, a local backend on the
 default port is serving nobody.
 
-> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — this skill's own demo run where both servers ran for nothing.
+> Why: see `references/port-wiring-rationale.md` — this skill's own demo run where both servers ran for nothing.
 
 ## Step 2: How the port reaches the app is per-repo, and must be read from code
 
@@ -70,7 +70,7 @@ variable. Three shapes, each met in a real repo:
 **Which shape a repo is, is a project fact — look it up, never carry it between projects.** It
 belongs in that repo's `CLAUDE.md`; this table only says which shapes exist and what each implies.
 
-> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — the earlier version's three wrong claims, and hub's PORT=3002 trap.
+> Why: see `references/port-wiring-rationale.md` — the earlier version's three wrong claims, and hub's PORT=3002 trap.
 
 **For that shape, write a gitignored per-worktree override — do not skip it and do not reach for an
 env var.** node-config loads `local.EXT` after `default.EXT`
@@ -95,7 +95,7 @@ at once, impossible before.
 
 **What not to do: teach the config library to read environment variables.**
 
-> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — why that's a deployment change disguised as a dev-environment fix.
+> Why: see `references/port-wiring-rationale.md` — why that's a deployment change disguised as a dev-environment fix.
 
 **A repo whose config directory is gitignored cannot run from a bare checkout.** Seed it the same
 way `.env` is seeded — `wt`'s `copy` list takes directories (`cp -c -R`, `wt:410`). Without it the
@@ -116,7 +116,7 @@ Find what the code reads. Then make the allocated port reach *that*.
 wt wire            # --dry-run first if you want to see it
 ```
 
-> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — why the app's own port is only half of it.
+> Why: see `references/port-wiring-rationale.md` — why the app's own port is only half of it.
 
 `wt wire` recomputes each declared peer variable from scratch — the peer's worktree port when a
 worktree of **this slug** exists, otherwise the value the main checkout has. So it is idempotent,
@@ -130,7 +130,7 @@ repo, keyed by env var rather than by repo, because one repo can serve several s
 
 **Run it even when the task touches only one repo.**
 
-> Rationale moved: see [references/port-wiring-rationale.md](references/port-wiring-rationale.md) — the three-day-old worktree measurement.
+> Why: see `references/port-wiring-rationale.md` — the three-day-old worktree measurement.
 
 **Before the server starts, not after.** A bundler reads its env files at config time
 (`loadEnv(...)`), so a wire that lands after the dev server booted changes nothing until a restart —
@@ -144,7 +144,7 @@ rule serving itself. Stop and say so when there are several plausible candidates
 note the missing recipe either way, so it gets written. A wrong launch command produces a failure
 that looks like a broken change; an unambiguous one that happens to be undocumented does not.
 
-> Rationale moved: see [references/why-this-skill-exists.md](references/why-this-skill-exists.md) — this skill's first run and `/onboard-project`.
+> Why: see `references/why-this-skill-exists.md` — this skill's first run and `/onboard-project`.
 
 **"No `dev` script" does not mean no dev command.** Scripts are often named after the **app**
 rather than the mode — in a monorepo, one entry per deployable — so searching for `dev`/`start:dev`
@@ -213,7 +213,7 @@ gitignored override the third shape above uses, chosen from the repo's declared 
 the repo's `CLAUDE.md` for which apps it runs and which key each takes its port from; do not assume
 the app you know is the only one.
 
-> Rationale moved: see [references/pane-layout-rationale.md](references/pane-layout-rationale.md) — column-vs-band measurement and why the layout was wrong twice.
+> Why: see `references/pane-layout-rationale.md` — column-vs-band measurement and why the layout was wrong twice.
 
 `--no-focus` throughout, and afterwards `herdr workspace focus "$HERDR_WORKSPACE_ID"`
 unconditionally — whether anything steals focus measured differently on two runs, and restoring
@@ -276,7 +276,7 @@ lsof -nP -iTCP:"$PORT" -sTCP:LISTEN        # works under the sandbox
 **`nc -z` and `curl` report every port as closed inside the command sandbox**, because the sandbox
 allows outbound connections only to an allowlisted host — and localhost is not on it.
 
-> Rationale moved: see [references/sandbox-port-checks.md](references/sandbox-port-checks.md) — measured `nc`/`curl` failure and the wait-primitive analogy.
+> Why: see `references/sandbox-port-checks.md` — measured `nc`/`curl` failure and the wait-primitive analogy.
 
 The same defect sits in `/fix` and `/ship`, which recommend `nc -z <host> <port>` to separate a
 network failure from a credential failure. That advice is sound outside the sandbox and inverted

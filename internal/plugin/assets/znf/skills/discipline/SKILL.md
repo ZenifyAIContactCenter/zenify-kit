@@ -88,9 +88,9 @@ Red flags — thinking any of these means you are rationalising:
 - If something is untested or skipped, say so plainly. Don't imply more was verified than was.
 - Ask for the report by name; never read silence as a clean result.
 
-> Rationale moved: see [references/agent-dispatch-notes.md](references/agent-dispatch-notes.md) — the measured failure rate behind "a dispatched agent going idle is not a result".
+> Why: see `references/agent-dispatch-notes.md` — the measured failure rate behind "a dispatched agent going idle is not a result".
 - **Dispatching in parallel multiplies that risk, so account for it before you rely on it.** Concurrency is the right default for independent work — several agents in **one message** run at once, one message each runs them in sequence — but at that rate of loss, expecting all reports back unprompted is optimistic. Track what you dispatched, **collect each by name**, and treat a missing report as making the step **incomplete**, not clean: for a sweep, "no report" reads exactly like "no hits", and only one of those is safe to build on. Never write a checkmark, a ledger line, or "N things checked" for an agent that went quiet.
-> Rationale moved: see [references/agent-dispatch-notes.md](references/agent-dispatch-notes.md) — why the plan/TodoWrite list is the tracker, and what losing it costs.
+> Why: see `references/agent-dispatch-notes.md` — why the plan/TodoWrite list is the tracker, and what losing it costs.
 
 ## 4 — Memory habit
 - **Save when one of two checkable things is true** — not when it feels "non-obvious", which is an adjective that can be talked into either way: (a) you had to read a file, query the DB, or run something to learn it, or (b) the user corrected you on it. Save the **rule, not the event**: "fixed the queue bug on a given date" changes nothing next time; "the producer and consumer read the queue name from env, so the file on disk ≠ the running container" changes what to check.
@@ -102,7 +102,7 @@ Red flags — thinking any of these means you are rationalising:
 - **Keep a plan/TodoWrite list for anything over ~3 steps, and tick it as you go.** It is the only progress visible without reading every line of output. Two ways it goes wrong, both worse than no list at all: (a) it stops being updated, and then it *asserts* a false state — the same defect as a stale memory, and just as invisible to the reader; (b) it exists on a one-step task, where it is pure noise. When a plan already has its own ledger, the list **mirrors** the ledger — the ledger stays the single source of truth, never two. **Any turn that dispatches subagents is over the threshold by itself**, however few — counting a dispatch as one step is what makes the list never appear once work runs through agents, and rule #3 explains why that is the worst place to lose it.
 - Re-enable with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` set before the session starts; see references/agent-dispatch-notes.md.
 
-> Rationale moved: see [references/agent-dispatch-notes.md](references/agent-dispatch-notes.md) — why the task-list tool is off by default on newer models, and what it costs.
+> Why: see `references/agent-dispatch-notes.md` — why the task-list tool is off by default on newer models, and what it costs.
 - For a non-trivial feature, **design/plan before coding**: clarify intent, list affected files/contracts, get agreement — don't start editing immediately. (If a brainstorming/planning skill is available, use it.) For trivial changes (a line, a string, a config value), skip the ceremony and just do it.
 
 ## 6 — Balance
@@ -162,7 +162,7 @@ can branch from the wrong release entirely.
 
 **Polyrepo:** one worktree per affected repo, same slug in all of them.
 
-> Rationale moved: see [references/worktree-rationale.md](references/worktree-rationale.md) — why the rule is unconditional, and the four carve-outs (not a repo, gitignored, no worktree config, non-node toolchain).
+> Why: see `references/worktree-rationale.md` — why the rule is unconditional, and the four carve-outs (not a repo, gitignored, no worktree config, non-node toolchain).
 
 **Consequence for spec and plan files: they are written in the MAIN checkout, never in the worktree.**
 The worktree holds code only. Specs and plans are the record of the work, not of the branch, and
@@ -190,7 +190,7 @@ needs an **absolute** path — a relative one resolves inside the worktree and f
   demanding a cite without retrieval induces fabricated URLs. A claim that cannot be tagged from
   fetched text is the signal to search, not to invent a source.
 
-> Rationale moved: see [references/agent-dispatch-notes.md](references/agent-dispatch-notes.md) — why prose instructions alone are not a reliable gate.
+> Why: see `references/agent-dispatch-notes.md` — why prose instructions alone are not a reliable gate.
 
 ## 10 — Fan-out is the default for DECOMPOSABLE research, bounded
 
