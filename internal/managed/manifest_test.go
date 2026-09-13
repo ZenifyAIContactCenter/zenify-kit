@@ -72,3 +72,20 @@ func TestManifestLoadLegacyNoVersion(t *testing.T) {
 		t.Fatalf("legacy version = %q, want empty", got.Version)
 	}
 }
+
+func TestRecordLink_RoundTrip(t *testing.T) {
+	m := &Manifest{}
+	m.RecordLink("/old/be", "/ws/repos/be")
+	p := filepath.Join(t.TempDir(), "manifest.json")
+	if err := m.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, ok := got.Get("/old/be")
+	if !ok || e.Link != "/ws/repos/be" || e.SHA256 != "" {
+		t.Fatalf("entry = %+v ok=%v", e, ok)
+	}
+}

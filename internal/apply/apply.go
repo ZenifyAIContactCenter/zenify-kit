@@ -9,12 +9,14 @@ package apply
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsview"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
@@ -37,6 +39,10 @@ type Options struct {
 	ManifestPath string                                     // .zenify/manifest.json — Save after each repo promote
 	Now          func() int64                               // clock for the snapshot id (nil → time.Now)
 	VerifyRepoFn func(repoDir string, wrote []string) error // nil → defaultVerifyRepo
+
+	// Relocate seams (FR-4.3). nil → os.Rename and docsview.OSFS{}.Link.
+	RenameFn func(from, to string) error
+	LinkFn   func(target, link string) error
 }
 
 func (o Options) now() int64 {
@@ -142,13 +148,62 @@ func applyOne(p reconcile.RepoPlan, repoDir string, opts Options, gh ghx.Runner,
 	case reconcile.Adopt:
 		wrote, err := adoptRepo(repoDir, opts.Owned)
 		return "adopt in place", wrote, err
+	case reconcile.Relocate:
+		rename, link := opts.RenameFn, opts.LinkFn
+		if rename == nil {
+			rename = os.Rename
+		}
+		if link == nil {
+			link = docsview.OSFS{}.Link
+		}
+		wrote, warn, err := relocateRepo(p.From, repoDir, opts.Owned, rename, link)
+		if err != nil {
+			return "relocate", nil, err
+		}
+		w2, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
+		wrote = append(wrote, w2...)
+		action := fmt.Sprintf("moved %s → %s (đường dẫn cũ vẫn dùng được qua link)", p.From, p.Path) //znf:allow-lang
+		if warn != "" {
+			action += " — " + warn
+		}
+		return action, wrote, err
 	default:
 		return "skipped (" + string(p.State) + ")", nil, nil
 	}
 }
 
 func isActionable(s reconcile.State) bool {
-	return s == reconcile.Clone || s == reconcile.Wire || s == reconcile.Adopt
+	return s == reconcile.Clone || s == reconcile.Wire || s == reconcile.Adopt || s == reconcile.Relocate
+}
+
+// relocateRepo moves an existing clone from `from` to `to` (FR-4.3): mkdir the
+// parent, rename, then leave a symlink/junction at `from` pointing at `to` so
+// every old path (shell history, editor, running server) keeps working, and
+// record that link in the ownership manifest as the undo breadcrumb. A
+// cross-device rename is refused with a one-line instruction (FR-4.2); a link
+// failure after a successful move is a warning, never a rollback — the move
+// already happened and undoing it would surprise more than a missing link.
+func relocateRepo(from, to string, owned *managed.Manifest, rename func(string, string) error, link func(target, link string) error) (wrote []string, warn string, err error) {
+	if err := os.MkdirAll(filepath.Dir(to), 0o750); err != nil {
+		return nil, "", err
+	}
+	if _, err := os.Lstat(to); err == nil {
+		return nil, "", fmt.Errorf("%s already exists", to)
+	}
+	if err := rename(from, to); err != nil {
+		if isCrossDevice(err) {
+			return nil, "", errors.New("different volume — move by hand then re-run")
+		}
+		return nil, "", fmt.Errorf("move %s → %s: %w", from, to, err)
+	}
+	wrote = append(wrote, to)
+	if err := link(to, from); err != nil {
+		return wrote, fmt.Sprintf("could not leave a link at %s: %v", from, err), nil
+	}
+	if owned != nil {
+		owned.RecordLink(from, to)
+	}
+	return append(wrote, from), "", nil
 }
 
 // defaultVerifyRepo checks that each file the repo just wrote exists and
