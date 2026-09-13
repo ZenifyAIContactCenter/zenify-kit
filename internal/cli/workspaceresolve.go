@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 )
 
@@ -113,4 +115,67 @@ func workspaceOrCwd(flag string, errW io.Writer) string {
 	}
 	fmt.Fprintln(errW, "zenify: chưa có workspace (không thấy .zenify/manifest.json hay ~/.zenify/workspace) — dùng thư mục hiện tại") //znf:allow-lang
 	return cwd
+}
+
+// osDefaultWorkspace is where the wizard proposes to put a new workspace
+// (FR-3.3): ~/Developer/zenify on macOS (Finder gives ~/Developer its own
+// icon), ~/zenify on Linux, %USERPROFILE%\zenify on Windows.
+func osDefaultWorkspace(goos, home string) string {
+	if goos == "darwin" {
+		return filepath.Join(home, "Developer", "zenify")
+	}
+	return filepath.Join(home, "zenify")
+}
+
+// kitOwnedEntries are the only names a directory may contain and still count
+// as an empty workspace (a half-finished earlier `up`, or a docs view).
+var kitOwnedEntries = map[string]bool{".zenify": true, ".zenify-overlay.yaml": true, ".claude": true, "docs": true, "repos": true}
+
+// validateWorkspaceDir applies FR-3.4: not the home dir, not inside a git
+// repo, and — when it exists — empty apart from kit-owned entries. gitTop is
+// `git -C dir rev-parse --show-toplevel` (error ⇒ not in a repo), injected.
+func validateWorkspaceDir(dir, home string, gitTop func(dir string) (string, error)) error {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	if filepath.Clean(abs) == filepath.Clean(home) {
+		return errors.New("không dùng home dir làm workspace — chọn một thư mục con") //znf:allow-lang
+	}
+	probe := abs
+	for {
+		if _, err := os.Stat(probe); err == nil {
+			break
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			break
+		}
+		probe = parent
+	}
+	if top, err := gitTop(probe); err == nil && top != "" {
+		return fmt.Errorf("nằm trong git repo %s — workspace phải ở ngoài mọi repo", top) //znf:allow-lang
+	}
+	entries, err := os.ReadDir(abs)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !kitOwnedEntries[e.Name()] {
+			return fmt.Errorf("thư mục không rỗng (có %s) — chọn thư mục rỗng hoặc mới", e.Name()) //znf:allow-lang
+		}
+	}
+	return nil
+}
+
+// gitToplevel is the real gitTop for validateWorkspaceDir.
+func gitToplevel(dir string) (string, error) {
+	b, err := gitx.ExecRunner().Run(dir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
 }

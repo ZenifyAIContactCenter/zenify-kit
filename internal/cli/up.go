@@ -21,6 +21,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -361,12 +362,27 @@ func newUpCmd() *cobra.Command {
 			wantWizard := decideMode(isTTY, applyFlag, cmd.Flags().Changed("dry-run"), dryRun, jsonOut, nonInteractive) == modeWizard
 			var sources map[string]reconcile.Source
 			ws, _, ok := resolveWorkspace(cwd, workspace, os.Getenv, os.UserHomeDir)
+			var sourcesDir string
 			if !ok {
 				if !wantWizard {
 					return exitcode.New(exitcode.BadArgs, errors.New("chưa có workspace: dùng --workspace <dir> hoặc chạy zenify up có terminal")) //znf:allow-lang
 				}
-				// Task 8 fills this in: ws, sources = the Where step's answer.
-				return exitcode.New(exitcode.BadArgs, errors.New("chưa có workspace: dùng --workspace <dir>")) //znf:allow-lang
+				home, _ := os.UserHomeDir()
+				existing, _ := readWorkspacePointer(os.Getenv, os.UserHomeDir)
+				res, werr := tui.RunWhere(tui.WhereConfig{
+					Cwd:       cwd,
+					Existing:  existing,
+					OSDefault: osDefaultWorkspace(runtime.GOOS, home),
+					Validate:  func(d string) error { return validateWorkspaceDir(d, home, gitToplevel) },
+				})
+				if werr != nil {
+					return exitcode.New(exitcode.Cancelled, werr)
+				}
+				if err := os.MkdirAll(res.Workspace, 0o750); err != nil {
+					return exitcode.New(exitcode.Fail, err)
+				}
+				ws = res.Workspace
+				sourcesDir = res.SourcesDir
 			}
 			workspace = ws
 			if overlayPath == "" {
@@ -386,6 +402,9 @@ func newUpCmd() *cobra.Command {
 					printPlanFooterRows(w, workspace)
 				}
 				return exitcode.New(exitcode.Fail, err)
+			}
+			if sourcesDir != "" {
+				sources = scanSources(m, gitx.ExecRunner(), sourcesDir)
 			}
 			plans, auth, err := buildPlan(m, ghx.ExecRunner(), gitx.ExecRunner(), workspace, sources)
 			if err != nil {

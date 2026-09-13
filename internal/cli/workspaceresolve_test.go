@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -146,5 +147,52 @@ func TestNoMaintainerPathInBinary(t *testing.T) {
 	})
 	if len(hits) > 0 {
 		t.Fatalf("maintainer path still hardcoded: %v", hits)
+	}
+}
+
+func TestOSDefaultWorkspace(t *testing.T) {
+	if got := osDefaultWorkspace("darwin", "/Users/u"); got != "/Users/u/Developer/zenify" {
+		t.Fatal(got)
+	}
+	if got := osDefaultWorkspace("linux", "/home/u"); got != "/home/u/zenify" {
+		t.Fatal(got)
+	}
+	if got := osDefaultWorkspace("windows", `C:\Users\u`); got != filepath.Join(`C:\Users\u`, "zenify") {
+		t.Fatal(got)
+	}
+}
+
+func TestValidateWorkspaceDir(t *testing.T) {
+	home := t.TempDir()
+	notGit := func(string) (string, error) { return "", errors.New("not a git repository") }
+	inGit := func(string) (string, error) { return "/some/repo", nil }
+
+	if err := validateWorkspaceDir(home, home, notGit); err == nil || !strings.Contains(err.Error(), "home") {
+		t.Fatalf("home must be refused: %v", err)
+	}
+	if err := validateWorkspaceDir(filepath.Join(home, "x"), home, inGit); err == nil || !strings.Contains(err.Error(), "git repo") {
+		t.Fatalf("inside git repo must be refused: %v", err)
+	}
+	missing := filepath.Join(home, "new")
+	if err := validateWorkspaceDir(missing, home, notGit); err != nil {
+		t.Fatalf("missing dir is fine (will be created): %v", err)
+	}
+	empty := filepath.Join(home, "empty")
+	mkdir(t, empty)
+	if err := validateWorkspaceDir(empty, home, notGit); err != nil {
+		t.Fatal(err)
+	}
+	onlyKit := filepath.Join(home, "kit")
+	mkdir(t, filepath.Join(onlyKit, ".zenify"))
+	mkdir(t, filepath.Join(onlyKit, "repos"))
+	writeFile(t, filepath.Join(onlyKit, ".zenify-overlay.yaml"), "repos: []\n")
+	if err := validateWorkspaceDir(onlyKit, home, notGit); err != nil {
+		t.Fatalf("kit-only content is fine: %v", err)
+	}
+	busy := filepath.Join(home, "busy")
+	mkdir(t, busy)
+	writeFile(t, filepath.Join(busy, "notes.txt"), "x")
+	if err := validateWorkspaceDir(busy, home, notGit); err == nil || !strings.Contains(err.Error(), "notes.txt") {
+		t.Fatalf("non-empty must name the offender: %v", err)
 	}
 }
