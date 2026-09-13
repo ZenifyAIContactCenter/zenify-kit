@@ -8,6 +8,8 @@
 package standards
 
 import (
+	"fmt"
+	"io/fs"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -127,6 +129,42 @@ func testPathsByTask(planText string) map[string][]string {
 	return out
 }
 
+// skipDirs are never searched when resolving a bare test file name.
+var skipDirs = map[string]bool{".git": true, "node_modules": true, "vendor": true, ".worktrees": true}
+
+// resolveBare looks up a declared test path that has no directory component
+// ("ensure_test.go") by unique basename under root. It returns the relative
+// path found and the number of matches; n == -1 means not applicable (root is
+// empty or rel already has a directory). Errors while walking are ignored —
+// the caller falls back to the plain missing-test-file finding.
+func resolveBare(root, rel string) (string, int) {
+	if root == "" || strings.Contains(rel, "/") {
+		return rel, -1
+	}
+	var hits []string
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if skipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() == rel {
+			if r, e := filepath.Rel(root, p); e == nil {
+				hits = append(hits, r)
+			}
+		}
+		return nil
+	})
+	if len(hits) == 1 {
+		return hits[0], 1
+	}
+	return rel, len(hits)
+}
+
 // Check runs the mechanical test-traceability analysis. root is the directory
 // test paths resolve against; readFile reads an absolute path (injected for tests).
 func Check(specText, planText, root string, readFile func(string) ([]byte, error)) Result {
@@ -143,6 +181,16 @@ func Check(specText, planText, root string, readFile func(string) ([]byte, error
 		seen[rel] = true
 		r.TestPaths = append(r.TestPaths, rel)
 		b, err := readFile(filepath.Join(root, rel))
+		if err != nil {
+			if found, n := resolveBare(root, rel); n == 1 {
+				rel = found
+				b, err = readFile(filepath.Join(root, rel))
+			} else if n > 1 {
+				r.add(Finding{Severity: "HIGH", Kind: "missing-test-file", Location: rel,
+					Message: fmt.Sprintf("bare test file name matches %d files under root — declare the directory", n)})
+				return
+			}
+		}
 		if err != nil {
 			r.add(Finding{Severity: "HIGH", Kind: "missing-test-file", Location: rel,
 				Message: "declared test file not found or unreadable on disk"})

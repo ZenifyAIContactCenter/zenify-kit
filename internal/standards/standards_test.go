@@ -3,6 +3,7 @@ package standards
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -223,5 +224,45 @@ func TestTestPathsByTask_CreateBulletStripsLineSuffix(t *testing.T) {
 	}
 	if !stdContains(all, "internal/x/x_test.go") {
 		t.Fatalf("expected line-suffix stripped path collected, got %v", all)
+	}
+}
+
+func TestCheck_BareNameResolvedByUniqueBasename(t *testing.T) {
+	spec := "- **FR-1** thing\n"
+	plan := "### Task 1: t\n- Test: `b_test.go`\n- `_Requirements: FR-1_`\n"
+	root := withFiles(t, map[string]string{"a/b_test.go": "package a\nfunc TestX(t *testing.T){}\n"})
+	r := Check(spec, plan, root, os.ReadFile)
+	if k := kinds(r); k["missing-test-file"] != 0 || k["untested-fr"] != 0 {
+		t.Fatalf("bare name with one match must resolve cleanly, got %v", k)
+	}
+}
+
+func TestCheck_BareNameAmbiguousIsMissing(t *testing.T) {
+	spec := "- **FR-1** thing\n"
+	plan := "### Task 1: t\n- Test: `b_test.go`\n- `_Requirements: FR-1_`\n"
+	root := withFiles(t, map[string]string{
+		"a/b_test.go": "package a\nfunc TestX(t *testing.T){}\n",
+		"c/b_test.go": "package c\nfunc TestY(t *testing.T){}\n",
+	})
+	r := Check(spec, plan, root, os.ReadFile)
+	if k := kinds(r); k["missing-test-file"] != 1 {
+		t.Fatalf("ambiguous bare name must be reported once, got %v", k)
+	}
+	if !strings.Contains(r.Findings[0].Message, "2 files") {
+		t.Fatalf("message must state the match count, got %q", r.Findings[0].Message)
+	}
+}
+
+func TestCheck_BareNameSkipsGitAndNodeModules(t *testing.T) {
+	spec := "- **FR-1** thing\n"
+	plan := "### Task 1: t\n- Test: `b_test.go`\n- `_Requirements: FR-1_`\n"
+	root := withFiles(t, map[string]string{
+		"a/b_test.go":              "package a\nfunc TestX(t *testing.T){}\n",
+		"node_modules/x/b_test.go": "junk",
+		".git/b_test.go":           "junk",
+	})
+	r := Check(spec, plan, root, os.ReadFile)
+	if k := kinds(r); k["missing-test-file"] != 0 {
+		t.Fatalf("matches under .git/node_modules must not count, got %v", k)
 	}
 }
