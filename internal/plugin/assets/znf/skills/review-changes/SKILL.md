@@ -26,7 +26,7 @@ Invoke Workflow tool with:
   }
 ```
 
-3. The workflow fans out across 5 dimensions (bugs/security/perf/contracts/types), then adversarially verifies each finding with 3 skeptics — only findings confirmed by ≥2 skeptics survive.
+3. The workflow fans out across 5 dimensions (bugs/security/perf/contracts/types — security/contracts on opus, the rest on sonnet), then adversarially verifies each **CRITICAL/HIGH** finding with 3 opus skeptics — only findings confirmed by ≥2 skeptics survive. MEDIUM findings are returned as `advisory[]` without LLM verification; LOW as `lowRisk[]`.
 
 4. Fix all CRITICAL and HIGH confirmed findings before shipping.
 
@@ -38,4 +38,4 @@ Invoke Workflow tool with:
 
 ## Cost note
 
-Each run: ~5 reviewers + up to N×3 verifiers. Budget ~50k-200k tokens for a medium diff. Use the single `code-reviewer` agent for small diffs instead.
+Each run: 5 reviewers (2 opus + 3 sonnet) + (N_critical + N_high) × 3 opus verifiers. Budget ~50k-200k tokens for a medium diff. Use the single `code-reviewer` agent for small diffs instead.
