@@ -26,10 +26,15 @@ func initGitRepo(t *testing.T) string {
 	run("init", "-q", "-b", "main")
 	_ = os.MkdirAll(filepath.Join(root, ".claude"), 0o750)
 	_ = os.WriteFile(filepath.Join(root, ".claude", "worktree.json"),
-		[]byte(`{"abbrev":"ccbe","user":"namph","baseRef":"main","portRange":[3200,3249],"deps":"install","copy":["seed.txt"]}`), 0o600)
+		[]byte(`{"abbrev":"ccbe","user":"namph","baseRef":"main","portRange":[3200,3249],"deps":"install","copy":["seed.txt","local.txt"]}`), 0o600)
 	_ = os.WriteFile(filepath.Join(root, "seed.txt"), []byte("hi"), 0o600)
+	_ = os.WriteFile(filepath.Join(root, ".gitignore"), []byte("local.txt\n"), 0o600)
 	run("add", "-A")
 	run("commit", "-q", "-m", "init")
+	// After the commit: the main checkout drifts (seed.txt edited but not
+	// committed) and holds an ignored, machine-local file that only copy can seed.
+	_ = os.WriteFile(filepath.Join(root, "seed.txt"), []byte("stale-main-edit"), 0o600)
+	_ = os.WriteFile(filepath.Join(root, "local.txt"), []byte("loc"), 0o600)
 	return root
 }
 
@@ -50,9 +55,16 @@ func TestWtNew_Integration_CreatesWorktree(t *testing.T) {
 	if _, err := os.Stat(wtPath); err != nil {
 		t.Fatalf("worktree dir not created: %v", err)
 	}
-	// seeded copy target present
-	if _, err := os.Stat(filepath.Join(wtPath, "seed.txt")); err != nil {
-		t.Fatalf("copy target not seeded: %v", err)
+	// tracked copy target: the base version wins, not the main checkout's edit
+	if b, err := os.ReadFile(filepath.Join(wtPath, "seed.txt")); err != nil || string(b) != "hi" { //nolint:gosec // G304 -- test path
+		t.Fatalf("tracked copy target must be the base version: err=%v content=%q", err, b)
+	}
+	// ignored copy target: still seeded from the main checkout
+	if b, err := os.ReadFile(filepath.Join(wtPath, "local.txt")); err != nil || string(b) != "loc" { //nolint:gosec // G304 -- test path
+		t.Fatalf("ignored copy target not seeded: err=%v content=%q", err, b)
+	}
+	if n := strings.Count(out, "skipped copy target"); n != 1 {
+		t.Fatalf("expected exactly one skipped-copy line, got %d in:\n%s", n, out)
 	}
 	// PORT written into .env within range
 	env, _ := os.ReadFile(filepath.Join(wtPath, ".env")) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input

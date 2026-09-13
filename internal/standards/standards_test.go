@@ -3,6 +3,7 @@ package standards
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -169,4 +170,99 @@ func stdContains(ss []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func TestAsTestPath_FiltersCommandsGlobsAndLineSuffix(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"go test ./...", "", false},                // command: whitespace
+		{"*.test.js", "", false},                    // glob
+		{"*/**/*.spec.ts", "", false},                // glob
+		{"a/b_test.go:20-31", "a/b_test.go", true},  // line range suffix stripped
+		{"a/b_test.go:7", "a/b_test.go", true},      // single line suffix stripped
+		{"TestX", "", false},                        // bare identifier: no / and no .
+		{"a/b_test.go", "a/b_test.go", true},        // plain path unchanged
+		{" ensure_test.go ", "ensure_test.go", true}, // bare file name kept (resolved later)
+	}
+	for _, c := range cases {
+		got, ok := asTestPath(c.in)
+		if ok != c.ok || got != c.want {
+			t.Errorf("asTestPath(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestTestPathsByTask_LegacyLabelSkipsCommandTakesPath(t *testing.T) {
+	plan := "### Task 3: cmd-first\n" +
+		"- Test: `go test ./internal/x` then `internal/x/x_test.go`\n"
+	var all []string
+	for _, ps := range testPathsByTask(plan) {
+		all = append(all, ps...)
+	}
+	if len(all) != 1 || all[0] != "internal/x/x_test.go" {
+		t.Fatalf("expected only the path after the command, got %v", all)
+	}
+}
+
+func TestTestPathsByTask_LegacyLabelCommandOnlyContributesNothing(t *testing.T) {
+	plan := "### Task 4: cmd-only\n" +
+		"- Test: `go test ./...`\n"
+	if ps := testPathsByTask(plan)["### Task 4: cmd-only"]; len(ps) != 0 {
+		t.Fatalf("command-only Test: bullet must contribute no path, got %v", ps)
+	}
+}
+
+func TestTestPathsByTask_CreateBulletStripsLineSuffix(t *testing.T) {
+	plan := "### Task 5: modify\n" +
+		"- Modify: `internal/x/x_test.go:20-31`\n"
+	var all []string
+	for _, ps := range testPathsByTask(plan) {
+		all = append(all, ps...)
+	}
+	if !stdContains(all, "internal/x/x_test.go") {
+		t.Fatalf("expected line-suffix stripped path collected, got %v", all)
+	}
+}
+
+func TestCheck_BareNameResolvedByUniqueBasename(t *testing.T) {
+	spec := "- **FR-1** thing\n"
+	plan := "### Task 1: t\n- Test: `b_test.go`\n- `_Requirements: FR-1_`\n"
+	root := withFiles(t, map[string]string{"a/b_test.go": "package a\nfunc TestX(t *testing.T){}\n"})
+	r := Check(spec, plan, root, os.ReadFile)
+	if k := kinds(r); k["missing-test-file"] != 0 || k["untested-fr"] != 0 {
+		t.Fatalf("bare name with one match must resolve cleanly, got %v", k)
+	}
+}
+
+func TestCheck_BareNameAmbiguousIsMissing(t *testing.T) {
+	spec := "- **FR-1** thing\n"
+	plan := "### Task 1: t\n- Test: `b_test.go`\n- `_Requirements: FR-1_`\n"
+	root := withFiles(t, map[string]string{
+		"a/b_test.go": "package a\nfunc TestX(t *testing.T){}\n",
+		"c/b_test.go": "package c\nfunc TestY(t *testing.T){}\n",
+	})
+	r := Check(spec, plan, root, os.ReadFile)
+	if k := kinds(r); k["missing-test-file"] != 1 {
+		t.Fatalf("ambiguous bare name must be reported once, got %v", k)
+	}
+	if !strings.Contains(r.Findings[0].Message, "2 files") {
+		t.Fatalf("message must state the match count, got %q", r.Findings[0].Message)
+	}
+}
+
+func TestCheck_BareNameSkipsGitAndNodeModules(t *testing.T) {
+	spec := "- **FR-1** thing\n"
+	plan := "### Task 1: t\n- Test: `b_test.go`\n- `_Requirements: FR-1_`\n"
+	root := withFiles(t, map[string]string{
+		"a/b_test.go":              "package a\nfunc TestX(t *testing.T){}\n",
+		"node_modules/x/b_test.go": "junk",
+		".git/b_test.go":           "junk",
+	})
+	r := Check(spec, plan, root, os.ReadFile)
+	if k := kinds(r); k["missing-test-file"] != 0 {
+		t.Fatalf("matches under .git/node_modules must not count, got %v", k)
+	}
 }

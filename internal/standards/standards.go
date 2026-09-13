@@ -8,6 +8,8 @@
 package standards
 
 import (
+	"fmt"
+	"io/fs"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -59,11 +61,32 @@ var (
 		".py":  regexp.MustCompile(`(?m)^\s*(def\s+test_|class\s+Test)`),
 		".rb":  regexp.MustCompile(`(?m)^\s*(def\s+test_|it\s+['"])`),
 	}
+
+	// lineSuffixRe strips a trailing ":<line>" or ":<from>-<to>" that plan
+	// authors append to point at a region ("a/b_test.go:20-31").
+	lineSuffixRe = regexp.MustCompile(`:\d+(?:-\d+)?$`)
 )
 
 func (r *Result) add(f Finding) {
 	r.Findings = append(r.Findings, f)
 	r.SeverityCounts[f.Severity]++
+}
+
+// asTestPath normalises one backtick value from a Files-block bullet into a
+// candidate file path. It rejects values that cannot be a path — a command
+// ("go test ./..."), a glob ("*.test.js"), a bare identifier ("TestX") — and
+// strips a trailing line suffix. A bare file name ("ensure_test.go") is kept;
+// Check resolves it by unique basename under root.
+func asTestPath(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	s = lineSuffixRe.ReplaceAllString(s, "")
+	if s == "" || strings.ContainsAny(s, " \t*?[") {
+		return "", false
+	}
+	if !strings.ContainsAny(s, "/.") {
+		return "", false
+	}
+	return s, true
 }
 
 // testPathsByTask walks the plan and maps each task title (trimmed "### Task N: …"
@@ -80,10 +103,14 @@ func testPathsByTask(planText string) map[string][]string {
 		if cur == "" {
 			continue
 		}
-		// (a) legacy: a bullet whose LABEL contains "Test:" — take its first path.
+		// (a) legacy: a bullet whose LABEL contains "Test:" — take the first
+		// backtick value that is a path (a command or glob before it is skipped).
 		if testBulletRe.MatchString(ln) {
-			if m := backtickRe.FindStringSubmatch(ln); m != nil {
-				out[cur] = append(out[cur], strings.TrimSpace(m[1]))
+			for _, m := range backtickRe.FindAllStringSubmatch(ln, -1) {
+				if p, ok := asTestPath(m[1]); ok {
+					out[cur] = append(out[cur], p)
+					break
+				}
 			}
 			continue
 		}
@@ -92,14 +119,50 @@ func testPathsByTask(planText string) map[string][]string {
 		// as coverage — but never a production path listed alongside it.
 		if bulletRe.MatchString(ln) {
 			for _, m := range backtickRe.FindAllStringSubmatch(ln, -1) {
-				p := strings.TrimSpace(m[1])
-				if testFileNameRe.MatchString(p) {
+				p, ok := asTestPath(m[1])
+				if ok && testFileNameRe.MatchString(p) {
 					out[cur] = append(out[cur], p)
 				}
 			}
 		}
 	}
 	return out
+}
+
+// skipDirs are never searched when resolving a bare test file name.
+var skipDirs = map[string]bool{".git": true, "node_modules": true, "vendor": true, ".worktrees": true}
+
+// resolveBare looks up a declared test path that has no directory component
+// ("ensure_test.go") by unique basename under root. It returns the relative
+// path found and the number of matches; n == -1 means not applicable (root is
+// empty or rel already has a directory). Errors while walking are ignored —
+// the caller falls back to the plain missing-test-file finding.
+func resolveBare(root, rel string) (string, int) {
+	if root == "" || strings.Contains(rel, "/") {
+		return rel, -1
+	}
+	var hits []string
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if skipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() == rel {
+			if r, e := filepath.Rel(root, p); e == nil {
+				hits = append(hits, r)
+			}
+		}
+		return nil
+	})
+	if len(hits) == 1 {
+		return hits[0], 1
+	}
+	return rel, len(hits)
 }
 
 // Check runs the mechanical test-traceability analysis. root is the directory
@@ -118,6 +181,16 @@ func Check(specText, planText, root string, readFile func(string) ([]byte, error
 		seen[rel] = true
 		r.TestPaths = append(r.TestPaths, rel)
 		b, err := readFile(filepath.Join(root, rel))
+		if err != nil {
+			if found, n := resolveBare(root, rel); n == 1 {
+				rel = found
+				b, err = readFile(filepath.Join(root, rel))
+			} else if n > 1 {
+				r.add(Finding{Severity: "HIGH", Kind: "missing-test-file", Location: rel,
+					Message: fmt.Sprintf("bare test file name matches %d files under root — declare the directory", n)})
+				return
+			}
+		}
 		if err != nil {
 			r.add(Finding{Severity: "HIGH", Kind: "missing-test-file", Location: rel,
 				Message: "declared test file not found or unreadable on disk"})

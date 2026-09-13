@@ -189,7 +189,11 @@ func RunNew(o NewOptions) error {
 		return abort(fmt.Errorf("wt: could not enable extensions.worktreeConfig: %w", err))
 	}
 
-	warns, err := SeedCopyFiles(o.RepoRoot, path, cfg.Copy)
+	copyList, skipped := dropTrackedInBase(r, o.RepoRoot, base, cfg.Copy)
+	for _, s := range skipped {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: skipped copy target %q — tracked in %s, the checkout already has it\n", s, base)
+	}
+	warns, err := SeedCopyFiles(o.RepoRoot, path, copyList)
 	if err != nil {
 		return abort(err)
 	}
