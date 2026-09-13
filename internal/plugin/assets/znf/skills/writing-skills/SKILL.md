@@ -353,6 +353,8 @@ Skills that enforce discipline (like TDD) need to resist rationalization. Agents
 
 ### Close Every Loophole Explicitly
 
+Don't just state the rule - forbid specific workarounds.
+
 > Why: see `references/form-vs-failure-research.md` — the Bad/Good loophole-closing example.
 
 ### Address "Spirit vs Letter" Arguments
