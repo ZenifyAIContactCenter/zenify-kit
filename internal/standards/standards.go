@@ -41,6 +41,9 @@ var (
 	backtickRe   = regexp.MustCompile("`([^`]+)`")
 	// bulletRe matches any Markdown list item (-, *, +).
 	bulletRe = regexp.MustCompile(`^\s*[-*+]\s+`)
+	// deleteBulletRe matches a Files-block bullet that removes files; the paths
+	// it lists are gone by design and are never test declarations.
+	deleteBulletRe = regexp.MustCompile(`^\s*[-*+]\s+(Delete|Deleted|Remove|Removed)\s*:`)
 	// testFileNameRe matches a path whose basename looks like a test file, in any
 	// language testFuncRe covers: *_test.{go,py,rb}, test_*.py, *.{test,spec}.[cm]?[jt]sx?,
 	// *_spec.rb. It picks test files out of Files-block bullets whose label does NOT
@@ -75,8 +78,9 @@ func (r *Result) add(f Finding) {
 // asTestPath normalises one backtick value from a Files-block bullet into a
 // candidate file path. It rejects values that cannot be a path — a command
 // ("go test ./..."), a glob ("*.test.js"), a bare identifier ("TestX") — and
-// strips a trailing line suffix. A bare file name ("ensure_test.go") is kept;
-// Check resolves it by unique basename under root.
+// strips a trailing line suffix. A value that escapes root ("../x") or a bare
+// suffix mention ("_test.go", ".test.js") is rejected too. A bare file name
+// ("ensure_test.go") is kept; Check resolves it by unique basename under root.
 func asTestPath(s string) (string, bool) {
 	s = strings.TrimSpace(s)
 	s = lineSuffixRe.ReplaceAllString(s, "")
@@ -84,6 +88,12 @@ func asTestPath(s string) (string, bool) {
 		return "", false
 	}
 	if !strings.ContainsAny(s, "/.") {
+		return "", false
+	}
+	if !filepath.IsLocal(s) {
+		return "", false
+	}
+	if !strings.Contains(s, "/") && (s[0] == '_' || s[0] == '.') {
 		return "", false
 	}
 	return s, true
@@ -100,7 +110,7 @@ func testPathsByTask(planText string) map[string][]string {
 			cur = strings.TrimSpace(ln)
 			continue
 		}
-		if cur == "" {
+		if cur == "" || deleteBulletRe.MatchString(ln) {
 			continue
 		}
 		// (a) legacy: a bullet whose LABEL contains "Test:" — take the first
