@@ -175,3 +175,42 @@ func TestShipStep5_DelegatesToReview(t *testing.T) {
 		t.Error("ship step 5 does not yet delegate to znf:review")
 	}
 }
+
+// W3 cost edge: the T3 workflow scales dimension models by risk, verifies only
+// CRITICAL/HIGH adversarially, returns MEDIUM as advisory; SKILL.md states the
+// size-aware tier rule and the T2 shared→contracts-on-opus upgrade.
+func TestReviewSkill_W3Wiring(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	read := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(dest, rel))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+		return string(b)
+	}
+	wf := read("workflows/review-changes.js")
+	if got := strings.Count(wf, "model: 'opus'"); got != 5 { // security + contracts + 3 skeptics
+		t.Errorf("review-changes.js: want 5 opus pins, got %d", got)
+	}
+	if got := strings.Count(wf, "model: 'sonnet'"); got != 3 { // bugs + perf + types
+		t.Errorf("review-changes.js: want 3 sonnet pins, got %d", got)
+	}
+	for _, want := range []string{"model: d.model", "const advisory", "advisory,", "f.severity === 'CRITICAL' || f.severity === 'HIGH'"} {
+		if !strings.Contains(wf, want) {
+			t.Errorf("review-changes.js missing %q (W3 wiring)", want)
+		}
+	}
+	if strings.Contains(wf, "f.severity === 'HIGH' || f.severity === 'MEDIUM'") {
+		t.Error("review-changes.js still routes MEDIUM into adversarial verify")
+	}
+	skill := read("skills/review/SKILL.md")
+	for _, want := range []string{"floors at T2", "`contracts` agent with model opus", "CRITICAL/HIGH only", "advisory[]"} {
+		if !strings.Contains(skill, want) {
+			t.Errorf("SKILL.md missing %q (W3 wiring)", want)
+		}
+	}
+}

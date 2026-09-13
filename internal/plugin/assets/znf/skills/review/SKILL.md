@@ -110,6 +110,8 @@ printf '%s\n' "$SELECT_TIER"                          # still print tier + reaso
 
 Line 1 = `T1|T2|T3`, line 2 = the reason. **Print tier + reason on the report** before dispatching.
 
+Tier rule (W3, size-aware — the script is the source, this is the summary): `CRITICAL=1` → T3 regardless of size; otherwise T1 ≤200 LOC / T2 201–600 / T3 >600, and `SHARED=1` **floors at T2** (a small shared-contract diff no longer forces T3 — T2 already runs a `contracts` dimension, upgraded to opus when shared, see Step 3).
+
 ## Step 3 — REVIEW dispatch by tier
 
 **Doctrine preamble (M4d):** read the preamble source once —
@@ -120,6 +122,8 @@ Line 1 = `T1|T2|T3`, line 2 = the reason. **Print tier + reason on the report** 
   model `sonnet` for diff <50 LOC / mid for the rest. Returns `findings[]` per the shared schema.
 - **T2 (fan-out):** dispatch 5 agents in parallel (ONE message), each agent covering 1 dimension
   (bugs / security / perf / contracts / types), each agent returns `findings[]` per the schema.
+  **When `SHARED=1`, dispatch the `contracts` agent with model opus** (the other 4 stay at the
+  default tier) — this is the adversarial-depth trade for shared diffs that now stop at T2.
   Merge, dedup by `title+file`. Do NOT use the Workflow tool at this tier.
 - **T3 (adversarial):** check the workflow exists first:
 
@@ -129,7 +133,10 @@ Line 1 = `T1|T2|T3`, line 2 = the reason. **Print tier + reason on the report** 
 
   - **present** → run the Workflow tool `scriptPath: ~/.claude/skills/znf/workflows/review-changes.js`,
     `args: {diff: <git diff BASE..HEAD>, context: <ship-pack intent if any>, doctrine: <DOCTRINE>}`. The workflow
-    handles its own fan-out + adversarial verify (3 skeptics, ≥2 confirm).
+    handles its own fan-out (security/contracts on opus, bugs/perf/types on sonnet) + adversarial
+    verify of **CRITICAL/HIGH only** (3 opus skeptics, ≥2 confirm). MEDIUM comes back in `advisory[]`
+    un-verified by LLM (the mechanical VERIFY below still runs on it); merge `advisory[]` into the
+    findings passed to VERIFY, ranked below confirmed.
   - **missing** (teammate hasn't run `skills sync`, or the file was deleted) → **degrade to T2** and clearly note
     on the report: "T3 degrade→T2: workflow missing". Do NOT fail silently.
 

@@ -3,7 +3,7 @@ export const meta = {
   description: 'Multi-dimensional code review with adversarial verification of findings',
   phases: [
     { title: 'Review', detail: 'Fan-out across dimensions: bugs, security, perf, contracts, types' },
-    { title: 'Verify', detail: 'Adversarially verify each finding — 2/3 skeptics must confirm to keep it' },
+    { title: 'Verify', detail: 'Adversarially verify each CRITICAL/HIGH finding — 2/3 skeptics must confirm to keep it; MEDIUM is returned as advisory without LLM verify' },
     { title: 'Synthesize', detail: 'Merge confirmed findings, rank by severity, produce report' },
   ],
 }
@@ -11,12 +11,14 @@ export const meta = {
 // M4d doctrine: preamble no-claim/skeptic tiêm vào mọi reviewer. Absent → '' (back-compat).
 const DOCTRINE = args.doctrine ? args.doctrine + '\n\n' : ''
 
+// W3: model scaled by risk — security/contracts carry the shared-contract + auth blast radius (opus);
+// bugs/perf/types are well-served by sonnet. Verify skeptics stay opus (bounded set, see below).
 const DIMENSIONS = [
-  { key: 'bugs', prompt: DOCTRINE + 'Review this diff for CORRECTNESS bugs: wrong field names in dynamic code, off-by-one errors, null/undefined propagation, race conditions, wrong async handling. Return only confirmed bugs with file:line, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
-  { key: 'security', prompt: DOCTRINE + 'Review this diff for SECURITY issues: OWASP Top 10, missing auth/authz, injection (SQL/NoSQL/command), secrets in code, IDOR, insecure defaults. Return only real security issues with severity, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
-  { key: 'perf', prompt: DOCTRINE + 'Review this diff for PERFORMANCE issues: N+1 queries, missing indexes, unbounded loops, large in-memory operations. Return only confirmed issues with impact estimate, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
-  { key: 'contracts', prompt: DOCTRINE + 'Review this diff for CONTRACT MISMATCHES: does the response shape match what callers expect? Do DB writes match what readers expect? Are queue/event payloads compatible with consumers? For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. Context: ' + (args.context || 'no extra context') + '\n\ndiff:\n\n' + args.diff },
-  { key: 'types', prompt: DOCTRINE + 'Review this diff for TYPE SAFETY issues in dynamic code: field names used without verification, API responses used without checking shape, assumed object structures. For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'bugs', model: 'sonnet', prompt: DOCTRINE + 'Review this diff for CORRECTNESS bugs: wrong field names in dynamic code, off-by-one errors, null/undefined propagation, race conditions, wrong async handling. Return only confirmed bugs with file:line, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'security', model: 'opus', prompt: DOCTRINE + 'Review this diff for SECURITY issues: OWASP Top 10, missing auth/authz, injection (SQL/NoSQL/command), secrets in code, IDOR, insecure defaults. Return only real security issues with severity, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'perf', model: 'sonnet', prompt: DOCTRINE + 'Review this diff for PERFORMANCE issues: N+1 queries, missing indexes, unbounded loops, large in-memory operations. Return only confirmed issues with impact estimate, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
+  { key: 'contracts', model: 'opus', prompt: DOCTRINE + 'Review this diff for CONTRACT MISMATCHES: does the response shape match what callers expect? Do DB writes match what readers expect? Are queue/event payloads compatible with consumers? For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. Context: ' + (args.context || 'no extra context') + '\n\ndiff:\n\n' + args.diff },
+  { key: 'types', model: 'sonnet', prompt: DOCTRINE + 'Review this diff for TYPE SAFETY issues in dynamic code: field names used without verification, API responses used without checking shape, assumed object structures. For each finding include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
 ]
 
 const FINDING_SCHEMA = {
@@ -56,38 +58,44 @@ const VERDICT_SCHEMA = {
 phase('Review')
 const dimResults = await pipeline(
   DIMENSIONS,
-  d => agent(d.prompt, { label: `review:${d.key}`, phase: 'Review', schema: FINDING_SCHEMA, model: 'opus' }),
+  d => agent(d.prompt, { label: `review:${d.key}`, phase: 'Review', schema: FINDING_SCHEMA, model: d.model }),
 )
 
-const allFindings = dimResults
-  .filter(Boolean)
-  .flatMap(r => r.findings)
-  .filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH' || f.severity === 'MEDIUM')
+const reviewed = dimResults.filter(Boolean).flatMap(r => r.findings)
 
-if (allFindings.length === 0) {
-  log('No significant findings from initial review.')
-  return { confirmed: [], shippable: true, summary: 'No significant issues found.' }
+// Deduplicate by title+file before anything expensive
+const dedupBy = list => {
+  const seen = new Set()
+  return list.filter(f => {
+    const key = f.title + '::' + (f.file || '')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
-log(`${allFindings.length} findings to verify adversarially`)
+// W3: only CRITICAL/HIGH earn the 3-skeptic adversarial verify. MEDIUM is returned as
+// `advisory` (deduped, not LLM-verified — the engine's mechanical `zenify review-verify`
+// still runs on it). LOW stays `lowRisk` as before.
+const deduped = dedupBy(reviewed.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH'))
+const advisory = dedupBy(reviewed.filter(f => f.severity === 'MEDIUM'))
+const lowFindings = reviewed.filter(f => f.severity === 'LOW')
 
-// Deduplicate by title+file before expensive verification
-const seen = new Set()
-const deduped = allFindings.filter(f => {
-  const key = f.title + '::' + (f.file || '')
-  if (seen.has(key)) return false
-  seen.add(key)
-  return true
-})
+if (deduped.length === 0) {
+  log(`No CRITICAL/HIGH findings to verify; ${advisory.length} MEDIUM returned as advisory.`)
+  return { confirmed: [], advisory, lowRisk: lowFindings, shippable: true, summary: `No CRITICAL/HIGH issues found. ${advisory.length} advisory (MEDIUM).` }
+}
+
+log(`${deduped.length} CRITICAL/HIGH findings to verify adversarially (${advisory.length} MEDIUM as advisory)`)
 
 // Adversarial verify: 3 independent skeptics; need ≥2 to confirm (not refute) to keep
 phase('Verify')
 const verified = await pipeline(
   deduped,
   finding => parallel([
-    () => agent(DOCTRINE + `Try to REFUTE this code review finding. Default to refuted=true if uncertain.\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-1:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
-    () => agent(DOCTRINE + `Try to REFUTE this code review finding. Default to refuted=true if uncertain. Focus on: is this actually reachable/exploitable in this codebase?\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-2:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
-    () => agent(DOCTRINE + `Try to REFUTE this code review finding. Default to refuted=true if uncertain. Focus on: does the fix actually solve the root cause?\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-3:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
+    () => agent(DOCTRINE + `Try to REFUTE this code review finding. Default to refuted=true if uncertain.\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-1:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA, model: 'opus' }),
+    () => agent(DOCTRINE + `Try to REFUTE this code review finding. Default to refuted=true if uncertain. Focus on: is this actually reachable/exploitable in this codebase?\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-2:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA, model: 'opus' }),
+    () => agent(DOCTRINE + `Try to REFUTE this code review finding. Default to refuted=true if uncertain. Focus on: does the fix actually solve the root cause?\nFinding: ${finding.title}\nIssue: ${finding.issue}\nDiff context:\n${args.diff}`, { label: `verify-3:${finding.title.slice(0, 30)}`, phase: 'Verify', schema: VERDICT_SCHEMA, model: 'opus' }),
   ]).then(votes => {
     const confirmed = votes.filter(Boolean).filter(v => !v.refuted).length
     return { ...finding, confirmed: confirmed >= 2 }
@@ -96,14 +104,14 @@ const verified = await pipeline(
 
 phase('Synthesize')
 const confirmedFindings = verified.filter(Boolean).filter(f => f.confirmed)
-const lowFindings = allFindings.filter(f => f.severity === 'LOW')
 
 const criticalHigh = confirmedFindings.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH')
 const shippable = criticalHigh.length === 0
 
 return {
   confirmed: confirmedFindings,
+  advisory,
   lowRisk: lowFindings,
   shippable,
-  summary: `${confirmedFindings.length} confirmed issues (${criticalHigh.length} critical/high). Shippable: ${shippable ? 'YES' : 'NO — fix CRITICAL/HIGH first'}.`,
+  summary: `${confirmedFindings.length} confirmed issues (${criticalHigh.length} critical/high), ${advisory.length} advisory (MEDIUM, not LLM-verified). Shippable: ${shippable ? 'YES' : 'NO — fix CRITICAL/HIGH first'}.`,
 }
