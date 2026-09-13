@@ -88,6 +88,36 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 			continue
 		}
 
+		// RELOCATE moves the clone before the per-repo transaction opens, and the
+		// move is never rolled back: repoDir does not exist until this runs, so a
+		// snapshot/revert cycle over repoDir's files would see them as newly
+		// created by this run and delete the user's settings/exclude files that
+		// actually travelled with the repo from `from` (see relocateRepo doc).
+		// Only a failed relocate itself skips the repo outright; once the move
+		// (and link) has happened, wire/verify failures below revert only the
+		// wire step, never the relocate.
+		var relocPrefix string
+		if p.State == reconcile.Relocate {
+			rename, link := opts.RenameFn, opts.LinkFn
+			if rename == nil {
+				rename = os.Rename
+			}
+			if link == nil {
+				link = docsview.OSFS{}.Link
+			}
+			wrote, warn, err := relocateRepo(p.From, repoDir, opts.Owned, rename, link)
+			if err != nil {
+				r.Err = err
+				results = append(results, r)
+				continue
+			}
+			r.Wrote = append(r.Wrote, wrote...)
+			relocPrefix = fmt.Sprintf("moved %s → %s (đường dẫn cũ vẫn dùng được qua link)", p.From, p.Path) //znf:allow-lang
+			if warn != "" {
+				relocPrefix += " — " + warn
+			}
+		}
+
 		transact := opts.SnapshotRoot != ""
 		repoFiles := []string{
 			filepath.Join(repoDir, ".claude", "settings.local.json"),
@@ -112,7 +142,14 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 			snapDir = sd
 		}
 
-		r.Action, r.Wrote, r.Err = applyOne(p, repoDir, opts, gh, git)
+		var action string
+		var wrote []string
+		action, wrote, r.Err = applyOne(p, repoDir, opts, gh, git)
+		r.Wrote = append(r.Wrote, wrote...)
+		if relocPrefix != "" {
+			action = relocPrefix + "; " + action
+		}
+		r.Action = action
 		if r.Err == nil && transact {
 			r.Err = opts.verify(repoDir, r.Wrote)
 		}
@@ -149,24 +186,8 @@ func applyOne(p reconcile.RepoPlan, repoDir string, opts Options, gh ghx.Runner,
 		wrote, err := adoptRepo(repoDir, opts.Owned)
 		return "adopt in place", wrote, err
 	case reconcile.Relocate:
-		rename, link := opts.RenameFn, opts.LinkFn
-		if rename == nil {
-			rename = os.Rename
-		}
-		if link == nil {
-			link = docsview.OSFS{}.Link
-		}
-		wrote, warn, err := relocateRepo(p.From, repoDir, opts.Owned, rename, link)
-		if err != nil {
-			return "relocate", nil, err
-		}
-		w2, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
-		wrote = append(wrote, w2...)
-		action := fmt.Sprintf("moved %s → %s (đường dẫn cũ vẫn dùng được qua link)", p.From, p.Path) //znf:allow-lang
-		if warn != "" {
-			action += " — " + warn
-		}
-		return action, wrote, err
+		w, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
+		return "wire config", w, err
 	default:
 		return "skipped (" + string(p.State) + ")", nil, nil
 	}
@@ -184,6 +205,18 @@ func isActionable(s reconcile.State) bool {
 // failure after a successful move is a warning, never a rollback — the move
 // already happened and undoing it would surprise more than a missing link.
 func relocateRepo(from, to string, owned *managed.Manifest, rename func(string, string) error, link func(target, link string) error) (wrote []string, warn string, err error) {
+	// Absolute so the symlink left at `from` resolves regardless of the
+	// process's cwd (a relative --workspace, e.g. the "." default, would
+	// otherwise leave a link whose target is relative to `from`'s own
+	// directory, not the process cwd, and dangle).
+	from, err = filepath.Abs(from)
+	if err != nil {
+		return nil, "", err
+	}
+	to, err = filepath.Abs(to)
+	if err != nil {
+		return nil, "", err
+	}
 	if err := os.MkdirAll(filepath.Dir(to), 0o750); err != nil {
 		return nil, "", err
 	}

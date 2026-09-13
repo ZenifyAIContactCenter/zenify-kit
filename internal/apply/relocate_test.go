@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -70,8 +71,97 @@ func TestApply_Relocate_MovesLinksAndWires(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(to, ".claude", "settings.local.json")); err != nil {
 		t.Fatalf("wire did not run after relocate: %v", err)
 	}
-	if res[0].Action != "moved "+src+" → repos/be (đường dẫn cũ vẫn dùng được qua link)" {
+	if !strings.HasPrefix(res[0].Action, "moved "+src+" → repos/be (đường dẫn cũ vẫn dùng được qua link)") {
 		t.Fatalf("action = %q", res[0].Action)
+	}
+	if target, err := os.Readlink(src); err != nil || !filepath.IsAbs(target) || target != to {
+		t.Fatalf("link target = %q abs=%v err=%v, want %q", target, filepath.IsAbs(target), err, to)
+	}
+}
+
+// TestApply_Relocate_WireFailureKeepsUserFiles verifies the controller ruling:
+// RELOCATE runs (and its move is never rolled back) before the per-repo
+// transaction opens, so a later wire/verify failure restores the user's own
+// settings/exclude files that travelled with the repo instead of deleting them
+// as "created this run".
+func TestApply_Relocate_WireFailureKeepsUserFiles(t *testing.T) {
+	ws := t.TempDir()
+	src := filepath.Join(t.TempDir(), "projects", "be")
+	if err := os.MkdirAll(filepath.Join(src, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	gitInit(t, src)
+	claudeDir := filepath.Join(src, ".claude")
+	if err := os.MkdirAll(claudeDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(claudeDir, "settings.local.json"), []byte(`{"env":{"X":"1"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, ".git", "info", "exclude"), []byte("mine/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	owned := &managed.Manifest{}
+	plans := []reconcile.RepoPlan{{Name: "be", State: reconcile.Relocate, Path: "repos/be", From: src}}
+	res, err := Apply(plans, Options{
+		Workspace:    ws,
+		Owned:        owned,
+		RepoByName:   map[string]manifest.Repo{},
+		SnapshotRoot: t.TempDir(),
+		VerifyRepoFn: func(string, []string) error { return errors.New("boom") },
+	}, &fakeGH{}, &fakeGit{})
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if res[0].Err == nil {
+		t.Fatal("expected verify failure to surface as Result.Err")
+	}
+	to := filepath.Join(ws, "repos", "be")
+	if _, err := os.Stat(filepath.Join(to, ".git")); err != nil {
+		t.Fatalf("relocate must not be undone: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(to, ".claude", "settings.local.json"))
+	if err != nil || !strings.Contains(string(b), `"X":"1"`) {
+		t.Fatalf("user's settings.local.json lost: %q err=%v", b, err)
+	}
+	eb, err := os.ReadFile(filepath.Join(to, ".git", "info", "exclude"))
+	if err != nil || !strings.Contains(string(eb), "mine/") {
+		t.Fatalf("user's exclude lost: %q err=%v", eb, err)
+	}
+	fi, err := os.Lstat(src)
+	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("old path is not a link: %v %v", fi, err)
+	}
+	if e, ok := owned.Get(src); !ok || e.Link != to {
+		t.Fatalf("link entry must survive the wire revert: %+v %v", e, ok)
+	}
+}
+
+// TestApply_Relocate_RelativeWorkspaceStillAbsoluteLink covers a relative
+// --workspace (the "." default): the link left at the old path must still
+// resolve to an absolute target, not one relative to the process cwd.
+func TestApply_Relocate_RelativeWorkspaceStillAbsoluteLink(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	src := filepath.Join(t.TempDir(), "be")
+	if err := os.MkdirAll(filepath.Join(src, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	plans := []reconcile.RepoPlan{{Name: "be", State: reconcile.Relocate, Path: "repos/be", From: src}}
+	res, err := Apply(plans, Options{Workspace: "ws", Owned: &managed.Manifest{}, RepoByName: map[string]manifest.Repo{}}, &fakeGH{}, &fakeGit{})
+	if err != nil || res[0].Err != nil {
+		t.Fatalf("apply: %v / %v", err, res[0].Err)
+	}
+	target, err := os.Readlink(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(target) {
+		t.Fatalf("link target must be absolute, got %q", target)
+	}
+	want := filepath.Join(root, "ws", "repos", "be")
+	if target != want {
+		t.Fatalf("link target = %q, want %q", target, want)
 	}
 }
 
@@ -103,9 +193,10 @@ func TestApply_Relocate_LinkFailureOnlyWarns(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(src, ".git", "info"), 0o750); err != nil {
 		t.Fatal(err)
 	}
+	owned := &managed.Manifest{}
 	plans := []reconcile.RepoPlan{{Name: "be", State: reconcile.Relocate, Path: "repos/be", From: src}}
 	res, _ := Apply(plans, Options{
-		Workspace: ws, Owned: &managed.Manifest{}, RepoByName: map[string]manifest.Repo{},
+		Workspace: ws, Owned: owned, RepoByName: map[string]manifest.Repo{},
 		LinkFn: func(string, string) error { return errors.New("junction denied") },
 	}, &fakeGH{}, &fakeGit{})
 	if res[0].Err != nil {
@@ -113,5 +204,11 @@ func TestApply_Relocate_LinkFailureOnlyWarns(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(ws, "repos", "be", ".git")); err != nil {
 		t.Fatal("move must have happened")
+	}
+	if !strings.Contains(res[0].Action, "could not leave a link at") {
+		t.Fatalf("action = %q, want warning about the failed link", res[0].Action)
+	}
+	if e, ok := owned.Get(src); ok {
+		t.Fatalf("no link entry should be recorded when the link failed: %+v", e)
 	}
 }
