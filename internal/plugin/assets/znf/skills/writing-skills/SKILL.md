@@ -30,7 +30,9 @@ A **skill** is a reference guide for proven techniques, patterns, or tools. Skil
 
 ## TDD Mapping for Skills
 
-> See [testing-skills-with-subagents.md](testing-skills-with-subagents.md) §"TDD Mapping for Skill Testing"; for the concept↔artifact table, see `references/tdd-mapping-table.md`.
+> See [testing-skills-with-subagents.md](testing-skills-with-subagents.md) §"TDD Mapping for Skill Testing" for the walkthrough.
+>
+> Why: see `references/tdd-mapping-table.md` — the concept↔artifact table.
 
 ## When to Create a Skill
 
@@ -284,7 +286,9 @@ You're good at porting - one great example is enough.
 
 ## File Organization
 
-> See `anthropic-best-practices.md` §"Progressive disclosure patterns"; for this skill's own self-contained/tool/heavy-reference examples, see `references/file-organization-examples.md`.
+> See `anthropic-best-practices.md` §"Progressive disclosure patterns" for the pattern itself.
+>
+> Why: see `references/file-organization-examples.md` — this skill's own self-contained/tool/heavy-reference examples.
 
 ## The Iron Law (Same as TDD)
 
@@ -481,11 +485,13 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 
 ## References
 
+Materialized at `~/.claude/skills/znf/skills/writing-skills/references/`. Read a file only when its trigger fires.
+
 - `references/testing-skill-types.md` — read when the skill you are writing is a reference or pattern skill and you are deciding how to test it.
 - `references/sdo-evidence.md` — read when you doubt the description field matters.
 - `references/token-efficiency-examples.md` — read when trimming a skill body; also collects the Anti-Patterns examples.
 - `references/form-vs-failure-research.md` — read when you are about to write a "don't ..." rule; also collects the Close-Every-Loophole Bad/Good example.
-- `references/micro-testing-wording.md` — read before a full pressure-scenario test.
+- `references/micro-testing-wording.md` — read when you are about to run a full pressure-scenario test.
 - `references/flowchart-examples.md` — read when deciding whether a section needs a flowchart.
 - `references/discovery-workflow.md` — read when an agent could not find a skill that exists.
 - `references/tdd-mapping-table.md` — read for the concept↔artifact TDD-mapping table.

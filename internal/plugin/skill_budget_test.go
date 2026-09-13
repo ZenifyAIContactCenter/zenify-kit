@@ -5,9 +5,12 @@ import (
 	"errors"
 	"io/fs"
 	"path"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 
 // W4 skill budget. Anthropic's skill-authoring guidance keeps a SKILL.md body
 // under 500 lines (writing-skills/anthropic-best-practices.md, "Token budgets").
@@ -77,8 +80,9 @@ func TestSkillReferencesLinkedOneLevel(t *testing.T) {
 				t.Errorf("%s/references/%s is not linked from SKILL.md (one-level rule)", path.Base(dir), r.Name())
 			}
 			ref := readAsset(t, path.Join(dir, "references", r.Name()))
-			if strings.Contains(ref, "](references/") || strings.Contains(ref, "](./references/") {
-				t.Errorf("%s/references/%s links into references/ — references must be one level deep", path.Base(dir), r.Name())
+			stripped := htmlCommentRe.ReplaceAllString(ref, "")
+			if strings.Contains(stripped, "references/") {
+				t.Errorf("%s/references/%s references \"references/\" — references must be one level deep (no nested reference links)", path.Base(dir), r.Name())
 			}
 		}
 	}

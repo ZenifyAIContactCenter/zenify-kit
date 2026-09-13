@@ -40,7 +40,7 @@ stop and ask.
 
 ## Setup
 
-> Why: see `references/setup-rationale.md`.
+> Why: see `references/setup-rationale.md` — losing your place.
 
 Ensure the work happens in an isolated workspace: use
 worktree (wt/herdr, house-rule #8) to create one or verify the existing one.
@@ -390,9 +390,11 @@ Use znf:finishing-a-development-branch.
 
 ## Example Workflow
 
-> Why: see `references/example-workflow.md`.
+> Why: see `references/example-workflow.md` — a full run.
 
 ## References
+
+Materialized at `~/.claude/skills/znf/skills/subagent-driven-development/references/`. Read a file only when its trigger fires.
 
 - `references/diagrams.md` — read when you want the process as a graph.
 - `references/example-workflow.md` — read when running SDD for the first time.

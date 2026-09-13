@@ -1,9 +1,9 @@
 <!-- Moved verbatim from discipline/SKILL.md §§ 3, 5, 9 (W4 slim-skills). Read when: a dispatched agent went quiet, or the task-list tool is missing from the harness, or you are deciding how much to trust prose-only instructions. -->
 
-### From § 3
+### From § 3 — Verify before claiming done (idle-agent measurement)
 - **A dispatched agent going idle is not a result.** Measured in one session: three times out of five dispatches, across two different agent types, the agent finished and its report never arrived — only an idle notification. Ask for the report by name; never read silence as "it ran and found nothing", because those two states are indistinguishable from here and only one of them is safe to act on. No instruction inside an agent definition fixes this: one was added and the next run behaved the same way.
 
-### From § 3
+### From § 3 — Verify before claiming done (TodoWrite as the dispatch tracker)
 - **The plan/TodoWrite list from rule #5 is that tracker — one item per dispatched agent, ticked only once its report is in hand.** Held in your head instead, it is exactly what a context compaction drops, and losing it is silent. On the list, an agent that went quiet stays visible as an unticked line; off it, that agent leaves no trace at all, and "no trace" reads identically to "nothing to report".
 
 ### From § 5

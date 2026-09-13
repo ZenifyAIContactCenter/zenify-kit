@@ -325,9 +325,8 @@ allocated, starts the server in a pane beside the agent, and reports the URL.
 
 No such line in the brief → no browser run.
 
-> Why: see `references/step6-implementation-notes.md` — why `Skill(znf:run)` here (rule #3),
-> haiku/xhigh incompatibility, review contamination, deploy order, report-chasing, review-clean
-> gaps and label, exact URL, plan-defect, `/ship` step 4, serialisation.
+> Why: see `references/step6-implementation-notes.md` — why `Skill(znf:run)` here, review
+> contamination, deploy order, plan-defect, serialisation.
 
 ## Step 6b: Inspect test-traceability (`znf:standards`) — advisory
 
@@ -384,6 +383,8 @@ for `/cook`. Brainstorming cannot be delegated: it needs back-and-forth with the
 > mechanism, SDD's explicit-model assumption.
 
 ## References
+
+Materialized at `~/.claude/skills/znf/skills/cook/references/`. Read a file only when its trigger fires.
 
 - `references/why-no-triage-and-named-lines.md` — read when you want to call something "too simple for /cook" or skip a named line.
 - `references/base-ref-archaeology.md` — read when the checkout is on someone's branch and you are unsure what to read.
