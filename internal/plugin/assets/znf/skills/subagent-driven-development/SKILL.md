@@ -8,7 +8,7 @@ description: Use when executing implementation plans with independent tasks in t
 
 Execute plan by dispatching a fresh implementer subagent per task, a task review (spec compliance + code quality) after each, and a broad whole-branch review at the end.
 
-**Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
+> Why: see `references/setup-rationale.md` — why fresh subagents.
 
 **Core principle:** Fresh subagent per task + task review (spec + quality) + broad final review = high quality, fast iteration
 
@@ -22,8 +22,7 @@ ambiguities, plan defects, a cap you would have asked to exceed — decide
 them. The spec is the binding authority, the plan is its argument, and your
 judgment settles what neither answers. Record every decision in the ledger as
 `Ruling: <what you decided> — <why> — <what it costs if wrong>`, and keep
-going. A wrong ruling costs rework your human partner can see and undo; a
-session parked on a question costs their whole day and buys nothing.
+going.
 
 Four things stop you, and only these: an irreversible or destructive
 operation; a security-sensitive action; a side effect outside this worktree
@@ -33,13 +32,7 @@ stop and ask.
 
 ## When to Use
 
-> Diagram: see `references/diagrams.md`.
-
-**vs. Executing Plans (parallel session):**
-- Same session (no context switch)
-- Fresh subagent per task (no context pollution)
-- Review after each task (spec compliance + code quality), broad review at the end
-- Faster iteration (no human-in-loop between tasks)
+> Diagram and comparison vs. executing-plans: see `references/diagrams.md`.
 
 ## The Process
 
@@ -129,6 +122,8 @@ that implementer. Single-file mechanical fixes also take the cheapest tier.
 
 ## The Task Loop
 
+> Why: see `references/dispatch-and-review-rationale.md` — rationale for §1–§5, final review and finish.
+
 **Batch small same-shape work.** When the plan lists several tasks that are
 each a small, independent edit of the same kind — the same one-line fix,
 constant change, or field addition repeated across files — do not dispatch
@@ -147,8 +142,7 @@ writing into two repos cannot collide. Run them in parallel.
   satisfied. A repo with no `Waits for:` line is independent — start it immediately.
 - **Gate on contract-freeze, not on the whole repo.** A repo whose block says
   `Waits for: <X> : contract-frozen` starts as soon as X commits the endpoint + shape (a
-  specific commit you record), NOT after X's whole plan finishes. This is where the wall-clock
-  is won: the dependent repo overlaps the rest of X.
+  specific commit you record), NOT after X's whole plan finishes.
 - **One ledger, repo-tagged.** Keep the single plan ledger; tag each task line with its repo
   (`[be] Task 3: complete`). Each repo's review loop runs on its own stream.
 - **Collect each stream by name** — you must collect each repo-stream's report and treat
@@ -157,9 +151,7 @@ writing into two repos cannot collide. Run them in parallel.
 - **Within one repo, tasks stay sequential** — the rule above is unchanged; only the
   across-repo case is the exception.
 
-Everything you paste into a dispatch prompt — and everything a subagent
-prints back — stays resident in your context for the rest of the session
-and is re-read on every later turn. Hand artifacts over as files.
+Hand artifacts over as files.
 
 **Waiting on dispatched subagents:** never poll a wait interface with
 short timeouts, and never sit in one silent, open-ended wait either.
@@ -168,9 +160,7 @@ reading reports — keep working; child results arrive on their own.
 When you are genuinely idle, wait in bounded stretches (five to ten
 minutes, where your platform allows), and between stretches post one
 line of status and reconcile your live children: list them, and chase
-any that finished without reporting. A bounded stretch keeps nearly
-all of a long wait's efficiency while guaranteeing a stuck or lost
-child is noticed within minutes, not at the end of the session.
+any that finished without reporting.
 
 ### 1. Dispatch the implementer
 
@@ -201,8 +191,6 @@ and fix-round diffs need it.
   implementer template): the implementer never dispatches subagents —
   not helpers, and never a reviewer. Review arrives from you, after the
   report.
-
-> Why: see `references/dispatch-and-review-rationale.md`.
 - If an earlier task parked a finding in the area this task touches, carry
   a pointer to that ledger entry in the dispatch.
 - Record the implementer's agent identity from the dispatch result —
@@ -229,11 +217,7 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **Never** ignore an escalation or force the same model to retry without changes.
 
-> Why: see `references/dispatch-and-review-rationale.md`.
-
 ### 3. Review the task
-
-> Why: see `references/dispatch-and-review-rationale.md`.
 
 Per-task reviews are task-scoped gates. Never skip the task review, and never accept a
 report missing either verdict — spec compliance AND task quality are both
@@ -272,8 +256,6 @@ review — it enters the fix loop with the other findings.
 Template: [task-reviewer-prompt.md](task-reviewer-prompt.md)
 
 ### 4. The fix loop
-
-> Why: see `references/dispatch-and-review-rationale.md`.
 
 The loop triggers when the review reports spec ❌, any Critical or Important
 finding, or a ⚠️ item you confirmed as a real gap.
@@ -368,8 +350,6 @@ fixed before merge.
 If the final whole-branch review returns findings, dispatch ONE fix subagent
 with the complete findings list — not one fixer per finding.
 
-> Why: see `references/dispatch-and-review-rationale.md`.
-
 Then run exactly one scoped re-review of the fix wave
 (`scripts/review-package PLAN_FILE FIX_BASE HEAD` over the fix range,
 [re-review-prompt.md](re-review-prompt.md)).
@@ -386,8 +366,6 @@ preflight rulings, parked findings, breaker adjudications, all of them — into
 your final message under "Rulings I made", in the order you made them, each
 with what it costs if wrong. The list is exhaustive: if the ledger holds a
 ruling, the list holds it.
-
-> Why: see `references/dispatch-and-review-rationale.md`.
 
 When the final whole-branch review is clean and its fixes are merged,
 delete this plan's workspace (`rm -rf <workspace>`) — the git history is

@@ -1,4 +1,13 @@
-<!-- Moved verbatim from subagent-driven-development/SKILL.md § Setup (W4 slim-skills). Read when: you lost your place after compaction, are tempted to `git clean`, or are about to write "the scan is clean" without a table. -->
+<!-- Moved verbatim from subagent-driven-development/SKILL.md § intro, § Setup (W4 slim-skills). Read when: you lost your place after compaction, are tempted to `git clean`, or are about to write "the scan is clean" without a table. -->
+
+### From § intro
+
+You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
+
+A wrong ruling costs rework your human partner can see and undo; a
+session parked on a question costs their whole day and buys nothing.
+
+### From § Setup
 
 Conversation memory does not survive compaction. In real sessions,
 controllers that lost their place have re-dispatched entire completed task
