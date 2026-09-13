@@ -1,7 +1,7 @@
 ---
 name: ship
 description: Pre-ship gate. Use when work is complete and about to be committed — runs lint/build on the changed areas, the cross-service contract gate, behavioural verification, and an independent review, with one fix-and-re-verify loop over all of them, then commits and pushes the feature branch and opens the PR (never merges). Invoked unconditionally by /cook, /fix and /hotfix.
-allowed-tools: Bash(git *) Bash(pm *) Bash(db_read *) Bash(rg *) Bash(printf *) Bash(cat *) Bash(tail *) Bash(wc *) Read Grep Agent
+allowed-tools: Bash(git *) Bash(pm *) Bash(zenify db-read *) Bash(rg *) Bash(printf *) Bash(cat *) Bash(tail *) Bash(wc *) Read Grep Agent
 ---
 
 ## What this gate is actually for
@@ -131,7 +131,7 @@ start early, and that section says why.
    **Trigger them mechanically, not by remembering which project you are in:**
 
    ```bash
-   command -v db_read >/dev/null || echo "no db_read on PATH — these three do not apply here"
+   command -v zenify db-read >/dev/null || echo "no zenify db-read on PATH — these three do not apply here"
    git diff HEAD | rg -c '\.find\(|\.aggregate\(|\.skip\(|OFFSET|findOne\(|updateMany\('
    ```
 
@@ -144,7 +144,7 @@ start early, and that section says why.
    - **The diff adds or changes a DB query → run the two-tier DB-perf gate** (`COLLSCAN` /
      `Seq Scan` on a large collection or table is one of the findings). Delegate the full
      size-aware rubric to **`Skill(znf:explain-plan)`** — it runs `zenify db-perf` plus
-     `db_read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE` per site. An index existing
+     `zenify db-read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE` per site. An index existing
      does not mean it is used (non-selective field, wrong compound-index column order, `$in`/`$or`).
      A **BLOCKING** finding that is not waived (`// znf:db-perf-ok: <reason>` on the query line)
      means **ship does not complete** — list each one with its fix. ADVISORY findings print under
@@ -184,8 +184,8 @@ start early, and that section says why.
                     the commands run and their real output (test counts, lint result)
                     which test files ran, by name
                     which changed behaviour NO test touches
-   ## Ground      db_read doc <each-real-collection-the-diff-touches>
-                  db_read sql 'DESCRIBE <each-real-table-it-touches>'
+   ## Ground      zenify db-read doc <each-real-collection-the-diff-touches>
+                  zenify db-read sql 'DESCRIBE <each-real-table-it-touches>'
    ## Deferred    every `minor (deferred)` line from the SDD ledger, verbatim:
                     rg -n 'minor \(deferred\)' .znf/sdd/*/progress.md
                   omit this block entirely when there is no ledger (/fix, /hotfix)
@@ -201,7 +201,7 @@ start early, and that section says why.
 
 ## Start the agents before the inline work
 
-The inline work — `pm run lint`, `pm run build`, `db_read` — **blocks this loop while it runs**, so
+The inline work — `pm run lint`, `pm run build`, `zenify db-read` — **blocks this loop while it runs**, so
 starting it first idles every agent behind it. But the agents are not all startable at once: two need
 only the diff, and one is genuinely downstream.
 

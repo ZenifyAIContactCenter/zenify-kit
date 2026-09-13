@@ -16,7 +16,7 @@ brainstorming. That is deleted, deliberately, for two reasons:
 ### From § Every step must leave a named line
 
 The reason is auditability, not tidiness. A step invoked as a tool renders one line carrying its
-name; a step merely *performed* dissolves into a scatter of `Bash(db_read …)` and `Read(…)` calls
+name; a step merely *performed* dissolves into a scatter of `Bash(zenify db-read …)` and `Read(…)` calls
 that look like every other piece of work. Then "did the grounding actually happen?" is answerable
 only by trusting the summary — and the whole design of this pipeline is that its steps can be
 checked by looking, the way `Agent(znf:scout)` can.

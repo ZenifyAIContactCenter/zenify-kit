@@ -88,11 +88,11 @@ step**, and that is the point.
 
 Call **`Skill(znf:ground)`** on the entities the request names, before any clarifying question is asked.
 
-What is knowable this early is limited, but exactly the part that keeps going wrong:
+What is knowable this early is limited, but it is where things go wrong:
 
 ```bash
-db_read collections <term-from-the-request>    # the real names, before anyone commits to one
-db_read doc <a-name-from-that-list>            # the fields that actually exist
+zenify db-read collections <term-from-the-request>    # the real names, before anyone commits to one
+zenify db-read doc <a-name-from-that-list>            # the fields that actually exist
 ```
 
 Field-level detail comes at Step 3, once the design says which fields it needs.
