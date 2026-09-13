@@ -16,9 +16,7 @@ allowed-tools: Read Grep Glob Bash Agent
                                                       on it       plan adds
 ```
 
-**The worktree is created at Step 6, not Step 0.** Steps 0-5 only read code and write the spec and
-plan, which live in the main checkout by rule #8 — so there is nothing for a worktree to hold until
-implementation starts. Step 0 is a `fetch` so that what you ground and design against is current.
+**The worktree is created at Step 6, not Step 0** (`references/base-ref-archaeology.md` has why).
 
 **Verification sits around the two superpowers skills, never inside them.** Nothing in
 `brainstorming` or `writing-plans` is reordered or overridden — the checks go before and after.
@@ -55,12 +53,11 @@ Model choice is not decided here either — see Step 6.
 ```bash
 git -C <repo> fetch origin                    # per affected repo
 node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)'
-git -C <repo> rev-list --count HEAD..<baseRef> # commits behind
+git -C <repo> rev-list --count HEAD..<baseRef> # how far behind the checkout is
 ```
 
-**`fetch`, never `pull`, and never switch the checkout's branch.** The base is *declared*, not
-guessed — `baseRef` in each repo's `.claude/worktree.json`, and it differs between repos in the
-same workspace, so read it per repo and never carry one repo's answer to another.
+**`fetch`, never `pull`, and never switch the checkout's branch.** The base is `baseRef` in each
+repo's `.claude/worktree.json` — read it per repo, never carry one repo's answer to another.
 
 **When the distinction matters for Step 1, read the ref explicitly:**
 
@@ -230,11 +227,10 @@ command is fail-open, so this step should never itself break the cook flow.
 
 > **Isolation & base-ref doctrine → znf:discipline §8** (single source): worktree is unconditional; the base is the repo's declared baseRef, read never hardcoded; fetch before resolving the base; the carve-outs live there. Below is only what `/cook` adds operationally at this step.
 
-**A worktree, always — house rule #8, no conditions.** It belongs *here*, not at Step 0: the
-plan is agreed, so this is the moment the first line of repo code gets written.
+**A worktree, always — house rule #8, no conditions.**
 
 ```bash
-git -C <repo> fetch origin                                    # belt-and-suspenders — current wt fetches too, older builds do not
+git -C <repo> fetch origin                                    # belt-and-suspenders
 cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
 ```
 
@@ -251,6 +247,9 @@ one worktree per repo.
 
 **Spec and plan stay in the MAIN checkout, and are already written by now.** The worktree holds
 code only. Every path handed to SDD must therefore be **absolute**.
+
+**If `$HERDR_WORKSPACE_ID` is set, hand the slug its own herdr workspace, then stop — do not run
+SDD in the originating workspace; recipe in `references/worktree-and-handoff.md`.**
 
 > Why: see `references/worktree-and-handoff.md` — refetch reason, SDD Setup's assumption, when
 > `$HERDR_WORKSPACE_ID` is set or a second worktree.
@@ -272,8 +271,8 @@ review on the most capable model.
 
 - Tell SDD the workspace created just above already exists; it should verify, not create.
 - **Implementers: `model: 'sonnet'` with `effort: 'xhigh'`, every task, stated on every dispatch.**
-- **This overrides SDD's cheapest tier deliberately — do not "fix" it back.**
-  **Sonnet is therefore the floor, not a starting point to scale down from.**
+- **This overrides SDD's cheapest tier deliberately — do not "fix" it back** (sonnet is the floor,
+  see "Floor and ceiling" below).
 - Scale **up** to `opus-4-8` only for a task needing design judgment or broad codebase
   understanding — and reach it by **omitting** `model`, never by passing `'opus'` (see "Naming is
   asymmetric" below).
@@ -291,11 +290,20 @@ same repo, one worktree per implementer         safe, but N branches to merge �
 **Dispatch the cross-repo group in ONE message** — that is what makes them concurrent; one message
 each runs them in sequence and buys nothing.
 
+**With several implementers out at once, ask each for its report by name.** A lost report and a task
+that finished quietly are indistinguishable from here, and only one is safe to build on
+(`CLAUDE.md §3`). Do not write a ledger line for a task whose report never arrived.
+
+**If the plan has tightly-coupled tasks, that is a plan defect — go back and re-decompose.**
+SDD routes coupled tasks away from itself, but the answer is to fix the decomposition, not
+to switch executor.
+
 ### The ledger's "review clean" does not cover appearance
 
 The receipt for this step is SDD's ledger — `<repo-root>/.znf/sdd/<plan>/progress.md`, one
-`Task <N>: complete (commits a1b2c3d..d4e5f6a, review clean)` per task. Know what that phrase does
-and does not certify.
+`Task <N>: complete (commits a1b2c3d..d4e5f6a, review clean)` per task.
+
+> Why: see `references/step6-implementation-notes.md` — what "review clean" does not certify.
 
 **So label it honestly.** A task with no visual verdict gets
 `Task <N>: complete (commits …, review clean — appearance not checked)`.
@@ -306,6 +314,11 @@ and does not certify.
 verdict (Step 5 decided that), then after the task reviewer passes and **before** appending
 `Task <N>: complete`, dispatch `ui-verifier` scoped to **that task's deliverable only**, not the
 whole feature. Its verdict joins the ledger line.
+
+**This check does not parallelise, even when the implementers around it do.** The Playwright
+browser is a single shared instance, so if two repos' tasks are running concurrently and both are
+flagged, their verifier runs go **one after the other** — and the main session must not touch
+Playwright while either is running.
 
 **`Skill(znf:run)` first, and take the URL from it.** `/run` reads the port this worktree was
 allocated, starts the server in a pane beside the agent, and reports the URL.
@@ -363,17 +376,12 @@ for `/cook`. Brainstorming cannot be delegated: it needs back-and-forth with the
 > Why: see `references/step6-implementation-notes.md` — why no separate review, why `cat` not
 > summarise, delegation, ship reviewer's scaling rule.
 
-**Floor and ceiling.** The floor is **sonnet**, not the cheapest tier — see Step 6 for why (haiku 4.5
-is not xhigh-capable, so it silently discards the dial that matters most for coding). The ceiling is
-`opus-4-8`, for architecture, for a task needing broad codebase understanding, and for the final
-whole-branch review.
+**Floor and ceiling:** sonnet floor (never haiku), `opus-4-8` ceiling.
 
-**Naming is asymmetric:** scale *down* by passing `model: 'sonnet'`; scale *up* by **omitting `model`**
-so the dispatch inherits the session (Step 6 gives the mechanism — the `opus` alias resolves to the
-*newest* opus and would override the pinned version). SDD's *"always specify the model explicitly"* assumed
-a session default that is the most expensive model; here the session default **is** the intended ceiling,
-so omission is the correct way to reach it rather than an oversight. State in the dispatch note which one
-you meant, so an omission is never read as forgetting.
+**Naming is asymmetric:** scale down = pass `model: 'sonnet'`; scale up = **omit `model`**.
+
+> Why: see `references/step6-implementation-notes.md` — floor/ceiling rationale, alias-override
+> mechanism, SDD's explicit-model assumption.
 
 ## References
 

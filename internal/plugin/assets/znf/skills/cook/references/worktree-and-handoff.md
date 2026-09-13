@@ -13,13 +13,22 @@ Nothing inspects `git status --porcelain` to decide, because there is no decisio
 
 ### From § First, the worktree — the per-repo `Waits for:` edges (extra, tier two)
 
-The per-repo `Waits for:` edges come from the plan.
+Independent repos run concurrently from the start. The per-repo `Waits for:` edges come from the
+plan.
+
+### From § First, the worktree — the worktree-created-at-Step-6 fetch/comment detail (extra, tier two)
+
+The `git fetch` immediately before `wt new` is belt-and-suspenders: current `wt` fetches too, but
+older builds do not.
 
 ### From § First, the worktree — re-entering `/cook` (extra, tier two)
 
 The slug does not get re-derived from whatever the latest message was about.
 
 ### From § First, the worktree — this is the step that writes code
+
+The worktree belongs *here*, not at Step 0: the plan is agreed, so this is the moment the first
+line of repo code gets written.
 
 **Fetch again even though Step 0 fetched — this is the cook-specific reason.** The base moved while
 brainstorming and planning happened, which is real time; that gap is exactly what the Step-0/Step-6

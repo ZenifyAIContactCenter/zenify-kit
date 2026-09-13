@@ -53,13 +53,8 @@ fails **silently** — no error, a plausible review of the wrong thing.
 `/ship` step 6's `schema → backend → subscriber → frontend` is **deploy** order, not implement order.
 It constrains nothing here.
 
-**With several implementers out at once, ask each for its report by name.** A lost report and a task
-that finished quietly are indistinguishable from here, and only one is safe to build on
-(`CLAUDE.md §3`). Do not write a ledger line for a task whose report never arrived.
-
-**If the plan has tightly-coupled tasks, that is a plan defect — go back and re-decompose.**
-SDD routes coupled tasks away from itself, but the answer is to fix the decomposition, not
-to switch executor.
+(The report-chasing rule and the tightly-coupled-tasks ruling for this block now live in the body,
+next to the parallel-implementers block itself.)
 
 ### From § Parallel implementers: across repos yes, within one repo no
 
@@ -116,10 +111,8 @@ Do not re-derive the decision here from file extensions: an earlier version of t
 and it fired on any task that so much as touched a `.css` file, which is a browser run bought with
 nothing.
 
-**This check does not parallelise, even when the implementers around it do.** The Playwright browser is
-a single shared instance, so if two repos' tasks are running concurrently and both are flagged, their
-verifier runs go **one after the other** — and the main session must not touch Playwright while either
-is running. Implementers are concurrent; the browser is a serial resource inside that concurrency. A
+(The no-parallelise ruling for this check now lives in the body, next to the flagged-task block
+itself.) Implementers are concurrent; the browser is a serial resource inside that concurrency. A
 task whose verifier has not run yet does not get its ledger line, so a queued browser run holds up
 exactly one task rather than the whole group.
 
@@ -169,6 +162,19 @@ of the logic, three copies of the output.** Copying the checks into `/cook`, `/f
 let three versions drift apart silently — which has already happened twice in this toolkit between this
 file and `/ship`, both times caught only by a cross-file grep. A reprinted board cannot drift, because
 it is generated fresh by the gate on every run.
+
+### From § Floor and ceiling / Naming is asymmetric
+
+The floor is **sonnet**, not the cheapest tier — haiku 4.5 is not xhigh-capable, so it silently
+discards the dial that matters most for coding. The ceiling is `opus-4-8`, for architecture, for a
+task needing broad codebase understanding, and for the final whole-branch review.
+
+Naming is asymmetric because scaling up means **omitting** `model` so the dispatch inherits the
+session (the `opus` alias resolves to the *newest* opus and would override the pinned version).
+SDD's *"always specify the model explicitly"* assumed a session default that is the most expensive
+model; here the session default **is** the intended ceiling, so omission is the correct way to reach
+it rather than an oversight. State in the dispatch note which one you meant, so an omission is never
+read as forgetting.
 
 ### From § Which model runs which step
 

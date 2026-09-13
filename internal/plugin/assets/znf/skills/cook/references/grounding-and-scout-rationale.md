@@ -1,6 +1,11 @@
 <!-- Moved verbatim from cook/SKILL.md § Step 1: Ground the request, § Step 3: Ground the spec,
 § Step 4: /scout (W4 slim-skills). Read when: Step 1/3/4 feel redundant. -->
 
+### From § What `/cook` does — grounding is incremental
+
+Each grounding pass is incremental: `/ground` only fetches what has not been verified this session,
+so a pass over which nothing new appeared costs nothing.
+
 ### From § Step 1 — the `chatbot_setting` example (extra, tier two)
 
 Enough to stop a design being built on `chatbot_setting` when the collection is
@@ -28,6 +33,12 @@ collections into a shared production database.
 Ground inline. There is no DB delegate — the `db-schema-fetcher` agent was deleted after 0
 dispatches in 1427 transcripts, and `/ground` explains why inline is the right place: what this
 step produces is the shape the code gets written from, so a summary of it is not a substitute.
+
+### From § Step 4 — brief is mixed, unlike a fix (extra, tier two)
+
+A fix's brief is not mixed the same way: the change is entirely inside code that already has
+callers, so the whole brief is the second part. A feature's brief splits, which is why the scout
+gets pointed at only the half that plugs into existing consumers.
 
 ### From § Step 4 — why scout, and why dispatched early (extra, tier two)
 
