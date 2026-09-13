@@ -47,8 +47,19 @@ func TestScope_ContainerFindsReposNotHome(t *testing.T) {
 	ws := t.TempDir()
 	a := mkRepo(t, ws, "a", "staging")
 	b := mkRepo(t, ws, "b", "main")
-	// node_modules and Library are skipped even when they hold a .git
-	mkRepo(t, filepath.Join(ws, "repos", "a", "node_modules"), "dep", "main")
+	// node_modules and Library are skipped by NAME, not merely by the depth
+	// cap: a repo two levels inside each is well short of scanDepth==3, so
+	// only the name rule could be excluding it (verified by temporarily
+	// removing that rule and confirming this assertion fails).
+	for _, dir := range []string{
+		filepath.Join(ws, "node_modules", "x"),
+		filepath.Join(ws, "Library", "x"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		run(t, dir, "init", "-q", "-b", "main")
+	}
 	got := Scope(ws)
 	if len(got) != 2 || got[0] != a || got[1] != b {
 		t.Fatalf("Scope = %v, want [%s %s]", got, a, b)

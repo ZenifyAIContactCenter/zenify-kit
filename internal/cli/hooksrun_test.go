@@ -129,10 +129,26 @@ func TestHooksRun_GitState(t *testing.T) {
 	if strings.TrimSpace(buf.String()) != "{}" {
 		t.Fatalf("clean stop = %q, want {}", buf.String())
 	}
-	// outside workspace => "{}" (existing contract)
+	// outside workspace => "{}" (existing contract — dispatchHook's own
+	// wsRoot=="" no-op, unrelated to runGitStateHook's empty-report handling)
 	buf.Reset()
 	dispatchHook("git-state", "", &buf)
 	if strings.TrimSpace(buf.String()) != "{}" {
 		t.Fatalf("outside = %q, want {}", buf.String())
+	}
+	// inside a workspace but scope finds no repos, Session mode => nothing
+	// (SessionStart stdout is injected verbatim as context; a literal "{}"
+	// would land in it as noise)
+	ws3 := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws3, ".zenify"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws3, ".zenify", "manifest.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	dispatchHook("git-state", ws3, &buf)
+	if buf.String() != "" {
+		t.Fatalf("empty scope session = %q, want empty", buf.String())
 	}
 }

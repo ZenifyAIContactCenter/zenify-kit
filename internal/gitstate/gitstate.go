@@ -6,6 +6,7 @@ package gitstate
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Mode selects the report shape: Session prints the full <git-state> block,
@@ -42,8 +44,15 @@ type RepoState struct {
 	Behind   int    // local <base> commits behind BaseRef (Session mode only)
 }
 
+// gitTimeout bounds each shell-out so a hung git process (e.g. a wedged
+// network fetch behind the scenes, or a lock held by another process) turns
+// into a skipped repo, not a hung hook / hung session.
+const gitTimeout = 5 * time.Second
+
 func git(dir string, args ...string) (string, bool) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...) //nolint:gosec // G204 -- fixed binary, args are internal constants + paths
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...) //nolint:gosec // G204 -- fixed binary, args are internal constants + paths
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -54,8 +63,11 @@ func git(dir string, args ...string) (string, bool) {
 
 // Scope returns the repo we are in, else the repos base contains (depth ≤3,
 // skipping Library/ and node_modules/, capped at maxRepos, sorted). $HOME is
-// refused: walking it yields ~177k files. Linked worktrees (.git is a file)
-// are skipped on purpose — we want repos, not one line per worktree.
+// refused: walking it yields ~177k files. Linked worktrees are excluded by
+// the depth cap, not by any special-casing: a repo's own `<repo>/.worktrees/<name>`
+// sits at depth 3, which hits SkipDir (below) before the walk ever descends
+// into it looking for a `.git`. Raising scanDepth would pull those linked
+// worktrees back in as separate repos — that is not a free change.
 func Scope(base string) []string {
 	base = filepath.Clean(base)
 	if home, err := os.UserHomeDir(); err == nil && home != "" && filepath.Clean(home) == base {

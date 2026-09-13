@@ -40,6 +40,10 @@ func skillDirs(t *testing.T) []string {
 		}
 		out = append(out, path.Join(root, e.Name()))
 	}
+	// Floor is an intentional tripwire, pinned to the shipped count as of W5
+	// (2026-09-13) — not a target to grow toward. Lowering it is a conscious
+	// unship decision; raising it back after a skill count drop just to make
+	// the test pass defeats the tripwire.
 	if len(out) < 25 {
 		t.Fatalf("expected ≥25 skills, found %d", len(out))
 	}

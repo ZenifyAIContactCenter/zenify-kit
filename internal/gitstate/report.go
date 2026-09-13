@@ -11,22 +11,24 @@ import (
 // discipline text keep matching it.
 func Report(states []RepoState, mode Mode) string {
 	var dirty, stale []string
-	var parked, alarm []string
+	var parked, alarm, detached []string
 	for _, s := range states {
 		switch {
+		case s.Dirty > 0 && s.Branch == "HEAD":
+			// IsDeploy always returns false for "HEAD" (detached), so this is
+			// never also OnDeploy — keep it out of the deploy alarm entirely.
+			dirty = append(dirty, fmt.Sprintf("  %s [%s] %d file(s)  ⚠ DETACHED HEAD", s.Name, s.Branch, s.Dirty))
+			detached = append(detached, fmt.Sprintf("%s[%s]", s.Name, s.Branch))
 		case s.Dirty > 0:
 			warn := ""
 			if s.OnDeploy {
 				warn = "  ⚠ EDITING ON A DEPLOY BRANCH"
-			}
-			if s.Branch == "HEAD" {
-				warn = "  ⚠ DETACHED HEAD"
-			}
-			dirty = append(dirty, fmt.Sprintf("  %s [%s] %d file(s)%s", s.Name, s.Branch, s.Dirty, warn))
-			if warn != "" {
 				alarm = append(alarm, fmt.Sprintf("%s[%s]", s.Name, s.Branch))
 			}
-		case !s.OnDeploy && s.Branch != "HEAD":
+			dirty = append(dirty, fmt.Sprintf("  %s [%s] %d file(s)%s", s.Name, s.Branch, s.Dirty, warn))
+		case s.Branch == "HEAD":
+			parked = append(parked, s.Name+" [HEAD] ⚠ DETACHED HEAD")
+		case !s.OnDeploy:
 			parked = append(parked, s.Name)
 		}
 		if s.Behind > 0 {
@@ -35,12 +37,21 @@ func Report(states []RepoState, mode Mode) string {
 		}
 	}
 	if mode == Stop {
-		if len(alarm) == 0 {
+		if len(alarm) == 0 && len(detached) == 0 {
 			return ""
 		}
-		return "⚠ Uncommitted changes sit on a DEPLOY branch: " + strings.Join(alarm, " ") +
-			"\n  Branch now and move the work across — do not wait for git-guard to block the commit." +
-			"\n  `wt new <slug>` (or `git stash` → `git checkout -b <user>/<type>/<desc>` → `git stash pop`)."
+		var parts []string
+		if len(alarm) > 0 {
+			parts = append(parts, "⚠ Uncommitted changes sit on a DEPLOY branch: "+strings.Join(alarm, " ")+
+				"\n  Branch now and move the work across — do not wait for git-guard to block the commit."+
+				"\n  `wt new <slug>` (or `git stash` → `git checkout -b <user>/<type>/<desc>` → `git stash pop`).")
+		}
+		if len(detached) > 0 {
+			parts = append(parts, "⚠ Uncommitted changes on a DETACHED HEAD: "+strings.Join(detached, " ")+
+				"\n  Check out a branch before committing — a detached-HEAD commit is easy to lose."+
+				"\n  `git checkout -b <user>/<type>/<desc>`.")
+		}
+		return strings.Join(parts, "\n")
 	}
 	var b strings.Builder
 	b.WriteString("<git-state>\n")
