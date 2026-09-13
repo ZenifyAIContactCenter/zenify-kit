@@ -62,3 +62,12 @@ func TestBuildOK(t *testing.T) {
 		t.Errorf("State = %q, want OK", got[0].State)
 	}
 }
+
+func TestBuild_DirtyReasonIsActionable(t *testing.T) {
+	m := &manifest.Manifest{Org: "X", Repos: []manifest.Repo{{Name: "be", URL: "git@github.com:X/be.git", Path: "repos/be", Base: "origin/staging"}}}
+	got := Build(m, map[string]ghx.RemoteRepo{"be": {Name: "be"}}, map[string]gitx.RepoState{"be": {Cloned: true, Dirty: true}})
+	want := "uncommitted changes — commit or stash, then re-run (kit only writes .claude/settings.local.json and .git/info/exclude)"
+	if got[0].State != SkipDirty || got[0].Reason != want {
+		t.Fatalf("got %q / %q", got[0].State, got[0].Reason)
+	}
+}

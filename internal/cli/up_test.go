@@ -117,6 +117,17 @@ func TestRenderJSON(t *testing.T) {
 	}
 }
 
+func TestRenderPlanTable_FooterTellsHowToApply(t *testing.T) {
+	var out bytes.Buffer
+	renderPlanTable(&out, nil, ghx.Auth{Account: "x", LoggedIn: true})
+	if !strings.Contains(out.String(), "(dry-run — nothing was changed; run with --apply or in a terminal to apply)") {
+		t.Fatalf("footer:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "later build") {
+		t.Fatal("stale footer still present")
+	}
+}
+
 func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 	gh := fakeGH{
 		auth: []byte("You are not logged into any GitHub hosts. Run gh auth login to authenticate.\n"),

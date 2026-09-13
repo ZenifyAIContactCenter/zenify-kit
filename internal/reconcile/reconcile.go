@@ -48,7 +48,7 @@ func Build(m *manifest.Manifest, access map[string]ghx.RemoteRepo, scans map[str
 		case !st.Cloned:
 			p.State, p.Reason = Clone, "absent — would clone"
 		case st.Dirty:
-			p.State, p.Reason = SkipDirty, "working tree dirty — will not touch"
+			p.State, p.Reason = SkipDirty, "uncommitted changes — commit or stash, then re-run (kit only writes .claude/settings.local.json and .git/info/exclude)"
 		case remoteMismatch(r.URL, st.NormalizedRemote):
 			p.State, p.Reason = WrongRemote, fmt.Sprintf("remote %s ≠ manifest %s — report only", st.NormalizedRemote, canonical(r.URL))
 		case st.Layout == "old":

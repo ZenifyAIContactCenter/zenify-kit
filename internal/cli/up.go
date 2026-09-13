@@ -73,7 +73,7 @@ func renderPlanTable(w io.Writer, plans []reconcile.RepoPlan, auth ghx.Auth) {
 	for _, p := range plans {
 		_, _ = fmt.Fprintf(w, "%-22s %-16s %s\n", p.Name, p.State, p.Reason)
 	}
-	_, _ = fmt.Fprintln(w, "\n(dry-run — apply lands in a later build; nothing was changed)")
+	_, _ = fmt.Fprintln(w, "\n(dry-run — nothing was changed; run with --apply or in a terminal to apply)")
 }
 
 // minVersionFloor is the binary version that introduced the apply path. A
