@@ -13,8 +13,9 @@ import (
 // runWizard drives the interactive onboarding wizard (internal/tui) over the
 // engine's plan/apply callbacks. The TUI holds no reconcile logic itself —
 // PlanFn rebuilds the plan the same way the headless dry-run path does, and
-// ApplyFn (Task 11) will apply the user's selection.
-func runWizard(w io.Writer, m *manifest.Manifest, workspace string) error {
+// ApplyFn (Task 11) will apply the user's selection. sources is the Where
+// step's answer (nil when it did not run — e.g. the marker/pointer path).
+func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[string]reconcile.Source) error {
 	gh, git := ghx.ExecRunner(), gitx.ExecRunner()
 	res, err := tui.RunOnboard(tui.OnboardConfig{
 		Workspace:  workspace,
@@ -22,10 +23,10 @@ func runWizard(w io.Writer, m *manifest.Manifest, workspace string) error {
 		PlanFooter: planFooterRows(workspace),
 		SecretKeys: []string{"MONGO_URL", "E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"},
 		PlanFn: func() ([]reconcile.RepoPlan, error) {
-			plans, _, perr := buildPlan(m, gh, git, workspace)
+			plans, _, perr := buildPlan(m, gh, git, workspace, sources)
 			return plans, perr
 		},
-		ApplyFn: func(sel []string) error { return runApplySelected(w, m, workspace, sel, gh, git) },
+		ApplyFn: func(sel []string) error { return runApplySelected(w, m, workspace, sel, gh, git, sources) },
 	})
 	_ = res
 	return err
@@ -37,8 +38,8 @@ func runWizard(w io.Writer, m *manifest.Manifest, workspace string) error {
 // runApply core the headless `--apply` path uses (lock, snapshot, apply,
 // hook wiring, docs store — no logic duplicated here). An empty selection
 // applies the full (unfiltered) plan rather than silently no-op'ing.
-func runApplySelected(w io.Writer, m *manifest.Manifest, workspace string, selected []string, gh ghx.Runner, git gitx.Runner) error {
-	plans, _, err := buildPlan(m, gh, git, workspace)
+func runApplySelected(w io.Writer, m *manifest.Manifest, workspace string, selected []string, gh ghx.Runner, git gitx.Runner, sources map[string]reconcile.Source) error {
+	plans, _, err := buildPlan(m, gh, git, workspace, sources)
 	if err != nil {
 		return err
 	}
