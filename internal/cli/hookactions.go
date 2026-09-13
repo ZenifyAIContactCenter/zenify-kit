@@ -2,12 +2,14 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
 )
 
@@ -92,6 +94,37 @@ func readBootstrapDigest() string {
 		return ""
 	}
 	return string(raw)
+}
+
+// runGitStateHook prints the repo-state report for the workspace (FR-6).
+// Session mode: plain text — Claude Code adds SessionStart stdout to context.
+// Stop mode: Claude Code does NOT surface plain Stop stdout, so the standing
+// alarm travels as {"systemMessage": ...}; a clean workspace prints "{}".
+// Scope base is $CLAUDE_PROJECT_DIR when set (the directory the session was
+// opened in), else wsRoot; deploy tiers stop at wsRoot's parent so the
+// workspace-level .claude/deploy-branches is included.
+func runGitStateHook(wsRoot string, mode gitstate.Mode, w io.Writer) int {
+	defer failOpen(w)
+	base := os.Getenv("CLAUDE_PROJECT_DIR")
+	if base == "" {
+		base = wsRoot
+	}
+	report := gitstate.Run(base, wsRoot, mode)
+	if mode == gitstate.Stop {
+		if report == "" {
+			fmt.Fprintln(w, "{}")
+			return 0
+		}
+		b, _ := json.Marshal(map[string]string{"systemMessage": report})
+		fmt.Fprintln(w, string(b))
+		return 0
+	}
+	if report == "" {
+		fmt.Fprintln(w, "{}")
+		return 0
+	}
+	fmt.Fprint(w, report)
+	return 0
 }
 
 // failOpen guarantees the hook never crashes the user's session: a panic is

@@ -331,3 +331,34 @@ func TestZnfHookSpecs_SubagentMatchersNameBothToolNames(t *testing.T) {
 		}
 	}
 }
+
+// SC-10 / FR-6.4: a foreign SessionStart entry (namph's personal
+// session-git-state.sh) is untouched; both git-state entries are added.
+func TestEnsureGlobalHooks_AddsGitStateKeepsPersonalScript(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "~/.claude/hooks/session-git-state.sh"}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "~/.claude/hooks/session-git-state.sh --stop"}]}
+    ]
+  }
+}`)
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	raw, _ := os.ReadFile(settingsPath(home))
+	s := string(raw)
+	for _, want := range []string{
+		"~/.claude/hooks/session-git-state.sh\"",
+		"~/.claude/hooks/session-git-state.sh --stop",
+		"zenify hooks-run git-state\"",
+		"zenify hooks-run git-state-stop",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("settings missing %q\n%s", want, s)
+		}
+	}
+}
