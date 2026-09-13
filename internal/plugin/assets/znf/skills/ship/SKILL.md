@@ -6,32 +6,11 @@ allowed-tools: Bash(git *) Bash(pm *) Bash(db_read *) Bash(rg *) Bash(printf *) 
 
 ## What this gate is actually for
 
-Be honest about which parts carry weight, because the evidence is not flattering to the part that
-costs most.
-
-**The load-bearing parts are the cheap deterministic ones** — lint, build, the contract gate,
-behavioural verification, and the fingerprint below. They either produce output or they don't.
-
-**The independent review is the expensive part with the weakest evidence.** A peer-reviewed
-replication on real defect data (Empirical SE 2020, arXiv:2005.09217) found models *without* review
-predictors fit post-release defects as well or better; prior defect count, module size and authorship
-dominate every review metric. Microsoft's own study of review at scale (Bacchelli & Bird, ICSE 2013)
-found the observed payoff leans toward code understanding and knowledge transfer rather than
-bug-catching. So run the review, but do not treat it as what makes the change safe — and do not let
-a clean review substitute for step 4.
-
-**Which means this gate has to prove it is not ceremony.** DORA 2019 found organisations requiring
-external approval were 2.6× more likely to be low performers, and observed change-approval boards
-that approved over 90% of changes — some rejecting nothing at all in a year. A gate with a ~0%
-rejection rate is not a gate. Step 7 records whether this run blocked, so that question stays
-answerable.
+> Why: see `references/gate-evidence.md` — which parts carry weight.
 
 ## Working tree — fingerprint the tree, not HEAD
 
-**Do not stamp checks with `git rev-parse HEAD`.** This gate commits at the *end*, so during every
-check the working tree is dirty by definition and HEAD is not what you tested. Verified: modifying a
-tracked file, and adding an untracked one, both leave HEAD unchanged. `git stash create` is not a fix
-either — it ignores untracked files.
+> Why: see `references/gate-evidence.md` — why HEAD is not what you tested.
 
 ```bash
 git status --short && git diff --name-only        # what changed
@@ -77,17 +56,7 @@ start early, and that section says why.
    URL it reports is what `ui-verifier` needs. A `Skill(znf:run)` line is checkable; "I ran the app" is
    the shape that dissolves into unnamed `Bash` calls.
 
-   **This is the authoritative UI pass — the last one, not the only one.** `/ship` is invoked
-   unconditionally by `/cook`, `/fix` and `/hotfix`, so a rendering change always reaches it without the
-   step being copied into three pipelines. It runs *here* because it must happen at the **final
-   fingerprint**: a review fix in step 5 can break layout, and a check taken before that fix certifies a
-   tree that no longer exists.
-
-   `/cook` step 6 also looks, once per rendering task, before writing that task's ledger line. The two do
-   not overlap: the per-task check tells you **which task** broke a layout, and cannot see a layout broken
-   three tasks later; this one catches what a *review* fix breaks, and cannot attribute it to a task.
-   Neither substitutes for the other, and `/fix` and `/hotfix` have no per-task equivalent, so for them
-   this is genuinely the only look.
+   > Why: see `references/ui-verification-notes.md` — why this pass is authoritative.
 
    **Trigger it mechanically, not by judgement:**
 
@@ -96,14 +65,13 @@ start early, and that section says why.
    ```
 
    Non-zero → dispatch **`ui-verifier`** (`~/.claude/agents/ui-verifier.md`) and **do not drive the
-   browser yourself**. Zero → write "nothing renders in this diff" on the board and move on. The agent
-   exists for exactly this and says why in its own description: it *"keeps heavy browser output out of
-   the main context"*.
+   browser yourself**. Zero → write "nothing renders in this diff" on the board and move on.
+
+   > Why: see `references/ui-verification-notes.md` — why the agent exists.
 
    **If the target repo has `.znf/visual/routes.json`, run `zenify visual check --repo <path> --port <P>`
    FIRST** — golden-diff catches visual regression in regions *unrelated* to the diff, which the
-   single-element `ui-verifier` measurement cannot. It renders in a pinned Docker image so the baseline
-   is OS-independent. A non-zero exit is a hard gate: fix before shipping. This is the local half; CI runs
+   single-element `ui-verifier` measurement cannot. A non-zero exit is a hard gate: fix before shipping. This is the local half; CI runs
    the same check as a backstop. Then still dispatch `ui-verifier` for the changed element's overflow
    measurement — the two are complementary, not substitutes.
 
@@ -114,13 +82,14 @@ start early, and that section says why.
    read credentials is classifier-blocked. So the main session logs in — `browser_snapshot` for the refs,
    then `browser_type` into the fields and `browser_click` the button, with values read from the
    workspace `settings.local.json` — and only then dispatches the verifier onto the already-authenticated
-   browser. Two things this avoids, both of which have actually happened: a verifier stalling for a human
-   because it could not authenticate, and a verifier being handed an *old* session whose screens are
-   empty by design, so the check verified nothing. If a `browser_type` carrying a password is refused
+   browser. If a `browser_type` carrying a password is refused
    once with *"Stage 2 classifier error — usually transient, retrying often succeeds"*, that means what it
    says: retry, do not start building a way around it. Tell the verifier **not** to clear
-   `localStorage` or cookies — one logged itself out mid-run. Snapshots, console dumps and screenshots are the largest
-   volume any step here produces, and it returns a verdict plus evidence instead. Tell it the dev URL,
+   `localStorage` or cookies — one logged itself out mid-run.
+
+   > Why: see `references/ui-verification-notes.md` — the incidents this avoids.
+
+   Tell it the dev URL,
    how to log in, which screen, and what changed; require **both** a screenshot **and** a measurement of
    the changed element against its own container box (`getBoundingClientRect`: `child.right` vs
    `container.right − paddingRight`) — page-level scroll is not enough, since a child can spill an inner
@@ -134,8 +103,9 @@ start early, and that section says why.
 
    **Keep the output you keep small, but keep it real.** `pm run build` and lint on a large repo
    produce far more than you need — pipe them (`2>&1 | tail -20`, or grep the error lines) rather than
-   delegating them. An agent would hand back its *summary* of the output, and step 2 exists precisely to
-   look at the output; moving the evidence one hop away to save context trades the wrong thing.
+   delegating them.
+
+   > Why: see `references/false-green-and-data.md` — why delegating the summary is wrong.
 
    **A suite that ran nothing is not a pass.** `0 tests`, `passWithNoTests`, "No tests found" — all
    render as green and mean nothing. Report the test count, and if it is zero say so and fall back to
@@ -153,10 +123,7 @@ start early, and that section says why.
    | a wrapper tool: "not found" / "none" / "not a repo" | run the underlying tool directly |
    | a connection failed | `nc -z <host> <port>` first — separate network from credential before theorising. **Sandbox disabled, and say so:** inside it `nc`/`curl` call every port closed. Local port → `lsof -nP -iTCP:<port> -sTCP:LISTEN` |
 
-   This targets one asymmetry that keeps producing false greens, and it has a documented instance
-   outside this project: a CI provider's instrumentation returned `null` instead of a file, the null
-   "appeared to be a valid response", the pipeline **registered the failures as successes**, no alert
-   fired, and it was caught 3.5 hours later by someone reading a dashboard.
+   > Why: see `references/false-green-and-data.md` — the CI-provider `null` incident.
 
    **Three data checks — cheap, and almost never run.** Each catches a class that
    development-sized data hides completely, so passing tests say nothing about them.
@@ -168,11 +135,9 @@ start early, and that section says why.
    git diff HEAD | rg -c '\.find\(|\.aggregate\(|\.skip\(|OFFSET|findOne\(|updateMany\('
    ```
 
-   Both true → run them. Either false → say which and why, and move on. The condition is written as a
-   command on purpose: it self-disables in a project without `db_read`, instead of relying on you to
-   read a "skip unless the project matches" note and act on it. That note was the earlier version of
-   this paragraph, and a note is exactly the form that four separate attempts today failed to make
-   stick.
+   Both true → run them. Either false → say which and why, and move on.
+
+   > Why: see `references/false-green-and-data.md` — why a command, not a note.
 
    Report which you ran and which the diff could not trigger.
 
@@ -193,11 +158,7 @@ start early, and that section says why.
      on page 1 forever, quietly linear until someone asks for page 500 in production. No error, just a
      growing tail. Keyset pagination (`WHERE id > last_seen`) stays flat.
 
-   > These three assume MongoDB, `tenant_id` and `db_read`, so they are project-specific content in a
-   > global skill. Moving them to a project-level skill was considered and rejected: it needs a
-   > cross-file reference that can go stale — one was created and had to be repaired inside this very
-   > file — and whether a same-named skill at project scope overrides one at user scope is not
-   > verified. The mechanical trigger above achieves the same isolation with neither risk.
+   > Why: see `references/false-green-and-data.md` — why not a project-level skill.
 
 5. **Independent review.**
 
@@ -230,35 +191,7 @@ start early, and that section says why.
                   omit this block entirely when there is no ledger (/fix, /hotfix)
    ```
 
-   **`## Deferred` is here because this gate is the last reader.** SDD parks minor findings in the
-   ledger for its final whole-branch review to triage, and nothing downstream of `/ship` ever opens that
-   file again — SDD names the risk itself: *"a roll-up nobody reads is a silent discard."* Handing the
-   list to a reviewer that already has the diff in front of it is the cheapest place to notice one that
-   turned out not to be minor.
-
-   These are **not** findings of this review and they do **not** enter the fix loop. The reviewer's only
-   job with them is one line each: must-fix-before-merge, or fine to leave. Whatever it says goes on the
-   board at step 7, so the list reaches you either way — that is the actual fix, since the failure mode
-   was never bad triage, it was the list being read by nobody.
-
-   `## Intent` is there because reviewers without the intent approve code that is syntactically fine
-   and solves the wrong problem — the throughline across the Microsoft, Chromium and Firefox studies.
-
-   **`## Verified` carries facts, not a verdict, and the distinction is the whole point.** Without it
-   the reviewer flags "there is no test for this" when a test exists, which costs a full loop round.
-   But writing "✅ Behaviour verified" instead of the numbers invites agreement and stops the reviewer
-   asking the better question — *are these tests adequate?* Anchoring in code review is an observed
-   phenomenon whose magnitude on outcomes nobody has measured, so this is an unquantified risk taken on
-   voluntarily; facts let the reviewer judge, a verdict asks it to concur. Write `12/12 pass —
-   pm test src/modules/auth`, name the spec files, and **name the changed behaviour no test covers** —
-   that last line is the one most likely to earn its place.
-
-   This is also why the review runs *after* behavioural verification and not before. Reordering would
-   cut rework — but there is no evidence that check order changes what gets caught, only what it costs,
-   and it would leave this block empty.
-
-   `## Ground` is what lets it check field names against reality; the agent has no Bash of its own, by
-   design, so the data must be handed to it.
+   > Why: see `references/ship-pack-rationale.md` — why each field exists.
 
    Model scaling, reviewer count, and CRITICAL/HIGH-vs-MEDIUM/LOW routing are now the engine's
    decisions (`znf:review`) — ship no longer picks a model or a reviewer count itself.
@@ -283,37 +216,28 @@ only the diff, and one is genuinely downstream.
 
 Step 2 must be a **single message**. Separate messages run the agents in sequence and buy nothing.
 
-**Why the reviewer is last and stays last.** Its ship-pack's `## Verified` block is *what steps 2-4
-actually produced* — the real command output, which test files ran by name, and which changed
-behaviour no test touches. Those facts do not exist until the inline checks have run. Dispatching it
-earlier means building that block from expectation instead of output, which is the exact substitution
-the block exists to prevent: a reviewer that cannot see what went untested approves code that is
-syntactically fine and unverified. Concurrency is not worth buying with that.
-
-The win is still where the time actually goes: the gate's eight per-repo sweeps are the slowest thing
-in this gate, and they now run underneath lint and build instead of after them.
+> Why: see `references/ship-pack-rationale.md` — why the reviewer is last.
 
 **One exclusive resource: the browser.** The Playwright instance is **shared and single** — never two
 browser-driving agents at once, and the main session must not touch Playwright while `ui-verifier`
-runs. It parallelises fine against the gate sweeps (different resources) — the reviewer is sequenced
-after it for the separate reason above, not because of the browser. What it never parallelises against
+runs. What it never parallelises against
 is **itself**: a multi-screen change is one verifier covering several screens, not several verifiers.
+
+> Why: see `references/ship-pack-rationale.md` — why the browser doesn't clash with the sweeps.
 
 **Two costs, both real:**
 
-- **A failing check voids the concurrent work.** Any fix changes `fp`, so every stamp taken in that
-  round is VOID and the loop re-runs them. Concurrency pays off on the pass path — which is the
-  common one — and is wasted on the fail path. Worth it, not free.
-- **Lost reports multiply.** 3 of 5 dispatches in one measured session finished without their report
-  arriving (`CLAUDE.md §3`). With four out at once, expecting all four back unprompted is optimistic.
-  **Ask each by name.** A report that never came makes this gate **incomplete** — never write ✅ for a
-  check whose agent went quiet, because silence and a clean result are indistinguishable from here.
+> Why: see `references/gate-evidence.md` — the two costs, in full.
+
+- **Lost reports multiply. Ask each by name.** A report that never came makes this gate **incomplete** —
+  never write ✅ for a check whose agent went quiet, because silence and a clean result are
+  indistinguishable from here.
 
 ## The fix loop — it wraps every check, not just the review
 
 **Any check failing enters the same loop**, whether it was lint, the gate, behaviour, or the review.
-This used to live inside step 5, which meant a behaviour fix was never re-reviewed and a lint fix had
-no defined re-verification at all — even though both are code changes.
+
+> Why: see `references/gate-evidence.md` — why the loop wraps every check.
 
 ```
 round R = 1..2:
@@ -334,19 +258,7 @@ still open after round 2 -> STOP. Do not commit. Report to the user: the finding
 tried, and your own assessment of whether it is load-bearing.
 ```
 
-**Two rounds, not five.** SDD's five-round cap is for a development loop over one task, with a ledger
-and later tasks still to run. This is the last gate: the next action is a push. If two attempts cannot
-close a CRITICAL, the problem is in the design, and that is the user's call.
-
-**There is no "park with ruling" here.** SDD can park a finding because a final review reads the
-ledger afterwards. Nothing downstream of `/ship` reads anything. The only honest exits are: closed, or
-handed to the user.
-
-**Do not expect the loop to catch fix-induced regressions reliably.** A study of 97,347 Firefox pull
-requests found 12.2% introduced new bugs *despite* passing lint, tests, regression tests and code
-review, and multi-file fixes regressed more often. No study isolates what a re-review adds for this
-case. The loop exists because without it the board prints ✅ earned on a diff that no longer exists —
-that is a smaller and provable claim.
+> Why: see `references/gate-evidence.md` — why two rounds, not five.
 
 ## Step 7: Record the outcome, then commit
 
@@ -358,9 +270,9 @@ printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(basename "$PWD")" "$(fp)" 
 ```
 
 Then read it back: `tail -30 ~/.cache/claude-ship-gate.tsv`. **If this gate has run many times and
-never once blocked, say so to the user plainly.** That is the measured signature of an approval board
-that approves everything — and the honest conclusion would be that these checks are costing time
-without filtering anything, not that the work has been flawless.
+never once blocked, say so to the user plainly.**
+
+> Why: see `references/gate-evidence.md` — what a 0%-block rate actually signals.
 
 ## Output
 
@@ -398,23 +310,10 @@ EOF
 cat "$BOARD"                                     # and report this path to the caller
 ```
 
-This is the difference between an instruction and a mechanism, and the instruction alone does not hold:
-three attempts in this toolkit to change behaviour with prose all failed, and the fixes that worked were
-structural. A board that must be `cat`ed is **output from a command** — the caller cannot compose a
-shorter version of it from memory, a skipped `cat` leaves a visible hole where a tool call should be, and
-the file is still on disk afterwards for the user to diff against what was reported.
-
-Why it matters that this not collapse: `/cook`, `/fix` and `/hotfix` all end here, so if each summarises
-the board as *"`/ship`: ✅ all green"*, everything that carries weight in the entire pipeline becomes one
-word, and the per-check fingerprints — the only part the user can check without trusting me — disappear.
-Every line goes in the file, including the ❌ ones, the skipped ones, and `Gate log`.
-
-That is also the honest answer to *"why is this a skill instead of steps in each pipeline?"* — one copy
-of the logic, three copies of the **output**. Duplicating the checks into three files would let them
-drift silently; duplicating the board cannot drift, because it is generated here each run.
-
 Only call it shippable when every applicable line is ✅ **at the current fingerprint**, each backed by
 output you actually saw. If anything was skipped, say so explicitly.
+
+> Why: see `references/gate-evidence.md` — why the board must be `cat`ed.
 
 **7b. Write the release-note + update unreleased.md (release-log-at-ship).**
 
@@ -437,14 +336,14 @@ derived-from-git; the change just shipped appears once merged into staging (git 
 
 **Encouraged, not enforced — the `Spec:` commit trailer.** When a change implements a spec, add a
 trailer line `Spec: specs/<repo>/<date>-<topic>-design.md` to the commit (or squash-merge) body.
-`zenify spec status` then marks that spec `built` (a precise link) instead of `built?` (a fuzzy
-slug guess). This is doctrine, never a gate — a missing trailer only downgrades the confidence of
-one lifecycle row.
+
+> Why: see `references/ship-pack-rationale.md` — what the trailer buys `zenify spec status`.
 
 **On all-green you commit and push to the FEATURE branch** — same branch name across repos, clear
 message, following the repo's existing convention (infer it from recent `git log --oneline` and branch
-names if CLAUDE.md doesn't state it; don't invent a style). House rule #7 authorises this without
-asking: pushing a feature branch deploys nothing.
+names if CLAUDE.md doesn't state it; don't invent a style).
+
+> Why: see `references/gate-evidence.md` — the house rule that authorises this.
 
 **Open the PR yourself, then stop** — the release report is derived **per-PR**, so a well-formed
 PR is what keeps the changelog clean. After pushing, run `gh pr create` with a clean conventional
@@ -457,3 +356,12 @@ no merge into a deploy/protected branch. The git-guard hook blocks the local-git
 `gh pr merge` is server-side, so this is a behavioural rule too. **NEVER push to or merge into a
 deploy/protected branch** (the project's CLAUDE.md or `.claude/deploy-branches` lists them). If
 anything is ❌, do not commit — fix first.
+
+## References
+
+Materialized at `~/.claude/skills/znf/skills/ship/references/`. Read a file only when its trigger fires.
+
+- `references/gate-evidence.md` — read when a clean review tempts you to skip step 4, or someone asks why the board exists.
+- `references/ui-verification-notes.md` — read when the UI verifier stalls, logs itself out, or you doubt why the check runs here and not in `/cook`.
+- `references/false-green-and-data.md` — read when a negative result ("no match", "OK", 0 tests) is about to let you proceed, or you wonder why the three data checks are global.
+- `references/ship-pack-rationale.md` — read when you are tempted to write a verdict into `## Verified`, drop `## Deferred`, or dispatch the reviewer early.

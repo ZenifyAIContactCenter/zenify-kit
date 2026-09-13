@@ -86,9 +86,11 @@ Red flags — thinking any of these means you are rationalising:
 - **When there are no tests, produce output from the real code path and show it.** Execute the path yourself — a throwaway script, or `znf:run` for app-level changes — and paste what it printed. "It compiles" / "it builds" is not verification of behaviour. If you could not execute it, say that instead of implying you did.
 - **UI changes: verify the LOOK, not just the flow.** Anything that renders (screen, component, modal, layout) must be checked visually — a change can pass every behavioral/spec check while the layout is broken (overflow, clipped labels/text, controls spilling their container, misalignment). Behavioral-only verification of UI is nearly worthless. Capture an actual screenshot AND take an objective measurement of the **specific changed element vs its own container box** (e.g. `getBoundingClientRect`: `child.right` vs `container.right − paddingRight`) — page/dialog-level scroll (`scrollWidth==clientWidth`) is NOT enough, since a child can spill an inner panel without producing a scrollbar. When driving through a browser-based verifier, instruct it explicitly to audit layout and return the overflow numbers, and to compare the new element against a normal/unchanged sibling to tell whether the spill is yours or pre-existing.
 - If something is untested or skipped, say so plainly. Don't imply more was verified than was.
-- **A dispatched agent going idle is not a result.** Measured in one session: three times out of five dispatches, across two different agent types, the agent finished and its report never arrived — only an idle notification. Ask for the report by name; never read silence as "it ran and found nothing", because those two states are indistinguishable from here and only one of them is safe to act on. No instruction inside an agent definition fixes this: one was added and the next run behaved the same way.
+- Ask for the report by name; never read silence as a clean result.
+
+> Why: see `references/agent-dispatch-notes.md` — the measured failure rate behind "a dispatched agent going idle is not a result".
 - **Dispatching in parallel multiplies that risk, so account for it before you rely on it.** Concurrency is the right default for independent work — several agents in **one message** run at once, one message each runs them in sequence — but at that rate of loss, expecting all reports back unprompted is optimistic. Track what you dispatched, **collect each by name**, and treat a missing report as making the step **incomplete**, not clean: for a sweep, "no report" reads exactly like "no hits", and only one of those is safe to build on. Never write a checkmark, a ledger line, or "N things checked" for an agent that went quiet.
-- **The plan/TodoWrite list from rule #5 is that tracker — one item per dispatched agent, ticked only once its report is in hand.** Held in your head instead, it is exactly what a context compaction drops, and losing it is silent. On the list, an agent that went quiet stays visible as an unticked line; off it, that agent leaves no trace at all, and "no trace" reads identically to "nothing to report".
+> Why: see `references/agent-dispatch-notes.md` — why the plan/TodoWrite list is the tracker, and what losing it costs.
 
 ## 4 — Memory habit
 - **Save when one of two checkable things is true** — not when it feels "non-obvious", which is an adjective that can be talked into either way: (a) you had to read a file, query the DB, or run something to learn it, or (b) the user corrected you on it. Save the **rule, not the event**: "fixed the queue bug on a given date" changes nothing next time; "the producer and consumer read the queue name from env, so the file on disk ≠ the running container" changes what to check.
@@ -98,7 +100,9 @@ Red flags — thinking any of these means you are rationalising:
 
 ## 5 — Plan before non-trivial work
 - **Keep a plan/TodoWrite list for anything over ~3 steps, and tick it as you go.** It is the only progress visible without reading every line of output. Two ways it goes wrong, both worse than no list at all: (a) it stops being updated, and then it *asserts* a false state — the same defect as a stale memory, and just as invisible to the reader; (b) it exists on a one-step task, where it is pure noise. When a plan already has its own ledger, the list **mirrors** the ledger — the ledger stays the single source of truth, never two. **Any turn that dispatches subagents is over the threshold by itself**, however few — counting a dispatch as one step is what makes the list never appear once work runs through agents, and rule #3 explains why that is the worst place to lose it.
-- **On newer models you must turn this list on — the tool is off by default.** Recent Claude models track multi-step work internally, so the harness omits the task-tracking tools (TodoWrite and the Task tools) by default to save context; a fresh session then has no list tool at all, presented as "no such tool" rather than "disabled" — which is exactly the silent-absence trap. This rule still binds, because the list is also **human observability**: a reader watching dispatched agents return, which the context saving does not replace. Re-enable with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` set **before the session starts** (a restart, not a live toggle), and reveal the on-screen panel with the interactive task-panel toggle (Ctrl+T in current builds). Keep it on for supervised work; let unattended/batch runs drop it. Env-var names and defaults shift by version — re-verify against current harness docs.
+- Re-enable with `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` set before the session starts; see references/agent-dispatch-notes.md.
+
+> Why: see `references/agent-dispatch-notes.md` — why the task-list tool is off by default on newer models, and what it costs.
 - For a non-trivial feature, **design/plan before coding**: clarify intent, list affected files/contracts, get agreement — don't start editing immediately. (If a brainstorming/planning skill is available, use it.) For trivial changes (a line, a string, a config value), skip the ceremony and just do it.
 
 ## 6 — Balance
@@ -158,51 +162,7 @@ can branch from the wrong release entirely.
 
 **Polyrepo:** one worktree per affected repo, same slug in all of them.
 
-### Why unconditional, rather than "only for concurrency"
-
-- It deletes a judgement call, and judgement calls are what get skipped when it matters. Deciding
-  case-by-case needs a status check plus the current branch plus a decision; unconditional needs
-  neither.
-- It removes the stale-base failure entirely. Branching from a local base branch inherits however
-  old that branch is; branching from a freshly fetched remote ref after a fetch cannot.
-- A merged task does not advance your local base branch — the merge lands on the remote, not on
-  the local ref your main checkout reads. So the next task re-fetches and reads `origin/<base>`;
-  never treat a local base branch as current just because a previous task merged.
-- A permanently clean main checkout turns any session-start git-state report into a real alarm.
-  While several repos sit dirty, "dirty" is background noise; once it should never happen, it means
-  something went wrong.
-- The cost is smaller than it looks. Copy-on-write cloning of dependencies is near-instant and costs
-  almost no disk until files diverge; symlinking is cheaper still. What genuinely costs is a second
-  dev server (which you want anyway, to verify) and a worktree to tear down — a sweep command should
-  do that teardown in one shot for every merged, clean task, and should refuse to remove work that
-  has not landed. Without it, worktrees accumulate.
-
-### Where this cannot apply
-
-- **Not a git repo.** A plain config directory, or a polyrepo container directory that is not itself
-  a repo. There is nothing to branch.
-- **The file is gitignored.** A worktree for it is not just overhead, it is destructive: the file
-  does not follow into the worktree, and tearing the worktree down deletes whatever was written
-  there. Specs, plans and per-repo docs are usually in this category — check the repo's `.gitignore`
-  rather than assuming either way.
-- **The repo declares no worktree config.** The worktree tool should refuse outright rather than
-  guess at ports, dependency handling, or which files to seed. Create a config modelled on a
-  neighbouring repo, and give it isolation (a port range, etc.) that no other repo in the same
-  workspace uses. Put any local settings and the repo's own docs in whatever the tool's "copy on
-  create" list is, or every worktree silently writes state to a *separate* store with nothing to
-  warn you.
-- **The worktree tool doesn't support this repo's toolchain.** A worktree tool built around one
-  package manager cannot serve a repo built with a different one (Maven, Gradle, Cargo, Go, …). Do
-  not try to force it, and do not read its failure as a mistake on your part. In that case, fall back
-  to a plain `git worktree add` — no port, no seeded environment, no dependency handling, but still
-  real isolation, which is exactly the shortfall already accepted when the specialized tool cannot
-  run. Pass an explicit base ref and path since there is no config to read defaults from.
-
-Also worth knowing before the first worktree of a session: current builds of the worktree tool fetch
-before resolving the base, but older ones do not — so an explicit fetch first is still the safe habit,
-and a local base branch is never assumed current regardless. The tool needs its config file, and the
-directory it creates must be ignored, or the checkout you just cleaned goes dirty again with an
-untracked worktree directory.
+> Why: see `references/worktree-rationale.md` — why the rule is unconditional, and the four carve-outs (not a repo, gitignored, no worktree config, non-node toolchain).
 
 **Consequence for spec and plan files: they are written in the MAIN checkout, never in the worktree.**
 The worktree holds code only. Specs and plans are the record of the work, not of the branch, and
@@ -229,9 +189,8 @@ needs an **absolute** path — a relative one resolves inside the worktree and f
   fetched; label anything else as unverified, from memory. NEVER manufacture a citation from memory —
   demanding a cite without retrieval induces fabricated URLs. A claim that cannot be tagged from
   fetched text is the signal to search, not to invent a source.
-- Prose is a nudge, not a guarantee — instruction files get truncated or ignored at length. Where a
-  tool allows it, back this with a deterministic gate on the *output* (a triggered turn must carry a
-  real, fetched citation), because no gate can force the search itself. Keep the rule short.
+
+> Why: see `references/agent-dispatch-notes.md` — why prose instructions alone are not a reliable gate.
 
 ## 10 — Fan-out is the default for DECOMPOSABLE research, bounded
 
@@ -244,3 +203,10 @@ needs an **absolute** path — a relative one resolves inside the worktree and f
 - Track each dispatch by name and collect each (rule #3): silence ≠ a clean result — a subagent can
   return confident garbage on a silent timeout. "No report" ≠ "nothing to report"; only one is safe
   to build on.
+
+## References
+
+Materialized at `~/.claude/skills/znf/skills/discipline/references/`. Read a file only when its trigger fires.
+
+- `references/worktree-rationale.md` — read when you are about to skip the worktree, or `wt` refuses and you want to know whether a carve-out applies.
+- `references/agent-dispatch-notes.md` — read when a dispatched agent went quiet, or the task-list tool is missing from the harness.
