@@ -3,7 +3,7 @@ summary: Kiểm tra cặp spec và plan trước khi code: độ phủ FR sang t
 ---
 ## Khi nào dùng
 
-Sau khi spec và plan đều đã viết xong, trước khi giao cho implementer. `/znf:cook` gọi skill này ở bước 5b. Bạn cũng có thể gọi tay trên bất kỳ cặp spec và plan nào.
+Sau khi spec và plan đều đã viết xong, trước khi giao cho implementer. `/znf:cook` gọi skill này ở đúng thời điểm đó. Bạn cũng có thể gọi tay trên bất kỳ cặp spec và plan nào.
 
 ## Cách hoạt động
 

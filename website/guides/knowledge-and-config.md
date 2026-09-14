@@ -72,7 +72,7 @@ Mặc định lệnh in từng file kèm trạng thái, đích và diff, rồi t
 zenify rules lint ~/.zenify/knowledge/.config/rules
 ```
 
-Rule team phân phối tới mọi máy phải viết bằng tiếng Anh để agent đọc ổn định. Lệnh in từng dòng vi phạm theo file và số dòng, hoặc báo sạch khi không có. Dòng nằm trong code fence, inline code, hoặc mang marker `<!-- znf:allow-lang -->` (Markdown) hay `//znf:allow-lang` (mã nguồn) được bỏ qua. Không truyền tham số, lệnh quét asset skill đi kèm binary.
+Lệnh soát hai thứ trong file agent đọc. **Ngôn ngữ:** rule và skill phân phối tới mọi máy phải viết bằng tiếng Anh để agent đọc ổn định; dòng nằm trong code fence, inline code, hoặc mang marker `<!-- znf:allow-lang -->` (Markdown) hay `//znf:allow-lang` (mã nguồn) được bỏ qua. **Frontmatter:** Claude Code chỉ hiểu key `paths:` (một YAML list) để giới hạn rule hay skill theo file — key `globs:` bị bỏ qua âm thầm, khiến rule nạp mọi phiên, nên lệnh cờ mọi file còn khai `globs:`. Lệnh in từng vi phạm theo file và số dòng, hoặc báo sạch khi không có. Không truyền tham số, lệnh quét asset skill đi kèm binary.
 
 ## Kết quả
 

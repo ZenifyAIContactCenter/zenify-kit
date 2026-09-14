@@ -16,7 +16,7 @@ Biến ý tưởng thành thiết kế đã được bạn duyệt qua hội tho
 
 ## Khi nào dùng
 
-Trước mọi việc tạo mới hoặc thay đổi hành vi: tính năng, component, chức năng. `/znf:cook` gọi skill này ở bước 2 để ra spec.
+Trước mọi việc tạo mới hoặc thay đổi hành vi: tính năng, component, chức năng. `/znf:cook` gọi skill này để ra spec.
 
 ## Cách hoạt động
 

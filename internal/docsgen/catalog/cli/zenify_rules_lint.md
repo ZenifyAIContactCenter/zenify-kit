@@ -1,13 +1,18 @@
 ---
-summary: Chặn tiếng Việt trong file mà agent đọc: skill, rule, và mã nguồn kit.
+summary: Kiểm file mà agent đọc (skill, rule, mã nguồn kit): chặn tiếng Việt, và bắt frontmatter khai sai key `globs:` thay cho `paths:`.
 ---
 ## Khi nào dùng
 
 Trước khi mở PR sửa rule team hoặc skill. Bước lint của `/znf:ship` chạy lệnh này trên thư mục rule trong knowledge store.
 
+Lệnh soát hai thứ trong file agent đọc:
+
+- **Ngôn ngữ.** Rule và skill phân phối tới mọi máy phải viết bằng tiếng Anh để agent đọc ổn định; lệnh cờ mọi dòng lẫn tiếng Việt.
+- **Frontmatter path-scope.** Claude Code chỉ hiểu key `paths:` (một YAML list) để giới hạn rule hay skill theo file. Key `globs:` (cách viết của Cursor) bị bỏ qua âm thầm, khiến rule nạp mọi phiên thay vì chỉ khi mở file khớp; lệnh cờ mọi file khai `globs:` trong frontmatter.
+
 ## Kết quả
 
-Lệnh in từng dòng vi phạm theo file và số dòng, hoặc "sạch." khi không có. Dòng nằm trong code fence, inline code, hoặc mang marker `<!-- znf:allow-lang -->` được bỏ qua. Trong mã nguồn kit, marker là `//znf:allow-lang` ở cuối dòng.
+Lệnh in từng vi phạm theo `file:dòng` — một dòng tiếng Việt, hoặc một key `globs:` trong frontmatter — hoặc "sạch." khi không có. Ở phần ngôn ngữ, dòng nằm trong code fence, inline code, hoặc mang marker `<!-- znf:allow-lang -->` (Markdown) hay `//znf:allow-lang` (mã nguồn) được bỏ qua.
 
 Không truyền tham số, lệnh quét asset skill đi kèm binary. Truyền đường dẫn để quét nơi khác.
 
@@ -15,7 +20,7 @@ Không truyền tham số, lệnh quét asset skill đi kèm binary. Truyền đ
 
 | Cờ | Ý nghĩa |
 |---|---|
-| `--include-go` | Quét cả mã nguồn Go của kit. |
+| `--include-go` | Quét cả mã nguồn Go của kit (phần ngôn ngữ). |
 
 ## Ví dụ
 
