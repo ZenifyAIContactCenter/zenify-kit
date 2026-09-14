@@ -37,7 +37,7 @@ func Write(dir string, files Files) error {
 	}
 	for rel, content := range files {
 		p := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
 			return err
 		}
 		if err := os.WriteFile(p, content, 0o644); err != nil { //nolint:gosec // G306 -- generated docs, world-readable by design
@@ -53,7 +53,7 @@ func Write(dir string, files Files) error {
 func Check(dir string, files Files) []string {
 	var out []string
 	for rel, want := range files {
-		got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel))) //nolint:gosec // G304 -- rel comes from the generator's own file map, joined under --out
 		if err != nil || !bytes.Equal(got, want) {
 			out = append(out, rel)
 		}

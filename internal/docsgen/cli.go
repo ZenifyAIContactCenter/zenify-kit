@@ -21,7 +21,7 @@ func GenCLI(root *cobra.Command) (Files, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 
 	prepender := func(filename string) string {
 		base := strings.TrimSuffix(filepath.Base(filename), ".md")
@@ -39,7 +39,7 @@ func GenCLI(root *cobra.Command) (Files, error) {
 		return nil, err
 	}
 	for _, e := range entries {
-		b, err := os.ReadFile(filepath.Join(tmp, e.Name()))
+		b, err := os.ReadFile(filepath.Join(tmp, e.Name())) //nolint:gosec // G304 -- reads back files this function just wrote into its own temp dir
 		if err != nil {
 			return nil, err
 		}
