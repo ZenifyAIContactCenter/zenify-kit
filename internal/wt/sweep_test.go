@@ -300,3 +300,42 @@ func TestRunSweep_QuietPrintsNothingWhenNothingRemovable(t *testing.T) {
 		t.Fatalf("quiet sweep must print nothing, got %q", out.String())
 	}
 }
+
+// Stale entry whose recorded path is the pre-migrate layout while the directory
+// still sits at <repo>/.worktrees/<slug> unregistered in git: sweep must delete
+// the orphan directory, drop the entry and delete the merged branch instead of
+// failing on `git worktree remove`.
+func TestRunSweep_StaleMergedOrphanDirIsDeleted(t *testing.T) {
+	root := t.TempDir()
+	oldPath := filepath.Join(root, "old-layout", ".worktrees", "orphan")
+	seedSweepRepo(t, root, []Worktree{{Slug: "orphan", Branch: "namph/feat/orphan", Path: oldPath, Ports: []int{3202}}})
+	dir := filepath.Join(root, ".worktrees", "orphan")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	s := &rmStub{out: map[string]string{
+		root + "|worktree list --porcelain":           "worktree " + root + "\n\n",
+		root + "|diff origin/main..namph/feat/orphan": "",
+	}, err: map[string]error{
+		root + "|merge-base --is-ancestor namph/feat/orphan origin/main": errors.New("x"),
+		root + "|worktree remove --force " + dir:                         errors.New("exit status 128"),
+		dir + "|symbolic-ref --quiet --short HEAD":                       errors.New("fatal: not a git repository"),
+	}}
+	var out bytes.Buffer
+	if err := RunSweep(SweepOptions{RepoRoot: root, Host: "h", Pid: 1, Now: 1, Runner: s, Stdout: &out, Stderr: io.Discard}); err != nil {
+		t.Fatal(err)
+	}
+	if _, e := os.Stat(dir); !os.IsNotExist(e) {
+		t.Fatalf("orphan dir must be deleted, stat err=%v", e)
+	}
+	if !s.ran(root + "|branch -D namph/feat/orphan") {
+		t.Fatalf("merged branch must be deleted, seen: %v", s.seen)
+	}
+	st, _ := ReadState(root)
+	if _, ok := st.Find("orphan"); ok {
+		t.Fatal("stale entry must be dropped from state")
+	}
+	if !strings.Contains(out.String(), "wt: swept 1, left 0") {
+		t.Fatalf("summary line missing: %q", out.String())
+	}
+}

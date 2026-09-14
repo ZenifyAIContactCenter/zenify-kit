@@ -99,9 +99,31 @@ func RunRm(o RmOptions) error {
 		if _, e := r.Run(o.RepoRoot, "worktree", "prune"); e != nil {
 			return fmt.Errorf("wt: git worktree prune failed: %w", e)
 		}
-	} else {
-		if _, e := r.Run(o.RepoRoot, "worktree", "remove", "--force", path); e != nil {
+	} else if _, e := r.Run(o.RepoRoot, "worktree", "remove", "--force", path); e != nil {
+		// An orphan: the directory is there but git no longer registers it — its
+		// .git file points at a gitdir that moved (seen after `zenify migrate`
+		// relocated a repo with worktrees still inside). git refuses to remove
+		// what it does not know, so delete the directory ourselves and prune.
+		// Anything git DOES register stays a hard error.
+		out, le := r.Run(o.RepoRoot, "worktree", "list", "--porcelain")
+		if le != nil || worktreeListHasPath(string(out), path) {
 			return fmt.Errorf("wt: git worktree remove failed: %w", e)
+		}
+		if re := os.RemoveAll(path); re != nil {
+			return fmt.Errorf("wt: %s is not registered in git and could not be deleted: %w", path, re)
+		}
+		_, _ = fmt.Fprintf(o.Stderr, "wt: %s was not registered in git (%v) — directory deleted directly\n", path, e)
+		if _, pe := r.Run(o.RepoRoot, "worktree", "prune"); pe != nil {
+			_, _ = fmt.Fprintf(o.Stderr, "wt:   worktree prune failed: %v\n", pe)
+		}
+		// The orphan checkout could not answer symbolic-ref; state.json still
+		// knows which branch wt created for it.
+		if branch == "" {
+			if st, se := ReadState(o.RepoRoot); se == nil {
+				if w, ok := st.Find(o.Slug); ok {
+					branch = w.Branch
+				}
+			}
 		}
 	}
 
