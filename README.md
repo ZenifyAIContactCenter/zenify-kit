@@ -5,8 +5,11 @@ that ships the team's shared CLI: worktrees (`wt`), guards (`guard`, `secret-sca
 onboarding (`up`), db access (`db-read`), plugin + skills sync (`skills`), and
 observability (`observe`).
 
-> **Status:** M0–M3 shipped. Run `zenify --help` for the full command list, and
-> `zenify <command> --help` for any command's flags and behaviour.
+> **Status:** all capability milestones M0–M9 and the W0–W6 harness plan are shipped and
+> released (current release: see the badge above / `zenify version`). The milestone-by-milestone
+> record lives in the team knowledge store (`docs/handoff/zenify-kit/ROADMAP.md`, "Current state").
+> Team documentation: `website/` in this repo (VitePress) — the hosted URL is added here once
+> Cloudflare Pages is connected. `zenify --help` lists every command.
 
 The binary is published for macOS, Linux, and Windows (amd64 + arm64) on every release.
 The source contains no workspace-specific data (see [ARCHITECTURE.md](ARCHITECTURE.md)),
