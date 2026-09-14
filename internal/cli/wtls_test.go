@@ -1,10 +1,15 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
 
 // requireGit skips the test when git is not on PATH (real-git integration).
@@ -64,5 +69,70 @@ func TestWtLs_And_Url_Integration(t *testing.T) {
 	}
 	if !strings.HasPrefix(strings.TrimSpace(url), "http://localhost:32") {
 		t.Fatalf("url wrong: %q", url)
+	}
+}
+
+// TestWtLsAll_JSON_SkipsBrokenRepoToStderr reproduces Important 2 from the
+// final review: a repo that fails to load/list must not corrupt `wt ls --all
+// --json`'s stdout array — its skip line belongs on stderr.
+func TestWtLsAll_JSON_SkipsBrokenRepoToStderr(t *testing.T) {
+	requireGit(t)
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "manifest.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	good := filepath.Join(ws, "repos", "good")
+	if err := os.MkdirAll(good, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", good, "init", "-q").CombinedOutput(); err != nil { //nolint:gosec // G204 -- test fixture
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	if err := os.MkdirAll(filepath.Join(good, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(good, ".claude", "worktree.json"),
+		[]byte(`{"abbrev":"good","portRange":[3200,3249],"deps":"none"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// bad: a fake ".git" dir (so gitstate.Scope enumerates it) with a valid
+	// worktree.json (so Load succeeds), but no real git repository underneath
+	// — `git worktree list --porcelain` fails, which is the error List surfaces.
+	bad := filepath.Join(ws, "repos", "bad")
+	if err := os.MkdirAll(filepath.Join(bad, ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(bad, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bad, ".claude", "worktree.json"),
+		[]byte(`{"abbrev":"bad","portRange":[3250,3299],"deps":"none"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(ws)
+	root := NewRootCmd()
+	var out, errb bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errb)
+	root.SetArgs([]string{"wt", "ls", "--all", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("wt ls --all --json failed: %v\nstderr: %s", err, errb.String())
+	}
+
+	if !strings.Contains(errb.String(), "== bad == (skipped:") {
+		t.Fatalf("expected bad repo's skip line on stderr, got %q", errb.String())
+	}
+	if strings.Contains(out.String(), "skipped") {
+		t.Fatalf("skip line leaked onto stdout: %q", out.String())
+	}
+	var rows []wt.Row
+	if err := json.Unmarshal(out.Bytes(), &rows); err != nil {
+		t.Fatalf("stdout not a decodable JSON array: %v\n%s", err, out.String())
 	}
 }

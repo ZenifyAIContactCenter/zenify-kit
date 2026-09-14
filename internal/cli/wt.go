@@ -182,16 +182,20 @@ func newWtLsCmd() *cobra.Command {
 				}
 				var allRows []wt.Row
 				w := cmd.OutOrStdout()
+				skipw := w
+				if asJSON {
+					skipw = cmd.ErrOrStderr()
+				}
 				for _, repo := range wt.WorkspaceRepos(ws) {
 					name := filepath.Base(repo)
 					cfg, err := wt.Load(repo)
 					if err != nil {
-						_, _ = fmt.Fprintf(w, "== %s == (skipped: %v)\n", name, err)
+						_, _ = fmt.Fprintf(skipw, "== %s == (skipped: %v)\n", name, err)
 						continue
 					}
 					rows, err := wt.List(gitx.ExecRunner(), repo, cfg)
 					if err != nil {
-						_, _ = fmt.Fprintf(w, "== %s == (skipped: %v)\n", name, err)
+						_, _ = fmt.Fprintf(skipw, "== %s == (skipped: %v)\n", name, err)
 						continue
 					}
 					if len(rows) == 0 {
