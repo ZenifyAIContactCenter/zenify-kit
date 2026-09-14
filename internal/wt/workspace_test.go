@@ -58,7 +58,10 @@ func TestWorkspaceRepos_FiltersToWorktreeJSON(t *testing.T) {
 	a := mkGitRepo(t, ws, "a", true)
 	mkGitRepo(t, ws, "b", false) // repo without worktree.json → excluded
 	c := mkGitRepo(t, ws, "c", true)
-	// a linked-worktree-like dir inside a: must NOT be enumerated as a repo
+	// a linked-worktree-like dir inside a: must NOT be enumerated as a repo.
+	// Excluded by the depth cap (WalkDir never descends past scanDepth to reach
+	// it) — not by the ".git" entry being a file rather than a directory, which
+	// only matters for a nested worktree shallow enough to escape the cap.
 	if err := os.MkdirAll(filepath.Join(a, ".worktrees", "t1", ".claude"), 0o750); err != nil {
 		t.Fatal(err)
 	}

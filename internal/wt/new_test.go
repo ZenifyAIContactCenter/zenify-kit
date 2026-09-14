@@ -131,13 +131,16 @@ func TestRunNew_AutoSweepsMergedTasksAfterFetch(t *testing.T) {
 		done + "|status --porcelain":                "",
 		root + "|diff origin/main..namph/feat/done": "",
 	}, err: map[string]error{
-		root + "|merge-base --is-ancestor namph/feat/done origin/main":                                                   errors.New("x"),
-		root + "|worktree add -q " + filepath.Join(root, ".worktrees", "my-task") + " -b namph/feat/my-task origin/main": errors.New("stop here"),
+		root + "|merge-base --is-ancestor namph/feat/done origin/main": errors.New("x"),
 	}}
 	var errb bytes.Buffer
 	o := baseOpts(root, g)
 	o.Stderr = &errb
-	_ = RunNew(o) // fails at worktree add by design; the sweep ran before it
+	// The stub's default show-ref answer (nil error) reads as "branch already
+	// exists", so RunNew stops at the duplicate-task check right after the
+	// sweep — it never reaches `worktree add`. That's fine: this test only
+	// needs to prove the sweep ran first.
+	_ = RunNew(o)
 	if !seenContains(g, "worktree remove --force "+done) {
 		t.Fatalf("merged task must be swept before creating the new one; seen %v", g.seen)
 	}
