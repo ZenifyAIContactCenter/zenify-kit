@@ -10,6 +10,8 @@ export default withMermaid({
   lastUpdated: true,
   ignoreDeadLinks: false,
   srcExclude: ['node_modules/**'],
+  // Dev-only: Vite phải pre-bundle mermaid, nếu không `fastdom` (CJS) import default lỗi → trang trắng. Build không bị.
+  vite: { optimizeDeps: { include: ['mermaid'] } },
   themeConfig: {
     search: { provider: 'local' },
     outline: { label: 'Trong trang này', level: [2, 3] },
