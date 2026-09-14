@@ -20,7 +20,7 @@ Không có mạng, hoặc bản đang chạy là bản mới nhất, hoặc bạ
 zenify update --help
 ```
 
-Kết quả thật (ground trên binary v0.17.7):
+Kết quả thật (ground trên binary build từ commit 592f7a4):
 
 ```text
 Tự nhận cách binary này được cài rồi chạy lệnh nâng cấp tương ứng:
@@ -62,6 +62,6 @@ Cơ chế nhắc tự động ở đầu session chỉ có kể từ `v0.17.7`. 
 
 ## Nguồn
 
-- Ground trên binary v0.17.7 (2026-09-14): `zenify update --help`.
+- Ground trên binary build từ commit 592f7a4 của nhánh này (2026-09-14), chưa phát hành: `zenify update --help`.
 - `docs/handoff/zenify-kit/update-and-version-gate.md`
 - `README.md` (repo `zenify-kit`, mục "Staying current")

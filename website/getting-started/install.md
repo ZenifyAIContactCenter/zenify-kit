@@ -47,7 +47,7 @@ scoop install zenify
 zenify version
 ```
 
-Kết quả mong đợi (ground trên binary thật):
+Kết quả mong đợi trên máy vừa cài bản phát hành mới nhất tại thời điểm viết (v0.17.7):
 
 ```text
 v0.17.7
@@ -65,4 +65,5 @@ Sau khi cài, đi tiếp tới [Bắt đầu nhanh](/getting-started/quickstart)
 
 - `README.md` (repo `zenify-kit`, mục "Install")
 - `docs/handoff/zenify-kit/update-and-version-gate.md` (ghi chú v0.17.7, máy ≤v0.17.6 cần nâng tay một lần)
-- Ground trên binary v0.17.7 (2026-09-14).
+- Cảnh báo "≤v0.17.6 cần nâng tay một lần" lấy từ nội dung tag `v0.17.7` (`git show v0.17.7`) và `update-and-version-gate.md` — không phải từ `--help`.
+- Ground trên binary build từ commit 592f7a4 của nhánh này (2026-09-14), chưa phát hành.

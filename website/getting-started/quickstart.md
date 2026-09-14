@@ -27,7 +27,7 @@ cd ~/Developer/zenify   # macOS mặc định; Linux mặc định ~/zenify, Win
 zenify up --help
 ```
 
-Kết quả thật (ground trên binary v0.17.7):
+Kết quả thật (ground trên binary build từ commit 592f7a4):
 
 ```text
 Onboard workspace: wizard tương tác trong terminal, còn không thì in kế hoạch dry-run (--apply để chạy headless)
@@ -60,7 +60,7 @@ Wizard hỏi bạn đăng nhập `gh` (nếu chưa), sau đó tự phát hiện 
 zenify doctor --help
 ```
 
-Kết quả thật (ground trên binary v0.17.7):
+Kết quả thật (ground trên binary build từ commit 592f7a4):
 
 ```text
 Kiểm tra sức khoẻ môi trường, chỉ-đọc (không sửa gì, không in secret; --fix áp tập sửa an toàn)
@@ -116,6 +116,6 @@ Có task thật rồi? Chọn quy trình cook / fix / hotfix<!-- TODO(Task 9): l
 
 ## Nguồn
 
-- Ground trên binary v0.17.7 (2026-09-14): `zenify up --help`, `zenify doctor --help`.
+- Ground trên binary build từ commit 592f7a4 của nhánh này (2026-09-14), chưa phát hành: `zenify up --help`, `zenify doctor --help`.
 - `docs/handoff/zenify-kit/onboarding-tui.md` (luồng wizard Preflight → Identity → Discover → Select → Scan → Plan → Apply → Verify/Done)
 - `README.md` (repo `zenify-kit`, mục "After install")

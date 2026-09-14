@@ -32,6 +32,19 @@ flowchart LR
 
 Mỗi lớp có chủ sở hữu và cơ chế cập nhật riêng — chi tiết và edge case xem trang khái niệm Ba lớp <!-- TODO(Task 8): link /concepts/three-layers -->.
 
+## Khái niệm cốt lõi
+
+Sáu khái niệm nền mà các trang khác giả định bạn đã biết:
+
+| Khái niệm | Trả lời câu hỏi |
+|---|---|
+| Ba lớp: binary, plugin, knowledge store | Ba lớp nằm ở đâu trên máy, ai sửa <!-- TODO(Task 8): link /concepts/three-layers --> |
+| Worktree theo slug | Vì sao một task = một worktree, không phải một edit <!-- TODO(Task 8): link /concepts/worktree-per-slug --> |
+| Base ref, hotfix base, port block | Base ref lấy từ đâu, vì sao hotfix resolve sau fetch <!-- TODO(Task 8): link /concepts/base-ref-and-ports --> |
+| Knowledge store và view `docs/` | Store thật ở đâu, `docs/` là gì, ai được ghi <!-- TODO(Task 8): link /concepts/knowledge-store --> |
+| Namespace `znf:` | Vì sao gọi `znf:cook` chứ không phải bản skill cá nhân trùng tên <!-- TODO(Task 8): link /concepts/znf-namespace --> |
+| Gate fail-open | Vì sao một gate báo lỗi không chặn được việc ship, khác gì với git-guard <!-- TODO(Task 8): link /concepts/gate-fail-open --> |
+
 ## Trạng thái dự án
 
 Mọi milestone M0–M9 và W0–W6 đã ship; phiên bản binary hiện tại xem `zenify version`. Roadmap chi tiết theo từng mốc nằm trong knowledge store nội bộ của team, không link ra ngoài từ trang public này.
@@ -40,4 +53,4 @@ Mọi milestone M0–M9 và W0–W6 đã ship; phiên bản binary hiện tại 
 
 - `ARCHITECTURE.md` (repo `zenify-kit`, mục "The public-distribution invariant")
 - `README.md` (repo `zenify-kit`, mục "Status")
-- Ground trên binary v0.17.7 (2026-09-14).
+- Ground trên binary build từ commit 592f7a4 của nhánh này (2026-09-14), chưa phát hành.
