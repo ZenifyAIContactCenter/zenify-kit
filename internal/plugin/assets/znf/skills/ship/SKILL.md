@@ -351,16 +351,7 @@ title and a structured body following the repo's PR template/convention (one PR 
 branch, targeting the repo's base — a deploy/protected base is fine here: opening a PR against it
 deploys nothing). Report each PR URL and stop.
 
-**PR title and body — one machine token, the rest human prose.** The title's `type(scope):` prefix
-is machine-parsed by `zenify release-report` (`internal/release/classify.go`) to classify the
-changelog, so it stays a conventional-commit type in English (`feat`/`fix`/`docs`/…) whatever the
-project's language is. Everything a human reads — the **description after the colon** and the
-**whole body** — is a human-read artifact: write it in the project's prose language (the same
-language its specs and plans use — see `znf:_shared/artifact-style` and the project's convention),
-the body structured (summary · what changed · how verified) and ending with the repo's attribution
-line. Commit messages are the machine record and stay English (Conventional Commits); the PR is the
-human-facing half. Do not split them the wrong way — a title whose description is English over a
-body in the project's language, or the reverse, is the inconsistency this rule removes.
+**PR title/body — machine prefix, human body.** English `type(scope):` prefix; description + body in the project's prose language + attribution. See `references/pr-message-language.md`.
 
 **Merging is the user's deploy decision — NEVER merge, including a PR you opened.** No `gh pr merge`,
 no merge into a deploy/protected branch. The git-guard hook blocks the local-git path, but
