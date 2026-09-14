@@ -10,10 +10,10 @@ Các gate trong kit (`analyze`, `standards`, `db-perf`, `docs sync`) chỉ đọ
 
 Tất cả gate này chọn fail-open: lỗi công cụ không chặn. Lý do là chúng có vai trò advisory.
 
-- `db-perf` chạy ở `znf:ground` (mandatory), `znf:explain-plan` (bước 3 của `cook`) và bước 5 của `znf:ship`.
-- `analyze` chạy ở bước 5b của `cook`, trước khi implement.
-- `standards` chạy ở bước 6b, sau khi implement.
-- `docs sync` chạy ở mọi hook `Stop`/`SessionStart`.
+- `db-perf` — chạy mỗi khi diff chạm truy vấn DB: bắt buộc trong `znf:ground`, trong `znf:explain-plan` (do `cook` gọi) và khi `znf:ship`.
+- `analyze` — trong `cook`, **trước khi implement**: soát spec và plan.
+- `standards` — trong `cook`, **sau khi implement**: soát code so với spec.
+- `docs sync` — mỗi lần mở và đóng session (hook `Stop`/`SessionStart`).
 
 git-guard (PreToolUse hook trên mọi lệnh git) và secret-scan (trước commit/push) khác các gate trên ở phản ứng với một rule khớp, không ở phản ứng với lỗi công cụ. Lệnh git chạm branch deploy, hoặc staged diff có secret, thì chúng chặn lệnh. Khi chính công cụ gặp lỗi (ví dụ scanner không khởi tạo được), git-guard và secret-scan không chặn lệnh, giống các gate kia. Gọi chúng là "fail-closed" là không đúng.
 

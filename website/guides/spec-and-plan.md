@@ -60,7 +60,7 @@ zenify spec contracts --collection chat_rooms
 
 ### `/znf:analyze`
 
-Kiểm tra một cặp spec và plan trước khi code, mang tính tư vấn, không bao giờ chặn tiến độ. `/znf:cook` gọi skill này ở bước 5b, bạn cũng gọi tay được trên bất kỳ cặp spec/plan nào.
+Kiểm tra một cặp spec và plan trước khi code, mang tính tư vấn, không bao giờ chặn tiến độ. `/znf:cook` gọi skill này sau khi spec và plan viết xong, trước khi implement; bạn cũng gọi tay được trên bất kỳ cặp spec/plan nào.
 
 ```text
 /znf:analyze docs/specs/contact-center-be/2026-09-14-ticket-tags-design.md docs/plans/contact-center-be/2026-09-14-ticket-tags.md
