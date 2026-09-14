@@ -25,7 +25,13 @@ export default withMermaid({
         { text: 'Bắt đầu nhanh', link: '/getting-started/quickstart' },
         { text: 'Nâng cấp', link: '/getting-started/upgrade' } ] },
       { text: 'Quy trình', items: [] },
-      { text: 'Khái niệm cốt lõi', items: [] },
+      { text: 'Khái niệm cốt lõi', items: [
+        { text: 'Ba lớp: binary, plugin, knowledge store', link: '/concepts/three-layers' },
+        { text: 'Worktree theo slug', link: '/concepts/worktree-per-slug' },
+        { text: 'Base ref, hotfix base, port block', link: '/concepts/base-ref-and-ports' },
+        { text: 'Knowledge store và view docs/', link: '/concepts/knowledge-store' },
+        { text: 'Namespace znf:', link: '/concepts/znf-namespace' },
+        { text: 'Gate fail-open', link: '/concepts/gate-fail-open' } ] },
       {
         text: 'Tham chiếu (sinh tự động)',
         items: [

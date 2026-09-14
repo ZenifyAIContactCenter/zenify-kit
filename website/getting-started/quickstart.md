@@ -79,7 +79,7 @@ Flags:
 zenify doctor
 ```
 
-Kết quả mong đợi: mọi check hiện `OK` (xem chi tiết từng lệnh ở [tham chiếu `zenify doctor`](/reference/cli/zenify_doctor)). Nếu có check đỏ, thử `zenify doctor --fix` — nó chỉ áp tập sửa được xác nhận an toàn rồi kiểm lại, không đụng gì khác<!-- TODO(Task 8): link /concepts/gate-fail-open -->.
+Kết quả mong đợi: mọi check hiện `OK` (xem chi tiết từng lệnh ở [tham chiếu `zenify doctor`](/reference/cli/zenify_doctor)). Nếu có check đỏ, thử `zenify doctor --fix` — nó chỉ áp tập sửa được xác nhận an toàn rồi kiểm lại, không đụng gì khác (nguyên tắc [fail-open](/concepts/gate-fail-open) chung của các gate trong kit).
 
 ## Bước 4 — mở Claude Code, kiểm tra skill có mặt
 
@@ -93,7 +93,7 @@ Nếu skill hiện ra trong danh sách gợi ý, plugin `znf:*` đã nối dây 
 
 ## Bước 5 — worktree đầu tiên: `wt new` rồi `wt rm`
 
-Mọi thay đổi code luôn nằm trong một worktree riêng, không sửa trực tiếp bản checkout chính<!-- TODO(Task 8): link /concepts/worktree-per-slug -->.
+Mọi thay đổi code luôn nằm trong một worktree riêng, không sửa trực tiếp bản checkout chính — xem [Worktree theo slug](/concepts/worktree-per-slug).
 
 ```sh
 git fetch origin

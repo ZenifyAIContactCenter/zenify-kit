@@ -13,7 +13,7 @@ title: zenify-kit
 | Cài `zenify` lần đầu trên máy mới | [Cài đặt](/getting-started/install) |
 | Onboard một workspace, chạy thử lệnh đầu tiên | [Bắt đầu nhanh](/getting-started/quickstart) |
 | Nâng cấp lên bản `zenify` mới | [Nâng cấp](/getting-started/upgrade) |
-| Hiểu vì sao kit chia 3 lớp binary/plugin/knowledge store | Ba lớp <!-- TODO(Task 8): link /concepts/three-layers --> |
+| Hiểu vì sao kit chia 3 lớp binary/plugin/knowledge store | [Ba lớp](/concepts/three-layers) |
 | Chọn quy trình cook / fix / hotfix cho một task cụ thể | Chọn quy trình <!-- TODO(Task 9): link /workflows/ --> |
 | Tra cứu một lệnh CLI, skill, agent hoặc hook cụ thể | [Tham chiếu](/reference/cli/) |
 
@@ -30,7 +30,7 @@ flowchart LR
   A[zenify binary] --> B[plugin znf:*] --> C[knowledge store]
 ```
 
-Mỗi lớp có chủ sở hữu và cơ chế cập nhật riêng — chi tiết và edge case xem trang khái niệm Ba lớp <!-- TODO(Task 8): link /concepts/three-layers -->.
+Mỗi lớp có chủ sở hữu và cơ chế cập nhật riêng — chi tiết và edge case xem trang khái niệm [Ba lớp](/concepts/three-layers).
 
 ## Khái niệm cốt lõi
 
@@ -38,12 +38,12 @@ Sáu khái niệm nền mà các trang khác giả định bạn đã biết:
 
 | Khái niệm | Trả lời câu hỏi |
 |---|---|
-| Ba lớp: binary, plugin, knowledge store | Ba lớp nằm ở đâu trên máy, ai sửa <!-- TODO(Task 8): link /concepts/three-layers --> |
-| Worktree theo slug | Vì sao một task = một worktree, không phải một edit <!-- TODO(Task 8): link /concepts/worktree-per-slug --> |
-| Base ref, hotfix base, port block | Base ref lấy từ đâu, vì sao hotfix resolve sau fetch <!-- TODO(Task 8): link /concepts/base-ref-and-ports --> |
-| Knowledge store và view `docs/` | Store thật ở đâu, `docs/` là gì, ai được ghi <!-- TODO(Task 8): link /concepts/knowledge-store --> |
-| Namespace `znf:` | Vì sao gọi `znf:cook` chứ không phải bản skill cá nhân trùng tên <!-- TODO(Task 8): link /concepts/znf-namespace --> |
-| Gate fail-open | Vì sao một gate báo lỗi không chặn được việc ship, khác gì với git-guard <!-- TODO(Task 8): link /concepts/gate-fail-open --> |
+| [Ba lớp: binary, plugin, knowledge store](/concepts/three-layers) | Ba lớp nằm ở đâu trên máy, ai sửa |
+| [Worktree theo slug](/concepts/worktree-per-slug) | Vì sao một task = một worktree, không phải một edit |
+| [Base ref, hotfix base, port block](/concepts/base-ref-and-ports) | Base ref lấy từ đâu, vì sao hotfix resolve sau fetch |
+| [Knowledge store và view `docs/`](/concepts/knowledge-store) | Store thật ở đâu, `docs/` là gì, ai được ghi |
+| [Namespace `znf:`](/concepts/znf-namespace) | Vì sao gọi `znf:cook` chứ không phải bản skill cá nhân trùng tên |
+| [Gate fail-open](/concepts/gate-fail-open) | Vì sao một gate báo lỗi không chặn được việc ship, khác gì với git-guard |
 
 ## Trạng thái dự án
 
