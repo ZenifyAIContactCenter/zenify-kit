@@ -119,7 +119,7 @@ func legacyIndexPath() (string, bool) {
 		base = filepath.Join(home, ".local", "state")
 	}
 	p := filepath.Join(base, "zenify", "wt-index.json")
-	if _, err := os.Stat(p); err != nil {
+	if _, err := os.Stat(p); err != nil { //nolint:gosec // G703 -- p is built from XDG_STATE_HOME or the user home plus fixed segments, and is only probed for the legacy index file
 		return "", false
 	}
 	return p, true
