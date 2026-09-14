@@ -119,7 +119,6 @@ func TestGenSkills_RealEmbeddedTree(t *testing.T) {
 	allowedHeadings := map[string]bool{
 		"## Cách gọi":       true, //znf:allow-lang
 		"## Tool được phép": true, //znf:allow-lang
-		"## Nguồn":          true, //znf:allow-lang
 	}
 	for rel, content := range files {
 		if rel == "skills/index.md" || rel == "agents/index.md" {
