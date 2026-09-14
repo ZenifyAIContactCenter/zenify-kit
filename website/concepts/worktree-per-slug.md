@@ -12,14 +12,14 @@ Sửa code trực tiếp trên bản checkout chính là cách nhanh nhất đ�
 
 ```mermaid
 flowchart LR
-  A["git fetch origin"] --> B["wt new &lt;slug&gt; --type feat --base origin/&lt;base&gt;"]
+  A["git fetch origin"] --> B["zenify wt new &lt;slug&gt; --type feat --base origin/&lt;base&gt;"]
   B --> C[sửa + commit + push]
   C --> D["mở PR"]
   D --> E[merge]
-  E --> F["wt sweep"]
+  E --> F["zenify wt sweep"]
 ```
 
-Một **slug** đặt tên cho toàn bộ vòng đời này: nó trở thành tên branch `<user>/<type>/<slug>` và tên thư mục worktree. Một plan chia nhỏ thành nhiều SDD task (Task 1, Task 2, …), nhưng tất cả dùng chung một worktree — cấp thêm worktree cho mỗi task là phá vỡ đúng quy tắc "một repo, một worktree" mà slug tồn tại để giữ. Gọi `wt new` một lần nữa với cùng slug trong cùng phiên sẽ bị từ chối, kèm dòng `cd` tới worktree đã mở sẵn.
+Một **slug** đặt tên cho toàn bộ vòng đời này: nó trở thành tên branch `<user>/<type>/<slug>` và tên thư mục worktree. Một plan chia nhỏ thành nhiều SDD task (Task 1, Task 2, …), nhưng tất cả dùng chung một worktree — cấp thêm worktree cho mỗi task là phá vỡ đúng quy tắc "một repo, một worktree" mà slug tồn tại để giữ. Gọi `zenify wt new` một lần nữa với cùng slug trong cùng phiên sẽ bị từ chối, kèm dòng `cd` tới worktree đã mở sẵn.
 
 ## Ghép với …
 
@@ -31,8 +31,8 @@ Một **slug** đặt tên cho toàn bộ vòng đời này: nó trở thành t�
 
 - **`--another`** mở worktree thứ hai trong cùng repo — dành cho một yêu cầu thật sự tách biệt, không phải "việc này thấy hơi khác" (cách một slug biến thành nhiều branch trong một ngày).
 - **Hotfix được miễn trừ tự động**: base ref khác (release mới nhất, không phải nhánh tích hợp), vì giữa chừng một tính năng vẫn có thể cần vá production ngay.
-- **`wt rm <slug>`** từ chối xoá worktree chưa có dấu vết merge trừ khi thêm `--force` — an toàn để gọi thử mà không sợ mất việc chưa land.
-- **`.worktrees/` phải nằm trong `.gitignore` đã commit**, không phải `.git/info/exclude` — khai báo cục bộ thì đồng nghiệp clone repo lần đầu thấy checkout của họ "bẩn" ngay khi chạy `wt new` lần đầu.
+- **`zenify wt rm <slug>`** từ chối xoá worktree chưa có dấu vết merge trừ khi thêm `--force` — an toàn để gọi thử mà không sợ mất việc chưa land.
+- **`.worktrees/` phải nằm trong `.gitignore` đã commit**, không phải `.git/info/exclude` — khai báo cục bộ thì đồng nghiệp clone repo lần đầu thấy checkout của họ "bẩn" ngay khi chạy `zenify wt new` lần đầu.
 
 ## Nguồn
 

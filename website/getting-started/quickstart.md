@@ -8,7 +8,7 @@ Năm bước từ "vừa cài xong `zenify`" đến "có worktree đầu tiên �
 
 ```mermaid
 flowchart LR
-  A[zenify up] --> B[zenify doctor] --> C[wt new]
+  A[zenify up] --> B[zenify doctor] --> C[zenify wt new]
 ```
 
 ## Bước 1 — vào thư mục workspace
@@ -91,13 +91,15 @@ Mở Claude Code trong workspace vừa onboard và gõ:
 
 Nếu skill hiện ra trong danh sách gợi ý, plugin `znf:*` đã nối dây đúng (`zenify up` đã cài nó ở bước 2). Bạn chưa cần chạy `/znf:cook` thật — chỉ cần thấy nó xuất hiện.
 
-## Bước 5 — worktree đầu tiên: `wt new` rồi `wt rm`
+## Bước 5 — worktree đầu tiên: `zenify wt new` rồi `zenify wt rm`
+
+Skill và tài liệu nội bộ của kit viết tắt `wt` thay cho `zenify wt`; trên máy vừa cài mới, gõ dạng đầy đủ.
 
 Mọi thay đổi code luôn nằm trong một worktree riêng, không sửa trực tiếp bản checkout chính — xem [Worktree theo slug](/concepts/worktree-per-slug).
 
 ```sh
 git fetch origin
-wt new demo --type feat --base origin/<base>
+zenify wt new demo --type feat --base origin/<base>
 ```
 
 `<base>` là nhánh gốc khai báo trong `.claude/worktree.json` của repo đó (ví dụ `staging` hoặc `main` — khác nhau theo repo). Lệnh tạo một worktree mới ở `.worktrees/demo`, với branch, port và `.env` riêng.
@@ -105,10 +107,10 @@ wt new demo --type feat --base origin/<base>
 Dọn thử ngay vì đây chỉ là demo:
 
 ```sh
-wt rm demo
+zenify wt rm demo
 ```
 
-`wt rm` từ chối xoá một worktree chưa có dấu vết merge — với một worktree demo chưa commit gì, nó xoá được ngay.
+`zenify wt rm` từ chối xoá một worktree chưa có dấu vết merge — với một worktree demo chưa commit gì, nó xoá được ngay.
 
 ## Bước tiếp theo
 

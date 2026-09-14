@@ -19,13 +19,13 @@ Kit có bốn cách vào việc: `/znf:cook`, `/znf:fix`, `/znf:hotfix`, hoặc 
 
 ```mermaid
 flowchart TD
-  A{Biết build gì<br/>và làm thế nào chưa?} -- Chưa, cần thiết kế --> B[/znf:cook/]
+  A{Biết build gì<br/>và làm thế nào chưa?} -- Chưa, cần thiết kế --> B["/znf:cook"]
   A -- Rồi --> C{Đang hỏng?}
-  C -- Chưa rõ vì sao --> D[/znf:fix/]
-  C -- Biết vì sao, đang hỏng trên production --> E[/znf:hotfix/]
+  C -- Chưa rõ vì sao --> D["/znf:fix"]
+  C -- Biết vì sao, đang hỏng trên production --> E["/znf:hotfix"]
   C -- Không hỏng --> F{Một repo,<br/>không đụng tài nguyên chung?}
   F -- Có --> G[Không skill:<br/>worktree → sửa → verify]
-  B --> H[/znf:ship/]
+  B --> H["/znf:ship"]
   D --> H
   E --> H
   G --> H

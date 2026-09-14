@@ -69,7 +69,7 @@ flowchart TD
 
 ## Ví dụ
 
-**Thật** — PR của chính site tài liệu này. Ship của task cuối cùng trong plan `2026-09-14-kit-docs-site` sẽ mở PR này (PR mở ở bước ship — điền số PR khi có).
+**Thật** — PR của chính site tài liệu này. Ship của task cuối cùng trong plan `2026-09-14-kit-docs-site` sẽ mở PR này (PR mở ở bước ship).
 
 ## Tránh / Nên làm
 

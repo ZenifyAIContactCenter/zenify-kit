@@ -19,7 +19,7 @@ Nhiều người trong team đã có sẵn skill cá nhân tên `/cook`, `/fix`,
 
 Danh sách đầy đủ, sinh tự động từ chính binary, nằm ở [tham chiếu Skill](/reference/skills/). Trong workspace zenify, quy ước là: khi một prompt gọi đúng một verb workflow đã có cả bản `znf:` lẫn bản cá nhân, ưu tiên bản `znf:` — đó là chuẩn team, còn bản cá nhân là default chung cho project khác chưa cài kit.
 
-Hai agent mà các skill này dispatch — `code-reviewer` và `scout` — cũng nhúng trong cùng plugin, nhưng **không** mang tiền tố `znf:`: agent không có namespace riêng như skill, chúng được gọi trực tiếp bằng tên (`Agent(subagent_type: "scout")`).
+Ba agent mà các skill này dispatch — `code-reviewer`, `scout`, `ui-verifier` — cũng nhúng trong cùng plugin, nhưng **không** mang tiền tố `znf:`: agent không có namespace riêng như skill, chúng được gọi trực tiếp bằng tên (`Agent(subagent_type: "scout")`).
 
 ## Ghép với …
 

@@ -26,12 +26,12 @@ Ví dụ thật, `.claude/worktree.json` của chính repo `zenify-kit`:
 
 | Trường | Ý nghĩa |
 |---|---|
-| `baseRef` | nhánh gốc mặc định cho `wt new --type feat/fix` |
+| `baseRef` | nhánh gốc mặc định cho `zenify wt new --type feat/fix` |
 | `portRange` | khối 50 port riêng của repo này (3750–3799) |
 | `portEnv` | tên biến môi trường worktree đọc port từ đó |
 | `deps` | `none` ở đây vì kit build bằng Go, không cần seed `node_modules` |
 
-Hotfix không dùng `baseRef` — nó resolve base **sau khi fetch**, từ nhánh release mới nhất (`release-latest`) hoặc một chiến lược khác khai báo trong `hotfix.baseStrategy`. `zenify hotfix baseref <repoPath>` in ra base đã resolve theo đúng chiến lược của repo đó, để một skill không phải tự đoán pattern `release[0-9]+`. `wt url <slug>` in `http://localhost:<port>` đã cấp, nên bạn không cần nhớ port của từng worktree.
+Hotfix không dùng `baseRef` — nó resolve base **sau khi fetch**, từ nhánh release mới nhất (`release-latest`) hoặc một chiến lược khác khai báo trong `hotfix.baseStrategy`. `zenify hotfix baseref <repoPath>` in ra base đã resolve theo đúng chiến lược của repo đó, để một skill không phải tự đoán pattern `release[0-9]+`. `zenify wt url <slug>` in `http://localhost:<port>` đã cấp, nên bạn không cần nhớ port của từng worktree.
 
 ## Ghép với …
 
@@ -40,7 +40,7 @@ Hotfix không dùng `baseRef` — nó resolve base **sau khi fetch**, từ nhán
 
 ## Edge case
 
-- **Fetch trước, resolve sau — thứ tự không đảo được.** Nếu resolve release mới nhất trước khi fetch, bạn có thể bỏ lỡ một release vừa cắt sáng nay và branch hotfix nhầm từ bản cũ — nhìn vẫn đúng cho tới khi merge. `wt new` bản hiện tại tự fetch trước khi resolve base, nhưng một bản cũ có thể chưa làm vậy, nên vẫn nên fetch tay trước khi gọi.
+- **Fetch trước, resolve sau — thứ tự không đảo được.** Nếu resolve release mới nhất trước khi fetch, bạn có thể bỏ lỡ một release vừa cắt sáng nay và branch hotfix nhầm từ bản cũ — nhìn vẫn đúng cho tới khi merge. `zenify wt new` bản hiện tại tự fetch trước khi resolve base, nhưng một bản cũ có thể chưa làm vậy, nên vẫn nên fetch tay trước khi gọi.
 - **Hai repo trùng port block** làm hai worktree ở hai repo khác nhau tranh nhau một cổng khi chạy song song. Khi thêm repo mới, đọc `portRange` của các repo lân cận trước khi chọn khối tiếp theo — đừng chọn tự do.
 
 ## Nguồn

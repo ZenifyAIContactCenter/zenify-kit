@@ -161,9 +161,9 @@ func countSkillDirs(t *testing.T, fsys fs.FS, dir string) int {
 }
 
 func TestGenHooks_Table(t *testing.T) {
-	files := GenHooks([]apply.HookSpec{{Event: "Stop", Matcher: "", ID: "docs-sync"}, {Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count"}})
+	files := GenHooks([]apply.HookSpec{{Event: "Stop", Matcher: "", ID: "docs-sync", Purpose: "Đồng bộ knowledge store"}, {Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count", Purpose: "Đếm subagent"}}) //znf:allow-lang
 	h := string(files["hooks.md"])
-	for _, want := range []string{"| Stop | — | `zenify hooks-run docs-sync` |", "| PreToolUse | `Task\\|Agent` | `zenify hooks-run observe-count` |", "zenify git-guard"} {
+	for _, want := range []string{"| Event | Matcher | Lệnh | Mục đích |", "| Stop | — | `zenify hooks-run docs-sync` | Đồng bộ knowledge store |", "| PreToolUse | `Task\\|Agent` | `zenify hooks-run observe-count` | Đếm subagent |", "zenify git-guard"} { //znf:allow-lang
 		if !strings.Contains(h, want) {
 			t.Errorf("hooks.md missing %q\n%s", want, h)
 		}

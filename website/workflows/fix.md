@@ -78,7 +78,7 @@ flowchart TD
 
 ## Ví dụ
 
-**Thật** — commit `c8a7eea fix(wt): delete orphan worktree dirs git no longer registers` trên `origin/main`. Triệu chứng: sau `zenify migrate`, một worktree cũ còn thư mục và branch nhưng git không còn đăng ký nó; `wt rm --force` và sweep gọi `git worktree remove` gặp exit 128, không dọn được gì. Nguyên nhân: `.git` file trong worktree cũ trỏ gitdir đã chuyển chỗ, git bỏ nó khi prune. Cách sửa: khi remove fail và `git worktree list --porcelain` không biết path đó, xoá thư mục trực tiếp, prune, lấy branch từ `state.json` (worktree mồ côi không trả lời được `symbolic-ref`). Diff: 3 file, +119/-2 dòng.
+**Thật** — commit `c8a7eea fix(wt): delete orphan worktree dirs git no longer registers` trên `origin/main`. Triệu chứng: sau `zenify migrate`, một worktree cũ còn thư mục và branch nhưng git không còn đăng ký nó; `zenify wt rm --force` và sweep gọi `git worktree remove` gặp exit 128, không dọn được gì. Nguyên nhân: `.git` file trong worktree cũ trỏ gitdir đã chuyển chỗ, git bỏ nó khi prune. Cách sửa: khi remove fail và `git worktree list --porcelain` không biết path đó, xoá thư mục trực tiếp, prune, lấy branch từ `state.json` (worktree mồ côi không trả lời được `symbolic-ref`). Diff: 3 file, +119/-2 dòng.
 
 ## Tránh / Nên làm
 

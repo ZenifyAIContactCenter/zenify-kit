@@ -42,7 +42,7 @@ flowchart TD
   E -- bạn duyệt --> F[3: ground spec]
   F --> G[4: scout — agent]
   G --> H[5: viết plan + analyze tư vấn]
-  H --> I[6: wt new + SDD từng task]
+  H --> I[6: zenify wt new + SDD từng task]
   I --> J[7: /znf:ship]
 ```
 

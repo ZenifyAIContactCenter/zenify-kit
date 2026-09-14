@@ -8,7 +8,7 @@ Bạn có ba cách cài `zenify`: install script (khuyến nghị), Homebrew (ma
 
 ## Install script (khuyến nghị)
 
-Một dòng lệnh, không cần trình quản lý gói. Script kiểm checksum SHA-256 của bản tải về trước khi cài, và trên macOS tự gỡ Gatekeeper quarantine để binary chạy được ngay.
+Một dòng lệnh, không cần trình quản lý gói. Script kiểm checksum SHA-256 của bản tải về trước khi cài, và trên macOS binary không bị Gatekeeper quarantine vì được tải bằng curl, không qua trình duyệt.
 
 **macOS / Linux**
 
