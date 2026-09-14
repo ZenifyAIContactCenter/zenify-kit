@@ -4,31 +4,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
 )
 
-// findWorkspaceRoot walks up from start to find an ancestor containing
-// .zenify/manifest.json. This is the workspace marker written by `zenify up`.
-func findWorkspaceRoot(start string) (string, bool) {
-	dir, err := filepath.Abs(start)
-	if err != nil {
-		return "", false
-	}
-	for {
-		marker := filepath.Join(dir, ".zenify", "manifest.json")
-		if fi, err := os.Stat(marker); err == nil && !fi.IsDir() {
-			return dir, true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", false // reached filesystem root
-		}
-		dir = parent
-	}
-}
+// findWorkspaceRoot delegates to wt.FindWorkspaceRoot (moved there so
+// internal/wt can use it without importing cli).
+func findWorkspaceRoot(start string) (string, bool) { return wt.FindWorkspaceRoot(start) }
 
 // dispatchHook runs the action for id within workspace wsRoot. It ALWAYS
 // returns 0 (fail-open): a hook must never make CC report an error.
