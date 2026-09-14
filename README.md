@@ -37,7 +37,8 @@ irm https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/main/scri
 ```
 
 Installs to `~/.local/bin/zenify` (macOS / Linux) or `%LOCALAPPDATA%\Programs\zenify`
-(Windows). Override the location with `ZENIFY_BIN`; pin a version with `ZENIFY_VERSION=v0.5.0`.
+(Windows, fixed in the script). Override the location with `ZENIFY_BIN` — macOS/Linux only, the
+Windows script does not read it; pin a version with `ZENIFY_VERSION=v0.5.0` (both platforms).
 The installer adds itself to your `PATH` (shell profile on macOS/Linux, user PATH on Windows), installs the GitHub CLI when missing, and wires the znf skills.
 
 ### Alternatives

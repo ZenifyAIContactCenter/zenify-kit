@@ -20,7 +20,7 @@ func GenSkills(znf, coding fs.FS) (Files, error) {
 		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "---\ntitle: /%s%s\n---\n\n# `%s`\n\n", ns, fm.Name, call)
-		fmt.Fprintf(&b, "%s\n\n", fm.Description)
+		fmt.Fprintf(&b, "%s\n\n", escapeAngle(fm.Description))
 		fmt.Fprintf(&b, "## Cách gọi\n\n```text\n%s\n```\n\n", call) //znf:allow-lang
 		if fm.DisableModelInvocation {
 			b.WriteString("::: warning Chỉ user gọi\nSkill này đặt `disable-model-invocation: true`: agent không tự chạy, bạn phải gõ lệnh.\n:::\n\n") //znf:allow-lang
@@ -53,7 +53,7 @@ func GenSkills(znf, coding fs.FS) (Files, error) {
 			return nil, fmt.Errorf("agents/%s: %w", e.Name(), err)
 		}
 		var p strings.Builder
-		fmt.Fprintf(&p, "---\ntitle: agent %s\n---\n\n# Agent `%s`\n\n%s\n\n", fm.Name, fm.Name, fm.Description) //znf:allow-lang
+		fmt.Fprintf(&p, "---\ntitle: agent %s\n---\n\n# Agent `%s`\n\n%s\n\n", fm.Name, fm.Name, escapeAngle(fm.Description)) //znf:allow-lang
 		if fm.Model != "" {
 			fmt.Fprintf(&p, "**Model:** `%s`\n\n", fm.Model)
 		}
@@ -105,7 +105,7 @@ func index(title, intro string, rows []string) []byte {
 }
 
 func firstSentence(s string) string {
-	s = strings.ReplaceAll(s, "|", "\\|")
+	s = escapeCell(s)
 	if i := strings.Index(s, ". "); i > 0 {
 		return s[:i+1]
 	}

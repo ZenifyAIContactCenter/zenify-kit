@@ -6,7 +6,7 @@ title: Base ref và port block
 
 ## Vấn đề nó giải quyết
 
-Mỗi repo trong workspace có một nhánh tích hợp riêng (`staging`, `develop`, `main`, …), và một cách khác để tính base cho hotfix (release mới nhất, không phải nhánh tích hợp). Nếu một skill hardcode tên nhánh, nó đúng cho repo này và sai lặng lẽ ở repo kế bên. `.claude/worktree.json` giải quyết việc đó bằng cách khai báo base như một **fact của repo**, đọc ra khi cần chứ không đoán. Cùng file đó còn cấp mỗi repo một khối port riêng, để nhiều worktree ở nhiều repo chạy song song không bao giờ đụng cổng nhau.
+Mỗi repo trong workspace có một nhánh tích hợp riêng (`staging`, `develop`, `main`, …), và một cách resolve base riêng cho hotfix. Nếu một skill hardcode tên nhánh, nó đúng cho repo này và sai lặng lẽ ở repo kế bên. `.claude/worktree.json` giải quyết việc đó bằng cách khai báo base như một **fact của repo**, đọc ra khi cần chứ không đoán. Cùng file đó còn cấp mỗi repo một khối port riêng, để nhiều worktree ở nhiều repo chạy song song không bao giờ đụng cổng nhau.
 
 ## Mô hình tư duy
 
@@ -31,7 +31,7 @@ Ví dụ thật, `.claude/worktree.json` của chính repo `zenify-kit`:
 | `portEnv` | tên biến môi trường worktree đọc port từ đó |
 | `deps` | `none` ở đây vì kit build bằng Go, không cần seed `node_modules` |
 
-Hotfix không dùng `baseRef` — nó resolve base **sau khi fetch**, từ nhánh release mới nhất (`release-latest`) hoặc một chiến lược khác khai báo trong `hotfix.baseStrategy`. `zenify hotfix baseref <repoPath>` in ra base đã resolve theo đúng chiến lược của repo đó, để một skill không phải tự đoán pattern `release[0-9]+`. `zenify wt url <slug>` in `http://localhost:<port>` đã cấp, nên bạn không cần nhớ port của từng worktree.
+Hotfix có hai cơ chế resolve base. `zenify wt new --type hotfix` ưu tiên `hotfixBaseRef`; không có thì FALL BACK về `baseRef` và cảnh báo `wt: no hotfixBaseRef declared — branching this hotfix from <base>` — `--base` luôn thắng cả hai. `zenify hotfix baseref <repoPath>` lại resolve theo `hotfix.baseStrategy`: mặc định trả `origin/staging`; `release-latest` tìm nhánh `release<N>` mới nhất; `custom` bắt buộc có `hotfixBaseRef`, thiếu thì lỗi thẳng. Repo không khai báo gì vẫn im lặng nhận nhánh tích hợp làm base — nên `--base` xác nhận tay mới thật sự bảo vệ production. `zenify wt url <slug>` in port đã cấp.
 
 ## Ghép với …
 
@@ -40,7 +40,7 @@ Hotfix không dùng `baseRef` — nó resolve base **sau khi fetch**, từ nhán
 
 ## Edge case
 
-- **Fetch trước, resolve sau — thứ tự không đảo được.** Nếu resolve release mới nhất trước khi fetch, bạn có thể bỏ lỡ một release vừa cắt sáng nay và branch hotfix nhầm từ bản cũ — nhìn vẫn đúng cho tới khi merge. `zenify wt new` bản hiện tại tự fetch trước khi resolve base, nhưng một bản cũ có thể chưa làm vậy, nên vẫn nên fetch tay trước khi gọi.
+- **Fetch trước, resolve sau — thứ tự không đảo được.** Resolve release mới nhất trước khi fetch có thể bỏ lỡ release vừa cắt sáng nay, branch hotfix nhầm từ bản cũ — nhìn vẫn đúng cho tới khi merge. `zenify wt new` bản hiện tại tự fetch trước khi resolve, nhưng bản cũ có thể chưa vậy, nên vẫn fetch tay trước khi gọi.
 - **Hai repo trùng port block** làm hai worktree ở hai repo khác nhau tranh nhau một cổng khi chạy song song. Khi thêm repo mới, đọc `portRange` của các repo lân cận trước khi chọn khối tiếp theo — đừng chọn tự do.
 
 ## Nguồn

@@ -7,6 +7,7 @@ export default withMermaid({
   title: 'zenify-kit',
   description: 'Tài liệu nội bộ bộ công cụ workspace của team zenify',
   cleanUrls: true,
+  lastUpdated: true,
   ignoreDeadLinks: false,
   srcExclude: ['node_modules/**'],
   themeConfig: {

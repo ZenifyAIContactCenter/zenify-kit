@@ -90,10 +90,9 @@ func cliIndex(root *cobra.Command) []byte {
 // element. CommonMark treats "\<" as a literal "<", so this only changes how
 // the character round-trips through markdown, not what the reader sees.
 func escapeAngleBrackets(root *cobra.Command) {
-	replacer := strings.NewReplacer("<", "\\<", ">", "\\>")
 	walkCommands(root, func(c *cobra.Command) {
-		c.Short = replacer.Replace(c.Short)
-		c.Long = replacer.Replace(c.Long)
+		c.Short = escapeAngle(c.Short)
+		c.Long = escapeAngle(c.Long)
 	})
 }
 

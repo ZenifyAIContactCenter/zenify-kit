@@ -16,9 +16,9 @@ func GenHooks(specs []apply.HookSpec) Files {
 	for _, s := range specs {
 		m := "—"
 		if s.Matcher != "" {
-			m = "`" + strings.ReplaceAll(s.Matcher, "|", "\\|") + "`"
+			m = "`" + escapeCell(s.Matcher) + "`"
 		}
-		fmt.Fprintf(&b, "| %s | %s | `zenify hooks-run %s` | %s |\n", s.Event, m, s.ID, s.Purpose)
+		fmt.Fprintf(&b, "| %s | %s | `zenify hooks-run %s` | %s |\n", s.Event, m, s.ID, escapeCell(s.Purpose))
 	}
 	b.WriteString("| PreToolUse | `Bash` | `zenify git-guard` (cài bằng `zenify guard install`) | Chặn commit/push/merge vào nhánh deploy |\n\n") //znf:allow-lang
 	b.WriteString("## Nguồn\n\nSinh bởi `zenify docs gen` từ bảng hook trong binary (`internal/apply/globalhooks.go`).\n") //znf:allow-lang

@@ -62,7 +62,7 @@ flowchart TD
 
 | Mục | Nội dung |
 |---|---|
-| Base ref xác nhận | Release đang chạy, ví dụ `origin/release<N>` |
+| Base ref xác nhận | `origin/release<N>` chỉ khi repo khai `release-latest`/`custom`; mặc định `hotfix baseref` trả ref staging, `--base` phải cho tay |
 | Nguyên nhân xác nhận | Kèm bằng chứng thật |
 | Response đã chọn | revert / disable / fix forward, kèm lý do |
 | Branch (nếu fix forward) | `<user>/hotfix/<slug>` |
@@ -77,7 +77,7 @@ flowchart TD
 
 ## Ví dụ
 
-**Minh hoạ** (chưa có hotfix thật trong repo, dùng số release giữ chỗ): `release<N>` đang chạy gặp lỗi, xác nhận qua log thật. Bạn xác nhận base ref `origin/release<N>`, chọn fix forward vì nguyên nhân đã rõ, không cần quyết định thiết kế. Kit tạo worktree `--type hotfix --base origin/release<N>`, scout đúng ref đó, sửa, verify, gate rồi ship — ship mở PR vào `release<N>`. Bạn merge rồi cherry-pick fix về base feature để release kế tiếp không mất nó.
+**Minh hoạ** (chưa có hotfix thật, dùng số release giữ chỗ): `release<N>` đang chạy gặp lỗi, xác nhận qua log thật. Bạn xác nhận base ref `origin/release<N>`, chọn fix forward vì nguyên nhân đã rõ. Kit tạo worktree `--type hotfix --base origin/release<N>`, scout đúng ref đó, sửa, verify, gate rồi ship — ship mở PR vào `release<N>`. Bạn merge rồi cherry-pick fix về base feature.
 
 ## Tránh / Nên làm
 

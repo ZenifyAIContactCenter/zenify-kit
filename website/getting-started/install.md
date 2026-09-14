@@ -22,7 +22,7 @@ curl -fsSL https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/ma
 irm https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/main/scripts/install.ps1 | iex
 ```
 
-Cài vào `~/.local/bin/zenify` (macOS/Linux) hoặc `%LOCALAPPDATA%\Programs\zenify` (Windows). Đổi vị trí cài bằng biến `ZENIFY_BIN`; ghim một phiên bản cụ thể bằng `ZENIFY_VERSION=v0.5.0`. Script tự thêm `zenify` vào `PATH`, cài `gh` (GitHub CLI) nếu máy chưa có, và nối dây các skill `znf:*`.
+Cài vào `~/.local/bin/zenify` (macOS/Linux) hoặc `%LOCALAPPDATA%\Programs\zenify` (Windows, vị trí cố định trong script). Đổi vị trí cài bằng biến `ZENIFY_BIN` — chỉ script macOS/Linux đọc biến này, script Windows không hỗ trợ. Ghim một phiên bản cụ thể bằng `ZENIFY_VERSION=v0.5.0` (cả hai hệ điều hành). Script tự thêm `zenify` vào `PATH`, cài `gh` (GitHub CLI) nếu máy chưa có, và nối dây các skill `znf:*`.
 
 ## Homebrew (macOS + Linux)
 
