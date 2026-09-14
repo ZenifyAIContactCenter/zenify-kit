@@ -64,6 +64,9 @@ func runSessionStart(wsRoot string, w io.Writer) int {
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		ensureWorkspace(wsRoot, home, w, os.Stderr)
 	}
+	// One line, only when a newer release exists; before the digest so the
+	// digest's early return cannot swallow it.
+	updateNudge(w)
 	if !sentinelPresent() {
 		digest := readBootstrapDigest()
 		if digest != "" {
