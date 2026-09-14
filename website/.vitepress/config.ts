@@ -65,13 +65,13 @@ export default withMermaid({
       { text: 'Tham chiếu', link: '/reference/cli/' },
     ],
     sidebar: [
+      // Bắt đầu: KHÔNG gập được (không có key collapsed) — luôn mở. Chỉ giữ thứ quan trọng nhất cho người mới; "Nâng cấp" (ít quan trọng) đẩy xuống Năng lực.
       { text: 'Bắt đầu', items: [
         { text: 'ZenifyKit là gì', link: '/' },
         { text: 'Cài đặt', link: '/getting-started/install' },
-        { text: 'Bắt đầu nhanh', link: '/getting-started/quickstart' },
-        { text: 'Nâng cấp', link: '/getting-started/upgrade' } ] },
-      // Khái niệm ở vị trí 2 (như Claude Code docs: getting-started → core concepts) để người mới định hướng sớm; gập sẵn nên chỉ 1 dòng, không đẩy Workflow xuống sâu.
-      { text: 'Khái niệm', collapsed: true, items: [
+        { text: 'Bắt đầu nhanh', link: '/getting-started/quickstart' } ] },
+      // 4 nhóm dưới đều gập được, mặc định MỞ (collapsed: false = có nút gập, khởi tạo mở).
+      { text: 'Khái niệm', collapsed: false, items: [
         { text: 'Ba lớp: binary, plugin, knowledge store', link: '/concepts/three-layers' },
         { text: 'Namespace znf:', link: '/concepts/znf-namespace' },
         { text: 'Worktree theo slug', link: '/concepts/worktree-per-slug' },
@@ -80,14 +80,14 @@ export default withMermaid({
         { text: 'Gate fail-open', link: '/concepts/gate-fail-open' },
         { text: 'Chọn model: session, skill, subagent', link: '/concepts/model-routing' } ] },
       // Workflow: thứ dùng hàng ngày, gọi bằng tên. Chỉ gồm 4 skill + trang chọn.
-      { text: 'Workflow', items: [
+      { text: 'Workflow', collapsed: false, items: [
         { text: 'Chọn workflow', link: '/workflows/' },
         { text: 'cook: xây tính năng', link: '/workflows/cook' },
         { text: 'fix: sửa lỗi chưa rõ nguyên nhân', link: '/workflows/fix' },
         { text: 'hotfix: sửa lỗi trên production', link: '/workflows/hotfix' },
         { text: 'ship: verify và mở PR', link: '/workflows/ship' } ] },
       // Năng lực: how-to theo mảng năng lực của kit; "Kiểm thử UI" là how-to (không phải skill) nên nằm đây, không nằm cùng 4 skill.
-      { text: 'Năng lực', items: [
+      { text: 'Năng lực', collapsed: false, items: [
         { text: 'Onboard workspace và repo', link: '/guides/onboard-workspace' },
         { text: 'Đọc dữ liệu thật', link: '/guides/read-real-data' },
         { text: 'Review và gate', link: '/guides/review-and-gates' },
@@ -95,9 +95,9 @@ export default withMermaid({
         { text: 'Release và báo cáo', link: '/guides/release' },
         { text: 'Knowledge store và config team', link: '/guides/knowledge-and-config' },
         { text: 'Quan sát và an toàn', link: '/guides/observe-and-safety' },
-        { text: 'Kiểm thử UI', link: '/workflows/ui-testing' } ] },
-      // Tham chiếu gập sẵn: bảng tra dài, mở khi cần.
-      { text: 'Tham chiếu', collapsed: true, items: [
+        { text: 'Kiểm thử UI', link: '/workflows/ui-testing' },
+        { text: 'Nâng cấp kit', link: '/getting-started/upgrade' } ] },
+      { text: 'Tham chiếu', collapsed: false, items: [
         { text: 'CLI', link: '/reference/cli/' },
         { text: 'Skill', link: '/reference/skills/' },
         { text: 'Agent', link: '/reference/agents/' },
