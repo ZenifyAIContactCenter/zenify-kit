@@ -1,8 +1,8 @@
 ---
-title: Chọn quy trình
+title: Chọn workflow
 ---
 
-# Chọn quy trình
+# Chọn workflow
 
 zenify-kit có ba workflow: `/znf:cook`, `/znf:fix` và `/znf:hotfix`. Với thay đổi nhỏ đã rõ yêu cầu, bạn không cần workflow nào, chỉ cần làm trong worktree rồi chạy `/znf:ship`.
 

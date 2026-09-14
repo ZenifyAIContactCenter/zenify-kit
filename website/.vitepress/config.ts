@@ -58,6 +58,8 @@ export default withMermaid({
     lastUpdated: { text: 'Cập nhật' },
     nav: [
       { text: 'Bắt đầu', link: '/getting-started/install' },
+      { text: 'Khái niệm', link: '/concepts/three-layers' },
+      { text: 'Workflow', link: '/workflows/' },
       { text: 'Tham chiếu', link: '/reference/cli/' },
     ],
     sidebar: [
@@ -66,28 +68,25 @@ export default withMermaid({
         { text: 'Cài đặt', link: '/getting-started/install' },
         { text: 'Bắt đầu nhanh', link: '/getting-started/quickstart' },
         { text: 'Nâng cấp', link: '/getting-started/upgrade' } ] },
-      { text: 'Quy trình', items: [
-        { text: 'Chọn quy trình', link: '/workflows/' },
-        { text: 'cook — xây tính năng', link: '/workflows/cook' },
-        { text: 'fix — sửa lỗi chưa rõ nguyên nhân', link: '/workflows/fix' },
-        { text: 'hotfix — lỗi đang chạy trên production', link: '/workflows/hotfix' },
-        { text: 'ship — cổng cuối, mở PR', link: '/workflows/ship' } ] },
-      { text: 'Khái niệm cốt lõi', items: [
+      // Khái niệm đứng trước workflow: người đọc cần mental model (ba lớp, worktree, base ref, store) rồi mới đọc cách làm việc.
+      { text: 'Khái niệm', items: [
         { text: 'Ba lớp: binary, plugin, knowledge store', link: '/concepts/three-layers' },
+        { text: 'Namespace znf:', link: '/concepts/znf-namespace' },
         { text: 'Worktree theo slug', link: '/concepts/worktree-per-slug' },
         { text: 'Base ref, hotfix base, port block', link: '/concepts/base-ref-and-ports' },
-        { text: 'Knowledge store và view docs/', link: '/concepts/knowledge-store' },
-        { text: 'Namespace znf:', link: '/concepts/znf-namespace' },
+        { text: 'Knowledge store và docs/', link: '/concepts/knowledge-store' },
         { text: 'Gate fail-open', link: '/concepts/gate-fail-open' } ] },
-      {
-        text: 'Tham chiếu (sinh tự động)',
-        items: [
-          { text: 'Lệnh CLI', link: '/reference/cli/' },
-          { text: 'Skill', link: '/reference/skills/' },
-          { text: 'Agent', link: '/reference/agents/' },
-          { text: 'Hook', link: '/reference/hooks' },
-        ],
-      },
+      { text: 'Workflow', items: [
+        { text: 'Chọn workflow', link: '/workflows/' },
+        { text: 'cook: xây tính năng', link: '/workflows/cook' },
+        { text: 'fix: sửa lỗi chưa rõ nguyên nhân', link: '/workflows/fix' },
+        { text: 'hotfix: sửa lỗi trên production', link: '/workflows/hotfix' },
+        { text: 'ship: verify và mở PR', link: '/workflows/ship' } ] },
+      { text: 'Tham chiếu', items: [
+        { text: 'CLI', link: '/reference/cli/' },
+        { text: 'Skill', link: '/reference/skills/' },
+        { text: 'Agent', link: '/reference/agents/' },
+        { text: 'Hook', link: '/reference/hooks' } ] },
     ],
   },
 })
