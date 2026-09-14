@@ -133,6 +133,43 @@ func RunWire(o WireOptions) error {
 	return nil
 }
 
+// RewirePeers re-runs RunWire on every same-slug worktree in the workspace
+// whose repo declares a peer pointing at thisRepo. Called by wt new (after the
+// new worktree's port exists) and wt rm (after it is gone — RunWire then falls
+// back to the peer's main-checkout baseline on its own). Order-independent
+// wiring for multi-repo tasks: whichever repo's worktree is created second
+// still ends up wired. Fail-open per repo.
+func RewirePeers(workspaceRoot, thisRepo, slug string, r gitx.Runner, stdout, stderr io.Writer) {
+	for _, repo := range WorkspaceRepos(workspaceRoot) {
+		name := filepath.Base(repo)
+		if name == thisRepo {
+			continue
+		}
+		cfg, err := Load(repo)
+		if err != nil {
+			continue
+		}
+		points := false
+		for _, spec := range cfg.Peers {
+			if spec.Repo == thisRepo {
+				points = true
+				break
+			}
+		}
+		if !points {
+			continue
+		}
+		wtp := peerWorktreePath(filepath.Dir(repo), name, slug)
+		if wtp == "" {
+			continue
+		}
+		_, _ = fmt.Fprintf(stdout, "wt: rewiring %s/%s\n", name, slug)
+		if e := RunWire(WireOptions{RepoRoot: repo, WorktreePath: wtp, Runner: r, Stdout: stdout, Stderr: stderr}); e != nil {
+			_, _ = fmt.Fprintf(stderr, "wt:   %s/%s: wire skipped (%v)\n", name, slug, e)
+		}
+	}
+}
+
 // readVar returns the value of KEY=VALUE for name from env text (first match),
 // matching bash readVar (a full-line value, newline excluded).
 func readVar(text, name string) (string, bool) {

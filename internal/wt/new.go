@@ -48,6 +48,25 @@ func validType(t string) bool {
 	return false
 }
 
+// takenPorts collects every port held by a state entry whose directory still
+// exists. A stale entry (dir gone) holds nothing, so its port is free — sweep
+// drops the entry itself; this filter only keeps a skipped sweep from leaking
+// the port into the next allocation.
+func takenPorts(st *StateFile) map[int]bool {
+	taken := map[int]bool{}
+	for _, w := range st.Worktrees {
+		if w.Path != "" {
+			if _, err := os.Stat(w.Path); err != nil {
+				continue
+			}
+		}
+		for _, p := range w.Ports {
+			taken[p] = true
+		}
+	}
+	return taken
+}
+
 // RunNew creates a worktree for o.Slug end-to-end. Everything that can fail is
 // resolved BEFORE `git worktree add` touches disk; any failure after the add is
 // followed by abort cleanup so a failed run leaves nothing behind.
@@ -85,8 +104,20 @@ func RunNew(o NewOptions) error {
 	// Auto-fetch so origin/<base> reflects the remote before we resolve, guard,
 	// and fast-forward against it. Warn on failure (e.g. offline) but never
 	// abort — the base-ref check below still catches a genuinely missing base.
+	fetched := true
 	if _, err := r.Run(o.RepoRoot, "fetch", "origin", "--quiet"); err != nil {
+		fetched = false
 		_, _ = fmt.Fprintf(o.Stderr, "wt: fetch failed (%v) — continuing with local refs; base may be stale\n", err)
+	}
+	// Starting a task is the natural moment to clear finished ones in this repo:
+	// origin is fresh (paid for above), and sweep only ever touches merged+clean
+	// worktrees and stale state entries. Fail-open — a sweep problem must not
+	// block the new task. Quiet: no output when nothing is removable.
+	if fetched {
+		if e := RunSweep(SweepOptions{RepoRoot: o.RepoRoot, Host: o.Host, Pid: o.Pid, Now: o.Now, Runner: r,
+			Quiet: true, Stdout: o.Stderr, Stderr: o.Stderr}); e != nil {
+			_, _ = fmt.Fprintf(o.Stderr, "wt: sweep skipped (%v)\n", e)
+		}
 	}
 
 	// Duplicate checks (keyed on the exact slug/branch).
@@ -145,12 +176,7 @@ func RunNew(o NewOptions) error {
 	if err != nil {
 		return err
 	}
-	taken := map[int]bool{}
-	for _, w := range st.Worktrees {
-		for _, p := range w.Ports {
-			taken[p] = true
-		}
-	}
+	taken := takenPorts(st)
 	key := fmt.Sprintf("%s:%s:%s", filepath.Base(o.RepoRoot), o.Slug, cfg.PortEnv)
 	count := cfg.PortCount
 	if count < 1 {
@@ -227,7 +253,7 @@ func RunNew(o NewOptions) error {
 		}
 	}
 
-	// Persist to the rebuildable caches (state + global index).
+	// Persist to the rebuildable state cache.
 	wtRec := Worktree{Slug: o.Slug, Type: o.Type, Branch: branch, Path: path, Ports: ports}
 	if len(ports) > 1 {
 		wtRec.PortBase = port
@@ -235,13 +261,23 @@ func RunNew(o NewOptions) error {
 	if err := SaveWorktree(o.RepoRoot, wtRec, o.Pid, o.Host, o.Now); err != nil {
 		return abort(err)
 	}
-	if err := IndexUpsert(o.RepoRoot, o.Slug, o.Pid, o.Host, o.Now); err != nil {
-		return abort(err)
-	}
 
 	// Only past every abort: record the session pointer (a failed run leaves none).
 	if active {
 		_ = os.WriteFile(ptr, []byte(o.Slug+"\n"), 0o600)
+	}
+
+	// Wire this worktree at its peers (FR-7.1), then bring peers' same-slug
+	// worktrees that point at this repo up to date (FR-7.2). Both fail-open.
+	if len(cfg.Peers) > 0 {
+		if e := RunWire(WireOptions{RepoRoot: o.RepoRoot, WorktreePath: path, Runner: r, Stdout: o.Stderr, Stderr: o.Stderr}); e != nil {
+			_, _ = fmt.Fprintf(o.Stderr, "wt: wire skipped (%v)\n", e)
+		}
+	}
+	if ws, ok := FindWorkspaceRoot(o.RepoRoot); ok {
+		RewirePeers(ws, filepath.Base(o.RepoRoot), o.Slug, r, o.Stderr, o.Stderr)
+	} else {
+		_, _ = fmt.Fprintln(o.Stderr, "wt: no workspace marker above this repo — peers not rewired")
 	}
 
 	_, _ = fmt.Fprintf(o.Stderr, "wt: %s → %s\n", o.Slug, path)

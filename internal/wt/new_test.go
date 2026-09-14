@@ -1,8 +1,11 @@
 package wt
 
 import (
+	"bytes"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -109,6 +112,61 @@ func TestRunNew_GuardTier2BlocksSecondUnmergedTask(t *testing.T) {
 	}
 }
 
+// FR-3.1: after a successful fetch, wt new sweeps merged+clean worktrees in
+// this repo before creating the new one. Uses a real dir for the merged task
+// so the sweep's RunRm path runs; the stub answers the git calls.
+func TestRunNew_AutoSweepsMergedTasksAfterFetch(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	seedCfg(t, root)
+	done := filepath.Join(root, ".worktrees", "done")
+	if err := os.MkdirAll(done, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	g := &gitStub{out: map[string]string{
+		root + "|worktree list --porcelain":         "worktree " + root + "\n\nworktree " + done + "\n\n",
+		done + "|config --get wt.slug":              "done",
+		done + "|symbolic-ref --quiet --short HEAD": "namph/feat/done",
+		done + "|config --get wt.port":              "3207",
+		done + "|status --porcelain":                "",
+		root + "|diff origin/main..namph/feat/done": "",
+	}, err: map[string]error{
+		root + "|merge-base --is-ancestor namph/feat/done origin/main": errors.New("x"),
+	}}
+	var errb bytes.Buffer
+	o := baseOpts(root, g)
+	o.Stderr = &errb
+	// The stub's default show-ref answer (nil error) reads as "branch already
+	// exists", so RunNew stops at the duplicate-task check right after the
+	// sweep — it never reaches `worktree add`. That's fine: this test only
+	// needs to prove the sweep ran first.
+	_ = RunNew(o)
+	if !seenContains(g, "worktree remove --force "+done) {
+		t.Fatalf("merged task must be swept before creating the new one; seen %v", g.seen)
+	}
+	if !strings.Contains(errb.String(), "wt: swept 1, left 0") {
+		t.Fatalf("expected sweep summary on stderr, got %q", errb.String())
+	}
+}
+
+// FR-3.1/SC-5: a failed fetch skips the sweep entirely.
+func TestRunNew_FetchFailureSkipsAutoSweep(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	seedCfg(t, root)
+	g := &gitStub{out: map[string]string{}, err: map[string]error{root + "|fetch origin --quiet": errors.New("offline")}}
+	var errb bytes.Buffer
+	o := baseOpts(root, g)
+	o.Stderr = &errb
+	_ = RunNew(o)
+	if seenContains(g, "worktree list --porcelain") {
+		t.Fatal("sweep must not run when fetch failed")
+	}
+	if !strings.Contains(errb.String(), "fetch failed") {
+		t.Fatalf("expected fetch warning, got %q", errb.String())
+	}
+}
+
 // seenContains reports whether the stub recorded a command whose joined args
 // equal key. Note: seen stores only strings.Join(args, " ") — no dir prefix.
 func seenContains(g *gitStub, key string) bool {
@@ -198,5 +256,22 @@ func TestRunNew_FetchesBeforeResolvingBase(t *testing.T) {
 	_ = RunNew(o) // expected to error at the base-ref check; we only assert the fetch ran
 	if !seenContains(g, "fetch origin --quiet") {
 		t.Fatalf("expected auto-fetch before base resolution, seen=%v", g.seen)
+	}
+}
+
+func TestTakenPorts_SkipsStaleEntries(t *testing.T) {
+	root := t.TempDir()
+	live := filepath.Join(root, ".worktrees", "live")
+	if err := os.MkdirAll(live, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	st := &StateFile{Worktrees: []Worktree{
+		{Slug: "live", Path: live, Ports: []int{3201}},
+		{Slug: "gone", Path: filepath.Join(root, ".worktrees", "gone"), Ports: []int{3202}},
+		{Slug: "nopath", Ports: []int{3203}}, // legacy entry without path: keep counting it
+	}}
+	got := takenPorts(st)
+	if !got[3201] || got[3202] || !got[3203] {
+		t.Fatalf("taken = %v, want 3201+3203 only", got)
 	}
 }

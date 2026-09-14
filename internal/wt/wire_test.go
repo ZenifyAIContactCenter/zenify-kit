@@ -187,6 +187,60 @@ func TestRunWire_NotInsideWorktree_Errors(t *testing.T) {
 	}
 }
 
+// FR-7.2: a peer repo (web) declaring a var that points at THIS repo (hub) gets
+// its same-slug worktree rewired when hub's worktree appears, and back to
+// baseline when it disappears.
+func TestRewirePeers_PointsPeerAtThisRepoAndBack(t *testing.T) {
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "manifest.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	web := filepath.Join(ws, "repos", "web")
+	hub := filepath.Join(ws, "repos", "hub")
+	for _, d := range []string{web, hub} {
+		if err := os.MkdirAll(filepath.Join(d, ".git"), 0o750); err != nil { // a .git DIR so gitstate.Scope finds it
+			t.Fatal(err)
+		}
+	}
+	writeWorktreeJSON(t, web, `{"abbrev":"web","user":"namph","portRange":[3300,3349],"deps":"none","peers":{"VITE_HUB_URL":{"repo":"hub","url":"http://localhost:{port}"}}}`)
+	writeWorktreeJSON(t, hub, `{"abbrev":"hub","user":"namph","portRange":[3250,3299],"deps":"none"}`)
+	webWt := filepath.Join(web, ".worktrees", "s1")
+	hubWt := filepath.Join(hub, ".worktrees", "s1")
+	for _, d := range []string{webWt, hubWt} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(web, ".env"), []byte("VITE_HUB_URL=http://localhost:3001\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(webWt, ".env"), []byte("VITE_HUB_URL=http://localhost:3001\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	slugStub(g, webWt, "s1")
+	g.out[hubWt+"|config --get wt.port"] = "3260"
+
+	RewirePeers(ws, "hub", "s1", g, io.Discard, io.Discard)
+	b, _ := os.ReadFile(filepath.Join(webWt, ".env")) //nolint:gosec // G304 -- test fixture path
+	if !strings.Contains(string(b), "VITE_HUB_URL=http://localhost:3260") {
+		t.Fatalf("web worktree must point at hub's worktree port, got %s", b)
+	}
+
+	// hub's worktree disappears (wt rm) → back to the main checkout baseline
+	if err := os.RemoveAll(hubWt); err != nil {
+		t.Fatal(err)
+	}
+	RewirePeers(ws, "hub", "s1", g, io.Discard, io.Discard)
+	b, _ = os.ReadFile(filepath.Join(webWt, ".env")) //nolint:gosec // G304 -- test fixture path
+	if !strings.Contains(string(b), "VITE_HUB_URL=http://localhost:3001") {
+		t.Fatalf("after peer removal the var must return to baseline, got %s", b)
+	}
+}
+
 func TestRunWire_DeterministicOrder(t *testing.T) {
 	root, wtPath := wireFixture(t, `{"B_URL":{"repo":"peer","url":"http://localhost:{port}"},"A_URL":{"repo":"peer","url":"http://localhost:{port}"}}`)
 	workspace := filepath.Dir(root)

@@ -16,33 +16,45 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
-// SweepItem is one worktree's sweep verdict.
+// SweepItem is one worktree's sweep verdict. Stale marks a state.json entry
+// whose directory is gone AND which git no longer lists — the port it records
+// is held by nothing, so the entry itself is what sweep removes. BranchMerged
+// is only computed for stale items (live items encode it in Remove/Reason).
 type SweepItem struct {
-	Slug   string
-	Branch string
-	Port   string
-	Path   string
-	Reason string
-	Remove bool
+	Slug         string
+	Branch       string
+	Port         string
+	Path         string
+	Reason       string
+	Remove       bool
+	Stale        bool
+	BranchMerged bool
 }
 
 // sweepPlan decides, per worktree in the repo, whether it is safe to tear down.
 // A worktree is removable only if it was created by wt (has wt.slug), is on a
 // real branch (not detached), that branch has a merge trace in base, and its
-// tree is clean. Everything else is kept, with the reason recorded. Pure: reads
-// git only through r, no side effects — this is the unit-tested core of sweep.
-func sweepPlan(r gitx.Runner, repoRoot, base, worktreeDir string) ([]SweepItem, error) {
+// tree is clean. Everything else is kept, with the reason recorded. It also
+// classifies stale state.json entries (dir gone, git no longer lists the path)
+// via st — st == nil is treated as empty. Pure: reads git only through r, no
+// side effects — this is the unit-tested core of sweep.
+func sweepPlan(r gitx.Runner, repoRoot, base, worktreeDir string, st *StateFile) ([]SweepItem, error) {
 	out, err := r.Run(repoRoot, "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
 	wtPrefix := filepath.Join(canon(repoRoot), worktreeDir) + string(filepath.Separator)
+	listed := map[string]bool{} // canon paths git reports, for the stale check
 
 	var items []SweepItem
 	var curPath string
 	flush := func() {
 		defer func() { curPath = "" }()
-		if curPath == "" || !strings.HasPrefix(canon(curPath), wtPrefix) {
+		if curPath == "" {
+			return
+		}
+		listed[canon(curPath)] = true
+		if !strings.HasPrefix(canon(curPath), wtPrefix) {
 			return
 		}
 		slug := cfgGet(r, curPath, "wt.slug")
@@ -87,6 +99,27 @@ func sweepPlan(r gitx.Runner, repoRoot, base, worktreeDir string) ([]SweepItem, 
 		}
 	}
 	flush()
+
+	// Stale state entries: recorded in state.json, directory gone, and git does
+	// not list the path either. They hold a port and nothing else.
+	if st != nil {
+		for _, w := range st.Worktrees {
+			if w.Path == "" || listed[canon(w.Path)] {
+				continue
+			}
+			if _, e := os.Stat(w.Path); e == nil {
+				continue
+			}
+			it := SweepItem{Slug: w.Slug, Branch: w.Branch, Path: w.Path, Reason: "stale: dir missing", Remove: true, Stale: true}
+			if len(w.Ports) > 0 {
+				it.Port = strconv.Itoa(w.Ports[0])
+			}
+			if w.Branch != "" {
+				it.BranchMerged = BranchMerged(r, repoRoot, w.Branch, base)
+			}
+			items = append(items, it)
+		}
+	}
 	return items, nil
 }
 
@@ -105,6 +138,7 @@ type SweepOptions struct {
 	Host     string
 	DryRun   bool
 	Fetch    bool
+	Quiet    bool // print nothing when no item is removable (wt new's auto-sweep)
 	Pid      int
 	Now      int64
 	Runner   gitx.Runner
@@ -134,9 +168,25 @@ func RunSweep(o SweepOptions) error {
 			_, _ = fmt.Fprintln(o.Stderr, "wt: fetch failed — merge state may be stale, so nothing may look removable")
 		}
 	}
-	items, err := sweepPlan(r, o.RepoRoot, cfg.BaseRef, cfg.WorktreeDir)
+	st, err := ReadState(o.RepoRoot)
 	if err != nil {
 		return err
+	}
+	items, err := sweepPlan(r, o.RepoRoot, cfg.BaseRef, cfg.WorktreeDir, st)
+	if err != nil {
+		return err
+	}
+	if o.Quiet {
+		any := false
+		for _, it := range items {
+			if it.Remove {
+				any = true
+				break
+			}
+		}
+		if !any {
+			return nil
+		}
 	}
 	removed, kept := 0, 0
 	for _, it := range items {
@@ -146,7 +196,20 @@ func RunSweep(o SweepOptions) error {
 			continue
 		}
 		if o.DryRun {
-			_, _ = fmt.Fprintf(o.Stdout, "wt: %s — would stop port %s and remove (%s)\n", it.Slug, orDash(it.Port), it.Branch)
+			if it.Stale {
+				_, _ = fmt.Fprintf(o.Stdout, "wt: %s — would drop stale entry (port %s, branch %s %s)\n", it.Slug, orDash(it.Port), orDash(it.Branch), mergedWord(it.BranchMerged))
+			} else {
+				_, _ = fmt.Fprintf(o.Stdout, "wt: %s — would stop port %s and remove (%s)\n", it.Slug, orDash(it.Port), it.Branch)
+			}
+			removed++
+			continue
+		}
+		if it.Stale {
+			if e := sweepStale(o, r, it); e != nil {
+				_, _ = fmt.Fprintf(o.Stderr, "wt:   could not drop stale entry %s: %v\n", it.Slug, e)
+				kept++
+				continue
+			}
 			removed++
 			continue
 		}
@@ -165,6 +228,33 @@ func RunSweep(o SweepOptions) error {
 	} else {
 		_, _ = fmt.Fprintf(o.Stdout, "wt: swept %d, left %d\n", removed, kept)
 	}
+	return nil
+}
+
+func mergedWord(merged bool) string {
+	if merged {
+		return "merged"
+	}
+	return "unmerged"
+}
+
+// sweepStale drops a state entry whose directory is gone. A merged branch goes
+// through RunRm with Force (the gone-dir path refuses without it, rm.go) so
+// prune + branch -D + state removal + session-pointer release all happen in one
+// place; an unmerged branch is never deleted — only the entry and git's stale
+// registration go, and the kept branch is named on stdout.
+func sweepStale(o SweepOptions, r gitx.Runner, it SweepItem) error {
+	if it.BranchMerged {
+		_, _ = fmt.Fprintf(o.Stdout, "wt: dropping stale entry %s (port %s, branch %s merged)\n", it.Slug, orDash(it.Port), it.Branch)
+		return RunRm(RmOptions{RepoRoot: o.RepoRoot, Slug: it.Slug, Host: o.Host, Force: true, Pid: o.Pid, Now: o.Now, Runner: r, Stderr: o.Stderr})
+	}
+	if _, e := RemoveWorktree(o.RepoRoot, it.Slug, o.Pid, o.Host, o.Now); e != nil {
+		return e
+	}
+	if _, e := r.Run(o.RepoRoot, "worktree", "prune"); e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt:   worktree prune failed: %v\n", e)
+	}
+	_, _ = fmt.Fprintf(o.Stdout, "wt:   %s — state dropped, branch %s kept (unmerged)\n", it.Slug, orDash(it.Branch))
 	return nil
 }
 

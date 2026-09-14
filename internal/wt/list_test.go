@@ -2,6 +2,8 @@ package wt
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -159,5 +161,50 @@ func TestList_EmptyWhenNoWorktrees(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Fatalf("want 0 rows for a repo with no worktrees, got %d: %+v", len(rows), rows)
+	}
+}
+
+func TestList_StaleStateEntryShown(t *testing.T) {
+	root := t.TempDir()
+	gone := filepath.Join(root, ".worktrees", "gone")
+	if err := os.MkdirAll(filepath.Join(root, ".wt"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	st := `{"version":1,"worktrees":[{"slug":"gone","branch":"namph/feat/gone","path":"` + gone + `","ports":[3212]}]}`
+	if err := os.WriteFile(filepath.Join(root, ".wt", "state.json"), []byte(st), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := lsStub{out: map[string]string{root + "|worktree list --porcelain": "worktree " + root + "\nbranch refs/heads/main\n\n"}}
+	rows, err := List(s, root, lsCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 stale row, got %+v", rows)
+	}
+	r := rows[0]
+	if !r.Stale || r.Slug != "gone" || r.Port != "3212" || r.Branch != "namph/feat/gone" || r.Merged != "-" || r.Running != "-" || r.Deps != "-" || r.Path != gone {
+		t.Fatalf("stale row wrong: %+v", r)
+	}
+}
+
+// TestURLFor_RejectsStaleStateEntry covers the bug found in ship review: a
+// torn-down worktree still has a state.json row (Stale: true, with a recorded
+// port), and URLFor must refuse to synthesize a URL from it rather than
+// silently returning http://localhost:<port> for a worktree that no longer
+// exists.
+func TestURLFor_RejectsStaleStateEntry(t *testing.T) {
+	root := t.TempDir()
+	gone := filepath.Join(root, ".worktrees", "gone")
+	if err := os.MkdirAll(filepath.Join(root, ".wt"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	st := `{"version":1,"worktrees":[{"slug":"gone","branch":"namph/feat/gone","path":"` + gone + `","ports":[3212]}]}`
+	if err := os.WriteFile(filepath.Join(root, ".wt", "state.json"), []byte(st), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := lsStub{out: map[string]string{root + "|worktree list --porcelain": "worktree " + root + "\nbranch refs/heads/main\n\n"}}
+	if _, err := URLFor(s, root, lsCfg(), "gone"); err == nil {
+		t.Fatal("stale slug must error, not emit http://localhost:<recorded-port>")
 	}
 }

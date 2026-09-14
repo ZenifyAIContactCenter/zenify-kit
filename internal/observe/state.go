@@ -34,7 +34,7 @@ func ResolveCap(getenv func(string) string) int {
 }
 
 // dir returns $XDG_STATE_HOME/zenify/observe, falling back to
-// ~/.local/state/zenify/observe per the XDG base-dir spec (mirrors wt.IndexPath).
+// ~/.local/state/zenify/observe per the XDG base-dir spec (XDG_STATE_HOME, then ~/.local/state).
 func dir() (string, error) {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
