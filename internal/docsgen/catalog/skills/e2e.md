@@ -3,7 +3,7 @@ summary: Quyết định và viết journey E2E Playwright chạy thật từ UI
 ---
 ## Khi nào dùng
 
-Khi một task có user flow đi qua UI và BE làm đổi trạng thái entity: tạo, sửa hoặc xóa ticket, deal, contact. Quyết định này đưa ra lúc lập plan, ở bước 5 của `/znf:cook`. Không viết journey cho đổi chữ, đổi màu, refactor hoặc thay đổi chỉ ở FE không chạm dữ liệu.
+Khi một task có user flow đi qua UI và BE làm đổi trạng thái entity: tạo, sửa hoặc xóa ticket, deal, contact. Quyết định này đưa ra lúc lập plan trong `/znf:cook`. Không viết journey cho đổi chữ, đổi màu, refactor hoặc thay đổi chỉ ở FE không chạm dữ liệu.
 
 ## Cách hoạt động
 

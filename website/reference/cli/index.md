@@ -57,7 +57,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace. |
 | [zenify review-log](./zenify_review-log) | Xem tổng hợp các lần review của `/znf:review` đã ghi lại trên máy bạn. |
 | [zenify rules](./zenify_rules) | Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc. |
-| [zenify rules lint](./zenify_rules_lint) | Chặn tiếng Việt trong file mà agent đọc: skill, rule, và mã nguồn kit. |
+| [zenify rules lint](./zenify_rules_lint) | Kiểm file mà agent đọc (skill, rule, mã nguồn kit): chặn tiếng Việt, và bắt frontmatter khai sai key `globs:` thay cho `paths:`. |
 | [zenify secret-scan](./zenify_secret-scan) | Quét một cây thư mục để tìm secret bị lộ, dùng trong CI và kiểm tra tay trước khi push. |
 | [zenify skills](./zenify_skills) | Nhóm lệnh quản lý plugin skill znf và bộ coding skill theo repo. |
 | [zenify skills install](./zenify_skills_install) | Cài bộ coding skill khớp với repo hiện tại vào .claude/skills của repo. |
