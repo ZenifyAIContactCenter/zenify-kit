@@ -97,7 +97,8 @@ func Latest(ctx context.Context, client *http.Client, url string) (string, error
 
 // Check answers "is a newer release out?" using the cache when it is fresh
 // and the network otherwise. It never panics and never returns Newer=true
-// alongside an error.
+// alongside an error. Err reports a failed lookup only; a cache-write failure
+// is not reported.
 func Check(o Options) Result {
 	res := Result{Current: o.Current}
 	now := time.Now
@@ -126,9 +127,9 @@ func Check(o Options) Result {
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutOf(o.Client))
 	defer cancel()
 	latest, err := Latest(ctx, o.Client, o.URL)
-	if werr := saveCache(o.CacheDir, cacheEntry{CheckedAt: now(), Latest: latest}); werr != nil && err == nil {
-		err = werr
-	}
+	// The cache is an optimisation: a failed write only means the next run
+	// asks the network again, so it never turns a good answer into an error.
+	_ = saveCache(o.CacheDir, cacheEntry{CheckedAt: now(), Latest: latest})
 	if err != nil {
 		res.Err = err
 		return res

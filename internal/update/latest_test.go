@@ -234,3 +234,20 @@ func TestCheck_UnreachableIsError(t *testing.T) {
 		t.Fatalf("got %+v", res)
 	}
 }
+
+// A cache write failure must not discard a successful fetch: the hook would
+// otherwise go silent forever on a read-only ~/.zenify.
+func TestCheck_CacheWriteFailureKeepsResult(t *testing.T) {
+	srv, hits := redirectServer(t, "v9.9.9")
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res := Check(Options{Current: "0.17.3", CacheDir: blocker, URL: srv.URL, Client: srv.Client()})
+	if res.Err != nil || res.Latest != "v9.9.9" || !res.Newer {
+		t.Fatalf("result must survive a cache write failure: %+v", res)
+	}
+	if *hits != 1 {
+		t.Fatalf("hits = %d, want 1", *hits)
+	}
+}

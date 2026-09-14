@@ -89,13 +89,14 @@ At session start the kit checks for a newer release (at most once a day) and pri
 when it finds one:
 
 ```
-zenify: v0.18.0 is available (running v0.17.4) — upgrade: brew upgrade --cask zenify
+zenify: v0.18.0 is available (running 0.17.4) — upgrade: brew upgrade --cask zenify
 ```
 
 Run `zenify update` to perform the upgrade for the detected install method (brew cask, scoop,
 or the install script); `zenify update --check` only reports, without upgrading. Set
-`ZENIFY_NO_UPDATE_CHECK=1` to disable the check entirely, and `ZENIFY_UPDATE_URL` to override
-the release lookup URL (useful for testing against a fork or a staged release).
+`ZENIFY_NO_UPDATE_CHECK=1` to silence the session-start nudge (`zenify update --check` still
+checks on demand), and `ZENIFY_UPDATE_URL` to override the release lookup URL (useful for
+testing against a fork or a staged release).
 
 ## Usage
 
