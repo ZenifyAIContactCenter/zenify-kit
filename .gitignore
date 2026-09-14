@@ -7,3 +7,7 @@ dist/
 
 # wt worktrees live inside the repo; never track them
 .worktrees/
+
+# wt seeds an untracked .env (PORT) into every worktree; ignore it so a merged
+# worktree reads clean and wt sweep can remove it
+.env
