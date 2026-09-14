@@ -187,3 +187,24 @@ func TestList_StaleStateEntryShown(t *testing.T) {
 		t.Fatalf("stale row wrong: %+v", r)
 	}
 }
+
+// TestURLFor_RejectsStaleStateEntry covers the bug found in ship review: a
+// torn-down worktree still has a state.json row (Stale: true, with a recorded
+// port), and URLFor must refuse to synthesize a URL from it rather than
+// silently returning http://localhost:<port> for a worktree that no longer
+// exists.
+func TestURLFor_RejectsStaleStateEntry(t *testing.T) {
+	root := t.TempDir()
+	gone := filepath.Join(root, ".worktrees", "gone")
+	if err := os.MkdirAll(filepath.Join(root, ".wt"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	st := `{"version":1,"worktrees":[{"slug":"gone","branch":"namph/feat/gone","path":"` + gone + `","ports":[3212]}]}`
+	if err := os.WriteFile(filepath.Join(root, ".wt", "state.json"), []byte(st), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := lsStub{out: map[string]string{root + "|worktree list --porcelain": "worktree " + root + "\nbranch refs/heads/main\n\n"}}
+	if _, err := URLFor(s, root, lsCfg(), "gone"); err == nil {
+		t.Fatal("stale slug must error, not emit http://localhost:<recorded-port>")
+	}
+}

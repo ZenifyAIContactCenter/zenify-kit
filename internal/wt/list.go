@@ -157,6 +157,9 @@ func URLFor(r gitx.Runner, repoRoot string, cfg *Config, slug string) (string, e
 	}
 	for _, row := range rows {
 		if row.Slug == slug {
+			if row.Stale {
+				return "", fmt.Errorf("wt: worktree %q is a stale state entry — run wt sweep", slug)
+			}
 			if row.Port == "-" {
 				return "", fmt.Errorf("wt: worktree %q has no recorded port", slug)
 			}

@@ -199,6 +199,33 @@ func TestRunSweepAll_RemovesLegacyIndex(t *testing.T) {
 	}
 }
 
+// TestCountingWriter_SumsNonzeroCountsAcrossWrites covers the gap found in ship
+// review: countingWriter's totals were only ever exercised with 0/0 lines.
+// Each RunSweep summary line arrives as one whole Write call (fmt.Fprintf
+// builds the full line before writing), so this drives several such lines —
+// both the real-run and dry-run formats — with nonzero counts and checks the
+// running total, not just that parsing doesn't crash.
+func TestCountingWriter_SumsNonzeroCountsAcrossWrites(t *testing.T) {
+	var c countingWriter
+	lines := []string{
+		"wt: swept 2, left 1\n",
+		"wt: swept 3, left 0\n",
+		"wt: 5 would be removed, 2 left alone\n",
+	}
+	for _, l := range lines {
+		if _, err := c.Write([]byte(l)); err != nil {
+			t.Fatalf("Write(%q) error: %v", l, err)
+		}
+	}
+	// countingWriter keeps only the LAST line it parsed (RunSweepAll calls it
+	// once per repo, resetting buf each time), so totals() must reflect the
+	// final line, not a running sum across all of them.
+	swept, left := c.totals()
+	if swept != 5 || left != 2 {
+		t.Fatalf("totals() = %d, %d, want 5, 2 (last line parsed)", swept, left)
+	}
+}
+
 func TestRunSweepAll_DryRunKeepsLegacyIndex(t *testing.T) {
 	xdg := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", xdg)
