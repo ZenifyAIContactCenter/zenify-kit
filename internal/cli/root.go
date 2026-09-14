@@ -24,6 +24,7 @@ func NewRootCmd() *cobra.Command {
 		return exitcode.New(exitcode.BadArgs, err)
 	})
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newUpdateCmd())
 	defaultChecksOnce.Do(registerDefaultChecks)
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newUpCmd())

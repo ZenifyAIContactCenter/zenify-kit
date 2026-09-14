@@ -1,16 +1,20 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/update"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
+	"github.com/spf13/cobra"
 )
 
 // updateCheckTimeout bounds every network touch of the update check — the
@@ -71,4 +75,79 @@ func updateNudge(w io.Writer) {
 		return
 	}
 	fmt.Fprintf(w, "zenify: %s is available (running %s) — upgrade: %s\n", res.Latest, cur, upgradeDisplay())
+}
+
+func newUpdateCmd() *cobra.Command {
+	var check bool
+	cmd := &cobra.Command{
+		Use:   "update",
+		Short: "Upgrade zenify to the latest release (brew / scoop / install script)",
+		Long: `Detects how this binary was installed and runs the matching upgrade:
+  brew            brew upgrade --cask zenify
+  scoop           scoop update zenify
+  install script  re-runs scripts/install.sh (or install.ps1 on Windows)
+
+With --check it only reports whether a newer release exists.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			method := detectMethod()
+			if check {
+				return runUpdateCheck(cmd.OutOrStdout(), cmd.ErrOrStderr(), updateOptions(true), runtime.GOOS, method)
+			}
+			run := func(name string, args []string) error {
+				c := exec.Command(name, args...) //nolint:gosec // G204 -- name/args come from update.Command's fixed table (brew/scoop/sh/powershell), never from user input
+				c.Stdin, c.Stdout, c.Stderr = os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr()
+				return c.Run()
+			}
+			return runUpdate(cmd.ErrOrStderr(), method, runtime.GOOS, run, zenifyHome(os.Getenv, os.UserHomeDir))
+		},
+	}
+	cmd.Flags().BoolVar(&check, "check", false, "only report whether a newer release exists")
+	return cmd
+}
+
+// runUpdateCheck prints one status line. Force is expected in opts so the
+// user sees the live answer, not yesterday's cache.
+func runUpdateCheck(stdout, stderr io.Writer, opts update.Options, goos string, method update.Method) error {
+	res := update.Check(opts)
+	if res.Err != nil {
+		fmt.Fprintln(stderr, "zenify: update check failed:", res.Err)
+		return exitcode.New(exitcode.Fail, res.Err)
+	}
+	if opts.Current == "dev" {
+		fmt.Fprintf(stdout, "zenify dev build — latest %s\n", res.Latest)
+		return nil
+	}
+	if res.Newer {
+		_, _, display := update.Command(method, goos)
+		fmt.Fprintf(stdout, "zenify %s — latest %s — upgrade: %s\n", opts.Current, res.Latest, display)
+		return nil
+	}
+	fmt.Fprintf(stdout, "zenify %s — up to date\n", opts.Current)
+	return nil
+}
+
+// runUpdate executes the upgrade for method through run, then drops the
+// check cache so the next session re-reads the installed version. Unknown
+// prints every documented path and fails without executing anything.
+func runUpdate(stderr io.Writer, method update.Method, goos string, run func(name string, args []string) error, cacheDir string) error {
+	name, args, display := update.Command(method, goos)
+	if name == "" {
+		fmt.Fprintln(stderr, "zenify: could not tell how this binary was installed — upgrade with one of:")
+		_, _, brew := update.Command(update.Brew, goos)
+		_, _, scoop := update.Command(update.Scoop, goos)
+		_, _, script := update.Command(update.Script, goos)
+		fmt.Fprintf(stderr, "  brew:    %s\n  scoop:   %s\n  script:  %s\n  docs:    %s\n", brew, scoop, script, update.InstallDoc)
+		return exitcode.New(exitcode.Fail, errors.New("update: unknown install method"))
+	}
+	fmt.Fprintf(stderr, "zenify: upgrading via %s (%s)\n", method, display)
+	if err := run(name, args); err != nil {
+		return fmt.Errorf("update: %s failed: %w", display, err)
+	}
+	if cacheDir != "" {
+		if err := os.Remove(filepath.Join(cacheDir, update.CacheFile)); err != nil && !errors.Is(err, os.ErrNotExist) { //nolint:gosec // G703 -- path is <kit home>/update-check.json, the kit's own cache file
+			fmt.Fprintln(stderr, "zenify: note: could not clear update cache:", err)
+		}
+	}
+	return nil
 }
