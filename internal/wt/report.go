@@ -2,7 +2,6 @@ package wt
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
@@ -31,10 +30,7 @@ func CountSweepable(r gitx.Runner, repoRoot string) (RepoCount, error) {
 	if err != nil {
 		return RepoCount{}, err
 	}
-	c := RepoCount{Abbrev: cfg.Abbrev}
-	if c.Abbrev == "" {
-		c.Abbrev = filepath.Base(repoRoot)
-	}
+	c := RepoCount{Abbrev: cfg.Abbrev} // Load already defaults Abbrev when unset (config.go)
 	for _, it := range items {
 		switch {
 		case it.Stale:
