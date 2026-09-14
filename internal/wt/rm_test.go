@@ -1,6 +1,7 @@
 package wt
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"os"
@@ -167,5 +168,60 @@ func TestRunRm_GoneUnregisteredErrorsEvenWithForce(t *testing.T) {
 	}
 	if s.ran(root + "|worktree prune") {
 		t.Fatal("must NOT run repo-wide worktree prune for a never-registered slug")
+	}
+}
+
+// A worktree dir that git no longer registers (its .git file points at a gitdir
+// that moved, e.g. after `zenify migrate`) makes `git worktree remove` fail.
+// --force must then delete the directory itself, prune, and still delete the
+// branch recorded in state.json.
+func TestRunRm_OrphanDirDeletedWhenGitDoesNotRegisterIt(t *testing.T) {
+	root := rmRepo(t, "foo", "namph/feat/foo")
+	wtPath := filepath.Join(root, ".worktrees", "foo")
+	s := &rmStub{
+		out: map[string]string{
+			root + "|worktree list --porcelain": "worktree " + root + "\n\n",
+		},
+		err: map[string]error{
+			wtPath + "|symbolic-ref --quiet --short HEAD": errors.New("fatal: not a git repository"),
+			root + "|worktree remove --force " + wtPath:   errors.New("exit status 128"),
+		},
+	}
+	var stderr bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "foo", Force: true, Runner: s, Stderr: &stderr, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("orphan dir must be removed directly, got: %v", err)
+	}
+	if _, e := os.Stat(wtPath); !os.IsNotExist(e) {
+		t.Fatalf("orphan dir must be deleted, stat err=%v", e)
+	}
+	if !s.ran(root+"|worktree prune") || !s.ran(root+"|branch -D namph/feat/foo") {
+		t.Fatalf("expected prune + branch -D from state.json, seen: %v", s.seen)
+	}
+	if !strings.Contains(stderr.String(), "not registered in git") {
+		t.Fatalf("expected an explicit note on stderr, got %q", stderr.String())
+	}
+	st, _ := ReadState(root)
+	if _, ok := st.Find("foo"); ok {
+		t.Fatal("state entry must be dropped")
+	}
+}
+
+// A dir git still registers is never deleted behind git's back: the remove
+// failure stays a hard error.
+func TestRunRm_RegisteredDirRemoveFailureIsError(t *testing.T) {
+	root := rmRepo(t, "foo", "namph/feat/foo")
+	wtPath := filepath.Join(root, ".worktrees", "foo")
+	s := &rmStub{
+		out: map[string]string{
+			wtPath + "|symbolic-ref --quiet --short HEAD": "namph/feat/foo",
+			root + "|worktree list --porcelain":           "worktree " + root + "\nworktree " + wtPath + "\n\n",
+		},
+		err: map[string]error{root + "|worktree remove --force " + wtPath: errors.New("locked")},
+	}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "foo", Force: true, Runner: s, Stderr: io.Discard, Pid: 1, Now: 2, Host: "h"}); err == nil {
+		t.Fatal("registered worktree whose removal fails must be an error")
+	}
+	if _, e := os.Stat(wtPath); e != nil {
+		t.Fatal("registered dir must not be deleted behind git's back")
 	}
 }
