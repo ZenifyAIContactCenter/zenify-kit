@@ -1,11 +1,13 @@
 package docsgen
 
 import (
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 )
 
 func TestParseFrontmatter(t *testing.T) {
@@ -19,6 +21,24 @@ func TestParseFrontmatter(t *testing.T) {
 	}
 	if _, err := ParseFrontmatter([]byte("---\ndescription: no name\n---\n")); err == nil {
 		t.Fatal("missing name must error")
+	}
+}
+
+// TestParseFrontmatter_UnquotedColonAndQuotes covers the two real-data shapes
+// a strict YAML mapping rejects: a plain (unquoted) description containing
+// "word: word", and a quoted argument-hint whose surrounding quotes must be
+// stripped.
+func TestParseFrontmatter_UnquotedColonAndQuotes(t *testing.T) {
+	b := []byte("---\nname: x\ndescription: Use before modifying: check first, then act.\nargument-hint: \"<slug>\"\n---\nbody\n")
+	fm, err := ParseFrontmatter(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fm.Description != "Use before modifying: check first, then act." {
+		t.Fatalf("description not preserved across unquoted colon: %q", fm.Description)
+	}
+	if fm.ArgumentHint != "<slug>" {
+		t.Fatalf("argument-hint quotes not stripped: %q", fm.ArgumentHint)
 	}
 }
 
@@ -49,6 +69,95 @@ func TestGenSkills_PagesAndIndexes(t *testing.T) {
 	if !strings.Contains(string(files["agents/index.md"]), "[scout](./scout)") {
 		t.Fatal("agents index missing row")
 	}
+}
+
+// TestGenSkills_RealEmbeddedTree exercises GenSkills against the real
+// embedded assets (plugin.ZnfFS / plugin.CodingFS), not the synthetic
+// fixtures — this is what caught the strict-YAML regression against real
+// frontmatter containing an unquoted "key: value"-shaped description.
+func TestGenSkills_RealEmbeddedTree(t *testing.T) {
+	znf, coding := plugin.ZnfFS(), plugin.CodingFS()
+	files, err := GenSkills(znf, coding)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantSkills := countSkillDirs(t, znf, "skills") + countSkillDirs(t, coding, ".")
+	gotSkills := 0
+	for rel := range files {
+		if strings.HasPrefix(rel, "skills/") && rel != "skills/index.md" {
+			gotSkills++
+		}
+	}
+	if gotSkills != wantSkills {
+		t.Fatalf("skills page count = %d, want %d (skills/*/SKILL.md on disk)", gotSkills, wantSkills)
+	}
+
+	agentEntries, err := fs.ReadDir(znf, "agents")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAgents := 0
+	for _, e := range agentEntries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+			wantAgents++
+		}
+	}
+	gotAgents := 0
+	for rel := range files {
+		if strings.HasPrefix(rel, "agents/") && rel != "agents/index.md" {
+			gotAgents++
+		}
+	}
+	if gotAgents != wantAgents {
+		t.Fatalf("agent page count = %d, want %d (agents/*.md on disk)", gotAgents, wantAgents)
+	}
+
+	// Body must never leak: every "## " line a generated page carries must be
+	// one of the generator's own section headers, never a heading pulled
+	// from the source SKILL.md/agent body.
+	allowedHeadings := map[string]bool{
+		"## Cách gọi":       true,
+		"## Tool được phép": true,
+		"## Nguồn":          true,
+	}
+	for rel, content := range files {
+		if rel == "skills/index.md" || rel == "agents/index.md" {
+			continue
+		}
+		if len(content) == 0 {
+			t.Fatalf("%s is empty", rel)
+		}
+		for _, line := range strings.Split(string(content), "\n") {
+			if strings.HasPrefix(line, "## ") && !allowedHeadings[line] {
+				t.Fatalf("%s: unexpected heading %q — looks like a leaked body heading", rel, line)
+			}
+		}
+	}
+}
+
+// countSkillDirs counts <dir>/<name>/SKILL.md entries where <name> does not
+// start with "_" (shared reference, not a skill) — mirrors eachSkill's rule.
+func countSkillDirs(t *testing.T, fsys fs.FS, dir string) int {
+	t.Helper()
+	entries, err := fs.ReadDir(fsys, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), "_") {
+			continue
+		}
+		p := e.Name() + "/SKILL.md"
+		if dir != "." {
+			p = dir + "/" + p
+		}
+		if _, err := fs.Stat(fsys, p); err == nil {
+			n++
+		}
+	}
+	return n
 }
 
 func TestGenHooks_Table(t *testing.T) {
