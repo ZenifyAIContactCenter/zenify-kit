@@ -198,9 +198,9 @@ func newWtLsCmd() *cobra.Command {
 				_, _ = fmt.Fprintln(w, "wt: no tasks in this repo")
 				return nil
 			}
-			_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %s\n", "SLUG", "BRANCH", "PORT", "DEPS", "MERGED", "RUNNING", "PATH")
+			_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %-5s %s\n", "SLUG", "BRANCH", "PORT", "DEPS", "MERGED", "RUNNING", "STALE", "PATH")
 			for _, r := range rows {
-				_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %s\n", r.Slug, r.Branch, r.Port, r.Deps, r.Merged, r.Running, r.Path)
+				_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %-5s %s\n", r.Slug, r.Branch, r.Port, r.Deps, r.Merged, r.Running, staleWord(r.Stale), r.Path)
 			}
 			return nil
 		},
@@ -209,6 +209,13 @@ func newWtLsCmd() *cobra.Command {
 	}
 	c.Flags().BoolVar(&asJSON, "json", false, "emit the rows as a JSON array (editor-agnostic)")
 	return c
+}
+
+func staleWord(b bool) string {
+	if b {
+		return "yes"
+	}
+	return ""
 }
 
 func newWtUrlCmd() *cobra.Command {

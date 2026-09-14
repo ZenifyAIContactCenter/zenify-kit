@@ -3,6 +3,8 @@ package wt
 import (
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -198,5 +200,22 @@ func TestRunNew_FetchesBeforeResolvingBase(t *testing.T) {
 	_ = RunNew(o) // expected to error at the base-ref check; we only assert the fetch ran
 	if !seenContains(g, "fetch origin --quiet") {
 		t.Fatalf("expected auto-fetch before base resolution, seen=%v", g.seen)
+	}
+}
+
+func TestTakenPorts_SkipsStaleEntries(t *testing.T) {
+	root := t.TempDir()
+	live := filepath.Join(root, ".worktrees", "live")
+	if err := os.MkdirAll(live, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	st := &StateFile{Worktrees: []Worktree{
+		{Slug: "live", Path: live, Ports: []int{3201}},
+		{Slug: "gone", Path: filepath.Join(root, ".worktrees", "gone"), Ports: []int{3202}},
+		{Slug: "nopath", Ports: []int{3203}}, // legacy entry without path: keep counting it
+	}}
+	got := takenPorts(st)
+	if !got[3201] || got[3202] || !got[3203] {
+		t.Fatalf("taken = %v, want 3201+3203 only", got)
 	}
 }

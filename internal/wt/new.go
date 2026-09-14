@@ -48,6 +48,25 @@ func validType(t string) bool {
 	return false
 }
 
+// takenPorts collects every port held by a state entry whose directory still
+// exists. A stale entry (dir gone) holds nothing, so its port is free — sweep
+// drops the entry itself; this filter only keeps a skipped sweep from leaking
+// the port into the next allocation.
+func takenPorts(st *StateFile) map[int]bool {
+	taken := map[int]bool{}
+	for _, w := range st.Worktrees {
+		if w.Path != "" {
+			if _, err := os.Stat(w.Path); err != nil {
+				continue
+			}
+		}
+		for _, p := range w.Ports {
+			taken[p] = true
+		}
+	}
+	return taken
+}
+
 // RunNew creates a worktree for o.Slug end-to-end. Everything that can fail is
 // resolved BEFORE `git worktree add` touches disk; any failure after the add is
 // followed by abort cleanup so a failed run leaves nothing behind.
@@ -145,12 +164,7 @@ func RunNew(o NewOptions) error {
 	if err != nil {
 		return err
 	}
-	taken := map[int]bool{}
-	for _, w := range st.Worktrees {
-		for _, p := range w.Ports {
-			taken[p] = true
-		}
-	}
+	taken := takenPorts(st)
 	key := fmt.Sprintf("%s:%s:%s", filepath.Base(o.RepoRoot), o.Slug, cfg.PortEnv)
 	count := cfg.PortCount
 	if count < 1 {

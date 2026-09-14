@@ -2,6 +2,7 @@ package wt
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +20,8 @@ type Row struct {
 	Merged  string `json:"merged"`
 	Running string `json:"running"`
 	Path    string `json:"path"`
+	Stale   bool   `json:"stale"`          // state entry whose dir is gone and git no longer lists
+	Repo    string `json:"repo,omitempty"` // set only by `wt ls --all`
 }
 
 // List joins the repo's live worktrees (git = source of truth for existence)
@@ -48,12 +51,18 @@ func List(r gitx.Runner, repoRoot string, cfg *Config) ([]Row, error) {
 	canonRoot := canon(repoRoot)
 	wtPrefix := filepath.Join(canonRoot, cfg.WorktreeDir) + string(filepath.Separator)
 
+	listed := map[string]bool{} // canon paths git reports, for the stale check
+
 	var rows []Row
 	var curPath, curBranch string
 	flush := func() []Row {
 		defer func() { curPath, curBranch = "", "" }()
+		if curPath == "" {
+			return nil
+		}
 		cp := canon(curPath)
-		if curPath == "" || cp == canonRoot || !strings.HasPrefix(cp, wtPrefix) {
+		listed[cp] = true
+		if cp == canonRoot || !strings.HasPrefix(cp, wtPrefix) {
 			return nil
 		}
 		slug := cfgGet(r, curPath, "wt.slug")
@@ -103,6 +112,20 @@ func List(r gitx.Runner, repoRoot string, cfg *Config) ([]Row, error) {
 		}
 	}
 	rows = append(rows, flush()...)
+
+	for _, w := range st.Worktrees {
+		if w.Path == "" || listed[canon(w.Path)] {
+			continue
+		}
+		if _, e := os.Stat(w.Path); e == nil {
+			continue
+		}
+		port := "-"
+		if len(w.Ports) > 0 {
+			port = strconv.Itoa(w.Ports[0])
+		}
+		rows = append(rows, Row{Slug: w.Slug, Branch: w.Branch, Port: port, Deps: "-", Merged: "-", Running: "-", Path: w.Path, Stale: true})
+	}
 	return rows, nil
 }
 
