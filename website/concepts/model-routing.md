@@ -29,7 +29,7 @@ Cùng lý do, **đừng dùng alias `opus`** ở agent frontmatter hay lệnh di
 
 ## Nguyên tắc 2: mỗi việc trên model rẻ nhất
 
-Có dẫn chứng số từ Anthropic ([multi-agent](https://www.anthropic.com/engineering/built-multi-agent-research-system)): một agent tốn ~4× token so với chat, multi-agent ~15×; và **Opus dẫn dắt + Sonnet subagent vượt Opus đơn lẻ**. Model mạnh điều phối, model rẻ làm phần song song.
+Có dẫn chứng số từ Anthropic ([multi-agent](https://www.anthropic.com/engineering/multi-agent-research-system)): một agent tốn ~4× token so với chat, multi-agent ~15×; và **Opus dẫn dắt + Sonnet subagent vượt Opus đơn lẻ**. Model mạnh điều phối, model rẻ làm phần song song.
 
 | Nơi | Model | Vì sao |
 |---|---|---|
@@ -45,19 +45,6 @@ Có dẫn chứng số từ Anthropic ([multi-agent](https://www.anthropic.com/e
 
 **Scale bất đối xứng:** xuống thì ghi `model: 'sonnet'`; lên top tier thì **bỏ** `model`. Và với code, **effort quan trọng hơn tier** — `claude-haiku-4-5` không hỗ trợ `xhigh` (bị âm thầm hạ effort, không báo lỗi), nên sàn implementer là sonnet.
 
-## "Bỏ harness khi model mạnh": đúng tới đâu
-
-Đúng một phần, và phần đúng là Anthropic nói: model mạnh cần **ít prompt chỉ-dẫn cứng** hơn — "less scaffolding, more curation" ([prompt-engineering](https://claude.com/blog/best-practices-for-prompt-engineering)). Cụ thể, Claude Code tắt mặc định `TodoWrite`/`Task` trên model mới vì chúng tự track nhiều bước.
-
-Nhưng đó là bỏ **prompt thừa**, không phải bỏ **kiến trúc** — chính bài của Anthropic vẫn giữ memory và multi-agent. Harness của kit nằm ở phần giữ, và không phần nào là prompt scaffolding:
-
-- **Gate xác định** (git-guard, secret-scan, db-perf, langgate) — chạy bằng luật, không bằng phán đoán model.
-- **Route model rẻ** — kiểm soát chi phí (4×/15×), độc lập với việc session thông minh cỡ nào.
-- **Tái lập cả team** — cùng phiên bản, cùng gate, cùng luồng.
-- **Quan sát được** — người giám sát cần thấy agent đang tới đâu.
-
-Model càng mạnh và tự chủ, ít bị giám sát từng bước, thì càng **cần** gate xác định hơn, chứ không ít đi.
-
 ## Liên quan
 
 - [Gate fail-open](/concepts/gate-fail-open) — các gate xác định là một nửa harness.
@@ -69,8 +56,6 @@ Nội bộ: settings.json "model": claude-opus-4-8; znf/skills/onboard-project/S
 Web (fetched 2026-09-14, nguồn chính = Anthropic; tin cộng đồng chỉ làm màu):
 - anthropic.com/news/claude-opus-5 (giá = 4.8, SOTA hard-agentic, "verifies its work and iterates")
 - platform.claude.com/docs/.../prompting-claude-opus-5 (Anthropic tự nêu verbosity, over-verify, scope-expansion, over-delegation)
-- claude.com/blog/best-practices-for-prompt-engineering ("less scaffolding, more curation")
-- anthropic.com/engineering/effective-context-engineering-for-ai-agents (giữ memory + multi-agent)
-- anthropic.com/engineering/built-multi-agent-research-system (4×/15×; Opus-lead + Sonnet-subagents > single Opus; effort ladder 1/2-4/10+)
+- anthropic.com/engineering/multi-agent-research-system (4×/15×; Opus-lead + Sonnet-subagents > single Opus; effort ladder 1/2-4/10+)
 - Reception thin/sentiment: HN 49079191 (chia hai phía); revert path /model claude-opus-4-8. KHÔNG verify: revert "4.7", tỉ lệ định lượng, Fable/Mythos model card, con số 80% cut.
 -->
