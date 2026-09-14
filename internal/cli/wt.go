@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,12 +168,55 @@ func newWtNewCmd() *cobra.Command {
 }
 
 func newWtLsCmd() *cobra.Command {
-	var asJSON bool
+	var asJSON, all bool
 	c := &cobra.Command{
 		Use:   "ls",
 		Short: "List worktrees in this repo (git ⋈ state), with running/merged status",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if all {
+				cwd, _ := os.Getwd()
+				ws, ok := wt.FindWorkspaceRoot(cwd)
+				if !ok {
+					return fmt.Errorf("wt: not inside a zenify workspace (no .zenify/manifest.json above cwd)")
+				}
+				var allRows []wt.Row
+				w := cmd.OutOrStdout()
+				for _, repo := range wt.WorkspaceRepos(ws) {
+					name := filepath.Base(repo)
+					cfg, err := wt.Load(repo)
+					if err != nil {
+						_, _ = fmt.Fprintf(w, "== %s == (skipped: %v)\n", name, err)
+						continue
+					}
+					rows, err := wt.List(gitx.ExecRunner(), repo, cfg)
+					if err != nil {
+						_, _ = fmt.Fprintf(w, "== %s == (skipped: %v)\n", name, err)
+						continue
+					}
+					if len(rows) == 0 {
+						continue
+					}
+					for i := range rows {
+						rows[i].Repo = name
+					}
+					if asJSON {
+						allRows = append(allRows, rows...)
+						continue
+					}
+					_, _ = fmt.Fprintf(w, "== %s (%s) ==\n", cfg.Abbrev, repo)
+					printRows(w, rows)
+				}
+				if asJSON {
+					if allRows == nil {
+						allRows = []wt.Row{}
+					}
+					enc := json.NewEncoder(w)
+					enc.SetIndent("", "  ")
+					return enc.Encode(allRows)
+				}
+				return nil
+			}
 			root, err := repoRoot()
 			if err != nil {
 				return err
@@ -198,17 +242,24 @@ func newWtLsCmd() *cobra.Command {
 				_, _ = fmt.Fprintln(w, "wt: no tasks in this repo")
 				return nil
 			}
-			_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %-5s %s\n", "SLUG", "BRANCH", "PORT", "DEPS", "MERGED", "RUNNING", "STALE", "PATH")
-			for _, r := range rows {
-				_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %-5s %s\n", r.Slug, r.Branch, r.Port, r.Deps, r.Merged, r.Running, staleWord(r.Stale), r.Path)
-			}
+			printRows(w, rows)
 			return nil
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 	c.Flags().BoolVar(&asJSON, "json", false, "emit the rows as a JSON array (editor-agnostic)")
+	c.Flags().BoolVar(&all, "all", false, "list every wt-managed repo in the workspace, grouped by repo")
 	return c
+}
+
+// printRows renders the human-readable worktree table shared by `wt ls` and
+// `wt ls --all`.
+func printRows(w io.Writer, rows []wt.Row) {
+	_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %-5s %s\n", "SLUG", "BRANCH", "PORT", "DEPS", "MERGED", "RUNNING", "STALE", "PATH")
+	for _, r := range rows {
+		_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %-5s %s\n", r.Slug, r.Branch, r.Port, r.Deps, r.Merged, r.Running, staleWord(r.Stale), r.Path)
+	}
 }
 
 func staleWord(b bool) string {
@@ -298,12 +349,28 @@ func newWtPromoteCmd() *cobra.Command {
 }
 
 func newWtSweepCmd() *cobra.Command {
-	var dry, fetch bool
+	var dry, fetch, all bool
 	c := &cobra.Command{
 		Use:   "sweep",
-		Short: "Tear down every merged, clean worktree in this repo",
+		Short: "Tear down every merged, clean worktree in this repo (or the whole workspace with --all)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if all {
+				cwd, _ := os.Getwd()
+				ws, ok := wt.FindWorkspaceRoot(cwd)
+				if !ok {
+					return fmt.Errorf("wt: not inside a zenify workspace (no .zenify/manifest.json above cwd)")
+				}
+				if fetch {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "wt: --all always fetches; --fetch is redundant here")
+				}
+				host, _ := os.Hostname()
+				return wt.RunSweepAll(wt.SweepAllOptions{
+					WorkspaceRoot: ws, Host: host, DryRun: dry, Pid: os.Getpid(), Now: time.Now().Unix(),
+					Runner: gitx.ExecRunner(), FetchRunner: gitx.TimeoutRunner(5 * time.Second),
+					Stdout: cmd.OutOrStdout(), Stderr: cmd.ErrOrStderr(),
+				})
+			}
 			root, err := repoRoot()
 			if err != nil {
 				return err
@@ -320,6 +387,7 @@ func newWtSweepCmd() *cobra.Command {
 	}
 	c.Flags().BoolVarP(&dry, "dry-run", "n", false, "report what would be removed without touching anything")
 	c.Flags().BoolVarP(&fetch, "fetch", "f", false, "fetch origin first so merge state is current")
+	c.Flags().BoolVar(&all, "all", false, "sweep every wt-managed repo in the workspace (fetches each, 5s timeout, fail-open per repo)")
 	return c
 }
 
