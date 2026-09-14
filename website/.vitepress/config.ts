@@ -66,10 +66,9 @@ export default withMermaid({
     ],
     sidebar: [
       // Bắt đầu: KHÔNG gập được (không có key collapsed) — luôn mở. Chỉ giữ thứ quan trọng nhất cho người mới.
-      // "Nâng cấp" (ít quan trọng) đẩy xuống Năng lực; "Ba lớp" (khái niệm cốt lõi — kit là cái gì) kéo lên đây làm lối tắt, bản gốc vẫn nằm trong Khái niệm.
+      // "Nâng cấp" (ít quan trọng) đẩy xuống Năng lực. Không kéo "Ba lớp" lên đây: trang "ZenifyKit là gì" đã brief qua ba lớp rồi.
       { text: 'Bắt đầu', items: [
         { text: 'ZenifyKit là gì', link: '/' },
-        { text: 'Ba lớp: binary, plugin, knowledge store', link: '/concepts/three-layers' },
         { text: 'Cài đặt', link: '/getting-started/install' },
         { text: 'Bắt đầu nhanh', link: '/getting-started/quickstart' } ] },
       // 4 nhóm dưới đều gập được, mặc định MỞ (collapsed: false = có nút gập, khởi tạo mở).
