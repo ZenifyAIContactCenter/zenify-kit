@@ -24,7 +24,12 @@ export default withMermaid({
         { text: 'Cài đặt', link: '/getting-started/install' },
         { text: 'Bắt đầu nhanh', link: '/getting-started/quickstart' },
         { text: 'Nâng cấp', link: '/getting-started/upgrade' } ] },
-      { text: 'Quy trình', items: [] },
+      { text: 'Quy trình', items: [
+        { text: 'Chọn quy trình', link: '/workflows/' },
+        { text: 'cook — xây tính năng', link: '/workflows/cook' },
+        { text: 'fix — sửa lỗi chưa rõ nguyên nhân', link: '/workflows/fix' },
+        { text: 'hotfix — lỗi đang chạy trên production', link: '/workflows/hotfix' },
+        { text: 'ship — cổng cuối, mở PR', link: '/workflows/ship' } ] },
       { text: 'Khái niệm cốt lõi', items: [
         { text: 'Ba lớp: binary, plugin, knowledge store', link: '/concepts/three-layers' },
         { text: 'Worktree theo slug', link: '/concepts/worktree-per-slug' },

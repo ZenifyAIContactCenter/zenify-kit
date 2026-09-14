@@ -23,7 +23,8 @@ Hai agent mà các skill này dispatch — `code-reviewer` và `scout` — cũng
 
 ## Ghép với …
 
-- [Ba lớp: binary, plugin, knowledge store](/concepts/three-layers) — plugin skill là lớp vật lý chứa các skill `znf:*` này. <!-- TODO(Task 9): link /workflows/ để nói rõ cook/fix/hotfix chọn thế nào -->
+- [Ba lớp: binary, plugin, knowledge store](/concepts/three-layers) — plugin skill là lớp vật lý chứa các skill `znf:*` này.
+- [Chọn quy trình](/workflows/) — cook / fix / hotfix / không skill chọn theo cái gì bạn chưa biết, không theo tên skill.
 - Tham chiếu: [Skill](/reference/skills/), [Agent](/reference/agents/).
 
 ## Edge case

@@ -14,7 +14,7 @@ title: zenify-kit
 | Onboard một workspace, chạy thử lệnh đầu tiên | [Bắt đầu nhanh](/getting-started/quickstart) |
 | Nâng cấp lên bản `zenify` mới | [Nâng cấp](/getting-started/upgrade) |
 | Hiểu vì sao kit chia 3 lớp binary/plugin/knowledge store | [Ba lớp](/concepts/three-layers) |
-| Chọn quy trình cook / fix / hotfix cho một task cụ thể | Chọn quy trình <!-- TODO(Task 9): link /workflows/ --> |
+| Chọn quy trình cook / fix / hotfix cho một task cụ thể | [Chọn quy trình](/workflows/) |
 | Tra cứu một lệnh CLI, skill, agent hoặc hook cụ thể | [Tham chiếu](/reference/cli/) |
 
 ## Ba lớp

@@ -112,7 +112,7 @@ wt rm demo
 
 ## Bước tiếp theo
 
-Có task thật rồi? Chọn quy trình cook / fix / hotfix<!-- TODO(Task 9): link /workflows/ -->.
+Có task thật rồi? [Chọn quy trình](/workflows/) cook / fix / hotfix.
 
 ## Nguồn
 
