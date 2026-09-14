@@ -11,7 +11,7 @@ import (
 )
 
 // RmOptions is the fully-resolved input to RunRm. Pid/Now/Host are injected so
-// the core stays deterministic (they flow into RemoveWorktree/IndexRemove).
+// the core stays deterministic (they flow into RemoveWorktree).
 type RmOptions struct {
 	RepoRoot string
 	Slug     string
@@ -115,9 +115,6 @@ func RunRm(o RmOptions) error {
 	// leave the (already removed) worktree looking un-removed to the user.
 	if _, e := RemoveWorktree(o.RepoRoot, o.Slug, o.Pid, o.Host, o.Now); e != nil {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not update state.json: %v\n", e)
-	}
-	if e := IndexRemove(o.RepoRoot, o.Slug, o.Pid, o.Host, o.Now); e != nil {
-		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not update the global index: %v\n", e)
 	}
 
 	// Release the session pointer if it names the slug just removed, so the next

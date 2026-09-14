@@ -227,15 +227,12 @@ func RunNew(o NewOptions) error {
 		}
 	}
 
-	// Persist to the rebuildable caches (state + global index).
+	// Persist to the rebuildable state cache.
 	wtRec := Worktree{Slug: o.Slug, Type: o.Type, Branch: branch, Path: path, Ports: ports}
 	if len(ports) > 1 {
 		wtRec.PortBase = port
 	}
 	if err := SaveWorktree(o.RepoRoot, wtRec, o.Pid, o.Host, o.Now); err != nil {
-		return abort(err)
-	}
-	if err := IndexUpsert(o.RepoRoot, o.Slug, o.Pid, o.Host, o.Now); err != nil {
 		return abort(err)
 	}
 

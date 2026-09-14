@@ -17,7 +17,6 @@ type Worktree struct {
 	CreatedAt string `json:"createdAt"`
 	Ports     []int  `json:"ports"`
 	PortBase  int    `json:"portBase"`
-	DevPid    *int   `json:"devPid"`
 }
 
 // StateFile is the per-repo .wt/state.json. git is the source of truth for a
@@ -53,39 +52,4 @@ func (s *StateFile) Find(slug string) (Worktree, bool) {
 		}
 	}
 	return Worktree{}, false
-}
-
-// IndexPath returns $XDG_STATE_HOME/zenify/wt-index.json, falling back to
-// ~/.local/state per the XDG base-dir spec.
-func IndexPath() (string, error) {
-	base := os.Getenv("XDG_STATE_HOME")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		base = filepath.Join(home, ".local", "state")
-	}
-	return filepath.Join(base, "zenify", "wt-index.json"), nil
-}
-
-// ReadIndex loads the global index mapping repo-abs-path → []slug. A missing
-// index reads as empty.
-func ReadIndex() (map[string][]string, error) {
-	path, err := IndexPath()
-	if err != nil {
-		return nil, err
-	}
-	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
-	if os.IsNotExist(err) {
-		return map[string][]string{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("wt: read %s: %w", path, err)
-	}
-	var m map[string][]string
-	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, fmt.Errorf("wt: %s is not valid JSON: %w", path, err)
-	}
-	return m, nil
 }

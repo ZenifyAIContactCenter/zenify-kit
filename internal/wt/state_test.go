@@ -40,13 +40,20 @@ func TestReadState_FindBySlug(t *testing.T) {
 	}
 }
 
-func TestReadIndex_MissingIsEmpty(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	m, err := ReadIndex()
-	if err != nil {
-		t.Fatalf("missing index must not error: %v", err)
+func TestReadState_OldDevPidFieldIgnored(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".wt"), 0o750); err != nil {
+		t.Fatal(err)
 	}
-	if len(m) != 0 {
-		t.Fatalf("want empty, got %d", len(m))
+	old := `{"version":1,"worktrees":[{"slug":"a","type":"feat","branch":"namph/feat/a","path":"/x/a","createdAt":"","ports":[3201],"portBase":0,"devPid":null}]}`
+	if err := os.WriteFile(filepath.Join(root, ".wt", "state.json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(root)
+	if err != nil {
+		t.Fatalf("old state with devPid must still parse: %v", err)
+	}
+	if len(st.Worktrees) != 1 || st.Worktrees[0].Ports[0] != 3201 {
+		t.Fatalf("unexpected state: %+v", st)
 	}
 }
