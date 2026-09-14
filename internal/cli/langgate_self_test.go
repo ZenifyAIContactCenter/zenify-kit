@@ -31,6 +31,9 @@ func TestHelpIsVietnamese(t *testing.T) {
 		if !hasVietnameseLetter(c.Short) {
 			t.Errorf("%s: Short is not Vietnamese: %q", c.CommandPath(), c.Short)
 		}
+		if c.Long != "" && !hasVietnameseLetter(c.Long) {
+			t.Errorf("%s: Long is not Vietnamese: %q", c.CommandPath(), c.Long)
+		}
 	}
 }
 

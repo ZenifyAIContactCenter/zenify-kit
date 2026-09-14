@@ -65,14 +65,14 @@ func runObserveReport(w io.Writer, asJSON bool, list func() ([]observe.SessionSu
 	return tw.Flush()
 }
 
-const reportLong = `Summarize this kit's observe state per session: subagent dispatches (from
-` + "`zenify observe count`" + `) and tool-output volume (from ` + "`zenify observe meter`" + `),
-newest-active first. This is the in-stack, single-binary alternative to a
-heavyweight web dashboard.
-
-For a full real-time web dashboard (multi-agent replay, filtering, token graphs)
-run simple10/agents-observe alongside — it is MIT and registers its own Claude
-Code hooks, so it coexists with the znf hooks rather than replacing them.`
+const reportLong = "Tóm tắt state observe của kit theo từng session: subagent dispatch (từ\n" + //znf:allow-lang
+	"`zenify observe count`" + ") và tool-output volume (từ " + "`zenify observe meter`" + "),\n" + //znf:allow-lang
+	"session mới hoạt động nhất trước. Đây là phương án single-binary trong-stack,\n" + //znf:allow-lang
+	"thay cho một web dashboard nặng.\n" + //znf:allow-lang
+	"\n" +
+	"Muốn web dashboard real-time đầy đủ (replay multi-agent, filter, token graph)\n" + //znf:allow-lang
+	"thì chạy song song simple10/agents-observe — nó là MIT và tự đăng ký hook Claude\n" + //znf:allow-lang
+	"Code riêng, nên tồn tại song song với hook znf chứ không thay thế." //znf:allow-lang
 
 func newReportCmd() *cobra.Command {
 	var asJSON bool
