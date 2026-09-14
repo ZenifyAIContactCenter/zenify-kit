@@ -4,7 +4,7 @@ title: "ship: verify và mở PR"
 
 # ship: verify và mở PR
 
-`/znf:ship` là bước cuối của mọi workflow. Nó chạy lint, build, contract gate, verify hành vi và review độc lập, rồi commit, push và mở PR. Ship không merge.
+`/znf:ship` là bước cuối của mọi workflow. Nó chạy lint, build, contract gate, verify hành vi (gồm **kiểm thử UI** khi diff chạm giao diện) và review độc lập, rồi commit, push và mở PR. Ship không merge.
 
 ## Khi nào dùng
 
@@ -34,7 +34,7 @@ Ship tự suy ra phạm vi từ file đã đổi. Bạn không cần liệt kê 
 flowchart TD
   A["1. Xác định phạm vi"] --> B["2. Lint, build"]
   B -->|Chạm resource chung| D["3. Contract gate"]
-  B --> E["4. Verify hành vi"]
+  B --> E["4. Verify hành vi<br/>(UI nếu chạm giao diện)"]
   D --> E
   E --> F["5. Review độc lập"]
   F -->|Còn CRITICAL/HIGH, vòng 1-2| H["Sửa cả wave, chạy lại check"]
@@ -53,7 +53,7 @@ flowchart TD
 | 1 | Xác định vùng thay đổi từ file đã đổi | Không cần làm gì |
 | 2 | Lint và build/typecheck vùng đó, lấy output thật | Đọc output |
 | 3 | Nếu chạm DB collection, endpoint, queue hoặc channel chung, chạy contract gate | Đọc repo nào bị ảnh hưởng |
-| 4 | Verify hành vi: test nếu có, hoặc `/znf:run`. Với UI thì kiểm thử theo [Kiểm thử UI](/workflows/ui-testing) | Đọc kết quả, kể cả số liệu overflow nếu là UI |
+| 4 | Verify hành vi: test nếu có, hoặc `/znf:run`. **Nếu diff chạm giao diện**, ship kiểm thử UI — golden-diff `zenify visual check` (khi repo có `.znf/visual/routes.json`) rồi `znf:ui-verifier` đo overflow phần tử đã đổi. Chi tiết ở [Kiểm thử UI](/workflows/ui-testing) | Đọc kết quả, kể cả số liệu overflow nếu là UI |
 | 5 | Review độc lập. CRITICAL/HIGH vào vòng sửa, MEDIUM/LOW lên board | Đọc finding |
 | Vòng sửa | Sửa hết finding mở trong một wave, chạy lại check liên quan, tối đa 2 vòng | Nếu còn mở sau vòng 2, ship dừng, không commit, và báo bạn |
 | 6 | Xác định thứ tự deploy (đa service) | Đọc thứ tự |
