@@ -27,6 +27,7 @@ func znfHookSpecs() []hookSpec {
 	return []hookSpec{
 		{Event: "SessionStart", Matcher: "", ID: "session-start"},
 		{Event: "SessionStart", Matcher: "", ID: "git-state"},
+		{Event: "SessionStart", Matcher: "", ID: "wt-report"},
 		{Event: "Stop", Matcher: "", ID: "docs-sync"},
 		{Event: "Stop", Matcher: "", ID: "git-state-stop"},
 		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count"},

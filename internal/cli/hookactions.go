@@ -8,9 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
 
 const znfDisciplineSentinel = "znf-discipline-local"
@@ -148,4 +151,31 @@ func failOpen(w io.Writer, wrote *bool) {
 			fmt.Fprintln(w, "{}")
 		}
 	}
+}
+
+// runWtReportHook prints ONE line naming the merged worktrees and stale state
+// entries `wt sweep --all` would remove across the workspace — or nothing.
+// Read-only and bounded: no fetch, no lsof, each git call capped at 5s, and a
+// repo that errors is dropped from the tally rather than failing the hook.
+// SessionStart stdout is injected verbatim as context, so silence (not "{}")
+// is the empty case, matching runGitStateHook. failOpen is pointed at
+// io.Discard here (not w): on a panic before wrote flips true, "{}" is
+// swallowed there instead of reaching w, so this hook never prints "{}".
+func runWtReportHook(wsRoot string, w io.Writer) int {
+	var wrote bool
+	defer failOpen(io.Discard, &wrote) // never emit "{}" on this hook
+	r := gitx.TimeoutRunner(5 * time.Second)
+	var counts []wt.RepoCount
+	for _, repo := range wt.WorkspaceRepos(wsRoot) {
+		c, err := wt.CountSweepable(r, repo)
+		if err != nil {
+			continue
+		}
+		counts = append(counts, c)
+	}
+	if line := wt.FormatReport(counts); line != "" {
+		fmt.Fprintln(w, line)
+	}
+	wrote = true
+	return 0
 }

@@ -362,3 +362,20 @@ func TestEnsureGlobalHooks_AddsGitStateKeepsPersonalScript(t *testing.T) {
 		}
 	}
 }
+
+// FR-5.5: the wt-report hook is added exactly once, alongside the existing
+// SessionStart entries, and a second run is a no-op.
+func TestEnsureGlobalHooks_AddsWtReportOnce(t *testing.T) {
+	home := t.TempDir()
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(settingsPath(home))
+	if n := strings.Count(string(raw), "zenify hooks-run wt-report"); n != 1 {
+		t.Fatalf("wt-report entries = %d, want 1\n%s", n, raw)
+	}
+	ch, err := EnsureGlobalHooks(home, false)
+	if err != nil || ch.Added != 0 || ch.Updated != 0 {
+		t.Fatalf("second run must be a no-op: %+v %v", ch, err)
+	}
+}

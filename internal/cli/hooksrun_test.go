@@ -152,3 +152,16 @@ func TestHooksRun_GitState(t *testing.T) {
 		t.Fatalf("empty scope session = %q, want empty", buf.String())
 	}
 }
+
+// FR-5.2/5.3: wt-report prints nothing for a workspace with no sweepable work
+// (an empty workspace), and never "{}".
+func TestHooksRun_WtReportSilentWhenNothing(t *testing.T) {
+	ws := mkWorkspace(t)
+	var buf bytes.Buffer
+	if code := dispatchHook("wt-report", ws, &buf); code != 0 {
+		t.Fatalf("exit = %d", code)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("expected silence, got %q", buf.String())
+	}
+}

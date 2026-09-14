@@ -35,6 +35,8 @@ func dispatchHook(id, wsRoot string, w io.Writer) int {
 		return runGitStateHook(wsRoot, gitstate.Session, w)
 	case "git-state-stop":
 		return runGitStateHook(wsRoot, gitstate.Stop, w)
+	case "wt-report":
+		return runWtReportHook(wsRoot, w)
 	default:
 		return noop() // unknown id: fail-open
 	}
