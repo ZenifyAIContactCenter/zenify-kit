@@ -39,6 +39,8 @@
 .vp-doc { font-size: 16px; line-height: 1.75; }
 .vp-doc h1, .vp-doc h2, .vp-doc h3 { font-family: var(--zk-font-serif); font-weight: 500; letter-spacing: -0.01em; }
 .vp-doc h1 { font-size: 40px; line-height: 1.2; }
+.vp-doc p:has(+ h1) { font-size: 14px; color: var(--vp-c-text-3); margin: 0 0 6px; }
+.vp-doc p:has(+ h1) code { font-size: 13px; background: none; padding: 0; color: var(--vp-c-text-2); }
 .vp-doc h2 { font-size: 26px; border-top: 0; margin-top: 48px; padding-top: 0; }
 .vp-doc h3 { font-size: 20px; }
 .vp-doc p { margin: 14px 0; }
@@ -70,4 +72,6 @@
 .vp-doc .mermaid svg { max-width: 100% !important; height: auto !important; }
 .vp-doc .mermaid .node rect, .vp-doc .mermaid .node polygon { stroke-width: 1px; rx: 6px; ry: 6px; }
 .vp-doc .mermaid .edgeLabel { font-size: 14px; }
+.vp-doc .mermaid .nodeLabel, .vp-doc .mermaid .nodeLabel * { line-height: 1.45; overflow: visible; }
+.vp-doc .mermaid foreignObject { overflow: visible; }
 .vp-doc .mermaid + p:has(> em:only-child) { text-align: center; color: var(--vp-c-text-3); margin-top: 0; font-size: 14.5px; }

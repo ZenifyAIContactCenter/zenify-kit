@@ -1,0 +1,18 @@
+---
+summary: Rà soát và dọn bộ nhớ tự động trong một lượt, gộp bản trùng và xoá ghi chú đã cũ.
+---
+## Khi nào dùng
+
+Khi thông báo đầu phiên nhắc dọn bộ nhớ, hoặc khi bạn thấy bộ nhớ nhiễu và chỉ mục ngày càng dài.
+
+## Cách hoạt động
+
+1. Skill xác định đúng thư mục bộ nhớ đang dùng cho project này, vì đường dẫn có thể bị đổi bởi cấu hình.
+2. Skill kiểm kê toàn bộ file bộ nhớ, so với giới hạn của chỉ mục, và sắp theo lần sửa gần nhất.
+3. Mỗi bộ nhớ được xếp vào đúng một nhóm: giữ nguyên, gộp với bản trùng, sửa vì tên file/hàm/cờ đã đổi, xoá vì chỉ là log một lần hoặc thứ code/CLAUDE.md đã nói rồi, chuyển sang đúng phạm vi nếu bị đặt sai chỗ, hoặc tách nếu một file dài gộp hai fact khác nhau.
+4. Skill trình bày một bảng đề xuất duy nhất cho toàn bộ lượt rà soát, xin một lần chấp thuận, rồi áp dụng tất cả cùng lúc — không hỏi từng mục một.
+5. Khi còn phân vân giữa giữ và xoá, skill nghiêng về xoá, vì một bộ nhớ thiếu chỉ tốn công suy luận lại, còn một bộ nhớ sai bị tin mỗi lần khớp mà không ai nhận ra nó đã cũ.
+
+## Lưu ý
+
+Sau khi dọn xong, skill đóng dấu thời điểm để thông báo đầu phiên không lặp lại ngay lần sau.

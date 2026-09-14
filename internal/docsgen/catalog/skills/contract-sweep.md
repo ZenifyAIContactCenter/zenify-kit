@@ -1,0 +1,17 @@
+---
+summary: Quét một contract chung qua nhiều repo, mỗi repo một agent, phán BREAKING, RISKY hoặc SAFE cho từng chỗ dùng.
+---
+## Khi nào dùng
+
+Sau khi đổi một field trong collection chung, đường dẫn hoặc shape của một endpoint, tên hoặc payload của một pub/sub event hay queue. Đây là bước leo thang từ [`/znf:gate`](./gate), dùng khi một lượt quét inline không đủ tin: quá nhiều chỗ dùng để đánh giá chung, thay đổi chạm nhiều tài nguyên cùng lúc, hoặc gate báo sạch mà bạn vẫn nghi.
+
+## Cách hoạt động
+
+1. Bạn cung cấp tên contract và mô tả thay đổi. Danh sách repo là sự thật của project, đọc từ `CLAUDE.md` của workspace; skill hướng dẫn cách suy ra danh sách khi project chưa ghi.
+2. Skill chạy workflow, mỗi repo một agent, tìm mọi chỗ dùng qua ba lượt: nơi định nghĩa, nơi dùng qua model symbol hoặc registry, nơi gọi raw driver và pipeline stage.
+3. Từng chỗ dùng nhận một verdict BREAKING, RISKY hoặc SAFE.
+4. Báo cáo liệt kê các thay đổi đi kèm cần có trước khi deploy an toàn.
+
+## Lưu ý
+
+Skill tốn nhiều token vì chạy một agent cho mỗi repo. `/znf:gate` và skill này dùng cùng danh sách repo và cùng ba lượt tìm, nên kết quả không được lệch nhau.

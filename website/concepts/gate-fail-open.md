@@ -33,7 +33,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  G["git-guard / secret-scan chạy"] -->|công cụ lỗi| H["Fail-open, không chặn"]
+  G["git-guard / secret-scan"] -->|công cụ lỗi| H["Fail-open, không chặn"]
   G -->|rule khớp| I["Chặn lệnh"]
   G -->|không khớp| J["Cho qua"]
   class G action

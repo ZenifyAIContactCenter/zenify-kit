@@ -1,0 +1,38 @@
+---
+summary: Onboard máy vào workspace: clone repo, ghi cấu hình, gắn hook và skill, chuẩn bị knowledge store.
+---
+## Khi nào dùng
+
+Lần đầu cài ZenifyKit trên một máy, hoặc khi team thêm repo mới và bạn cần kéo về đúng bộ. Chạy lại bất cứ lúc nào đều an toàn: lệnh chỉ sửa những gì lệch so với cấu hình chung.
+
+## Kết quả
+
+Chạy trong terminal, lệnh mở wizard tương tác: chọn thư mục workspace, chọn repo trong danh sách bạn có quyền truy cập, rồi nhập các secret cần cho verify UI và đọc DB. Chạy ngoài terminal, lệnh chỉ in kế hoạch dạng bảng `REPO STATE REASON` và dừng.
+
+Khi apply, lệnh clone repo còn thiếu, ghi các file cấu hình do kit sở hữu, gắn hook `znf` vào `~/.claude/settings.json`, đồng bộ plugin skill, chuẩn bị Playwright nếu workspace có repo frontend, clone knowledge store và ghi con trỏ workspace vào `~/.zenify/workspace`.
+
+Lệnh cần `gh` đã đăng nhập với scope `read:org` và `repo`. Chưa đăng nhập, lệnh dừng và nhắc chạy `gh auth login`.
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--apply` | Thực thi kế hoạch. Không kèm cờ này và không ở terminal, lệnh chỉ in kế hoạch. |
+| `--dry-run` | Chỉ in kế hoạch, không đổi gì. Đây là mặc định ngoài terminal. Không dùng cùng `--apply`. |
+| `--json` | In kế hoạch dạng JSON thay cho bảng. |
+| `--manifest` | Đường dẫn manifest workspace, khi không dùng bản mặc định trong `.zenify/`. |
+| `--non-interactive` | Không mở wizard kể cả khi đang ở terminal. Dùng trong script. |
+| `--overlay` | File overlay cho máy này, mặc định `.zenify-overlay.yaml` trong workspace. |
+| `--workspace` | Thư mục workspace. Không có, wizard hỏi hoặc lệnh dùng thư mục hiện tại. |
+
+## Ví dụ
+
+```bash
+zenify up
+zenify up --non-interactive --dry-run --workspace ~/WorkingSpace/zenify
+zenify up --non-interactive --apply --workspace ~/WorkingSpace/zenify
+```
+
+## Lưu ý
+
+Toàn bộ đường đi từ cài binary đến session đầu tiên: [Bắt đầu nhanh](/getting-started/quickstart). Sau `zenify up`, chạy `zenify doctor` để xác nhận môi trường.

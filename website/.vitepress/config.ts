@@ -60,6 +60,7 @@ export default withMermaid({
       { text: 'Bắt đầu', link: '/getting-started/install' },
       { text: 'Khái niệm', link: '/concepts/three-layers' },
       { text: 'Workflow', link: '/workflows/' },
+      { text: 'Hướng dẫn', link: '/guides/onboard-workspace' },
       { text: 'Tham chiếu', link: '/reference/cli/' },
     ],
     sidebar: [
@@ -75,13 +76,24 @@ export default withMermaid({
         { text: 'Worktree theo slug', link: '/concepts/worktree-per-slug' },
         { text: 'Base ref, hotfix base, port block', link: '/concepts/base-ref-and-ports' },
         { text: 'Knowledge store và docs/', link: '/concepts/knowledge-store' },
-        { text: 'Gate fail-open', link: '/concepts/gate-fail-open' } ] },
+        { text: 'Gate fail-open', link: '/concepts/gate-fail-open' },
+        { text: 'Chọn model: session, skill, subagent', link: '/concepts/model-routing' } ] },
       { text: 'Workflow', items: [
         { text: 'Chọn workflow', link: '/workflows/' },
         { text: 'cook: xây tính năng', link: '/workflows/cook' },
         { text: 'fix: sửa lỗi chưa rõ nguyên nhân', link: '/workflows/fix' },
         { text: 'hotfix: sửa lỗi trên production', link: '/workflows/hotfix' },
-        { text: 'ship: verify và mở PR', link: '/workflows/ship' } ] },
+        { text: 'ship: verify và mở PR', link: '/workflows/ship' },
+        { text: 'Kiểm thử UI', link: '/workflows/ui-testing' } ] },
+      // Hướng dẫn theo việc cần làm: mỗi trang gom các lệnh của một mảng năng lực, đứng giữa workflow và tra cứu từng lệnh.
+      { text: 'Hướng dẫn', items: [
+        { text: 'Onboard workspace và repo', link: '/guides/onboard-workspace' },
+        { text: 'Đọc dữ liệu thật', link: '/guides/read-real-data' },
+        { text: 'Review và gate', link: '/guides/review-and-gates' },
+        { text: 'Spec, plan và kiểm tra', link: '/guides/spec-and-plan' },
+        { text: 'Release và báo cáo', link: '/guides/release' },
+        { text: 'Knowledge store và config team', link: '/guides/knowledge-and-config' },
+        { text: 'Quan sát và an toàn', link: '/guides/observe-and-safety' } ] },
       { text: 'Tham chiếu', items: [
         { text: 'CLI', link: '/reference/cli/' },
         { text: 'Skill', link: '/reference/skills/' },

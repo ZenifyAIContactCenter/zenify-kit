@@ -25,3 +25,9 @@ func escapeAngle(s string) string {
 func escapeCell(s string) string {
 	return escapeCellReplacer.Replace(s)
 }
+
+// escapePipe escapes only "|", for text that was already angle-escaped
+// (cobra Short after escapeAngleBrackets) or is hand-written markdown.
+func escapePipe(s string) string {
+	return strings.ReplaceAll(s, "|", "\\|")
+}

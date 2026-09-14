@@ -1,0 +1,19 @@
+---
+summary: Xác minh hình dạng và giá trị thật trước khi viết code chạm vào dữ liệu, API, hoặc code có sẵn.
+---
+## Khi nào dùng
+
+Trước khi viết code chạm vào một field DB, một payload API, một message queue, một API thư viện ngoài, một hàm hoặc symbol trong repo, một config key, hoặc một biến môi trường. Skill trả lời câu hỏi "X là gì?" — câu hỏi ngược lại "cái gì phụ thuộc vào X?" là việc của `/znf:scout`.
+
+## Cách hoạt động
+
+1. Skill liệt kê những hình dạng dữ liệu chưa được xác minh trong phiên làm việc này, gồm cả những bộ lọc mà mọi truy vấn ở đó bắt buộc phải mang theo.
+2. Với DB, skill liệt kê tên collection/bảng thật trước, không bao giờ gõ tên từ trí nhớ, rồi đọc một tài liệu/dòng thật để xác nhận field. Với dữ liệu đa tenant hoặc key động, skill lấy mẫu từ hơn một tenant trước khi khái quát hoá.
+3. Với field mà code sẽ rẽ nhánh theo giá trị, skill không dừng ở "field có tồn tại" — nó truy vấn mọi giá trị thực tế đang có, vì một giá trị mà code mới chưa có nhánh xử lý là một lỗi đã có sẵn.
+4. Nếu thay đổi chạm vào một truy vấn DB, skill gọi luôn `/znf:explain-plan` để xem sớm kế hoạch thực thi của truy vấn đó.
+5. Với API, queue, thư viện ngoài, hoặc code trong repo, skill đọc định nghĩa thật — route ghi response, nơi publish message, type cài đặt của thư viện, hoặc thân hàm — chứ không suy đoán từ nơi gọi.
+6. Việc xác minh luôn làm trực tiếp trong phiên, không giao cho subagent khác làm hộ.
+
+## Lưu ý
+
+Tài liệu, README, hay CLAUDE.md không phải là sự thật nền — chúng có thể đã lỗi thời mà không báo hiệu gì. Luôn xác minh trên dữ liệu sống, tiến trình đang chạy, hoặc định nghĩa trong code.

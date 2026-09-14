@@ -2,42 +2,51 @@
 title: zenify
 ---
 
-## zenify
+[Lệnh CLI](/reference/cli/) / `zenify`
 
-zenify — bộ công cụ workspace dùng chung của team
+# `zenify`
 
-### Options
+Binary dòng lệnh của ZenifyKit, chứa mọi lệnh workspace và plugin skill đi kèm.
 
+## Cú pháp
+
+```text
+zenify
 ```
-  -h, --help   help for zenify
-```
 
-### SEE ALSO
+## Tổng quan
 
-* [zenify analyze](./zenify_analyze)	 - Phân tích cơ học cặp spec+plan (coverage, marker, cấu trúc Brief) — advisory, fail-open
-* [zenify config](./zenify_config)	 - phân phối config workspace-level từ docs/.config (dry-run mặc định)
-* [zenify db-perf](./zenify_db-perf)	 - Quét tĩnh một diff tìm anti-pattern query (hai tầng) — advisory, fail-open
-* [zenify db-read](./zenify_db-read)	 - Đọc chỉ-đọc các database dùng chung của zenify (không bao giờ ghi, không in secret)
-* [zenify docs](./zenify_docs)	 - quản lý docs layer (agent-managed, dev read-only)
-* [zenify doctor](./zenify_doctor)	 - Kiểm tra sức khoẻ môi trường, chỉ-đọc (không sửa gì, không in secret; --fix áp tập sửa an toàn)
-* [zenify down](./zenify_down)	 - Offboard: gỡ znf global hooks, .worktrees/ + .wt/ excludes, và owned settings skeletons (preview mặc định; --apply để thực thi)
-* [zenify e2e](./zenify_e2e)	 - E2E functional (Playwright journey thật trong Docker) + lint chống test hợt
-* [zenify gate](./zenify_gate)	 - trợ giúp gate (contract sweep)
-* [zenify guard](./zenify_guard)	 - Quản lý git-guard hook
-* [zenify hotfix](./zenify_hotfix)	 - trợ giúp hotfix
-* [zenify migrate](./zenify_migrate)	 - gom repo vào một thư mục con (dry-run mặc định; move-and-repair: gom được cả repo dirty và repo còn worktree)
-* [zenify observe](./zenify_observe)	 - Observability: đếm/nhắc fan-out subagent
-* [zenify release-note](./zenify_release-note)	 - ghi note-commit release (trailer risk-metadata) — dùng bởi /ship
-* [zenify release-report](./zenify_release-report)	 - sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R\<N\>.md)
-* [zenify review-log](./zenify_review-log)	 - Xem learning-capture log của znf:review (summary local; --json cho M6)
-* [zenify rules](./zenify_rules)	 - quản lý và kiểm rule team (F1/F2/F3)
-* [zenify secret-scan](./zenify_secret-scan)	 - Quét secret trong cây thư mục (dùng cho CI + kiểm tra tay)
-* [zenify skills](./zenify_skills)	 - quản lý plugin skill znf
-* [zenify spec](./zenify_spec)	 - soi vòng đời spec (planned/built) và registry contract từ store spec
-* [zenify standards](./zenify_standards)	 - Kiểm test-traceability — mỗi FR có một test thật trên đĩa (advisory, fail-open)
-* [zenify up](./zenify_up)	 - Onboard workspace: wizard tương tác trong terminal, còn không thì in kế hoạch dry-run (--apply để chạy headless)
-* [zenify update](./zenify_update)	 - Nâng zenify lên bản release mới nhất (brew / scoop / install script)
-* [zenify version](./zenify_version)	 - In version của zenify
-* [zenify visual](./zenify_visual)	 - Visual-regression golden-diff (Playwright chạy trong Docker, đã ghim phiên bản)
-* [zenify wt](./zenify_wt)	 - Quản lý git worktree + môi trường dev: tạo, liệt kê, gỡ, dọn worktree theo slug
+`zenify` là binary duy nhất bạn cài. Nó mang các lệnh quản lý workspace, worktree, gate và tài liệu, đồng thời chứa plugin skill `znf:*` cho Claude Code. Cài đặt và bước đầu xem [Cài đặt](/getting-started/install) và [Bắt đầu nhanh](/getting-started/quickstart).
 
+Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có ghi "dry-run mặc định" chỉ in kế hoạch cho tới khi bạn thêm `--apply`.
+
+## Lệnh liên quan
+
+- [zenify analyze](./zenify_analyze): Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief.
+- [zenify config](./zenify_config): Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều.
+- [zenify db-perf](./zenify_db-perf): Quét tĩnh một diff để tìm anti-pattern query DB, chia finding thành BLOCKING và ADVISORY.
+- [zenify db-read](./zenify_db-read): Đọc database dùng chung ở chế độ chỉ đọc, không bao giờ ghi và không in secret.
+- [zenify docs](./zenify_docs): Nhóm lệnh cho docs layer: đồng bộ knowledge store và sinh trang tham chiếu.
+- [zenify doctor](./zenify_doctor): Kiểm tra sức khỏe môi trường ZenifyKit trên máy và báo từng mục đạt hay hỏng.
+- [zenify down](./zenify_down): Gỡ phần ZenifyKit đã cài vào máy và repo, giữ nguyên code, workspace và knowledge store.
+- [zenify e2e](./zenify_e2e): Nhóm lệnh cho journey E2E: lint chống test hời và chạy journey Playwright thật trong Docker.
+- [zenify gate](./zenify_gate): Nhóm lệnh hỗ trợ contract gate, bước quét cross-repo khi bạn chạm tài nguyên chung.
+- [zenify guard](./zenify_guard): Nhóm lệnh cho git-guard, hook chặn commit, push và merge vào branch deploy.
+- [zenify hotfix](./zenify_hotfix): Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve.
+- [zenify migrate](./zenify_migrate): Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team.
+- [zenify observe](./zenify_observe): Nhóm lệnh theo dõi phiên Claude Code: số lần dispatch subagent và lượng tool output.
+- [zenify release-note](./zenify_release-note): Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau.
+- [zenify release-report](./zenify_release-report): Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace.
+- [zenify review-log](./zenify_review-log): Xem tổng hợp các lần review của `/znf:review` đã ghi lại trên máy bạn.
+- [zenify rules](./zenify_rules): Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc.
+- [zenify secret-scan](./zenify_secret-scan): Quét một cây thư mục để tìm secret bị lộ, dùng trong CI và kiểm tra tay trước khi push.
+- [zenify skills](./zenify_skills): Nhóm lệnh quản lý plugin skill znf và bộ coding skill theo repo.
+- [zenify spec](./zenify_spec): Nhóm lệnh soi vòng đời spec và registry contract, đọc từ knowledge store.
+- [zenify standards](./zenify_standards): Kiểm tra mỗi FR trong spec có một test thật trên đĩa mà plan đã khai.
+- [zenify up](./zenify_up): Onboard máy vào workspace: clone repo, ghi cấu hình, gắn hook và skill, chuẩn bị knowledge store.
+- [zenify update](./zenify_update): Nâng cấp binary ZenifyKit lên bản mới nhất bằng đúng kênh đã cài, hoặc chỉ kiểm tra có bản mới.
+- [zenify version](./zenify_version): In phiên bản binary ZenifyKit đang chạy.
+- [zenify visual](./zenify_visual): Nhóm lệnh visual regression: chụp từng route và so với ảnh baseline đã commit.
+- [zenify wt](./zenify_wt): Nhóm lệnh quản lý worktree theo slug: tạo, liệt kê, gỡ, dọn, kèm port và môi trường dev riêng cho từng task.
+
+<!-- Generated by zenify docs gen: prose from internal/docsgen/catalog, facts from the command tree. -->

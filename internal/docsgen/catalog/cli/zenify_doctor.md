@@ -1,0 +1,29 @@
+---
+summary: Kiểm tra sức khỏe môi trường ZenifyKit trên máy và báo từng mục đạt hay hỏng.
+---
+## Khi nào dùng
+
+Ngay sau `zenify up`, và mỗi khi một skill báo thiếu tool, thiếu secret hoặc Playwright không chạy. Lệnh chỉ đọc, chạy bao nhiêu lần cũng được.
+
+## Kết quả
+
+Mỗi dòng là một mục kiểm tra kèm dấu đạt hoặc hỏng và chi tiết. Các mục gồm phiên bản binary, đăng nhập git và quyền truy cập GitHub, secret trong `settings.local.json`, tool bên ngoài (`git`, `gh`, `mongosh`, `mysql`), Playwright, Docker và plugin skill `znf`. Mục hỏng in luôn chi tiết để bạn sửa.
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--exit-on-fail` | Trả mã thoát khác 0 khi có mục hỏng. Dùng trong script và CI. |
+| `--fix` | Tự sửa các mục an toàn rồi kiểm tra lại. Những mục cần bạn tự làm vẫn in hướng dẫn. |
+| `--json` | In kết quả dạng JSON. |
+
+## Ví dụ
+
+```bash
+zenify doctor
+zenify doctor --fix
+```
+
+## Lưu ý
+
+Secret được đọc từ block `env` của `.claude/settings.local.json` ở workspace, nên phải mở session từ trong workspace. Xem [Bắt đầu nhanh](/getting-started/quickstart) để biết từng mục nghĩa gì.

@@ -49,7 +49,7 @@ func TestGenSkills_PagesAndIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(files["skills/demo.md"])
-	for _, want := range []string{"title: /znf:demo", "`/znf:demo <slug>`", "Chỉ user gọi", "Read Bash"} { //znf:allow-lang
+	for _, want := range []string{"title: /znf:demo", "`/znf:demo <slug>`", "Chỉ bạn gõ được"} { //znf:allow-lang
 		if !strings.Contains(page, want) {
 			t.Errorf("skills/demo.md missing %q\n%s", want, page)
 		}
@@ -60,8 +60,8 @@ func TestGenSkills_PagesAndIndexes(t *testing.T) {
 	if _, ok := files["skills/_shared.md"]; ok {
 		t.Fatal("_shared is not a skill")
 	}
-	if !strings.Contains(string(files["agents/scout.md"]), "sonnet") {
-		t.Fatal("agent page missing model")
+	if strings.Contains(string(files["agents/scout.md"]), "sonnet") {
+		t.Fatal("agent page must not expose the model: implementation detail")
 	}
 	if !strings.Contains(string(files["skills/index.md"]), "[/znf:demo](./demo)") {
 		t.Fatal("skills index missing row")
@@ -117,8 +117,7 @@ func TestGenSkills_RealEmbeddedTree(t *testing.T) {
 	// one of the generator's own section headers, never a heading pulled
 	// from the source SKILL.md/agent body.
 	allowedHeadings := map[string]bool{
-		"## Cách gọi":       true, //znf:allow-lang
-		"## Tool được phép": true, //znf:allow-lang
+		"## Cách gọi": true, //znf:allow-lang
 	}
 	for rel, content := range files {
 		if rel == "skills/index.md" || rel == "agents/index.md" {
@@ -127,8 +126,10 @@ func TestGenSkills_RealEmbeddedTree(t *testing.T) {
 		if len(content) == 0 {
 			t.Fatalf("%s is empty", rel)
 		}
+		// Headings the catalog fragment itself carries are the generator's own.
+		frag, _ := LoadFragment(strings.TrimSuffix(rel, ".md"))
 		for _, line := range strings.Split(string(content), "\n") {
-			if strings.HasPrefix(line, "## ") && !allowedHeadings[line] {
+			if strings.HasPrefix(line, "## ") && !allowedHeadings[line] && !strings.Contains("\n"+frag.Body+"\n", "\n"+line+"\n") {
 				t.Fatalf("%s: unexpected heading %q — looks like a leaked body heading", rel, line)
 			}
 		}

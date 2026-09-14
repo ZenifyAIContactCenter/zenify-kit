@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsgen"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 
 	"github.com/spf13/cobra"
 )
@@ -68,4 +72,51 @@ func anyHidden(c *cobra.Command) bool {
 		}
 	}
 	return false
+}
+
+// TestDocsGen_CatalogCoversEveryPage keeps the hand-written reference prose
+// in step with the binary: every visible command, skill and agent needs a
+// catalog fragment, and a fragment that writes its own flags table must
+// mention every flag the command declares.
+func TestDocsGen_CatalogCoversEveryPage(t *testing.T) {
+	var missing, uncovered []string
+	root := NewRootCmd()
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if !c.Hidden && (c == root || c.IsAvailableCommand()) {
+			rel := "cli/" + strings.ReplaceAll(c.CommandPath(), " ", "_")
+			frag, ok := docsgen.LoadFragment(rel)
+			if !ok {
+				missing = append(missing, rel)
+			} else if frag.HasSection("Cờ") { //znf:allow-lang
+				for _, f := range docsgen.FlagNames(c) {
+					if !strings.Contains(frag.Body, "`--"+f+"`") {
+						uncovered = append(uncovered, rel+" --"+f)
+					}
+				}
+			}
+			for _, s := range c.Commands() {
+				walk(s)
+			}
+		}
+	}
+	walk(root)
+	skills, err := docsgen.GenSkills(plugin.ZnfFS(), plugin.CodingFS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rel := range skills {
+		rel = strings.TrimSuffix(rel, ".md")
+		if _, ok := docsgen.LoadFragment(rel); !ok {
+			missing = append(missing, rel)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(uncovered)
+	if len(missing) > 0 {
+		t.Errorf("catalog fragment missing for %d page(s):\n  %s", len(missing), strings.Join(missing, "\n  "))
+	}
+	if len(uncovered) > 0 {
+		t.Errorf("hand-written flag table misses %d flag(s):\n  %s", len(uncovered), strings.Join(uncovered, "\n  "))
+	}
 }

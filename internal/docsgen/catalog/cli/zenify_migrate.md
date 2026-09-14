@@ -1,0 +1,29 @@
+---
+summary: Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team.
+---
+## Khi nào dùng
+
+Một lần, khi workspace cũ có repo nằm thẳng ở gốc và bạn muốn chuyển sang layout `repos/<tên>` mà `zenify up` dùng.
+
+## Kết quả
+
+Mặc định lệnh chỉ liệt kê từng repo với hành động `Move`, `Refuse` hoặc `Skip` và lý do, rồi in số repo sẽ chuyển. Với `--apply`, lệnh di chuyển repo, sửa lại liên kết worktree, trỏ lại symlink `node_modules` và cập nhật đường dẫn trong manifest workspace. Cuối cùng lệnh nhắc bạn khởi động lại dev server đang chạy vì đường dẫn đã đổi.
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--apply` | Thực hiện di chuyển. Không có cờ này lệnh chỉ in kế hoạch. |
+| `--to` | Tên thư mục đích, mặc định `repos`. |
+| `--workspace` | Thư mục workspace, mặc định là thư mục hiện tại. |
+
+## Ví dụ
+
+```bash
+zenify migrate
+zenify migrate --apply
+```
+
+## Lưu ý
+
+Repo còn thay đổi chưa commit hoặc có worktree đang mở bị đánh `Refuse`. Commit hoặc dọn xong rồi chạy lại.

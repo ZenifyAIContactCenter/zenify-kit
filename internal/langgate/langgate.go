@@ -35,6 +35,14 @@ func Scan(roots []string, includeGo bool) ([]Violation, error) {
 				return err
 			}
 			if d.IsDir() {
+				// internal/docsgen/catalog holds hand-written Vietnamese prose
+				// that is the SOURCE for the human-facing docs website, not an
+				// agent-read skill/rule. It is embedded here only because
+				// //go:embed needs it beside the package. Out of langgate scope,
+				// same as website/.
+				if d.Name() == "catalog" && strings.HasSuffix(filepath.ToSlash(filepath.Dir(path)), "docsgen") {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			switch strings.ToLower(filepath.Ext(path)) {

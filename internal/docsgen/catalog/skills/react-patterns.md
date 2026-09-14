@@ -1,0 +1,18 @@
+---
+summary: Quy ước viết frontend React (Vite/TanStack) — state, bảng phân trang, form, axios interceptor, i18n.
+---
+## Khi nào dùng
+
+Khi viết hoặc sửa code frontend React trên nền Vite/TanStack. Cần cài đặt trước bằng lệnh cài skill coding.
+
+## Cách hoạt động
+
+1. Skill phân biệt state UI cục bộ (tab đang mở, form đang nhập) với state phía server lấy qua query hook — không nên chép dữ liệu query sang `useState` để dễ sửa, vì đó tạo ra một nguồn sự thật thứ hai sẽ lệch pha ngay khi query lấy lại dữ liệu.
+2. Skill nêu một bẫy hay gặp ở bảng phân trang: bảng phải render dựa trên tổng số bản ghi thật, không dựa trên độ dài mảng dữ liệu hiện có — bỏ trống prop tổng số khiến cả nhánh có dữ liệu lẫn nhánh rỗng đều không hiện, bảng chỉ còn tiêu đề mà không có dòng nào, không lỗi console nào báo hiệu.
+3. Skill hướng dẫn xây form trên một instance thư viện form kèm schema xác thực, không dùng `useState` rời cho từng field, để lỗi và giá trị mặc định cùng nằm ở một nguồn.
+4. Skill nhắc timeout mặc định của một axios instance dùng chung phải được miễn trừ cho request tải file dạng blob hay arraybuffer, vì một lượt xuất file lớn hợp lệ vẫn chạy lâu hơn ngưỡng timeout ngắn dùng để bắt request bị treo.
+5. Skill nhắc khi hệ thống i18n dùng cú pháp ICU, việc chèn biến dùng ngoặc đơn `{ten}` chứ không phải ngoặc kép `{{ten}}` — dùng nhầm ngoặc kép không báo lỗi, chỉ hiện nguyên văn ký tự đó ra màn hình.
+
+## Lưu ý
+
+Với một cờ tính năng đọc từ biến môi trường lúc build, việc bật/tắt chỉ có hiệu lực sau khi build lại và deploy lại môi trường đó, không phải một công tắc bật ngay được. Hai skill `nestjs-patterns` và `express-service-patterns` mô tả phía backend của các hợp đồng mà một app React tiêu thụ.

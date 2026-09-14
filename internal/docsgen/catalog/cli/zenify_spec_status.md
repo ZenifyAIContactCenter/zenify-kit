@@ -1,0 +1,35 @@
+---
+summary: Liệt kê trạng thái vòng đời của từng spec trong knowledge store.
+---
+## Khi nào dùng
+
+Khi bạn muốn biết spec nào đã ship, spec nào còn đang làm, spec nào đã bị thay thế.
+
+## Kết quả
+
+Một dòng mỗi spec gồm trạng thái, slug và đường dẫn. Các trạng thái:
+
+| Trạng thái | Nghĩa |
+|---|---|
+| `planned` | Có spec, chưa có plan |
+| `in-progress` | Có plan, chưa có thay đổi nào ship |
+| `built` | Một commit ghi chú release hoặc trailer `Spec:` trỏ về spec |
+| `built?` | Chỉ khớp theo slug, chưa chắc chắn |
+| `superseded` | Một spec khác khai `_Supersedes:` trỏ về spec này |
+| `unknown` | Không đánh giá được qua git |
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--active` | Ẩn spec đã superseded. |
+| `--base` | Ref cơ sở dùng chung cho mọi repo. Mặc định `baseRef` của từng repo. |
+| `--no-fetch` | Không fetch, dùng ref local. |
+| `--json` | In JSON thay cho bảng. |
+| `--workspace` | Thư mục workspace. Mặc định thư mục hiện tại. |
+
+## Ví dụ
+
+```bash
+zenify spec status --active
+```
