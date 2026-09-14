@@ -267,6 +267,19 @@ func RunNew(o NewOptions) error {
 		_ = os.WriteFile(ptr, []byte(o.Slug+"\n"), 0o600)
 	}
 
+	// Wire this worktree at its peers (FR-7.1), then bring peers' same-slug
+	// worktrees that point at this repo up to date (FR-7.2). Both fail-open.
+	if len(cfg.Peers) > 0 {
+		if e := RunWire(WireOptions{RepoRoot: o.RepoRoot, WorktreePath: path, Runner: r, Stdout: o.Stderr, Stderr: o.Stderr}); e != nil {
+			_, _ = fmt.Fprintf(o.Stderr, "wt: wire skipped (%v)\n", e)
+		}
+	}
+	if ws, ok := FindWorkspaceRoot(o.RepoRoot); ok {
+		RewirePeers(ws, filepath.Base(o.RepoRoot), o.Slug, r, o.Stderr, o.Stderr)
+	} else {
+		_, _ = fmt.Fprintln(o.Stderr, "wt: no workspace marker above this repo — peers not rewired")
+	}
+
 	_, _ = fmt.Fprintf(o.Stderr, "wt: %s → %s\n", o.Slug, path)
 	_, _ = fmt.Fprintf(o.Stderr, "wt: branch %s, %s=%d, deps=%s\n", branch, cfg.PortEnv, port, deps)
 	return nil

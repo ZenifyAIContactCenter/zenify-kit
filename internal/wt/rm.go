@@ -126,6 +126,12 @@ func RunRm(o RmOptions) error {
 	}
 
 	_, _ = fmt.Fprintf(o.Stderr, "wt: removed %q\n", o.Slug)
+
+	// Peers pointing at this repo fall back to their baseline now that the
+	// worktree is gone (RunWire finds no same-slug worktree here).
+	if ws, ok := FindWorkspaceRoot(o.RepoRoot); ok {
+		RewirePeers(ws, filepath.Base(o.RepoRoot), o.Slug, r, o.Stderr, o.Stderr)
+	}
 	return nil
 }
 
