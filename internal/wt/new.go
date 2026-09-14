@@ -104,8 +104,20 @@ func RunNew(o NewOptions) error {
 	// Auto-fetch so origin/<base> reflects the remote before we resolve, guard,
 	// and fast-forward against it. Warn on failure (e.g. offline) but never
 	// abort — the base-ref check below still catches a genuinely missing base.
+	fetched := true
 	if _, err := r.Run(o.RepoRoot, "fetch", "origin", "--quiet"); err != nil {
+		fetched = false
 		_, _ = fmt.Fprintf(o.Stderr, "wt: fetch failed (%v) — continuing with local refs; base may be stale\n", err)
+	}
+	// Starting a task is the natural moment to clear finished ones in this repo:
+	// origin is fresh (paid for above), and sweep only ever touches merged+clean
+	// worktrees and stale state entries. Fail-open — a sweep problem must not
+	// block the new task. Quiet: no output when nothing is removable.
+	if fetched {
+		if e := RunSweep(SweepOptions{RepoRoot: o.RepoRoot, Host: o.Host, Pid: o.Pid, Now: o.Now, Runner: r,
+			Quiet: true, Stdout: o.Stderr, Stderr: o.Stderr}); e != nil {
+			_, _ = fmt.Fprintf(o.Stderr, "wt: sweep skipped (%v)\n", e)
+		}
 	}
 
 	// Duplicate checks (keyed on the exact slug/branch).

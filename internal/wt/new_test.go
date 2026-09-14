@@ -1,6 +1,7 @@
 package wt
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"os"
@@ -108,6 +109,58 @@ func TestRunNew_GuardTier2BlocksSecondUnmergedTask(t *testing.T) {
 	o := baseOpts(root, g)
 	if err := RunNew(o); err == nil || !strings.Contains(err.Error(), "--another") {
 		t.Fatalf("tier-2 guard must block a second unmerged task, got %v", err)
+	}
+}
+
+// FR-3.1: after a successful fetch, wt new sweeps merged+clean worktrees in
+// this repo before creating the new one. Uses a real dir for the merged task
+// so the sweep's RunRm path runs; the stub answers the git calls.
+func TestRunNew_AutoSweepsMergedTasksAfterFetch(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	seedCfg(t, root)
+	done := filepath.Join(root, ".worktrees", "done")
+	if err := os.MkdirAll(done, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	g := &gitStub{out: map[string]string{
+		root + "|worktree list --porcelain":         "worktree " + root + "\n\nworktree " + done + "\n\n",
+		done + "|config --get wt.slug":              "done",
+		done + "|symbolic-ref --quiet --short HEAD": "namph/feat/done",
+		done + "|config --get wt.port":              "3207",
+		done + "|status --porcelain":                "",
+		root + "|diff origin/main..namph/feat/done": "",
+	}, err: map[string]error{
+		root + "|merge-base --is-ancestor namph/feat/done origin/main":                                                   errors.New("x"),
+		root + "|worktree add -q " + filepath.Join(root, ".worktrees", "my-task") + " -b namph/feat/my-task origin/main": errors.New("stop here"),
+	}}
+	var errb bytes.Buffer
+	o := baseOpts(root, g)
+	o.Stderr = &errb
+	_ = RunNew(o) // fails at worktree add by design; the sweep ran before it
+	if !seenContains(g, "worktree remove --force "+done) {
+		t.Fatalf("merged task must be swept before creating the new one; seen %v", g.seen)
+	}
+	if !strings.Contains(errb.String(), "wt: swept 1, left 0") {
+		t.Fatalf("expected sweep summary on stderr, got %q", errb.String())
+	}
+}
+
+// FR-3.1/SC-5: a failed fetch skips the sweep entirely.
+func TestRunNew_FetchFailureSkipsAutoSweep(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	seedCfg(t, root)
+	g := &gitStub{out: map[string]string{}, err: map[string]error{root + "|fetch origin --quiet": errors.New("offline")}}
+	var errb bytes.Buffer
+	o := baseOpts(root, g)
+	o.Stderr = &errb
+	_ = RunNew(o)
+	if seenContains(g, "worktree list --porcelain") {
+		t.Fatal("sweep must not run when fetch failed")
+	}
+	if !strings.Contains(errb.String(), "fetch failed") {
+		t.Fatalf("expected fetch warning, got %q", errb.String())
 	}
 }
 
