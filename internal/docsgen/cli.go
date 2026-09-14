@@ -16,6 +16,7 @@ import (
 // "Lệnh nội bộ (hook)" so the reader knows they exist (FR-2.1). //znf:allow-lang
 func GenCLI(root *cobra.Command) (Files, error) {
 	root.DisableAutoGenTag = true
+	escapeAngleBrackets(root)
 	tmp, err := os.MkdirTemp("", "zenify-docsgen-")
 	if err != nil {
 		return nil, err
@@ -81,6 +82,19 @@ func cliIndex(root *cobra.Command) []byte {
 		}
 	}
 	return []byte(b.String())
+}
+
+// escapeAngleBrackets backslash-escapes literal "<"/">" in Short/Long text
+// (e.g. "R<N>.md", "--port <key>") so markdown-it does not parse them as a
+// bare HTML tag — Vue's compiler then fails the whole build on an unclosed
+// element. CommonMark treats "\<" as a literal "<", so this only changes how
+// the character round-trips through markdown, not what the reader sees.
+func escapeAngleBrackets(root *cobra.Command) {
+	replacer := strings.NewReplacer("<", "\\<", ">", "\\>")
+	walkCommands(root, func(c *cobra.Command) {
+		c.Short = replacer.Replace(c.Short)
+		c.Long = replacer.Replace(c.Long)
+	})
 }
 
 func walkCommands(c *cobra.Command, fn func(*cobra.Command)) {

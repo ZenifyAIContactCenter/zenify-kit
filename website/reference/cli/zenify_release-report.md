@@ -4,7 +4,7 @@ title: zenify release-report
 
 ## zenify release-report
 
-sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R<N>.md)
+sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R\<N\>.md)
 
 ```
 zenify release-report [N] [flags]

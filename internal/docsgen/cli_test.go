@@ -68,6 +68,25 @@ func TestGenCLI_IndexListsHidden(t *testing.T) {
 	}
 }
 
+func TestGenCLI_EscapesAngleBrackets(t *testing.T) {
+	root := &cobra.Command{Use: "zenify", Short: "root"}
+	c := &cobra.Command{Use: "gamma", Short: "ghi docs/releases/R<N>.md", Run: func(*cobra.Command, []string) {}}
+	root.AddCommand(c)
+	files, err := GenCLI(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"cli/zenify_gamma.md", "cli/index.md"} {
+		page := string(files[path])
+		if strings.Contains(page, "R<N>.md") {
+			t.Fatalf("%s: unescaped angle bracket would break the Vue markdown compiler: %q", path, page)
+		}
+		if !strings.Contains(page, `R\<N\>.md`) {
+			t.Fatalf("%s: expected backslash-escaped angle brackets, got: %q", path, page)
+		}
+	}
+}
+
 func TestWriteAndCheck(t *testing.T) {
 	dir := t.TempDir()
 	files, _ := GenCLI(fixtureRoot())

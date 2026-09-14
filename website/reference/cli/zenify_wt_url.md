@@ -4,7 +4,7 @@ title: zenify wt url
 
 ## zenify wt url
 
-In http://localhost:<port> của một slug
+In http://localhost:\<port\> của một slug
 
 ```
 zenify wt url <slug> [flags]

@@ -4,7 +4,7 @@ title: zenify wt config
 
 ## zenify wt config
 
-Hiện worktree.json đã resolve (hoặc --port <key> để xem port đã cấp)
+Hiện worktree.json đã resolve (hoặc --port \<key\> để xem port đã cấp)
 
 ```
 zenify wt config [flags]

@@ -32,7 +32,7 @@ Trang này và mọi trang con được sinh bởi `zenify docs gen` từ chính
 | [zenify observe statusline](./zenify_observe_statusline) | HUD statusline: hiện model · ctx% · ⟳dispatch · ↓tool-output · $cost |
 | [zenify observe statusline install](./zenify_observe_statusline_install) | Ghi key statusLine → `zenify observe statusline` vào ~/.claude/settings.json (chỉ khi trống) |
 | [zenify release-note](./zenify_release-note) | ghi note-commit release (trailer risk-metadata) — dùng bởi /ship |
-| [zenify release-report](./zenify_release-report) | sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R<N>.md) |
+| [zenify release-report](./zenify_release-report) | sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R\<N\>.md) |
 | [zenify review-log](./zenify_review-log) | Xem learning-capture log của znf:review (summary local; --json cho M6) |
 | [zenify rules](./zenify_rules) | quản lý và kiểm rule team (F1/F2/F3) |
 | [zenify rules lint](./zenify_rules_lint) | chặn tiếng Việt trong file agent-read (skill .md, Go, rules) |
@@ -50,14 +50,14 @@ Trang này và mọi trang con được sinh bởi `zenify docs gen` từ chính
 | [zenify visual](./zenify_visual) | Visual-regression golden-diff (Playwright chạy trong Docker, đã ghim phiên bản) |
 | [zenify visual check](./zenify_visual_check) | So từng route với baseline; --update để chụp lại baseline |
 | [zenify wt](./zenify_wt) | Quản lý git worktree + môi trường dev: tạo, liệt kê, gỡ, dọn worktree theo slug |
-| [zenify wt config](./zenify_wt_config) | Hiện worktree.json đã resolve (hoặc --port <key> để xem port đã cấp) |
+| [zenify wt config](./zenify_wt_config) | Hiện worktree.json đã resolve (hoặc --port \<key\> để xem port đã cấp) |
 | [zenify wt ls](./zenify_wt_ls) | Liệt kê worktree trong repo này (git ⋈ state), kèm trạng thái running/merged |
 | [zenify wt new](./zenify_wt_new) | Tạo worktree: branch + port + env đã seed + deps |
 | [zenify wt path](./zenify_wt_path) | In đường dẫn tuyệt đối của worktree theo slug |
 | [zenify wt promote](./zenify_wt_promote) | Chuyển node_modules symlink của worktree thành bản copy CoW riêng |
 | [zenify wt rm](./zenify_wt_rm) | Gỡ một worktree (từ chối worktree dirty/detached/chưa merge nếu không có --force) |
 | [zenify wt sweep](./zenify_wt_sweep) | Dọn mọi worktree đã merge và sạch trong repo này (hoặc cả workspace với --all) |
-| [zenify wt url](./zenify_wt_url) | In http://localhost:<port> của một slug |
+| [zenify wt url](./zenify_wt_url) | In http://localhost:\<port\> của một slug |
 | [zenify wt wire](./zenify_wt_wire) | Trỏ file env của worktree này sang các peer service đang được sửa |
 
 ## Lệnh nội bộ (hook)

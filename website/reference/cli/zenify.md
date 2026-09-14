@@ -28,7 +28,7 @@ zenify — bộ công cụ workspace dùng chung của team
 * [zenify migrate](./zenify_migrate)	 - gom repo vào một thư mục con (dry-run mặc định; move-and-repair: gom được cả repo dirty và repo còn worktree)
 * [zenify observe](./zenify_observe)	 - Observability: đếm/nhắc fan-out subagent
 * [zenify release-note](./zenify_release-note)	 - ghi note-commit release (trailer risk-metadata) — dùng bởi /ship
-* [zenify release-report](./zenify_release-report)	 - sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R<N>.md)
+* [zenify release-report](./zenify_release-report)	 - sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R\<N\>.md)
 * [zenify review-log](./zenify_review-log)	 - Xem learning-capture log của znf:review (summary local; --json cho M6)
 * [zenify rules](./zenify_rules)	 - quản lý và kiểm rule team (F1/F2/F3)
 * [zenify secret-scan](./zenify_secret-scan)	 - Quét secret trong cây thư mục (dùng cho CI + kiểm tra tay)
