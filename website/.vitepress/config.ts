@@ -1,6 +1,6 @@
 import { withMermaid } from 'vitepress-plugin-mermaid'
 
-// Sidebar chỉ trỏ trang TỒN TẠI (spec FR-3.2). Thứ tự nhóm: Bắt đầu → Khái niệm → Workflow → Năng lực → Tham chiếu.
+// Sidebar chỉ trỏ trang TỒN TẠI (spec FR-3.2). Thứ tự nhóm: Bắt đầu → Khái niệm → Workflow → Sử dụng → Tham chiếu.
 // IA mượn từ Claude Code docs (getting-started → core concepts → phần doing → reference): Khái niệm đứng sớm để định hướng người mới, nhưng gập sẵn nên không đẩy Workflow xuống sâu.
 // withMermaid bọc config để render fence ```mermaid (FR-3.1/FR-3.5)
 export default withMermaid({
@@ -61,12 +61,12 @@ export default withMermaid({
       { text: 'Bắt đầu', link: '/getting-started/install' },
       { text: 'Khái niệm', link: '/concepts/three-layers' },
       { text: 'Workflow', link: '/workflows/' },
-      { text: 'Năng lực', link: '/guides/onboard-workspace' },
+      { text: 'Sử dụng', link: '/guides/onboard-workspace' },
       { text: 'Tham chiếu', link: '/reference/cli/' },
     ],
     sidebar: [
       // Bắt đầu: KHÔNG gập được (không có key collapsed) — luôn mở. Chỉ giữ thứ quan trọng nhất cho người mới.
-      // "Nâng cấp" (ít quan trọng) đẩy xuống Năng lực. Không kéo "Ba lớp" lên đây: trang "ZenifyKit là gì" đã brief qua ba lớp rồi.
+      // "Nâng cấp" (ít quan trọng) đẩy xuống nhóm Sử dụng. Không kéo "Ba lớp" lên đây: trang "ZenifyKit là gì" đã brief qua ba lớp rồi.
       { text: 'Bắt đầu', items: [
         { text: 'ZenifyKit là gì', link: '/' },
         { text: 'Cài đặt', link: '/getting-started/install' },
@@ -87,8 +87,8 @@ export default withMermaid({
         { text: 'fix: sửa lỗi chưa rõ nguyên nhân', link: '/workflows/fix' },
         { text: 'hotfix: sửa lỗi trên production', link: '/workflows/hotfix' },
         { text: 'ship: verify và mở PR', link: '/workflows/ship' } ] },
-      // Năng lực: how-to theo mảng năng lực của kit; "Kiểm thử UI" là how-to (không phải skill) nên nằm đây, không nằm cùng 4 skill.
-      { text: 'Năng lực', collapsed: false, items: [
+      // Sử dụng: how-to theo mảng năng lực của kit + bảo trì (nâng cấp); "Kiểm thử UI" là how-to (không phải skill) nên nằm đây, không nằm cùng 4 skill.
+      { text: 'Sử dụng', collapsed: false, items: [
         { text: 'Onboard workspace và repo', link: '/guides/onboard-workspace' },
         { text: 'Đọc dữ liệu thật', link: '/guides/read-real-data' },
         { text: 'Review và gate', link: '/guides/review-and-gates' },
