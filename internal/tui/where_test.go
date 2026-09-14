@@ -62,7 +62,7 @@ func TestRunWhere_PointerDefaultsToExisting(t *testing.T) {
 }
 
 func TestRunWhere_DefaultFailsValidation(t *testing.T) {
-	wantErr := errors.New("thư mục không rỗng")
+	wantErr := errors.New("thư mục không rỗng") //znf:allow-lang
 	res, err := RunWhere(WhereConfig{
 		Cwd: "/tmp", OSDefault: "/x",
 		Validate: func(d string) error {

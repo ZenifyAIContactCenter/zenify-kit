@@ -71,7 +71,7 @@ func newVisualCmd() *cobra.Command {
 	var update bool
 	c := &cobra.Command{
 		Use:   "visual",
-		Short: "Visual-regression golden-diff (Playwright trong Docker pinned)", //znf:allow-lang
+		Short: "Visual-regression golden-diff (Playwright chạy trong Docker, đã ghim phiên bản)", //znf:allow-lang
 	}
 	check := &cobra.Command{
 		Use:   "check",

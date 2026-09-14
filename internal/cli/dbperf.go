@@ -51,7 +51,7 @@ func newDbPerfCmd() *cobra.Command {
 	var asJSON bool
 	c := &cobra.Command{
 		Use:   "db-perf",
-		Short: "Statically scan a diff for query anti-patterns (two-tier) — advisory core, fail-open",
+		Short: "Quét tĩnh một diff tìm anti-pattern query (hai tầng) — advisory, fail-open", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg := loadDbPerfConfig(cmd.ErrOrStderr())

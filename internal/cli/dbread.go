@@ -13,7 +13,7 @@ import (
 func newDBReadCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "db-read <collections|tables|doc|count|eval|sql> [arg]",
-		Short:         "Read-only inspection of the zenify shared databases",
+		Short:         "Đọc chỉ-đọc các database dùng chung của zenify (không bao giờ ghi, không in secret)", //znf:allow-lang
 		Args:          cobra.RangeArgs(1, 2),
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -73,7 +73,7 @@ func newAnalyzeCmd() *cobra.Command {
 	var asJSON bool
 	c := &cobra.Command{
 		Use:   "analyze",
-		Short: "Mechanically analyze a spec+plan pair (coverage, markers, Brief structure) — advisory, fail-open",
+		Short: "Phân tích cơ học cặp spec+plan (coverage, marker, cấu trúc Brief) — advisory, fail-open", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runAnalyze(specPath, planPath, asJSON, os.ReadFile, cmd.OutOrStdout(), cmd.ErrOrStderr())

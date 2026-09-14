@@ -14,7 +14,7 @@ var defaultChecksOnce sync.Once
 func NewRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "zenify",
-		Short:         "zenify — portable workspace toolkit",
+		Short:         "zenify — bộ công cụ workspace dùng chung của team", //znf:allow-lang
 		Version:       version.Current(),
 		SilenceUsage:  true,
 		SilenceErrors: true,

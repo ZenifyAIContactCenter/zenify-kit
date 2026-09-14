@@ -93,24 +93,24 @@ func runObserveStatusline(
 	return 0
 }
 
-const statuslineLong = `Render a one-line Claude Code statusline (HUD) from the stdin JSON plus this
-kit's per-session observe state (dispatch count from ` + "`zenify observe count`" + ` and
-tool-output volume from ` + "`zenify observe meter`" + `).
-
-Wire it up in your settings.json (statusLine is a settings.json key — a plugin
-cannot ship one, and only ONE statusline is allowed, so this replaces any
-existing one):
-
-  "statusLine": { "type": "command", "command": "zenify observe statusline" }
-
-Segments (each hidden when absent): model · ctx% · ⟳dispatches · ↓tool-output/calls · $cost.
-
---segment renders ONLY this kit's own two segments (⟳dispatches · ↓tool-output)
-and drops model/ctx/cost. Use it when you already have a statusline you like:
-keep your script, pipe its same stdin JSON to this, and append the output — e.g.
-
-  seg=$(printf '%s' "$input" | zenify observe statusline --segment)
-  [ -n "$seg" ] && line2+="  |  $seg"`
+const statuslineLong = "Vẽ một dòng statusline (HUD) cho Claude Code từ JSON stdin cộng state\n" + //znf:allow-lang
+	"observe của kit theo phiên (dispatch count từ " + "`zenify observe count`" + " và\n" + //znf:allow-lang
+	"tool-output volume từ " + "`zenify observe meter`" + ").\n" + //znf:allow-lang
+	"\n" +
+	"Đấu nối trong settings.json (statusLine là một key trong settings.json — plugin\n" + //znf:allow-lang
+	"không tự khai được key này, và chỉ được phép MỘT statusline, nên cái này sẽ thay\n" + //znf:allow-lang
+	"statusline hiện có):\n" + //znf:allow-lang
+	"\n" +
+	`  "statusLine": { "type": "command", "command": "zenify observe statusline" }` + "\n" +
+	"\n" +
+	"Segment (ẩn khi trống): model · ctx% · ⟳dispatches · ↓tool-output/calls · $cost.\n" + //znf:allow-lang
+	"\n" +
+	"--segment CHỈ render hai segment riêng của kit (⟳dispatches · ↓tool-output)\n" + //znf:allow-lang
+	"và bỏ model/ctx/cost. Dùng khi bạn đã có sẵn statusline ưng ý: giữ nguyên\n" + //znf:allow-lang
+	"script của bạn, pipe cùng JSON stdin vào đây, rồi nối output vào — ví dụ:\n" + //znf:allow-lang
+	"\n" +
+	"  seg=$(printf '%s' \"$input\" | zenify observe statusline --segment)\n" +
+	`  [ -n "$seg" ] && line2+="  |  $seg"`
 
 // ensureStatusline merges the kit's statusLine command into settings.json JSON.
 // It NEVER clobbers a statusline the user already set unless force is true — the
@@ -205,7 +205,7 @@ func newStatuslineCmd() *cobra.Command {
 	var segmentOnly bool
 	c := &cobra.Command{
 		Use:   "statusline",
-		Short: "Statusline HUD: model · ctx% · ⟳dispatch · ↓tool-output · $cost",
+		Short: "HUD statusline: hiện model · ctx% · ⟳dispatch · ↓tool-output · $cost", //znf:allow-lang
 		Long:  statuslineLong,
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
