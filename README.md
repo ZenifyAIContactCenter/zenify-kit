@@ -83,6 +83,21 @@ whether you already have clones of the team repos to bring in. Later runs of `ze
 `zenify doctor`, `zenify db-read`, `zenify docs sync` and `zenify config` find that workspace
 on their own via `~/.zenify/workspace`.
 
+### Staying current
+
+At session start the kit checks for a newer release (at most once a day) and prints one line
+when it finds one:
+
+```
+zenify: v0.18.0 is available (running 0.17.4) — upgrade: brew upgrade --cask zenify
+```
+
+Run `zenify update` to perform the upgrade for the detected install method (brew cask, scoop,
+or the install script); `zenify update --check` only reports, without upgrading. Set
+`ZENIFY_NO_UPDATE_CHECK=1` to silence the session-start nudge (`zenify update --check` still
+checks on demand), and `ZENIFY_UPDATE_URL` to override the release lookup URL (useful for
+testing against a fork or a staged release).
+
 ## Usage
 
 ```sh
