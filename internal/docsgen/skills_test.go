@@ -117,9 +117,9 @@ func TestGenSkills_RealEmbeddedTree(t *testing.T) {
 	// one of the generator's own section headers, never a heading pulled
 	// from the source SKILL.md/agent body.
 	allowedHeadings := map[string]bool{
-		"## Cách gọi":       true,
-		"## Tool được phép": true,
-		"## Nguồn":          true,
+		"## Cách gọi":       true, //znf:allow-lang
+		"## Tool được phép": true, //znf:allow-lang
+		"## Nguồn":          true, //znf:allow-lang
 	}
 	for rel, content := range files {
 		if rel == "skills/index.md" || rel == "agents/index.md" {
