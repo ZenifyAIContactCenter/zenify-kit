@@ -164,7 +164,8 @@ func loadCache(dir string, now time.Time) (cacheEntry, bool) {
 	if c.Latest == "" {
 		ttl = failTTL
 	}
-	if now.Sub(c.CheckedAt) >= ttl {
+	age := now.Sub(c.CheckedAt)
+	if age < 0 || age >= ttl {
 		return c, false
 	}
 	return c, true

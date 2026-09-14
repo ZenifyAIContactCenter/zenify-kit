@@ -43,11 +43,13 @@ func Detect(exe, goos, home, localAppData string) Method {
 	if exe == "" {
 		return Unknown
 	}
+	home = strings.TrimRight(home, `/\`)
+	localAppData = strings.TrimRight(localAppData, `/\`)
 	for _, seg := range strings.FieldsFunc(exe, isSep) {
 		switch {
 		case seg == "Caskroom" || seg == "Cellar":
 			return Brew
-		case strings.EqualFold(seg, "scoop"):
+		case goos == "windows" && strings.EqualFold(seg, "scoop"):
 			return Scoop
 		}
 	}

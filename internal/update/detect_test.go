@@ -26,6 +26,9 @@ func TestDetect(t *testing.T) {
 		{"unknown empty home", "/.local/bin/zenify", "linux", "", "", Unknown},
 		{"unknown empty lad", `C:\Programs\zenify\zenify.exe`, "windows", `C:\Users\a`, "", Unknown},
 		{"unknown empty exe", "", "darwin", "/Users/a", "", Unknown},
+		{"script unix trailing home sep", "/Users/a/.local/bin/zenify", "darwin", "/Users/a/", "", Script},
+		{"script windows trailing lad sep", `C:\Users\a\AppData\Local\Programs\zenify\zenify.exe`, "windows", `C:\Users\a`, `C:\Users\a\AppData\Local\`, Script},
+		{"scoop segment non-windows is unknown", "/Users/a/scoop/zenify", "darwin", "/Users/a", "", Unknown},
 	}
 	for _, c := range cases {
 		if got := Detect(c.exe, c.goos, c.home, c.lad); got != c.want {

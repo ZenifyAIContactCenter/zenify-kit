@@ -125,6 +125,28 @@ func TestCheck_FreshCacheSkipsNetwork(t *testing.T) {
 	}
 }
 
+// A cache entry stamped in the future (clock skew, or a bogus write) must not
+// be trusted forever: it is treated as stale, one network hit occurs, and the
+// cache is rewritten with the current time.
+func TestCheck_FutureCheckedAtIsStale(t *testing.T) {
+	srv, hits := redirectServer(t, "v9.9.9")
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
+	writeCache(t, dir, cacheEntry{CheckedAt: now.Add(365 * 24 * time.Hour), Latest: "v0.0.1"})
+	opts := Options{Current: "0.17.3", CacheDir: dir, URL: srv.URL, Client: srv.Client(), Now: func() time.Time { return now }}
+	res := Check(opts)
+	if res.Err != nil || !res.Newer || res.Latest != "v9.9.9" {
+		t.Fatalf("got %+v", res)
+	}
+	if *hits != 1 {
+		t.Fatalf("hits = %d, want 1", *hits)
+	}
+	c := readCache(t, dir)
+	if !c.CheckedAt.Equal(now) {
+		t.Fatalf("cache CheckedAt = %v, want %v", c.CheckedAt, now)
+	}
+}
+
 // SC-2 (Force): fresh cache but Force → network.
 func TestCheck_ForceBypassesCache(t *testing.T) {
 	srv, hits := redirectServer(t, "v9.9.9")
