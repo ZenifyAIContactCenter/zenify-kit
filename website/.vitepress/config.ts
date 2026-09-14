@@ -1,7 +1,7 @@
 import { withMermaid } from 'vitepress-plugin-mermaid'
 
-// Sidebar chỉ trỏ trang TỒN TẠI (spec FR-3.2). Thứ tự nhóm: Bắt đầu → Workflow → Năng lực → Khái niệm → Tham chiếu.
-// IA mượn từ Claude Code docs: dẫn bằng phần doing (Workflow + Năng lực), Khái niệm là mục phụ gập sẵn, không chiếm chỗ.
+// Sidebar chỉ trỏ trang TỒN TẠI (spec FR-3.2). Thứ tự nhóm: Bắt đầu → Khái niệm → Workflow → Năng lực → Tham chiếu.
+// IA mượn từ Claude Code docs (getting-started → core concepts → phần doing → reference): Khái niệm đứng sớm để định hướng người mới, nhưng gập sẵn nên không đẩy Workflow xuống sâu.
 // withMermaid bọc config để render fence ```mermaid (FR-3.1/FR-3.5)
 export default withMermaid({
   lang: 'vi-VN',
@@ -59,9 +59,9 @@ export default withMermaid({
     lastUpdated: { text: 'Cập nhật' },
     nav: [
       { text: 'Bắt đầu', link: '/getting-started/install' },
+      { text: 'Khái niệm', link: '/concepts/three-layers' },
       { text: 'Workflow', link: '/workflows/' },
       { text: 'Năng lực', link: '/guides/onboard-workspace' },
-      { text: 'Khái niệm', link: '/concepts/three-layers' },
       { text: 'Tham chiếu', link: '/reference/cli/' },
     ],
     sidebar: [
@@ -70,7 +70,16 @@ export default withMermaid({
         { text: 'Cài đặt', link: '/getting-started/install' },
         { text: 'Bắt đầu nhanh', link: '/getting-started/quickstart' },
         { text: 'Nâng cấp', link: '/getting-started/upgrade' } ] },
-      // Workflow lên ngay sau Bắt đầu: thứ dùng hàng ngày, gọi bằng tên. Chỉ gồm 4 skill + trang chọn.
+      // Khái niệm ở vị trí 2 (như Claude Code docs: getting-started → core concepts) để người mới định hướng sớm; gập sẵn nên chỉ 1 dòng, không đẩy Workflow xuống sâu.
+      { text: 'Khái niệm', collapsed: true, items: [
+        { text: 'Ba lớp: binary, plugin, knowledge store', link: '/concepts/three-layers' },
+        { text: 'Namespace znf:', link: '/concepts/znf-namespace' },
+        { text: 'Worktree theo slug', link: '/concepts/worktree-per-slug' },
+        { text: 'Base ref, hotfix base, port block', link: '/concepts/base-ref-and-ports' },
+        { text: 'Knowledge store và docs/', link: '/concepts/knowledge-store' },
+        { text: 'Gate fail-open', link: '/concepts/gate-fail-open' },
+        { text: 'Chọn model: session, skill, subagent', link: '/concepts/model-routing' } ] },
+      // Workflow: thứ dùng hàng ngày, gọi bằng tên. Chỉ gồm 4 skill + trang chọn.
       { text: 'Workflow', items: [
         { text: 'Chọn workflow', link: '/workflows/' },
         { text: 'cook: xây tính năng', link: '/workflows/cook' },
@@ -87,15 +96,6 @@ export default withMermaid({
         { text: 'Knowledge store và config team', link: '/guides/knowledge-and-config' },
         { text: 'Quan sát và an toàn', link: '/guides/observe-and-safety' },
         { text: 'Kiểm thử UI', link: '/workflows/ui-testing' } ] },
-      // Khái niệm tụt sau phần doing + gập sẵn: mental model đọc khi cần, không chôn Workflow.
-      { text: 'Khái niệm', collapsed: true, items: [
-        { text: 'Ba lớp: binary, plugin, knowledge store', link: '/concepts/three-layers' },
-        { text: 'Namespace znf:', link: '/concepts/znf-namespace' },
-        { text: 'Worktree theo slug', link: '/concepts/worktree-per-slug' },
-        { text: 'Base ref, hotfix base, port block', link: '/concepts/base-ref-and-ports' },
-        { text: 'Knowledge store và docs/', link: '/concepts/knowledge-store' },
-        { text: 'Gate fail-open', link: '/concepts/gate-fail-open' },
-        { text: 'Chọn model: session, skill, subagent', link: '/concepts/model-routing' } ] },
       // Tham chiếu gập sẵn: bảng tra dài, mở khi cần.
       { text: 'Tham chiếu', collapsed: true, items: [
         { text: 'CLI', link: '/reference/cli/' },
