@@ -37,6 +37,12 @@ func znfHookSpecs() []hookSpec {
 
 func (s hookSpec) command() string { return hookMarker + s.ID }
 
+// HookSpec is the exported view of hookSpec for read-only consumers (docsgen).
+type HookSpec = hookSpec
+
+// HookSpecs returns the hooks the kit wires into ~/.claude/settings.json.
+func HookSpecs() []HookSpec { return znfHookSpecs() }
+
 // HookChanges reports what EnsureGlobalHooks did (or would do in dryRun).
 type HookChanges struct {
 	Added     int
