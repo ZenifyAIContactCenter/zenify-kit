@@ -49,3 +49,17 @@ func GuardMutation(current, min string) error {
 	}
 	return nil
 }
+
+// Newer reports whether latest is strictly greater than current (semver).
+// A "dev" build is never behind; either side failing semver parsing yields
+// false, so a garbled release tag can never produce a nudge.
+func Newer(latest, current string) bool {
+	if current == "dev" {
+		return false
+	}
+	latest, current = canonical(latest), canonical(current)
+	if !semver.IsValid(latest) || !semver.IsValid(current) {
+		return false
+	}
+	return semver.Compare(latest, current) > 0
+}

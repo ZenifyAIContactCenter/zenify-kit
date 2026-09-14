@@ -41,3 +41,24 @@ func TestGuardMutation_AllowsCurrent(t *testing.T) {
 		t.Errorf("want nil, got %v", err)
 	}
 }
+
+func TestNewer(t *testing.T) {
+	cases := []struct {
+		latest, current string
+		want            bool
+	}{
+		{"v0.17.6", "0.17.3", true},
+		{"0.17.6", "v0.17.3", true},
+		{"v0.17.3", "0.17.3", false},
+		{"v0.17.9", "0.17.10", false},
+		{"v1.0.0", "dev", false},
+		{"garbage", "0.17.3", false},
+		{"v0.17.6", "garbage", false},
+		{"", "0.17.3", false},
+	}
+	for _, c := range cases {
+		if got := Newer(c.latest, c.current); got != c.want {
+			t.Errorf("Newer(%q, %q) = %v, want %v", c.latest, c.current, got, c.want)
+		}
+	}
+}
