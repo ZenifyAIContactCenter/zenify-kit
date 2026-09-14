@@ -20,11 +20,12 @@ import (
 // the settings.local.json env block) — names and present/absent ONLY. Per
 // FR-041 it never places a credential VALUE into its output. ok = MONGO_URL
 // present (the one key db-read hard-requires); the rest are informational.
-func secretPresenceCheck(getenv func(string) string, settingsPath string) Check {
+func secretPresenceCheck(getenv func(string) string, settingsPath func() string) Check {
 	return Check{
 		Name: "secrets",
 		Run: func() (bool, string) {
-			creds, _ := dbread.LoadCreds(getenv, settingsPath)
+			path := settingsPath()
+			creds, _ := dbread.LoadCreds(getenv, path)
 			keys := []string{"MONGO_URL", "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"}
 			var parts []string
 			for _, k := range keys {
@@ -34,8 +35,12 @@ func secretPresenceCheck(getenv func(string) string, settingsPath string) Check 
 				}
 				parts = append(parts, k+"="+state) // key + state only; NEVER the value
 			}
+			detail := strings.Join(parts, " ")
+			if creds["MONGO_URL"] == "" && path == "" {
+				detail += " — no workspace: run `zenify up` (or cd into the workspace)"
+			}
 			ok := creds["MONGO_URL"] != ""
-			return ok, strings.Join(parts, " ")
+			return ok, detail
 		},
 	}
 }
@@ -178,13 +183,9 @@ func dockerCheckWith(lookPath func(string) (string, error), info func() error) C
 // registerDefaultChecks wires the foundation-layer checks. Called once at root
 // construction. Uses os.Getenv and the workspace default settings path.
 func registerDefaultChecks() {
-	RegisterCheck(secretPresenceCheck(os.Getenv, defaultDoctorSettingsPath(os.Getenv)))
+	RegisterCheck(secretPresenceCheck(os.Getenv, workspaceSettingsPath))
 	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
 	RegisterCheck(playwrightCheck())
 	RegisterCheck(dockerCheck())
 	RegisterCheck(pluginCheck())
-}
-
-func defaultDoctorSettingsPath(getenv func(string) string) string {
-	return getenv("HOME") + "/WorkingSpace/zenify/.claude/settings.local.json"
 }

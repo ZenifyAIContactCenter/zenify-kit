@@ -129,12 +129,13 @@ func Run(o *Options) error {
 	if o.Env == nil {
 		o.Env = os.Getenv
 	}
-	if o.SettingsPath == "" {
-		o.SettingsPath = defaultSettingsPath(o.Env)
-	}
 	creds, _ := LoadCreds(o.Env, o.SettingsPath)
 	mongoURL := creds["MONGO_URL"]
 	if mongoURL == "" {
+		if o.SettingsPath == "" {
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: chưa có workspace — chạy `zenify up` trước") //znf:allow-lang
+			return fmt.Errorf("zenify db-read: no workspace")
+		}
 		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $MONGO_URL is not set and %s did not supply it.\n", o.SettingsPath)
 		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: it belongs in the env block of that file, next to E2E_PASSWORD.")
 		return fmt.Errorf("zenify db-read: MONGO_URL not set")
@@ -242,9 +243,4 @@ func Run(o *Options) error {
 		_, _ = fmt.Fprintln(o.Stderr, "  db-read sql '<query>'          read-only MySQL query")
 		return fmt.Errorf("zenify db-read: unknown subcommand %q", o.Cmd)
 	}
-}
-
-func defaultSettingsPath(getenv func(string) string) string {
-	home := getenv("HOME")
-	return home + "/WorkingSpace/zenify/.claude/settings.local.json"
 }

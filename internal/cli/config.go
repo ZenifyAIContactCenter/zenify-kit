@@ -117,13 +117,13 @@ func newConfigCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if workspace == "" {
-				workspace, _ = os.Getwd()
+				workspace = workspaceOrCwd("", cmd.ErrOrStderr())
 			}
 			_, err := runConfig(workspace, configDir, apply, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", "thư mục workspace (mặc định cwd)")                                       //znf:allow-lang
+	cmd.Flags().StringVar(&workspace, "workspace", "", "thư mục workspace (mặc định: tự tìm, không có thì cwd)")                 //znf:allow-lang
 	cmd.Flags().StringVar(&configDir, "config-dir", "", "thư mục config nguồn (mặc định repo docs/.config, tự tìm theo layout)") //znf:allow-lang
 	cmd.Flags().BoolVar(&apply, "apply", false, "ghi thay đổi (mặc định chỉ dry-run)")                                           //znf:allow-lang
 	return cmd

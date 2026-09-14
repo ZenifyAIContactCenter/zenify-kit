@@ -51,7 +51,7 @@ func newDocsCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if workspaceDir == "" {
-				workspaceDir, _ = os.Getwd()
+				workspaceDir = workspaceOrCwd("", cmd.ErrOrStderr())
 			}
 			// --dir override wins over resolveDocsStore, preserving the old behavior:
 			// only when --dir is NOT set does it auto-resolve in the core.
@@ -70,8 +70,8 @@ func newDocsCmd() *cobra.Command {
 			return docsSyncCore(workspaceDir, cmd.ErrOrStderr())
 		},
 	}
-	sync.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)") //znf:allow-lang
-	sync.Flags().StringVar(&dir, "dir", "", "thư mục repo docs (mặc định tự tìm theo layout)") //znf:allow-lang
+	sync.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định: tự tìm, không có thì cwd)") //znf:allow-lang
+	sync.Flags().StringVar(&dir, "dir", "", "thư mục repo docs (mặc định tự tìm theo layout)")                       //znf:allow-lang
 	cmd.AddCommand(sync)
 	return cmd
 }

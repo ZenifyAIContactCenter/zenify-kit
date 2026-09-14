@@ -34,7 +34,7 @@ irm https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/main/scri
 
 Installs to `~/.local/bin/zenify` (macOS / Linux) or `%LOCALAPPDATA%\Programs\zenify`
 (Windows). Override the location with `ZENIFY_BIN`; pin a version with `ZENIFY_VERSION=v0.5.0`.
-The installer warns if the target directory is not on your `PATH`.
+The installer adds itself to your `PATH` (shell profile on macOS/Linux, user PATH on Windows), installs the GitHub CLI when missing, and wires the znf skills.
 
 ### Alternatives
 
@@ -66,6 +66,22 @@ Grab the archive for your OS/arch from the
 [Releases page](https://github.com/ZenifyAIContactCenter/zenify-kit/releases), extract, and
 put `zenify` (or `zenify.exe`) somewhere on your `PATH`.
 </details>
+
+## After install
+
+Three commands, in this order:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/main/scripts/install.sh | sh   # or the PowerShell line above
+gh auth login
+zenify up
+```
+
+Run `zenify up` from anywhere — on first run it asks where to put the workspace (default
+`~/Developer/zenify` on macOS, `~/zenify` on Linux, `%USERPROFILE%\zenify` on Windows) and
+whether you already have clones of the team repos to bring in. Later runs of `zenify up`,
+`zenify doctor`, `zenify db-read`, `zenify docs sync` and `zenify config` find that workspace
+on their own via `~/.zenify/workspace`.
 
 ## Usage
 

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,14 +21,17 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
 
 // buildPlan runs the read-only reconciler core: auth → list → scan → classify.
-// Injected runners make it unit-testable without gh/git.
-func buildPlan(m *manifest.Manifest, gh ghx.Runner, git gitx.Runner, workspace string) ([]reconcile.RepoPlan, ghx.Auth, error) {
+// Injected runners make it unit-testable without gh/git. sources is the Where
+// step's answer (nil when it did not run) — merged with the legacy flat-layout
+// guess (flatSources), an explicit source winning over the guess.
+func buildPlan(m *manifest.Manifest, gh ghx.Runner, git gitx.Runner, workspace string, sources map[string]reconcile.Source) ([]reconcile.RepoPlan, ghx.Auth, error) {
 	auth, err := ghx.CheckAuth(gh)
 	if err != nil {
 		return nil, auth, err
@@ -53,7 +57,31 @@ func buildPlan(m *manifest.Manifest, gh ghx.Runner, git gitx.Runner, workspace s
 		}
 		scans[r.Name] = st
 	}
-	return reconcile.Build(m, access, scans), auth, nil
+	merged := flatSources(m, git, workspace)
+	for k, v := range sources {
+		merged[k] = v // an explicit Where answer wins over the flat-layout guess
+	}
+	merged = dropInPlaceSources(m, workspace, merged)
+	plans := reconcile.Build(m, access, scans, merged)
+	return orderRelocateFirst(plans), auth, nil
+}
+
+// orderRelocateFirst moves RELOCATE plans ahead of everything else so a
+// destination is never taken by a clone before the move lands (FR-4.4).
+// Stable: relative order inside each half is preserved.
+func orderRelocateFirst(plans []reconcile.RepoPlan) []reconcile.RepoPlan {
+	out := make([]reconcile.RepoPlan, 0, len(plans))
+	for _, p := range plans {
+		if p.State == reconcile.Relocate {
+			out = append(out, p)
+		}
+	}
+	for _, p := range plans {
+		if p.State != reconcile.Relocate {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // planData is the JSON payload for `up --json`.
@@ -73,7 +101,7 @@ func renderPlanTable(w io.Writer, plans []reconcile.RepoPlan, auth ghx.Auth) {
 	for _, p := range plans {
 		_, _ = fmt.Fprintf(w, "%-22s %-16s %s\n", p.Name, p.State, p.Reason)
 	}
-	_, _ = fmt.Fprintln(w, "\n(dry-run — apply lands in a later build; nothing was changed)")
+	_, _ = fmt.Fprintln(w, "\n(dry-run — nothing was changed; run with --apply or in a terminal to apply)")
 }
 
 // minVersionFloor is the binary version that introduced the apply path. A
@@ -157,13 +185,8 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	// skeleton, clone) or append-if-absent (exclude), so a partial run is safe to
 	// re-run and there is nothing destructive to roll back.
 	//
-	// One thing M2 MUST still add when it implements the destructive MIGRATE
-	// flip (deferred: the team standardises .claude layout by hand first), or
-	// the whole-run restore is a false safety net for that flip:
-	//   1. Extend snapshotTargets with a reconcile.Migrate case that captures the
-	//      files the flip overwrites (the repo's .gitignore). Today it captures
-	//      only the WIRE/CLONE pair, so a Migrate rollback would have NO data for
-	//      the very file it destroyed.
+	// RELOCATE moves are logged to <snapshot>/relocate.json (writeRelocateLog);
+	// the whole-run snapshot itself only holds files.
 	//
 	// The snapshot id is unique per run — the unix second plus the pid — so even
 	// two runs within one second never overwrite an earlier capture.
@@ -176,6 +199,7 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	if _, err := managed.Snapshot(snapshotID, snapshotTargets(plans, workspace), filepath.Join(zenifyDir, "snapshots")); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
+	writeRelocateLog(filepath.Join(zenifyDir, "snapshots", snapshotID), workspace, plans, errW)
 
 	repoByName := map[string]manifest.Repo{}
 	for _, r := range m.Repos {
@@ -195,7 +219,11 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	for _, r := range results {
 		if r.Err != nil {
 			failed++
-			_, _ = fmt.Fprintf(w, "%-22s %-16s ERROR: %v\n", r.Repo, r.State, r.Err)
+			if r.Action != "" {
+				_, _ = fmt.Fprintf(w, "%-22s %-16s %s — ERROR: %v\n", r.Repo, r.State, r.Action, r.Err)
+			} else {
+				_, _ = fmt.Fprintf(w, "%-22s %-16s ERROR: %v\n", r.Repo, r.State, r.Err)
+			}
 			continue
 		}
 		_, _ = fmt.Fprintf(w, "%-22s %-16s %s\n", r.Repo, r.State, r.Action)
@@ -203,6 +231,9 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 
 	if err := owned.Save(manifestPath); err != nil {
 		return exitcode.New(exitcode.Fail, err)
+	}
+	if err := writeWorkspacePointer(os.Getenv, os.UserHomeDir, workspace); err != nil {
+		_, _ = fmt.Fprintln(errW, "warning: could not record workspace pointer:", err)
 	}
 
 	// Provision the Playwright MCP + browsers when onboarding a frontend repo
@@ -272,6 +303,28 @@ func snapshotTargets(plans []reconcile.RepoPlan, workspace string) []string {
 	return files
 }
 
+// writeRelocateLog records every planned move next to the run's snapshot, so
+// a hand rollback knows what was moved where (FR-4.4). To is the workspace-
+// absolute destination (workspace joined with the manifest-relative Path),
+// not the manifest-relative path alone, so the log is directly usable for a
+// rollback without re-resolving it against the workspace root. Fail-open.
+func writeRelocateLog(snapDir, workspace string, plans []reconcile.RepoPlan, errW io.Writer) {
+	type mv struct{ From, To string }
+	var moves []mv
+	for _, p := range plans {
+		if p.State == reconcile.Relocate {
+			moves = append(moves, mv{From: p.From, To: filepath.Join(workspace, p.Path)})
+		}
+	}
+	if len(moves) == 0 {
+		return
+	}
+	b, _ := json.MarshalIndent(moves, "", "  ")
+	if err := os.WriteFile(filepath.Join(snapDir, "relocate.json"), b, 0o600); err != nil {
+		_, _ = fmt.Fprintln(errW, "warning: relocate log:", err)
+	}
+}
+
 // applyNow returns the current unix time for the lock's diagnostic sidecar.
 // Isolated so the value is injected in one place (tests do not call runApply's
 // clock directly; the sidecar time is not asserted).
@@ -308,6 +361,42 @@ func newUpCmd() *cobra.Command {
 			if err := dryRunApplyConflict(applyFlag, cmd.Flags().Changed("dry-run"), dryRun); err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
+			cwd, _ := os.Getwd()
+			isTTY := term.IsTerminal(int(os.Stdout.Fd()))
+			wantWizard := decideMode(isTTY, applyFlag, cmd.Flags().Changed("dry-run"), dryRun, jsonOut, nonInteractive) == modeWizard
+			var sources map[string]reconcile.Source
+			ws, src, ok := resolveWorkspace(cwd, workspace, os.Getenv, os.UserHomeDir)
+			var sourcesDir string
+			if !ok && !wantWizard {
+				return exitcode.New(exitcode.BadArgs, errors.New("chưa có workspace: dùng --workspace <dir> hoặc chạy zenify up có terminal")) //znf:allow-lang
+			}
+			if whereNeeded(wantWizard, src, ok) {
+				home, _ := os.UserHomeDir()
+				existing := ""
+				if ok {
+					existing = ws // pointer target (FR-3.2/SC-2)
+				}
+				res, werr := tui.RunWhere(tui.WhereConfig{
+					Cwd:       cwd,
+					Existing:  existing,
+					OSDefault: osDefaultWorkspace(runtime.GOOS, home),
+					Validate:  func(d string) error { return validateWorkspaceDir(expandHome(d, home), home, gitToplevel) },
+				})
+				if werr != nil {
+					if tui.IsAborted(werr) {
+						return exitcode.New(exitcode.Cancelled, werr)
+					}
+					return exitcode.New(exitcode.BadArgs, werr)
+				}
+				res.Workspace = expandHome(res.Workspace, home)
+				res.SourcesDir = expandHome(res.SourcesDir, home)
+				if err := os.MkdirAll(res.Workspace, 0o750); err != nil {
+					return exitcode.New(exitcode.Fail, err)
+				}
+				ws = res.Workspace
+				sourcesDir = res.SourcesDir
+			}
+			workspace = ws
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
 			}
@@ -326,7 +415,10 @@ func newUpCmd() *cobra.Command {
 				}
 				return exitcode.New(exitcode.Fail, err)
 			}
-			plans, auth, err := buildPlan(m, ghx.ExecRunner(), gitx.ExecRunner(), workspace)
+			if sourcesDir != "" {
+				sources = scanSources(m, gitx.ExecRunner(), sourcesDir)
+			}
+			plans, auth, err := buildPlan(m, ghx.ExecRunner(), gitx.ExecRunner(), workspace, sources)
 			if err != nil {
 				if isPreview {
 					printPlanFooterRows(w, workspace)
@@ -344,10 +436,9 @@ func newUpCmd() *cobra.Command {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
 					"warning: gh token missing read:org or repo scope; discovery may be incomplete")
 			}
-			isTTY := term.IsTerminal(int(os.Stdout.Fd()))
 			switch decideMode(isTTY, applyFlag, cmd.Flags().Changed("dry-run"), dryRun, jsonOut, nonInteractive) {
 			case modeWizard:
-				return runWizard(w, m, workspace)
+				return runWizard(w, m, workspace, sources)
 			case modeApply:
 				return runApply(w, cmd.ErrOrStderr(), plans, m, workspace, ghx.ExecRunner(), gitx.ExecRunner())
 			default: // modeDryRun
@@ -363,7 +454,7 @@ func newUpCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit the plan as a JSON envelope")
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "never prompt — forces the headless dry-run/apply path instead of the interactive wizard")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "preview the plan without making changes")
-	cmd.Flags().StringVar(&workspace, "workspace", ".", "workspace root directory")
+	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace root (default: the workspace found from cwd or ~/.zenify/workspace; the wizard asks when there is none)")
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default: manifest/repos.yaml under cwd when present, else the copy embedded in the binary)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "apply changes without the interactive wizard (required for non-interactive/CI runs)")

@@ -107,10 +107,17 @@ func RemoveGlobalHooks(home string, dryRun bool) (HookRemoval, error) {
 	return HookRemoval{Removed: removed}, nil
 }
 
-// RemoveExclude removes exactly the ".worktrees/" line from the repo's
-// .git/info/exclude, keeping every other line. Returns (true) if the line was
-// present and (was) removed. File without the line → (false, nil). A file left
-// empty after removal is still kept (the git-local file itself is never
+// ExcludeLines is the single source of truth for the git-local exclusions the
+// kit manages in a repo's .git/info/exclude: ".worktrees/" (OQ-5, worktree
+// dir) and ".wt/" (wt's per-repo state, FR-5.1). ensureExclude (apply.go) uses
+// it to write them; RemoveExclude uses it to remove them, so writer and
+// remover never drift apart.
+var ExcludeLines = []string{".worktrees/", ".wt/"}
+
+// RemoveExclude removes every line in ExcludeLines from the repo's
+// .git/info/exclude, keeping every other line. Returns (true) if any of them
+// was present and removed. File without any of them → (false, nil). A file
+// left empty after removal is still kept (the git-local file itself is never
 // deleted). dryRun → no write.
 func RemoveExclude(repoDir string, dryRun bool) (bool, error) {
 	excl := filepath.Join(repoDir, ".git", "info", "exclude")
@@ -125,11 +132,15 @@ func RemoveExclude(repoDir string, dryRun bool) (bool, error) {
 	if fi, statErr := os.Stat(excl); statErr == nil {
 		mode = fi.Mode().Perm()
 	}
+	toRemove := map[string]bool{}
+	for _, want := range ExcludeLines {
+		toRemove[want] = true
+	}
 	lines := strings.Split(string(b), "\n")
 	out := make([]string, 0, len(lines))
 	removed := false
 	for _, ln := range lines {
-		if strings.TrimSpace(ln) == ".worktrees/" {
+		if toRemove[strings.TrimSpace(ln)] {
 			removed = true
 			continue
 		}

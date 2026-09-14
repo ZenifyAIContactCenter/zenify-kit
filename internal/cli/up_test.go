@@ -72,7 +72,7 @@ func TestBuildPlanAuthAndClassify(t *testing.T) {
 		auth: []byte("  ✓ Logged in to github.com account natepxn\n  - Token scopes: 'read:org', 'repo'\n"),
 		list: []byte(`[{"name":"contact-center-be","sshUrl":"git@github.com:ZenifyAIContactCenter/contact-center-be.git","viewerPermission":"MAINTAIN","isArchived":false}]`),
 	}
-	plans, auth, err := buildPlan(testManifest(), gh, fakeGit{}, t.TempDir())
+	plans, auth, err := buildPlan(testManifest(), gh, fakeGit{}, t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("buildPlan: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestBuildPlanNoAccess(t *testing.T) {
 		auth: []byte("  ✓ Logged in to github.com account x\n  - Token scopes: 'read:org', 'repo'\n"),
 		list: []byte(`[]`), // sees no repos
 	}
-	plans, _, err := buildPlan(testManifest(), gh, fakeGit{}, t.TempDir())
+	plans, _, err := buildPlan(testManifest(), gh, fakeGit{}, t.TempDir(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,12 +117,23 @@ func TestRenderJSON(t *testing.T) {
 	}
 }
 
+func TestRenderPlanTable_FooterTellsHowToApply(t *testing.T) {
+	var out bytes.Buffer
+	renderPlanTable(&out, nil, ghx.Auth{Account: "x", LoggedIn: true})
+	if !strings.Contains(out.String(), "(dry-run — nothing was changed; run with --apply or in a terminal to apply)") {
+		t.Fatalf("footer:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "later build") {
+		t.Fatal("stale footer still present")
+	}
+}
+
 func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 	gh := fakeGH{
 		auth: []byte("You are not logged into any GitHub hosts. Run gh auth login to authenticate.\n"),
 		list: []byte(`[]`),
 	}
-	plans, auth, err := buildPlan(testManifest(), gh, fakeGit{}, t.TempDir())
+	plans, auth, err := buildPlan(testManifest(), gh, fakeGit{}, t.TempDir(), nil)
 	if err != nil {
 		t.Fatalf("buildPlan: %v", err)
 	}
@@ -406,5 +417,52 @@ func TestDryRun_ShowsHooksAndDocsRows(t *testing.T) {
 	// SC-10: no settings.json written by dry-run
 	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {
 		t.Fatal("dry-run wrote settings.json")
+	}
+}
+
+func TestUp_HeadlessNoWorkspace_BadArgs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ZENIFY_HOME", filepath.Join(home, ".zenify"))
+	empty := t.TempDir()
+	t.Chdir(empty)
+
+	cmd := newUpCmd()
+	cmd.SetArgs([]string{"--apply"})
+	var out, errb bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errb)
+	err := cmd.Execute()
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("exit code = %d err=%v", exitcode.Code(err), err)
+	}
+	if !strings.Contains(err.Error(), "chưa có workspace") {
+		t.Fatalf("err = %v", err)
+	}
+	entries, _ := os.ReadDir(empty)
+	if len(entries) != 0 {
+		t.Fatalf("headless must not create anything: %v", entries)
+	}
+}
+
+// F2: writeRelocateLog's "To" is workspace-absolute (workspace joined with the
+// manifest-relative Path), not the manifest-relative path alone, so the log
+// is directly usable without the reader re-resolving it against a workspace root.
+func TestWriteRelocateLog_ToIsWorkspaceAbsolute(t *testing.T) {
+	snapDir := t.TempDir()
+	workspace := string(filepath.Separator) + "ws"
+	plans := []reconcile.RepoPlan{
+		{Name: "x", State: reconcile.Relocate, Path: "repos/x", From: string(filepath.Separator) + filepath.Join("old", "x")},
+	}
+	var errb bytes.Buffer
+	writeRelocateLog(snapDir, workspace, plans, &errb)
+
+	b, err := os.ReadFile(filepath.Join(snapDir, "relocate.json"))
+	if err != nil {
+		t.Fatalf("read relocate.json: %v", err)
+	}
+	wantTo := filepath.Join(workspace, "repos/x")
+	if !strings.Contains(string(b), fmt.Sprintf("%q", wantTo)) {
+		t.Fatalf("relocate.json missing workspace-absolute To %q:\n%s", wantTo, b)
 	}
 }

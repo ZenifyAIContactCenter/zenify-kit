@@ -7,10 +7,13 @@ import (
 	"os"
 )
 
-// Entry records one file zenify wrote and the fingerprint it wrote.
+// Entry records one file zenify wrote and the fingerprint it wrote. A Link
+// entry (Link != "") records a symlink/junction the kit created at Path
+// pointing at Link — the relocate breadcrumb (FR-4.3); it has no SHA256.
 type Entry struct {
 	Path   string `json:"path"`
-	SHA256 string `json:"sha256"`
+	SHA256 string `json:"sha256,omitempty"`
+	Link   string `json:"link,omitempty"`
 }
 
 // Manifest is the set of files zenify owns on this machine.
@@ -67,6 +70,14 @@ func (m *Manifest) Record(filePath string) error {
 	}
 	m.Entries[filePath] = Entry{Path: filePath, SHA256: Fingerprint(b)}
 	return nil
+}
+
+// RecordLink stores the link the kit created at linkPath → target.
+func (m *Manifest) RecordLink(linkPath, target string) {
+	if m.Entries == nil {
+		m.Entries = map[string]Entry{}
+	}
+	m.Entries[linkPath] = Entry{Path: linkPath, Link: target}
 }
 
 // Get returns the recorded entry for filePath.

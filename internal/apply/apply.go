@@ -9,12 +9,14 @@ package apply
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsview"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
@@ -37,6 +39,10 @@ type Options struct {
 	ManifestPath string                                     // .zenify/manifest.json — Save after each repo promote
 	Now          func() int64                               // clock for the snapshot id (nil → time.Now)
 	VerifyRepoFn func(repoDir string, wrote []string) error // nil → defaultVerifyRepo
+
+	// Relocate seams (FR-4.3). nil → os.Rename and docsview.OSFS{}.Link.
+	RenameFn func(from, to string) error
+	LinkFn   func(target, link string) error
 }
 
 func (o Options) now() int64 {
@@ -82,6 +88,36 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 			continue
 		}
 
+		// RELOCATE moves the clone before the per-repo transaction opens, and the
+		// move is never rolled back: repoDir does not exist until this runs, so a
+		// snapshot/revert cycle over repoDir's files would see them as newly
+		// created by this run and delete the user's settings/exclude files that
+		// actually travelled with the repo from `from` (see relocateRepo doc).
+		// Only a failed relocate itself skips the repo outright; once the move
+		// (and link) has happened, wire/verify failures below revert only the
+		// wire step, never the relocate.
+		var relocPrefix string
+		if p.State == reconcile.Relocate {
+			rename, link := opts.RenameFn, opts.LinkFn
+			if rename == nil {
+				rename = os.Rename
+			}
+			if link == nil {
+				link = docsview.OSFS{}.Link
+			}
+			wrote, warn, err := relocateRepo(p.From, repoDir, opts.Owned, rename, link)
+			if err != nil {
+				r.Err = err
+				results = append(results, r)
+				continue
+			}
+			r.Wrote = append(r.Wrote, wrote...)
+			relocPrefix = fmt.Sprintf("moved %s → %s (đường dẫn cũ vẫn dùng được qua link)", p.From, p.Path) //znf:allow-lang
+			if warn != "" {
+				relocPrefix += " — " + warn
+			}
+		}
+
 		transact := opts.SnapshotRoot != ""
 		repoFiles := []string{
 			filepath.Join(repoDir, ".claude", "settings.local.json"),
@@ -106,7 +142,14 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 			snapDir = sd
 		}
 
-		r.Action, r.Wrote, r.Err = applyOne(p, repoDir, opts, gh, git)
+		var action string
+		var wrote []string
+		action, wrote, r.Err = applyOne(p, repoDir, opts, gh, git)
+		r.Wrote = append(r.Wrote, wrote...)
+		if relocPrefix != "" {
+			action = relocPrefix + "; " + action
+		}
+		r.Action = action
 		if r.Err == nil && transact {
 			r.Err = opts.verify(repoDir, r.Wrote)
 		}
@@ -142,13 +185,58 @@ func applyOne(p reconcile.RepoPlan, repoDir string, opts Options, gh ghx.Runner,
 	case reconcile.Adopt:
 		wrote, err := adoptRepo(repoDir, opts.Owned)
 		return "adopt in place", wrote, err
+	case reconcile.Relocate:
+		w, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
+		return "wire config", w, err
 	default:
 		return "skipped (" + string(p.State) + ")", nil, nil
 	}
 }
 
 func isActionable(s reconcile.State) bool {
-	return s == reconcile.Clone || s == reconcile.Wire || s == reconcile.Adopt
+	return s == reconcile.Clone || s == reconcile.Wire || s == reconcile.Adopt || s == reconcile.Relocate
+}
+
+// relocateRepo moves an existing clone from `from` to `to` (FR-4.3): mkdir the
+// parent, rename, then leave a symlink/junction at `from` pointing at `to` so
+// every old path (shell history, editor, running server) keeps working, and
+// record that link in the ownership manifest as the undo breadcrumb. A
+// cross-device rename is refused with a one-line instruction (FR-4.2); a link
+// failure after a successful move is a warning, never a rollback — the move
+// already happened and undoing it would surprise more than a missing link.
+func relocateRepo(from, to string, owned *managed.Manifest, rename func(string, string) error, link func(target, link string) error) (wrote []string, warn string, err error) {
+	// Absolute so the symlink left at `from` resolves regardless of the
+	// process's cwd (a relative --workspace, e.g. the "." default, would
+	// otherwise leave a link whose target is relative to `from`'s own
+	// directory, not the process cwd, and dangle).
+	from, err = filepath.Abs(from)
+	if err != nil {
+		return nil, "", err
+	}
+	to, err = filepath.Abs(to)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(to), 0o750); err != nil {
+		return nil, "", err
+	}
+	if _, err := os.Lstat(to); err == nil {
+		return nil, "", fmt.Errorf("%s already exists", to)
+	}
+	if err := rename(from, to); err != nil {
+		if isCrossDevice(err) {
+			return nil, "", errors.New("different volume — move by hand then re-run")
+		}
+		return nil, "", fmt.Errorf("move %s → %s: %w", from, to, err)
+	}
+	wrote = append(wrote, to)
+	if err := link(to, from); err != nil {
+		return wrote, fmt.Sprintf("could not leave a link at %s: %v", from, err), nil
+	}
+	if owned != nil {
+		owned.RecordLink(from, to)
+	}
+	return append(wrote, from), "", nil
 }
 
 // defaultVerifyRepo checks that each file the repo just wrote exists and
@@ -308,35 +396,11 @@ func adoptRepo(repoDir string, owned *managed.Manifest) ([]string, error) {
 	return wrote, nil
 }
 
-// ensureExclude appends ".worktrees/" to the repo's .git/info/exclude if it is
-// not already present. Returns the exclude path if it was modified, "" if it
-// already contained the entry. The .git/info directory is assumed to exist in a
-// real clone; ensureExclude creates it if missing so a freshly cloned repo is
-// covered.
+// ensureExclude keeps the kit's git-local exclusions in place (ExcludeLines:
+// ".worktrees/", OQ-5 worktree dir, and ".wt/", wt's per-repo state, FR-5.1).
+// Returns the exclude path if modified, "" if all lines were already present.
 func ensureExclude(repoDir string) (string, error) {
-	infoDir := filepath.Join(repoDir, ".git", "info")
-	if err := os.MkdirAll(infoDir, 0o750); err != nil {
-		return "", err
-	}
-	excludePath := filepath.Join(infoDir, "exclude")
-	b, err := os.ReadFile(excludePath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
-	if err != nil && !os.IsNotExist(err) {
-		return "", err
-	}
-	for _, line := range strings.Split(string(b), "\n") {
-		if strings.TrimSpace(line) == ".worktrees/" {
-			return "", nil // already present
-		}
-	}
-	content := string(b)
-	if content != "" && !strings.HasSuffix(content, "\n") {
-		content += "\n"
-	}
-	content += ".worktrees/\n"
-	if err := os.WriteFile(excludePath, []byte(content), 0o600); err != nil { //nolint:gosec // G703 -- excludePath is the repo's own .git/info/exclude, computed internally, not externally-tainted input
-		return "", err
-	}
-	return excludePath, nil
+	return gitx.EnsureExclude(repoDir, ExcludeLines...)
 }
 
 // ensureSettingsSkeleton makes .claude/settings.local.json carry every required
