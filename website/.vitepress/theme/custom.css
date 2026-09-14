@@ -52,6 +52,9 @@
 .vp-doc table { display: table; width: 100%; border: 1px solid var(--vp-c-border); border-radius: 10px; border-collapse: separate; border-spacing: 0; overflow: hidden; font-size: 15px; }
 .vp-doc th { background: var(--vp-c-bg-soft); font-weight: 600; text-align: left; color: var(--vp-c-text-2); font-size: 13.5px; }
 .vp-doc th, .vp-doc td { border: 0; border-bottom: 1px solid var(--vp-c-divider); padding: 11px 14px; }
+/* Inline code không có khoảng trắng (vd matcher `Task|Agent|Bash|…`) không được ép min-width cả cột —
+   cho ngắt tại bất kỳ ký tự nào để auto-layout cân bằng lại các cột. */
+.vp-doc td code { overflow-wrap: anywhere; }
 .vp-doc tr:last-child td { border-bottom: 0; }
 .vp-doc tr:nth-child(2n) { background: transparent; }
 .vp-doc div[class*='language-'] { border: 1px solid var(--vp-c-border); border-radius: 10px; }
