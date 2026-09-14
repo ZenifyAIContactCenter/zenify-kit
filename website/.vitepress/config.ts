@@ -19,7 +19,11 @@ export default withMermaid({
       { text: 'Tham chiếu', link: '/reference/cli/' },
     ],
     sidebar: [
-      { text: 'Bắt đầu', items: [] },
+      { text: 'Bắt đầu', items: [
+        { text: 'zenify-kit là gì', link: '/' },
+        { text: 'Cài đặt', link: '/getting-started/install' },
+        { text: 'Bắt đầu nhanh', link: '/getting-started/quickstart' },
+        { text: 'Nâng cấp', link: '/getting-started/upgrade' } ] },
       { text: 'Quy trình', items: [] },
       { text: 'Khái niệm cốt lõi', items: [] },
       {
