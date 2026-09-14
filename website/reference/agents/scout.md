@@ -1,0 +1,13 @@
+---
+title: agent scout
+---
+
+# Agent `scout`
+
+Discovery agent for the reverse question — given something you are about to change, find what depends on it. Reports consumers, the tests that cover it, other systems written in the same operation, and why the code exists (git history). Read-only. Returns a short file:line map, never file dumps. Use before modifying existing code or a shared data shape; it does not verify shapes (that is grounding) and does not review code.
+
+**Model:** `sonnet`
+
+## Nguồn
+
+Sinh bởi `zenify docs gen` từ frontmatter agent trong binary.

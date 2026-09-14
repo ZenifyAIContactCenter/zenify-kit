@@ -1,0 +1,21 @@
+---
+title: /znf:e2e
+---
+
+# `/znf:e2e`
+
+Use when a plan task's deliverable is a user flow that changes an entity's state — creating, editing, or deleting a ticket, deal, contact, and the like — to decide whether it needs an E2E functional journey and to author one that passes `zenify e2e lint`. Covers Playwright journeys that drive the real UI and assert the domain outcome via an API re-fetch.
+
+## Cách gọi
+
+```text
+/znf:e2e
+```
+
+## Tool được phép
+
+`Bash(zenify e2e *) Read Grep`
+
+## Nguồn
+
+Sinh bởi `zenify docs gen` từ frontmatter `SKILL.md` trong binary; phần thân skill là agent-read, không hiển thị ở đây.

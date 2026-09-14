@@ -6,9 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsgen"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsview"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsync"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -73,5 +77,51 @@ func newDocsCmd() *cobra.Command {
 	sync.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định: tự tìm, không có thì cwd)") //znf:allow-lang
 	sync.Flags().StringVar(&dir, "dir", "", "thư mục repo docs (mặc định tự tìm theo layout)")                       //znf:allow-lang
 	cmd.AddCommand(sync)
+
+	var genOut string
+	var genCheck bool
+	gen := &cobra.Command{
+		Use:   "gen",
+		Short: "sinh reference cho site docs (CLI từ cobra, skill/agent từ frontmatter, bảng hook)", //znf:allow-lang
+		Long: "Ghi markdown VitePress vào --out (mặc định website/reference). " + //znf:allow-lang
+			"Với --check không ghi, chỉ so với file trên đĩa; lệch → exit 1 và in danh sách. CI chạy --check.", //znf:allow-lang
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			files, err := docsgen.GenCLI(NewRootCmd())
+			if err != nil {
+				return err
+			}
+			skills, err := docsgen.GenSkills(plugin.ZnfFS(), plugin.CodingFS())
+			if err != nil {
+				return err
+			}
+			for k, v := range skills {
+				files[k] = v
+			}
+			for k, v := range docsgen.GenHooks(apply.HookSpecs()) {
+				files[k] = v
+			}
+			if genCheck {
+				if diff := docsgen.Check(genOut, files); len(diff) > 0 {
+					for _, d := range diff {
+						cmd.PrintErrln("docs gen --check: lệch " + d) //znf:allow-lang
+					}
+					return exitcode.New(exitcode.Fail,
+						fmt.Errorf("docs gen --check: %d file lệch — chạy `zenify docs gen` rồi commit", len(diff))) //znf:allow-lang
+				}
+				cmd.PrintErrln("docs gen --check: khớp.") //znf:allow-lang
+				return nil
+			}
+			if err := docsgen.Write(genOut, files); err != nil {
+				return err
+			}
+			cmd.PrintErrf("docs gen: %d file → %s\n", len(files), genOut) //znf:allow-lang
+			return nil
+		},
+	}
+	gen.Flags().StringVar(&genOut, "out", filepath.Join("website", "reference"), "thư mục đích") //znf:allow-lang
+	gen.Flags().BoolVar(&genCheck, "check", false, "chỉ so, không ghi; lệch → exit 1")           //znf:allow-lang
+	cmd.AddCommand(gen)
+
 	return cmd
 }
