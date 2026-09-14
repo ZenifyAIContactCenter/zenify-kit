@@ -4,39 +4,53 @@ title: Worktree theo slug
 
 # Worktree theo slug
 
-## Vấn đề nó giải quyết
+## Tổng quan
 
-Sửa code trực tiếp trên bản checkout chính là cách nhanh nhất để một bản dở dang chặn đường tác vụ khác, hoặc để hai phiên làm việc giẫm lên nhau trên cùng thư mục. `wt` cô lập mỗi tác vụ vào một worktree git riêng — branch, port, `.env` riêng — để bản checkout chính luôn sạch, chỉ dùng để đọc và giữ record. Câu hỏi đơn vị "slug" trả lời: một tác vụ gồm nhiều bước, nhiều lần sửa, có cần nhiều worktree không? Không — đúng một.
+Sửa code trực tiếp trên checkout chính dễ gây hai vấn đề: một bản dở dang chặn tác vụ khác, và hai phiên làm việc ghi đè nhau trên cùng thư mục. `wt` cô lập mỗi tác vụ vào một worktree git riêng, với branch, port và `.env` riêng. Checkout chính luôn sạch và chỉ dùng để đọc hoặc giữ record.
 
-## Mô hình tư duy
+Một tác vụ gồm nhiều bước và nhiều lần sửa vẫn chỉ dùng một worktree. Đơn vị của worktree là slug.
+
+## Cách hoạt động
 
 ```mermaid
 flowchart LR
-  A["git fetch origin"] --> B["zenify wt new &lt;slug&gt; --type feat --base origin/&lt;base&gt;"]
-  B --> C[sửa + commit + push]
-  C --> D["mở PR"]
-  D --> E[merge]
+  A["git fetch origin"] --> B["zenify wt new"]
+  B --> C["Sửa, commit, push"]
+  C --> D["Mở PR"]
+  D --> E["Merge"]
   E --> F["zenify wt sweep"]
+  class B,F action
+  class C,D,E user
 ```
 
-Một **slug** đặt tên cho toàn bộ vòng đời này: nó trở thành tên branch `<user>/<type>/<slug>` và tên thư mục worktree. Một plan chia nhỏ thành nhiều SDD task (Task 1, Task 2, …), nhưng tất cả dùng chung một worktree — cấp thêm worktree cho mỗi task là phá vỡ đúng quy tắc "một repo, một worktree" mà slug tồn tại để giữ. Gọi `zenify wt new` một lần nữa với cùng slug trong cùng phiên sẽ bị từ chối, kèm dòng `cd` tới worktree đã mở sẵn.
+*Vòng đời một slug, từ tạo worktree đến dọn dẹp*
 
-## Ghép với …
+Lệnh tạo worktree đầy đủ:
 
-- [Base ref, hotfix base, port block](/concepts/base-ref-and-ports) — `--base` lấy từ đâu và vì sao hotfix khác.
-- [Ba lớp: binary, plugin, knowledge store](/concepts/three-layers) — `wt` là một phần của lớp binary.
+```sh
+git fetch origin
+zenify wt new <slug> --type feat --base origin/<base>
+```
+
+Slug đặt tên cho toàn bộ vòng đời này. Nó trở thành tên branch `<user>/<type>/<slug>` và tên thư mục worktree.
+
+Một plan chia thành nhiều SDD task (Task 1, Task 2, ...). Tất cả task đó dùng chung một worktree. Cấp thêm worktree cho từng task vi phạm quy tắc "một repo, một worktree" mà slug tồn tại để giữ. Gọi `zenify wt new` lần nữa với cùng slug trong cùng phiên sẽ bị từ chối, kèm dòng `cd` tới worktree đã mở.
+
+## Liên quan
+
+- [Base ref, hotfix base, port block](/concepts/base-ref-and-ports): `--base` lấy từ đâu và vì sao hotfix khác.
+- [Ba lớp: binary, plugin, knowledge store](/concepts/three-layers): `wt` là một phần của lớp binary.
 - Tham chiếu lệnh: [`zenify wt`](/reference/cli/zenify_wt), [`zenify wt new`](/reference/cli/zenify_wt_new).
 
-## Edge case
+## Lưu ý
 
-- **`--another`** mở worktree thứ hai trong cùng repo — dành cho một yêu cầu thật sự tách biệt, không phải "việc này thấy hơi khác" (cách một slug biến thành nhiều branch trong một ngày).
-- **Hotfix được miễn trừ tự động**: base ref khác (release mới nhất, không phải nhánh tích hợp), vì giữa chừng một tính năng vẫn có thể cần vá production ngay.
-- **`zenify wt rm <slug>`** từ chối xoá worktree chưa có dấu vết merge trừ khi thêm `--force` — an toàn để gọi thử mà không sợ mất việc chưa land.
-- **`.worktrees/` phải nằm trong `.gitignore` đã commit**, không phải `.git/info/exclude` — khai báo cục bộ thì đồng nghiệp clone repo lần đầu thấy checkout của họ "bẩn" ngay khi chạy `zenify wt new` lần đầu.
+- `--another` mở worktree thứ hai trong cùng repo. Dùng cho một yêu cầu thật sự tách biệt, không dùng khi chỉ thấy "việc này hơi khác". Lạm dụng cờ này là cách một slug thành nhiều branch trong một ngày.
+- Hotfix được miễn quy tắc trên. Base ref của hotfix là release mới nhất, không phải branch tích hợp, vì production có thể cần sửa ngay giữa lúc bạn đang làm tính năng.
+- `zenify wt rm <slug>` từ chối xóa worktree chưa có dấu vết merge, trừ khi thêm `--force`. Bạn có thể gọi thử mà không mất công việc chưa land.
+- `.worktrees/` phải nằm trong `.gitignore` đã commit, không nằm trong `.git/info/exclude`. Khai báo cục bộ không đi theo repo, nên đồng nghiệp clone lần đầu sẽ thấy checkout bị bẩn ngay khi chạy `zenify wt new`.
 
-## Nguồn
-
+<!-- Nguồn (cho người bảo trì, không hiển thị):
 - `internal/plugin/assets/znf/skills/discipline/SKILL.md` §8 (đơn vị slug, `--another`, miễn trừ hotfix, `wt rm` từ chối chưa merge)
-- `docs/handoff/zenify-kit/m0-foundation.md` (`wt new`/`wt rm`/`wt sweep` — hành vi và cờ thật của build này)
+- `docs/handoff/zenify-kit/m0-foundation.md` (`wt new`/`wt rm`/`wt sweep`: hành vi và cờ thật của build này)
 - `./zenify wt --help` (danh sách subcommand: `config, ls, new, path, promote, rm, sweep, url, wire`)
-- Ground trên binary build từ commit bf91c62 của nhánh này (2026-09-14), chưa phát hành.
+-->

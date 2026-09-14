@@ -9,7 +9,7 @@ export default withMermaid({
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     ['link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&family=JetBrains+Mono:wght@400;500&display=swap' }],
   ],
-  title: 'zenify-kit',
+  title: 'ZenifyKit',
   description: 'Tài liệu nội bộ bộ công cụ workspace của team zenify',
   cleanUrls: true,
   lastUpdated: true,
@@ -49,7 +49,7 @@ export default withMermaid({
       '.node.stop rect{fill:#4d2f2d;stroke:#c2675f}',
       '.edgeLabel{color:#b9b4a9}',
     ].join(''),
-    flowchart: { curve: 'basis', nodeSpacing: 56, rankSpacing: 64, padding: 16, htmlLabels: true, useMaxWidth: true },
+    flowchart: { curve: 'basis', nodeSpacing: 40, rankSpacing: 48, padding: 16, htmlLabels: true, useMaxWidth: false },
   },
   themeConfig: {
     search: { provider: 'local' },
@@ -64,7 +64,7 @@ export default withMermaid({
     ],
     sidebar: [
       { text: 'Bắt đầu', items: [
-        { text: 'zenify-kit là gì', link: '/' },
+        { text: 'ZenifyKit là gì', link: '/' },
         { text: 'Cài đặt', link: '/getting-started/install' },
         { text: 'Bắt đầu nhanh', link: '/getting-started/quickstart' },
         { text: 'Nâng cấp', link: '/getting-started/upgrade' } ] },

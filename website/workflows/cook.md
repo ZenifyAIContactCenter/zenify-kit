@@ -1,16 +1,24 @@
 ---
-title: /znf:cook — xây tính năng
+title: "cook: xây tính năng"
 ---
 
-# /znf:cook
+# cook: xây tính năng
 
-## Dùng khi / Không dùng khi
+`/znf:cook` là workflow xây tính năng từ đầu đến khi mở PR. Nó đi qua brainstorm, spec, ground, plan, implement bằng subagent, rồi gọi `/znf:ship`.
 
-| Dùng khi | Không dùng khi |
-|---|---|
-| Cần thiết kế hoặc đồng thuận trước khi code | Đã biết vì sao, chỉ sửa một dòng — đi đường không-skill ([Chọn quy trình](/workflows/)) |
-| Việc chạm nhiều file | Đang hỏng, chưa biết vì sao — [`/znf:fix`](/workflows/fix) |
-| Đụng tài nguyên chung (DB collection, endpoint, queue, channel) | Đang hỏng trên production — [`/znf:hotfix`](/workflows/hotfix) |
+## Khi nào dùng
+
+Dùng `/znf:cook` khi:
+
+- Cần thiết kế hoặc đồng thuận trước khi code.
+- Việc chạm nhiều file.
+- Việc chạm tài nguyên chung: DB collection, endpoint, queue, channel.
+
+Không dùng `/znf:cook` khi:
+
+- Đã biết vì sao, chỉ sửa một dòng. Đi đường không dùng workflow, xem [Chọn workflow](/workflows/).
+- Đang hỏng, chưa biết vì sao. Dùng [`/znf:fix`](/workflows/fix).
+- Đang hỏng trên production. Dùng [`/znf:hotfix`](/workflows/hotfix).
 
 ## Cách gọi
 
@@ -19,9 +27,11 @@ title: /znf:cook — xây tính năng
 /znf:cook <path/to/plan.md>
 ```
 
-Agent chỉ **đề xuất** cook, không tự chạy — `/znf:cook` có gate người dùng và ghi ra artifact (spec, plan), nên một dự đoán sai tốn của bạn một lần ngắt ngang giữa chừng nghi lễ. Khi agent thấy việc trông giống cook, nó nói một câu rồi để bạn quyết định, chứ không tự gõ lệnh.
+Agent chỉ đề xuất `/znf:cook`, không tự chạy. Workflow này có gate chờ bạn quyết định và ghi ra spec, plan. Khi agent thấy việc giống cook, nó nói một câu và để bạn gõ lệnh.
 
-## Viết yêu cầu cho tốt
+## Viết yêu cầu
+
+Yêu cầu càng đủ các trường dưới đây, bước brainstorm càng ngắn.
 
 | Trường | Ví dụ |
 |---|---|
@@ -31,33 +41,37 @@ Agent chỉ **đề xuất** cook, không tự chạy — `/znf:cook` có gate n
 | Tiêu chí nhận | Build xanh, không dead link, mọi lệnh ground trên binary thật |
 | Repo liên quan | `zenify-kit` |
 
-## Diễn biến một lần chạy
+## Các bước
 
 ```mermaid
 flowchart TD
-  A[0: fetch base mỗi repo] --> B[1: ground yêu cầu]
-  B --> C[2: brainstorm]
-  C --> D{Chốt thiết kế?}
-  D -- bạn quyết --> E{Duyệt spec?}
-  E -- bạn duyệt --> F[3: ground spec]
-  F --> G[4: scout — agent]
-  G --> H[5: viết plan + analyze tư vấn]
-  H --> I[6: zenify wt new + SDD từng task]
-  I --> J[7: /znf:ship]
+  A["0. Fetch base ref"] --> B["1. Ground yêu cầu"]
+  B --> C["2. Brainstorm"]
+  C --> D["Chốt thiết kế"]
+  D --> E["Duyệt spec"]
+  E --> F["3. Ground spec"]
+  F --> G["4. Scout"]
+  G --> H["5. Viết plan, analyze"]
+  H --> I["6. Worktree và SDD"]
+  I --> J["7. /znf:ship"]
+  class A,B,C,F,G,H,I,J action
+  class D,E user
 ```
 
-| Bước | Kit làm gì | Bạn thấy / làm gì |
+*Các bước của một lần chạy cook*
+
+| Bước | Kit làm gì | Bạn làm gì |
 |---|---|---|
-| 0 | `git fetch` base ref mỗi repo liên quan | Không cần làm gì |
-| 1 | Ground các tên trong yêu cầu (`zenify db-read collections/doc`) | Đọc kết quả ground |
-| 2 | Brainstorm 9 bước | **Dừng hỏi: chốt thiết kế**, rồi **dừng hỏi: duyệt spec** trước khi ghi file |
-| 3 | Ground lại mọi tên spec vừa chốt | Đọc nếu có mâu thuẫn — spec được sửa trước khi viết plan |
-| 4 | `/znf:scout` (agent) tìm ai phụ thuộc vào phần sắp đổi | Đọc báo cáo scout |
-| 5 | Viết plan; `/znf:analyze` chạy tư vấn, không chặn | Đọc plan, xem finding analyze nếu có |
-| 6 | Tạo worktree, chạy SDD: mỗi task một implementer + một reviewer | Theo dõi ledger `.znf/sdd/<plan>/progress.md` |
+| 0 | `git fetch` base ref của mỗi repo liên quan | Không cần làm gì |
+| 1 | Ground các tên trong yêu cầu bằng `zenify db-read collections/doc` | Đọc kết quả ground |
+| 2 | Brainstorm 9 bước | Chốt thiết kế, rồi duyệt spec trước khi kit ghi file. Kit dừng chờ bạn ở cả hai gate |
+| 3 | Ground lại mọi tên trong spec vừa chốt | Đọc nếu có mâu thuẫn. Spec được sửa trước khi viết plan |
+| 4 | Chạy `/znf:scout` (agent) tìm nơi phụ thuộc vào phần sắp đổi | Đọc báo cáo scout |
+| 5 | Viết plan. `/znf:analyze` chạy tư vấn, không chặn | Đọc plan, xem finding của analyze nếu có |
+| 6 | Tạo worktree, chạy SDD: mỗi task một implementer và một reviewer | Theo dõi ledger `.znf/sdd/<plan>/progress.md` |
 | 7 | Gọi `/znf:ship` | Đọc board ship, nhận PR |
 
-## Kết quả nhận được
+## Kết quả
 
 | Artifact | Đường dẫn |
 |---|---|
@@ -67,27 +81,29 @@ flowchart TD
 | Branch | `<user>/feat/<slug>` |
 | PR | Mở, chưa merge |
 
-## Việc chỉ bạn quyết định
+## Quyết định thuộc về bạn
 
-- Chốt thiết kế và duyệt spec — hai gate ở bước 2, cook dừng lại chờ bạn ở cả hai.
+- Chốt thiết kế và duyệt spec. Đây là hai gate ở bước 2, cook dừng chờ bạn ở cả hai.
 - Merge PR sau khi ship xong.
-- Mọi bước tay ngoài repo (thao tác hạ tầng, thao tác ngoài git).
+- Mọi bước tay ngoài repo, ví dụ thao tác hạ tầng.
 
 ## Ví dụ
 
-**Thật** — chính site tài liệu này: yêu cầu ban đầu là "doc site cho zenify-kit". Spec ở `docs/specs/zenify-kit/2026-09-14-kit-docs-site-design.md`, plan ở `docs/plans/zenify-kit/2026-09-14-kit-docs-site.md`. Worktree `.worktrees/kit-docs-site`, branch `namph/feat/kit-docs-site`, 10 task SDD. PR mở ở bước ship.
+Chính site tài liệu này được xây bằng `/znf:cook`. Yêu cầu ban đầu là "doc site cho zenify-kit". Kit ghi spec và plan vào knowledge store, tạo worktree `.worktrees/kit-docs-site` với branch `namph/feat/kit-docs-site`, rồi chạy SDD theo từng task. PR mở ở bước ship.
 
-## Tránh / Nên làm
+## Lỗi thường gặp
 
 | Tránh | Nên làm |
 |---|---|
-| "Việc nhỏ, bỏ spec cho nhanh" | Spec ngắn ≠ không có spec — brainstorming cho phép spec vài câu cho việc thật sự đơn giản, không cho phép bỏ hẳn |
-| Tự gõ code trong lúc cook đang chạy SDD | Để implementer làm, bạn đọc ledger và can thiệp ở hai gate |
-| Merge PR ngay khi thấy PR mở | Đọc board ship trước — review độc lập và verify hành vi nằm ở đó |
+| Bỏ spec vì việc nhỏ | Viết spec ngắn. Brainstorming cho phép spec vài câu với việc đơn giản, không cho phép bỏ hẳn |
+| Tự gõ code trong lúc cook đang chạy SDD | Để implementer làm. Bạn đọc ledger và can thiệp ở hai gate |
+| Merge PR ngay khi thấy PR mở | Đọc board ship trước. Review độc lập và verify hành vi nằm ở đó |
 
-## Nguồn
+## Xem thêm
 
-- `internal/plugin/assets/znf/skills/cook/SKILL.md @ b296ca1`
-- `internal/plugin/assets/znf/skills/discipline/SKILL.md @ b296ca1` ("suggested, never auto-run")
-- Xem thêm: [`/reference/skills/cook`](/reference/skills/cook), [Worktree theo slug](/concepts/worktree-per-slug), [Knowledge store](/concepts/knowledge-store), [Chọn quy trình](/workflows/)
-- Ground trên binary build từ commit b296ca1 của nhánh này (2026-09-14), chưa phát hành.
+[`/reference/skills/cook`](/reference/skills/cook), [Worktree theo slug](/concepts/worktree-per-slug), [Knowledge store](/concepts/knowledge-store), [Chọn workflow](/workflows/)
+
+<!-- Nguồn (cho người bảo trì, không hiển thị):
+- internal/plugin/assets/znf/skills/cook/SKILL.md @ b296ca1
+- internal/plugin/assets/znf/skills/discipline/SKILL.md @ b296ca1 ("suggested, never auto-run")
+-->

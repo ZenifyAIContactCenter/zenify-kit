@@ -4,30 +4,34 @@ title: Bắt đầu nhanh
 
 # Bắt đầu nhanh
 
-Năm bước từ "vừa cài xong `zenify`" đến "có worktree đầu tiên để code".
+Trang này đi qua năm bước, từ khi vừa cài `zenify` đến khi có worktree đầu tiên để code.
 
 ```mermaid
 flowchart LR
-  A[zenify up] --> B[zenify doctor] --> C[zenify wt new]
+  A["zenify up"] --> B["zenify doctor"] --> C["Kiểm tra skill"] --> D["zenify wt new"]
+  class A,B,D action
+  class C user
 ```
 
-## Bước 1 — vào thư mục workspace
+*Thứ tự các lệnh khi onboard*
 
-`zenify up` (bước 2) tự hỏi bạn muốn đặt workspace ở đâu nếu chưa có; nếu workspace đã tồn tại, `cd` vào đó trước.
+## Bước 1: vào thư mục workspace
+
+Nếu workspace đã tồn tại, `cd` vào đó trước. Nếu chưa có, `zenify up` ở bước 2 sẽ hỏi bạn muốn đặt workspace ở đâu.
 
 ```sh
 cd ~/Developer/zenify   # macOS mặc định; Linux mặc định ~/zenify, Windows %USERPROFILE%\zenify
 ```
 
-## Bước 2 — `zenify up`: onboard workspace
+## Bước 2: onboard workspace với `zenify up`
 
-`zenify up` chạy một wizard tương tác trong terminal (preflight → đăng nhập `gh` → discover repo → chọn repo → scan → lên kế hoạch → apply + cài hook → verify). Không có TTY (CI, script), nó in kế hoạch dry-run thay vì mở wizard; thêm `--apply` để chạy headless thật sự.
+`zenify up` chạy một wizard tương tác trong terminal theo thứ tự: preflight, đăng nhập `gh`, discover repo, chọn repo, scan, lên kế hoạch, apply và cài hook, verify. Khi không có TTY (CI, script), lệnh in kế hoạch dry-run thay cho wizard. Thêm `--apply` để chạy headless.
 
 ```sh
 zenify up --help
 ```
 
-Kết quả thật (ground trên binary build từ commit 592f7a4):
+Kết quả:
 
 ```text
 Onboard workspace: wizard tương tác trong terminal, còn không thì in kế hoạch dry-run (--apply để chạy headless)
@@ -52,15 +56,15 @@ Chạy trên một terminal thật:
 zenify up
 ```
 
-Wizard hỏi bạn đăng nhập `gh` (nếu chưa), sau đó tự phát hiện các repo của team và hỏi bạn chọn repo nào để clone/liên kết vào workspace. Xong bước này, các lệnh sau tự tìm ra workspace qua `~/.zenify/workspace` — không cần chỉ định lại `--workspace`.
+Wizard yêu cầu đăng nhập `gh` nếu bạn chưa đăng nhập. Sau đó nó phát hiện các repo của team và hỏi bạn chọn repo nào để clone hoặc liên kết vào workspace. Từ bước này, các lệnh sau tự tìm workspace qua `~/.zenify/workspace`. Bạn không cần truyền lại `--workspace`.
 
-## Bước 3 — `zenify doctor`: kiểm tra môi trường
+## Bước 3: kiểm tra môi trường với `zenify doctor`
 
 ```sh
 zenify doctor --help
 ```
 
-Kết quả thật (ground trên binary build từ commit 592f7a4):
+Kết quả:
 
 ```text
 Kiểm tra sức khoẻ môi trường, chỉ-đọc (không sửa gì, không in secret; --fix áp tập sửa an toàn)
@@ -79,9 +83,9 @@ Flags:
 zenify doctor
 ```
 
-Kết quả mong đợi: mọi check hiện `OK` (xem chi tiết từng lệnh ở [tham chiếu `zenify doctor`](/reference/cli/zenify_doctor)). Nếu có check đỏ, thử `zenify doctor --fix` — nó chỉ áp tập sửa được xác nhận an toàn rồi kiểm lại, không đụng gì khác (nguyên tắc [fail-open](/concepts/gate-fail-open) chung của các gate trong kit).
+Kết quả mong đợi: mọi check hiện `OK`. Chi tiết từng check xem [tham chiếu `zenify doctor`](/reference/cli/zenify_doctor). Nếu có check đỏ, chạy `zenify doctor --fix`. Lệnh này chỉ áp tập sửa đã xác nhận an toàn rồi kiểm lại, không đụng gì khác. Đây là nguyên tắc [fail-open](/concepts/gate-fail-open) chung của các gate trong kit.
 
-## Bước 4 — mở Claude Code, kiểm tra skill có mặt
+## Bước 4: kiểm tra skill trong Claude Code
 
 Mở Claude Code trong workspace vừa onboard và gõ:
 
@@ -89,35 +93,35 @@ Mở Claude Code trong workspace vừa onboard và gõ:
 /znf:cook
 ```
 
-Nếu skill hiện ra trong danh sách gợi ý, plugin `znf:*` đã nối dây đúng (`zenify up` đã cài nó ở bước 2). Bạn chưa cần chạy `/znf:cook` thật — chỉ cần thấy nó xuất hiện.
+Nếu skill hiện ra trong danh sách gợi ý, plugin `znf:*` đã được cài đúng ở bước 2. Bạn chưa cần chạy `/znf:cook` thật ở bước này.
 
-## Bước 5 — worktree đầu tiên: `zenify wt new` rồi `zenify wt rm`
+## Bước 5: tạo worktree đầu tiên
 
-Skill và tài liệu nội bộ của kit viết tắt `wt` thay cho `zenify wt`; trên máy vừa cài mới, gõ dạng đầy đủ.
+Skill và tài liệu nội bộ của kit viết tắt `wt` thay cho `zenify wt`. Trên máy vừa cài, gõ dạng đầy đủ.
 
-Mọi thay đổi code luôn nằm trong một worktree riêng, không sửa trực tiếp bản checkout chính — xem [Worktree theo slug](/concepts/worktree-per-slug).
+Mọi thay đổi code nằm trong một worktree riêng, không sửa trực tiếp bản checkout chính. Xem [Worktree theo slug](/concepts/worktree-per-slug).
 
 ```sh
 git fetch origin
 zenify wt new demo --type feat --base origin/<base>
 ```
 
-`<base>` là nhánh gốc khai báo trong `.claude/worktree.json` của repo đó (ví dụ `staging` hoặc `main` — khác nhau theo repo). Lệnh tạo một worktree mới ở `.worktrees/demo`, với branch, port và `.env` riêng.
+`<base>` là branch gốc khai báo trong `.claude/worktree.json` của repo đó, ví dụ `staging` hoặc `main`. Giá trị này khác nhau theo repo. Lệnh tạo một worktree mới ở `.worktrees/demo` với branch, port và `.env` riêng.
 
-Dọn thử ngay vì đây chỉ là demo:
+Vì đây là demo, xoá worktree ngay:
 
 ```sh
 zenify wt rm demo
 ```
 
-`zenify wt rm` từ chối xoá một worktree chưa có dấu vết merge — với một worktree demo chưa commit gì, nó xoá được ngay.
+`zenify wt rm` từ chối xoá một worktree chưa có dấu vết merge. Với worktree demo chưa commit gì, lệnh xoá được ngay.
 
 ## Bước tiếp theo
 
-Có task thật rồi? [Chọn quy trình](/workflows/) cook / fix / hotfix.
+Khi có task thật, xem [Chọn workflow](/workflows/) để biết nên dùng cook, fix hay hotfix.
 
-## Nguồn
-
-- Ground trên binary build từ commit 592f7a4 của nhánh này (2026-09-14), chưa phát hành: `zenify up --help`, `zenify doctor --help`.
-- `docs/handoff/zenify-kit/onboarding-tui.md` (luồng wizard Preflight → Identity → Discover → Select → Scan → Plan → Apply → Verify/Done)
+<!-- Nguồn (cho người bảo trì, không hiển thị):
+- `zenify up --help`, `zenify doctor --help`
+- `docs/handoff/zenify-kit/onboarding-tui.md` (luồng wizard Preflight, Identity, Discover, Select, Scan, Plan, Apply, Verify/Done)
 - `README.md` (repo `zenify-kit`, mục "After install")
+-->

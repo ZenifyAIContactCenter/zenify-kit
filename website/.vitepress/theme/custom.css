@@ -67,7 +67,7 @@
 
 /* Mermaid */
 .vp-doc .mermaid { display: flex; justify-content: center; margin: 24px 0 8px; padding: 28px 16px; background: var(--vp-c-bg-soft); border: 1px solid var(--vp-c-border); border-radius: 12px; overflow-x: auto; }
-.vp-doc .mermaid svg { max-width: 100% !important; height: auto; }
+.vp-doc .mermaid svg { max-width: 100% !important; height: auto !important; }
 .vp-doc .mermaid .node rect, .vp-doc .mermaid .node polygon { stroke-width: 1px; rx: 6px; ry: 6px; }
 .vp-doc .mermaid .edgeLabel { font-size: 14px; }
 .vp-doc .mermaid + p:has(> em:only-child) { text-align: center; color: var(--vp-c-text-3); margin-top: 0; font-size: 14.5px; }

@@ -1,15 +1,22 @@
 ---
-title: /znf:fix — sửa lỗi chưa rõ nguyên nhân
+title: "fix: sửa lỗi chưa rõ nguyên nhân"
 ---
 
-# /znf:fix
+# fix: sửa lỗi chưa rõ nguyên nhân
 
-## Dùng khi / Không dùng khi
+`/znf:fix` là workflow tìm nguyên nhân và sửa một lỗi. Nó lấy log thật, chứng minh nguyên nhân trước khi sửa, rồi gọi `/znf:gate` và `/znf:ship`.
 
-| Dùng khi | Không dùng khi |
-|---|---|
-| Có triệu chứng thật (log, lỗi, test fail), chưa biết nguyên nhân | Đang hỏng trên production — [`/znf:hotfix`](/workflows/hotfix) (nó dùng lại bước chẩn đoán của fix) |
-| Cần chứng minh nguyên nhân trước khi sửa | Đã biết nguyên nhân và cách sửa chỉ một dòng — đi đường không-skill ([Chọn quy trình](/workflows/)) |
+## Khi nào dùng
+
+Dùng `/znf:fix` khi:
+
+- Có triệu chứng thật (log, lỗi, test fail) và chưa biết nguyên nhân.
+- Cần chứng minh nguyên nhân trước khi sửa.
+
+Không dùng `/znf:fix` khi:
+
+- Đang hỏng trên production. Dùng [`/znf:hotfix`](/workflows/hotfix). Hotfix dùng lại bước chẩn đoán của fix.
+- Đã biết nguyên nhân và cách sửa chỉ một dòng. Đi đường không dùng workflow, xem [Chọn workflow](/workflows/).
 
 ## Cách gọi
 
@@ -19,76 +26,87 @@ title: /znf:fix — sửa lỗi chưa rõ nguyên nhân
 /znf:fix
 ```
 
-Không truyền gì thì fix tự lấy log gần nhất. Agent **tự route** được khi nhận bug report — khác với hotfix.
+Không truyền gì thì fix tự lấy log gần nhất. Agent tự route vào `/znf:fix` khi nhận bug report. Điểm này khác với hotfix.
 
-## Viết yêu cầu cho tốt
+## Viết yêu cầu
 
 | Trường | Ví dụ |
 |---|---|
-| Triệu chứng nguyên văn | Đúng dòng log/lỗi thật, không diễn giải lại |
+| Triệu chứng nguyên văn | Đúng dòng log hoặc lỗi thật, không diễn giải lại |
 | Cách tái hiện | Bước cụ thể, hoặc "không tái hiện được, chỉ có log" |
 | Mong đợi | Hành vi đúng phải là gì |
-| Môi trường | Repo, branch/base, local hay staging |
+| Môi trường | Repo, branch hoặc base, local hay staging |
 | Từ khi nào | Mới xuất hiện hay đã có từ lâu |
 
-## Diễn biến một lần chạy
+## Các bước
 
 ```mermaid
 flowchart TD
-  A[0: ground trong log/lỗi thật] --> B[1: phân tích nguyên nhân]
-  B --> C[2: kiểm chứng nguyên nhân]
-  C --> D[3: scout ai phụ thuộc]
-  D --> E{Cách sửa có<br/>trade-off thật không?}
-  E -- có --> F{Bạn chọn cách sửa}
-  E -- không --> G[5: sửa nhỏ nhất]
-  F --> G
-  G --> H{Fix lan 4+ file hoặc<br/>cần quyết định thiết kế?}
-  H -- có --> I[Dừng, chuyển /znf:cook]
-  H -- không --> J[6: verify]
-  J --> K[7: report]
-  K --> L[8: gate rồi ship]
+  A["0. Lấy log thật"] --> B["1. Phân tích nguyên nhân"]
+  B --> C["2. Kiểm chứng nguyên nhân"]
+  C --> D["3. Scout"]
+  D --> E["4. Chọn cách sửa"]
+  E -->|Lan 4+ file| I["Chuyển sang /znf:cook"]
+  E --> G["5. Sửa nhỏ nhất"]
+  G --> J["6. Verify"]
+  J --> K["7. Report"]
+  K --> L["8. Gate, rồi ship"]
+  class A,B,C,D,G,J,K,L action
+  class E user
+  class I stop
 ```
 
-| Bước | Kit làm gì | Bạn thấy / làm gì |
-|---|---|---|
-| 0 | Lấy log/lỗi thật (auto hoặc từ argument) | Xác nhận đúng log |
-| 1 | Phân tích nguyên nhân — hẹp (một giả thuyết) hoặc rộng (nhiều agent song song) | Đọc kết luận |
-| 2 | **Kiểm chứng nguyên nhân trước khi sửa bất cứ gì** | Không sửa gì nếu chưa kiểm chứng được |
-| 3 | `/znf:scout` tìm ai gọi/đọc/ghi code sắp đổi | Đọc báo cáo scout |
-| 4 | Nếu có trade-off thật giữa hai cách sửa | **Dừng hỏi: bạn chọn cách sửa** |
-| 4 (cửa leo thang) | Nếu fix hoá ra lan 4+ file hoặc cần quyết định thiết kế | **Dừng, chuyển sang `/znf:cook`** thay vì ép sửa trong fix |
-| 5 | Sửa nhỏ nhất theo cách đã chọn | Không cần làm gì |
-| 6 | Verify — chạy lại cái đang fail | Đọc kết quả |
-| 7 | Ghi báo cáo nguyên nhân + fix | Đọc báo cáo |
-| 8 | `/znf:gate` rồi `/znf:ship` | Đọc board ship, nhận PR |
+*Các bước của một lần chạy fix*
 
-## Kết quả nhận được
+| Bước | Kit làm gì | Bạn làm gì |
+|---|---|---|
+| 0 | Lấy log hoặc lỗi thật, tự động hoặc từ argument | Xác nhận đúng log |
+| 1 | Phân tích nguyên nhân. Hẹp thì một giả thuyết, rộng thì nhiều agent chạy song song | Đọc kết luận |
+| 2 | Kiểm chứng nguyên nhân trước khi sửa bất cứ gì | Không sửa gì nếu chưa kiểm chứng được |
+| 3 | Chạy `/znf:scout` tìm nơi gọi, đọc, ghi code sắp đổi | Đọc báo cáo scout |
+| 4 | Nếu có trade-off thật giữa hai cách sửa, trình bày cho bạn | Chọn cách sửa |
+| 4 (leo thang) | Nếu fix lan 4+ file hoặc cần quyết định thiết kế, dừng | Chuyển sang `/znf:cook` thay vì ép sửa trong fix |
+| 5 | Sửa nhỏ nhất theo cách đã chọn | Không cần làm gì |
+| 6 | Verify bằng cách chạy lại phần đang fail | Đọc kết quả |
+| 7 | Ghi báo cáo nguyên nhân và cách sửa | Đọc báo cáo |
+| 8 | Chạy `/znf:gate` rồi `/znf:ship` | Đọc board ship, nhận PR |
+
+## Kết quả
 
 | Artifact | Nội dung |
 |---|---|
-| Báo cáo | Nguyên nhân xác nhận + cách sửa + kết quả verify |
+| Báo cáo | Nguyên nhân đã xác nhận, cách sửa, kết quả verify |
 | Branch | `<user>/fix/<slug>` |
 | PR | Mở, chưa merge |
 
-## Việc chỉ bạn quyết định
+## Quyết định thuộc về bạn
 
-- Chấp nhận leo thang sang `/znf:cook` hay không, khi fix vượt quá phạm vi một bug.
+- Có leo thang sang `/znf:cook` hay không, khi fix vượt quá phạm vi một bug.
 - Chọn cách sửa khi có trade-off thật giữa hai lựa chọn hợp lý.
 - Merge PR.
 
 ## Ví dụ
 
-**Thật** — commit `c8a7eea fix(wt): delete orphan worktree dirs git no longer registers` trên `origin/main`. Triệu chứng: sau `zenify migrate`, một worktree cũ còn thư mục và branch nhưng git không còn đăng ký nó; `zenify wt rm --force` và sweep gọi `git worktree remove` gặp exit 128, không dọn được gì. Nguyên nhân: `.git` file trong worktree cũ trỏ gitdir đã chuyển chỗ, git bỏ nó khi prune. Cách sửa: khi remove fail và `git worktree list --porcelain` không biết path đó, xoá thư mục trực tiếp, prune, lấy branch từ `state.json` (worktree mồ côi không trả lời được `symbolic-ref`). Diff: 3 file, +119/-2 dòng.
+Một fix thật trong chính ZenifyKit.
 
-## Tránh / Nên làm
+Triệu chứng: sau `zenify migrate`, một worktree cũ còn thư mục và branch nhưng git không còn đăng ký nó. `zenify wt rm --force` và `zenify wt sweep` báo lỗi khi gọi git, không dọn được gì.
+
+Nguyên nhân: sau khi di chuyển repo, worktree cũ trỏ tới vị trí git đã bỏ, nên git không còn nhận nó.
+
+Cách sửa: khi git không còn biết worktree đó, kit xoá thư mục trực tiếp, dọn dấu vết trong git và vẫn xoá đúng branch. Fix nằm gọn trong lệnh `wt`, không đổi hành vi khác.
+
+## Lỗi thường gặp
 
 | Tránh | Nên làm |
 |---|---|
-| Vá triệu chứng cho qua | Bước 2 phải chứng minh nguyên nhân bằng bằng chứng thật trước khi sửa |
-| Để fix mọc thành feature | Fix lan 4+ file hoặc cần quyết định thiết kế → leo thang sang `/znf:cook` |
+| Vá triệu chứng cho qua | Chứng minh nguyên nhân bằng bằng chứng thật ở bước 2 trước khi sửa |
+| Để fix mọc thành feature | Fix lan 4+ file hoặc cần quyết định thiết kế thì leo thang sang `/znf:cook` |
 
-## Nguồn
+## Xem thêm
 
-- `internal/plugin/assets/znf/skills/fix/SKILL.md @ b296ca1`
-- Xem thêm: [`/reference/skills/fix`](/reference/skills/fix), [Chọn quy trình](/workflows/)
-- Ground trên binary build từ commit b296ca1 của nhánh này (2026-09-14), chưa phát hành.
+[`/reference/skills/fix`](/reference/skills/fix), [Chọn workflow](/workflows/)
+
+<!-- Nguồn (cho người bảo trì, không hiển thị):
+- internal/plugin/assets/znf/skills/fix/SKILL.md @ b296ca1
+- Ví dụ: commit c8a7eea fix(wt): delete orphan worktree dirs git no longer registers (origin/main), 3 file, +119/-2
+-->

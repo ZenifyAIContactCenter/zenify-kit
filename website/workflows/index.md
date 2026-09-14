@@ -68,7 +68,7 @@ Ba workflow trên tự gọi các skill sau khi cần. Bạn cũng có thể g�
 | `/znf:run` | Chạy app trong worktree hiện tại, trả về URL | Cần quan sát hành vi thật của app |
 | `/znf:sweep` | Dọn dev server, worktree và branch đã merge | Công việc đã merge, cần dọn workspace |
 
-## Nguồn
-
+<!-- Nguồn (cho người bảo trì, không hiển thị):
 - `internal/plugin/assets/znf/skills/discipline/SKILL.md`, mục 0: hai tiêu chí chọn và bốn điều kiện bỏ workflow
 - `internal/plugin/assets/znf/skills/using-zenify-kit/SKILL.md`: bảng route
+-->
