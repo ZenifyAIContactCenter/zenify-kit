@@ -19,7 +19,7 @@ title: /znf:fix — sửa lỗi chưa rõ nguyên nhân
 /znf:fix
 ```
 
-Không truyền gì thì fix tự lấy log gần nhất. Agent **tự route** được vào fix khi nhận một bug report — không cần bạn gõ lệnh, khác với hotfix.
+Không truyền gì thì fix tự lấy log gần nhất. Agent **tự route** được khi nhận bug report — khác với hotfix.
 
 ## Viết yêu cầu cho tốt
 
@@ -78,7 +78,7 @@ flowchart TD
 
 ## Ví dụ
 
-**Thật** — commit `c8a7eea fix(wt): delete orphan worktree dirs git no longer registers` trên `origin/main` của repo này. Triệu chứng: sau `zenify migrate` chuyển repo sang layout mới, một worktree cũ vẫn còn thư mục và branch nhưng git không còn đăng ký nó nữa; `wt rm --force` và sweep gọi `git worktree remove` gặp exit 128 nên không dọn được gì. Nguyên nhân: `.git` file trong worktree cũ trỏ tới gitdir đã chuyển chỗ, git bỏ nó khi prune. Cách sửa: khi `git worktree remove` fail và `git worktree list --porcelain` không biết path đó, xoá thư mục trực tiếp, prune, rồi lấy tên branch từ `state.json` (worktree mồ côi không trả lời được `symbolic-ref`). Diff: 3 file, +119/-2 dòng (`git show --stat`).
+**Thật** — commit `c8a7eea fix(wt): delete orphan worktree dirs git no longer registers` trên `origin/main`. Triệu chứng: sau `zenify migrate`, một worktree cũ còn thư mục và branch nhưng git không còn đăng ký nó; `wt rm --force` và sweep gọi `git worktree remove` gặp exit 128, không dọn được gì. Nguyên nhân: `.git` file trong worktree cũ trỏ gitdir đã chuyển chỗ, git bỏ nó khi prune. Cách sửa: khi remove fail và `git worktree list --porcelain` không biết path đó, xoá thư mục trực tiếp, prune, lấy branch từ `state.json` (worktree mồ côi không trả lời được `symbolic-ref`). Diff: 3 file, +119/-2 dòng.
 
 ## Tránh / Nên làm
 

@@ -88,5 +88,6 @@ flowchart TD
 ## Nguồn
 
 - `internal/plugin/assets/znf/skills/cook/SKILL.md @ b296ca1`
+- `internal/plugin/assets/znf/skills/discipline/SKILL.md @ b296ca1` ("suggested, never auto-run")
 - Xem thêm: [`/reference/skills/cook`](/reference/skills/cook), [Worktree theo slug](/concepts/worktree-per-slug), [Knowledge store](/concepts/knowledge-store), [Chọn quy trình](/workflows/)
 - Ground trên binary build từ commit b296ca1 của nhánh này (2026-09-14), chưa phát hành.

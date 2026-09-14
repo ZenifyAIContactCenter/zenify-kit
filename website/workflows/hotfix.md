@@ -8,7 +8,7 @@ title: /znf:hotfix — lỗi đang chạy trên production
 
 | Dùng khi | Không dùng khi |
 |---|---|
-| Lỗi đang ảnh hưởng production và bạn xác nhận độ khẩn | Lỗi trên staging/dev — [`/znf:fix`](/workflows/fix) |
+| Lỗi đang ảnh hưởng production, bạn xác nhận độ khẩn | Lỗi trên staging/dev — [`/znf:fix`](/workflows/fix) |
 
 ## Cách gọi
 
@@ -16,15 +16,15 @@ title: /znf:hotfix — lỗi đang chạy trên production
 /znf:hotfix <mô tả ngắn>
 ```
 
-`/znf:hotfix` **chỉ bạn gõ được** — frontmatter `disable-model-invocation: true`, agent không tự chạy. Nếu một lỗi trông có vẻ khẩn cấp, agent chỉ được **đề xuất** chạy hotfix, quyết định độ khẩn là của bạn.
+`/znf:hotfix` **chỉ bạn gõ được** (`disable-model-invocation: true`) — agent chỉ được **đề xuất**, độ khẩn là quyết định của bạn.
 
 ## Viết yêu cầu cho tốt
 
 | Trường | Ví dụ |
 |---|---|
 | Repo | Repo đang chạy bản lỗi |
-| Release đang chạy | Bản đang deploy production, chưa phải nhánh tích hợp thường ngày |
-| Ảnh hưởng | Ai/luồng nào đang bị chặn |
+| Release đang chạy | Bản đang chạy production, không phải nhánh tích hợp |
+| Ảnh hưởng | Ai/luồng đang bị chặn |
 | Bằng chứng | Log thật, ticket, `docker logs <container>` |
 
 ## Diễn biến một lần chạy
@@ -40,23 +40,23 @@ flowchart TD
   G --> H[6: scout trên ref đã resolve]
   H --> I[7: sửa nhỏ nhất]
   I --> J[8: verify]
-  J --> K[9: gate rồi ship]
+  J --> K[9: gate rồi ship → PR]
   F --> K
-  K --> L[10: nhắc bước tay:<br/>PR vào release, đồng bộ ngược]
+  K --> L[10: nhắc: merge + đồng bộ ngược]
 ```
 
 | Bước | Kit làm gì | Bạn thấy / làm gì |
 |---|---|---|
 | 1 | Chốt repo bị ảnh hưởng | Xác nhận đúng repo |
-| 2 | `fetch` trước rồi resolve base ref hotfix (release mới nhất qua `zenify hotfix baseref`) | **Dừng hỏi: bạn xác nhận đây đúng là bản đang chạy production** |
-| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix` (log thật → hypothesis → kiểm chứng) | Đọc nguyên nhân đã xác nhận |
-| 4 | Trình bày ba lựa chọn kèm khuyến nghị | **Dừng hỏi: bạn chọn revert / disable / fix forward** — revert/disable thì dừng ở đây, không tạo worktree |
-| 5 | Tạo worktree `--type hotfix --base <release đã resolve>` (chỉ khi fix forward) | Không cần làm gì |
-| 6 | `/znf:scout` trên đúng ref đã resolve, không phải base thường ngày | Đọc báo cáo scout |
+| 2 | `fetch` rồi resolve base ref hotfix (`zenify hotfix baseref`) | **Dừng hỏi: bạn xác nhận đây đúng là bản đang chạy production** |
+| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix` | Đọc nguyên nhân đã xác nhận |
+| 4 | Trình bày ba lựa chọn kèm khuyến nghị | **Dừng hỏi: bạn chọn revert / disable / fix forward** — revert/disable dừng tại đây, không tạo worktree |
+| 5 | Tạo worktree `--type hotfix --base <release>` (chỉ fix forward) | Không cần làm gì |
+| 6 | `/znf:scout` trên ref đã resolve, không phải base thường ngày | Đọc báo cáo scout |
 | 7 | Sửa nhỏ nhất | Không cần làm gì |
 | 8 | Verify trên code path thật | Đọc kết quả |
-| 9 | `/znf:gate` rồi `/znf:ship`, luôn luôn, kể cả đang gấp | Đọc board ship, nhận PR |
-| 10 | Nhắc bước tay còn lại | **Bạn tự tay**: mở PR vào release, merge (= deploy), rồi đồng bộ fix ngược về base feature (merge/cherry-pick) |
+| 9 | `/znf:gate` rồi `/znf:ship` luôn, kể cả đang gấp — ship mở PR vào base ref release | Đọc board ship, nhận PR URL |
+| 10 | Nhắc bước tay còn lại | **Bạn tự tay**: merge PR (= deploy), rồi đồng bộ fix ngược về base feature (merge/cherry-pick) |
 
 ## Kết quả nhận được
 
@@ -70,21 +70,21 @@ flowchart TD
 
 ## Việc chỉ bạn quyết định
 
-- Đây có phải hotfix thật không — độ khẩn là quyết định của bạn, không phải của agent.
+- Đây có phải hotfix thật không — độ khẩn là quyết định của bạn.
 - Base ref đúng là bản đang chạy.
 - Chọn revert / disable / fix forward.
 - Merge PR, và đồng bộ fix ngược về base feature.
 
 ## Ví dụ
 
-**Minh hoạ** (repo kit chưa có hotfix thật, dùng số release giữ chỗ): production đang chạy `release<N>` gặp lỗi xác nhận qua log thật. Bạn xác nhận base ref là `origin/release<N>`, chọn fix forward vì nguyên nhân đã rõ và không cần quyết định thiết kế. Kit tạo worktree `--type hotfix --base origin/release<N>`, scout trên đúng ref đó, sửa, verify, gate rồi ship; PR mở vào `release<N>`. Sau khi bạn merge, bạn tự cherry-pick fix về base feature để bản release kế tiếp không mất nó.
+**Minh hoạ** (chưa có hotfix thật trong repo, dùng số release giữ chỗ): `release<N>` đang chạy gặp lỗi, xác nhận qua log thật. Bạn xác nhận base ref `origin/release<N>`, chọn fix forward vì nguyên nhân đã rõ, không cần quyết định thiết kế. Kit tạo worktree `--type hotfix --base origin/release<N>`, scout đúng ref đó, sửa, verify, gate rồi ship — ship mở PR vào `release<N>`. Bạn merge rồi cherry-pick fix về base feature để release kế tiếp không mất nó.
 
 ## Tránh / Nên làm
 
 | Tránh | Nên làm |
 |---|---|
-| Resolve release rồi mới fetch | Luôn `fetch` trước, resolve base ref sau — nếu không, resolve có thể ra một ref cũ hơn bản đang chạy |
-| Sửa tiến dưới áp lực khi còn phân vân | Chọn revert khi sửa tiến cần một quyết định thiết kế, không phải lúc đang gấp |
+| Resolve release rồi mới fetch | Luôn `fetch` trước rồi resolve — nếu không có thể ra ref cũ hơn bản đang chạy |
+| Sửa tiến dưới áp lực khi còn phân vân | Chọn revert khi sửa tiến cần quyết định thiết kế, không phải lúc đang gấp |
 | Quên đồng bộ ngược về base feature | Bước 10 luôn nhắc — release sau vẫn cần fix này |
 
 ## Nguồn

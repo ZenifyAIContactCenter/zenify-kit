@@ -55,6 +55,6 @@ Gọi riêng được, nhưng `/znf:cook`, `/znf:fix`, `/znf:hotfix` mới là b
 
 ## Nguồn
 
-- `internal/plugin/assets/znf/skills/discipline/SKILL.md` §0 (Dial A/Dial B, "không có cờ tắt")
-- `internal/plugin/assets/znf/skills/using-zenify-kit/SKILL.md` bảng route
+- `internal/plugin/assets/znf/skills/discipline/SKILL.md @ b296ca1` §0 (Dial A/Dial B, "không có cờ tắt")
+- `internal/plugin/assets/znf/skills/using-zenify-kit/SKILL.md @ b296ca1` bảng route
 - Ground trên binary build từ commit b296ca1 của nhánh này (2026-09-14), chưa phát hành.
