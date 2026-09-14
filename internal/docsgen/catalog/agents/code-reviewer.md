@@ -1,0 +1,16 @@
+---
+summary: Reviewer độc lập không có ký ức về việc viết ra diff, kiểm lỗi đúng/sai, bảo mật, hợp đồng, và over-engineering.
+---
+Agent nhận một gói thông tin gồm ý định của thay đổi, diff đầy đủ, những gì đã xác minh, những phát hiện nhỏ được để lại từ review theo task trước đó, và dữ liệu thật lấy từ DB sống cho mọi tên field/collection diff chạm tới. Agent không có quyền chạy lệnh hay sửa file, nên phần dữ liệu thật này là cách duy nhất nó kiểm tên field/collection có đúng không.
+
+## Khi nào được gọi
+
+`/znf:ship` và `/znf:review` dispatch agent này ở bước review — một mình cho diff nhỏ, hoặc như một trong nhiều reviewer song song cho diff lớn hơn. `/znf:cook` gọi qua `subagent-driven-development` cho review từng task lẫn review toàn nhánh cuối cùng.
+
+## Kết quả trả về
+
+Danh sách phát hiện xếp theo mức độ nghiêm trọng, mỗi phát hiện kèm vị trí file:dòng, vấn đề cụ thể, và đề xuất sửa. Kết thúc bằng một câu trả lời có ship được hay không.
+
+## Lưu ý
+
+Agent không tự bịa vấn đề để tỏ ra kỹ lưỡng, và không chấp thuận một thay đổi chỉ để dễ chịu nếu có lỗi thật. Một phát hiện không tái hiện được từ chính diff trước mắt được xếp mức thấp nhất kèm lý do, không bị bỏ qua hoàn toàn.

@@ -1,0 +1,18 @@
+---
+summary: Vẽ bản đồ những gì phụ thuộc vào một thứ, trước khi bạn thay đổi nó.
+---
+## Khi nào dùng
+
+Trước khi sửa code có sẵn, một hình dạng dữ liệu có sẵn, hoặc bất cứ thứ gì dùng chung. Skill trả lời câu hỏi ngược với `/znf:ground`: không phải "X là gì" mà là "cái gì phụ thuộc vào X". Chỉ đọc, an toàn để chạy độc lập.
+
+## Cách hoạt động
+
+1. Skill giao việc tìm kiếm cho một agent chuyên trách, thay vì tìm ngay trong phiên chính, để giữ ngữ cảnh của bạn gọn nhẹ.
+2. Agent tìm theo bốn hướng: ai đọc/ghi/gọi/publish/subscribe tới thứ sắp đổi, test nào đang bao phủ nó và hành vi nào chưa có test, thứ gì khác được ghi cùng một thao tác (queue, cache, search index) mà không có giao dịch bảo đảm cả hai cùng thành công, và lý do những dòng code đó tồn tại qua lịch sử git.
+3. Skill nói rõ agent đã quét trên nhánh/ref nào — vì tập phụ thuộc trên một nhánh release khác có thể khác hẳn nhánh phát triển bình thường.
+4. Nếu agent không trả về báo cáo, đó không phải là "không tìm thấy gì" — đó là bước chưa hoàn thành, và bạn cần hỏi lại báo cáo trước khi coi như đã scout xong.
+5. Một kết quả "không tìm thấy phụ thuộc nào" luôn đi kèm agent nói rõ đã tìm bằng cách nào, để phân biệt với việc chỉ đơn giản chưa tìm đủ.
+
+## Lưu ý
+
+Với một tài nguyên dùng chung giữa nhiều dịch vụ (một collection DB, một endpoint, một queue, một kênh), `/znf:gate` đã có sẵn danh sách repo tham gia và cách tìm ba lượt; scout tập trung vào phần còn lại — test, chỗ ghi cùng lúc, lịch sử dòng code.

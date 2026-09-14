@@ -54,14 +54,14 @@ func TestGenCLI_FrontmatterAndNoAutoGenTag(t *testing.T) {
 	}
 	// links point at sibling pages without .md → VitePress clean URLs
 	if strings.Contains(page, "](zenify.md)") || !strings.Contains(page, "](./zenify)") {
-		t.Fatalf("link handler not applied: %q", page)
+		t.Fatalf("related-command links must be clean URLs: %q", page)
 	}
 }
 
 func TestGenCLI_IndexListsHidden(t *testing.T) {
 	files, _ := GenCLI(fixtureRoot())
 	idx := string(files["cli/index.md"])
-	for _, want := range []string{"| [zenify alpha](./zenify_alpha) | lệnh alpha |", "## Lệnh nội bộ (hook)", "| `zenify hidden-one` | ẩn |"} { //znf:allow-lang
+	for _, want := range []string{"| [zenify alpha](./zenify_alpha) | lệnh alpha |", "## Lệnh nội bộ", "| `zenify hidden-one` | ẩn |"} { //znf:allow-lang
 		if !strings.Contains(idx, want) {
 			t.Errorf("index missing %q\n%s", want, idx)
 		}

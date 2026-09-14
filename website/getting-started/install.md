@@ -4,27 +4,31 @@ title: Cài đặt
 
 # Cài đặt
 
-Bạn có ba cách cài `zenify`: install script (khuyến nghị), Homebrew (macOS/Linux), hoặc Scoop (Windows). Cả ba đều cài cùng một binary, chỉ khác cơ chế nâng cấp sau này — xem [Nâng cấp](/getting-started/upgrade).
+Bạn có ba cách cài `zenify`: install script, Homebrew (macOS và Linux), hoặc Scoop (Windows). Cả ba cài cùng một binary. Chúng chỉ khác ở cách nâng cấp về sau, xem [Nâng cấp](/getting-started/upgrade).
 
 ## Install script (khuyến nghị)
 
-Một dòng lệnh, không cần trình quản lý gói. Script kiểm checksum SHA-256 của bản tải về trước khi cài, và trên macOS binary không bị Gatekeeper quarantine vì được tải bằng curl, không qua trình duyệt.
+Cách này chỉ cần một dòng lệnh và không cần trình quản lý gói. Script kiểm checksum SHA-256 của bản tải về trước khi cài. Trên macOS, binary không bị Gatekeeper quarantine vì được tải bằng curl, không qua trình duyệt.
 
-**macOS / Linux**
+macOS / Linux:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/main/scripts/install.sh | sh
 ```
 
-**Windows (PowerShell)**
+Windows (PowerShell):
 
 ```powershell
 irm https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/main/scripts/install.ps1 | iex
 ```
 
-Cài vào `~/.local/bin/zenify` (macOS/Linux) hoặc `%LOCALAPPDATA%\Programs\zenify` (Windows, vị trí cố định trong script). Đổi vị trí cài bằng biến `ZENIFY_BIN` — chỉ script macOS/Linux đọc biến này, script Windows không hỗ trợ. Ghim một phiên bản cụ thể bằng `ZENIFY_VERSION=v0.5.0` (cả hai hệ điều hành). Script tự thêm `zenify` vào `PATH`, cài `gh` (GitHub CLI) nếu máy chưa có, và nối dây các skill `znf:*`.
+Script cài vào `~/.local/bin/zenify` trên macOS và Linux, hoặc `%LOCALAPPDATA%\Programs\zenify` trên Windows. Vị trí Windows cố định trong script. Để đổi vị trí cài trên macOS và Linux, đặt biến `ZENIFY_BIN`. Script Windows không đọc biến này.
 
-## Homebrew (macOS + Linux)
+Để ghim một phiên bản cụ thể, đặt `ZENIFY_VERSION=v0.5.0`. Cách này dùng được trên cả hai hệ điều hành.
+
+Script tự thêm `zenify` vào `PATH`, cài `gh` (GitHub CLI) nếu máy chưa có, và cài các skill `znf:*`.
+
+## Homebrew (macOS và Linux)
 
 ```sh
 brew tap zenifyaicontactcenter/zenify-kit https://github.com/ZenifyAIContactCenter/zenify-kit
@@ -32,7 +36,7 @@ brew trust zenifyaicontactcenter/zenify-kit   # một lần: Homebrew yêu cầu
 brew install --cask zenify
 ```
 
-Nâng cấp sau này bằng `brew upgrade --cask zenify`.
+Nâng cấp về sau bằng `brew upgrade --cask zenify`.
 
 ## Scoop (Windows)
 
@@ -41,29 +45,28 @@ scoop bucket add zenify https://github.com/ZenifyAIContactCenter/zenify-kit
 scoop install zenify
 ```
 
-## Kiểm tra cài đặt thành công
+## Kiểm tra cài đặt
 
 ```sh
 zenify version
 ```
 
-Kết quả mong đợi trên máy vừa cài bản phát hành mới nhất tại thời điểm viết (v0.17.7):
+Với bản phát hành mới nhất tại thời điểm viết, lệnh in:
 
 ```text
 v0.17.7
 ```
 
-Trên một bản build cục bộ không qua release (`go build`), lệnh này in `dev` thay vì số phiên bản.
+Bản build tay từ mã nguồn in `dev` thay cho số phiên bản.
 
-::: warning
-Nếu binary trên máy bạn cũ hơn `v0.17.7`, bạn cần nâng cấp tay **một lần** (`brew upgrade --cask zenify` / `scoop update zenify` / chạy lại install script) trước khi thông báo nhắc phiên bản mới ở đầu mỗi session hoạt động — cơ chế nhắc tự động chỉ có kể từ `v0.17.7`. Từ đó về sau `zenify update` xử lý mọi lần nâng cấp tiếp theo.
+::: warning Máy có bản cũ hơn v0.17.7
+Cơ chế nhắc phiên bản mới ở đầu mỗi session chỉ có từ `v0.17.7`. Nếu binary trên máy cũ hơn, bạn cần nâng cấp tay một lần bằng `brew upgrade --cask zenify`, `scoop update zenify`, hoặc chạy lại install script. Từ đó về sau, `zenify update` xử lý các lần nâng cấp tiếp theo.
 :::
 
 Sau khi cài, đi tiếp tới [Bắt đầu nhanh](/getting-started/quickstart) để onboard workspace.
 
-## Nguồn
-
+<!-- Nguồn (cho người bảo trì, không hiển thị):
 - `README.md` (repo `zenify-kit`, mục "Install")
-- `docs/handoff/zenify-kit/update-and-version-gate.md` (ghi chú v0.17.7, máy ≤v0.17.6 cần nâng tay một lần)
-- Cảnh báo "≤v0.17.6 cần nâng tay một lần" lấy từ nội dung tag `v0.17.7` (`git show v0.17.7`) và `update-and-version-gate.md` — không phải từ `--help`.
-- Ground trên binary build từ commit 592f7a4 của nhánh này (2026-09-14), chưa phát hành.
+- `docs/handoff/zenify-kit/update-and-version-gate.md` (ghi chú v0.17.7, máy từ v0.17.6 trở xuống cần nâng cấp tay một lần)
+- Nội dung cảnh báo lấy từ tag `v0.17.7` (`git show v0.17.7`) và `update-and-version-gate.md`, không phải từ `--help`
+-->

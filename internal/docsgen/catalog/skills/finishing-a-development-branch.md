@@ -1,0 +1,17 @@
+---
+summary: Kết thúc một branch sau khi test xanh: chọn merge local, push và mở PR, hoặc giữ nguyên; dọn worktree khi cần.
+---
+## Khi nào dùng
+
+Khi implement xong và test đã pass, cần quyết định tích hợp công việc. `/znf:subagent-driven-development` gọi skill này ở bước cuối.
+
+## Cách hoạt động
+
+1. Skill chạy toàn bộ test suite của project. Test fail thì báo danh sách fail và dừng.
+2. Skill nhận diện môi trường: repo thường, worktree có tên branch, hay detached HEAD; xác nhận base branch với bạn nếu chưa rõ.
+3. Skill trình đúng ba lựa chọn: merge local vào base, push và mở PR, giữ nguyên branch. Trên detached HEAD chỉ còn hai lựa chọn đầu tiên và cuối. Skill chờ bạn chọn.
+4. Push và giữ nguyên đều giữ worktree. Merge local dọn worktree dưới `.worktrees/` bằng `git worktree remove` không có `--force`; khi bị từ chối vì còn file chưa commit, skill liệt kê và hỏi bạn xử lý.
+
+## Lưu ý
+
+Xóa công việc chỉ xảy ra khi bạn yêu cầu và gõ đúng chữ `discard`. Trước khi hiện menu, skill ghi session-handoff nếu phiên có điều đáng tiếp tục. Merge local vào một deploy branch bị hook git-guard chặn.

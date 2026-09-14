@@ -1,0 +1,16 @@
+---
+summary: Agent chỉ đọc trả lời câu hỏi cái gì phụ thuộc vào một thứ sắp thay đổi, không xác minh hình dạng và không review code.
+---
+Agent tìm theo bốn hướng: ai đọc/ghi/gọi/publish/subscribe tới mục tiêu, test nào đang bao phủ nó, thứ gì khác được ghi cùng một thao tác mà không có giao dịch bảo đảm cả hai cùng thành công, và lý do những dòng code đó tồn tại qua lịch sử git. Kết quả trả về là danh sách file:dòng ngắn gọn, không dán nguyên nội dung file hay kết quả grep thô.
+
+## Khi nào được gọi
+
+`/znf:scout` dispatch agent này thay vì tự tìm trong phiên chính, để giữ ngữ cảnh của phiên chính gọn nhẹ. `/znf:fix` và `/znf:hotfix` gọi qua `/znf:scout` trước khi sửa code có sẵn.
+
+## Kết quả trả về
+
+Báo cáo có giới hạn độ dài, gồm bốn mục tương ứng bốn hướng tìm, mỗi mục nói rõ đã tìm bằng cách nào — kể cả khi kết quả là không tìm thấy gì — cùng một kết luận về phạm vi ảnh hưởng và mức độ tin cậy.
+
+## Lưu ý
+
+Agent luôn nói rõ đã quét trên nhánh/ref nào, vì tập phụ thuộc trên một nhánh release khác có thể khác nhánh phát triển bình thường. Nếu có cách tiếp cận nào đó không thể liệt kê hết bằng cách tìm chữ (reflection, dispatch động, khoá lắp từ chuỗi lúc chạy), agent nói rõ điều đó thay vì báo cáo một kết quả sạch mà nó không chắc chắn.

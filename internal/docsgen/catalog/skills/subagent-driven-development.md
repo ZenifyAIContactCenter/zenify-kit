@@ -1,0 +1,19 @@
+---
+summary: Thực thi một plan bằng cách dispatch một subagent implementer riêng cho mỗi task, kèm review sau mỗi task.
+---
+## Khi nào dùng
+
+Khi bạn đã có một plan viết sẵn và cần thực thi nó task theo task trong phiên hiện tại. `/znf:cook` gọi skill này ở bước implement, sau khi spec và plan đã được chốt.
+
+## Cách hoạt động
+
+1. Skill làm việc trong một worktree riêng, giữ một sổ tiến độ (ledger) ghi lại từng task đã xong, đang dở, hay đang ở vòng sửa lỗi nào — để nếu phiên bị ngắt giữa chừng, việc thực thi tiếp tục đúng chỗ thay vì làm lại từ đầu.
+2. Mỗi task được giao cho một subagent implementer mới, không mang theo lịch sử các task trước; sau khi implementer báo xong, một subagent reviewer khác kiểm tra cả việc tuân theo spec lẫn chất lượng code.
+3. Nếu review tìm thấy vấn đề, một vòng sửa bắt đầu: implementer ban đầu được giao lại các phát hiện, sửa, rồi được review lại phạm vi hẹp; tối đa năm vòng cho mỗi task trước khi người điều phối tự quyết định cách xử lý phát hiện còn lại.
+4. Việc chọn model theo từng vai trò: task máy móc dùng model rẻ, task cần phối hợp nhiều file dùng model tiêu chuẩn, task cần thiết kế hoặc review toàn nhánh dùng model mạnh nhất hiện có.
+5. Với một tính năng chạm nhiều repo, mỗi repo chạy trong worktree riêng cùng một slug, và các repo độc lập với nhau được thực thi song song thay vì tuần tự.
+6. Khi review toàn nhánh cuối cùng sạch, skill xoá không gian làm việc tạm của plan đó — lịch sử git lúc này là bản ghi chính thức.
+
+## Lưu ý
+
+Skill không dừng lại giữa các task để hỏi ý kiến; nó tự ra quyết định trên những điểm mơ hồ và ghi lại quyết định đó vào ledger. Chỉ bốn việc khiến nó dừng và hỏi: một thao tác không thể đảo ngược hoặc có tính phá huỷ, một hành động nhạy cảm về bảo mật, một tác động ra ngoài worktree cần hỏi trước theo quy ước (merge, push lên nhánh chung, publish), hoặc một plan hỏng đến mức mọi hướng đi đều là đoán mò.

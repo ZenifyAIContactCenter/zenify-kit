@@ -1,0 +1,19 @@
+---
+summary: Kiểm sau khi implement xong một plan, xem mỗi yêu cầu có test thật hay không.
+---
+## Khi nào dùng
+
+Sau khi subagent-driven development đã implement xong một plan, trước hoặc tại bước ship. `/znf:cook` gọi skill này tự động ở bước cuối trước ship. Có thể gọi tay trên một cặp spec/plan đã implement xong. Chỉ mang tính tư vấn, không bao giờ chặn tiến độ.
+
+## Cách hoạt động
+
+1. Skill chạy một lượt quét cơ học đối chiếu từng yêu cầu trong spec với task trong plan và với file test thực tế trên đĩa, tìm các trường hợp: yêu cầu có task nhưng task không khai test, đường dẫn test khai trong plan không tồn tại, file test tồn tại nhưng rỗng không có hàm test nào.
+2. Sau đó skill tự đọc một vài file test không bị gắn cờ ở bước trên, để xem test đó có thật sự khẳng định điều yêu cầu đòi hỏi hay chỉ là một khẳng định trống rỗng kiểu luôn đúng.
+3. Skill đối chiếu từng nhánh điều kiện trong tiêu chí thành công của spec với assertion tương ứng trong test, vì một yêu cầu "có test" không có nghĩa mọi nhánh của nó đều được test.
+4. Báo cáo cuối liệt kê từng phát hiện kèm lý do, mở đầu bằng việc nhắc đây là tư vấn, không chặn tiến độ.
+
+## Ví dụ
+
+```text
+/znf:standards docs/specs/contact-center-be/2026-09-14-ticket-tags-design.md docs/plans/contact-center-be/2026-09-14-ticket-tags.md
+```

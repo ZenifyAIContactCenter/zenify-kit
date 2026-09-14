@@ -1,0 +1,24 @@
+---
+summary: Xử lý một lỗi đang xảy ra trên production trong một polyrepo, từ chẩn đoán tới PR, không bao giờ tự chạy.
+---
+## Khi nào dùng
+
+Khi có lỗi đang ảnh hưởng production ngay bây giờ. Bạn phải tự gọi skill này — nó không tự kích hoạt, kể cả khi lỗi trông có vẻ khẩn cấp. Xem [hotfix: sửa lỗi trên production](/workflows/hotfix).
+
+## Cách hoạt động
+
+1. Skill xác định repo bị ảnh hưởng, fetch trước rồi mới xác định base ref hotfix của repo đó, và luôn xin bạn xác nhận base ref này trước khi làm gì tiếp — base ref khác nhau tuỳ repo và tuỳ chiến lược mỗi repo khai báo.
+2. Skill chẩn đoán trước khi đụng vào bất cứ thứ gì, dùng đúng hai bước đầu của `/znf:fix`: lấy log lỗi thật, xác nhận nguyên nhân gốc bằng bằng chứng. Không đoán nguyên nhân trên production.
+3. Với nguyên nhân đã xác nhận, skill đưa ra ba lựa chọn — revert, tắt bằng feature flag, hoặc sửa xuôi (fix forward) — và chờ bạn quyết định, vì đây là hành động trên production. Nếu chọn revert hoặc tắt flag, skill dừng ở đó, không tạo worktree, không sửa code.
+4. Chỉ khi chọn sửa xuôi, skill mới tạo worktree từ base ref hotfix vừa xác nhận, gọi `/znf:scout` trên đúng ref đó, sửa, rồi xác minh lỗi đã hết.
+5. Skill luôn gọi `/znf:gate` rồi `/znf:ship`, không bỏ qua vì đang gấp. Nếu xanh hết, nó commit và push nhánh hotfix, mở PR nhắm vào base ref đã xác nhận, nhưng không merge.
+
+## Ví dụ
+
+```text
+/znf:hotfix session-timeout-crash
+```
+
+## Lưu ý
+
+Sau khi PR được merge (việc của bạn), bạn cần đồng bộ bản sửa này ngược lại nhánh phát triển bình thường, nếu không lần release sau sẽ mất bản sửa. Nếu việc sửa xuôi hoá ra lớn như một tính năng, đó là dấu hiệu nên chọn revert thay vì tiếp tục ở đây.

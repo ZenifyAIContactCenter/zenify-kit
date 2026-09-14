@@ -1,0 +1,35 @@
+---
+summary: Đọc database dùng chung ở chế độ chỉ đọc, không bao giờ ghi và không in secret.
+---
+## Khi nào dùng
+
+Trước khi viết code chạm một collection, field hoặc bảng. Tên collection và field lấy từ dữ liệu thật, không đoán từ tên model. Skill `/znf:ground` dùng lệnh này.
+
+## Kết quả
+
+Sáu lệnh con:
+
+| Lệnh con | Kết quả |
+|---|---|
+| `collections [chuỗi]` | Liệt kê collection Mongo, lọc theo chuỗi con nếu có |
+| `tables` | Liệt kê bảng MySQL |
+| `doc <collection>` | In một document thật để xem tên field |
+| `count <collection>` | Đếm document |
+| `eval '<biểu thức>'` | Chạy một biểu thức mongosh chỉ đọc |
+| `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc |
+
+Kết nối lấy từ biến môi trường `MONGO_URL` và các biến `MYSQL_*` trong khối `env` của file `.claude/settings.local.json` ở workspace. Lệnh không nhận chuỗi kết nối qua tham số và không in ra màn hình.
+
+`eval` và `sql` từ chối mọi động từ ghi. Khi gặp, lệnh báo "refused write" và dừng.
+
+## Ví dụ
+
+```bash
+zenify db-read collections chatbot
+zenify db-read doc chat_rooms
+zenify db-read sql 'DESCRIBE agents'
+```
+
+## Lưu ý
+
+Chỉ chạy được trong phiên mở tại workspace, vì biến môi trường đến từ settings của workspace. Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực.

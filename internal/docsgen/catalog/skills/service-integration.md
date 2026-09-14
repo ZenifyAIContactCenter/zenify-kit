@@ -1,0 +1,18 @@
+---
+summary: An toàn khi đổi một hợp đồng liên dịch vụ — payload pub/sub, job BullMQ, hoặc shape HTTP.
+---
+## Khi nào dùng
+
+Khi thay đổi một hợp đồng liên dịch vụ: payload Redis pub/sub, một job BullMQ, hoặc shape HTTP giữa các dịch vụ. Cần cài đặt trước bằng lệnh cài skill coding.
+
+## Cách hoạt động
+
+1. Skill nhắc một polyrepo không có compiler kiểm tra qua ranh giới repo — tên kênh Redis, tên queue BullMQ, và shape response HTTP chỉ được giữ đúng bởi quy ước, và một payload đổi ở một phía sẽ khiến phía kia đọc ra giá trị rỗng mà không báo lỗi gì.
+2. Skill nêu bẫy queue-name tách theo môi trường: nếu producer và worker không thống nhất cùng đọc một tên queue thật sự (một bên có biến môi trường, bên kia dùng giá trị mặc định), chúng lặng lẽ tách thành hai queue độc lập — job vẫn được enqueue thành công phía producer, nhưng không ai tiêu thụ, và không có lỗi hay log nào báo hiệu.
+3. Skill khuyến nghị thêm field mới theo kiểu cộng thêm trước (reader cũ bỏ qua field lạ), triển khai cả hai phía, rồi mới xoá field cũ ở một thay đổi sau, thay vì đổi shape một lần cho cả producer và consumer.
+4. Skill nhắc việc ghi vào hai hệ thống không nằm trong một giao dịch (Mongo và một queue, Mongo và một cache) có thể thất bại nửa chừng và không ai ghi nhận — luôn log đủ dữ liệu để đối soát lại bằng tay hoặc bằng job backfill khi ghi thứ hai thất bại.
+5. Skill nhắc một consumer có thể nhận cùng một message nhiều lần, nên cần một khoá chống trùng để xử lý an toàn khi bị lặp, thay vì giả định hệ thống chuyển giao chỉ đúng một lần.
+
+## Lưu ý
+
+Trước khi ship một thay đổi tới một collection, kênh, queue, hoặc endpoint dùng chung, chạy `/znf:gate` để quét producer/consumer trên toàn bộ repo. Trước khi sửa một hợp đồng có sẵn, chạy `/znf:scout` để tìm người tiêu thụ thật và test đang bao phủ nó.

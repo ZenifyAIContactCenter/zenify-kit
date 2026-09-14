@@ -1,0 +1,29 @@
+---
+summary: In base ref mà hotfix của một repo sẽ xuất phát, theo chiến lược khai trong `worktree.json`.
+---
+## Khi nào dùng
+
+Trước khi mở worktree hotfix, để xác nhận release đích. Workflow `/znf:hotfix` chạy lệnh này sau khi fetch.
+
+## Kết quả
+
+Lệnh đọc mục `hotfix.baseStrategy` trong `.claude/worktree.json` của repo và in một ref:
+
+| Chiến lược | Ref in ra |
+|---|---|
+| `release-latest` | `origin/release<N>` với N lớn nhất trong các branch remote |
+| `custom` | Giá trị `hotfixBaseRef` trong file |
+| `staging`, `standalone` hoặc không khai | `origin/staging` |
+
+Với `custom` mà thiếu `hotfixBaseRef`, hoặc `release-latest` mà repo không có branch `release*`, lệnh báo lỗi và không in ref.
+
+## Ví dụ
+
+```bash
+git -C repos/contact-center-be fetch origin
+zenify hotfix baseref repos/contact-center-be
+```
+
+## Lưu ý
+
+Fetch trước khi chạy. Danh sách branch remote cũ có thể trả về release đã bị thay. Xem thêm [Base ref và port](/concepts/base-ref-and-ports).

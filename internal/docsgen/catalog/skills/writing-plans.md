@@ -1,0 +1,18 @@
+---
+summary: Viết plan thực thi chi tiết từ một spec, trước khi chạm vào code.
+---
+## Khi nào dùng
+
+Khi đã có một spec hoặc yêu cầu rõ ràng cho một việc nhiều bước, trước khi bắt đầu sửa code. `/znf:cook` gọi skill này sau bước brainstorm ra spec, và trước bước thực thi bằng subagent-driven development.
+
+## Cách hoạt động
+
+1. Plan được viết cho một người thực thi giả định không biết gì về codebase và chưa chắc có gu tốt — mọi file cần sửa, mọi đoạn code, cách test, đều phải viết đủ, không để chỗ nào kiểu "thêm xử lý lỗi phù hợp" hay "tương tự task N".
+2. Trước khi chia task, skill vạch rõ những file nào sẽ được tạo hay sửa và trách nhiệm của từng file — đây là chỗ chốt các quyết định phân rã.
+3. Mỗi task là đơn vị nhỏ nhất tự mang một chu kỳ test riêng và đáng để một reviewer mới chấm điểm độc lập; task nêu rõ file cần đọc/sửa, các bước nhỏ 2-5 phút một, và tương ứng với yêu cầu nào trong spec.
+4. Nếu plan chạm nhiều repo, mỗi repo được khai báo phụ thuộc vào repo khác ở mức nào — chờ hợp đồng (endpoint và hình dạng) được chốt, không phải chờ toàn bộ repo kia làm xong — để việc thực thi sau này biết chỗ nào chạy song song được.
+5. Sau khi viết xong, skill tự soát lại: mọi phần của spec có task tương ứng chưa, còn chỗ nào bỏ trống kiểu placeholder không, tên hàm và kiểu dữ liệu giữa các task có khớp nhau không.
+
+## Lưu ý
+
+Plan được lưu vào [knowledge store](/concepts/knowledge-store) của workspace, không lưu ở thư mục làm việc của worktree, vì đây là bản ghi của công việc chứ không phải của nhánh git.

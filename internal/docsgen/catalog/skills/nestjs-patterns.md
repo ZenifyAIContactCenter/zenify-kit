@@ -1,0 +1,18 @@
+---
+summary: Quy ước viết backend NestJS — module, DTO, guard, truy cập model qua DI, envelope lỗi thống nhất.
+---
+## Khi nào dùng
+
+Khi viết hoặc sửa code backend NestJS. Cần cài đặt trước bằng lệnh cài skill coding.
+
+## Cách hoạt động
+
+1. Skill mô tả cách một module nối model, controller, và service lại với nhau, xuất ra service chứ không phải controller, để module khác gọi được mà không kéo theo mối quan tâm HTTP.
+2. Skill hướng dẫn dùng DTO cho mọi body/query kèm decorator xác thực, để một pipe xác thực toàn cục chặn dữ liệu sai hình dạng trước khi tới controller; cờ loại bỏ field không khai báo phải đi kèm đánh dấu tuỳ chọn cho mọi field không bắt buộc, nếu không một cập nhật một phần hợp lệ sẽ bị từ chối.
+3. Skill phân biệt guard (quyết định có/không trước khi handler chạy, như xác thực hay kiểm vai trò) với interceptor (bọc quanh handler cả hai phía) và pipe (kiểm một tham số đơn lẻ) — thứ tự guard xếp chồng quan trọng, vì guard xác thực phải chạy trước guard kiểm vai trò.
+4. Skill nhắc tiêm model qua tên class thay vì chuỗi ký tự, vì dạng chuỗi vẫn biên dịch được nhưng lặng lẽ gãy khi class bị đổi tên; và một service chỉ đọc dữ liệu từ module khác nên tiêm thẳng model đó qua DI, không gọi qua tầng HTTP nội bộ.
+5. Skill mô tả một filter ngoại lệ toàn cục duy nhất tạo ra envelope lỗi nhất quán cho mọi response lỗi, thay vì để từng controller tự bắt và tự định dạng lỗi riêng.
+
+## Lưu ý
+
+Response HTTP tiêu thụ bởi dịch vụ khác hoặc frontend cần qua bước xác minh của `/znf:ship`, và qua `/znf:gate` nếu là hợp đồng dùng chung. Schema Mongoose phía sau `@InjectModel` và các bẫy tenant-scoping trên cùng collection thuộc về hai skill `mongoose-modeling` và `mongo-data-safety`.

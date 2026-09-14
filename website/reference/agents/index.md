@@ -4,10 +4,14 @@ title: Agent
 
 # Agent
 
-Agent được skill dispatch qua Agent tool; bạn không gọi trực tiếp.
+Danh sách agent chuyên trách của ZenifyKit.
+
+Agent được các skill dispatch qua công cụ Agent, bạn không gọi chúng trực tiếp. Mỗi agent làm đúng một việc hẹp — review code, tìm phụ thuộc, hoặc kiểm giao diện — rồi trả về một báo cáo ngắn cho skill đã gọi nó.
+
+## Danh sách
 
 | Tên | Mô tả |
 |---|---|
-| [code-reviewer](./code-reviewer) | Independent code reviewer with a fresh context — no memory of writing the code. |
-| [scout](./scout) | Discovery agent for the reverse question — given something you are about to change, find what depends on it. |
-| [ui-verifier](./ui-verifier) | Generic (project-agnostic) UI verifier — drives a running FE app through the Playwright MCP browser to verify a UI change BOTH functionally AND visually, then returns ONLY a concise verdict + evidence. |
+| [code-reviewer](./code-reviewer) | Reviewer độc lập không có ký ức về việc viết ra diff, kiểm lỗi đúng/sai, bảo mật, hợp đồng, và over-engineering. |
+| [scout](./scout) | Agent chỉ đọc trả lời câu hỏi cái gì phụ thuộc vào một thứ sắp thay đổi, không xác minh hình dạng và không review code. |
+| [ui-verifier](./ui-verifier) | Agent lái trình duyệt Playwright để kiểm một thay đổi giao diện cả về hành vi lẫn giao diện thật. |

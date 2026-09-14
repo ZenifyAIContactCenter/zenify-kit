@@ -1,0 +1,77 @@
+/* Phong cách theo Claude Code docs: nền tối ấm, heading serif, accent màu đồng, sơ đồ có màu theo vai trò. */
+:root {
+  --vp-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --zk-font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --vp-c-brand-1: #c9673f;
+  --vp-c-brand-2: #d97757;
+  --vp-c-brand-3: #e08a6c;
+  --vp-c-brand-soft: rgba(217, 119, 87, 0.14);
+}
+
+.dark {
+  --vp-c-bg: #1b1a17;
+  --vp-c-bg-alt: #161512;
+  --vp-c-bg-soft: #24231f;
+  --vp-c-bg-elv: #24231f;
+  --vp-c-text-1: #ebe8e1;
+  --vp-c-text-2: #b9b4a9;
+  --vp-c-text-3: #857f74;
+  --vp-c-divider: rgba(255, 245, 230, 0.08);
+  --vp-c-border: rgba(255, 245, 230, 0.14);
+  --vp-c-gutter: rgba(255, 245, 230, 0.08);
+  --vp-code-block-bg: #141311;
+  --vp-c-brand-1: #d97757;
+  --vp-c-brand-2: #e08a6c;
+  --vp-c-brand-3: #e99d82;
+  --vp-c-brand-soft: rgba(217, 119, 87, 0.16);
+  --vp-custom-block-tip-bg: rgba(111, 154, 114, 0.10);
+  --vp-custom-block-tip-border: rgba(111, 154, 114, 0.35);
+  --vp-custom-block-tip-text: var(--vp-c-text-1);
+  --vp-custom-block-info-bg: #24231f;
+  --vp-custom-block-info-border: var(--vp-c-border);
+  --vp-custom-block-warning-bg: rgba(217, 119, 87, 0.10);
+  --vp-custom-block-warning-border: rgba(217, 119, 87, 0.4);
+  --vp-custom-block-warning-text: var(--vp-c-text-1);
+}
+
+/* Chữ */
+.vp-doc { font-size: 16px; line-height: 1.75; }
+.vp-doc h1, .vp-doc h2, .vp-doc h3 { font-family: var(--zk-font-serif); font-weight: 500; letter-spacing: -0.01em; }
+.vp-doc h1 { font-size: 40px; line-height: 1.2; }
+.vp-doc p:has(+ h1) { font-size: 14px; color: var(--vp-c-text-3); margin: 0 0 6px; }
+.vp-doc p:has(+ h1) code { font-size: 13px; background: none; padding: 0; color: var(--vp-c-text-2); }
+.vp-doc h2 { font-size: 26px; border-top: 0; margin-top: 48px; padding-top: 0; }
+.vp-doc h3 { font-size: 20px; }
+.vp-doc p { margin: 14px 0; }
+.vp-doc a { color: var(--vp-c-text-1); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--vp-c-brand-1); }
+.vp-doc a:hover { color: var(--vp-c-brand-2); }
+.vp-doc strong { color: var(--vp-c-text-1); }
+
+/* Bảng, code, callout */
+.vp-doc table { display: table; width: 100%; border: 1px solid var(--vp-c-border); border-radius: 10px; border-collapse: separate; border-spacing: 0; overflow: hidden; font-size: 15px; }
+.vp-doc th { background: var(--vp-c-bg-soft); font-weight: 600; text-align: left; color: var(--vp-c-text-2); font-size: 13.5px; }
+.vp-doc th, .vp-doc td { border: 0; border-bottom: 1px solid var(--vp-c-divider); padding: 11px 14px; }
+.vp-doc tr:last-child td { border-bottom: 0; }
+.vp-doc tr:nth-child(2n) { background: transparent; }
+.vp-doc div[class*='language-'] { border: 1px solid var(--vp-c-border); border-radius: 10px; }
+.vp-doc :not(pre) > code { border-radius: 5px; padding: 2px 6px; font-size: 0.86em; color: var(--vp-c-brand-3); background: var(--vp-c-brand-soft); }
+.vp-doc .custom-block { border-radius: 10px; border: 1px solid var(--vp-c-border); border-left-width: 1px; padding: 14px 18px; }
+.vp-doc .custom-block .custom-block-title { font-weight: 600; }
+
+/* Sidebar, nav */
+.VPSidebarItem.level-0 > .item > .text { font-size: 14px; font-weight: 600; color: var(--vp-c-text-1); }
+.VPSidebarItem.level-1 .text { font-size: 14px; font-weight: 400; color: var(--vp-c-text-2); }
+.VPSidebarItem.level-1.is-active > .item { background: var(--vp-c-bg-soft); border-radius: 8px; margin: 0 -10px; padding: 0 10px; }
+.VPSidebarItem.level-1.is-active > .item .text { color: var(--vp-c-brand-2); font-weight: 500; }
+.VPNavBar { border-bottom: 1px solid var(--vp-c-divider); }
+.VPNavBarTitle .title { font-family: var(--zk-font-serif); font-size: 20px; font-weight: 500; }
+
+/* Mermaid */
+.vp-doc .mermaid { display: flex; justify-content: center; margin: 24px 0 8px; padding: 28px 16px; background: var(--vp-c-bg-soft); border: 1px solid var(--vp-c-border); border-radius: 12px; overflow-x: auto; }
+.vp-doc .mermaid svg { max-width: 100% !important; height: auto !important; }
+.vp-doc .mermaid .node rect, .vp-doc .mermaid .node polygon { stroke-width: 1px; rx: 6px; ry: 6px; }
+.vp-doc .mermaid .edgeLabel { font-size: 14px; }
+.vp-doc .mermaid .nodeLabel, .vp-doc .mermaid .nodeLabel * { line-height: 1.45; overflow: visible; }
+.vp-doc .mermaid foreignObject { overflow: visible; }
+.vp-doc .mermaid + p:has(> em:only-child) { text-align: center; color: var(--vp-c-text-3); margin-top: 0; font-size: 14.5px; }

@@ -4,37 +4,60 @@ title: Gate fail-open
 
 # Gate fail-open
 
-## Vấn đề nó giải quyết
+## Tổng quan
 
-Một gate trong kit — `analyze`, `standards`, `db-perf`, `docs sync` — chỉ đọc và trả finding, chưa bao giờ tự sửa code. Câu hỏi còn lại là: khi bản thân gate gặp lỗi (DB không kết nối được, file diff hỏng, thiếu config), nó nên chặn việc ship lại, hay bỏ qua và để việc tiếp tục? Toàn bộ các gate này chọn **fail-open** — lỗi công cụ không chặn — vì mục đích của chúng là advisory: `db-perf` chạy ở `znf:ground` (mandatory), `znf:explain-plan` (bước 3 của `cook`) và bước 5 của `znf:ship`; `analyze` chạy ở bước 5b của `cook`, trước khi implement; `standards` ở bước 6b, sau khi implement; `docs sync` ở mọi hook `Stop`/`SessionStart`. git-guard (PreToolUse hook trên mọi lệnh git) và secret-scan (trước commit/push) khác ở phản ứng với một RULE KHỚP, không ở phản ứng với lỗi công cụ: lệnh git chạm nhánh deploy hoặc có secret trong staged diff thì chúng CHẶN cứng (deny, exit khác 0). Nhưng khi chính công cụ lỗi (panic, đọc stdin lỗi, scanner không khởi tạo được), git-guard cũng fail-open y hệt các gate kia — nên gọi chúng là "fail-closed" là sai chữ.
+Các gate trong kit (`analyze`, `standards`, `db-perf`, `docs sync`) chỉ đọc và trả finding, không tự sửa code. Khi chính gate gặp lỗi (DB không kết nối được, file diff hỏng, thiếu config), nó có hai lựa chọn: chặn việc ship, hoặc bỏ qua để việc tiếp tục.
 
-## Mô hình tư duy
+Tất cả gate này chọn fail-open: lỗi công cụ không chặn. Lý do là chúng có vai trò advisory.
+
+- `db-perf` chạy ở `znf:ground` (mandatory), `znf:explain-plan` (bước 3 của `cook`) và bước 5 của `znf:ship`.
+- `analyze` chạy ở bước 5b của `cook`, trước khi implement.
+- `standards` chạy ở bước 6b, sau khi implement.
+- `docs sync` chạy ở mọi hook `Stop`/`SessionStart`.
+
+git-guard (PreToolUse hook trên mọi lệnh git) và secret-scan (trước commit/push) khác các gate trên ở phản ứng với một rule khớp, không ở phản ứng với lỗi công cụ. Lệnh git chạm branch deploy, hoặc staged diff có secret, thì chúng chặn lệnh. Khi chính công cụ gặp lỗi (ví dụ scanner không khởi tạo được), git-guard và secret-scan không chặn lệnh, giống các gate kia. Gọi chúng là "fail-closed" là không đúng.
+
+## Cách hoạt động
 
 ```mermaid
 flowchart TD
-  A[Gate chạy] --> B{Công cụ lỗi?\nDB mất, config thiếu, diff hỏng}
-  B -- có --> C[Fail-open: log lỗi, không chặn]
-  B -- không --> D{Có finding BLOCKING\nchưa waive?}
-  D -- có --> E[Chặn ship]
-  D -- không --> F[Cho qua]
-  C -.khác với.-> G["git-guard / secret-scan:<br/>rule khớp = CHẶN, lỗi công cụ vẫn fail-open"]
+  A["Gate chạy"] -->|công cụ lỗi| C["Fail-open: log lỗi, không chặn"]
+  A -->|chạy được| D["Kiểm tra finding"]
+  D -->|có BLOCKING chưa waive| E["Chặn ship"]
+  D -->|không| F["Cho qua"]
+  class A action
+  class E stop
 ```
 
-Không nghịch lý: cả hai nhóm fail-open khi công cụ hỏng, vì chặn cứng lúc đó chỉ nghẽn việc mà không thêm an toàn thật. Khác biệt nằm ở nhánh còn lại — khi công cụ CHẠY ĐƯỢC: `db-perf`/`analyze`/`standards` còn người review phía sau; git-guard/secret-scan là tuyến cuối, không ai bắt lại commit đã lỡ vào nhánh deploy hay secret đã lỡ push.
+*Gate advisory: lỗi công cụ không chặn, finding BLOCKING mới chặn*
 
-## Ghép với …
+```mermaid
+flowchart TD
+  G["git-guard / secret-scan"] -->|công cụ lỗi| H["Fail-open, không chặn"]
+  G -->|rule khớp| I["Chặn lệnh"]
+  G -->|không khớp| J["Cho qua"]
+  class G action
+  class I stop
+```
 
-- [Knowledge store và view `docs/`](/concepts/knowledge-store) — `docs sync` cũng fail-open cùng nguyên tắc này.
+*git-guard và secret-scan: rule khớp thì chặn, lỗi công cụ vẫn fail-open*
+
+Hai nhóm đều fail-open khi công cụ hỏng, vì chặn lúc đó chỉ nghẽn việc mà không thêm an toàn. Khác biệt nằm ở trường hợp công cụ chạy được. `db-perf`, `analyze`, `standards` còn người review phía sau. git-guard và secret-scan là tuyến cuối: không ai bắt lại được commit đã vào branch deploy hay secret đã push.
+
+## Liên quan
+
+- [Knowledge store và view `docs/`](/concepts/knowledge-store): `docs sync` cũng fail-open theo nguyên tắc này.
 - Tham chiếu lệnh: [`zenify db-perf`](/reference/cli/zenify_db-perf), [`zenify analyze`](/reference/cli/zenify_analyze).
 
-## Edge case
+## Lưu ý
 
-Fail-open nghĩa là lỗi công cụ không chặn, **không có nghĩa** một finding BLOCKING chưa xử lý được phép trôi qua. Một agent dispatch chạy gate rồi đi idle không phản hồi cũng không phải "gate sạch" — im lặng và sạch không phân biệt được từ báo cáo, nên phải hỏi lại tên agent đó, không đọc im lặng thành kết quả tốt.
+Fail-open nghĩa là lỗi công cụ không chặn. Nó không có nghĩa một finding BLOCKING chưa xử lý được phép đi qua.
 
-## Nguồn
+Một agent chạy gate rồi đi idle mà không phản hồi cũng không phải "gate sạch". Từ báo cáo, bạn không phân biệt được im lặng với kết quả sạch. Hãy hỏi lại đúng tên agent đó thay vì đọc im lặng thành kết quả tốt.
 
+<!-- Nguồn (cho người bảo trì, không hiển thị):
 - `docs/handoff/zenify-kit/m9-db-perf-gate.md` (fail-open tuyệt đối, hai tier BLOCKING/ADVISORY, cờ waive)
-- `docs/handoff/zenify-kit/m4-review.md` (M4b/M4f fail-open, "im lặng ≠ sạch")
-- `internal/cli/gitguard.go` (`runGitGuard`: panic/stdin lỗi → exit 0; deny chỉ khi `d.Deny` từ rule khớp → exit 2)
+- `docs/handoff/zenify-kit/m4-review.md` (fail-open ở review engine, "im lặng ≠ sạch")
+- mã nguồn git-guard trong repo kit (công cụ lỗi → không chặn; chặn chỉ khi rule khớp)
 - `./zenify db-perf --help`, `./zenify analyze --help`
-- Ground trên binary build từ commit bf91c62 của nhánh này (2026-09-14), chưa phát hành.
+-->
