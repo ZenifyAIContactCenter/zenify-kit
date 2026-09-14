@@ -356,7 +356,7 @@ func newUpCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "up",
-		Short: "Onboard the workspace: interactive wizard in a terminal, dry-run plan otherwise (use --apply to execute headless)",
+		Short: "Onboard workspace: wizard tương tác trong terminal, còn không thì in kế hoạch dry-run (--apply để chạy headless)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := dryRunApplyConflict(applyFlag, cmd.Flags().Changed("dry-run"), dryRun); err != nil {
 				return exitcode.New(exitcode.BadArgs, err)

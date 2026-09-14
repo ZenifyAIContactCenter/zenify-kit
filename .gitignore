@@ -11,3 +11,8 @@ dist/
 # wt seeds an untracked .env (PORT) into every worktree; ignore it so a merged
 # worktree reads clean and wt sweep can remove it
 .env
+
+# VitePress docs site build artefacts
+website/node_modules/
+website/.vitepress/dist/
+website/.vitepress/cache/

@@ -67,7 +67,7 @@ func newDoctorCmd() *cobra.Command {
 	var asJSON, exitOnFail, doFix bool
 	cmd := &cobra.Command{
 		Use:           "doctor",
-		Short:         "Read-only environment health check (never mutates, never prints secrets)",
+		Short:         "Kiểm tra sức khoẻ môi trường, chỉ-đọc (không sửa gì, không in secret; --fix áp tập sửa an toàn)", //znf:allow-lang
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {

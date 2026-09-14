@@ -83,7 +83,7 @@ func TestEnsureWorkspace_WritesOnceThenSilent(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); err != nil {
 		t.Fatalf("global hooks not wired: %v", err)
 	}
-	for _, want := range []string{"wired ", "pinned workspace model", "znf config: đã ghi 1 file"} {
+	for _, want := range []string{"wired ", "pinned workspace model", "znf config: đã ghi 1 file"} { //znf:allow-lang
 		if !strings.Contains(o1.String(), want) {
 			t.Fatalf("stdout missing %q: %s", want, o1.String())
 		}
@@ -189,10 +189,10 @@ func TestEnsureWorkspace_WriteAndSkipBothReported(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(ws, ".claude", "rules", "00-constitution.md")); err != nil {
 		t.Fatalf("the real pair should still be written: %v", err)
 	}
-	if !strings.Contains(o.String(), "znf config: đã ghi 1 file") {
+	if !strings.Contains(o.String(), "znf config: đã ghi 1 file") { //znf:allow-lang
 		t.Fatalf("stdout missing the write-count line despite a written file: %s", o.String())
 	}
-	if !strings.Contains(e.String(), "znf ensure: config: bỏ") {
+	if !strings.Contains(e.String(), "znf ensure: config: bỏ") { //znf:allow-lang
 		t.Fatalf("stderr missing the skip note (single 'config:' prefix): %q", e.String())
 	}
 }
@@ -278,7 +278,7 @@ func TestEnsureWorkspace_FailedConfigWriteIsReported(t *testing.T) {
 	var o, e bytes.Buffer
 	ensureWorkspace(ws, home, &o, &e)
 
-	if strings.Contains(o.String(), "znf config: đã ghi") {
+	if strings.Contains(o.String(), "znf config: đã ghi") { //znf:allow-lang
 		t.Fatalf("nothing was written, stdout must not claim a write: %s", o.String())
 	}
 	if !strings.Contains(e.String(), "znf ensure: config: could not write") {

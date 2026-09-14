@@ -68,7 +68,7 @@ func newStandardsCmd() *cobra.Command {
 	var asJSON bool
 	c := &cobra.Command{
 		Use:   "standards",
-		Short: "Check test-traceability — every FR has a real test on disk (advisory, fail-open)",
+		Short: "Kiểm test-traceability — mỗi FR có một test thật trên đĩa (advisory, fail-open)", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runStandards(specPath, planPath, root, asJSON, os.ReadFile, cmd.OutOrStdout(), cmd.ErrOrStderr())

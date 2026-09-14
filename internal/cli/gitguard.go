@@ -72,7 +72,7 @@ func runGitGuard(stdin io.Reader, stderr io.Writer, getenv func(string) string, 
 func newGitGuardCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "git-guard",
-		Short:  "PreToolUse hook: block commit/merge/push to deploy branches + staged secrets",
+		Short:  "Hook PreToolUse: chặn commit/merge/push vào deploy branch + secret đã stage", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

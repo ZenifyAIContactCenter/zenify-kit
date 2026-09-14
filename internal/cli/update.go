@@ -81,13 +81,13 @@ func newUpdateCmd() *cobra.Command {
 	var check bool
 	cmd := &cobra.Command{
 		Use:   "update",
-		Short: "Upgrade zenify to the latest release (brew / scoop / install script)",
-		Long: `Detects how this binary was installed and runs the matching upgrade:
-  brew            brew upgrade --cask zenify
-  scoop           scoop update zenify
-  install script  re-runs scripts/install.sh (or install.ps1 on Windows)
-
-With --check it only reports whether a newer release exists.`,
+		Short: "Nâng zenify lên bản release mới nhất (brew / scoop / install script)", //znf:allow-lang
+		Long: "Tự nhận cách binary này được cài rồi chạy lệnh nâng cấp tương ứng:\n" + //znf:allow-lang
+			"  brew            brew upgrade --cask zenify\n" +
+			"  scoop           scoop update zenify\n" +
+			"  install script  chạy lại scripts/install.sh (install.ps1 trên Windows)\n" + //znf:allow-lang
+			"\n" +
+			"Với --check chỉ báo có bản mới hay không, không cài.", //znf:allow-lang
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			method := detectMethod()

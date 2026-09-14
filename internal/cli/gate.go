@@ -91,7 +91,7 @@ func newGateCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "gate", Short: "trợ giúp gate (contract sweep)"} //znf:allow-lang
 	participants := &cobra.Command{
 		Use:   "participants",
-		Short: "list repo tham gia contract gate (store gate-participants.json + worktree.json gate.sharedStore=true)", //znf:allow-lang
+		Short: "liệt kê repo tham gia contract gate (lưu ở gate-participants.json + worktree.json gate.sharedStore=true)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ps, err := gateParticipants(workspace)
 			if err != nil {

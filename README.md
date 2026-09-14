@@ -5,8 +5,12 @@ that ships the team's shared CLI: worktrees (`wt`), guards (`guard`, `secret-sca
 onboarding (`up`), db access (`db-read`), plugin + skills sync (`skills`), and
 observability (`observe`).
 
-> **Status:** M0–M3 shipped. Run `zenify --help` for the full command list, and
-> `zenify <command> --help` for any command's flags and behaviour.
+> **Status:** all capability milestones M0–M9 and the W0–W6 harness plan are shipped and
+> released (current release: `zenify version`, or the GitHub Releases page). The
+> milestone-by-milestone record lives in the team's private knowledge store (ROADMAP,
+> handoffs), not in this repo. Team documentation: `website/` in this repo (VitePress) — the
+> hosted URL is added here once Cloudflare Pages is connected. `zenify --help` lists every
+> command.
 
 The binary is published for macOS, Linux, and Windows (amd64 + arm64) on every release.
 The source contains no workspace-specific data (see [ARCHITECTURE.md](ARCHITECTURE.md)),
@@ -33,7 +37,8 @@ irm https://raw.githubusercontent.com/ZenifyAIContactCenter/zenify-kit/main/scri
 ```
 
 Installs to `~/.local/bin/zenify` (macOS / Linux) or `%LOCALAPPDATA%\Programs\zenify`
-(Windows). Override the location with `ZENIFY_BIN`; pin a version with `ZENIFY_VERSION=v0.5.0`.
+(Windows, fixed in the script). Override the location with `ZENIFY_BIN` — macOS/Linux only, the
+Windows script does not read it; pin a version with `ZENIFY_VERSION=v0.5.0` (both platforms).
 The installer adds itself to your `PATH` (shell profile on macOS/Linux, user PATH on Windows), installs the GitHub CLI when missing, and wires the znf skills.
 
 ### Alternatives

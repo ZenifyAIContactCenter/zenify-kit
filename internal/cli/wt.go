@@ -19,7 +19,7 @@ import (
 func newWtCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "wt",
-		Short: "Git worktree + dev-env manager (read-only surface in this build)",
+		Short: "Quản lý git worktree + môi trường dev: tạo, liệt kê, gỡ, dọn worktree theo slug", //znf:allow-lang
 	}
 	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd(), newWtSweepCmd(), newWtWireCmd(), newWtPromoteCmd())
 	return cmd
@@ -45,7 +45,7 @@ func repoRoot() (string, error) {
 func newWtPathCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "path <slug>",
-		Short: "Print the absolute worktree path for a slug",
+		Short: "In đường dẫn tuyệt đối của worktree theo slug", //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
@@ -86,7 +86,7 @@ func newWtConfigCmd() *cobra.Command {
 	var portKey string
 	c := &cobra.Command{
 		Use:   "config",
-		Short: "Show resolved worktree.json (or --port <key> for an allocated port)",
+		Short: "Hiện worktree.json đã resolve (hoặc --port <key> để xem port đã cấp)", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			root, err := repoRoot()
@@ -135,7 +135,7 @@ func newWtNewCmd() *cobra.Command {
 	var forceInstall, another bool
 	c := &cobra.Command{
 		Use:   "new <slug>",
-		Short: "Create a worktree: branch + port + seeded env + deps",
+		Short: "Tạo worktree: branch + port + env đã seed + deps", //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
@@ -171,7 +171,7 @@ func newWtLsCmd() *cobra.Command {
 	var asJSON, all bool
 	c := &cobra.Command{
 		Use:   "ls",
-		Short: "List worktrees in this repo (git ⋈ state), with running/merged status",
+		Short: "Liệt kê worktree trong repo này (git ⋈ state), kèm trạng thái running/merged", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if all {
@@ -276,7 +276,7 @@ func staleWord(b bool) string {
 func newWtUrlCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "url <slug>",
-		Short: "Print http://localhost:<port> for a slug",
+		Short: "In http://localhost:<port> của một slug", //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
@@ -303,7 +303,7 @@ func newWtRmCmd() *cobra.Command {
 	var force bool
 	c := &cobra.Command{
 		Use:   "rm <slug>",
-		Short: "Remove a worktree (refuses a dirty/detached/unmerged one without --force)",
+		Short: "Gỡ một worktree (từ chối worktree dirty/detached/chưa merge nếu không có --force)", //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
@@ -332,7 +332,7 @@ func newWtRmCmd() *cobra.Command {
 func newWtPromoteCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "promote <slug>",
-		Short: "convert a worktree's symlinked node_modules into a private CoW copy",
+		Short: "Chuyển node_modules symlink của worktree thành bản copy CoW riêng", //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
@@ -356,7 +356,7 @@ func newWtSweepCmd() *cobra.Command {
 	var dry, fetch, all bool
 	c := &cobra.Command{
 		Use:   "sweep",
-		Short: "Tear down every merged, clean worktree in this repo (or the whole workspace with --all)",
+		Short: "Dọn mọi worktree đã merge và sạch trong repo này (hoặc cả workspace với --all)", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if all {
@@ -414,7 +414,7 @@ func newWtWireCmd() *cobra.Command {
 	var dryRun bool
 	cmd := &cobra.Command{
 		Use:   "wire",
-		Short: "point this worktree's env file at peer services being changed",
+		Short: "Trỏ file env của worktree này sang các peer service đang được sửa", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			wtTop, err := repoRoot() // from inside a worktree = the worktree toplevel

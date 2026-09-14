@@ -45,7 +45,7 @@ func dispatchHook(id, wsRoot string, w io.Writer) int {
 func newHooksRunCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "hooks-run <id>",
-		Short:  "Internal dispatcher for znf hooks (workspace-guarded, fail-open)",
+		Short:  "Bộ điều phối nội bộ cho hook znf (chỉ chạy trong workspace, fail-open)", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

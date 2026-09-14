@@ -436,7 +436,7 @@ func TestUp_HeadlessNoWorkspace_BadArgs(t *testing.T) {
 	if exitcode.Code(err) != exitcode.BadArgs {
 		t.Fatalf("exit code = %d err=%v", exitcode.Code(err), err)
 	}
-	if !strings.Contains(err.Error(), "chưa có workspace") {
+	if !strings.Contains(err.Error(), "chưa có workspace") { //znf:allow-lang
 		t.Fatalf("err = %v", err)
 	}
 	entries, _ := os.ReadDir(empty)

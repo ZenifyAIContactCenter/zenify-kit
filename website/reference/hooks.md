@@ -1,0 +1,22 @@
+---
+title: Hook
+---
+
+# Hook
+
+`zenify up` ghi các hook sau vào `~/.claude/settings.json`; mỗi hook là một lệnh `zenify hooks-run <id>` (fail-open, chỉ chạy trong workspace).
+
+| Event | Matcher | Lệnh | Mục đích |
+|---|---|---|---|
+| SessionStart | — | `zenify hooks-run session-start` | Đồng bộ knowledge store, ghi lại rules/workspace mới nhất, nhắc update, in digest bootstrap nếu máy chưa có sentinel discipline |
+| SessionStart | — | `zenify hooks-run git-state` | In báo cáo trạng thái git của workspace vào context đầu phiên |
+| SessionStart | — | `zenify hooks-run wt-report` | In một dòng liệt kê worktree đã merge/rác mà `wt sweep --all` sẽ dọn |
+| Stop | — | `zenify hooks-run docs-sync` | Đồng bộ knowledge store qua git (status → pull --rebase → push), fail-open |
+| Stop | — | `zenify hooks-run git-state-stop` | Báo trạng thái git dạng cảnh báo đứng (systemMessage) khi phiên dừng |
+| PreToolUse | `Task\|Agent` | `zenify hooks-run observe-count` | Đếm số lần dispatch subagent, cảnh báo khi vượt soft-cap |
+| PostToolUse | `Task\|Agent\|Bash\|WebFetch\|WebSearch\|Read` | `zenify hooks-run observe-meter` | Ghi nhận việc dùng tool để đo usage |
+| PreToolUse | `Bash` | `zenify git-guard` (cài bằng `zenify guard install`) | Chặn commit/push/merge vào nhánh deploy |
+
+## Nguồn
+
+Sinh bởi `zenify docs gen` từ bảng hook trong binary (`internal/apply/globalhooks.go`).

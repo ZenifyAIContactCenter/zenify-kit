@@ -71,7 +71,7 @@ func TestApply_Relocate_MovesLinksAndWires(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(to, ".claude", "settings.local.json")); err != nil {
 		t.Fatalf("wire did not run after relocate: %v", err)
 	}
-	if !strings.HasPrefix(res[0].Action, "moved "+src+" → repos/be (đường dẫn cũ vẫn dùng được qua link)") {
+	if !strings.HasPrefix(res[0].Action, "moved "+src+" → repos/be (đường dẫn cũ vẫn dùng được qua link)") { //znf:allow-lang
 		t.Fatalf("action = %q", res[0].Action)
 	}
 	if target, err := os.Readlink(src); err != nil || !filepath.IsAbs(target) || target != to {

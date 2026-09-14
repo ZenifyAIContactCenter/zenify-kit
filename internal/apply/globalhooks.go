@@ -16,6 +16,7 @@ type hookSpec struct {
 	Event   string // e.g. "SessionStart", "Stop", "PreToolUse", "PostToolUse"
 	Matcher string // "" for events without a matcher (SessionStart/Stop)
 	ID      string // hooks-run dispatch id, e.g. "docs-sync"
+	Purpose string // short Vietnamese description of what the hook does //znf:allow-lang
 }
 
 // znfHookSpecs is the single source of truth for the hooks the kit wires into
@@ -25,17 +26,23 @@ type hookSpec struct {
 // so every subagent-scoped matcher (observe-count AND observe-meter) names both.
 func znfHookSpecs() []hookSpec {
 	return []hookSpec{
-		{Event: "SessionStart", Matcher: "", ID: "session-start"},
-		{Event: "SessionStart", Matcher: "", ID: "git-state"},
-		{Event: "SessionStart", Matcher: "", ID: "wt-report"},
-		{Event: "Stop", Matcher: "", ID: "docs-sync"},
-		{Event: "Stop", Matcher: "", ID: "git-state-stop"},
-		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count"},
-		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter"},
+		{Event: "SessionStart", Matcher: "", ID: "session-start", Purpose: "Đồng bộ knowledge store, ghi lại rules/workspace mới nhất, nhắc update, in digest bootstrap nếu máy chưa có sentinel discipline"}, //znf:allow-lang
+		{Event: "SessionStart", Matcher: "", ID: "git-state", Purpose: "In báo cáo trạng thái git của workspace vào context đầu phiên"},                                                                            //znf:allow-lang
+		{Event: "SessionStart", Matcher: "", ID: "wt-report", Purpose: "In một dòng liệt kê worktree đã merge/rác mà `wt sweep --all` sẽ dọn"},                                                                    //znf:allow-lang
+		{Event: "Stop", Matcher: "", ID: "docs-sync", Purpose: "Đồng bộ knowledge store qua git (status → pull --rebase → push), fail-open"},                                                                      //znf:allow-lang
+		{Event: "Stop", Matcher: "", ID: "git-state-stop", Purpose: "Báo trạng thái git dạng cảnh báo đứng (systemMessage) khi phiên dừng"},                                                                       //znf:allow-lang
+		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count", Purpose: "Đếm số lần dispatch subagent, cảnh báo khi vượt soft-cap"},                                                                    //znf:allow-lang
+		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter", Purpose: "Ghi nhận việc dùng tool để đo usage"},                                                           //znf:allow-lang
 	}
 }
 
 func (s hookSpec) command() string { return hookMarker + s.ID }
+
+// HookSpec is the exported view of hookSpec for read-only consumers (docsgen).
+type HookSpec = hookSpec
+
+// HookSpecs returns the hooks the kit wires into ~/.claude/settings.json.
+func HookSpecs() []HookSpec { return znfHookSpecs() }
 
 // HookChanges reports what EnsureGlobalHooks did (or would do in dryRun).
 type HookChanges struct {
