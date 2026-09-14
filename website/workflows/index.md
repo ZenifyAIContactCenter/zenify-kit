@@ -4,57 +4,71 @@ title: Chọn quy trình
 
 # Chọn quy trình
 
-Kit có bốn cách vào việc: `/znf:cook`, `/znf:fix`, `/znf:hotfix`, hoặc không skill nào cả — chỉ kỷ luật nền (worktree → sửa → verify → `/znf:ship`). Bạn chọn theo cái gì bạn **chưa biết**, không theo việc lớn hay nhỏ.
+zenify-kit có ba workflow: `/znf:cook`, `/znf:fix` và `/znf:hotfix`. Với thay đổi nhỏ đã rõ yêu cầu, bạn không cần workflow nào, chỉ cần làm trong worktree rồi chạy `/znf:ship`.
 
-## Bảng tình huống → gõ gì
+Tiêu chí chọn là mức độ bạn đã hiểu về công việc, không phải kích cỡ thay đổi.
 
-| Tình huống | Gõ gì |
+## Bảng chọn
+
+| Tình huống | Dùng |
 |---|---|
-| Chưa biết build gì, hoặc chưa biết làm thế nào — chưa có thiết kế đồng thuận | `/znf:cook` |
-| Đang hỏng, chưa biết vì sao | `/znf:fix` |
-| Biết cả cái gì và vì sao, nhưng đang hỏng trên production | `/znf:hotfix` |
-| Biết cả cái gì và vì sao, một repo, không đụng tài nguyên chung | Không skill — chỉ kỷ luật nền: worktree → sửa → verify → `/znf:ship` |
-
-`/znf:hotfix` nằm trên một trục khác với `/znf:cook`/`/znf:fix`: nó không hỏi "biết gì chưa" mà hỏi "code hạ cánh ở đâu" — base ref là release đang chạy, không phải nhánh tích hợp thường ngày. Vì vậy hotfix **ghép** với fix (dùng lại bước chẩn đoán của fix) chứ không thay thế fix.
+| Chưa có thiết kế, hoặc chưa rõ cần làm gì | `/znf:cook` |
+| Có lỗi, chưa biết nguyên nhân | `/znf:fix` |
+| Đã biết nguyên nhân, lỗi đang xảy ra trên production | `/znf:hotfix` |
+| Đã rõ yêu cầu và cách làm, trong một repo, không chạm tài nguyên chung | Không dùng workflow. Mở worktree, sửa, verify, chạy `/znf:ship` |
 
 ```mermaid
 flowchart TD
-  A{Biết build gì<br/>và làm thế nào chưa?} -- Chưa, cần thiết kế --> B["/znf:cook"]
-  A -- Rồi --> C{Đang hỏng?}
-  C -- Chưa rõ vì sao --> D["/znf:fix"]
-  C -- Biết vì sao, đang hỏng trên production --> E["/znf:hotfix"]
-  C -- Không hỏng --> F{Một repo,<br/>không đụng tài nguyên chung?}
-  F -- Có --> G[Không skill:<br/>worktree → sửa → verify]
-  B --> H["/znf:ship"]
-  D --> H
-  E --> H
-  G --> H
+  Q1["Đã có thiết kế?"]
+  Q1 -->|Chưa| COOK["/znf:cook"]
+  Q1 -->|Rồi| Q2["Đang hỏng?"]
+  Q2 -->|Chưa rõ vì sao| FIX["/znf:fix"]
+  Q2 -->|Hỏng trên production| HOT["/znf:hotfix"]
+  Q2 -->|Không hỏng| Q3["Đụng tài nguyên chung?"]
+  Q3 -->|Không| PLAIN["Không dùng workflow"]
+  Q3 -->|Có| GATE["Contract gate, rồi vào workflow"]
+  COOK --> SHIP["/znf:ship"]
+  FIX --> SHIP
+  HOT --> SHIP
+  PLAIN --> SHIP
+  GATE --> SHIP
+  class COOK,FIX,HOT,SHIP action
+  class Q1,Q2,Q3 user
 ```
 
-## Mọi đường kết ở ship
+*Luồng chọn workflow*
 
-Cả bốn đường đều đi qua `/znf:ship`: `/znf:cook` gọi nó ở bước cuối, `/znf:fix` và `/znf:hotfix` gọi nó vô điều kiện sau khi verify, còn đường không-skill thì bạn tự gõ `/znf:ship` khi code xong. Không có đường nào bỏ qua bước này — kể cả một dòng sửa đã biết chắc vì sao.
+Tài nguyên chung là thứ nhiều service cùng dùng: collection trong DB, endpoint giữa các service, queue, channel pub/sub. Khi thay đổi chạm vào một trong số này, bạn chạy contract gate của project và đi theo workflow thay vì làm trực tiếp.
 
-## Không có cờ tắt
+## Khi nào dùng hotfix
 
-Kit không có `--fast`, không có `--auto`, không có cách bỏ bớt bước để đi nhanh hơn. `/znf:cook` nói rõ: không có "phân loại độ phức tạp" để rút gọn quy trình — việc thật sự nhỏ (một dòng, đã biết chắc vì sao) thì ngay từ đầu không nên vào `/znf:cook`, mà đi đường không-skill. Vào rồi thì đủ bước, ở mọi kích cỡ.
+`/znf:cook` và `/znf:fix` phân biệt theo mức hiểu về công việc. `/znf:hotfix` phân biệt theo nơi code sẽ được merge.
 
-## Skill gọi riêng được
+Hotfix tạo branch từ release đang chạy, không từ nhánh tích hợp hằng ngày. Phần chẩn đoán dùng lại các bước của `/znf:fix`. Xem chi tiết ở [hotfix](/workflows/hotfix).
 
-Năm skill dưới đây gọi riêng được bất cứ lúc nào, không phải chỉ khi nằm trong cook/fix/hotfix:
+## Bước cuối: ship
 
-| Skill | Skill làm gì | Khi nào đáng gọi riêng |
+Mọi đường đều kết thúc bằng `/znf:ship`.
+
+- `/znf:cook` gọi ship ở bước cuối.
+- `/znf:fix` và `/znf:hotfix` gọi ship sau khi verify.
+- Khi không dùng workflow, bạn tự chạy `/znf:ship` sau khi sửa xong.
+
+Kit không có tùy chọn bỏ bớt bước. Nếu thay đổi đủ nhỏ để không cần `/znf:cook`, hãy chọn đường không dùng workflow ngay từ đầu.
+
+## Skill dùng độc lập
+
+Ba workflow trên tự gọi các skill sau khi cần. Bạn cũng có thể gọi trực tiếp.
+
+| Skill | Chức năng | Dùng trực tiếp khi |
 |---|---|---|
-| `/znf:ground` | Kiểm một tên/field/shape trước khi dùng, đối chiếu nguồn thật | Sắp viết code chạm một field DB, API, symbol trong repo mà phiên này chưa verify |
-| `/znf:scout` | Tìm ai đang phụ thuộc vào code sắp sửa | Sắp sửa code hoặc data shape đã có người dùng, ngoài một lần chạy cook/fix/hotfix |
-| `/znf:gate` | Sweep cross-repo cho một resource chung, chỉ đọc | Vừa sửa xong một collection/endpoint/queue/channel chung, muốn biết những repo nào bị ảnh hưởng |
-| `/znf:run` | Bật app trong đúng worktree, trả về URL thật | Cần quan sát hành vi thật ngoài phạm vi một task SDD cụ thể |
-| `/znf:sweep` | Dọn dev server, worktree, branch đã merge | Việc đã merge xong, muốn đưa workspace về sạch |
-
-Gọi riêng được, nhưng `/znf:cook`, `/znf:fix`, `/znf:hotfix` mới là ba workflow bạn dùng thường xuyên nhất — chúng tự gọi năm skill này đúng lúc, trong lúc chạy.
+| `/znf:ground` | Đối chiếu tên, field, shape với nguồn thật | Sắp dùng một field DB, API hoặc symbol chưa kiểm trong phiên này |
+| `/znf:scout` | Liệt kê nơi phụ thuộc vào code sắp sửa | Sắp sửa code hoặc data shape đã có nơi khác dùng |
+| `/znf:gate` | Quét cross-repo cho một tài nguyên chung, chỉ đọc | Vừa sửa collection, endpoint, queue hoặc channel chung |
+| `/znf:run` | Chạy app trong worktree hiện tại, trả về URL | Cần quan sát hành vi thật của app |
+| `/znf:sweep` | Dọn dev server, worktree và branch đã merge | Công việc đã merge, cần dọn workspace |
 
 ## Nguồn
 
-- `internal/plugin/assets/znf/skills/discipline/SKILL.md @ b296ca1` §0 (Dial A/Dial B, "không có cờ tắt")
-- `internal/plugin/assets/znf/skills/using-zenify-kit/SKILL.md @ b296ca1` bảng route
-- Ground trên binary build từ commit b296ca1 của nhánh này (2026-09-14), chưa phát hành.
+- `internal/plugin/assets/znf/skills/discipline/SKILL.md`, mục 0: hai tiêu chí chọn và bốn điều kiện bỏ workflow
+- `internal/plugin/assets/znf/skills/using-zenify-kit/SKILL.md`: bảng route

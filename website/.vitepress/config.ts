@@ -4,6 +4,11 @@ import { withMermaid } from 'vitepress-plugin-mermaid'
 // withMermaid bọc config để render fence ```mermaid (FR-3.1/FR-3.5)
 export default withMermaid({
   lang: 'vi-VN',
+  appearance: 'dark', // mặc định tối, người xem vẫn bật sáng được
+  head: [
+    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
+    ['link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&family=JetBrains+Mono:wght@400;500&display=swap' }],
+  ],
   title: 'zenify-kit',
   description: 'Tài liệu nội bộ bộ công cụ workspace của team zenify',
   cleanUrls: true,
@@ -12,6 +17,40 @@ export default withMermaid({
   srcExclude: ['node_modules/**'],
   // Dev-only: Vite phải pre-bundle mermaid, nếu không `fastdom` (CJS) import default lỗi → trang trắng. Build không bị.
   vite: { optimizeDeps: { include: ['mermaid'] } },
+  // Plugin ép theme "dark" khi site tối, nên override thẳng các biến theme dark đặt cứng (mainBkg, nodeBorder...).
+  mermaid: {
+    theme: 'base',
+    themeVariables: {
+      darkMode: true,
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+      fontSize: '16px',
+      background: '#24231f',
+      mainBkg: '#33322d',
+      nodeBkg: '#33322d',
+      nodeBorder: '#57554e',
+      nodeTextColor: '#ebe8e1',
+      primaryColor: '#33322d',
+      primaryTextColor: '#ebe8e1',
+      primaryBorderColor: '#57554e',
+      secondaryColor: '#33322d',
+      tertiaryColor: '#24231f',
+      textColor: '#ebe8e1',
+      titleColor: '#ebe8e1',
+      lineColor: '#a39d90',
+      arrowheadColor: '#a39d90',
+      edgeLabelBackground: '#24231f',
+      clusterBkg: '#1f1e1a',
+      clusterBorder: '#57554e',
+    },
+    // Ba lớp màu dùng chung: `class X action` (xanh, bước kit làm), `user` (đồng, việc của người), `stop` (đỏ nhạt, cổng chặn).
+    themeCSS: [
+      '.node.action rect{fill:#3b5a3f;stroke:#6f9a72}',
+      '.node.user rect{fill:#4a3526;stroke:#d97757;stroke-dasharray:4 3}',
+      '.node.stop rect{fill:#4d2f2d;stroke:#c2675f}',
+      '.edgeLabel{color:#b9b4a9}',
+    ].join(''),
+    flowchart: { curve: 'basis', nodeSpacing: 56, rankSpacing: 64, padding: 16, htmlLabels: true, useMaxWidth: true },
+  },
   themeConfig: {
     search: { provider: 'local' },
     outline: { label: 'Trong trang này', level: [2, 3] },
