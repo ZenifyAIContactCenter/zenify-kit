@@ -43,7 +43,13 @@ func RunSweepAll(o SweepAllOptions) error {
 	if repos == nil {
 		repos = WorkspaceRepos(o.WorkspaceRoot)
 	}
-	removeLegacyIndex(o.Stdout)
+	if o.DryRun {
+		if p, ok := legacyIndexPath(); ok {
+			_, _ = fmt.Fprintf(o.Stdout, "wt: would remove legacy wt-index.json (%s)\n", p)
+		}
+	} else {
+		removeLegacyIndex(o.Stdout)
+	}
 
 	// Fetch every repo in parallel, bounded by FetchRunner — dry-run also
 	// fetches, since the report is only as good as the refs it reads.
