@@ -15,22 +15,24 @@ Một skill **không tự nâng model được**. Muốn một bước bắt bu�
 
 Model mạnh điều phối, model rẻ làm phần song song — một agent tốn ~4× token so với chat, multi-agent ~15×, và Opus dẫn dắt + Sonnet subagent vượt Opus đơn lẻ ([multi-agent](https://www.anthropic.com/engineering/multi-agent-research-system)).
 
+**Nguyên tắc: dùng model *ít mạnh nhất mà vẫn kham được role* — một "fast, cheap model" cho việc máy móc, model mạnh chỉ ở chỗ cần phán đoán.** Haiku hợp chỗ **miss thì rẻ** (transcription sai → fail test → fix loop bắt); KHÔNG hợp chỗ miss là false-negative *âm thầm và đắt* (review, chẩn đoán bug, drift cross-repo) — chỗ đó "kham được" phải đọc thận trọng, sàn sonnet.
+
 | Nơi | Model | Vì sao |
 |---|---|---|
 | Agent `code-reviewer` | `claude-opus-4-8` | Review nặng phán đoán; `ship` hạ tier cho diff nhỏ |
-| Agent `scout`, `ui-verifier` | `sonnet` | Dò/đọc-tra, lái browser; không cần suy luận sâu |
+| Agent `scout`, `ui-verifier` | `sonnet` | Dò/tổng-hợp phụ thuộc, thẩm định visual — phán đoán nhẹ, nhiều bước; haiku miss âm thầm |
 | `cook` bước 0–5 (brainstorm→analyze) | Session (Opus) | Quyết định thiết kế, chạy ở vòng lặp chính |
-| `cook` bước 6 implementer | `sonnet` + effort `xhigh` | Sàn sonnet, không haiku; task phán đoán thì bỏ `model` lên Opus |
-| `review` T1 | `sonnet` <50 LOC / mid | Diff nhỏ dùng model rẻ |
+| `cook` bước 6 implementer | `claude-haiku-4-5` khi plan mang **code hoàn chỉnh**; `sonnet` + effort `xhigh` khi làm **từ prose** / integration; bỏ `model` lên Opus khi cần phán đoán | Transcription không cần raised effort → fast/cheap; haiku KHÔNG ghép `xhigh` (nó âm thầm hạ) |
+| `review` T1 | `sonnet` <50 LOC / mid | Diff nhỏ dùng model rẻ; không xuống haiku — review haiku *grade tệ hơn* |
 | `review` T2 fan-out | `sonnet`; `contracts` lên `opus` khi chạm contract chia sẻ | Sâu hơn ở phần rủi ro |
 | `review` T3 | `security`+`contracts` `opus`; `bugs`/`perf`/`types` `sonnet`; verify `opus` | Blast radius auth/contract cần model mạnh |
-| `review` adviser · `fix` · `gate` | `sonnet` | Chỉ đọc / điều tra / quét cross-repo |
-| `Explore` | kế thừa session | Tìm kiếm rộng |
+| `review` adviser · `fix` · `gate` | `sonnet` | adviser=chất lượng lời khuyên; `fix`=**chẩn đoán** (nặng phán đoán); `gate`=drift cross-repo, miss âm thầm+đắt |
+| `Explore` | **pin ≤ `sonnet` khi dispatch — KHÔNG để kế thừa Opus** | Tìm kiếm rộng: chạy search ở top tier là lãng phí thuần (`fix`/`gate` đã pin sẵn) |
 
 ## Đổi model
 
-- **Xuống tier:** đặt `model: 'sonnet'`. **Lên top tier:** **bỏ** tham số `model` (kế thừa session) — đừng đặt alias `opus`, nó trôi sang bản mới nhất.
-- **Effort quan trọng hơn tier** với code: `claude-haiku-4-5` không hỗ trợ `xhigh` (bị âm thầm hạ effort, không báo lỗi), nên sàn implementer là sonnet.
+- **Xuống tier:** đặt `model: 'sonnet'` hoặc `'claude-haiku-4-5'`. **Lên top tier:** **bỏ** tham số `model` (kế thừa session) — đừng đặt alias `opus`, nó trôi sang bản mới nhất.
+- **Effort quan trọng hơn tier** với code, nhưng chỉ với model chạy được nó: `claude-haiku-4-5` không hỗ trợ `xhigh` (bị âm thầm hạ effort, không báo lỗi). Nên **đừng ghép haiku với `xhigh`** — task transcription chạy haiku ở effort mặc định (đủ dùng), còn `sonnet` + `xhigh` để dành cho task làm từ prose nơi dial mạnh mới đáng tiền. Cách này thay cho việc floor cứng tier ở sonnet.
 
 ## Ghi chú
 
