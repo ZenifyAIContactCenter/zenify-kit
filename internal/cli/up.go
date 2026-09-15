@@ -425,14 +425,17 @@ func newUpCmd() *cobra.Command {
 				}
 				return exitcode.New(exitcode.Fail, err)
 			}
-			if !auth.LoggedIn {
+			// Logged out: the interactive wizard runs `gh auth login` itself
+			// (tui.loginStep, before it rebuilds the plan), so only the headless
+			// paths (dry-run / --apply / --json / --non-interactive) hard-fail here.
+			if !auth.LoggedIn && !wantWizard {
 				if isPreview {
 					printPlanFooterRows(w, workspace)
 				}
 				return exitcode.New(exitcode.Fail,
 					fmt.Errorf("not logged in to GitHub — run `gh auth login` (need scopes read:org, repo)"))
 			}
-			if !auth.HasScopes("read:org", "repo") {
+			if auth.LoggedIn && !auth.HasScopes("read:org", "repo") {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
 					"warning: gh token missing read:org or repo scope; discovery may be incomplete")
 			}
