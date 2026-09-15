@@ -23,18 +23,26 @@ SDD requires the model to be explicit, and an omitted `effort` inherits the sess
 
 ### From § Then SDD
 
-**This overrides SDD's cheapest tier deliberately — do not "fix" it back.** SDD says a task
-whose brief contains the complete code is transcription and takes the cheapest tier. That is
-right about the reasoning needed and wrong about the *dial*: the cheapest tier is
-`claude-haiku-4-5`, and haiku 4.5 is **not xhigh-capable** — it appears in the CLI's
-`xhigh_effort` exclusion list alongside `claude-3-*`, `opus-4-0/4-1/4-5/4-6` and
-`sonnet-4-0/4-5/4-6`, while `sonnet-5`, `opus-4-7/4-8`, `opus-5` and `fable-5` do not. So
-dispatching haiku at `xhigh` does not raise effort and does not fail either — the CLI
-**silently downgrades** it (`"Effort '<x>' exceeds … using '<y>'"`), so the dispatch looks
-correct and the effort is gone.
-Since effort matters more than tier for coding, dropping to haiku trades away the stronger
-dial to save on the weaker one. SDD's own *"turn count beats token price"* points the same
-way: the cheapest tier takes 2-3× the turns on multi-step work and costs more overall.
+**Defer to SDD's Model Selection — do not re-derive or floor it here.** SDD already routes the
+implementer: least powerful model that can handle the task, cheapest tier for a transcription task
+(the plan carries the code), standard from prose / integration, most capable for design judgment,
+specified explicitly on every dispatch. That is superpowers' text, and it is right — the
+dispatcher judges the tier per task. An earlier version of this file overrode it with a hard
+`sonnet` + `xhigh` floor; that was a mistake and is removed.
+
+**The one local caveat SDD cannot know — the CLI's `xhigh` exclusion.** `claude-haiku-4-5` is
+**not xhigh-capable**: it is on the CLI's `xhigh_effort` exclusion list alongside `claude-3-*`,
+`opus-4-0/4-1/4-5/4-6` and `sonnet-4-0/4-5/4-6`, while `sonnet-5`, `opus-4-7/4-8`, `opus-5` and
+`fable-5` are not. So dispatching haiku *at `xhigh`* neither raises effort nor errors — the CLI
+**silently downgrades** it (`"Effort '<x>' exceeds … using '<y>'"`). So **never pair the cheapest
+tier with `xhigh`**: a transcription task runs haiku at its default effort (which is all it needs),
+and `xhigh` goes to `sonnet`+ where the dial earns its cost. This is a caveat on *effort*, not a
+reason to raise the *tier*.
+
+SDD's *"turn count beats token price"* still applies: a cheap tier can take 2-3× the turns on
+multi-step work. Transcription is low-step by construction, so it rarely bites; when a cheap
+implementer does keep failing its tests, the fix loop's round-4 escalation (+1 tier) catches it —
+do not over-power every task in advance to avoid a case the loop already handles.
 
 ### From § Parallel implementers: across repos yes, within one repo no (tier two)
 
@@ -165,9 +173,13 @@ it is generated fresh by the gate on every run.
 
 ### From § Floor and ceiling / Naming is asymmetric
 
-The floor is **sonnet**, not the cheapest tier — haiku 4.5 is not xhigh-capable, so it silently
-discards the dial that matters most for coding. The ceiling is `opus-4-8`, for architecture, for a
-task needing broad codebase understanding, and for the final whole-branch review.
+The floor is **whatever tier SDD's Model Selection lands on** — the cheapest tier for a
+transcription task, a standard tier from prose / integration — not a fixed model pinned here. The
+ceiling is the session model (`opus-4-8`), for architecture, for a task needing broad codebase
+understanding, and for the final whole-branch review. Full-ID pinning is the **session's** job
+(`~/.claude/settings.json`); a subagent dispatch names a *tier* the dispatcher judged, so this file
+does not hard-pin one. The only fixed rule is the effort caveat above: never the cheapest tier with
+`xhigh`.
 
 Naming is asymmetric because scaling up means **omitting** `model` so the dispatch inherits the
 session (the `opus` alias resolves to the *newest* opus and would override the pinned version).
