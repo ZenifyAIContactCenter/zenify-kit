@@ -267,12 +267,13 @@ rounds with a scoped re-review each round → ledger line. Then one final whole-
 review on the most capable model.
 
 - Tell SDD the workspace created just above already exists; it should verify, not create.
-- **Implementers: the least powerful model that can handle the task, on every dispatch** — SDD's
-  rule. Plan carries the **complete code** → transcription → a **fast, cheap model**
-  (`claude-haiku-4-5`); **from prose** or multi-file integration → `sonnet` + `effort: 'xhigh'`.
-  **Never pair haiku with `xhigh`** — it is not xhigh-capable and the CLI silently downgrades it.
-- Scale **up** to `opus-4-8` only for design judgment or broad codebase understanding — reach it by
-  **omitting** `model`, never `'opus'` (see "Naming is asymmetric").
+- **Implementers follow SDD's Model Selection** — least powerful model that can handle each task,
+  named explicitly on every dispatch (never inherit the session): cheapest tier for a transcription
+  task (plan carries the code), standard from prose / integration, most capable for design judgment
+  (**omit** `model`, never `'opus'` — see "Naming is asymmetric"). Dispatcher judges per task; no
+  hard-pinned model here.
+- **One local caveat:** never pair the cheapest tier (`haiku`) with `effort: 'xhigh'` — haiku is not
+  xhigh-capable and the CLI silently downgrades it. `xhigh` goes to `sonnet`+ only.
 - Minimum code to satisfy the plan's definition of done. TDD: failing test → implement →
   pass. Match existing style; no upgrades to unrelated code.
 
@@ -360,7 +361,7 @@ for `/cook`. Brainstorming cannot be delegated: it needs back-and-forth with the
 | 3 Ground the spec | main loop (skill) | session — all six categories | session |
 | 4 Scout | **`scout` agent** | sonnet (pinned in the agent definition) | default |
 | 5 Plan (+ ground what it adds) | main loop (skill) | session — **keep on Opus** | session |
-| 6 Implement | subagents via SDD | `claude-haiku-4-5` when the plan carries complete code; `sonnet` from prose / integration; omit `model` for design-judgment | `xhigh` on sonnet+; haiku default (not xhigh-capable) |
+| 6 Implement | subagents via SDD | per SDD Model Selection — cheapest tier for transcription → most capable (omit `model`) for design-judgment; dispatcher judges | `xhigh` on sonnet+; never `haiku`+`xhigh` |
 | 6 Fix loop r1-3 | resume the same implementer | unchanged | as dispatched |
 | 6 Fix loop r4-5 | fresh implementer, +1 tier | omit `model` → `opus-4-8` | **`xhigh`** |
 | 6 Task review | subagents via SDD | `sonnet`, or omit for a high-risk diff (SDD's rule) | default |
