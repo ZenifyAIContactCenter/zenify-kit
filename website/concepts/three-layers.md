@@ -30,7 +30,7 @@ flowchart LR
 
 *Ba lớp và lệnh cập nhật của từng lớp*
 
-Ba lớp không đồng bộ phiên bản với nhau. Binary có thể ở `v0.17.7` trong khi knowledge store vừa nhận một commit do agent viết một phút trước. Hai nhầm lẫn thường gặp khi mới dùng kit: coi plugin skill là thứ bạn tự viết, và coi knowledge store là một phần của binary.
+Ba lớp không đồng bộ phiên bản với nhau. Binary có thể ở `v0.18.1` trong khi knowledge store vừa nhận một commit do agent viết một phút trước. Hai nhầm lẫn thường gặp khi mới dùng kit: coi plugin skill là thứ bạn tự viết, và coi knowledge store là một phần của binary.
 
 ## Liên quan
 

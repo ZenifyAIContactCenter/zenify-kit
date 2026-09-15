@@ -51,10 +51,10 @@ scoop install zenify
 zenify version
 ```
 
-Với bản phát hành mới nhất tại thời điểm viết, lệnh in:
+Lệnh in ra số phiên bản đang cài, ví dụ:
 
 ```text
-v0.17.7
+v0.18.1
 ```
 
 Bản build tay từ mã nguồn in `dev` thay cho số phiên bản.
