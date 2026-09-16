@@ -9,7 +9,7 @@ title: Nâng cấp
 Khi bạn mở một session Claude Code trong workspace, `zenify` kiểm bản mới nhất trên GitHub, tối đa một lần mỗi ngày. Nếu có bản mới hơn, nó in một dòng:
 
 ```text
-zenify: v0.18.0 is available (running 0.17.4) — upgrade: brew upgrade --cask zenify
+zenify: v0.18.2 is available (running 0.17.4) — upgrade: brew upgrade --cask zenify
 ```
 
 Dòng nhắc không xuất hiện và không báo lỗi trong ba trường hợp: máy không có mạng, bản đang chạy là bản mới nhất, hoặc bạn build tay (`dev`). Để tắt hẳn, đặt biến `ZENIFY_NO_UPDATE_CHECK=1`.
