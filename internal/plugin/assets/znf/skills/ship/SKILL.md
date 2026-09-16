@@ -51,10 +51,9 @@ start early, and that section says why.
    "looks local"; the gate answers that.
 
 4. **Behavioural verification**: confirm the change actually works. Tests if they exist; otherwise
-   **`Skill(znf:run)`** and observe the real code path — "it builds" is not "it works". Invoke it as a
-   tool: it reads the port this worktree was allocated rather than hunting for a free one, and the
-   URL it reports is what `znf:ui-verifier` needs. A `Skill(znf:run)` line is checkable; "I ran the app" is
-   the shape that dissolves into unnamed `Bash` calls.
+   **`Skill(znf:run)`** and observe the real code path — "it builds" is not "it works". It reads the
+   port this worktree was allocated (not a hunted-for free one) and reports the URL `znf:ui-verifier`
+   needs. A `Skill(znf:run)` line is checkable; "I ran the app" dissolves into unnamed `Bash` calls.
 
    > Why: see `references/ui-verification-notes.md` — why this pass is authoritative.
 
@@ -64,30 +63,29 @@ start early, and that section says why.
    git diff --name-only HEAD | rg -c '\.(tsx|jsx|vue|svelte|css|scss|less)$|components?/|pages?/|views?/'
    ```
 
-   Non-zero → dispatch **`znf:ui-verifier`** (the plugin agent) and **do not drive the
-   browser yourself**. Zero → write "nothing renders in this diff" on the board and move on.
+   Non-zero → dispatch **`znf:ui-verifier`**; **do not drive the browser yourself**. Zero (a literal
+   `0` only, never a judgement that it "won't show in dev") → "nothing renders in this diff".
+   **A non-zero with no verdict = BLOCKED (❌, Shippable NO).** A flag shipping OFF, an unseeded path,
+   or a downed backend is setup you perform, never a skip — the OFF surface still renders. **Bring the
+   app to a testable state** (`Skill(znf:run)` FE+BE, `wt wire`, flip the flag ON, seed via a script),
+   then look; cannot this session → BLOCKED, name the one missing thing.
 
-   > Why: see `references/ui-verification-notes.md` — why the agent exists.
+   > Why: see `references/ui-verification-notes.md` — testable-state recipe + red-flag table.
 
    **If the target repo has `.znf/visual/routes.json`, run `zenify visual check --repo <path> --port <P>`
-   FIRST** — golden-diff catches visual regression in regions *unrelated* to the diff, which the
-   single-element `znf:ui-verifier` measurement cannot. A non-zero exit is a hard gate: fix before shipping. This is the local half; CI runs
-   the same check as a backstop. Then still dispatch `znf:ui-verifier` for the changed element's overflow
-   measurement — the two are complementary, not substitutes.
+   FIRST** — golden-diff catches regression in regions *unrelated* to the diff that the single-element
+   `znf:ui-verifier` cannot; a non-zero exit is a hard gate, fix before shipping (CI re-runs it as a
+   backstop). Then still dispatch `znf:ui-verifier` for the changed element's overflow measurement —
+   the two are complementary, not substitutes.
 
    If the repo has `.znf/e2e/`, run `zenify e2e lint` — it blocks a shallow journey before the PR is opened.
 
-   **Log in yourself first, then hand the live session over.** Neither verifier can get past a login:
-   they have the eight ordinary browser tools and **not** `browser_run_code_unsafe`, and their attempt to
-   read credentials is classifier-blocked. So the main session logs in — `browser_snapshot` for the refs,
-   then `browser_type` into the fields and `browser_click` the button, with values read from the
-   workspace `settings.local.json` — and only then dispatches the verifier onto the already-authenticated
-   browser. If a `browser_type` carrying a password is refused
-   once with *"Stage 2 classifier error — usually transient, retrying often succeeds"*, that means what it
-   says: retry, do not start building a way around it. Tell the verifier **not** to clear
-   `localStorage` or cookies — one logged itself out mid-run.
-
-   > Why: see `references/ui-verification-notes.md` — the incidents this avoids.
+   **Log in yourself first, then hand the live session over.** Neither verifier can authenticate (no
+   `browser_run_code_unsafe`, credential reads classifier-blocked), so the main session logs in with the
+   ordinary browser tools — creds from the workspace `settings.local.json` — then dispatches the verifier
+   onto the already-authenticated browser. Retry a password `browser_type` refused with *"Stage 2
+   classifier error"* rather than working around it; tell the verifier **not** to clear
+   `localStorage`/cookies (one logged itself out mid-run). See `references/ui-verification-notes.md § 4c`.
 
    Tell it the dev URL,
    how to log in, which screen, and what changed; require **both** a screenshot **and** a measurement of
@@ -283,7 +281,7 @@ Verified at fingerprint = <fp10>
 ✅/❌ Build / typecheck    (<fp10>)  <command run>
 ✅/❌ Contract gate        (<fp10>)  /gate: <N repos impacted, or clean>
 ✅/❌ Behaviour verified   (<fp10>)  <N tests passed — or what /run showed>
-      look: <znf:ui-verifier verdict + the overflow numbers — or "nothing renders in this diff">
+      look: <verdict + overflow numbers · "nothing renders" ONLY if rg=0 · or "❌ BLOCKED: <missing thing>" → Shippable NO>
       data checks: <which of the project-specific ones ran; which the diff could not trigger>
 ✅/❌ Independent review   (<fp10>)  round <R>: <N CRITICAL/HIGH → addressed> · diff <N> LOC
       not blocking: <MEDIUM/LOW findings, plus any out-of-scope observations>
