@@ -1,0 +1,30 @@
+---
+summary: Ghi lại artifact UI-verify (screenshot + 3 số đo) cho fingerprint hiện tại.
+---
+## Khi nào dùng
+
+Agent `ui-verifier` gọi lệnh này ngay trước khi xoá screenshot của nó, nếu `zenify` có trên PATH (guard giữ agent project-agnostic). Không tự chạy lệnh này trong `/znf:ship` — nó là mắt xích ghi bằng chứng, `check` mới là mắt xích gate.
+
+## Kết quả
+
+Lệnh tính fingerprint `fp` trên working tree của `--repo`, copy ảnh vào `<repo>/.znf/ui-verify/<fp>-<screen>.png`, rồi upsert screen vào `<repo>/.znf/ui-verify/<fp>.json`. Đổi working tree sau khi ghi (vd một fix ở vòng review) làm `fp` lệch, nên artifact cũ không còn khớp lần `check` kế tiếp — buộc phải đo lại.
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--repo` | Đường dẫn repo. Mặc định thư mục hiện tại. |
+| `--screen` | Tên screen/route đã đo. Bắt buộc. |
+| `--screenshot` | Đường dẫn ảnh chụp màn hình đã lưu. Bắt buộc. |
+| `--child-right` | `child.right` (px) của element vừa đổi. Bắt buộc. |
+| `--container-right` | `right` (px) của container chứa element đó. Bắt buộc. |
+| `--padding-right` | `padding-right` (px) của container đó. Bắt buộc. |
+| `--verdict` | `pass` hoặc `fail`. Mặc định `pass`. |
+
+## Ví dụ
+
+```bash
+zenify ui-verify record --repo repos/contact-center-web --screen deal-detail \
+  --screenshot /tmp/deal-detail.png \
+  --child-right 812.5 --container-right 800 --padding-right 16 --verdict pass
+```

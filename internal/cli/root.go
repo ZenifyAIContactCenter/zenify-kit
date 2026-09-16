@@ -36,6 +36,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newGuardCmd())
 	root.AddCommand(newSkillsCmd())
 	root.AddCommand(newGateCmd())
+	root.AddCommand(newUIVerifyCmd())
 	root.AddCommand(newHotfixCmd())
 	root.AddCommand(newObserveCmd())
 	root.AddCommand(newReviewVerifyCmd())
