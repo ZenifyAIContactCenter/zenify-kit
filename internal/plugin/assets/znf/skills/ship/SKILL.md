@@ -80,19 +80,16 @@ start early, and that section says why.
 
    If the repo has `.znf/e2e/`, run `zenify e2e lint` — it blocks a shallow journey before the PR is opened.
 
-   **Log in yourself first, then hand the live session over.** Neither verifier can authenticate (no
-   `browser_run_code_unsafe`, credential reads classifier-blocked), so the main session logs in with the
-   ordinary browser tools — creds from the workspace `settings.local.json` — then dispatches the verifier
-   onto the already-authenticated browser. Retry a password `browser_type` refused with *"Stage 2
-   classifier error"* rather than working around it; tell the verifier **not** to clear
-   `localStorage`/cookies (one logged itself out mid-run). See `references/ui-verification-notes.md § 4c`.
+   **Log in yourself first, then hand the live session over** — neither verifier can authenticate; see
+   `references/ui-verification-notes.md § 4c` for the mechanics and the retry rule.
 
-   Tell it the dev URL,
-   how to log in, which screen, and what changed; require **both** a screenshot **and** a measurement of
-   the changed element against its own container box (`getBoundingClientRect`: `child.right` vs
-   `container.right − paddingRight`) — page-level scroll is not enough, since a child can spill an inner
-   panel without producing a scrollbar. Ask it to compare against an unchanged sibling, so a spill can
-   be attributed to this change rather than to something pre-existing.
+   Tell it the dev URL, how to log in, which screen, and what changed; require **both** a screenshot
+   **and** a measurement of the changed element against its own container box (`getBoundingClientRect`:
+   `child.right` vs `container.right − paddingRight`) — page-level scroll is not enough, since a child
+   can spill an inner panel without producing a scrollbar. Ask it to compare against an unchanged
+   sibling, so a spill can be attributed to this change rather than to something pre-existing. It
+   records its own artifact via `zenify ui-verify record` (mechanism in the agent itself, guarded on
+   `zenify` being on PATH); pass `--repo` = this worktree when you dispatch it.
 
    Two constraints from that agent's own caveat: the Playwright browser is a **single shared instance**,
    so never run two browser-driving agents at once and **do not touch Playwright yourself while it
@@ -282,6 +279,8 @@ Verified at fingerprint = <fp10>
 ✅/❌ Contract gate        (<fp10>)  /gate: <N repos impacted, or clean>
 ✅/❌ Behaviour verified   (<fp10>)  <N tests passed — or what /run showed>
       look: <verdict + overflow numbers · "nothing renders" ONLY if rg=0 · or "❌ BLOCKED: <missing thing>" → Shippable NO>
+            before concluding: `zenify ui-verify check --repo <path> --base <base>` — non-zero →
+            append "❌ BLOCKED" here and Shippable NO; a waiver appends "waived: <reason>"
       data checks: <which of the project-specific ones ran; which the diff could not trigger>
 ✅/❌ Independent review   (<fp10>)  round <R>: <N CRITICAL/HIGH → addressed> · diff <N> LOC
       not blocking: <MEDIUM/LOW findings, plus any out-of-scope observations>

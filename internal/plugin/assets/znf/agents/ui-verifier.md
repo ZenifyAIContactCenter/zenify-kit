@@ -27,7 +27,15 @@ Behavioral/spec-only verification of UI is nearly worthless: a change can pass e
 6. Note gotchas: CSS `text-transform: uppercase` makes `innerText` return UPPERCASE — match accordingly.
 
 ## Screenshots
-Playwright writes screenshots under the project/output root — use a short relative filename. `Read` the absolute path to inspect it. **Delete any screenshot you create before finishing** (`rm -f <path>`) so the repo stays clean, unless the caller asks you to keep one.
+Playwright writes screenshots under the project/output root — use a short relative filename. `Read` the absolute path to inspect it.
+
+**Record the artifact (when running inside zenify-kit).** Before deleting the screenshot, check
+`command -v zenify` — if present, for each screen you measured run `zenify ui-verify record --repo
+<repo the caller passed> --screen <name> --screenshot <path> --child-right <n> --container-right <n>
+--padding-right <n> --verdict <pass|fail>`. This guard keeps you project-agnostic: a project without
+`zenify` on PATH simply skips it.
+
+**Delete any screenshot you create before finishing** (`rm -f <path>`) so the repo stays clean, unless the caller asks you to keep one.
 
 ## Output (return ONLY this — it's your tool result, not a human message)
 - VERDICT: PASS / FAIL / BLOCKED / PARTIAL for each thing checked.

@@ -24,7 +24,11 @@ func TestUIVerifierAgent_Shipped(t *testing.T) {
 			t.Errorf("ui-verifier.md missing %q", want)
 		}
 	}
-	for _, forbidden := range []string{"zenify", "contact-center", "3csoft"} {
+	// "zenify" itself is allowed: the agent optionally shells out to the kit's own
+	// `zenify ui-verify record` CLI, guarded on `command -v zenify` so a project without
+	// it on PATH simply skips the step — that guard is what keeps it project-agnostic.
+	// "contact-center"/"3csoft" would be actual project business terms and stay forbidden.
+	for _, forbidden := range []string{"contact-center", "3csoft"} {
 		if strings.Contains(strings.ToLower(s), forbidden) {
 			t.Errorf("ui-verifier.md must stay project-agnostic, found %q", forbidden)
 		}
