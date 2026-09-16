@@ -53,6 +53,14 @@ type Artifact struct {
 // Deps injects everything uiverify needs from the outside world so it stays
 // testable without a real git binary or clock.
 type Deps struct {
+	// RunGit's real (non-test) implementation MUST return raw stdout —
+	// including trailing newlines — for every call Fingerprint feeds into
+	// the hash (rev-parse/diff/status): do NOT strings.TrimSpace(out) on
+	// those. Only the final hash-object result is trimmed (inside
+	// Fingerprint itself). Trimming any of the three inputs would diverge
+	// the fingerprint from ship's fp() and silently break check↔record
+	// matching (a `record`-ed artifact would never validate against the
+	// fp a later `check` computes).
 	RunGit func(dir string, args ...string) (string, error)
 	Now    func() time.Time
 }
@@ -73,6 +81,9 @@ func artifactDir(repo string) string {
 // Fingerprint reproduces ship's fp() pipeline exactly: hash of
 // {HEAD; diff HEAD; status --porcelain -uall} concatenated in that order,
 // truncated to 10 hex chars. FR-2.6.
+//
+// The three RunGit outputs are concatenated RAW, with no TrimSpace — see the
+// warning on Deps.RunGit. Only the hash-object result is trimmed, below.
 //
 // git hash-object --stdin needs stdin content that Deps.RunGit's signature
 // (dir + args, no stdin) cannot carry as a real git flag would. The
