@@ -1,0 +1,27 @@
+---
+summary: Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint hiện tại.
+---
+## Khi nào dùng
+
+`/znf:ship` bước 7 chạy lệnh này trước khi kết luận Shippable, sau khi trigger cơ học (đếm `rg` trên diff) xác định diff có render gì đó.
+
+## Kết quả
+
+Bốn trạng thái:
+- Render-set rỗng → "not required" (exit 0).
+- Diff mang marker `// znf:ui-verify-ok: <lý do>` → "waived: <lý do>" (exit 0).
+- Có artifact hợp lệ khớp fingerprint hiện tại → "verified" (exit 0).
+- Còn lại → exit khác 0, `/znf:ship` đọc là "ui-verify required" và đánh dòng `look:` thành `❌ BLOCKED`, `Shippable: NO`.
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--repo` | Đường dẫn repo. Mặc định thư mục hiện tại. |
+| `--base` | Base ref để so diff. Bắt buộc. |
+
+## Ví dụ
+
+```bash
+zenify ui-verify check --repo repos/contact-center-web --base origin/staging
+```
