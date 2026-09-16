@@ -54,7 +54,7 @@ zenify version
 Lệnh in ra số phiên bản đang cài, ví dụ:
 
 ```text
-v0.18.1
+v0.18.2
 ```
 
 Bản build tay từ mã nguồn in `dev` thay cho số phiên bản.
