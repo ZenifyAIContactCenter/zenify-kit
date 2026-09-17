@@ -13,6 +13,19 @@ func TestNoColorGuard_NoEscapesInStdout(t *testing.T) {
 	cmds := [][]string{
 		{"doctor"},
 		{"version"},
+		{"analyze", "--help"},
+		{"standards", "--help"},
+		{"db-perf", "--help"},
+		{"spec", "--help"},
+		{"wt", "--help"},
+		{"migrate", "--help"},
+		{"config", "--help"},
+		{"docs", "--help"},
+		{"skills", "--help"},
+		{"rules", "--help"},
+		{"gate", "--help"},
+		{"secret-scan", "--help"},
+		{"update", "--help"},
 	}
 	for _, args := range cmds {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {
