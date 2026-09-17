@@ -14,19 +14,23 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ProgressMsg reports that one repo finished; Done runs 1..Total.
+// ProgressMsg reports that one repo finished; Done runs 1..Total. Failed
+// reports whether that repo's Result.Err was set, so the view can mark it
+// distinctly from a success.
 type ProgressMsg struct {
 	Done, Total int
 	Repo        string
 	State       reconcile.State
+	Failed      bool
 }
 
 // DoneMsg tells the model the apply loop has returned; the model then quits.
 type DoneMsg struct{}
 
 type finished struct {
-	repo  string
-	state reconcile.State
+	repo   string
+	state  reconcile.State
+	failed bool
 }
 
 // Model is the tea.Model for the apply phase.
@@ -60,7 +64,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ProgressMsg:
 		m.done = msg.Done
 		m.total = msg.Total
-		m.list = append(m.list, finished{repo: msg.Repo, state: msg.State})
+		m.list = append(m.list, finished{repo: msg.Repo, state: msg.State, failed: msg.Failed})
 		return m, nil
 	case DoneMsg:
 		m.quit = true
@@ -79,7 +83,11 @@ func (m Model) View() string {
 	fmt.Fprintf(&b, "%s  %s  %s  %d/%d\n", dim("│"), spin(m), "Applying", m.done, m.total)
 	fmt.Fprintf(&b, "%s  %s\n", dim("│"), bar)
 	for _, f := range m.list {
-		mark := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render("✓")
+		glyph, color := "✓", "2" // mint/green
+		if f.failed {
+			glyph, color = "✗", "1" // red
+		}
+		mark := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(glyph)
 		fmt.Fprintf(&b, "%s  %s %s\n", dim("│"), mark, f.repo)
 	}
 	return b.String()

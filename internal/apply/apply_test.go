@@ -498,11 +498,12 @@ func TestApply_OnProgress_FiresOncePerRepoMonotonic(t *testing.T) {
 		done, total int
 		repo        string
 		state       reconcile.State
+		failed      bool
 	}
 	var got []ev
 	opts := Options{Workspace: ws, Owned: &managed.Manifest{}}
-	opts.OnProgress = func(done, total int, repo string, state reconcile.State) {
-		got = append(got, ev{done, total, repo, state})
+	opts.OnProgress = func(done, total int, repo string, state reconcile.State, failed bool) {
+		got = append(got, ev{done, total, repo, state, failed})
 	}
 
 	results, err := Apply(plans, opts, &fakeGH{}, &fakeGit{})
@@ -524,6 +525,9 @@ func TestApply_OnProgress_FiresOncePerRepoMonotonic(t *testing.T) {
 		}
 		if e.state != plans[i].State {
 			t.Errorf("call %d: state = %v, want %v", i, e.state, plans[i].State)
+		}
+		if e.failed {
+			t.Errorf("call %d: failed = true, want false (no plan here errors)", i)
 		}
 	}
 	if len(results) != len(plans) {

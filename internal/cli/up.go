@@ -238,8 +238,8 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 		Now:          applyNow,
 	}
 	if live {
-		opts.OnProgress = func(done, total int, repo string, state reconcile.State) {
-			prog.Send(applyview.ProgressMsg{Done: done, Total: total, Repo: repo, State: state})
+		opts.OnProgress = func(done, total int, repo string, state reconcile.State, failed bool) {
+			prog.Send(applyview.ProgressMsg{Done: done, Total: total, Repo: repo, State: state, Failed: failed})
 		}
 	}
 	results, err := apply.Apply(plans, opts, gh, git)
