@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/update"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
@@ -111,19 +112,20 @@ func newUpdateCmd() *cobra.Command {
 func runUpdateCheck(stdout, stderr io.Writer, opts update.Options, goos string, method update.Method) error {
 	res := update.Check(opts)
 	if res.Err != nil {
-		fmt.Fprintln(stderr, "zenify: update check failed:", res.Err)
+		ui.New(stderr).Step(ui.StatusFail, "update check failed", res.Err.Error())
 		return exitcode.New(exitcode.Fail, res.Err)
 	}
+	u := ui.New(stdout)
 	if opts.Current == "dev" {
-		fmt.Fprintf(stdout, "zenify dev build — latest %s\n", res.Latest)
+		u.Step(ui.StatusInfo, fmt.Sprintf("zenify dev build — latest %s", res.Latest), "")
 		return nil
 	}
 	if res.Newer {
 		_, _, display := update.Command(method, goos)
-		fmt.Fprintf(stdout, "zenify %s — latest %s — upgrade: %s\n", opts.Current, res.Latest, display)
+		u.Step(ui.StatusWarn, fmt.Sprintf("zenify %s — latest %s — upgrade: %s", opts.Current, res.Latest, display), "")
 		return nil
 	}
-	fmt.Fprintf(stdout, "zenify %s — up to date\n", opts.Current)
+	u.Step(ui.StatusOK, fmt.Sprintf("zenify %s — up to date", opts.Current), "")
 	return nil
 }
 
@@ -131,22 +133,28 @@ func runUpdateCheck(stdout, stderr io.Writer, opts update.Options, goos string, 
 // check cache so the next session re-reads the installed version. Unknown
 // prints every documented path and fails without executing anything.
 func runUpdate(stderr io.Writer, method update.Method, goos string, run func(name string, args []string) error, cacheDir string) error {
+	u := ui.New(stderr)
 	name, args, display := update.Command(method, goos)
 	if name == "" {
-		fmt.Fprintln(stderr, "zenify: could not tell how this binary was installed — upgrade with one of:")
+		u.Step(ui.StatusFail, "zenify: could not tell how this binary was installed — upgrade with one of:", "")
 		_, _, brew := update.Command(update.Brew, goos)
 		_, _, scoop := update.Command(update.Scoop, goos)
 		_, _, script := update.Command(update.Script, goos)
-		fmt.Fprintf(stderr, "  brew:    %s\n  scoop:   %s\n  script:  %s\n  docs:    %s\n", brew, scoop, script, update.InstallDoc)
+		u.KV([][2]string{
+			{"brew", brew},
+			{"scoop", scoop},
+			{"script", script},
+			{"docs", update.InstallDoc},
+		})
 		return exitcode.New(exitcode.Fail, errors.New("update: unknown install method"))
 	}
-	fmt.Fprintf(stderr, "zenify: upgrading via %s (%s)\n", method, display)
+	u.Step(ui.StatusActive, fmt.Sprintf("zenify: upgrading via %s (%s)", method, display), "")
 	if err := run(name, args); err != nil {
 		return fmt.Errorf("update: %s failed: %w", display, err)
 	}
 	if cacheDir != "" {
 		if err := os.Remove(filepath.Join(cacheDir, update.CacheFile)); err != nil && !errors.Is(err, os.ErrNotExist) { //nolint:gosec // G703 -- path is <kit home>/update-check.json, the kit's own cache file
-			fmt.Fprintln(stderr, "zenify: note: could not clear update cache:", err)
+			u.Note("zenify: note: could not clear update cache: " + err.Error())
 		}
 	}
 	return nil

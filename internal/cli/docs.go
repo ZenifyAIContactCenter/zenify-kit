@@ -13,6 +13,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -29,15 +30,16 @@ func docsSyncCore(workspace string, errW io.Writer) error {
 	if workspace == "" {
 		workspace, _ = os.Getwd()
 	}
+	u := ui.New(errW)
 	dir := resolveDocsStore(workspace, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir)
 	for _, n := range docsync.Sync(gitx.ExecRunner(), dir) {
-		fmt.Fprintln(errW, n)
+		u.Note(n)
 	}
 	// view link farm — runs on every OS (unix symlink / windows junction, wrapped in OSFS)
 	viewDir := filepath.Join(workspace, defaultDocsRepo)
 	if viewDir != dir { // only when the store HAS separated from the workspace (already migrated)
 		for _, n := range docsview.EnsureView(docsview.OSFS{}, dir, viewDir) {
-			fmt.Fprintln(errW, n)
+			u.Note(n)
 		}
 	}
 	return nil
@@ -60,13 +62,14 @@ func newDocsCmd() *cobra.Command {
 			// --dir override wins over resolveDocsStore, preserving the old behavior:
 			// only when --dir is NOT set does it auto-resolve in the core.
 			if dir != "" {
+				uErr := uiErr(cmd)
 				for _, n := range docsync.Sync(gitx.ExecRunner(), dir) {
-					cmd.PrintErrln(n)
+					uErr.Note(n)
 				}
 				viewDir := filepath.Join(workspaceDir, defaultDocsRepo)
 				if viewDir != dir {
 					for _, n := range docsview.EnsureView(docsview.OSFS{}, dir, viewDir) {
-						cmd.PrintErrln(n)
+						uErr.Note(n)
 					}
 				}
 				return nil
@@ -101,21 +104,22 @@ func newDocsCmd() *cobra.Command {
 			for k, v := range docsgen.GenHooks(apply.HookSpecs()) {
 				files[k] = v
 			}
+			uErr := uiErr(cmd)
 			if genCheck {
 				if diff := docsgen.Check(genOut, files); len(diff) > 0 {
 					for _, d := range diff {
-						cmd.PrintErrln("docs gen --check: lệch " + d) //znf:allow-lang
+						uErr.Step(ui.StatusFail, "docs gen --check: lệch "+d, "") //znf:allow-lang
 					}
 					return exitcode.New(exitcode.Fail,
 						fmt.Errorf("docs gen --check: %d file lệch — chạy `zenify docs gen` rồi commit", len(diff))) //znf:allow-lang
 				}
-				cmd.PrintErrln("docs gen --check: khớp.") //znf:allow-lang
+				uErr.Step(ui.StatusOK, "docs gen --check: khớp.", "") //znf:allow-lang
 				return nil
 			}
 			if err := docsgen.Write(genOut, files); err != nil {
 				return err
 			}
-			cmd.PrintErrf("docs gen: %d file → %s\n", len(files), genOut) //znf:allow-lang
+			uErr.Step(ui.StatusOK, fmt.Sprintf("docs gen: %d file → %s", len(files), genOut), "") //znf:allow-lang
 			return nil
 		},
 	}

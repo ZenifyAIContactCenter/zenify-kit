@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -138,8 +139,9 @@ func newGuardCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			u := uiOut(cmd)
 			if !changed {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã cấu hình sẵn (idempotent).") //znf:allow-lang
+				u.Step(ui.StatusOK, "guard install: đã cấu hình sẵn (idempotent).", "") //znf:allow-lang
 				return nil
 			}
 			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -152,7 +154,7 @@ func newGuardCmd() *cobra.Command {
 			if err := writeFileAtomic(path, out, perm); err != nil {
 				return fmt.Errorf("guard install: writing %s: %w", path, err)
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "guard install: đã trỏ PreToolUse → zenify git-guard.") //znf:allow-lang
+			u.Step(ui.StatusOK, "guard install: đã trỏ PreToolUse → zenify git-guard.", "") //znf:allow-lang
 			return nil
 		},
 	}

@@ -51,7 +51,7 @@ func TestUpdateCheck_ReportsNewer(t *testing.T) {
 		t.Fatalf("execute: %v (stderr %q)", err, errb.String())
 	}
 	got := strings.TrimSpace(out.String())
-	if !strings.HasPrefix(got, "zenify 0.17.3 — latest v9.9.9 — upgrade: ") {
+	if !strings.Contains(got, "zenify 0.17.3 — latest v9.9.9 — upgrade: ") {
 		t.Fatalf("stdout = %q", got)
 	}
 }
@@ -72,7 +72,7 @@ func TestUpdateCheck_UpToDate(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(out.String()) != "zenify 0.17.3 — up to date" {
+	if !strings.Contains(strings.TrimSpace(out.String()), "zenify 0.17.3 — up to date") {
 		t.Fatalf("stdout = %q", out.String())
 	}
 }
@@ -104,7 +104,7 @@ func TestUpdateCheck_DevBuild(t *testing.T) {
 	if err := runUpdateCheck(&out, &errb, opts, "darwin", update.Brew); err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(out.String()) != "zenify dev build — latest v9.9.9" {
+	if !strings.Contains(strings.TrimSpace(out.String()), "zenify dev build — latest v9.9.9") {
 		t.Fatalf("stdout = %q", out.String())
 	}
 }
