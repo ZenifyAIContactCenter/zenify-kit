@@ -87,8 +87,8 @@ func newDoctorCmd() *cobra.Command {
 					}
 				}
 			}
-			results, healthy := runChecks()
 			if asJSON {
+				results, healthy := runChecks()
 				env := doctorEnvelope{SchemaVersion: doctorSchemaVersion, Data: doctorData{Healthy: healthy}}
 				for _, r := range results {
 					env.Data.Checks = append(env.Data.Checks, doctorCheckJSON(r))
@@ -98,17 +98,33 @@ func newDoctorCmd() *cobra.Command {
 				if err := enc.Encode(env); err != nil {
 					return err
 				}
-			} else {
-				u := uiOut(cmd)
-				for _, r := range results {
-					st := ui.StatusOK
-					if !r.OK {
-						st = ui.StatusFail
-					}
-					u.Step(st, r.Name, r.Detail)
+				if exitOnFail && !healthy {
+					return exitcode.New(exitcode.Fail, errors.New("doctor: one or more checks failed"))
 				}
+				return nil
 			}
-			if exitOnFail && !healthy {
+
+			u := uiOut(cmd)
+			f := u.Flow("zenify doctor")
+			f.Group(ui.MarkerActive, "Checks")
+			allOK := true
+			for _, c := range checks {
+				c := c
+				f.Task(c.Name, func() (ui.Status, string) {
+					ok, detail := c.Run()
+					if !ok {
+						allOK = false
+						return ui.StatusFail, detail
+					}
+					return ui.StatusOK, detail
+				})
+			}
+			if allOK {
+				f.Close("all checks passed")
+			} else {
+				f.Close("some checks failed — see above")
+			}
+			if exitOnFail && !allOK {
 				return exitcode.New(exitcode.Fail, errors.New("doctor: one or more checks failed"))
 			}
 			return nil
