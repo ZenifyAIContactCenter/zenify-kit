@@ -55,6 +55,15 @@ func (u *Writer) styles() palette {
 	}
 }
 
+// HeaderStyle returns the header semantics (bold) on the package-default
+// lipgloss renderer, for callers outside the Writer flow (e.g. internal/tui's
+// huh wizard) that want to match ui's header appearance without a Writer.
+func HeaderStyle() lipgloss.Style { return lipgloss.NewStyle().Bold(true) }
+
+// DimStyle returns the dim/faint semantics on the package-default lipgloss
+// renderer, mirroring Writer's dim style, for callers outside the Writer flow.
+func DimStyle() lipgloss.Style { return lipgloss.NewStyle().Faint(true) }
+
 func (s Status) style(p palette) lipgloss.Style {
 	switch s {
 	case StatusOK:
