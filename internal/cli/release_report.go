@@ -9,6 +9,7 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/release"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
@@ -105,7 +106,7 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 		fmt.Fprintf(stderr, "release-report: không ghi được report: %v (fail-open)\n", err) //znf:allow-lang
 		return nil
 	}
-	fmt.Fprintln(stdout, path)
+	ui.New(stdout).Step(ui.StatusOK, "release report written", path)
 	// FR-4.3: at finalize (finalize, not --unreleased), close out unreleased.md — regenerate the
 	// view against the new marker (range release<n>..staging, nearly empty right after the cut).
 	// Best-effort, fail-open.

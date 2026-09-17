@@ -12,6 +12,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/release"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/speclife"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
@@ -150,12 +151,14 @@ func runSpecStatus(
 		return nil
 	}
 	if len(statuses) == 0 {
-		fmt.Fprintln(stdout, "không có spec trong store.") //znf:allow-lang
+		ui.New(stdout).Note("không có spec trong store.") //znf:allow-lang
 		return nil
 	}
+	rows := make([][]string, 0, len(statuses))
 	for _, s := range statuses {
-		fmt.Fprintf(stdout, "%-12s %-40s %s\n", s.State, s.Slug, s.Path)
+		rows = append(rows, []string{string(s.State), s.Slug, s.Path})
 	}
+	ui.New(stdout).Table([]string{"STATE", "SLUG", "PATH"}, rows)
 	return nil
 }
 
@@ -180,14 +183,17 @@ func runSpecContracts(storeDir, repo, collection string, jsonOut bool, stdout, s
 		return nil
 	}
 	if len(contracts) == 0 {
-		fmt.Fprintf(stdout, "không có contract (%d spec bỏ qua — thiếu tag _Blast-radius:/_DB:).\n", skipped) //znf:allow-lang
+		ui.New(stdout).Note(fmt.Sprintf("không có contract (%d spec bỏ qua — thiếu tag _Blast-radius:/_DB:).", skipped)) //znf:allow-lang
 		return nil
 	}
+	u := ui.New(stdout)
+	rows := make([][]string, 0, len(contracts))
 	for _, c := range contracts {
-		fmt.Fprintf(stdout, "%-18s blast=%q db=%q  %s\n", c.Repo, c.BlastRadius, c.DB, c.SpecPath)
+		rows = append(rows, []string{c.Repo, c.BlastRadius, c.DB, c.SpecPath})
 	}
+	u.Table([]string{"REPO", "BLAST", "DB", "SPEC"}, rows)
 	if skipped > 0 {
-		fmt.Fprintf(stdout, "(%d spec bỏ qua — thiếu tag _Blast-radius:/_DB:)\n", skipped) //znf:allow-lang
+		u.Note(fmt.Sprintf("(%d spec bỏ qua — thiếu tag _Blast-radius:/_DB:)", skipped)) //znf:allow-lang
 	}
 	return nil
 }

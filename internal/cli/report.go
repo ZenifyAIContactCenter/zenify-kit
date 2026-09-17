@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"text/tabwriter"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -51,18 +51,17 @@ func runObserveReport(w io.Writer, asJSON bool, list func() ([]observe.SessionSu
 	}
 
 	if len(sessions) == 0 {
-		_, _ = fmt.Fprintln(w, "No observe data yet. (Hooks record into $XDG_STATE_HOME/zenify/observe.)")
+		ui.New(w).Note("No observe data yet. (Hooks record into $XDG_STATE_HOME/zenify/observe.)")
 		return nil
 	}
 
-	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, "SESSION\tDISPATCH\tCALLS\tTOOL-OUT\tLAST-ACTIVE")
 	now := reportNow()
+	rows := make([][]string, 0, len(sessions))
 	for _, s := range sessions {
-		_, _ = fmt.Fprintf(tw, "%s\t%d\t%d\t%s\t%s\n",
-			s.ID, s.Count, s.Calls, humanBytes(s.Bytes), humanAge(s.ModTime, now))
+		rows = append(rows, []string{s.ID, fmt.Sprintf("%d", s.Count), fmt.Sprintf("%d", s.Calls), humanBytes(s.Bytes), humanAge(s.ModTime, now)})
 	}
-	return tw.Flush()
+	ui.New(w).Table([]string{"SESSION", "DISPATCH", "CALLS", "TOOL-OUT", "LAST-ACTIVE"}, rows)
+	return nil
 }
 
 const reportLong = "Tóm tắt state observe của kit theo từng session: subagent dispatch (từ\n" + //znf:allow-lang

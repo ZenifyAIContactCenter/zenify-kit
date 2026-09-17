@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/review"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -263,7 +264,7 @@ func runReviewLogRecord(stdin io.Reader, stderr io.Writer, dirFn func() (string,
 // runReviewLogShow reads the store → a human-readable summary; --json → the full record array
 // (for M6). Empty/missing/errored dir → "no reviews logged yet", exit 0. Read-only.
 func runReviewLogShow(stdout, stderr io.Writer, asJSON bool, dirFn func() (string, error)) error {
-	none := func() error { fmt.Fprintln(stdout, "no reviews logged yet"); return nil }
+	none := func() error { ui.New(stdout).Note("no reviews logged yet"); return nil }
 	dir, err := dirFn()
 	if err != nil {
 		return none()
@@ -282,25 +283,33 @@ func runReviewLogShow(stdout, stderr io.Writer, asJSON bool, dirFn func() (strin
 		return none()
 	}
 	s := review.Summarize(recs)
-	fmt.Fprintf(stdout, "reviews: %d\n", s.Total)
+	u := ui.New(stdout)
+	u.Section("Review log")
+	rows := [][2]string{{"reviews", fmt.Sprintf("%d", s.Total)}}
 	for _, tier := range []string{"T1", "T2", "T3"} {
 		if n := s.ByTier[tier]; n > 0 {
-			fmt.Fprintf(stdout, "  %s: %d\n", tier, n)
+			rows = append(rows, [2]string{tier, fmt.Sprintf("%d", n)})
 		}
 	}
-	fmt.Fprintf(stdout, "findings (kept): C%d H%d M%d L%d\n", s.Findings.Critical, s.Findings.High, s.Findings.Medium, s.Findings.Low)
-	fmt.Fprintf(stdout, "kept %d / refuted %d (refute rate %.0f%%)\n", s.Kept, s.Refuted, s.RefuteRate*100)
-	fmt.Fprintf(stdout, "shippable: %d/%d\n", s.ShippableN, s.Total)
+	rows = append(rows,
+		[2]string{"findings (kept)", fmt.Sprintf("C%d H%d M%d L%d", s.Findings.Critical, s.Findings.High, s.Findings.Medium, s.Findings.Low)},
+		[2]string{"kept/refuted", fmt.Sprintf("%d / %d (refute rate %.0f%%)", s.Kept, s.Refuted, s.RefuteRate*100)},
+		[2]string{"shippable", fmt.Sprintf("%d/%d", s.ShippableN, s.Total)},
+	)
 	if len(s.TopCategory) > 0 {
-		fmt.Fprint(stdout, "top categories:")
+		var b strings.Builder
 		for i, c := range s.TopCategory {
 			if i >= 5 {
 				break
 			}
-			fmt.Fprintf(stdout, " %s(%d)", c.Name, c.N)
+			if i > 0 {
+				b.WriteString(" ")
+			}
+			fmt.Fprintf(&b, "%s(%d)", c.Name, c.N)
 		}
-		fmt.Fprintln(stdout)
+		rows = append(rows, [2]string{"top categories", b.String()})
 	}
+	u.KV(rows)
 	return nil
 }
 
