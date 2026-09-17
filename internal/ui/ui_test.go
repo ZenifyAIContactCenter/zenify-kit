@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 func TestPlainWriter_NoEscapes(t *testing.T) {
@@ -23,6 +26,28 @@ func TestPlainWriter_NoEscapes(t *testing.T) {
 		if !strings.Contains(b.String(), want) {
 			t.Fatalf("plain output missing %q: %q", want, b.String())
 		}
+	}
+}
+
+// TestStyledWriter_EmitsAnsiAndGlyph binds SC-1: styled mode must emit ANSI
+// escapes alongside the glyph. New() gates styled on a real *os.File TTY, which
+// a bytes.Buffer never is, so the styled Writer is constructed directly here
+// (matching spinner_test.go's approach) with a renderer forced to TrueColor.
+func TestStyledWriter_EmitsAnsiAndGlyph(t *testing.T) {
+	var b bytes.Buffer
+	r := lipgloss.NewRenderer(&b, termenv.WithProfile(termenv.TrueColor))
+	r.SetColorProfile(termenv.TrueColor) // guard against auto-downgrade when the sink isn't a TTY
+	u := &Writer{w: &b, styled: true, r: r}
+
+	u.Header("zenify up")
+	u.Step(StatusOK, "Fetched", "12 repos")
+
+	out := b.String()
+	if !strings.Contains(out, "\x1b[") {
+		t.Fatalf("styled output must contain ANSI escapes, got %q", out)
+	}
+	if !strings.Contains(out, "▲") {
+		t.Fatalf("styled output must contain the header glyph, got %q", out)
 	}
 }
 
