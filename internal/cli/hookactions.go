@@ -13,6 +13,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
 
@@ -25,7 +26,7 @@ const znfDisciplineSentinel = "znf-discipline-local"
 func runDocsSyncHook(wsRoot string, w io.Writer) int {
 	defer failOpen(w, nil)
 	if err := docsSyncCore(wsRoot, os.Stderr); err != nil {
-		fmt.Fprintln(os.Stderr, "znf docs-sync:", err)
+		ui.New(os.Stderr).Note(fmt.Sprintf("znf docs-sync: %v", err))
 	}
 	fmt.Fprintln(w, "{}")
 	return 0
@@ -59,7 +60,7 @@ func runObserveHook(wsRoot, kind string, w io.Writer) int {
 func runSessionStart(wsRoot string, w io.Writer) int {
 	defer failOpen(w, nil)
 	if err := docsSyncCore(wsRoot, os.Stderr); err != nil {
-		fmt.Fprintln(os.Stderr, "znf docs-sync:", err)
+		ui.New(os.Stderr).Note(fmt.Sprintf("znf docs-sync: %v", err))
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		ensureWorkspace(wsRoot, home, w, os.Stderr)
@@ -149,7 +150,7 @@ func runGitStateHook(wsRoot string, mode gitstate.Mode, w io.Writer) int {
 // nil to opt out — used by callers whose contract has no such requirement.
 func failOpen(w io.Writer, wrote *bool) {
 	if r := recover(); r != nil {
-		fmt.Fprintln(os.Stderr, "znf hook recovered:", r)
+		ui.New(os.Stderr).Note(fmt.Sprintf("znf hook recovered: %v", r))
 		if wrote != nil && !*wrote {
 			fmt.Fprintln(w, "{}")
 		}

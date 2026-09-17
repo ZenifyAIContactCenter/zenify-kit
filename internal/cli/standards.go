@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/standards"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -45,21 +46,25 @@ func runStandards(specPath, planPath, root string, asJSON bool, readFile func(st
 		return nil
 	}
 
-	fmt.Fprintf(stdout, "Test-traceability: %d declared test path(s)\n", len(res.TestPaths))
+	u := ui.New(stdout)
+	u.Section("znf:standards")
+	u.KV([][2]string{{"Test-traceability", fmt.Sprintf("%d declared test path(s)", len(res.TestPaths))}})
+	u.Blank()
 	if len(res.Findings) == 0 {
-		fmt.Fprintln(stdout, "No mechanical findings — every FR has a declared test on disk.")
+		u.Note("No mechanical findings — every FR has a declared test on disk.")
 	} else {
-		fmt.Fprintf(stdout, "%d finding(s) [HIGH=%d MEDIUM=%d INFO=%d]:\n",
-			len(res.Findings), res.SeverityCounts["HIGH"], res.SeverityCounts["MEDIUM"], res.SeverityCounts["INFO"])
+		u.Step(ui.StatusWarn, fmt.Sprintf("%d finding(s)", len(res.Findings)),
+			fmt.Sprintf("HIGH=%d MEDIUM=%d INFO=%d", res.SeverityCounts["HIGH"], res.SeverityCounts["MEDIUM"], res.SeverityCounts["INFO"]))
 		for _, f := range res.Findings {
 			id := f.ID
 			if id == "" {
 				id = f.Location
 			}
-			fmt.Fprintf(stdout, "  [%s] %s %s — %s\n", f.Severity, f.Kind, id, f.Message)
+			u.Note(fmt.Sprintf("[%s] %s %s — %s", f.Severity, f.Kind, id, f.Message))
 		}
 	}
-	fmt.Fprintln(stdout, "\n(Advisory — mechanical scan only; does not block. Judgment passes run in znf:standards.)")
+	u.Blank()
+	u.Note("Advisory — mechanical scan only; does not block. Judgment passes run in znf:standards.")
 	return nil
 }
 

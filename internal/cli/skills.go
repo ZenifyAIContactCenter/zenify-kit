@@ -8,6 +8,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -29,20 +30,21 @@ func newSkillsCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "znf sync: %d ghi, %d giữ (user sửa), %d không đổi, %d gỡ → %s\n", //znf:allow-lang
-				len(res.Written), len(res.Kept), len(res.Skipped), len(res.Removed), dest)
+			u := uiOut(cmd)
+			u.Step(ui.StatusOK, "znf sync", //znf:allow-lang
+				fmt.Sprintf("%d ghi, %d giữ (user sửa), %d không đổi, %d gỡ → %s", //znf:allow-lang
+					len(res.Written), len(res.Kept), len(res.Skipped), len(res.Removed), dest))
 
 			home, _ := os.UserHomeDir()
 			if home != "" {
 				ch, err := apply.EnsureGlobalHooks(home, false)
 				if err != nil {
-					fmt.Fprintln(cmd.ErrOrStderr(), "warning: could not wire znf hooks:", err)
+					uiErr(cmd).Step(ui.StatusWarn, "could not wire znf hooks", err.Error())
 				} else if n := ch.Added + ch.Updated; n > 0 {
 					// Only announce when something actually changed — an
 					// already-wired session would otherwise print a "wired N"
 					// line on every run (all Unchanged), which reads as noise.
-					fmt.Fprintf(cmd.OutOrStdout(),
-						"wired %d znf hooks into ~/.claude/settings.json\n", n)
+					u.Step(ui.StatusOK, fmt.Sprintf("wired %d znf hooks into ~/.claude/settings.json", n), "")
 				}
 			}
 			return nil
@@ -66,8 +68,9 @@ func newSkillsCmd() *cobra.Command {
 				dest = filepath.Join(".claude", "skills")
 			}
 			skills := plugin.SkillsForRepo(repo)
+			u := uiOut(cmd)
 			if len(skills) == 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "repo %q không có coding skill trong footprint map\n", repo) //znf:allow-lang
+				u.Step(ui.StatusInfo, fmt.Sprintf("repo %q không có coding skill trong footprint map", repo), "") //znf:allow-lang
 				return nil
 			}
 			man := filepath.Join(dest, ".manifest.json")
@@ -75,12 +78,12 @@ func newSkillsCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "install %s: %d ghi, %d giữ, %d không đổi → %s\n", //znf:allow-lang
-				repo, len(res.Written), len(res.Kept), len(res.Skipped), dest)
+			u.Step(ui.StatusOK, fmt.Sprintf("install %s", repo), //znf:allow-lang
+				fmt.Sprintf("%d ghi, %d giữ, %d không đổi → %s", len(res.Written), len(res.Kept), len(res.Skipped), dest)) //znf:allow-lang
 			if recs := plugin.Leg2ForRepo(repo); len(recs) > 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "\nKhuyến nghị third-party (chạy thủ công rồi commit):\n") //znf:allow-lang
+				u.Section("Khuyến nghị third-party (chạy thủ công rồi commit):") //znf:allow-lang
 				for _, r := range recs {
-					fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", r)
+					u.Note(r)
 				}
 			}
 			return nil

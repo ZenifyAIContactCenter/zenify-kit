@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -168,15 +169,15 @@ func newStatuslineInstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			w := cmd.OutOrStdout()
+			u := uiOut(cmd)
 			switch action {
 			case "already":
-				_, _ = fmt.Fprintln(w, "statusline install: đã cấu hình sẵn (idempotent).") //znf:allow-lang
+				u.Step(ui.StatusOK, "statusline install: đã cấu hình sẵn (idempotent).", "") //znf:allow-lang
 				return nil
 			case "occupied":
-				_, _ = fmt.Fprintln(w, "statusline install: settings.json đã có statusLine khác — KHÔNG đè.")                             //znf:allow-lang
-				_, _ = fmt.Fprintln(w, "  Giữ statusline của bạn và chèn segment: `zenify observe statusline --segment` (xem `--help`).") //znf:allow-lang
-				_, _ = fmt.Fprintln(w, "  Hoặc đè hẳn bằng: `zenify observe statusline install --force`.")                                //znf:allow-lang
+				u.Step(ui.StatusWarn, "statusline install: settings.json đã có statusLine khác — KHÔNG đè.", "")        //znf:allow-lang
+				u.Note("Giữ statusline của bạn và chèn segment: `zenify observe statusline --segment` (xem `--help`).") //znf:allow-lang
+				u.Note("Hoặc đè hẳn bằng: `zenify observe statusline install --force`.")                                //znf:allow-lang
 				return nil
 			}
 			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -190,9 +191,9 @@ func newStatuslineInstallCmd() *cobra.Command {
 				return fmt.Errorf("statusline install: ghi %s: %w", path, err)
 			}
 			if action == "forced" {
-				_, _ = fmt.Fprintln(w, "statusline install: đã ĐÈ statusLine → zenify observe statusline (--force).") //znf:allow-lang
+				u.Step(ui.StatusOK, "statusline install: đã ĐÈ statusLine → zenify observe statusline (--force).", "") //znf:allow-lang
 			} else {
-				_, _ = fmt.Fprintln(w, "statusline install: đã đặt statusLine → zenify observe statusline.") //znf:allow-lang
+				u.Step(ui.StatusOK, "statusline install: đã đặt statusLine → zenify observe statusline.", "") //znf:allow-lang
 			}
 			return nil
 		},

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
@@ -101,9 +102,11 @@ func newGateCmd() *cobra.Command {
 			if asJSON {
 				return json.NewEncoder(w).Encode(ps)
 			}
+			rows := make([][]string, 0, len(ps))
 			for _, p := range ps {
-				fmt.Fprintf(w, "%s\taccessor=%s\tpatterns=%v\n", p.Name, p.DBAccessor, p.AccessPatterns)
+				rows = append(rows, []string{p.Name, p.DBAccessor, fmt.Sprintf("%v", p.AccessPatterns)})
 			}
+			ui.New(w).Table([]string{"REPO", "ACCESSOR", "PATTERNS"}, rows)
 			return nil
 		},
 	}

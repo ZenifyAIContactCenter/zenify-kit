@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -98,12 +99,13 @@ func newDoctorCmd() *cobra.Command {
 					return err
 				}
 			} else {
+				u := uiOut(cmd)
 				for _, r := range results {
-					mark := "✓"
+					st := ui.StatusOK
 					if !r.OK {
-						mark = "✗"
+						st = ui.StatusFail
 					}
-					cmd.Printf("%s %s: %s\n", mark, r.Name, r.Detail)
+					u.Step(st, r.Name, r.Detail)
 				}
 			}
 			if exitOnFail && !healthy {

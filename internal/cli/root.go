@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -23,6 +24,9 @@ func NewRootCmd() *cobra.Command {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return exitcode.New(exitcode.BadArgs, err)
 	})
+	var noColor bool
+	root.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
+	root.PersistentPreRun = func(_ *cobra.Command, _ []string) { ui.SetNoColor(noColor) }
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newUpdateCmd())
 	defaultChecksOnce.Do(registerDefaultChecks)

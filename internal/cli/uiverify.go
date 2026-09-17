@@ -109,10 +109,11 @@ func newUIVerifyCheckCmd() *cobra.Command {
 			if base == "" {
 				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need --base <base ref>"))
 			}
-			out := cmd.OutOrStdout()
 			state, msg, err := uiverify.Check(defaultUIVerifyDeps(), repo, base)
-			fmt.Fprintf(out, "state: %s\n", state)
-			fmt.Fprintf(out, "msg: %s\n", msg)
+			uiOut(cmd).KV([][2]string{
+				{"state", string(state)},
+				{"msg", msg},
+			})
 			return err
 		},
 	}

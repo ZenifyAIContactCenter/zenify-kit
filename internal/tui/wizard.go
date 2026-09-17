@@ -13,9 +13,9 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // OnboardConfig drives one wizard run. The TUI never reconciles state
@@ -288,9 +288,11 @@ func selectRepos(plan []reconcile.RepoPlan, accessible bool) ([]string, error) {
 	return selected, nil
 }
 
+// headerStyle/stateStyle mirror ui.Writer's header/dim semantics (bold /
+// faint) so the huh wizard's plan table matches the rest of the CLI's look.
 var (
-	headerStyle = lipgloss.NewStyle().Bold(true)
-	stateStyle  = lipgloss.NewStyle().Faint(true)
+	headerStyle = ui.HeaderStyle()
+	stateStyle  = ui.DimStyle()
 )
 
 // renderPlan prints the plan as a simple table, followed by the synthetic

@@ -5,6 +5,7 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/secretscan"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -32,9 +33,9 @@ func newSecretScanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			w := cmd.OutOrStdout()
+			u := uiOut(cmd)
 			for _, f := range findings {
-				_, _ = fmt.Fprintf(w, "%s:%d  %s  %s\n", f.File, f.StartLine, f.RuleID, f.Redacted)
+				u.Step(ui.StatusFail, fmt.Sprintf("%s:%d", f.File, f.StartLine), fmt.Sprintf("%s  %s", f.RuleID, f.Redacted))
 			}
 			if len(findings) > 0 {
 				return exitcode.New(exitcode.Fail, fmt.Errorf("secret-scan: %d finding", len(findings)))

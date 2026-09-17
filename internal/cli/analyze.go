@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/analyze"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -44,27 +45,32 @@ func runAnalyze(specPath, planPath string, asJSON bool, readFile func(string) ([
 	}
 
 	// human-readable
-	fmt.Fprintf(stdout, "Brief: ")
+	u := ui.New(stdout)
+	u.Section("znf:analyze")
+	brief := "absent"
 	if res.BriefFound {
-		fmt.Fprintf(stdout, "found, %d/8 numbered fields\n", res.BriefFields)
-	} else {
-		fmt.Fprintf(stdout, "absent\n")
+		brief = fmt.Sprintf("found, %d/8 numbered fields", res.BriefFields)
 	}
-	fmt.Fprintf(stdout, "Coverage: %d FR in spec, %d referenced by plan\n", len(res.SpecFRs), len(res.PlanRefs))
+	u.KV([][2]string{
+		{"Brief", brief},
+		{"Coverage", fmt.Sprintf("%d FR in spec, %d referenced by plan", len(res.SpecFRs), len(res.PlanRefs))},
+	})
+	u.Blank()
 	if len(res.Findings) == 0 {
-		fmt.Fprintln(stdout, "No mechanical findings.")
+		u.Note("No mechanical findings.")
 	} else {
-		fmt.Fprintf(stdout, "%d finding(s) [CRITICAL=%d HIGH=%d]:\n",
-			len(res.Findings), res.SeverityCounts["CRITICAL"], res.SeverityCounts["HIGH"])
+		u.Step(ui.StatusWarn, fmt.Sprintf("%d finding(s)", len(res.Findings)),
+			fmt.Sprintf("CRITICAL=%d HIGH=%d", res.SeverityCounts["CRITICAL"], res.SeverityCounts["HIGH"]))
 		for _, f := range res.Findings {
 			id := f.ID
 			if id == "" {
 				id = f.Location
 			}
-			fmt.Fprintf(stdout, "  [%s] %s %s — %s\n", f.Severity, f.Kind, id, f.Message)
+			u.Note(fmt.Sprintf("[%s] %s %s — %s", f.Severity, f.Kind, id, f.Message))
 		}
 	}
-	fmt.Fprintln(stdout, "\n(Advisory — mechanical scan only; does not block. Judgment passes run in znf:analyze.)")
+	u.Blank()
+	u.Note("Advisory — mechanical scan only; does not block. Judgment passes run in znf:analyze.")
 	return nil
 }
 
