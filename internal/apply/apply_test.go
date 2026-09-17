@@ -486,3 +486,47 @@ func assertSettingsSkeleton(t *testing.T, repo string) {
 		t.Errorf("settings skeleton missing env block:\n%s", b)
 	}
 }
+
+func TestApply_OnProgress_FiresOncePerRepoMonotonic(t *testing.T) {
+	ws := t.TempDir()
+	plans := []reconcile.RepoPlan{
+		{Name: "repo-a", State: reconcile.OK, Path: "repo-a"},
+		{Name: "repo-b", State: reconcile.Skip, Path: "repo-b"},
+		{Name: "repo-c", State: reconcile.OK, Path: "repo-c"},
+	}
+	type ev struct {
+		done, total int
+		repo        string
+		state       reconcile.State
+	}
+	var got []ev
+	opts := Options{Workspace: ws, Owned: &managed.Manifest{}}
+	opts.OnProgress = func(done, total int, repo string, state reconcile.State) {
+		got = append(got, ev{done, total, repo, state})
+	}
+
+	results, err := Apply(plans, opts, &fakeGH{}, &fakeGit{})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(got) != len(plans) {
+		t.Fatalf("OnProgress calls = %d, want %d", len(got), len(plans))
+	}
+	for i, e := range got {
+		if e.done != i+1 {
+			t.Errorf("call %d: done = %d, want %d", i, e.done, i+1)
+		}
+		if e.total != len(plans) {
+			t.Errorf("call %d: total = %d, want %d", i, e.total, len(plans))
+		}
+		if e.repo != plans[i].Name {
+			t.Errorf("call %d: repo = %q, want %q", i, e.repo, plans[i].Name)
+		}
+		if e.state != plans[i].State {
+			t.Errorf("call %d: state = %v, want %v", i, e.state, plans[i].State)
+		}
+	}
+	if len(results) != len(plans) {
+		t.Fatalf("results = %d, want %d (OnProgress must not change result count)", len(results), len(plans))
+	}
+}
