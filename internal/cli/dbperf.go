@@ -19,7 +19,10 @@ import (
 func runDbPerf(diffText string, cfg dbperf.Config, asJSON bool, stdout, stderr io.Writer) error {
 	res := dbperf.ScanStatic(dbperf.AddedLines(diffText), cfg)
 	if res.SitesScanned == 0 {
-		ui.New(stdout).Note("db-perf: không có query backend trong diff — gate pass") //znf:allow-lang
+		// Plain, never styled: this branch runs BEFORE the asJSON check below, so
+		// `db-perf --json` with 0 sites also lands here — ui.Note would put ANSI on
+		// stdout on a real TTY with color on, which a --json consumer must never see.
+		fmt.Fprintln(stdout, "db-perf: không có query backend trong diff — gate pass") //znf:allow-lang
 		return nil
 	}
 	if asJSON {
