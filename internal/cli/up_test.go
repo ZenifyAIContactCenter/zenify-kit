@@ -145,6 +145,34 @@ func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 	}
 }
 
+// TestRunApply_NonTTY_PlainStepLinesNoEscapes binds SC-4/SC-6: a non-TTY
+// sink (bytes.Buffer, same as io.Discard's non-styled path) must produce
+// plain Step lines and never start the bubbletea Program — no ANSI escapes.
+func TestRunApply_NonTTY_PlainStepLinesNoEscapes(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{{Name: "svc", Path: "svc"}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}}
+
+	var out bytes.Buffer
+	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("runApply: %v", err)
+	}
+	s := out.String()
+	if strings.Contains(s, "\x1b[") {
+		t.Fatalf("non-TTY apply output must have no ANSI, got %q", s)
+	}
+	if !strings.Contains(s, "svc") {
+		t.Fatalf("non-TTY apply output must contain the static Step line, got %q", s)
+	}
+}
+
 func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", t.TempDir()) // isolate the Task 5 docs-store step from the real machine
 	home := t.TempDir()
