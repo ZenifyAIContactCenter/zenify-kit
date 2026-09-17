@@ -22,6 +22,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tui"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -96,12 +97,16 @@ func renderPlanJSON(w io.Writer, plans []reconcile.RepoPlan, auth ghx.Auth) erro
 }
 
 func renderPlanTable(w io.Writer, plans []reconcile.RepoPlan, auth ghx.Auth) {
-	_, _ = fmt.Fprintf(w, "Account: %s\n\n", auth.Account)
-	_, _ = fmt.Fprintf(w, "%-22s %-16s %s\n", "REPO", "STATE", "REASON")
+	u := ui.New(w)
+	u.KV([][2]string{{"Account", auth.Account}})
+	u.Blank()
+	rows := make([][]string, 0, len(plans))
 	for _, p := range plans {
-		_, _ = fmt.Fprintf(w, "%-22s %-16s %s\n", p.Name, p.State, p.Reason)
+		rows = append(rows, []string{p.Name, string(p.State), p.Reason})
 	}
-	_, _ = fmt.Fprintln(w, "\n(dry-run — nothing was changed; run with --apply or in a terminal to apply)")
+	u.Table([]string{"REPO", "STATE", "REASON"}, rows)
+	u.Blank()
+	_, _ = fmt.Fprintln(w, "(dry-run — nothing was changed; run with --apply or in a terminal to apply)")
 }
 
 // minVersionFloor is the binary version that introduced the apply path. A
@@ -137,8 +142,12 @@ func ensureDocsStore(w io.Writer, errW io.Writer, git gitx.Runner, workspace str
 		if err := os.MkdirAll(filepath.Dir(store), 0o750); err != nil {
 			_, _ = fmt.Fprintf(errW, "warning: docs store parent dir: %v (onboarding otherwise succeeded)\n", err)
 		}
+		sp := ui.NewSpinner(errW, "Cloning docs knowledge store")
+		sp.Start()
 		if _, err := git.Run(filepath.Dir(store), "clone", docsRemote, store); err != nil {
-			_, _ = fmt.Fprintf(errW, "warning: docs store clone: %v (onboarding otherwise succeeded)\n", err)
+			sp.Fail(fmt.Sprintf("docs store clone: %v (onboarding otherwise succeeded)", err))
+		} else {
+			sp.Success("Cloned docs knowledge store")
 		}
 	}
 	viewDir := filepath.Join(workspace, defaultDocsRepo)
@@ -216,17 +225,19 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	}
 
 	var failed int
+	uApply := ui.New(w)
 	for _, r := range results {
+		label := fmt.Sprintf("%s (%s)", r.Repo, r.State)
 		if r.Err != nil {
 			failed++
+			detail := fmt.Sprintf("ERROR: %v", r.Err)
 			if r.Action != "" {
-				_, _ = fmt.Fprintf(w, "%-22s %-16s %s — ERROR: %v\n", r.Repo, r.State, r.Action, r.Err)
-			} else {
-				_, _ = fmt.Fprintf(w, "%-22s %-16s ERROR: %v\n", r.Repo, r.State, r.Err)
+				detail = fmt.Sprintf("%s — ERROR: %v", r.Action, r.Err)
 			}
+			uApply.Step(ui.StatusFail, label, detail)
 			continue
 		}
-		_, _ = fmt.Fprintf(w, "%-22s %-16s %s\n", r.Repo, r.State, r.Action)
+		uApply.Step(ui.StatusOK, label, r.Action)
 	}
 
 	if err := owned.Save(manifestPath); err != nil {
@@ -418,13 +429,17 @@ func newUpCmd() *cobra.Command {
 			if sourcesDir != "" {
 				sources = scanSources(m, gitx.ExecRunner(), sourcesDir)
 			}
+			sp := ui.NewSpinner(cmd.ErrOrStderr(), "Đang dựng kế hoạch onboarding") //znf:allow-lang
+			sp.Start()
 			plans, auth, err := buildPlan(m, ghx.ExecRunner(), gitx.ExecRunner(), workspace, sources)
 			if err != nil {
+				sp.Fail("Dựng kế hoạch thất bại") //znf:allow-lang
 				if isPreview {
 					printPlanFooterRows(w, workspace)
 				}
 				return exitcode.New(exitcode.Fail, err)
 			}
+			sp.Success("Đã dựng kế hoạch onboarding") //znf:allow-lang
 			// Logged out: the interactive wizard runs `gh auth login` itself
 			// (tui.loginStep, before it rebuilds the plan), so only the headless
 			// paths (dry-run / --apply / --json / --non-interactive) hard-fail here.
@@ -443,11 +458,13 @@ func newUpCmd() *cobra.Command {
 			case modeWizard:
 				return runWizard(w, m, workspace, sources)
 			case modeApply:
+				uiOut(cmd).Header("zenify up --apply")
 				return runApply(w, cmd.ErrOrStderr(), plans, m, workspace, ghx.ExecRunner(), gitx.ExecRunner())
 			default: // modeDryRun
 				if jsonOut {
 					return renderPlanJSON(w, plans, auth)
 				}
+				uiOut(cmd).Header("zenify up")
 				renderPlanTable(w, plans, auth)
 				printPlanFooterRows(w, workspace)
 				return nil

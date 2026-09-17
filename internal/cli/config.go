@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/distribute"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +28,9 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 	manifestPath := filepath.Join(configDir, "distribution.txt")
 	mb, err := os.ReadFile(manifestPath) //nolint:gosec // G304 -- manifestPath is inside the trusted config dir, not user input
 	if err != nil {
+		// NOT migrated: ensure.go greps this stderr line for a literal "config: "
+		// prefix (per-line, forwarded verbatim as "znf ensure: "+line) — a Step's
+		// indent/gap would break that contract.
 		fmt.Fprintf(stderr, "config: không đọc được manifest %s: %v (fail-open)\n", manifestPath, err) //znf:allow-lang
 		return 0, nil
 	}
@@ -47,14 +51,23 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 	pairs, dnotes := distribute.ExpandDirPairs(pairs, listDir)
 	notes = append(notes, dnotes...)
 	for _, n := range notes {
-		fmt.Fprintln(stderr, "config: "+n)
+		ui.New(stderr).Note("config: " + n)
 	}
 	readSource := func(rel string) ([]byte, error) { return os.ReadFile(filepath.Join(configDir, rel)) } //nolint:gosec // G304 -- rel comes from the trusted manifest, joined under configDir
 	readDest := func(rel string) ([]byte, error) { return os.ReadFile(filepath.Join(workspace, rel)) }   //nolint:gosec // G304 -- rel comes from the trusted manifest, joined under the workspace
 	plans := distribute.Plan(pairs, readSource, readDest, os.IsNotExist)
 
-	fmt.Fprintf(stdout, "config dir: %s\n\n", configDir)
+	u := ui.New(stdout)
+	u.Header("zenify config")
+	u.KV([][2]string{{"config dir", configDir}})
+	u.Blank()
 	var nSame, nSkip int
+	// NOT migrated: ensure.go greps these stdout/stderr lines by literal
+	// prefix (trimmed HasPrefix on the state word for stdout, and the exact
+	// skip-note shape on stderr) to forward writes/skips into the session's
+	// additional context — a Step's label-then-state layout would break both
+	// checks, so the plan lines keep their original state-first %-7s format
+	// instead of routing through ui.
 	for _, p := range plans {
 		fmt.Fprintf(stdout, "  %-7s %s → %s\n", p.State, p.Source, p.Dest)
 		switch p.State {
@@ -78,9 +91,10 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 		}
 		nWritten, notes := distribute.Apply(plans, readSource, writeDest)
 		for _, n := range notes {
-			fmt.Fprintln(stdout, "  "+n)
+			u.Note(n)
 		}
-		fmt.Fprintf(stdout, "\nĐã áp dụng: %d ghi (%d giữ nguyên, %d bỏ).\n", nWritten, nSame, nSkip) //znf:allow-lang
+		u.Blank()
+		u.Note(fmt.Sprintf("Đã áp dụng: %d ghi (%d giữ nguyên, %d bỏ).", nWritten, nSame, nSkip)) //znf:allow-lang
 		return nWritten, nil
 	}
 
@@ -90,12 +104,13 @@ func runConfig(workspace, configDir string, apply bool, stdout, stderr io.Writer
 			nChange++
 		}
 	}
+	u.Blank()
 	if len(plans) == 0 {
-		fmt.Fprintln(stdout, "\nManifest trống — không có cặp nào để phân phối.") //znf:allow-lang
+		u.Note("Manifest trống — không có cặp nào để phân phối.") //znf:allow-lang
 	} else if nChange == 0 {
-		fmt.Fprintln(stdout, "\nTất cả đã đồng bộ. (dry-run — dùng --apply để ghi)") //znf:allow-lang
+		u.Note("Tất cả đã đồng bộ. (dry-run — dùng --apply để ghi)") //znf:allow-lang
 	} else {
-		fmt.Fprintf(stdout, "\n%d thay đổi, %d giữ nguyên, %d bỏ. (dry-run — dùng --apply để ghi)\n", nChange, nSame, nSkip) //znf:allow-lang
+		u.Note(fmt.Sprintf("%d thay đổi, %d giữ nguyên, %d bỏ. (dry-run — dùng --apply để ghi)", nChange, nSame, nSkip)) //znf:allow-lang
 	}
 	return 0, nil
 }

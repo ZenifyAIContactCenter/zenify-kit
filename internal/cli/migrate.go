@@ -10,6 +10,7 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/migrate"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
 	"github.com/spf13/cobra"
 )
@@ -20,10 +21,21 @@ func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error 
 	repos := workspace.Discover(root, workspace.DefaultMaxDepth, os.ReadDir)
 	items := migrate.BuildPlan(root, toDir, repos)
 
+	u := ui.New(stdout)
+	uErr := ui.New(stderr)
 	for _, it := range items {
-		fmt.Fprintf(stdout, "  %-7s %s\n", it.Action, it.Name)
+		st := ui.StatusInfo
+		switch it.Action {
+		case migrate.Move:
+			st = ui.StatusOK
+		case migrate.Refuse:
+			st = ui.StatusFail
+		case migrate.Skip:
+			st = ui.StatusWarn
+		}
+		u.Step(st, it.Name, string(it.Action))
 		if it.Action == migrate.Refuse || it.Action == migrate.Skip {
-			fmt.Fprintf(stderr, "migrate: %s — %s\n", it.Name, it.Reason)
+			uErr.Step(st, it.Name, it.Reason)
 		}
 	}
 
@@ -34,7 +46,8 @@ func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error 
 				n++
 			}
 		}
-		fmt.Fprintf(stdout, "\n%d repo sẽ move vào %s/. (dry-run — dùng --apply để thực hiện)\n", n, toDir) //znf:allow-lang
+		u.Blank()
+		u.Note(fmt.Sprintf("%d repo sẽ move vào %s/. (dry-run — dùng --apply để thực hiện)", n, toDir)) //znf:allow-lang
 		return nil
 	}
 
@@ -69,9 +82,10 @@ func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error 
 		Resolve:    resolvePath,
 	}
 	for _, note := range migrate.Apply(items, io) {
-		fmt.Fprintln(stdout, "  "+note)
+		u.Note(note)
 	}
-	fmt.Fprintln(stdout, "\nXong. Worktree đã được repair; nhớ restart dev server / herdr workspace của các repo đã move (process cũ vẫn trỏ path cũ).") //znf:allow-lang
+	u.Blank()
+	u.Note("Xong. Worktree đã được repair; nhớ restart dev server / herdr workspace của các repo đã move (process cũ vẫn trỏ path cũ).") //znf:allow-lang
 	return nil
 }
 

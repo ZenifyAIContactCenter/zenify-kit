@@ -8,6 +8,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ func newDownCmd() *cobra.Command {
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
 			}
-			w := cmd.OutOrStdout()
+			u := uiOut(cmd)
 			dryRun := !applyFlag
 
 			m, _, err := loadKitManifest(manifestPath, overlayPath)
@@ -41,18 +42,18 @@ func newDownCmd() *cobra.Command {
 			if dryRun {
 				mode = "PREVIEW (dry-run — dùng --apply để thực thi)" //znf:allow-lang
 			}
-			_, _ = fmt.Fprintf(w, "zenify down — %s\n", mode)
+			u.Header(fmt.Sprintf("zenify down — %s", mode))
 
 			// 1. Global hooks.
 			if home, herr := os.UserHomeDir(); herr == nil && home != "" {
 				res, rerr := apply.RemoveGlobalHooks(home, dryRun)
 				switch {
 				case rerr != nil:
-					_, _ = fmt.Fprintf(w, "  hooks: bỏ qua (%v)\n", rerr) //znf:allow-lang
+					u.Step(ui.StatusWarn, "hooks", fmt.Sprintf("bỏ qua (%v)", rerr)) //znf:allow-lang
 				case res.Removed > 0:
-					_, _ = fmt.Fprintf(w, "  hooks: gỡ %d znf hook khỏi ~/.claude/settings.json\n", res.Removed) //znf:allow-lang
+					u.Step(ui.StatusOK, "hooks", fmt.Sprintf("gỡ %d znf hook khỏi ~/.claude/settings.json", res.Removed)) //znf:allow-lang
 				default:
-					_, _ = fmt.Fprintln(w, "  hooks: không có znf hook nào để gỡ") //znf:allow-lang
+					u.Step(ui.StatusInfo, "hooks", "không có znf hook nào để gỡ") //znf:allow-lang
 				}
 			}
 
@@ -60,19 +61,20 @@ func newDownCmd() *cobra.Command {
 			for _, r := range m.Repos {
 				repoDir := filepath.Join(workspace, r.Path)
 				if removed, eerr := apply.RemoveExclude(repoDir, dryRun); eerr != nil {
-					_, _ = fmt.Fprintf(w, "  %s exclude: lỗi %v\n", r.Name, eerr) //znf:allow-lang
+					u.Step(ui.StatusFail, r.Name+" exclude", fmt.Sprintf("lỗi %v", eerr)) //znf:allow-lang
 				} else if removed {
-					_, _ = fmt.Fprintf(w, "  %s: gỡ dòng .worktrees/ + .wt/\n", r.Name) //znf:allow-lang
+					u.Step(ui.StatusOK, r.Name, "gỡ dòng .worktrees/ + .wt/") //znf:allow-lang
 				}
 				settings := filepath.Join(repoDir, ".claude", "settings.local.json")
 				if act, serr := apply.RemoveOwnedSettings(settings, owned, dryRun); serr != nil {
-					_, _ = fmt.Fprintf(w, "  %s settings: lỗi %v\n", r.Name, serr) //znf:allow-lang
+					u.Step(ui.StatusFail, r.Name+" settings", fmt.Sprintf("lỗi %v", serr)) //znf:allow-lang
 				} else if act == "removed" || act == "kept (modified)" {
-					_, _ = fmt.Fprintf(w, "  %s settings: %s\n", r.Name, act)
+					u.Step(ui.StatusOK, r.Name+" settings", act)
 				}
 			}
 
-			_, _ = fmt.Fprintln(w, "(down KHÔNG đụng cloned repo, .zenify/, hay docs store)") //znf:allow-lang
+			u.Blank()
+			u.Note("(down KHÔNG đụng cloned repo, .zenify/, hay docs store)") //znf:allow-lang
 			return nil
 		},
 	}

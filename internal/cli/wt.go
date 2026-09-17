@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
 )
@@ -243,7 +244,7 @@ func newWtLsCmd() *cobra.Command {
 				return enc.Encode(rows)
 			}
 			if len(rows) == 0 {
-				_, _ = fmt.Fprintln(w, "wt: no tasks in this repo")
+				uiOut(cmd).Note("wt: no tasks in this repo")
 				return nil
 			}
 			printRows(w, rows)
@@ -260,10 +261,12 @@ func newWtLsCmd() *cobra.Command {
 // printRows renders the human-readable worktree table shared by `wt ls` and
 // `wt ls --all`.
 func printRows(w io.Writer, rows []wt.Row) {
-	_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %-5s %s\n", "SLUG", "BRANCH", "PORT", "DEPS", "MERGED", "RUNNING", "STALE", "PATH")
+	headers := []string{"SLUG", "BRANCH", "PORT", "DEPS", "MERGED", "RUNNING", "STALE", "PATH"}
+	tableRows := make([][]string, 0, len(rows))
 	for _, r := range rows {
-		_, _ = fmt.Fprintf(w, "%-14s %-28s %-6s %-8s %-7s %-8s %-5s %s\n", r.Slug, r.Branch, r.Port, r.Deps, r.Merged, r.Running, staleWord(r.Stale), r.Path)
+		tableRows = append(tableRows, []string{r.Slug, r.Branch, r.Port, r.Deps, r.Merged, r.Running, staleWord(r.Stale), r.Path})
 	}
+	ui.New(w).Table(headers, tableRows)
 }
 
 func staleWord(b bool) string {
@@ -366,7 +369,7 @@ func newWtSweepCmd() *cobra.Command {
 					return fmt.Errorf("wt: not inside a zenify workspace (no .zenify/manifest.json above cwd)")
 				}
 				if fetch {
-					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "wt: --all always fetches; --fetch is redundant here")
+					uiErr(cmd).Note("wt: --all always fetches; --fetch is redundant here")
 				}
 				host, _ := os.Hostname()
 				return wt.RunSweepAll(wt.SweepAllOptions{
