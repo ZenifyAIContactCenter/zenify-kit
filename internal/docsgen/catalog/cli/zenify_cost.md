@@ -1,0 +1,31 @@
+---
+summary: Cho biết token Claude Code đi đâu: context mỗi turn, phần subagent, model, skill và dấu hiệu lãng phí, đọc từ transcript local.
+---
+## Khi nào dùng
+
+Khi bạn thấy hạn mức token hết nhanh và muốn biết vì sao trước khi đổi cách làm việc. Lệnh đọc transcript Claude Code của project hiện tại trong `~/.claude/projects/` và tổng hợp lại; không cần Node hay Python, không gọi mạng, không ghi gì.
+
+Dùng trước và sau một thay đổi quy trình (ví dụ tách session, đổi model subagent) để có số so sánh cùng một cách đo.
+
+## Kết quả
+
+Bản báo cáo gồm: tổng token theo bốn loại (input, cache_creation, cache_read, output) cho phiên chính và subagent; context mỗi turn của phiên chính (median và p90); tỉ lệ model; số lần dispatch Agent, kể cả số lần bỏ trống model; số lần gọi Skill; các session nặng nhất; và dấu hiệu lãng phí gồm đọc lặp một file, tool result quá lớn, subagent kết thúc mà không trả text.
+
+Cửa sổ thời gian lọc theo timestamp từng dòng, không theo ngày sửa file, nên một session kéo dài nhiều tuần chỉ góp phần nằm trong cửa sổ.
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--since` | Cửa sổ thời gian: `7d`, `36h`, `2w` hoặc `YYYY-MM-DD`. Mặc định `7d`; để trống là toàn bộ. |
+| `--project` | Thư mục project có transcript cần đọc. Mặc định là thư mục hiện tại. |
+| `--top` | Số dòng trong bảng session nặng nhất. |
+| `--json` | In JSON thay cho bảng. |
+
+## Ví dụ
+
+```bash
+zenify cost
+zenify cost --since 30d --json
+zenify cost --project ~/WorkingSpace/zenify --since 2026-09-01
+```

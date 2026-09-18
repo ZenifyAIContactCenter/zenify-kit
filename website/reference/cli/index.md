@@ -32,6 +32,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 |---|---|
 | [zenify analyze](./zenify_analyze) | Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief. |
 | [zenify config](./zenify_config) | Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều. |
+| [zenify cost](./zenify_cost) | Cho biết token Claude Code đi đâu: context mỗi turn, phần subagent, model, skill và dấu hiệu lãng phí, đọc từ transcript local. |
 | [zenify db-perf](./zenify_db-perf) | Quét tĩnh một diff để tìm anti-pattern query DB, chia finding thành BLOCKING và ADVISORY. |
 | [zenify db-read](./zenify_db-read) | Đọc database dùng chung ở chế độ chỉ đọc, không bao giờ ghi và không in secret. |
 | [zenify docs](./zenify_docs) | Nhóm lệnh cho docs layer: đồng bộ knowledge store và sinh trang tham chiếu. |
