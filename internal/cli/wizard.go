@@ -2,12 +2,14 @@ package cli
 
 import (
 	"io"
+	"os"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tui"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 )
 
 // runWizard drives the interactive onboarding wizard (internal/tui) over the
@@ -23,7 +25,14 @@ func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[
 		PlanFooter: planFooterRows(workspace),
 		SecretKeys: []string{"MONGO_URL", "E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"},
 		PlanFn: func() ([]reconcile.RepoPlan, error) {
+			// The wizard rebuilds the plan after login (repo discovery + per-repo
+			// scan takes a few seconds); animate a spinner so the wait is not
+			// silent. Stop() clears the line — the plan table renders right after,
+			// and the outer buildPlan already printed the success line.
+			sp := ui.NewSpinner(os.Stderr, "Đang dựng kế hoạch onboarding") //znf:allow-lang
+			sp.Start()
 			plans, _, perr := buildPlan(m, gh, git, workspace, sources)
+			sp.Stop()
 			return plans, perr
 		},
 		ApplyFn: func(sel []string) error { return runApplySelected(w, m, workspace, sel, gh, git, sources) },
