@@ -56,6 +56,7 @@ type Session struct {
 	largeRes  []int            // tool_result sizes above the threshold
 	models    map[string]int64 // main model → tokens
 	subModels map[string]int64 // subagent model → tokens
+	seen      map[string]bool  // message.id đã cộng usage (dedupe khối content lặp theo apiBlockIndex) //znf:allow-lang
 }
 
 // Total is main + subagent volume.
@@ -176,6 +177,7 @@ type rawContent struct {
 }
 
 type rawMessage struct {
+	ID      string          `json:"id"`
 	Model   string          `json:"model"`
 	Usage   *rawUsage       `json:"usage"`
 	Content json.RawMessage `json:"content"`
@@ -232,7 +234,7 @@ func Scan(root string, opt Options) (*Report, error) {
 		s, ok := sessions[id]
 		if !ok {
 			s = &Session{ID: id, SkillsBy: map[string]int{}, reads: map[string]int{},
-				models: map[string]int64{}, subModels: map[string]int64{}}
+				models: map[string]int64{}, subModels: map[string]int64{}, seen: map[string]bool{}}
 			sessions[id] = s
 		}
 		return s
@@ -414,13 +416,19 @@ func scanMain(path string, s *Session, r *Report, since time.Time) (int, error) 
 		switch l.Type {
 		case "assistant":
 			if u := l.Message.Usage; u != nil {
-				s.Main.add(*u)
-				tot := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.OutputTokens
-				// "<synthetic>" rows (harness-injected, zero usage) would only add noise.
-				if l.Message.Model != "" && tot > 0 {
-					s.models[l.Message.Model] += tot
+				id := l.Message.ID
+				if id == "" || !s.seen[id] {
+					if id != "" {
+						s.seen[id] = true
+					}
+					s.Main.add(*u)
+					tot := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.OutputTokens
+					// "<synthetic>" rows (harness-injected, zero usage) would only add noise.
+					if l.Message.Model != "" && tot > 0 {
+						s.models[l.Message.Model] += tot
+					}
+					s.ctx = append(s.ctx, u.CacheReadInputTokens+u.CacheCreationInputTokens+u.InputTokens)
 				}
-				s.ctx = append(s.ctx, u.CacheReadInputTokens+u.CacheCreationInputTokens+u.InputTokens)
 			}
 			for _, it := range contentItems(l.Message.Content) {
 				if it.Type != "tool_use" {
@@ -482,9 +490,15 @@ func scanSub(path string, s *Session, _ *Report, since time.Time) (int, int, boo
 		}
 		turns++
 		if u := l.Message.Usage; u != nil {
-			s.Sub.add(*u)
-			if tot := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.OutputTokens; l.Message.Model != "" && tot > 0 {
-				s.subModels[l.Message.Model] += tot
+			id := l.Message.ID
+			if id == "" || !s.seen[id] {
+				if id != "" {
+					s.seen[id] = true
+				}
+				s.Sub.add(*u)
+				if tot := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.OutputTokens; l.Message.Model != "" && tot > 0 {
+					s.subModels[l.Message.Model] += tot
+				}
 			}
 		}
 		for _, it := range contentItems(l.Message.Content) {

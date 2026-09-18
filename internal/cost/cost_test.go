@@ -161,6 +161,34 @@ func TestScan_NoTranscriptsIsAnError(t *testing.T) {
 	}
 }
 
+func TestScan_DedupesUsageByMessageID(t *testing.T) {
+	root := t.TempDir()
+	sid := "cccccccc-0000-0000-0000-000000000003"
+	now := "2026-09-18T10:00:00.000Z"
+	// một message.id trên 3 dòng (3 content block), usage lặp y hệt; một dòng mang block Skill
+	msg := func(content []any) map[string]any {
+		return map[string]any{"id": "msg_dup", "model": "claude-opus-4-8", "usage": usage(100, 0, 1000, 50), "content": content}
+	}
+	write(t, filepath.Join(root, sid+".jsonl"),
+		line(t, "assistant", now, msg([]any{map[string]any{"type": "thinking"}})),
+		line(t, "assistant", now, msg([]any{map[string]any{"type": "tool_use", "name": "Skill", "input": map[string]any{"skill": "znf:cook"}}})),
+		line(t, "assistant", now, msg([]any{map[string]any{"type": "text", "text": "done"}})),
+	)
+	r, err := Scan(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Main.Turns != 1 {
+		t.Fatalf("main turns = %d, want 1 (deduped by message.id)", r.Main.Turns)
+	}
+	if got := r.Main.Total(); got != 1150 {
+		t.Fatalf("main total = %d, want 1150 (usage counted once)", got)
+	}
+	if r.SkillsBy["znf:cook"] != 1 {
+		t.Fatalf("skill calls = %d, want 1 (content block counted, NOT deduped away)", r.SkillsBy["znf:cook"])
+	}
+}
+
 func TestProjectSlug(t *testing.T) {
 	if got := ProjectSlug("/Users/x/WorkingSpace/zenify"); got != "-Users-x-WorkingSpace-zenify" {
 		t.Fatalf("slug = %q", got)
