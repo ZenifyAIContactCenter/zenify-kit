@@ -88,6 +88,25 @@ func sortedKeys[V any](m map[string]V, less func(a, b string) bool) []string {
 	return ks
 }
 
+func mtokPerCall(total int64, calls int) string {
+	if calls == 0 {
+		return "—"
+	}
+	return fmt.Sprintf("%.3f", float64(total)/float64(calls)/1e6)
+}
+
+func bySkillRows(r *cost.Report) [][]string {
+	keys := sortedKeys(r.SkillTok, func(a, b string) bool {
+		return r.SkillTok[a].Total() > r.SkillTok[b].Total()
+	})
+	rows := make([][]string, 0, len(keys))
+	for _, k := range keys {
+		calls := r.SkillsBy[k]
+		rows = append(rows, []string{k, strconv.Itoa(calls), humanTok(r.SkillTok[k].Total()), mtokPerCall(r.SkillTok[k].Total(), calls)})
+	}
+	return rows
+}
+
 func short(id string) string {
 	if len(id) > 8 {
 		return id[:8]
@@ -97,7 +116,7 @@ func short(id string) string {
 
 // renderCost prints the human report. Vietnamese labels are the convention for
 // operator-facing CLI output in this repo (see observe report).
-func renderCost(w io.Writer, r *cost.Report) {
+func renderCost(w io.Writer, r *cost.Report, bySkill bool) {
 	u := ui.New(w)
 	u.Header("zenify cost")
 	window := "toàn bộ" //znf:allow-lang
@@ -147,21 +166,31 @@ func renderCost(w io.Writer, r *cost.Report) {
 		u.Table([]string{"THEO", "GIÁ TRỊ", "SỐ"}, rows) //znf:allow-lang
 	}
 
-	u.Section(fmt.Sprintf("Skill: %d lần gọi", r.SkillCalls)) //znf:allow-lang
-	rows = rows[:0]
-	for i, k := range sortedKeys(r.SkillsBy, func(a, b string) bool {
-		if r.SkillsBy[a] != r.SkillsBy[b] {
-			return r.SkillsBy[a] > r.SkillsBy[b]
+	if bySkill {
+		u.Section(fmt.Sprintf("Skill theo token: %d lần gọi", r.SkillCalls)) //znf:allow-lang
+		if br := bySkillRows(r); len(br) > 0 {
+			u.Table([]string{"SKILL", "CALLS", "TOKEN", "MTOK/CALL"}, br)
+		} else {
+			u.Note("không có") //znf:allow-lang
 		}
-		return a < b
-	}) {
-		if i >= 20 {
-			break
+		u.Note("Ước lượng theo turn: token gán theo attributionSkill của mỗi message; skill lồng nhau tính riêng, không cộng dồn vào skill cha.") //znf:allow-lang
+	} else {
+		u.Section(fmt.Sprintf("Skill: %d lần gọi", r.SkillCalls)) //znf:allow-lang
+		rows = rows[:0]
+		for i, k := range sortedKeys(r.SkillsBy, func(a, b string) bool {
+			if r.SkillsBy[a] != r.SkillsBy[b] {
+				return r.SkillsBy[a] > r.SkillsBy[b]
+			}
+			return a < b
+		}) {
+			if i >= 20 {
+				break
+			}
+			rows = append(rows, []string{k, strconv.Itoa(r.SkillsBy[k])})
 		}
-		rows = append(rows, []string{k, strconv.Itoa(r.SkillsBy[k])})
-	}
-	if len(rows) > 0 {
-		u.Table([]string{"SKILL", "SỐ"}, rows) //znf:allow-lang
+		if len(rows) > 0 {
+			u.Table([]string{"SKILL", "SỐ"}, rows) //znf:allow-lang
+		}
 	}
 
 	u.Section("Session nặng nhất (main + subagent)") //znf:allow-lang
@@ -201,7 +230,7 @@ func renderCost(w io.Writer, r *cost.Report) {
 }
 
 // runCost is the testable core: resolves the transcript root, scans, renders.
-func runCost(w io.Writer, home, project, since string, top int, asJSON bool) error {
+func runCost(w io.Writer, home, project, since string, top int, asJSON, bySkill bool) error {
 	sinceT, err := parseSince(since, costNow())
 	if err != nil {
 		return exitcode.New(exitcode.BadArgs, err)
@@ -217,7 +246,7 @@ func runCost(w io.Writer, home, project, since string, top int, asJSON bool) err
 	if asJSON {
 		return writeJSON(w, r)
 	}
-	renderCost(w, r)
+	renderCost(w, r, bySkill)
 	return nil
 }
 
@@ -236,6 +265,7 @@ func newCostCmd() *cobra.Command {
 		project string
 		top     int
 		asJSON  bool
+		bySkill bool
 	)
 	c := &cobra.Command{
 		Use:   "cost",
@@ -250,12 +280,13 @@ func newCostCmd() *cobra.Command {
 			if project == "" {
 				project, _ = os.Getwd()
 			}
-			return runCost(cmd.OutOrStdout(), home, project, since, top, asJSON)
+			return runCost(cmd.OutOrStdout(), home, project, since, top, asJSON, bySkill)
 		},
 	}
 	c.Flags().StringVar(&since, "since", "7d", "window: <n>h|<n>d|<n>w or YYYY-MM-DD; empty = all")
 	c.Flags().StringVar(&project, "project", "", "project directory whose transcripts to read (default: cwd)")
 	c.Flags().IntVar(&top, "top", cost.TopSessions, "rows in the heaviest-sessions table")
 	c.Flags().BoolVar(&asJSON, "json", false, "output JSON instead of tables")
+	c.Flags().BoolVar(&bySkill, "by-skill", false, "bảng token theo từng skill (calls, token, Mtok/lần)") //znf:allow-lang
 	return c
 }

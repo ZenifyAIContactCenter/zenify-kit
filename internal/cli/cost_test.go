@@ -62,7 +62,7 @@ func TestRunCost_HumanAndJSON(t *testing.T) {
 	home, project := fakeHome(t)
 
 	var out bytes.Buffer
-	if err := runCost(&out, home, project, "7d", 5, false); err != nil {
+	if err := runCost(&out, home, project, "7d", 5, false, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"zenify cost", "cache_read", "3.0k", "znf:ground", "median"} {
@@ -72,7 +72,7 @@ func TestRunCost_HumanAndJSON(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := runCost(&out, home, project, "", 5, true); err != nil {
+	if err := runCost(&out, home, project, "", 5, true, false); err != nil {
 		t.Fatal(err)
 	}
 	var env struct {
@@ -90,12 +90,55 @@ func TestRunCost_HumanAndJSON(t *testing.T) {
 func TestRunCost_BadArgs(t *testing.T) {
 	home, project := fakeHome(t)
 	var out bytes.Buffer
-	err := runCost(&out, home, project, "yesterday", 5, false)
+	err := runCost(&out, home, project, "yesterday", 5, false, false)
 	if exitcode.Code(err) != exitcode.BadArgs {
 		t.Fatalf("bad --since: code %d err %v", exitcode.Code(err), err)
 	}
-	err = runCost(&out, home, filepath.Join(project, "nope"), "7d", 5, false)
+	err = runCost(&out, home, filepath.Join(project, "nope"), "7d", 5, false, false)
 	if exitcode.Code(err) != exitcode.BadArgs {
 		t.Fatalf("missing transcripts: code %d err %v", exitcode.Code(err), err)
+	}
+}
+
+func TestMtokPerCall(t *testing.T) {
+	if got := mtokPerCall(2_000_000, 2); got != "1.000" {
+		t.Fatalf("mtokPerCall(2M,2) = %q, want 1.000", got)
+	}
+	if got := mtokPerCall(500, 0); got != "—" {
+		t.Fatalf("mtokPerCall(_,0) = %q, want — (no divide-by-zero)", got)
+	}
+}
+
+func TestBySkillRows_SortAndCalls(t *testing.T) {
+	r := &cost.Report{
+		SkillsBy: map[string]int{"znf:cook": 2, "znf:ground": 1, cost.NoSkillKey: 0},
+		SkillTok: map[string]cost.Usage{
+			"znf:cook":      {Input: 1_000_000},
+			"znf:ground":    {Input: 4_000_000},
+			cost.NoSkillKey: {Input: 500},
+		},
+	}
+	rows := bySkillRows(r)
+	if len(rows) != 3 {
+		t.Fatalf("rows = %d, want 3", len(rows))
+	}
+	if rows[0][0] != "znf:ground" {
+		t.Fatalf("first row = %s, want znf:ground (highest token)", rows[0][0])
+	}
+	// cook: 1_000_000 / 2 = 0.500
+	var cook []string
+	for _, row := range rows {
+		if row[0] == "znf:cook" {
+			cook = row
+		}
+	}
+	if cook[1] != "2" || cook[3] != "0.500" {
+		t.Fatalf("cook row = %v, want calls=2 mtok=0.500", cook)
+	}
+	// (no skill): 0 calls → "—"
+	for _, row := range rows {
+		if row[0] == cost.NoSkillKey && row[3] != "—" {
+			t.Fatalf("(no skill) mtok = %s, want —", row[3])
+		}
 	}
 }
