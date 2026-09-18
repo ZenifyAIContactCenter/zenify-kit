@@ -491,7 +491,7 @@ func newUpCmd() *cobra.Command {
 			}
 			switch decideMode(isTTY, applyFlag, cmd.Flags().Changed("dry-run"), dryRun, jsonOut, nonInteractive) {
 			case modeWizard:
-				return runWizard(w, m, workspace, sources)
+				return runWizard(w, m, workspace, sources, plans, auth.LoggedIn)
 			case modeApply:
 				uiOut(cmd).Header("zenify up --apply")
 				return runApply(w, cmd.ErrOrStderr(), plans, m, workspace, ghx.ExecRunner(), gitx.ExecRunner())

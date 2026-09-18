@@ -14,10 +14,12 @@ import (
 
 // runWizard drives the interactive onboarding wizard (internal/tui) over the
 // engine's plan/apply callbacks. The TUI holds no reconcile logic itself —
-// PlanFn rebuilds the plan the same way the headless dry-run path does, and
-// ApplyFn (Task 11) will apply the user's selection. sources is the Where
-// step's answer (nil when it did not run — e.g. the marker/pointer path).
-func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[string]reconcile.Source) error {
+// PlanFn returns the plan the same way the headless dry-run path builds it, and
+// ApplyFn (Task 11) applies the user's selection. sources is the Where step's
+// answer (nil when it did not run — e.g. the marker/pointer path). prebuilt is
+// the plan the caller already built before the welcome screen; preAuthed says
+// whether the user was already logged in when that plan was built.
+func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[string]reconcile.Source, prebuilt []reconcile.RepoPlan, preAuthed bool) error {
 	gh, git := ghx.ExecRunner(), gitx.ExecRunner()
 	res, err := tui.RunOnboard(tui.OnboardConfig{
 		Workspace:  workspace,
@@ -25,10 +27,17 @@ func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[
 		PlanFooter: planFooterRows(workspace),
 		SecretKeys: []string{"MONGO_URL", "E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"},
 		PlanFn: func() ([]reconcile.RepoPlan, error) {
-			// The wizard rebuilds the plan after login (repo discovery + per-repo
-			// scan takes a few seconds); animate a spinner so the wait is not
-			// silent. Stop() clears the line — the plan table renders right after,
-			// and the outer buildPlan already printed the success line.
+			// Already authenticated at entry: the caller's pre-wizard buildPlan
+			// produced this exact plan (same inputs, same auth), and loginStep
+			// short-circuits without logging in — so reuse it. Rebuilding here was
+			// a redundant multi-second wait right after the welcome screen:
+			// identical work, run twice, for the already-logged-in majority.
+			if preAuthed {
+				return prebuilt, nil
+			}
+			// Logged out at entry: loginStep just authenticated, so the pre-wizard
+			// plan was built without auth (incomplete discovery) and must be
+			// rebuilt now. Animate the wait so it is not silent.
 			sp := ui.NewSpinner(os.Stderr, "Đang dựng kế hoạch onboarding") //znf:allow-lang
 			sp.Start()
 			plans, _, perr := buildPlan(m, gh, git, workspace, sources)
