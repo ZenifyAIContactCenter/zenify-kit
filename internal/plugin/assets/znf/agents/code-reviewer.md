@@ -1,7 +1,7 @@
 ---
 name: code-reviewer
 description: Independent code reviewer with a fresh context — no memory of writing the code. Use PROACTIVELY when code changes are ready to review before shipping. Checks for correctness bugs, security issues, contract mismatches, N+1 queries, and over-engineering.
-model: claude-opus-4-8
+model: sonnet
 disallowedTools: Write, Edit, Bash
 memory: project
 ---

@@ -21,7 +21,7 @@ func newDownCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "down",
-		Short: "Offboard: gỡ znf global hooks, .worktrees/ + .wt/ excludes, và owned settings skeletons (preview mặc định; --apply để thực thi)", //znf:allow-lang
+		Short: "Offboard: gỡ znf global hooks + env subagent model, .worktrees/ + .wt/ excludes, và owned settings skeletons (preview mặc định; --apply để thực thi)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
@@ -54,6 +54,13 @@ func newDownCmd() *cobra.Command {
 					u.Step(ui.StatusOK, "hooks", fmt.Sprintf("gỡ %d znf hook khỏi ~/.claude/settings.json", res.Removed)) //znf:allow-lang
 				default:
 					u.Step(ui.StatusInfo, "hooks", "không có znf hook nào để gỡ") //znf:allow-lang
+				}
+				removed, eerr := apply.RemoveSubagentModelEnv(home, dryRun)
+				switch {
+				case eerr != nil:
+					u.Step(ui.StatusWarn, "env", fmt.Sprintf("bỏ qua (%v)", eerr)) //znf:allow-lang
+				case removed:
+					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.SubagentModelEnv)) //znf:allow-lang
 				}
 			}
 

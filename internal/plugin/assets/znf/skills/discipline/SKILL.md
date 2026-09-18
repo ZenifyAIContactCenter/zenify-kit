@@ -77,6 +77,7 @@ Red flags — thinking any of these means you are rationalising:
 - Match the altitude and style of the surrounding code. Don't "upgrade" unrelated code.
 - Do not add error-handling, abstraction, config, options, or new files that weren't asked for. No speculative future-proofing.
 - Prefer editing an existing file over creating a new one.
+- **Context hygiene — three rules, measured 2026-09-18 (median 184k context per turn):** a tool result over ~50 KB goes to a file, then read the part you need. A file read once this session (memory index, roadmap, spec) is not read again — cite it. SDD briefs and review packages come out of the skill's scripts; the controller never opens the templates.
 - For greenfield projects the same rule bites hardest: scaffold the minimum that runs, not a kitchen-sink boilerplate.
 - When writing or changing code in a repo, prefer its repo-scoped **coding skill** set (installed under `.claude/skills/`) for the stack idiom before improvising.
 

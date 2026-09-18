@@ -46,6 +46,13 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) {
 		fmt.Fprintf(stdout, "pinned workspace model → %s\n", apply.DefaultModel)
 	}
 
+	if changed, err := apply.EnsureSubagentModelEnv(home, false); err != nil {
+		fmt.Fprintln(stderr, "znf ensure: subagent model:", err)
+	} else if changed {
+		fmt.Fprintf(stdout, "set %s=%s in ~/.claude/settings.json (subagents that omit model now run there)\n",
+			apply.SubagentModelEnv, apply.SubagentModelDefault)
+	}
+
 	// runConfig prints its whole plan to stdout; ensure only wants the count
 	// plus the CREATE/UPDATE lines (so the overwrite is visible in the
 	// session's additional context — see final-review.md Important #2), and

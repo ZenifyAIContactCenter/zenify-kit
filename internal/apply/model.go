@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 )
 
-// DefaultModel is the model the znf workflow is calibrated for. The skills,
-// review doctrine, and the code-reviewer agent (znf/agents/code-reviewer.md)
-// all assume Opus 4.8; onboarding pins it so a freshly-onboarded workspace runs
-// the workflow on the model it was built for. It is a *default* — a per-session
+// DefaultModel is the model the znf workflow is calibrated for. The skills and
+// review doctrine assume Opus 4.8 in the MAIN session; onboarding pins it so a
+// freshly-onboarded workspace runs the workflow on the model it was built for.
+// Subagents are a separate dial: see SubagentModelEnv. It is a *default* — a per-session
 // /model or a --model flag still overrides it (both outrank settings.json).
 const DefaultModel = "claude-opus-4-8"
 

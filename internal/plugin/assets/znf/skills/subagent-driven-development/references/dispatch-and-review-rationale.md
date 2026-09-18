@@ -84,6 +84,11 @@ leaves every path forward a guess.
 
 ### From § Final Review
 
+Skipped under `/cook` since 2026-09-18: every diff used to meet three reviewers (task, SDD final,
+ship) and the middle one recorded no review-driven fix in the ledgers measured, while each pass
+re-read the whole branch diff. `/ship`'s engine review keeps the whole-branch pass and inherits the
+ledger's deferred and parked lines via the ship-pack.
+
 Per-finding fixers each rebuild context and re-run suites; a real
 session's final-review fix wave cost more than all its tasks combined.
 

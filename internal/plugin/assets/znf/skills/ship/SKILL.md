@@ -181,9 +181,10 @@ start early, and that section says why.
                     which changed behaviour NO test touches
    ## Ground      zenify db-read doc <each-real-collection-the-diff-touches>
                   zenify db-read sql 'DESCRIBE <each-real-table-it-touches>'
-   ## Deferred    every `minor (deferred)` line from the SDD ledger, verbatim:
-                    rg -n 'minor \(deferred\)' .znf/sdd/*/progress.md
-                  omit this block entirely when there is no ledger (/fix, /hotfix)
+   ## Deferred    every `minor (deferred)` and `parked` line from the SDD ledger, verbatim:
+                    rg -n 'minor \(deferred\)|parked —' .znf/sdd/*/progress.md
+                  (under /cook this is the ONLY whole-branch review — SDD skipped its own)
+                  leave this block out entirely when there is no ledger (/fix, /hotfix)
    ```
 
    > Why: see `references/ship-pack-rationale.md` — why each field exists.
@@ -217,8 +218,6 @@ Step 2 must be a **single message**. Separate messages run the agents in sequenc
 browser-driving agents at once, and the main session must not touch Playwright while `znf:ui-verifier`
 runs. What it never parallelises against
 is **itself**: a multi-screen change is one verifier covering several screens, not several verifiers.
-
-> Why: see `references/ship-pack-rationale.md` — why the browser doesn't clash with the sweeps.
 
 **Two costs, both real:**
 

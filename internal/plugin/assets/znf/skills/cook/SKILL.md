@@ -18,16 +18,15 @@ allowed-tools: Read Grep Glob Bash Agent
 
 **The worktree is created at Step 6, not Step 0** (`references/base-ref-archaeology.md` has why).
 
-**Verification sits around the two superpowers skills, never inside them.** Nothing in
-`brainstorming` or `writing-plans` is reordered or overridden — the checks go before and after.
+**Three sessions, not one.** The pipeline clears its context twice, at the two file boundaries:
+after Step 5b (spec+plan are on disk) and after Step 6b (the ledger is complete). Each phase re-enters
+through a file path, so nothing is lost and no phase carries the previous one's prose.
 
-Two different questions, in two different steps, and neither substitutes for the other:
+**Verification sits around `brainstorming` and `writing-plans`, never inside them** — the checks go
+before and after; neither skill is reordered or overridden.
 
-```
-/ground  "what is X?"            forward — names enter at three points (request, spec, plan)
-                                 and each is grounded where it enters
-/scout   "what depends on X?"    outward — asked once, after the spec has decided what changes
-```
+`/ground` asks "what is X?" at each of the three points a name enters (request, spec, plan); `/scout`
+asks "what depends on X?" once, after the spec decides what changes. Neither substitutes for the other.
 
 > Why: see `references/grounding-and-scout-rationale.md` — why grounding is incremental.
 
@@ -36,17 +35,15 @@ Two different questions, in two different steps, and neither substitutes for the
 **Argument is a `.md` file path** → the spec/plan stage already happened. Do Step 0, then
 ground **every name the file uses** (the three grounding passes collapse into one here — the
 plan is already written, so there is nothing left to ground incrementally), then Step 4
-(`/scout`), then Step 6. Skip Steps 1, 2 and 5.
+(`/scout`), then Step 6. Skip Steps 1, 2 and 5. SDD's Setup resumes from the ledger: a task with a
+`Task <N>: complete` line is not re-dispatched, so this entry is also how phase 2 picks up.
 **Argument is a description** → run every step.
 
 ## There is no complexity triage
 
-Scale the *design* to the problem — brainstorming allows "a few sentences for truly simple
-projects" — but never skip a step. If the work is genuinely mechanical (nothing unknown,
-one repo, no shared resource), it should not have entered `/cook` at all: it belongs on the
-spine in `CLAUDE.md §0` (branch → change → verify → `/gate`).
-
-Model choice is not decided here either — see Step 6.
+Scale the *design* to the problem, never the step count. Genuinely mechanical work (nothing unknown,
+one repo, no shared resource) belongs on the spine in `CLAUDE.md §0`, not in `/cook`. Model choice is
+decided at Step 6.
 
 ## Step 0: Sync the base — fetch, and know which ref you are reading
 
@@ -59,11 +56,7 @@ git -C <repo> rev-list --count HEAD..<baseRef> # how far behind the checkout is
 **`fetch`, never `pull`, and never switch the checkout's branch.** The base is `baseRef` in each
 repo's `.claude/worktree.json` — read it per repo, never carry one repo's answer to another.
 
-**When the distinction matters for Step 1, read the ref explicitly:**
-
-```bash
-git -C <repo> show <baseRef>:<path>
-```
+When the distinction matters for Step 1, read the ref explicitly: `git -C <repo> show <baseRef>:<path>`.
 
 State, per repo, one line: declared base · is the checkout on it · commits behind · dirty. If a
 repo is off-base or dirty, say so rather than reading through it silently.
@@ -81,8 +74,7 @@ So a clean `/cook` run leaves a visible spine: `Skill(znf:ground)` ×3, `Agent(z
 `Skill(znf:subagent-driven-development)`, `Skill(znf:ship)`. **A missing line is a skipped
 step**, and that is the point.
 
-> Why: see `references/why-no-triage-and-named-lines.md` — why the old triage was deleted,
-> auditability not tidiness, cost of invoking a skill.
+> Why: see `references/why-no-triage-and-named-lines.md` — auditability, cost of invoking a skill.
 
 ## Step 1: Ground the request — before brainstorming
 
@@ -221,6 +213,14 @@ marker), surface it and let the user decide: fix the spec/plan and rerun, or acc
 named line `Skill(znf:analyze)` must appear at this step; its absence = the step was skipped. The
 command is fail-open, so this step should never itself break the cook flow.
 
+**Phase boundary 1 — stop here and hand over.** Spec and plan are on disk; SDD reads them from the
+file. Print exactly these two lines and end the turn:
+
+```
+/clear
+/cook <absolute path of the plan file>
+```
+
 ## Step 6: Implement (`znf:subagent-driven-development`)
 
 ### First, the worktree — this is the step that writes code
@@ -234,16 +234,12 @@ git -C <repo> fetch origin                                    # belt-and-suspend
 cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
 ```
 
-**Polyrepo:** one worktree per affected repo, **same slug** in every one.
+**Polyrepo:** one worktree per affected repo, **same slug** in every one. Hand SDD the whole set: it
+runs **one implementer per repo in parallel**, gating a dependent repo on the other's **contract-frozen**
+commit, not its whole plan (SDD "Cross-worktree parallelism").
 
-When the plan spans repos, do not run them one after another by default. Hand SDD the whole set:
-it dispatches **one implementer per repo in parallel**, gating a dependent repo on the other's
-**contract-frozen** commit (not on its whole plan). See SDD's "Cross-worktree parallelism (polyrepo)" section.
-
-**Re-entering `/cook` mid-task does not mean a second worktree.** If this feature already has one,
-`cd` into it — `wt new` will refuse and print the path (house rule #8). The slug belongs to the whole
-**plan**, fixed at the first `wt new`, and does not subdivide — every `Task 1..N` below shares this
-one worktree per repo.
+**Re-entering `/cook` (phase 2) does not mean a second worktree.** `cd` into the existing one —
+`wt new` refuses and prints the path. The slug belongs to the whole plan; every `Task 1..N` shares it.
 
 **Spec and plan stay in the MAIN checkout, and are already written by now.** The worktree holds
 code only. Every path handed to SDD must therefore be **absolute**.
@@ -263,15 +259,15 @@ Nothing to exercise — a refactor fully covered by tests, a docs change — the
 
 Call **`Skill(znf:subagent-driven-development)`**. Always SDD, at every size. Per task: brief → implementer (code + test + commit + self
 review) → task reviewer (spec compliance **and** quality) → fix loop, capped at five
-rounds with a scoped re-review each round → ledger line. Then one final whole-branch
-review on the most capable model.
+rounds with a scoped re-review each round → ledger line. **Under `/cook` SDD skips its own final
+review**: `/ship`'s review (Step 7) is the whole-branch review, and it reads the ledger's
+`minor (deferred)` and `parked` lines through the ship-pack `## Deferred`. Tell SDD it runs under `/cook`.
 
 - Tell SDD the workspace created just above already exists; it should verify, not create.
 - **Implementers follow SDD's Model Selection** — least powerful model that can handle each task,
   named explicitly on every dispatch (never inherit the session): cheapest tier for a transcription
-  task (plan carries the code), standard from prose / integration, most capable for design judgment
-  (**omit** `model`, never `'opus'` — see "Naming is asymmetric"). Dispatcher judges per task; no
-  hard-pinned model here.
+  task (plan carries the code), standard from prose / integration, `model: 'opus'` for design
+  judgment. Dispatcher judges per task; no hard-pinned model here.
 - **One local caveat:** never pair the cheapest tier (`haiku`) with `effort: 'xhigh'` — haiku is not
   xhigh-capable and the CLI silently downgrades it. `xhigh` goes to `sonnet`+ only.
 - Minimum code to satisfy the plan's definition of done. TDD: failing test → implement →
@@ -279,11 +275,8 @@ review on the most capable model.
 
 ### Parallel implementers: across repos yes, within one repo no
 
-```
-different repos (be / web / hub / subscriber)   separate histories already   → PARALLEL
-same repo, same worktree                        review package contaminated  → NEVER
-same repo, one worktree per implementer         safe, but N branches to merge → OFF by default
-```
+Different repos have separate histories → PARALLEL. Same repo, same worktree → NEVER (the review
+package gets contaminated). Same repo, one worktree per implementer → OFF by default (N branches to merge).
 
 **Dispatch the cross-repo group in ONE message** — that is what makes them concurrent; one message
 each runs them in sequence and buys nothing.
@@ -336,6 +329,14 @@ that SDD's per-task review does not give — it only sees one task, not "does ev
 Advisory: surface findings for the user to decide, does not block. A `Skill(znf:standards)` line is
 the evidence this step ran.
 
+**Phase boundary 2 — stop here and hand over.** The ledger holds every `Task <N>: complete`; `/ship`
+fingerprints the working tree and reads the ledger, so it needs no history. Print and end the turn:
+
+```
+/clear
+/ship     (from the worktree directory)
+```
+
 ## Step 7: Pre-ship gate
 
 Run `/ship`: lint + build → the project's contract gate → behavioural verification → the contract review
@@ -349,34 +350,30 @@ lens → deploy order → commit + push the feature branch, then **open the PR**
 
 ## Which model runs which step
 
-Steps 0 through 5 run in the **main loop** on the session model — keep the session on Opus
-for `/cook`. Brainstorming cannot be delegated: it needs back-and-forth with the user.
+Steps 0–5 run in the **main loop** on the session model (keep it on Opus); brainstorming needs the user.
 
 | Step | Runs as | Model | Effort |
 |---|---|---|---|
 | 0 Fetch the base | main loop | session | session |
-| 6 Workspace handoff | **a new Claude session** in the task's pane | inherits `settings.json` — measured `Opus 4.8`, so pass no override | session default |
+| 6 Workspace handoff | a new Claude session in the task's pane | session (`settings.json`) | session default |
 | 1 Ground the request | main loop (skill) | session | session |
 | 2 Brainstorm → spec | main loop (skill) | session — **keep on Opus** | session |
 | 3 Ground the spec | main loop (skill) | session — all six categories | session |
 | 4 Scout | **`scout` agent** | sonnet (pinned in the agent definition) | default |
 | 5 Plan (+ ground what it adds) | main loop (skill) | session — **keep on Opus** | session |
-| 6 Implement | subagents via SDD | per SDD Model Selection — cheapest tier for transcription → most capable (omit `model`) for design-judgment; dispatcher judges | `xhigh` on sonnet+; never `haiku`+`xhigh` |
+| 6 Implement | subagents via SDD | per SDD Model Selection — `haiku` for transcription → `opus` for design judgment; dispatcher judges | `xhigh` on sonnet+; never `haiku`+`xhigh` |
 | 6 Fix loop r1-3 | resume the same implementer | unchanged | as dispatched |
-| 6 Fix loop r4-5 | fresh implementer, +1 tier | omit `model` → `opus-4-8` | **`xhigh`** |
-| 6 Task review | subagents via SDD | `sonnet`, or omit for a high-risk diff (SDD's rule) | default |
-| 6 Final review | subagent via SDD | omit `model` → `opus-4-8` (the ceiling) | default |
+| 6 Fix loop r4-5 | fresh implementer, +1 tier | `opus` | **`xhigh`** |
+| 6 Task review | subagents via SDD | `sonnet`, `opus` for a high-risk diff (SDD's rule) | default |
 | 6 UI check, flagged tasks | `znf:ui-verifier` agent | sonnet (pinned) | default |
 | 7 Ship review | `code-reviewer` agent | **pass `model` explicitly, scaled to the diff** — see `/ship` step 5 | default (`high`) |
 | 7 Ship UI check | `znf:ui-verifier` agent | sonnet (pinned) | default |
 
+**Name the tier on every dispatch.** `zenify up` sets `CLAUDE_CODE_SUBAGENT_MODEL=sonnet`, so a
+dispatch without `model` runs on sonnet — never on the session model. Scale up with `'opus'`, down with `'haiku'`.
+
 > Why: see `references/step6-implementation-notes.md` — why no separate review, why `cat` not
-> summarise, delegation, ship reviewer's scaling rule.
-
-**Naming is asymmetric:** scale down = pass `model: 'sonnet'` (or `'claude-haiku-4-5'`); scale up = **omit `model`**.
-
-> Why: see `references/step6-implementation-notes.md` — floor/ceiling rationale, alias-override
-> mechanism, SDD's explicit-model assumption.
+> summarise, delegation, floor/ceiling rationale.
 
 ## References
 
@@ -391,7 +388,5 @@ Materialized at `~/.claude/skills/znf/skills/cook/references/`. Read a file only
 
 ## Constraints preserved from house rules
 
-- No commit before the gate passes — verify first, then commit (rule #3)
-- No PR creation, no merge (rule #7)
-- No push to deploy branches (rule #7)
-- Correctness-first: no `--fast`/minimal-planning mode
+Verify before commit (rule #3); `/ship` opens the PR, nothing ever merges or pushes to a deploy
+branch (rule #7); no `--fast`/minimal-planning mode.

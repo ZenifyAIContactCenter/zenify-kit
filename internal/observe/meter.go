@@ -3,6 +3,7 @@ package observe
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -20,6 +21,47 @@ const meterFile = "meter.json"
 type Meter struct {
 	Calls map[string]int   `json:"calls"` // tool name -> invocation count
 	Bytes map[string]int64 `json:"bytes"` // tool name -> total tool_response bytes
+	// LastWarnCall is TotalCalls() at the last advice emitted; the debounce
+	// compares against it so a burst of large results yields one line, not N.
+	LastWarnCall int `json:"last_warn_call,omitempty"`
+}
+
+// Advice is what the PostToolUse hook may add to the agent's context after a
+// tool call. Empty Message = say nothing (the common case).
+type Advice struct {
+	Message string
+}
+
+// Thresholds behind Advice. Measured 2026-09-18 on one workspace: 25 tool
+// results over 50 KB (max 680 KB) in 30 days, each resident in context for the
+// rest of its session; median context per turn 184k of a 200k window.
+const (
+	LargeResultBytes  = 50_000    // one tool_response above this → "route it to a file"
+	HeavySessionBytes = 2_000_000 // session total above this → "/clear at a file boundary"
+	warnDebounceCalls = 5         // at most one Advice per this many tool calls
+)
+
+// advise decides the Advice for a meter that has just absorbed a call of
+// respBytes for tool. It mutates m.LastWarnCall when it speaks.
+func advise(m *Meter, tool string, respBytes int64) Advice {
+	total := m.TotalCalls()
+	if m.LastWarnCall > 0 && total-m.LastWarnCall < warnDebounceCalls {
+		return Advice{}
+	}
+	var msg string
+	switch {
+	case respBytes > LargeResultBytes:
+		msg = fmt.Sprintf("znf meter: that %s result was %d KB and now stays in context for the rest of the session. "+
+			"Send output this size to a file first, then read only the part you need.", tool, respBytes/1000)
+	case m.TotalBytes() > HeavySessionBytes:
+		msg = fmt.Sprintf("znf meter: tool output this session has passed %d MB — the context is heavy. "+
+			"Finish the current task, then /clear at a file boundary (spec, plan, ledger) and re-enter through the file path.",
+			m.TotalBytes()/1_000_000)
+	default:
+		return Advice{}
+	}
+	m.LastWarnCall = total
+	return Advice{Message: msg}
 }
 
 // meterPath is the meter file for a session (sits beside count.json + the lock).
@@ -80,23 +122,24 @@ func (m Meter) TotalCalls() int {
 	return t
 }
 
-// Record adds one tool call of respBytes to the session meter. The
-// read-modify-write runs under the same per-session flock as Bump (non-blocking
-// with bounded retry); any error or persistent contention falls open silently so
-// the PostToolUse hook never disrupts the tool it observes. Empty tool or
-// negative size is ignored.
-func Record(sessionID, tool string, respBytes int64, now time.Time) {
+// Record adds one tool call of respBytes to the session meter and returns the
+// Advice (usually empty) the hook should surface. The read-modify-write runs
+// under the same per-session flock as Bump (non-blocking with bounded retry);
+// any error or persistent contention falls open silently — empty Advice, no
+// write — so the PostToolUse hook never disrupts the tool it observes. Empty
+// tool or negative size is ignored.
+func Record(sessionID, tool string, respBytes int64, now time.Time) Advice {
 	if tool == "" || respBytes < 0 {
-		return
+		return Advice{}
 	}
 	base, err := dir()
 	if err != nil {
-		return
+		return Advice{}
 	}
 	sess := sanitizeSession(sessionID)
 	sd := sessDir(base, sess)
 	if err := os.MkdirAll(sd, 0o750); err != nil {
-		return
+		return Advice{}
 	}
 
 	var h *lock.Handle
@@ -106,18 +149,18 @@ func Record(sessionID, tool string, respBytes int64, now time.Time) {
 			break
 		}
 		if !errors.Is(err, lock.ErrHeld) {
-			return // unexpected error → fail open
+			return Advice{} // unexpected error → fail open
 		}
 		time.Sleep(lockBackoff)
 	}
 	if h == nil {
-		return // still contended → skip this record, fail open
+		return Advice{} // still contended → skip this record, fail open
 	}
 	defer func() { _ = h.Release() }()
 
 	m, ok := readMeter(meterPath(base, sess))
 	if !ok {
-		return // corrupt or unreadable → fail open
+		return Advice{} // corrupt or unreadable → fail open
 	}
 	if m.Calls == nil {
 		m.Calls = map[string]int{}
@@ -127,5 +170,7 @@ func Record(sessionID, tool string, respBytes int64, now time.Time) {
 	}
 	m.Calls[tool]++
 	m.Bytes[tool] += respBytes
+	adv := advise(&m, tool, respBytes)
 	_ = writeMeter(meterPath(base, sess), m)
+	return adv
 }

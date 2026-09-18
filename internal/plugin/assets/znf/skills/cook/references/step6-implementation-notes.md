@@ -153,10 +153,10 @@ ledger line, both of which are yours.
 
 ### From § Step 7: Pre-ship gate — no separate review, and the board file (tier two)
 
-There is no separate review step before this. SDD's final whole-branch review already
-covered generic quality; `/ship`'s reviewer covers what that one does not — cross-service
-contracts, unverified field names, N+1. Running `code-reviewer` here as well reviewed the
-same diff a third time with the same rubric as `/ship`.
+There is no separate review step before this, and under `/cook` SDD skips its final review too:
+`/ship`'s engine review is the one whole-branch pass. Before 2026-09-18 every diff met three
+reviewers (task, SDD final, ship) — 76 ship-gate runs blocked 3 times and the one SDD ledger with
+a final review recorded zero review-driven fixes, so the middle layer cost without catching.
 
 Summarising the board as *"`/ship`: ✅ all green"* hides every check that carries weight in
 this pipeline and throws away the per-check fingerprints — the only part of this run the user can verify
@@ -181,12 +181,12 @@ understanding, and for the final whole-branch review. Full-ID pinning is the **s
 does not hard-pin one. The only fixed rule is the effort caveat above: never the cheapest tier with
 `xhigh`.
 
-Naming is asymmetric because scaling up means **omitting** `model` so the dispatch inherits the
-session (the `opus` alias resolves to the *newest* opus and would override the pinned version).
-SDD's *"always specify the model explicitly"* assumed a session default that is the most expensive
-model; here the session default **is** the intended ceiling, so omission is the correct way to reach
-it rather than an oversight. State in the dispatch note which one you meant, so an omission is never
-read as forgetting.
+Since 2026-09-18 the ceiling is reached by passing `model: 'opus'`, not by leaving `model` out:
+`zenify up` writes `CLAUDE_CODE_SUBAGENT_MODEL=sonnet` into `~/.claude/settings.json`, so a dispatch
+without `model` lands on sonnet. Measured before the change, 19% of dispatches left `model` out and
+inherited the Opus session — the "omission means ceiling" doctrine was the cause. `'opus'` is an
+alias for the newest opus, which may differ from the session's pinned version; that gap is accepted
+for subagents.
 
 ### From § Which model runs which step
 
@@ -200,12 +200,7 @@ All three grounding steps run inline, however heavy the fetch. `/ground` gives t
 history: the delegate that used to be offered here was never once used in 1427 transcripts, and
 inline was the correct place anyway.
 
-**The ship reviewer is scaled, not pinned.** Its agent definition says `opus`, and that used to be taken
-as the answer for every review — which meant a one-line typo fix got a top-tier review on a gate that runs
-after every `/fix`. SDD's own rule is the correct one and it is stated plainly there: *"Review tasks:
-choose the model … scaled to the diff's size, complexity, and risk. A small mechanical diff does not need
-the most capable model."* So `/ship` passes `model` explicitly **only to scale down** — sonnet for a small
-diff and for the scoped re-review — and **omits it** for anything large or touching a shared contract, auth,
-or tenant scoping, so that dispatch inherits the session model. Do not pass `'opus'` (Step 6 gives the
-reason — the alias resolves to the newest opus, overriding the pinned version). Never below sonnet:
-*"turn count beats token price"*, and the cheapest tier takes 2-3× the turns while reviewing worse.
+**The ship reviewer is scaled by the engine, not pinned.** `code-reviewer`'s frontmatter says `sonnet`
+(the floor); `znf:review` passes `opus` explicitly where its tier rule demands it — T3, and the
+`contracts` dimension when the diff touches a shared resource. Never below sonnet: *"turn count beats
+token price"*, and the cheapest tier takes 2-3× the turns while reviewing worse.
