@@ -1,12 +1,19 @@
 ---
 name: explain-plan
 description: Use when a diff adds or changes a DB query — the mandatory two-tier DB-perf gate. Runs a static scan (no DB needed) plus a per-query explain plan, and classifies findings BLOCKING (surface as must-fix at ship) vs ADVISORY. Degrades cleanly when the DB is unreachable.
+argument-hint: "[base..head | file paths of the changed queries]"
 allowed-tools: Read Grep Bash(zenify db-read *) Bash(zenify db-perf *) Bash(git diff *)
+context: fork
+background: false
 ---
 
 # znf:explain-plan — two-tier DB-perf gate
 
 **Announce:** "Using znf:explain-plan to run the two-tier DB-perf gate on this diff."
+
+This skill runs in a forked context: `$ARGUMENTS` names the diff range or the changed files;
+when empty, scan `origin/staging..HEAD` in the current directory. Return the full `## DB-Perf`
+block verbatim — the caller reads it, not a summary of it.
 
 A query missing a usable index, an unbounded list, a missing tenant filter, or a deep skip is
 **invisible on dev data** and only bites at production volume. This gate combines a static scan

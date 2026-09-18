@@ -1,5 +1,6 @@
 <!-- Moved verbatim from ship/SKILL.md § What this gate is actually for, § Working tree — fingerprint the tree, not HEAD, § The fix loop — it wraps every check, not just the review, § Output (W4 slim-skills). Read when: a clean review tempts you to skip step 4, or someone asks why the board exists. -->
 
+**Contents:** what this gate is for · fingerprinting the tree · the fix loop · recording the outcome · pushing the branch · why the board is `cat`ed · the board template.
 ### From § What this gate is actually for
 Be honest about which parts carry weight, because the evidence is not flattering to the part that
 costs most.
@@ -76,3 +77,37 @@ Every line goes in the file, including the ❌ ones, the skipped ones, and `Gate
 That is also the honest answer to *"why is this a skill instead of steps in each pipeline?"* — one copy
 of the logic, three copies of the **output**. Duplicating the checks into three files would let them
 drift silently; duplicating the board cannot drift, because it is generated here each run.
+
+### The board template (moved verbatim from § Output)
+Fill every line; write it to the board file and `cat` it. Never retype or summarise it.
+
+```
+Verified at fingerprint = <fp10>
+
+✅/❌ Lint                (<fp10>)  <command run>
+✅/❌ Build / typecheck    (<fp10>)  <command run>
+✅/❌ Contract gate        (<fp10>)  /gate: <N repos impacted, or clean>
+✅/❌ Behaviour verified   (<fp10>)  <N tests passed — or what /run showed>
+      look: <verdict + overflow numbers · "nothing renders" ONLY if rg=0 · or "❌ BLOCKED: <missing thing>" → Shippable NO>
+            before concluding: `zenify ui-verify check --repo <path> --base <base>` — non-zero →
+            append "❌ BLOCKED" here and Shippable NO; a waiver appends "waived: <reason>"
+      data checks: <which of the project-specific ones ran; which the diff could not trigger>
+✅/❌ Independent review   (<fp10>)  round <R>: <N CRITICAL/HIGH → addressed> · diff <N> LOC
+      not blocking: <MEDIUM/LOW findings, plus any out-of-scope observations>
+      deferred from the ledger: <N minor · which the reviewer called must-fix-before-merge,
+                                 or "no ledger" for a /fix or /hotfix run>
+Deploy order: ...
+Gate log: <SHIPPED|BLOCKED> · blocked <N> of last <M> runs
+
+Shippable: YES only if every fingerprint above == the current one
+```
+
+Only call it shippable when every applicable line is ✅ at the current fingerprint, each backed by
+real output. A check whose agent went quiet never earns a ✅ — silence and a clean result are
+indistinguishable from here.
+
+### Ordering the gate (moved from § Start the agents)
+Log in first — that is blocking, because neither verifier can authenticate itself. Then dispatch the
+contract gate's sweeps and `znf:ui-verifier` in ONE message so they run at once, and do lint, build
+and the data checks inline while they work. `Skill(znf:review)` cannot start earlier: it needs the
+facts those checks produce.

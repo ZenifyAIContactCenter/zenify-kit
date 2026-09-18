@@ -14,6 +14,10 @@ Dọn dẹp một task đã xong — dừng dev server, đóng workspace, xoá w
 /znf:sweep
 ```
 
+::: warning Chỉ bạn gõ được
+Agent không tự chạy skill này, chỉ đề xuất. Bạn gõ lệnh khi thấy cần.
+:::
+
 ## Khi nào dùng
 
 Khi công việc đã merge xong và bạn muốn workspace trở lại sạch sẽ, hoặc khi bạn chỉ đơn giản nói "dọn dẹp giúp tôi". Skill từ chối báo thành công nếu việc thực ra chưa merge, và nói rõ bước nào còn thiếu.

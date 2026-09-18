@@ -17,6 +17,50 @@ type Finding struct {
 	Text string
 }
 
+// SizeBytes and SizeLines cap a SKILL.md (token-diet spec FR-4.1). A skill
+// body is injected verbatim into the main context on first invocation and
+// stays there for the session, so size is paid on every later turn. Rationale
+// belongs in references/<topic>.md, read on demand.
+const (
+	SizeBytes = 8192
+	SizeLines = 200
+)
+
+// SizeFinding is one SKILL.md over the cap.
+type SizeFinding struct {
+	File  string
+	Bytes int
+	Lines int
+}
+
+// ScanSize walks roots and flags every SKILL.md over SizeBytes or SizeLines.
+func ScanSize(roots []string) ([]SizeFinding, error) {
+	var out []SizeFinding
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() || d.Name() != "SKILL.md" {
+				return nil
+			}
+			b, err := os.ReadFile(path) //nolint:gosec // G304 -- path from a trusted scan root
+			if err != nil {
+				return err
+			}
+			lines := strings.Count(string(b), "\n")
+			if len(b) > SizeBytes || lines > SizeLines {
+				out = append(out, SizeFinding{File: path, Bytes: len(b), Lines: lines})
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
 // omitModelRe matches the retired doctrine "omit `model` → inherit the
 // session (opus)". Since CLAUDE_CODE_SUBAGENT_MODEL is set by `zenify up`,
 // omitting `model` yields sonnet, so any skill that still says otherwise

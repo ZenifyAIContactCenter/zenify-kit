@@ -1,5 +1,6 @@
 <!-- Moved verbatim from subagent-driven-development/SKILL.md § 2. Handle the report, § 1. Dispatch the implementer, § 3. Review the task, § 4. The fix loop, § Final Review, § Finish (W4 slim-skills). Read when: a fix loop passes round 3, you want to pre-judge a reviewer, or you consider skipping the rulings list. -->
 
+**Contents:** handling the report · dispatching the implementer · reviewing the task · the fix loop · final review · finish · the task loop · common rationalizations.
 ### From § 2. Handle the report
 
 it prints the unique file path it wrote; BASE is the commit you recorded
@@ -111,3 +112,16 @@ child is noticed within minutes, not at the end of the session.
 
 This is where the wall-clock
 is won: the dependent repo overlaps the rest of X.
+
+### Common Rationalizations (moved verbatim from § Common Rationalizations)
+
+| Excuse | Reality |
+|--------|---------|
+| "Close enough on spec compliance" | Reviewer found spec gaps = not done. Fix or hit the cap and adjudicate — those are the only exits. |
+| "I'll fix it myself, dispatching is overhead" | Controller fixes pollute your context and skip review. Resume the implementer. |
+| "One more round will converge" | Past the cap the failure is structural. Adjudicate and route. |
+| "The reviewer will just find something new anyway" | Scoped re-reviews verify fixes; they cannot wander. New findings on untouched code go to the ledger, not the loop. |
+| "This finding is obviously wrong, I'll drop it" | You adjudicate only at the cap, and every ruling is a ledger entry. Silent discards are forbidden. |
+| "The fix was small, skip the re-review" | Unreviewed fixes are how regressions land. Every round ends with a scoped re-review. |
+| "Ledger bookkeeping is overhead" | The ledger is what survives compaction. Controllers without one have re-dispatched entire completed task sequences. |
+| "The implementer spawned its own reviewer — free extra assurance" | It's a duplicate seat reviewing the same diff; the task review is the gate. A worker-spawned reviewer is a defect to flag, not rigor. |

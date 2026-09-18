@@ -1,5 +1,6 @@
 <!-- Moved verbatim from ship/SKILL.md § 4. Behavioural verification (W4 slim-skills). Read when: the UI verifier stalls, logs itself out, you are tempted to skip the look (flag OFF / needs seed / backend down), or you doubt why the check runs here and not in /cook. -->
 
+**Contents:** the authoritative UI pass · mechanical trigger · skips that don't hold · bringing the app to a testable state · login handover · the `ui-verify record/check` gate.
 ### From § 4a: this is the authoritative UI pass
 **This is the authoritative UI pass — the last one, not the only one.** `/ship` is invoked
 unconditionally by `/cook`, `/fix` and `/hotfix`, so a rendering change always reaches it without the
@@ -91,3 +92,13 @@ a deterministic, fail-closed gate with four outcomes:
 The fingerprint is what ties `record` to `check`: any working-tree change after `record` shifts `fp`,
 so a stale artifact from before a review-loop fix cannot pass `check` — the gate re-requires a fresh
 look, the same honesty mechanism as step 7's `fp` stamps elsewhere in this skill.
+
+### Bringing the app to a testable state (moved from § 4)
+A flag shipping OFF, an unseeded path or a downed backend is setup you perform, never a skip:
+`Skill(znf:run)` for FE and BE, `wt wire` to point the FE at this worktree's BE, turn the flag on,
+seed the row — then look. If you cannot this session, that is BLOCKED, and the board names the one
+missing thing.
+
+Also moved here: require the measurement next to an *unchanged sibling*, so an overflow that was
+already there is not reported as yours. The browser is a single shared instance, so a multi-screen
+change is one verifier covering every screen, never several agents.

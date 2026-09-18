@@ -23,3 +23,19 @@ checked by looking, the way `Agent(znf:scout)` can.
 
 It costs something real — invoking a skill reloads its text into context, and `/ground` runs three
 times here. Pay it. An unverifiable step is worth less than the tokens it saved.
+
+### Where verification sits, and why three sessions (moved from § What `/cook` does, token diet 2026-09-18)
+
+**Verification sits around `brainstorming` and `writing-plans`, never inside them.** The checks go
+before and after; neither skill is reordered or overridden.
+
+**Three sessions, not one.** The pipeline clears its context twice, at the two file boundaries:
+after Step 5b (spec and plan are on disk) and after Step 6b (the ledger is complete). Each phase
+re-enters through a file path, so nothing is lost and no phase carries the previous one's prose.
+
+`/ground` asks "what is X?" at each of the three points a name enters (request, spec, plan);
+`/scout` asks "what depends on X?" once, after the spec decides what changes. Neither substitutes
+for the other.
+
+Mechanical work — nothing unknown, one repo, no shared resource — belongs on the spine in
+`CLAUDE.md §0`, not in `/cook`.

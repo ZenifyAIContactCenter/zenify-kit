@@ -32,3 +32,39 @@ rulings made without one are provisional.
 
 The review loop remains the net for conflicts that only emerge from
 implementation.
+
+### The workspace and the ledger, in full (moved verbatim from § Setup)
+- Each plan owns a workspace: at skill start, run this skill's
+  `scripts/sdd-workspace PLAN_FILE` — it prints the plan's git-ignored
+  directory (`<repo-root>/.znf/sdd/<plan-basename>/`), home to
+  every artifact for THIS plan: ledger, briefs, reports, review packages.
+  Another plan's directory is never yours to read or write.
+- Check for this plan's ledger at `<workspace>/progress.md`. If its first
+  line names your plan file, tasks with a `Task <N>: complete` line are DONE
+  — do not re-dispatch them; resume at the first task without one. A task
+  whose last line is a fix round is mid-loop: resume the loop at the next
+  round. A ledger whose first line names a different plan file — or a stray
+  ledger at the old flat path `.znf/sdd/progress.md` — is another
+  plan's progress: leave it in place and start your own, fresh.
+- Create the ledger with its identity as the first line:
+  `# SDD ledger — plan: <plan file path>`.
+
+Read the plan once, note its context and Global Constraints, and create a
+todo per task. If the plan names a Spec, read that too: the spec is the
+authority the plan argues from, and conflicts inside the plan resolve
+against it. A plan with no reachable spec gets a ledger note saying so.
+
+### The pre-Task-1 conflict scan (moved verbatim from § Setup)
+Before dispatching Task 1, scan the plan once for conflicts, writing down
+what you checked as you check it:
+
+- tasks that contradict each other or the plan's Global Constraints
+- anything the plan explicitly mandates that the review rubric treats as a
+  defect (a test that asserts nothing, verbatim duplication of a logic block)
+
+The scan's output is a table, not a verdict. Write the table to the ledger.
+Rule on everything you find before execution begins — each finding against
+the plan text that mandates it — and record each ruling in the ledger. If
+the scan is clean, proceed without comment. Rule on each conflict it
+surfaces — the spec is the binding authority, the plan is its argument —
+record the ruling beside its row, and dispatch Task 1.

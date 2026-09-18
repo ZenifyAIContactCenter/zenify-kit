@@ -4,14 +4,14 @@ title: /znf:analyze
 
 [Skill](/reference/skills/) / `/znf:analyze`
 
-# `/znf:analyze`
+# `/znf:analyze <spec.md> <plan.md>`
 
 Kiểm tra cặp spec và plan trước khi code: độ phủ FR sang task, marker chưa làm rõ, cấu trúc Brief và bốn tiêu chí chất lượng.
 
 ## Cách gọi
 
 ```text
-/znf:analyze
+/znf:analyze <spec.md> <plan.md>
 ```
 
 ## Khi nào dùng

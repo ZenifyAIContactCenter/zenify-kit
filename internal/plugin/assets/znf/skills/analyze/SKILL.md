@@ -1,12 +1,18 @@
 ---
 name: analyze
 description: Use to inspect a written spec+plan pair BEFORE implementing — mechanically checks requirement coverage (FR→task), leftover clarification markers, and Brief structure, then adds judgment on SC-testability, necessity, and DB-safety. advisory only, never blocks.
+argument-hint: "<spec.md> <plan.md>"
 allowed-tools: Read Grep Bash(zenify analyze *)
+context: fork
+background: false
 ---
 
 # znf:analyze — inspect spec+plan before coding
 
 **Announce:** "Using znf:analyze to inspect the spec+plan before implementation."
+
+This skill runs in a forked context: the spec and plan paths are given in `$ARGUMENTS`
+(absolute paths, spec first). Everything you need is in those two files and this skill.
 
 Checks a written spec+plan pair against `znf:_shared/constitution` (P1–P9) and
 `znf:_shared/spec-template` (8-field Brief). **Advisory:** reports findings, does NOT block progress.

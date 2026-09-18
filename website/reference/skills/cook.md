@@ -14,6 +14,10 @@ Pipeline xây tính năng trọn vẹn: ground, brainstorm ra spec, scout, plan,
 /znf:cook <feature description or path/to/plan.md>
 ```
 
+::: warning Chỉ bạn gõ được
+Agent không tự chạy skill này, chỉ đề xuất. Bạn gõ lệnh khi thấy cần.
+:::
+
 ## Khi nào dùng
 
 Khi chưa có thiết kế, hoặc chưa rõ cần xây gì và xây thế nào. Việc đã rõ cả yêu cầu và cách làm, trong một repo, không chạm tài nguyên chung thì không cần `/znf:cook`. Xem [Chọn workflow](/workflows/) và trang [cook: xây tính năng](/workflows/cook).

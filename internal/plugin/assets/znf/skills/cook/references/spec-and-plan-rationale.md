@@ -59,3 +59,30 @@ its only verification lines are about tests. Step 3 grounded what the *spec* com
 this covers what the *plan* added — and plans do add names, because this skill demands real
 code in every task. Without this pass the only net left is the ship-pack's `## Ground` block
 at `/ship`, which fires after the code is already written.
+
+### The worth-it test for a browser run, and the E2E twin (moved from § Step 5, token diet 2026-09-18)
+
+The test is whether the task's **deliverable is something you look at**, not whether it happens to
+touch a rendering file.
+
+```
+worth it        a new screen · a new component · a layout or grid change · a modal
+                → "Done when … and `znf:ui-verifier` reports it renders correctly, with the
+                   overflow measurement of the changed element against its container."
+NOT worth it    a copy change · a colour token · a css file touched in passing · wiring an
+                existing component to a new endpoint
+                → say nothing; `/ship` step 4 still sees it at the end
+```
+
+**The E2E journey uses the same criterion.** A task whose flow is UI→BE and changes an entity's
+state — creating, editing or deleting a ticket, deal or contact — gets, in its definition of done:
+"Done when … and a `.znf/e2e/<journey>.spec.ts` passes `zenify e2e lint` and `zenify e2e run` is
+green." Only when the deliverable is a business flow, never for every task.
+
+### Spec and plan are gitignored: the three consequences (moved from § Step 2, token diet 2026-09-18)
+
+- Write both in the **main checkout**, never in the worktree — a worktree does not carry ignored,
+  untracked files, and `wt rm` would delete them along with the branch.
+- **Pass SDD absolute paths.** A relative path resolves inside the worktree, where the file is not.
+- `git clean -fdx` deletes every spec and plan. They are scratch, not history: a decision that
+  matters beyond this task belongs in a memory or in `CLAUDE.md`.

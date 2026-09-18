@@ -2,24 +2,23 @@
 name: run
 description: Launch the app and produce real output from the real code path, so a change can be verified rather than asserted. Use when a change is behavioural and there are no tests covering it, before claiming it works, and before dispatching znf:ui-verifier (which needs the URL this produces). Reads the port the worktree was allocated instead of hunting for a free one.
 allowed-tools: Read Grep Glob Bash(git *) Bash(rg *) Bash(cat *) Bash(nc *) Bash(curl *) Bash(node *) Bash(tail *) Bash(grep *)
+disable-model-invocation: true
 ---
 
 `CLAUDE.md` rule #3: *"When there are no tests, produce output from the real code path and show
-it."* This skill is how. It does not judge the output — it makes output exist.
-
-> Why: see `references/why-this-skill-exists.md` — read when you wonder why `/run` is a skill and not a bash line.
+it."* This skill is how: it makes output exist, it does not judge it. Why a skill and not a bash
+line: `references/why-this-skill-exists.md`.
 
 ## Step 1: The port is already decided — read it, never hunt for it
 
-`wt` allocated one port per worktree and recorded it. Hunting for a free port throws that away
-and lands the app somewhere nothing else expects.
+`wt` allocated one port per worktree and recorded it. Hunting throws that away.
 
 ```bash
 PORT=$(git config --get wt.port)      # inside a wt worktree
 ```
 
-Empty means this is not a `wt` worktree — the main checkout, or a repo where `wt` cannot run.
-Say which, and use the project's documented default; do not invent one.
+Empty means this is not a `wt` worktree. Say which, and use the project's documented default;
+do not invent one.
 
 ### Then stop, if something is already serving it
 
@@ -27,12 +26,8 @@ Say which, and use the project's documented default; do not invent one.
 lsof -nP -iTCP:"$PORT" -sTCP:LISTEN            # never `nc` — see Step 5
 ```
 
-Something there → do **not** start a second one. A second Vite prints `Port 3338 is in use, trying
-another one...` and comes up on 3339, after which every URL you report is wrong and `znf:ui-verifier`
-exercises the *first* server — the one without your change.
-
-**But reusing it depends on whose code it is running, and that has to be checked.** Ask the process,
-not the port:
+Something there → do **not** start a second: it drifts to the next port, so every URL you report is
+wrong. **Reuse depends on whose code it runs.** Ask the process, not the port:
 
 ```bash
 PID=$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t | head -1)
@@ -41,43 +36,30 @@ lsof -a -p "$PID" -d cwd -Fn | grep '^n' | sed 's/^n//'      # `-a`, or lsof ORs
 
 | That cwd is | Then |
 |---|---|
-| the repo's **main checkout** | reuse it. Unmodified baseline, identical for every task |
-| **your own worktree** | reuse it. It is your code |
-| **another worktree** | **do not reuse.** That is another task's uncommitted code, and testing against it passes or fails for reasons that have nothing to do with your change. Say whose it is and stop |
+| the repo's **main checkout** | reuse it — unmodified baseline |
+| **your own worktree** | reuse it — it is your code |
+| **another worktree** | **do not reuse** — another task's uncommitted code. Say whose it is and stop |
 
-> Why: see `references/port-wiring-rationale.md` — why the third row is the one that bites.
+**A task only needs a local server for a repo it actually touched.** Read the frontend's env
+first: if it points at staging, a local backend serves nobody (same reference).
 
-**A task only needs a local server for a repo it actually touched.** An untouched repo has the same
-code for every task, so it does not need a per-task copy — and where the project points its
-frontend at a deployed environment by default, it does not need a local copy at all. Read the
-frontend's env file before starting a backend: if it points at staging, a local backend on the
-default port is serving nobody.
+## Step 2: How the port reaches the app is per-repo — read it from code
 
-> Why: see `references/port-wiring-rationale.md` — this skill's own demo run where both servers ran for nothing.
+**`portEnv` in `.claude/worktree.json` is a claim about the app, and it can be wrong.** `wt` writes
+`<portEnv>=<port>` into the env file whether anything reads it or not. Three shapes:
 
-## Step 2: How the port reaches the app is per-repo, and must be read from code
-
-**`portEnv` in `.claude/worktree.json` is a claim about the app, and it can be wrong.** `wt`
-writes `<portEnv>=<port>` into the worktree's env file whether or not anything reads that
-variable. Three shapes, each met in a real repo:
-
-| Shape | How to recognise it | What to do |
+| Shape | Recognise it by | What to do |
 |---|---|---|
-| the code reads the env var directly | `process.env.<NAME>` at the listen site | nothing; `wt` already wrote it into the env file |
-| a config file reads the **env file** | a bundler config calling something like `loadEnv(...)` rather than `process.env` | nothing — but it works because `wt` wrote the *file*; `export`ing the variable would not |
-| a config file with **no env path at all** | a config library reading `*.yml`/`*.json`, no `${}` interpolation, no env-variable mapping file | `portEnv` **cannot work**; write a gitignored per-worktree override |
+| code reads the env var | `process.env.<NAME>` at the listen site | nothing; `wt` wrote it into the env file |
+| config reads the **env file** | a bundler config calling `loadEnv(...)`, not `process.env` | nothing — it works because `wt` wrote the *file*, not the variable |
+| **no env path at all** | a config library reading `*.yml`/`*.json`, no `${}`, no env mapping | `portEnv` **cannot work**; write a gitignored per-worktree override |
 
-**Which shape a repo is, is a project fact — look it up, never carry it between projects.** It
-belongs in that repo's `CLAUDE.md`; this table only says which shapes exist and what each implies.
+**Which shape a repo is, is a project fact — read it in that repo's `CLAUDE.md`, never carry it
+between projects.**
 
-> Why: see `references/port-wiring-rationale.md` — the earlier version's three wrong claims, and hub's PORT=3002 trap.
-
-**For that shape, write a gitignored per-worktree override — do not skip it and do not reach for an
-env var.** node-config loads `local.EXT` after `default.EXT`
-(`node_modules/config/lib/config.js:457`), and in hub `config/` is already gitignored, so the
-override cannot leak into git or into a deployment. Nothing creates this file for you: `wt` writes
-only the `portEnv` line into the env file, so **this step is `/run`'s job on every launch**, not a
-one-off someone did once.
+**For the third shape, write a gitignored per-worktree override — never reach for an env var.**
+node-config loads `local.EXT` after `default.EXT` (`node_modules/config/lib/config.js:457`), and
+nothing creates that file for you: **this is `/run`'s job on every launch**.
 
 ```bash
 # write it when absent, or when it disagrees with the port wt allocated
@@ -85,71 +67,36 @@ printf 'service:\n  hub:\n    port: %s\n' "$(git config --get wt.port)" > config
 NODE_ENV=development node -e 'console.log(require("config").get("service.hub.port"))'
 ```
 
-Then check it against `git status --porcelain` — if the override shows up as a change, it is **not**
-gitignored in this repo and writing it would dirty the branch. Stop and say so instead.
+Check `git status --porcelain` — if the override shows as a change it is **not** gitignored here
+and would dirty the branch; stop and say so. Confirm at the config layer *and* at the socket.
+**Never teach the config library to read env variables** — that is a deployment change disguised as
+a dev fix (`references/port-wiring-rationale.md`).
 
-**Confirm at the config layer *and* at the socket.** The config layer is where this class of bug
-lives; the socket is where the claim lands. Verified once end-to-end: the override resolved to the
-allocated port, the worktree's server took it, and the main checkout's kept its own — two instances
-at once, impossible before.
-
-**What not to do: teach the config library to read environment variables.**
-
-> Why: see `references/port-wiring-rationale.md` — why that's a deployment change disguised as a dev-environment fix.
-
-**A repo whose config directory is gitignored cannot run from a bare checkout.** Seed it the same
-way `.env` is seeded — `wt`'s `copy` list takes directories (`cp -c -R`, `wt:410`). Without it the
-worktree silently falls back to code defaults, which for hub means `mongodb://localhost:27017/test`
-and a placeholder JWT secret: a failure that reads exactly like a broken change.
-
-So before running an app whose port shape you have not read this session:
+Before running an app whose port shape you have not read this session:
 
 ```bash
 rg -n "listen\(|env\.PORT|process\.env\.[A-Z_]*PORT" -g '!node_modules' | head
 ```
 
-Find what the code reads. Then make the allocated port reach *that*.
+Find what the code reads, then make the allocated port reach *that*.
 
-### Then wire the peers — before starting anything
+### Then wire the peers — before starting
 
 ```bash
 wt wire            # --dry-run first if you want to see it
 ```
 
-> Why: see `references/port-wiring-rationale.md` — why the app's own port is only half of it.
-
-`wt wire` recomputes each declared peer variable from scratch — the peer's worktree port when a
-worktree of **this slug** exists, otherwise the value the main checkout has. So it is idempotent,
-it reverts to baseline when the peer is torn down, and a *different* task's worktree is never wired
-in (that would verify your change against someone else's uncommitted edit). Declared per consumer
-repo, keyed by env var rather than by repo, because one repo can serve several services:
-
-```json
-"peers": { "VITE_HUB_URL": { "repo": "…", "url": "http://localhost:{port}" } }
-```
-
-**Run it even when the task touches only one repo.**
-
-> Why: see `references/port-wiring-rationale.md` — the three-day-old worktree measurement.
-
-**Before the server starts, not after.** A bundler reads its env files at config time
-(`loadEnv(...)`), so a wire that lands after the dev server booted changes nothing until a restart —
-and the restart is the part nobody remembers.
+Your own port is half of it; the other half is where the app looks for the *other* services, and a
+frozen worktree env silently tests against the unchanged backend. **Run it even for a one-repo
+task, and before the server starts** — a bundler reads env files at config time, so a later wire
+needs a restart (`references/port-wiring-rationale.md`).
 
 ## Step 3: The launch command comes from the project, not from memory
 
 Read the `Commands` section of the repo's `CLAUDE.md`. **Stop when the recipe is ambiguous, not
-merely when `CLAUDE.md` is absent.** Refusing there is the
-rule serving itself. Stop and say so when there are several plausible candidates, or none — and
-note the missing recipe either way, so it gets written. A wrong launch command produces a failure
-that looks like a broken change; an unambiguous one that happens to be undocumented does not.
-
-> Why: see `references/why-this-skill-exists.md` — this skill's first run and `/onboard-project`.
-
-**"No `dev` script" does not mean no dev command.** Scripts are often named after the **app**
-rather than the mode — in a monorepo, one entry per deployable — so searching for `dev`/`start:dev`
-and concluding there is none is a mistake this skill made on its first run. Read the whole
-`scripts` block:
+merely when `CLAUDE.md` is absent** — several plausible candidates, or none. A wrong launch command
+looks like a broken change. **"No `dev` script" does not mean no dev command**: scripts are often
+named after the **app**, not the mode. Read the whole `scripts` block:
 
 ```bash
 node -e 'console.log(Object.keys(require("./package.json").scripts).join("\n"))'
@@ -157,44 +104,17 @@ node -e 'console.log(Object.keys(require("./package.json").scripts).join("\n"))'
 
 ## Step 4: Run it detached, not in this session
 
-A dev server is long-lived. Started from the session's Bash it either blocks the turn or is
-orphaned, and its output lands nowhere anyone can look at again. Run it detached into a log file
-whose name carries the repo and the port, then read the log:
+Run it detached into a log file naming the repo and the port, then read it:
 
 ```bash
 nohup <dev command> > "${TMPDIR:-/tmp}/run-<repo>-$PORT.log" 2>&1 &
 ```
 
-Say the log path in the report so the user can tail it.
+Say the log path in the report. **Send the bare command — never pipe a watch server through `tail`
+or `head`.** Reuse an existing server for this repo's port first. The unit is a **service**, not a
+repo, and `wt` allocates one port per worktree — `references/launch-and-readiness.md`.
 
-**Reuse before creating.** A server already serving this repo's port (Step 1) is the answer to
-"where does it go"; a second one for the same repo is how you end up with two servers and one of
-them on a drifted port.
-
-**The unit is a service, not a repo.** A monorepo runs several apps from one checkout, each on its
-own port, so one repo can need three servers by itself and "how many repos does the task touch"
-answers the wrong question. Count services you are actually starting.
-
-**`wt` allocates one port per worktree — a real gap, not a convention.** A worktree running a
-second app has no allocated port for it; that port has to be written by hand into the same
-gitignored override the third shape above uses, chosen from the repo's declared `portRange`. Read
-the repo's `CLAUDE.md` for which apps it runs and which key each takes its port from; do not assume
-the app you know is the only one.
-
-**Send the bare command. Never pipe a watch server through `tail` or `head`.** `tail` waits for
-EOF, which a `--watch` process never reaches, so `npm run hub 2>&1 | tail -40` produces **no output
-at all** — and then the readiness wait times out and the app looks broken while it is running fine.
-Measured, on the first attempt at exactly this. If output volume is the worry, bound it by reading
-fewer lines back (`tail -n N` on the log file), not by filtering at the source.
-
-`--debug` in a Node watch command also means the inspector binds its default 9229, which **is not
-per-worktree** — a second watch server in another worktree collides there even when the HTTP port
-is correct.
-
-If your terminal has a pane/workspace manager, a personal skill may wrap this step to give the
-server its own pane. That is ergonomics on top of this recipe, never a replacement for the log file.
-
-## Step 5: Wait for readiness — with a pattern the command cannot satisfy
+## Step 5: Wait for readiness — on a pattern the command cannot satisfy
 
 ```bash
 LOG="${TMPDIR:-/tmp}/run-<repo>-$PORT.log"
@@ -202,31 +122,18 @@ for i in $(seq 1 90); do grep -qE '<ready pattern>' "$LOG" && break; sleep 1; do
 grep -qE '<ready pattern>' "$LOG" || { echo "not ready after 90s"; tail -n 40 "$LOG"; }
 ```
 
-**Whatever you wait on may already contain the command you just ran (a shell echo, a pane's
-scrollback), so a careless pattern matches instantly and reports ready before anything started.** Measured: waiting for `READY-PROBE-[0-9]+`
-matched the echoed `echo READY-PROBE-3338` command line, not its output. Therefore:
+A careless pattern matches the echoed command and reports ready before anything ran:
 
-- **Never wait on the port number** if the command mentions it. `PORT=3338 npm run dev` + a wait
-  for `3338` always matches immediately.
+- **Never wait on the port number** if the command mentions it: `PORT=3338 npm run dev` + a wait
+  for `3338` matches immediately.
 - Wait on text only the framework prints: `ready in`, `Application is running on`,
   `Nest application successfully started`, `compiled successfully`.
 
-### The allocated port is a request, not a result — read the port back out
+### The allocated port is a request, not a result — read it back out
 
-**A dev server may quietly choose a different port and still say it is ready.** Measured on the
-first real run of this skill: `wt` allocated 3338, and Vite printed
-
-```
-Port 3338 is in use, trying another one...
-  VITE v5.4.18  ready in 1133 ms
-  ➜  Local:   http://localhost:3339/
-```
-
-so the app came up on **3339** while every downstream claim would have said 3338. `znf:ui-verifier`
-pointed at 3338 would then have failed in a way that reads exactly like a broken change. Vite's
-`server.strictPort: true` turns that drift into an error; without it the fallback is silent by
-design. So: **take the port from the startup line, not from `wt.port`,** and report the drift when
-it happens rather than the number you asked for.
+A dev server may choose a different port and still say it is ready (Vite prints `Port 3338 is in
+use, trying another one...`). **Take the port from the startup line, not from `wt.port`,** and
+report the drift.
 
 ### Checking the port: `lsof`, never `nc` or `curl`
 
@@ -234,72 +141,32 @@ it happens rather than the number you asked for.
 lsof -nP -iTCP:"$PORT" -sTCP:LISTEN        # works under the sandbox
 ```
 
-**`nc -z` and `curl` report every port as closed inside the command sandbox**, because the sandbox
-allows outbound connections only to an allowlisted host — and localhost is not on it.
-
-> Why: see `references/sandbox-port-checks.md` — measured `nc`/`curl` failure and the wait-primitive analogy.
-
-The same defect sits in `/fix` and `/ship`, which recommend `nc -z <host> <port>` to separate a
-network failure from a credential failure. That advice is sound outside the sandbox and inverted
-inside it: for a **remote** host there is no `lsof` equivalent, so run those with the sandbox
-disabled and say that you did.
+**`nc -z` and `curl` report every port as closed inside the command sandbox** — only allowlisted
+hosts are dialable, and localhost is not one. For a **remote** host there is no `lsof` equivalent:
+run that check with the sandbox disabled and say so (`references/sandbox-port-checks.md`).
 
 ## Step 6: Report the URL and the evidence
 
-State, in the reply:
+State in the reply:
 
 ```
 <repo>  http://localhost:<PORT>   ready in <N>s   pane <pane_id>
 <the actual startup line, quoted>
 ```
 
-The URL is not decoration — `znf:ui-verifier` is project-agnostic and takes it from the caller, so
-the port read in Step 1 has to arrive there. A verifier pointed at the wrong port fails in a way
-that reads exactly like a broken change.
+The URL is not decoration — `znf:ui-verifier` takes it from the caller, so the Step 1 port must
+arrive there. Then exercise the changed path and quote what came back: `/run` is done when there is
+real output to paste, not when the server started.
 
-Then use it: exercise the changed path and quote what came back. `/run` has done its job when
-there is real output to paste, not when the server started.
-
-## Red flags
-
-| Thought | Reality |
-|---|---|
-| "I'll find a free port" | The port is already allocated. `git config --get wt.port`. |
-| "`portEnv` is set, so the port is wired" | It is a claim about the app. hub's is inert. Read what the code reads. |
-| "The `.env` has a PORT line, that's the one" | hub's `PORT=3002` matches the default and is read by nothing. |
-| "It printed the port, so it's up" | That may be the command you sent, echoed. Check the socket. |
-| "I'll just run it in the background here" | Then its failure surfaces to nobody. A pane, or a log file you then read. |
-| "No dev command documented, I'll infer one" | A wrong launch command looks like a broken change. Say it is missing. |
-| "The server started, so the change works" | Starting is not exercising. Drive the changed path and quote the output. |
-| "No `dev` script, so there's no way to run it" | Scripts may be named after the app (`npm run hub`). Print the whole `scripts` block. |
-| "I'll pipe it through `tail` to keep it short" | `tail` waits for EOF a watch server never sends. You get nothing. |
-| "The config dir isn't in git, so it doesn't matter" | It may *be* the config. hub's is gitignored and holds the DB credentials. |
-| "I'll start the server for this repo" | Did the task touch it? If not, read the frontend's env — it may already point at staging. |
-| "Port's taken, so I'll reuse it" | Whose code is it running? Another worktree's server is another task's uncommitted edit. |
-| "My own port is right, so I'm wired" | That is half. `wt wire` fixes where it looks for the *other* services. |
-| "This worktree's `.env` came from main, so it's current" | Frozen at creation. The baseline has moved since. `wt wire`. |
-| "Port's taken, I'll use another" | Then you are testing the *other* server. Report the running URL and stop. |
-| "New tab for the dev server" | Split to the **right**, keeping the agent full height. A tab only past four. |
-| "Split below the agent" | That costs the agent 15 rows and caps the column at two. Right, not down. |
-| "The task touches 3 repos, so: tab" | Count panes in the column, not repos. One may already be closed. |
-| "One repo, so one server" | hub alone runs ten apps on distinct ports. The unit is a service. |
-| "`wt` gave this worktree its port" | One port. A second app in the same worktree needs one written by hand. |
-| "`wt` gave it 3338, so it's on 3338" | Vite prints "Port 3338 is in use, trying another one" and drifts. Read the port back out. |
-| "`nc -z` says the port is free" | Under the sandbox `nc` says that about every port. Use `lsof`. |
-| "No `CLAUDE.md`, so I must stop" | Stop on an *ambiguous* recipe. One `"dev": "vite"` script is not ambiguous. |
-| "This table tells me how the port works" | It names shapes, not repos. Which one applies is a project fact — read the config. |
-| "UI verify is done, I'll tidy up and stop the server" | Not yours to stop. It is live infra the user may still want. Teardown belongs to `/sweep` (after the work lands) or an explicit request — leave it running and report the URL. |
-
-Stopping a server started this way: `kill` the pid from `lsof -nP -iTCP:$PORT -sTCP:LISTEN -t` —
-but **only when the user asks, or at `/sweep`**. Do NOT stop it on your own as end-of-task cleanup: not after the
-UI verify, not while a review agent runs, not at the end of `/fix`/`/ship`. A running dev server
-is live infrastructure the user may still want to look at; the sanctioned teardown point is
-`/sweep`, which runs *after* the work has merged and stops dev servers itself.
+Stop a server only when the user asks, or at `/sweep` — never as end-of-task cleanup:
+`kill` the pid from `lsof -nP -iTCP:$PORT -sTCP:LISTEN -t`.
 
 ## References
 
-Materialized at `~/.claude/skills/znf/skills/run/references/`. Read a file only when its trigger fires.
+Materialized at `~/.claude/skills/znf/skills/run/references/`. Read one when its trigger fires.
 
-- `references/why-this-skill-exists.md` — read when you wonder why `/run` is a skill and not a bash line.
-- `references/port-wiring-rationale.md` — read when the port you allocated is not the port the app listens on, or peers still point at main-checkout ports.
+- `references/why-this-skill-exists.md` — read when wondering why `/run` is a skill, not a bash line.
+- `references/port-wiring-rationale.md` — read when the allocated port is not the one the app listens on, or peers still point at main-checkout ports.
 - `references/sandbox-port-checks.md` — read when `nc`/`curl` says a port is closed.
+- `references/launch-and-readiness.md` — read when the server will not start, readiness misbehaves, or a monorepo needs several servers.
+- `references/red-flags.md` — read before justifying skipping a step of `/run`.

@@ -4,14 +4,14 @@ title: /znf:standards
 
 [Skill](/reference/skills/) / `/znf:standards`
 
-# `/znf:standards`
+# `/znf:standards <spec.md> <plan.md> [repo-root]`
 
 Kiểm sau khi implement xong một plan, xem mỗi yêu cầu có test thật hay không.
 
 ## Cách gọi
 
 ```text
-/znf:standards
+/znf:standards <spec.md> <plan.md> [repo-root]
 ```
 
 ## Khi nào dùng

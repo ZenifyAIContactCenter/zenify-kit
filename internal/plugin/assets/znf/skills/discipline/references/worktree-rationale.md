@@ -47,3 +47,24 @@ and a local base branch is never assumed current regardless. The tool needs its 
 directory it creates must be ignored, or the checkout you just cleaned goes dirty again with an
 untracked worktree directory.
 
+### The slug, the base, and the fetch (moved from § 8)
+
+- **The unit is the slug.** One worktree per slug — the name that becomes `<branch-prefix>/<type>/<slug>`. A plan's sub-tasks (Task 1, Task 2, each with its own implementer and ledger line) all share that one worktree, and a tool's "task '<slug>' already exists" means the slug, not a sub-task.
+- **One per slug, not one per edit.** Read the rule as *be in a worktree*, not *create a worktree*: a follow-up fix, a second thought, an annoyance met in passing all belong to the worktree already open, so take the `cd` the tool prints. Only a genuinely separate request opens another. A hotfix is exempt automatically — different base ref, and mid-feature is exactly when production breaks.
+- **The base is the repo's DECLARED base ref, read and never hardcoded.** Feature and fix work take the base declared in the repo's worktree config; a **hotfix overrides it** to the latest release ref, resolved *after* the fetch. A skill pasting a literal branch name is the drift this rule stops: right for one repo, silently wrong for the next.
+
+**The `fetch` is not optional and the worktree tool will not do it for you.** Without it, `--base origin/<branch>` resolves against a local remote-tracking ref that may be weeks old, giving you a worktree that looks freshly based and is not. For a hotfix it is worse: resolve the release ref before fetching and you can branch from the wrong release entirely.
+
+### The commands
+
+```bash
+# feature or fix — base is the latest integration branch
+git fetch origin
+<worktree-tool> new <slug> --type feat --base origin/<integration-branch>   # or --type fix
+
+# hotfix — base is the latest release, resolved AFTER the fetch
+git fetch origin
+REL=<resolve the latest release ref>   # after the fetch
+<worktree-tool> new <slug> --type hotfix --base "origin/$REL"
+```
+
