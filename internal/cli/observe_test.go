@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -107,9 +109,10 @@ type recArgs struct {
 func meterRun(t *testing.T, in string) (recArgs, int) {
 	t.Helper()
 	var got recArgs
-	code := runObserveMeter(strings.NewReader(in),
-		func(sess, tool string, b int64, _ time.Time) {
+	code := runObserveMeter(strings.NewReader(in), io.Discard,
+		func(sess, tool string, b int64, _ time.Time) observe.Advice {
 			got = recArgs{sess: sess, tool: tool, bytes: b, called: true}
+			return observe.Advice{}
 		})
 	return got, code
 }
@@ -145,5 +148,25 @@ func TestObserveMeter_MalformedJSONExit0Silent(t *testing.T) {
 	got, code := meterRun(t, `{not json`)
 	if code != 0 || got.called {
 		t.Fatalf("bad json must be silent no-op, got %+v code=%d", got, code)
+	}
+}
+
+func TestObserveMeter_AdviceBecomesAdditionalContext(t *testing.T) {
+	var out bytes.Buffer
+	code := runObserveMeter(strings.NewReader(`{"session_id":"s","tool_name":"Bash","tool_response":"x"}`), &out,
+		func(string, string, int64, time.Time) observe.Advice {
+			return observe.Advice{Message: "znf meter: big"}
+		})
+	if code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	var env struct {
+		H struct {
+			Event string `json:"hookEventName"`
+			Ctx   string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil || env.H.Event != "PostToolUse" || env.H.Ctx != "znf meter: big" {
+		t.Fatalf("stdout = %q err=%v", out.String(), err)
 	}
 }

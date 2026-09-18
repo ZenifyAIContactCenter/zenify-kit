@@ -36,14 +36,14 @@ func runDocsSyncHook(wsRoot string, w io.Writer) int {
 // stdout MUST be w (not io.Discard) — the soft-cap warning IS the hook's
 // output; discarding it would silently drop the entire feature. Neither core
 // gets a trailing "{}" appended here: they own their own stdout contract
-// (count emits a warn-JSON only when warning, meter emits nothing), and both
+// (each emits an advice-JSON only when it has something to say), and both
 // self-recover from panic internally, so this wrapper only routes.
 func runObserveHook(wsRoot, kind string, w io.Writer) int {
 	switch kind {
 	case "count":
 		return runObserveCount(os.Stdin, w, os.Getenv, observe.Bump)
 	case "meter":
-		return runObserveMeter(os.Stdin, observe.Record)
+		return runObserveMeter(os.Stdin, w, observe.Record)
 	}
 	return 0
 }

@@ -20,6 +20,12 @@ zenify
 
 Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có ghi "dry-run mặc định" chỉ in kế hoạch cho tới khi bạn thêm `--apply`.
 
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--no-color` | disable colored output |
+
 ## Lệnh liên quan
 
 - [zenify analyze](./zenify_analyze): Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief.
@@ -43,6 +49,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify skills](./zenify_skills): Nhóm lệnh quản lý plugin skill znf và bộ coding skill theo repo.
 - [zenify spec](./zenify_spec): Nhóm lệnh soi vòng đời spec và registry contract, đọc từ knowledge store.
 - [zenify standards](./zenify_standards): Kiểm tra mỗi FR trong spec có một test thật trên đĩa mà plan đã khai.
+- [zenify ui-verify](./zenify_ui-verify): Nhóm lệnh ghi/kiểm tra bằng chứng UI-verify cho gate cơ học của /znf:ship.
 - [zenify up](./zenify_up): Onboard máy vào workspace: clone repo, ghi cấu hình, gắn hook và skill, chuẩn bị knowledge store.
 - [zenify update](./zenify_update): Nâng cấp binary ZenifyKit lên bản mới nhất bằng đúng kênh đã cài, hoặc chỉ kiểm tra có bản mới.
 - [zenify version](./zenify_version): In phiên bản binary ZenifyKit đang chạy.

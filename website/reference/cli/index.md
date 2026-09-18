@@ -66,6 +66,9 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify spec contracts](./zenify_spec_contracts) | Liệt kê repo và collection mà từng spec khai qua hai tag `_Blast-radius:` và `_DB:`. |
 | [zenify spec status](./zenify_spec_status) | Liệt kê trạng thái vòng đời của từng spec trong knowledge store. |
 | [zenify standards](./zenify_standards) | Kiểm tra mỗi FR trong spec có một test thật trên đĩa mà plan đã khai. |
+| [zenify ui-verify](./zenify_ui-verify) | Nhóm lệnh ghi/kiểm tra bằng chứng UI-verify cho gate cơ học của /znf:ship. |
+| [zenify ui-verify check](./zenify_ui-verify_check) | Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint hiện tại. |
+| [zenify ui-verify record](./zenify_ui-verify_record) | Ghi lại artifact UI-verify (screenshot + 3 số đo) cho fingerprint hiện tại. |
 | [zenify up](./zenify_up) | Onboard máy vào workspace: clone repo, ghi cấu hình, gắn hook và skill, chuẩn bị knowledge store. |
 | [zenify update](./zenify_update) | Nâng cấp binary ZenifyKit lên bản mới nhất bằng đúng kênh đã cài, hoặc chỉ kiểm tra có bản mới. |
 | [zenify version](./zenify_version) | In phiên bản binary ZenifyKit đang chạy. |
@@ -91,7 +94,7 @@ Hook và skill gọi các lệnh này; bạn không cần gõ tay nên chúng kh
 | `zenify git-guard` | Hook PreToolUse: chặn commit/merge/push vào deploy branch + secret đã stage |
 | `zenify hooks-run` | Bộ điều phối nội bộ cho hook znf (chỉ chạy trong workspace, fail-open) |
 | `zenify observe count` | PreToolUse hook: đếm dispatch Task + soft-cap warn (không chặn) |
-| `zenify observe meter` | PostToolUse hook: đo lượng tool-output per-session (passive, không sửa output) |
+| `zenify observe meter` | PostToolUse hook: đo tool-output per-session; nhắc khi một result \> 50KB hoặc phiên \> 2MB (không sửa output) |
 | `zenify review-advise-gate` | Cơ học quyết định có gọi adviser LLM không ở POST của znf:review (AdviseInput JSON qua stdin, seam POST) |
 | `zenify review-bundle` | Cơ học chia diff lớn thành bundle cụm-file cho znf:review (seam BUNDLE) |
 | `zenify review-doctrine` | Cơ học strip dòng chỉ-verdict khỏi ## Verified của ship-pack (text qua stdin, seam doctrine) |

@@ -22,7 +22,7 @@ Lần đầu cài ZenifyKit trên một máy, hoặc khi team thêm repo mới v
 
 Chạy trong terminal, lệnh mở wizard tương tác: chọn thư mục workspace, chọn repo trong danh sách bạn có quyền truy cập, rồi nhập các secret cần cho verify UI và đọc DB. Chạy ngoài terminal, lệnh chỉ in kế hoạch dạng bảng `REPO STATE REASON` và dừng.
 
-Khi apply, lệnh clone repo còn thiếu, ghi các file cấu hình do kit sở hữu, gắn hook `znf` vào `~/.claude/settings.json`, đồng bộ plugin skill, chuẩn bị Playwright nếu workspace có repo frontend, clone knowledge store và ghi con trỏ workspace vào `~/.zenify/workspace`.
+Khi apply, lệnh clone repo còn thiếu, ghi các file cấu hình do kit sở hữu, gắn hook `znf` và đặt `env.CLAUDE_CODE_SUBAGENT_MODEL=sonnet` (chỉ khi chưa có) vào `~/.claude/settings.json`, đồng bộ plugin skill, chuẩn bị Playwright nếu workspace có repo frontend, clone knowledge store và ghi con trỏ workspace vào `~/.zenify/workspace`.
 
 Lệnh cần `gh` đã đăng nhập với scope `read:org` và `repo`. Chưa đăng nhập, lệnh dừng và nhắc chạy `gh auth login`.
 

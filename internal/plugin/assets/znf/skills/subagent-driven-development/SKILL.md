@@ -6,7 +6,7 @@ description: Use when executing implementation plans with independent tasks in t
 
 # Subagent-Driven Development
 
-Execute plan by dispatching a fresh implementer subagent per task, a task review (spec compliance + code quality) after each, and a broad whole-branch review at the end.
+Execute plan by dispatching a fresh implementer subagent per task, a task review (spec compliance + code quality) after each, and a broad whole-branch review at the end — run here when standalone, by `/ship` when under `/cook`.
 
 > Why: see `references/setup-rationale.md` — why fresh subagents.
 
@@ -92,8 +92,7 @@ Use the least powerful model that can handle each role to conserve cost and incr
 **Integration and judgment tasks** (multi-file coordination, pattern matching, debugging): use a standard model.
 
 **Architecture and design tasks**: use the most capable available model.
-The final whole-branch review is one of these — dispatch it on the most
-capable available model, not the session default.
+The standalone final whole-branch review is one of these.
 
 **Review tasks**: choose the model with the same judgment, scaled to the
 diff's size, complexity, and risk. A small mechanical diff does not need the
@@ -103,9 +102,10 @@ small fix diffs take a cheap-to-mid tier.
 **Fix-loop escalation (rounds 4-5)**: use a model at least one tier above
 the implementer that got stuck.
 
-**Always specify the model explicitly when dispatching a subagent.** An
-omitted model inherits your session's model — often the most capable and
-most expensive — which silently defeats this section.
+**Name the model on every dispatch.** `zenify up` sets
+`CLAUDE_CODE_SUBAGENT_MODEL=sonnet`, so a dispatch without `model` runs on
+sonnet — right for mechanical work, wrong for design judgment. Pass `'opus'`
+there and `'haiku'` for transcription; naming it keeps the intent visible.
 
 **Turn count beats token price.** Wall-clock and context cost scale with how
 many turns a subagent takes, and the cheapest models routinely take 2-3× the
@@ -153,14 +153,9 @@ writing into two repos cannot collide. Run them in parallel.
 
 Hand artifacts over as files.
 
-**Waiting on dispatched subagents:** never poll a wait interface with
-short timeouts, and never sit in one silent, open-ended wait either.
-While you have local work — ledger updates, packaging the next review,
-reading reports — keep working; child results arrive on their own.
-When you are genuinely idle, wait in bounded stretches (five to ten
-minutes, where your platform allows), and between stretches post one
-line of status and reconcile your live children: list them, and chase
-any that finished without reporting.
+**Waiting on dispatched subagents:** keep doing local work (ledger, next
+package) while results arrive; when idle, wait in bounded stretches, then
+list live children and chase any that finished without reporting.
 
 ### 1. Dispatch the implementer
 
@@ -263,9 +258,9 @@ finding, or a ⚠️ item you confirmed as a real gap.
 Before the loop starts, two routes leave it immediately:
 
 - Record Minor findings in the progress ledger as you go
-  (`Task <N>: minor (deferred): <one-liner>`), and point the final
-  whole-branch review at that list so it can triage which must be fixed
-  before merge. Minor findings never enter the loop.
+  (`Task <N>: minor (deferred): <one-liner>`); the whole-branch review
+  (Final Review standalone, `/ship`'s `## Deferred` under `/cook`) triages
+  which must be fixed before merge. Minor findings never enter the loop.
 - A finding labeled plan-mandated — or any finding that conflicts with
   what the plan's text requires — is yours to rule on: weigh the finding
   against the plan text, decide with the spec as the binding authority, and
@@ -336,6 +331,11 @@ parked-with-ruling at the cap.
 
 ## Final Review
 
+**Under `/cook`, skip this section and go to Finish.** `/ship` runs next; its
+engine review reads the whole branch plus the ledger's `minor (deferred)` and
+`parked` lines through the ship-pack `## Deferred`. A second whole-branch pass
+here would read the same diff twice. Standalone (no `/cook`), run it:
+
 The final whole-branch review gets a package too: run
 `scripts/review-package PLAN_FILE MERGE_BASE HEAD` (MERGE_BASE = the commit the
 branch started from, e.g. `git merge-base main HEAD`) and include the
@@ -366,10 +366,10 @@ your final message under "Rulings I made", in the order you made them, each
 with what it costs if wrong. The list is exhaustive: if the ledger holds a
 ruling, the list holds it.
 
-When the final whole-branch review is clean and its fixes are merged,
-delete this plan's workspace (`rm -rf <workspace>`) — the git history is
-the record now. Sibling directories belong to other plans; leave them
-alone.
+Standalone, when the final review is clean and its fixes are merged, delete
+this plan's workspace (`rm -rf <workspace>`) — the git history is the record
+now. **Under `/cook`, leave it**: `/ship` reads the ledger, and the directory
+is git-ignored. Sibling directories belong to other plans; leave them alone.
 
 Use znf:finishing-a-development-branch.
 
@@ -379,11 +379,10 @@ Use znf:finishing-a-development-branch.
 |--------|---------|
 | "Close enough on spec compliance" | Reviewer found spec gaps = not done. Fix or hit the cap and adjudicate — those are the only exits. |
 | "I'll fix it myself, dispatching is overhead" | Controller fixes pollute your context and skip review. Resume the implementer. |
-| "One more round will converge" | Past the cap, rounds don't converge — the failure is structural. Adjudicate and route. |
+| "One more round will converge" | Past the cap the failure is structural. Adjudicate and route. |
 | "The reviewer will just find something new anyway" | Scoped re-reviews verify fixes; they cannot wander. New findings on untouched code go to the ledger, not the loop. |
 | "This finding is obviously wrong, I'll drop it" | You adjudicate only at the cap, and every ruling is a ledger entry. Silent discards are forbidden. |
 | "The fix was small, skip the re-review" | Unreviewed fixes are how regressions land. Every round ends with a scoped re-review. |
-| "Reviews slow the loop down" | The loop without reviews is just unverified churn. Reviews are the loop's brakes and steering. |
 | "Ledger bookkeeping is overhead" | The ledger is what survives compaction. Controllers without one have re-dispatched entire completed task sequences. |
 | "The implementer spawned its own reviewer — free extra assurance" | It's a duplicate seat reviewing the same diff; the task review is the gate. A worker-spawned reviewer is a defect to flag, not rigor. |
 

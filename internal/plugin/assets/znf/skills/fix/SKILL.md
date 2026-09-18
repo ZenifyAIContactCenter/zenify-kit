@@ -90,9 +90,9 @@ Use superpowers `systematic-debugging`:
 Identify 2-3 independent root-cause hypotheses and, for each, the specific evidence that would
 confirm or refute it. Then dispatch one `Explore` agent per hypothesis — **all in a single message**,
 which is what makes them run concurrently; separate messages run them one after another and buy
-nothing — and **name `model: 'sonnet'` on each**. `Explore` pins no model, so an omitted one inherits
-the session's; you already stated the evidence that settles each hypothesis, which makes this a search
-against a fixed target rather than open-ended reasoning. Keep the reasoning at the top tier where it
+nothing — and **name `model: 'sonnet'` on each**. `Explore` pins no model; the kit's env default is
+sonnet, and naming it keeps the intent visible where that env is unset. You already stated the evidence
+that settles each hypothesis, which makes this a search against a fixed target rather than open-ended reasoning. Keep the reasoning at the top tier where it
 belongs: forming the hypotheses (here) and confirming the survivor (Step 2), both inline. Give each one hypothesis, the evidence that would settle it, and this instruction:
 *return the evidence found for AND against, plus a verdict — do not fix anything.*
 

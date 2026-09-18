@@ -20,7 +20,7 @@ Khi bạn rời workspace, đổi máy, hoặc cần cài lại từ đầu. Đ�
 
 ## Kết quả
 
-Lệnh gỡ ba thứ: hook `znf` trong `~/.claude/settings.json`, các dòng exclude `.worktrees/` và `.wt/` trong từng repo, và file `.claude/settings.local.json` do kit sinh ra trong từng repo. Mặc định lệnh chỉ in preview có tiêu đề `PREVIEW`. Với `--apply` lệnh thực thi.
+Lệnh gỡ bốn thứ: hook `znf` và biến `env.CLAUDE_CODE_SUBAGENT_MODEL` (chỉ khi còn đúng giá trị kit ghi) trong `~/.claude/settings.json`, các dòng exclude `.worktrees/` và `.wt/` trong từng repo, và file `.claude/settings.local.json` do kit sinh ra trong từng repo. Mặc định lệnh chỉ in preview có tiêu đề `PREVIEW`. Với `--apply` lệnh thực thi.
 
 Lệnh không đụng vào repo đã clone, thư mục `.zenify/` hay knowledge store.
 

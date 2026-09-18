@@ -5,8 +5,8 @@ Use this template when dispatching an implementer subagent.
 ```
 Subagent (general-purpose):
   description: "Implement Task N: [task name]"
-  model: [MODEL — REQUIRED: choose per SKILL.md Model Selection; an omitted
-         model silently inherits the session's most expensive one]
+  model: [MODEL — REQUIRED: choose per SKILL.md Model Selection; left out,
+         it falls to CLAUDE_CODE_SUBAGENT_MODEL (sonnet) whatever the task]
   prompt: |
     You are implementing Task N: [task name]
 

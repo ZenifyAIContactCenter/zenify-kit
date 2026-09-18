@@ -72,10 +72,12 @@ func runObserveCount(stdin io.Reader, stdout io.Writer, getenv func(string) stri
 
 // runObserveMeter is the exit-code core for the PostToolUse meter hook, factored
 // out (like runObserveCount) so tests inject record without exec'ing the binary.
-// It ALWAYS returns 0 — metering is passive and never blocks — and a deferred
-// recover keeps even a panic at exit 0. Tool scoping is done by the PostToolUse matcher
-// in internal/apply/globalhooks.go (znfHookSpecs), not here.
-func runObserveMeter(stdin io.Reader, record func(string, string, int64, time.Time)) (code int) {
+// It ALWAYS returns 0 — metering never blocks — and a deferred recover keeps
+// even a panic at exit 0. When Record returns Advice, it is written to stdout
+// as PostToolUse additionalContext (one line the agent sees, nothing else
+// changes); otherwise stdout stays empty. Tool scoping is done by the
+// PostToolUse matcher in internal/apply/globalhooks.go (znfHookSpecs), not here.
+func runObserveMeter(stdin io.Reader, stdout io.Writer, record func(string, string, int64, time.Time) observe.Advice) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
 			code = 0
@@ -92,7 +94,19 @@ func runObserveMeter(stdin io.Reader, record func(string, string, int64, time.Ti
 	if p.ToolName == "" {
 		return 0
 	}
-	record(p.SessionID, p.ToolName, int64(len(p.ToolResponse)), observeNow())
+	adv := record(p.SessionID, p.ToolName, int64(len(p.ToolResponse)), observeNow())
+	if adv.Message == "" {
+		return 0
+	}
+	out := map[string]any{
+		"hookSpecificOutput": map[string]any{
+			"hookEventName":     "PostToolUse",
+			"additionalContext": adv.Message,
+		},
+	}
+	if b, err := json.Marshal(out); err == nil {
+		_, _ = fmt.Fprintln(stdout, string(b))
+	}
 	return 0
 }
 
@@ -110,11 +124,11 @@ func newObserveCmd() *cobra.Command {
 	}
 	meter := &cobra.Command{
 		Use:    "meter",
-		Short:  "PostToolUse hook: đo lượng tool-output per-session (passive, không sửa output)", //znf:allow-lang
+		Short:  "PostToolUse hook: đo tool-output per-session; nhắc khi một result > 50KB hoặc phiên > 2MB (không sửa output)", //znf:allow-lang
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_ = runObserveMeter(cmd.InOrStdin(), observe.Record)
+			_ = runObserveMeter(cmd.InOrStdin(), cmd.OutOrStdout(), observe.Record)
 			return nil // always allow (exit 0)
 		},
 	}

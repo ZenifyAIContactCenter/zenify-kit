@@ -89,3 +89,44 @@ func TestRecord_CorruptMeterFailsOpen(t *testing.T) {
 		t.Fatalf("corrupt meter should be left untouched (fail open), got %q", string(b))
 	}
 }
+
+func TestAdvise_ThresholdsAndDebounce(t *testing.T) {
+	m := Meter{Calls: map[string]int{"Bash": 1}, Bytes: map[string]int64{"Bash": 10}}
+	if a := advise(&m, "Bash", 10); a.Message != "" {
+		t.Fatalf("small result must be silent: %q", a.Message)
+	}
+	// one large result speaks and records the call index
+	m.Calls["Bash"] = 2
+	if a := advise(&m, "Bash", LargeResultBytes+1); a.Message == "" || m.LastWarnCall != 2 {
+		t.Fatalf("large result: %+v lastWarn=%d", a, m.LastWarnCall)
+	}
+	// the next four large results are debounced, the fifth speaks again
+	for i := 3; i <= 6; i++ {
+		m.Calls["Bash"] = i
+		if a := advise(&m, "Bash", LargeResultBytes+1); a.Message != "" {
+			t.Fatalf("call %d must be debounced: %q", i, a.Message)
+		}
+	}
+	m.Calls["Bash"] = 7
+	if a := advise(&m, "Bash", LargeResultBytes+1); a.Message == "" {
+		t.Fatal("call 7 must speak again")
+	}
+	// heavy session, small result → the session-level message
+	h := Meter{Calls: map[string]int{"Read": 40}, Bytes: map[string]int64{"Read": HeavySessionBytes + 1}}
+	if a := advise(&h, "Read", 100); a.Message == "" || h.LastWarnCall != 40 {
+		t.Fatalf("heavy session: %+v", a)
+	}
+}
+
+func TestRecord_ReturnsAdviceOnLargeResult(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if a := Record("sess-adv", "Bash", 10, time.Now()); a.Message != "" {
+		t.Fatalf("small: %q", a.Message)
+	}
+	if a := Record("sess-adv", "Bash", LargeResultBytes+1, time.Now()); a.Message == "" {
+		t.Fatal("large result must return advice")
+	}
+	if m := readMeterForTest(t, "sess-adv"); m.LastWarnCall != 2 {
+		t.Fatalf("last_warn_call persisted = %d, want 2", m.LastWarnCall)
+	}
+}

@@ -54,10 +54,9 @@ participant repos are independent, so nothing found in one changes how another i
 
 **Dispatch all participants in a SINGLE message, each with `model: 'sonnet'`.** The single
 message is what makes them concurrent — one message each runs them in sequence and buys
-nothing but the same wait. The model must be named: `Explore` pins none, so an omitted
-`model` inherits the session's, and running N agents through three `rg` passes at the top
-tier is overkill. The work is pattern matching against fixed patterns given to them —
-sonnet's case exactly.
+nothing but the same wait. Name the model: `Explore` pins none, and running N agents through
+three `rg` passes at the top tier is overkill. The work is pattern matching against fixed
+patterns given to them — sonnet's case exactly.
 
 Give each agent exactly one repo path, the resource name, that repo's `accessPatterns`, **all
 three passes above verbatim**, and this output contract:
