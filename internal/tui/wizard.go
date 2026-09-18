@@ -61,11 +61,11 @@ type OnboardConfig struct {
 	SecretKeys []string
 	// SecretPromptFn overrides the masked prompt (test seam). Nil → the real huh EchoModePassword.
 	SecretPromptFn func(keys []string) (map[string]string, error)
-	// WelcomeNoteFn overrides welcomeNote (test seam). welcomeNote(false) opens a
-	// real huh.Form.Run() that needs an actual /dev/tty, so any test exercising
-	// RunOnboard with Accessible:false (needed to reach secretStep, which no-ops
-	// when Accessible) must stub this out to stay hermetic. Nil uses the real
-	// welcomeNote.
+	// WelcomeNoteFn overrides welcomeNote (test seam). welcomeNote(false) renders
+	// the clack intro and then blocks on os.Stdin.Read waiting for Enter, so any
+	// test exercising RunOnboard with Accessible:false (needed to reach secretStep,
+	// which no-ops when Accessible) must stub this out to stay hermetic. Nil uses
+	// the real welcomeNote.
 	WelcomeNoteFn func(accessible bool) error
 }
 
@@ -83,11 +83,24 @@ func welcomeNote(accessible bool) error {
 	if accessible {
 		return nil
 	}
-	return huh.NewForm(huh.NewGroup(
-		huh.NewNote().
-			Title("Chào mừng tới zenify").                                                                                                                         //znf:allow-lang
-			Description("`zenify up` sẽ: kiểm tra công cụ (gh/git) → đăng nhập GitHub → chọn repo → xem plan → apply (wire hook + docs). Nhấn Enter để bắt đầu."), //znf:allow-lang
-	)).Run()
+	f := ui.New(os.Stdout).Flow("zenify up")
+	f.Group(ui.MarkerActive, "Onboarding sẽ chạy:")             //znf:allow-lang
+	f.Line(ui.StatusActive, "kiểm tra công cụ (gh/git)", "")    //znf:allow-lang
+	f.Line(ui.StatusActive, "đăng nhập GitHub", "")             //znf:allow-lang
+	f.Line(ui.StatusActive, "chọn repo → xem plan → apply", "") //znf:allow-lang
+	f.Close("Nhấn Enter để bắt đầu.")                           //znf:allow-lang
+
+	// Block until the user presses Enter, reading one byte at a time so we
+	// never buffer past the newline and steal input from the huh forms that
+	// follow.
+	var b [1]byte
+	for {
+		n, err := os.Stdin.Read(b[:])
+		if err != nil || n == 0 || b[0] == '\n' {
+			break
+		}
+	}
+	return nil
 }
 
 // RunOnboard runs the discover → select → scan → plan wizard. In PlanOnly
