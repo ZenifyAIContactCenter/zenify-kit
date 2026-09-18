@@ -49,6 +49,7 @@ type Session struct {
 	Agents    int              `json:"agents"`
 	Skills    int              `json:"skills"`
 	SkillsBy  map[string]int   `json:"skills_by,omitempty"`
+	SkillTok  map[string]Usage `json:"skill_tok,omitempty"`
 	First     time.Time        `json:"first"`
 	Last      time.Time        `json:"last"`
 	ctx       []int64          // per-turn context sizes (main only)
@@ -98,8 +99,9 @@ type Report struct {
 	AgentsByModel   map[string]int `json:"agents_by_model"`
 	AgentsNoModel   int            `json:"agents_no_model"`
 
-	SkillCalls int            `json:"skill_calls"`
-	SkillsBy   map[string]int `json:"skills_by"`
+	SkillCalls int              `json:"skill_calls"`
+	SkillsBy   map[string]int   `json:"skills_by"`
+	SkillTok   map[string]Usage `json:"skill_tok"`
 
 	Top        []SessionRow `json:"top"`
 	DupReads   []DupRead    `json:"dup_reads"`
@@ -147,6 +149,9 @@ const (
 	TopSessions      = 10
 )
 
+// NoSkillKey là khóa bucket cho token main-session không thuộc skill nào. //znf:allow-lang
+const NoSkillKey = "(no skill)"
+
 // Options narrows the scan.
 type Options struct {
 	Since time.Time // zero → no lower bound
@@ -184,9 +189,10 @@ type rawMessage struct {
 }
 
 type rawLine struct {
-	Type      string     `json:"type"`
-	Timestamp string     `json:"timestamp"`
-	Message   rawMessage `json:"message"`
+	Type             string     `json:"type"`
+	Timestamp        string     `json:"timestamp"`
+	AttributionSkill string     `json:"attributionSkill"`
+	Message          rawMessage `json:"message"`
 }
 
 type agentInput struct {
@@ -227,14 +233,15 @@ func Scan(root string, opt Options) (*Report, error) {
 		Root: root, Since: opt.Since,
 		MainModels: map[string]int64{}, SubModels: map[string]int64{},
 		AgentsByType: map[string]int{}, AgentsByModel: map[string]int{},
-		SkillsBy: map[string]int{},
+		SkillsBy: map[string]int{}, SkillTok: map[string]Usage{},
 	}
 	sessions := map[string]*Session{}
 	get := func(id string) *Session {
 		s, ok := sessions[id]
 		if !ok {
 			s = &Session{ID: id, SkillsBy: map[string]int{}, reads: map[string]int{},
-				models: map[string]int64{}, subModels: map[string]int64{}, seen: map[string]bool{}}
+				models: map[string]int64{}, subModels: map[string]int64{}, seen: map[string]bool{},
+				SkillTok: map[string]Usage{}}
 			sessions[id] = s
 		}
 		return s
@@ -284,6 +291,11 @@ func Scan(root string, opt Options) (*Report, error) {
 		allCtx = append(allCtx, s.ctx...)
 		addUsage(&r.Main, s.Main)
 		addUsage(&r.Sub, s.Sub)
+		for k, v := range s.SkillTok {
+			b := r.SkillTok[k]
+			addUsage(&b, v)
+			r.SkillTok[k] = b
+		}
 		r.AgentDispatches += s.Agents
 		r.SkillCalls += s.Skills
 		for k, v := range s.models {
@@ -428,6 +440,13 @@ func scanMain(path string, s *Session, r *Report, since time.Time) (int, error) 
 						s.models[l.Message.Model] += tot
 					}
 					s.ctx = append(s.ctx, u.CacheReadInputTokens+u.CacheCreationInputTokens+u.InputTokens)
+					sk := l.AttributionSkill
+					if sk == "" {
+						sk = NoSkillKey
+					}
+					b := s.SkillTok[sk]
+					b.add(*u)
+					s.SkillTok[sk] = b
 				}
 			}
 			for _, it := range contentItems(l.Message.Content) {
