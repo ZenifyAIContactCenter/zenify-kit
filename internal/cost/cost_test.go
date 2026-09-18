@@ -18,7 +18,7 @@ func line(t *testing.T, typ, ts string, msg map[string]any) string {
 	return string(b)
 }
 
-// lineSkill dựng một dòng assistant có attributionSkill ở TOP LEVEL (không nằm trong message).
+// lineSkill builds an assistant line with attributionSkill at TOP LEVEL (a sibling of message, not nested).
 func lineSkill(t *testing.T, ts, skill string, msg map[string]any) string {
 	t.Helper()
 	b, err := json.Marshal(map[string]any{"type": "assistant", "timestamp": ts, "attributionSkill": skill, "message": msg})
@@ -175,7 +175,7 @@ func TestScan_DedupesUsageByMessageID(t *testing.T) {
 	root := t.TempDir()
 	sid := "cccccccc-0000-0000-0000-000000000003"
 	now := "2026-09-18T10:00:00.000Z"
-	// một message.id trên 3 dòng (3 content block), usage lặp y hệt; một dòng mang block Skill
+	// one message.id across 3 lines (3 content blocks), usage repeated identically; one line carries a Skill block
 	msg := func(content []any) map[string]any {
 		return map[string]any{"id": "msg_dup", "model": "claude-opus-4-8", "usage": usage(100, 0, 1000, 50), "content": content}
 	}
@@ -206,7 +206,7 @@ func TestScan_SkillTokBucketsByAttribution(t *testing.T) {
 	write(t, filepath.Join(root, sid+".jsonl"),
 		lineSkill(t, now, "znf:cook", map[string]any{"id": "m1", "model": "claude-opus-4-8", "usage": usage(10, 0, 100, 5)}),
 		lineSkill(t, now, "znf:ground", map[string]any{"id": "m2", "model": "claude-opus-4-8", "usage": usage(20, 0, 200, 10)}),
-		line(t, "assistant", now, map[string]any{"id": "m3", "model": "claude-opus-4-8", "usage": usage(1, 0, 9, 0)}), // không attributionSkill
+		line(t, "assistant", now, map[string]any{"id": "m3", "model": "claude-opus-4-8", "usage": usage(1, 0, 9, 0)}), // no attributionSkill
 	)
 	r, err := Scan(root, Options{})
 	if err != nil {
