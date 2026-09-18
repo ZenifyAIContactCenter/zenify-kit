@@ -4,14 +4,14 @@ title: /znf:explain-plan
 
 [Skill](/reference/skills/) / `/znf:explain-plan`
 
-# `/znf:explain-plan`
+# `/znf:explain-plan [base..head | file paths of the changed queries]`
 
 DB-perf gate hai tầng: quét tĩnh diff và explain plan từng query, phân loại phát hiện BLOCKING hoặc ADVISORY.
 
 ## Cách gọi
 
 ```text
-/znf:explain-plan
+/znf:explain-plan [base..head | file paths of the changed queries]
 ```
 
 ## Khi nào dùng

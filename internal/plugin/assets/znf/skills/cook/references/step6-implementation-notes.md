@@ -3,6 +3,11 @@
 Pre-ship gate, § Which model runs which step (W4 slim-skills). Read when: you want to change a
 model tier, run implementers in parallel, or skip the per-task UI look. -->
 
+**Contents:** starting the app · SDD dispatch · parallel implementers (cross-repo yes, same-repo no)
+· what "review clean" does not certify · the flagged-task UI check · the pre-ship gate · which model
+runs which step · model rows dropped from the body table.
+
+
 ### From § Start the app once — the rule #3 tie-in (tier two)
 
 Rule #3 is what makes this compulsory rather than convenient: a change whose new behaviour no test
@@ -61,8 +66,12 @@ fails **silently** — no error, a plausible review of the wrong thing.
 `/ship` step 6's `schema → backend → subscriber → frontend` is **deploy** order, not implement order.
 It constrains nothing here.
 
-(The report-chasing rule and the tightly-coupled-tasks ruling for this block now live in the body,
-next to the parallel-implementers block itself.)
+**Dispatch the cross-repo group in ONE message** — that is what makes them concurrent; one message
+each runs them in sequence and buys nothing. **With several implementers out at once, ask each for
+its report by name**: a lost report and a task that finished quietly are indistinguishable from
+here, and only one is safe to build on. Never write a ledger line for a task whose report never
+arrived. **Tightly-coupled tasks are a plan defect** — go back and re-decompose rather than switch
+executor.
 
 ### From § Parallel implementers: across repos yes, within one repo no
 
@@ -119,8 +128,9 @@ Do not re-derive the decision here from file extensions: an earlier version of t
 and it fired on any task that so much as touched a `.css` file, which is a browser run bought with
 nothing.
 
-(The no-parallelise ruling for this check now lives in the body, next to the flagged-task block
-itself.) Implementers are concurrent; the browser is a serial resource inside that concurrency. A
+**This check does not parallelise, even when the implementers around it do.** The browser is a
+single shared instance, so two flagged tasks' verifier runs go one after the other, and the main
+session must not touch it while either is running. Implementers are concurrent; the browser is a serial resource inside that concurrency. A
 task whose verifier has not run yet does not get its ledger line, so a queued browser run holds up
 exactly one task rather than the whole group.
 
@@ -204,3 +214,17 @@ inline was the correct place anyway.
 (the floor); `znf:review` passes `opus` explicitly where its tier rule demands it — T3, and the
 `contracts` dimension when the diff touches a shared resource. Never below sonnet: *"turn count beats
 token price"*, and the cheapest tier takes 2-3× the turns while reviewing worse.
+
+### Model rows dropped from the body table (token diet 2026-09-18)
+
+| Step | Runs as | Model | Effort |
+|---|---|---|---|
+| 6 Workspace handoff | a new session in the task's pane | session (`settings.json`) | session default |
+| 6 Task review | subagents via SDD | `sonnet`, `opus` for a high-risk diff (SDD's rule) | default |
+
+Implementers follow SDD's Model Selection: the least powerful model that can handle each task,
+named explicitly on every dispatch — cheapest tier for a transcription task where the plan carries
+the code, standard from prose or integration work, `opus` for design judgment. The dispatcher
+judges per task; nothing is hard-pinned at this step. Never pair the cheapest tier (`haiku`) with
+`effort: 'xhigh'`: haiku is not xhigh-capable and the CLI silently downgrades it, so `xhigh` goes
+to `sonnet` and above only.

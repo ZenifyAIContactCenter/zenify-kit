@@ -50,3 +50,7 @@ syntactically fine and unverified. Concurrency is not worth buying with that.
 
 The win is still where the time actually goes: the gate's eight per-repo sweeps are the slowest thing
 in this gate, and they now run underneath lint and build instead of after them.
+
+### The `## Deferred` field under /cook (moved from § 5)
+Under `/cook`, this is the ONLY whole-branch review — each SDD task was reviewed alone, so a deferred
+item is otherwise never looked at again. Omit the field when there is no ledger (`/fix`, `/hotfix`).

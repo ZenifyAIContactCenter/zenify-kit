@@ -7,6 +7,8 @@ allowed-tools: Grep Read Bash(grep *) Bash(rg *) Bash(zenify *) Agent
 
 Verify the shared resource: **$ARGUMENTS** (if no argument was passed, verify the shared resource you just edited).
 
+Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
+
 ## 1. Find every usage across the polyrepo
 
 **Never guess which repos "look relevant."** Run the participants command to get the real,
@@ -17,18 +19,13 @@ anyone updating this file:
 zenify gate participants --json
 ```
 
-This lists the gate participants from two sources, merged by repo name: first the
-knowledge store's `.config/gate-participants.json` (the team-maintained list, which wins on a
-duplicate name), then every repo in the workspace whose `.claude/worktree.json` declares
-`gate.sharedStore=true` and is not already listed. A repo can therefore appear with no
-`worktree.json` flag of its own — that is the store speaking, not an error — and a repo that
-is unexpectedly missing is added to the store file, not to this skill. Each entry carries `accessPatterns` (the kinds of access that repo uses to
-reach the shared store — DI injection, a model/registry symbol, the raw driver, whatever
-that repo's own config says) and `dbAccessor` (the read-only tool/command for querying the
-real store from that repo, if one is configured). Sweep against **this output**, not against
-any list written into this file — a repo that reacts to *every* document change (a
-change-stream/CDC subscriber, if the workspace has one) is exactly the kind of participant
-that goes missing from a hand-maintained list and breaks first when it does.
+This merges two sources (team-maintained store list + any repo whose `worktree.json` declares
+`gate.sharedStore=true`) into one participant list, each entry carrying `accessPatterns` (how
+that repo reaches the shared store) and `dbAccessor` (its read-only query tool, if configured).
+Sweep against **this output**, not any list written into this file — a repo that reacts to
+*every* document change (a change-stream/CDC subscriber, if the workspace has one) is exactly
+the kind of participant that goes missing from a hand-maintained list and breaks first. Full
+sourcing details: `references/escalation-and-fanout.md`.
 
 **Grepping `$ARGUMENTS` alone finds the definition site and nothing else.** The resource
 literal appears once per repo; every reader reaches it through a model/registry symbol. Do
@@ -70,21 +67,19 @@ Pipeline stages: <file:line where the field appears inside pipeline/aggregation 
 Cannot enumerate by grep: <anything dynamic, or "none">
 ```
 
-Why agents rather than inline: the intermediate volume here can be enormous — a registry
-pattern in one repo can fan out to thousands of call sites — and once you have the
-`file:line` list, the match dumps are worthless. Output that is a **map** delegates cleanly;
-output that is **evidence** does not, which is why step 3 below stays inline.
+Output that is a **map** delegates cleanly; output that is **evidence** does not, which is why
+step 3 below stays inline. See `references/escalation-and-fanout.md` for why agents run this
+step instead of an inline sweep.
 
 **Two things that must survive the fan-out:**
 
-- **Never let an agent decide its own repo is irrelevant.** Each is told its repo and returns
-  a result for it, including `none`. The participant set comes from `zenify gate
-  participants`, not from judgement — a change-stream-style subscriber (if the workspace has
-  one) reacts to every document change and breaks first.
-- **Ask each participant for its report by name.** With several agents out at once, a lost
-  report reads exactly like a repo with no hits, and only one of those is safe to act on
-  (house rule #3). A missing report means this gate is **incomplete**, not clean — say so
-  rather than reporting N repos checked.
+- **Never let an agent decide its own repo is irrelevant.** Each returns a result for its repo,
+  including `none`. The participant set comes from `zenify gate participants`, not judgement —
+  a change-stream-style subscriber (if the workspace has one) reacts to every document change
+  and breaks first.
+- **Ask each participant for its report by name.** A lost report reads exactly like a repo with
+  no hits, and only one is safe to act on (house rule #3). A missing report means this gate is
+  **incomplete**, not clean — say so rather than reporting N repos checked.
 
 ## 2. Analyze by resource type
 - **DB collection/table**: for each hit, note which fields it reads/writes. Does your change break any reader?
@@ -97,20 +92,18 @@ output that is **evidence** does not, which is why step 3 below stays inline.
 Do **not** trust a collection/table name or a field name from code or docs. Both have been
 wrong in this kind of sweep before.
 
-**Resolve the real name first — never type one from memory.** A schema's declared name and
-the store's actual collection/table name can differ (an ORM may pluralise, or a project may
-declare one thing and use another silently). Some stores create a collection/table silently
-on first write, so a wrong name can return zero rows with no error, and a write can leave a
-new empty one behind.
+**Resolve the real name first — never type one from memory.** A schema's declared name and the
+store's actual name can differ (an ORM may pluralise, a project may declare one thing and use
+another). Some stores create a collection/table silently on first write, so a wrong name can
+return zero rows with no error, and a write can leave a new empty one behind.
 
-Use the `dbAccessor` reported by `zenify gate participants --json` for the repo in question —
-that is the workspace's own read-only tool/command for checking real data, if it configured
-one. Where a repo has none configured, say so rather than guessing at a query tool.
+Use the `dbAccessor` reported by `zenify gate participants --json` for the repo in question — the
+workspace's own read-only query tool for that repo, if configured. If none is configured, say so
+rather than guessing at a query tool.
 
 > ⚠️ **A read-only accessor is a guard against accidents, not a barrier** if the underlying
-> connection can write. **Never issue a write query directly** through it — a write goes in a
-> purpose-written script that connects and runs, so the intent is reviewable before it
-> executes.
+> connection can write. **Never issue a write query directly** — a write goes in a
+> purpose-written script that connects and runs, so the intent is reviewable before it executes.
 
 ## Output
 
@@ -128,10 +121,10 @@ one. Where a repo has none configured, say so rather than guessing at a query to
 
 A static sweep proves the **shape** holds; it does NOT prove **behaviour** still works. If the
 changed resource is a shared HTTP endpoint / collection covered by a journey (`.znf/e2e/` touches
-that entity), **suggest running `zenify e2e run --repo <repo> --port <N>`** for the relevant journey
-— its domain re-fetch is behavioural evidence that grep cannot replace (the "a live run catches what
-lint passes" lesson). **Advisory only**: suggested when a journey already exists, never blocks the
-gate — `run` needs a dev-server + Docker + creds, heavier than one inline pass. See `znf:e2e`.
+that entity), **suggest running `zenify e2e run --repo <repo> --port <N>`** for the relevant
+journey — its domain re-fetch is behavioural evidence grep cannot replace. **Advisory only**:
+suggested when a journey already exists, never blocks the gate — `run` needs a dev-server +
+Docker + creds, heavier than one inline pass. See `znf:e2e`.
 
 ---
 
@@ -140,18 +133,11 @@ gate — `run` needs a dev-server + Docker + creds, heavier than one inline pass
 `/gate` is what runs after every shared-resource edit: one inline pass, cheap, read-only,
 safe to run unprompted. Use it by default and do not ask permission first.
 
-Escalate to the global **`contract-sweep`** skill only when a single inline pass is not
-enough to trust the answer:
+Escalate to the global **`contract-sweep`** skill (hand-invoked, `disable-model-invocation: true`)
+only when a single inline pass is not enough to trust the answer — too many usages to hold in
+your head, several shared resources at once, or `/gate` came back clean but the change still
+feels wrong. See `references/escalation-and-fanout.md` for the full criteria.
 
-- the sweep turns up more usages than you can hold in your head at once, so each one needs
-  its own independent BREAKING / RISKY / SAFE verdict rather than one overall judgement
-- the change spans several shared resources at the same time (a collection field *and* the
-  queue payload that carries it, say)
-- `/gate` came back clean but the change still feels wrong — a fresh agent per repo, with
-  no memory of the edit, is not subject to the same blind spot
+## References
 
-`contract-sweep` fans out one agent per repo and then verifies every usage individually, so
-it costs real tokens and is `disable-model-invocation: true` — it must be invoked by hand.
-Both skills draw the participant set from `zenify gate participants` and use the same
-three-pass search, so they should never disagree; if they ever do, one of the two files has
-drifted and needs fixing.
+- `references/escalation-and-fanout.md` — how the participant list is sourced, why the sweeps dispatch as agents, and the full criteria for escalating to `contract-sweep`.

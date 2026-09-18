@@ -8,19 +8,21 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/skilllint"
 )
 
 var htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
 
-// W4 skill budget. Anthropic's skill-authoring guidance keeps a SKILL.md body
-// under 500 lines (docs/authoring/writing-skills/anthropic-best-practices.md, "Token budgets" —
-// kit-author reference, not shipped).
-// Bytes are the tokenizer-free proxy for the ~5k-token target: English markdown
-// runs ~4.2 bytes/token, so 22000 bytes ≈ 5.2k tokens. Measured on the whole
-// file — every skill's frontmatter is ≤ 6 lines, so a body split is not needed.
+// Skill budget (token-diet spec FR-4.1, 2026-09-18). SKILL.md is injected
+// verbatim into the main context on first invocation, so its size is paid on
+// every later turn of that session. 8192 bytes ≈ 2k tokens at ~4.2 bytes/token
+// for English markdown; rationale goes to references/ and is read on demand.
+// The same caps are enforced at lint time by skilllint.SizeCap / SizeLines so
+// `zenify rules lint` fails before `go test` does.
 const (
-	maxSkillLines = 500
-	maxSkillBytes = 22000
+	maxSkillLines = skilllint.SizeLines
+	maxSkillBytes = skilllint.SizeBytes
 )
 
 func skillDirs(t *testing.T) []string {
@@ -58,7 +60,7 @@ func TestSkillBodyBudget(t *testing.T) {
 		}
 		lines := bytes.Count(b, []byte("\n"))
 		if lines > maxSkillLines || len(b) > maxSkillBytes {
-			t.Errorf("%s/SKILL.md is %d lines / %d bytes; budget is %d lines / %d bytes — move rationale into references/ (see W4 spec)",
+			t.Errorf("%s/SKILL.md is %d lines / %d bytes; budget is %d lines / %d bytes — move rationale into references/ (token-diet spec FR-4.1)",
 				path.Base(dir), lines, len(b), maxSkillLines, maxSkillBytes)
 		}
 	}

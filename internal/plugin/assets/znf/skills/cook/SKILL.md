@@ -3,49 +3,23 @@ name: cook
 description: Full feature pipeline in one command. Use when implementing a feature end-to-end — branch, brainstorm to a spec, ground every name against real data, plan, subagent-driven implementation, then the pre-ship gate. Always spec-driven and always subagent-driven, at every size. Commits and pushes the feature branch on all-green (house rule #7); never opens the PR.
 argument-hint: "<feature description or path/to/plan.md>"
 allowed-tools: Read Grep Glob Bash Agent
+disable-model-invocation: true
 ---
 
-**Every gate is kept, at every size.** There is no "small enough to skip" path — see below.
+**Every gate is kept, at every size.** No "small enough to skip" path.
 
-## What `/cook` does
+Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
 
 ```
-0 fetch  → 1 ground → 2 brainstorm→spec → 3 ground → 4 scout → 5 plan → 6 wt+SDD → 7 /ship
-  base       request     2 user gates       spec      what        +ground   per-task
-  only                                                depends     what the  review
-                                                      on it       plan adds
+0 fetch → 1 ground → 2 brainstorm→spec → 3 ground → 4 scout → 5 plan → 6 wt+SDD → 7 /ship
 ```
 
-**The worktree is created at Step 6, not Step 0** (`references/base-ref-archaeology.md` has why).
+- Worktree at **Step 6**, not Step 0. **Three sessions, not one**: context clears at the two phase boundaries, 5b and 6b.
+- **No complexity triage** — scale the design, never the step count.
+- **A `.md` path argument** → Step 0, ground **every name the file uses**, then Steps 4 and 6; skip 1, 2, 5. SDD's Setup resumes from the ledger: a `Task <N>: complete` line is not re-dispatched. **A description** → all steps.
+- **Every step leaves a named line** — `Skill(znf:ground)` ×3, `Agent(znf:scout)` ×1, `Skill(znf:brainstorming)`, `Skill(znf:writing-plans)`, `Skill(znf:subagent-driven-development)`, `Skill(znf:ship)`. A missing line is a skipped step.
 
-**Three sessions, not one.** The pipeline clears its context twice, at the two file boundaries:
-after Step 5b (spec+plan are on disk) and after Step 6b (the ledger is complete). Each phase re-enters
-through a file path, so nothing is lost and no phase carries the previous one's prose.
-
-**Verification sits around `brainstorming` and `writing-plans`, never inside them** — the checks go
-before and after; neither skill is reordered or overridden.
-
-`/ground` asks "what is X?" at each of the three points a name enters (request, spec, plan); `/scout`
-asks "what depends on X?" once, after the spec decides what changes. Neither substitutes for the other.
-
-> Why: see `references/grounding-and-scout-rationale.md` — why grounding is incremental.
-
-## Detecting input type
-
-**Argument is a `.md` file path** → the spec/plan stage already happened. Do Step 0, then
-ground **every name the file uses** (the three grounding passes collapse into one here — the
-plan is already written, so there is nothing left to ground incrementally), then Step 4
-(`/scout`), then Step 6. Skip Steps 1, 2 and 5. SDD's Setup resumes from the ledger: a task with a
-`Task <N>: complete` line is not re-dispatched, so this entry is also how phase 2 picks up.
-**Argument is a description** → run every step.
-
-## There is no complexity triage
-
-Scale the *design* to the problem, never the step count. Genuinely mechanical work (nothing unknown,
-one repo, no shared resource) belongs on the spine in `CLAUDE.md §0`, not in `/cook`. Model choice is
-decided at Step 6.
-
-## Step 0: Sync the base — fetch, and know which ref you are reading
+## Step 0: Sync the base
 
 ```bash
 git -C <repo> fetch origin                    # per affected repo
@@ -53,168 +27,42 @@ node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.jso
 git -C <repo> rev-list --count HEAD..<baseRef> # how far behind the checkout is
 ```
 
-**`fetch`, never `pull`, and never switch the checkout's branch.** The base is `baseRef` in each
-repo's `.claude/worktree.json` — read it per repo, never carry one repo's answer to another.
-
-When the distinction matters for Step 1, read the ref explicitly: `git -C <repo> show <baseRef>:<path>`.
-
-State, per repo, one line: declared base · is the checkout on it · commits behind · dirty. If a
-repo is off-base or dirty, say so rather than reading through it silently.
-
-> Why: see `references/base-ref-archaeology.md` — why Step 0 moved out, drift measurement, why
-> this matters for Step 1, where `.worktrees/` fits.
-
-## Every step must leave a named line
-
-**Invoke each sub-skill through the Skill tool — `Skill(znf:ground)`, not "go and do the grounding".**
-Same for `/scout`, which is an Agent-tool dispatch and therefore always leaves `Agent(znf:scout)`.
-
-So a clean `/cook` run leaves a visible spine: `Skill(znf:ground)` ×3, `Agent(znf:scout)` ×1,
-`Skill(znf:brainstorming)`, `Skill(znf:writing-plans)`,
-`Skill(znf:subagent-driven-development)`, `Skill(znf:ship)`. **A missing line is a skipped
-step**, and that is the point.
-
-> Why: see `references/why-no-triage-and-named-lines.md` — auditability, cost of invoking a skill.
+**`fetch`, never `pull`; never switch the checkout's branch.** Report per repo: base · on it · behind · dirty.
 
 ## Step 1: Ground the request — before brainstorming
 
-Call **`Skill(znf:ground)`** on the entities the request names, before any clarifying question is asked.
-
-What is knowable this early is limited, but it is where things go wrong:
+**`Skill(znf:ground)`** on the entities the request names, before any clarifying question; field detail waits for Step 3.
 
 ```bash
-zenify db-read collections <term-from-the-request>    # the real names, before anyone commits to one
-zenify db-read doc <a-name-from-that-list>            # the fields that actually exist
+zenify db-read collections <term-from-the-request>   # real names
+zenify db-read doc <a-name-from-that-list>           # real fields
 ```
-
-Field-level detail comes at Step 3, once the design says which fields it needs.
 
 ## Step 2: Brainstorm → spec (`znf:brainstorming`)
 
-Call **`Skill(znf:brainstorming)`**, then follow its nine steps as written. It is not a
-summary step — it contains **two
-user gates**, and both are real.
-
-Keep polyrepo questions in scope: which repos this touches, which contract boundaries, what breaks.
-
-**When you WRITE the spec file (and the plan file at Step 5), these are project-AGNOSTIC
-artifact-quality rules — a badly-formatted spec defeats its own purpose:** follow
-`znf:_shared/artifact-style`, `znf:_shared/spec-template` and `znf:_shared/constitution`.
-
-**Do not commit the spec, and do not `git add -f` it** — this project deliberately blocks it with
-`.gitignore` instead. Three consequences to respect:
-
-- Write it in the **main checkout**, never in the worktree — a worktree does not carry ignored,
-  untracked files, and `wt rm` would delete it along with the branch.
-- **Pass SDD absolute paths** to the spec and the plan. A relative path resolves against the
-  worktree, where the file does not exist.
-- `git clean -fdx` deletes every spec and plan. They are scratch, not history — so if a decision
-  in there matters beyond this task, it belongs in a memory or in `CLAUDE.md`, not only here.
+**`Skill(znf:brainstorming)`**, its nine steps as written, **two real user gates**; keep polyrepo scope (repos, contract boundaries, what breaks). Spec and plan follow `znf:_shared/artifact-style`, `znf:_shared/spec-template` and `znf:_shared/constitution`. **Never commit the spec or `git add -f` it**: it lives in the **main checkout**; hand SDD **absolute** paths.
 
 ## Step 3: Ground the spec — before the plan, not after
 
-Call **`Skill(znf:ground)`** again, now on everything the approved spec commits to: the fields,
-endpoints and payloads it decided on, beyond what the request named.
+**`Skill(znf:ground)`** on everything the spec commits to — six categories: DB fields, API shapes, queue payloads, library signatures, in-repo symbols and config keys, env vars. **Real names only; read the definition, not a call site.** Contradiction → fix the spec first. **A backend query in the diff makes `Skill(znf:explain-plan)` mandatory here** (advisory) and at Step 7 (with teeth).
 
-**When the plan's diff will touch a backend query, `Skill(znf:explain-plan)` is mandatory here**
-(shift-left, advisory) and again at Step 7 (`/ship`, with teeth) — it runs the two-tier DB-perf
-gate (`zenify db-perf` + dynamic explain).
+## Step 4: `/scout` — what depends on what changes
 
-Ground all six categories, not just the DB:
-
-- DB collections/tables and fields — **list the real names, never type one from memory**
-- API endpoints and their request/response shapes
-- Queue/event names and payload fields
-- Library methods and their signatures (read installed types, not memory)
-- In-repo code the plan calls into: signatures, exported symbols, component props, config
-  keys — read the definition, not a call site
-- Env var names — off the running process, not off `.env`
-
-If grounding contradicts the spec, fix the spec first. Do not write a plan on top of it.
-
-Do not proceed with any unverified name.
-
-## Step 4: `/scout` — what depends on what the spec is about to change
-
-Call **`Skill(znf:scout)`** once, here — it dispatches the `scout` agent, so the run leaves both
-`Skill(znf:scout)` and `Agent(znf:scout)`. After the spec has decided what changes, before `writing-plans` locks
-the File Structure.
-
-**Dispatch it at the top of Step 3, not after Step 3 finishes** — while `Agent(znf:scout)` sweeps,
-the main loop can do Step 3's grounding inline. Collect the scout report before writing the
-plan, since the plan's File Structure depends on it.
-
-Brief for a feature is **mixed**: part is new code nothing calls yet, part plugs into code that
-already has consumers. Point the scout at the second part:
-
-1. **who reads / writes / calls** the shared things the spec touches — in this workspace,
-   delegate that to `/gate` rather than re-deriving the eight-repo sweep
-2. **which tests cover** the code the plan will modify
-3. **what else is written in the same operation** — a queue job, a cache entry, a search index
-4. **why the existing code is the way it is**, for anything being changed rather than added
-
-If the report says **"cannot enumerate by grep"**, carry that word "partial" into the plan.
-Do not launder a partial map into a clean one.
-
-> Why: see `references/grounding-and-scout-rationale.md` — why Step 1 runs before brainstorming
-> (`chatbot_setting`), Step 3 before `writing-plans` with no DB delegate, why 3 → 4.
+**`Skill(znf:scout)`** once, dispatched at the top of Step 3 so `Agent(znf:scout)` sweeps while the main loop grounds inline; collect the report before the plan. Four targets: consumers of the shared things (delegate that sweep to `/gate`), covering tests, co-writes, why the code is as it is. **"cannot enumerate by grep"** → carry "partial" into the plan.
 
 ## Step 5: Plan (`znf:writing-plans`)
 
-Call **`Skill(znf:writing-plans)`**. Map the files first, then write tasks containing real code — no "TBD", no "add error
-handling", no "similar to Task N". Run its self-review (spec coverage / placeholder scan /
-type consistency). Save to `<main-checkout>/docs/superpowers/plans/<filename>.md` — **the main
-checkout, same reason as the spec** (rule #8), and hand SDD the absolute path.
+**`Skill(znf:writing-plans)`**. Files first, then tasks with real code — no "TBD", no "similar to Task N". Run its self-review. Polyrepo plans → SDD "Cross-worktree parallelism". Save to `<main-checkout>/docs/superpowers/plans/<filename>.md`.
 
-**Apply the same artifact-quality rules as the spec** — `znf:_shared/artifact-style`, cited under
-Step 2.
+**Decide per task, here and only here, whether its definition of done requires a `znf:ui-verifier` verdict** (renders correctly, with the overflow measurement of the changed element against its container) **or an E2E journey** — decide the E2E journey here (`.znf/e2e/<journey>.spec.ts` green under `zenify e2e lint` + `zenify e2e run`, `znf:e2e`). Step 6 infers neither.
 
-The plan follows the same discipline as the spec — `znf:_shared/constitution` and
-`znf:_shared/spec-template`.
-
-**Decide here, once, which tasks are worth a browser run — and write it into their definition of done.**
-This is the *only* thing that triggers a per-task UI check; Step 6 does not infer it from file extensions.
-
-The test is whether the task's **deliverable is something you look at**, not whether it happens to touch
-a rendering file:
-
-```
-worth it        a new screen · a new component · a layout or grid change · a modal
-                → "Done when … and `znf:ui-verifier` reports it renders correctly, with the
-                   overflow measurement of the changed element against its container."
-NOT worth it    a copy change · a colour token · a css file touched in passing · wiring an
-                existing component to a new endpoint
-                → say nothing; `/ship` step 4 still sees it at the end
-```
-
-**At this same point, decide the E2E journey.** If a task has a UI→BE flow that changes an entity's
-state, write it into the definition of done: "Done when … and a `.znf/e2e/<journey>.spec.ts` passes
-`zenify e2e lint` and `zenify e2e run` is green." See the `znf:e2e` skill. Same criterion as
-visual: only when the deliverable is a business flow, not for every task.
-
-**Then `Skill(znf:ground)` a third time, on any name the plan introduced.** Call it after the plan is
-written, not inside `writing-plans` — that skill stays untouched.
-
-That skill ends by offering an execution choice. **The answer is already fixed: always
-Subagent-Driven. Do not ask.**
-
-> Why: see `references/spec-and-plan-rationale.md` — nine-step recap, what `artifact-style`,
-> `spec-template`, `constitution` require, traceability, cost of getting it wrong, why this
-> belongs in the plan, its grounding pass, why `executing-plans` is unused.
+**Then `Skill(znf:ground)` a third time**, on any name the plan introduced. `writing-plans` ends by offering an execution choice: **always Subagent-Driven. Do not ask.**
 
 ## Step 5b: Inspect spec+plan (`znf:analyze`) — advisory
 
-After the plan is done and **before** dispatching SDD, call **`Skill(znf:analyze)`** on the spec+plan
-pair (absolute path, in the main workspace). It runs `zenify analyze` (coverage FR→task, leftover
-markers, structural Brief) then adds judgment (SC-testable, necessity, db-3).
+Before dispatching SDD, **`Skill(znf:analyze)`** on the spec+plan pair (absolute path): FR→task coverage, leftover markers, Brief structure. **Advisory — it does NOT block**; surface CRITICAL/HIGH for the user to decide.
 
-**This is advisory — it does NOT block.** If there's a CRITICAL/HIGH finding (orphan FR, leftover
-marker), surface it and let the user decide: fix the spec/plan and rerun, or accept and continue. A
-named line `Skill(znf:analyze)` must appear at this step; its absence = the step was skipped. The
-command is fail-open, so this step should never itself break the cook flow.
-
-**Phase boundary 1 — stop here and hand over.** Spec and plan are on disk; SDD reads them from the
-file. Print exactly these two lines and end the turn:
+**Phase boundary 1 — stop here and hand over.** Print exactly these two lines and end the turn:
 
 ```
 /clear
@@ -223,9 +71,7 @@ file. Print exactly these two lines and end the turn:
 
 ## Step 6: Implement (`znf:subagent-driven-development`)
 
-### First, the worktree — this is the step that writes code
-
-> **Isolation & base-ref doctrine → znf:discipline §8** (single source): worktree is unconditional; the base is the repo's declared baseRef, read never hardcoded; fetch before resolving the base; the carve-outs live there. Below is only what `/cook` adds operationally at this step.
+> **Isolation & base-ref doctrine → znf:discipline §8** (single source). Below is only what `/cook` adds.
 
 **A worktree, always — house rule #8, no conditions.**
 
@@ -234,103 +80,18 @@ git -C <repo> fetch origin                                    # belt-and-suspend
 cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
 ```
 
-**Polyrepo:** one worktree per affected repo, **same slug** in every one. Hand SDD the whole set: it
-runs **one implementer per repo in parallel**, gating a dependent repo on the other's **contract-frozen**
-commit, not its whole plan (SDD "Cross-worktree parallelism").
+- **Polyrepo:** one worktree per repo, **same slug**; one implementer per repo, a dependent repo gated on the other's **contract-frozen** commit. Re-entering `/cook` is not a second worktree: `cd` into it.
+- A definition of done only the running app can show → **`Skill(znf:run)`** once before the task loop, kept up.
 
-**Re-entering `/cook` (phase 2) does not mean a second worktree.** `cd` into the existing one —
-`wt new` refuses and prints the path. The slug belongs to the whole plan; every `Task 1..N` shares it.
+**`Skill(znf:subagent-driven-development)`** at every size, told it runs under `/cook` and the workspace exists (verify, not create). **Under `/cook` SDD skips its own final review**: `/ship` step 5 reviews the branch and picks up the ledger's `minor (deferred)` and `parked` lines.
 
-**Spec and plan stay in the MAIN checkout, and are already written by now.** The worktree holds
-code only. Every path handed to SDD must therefore be **absolute**.
+**A task the plan flagged — and only the plan — is verified before its ledger line:** after its reviewer passes and **before** appending `Task <N>: complete`, `Skill(znf:run)` for the URL, then `znf:ui-verifier` on **that deliverable only**; its verdict joins the line, and these serialise on the one shared browser. Unlooked-at: `Task <N>: complete (commits …, review clean — appearance not checked)`.
 
-> Why: see `references/worktree-and-handoff.md` — refetch reason, SDD Setup's assumption, and
-> what to do before a second worktree.
+## Step 6b: Test-traceability (`znf:standards`) — advisory
 
-### Start the app once, if anything in the plan has to be exercised
+After Step 6 and **before** `/ship`, **`Skill(znf:standards)`** on spec + plan + root worktree: every FR against a real test on disk (`untested-fr`, `missing-test-file`, `empty-test-file`). Advisory.
 
-Same trigger as everywhere else: **if any task's definition of done can only be shown by calling
-the running app** — an endpoint, a tool a client invokes, a queue consumer, a socket event —
-invoke `Skill(znf:run)` once, before the task loop, and keep it up for the whole run.
-
-Nothing to exercise — a refactor fully covered by tests, a docs change — then skip it and say so.
-
-### Then SDD
-
-Call **`Skill(znf:subagent-driven-development)`**. Always SDD, at every size. Per task: brief → implementer (code + test + commit + self
-review) → task reviewer (spec compliance **and** quality) → fix loop, capped at five
-rounds with a scoped re-review each round → ledger line. **Under `/cook` SDD skips its own final
-review**: `/ship`'s review (Step 7) is the whole-branch review, and it reads the ledger's
-`minor (deferred)` and `parked` lines through the ship-pack `## Deferred`. Tell SDD it runs under `/cook`.
-
-- Tell SDD the workspace created just above already exists; it should verify, not create.
-- **Implementers follow SDD's Model Selection** — least powerful model that can handle each task,
-  named explicitly on every dispatch (never inherit the session): cheapest tier for a transcription
-  task (plan carries the code), standard from prose / integration, `model: 'opus'` for design
-  judgment. Dispatcher judges per task; no hard-pinned model here.
-- **One local caveat:** never pair the cheapest tier (`haiku`) with `effort: 'xhigh'` — haiku is not
-  xhigh-capable and the CLI silently downgrades it. `xhigh` goes to `sonnet`+ only.
-- Minimum code to satisfy the plan's definition of done. TDD: failing test → implement →
-  pass. Match existing style; no upgrades to unrelated code.
-
-### Parallel implementers: across repos yes, within one repo no
-
-Different repos have separate histories → PARALLEL. Same repo, same worktree → NEVER (the review
-package gets contaminated). Same repo, one worktree per implementer → OFF by default (N branches to merge).
-
-**Dispatch the cross-repo group in ONE message** — that is what makes them concurrent; one message
-each runs them in sequence and buys nothing.
-
-**With several implementers out at once, ask each for its report by name.** A lost report and a task
-that finished quietly are indistinguishable from here, and only one is safe to build on
-(`CLAUDE.md §3`). Do not write a ledger line for a task whose report never arrived.
-
-**If the plan has tightly-coupled tasks, that is a plan defect — go back and re-decompose.**
-SDD routes coupled tasks away from itself, but the answer is to fix the decomposition, not
-to switch executor.
-
-### The ledger's "review clean" does not cover appearance
-
-The receipt for this step is SDD's ledger — `<repo-root>/.znf/sdd/<plan>/progress.md`, one
-`Task <N>: complete (commits a1b2c3d..d4e5f6a, review clean)` per task.
-
-> Why: see `references/step6-implementation-notes.md` — what "review clean" does not certify.
-
-**So label it honestly.** A task with no visual verdict gets
-`Task <N>: complete (commits …, review clean — appearance not checked)`.
-
-### A task the plan flagged gets looked at before its ledger line is written
-
-**The trigger is the plan, and only the plan.** If the task's definition of done asks for a `znf:ui-verifier`
-verdict (Step 5 decided that), then after the task reviewer passes and **before** appending
-`Task <N>: complete`, dispatch `znf:ui-verifier` scoped to **that task's deliverable only**, not the
-whole feature. Its verdict joins the ledger line.
-
-**This check does not parallelise, even when the implementers around it do.** The Playwright
-browser is a single shared instance, so if two repos' tasks are running concurrently and both are
-flagged, their verifier runs go **one after the other** — and the main session must not touch
-Playwright while either is running.
-
-**`Skill(znf:run)` first, and take the URL from it.** `/run` reads the port this worktree was
-allocated, starts the server in a pane beside the agent, and reports the URL.
-
-No such line in the brief → no browser run.
-
-> Why: see `references/step6-implementation-notes.md` — why `Skill(znf:run)` here, review
-> contamination, deploy order, plan-defect, serialisation.
-
-## Step 6b: Inspect test-traceability (`znf:standards`) — advisory
-
-After SDD finishes implementing (Step 6) and **before** `/ship`, call **`Skill(znf:standards)`** on
-the spec + plan + root worktree. It cross-checks each FR against a real test on disk: a requirement
-that was implemented but has no test (`untested-fr`), a declared test file that's missing
-(`missing-test-file`), or an empty test file (`empty-test-file`). This is the cross-cutting picture
-that SDD's per-task review does not give — it only sees one task, not "does every FR have a test".
-Advisory: surface findings for the user to decide, does not block. A `Skill(znf:standards)` line is
-the evidence this step ran.
-
-**Phase boundary 2 — stop here and hand over.** The ledger holds every `Task <N>: complete`; `/ship`
-fingerprints the working tree and reads the ledger, so it needs no history. Print and end the turn:
+**Phase boundary 2 — stop here and hand over.** Print and end the turn:
 
 ```
 /clear
@@ -339,54 +100,27 @@ fingerprints the working tree and reads the ledger, so it needs no history. Prin
 
 ## Step 7: Pre-ship gate
 
-Run `/ship`: lint + build → the project's contract gate → behavioural verification → the contract review
-lens → deploy order → commit + push the feature branch, then **open the PR** (never merge).
-
-**`cat` `/ship`'s board file — do not retype or summarise it.** The gate writes it to
-`${TMPDIR:-/tmp}/ship-board-<fp10>.md` and hands you the path; end this step by running
-`cat <that-path>`.
-
----
+**`Skill(znf:ship)`**: lint + build → contract gate → behavioural verification → review → deploy order → commit + push the branch, then **open the PR** (never merge). **`cat` the board file `${TMPDIR:-/tmp}/ship-board-<fp10>.md`; never retype or summarise it.**
 
 ## Which model runs which step
 
-Steps 0–5 run in the **main loop** on the session model (keep it on Opus); brainstorming needs the user.
+Steps 0–5 run in the **main loop**; keep the session on Opus. Unlisted effort: default.
 
-| Step | Runs as | Model | Effort |
-|---|---|---|---|
-| 0 Fetch the base | main loop | session | session |
-| 6 Workspace handoff | a new Claude session in the task's pane | session (`settings.json`) | session default |
-| 1 Ground the request | main loop (skill) | session | session |
-| 2 Brainstorm → spec | main loop (skill) | session — **keep on Opus** | session |
-| 3 Ground the spec | main loop (skill) | session — all six categories | session |
-| 4 Scout | **`scout` agent** | sonnet (pinned in the agent definition) | default |
-| 5 Plan (+ ground what it adds) | main loop (skill) | session — **keep on Opus** | session |
-| 6 Implement | subagents via SDD | per SDD Model Selection — `haiku` for transcription → `opus` for design judgment; dispatcher judges | `xhigh` on sonnet+; never `haiku`+`xhigh` |
-| 6 Fix loop r1-3 | resume the same implementer | unchanged | as dispatched |
-| 6 Fix loop r4-5 | fresh implementer, +1 tier | `opus` | **`xhigh`** |
-| 6 Task review | subagents via SDD | `sonnet`, `opus` for a high-risk diff (SDD's rule) | default |
-| 6 UI check, flagged tasks | `znf:ui-verifier` agent | sonnet (pinned) | default |
-| 7 Ship review | `code-reviewer` agent | **pass `model` explicitly, scaled to the diff** — see `/ship` step 5 | default (`high`) |
-| 7 Ship UI check | `znf:ui-verifier` agent | sonnet (pinned) | default |
+| Step | Runs as | Model / effort |
+|---|---|---|
+| 4 Scout | **`scout` agent** | sonnet (pinned in the agent definition) |
+| 6 Implement | subagents via SDD | SDD Model Selection: `haiku` transcription → `opus` design judgment; `xhigh` on sonnet+ only |
+| 6 Fix loop | r1-3 same implementer · r4-5 fresh, +1 tier | unchanged · `opus` **`xhigh`** |
+| 6/7 UI check | `znf:ui-verifier` agent | sonnet (pinned) |
+| 7 Ship review | `code-reviewer` agent | **explicit, scaled to the diff**; effort `high` |
 
-**Name the tier on every dispatch.** `zenify up` sets `CLAUDE_CODE_SUBAGENT_MODEL=sonnet`, so a
-dispatch without `model` runs on sonnet — never on the session model. Scale up with `'opus'`, down with `'haiku'`.
-
-> Why: see `references/step6-implementation-notes.md` — why no separate review, why `cat` not
-> summarise, delegation, floor/ceiling rationale.
+**Name the tier on every dispatch** — with no explicit model a dispatch runs on sonnet (`CLAUDE_CODE_SUBAGENT_MODEL`), never the session model.
 
 ## References
 
-Materialized at `~/.claude/skills/znf/skills/cook/references/`. Read a file only when its trigger fires.
-
-- `references/why-no-triage-and-named-lines.md` — read when you want to call something "too simple for /cook" or skip a named line.
-- `references/base-ref-archaeology.md` — read when the checkout is on someone's branch and you are unsure what to read.
-- `references/grounding-and-scout-rationale.md` — read when Step 1/3/4 feel redundant.
-- `references/spec-and-plan-rationale.md` — read when you consider skipping the spec or changing the execution choice.
-- `references/worktree-and-handoff.md` — read before a second worktree, or when SDD Setup wants to create its own.
-- `references/step6-implementation-notes.md` — read when you want to change a model tier, run implementers in parallel, or skip the per-task UI look.
-
-## Constraints preserved from house rules
-
-Verify before commit (rule #3); `/ship` opens the PR, nothing ever merges or pushes to a deploy
-branch (rule #7); no `--fast`/minimal-planning mode.
+- `references/why-no-triage-and-named-lines.md` — triage; named lines.
+- `references/base-ref-archaeology.md` — reading another branch.
+- `references/grounding-and-scout-rationale.md` — the six categories; scout targets.
+- `references/spec-and-plan-rationale.md` — spec rules; the worth-it test.
+- `references/worktree-and-handoff.md` — a second worktree; SDD Setup's own.
+- `references/step6-implementation-notes.md` — model tiers, parallelism.

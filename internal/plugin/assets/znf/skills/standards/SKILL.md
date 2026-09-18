@@ -1,12 +1,18 @@
 ---
 name: standards
 description: Use after implementing a plan — checks test-traceability: every FR/SC has a real test on disk, not just a testable-shaped SC. Mechanical command + judgment on whether the test truly asserts the requirement. advisory only, never blocks.
+argument-hint: "<spec.md> <plan.md> [repo-root]"
 allowed-tools: Read Bash(zenify standards *)
+context: fork
+background: false
 ---
 
 # znf:standards — every requirement has a real test
 
 **Announce:** "Using znf:standards to check test-traceability."
+
+This skill runs in a forked context: `$ARGUMENTS` carries the spec path, the plan path and
+optionally the repo root (default: the current directory). Nothing else is inherited.
 
 M5b checks that an SC **is shaped as** testable; this skill checks that the requirement **has a real
 test** in the code — runs **after implementation**. Cross-checks FR/SC ↔ the test file declared in

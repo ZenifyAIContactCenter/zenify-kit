@@ -10,7 +10,7 @@ description: Use when you have a spec or requirements for a multi-step task, bef
 
 Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
 
-Assume they are a skilled developer, but know almost nothing about our toolset or problem domain. Assume they don't know good test design very well.
+Assume a skilled developer who knows nothing about our toolset, problem domain, or good test design.
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
@@ -19,14 +19,13 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 **Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
 - (User preferences for plan location override this default)
 
-**Author plans against the shared references.** Format, language, and diagram rules follow
-`znf:_shared/artifact-style` (a plan is as much a human-read artifact as the spec). The plan
-discipline — stable IDs flowing through, testable steps, traceability — follows
-`znf:_shared/constitution`.
+**Author plans against the shared references.** Format/language/diagram rules follow
+`znf:_shared/artifact-style` (a plan is as much a human-read artifact as the spec); plan
+discipline — stable IDs, testable steps, traceability — follows `znf:_shared/constitution`.
 
 ## Scope Check
 
-If the spec covers multiple independent subsystems, it should have been broken into sub-project specs during brainstorming. If it wasn't, suggest breaking this into separate plans — one per subsystem. Each plan should produce working, testable software on its own.
+If the spec covers multiple independent subsystems, it should have been broken into sub-project specs during brainstorming. If not, suggest separate plans — one per subsystem — each producing working, testable software on its own.
 
 **When the plans span several repos, declare the dependency edges.** Each sub-plan opens with a
 small block naming its repo and what it must wait for:
@@ -36,31 +35,18 @@ Repo: <repo name>
 Waits for: <other repo> : contract-frozen      (omit this line if the repo is independent)
 ```
 
-The edge is **contract-frozen** — the other repo has committed the endpoint + shape — not
+The edge is **contract-frozen** — the other repo has committed the endpoint + shape, not
 whole-repo-done. A sub-plan with no `Waits for:` line is **independent** and runs in parallel from
-the start. Subagent-Driven Development reads this block to schedule the repos: independent ones
-concurrently, dependent ones gated on their contract-freeze. See its "Cross-worktree parallelism
-(polyrepo)" section.
+the start. Subagent-Driven Development reads this block to schedule repos — independent ones
+concurrently, dependent ones gated on contract-freeze. See its "Cross-worktree parallelism (polyrepo)" section.
 
 ## File Structure
 
-Before defining tasks, map out which files will be created or modified and what each one is responsible for. This is where decomposition decisions get locked in.
-
-- Design units with clear boundaries and well-defined interfaces. Each file should have one clear responsibility.
-- You reason best about code you can hold in context at once, and your edits are more reliable when files are focused. Prefer smaller, focused files over large ones that do too much.
-- Files that change together should live together. Split by responsibility, not by technical layer.
-- In existing codebases, follow established patterns. If the codebase uses large files, don't unilaterally restructure - but if a file you're modifying has grown unwieldy, including a split in the plan is reasonable.
-
-This structure informs the task decomposition. Each task should produce self-contained changes that make sense independently.
+Before defining tasks, map out which files will be created or modified and what each one is responsible for — clear boundaries, one responsibility per file, files that change together live together. See `references/decomposition-rationale.md` for the full reasoning. This structure informs the task decomposition; each task should produce self-contained changes that make sense independently.
 
 ## Task Right-Sizing
 
-A task is the smallest unit that carries its own test cycle and is worth a
-fresh reviewer's gate. When drawing task boundaries: fold setup,
-configuration, scaffolding, and documentation steps into the task whose
-deliverable needs them; split only where a reviewer could meaningfully
-reject one task while approving its neighbor. Each task ends with an
-independently testable deliverable.
+A task is the smallest unit that carries its own test cycle and is worth a fresh reviewer's gate — fold setup/config/scaffolding/docs into the task whose deliverable needs them, split only where a reviewer could meaningfully reject one task while approving its neighbor. Each task ends with an independently testable deliverable. See `references/decomposition-rationale.md` for why.
 
 ## Bite-Sized Task Granularity
 
@@ -173,13 +159,11 @@ three labeled lines, and only then:
 - Why it is needed: the concrete reason the smallest thing does not suffice
 - Simpler alternative rejected because: why the one-line / stdlib / existing-path option fails
 
-No violation → omit the section. This is the plan-time forcing function against over-engineering
-(adapted from spec-kit's Complexity Tracking): a deviation must name the simpler thing it rejected
-and why.
+No violation → omit the section. See `references/decomposition-rationale.md` for why.
 
 ## Self-Review
 
-After writing the complete plan, look at the spec with fresh eyes and check the plan against it. This is a checklist you run yourself — not a subagent dispatch.
+After writing the plan, check it against the spec with fresh eyes — a checklist you run yourself, not a subagent dispatch.
 
 **1. Spec coverage:** Skim each section/requirement in the spec. Can you point to a task that implements it? List any gaps.
 
@@ -187,7 +171,7 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 
 **3. Type consistency:** Do the types, method signatures, and property names you used in later tasks match what you defined in earlier tasks? A function called `clearLayers()` in Task 3 but `clearFullLayers()` in Task 7 is a bug.
 
-If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
+Fix issues inline — no need to re-review. Add a task for any spec requirement that has none.
 
 ## Execution Handoff
 
@@ -197,3 +181,7 @@ After saving the plan, hand off to execution:
 
 **REQUIRED SUB-SKILL:** Use znf:subagent-driven-development
 - Fresh subagent per task + two-stage review
+
+## References
+
+- `references/decomposition-rationale.md` — why file structure and task right-sizing are decided the way they are.

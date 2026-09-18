@@ -4,14 +4,14 @@ title: /znf:ground
 
 [Skill](/reference/skills/) / `/znf:ground`
 
-# `/znf:ground`
+# `/znf:ground <names / shapes to verify>`
 
 Xác minh hình dạng và giá trị thật trước khi viết code chạm vào dữ liệu, API, hoặc code có sẵn.
 
 ## Cách gọi
 
 ```text
-/znf:ground
+/znf:ground <names / shapes to verify>
 ```
 
 ## Khi nào dùng

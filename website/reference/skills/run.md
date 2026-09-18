@@ -14,6 +14,10 @@ Chạy app thật và lấy output thật từ đường code thật, để mộ
 /znf:run
 ```
 
+::: warning Chỉ bạn gõ được
+Agent không tự chạy skill này, chỉ đề xuất. Bạn gõ lệnh khi thấy cần.
+:::
+
 ## Khi nào dùng
 
 Khi thay đổi ảnh hưởng đến hành vi và không có test bao phủ nó, trước khi khẳng định thay đổi đã hoạt động, và trước khi dispatch agent kiểm giao diện (agent này cần URL do skill này cung cấp). Xem [Base ref và cổng](/concepts/base-ref-and-ports).

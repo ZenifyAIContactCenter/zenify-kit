@@ -55,3 +55,30 @@ earlier.
 Grounding cannot answer this. It is forward-only — it tells you a name is real, never whether
 changing it breaks a caller you did not know about. Opposite directions, and the second one is
 where existing behaviour gets broken.
+
+### The six grounding categories, spelled out (moved from § Step 3, token diet 2026-09-18)
+
+The body names them in one line; this is what each one means.
+
+- **DB collections/tables and fields** — list the real names from the database, never type one
+  from memory.
+- **API endpoints** — their request *and* response shapes.
+- **Queue/event names** and the payload fields riding on them.
+- **Library methods and their signatures** — read the installed types, not memory.
+- **In-repo code the plan calls into** — signatures, exported symbols, component props, config
+  keys. Read the definition, not a call site.
+- **Env var names** — off the running process, not off `.env`.
+
+### The scout brief, spelled out (moved from § Step 4, token diet 2026-09-18)
+
+A feature brief is **mixed**: part is new code nothing calls yet, part plugs into code that
+already has consumers. Point the scout at the second part.
+
+1. **Who reads / writes / calls** the shared things the spec touches — in a polyrepo workspace,
+   delegate that sweep to `/gate` rather than re-deriving it.
+2. **Which tests cover** the code the plan will modify.
+3. **What else is written in the same operation** — a queue job, a cache entry, a search index.
+4. **Why the existing code is the way it is**, for anything changed rather than added.
+
+Do not launder a partial map into a clean one: if the report says "cannot enumerate by grep",
+the word "partial" travels into the plan.
