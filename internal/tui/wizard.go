@@ -229,7 +229,13 @@ func loginStep(cfg OnboardConfig) error {
 	if authStatus == nil {
 		authStatus = ghAuthStatus
 	}
-	switch _, st := authStatus(); st {
+	// `gh auth status` shells out and can take a second or two; animate a spinner
+	// so the wait after the welcome screen is not silent.
+	authSp := ui.NewSpinner(os.Stderr, "Đang kiểm tra đăng nhập GitHub") //znf:allow-lang
+	authSp.Start()
+	_, st := authStatus()
+	authSp.Stop()
+	switch st {
 	case authLoggedIn:
 		return nil
 	case authUnreachable:
