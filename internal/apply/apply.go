@@ -43,6 +43,13 @@ type Options struct {
 	// Relocate seams (FR-4.3). nil → os.Rename and docsview.OSFS{}.Link.
 	RenameFn func(from, to string) error
 	LinkFn   func(target, link string) error
+
+	// OnProgress, when non-nil, is called once after each plan is processed,
+	// with done running 1..len(plans). Used by the live TUI to fill a per-repo
+	// progress bar. failed reports whether that repo's Result.Err was set, so
+	// the live view can mark it distinctly from a success. It must not be
+	// called for a machine-readable run.
+	OnProgress func(done, total int, repo string, state reconcile.State, failed bool)
 }
 
 func (o Options) now() int64 {
@@ -85,6 +92,9 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 			r.Skipped = true
 			r.Action = "skipped (" + string(p.State) + ")"
 			results = append(results, r)
+			if opts.OnProgress != nil {
+				opts.OnProgress(len(results), len(plans), p.Name, r.State, r.Err != nil)
+			}
 			continue
 		}
 
@@ -109,6 +119,9 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 			if err != nil {
 				r.Err = err
 				results = append(results, r)
+				if opts.OnProgress != nil {
+					opts.OnProgress(len(results), len(plans), p.Name, r.State, r.Err != nil)
+				}
 				continue
 			}
 			r.Wrote = append(r.Wrote, wrote...)
@@ -137,6 +150,9 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 			if serr != nil {
 				r.Err = fmt.Errorf("snapshot %s: %w", p.Name, serr)
 				results = append(results, r)
+				if opts.OnProgress != nil {
+					opts.OnProgress(len(results), len(plans), p.Name, r.State, r.Err != nil)
+				}
 				continue
 			}
 			snapDir = sd
@@ -165,6 +181,9 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 			}
 		}
 		results = append(results, r)
+		if opts.OnProgress != nil {
+			opts.OnProgress(len(results), len(plans), p.Name, r.State, r.Err != nil)
+		}
 	}
 	return results, nil
 }

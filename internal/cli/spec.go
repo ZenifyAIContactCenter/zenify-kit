@@ -154,12 +154,32 @@ func runSpecStatus(
 		ui.New(stdout).Note("không có spec trong store.") //znf:allow-lang
 		return nil
 	}
-	rows := make([][]string, 0, len(statuses))
+	u := ui.New(stdout)
+	f := u.Flow("zenify spec status")
+	f.Group(ui.MarkerDone, "Specs")
+	activeCount := 0
 	for _, s := range statuses {
-		rows = append(rows, []string{string(s.State), s.Slug, s.Path})
+		if s.State != speclife.StateSuperseded {
+			activeCount++
+		}
+		f.Line(specStateStatus(s.State), fmt.Sprintf("%s  %s", s.State, s.Slug), s.Path)
 	}
-	ui.New(stdout).Table([]string{"STATE", "SLUG", "PATH"}, rows)
+	f.Close(fmt.Sprintf("%d spec(s) · %d active", len(statuses), activeCount))
 	return nil
+}
+
+// specStateStatus maps a spec lifecycle state to a Flow line's Status glyph.
+func specStateStatus(state speclife.State) ui.Status {
+	switch state {
+	case speclife.StateBuilt, speclife.StateBuiltFuzzy:
+		return ui.StatusOK
+	case speclife.StateSuperseded:
+		return ui.StatusInfo
+	case speclife.StateUnknown:
+		return ui.StatusWarn
+	default:
+		return ui.StatusInfo
+	}
 }
 
 // runSpecContracts is the testable core for the registry view (FAIL-OPEN).

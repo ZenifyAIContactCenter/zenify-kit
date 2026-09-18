@@ -26,6 +26,7 @@ func TestNoColorGuard_NoEscapesInStdout(t *testing.T) {
 		{"gate", "--help"},
 		{"secret-scan", "--help"},
 		{"update", "--help"},
+		{"up", "--help"},
 	}
 	for _, args := range cmds {
 		t.Run(strings.Join(args, "_"), func(t *testing.T) {

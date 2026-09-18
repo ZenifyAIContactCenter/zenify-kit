@@ -23,7 +23,9 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui/applyview"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -214,30 +216,63 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	for _, r := range m.Repos {
 		repoByName[r.Name] = r
 	}
-	results, err := apply.Apply(plans, apply.Options{
+
+	// live drives the animated applyview only on a real styled TTY; off-TTY
+	// (pipe/NO_COLOR/tests) keeps the static Step lines below, byte-clean.
+	uApply := ui.New(w)
+	live := uApply.Styled()
+
+	var prog *tea.Program
+	var progDone chan struct{}
+	if live {
+		model := applyview.New(len(plans))
+		prog = tea.NewProgram(model, tea.WithOutput(w))
+		progDone = make(chan struct{})
+		go func() { _, _ = prog.Run(); close(progDone) }()
+	}
+
+	opts := apply.Options{
 		Workspace: workspace, Org: m.Org, Owned: owned, RepoByName: repoByName, SecretKeys: m.SecretKeys,
 		SnapshotRoot: filepath.Join(zenifyDir, "snapshots"),
 		ManifestPath: manifestPath,
 		Now:          applyNow,
-	}, gh, git)
+	}
+	if live {
+		opts.OnProgress = func(done, total int, repo string, state reconcile.State, failed bool) {
+			prog.Send(applyview.ProgressMsg{Done: done, Total: total, Repo: repo, State: state, Failed: failed})
+		}
+	}
+	results, err := apply.Apply(plans, opts, gh, git)
+
+	if live {
+		prog.Send(applyview.DoneMsg{})
+		<-progDone
+	}
 	if err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
 
 	var failed int
-	uApply := ui.New(w)
-	for _, r := range results {
-		label := fmt.Sprintf("%s (%s)", r.Repo, r.State)
-		if r.Err != nil {
-			failed++
-			detail := fmt.Sprintf("ERROR: %v", r.Err)
-			if r.Action != "" {
-				detail = fmt.Sprintf("%s — ERROR: %v", r.Action, r.Err)
+	if !live {
+		for _, r := range results {
+			label := fmt.Sprintf("%s (%s)", r.Repo, r.State)
+			if r.Err != nil {
+				failed++
+				detail := fmt.Sprintf("ERROR: %v", r.Err)
+				if r.Action != "" {
+					detail = fmt.Sprintf("%s — ERROR: %v", r.Action, r.Err)
+				}
+				uApply.Step(ui.StatusFail, label, detail)
+				continue
 			}
-			uApply.Step(ui.StatusFail, label, detail)
-			continue
+			uApply.Step(ui.StatusOK, label, r.Action)
 		}
-		uApply.Step(ui.StatusOK, label, r.Action)
+	} else {
+		for _, r := range results {
+			if r.Err != nil {
+				failed++
+			}
+		}
 	}
 
 	if err := owned.Save(manifestPath); err != nil {

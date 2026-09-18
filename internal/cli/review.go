@@ -284,18 +284,21 @@ func runReviewLogShow(stdout, stderr io.Writer, asJSON bool, dirFn func() (strin
 	}
 	s := review.Summarize(recs)
 	u := ui.New(stdout)
-	u.Section("Review log")
-	rows := [][2]string{{"reviews", fmt.Sprintf("%d", s.Total)}}
+	f := u.Flow("zenify review-log")
+	f.Group(ui.MarkerDone, "Summary")
+	f.Line(ui.StatusInfo, "reviews", fmt.Sprintf("%d", s.Total))
 	for _, tier := range []string{"T1", "T2", "T3"} {
 		if n := s.ByTier[tier]; n > 0 {
-			rows = append(rows, [2]string{tier, fmt.Sprintf("%d", n)})
+			f.Line(ui.StatusInfo, tier, fmt.Sprintf("%d", n))
 		}
 	}
-	rows = append(rows,
-		[2]string{"findings (kept)", fmt.Sprintf("C%d H%d M%d L%d", s.Findings.Critical, s.Findings.High, s.Findings.Medium, s.Findings.Low)},
-		[2]string{"kept/refuted", fmt.Sprintf("%d / %d (refute rate %.0f%%)", s.Kept, s.Refuted, s.RefuteRate*100)},
-		[2]string{"shippable", fmt.Sprintf("%d/%d", s.ShippableN, s.Total)},
-	)
+	f.Line(ui.StatusInfo, "findings (kept)", fmt.Sprintf("C%d H%d M%d L%d", s.Findings.Critical, s.Findings.High, s.Findings.Medium, s.Findings.Low))
+	f.Line(ui.StatusInfo, "kept/refuted", fmt.Sprintf("%d / %d (refute rate %.0f%%)", s.Kept, s.Refuted, s.RefuteRate*100))
+	shippableStatus := ui.StatusOK
+	if s.ShippableN < s.Total {
+		shippableStatus = ui.StatusWarn
+	}
+	f.Line(shippableStatus, "shippable", fmt.Sprintf("%d/%d", s.ShippableN, s.Total))
 	if len(s.TopCategory) > 0 {
 		var b strings.Builder
 		for i, c := range s.TopCategory {
@@ -307,9 +310,9 @@ func runReviewLogShow(stdout, stderr io.Writer, asJSON bool, dirFn func() (strin
 			}
 			fmt.Fprintf(&b, "%s(%d)", c.Name, c.N)
 		}
-		rows = append(rows, [2]string{"top categories", b.String()})
+		f.Line(ui.StatusInfo, "top categories", b.String())
 	}
-	u.KV(rows)
+	f.Close(fmt.Sprintf("%d review(s) logged", s.Total))
 	return nil
 }
 

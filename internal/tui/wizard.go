@@ -14,7 +14,6 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
-	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/huh"
 )
 
@@ -153,9 +152,7 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 		}
 	}
 
-	done := showApplyProgress(os.Stdout, cfg.Accessible)
 	applyErr := cfg.ApplyFn(selected)
-	done()
 	if applyErr != nil {
 		return res, applyErr
 	}
@@ -166,20 +163,6 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	}
 	printDone(os.Stdout)
 	return res, nil
-}
-
-// showApplyProgress prints a start indicator and returns a func to print the
-// finished state. ApplyFn runs synchronously to completion in one call, so
-// there is no incremental percentage to animate — the bar just moves from
-// empty to full around the blocking call.
-func showApplyProgress(w *os.File, accessible bool) func() {
-	if accessible {
-		fmt.Fprintln(w, "applying...")
-		return func() { fmt.Fprintln(w, "done") }
-	}
-	p := progress.New(progress.WithDefaultGradient())
-	fmt.Fprintln(w, p.ViewAs(0))
-	return func() { fmt.Fprintln(w, p.ViewAs(1)) }
 }
 
 // printDone renders the verify/done summary (FR-3.5): the znf-hook wiring
