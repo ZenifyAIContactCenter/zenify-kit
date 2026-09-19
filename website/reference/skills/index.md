@@ -31,7 +31,6 @@ Skill của kit dùng tiền tố `/znf:`. Các skill coding (quy ước viết 
 | [/znf:gate](./gate) | Cổng kiểm hợp đồng chung giữa các repo trong một polyrepo, chạy ngay sau khi sửa thứ gì đó dùng chung. |
 | [/znf:ground](./ground) | Xác minh hình dạng và giá trị thật trước khi viết code chạm vào dữ liệu, API, hoặc code có sẵn. |
 | [/znf:hotfix](./hotfix) | Xử lý một lỗi đang xảy ra trên production trong một polyrepo, từ chẩn đoán tới PR, không bao giờ tự chạy. |
-| [/znf:onboard-project](./onboard-project) | Dựng hoặc vẽ lại bản đồ hệ thống của một project trước khi làm việc tính năng trên đó. |
 | [/znf:prune-memory](./prune-memory) | Rà soát và dọn bộ nhớ tự động trong một lượt, gộp bản trùng và xoá ghi chú đã cũ. |
 | [/znf:review-changes](./review-changes) | Review đối kháng nhiều khía cạnh cho diff lớn, xác minh chéo từng phát hiện nghiêm trọng. |
 | [/znf:review](./review) | Engine review hợp nhất của kit, tự chọn mức độ soi theo diff rồi trả về danh sách phát hiện. |

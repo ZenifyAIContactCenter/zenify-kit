@@ -25,7 +25,7 @@ The workflow:
 
 ## When to use
 
-- `/onboard-project` MAP mode for complex repos (delegate from onboard)
+- Mapping a complex repo before writing or rewriting its `CLAUDE.md`
 - Starting on a new side-project repo you haven't worked in before
 - Building `CLAUDE.md` from scratch for a repo with no documentation
 
