@@ -24,6 +24,7 @@ type hookSpec struct {
 // `zenify hooks-run <id>`). PreToolUse/PostToolUse matchers name the harness
 // tool names: the subagent tool was `Task` and is `Agent` in current builds,
 // so every subagent-scoped matcher (observe-count AND observe-meter) names both.
+// read-guard matches only Read: it is the one hook allowed to deny (exit 2).
 func znfHookSpecs() []hookSpec {
 	return []hookSpec{
 		{Event: "SessionStart", Matcher: "", ID: "session-start", Purpose: "Đồng bộ knowledge store, ghi lại rules/workspace mới nhất, nhắc update, in digest bootstrap nếu máy chưa có sentinel discipline"}, //znf:allow-lang
@@ -33,6 +34,7 @@ func znfHookSpecs() []hookSpec {
 		{Event: "Stop", Matcher: "", ID: "git-state-stop", Purpose: "Báo trạng thái git dạng cảnh báo đứng (systemMessage) khi phiên dừng"},                                                                       //znf:allow-lang
 		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count", Purpose: "Đếm số lần dispatch subagent, cảnh báo khi vượt soft-cap"},                                                                    //znf:allow-lang
 		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter", Purpose: "Ghi nhận việc dùng tool để đo usage"},                                                           //znf:allow-lang
+		{Event: "PreToolUse", Matcher: "Read", ID: "read-guard", Purpose: "Chặn Read file quá lớn (text > 200 KB không có offset+limit, PDF không có pages, ảnh > 300 KB) trước khi kết quả vào context"},          //znf:allow-lang
 	}
 }
 

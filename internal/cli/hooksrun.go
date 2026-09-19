@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
 )
@@ -14,9 +15,10 @@ import (
 // internal/wt can use it without importing cli).
 func findWorkspaceRoot(start string) (string, bool) { return wt.FindWorkspaceRoot(start) }
 
-// dispatchHook runs the action for id within workspace wsRoot. It ALWAYS
-// returns 0 (fail-open): a hook must never make CC report an error.
-// wsRoot == "" means "outside a workspace" => no-op.
+// dispatchHook runs the action for id within workspace wsRoot. Every id
+// returns 0 (fail-open) except read-guard, which returns 2 to deny a Read the
+// harness would otherwise let through; a hook must never make CC report an
+// error for any other reason. wsRoot == "" means "outside a workspace" => no-op.
 func dispatchHook(id, wsRoot string, w io.Writer) int {
 	noop := func() int { fmt.Fprintln(w, "{}"); return 0 }
 	if wsRoot == "" {
@@ -37,6 +39,8 @@ func dispatchHook(id, wsRoot string, w io.Writer) int {
 		return runGitStateHook(wsRoot, gitstate.Stop, w)
 	case "wt-report":
 		return runWtReportHook(wsRoot, w)
+	case "read-guard":
+		return runReadGuard(os.Stdin, os.Stderr, os.Stat, observe.Record)
 	default:
 		return noop() // unknown id: fail-open
 	}
@@ -53,7 +57,7 @@ func newHooksRunCmd() *cobra.Command {
 			wsRoot, _ := findWorkspaceRoot(cwd)
 			code := dispatchHook(args[0], wsRoot, cmd.OutOrStdout())
 			if code != 0 {
-				os.Exit(code) // should never happen at P1
+				os.Exit(code) // read-guard deny (2); every other id is 0
 			}
 			return nil
 		},
