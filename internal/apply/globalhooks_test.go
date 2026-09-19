@@ -318,8 +318,8 @@ func TestEnsureGlobalHooks_NonObjectHooksSkips(t *testing.T) {
 // from the meter.
 func TestZnfHookSpecs_SubagentMatchersNameBothToolNames(t *testing.T) {
 	for _, s := range znfHookSpecs() {
-		if s.Event != "PreToolUse" && s.Event != "PostToolUse" {
-			continue
+		if s.ID != "observe-count" && s.ID != "observe-meter" {
+			continue // only the subagent-scoped hooks must name both Task and Agent
 		}
 		parts := strings.Split(s.Matcher, "|")
 		has := map[string]bool{}
@@ -377,5 +377,45 @@ func TestEnsureGlobalHooks_AddsWtReportOnce(t *testing.T) {
 	ch, err := EnsureGlobalHooks(home, false)
 	if err != nil || ch.Added != 0 || ch.Updated != 0 {
 		t.Fatalf("second run must be a no-op: %+v %v", ch, err)
+	}
+}
+
+// SC-8: after EnsureGlobalHooks, PreToolUse holds exactly one Read group with
+// the read-guard command, and a second run adds nothing.
+func TestEnsureGlobalHooks_ReadGuardWired(t *testing.T) {
+	home := t.TempDir()
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var root struct {
+		Hooks map[string][]struct {
+			Matcher string `json:"matcher"`
+			Hooks   []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &root); err != nil {
+		t.Fatal(err)
+	}
+	var cmds []string
+	for _, g := range root.Hooks["PreToolUse"] {
+		if g.Matcher != "Read" {
+			continue
+		}
+		for _, h := range g.Hooks {
+			cmds = append(cmds, h.Command)
+		}
+	}
+	if len(cmds) != 1 || cmds[0] != "zenify hooks-run read-guard" {
+		t.Fatalf("Read group = %v, want exactly [zenify hooks-run read-guard]", cmds)
+	}
+	ch, err := EnsureGlobalHooks(home, false)
+	if err != nil || ch.Added != 0 || ch.Updated != 0 {
+		t.Fatalf("second run must be idempotent: %+v %v", ch, err)
 	}
 }

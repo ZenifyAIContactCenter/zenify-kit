@@ -76,7 +76,7 @@ func runObserveStatusline(
 		seg = append(seg, p.Model.DisplayName)
 	}
 	if !segmentOnly && p.ContextWindow.UsedPercentage > 0 {
-		seg = append(seg, fmt.Sprintf("ctx %.0f%%", p.ContextWindow.UsedPercentage))
+		seg = append(seg, ctxSegment(p.ContextWindow.UsedPercentage))
 	}
 	if st, ok := loadState(p.SessionID); ok && st.Count > 0 {
 		seg = append(seg, fmt.Sprintf("⟳%d", st.Count))
@@ -94,6 +94,22 @@ func runObserveStatusline(
 	return 0
 }
 
+// ctxSegment renders the context-window segment, coloured so the moment to
+// /clear is visible without reading the number: plain below 50%, yellow from
+// 50, red from 80 (Claude Code's statusline supports ANSI escapes). The reset
+// is appended inside the segment so colour never bleeds into the next one —
+// segment mode splices this line into a user's own statusline.
+func ctxSegment(pct float64) string {
+	s := fmt.Sprintf("ctx %.0f%%", pct)
+	switch {
+	case pct >= 80:
+		return "\x1b[31m" + s + "\x1b[0m"
+	case pct >= 50:
+		return "\x1b[33m" + s + "\x1b[0m"
+	}
+	return s
+}
+
 const statuslineLong = "Vẽ một dòng statusline (HUD) cho Claude Code từ JSON stdin cộng state\n" + //znf:allow-lang
 	"observe của kit theo phiên (dispatch count từ " + "`zenify observe count`" + " và\n" + //znf:allow-lang
 	"tool-output volume từ " + "`zenify observe meter`" + ").\n" + //znf:allow-lang
@@ -105,6 +121,8 @@ const statuslineLong = "Vẽ một dòng statusline (HUD) cho Claude Code từ J
 	`  "statusLine": { "type": "command", "command": "zenify observe statusline" }` + "\n" +
 	"\n" +
 	"Segment (ẩn khi trống): model · ctx% · ⟳dispatches · ↓tool-output/calls · $cost.\n" + //znf:allow-lang
+	"\n" +
+	"ctx% đổi màu: vàng từ 50%, đỏ từ 80%.\n" + //znf:allow-lang
 	"\n" +
 	"--segment CHỈ render hai segment riêng của kit (⟳dispatches · ↓tool-output)\n" + //znf:allow-lang
 	"và bỏ model/ctx/cost. Dùng khi bạn đã có sẵn statusline ưng ý: giữ nguyên\n" + //znf:allow-lang
