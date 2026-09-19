@@ -2,6 +2,8 @@ package observe
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -115,6 +117,36 @@ func TestAdvise_ThresholdsAndDebounce(t *testing.T) {
 	h := Meter{Calls: map[string]int{"Read": 40}, Bytes: map[string]int64{"Read": HeavySessionBytes + 1}}
 	if a := advise(&h, "Read", 100); a.Message == "" || h.LastWarnCall != 40 {
 		t.Fatalf("heavy session: %+v", a)
+	}
+}
+
+func TestAdvise_HeavyAsksOnceThenSilent(t *testing.T) {
+	h := Meter{Calls: map[string]int{"Read": 40}, Bytes: map[string]int64{"Read": HeavySessionBytes + 1}}
+	a := advise(&h, "Read", 100)
+	if a.Message == "" || !strings.Contains(a.Message, "AskUserQuestion") || !h.HeavyAsked {
+		t.Fatalf("first heavy call must ask once: %+v asked=%v", a, h.HeavyAsked)
+	}
+	for i := 41; i <= 60; i++ {
+		h.Calls["Read"] = i
+		if a := advise(&h, "Read", 100); a.Message != "" {
+			t.Fatalf("call %d: heavy branch must stay silent after asking: %q", i, a.Message)
+		}
+	}
+	// a large single result still speaks (its own branch, own debounce)
+	h.Calls["Read"] = 61
+	if a := advise(&h, "Read", LargeResultBytes+1); a.Message == "" {
+		t.Fatal("large-result branch must be unaffected by HeavyAsked")
+	}
+}
+
+func TestReadMeter_OldFileWithoutHeavyAsked(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "meter.json")
+	if err := os.WriteFile(p, []byte(`{"calls":{"Bash":3},"bytes":{"Bash":30},"last_warn_call":2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m, ok := readMeter(p)
+	if !ok || m.HeavyAsked || m.TotalCalls() != 3 {
+		t.Fatalf("old meter must load with HeavyAsked=false: %+v ok=%v", m, ok)
 	}
 }
 

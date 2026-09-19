@@ -24,6 +24,10 @@ type Meter struct {
 	// LastWarnCall is TotalCalls() at the last advice emitted; the debounce
 	// compares against it so a burst of large results yields one line, not N.
 	LastWarnCall int `json:"last_warn_call,omitempty"`
+	// HeavyAsked is set once the session-heavy advice has been emitted. The
+	// heavy branch then stays silent: measured 2026-09-19, a nag repeated every
+	// 5 calls was ignored all day, so the one message now asks the user instead.
+	HeavyAsked bool `json:"heavy_asked,omitempty"`
 }
 
 // Advice is what the PostToolUse hook may add to the agent's context after a
@@ -37,7 +41,7 @@ type Advice struct {
 // rest of its session; median context per turn 184k of a 200k window.
 const (
 	LargeResultBytes  = 50_000    // one tool_response above this → "route it to a file"
-	HeavySessionBytes = 2_000_000 // session total above this → "/clear at a file boundary"
+	HeavySessionBytes = 2_000_000 // session total above this → ask the user once (see HeavyAsked)
 	warnDebounceCalls = 5         // at most one Advice per this many tool calls
 )
 
@@ -53,10 +57,13 @@ func advise(m *Meter, tool string, respBytes int64) Advice {
 	case respBytes > LargeResultBytes:
 		msg = fmt.Sprintf("znf meter: that %s result was %d KB and now stays in context for the rest of the session. "+
 			"Send output this size to a file first, then read only the part you need.", tool, respBytes/1000)
-	case m.TotalBytes() > HeavySessionBytes:
+	case m.TotalBytes() > HeavySessionBytes && !m.HeavyAsked:
 		msg = fmt.Sprintf("znf meter: tool output this session has passed %d MB — the context is heavy. "+
-			"Finish the current task, then /clear at a file boundary (spec, plan, ledger) and re-enter through the file path.",
+			"Finish the current step to the nearest file boundary (spec, plan, ledger), then call AskUserQuestion with two options: "+
+			"(a) /clear and re-enter through that file path — default; (b) continue in this session. "+
+			"This is the only time the meter will say this.",
 			m.TotalBytes()/1_000_000)
+		m.HeavyAsked = true
 	default:
 		return Advice{}
 	}
