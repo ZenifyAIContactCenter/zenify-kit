@@ -6,10 +6,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/lock"
 )
+
+// deniedSuffix marks a meter key (e.g. "Read:denied") as bytes that never
+// entered context — a hook denied the call before the tool ran. These are
+// tracked for visibility but excluded from the totals that drive advise()
+// and the statusline/zenify-cost tool-out figures.
+const deniedSuffix = ":denied"
+
+func isDenied(tool string) bool { return strings.HasSuffix(tool, deniedSuffix) }
 
 // meterFile is the per-session tool-output accounting, written by the
 // PostToolUse hook alongside count.json in the same session dir.
@@ -111,20 +120,38 @@ func LoadMeter(sessionID string) (Meter, bool) {
 	return readMeter(meterPath(base, sanitizeSession(sessionID)))
 }
 
-// TotalBytes sums metered response bytes across all tools.
+// TotalBytes sums metered response bytes across all tools, excluding denied
+// keys (bytes that were never read into context — see isDenied).
 func (m Meter) TotalBytes() int64 {
 	var t int64
-	for _, b := range m.Bytes {
+	for tool, b := range m.Bytes {
+		if isDenied(tool) {
+			continue
+		}
 		t += b
 	}
 	return t
 }
 
-// TotalCalls sums metered calls across all tools.
+// TotalCalls sums metered calls across all tools, excluding denied keys.
 func (m Meter) TotalCalls() int {
 	var t int
-	for _, c := range m.Calls {
+	for tool, c := range m.Calls {
+		if isDenied(tool) {
+			continue
+		}
 		t += c
+	}
+	return t
+}
+
+// DeniedCalls sums metered calls across denied keys only.
+func (m Meter) DeniedCalls() int {
+	var t int
+	for tool, c := range m.Calls {
+		if isDenied(tool) {
+			t += c
+		}
 	}
 	return t
 }
@@ -177,6 +204,13 @@ func Record(sessionID, tool string, respBytes int64, now time.Time) Advice {
 	}
 	m.Calls[tool]++
 	m.Bytes[tool] += respBytes
+	if isDenied(tool) {
+		// Denied bytes never entered context: record for visibility, but skip
+		// advise() entirely so they cannot flip HeavyAsked or debounce the
+		// next real warning.
+		_ = writeMeter(meterPath(base, sess), m)
+		return Advice{}
+	}
 	adv := advise(&m, tool, respBytes)
 	_ = writeMeter(meterPath(base, sess), m)
 	return adv

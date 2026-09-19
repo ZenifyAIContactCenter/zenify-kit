@@ -150,6 +150,39 @@ func TestReadMeter_OldFileWithoutHeavyAsked(t *testing.T) {
 	}
 }
 
+func TestRecord_DeniedBytesExcludedFromTotalsAndAdvice(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	sid := "sess-denied"
+	now := time.Now()
+	if a := Record(sid, "Read:denied", 3_000_000, now); a.Message != "" {
+		t.Fatalf("denied record must return empty advice, got %q", a.Message)
+	}
+
+	m := readMeterForTest(t, sid)
+	if m.HeavyAsked {
+		t.Fatal("denied bytes must not flip HeavyAsked")
+	}
+	if m.Bytes["Read:denied"] != 3_000_000 {
+		t.Fatalf("denied bytes must still be recorded, got %d", m.Bytes["Read:denied"])
+	}
+	if m.TotalBytes() != 0 {
+		t.Fatalf("TotalBytes must exclude denied keys, got %d", m.TotalBytes())
+	}
+}
+
+func TestMeter_TotalCallsExcludesDeniedDeniedCallsCountsIt(t *testing.T) {
+	m := Meter{
+		Calls: map[string]int{"Bash": 2, "Read:denied": 3},
+		Bytes: map[string]int64{"Bash": 20, "Read:denied": 300},
+	}
+	if m.TotalCalls() != 2 {
+		t.Fatalf("TotalCalls must exclude denied, got %d", m.TotalCalls())
+	}
+	if m.DeniedCalls() != 3 {
+		t.Fatalf("DeniedCalls must count denied, got %d", m.DeniedCalls())
+	}
+}
+
 func TestRecord_ReturnsAdviceOnLargeResult(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	if a := Record("sess-adv", "Bash", 10, time.Now()); a.Message != "" {

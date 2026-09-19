@@ -22,7 +22,7 @@ Hook `PreToolUse` trên tool Read. Nó từ chối, kèm gợi ý, khi:
 
 Khi bị chặn, agent thấy một dòng bắt đầu bằng `znf read-guard:` nêu kích cỡ và cách đọc lại: đọc theo lát với `offset` + `limit`, đọc PDF theo `pages`, hoặc giao một subagent tóm tắt và trả về vài dòng. Ảnh lớn nên để `znf:ui-verifier` xem và trả verdict.
 
-Hook fail-open: file không tồn tại, payload lạ, hay lỗi bên trong đều cho qua. Nó chỉ chặn đúng ba trường hợp trên. Không có cờ bỏ qua trong prompt; nếu thật sự cần đọc nguyên file, bạn đọc thay bằng `! cat <file>` trong session, hoặc tắt hook trong `~/.claude/settings.json`. Số lần chặn được ghi vào meter của session dưới tên `Read:denied`, nhìn thấy trong `zenify cost`.
+Hook fail-open: file không tồn tại, payload lạ, hay lỗi bên trong đều cho qua. Nó chỉ chặn đúng ba trường hợp trên. Không có cờ bỏ qua trong prompt; nếu thật sự cần đọc nguyên file, bạn đọc thay bằng `! cat <file>` trong session, hoặc tắt hook trong `~/.claude/settings.json`. Số lần chặn được ghi vào meter của session dưới tên `Read:denied`, tách khỏi tổng tool-out và không tính vào ngưỡng session nặng.
 
 ## Meter: hỏi một lần khi session nặng
 
