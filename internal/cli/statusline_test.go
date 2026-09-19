@@ -162,6 +162,41 @@ func TestEnsureStatusline_BrokenJSONErrors(t *testing.T) {
 	}
 }
 
+func noState(string) (observe.State, bool) { return observe.State{}, false }
+func noMeter(string) (observe.Meter, bool) { return observe.Meter{}, false }
+
+func TestCtxSegment_Colors(t *testing.T) {
+	if s := ctxSegment(30); s != "ctx 30%" {
+		t.Fatalf("below 50 must be plain: %q", s)
+	}
+	if s := ctxSegment(50); !strings.HasPrefix(s, "\x1b[33m") || !strings.HasSuffix(s, "\x1b[0m") {
+		t.Fatalf("50 must be yellow and reset: %q", s)
+	}
+	if s := ctxSegment(85); !strings.HasPrefix(s, "\x1b[31mctx 85%") || !strings.HasSuffix(s, "\x1b[0m") {
+		t.Fatalf("85 must be red and reset: %q", s)
+	}
+}
+
+func TestRunObserveStatusline_RedCtx(t *testing.T) {
+	var out bytes.Buffer
+	in := strings.NewReader(`{"session_id":"s","model":{"display_name":"Opus"},"context_window":{"used_percentage":85}}`)
+	if code := runObserveStatusline(in, &out, false, noState, noMeter); code != 0 {
+		t.Fatalf("code=%d", code)
+	}
+	if !strings.Contains(out.String(), "\x1b[31mctx 85%\x1b[0m") {
+		t.Fatalf("line lacks red ctx: %q", out.String())
+	}
+}
+
+func TestRunObserveStatusline_SegmentModeHasNoCtx(t *testing.T) {
+	var out bytes.Buffer
+	in := strings.NewReader(`{"context_window":{"used_percentage":85}}`)
+	runObserveStatusline(in, &out, true, noState, noMeter)
+	if strings.Contains(out.String(), "ctx") || strings.Contains(out.String(), "\x1b[") {
+		t.Fatalf("segment mode must not print ctx or color: %q", out.String())
+	}
+}
+
 func TestHumanBytes(t *testing.T) {
 	cases := map[int64]string{0: "0B", 512: "512B", 2048: "2KB", 1048576: "1.0MB", 1572864: "1.5MB"}
 	for in, want := range cases {
