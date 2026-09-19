@@ -2,7 +2,6 @@
 name: ship
 description: Pre-ship gate. Use when work is complete and about to be committed — runs lint/build on the changed areas, the cross-service contract gate, behavioural verification, and an independent review, with one fix-and-re-verify loop over all of them, then commits and pushes the feature branch and opens the PR (never merges). Invoked unconditionally by /cook, /fix and /hotfix.
 allowed-tools: Bash(git *) Bash(pm *) Bash(zenify db-read *) Bash(rg *) Bash(printf *) Bash(cat *) Bash(tail *) Bash(wc *) Read Grep Agent
-disable-model-invocation: true
 ---
 
 Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).

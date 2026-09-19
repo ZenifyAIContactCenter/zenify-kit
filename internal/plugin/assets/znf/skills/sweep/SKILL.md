@@ -2,7 +2,6 @@
 name: sweep
 description: Tear down a finished task — stop its dev servers, close its terminal workspaces (when a workspace manager is present), remove its worktrees and branches, across every repo it touched. Use when work has landed and the workspace should go back to clean, or when asked to clean up or tidy up after a task. Refuses to report success when nothing has actually merged yet, and says what is still needed instead.
 allowed-tools: Bash(wt *) Bash(git *) Bash(node *) Bash(ls *) Read
-disable-model-invocation: true
 ---
 
 **The destructive work is `wt sweep`, not this file.** Everything that stops a process or deletes a
