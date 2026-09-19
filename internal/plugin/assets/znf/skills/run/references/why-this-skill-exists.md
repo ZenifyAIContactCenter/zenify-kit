@@ -12,5 +12,5 @@ allocated and puts the app somewhere `znf:ui-verifier` is not looking.
 this skill its first run, where it was about to refuse a repo that had no `CLAUDE.md` and exactly
 one dev script.
 
-Filling the gap belongs to `/onboard-project`, which is already told to record the launch command
-and port for exactly this reason.
+Filling the gap belongs to the repo's `CLAUDE.md`, which should record the launch command and port
+for exactly this reason.

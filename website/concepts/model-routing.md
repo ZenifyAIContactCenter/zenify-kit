@@ -47,7 +47,7 @@ Model mạnh điều phối, model rẻ làm phần song song — một agent t�
 - [Review và gate](/guides/review-and-gates) — tier review chọn model theo kích thước và blast radius.
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
-Nội bộ: settings.json "model": claude-opus-4-8; znf/skills/onboard-project/SKILL.md §Model routing rule; znf/agents/{code-reviewer=opus-4-8, scout/ui-verifier=sonnet}; znf/skills/cook/SKILL.md + references/step6-implementation-notes.md (haiku not xhigh-capable, silent downgrade); znf/skills/review/SKILL.md + workflows/review-changes.js; fix/gate SKILL.md; memory todowrite-gated-by-model-version.md
+Nội bộ: settings.json "model": claude-opus-4-8; znf/agents/{code-reviewer=opus-4-8, scout/ui-verifier=sonnet}; znf/skills/cook/SKILL.md + references/step6-implementation-notes.md (haiku not xhigh-capable, silent downgrade); znf/skills/review/SKILL.md + workflows/review-changes.js; fix/gate SKILL.md; memory todowrite-gated-by-model-version.md
 Web (fetched 2026-09-14, nguồn chính = Anthropic; tin cộng đồng chỉ làm màu):
 - anthropic.com/news/claude-opus-5 (giá = 4.8, SOTA hard-agentic, "verifies its work and iterates")
 - platform.claude.com/docs/.../prompting-claude-opus-5 (Anthropic tự nêu verbosity, over-verify, scope-expansion, over-delegation)
