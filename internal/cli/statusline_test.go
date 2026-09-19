@@ -169,6 +169,12 @@ func TestCtxSegment_Colors(t *testing.T) {
 	if s := ctxSegment(30); s != "ctx 30%" {
 		t.Fatalf("below 50 must be plain: %q", s)
 	}
+	if s := ctxSegment(49); s != "ctx 49%" {
+		t.Fatalf("49 must stay plain: %q", s)
+	}
+	if s := ctxSegment(80); !strings.HasPrefix(s, "\x1b[31mctx 80%") || !strings.HasSuffix(s, "\x1b[0m") {
+		t.Fatalf("80 must be red: %q", s)
+	}
 	if s := ctxSegment(50); !strings.HasPrefix(s, "\x1b[33m") || !strings.HasSuffix(s, "\x1b[0m") {
 		t.Fatalf("50 must be yellow and reset: %q", s)
 	}
