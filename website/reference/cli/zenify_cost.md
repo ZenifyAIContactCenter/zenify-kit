@@ -34,6 +34,7 @@ Cửa sổ thời gian lọc theo timestamp từng dòng, không theo ngày sử
 | `--project` | Thư mục project có transcript cần đọc. Mặc định là thư mục hiện tại. |
 | `--top` | Số dòng trong bảng session nặng nhất. |
 | `--json` | In JSON thay cho bảng. |
+| `--by-skill` | Bảng token theo từng skill (calls, token, Mtok/lần) thay cho bảng số lần gọi. |
 
 ## Ví dụ
 

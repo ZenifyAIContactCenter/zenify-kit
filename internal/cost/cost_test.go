@@ -18,6 +18,16 @@ func line(t *testing.T, typ, ts string, msg map[string]any) string {
 	return string(b)
 }
 
+// lineSkill builds an assistant line with attributionSkill at TOP LEVEL (a sibling of message, not nested).
+func lineSkill(t *testing.T, ts, skill string, msg map[string]any) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{"type": "assistant", "timestamp": ts, "attributionSkill": skill, "message": msg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func usage(in, cc, cr, out int64) map[string]any {
 	return map[string]any{"input_tokens": in, "cache_creation_input_tokens": cc, "cache_read_input_tokens": cr, "output_tokens": out}
 }
@@ -158,6 +168,65 @@ func TestScan_WasteSignals(t *testing.T) {
 func TestScan_NoTranscriptsIsAnError(t *testing.T) {
 	if _, err := Scan(t.TempDir(), Options{}); err == nil {
 		t.Fatal("expected an error on an empty root")
+	}
+}
+
+func TestScan_DedupesUsageByMessageID(t *testing.T) {
+	root := t.TempDir()
+	sid := "cccccccc-0000-0000-0000-000000000003"
+	now := "2026-09-18T10:00:00.000Z"
+	// one message.id across 3 lines (3 content blocks), usage repeated identically; one line carries a Skill block
+	msg := func(content []any) map[string]any {
+		return map[string]any{"id": "msg_dup", "model": "claude-opus-4-8", "usage": usage(100, 0, 1000, 50), "content": content}
+	}
+	write(t, filepath.Join(root, sid+".jsonl"),
+		line(t, "assistant", now, msg([]any{map[string]any{"type": "thinking"}})),
+		line(t, "assistant", now, msg([]any{map[string]any{"type": "tool_use", "name": "Skill", "input": map[string]any{"skill": "znf:cook"}}})),
+		line(t, "assistant", now, msg([]any{map[string]any{"type": "text", "text": "done"}})),
+	)
+	r, err := Scan(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Main.Turns != 1 {
+		t.Fatalf("main turns = %d, want 1 (deduped by message.id)", r.Main.Turns)
+	}
+	if got := r.Main.Total(); got != 1150 {
+		t.Fatalf("main total = %d, want 1150 (usage counted once)", got)
+	}
+	if r.SkillsBy["znf:cook"] != 1 {
+		t.Fatalf("skill calls = %d, want 1 (content block counted, NOT deduped away)", r.SkillsBy["znf:cook"])
+	}
+}
+
+func TestScan_SkillTokBucketsByAttribution(t *testing.T) {
+	root := t.TempDir()
+	sid := "dddddddd-0000-0000-0000-000000000004"
+	now := "2026-09-18T10:00:00.000Z"
+	write(t, filepath.Join(root, sid+".jsonl"),
+		lineSkill(t, now, "znf:cook", map[string]any{"id": "m1", "model": "claude-opus-4-8", "usage": usage(10, 0, 100, 5)}),
+		lineSkill(t, now, "znf:ground", map[string]any{"id": "m2", "model": "claude-opus-4-8", "usage": usage(20, 0, 200, 10)}),
+		line(t, "assistant", now, map[string]any{"id": "m3", "model": "claude-opus-4-8", "usage": usage(1, 0, 9, 0)}), // no attributionSkill
+	)
+	r, err := Scan(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.SkillTok["znf:cook"].Total(); got != 115 {
+		t.Fatalf("cook = %d, want 115", got)
+	}
+	if got := r.SkillTok["znf:ground"].Total(); got != 230 {
+		t.Fatalf("ground = %d, want 230", got)
+	}
+	if got := r.SkillTok[NoSkillKey].Total(); got != 10 {
+		t.Fatalf("(no skill) = %d, want 10", got)
+	}
+	var sum int64
+	for _, v := range r.SkillTok {
+		sum += v.Total()
+	}
+	if sum != r.Main.Total() {
+		t.Fatalf("sum(SkillTok)=%d != Main.Total()=%d", sum, r.Main.Total())
 	}
 }
 
