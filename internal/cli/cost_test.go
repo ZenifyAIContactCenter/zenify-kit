@@ -142,3 +142,26 @@ func TestBySkillRows_SortAndCalls(t *testing.T) {
 		}
 	}
 }
+
+func TestBySkillRows_TieBreakByName(t *testing.T) {
+	// Equal totals must sort by name ascending, deterministically across runs
+	// (map iteration order is randomized and sort.Slice is not stable).
+	r := &cost.Report{
+		SkillsBy: map[string]int{},
+		SkillTok: map[string]cost.Usage{
+			"znf:zebra": {Input: 1_000_000},
+			"znf:alpha": {Input: 1_000_000},
+			"znf:mango": {Input: 1_000_000},
+		},
+	}
+	for i := 0; i < 50; i++ {
+		rows := bySkillRows(r)
+		got := []string{rows[0][0], rows[1][0], rows[2][0]}
+		want := []string{"znf:alpha", "znf:mango", "znf:zebra"}
+		for j := range want {
+			if got[j] != want[j] {
+				t.Fatalf("tied-total order = %v, want %v (name-ascending, deterministic)", got, want)
+			}
+		}
+	}
+}

@@ -97,7 +97,10 @@ func mtokPerCall(total int64, calls int) string {
 
 func bySkillRows(r *cost.Report) [][]string {
 	keys := sortedKeys(r.SkillTok, func(a, b string) bool {
-		return r.SkillTok[a].Total() > r.SkillTok[b].Total()
+		if ta, tb := r.SkillTok[a].Total(), r.SkillTok[b].Total(); ta != tb {
+			return ta > tb
+		}
+		return a < b
 	})
 	rows := make([][]string, 0, len(keys))
 	for _, k := range keys {
