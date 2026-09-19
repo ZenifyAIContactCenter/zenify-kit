@@ -39,11 +39,11 @@ zenify db-read doc <a-name-from-that-list>           # real fields
 
 ## Step 2: Brainstorm → spec (`znf:brainstorming`)
 
-**`Skill(znf:brainstorming)`**, its nine steps as written, **two real user gates**; keep polyrepo scope (repos, contract boundaries, what breaks). Spec and plan follow `znf:_shared/artifact-style`, `znf:_shared/spec-template` and `znf:_shared/constitution`. **Never commit the spec or `git add -f` it**: it lives in the **main checkout**; hand SDD **absolute** paths.
+**`Skill(znf:brainstorming)`**, its nine steps as written, **two real user gates**; keep polyrepo scope (repos, contracts, what breaks). Spec and plan follow `znf:_shared/artifact-style`, `znf:_shared/spec-template` and `znf:_shared/constitution`. **Never commit the spec or `git add -f` it**: it lives in the **main checkout**; hand SDD **absolute** paths.
 
 ## Step 3: Ground the spec — before the plan, not after
 
-**`Skill(znf:ground)`** on everything the spec commits to — six categories: DB fields, API shapes, queue payloads, library signatures, in-repo symbols and config keys, env vars. **Real names only; read the definition, not a call site.** Contradiction → fix the spec first. **A backend query in the diff makes `Skill(znf:explain-plan)` mandatory here** (advisory) and at Step 7 (with teeth).
+**`Skill(znf:ground)`** on everything the spec commits to — DB fields, API shapes, queue payloads, library signatures, in-repo symbols, config keys, env vars. **Real names only; read the definition, not a call site.** Contradiction → fix the spec. **A backend query in the diff makes `Skill(znf:explain-plan)` mandatory** here (advisory) and at Step 7 (with teeth).
 
 ## Step 4: `/scout` — what depends on what changes
 
@@ -53,7 +53,7 @@ zenify db-read doc <a-name-from-that-list>           # real fields
 
 **`Skill(znf:writing-plans)`**. Files first, then tasks with real code — no "TBD", no "similar to Task N". Run its self-review. Polyrepo plans → SDD "Cross-worktree parallelism". Save to `<main-checkout>/docs/superpowers/plans/<filename>.md`.
 
-**Decide per task, here and only here, whether its definition of done requires a `znf:ui-verifier` verdict** (renders correctly, with the overflow measurement of the changed element against its container) **or an E2E journey** — decide the E2E journey here (`.znf/e2e/<journey>.spec.ts` green under `zenify e2e lint` + `zenify e2e run`, `znf:e2e`). Step 6 infers neither.
+**Decide per task, here and only here, whether its definition of done requires a `znf:ui-verifier` verdict** (renders correctly; overflow measured against its container) **or an E2E journey** — decide the E2E journey here (`.znf/e2e/<journey>.spec.ts` green under `zenify e2e lint` + `zenify e2e run`, `znf:e2e`). Step 6 infers neither.
 
 **Then `Skill(znf:ground)` a third time**, on any name the plan introduced. `writing-plans` ends by offering an execution choice: **always Subagent-Driven. Do not ask.**
 
@@ -61,7 +61,7 @@ zenify db-read doc <a-name-from-that-list>           # real fields
 
 Before dispatching SDD, **`Skill(znf:analyze)`** on the spec+plan pair (absolute path): FR→task coverage, leftover markers, Brief structure. **Advisory — it does NOT block**; surface CRITICAL/HIGH for the user to decide.
 
-**Phase boundary 1 — stop here and hand over.** Print exactly these two lines and end the turn:
+**Phase boundary 1 — ask, default continue.** `AskUserQuestion`: (a) continue here — default; (b) hand over to a clean session. Recommend (b) only after a context-heavy warning. On (b) print and end the turn:
 
 ```
 /clear
@@ -82,15 +82,15 @@ cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse
 - **Polyrepo:** one worktree per repo, **same slug**; one implementer per repo, a dependent repo gated on the other's **contract-frozen** commit. Re-entering `/cook` is not a second worktree: `cd` into it.
 - A definition of done only the running app can show → **`Skill(znf:run)`** once before the task loop, kept up.
 
-**`Skill(znf:subagent-driven-development)`** at every size, told it runs under `/cook` and the workspace exists (verify, not create). **Under `/cook` SDD skips its own final review**: `/ship` step 5 reviews the branch and picks up the ledger's `minor (deferred)` and `parked` lines.
+**`Skill(znf:subagent-driven-development)`** at every size, told it runs under `/cook` and the worktree exists (verify, not create). **Under `/cook` SDD skips its own final review**: `/ship` step 5 reviews the branch and picks up the ledger's `minor (deferred)` and `parked` lines.
 
-**A task the plan flagged — and only the plan — is verified before its ledger line:** after its reviewer passes and **before** appending `Task <N>: complete`, `Skill(znf:run)` for the URL, then `znf:ui-verifier` on **that deliverable only**; its verdict joins the line, and these serialise on the one shared browser. Unlooked-at: `Task <N>: complete (commits …, review clean — appearance not checked)`.
+**A task the plan flagged — and only the plan — is verified before its ledger line:** after its reviewer passes and **before** appending `Task <N>: complete`, `Skill(znf:run)` for the URL, then `znf:ui-verifier` on **that deliverable only**; the verdict joins the line; these serialise on the one shared browser. Unlooked-at: `Task <N>: complete (commits …, review clean — appearance not checked)`.
 
 ## Step 6b: Test-traceability (`znf:standards`) — advisory
 
 After Step 6 and **before** `/ship`, **`Skill(znf:standards)`** on spec + plan + root worktree: every FR against a real test on disk (`untested-fr`, `missing-test-file`, `empty-test-file`). Advisory.
 
-**Phase boundary 2 — stop here and hand over.** Print and end the turn:
+**Phase boundary 2 — same question.** On (b):
 
 ```
 /clear
