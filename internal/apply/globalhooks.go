@@ -28,13 +28,13 @@ type hookSpec struct {
 func znfHookSpecs() []hookSpec {
 	return []hookSpec{
 		{Event: "SessionStart", Matcher: "", ID: "session-start", Purpose: "Đồng bộ knowledge store, ghi lại rules/workspace mới nhất, nhắc update, in digest bootstrap nếu máy chưa có sentinel discipline"}, //znf:allow-lang
-		{Event: "SessionStart", Matcher: "", ID: "git-state", Purpose: "In báo cáo trạng thái git của workspace vào context đầu phiên"},                                                                            //znf:allow-lang
-		{Event: "SessionStart", Matcher: "", ID: "wt-report", Purpose: "In một dòng liệt kê worktree đã merge/rác mà `wt sweep --all` sẽ dọn"},                                                                    //znf:allow-lang
-		{Event: "Stop", Matcher: "", ID: "docs-sync", Purpose: "Đồng bộ knowledge store qua git (status → pull --rebase → push), fail-open"},                                                                      //znf:allow-lang
-		{Event: "Stop", Matcher: "", ID: "git-state-stop", Purpose: "Báo trạng thái git dạng cảnh báo đứng (systemMessage) khi phiên dừng"},                                                                       //znf:allow-lang
-		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count", Purpose: "Đếm số lần dispatch subagent, cảnh báo khi vượt soft-cap"},                                                                    //znf:allow-lang
-		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter", Purpose: "Ghi nhận việc dùng tool để đo usage"},                                                           //znf:allow-lang
-		{Event: "PreToolUse", Matcher: "Read", ID: "read-guard", Purpose: "Chặn Read file quá lớn (text > 200 KB không có offset+limit, PDF không có pages, ảnh > 300 KB) trước khi kết quả vào context"},          //znf:allow-lang
+		{Event: "SessionStart", Matcher: "", ID: "git-state", Purpose: "In báo cáo trạng thái git của workspace vào context đầu phiên"},                                                                       //znf:allow-lang
+		{Event: "SessionStart", Matcher: "", ID: "wt-report", Purpose: "In một dòng liệt kê worktree đã merge/rác mà `wt sweep --all` sẽ dọn"},                                                                //znf:allow-lang
+		{Event: "Stop", Matcher: "", ID: "docs-sync", Purpose: "Đồng bộ knowledge store qua git (status → pull --rebase → push), fail-open"},                                                                  //znf:allow-lang
+		{Event: "Stop", Matcher: "", ID: "git-state-stop", Purpose: "Báo trạng thái git dạng cảnh báo đứng (systemMessage) khi phiên dừng"},                                                                   //znf:allow-lang
+		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count", Purpose: "Đếm số lần dispatch subagent, cảnh báo khi vượt soft-cap"},                                                                //znf:allow-lang
+		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter", Purpose: "Ghi nhận việc dùng tool để đo usage"},                                                       //znf:allow-lang
+		{Event: "PreToolUse", Matcher: "Read", ID: "read-guard", Purpose: "Chặn Read file quá lớn (text > 200 KB không có offset+limit, PDF không có pages, ảnh > 300 KB) trước khi kết quả vào context"},     //znf:allow-lang
 	}
 }
 
