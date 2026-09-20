@@ -40,6 +40,10 @@ Skill chạy `context: fork`, tức toàn bộ việc tìm-đọc nằm ngoài c
 
 Bảng phát hiện có cột trạng thái verify. Chỉ hàng `VERIFIED` được dùng cho kết luận và cho spec. Hàng `QUOTE-MISMATCH` (trang có nhưng không thấy quote) hay `DEAD-URL` vẫn nằm trong bảng để bạn biết worker đã tìm gì, nhưng không được trích. Mục "Không tìm thấy" liệt kê từng khoảng trống kèm đã thử ở đâu — đưa vào spec như giả định đã nêu.
 
+## Ngôn ngữ
+
+Brief gửi worker và verifier viết **tiếng Anh**, dù bạn gõ câu hỏi bằng tiếng Việt: worker tìm nguồn tiếng Anh, verifier haiku so claim với quote cùng một ngôn ngữ. Lead chạy fork nên thừa hưởng ngôn ngữ của bạn; skill buộc nó dịch câu hỏi trước khi dispatch. Chỉ file báo cáo cuối trong `docs/reference/` viết tiếng Việt cho team đọc. Quy tắc chung cho mọi skill: văn bản máy đọc (brief subagent, commit, memory, rule) luôn tiếng Anh, chỉ artifact người đọc theo ngôn ngữ project.
+
 ## Chi phí
 
 Một worker sonnet khoảng 1,6 USD; verifier haiku dưới 1 USD. Research so sánh điển hình (3 worker + verifier) khoảng 5–6 USD. Bảng cỡ giữ số worker theo độ phức tạp, không mặc định 5. Đo lại bằng `zenify cost --by-skill` khi cần số chính xác.

@@ -21,7 +21,8 @@ separate cheap pass re-fetches every URL; the result is a file in the knowledge 
 
 ## Step 1: Scope
 
-1. Rewrite the question in one sentence and write the done-criterion ("answered when …").
+1. Rewrite the question in one sentence and write the done-criterion ("answered when …"),
+   **in English** whatever language `$ARGUMENTS` uses.
 2. Split into sub-questions **by context boundary** — one source family or one system per
    worker — not by topic words. Pick the size from `references/scale-and-cost.md`: fact-find =
    1 worker · comparison = 2–4 · complex = 5+ (rare; say why in the report).
@@ -36,7 +37,9 @@ report and the return; it stands in for a plan gate, since a fork cannot ask.
 ## Step 2: Dispatch workers — ONE message
 
 One `Agent(znf:researcher)` per sub-question, `model: sonnet`, all in a single message. Open a
-task ledger line per worker. Prompt template — send it complete:
+task ledger line per worker. **The whole brief is English** — workers search English sources and
+the haiku verifier compares claims to quotes; only the Step 4 report takes the project's language.
+Prompt template — send it complete:
 
 ```
 mode: research
