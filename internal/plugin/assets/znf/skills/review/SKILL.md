@@ -1,13 +1,13 @@
 ---
 name: review
-description: Unified review engine. Mechanically selects a tier from the diff, dispatches reviewers (T1 solo / T2 fan-out / T3 adversarial), returns findings per the shared schema. Main gate for /review and ship step 5.
+description: Unified review engine: selects a tier from the diff, dispatches reviewers (T1 solo / T2 fan-out / T3 adversarial), returns findings per the shared schema. Main gate for /review and ship step 5.
 allowed-tools: Bash(git *) Bash(rg *) Bash(bash *) Bash(test *) Bash(awk *) Bash(zenify *) Agent Workflow
 ---
 
 # znf:review — unified review engine
 
 One review engine: standalone `/review`, ship step 5 delegates here. Findings follow
-`_shared/finding-schema.md` at every tier.
+`_shared/finding-schema.md`.
 
 Five gates: PRE, BUNDLE, REVIEW, VERIFY, POST — one step each below (`references/lifecycle-and-t3.md`).
 **Doctrine** is dispatch-time (Step 1b-doctrine + Step 3 preamble), not POST.
@@ -31,14 +31,14 @@ GATE=$(STATIC_OK=${STATIC_OK:-0} bash ~/.claude/skills/znf/skills/review/scripts
 echo "$GATE"   # {"verdict":"pass|block","findings":[...]}
 ```
 
-`STATIC_OK=1` when **ship** calls (build/lint already passed); standalone `/review` leaves `0` so
-the gate runs them.
+`STATIC_OK=1` when **ship** calls (build/lint passed); standalone `/review` leaves `0` so the gate
+runs them.
 
 - `verdict=block` (build/lint fail, conflict-marker) → **STOP**: gate `findings` into the report,
   `shippable:false`, print the reason, do NOT dispatch REVIEW.
 - `verdict=pass` → keep the mechanical `findings`, go to Step 2.
 
-## Step 1b-doctrine — DOCTRINE sanitize ## Verified (no-claim, M4d)
+## Step 1b-doctrine — DOCTRINE sanitize ## Verified (no-claim)
 
 Only when **ship** calls, ONCE, before ANY dispatch:
 
@@ -50,7 +50,7 @@ printf '%s' "$VERIFIED_TEXT" | zenify review-doctrine   # {"verified":..,"stripp
 - `.stripped[]` non-empty → print "doctrine: stripped N claims from ## Verified: [...]".
 - `zenify` missing, or standalone → **skip**, note "doctrine sanitize skipped"; fail-open.
 
-## Step 1c — BUNDLE (split a large diff — M4c)
+## Step 1c — BUNDLE (split a large diff)
 
 Only when `ADDED > 2000`; smaller diffs go to Step 2.
 
@@ -58,9 +58,9 @@ Only when `ADDED > 2000`; smaller diffs go to Step 2.
 PLAN=$(zenify review-bundle "$BASE")   # {"verdict":..,"bundles":[{id,loc,files}],"total_loc":X}
 ```
 
-Outcomes `missing` / `too-large` (STOP, split the PR) / `bundle` (per-bundle review, skip Step 2) / `passthrough` → `references/bundling.md` § Bundler outcomes.
+Outcomes `missing` / `too-large` (STOP, split the PR) / `bundle` (per-bundle, skip Step 2) / `passthrough` → `references/bundling.md` § Bundler outcomes.
 
-**Report must print** cluster count and LOC + tier per cluster BEFORE dispatch.
+**Report must print** cluster count, LOC + tier per cluster, BEFORE dispatch.
 
 ## Step 2 — select tier (do NOT let the LLM guess)
 
@@ -73,26 +73,26 @@ printf '%s\n' "$SELECT_TIER"                          # print on the report
 ```
 
 Line 1 = tier, line 2 = the reason. **Print tier + reason on the report** before dispatching.
-Tier rule (script is the source): `CRITICAL=1` → T3 at any size; else T1 ≤200 LOC / T2 201–600 /
-T3 >600, and `SHARED=1` **floors at T2** (T2's `contracts` goes to opus when shared).
+Tier rule: `CRITICAL=1` → T3 at any size; else T1 ≤200 LOC / T2 201–600 / T3 >600, and `SHARED=1`
+**floors at T2** (T2's `contracts` goes to opus when shared).
 
 ## Step 3 — REVIEW dispatch by tier
 
-**Doctrine preamble (M4d):** read it once —
+**Doctrine preamble:** read it once —
 `DOCTRINE=$(awk '{print}' ~/.claude/skills/znf/skills/review/_shared/reviewer-doctrine.md 2>/dev/null)`
 (missing → `DOCTRINE=""` + note "doctrine preamble unavailable"; fail-open). **Prepend it to every
 reviewer's brief** (T1, 5×T2, per-bundle) and pass `args.doctrine="$DOCTRINE"` to T3.
 
-- **T1 (solo):** 1 `code-reviewer` agent (template in `subagent-driven-development/`), model
-  `sonnet` under 50 LOC / mid otherwise. Returns `findings[]`.
+- **T1 (solo):** 1 `code-reviewer` agent (template `subagent-driven-development/code-reviewer-template.md`),
+  model `sonnet` under 50 LOC / mid otherwise. Returns `findings[]`.
 - **T2 (fan-out):** 5 agents in parallel (ONE message), one dimension each (bugs / security / perf /
   contracts / types), each returning `findings[]`. **When `SHARED=1`, dispatch the `contracts` agent with model opus** (others stay default). Merge, dedup by `title+file`. No Workflow here.
 **T3 reviewer model — mechanical, from the streak:**
 ```bash
 STREAK=$(zenify review-log --json 2>/dev/null | jq -r --arg r "$(basename "$(git rev-parse --show-toplevel)")" --arg b "$(git branch --show-current)" \
   '[.[]|select(.repo==$r and .branch==$b)]|sort_by(.ts)|reverse|map(.shippable)|(index(true) // length)' 2>/dev/null); [ -n "$STREAK" ] || STREAK=0
-ROUTE=$(bash ~/.claude/skills/znf/skills/_shared/scripts/select-route reviewer TIER="$TIER" BLOCKED_STREAK="$STREAK")
-RMODEL=$(printf '%s\n' "$ROUTE" | sed -n '1s/^model=//p')
+ROUTE=$(bash ~/.claude/skills/znf/skills/_shared/scripts/select-route reviewer TIER="$TIER" BLOCKED_STREAK="$STREAK" 2>/dev/null)
+RMODEL=$(printf '%s\n' "$ROUTE" | sed -n '1s/^model=//p'); [ -n "$RMODEL" ] || RMODEL=inherit
 ```
 `RMODEL`≠`inherit` → `reviewModel:"$RMODEL"` in Workflow `args`, print route reason; then
 `zenify route-log record` per `references/post-gates.md` § Route capture. `inherit` → nothing.
