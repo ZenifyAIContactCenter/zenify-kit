@@ -1,4 +1,4 @@
-<!-- Read at the architectural tier, after clarify-lite and before the design step. Everything here is mechanical: the four features come from the grounding report and the user's request, the script decides, the skill obeys. -->
+<!-- Read at the architectural tier at step 5 (Route the design), after the clarifying questions and the research check, before the design memo. Everything here is mechanical: the four features come from the grounding report and the user's request, the script decides, the skill obeys. -->
 
 # Architect gate — tier 3 routing
 
@@ -18,6 +18,7 @@
 ```bash
 ROUTE=$(bash ~/.claude/skills/znf/skills/_shared/scripts/select-route architect TIER=architectural REPOS=$REPOS SHARED=$SHARED NEW_CONTRACT=$NEW_CONTRACT CRITICAL=$CRITICAL)
 AMODEL=$(printf '%s\n' "$ROUTE" | sed -n '1s/^model=//p'); GATES=$(printf '%s\n' "$ROUTE" | sed -n '3s/^gates: //p')
+[ "$GATES" = "-" ] && GATES=
 ```
 
 Print `$ROUTE` on the report.
@@ -43,7 +44,7 @@ command -v zenify >/dev/null && command -v jq >/dev/null && jq -nc \
   --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg repo "$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")" \
   --arg branch "$(git branch --show-current 2>/dev/null)" --arg model "$AMODEL" --arg strong "${ZNF_STRONG_MODEL:-opus}" \
   --arg repos "$REPOS" --arg shared "$SHARED" --arg nc "$NEW_CONTRACT" --arg crit "$CRITICAL" --arg gates "$GATES" --arg cd "$CD" \
-  '{ts:$ts,repo:$repo,branch:$branch,"site":"architect",features:{TIER:"architectural",REPOS:$repos,SHARED:$shared,NEW_CONTRACT:$nc,CRITICAL:$crit},gates:($gates|split(",")),model:$model,strong:$strong,changed_decision:$cd}' \
+  '{ts:$ts,repo:$repo,branch:$branch,"site":"architect",features:{TIER:"architectural",REPOS:$repos,SHARED:$shared,NEW_CONTRACT:$nc,CRITICAL:$crit},gates:(if $gates=="" then [] else ($gates|split(",")) end),model:$model,strong:$strong,changed_decision:$cd}' \
   | zenify route-log record 2>/dev/null || true
 ```
 

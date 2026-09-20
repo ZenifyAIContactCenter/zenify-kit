@@ -5,7 +5,7 @@ Agent nhận một brief là file trên đĩa (problem, phác approach của cal
 
 ## Khi nào được gọi
 
-`znf:brainstorming` tầng architectural, sau clarify-lite, khi `select-route architect` trả về một model (một trong `REPOS≥2`, `SHARED`, `NEW_CONTRACT`, `CRITICAL` fire). Model do script quyết định theo env `ZNF_STRONG_MODEL` của máy; không gate nào fire thì không gọi agent, session model tự viết memo theo cùng khuôn.
+`znf:brainstorming` tầng architectural, sau bước hỏi làm rõ và research check, trước Clarify-lite, khi `select-route architect` trả về một model (một trong `REPOS≥2`, `SHARED`, `NEW_CONTRACT`, `CRITICAL` fire). Model do script quyết định theo env `ZNF_STRONG_MODEL` của máy; không gate nào fire thì không gọi agent, session model tự viết memo theo cùng khuôn.
 
 ## Lưu ý
 
