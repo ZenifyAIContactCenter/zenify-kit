@@ -13,6 +13,7 @@ digraph brainstorming {
     "Implement via normal workflow (no plan doc)" [shape=doublecircle];
     "Explore project context" [shape=box];
     "Ask clarifying questions" [shape=box];
+    "Research check" [shape=box];
     "Propose 2-3 approaches" [shape=box];
     "Present design sections" [shape=box];
     "User approves design?" [shape=diamond];
@@ -32,7 +33,8 @@ digraph brainstorming {
     "Human approves?" -> "Implement via normal workflow (no plan doc)" [label="bounded: yes"];
     "Hidden complexity? Upgrade path" -> "Classify: spike / bounded / architectural";
     "Explore project context" -> "Ask clarifying questions";
-    "Ask clarifying questions" -> "Propose 2-3 approaches";
+    "Ask clarifying questions" -> "Research check";
+    "Research check" -> "Propose 2-3 approaches" [label="checklist: 0 or 1+ true → /znf:research first"];
     "Propose 2-3 approaches" -> "Present design sections";
     "Present design sections" -> "User approves design?";
     "User approves design?" -> "Present design sections" [label="no, revise"];

@@ -59,8 +59,16 @@ func TestResearcherAgent_Shipped(t *testing.T) {
 		"DEAD-URL",
 		"40 lines",
 	})
-	if strings.Contains(s, "tools: ") && strings.Contains(strings.SplitN(s, "\n---", 2)[0], "Agent") {
-		t.Error("researcher.md frontmatter must not grant the Agent tool (workers do not fan out)")
+	front := strings.SplitN(s, "\n---", 2)[0]
+	for _, line := range strings.Split(front, "\n") {
+		if !strings.HasPrefix(line, "tools:") {
+			continue
+		}
+		for _, tok := range strings.Split(strings.TrimPrefix(line, "tools:"), ",") {
+			if strings.TrimSpace(tok) == "Agent" {
+				t.Error("researcher must not dispatch: Agent in tools")
+			}
+		}
 	}
 	assertProjectAgnostic(t, "researcher.md", s)
 }
@@ -88,6 +96,12 @@ func TestResearchSkill_Shipped(t *testing.T) {
 	})
 	if strings.Contains(s, "AskUserQuestion") {
 		t.Error("research/SKILL.md runs forked: it must not reach for AskUserQuestion")
+	}
+	front := strings.SplitN(s, "\n---", 2)[0]
+	for _, tool := range []string{"WebSearch", "WebFetch"} {
+		if strings.Contains(front, tool) {
+			t.Errorf("research lead must not fetch: %s found in frontmatter", tool)
+		}
 	}
 	assertProjectAgnostic(t, "research/SKILL.md", s)
 	for _, ref := range []string{"references/output-contract.md", "references/scale-and-cost.md"} {
