@@ -13,7 +13,7 @@ Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
 0 fetch → 1 ground → 2 brainstorm→spec → 3 ground → 4 scout → 5 plan → 6 wt+SDD → 7 /ship
 ```
 
-- Worktree at **Step 6**, not Step 0. **Three sessions, not one**: context clears at the two phase boundaries, 5b and 6b.
+- Worktree at **Step 6**, not Step 0.
 - **No complexity triage** — scale the design, never the step count.
 - **A `.md` path argument** → Step 0, ground **every name the file uses**, then Steps 4 and 6; skip 1, 2, 5. SDD's Setup resumes from the ledger: a `Task <N>: complete` line is not re-dispatched. **A description** → all steps.
 - **Every step leaves a named line** — `Skill(znf:ground)` ×3, `Agent(znf:scout)` ×1, `Skill(znf:brainstorming)`, `Skill(znf:writing-plans)`, `Skill(znf:subagent-driven-development)`, `Skill(znf:ship)`. A missing line is a skipped step.
@@ -61,13 +61,6 @@ zenify db-read doc <a-name-from-that-list>           # real fields
 
 Before dispatching SDD, **`Skill(znf:analyze)`** on the spec+plan pair (absolute path): FR→task coverage, leftover markers, Brief structure. **Advisory — it does NOT block**; surface CRITICAL/HIGH for the user to decide.
 
-**Phase boundary 1 — ask, default continue.** `AskUserQuestion`: (a) continue here — default; (b) hand over to a clean session. Recommend (b) only after a context-heavy warning. On (b) print and end the turn:
-
-```
-/clear
-/cook <absolute path of the plan file>
-```
-
 ## Step 6: Implement (`znf:subagent-driven-development`)
 
 > **Isolation & base-ref doctrine → znf:discipline §8** (single source). Below is only what `/cook` adds.
@@ -89,13 +82,6 @@ cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse
 ## Step 6b: Test-traceability (`znf:standards`) — advisory
 
 After Step 6 and **before** `/ship`, **`Skill(znf:standards)`** on spec + plan + root worktree: every FR against a real test on disk (`untested-fr`, `missing-test-file`, `empty-test-file`). Advisory.
-
-**Phase boundary 2 — same question.** On (b):
-
-```
-/clear
-/ship     (from the worktree directory)
-```
 
 ## Step 7: Pre-ship gate
 
