@@ -3,7 +3,7 @@ summary: Quy ước viết backend Express legacy — controller/service, respon
 ---
 ## Khi nào dùng
 
-Khi viết hoặc sửa code backend Express kiểu cũ. Cần cài đặt trước bằng lệnh cài skill coding, xem [Chọn workflow](/workflows/).
+Khi viết hoặc sửa code backend Express kiểu cũ. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`, xem [Chọn workflow](/workflows/).
 
 ## Cách hoạt động
 

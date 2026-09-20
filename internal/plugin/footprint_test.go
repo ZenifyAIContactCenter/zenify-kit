@@ -5,34 +5,8 @@ import (
 	"testing"
 )
 
-func TestSkillsForRepoCore(t *testing.T) {
-	cases := map[string][]string{
-		"contact-center-web": {"react-patterns"},
-		"contact-center-be":  {"express-service-patterns", "mongoose-modeling", "mongo-data-safety", "sql-data-safety", "service-integration"},
-		"contact-center-hub": {"nestjs-patterns", "mongoose-modeling", "mongo-data-safety", "sql-data-safety", "service-integration"},
-	}
-	for repo, want := range cases {
-		got := SkillsForRepo(repo)
-		if len(got) != len(want) {
-			t.Fatalf("%s: got %v want %v", repo, got, want)
-		}
-	}
-	// skill name must exist in CodingSkills()
-	valid := map[string]bool{}
-	for _, s := range CodingSkills() {
-		valid[s] = true
-	}
-	for repo := range cases {
-		for _, s := range SkillsForRepo(repo) {
-			if !valid[s] {
-				t.Errorf("%s maps to a nonexistent skill: %s", repo, s)
-			}
-		}
-	}
-}
-
 func TestLeg2ForRepo(t *testing.T) {
-	for repo := range RepoSkills {
+	for repo := range Leg2Recommendations {
 		if len(Leg2ForRepo(repo)) == 0 {
 			t.Errorf("repo core %s has no leg-2 recommendation", repo)
 		}

@@ -12,11 +12,9 @@ report back. You have no other context — do not assume anything about the call
 
 Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
 
-**Rigid discipline.** This skill enforces one rule: **read before write**.
+**Read before write.**
 
-**It answers one direction only: "what is X?"** The reverse — *"what depends on X?"* — is
-`/scout`. Grounding a name protects against using something that does not exist; it does nothing
-to stop an existing caller being broken.
+**One direction only — "what is X?"** "What depends on X?" is `/scout`; grounding never proves a caller survives.
 
 ## Step 1: Identify what needs grounding
 
@@ -30,8 +28,12 @@ From `$ARGUMENTS`, state which shapes are unverified:
 - In-repo code: function/method signatures, exported symbol names, component props, config keys
 - Env var names — **and config values**, read live, not from a file
 
-If the workspace has `.claude/GLOSSARY.md`, read it when a domain term is unclear — a term you
-cannot define is a shape you cannot ground.
+Read `.claude/GLOSSARY.md` for any domain term you cannot define.
+
+## Step 1b: Route skills (report, do not invoke)
+
+For each shape identified, look up its signal in `znf:_shared/skill-routing` and list the matching
+`znf:<skill>` / `<repo>-conventions` names in the report — the plan copies them into `_Skills:`.
 
 ## Step 2: Fetch the real shape
 

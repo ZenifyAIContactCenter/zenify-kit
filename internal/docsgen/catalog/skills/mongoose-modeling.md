@@ -3,7 +3,7 @@ summary: Thiết kế schema Mongoose an toàn — index, lean/populate, discrim
 ---
 ## Khi nào dùng
 
-Khi thiết kế hoặc sửa một schema Mongoose. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi thiết kế hoặc sửa một schema Mongoose. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 

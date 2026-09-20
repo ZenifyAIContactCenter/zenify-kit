@@ -6,7 +6,7 @@ title: zenify skills install
 
 # `zenify skills install`
 
-Cài bộ coding skill khớp với repo hiện tại vào .claude/skills của repo.
+Gỡ bản coding skill cũ khỏi .claude/skills của repo — chúng đã nằm trong plugin znf.
 
 ## Cú pháp
 
@@ -16,11 +16,11 @@ zenify skills install [flags]
 
 ## Khi nào dùng
 
-Khi bạn vào một repo mà session chưa có skill về stack của repo đó, hoặc sau khi kit thêm skill mới cho stack này.
+Một lần cho mỗi repo sau khi nâng kit lên bản có coding skill trong plugin `znf`: repo còn giữ bản cũ dưới `.claude/skills` (kèm `.manifest.json`) sẽ có hai skill cùng nội dung trong registry.
 
 ## Kết quả
 
-Lệnh nhận diện repo qua dấu vết trên đĩa, chọn bộ skill tương ứng và ghi vào `.claude/skills` kèm manifest, rồi in số file ghi, giữ và không đổi. Repo không nằm trong bảng ánh xạ thì lệnh nói vậy và không ghi gì. Với một số stack, lệnh gợi ý thêm skill bên thứ ba dạng `npx skills add …` để bạn tự chạy và commit.
+Lệnh đọc `.claude/skills/.manifest.json`, xoá những file kit từng ghi mà bạn chưa sửa, giữ file bạn đã sửa và báo lại, không đụng file không có trong manifest; manifest rỗng thì xoá luôn. Repo không có manifest thì lệnh nói vậy và thoát 0. Với một số stack, lệnh vẫn gợi ý skill bên thứ ba dạng `npx skills add …` để bạn tự chạy và commit. Bản dùng chung lấy qua `zenify skills sync`.
 
 ## Cờ
 

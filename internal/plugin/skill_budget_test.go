@@ -48,6 +48,9 @@ func skillDirs(t *testing.T) []string {
 	// the test pass defeats the tripwire. Lowered 25→24 on 2026-09-19 when
 	// onboard-project was unshipped (zero use in 30 days, superseded by
 	// understand-codebase + `zenify up`).
+	// The seven coding skills (express/nestjs/react patterns, mongo/sql data
+	// safety, mongoose-modeling, service-integration) joined this tree on
+	// 2026-09-20 (domain-skill routing spec FR-1); the floor stays a lower bound.
 	if len(out) < 24 {
 		t.Fatalf("expected ≥24 skills, found %d", len(out))
 	}

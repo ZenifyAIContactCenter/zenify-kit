@@ -168,4 +168,4 @@ rather than assuming every deploy lands instantaneously everywhere.
   consumers and the tests that cover it — this skill teaches the shape of
   the risk, not which specific files depend on this one.
 - The Mongo write side of a dual-write path — tenant scoping, `strict`
-  schema traps — → the `mongo-data-safety` skill.
+  schema traps — → `znf:mongo-data-safety`.

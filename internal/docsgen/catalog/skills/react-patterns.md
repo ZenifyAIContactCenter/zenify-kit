@@ -3,7 +3,7 @@ summary: Quy ước viết frontend React (Vite/TanStack) — state, bảng phâ
 ---
 ## Khi nào dùng
 
-Khi viết hoặc sửa code frontend React trên nền Vite/TanStack. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi viết hoặc sửa code frontend React trên nền Vite/TanStack. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 

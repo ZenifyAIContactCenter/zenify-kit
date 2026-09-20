@@ -3,7 +3,7 @@ summary: Quy ước viết backend NestJS — module, DTO, guard, truy cập mod
 ---
 ## Khi nào dùng
 
-Khi viết hoặc sửa code backend NestJS. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi viết hoặc sửa code backend NestJS. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 

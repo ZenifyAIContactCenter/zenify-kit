@@ -1,8 +1,10 @@
 package plugin
 
 import (
+	"errors"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,7 +16,8 @@ var forbiddenTokens = []string{
 	"VITE_", "namph", "zenify",
 }
 
-// skill dir -> lowercase anchors that must appear in that skill's SKILL.md
+// The seven former leg-1 coding skills, now shipped inside the znf plugin
+// (2026-09-20). skill dir -> lowercase anchors that must appear in SKILL.md.
 var codingAnchors = map[string][]string{
 	"mongo-data-safety":        {"tenant", "strict", "distinct"},
 	"sql-data-safety":          {"tenant", "parameter", "pool"},
@@ -25,60 +28,46 @@ var codingAnchors = map[string][]string{
 	"service-integration":      {"idempoten", "publish", "contract"},
 }
 
-func readCodingFile(t *testing.T, skill string) string {
-	t.Helper()
-	b, err := fs.ReadFile(codingAssets, codingRoot+"/"+skill+"/SKILL.md")
-	if err != nil {
-		t.Fatalf("read %s: %v", skill, err)
-	}
-	return string(b)
-}
-
+// TestCodingSkillsAreAgnostic: the stack skills stay project-agnostic (no
+// workspace token) and keep their anchors, in SKILL.md and in references/.
 func TestCodingSkillsAreAgnostic(t *testing.T) {
-	// Iterate over CodingSkills() (the real source, from embed) rather than codingAnchors,
-	// so a newly added skill that forgets to declare an anchor FAILS here instead of slipping
-	// past both the token-check and the anchor-check.
-	for _, skill := range CodingSkills() {
-		anchors, ok := codingAnchors[skill]
-		if !ok {
-			t.Errorf("skill %s has no entry in codingAnchors — add an anchor so the guard can check it", skill)
-			continue
-		}
-		body := readCodingFile(t, skill)
+	for skill, anchors := range codingAnchors {
+		dir := path.Join(embedRoot, "skills", skill)
+		body := readAsset(t, path.Join(dir, "SKILL.md"))
 		low := strings.ToLower(body)
-		for _, tok := range forbiddenTokens {
-			if strings.Contains(low, strings.ToLower(tok)) {
-				t.Errorf("skill %s contains forbidden token %q", skill, tok)
-			}
-		}
 		for _, a := range anchors {
 			if !strings.Contains(low, a) {
 				t.Errorf("skill %s missing anchor %q", skill, a)
 			}
 		}
-	}
-}
-
-func TestCodingSkillsListed(t *testing.T) {
-	got := CodingSkills()
-	found := false
-	for _, s := range got {
-		if s == "mongo-data-safety" {
-			found = true
+		texts := []string{low}
+		if refs, err := fs.ReadDir(assets, path.Join(dir, "references")); err == nil {
+			for _, r := range refs {
+				texts = append(texts, strings.ToLower(readAsset(t, path.Join(dir, "references", r.Name()))))
+			}
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal(err)
+		}
+		for _, tok := range forbiddenTokens {
+			for _, txt := range texts {
+				if strings.Contains(txt, strings.ToLower(tok)) {
+					t.Errorf("skill %s contains forbidden token %q", skill, tok)
+				}
+			}
 		}
 	}
-	if !found {
-		t.Fatalf("CodingSkills() missing mongo-data-safety: %v", got)
-	}
 }
 
-func TestGlobalSyncSkipsCoding(t *testing.T) {
+// SC-2: Sync materializes the seven under ~/.claude/skills/znf/skills/.
+func TestSyncMaterializesCodingSkills(t *testing.T) {
 	dest := t.TempDir()
-	man := dest + "/.manifest.json"
+	man := filepath.Join(dest, ".manifest.json")
 	if _, err := Sync(dest, man); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dest, "coding")); !os.IsNotExist(err) {
-		t.Fatalf("global Sync must NOT materialize assets/coding (err=%v)", err)
+	for skill := range codingAnchors {
+		if _, err := os.Stat(filepath.Join(dest, "skills", skill, "SKILL.md")); err != nil {
+			t.Errorf("%s not materialized by Sync: %v", skill, err)
+		}
 	}
 }

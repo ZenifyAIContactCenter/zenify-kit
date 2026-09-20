@@ -46,6 +46,7 @@ When multiple skills apply, process skills come first — they set the approach,
 
 - "Let's build X" → `znf:brainstorming` first, then implementation skills.
 - "Fix this bug" → `znf:fix` first, then domain skills.
+- "Domain skills" are routed, not guessed: `znf:_shared/skill-routing` maps the task's signals to `znf:<skill>` / `<repo>-conventions`; the plan's `_Skills:` tag carries the result to the implementer.
 
 ## Red Flags
 

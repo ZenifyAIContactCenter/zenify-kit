@@ -1,22 +1,22 @@
 ---
-title: /nestjs-patterns
+title: /znf:nestjs-patterns
 ---
 
-[Skill](/reference/skills/) / `/nestjs-patterns`
+[Skill](/reference/skills/) / `/znf:nestjs-patterns`
 
-# `/nestjs-patterns`
+# `/znf:nestjs-patterns`
 
 Quy ước viết backend NestJS — module, DTO, guard, truy cập model qua DI, envelope lỗi thống nhất.
 
 ## Cách gọi
 
 ```text
-/nestjs-patterns
+/znf:nestjs-patterns
 ```
 
 ## Khi nào dùng
 
-Khi viết hoặc sửa code backend NestJS. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi viết hoặc sửa code backend NestJS. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 

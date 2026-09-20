@@ -31,7 +31,7 @@ func TestDisciplinePointsToCraft(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), "coding skill") {
-		t.Fatal("discipline does not yet point to the repo-scoped coding craft set")
+	if !strings.Contains(string(b), "znf:_shared/skill-routing") {
+		t.Fatal("discipline does not route to the domain skills via znf:_shared/skill-routing")
 	}
 }

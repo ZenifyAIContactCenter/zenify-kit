@@ -94,7 +94,7 @@ func newDocsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			skills, err := docsgen.GenSkills(plugin.ZnfFS(), plugin.CodingFS())
+			skills, err := docsgen.GenSkills(plugin.ZnfFS())
 			if err != nil {
 				return err
 			}

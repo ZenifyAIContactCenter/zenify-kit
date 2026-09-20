@@ -63,6 +63,14 @@ var (
 	reqLineRe   = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_Requirements:")
 	markerToken = "[NEEDS CLARIFICATION" //nolint:gosec // G101 -- a spec marker string the scanner looks for, not a credential
 
+	// A _Skills: line (writing-plans FR-3.2, 2026-09-20) sits under _Requirements: in the same
+	// bullet+backtick form. Group 1 is the value: `none`, or a comma-separated skill list. It
+	// stops at the closing emphasis `_` or backtick, so prose after the tag (`- `_Skills: x_` —
+	// why`) never leaks into the last skill name; skill names themselves carry no `_`.
+	skillsLineRe = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_Skills:\\s*([^`_]*)")
+	// A routed skill is a plugin skill (znf:<x>) or a repo conventions skill (<x>-conventions).
+	skillNameRe = regexp.MustCompile(`^(?:znf:[a-z0-9-]+|[a-z0-9-]+-conventions)$`)
+
 	// Risk-metadata tags (M6c1): line-start markers inside ## Brief, same tolerance as
 	// reqLineRe — an optional list marker and any backtick/emphasis run before the literal
 	// tag. Capture group 1 is the value (may carry a trailing wrapper to trim).
@@ -105,9 +113,11 @@ func Analyze(specText, planText string) Result {
 	refSet := map[string]bool{} // top-level FR/SC cited in plan
 	planLines := strings.Split(planText, "\n")
 	type block struct {
-		title   string
-		hasReqs bool
-		refs    []string
+		title     string
+		hasReqs   bool
+		refs      []string
+		hasSkills bool
+		skills    []string
 	}
 	var blocks []block
 	cur := -1
@@ -129,6 +139,15 @@ func Analyze(specText, planText string) Result {
 			if cur >= 0 {
 				blocks[cur].hasReqs = true
 			}
+		}
+		if m := skillsLineRe.FindStringSubmatch(ln); m != nil && cur >= 0 {
+			for _, s := range strings.Split(tagValue(m[1]), ",") {
+				if s = strings.TrimSpace(s); s != "" {
+					blocks[cur].skills = append(blocks[cur].skills, s)
+				}
+			}
+			// An empty tag (`_Skills: _`) declares nothing: it stays missing-skills.
+			blocks[cur].hasSkills = len(blocks[cur].skills) > 0
 		}
 	}
 	for id := range refSet {
@@ -157,6 +176,21 @@ func Analyze(specText, planText string) Result {
 		if !b.hasReqs {
 			r.add(Finding{Severity: High, Kind: "orphan-task", Location: b.title,
 				Message: "task declares no _Requirements:"})
+		}
+	}
+	// --- skills routing (HIGH): every task names its skills, and each name resolves ---
+	for _, b := range blocks {
+		if !b.hasSkills {
+			r.add(Finding{Severity: High, Kind: "missing-skills", Location: b.title,
+				Message: "task declares no _Skills: (use `none` when no skill applies)"})
+			continue
+		}
+		for _, s := range b.skills {
+			if s == "none" || skillNameRe.MatchString(s) {
+				continue
+			}
+			r.add(Finding{Severity: High, Kind: "unknown-skill", ID: s, Location: b.title,
+				Message: "skill name is neither none, znf:<skill> nor <repo>-conventions"})
 		}
 	}
 	// --- dangling ref (HIGH): plan cites an FR the spec never declares ---

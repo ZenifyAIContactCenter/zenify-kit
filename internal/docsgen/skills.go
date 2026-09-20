@@ -8,11 +8,11 @@ import (
 	"strings"
 )
 
-// GenSkills renders skills/<name>.md (znf + coding), agents/<name>.md and
+// GenSkills renders skills/<name>.md (znf), agents/<name>.md and
 // both indexes. Prose comes from the catalog; the invocation line and the
 // user-only warning come from the frontmatter. Skill bodies are agent-read
 // and are never copied (FR-2.2).
-func GenSkills(znf, coding fs.FS) (Files, error) {
+func GenSkills(znf fs.FS) (Files, error) {
 	files := Files{}
 	var skillRows, agentRows []string
 
@@ -43,9 +43,6 @@ func GenSkills(znf, coding fs.FS) (Files, error) {
 	}
 
 	if err := eachSkill(znf, "skills", func(fm Frontmatter) { addSkill(fm, "znf:") }); err != nil {
-		return nil, err
-	}
-	if err := eachSkill(coding, ".", func(fm Frontmatter) { addSkill(fm, "") }); err != nil {
 		return nil, err
 	}
 	agents, _ := fs.ReadDir(znf, "agents")
@@ -79,7 +76,7 @@ func GenSkills(znf, coding fs.FS) (Files, error) {
 	}
 	sort.Strings(skillRows)
 	sort.Strings(agentRows)
-	files["skills/index.md"] = index("Skill", "skills/index", "Skill `znf:*` gọi bằng `/znf:<name>`; coding skill gọi bằng `/<name>` sau `zenify skills install`.", skillRows) //znf:allow-lang
+	files["skills/index.md"] = index("Skill", "skills/index", "Skill `znf:*` gọi bằng `/znf:<name>`, có sẵn ở mọi repo sau `zenify skills sync`.", skillRows) //znf:allow-lang
 	files["agents/index.md"] = index("Agent", "agents/index", "Agent được skill dispatch qua Agent tool; bạn không gọi trực tiếp.", agentRows)                                 //znf:allow-lang
 	return files, nil
 }

@@ -1,22 +1,22 @@
 ---
-title: /mongoose-modeling
+title: /znf:mongoose-modeling
 ---
 
-[Skill](/reference/skills/) / `/mongoose-modeling`
+[Skill](/reference/skills/) / `/znf:mongoose-modeling`
 
-# `/mongoose-modeling`
+# `/znf:mongoose-modeling`
 
 Thiết kế schema Mongoose an toàn — index, lean/populate, discriminator, thứ tự thêm field mới.
 
 ## Cách gọi
 
 ```text
-/mongoose-modeling
+/znf:mongoose-modeling
 ```
 
 ## Khi nào dùng
 
-Khi thiết kế hoặc sửa một schema Mongoose. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi thiết kế hoặc sửa một schema Mongoose. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 

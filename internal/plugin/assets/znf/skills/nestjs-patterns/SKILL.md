@@ -158,77 +158,25 @@ belong to more than one tenant.
 
 ## Service layering / DI
 
-A base service class (a generic CRUD/pagination base) belongs behind
-`extends`, not copy-pasted per module — a feature service adds only what is
-specific to that collection on top of it:
-
-```ts
-@Injectable()
-export class AgentGroupService extends BaseCrudService<AgentGroupDocument> {
-  constructor(@InjectModel(AgentGroup.name) model: Model<AgentGroupDocument>) {
-    super(model);
-  }
-
-  async create(data: CreateAgentGroupInput, createdBy: string, tenantId: string) {
-    const existing = await this.model.findOne({ name: data.name, tenant_id: tenantId });
-    if (existing) throw new ConflictException('agent-group already exists');
-    return new this.model({ ...data, created_by: createdBy, tenant_id: tenantId }).save();
-  }
-}
-```
-
-Everything a service needs — models, other services, config — arrives through
-constructor injection. A service should never reach for a global singleton or
-`require()` another module's internals directly; that is what makes it
-testable by swapping the injected dependency for a mock, and what keeps the
-module graph (who depends on whom) visible from the `@Module()` declarations
-alone.
+A base service class (a generic CRUD/pagination base) belongs behind `extends`, not
+copy-pasted per module. Everything a service needs arrives through constructor
+injection, never a global singleton. Full example: `references/service-layering.md`.
 
 ## Error envelope
 
-Nest's default behavior on a thrown `HttpException` is a bare
-`{ statusCode, message, error }` body. A production API generally wants a
-richer, consistent envelope on every error response — request id for log
-correlation, a stable machine-readable error code separate from the HTTP
-status, and a timestamp — produced by one global exception filter rather than
-by each controller catching its own errors:
-
-```ts
-@Catch()
-export class AllExceptionsFilter implements ExceptionFilter {
-  catch(exception: unknown, host: ArgumentsHost) {
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
-    const status = exception instanceof HttpException
-      ? exception.getStatus()
-      : HttpStatus.INTERNAL_SERVER_ERROR;
-
-    response.status(status).json({
-      status_code: status,
-      timestamp: new Date().toISOString(),
-      path: request.url,
-      request_id: (request as any).requestId ?? 'unknown',
-      error_code: exception instanceof HttpException ? exception.name : 'InternalServerError',
-      message: exception instanceof HttpException ? exception.getResponse() : 'Internal server error',
-    });
-  }
-}
-```
-
-Register it once, application-wide, alongside the global `ValidationPipe` — a
-filter registered per-controller is easy to forget on a new one, and then that
-route's errors silently fall back to Nest's default shape while every other
-route matches the documented contract. A matching success-side interceptor
-(wrapping `{ data, status_code, timestamp, path }` around every 2xx response)
-keeps both sides of the contract symmetric, which is what a frontend or another
-service actually integrates against.
+One global `@Catch()` exception filter produces every error body (`status_code`, `timestamp`,
+`path`, `request_id`, `error_code`, `message`) — never a per-controller catch. Full filter +
+the symmetric success interceptor: `references/error-envelope.md`.
 
 ## Cross-refs
 
 - An HTTP response shape consumed by another service or the frontend →
   `znf:ship`'s verification step and, for a shared contract, `znf:gate`.
 - Mongoose schema/index design and safe field rollout on the model the
-  `@InjectModel` above wires in → the `mongoose-modeling` skill.
-- Tenant-scoping and raw-driver traps on the same collection → the
-  `mongo-data-safety` skill.
+  `@InjectModel` above wires in → `znf:mongoose-modeling`.
+- Tenant-scoping and raw-driver traps on the same collection → `znf:mongo-data-safety`.
+
+## References
+
+- `references/error-envelope.md` — the global exception filter and success interceptor, in full.
+- `references/service-layering.md` — the base CRUD service class and constructor injection, in full.

@@ -101,7 +101,7 @@ func TestDocsGen_CatalogCoversEveryPage(t *testing.T) {
 		}
 	}
 	walk(root)
-	skills, err := docsgen.GenSkills(plugin.ZnfFS(), plugin.CodingFS())
+	skills, err := docsgen.GenSkills(plugin.ZnfFS())
 	if err != nil {
 		t.Fatal(err)
 	}
