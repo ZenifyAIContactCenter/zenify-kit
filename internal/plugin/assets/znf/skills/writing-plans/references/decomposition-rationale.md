@@ -20,3 +20,15 @@ A task is the smallest unit that carries its own test cycle and is worth a fresh
 ## Necessity Note forcing function
 
 This is the plan-time forcing function against over-engineering (adapted from spec-kit's Complexity Tracking): a deviation from the smallest thing that works must name the simpler thing it rejected and why.
+
+## Necessity Note (fill only on violation)
+
+Constitution P6 (necessity ladder) applies at plan time too. If a task builds MORE than the
+smallest thing that works — a new abstraction, a new dependency, an extra layer — justify it in
+three labeled lines, and only then:
+
+- What is built: the extra abstraction / dependency / layer
+- Why it is needed: the concrete reason the smallest thing does not suffice
+- Simpler alternative rejected because: why the one-line / stdlib / existing-path option fails
+
+No violation → omit the section.

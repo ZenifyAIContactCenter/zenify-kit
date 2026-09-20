@@ -46,7 +46,7 @@ Before defining tasks, map out which files will be created or modified and what 
 
 ## Task Right-Sizing
 
-A task is the smallest unit that carries its own test cycle and is worth a fresh reviewer's gate — fold setup/config/scaffolding/docs into the task whose deliverable needs them, split only where a reviewer could meaningfully reject one task while approving its neighbor. Each task ends with an independently testable deliverable. See `references/decomposition-rationale.md` for why.
+A task is the smallest unit that carries its own test cycle and is worth a fresh reviewer's gate — fold setup/config/scaffolding/docs into the task whose deliverable needs them, split only where a reviewer could meaningfully reject one task while approving its neighbor. Each task ends with an independently testable deliverable. See `references/decomposition-rationale.md` for why. Splitting is the step that deserves depth: **Think hard before responding.** (steering sentence, unmeasured — see the spec's Non-goals; route-log thinking_tokens will tell).
 
 ## Bite-Sized Task Granularity
 
@@ -152,15 +152,7 @@ Every step must contain the actual content an engineer needs. These are **plan f
 
 ## Necessity Note (fill only on violation)
 
-Constitution P6 (necessity ladder) applies at plan time too. If a task builds MORE than the
-smallest thing that works — a new abstraction, a new dependency, an extra layer — justify it in
-three labeled lines, and only then:
-
-- What is built: the extra abstraction / dependency / layer
-- Why it is needed: the concrete reason the smallest thing does not suffice
-- Simpler alternative rejected because: why the one-line / stdlib / existing-path option fails
-
-No violation → omit the section. See `references/decomposition-rationale.md` for why.
+A task that builds more than the smallest thing that works justifies it in three labeled lines (What is built / Why it is needed / Simpler alternative rejected because) — `references/decomposition-rationale.md` § Necessity Note. No violation → omit.
 
 ## Self-Review
 

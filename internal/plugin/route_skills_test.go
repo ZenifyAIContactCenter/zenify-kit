@@ -58,3 +58,13 @@ func TestScoutAgent_ConsumerCountLine(t *testing.T) {
 	s := syncedAsset(t, "agents/scout.md")
 	assertContainsAll(t, "scout.md", s, []string{"consumers: N", "last line"})
 }
+
+func TestWritingPlans_SteeringAtTaskSplit(t *testing.T) {
+	s := syncedAsset(t, "skills/writing-plans/SKILL.md")
+	assertContainsAll(t, "writing-plans/SKILL.md", s, []string{"Think hard before responding.", "unmeasured"})
+	if len(s) > 8192 || strings.Count(s, "\n") > 200 {
+		t.Fatalf("writing-plans over cap: %d bytes", len(s))
+	}
+	dr := syncedAsset(t, "skills/writing-plans/references/decomposition-rationale.md")
+	assertContainsAll(t, "decomposition-rationale.md", dr, []string{"Necessity Note", "What is built", "Why it is needed", "Simpler alternative rejected because"})
+}
