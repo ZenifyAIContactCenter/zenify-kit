@@ -66,7 +66,7 @@ Kiểm tra một cặp spec và plan trước khi code, mang tính tư vấn, kh
 /znf:analyze docs/specs/contact-center-be/2026-09-14-ticket-tags-design.md docs/plans/contact-center-be/2026-09-14-ticket-tags.md
 ```
 
-Phần cơ học (`zenify analyze`) kiểm: FR nào không có task nào phủ, task nào không khai `_Requirements:`, plan trích FR không có trong spec, marker `[NEEDS CLARIFICATION` còn sót, Brief có đủ 8 field không, và ba tag rủi ro `_Blast-radius:`, `_DB:`, `_Rollback:` có mặt không. Phần phán đoán thêm của skill xét: tiêu chí thành công có kiểm được không, Brief có giải thích vì sao đường hiện có không đủ, khối DB guarantees có thật hay chỉ ghi chung chung, và ba tag rủi ro có nội dung thật không. Báo cáo mở đầu bằng câu nhắc đây là tư vấn, không chặn.
+Phần cơ học (`zenify analyze`) kiểm: FR nào không có task nào phủ, task nào không khai `_Requirements:`, task nào thiếu tag `_Skills:` hoặc ghi tên skill không tồn tại (`missing-skills`, `unknown-skill`, đều HIGH; giá trị hợp lệ là `none`, `znf:<skill>` hoặc `<repo>-conventions` theo `_shared/skill-routing`), plan trích FR không có trong spec, marker `[NEEDS CLARIFICATION` còn sót, Brief có đủ 8 field không, và ba tag rủi ro `_Blast-radius:`, `_DB:`, `_Rollback:` có mặt không. Phần phán đoán thêm của skill xét: tiêu chí thành công có kiểm được không, Brief có giải thích vì sao đường hiện có không đủ, khối DB guarantees có thật hay chỉ ghi chung chung, và ba tag rủi ro có nội dung thật không. Báo cáo mở đầu bằng câu nhắc đây là tư vấn, không chặn.
 
 ### `/znf:standards`
 

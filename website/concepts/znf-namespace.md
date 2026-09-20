@@ -18,6 +18,7 @@ Namespace `znf:` tránh việc này bằng cách không dùng chung tên. Mọi 
 | Sự cố | `fix`, `hotfix` | debug với log thật; sửa production từ base release |
 | Hợp đồng chia sẻ | `gate`, `contract-sweep`, `explain-plan` | sweep cross-repo, DB-perf gate |
 | Vận hành | `run`, `sweep`, `prune-memory` | chạy app thật, dọn worktree, dọn memory |
+| Domain skill | `mongo-data-safety`, `sql-data-safety`, `mongoose-modeling`, `service-integration`, `express-service-patterns`, `nestjs-patterns`, `react-patterns` | idiom theo stack; không gọi tay mà được route: bảng `_shared/skill-routing` ánh xạ tín hiệu trong task (chạm Mongo, SQL, schema, pub/sub, Express, NestJS, React) sang tên skill, plan ghi kết quả vào tag `_Skills:` của từng task, implementer invoke trước lần sửa đầu. Skill `<repo>-conventions` vẫn nằm trong từng repo |
 
 Danh sách đầy đủ sinh tự động từ binary, xem [tham chiếu Skill](/reference/skills/).
 
