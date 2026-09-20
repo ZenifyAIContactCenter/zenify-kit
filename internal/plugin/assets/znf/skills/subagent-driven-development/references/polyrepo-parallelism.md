@@ -14,7 +14,7 @@ writing into two repos cannot collide. Run them in parallel.
 - **One ledger, repo-tagged.** Keep the single plan ledger; tag each task line with its repo
   (`[be] Task 3: complete`). Each repo's review loop runs on its own stream.
 - **Collect each stream by name** — you must collect each repo-stream's report and treat
-  silence as incomplete, never as clean (CLAUDE.md §3). Keep one TodoWrite line per repo-stream.
+  silence as incomplete, never as clean (CLAUDE.md §3). Keep one ledger line per repo-stream.
   A stream that went quiet is NOT done.
 - **Within one repo, tasks stay sequential** — the rule above is unchanged; only the
   across-repo case is the exception.

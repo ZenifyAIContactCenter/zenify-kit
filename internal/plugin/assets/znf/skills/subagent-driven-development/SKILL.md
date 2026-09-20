@@ -19,8 +19,8 @@ Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
 Work in an isolated workspace (`wt new`, znf:discipline §8), or verify the existing one. Never implement on main/master without explicit consent.
 
 - **Each plan owns a workspace:** `scripts/sdd-workspace PLAN_FILE` prints its git-ignored directory (`<repo-root>/.znf/sdd/<plan-basename>/`), holding this plan's artifacts alone.
-- **Track progress in a ledger file, not only in todos**, at `<workspace>/progress.md`, first line `# SDD ledger — plan: <plan file path>`. **Resume from it**: `Task <N>: complete` is never re-dispatched; a task ending in a fix round resumes there.
-- **Read the plan once** and the Spec it names (conflicts resolve against the spec), note the Global Constraints, make a todo per task, then **scan for conflicts before Task 1**, ledgering the table with a ruling per row (`references/setup-rationale.md`).
+- **Track progress in a ledger file, not in todos**, at `<workspace>/progress.md`, first line `# SDD ledger — plan: <plan file path>`. **Resume from it**: `Task <N>: complete` is never re-dispatched; a task ending in a fix round resumes there.
+- **Read the plan once** and the Spec it names (conflicts resolve against the spec), note the Global Constraints, then **scan for conflicts before Task 1**, ledgering the table with a ruling per row (`references/setup-rationale.md`).
 
 ## Model Selection
 
@@ -74,7 +74,7 @@ Review clean, or every open finding parked with a ruling at the cap → append:
 - `Task <N>: complete (commits <base7>..<head7>, review clean)`
 - `Task <N>: complete (commits <base7>..<head7>, <K> parked)` after a tripped breaker
 
-Then mark the todo complete. Never start the next task with Critical/Important issues neither fixed nor parked with a ruling at the cap.
+Never start the next task with Critical/Important issues neither fixed nor parked with a ruling at the cap.
 
 ## Final Review
 

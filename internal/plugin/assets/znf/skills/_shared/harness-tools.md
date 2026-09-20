@@ -20,7 +20,7 @@ Two rules for skill authors:
 |---|---|---|
 | Dispatch a subagent (fresh context, returns a report) | `Agent` (`subagent_type`, `model`, `prompt`) | — |
 | Invoke another kit skill | `Skill` (`znf:<name>`) | — |
-| Task ledger visible to the user (one line per dispatched agent) | `TodoWrite` / `TaskCreate` + `TaskUpdate` | — |
+| Ledger of dispatched agents (one line each) | a file the skill names (SDD `progress.md`, ship board) — not `TodoWrite`/`TaskCreate`: each call is an extra API turn | — |
 | Ask the user to choose between options | `AskUserQuestion` | — |
 | Read a file / search text / find files | `Read` / `Grep` / `Glob` | — |
 | Edit or create a file | `Edit` / `Write` | — |

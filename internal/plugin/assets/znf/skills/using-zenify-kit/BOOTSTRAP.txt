@@ -7,7 +7,7 @@ You have the `znf:*` workflow skills. This is a short reminder of the working di
 - Verify before "done": show real output from the real path — "it builds" is not verification. A dispatched agent going idle is not a result.
 - Worktree per change, no conditions: branch before the first edit; spec and plan stay in the main checkout.
 - Smallest diff that works: match the surrounding style; no speculative abstraction or unasked options.
-- Plan anything over ~3 steps with a TodoWrite list; one item per dispatched agent, ticked only when its report is in hand.
+- Track anything over ~3 steps in the skill's ledger file, not the harness task list; one line per dispatched agent, ticked only when its report is in hand.
 - Memory: save the reusable rule (not the event) when you had to dig for it or were corrected; MEMORY.md is an index, never content.
 - Git: commit and push feature branches freely; never commit/push/merge deploy branches; never open PRs or merge — report the branch and stop.
 - External facts (library API, a version, "latest", pricing): search first and cite fetched text; never invent a citation from memory.
