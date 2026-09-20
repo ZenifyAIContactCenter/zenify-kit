@@ -99,11 +99,11 @@ After Step 6 and **before** `/ship`, **`Skill(znf:standards)`** on spec + plan +
 
 ## Step 7: Pre-ship gate
 
-**`Skill(znf:ship)`**: lint + build → contract gate → behavioural verification → review → deploy order → commit + push the branch, then **open the PR** (never merge). **`cat` the board file `${TMPDIR:-/tmp}/ship-board-<fp10>.md`; never retype or summarise it.**
+**`Skill(znf:ship)`**: lint + build → contract gate → behavioural verification → review → deploy order → commit + push, then **open the PR** (never merge). **`cat` the board file `${TMPDIR:-/tmp}/ship-board-<fp10>.md`; never retype or summarise it.**
 
 ## Which model runs which step
 
-Steps 0–5 run in the **main loop**; keep the session on Opus. Unlisted effort: default.
+Steps 0–5 run in the **main loop** on Opus. Unlisted effort: default.
 
 | Step | Runs as | Model / effort |
 |---|---|---|
@@ -111,9 +111,9 @@ Steps 0–5 run in the **main loop**; keep the session on Opus. Unlisted effort:
 | 6 Implement | subagents via SDD | SDD Model Selection: `haiku` transcription → `opus` design judgment; `xhigh` on sonnet+ only |
 | 6 Fix loop | r1-3 same implementer · r4-5 fresh, +1 tier | unchanged · `opus` **`xhigh`** |
 | 6/7 UI check | `znf:ui-verifier` agent | sonnet (pinned) |
-| 7 Ship review | `code-reviewer` agent | **explicit, scaled to the diff**; effort `high` |
+| 7 Ship review | `code-reviewer` agent | **explicit, scaled to diff**; effort `high` |
 
-**Name the tier on every dispatch** — with no explicit model a dispatch runs on sonnet (`CLAUDE_CODE_SUBAGENT_MODEL`), never the session model.
+**Name the tier and the return cap on every dispatch** — no explicit model means sonnet (`CLAUDE_CODE_SUBAGENT_MODEL`), never the session model; ≤ 40 lines back, long output to a file.
 
 ## References
 

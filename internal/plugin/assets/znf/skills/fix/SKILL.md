@@ -5,12 +5,12 @@ argument-hint: "[description | github-actions-url | empty for auto-log]"
 allowed-tools: Read Grep Glob Bash Agent WebFetch
 ---
 
-**Rigid on diagnosis-first.** Never guess the fix before seeing the real error. Tool names for each
-action: `znf:_shared/harness-tools` (harness mapping table).
+**Rigid on diagnosis-first.** Never guess the fix before seeing the real error. Tool names:
+`znf:_shared/harness-tools` (harness mapping table).
 
 ## How much diagnosis
 
-It never skips a step, least of all Step 2: state the confirmed cause, with its evidence, before
+It never skips a step, least of all Step 2: state the confirmed cause, with evidence, before
 writing any fix.
 
 
@@ -69,7 +69,7 @@ and what changed recently (`git log --oneline -10`, `git diff HEAD~1`)?
 
 
 
-**On the Wide path: one investigator agent per hypothesis, all dispatched in ONE message.**
+**On the Wide path: one investigator agent per hypothesis, all dispatched in ONE message, each told to return ≤ 40 lines (evidence to a file).**
 Identify 2-3 independent hypotheses and the evidence that would settle each. Dispatch one `Explore`
 agent per hypothesis — **all in a single message**, which makes them concurrent — and **name
 `model: 'sonnet'` on each** (`Explore` pins no model). Give each one hypothesis, its settling

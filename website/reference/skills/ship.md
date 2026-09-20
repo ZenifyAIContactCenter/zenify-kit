@@ -14,10 +14,6 @@ Cổng trước khi ship — lint, build, gate hợp đồng, xác minh hành vi
 /znf:ship
 ```
 
-::: warning Chỉ bạn gõ được
-Agent không tự chạy skill này, chỉ đề xuất. Bạn gõ lệnh khi thấy cần.
-:::
-
 ## Khi nào dùng
 
 Khi công việc đã xong và sắp được commit. `/znf:cook`, `/znf:fix`, và `/znf:hotfix` đều gọi skill này một cách vô điều kiện ở bước cuối, không chỉ khi thay đổi chạm nhiều repo. Xem [ship: verify và mở PR](/workflows/ship).
