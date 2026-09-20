@@ -64,3 +64,37 @@ func TestResearcherAgent_Shipped(t *testing.T) {
 	}
 	assertProjectAgnostic(t, "researcher.md", s)
 }
+
+// FR-1: research skill — forked lead, sonnet workers, haiku verifier, file output, 40-line return.
+func TestResearchSkill_Shipped(t *testing.T) {
+	s := syncedAsset(t, "skills/research/SKILL.md")
+	assertContainsAll(t, "research/SKILL.md", s, []string{
+		"name: research",
+		"context: fork",
+		"background: false",
+		"$ARGUMENTS",
+		"znf:researcher",
+		"model: sonnet",
+		"model: haiku",
+		"mode: verify",
+		"znf-research-",
+		"verify.md",
+		"docs/reference/",
+		"not found",
+		"40 lines",
+		"references/output-contract.md",
+		"references/scale-and-cost.md",
+		"\n## References",
+	})
+	if strings.Contains(s, "AskUserQuestion") {
+		t.Error("research/SKILL.md runs forked: it must not reach for AskUserQuestion")
+	}
+	assertProjectAgnostic(t, "research/SKILL.md", s)
+	for _, ref := range []string{"references/output-contract.md", "references/scale-and-cost.md"} {
+		r := syncedAsset(t, "skills/research/"+ref)
+		if strings.Contains(r, "references/") {
+			t.Errorf("%s must not link into references/ (one-level rule)", ref)
+		}
+		assertProjectAgnostic(t, ref, r)
+	}
+}
