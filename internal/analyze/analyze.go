@@ -78,11 +78,9 @@ var (
 )
 
 // tagValue strips a risk-metadata tag value of trailing backtick/emphasis wrappers and
-// surrounding space; "" means the tag carried no content (treated as absent). The cutset
-// includes "_" because a tag like `_Skills: none_` closes with the emphasis underscore
-// that opened it, same as the trailing backtick a code span adds.
+// surrounding space; "" means the tag carried no content (treated as absent).
 func tagValue(s string) string {
-	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(s), "`*_"))
+	return strings.TrimSpace(strings.TrimRight(strings.TrimSpace(s), "`*"))
 }
 
 // topLevel strips a sub-part: FR-1.2 -> FR-1, SC-3 -> SC-3.
@@ -142,7 +140,7 @@ func Analyze(specText, planText string) Result {
 		}
 		if m := skillsLineRe.FindStringSubmatch(ln); m != nil && cur >= 0 {
 			blocks[cur].hasSkills = true
-			for _, s := range strings.Split(tagValue(m[1]), ",") {
+			for _, s := range strings.Split(strings.TrimSuffix(tagValue(m[1]), "_"), ",") {
 				if s = strings.TrimSpace(s); s != "" {
 					blocks[cur].skills = append(blocks[cur].skills, s)
 				}
