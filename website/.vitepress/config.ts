@@ -96,6 +96,7 @@ export default withMermaid({
         { text: 'Review và gate', link: '/guides/review-and-gates' },
         { text: 'Spec, plan và kiểm tra', link: '/guides/spec-and-plan' },
         { text: 'Release và báo cáo', link: '/guides/release' },
+        { text: 'Changelog', link: '/changelog' },
         { text: 'Knowledge store và config team', link: '/guides/knowledge-and-config' },
         { text: 'Quan sát và an toàn', link: '/guides/observe-and-safety' },
         { text: 'Kiểm thử UI', link: '/workflows/ui-testing' },
