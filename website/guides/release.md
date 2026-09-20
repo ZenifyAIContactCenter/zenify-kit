@@ -96,7 +96,7 @@ flowchart TD
 2. **Đóng khoảng trống trước khi tag:** thiếu trang thì mở PR docs, merge, rồi mới tiếp. Rule `kit-release-docs` trong knowledge store nhắc agent điều này mỗi khi sửa kit; hành vi bị bỏ (một bước, một cờ, một gate) phải xoá câu tương ứng trên site trong cùng PR.
 3. **Kiểm `main`:** `zenify docs gen --check` khớp, `npm run docs:build` build xong, CI `main` xanh.
 4. **Đánh số:** có `feat` → tăng minor (`v0.23.0` → `v0.24.0`); chỉ `fix` → tăng patch.
-5. **Tag và đẩy:** `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`. Theo dõi `gh run list --workflow release`; `gh release view vX.Y.Z` phải có `checksums.txt` cùng 6 archive (3 OS × 2 arch), và commit cask/manifest xuất hiện trên `main`.
+5. **Tag và đẩy:** `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`. Theo dõi `gh run list --workflow release`; `gh release view vX.Y.Z` phải có `checksums.txt` cùng 6 archive (3 OS × 2 arch), và commit cask/manifest xuất hiện trên `main`. Commit đó làm site rebuild, và trang [Changelog](/changelog) tự hiện release mới.
 6. **Phân phối:** teammate chạy `brew upgrade --cask zenify && zenify up --apply` (hoặc `zenify update`). Skill mới tới máy qua `zenify skills sync`, hook mới qua `zenify up`.
 
 ::: warning Không tag khi còn khoảng trống docs
@@ -109,7 +109,7 @@ Tag là quyết định release của người, không của agent. Agent chuẩ
 
 ## Xem thêm
 
-[`/reference/cli/zenify_release-note`](/reference/cli/zenify_release-note), [`/reference/cli/zenify_release-report`](/reference/cli/zenify_release-report), [ship: verify và mở PR](/workflows/ship)
+[Changelog](/changelog), [`/reference/cli/zenify_release-note`](/reference/cli/zenify_release-note), [`/reference/cli/zenify_release-report`](/reference/cli/zenify_release-report), [ship: verify và mở PR](/workflows/ship)
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - internal/docsgen/catalog/cli/zenify_release-note.md, zenify_release-report.md
