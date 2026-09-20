@@ -47,14 +47,15 @@ Yêu cầu càng đủ các trường dưới đây, bước brainstorm càng ng
 flowchart TD
   A["0. Fetch base ref"] --> B["1. Ground yêu cầu"]
   B --> C["2. Brainstorm"]
-  C --> D["Chốt thiết kế"]
+  C --> C2["Research check → /znf:research nếu checklist bật"]
+  C2 --> D["Chốt thiết kế"]
   D --> E["Duyệt spec"]
   E --> F["3. Ground spec"]
   F --> G["4. Scout"]
   G --> H["5. Viết plan, analyze"]
   H --> I["6. Worktree và SDD"]
   I --> J["7. /znf:ship"]
-  class A,B,C,F,G,H,I,J action
+  class A,B,C,C2,F,G,H,I,J action
   class D,E user
 ```
 
@@ -64,7 +65,7 @@ flowchart TD
 |---|---|---|
 | 0 | `git fetch` base ref của mỗi repo liên quan | Không cần làm gì |
 | 1 | Ground các tên trong yêu cầu bằng `zenify db-read collections/doc` | Đọc kết quả ground |
-| 2 | Brainstorm 9 bước | Chốt thiết kế, rồi duyệt spec trước khi kit ghi file. Kit dừng chờ bạn ở cả hai gate |
+| 2 | Brainstorm 11 bước. Sau câu hỏi làm rõ, bước **Research check** chạy checklist năm mục; một mục đúng thì gọi `/znf:research` (chạy tách context, trả về ≤ 40 dòng) trước khi đề xuất phương án | Chốt thiết kế, rồi duyệt spec trước khi kit ghi file. Kit dừng chờ bạn ở cả hai gate. Đọc khối scope của research nếu có |
 | 3 | Ground lại mọi tên trong spec vừa chốt | Đọc nếu có mâu thuẫn. Spec được sửa trước khi viết plan |
 | 4 | Chạy `/znf:scout` (agent) tìm nơi phụ thuộc vào phần sắp đổi | Đọc báo cáo scout |
 | 5 | Viết plan. `/znf:analyze` chạy tư vấn, không chặn | Đọc plan, xem finding của analyze nếu có |
