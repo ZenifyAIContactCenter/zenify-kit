@@ -58,7 +58,7 @@ always   verify with real output before saying it works
 - **The index is an index, never content** (its tail is dropped silently). **Update, don't accumulate** — two memories are never both authoritative on one subject.
 
 ## 5 — Plan before non-trivial work
-- **Keep a task list for anything over ~3 steps and tick it as you go**; a stale list asserts a false state. It mirrors an existing ledger, never duplicates it. **Any turn that dispatches subagents is over the threshold.**
+- **Track multi-step work in the skill's ledger file** (SDD `progress.md`, ship board), never the harness task list: each list call is an extra API turn. **Name every dispatched agent there; tick only with its report in hand.**
 - Non-trivial feature → design/plan and get agreement before coding. Trivial change → just do it.
 
 ## 6 — Balance

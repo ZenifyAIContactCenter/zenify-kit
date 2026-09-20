@@ -36,6 +36,10 @@ Hook `PostToolUse` đo byte kết quả tool. Một kết quả trên 50 KB sinh
 
 `znf:discipline` §10: mọi dispatch ghi rõ cap trả về, tối đa 40 dòng. Bảng, danh sách dài, log ghi ra file và trả đường dẫn. Đây là quy tắc bằng chữ, không có hook chặn; tin nhắn agent trả về là nguồn lớn thứ hai lấp context sau kết quả tool.
 
+## Task list của harness: tắt
+
+Kit không dùng `TodoWrite`/`TaskCreate`. Đo trên bốn phiên (2026-09-20): mỗi lệnh task list là một lượt API riêng, không lượt nào gộp cùng tool khác, và các lượt đó chiếm 7 đến 18% chi phí lượt tool (đọc cache cộng token suy nghĩ), trong khi nội dung bảng chỉ dưới 3% byte. Tiến độ nằm trong ledger file mà skill đặt tên: `progress.md` của SDD, board của ship, scope block của research. Agent im lặng vẫn hiện là dòng chưa tick trong file, và file sống qua compaction. Đừng đặt `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` trong settings.
+
 ## Việc bạn tự làm
 
 - Chạy `/context` một lần trên máy mình. MCP server nào bạn không dùng trong workspace này thì tắt; mỗi server chiếm vài nghìn token schema ở mọi turn.

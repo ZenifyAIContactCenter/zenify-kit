@@ -40,7 +40,7 @@ In doubt, take the heavier path. One-way ratchet: hidden complexity found mid-ta
 
 ## Checklist
 
-Classify first, announce the path, then create a task per item and do them in order.
+Classify first, announce the path, then do the items in order.
 
 **Spike:**
 1. **Explore project context** — enough to frame the probe
