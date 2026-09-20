@@ -12,6 +12,7 @@ Mọi skill của kit, kể cả bộ skill coding theo stack (Express, NestJS, 
 
 | Tên | Mô tả |
 |---|---|
+| [/znf:advisor](./advisor) | Ý kiến thứ hai từ model mạnh trong context mới cho câu hỏi bất kỳ — thay cho việc đổi model session; gọi tay hoặc theo cụm chữ tường minh, mọi lần gọi được ghi vào route-log. |
 | [/znf:analyze](./analyze) | Kiểm tra cặp spec và plan trước khi code: độ phủ FR sang task, marker chưa làm rõ, cấu trúc Brief và bốn tiêu chí chất lượng. |
 | [/znf:brainstorming](./brainstorming) | Biến ý tưởng thành thiết kế đã được bạn duyệt qua hội thoại, phân loại việc thành spike, bounded hoặc architectural. |
 | [/znf:contract-sweep](./contract-sweep) | Quét một contract chung qua nhiều repo, mỗi repo một agent, phán BREAKING, RISKY hoặc SAFE cho từng chỗ dùng. |
