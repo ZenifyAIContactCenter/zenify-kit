@@ -73,6 +73,36 @@ Không truyền số release, lệnh tự lấy số lớn nhất tìm thấy tr
 
 Mỗi dòng trong báo cáo lấy metadata từ commit ghi chú của `zenify release-note`. Thay đổi có trong release nhưng chưa có trên `staging` được đánh dấu là regression, để bạn biết một hotfix chưa sync ngược.
 
+## Cắt release cho zenify-kit
+
+Release của kit là một tag `v*` đẩy lên `main`: workflow `release` chạy GoReleaser, dựng binary cho 6 target, cập nhật Homebrew cask và Scoop manifest ngay trong repo. Tag đẩy lên là đã release, không rút lại được, nên mọi việc kiểm phải xong trước khi tag.
+
+```mermaid
+flowchart TD
+  A["git log last-tag..origin/main"] --> B{"feat/fix nào chưa có trang trên site?"}
+  B -->|có| C["PR cập nhật website/ → merge"]
+  B -->|không| D["docs gen --check + docs:build xanh trên main"]
+  C --> D
+  D --> E["git tag vX.Y.Z origin/main; git push origin vX.Y.Z"]
+  E --> F["gh run watch → gh release view: 7 asset"]
+  F --> G["brew upgrade --cask zenify && zenify up --apply"]
+  class A,C,D,F action
+  class B,E,G user
+```
+
+*Từ main tới binary trên máy teammate*
+
+1. **Liệt kê thay đổi:** `git log --oneline <tag cuối>..origin/main`. Với mỗi commit `feat`/`fix`, nêu trang trên site mô tả nó. Trang `reference/**` sinh tự động và đã được `docs gen --check` chặn trong CI; các trang `concepts/`, `workflows/`, `guides/`, `getting-started/` viết tay và **không có gate cơ học**, nên đây là bước người phải làm.
+2. **Đóng khoảng trống trước khi tag:** thiếu trang thì mở PR docs, merge, rồi mới tiếp. Rule `kit-release-docs` trong knowledge store nhắc agent điều này mỗi khi sửa kit; hành vi bị bỏ (một bước, một cờ, một gate) phải xoá câu tương ứng trên site trong cùng PR.
+3. **Kiểm `main`:** `zenify docs gen --check` khớp, `npm run docs:build` build xong, CI `main` xanh.
+4. **Đánh số:** có `feat` → tăng minor (`v0.23.0` → `v0.24.0`); chỉ `fix` → tăng patch.
+5. **Tag và đẩy:** `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`. Theo dõi `gh run list --workflow release`; `gh release view vX.Y.Z` phải có `checksums.txt` cùng 6 archive (3 OS × 2 arch), và commit cask/manifest xuất hiện trên `main`.
+6. **Phân phối:** teammate chạy `brew upgrade --cask zenify && zenify up --apply` (hoặc `zenify update`). Skill mới tới máy qua `zenify skills sync`, hook mới qua `zenify up`.
+
+::: warning Không tag khi còn khoảng trống docs
+Tag là quyết định release của người, không của agent. Agent chuẩn bị PR docs và danh sách khoảng trống; lệnh `git push origin vX.Y.Z` do bạn chạy hoặc bảo agent chạy rõ ràng.
+:::
+
 ## Lưu ý
 
 `zenify release-report` chỉ đọc git, không tự sửa gì và không chặn deploy. Đây là artifact để bạn tự quyết định release có an toàn hay không.
