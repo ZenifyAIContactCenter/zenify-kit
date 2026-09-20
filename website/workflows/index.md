@@ -68,6 +68,7 @@ Ba workflow trên tự gọi các skill sau khi cần. Bạn cũng có thể g�
 | `/znf:run` | Chạy app trong worktree hiện tại, trả về URL | Cần quan sát hành vi thật của app |
 | `/znf:sweep` | Dọn dev server, worktree và branch đã merge | Công việc đã merge, cần dọn workspace |
 | `/znf:research` | Research có kiểm chứng: worker fetch nguồn, verifier fetch lại từng URL, báo cáo ghi vào `docs/reference/` | Thiết kế phụ thuộc thư viện, API ngoài hoặc cách người khác làm; brainstorming tự gọi khi checklist năm mục bật. Xem [Research có kiểm chứng](/concepts/research) |
+| `/znf:advisor` | Ý kiến thứ hai từ model mạnh trong context mới, ghi vào route-log | Cần ý kiến thứ hai nhanh mà không muốn đổi model cả phiên. Xem [`/reference/skills/advisor`](/reference/skills/advisor) |
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - `internal/plugin/assets/znf/skills/discipline/SKILL.md`, mục 0: hai tiêu chí chọn và bốn điều kiện bỏ workflow

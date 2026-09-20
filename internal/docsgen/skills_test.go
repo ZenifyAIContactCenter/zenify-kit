@@ -42,6 +42,43 @@ func TestParseFrontmatter_UnquotedColonAndQuotes(t *testing.T) {
 	}
 }
 
+// TestUnquote_TrailingCommentAndEdgeCases covers the advisor SKILL.md shape:
+// a quoted description followed by a trailing `# <!-- znf:allow-lang -->`
+// YAML comment, plus the other unquote shapes that must keep working.
+func TestUnquote_TrailingCommentAndEdgeCases(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"quoted with trailing comment", `"value" # <!-- znf:allow-lang -->`, "value"},
+		{"quoted without trailing comment", `"value"`, "value"},
+		{"unquoted", `value: word`, "value: word"},
+		{"quoted value containing # inside quotes", `"a # b"`, "a # b"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := unquote(c.in); got != c.want {
+				t.Errorf("unquote(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// TestParseFrontmatter_DescriptionTrailingComment reproduces the advisor
+// SKILL.md description line end-to-end: fm.Description must be the clean
+// quoted text, not the raw string with quotes and comment still attached.
+func TestParseFrontmatter_DescriptionTrailingComment(t *testing.T) {
+	b := []byte("---\nname: advisor\ndescription: \"hỏi fable, ý kiến thứ hai\" # <!-- znf:allow-lang -->\n---\nbody\n")
+	fm, err := ParseFrontmatter(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fm.Description != "hỏi fable, ý kiến thứ hai" {
+		t.Fatalf("description not cleaned of quotes+comment: %q", fm.Description)
+	}
+}
+
 func TestGenSkills_PagesAndIndexes(t *testing.T) {
 	znf := os.DirFS("testdata")
 	files, err := GenSkills(znf)
