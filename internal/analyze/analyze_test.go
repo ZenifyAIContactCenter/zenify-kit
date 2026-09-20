@@ -109,16 +109,18 @@ func TestAnalyze_SkillsTag(t *testing.T) {
 	plan := "### Task 1: no tag\n- `_Requirements: FR-1_`\n" +
 		"### Task 2: none\n- `_Requirements: FR-1_`\n- `_Skills: none_`\n" +
 		"### Task 3: known\n- `_Requirements: FR-1_`\n- `_Skills: znf:mongo-data-safety, be-conventions_`\n" +
-		"### Task 4: unknown\n- `_Requirements: FR-1_`\n- `_Skills: foo_`\n"
+		"### Task 4: unknown\n- `_Requirements: FR-1_`\n- `_Skills: foo_`\n" +
+		"### Task 5: prose after tag\n- `_Requirements: FR-1_`\n- `_Skills: znf:react-patterns_` — UI only\n" +
+		"### Task 6: empty tag\n- `_Requirements: FR-1_`\n- `_Skills: _`\n"
 	r := Analyze(spec, plan)
-	if n := countKind(r, "missing-skills"); n != 1 {
-		t.Errorf("want exactly 1 missing-skills (Task 1), got %d: %+v", n, r.Findings)
+	if n := countKind(r, "missing-skills"); n != 2 {
+		t.Errorf("want exactly 2 missing-skills (Task 1 no tag, Task 6 empty tag), got %d: %+v", n, r.Findings)
 	}
 	if !hasFinding(r, "missing-skills", "", High) {
 		t.Errorf("missing-skills must be HIGH")
 	}
 	if n := countKind(r, "unknown-skill"); n != 1 {
-		t.Errorf("want exactly 1 unknown-skill (Task 4: foo), got %d: %+v", n, r.Findings)
+		t.Errorf("want exactly 1 unknown-skill (Task 4: foo; Task 5's trailing prose must not leak into the name), got %d: %+v", n, r.Findings)
 	}
 	if !hasFinding(r, "unknown-skill", "foo", High) {
 		t.Errorf("unknown-skill must carry ID=foo and be HIGH; findings=%+v", r.Findings)

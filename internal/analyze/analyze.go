@@ -64,8 +64,10 @@ var (
 	markerToken = "[NEEDS CLARIFICATION" //nolint:gosec // G101 -- a spec marker string the scanner looks for, not a credential
 
 	// A _Skills: line (writing-plans FR-3.2, 2026-09-20) sits under _Requirements: in the same
-	// bullet+backtick form. Group 1 is the value: `none`, or a comma-separated skill list.
-	skillsLineRe = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_Skills:\\s*(.*)$")
+	// bullet+backtick form. Group 1 is the value: `none`, or a comma-separated skill list. It
+	// stops at the closing emphasis `_` or backtick, so prose after the tag (`- `_Skills: x_` —
+	// why`) never leaks into the last skill name; skill names themselves carry no `_`.
+	skillsLineRe = regexp.MustCompile("^\\s*(?:[-*+]\\s+)?[`*]*_Skills:\\s*([^`_]*)")
 	// A routed skill is a plugin skill (znf:<x>) or a repo conventions skill (<x>-conventions).
 	skillNameRe = regexp.MustCompile(`^(?:znf:[a-z0-9-]+|[a-z0-9-]+-conventions)$`)
 
@@ -139,12 +141,13 @@ func Analyze(specText, planText string) Result {
 			}
 		}
 		if m := skillsLineRe.FindStringSubmatch(ln); m != nil && cur >= 0 {
-			blocks[cur].hasSkills = true
-			for _, s := range strings.Split(strings.TrimSuffix(tagValue(m[1]), "_"), ",") {
+			for _, s := range strings.Split(tagValue(m[1]), ",") {
 				if s = strings.TrimSpace(s); s != "" {
 					blocks[cur].skills = append(blocks[cur].skills, s)
 				}
 			}
+			// An empty tag (`_Skills: _`) declares nothing: it stays missing-skills.
+			blocks[cur].hasSkills = len(blocks[cur].skills) > 0
 		}
 	}
 	for id := range refSet {
