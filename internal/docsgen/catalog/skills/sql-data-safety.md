@@ -3,7 +3,7 @@ summary: Đọc/ghi SQL an toàn qua connection pool và SQL viết tay — bộ
 ---
 ## Khi nào dùng
 
-Khi đọc hoặc ghi SQL qua một connection pool và câu lệnh SQL viết tay, không phải qua một ORM ánh xạ đầy đủ. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi đọc hoặc ghi SQL qua một connection pool và câu lệnh SQL viết tay, không phải qua một ORM ánh xạ đầy đủ. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 

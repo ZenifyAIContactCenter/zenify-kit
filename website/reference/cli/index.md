@@ -61,7 +61,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify rules lint](./zenify_rules_lint) | Kiểm file mà agent đọc (skill, rule, mã nguồn kit): chặn tiếng Việt, và bắt frontmatter khai sai key `globs:` thay cho `paths:`. |
 | [zenify secret-scan](./zenify_secret-scan) | Quét một cây thư mục để tìm secret bị lộ, dùng trong CI và kiểm tra tay trước khi push. |
 | [zenify skills](./zenify_skills) | Nhóm lệnh quản lý plugin skill znf và bộ coding skill theo repo. |
-| [zenify skills install](./zenify_skills_install) | Cài bộ coding skill khớp với repo hiện tại vào .claude/skills của repo. |
+| [zenify skills install](./zenify_skills_install) | Gỡ bản coding skill cũ khỏi .claude/skills của repo — chúng đã nằm trong plugin znf. |
 | [zenify skills sync](./zenify_skills_sync) | Ghi bộ skill znf từ binary vào ~/.claude/skills/znf và gắn hook znf vào settings. |
 | [zenify spec](./zenify_spec) | Nhóm lệnh soi vòng đời spec và registry contract, đọc từ knowledge store. |
 | [zenify spec contracts](./zenify_spec_contracts) | Liệt kê repo và collection mà từng spec khai qua hai tag `_Blast-radius:` và `_DB:`. |

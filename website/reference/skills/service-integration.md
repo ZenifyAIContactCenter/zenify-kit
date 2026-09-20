@@ -1,22 +1,22 @@
 ---
-title: /service-integration
+title: /znf:service-integration
 ---
 
-[Skill](/reference/skills/) / `/service-integration`
+[Skill](/reference/skills/) / `/znf:service-integration`
 
-# `/service-integration`
+# `/znf:service-integration`
 
 An toàn khi đổi một hợp đồng liên dịch vụ — payload pub/sub, job BullMQ, hoặc shape HTTP.
 
 ## Cách gọi
 
 ```text
-/service-integration
+/znf:service-integration
 ```
 
 ## Khi nào dùng
 
-Khi thay đổi một hợp đồng liên dịch vụ: payload Redis pub/sub, một job BullMQ, hoặc shape HTTP giữa các dịch vụ. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi thay đổi một hợp đồng liên dịch vụ: payload Redis pub/sub, một job BullMQ, hoặc shape HTTP giữa các dịch vụ. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 

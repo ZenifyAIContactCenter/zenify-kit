@@ -3,7 +3,7 @@ summary: An toàn khi đổi một hợp đồng liên dịch vụ — payload p
 ---
 ## Khi nào dùng
 
-Khi thay đổi một hợp đồng liên dịch vụ: payload Redis pub/sub, một job BullMQ, hoặc shape HTTP giữa các dịch vụ. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi thay đổi một hợp đồng liên dịch vụ: payload Redis pub/sub, một job BullMQ, hoặc shape HTTP giữa các dịch vụ. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 

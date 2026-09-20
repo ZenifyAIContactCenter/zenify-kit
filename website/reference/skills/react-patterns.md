@@ -1,22 +1,22 @@
 ---
-title: /react-patterns
+title: /znf:react-patterns
 ---
 
-[Skill](/reference/skills/) / `/react-patterns`
+[Skill](/reference/skills/) / `/znf:react-patterns`
 
-# `/react-patterns`
+# `/znf:react-patterns`
 
 Quy ước viết frontend React (Vite/TanStack) — state, bảng phân trang, form, axios interceptor, i18n.
 
 ## Cách gọi
 
 ```text
-/react-patterns
+/znf:react-patterns
 ```
 
 ## Khi nào dùng
 
-Khi viết hoặc sửa code frontend React trên nền Vite/TanStack. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi viết hoặc sửa code frontend React trên nền Vite/TanStack. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 

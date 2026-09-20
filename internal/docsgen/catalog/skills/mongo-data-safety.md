@@ -3,7 +3,7 @@ summary: Đọc/ghi MongoDB an toàn trong một codebase đa tenant không có 
 ---
 ## Khi nào dùng
 
-Khi đọc hoặc ghi document MongoDB trong một codebase đa tenant, không có schema bắt buộc. Cần cài đặt trước bằng lệnh cài skill coding.
+Khi đọc hoặc ghi document MongoDB trong một codebase đa tenant, không có schema bắt buộc. Có sẵn ở mọi repo sau `zenify skills sync`; gọi bằng `/znf:<tên skill>`.
 
 ## Cách hoạt động
 
