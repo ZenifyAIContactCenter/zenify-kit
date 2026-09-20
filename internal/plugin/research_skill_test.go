@@ -98,3 +98,26 @@ func TestResearchSkill_Shipped(t *testing.T) {
 		assertProjectAgnostic(t, ref, r)
 	}
 }
+
+// FR-3: brainstorming owns the research trigger — one checklist step, linked reference, budget kept.
+func TestBrainstormingResearchCheck(t *testing.T) {
+	s := syncedAsset(t, "skills/brainstorming/SKILL.md")
+	assertContainsAll(t, "brainstorming/SKILL.md", s, []string{
+		"**Research check**",
+		"references/research-checklist.md",
+		"Skill(znf:research)",
+		// guarded literals from spec_discipline_test.go — a prose cut must not lose them
+		"znf:_shared/constitution",
+		"znf:_shared/spec-template",
+		"Clarify-lite",
+	})
+	if len(s) > maxSkillBytes {
+		t.Errorf("brainstorming/SKILL.md is %d bytes; budget %d", len(s), maxSkillBytes)
+	}
+	c := syncedAsset(t, "skills/brainstorming/references/research-checklist.md")
+	assertContainsAll(t, "research-checklist.md", c, []string{"1.", "2.", "3.", "4.", "5.", "znf:ground", "znf:scout", "docs/reference"})
+	if strings.Contains(c, "references/") {
+		t.Error("research-checklist.md must not link into references/ (one-level rule)")
+	}
+	assertProjectAgnostic(t, "research-checklist.md", c)
+}

@@ -36,8 +36,7 @@ bounded, so I'll present a short design rather than write a spec" — so it can 
   together or alter interfaces others depend on. Full process: questions, approaches, sectioned
   design, spec, then writing-plans.
 
-In doubt between two paths, take the heavier one. The ratchet is one-way: hidden complexity found
-mid-task upgrades the path — stop, say so, step up. Nothing downgrades mid-task.
+In doubt, take the heavier path. One-way ratchet: hidden complexity found mid-task upgrades it — stop, say so, step up; never downgrade.
 
 ## Checklist
 
@@ -61,21 +60,20 @@ Classify first, announce the path, then create a task per item and do them in or
 1. **Explore project context** — files, docs, recent commits
 2. **Offer the visual companion just-in-time** — NOT upfront, only the first time a question is genuinely clearer shown than described, never if none arises. See the Visual Companion section.
 3. **Ask clarifying questions** — one at a time: purpose, constraints, success criteria
-4. **Propose 2-3 approaches** — with trade-offs and your recommendation
-5. **Present design** — sections scaled to their complexity, user approval after each
-6. **Clarify-lite** — scan the 7 Brief fields (Clear/Partial/Missing), ≤5 MC questions, log `## Clarifications`
-7. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
-8. **Spec self-review** — inline check for placeholders, contradictions, ambiguity, scope (below)
-9. **User reviews written spec** — ask the user to review the spec file before proceeding
-10. **Transition to implementation** — invoke writing-plans to create the implementation plan
+4. **Research check** — `references/research-checklist.md`; one item true → `Skill(znf:research)` on the scoped question; none → skip, no prior-art for show
+5. **Propose 2-3 approaches** — with trade-offs and your recommendation
+6. **Present design** — sections scaled to their complexity, user approval after each
+7. **Clarify-lite** — scan the 7 Brief fields (Clear/Partial/Missing), ≤5 MC questions, log `## Clarifications`
+8. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+9. **Spec self-review** — inline check for placeholders, contradictions, ambiguity, scope (below)
+10. **User reviews written spec** — ask the user to review the spec file before proceeding
+11. **Transition to implementation** — invoke writing-plans to create the implementation plan
 
 ## Process flow
 
-The full path graph and every terminal state: `references/process-flow.md`.
-
 **Terminal states are path-bound.** Architectural: the ONLY skill you invoke after brainstorming is
-writing-plans — never frontend-design, mcp-builder, or any other implementation skill. Bounded:
-after approval, the normal development workflow, no plan document. Spike: a recommendation.
+writing-plans (research runs inside brainstorming, before the design). Bounded: the normal
+development workflow, no plan document. Spike: a recommendation.
 
 ## The dialogue
 
@@ -99,7 +97,6 @@ the spec — a light pass inside the dialogue, not a separate step.
 - Author the spec against `znf:_shared/spec-template` and follow `znf:_shared/constitution`
   (Brief-first, stable FR/SC IDs, testable SC, mark unknowns, necessity ladder, safety floor,
   traceability). Format and language rules stay in `znf:_shared/artifact-style`.
-- Use elements-of-style:writing-clearly-and-concisely if available; commit the spec to git
 
 **Spec Self-Review:** with fresh eyes, scan the spec for placeholders, contradictions, over-broad scope and ambiguous requirements; fix each inline, no re-review (`references/spec-self-review.md`).
 
@@ -136,3 +133,4 @@ Read one when its trigger fires.
 - `references/red-flags.md` — read when calling a task simple, or starting before approval.
 - `references/visual-companion-rules.md` — read when deciding if a question belongs in the browser.
 - `references/spec-self-review.md` — read when the spec needs its fresh-eyes pass.
+- `references/research-checklist.md` — read at the Research check; one true item calls `znf:research`.
