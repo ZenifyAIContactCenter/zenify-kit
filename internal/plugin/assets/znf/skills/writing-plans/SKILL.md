@@ -10,11 +10,11 @@ description: Use when you have a spec or requirements for a multi-step task, bef
 
 Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
 
-Assume a skilled developer who knows nothing about our toolset, problem domain, or good test design.
+Assume a skilled developer who knows nothing about our toolset or domain.
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
-**Context:** If working in an isolated worktree, it should have been created with `wt new` (znf:discipline §8) at execution time.
+**Context:** the worktree is created with `wt new` (znf:discipline §8) at execution time.
 
 **Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
 - (User preferences for plan location override this default)
@@ -100,11 +100,12 @@ include this section.]
 - Produces: [what later tasks rely on — exact function names, parameter
   and return types. A task's implementer sees only their own task; this
   block is how they learn the names and types neighboring tasks use.]
-- `_Requirements: FR-N[, SC-M]_` — the spec requirement IDs this task implements (constitution
-  P8 traceability). Every task carries one; every FR in the spec must appear in at least one
-  task's line. This is what lets a coverage check assert no requirement is orphaned and no task
-  is unmotivated — `znf:analyze` (cited at `cook` Step 5b) is that check. Keep the tag on its
-  own bullet line, in this backtick-wrapped form, so the check detects it.
+- `_Requirements: FR-N[, SC-M]_` — spec IDs this task implements (constitution P8). Every task
+  carries one; every FR appears in at least one task. `znf:analyze` (cook Step 5b) checks both.
+  Keep the tag on its own bullet line, backtick-wrapped, so the check detects it.
+- `_Skills: <list or none>_` — domain skills the implementer must invoke before first edit, per
+  `znf:_shared/skill-routing` (signal → skill). `none` is valid and must be written out;
+  `znf:analyze` flags a missing tag (`missing-skills`) or an unknown name.
 
 - [ ] **Step 1: Write the failing test**
 
