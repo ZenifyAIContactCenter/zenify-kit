@@ -4,6 +4,7 @@ description: Use when a diff adds or changes a DB query — the mandatory two-ti
 argument-hint: "[base..head | file paths of the changed queries]"
 allowed-tools: Read Grep Bash(zenify db-read *) Bash(zenify db-perf *) Bash(git diff *)
 context: fork
+model: sonnet
 background: false
 ---
 

@@ -2,8 +2,9 @@
 name: analyze
 description: Use to inspect a written spec+plan pair BEFORE implementing — mechanically checks requirement coverage (FR→task), leftover clarification markers, and Brief structure, then adds judgment on SC-testability, necessity, and DB-safety. advisory only, never blocks.
 argument-hint: "<spec.md> <plan.md>"
-allowed-tools: Read Grep Bash(zenify analyze *)
+allowed-tools: Read Grep Bash(zenify analyze *) Bash(zenify route-log *)
 context: fork
+model: sonnet
 background: false
 ---
 
@@ -39,6 +40,12 @@ Read the output:
 - **Risk-metadata** — Brief missing the `_Blast-radius:` / `_DB:` / `_Rollback:` tag (HIGH per tag).
 
 The command fails open: if it reports "could not analyze," note it and move on — don't treat it as a blocking error.
+
+Then record the plan's size for route calibration (best-effort, no output expected):
+
+```
+zenify route-log record-plan --plan <plan-path>
+```
 
 ## Step 2 — four judgment passes (what the command can't do)
 

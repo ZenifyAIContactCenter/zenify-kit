@@ -4,6 +4,7 @@ description: Use after implementing a plan — checks test-traceability: every F
 argument-hint: "<spec.md> <plan.md> [repo-root]"
 allowed-tools: Read Bash(zenify standards *)
 context: fork
+model: sonnet
 background: false
 ---
 

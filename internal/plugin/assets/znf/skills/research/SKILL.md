@@ -4,6 +4,7 @@ description: Deep research with verified citations. Use when a design depends on
 argument-hint: "<question> [repo: <feature-repo>]"
 allowed-tools: Read Write Bash(mkdir *) Bash(date *) Agent
 context: fork
+model: sonnet
 background: false
 ---
 

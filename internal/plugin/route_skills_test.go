@@ -35,3 +35,26 @@ func TestSDD_ImplementerTierFromSelectRoute(t *testing.T) {
 		t.Error("model-selection.md still carries the round-based rule")
 	}
 }
+
+func TestForkSkills_DeclareSonnet(t *testing.T) {
+	for _, name := range []string{"ground", "analyze", "standards", "explain-plan", "research"} {
+		s := syncedAsset(t, "skills/"+name+"/SKILL.md")
+		fm := strings.SplitN(s, "\n---", 2)[0]
+		if !strings.Contains(fm, "\nmodel: sonnet\n") && !strings.HasSuffix(fm, "\nmodel: sonnet") {
+			t.Errorf("%s: fork skill must declare model: sonnet in frontmatter", name)
+		}
+		if !strings.Contains(fm, "context: fork") {
+			t.Errorf("%s: expected context: fork", name)
+		}
+	}
+}
+
+func TestAnalyzeSkill_RecordsPlanMetrics(t *testing.T) {
+	s := syncedAsset(t, "skills/analyze/SKILL.md")
+	assertContainsAll(t, "analyze/SKILL.md", s, []string{"Bash(zenify route-log *)", "zenify route-log record-plan --plan"})
+}
+
+func TestScoutAgent_ConsumerCountLine(t *testing.T) {
+	s := syncedAsset(t, "agents/scout.md")
+	assertContainsAll(t, "scout.md", s, []string{"consumers: N", "last line"})
+}
