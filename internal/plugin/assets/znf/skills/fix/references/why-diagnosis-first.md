@@ -13,6 +13,11 @@ It never skips a step, and in particular it never skips Step 2 — you state the
 cause, with the evidence that confirmed it, before writing any fix, on both paths. "It looked
 simple" is how you end up fixing the wrong thing, which Step 0 exists to prevent.
 
+**Narrow** — one clear error, one obvious cause → one hypothesis, checked against the real
+error output, then Step 2.
+**Wide** — unclear cause, multiple services, hard to reproduce, or systemic → Step 1 in full,
+parallel hypotheses, each killed or kept by specific evidence.
+
 ### From § Isolation
 **No workspace handoff here, unlike `/cook` — and the reason is the artifact.** `/cook` can move
 Step 6 into a workspace of its own because what crosses over is a **plan file** that
