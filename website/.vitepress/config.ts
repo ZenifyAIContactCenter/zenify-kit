@@ -80,7 +80,8 @@ export default withMermaid({
         { text: 'Knowledge store và docs/', link: '/concepts/knowledge-store' },
         { text: 'Gate fail-open', link: '/concepts/gate-fail-open' },
         { text: 'Chọn model: session, skill, subagent', link: '/concepts/model-routing' },
-        { text: 'Ngân sách context: read-guard, meter, statusline', link: '/concepts/context-budget' } ] },
+        { text: 'Ngân sách context: read-guard, meter, statusline', link: '/concepts/context-budget' },
+        { text: 'Research có kiểm chứng', link: '/concepts/research' } ] },
       // Workflow: thứ dùng hàng ngày, gọi bằng tên. Chỉ gồm 4 skill + trang chọn.
       { text: 'Workflow', collapsed: false, items: [
         { text: 'Chọn workflow', link: '/workflows/' },

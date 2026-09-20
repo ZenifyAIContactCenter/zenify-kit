@@ -32,6 +32,7 @@ Skill của kit dùng tiền tố `/znf:`. Các skill coding (quy ước viết 
 | [/znf:ground](./ground) | Xác minh hình dạng và giá trị thật trước khi viết code chạm vào dữ liệu, API, hoặc code có sẵn. |
 | [/znf:hotfix](./hotfix) | Xử lý một lỗi đang xảy ra trên production trong một polyrepo, từ chẩn đoán tới PR, không bao giờ tự chạy. |
 | [/znf:prune-memory](./prune-memory) | Rà soát và dọn bộ nhớ tự động trong một lượt, gộp bản trùng và xoá ghi chú đã cũ. |
+| [/znf:research](./research) | Research có kiểm chứng: worker tìm và trích dẫn nguyên văn kèm URL đã fetch, một lượt haiku fetch lại mọi URL, kết quả ghi thành file trong docs/reference. |
 | [/znf:review-changes](./review-changes) | Review đối kháng nhiều khía cạnh cho diff lớn, xác minh chéo từng phát hiện nghiêm trọng. |
 | [/znf:review](./review) | Engine review hợp nhất của kit, tự chọn mức độ soi theo diff rồi trả về danh sách phát hiện. |
 | [/znf:run](./run) | Chạy app thật và lấy output thật từ đường code thật, để một thay đổi được xác minh chứ không chỉ khẳng định suông. |
