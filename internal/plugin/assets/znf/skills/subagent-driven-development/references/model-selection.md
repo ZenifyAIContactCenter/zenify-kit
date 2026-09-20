@@ -37,7 +37,7 @@ Record each implementer dispatch (best-effort):
 command -v zenify >/dev/null && command -v jq >/dev/null && jq -nc --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg repo "$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")" --arg branch "$(git branch --show-current 2>/dev/null)" \
   --arg spec "$SPEC" --arg fail "$FAIL" --arg model "$MODEL" --arg strong "${ZNF_STRONG_MODEL:-opus}" \
-  '{ts:$ts,repo:$repo,branch:$branch,"site":"implementer",features:{SPEC:$spec,FAIL:$fail},gates:(if ($fail|tonumber)>=2 then ["FAIL=\($fail)"] else [] end),model:$model,strong:$strong}' \
+  '{ts:$ts,repo:$repo,branch:$branch,"site":"implementer",features:{SPEC:$spec,FAIL:$fail},gates:(if ($fail|tonumber)>=3 then ["FAIL>=3"] elif ($fail|tonumber)==2 then ["FAIL=2"] else [] end),model:$model,strong:$strong}' \
   | zenify route-log record 2>/dev/null || true
 ```
 
