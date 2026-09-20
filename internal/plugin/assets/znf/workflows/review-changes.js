@@ -13,6 +13,7 @@ const DOCTRINE = args.doctrine ? args.doctrine + '\n\n' : ''
 
 // W3: model scaled by risk — security/contracts carry the shared-contract + auth blast radius (opus);
 // bugs/perf/types are well-served by sonnet. Verify skeptics stay opus (bounded set, see below).
+// args.reviewModel (optional): review's select-route output when T3 was not shippable twice in a row; overrides every dimension's model.
 const DIMENSIONS = [
   { key: 'bugs', model: 'sonnet', prompt: DOCTRINE + 'Review this diff for CORRECTNESS bugs: wrong field names in dynamic code, off-by-one errors, null/undefined propagation, race conditions, wrong async handling. Return only confirmed bugs with file:line, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
   { key: 'security', model: 'opus', prompt: DOCTRINE + 'Review this diff for SECURITY issues: OWASP Top 10, missing auth/authz, injection (SQL/NoSQL/command), secrets in code, IDOR, insecure defaults. Return only real security issues with severity, and for each include evidence: the exact code line content, verbatim, WITHOUT the diff +/- marker. diff:\n\n' + args.diff },
@@ -58,7 +59,7 @@ const VERDICT_SCHEMA = {
 phase('Review')
 const dimResults = await pipeline(
   DIMENSIONS,
-  d => agent(d.prompt, { label: `review:${d.key}`, phase: 'Review', schema: FINDING_SCHEMA, model: d.model }),
+  d => agent(d.prompt, { label: `review:${d.key}`, phase: 'Review', schema: FINDING_SCHEMA, model: args.reviewModel || d.model }),
 )
 
 const reviewed = dimResults.filter(Boolean).flatMap(r => r.findings)

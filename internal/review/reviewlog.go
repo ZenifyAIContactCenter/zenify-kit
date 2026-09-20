@@ -24,6 +24,7 @@ type Record struct {
 	Repo       string        `json:"repo"`
 	Base       string        `json:"base"`
 	Head       string        `json:"head"`
+	Branch     string        `json:"branch,omitempty"` // git branch at record time; empty when detached or pre-2026-09 record
 	Tier       string        `json:"tier"`
 	Outcome    string        `json:"outcome"`
 	Findings   FindingCounts `json:"findings"`

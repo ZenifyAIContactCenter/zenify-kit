@@ -160,6 +160,19 @@ func TestReviewSkill_M4eWiring(t *testing.T) {
 	}
 }
 
+func TestReviewSkill_BlockedStreakRoutesReviewer(t *testing.T) {
+	s := syncedAsset(t, "skills/review/SKILL.md")
+	assertContainsAll(t, "review/SKILL.md", s, []string{
+		"BLOCKED_STREAK", "select-route reviewer", "reviewModel", "review-log --json",
+	})
+	pg := syncedAsset(t, "skills/review/references/post-gates.md")
+	assertContainsAll(t, "post-gates.md", pg, []string{"--arg branch", "branch:$branch"})
+	wf := syncedAsset(t, "workflows/review-changes.js")
+	if !strings.Contains(wf, "args.reviewModel || d.model") {
+		t.Fatal("workflow must honour args.reviewModel")
+	}
+}
+
 func TestShipStep5_DelegatesToReview(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
@@ -199,7 +212,7 @@ func TestReviewSkill_W3Wiring(t *testing.T) {
 	if got := strings.Count(wf, "model: 'sonnet'"); got != 3 { // bugs + perf + types
 		t.Errorf("review-changes.js: want 3 sonnet pins, got %d", got)
 	}
-	for _, want := range []string{"model: d.model", "const advisory", "advisory,", "f.severity === 'CRITICAL' || f.severity === 'HIGH'"} {
+	for _, want := range []string{"args.reviewModel || d.model", "const advisory", "advisory,", "f.severity === 'CRITICAL' || f.severity === 'HIGH'"} {
 		if !strings.Contains(wf, want) {
 			t.Errorf("review-changes.js missing %q (W3 wiring)", want)
 		}
