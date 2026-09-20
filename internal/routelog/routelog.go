@@ -8,12 +8,16 @@ package routelog
 import (
 	"bufio"
 	"bytes"
+	crand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Record is one select-route decision plus what the caller learned afterwards.
@@ -61,6 +65,16 @@ func sanitize(s string) string {
 	return string(out)
 }
 
+// randSuffix returns 6 lowercase hex chars; falls back to a base36 nanosecond timestamp
+// if crypto/rand fails (should not happen in practice).
+func randSuffix() string {
+	b := make([]byte, 3)
+	if _, err := crand.Read(b); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b)
+}
+
 func ensureDir(dir string) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
@@ -72,7 +86,9 @@ func ensureDir(dir string) error {
 	return nil
 }
 
-// WriteRecord writes <ts>-<site>.json (append-only store; a record is never edited).
+// WriteRecord writes <ts>-<site>-<rand6>.json (append-only store; a record is never edited).
+// The random suffix keeps two records with the same TS and Site (second granularity) from
+// silently overwriting each other.
 func WriteRecord(dir string, r Record) (string, error) {
 	if r.Features == nil {
 		r.Features = map[string]string{}
@@ -83,7 +99,7 @@ func WriteRecord(dir string, r Record) (string, error) {
 	if err := ensureDir(dir); err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, sanitize(r.TS)+"-"+sanitize(r.Site)+".json")
+	path := filepath.Join(dir, sanitize(r.TS)+"-"+sanitize(r.Site)+"-"+randSuffix()+".json")
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)

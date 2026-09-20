@@ -104,3 +104,14 @@ func TestRouteLogCmd_ChildrenHidden(t *testing.T) {
 		}
 	}
 }
+
+func TestRouteLogCmd_RecordPlanWithoutFlag_ExitsZero(t *testing.T) {
+	c := newRouteLogCmd()
+	var errb bytes.Buffer
+	c.SetArgs([]string{"record-plan"})
+	c.SetErr(&errb)
+	c.SetOut(&errb)
+	if err := c.Execute(); err != nil {
+		t.Fatalf("record-plan without --plan must stay best-effort (exit 0): %v", err)
+	}
+}

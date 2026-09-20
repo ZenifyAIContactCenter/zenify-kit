@@ -70,6 +70,21 @@ func TestPlanMetrics(t *testing.T) {
 	}
 }
 
+func TestWriteRecord_SameTSAndSite_DoesNotOverwrite(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "rl")
+	r := Record{TS: "2026-09-21T01:00:00Z", Site: "manual"}
+	if _, err := WriteRecord(dir, r); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteRecord(dir, r); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := LoadRecords(dir)
+	if err != nil || len(recs) != 2 {
+		t.Fatalf("want 2 records from identical TS+Site, got %d %v", len(recs), err)
+	}
+}
+
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {

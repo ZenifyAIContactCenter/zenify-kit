@@ -43,6 +43,10 @@ func runRouteLogRecord(stdin io.Reader, stderr io.Writer, dirFn func() (string, 
 // runRouteLogRecordPlan reads a plan file, counts tasks and distinct files, and writes a
 // site=plan-metrics record for the current branch. Best-effort like record.
 func runRouteLogRecordPlan(planPath string, fanin int, stderr io.Writer, dirFn func() (string, error), git func(...string) ([]byte, error)) error {
+	if planPath == "" {
+		fmt.Fprintln(stderr, "route-log record-plan: thiếu --plan, bỏ qua") //znf:allow-lang
+		return nil
+	}
 	b, err := os.ReadFile(planPath) //nolint:gosec // G304 -- caller-supplied plan path
 	if err != nil {
 		fmt.Fprintln(stderr, "route-log record-plan: không đọc được plan, bỏ qua:", err) //znf:allow-lang
@@ -199,7 +203,6 @@ func newRouteLogCmd() *cobra.Command {
 	}
 	recordPlan.Flags().StringVar(&planPath, "plan", "", "path plan")                          //znf:allow-lang
 	recordPlan.Flags().IntVar(&fanin, "fanin", 0, "số consumer scout đếm được (0 = chưa có)") //znf:allow-lang
-	_ = recordPlan.MarkFlagRequired("plan")
 	c.AddCommand(record, recordPlan)
 	return c
 }
