@@ -69,12 +69,12 @@ func TestUnquote_TrailingCommentAndEdgeCases(t *testing.T) {
 // SKILL.md description line end-to-end: fm.Description must be the clean
 // quoted text, not the raw string with quotes and comment still attached.
 func TestParseFrontmatter_DescriptionTrailingComment(t *testing.T) {
-	b := []byte("---\nname: advisor\ndescription: \"hỏi fable, ý kiến thứ hai\" # <!-- znf:allow-lang -->\n---\nbody\n")
+	b := []byte("---\nname: advisor\ndescription: \"hỏi fable, ý kiến thứ hai\" # <!-- znf:allow-lang -->\n---\nbody\n") //znf:allow-lang
 	fm, err := ParseFrontmatter(b)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fm.Description != "hỏi fable, ý kiến thứ hai" {
+	if fm.Description != "hỏi fable, ý kiến thứ hai" { //znf:allow-lang
 		t.Fatalf("description not cleaned of quotes+comment: %q", fm.Description)
 	}
 }

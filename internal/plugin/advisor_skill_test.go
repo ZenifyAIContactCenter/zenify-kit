@@ -8,7 +8,7 @@ import (
 func TestAdvisorSkill_Shipped(t *testing.T) {
 	s := syncedAsset(t, "skills/advisor/SKILL.md")
 	assertContainsAll(t, "advisor/SKILL.md", s, []string{
-		"name: advisor", "argument-hint:", "hỏi fable", "ý kiến thứ hai", "second opinion", "@fable", "ultrathink", "nghĩ kỹ hơn",
+		"name: advisor", "argument-hint:", "hỏi fable", "ý kiến thứ hai", "second opinion", "@fable", "ultrathink", "nghĩ kỹ hơn", //znf:allow-lang
 		"select-route manual", "Agent(general-purpose)", "route-log record", "\"site\":\"manual\"", "trigger",
 		"Strong | Worth exploring | Speculative", "at most 40 lines",
 	})
