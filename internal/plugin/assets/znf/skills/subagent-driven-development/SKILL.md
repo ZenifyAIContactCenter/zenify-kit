@@ -24,7 +24,7 @@ Work in an isolated workspace (`wt new`, znf:discipline §8), or verify the exis
 
 ## Model Selection
 
-Least powerful model that can do the role, and **name the model on every dispatch** — `zenify up` sets `CLAUDE_CODE_SUBAGENT_MODEL=sonnet`, so an unnamed one lands there. Cheapest tier for mechanical work, standard for integration and judgment, most capable for design and the final review; rounds 4-5 a tier up (`references/model-selection.md`).
+Least powerful model per role — name it always. **Implementer:** `SPEC=code` when every `**Files:**` path sits in a code block this task, else `SPEC=prose`; `FAIL` = times this test failed; model = line 1 of `select-route implementer SPEC=… FAIL=…` (`FAIL=3` → stop, run investigator `ROUND=3`). Reviewers: standard for judgment, cheap for re-reviews (`references/model-selection.md`).
 
 ## The Task Loop
 
