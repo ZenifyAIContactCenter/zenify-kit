@@ -29,6 +29,14 @@ Subagent (general-purpose):
 
     **Ask them now.** Raise any concerns before starting work.
 
+    ## Skills you must invoke before editing
+
+    Your brief carries a `_Skills:` line (see `znf:_shared/skill-routing`). Before your first
+    Edit: Read one real source file of the repo you work in (registers its repo skills), then
+    invoke each listed skill with the Skill tool, in order. `Unknown skill` → Read that skill's
+    `SKILL.md` under `<repo>/.claude/skills/` directly. `_Skills: none_` → nothing to invoke.
+    Your report file must list the skills you invoked, or say "no skills routed".
+
     ## Your Job
 
     Once you're clear on requirements:
@@ -134,6 +142,7 @@ Subagent (general-purpose):
       - RED: command run, relevant failing output before implementation, and why the failure was expected
       - GREEN: command run and relevant passing output after implementation
     - Files changed
+    - Skills invoked (names), or "no skills routed"
     - Self-review findings (if any)
     - Any issues or concerns
 

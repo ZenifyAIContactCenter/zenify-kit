@@ -45,7 +45,7 @@ always   verify with real output before saying it works
 ## 2 — No overthinking (smallest thing that works)
 - Make the **smallest diff** that satisfies the request. Match the surrounding altitude and style; no unasked error-handling, abstraction, config, options or files. Prefer editing an existing file. Greenfield: scaffold the minimum that runs.
 - **Context hygiene:** a tool result over ~50 KB goes to a file, then read the part you need. A file read once this session (memory index, roadmap, spec) is not read again — cite it. SDD briefs/review packages come from the skill's scripts; the controller never opens templates.
-- Prefer the repo's own **coding skill** set (under `.claude/skills/`) for the stack idiom before improvising.
+- Route domain skills by `znf:_shared/skill-routing` (signal to `znf:<skill>`) before improvising.
 
 ## 3 — Verify before claiming done
 - Never say "done / fixed / works" without evidence: state what you ran and the result; say plainly what was skipped.
