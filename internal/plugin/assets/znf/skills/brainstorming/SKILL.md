@@ -61,13 +61,14 @@ Classify first, announce the path, then do the items in order.
 2. **Offer the visual companion just-in-time** — NOT upfront, only the first time a question is genuinely clearer shown than described, never if none arises. See the Visual Companion section.
 3. **Ask clarifying questions** — one at a time: purpose, constraints, success criteria
 4. **Research check** — `references/research-checklist.md`; one item true → `Skill(znf:research)` on the scoped question; none → skip, no prior-art for show
-5. **Propose 2-3 approaches** — with trade-offs and your recommendation
-6. **Present design** — sections scaled to their complexity, user approval after each
-7. **Clarify-lite** — scan the 7 Brief fields (Clear/Partial/Missing), ≤5 MC questions, log `## Clarifications`
-8. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
-9. **Spec self-review** — inline check for placeholders, contradictions, ambiguity, scope (below)
-10. **User reviews written spec** — ask the user to review the spec file before proceeding
-11. **Transition to implementation** — invoke writing-plans to create the implementation plan
+5. **Route the design** — `references/architect-gate.md`: four features → `select-route architect`; `none` → write the memo yourself; a model → `Agent(architect)` once, then read its memo
+6. **Design memo** — `references/architect-memo.md`, ten sections (2-3 approaches, gates, tokens, checklist, recommendation). Think hard before responding.
+7. **Present design** — sections scaled to their complexity, user approval after each
+8. **Clarify-lite** — scan the 7 Brief fields (Clear/Partial/Missing), ≤5 MC questions, log `## Clarifications`
+9. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+10. **Spec self-review** — inline check for placeholders, contradictions, ambiguity, scope (below)
+11. **User reviews written spec** — ask the user to review the spec file before proceeding
+12. **Transition to implementation** — invoke writing-plans to create the implementation plan
 
 ## Process flow
 
@@ -97,6 +98,9 @@ the spec — a light pass inside the dialogue, not a separate step.
 - Author the spec against `znf:_shared/spec-template` and follow `znf:_shared/constitution`
   (Brief-first, stable FR/SC IDs, testable SC, mark unknowns, necessity ladder, safety floor,
   traceability). Format and language rules stay in `znf:_shared/artifact-style`.
+- The memo is the source of the Brief's Approach, Blast-radius, Flow, Rollback and Non-goals;
+  link it from the spec header. Tier-3 route and `changed_decision` recorded per
+  `references/architect-gate.md`.
 
 **Spec Self-Review:** with fresh eyes, scan the spec for placeholders, contradictions, over-broad scope and ambiguous requirements; fix each inline, no re-review (`references/spec-self-review.md`).
 
@@ -111,18 +115,8 @@ skill — writing-plans is the next step.
 
 ## Visual Companion
 
-A browser companion for mockups, diagrams and visual options — a tool, not a mode. **Offer it
-just-in-time, never upfront**, the first time a question is clearer shown than told. **The offer
-MUST be its own message**, with nothing else in it:
-> "This next part might be easier if I show you — I can put together mockups, diagrams, and comparisons in a browser tab as we go. It's still new and can be token-intensive. Want me to? I'll open it for you."
-
-Wait for the answer. On yes, start the server with `--open`; on no, continue text-only and do not
-offer again. **Then decide per question:** browser for content that IS visual (mockups, layout
-comparisons, diagrams), terminal for text (requirements, trade-offs, scope). A UI *topic* is not a
-visual question (`references/visual-companion-rules.md`).
-
-If they agree to the companion, read the detailed guide first:
-`skills/brainstorming/visual-companion.md`
+A browser companion for mockups and diagrams — a tool, not a mode; offered just-in-time as its
+own message, never upfront (`references/visual-companion-rules.md`, then `visual-companion.md`).
 
 ## References
 
@@ -134,3 +128,5 @@ Read one when its trigger fires.
 - `references/visual-companion-rules.md` — read when deciding if a question belongs in the browser.
 - `references/spec-self-review.md` — read when the spec needs its fresh-eyes pass.
 - `references/research-checklist.md` — read at the Research check; one true item calls `znf:research`.
+- `references/architect-gate.md` — read at step 5 of the architectural path; the four features and the dispatch.
+- `references/architect-memo.md` — read at step 6; the ten memo sections, shared by tier 2 and tier 3.
