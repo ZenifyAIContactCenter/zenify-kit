@@ -20,7 +20,7 @@ func TestGenSkills_EscapesAngleBracketsAndPipes(t *testing.T) {
 			"---\nname: escagent\ndescription: Agent cho <slug> và a|b. Chi tiết sau.\n---\nbody\n", //znf:allow-lang
 		)},
 	}
-	files, err := GenSkills(znf, fstest.MapFS{})
+	files, err := GenSkills(znf)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -55,7 +55,7 @@ func newSkillsCmd() *cobra.Command {
 	var repo, dest string
 	install := &cobra.Command{
 		Use:   "install",
-		Short: "materialize coding skill (leg-1) cho repo hiện tại vào .claude/skills", //znf:allow-lang
+		Short: "gỡ bản coding skill (leg-1) cũ khỏi .claude/skills của repo — chúng đã nằm trong plugin znf", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if repo == "" {
 				wd, err := os.Getwd()
@@ -67,19 +67,18 @@ func newSkillsCmd() *cobra.Command {
 			if dest == "" {
 				dest = filepath.Join(".claude", "skills")
 			}
-			skills := plugin.SkillsForRepo(repo)
 			u := uiOut(cmd)
-			if len(skills) == 0 {
-				u.Step(ui.StatusInfo, fmt.Sprintf("repo %q không có coding skill trong footprint map", repo), "") //znf:allow-lang
-				return nil
-			}
 			man := filepath.Join(dest, ".manifest.json")
-			res, err := plugin.InstallCoding(dest, man, skills)
-			if err != nil {
-				return exitcode.New(exitcode.Fail, err)
+			if _, err := os.Stat(man); os.IsNotExist(err) {
+				u.Step(ui.StatusInfo, fmt.Sprintf("%s: không có manifest coding skill, không có gì để gỡ", dest), "") //znf:allow-lang
+			} else {
+				res, err := plugin.PruneCoding(dest, man)
+				if err != nil {
+					return exitcode.New(exitcode.Fail, err)
+				}
+				u.Step(ui.StatusOK, fmt.Sprintf("prune %s", repo), //znf:allow-lang
+					fmt.Sprintf("%d gỡ, %d giữ (user sửa) → %s; bản dùng chung: `zenify skills sync`", len(res.Removed), len(res.Kept), dest)) //znf:allow-lang
 			}
-			u.Step(ui.StatusOK, fmt.Sprintf("install %s", repo), //znf:allow-lang
-				fmt.Sprintf("%d ghi, %d giữ, %d không đổi → %s", len(res.Written), len(res.Kept), len(res.Skipped), dest)) //znf:allow-lang
 			if recs := plugin.Leg2ForRepo(repo); len(recs) > 0 {
 				u.Section("Khuyến nghị third-party (chạy thủ công rồi commit):") //znf:allow-lang
 				for _, r := range recs {

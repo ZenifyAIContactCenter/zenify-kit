@@ -44,7 +44,7 @@ func TestParseFrontmatter_UnquotedColonAndQuotes(t *testing.T) {
 
 func TestGenSkills_PagesAndIndexes(t *testing.T) {
 	znf := os.DirFS("testdata")
-	files, err := GenSkills(znf, os.DirFS("testdata/empty-coding"))
+	files, err := GenSkills(znf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,17 +72,17 @@ func TestGenSkills_PagesAndIndexes(t *testing.T) {
 }
 
 // TestGenSkills_RealEmbeddedTree exercises GenSkills against the real
-// embedded assets (plugin.ZnfFS / plugin.CodingFS), not the synthetic
-// fixtures — this is what caught the strict-YAML regression against real
-// frontmatter containing an unquoted "key: value"-shaped description.
+// embedded assets (plugin.ZnfFS), not the synthetic fixtures — this is what
+// caught the strict-YAML regression against real frontmatter containing an
+// unquoted "key: value"-shaped description.
 func TestGenSkills_RealEmbeddedTree(t *testing.T) {
-	znf, coding := plugin.ZnfFS(), plugin.CodingFS()
-	files, err := GenSkills(znf, coding)
+	znf := plugin.ZnfFS()
+	files, err := GenSkills(znf)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	wantSkills := countSkillDirs(t, znf, "skills") + countSkillDirs(t, coding, ".")
+	wantSkills := countSkillDirs(t, znf, "skills")
 	gotSkills := 0
 	for rel := range files {
 		if strings.HasPrefix(rel, "skills/") && rel != "skills/index.md" {

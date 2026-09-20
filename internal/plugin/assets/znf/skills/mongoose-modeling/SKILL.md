@@ -146,4 +146,4 @@ whatever subset of data you tested against and breaks on the rest.
 
 - Changing the shape of a collection shared across services → `znf:gate`.
 - Runtime read/write traps on an already-designed schema (tenant filters,
-  `strict: false`, raw-driver bypass) → the `mongo-data-safety` skill.
+  `strict: false`, raw-driver bypass) → `znf:mongo-data-safety`.

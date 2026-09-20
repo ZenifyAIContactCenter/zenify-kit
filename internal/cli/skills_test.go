@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 )
 
 func TestNewSkillsCmdHasSync(t *testing.T) {
@@ -24,7 +26,43 @@ func TestNewSkillsCmdHasSync(t *testing.T) {
 	}
 }
 
-func TestSkillsInstallSubset(t *testing.T) {
+// TestSkillsInstallPrunesLegacyCopy: `skills install` no longer materializes
+// coding skills (they ship inside the znf plugin, 2026-09-20) — it prunes a
+// leftover per-repo copy recorded in a previous manifest.
+func TestSkillsInstallPrunesLegacyCopy(t *testing.T) {
+	dest := t.TempDir()
+	legacy := filepath.Join(dest, "react-patterns", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("old content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	man := &managed.Manifest{Entries: map[string]managed.Entry{}}
+	if err := man.Record(legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := man.Save(filepath.Join(dest, ".manifest.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"skills", "install", "--repo", "contact-center-web", "--dest", dest})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("legacy react-patterns copy must be pruned: %v", err)
+	}
+	if !strings.Contains(out.String(), "vercel-labs/agent-skills") {
+		t.Fatalf("output missing leg-2 recommendation vercel-labs/agent-skills: %s", out.String())
+	}
+}
+
+func TestSkillsInstallNoManifest(t *testing.T) {
 	dest := t.TempDir()
 	root := NewRootCmd()
 	var out bytes.Buffer
@@ -34,14 +72,8 @@ func TestSkillsInstallSubset(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dest, "react-patterns", "SKILL.md")); err != nil {
-		t.Fatalf("react-patterns not materialized: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dest, "nestjs-patterns")); !os.IsNotExist(err) {
-		t.Fatalf("web must NOT have nestjs-patterns")
-	}
-	if !strings.Contains(out.String(), "vercel-labs/agent-skills") {
-		t.Fatalf("output missing leg-2 recommendation vercel-labs/agent-skills: %s", out.String())
+	if !strings.Contains(out.String(), "không có manifest") { //znf:allow-lang
+		t.Fatalf("output missing no-manifest message: %s", out.String())
 	}
 }
 
