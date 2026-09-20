@@ -55,5 +55,3 @@ jobs:
         working-directory: website
       - run: npm run docs:build
         working-directory: website
-        env:
-          GITHUB_TOKEN: ${{ github.token }}  # changelog.data.ts reads GitHub Releases; the token avoids the runner rate limit

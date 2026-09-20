@@ -13,9 +13,15 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: changelog entry exists for this tag
+        run: |
+          f=website/changelog.md
+          grep -qx "## ${GITHUB_REF_NAME}" "$f" || { echo "::error::$f has no '## ${GITHUB_REF_NAME}' section — write it before tagging"; exit 1; }
+          awk -v tag="## ${GITHUB_REF_NAME}" '$0==tag{on=1;next} /^## /{on=0} on' "$f" > "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md"
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
-          args: release --clean
+          args: release --clean --release-notes "$RUNNER_TEMP/release-notes.md"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
