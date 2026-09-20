@@ -47,3 +47,7 @@ Một worker sonnet khoảng 1,6 USD; verifier haiku dưới 1 USD. Research so 
 ## Không làm
 
 Xuất PDF/HTML, persona phản biện, critique loop nhiều vòng, Agent Teams, commit kết quả vào repo đích. Knowledge store đã là nơi ghi.
+
+## Xem thêm
+
+[`/reference/skills/research`](/reference/skills/research) (skill, chạy fork), [`/reference/agents/researcher`](/reference/agents/researcher) (subagent worker và verifier), [cook: xây tính năng](/workflows/cook) (bước Research check), [Chọn workflow](/workflows/)
