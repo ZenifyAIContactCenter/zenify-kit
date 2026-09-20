@@ -208,10 +208,9 @@ func gitCommonDirRun(args ...string) ([]byte, error) {
 	return exec.Command("git", args...).Output() //nolint:gosec // G204 -- fixed 'git' binary; args are internal, not user shell input
 }
 
-// reviewLogDir resolves the learning-capture store at the MAIN checkout: the parent of
-// git-common-dir + /.znf/review-log. From a worktree, git-common-dir points at <main>/.git,
-// so parent = main checkout → the record survives `wt rm`.
-func reviewLogDir(run func(...string) ([]byte, error)) (string, error) {
+// znfStoreDir resolves <main checkout>/.znf/<sub>: the parent of git-common-dir.
+// From a worktree, git-common-dir points at <main>/.git, so the store survives `wt rm`.
+func znfStoreDir(run func(...string) ([]byte, error), sub string) (string, error) {
 	out, err := run("rev-parse", "--git-common-dir")
 	if err != nil {
 		return "", err
@@ -227,7 +226,11 @@ func reviewLogDir(run func(...string) ([]byte, error)) (string, error) {
 		}
 		gcd = abs
 	}
-	return filepath.Join(filepath.Dir(gcd), ".znf", "review-log"), nil
+	return filepath.Join(filepath.Dir(gcd), ".znf", sub), nil
+}
+
+func reviewLogDir(run func(...string) ([]byte, error)) (string, error) {
+	return znfStoreDir(run, "review-log")
 }
 
 func defaultReviewLogDir() (string, error) { return reviewLogDir(gitCommonDirRun) }
