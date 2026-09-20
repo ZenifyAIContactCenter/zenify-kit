@@ -3,6 +3,7 @@ package skilllint
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -57,6 +58,35 @@ func TestScanSize_FlagsOnlyOversizedSkillMd(t *testing.T) {
 	for _, f := range fs {
 		if filepath.Dir(f.File) == small {
 			t.Fatalf("small skill flagged: %+v", f)
+		}
+	}
+}
+
+func TestScanStrongModel_FlagsLiteralExceptAdvisorDescription(t *testing.T) {
+	root := t.TempDir()
+	mk := func(rel, body string) {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("agents/bad.md", "---\nname: bad\nmodel: fable\n---\nbody\n")
+	mk("skills/x/SKILL.md", "# x\n\nDispatch with model Fable when hard.\n\n```\nmodel: 'fable'\n```\n")
+	mk("skills/advisor/SKILL.md", "---\nname: advisor\ndescription: second opinion — triggers \"hỏi fable\", \"@fable\"\n---\nRoute via select-route.\n") //znf:allow-lang
+	mk("skills/_shared/scripts/select-route", "strong=fable\n")
+	fs, err := ScanStrongModel([]string{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs) != 3 {
+		t.Fatalf("want 3 findings (agent frontmatter, prose, fenced), got %+v", fs)
+	}
+	for _, f := range fs {
+		if strings.Contains(f.File, "advisor") || strings.Contains(f.File, "select-route") {
+			t.Errorf("must not flag %s", f.File)
 		}
 	}
 }

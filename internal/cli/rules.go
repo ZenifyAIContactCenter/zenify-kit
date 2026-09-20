@@ -47,8 +47,12 @@ func newRulesLintCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
+			sms, err := skilllint.ScanStrongModel(roots)
+			if err != nil {
+				return exitcode.New(exitcode.Fail, err)
+			}
 			u := uiOut(cmd)
-			if len(vs) == 0 && len(fms) == 0 && len(sls) == 0 && len(szs) == 0 {
+			if len(vs) == 0 && len(fms) == 0 && len(sls) == 0 && len(szs) == 0 && len(sms) == 0 {
 				u.Step(ui.StatusOK, "rules lint: sạch.", "") //znf:allow-lang
 				return nil
 			}
@@ -64,8 +68,11 @@ func newRulesLintCmd() *cobra.Command {
 			for _, f := range szs {
 				u.Step(ui.StatusFail, fmt.Sprintf("%s: %d bytes / %d lines; cap %d bytes / %d lines — move rationale to references/", f.File, f.Bytes, f.Lines, skilllint.SizeBytes, skilllint.SizeLines), "")
 			}
+			for _, f := range sms {
+				u.Step(ui.StatusFail, fmt.Sprintf("%s:%d: strong-model literal — only select-route may name it; pass its output as the call's model: %s", f.File, f.Line, f.Text), "")
+			}
 			return exitcode.New(exitcode.Fail,
-				fmt.Errorf("rules lint: %d dòng tiếng Việt, %d frontmatter globs:, %d dòng \"omit model\", %d SKILL.md quá cỡ", len(vs), len(fms), len(sls), len(szs))) //znf:allow-lang
+				fmt.Errorf("rules lint: %d dòng tiếng Việt, %d frontmatter globs:, %d dòng \"omit model\", %d SKILL.md quá cỡ, %d dòng gọi tên model mạnh", len(vs), len(fms), len(sls), len(szs), len(sms))) //znf:allow-lang
 		},
 	}
 	cmd.Flags().BoolVar(&includeGo, "include-go", false, "quét cả internal/**/*.go") //znf:allow-lang

@@ -38,7 +38,7 @@ dispatcher judges the tier per task. An earlier version of this file overrode it
 **The one local caveat SDD cannot know — the CLI's `xhigh` exclusion.** `claude-haiku-4-5` is
 **not xhigh-capable**: it is on the CLI's `xhigh_effort` exclusion list alongside `claude-3-*`,
 `opus-4-0/4-1/4-5/4-6` and `sonnet-4-0/4-5/4-6`, while `sonnet-5`, `opus-4-7/4-8`, `opus-5` and
-`fable-5` are not. So dispatching haiku *at `xhigh`* neither raises effort nor errors — the CLI
+the top tier above it are not. So dispatching haiku *at `xhigh`* neither raises effort nor errors — the CLI
 **silently downgrades** it (`"Effort '<x>' exceeds … using '<y>'"`). So **never pair the cheapest
 tier with `xhigh`**: a transcription task runs haiku at its default effort (which is all it needs),
 and `xhigh` goes to `sonnet`+ where the dial earns its cost. This is a caveat on *effort*, not a
