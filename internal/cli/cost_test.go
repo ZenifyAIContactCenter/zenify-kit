@@ -65,7 +65,7 @@ func TestRunCost_HumanAndJSON(t *testing.T) {
 	if err := runCost(&out, home, project, "7d", 5, false, false); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"zenify cost", "cache_read", "3.0k", "znf:ground", "median"} {
+	for _, want := range []string{"zenify cost", "cache_read", "3.0k", "znf:ground", "median", "Thinking token main"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("human output missing %q:\n%s", want, out.String())
 		}
@@ -84,6 +84,31 @@ func TestRunCost_HumanAndJSON(t *testing.T) {
 	}
 	if env.SchemaVersion == "" || env.Data.Main.CacheRead != 3000 || env.Data.SkillsBy["znf:ground"] != 1 {
 		t.Fatalf("json data = %+v", env.Data)
+	}
+}
+
+func TestRunCost_ThinkingAndEffort(t *testing.T) {
+	costNow = func() time.Time { return time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { costNow = time.Now })
+	home, project := fakeHome(t)
+	abs, _ := filepath.Abs(project)
+	root := filepath.Join(home, ".claude", "projects", cost.ProjectSlug(filepath.Clean(abs)))
+	line := `{"type":"assistant","timestamp":"2026-09-18T10:05:00.000Z","effort":"high",` +
+		`"message":{"model":"claude-opus-5","usage":{"input_tokens":1,"cache_creation_input_tokens":0,` +
+		`"cache_read_input_tokens":1,"output_tokens":100,"output_tokens_details":{"thinking_tokens":42}}}}` + "\n"
+	if err := os.WriteFile(filepath.Join(root, "s2.jsonl"), []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runCost(&out, home, project, "7d", 5, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "high(1)") {
+		t.Fatalf("human output missing effort tally %q:\n%s", "high(1)", out.String())
+	}
+	if !strings.Contains(out.String(), "42") {
+		t.Fatalf("human output missing thinking token count 42:\n%s", out.String())
 	}
 }
 
