@@ -13,7 +13,7 @@ Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
 0 fetch → 1 ground → 2 brainstorm→spec → 3 ground → 4 scout → 5 plan → 6 wt+SDD → 7 /ship
 ```
 
-- Worktree at **Step 6**, not Step 0. **One session, start to finish** — related work stays together; never suggest `/clear` mid-pipeline. Re-entry with the plan path exists for a session that ended anyway.
+- Worktree at **Step 6**, not Step 0.
 - **No complexity triage** — scale the design, never the step count.
 - **A `.md` path argument** → Step 0, ground **every name the file uses**, then Steps 4 and 6; skip 1, 2, 5. SDD's Setup resumes from the ledger: a `Task <N>: complete` line is not re-dispatched. **A description** → all steps.
 - **Every step leaves a named line** — `Skill(znf:ground)` ×3, `Agent(znf:scout)` ×1, `Skill(znf:brainstorming)`, `Skill(znf:writing-plans)`, `Skill(znf:subagent-driven-development)`, `Skill(znf:ship)`. A missing line is a skipped step.
