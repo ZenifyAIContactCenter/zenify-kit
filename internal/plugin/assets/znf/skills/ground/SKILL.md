@@ -4,6 +4,7 @@ description: Verify real shapes and real values before writing code. Use when ab
 argument-hint: "<names / shapes to verify>"
 allowed-tools: Read Grep Glob Bash(zenify db-read *) Bash(mongosh *) Bash(mysql *) Bash(psql *) Bash(grep *) Bash(find *) Agent
 context: fork
+model: sonnet
 background: false
 ---
 

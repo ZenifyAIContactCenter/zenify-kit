@@ -53,6 +53,13 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) {
 			apply.SubagentModelEnv, apply.SubagentModelDefault)
 	}
 
+	if changed, err := apply.EnsureStrongModelEnv(home, false); err != nil {
+		fmt.Fprintln(stderr, "znf ensure: strong model:", err)
+	} else if changed {
+		fmt.Fprintf(stdout, "set %s=%s in ~/.claude/settings.json (select-route routes strong-model dispatches there)\n",
+			apply.StrongModelEnv, apply.StrongModelDefault)
+	}
+
 	// runConfig prints its whole plan to stdout; ensure only wants the count
 	// plus the CREATE/UPDATE lines (so the overwrite is visible in the
 	// session's additional context — see final-review.md Important #2), and

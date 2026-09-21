@@ -157,6 +157,17 @@ func TestSummarize_Math(t *testing.T) {
 	}
 }
 
+func TestRecord_BranchRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := WriteRecord(dir, Record{TS: "2026-09-21T00:00:00Z", Head: "abc", Branch: "namph/feat/x", Outcome: "reviewed"}); err != nil {
+		t.Fatal(err)
+	}
+	recs, _ := LoadRecords(dir)
+	if len(recs) != 1 || recs[0].Branch != "namph/feat/x" {
+		t.Fatalf("branch lost: %+v", recs)
+	}
+}
+
 func TestSummarize_RefuteRateZeroDenom(t *testing.T) {
 	s := Summarize([]Record{{Tier: "T1", Kept: 0, Refuted: 0}})
 	if s.RefuteRate != 0 {

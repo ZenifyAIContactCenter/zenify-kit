@@ -1,0 +1,12 @@
+---
+summary: Solution architect chạy trước khi viết spec ở tầng architectural khi một gate cơ học fire (cross-repo, shared contract, contract mới, path critical); mô tả cách giải, không viết code, memo mười mục theo khuôn architect-memo.
+---
+Agent nhận một brief là file trên đĩa (problem, phác approach của caller, ground report, constitution, khuôn memo, file bối cảnh project) và ghi memo ≤120 dòng vào path được chỉ, trả về caller ≤40 dòng. Memo bắt buộc qua ba gate chống over-engineer (Simplicity, Anti-Abstraction, Integration-First) có ghi lý do, đếm innovation token, trả lời checklist polyrepo năm câu, nêu độ chắc và dòng `changed_decision: yes|no` so với phác approach của caller.
+
+## Khi nào được gọi
+
+`znf:brainstorming` tầng architectural, sau bước hỏi làm rõ và research check, trước Clarify-lite, khi `select-route architect` trả về một model (một trong `REPOS≥2`, `SHARED`, `NEW_CONTRACT`, `CRITICAL` fire). Model do script quyết định theo env `ZNF_STRONG_MODEL` của máy; không gate nào fire thì không gọi agent, session model tự viết memo theo cùng khuôn.
+
+## Lưu ý
+
+Chỉ đọc code; `Write` duy nhất vào path memo. Research khi cần qua `znf:researcher` (sonnet), không tự fetch web. Không phải reviewer spec (đó là `znf:analyze`).

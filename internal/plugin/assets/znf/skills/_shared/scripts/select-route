@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Mechanical model routing for znf dispatches (no LLM guessing) — the ONLY place a strong-model
+# name may appear. Skills pass line 1 verbatim as the Agent call's `model`.
+# Usage : select-route <site> KEY=VAL...
+#   site  architect | investigator | implementer | reviewer | manual
+#   keys  TIER=<spike|bounded|architectural|T1|T2|T3> REPOS SHARED NEW_CONTRACT CRITICAL ROUND
+#         SPEC=<code|prose> FAIL BLOCKED_STREAK        (numbers: digits only)
+# Output: line 1 model=<haiku|sonnet|opus|<strong>|none|inherit>
+#         line 2 reason: <why>
+#         line 3 gates: <comma-separated features that fired, or ->
+# STRONG = $ZNF_STRONG_MODEL when it is `fable` or `opus`; anything else (or unset) → opus.
+# No warning, no config read, no network: a machine without the strong model routes to opus silently.
+set -euo pipefail
+
+usage() { echo "usage: select-route <architect|investigator|implementer|reviewer|manual> KEY=VAL..." >&2; exit 2; }
+[ $# -ge 1 ] || usage
+site=$1; shift
+
+strong=opus
+case "${ZNF_STRONG_MODEL:-}" in fable|opus) strong=$ZNF_STRONG_MODEL ;; esac
+
+TIER= SPEC=prose REPOS=0 SHARED=0 NEW_CONTRACT=0 CRITICAL=0 ROUND=1 FAIL=0 BLOCKED_STREAK=0
+for kv in "$@"; do
+  k=${kv%%=*}; v=${kv#*=}
+  case "$k" in
+    TIER) TIER=$v ;;
+    SPEC) SPEC=$v ;;
+    REPOS|SHARED|NEW_CONTRACT|CRITICAL|ROUND|FAIL|BLOCKED_STREAK)
+      case "$v" in ''|*[!0-9]*) echo "$k must be a number: $v" >&2; exit 2 ;; esac
+      printf -v "$k" '%s' "$v" ;;
+    *) echo "unknown key: $k" >&2; exit 2 ;;
+  esac
+done
+
+out() { printf 'model=%s\nreason: %s\ngates: %s\n' "$1" "$2" "${3:--}"; }
+
+case "$site" in
+  architect)
+    if [ "$TIER" != architectural ]; then out none "tier '${TIER:-unset}' is not architectural -> no architect"; exit 0; fi
+    g=
+    [ "$REPOS" -ge 2 ]       && g="$g,REPOS>=2"
+    [ "$SHARED" = 1 ]        && g="$g,SHARED"
+    [ "$NEW_CONTRACT" = 1 ]  && g="$g,NEW_CONTRACT"
+    [ "$CRITICAL" = 1 ]      && g="$g,CRITICAL"
+    g=${g#,}
+    if [ -z "$g" ]; then out none "architectural, no gate fired -> design inline on the session model"; exit 0; fi
+    out "$strong" "architectural + gate -> architect on the strong model (one dispatch per cook)" "$g" ;;
+  investigator)
+    if   [ "$ROUND" -ge 3 ]; then out "$strong" "round $ROUND: two diagnoses failed -> strong model" "ROUND>=3"
+    elif [ "$ROUND" -eq 2 ]; then out opus "round 2: first diagnosis failed -> opus, fresh context" "ROUND=2"
+    else                          out sonnet "round $ROUND: first diagnosis -> sonnet"; fi ;;
+  implementer)
+    if   [ "$FAIL" -ge 3 ]; then out none "same test failed $FAIL times -> stop implementing; dispatch investigator ROUND=3" "FAIL>=3"
+    elif [ "$FAIL" -eq 2 ]; then out opus "same test failed twice -> opus with the error brief on disk" "FAIL=2"
+    elif [ "$SPEC" = code ]; then out haiku "plan carries the complete code -> transcription tier"
+    else                          out sonnet "plan is prose -> standard tier"; fi ;;
+  reviewer)
+    if [ "$TIER" = T3 ] && [ "$BLOCKED_STREAK" -ge 2 ]; then out "$strong" "T3 not shippable $BLOCKED_STREAK times in a row -> strong reviewer" "BLOCKED_STREAK>=2"
+    else out inherit "review keeps its per-dimension model choice"; fi ;;
+  manual) out "$strong" "explicit request -> strong model" "TAG" ;;
+  *) usage ;;
+esac

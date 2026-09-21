@@ -147,6 +147,17 @@ func renderCost(w io.Writer, r *cost.Report, bySkill bool) {
 	u.Note(fmt.Sprintf("Subagent chiếm %s tổng token. Context mỗi turn (main): median %s, p90 %s (n=%d).", //znf:allow-lang
 		pct(r.Sub.Total(), grand), humanTok(r.CtxMedian), humanTok(r.CtxP90), r.CtxN))
 
+	effs := sortedKeys(r.Efforts, func(a, b string) bool { return r.Efforts[a] > r.Efforts[b] })
+	parts := make([]string, 0, len(effs))
+	for _, k := range effs {
+		parts = append(parts, fmt.Sprintf("%s(%d)", k, r.Efforts[k]))
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "-")
+	}
+	u.Note(fmt.Sprintf("Thinking token main: %s (%s output). Effort đã thấy: %s.", //znf:allow-lang
+		humanTok(r.Main.Thinking), pct(r.Main.Thinking, r.Main.Output), strings.Join(parts, " ")))
+
 	u.Section("Model") //znf:allow-lang
 	rows := [][]string{}
 	for _, k := range sortedKeys(r.MainModels, func(a, b string) bool { return r.MainModels[a] > r.MainModels[b] }) {

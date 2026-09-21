@@ -32,3 +32,10 @@ Handle based on `$PLAN`'s `verdict`:
 - `passthrough` (not expected when ADDED>2000) → proceed to Step 2 on the whole diff.
 
 **The report must print**: how many clusters were bundled, LOC + tier for each cluster, BEFORE dispatching — transparent like "print tier + reason".
+
+## Bundler outcomes
+
+- `zenify` missing → print "diff > 2000 LOC but review-bundle is missing → too large, stop (split the PR)", stop.
+- `too-large` → **STOP**: "too large even after bundling (> 8 clusters) — split the PR then review again", `shippable:false`.
+- `bundle` → review per bundle, merge, dedup by `title+file`, skip Step 2, go to Step 4 (above).
+- `passthrough` → Step 2 on the whole diff.

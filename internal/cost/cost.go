@@ -27,6 +27,7 @@ type Usage struct {
 	CacheCreation int64 `json:"cache_creation"`
 	CacheRead     int64 `json:"cache_read"`
 	Output        int64 `json:"output"`
+	Thinking      int64 `json:"thinking"` // usage.output_tokens_details.thinking_tokens, 0 when absent
 	Turns         int   `json:"turns"`
 }
 
@@ -38,6 +39,7 @@ func (u *Usage) add(o rawUsage) {
 	u.CacheCreation += o.CacheCreationInputTokens
 	u.CacheRead += o.CacheReadInputTokens
 	u.Output += o.OutputTokens
+	u.Thinking += o.OutputTokensDetails.ThinkingTokens
 	u.Turns++
 }
 
@@ -102,6 +104,8 @@ type Report struct {
 	SkillCalls int              `json:"skill_calls"`
 	SkillsBy   map[string]int   `json:"skills_by"`
 	SkillTok   map[string]Usage `json:"skill_tok"`
+
+	Efforts map[string]int `json:"efforts"` // distinct top-level `effort` values seen on main assistant lines → count
 
 	Top        []SessionRow `json:"top"`
 	DupReads   []DupRead    `json:"dup_reads"`
@@ -170,6 +174,9 @@ type rawUsage struct {
 	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 	OutputTokens             int64 `json:"output_tokens"`
+	OutputTokensDetails      struct {
+		ThinkingTokens int64 `json:"thinking_tokens"`
+	} `json:"output_tokens_details"`
 }
 
 type rawContent struct {
@@ -192,6 +199,7 @@ type rawLine struct {
 	Type             string     `json:"type"`
 	Timestamp        string     `json:"timestamp"`
 	AttributionSkill string     `json:"attributionSkill"`
+	Effort           string     `json:"effort"`
 	Message          rawMessage `json:"message"`
 }
 
@@ -234,6 +242,7 @@ func Scan(root string, opt Options) (*Report, error) {
 		MainModels: map[string]int64{}, SubModels: map[string]int64{},
 		AgentsByType: map[string]int{}, AgentsByModel: map[string]int{},
 		SkillsBy: map[string]int{}, SkillTok: map[string]Usage{},
+		Efforts: map[string]int{},
 	}
 	sessions := map[string]*Session{}
 	get := func(id string) *Session {
@@ -355,6 +364,7 @@ func addUsage(dst *Usage, src Usage) {
 	dst.CacheCreation += src.CacheCreation
 	dst.CacheRead += src.CacheRead
 	dst.Output += src.Output
+	dst.Thinking += src.Thinking
 	dst.Turns += src.Turns
 }
 
@@ -434,6 +444,9 @@ func scanMain(path string, s *Session, r *Report, since time.Time) (int, error) 
 						s.seen[id] = true
 					}
 					s.Main.add(*u)
+					if l.Effort != "" {
+						r.Efforts[l.Effort]++
+					}
 					tot := u.InputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.OutputTokens
 					// "<synthetic>" rows (harness-injected, zero usage) would only add noise.
 					if l.Message.Model != "" && tot > 0 {

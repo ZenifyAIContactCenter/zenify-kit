@@ -18,6 +18,21 @@ func line(t *testing.T, typ, ts string, msg map[string]any) string {
 	return string(b)
 }
 
+// lineWithTop builds a line with extra top-level fields (siblings of type/timestamp/message),
+// e.g. the top-level `effort` field.
+func lineWithTop(t *testing.T, typ string, ts time.Time, msg map[string]any, top map[string]any) string {
+	t.Helper()
+	m := map[string]any{"type": typ, "timestamp": ts.UTC().Format(time.RFC3339Nano), "message": msg}
+	for k, v := range top {
+		m[k] = v
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 // lineSkill builds an assistant line with attributionSkill at TOP LEVEL (a sibling of message, not nested).
 func lineSkill(t *testing.T, ts, skill string, msg map[string]any) string {
 	t.Helper()
@@ -227,6 +242,27 @@ func TestScan_SkillTokBucketsByAttribution(t *testing.T) {
 	}
 	if sum != r.Main.Total() {
 		t.Fatalf("sum(SkillTok)=%d != Main.Total()=%d", sum, r.Main.Total())
+	}
+}
+
+func TestReport_ThinkingTokensAndEfforts(t *testing.T) {
+	root := t.TempDir()
+	sid := "eeeeeeee-0000-0000-0000-000000000005"
+	u := usage(10, 0, 100, 50)
+	u["output_tokens_details"] = map[string]any{"thinking_tokens": 30}
+	write(t, filepath.Join(root, sid+".jsonl"),
+		lineWithTop(t, "assistant", time.Now(), map[string]any{"model": "claude-opus-5", "usage": u}, map[string]any{"effort": "medium"}),
+		lineWithTop(t, "assistant", time.Now(), map[string]any{"model": "claude-opus-5", "usage": usage(1, 0, 1, 1)}, map[string]any{"effort": "high"}),
+	)
+	r, err := Scan(root, Options{Top: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Main.Thinking != 30 {
+		t.Fatalf("thinking = %d", r.Main.Thinking)
+	}
+	if r.Efforts["medium"] != 1 || r.Efforts["high"] != 1 {
+		t.Fatalf("efforts = %+v", r.Efforts)
 	}
 }
 

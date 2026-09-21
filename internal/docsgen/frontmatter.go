@@ -95,11 +95,27 @@ func isKey(s string) bool {
 	return true
 }
 
-// unquote strips one matching pair of surrounding ' or " quotes, if present.
+// unquote strips one matching pair of surrounding ' or " quotes, if present,
+// and drops anything after the closing quote (a trailing YAML comment, e.g.
+// `"value" # note`). A backslash inside a double-quoted value escapes the
+// next character, so an escaped `\"` does not end the string early. A `#`
+// found INSIDE the quotes is part of the value and stays. Unquoted scalars
+// (no leading quote) are returned unchanged.
 func unquote(s string) string {
-	if len(s) >= 2 {
-		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
-			return s[1 : len(s)-1]
+	if len(s) < 2 {
+		return s
+	}
+	q := s[0]
+	if q != '"' && q != '\'' {
+		return s
+	}
+	for i := 1; i < len(s); i++ {
+		if q == '"' && s[i] == '\\' && i+1 < len(s) {
+			i++
+			continue
+		}
+		if s[i] == q {
+			return s[1:i]
 		}
 	}
 	return s

@@ -62,6 +62,13 @@ func newDownCmd() *cobra.Command {
 				case removed:
 					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.SubagentModelEnv)) //znf:allow-lang
 				}
+				removedStrong, serr := apply.RemoveStrongModelEnv(home, dryRun)
+				switch {
+				case serr != nil:
+					u.Step(ui.StatusWarn, "env", fmt.Sprintf("bỏ qua (%v)", serr)) //znf:allow-lang
+				case removedStrong:
+					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.StrongModelEnv)) //znf:allow-lang
+				}
 			}
 
 			// 2 + 3. Each repo: exclude line + owned settings skeleton.

@@ -1,0 +1,23 @@
+---
+summary: Xem log calibrate của cơ chế chọn model — mỗi lần `select-route` chạy ghi một record, lệnh này đếm theo site, model đã gửi, gate đã fire và tỉ lệ architect đổi quyết định.
+---
+## Khi nào dùng
+
+Sau khoảng 30 record (vài tuần dùng cook/fix/review) để chỉnh ngưỡng gate bằng số: gate nào fire mà architect hầu như không đổi quyết định thì nới; skill `advisor` bị gọi không có cụm kích hoạt thì siết description.
+
+## Kết quả
+
+Số route theo site (`architect`, `investigator`, `implementer`, `reviewer`, `manual`, `plan-metrics`) kèm phân bố model, số lần model mạnh thực sự được gửi, số lần từng gate fire, tỉ lệ `changed_decision` của architect (cảnh báo dưới 40%), số lần `manual` không có trigger. Dữ liệu ở `.znf/route-log` của checkout chính. Chưa có record thì in "no routes logged yet".
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--json` | In toàn bộ record dạng JSON. |
+| `--since` | Chỉ lấy record từ mốc `<n>h`, `<n>d`, `<n>w` hoặc `YYYY-MM-DD`. |
+
+## Ví dụ
+
+```bash
+zenify route-log --since 30d
+```

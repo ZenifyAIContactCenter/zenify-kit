@@ -94,6 +94,52 @@ func Scan(roots []string) ([]Finding, error) {
 	return out, nil
 }
 
+// strongModelRe matches the strong-model name anywhere in an agent-read .md file.
+// The only place that name may live is skills/_shared/scripts/select-route (not .md,
+// so never walked here) and the trigger phrases in skills/advisor/SKILL.md's
+// description line. Fenced blocks are NOT skipped: a snippet with model: 'fable'
+// is exactly the dispatch this rule exists to catch.
+var strongModelRe = regexp.MustCompile(`(?i)\bfable\b`)
+
+// ScanStrongModel walks roots and flags every .md line naming the strong model.
+func ScanStrongModel(roots []string) ([]Finding, error) {
+	var out []Finding
+	for _, root := range roots {
+		err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".md") {
+				return nil
+			}
+			isAdvisor := strings.HasSuffix(filepath.ToSlash(path), "skills/advisor/SKILL.md")
+			f, err := os.Open(path) //nolint:gosec // G304 -- path from a trusted scan root
+			if err != nil {
+				return err
+			}
+			defer func() { _ = f.Close() }()
+			sc := bufio.NewScanner(f)
+			sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+			ln := 0
+			for sc.Scan() {
+				ln++
+				line := sc.Text()
+				if isAdvisor && strings.HasPrefix(line, "description:") {
+					continue
+				}
+				if strongModelRe.MatchString(line) {
+					out = append(out, Finding{File: path, Line: ln, Text: strings.TrimSpace(line)})
+				}
+			}
+			return sc.Err()
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
 func scanFile(path string) ([]Finding, error) {
 	f, err := os.Open(path) //nolint:gosec // G304 -- path from a trusted scan root
 	if err != nil {

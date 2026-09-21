@@ -43,6 +43,10 @@ thing you scouted is reached through any of those, write
 sweep you cannot stand behind — a false "no consumers" is worse than no answer, because the
 caller will act on it.
 
+**Close the section with the count.** Its last line is `consumers: N` — the number of distinct
+consumer sites you listed (0 is valid; "cannot enumerate by grep" still gets the number you did
+find). The caller feeds it to route calibration.
+
 ### 2. Tests that cover the code being changed
 
 Which test files exercise the changed function, route, or collection — and which changed paths
