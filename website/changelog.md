@@ -8,9 +8,23 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
-## v0.25.0
+## v0.26.0
 
 *chưa cắt*
+
+- Chọn model cho subagent theo đặc điểm task, không theo cảm nhận của agent: script `select-route` nhận site (`architect`, `investigator`, `implementer`, `reviewer`, `manual`) và số liệu (số repo, chạm contract chia sẻ, vòng thứ mấy, test fail mấy lần), trả về model và lý do; skill in lý do lên báo cáo. Xem [Chọn model](/concepts/model-routing).
+- Model mạnh của máy đọc từ env `ZNF_STRONG_MODEL` (`fable` hoặc `opus`; thiếu hoặc khác → `opus`, không cảnh báo). `zenify up` ghi `opus` vào `~/.claude/settings.json` khi chưa có, `zenify down` gỡ giá trị mặc định. Teammate dùng Pro không bị dispatch tới model account không có. `zenify rules lint` từ chối tên model mạnh viết trực tiếp trong `.md` của plugin.
+- Agent `architect` cho brainstorming tier architectural: chỉ dispatch khi một gate fire (từ 2 repo, contract chia sẻ, contract mới, vùng critical), một lần mỗi cook, viết memo mười mục; spec lấy Approach, Blast-radius, Flow, Rollback từ memo. Không gate nào fire thì memo viết inline. Xem [agent architect](/reference/agents/architect).
+- Skill `/znf:advisor`: ý kiến thứ hai từ model mạnh trong context mới cho câu hỏi bất kỳ, gọi tay hoặc bằng cụm chữ tường minh; thay cho việc đổi model cả session. Xem [`/znf:advisor`](/reference/skills/advisor).
+- `/znf:fix` đếm `ROUND` trong ship-pack; investigator vòng 1 chạy sonnet, vòng 2 opus với context mới, từ vòng 3 model mạnh kèm log và các giả thuyết đã loại.
+- SDD chọn tier implementer bằng độ cụ thể của plan (`SPEC=code` → haiku, prose → sonnet) và số lần cùng một test fail (lần 2 → opus kèm brief lỗi, lần 3 → dừng implement, chạy investigator). Escalation đổi tier, không đổi effort.
+- Review T3 hai lần liên tiếp không shippable trên cùng branch → reviewer lên model mạnh; `zenify review-log` ghi thêm `branch` để tính streak.
+- Lệnh `zenify route-log` đọc log calibrate ở `.znf/route-log/` (`--since`, `--json`): số route theo site, gate đã fire, tỉ lệ architect đổi quyết định. `zenify cost` in thêm token thinking của session chính và các mức effort đã gặp. Xem [`zenify route-log`](/reference/cli/zenify_route-log).
+- Fork skill (`research`, `analyze`, `scout`, …) ghim sonnet thay vì kế thừa model session; `zenify analyze` ghi metric của plan vào route-log; writing-plans nhắc ở bước tách task cách ghi plan đủ cụ thể để implementer chạy tier rẻ.
+
+## v0.25.0
+
+*2026-09-21*
 
 - Bảy coding skill theo stack (`mongo-data-safety`, `sql-data-safety`, `mongoose-modeling`, `service-integration`, `express-service-patterns`, `nestjs-patterns`, `react-patterns`) chuyển vào plugin `znf`, gọi bằng `znf:<name>`. Không còn chép per-repo: `zenify skills install` giờ **gỡ** bản cũ trong `.claude/skills/` theo manifest, giữ skill dev tự thêm. Xem [Namespace znf](/concepts/znf-namespace).
 - Route domain skill trong workflow thay vì trông vào lời nhắc: bảng `_shared/skill-routing` ánh xạ tín hiệu trong task (chạm Mongo, SQL, schema, pub/sub, Express, NestJS, React) sang skill; mỗi task trong plan khai tag `_Skills:`; `/znf:ground` thêm bước route; implementer của SDD invoke skill trước lần sửa đầu.
