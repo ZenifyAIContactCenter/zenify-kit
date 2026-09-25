@@ -185,7 +185,7 @@ it is generated fresh by the gate on every run.
 
 The floor is **whatever tier SDD's Model Selection lands on** — the cheapest tier for a
 transcription task, a standard tier from prose / integration — not a fixed model pinned here. The
-ceiling is the session model (`opus-4-8`), for architecture, for a task needing broad codebase
+ceiling is the session model (`opus-5-5[1m]`), for architecture, for a task needing broad codebase
 understanding, and for the final whole-branch review. Full-ID pinning is the **session's** job
 (`~/.claude/settings.json`); a subagent dispatch names a *tier* the dispatcher judged, so this file
 does not hard-pin one. The only fixed rule is the effort caveat above: never the cheapest tier with
