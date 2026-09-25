@@ -8,9 +8,15 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.27.0
+
+*2026-09-25*
+
+- `zenify up` ghim model mặc định của workspace là `claude-opus-5-5[1m]` (Opus 5.5, 1M context) thay cho `claude-opus-4-8`. Giá trị này bị ghi đè mỗi lần apply, nên workspace nào chạy `zenify up` sau khi nâng kit đều chuyển sang model mới; `/model` hoặc `--model` theo từng phiên vẫn override được. Quay lại bản cũ trong một phiên: `/model claude-opus-4-8`. Xem [Chọn model](/concepts/model-routing).
+
 ## v0.26.0
 
-*chưa cắt*
+*2026-09-21*
 
 - Chọn model cho subagent theo đặc điểm task, không theo cảm nhận của agent: script `select-route` nhận site (`architect`, `investigator`, `implementer`, `reviewer`, `manual`) và số liệu (số repo, chạm contract chia sẻ, vòng thứ mấy, test fail mấy lần), trả về model và lý do; skill in lý do lên báo cáo. Xem [Chọn model](/concepts/model-routing).
 - Model mạnh của máy đọc từ env `ZNF_STRONG_MODEL` (`fable` hoặc `opus`; thiếu hoặc khác → `opus`, không cảnh báo). `zenify up` ghi `opus` vào `~/.claude/settings.json` khi chưa có, `zenify down` gỡ giá trị mặc định. Teammate dùng Pro không bị dispatch tới model account không có. `zenify rules lint` từ chối tên model mạnh viết trực tiếp trong `.md` của plugin.
