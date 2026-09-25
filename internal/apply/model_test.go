@@ -126,3 +126,10 @@ func TestEnsureWorkspaceModel_DryRunNoWrite(t *testing.T) {
 		t.Fatal("dry-run must not create settings.json")
 	}
 }
+
+// The workflow is calibrated for Opus 5.5 with the 1M context window.
+func TestDefaultModel_IsOpus55_1M(t *testing.T) {
+	if DefaultModel != "claude-opus-5-5[1m]" {
+		t.Fatalf("DefaultModel = %q, want %q", DefaultModel, "claude-opus-5-5[1m]")
+	}
+}

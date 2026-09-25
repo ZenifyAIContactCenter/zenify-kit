@@ -10,11 +10,11 @@ import (
 )
 
 // DefaultModel is the model the znf workflow is calibrated for. The skills and
-// review doctrine assume Opus 4.8 in the MAIN session; onboarding pins it so a
+// review doctrine assume Opus 5.5 (1M context) in the MAIN session; onboarding pins it so a
 // freshly-onboarded workspace runs the workflow on the model it was built for.
 // Subagents are a separate dial: see SubagentModelEnv. It is a *default* — a per-session
 // /model or a --model flag still overrides it (both outrank settings.json).
-const DefaultModel = "claude-opus-4-8"
+const DefaultModel = "claude-opus-5-5[1m]"
 
 // EnsureWorkspaceModel enforces `"model": DefaultModel` in
 // <workspace>/.claude/settings.json. Scoped to the workspace (not global
@@ -46,7 +46,7 @@ func EnsureWorkspaceModel(workspace string, dryRun bool) (changed bool, err erro
 		return false, fmt.Errorf("read settings.json: %w", readErr)
 	}
 
-	want, err := json.Marshal(DefaultModel) // `"claude-opus-4-8"`
+	want, err := json.Marshal(DefaultModel) // `"claude-opus-5-5[1m]"`
 	if err != nil {
 		return false, err
 	}

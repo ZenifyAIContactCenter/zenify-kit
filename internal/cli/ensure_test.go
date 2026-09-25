@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 )
 
@@ -77,7 +78,7 @@ func TestEnsureWorkspace_WritesOnceThenSilent(t *testing.T) {
 	}
 	var s map[string]any
 	_ = json.Unmarshal(raw, &s)
-	if s["model"] != "claude-opus-4-8" {
+	if s["model"] != apply.DefaultModel {
 		t.Fatalf("model pin missing: %v", s["model"])
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); err != nil {
@@ -162,7 +163,7 @@ func TestEnsureWorkspace_EarlyStepFailureDoesNotBlockLaterSteps(t *testing.T) {
 	}
 	var s map[string]any
 	_ = json.Unmarshal(raw, &s)
-	if s["model"] != "claude-opus-4-8" {
+	if s["model"] != apply.DefaultModel {
 		t.Fatalf("model pin missing despite the hooks-step failure: %v", s["model"])
 	}
 	if _, err := os.Stat(filepath.Join(ws, ".claude", "rules", "00-constitution.md")); err != nil {
