@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbperf"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
@@ -17,14 +18,9 @@ import (
 // becomes a printed note. It scans a diff statically; the dynamic explain layer
 // runs in the znf:explain-plan skill, not here.
 func runDbPerf(diffText string, cfg dbperf.Config, asJSON bool, stdout, stderr io.Writer) error {
-	res := dbperf.ScanStatic(dbperf.AddedLines(diffText), cfg)
-	if res.SitesScanned == 0 {
-		// Plain, never styled: this branch runs BEFORE the asJSON check below, so
-		// `db-perf --json` with 0 sites also lands here — ui.Note would put ANSI on
-		// stdout on a real TTY with color on, which a --json consumer must never see.
-		fmt.Fprintln(stdout, "db-perf: không có query backend trong diff — gate pass") //znf:allow-lang
-		return nil
-	}
+	added := dbperf.AddedLines(diffText)
+	res := dbperf.ScanStatic(added, cfg)
+	res.UnscannedFiles = dbperf.UnscannedFiles(added)
 	if asJSON {
 		b, err := json.Marshal(res)
 		if err != nil {
@@ -32,6 +28,15 @@ func runDbPerf(diffText string, cfg dbperf.Config, asJSON bool, stdout, stderr i
 			return nil
 		}
 		fmt.Fprintln(stdout, string(b))
+		return nil
+	}
+	if res.SitesScanned == 0 {
+		// Plain, never styled (776b154): ui.Note would put ANSI on stdout on a
+		// real TTY; this line is read by scripts and agents as-is.
+		fmt.Fprintln(stdout, "db-perf: không có query backend trong diff — gate pass") //znf:allow-lang
+		if n := len(res.UnscannedFiles); n > 0 {
+			fmt.Fprintf(stdout, "db-perf: %d file thuộc stack scanner không đọc được (%s) — coverage: unsupported stack\n", n, strings.Join(res.UnscannedFiles, ", ")) //znf:allow-lang
+		}
 		return nil
 	}
 	var nBlock int

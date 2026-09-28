@@ -34,6 +34,8 @@ Onboard máy vào workspace. Chạy trong terminal, lệnh mở wizard: chọn t
 
 Khi apply, lệnh clone repo còn thiếu, ghi các file cấu hình do kit sở hữu, gắn hook `znf` vào `~/.claude/settings.json`, đồng bộ plugin skill, chuẩn bị Playwright nếu workspace có repo frontend, clone knowledge store và ghi con trỏ workspace vào `~/.zenify/workspace`. Lệnh cần `gh` đã đăng nhập với scope `read:org` và `repo`.
 
+Mỗi repo nhận placeholder rỗng trong `.claude/settings.local.json` cho các secret key chung của team, cộng các key riêng mà repo đó khai trong manifest (ví dụ URL DB và vector store của một service AI). Key riêng chỉ đến máy đã clone repo đó. Chạy lại `zenify up --apply` trên repo đã onboard chỉ thêm key còn thiếu, không đổi giá trị bạn đã điền; kết quả hiện `ok (settings +N key)`.
+
 ```bash
 zenify up
 zenify up --non-interactive --dry-run --workspace ~/WorkingSpace/zenify

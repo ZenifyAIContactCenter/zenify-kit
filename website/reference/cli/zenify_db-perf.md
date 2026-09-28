@@ -24,7 +24,7 @@ Lệnh không cần kết nối DB. Nó đọc diff giữa hai ref, tìm các qu
 
 Để waive một dòng, thêm chú thích `// znf:db-perf-ok: <lý do>` ngay trên dòng query đó. Finding chuyển sang WAIVED và lý do được ghi lại.
 
-Khi diff không có query backend, lệnh in "gate pass". Khi không đọc được diff hoặc config, lệnh bỏ qua và không chặn.
+Khi diff không có query backend, lệnh in "gate pass". Scanner chỉ đọc được lời gọi Mongo kiểu JS; nếu diff chạm file Python, Java, Kotlin, Go, Ruby, PHP hoặc C#, lệnh in thêm một dòng `coverage: unsupported stack` kèm danh sách file — "gate pass" lúc đó nghĩa là không quét, không phải an toàn. Với `--json`, kết quả luôn là JSON (kể cả khi 0 query) và có trường `unscanned_files`. Khi không đọc được diff hoặc config, lệnh bỏ qua và không chặn.
 
 ## Cờ
 

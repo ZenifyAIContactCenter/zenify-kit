@@ -20,7 +20,7 @@ Khi diff thêm hoặc đổi một query DB. `/znf:ground` gọi skill này sớ
 
 ## Cách hoạt động
 
-1. Skill chạy `zenify db-perf --json`, mặc định quét `origin/staging..HEAD`. Khi không có query nào trong diff, skill ghi "no query in this diff" và dừng.
+1. Skill chạy `zenify db-perf --json`, mặc định quét `origin/staging..HEAD`. Khi không có query nào trong diff, skill ghi "no query in this diff" và dừng. Nếu diff có file thuộc stack mà scanner không đọc được (`unscanned_files`, ví dụ `.py`), skill ghi "coverage: unsupported stack" kèm danh sách file, không ghi "no query in this diff".
 2. Khi DB truy cập được, skill lấy tên collection thật rồi chạy explain cho từng chỗ gọi qua `zenify db-read eval` với `explain("executionStats")` hoặc `zenify db-read sql 'EXPLAIN ANALYZE ...'`. Không truy cập được thì skill ghi "dynamic layer skipped: DB unreachable" và chỉ giữ kết quả tĩnh.
 3. Phân loại: `COLLSCAN` trên collection lớn, `Seq Scan` trên bảng lớn, hoặc tỉ lệ docs xem trên docs trả về trên 100 là BLOCKING; tỉ lệ 10 đến 100, có `SORT` dù đã `IXSCAN`, hoặc `$lookup` sang collection bị `COLLSCAN` là ADVISORY.
 4. Skill in một khối `## DB-Perf`, BLOCKING trước, mở đầu bằng "Advisory — no BLOCKING finding." hoặc "BLOCKING — N finding(s) must be fixed or waived before ship."

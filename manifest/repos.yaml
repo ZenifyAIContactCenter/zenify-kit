@@ -54,6 +54,14 @@ repos:
     path: repos/lumi-agent
     base: origin/staging
     tags: [ai]
+    # Repo-scoped: only a developer who clones lumi-agent gets these placeholders.
+    secretKeys:
+      - LUMI_MYSQL_URL_STG
+      - LUMI_MYSQL_URL_PRD
+      - QDRANT_URL_STG
+      - QDRANT_URL_PRD
+      - LUMI_APP_URL_STG
+      - OPENROUTER_API_KEY
   - name: notification-hub-be
     url: git@github.com:ZenifyAIContactCenter/notification-hub-be.git
     path: repos/notification-hub-be

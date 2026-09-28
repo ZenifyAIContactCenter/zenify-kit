@@ -534,3 +534,205 @@ func TestApply_OnProgress_FiresOncePerRepoMonotonic(t *testing.T) {
 		t.Fatalf("results = %d, want %d (OnProgress must not change result count)", len(results), len(plans))
 	}
 }
+
+func writeRepoSettings(t *testing.T, repo, body string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(repo, ".claude", "settings.local.json")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestKeysFor_GlobalThenRepo_Deduped(t *testing.T) {
+	opts := Options{SecretKeys: []string{"MONGO_URL", "X"},
+		RepoByName: map[string]manifest.Repo{"r": {Name: "r", SecretKeys: []string{"X", "R_URL"}}}}
+	got := keysFor(opts, "r")
+	want := []string{"MONGO_URL", "X", "R_URL"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("keysFor = %v, want %v", got, want)
+	}
+	if strings.Join(keysFor(opts, "other"), ",") != "MONGO_URL,X" {
+		t.Fatalf("repo without keys must get the global list only")
+	}
+}
+
+// SC-6: an OK repo missing a repo key gains it; existing values survive.
+func TestApply_OK_MergesMissingRepoKeys(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "lumi")
+	p := writeRepoSettings(t, repo, `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`)
+	res, err := Apply(
+		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}}}},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil || res[0].Err != nil {
+		t.Fatalf("Apply: %v / %v", err, res[0].Err)
+	}
+	env := readEnv(t, p)
+	if env["LUMI_MYSQL_URL_STG"] != "x" {
+		t.Errorf("existing value changed: %q", env["LUMI_MYSQL_URL_STG"])
+	}
+	for _, k := range []string{"QDRANT_URL_STG", "MONGO_URL"} {
+		if v, ok := env[k]; !ok || v != "" {
+			t.Errorf("%s = %q ok=%v, want empty placeholder", k, v, ok)
+		}
+	}
+	if res[0].Skipped || res[0].Action != "ok (settings +2 key)" {
+		t.Errorf("Skipped=%v Action=%q, want false / ok (settings +2 key)", res[0].Skipped, res[0].Action)
+	}
+}
+
+// An OK repo with every key already present stays skipped and untouched.
+func TestApply_OK_NothingMissingStaysSkipped(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	body := `{"env":{"MONGO_URL":"v"}}`
+	p := writeRepoSettings(t, repo, body)
+	res, _ := Apply(
+		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc"}}},
+		&fakeGH{}, &fakeGit{},
+	)
+	if !res[0].Skipped {
+		t.Errorf("want skipped, got Action=%q", res[0].Action)
+	}
+	got, _ := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
+	if string(got) != body {
+		t.Errorf("file rewritten although nothing was missing: %s", got)
+	}
+}
+
+// SC-7: a repo without its own keys never receives another repo's keys.
+func TestApply_OK_OtherRepoKeysDoNotLeak(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "be")
+	p := writeRepoSettings(t, repo, `{"env":{}}`)
+	_, _ = Apply(
+		[]reconcile.RepoPlan{{Name: "be", State: reconcile.OK, Path: "be"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{
+				"be":         {Name: "be"},
+				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG"}},
+			}},
+		&fakeGH{}, &fakeGit{},
+	)
+	for k := range readEnv(t, p) {
+		if strings.HasPrefix(k, "LUMI_") {
+			t.Errorf("be received lumi key %s", k)
+		}
+	}
+}
+
+// FR-4.4: Adopt merges missing keys, keeps values, still records the file.
+func TestApply_Adopt_MergesMissingRepoKeys(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	initClonedRepo(t, repo)
+	p := writeRepoSettings(t, repo, `{"env":{"SECRET":"live-value"}}`)
+	owned := &managed.Manifest{}
+	res, err := Apply(
+		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Adopt, Path: "svc"}},
+		Options{Workspace: ws, Owned: owned,
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc", SecretKeys: []string{"SVC_URL"}}}},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil || res[0].Err != nil {
+		t.Fatalf("Apply: %v / %v", err, res[0].Err)
+	}
+	env := readEnv(t, p)
+	if env["SECRET"] != "live-value" {
+		t.Errorf("value changed: %q", env["SECRET"])
+	}
+	if v, ok := env["SVC_URL"]; !ok || v != "" {
+		t.Errorf("SVC_URL = %q ok=%v", v, ok)
+	}
+	if _, ok := owned.Get(p); !ok {
+		t.Errorf("adopt must still record the settings file")
+	}
+	if res[0].Action != "adopt in place" {
+		t.Errorf("Action = %q", res[0].Action)
+	}
+}
+
+// FR-9a/b: an OK repo with missing keys goes through the same per-repo
+// transaction as Wire/Adopt when SnapshotRoot is set (as it always is from
+// internal/cli/up.go). A verify failure on that path must revert the merged
+// keys, not just skip promoting them.
+func TestApply_OK_MergesMissingRepoKeys_RevertsOnVerifyFailure(t *testing.T) {
+	ws := t.TempDir()
+	snapRoot := filepath.Join(t.TempDir(), "snaps")
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	repo := filepath.Join(ws, "lumi")
+	body := `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`
+	p := writeRepoSettings(t, repo, body)
+	owned := &managed.Manifest{}
+
+	res, err := Apply(
+		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
+		Options{Workspace: ws, Owned: owned, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{
+				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}},
+			},
+			SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+			Now: func() int64 { return 9 },
+			VerifyRepoFn: func(repoDir string, wrote []string) error {
+				return fmt.Errorf("forced verify fail")
+			},
+		},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if res[0].Err == nil {
+		t.Fatalf("want Err from forced verify failure")
+	}
+	got, readErr := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
+	if readErr != nil {
+		t.Fatalf("read settings: %v", readErr)
+	}
+	if string(got) != body {
+		t.Errorf("settings not reverted after verify failure: %s", got)
+	}
+	if _, ok := owned.Get(p); ok {
+		t.Errorf("manifest must not carry an entry for the reverted repo")
+	}
+}
+
+// Success case on the same transaction path: with verify passing, the merged
+// keys are present afterward (cheap companion to the revert case above).
+func TestApply_OK_MergesMissingRepoKeys_TransactionSucceeds(t *testing.T) {
+	ws := t.TempDir()
+	snapRoot := filepath.Join(t.TempDir(), "snaps")
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	repo := filepath.Join(ws, "lumi")
+	p := writeRepoSettings(t, repo, `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`)
+
+	res, err := Apply(
+		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{
+				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}},
+			},
+			SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+			Now: func() int64 { return 10 },
+		},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil || res[0].Err != nil {
+		t.Fatalf("Apply: %v / %v", err, res[0].Err)
+	}
+	env := readEnv(t, p)
+	for _, k := range []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG", "MONGO_URL"} {
+		if _, ok := env[k]; !ok {
+			t.Errorf("%s missing after transaction succeeded", k)
+		}
+	}
+}

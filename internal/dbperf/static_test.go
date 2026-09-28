@@ -67,3 +67,23 @@ func TestFindWithProjectionNotMissingProjection(t *testing.T) {
 		t.Fatalf("find with projection must not flag missing-projection: %+v", r.Findings)
 	}
 }
+
+func TestUnscannedFilesListsNonJSStacksOnce(t *testing.T) {
+	added := []AddedLine{
+		{File: "app/a.py", Line: 1, Text: "x = 1"},
+		{File: "app/a.py", Line: 2, Text: "y = 2"},
+		{File: "web/b.js", Line: 1, Text: "const z = 1"},
+		{File: "svc/C.JAVA", Line: 1, Text: "int x;"},
+	}
+	got := UnscannedFiles(added)
+	want := []string{"app/a.py", "svc/C.JAVA"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("UnscannedFiles = %v, want %v", got, want)
+	}
+}
+
+func TestUnscannedFilesNeverNil(t *testing.T) {
+	if got := UnscannedFiles(nil); got == nil || len(got) != 0 {
+		t.Fatalf("want empty non-nil slice, got %#v", got)
+	}
+}
