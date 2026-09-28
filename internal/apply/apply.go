@@ -86,9 +86,11 @@ func Apply(plans []reconcile.RepoPlan, opts Options, gh ghx.Runner, git gitx.Run
 		r := Result{Repo: p.Name, State: p.State}
 		repoDir := filepath.Join(opts.Workspace, p.Path)
 
-		if !isActionable(p.State) {
+		okNeedsKeys := p.State == reconcile.OK && missingSettingsKeys(repoDir, keysFor(opts, p.Name)) > 0
+		if !isActionable(p.State) && !okNeedsKeys {
 			// OK, DRIFT:skip-dirty, wrong-remote, SKIP:no-access, SKIP,
 			// MIGRATE-layout (automated flip deferred to M2): report, do nothing.
+			// OK with missing secret keys (FR-4.4) falls through to the transaction.
 			r.Skipped = true
 			r.Action = "skipped (" + string(p.State) + ")"
 			results = append(results, r)
@@ -196,17 +198,26 @@ func applyOne(p reconcile.RepoPlan, repoDir string, opts Options, gh ghx.Runner,
 		if err := cloneRepo(gh, opts.Org, p.Name, repoDir); err != nil {
 			return "clone + wire", nil, err
 		}
-		wrote, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
+		wrote, err := wireRepo(repoDir, opts.Owned, keysFor(opts, p.Name))
 		return "clone + wire", wrote, err
 	case reconcile.Wire:
-		wrote, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
+		wrote, err := wireRepo(repoDir, opts.Owned, keysFor(opts, p.Name))
 		return "wire config", wrote, err
 	case reconcile.Adopt:
-		wrote, err := adoptRepo(repoDir, opts.Owned)
+		wrote, err := adoptRepo(repoDir, opts.Owned, keysFor(opts, p.Name))
 		return "adopt in place", wrote, err
 	case reconcile.Relocate:
-		w, err := wireRepo(repoDir, opts.Owned, opts.SecretKeys)
+		w, err := wireRepo(repoDir, opts.Owned, keysFor(opts, p.Name))
 		return "wire config", w, err
+	case reconcile.OK:
+		keys := keysFor(opts, p.Name)
+		n := missingSettingsKeys(repoDir, keys)
+		var wrote []string
+		w, err := ensureSettingsSkeleton(repoDir, opts.Owned, keys)
+		if w != "" {
+			wrote = append(wrote, w)
+		}
+		return fmt.Sprintf("ok (settings +%d key)", n), wrote, err
 	default:
 		return "skipped (" + string(p.State) + ")", nil, nil
 	}
@@ -214,6 +225,53 @@ func applyOne(p reconcile.RepoPlan, repoDir string, opts Options, gh ghx.Runner,
 
 func isActionable(s reconcile.State) bool {
 	return s == reconcile.Clone || s == reconcile.Wire || s == reconcile.Adopt || s == reconcile.Relocate
+}
+
+// keysFor is the global secret keys followed by the repo's own manifest keys
+// (FR-4.2): order kept, duplicates dropped.
+func keysFor(opts Options, name string) []string {
+	repoKeys := opts.RepoByName[name].SecretKeys
+	if len(repoKeys) == 0 {
+		return opts.SecretKeys
+	}
+	seen := make(map[string]bool, len(opts.SecretKeys)+len(repoKeys))
+	out := make([]string, 0, len(opts.SecretKeys)+len(repoKeys))
+	for _, list := range [][]string{opts.SecretKeys, repoKeys} {
+		for _, k := range list {
+			if !seen[k] {
+				seen[k] = true
+				out = append(out, k)
+			}
+		}
+	}
+	return out
+}
+
+// missingSettingsKeys counts the keys absent from repoDir's settings.local.json
+// env block, reading only. An absent or unparsable file counts every key as
+// missing, so an OK repo takes the write path and ensureSettingsSkeleton either
+// creates it or surfaces the parse error, as it does for WIRE.
+func missingSettingsKeys(repoDir string, keys []string) int {
+	if len(keys) == 0 {
+		return 0
+	}
+	b, err := os.ReadFile(filepath.Join(repoDir, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from workspace/plan, not externally-tainted
+	if err != nil {
+		return len(keys)
+	}
+	var root struct {
+		Env map[string]json.RawMessage `json:"env"`
+	}
+	if json.Unmarshal(b, &root) != nil {
+		return len(keys)
+	}
+	n := 0
+	for _, k := range keys {
+		if _, ok := root.Env[k]; !ok {
+			n++
+		}
+	}
+	return n
 }
 
 // relocateRepo moves an existing clone from `from` to `to` (FR-4.3): mkdir the
@@ -394,9 +452,10 @@ func wireRepo(repoDir string, owned *managed.Manifest, secretKeys []string) ([]s
 }
 
 // adoptRepo recognises an already-configured repo in place: it ensures the
-// .worktrees/ exclude and records any managed file that already exists, without
-// changing file contents, branches, or location (FR-013).
-func adoptRepo(repoDir string, owned *managed.Manifest) ([]string, error) {
+// .worktrees/ exclude, adds any missing secret-key placeholder (FR-4.4; values
+// untouched), and records the settings file, without changing branches or
+// location (FR-013).
+func adoptRepo(repoDir string, owned *managed.Manifest, secretKeys []string) ([]string, error) {
 	var wrote []string
 	w, err := ensureExclude(repoDir)
 	if err != nil {
@@ -406,7 +465,18 @@ func adoptRepo(repoDir string, owned *managed.Manifest) ([]string, error) {
 		wrote = append(wrote, w)
 	}
 	settings := filepath.Join(repoDir, ".claude", "settings.local.json")
-	if _, statErr := os.Stat(settings); statErr == nil {
+	_, statErr := os.Stat(settings)
+	existed := statErr == nil
+	if len(secretKeys) > 0 {
+		created, err := ensureSettingsSkeleton(repoDir, owned, secretKeys)
+		if err != nil {
+			return wrote, err
+		}
+		if !existed && created != "" {
+			wrote = append(wrote, created) // ensureSettingsSkeleton recorded the file it created
+		}
+	}
+	if existed {
 		if err := owned.Record(settings); err != nil {
 			return wrote, err
 		}

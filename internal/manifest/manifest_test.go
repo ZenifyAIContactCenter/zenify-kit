@@ -3,6 +3,7 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -104,5 +105,57 @@ func TestParseWithOverlay_FromBytes(t *testing.T) {
 	}
 	if _, err := Parse([]byte("repos: []\n"), "embedded"); err == nil {
 		t.Fatal("empty org must error")
+	}
+}
+
+func TestParseRepoSecretKeys(t *testing.T) {
+	m, err := Parse([]byte(`org: o
+secretKeys: [MONGO_URL]
+repos:
+  - name: a
+    url: git@github.com:o/a.git
+    path: repos/a
+    base: origin/staging
+    secretKeys: [A_URL_STG, A_URL_PRD]
+  - name: b
+    url: git@github.com:o/b.git
+    path: repos/b
+    base: origin/staging
+`), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := m.ByName("a")
+	b, _ := m.ByName("b")
+	if len(a.SecretKeys) != 2 || a.SecretKeys[0] != "A_URL_STG" || len(b.SecretKeys) != 0 {
+		t.Fatalf("a=%v b=%v", a.SecretKeys, b.SecretKeys)
+	}
+}
+
+// SC-7 at the source: lumi keys live on the lumi entry only, never in the global list.
+func TestShippedManifestLumiKeysAreRepoScoped(t *testing.T) {
+	m, err := Load(filepath.Join("..", "..", "manifest", "repos.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"LUMI_MYSQL_URL_STG", "LUMI_MYSQL_URL_PRD", "QDRANT_URL_STG", "QDRANT_URL_PRD", "LUMI_APP_URL_STG", "OPENROUTER_API_KEY"}
+	lumi, ok := m.ByName("lumi-agent")
+	if !ok || len(lumi.SecretKeys) != len(want) {
+		t.Fatalf("lumi-agent secretKeys = %v, want %v", lumi.SecretKeys, want)
+	}
+	for i := range want {
+		if lumi.SecretKeys[i] != want[i] {
+			t.Fatalf("lumi-agent secretKeys = %v, want %v", lumi.SecretKeys, want)
+		}
+	}
+	for _, k := range m.SecretKeys {
+		if strings.HasPrefix(k, "LUMI_") || strings.HasPrefix(k, "QDRANT_") {
+			t.Errorf("global secretKeys must not carry repo-scoped key %s", k)
+		}
+	}
+	for _, r := range m.Repos {
+		if r.Name != "lumi-agent" && len(r.SecretKeys) > 0 {
+			t.Errorf("unexpected repo keys on %s: %v", r.Name, r.SecretKeys)
+		}
 	}
 }

@@ -534,3 +534,129 @@ func TestApply_OnProgress_FiresOncePerRepoMonotonic(t *testing.T) {
 		t.Fatalf("results = %d, want %d (OnProgress must not change result count)", len(results), len(plans))
 	}
 }
+
+func writeRepoSettings(t *testing.T, repo, body string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(repo, ".claude", "settings.local.json")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestKeysFor_GlobalThenRepo_Deduped(t *testing.T) {
+	opts := Options{SecretKeys: []string{"MONGO_URL", "X"},
+		RepoByName: map[string]manifest.Repo{"r": {Name: "r", SecretKeys: []string{"X", "R_URL"}}}}
+	got := keysFor(opts, "r")
+	want := []string{"MONGO_URL", "X", "R_URL"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("keysFor = %v, want %v", got, want)
+	}
+	if strings.Join(keysFor(opts, "other"), ",") != "MONGO_URL,X" {
+		t.Fatalf("repo without keys must get the global list only")
+	}
+}
+
+// SC-6: an OK repo missing a repo key gains it; existing values survive.
+func TestApply_OK_MergesMissingRepoKeys(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "lumi")
+	p := writeRepoSettings(t, repo, `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`)
+	res, err := Apply(
+		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}}}},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil || res[0].Err != nil {
+		t.Fatalf("Apply: %v / %v", err, res[0].Err)
+	}
+	env := readEnv(t, p)
+	if env["LUMI_MYSQL_URL_STG"] != "x" {
+		t.Errorf("existing value changed: %q", env["LUMI_MYSQL_URL_STG"])
+	}
+	for _, k := range []string{"QDRANT_URL_STG", "MONGO_URL"} {
+		if v, ok := env[k]; !ok || v != "" {
+			t.Errorf("%s = %q ok=%v, want empty placeholder", k, v, ok)
+		}
+	}
+	if res[0].Skipped || res[0].Action != "ok (settings +2 key)" {
+		t.Errorf("Skipped=%v Action=%q, want false / ok (settings +2 key)", res[0].Skipped, res[0].Action)
+	}
+}
+
+// An OK repo with every key already present stays skipped and untouched.
+func TestApply_OK_NothingMissingStaysSkipped(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	body := `{"env":{"MONGO_URL":"v"}}`
+	p := writeRepoSettings(t, repo, body)
+	res, _ := Apply(
+		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc"}}},
+		&fakeGH{}, &fakeGit{},
+	)
+	if !res[0].Skipped {
+		t.Errorf("want skipped, got Action=%q", res[0].Action)
+	}
+	got, _ := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
+	if string(got) != body {
+		t.Errorf("file rewritten although nothing was missing: %s", got)
+	}
+}
+
+// SC-7: a repo without its own keys never receives another repo's keys.
+func TestApply_OK_OtherRepoKeysDoNotLeak(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "be")
+	p := writeRepoSettings(t, repo, `{"env":{}}`)
+	_, _ = Apply(
+		[]reconcile.RepoPlan{{Name: "be", State: reconcile.OK, Path: "be"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{
+				"be":         {Name: "be"},
+				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG"}},
+			}},
+		&fakeGH{}, &fakeGit{},
+	)
+	for k := range readEnv(t, p) {
+		if strings.HasPrefix(k, "LUMI_") {
+			t.Errorf("be received lumi key %s", k)
+		}
+	}
+}
+
+// FR-4.4: Adopt merges missing keys, keeps values, still records the file.
+func TestApply_Adopt_MergesMissingRepoKeys(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	initClonedRepo(t, repo)
+	p := writeRepoSettings(t, repo, `{"env":{"SECRET":"live-value"}}`)
+	owned := &managed.Manifest{}
+	res, err := Apply(
+		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Adopt, Path: "svc"}},
+		Options{Workspace: ws, Owned: owned,
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc", SecretKeys: []string{"SVC_URL"}}}},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil || res[0].Err != nil {
+		t.Fatalf("Apply: %v / %v", err, res[0].Err)
+	}
+	env := readEnv(t, p)
+	if env["SECRET"] != "live-value" {
+		t.Errorf("value changed: %q", env["SECRET"])
+	}
+	if v, ok := env["SVC_URL"]; !ok || v != "" {
+		t.Errorf("SVC_URL = %q ok=%v", v, ok)
+	}
+	if _, ok := owned.Get(p); !ok {
+		t.Errorf("adopt must still record the settings file")
+	}
+	if res[0].Action != "adopt in place" {
+		t.Errorf("Action = %q", res[0].Action)
+	}
+}

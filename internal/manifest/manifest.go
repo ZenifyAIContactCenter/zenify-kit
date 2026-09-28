@@ -11,11 +11,12 @@ import (
 
 // Repo is one entry in the manifest desired-set.
 type Repo struct {
-	Name string   `yaml:"name"`
-	URL  string   `yaml:"url"`
-	Path string   `yaml:"path"` // relative to workspace root, overridable via overlay
-	Base string   `yaml:"base"`
-	Tags []string `yaml:"tags"`
+	Name       string   `yaml:"name"`
+	URL        string   `yaml:"url"`
+	Path       string   `yaml:"path"` // relative to workspace root, overridable via overlay
+	Base       string   `yaml:"base"`
+	Tags       []string `yaml:"tags"`
+	SecretKeys []string `yaml:"secretKeys"` // repo-only env keys, scaffolded on top of Manifest.SecretKeys; names only (quy tắc no-secret-value của kit) //znf:allow-lang
 }
 
 // Manifest is the full desired-set plus the GitHub org that owns it.
