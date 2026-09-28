@@ -29,4 +29,5 @@ type Result struct {
 	Findings       []Finding `json:"findings"`
 	SitesScanned   int       `json:"sites_scanned"`
 	DynamicSkipped bool      `json:"dynamic_skipped"`
+	UnscannedFiles []string  `json:"unscanned_files"` // added files in a stack callSiteRe cannot read
 }

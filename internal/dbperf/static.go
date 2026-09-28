@@ -1,6 +1,7 @@
 package dbperf
 
 import (
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -65,6 +66,25 @@ func ScanStatic(added []AddedLine, cfg Config) Result {
 		}
 	}
 	return applyWaive(added, r)
+}
+
+// unscannedExts are source extensions whose query calls callSiteRe cannot see:
+// it matches the JS Mongo driver / Mongoose API only.
+var unscannedExts = map[string]bool{".py": true, ".java": true, ".kt": true, ".go": true, ".rb": true, ".php": true, ".cs": true}
+
+// UnscannedFiles returns the files among added whose stack the static scan does
+// not read, first-seen order, no duplicates. Never nil, so JSON carries [].
+func UnscannedFiles(added []AddedLine) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, a := range added {
+		if seen[a.File] || !unscannedExts[strings.ToLower(filepath.Ext(a.File))] {
+			continue
+		}
+		seen[a.File] = true
+		out = append(out, a.File)
+	}
+	return out
 }
 
 var waiveRe = regexp.MustCompile(`//\s*znf:db-perf-ok:\s*(\S.*)$`)

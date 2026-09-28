@@ -111,7 +111,7 @@ Finding chuyển sang WAIVED và lý do được ghi lại. Một collection ch�
 | `/znf:review` | Danh sách finding xếp theo mức độ nghiêm trọng, kèm câu trả lời có ship được hay không |
 | `/znf:gate` | Bảng usage theo repo, kèm nhận định phá vỡ hay không và thứ tự deploy an toàn |
 | `/znf:contract-sweep` | Verdict BREAKING/RISKY/SAFE cho từng chỗ dùng, cùng các thay đổi cần có trước khi deploy |
-| `zenify db-perf` | Finding BLOCKING hoặc ADVISORY kèm gợi ý sửa, hoặc "gate pass" nếu diff không có query |
+| `zenify db-perf` | Finding BLOCKING hoặc ADVISORY kèm gợi ý sửa, hoặc "gate pass" nếu diff không có query; kèm dòng `coverage: unsupported stack` khi diff chạm stack scanner không đọc được |
 
 ## Lưu ý
 
