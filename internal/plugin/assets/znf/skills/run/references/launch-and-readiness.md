@@ -78,3 +78,24 @@ several services:
 ```json
 "peers": { "VITE_HUB_URL": { "repo": "…", "url": "http://localhost:{port}" } }
 ```
+
+### Non-Node
+<!-- Read when: Step 3 finds no package.json. -->
+The launch command still comes from `CLAUDE.md` `Commands`. Two shapes cover most non-Node repos.
+
+- **Compose.** The compose file maps the host port from a variable,
+  `"${VAR:-<default>}:<container port>"`. Pass the allocated port through **that** variable, and
+  run `up` in the foreground under Step 4's `nohup` so the log file receives the app's output:
+
+  ```bash
+  nohup sh -c "VAR=$PORT docker compose -f <file> up" > "${TMPDIR:-/tmp}/run-<repo>-$PORT.log" 2>&1 &
+  ```
+
+  A fixed `container_name` collides across worktrees; the compose file has to suffix it from the
+  same variable before two worktrees can run at once.
+- **Bare ASGI.** `uvicorn <module:app> --port "$PORT"` under the same `nohup` line.
+
+Ready pattern for both: `Application startup complete` (uvicorn) or `Listening at` (gunicorn).
+
+`wt` writes `<portEnv>=<port>` into the worktree `.env`. That is inert unless the app or the compose
+file reads the variable — check `portEnv` in `.claude/worktree.json` against what the launch reads.

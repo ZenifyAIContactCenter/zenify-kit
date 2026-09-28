@@ -95,7 +95,7 @@ needs a restart (`references/port-wiring-rationale.md`).
 Read the `Commands` section of the repo's `CLAUDE.md`. **Stop when the recipe is ambiguous, not
 merely when `CLAUDE.md` is absent** — several plausible candidates, or none. A wrong launch command
 looks like a broken change. **"No `dev` script" does not mean no dev command**: scripts are often
-named after the **app**, not the mode. Read the whole `scripts` block:
+named after the **app**, not the mode. Node: read all of `scripts` (else: launch reference § Non-Node):
 
 ```bash
 node -e 'console.log(Object.keys(require("./package.json").scripts).join("\n"))'

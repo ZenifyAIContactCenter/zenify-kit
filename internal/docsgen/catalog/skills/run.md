@@ -10,7 +10,7 @@ Khi thay đổi ảnh hưởng đến hành vi và không có test bao phủ nó
 1. Skill đọc port đã được cấp sẵn cho worktree thay vì tự đi tìm port trống, để URL báo cáo luôn khớp với nơi app thực sự chạy.
 2. Nếu port đã có server phục vụ, skill kiểm xem đó là code của checkout chính, của worktree hiện tại, hay của một worktree khác — chỉ tái dùng hai trường hợp đầu; server của một task khác không được tái dùng vì đó là code chưa commit của việc khác.
 3. Skill nối các port dịch vụ liên quan với nhau trước khi khởi động app, để một tính năng chạm nhiều repo vẫn trỏ đúng vào bản trong worktree, không phải bản ở checkout chính.
-4. Lệnh chạy app lấy từ tài liệu của chính project, không đoán từ trí nhớ; nếu công thức chạy mơ hồ hoặc không có, skill dừng và nói rõ thay vì đoán bừa.
+4. Lệnh chạy app lấy từ tài liệu của chính project, không đoán từ trí nhớ; nếu công thức chạy mơ hồ hoặc không có, skill dừng và nói rõ thay vì đoán bừa. Repo không phải Node (chạy qua docker compose hoặc ASGI trần) có công thức riêng: port được truyền qua đúng biến mà file compose hoặc app đọc.
 5. App được chạy nền vào một file log, skill chờ tới khi thấy dấu hiệu app đã sẵn sàng rồi mới báo cáo, và đọc port thật từ dòng khởi động thay vì tin vào port đã cấp — vì một số công cụ chạy dev tự đổi sang port khác khi port cũ đang bận.
 6. Skill trực tiếp gọi thử đường code vừa thay đổi và dán lại output thật, không chỉ dừng ở việc app đã khởi động.
 
