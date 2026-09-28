@@ -28,8 +28,9 @@ zenify db-perf --json           # scans origin/staging..HEAD by default
 ```
 
 Read the JSON `findings[]`: each has `tier` (BLOCKING/ADVISORY/WAIVED), `signal`, `file`, `line`,
-`collection`, `hint`. If `sites_scanned == 0`, write "no query in this diff", print the named line,
-and stop cleanly.
+`collection`, `hint`. If `sites_scanned == 0` and `unscanned_files` is non-empty, write
+"coverage: unsupported stack" with that file list — never "no query in this diff" — and stop. If
+both are empty, write "no query in this diff" and stop cleanly.
 
 ## Step 2 — dynamic layer (only if the DB is reachable)
 
