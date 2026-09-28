@@ -660,3 +660,79 @@ func TestApply_Adopt_MergesMissingRepoKeys(t *testing.T) {
 		t.Errorf("Action = %q", res[0].Action)
 	}
 }
+
+// FR-9a/b: an OK repo with missing keys goes through the same per-repo
+// transaction as Wire/Adopt when SnapshotRoot is set (as it always is from
+// internal/cli/up.go). A verify failure on that path must revert the merged
+// keys, not just skip promoting them.
+func TestApply_OK_MergesMissingRepoKeys_RevertsOnVerifyFailure(t *testing.T) {
+	ws := t.TempDir()
+	snapRoot := filepath.Join(t.TempDir(), "snaps")
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	repo := filepath.Join(ws, "lumi")
+	body := `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`
+	p := writeRepoSettings(t, repo, body)
+	owned := &managed.Manifest{}
+
+	res, err := Apply(
+		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
+		Options{Workspace: ws, Owned: owned, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{
+				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}},
+			},
+			SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+			Now: func() int64 { return 9 },
+			VerifyRepoFn: func(repoDir string, wrote []string) error {
+				return fmt.Errorf("forced verify fail")
+			},
+		},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if res[0].Err == nil {
+		t.Fatalf("want Err from forced verify failure")
+	}
+	got, readErr := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
+	if readErr != nil {
+		t.Fatalf("read settings: %v", readErr)
+	}
+	if string(got) != body {
+		t.Errorf("settings not reverted after verify failure: %s", got)
+	}
+	if _, ok := owned.Get(p); ok {
+		t.Errorf("manifest must not carry an entry for the reverted repo")
+	}
+}
+
+// Success case on the same transaction path: with verify passing, the merged
+// keys are present afterward (cheap companion to the revert case above).
+func TestApply_OK_MergesMissingRepoKeys_TransactionSucceeds(t *testing.T) {
+	ws := t.TempDir()
+	snapRoot := filepath.Join(t.TempDir(), "snaps")
+	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
+	repo := filepath.Join(ws, "lumi")
+	p := writeRepoSettings(t, repo, `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`)
+
+	res, err := Apply(
+		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
+			RepoByName: map[string]manifest.Repo{
+				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}},
+			},
+			SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+			Now: func() int64 { return 10 },
+		},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil || res[0].Err != nil {
+		t.Fatalf("Apply: %v / %v", err, res[0].Err)
+	}
+	env := readEnv(t, p)
+	for _, k := range []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG", "MONGO_URL"} {
+		if _, ok := env[k]; !ok {
+			t.Errorf("%s missing after transaction succeeded", k)
+		}
+	}
+}
