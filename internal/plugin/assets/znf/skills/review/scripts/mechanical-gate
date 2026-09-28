@@ -52,6 +52,51 @@ if [ "$run_static" = "1" ]; then
     else
       emit LOW bugs "skip build" "skipped: pm unavailable" "cài pm (kit)" "" ""
     fi
+  elif [ -f pyproject.toml ] || [ -f setup.py ] || [ -f setup.cfg ] || ls requirements*.txt >/dev/null 2>&1; then
+    PY=""
+    if [ -x .venv/bin/python ]; then PY=.venv/bin/python
+    elif command -v python3 >/dev/null 2>&1; then PY=python3
+    fi
+    pyfiles=()
+    while IFS= read -r f; do
+      [ -n "$f" ] && [ -f "$f" ] && pyfiles+=("$f")
+    done < <(git diff --name-only --diff-filter=AM "$BASE" -- '*.py' 2>/dev/null || true)
+    if [ ${#pyfiles[@]} -gt 0 ]; then
+      if [ -z "$PY" ]; then
+        emit LOW bugs "skip build" "skipped: python unavailable" "cài python3 hoặc tạo .venv" "" ""
+      else
+        pyver=$("$PY" -V 2>&1 || true)
+        # PYTHONPYCACHEPREFIX: không để compileall ghi __pycache__ vào repo.
+        if ! PYTHONPYCACHEPREFIX="${TMPDIR:-/tmp}/znf-gate-pycache" "$PY" -m compileall -q "${pyfiles[@]}" 1>&2; then
+          emit CRITICAL bugs "syntax error" "compileall thất bại với $pyver (xem stderr)" "sửa lỗi cú pháp" "" ""
+          verdict=block
+        fi
+        lint=""
+        if [ -f ruff.toml ] || [ -f .ruff.toml ] || { [ -f pyproject.toml ] && grep -q '^\[tool\.ruff' pyproject.toml; }; then
+          lint=ruff
+        elif [ -f .flake8 ] || { [ -f setup.cfg ] && grep -q '^\[flake8\]' setup.cfg; } || { [ -f tox.ini ] && grep -q '^\[flake8\]' tox.ini; }; then
+          lint=flake8
+        fi
+        if [ -z "$lint" ]; then
+          emit LOW bugs "no linter configured" "repo Python không cấu hình ruff/flake8 — chỉ kiểm cú pháp" "thêm ruff.toml hoặc [tool.ruff] nếu muốn lint" "" ""
+        else
+          lintbin=""
+          if [ -x ".venv/bin/$lint" ]; then lintbin=".venv/bin/$lint"
+          elif command -v "$lint" >/dev/null 2>&1; then lintbin=$lint
+          fi
+          if [ -z "$lintbin" ]; then
+            emit LOW bugs "skip lint" "skipped: $lint unavailable" "cài $lint (hoặc vào .venv)" "" ""
+          else
+            lintcmd=("$lintbin")
+            [ "$lint" = ruff ] && lintcmd+=(check)
+            if ! "${lintcmd[@]}" "${pyfiles[@]}" 1>&2; then
+              emit HIGH bugs "lint fail" "$lint báo lỗi (xem stderr)" "sửa cảnh báo lint" "" ""
+              verdict=block
+            fi
+          fi
+        fi
+      fi
+    fi
   fi
 fi
 

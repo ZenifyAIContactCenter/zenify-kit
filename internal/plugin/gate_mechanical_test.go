@@ -2,9 +2,11 @@ package plugin
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -161,5 +163,86 @@ func TestGate_FocusedTestAndDebugger(t *testing.T) {
 	}
 	if !focused || !dbg {
 		t.Errorf("focused=%v debugger=%v, want both true", focused, dbg)
+	}
+}
+
+func pyAvailable(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not on PATH")
+	}
+}
+
+func findingByTitle(findings []map[string]any, title string) map[string]any {
+	for _, f := range findings {
+		if f["title"] == title {
+			return f
+		}
+	}
+	return nil
+}
+
+func writeFile(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// SC-1: a Python repo whose diff adds a file with a syntax error → CRITICAL syntax error, block.
+func TestGate_PythonSyntaxErrorBlocks(t *testing.T) {
+	pyAvailable(t)
+	dir, base := gitInit(t)
+	writeFile(t, dir, "requirements.txt", "fastapi\n")
+	writeFile(t, dir, "bad.py", "def f(:\n    return 1\n")
+	gitCommitAll(t, dir)
+	res := runGate(t, dir, base)
+	if res.Verdict != "block" {
+		t.Errorf("verdict=%q, want block", res.Verdict)
+	}
+	f := findingByTitle(res.Findings, "syntax error")
+	if f == nil || f["severity"] != "CRITICAL" {
+		t.Errorf("want CRITICAL syntax error finding, got %v", res.Findings)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "__pycache__")); err == nil {
+		t.Errorf("gate must not write __pycache__ into the repo")
+	}
+}
+
+// SC-2: valid Python, no linter config → pass with LOW "no linter configured".
+func TestGate_PythonNoLinterIsLowNote(t *testing.T) {
+	pyAvailable(t)
+	dir, base := gitInit(t)
+	writeFile(t, dir, "requirements.txt", "fastapi\n")
+	writeFile(t, dir, "ok.py", "x = 1\n")
+	gitCommitAll(t, dir)
+	res := runGate(t, dir, base)
+	if res.Verdict != "pass" {
+		t.Errorf("verdict=%q, want pass", res.Verdict)
+	}
+	f := findingByTitle(res.Findings, "no linter configured")
+	if f == nil || f["severity"] != "LOW" {
+		t.Errorf("want LOW no linter configured, got %v", res.Findings)
+	}
+}
+
+// SC-3: ruff.toml present but no ruff binary → pass with LOW skip lint.
+func TestGate_PythonRuffConfiguredButMissing(t *testing.T) {
+	pyAvailable(t)
+	if _, err := exec.LookPath("ruff"); err == nil {
+		t.Skip("ruff is on PATH; this case needs it absent")
+	}
+	dir, base := gitInit(t)
+	writeFile(t, dir, "pyproject.toml", "[project]\nname = \"t\"\n")
+	writeFile(t, dir, "ruff.toml", "line-length = 100\n")
+	writeFile(t, dir, "ok.py", "x = 1\n")
+	gitCommitAll(t, dir)
+	res := runGate(t, dir, base)
+	if res.Verdict != "pass" {
+		t.Errorf("verdict=%q, want pass", res.Verdict)
+	}
+	f := findingByTitle(res.Findings, "skip lint")
+	if f == nil || f["severity"] != "LOW" || !strings.Contains(fmt.Sprint(f["issue"]), "ruff unavailable") {
+		t.Errorf("want LOW skip lint (ruff unavailable), got %v", res.Findings)
 	}
 }
