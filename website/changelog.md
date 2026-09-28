@@ -8,6 +8,25 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.28.0
+
+*2026-09-28*
+
+- Kit hỗ trợ repo Python.
+- `mechanical-gate` của `/znf:review` và `/znf:ship` có nhánh Python cho repo có `pyproject.toml`, `setup.py`, `setup.cfg` hoặc `requirements*.txt`:
+  - Các file `.py` thay đổi được kiểm cú pháp bằng `compileall`, ưu tiên `.venv/bin/python`, sau đó `python3`. Lỗi cú pháp là CRITICAL và chặn ship.
+  - Nếu repo cấu hình ruff hoặc flake8, gate chạy thêm linter đó. Lint fail là HIGH.
+  - Repo không cấu hình linter chỉ nhận một ghi chú LOW.
+  - Trước đây một diff Python đi qua gate mà không được kiểm gì. Xem [Review và gate](/guides/review-and-gates).
+- `zenify db-perf` nêu rõ những file nó chưa quét được. Scanner chỉ đọc query Mongo trong JS/TS; diff có file `.py`, `.java`, `.kt`, `.go`, `.rb`, `.php` hoặc `.cs` được liệt kê kèm dòng `coverage: unsupported stack`. Bản `--json` có thêm field `unscanned_files` và luôn ra JSON, kể cả khi diff không có query. `/znf:explain-plan` đọc field này, nên không còn báo "no query in this diff" cho một diff Python.
+- `/znf:run` có cách chạy app không phải Node: `docker compose` hoặc ASGI chạy trực tiếp, kèm dấu hiệu nhận biết app đã sẵn sàng. `portEnv` chỉ có tác dụng khi app đọc biến đó.
+- `manifest/repos.yaml` khai được `secretKeys` riêng cho từng repo:
+  - `zenify up --apply` thêm các key còn thiếu (giá trị rỗng) vào `.claude/settings.local.json` của repo đó, cả khi repo đã onboard từ trước.
+  - Giá trị có sẵn không bị đọc, đổi hay xoá.
+  - Repo không thiếu key nào thì file không bị ghi lại.
+  - `lumi-agent` khai `LUMI_MYSQL_URL_STG`, `LUMI_MYSQL_URL_PRD`, `QDRANT_URL_STG`, `QDRANT_URL_PRD`, `LUMI_APP_URL_STG` và `OPENROUTER_API_KEY`.
+  - Xem [Onboard workspace](/guides/onboard-workspace).
+
 ## v0.27.0
 
 *2026-09-25*
