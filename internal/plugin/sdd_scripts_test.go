@@ -88,3 +88,87 @@ func TestSDDScripts_Run0600(t *testing.T) {
 		}
 	}
 }
+
+func writePlan(t *testing.T, repo, rel string) {
+	t.Helper()
+	p := filepath.Join(repo, rel)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("### Task 1: x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReviewPackage_NotAncestorExit3(t *testing.T) {
+	repo := newTempRepo(t)
+	writePlan(t, repo, "plan.md")
+	main := gitIn(t, repo, "rev-parse", "--abbrev-ref", "HEAD")
+	gitIn(t, repo, "checkout", "-q", "-b", "other")
+	gitIn(t, repo, "commit", "-q", "--allow-empty", "-m", "o1")
+	other := gitIn(t, repo, "rev-parse", "HEAD")
+	gitIn(t, repo, "checkout", "-q", main)
+	gitIn(t, repo, "commit", "-q", "--allow-empty", "-m", "m1")
+	head := gitIn(t, repo, "rev-parse", "HEAD")
+	out, exit := runSDDScript(t, repo, "review-package", "plan.md", other, head)
+	if exit != 3 || !strings.Contains(out, "HEAD is not a descendant of BASE") {
+		t.Errorf("exit=%d out=%q", exit, out)
+	}
+}
+
+func TestReviewPackage_EmptyRangeExit3(t *testing.T) {
+	repo := newTempRepo(t)
+	writePlan(t, repo, "plan.md")
+	head := gitIn(t, repo, "rev-parse", "HEAD")
+	out, exit := runSDDScript(t, repo, "review-package", "plan.md", head, head)
+	if exit != 3 || !strings.Contains(out, "empty commit range") {
+		t.Errorf("exit=%d out=%q", exit, out)
+	}
+}
+
+func TestSDDWorkspace_BasenameCollision(t *testing.T) {
+	repo := newTempRepo(t)
+	writePlan(t, repo, "a/plan.md")
+	writePlan(t, repo, "b/plan.md")
+	a, e1 := runSDDScript(t, repo, "sdd-workspace", "a/plan.md")
+	b, e2 := runSDDScript(t, repo, "sdd-workspace", "b/plan.md")
+	a2, e3 := runSDDScript(t, repo, "sdd-workspace", "a/plan.md")
+	if e1 != 0 || e2 != 0 || e3 != 0 {
+		t.Fatalf("exits %d %d %d: %q %q %q", e1, e2, e3, a, b, a2)
+	}
+	a, b, a2 = strings.TrimSpace(a), strings.TrimSpace(b), strings.TrimSpace(a2)
+	if a == b {
+		t.Fatalf("collision: both %q", a)
+	}
+	if a2 != a {
+		t.Errorf("a/plan.md moved: %q -> %q", a, a2)
+	}
+	for dir, want := range map[string]string{a: "a/plan.md", b: "b/plan.md"} {
+		got, err := os.ReadFile(filepath.Join(dir, "plan-path"))
+		if err != nil || strings.TrimSpace(string(got)) != want {
+			t.Errorf("%s/plan-path = %q, %v; want %q", dir, got, err, want)
+		}
+	}
+}
+
+func TestSDDWorkspace_AdoptsLegacy(t *testing.T) {
+	repo := newTempRepo(t)
+	writePlan(t, repo, "plan.md")
+	legacy := filepath.Join(repo, ".znf", "sdd", "plan")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, exit := runSDDScript(t, repo, "sdd-workspace", "plan.md")
+	if exit != 0 {
+		t.Fatalf("exit=%d out=%q", exit, out)
+	}
+	gotDir, _ := filepath.EvalSymlinks(strings.TrimSpace(out))
+	wantDir, _ := filepath.EvalSymlinks(legacy)
+	if gotDir != wantDir {
+		t.Errorf("dir = %q, want legacy %q", gotDir, wantDir)
+	}
+	got, err := os.ReadFile(filepath.Join(legacy, "plan-path"))
+	if err != nil || strings.TrimSpace(string(got)) != "plan.md" {
+		t.Errorf("marker = %q, %v", got, err)
+	}
+}
