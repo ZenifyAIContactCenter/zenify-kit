@@ -157,12 +157,8 @@ Fix issues inline — no need to re-review. Add a task for any spec requirement 
 
 ## Execution Handoff
 
-After saving the plan, hand off to execution:
-
-**"Plan complete and saved to `docs/superpowers/plans/<filename>.md`. Executing via Subagent-Driven Development** - I dispatch a fresh subagent per task, review between tasks, fast iteration.
-
-**REQUIRED SUB-SKILL:** Use znf:subagent-driven-development
-- Fresh subagent per task + two-stage review
+After saving, give the absolute plan path and ask: **"Plan saved to `<abs path>`. Please approve the plan."**
+Only after approval, use `znf:subagent-driven-development`. Under `/cook`, return to cook Step 5b (analyze + plan gate) instead.
 
 ## References
 

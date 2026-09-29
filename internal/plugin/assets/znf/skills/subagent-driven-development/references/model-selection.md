@@ -47,3 +47,5 @@ there; naming it keeps the intent visible.
 many turns a subagent takes, and the cheapest models routinely take 2-3× the
 turns on multi-step work — costing more overall. Use a mid-tier model as the
 floor for reviewers and implementers.
+
+`select-route` still accepts the code-spec key `SPEC` set to code (haiku) but no skill passes it; it is kept as the revert path.

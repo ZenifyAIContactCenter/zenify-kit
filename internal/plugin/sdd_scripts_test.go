@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // runSDDScript copies the three SDD scripts into a temp dir with mode 0600 (what
@@ -170,5 +171,37 @@ func TestSDDWorkspace_AdoptsLegacy(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(legacy, "plan-path"))
 	if err != nil || strings.TrimSpace(string(got)) != "plan.md" {
 		t.Errorf("marker = %q, %v", got, err)
+	}
+}
+
+func TestSDDWorkspace_UnwritableExitsNonZero(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory modes")
+	}
+	repo := newTempRepo(t)
+	sdd := filepath.Join(repo, ".znf", "sdd")
+	if err := os.MkdirAll(sdd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "plan.md"), []byte("p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sdd, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sdd, 0o755) })
+	type res struct{ exit int }
+	ch := make(chan res, 1)
+	go func() {
+		_, e := runSDDScript(t, repo, "sdd-workspace", "plan.md")
+		ch <- res{e}
+	}()
+	select {
+	case r := <-ch:
+		if r.exit == 0 {
+			t.Error("want non-zero exit for unwritable .znf/sdd")
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("sdd-workspace looped instead of failing")
 	}
 }

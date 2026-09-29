@@ -63,8 +63,8 @@ owns() {
   if [ -e "$1/plan-path" ]; then
     [ "$(cat "$1/plan-path")" = "$plan_id" ]
   else
-    mkdir -p "$1"
-    printf '%s\n' "$plan_id" > "$1/plan-path"
+    mkdir -p "$1" || exit 1
+    printf '%s\n' "$plan_id" > "$1/plan-path" || exit 1
   fi
 }
 

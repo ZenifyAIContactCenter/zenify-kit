@@ -39,7 +39,7 @@ zenify db-read doc <a-name-from-that-list>           # real fields
 
 ## Step 2: Brainstorm → spec (`znf:brainstorming`)
 
-**`Skill(znf:brainstorming)`**, its 13 steps as written, **three real user gates** (design, spec, plan); keep polyrepo scope (repos, contracts, what breaks). Spec and plan follow `znf:_shared/artifact-style`, `znf:_shared/spec-template` and `znf:_shared/constitution`. **Never commit the spec or `git add -f` it**: it lives in the **main checkout**; hand SDD **absolute** paths.
+**`Skill(znf:brainstorming)`**, its 13 steps as written, **two real user gates** (design, spec; the plan gate is Step 5b); keep polyrepo scope (repos, contracts, what breaks). Spec and plan follow `znf:_shared/artifact-style`, `znf:_shared/spec-template` and `znf:_shared/constitution`. **Never commit the spec or `git add -f` it**: it lives in the **main checkout**; hand SDD **absolute** paths.
 
 ## Step 3: Ground the spec — before the plan, not after
 

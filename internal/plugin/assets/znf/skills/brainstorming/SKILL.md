@@ -15,7 +15,7 @@ implementation action until you have told your human partner what you intend and
 it. This applies to EVERY task on EVERY path below — the ceremony scales with the task; the
 approval gate never does. A reply approves the stage actually presented: design approval only
 permits writing the spec, spec approval only permits writing the plan, plan approval permits
-implementing. Approving an idea or scope approves no artifact that does not exist yet. Resume at
+implementing; on the bounded path, approval of the in-chat design permits implementing. Approving an idea or scope approves no artifact that does not exist yet. Resume at
 the earliest incomplete stage.
 </HARD-GATE>
 

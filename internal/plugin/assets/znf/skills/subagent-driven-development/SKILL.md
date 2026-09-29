@@ -42,7 +42,7 @@ Use the template in [implementer-prompt.md](implementer-prompt.md) verbatim.
 
 ### 2. Handle the report
 
-Four statuses. **DONE:** generate the review package (`bash scripts/review-package PLAN_FILE BASE HEAD`, never `HEAD~1`) and dispatch the task reviewer with its path. **DONE_WITH_CONCERNS:** read them first. **NEEDS_CONTEXT:** supply it, re-dispatch. **BLOCKED:** route per `references/dispatch-brief-contract.md`. Never ignore an escalation or force a retry unchanged.
+Four statuses. **DONE:** generate the review package (`bash scripts/review-package PLAN_FILE BASE HEAD`, never `HEAD~1`) and dispatch the task reviewer with its path. **DONE_WITH_CONCERNS:** read them first. **NEEDS_CONTEXT:** supply it, re-dispatch. **BLOCKED** or `review-package` exit 3: route per `references/dispatch-brief-contract.md`. Never ignore an escalation or force a retry unchanged.
 
 ### 3. Review the task
 

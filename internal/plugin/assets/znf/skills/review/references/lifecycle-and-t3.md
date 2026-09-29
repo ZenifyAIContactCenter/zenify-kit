@@ -29,3 +29,6 @@ The engine runs 5 gates in order. M4a implements only REVIEW (3); the other 4 ga
     findings passed to VERIFY, ranked below confirmed.
   - **missing** (teammate hasn't run `skills sync`, or the file was deleted) → **degrade to T2** and clearly note
     on the report: "T3 degrade→T2: workflow missing". Do NOT fail silently.
+
+**Declined under T3:** the workflow reviewers return structured findings only, so `Declined:` lines
+come only from T1/T2 prose; the ship board carries them.

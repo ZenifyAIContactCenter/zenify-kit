@@ -46,6 +46,8 @@ func TestSelectRoute_Table(t *testing.T) {
 		{"fable", []string{"implementer", "SPEC=prose", "FAIL=1"}, "sonnet", "-"},
 		{"fable", []string{"implementer", "SPEC=prose", "FAIL=2"}, "opus", "FAIL=2"},
 		{"fable", []string{"implementer", "SPEC=code", "FAIL=3"}, "none", "FAIL>=3"},
+		{"fable", []string{"implementer", "FAIL=2"}, "opus", "FAIL=2"},
+		{"fable", []string{"implementer", "FAIL=3"}, "none", "FAIL>=3"},
 		{"fable", []string{"reviewer", "TIER=T3", "BLOCKED_STREAK=1"}, "inherit", "-"},
 		{"fable", []string{"reviewer", "TIER=T2", "BLOCKED_STREAK=5"}, "inherit", "-"},
 		{"fable", []string{"reviewer", "TIER=T3", "BLOCKED_STREAK=2"}, "fable", "BLOCKED_STREAK>=2"},
@@ -68,5 +70,16 @@ func TestSelectRoute_BadInputExit2(t *testing.T) {
 		if !ok || ee.ExitCode() != 2 {
 			t.Errorf("args %v: want exit 2, got %v", args, err)
 		}
+	}
+}
+
+func TestSelectRoute_ImplementerReason(t *testing.T) {
+	script := filepath.Join("assets", "znf", "skills", "_shared", "scripts", "select-route")
+	out, err := exec.Command("bash", script, "implementer").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "reason: implementer -> standard tier") {
+		t.Errorf("unexpected reason: %q", out)
 	}
 }

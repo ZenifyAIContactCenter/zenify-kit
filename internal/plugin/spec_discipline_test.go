@@ -109,7 +109,7 @@ func TestSpecDiscipline_BrainstormingSharedUnderstanding(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 	s := string(b)
-	for _, want := range []string{"Shared understanding first", "approves the stage actually presented", "8 Brief fields"} {
+	for _, want := range []string{"Shared understanding first", "approves the stage actually presented", "8 Brief fields", "approval of the in-chat design permits implementing"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("brainstorming/SKILL.md missing %q", want)
 		}

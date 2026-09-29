@@ -78,6 +78,9 @@ func TestWritingPlans_SteeringAtTaskSplit(t *testing.T) {
 	if strings.Contains(s, "## No Placeholders") {
 		t.Error("writing-plans/SKILL.md: ## No Placeholders was replaced by What a Step Contains")
 	}
+	if _, err := fs.Stat(assets, "assets/znf/skills/writing-plans/SKILL.md"); err != nil {
+		t.Fatalf("assets prefix wrong, SKILL.md must exist: %v", err)
+	}
 	if _, err := fs.Stat(assets, "assets/znf/skills/writing-plans/plan-document-reviewer-prompt.md"); err == nil {
 		t.Error("plan-document-reviewer-prompt.md must be removed")
 	}

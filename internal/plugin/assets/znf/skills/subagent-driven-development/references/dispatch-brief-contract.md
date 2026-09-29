@@ -71,3 +71,7 @@ Hand artifacts over as files.
 **Waiting on dispatched subagents:** keep doing local work (ledger, next
 package) while results arrive; when idle, wait in bounded stretches, then
 list live children and chase any that finished without reporting.
+
+**`review-package` exit 3:** "empty commit range" means the implementer committed nothing: send it
+back (DONE requires a commit). "HEAD is not a descendant of BASE" means the wrong branch/worktree or
+rewritten history: stop and fix the recorded BASE.
