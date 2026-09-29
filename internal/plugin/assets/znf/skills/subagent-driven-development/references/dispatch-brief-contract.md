@@ -2,7 +2,7 @@
 
 ### Composing the dispatch (from § 1)
 - **Task brief:** before dispatching an implementer, run this skill's
-  `scripts/task-brief PLAN_FILE N` — it extracts the task's full text to a
+  `bash scripts/task-brief PLAN_FILE N` — it extracts the task's full text to a
   uniquely named file and prints the path. Compose the dispatch so the
   brief stays the single source of
   requirements. Your dispatch should contain: (1) one line on where this
@@ -71,3 +71,7 @@ Hand artifacts over as files.
 **Waiting on dispatched subagents:** keep doing local work (ledger, next
 package) while results arrive; when idle, wait in bounded stretches, then
 list live children and chase any that finished without reporting.
+
+**`review-package` exit 3:** "empty commit range" means the implementer committed nothing: send it
+back (DONE requires a commit). "HEAD is not a descendant of BASE" means the wrong branch/worktree or
+rewritten history: stop and fix the recorded BASE.

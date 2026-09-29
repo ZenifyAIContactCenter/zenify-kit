@@ -16,14 +16,14 @@ Một skill **không tự nâng model được**. Muốn một câu hỏi chạy
 
 Model mạnh điều phối, model rẻ làm phần song song — một agent tốn ~4× token so với chat, multi-agent ~15×, và Opus dẫn dắt + Sonnet subagent vượt Opus đơn lẻ ([multi-agent](https://www.anthropic.com/engineering/multi-agent-research-system)).
 
-**Nguyên tắc (theo superpowers): dùng model *ít mạnh nhất mà vẫn kham được role*.** Với subagent, tier **không do người dispatch cảm nhận**: ở năm site bên dưới, `select-route` quyết định từ số liệu của task (số repo, có chạm contract chia sẻ, vòng thứ mấy, test fail bao nhiêu lần); các agent còn lại ghim tier trong frontmatter. Haiku hợp chỗ **miss thì rẻ** (transcription sai → fail test → fix loop bắt); KHÔNG hợp chỗ miss là false-negative *âm thầm và đắt* (review, chẩn đoán bug, drift cross-repo) — chỗ đó sàn sonnet.
+**Nguyên tắc (theo superpowers): dùng model *ít mạnh nhất mà vẫn kham được role*.** Với subagent, tier **không do người dispatch cảm nhận**: ở năm site bên dưới, `select-route` quyết định từ số liệu của task (số repo, có chạm contract chia sẻ, vòng thứ mấy, test fail bao nhiêu lần); các agent còn lại ghim tier trong frontmatter. Haiku hợp chỗ **miss thì rẻ** (transcription sai → fail test → fix loop bắt), nhưng không lane implementer nào dùng haiku nữa; KHÔNG hợp chỗ miss là false-negative *âm thầm và đắt* (review, chẩn đoán bug, drift cross-repo) — chỗ đó sàn sonnet.
 
 | Nơi | Model | Vì sao |
 |---|---|---|
 | Agent `code-reviewer`, `scout`, `ui-verifier`, `researcher` | `sonnet` (frontmatter) | Sàn sonnet cho subagent từ v0.22.0; review nặng phán đoán đi qua tier T2/T3 bên dưới, không qua một agent đơn lẻ |
 | Agent `architect` | `select-route architect` → model mạnh, hoặc không dispatch | Chỉ ở brainstorming tier **architectural** và khi một gate fire (`REPOS>=2`, `SHARED`, `NEW_CONTRACT`, `CRITICAL`); không gate nào fire thì viết memo inline trên session model. Một lần mỗi cook |
 | `cook` bước 0–5 (brainstorm→analyze) | Session (Opus) | Quyết định thiết kế, chạy ở vòng lặp chính |
-| `cook` bước 6 implementer (SDD) | `select-route implementer SPEC=… FAIL=…` | `SPEC=code` (plan chứa đủ code) → `haiku`; `SPEC=prose` → `sonnet`; cùng một test fail lần 2 → `opus` kèm brief lỗi trên đĩa; fail lần 3 → dừng implement, chạy investigator của `/fix` ở `ROUND=3` |
+| `cook` bước 6 implementer (SDD) | `select-route implementer FAIL=…` | Mặc định `sonnet` (plan ghi quyết định, implementer luôn cần phán đoán; haiku không còn là lane implementer); cùng một test fail lần 2 → `opus` kèm brief lỗi trên đĩa; fail lần 3 → dừng implement, chạy investigator của `/fix` ở `ROUND=3` |
 | `fix` investigator | `select-route investigator ROUND=…` | ROUND 1 `sonnet`; ROUND 2 (chẩn đoán đầu sai) `opus`, context mới; ROUND ≥ 3 model mạnh, kèm log và các giả thuyết đã loại |
 | `review` T1 | `sonnet` <50 LOC / mid | Diff nhỏ dùng model rẻ; không xuống haiku — review haiku *grade tệ hơn* |
 | `review` T2 fan-out | `sonnet`; `contracts` lên `opus` khi chạm contract chia sẻ | Sâu hơn ở phần rủi ro |
@@ -47,7 +47,7 @@ Mỗi lần `select-route` chạy trong cook / fix / SDD / review / advisor, ski
 ## Đổi model
 
 - **Xuống tier:** đặt `model: 'sonnet'` hoặc `'haiku'` (tham số dispatch nhận enum tier, không phải full ID). **Lên top tier:** ở năm site route, đổi *feature* (ví dụ ghi `ROUND` đúng) chứ không đổi tên model; ngoài các site đó, **bỏ** tham số `model` để kế thừa session — đừng đặt alias `opus`, nó trôi sang bản mới nhất.
-- **Effort quan trọng hơn tier** với code, nhưng chỉ với model chạy được nó: `claude-haiku-4-5` không hỗ trợ `xhigh` (bị âm thầm hạ effort, không báo lỗi). Nên **đừng ghép haiku với `xhigh`** — task transcription chạy haiku ở effort mặc định (đủ dùng), còn `sonnet` + `xhigh` để dành cho task làm từ prose nơi dial mạnh mới đáng tiền. Escalation của `select-route` đổi *tier*, không đổi effort: không skill hay agent nào khai `effort`.
+- **Effort quan trọng hơn tier** với code, nhưng chỉ với model chạy được nó: `claude-haiku-4-5` không hỗ trợ `xhigh` (bị âm thầm hạ effort, không báo lỗi). Nên **đừng ghép haiku với `xhigh`** — implementer chạy `sonnet` ở effort mặc định; `sonnet` + `xhigh` để dành cho task nơi dial mạnh mới đáng tiền. Escalation của `select-route` đổi *tier*, không đổi effort: không skill hay agent nào khai `effort`.
 
 ## Ghi chú
 
@@ -63,7 +63,7 @@ Mỗi lần `select-route` chạy trong cook / fix / SDD / review / advisor, ski
 - [`/znf:advisor`](/reference/skills/advisor) · [agent `architect`](/reference/agents/architect) · [`zenify route-log`](/reference/cli/zenify_route-log).
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
-Nội bộ: settings.json "model": claude-opus-5-5[1m]; znf/agents/{code-reviewer,scout,ui-verifier,researcher=sonnet; architect=opus placeholder, model thật do select-route}; znf/skills/_shared/scripts/select-route (site/feature/threshold là nguồn của bảng); brainstorming/references/architect-gate.md (4 feature); subagent-driven-development/SKILL.md § Model Selection + references/model-selection.md (SPEC/FAIL); fix/SKILL.md Step 1 (ROUND); review/SKILL.md (BLOCKED_STREAK từ review-log); advisor/SKILL.md; internal/apply/strongmodel.go (EnsureStrongModelEnv/RemoveStrongModelEnv); internal/skilllint ScanStrongModel; internal/routelog; cook/references/step6-implementation-notes.md (haiku not xhigh-capable)
+Nội bộ: settings.json "model": claude-opus-5-5[1m]; znf/agents/{code-reviewer,scout,ui-verifier,researcher=sonnet; architect=opus placeholder, model thật do select-route}; znf/skills/_shared/scripts/select-route (site/feature/threshold là nguồn của bảng); brainstorming/references/architect-gate.md (4 feature); subagent-driven-development/SKILL.md § Model Selection + references/model-selection.md (FAIL); fix/SKILL.md Step 1 (ROUND); review/SKILL.md (BLOCKED_STREAK từ review-log); advisor/SKILL.md; internal/apply/strongmodel.go (EnsureStrongModelEnv/RemoveStrongModelEnv); internal/skilllint ScanStrongModel; internal/routelog; cook/references/step6-implementation-notes.md (haiku not xhigh-capable)
 Web (fetched 2026-09-14, nguồn chính = Anthropic; tin cộng đồng chỉ làm màu):
 - anthropic.com/news/claude-opus-5 (giá = 4.8, SOTA hard-agentic, "verifies its work and iterates")
 - platform.claude.com/docs/.../prompting-claude-opus-5 (Anthropic tự nêu verbosity, over-verify, scope-expansion, over-delegation)

@@ -15,7 +15,7 @@ Five gates: PRE, BUNDLE, REVIEW, VERIFY, POST — one step each below (`referenc
 ## Step 1 — compute tier input (mechanical)
 
 ```bash
-BASE=${BASE:-HEAD}            # ship passes base; standalone uses HEAD
+BASE=${BASE:-HEAD}            # ship: merge-base; standalone: HEAD (working tree)
 ADDED=$(git diff --numstat "$BASE" | awk '{a+=$1+$2} END{print a+0}')
 # CODE lines only — a DELETION escalates; `.md` stays excluded or this file self-matches.
 SHARED=$(git diff "$BASE" -- ':(exclude)*.json' ':(exclude)*.md' ':(exclude)*.lock' ':(exclude)*.snap' \

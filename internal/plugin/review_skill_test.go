@@ -227,3 +227,20 @@ func TestReviewSkill_W3Wiring(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeBaseAndDeclined(t *testing.T) {
+	ship := syncedAsset(t, "skills/ship/SKILL.md")
+	assertContainsAll(t, "ship/SKILL.md", ship, []string{"git merge-base", "Declined:", "$BASE"})
+	if strings.Contains(ship, "<base>") {
+		t.Error("ship/SKILL.md still has <base> placeholder")
+	}
+	sdd := syncedAsset(t, "skills/subagent-driven-development/SKILL.md")
+	assertContainsAll(t, "sdd/SKILL.md", sdd, []string{"git merge-base", "Ruling:"})
+	assertContainsAll(t, "reviewer-doctrine.md", syncedAsset(t, "skills/review/_shared/reviewer-doctrine.md"),
+		[]string{"vision document", "Declined:", "claim"})
+	assertContainsAll(t, "code-reviewer-template.md", syncedAsset(t, "skills/subagent-driven-development/code-reviewer-template.md"),
+		[]string{"vision document", "Declined:"})
+	if strings.Contains(syncedAsset(t, "skills/review/_shared/finding-schema.md"), "Declined") {
+		t.Error("finding-schema.md must not mention Declined (machine-checked schema)")
+	}
+}

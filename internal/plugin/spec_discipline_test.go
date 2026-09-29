@@ -3,6 +3,7 @@ package plugin
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -93,6 +94,54 @@ func TestSpecDiscipline_BrainstormingWiring(t *testing.T) {
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("brainstorming/SKILL.md missing %q", want)
+		}
+	}
+}
+
+func TestSpecDiscipline_BrainstormingSharedUnderstanding(t *testing.T) {
+	dest := t.TempDir()
+	man := filepath.Join(dest, ".manifest.json")
+	if _, err := Sync(dest, man); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dest, "skills/brainstorming/SKILL.md"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	s := string(b)
+	for _, want := range []string{"Shared understanding first", "approves the stage actually presented", "8 Brief fields", "approval of the in-chat design permits implementing"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("brainstorming/SKILL.md missing %q", want)
+		}
+	}
+	for _, bad := range []string{"7 Brief fields", "seven Brief fields"} {
+		if strings.Contains(s, bad) {
+			t.Errorf("brainstorming/SKILL.md must not contain %q", bad)
+		}
+	}
+	// cook/SKILL.md pins "13 steps" for the architectural checklist.
+	items := 0
+	inArch := false
+	for _, line := range strings.Split(s, "\n") {
+		switch {
+		case strings.HasPrefix(line, "**Architectural:**"):
+			inArch = true
+		case strings.HasPrefix(line, "## "):
+			inArch = false
+		case inArch && regexp.MustCompile(`^\d+\. `).MatchString(line):
+			items++
+		}
+	}
+	if items != 13 {
+		t.Errorf("Architectural checklist has %d numbered items, want 13 (cook/SKILL.md says 13 steps)", items)
+	}
+	vc, err := os.ReadFile(filepath.Join(dest, "skills/brainstorming/visual-companion.md"))
+	if err != nil {
+		t.Fatalf("read visual-companion: %v", err)
+	}
+	for i, line := range strings.Split(string(vc), "\n") {
+		if strings.HasPrefix(line, "scripts/start-server.sh") || strings.HasPrefix(line, "scripts/stop-server.sh") {
+			t.Errorf("visual-companion.md:%d runs a script without `bash `: %q", i+1, line)
 		}
 	}
 }

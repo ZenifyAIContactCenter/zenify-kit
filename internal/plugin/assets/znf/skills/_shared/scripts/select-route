@@ -53,7 +53,7 @@ case "$site" in
     if   [ "$FAIL" -ge 3 ]; then out none "same test failed $FAIL times -> stop implementing; dispatch investigator ROUND=3" "FAIL>=3"
     elif [ "$FAIL" -eq 2 ]; then out opus "same test failed twice -> opus with the error brief on disk" "FAIL=2"
     elif [ "$SPEC" = code ]; then out haiku "plan carries the complete code -> transcription tier"
-    else                          out sonnet "plan is prose -> standard tier"; fi ;;
+    else                          out sonnet "implementer -> standard tier"; fi ;;
   reviewer)
     if [ "$TIER" = T3 ] && [ "$BLOCKED_STREAK" -ge 2 ]; then out "$strong" "T3 not shippable $BLOCKED_STREAK times in a row -> strong reviewer" "BLOCKED_STREAK>=2"
     else out inherit "review keeps its per-dimension model choice"; fi ;;

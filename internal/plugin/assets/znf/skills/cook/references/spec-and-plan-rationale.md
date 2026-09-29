@@ -1,5 +1,5 @@
 <!-- Moved verbatim from cook/SKILL.md § Step 2: Brainstorm → spec, § Step 5: Plan (W4 slim-skills).
-Read when: you consider skipping the spec or changing the execution choice. -->
+Read when: you consider skipping the spec or changing the plan-approval gate. -->
 
 ### From § Step 2: Brainstorm → spec (`znf:brainstorming`)
 
@@ -56,8 +56,8 @@ spec, and against itself ("match what you defined in **earlier tasks**") — nev
 reality. So a plan can be fully self-consistent, cover every spec requirement, carry no
 placeholder, and have every field name wrong. `implementer-prompt.md` does not check either;
 its only verification lines are about tests. Step 3 grounded what the *spec* committed to;
-this covers what the *plan* added — and plans do add names, because this skill demands real
-code in every task. Without this pass the only net left is the ship-pack's `## Ground` block
+this covers what the *plan* added — and plans do add names, because this skill pins exact names
+and signatures in every task. Without this pass the only net left is the ship-pack's `## Ground` block
 at `/ship`, which fires after the code is already written.
 
 ### The worth-it test for a browser run, and the E2E twin (moved from § Step 5, token diet 2026-09-18)

@@ -39,7 +39,7 @@ zenify db-read doc <a-name-from-that-list>           # real fields
 
 ## Step 2: Brainstorm → spec (`znf:brainstorming`)
 
-**`Skill(znf:brainstorming)`**, its nine steps as written, **two real user gates**; keep polyrepo scope (repos, contracts, what breaks). Spec and plan follow `znf:_shared/artifact-style`, `znf:_shared/spec-template` and `znf:_shared/constitution`. **Never commit the spec or `git add -f` it**: it lives in the **main checkout**; hand SDD **absolute** paths.
+**`Skill(znf:brainstorming)`**, its 13 steps as written, **two real user gates** (design, spec; the plan gate is Step 5b); keep polyrepo scope (repos, contracts, what breaks). Spec and plan follow `znf:_shared/artifact-style`, `znf:_shared/spec-template` and `znf:_shared/constitution`. **Never commit the spec or `git add -f` it**: it lives in the **main checkout**; hand SDD **absolute** paths.
 
 ## Step 3: Ground the spec — before the plan, not after
 
@@ -51,15 +51,17 @@ zenify db-read doc <a-name-from-that-list>           # real fields
 
 ## Step 5: Plan (`znf:writing-plans`)
 
-**`Skill(znf:writing-plans)`**. Files first, then tasks with real code — no "TBD", no "similar to Task N". Run its self-review. Polyrepo plans → SDD "Cross-worktree parallelism". Save to `<main-checkout>/docs/superpowers/plans/<filename>.md`.
+**`Skill(znf:writing-plans)`**. Files first, then tasks that record decisions per its "What a Step Contains" — no "TBD", no "similar to Task N". Run its self-review. Polyrepo plans → SDD "Cross-worktree parallelism". Save to `<main-checkout>/docs/superpowers/plans/<filename>.md`.
 
 **Decide per task, here and only here, whether its definition of done requires a `znf:ui-verifier` verdict** (renders correctly; overflow measured against its container) **or an E2E journey** — decide the E2E journey here (`.znf/e2e/<journey>.spec.ts` green under `zenify e2e lint` + `zenify e2e run`, `znf:e2e`). Step 6 infers neither.
 
-**Then `Skill(znf:ground)` a third time**, on any name the plan introduced. `writing-plans` ends by offering an execution choice: **always Subagent-Driven. Do not ask.**
+**Then `Skill(znf:ground)` a third time**, on any name the plan introduced. **Always Subagent-Driven**; there is no execution-choice question.
 
 ## Step 5b: Inspect spec+plan (`znf:analyze`) — advisory
 
 Before dispatching SDD, **`Skill(znf:analyze)`** on the spec+plan pair (absolute path): FR→task coverage, leftover markers, Brief structure. **Advisory — it does NOT block**; surface CRITICAL/HIGH for the user to decide.
+
+**User gate:** give the absolute plan path and the CRITICAL/HIGH findings, ask the user to **approve the plan**. Step 6 only after they agree; changes requested → fix the plan, rerun self-review and `znf:analyze`, ask again.
 
 ## Step 6: Implement (`znf:subagent-driven-development`)
 
@@ -94,7 +96,7 @@ Steps 0–5 run in the **main loop** on Opus. Unlisted effort: default.
 | Step | Runs as | Model / effort |
 |---|---|---|
 | 4 Scout | **`scout` agent** | sonnet (pinned in the agent definition) |
-| 6 Implement | subagents via SDD | SDD Model Selection: `haiku` transcription → `opus` design judgment; `xhigh` on sonnet+ only |
+| 6 Implement | subagents via SDD | SDD Model Selection: `sonnet`; `FAIL=2` → `opus`; `xhigh` on sonnet+ only |
 | 6 Fix loop | r1-3 same implementer · r4-5 fresh, +1 tier | unchanged · `opus` **`xhigh`** |
 | 6/7 UI check | `znf:ui-verifier` agent | sonnet (pinned) |
 | 7 Ship review | `code-reviewer` agent | **explicit, scaled to diff**; effort `high` |

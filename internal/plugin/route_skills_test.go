@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
 )
@@ -22,7 +23,10 @@ func TestFixSkill_RoundCounterRoutesInvestigator(t *testing.T) {
 
 func TestSDD_ImplementerTierFromSelectRoute(t *testing.T) {
 	s := syncedAsset(t, "skills/subagent-driven-development/SKILL.md")
-	assertContainsAll(t, "sdd/SKILL.md", s, []string{"select-route implementer SPEC=", "FAIL=", "references/model-selection.md"})
+	assertContainsAll(t, "sdd/SKILL.md", s, []string{"select-route implementer FAIL=", "FAIL=", "references/model-selection.md"})
+	if strings.Contains(s, "SPEC=") {
+		t.Error("SDD SKILL.md must not route on SPEC=")
+	}
 	if strings.Contains(s, "rounds 4-5 a tier up") {
 		t.Error("round-based tier bump replaced by FAIL on the same test")
 	}
@@ -30,7 +34,12 @@ func TestSDD_ImplementerTierFromSelectRoute(t *testing.T) {
 		t.Fatalf("sdd over cap: %d bytes", len(s))
 	}
 	ms := syncedAsset(t, "skills/subagent-driven-development/references/model-selection.md")
-	assertContainsAll(t, "model-selection.md", ms, []string{"SPEC=code", "SPEC=prose", "FAIL=2", "FAIL=3", "investigator ROUND=3", "\"site\":\"implementer\""})
+	assertContainsAll(t, "model-selection.md", ms, []string{"FAIL=2", "FAIL=3", "investigator ROUND=3", "\"site\":\"implementer\""})
+	for _, gone := range []string{"inside a fenced code block", "SPEC=code"} {
+		if strings.Contains(ms, gone) {
+			t.Errorf("model-selection.md still carries %q", gone)
+		}
+	}
 	if strings.Contains(ms, "Fix-loop escalation (rounds 4-5)") {
 		t.Error("model-selection.md still carries the round-based rule")
 	}
@@ -64,6 +73,16 @@ func TestWritingPlans_SteeringAtTaskSplit(t *testing.T) {
 	assertContainsAll(t, "writing-plans/SKILL.md", s, []string{"Think hard before responding.", "unmeasured"})
 	if len(s) > 8192 || strings.Count(s, "\n") > 200 {
 		t.Fatalf("writing-plans over cap: %d bytes", len(s))
+	}
+	assertContainsAll(t, "writing-plans/SKILL.md", s, []string{"What a Step Contains", "Review Focus", "Proportion"})
+	if strings.Contains(s, "## No Placeholders") {
+		t.Error("writing-plans/SKILL.md: ## No Placeholders was replaced by What a Step Contains")
+	}
+	if _, err := fs.Stat(assets, "assets/znf/skills/writing-plans/SKILL.md"); err != nil {
+		t.Fatalf("assets prefix wrong, SKILL.md must exist: %v", err)
+	}
+	if _, err := fs.Stat(assets, "assets/znf/skills/writing-plans/plan-document-reviewer-prompt.md"); err == nil {
+		t.Error("plan-document-reviewer-prompt.md must be removed")
 	}
 	dr := syncedAsset(t, "skills/writing-plans/references/decomposition-rationale.md")
 	assertContainsAll(t, "decomposition-rationale.md", dr, []string{"Necessity Note", "What is built", "Why it is needed", "Simpler alternative rejected because"})

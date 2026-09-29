@@ -89,7 +89,7 @@ Verified at fingerprint = <fp10>
 ✅/❌ Contract gate        (<fp10>)  /gate: <N repos impacted, or clean>
 ✅/❌ Behaviour verified   (<fp10>)  <N tests passed — or what /run showed>
       look: <verdict + overflow numbers · "nothing renders" ONLY if rg=0 · or "❌ BLOCKED: <missing thing>" → Shippable NO>
-            before concluding: `zenify ui-verify check --repo <path> --base <base>` — non-zero →
+            before concluding: `zenify ui-verify check --repo <path> --base "$(git merge-base <baseRef> HEAD)"` — non-zero →
             append "❌ BLOCKED" here and Shippable NO; a waiver appends "waived: <reason>"
       data checks: <which of the project-specific ones ran; which the diff could not trigger>
 ✅/❌ Independent review   (<fp10>)  round <R>: <N CRITICAL/HIGH → addressed> · diff <N> LOC
@@ -111,3 +111,5 @@ Log in first — that is blocking, because neither verifier can authenticate its
 contract gate's sweeps and `znf:ui-verifier` in ONE message so they run at once, and do lint, build
 and the data checks inline while they work. `Skill(znf:review)` cannot start earlier: it needs the
 facts those checks produce.
+
+A stamp that differs from the current `fp` was earned against a tree that no longer exists, so the check is void and must be re-run.

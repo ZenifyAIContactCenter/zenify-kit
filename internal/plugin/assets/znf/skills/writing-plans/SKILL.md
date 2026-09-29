@@ -8,9 +8,7 @@ description: Use when you have a spec or requirements for a multi-step task, bef
 
 ## Overview
 
-Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
-
-Assume a skilled developer who knows nothing about our toolset or domain.
+Write implementation plans for an engineer who has not seen this codebase or this spec. Assume they write idiomatic code in the project's language once they know the exact interface and the exact test, and that they will make a reasonable choice wherever the plan leaves one open. What they cannot know is what you decided: which files, which names and signatures, which values from the spec, which tests prove each task. Document those. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
@@ -35,10 +33,7 @@ Repo: <repo name>
 Waits for: <other repo> : contract-frozen      (omit this line if the repo is independent)
 ```
 
-The edge is **contract-frozen** — the other repo has committed the endpoint + shape, not
-whole-repo-done. A sub-plan with no `Waits for:` line is **independent** and runs in parallel from
-the start. Subagent-Driven Development reads this block to schedule repos — independent ones
-concurrently, dependent ones gated on contract-freeze. See its "Cross-worktree parallelism (polyrepo)" section.
+**contract-frozen** = the other repo committed the endpoint + shape, not whole-repo-done. No `Waits for:` line = **independent**, runs in parallel. SDD schedules repos from this block ("Cross-worktree parallelism").
 
 ## File Structure
 
@@ -46,16 +41,11 @@ Before defining tasks, map out which files will be created or modified and what 
 
 ## Task Right-Sizing
 
-A task is the smallest unit that carries its own test cycle and is worth a fresh reviewer's gate — fold setup/config/scaffolding/docs into the task whose deliverable needs them, split only where a reviewer could meaningfully reject one task while approving its neighbor. Each task ends with an independently testable deliverable. See `references/decomposition-rationale.md` for why. Splitting is the step that deserves depth: **Think hard before responding.** (steering sentence, unmeasured — see the spec's Non-goals; route-log thinking_tokens will tell).
+A task is the smallest unit with its own test cycle that is worth a fresh reviewer's gate: fold setup/config/docs into the task that needs them; split only where a reviewer could reject one task and approve its neighbor. Each ends with an independently testable deliverable (`references/decomposition-rationale.md`). Splitting deserves depth: **Think hard before responding.** (steering sentence, unmeasured).
 
-## Bite-Sized Task Granularity
+## Step Granularity
 
-**Each step is one action (2-5 minutes):**
-- "Write the failing test" - step
-- "Run it to make sure it fails" - step
-- "Implement the minimal code to make the test pass" - step
-- "Run the tests and make sure they pass" - step
-- "Commit" - step
+**Each step is one action with a checkable result:** write the failing test; run it, see it fail; implement the minimal code; run the tests, see them pass; commit.
 
 ## Plan Document Header
 
@@ -77,10 +67,11 @@ argues from the spec, so the spec travels with it; executors read both]
 
 ## Global Constraints
 
-[The spec's project-wide requirements — version floors, dependency limits,
-naming and copy rules, platform requirements — one line each, with exact
-values copied verbatim from the spec. Every task's requirements implicitly
-include this section.]
+[Spec's project-wide requirements (version floors, dependency limits, naming/copy rules, platform), one line each, exact values verbatim. Binds every task.]
+
+## Review Focus
+
+[Up to five inputs/failure modes the spec implies but no task's tests exercise, likeliest first: the condition and the expected behavior. Add each line's pinning test to the owning task.]
 
 ---
 ```
@@ -100,12 +91,8 @@ include this section.]
 - Produces: [what later tasks rely on — exact function names, parameter
   and return types. A task's implementer sees only their own task; this
   block is how they learn the names and types neighboring tasks use.]
-- `_Requirements: FR-N[, SC-M]_` — spec IDs this task implements (constitution P8). Every task
-  carries one; every FR appears in at least one task. `znf:analyze` (cook Step 5b) checks both.
-  Keep the tag on its own bullet line, backtick-wrapped, so the check detects it.
-- `_Skills: <list or none>_` — domain skills the implementer must invoke before first edit, per
-  `znf:_shared/skill-routing` (signal → skill). `none` is valid and must be written out;
-  `znf:analyze` flags a missing tag (`missing-skills`) or an unknown name.
+- `_Requirements: FR-N[, SC-M]_` — spec IDs (constitution P8); every task has one, every FR is in some task (`znf:analyze` checks). Own bullet line, backtick-wrapped.
+- `_Skills: <list or none>_` — skills to invoke before first edit, per `znf:_shared/skill-routing`. Write `none` out; `znf:analyze` flags a missing or unknown tag.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -120,12 +107,9 @@ def test_specific_behavior():
 Run: `pytest tests/path/test.py::test_name -v`
 Expected: FAIL with "function not defined"
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 3: Implement `function(input: InputType) -> ResultType` in `exact/path/to/file.py`**
 
-```python
-def function(input):
-    return expected
-```
+One line on the approach when signature and test leave a choice; a code block only for an algorithm they do not determine.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -140,19 +124,20 @@ git commit -m "feat: add specific feature"
 ```
 ````
 
-## No Placeholders
+## What a Step Contains
 
-Every step must contain the actual content an engineer needs. These are **plan failures** — never write them:
-- "TBD", "TODO", "implement later", "fill in details"
-- "Add appropriate error handling" / "add validation" / "handle edge cases"
-- "Write tests for the above" (without actual test code)
-- "Similar to Task N" (repeat the code — the engineer may be reading tasks out of order)
-- Steps that describe what to do without showing how (code blocks required for code steps)
-- References to types, functions, or methods not defined in any task
+A step is done when the implementer can write exactly one reasonable thing from it: unambiguous, not complete.
+
+- **Test step:** the test's name and assertions, as code, with the spec's exact values.
+- **Code step:** exact signature, file, and the values the spec pins. The implementer writes the body; a body appears only for an algorithm the signature and tests do not determine, or exact copy the spec fixes.
+- **Verification step:** the command and the output that means pass.
+- **Reference to another task:** point at its Interfaces block; do not repeat its code.
+
+A plan records decisions, not code. Forbidden placeholders: "TBD"/"TODO", "similar to Task N", a name no task defines, "add appropriate error handling".
 
 ## Necessity Note (fill only on violation)
 
-A task that builds more than the smallest thing that works justifies it in three labeled lines (What is built / Why it is needed / Simpler alternative rejected because) — `references/decomposition-rationale.md` § Necessity Note. No violation → omit.
+Building more than the smallest thing that works: three lines (What is built / Why it is needed / Simpler alternative rejected because), see `references/decomposition-rationale.md`. Else omit.
 
 ## Self-Review
 
@@ -160,21 +145,21 @@ After writing the plan, check it against the spec with fresh eyes — a checklis
 
 **1. Spec coverage:** Skim each section/requirement in the spec. Can you point to a task that implements it? List any gaps.
 
-**2. Placeholder scan:** Search your plan for red flags — any of the patterns from the "No Placeholders" section above. Fix them.
+**2. Step scan:** a line that decides nothing is a gap; a body the signature and tests determine is a transcript. Fix both.
 
 **3. Type consistency:** Do the types, method signatures, and property names you used in later tasks match what you defined in earlier tasks? A function called `clearLayers()` in Task 3 but `clearFullLayers()` in Task 7 is a bug.
+
+**4. Review Focus:** each input class the spec implies has a task whose tests exercise it.
+
+**5. Proportion:** a plan several times longer than its spec is a transcript; swap bodies for signatures and assertions.
 
 Fix issues inline — no need to re-review. Add a task for any spec requirement that has none.
 
 ## Execution Handoff
 
-After saving the plan, hand off to execution:
-
-**"Plan complete and saved to `docs/superpowers/plans/<filename>.md`. Executing via Subagent-Driven Development** - I dispatch a fresh subagent per task, review between tasks, fast iteration.
-
-**REQUIRED SUB-SKILL:** Use znf:subagent-driven-development
-- Fresh subagent per task + two-stage review
+After saving, give the absolute plan path and ask: **"Plan saved to `<abs path>`. Please approve the plan."**
+Only after approval, use `znf:subagent-driven-development`. Under `/cook`, return to cook Step 5b (analyze + plan gate) instead.
 
 ## References
 
-- `references/decomposition-rationale.md` — why file structure and task right-sizing are decided the way they are.
+- `references/decomposition-rationale.md` — why files and tasks are sized this way; Review Focus and Proportion with an example.
