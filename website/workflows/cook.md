@@ -53,10 +53,11 @@ flowchart TD
   E --> F["3. Ground spec"]
   F --> G["4. Scout"]
   G --> H["5. Viết plan, analyze"]
-  H --> I["6. Worktree và SDD"]
+  H --> H2["Duyệt plan"]
+  H2 --> I["6. Worktree và SDD"]
   I --> J["7. /znf:ship"]
   class A,B,C,C2,F,G,H,I,J action
-  class D,E user
+  class D,E,H2 user
 ```
 
 *Các bước của một lần chạy cook*
@@ -65,11 +66,11 @@ flowchart TD
 |---|---|---|
 | 0 | `git fetch` base ref của mỗi repo liên quan | Không cần làm gì |
 | 1 | Ground các tên trong yêu cầu bằng `zenify db-read collections/doc` | Đọc kết quả ground |
-| 2 | Brainstorm 11 bước. Sau câu hỏi làm rõ, bước **Research check** chạy checklist năm mục; một mục đúng thì gọi `/znf:research` (chạy tách context, trả về ≤ 40 dòng) trước khi đề xuất phương án | Chốt thiết kế, rồi duyệt spec trước khi kit ghi file. Kit dừng chờ bạn ở cả hai gate. Đọc khối scope của research nếu có |
+| 2 | Brainstorm 13 bước. Bước đầu viết lại hiểu biết chung (bạn nói gì, kit giả định gì) để bạn sửa trước khi đi tiếp. Sau câu hỏi làm rõ, bước **Research check** chạy checklist năm mục; một mục đúng thì gọi `/znf:research` (chạy tách context, trả về ≤ 40 dòng) trước khi đề xuất phương án | Chốt thiết kế, rồi duyệt spec trước khi kit ghi file. Kit dừng chờ bạn ở cả hai gate; mỗi lần duyệt chỉ duyệt đúng stage vừa trình bày. Đọc khối scope của research nếu có |
 | 3 | Ground lại mọi tên trong spec vừa chốt | Đọc nếu có mâu thuẫn. Spec được sửa trước khi viết plan |
 | 4 | Chạy `/znf:scout` (agent) tìm nơi phụ thuộc vào phần sắp đổi | Đọc báo cáo scout |
-| 5 | Viết plan. `/znf:analyze` chạy tư vấn, không chặn | Đọc plan, xem finding của analyze nếu có |
-| 6 | Tạo worktree, chạy SDD: mỗi task một implementer và một reviewer | Theo dõi ledger `.znf/sdd/<plan>/progress.md` |
+| 5 | Viết plan ở mức quyết định: mỗi bước ghi file, signature và assertion của test, không chép sẵn toàn bộ code. `/znf:analyze` chạy tư vấn, không chặn | **Duyệt plan.** Kit đưa đường dẫn plan cùng finding CRITICAL/HIGH của analyze và dừng chờ bạn; chỉ sau khi bạn đồng ý mới sang bước 6 |
+| 6 | Tạo worktree, chạy SDD: mỗi task một implementer (`sonnet`, viết test trước và chạy cả suite) và một reviewer | Theo dõi ledger `.znf/sdd/<plan>/progress.md` |
 | 7 | Gọi `/znf:ship` | Đọc board ship, nhận PR |
 
 ## Kết quả
@@ -84,7 +85,7 @@ flowchart TD
 
 ## Quyết định thuộc về bạn
 
-- Chốt thiết kế và duyệt spec. Đây là hai gate ở bước 2, cook dừng chờ bạn ở cả hai.
+- Chốt thiết kế và duyệt spec (hai gate ở bước 2), rồi duyệt plan (gate ở bước 5). Cook dừng chờ bạn ở cả ba.
 - Merge PR sau khi ship xong.
 - Mọi bước tay ngoài repo, ví dụ thao tác hạ tầng.
 
@@ -97,7 +98,7 @@ Chính site tài liệu này được xây bằng `/znf:cook`. Yêu cầu ban đ
 | Tránh | Nên làm |
 |---|---|
 | Bỏ spec vì việc nhỏ | Viết spec ngắn. Brainstorming cho phép spec vài câu với việc đơn giản, không cho phép bỏ hẳn |
-| Tự gõ code trong lúc cook đang chạy SDD | Để implementer làm. Bạn đọc ledger và can thiệp ở hai gate |
+| Tự gõ code trong lúc cook đang chạy SDD | Để implementer làm. Bạn đọc ledger và can thiệp ở ba gate |
 | Merge PR ngay khi thấy PR mở | Đọc board ship trước. Review độc lập và verify hành vi nằm ở đó |
 
 ## Xem thêm
