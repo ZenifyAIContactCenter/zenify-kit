@@ -55,7 +55,7 @@ SDD's rule "Never dispatch multiple implementation subagents in parallel" is nar
 sounds, and the real boundary is sharper:
 
 ```
-scripts/review-package PLAN_FILE BASE HEAD
+bash scripts/review-package PLAN_FILE BASE HEAD
   BASE = the commit recorded BEFORE dispatching this implementer
 ```
 

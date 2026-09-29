@@ -2,7 +2,7 @@
 
 ### Composing the dispatch (from § 1)
 - **Task brief:** before dispatching an implementer, run this skill's
-  `scripts/task-brief PLAN_FILE N` — it extracts the task's full text to a
+  `bash scripts/task-brief PLAN_FILE N` — it extracts the task's full text to a
   uniquely named file and prints the path. Compose the dispatch so the
   brief stays the single source of
   requirements. Your dispatch should contain: (1) one line on where this
