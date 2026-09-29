@@ -42,11 +42,11 @@ Stamp each check with its `fp`; step 7 requires every stamp == the current one.
    query added or changed → `Skill(znf:explain-plan)`** (`COLLSCAN` / `Seq Scan` / scan-ratio): an unwaived **BLOCKING** finding
    (`// znf:db-perf-ok: <reason>`) means **ship does not complete**; ADVISORY prints under `## DB-Perf`.
 
-5. **Independent review** — never pick the reviewer yourself. Write the pack to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md`, then **`Skill(znf:review)`** with `BASE=<base>` and the pack as context: it picks the tier and returns `findings[]` (`znf:review/_shared/finding-schema.md`) plus `shippable`. CRITICAL/HIGH enter the fix loop, MEDIUM/LOW the board.
+5. **Independent review** — never pick the reviewer yourself. First `BASE=$(git merge-base <baseRef> HEAD)` (`baseRef` in `.claude/worktree.json`). Write the pack to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md`, then **`Skill(znf:review)`** with `BASE=$BASE` and the pack: it picks the tier and returns `findings[]` (`znf:review/_shared/finding-schema.md`) plus `shippable`. CRITICAL/HIGH enter the fix loop, MEDIUM/LOW and each `Declined:` line the board.
 
    ```
    ## Intent      plan path (/cook) · root cause (/fix, /hotfix) · else the user's goal
-   ## Diff        git log --oneline <base>..HEAD · git diff --stat/-U10 <base>..HEAD
+   ## Diff        git log --oneline $BASE..HEAD · git diff --stat/-U10 $BASE..HEAD
    ## Verified    FACTS from steps 2-4, never a verdict: commands + real output, the test
                   files that ran by name, the changed behaviour NO test touches
    ## Ground      zenify db-read doc <collection> · zenify db-read sql 'DESCRIBE <table>'
@@ -69,7 +69,7 @@ Stamp each check with its `fp`; step 7 requires every stamp == the current one.
 
 ## Step 7: Record the outcome, then commit
 
-**Append one line before anything else** — it stops the gate becoming a CAB:
+**Append one line first:**
 
 ```bash
 printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(basename "$PWD")" "$(fp)" \
@@ -78,9 +78,9 @@ printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(basename "$PWD")" "$(fp)" 
 
 Read it back (`tail -30`); **if this gate has never blocked, say so plainly.** Commit trailer `Spec: <spec path>` is encouraged when a spec exists. Then fill the board (template: `references/gate-evidence.md`) — a `✅/❌ <check> (<fp10>) <evidence>` line for lint, build, contract gate, behaviour and review, plus `Deploy order:`, `Gate log: <SHIPPED|BLOCKED> · blocked <N> of last <M>`, `Shippable: YES only if every fingerprint above == the current one`.
 
-Fill the `look:` and review sub-lines per the template. **Before concluding: `zenify ui-verify check --repo <path> --base <base>` — non-zero → append `❌ BLOCKED` and Shippable NO; a waiver appends `waived: <reason>`.**
+Fill the `look:` and review sub-lines per the template. **Before concluding: `zenify ui-verify check --repo <path> --base $BASE` — non-zero → append `❌ BLOCKED` and Shippable NO; a waiver appends `waived: <reason>`.**
 
-**Every ✅ carries the fingerprint it was earned at**; a differing one ran against a tree that is gone: re-run. **Write the board to `${TMPDIR:-/tmp}/ship-board-$(fp).md`**, `cat` it, report the path.
+**Every ✅ carries the fingerprint it was earned at**; a differing one: re-run. **Write the board to `${TMPDIR:-/tmp}/ship-board-$(fp).md`**, `cat` it, report the path.
 
 **7b.** Before pushing, write the risk-metadata note-commit (`_Blast-radius:`/`_DB:`/`_Rollback:` from the Brief spec's tags, else blank):
 

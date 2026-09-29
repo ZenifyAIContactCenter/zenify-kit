@@ -78,9 +78,9 @@ Never start the next task with Critical/Important issues neither fixed nor parke
 
 ## Final Review
 
-**Under `/cook`, skip this section and go to Finish** — `/ship` reviews the branch plus the ledger's `minor (deferred)` and `parked` lines via the ship-pack `## Deferred`. Standalone: `bash scripts/review-package PLAN_FILE MERGE_BASE HEAD` (MERGE_BASE = where the branch started), its path in the dispatch, the most capable model, [code-reviewer-template.md](code-reviewer-template.md) verbatim, pointed at the deferred and parked lines.
+**Under `/cook`, skip this section and go to Finish** — `/ship` reviews the branch plus the ledger's `minor (deferred)` and `parked` lines via the ship-pack `## Deferred`. Standalone: `bash scripts/review-package PLAN_FILE MERGE_BASE HEAD` (`MERGE_BASE=$(git merge-base <baseRef> HEAD)`), its path in the dispatch, the most capable model, [code-reviewer-template.md](code-reviewer-template.md) verbatim, pointed at the deferred and parked lines.
 
-Findings → ONE fix subagent with the whole list, then exactly one scoped re-review of it ([re-review-prompt.md](re-review-prompt.md)), adjudicating the rest as in the breaker. There is no second fix wave — what remains surfaces when finishing-a-development-branch presents the options.
+Findings → ONE fix subagent with the whole list, then exactly one scoped re-review of it ([re-review-prompt.md](re-review-prompt.md)), adjudicating the rest as in the breaker; ledger a `Ruling:` for each `Declined:` line. There is no second fix wave — what remains surfaces when finishing-a-development-branch presents the options.
 
 ## Finish
 

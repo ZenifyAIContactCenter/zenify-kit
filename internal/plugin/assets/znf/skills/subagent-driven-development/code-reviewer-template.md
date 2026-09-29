@@ -47,6 +47,7 @@ Subagent (general-purpose):
 
     **Plan alignment:**
     - Does the implementation match the plan / requirements?
+    - Treat the spec as a vision document: a detail it omits is not automatically a defect.
     - Are deviations justified improvements, or problematic departures?
     - Is all planned functionality present?
 
@@ -107,6 +108,9 @@ Subagent (general-purpose):
     - What's wrong
     - Why it matters
     - How to fix (if not obvious)
+
+    ### Declined
+    [`Declined: <item> — <why you cannot judge it>`, one per line; empty if none]
 
     ### Recommendations
     [Improvements for code quality, architecture, or process]

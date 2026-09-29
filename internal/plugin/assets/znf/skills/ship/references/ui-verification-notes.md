@@ -80,7 +80,7 @@ the caller-passed repo's working tree, copies the screenshot to `<repo>/.znf/ui-
 and upserts the screen's measurement into `<repo>/.znf/ui-verify/<fp>.json`. The `--repo` the caller
 passes to the verifier must be this worktree.
 
-`/ship` step 7 runs `zenify ui-verify check --repo <path> --base <base>` before concluding Shippable —
+`/ship` step 7 runs `zenify ui-verify check --repo <path> --base $BASE` before concluding Shippable —
 a deterministic, fail-closed gate with four outcomes:
 - **not_required** (exit 0) — the render-trigger set (§4b) is empty; nothing to verify.
 - **waived** (exit 0) — the diff carries a `// znf:ui-verify-ok: <reason>` marker; the reason prints on
