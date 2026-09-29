@@ -8,6 +8,28 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.29.0
+
+*2026-09-29*
+
+- Port superpowers v6.4.2 vào znf, giữ nguyên ledger, `select-route`, fix-loop và UI-verify của kit.
+- Plan ở mức quyết định. `writing-plans` ghi file, signature, đường dẫn và assertion của test cho mỗi bước; chỉ thuật toán khó mới kèm thân code. Mục "No Placeholders" đổi thành "What a Step Contains", thêm Review Focus và Proportion.
+- Cổng duyệt plan mới trong `/znf:cook`:
+  - Viết xong plan và chạy `/znf:analyze`, cook đưa đường dẫn plan cùng finding CRITICAL/HIGH rồi dừng chờ bạn duyệt.
+  - Cook giờ có ba gate: thiết kế, spec, plan. Xem [/znf:cook](/workflows/cook).
+- Mọi implementer của SDD chạy `sonnet`. Cùng một test fail lần 2 → `opus`, lần 3 → dừng và chạy investigator. SDD không còn đoán tier từ việc plan có chứa code hay không. Xem [Model routing](/concepts/model-routing).
+- Implementer bắt buộc TDD: viết test từ assertion trong plan, thấy test fail rồi mới implement, chạy cả suite của project và báo tên test fail không do mình gây ra.
+- `/znf:brainstorming`:
+  - Bước đầu viết lại hiểu biết chung, tách điều bạn nói với điều agent giả định, và chờ bạn sửa.
+  - Mỗi lần duyệt chỉ duyệt đúng stage vừa trình bày; duyệt ý tưởng không có nghĩa là duyệt artifact chưa tồn tại.
+- Sửa lỗi script SDD không chạy sau `zenify skills sync`. Các file cài ở mode 0600, không có quyền thực thi; nay mọi script đều được gọi qua `bash`.
+- Review và ship tính diff từ `git merge-base <baseRef> HEAD`. Khi base đã đi tiếp, review không còn thấy những file xoá giả.
+- Reviewer doctrine:
+  - Spec là bản định hướng.
+  - Bảo mật, phân quyền, an toàn dữ liệu và vỡ hợp đồng luôn là lỗi.
+  - Điều không đủ căn cứ để phán ghi vào khối `Declined:`, ngoài `findings[]`. Xem [Review và gate](/guides/review-and-gates).
+- Script SDD `review-package` dừng với exit 3 khi range sai. `sdd-workspace` ghi marker `plan-path` để hai plan trùng tên file không dùng chung workspace, và báo lỗi thay vì lặp vô hạn khi `.znf/sdd` không ghi được.
+
 ## v0.28.0
 
 *2026-09-28*

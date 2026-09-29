@@ -37,6 +37,8 @@ Engine review hợp nhất của kit. Trước khi dispatch reviewer, skill ch�
 
 Diff chạm hợp đồng chung (một collection, endpoint, queue, hoặc kênh pub/sub) được nâng mức soi tối thiểu lên mức vừa, kể cả khi diff nhỏ.
 
+Reviewer đọc spec như một bản định hướng: chi tiết spec không nhắc tới chưa chắc là lỗi, trừ bảo mật, phân quyền/tenant, an toàn dữ liệu và vỡ hợp đồng — những thứ này thấy trong diff là lỗi. Điều reviewer không đủ căn cứ để phán (không có dữ liệu, chưa đọc caller) được ghi riêng ở khối `Declined:`, ngoài danh sách phát hiện.
+
 Mọi phát hiện có kèm vị trí file phải trích đúng dòng code thật. Skill xác minh cơ học từng trích dẫn đó khớp với file thật và loại bỏ phát hiện nào trích sai, trước khi kết luận có ship được hay không. Diff rất lớn được tách thành nhiều cụm file nhỏ hơn, mỗi cụm review riêng rồi gộp kết quả; nếu vẫn quá lớn để tách, skill dừng và đề nghị chia nhỏ pull request.
 
 ```text
