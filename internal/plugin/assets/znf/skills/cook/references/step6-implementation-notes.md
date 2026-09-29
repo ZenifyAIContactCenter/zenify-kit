@@ -29,19 +29,16 @@ SDD requires the model to be explicit, and an omitted `effort` inherits the sess
 ### From § Then SDD
 
 **Defer to SDD's Model Selection — do not re-derive or floor it here.** SDD already routes the
-implementer: least powerful model that can handle the task, cheapest tier for a transcription task
-(the plan carries the code), standard from prose / integration, most capable for design judgment,
-specified explicitly on every dispatch. That is superpowers' text, and it is right — the
-dispatcher judges the tier per task. An earlier version of this file overrode it with a hard
-`sonnet` + `xhigh` floor; that was a mistake and is removed.
+implementer: every implementer routes to `sonnet` (`select-route implementer FAIL=<n>`); the same
+test failing twice (`FAIL=2`) goes to `opus`, a third time to the investigator. The plan records decisions,
+not code, so no task is a transcription task and no implementer lane uses `haiku`.
 
-**The one local caveat SDD cannot know — the CLI's `xhigh` exclusion.** `claude-haiku-4-5` is
-**not xhigh-capable**: it is on the CLI's `xhigh_effort` exclusion list alongside `claude-3-*`,
+**The one local caveat SDD cannot know — the CLI's `xhigh` exclusion.** `claude-haiku-4-5` (still used by
+other, non-implementer agents) is **not xhigh-capable**: it is on the CLI's `xhigh_effort` exclusion list alongside `claude-3-*`,
 `opus-4-0/4-1/4-5/4-6` and `sonnet-4-0/4-5/4-6`, while `sonnet-5`, `opus-4-7/4-8`, `opus-5` and
 the top tier above it are not. So dispatching haiku *at `xhigh`* neither raises effort nor errors — the CLI
 **silently downgrades** it (`"Effort '<x>' exceeds … using '<y>'"`). So **never pair the cheapest
-tier with `xhigh`**: a transcription task runs haiku at its default effort (which is all it needs),
-and `xhigh` goes to `sonnet`+ where the dial earns its cost. This is a caveat on *effort*, not a
+tier with `xhigh`**: `xhigh` goes to `sonnet`+ where the dial earns its cost. This is a caveat on *effort*, not a
 reason to raise the *tier*.
 
 SDD's *"turn count beats token price"* still applies: a cheap tier can take 2-3× the turns on
@@ -77,8 +74,8 @@ executor.
 
 **Why cross-repo needs no coordination:** the web implementer does not wait on the backend
 implementer, because the shape of the new endpoint is in the **plan**, not in the backend
-implementer's output. `writing-plans`' rule that a plan contain real code and no placeholders —
-written for an unrelated reason — is exactly what makes this safe. If a task cannot start without
+implementer's output. `**Interfaces:** Produces:` in the plan records the exact signature, so a dependent repo's
+implementer knows the names and types without any code — that is what makes this safe. If a task cannot start without
 another task's *output*, the plan is under-specified; fix the plan, don't serialise around it.
 
 **Same-repo parallel is off by default and that is a decision, not an omission.** Within one repo
@@ -183,8 +180,7 @@ it is generated fresh by the gate on every run.
 
 ### From § Floor and ceiling / Naming is asymmetric
 
-The floor is **whatever tier SDD's Model Selection lands on** — the cheapest tier for a
-transcription task, a standard tier from prose / integration — not a fixed model pinned here. The
+The floor is **whatever tier SDD's Model Selection lands on** (`sonnet` for every implementer) — not a fixed model pinned here. The
 ceiling is the session model (`opus-5-5[1m]`), for architecture, for a task needing broad codebase
 understanding, and for the final whole-branch review. Full-ID pinning is the **session's** job
 (`~/.claude/settings.json`); a subagent dispatch names a *tier* the dispatcher judged, so this file
@@ -222,9 +218,7 @@ token price"*, and the cheapest tier takes 2-3× the turns while reviewing worse
 | 6 Workspace handoff | a new session in the task's pane | session (`settings.json`) | session default |
 | 6 Task review | subagents via SDD | `sonnet`, `opus` for a high-risk diff (SDD's rule) | default |
 
-Implementers follow SDD's Model Selection: the least powerful model that can handle each task,
-named explicitly on every dispatch — cheapest tier for a transcription task where the plan carries
-the code, standard from prose or integration work, `opus` for design judgment. The dispatcher
-judges per task; nothing is hard-pinned at this step. Never pair the cheapest tier (`haiku`) with
+Implementers follow SDD's Model Selection: `sonnet`, named explicitly on every
+dispatch; `FAIL=2` escalates to `opus`. Nothing is hard-pinned at this step. Never pair `haiku` with
 `effort: 'xhigh'`: haiku is not xhigh-capable and the CLI silently downgrades it, so `xhigh` goes
 to `sonnet` and above only.

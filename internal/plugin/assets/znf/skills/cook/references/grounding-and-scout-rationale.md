@@ -17,15 +17,14 @@ This is not an override of `brainstorming` — it is doing the data half of that
 step 1, "explore project context", properly, and handing the result in. The skill is then run
 exactly as written.
 
-Why before rather than after: `brainstorming` ends with **two user gates** — approval per
-design section, then approval of the written spec. Grounding only after those means the user
+Why before rather than after: `brainstorming` ends with **three user gates** — approval per
+design section, approval of the written spec, then approval of the plan (cook's Step 5b). Grounding only after those means the user
 can approve a design resting on a collection that does not exist, and the correction costs
 another round of *their* review, not yours. Cheaper to arrive with the real names.
 
 ### From § Step 3: Ground the spec — before the plan, not after
 
-This runs **before** `writing-plans` on purpose: that skill forbids placeholders and demands
-real code in every task, so a wrong collection or field name gets written *into the plan*, and
+This runs **before** `writing-plans` on purpose: that skill forbids placeholders and pins exact names and signatures in every task, so a wrong collection or field name gets written *into the plan*, and
 SDD then hands implementers the brief with "the exact values to use verbatim". Grounding after
 the plan grounds a contaminated requirement. This is the path that put three empty junk
 collections into a shared production database.

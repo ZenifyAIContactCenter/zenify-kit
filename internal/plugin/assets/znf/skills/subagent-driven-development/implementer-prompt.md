@@ -41,7 +41,7 @@ Subagent (general-purpose):
 
     Once you're clear on requirements:
     1. Implement exactly what the task specifies
-    2. Write tests (following TDD if task says to)
+    2. TDD is mandatory: write the failing test from the plan's assertions, run it and see it fail, then implement
     3. Verify implementation works
     4. Commit your work
     5. Self-review (see below)
@@ -52,8 +52,9 @@ Subagent (general-purpose):
     **While you work:** If you encounter something unexpected or unclear, **ask questions**.
     It's always OK to pause and clarify. Don't guess or make assumptions.
 
-    While iterating, run the focused test for what you're changing; run the
-    full suite once before committing, not after every edit.
+    While iterating, run the focused test for what you're changing. Before you
+    report DONE, run the project's full suite (not only your own test files).
+    A red test you did not cause: list its name in your report and do not fix it.
 
     ## You Do Not Dispatch Subagents
 
@@ -118,7 +119,7 @@ Subagent (general-purpose):
 
     **Testing:**
     - Do tests actually verify behavior (not just mock behavior)?
-    - Did I follow TDD if required?
+    - Did I follow TDD (test written and seen failing first)?
     - Are tests comprehensive?
     - Is the test output pristine (no stray warnings or noise)?
 
@@ -138,9 +139,10 @@ Subagent (general-purpose):
     Write your full report to [REPORT_FILE]:
     - What you implemented (or what you attempted, if blocked)
     - What you tested and test results
-    - **TDD Evidence** (if TDD was required for this task):
+    - **TDD Evidence**:
       - RED: command run, relevant failing output before implementation, and why the failure was expected
       - GREEN: command run and relevant passing output after implementation
+    - Full suite result; names of any red tests you did not cause
     - Files changed
     - Skills invoked (names), or "no skills routed"
     - Self-review findings (if any)

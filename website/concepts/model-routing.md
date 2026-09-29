@@ -16,7 +16,7 @@ Một skill **không tự nâng model được**. Muốn một câu hỏi chạy
 
 Model mạnh điều phối, model rẻ làm phần song song — một agent tốn ~4× token so với chat, multi-agent ~15×, và Opus dẫn dắt + Sonnet subagent vượt Opus đơn lẻ ([multi-agent](https://www.anthropic.com/engineering/multi-agent-research-system)).
 
-**Nguyên tắc (theo superpowers): dùng model *ít mạnh nhất mà vẫn kham được role*.** Với subagent, tier **không do người dispatch cảm nhận**: ở năm site bên dưới, `select-route` quyết định từ số liệu của task (số repo, có chạm contract chia sẻ, vòng thứ mấy, test fail bao nhiêu lần); các agent còn lại ghim tier trong frontmatter. Haiku hợp chỗ **miss thì rẻ** (transcription sai → fail test → fix loop bắt); KHÔNG hợp chỗ miss là false-negative *âm thầm và đắt* (review, chẩn đoán bug, drift cross-repo) — chỗ đó sàn sonnet.
+**Nguyên tắc (theo superpowers): dùng model *ít mạnh nhất mà vẫn kham được role*.** Với subagent, tier **không do người dispatch cảm nhận**: ở năm site bên dưới, `select-route` quyết định từ số liệu của task (số repo, có chạm contract chia sẻ, vòng thứ mấy, test fail bao nhiêu lần); các agent còn lại ghim tier trong frontmatter. Haiku hợp chỗ **miss thì rẻ** (transcription sai → fail test → fix loop bắt), nhưng không lane implementer nào dùng haiku nữa; KHÔNG hợp chỗ miss là false-negative *âm thầm và đắt* (review, chẩn đoán bug, drift cross-repo) — chỗ đó sàn sonnet.
 
 | Nơi | Model | Vì sao |
 |---|---|---|
