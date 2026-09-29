@@ -8,6 +8,14 @@ spike stops at "present the probe, get a nod"). Sections from
 bounded work, context plus a few questions plus a short in-chat design
 is the whole process.
 
+**Shared understanding first (architectural; bounded gets the same in one message):**
+
+1. **Discover intent.** From the request and context, identify the intended outcome, who it is for, and what success looks like. If that is missing, ask one focused question about purpose before proposing features or an approach. Knowing the app genre does not tell you why your partner wants it. Gathering requirements is not asking them to authorize the task again.
+2. **Write back your understanding.** Summarize outcome, constraints and success criteria in a short note. Separate what they said from your assumptions, invite correction, and fold the answer in before treating it as the design brief. The corrected note becomes the Brief's Problem field.
+3. **Carry intent into the design.** Preserve the agreed understanding in the path's artifact (the spec for architectural, the in-chat design for bounded). Check each proposed feature and technical choice against it.
+
+When the request already states purpose and constraints, reflect them back instead of re-asking. Keep the note short; its accuracy and the chance to correct it are what matter.
+
 **Understanding the idea:**
 
 - Check out the current project state first (files, docs, recent commits)

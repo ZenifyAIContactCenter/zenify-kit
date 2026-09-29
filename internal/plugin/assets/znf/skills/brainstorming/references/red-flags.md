@@ -10,10 +10,12 @@
 | "I understand this kind of app, so it's bounded" | Bounded measures the repo, not your familiarity. A new project has no existing flow — it is architectural. |
 | "The spike works, so I'll keep the code" | A spike's output is an answer. Keeping the code is a new request — classify it. |
 | "It grew, but I'm almost done — no need to re-classify" | Hidden complexity upgrades the path mid-task. Stop and say so. |
+| "They said yes to the idea, so I can write the plan" | A reply approves the stage actually presented. Design approval permits the spec; spec approval permits the plan; plan approval permits implementing. |
+| "A new todo-list app is simple, two sentences will do" | A new project has no existing flow: it is architectural, so the written spec and planning handoffs apply. Only a bounded change gets the short chat design. |
 | "They approved the spike, so the follow-up change is approved too" | Each task gets its own classification and its own approval. |
 
 ### Anti-pattern: "too simple to need approval"
 
-Every path ends with your human partner approving your intent before implementation. A todo list, a
+Every path ends with your human partner approving the required design before implementation. A todo list, a
 single-function utility, a config change — the design may be two sentences in chat, but you MUST
 present it and get approval. What scales with simplicity is the artifact, never the approval.

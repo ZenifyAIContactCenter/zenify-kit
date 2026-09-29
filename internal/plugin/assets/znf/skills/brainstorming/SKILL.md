@@ -6,15 +6,17 @@ description: "You MUST use this before any creative work - creating features, bu
 
 # Brainstorming Ideas Into Designs
 
-Turn ideas into designs and specs through collaborative dialogue. Classify how much process the
-request needs, then work your path: context, refine the idea, present a design, get your human
-partner's approval.
+Turn ideas into designs and specs through dialogue: classify how much process the request needs,
+then work your path to your human partner's approval.
 
 <HARD-GATE>
 Do NOT invoke any implementation skill, write any code, scaffold any project, or take any
 implementation action until you have told your human partner what you intend and they have approved
 it. This applies to EVERY task on EVERY path below — the ceremony scales with the task; the
-approval gate never does.
+approval gate never does. A reply approves the stage actually presented: design approval only
+permits writing the spec, spec approval only permits writing the plan, plan approval permits
+implementing. Approving an idea or scope approves no artifact that does not exist yet. Resume at
+the earliest incomplete stage.
 </HARD-GATE>
 
 ## Three Paths
@@ -40,7 +42,7 @@ In doubt, take the heavier path. One-way ratchet: hidden complexity found mid-ta
 
 ## Checklist
 
-Classify first, announce the path, then do the items in order.
+Classify, announce the path, do the items in order.
 
 **Spike:**
 1. **Explore project context** — enough to frame the probe
@@ -51,42 +53,39 @@ Classify first, announce the path, then do the items in order.
 
 **Bounded:**
 1. **Explore project context** — check files, docs, recent commits
-2. **Ask clarifying questions** — one at a time, the ones that matter
+2. **Ask clarifying questions** — one at a time, the ones that matter; why first, then write back your understanding
 3. **Present short design in chat** — approach, files touched, testing
 4. **Get approval** — STOP and wait for an explicit yes; presenting and starting in one breath skips the gate
 5. **Implement** — the normal development workflow (TDD applies); no plan document
 
 **Architectural:**
 1. **Explore project context** — files, docs, recent commits
-2. **Offer the visual companion just-in-time** — NOT upfront, only the first time a question is genuinely clearer shown than described, never if none arises. See the Visual Companion section.
-3. **Ask clarifying questions** — one at a time: purpose, constraints, success criteria
-4. **Research check** — `references/research-checklist.md`; one item true → `Skill(znf:research)` on the scoped question; none → skip, no prior-art for show
-5. **Route the design** — `references/architect-gate.md`: four features → `select-route architect`; `none` → write the memo yourself; a model → `Agent(architect)` once, then read its memo
-6. **Design memo** — `references/architect-memo.md`, ten sections (2-3 approaches, gates, tokens, checklist, recommendation). Think hard before responding.
-7. **Present design** — sections scaled to their complexity, user approval after each
-8. **Clarify-lite** — scan the 7 Brief fields (Clear/Partial/Missing), ≤5 MC questions, log `## Clarifications`
-9. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
-10. **Spec self-review** — inline check for placeholders, contradictions, ambiguity, scope (below)
-11. **User reviews written spec** — ask the user to review the spec file before proceeding
-12. **Transition to implementation** — invoke writing-plans to create the implementation plan
+2. **Shared understanding first** — ask why, write back what they said vs your assumptions, wait for correction; the corrected text is the Brief's Problem
+3. **Offer the visual companion just-in-time** — NOT upfront; only the first time a question is clearer shown than described, never if none arises
+4. **Ask clarifying questions** — one at a time: purpose, constraints, success criteria
+5. **Research check** — `references/research-checklist.md`; one item true → `Skill(znf:research)` on the scoped question; none → skip, no prior-art for show
+6. **Route the design** — `references/architect-gate.md`: four features → `select-route architect`; `none` → write the memo yourself; a model → `Agent(architect)` once, then read its memo
+7. **Design memo** — `references/architect-memo.md`, ten sections (2-3 approaches, gates, tokens, checklist, recommendation). Think hard before responding.
+8. **Present design** — sections scaled to their complexity, user approval after each
+9. **Clarify-lite** — scan the 8 Brief fields (Clear/Partial/Missing), ≤5 MC questions, log `## Clarifications`
+10. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+11. **Spec self-review** — inline check for placeholders, contradictions, ambiguity, scope (below)
+12. **User reviews written spec** — ask the user to review the spec file before proceeding
+13. **Transition to implementation** — invoke writing-plans to create the implementation plan
 
 ## Process flow
 
-**Terminal states are path-bound.** Architectural: the ONLY skill you invoke after brainstorming is
-writing-plans (research runs inside brainstorming, before the design). Bounded: the normal
-development workflow, no plan document. Spike: a recommendation.
+Terminal states are path-bound: architectural ends in writing-plans only, bounded in the normal workflow, spike in a recommendation.
 
 ## The dialogue
 
-This serves the bounded and architectural paths (a spike stops at "present the probe, get a nod"):
-explore project context first, read `.claude/GLOSSARY.md` when a domain term is unclear, flag a
-request that needs decomposing before refining details, ask one question per message, propose 2-3
-approaches with a recommendation, YAGNI ruthlessly, present the design in sections with a check
-after each (`references/design-dialogue.md`).
+For the bounded and architectural paths (`references/design-dialogue.md`): read `.claude/GLOSSARY.md`
+for unclear domain terms, decompose oversized requests first, one question per message, propose 2-3
+approaches with a recommendation, YAGNI ruthlessly, present the design in sections with a check each.
 
 ## After the Design (architectural path)
 
-**Clarify-lite (before writing the spec):** mark each of the seven Brief fields Clear / Partial /
+**Clarify-lite (before writing the spec):** mark each of the eight Brief fields Clear / Partial /
 Missing. For Partial or Missing ones, ask at most five multiple-choice questions, one per message,
 each with a one-line "why it matters". Log the answers under a dated `## Clarifications` section in
 the spec — a light pass inside the dialogue, not a separate step.
@@ -102,21 +101,20 @@ the spec — a light pass inside the dialogue, not a separate step.
   link it from the spec header. Tier-3 route and `changed_decision` recorded per
   `references/architect-gate.md`.
 
-**Spec Self-Review:** with fresh eyes, scan the spec for placeholders, contradictions, over-broad scope and ambiguous requirements; fix each inline, no re-review (`references/spec-self-review.md`).
+**Spec Self-Review:** scan for placeholders, contradictions, over-broad scope, ambiguity; fix inline, no re-review (`references/spec-self-review.md`).
 
 **User Review Gate:** once the review loop passes, ask the user to review it:
 
 > "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
 
-Wait. If they request changes, make them and re-run the review loop. Proceed only on approval.
+Wait. On changes, make them and re-run the review loop. Proceed only on approval.
 
-**Implementation:** invoke writing-plans to create the implementation plan. Do NOT invoke any other
-skill — writing-plans is the next step.
+**Implementation:** invoke writing-plans; no other skill.
 
 ## Visual Companion
 
-A browser companion for mockups and diagrams — a tool, not a mode; offered just-in-time as its
-own message, never upfront (`references/visual-companion-rules.md`, then `visual-companion.md`).
+A browser companion for mockups and diagrams, offered just-in-time as its own message
+(`references/visual-companion-rules.md`, then `visual-companion.md`).
 
 ## References
 
