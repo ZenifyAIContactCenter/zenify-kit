@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
 )
@@ -64,6 +65,13 @@ func TestWritingPlans_SteeringAtTaskSplit(t *testing.T) {
 	assertContainsAll(t, "writing-plans/SKILL.md", s, []string{"Think hard before responding.", "unmeasured"})
 	if len(s) > 8192 || strings.Count(s, "\n") > 200 {
 		t.Fatalf("writing-plans over cap: %d bytes", len(s))
+	}
+	assertContainsAll(t, "writing-plans/SKILL.md", s, []string{"What a Step Contains", "Review Focus", "Proportion"})
+	if strings.Contains(s, "## No Placeholders") {
+		t.Error("writing-plans/SKILL.md: ## No Placeholders was replaced by What a Step Contains")
+	}
+	if _, err := fs.Stat(assets, "assets/znf/skills/writing-plans/plan-document-reviewer-prompt.md"); err == nil {
+		t.Error("plan-document-reviewer-prompt.md must be removed")
 	}
 	dr := syncedAsset(t, "skills/writing-plans/references/decomposition-rationale.md")
 	assertContainsAll(t, "decomposition-rationale.md", dr, []string{"Necessity Note", "What is built", "Why it is needed", "Simpler alternative rejected because"})
