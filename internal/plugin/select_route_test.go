@@ -41,6 +41,7 @@ func TestSelectRoute_Table(t *testing.T) {
 		{"fable", []string{"investigator", "ROUND=2"}, "opus", "ROUND=2"},
 		{"fable", []string{"investigator", "ROUND=3"}, "fable", "ROUND>=3"},
 		{"", []string{"investigator", "ROUND=4"}, "opus", "ROUND>=3"},
+		{"fable", []string{"implementer", "FAIL=0"}, "sonnet", "-"},
 		{"fable", []string{"implementer", "SPEC=code", "FAIL=0"}, "haiku", "-"},
 		{"fable", []string{"implementer", "SPEC=prose", "FAIL=1"}, "sonnet", "-"},
 		{"fable", []string{"implementer", "SPEC=prose", "FAIL=2"}, "opus", "FAIL=2"},
