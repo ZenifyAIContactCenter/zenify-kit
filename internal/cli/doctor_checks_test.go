@@ -154,3 +154,17 @@ func TestGitIdentityCheck_Present(t *testing.T) {
 		t.Errorf("name+email set should be OK, detail=%q", detail)
 	}
 }
+
+func TestKitPermissionsCheck_MissingThenFixed(t *testing.T) {
+	home := t.TempDir()
+	c := kitPermissionsCheck(func() (string, error) { return home, nil })
+	if ok, detail := c.Run(); ok || !strings.Contains(detail, "missing") {
+		t.Fatalf("empty HOME should report missing, got ok=%v detail=%q", ok, detail)
+	}
+	if ok, detail := c.Fix(); !ok {
+		t.Fatalf("Fix failed: %s", detail)
+	}
+	if ok, detail := c.Run(); !ok {
+		t.Fatalf("after Fix the check should pass, detail=%q", detail)
+	}
+}
