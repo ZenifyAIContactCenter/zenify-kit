@@ -42,6 +42,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify down](./zenify_down) | Gỡ phần ZenifyKit đã cài vào máy và repo, giữ nguyên code, workspace và knowledge store. |
 | [zenify e2e](./zenify_e2e) | Nhóm lệnh cho journey E2E: lint chống test hời và chạy journey Playwright thật trong Docker. |
 | [zenify e2e lint](./zenify_e2e_lint) | Kiểm tra cơ học các journey trong `.znf/e2e`, chặn journey thiếu re-fetch, assert hoặc cleanup. |
+| [zenify e2e login](./zenify_e2e_login) | Đăng nhập trên host bằng harness e2e và ghi Playwright storage state để `znf:ui-verifier` nạp qua MCP. |
 | [zenify e2e run](./zenify_e2e_run) | Chạy journey E2E trong Docker, trỏ vào dev server đang mở trên máy bạn. |
 | [zenify gate](./zenify_gate) | Nhóm lệnh hỗ trợ contract gate, bước quét cross-repo khi bạn chạm tài nguyên chung. |
 | [zenify gate participants](./zenify_gate_participants) | Liệt kê các repo tham gia contract gate cùng cách mỗi repo truy cập DB chung. |
