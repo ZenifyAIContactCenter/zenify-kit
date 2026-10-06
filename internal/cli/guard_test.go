@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -284,5 +285,92 @@ func TestGuardInstallUsesTempHOME(t *testing.T) {
 	cmd2.SetErr(&out2)
 	if err := cmd2.Execute(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// installGuard runs on every up/SessionStart, so it must not reformat the
+// user's file: foreign values keep their inner key order (whitespace is
+// re-indented, as in apply) and && is not
+// HTML-escaped to &.
+func TestEnsureGuardHookPreservesForeignOrderAndNoEscape(t *testing.T) {
+	in := []byte(`{"permissions":{"zeta":1,"alpha":2},"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"a && b"}]}]}}`)
+	out, changed, err := ensureGuardHook(in)
+	if err != nil || !changed {
+		t.Fatalf("want changed, got changed=%v err=%v", changed, err)
+	}
+	s := string(out)
+	if z, a := strings.Index(s, `"zeta"`), strings.Index(s, `"alpha"`); z < 0 || a < 0 || z > a {
+		t.Errorf("foreign permissions keys reordered:\n%s", s)
+	}
+	if !strings.Contains(s, "a && b") || strings.Contains(s, `\u0026`) {
+		t.Errorf("hook command HTML-escaped:\n%s", s)
+	}
+}
+
+func TestEnsureGuardHookRefusesNonObjectHooks(t *testing.T) {
+	for _, in := range []string{`{"hooks":"x"}`, `{"hooks":null}`, `{"hooks":{"PreToolUse":{}}}`} {
+		if _, _, err := ensureGuardHook([]byte(in)); err == nil {
+			t.Errorf("%s: want error (do not replace user data), got nil", in)
+		}
+	}
+}
+
+func TestEnsureGuardHookNullDocumentNoPanic(t *testing.T) {
+	out, changed, err := ensureGuardHook([]byte("null"))
+	if err != nil || !changed || !strings.Contains(string(out), guardCommand) {
+		t.Fatalf("null document: want guard added, got changed=%v err=%v out=%s", changed, err, out)
+	}
+}
+
+// A leftover legacy guard beside the real one must not make doctor claim
+// the hook is missing.
+func TestGuardInstalledWithLegacySibling(t *testing.T) {
+	home := t.TempDir()
+	p := filepath.Join(home, ".claude", "settings.json")
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	_ = os.WriteFile(p, []byte(`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash guard-git-deploy.sh"},{"type":"command","command":"zenify git-guard"}]}]}}`), 0o644)
+	if ok, err := guardInstalled(home); err != nil || !ok {
+		t.Fatalf("want installed=true, got %v err=%v", ok, err)
+	}
+}
+
+// removeGuard is the inverse of installGuard: it drops the guard (and a
+// legacy guard) but keeps sibling hooks and foreign settings; dryRun writes
+// nothing.
+func TestRemoveGuard_KeepsSiblingsAndDryRunWritesNothing(t *testing.T) {
+	home := t.TempDir()
+	p := filepath.Join(home, ".claude", "settings.json")
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	body := []byte(`{"permissions":{"zeta":1,"alpha":2},"hooks":{"PreToolUse":[` +
+		`{"matcher":"Bash","hooks":[{"type":"command","command":"zenify git-guard"}]},` +
+		`{"matcher":"Read","hooks":[{"type":"command","command":"zenify hooks-run read-guard"},{"type":"command","command":"bash guard-git-deploy.sh"}]}]}}`)
+	_ = os.WriteFile(p, body, 0o644)
+
+	if removed, err := removeGuard(home, true); err != nil || !removed {
+		t.Fatalf("dry-run: want removed=true, got %v err=%v", removed, err)
+	}
+	if b, _ := os.ReadFile(p); !bytes.Equal(b, body) { //nolint:gosec // G304 -- test-local path under t.TempDir
+		t.Fatal("dry-run must not write")
+	}
+
+	if removed, err := removeGuard(home, false); err != nil || !removed {
+		t.Fatalf("apply: want removed=true, got %v err=%v", removed, err)
+	}
+	b, _ := os.ReadFile(p) //nolint:gosec // G304 -- test-local path under t.TempDir
+	s := string(b)
+	if strings.Contains(s, guardCommand) || strings.Contains(s, legacyGuard) {
+		t.Errorf("guard hooks still present:\n%s", s)
+	}
+	if !strings.Contains(s, "zenify hooks-run read-guard") {
+		t.Errorf("sibling read-guard hook was dropped:\n%s", s)
+	}
+	if z, a := strings.Index(s, `"zeta"`), strings.Index(s, `"alpha"`); z < 0 || z > a {
+		t.Errorf("foreign permissions reordered:\n%s", s)
+	}
+	if ok, _ := guardInstalled(home); ok {
+		t.Error("guardInstalled must be false after removeGuard")
+	}
+	if removed, err := removeGuard(home, false); err != nil || removed {
+		t.Fatalf("second remove: want removed=false, got %v err=%v", removed, err)
 	}
 }

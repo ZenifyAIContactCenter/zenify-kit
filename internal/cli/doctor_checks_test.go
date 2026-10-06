@@ -123,3 +123,19 @@ func TestDockerCheck_Missing(t *testing.T) {
 		t.Errorf("docker missing should be !ok + detail containing docker=missing, got ok=%v detail=%q", ok, detail)
 	}
 }
+
+// The git-guard check must fail on a fresh HOME, its Fix must wire the hook,
+// and the check must then pass — the path `doctor --fix` takes.
+func TestGitGuardCheck_MissingThenFixed(t *testing.T) {
+	home := t.TempDir()
+	c := gitGuardCheck(func() (string, error) { return home, nil })
+	if ok, detail := c.Run(); ok || !strings.Contains(detail, "hook=missing") {
+		t.Fatalf("fresh HOME should report hook=missing, got ok=%v detail=%q", ok, detail)
+	}
+	if ok, detail := c.Fix(); !ok {
+		t.Fatalf("Fix failed: %s", detail)
+	}
+	if ok, detail := c.Run(); !ok {
+		t.Fatalf("after Fix the check should pass, detail=%q", detail)
+	}
+}

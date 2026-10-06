@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,20 +20,37 @@ const legacyGuard = "guard-git-deploy.sh"
 // the legacy bash guard script, leaves everything else untouched, and is
 // idempotent — calling it again once the hook is present reports
 // changed=false. Broken JSON input is an error; nothing is overwritten.
+//
+// Like apply.EnsureGlobalHooks, foreign top-level values (permissions, env,
+// ...) are kept as json.RawMessage so their content and inner key order
+// survive, output is not HTML-escaped, and a non-object "hooks" or a
+// non-array "PreToolUse" is refused rather than replaced. This runs on every
+// `up` and SessionStart, so it must not reformat the user's file.
 func ensureGuardHook(raw []byte) ([]byte, bool, error) {
-	root := map[string]any{}
+	root := map[string]json.RawMessage{}
 	if len(strings.TrimSpace(string(raw))) > 0 {
 		if err := json.Unmarshal(raw, &root); err != nil {
 			return nil, false, fmt.Errorf("guard install: could not parse settings.json: %w", err)
 		}
+		if root == nil { // the literal `null`
+			root = map[string]json.RawMessage{}
+		}
 	}
 
-	hooks, _ := root["hooks"].(map[string]any)
-	if hooks == nil {
-		hooks = map[string]any{}
-		root["hooks"] = hooks
+	hooks := map[string]any{}
+	if h, ok := root["hooks"]; ok {
+		if err := json.Unmarshal(h, &hooks); err != nil || hooks == nil {
+			return nil, false, fmt.Errorf("guard install: settings.json \"hooks\" is not an object, not touching it")
+		}
 	}
-	pre, _ := hooks["PreToolUse"].([]any)
+	var pre []any
+	if p, ok := hooks["PreToolUse"]; ok {
+		arr, isArr := p.([]any)
+		if !isArr {
+			return nil, false, fmt.Errorf("guard install: settings.json \"hooks.PreToolUse\" is not an array, not touching it")
+		}
+		pre = arr
+	}
 
 	newEntry := map[string]any{
 		"matcher": "Bash",
@@ -81,18 +99,38 @@ func ensureGuardHook(raw []byte) ([]byte, bool, error) {
 		entry["hooks"] = newHs
 		newPre = append(newPre, entry)
 	}
-	pre = newPre
 	if !found {
-		pre = append(pre, newEntry)
+		newPre = append(newPre, newEntry)
 		changed = true
 	}
-	hooks["PreToolUse"] = pre
+	if !changed {
+		return raw, false, nil
+	}
+	hooks["PreToolUse"] = newPre
 
-	out, err := json.MarshalIndent(root, "", "  ")
+	hooksOut, err := marshalSettings(hooks)
 	if err != nil {
 		return nil, false, err
 	}
-	return append(out, '\n'), changed, nil
+	root["hooks"] = json.RawMessage(bytes.TrimSpace(hooksOut))
+	out, err := marshalSettings(root)
+	if err != nil {
+		return nil, false, err
+	}
+	return out, true, nil
+}
+
+// marshalSettings encodes with 2-space indent and no HTML escaping, matching
+// how apply writes settings.json (a hook command containing && stays as is).
+func marshalSettings(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // writeFileAtomic writes data to a temp file in the same directory as path,
@@ -119,6 +157,152 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
+// installGuard wires the git-guard hook into <home>/.claude/settings.json.
+// Shared by `guard install`, ensureWorkspace (up + SessionStart) and the
+// doctor git-guard Fix. changed=false when the hook is already present.
+func installGuard(home string) (bool, error) {
+	path := guardSettingsPath(home)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
+	if err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("guard install: reading %s: %w", path, err)
+	}
+	out, changed, err := ensureGuardHook(raw)
+	if err != nil || !changed {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return false, fmt.Errorf("guard install: creating directory %s: %w", filepath.Dir(path), err)
+	}
+	perm := os.FileMode(0o644)
+	if fi, statErr := os.Stat(path); statErr == nil {
+		perm = fi.Mode().Perm()
+	}
+	if err := writeFileAtomic(path, out, perm); err != nil {
+		return false, fmt.Errorf("guard install: writing %s: %w", path, err)
+	}
+	return true, nil
+}
+
+// guardInstalled reports whether settings.json runs `zenify git-guard` as a
+// PreToolUse hook. Read-only; for the doctor check. A leftover legacy guard
+// beside it does not count as missing.
+func guardInstalled(home string) (bool, error) {
+	raw, err := os.ReadFile(guardSettingsPath(home)) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var s struct {
+		Hooks struct {
+			PreToolUse []struct {
+				Hooks []struct {
+					Command string `json:"command"`
+				} `json:"hooks"`
+			} `json:"PreToolUse"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return false, err
+	}
+	for _, e := range s.Hooks.PreToolUse {
+		for _, h := range e.Hooks {
+			if h.Command == guardCommand {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// removeGuard unwires the git-guard hook (and any legacy guard script) from
+// <home>/.claude/settings.json — the inverse of installGuard, used by
+// `zenify down`. Same preservation rules as ensureGuardHook. With dryRun it
+// only reports whether there is something to remove.
+func removeGuard(home string, dryRun bool) (bool, error) {
+	path := guardSettingsPath(home)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("guard remove: reading %s: %w", path, err)
+	}
+	root := map[string]json.RawMessage{}
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return false, fmt.Errorf("guard remove: could not parse settings.json: %w", err)
+	}
+	h, ok := root["hooks"]
+	if !ok {
+		return false, nil
+	}
+	hooks := map[string]any{}
+	if err := json.Unmarshal(h, &hooks); err != nil || hooks == nil {
+		return false, fmt.Errorf("guard remove: settings.json \"hooks\" is not an object, not touching it")
+	}
+	pre, isArr := hooks["PreToolUse"].([]any)
+	if !isArr {
+		return false, nil
+	}
+
+	removed := false
+	newPre := make([]any, 0, len(pre))
+	for _, e := range pre {
+		entry, _ := e.(map[string]any)
+		if entry == nil {
+			newPre = append(newPre, e)
+			continue
+		}
+		hs, _ := entry["hooks"].([]any)
+		newHs := make([]any, 0, len(hs))
+		for _, x := range hs {
+			hm, _ := x.(map[string]any)
+			cmd, _ := hm["command"].(string)
+			if cmd == guardCommand || strings.Contains(cmd, legacyGuard) {
+				removed = true
+				continue
+			}
+			newHs = append(newHs, x)
+		}
+		if len(newHs) == 0 && len(hs) > 0 {
+			continue // the entry held only guard hooks — drop it, not an empty matcher
+		}
+		entry["hooks"] = newHs
+		newPre = append(newPre, entry)
+	}
+	if !removed || dryRun {
+		return removed, nil
+	}
+	if len(newPre) == 0 {
+		delete(hooks, "PreToolUse")
+	} else {
+		hooks["PreToolUse"] = newPre
+	}
+
+	hooksOut, err := marshalSettings(hooks)
+	if err != nil {
+		return false, err
+	}
+	root["hooks"] = json.RawMessage(bytes.TrimSpace(hooksOut))
+	out, err := marshalSettings(root)
+	if err != nil {
+		return false, err
+	}
+	perm := os.FileMode(0o644)
+	if fi, statErr := os.Stat(path); statErr == nil {
+		perm = fi.Mode().Perm()
+	}
+	if err := writeFileAtomic(path, out, perm); err != nil {
+		return false, fmt.Errorf("guard remove: writing %s: %w", path, err)
+	}
+	return true, nil
+}
+
+func guardSettingsPath(home string) string {
+	return filepath.Join(home, ".claude", "settings.json")
+}
+
 func newGuardCmd() *cobra.Command {
 	c := &cobra.Command{Use: "guard", Short: "Quản lý git-guard hook"} //znf:allow-lang
 	install := &cobra.Command{
@@ -130,31 +314,16 @@ func newGuardCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("guard install: could not determine HOME: %w", err)
 			}
-			path := filepath.Join(home, ".claude", "settings.json")
-			raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
-			if err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("guard install: reading %s: %w", path, err)
-			}
-			out, changed, err := ensureGuardHook(raw)
+			changed, err := installGuard(home)
 			if err != nil {
 				return err
 			}
 			u := uiOut(cmd)
 			if !changed {
-				u.Step(ui.StatusOK, "guard install: đã cấu hình sẵn (idempotent).", "") //znf:allow-lang
+				u.Step(ui.StatusOK, "guard install: already configured (idempotent).", "")
 				return nil
 			}
-			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-				return fmt.Errorf("guard install: creating directory %s: %w", filepath.Dir(path), err)
-			}
-			perm := os.FileMode(0o644)
-			if fi, statErr := os.Stat(path); statErr == nil {
-				perm = fi.Mode().Perm()
-			}
-			if err := writeFileAtomic(path, out, perm); err != nil {
-				return fmt.Errorf("guard install: writing %s: %w", path, err)
-			}
-			u.Step(ui.StatusOK, "guard install: đã trỏ PreToolUse → zenify git-guard.", "") //znf:allow-lang
+			u.Step(ui.StatusOK, "guard install: wired PreToolUse → zenify git-guard.", "")
 			return nil
 		},
 	}

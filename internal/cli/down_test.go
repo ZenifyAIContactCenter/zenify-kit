@@ -20,7 +20,7 @@ func TestDown_DryRun_NoWritesAndNonGoalsUntouched(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(gs), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	gsBody := []byte(`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"zenify hooks-run docs-sync"}]}]}}`)
+	gsBody := []byte(`{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"zenify hooks-run docs-sync"}]}],"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"zenify git-guard"}]}]}}`)
 	if err := os.WriteFile(gs, gsBody, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -88,5 +88,16 @@ func TestDown_DryRun_NoWritesAndNonGoalsUntouched(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(zdir, "manifest.json")); err != nil {
 		t.Error(".zenify/manifest.json must stay untouched")
+	}
+
+	// --apply removes the git-guard hook that up/SessionStart installed.
+	applyCmd := newDownCmd()
+	applyCmd.SetOut(&bytes.Buffer{})
+	applyCmd.SetArgs([]string{"--workspace", ws, "--manifest", repos, "--apply"})
+	if err := applyCmd.Execute(); err != nil {
+		t.Fatalf("down --apply: %v", err)
+	}
+	if ok, err := guardInstalled(home); err != nil || ok {
+		t.Errorf("down --apply must remove git-guard, installed=%v err=%v", ok, err)
 	}
 }

@@ -16,7 +16,7 @@ zenify guard install
 
 ## Khi nào dùng
 
-Khi `zenify doctor` báo thiếu hook, hoặc sau khi bạn sửa tay `~/.claude/settings.json`.
+Thường bạn không cần chạy tay: `zenify up` và hook `SessionStart` tự gắn git-guard khi thiếu. Chạy lệnh này khi `zenify doctor` báo mục `git-guard` hỏng (hoặc dùng `zenify doctor --fix`), hay sau khi bạn sửa tay `~/.claude/settings.json`.
 
 ## Kết quả
 

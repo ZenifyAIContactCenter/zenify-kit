@@ -84,7 +84,10 @@ func TestEnsureWorkspace_WritesOnceThenSilent(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); err != nil {
 		t.Fatalf("global hooks not wired: %v", err)
 	}
-	for _, want := range []string{"wired ", "pinned workspace model", "znf config: đã ghi 1 file"} { //znf:allow-lang
+	if ok, err := guardInstalled(home); err != nil || !ok {
+		t.Fatalf("git-guard hook not wired by ensureWorkspace: ok=%v err=%v", ok, err)
+	}
+	for _, want := range []string{"wired ", "wired git-guard hook", "pinned workspace model", "znf config: đã ghi 1 file"} { //znf:allow-lang
 		if !strings.Contains(o1.String(), want) {
 			t.Fatalf("stdout missing %q: %s", want, o1.String())
 		}

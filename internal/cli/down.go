@@ -21,7 +21,7 @@ func newDownCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "down",
-		Short: "Offboard: gỡ znf global hooks + env subagent model, .worktrees/ + .wt/ excludes, và owned settings skeletons (preview mặc định; --apply để thực thi)", //znf:allow-lang
+		Short: "Offboard: gỡ znf global hooks + git-guard hook + env subagent model, .worktrees/ + .wt/ excludes, và owned settings skeletons (preview mặc định; --apply để thực thi)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
@@ -54,6 +54,17 @@ func newDownCmd() *cobra.Command {
 					u.Step(ui.StatusOK, "hooks", fmt.Sprintf("gỡ %d znf hook khỏi ~/.claude/settings.json", res.Removed)) //znf:allow-lang
 				default:
 					u.Step(ui.StatusInfo, "hooks", "không có znf hook nào để gỡ") //znf:allow-lang
+				}
+				// git-guard is not in the znf hook set RemoveGlobalHooks knows,
+				// but up/SessionStart install it, so offboarding removes it too.
+				gRemoved, gerr := removeGuard(home, dryRun)
+				switch {
+				case gerr != nil:
+					u.Step(ui.StatusWarn, "git-guard", fmt.Sprintf("skipped (%v)", gerr))
+				case gRemoved:
+					u.Step(ui.StatusOK, "git-guard", "removed git-guard hook from ~/.claude/settings.json")
+				default:
+					u.Step(ui.StatusInfo, "git-guard", "no git-guard hook to remove")
 				}
 				removed, eerr := apply.RemoveSubagentModelEnv(home, dryRun)
 				switch {
