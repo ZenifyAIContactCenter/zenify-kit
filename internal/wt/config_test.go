@@ -133,8 +133,28 @@ func TestBranchUser_Resolution(t *testing.T) {
 		t.Errorf("want email local part, got %q", got)
 	}
 	noEmail := fakeRunner{err: map[string]error{"/r|config --get user.email": errFake}}
+	t.Setenv("USERNAME", "")
 	t.Setenv("USER", "alice")
 	if got := BranchUser(noEmail, "/r", ""); got != "alice" {
 		t.Errorf("want $USER fallback, got %q", got)
+	}
+}
+
+// Characters git rejects in a ref must not reach the branch name, and an
+// unusable candidate falls through to the next source.
+func TestBranchUser_SanitizesAndFallsThrough(t *testing.T) {
+	t.Setenv("USER", "")
+	t.Setenv("USERNAME", "Win User")
+	cases := map[string]string{
+		"a~b:c@x.com":    "a-b-c",
+		".first..last@x": "first.last",
+		"name.lock@x":    "name",
+		"~~~@x":          "Win-User", // cleans to empty → $USERNAME (Windows)
+	}
+	for email, want := range cases {
+		r := fakeRunner{out: map[string]string{"/r|config --get user.email": email}}
+		if got := BranchUser(r, "/r", ""); got != want {
+			t.Errorf("email %q: got %q, want %q", email, got, want)
+		}
 	}
 }

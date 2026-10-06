@@ -213,30 +213,32 @@ func gitGuardCheck(home func() (string, error)) Check {
 	}
 }
 
-// gitIdentityCheck reports whether git can author a commit (user.name +
-// user.email resolvable). Without it every `zenify docs sync` commit fails
-// with exit 128, so the knowledge store silently stops syncing.
+// gitIdentityCheck reports whether git can author a commit. It asks git
+// itself (`git var GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`, which fail
+// exactly when `git commit` would), so GIT_AUTHOR_* / GIT_COMMITTER_* env
+// vars and repo-local config count, not just global user.name/user.email.
+// Without an identity every `zenify docs sync` commit fails with exit 128
+// and the knowledge store silently stops syncing.
 func gitIdentityCheck() Check {
-	return gitIdentityCheckWith(func(key string) string {
-		out, _ := exec.Command("git", "config", "--get", key).Output() //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
-		return strings.TrimSpace(string(out))
+	return gitIdentityCheckWith(func(v string) bool {
+		return exec.Command("git", "var", v).Run() == nil //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 	})
 }
 
-func gitIdentityCheckWith(gitConfig func(key string) string) Check {
+func gitIdentityCheckWith(identOK func(gitVar string) bool) Check {
 	return Check{
 		Name: "git-identity",
 		Run: func() (bool, string) {
 			var missing []string
-			for _, k := range []string{"user.name", "user.email"} {
-				if gitConfig(k) == "" {
-					missing = append(missing, k)
+			for _, v := range []string{"GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"} {
+				if !identOK(v) {
+					missing = append(missing, v)
 				}
 			}
 			if len(missing) > 0 {
-				return false, strings.Join(missing, " ") + "=missing — `zenify docs sync` cannot commit; run: git config --global <key> <value>"
+				return false, strings.Join(missing, " ") + "=unknown — `zenify docs sync` cannot commit; run: git config --global user.name <name> && git config --global user.email <email>"
 			}
-			return true, "user.name=ok user.email=ok"
+			return true, "author=ok committer=ok"
 		},
 	}
 }

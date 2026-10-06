@@ -126,15 +126,23 @@ func TestSync_StatusFailOpen(t *testing.T) {
 	}
 }
 
-// A git failure must surface git's stderr, not just "exit status N" — that
-// opaque form hid "Author identity unknown" from users.
-func TestGitErr_IncludesStderr(t *testing.T) {
-	_, err := exec.Command("git", "-C", t.TempDir(), "status").Output() // not a repo → exit 128
-	if err == nil {
-		t.Skip("expected git to fail outside a repo")
-	}
+// A git failure must surface git's reason, not just "exit status N" — that
+// opaque form hid "Author identity unknown" from users. The stderr is made by
+// sh, not git, so the test does not depend on git's locale or version.
+func TestGitErr_KeepsFirstAndFatalLine(t *testing.T) {
+	_, err := exec.Command("sh", "-c", `printf 'Author identity unknown\n\n*** Please tell me who you are.\nRun\n  git config ...\nfatal: unable to auto-detect email address\n' >&2; exit 128`).Output()
 	got := gitErr(err)
-	if !strings.Contains(got, "exit status") || !strings.Contains(got, "not a git repository") {
-		t.Fatalf("gitErr should carry git stderr, got %q", got)
+	want := "exit status 128: Author identity unknown … fatal: unable to auto-detect email address"
+	if got != want {
+		t.Fatalf("gitErr:\n got %q\nwant %q", got, want)
+	}
+}
+
+// The note goes into the session every turn, so a huge stderr is capped.
+func TestGitErr_CapsLongReason(t *testing.T) {
+	_, err := exec.Command("sh", "-c", `printf '%0500d\n' 0 >&2; exit 1`).Output()
+	got := gitErr(err)
+	if n := len([]rune(got)); n > len("exit status 1: ")+maxReason+1 {
+		t.Fatalf("reason not capped: %d runes", n)
 	}
 }

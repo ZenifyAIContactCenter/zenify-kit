@@ -140,21 +140,16 @@ func TestGitGuardCheck_MissingThenFixed(t *testing.T) {
 	}
 }
 
-func TestGitIdentityCheck_MissingEmail(t *testing.T) {
-	c := gitIdentityCheckWith(func(k string) string {
-		if k == "user.name" {
-			return "dev"
-		}
-		return ""
-	})
+func TestGitIdentityCheck_Unknown(t *testing.T) {
+	c := gitIdentityCheckWith(func(v string) bool { return v == "GIT_AUTHOR_IDENT" })
 	ok, detail := c.Run()
-	if ok || !strings.Contains(detail, "user.email=missing") || strings.Contains(detail, "user.name") {
-		t.Errorf("missing email should be !ok naming only user.email, got ok=%v detail=%q", ok, detail)
+	if ok || !strings.Contains(detail, "GIT_COMMITTER_IDENT=unknown") || strings.Contains(detail, "GIT_AUTHOR_IDENT") {
+		t.Errorf("want !ok naming only the committer, got ok=%v detail=%q", ok, detail)
 	}
 }
 
 func TestGitIdentityCheck_Present(t *testing.T) {
-	c := gitIdentityCheckWith(func(string) string { return "x" })
+	c := gitIdentityCheckWith(func(string) bool { return true })
 	if ok, detail := c.Run(); !ok {
 		t.Errorf("name+email set should be OK, detail=%q", detail)
 	}

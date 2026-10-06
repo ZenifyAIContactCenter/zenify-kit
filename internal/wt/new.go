@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
@@ -324,18 +325,37 @@ func orEnvFile(c *Config) string {
 
 // BranchUser is the <username> segment of the branch name. worktree.json is
 // committed and shared, so it rarely declares "user"; the default must come
-// from the dev running wt: the local part of git user.email, else $USER.
+// from the dev running wt: the local part of git user.email, else $USER
+// ($USERNAME on Windows). Each candidate is cleaned into a valid git ref
+// component; one that cleans to nothing falls through to the next.
 func BranchUser(r gitx.Runner, dir, declared string) string {
 	if declared != "" {
 		return declared
 	}
+	var candidates []string
 	if out, err := r.Run(dir, "config", "--get", "user.email"); err == nil {
-		if local, _, _ := strings.Cut(strings.TrimSpace(string(out)), "@"); local != "" {
-			return local
+		local, _, _ := strings.Cut(strings.TrimSpace(string(out)), "@")
+		candidates = append(candidates, local)
+	}
+	candidates = append(candidates, os.Getenv("USER"), os.Getenv("USERNAME"))
+	for _, c := range candidates {
+		if u := refSafe(c); u != "" {
+			return u
 		}
 	}
-	if u := strings.TrimSpace(os.Getenv("USER")); u != "" {
-		return u
-	}
 	return "dev"
+}
+
+var refUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+// refSafe maps s onto characters git accepts in a ref component: runs of
+// anything else become "-", and leading/trailing "." / "-" and a ".lock"
+// suffix are trimmed (git rejects those), as are ".." sequences.
+func refSafe(s string) string {
+	s = refUnsafe.ReplaceAllString(strings.TrimSpace(s), "-")
+	for strings.Contains(s, "..") {
+		s = strings.ReplaceAll(s, "..", ".")
+	}
+	s = strings.TrimSuffix(s, ".lock")
+	return strings.Trim(s, ".-")
 }

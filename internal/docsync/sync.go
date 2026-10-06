@@ -92,15 +92,34 @@ func pushPending(r gitx.Runner, dir string) []string {
 
 func note(s string) []string { return []string{s} }
 
-// gitErr renders a git failure WITH git's own stderr. exec.ExitError's
-// Error() is only "exit status N", which hides the actual reason (e.g.
-// "Author identity unknown" on a machine with no user.email).
+// gitErr renders a git failure WITH git's own reason. exec.ExitError's
+// Error() is only "exit status N", which hides the actual cause (e.g.
+// "Author identity unknown" on a machine with no user.email). The note is
+// injected into the session on every turn, so only the first stderr line and
+// git's final fatal:/error: line are kept, capped at maxReason runes.
 func gitErr(err error) string {
 	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		if msg := strings.TrimSpace(string(ee.Stderr)); msg != "" {
-			return fmt.Sprintf("%v: %s", err, strings.Join(strings.Fields(msg), " "))
+	if !errors.As(err, &ee) {
+		return err.Error()
+	}
+	var lines []string
+	for _, ln := range strings.Split(string(ee.Stderr), "\n") {
+		if ln = strings.TrimSpace(ln); ln != "" {
+			lines = append(lines, ln)
 		}
 	}
-	return err.Error()
+	if len(lines) == 0 {
+		return err.Error()
+	}
+	reason := lines[0]
+	if last := lines[len(lines)-1]; len(lines) > 1 &&
+		(strings.HasPrefix(last, "fatal:") || strings.HasPrefix(last, "error:")) {
+		reason += " … " + last
+	}
+	if r := []rune(reason); len(r) > maxReason {
+		reason = string(r[:maxReason]) + "…"
+	}
+	return fmt.Sprintf("%v: %s", err, reason)
 }
+
+const maxReason = 240
