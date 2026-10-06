@@ -25,6 +25,7 @@ var KitAllowRules = []string{
 	"mcp__playwright__browser_set_storage_state",
 	"Bash(zenify e2e *)",
 	"Bash(zenify visual *)",
+	"Bash(zenify ui-verify *)",
 }
 
 // kitPermissionsRecord lists the rules the kit actually added, so removal
@@ -108,9 +109,19 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 	for _, a := range allow {
 		have[a] = true
 	}
+	prev, err := readRecord(home)
+	if err != nil && !os.IsNotExist(err) {
+		return 0, err
+	}
+	// A rule already in the record but absent from allow was removed by the
+	// user on purpose: never re-add it.
+	recorded := map[string]bool{}
+	for _, r := range prev {
+		recorded[r] = true
+	}
 	var added []string
 	for _, r := range KitAllowRules {
-		if !have[r] {
+		if !have[r] && !recorded[r] {
 			added = append(added, r)
 		}
 	}
@@ -119,10 +130,6 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 	}
 	// Record first: a record without a settings change is harmless, the
 	// reverse would leave rules the kit can never remove.
-	prev, err := readRecord(home)
-	if err != nil && !os.IsNotExist(err) {
-		return 0, err
-	}
 	seen := map[string]bool{}
 	var rec []string
 	for _, r := range append(prev, added...) {

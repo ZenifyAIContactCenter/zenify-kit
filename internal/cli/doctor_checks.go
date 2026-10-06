@@ -77,7 +77,10 @@ func playwrightCheck() Check {
 	return Check{
 		Name: "playwright",
 		Run: func() (bool, string) {
-			home, _ := os.UserHomeDir()
+			home, herr := os.UserHomeDir()
+			if herr != nil || home == "" {
+				return false, fmt.Sprintf("cannot resolve home: %v", herr)
+			}
 			o := playwright.Options{
 				Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() },              //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 				Output: func(name string, args []string) ([]byte, error) { return exec.Command(name, args...).Output() }, //nolint:gosec // G204 -- fixed trusted binary, internally-computed args

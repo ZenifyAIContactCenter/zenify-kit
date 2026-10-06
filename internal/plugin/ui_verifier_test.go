@@ -96,3 +96,21 @@ func TestShipNotesNoMainSessionLogin(t *testing.T) {
 		t.Error("ui-verification-notes.md still has the main-session login flow")
 	}
 }
+
+// The verifier's own Bash calls must be covered by the kit allow rules and must
+// not use commands that prompt inside a background subagent.
+func TestUIVerifierBashCoveredByKitAllowRules(t *testing.T) {
+	s := readAsset(t, "assets/znf/agents/ui-verifier.md")
+	if strings.Contains(s, "curl ") || strings.Contains(s, "command -v") {
+		t.Error("ui-verifier.md must not use curl or command -v (uncovered Bash prompts)")
+	}
+	found := false
+	for _, r := range apply.KitAllowRules {
+		if r == "Bash(zenify ui-verify *)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("KitAllowRules must contain Bash(zenify ui-verify *)")
+	}
+}

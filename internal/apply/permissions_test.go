@@ -157,3 +157,41 @@ func TestEnsureKitPermissions_MalformedRecordErrorsUntouched(t *testing.T) {
 		t.Fatalf("record changed: %s", raw)
 	}
 }
+
+func TestEnsureKitPermissions_RespectsUserRemoval(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{}`)
+	if _, err := EnsureKitPermissions(home, false); err != nil {
+		t.Fatal(err)
+	}
+	const removed = "Bash(zenify visual *)"
+	var kept []string
+	for _, a := range readAllow(t, home) {
+		if a != removed {
+			kept = append(kept, a)
+		}
+	}
+	body, _ := json.Marshal(map[string]any{"permissions": map[string]any{"allow": kept}})
+	writeSettings(t, home, string(body))
+	added, err := EnsureKitPermissions(home, false)
+	if err != nil || added != 0 {
+		t.Fatalf("added=%d err=%v, want 0", added, err)
+	}
+	got := readAllow(t, home)
+	if !reflect.DeepEqual(got, kept) {
+		t.Fatalf("allow changed: %v", got)
+	}
+	rec, err := readRecord(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range rec {
+		if r == removed {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("record lost %q: %v", removed, rec)
+	}
+}

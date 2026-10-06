@@ -133,6 +133,8 @@ func TestBootstrapMigration(t *testing.T) {
 		{"desired", home, desiredOut(home), nil, nil, ""},
 		{"no args line", home, mcpOut(""), nil, nil, "custom MCP registration kept"},
 		{"desired with spaced home", spaced, desiredOut(spaced), nil, nil, ""},
+		{"legacy at local scope", home, strings.Replace(mcpOut("  Args: @playwright/mcp@latest\n"), "User config (available in all your projects)", "Local config (private to you in this project)", 1), nil, nil, "custom MCP registration kept"},
+		{"no scope line", home, strings.Replace(mcpOut("  Args: @playwright/mcp@latest\n"), "  Scope: User config (available in all your projects)\n", "", 1), nil, nil, "custom MCP registration kept"},
 		{"legacy with spaced home", spaced, mcpOut("  Args: @playwright/mcp@latest\n"), nil, []string{rm, addFor(spaced)}, ""},
 	}
 	for _, c := range cases {

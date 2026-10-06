@@ -79,13 +79,15 @@ func Registration(o Options) (RegState, []string) {
 	}
 	var cmd string
 	var args []string
-	var rawArgs string
+	var rawArgs, scope string
 	var haveCmd, haveArgs bool
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "Command:"):
 			cmd, haveCmd = strings.TrimSpace(strings.TrimPrefix(line, "Command:")), true
+		case strings.HasPrefix(line, "Scope:"):
+			scope = strings.TrimSpace(strings.TrimPrefix(line, "Scope:"))
 		case strings.HasPrefix(line, "Args:"):
 			rawArgs = strings.TrimSpace(strings.TrimPrefix(line, "Args:"))
 			args, haveArgs = strings.Fields(rawArgs), true
@@ -105,7 +107,7 @@ func Registration(o Options) (RegState, []string) {
 			missing = append(missing, w)
 		}
 	}
-	if !haveCmd || !haveArgs || cmd != "npx" {
+	if !haveCmd || !haveArgs || cmd != "npx" || !strings.HasPrefix(scope, "User config") {
 		return RegCustom, missing
 	}
 	switch {
