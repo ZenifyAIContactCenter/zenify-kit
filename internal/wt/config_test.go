@@ -31,7 +31,7 @@ func TestLoad_ArrayPortRangeAndDefaults(t *testing.T) {
 		t.Fatalf("array portRange wrong: %v", c.PortRange)
 	}
 	// defaults for missing keys
-	if c.WorktreeDir != ".worktrees/" || c.PortEnv != "PORT" || c.User != "namph" {
+	if c.WorktreeDir != ".worktrees/" || c.PortEnv != "PORT" || c.User != "" {
 		t.Fatalf("defaults wrong: %+v", c)
 	}
 }
@@ -119,5 +119,22 @@ func TestConfigDepsDirCustom(t *testing.T) {
 	}
 	if c.DepsDir != "vendor" {
 		t.Fatalf("DepsDir = %q, want vendor", c.DepsDir)
+	}
+}
+
+// The branch's <username> must come from the dev running wt, never a
+// hardcoded name: declared > user.email local part > $USER.
+func TestBranchUser_Resolution(t *testing.T) {
+	email := fakeRunner{out: map[string]string{"/r|config --get user.email": "quyentm@zenify.vn\n"}}
+	if got := BranchUser(email, "/r", "lead"); got != "lead" {
+		t.Errorf("declared user must win, got %q", got)
+	}
+	if got := BranchUser(email, "/r", ""); got != "quyentm" {
+		t.Errorf("want email local part, got %q", got)
+	}
+	noEmail := fakeRunner{err: map[string]error{"/r|config --get user.email": errFake}}
+	t.Setenv("USER", "alice")
+	if got := BranchUser(noEmail, "/r", ""); got != "alice" {
+		t.Errorf("want $USER fallback, got %q", got)
 	}
 }

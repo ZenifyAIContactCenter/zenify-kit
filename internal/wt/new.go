@@ -85,7 +85,7 @@ func RunNew(o NewOptions) error {
 	if err != nil {
 		return err
 	}
-	user := cfg.User
+	user := BranchUser(r, o.RepoRoot, cfg.User)
 	branch := fmt.Sprintf("%s/%s/%s", user, o.Type, o.Slug)
 	path := filepath.Join(o.RepoRoot, cfg.WorktreeDir, o.Slug)
 
@@ -320,4 +320,22 @@ func orEnvFile(c *Config) string {
 		return c.EnvFile
 	}
 	return ".env"
+}
+
+// BranchUser is the <username> segment of the branch name. worktree.json is
+// committed and shared, so it rarely declares "user"; the default must come
+// from the dev running wt: the local part of git user.email, else $USER.
+func BranchUser(r gitx.Runner, dir, declared string) string {
+	if declared != "" {
+		return declared
+	}
+	if out, err := r.Run(dir, "config", "--get", "user.email"); err == nil {
+		if local, _, _ := strings.Cut(strings.TrimSpace(string(out)), "@"); local != "" {
+			return local
+		}
+	}
+	if u := strings.TrimSpace(os.Getenv("USER")); u != "" {
+		return u
+	}
+	return "dev"
 }
