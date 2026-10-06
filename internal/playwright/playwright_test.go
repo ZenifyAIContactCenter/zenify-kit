@@ -114,18 +114,26 @@ func TestDesiredArgsWindowsHome(t *testing.T) {
 
 func TestBootstrapMigration(t *testing.T) {
 	const home = "/h"
+	const spaced = "/Users/John Doe"
+	addFor := func(h string) string {
+		return "claude mcp add playwright -s user -- npx " + strings.Join(DesiredArgs(h), " ")
+	}
+	const rm = "claude mcp remove playwright -s user"
 	cases := []struct {
 		name      string
+		home      string
 		out       string
 		getErr    error
-		wantCalls []string // prefixes of mutating calls, in order
+		wantCalls []string // exact mutating calls, in order
 		wantOut   string
 	}{
-		{"absent", "", os.ErrNotExist, []string{"claude mcp add playwright -s user -- npx @playwright/mcp@latest --caps=storage"}, ""},
-		{"legacy", mcpOut("  Args: @playwright/mcp@latest\n"), nil, []string{"claude mcp remove playwright -s user", "claude mcp add playwright -s user -- npx @playwright/mcp@latest --caps=storage"}, ""},
-		{"custom", mcpOut("  Args: @playwright/mcp@latest --headless\n"), nil, nil, "custom MCP registration kept"},
-		{"desired", desiredOut(home), nil, nil, ""},
-		{"no args line", mcpOut(""), nil, nil, "custom MCP registration kept"},
+		{"absent", home, "", os.ErrNotExist, []string{addFor(home)}, ""},
+		{"legacy", home, mcpOut("  Args: @playwright/mcp@latest\n"), nil, []string{rm, addFor(home)}, ""},
+		{"custom", home, mcpOut("  Args: @playwright/mcp@latest --headless\n"), nil, nil, "custom MCP registration kept"},
+		{"desired", home, desiredOut(home), nil, nil, ""},
+		{"no args line", home, mcpOut(""), nil, nil, "custom MCP registration kept"},
+		{"desired with spaced home", spaced, desiredOut(spaced), nil, nil, ""},
+		{"legacy with spaced home", spaced, mcpOut("  Args: @playwright/mcp@latest\n"), nil, []string{rm, addFor(spaced)}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -139,7 +147,7 @@ func TestBootstrapMigration(t *testing.T) {
 				Output: func(string, []string) ([]byte, error) { return []byte(c.out), c.getErr },
 				Getenv: func(string) string { return "" },
 				GOOS:   "linux",
-				Home:   home,
+				Home:   c.home,
 				Stdout: &buf,
 			}
 			if err := Bootstrap(o); err != nil {
@@ -151,13 +159,8 @@ func TestBootstrapMigration(t *testing.T) {
 					mut = append(mut, cl)
 				}
 			}
-			if len(mut) != len(c.wantCalls) {
-				t.Fatalf("mutating calls %v, want prefixes %v", mut, c.wantCalls)
-			}
-			for i, w := range c.wantCalls {
-				if !strings.HasPrefix(mut[i], w) {
-					t.Fatalf("call %d = %q, want prefix %q", i, mut[i], w)
-				}
+			if strings.Join(mut, "\n") != strings.Join(c.wantCalls, "\n") {
+				t.Fatalf("mutating calls %v, want %v", mut, c.wantCalls)
 			}
 			if !strings.Contains(buf.String(), c.wantOut) {
 				t.Fatalf("stdout %q missing %q", buf.String(), c.wantOut)

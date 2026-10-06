@@ -79,6 +79,7 @@ func Registration(o Options) (RegState, []string) {
 	}
 	var cmd string
 	var args []string
+	var rawArgs string
 	var haveCmd, haveArgs bool
 	for _, line := range strings.Split(string(out), "\n") {
 		line = strings.TrimSpace(line)
@@ -86,7 +87,8 @@ func Registration(o Options) (RegState, []string) {
 		case strings.HasPrefix(line, "Command:"):
 			cmd, haveCmd = strings.TrimSpace(strings.TrimPrefix(line, "Command:")), true
 		case strings.HasPrefix(line, "Args:"):
-			args, haveArgs = strings.Fields(strings.TrimPrefix(line, "Args:")), true
+			rawArgs = strings.TrimSpace(strings.TrimPrefix(line, "Args:"))
+			args, haveArgs = strings.Fields(rawArgs), true
 		}
 	}
 	want := DesiredArgs(o.Home)
@@ -107,9 +109,10 @@ func Registration(o Options) (RegState, []string) {
 		return RegCustom, missing
 	}
 	switch {
-	case strings.Join(args, " ") == strings.Join(want, " "):
+	// Compare the raw remainder: a home dir with spaces would split into extra tokens.
+	case rawArgs == strings.Join(want, " "):
 		return RegDesired, nil
-	case len(args) == 1 && args[0] == want[0]:
+	case rawArgs == want[0]:
 		return RegLegacyDefault, missing
 	}
 	return RegCustom, missing
