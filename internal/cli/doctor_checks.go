@@ -213,6 +213,36 @@ func gitGuardCheck(home func() (string, error)) Check {
 	}
 }
 
+// gitIdentityCheck reports whether git can author a commit. It asks git
+// itself (`git var GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`, which fail
+// exactly when `git commit` would), so GIT_AUTHOR_* / GIT_COMMITTER_* env
+// vars and repo-local config count, not just global user.name/user.email.
+// Without an identity every `zenify docs sync` commit fails with exit 128
+// and the knowledge store silently stops syncing.
+func gitIdentityCheck() Check {
+	return gitIdentityCheckWith(func(v string) bool {
+		return exec.Command("git", "var", v).Run() == nil //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+	})
+}
+
+func gitIdentityCheckWith(identOK func(gitVar string) bool) Check {
+	return Check{
+		Name: "git-identity",
+		Run: func() (bool, string) {
+			var missing []string
+			for _, v := range []string{"GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"} {
+				if !identOK(v) {
+					missing = append(missing, v)
+				}
+			}
+			if len(missing) > 0 {
+				return false, strings.Join(missing, " ") + "=unknown — `zenify docs sync` cannot commit; run: git config --global user.name <name> && git config --global user.email <email>"
+			}
+			return true, "author=ok committer=ok"
+		},
+	}
+}
+
 // registerDefaultChecks wires the foundation-layer checks. Called once at root
 // construction. Uses os.Getenv and the workspace default settings path.
 func registerDefaultChecks() {
@@ -221,5 +251,6 @@ func registerDefaultChecks() {
 	RegisterCheck(playwrightCheck())
 	RegisterCheck(dockerCheck())
 	RegisterCheck(gitGuardCheck(os.UserHomeDir))
+	RegisterCheck(gitIdentityCheck())
 	RegisterCheck(pluginCheck())
 }

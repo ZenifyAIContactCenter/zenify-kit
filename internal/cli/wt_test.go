@@ -61,6 +61,9 @@ func TestWtPath_UnknownSlugErrors(t *testing.T) {
 func TestWtConfig_PlainOutput(t *testing.T) {
 	root := t.TempDir()
 	seedRepo(t, root)
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull) // no user.email → user falls back to $USER
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("USER", "tester")
 	out, err := runWt(t, root, "config")
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +77,7 @@ func TestWtConfig_PlainOutput(t *testing.T) {
 		"portEnv=PORT",
 		"portRange=3200 3249",
 		"deps=install",
-		"user=namph",
+		"user=tester",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("config output missing %q:\n%s", want, out)

@@ -121,7 +121,7 @@ func newWtConfigCmd() *cobra.Command {
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"abbrev=%s\nbaseRef=%s\nworktreeDir=%s\nportEnv=%s\nportRange=%d %d\ndeps=%s\nuser=%s\n",
 				cfg.Abbrev, cfg.BaseRef, cfg.WorktreeDir, cfg.PortEnv,
-				cfg.PortRange[0], cfg.PortRange[1], cfg.Deps, cfg.User)
+				cfg.PortRange[0], cfg.PortRange[1], cfg.Deps, wt.BranchUser(gitx.ExecRunner(), root, cfg.User))
 			return nil
 		},
 		SilenceUsage:  true,

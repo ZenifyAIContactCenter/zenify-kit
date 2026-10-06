@@ -139,3 +139,18 @@ func TestGitGuardCheck_MissingThenFixed(t *testing.T) {
 		t.Fatalf("after Fix the check should pass, detail=%q", detail)
 	}
 }
+
+func TestGitIdentityCheck_Unknown(t *testing.T) {
+	c := gitIdentityCheckWith(func(v string) bool { return v == "GIT_AUTHOR_IDENT" })
+	ok, detail := c.Run()
+	if ok || !strings.Contains(detail, "GIT_COMMITTER_IDENT=unknown") || strings.Contains(detail, "GIT_AUTHOR_IDENT") {
+		t.Errorf("want !ok naming only the committer, got ok=%v detail=%q", ok, detail)
+	}
+}
+
+func TestGitIdentityCheck_Present(t *testing.T) {
+	c := gitIdentityCheckWith(func(string) bool { return true })
+	if ok, detail := c.Run(); !ok {
+		t.Errorf("name+email set should be OK, detail=%q", detail)
+	}
+}

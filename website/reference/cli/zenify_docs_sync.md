@@ -20,7 +20,7 @@ Hook `SessionStart` và `Stop` gọi lệnh này thay bạn. Chạy tay khi bạ
 
 ## Kết quả
 
-Lệnh kiểm tra trạng thái store trước: sạch thì không chạm mạng. Có thay đổi thì commit, `pull --rebase`, rồi push. Gặp conflict lệnh hủy rebase và giữ commit cục bộ để lượt sau thử lại. Mọi lỗi mạng đều fail-open: lệnh in cảnh báo và thoát bình thường. Sau đó lệnh dựng lại các symlink trong `docs/` của workspace trỏ vào store.
+Lệnh kiểm tra trạng thái store trước: sạch thì không chạm mạng. Có thay đổi thì commit, `pull --rebase`, rồi push. Gặp conflict lệnh hủy rebase và giữ commit cục bộ để lượt sau thử lại. Mọi lỗi mạng đều fail-open: lệnh in cảnh báo và thoát bình thường. Khi một bước git hỏng, cảnh báo in kèm nguyên văn lỗi của git, ví dụ `commit error: exit status 128: Author identity unknown ...`. Sau đó lệnh dựng lại các symlink trong `docs/` của workspace trỏ vào store.
 
 ## Cờ
 
@@ -37,7 +37,7 @@ zenify docs sync
 
 ## Lưu ý
 
-Không chạy git tay trong store. Xem [Knowledge store](/concepts/knowledge-store) và [Gate fail-open](/concepts/gate-fail-open).
+Máy chưa set `user.email` thì mọi commit vào store đều hỏng và store ngừng sync. `zenify doctor` báo mục `git-identity` khi thiếu. Không chạy git tay trong store. Xem [Knowledge store](/concepts/knowledge-store) và [Gate fail-open](/concepts/gate-fail-open).
 
 ## Lệnh liên quan
 

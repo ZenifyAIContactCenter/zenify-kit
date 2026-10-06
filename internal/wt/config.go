@@ -102,7 +102,7 @@ func Load(repoRoot string) (*Config, error) {
 		Deps:           orDefault(raw.Deps, "install"),
 		DepsDir:        orDefault(raw.DepsDir, "node_modules"),
 		Install:        raw.Install,
-		User:           orDefault(raw.User, "namph"),
+		User:           strings.TrimSpace(raw.User), // empty → resolved per-dev in New (BranchUser)
 		PortRange:      pr,
 		PortCount:      orInt(raw.PortCount, 1),
 		Copy:           raw.Copy,
