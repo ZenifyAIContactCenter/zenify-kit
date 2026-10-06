@@ -234,7 +234,7 @@ func gitIdentityCheckWith(gitConfig func(key string) string) Check {
 				}
 			}
 			if len(missing) > 0 {
-				return false, strings.Join(missing, " ") + "=missing — `zenify docs sync` không commit được; chạy: git config --global <key> <value>" //znf:allow-lang
+				return false, strings.Join(missing, " ") + "=missing — `zenify docs sync` cannot commit; run: git config --global <key> <value>"
 			}
 			return true, "user.name=ok user.email=ok"
 		},
