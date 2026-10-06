@@ -13,16 +13,8 @@ func Render(rep Report, verbose bool) string {
 	var b strings.Builder
 
 	// Header.
-	if rep.Unreleased {
-		// The unreleased view regenerates on every /ship + docs-sync → do NOT print a
-		// time.Now() timestamp (that would produce a no-op churn commit that only changes the
-		// time, in the store). The moment is already in the store's git-log; this keeps output
-		// deterministic against git-state (SC-6). A once-cut R<N>.md still keeps its "Sinh" line.
-		fmt.Fprintf(&b, "# Release đang hình thành: R%d (chưa deploy)\n\n", rep.N) //znf:allow-lang
-	} else {
-		fmt.Fprintf(&b, "# Release %d\n", rep.N)
-		fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)
-	}
+	fmt.Fprintf(&b, "# Release %d\n", rep.N)
+	fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)
 
 	// Headline — quick decision.
 	b.WriteString("## Quyết định nhanh\n") //znf:allow-lang
@@ -56,12 +48,8 @@ func Render(rep Report, verbose bool) string {
 			fmt.Fprintf(&b, "- ⚠ %s\n", rr.Err)
 			continue
 		}
-		if rep.Unreleased {
-			fmt.Fprintf(&b, "## %s (rel%d..staging)\n", rr.Name, rr.PrevRelease)
-		} else {
-			fmt.Fprintf(&b, "## %s (rel%d..%d, cắt %s)\n", rr.Name, rr.PrevRelease, rep.N, cutOr(rr.CutDate)) //znf:allow-lang
-		}
-		fmt.Fprintf(&b, "- Migration %s · Test %s · %d commit → %d thay đổi\n", //znf:allow-lang
+		fmt.Fprintf(&b, "## %s (rel%d..%d, cắt %s)\n", rr.Name, rr.PrevRelease, rep.N, cutOr(rr.CutDate)) //znf:allow-lang
+		fmt.Fprintf(&b, "- Migration %s · Test %s · %d commit → %d thay đổi\n",                           //znf:allow-lang
 			yesNo(rr.HasMigration, "CÓ", "không"),   //znf:allow-lang
 			yesNo(rr.HasTestTouch, "đụng", "không"), //znf:allow-lang
 			len(rr.Commits), len(rr.Changes))

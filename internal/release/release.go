@@ -12,24 +12,14 @@ import (
 // worktree.json. resolve locates each repo's real dir (via workspace.Resolve) — it does not assume
 // a repo is a direct child of the workspace, so it is nesting-safe.
 func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
-	return buildReport(r, resolve, repos, n, false, loadPatterns, loadSpecs)
+	return buildReport(r, resolve, repos, n, loadPatterns, loadSpecs)
 }
 
-// BuildUnreleased assembles the "still forming" report for release latestN (the release currently
-// being gathered, not yet deployed — convention A). Range = release<prev>..origin/staging with
-// prev = the most recently deployed release, i.e. the whole delta of the forming release versus
-// production. Shares buildReport's core; skips regression (to==staging so NotInStaging is always
-// empty) and has no CutDate (not cut yet).
-func BuildUnreleased(r gitx.Runner, resolve func(name string) (string, bool), repos []string, latestN int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
-	return buildReport(r, resolve, repos, latestN, true, loadPatterns, loadSpecs)
-}
-
-func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, unreleased bool, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
+func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
 	rep := Report{
 		N:               n,
 		GeneratedAt:     time.Now().Format("2006-01-02 15:04"),
 		SharedCrossRepo: map[string][]string{},
-		Unreleased:      unreleased,
 	}
 	for _, name := range repos {
 		dir, ok := resolve(name)
@@ -42,49 +32,26 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not read release branches: " + err.Error()})
 			continue
 		}
-		var relPrev, relN string
-		var prevForReport int
-		if unreleased {
-			// unreleased = the "pending deploy" view, updated against staging DAILY for EVERY
-			// deployed repo — it does NOT require the repo to have cut release<n>. The lower bound
-			// = that repo's own most recently DEPLOYED release = its highest existing release < n
-			// (forming): for a repo currently gathering R<n> that's the previously cut release; for
-			// a repo that hasn't gathered anything this week (no release<n> yet) that's simply its
-			// max release. PrevRelease(nums,n) returns the right answer for both cases. (n =
-			// forming = the highest release across the whole workspace; numbering shares one
-			// sequence.) A repo with only release>=n (brand new, no baseline to compare) → skipped.
-			prev, ok := PrevRelease(nums, n)
-			if !ok {
-				continue
+		// finalize R<n>: a repo participates in release n iff it has a release<n> branch.
+		has := false
+		for _, x := range nums {
+			if x == n {
+				has = true
 			}
-			relPrev = fmt.Sprintf("origin/release%d", prev)
-			relN = "origin/staging"
-			prevForReport = prev
-		} else {
-			// finalize R<n>: a repo participates in release n iff it has a release<n> branch.
-			has := false
-			for _, x := range nums {
-				if x == n {
-					has = true
-				}
-			}
-			if !has {
-				rep.NotShipped = append(rep.NotShipped, name)
-				continue
-			}
-			prev, ok := PrevRelease(nums, n)
-			if !ok {
-				rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not find the previous release"})
-				continue
-			}
-			relPrev = fmt.Sprintf("origin/release%d", prev)
-			relN = fmt.Sprintf("origin/release%d", n)
-			prevForReport = prev
 		}
-		rr := RepoReport{Name: name, PrevRelease: prevForReport, TypeCounts: map[string]int{}}
-		if !unreleased {
-			rr.CutDate, _ = CutDate(r, dir, n)
+		if !has {
+			rep.NotShipped = append(rep.NotShipped, name)
+			continue
 		}
+		prev, ok := PrevRelease(nums, n)
+		if !ok {
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not find the previous release"})
+			continue
+		}
+		relPrev := fmt.Sprintf("origin/release%d", prev)
+		relN := fmt.Sprintf("origin/release%d", n)
+		rr := RepoReport{Name: name, PrevRelease: prev, TypeCounts: map[string]int{}}
+		rr.CutDate, _ = CutDate(r, dir, n)
 		var notes []Commit
 		if cs, err := RangeCommits(r, dir, relPrev, relN); err == nil {
 			var feats []Commit
@@ -124,13 +91,10 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 				rep.SharedCrossRepo[p] = append(rep.SharedCrossRepo[p], name)
 			}
 		}
-		// regression: when unreleased, to==staging → NotInStaging is always empty, so skip calling it.
-		if !unreleased {
-			if cs, err := NotInStaging(r, dir, relPrev, relN, "origin/staging"); err == nil {
-				rr.Regression = cs
-			} else {
-				rr.RegressionUncomputed = true
-			}
+		if cs, err := NotInStaging(r, dir, relPrev, relN, "origin/staging"); err == nil {
+			rr.Regression = cs
+		} else {
+			rr.RegressionUncomputed = true
 		}
 		// the set of SHAs not-yet-on-staging, used to mark a Change.
 		notStaging := map[string]bool{}
@@ -152,12 +116,6 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 		noteMap := NoteRiskBySlug(notes)
 		for i := range rr.Changes {
 			rr.Changes[i].Risk = LinkSpec(rr.Changes[i], specs, noteMap)
-		}
-		// unreleased: a repo with no pending commits (staging == its own deployed release) →
-		// dropped from the view, no empty section listed (keeps the doc terse, per "no change
-		// means skip it"). A repo with an error (rr.Err) is still kept so the failure surfaces.
-		if unreleased && rr.Err == "" && len(rr.Commits) == 0 {
-			continue
 		}
 		rep.Repos = append(rep.Repos, rr)
 	}

@@ -84,22 +84,6 @@ func TestRenderVerboseExpandsChore(t *testing.T) {
 	}
 }
 
-// LOW-1 fix: the unreleased view does NOT print "Sinh <time.Now>" (avoids a no-op churn commit on
-// every ship, keeping it deterministic against git-state, SC-6); a cut R<N>.md STILL keeps "Sinh".
-func TestRenderUnreleasedOmitsTimestamp(t *testing.T) {
-	un := Render(Report{N: 84, Unreleased: true, GeneratedAt: "2026-09-08 10:00", SharedCrossRepo: map[string][]string{}}, false)
-	if strings.Contains(un, "Sinh ") {
-		t.Errorf("the unreleased view must NOT print a timestamp (churn): %s", un)
-	}
-	if !strings.Contains(un, "# Release đang hình thành: R84 (chưa deploy)") { //znf:allow-lang
-		t.Errorf("unreleased header missing: %s", un)
-	}
-	cut := Render(Report{N: 84, GeneratedAt: "2026-09-08 10:00", SharedCrossRepo: map[string][]string{}}, false)
-	if !strings.Contains(cut, "Sinh 2026-09-08 10:00") {
-		t.Errorf("a cut R<N>.md view must keep 'Sinh': %s", cut)
-	}
-}
-
 // The risk block must exclude chore/other (their table row is verbose-gated) — otherwise
 // non-verbose would have a risk block pointing to a change that appears in no table. Mirror release.go:175.
 func TestRenderRiskDetailExcludesChore(t *testing.T) {

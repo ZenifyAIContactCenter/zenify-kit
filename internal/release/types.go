@@ -92,6 +92,4 @@ type Report struct {
 	Migrations        []string // repos with a migration
 	SpecLinked        int      // number of Changes linked to a spec
 	SpecTotal         int      // total Changes (every type except chore? — see Task 5)
-
-	Unreleased bool // true when the report is the "release still forming" view (range release<latest>..staging)
 }

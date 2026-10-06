@@ -34,27 +34,6 @@ func Resolve(r gitx.Runner, workspace string, n int,
 	return repos, nil
 }
 
-// ResolveUnreleased returns the repos for the UNRELEASED VIEW. It still honors the
-// `.znf/release-repos.txt` pin (if present). Its auto-detect DIFFERS from Resolve: it takes EVERY
-// repo with AT LEAST one release branch (not requiring release<n>) — because unreleased is the
-// "daily pending deploy" of every deployed repo, regardless of whether that repo cut a release
-// this week. A repo with staging commits not yet deployed shows up; a repo with nothing pending
-// is dropped by buildReport (empty section).
-func ResolveUnreleased(r gitx.Runner, workspace string,
-	readFile func(string) ([]byte, error), discovered []wspkg.Repo) ([]string, error) {
-
-	if pin, ok := pinList(workspace, readFile); ok {
-		return pin, nil
-	}
-	var repos []string
-	for _, rp := range discovered {
-		if nums, err := ReleaseNums(r, rp.Path); err == nil && len(nums) > 0 {
-			repos = append(repos, rp.Name)
-		}
-	}
-	return repos, nil
-}
-
 // pinList reads `.znf/release-repos.txt` (one repo per line, `#`=comment). ok=false if the file
 // cannot be read (→ caller auto-detects). Warning: the file EXISTS but is comments-only → ok=true
 // with an EMPTY list (scans 0 repos) — this is intentional: an empty pin means "no repos"; to get
