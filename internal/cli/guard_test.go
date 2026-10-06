@@ -286,3 +286,49 @@ func TestGuardInstallUsesTempHOME(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// installGuard runs on every up/SessionStart, so it must not reformat the
+// user's file: foreign values keep their inner key order (whitespace is
+// re-indented, as in apply) and && is not
+// HTML-escaped to &.
+func TestEnsureGuardHookPreservesForeignOrderAndNoEscape(t *testing.T) {
+	in := []byte(`{"permissions":{"zeta":1,"alpha":2},"hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"a && b"}]}]}}`)
+	out, changed, err := ensureGuardHook(in)
+	if err != nil || !changed {
+		t.Fatalf("want changed, got changed=%v err=%v", changed, err)
+	}
+	s := string(out)
+	if z, a := strings.Index(s, `"zeta"`), strings.Index(s, `"alpha"`); z < 0 || a < 0 || z > a {
+		t.Errorf("foreign permissions keys reordered:\n%s", s)
+	}
+	if !strings.Contains(s, "a && b") || strings.Contains(s, `\u0026`) {
+		t.Errorf("hook command HTML-escaped:\n%s", s)
+	}
+}
+
+func TestEnsureGuardHookRefusesNonObjectHooks(t *testing.T) {
+	for _, in := range []string{`{"hooks":"x"}`, `{"hooks":null}`, `{"hooks":{"PreToolUse":{}}}`} {
+		if _, _, err := ensureGuardHook([]byte(in)); err == nil {
+			t.Errorf("%s: want error (do not replace user data), got nil", in)
+		}
+	}
+}
+
+func TestEnsureGuardHookNullDocumentNoPanic(t *testing.T) {
+	out, changed, err := ensureGuardHook([]byte("null"))
+	if err != nil || !changed || !strings.Contains(string(out), guardCommand) {
+		t.Fatalf("null document: want guard added, got changed=%v err=%v out=%s", changed, err, out)
+	}
+}
+
+// A leftover legacy guard beside the real one must not make doctor claim
+// the hook is missing.
+func TestGuardInstalledWithLegacySibling(t *testing.T) {
+	home := t.TempDir()
+	p := filepath.Join(home, ".claude", "settings.json")
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	_ = os.WriteFile(p, []byte(`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash guard-git-deploy.sh"},{"type":"command","command":"zenify git-guard"}]}]}}`), 0o644)
+	if ok, err := guardInstalled(home); err != nil || !ok {
+		t.Fatalf("want installed=true, got %v err=%v", ok, err)
+	}
+}

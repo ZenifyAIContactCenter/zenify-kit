@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,20 +20,37 @@ const legacyGuard = "guard-git-deploy.sh"
 // the legacy bash guard script, leaves everything else untouched, and is
 // idempotent — calling it again once the hook is present reports
 // changed=false. Broken JSON input is an error; nothing is overwritten.
+//
+// Like apply.EnsureGlobalHooks, foreign top-level values (permissions, env,
+// ...) are kept as json.RawMessage so their content and inner key order
+// survive, output is not HTML-escaped, and a non-object "hooks" or a
+// non-array "PreToolUse" is refused rather than replaced. This runs on every
+// `up` and SessionStart, so it must not reformat the user's file.
 func ensureGuardHook(raw []byte) ([]byte, bool, error) {
-	root := map[string]any{}
+	root := map[string]json.RawMessage{}
 	if len(strings.TrimSpace(string(raw))) > 0 {
 		if err := json.Unmarshal(raw, &root); err != nil {
 			return nil, false, fmt.Errorf("guard install: could not parse settings.json: %w", err)
 		}
+		if root == nil { // the literal `null`
+			root = map[string]json.RawMessage{}
+		}
 	}
 
-	hooks, _ := root["hooks"].(map[string]any)
-	if hooks == nil {
-		hooks = map[string]any{}
-		root["hooks"] = hooks
+	hooks := map[string]any{}
+	if h, ok := root["hooks"]; ok {
+		if err := json.Unmarshal(h, &hooks); err != nil || hooks == nil {
+			return nil, false, fmt.Errorf("guard install: settings.json \"hooks\" is not an object, not touching it")
+		}
 	}
-	pre, _ := hooks["PreToolUse"].([]any)
+	var pre []any
+	if p, ok := hooks["PreToolUse"]; ok {
+		arr, isArr := p.([]any)
+		if !isArr {
+			return nil, false, fmt.Errorf("guard install: settings.json \"hooks.PreToolUse\" is not an array, not touching it")
+		}
+		pre = arr
+	}
 
 	newEntry := map[string]any{
 		"matcher": "Bash",
@@ -81,18 +99,38 @@ func ensureGuardHook(raw []byte) ([]byte, bool, error) {
 		entry["hooks"] = newHs
 		newPre = append(newPre, entry)
 	}
-	pre = newPre
 	if !found {
-		pre = append(pre, newEntry)
+		newPre = append(newPre, newEntry)
 		changed = true
 	}
-	hooks["PreToolUse"] = pre
+	if !changed {
+		return raw, false, nil
+	}
+	hooks["PreToolUse"] = newPre
 
-	out, err := json.MarshalIndent(root, "", "  ")
+	hooksOut, err := marshalSettings(hooks)
 	if err != nil {
 		return nil, false, err
 	}
-	return append(out, '\n'), changed, nil
+	root["hooks"] = json.RawMessage(bytes.TrimSpace(hooksOut))
+	out, err := marshalSettings(root)
+	if err != nil {
+		return nil, false, err
+	}
+	return out, true, nil
+}
+
+// marshalSettings encodes with 2-space indent and no HTML escaping, matching
+// how apply writes settings.json (a hook command containing && stays as is).
+func marshalSettings(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // writeFileAtomic writes data to a temp file in the same directory as path,
@@ -145,8 +183,9 @@ func installGuard(home string) (bool, error) {
 	return true, nil
 }
 
-// guardInstalled reports whether settings.json already runs `zenify git-guard`
-// as a PreToolUse hook. Read-only; for the doctor check.
+// guardInstalled reports whether settings.json runs `zenify git-guard` as a
+// PreToolUse hook. Read-only; for the doctor check. A leftover legacy guard
+// beside it does not count as missing.
 func guardInstalled(home string) (bool, error) {
 	raw, err := os.ReadFile(guardSettingsPath(home)) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
 	if os.IsNotExist(err) {
@@ -155,8 +194,26 @@ func guardInstalled(home string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	_, changed, err := ensureGuardHook(raw)
-	return err == nil && !changed, err
+	var s struct {
+		Hooks struct {
+			PreToolUse []struct {
+				Hooks []struct {
+					Command string `json:"command"`
+				} `json:"hooks"`
+			} `json:"PreToolUse"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return false, err
+	}
+	for _, e := range s.Hooks.PreToolUse {
+		for _, h := range e.Hooks {
+			if h.Command == guardCommand {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func guardSettingsPath(home string) string {
