@@ -119,7 +119,10 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 	}
 	// Record first: a record without a settings change is harmless, the
 	// reverse would leave rules the kit can never remove.
-	prev, _ := readRecord(home)
+	prev, err := readRecord(home)
+	if err != nil && !os.IsNotExist(err) {
+		return 0, err
+	}
 	seen := map[string]bool{}
 	var rec []string
 	for _, r := range append(prev, added...) {

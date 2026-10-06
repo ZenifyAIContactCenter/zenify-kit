@@ -3,6 +3,7 @@ package apply
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -132,5 +133,27 @@ func TestRemoveKitPermissions_NoRecord(t *testing.T) {
 	removed, err := RemoveKitPermissions(home, false)
 	if removed != 0 || err == nil || !strings.Contains(err.Error(), "no kit-permissions record") {
 		t.Fatalf("removed=%d err=%v", removed, err)
+	}
+}
+
+func TestEnsureKitPermissions_MalformedRecordErrorsUntouched(t *testing.T) {
+	home := t.TempDir()
+	body := `{"model":"opus"}`
+	writeSettings(t, home, body)
+	rec := kitPermissionsRecord(home)
+	if err := os.MkdirAll(filepath.Dir(rec), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rec, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureKitPermissions(home, false); err == nil {
+		t.Fatal("expected error for malformed record")
+	}
+	if raw, _ := os.ReadFile(settingsPath(home)); string(raw) != body {
+		t.Fatalf("settings changed: %s", raw)
+	}
+	if raw, _ := os.ReadFile(rec); string(raw) != "{not json" {
+		t.Fatalf("record changed: %s", raw)
 	}
 }
