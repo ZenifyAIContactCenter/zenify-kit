@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,9 +85,29 @@ func prepareHarness(o LoginOptions, root, harness string) error {
 	return nil
 }
 
+// checkLoopbackURL refuses any origin that is not a local app: the harness types
+// real credentials into whatever page it is pointed at.
+func checkLoopbackURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return exitcode.New(exitcode.BadArgs, fmt.Errorf("login needs an http(s) origin of a local app; got %q", raw))
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return exitcode.New(exitcode.BadArgs, fmt.Errorf("login only targets a local app (localhost/loopback); got host %s", host))
+}
+
 // Login runs the harness setup project on the host and atomically writes the
 // storage state. It returns the state path.
 func Login(o LoginOptions) (string, error) {
+	if err := checkLoopbackURL(o.BaseURL); err != nil {
+		return "", err
+	}
 	for _, k := range []string{"E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"} {
 		if o.Getenv(k) == "" {
 			return "", exitcode.New(exitcode.BadArgs, fmt.Errorf("missing env: %s", k))

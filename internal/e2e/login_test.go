@@ -195,3 +195,31 @@ func TestLogin_InstallsWhenNotPinned(t *testing.T) {
 		t.Fatalf("first call %v", f.calls[0])
 	}
 }
+
+func TestLogin_RejectsNonLoopbackURL(t *testing.T) {
+	for _, u := range []string{"https://attacker.example", "http://10.0.0.5:3000",
+		"http://localhost.attacker.example", "ftp://localhost:1", "", "localhost:3327"} {
+		f := &fakeRun{}
+		o := opts(t.TempDir(), f, &bytes.Buffer{})
+		o.BaseURL = u
+		_, err := Login(o)
+		if exitcode.Code(err) != exitcode.BadArgs {
+			t.Fatalf("%q: want BadArgs, got %v", u, err)
+		}
+		if len(f.calls) != 0 {
+			t.Fatalf("%q: Run must not be called", u)
+		}
+	}
+}
+
+func TestLogin_AcceptsLoopbackURL(t *testing.T) {
+	for _, u := range []string{"http://localhost:3327", "http://127.0.0.1:3327",
+		"http://[::1]:3327", "http://app.localhost:3327", "https://localhost:3327"} {
+		f := &fakeRun{content: "x"}
+		o := opts(t.TempDir(), f, &bytes.Buffer{})
+		o.BaseURL = u
+		if _, err := Login(o); err != nil {
+			t.Fatalf("%q: %v", u, err)
+		}
+	}
+}

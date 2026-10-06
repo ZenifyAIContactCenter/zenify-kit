@@ -32,7 +32,7 @@ flowchart TD
 
 Onboard máy vào workspace. Chạy trong terminal, lệnh mở wizard: chọn thư mục workspace, chọn repo bạn có quyền truy cập, rồi nhập secret cần cho verify UI và đọc DB.
 
-Khi apply, lệnh clone repo còn thiếu, ghi các file cấu hình do kit sở hữu, gắn hook `znf` vào `~/.claude/settings.json`, đồng bộ plugin skill, chuẩn bị Playwright nếu workspace có repo frontend, clone knowledge store và ghi con trỏ workspace vào `~/.zenify/workspace`. Với Playwright, lệnh đăng ký MCP ở user scope kèm `--caps=storage` và thư mục output `~/.zenify/playwright`, đồng thời thêm vào `permissions.allow` của `~/.claude/settings.json` các rule cho tool `mcp__playwright__*` mà `znf:ui-verifier` dùng, cùng `Bash(zenify e2e *)` và `Bash(zenify visual *)`, nên verify UI không hỏi quyền. Đăng ký MCP cũ của kit được chuyển sang dạng mới; đăng ký bạn đã tự chỉnh được giữ nguyên và lệnh cảnh báo. `zenify down` chỉ gỡ các rule kit đã thêm, rule bạn có từ trước vẫn còn. Lệnh cần `gh` đã đăng nhập với scope `read:org` và `repo`.
+Khi apply, lệnh clone repo còn thiếu, ghi các file cấu hình do kit sở hữu, gắn hook `znf` vào `~/.claude/settings.json`, đồng bộ plugin skill, chuẩn bị Playwright nếu workspace có repo frontend, clone knowledge store và ghi con trỏ workspace vào `~/.zenify/workspace`. Với Playwright, lệnh đăng ký MCP ở user scope kèm `--caps=storage` và thư mục output `~/.zenify/playwright`, đồng thời thêm vào `permissions.allow` của `~/.claude/settings.json` các rule cho tool `mcp__playwright__*` mà `znf:ui-verifier` dùng, cùng `Bash(zenify e2e *)` và `Bash(zenify visual *)` và `Bash(zenify ui-verify *)`, nên verify UI không hỏi quyền. Đăng ký MCP cũ của kit được chuyển sang dạng mới; đăng ký bạn đã tự chỉnh được giữ nguyên và lệnh cảnh báo. `zenify down` chỉ gỡ các rule kit đã thêm, rule bạn có từ trước vẫn còn. Rule kit mà bạn đã tự xoá khỏi `permissions.allow` sẽ không bị thêm lại. Lệnh cần `gh` đã đăng nhập với scope `read:org` và `repo`.
 
 Mỗi repo nhận placeholder rỗng trong `.claude/settings.local.json` cho các secret key chung của team, cộng các key riêng mà repo đó khai trong manifest (ví dụ URL DB và vector store của một service AI). Key riêng chỉ đến máy đã clone repo đó. Chạy lại `zenify up --apply` trên repo đã onboard chỉ thêm key còn thiếu, không đổi giá trị bạn đã điền; kết quả hiện `ok (settings +N key)`.
 
@@ -60,7 +60,7 @@ zenify down --apply
 
 ### `zenify doctor`
 
-Kiểm tra sức khỏe môi trường và báo từng mục đạt hay hỏng: phiên bản binary, đăng nhập git và quyền GitHub, danh tính commit của git (`user.name`, `user.email`), secret trong `settings.local.json`, tool bên ngoài (`git`, `gh`, `mongosh`, `mysql`), Playwright (gồm đăng ký MCP, báo nếu bạn dùng đăng ký tuỳ biến), quyền Playwright và `zenify e2e`/`zenify visual` trong `permissions.allow`, Docker và plugin skill `znf`. Chạy ngay sau `zenify up`, và mỗi khi một skill báo thiếu tool hoặc thiếu secret. Lệnh chỉ đọc, chạy bao nhiêu lần cũng được.
+Kiểm tra sức khỏe môi trường và báo từng mục đạt hay hỏng: phiên bản binary, đăng nhập git và quyền GitHub, danh tính commit của git (`user.name`, `user.email`), secret trong `settings.local.json`, tool bên ngoài (`git`, `gh`, `mongosh`, `mysql`), Playwright (gồm đăng ký MCP, báo nếu bạn dùng đăng ký tuỳ biến), quyền Playwright và `zenify e2e`/`zenify visual`/`zenify ui-verify` trong `permissions.allow`, Docker và plugin skill `znf`. Chạy ngay sau `zenify up`, và mỗi khi một skill báo thiếu tool hoặc thiếu secret. Lệnh chỉ đọc, chạy bao nhiêu lần cũng được.
 
 ```bash
 zenify doctor

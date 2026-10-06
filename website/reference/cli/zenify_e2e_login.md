@@ -28,8 +28,8 @@ Lệnh ghi storage state vào `~/.zenify/playwright/state.json` (quyền 0600), 
 
 | Cờ | Ý nghĩa |
 |---|---|
-| `--url` | Origin của web app. Phải có đúng một trong `--url` và `--port`. |
-| `--port` | Port web app trên localhost, tương đương `--url http://localhost:<port>`. |
+| `--url` | Origin của web app; chỉ nhận `localhost`, `*.localhost` hoặc IP loopback (`127.0.0.1`, `::1`), origin khác bị từ chối. Phải có đúng một trong `--url` và `--port`. |
+| `--port` | Port web app trên localhost (1..65535), tương đương `--url http://localhost:<port>`. |
 
 ## Ví dụ
 

@@ -57,8 +57,11 @@ func newE2eLoginCmd() *cobra.Command {
 		Use:   "login",
 		Short: "Đăng nhập trên host, ghi storage state cho Playwright MCP (đọc E2E_* từ env)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if (url == "") == (port == 0) {
+			if (url == "") == (port == 0) { // port 0 = unset
 				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need exactly one of --url or --port"))
+			}
+			if port != 0 && (port < 1 || port > 65535) {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("--port must be 1..65535"))
 			}
 			if port != 0 {
 				url = fmt.Sprintf("http://localhost:%d", port)

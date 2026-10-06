@@ -52,3 +52,15 @@ func TestE2eLogin_NeedsExactlyOneOfUrlPort(t *testing.T) {
 		}
 	}
 }
+
+func TestE2eLogin_PortOutOfRange(t *testing.T) {
+	for _, p := range []string{"-1", "70000"} {
+		c := newE2eCmd()
+		c.SetArgs([]string{"login", "--port", p})
+		c.SetOut(&bytes.Buffer{})
+		c.SetErr(&bytes.Buffer{})
+		if err := c.Execute(); exitcode.Code(err) != exitcode.BadArgs {
+			t.Fatalf("--port %s: want BadArgs, got %v", p, err)
+		}
+	}
+}
