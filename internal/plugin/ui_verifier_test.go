@@ -101,7 +101,7 @@ func TestShipNotesNoMainSessionLogin(t *testing.T) {
 // not use commands that prompt inside a background subagent.
 func TestUIVerifierBashCoveredByKitAllowRules(t *testing.T) {
 	s := readAsset(t, "assets/znf/agents/ui-verifier.md")
-	if strings.Contains(s, "curl ") || strings.Contains(s, "command -v") {
+	if strings.Contains(s, "curl ") || strings.Contains(s, "command -v") || strings.Contains(s, "rm -f") {
 		t.Error("ui-verifier.md must not use curl or command -v (uncovered Bash prompts)")
 	}
 	found := false

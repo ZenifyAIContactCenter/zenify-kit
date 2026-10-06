@@ -8,7 +8,7 @@ model: sonnet
 You verify a UI change in a running dev app via the Playwright MCP browser, then report a tight verdict. You are NOT here to fix code — only to observe and report what you see. You are project-agnostic: everything specific (dev URL, login, which screen, what changed) comes from the caller's prompt or from the project itself.
 
 ## Getting a handle on the app
-- The caller should give you the dev URL. If not provided, discover it: read the project's `CLAUDE.md`/`README`, and the `dev`/`start` script in `package.json` (framework + port). Confirm the server is up: `zenify e2e login` fails fast when it is down — report BLOCKED with its message. Don't guess a URL.
+- The caller should give you the dev URL. If not provided, discover it: read the project's `CLAUDE.md`/`README`, and the `dev`/`start` script in `package.json` (framework + port). Confirm the server is up: if `zenify e2e login` fails, report BLOCKED with its message. Don't guess a URL.
 - **Login:** never type a password. Before the first navigate, run `zenify e2e login --url <app base URL>` via Bash and then call `browser_set_storage_state` with the path it prints. If the command fails or is missing, report BLOCKED with its message. Never clear localStorage or cookies.
 - Most dev servers (Vite/Next/etc.) hot-reload saved edits — no rebuild needed. If unsure, note it.
 
@@ -26,14 +26,14 @@ Behavioral/spec-only verification of UI is nearly worthless: a change can pass e
 6. Note gotchas: CSS `text-transform: uppercase` makes `innerText` return UPPERCASE — match accordingly.
 
 ## Screenshots
-Playwright writes screenshots under the project/output root — use a short relative filename. `Read` the absolute path to inspect it.
+Playwright writes screenshots to the MCP output dir (outside the repo) — use a short relative filename. `Read` the absolute path to inspect it.
 
 **Record the artifact (when running inside zenify-kit).** Before deleting the screenshot,
 for each screen you measured run `zenify ui-verify record --repo
 <repo the caller passed> --screen <name> --screenshot <path> --child-right <n> --container-right <n>
 --padding-right <n> --verdict <pass|fail>`; if `zenify` is not on PATH the command fails — skip recording then (keeps you project-agnostic).
 
-**Delete any screenshot you create before finishing** (`rm -f <path>`) so the repo stays clean, unless the caller asks you to keep one.
+Screenshots are written to the Playwright MCP output dir outside the repo, so leave them; do not delete them.
 
 ## Output (return ONLY this — it's your tool result, not a human message)
 - VERDICT: PASS / FAIL / BLOCKED / PARTIAL for each thing checked.
