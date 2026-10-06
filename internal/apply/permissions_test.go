@@ -237,9 +237,9 @@ func TestEnsureKitPermissions_SettingsWriteFailureRestoresRecord(t *testing.T) {
 
 func TestKitSandbox_UnionKeepsSandboxThenRemovesOnlyKit(t *testing.T) {
 	home := t.TempDir()
-	writeSettings(t, home, `{"sandbox":{"enabled":true,"excludedCommands":["git *","zenify e2e *"]}}`)
+	writeSettings(t, home, `{"sandbox":{"enabled":true,"excludedCommands":["git *"]}}`)
 	added, err := EnsureKitSandbox(home, false)
-	if err != nil || added != len(KitSandboxExcluded)-1 {
+	if err != nil || added != len(KitSandboxExcluded) {
 		t.Fatalf("added=%d err=%v", added, err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
@@ -252,7 +252,7 @@ func TestKitSandbox_UnionKeepsSandboxThenRemovesOnlyKit(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"git *", "zenify e2e *", "zenify visual *", "zenify ui-verify *"}
+	want := []string{"git *", "zenify e2e login *"}
 	if !doc.Sandbox.Enabled || !reflect.DeepEqual(doc.Sandbox.Excluded, want) {
 		t.Fatalf("sandbox=%+v", doc.Sandbox)
 	}
@@ -260,14 +260,14 @@ func TestKitSandbox_UnionKeepsSandboxThenRemovesOnlyKit(t *testing.T) {
 		t.Fatalf("sandbox ensure must not touch the allow record: %v", err)
 	}
 	removed, err := RemoveKitSandbox(home, false)
-	if err != nil || removed != 2 {
+	if err != nil || removed != 1 {
 		t.Fatalf("removed=%d err=%v", removed, err)
 	}
 	raw, _ = os.ReadFile(settingsPath(home))
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"git *", "zenify e2e *"}; !reflect.DeepEqual(doc.Sandbox.Excluded, want) {
+	if want := []string{"git *"}; !reflect.DeepEqual(doc.Sandbox.Excluded, want) {
 		t.Fatalf("after remove: %v", doc.Sandbox.Excluded)
 	}
 }

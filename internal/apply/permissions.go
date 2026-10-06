@@ -31,12 +31,11 @@ var KitAllowRules = []string{
 // KitSandboxExcluded are the commands the kit unions into
 // sandbox.excludedCommands: `zenify e2e login` writes ~/.zenify and reaches the
 // local web app, both of which the Bash sandbox denies, so without this the
-// verifier would have to ask for the sandbox to be disabled. Inert when the
+// verifier would have to ask for the sandbox to be disabled. Only login: other
+// e2e subcommands run repo journey code and stay sandboxed. Inert when the
 // sandbox is off.
 var KitSandboxExcluded = []string{
-	"zenify e2e *",
-	"zenify visual *",
-	"zenify ui-verify *",
+	"zenify e2e login *",
 }
 
 // kitList is one settings array the kit unions entries into, with the record
