@@ -107,7 +107,7 @@ real output. A check whose agent went quiet never earns a ✅ — silence and a 
 indistinguishable from here.
 
 ### Ordering the gate (moved from § Start the agents)
-Log in first — that is blocking, because neither verifier can authenticate itself. Then dispatch the
+The verifier logs itself in (`zenify e2e login`), so nothing blocks on a login. Dispatch the
 contract gate's sweeps and `znf:ui-verifier` in ONE message so they run at once, and do lint, build
 and the data checks inline while they work. `Skill(znf:review)` cannot start earlier: it needs the
 facts those checks produce.

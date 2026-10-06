@@ -34,7 +34,7 @@ Stamp each check with its `fp`; step 7 requires every stamp == the current one.
    Non-zero → dispatch **`znf:ui-verifier`**; **do not drive the browser yourself**. Zero (literally, never a judgement that it "won't show in dev") → "nothing renders in this diff". **A non-zero with no verdict = BLOCKED (❌, Shippable NO).** Setup — flag ON, seed, FE+BE up — is work you perform, never a skip. Cannot this session → BLOCKED, naming the one missing thing.
 
    - **`.znf/visual/routes.json` present → `zenify visual check --repo <path> --port <P>` FIRST**, a hard gate on non-zero exit; then still dispatch `znf:ui-verifier`. `.znf/e2e/` → `zenify e2e lint`.
-   - **Log in first** (neither verifier authenticates); require **both** a screenshot **and** a `getBoundingClientRect` of the changed element against its container. `--repo` = this worktree; it records via `zenify ui-verify record`. Never two browser agents at once.
+   - The verifier logs itself in (`zenify e2e login`); require **both** a screenshot **and** a `getBoundingClientRect` of the changed element against its container. `--repo` = this worktree; it records via `zenify ui-verify record`. Never two browser agents at once.
    - **A negative result that lets you proceed is not evidence** until a second mechanism agrees.
 
    **Three data checks, triggered mechanically** — trigger commands, tenant and pagination rules in
