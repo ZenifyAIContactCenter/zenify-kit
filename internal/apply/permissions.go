@@ -128,8 +128,10 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 	if len(added) == 0 || dryRun {
 		return len(added), nil
 	}
-	// Record first: a record without a settings change is harmless, the
-	// reverse would leave rules the kit can never remove.
+	// Record first so a settings change is never unrecorded (the kit could
+	// never remove it). If the settings write then fails, restore the previous
+	// record: a leftover record would make the next run treat every new rule
+	// as user-removed and never add it.
 	seen := map[string]bool{}
 	var rec []string
 	for _, r := range append(prev, added...) {
@@ -145,7 +147,15 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 	if err := writeAtomic(kitPermissionsRecord(home), recJSON, 0o644); err != nil {
 		return 0, err
 	}
-	return len(added), writeAllow(path, root, perms, append(allow, added...), mode)
+	if err := writeAllow(path, root, perms, append(allow, added...), mode); err != nil {
+		if prev == nil {
+			_ = os.Remove(kitPermissionsRecord(home))
+		} else if pj, merr := json.Marshal(prev); merr == nil {
+			_ = writeAtomic(kitPermissionsRecord(home), pj, 0o644)
+		}
+		return 0, err
+	}
+	return len(added), nil
 }
 
 // RemoveKitPermissions removes only the rules the kit recorded adding.

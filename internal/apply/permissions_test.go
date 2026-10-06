@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -193,5 +194,43 @@ func TestEnsureKitPermissions_RespectsUserRemoval(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("record lost %q: %v", removed, rec)
+	}
+}
+
+func TestEnsureKitPermissions_SettingsWriteFailureRestoresRecord(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("relies on chmod denying writes")
+	}
+	for _, withPrev := range []bool{false, true} {
+		home := t.TempDir()
+		writeSettings(t, home, `{}`)
+		rec := kitPermissionsRecord(home)
+		var before []byte
+		if withPrev {
+			if err := os.MkdirAll(filepath.Dir(rec), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			before = []byte(`["Bash(zenify e2e *)"]`)
+			if err := os.WriteFile(rec, before, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		dir := filepath.Dir(settingsPath(home))
+		if err := os.Chmod(dir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		_, err := EnsureKitPermissions(home, false)
+		_ = os.Chmod(dir, 0o755)
+		if err == nil {
+			t.Fatalf("withPrev=%v: want settings write error", withPrev)
+		}
+		got, rerr := os.ReadFile(rec)
+		if withPrev {
+			if rerr != nil || string(got) != string(before) {
+				t.Fatalf("record not restored: %q %v", got, rerr)
+			}
+		} else if !os.IsNotExist(rerr) {
+			t.Fatalf("record should be absent, got %q %v", got, rerr)
+		}
 	}
 }
