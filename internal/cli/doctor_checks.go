@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
@@ -76,8 +77,14 @@ func playwrightCheck() Check {
 	return Check{
 		Name: "playwright",
 		Run: func() (bool, string) {
+			home, herr := os.UserHomeDir()
+			if herr != nil || home == "" {
+				return false, fmt.Sprintf("cannot resolve home: %v", herr)
+			}
 			o := playwright.Options{
-				Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() }, //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+				Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() },              //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+				Output: func(name string, args []string) ([]byte, error) { return exec.Command(name, args...).Output() }, //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
+				Home:   home,
 				Getenv: os.Getenv,
 				GOOS:   runtime.GOOS,
 			}
@@ -213,6 +220,39 @@ func gitGuardCheck(home func() (string, error)) Check {
 	}
 }
 
+// kitPermissionsCheck reports whether the kit's Playwright/e2e allow rules are
+// in ~/.claude/settings.json. Fix adds the missing ones (same union as `up`).
+func kitPermissionsCheck(home func() (string, error)) Check {
+	return Check{
+		Name: "kit-permissions",
+		Run: func() (bool, string) {
+			h, err := home()
+			if err != nil {
+				return false, "cannot resolve HOME"
+			}
+			n, err := apply.EnsureKitPermissions(h, true)
+			if err != nil {
+				return false, fmt.Sprintf("settings.json unreadable: %v", err)
+			}
+			if n > 0 {
+				return false, fmt.Sprintf("missing %d kit allow rules; run `zenify doctor --fix` or `zenify up`", n)
+			}
+			return true, "allow rules present"
+		},
+		Fix: func() (bool, string) {
+			h, err := home()
+			if err != nil {
+				return false, "cannot resolve HOME"
+			}
+			n, err := apply.EnsureKitPermissions(h, false)
+			if err != nil {
+				return false, err.Error()
+			}
+			return true, fmt.Sprintf("added %d kit allow rules", n)
+		},
+	}
+}
+
 // gitIdentityCheck reports whether git can author a commit. It asks git
 // itself (`git var GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT`, which fail
 // exactly when `git commit` would), so GIT_AUTHOR_* / GIT_COMMITTER_* env
@@ -249,6 +289,7 @@ func registerDefaultChecks() {
 	RegisterCheck(secretPresenceCheck(os.Getenv, workspaceSettingsPath))
 	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
 	RegisterCheck(playwrightCheck())
+	RegisterCheck(kitPermissionsCheck(os.UserHomeDir))
 	RegisterCheck(dockerCheck())
 	RegisterCheck(gitGuardCheck(os.UserHomeDir))
 	RegisterCheck(gitIdentityCheck())

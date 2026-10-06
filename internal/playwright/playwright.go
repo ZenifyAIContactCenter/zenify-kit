@@ -10,10 +10,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Options struct {
 	Runner func(name string, args []string) error
+	// Output runs a command and returns its stdout (used to read `claude mcp get`).
+	Output func(name string, args []string) ([]byte, error)
+	// Home is the user's home dir; the MCP output dir is derived from it.
+	Home   string
 	Getenv func(string) string
 	GOOS   string
 	Stdout io.Writer
@@ -42,42 +47,137 @@ func browsersDir(getenv func(string) string, goos string) string {
 	}
 }
 
-// Status reports whether the Playwright MCP is registered and whether browser
-// binaries are present — READ-ONLY, no browser is launched. Registration is
-// probed with `claude mcp get playwright` (exit 0 = present). Browser presence
-// is a directory existence + non-empty check.
-func Status(o Options) (mcpRegistered bool, browsersPresent bool, detail string) {
-	mcpRegistered = o.Runner("claude", []string{"mcp", "get", "playwright"}) == nil
+// DesiredArgs are the npx args the kit registers the Playwright MCP with.
+// --caps=storage enables browser_set_storage_state; the output dir keeps
+// artifacts under the kit's own home dir.
+func DesiredArgs(home string) []string {
+	return []string{"@playwright/mcp@latest", "--caps=storage", "--output-dir", filepath.Join(home, ".zenify", "playwright")}
+}
+
+// RegState classifies the current Playwright MCP registration.
+type RegState int
+
+const (
+	RegAbsent RegState = iota
+	RegLegacyDefault
+	RegCustom
+	RegDesired
+)
+
+func (s RegState) String() string {
+	return [...]string{"absent", "legacy-default", "custom", "desired"}[s]
+}
+
+// Registration parses `claude mcp get playwright`. A failing command is
+// RegAbsent; anything unparseable or differing from the two kit-written shapes
+// is RegCustom (never overwritten). The second result lists desired args that
+// the current registration lacks.
+func Registration(o Options) (RegState, []string) {
+	out, err := o.Output("claude", []string{"mcp", "get", "playwright"})
+	if err != nil {
+		return RegAbsent, nil
+	}
+	var cmd string
+	var args []string
+	var rawArgs, scope string
+	var haveCmd, haveArgs bool
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Command:"):
+			cmd, haveCmd = strings.TrimSpace(strings.TrimPrefix(line, "Command:")), true
+		case strings.HasPrefix(line, "Scope:"):
+			scope = strings.TrimSpace(strings.TrimPrefix(line, "Scope:"))
+		case strings.HasPrefix(line, "Args:"):
+			rawArgs = strings.TrimSpace(strings.TrimPrefix(line, "Args:"))
+			args, haveArgs = strings.Fields(rawArgs), true
+		}
+	}
+	want := DesiredArgs(o.Home)
+	var missing []string
+	for _, w := range want {
+		found := false
+		for _, a := range args {
+			if a == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missing = append(missing, w)
+		}
+	}
+	if !haveCmd || !haveArgs || cmd != "npx" || !strings.HasPrefix(scope, "User config") {
+		return RegCustom, missing
+	}
+	switch {
+	// Compare the raw remainder: a home dir with spaces would split into extra tokens.
+	case rawArgs == strings.Join(want, " "):
+		return RegDesired, nil
+	case rawArgs == want[0]:
+		return RegLegacyDefault, missing
+	}
+	return RegCustom, missing
+}
+
+// Status reports whether the Playwright MCP is registered as the kit wants it
+// and whether browser binaries are present — READ-ONLY, no browser is
+// launched. mcpOK is true only for RegDesired. Browser presence is a directory
+// existence + non-empty check.
+func Status(o Options) (mcpOK bool, browsersPresent bool, detail string) {
+	state, missing := Registration(o)
+	mcpOK = state == RegDesired
 	dir := browsersDir(o.Getenv, o.GOOS)
 	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
 		browsersPresent = true
 	}
-	reg, br := "absent", "absent"
-	if mcpRegistered {
-		reg = "registered"
-	}
+	br := "absent"
 	if browsersPresent {
 		br = "present"
 	}
-	return mcpRegistered, browsersPresent, fmt.Sprintf("mcp=%s browsers=%s", reg, br)
+	detail = fmt.Sprintf("mcp=%s browsers=%s", state, br)
+	if len(missing) > 0 {
+		detail += " missing=" + strings.Join(missing, ",")
+	}
+	return mcpOK, browsersPresent, detail
 }
 
-// Bootstrap registers the Playwright MCP (idempotently) and ensures chromium is
-// installed. Registration uses the grounded reference config: user scope, stdio
-// `npx @playwright/mcp@latest`. Callers decide whether a returned error is fatal
-// — in `zenify up` it is non-fatal (a warning).
+// Bootstrap registers the Playwright MCP and ensures chromium is installed.
+// Absent -> add; kit-written legacy default -> remove + add (claude mcp add
+// fails on an existing name); custom -> left untouched with a warning.
+// Callers decide whether a returned error is fatal — in `zenify up` it is
+// non-fatal (a warning).
 func Bootstrap(o Options) error {
 	note := func(format string, a ...any) {
 		if o.Stdout != nil {
 			_, _ = fmt.Fprintf(o.Stdout, format+"\n", a...)
 		}
 	}
-	if o.Runner("claude", []string{"mcp", "get", "playwright"}) != nil {
-		note("playwright: registering MCP server (user scope)")
-		if err := o.Runner("claude", []string{"mcp", "add", "playwright", "-s", "user", "--", "npx", "@playwright/mcp@latest"}); err != nil {
+	add := func() error {
+		cmd := append([]string{"mcp", "add", "playwright", "-s", "user", "--", "npx"}, DesiredArgs(o.Home)...)
+		if err := o.Runner("claude", cmd); err != nil {
 			return fmt.Errorf("register playwright MCP: %w", err)
 		}
-	} else {
+		return nil
+	}
+	state, missing := Registration(o)
+	switch state {
+	case RegAbsent:
+		note("playwright: registering MCP server (user scope)")
+		if err := add(); err != nil {
+			return err
+		}
+	case RegLegacyDefault:
+		note("playwright: migrating MCP registration to storage caps")
+		if err := o.Runner("claude", []string{"mcp", "remove", "playwright", "-s", "user"}); err != nil {
+			return fmt.Errorf("remove legacy playwright MCP: %w", err)
+		}
+		if err := add(); err != nil {
+			return err
+		}
+	case RegCustom:
+		note("playwright: custom MCP registration kept; missing args: %s", strings.Join(missing, " "))
+	default:
 		note("playwright: MCP server already registered")
 	}
 	note("playwright: ensuring chromium is installed")

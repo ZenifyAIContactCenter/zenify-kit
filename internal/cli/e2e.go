@@ -49,6 +49,45 @@ func runE2eRun(runner func(string, []string) error, goos, repo string, port int,
 	return nil
 }
 
+// newE2eLoginCmd logs in on the host (not Docker) and writes the Playwright storage state.
+func newE2eLoginCmd() *cobra.Command {
+	var url string
+	var port int
+	c := &cobra.Command{
+		Use:   "login",
+		Short: "Đăng nhập trên host, ghi storage state cho Playwright MCP (đọc E2E_* từ env)", //znf:allow-lang
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if (url == "") == (port == 0) { // port 0 = unset
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need exactly one of --url or --port"))
+			}
+			if port != 0 && (port < 1 || port > 65535) {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("--port must be 1..65535"))
+			}
+			if port != 0 {
+				url = fmt.Sprintf("http://localhost:%d", port)
+			}
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return exitcode.New(exitcode.Fail, err)
+			}
+			runner := func(dir, name string, args []string, extraEnv []string) error {
+				cc := exec.Command(name, args...) //nolint:gosec // G204 -- fixed npm/npx; args computed
+				cc.Dir = dir
+				cc.Env = append(os.Environ(), extraEnv...)
+				cc.Stdout = os.Stderr
+				cc.Stderr = os.Stderr
+				return cc.Run()
+			}
+			_, err = e2e.Login(e2e.LoginOptions{Home: home, BaseURL: url, Getenv: os.Getenv,
+				Run: runner, Stdout: cmd.OutOrStdout()})
+			return err
+		},
+	}
+	c.Flags().StringVar(&url, "url", "", "origin của web app (vd http://localhost:3327)") //znf:allow-lang
+	c.Flags().IntVar(&port, "port", 0, "port web app trên localhost")                     //znf:allow-lang
+	return c
+}
+
 func newE2eCmd() *cobra.Command {
 	var repo string
 	var port int
@@ -94,6 +133,6 @@ func newE2eCmd() *cobra.Command {
 	run.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")  //znf:allow-lang
 	run.Flags().IntVar(&port, "port", 0, "port dev-server trên host")            //znf:allow-lang
 	lint.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)") //znf:allow-lang
-	c.AddCommand(run, lint)
+	c.AddCommand(run, lint, newE2eLoginCmd())
 	return c
 }

@@ -57,3 +57,13 @@ func readFile(t *testing.T, p string) string {
 	}
 	return string(b)
 }
+
+func TestHarness_AuthSetupAssertsLeftLogin(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteHarness(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(readFile(t, filepath.Join(dir, "auth.setup.ts")), "not.toHaveURL") {
+		t.Fatal("auth.setup.ts must assert it left /login")
+	}
+}

@@ -13,4 +13,4 @@ Một câu trả lời PASS, FAIL, BLOCKED, hoặc PARTIAL cho từng phần đ�
 
 ## Lưu ý
 
-Trình duyệt Playwright là một instance dùng chung duy nhất, nên không được chạy hai agent lái trình duyệt cùng lúc, và phiên chính không được tự thao tác Playwright trong lúc agent này đang chạy. Nếu app cần đăng nhập mà không có thông tin đăng nhập, agent báo BLOCKED thay vì đoán.
+Trình duyệt Playwright là một instance dùng chung duy nhất, nên không được chạy hai agent lái trình duyệt cùng lúc, và phiên chính không được tự thao tác Playwright trong lúc agent này đang chạy. Agent tự đăng nhập: chạy `zenify e2e login --url <app>` (đọc `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` từ môi trường), nạp `~/.zenify/playwright/state.json` bằng `browser_set_storage_state`, rồi mới điều hướng. Phiên chính không đăng nhập trình duyệt. Nếu login thất bại hoặc thiếu biến, agent báo BLOCKED thay vì đoán.

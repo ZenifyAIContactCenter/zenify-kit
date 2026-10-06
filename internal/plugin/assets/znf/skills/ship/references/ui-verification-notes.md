@@ -60,14 +60,12 @@ Two things this avoids, both of which have actually happened: a verifier stallin
 it could not authenticate, and a verifier being handed an *old* session whose screens are empty by
 design, so the check verified nothing.
 
-The mechanics: neither verifier gets past a login — they have the eight ordinary browser tools and
-**not** `browser_run_code_unsafe`, and their attempt to read credentials is classifier-blocked. So the
-main session logs in itself — `browser_snapshot` for the refs, then `browser_type` into the fields and
-`browser_click` the button, values read from the workspace `settings.local.json` — and only then
-dispatches the verifier onto the already-authenticated browser. If a `browser_type` carrying a password
-is refused once with *"Stage 2 classifier error — usually transient, retrying often succeeds"*, that
-means what it says: retry, do not start building a way around it. Tell the verifier **not** to clear
-`localStorage` or cookies — one logged itself out mid-run.
+The mechanics: the verifier logs itself in. Before its first navigate it runs
+`zenify e2e login --url <app base URL>` via Bash and calls `browser_set_storage_state` with the path
+that prints — nobody types a password through a tool call, which the classifier blocks. If the command
+fails or is missing, the verifier reports BLOCKED with its message. The main session only passes the
+web URL and does not touch the browser to log in. Tell the verifier **not** to clear `localStorage`
+or cookies — one logged itself out mid-run.
 
 Snapshots, console dumps and screenshots are the largest volume any step here produces, and it returns
 a verdict plus evidence instead.

@@ -1,4 +1,4 @@
-import { test as setup } from '@playwright/test';
+import { test as setup, expect } from '@playwright/test';
 
 const STORAGE = process.env.STORAGE_STATE || '/tmp/znf-visual-storage.json';
 
@@ -18,5 +18,6 @@ setup('authenticate', async ({ page }) => {
   await page.fill('input[name="password"]', process.env.E2E_PASSWORD!);
   await page.press('input[name="password"]', 'Enter');
   await page.waitForLoadState('networkidle');
+  await expect(page).not.toHaveURL(/\/login(\?|$)/);
   await page.context().storageState({ path: STORAGE });
 });

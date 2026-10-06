@@ -80,6 +80,13 @@ func newDownCmd() *cobra.Command {
 				case removedStrong:
 					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.StrongModelEnv)) //znf:allow-lang
 				}
+				removedPerms, perr := apply.RemoveKitPermissions(home, dryRun)
+				switch {
+				case perr != nil:
+					u.Step(ui.StatusWarn, "permissions", fmt.Sprintf("bỏ qua (%v)", perr)) //znf:allow-lang
+				case removedPerms > 0:
+					u.Step(ui.StatusOK, "permissions", fmt.Sprintf("gỡ %d rule allow của kit khỏi ~/.claude/settings.json", removedPerms)) //znf:allow-lang
+				}
 			}
 
 			// 2 + 3. Each repo: exclude line + owned settings skeleton.

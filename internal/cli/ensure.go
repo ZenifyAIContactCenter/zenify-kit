@@ -69,6 +69,12 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) {
 			apply.StrongModelEnv, apply.StrongModelDefault)
 	}
 
+	if n, err := apply.EnsureKitPermissions(home, false); err != nil {
+		fmt.Fprintln(stderr, "znf ensure: permissions:", err)
+	} else if n > 0 {
+		fmt.Fprintf(stdout, "allowed %d kit tool rules in ~/.claude/settings.json\n", n)
+	}
+
 	// runConfig prints its whole plan to stdout; ensure only wants the count
 	// plus the CREATE/UPDATE lines (so the overwrite is visible in the
 	// session's additional context — see final-review.md Important #2), and

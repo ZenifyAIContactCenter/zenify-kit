@@ -40,3 +40,27 @@ func TestRunE2eLint_Clean_OK(t *testing.T) {
 		t.Fatalf("clean spec should be OK, got %v", err)
 	}
 }
+
+func TestE2eLogin_NeedsExactlyOneOfUrlPort(t *testing.T) {
+	for _, args := range [][]string{{"login"}, {"login", "--url", "x", "--port", "1"}} {
+		c := newE2eCmd()
+		c.SetArgs(args)
+		c.SetOut(&bytes.Buffer{})
+		c.SetErr(&bytes.Buffer{})
+		if err := c.Execute(); exitcode.Code(err) != exitcode.BadArgs {
+			t.Fatalf("%v: want BadArgs, got %v", args, err)
+		}
+	}
+}
+
+func TestE2eLogin_PortOutOfRange(t *testing.T) {
+	for _, p := range []string{"-1", "70000"} {
+		c := newE2eCmd()
+		c.SetArgs([]string{"login", "--port", p})
+		c.SetOut(&bytes.Buffer{})
+		c.SetErr(&bytes.Buffer{})
+		if err := c.Execute(); exitcode.Code(err) != exitcode.BadArgs {
+			t.Fatalf("--port %s: want BadArgs, got %v", p, err)
+		}
+	}
+}

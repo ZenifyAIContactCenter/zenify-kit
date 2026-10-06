@@ -43,7 +43,7 @@ flowchart TD
 
 ## Agent ui-verifier làm gì
 
-Bạn đăng nhập trình duyệt Playwright một lần trong phiên chính, rồi ship giao trình duyệt đã đăng nhập cho agent. Agent không xóa cookie hay localStorage, nên không cần đăng nhập lại.
+Agent tự đăng nhập, bạn không gõ mật khẩu vào trình duyệt. Trước khi mở màn hình, agent chạy `zenify e2e login --url <app>` trên máy bạn. Lệnh này đăng nhập bằng `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong môi trường và ghi `~/.zenify/playwright/state.json`. Agent nạp file đó vào trình duyệt bằng `browser_set_storage_state`, rồi mới điều hướng. Mỗi lần verify đăng nhập mới, nên không dùng lại phiên cũ. Phiên chính không đăng nhập trình duyệt và không gõ mật khẩu. Sau `zenify up`, các lệnh này chạy không hỏi quyền.
 
 Agent làm bốn việc trên phần tử bạn vừa đổi:
 
@@ -126,7 +126,7 @@ Task chỉ ghi "test màn tạo ticket" không đủ. Skill sẽ hỏi lại th�
 | `need --port` | Lệnh không tự biết port dev server | Lấy port bằng `git config --get wt.port` trong worktree |
 | `repo has no visual config` | Thiếu `.znf/visual/routes.json` | Tạo file với ít nhất một route, chạy `--update` để có baseline |
 | `docker daemon not running` | Docker Desktop chưa bật | Bật Docker rồi chạy lại. `zenify doctor` kiểm tra môi trường |
-| ui-verifier trả BLOCKED | Chưa đăng nhập, hoặc dev server chưa chạy | Đăng nhập trình duyệt trong phiên chính, kiểm tra dev server bằng `/znf:run` |
+| ui-verifier trả BLOCKED | `zenify e2e login` thất bại (thiếu `E2E_*`, sai tài khoản), hoặc dev server chưa chạy | Kiểm tra ba biến `E2E_*` trong `settings.local.json`, kiểm tra dev server bằng `/znf:run`, rồi chạy `zenify doctor` |
 | Lint báo thiếu `@domain-assert` | Journey chỉ assert trên màn hình | Thêm re-fetch qua API và expect trên field thật |
 | Lệch ảnh ở badge hoặc đồng hồ | Vùng động chưa che | Thêm selector vào `mask` của route |
 

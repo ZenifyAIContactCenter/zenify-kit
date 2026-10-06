@@ -286,14 +286,20 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	// (FR-014). NON-FATAL: a failure warns but does not fail onboarding or the
 	// failed-count return — mirrors the gh-scope warning.
 	if hasFrontendRepo(m) {
-		po := playwright.Options{
-			Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() }, //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
-			Getenv: os.Getenv,
-			GOOS:   runtime.GOOS,
-			Stdout: w,
-		}
-		if err := playwright.Bootstrap(po); err != nil {
-			_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
+		if home, herr := os.UserHomeDir(); herr != nil || home == "" {
+			_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: cannot resolve home: %v\n", herr)
+		} else {
+			po := playwright.Options{
+				Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() },              //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+				Output: func(name string, args []string) ([]byte, error) { return exec.Command(name, args...).Output() }, //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
+				Home:   home,
+				Getenv: os.Getenv,
+				GOOS:   runtime.GOOS,
+				Stdout: w,
+			}
+			if err := playwright.Bootstrap(po); err != nil {
+				_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
+			}
 		}
 	}
 
