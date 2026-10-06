@@ -180,6 +180,39 @@ func dockerCheckWith(lookPath func(string) (string, error), info func() error) C
 	}
 }
 
+// gitGuardCheck reports whether the git-guard PreToolUse hook is wired in
+// ~/.claude/settings.json. Fix installs it (the same idempotent edit as
+// `zenify guard install`).
+func gitGuardCheck(home func() (string, error)) Check {
+	return Check{
+		Name: "git-guard",
+		Run: func() (bool, string) {
+			h, err := home()
+			if err != nil {
+				return false, "cannot resolve HOME"
+			}
+			ok, err := guardInstalled(h)
+			if err != nil {
+				return false, fmt.Sprintf("settings.json unreadable: %v", err)
+			}
+			if !ok {
+				return false, "hook=missing — commit/push to deploy branches is NOT blocked; run `zenify doctor --fix` or `zenify guard install`"
+			}
+			return true, "hook=installed"
+		},
+		Fix: func() (bool, string) {
+			h, err := home()
+			if err != nil {
+				return false, "cannot resolve HOME"
+			}
+			if _, err := installGuard(h); err != nil {
+				return false, err.Error()
+			}
+			return true, "wired PreToolUse → zenify git-guard"
+		},
+	}
+}
+
 // registerDefaultChecks wires the foundation-layer checks. Called once at root
 // construction. Uses os.Getenv and the workspace default settings path.
 func registerDefaultChecks() {
@@ -187,5 +220,6 @@ func registerDefaultChecks() {
 	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
 	RegisterCheck(playwrightCheck())
 	RegisterCheck(dockerCheck())
+	RegisterCheck(gitGuardCheck(os.UserHomeDir))
 	RegisterCheck(pluginCheck())
 }

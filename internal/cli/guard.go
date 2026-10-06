@@ -119,6 +119,50 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
+// installGuard wires the git-guard hook into <home>/.claude/settings.json.
+// Shared by `guard install`, ensureWorkspace (up + SessionStart) and the
+// doctor git-guard Fix. changed=false when the hook is already present.
+func installGuard(home string) (bool, error) {
+	path := guardSettingsPath(home)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
+	if err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("guard install: reading %s: %w", path, err)
+	}
+	out, changed, err := ensureGuardHook(raw)
+	if err != nil || !changed {
+		return false, err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return false, fmt.Errorf("guard install: creating directory %s: %w", filepath.Dir(path), err)
+	}
+	perm := os.FileMode(0o644)
+	if fi, statErr := os.Stat(path); statErr == nil {
+		perm = fi.Mode().Perm()
+	}
+	if err := writeFileAtomic(path, out, perm); err != nil {
+		return false, fmt.Errorf("guard install: writing %s: %w", path, err)
+	}
+	return true, nil
+}
+
+// guardInstalled reports whether settings.json already runs `zenify git-guard`
+// as a PreToolUse hook. Read-only; for the doctor check.
+func guardInstalled(home string) (bool, error) {
+	raw, err := os.ReadFile(guardSettingsPath(home)) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	_, changed, err := ensureGuardHook(raw)
+	return err == nil && !changed, err
+}
+
+func guardSettingsPath(home string) string {
+	return filepath.Join(home, ".claude", "settings.json")
+}
+
 func newGuardCmd() *cobra.Command {
 	c := &cobra.Command{Use: "guard", Short: "Quản lý git-guard hook"} //znf:allow-lang
 	install := &cobra.Command{
@@ -130,31 +174,16 @@ func newGuardCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("guard install: could not determine HOME: %w", err)
 			}
-			path := filepath.Join(home, ".claude", "settings.json")
-			raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
-			if err != nil && !os.IsNotExist(err) {
-				return fmt.Errorf("guard install: reading %s: %w", path, err)
-			}
-			out, changed, err := ensureGuardHook(raw)
+			changed, err := installGuard(home)
 			if err != nil {
 				return err
 			}
 			u := uiOut(cmd)
 			if !changed {
-				u.Step(ui.StatusOK, "guard install: đã cấu hình sẵn (idempotent).", "") //znf:allow-lang
+				u.Step(ui.StatusOK, "guard install: already configured (idempotent).", "")
 				return nil
 			}
-			if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-				return fmt.Errorf("guard install: creating directory %s: %w", filepath.Dir(path), err)
-			}
-			perm := os.FileMode(0o644)
-			if fi, statErr := os.Stat(path); statErr == nil {
-				perm = fi.Mode().Perm()
-			}
-			if err := writeFileAtomic(path, out, perm); err != nil {
-				return fmt.Errorf("guard install: writing %s: %w", path, err)
-			}
-			u.Step(ui.StatusOK, "guard install: đã trỏ PreToolUse → zenify git-guard.", "") //znf:allow-lang
+			u.Step(ui.StatusOK, "guard install: wired PreToolUse → zenify git-guard.", "")
 			return nil
 		},
 	}

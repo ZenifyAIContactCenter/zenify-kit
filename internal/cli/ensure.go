@@ -40,6 +40,15 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) {
 		fmt.Fprintf(stdout, "wired %d znf hooks\n", n)
 	}
 
+	// git-guard is a separate hook from the znf set above (it predates it and
+	// `guard install` owns it), so it is wired here too — otherwise `up`
+	// never installs it and deploy branches are unguarded on every machine.
+	if changed, err := installGuard(home); err != nil {
+		fmt.Fprintln(stderr, "znf ensure: git-guard:", err)
+	} else if changed {
+		fmt.Fprintln(stdout, "wired git-guard hook (blocks commit/push on deploy branches)")
+	}
+
 	if changed, err := apply.EnsureWorkspaceModel(workspace, false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: model:", err)
 	} else if changed {
