@@ -71,10 +71,8 @@ behavioural change inline with no independent review of the implementation.
 ### From § Step 6: this step vs /ship step 4
 Here the question is narrow: *did the bug go away*. `/ship` step 4 is the authoritative pass at the
 final fingerprint, after any review fix, and it is the only place a UI verifier agent is dispatched.
-If the bug was visual, looking at it in the browser here also leaves the browser **logged in**,
-which `/ship` step 4 then inherits: neither verifier agent can authenticate itself. What you do
-**not** do here is the objective layout measurement or the screenshot audit — that is the agent's
-job at step 4, and duplicating it costs a second login handoff for no new information.
+What you do **not** do here is the objective layout measurement or the screenshot audit — that is
+the agent's job at step 4, and duplicating it gains nothing.
 
 ### From § Step 6: the five clean checks that were wrong
 In one session, five separate checks reported clean and the clean was wrong: `grep -R` missed
