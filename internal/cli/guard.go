@@ -216,6 +216,89 @@ func guardInstalled(home string) (bool, error) {
 	return false, nil
 }
 
+// removeGuard unwires the git-guard hook (and any legacy guard script) from
+// <home>/.claude/settings.json — the inverse of installGuard, used by
+// `zenify down`. Same preservation rules as ensureGuardHook. With dryRun it
+// only reports whether there is something to remove.
+func removeGuard(home string, dryRun bool) (bool, error) {
+	path := guardSettingsPath(home)
+	raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("guard remove: reading %s: %w", path, err)
+	}
+	root := map[string]json.RawMessage{}
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return false, fmt.Errorf("guard remove: could not parse settings.json: %w", err)
+	}
+	h, ok := root["hooks"]
+	if !ok {
+		return false, nil
+	}
+	hooks := map[string]any{}
+	if err := json.Unmarshal(h, &hooks); err != nil || hooks == nil {
+		return false, fmt.Errorf("guard remove: settings.json \"hooks\" is not an object, not touching it")
+	}
+	pre, isArr := hooks["PreToolUse"].([]any)
+	if !isArr {
+		return false, nil
+	}
+
+	removed := false
+	newPre := make([]any, 0, len(pre))
+	for _, e := range pre {
+		entry, _ := e.(map[string]any)
+		if entry == nil {
+			newPre = append(newPre, e)
+			continue
+		}
+		hs, _ := entry["hooks"].([]any)
+		newHs := make([]any, 0, len(hs))
+		for _, x := range hs {
+			hm, _ := x.(map[string]any)
+			cmd, _ := hm["command"].(string)
+			if cmd == guardCommand || strings.Contains(cmd, legacyGuard) {
+				removed = true
+				continue
+			}
+			newHs = append(newHs, x)
+		}
+		if len(newHs) == 0 && len(hs) > 0 {
+			continue // the entry held only guard hooks — drop it, not an empty matcher
+		}
+		entry["hooks"] = newHs
+		newPre = append(newPre, entry)
+	}
+	if !removed || dryRun {
+		return removed, nil
+	}
+	if len(newPre) == 0 {
+		delete(hooks, "PreToolUse")
+	} else {
+		hooks["PreToolUse"] = newPre
+	}
+
+	hooksOut, err := marshalSettings(hooks)
+	if err != nil {
+		return false, err
+	}
+	root["hooks"] = json.RawMessage(bytes.TrimSpace(hooksOut))
+	out, err := marshalSettings(root)
+	if err != nil {
+		return false, err
+	}
+	perm := os.FileMode(0o644)
+	if fi, statErr := os.Stat(path); statErr == nil {
+		perm = fi.Mode().Perm()
+	}
+	if err := writeFileAtomic(path, out, perm); err != nil {
+		return false, fmt.Errorf("guard remove: writing %s: %w", path, err)
+	}
+	return true, nil
+}
+
 func guardSettingsPath(home string) string {
 	return filepath.Join(home, ".claude", "settings.json")
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -330,5 +331,46 @@ func TestGuardInstalledWithLegacySibling(t *testing.T) {
 	_ = os.WriteFile(p, []byte(`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash guard-git-deploy.sh"},{"type":"command","command":"zenify git-guard"}]}]}}`), 0o644)
 	if ok, err := guardInstalled(home); err != nil || !ok {
 		t.Fatalf("want installed=true, got %v err=%v", ok, err)
+	}
+}
+
+// removeGuard is the inverse of installGuard: it drops the guard (and a
+// legacy guard) but keeps sibling hooks and foreign settings; dryRun writes
+// nothing.
+func TestRemoveGuard_KeepsSiblingsAndDryRunWritesNothing(t *testing.T) {
+	home := t.TempDir()
+	p := filepath.Join(home, ".claude", "settings.json")
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	body := []byte(`{"permissions":{"zeta":1,"alpha":2},"hooks":{"PreToolUse":[` +
+		`{"matcher":"Bash","hooks":[{"type":"command","command":"zenify git-guard"}]},` +
+		`{"matcher":"Read","hooks":[{"type":"command","command":"zenify hooks-run read-guard"},{"type":"command","command":"bash guard-git-deploy.sh"}]}]}}`)
+	_ = os.WriteFile(p, body, 0o644)
+
+	if removed, err := removeGuard(home, true); err != nil || !removed {
+		t.Fatalf("dry-run: want removed=true, got %v err=%v", removed, err)
+	}
+	if b, _ := os.ReadFile(p); !bytes.Equal(b, body) { //nolint:gosec // G304 -- test-local path under t.TempDir
+		t.Fatal("dry-run must not write")
+	}
+
+	if removed, err := removeGuard(home, false); err != nil || !removed {
+		t.Fatalf("apply: want removed=true, got %v err=%v", removed, err)
+	}
+	b, _ := os.ReadFile(p) //nolint:gosec // G304 -- test-local path under t.TempDir
+	s := string(b)
+	if strings.Contains(s, guardCommand) || strings.Contains(s, legacyGuard) {
+		t.Errorf("guard hooks still present:\n%s", s)
+	}
+	if !strings.Contains(s, "zenify hooks-run read-guard") {
+		t.Errorf("sibling read-guard hook was dropped:\n%s", s)
+	}
+	if z, a := strings.Index(s, `"zeta"`), strings.Index(s, `"alpha"`); z < 0 || z > a {
+		t.Errorf("foreign permissions reordered:\n%s", s)
+	}
+	if ok, _ := guardInstalled(home); ok {
+		t.Error("guardInstalled must be false after removeGuard")
+	}
+	if removed, err := removeGuard(home, false); err != nil || removed {
+		t.Fatalf("second remove: want removed=false, got %v err=%v", removed, err)
 	}
 }
