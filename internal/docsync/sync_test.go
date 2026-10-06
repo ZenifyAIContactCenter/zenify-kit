@@ -1,6 +1,7 @@
 package docsync
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -122,5 +123,18 @@ func TestSync_StatusFailOpen(t *testing.T) {
 	}
 	if ran(f.calls, "commit") || ran(f.calls, "push") {
 		t.Fatalf("status error must not commit/push; calls=%v", f.calls)
+	}
+}
+
+// A git failure must surface git's stderr, not just "exit status N" — that
+// opaque form hid "Author identity unknown" from users.
+func TestGitErr_IncludesStderr(t *testing.T) {
+	_, err := exec.Command("git", "-C", t.TempDir(), "status").Output() // not a repo → exit 128
+	if err == nil {
+		t.Skip("expected git to fail outside a repo")
+	}
+	got := gitErr(err)
+	if !strings.Contains(got, "exit status") || !strings.Contains(got, "not a git repository") {
+		t.Fatalf("gitErr should carry git stderr, got %q", got)
 	}
 }

@@ -4,7 +4,9 @@
 package docsync
 
 import (
+	"errors"
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -36,7 +38,7 @@ import (
 func Sync(r gitx.Runner, dir string) []string {
 	st, err := r.Run(dir, "status", "--porcelain")
 	if err != nil {
-		return note(fmt.Sprintf("docs sync: status error: %v (fail-open)", err))
+		return note(fmt.Sprintf("docs sync: status error: %s (fail-open)", gitErr(err)))
 	}
 	if strings.TrimSpace(string(st)) == "" {
 		// Nothing to commit — but there may still be an unpushed local commit.
@@ -46,11 +48,11 @@ func Sync(r gitx.Runner, dir string) []string {
 		return pushPending(r, dir) // commit stuck from before → push it through
 	}
 	if _, err := r.Run(dir, "add", "-A"); err != nil {
-		return note(fmt.Sprintf("docs sync: add error: %v (fail-open)", err))
+		return note(fmt.Sprintf("docs sync: add error: %s (fail-open)", gitErr(err)))
 	}
 	msg := "chore(docs): sync " + time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	if _, err := r.Run(dir, "commit", "-m", msg); err != nil {
-		return note(fmt.Sprintf("docs sync: commit error: %v (fail-open)", err))
+		return note(fmt.Sprintf("docs sync: commit error: %s (fail-open)", gitErr(err)))
 	}
 	return pushPending(r, dir)
 }
@@ -80,12 +82,25 @@ func pushPending(r gitx.Runner, dir string) []string {
 		// Most likely a rebase conflict. Do NOT commit over the marker: abort
 		// to return to our commit (safe, unpushed), report it and skip this sync.
 		_, _ = r.Run(dir, "rebase", "--abort")
-		return note(fmt.Sprintf("docs sync: pull/rebase error: %v — aborted, local commit kept intact (not pushed). Skipping this sync (fail-open)", err))
+		return note(fmt.Sprintf("docs sync: pull/rebase error: %s — aborted, local commit kept intact (not pushed). Skipping this sync (fail-open)", gitErr(err)))
 	}
 	if _, err := r.Run(dir, "push"); err != nil {
-		return note(fmt.Sprintf("docs sync: push error: %v (fail-open, local commit kept intact)", err))
+		return note(fmt.Sprintf("docs sync: push error: %s (fail-open, local commit kept intact)", gitErr(err)))
 	}
 	return note("docs sync: pushed")
 }
 
 func note(s string) []string { return []string{s} }
+
+// gitErr renders a git failure WITH git's own stderr. exec.ExitError's
+// Error() is only "exit status N", which hides the actual reason (e.g.
+// "Author identity unknown" on a machine with no user.email).
+func gitErr(err error) string {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if msg := strings.TrimSpace(string(ee.Stderr)); msg != "" {
+			return fmt.Sprintf("%v: %s", err, strings.Join(strings.Fields(msg), " "))
+		}
+	}
+	return err.Error()
+}
