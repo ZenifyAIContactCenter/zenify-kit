@@ -20,7 +20,7 @@ Khi bạn muốn xem repo đang khai base ref, dải port và cách seed deps n�
 
 ## Kết quả
 
-Không có cờ, lệnh in từng trường một dòng: `abbrev`, `baseRef`, `worktreeDir`, `portEnv`, `portRange`, `deps`, `user`.
+Không có cờ, lệnh in từng trường một dòng: `abbrev`, `baseRef`, `worktreeDir`, `portEnv`, `portRange`, `deps`, `user`. `user` là tên đã resolve cho máy đang chạy, chính là phần `<user>` trong tên branch mà `zenify wt new` sẽ tạo.
 
 Với `--port <key>`, lệnh chỉ in số port sẽ cấp cho key đó trong dải của repo, bỏ qua các port đang có worktree giữ. Key thường là slug của task.
 

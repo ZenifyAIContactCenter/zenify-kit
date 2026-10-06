@@ -22,6 +22,8 @@ Trước lần sửa code đầu tiên của một task. Mọi thay đổi code 
 
 Lệnh tạo worktree trong `.worktrees/<slug>`, checkout branch `<user>/<type>/<slug>` từ base ref đã khai trong `.claude/worktree.json`, cấp một port trong dải của repo, copy các file khai ở `copy` và cài deps theo `deps`. Lệnh in đường dẫn worktree và port.
 
+`<user>` lấy theo thứ tự: trường `user` trong `worktree.json` nếu repo có khai, rồi phần trước `@` của `git config user.email` (`an.nguyen@example.com` thành `an.nguyen`), rồi biến môi trường `$USER`.
+
 ## Cờ
 
 | Cờ | Ý nghĩa |

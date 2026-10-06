@@ -20,7 +20,7 @@ Ngay sau `zenify up`, và mỗi khi một skill báo thiếu tool, thiếu secre
 
 ## Kết quả
 
-Mỗi dòng là một mục kiểm tra kèm dấu đạt hoặc hỏng và chi tiết. Các mục gồm phiên bản binary, đăng nhập git và quyền truy cập GitHub, secret trong `settings.local.json`, tool bên ngoài (`git`, `gh`, `mongosh`, `mysql`), Playwright, Docker, hook `git-guard` và plugin skill `znf`. Mục hỏng in luôn chi tiết để bạn sửa. Mục `git-guard` hỏng thì `--fix` tự gắn lại hook.
+Mỗi dòng là một mục kiểm tra kèm dấu đạt hoặc hỏng và chi tiết. Các mục gồm phiên bản binary, đăng nhập git và quyền truy cập GitHub, danh tính commit của git (`user.name`, `user.email`), secret trong `settings.local.json`, tool bên ngoài (`git`, `gh`, `mongosh`, `mysql`), Playwright, Docker, hook `git-guard` và plugin skill `znf`. Mục hỏng in luôn chi tiết để bạn sửa. Mục `git-guard` hỏng thì `--fix` tự gắn lại hook.
 
 ## Cờ
 

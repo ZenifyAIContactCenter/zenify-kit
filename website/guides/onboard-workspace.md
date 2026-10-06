@@ -60,7 +60,7 @@ zenify down --apply
 
 ### `zenify doctor`
 
-Kiểm tra sức khỏe môi trường và báo từng mục đạt hay hỏng: phiên bản binary, đăng nhập git và quyền GitHub, secret trong `settings.local.json`, tool bên ngoài (`git`, `gh`, `mongosh`, `mysql`), Playwright, Docker và plugin skill `znf`. Chạy ngay sau `zenify up`, và mỗi khi một skill báo thiếu tool hoặc thiếu secret. Lệnh chỉ đọc, chạy bao nhiêu lần cũng được.
+Kiểm tra sức khỏe môi trường và báo từng mục đạt hay hỏng: phiên bản binary, đăng nhập git và quyền GitHub, danh tính commit của git (`user.name`, `user.email`), secret trong `settings.local.json`, tool bên ngoài (`git`, `gh`, `mongosh`, `mysql`), Playwright, Docker và plugin skill `znf`. Chạy ngay sau `zenify up`, và mỗi khi một skill báo thiếu tool hoặc thiếu secret. Lệnh chỉ đọc, chạy bao nhiêu lần cũng được.
 
 ```bash
 zenify doctor
