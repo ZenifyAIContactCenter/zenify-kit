@@ -48,10 +48,12 @@ func browsersDir(getenv func(string) string, goos string) string {
 }
 
 // DesiredArgs are the npx args the kit registers the Playwright MCP with.
+// --isolated keeps the profile in memory so concurrent sessions do not fight
+// over one persistent profile (login comes from the state file each verify);
 // --caps=storage enables browser_set_storage_state; the output dir keeps
 // artifacts under the kit's own home dir.
 func DesiredArgs(home string) []string {
-	return []string{"@playwright/mcp@latest", "--caps=storage", "--output-dir", filepath.Join(home, ".zenify", "playwright")}
+	return []string{"@playwright/mcp@latest", "--isolated", "--caps=storage", "--output-dir", filepath.Join(home, ".zenify", "playwright")}
 }
 
 // RegState classifies the current Playwright MCP registration.

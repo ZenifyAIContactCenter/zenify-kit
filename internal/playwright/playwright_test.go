@@ -99,7 +99,7 @@ func desiredOut(home string) string {
 
 func TestDesiredArgs(t *testing.T) {
 	got := DesiredArgs("/h")
-	want := []string{"@playwright/mcp@latest", "--caps=storage", "--output-dir", filepath.Join("/h", ".zenify", "playwright")}
+	want := []string{"@playwright/mcp@latest", "--isolated", "--caps=storage", "--output-dir", filepath.Join("/h", ".zenify", "playwright")}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("got %v want %v", got, want)
 	}
@@ -176,7 +176,7 @@ func TestBootstrapMigration(t *testing.T) {
 
 func TestRegistrationMissingArgs(t *testing.T) {
 	st, missing := Registration(Options{Output: getOutput(mcpOut("  Args: @playwright/mcp@latest --headless\n")), Home: "/h"})
-	if st != RegCustom || len(missing) != 3 || missing[0] != "--caps=storage" {
+	if st != RegCustom || len(missing) != 4 || missing[0] != "--isolated" {
 		t.Fatalf("got %v %v", st, missing)
 	}
 }
