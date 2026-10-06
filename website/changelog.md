@@ -8,6 +8,19 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.29.1
+
+*2026-10-06*
+
+- `zenify up` tự cài hook `git-guard`. Mỗi lần mở session cũng tự cài lại nếu thiếu. Trước đây `up` không cài guard, nên máy nào chưa tự chạy `zenify guard install` thì agent commit/push vào branch deploy mà không bị chặn. Máy đang thiếu guard sẽ tự có ở session đầu tiên sau khi cập nhật bản này.
+- `zenify doctor` có hai check mới:
+  - `git-guard`: báo khi thiếu hook. `zenify doctor --fix` tự gắn lại. Đây là check đầu tiên `--fix` thật sự sửa được.
+  - `git-identity`: báo khi git không commit được vì thiếu `user.name`/`user.email`. Thiếu identity thì `zenify docs sync` không commit được và knowledge store ngừng đồng bộ.
+- `zenify down` gỡ cả hook `git-guard`.
+- `zenify guard install` (và việc tự cài ở trên) giữ nguyên phần còn lại của `~/.claude/settings.json`: không đổi thứ tự key, không escape `&&`, và không ghi đè khi `hooks` có kiểu lạ.
+- `zenify docs sync` báo lý do thật khi git lỗi, thay vì chỉ `exit status 128`. Ví dụ: `commit error: exit status 128: Author identity unknown … fatal: unable to auto-detect email address`.
+- `zenify wt new` đặt tên branch theo người đang chạy: phần trước `@` trong `git config user.email`, rồi `$USER` (Windows: `$USERNAME`), thay vì luôn là `namph/...`. Ký tự không hợp lệ trong tên branch được thay bằng `-`. `zenify wt config` in đúng giá trị này ở dòng `user`.
+
 ## v0.29.0
 
 *2026-09-29*
