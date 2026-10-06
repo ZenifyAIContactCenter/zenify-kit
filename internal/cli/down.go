@@ -87,6 +87,13 @@ func newDownCmd() *cobra.Command {
 				case removedPerms > 0:
 					u.Step(ui.StatusOK, "permissions", fmt.Sprintf("gỡ %d rule allow của kit khỏi ~/.claude/settings.json", removedPerms)) //znf:allow-lang
 				}
+				removedSbx, sberr := apply.RemoveKitSandbox(home, dryRun)
+				switch {
+				case sberr != nil:
+					u.Step(ui.StatusWarn, "sandbox", fmt.Sprintf("bỏ qua (%v)", sberr)) //znf:allow-lang
+				case removedSbx > 0:
+					u.Step(ui.StatusOK, "sandbox", fmt.Sprintf("gỡ %d lệnh kit khỏi sandbox.excludedCommands", removedSbx)) //znf:allow-lang
+				}
 			}
 
 			// 2 + 3. Each repo: exclude line + owned settings skeleton.

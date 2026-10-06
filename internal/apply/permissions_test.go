@@ -182,7 +182,7 @@ func TestEnsureKitPermissions_RespectsUserRemoval(t *testing.T) {
 	if !reflect.DeepEqual(got, kept) {
 		t.Fatalf("allow changed: %v", got)
 	}
-	rec, err := readRecord(home)
+	rec, err := allowList.readRecord(home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,5 +232,54 @@ func TestEnsureKitPermissions_SettingsWriteFailureRestoresRecord(t *testing.T) {
 		} else if !os.IsNotExist(rerr) {
 			t.Fatalf("record should be absent, got %q %v", got, rerr)
 		}
+	}
+}
+
+func TestKitSandbox_UnionKeepsSandboxThenRemovesOnlyKit(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{"sandbox":{"enabled":true,"excludedCommands":["git *","zenify e2e *"]}}`)
+	added, err := EnsureKitSandbox(home, false)
+	if err != nil || added != len(KitSandboxExcluded)-1 {
+		t.Fatalf("added=%d err=%v", added, err)
+	}
+	raw, _ := os.ReadFile(settingsPath(home))
+	var doc struct {
+		Sandbox struct {
+			Enabled  bool     `json:"enabled"`
+			Excluded []string `json:"excludedCommands"`
+		} `json:"sandbox"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"git *", "zenify e2e *", "zenify visual *", "zenify ui-verify *"}
+	if !doc.Sandbox.Enabled || !reflect.DeepEqual(doc.Sandbox.Excluded, want) {
+		t.Fatalf("sandbox=%+v", doc.Sandbox)
+	}
+	if _, err := os.Stat(kitPermissionsRecord(home)); !os.IsNotExist(err) {
+		t.Fatalf("sandbox ensure must not touch the allow record: %v", err)
+	}
+	removed, err := RemoveKitSandbox(home, false)
+	if err != nil || removed != 2 {
+		t.Fatalf("removed=%d err=%v", removed, err)
+	}
+	raw, _ = os.ReadFile(settingsPath(home))
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"git *", "zenify e2e *"}; !reflect.DeepEqual(doc.Sandbox.Excluded, want) {
+		t.Fatalf("after remove: %v", doc.Sandbox.Excluded)
+	}
+}
+
+func TestKitSandbox_NonObjectSandboxSkips(t *testing.T) {
+	home := t.TempDir()
+	body := `{"sandbox":true}`
+	writeSettings(t, home, body)
+	if _, err := EnsureKitSandbox(home, false); err == nil {
+		t.Fatal("expected error for non-object sandbox")
+	}
+	if raw, _ := os.ReadFile(settingsPath(home)); string(raw) != body {
+		t.Fatalf("settings changed: %s", raw)
 	}
 }

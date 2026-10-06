@@ -3,10 +3,10 @@ package apply
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // KitAllowRules are the tool rules the kit unions into permissions.allow of
@@ -28,48 +28,73 @@ var KitAllowRules = []string{
 	"Bash(zenify ui-verify *)",
 }
 
-// kitPermissionsRecord lists the rules the kit actually added, so removal
-// never touches a rule the user already had.
+// KitSandboxExcluded are the commands the kit unions into
+// sandbox.excludedCommands: `zenify e2e login` writes ~/.zenify and reaches the
+// local web app, both of which the Bash sandbox denies, so without this the
+// verifier would have to ask for the sandbox to be disabled. Inert when the
+// sandbox is off.
+var KitSandboxExcluded = []string{
+	"zenify e2e *",
+	"zenify visual *",
+	"zenify ui-verify *",
+}
+
+// kitList is one settings array the kit unions entries into, with the record
+// of what it added so removal never touches an entry the user already had.
+type kitList struct {
+	outer, inner string
+	rules        []string
+	record       func(home string) string
+}
+
+var (
+	allowList   = kitList{"permissions", "allow", KitAllowRules, kitPermissionsRecord}
+	sandboxList = kitList{"sandbox", "excludedCommands", KitSandboxExcluded, kitSandboxRecord}
+)
+
 func kitPermissionsRecord(home string) string {
 	return filepath.Join(home, ".zenify", "playwright", "kit-permissions.json")
 }
 
-// allowOf decodes root["permissions"] one level and its "allow" array. A
-// non-object permissions or non-array allow is an error (caller leaves the
-// file alone).
-func allowOf(root map[string]json.RawMessage) (map[string]json.RawMessage, []string, error) {
-	perms := map[string]json.RawMessage{}
-	if raw, ok := root["permissions"]; ok {
-		if err := json.Unmarshal(raw, &perms); err != nil || perms == nil {
-			return nil, nil, errors.New("settings.json \"permissions\" is not an object, skipping permissions")
-		}
-	}
-	var allow []string
-	if raw, ok := perms["allow"]; ok {
-		if err := json.Unmarshal(raw, &allow); err != nil {
-			return nil, nil, errors.New("settings.json \"permissions.allow\" is not a string array, skipping permissions")
-		}
-	}
-	return perms, allow, nil
+func kitSandboxRecord(home string) string {
+	return filepath.Join(home, ".zenify", "playwright", "kit-sandbox.json")
 }
 
-func writeAllow(path string, root, perms map[string]json.RawMessage, allow []string, mode os.FileMode) error {
+// listOf decodes root[l.outer] one level and its l.inner array. A non-object
+// outer or non-array inner is an error (caller leaves the file alone).
+func (l kitList) listOf(root map[string]json.RawMessage) (map[string]json.RawMessage, []string, error) {
+	obj := map[string]json.RawMessage{}
+	if raw, ok := root[l.outer]; ok {
+		if err := json.Unmarshal(raw, &obj); err != nil || obj == nil {
+			return nil, nil, fmt.Errorf("settings.json %q is not an object, skipping %s", l.outer, l.outer)
+		}
+	}
+	var list []string
+	if raw, ok := obj[l.inner]; ok {
+		if err := json.Unmarshal(raw, &list); err != nil {
+			return nil, nil, fmt.Errorf("settings.json \"%s.%s\" is not a string array, skipping %s", l.outer, l.inner, l.outer)
+		}
+	}
+	return obj, list, nil
+}
+
+func (l kitList) write(path string, root, obj map[string]json.RawMessage, list []string, mode os.FileMode) error {
 	if root == nil {
 		root = map[string]json.RawMessage{}
 	}
-	if allow == nil {
-		allow = []string{}
+	if list == nil {
+		list = []string{}
 	}
-	a, err := json.Marshal(allow)
+	a, err := json.Marshal(list)
 	if err != nil {
 		return err
 	}
-	perms["allow"] = a
-	p, err := marshalNoEscape(perms)
+	obj[l.inner] = a
+	p, err := marshalNoEscape(obj)
 	if err != nil {
 		return err
 	}
-	root["permissions"] = json.RawMessage(p)
+	root[l.outer] = json.RawMessage(p)
 	out, err := marshalNoEscape(root)
 	if err != nil {
 		return err
@@ -77,14 +102,14 @@ func writeAllow(path string, root, perms map[string]json.RawMessage, allow []str
 	return writeAtomic(path, out, mode)
 }
 
-func readRecord(home string) ([]string, error) {
-	raw, err := os.ReadFile(kitPermissionsRecord(home)) //nolint:gosec // G304 -- fixed path under the caller's home dir
+func (l kitList) readRecord(home string) ([]string, error) {
+	raw, err := os.ReadFile(l.record(home)) //nolint:gosec // G304 -- fixed path under the caller's home dir
 	if err != nil {
 		return nil, err
 	}
 	var rules []string
 	if err := json.Unmarshal(raw, &rules); err != nil {
-		return nil, fmt.Errorf("kit-permissions record malformed: %w", err)
+		return nil, fmt.Errorf("%s record malformed: %w", filepath.Base(l.record(home)), err)
 	}
 	return rules, nil
 }
@@ -93,6 +118,27 @@ func readRecord(home string) ([]string, error) {
 // existing entries and order, and records the rules it added. Returns the
 // number added; nothing is written when it is 0 or dryRun.
 func EnsureKitPermissions(home string, dryRun bool) (int, error) {
+	return allowList.ensure(home, dryRun)
+}
+
+// EnsureKitSandbox unions KitSandboxExcluded into sandbox.excludedCommands,
+// with the same record and user-removal rules as EnsureKitPermissions.
+func EnsureKitSandbox(home string, dryRun bool) (int, error) {
+	return sandboxList.ensure(home, dryRun)
+}
+
+// RemoveKitPermissions removes only the rules the kit recorded adding.
+// Without a record it removes nothing and returns an error.
+func RemoveKitPermissions(home string, dryRun bool) (int, error) {
+	return allowList.remove(home, dryRun)
+}
+
+// RemoveKitSandbox removes only the excluded commands the kit recorded adding.
+func RemoveKitSandbox(home string, dryRun bool) (int, error) {
+	return sandboxList.remove(home, dryRun)
+}
+
+func (l kitList) ensure(home string, dryRun bool) (int, error) {
 	path := filepath.Join(home, ".claude", "settings.json")
 	root, mode, err := readSettingsRoot(path)
 	if err != nil {
@@ -101,26 +147,26 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 	if root == nil {
 		root = map[string]json.RawMessage{}
 	}
-	perms, allow, err := allowOf(root)
+	obj, list, err := l.listOf(root)
 	if err != nil {
 		return 0, err
 	}
 	have := map[string]bool{}
-	for _, a := range allow {
+	for _, a := range list {
 		have[a] = true
 	}
-	prev, err := readRecord(home)
+	prev, err := l.readRecord(home)
 	if err != nil && !os.IsNotExist(err) {
 		return 0, err
 	}
-	// A rule already in the record but absent from allow was removed by the
-	// user on purpose: never re-add it.
+	// An entry already in the record but absent from the list was removed by
+	// the user on purpose: never re-add it.
 	recorded := map[string]bool{}
 	for _, r := range prev {
 		recorded[r] = true
 	}
 	var added []string
-	for _, r := range KitAllowRules {
+	for _, r := range l.rules {
 		if !have[r] && !recorded[r] {
 			added = append(added, r)
 		}
@@ -130,7 +176,7 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 	}
 	// Record first so a settings change is never unrecorded (the kit could
 	// never remove it). If the settings write then fails, restore the previous
-	// record: a leftover record would make the next run treat every new rule
+	// record: a leftover record would make the next run treat every new entry
 	// as user-removed and never add it.
 	seen := map[string]bool{}
 	var rec []string
@@ -144,27 +190,25 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err := writeAtomic(kitPermissionsRecord(home), recJSON, 0o644); err != nil {
+	if err := writeAtomic(l.record(home), recJSON, 0o644); err != nil {
 		return 0, err
 	}
-	if err := writeAllow(path, root, perms, append(allow, added...), mode); err != nil {
+	if err := l.write(path, root, obj, append(list, added...), mode); err != nil {
 		if prev == nil {
-			_ = os.Remove(kitPermissionsRecord(home))
+			_ = os.Remove(l.record(home))
 		} else if pj, merr := json.Marshal(prev); merr == nil {
-			_ = writeAtomic(kitPermissionsRecord(home), pj, 0o644)
+			_ = writeAtomic(l.record(home), pj, 0o644)
 		}
 		return 0, err
 	}
 	return len(added), nil
 }
 
-// RemoveKitPermissions removes only the rules the kit recorded adding.
-// Without a record it removes nothing and returns an error.
-func RemoveKitPermissions(home string, dryRun bool) (int, error) {
-	rec, err := readRecord(home)
+func (l kitList) remove(home string, dryRun bool) (int, error) {
+	rec, err := l.readRecord(home)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, errors.New("no kit-permissions record")
+			return 0, fmt.Errorf("no %s record", strings.TrimSuffix(filepath.Base(l.record(home)), ".json"))
 		}
 		return 0, err
 	}
@@ -176,7 +220,7 @@ func RemoveKitPermissions(home string, dryRun bool) (int, error) {
 	if root == nil {
 		return 0, nil
 	}
-	perms, allow, err := allowOf(root)
+	obj, list, err := l.listOf(root)
 	if err != nil {
 		return 0, err
 	}
@@ -186,7 +230,7 @@ func RemoveKitPermissions(home string, dryRun bool) (int, error) {
 	}
 	kept := []string{}
 	removed := 0
-	for _, a := range allow {
+	for _, a := range list {
 		if drop[a] {
 			removed++
 			continue
@@ -197,10 +241,10 @@ func RemoveKitPermissions(home string, dryRun bool) (int, error) {
 		return removed, nil
 	}
 	if removed > 0 {
-		if err := writeAllow(path, root, perms, kept, mode); err != nil {
+		if err := l.write(path, root, obj, kept, mode); err != nil {
 			return 0, err
 		}
 	}
-	_ = os.Remove(kitPermissionsRecord(home))
+	_ = os.Remove(l.record(home))
 	return removed, nil
 }
