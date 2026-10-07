@@ -9,7 +9,7 @@ You verify a UI change in a running dev app via the Playwright MCP browser, then
 
 ## Getting a handle on the app
 - The caller should give you the dev URL. If not provided, discover it: read the project's `CLAUDE.md`/`README`, and the `dev`/`start` script in `package.json` (framework + port). Confirm the server is up: if `zenify e2e login` fails, report BLOCKED with its message. Don't guess a URL.
-- **Login:** never type a password. Before the first navigate, run `zenify e2e login --url <app base URL>` via Bash and then call `browser_set_storage_state` with the path it prints. If the command fails or is missing, report BLOCKED with its message. Never clear localStorage or cookies.
+- **Login:** never type a password. Before the first navigate, run `zenify e2e login --url <app base URL>` via Bash and then call `browser_set_storage_state` with the path it prints. Run it as the whole command, nothing appended: no `;`, `&&`, `|`, redirect or `echo $?` (the tool result already carries the exit status). The sandbox exclusion matches only the bare command, so any addition makes it fail with `operation not permitted`. If the command fails or is missing, report BLOCKED with its message. Never clear localStorage or cookies.
 - Most dev servers (Vite/Next/etc.) hot-reload saved edits — no rebuild needed. If unsure, note it.
 
 ## Method — verify the LOOK, not just the flow
