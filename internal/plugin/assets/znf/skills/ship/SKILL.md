@@ -88,7 +88,7 @@ Fill the `look:` and review sub-lines per the template. **Before concluding: `ze
       --blast "<Brief _Blast-radius>" --db "<Brief _DB>" --rollback "<Brief _Rollback>" \
       --spec "<spec path if any>"
 
-Then push, `zenify release-report --unreleased --workspace "<root>"`, `zenify docs sync`; both fail open.
+Then push and `zenify docs sync` (fails open).
 
 **On all-green, commit and push the FEATURE branch** — same branch name across repos, message in the repo's convention. **Then open the PR yourself and stop**: `gh pr create`, one per repo onto its base (protected is fine, a PR deploys nothing), title and body per `references/pr-message-language.md`. Report each URL.
 

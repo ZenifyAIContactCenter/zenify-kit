@@ -3,7 +3,7 @@ summary: Sinh báo cáo rủi ro cho một release từ lịch sử git của m�
 ---
 ## Khi nào dùng
 
-Trước khi deploy một release, hoặc bất kỳ lúc nào bạn muốn xem release đang hình thành gồm những thay đổi gì.
+Trước khi deploy một release, sau khi đã cắt nhánh `release<N>`.
 
 ## Kết quả
 
@@ -15,7 +15,6 @@ Mỗi dòng trong báo cáo lấy metadata từ commit ghi chú của `zenify re
 
 | Cờ | Ý nghĩa |
 |---|---|
-| `--unreleased` | Ghi bản xem trước của release đang hình thành, từ release mới nhất tới `staging`, ra `unreleased.md`. |
 | `--out-dir` | Thư mục ghi báo cáo. Mặc định thư mục releases của knowledge store. |
 | `--workspace` | Thư mục workspace. Mặc định thư mục hiện tại. |
 | `--no-fetch` | Không fetch, dùng ref local. |
@@ -25,5 +24,4 @@ Mỗi dòng trong báo cáo lấy metadata từ commit ghi chú của `zenify re
 
 ```bash
 zenify release-report 42
-zenify release-report --unreleased
 ```

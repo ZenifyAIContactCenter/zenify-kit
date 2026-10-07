@@ -1,7 +1,6 @@
 package release
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -70,89 +69,6 @@ func TestBuildUsesResolverNotFlatJoin(t *testing.T) {
 	_ = Build(r, resolve, []string{"svc-a"}, 84, func(dir string) []string { return nil }, func(string) []SpecMeta { return nil })
 	if !seen["/ws/repos/svc-a"] {
 		t.Fatalf("Build must use the resolver's path, dirs called: %+v", seen)
-	}
-}
-
-func TestBuildUnreleasedRangeStagingDeterministic(t *testing.T) {
-	// release88 = the release STILL FORMING (highest, not yet deployed); base = release87 (most
-	// recently deployed). Convention (A): the correct range = origin/release87..origin/staging,
-	// NOT release88..staging.
-	fr := fakeRunner{out: map[string]string{
-		"branch -r": "  origin/release87\n  origin/release88\n  origin/staging\n",
-		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release87..origin/staging": "h1\x1ffeat(alpha): a\x1fnamph\x1f\x1e",
-	}}
-	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
-	noPatterns := func(string) []string { return nil }
-	noSpecs := func(string) []SpecMeta { return nil }
-
-	rep := BuildUnreleased(fr, resolve, []string{"be"}, 88, noPatterns, noSpecs)
-	if !rep.Unreleased {
-		t.Fatalf("Report.Unreleased must be true")
-	}
-	if rep.N != 88 {
-		t.Fatalf("N must be the number of the forming release (88): %d", rep.N)
-	}
-	// deterministic: running twice with the same state → identical render.
-	a := Render(rep, false)
-	b := Render(BuildUnreleased(fr, resolve, []string{"be"}, 88, noPatterns, noSpecs), false)
-	if a != b {
-		t.Errorf("incremental render must be deterministic")
-	}
-	if !strings.Contains(a, "hình thành") { //znf:allow-lang
-		t.Errorf("unreleased header must differ from '# Release N': %s", a)
-	}
-}
-
-// Regression (off-by-one release labeling): unreleased's base MUST be the previous (deployed)
-// release, NOT release<n> (the one forming). Stub both ranges with different commits; the per-repo
-// header must read "(rel84..staging)" (base=84) and absolutely not "(rel85..staging)".
-func TestBuildUnreleasedBaseIsPrevNotForming(t *testing.T) {
-	fr := fakeRunner{out: map[string]string{
-		"branch -r": "  origin/release84\n  origin/release85\n  origin/staging\n",
-		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release84..origin/staging": "h1\x1ffeat(a): real\x1fnamph\x1f\x1e",
-		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release85..origin/staging": "h2\x1ffeat(b): wrong\x1fnamph\x1f\x1e",
-	}}
-	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
-	rep := BuildUnreleased(fr, resolve, []string{"be"}, 85, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
-	out := Render(rep, false)
-	if !strings.Contains(out, "(rel84..staging)") {
-		t.Errorf("unreleased's base must be the previous release 84: %s", out)
-	}
-	if strings.Contains(out, "(rel85..staging)") {
-		t.Errorf("base must NOT be the forming release 85: %s", out)
-	}
-	if !strings.Contains(out, "# Release đang hình thành: R85 (chưa deploy)") { //znf:allow-lang
-		t.Errorf("header must say R85 forming: %s", out)
-	}
-}
-
-// unreleased is the "daily pending deploy" view: a repo that has NOT cut release<n> (forming) but
-// has staging commits > its own deployed release must STILL show up, with base = its max release
-// (= the highest release < n). This is the exact case the user pointed out: change-stream is on
-// release84, has no release85 yet, but its 7 staging commits must still appear.
-func TestBuildUnreleasedIncludesRepoWithoutFormingRelease(t *testing.T) {
-	fr := fakeRunner{out: map[string]string{
-		"branch -r": "  origin/release82\n  origin/release84\n  origin/staging\n",
-		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release84..origin/staging": "h1\x1ffeat(x): pending\x1fnamph\x1f\x1e",
-	}}
-	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
-	rep := BuildUnreleased(fr, resolve, []string{"csub"}, 85, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
-	out := Render(rep, false)
-	if !strings.Contains(out, "## csub (rel84..staging)") {
-		t.Errorf("a repo without release85 cut yet must still show up with its base=release84: %s", out)
-	}
-}
-
-// unreleased drops a repo with nothing pending (staging == its deployed release → 0 commits) to keep the doc terse.
-func TestBuildUnreleasedOmitsRepoWithNoPending(t *testing.T) {
-	fr := fakeRunner{out: map[string]string{
-		"branch -r": "  origin/release84\n  origin/release85\n  origin/staging\n",
-		// range release84..staging is NOT set → 0 pending commits.
-	}}
-	resolve := func(name string) (string, bool) { return "/ws/" + name, true }
-	rep := BuildUnreleased(fr, resolve, []string{"quiet"}, 85, func(string) []string { return nil }, func(string) []SpecMeta { return nil })
-	if len(rep.Repos) != 0 {
-		t.Errorf("a repo with 0 pending commits must be dropped from unreleased: %+v", rep.Repos)
 	}
 }
 
