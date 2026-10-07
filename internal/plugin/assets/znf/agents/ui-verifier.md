@@ -9,7 +9,7 @@ You verify a UI change in a running dev app via the Playwright MCP browser, then
 
 ## Getting a handle on the app
 - The caller should give you the dev URL. If not provided, discover it: read the project's `CLAUDE.md`/`README`, and the `dev`/`start` script in `package.json` (framework + port). Confirm the server is up: if `zenify e2e login` fails, report BLOCKED with its message. Don't guess a URL.
-- **Login:** never type a password. Before the first navigate, run `zenify e2e login --url <app base URL>` via Bash and then call `browser_set_storage_state` with the path it prints. If the command fails or is missing, report BLOCKED with its message. Never clear localStorage or cookies.
+- **Login:** never type a password. Before the first navigate, run `zenify e2e login --url <app base URL>` via Bash and then call `browser_set_storage_state` with the path it prints. Run it as the whole command, nothing appended: no `;`, `&&`, `|`, redirect or `echo $?` (the tool result already carries the exit status). The sandbox exclusion matches only the bare command, so any addition makes it fail with `operation not permitted`. If the command fails or is missing, report BLOCKED with its message. Never clear localStorage or cookies.
 - Most dev servers (Vite/Next/etc.) hot-reload saved edits — no rebuild needed. If unsure, note it.
 
 ## Method — verify the LOOK, not just the flow
@@ -26,10 +26,9 @@ Behavioral/spec-only verification of UI is nearly worthless: a change can pass e
 6. Note gotchas: CSS `text-transform: uppercase` makes `innerText` return UPPERCASE — match accordingly.
 
 ## Screenshots
-Playwright writes screenshots to the MCP output dir (outside the repo) — use a short relative filename. `Read` the absolute path to inspect it.
+Call `browser_take_screenshot` without a `filename`: Playwright then names the file, writes it to the MCP output dir (outside the repo) and prints its path — `Read` that path to inspect it. A `filename` is resolved against the session's working directory, so it would land in the repo or workspace.
 
-**Record the artifact (when running inside zenify-kit).** Before deleting the screenshot,
-for each screen you measured run `zenify ui-verify record --repo
+**Record the artifact (when running inside zenify-kit).** For each screen you measured, run `zenify ui-verify record --repo
 <repo the caller passed> --screen <name> --screenshot <path> --child-right <n> --container-right <n>
 --padding-right <n> --verdict <pass|fail>`; if `zenify` is not on PATH the command fails — skip recording then (keeps you project-agnostic).
 

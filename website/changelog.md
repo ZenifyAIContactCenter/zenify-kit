@@ -8,6 +8,20 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.30.0
+
+*2026-10-07*
+
+- `znf:ui-verifier` tự đăng nhập, không ai gõ mật khẩu vào trình duyệt nữa. Lệnh mới `zenify e2e login --url <app> | --port <port>` đăng nhập bằng `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong môi trường và ghi `~/.zenify/playwright/state.json` (quyền 0600). Agent nạp file này vào trình duyệt bằng `browser_set_storage_state`. Lệnh chỉ nhận origin localhost/loopback, và chạy được cả khi web trỏ API về hub local.
+- Sau `zenify up`, verify UI trong auto mode không còn hỏi quyền:
+  - Playwright MCP được đăng ký lại với `--isolated --caps=storage --output-dir ~/.zenify/playwright`. Đăng ký mặc định cũ của kit được tự chuyển sang dạng này; đăng ký bạn đã tự chỉnh được giữ nguyên, kèm cảnh báo.
+  - `permissions.allow` trong `~/.claude/settings.json` có thêm các tool `mcp__playwright__*` mà verifier dùng, cùng `Bash(zenify e2e *)`, `Bash(zenify visual *)`, `Bash(zenify ui-verify *)`.
+  - Nếu bật sandbox Bash, `sandbox.excludedCommands` có thêm `zenify e2e login *`.
+  - Kit chỉ thêm những gì còn thiếu. Mục bạn đã tự xoá sẽ không bị thêm lại, và `zenify down` chỉ gỡ đúng các mục kit đã thêm.
+- Nhiều session Claude chạy song song không còn giành nhau trình duyệt ("Browser is already in use"), vì mỗi session có trình duyệt riêng trong bộ nhớ.
+- `zenify doctor` có thêm check `kit-permissions` (có `--fix`) và báo trạng thái đăng ký Playwright MCP.
+- Bỏ `zenify release-report --unreleased`; `/znf:ship` không còn sinh lại `releases/unreleased.md` sau mỗi lần ship.
+
 ## v0.29.1
 
 *2026-10-06*

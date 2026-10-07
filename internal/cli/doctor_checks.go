@@ -220,8 +220,9 @@ func gitGuardCheck(home func() (string, error)) Check {
 	}
 }
 
-// kitPermissionsCheck reports whether the kit's Playwright/e2e allow rules are
-// in ~/.claude/settings.json. Fix adds the missing ones (same union as `up`).
+// kitPermissionsCheck reports whether the kit's Playwright/e2e allow rules and
+// sandbox exclusions are in ~/.claude/settings.json. Fix adds the missing ones
+// (same union as `up`).
 func kitPermissionsCheck(home func() (string, error)) Check {
 	return Check{
 		Name: "kit-permissions",
@@ -234,10 +235,14 @@ func kitPermissionsCheck(home func() (string, error)) Check {
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
-			if n > 0 {
-				return false, fmt.Sprintf("missing %d kit allow rules; run `zenify doctor --fix` or `zenify up`", n)
+			s, err := apply.EnsureKitSandbox(h, true)
+			if err != nil {
+				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
-			return true, "allow rules present"
+			if n > 0 || s > 0 {
+				return false, fmt.Sprintf("missing %d kit allow rules, %d sandbox exclusions; run `zenify doctor --fix` or `zenify up`", n, s)
+			}
+			return true, "allow rules and sandbox exclusions present"
 		},
 		Fix: func() (bool, string) {
 			h, err := home()
@@ -248,7 +253,11 @@ func kitPermissionsCheck(home func() (string, error)) Check {
 			if err != nil {
 				return false, err.Error()
 			}
-			return true, fmt.Sprintf("added %d kit allow rules", n)
+			s, err := apply.EnsureKitSandbox(h, false)
+			if err != nil {
+				return false, err.Error()
+			}
+			return true, fmt.Sprintf("added %d kit allow rules, %d sandbox exclusions", n, s)
 		},
 	}
 }
