@@ -26,10 +26,9 @@ Behavioral/spec-only verification of UI is nearly worthless: a change can pass e
 6. Note gotchas: CSS `text-transform: uppercase` makes `innerText` return UPPERCASE — match accordingly.
 
 ## Screenshots
-Playwright writes screenshots to the MCP output dir (outside the repo) — use a short relative filename. `Read` the absolute path to inspect it.
+Call `browser_take_screenshot` without a `filename`: Playwright then names the file, writes it to the MCP output dir (outside the repo) and prints its path — `Read` that path to inspect it. A `filename` is resolved against the session's working directory, so it would land in the repo or workspace.
 
-**Record the artifact (when running inside zenify-kit).** Before deleting the screenshot,
-for each screen you measured run `zenify ui-verify record --repo
+**Record the artifact (when running inside zenify-kit).** For each screen you measured, run `zenify ui-verify record --repo
 <repo the caller passed> --screen <name> --screenshot <path> --child-right <n> --container-right <n>
 --padding-right <n> --verdict <pass|fail>`; if `zenify` is not on PATH the command fails — skip recording then (keeps you project-agnostic).
 
