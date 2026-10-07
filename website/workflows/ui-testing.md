@@ -43,7 +43,7 @@ flowchart TD
 
 ## Agent ui-verifier làm gì
 
-Agent tự đăng nhập, bạn không gõ mật khẩu vào trình duyệt. Trước khi mở màn hình, agent chạy `zenify e2e login --url <app>` trên máy bạn. Lệnh này đăng nhập bằng `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong môi trường và ghi `~/.zenify/playwright/state.json`. Agent nạp file đó vào trình duyệt bằng `browser_set_storage_state`, rồi mới điều hướng. Mỗi lần verify đăng nhập mới, nên không dùng lại phiên cũ. Phiên chính không đăng nhập trình duyệt và không gõ mật khẩu. Sau `zenify up`, các lệnh này chạy không hỏi quyền.
+Agent tự đăng nhập, bạn không gõ mật khẩu vào trình duyệt. Trước khi mở màn hình, agent chạy `zenify e2e login --url <app>` trên máy bạn. Lệnh này đăng nhập bằng `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong môi trường và ghi `~/.zenify/playwright/state.json`. Agent nạp file đó vào trình duyệt bằng `browser_set_storage_state`, rồi mới điều hướng. Mỗi lần verify đăng nhập mới, nên không dùng lại phiên cũ. Phiên chính không đăng nhập trình duyệt và không gõ mật khẩu. Sau `zenify up`, các lệnh này chạy không hỏi quyền. Nếu bạn bật sandbox Bash, `zenify up` thêm `zenify e2e login *` vào `sandbox.excludedCommands` để lệnh này ghi được `~/.zenify` và gọi được app local. Agent chạy lệnh nguyên dạng, không nối thêm `; echo` hay `| head`, vì lệnh ghép không khớp mục loại trừ và lại bị sandbox chặn.
 
 Agent làm bốn việc trên phần tử bạn vừa đổi:
 
@@ -52,7 +52,7 @@ Agent làm bốn việc trên phần tử bạn vừa đổi:
 - Chụp ảnh vùng đổi và đọc lại ảnh để xem chữ có đủ, nút có vừa ô, có gì chồng lên nhau không.
 - Thử giá trị dài, trạng thái rỗng, viewport hẹp nhất có thể, và xem console có lỗi mới không.
 
-Kết quả trả về là một verdict PASS, FAIL, BLOCKED hoặc PARTIAL cho từng điểm kiểm, kèm số đo bằng pixel. Agent tự xóa ảnh chụp trước khi kết thúc. Trình duyệt Playwright là một instance dùng chung, nên mỗi lúc chỉ một agent điều khiển trình duyệt.
+Kết quả trả về là một verdict PASS, FAIL, BLOCKED hoặc PARTIAL cho từng điểm kiểm, kèm số đo bằng pixel. Ảnh chụp nằm trong `~/.zenify/playwright`, ngoài repo. Trong một session, trình duyệt Playwright là một instance dùng chung, nên mỗi lúc chỉ một agent điều khiển trình duyệt. Các session khác nhau có trình duyệt riêng, vì kit đăng ký Playwright MCP với `--isolated`.
 
 Agent chỉ kiểm phần tử bạn nói tới. Một thay đổi CSS chung có thể làm lệch màn hình khác mà agent không mở. Lớp so ảnh bù chỗ đó.
 
