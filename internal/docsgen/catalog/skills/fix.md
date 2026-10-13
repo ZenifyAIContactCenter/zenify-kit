@@ -11,7 +11,7 @@ Khi có lỗi và bạn chưa biết nguyên nhân thật sự. Xem [fix: sửa 
 2. Skill xác nhận nguyên nhân gốc trước khi viết bất kỳ dòng sửa nào. Với lỗi rõ ràng, nó kiểm một giả thuyết; với lỗi khó, nó chạy song song nhiều giả thuyết rồi loại dần bằng bằng chứng thật.
 3. Worktree được tạo trước lần ghi file đầu tiên của vòng phản hồi (hoặc trước khi khởi động server), chậm nhất trước bước sửa, dựa trên base ref repo khai báo. Các cách tái hiện chỉ đọc không cần worktree. Nếu đang có worktree của task khác cho cùng repo trong phiên này, skill dùng lại worktree đó thay vì tạo mới.
 4. Skill gọi `/znf:scout` để tìm ai phụ thuộc vào đoạn code sắp sửa, trước khi sửa. Nếu việc sửa hoá ra cần hơn khoảng ba file hoặc đổi một hợp đồng dịch vụ chung, skill dừng lại và đề nghị chuyển sang `/znf:cook`.
-5. Trước khi sửa, skill tự chọn seam (chỗ test chạy lỗi đúng như nơi gọi thật) và biến lệnh tái hiện thành regression test, xem nó fail rồi mới sửa; không có seam thì ghi `no seam: <lý do>`. Skill không hỏi bạn về seam. Báo cáo cuối có hai dòng `Loop:` (đỏ rồi xanh) và `Regression:`.
+5. Trước khi sửa, skill tự chọn seam (chỗ test chạy lỗi đúng như nơi gọi thật) và biến lệnh tái hiện thành regression test, xác nhận nó fail rồi mới sửa; không có seam thì ghi `no seam: <lý do>`. Skill không hỏi bạn về seam. Báo cáo cuối có hai dòng `Loop:` (đỏ rồi xanh) và `Regression:`.
 6. Sau khi sửa, skill chạy lại vòng phản hồi và xoá mọi log debug `[DEBUG-xxxx]`, xác minh lỗi đã hết bằng cách chạy lại đường code thật, rồi gọi `/znf:gate` và luôn gọi `/znf:ship` sau đó, kể cả khi gate báo không có tác động liên repo.
 
 ## Ví dụ

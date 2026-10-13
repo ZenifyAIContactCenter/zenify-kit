@@ -12,7 +12,7 @@ Khi bạn đã có một plan viết sẵn và cần thực thi nó task theo ta
 3. Nếu review tìm thấy vấn đề, một vòng sửa bắt đầu: implementer ban đầu được giao lại các phát hiện, sửa, rồi được review lại phạm vi hẹp; tối đa năm vòng cho mỗi task trước khi người điều phối tự quyết định cách xử lý phát hiện còn lại.
 4. Việc chọn model theo từng vai trò: task máy móc dùng model rẻ, task cần phối hợp nhiều file dùng model tiêu chuẩn, task cần thiết kế hoặc review toàn nhánh dùng model mạnh nhất hiện có.
 5. Với một tính năng chạm nhiều repo, mỗi repo chạy trong worktree riêng cùng một slug, và các repo độc lập với nhau được thực thi song song thay vì tuần tự.
-6. Về test: implementer viết test trước khi có giá trị kỳ vọng độc lập (literal trong plan hoặc spec, ví dụ tính tay); việc keo dán hoặc cấu hình không có giá trị đó thì báo `No TDD: <lý do>` kèm output chạy thật. Luật chất lượng test áp dụng cho cả implementer lẫn reviewer: giá trị kỳ vọng lấy từ nguồn độc lập chứ không tính lại theo cách code tính; chỉ mock ở ranh giới hệ thống (API ngoài, thời gian, ngẫu nhiên), không mock module của chính dự án; assert qua interface công khai.
+6. Về test: khi có giá trị kỳ vọng độc lập, implementer viết test trước (literal trong plan hoặc spec, ví dụ tính tay); phần kết nối hoặc cấu hình không có giá trị đó thì báo `No TDD: <lý do>` kèm output chạy thật. Luật chất lượng test áp dụng cho cả implementer lẫn reviewer: giá trị kỳ vọng lấy từ nguồn độc lập chứ không tính lại theo cách code tính; chỉ mock ở ranh giới hệ thống (API ngoài, thời gian, ngẫu nhiên), không mock module của chính dự án; assert qua interface công khai.
 7. Khi review toàn nhánh cuối cùng sạch, skill xoá không gian làm việc tạm của plan đó — lịch sử git lúc này là bản ghi chính thức.
 
 ## Lưu ý

@@ -10,7 +10,7 @@ Khi có lỗi đang ảnh hưởng production ngay bây giờ. Bạn phải tự
 1. Skill xác định repo bị ảnh hưởng, fetch trước rồi mới xác định base ref hotfix của repo đó, và luôn xin bạn xác nhận base ref này trước khi làm gì tiếp — base ref khác nhau tuỳ repo và tuỳ chiến lược mỗi repo khai báo.
 2. Skill chẩn đoán trước khi đụng vào bất cứ thứ gì, dùng đúng hai bước đầu của `/znf:fix`: lấy log lỗi thật, xác nhận nguyên nhân gốc bằng bằng chứng. Ở bước này chỉ dùng các cách tái hiện chỉ đọc; nếu không có thì xác nhận nguyên nhân từ log. Không đoán nguyên nhân trên production.
 3. Với nguyên nhân đã xác nhận, skill đưa ra ba lựa chọn — revert, tắt bằng feature flag, hoặc sửa xuôi (fix forward) — và chờ bạn quyết định, vì đây là hành động trên production. Nếu chọn revert hoặc tắt flag, skill dừng ở đó, không tạo worktree, không sửa code.
-4. Chỉ khi chọn sửa xuôi, skill mới tạo worktree từ base ref hotfix vừa xác nhận, gọi `/znf:scout` trên đúng ref đó, dựng lệnh đỏ và viết regression test (xem nó fail trước khi sửa), sửa, rồi chạy lại lệnh đỏ và xoá log debug để xác minh lỗi đã hết.
+4. Chỉ khi chọn sửa xuôi, skill mới tạo worktree từ base ref hotfix vừa xác nhận, gọi `/znf:scout` trên đúng ref đó, dựng lệnh đỏ và viết regression test (xác nhận nó fail trước khi sửa), sửa, rồi chạy lại lệnh đỏ và xoá log debug để xác minh lỗi đã hết.
 5. Skill luôn gọi `/znf:gate` rồi `/znf:ship`, không bỏ qua vì đang gấp. Nếu xanh hết, nó commit và push nhánh hotfix, mở PR nhắm vào base ref đã xác nhận, nhưng không merge.
 
 ## Ví dụ

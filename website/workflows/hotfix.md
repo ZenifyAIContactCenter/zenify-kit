@@ -60,7 +60,7 @@ flowchart TD
 | 4 | Trình bày ba lựa chọn kèm khuyến nghị | Chọn revert, disable hoặc fix forward. Revert và disable dừng tại đây, không tạo worktree |
 | 5 | Tạo worktree `--type hotfix --base <release>` (chỉ khi fix forward) | Không cần làm gì |
 | 6 | Chạy `/znf:scout` trên ref đã resolve, không phải base thường ngày | Đọc báo cáo scout |
-| 7 | Dựng lệnh đỏ và viết regression test trước (theo bước 5 của `/znf:fix`), xem chúng fail, rồi sửa nhỏ nhất | Không cần làm gì |
+| 7 | Dựng lệnh đỏ và viết regression test trước (theo bước 5 của `/znf:fix`), xác nhận chúng fail, rồi sửa nhỏ nhất | Không cần làm gì |
 | 8 | Chạy lại lệnh đỏ, kỳ vọng xanh, xoá log `[DEBUG-xxxx]` (theo bước 6 của `/znf:fix`), verify trên code path thật | Đọc kết quả |
 | 9 | Chạy `/znf:gate` rồi `/znf:ship`, kể cả khi đang gấp. Ship mở PR vào base ref release | Đọc board ship, nhận PR URL |
 | 10 | Nhắc bước tay còn lại | Merge PR (tức là deploy), rồi đồng bộ fix ngược về base feature bằng merge hoặc cherry-pick |

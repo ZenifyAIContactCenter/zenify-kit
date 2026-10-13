@@ -67,7 +67,7 @@ flowchart TD
 | 3 | Chạy `/znf:scout` tìm nơi gọi, đọc, ghi code sắp đổi | Đọc báo cáo scout |
 | 4 | Nếu có trade-off thật giữa hai cách sửa, trình bày cho bạn | Chọn cách sửa |
 | 4 (leo thang) | Nếu fix lan 4+ file hoặc cần quyết định thiết kế, dừng | Chuyển sang `/znf:cook` thay vì ép sửa trong fix |
-| 5 | Tự chọn seam (chỗ test chạy lỗi đúng như nơi gọi thật), biến repro thành regression test, xem test fail, rồi sửa nhỏ nhất theo cách đã chọn. Không có seam thì ghi `no seam: <lý do>` | Không cần làm gì. Kit không hỏi bạn về seam |
+| 5 | Tự chọn seam (chỗ test chạy lỗi đúng như nơi gọi thật), biến repro thành regression test, xác nhận test fail, rồi sửa nhỏ nhất theo cách đã chọn. Không có seam thì ghi `no seam: <lý do>` | Không cần làm gì. Kit không hỏi bạn về seam |
 | 6 | Chạy lại vòng trên kịch bản gốc, kỳ vọng xanh. Xoá mọi log `[DEBUG-xxxx]` và grep lại để chắc không sót | Đọc kết quả |
 | 7 | Ghi báo cáo gồm nguyên nhân, cách sửa, `Loop:` (lệnh, đỏ rồi xanh) và `Regression:` (tên test hoặc `no seam`) | Đọc báo cáo |
 | 8 | Chạy `/znf:gate` rồi `/znf:ship` | Đọc board ship, nhận PR |
