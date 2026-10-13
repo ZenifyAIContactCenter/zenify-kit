@@ -38,6 +38,8 @@ Một số skill khai báo `disable-model-invocation: true` trong frontmatter. V
 
 Khi viết skill mới có fan-out tốn kém, hãy nhớ cờ này. Thiếu cờ, mô hình có thể tự dispatch fan-out mà không ai yêu cầu.
 
+Description trong frontmatter của mọi skill và agent tối đa 300 ký tự; `go test` fail khi vượt (`internal/docsgen/description_test.go`). Description luôn nằm trong context để model chọn skill, nên viết nó như điều kiện kích hoạt (khi nào dùng), không tóm tắt các bước. Rút gọn mà làm rơi một nhánh kích hoạt thì model sẽ bỏ lỡ skill đó với yêu cầu tương ứng.
+
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - `internal/plugin/assets/znf/skills/gate/SKILL.md` (ví dụ `disable-model-invocation: true` trên `contract-sweep`)
 - `website/reference/skills/index.md`, `website/reference/agents/index.md` (danh sách sinh tự động, agent không mang tiền tố `znf:`)

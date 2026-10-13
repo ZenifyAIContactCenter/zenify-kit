@@ -8,6 +8,20 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.33.0
+
+*2026-10-13*
+
+- `/znf:fix` dựng vòng phản hồi trước khi đoán: một lệnh có tên, đã chạy, đỏ đúng triệu chứng. Sau đó kit tự chọn seam, viết regression test đỏ rồi mới sửa, và báo cáo có dòng `Loop:` và `Regression:`. Secret, dữ liệu cá nhân khách hàng và id tenant/account được lọc ngay trong lệnh; request có tác dụng phụ chỉ chạy vào port của worktree hoặc môi trường local. Xem [/znf:fix](/workflows/fix).
+- `/znf:hotfix` sửa và verify qua cùng vòng của `/znf:fix`. Bước chẩn đoán trên production chỉ dùng cách chỉ đọc, output đã lọc bí mật. Xem [/znf:hotfix](/workflows/hotfix).
+- Implementer trong SDD theo luật chất lượng test: giá trị kỳ vọng lấy từ nguồn độc lập, chỉ mock ở ranh giới hệ thống, assert qua giao diện công khai. Phần không có giá trị kỳ vọng độc lập ghi `No TDD: <lý do>` kèm output chạy thật. Xem [/znf:cook](/workflows/cook).
+- `/znf:review` đi qua bốn gate PRE, BUNDLE, REVIEW, VERIFY. T2 và T3 soát năm trục, trục `intent` thay `types` và so diff với ý định trong gói ship. T3 chạy cả năm reviewer bằng opus, không còn Workflow. Xem [Review và gate](/guides/review-and-gates).
+- `/znf:ship` thêm mục "Rủi ro merge" vào thân PR. Gói review của `/znf:fix` và `/znf:hotfix` mang dòng `Loop:`/`Regression:`. Xem [/znf:ship](/workflows/ship).
+- Brainstorming hỏi làm rõ theo lượt, tối đa 4 câu mỗi lượt, đáp án khuyến nghị đứng đầu, và kiểm module "sâu" khi thiết kế. Xem [/znf:cook](/workflows/cook).
+- Description của skill và agent được rút gọn, tối đa 300 ký tự, có test chặn. Xem [Namespace znf](/concepts/znf-namespace).
+- Skill mới `/znf:retro`, chỉ chạy khi bạn gõ. Nó gom bài học của phiên (điều phải đọc hay chạy mới biết, hoặc điều bạn đã sửa), mỗi bài một nơi lưu (check, rule, dòng `CLAUDE.md` hoặc memory). Bạn duyệt một lần đúng văn bản sẽ ghi; bí mật và dữ liệu cá nhân được loại bỏ. Xem [Chọn workflow](/workflows/).
+- Asset của kit thống nhất "mở PR, không bao giờ merge". `finishing-a-development-branch` bỏ lựa chọn merge local, và `code-reviewer` không được gọi agent hay skill khác.
+
 ## v0.32.1
 
 *2026-10-13*
