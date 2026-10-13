@@ -83,6 +83,9 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 			for _, n := range ar.Skipped {
 				fmt.Fprintf(stderr, "znf ensure: codex-agents: %s.toml không phải của kit, bỏ qua\n", n) //znf:allow-lang
 			}
+			for _, n := range ar.Removed {
+				fmt.Fprintf(stdout, "removed retired Codex agent %s.toml\n", n)
+			}
 		}
 	}
 
