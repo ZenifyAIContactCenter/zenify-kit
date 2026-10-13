@@ -8,8 +8,8 @@ Trước mọi việc tạo mới hoặc thay đổi hành vi: tính năng, comp
 ## Cách hoạt động
 
 1. Skill phân loại yêu cầu và nói rõ để bạn có thể sửa: spike là câu hỏi khả thi, kết quả là một câu trả lời, không giữ code; bounded là thay đổi vào một flow đã có trong repo, thiết kế ngắn trong chat, không có file spec; architectural là dự án hoặc subsystem mới, đi đủ quy trình. Khi phân vân, skill chọn đường nặng hơn.
-2. Skill hỏi từng câu một, ưu tiên trắc nghiệm, để hiểu mục đích, ràng buộc và tiêu chí thành công. Với yêu cầu quá lớn, skill đề nghị tách thành các sub-project trước.
-3. Với architectural, skill đề xuất 2 đến 3 cách làm kèm khuyến nghị, trình thiết kế theo từng mục và hỏi bạn sau mỗi mục, hỏi tối đa 5 câu làm rõ, viết spec ra file, tự review, nhờ agent `spec-reviewer` với context mới review thêm một lượt, rồi chờ bạn duyệt spec, sau đó chuyển sang `/znf:writing-plans`.
+2. Skill hỏi theo lượt, tối đa 4 câu một lượt, đáp án khuyến nghị đứng đầu, câu nào tra được trong repo hoặc DB thì tự tra, ưu tiên trắc nghiệm, để hiểu mục đích, ràng buộc và tiêu chí thành công. Với yêu cầu quá lớn, skill đề nghị tách thành các sub-project trước.
+3. Với architectural, skill đề xuất 2 đến 3 cách làm kèm khuyến nghị, trình thiết kế theo từng mục và hỏi bạn sau mỗi mục, hỏi tối đa 5 câu làm rõ chia theo lượt, viết spec ra file, tự review, nhờ agent `spec-reviewer` với context mới review thêm một lượt, rồi chờ bạn duyệt spec, sau đó chuyển sang `/znf:writing-plans`.
 4. Ở mọi đường, skill không viết code, không scaffold, không gọi skill implement cho tới khi bạn duyệt. Việc nhỏ chỉ rút ngắn thiết kế, không bỏ bước duyệt.
 
 ## Lưu ý

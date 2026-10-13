@@ -53,7 +53,7 @@ Classify, announce the path, do the items in order.
 
 **Bounded:**
 1. **Explore project context** — check files, docs, recent commits
-2. **Ask clarifying questions** — one at a time, the ones that matter; why first, then write back your understanding
+2. **Ask clarifying questions** — in rounds, the ones that matter; why first, then write back your understanding
 3. **Present short design in chat** — approach, files touched, testing
 4. **Get approval** — STOP and wait for an explicit yes; presenting and starting in one breath skips the gate
 5. **Implement** — the normal development workflow (TDD applies); no plan document
@@ -62,7 +62,7 @@ Classify, announce the path, do the items in order.
 1. **Explore project context** — files, docs, recent commits
 2. **Shared understanding first** — ask why, write back what they said vs your assumptions, wait for correction; the corrected text is the Brief's Problem
 3. **Offer the visual companion just-in-time** — NOT upfront; only the first time a question is clearer shown than described, never if none arises
-4. **Ask clarifying questions** — one at a time: purpose, constraints, success criteria
+4. **Ask clarifying questions** — in rounds: purpose, constraints, success criteria
 5. **Research check** — `references/research-checklist.md`; one item true → `Skill(znf:research)` on the scoped question; none → skip, no prior-art for show
 6. **Design memo** — inline: context, 2-3 approaches with a recommendation, Simplicity / Anti-Abstraction / Integration-First gates, polyrepo checklist, deliberately not done. Think hard before responding.
 7. **Present design** — sections scaled to their complexity, user approval after each
@@ -80,13 +80,13 @@ Terminal states are path-bound: architectural ends in writing-plans only, bounde
 ## The dialogue
 
 For the bounded and architectural paths (`references/design-dialogue.md`): read `.claude/GLOSSARY.md`
-for unclear domain terms, decompose oversized requests first, one question per message, propose 2-3
+for unclear domain terms, decompose oversized requests first, ask in rounds (ask the user to choose between options, at most 4 per round, recommended first; look up what the repo or DB can answer), propose 2-3
 approaches with a recommendation, YAGNI ruthlessly, present the design in sections with a check each.
 
 ## After the Design (architectural path)
 
 **Clarify-lite (before writing the spec):** mark each of the eight Brief fields Clear / Partial /
-Missing. For Partial or Missing ones, ask at most five multiple-choice questions, one per message,
+Missing. For Partial or Missing ones, ask at most five multiple-choice questions, in rounds of at most 4,
 each with a one-line "why it matters". Log the answers under a dated `## Clarifications` section in
 the spec — a light pass inside the dialogue, not a separate step.
 
