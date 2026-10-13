@@ -66,6 +66,11 @@ func browsersDir(getenv func(string) string, goos string) string {
 // chromium download reaches users only when this constant is bumped.
 const MCPVersion = "0.0.83"
 
+// chromiumRevision maps MCPVersion to the chromium revision its bundled
+// playwright-core pins (node_modules/playwright-core/browsers.json). Bump it
+// with MCPVersion; a version with no entry installs on every run.
+var chromiumRevision = map[string]string{"0.0.83": "1247"}
+
 // MCPPackage is the npx package spec the kit registers and installs browsers with.
 const MCPPackage = "@playwright/mcp@" + MCPVersion
 
@@ -266,11 +271,31 @@ func Bootstrap(o Options) error {
 	default:
 		note("playwright: MCP server already registered")
 	}
+	if rev := chromiumRevision[MCPVersion]; rev != "" && chromiumInstalled(browsersDir(o.Getenv, o.GOOS), rev) {
+		// Skip npx: playwright prints its "without first installing your
+		// project's dependencies" box on every npx run, installed or not.
+		note("playwright: chromium %s already installed for %s", rev, MCPPackage)
+		return nil
+	}
 	note("playwright: ensuring chromium for %s (downloads a few hundred MB when its revision is missing)", MCPPackage)
 	if err := o.Runner("npx", []string{"--yes", "--package", MCPPackage, "playwright", "install", "chromium"}); err != nil {
 		return fmt.Errorf("install chromium: %w", err)
 	}
 	return nil
+}
+
+// chromiumInstalled reports whether both browsers `playwright install
+// chromium` lays down for rev finished installing under dir.
+func chromiumInstalled(dir, rev string) bool {
+	if !filepath.IsAbs(dir) {
+		return false
+	}
+	for _, name := range []string{"chromium-" + rev, "chromium_headless_shell-" + rev} {
+		if _, err := os.Stat(filepath.Join(dir, name, "INSTALLATION_COMPLETE")); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // bootstrapCodex registers the Playwright MCP with Codex (no scope flag, no
