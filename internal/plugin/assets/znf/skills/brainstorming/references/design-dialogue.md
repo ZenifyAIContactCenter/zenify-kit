@@ -47,7 +47,7 @@ When the request already states purpose and constraints, reflect them back inste
 
 - Apply the deletion test: imagine deleting the module. If the complexity vanishes, it was a pass-through; if it reappears across its callers, it earned its place.
 - The interface is the test surface: if you cannot test a module through its interface alone, the boundary is in the wrong place.
-- A seam with one adapter is hypothetical: with one adapter, add no abstraction until a second real implementation exists.
+- A seam with one adapter is hypothetical; add no abstraction until a second real implementation exists.
 - An interface includes its invariants and errors, not only its signatures: what must hold before and after, and how it fails.
 
 **Working in existing codebases:**

@@ -33,7 +33,10 @@ func TestBrainstorming_AsksInRounds(t *testing.T) {
 			}
 		}
 	}
-	assertContainsAll(t, "brainstorming/SKILL.md", s, []string{"ask the user to choose between options", "at most 4"})
+	assertContainsAll(t, "brainstorming/SKILL.md", s, []string{"ask the user to choose between options", "at most 4", "at most five"})
+	if strings.Contains(d, "Design for isolation and clarity") {
+		t.Errorf("design-dialogue.md must not contain the removed isolation heading")
+	}
 	if strings.Contains(s, "AskUserQuestion") {
 		t.Errorf("brainstorming/SKILL.md must not name AskUserQuestion")
 	}

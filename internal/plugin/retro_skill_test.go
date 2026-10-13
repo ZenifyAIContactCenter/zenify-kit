@@ -20,6 +20,11 @@ func TestRetro_Skill(t *testing.T) {
 		"the rule, not the event",
 		"CLAUDE.md",
 		"~/.claude/projects",
+		"memory",
+		"rule",
+		"one home",
+		"read the existing memory",
+		"redact",
 	})
 	for _, bad := range []string{".claude/memory/", "~/.zenify/knowledge", "AskUserQuestion"} {
 		if strings.Contains(s, bad) {

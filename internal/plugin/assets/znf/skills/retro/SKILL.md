@@ -12,19 +12,21 @@ user-invoked only because every lesson it writes is loaded into future sessions.
 
 Read the conversation in context. On Claude Code, if the session was compacted, also read this
 session's transcript (jsonl) under `~/.claude/projects/<slug>/` for the part compaction dropped.
-On other harnesses, use the context only. Do not rely on an environment variable to find it.
+On other harnesses, use the context only. Do not rely on an environment variable to find it: use the transcript file under
+`~/.claude/projects/<slug>/` whose slug matches the current working directory, most recently modified.
 
 ## Step 2: Filter
 
 Keep a moment only if one of two checkable things is true: you had to read, query, or run
 something to learn it, or the user corrected you. "It felt non-obvious" is not a filter. Quote
-each kept moment verbatim as evidence — the quotes stay in chat and never go into a file.
+each kept moment verbatim as evidence — the quotes stay in chat and never go into a file, and
+secrets (tokens, passwords, connection strings) are redacted in the quotes too.
 
 **Nothing qualifies →** say "no lessons" and stop. Write nothing.
 
 ## Step 3: One home per lesson
 
-Each lesson goes to exactly one place, never two:
+Each lesson gets one home, never two:
 
 - **Machine-checkable → check.** Retro does not build it: write no file and change no code.
   Print a follow-up item in chat — which check, which repo, and whether it is `/cook` or `/fix`
@@ -34,7 +36,7 @@ Each lesson goes to exactly one place, never two:
 - **Measured gotcha → memory.**
 
 Take each destination path from the project's and the harness's own config (for memory, the
-`autoMemoryDirectory` setting, else the harness default; for rules, where the project keeps
+harness's memory setting, else its default; for rules, where the project keeps
 them). Never assume a path; say which file each item would land in.
 
 ## Step 4: Update, don't accumulate
