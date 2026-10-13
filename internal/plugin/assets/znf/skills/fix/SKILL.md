@@ -97,9 +97,9 @@ an obvious choice: **stop, run `/cook`.**
 
 ## Step 5: Minimal fix
 
-**Regression test first.** With a correct seam (a test that hits the bug as the real caller
-does): turn the repro into a test, watch it fail, fix, watch it pass; if red needed a code or
-fixture change, show the `diff`. No seam → `no seam: <why>` in the ship-pack `## Intent`.
+**Regression test first.** With a correct seam (hits the bug as the real caller does): turn the
+repro into a test, watch it fail, fix, watch it pass; if red needed a code or fixture change, show
+the `diff`. No seam → `no seam: <why>` in the ship-pack `## Intent`. You pick; never ask.
 
 Make the **smallest change** that fixes the confirmed cause, along the Step 4 approach. Do not
 refactor unrelated code.

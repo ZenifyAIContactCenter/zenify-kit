@@ -52,6 +52,11 @@ loop is red reliably.
 - [ ] It is fast enough to re-run after every change.
 - [ ] You can run it yourself, without the user.
 
+## Regression seam
+
+At Step 5 you choose the seam yourself — the test that runs the bug the way the real caller does —
+or decide there is none and write `no seam: <why>`. This is the agent's call; do not ask the user.
+
 ## Debug logs
 
 Every temporary log line carries a unique prefix `[DEBUG-xxxx]` (four hex characters, one per

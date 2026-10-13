@@ -1,4 +1,4 @@
-<!-- Moved verbatim from fix/SKILL.md § Isolation (route-log slim). Read when: about to create the worktree (before the loop's first write, at the latest Step 5). -->
+<!-- Moved from fix/SKILL.md § Isolation (route-log slim); timing since updated. Read when: about to create the worktree (before the loop's first write, at the latest Step 5). -->
 
 **Isolation (house rule #8): a worktree, always — whatever the size of the fix.**
 
