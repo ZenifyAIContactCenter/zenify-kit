@@ -87,6 +87,17 @@ func TestShipStep5_DelegatesToReview(t *testing.T) {
 	if !strings.Contains(s, "znf:review") {
 		t.Error("ship step 5 does not yet delegate to znf:review")
 	}
+	if !strings.Contains(s, "root cause + Loop:/Regression: lines (/fix, /hotfix)") {
+		t.Error("ship pack Intent does not carry Loop:/Regression: lines")
+	}
+}
+
+func TestShipPRBody_MergeRisk(t *testing.T) {
+	s := syncedAsset(t, "skills/ship/references/pr-message-language.md")
+	assertContainsAll(t, "pr-message-language.md", s, []string{
+		"merge risk", "one-way", "two-way", "_Blast-radius", "_Rollback",
+		"migration", "shared data store", "end users", "publish",
+	})
 }
 
 func TestMergeBaseAndDeclined(t *testing.T) {

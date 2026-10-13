@@ -123,9 +123,14 @@ func TestWritingPlans_SteeringAtTaskSplit(t *testing.T) {
 	assertContainsAll(t, "decomposition-rationale.md", dr, []string{"Necessity Note", "What is built", "Why it is needed", "Simpler alternative rejected because"})
 }
 
+func TestFixRedFlags_NoLoopNotOnProduction(t *testing.T) {
+	s := syncedAsset(t, "skills/fix/references/red-flags.md")
+	assertContainsAll(t, "red-flags.md", s, []string{"not on production", "/hotfix` step 3"})
+}
+
 func TestHotfixSkill_PointsAtFixLoop(t *testing.T) {
 	s := syncedAsset(t, "skills/hotfix/SKILL.md")
-	assertContainsAll(t, "hotfix/SKILL.md", s, []string{"/fix` Step 5", "/fix` Step 6", "read-only rungs", "<REDACTED>"})
+	assertContainsAll(t, "hotfix/SKILL.md", s, []string{"/fix` Step 5", "/fix` Step 6", "read-only rungs", "<REDACTED>", "stop and temporary logging do not apply"})
 	if len(s) > 8192 || strings.Count(s, "\n") > 200 {
 		t.Fatalf("hotfix over cap: %d bytes", len(s))
 	}
