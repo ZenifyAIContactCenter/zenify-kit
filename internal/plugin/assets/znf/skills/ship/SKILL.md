@@ -45,7 +45,7 @@ Stamp each check with its `fp`; step 7 requires every stamp == the current one.
 5. **Independent review** — never pick the reviewer. First `BASE=$(git merge-base <baseRef> HEAD)` (`baseRef` in `.claude/worktree.json`). Write the pack to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md`, then **`Skill(znf:review)`** with `BASE=$BASE` and the pack: it picks the tier and returns `findings[]` (`znf:review/_shared/finding-schema.md`) plus `shippable`. CRITICAL/HIGH enter the fix loop, MEDIUM/LOW and each `Declined:` line the board.
 
    ```
-   ## Intent      plan path (/cook) · root cause (/fix, /hotfix) · else the user's goal
+   ## Intent      plan path (/cook) · root cause + Loop:/Regression: lines (/fix, /hotfix) · else the user's goal
    ## Diff        git log --oneline $BASE..HEAD · git diff --stat/-U10 $BASE..HEAD
    ## Verified    FACTS from steps 2-4, never a verdict: commands + real output, the test
                   files that ran by name, the changed behaviour NO test touches

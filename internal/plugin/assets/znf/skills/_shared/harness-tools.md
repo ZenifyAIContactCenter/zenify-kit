@@ -29,7 +29,7 @@ Two rules for skill authors:
 | Drive a browser (UI verification) | `mcp__playwright__browser_*` via `znf:ui-verifier` | MCP `playwright` |
 | Wait on a condition or a background process | `Monitor` | poll with a shell loop |
 
-Codex notes: `Workflow` has no equivalent, take the T1/T2 path. `context: fork` frontmatter is
+Codex notes: `Workflow` has no equivalent (only `contract-sweep` uses it); review T3 is a plain parallel `Agent` fan-out and runs the same on Codex. `context: fork` frontmatter is
 ignored, the skill runs inline. Codex passes the text after `$znf:<name>` as plain prompt text.
 
 ## Boundary

@@ -44,7 +44,6 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify observe](./zenify_observe): Nhóm lệnh theo dõi phiên Claude Code: số lần dispatch subagent và lượng tool output.
 - [zenify release-note](./zenify_release-note): Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau.
 - [zenify release-report](./zenify_release-report): Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace.
-- [zenify review-log](./zenify_review-log): Xem tổng hợp các lần review của `/znf:review` đã ghi lại trên máy bạn.
 - [zenify reviewer](./zenify_reviewer): In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent.
 - [zenify route-log](./zenify_route-log): Xem các record routing model do skill ghi (số liệu plan từ znf:analyze), đếm theo site, model và gate.
 - [zenify rules](./zenify_rules): Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc.

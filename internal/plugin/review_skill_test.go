@@ -21,8 +21,7 @@ func TestReviewSkill_Materialized_HasKeyParts(t *testing.T) {
 	for _, want := range []string{
 		"select-tier",    // calls the tier script
 		"T1", "T2", "T3", // 3 tiers
-		"PRE", "BUNDLE", "REVIEW", "VERIFY", "POST", // 5 seams
-		"degrade",           // fallback T3->T2
+		"PRE", "BUNDLE", "REVIEW", "VERIFY", // 4 seams
 		"finding-schema.md", // references the shared schema
 	} {
 		if !strings.Contains(s, want) {
@@ -46,13 +45,6 @@ func TestReviewSkill_M4bWiring(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("SKILL.md missing %q (M4b wiring)", want)
 		}
-	}
-	wf, err := os.ReadFile(filepath.Join(dest, "workflows/review-changes.js"))
-	if err != nil {
-		t.Fatalf("read review-changes.js: %v", err)
-	}
-	if !strings.Contains(string(wf), "evidence") {
-		t.Errorf("review-changes.js does not require evidence")
 	}
 }
 
@@ -81,98 +73,6 @@ func TestReviewSkill_M4cWiring(t *testing.T) {
 	}
 }
 
-func TestReviewSkill_M4dWiring(t *testing.T) {
-	dest := t.TempDir()
-	man := filepath.Join(dest, ".manifest.json")
-	if _, err := Sync(dest, man); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-	read := func(rel string) string {
-		b, err := os.ReadFile(filepath.Join(dest, rel))
-		if err != nil {
-			t.Fatalf("read %s: %v", rel, err)
-		}
-		return string(b)
-	}
-	skill := read("skills/review/SKILL.md")
-	for _, want := range []string{"review-doctrine", "DOCTRINE", "reviewer-doctrine.md", "args.doctrine"} {
-		if !strings.Contains(skill, want) {
-			t.Errorf("SKILL.md missing %q", want)
-		}
-	}
-	doc := read("skills/review/_shared/reviewer-doctrine.md")
-	if !strings.Contains(strings.ToLower(doc), "claim") {
-		t.Error("reviewer-doctrine.md missing no-claim wording")
-	}
-	wf := read("workflows/review-changes.js")
-	if !strings.Contains(wf, "args.doctrine") || !strings.Contains(wf, "DOCTRINE") {
-		t.Error("review-changes.js missing args.doctrine wiring")
-	}
-}
-
-func TestReviewSkill_M4fWiring(t *testing.T) {
-	dest := t.TempDir()
-	man := filepath.Join(dest, ".manifest.json")
-	if _, err := Sync(dest, man); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-	read := func(rel string) string {
-		b, err := os.ReadFile(filepath.Join(dest, rel))
-		if err != nil {
-			t.Fatalf("read %s: %v", rel, err)
-		}
-		return string(b)
-	}
-	skill := read("skills/review/SKILL.md")
-	for _, want := range []string{"review-advise-gate", "znf:code-reviewer", "## Advisory", "adviser-prompt.md"} {
-		if !strings.Contains(skill, want) {
-			t.Errorf("SKILL.md missing %q", want)
-		}
-	}
-	prompt := read("skills/review/_shared/adviser-prompt.md")
-	low := strings.ToLower(prompt)
-	if !strings.Contains(low, "read-only") {
-		t.Error("adviser-prompt.md missing read-only wording")
-	}
-	if !strings.Contains(low, "not a bug-hunting reviewer") {
-		t.Error("adviser-prompt.md missing the identity-override line 'not a bug-hunting reviewer'")
-	}
-	if !strings.Contains(prompt, "## Advisory") {
-		t.Error("adviser-prompt.md missing the ## Advisory section")
-	}
-}
-
-func TestReviewSkill_M4eWiring(t *testing.T) {
-	dest := t.TempDir()
-	man := filepath.Join(dest, ".manifest.json")
-	if _, err := Sync(dest, man); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-	b, err := os.ReadFile(filepath.Join(dest, "skills/review/SKILL.md"))
-	if err != nil {
-		t.Fatalf("read SKILL.md: %v", err)
-	}
-	skill := string(b)
-	for _, want := range []string{"review-log record", "outcome", "categories", "refuted", "command -v zenify", "|| true"} {
-		if !strings.Contains(skill, want) {
-			t.Errorf("SKILL.md missing %q (M4e wiring)", want)
-		}
-	}
-}
-
-func TestReviewSkill_T3PassesNoReviewModel(t *testing.T) {
-	s := syncedAsset(t, "skills/review/SKILL.md")
-	if strings.Contains(s, "select-route") {
-		t.Error("review/SKILL.md must not call select-route")
-	}
-	pg := syncedAsset(t, "skills/review/references/post-gates.md")
-	assertContainsAll(t, "post-gates.md", pg, []string{"--arg branch", "branch:$branch"})
-	wf := syncedAsset(t, "workflows/review-changes.js")
-	if !strings.Contains(wf, "args.reviewModel || d.model") {
-		t.Fatal("workflow must honour args.reviewModel")
-	}
-}
-
 func TestShipStep5_DelegatesToReview(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
@@ -187,45 +87,17 @@ func TestShipStep5_DelegatesToReview(t *testing.T) {
 	if !strings.Contains(s, "znf:review") {
 		t.Error("ship step 5 does not yet delegate to znf:review")
 	}
+	if !strings.Contains(s, "root cause + Loop:/Regression: lines (/fix, /hotfix)") {
+		t.Error("ship pack Intent does not carry Loop:/Regression: lines")
+	}
 }
 
-// W3 cost edge: the T3 workflow scales dimension models by risk, verifies only
-// CRITICAL/HIGH adversarially, returns MEDIUM as advisory; SKILL.md states the
-// size-aware tier rule and the T2 shared→contracts-on-opus upgrade.
-func TestReviewSkill_W3Wiring(t *testing.T) {
-	dest := t.TempDir()
-	man := filepath.Join(dest, ".manifest.json")
-	if _, err := Sync(dest, man); err != nil {
-		t.Fatalf("sync: %v", err)
-	}
-	read := func(rel string) string {
-		b, err := os.ReadFile(filepath.Join(dest, rel))
-		if err != nil {
-			t.Fatalf("read %s: %v", rel, err)
-		}
-		return string(b)
-	}
-	wf := read("workflows/review-changes.js")
-	if got := strings.Count(wf, "model: 'opus'"); got != 5 { // security + contracts + 3 skeptics
-		t.Errorf("review-changes.js: want 5 opus pins, got %d", got)
-	}
-	if got := strings.Count(wf, "model: 'sonnet'"); got != 3 { // bugs + perf + types
-		t.Errorf("review-changes.js: want 3 sonnet pins, got %d", got)
-	}
-	for _, want := range []string{"args.reviewModel || d.model", "const advisory", "advisory,", "f.severity === 'CRITICAL' || f.severity === 'HIGH'"} {
-		if !strings.Contains(wf, want) {
-			t.Errorf("review-changes.js missing %q (W3 wiring)", want)
-		}
-	}
-	if strings.Contains(wf, "f.severity === 'HIGH' || f.severity === 'MEDIUM'") {
-		t.Error("review-changes.js still routes MEDIUM into adversarial verify")
-	}
-	skill := read("skills/review/SKILL.md")
-	for _, want := range []string{"floors at T2", "`contracts` agent with model opus", "CRITICAL/HIGH only", "advisory[]"} {
-		if !strings.Contains(skill, want) {
-			t.Errorf("SKILL.md missing %q (W3 wiring)", want)
-		}
-	}
+func TestShipPRBody_MergeRisk(t *testing.T) {
+	s := syncedAsset(t, "skills/ship/references/pr-message-language.md")
+	assertContainsAll(t, "pr-message-language.md", s, []string{
+		"merge risk", "one-way", "two-way", "_Blast-radius", "_Rollback",
+		"migration", "shared data store", "end users", "publish",
+	})
 }
 
 func TestMergeBaseAndDeclined(t *testing.T) {
@@ -242,5 +114,42 @@ func TestMergeBaseAndDeclined(t *testing.T) {
 		[]string{"vision document", "Declined:"})
 	if strings.Contains(syncedAsset(t, "skills/review/_shared/finding-schema.md"), "Declined") {
 		t.Error("finding-schema.md must not mention Declined (machine-checked schema)")
+	}
+}
+
+func TestReviewSkill_FourGatesIntentOpusT3(t *testing.T) {
+	s := syncedAsset(t, "skills/review/SKILL.md")
+	assertContainsAll(t, "review/SKILL.md", s, []string{
+		"PRE", "BUNDLE", "REVIEW", "VERIFY", "contracts / intent", "all five on opus",
+		"floors at T2", "reviewer-doctrine.md", "review-verify",
+	})
+	for _, gone := range []string{
+		"review-doctrine", "review-advise-gate", "review-log", "review-changes.js",
+		"adviser-prompt", "post-gates", "Agent Workflow", "Workflow tool", "## Advisory", "contracts / types",
+	} {
+		if strings.Contains(s, gone) {
+			t.Errorf("review/SKILL.md still contains %q", gone)
+		}
+	}
+	fs := syncedAsset(t, "skills/review/_shared/finding-schema.md")
+	assertContainsAll(t, "finding-schema.md", fs, []string{"intent", "user's stated goal", "review-verify"})
+	for _, gone := range []string{"contracts | types", "skeptic"} {
+		if strings.Contains(fs, gone) {
+			t.Errorf("finding-schema.md still contains %q", gone)
+		}
+	}
+	d := syncedAsset(t, "skills/review/_shared/reviewer-doctrine.md")
+	assertContainsAll(t, "reviewer-doctrine.md", d, []string{"CLAUDE.md", ".claude/rules/", "rule's file:line"})
+	lc := syncedAsset(t, "skills/review/references/lifecycle-and-t3.md")
+	for _, gone := range []string{"POST", "review-advise-gate", "review-log", "review-changes.js"} {
+		if strings.Contains(lc, gone) {
+			t.Errorf("lifecycle-and-t3.md still contains %q", gone)
+		}
+	}
+	bd := syncedAsset(t, "skills/review/references/bundling.md")
+	for _, gone := range []string{"POST", "Degrade-safe"} {
+		if strings.Contains(bd, gone) {
+			t.Errorf("bundling.md still contains %q", gone)
+		}
 	}
 }

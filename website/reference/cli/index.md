@@ -20,7 +20,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | Kiểm spec và plan trước khi code | [zenify analyze](./zenify_analyze) | [zenify standards](./zenify_standards), [zenify spec status](./zenify_spec_status) |
 | Kiểm thử UI và E2E | [zenify visual check](./zenify_visual_check) | [zenify e2e lint](./zenify_e2e_lint), [zenify e2e run](./zenify_e2e_run) |
 | Bảo vệ branch deploy, quét secret, kiểm rule | [zenify guard install](./zenify_guard_install) | [zenify secret-scan](./zenify_secret-scan), [zenify rules lint](./zenify_rules_lint) |
-| Release và ghi nhận rủi ro | [zenify release-report](./zenify_release-report) | [zenify release-note](./zenify_release-note), [zenify review-log](./zenify_review-log) |
+| Release và ghi nhận rủi ro | [zenify release-report](./zenify_release-report) | [zenify release-note](./zenify_release-note) |
 | Knowledge store và tài liệu | [zenify docs sync](./zenify_docs_sync) | [zenify docs gen](./zenify_docs_gen), [zenify config](./zenify_config) |
 | Quản lý plugin skill | [zenify skills sync](./zenify_skills_sync) | [zenify skills install](./zenify_skills_install) |
 | Theo dõi phiên Claude Code | [zenify observe report](./zenify_observe_report) | [zenify observe statusline install](./zenify_observe_statusline_install) |
@@ -58,7 +58,6 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify observe statusline install](./zenify_observe_statusline_install) | Ghi key `statusLine` trỏ tới `zenify observe statusline` vào `~/.claude/settings.json`. |
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
 | [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace. |
-| [zenify review-log](./zenify_review-log) | Xem tổng hợp các lần review của `/znf:review` đã ghi lại trên máy bạn. |
 | [zenify reviewer](./zenify_reviewer) | In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent. |
 | [zenify route-log](./zenify_route-log) | Xem các record routing model do skill ghi (số liệu plan từ znf:analyze), đếm theo site, model và gate. |
 | [zenify rules](./zenify_rules) | Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc. |
@@ -100,11 +99,8 @@ Hook và skill gọi các lệnh này; bạn không cần gõ tay nên chúng kh
 | `zenify hooks-run` | Bộ điều phối nội bộ cho hook znf (chỉ chạy trong workspace, fail-open) |
 | `zenify observe count` | PreToolUse hook: đếm dispatch Task + soft-cap warn (không chặn) |
 | `zenify observe meter` | PostToolUse hook: đo tool-output per-session; nhắc khi một result \> 50KB hoặc phiên \> 2MB (không sửa output) |
-| `zenify review-advise-gate` | Cơ học quyết định có gọi adviser LLM không ở POST của znf:review (AdviseInput JSON qua stdin, seam POST) |
 | `zenify review-bundle` | Cơ học chia diff lớn thành bundle cụm-file cho znf:review (seam BUNDLE) |
 | `zenify review-codex` | Chạy codex review rồi in findings JSON của kit (adapter, seam review engine) |
-| `zenify review-doctrine` | Cơ học strip dòng chỉ-verdict khỏi ## Verified của ship-pack (text qua stdin, seam doctrine) |
-| `zenify review-log record` | Ghi một review record vào store local (Record JSON qua stdin, seam POST) |
 | `zenify review-verify` | Cơ học verify findings của znf:review vs file thật (findings JSON qua stdin, seam VERIFY) |
 | `zenify route-log record` | Ghi một route record (JSON qua stdin), best-effort |
 | `zenify route-log record-plan` | Đếm task và file trong plan, ghi record site=plan-metrics |

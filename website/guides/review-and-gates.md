@@ -27,33 +27,27 @@ flowchart TD
 
 ### `/znf:review`
 
-Engine review hợp nhất của kit. Trước khi dispatch reviewer, skill chạy build/lint và một lượt quét lỗi mẫu cơ bản, không tốn ngân sách nếu bước này đã fail. Sau đó skill đo diff để chọn mức độ soi:
+Engine review hợp nhất của kit, đi qua bốn gate: PRE, BUNDLE, REVIEW, VERIFY. Gate PRE chạy build/lint và một lượt quét lỗi mẫu cơ bản, không tốn ngân sách nếu bước này đã fail. Gate REVIEW đo diff để chọn mức độ soi:
 
 | Kích thước diff | Mức soi |
 |---|---|
-| Nhỏ | Một reviewer độc lập |
-| Vừa | Năm reviewer chạy song song, mỗi người phụ trách một khía cạnh: lỗi, bảo mật, hiệu năng, hợp đồng, kiểu dữ liệu |
-| Lớn, hoặc chạm vùng nhạy cảm (auth, tenant, migration) | Một vòng review đối kháng, phát hiện nghiêm trọng phải được nhiều reviewer độc lập xác nhận mới giữ lại |
+| Nhỏ | T1: một reviewer độc lập |
+| Vừa | T2: năm reviewer chạy song song, mỗi người phụ trách một trục: lỗi, bảo mật, hiệu năng, hợp đồng, ý định (`intent`) |
+| Lớn, hoặc chạm vùng nhạy cảm (auth, tenant, migration) | T3: năm trục như T2, cả năm reviewer chạy opus; không còn Workflow hay vòng skeptic |
 
 Diff chạm hợp đồng chung (một collection, endpoint, queue, hoặc kênh pub/sub) được nâng mức soi tối thiểu lên mức vừa, kể cả khi diff nhỏ.
 
+Trục `intent` so diff với phần `## Intent` trong gói ship; chạy độc lập mà không có gói thì so với mục tiêu bạn đã nêu. Mọi reviewer đọc `CLAUDE.md`/`AGENTS.md` của repo và các file `.claude/rules/` khớp với diff trước khi chấm; khi một quy ước bị vi phạm, finding trích `file:dòng` của quy ước đó.
+
 Reviewer đọc spec như một bản định hướng: chi tiết spec không nhắc tới chưa chắc là lỗi, trừ bảo mật, phân quyền/tenant, an toàn dữ liệu và vỡ hợp đồng — những thứ này thấy trong diff là lỗi. Điều reviewer không đủ căn cứ để phán (không có dữ liệu, chưa đọc caller) được ghi riêng ở khối `Declined:`, ngoài danh sách phát hiện.
 
-Mọi phát hiện có kèm vị trí file phải trích đúng dòng code thật. Skill xác minh cơ học từng trích dẫn đó khớp với file thật và loại bỏ phát hiện nào trích sai, trước khi kết luận có ship được hay không. Diff rất lớn được tách thành nhiều cụm file nhỏ hơn, mỗi cụm review riêng rồi gộp kết quả; nếu vẫn quá lớn để tách, skill dừng và đề nghị chia nhỏ pull request.
+Gate VERIFY kiểm cơ học: mọi phát hiện có kèm vị trí file phải trích đúng dòng code thật, skill loại bỏ phát hiện nào trích sai trước khi kết luận có ship được hay không. Với diff rất lớn, gate BUNDLE tách diff thành nhiều cụm file nhỏ hơn, mỗi cụm review riêng rồi gộp kết quả; nếu vẫn quá lớn để tách, skill dừng và đề nghị chia nhỏ pull request.
 
 ```text
 /znf:review
 ```
 
 Không có diff nào để review, skill báo "nothing to review" và dừng, không dispatch reviewer nào.
-
-### `zenify review-log`
-
-Xem tổng hợp các lần review đã ghi lại trên máy bạn: số lần review theo mức soi, số finding theo mức độ, tỷ lệ finding bị bác bỏ, số lần shippable, và các nhóm finding gặp nhiều nhất. Dữ liệu nằm trong checkout chính, nên chạy từ worktree vẫn thấy cùng một log.
-
-```bash
-zenify review-log
-```
 
 ### `/znf:gate`
 
@@ -123,10 +117,10 @@ Finding chuyển sang WAIVED và lý do được ghi lại. Một collection ch�
 
 ## Xem thêm
 
-[`/reference/skills/review`](/reference/skills/review), [`/reference/skills/gate`](/reference/skills/gate), [`/reference/skills/contract-sweep`](/reference/skills/contract-sweep), [`/reference/skills/explain-plan`](/reference/skills/explain-plan), [`zenify db-perf`](/reference/cli/zenify_db-perf), [`zenify review-log`](/reference/cli/zenify_review-log), [ship: verify và mở PR](/workflows/ship), [Gate fail-open](/concepts/gate-fail-open)
+[`/reference/skills/review`](/reference/skills/review), [`/reference/skills/gate`](/reference/skills/gate), [`/reference/skills/contract-sweep`](/reference/skills/contract-sweep), [`/reference/skills/explain-plan`](/reference/skills/explain-plan), [`zenify db-perf`](/reference/cli/zenify_db-perf), [ship: verify và mở PR](/workflows/ship), [Gate fail-open](/concepts/gate-fail-open)
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - reference/skills/review.md, gate.md, contract-sweep.md, explain-plan.md, ground.md (generated)
-- reference/cli/zenify_db-perf.md, zenify_gate.md, zenify_gate_participants.md, zenify_review-log.md (generated)
+- reference/cli/zenify_db-perf.md, zenify_gate.md, zenify_gate_participants.md (generated)
 - workflows/ship.md (bước 3 và 5, board)
 -->

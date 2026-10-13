@@ -22,7 +22,6 @@ func TestNoColorGuard_NoEscapesInStdout(t *testing.T) {
 		{"config", "--help"},
 		{"docs", "--help"},
 		{"skills", "--help"},
-		{"review-log"},
 		{"gate", "--help"},
 		{"secret-scan", "--help"},
 		{"update", "--help"},

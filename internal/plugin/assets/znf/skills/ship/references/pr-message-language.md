@@ -16,7 +16,7 @@ A PR carries two audiences in one artifact. Keep them apart:
   **whole body** — is a human-read artifact. Write it in the project's prose language: the same
   language its specs and plans use (see `znf:_shared/artifact-style` and the project's own
   convention). For the zenify team that is Vietnamese. Structure the body as
-  **summary · what changed · how verified**, and end it with the repo's attribution line.
+  **summary · what changed · how verified · merge risk**, and end it with the repo's attribution line.
 
 - **Commit messages — machine.** They are the machine record and stay English (Conventional
   Commits). The PR is the human-facing half; the commit is not.
@@ -29,8 +29,20 @@ inconsistency this rule exists to remove. Pick the audience per field, not per P
 
 ## Body structure
 
-The body is, in this order: **summary · what changed · how verified**, then the repo's attribution
-line. Write it for the human reviewer: no list of spec `SC-n` lines, no test function names, no
+The body is, in this order: **summary · what changed · how verified · merge risk**, then the repo's
+attribution line. Write it for the human reviewer: no list of spec `SC-n` lines, no test function names, no
 SDD ledger lines (`minor (deferred)` / `parked`) — the reviewer cannot act on any of them, and the
 ship board and ledger already hold them. Name in plain words only what was NOT verified and what a
 person still has to decide or do by hand.
+
+### Merge risk section
+
+- Heading and prose follow the project's prose language, like the rest of the body.
+- State whether the PR is one-way or two-way, its blast radius (from the `_Blast-radius` tag in the
+  spec's Brief) and its rollback (from `_Rollback`). These are the values ship 7b passes to
+  `zenify release-note`.
+- No spec: write the blast radius from the files changed.
+- Before→after evidence belongs in "how verified"; do not repeat it here.
+- One-way means the PR has at least one of: a migration or backfill; a write to a shared data store
+  or a schema change; a message sent to end users; a publish of an artifact others download
+  (package, SDK, CDN file). Otherwise it is two-way.

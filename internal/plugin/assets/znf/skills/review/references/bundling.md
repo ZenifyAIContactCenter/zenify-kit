@@ -25,10 +25,10 @@ Handle based on `$PLAN`'s `verdict`:
      - `ADDED_b = b.loc`
      - `SHARED_b` = the shared-contract signal computed on `git diff "$BASE" -- <b.files>` (same regex as Step 1).
      - `TIER_b` = `bash .../select-tier "$ADDED_b" "$SHARED_b" "$CRITICAL"` (print the tier + reason for this bundle on the report).
-     - Dispatch REVIEW by `TIER_b` (Step 3), diff scope = `git diff "$BASE" -- <b.files>`, with `MANIFEST` as context. Degrade-safe T3→T2 still applies per-bundle.
+     - Dispatch REVIEW by `TIER_b` (Step 3), diff scope = `git diff "$BASE" -- <b.files>`, with `MANIFEST` as context.
      - Collect the bundle's `findings[]`.
   3. Merge findings from every bundle, dedup by `title+file`.
-  4. Skip Step 2 (tier already selected per-bundle) and proceed to **Step 4** (VERIFY + POST) on the union of findings.
+  4. Skip Step 2 (tier already selected per-bundle) and proceed to **Step 4** (VERIFY) on the union of findings.
 - `passthrough` (not expected when ADDED>2000) → proceed to Step 2 on the whole diff.
 
 **The report must print**: how many clusters were bundled, LOC + tier for each cluster, BEFORE dispatching — transparent like "print tier + reason".

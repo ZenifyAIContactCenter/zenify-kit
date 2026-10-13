@@ -14,4 +14,4 @@ CODEX_JSON=$(zenify review-codex --base "$BASE" ${PACK:+--pack "$PACK"} 2>$TMPDI
 - **exit ≠ 0** → board line `review … codex→agent: $(cat $TMPDIR/codex.err)`, then continue with
   T1/T2/T3 as if `ENGINE=agent`. Never fail silently.
 
-Step 4 (VERIFY, POST) is unchanged and runs on `FINDINGS_JSON` either way.
+Step 4 (VERIFY) is unchanged and runs on `FINDINGS_JSON` either way.

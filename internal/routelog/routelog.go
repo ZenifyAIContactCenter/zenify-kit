@@ -1,8 +1,7 @@
-// Package routelog is the store for routing records: one JSON file per
+// Package routelog records skill-routing decisions: one JSON file per
 // record, written best-effort at the main checkout (.znf/route-log),
-// read back by `zenify route-log`. Same shape of store as internal/review's
-// review-log; kept separate because the records answer a different question
-// (plan metrics and manual advisor calls) and are pruned on a different cadence.
+// read back by `zenify route-log`. The records hold plan metrics and manual
+// advisor calls.
 package routelog
 
 import (
