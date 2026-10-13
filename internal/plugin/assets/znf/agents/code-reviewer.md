@@ -2,7 +2,7 @@
 name: code-reviewer
 description: Independent code reviewer with a fresh context — no memory of writing the code. Use PROACTIVELY when code changes are ready to review before shipping. Checks for correctness bugs, security issues, contract mismatches, N+1 queries, and over-engineering.
 model: sonnet
-disallowedTools: Write, Edit, Bash
+disallowedTools: Write, Edit, Bash, Agent, Skill
 memory: project
 ---
 

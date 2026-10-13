@@ -4,12 +4,11 @@ What each Step 4 option does, and the excuses to resist along the way.
 
 ## Quick Reference
 
-| Option | Merge | Push | Keep Worktree | Cleanup Branch |
-|--------|-------|------|---------------|-----------------|
-| 1. Merge locally | yes | - | - | yes |
-| 2. Create PR | - | yes | yes | - |
-| 3. Keep as-is | - | - | yes | - |
-| Discard (explicit request only) | - | - | - | yes (force) |
+| Option | Push | Keep Worktree | Cleanup Branch |
+|--------|------|---------------|-----------------|
+| 1. Create PR | yes | yes | - |
+| 2. Keep as-is | - | yes | - |
+| Discard (explicit request only) | - | - | yes (force) |
 
 ## Common Rationalizations
 
@@ -22,6 +21,5 @@ What each Step 4 option does, and the excuses to resist along the way.
 | "The PR is up, so the worktree is clutter now" | PR feedback gets fixed in that worktree. It stays until the work lands. |
 | "This other worktree looks stale — I'll clean it too" | Clean up only worktrees under `.worktrees/` or `worktrees/`. Everything else belongs to the host. |
 | "Removal refused — `--force` is just finishing the cleanup" | The refusal means files exist only in that worktree. `--force` destroys them permanently. Show your human partner and ask. |
-| "The merged-result failure is probably flaky" | A failing merged result stops everything. Branch and worktree stay put while you investigate. |
-| "The base branch is obviously main" | Confirm the fork point or ask. Merging into the wrong base is expensive to undo. |
+| "The base branch is obviously main" | Confirm the fork point or ask. A PR against the wrong base merges into the wrong branch. |
 | "The push was rejected — force-push will fix it" | A rejected push means the remote moved. Investigate; force-push only on your human partner's explicit request. |

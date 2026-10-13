@@ -9,19 +9,14 @@ allowed-tools: Read Glob Bash(ls *) Bash(find *) Bash(cat *) Agent
 
 ## How to run
 
-```
-Invoke Workflow tool with:
-  scriptPath: "/Users/believe/.claude/workflows/understand-codebase.js"
-  args: {
-    repoPath: "/path/to/repo",
-    focus: "optional: what you want to understand, e.g. 'authentication flow' or 'billing'"
-  }
-```
-
-The workflow:
-1. Scouts top-level structure, stack, entry points, subsystems
-2. Parallel reads of each subsystem (up to 8 concurrently)
-3. Synthesizes into: overview paragraph, subsystem roster, contract map, gotchas, CLAUDE.md outline
+1. **Scout it yourself** with `ls`/`find`/`cat`: stack, entry points, top-level subsystems. Pick at
+   most 8 subsystems (the `focus` the user named comes first).
+2. **One reader per subsystem, all in ONE message**: a read-only `Explore` agent, model `sonnet`, brief =
+   the subsystem path + "what lives here, entry points, data it reads/writes, contracts it exposes,
+   gotchas; ≤ 40 lines". Collect each report by name; a missing one leaves that subsystem marked
+   "not read", never "nothing there".
+3. **Synthesize** in the main loop: overview paragraph, subsystem roster, contract map, gotchas,
+   CLAUDE.md outline.
 
 ## When to use
 

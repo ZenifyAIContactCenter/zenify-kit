@@ -25,7 +25,7 @@ Khi bắt đầu làm việc trong một repo mới hoặc chưa quen, không ph
 ## Cách hoạt động
 
 1. Skill trước tiên khảo sát cấu trúc thư mục cấp cao, stack công nghệ, điểm khởi động, và các phân hệ chính của repo.
-2. Sau đó nó đọc song song từng phân hệ, tối đa vài luồng cùng lúc, để rút ngắn thời gian so với đọc tuần tự.
+2. Sau đó nó gửi tối đa 8 agent `Explore` (model sonnet) trong một lượt, mỗi agent đọc một phân hệ và trả về tối đa 40 dòng. Phân hệ nào không có báo cáo được ghi là chưa đọc.
 3. Kết quả được tổng hợp lại thành một đoạn tổng quan, danh sách các phân hệ, bản đồ hợp đồng giữa các phần, những điểm cần lưu ý, và một khung CLAUDE.md có thể dùng ngay.
 
 ## Lưu ý

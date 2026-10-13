@@ -20,7 +20,7 @@ Mọi skill của kit, kể cả bộ skill coding theo stack (Express, NestJS, 
 | [/znf:e2e](./e2e) | Quyết định và viết journey E2E Playwright chạy thật từ UI tới BE, khẳng định kết quả domain bằng API re-fetch, qua được `zenify e2e lint`. |
 | [/znf:explain-plan](./explain-plan) | DB-perf gate hai tầng: quét tĩnh diff và explain plan từng query, phân loại phát hiện BLOCKING hoặc ADVISORY. |
 | [/znf:express-service-patterns](./express-service-patterns) | Quy ước viết backend Express legacy — controller/service, response envelope, xử lý lỗi bất đồng bộ. |
-| [/znf:finishing-a-development-branch](./finishing-a-development-branch) | Kết thúc một branch sau khi test xanh: chọn merge local, push và mở PR, hoặc giữ nguyên; dọn worktree khi cần. |
+| [/znf:finishing-a-development-branch](./finishing-a-development-branch) | Kết thúc một branch sau khi test xanh: push và mở PR, hoặc giữ nguyên; skill không bao giờ merge. |
 | [/znf:fix](./fix) | Chẩn đoán trước, sửa sau. |
 | [/znf:gate](./gate) | Cổng kiểm hợp đồng chung giữa các repo trong một polyrepo, chạy ngay sau khi sửa thứ gì đó dùng chung. |
 | [/znf:ground](./ground) | Xác minh hình dạng và giá trị thật trước khi viết code chạm vào dữ liệu, API, hoặc code có sẵn. |

@@ -43,7 +43,7 @@ Proceed only on **real error data**.
 
 ## Step 1: Root cause analysis
 
-Use superpowers `systematic-debugging`: what is the actual error message (exact text from logs),
+Start from the evidence: what is the actual error message (exact text from logs),
 and what changed recently (`git log --oneline -10`, `git diff HEAD~1`)?
 
 **Round counter.** Every entry into Step 1 for the *same* error or failing test is one round: write
