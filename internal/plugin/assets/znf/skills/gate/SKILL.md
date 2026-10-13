@@ -1,6 +1,6 @@
 ---
 name: gate
-description: Cross-repo contract gate for a polyrepo workspace. Run this automatically right after editing anything shared across services — a shared DB collection/table, a pub/sub channel, an HTTP endpoint between services, or a queue — to find every producer/consumer and verify nothing breaks. Read-only and safe to run on its own. Can also be invoked manually with a resource name.
+description: Cross-repo contract gate for a polyrepo workspace. Run automatically right after editing anything shared across services — a DB collection/table, a pub/sub channel, an inter-service HTTP endpoint, or a queue. Read-only and safe to run on its own; also invoked manually with a resource name.
 argument-hint: "[collection | channel | endpoint | queue name]"
 allowed-tools: Grep Read Bash(grep *) Bash(rg *) Bash(zenify *) Agent
 ---

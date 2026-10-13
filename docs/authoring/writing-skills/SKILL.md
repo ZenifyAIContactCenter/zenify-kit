@@ -138,6 +138,8 @@ Concrete results
 
 **Format:** Start with "Use when..." to focus on triggering conditions
 
+**Length:** at most 300 runes (kit cap, enforced by `internal/docsgen/description_test.go`). Every description loads into every session, so keep one sentence per trigger branch and nothing else.
+
 **CRITICAL: Description = When to Use, NOT What the Skill Does**
 
 The description should ONLY describe triggering conditions. Do NOT summarize the skill's process or workflow in the description.
@@ -216,6 +218,10 @@ wc -w skills/path/SKILL.md
 # getting-started workflows: aim for <150 each
 # Other frequently-loaded: aim for <200 total
 ```
+
+**No-op test:** a line whose removal changes no behaviour is deleted. Before keeping a sentence, ask what the agent would do differently without it; if nothing, cut it.
+
+**The environment is the source of truth; a doc that copies it is a cache:** a count, list or path the environment can report is written as the command that reads it, not as the value. A copied value goes stale silently and is then asserted with confidence; the command stays correct.
 
 **Name by what you DO or core insight:**
 - ✅ `condition-based-waiting` > `async-test-helpers`
@@ -452,6 +458,7 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 - [ ] Name uses only letters, numbers, hyphens (no parentheses/special chars)
 - [ ] YAML frontmatter with required `name` and `description` fields (max 1024 chars; see [spec](https://agentskills.io/specification))
 - [ ] Description starts with "Use when..." and includes specific triggers/symptoms
+- [ ] Description ≤ 300 runes (kit cap, `internal/docsgen/description_test.go`), within the spec's 1024
 - [ ] Description written in third person
 - [ ] Keywords throughout for search (errors, symptoms, tools)
 - [ ] Clear overview with core principle

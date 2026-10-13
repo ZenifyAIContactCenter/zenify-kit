@@ -1,6 +1,6 @@
 ---
 name: run
-description: Launch the app and produce real output from the real code path, so a change can be verified rather than asserted. Use when a change is behavioural and there are no tests covering it, before claiming it works, and before dispatching znf:ui-verifier (which needs the URL this produces). Reads the port the worktree was allocated instead of hunting for a free one.
+description: Launch the app and produce real output from the real code path, so a change is verified rather than asserted. Use when a change is behavioural and no test covers it, before claiming it works, and before dispatching znf:ui-verifier (which needs the URL this produces).
 allowed-tools: Read Grep Glob Bash(git *) Bash(rg *) Bash(cat *) Bash(nc *) Bash(curl *) Bash(node *) Bash(tail *) Bash(grep *)
 ---
 

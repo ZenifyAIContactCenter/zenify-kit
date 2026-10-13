@@ -1,6 +1,6 @@
 ---
 name: research
-description: Deep research with verified citations. Use when a design depends on an external library, framework, tool or API whose docs were not read this session; on how others solve the problem (prior art, community practice, competitor products); on facts that go stale (latest, current, version, pricing, release notes); or when two genuinely different approaches need evidence before choosing. Runs as a forked lead that dispatches znf:researcher workers, re-verifies every URL, and writes the report to docs/research/<repo>/ — the caller receives at most 40 lines. Not for in-repo names or DB shapes; use /znf:ground or /znf:scout for those.
+description: Deep research with verified citations. Use when a design needs unread external docs, prior art, stale-prone facts (version, pricing, release notes) or evidence between two approaches. Not for in-repo names or DB shapes; use /znf:ground or /znf:scout.
 argument-hint: "<question> [repo: <feature-repo>]"
 allowed-tools: Read Write Bash(mkdir *) Bash(date *) Agent
 context: fork
