@@ -128,7 +128,7 @@ Subagent (general-purpose):
 
     **Testing:**
     - Do tests actually verify behavior (not just mock behavior)?
-    - Did I follow TDD (test written and seen failing first)?
+    - Did I follow TDD where an independent expected value existed (or give a real `No TDD:` reason)?
     - Are tests comprehensive?
     - Are expected values independent of the code under test?
     - Are mocks only at system boundaries?
@@ -150,10 +150,10 @@ Subagent (general-purpose):
     Write your full report to [REPORT_FILE]:
     - What you implemented (or what you attempted, if blocked)
     - What you tested and test results
-    - **TDD Evidence**:
+    - **TDD Evidence** (either the RED/GREEN pair, or the `No TDD:` line):
       - RED: command run, relevant failing output before implementation, and why the failure was expected
       - GREEN: command run and relevant passing output after implementation
-      - or `No TDD: <why>` + real-run output
+      - Alternative to RED/GREEN, only when no independent expected value exists: `No TDD: <why>` + real-run output
     - Full suite result; names of any red tests you did not cause
     - Files changed
     - Skills invoked (names), or "no skills routed"
