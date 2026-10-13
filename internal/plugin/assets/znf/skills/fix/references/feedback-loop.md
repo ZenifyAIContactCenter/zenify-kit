@@ -8,29 +8,39 @@ a regression test, Step 6 watches it go green.
 
 ## Redact first
 
-Before a command, its output, or any artifact (log, payload, HAR, dump) enters the conversation or a
-file, replace every secret — token, password, API key, cookie, connection string — with
-`<REDACTED>`. The loop reads credentials from environment variables (`$API_TOKEN`), never from a
-pasted value.
+Scrub inside the command, so raw output never enters the conversation: pipe it through a filter,
+e.g. `| sed -E 's/(token|password|secret|key)=[^& ]+/\1=<REDACTED>/Ig'`. Replace with `<REDACTED>`
+every secret — token, password, API key, cookie, connection string — every piece of customer PII —
+phone, email, name, address — and every tenant or account id. The same applies to anything written
+to a file, the ledger, a PR body or a fixture; fixtures and replayed payloads use synthetic data.
+The loop reads credentials from environment variables (`$API_TOKEN`), never from a pasted value.
+
+`KEY=value` lines never carry a secret or PII value, `[DEBUG-` log lines never print a secret or PII
+field, and a HAR file is scrubbed before you read it.
 
 ## The ladder
 
 Try the rungs top-down; stop at the first one that goes red on the right symptom.
 
 1. **Failing test** at the seam that touches the bug.
-2. **`curl`** against the worktree's own port (the one `wt` allocated).
+2. **`curl`** against the worktree's own port (the one `wt` allocated) or another local target.
 3. **CLI with a fixture** — the real entry point fed a saved input.
-4. **Replay a captured payload** — the request, job or message that failed, redacted.
+4. **Replay a captured payload** — the request, job or message that failed, redacted, against the
+   worktree's own port or a local target only.
 5. **Throwaway harness** — a short script that calls the failing function directly.
 6. **Property / fuzz loop** — generate inputs until one fails.
 7. **`git bisect run <cmd>`** — when it worked before and you have a command that tells good from bad.
 8. **Old vs new** — same input against the good build and the bad build, diff the outputs.
 9. **Numbered manual steps** — last resort: steps for the user to perform by hand, each returning
-   one `KEY=value` line you can read back. No script.
+   one `KEY=value` line you can read back. No script. This is the one exception to "already run" and
+   "you can run it yourself": the user's pasted `KEY=value` lines are the red evidence, and Step 6
+   asks the user to repeat the same steps and paste the lines again.
 
-Read-only rungs — reading logs, running an existing failing test, `curl` against an environment that
-is already running — need no worktree. A rung that writes a file or starts a server needs the
-worktree first.
+Read-only means log reads, running an existing failing test, and GET or HEAD requests — nothing
+else. Those need no worktree. A request with a side effect, or a payload replay, runs only against
+the worktree's own port or a local target. Anything that writes to a shared or production
+environment needs the user's approval and goes through a dry-run script the user runs; the agent
+never runs it. A rung that writes a file or starts a server needs the worktree first.
 
 ## Tighten the loop
 
@@ -50,7 +60,8 @@ loop is red reliably.
 - [ ] It is red on the symptom the user described, not a neighbouring error.
 - [ ] It is stable across repeated runs.
 - [ ] It is fast enough to re-run after every change.
-- [ ] You can run it yourself, without the user.
+- [ ] You can run it yourself, without the user — except rung 9, where the user's pasted
+      `KEY=value` lines are the evidence.
 
 ## Regression seam
 

@@ -61,7 +61,7 @@ flowchart TD
 
 | Bước | Kit làm gì | Bạn làm gì |
 |---|---|---|
-| 0 | Lấy log hoặc lỗi thật, rồi dựng vòng phản hồi: đúng một lệnh có tên, đã chạy, đỏ đúng triệu chứng bạn mô tả (thang các cách dựng nằm trong `references/feedback-loop.md`). Secret trong log được thay bằng `<REDACTED>` | Xác nhận đúng log. Nếu không dựng được vòng, kit dừng và xin môi trường tái hiện, artifact đã che secret, hoặc quyền thêm log tạm |
+| 0 | Lấy log hoặc lỗi thật, rồi dựng vòng phản hồi: đúng một lệnh có tên, đã chạy, đỏ đúng triệu chứng bạn mô tả (thang các cách dựng nằm trong `references/feedback-loop.md`). Secret, dữ liệu cá nhân của khách hàng và id tenant/account được lọc thành `<REDACTED>` ngay trong lệnh | Xác nhận đúng log. Nếu không dựng được vòng, kit dừng và xin môi trường tái hiện, artifact đã che secret, hoặc quyền thêm log tạm |
 | 1 | Phân tích nguyên nhân. Hẹp thì một giả thuyết, rộng thì nhiều agent chạy song song, mỗi agent nhận lệnh đỏ cùng giả thuyết của nó | Đọc kết luận |
 | 2 | Chạy lệnh đỏ, xác nhận lỗi đúng triệu chứng rồi thu repro về kịch bản nhỏ nhất vẫn đỏ. Kiểm chứng nguyên nhân trước khi sửa bất cứ gì | Không sửa gì nếu chưa kiểm chứng được |
 | 3 | Chạy `/znf:scout` tìm nơi gọi, đọc, ghi code sắp đổi | Đọc báo cáo scout |
@@ -82,7 +82,7 @@ flowchart TD
 
 ## Worktree
 
-Worktree được tạo trước lần ghi file đầu tiên của vòng phản hồi (test, harness, log debug) hoặc trước lần khởi động server, chậm nhất trước bước 5. Các cách chỉ đọc (đọc log, chạy test có sẵn đang fail, `curl` vào môi trường đang chạy) không cần worktree.
+Worktree được tạo trước lần ghi file đầu tiên của vòng phản hồi (test, harness, log debug) hoặc trước lần khởi động server, chậm nhất trước bước 5. Các cách chỉ đọc (đọc log, chạy test có sẵn đang fail, request GET/HEAD vào môi trường đang chạy) không cần worktree. Request có side effect hoặc replay payload chỉ chạy trên port của worktree hoặc target local; ghi vào môi trường dùng chung hay production cần bạn duyệt và đi qua script dry-run do bạn chạy.
 
 ## Quyết định thuộc về bạn
 
@@ -106,7 +106,7 @@ Cách sửa: khi git không còn biết worktree đó, kit xoá thư mục trự
 |---|---|
 | Vá triệu chứng cho qua | Chứng minh nguyên nhân bằng bằng chứng thật ở bước 2 trước khi sửa |
 | Đoán giả thuyết khi chưa có lệnh đỏ | Dựng vòng phản hồi ở bước 0 trước. Không dựng được thì dừng và xin thêm dữ liệu, không đoán |
-| Dán log hoặc payload thô vào hội thoại | Thay token, mật khẩu, API key, cookie, chuỗi kết nối bằng `<REDACTED>` trước khi dán |
+| Dán log hoặc payload thô vào hội thoại | Lọc ngay trong lệnh: token, mật khẩu, API key, cookie, chuỗi kết nối, dữ liệu cá nhân khách hàng, id tenant/account thành `<REDACTED>`; fixture dùng dữ liệu giả |
 | Để fix mọc thành feature | Fix lan 4+ file hoặc cần quyết định thiết kế thì leo thang sang `/znf:cook` |
 
 ## Xem thêm

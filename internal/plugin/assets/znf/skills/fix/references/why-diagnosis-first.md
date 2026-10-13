@@ -1,4 +1,4 @@
-<!-- Moved verbatim from fix/SKILL.md §§ How much diagnosis, worktree, Step 1, Step 3, Step 4, Step 8 (token-diet). Read when: tempted to skip a step of /fix, or asked why /fix insists on scout + ship. -->
+<!-- Adapted from fix/SKILL.md §§ How much diagnosis, worktree, Step 1, Step 3, Step 4, Step 8 (token-diet). Read when: tempted to skip a step of /fix, or asked why /fix insists on scout + ship. -->
 
 ## Contents
 - Why the worktree waits for the first write, and why there is no workspace handoff
@@ -49,8 +49,9 @@ another and buy nothing. You already stated the evidence that settles each hypot
 this a search against a fixed target rather than open-ended reasoning. Keep the reasoning at the top
 tier where it belongs: forming the hypotheses and confirming the survivor, both inline.
 
-Confirming the surviving hypothesis is Step 2, and it stays **inline** — that step reads real error
-output, and its output is the evidence the fix is built on, not a map pointing at it.
+Confirming the surviving hypothesis is Step 2, and it stays **inline** — that step re-runs the
+Step 0 red command and reads its real output, and that output is the evidence the fix is built on,
+not a map pointing at it.
 
 ### From § Step 3: why scouting a fix matters more than scouting a feature
 **Invoke it as a tool, not as an intention.** `Skill(znf:scout)` and the `Agent(znf:scout)` it
