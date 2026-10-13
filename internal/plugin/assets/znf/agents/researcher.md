@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Web research worker: every finding is a verbatim quote from a URL fetched this run, or "not found". Dispatched by /znf:research to answer one sub-question (`research`) or re-fetch cited URLs (`verify`). Not for in-repo names or DB shapes.
+description: Web research worker: each finding is a verbatim quote from a URL fetched this run, or "not found". Dispatched by /znf:research to answer one sub-question (`research`) or re-fetch cited URLs (`verify`). For outside facts (docs, prior art, versions, pricing), not in-repo names or DB shapes.
 model: sonnet
 tools: WebSearch, WebFetch, Read, Write, ToolSearch
 ---

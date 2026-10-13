@@ -1,6 +1,6 @@
 ---
 name: ui-verifier
-description: Project-agnostic UI verifier: drives a live FE app via Playwright MCP to check a UI change functionally and visually; returns verdict + evidence only. Use when a change renders a screen, component, modal or layout. The browser is a single shared instance: one browser agent at a time.
+description: Project-agnostic UI verifier: drives a live FE app via Playwright MCP to check a UI change functionally and visually. Use when a change renders a screen, component, modal or layout. Playwright is a single shared instance: while it runs, no other browser agent and no main-session Playwright.
 tools: mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_click, mcp__playwright__browser_type, mcp__playwright__browser_evaluate, mcp__playwright__browser_console_messages, mcp__playwright__browser_wait_for, mcp__playwright__browser_set_storage_state, ToolSearch, Read, Bash
 model: sonnet
 ---

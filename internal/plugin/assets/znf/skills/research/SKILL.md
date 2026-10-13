@@ -1,6 +1,6 @@
 ---
 name: research
-description: Deep research with verified citations. Use when a design needs unread external docs, prior art, stale-prone facts (version, pricing, release notes) or evidence between two approaches. Not for in-repo names or DB shapes; use /znf:ground or /znf:scout.
+description: Deep research with verified citations. Use when a design needs unread external docs, prior art (community practice, competitors), stale-prone facts (latest, current, version, pricing, release notes) or evidence between two approaches. For in-repo names or DB shapes use /znf:ground or /znf:scout.
 argument-hint: "<question> [repo: <feature-repo>]"
 allowed-tools: Read Write Bash(mkdir *) Bash(date *) Agent
 context: fork

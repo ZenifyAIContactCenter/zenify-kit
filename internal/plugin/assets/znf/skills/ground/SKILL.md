@@ -1,6 +1,6 @@
 ---
 name: ground
-description: Verify real shapes and values before writing code. Use when about to write code touching a DB field, API payload, queue message, external library API, in-repo symbol or component props, a config key or an env var. Answers "what is X?" only; for "what depends on X?" use /scout.
+description: Verify real shapes and values before writing code. Use when about to write code touching a DB field, API payload, queue message, external library API, in-repo function, symbol or component props, a config key or an env var. Answers "what is X?" only; for "what depends on X?" use /scout.
 argument-hint: "<names / shapes to verify>"
 allowed-tools: Read Grep Glob Bash(zenify db-read *) Bash(mongosh *) Bash(mysql *) Bash(psql *) Bash(grep *) Bash(find *) Agent
 context: fork
