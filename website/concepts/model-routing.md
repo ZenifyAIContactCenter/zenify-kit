@@ -24,7 +24,7 @@ Model mạnh điều phối, model rẻ làm phần song song — một agent t�
 | `fix` investigator | Vòng 1 `sonnet`; vòng 2 `opus`; vòng 3 trở lên `opus` ở effort `xhigh`, kèm log, giả thuyết đã loại và diff đã thử | Chẩn đoán đầu sai thì lên tier, context mới |
 | `review` T1 | `sonnet` khi diff dưới 50 LOC, `mid` ở các diff còn lại | Diff nhỏ dùng model rẻ; không xuống haiku — review haiku *grade tệ hơn* |
 | `review` T2 fan-out | `sonnet`; `contracts` lên `opus` khi chạm contract chia sẻ | Sâu hơn ở phần rủi ro |
-| `review` T3 | `security`+`contracts` `opus`; `bugs`/`perf`/`types` `sonnet`; verify `opus` | Blast radius auth/contract cần model mạnh |
+| `review` T3 | cả năm trục (`bugs`/`security`/`perf`/`contracts`/`intent`) `opus` | Blast radius auth/tenant/migration cần model mạnh; VERIFY cơ học, không còn vòng skeptic |
 | Agent `code-reviewer`, `scout`, `ui-verifier`, `researcher` | `sonnet` (frontmatter) | Sàn sonnet cho subagent từ v0.22.0 |
 | Agent `spec-reviewer` | `fable` (frontmatter) | Đọc lại spec bằng context mới trước khi bạn duyệt; xem [bên dưới](#spec-reviewer) |
 | `gate` · các fork skill | `sonnet` | `gate`=drift cross-repo, miss âm thầm+đắt; fork skill ghim sonnet để không kế thừa session |
