@@ -85,18 +85,18 @@ confirmation, you were on the wide path all along.
    **The ref matters and getting it wrong fails silently.** Scout the `$REF` resolved in step 2,
    not the repo's normal feature base. State which ref you scouted.
 
-7. **Fix.** Read the real code first, smallest diff, and do not refactor anything you are not
-   fixing.
+7. **Fix.** Red command and regression test first, then the smallest diff — `/fix` Step 5;
+   refactor nothing else.
 
    **Call `Skill(ground)` on anything unverified this session** — not just "does the field exist"
    but **which values it holds** (distinct-values query) and **which filter every query must
    carry** (tenant/scope).
 
-8. **Verify** the fix actually resolves the bug (trace the real code path, or `/run` to launch
-   the app and observe it). Don't claim fixed without evidence.
+8. **Verify**: re-run the red command and clear `[DEBUG-` tags — `/fix` Step 6. Don't claim
+   fixed without evidence (or `/run` the app and observe it).
 
    Narrow question here: *did the bug go away*. The authoritative pass, and the only dispatch of
-   a UI verifier agent, is `/ship` step 4 — see `/fix` Step 6. If the bug was visual, look at it
+   a UI verifier agent, is `/ship` step 4. If the bug was visual, look at it
    in the browser yourself now; that leaves it logged in for the verifier at step 9.
 
    **A clean check is not yet evidence.** A negative result that lets you proceed needs a second

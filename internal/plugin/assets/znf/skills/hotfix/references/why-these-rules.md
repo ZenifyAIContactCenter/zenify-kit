@@ -10,6 +10,11 @@ decided that is the right response. A hotfix is written under time pressure and 
 production, so it needs *more* diagnostic discipline than an ordinary bug fix, not less.
 "It looked obvious" is the most expensive sentence available here.
 
+At step 3 use only the read-only rungs of the `/fix` loop: logs, an existing failing test, a curl
+against a running environment. With none of those, confirm the cause from the logs as before. For
+a forward fix, the red command is built in the worktree after step 5 and must be red before the
+step 7 fix. Prod logs pasted anywhere are redacted first: secrets become `<REDACTED>`.
+
 ## Why the response is the user's call
 
 Deciding between revert, disable and fix forward is the highest-leverage decision in an incident.
