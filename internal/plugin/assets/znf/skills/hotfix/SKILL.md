@@ -45,7 +45,9 @@ confirmation, you were on the wide path all along.
 3. **Diagnose — before touching anything.** Run **`/fix` steps 0-2**: ground in the real error
    output first (logs, stacktrace, `docker logs <container>`), then hypotheses, then confirm the
    root cause. If you cannot confirm it, say so — **do not guess-fix production.** This comes
-   before the worktree on purpose (see references).
+   before the worktree on purpose (see references). On production use only read-only rungs and
+   redact output (`<REDACTED>`); with no read-only loop, confirm the cause from logs — the no-loop
+   stop and temporary logging do not apply.
 
 4. **Decide the response — the user's call, not yours.** With the cause confirmed, there are
    three responses and forward-fixing is only one:
@@ -138,9 +140,6 @@ Pushed: <username>/hotfix/<desc> → origin.
 PR opened: <url> → <base ref>. Next (yours): merge (= deploy) → sync fix back to the normal
 feature base.
 ```
-
-**The board is `cat`ed from `/ship`'s file, not retyped.** Collapsing it to a verdict throws away
-the per-check fingerprints — the only part a reader can confirm without trusting me.
 
 ## References
 

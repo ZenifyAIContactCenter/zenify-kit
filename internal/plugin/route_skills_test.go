@@ -125,7 +125,7 @@ func TestWritingPlans_SteeringAtTaskSplit(t *testing.T) {
 
 func TestHotfixSkill_PointsAtFixLoop(t *testing.T) {
 	s := syncedAsset(t, "skills/hotfix/SKILL.md")
-	assertContainsAll(t, "hotfix/SKILL.md", s, []string{"/fix` Step 5", "/fix` Step 6"})
+	assertContainsAll(t, "hotfix/SKILL.md", s, []string{"/fix` Step 5", "/fix` Step 6", "read-only rungs", "<REDACTED>"})
 	if len(s) > 8192 || strings.Count(s, "\n") > 200 {
 		t.Fatalf("hotfix over cap: %d bytes", len(s))
 	}

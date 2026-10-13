@@ -56,7 +56,7 @@ flowchart TD
 |---|---|---|
 | 1 | Chốt repo bị ảnh hưởng | Xác nhận đúng repo |
 | 2 | `fetch` rồi resolve base ref hotfix bằng `zenify hotfix baseref` | Xác nhận đây đúng là bản đang chạy production |
-| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix`. Ở bước này chỉ dùng các cách tái hiện chỉ đọc; nếu không có thì xác nhận nguyên nhân từ log | Đọc nguyên nhân đã xác nhận |
+| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix`. Ở bước này chỉ dùng các cách tái hiện chỉ đọc và lọc output thành `<REDACTED>`; nếu không có thì xác nhận nguyên nhân từ log, không dừng và không thêm log tạm trên production | Đọc nguyên nhân đã xác nhận |
 | 4 | Trình bày ba lựa chọn kèm khuyến nghị | Chọn revert, disable hoặc fix forward. Revert và disable dừng tại đây, không tạo worktree |
 | 5 | Tạo worktree `--type hotfix --base <release>` (chỉ khi fix forward) | Không cần làm gì |
 | 6 | Chạy `/znf:scout` trên ref đã resolve, không phải base thường ngày | Đọc báo cáo scout |
