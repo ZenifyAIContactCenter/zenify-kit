@@ -7,11 +7,12 @@ Khi có lỗi và bạn chưa biết nguyên nhân thật sự. Xem [fix: sửa 
 
 ## Cách hoạt động
 
-1. Skill lấy dữ liệu lỗi thật trước khi suy đoán: log gần nhất, output test đang fail, hoặc log CI nếu bạn đưa link GitHub Actions.
+1. Skill lấy dữ liệu lỗi thật trước khi suy đoán: log gần nhất, output test đang fail, hoặc log CI nếu bạn đưa link GitHub Actions. Sau đó nó dựng một vòng phản hồi: đúng một lệnh có tên, đã chạy, đỏ đúng triệu chứng bạn mô tả. Không dựng được thì skill dừng và xin môi trường tái hiện, artifact đã che secret, hoặc quyền thêm log tạm, chứ không chuyển sang đoán. Secret trong log được thay bằng `<REDACTED>`.
 2. Skill xác nhận nguyên nhân gốc trước khi viết bất kỳ dòng sửa nào. Với lỗi rõ ràng, nó kiểm một giả thuyết; với lỗi khó, nó chạy song song nhiều giả thuyết rồi loại dần bằng bằng chứng thật.
-3. Worktree được tạo trước bước sửa, không trước bước chẩn đoán, dựa trên base ref repo khai báo. Nếu đang có worktree của task khác cho cùng repo trong phiên này, skill dùng lại worktree đó thay vì tạo mới.
+3. Worktree được tạo trước lần ghi file đầu tiên của vòng phản hồi (hoặc trước khi khởi động server), chậm nhất trước bước sửa, dựa trên base ref repo khai báo. Các cách tái hiện chỉ đọc không cần worktree. Nếu đang có worktree của task khác cho cùng repo trong phiên này, skill dùng lại worktree đó thay vì tạo mới.
 4. Skill gọi `/znf:scout` để tìm ai phụ thuộc vào đoạn code sắp sửa, trước khi sửa. Nếu việc sửa hoá ra cần hơn khoảng ba file hoặc đổi một hợp đồng dịch vụ chung, skill dừng lại và đề nghị chuyển sang `/znf:cook`.
-5. Sau khi sửa, skill xác minh lỗi đã hết bằng cách chạy lại đường code thật, rồi gọi `/znf:gate` và luôn gọi `/znf:ship` sau đó, kể cả khi gate báo không có tác động liên repo.
+5. Trước khi sửa, skill tự chọn seam (chỗ test chạy lỗi đúng như nơi gọi thật) và biến lệnh tái hiện thành regression test, xem nó fail rồi mới sửa; không có seam thì ghi `no seam: <lý do>`. Skill không hỏi bạn về seam. Báo cáo cuối có hai dòng `Loop:` (đỏ rồi xanh) và `Regression:`.
+6. Sau khi sửa, skill chạy lại vòng phản hồi và xoá mọi log debug `[DEBUG-xxxx]`, xác minh lỗi đã hết bằng cách chạy lại đường code thật, rồi gọi `/znf:gate` và luôn gọi `/znf:ship` sau đó, kể cả khi gate báo không có tác động liên repo.
 
 ## Ví dụ
 

@@ -70,7 +70,7 @@ flowchart TD
 | 3 | Ground lại mọi tên trong spec vừa chốt | Đọc nếu có mâu thuẫn. Spec được sửa trước khi viết plan |
 | 4 | Chạy `/znf:scout` (agent) tìm nơi phụ thuộc vào phần sắp đổi | Đọc báo cáo scout |
 | 5 | Viết plan ở mức quyết định: mỗi bước ghi file, signature và assertion của test, không chép sẵn toàn bộ code. `/znf:analyze` chạy tư vấn, không chặn | **Duyệt plan.** Kit đưa đường dẫn plan cùng finding CRITICAL/HIGH của analyze và dừng chờ bạn; chỉ sau khi bạn đồng ý mới sang bước 6 |
-| 6 | Tạo worktree, chạy SDD: mỗi task một implementer (`sonnet`, viết test trước và chạy cả suite) và một reviewer | Theo dõi ledger `.znf/sdd/<plan>/progress.md` |
+| 6 | Tạo worktree, chạy SDD: mỗi task một implementer (`sonnet`, viết test trước và chạy cả suite; việc keo dán hoặc cấu hình không có giá trị kỳ vọng độc lập thì báo `No TDD: <lý do>` kèm output chạy thật thay cho cặp đỏ/xanh) và một reviewer | Theo dõi ledger `.znf/sdd/<plan>/progress.md` |
 | 7 | Gọi `/znf:ship` | Đọc board ship, nhận PR |
 
 ## Kết quả

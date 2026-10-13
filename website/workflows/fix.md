@@ -4,7 +4,7 @@ title: "fix: sửa lỗi chưa rõ nguyên nhân"
 
 # fix: sửa lỗi chưa rõ nguyên nhân
 
-`/znf:fix` là workflow tìm nguyên nhân và sửa một lỗi. Nó lấy log thật, chứng minh nguyên nhân trước khi sửa, rồi gọi `/znf:gate` và `/znf:ship`.
+`/znf:fix` là workflow tìm nguyên nhân và sửa một lỗi. Nó lấy log thật, dựng một lệnh tái hiện đỏ trước khi đoán, chứng minh nguyên nhân, thêm regression test rồi sửa, sau đó gọi `/znf:gate` và `/znf:ship`.
 
 ## Khi nào dùng
 
@@ -42,42 +42,47 @@ Không truyền gì thì fix tự lấy log gần nhất. Agent tự route vào 
 
 ```mermaid
 flowchart TD
-  A["0. Lấy log thật"] --> B["1. Phân tích nguyên nhân"]
-  B --> C["2. Kiểm chứng nguyên nhân"]
-  C --> D["3. Scout"]
-  D --> E["4. Chọn cách sửa"]
-  E -->|Lan 4+ file| I["Chuyển sang /znf:cook"]
-  E --> G["5. Sửa nhỏ nhất"]
-  G --> J["6. Verify"]
-  J --> K["7. Report"]
-  K --> L["8. Gate, rồi ship"]
-  class A,B,C,D,G,J,K,L action
-  class E user
-  class I stop
+  A["0a. Lấy log thật"] --> B["0b. Dựng vòng phản hồi"]
+  B -->|Không dựng được| X["Dừng, hỏi bạn"]
+  B -->|Lệnh đỏ đúng triệu chứng| C["1. Giả thuyết"]
+  C --> D["2. Chạy vòng, thu nhỏ repro"]
+  D --> E["3. Scout"]
+  E --> F["4. Chọn cách sửa"]
+  F --> G["5. Regression test đỏ, rồi sửa"]
+  G --> H["6. Chạy lại vòng, grep DEBUG"]
+  H --> I["7. Report: Loop, Regression"]
+  I --> J["8. Gate, rồi ship"]
+  class A,B,C,D,E,G,H,I,J action
+  class F user
+  class X stop
 ```
 
 *Các bước của một lần chạy fix*
 
 | Bước | Kit làm gì | Bạn làm gì |
 |---|---|---|
-| 0 | Lấy log hoặc lỗi thật, tự động hoặc từ argument | Xác nhận đúng log |
-| 1 | Phân tích nguyên nhân. Hẹp thì một giả thuyết, rộng thì nhiều agent chạy song song | Đọc kết luận |
-| 2 | Kiểm chứng nguyên nhân trước khi sửa bất cứ gì | Không sửa gì nếu chưa kiểm chứng được |
+| 0 | Lấy log hoặc lỗi thật, rồi dựng vòng phản hồi: đúng một lệnh có tên, đã chạy, đỏ đúng triệu chứng bạn mô tả (thang các cách dựng nằm trong `references/feedback-loop.md`). Secret trong log được thay bằng `<REDACTED>` | Xác nhận đúng log. Nếu không dựng được vòng, kit dừng và xin môi trường tái hiện, artifact đã che secret, hoặc quyền thêm log tạm |
+| 1 | Phân tích nguyên nhân. Hẹp thì một giả thuyết, rộng thì nhiều agent chạy song song, mỗi agent nhận lệnh đỏ cùng giả thuyết của nó | Đọc kết luận |
+| 2 | Chạy lệnh đỏ, xác nhận lỗi đúng triệu chứng rồi thu repro về kịch bản nhỏ nhất vẫn đỏ. Kiểm chứng nguyên nhân trước khi sửa bất cứ gì | Không sửa gì nếu chưa kiểm chứng được |
 | 3 | Chạy `/znf:scout` tìm nơi gọi, đọc, ghi code sắp đổi | Đọc báo cáo scout |
 | 4 | Nếu có trade-off thật giữa hai cách sửa, trình bày cho bạn | Chọn cách sửa |
 | 4 (leo thang) | Nếu fix lan 4+ file hoặc cần quyết định thiết kế, dừng | Chuyển sang `/znf:cook` thay vì ép sửa trong fix |
-| 5 | Sửa nhỏ nhất theo cách đã chọn | Không cần làm gì |
-| 6 | Verify bằng cách chạy lại phần đang fail | Đọc kết quả |
-| 7 | Ghi báo cáo nguyên nhân và cách sửa | Đọc báo cáo |
+| 5 | Tự chọn seam (chỗ test chạy lỗi đúng như nơi gọi thật), biến repro thành regression test, xem test fail, rồi sửa nhỏ nhất theo cách đã chọn. Không có seam thì ghi `no seam: <lý do>` | Không cần làm gì. Kit không hỏi bạn về seam |
+| 6 | Chạy lại vòng trên kịch bản gốc, kỳ vọng xanh. Xoá mọi log `[DEBUG-xxxx]` và grep lại để chắc không sót | Đọc kết quả |
+| 7 | Ghi báo cáo gồm nguyên nhân, cách sửa, `Loop:` (lệnh, đỏ rồi xanh) và `Regression:` (tên test hoặc `no seam`) | Đọc báo cáo |
 | 8 | Chạy `/znf:gate` rồi `/znf:ship` | Đọc board ship, nhận PR |
 
 ## Kết quả
 
 | Artifact | Nội dung |
 |---|---|
-| Báo cáo | Nguyên nhân đã xác nhận, cách sửa, kết quả verify |
+| Báo cáo | Nguyên nhân đã xác nhận, cách sửa, lệnh vòng phản hồi (đỏ rồi xanh), regression test hoặc lý do không có seam, kết quả verify |
 | Branch | `<user>/fix/<slug>` |
 | PR | Mở, chưa merge |
+
+## Worktree
+
+Worktree được tạo trước lần ghi file đầu tiên của vòng phản hồi (test, harness, log debug) hoặc trước lần khởi động server, chậm nhất trước bước 5. Các cách chỉ đọc (đọc log, chạy test có sẵn đang fail, `curl` vào môi trường đang chạy) không cần worktree.
 
 ## Quyết định thuộc về bạn
 
@@ -100,6 +105,8 @@ Cách sửa: khi git không còn biết worktree đó, kit xoá thư mục trự
 | Tránh | Nên làm |
 |---|---|
 | Vá triệu chứng cho qua | Chứng minh nguyên nhân bằng bằng chứng thật ở bước 2 trước khi sửa |
+| Đoán giả thuyết khi chưa có lệnh đỏ | Dựng vòng phản hồi ở bước 0 trước. Không dựng được thì dừng và xin thêm dữ liệu, không đoán |
+| Dán log hoặc payload thô vào hội thoại | Thay token, mật khẩu, API key, cookie, chuỗi kết nối bằng `<REDACTED>` trước khi dán |
 | Để fix mọc thành feature | Fix lan 4+ file hoặc cần quyết định thiết kế thì leo thang sang `/znf:cook` |
 
 ## Xem thêm

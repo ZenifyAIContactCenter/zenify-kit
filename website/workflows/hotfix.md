@@ -41,7 +41,7 @@ flowchart TD
   E -->|Fix forward| G["5. Worktree hotfix"]
   G --> H["6. Scout trên base ref"]
   H --> I["7. Sửa nhỏ nhất"]
-  I --> J["8. Verify"]
+  I --> J["8. Chạy lại vòng, verify"]
   J --> K["9. Gate, rồi ship"]
   F --> K
   K --> L["10. Nhắc merge và đồng bộ ngược"]
@@ -56,12 +56,12 @@ flowchart TD
 |---|---|---|
 | 1 | Chốt repo bị ảnh hưởng | Xác nhận đúng repo |
 | 2 | `fetch` rồi resolve base ref hotfix bằng `zenify hotfix baseref` | Xác nhận đây đúng là bản đang chạy production |
-| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix` | Đọc nguyên nhân đã xác nhận |
+| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix`. Ở bước này chỉ dùng các cách tái hiện chỉ đọc; nếu không có thì xác nhận nguyên nhân từ log | Đọc nguyên nhân đã xác nhận |
 | 4 | Trình bày ba lựa chọn kèm khuyến nghị | Chọn revert, disable hoặc fix forward. Revert và disable dừng tại đây, không tạo worktree |
 | 5 | Tạo worktree `--type hotfix --base <release>` (chỉ khi fix forward) | Không cần làm gì |
 | 6 | Chạy `/znf:scout` trên ref đã resolve, không phải base thường ngày | Đọc báo cáo scout |
-| 7 | Sửa nhỏ nhất | Không cần làm gì |
-| 8 | Verify trên code path thật | Đọc kết quả |
+| 7 | Dựng lệnh đỏ và viết regression test trước (theo bước 5 của `/znf:fix`), xem chúng fail, rồi sửa nhỏ nhất | Không cần làm gì |
+| 8 | Chạy lại lệnh đỏ, kỳ vọng xanh, xoá log `[DEBUG-xxxx]` (theo bước 6 của `/znf:fix`), verify trên code path thật | Đọc kết quả |
 | 9 | Chạy `/znf:gate` rồi `/znf:ship`, kể cả khi đang gấp. Ship mở PR vào base ref release | Đọc board ship, nhận PR URL |
 | 10 | Nhắc bước tay còn lại | Merge PR (tức là deploy), rồi đồng bộ fix ngược về base feature bằng merge hoặc cherry-pick |
 
@@ -86,7 +86,7 @@ flowchart TD
 
 Ví dụ minh hoạ, chưa có hotfix thật nên dùng số release giữ chỗ.
 
-`release<N>` đang chạy gặp lỗi, xác nhận qua log thật. Bạn xác nhận base ref `origin/release<N>` và chọn fix forward vì nguyên nhân đã rõ. Kit tạo worktree `--type hotfix --base origin/release<N>`, scout đúng ref đó, sửa, verify, gate rồi ship. Ship mở PR vào `release<N>`. Bạn merge rồi cherry-pick fix về base feature.
+`release<N>` đang chạy gặp lỗi, xác nhận qua log thật. Bạn xác nhận base ref `origin/release<N>` và chọn fix forward vì nguyên nhân đã rõ. Kit tạo worktree `--type hotfix --base origin/release<N>`, scout đúng ref đó, dựng lệnh đỏ và viết regression test, sửa, chạy lại lệnh đỏ để verify, gate rồi ship. Ship mở PR vào `release<N>`. Bạn merge rồi cherry-pick fix về base feature.
 
 ## Lỗi thường gặp
 
