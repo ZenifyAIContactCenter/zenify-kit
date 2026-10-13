@@ -40,3 +40,14 @@ func TestWritingPlans_HandoffAsksApprovalBeforeSDD(t *testing.T) {
 		t.Error("Execution Handoff still hands straight to SDD")
 	}
 }
+
+func TestSDDPromptsCarryTestQualityRules(t *testing.T) {
+	impl := syncedAsset(t, "skills/subagent-driven-development/implementer-prompt.md")
+	assertContainsAll(t, "implementer-prompt", impl, []string{
+		"## Test quality", "No TDD:", "system boundar", "Adapted from mattpocock/skills tdd (MIT)",
+	})
+	rev := syncedAsset(t, "skills/subagent-driven-development/task-reviewer-prompt.md")
+	assertContainsAll(t, "task-reviewer-prompt", rev, []string{
+		"tautolog", "No TDD", "Adapted from mattpocock/skills tdd (MIT)",
+	})
+}
