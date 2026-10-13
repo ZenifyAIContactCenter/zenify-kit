@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.33.1
+
+*2026-10-14*
+
+- `zenify up` không còn in hộp `WARNING: It looks like you are running 'npx playwright install'...` mỗi lần chạy. Khi Chromium đúng revision mà gói MCP ghim đã cài xong, `up` bỏ qua bước `npx playwright install` và in `playwright: chromium 1247 already installed for @playwright/mcp@0.0.83`. Thiếu bản nào thì vẫn cài như trước. Xem [Onboard workspace và repo](/guides/onboard-workspace).
+
 ## v0.33.0
 
 *2026-10-13*
@@ -126,7 +132,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
   - Giá trị có sẵn không bị đọc, đổi hay xoá.
   - Repo không thiếu key nào thì file không bị ghi lại.
   - `lumi-agent` khai `LUMI_MYSQL_URL_STG`, `LUMI_MYSQL_URL_PRD`, `QDRANT_URL_STG`, `QDRANT_URL_PRD`, `LUMI_APP_URL_STG` và `OPENROUTER_API_KEY`.
-  - Xem [Onboard workspace](/guides/onboard-workspace).
+  - Xem [Onboard workspace và repo](/guides/onboard-workspace).
 
 ## v0.27.0
 
