@@ -324,3 +324,66 @@ func TestBootstrapCodexLegacyRemovesThenAdds(t *testing.T) {
 		t.Fatalf("calls %v, want %v", calls, want)
 	}
 }
+
+func TestBootstrapSkipsInstalledChromium(t *testing.T) {
+	install := "npx --yes --package " + MCPPackage + " playwright install chromium"
+	cases := []struct {
+		name        string
+		markers     []string
+		wantInstall bool
+		wantOut     string
+	}{
+		{"both markers", []string{"chromium-1247", "chromium_headless_shell-1247"}, false, "chromium 1247 already installed"},
+		{"headless shell missing", []string{"chromium-1247"}, true, "ensuring chromium"},
+		{"other revision only", []string{"chromium-1248", "chromium_headless_shell-1248"}, true, "ensuring chromium"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			for _, m := range c.markers {
+				if err := os.MkdirAll(filepath.Join(dir, m), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, m, "INSTALLATION_COMPLETE"), nil, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var calls []string
+			var buf strings.Builder
+			o := Options{
+				Runner: func(name string, args []string) error {
+					calls = append(calls, name+" "+strings.Join(args, " "))
+					return nil
+				},
+				Output: getOutput(desiredOut("/h")),
+				Getenv: func(k string) string {
+					if k == "PLAYWRIGHT_BROWSERS_PATH" {
+						return dir
+					}
+					return ""
+				},
+				GOOS:   "linux",
+				Home:   "/h",
+				Stdout: &buf,
+			}
+			if err := Bootstrap(o); err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Contains(strings.Join(calls, "\n"), install)
+			if got != c.wantInstall {
+				t.Fatalf("install called = %v, want %v (calls %v)", got, c.wantInstall, calls)
+			}
+			if !strings.Contains(buf.String(), c.wantOut) {
+				t.Fatalf("stdout %q missing %q", buf.String(), c.wantOut)
+			}
+		})
+	}
+}
+
+// A bump of MCPVersion must come with the chromium revision its bundled
+// playwright-core pins (browsers.json), or Bootstrap installs on every run.
+func TestChromiumRevisionPinnedForMCPVersion(t *testing.T) {
+	if chromiumRevision[MCPVersion] == "" {
+		t.Fatalf("chromiumRevision has no entry for MCPVersion %s", MCPVersion)
+	}
+}
