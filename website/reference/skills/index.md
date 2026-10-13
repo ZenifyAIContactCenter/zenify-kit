@@ -31,6 +31,7 @@ Mọi skill của kit, kể cả bộ skill coding theo stack (Express, NestJS, 
 | [/znf:prune-memory](./prune-memory) | Rà soát và dọn bộ nhớ tự động trong một lượt, gộp bản trùng và xoá ghi chú đã cũ. |
 | [/znf:react-patterns](./react-patterns) | Quy ước viết frontend React (Vite/TanStack) — state, bảng phân trang, form, axios interceptor, i18n. |
 | [/znf:research](./research) | Research có kiểm chứng: worker tìm và trích dẫn nguyên văn kèm URL đã fetch, một lượt haiku fetch lại mọi URL, kết quả ghi thành file trong docs/research (local, không sync). |
+| [/znf:retro](./retro) | Rút những bài học tốn kém của phiên về đúng một nơi (check, rule, CLAUDE.md hoặc memory), đưa một danh sách để bạn duyệt trước khi ghi. |
 | [/znf:review](./review) | Engine review hợp nhất của kit, tự chọn mức độ soi theo diff rồi trả về danh sách phát hiện. |
 | [/znf:run](./run) | Chạy app thật và lấy output thật từ đường code thật, để một thay đổi được xác minh chứ không chỉ khẳng định suông. |
 | [/znf:scout](./scout) | Vẽ bản đồ những gì phụ thuộc vào một thứ, trước khi bạn thay đổi nó. |
