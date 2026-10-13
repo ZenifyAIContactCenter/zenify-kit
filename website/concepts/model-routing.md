@@ -27,7 +27,7 @@ Model mạnh điều phối, model rẻ làm phần song song — một agent t�
 | `review` T3 | `security`+`contracts` `opus`; `bugs`/`perf`/`types` `sonnet`; verify `opus` | Blast radius auth/contract cần model mạnh |
 | Agent `code-reviewer`, `scout`, `ui-verifier`, `researcher` | `sonnet` (frontmatter) | Sàn sonnet cho subagent từ v0.22.0 |
 | Agent `spec-reviewer` | `fable` (frontmatter) | Đọc lại spec bằng context mới trước khi bạn duyệt; xem [bên dưới](#spec-reviewer) |
-| `review` adviser · `gate` · các fork skill | `sonnet` | adviser=chất lượng lời khuyên; `gate`=drift cross-repo, miss âm thầm+đắt; fork skill ghim sonnet để không kế thừa session |
+| `gate` · các fork skill | `sonnet` | `gate`=drift cross-repo, miss âm thầm+đắt; fork skill ghim sonnet để không kế thừa session |
 | `Explore` | **pin ≤ `sonnet` khi dispatch — KHÔNG để kế thừa Opus** | Tìm kiếm rộng: chạy search ở top tier là lãng phí thuần (`fix`/`gate` đã pin sẵn) |
 
 ## spec-reviewer

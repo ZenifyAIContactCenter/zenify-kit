@@ -15,7 +15,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | Kiểm spec và plan trước khi code | [zenify analyze](./zenify_analyze) | [zenify standards](./zenify_standards), [zenify spec status](./zenify_spec_status) |
 | Kiểm thử UI và E2E | [zenify visual check](./zenify_visual_check) | [zenify e2e lint](./zenify_e2e_lint), [zenify e2e run](./zenify_e2e_run) |
 | Bảo vệ branch deploy, quét secret, kiểm rule | [zenify guard install](./zenify_guard_install) | [zenify secret-scan](./zenify_secret-scan), [zenify rules lint](./zenify_rules_lint) |
-| Release và ghi nhận rủi ro | [zenify release-report](./zenify_release-report) | [zenify release-note](./zenify_release-note), [zenify review-log](./zenify_review-log) |
+| Release và ghi nhận rủi ro | [zenify release-report](./zenify_release-report) | [zenify release-note](./zenify_release-note) |
 | Knowledge store và tài liệu | [zenify docs sync](./zenify_docs_sync) | [zenify docs gen](./zenify_docs_gen), [zenify config](./zenify_config) |
 | Quản lý plugin skill | [zenify skills sync](./zenify_skills_sync) | [zenify skills install](./zenify_skills_install) |
 | Theo dõi phiên Claude Code | [zenify observe report](./zenify_observe_report) | [zenify observe statusline install](./zenify_observe_statusline_install) |

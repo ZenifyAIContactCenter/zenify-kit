@@ -24,9 +24,9 @@ Khi công việc đã xong và sắp được commit. `/znf:cook`, `/znf:fix`, v
 2. Với mỗi vùng đã đổi, skill chạy lint và build/typecheck thật, báo output thật chứ không chỉ khẳng định đã qua.
 3. Nếu thay đổi chạm tới thứ dùng chung giữa các dịch vụ, skill chạy cổng hợp đồng của project và báo những repo bị ảnh hưởng.
 4. Skill xác minh hành vi bằng test nếu có, hoặc chạy app thật qua `/znf:run` và quan sát đường code thật; nếu thay đổi có render giao diện, skill dispatch một agent kiểm giao diện để đo cả hành vi lẫn bố cục thật, không tự lái trình duyệt.
-5. Skill đóng gói ý định, diff, những gì đã xác minh, và dữ liệu thật liên quan thành một gói duy nhất, rồi gọi `/znf:review` để có một review độc lập; phát hiện mức nghiêm trọng cao phải được sửa trước khi tiếp tục.
+5. Skill đóng gói ý định, diff, những gì đã xác minh, và dữ liệu thật liên quan (với `/znf:fix` và `/znf:hotfix`, phần ý định có các dòng `Loop:` và `Regression:`) thành một gói duy nhất, rồi gọi `/znf:review` để có một review độc lập; phát hiện mức nghiêm trọng cao phải được sửa trước khi tiếp tục.
 6. Bất kỳ lượt kiểm nào thất bại — lint, gate, hành vi, hay review — đều vào cùng một vòng sửa: sửa hết các phát hiện trong một lượt, rồi chạy lại đúng những lượt kiểm bị ảnh hưởng bởi thay đổi đó. Vòng này chạy tối đa hai lượt; nếu sau đó vẫn còn phát hiện chưa xử lý, skill dừng lại, không commit, và báo cho bạn.
-7. Khi mọi lượt kiểm đều xanh tại cùng một trạng thái cây làm việc, skill commit và push nhánh feature, rồi tự mở PR — nhưng không bao giờ merge.
+7. Khi mọi lượt kiểm đều xanh tại cùng một trạng thái cây làm việc, skill commit và push nhánh feature, rồi tự mở PR — nhưng không bao giờ merge. Phần thân PR theo thứ tự: tóm tắt, thay đổi, cách kiểm, rủi ro merge (một chiều hay hai chiều, kèm phạm vi ảnh hưởng và cách rollback).
 
 ## Lưu ý
 
