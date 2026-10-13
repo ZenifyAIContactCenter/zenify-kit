@@ -10,6 +10,15 @@ decided that is the right response. A hotfix is written under time pressure and 
 production, so it needs *more* diagnostic discipline than an ordinary bug fix, not less.
 "It looked obvious" is the most expensive sentence available here.
 
+At step 3 use only the read-only rungs of the `/fix` loop: logs, an existing failing test, a GET or
+HEAD request against a running environment. Anything with a side effect — a POST, a payload replay,
+a job re-run — never touches production or a shared environment from the agent: it needs the user's
+approval and goes through a dry-run script the user runs. With no read-only loop, confirm the cause
+from the logs as before; `/fix`'s no-loop stop and its offer of temporary logging do not apply to
+production. For a forward fix, the red command is built in the worktree after step 5 and must be
+red before the step 7 fix. Prod output is scrubbed inside the command, before it reaches the
+conversation: secrets, customer PII and tenant/account ids become `<REDACTED>`.
+
 ## Why the response is the user's call
 
 Deciding between revert, disable and fix forward is the highest-leverage decision in an incident.

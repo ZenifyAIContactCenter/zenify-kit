@@ -15,15 +15,15 @@ Never skips Step 2 — state the confirmed cause, with evidence, before writing 
 parallel hypotheses) — criteria in `references/why-diagnosis-first.md`. State which path and why
 (one line); if the narrow hypothesis does not survive Step 2 you were on the wide path — run it.
 
-**Isolation (house rule #8): a worktree, always, created before Step 5 — `references/isolation.md`** (fetch → `wt new <slug> --type fix --base <baseRef>`; a bug found mid-task is not a new task).
+**Isolation (house rule #8): a worktree, always, created before the loop writes its first file or starts a server, at the latest before Step 5 — `references/isolation.md`** (fetch → `wt new <slug> --type fix --base <baseRef>`; read-only rungs need none; a bug found mid-task is not a new task).
 
 ## Step 0: Ground in real error data
 
-Fixing the wrong thing is the commonest debugging mistake. Before any analysis:
+Before any analysis:
 
 **No argument:**
 ```bash
-# Auto-fetch recent error output: app logs, test output, error files
+# Recent error output: app logs, test output, error files
 ls -t *.log 2>/dev/null | head -3
 tail -100 <latest-log-file> 2>/dev/null
 ```
@@ -39,7 +39,10 @@ gh run view <run-id> --log 2>&1 | grep -A 20 "Error\|FAIL\|error:" | head -100
 # Or: gh run view --log-failed
 ```
 
-Proceed only on **real error data**.
+**Build the loop.** Step 0 ends with exactly one named command, already run — show the invocation
+and its output — red on the symptom the user described. Ladder and redaction:
+`references/feedback-loop.md`; secrets in logs → `<REDACTED>`. No loop → stop and ask for (a) a
+reproducing environment, (b) a redacted artifact, (c) leave to add temporary logs; no Step 1.
 
 ## Step 1: Root cause analysis
 
@@ -56,21 +59,22 @@ Identify 2-3 independent hypotheses and the evidence that settles each; the mode
 not picked: dispatch one `Explore` agent per hypothesis with ROUND 1 `model: sonnet`, ROUND 2
 `model: opus`, ROUND ≥ 3 `model: opus` + `effort: xhigh`, and from ROUND 3 hand each the logs,
 killed hypotheses + evidence, and diffs already tried, as file paths. Each gets one hypothesis, its
-settling evidence, and: *return the evidence for AND against, plus a verdict — do not fix anything.*
+settling evidence, the Step 0 red command, and: *return the evidence for AND against, plus a
+verdict — do not fix anything.*
 Kill hypotheses with evidence; **ask each agent for its report by name** — a lost report reads like
 one that found nothing (`CLAUDE.md §3`, `references/why-diagnosis-first.md`).
 
 ## Step 2: Verify the real cause
 
-Can you reproduce it (run the failing command/test), and does the evidence match the hypothesis?
-If you cannot confirm the cause, say so — never guess-fix.
+Run the Step 0 command: red on the user's symptom, not a neighbouring error? Shrink it to the
+smallest scenario still red. Does the evidence match the hypothesis? If you cannot confirm the
+cause, say so — never guess-fix.
 
 ## Step 3: `/scout` — what depends on the code you will change
 
 Cause confirmed; find what else touches it. Call **`Skill(znf:scout)`** **before** editing — after
-means seeking permission. **Invoke it as a tool, not an intention:** it and the `Agent(znf:scout)`
-it dispatches each leave a named line, and **a missing line is a skipped step**. Same for
-`Skill(znf:ground)` in Step 5.
+means seeking permission. **Invoke it as a tool:** it and the `Agent(znf:scout)` it dispatches
+each leave a named line; **a missing line is a skipped step** (same for `Skill(znf:ground)`, Step 5).
 
 Brief it on the reverse direction:
 
@@ -84,15 +88,18 @@ means a partial map — carry it forward.
 
 ## Step 4: Choose the approach — then check it still belongs here
 
-A confirmed cause leaves more than one way to fix it: symptom vs root cause, caller vs callee,
-guard vs restructure, fix forward vs revert. **State the approach in one line with the rejected
-alternative and why** — even when obvious; on a real trade-off, put the options to the user and
-wait. Goes into the ship-pack `## Intent` block alongside the root cause.
+Symptom vs root cause, caller vs callee, guard vs restructure, fix forward vs revert. **State the
+approach in one line with the rejected alternative and why** — even when obvious; on a real
+trade-off, put the options to the user and wait. Goes into the ship-pack `## Intent` block alongside the root cause.
 
 **Escalation door.** More than ~3 files, a cross-service contract, or a design decision instead of
 an obvious choice: **stop, run `/cook`.**
 
 ## Step 5: Minimal fix
+
+**Regression test first.** With a correct seam (hits the bug as the real caller does): turn the
+repro into a test, watch it fail, fix, watch it pass; if red needed a code or fixture change, show
+the `diff`. No seam → `no seam: <why>` in the ship-pack `## Intent`. You pick; never ask.
 
 Make the **smallest change** that fixes the confirmed cause, along the Step 4 approach. Do not
 refactor unrelated code.
@@ -103,16 +110,15 @@ leaves a line.
 
 ## Step 6: Verify the fix
 
-Re-run whatever was failing with the project's verify command (not assumed `npm` — see Step 0);
-confirm it passes and run related tests.
+Re-run whatever was failing with the project's verify command (not assumed `npm`); confirm it
+passes and run related tests. Re-run the Step 0 command on the original (unshrunk) scenario: green. Remove every `[DEBUG-xxxx]` log — `rg '\[DEBUG-'` on changed files and
+`git diff <base> | rg '\[DEBUG-'` both return nothing.
 
-**This step and `/ship` step 4 are not the same check.** Here the question is narrow: *did the bug
-go away*. If it was visual, **look at it in the browser here**, but leave layout measurement and
-the screenshot audit to step 4 (`references/why-diagnosis-first.md`).
+**Not `/ship` step 4:** only *did the bug go away*. If visual, **look in the browser here**; layout
+measurement and the screenshot audit wait for step 4 (`references/why-diagnosis-first.md`).
 
 With **no tests**, "it compiles" is not verification — **`Skill(znf:run)`** to launch the app,
-observe the real code path and show that output; invoke it as a tool — it reads the port `wt`
-allocated for this worktree.
+observe the real code path and show that output; it reads the port `wt` allocated for this worktree.
 
 **A clean check is not yet evidence.** A *negative* result — "no match", "0 results", "OK" —
 counts once a second mechanism agrees (`references/clean-check-confirmations.md`).
@@ -124,26 +130,27 @@ Root cause: <specific cause, with the real error output that confirmed it>
 Approach:   <chosen, and what was rejected>
 Scout:      <blast radius; uncovered paths; confidence>
 Fix:        <what changed and why>
+Loop:       <command> — red → green
+Regression: <test name> | no seam: <why>
 Verified:   PASS / FAIL (at which fingerprint)
 ```
 
 After Step 8, **`cat` `/ship`'s board file** (`${TMPDIR:-/tmp}/ship-board-<fp10>.md`) below — never
-retyped, never collapsed to *"`/ship`: ✅"* (`references/why-diagnosis-first.md`).
+retyped (`references/why-diagnosis-first.md`).
 
 ## Step 8: Gate, then ship — both, always
 
-**Run `/gate`** (the contract gate): cheap, read-only, safe unprompted. It names the repos reached
-and fixes the deploy order — do not judge that by eye.
+**Run `/gate`** (the contract gate; read-only, safe unprompted): it names the repos reached and
+fixes the deploy order — do not judge that by eye.
 
-**Then run `/ship`. Always — not only on cross-repo impact.** One session verifying its own fix is
-single-control; `/ship`'s reviewer is the independent party (`references/why-diagnosis-first.md`).
-All green, it commits and pushes the branch (rule #7); never on a deploy branch — git-guard
-enforces that.
+**Then run `/ship`. Always — not only on cross-repo impact.** `/ship`'s reviewer is the independent
+party (`references/why-diagnosis-first.md`). All green, it commits and pushes the branch (rule #7); git-guard blocks deploy branches.
 
 ## References
 
 Read one when its trigger fires.
 
 - `references/why-diagnosis-first.md` — read when tempted to skip a step, or wondering why `/fix` insists on scout and ship.
+- `references/feedback-loop.md` — read when building the Step 0 loop, redacting logs, or tagging debug output.
 - `references/clean-check-confirmations.md` — read when a negative result is letting you proceed.
 - `references/red-flags.md` — read when a symptom keeps repeating (attempt #3, "probably X", 4 files).

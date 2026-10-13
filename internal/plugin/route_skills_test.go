@@ -23,6 +23,24 @@ func TestFixSkill_RoundCounterRoutesInvestigator(t *testing.T) {
 	assertContainsAll(t, "isolation.md", iso, []string{"wt new", "--type fix", "--another"})
 }
 
+func TestFixSkill_FeedbackLoopAndRegression(t *testing.T) {
+	s := syncedAsset(t, "skills/fix/SKILL.md")
+	assertContainsAll(t, "fix/SKILL.md", s, []string{
+		"Loop:", "Regression:", "no seam", "references/feedback-loop.md", "[DEBUG-", "<REDACTED>",
+	})
+	if strings.Contains(s, "superpowers") || strings.Contains(s, "not Step 0") {
+		t.Error("fix/SKILL.md still carries the old isolation timing or superpowers dependency")
+	}
+	fl := syncedAsset(t, "skills/fix/references/feedback-loop.md")
+	assertContainsAll(t, "feedback-loop.md", fl, []string{
+		"Adapted from mattpocock/skills diagnosing-bugs (MIT)", "<REDACTED>", "git bisect run", "KEY=value", "[DEBUG-", "baseline",
+	})
+	iso := syncedAsset(t, "skills/fix/references/isolation.md")
+	if strings.Contains(iso, "not Step 0") {
+		t.Error("isolation.md still says the worktree waits for Step 5")
+	}
+}
+
 func TestSDD_ImplementerModelFromPlanLine(t *testing.T) {
 	s := syncedAsset(t, "skills/subagent-driven-development/SKILL.md")
 	assertContainsAll(t, "sdd/SKILL.md", s, []string{"**Model:**", "FAIL=2", "references/model-selection.md"})
@@ -103,4 +121,14 @@ func TestWritingPlans_SteeringAtTaskSplit(t *testing.T) {
 	}
 	dr := syncedAsset(t, "skills/writing-plans/references/decomposition-rationale.md")
 	assertContainsAll(t, "decomposition-rationale.md", dr, []string{"Necessity Note", "What is built", "Why it is needed", "Simpler alternative rejected because"})
+}
+
+func TestHotfixSkill_PointsAtFixLoop(t *testing.T) {
+	s := syncedAsset(t, "skills/hotfix/SKILL.md")
+	assertContainsAll(t, "hotfix/SKILL.md", s, []string{"/fix` Step 5", "/fix` Step 6", "read-only rungs", "<REDACTED>"})
+	if len(s) > 8192 || strings.Count(s, "\n") > 200 {
+		t.Fatalf("hotfix over cap: %d bytes", len(s))
+	}
+	w := syncedAsset(t, "skills/hotfix/references/why-these-rules.md")
+	assertContainsAll(t, "hotfix why-these-rules", w, []string{"<REDACTED>", "read-only"})
 }

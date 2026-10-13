@@ -121,8 +121,13 @@ Subagent (general-purpose):
     - Edge cases handled?
 
     **Tests:**
+    <!-- Adapted from mattpocock/skills tdd (MIT) -->
     - Do the new and changed tests verify real behavior, not mocks?
     - Are the task's edge cases covered?
+    - Are expected values independent of the code under test (not tautological)?
+    - Are mocks only at system boundaries (external APIs, time, randomness)?
+    - Do tests assert through the public interface, not internals?
+    - Is any `No TDD:` reason real (no independent expected value exists)?
 
     **Structure:**
     - Does each file have one clear responsibility with a well-defined interface?
@@ -148,7 +153,8 @@ Subagent (general-purpose):
     Important means this task cannot be trusted until it is fixed: incorrect
     or fragile behavior, a missed requirement, or maintainability damage you
     would block a merge over — verbatim duplication of a logic block,
-    swallowed errors, tests that assert nothing. "Coverage could be broader"
+    swallowed errors, tests that assert nothing, a tautological test, a mock of the
+    project's own module, a weak `No TDD:` reason. "Coverage could be broader"
     and polish suggestions are Minor.
     If the plan or brief explicitly mandates something this rubric calls a
     defect (a test that asserts nothing, verbatim duplication of a logic

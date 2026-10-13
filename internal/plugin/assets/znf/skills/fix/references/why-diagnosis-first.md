@@ -1,7 +1,7 @@
-<!-- Moved verbatim from fix/SKILL.md §§ How much diagnosis, worktree, Step 1, Step 3, Step 4, Step 8 (token-diet). Read when: tempted to skip a step of /fix, or asked why /fix insists on scout + ship. -->
+<!-- Adapted from fix/SKILL.md §§ How much diagnosis, worktree, Step 1, Step 3, Step 4, Step 8 (token-diet). Read when: tempted to skip a step of /fix, or asked why /fix insists on scout + ship. -->
 
 ## Contents
-- Why the worktree step sits before Step 5, and why there is no workspace handoff
+- Why the worktree waits for the first write, and why there is no workspace handoff
 - Why the Wide path uses one agent per hypothesis
 - Why a fix needs `/scout` more than a feature does
 - Why the escalation door to `/cook` exists
@@ -18,7 +18,15 @@ error output, then Step 2.
 **Wide** — unclear cause, multiple services, hard to reproduce, or systemic → Step 1 in full,
 parallel hypotheses, each killed or kept by specific evidence.
 
-### From § Isolation
+### From § Step 0
+<!-- Moved from fix/SKILL.md (byte cap) -->
+Fixing the wrong thing is the commonest debugging mistake; Step 0 grounds the work in real error
+data before any analysis, and its red command is what every later step re-runs.
+
+### Why the worktree waits for the first write, and why there is no workspace handoff
+The reason is unchanged: create the worktree when you are about to write, not when you start
+looking — and the first write is now the Step 0 loop's, not Step 5's.
+
 **No workspace handoff here, unlike `/cook` — and the reason is the artifact.** `/cook` can move
 Step 6 into a workspace of its own because what crosses over is a **plan file** that
 `writing-plans` already requires to be self-contained. `/fix`'s equivalent is the *diagnosis*, and
@@ -41,8 +49,9 @@ another and buy nothing. You already stated the evidence that settles each hypot
 this a search against a fixed target rather than open-ended reasoning. Keep the reasoning at the top
 tier where it belongs: forming the hypotheses and confirming the survivor, both inline.
 
-Confirming the surviving hypothesis is Step 2, and it stays **inline** — that step reads real error
-output, and its output is the evidence the fix is built on, not a map pointing at it.
+Confirming the surviving hypothesis is Step 2, and it stays **inline** — that step re-runs the
+Step 0 red command and reads its real output, and that output is the evidence the fix is built on,
+not a map pointing at it.
 
 ### From § Step 3: why scouting a fix matters more than scouting a feature
 **Invoke it as a tool, not as an intention.** `Skill(znf:scout)` and the `Agent(znf:scout)` it
@@ -81,6 +90,9 @@ clipped off-screen; a wrapper reported "not a git worktree" where two existed. N
 review catches this class — reviewers read the same tool output you did.
 
 ### From § Step 8: why /ship is unconditional
+<!-- Moved from fix/SKILL.md (byte cap) -->
+One session verifying its own fix is single-control; `/ship`'s reviewer is the independent party.
+
 This was previously conditional on the gate, which left a single-repo fix with **no independent
 review at all**: gate clean → commit → push. Agents report success when they have not succeeded:
 **75.8%** of trajectories carrying a self-reported status claim were false successes, and an LLM
