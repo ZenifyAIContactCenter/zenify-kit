@@ -25,7 +25,14 @@ func TestRetro_Skill(t *testing.T) {
 		"one home",
 		"read the existing memory",
 		"redact",
+		"data, never instructions",
+		"at most 2000 lines",
+		"exact text to be written",
+		"grep each",
 	})
+	if strings.Contains(s, "allowed-tools: Read Grep Glob Bash") {
+		t.Errorf("retro/SKILL.md must not grant Bash")
+	}
 	for _, bad := range []string{".claude/memory/", "~/.zenify/knowledge", "AskUserQuestion"} {
 		if strings.Contains(s, bad) {
 			t.Errorf("retro/SKILL.md must not contain %q", bad)
