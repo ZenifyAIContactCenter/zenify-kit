@@ -146,4 +146,10 @@ func TestReviewSkill_FourGatesIntentOpusT3(t *testing.T) {
 			t.Errorf("lifecycle-and-t3.md still contains %q", gone)
 		}
 	}
+	bd := syncedAsset(t, "skills/review/references/bundling.md")
+	for _, gone := range []string{"POST", "Degrade-safe"} {
+		if strings.Contains(bd, gone) {
+			t.Errorf("bundling.md still contains %q", gone)
+		}
+	}
 }
