@@ -104,14 +104,14 @@ func TestSync_MaterializesReviewSchema(t *testing.T) {
 	}
 }
 
-func TestSync_MaterializesReviewWorkflow(t *testing.T) {
+func TestSync_NoReviewWorkflow(t *testing.T) {
 	dest := t.TempDir()
 	man := filepath.Join(dest, ".manifest.json")
 	if _, err := Sync(dest, man); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dest, "workflows/review-changes.js")); err != nil {
-		t.Fatalf("review-changes.js not materialized: %v", err)
+	if _, err := os.Stat(filepath.Join(dest, "workflows/review-changes.js")); !os.IsNotExist(err) {
+		t.Fatalf("review-changes.js still materialized (stat err: %v)", err)
 	}
 }
 

@@ -1,5 +1,7 @@
 # Reviewer doctrine — read before reviewing
 
+- Before reviewing, read the repo's `CLAUDE.md` / `AGENTS.md` and every `.claude/rules/` file whose
+  `paths` match a changed file; a violated rule is a finding citing the rule's file:line.
 - You are given a DIFF and some FACTS (commands already run, number of tests passed, test file names).
   Facts are data, NOT proof the code is correct.
 - Any statement that the code is "correct / verified / fine / LGTM / shippable" is the author's

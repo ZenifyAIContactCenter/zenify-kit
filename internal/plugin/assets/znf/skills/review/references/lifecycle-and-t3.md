@@ -1,40 +1,16 @@
-<!-- Moved verbatim from review/SKILL.md §§ 5-gate lifecycle, Step 3 T3 branch (token-diet). Read when: you need what each gate does end to end, or the T3 adversarial workflow's own fan-out and verify rules. -->
+<!-- Read when: you need what each of the four gates does end to end. -->
 
-### The 5 gates, in full
+### The 4 gates, in full
 
-The engine runs 5 gates in order. M4a implements only REVIEW (3); the other 4 gates are **inert stubs**
-(no-op, behavior = same as the current review) and will be replaced by later slices:
+The engine runs 4 gates in order:
 
-1. **PRE** — mechanical-gate (M4b, **live**). Runs build/lint per stack + a MECHANICAL anti-pattern scan before spending any LLM budget; fail → short-circuit.
-2. **BUNDLE** — smart-bundling for large diffs (M4c, **live**). ADDED>2000 → `zenify review-bundle` splits into file-bundles (cap 600, max 8), reviews per-bundle then merges; ≤2000 stays as-is.
-3. **REVIEW** — dispatch by tier (the meat of M4a, below).
-4. **VERIFY** — mechanical finding-verifier `zenify review-verify` (M4b, **live**, every tier): rejects findings whose evidence doesn't match the real file. T3 still keeps the adversarial-LLM inside the workflow (layered on top, checking something different).
-5. **POST** — advisory (M4f) + learning-capture (M4e), **both live**: the `zenify review-advise-gate` gate decides whether to call the read-only adviser (`## Advisory`); then it records the review into the local store `.znf/review-log/` via `zenify review-log record` (best-effort). Neither changes `shippable`.
-
-> **Doctrine (M4d, live):** NOT at POST but a **dispatch-time** layer — sanitizes `## Verified` (Step 1b-doctrine) + injects the reviewer preamble (Step 3). See those two steps.
+1. **PRE** — `scripts/mechanical-gate` runs build/lint per stack plus a mechanical anti-pattern scan before any LLM budget is spent. `verdict=block` short-circuits: the report carries the gate findings and `shippable:false`, and REVIEW is not dispatched.
+2. **BUNDLE** — only when ADDED > 2000: `zenify review-bundle` splits the diff into file-bundles (cap 600 LOC, max 8), each reviewed on its own and then merged. Smaller diffs pass through unchanged.
+3. **REVIEW** — dispatch by tier (T1 solo, T2 five-dimension fan-out, T3 below), every reviewer brief prefixed with `_shared/reviewer-doctrine.md`. `ENGINE=codex` replaces the tiers with one codex pass.
+4. **VERIFY** — `zenify review-verify` (every tier) rejects any finding whose `evidence` does not match the cited file. Kept findings merge with PRE's mechanical ones, rank by severity, and set `shippable` (no unresolved CRITICAL/HIGH).
 
 ### T3 dispatch, in full
 
-- **T3 (adversarial):** check the workflow exists first:
-
-  ```bash
-  test -f "$HOME/.claude/skills/znf/workflows/review-changes.js" && echo present || echo missing
-  ```
-
-  - **present** → run the Workflow tool `scriptPath: ~/.claude/skills/znf/workflows/review-changes.js`,
-    `args: {diff: <git diff BASE..HEAD>, context: <ship-pack intent if any>, doctrine: <DOCTRINE>}`. The workflow
-    handles its own fan-out (security/contracts on opus, bugs/perf/types on sonnet) + adversarial
-    verify of **CRITICAL/HIGH only** (3 opus skeptics, ≥2 confirm). MEDIUM comes back in `advisory[]`
-    un-verified by LLM (the mechanical VERIFY below still runs on it); merge `advisory[]` into the
-    findings passed to VERIFY, ranked below confirmed.
-  - **missing** (teammate hasn't run `skills sync`, or the file was deleted) → **degrade to T2** and clearly note
-    on the report: "T3 degrade→T2: workflow missing". Do NOT fail silently.
-
-**Declined under T3:** the workflow reviewers return structured findings only, so `Declined:` lines
-come only from T1/T2 prose; the ship board carries them.
-
-### Doctrine sanitize (Step 1b-doctrine), in full
-
-- Hand the reviewer `.verified` in place of the ship-pack's `## Verified`.
-- `.stripped[]` non-empty → print "doctrine: stripped N claims from ## Verified: [...]".
-- `zenify` missing, or standalone → **skip**, note "doctrine sanitize skipped"; fail-open.
+- **T3:** the five T2 dimensions (bugs / security / perf / contracts / intent) dispatched in parallel in ONE message, all five on opus, each returning `findings[]`. Merge and dedup by `title+file` as in T2.
+- There is no skeptic pass and no separate script: VERIFY is the only refutation step, and it runs on T3 findings exactly as on T1/T2.
+- `Declined:` lines come from each reviewer's prose after its `findings[]`; the ship board carries them.
