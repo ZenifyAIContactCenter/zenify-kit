@@ -8,7 +8,7 @@ title: agent code-reviewer
 
 Reviewer độc lập không có ký ức về việc viết ra diff, kiểm lỗi đúng/sai, bảo mật, hợp đồng, và over-engineering.
 
-Agent nhận một gói thông tin gồm ý định của thay đổi, diff đầy đủ, những gì đã xác minh, những phát hiện nhỏ được để lại từ review theo task trước đó, và dữ liệu thật lấy từ DB sống cho mọi tên field/collection diff chạm tới. Agent không có quyền chạy lệnh hay sửa file, nên phần dữ liệu thật này là cách duy nhất nó kiểm tên field/collection có đúng không.
+Agent nhận một gói thông tin gồm ý định của thay đổi, diff đầy đủ, những gì đã xác minh, những phát hiện nhỏ được để lại từ review theo task trước đó, và dữ liệu thật lấy từ DB sống cho mọi tên field/collection diff chạm tới. Agent không có quyền chạy lệnh, sửa file, gọi skill hay dispatch agent khác, nên phần dữ liệu thật này là cách duy nhất nó kiểm tên field/collection có đúng không.
 
 ## Khi nào được gọi
 

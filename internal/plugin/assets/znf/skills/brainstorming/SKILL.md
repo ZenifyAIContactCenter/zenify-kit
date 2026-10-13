@@ -67,7 +67,7 @@ Classify, announce the path, do the items in order.
 6. **Design memo** — inline: context, 2-3 approaches with a recommendation, Simplicity / Anti-Abstraction / Integration-First gates, polyrepo checklist, deliberately not done. Think hard before responding.
 7. **Present design** — sections scaled to their complexity, user approval after each
 8. **Clarify-lite** — scan the 8 Brief fields (Clear/Partial/Missing), ≤5 MC questions, log `## Clarifications`
-9. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and commit
+9. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`; never commit it
 10. **Spec self-review** — inline check for placeholders, contradictions, ambiguity, scope (below)
 11. **Spec review** — `Agent(znf:spec-reviewer)` once, no `model`, brief = absolute paths of spec, user's request, report file; print `spec review ran on: <its model line>`; HIGH findings go in the approval ask; no report → `spec review: no report`; never blocks
 12. **User reviews written spec** — ask the user to review the spec file before proceeding
@@ -103,7 +103,7 @@ the spec — a light pass inside the dialogue, not a separate step.
 
 **User Review Gate:** once the review loop passes, ask the user to review it:
 
-> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+> "Spec written to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
 
 Wait. On changes, make them and re-run the review loop. Proceed only on approval.
 

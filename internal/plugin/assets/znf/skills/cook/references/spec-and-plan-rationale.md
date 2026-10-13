@@ -3,18 +3,14 @@ Read when: you consider skipping the spec or changing the plan-approval gate. --
 
 ### From § Step 2: Brainstorm → spec (`znf:brainstorming`)
 
-1. explore context → 2. visual companion, only just-in-time → 3. clarifying questions,
-**one per message** → 4. two or three approaches with a recommendation, YAGNI →
-5. present the design in sections, **user approves after each section** →
-6. write the spec to `<main-checkout>/docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` —
-**the main checkout, not the worktree** (rule #8) →
-7. spec self-review (placeholders / contradictions / scope / ambiguity) →
-8. **user reviews the written spec file** → 9. hand off to `writing-plans`.
+The step list lives in `znf:brainstorming` § Checklist; it is not repeated here. What cook adds:
+the spec is written to `<main-checkout>/docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` —
+**the main checkout, not the worktree** (rule #8) — and is never committed.
 
 ### From § Step 2: Brainstorm → spec (tier two)
 
 When you write the spec/plan, follow `znf:_shared/artifact-style` (the shared reference: `**Label:**
-value` headers, no markdown tables, no diagram-viewer-that-doesn't-render, title in the prose language
+value` headers, no diagram-viewer-that-doesn't-render, title in the prose language
 keeping jargon). See that file.
 
 And follow spec discipline: write the spec per `znf:_shared/spec-template`, per the principles in
