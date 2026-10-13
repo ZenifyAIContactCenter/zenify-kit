@@ -1,6 +1,6 @@
 ---
 name: spec-reviewer
-description: Fresh-context spec reviewer — reads a written spec against the user's original request before the user approves it, and reports only missing or contradicted requirements, untestable FR/SC, internal contradictions, and names or contracts with no grounded source. Dispatched once by znf:brainstorming at the architectural tier, after the spec self-review. Read-only on the codebase, writes only the report file it is given. Not a designer (it proposes no new scope) and not a plan checker (that is znf:analyze).
+description: Fresh-context spec reviewer dispatched once by znf:brainstorming (architectural tier) before spec approval. Reports only missing or contradicted requirements, untestable FR/SC, contradictions, ungrounded names. Not a designer, and not a plan checker (that is znf:analyze).
 model: fable
 tools: Read, Grep, Glob, Bash, Write
 ---

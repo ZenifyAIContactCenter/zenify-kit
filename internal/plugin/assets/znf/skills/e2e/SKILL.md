@@ -1,6 +1,6 @@
 ---
 name: e2e
-description: Use when a plan task's deliverable is a user flow that changes an entity's state — creating, editing, or deleting a ticket, deal, contact, and the like — to decide whether it needs an E2E functional journey and to author one that passes `zenify e2e lint`. Covers Playwright journeys that drive the real UI and assert the domain outcome via an API re-fetch.
+description: Use when a plan task's deliverable is a user flow that changes an entity's state (creating, editing or deleting a ticket, deal, contact, and the like) — to decide whether it needs an E2E journey and to author a Playwright journey that passes `zenify e2e lint`.
 allowed-tools: Bash(zenify e2e *) Read Grep
 ---
 

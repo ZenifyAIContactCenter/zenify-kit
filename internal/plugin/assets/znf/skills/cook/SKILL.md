@@ -1,6 +1,6 @@
 ---
 name: cook
-description: Full feature pipeline in one command. Use when implementing a feature end-to-end — branch, brainstorm to a spec, ground every name against real data, plan, subagent-driven implementation, then the pre-ship gate. Always spec-driven and always subagent-driven, at every size. Commits and pushes the feature branch on all-green (house rule #7); never opens the PR.
+description: Full feature pipeline in one command. Use when implementing a feature end-to-end — branch, spec, ground, plan, subagent-driven implementation, pre-ship gate. Spec-driven and subagent-driven at every size. Commits and pushes the feature branch on all-green; never opens the PR.
 argument-hint: "<feature description or path/to/plan.md>"
 allowed-tools: Read Grep Glob Bash Agent
 ---

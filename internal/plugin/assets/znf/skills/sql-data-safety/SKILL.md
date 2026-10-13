@@ -1,6 +1,6 @@
 ---
 name: sql-data-safety
-description: Use when reading or writing SQL through a pooled driver or a thin query client (raw parameterized SQL, not a full ORM mapping) — covers the tenant filter every statement must carry, parameterization against injection, connection-pool and timeout limits, transaction scoping, and schema changes via reviewed migrations.
+description: Use when reading or writing SQL through a pooled driver or thin query client (raw parameterized SQL, not a full ORM) — covers the tenant filter on every statement, parameterization, pool and timeout limits, transaction scoping, and schema changes via migrations.
 allowed-tools: Read Grep Glob Bash
 ---
 

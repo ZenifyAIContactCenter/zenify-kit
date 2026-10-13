@@ -1,6 +1,6 @@
 ---
 name: discipline
-description: The house rules for how to work in this workspace — routing by blast radius, no fabrication, verify before claiming done, worktree isolation, memory habits, planning, git safety, grounding external facts, and bounded research fan-out. The session digest names these; invoke this skill for the full text and rationale.
+description: The house rules for working in this workspace — blast-radius routing, no fabrication, verify before done, worktree isolation, memory, planning, git safety, grounding external facts, bounded research fan-out. Invoke for the full text and rationale behind the session digest.
 allowed-tools: Read Grep Glob Bash
 ---
 

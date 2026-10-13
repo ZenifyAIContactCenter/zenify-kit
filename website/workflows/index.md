@@ -67,6 +67,7 @@ Ba workflow trên tự gọi các skill sau khi cần. Bạn cũng có thể g�
 | `/znf:gate` | Quét cross-repo cho một tài nguyên chung, chỉ đọc | Vừa sửa collection, endpoint, queue hoặc channel chung |
 | `/znf:run` | Chạy app trong worktree hiện tại, trả về URL | Cần quan sát hành vi thật của app |
 | `/znf:sweep` | Dọn dev server, worktree và branch đã merge | Công việc đã merge, cần dọn workspace |
+| `/znf:retro` | Rút bài học tốn kém của phiên về đúng một nơi (check, rule, CLAUDE.md, memory), bạn duyệt trước khi ghi | Cuối phiên vừa có chỗ phải làm lại hoặc bị sửa |
 | `/znf:research` | Research có kiểm chứng: worker fetch nguồn, verifier fetch lại từng URL, báo cáo ghi vào `docs/reference/` | Thiết kế phụ thuộc thư viện, API ngoài hoặc cách người khác làm; brainstorming tự gọi khi checklist năm mục bật. Xem [Research có kiểm chứng](/concepts/research) |
 | agent `spec-reviewer` | Soát spec bằng context mới trước khi bạn duyệt, chỉ báo thiếu sót và mâu thuẫn | Brainstorming tự dispatch ở tier architectural, không gọi tay. Xem [`spec-reviewer`](/reference/agents/spec-reviewer) |
 

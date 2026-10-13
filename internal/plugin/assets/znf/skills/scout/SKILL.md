@@ -1,6 +1,6 @@
 ---
 name: scout
-description: Map what depends on something before you change it — the reverse question. Use before modifying existing code, an existing data shape, or anything shared: finds consumers, the tests that cover it, other systems written in the same operation, and why the code exists. Read-only and safe to run on its own. This is discovery; verifying that a name or shape is real is /ground's job, not this one.
+description: Map what depends on something before you change it — the reverse question. Use before modifying existing code, an existing data shape, or anything shared: consumers, covering tests, co-written systems, why the code exists. Read-only. Verifying that a name or shape is real is /ground's job.
 argument-hint: "[symbol | collection | endpoint | file:line being changed]"
 allowed-tools: Read Grep Glob Bash(git *) Bash(rg *) Agent
 ---

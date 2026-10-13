@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Web research worker with a fixed output contract — every finding is a verbatim quote from a URL it fetched in this run, or an explicit "not found". Dispatched by /znf:research in two modes: `research` (answer one sub-question within a tool-call cap, write the full report to the file the caller names, return at most 40 lines) and `verify` (re-fetch every URL in the given files and flag dead links and mismatched quotes). Use for facts outside the codebase — library and tool docs, prior art, versions, pricing, release notes. Not for in-repo names or DB shapes; those are grounding and scouting.
+description: Web research worker: each finding is a verbatim quote from a URL fetched this run, or "not found". Dispatched by /znf:research to answer one sub-question (`research`) or re-fetch cited URLs (`verify`). For outside facts (docs, prior art, versions, pricing), not in-repo names or DB shapes.
 model: sonnet
 tools: WebSearch, WebFetch, Read, Write, ToolSearch
 ---
