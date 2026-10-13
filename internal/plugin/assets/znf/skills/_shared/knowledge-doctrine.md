@@ -5,7 +5,7 @@
 Where a learned thing lives, when it moves up, and when it is retired. Downstream `znf:` skills and
 any agent deciding where to record something read this at runtime; there is no cached copy to bump
 (git history is the version). It is advisory — criteria to judge by, not a mechanism. Detecting
-promotion candidates automatically from review-log volume is a separate slice (M6d); handoff
+promotion candidates automatically from review findings volume is a separate slice (M6d); handoff
 placement (ephemeral session-handoff vs committed milestone-record) is another (M6e).
 
 ## The layers
@@ -95,7 +95,7 @@ the same defect as two memories authoritative on one subject: the loser is which
 read, and it drifts out of agreement silently. When you promote, delete the lower copy or reduce it to
 a one-line pointer to the new home.
 
-Detecting promotion candidates automatically — aggregating the review-log to surface a rule candidate
+Detecting promotion candidates automatically — aggregating review findings to surface a rule candidate
 — is out of scope here; that is M6d.
 
 ## Promotion order for a machine-checkable norm

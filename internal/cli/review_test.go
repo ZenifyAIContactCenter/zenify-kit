@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/review"
-	"github.com/spf13/cobra"
 )
 
 func TestReviewVerify_RoundTrip(t *testing.T) {
@@ -140,219 +140,30 @@ func TestReviewVerify_Registered(t *testing.T) {
 	}
 }
 
-func TestRunReviewDoctrine_StripsVerdict(t *testing.T) {
-	var out, errb bytes.Buffer
-	in := strings.NewReader("✅ all good\n12/12 pass — pm test src/x")
-	if err := runReviewDoctrine(in, &out, &errb); err != nil {
-		t.Fatalf("err=%v, want nil", err)
-	}
-	var r doctrineResult
-	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
-		t.Fatalf("bad json: %v; out=%s", err, out.String())
-	}
-	if r.Verified != "12/12 pass — pm test src/x" {
-		t.Fatalf("verified=%q", r.Verified)
-	}
-	if len(r.Stripped) != 1 || r.Stripped[0] != "✅ all good" {
-		t.Fatalf("stripped=%v", r.Stripped)
-	}
-}
-
-func TestRunReviewDoctrine_FailOpenEmpty(t *testing.T) {
-	var out, errb bytes.Buffer
-	if err := runReviewDoctrine(strings.NewReader(""), &out, &errb); err != nil {
-		t.Fatalf("err=%v, want nil", err)
-	}
-	var r doctrineResult
-	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
-		t.Fatalf("bad json: %v", err)
-	}
-	if r.Verified != "" || len(r.Stripped) != 0 {
-		t.Fatalf("want empty; got %q / %v", r.Verified, r.Stripped)
-	}
-}
-
-func TestReviewDoctrineCmd_Hidden(t *testing.T) {
-	c := newReviewDoctrineCmd()
-	if !c.Hidden {
-		t.Fatal("review-doctrine must be Hidden")
-	}
-	if c.Use != "review-doctrine" {
-		t.Fatalf("Use=%q", c.Use)
-	}
-}
-
-func contains(ss []string, s string) bool {
-	for _, x := range ss {
-		if x == s {
-			return true
+func TestRemovedReviewSubcommands(t *testing.T) {
+	root := NewRootCmd()
+	for _, name := range []string{"review-doctrine", "review-advise-gate", "review-log"} {
+		if c, _, err := root.Find([]string{name}); err == nil && c != root {
+			t.Errorf("subcommand %q still registered", name)
 		}
 	}
-	return false
+	if c, _, err := root.Find([]string{"review-verify"}); err != nil || c == root {
+		t.Error("review-verify must stay registered")
+	}
 }
 
-func TestRunReviewAdviseGate_Advises(t *testing.T) {
-	in := `{"shared":true,"added":10,"findings":[],"shippable":true}`
-	var out, errb bytes.Buffer
-	if err := runReviewAdviseGate(strings.NewReader(in), &out, &errb); err != nil {
+func TestReviewVerify_KeepsIntentDimension(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.md")
+	if err := os.WriteFile(p, []byte("line one\nthe quoted line\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	var res adviseResult
-	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
-		t.Fatalf("output is not JSON: %v (%s)", err, out.String())
-	}
-	if !res.Advise {
-		t.Error("shared must advise")
-	}
-	if !contains(res.Signals, "shared-contract touched") {
-		t.Errorf("missing signal: %v", res.Signals)
-	}
-}
-
-func TestRunReviewAdviseGate_FailOpenEmpty(t *testing.T) {
-	var out, errb bytes.Buffer
-	if err := runReviewAdviseGate(strings.NewReader(""), &out, &errb); err != nil {
+	in := `[{"dimension":"intent","severity":"HIGH","title":"t","file":"` + p + `","line":"2","issue":"i","fix":"f","evidence":"the quoted line"}]`
+	var out bytes.Buffer
+	if err := runReviewVerify(strings.NewReader(in), &out, io.Discard, os.ReadFile); err != nil {
 		t.Fatal(err)
 	}
-	var res adviseResult
-	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
-		t.Fatalf("empty must emit valid JSON: %v", err)
-	}
-	if res.Advise {
-		t.Error("empty → advise=false")
-	}
-	if res.Signals == nil {
-		t.Error("signals must be [] not null")
-	}
-}
-
-func TestRunReviewAdviseGate_FailOpenMalformed(t *testing.T) {
-	var out, errb bytes.Buffer
-	if err := runReviewAdviseGate(strings.NewReader("{not json"), &out, &errb); err != nil {
-		t.Fatal(err)
-	}
-	var res adviseResult
-	if err := json.Unmarshal(out.Bytes(), &res); err != nil {
-		t.Fatalf("malformed must fail-open JSON: %v", err)
-	}
-	if res.Advise {
-		t.Error("malformed → advise=false")
-	}
-}
-
-func TestReviewAdviseGateCmd_Hidden(t *testing.T) {
-	c := newReviewAdviseGateCmd()
-	if !c.Hidden {
-		t.Error("must be Hidden")
-	}
-	if c.Use != "review-advise-gate" {
-		t.Errorf("Use = %q", c.Use)
-	}
-}
-
-func TestReviewLogDir_UsesGitCommonDir(t *testing.T) {
-	// inject fake git → absolute gcd "/x/y/.git" → dir = /x/y/.znf/review-log
-	dir, err := reviewLogDir(func(args ...string) ([]byte, error) {
-		return []byte("/x/y/.git\n"), nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if dir != filepath.Join("/x/y", ".znf", "review-log") {
-		t.Errorf("dir = %s", dir)
-	}
-}
-
-func TestReviewLogDir_GitError(t *testing.T) {
-	_, err := reviewLogDir(func(args ...string) ([]byte, error) {
-		return nil, os.ErrNotExist
-	})
-	if err == nil {
-		t.Error("git error must return an error so the caller can fail-open")
-	}
-}
-
-func TestRunReviewLogRecord_WritesThenFailOpen(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "rl")
-	dirFn := func() (string, error) { return dir, nil }
-	rec := `{"ts":"2026-09-04T01:00:00Z","repo":"r","base":"a","head":"deadbeef","tier":"T2","outcome":"reviewed","findings":{"high":1},"kept":1,"refuted":0,"shippable":true,"signals":[],"categories":["bugs"]}`
-	var errb bytes.Buffer
-	if err := runReviewLogRecord(strings.NewReader(rec), &errb, dirFn); err != nil {
-		t.Fatalf("a valid record must have nil err: %v", err)
-	}
-	recs, _ := review.LoadRecords(dir)
-	if len(recs) != 1 {
-		t.Fatalf("record not written: %d", len(recs))
-	}
-	// empty stdin → nothing more written, still nil
-	if err := runReviewLogRecord(strings.NewReader(""), &errb, dirFn); err != nil {
-		t.Fatalf("empty must be nil: %v", err)
-	}
-	// malformed → nothing more written, still nil
-	if err := runReviewLogRecord(strings.NewReader("{bad"), &errb, dirFn); err != nil {
-		t.Fatalf("malformed must be nil: %v", err)
-	}
-	recs, _ = review.LoadRecords(dir)
-	if len(recs) != 1 {
-		t.Errorf("empty/malformed must not write more, still have %d", len(recs))
-	}
-}
-
-func TestRunReviewLogRecord_DirErrorFailOpen(t *testing.T) {
-	dirFn := func() (string, error) { return "", os.ErrNotExist }
-	rec := `{"ts":"t","head":"h","tier":"T1"}`
-	var errb bytes.Buffer
-	if err := runReviewLogRecord(strings.NewReader(rec), &errb, dirFn); err != nil {
-		t.Errorf("resolve-dir error must be nil (fail-open): %v", err)
-	}
-}
-
-func TestRunReviewLogShow_Empty(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "empty")
-	dirFn := func() (string, error) { return dir, nil }
-	var out, errb bytes.Buffer
-	if err := runReviewLogShow(&out, &errb, false, dirFn); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(out.String(), "no reviews logged yet") {
-		t.Errorf("empty must report no reviews: %q", out.String())
-	}
-}
-
-func TestRunReviewLogShow_JSON(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "rl")
-	if _, err := review.WriteRecord(dir, review.Record{TS: "2026-09-04T01:00:00Z", Head: "abc12345", Tier: "T2", Kept: 1, Categories: []string{"bugs"}}); err != nil {
-		t.Fatal(err)
-	}
-	dirFn := func() (string, error) { return dir, nil }
-	var out, errb bytes.Buffer
-	if err := runReviewLogShow(&out, &errb, true, dirFn); err != nil {
-		t.Fatal(err)
-	}
-	var recs []review.Record
-	if err := json.Unmarshal(out.Bytes(), &recs); err != nil {
-		t.Fatalf("--json must print the record array: %v (%s)", err, out.String())
-	}
-	if len(recs) != 1 || recs[0].Tier != "T2" {
-		t.Errorf("json sai: %+v", recs)
-	}
-}
-
-func TestReviewLogCmd_RecordChildHidden(t *testing.T) {
-	c := newReviewLogCmd()
-	if c.Use != "review-log" {
-		t.Errorf("parent Use = %q", c.Use)
-	}
-	var rec *cobra.Command
-	for _, sub := range c.Commands() {
-		if sub.Use == "record" {
-			rec = sub
-		}
-	}
-	if rec == nil {
-		t.Fatal("missing child record")
-	}
-	if !rec.Hidden {
-		t.Error("record must be Hidden")
+	if !strings.Contains(out.String(), `"kept":1`) || !strings.Contains(out.String(), `"dimension":"intent"`) {
+		t.Errorf("intent finding not kept: %s", out.String())
 	}
 }

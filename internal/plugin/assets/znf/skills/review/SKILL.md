@@ -1,6 +1,6 @@
 ---
 name: review
-description: Unified review engine: selects a tier from the diff, dispatches reviewers (T1 solo / T2 fan-out / T3 adversarial), returns findings per the shared schema. Main gate for /review and ship step 5.
+description: Unified review engine: selects a tier from the diff, dispatches reviewers (T1 solo / T2 fan-out / T3 five opus reviewers), returns findings per the shared schema. Main gate for /review and ship step 5.
 allowed-tools: Bash(git *) Bash(rg *) Bash(bash *) Bash(test *) Bash(awk *) Bash(zenify *) Agent
 ---
 
@@ -77,7 +77,7 @@ reviewer's brief** (T1, T2, T3, per-bundle).
 - **T1 (solo):** 1 `code-reviewer` agent (template `subagent-driven-development/code-reviewer-template.md`),
   model `sonnet` under 50 LOC / mid otherwise. Returns `findings[]`.
 - **T2 (fan-out):** 5 agents in parallel (ONE message), one dimension each (bugs / security / perf /
-  contracts / intent), each returning `findings[]`. **When `SHARED=1`, dispatch the `contracts` agent with model opus** (others stay default). Merge, dedup by `title+file`.
+  contracts / intent), each returning `findings[]`. The `intent` agent also gets the ship-pack path `$PACK` (its `## Intent`); standalone with no pack it judges against the user's stated goal. **When `SHARED=1`, dispatch the `contracts` agent with model opus** (others stay default). Merge, dedup by `title+file`.
 - **T3:** the five T2 dimensions in parallel (ONE message), all five on opus. No skeptic pass;
   VERIFY below still refutes fabricated citations.
 

@@ -1,6 +1,6 @@
 # Finding schema — shared across every tier of znf:review
 
-Every tier (T1/T2/T3) and every capability (M4b finding-verifier, M4e learning-capture)
+Every tier (T1/T2/T3) and every capability (M4b finding-verifier)
 returns findings in the SAME shape. This is the single schema source — do not redefine it elsewhere.
 
 ## Finding
