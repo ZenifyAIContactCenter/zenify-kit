@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.32.1
+
+*2026-10-13*
+
+- `zenify up` xoá file agent Codex mà kit đã gỡ (ví dụ `~/.codex/agents/architect.toml` còn sót sau v0.32.0) và in một dòng `removed retired Codex agent …`. Chỉ xoá file mang marker của kit; file agent bạn tự viết vẫn giữ nguyên.
+
 ## v0.32.0
 
 *2026-10-13*

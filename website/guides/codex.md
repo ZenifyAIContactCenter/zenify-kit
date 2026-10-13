@@ -12,7 +12,7 @@ Cài Codex theo hướng dẫn của OpenAI, rồi chạy `zenify up` như thư�
 
 - **Skills:** Codex đọc cây skill của kit qua một symlink ở `~/.agents/skills`, trỏ về cùng cây skill Claude đang dùng.
 - **Hooks:** nằm ở `~/.codex/hooks.json`, sinh từ cùng bảng hook với Claude (xem [Hook](/reference/hooks), cột Runtime).
-- **Agents:** sinh từ các file agent của kit.
+- **Agents:** sinh từ các file agent của kit. File `.toml` mang marker của kit mà agent đã bị gỡ khỏi kit (ví dụ `architect.toml`) được `up` xoá và in một dòng `removed retired Codex agent …`.
 
 `zenify doctor` có các mục `codex-hooks`, `reviewer` và `agents-md` để kiểm tra phần Codex.
 

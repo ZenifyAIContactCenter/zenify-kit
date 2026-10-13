@@ -108,6 +108,44 @@ func TestSyncCodexAgentsSkipsForeign(t *testing.T) {
 	}
 }
 
+func TestSyncCodexAgentsPrunesRetiredMarked(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, "agents")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	retired := filepath.Join(dir, "architect.toml")
+	if err := os.WriteFile(retired, []byte(CodexAgentMarker+"\nname = \"architect\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(dir, "mine.toml")
+	if err := os.WriteFile(foreign, []byte("name = \"mine\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := SyncCodexAgents(home, true); err != nil || len(res.Removed) != 1 {
+		t.Fatalf("dry-run: %+v %v", res, err)
+	}
+	if _, err := os.Stat(retired); err != nil {
+		t.Fatal("dry-run removed the retired agent")
+	}
+	res, err := SyncCodexAgents(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Removed) != 1 || res.Removed[0] != "architect" {
+		t.Fatalf("removed = %v", res.Removed)
+	}
+	if _, err := os.Stat(retired); !os.IsNotExist(err) {
+		t.Error("retired marked agent still on disk")
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Error("foreign agent removed")
+	}
+	if len(res.Written) != 5 {
+		t.Errorf("written = %v", res.Written)
+	}
+}
+
 func TestRemoveCodexAgentsKeepsForeign(t *testing.T) {
 	home := t.TempDir()
 	if _, err := SyncCodexAgents(home, false); err != nil {

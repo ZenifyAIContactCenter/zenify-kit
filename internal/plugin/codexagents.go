@@ -17,7 +17,7 @@ import (
 const CodexAgentMarker = "# managed by zenify — do not edit"
 
 // AgentSyncResult lists agent names by outcome.
-type AgentSyncResult struct{ Written, Unchanged, Skipped []string }
+type AgentSyncResult struct{ Written, Unchanged, Skipped, Removed []string }
 
 type agentMeta struct{ Name, Description, Tools, DisallowedTools string }
 
@@ -105,7 +105,8 @@ func hasMarker(p string) (exists, marked bool) {
 	return true, first == CodexAgentMarker
 }
 
-// SyncCodexAgents writes each embedded agent as <codexHome>/agents/<name>.toml.
+// SyncCodexAgents writes each embedded agent as <codexHome>/agents/<name>.toml
+// and removes marked files for agents the kit no longer ships.
 // A file lacking the marker line is the user's: left alone and reported in Skipped.
 func SyncCodexAgents(codexHome string, dryRun bool) (AgentSyncResult, error) {
 	var res AgentSyncResult
@@ -114,11 +115,13 @@ func SyncCodexAgents(codexHome string, dryRun bool) (AgentSyncResult, error) {
 		return res, err
 	}
 	dir := filepath.Join(codexHome, "agents")
+	shipped := map[string]bool{}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".md")
+		shipped[name] = true
 		src, err := assets.ReadFile(embedRoot + "/agents/" + e.Name())
 		if err != nil {
 			return res, err
@@ -151,6 +154,25 @@ func SyncCodexAgents(codexHome string, dryRun bool) (AgentSyncResult, error) {
 			}
 		}
 		res.Written = append(res.Written, name)
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "*.toml"))
+	if err != nil {
+		return res, err
+	}
+	for _, f := range files {
+		name := strings.TrimSuffix(filepath.Base(f), ".toml")
+		if shipped[name] {
+			continue
+		}
+		if _, marked := hasMarker(f); !marked {
+			continue
+		}
+		if !dryRun {
+			if err := os.Remove(f); err != nil {
+				return res, err
+			}
+		}
+		res.Removed = append(res.Removed, name)
 	}
 	return res, nil
 }
