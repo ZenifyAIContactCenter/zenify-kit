@@ -404,3 +404,16 @@ func TestPreviewSettingsEnv_WritesNothing(t *testing.T) {
 		t.Errorf("preview wrote .zenify/.env, stat err=%v", err)
 	}
 }
+
+// FR-10.2 on Windows: Claude Code matches POSIX-normalized paths (C:\x → /c/x).
+func TestDenyRuleFor(t *testing.T) {
+	for _, tc := range []struct{ abs, goos, want string }{
+		{`C:\Users\alice\ws`, "windows", "Read(//c/Users/alice/ws/.zenify/.env)"},
+		{"/Users/alice/ws", "darwin", "Read(//Users/alice/ws/.zenify/.env)"},
+		{"/home/alice/ws", "linux", "Read(//home/alice/ws/.zenify/.env)"},
+	} {
+		if got := denyRuleFor(tc.abs, tc.goos); got != tc.want {
+			t.Errorf("denyRuleFor(%q, %q) = %q, want %q", tc.abs, tc.goos, got, tc.want)
+		}
+	}
+}

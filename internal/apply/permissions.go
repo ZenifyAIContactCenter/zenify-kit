@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -49,7 +50,21 @@ func KitDenyRule(workspace string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return "Read(/" + filepath.ToSlash(abs) + "/.zenify/.env)", nil
+	return denyRuleFor(abs, runtime.GOOS), nil
+}
+
+// denyRuleFor builds the rule for an absolute path. On Windows Claude Code
+// matches paths in POSIX form (C:\Users\a becomes /c/Users/a), so the drive
+// letter is lowercased, its colon dropped and backslashes turned into "/".
+func denyRuleFor(abs, goos string) string {
+	p := abs
+	if goos == "windows" {
+		p = strings.ReplaceAll(p, `\`, "/")
+		if len(p) >= 2 && p[1] == ':' {
+			p = "/" + strings.ToLower(p[:1]) + p[2:]
+		}
+	}
+	return "Read(/" + p + "/.zenify/.env)"
 }
 
 // kitList is one settings array of ~/.claude/settings.json the kit unions
