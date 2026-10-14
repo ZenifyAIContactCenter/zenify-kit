@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.33.2
+
+*2026-10-14*
+
+- `zenify wt new` đặt tên branch theo `git config user.name` (ví dụ `phuthuycoding/fix/<slug>`) thay vì phần trước `@` của `user.email`. Chưa đặt `user.name` thì vẫn lấy từ email, rồi tới `$USER`. Repo khai `user` trong `worktree.json` thì vẫn dùng giá trị đó. Ký tự không hợp lệ trong tên branch đổi thành `-`, nên `Nguyen An` thành `Nguyen-An`; muốn branch ngắn thì đặt `git config --global user.name <handle>`. Xem [Worktree theo slug](/concepts/worktree-per-slug).
+
 ## v0.33.1
 
 *2026-10-14*
