@@ -123,8 +123,9 @@ func (f *File) Set(key, value string) {
 }
 
 // commentedAssign matches comment text that is a commented-out assignment
-// (an old value, possibly a secret), never a description.
-var commentedAssign = regexp.MustCompile(`^(export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=`)
+// (an old value, possibly a secret), never a description. No space before "="
+// so prose like "rotate = monthly" stays a description.
+var commentedAssign = regexp.MustCompile(`^(export\s+)?[A-Za-z_][A-Za-z0-9_]*=`)
 
 // descLine returns the description a comment line carries. A commented-out
 // assignment such as "# OLD_TOKEN=..." is not a description.
