@@ -20,7 +20,7 @@ Khi bạn rời workspace, đổi máy, hoặc cần cài lại từ đầu. Đ�
 
 ## Kết quả
 
-Lệnh gỡ năm thứ: hook `znf`, hook `git-guard` và biến `env.CLAUDE_CODE_SUBAGENT_MODEL` (chỉ khi còn đúng giá trị kit ghi) trong `~/.claude/settings.json`, các dòng exclude `.worktrees/` và `.wt/` trong từng repo, file `.claude/settings.local.json` do kit sinh ra trong từng repo, và luật deny `Read(/.zenify/.env)` kit thêm vào `.claude/settings.json` của workspace (luật bạn tự thêm giữ nguyên). Mặc định lệnh chỉ in preview có tiêu đề `PREVIEW`. Với `--apply` lệnh thực thi.
+Lệnh gỡ năm thứ: hook `znf`, hook `git-guard` và biến `env.CLAUDE_CODE_SUBAGENT_MODEL` (chỉ khi còn đúng giá trị kit ghi) trong `~/.claude/settings.json`, các dòng exclude `.worktrees/` và `.wt/` trong từng repo, file `.claude/settings.local.json` do kit sinh ra trong từng repo, và luật deny `Read(//<workspace>/.zenify/.env)` kit thêm vào `~/.claude/settings.json` cho workspace đó (luật bạn tự thêm và luật của workspace khác giữ nguyên). Mặc định lệnh chỉ in preview có tiêu đề `PREVIEW`. Với `--apply` lệnh thực thi.
 
 Lệnh không đụng vào repo đã clone, thư mục `.zenify/` hay knowledge store.
 
