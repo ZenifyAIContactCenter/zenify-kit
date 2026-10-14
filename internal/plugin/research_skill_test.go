@@ -10,7 +10,7 @@ import (
 // Project business terms that must never appear in a kit asset (kit stays
 // project-agnostic). Superset of the lists in ui_verifier_test.go and
 // discipline_test.go.
-var researchForbidden = []string{"contact-center", "3csoft", "herdr", "ott-gateway", "db_read", "lumi", "personal-zalo", "notification-hub"}
+var researchForbidden = []string{"contact-center", "3csoft", "herdr", "ott-gateway", "db_read", "lumi", "personal-zalo", "notification-hub", "message-hub"}
 
 func syncedAsset(t *testing.T, rel string) string {
 	t.Helper()

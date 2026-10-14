@@ -62,14 +62,14 @@ repos:
       - QDRANT_URL_PRD
       - LUMI_APP_URL_STG
       - OPENROUTER_API_KEY
-  - name: notification-hub-be
-    url: git@github.com:ZenifyAIContactCenter/notification-hub-be.git
-    path: repos/notification-hub-be
+  - name: message-hub-be
+    url: git@github.com:ZenifyAIContactCenter/message-hub-be.git
+    path: repos/message-hub-be
     base: origin/staging
     tags: [backend, comm-hub]
-  - name: notification-hub-web
-    url: git@github.com:ZenifyAIContactCenter/notification-hub-web.git
-    path: repos/notification-hub-web
+  - name: message-hub-web
+    url: git@github.com:ZenifyAIContactCenter/message-hub-web.git
+    path: repos/message-hub-web
     base: origin/staging
     tags: [frontend, comm-hub]
   - name: ott-gateway

@@ -12,7 +12,7 @@ import (
 
 var forbiddenTokens = []string{
 	"3csoft", "contact-center", "ott-gateway", "db_read", "lumi",
-	"personal-zalo", "notification-hub", "models.mongo", "sendOK",
+	"personal-zalo", "notification-hub", "message-hub", "models.mongo", "sendOK",
 	"VITE_", "namph", "zenify",
 }
 
