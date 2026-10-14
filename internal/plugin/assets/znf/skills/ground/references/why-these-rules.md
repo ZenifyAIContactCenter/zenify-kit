@@ -54,7 +54,7 @@ and quote it with the number:
 rg -l --glob '*.{js,ts}' 'strict:\s*false' | wc -l
 ```
 
-If `distinct` returns a value your new code has no branch for, that is a bug already written. One
+If the `$group` listing returns a value your new code has no branch for, that is a bug already written. One
 documented case: 11% of historical orders rendering "Unknown User" for months, with nothing
 failing and no error anywhere.
 

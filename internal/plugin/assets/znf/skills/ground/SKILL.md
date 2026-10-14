@@ -147,7 +147,7 @@ A summary of a shape is not the shape, which is the second-hand step this skill 
 | Library version differs from training | Read installed types; don't use training memory |
 | A doc, README, or CLAUDE.md states the shape | Documentation is not ground truth — it goes stale silently. Verify against live data, the running process, or the code definition. Ground truth is what executes, not what describes |
 | Verified it in one tenant / one environment | One sample is not the shape — check a second before generalising |
-| "The field exists, that's enough" | Not if the code branches on its value. `distinct()` it — the store holds every shape ever written |
+| "The field exists, that's enough" | Not if the code branches on its value. list its values with the `$group` pipeline — the store holds every shape ever written |
 | "The query returns the right rows locally" | Dev data has one tenant, so a missing tenant filter looks correct. Check the predicate, not the result |
 | "I grounded it, so the change is safe" | Grounding is forward-only. Whether an existing caller breaks is `/scout`'s question, and it is unanswered until you ask it |
 
