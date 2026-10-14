@@ -3,48 +3,15 @@ package dbread
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-)
 
-func TestRefuseWrites(t *testing.T) {
-	cases := []struct {
-		stmt string
-		want bool
-	}{
-		{"INSERT", true},
-		{"Db.X.updateOne", true},
-		{"SET x", true},
-		{"SET a=1", true},
-		{"db.coll.find({})", false},
-		{"SELECT * FROM t", false},
-		{"db.coll.aggregate([...])", false},
-		{"estimatedDocumentCount()", false},
-		{"reset()", false},
-		{"db.coll.deleteOne({})", true},
-		{"db.coll.remove({})", true},
-		{"db.coll.replaceOne({},{})", true},
-		{"db.coll.drop()", true},
-		{"db.coll.renameCollection('x')", true},
-		{"db.coll.save({})", true},
-		{"db.coll.bulkWrite([])", true},
-		{"db.coll.findAndModify({})", true},
-		{"db.runCommand({collMod: 'x'})", true},
-		{"TRUNCATE TABLE t", true},
-		{"ALTER TABLE t", true},
-		{"GRANT ALL ON x TO y", true},
-		{"REVOKE ALL ON x FROM y", true},
-		{"CREATE TABLE t (id int)", true},
-	}
-	for _, c := range cases {
-		if got := RefuseWrites(c.stmt); got != c.want {
-			t.Errorf("RefuseWrites(%q) = %v, want %v", c.stmt, got, c.want)
-		}
-	}
-}
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+)
 
 func TestLoadCreds_EnvWinsOverSettings(t *testing.T) {
 	dir := t.TempDir()
@@ -144,163 +111,315 @@ func fakeEnv() map[string]string {
 	}
 }
 
-func TestRun_Collections_ExactEvalAndArgs(t *testing.T) {
-	o, stdout, _ := baseOptions(t, fakeEnv())
-	var capturedName string
-	var capturedArgs []string
-	o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-		capturedName = name
-		capturedArgs = args
-		_, _ = fmt.Fprint(o.Stdout, "chat_rooms\nusers\ntickets\n")
+// call is one invocation recorded by the fake run seam.
+type call struct {
+	name     string
+	args     []string
+	extraEnv []string
+}
+
+// recordRun installs a seam that records every call and writes out to o.Stdout.
+func recordRun(o *Options, out string) *[]call {
+	var calls []call
+	o.SetRun(func(name string, args []string, extraEnv []string, _ string) error {
+		calls = append(calls, call{name, args, extraEnv})
+		_, _ = fmt.Fprint(o.Stdout, out)
 		return nil
 	})
-	o.Cmd = "collections"
-	if err := Run(o); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if capturedName != "mongosh" {
-		t.Errorf("name = %q, want mongosh", capturedName)
-	}
-	wantArgs := []string{fakeMongoURL, "--quiet", "--eval",
-		`db.getSiblingDB("3csoft").getCollectionInfos({type:"collection"}).map(c=>c.name).sort().forEach(n=>print(n))`}
-	if len(capturedArgs) != len(wantArgs) {
-		t.Fatalf("args = %v, want %v", capturedArgs, wantArgs)
-	}
-	for i := range wantArgs {
-		if capturedArgs[i] != wantArgs[i] {
-			t.Errorf("args[%d] = %q, want %q", i, capturedArgs[i], wantArgs[i])
+	return &calls
+}
+
+func contains(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
 		}
 	}
-	if stdout.String() != "chat_rooms\nusers\ntickets\n" {
-		t.Errorf("stdout = %q", stdout.String())
+	return false
+}
+
+func TestRun_Mongo_URLNotOnArgv(t *testing.T) {
+	env := fakeEnv()
+	env["MONGO_URL"] = "mongodb://u:SECRETPW@h"
+	for _, cmd := range []string{"collections", "doc", "count", "find"} {
+		o, _, _ := baseOptions(t, env)
+		calls := recordRun(o, "")
+		o.Cmd, o.Arg = cmd, "users"
+		if err := Run(o); err != nil {
+			t.Fatalf("Run(%s): %v", cmd, err)
+		}
+		if len(*calls) != 1 {
+			t.Fatalf("Run(%s): %d calls, want 1", cmd, len(*calls))
+		}
+		c := (*calls)[0]
+		if c.name != "mongosh" {
+			t.Errorf("Run(%s): name = %q, want mongosh", cmd, c.name)
+		}
+		if c.args[0] != "--nodb" {
+			t.Errorf("Run(%s): args[0] = %q, want --nodb", cmd, c.args[0])
+		}
+		for _, a := range c.args {
+			if strings.Contains(a, "SECRETPW") {
+				t.Errorf("Run(%s): URL secret on argv: %q", cmd, a)
+			}
+		}
+		if !contains(c.extraEnv, "ZNF_MONGO_URL=mongodb://u:SECRETPW@h") {
+			t.Errorf("Run(%s): extraEnv = %v, want ZNF_MONGO_URL", cmd, c.extraEnv)
+		}
 	}
 }
 
-func TestRun_Collections_ArgFilters(t *testing.T) {
+func TestRun_Find_ScriptCarriesFlags(t *testing.T) {
+	o, _, _ := baseOptions(t, fakeEnv())
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg = "find", "users"
+	o.Filter, o.Projection, o.Limit = `{"role":"agent"}`, `{"_id":1}`, 2
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	args := (*calls)[0].args
+	wantPrefix := []string{"--nodb", "--quiet", "--eval"}
+	if len(args) != 4 {
+		t.Fatalf("args = %v, want 4 elements", args)
+	}
+	for i, w := range wantPrefix {
+		if args[i] != w {
+			t.Errorf("args[%d] = %q, want %q", i, args[i], w)
+		}
+	}
+	script := args[3]
+	for _, frag := range []string{`d.getCollection("users").find(`, `{\"role\":\"agent\"}`, `{\"_id\":1}`, ".limit(2)"} {
+		if !strings.Contains(script, frag) {
+			t.Errorf("script = %q, missing %q", script, frag)
+		}
+	}
+}
+
+func TestRun_Collections_SubstringInScript(t *testing.T) {
 	o, stdout, _ := baseOptions(t, fakeEnv())
-	o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-		_, _ = fmt.Fprint(o.Stdout, "chat_rooms\nusers\ntickets\nchat_messages\n")
-		return nil
-	})
-	o.Cmd = "collections"
-	o.Arg = "chat"
+	calls := recordRun(o, "chat_messages\nchat_rooms\n")
+	o.Cmd, o.Arg = "collections", "Chat"
 	if err := Run(o); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if stdout.String() != "chat_rooms\nchat_messages" {
+	if !strings.Contains((*calls)[0].args[3], `includes("chat")`) {
+		t.Errorf("script = %q, want lower-cased substring filter", (*calls)[0].args[3])
+	}
+	if stdout.String() != "chat_messages\nchat_rooms\n" {
 		t.Errorf("stdout = %q", stdout.String())
 	}
 }
 
-func TestRun_Eval_WriteRefused(t *testing.T) {
-	o, _, stderr := baseOptions(t, fakeEnv())
-	called := false
-	o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-		called = true
-		return nil
-	})
-	o.Cmd = "eval"
-	o.Arg = "db.tickets.insertOne({})"
-	if err := Run(o); err == nil {
-		t.Fatal("Run: want error for a write expression")
+func TestRun_Tables_FilteredNotCapped(t *testing.T) {
+	o, stdout, _ := baseOptions(t, fakeEnv())
+	var b strings.Builder
+	for i := 1; i <= 60; i++ {
+		fmt.Fprintf(&b, "t%d\n", i)
 	}
-	if called {
-		t.Error("run seam was invoked for a refused write")
-	}
-	if !strings.Contains(stderr.String(), "refusing") {
-		t.Errorf("stderr = %q, want refusal message", stderr.String())
-	}
-}
-
-func TestRun_Eval_ReadPassesThrough(t *testing.T) {
-	o, _, _ := baseOptions(t, fakeEnv())
-	var capturedArgs []string
-	o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-		capturedArgs = args
-		return nil
-	})
-	o.Cmd = "eval"
-	o.Arg = "db.tickets.find({}).limit(1)"
+	b.WriteString("agents\n")
+	calls := recordRun(o, b.String())
+	o.Cmd, o.Arg = "tables", "AGENT"
 	if err := Run(o); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	wantJS := "db = db.getSiblingDB('3csoft'); db.tickets.find({}).limit(1)"
-	if len(capturedArgs) < 4 || capturedArgs[3] != wantJS {
-		t.Errorf("args = %v, want eval js %q", capturedArgs, wantJS)
+	if stdout.String() != "agents" {
+		t.Errorf("stdout = %q, want the 61st line to survive the filter", stdout.String())
+	}
+	if (*calls)[0].name != "mysql" {
+		t.Errorf("name = %q, want mysql", (*calls)[0].name)
 	}
 }
 
-func TestRun_SQL_WriteRefused(t *testing.T) {
+func TestRun_EvalRemoved(t *testing.T) {
 	o, _, _ := baseOptions(t, fakeEnv())
-	called := false
-	o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-		called = true
-		return nil
-	})
-	o.Cmd = "sql"
-	o.Arg = "DELETE FROM agents"
-	if err := Run(o); err == nil {
-		t.Fatal("Run: want error for a write query")
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg = "eval", "db.users.find()"
+	err := Run(o)
+	if err == nil || !strings.Contains(err.Error(), "find/aggregate") {
+		t.Fatalf("err = %v, want removal message naming find/aggregate", err)
 	}
-	if called {
-		t.Error("run seam was invoked for a refused write")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("exit code = %d, want BadArgs", exitcode.Code(err))
+	}
+	if len(*calls) != 0 {
+		t.Error("run seam invoked for removed eval")
 	}
 }
 
-func TestRun_SQL_ReadPassesThroughWithPassword(t *testing.T) {
+func TestRun_SQL_Refused(t *testing.T) {
+	o, _, _ := baseOptions(t, fakeEnv())
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg = "sql", "DROP TABLE t"
+	err := Run(o)
+	if err == nil {
+		t.Fatal("Run: want error for DROP TABLE")
+	}
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("exit code = %d, want BadArgs", exitcode.Code(err))
+	}
+	if len(*calls) != 0 {
+		t.Error("run seam invoked for a refused statement")
+	}
+}
+
+func TestRun_SQL_Args(t *testing.T) {
 	o, stdout, stderr := baseOptions(t, fakeEnv())
-	var capturedName string
-	var capturedArgs, capturedExtraEnv []string
-	o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-		capturedName = name
-		capturedArgs = args
-		capturedExtraEnv = extraEnv
-		_, _ = fmt.Fprint(o.Stdout, "agents\n")
-		return nil
-	})
-	o.Cmd = "sql"
-	o.Arg = "SELECT * FROM agents"
+	calls := recordRun(o, "1\n")
+	o.Cmd, o.Arg = "sql", "SELECT id FROM agents"
 	if err := Run(o); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if capturedName != "mysql" {
-		t.Errorf("name = %q, want mysql", capturedName)
+	c := (*calls)[0]
+	if c.name != "mysql" {
+		t.Errorf("name = %q, want mysql", c.name)
 	}
-	found := false
-	for _, e := range capturedExtraEnv {
-		if e == "MYSQL_PWD="+fakeMysqlPassword {
-			found = true
+	if !contains(c.args, "--binary-mode") {
+		t.Errorf("args = %v, want --binary-mode", c.args)
+	}
+	for _, w := range []string{"-h", "mysql.internal", "-P", "3306", "-u", "clusteradmin", "-N", "-B"} {
+		if !contains(c.args, w) {
+			t.Errorf("args = %v, missing %q", c.args, w)
 		}
 	}
-	if !found {
-		t.Errorf("extraEnv = %v, want MYSQL_PWD=%s", capturedExtraEnv, fakeMysqlPassword)
+	if c.args[len(c.args)-1] != "db_acd" {
+		t.Errorf("last arg = %q, want database db_acd", c.args[len(c.args)-1])
 	}
-	wantArgs := []string{"-h", "mysql.internal", "-P", "3306", "-u", "clusteradmin", "-N", "-B", "-e", "SELECT * FROM agents", "db_acd"}
-	if len(capturedArgs) != len(wantArgs) {
-		t.Fatalf("args = %v, want %v", capturedArgs, wantArgs)
-	}
-	for i := range wantArgs {
-		if capturedArgs[i] != wantArgs[i] {
-			t.Errorf("args[%d] = %q, want %q", i, capturedArgs[i], wantArgs[i])
+	e := -1
+	for i, a := range c.args {
+		if a == "-e" {
+			e = i
 		}
 	}
-	if strings.Contains(stdout.String(), fakeMysqlPassword) || strings.Contains(stderr.String(), fakeMysqlPassword) {
-		t.Error("FR-041 violation: password leaked into stdout/stderr")
+	if e < 0 || e+1 >= len(c.args) {
+		t.Fatalf("args = %v, want -e <stmt>", c.args)
+	}
+	stmt := c.args[e+1]
+	if !strings.HasPrefix(stmt, "START TRANSACTION READ ONLY;") {
+		t.Errorf("-e = %q, want read-only txn prefix", stmt)
+	}
+	if !strings.Contains(stmt, "SELECT id FROM agents;") || !strings.HasSuffix(stmt, "ROLLBACK;") {
+		t.Errorf("-e = %q, want user stmt wrapped and rolled back", stmt)
+	}
+	if !contains(c.extraEnv, "MYSQL_PWD="+fakeMysqlPassword) {
+		t.Errorf("extraEnv = %v, want MYSQL_PWD", c.extraEnv)
+	}
+	for _, a := range c.args {
+		if strings.Contains(a, fakeMysqlPassword) {
+			t.Errorf("password on argv: %q", a)
+		}
+	}
+	if stdout.String() != "1\n" || stderr.String() != "" {
+		t.Errorf("stdout = %q stderr = %q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRun_SQL_Cap(t *testing.T) {
+	o, stdout, _ := baseOptions(t, fakeEnv())
+	var in, want strings.Builder
+	for i := 1; i <= 60; i++ {
+		fmt.Fprintf(&in, "row%d\n", i)
+		if i <= 50 {
+			fmt.Fprintf(&want, "row%d\n", i)
+		}
+	}
+	want.WriteString("… đã cắt ở 50 dòng (--limit, tối đa 200)\n") //znf:allow-lang
+	recordRun(o, in.String())
+	o.Cmd, o.Arg = "sql", "SELECT id FROM agents"
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stdout.String() != want.String() {
+		t.Errorf("stdout =\n%q\nwant\n%q", stdout.String(), want.String())
+	}
+}
+
+func TestRun_SQL_ExactLimitNotTruncated(t *testing.T) {
+	o, stdout, _ := baseOptions(t, fakeEnv())
+	recordRun(o, "a\nb\nc\n")
+	o.Cmd, o.Arg, o.Limit = "sql", "SELECT 1", 3
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stdout.String() != "a\nb\nc\n" {
+		t.Errorf("stdout = %q, want no truncation line", stdout.String())
+	}
+}
+
+func TestRun_LimitOutOfRange(t *testing.T) {
+	for _, tc := range []struct {
+		cmd   string
+		limit int
+	}{{"find", 500}, {"sql", 500}, {"aggregate", -1}} {
+		o, _, _ := baseOptions(t, fakeEnv())
+		calls := recordRun(o, "")
+		o.Cmd, o.Arg, o.Limit = tc.cmd, "users", tc.limit
+		o.Pipeline = `[{"$match":{}}]`
+		if tc.cmd == "sql" {
+			o.Arg = "SELECT 1"
+		}
+		err := Run(o)
+		if err == nil {
+			t.Errorf("Run(%s, limit %d): want error", tc.cmd, tc.limit)
+		}
+		if exitcode.Code(err) != exitcode.BadArgs {
+			t.Errorf("Run(%s): exit code = %d, want BadArgs", tc.cmd, exitcode.Code(err))
+		}
+		if len(*calls) != 0 {
+			t.Errorf("Run(%s): seam invoked despite bad limit", tc.cmd)
+		}
+	}
+}
+
+func TestRun_FindLimitTooHigh(t *testing.T) {
+	o, _, _ := baseOptions(t, fakeEnv())
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg, o.Limit = "find", "users", 500
+	if err := Run(o); err == nil {
+		t.Fatal("Run: want error for --limit 500")
+	}
+	if len(*calls) != 0 {
+		t.Error("run seam invoked for --limit 500")
+	}
+}
+
+func TestRun_Aggregate_PipelineRequiredAndWriteStageRefused(t *testing.T) {
+	for _, pl := range []string{"", `[{"$out":"x"}]`} {
+		o, _, _ := baseOptions(t, fakeEnv())
+		calls := recordRun(o, "")
+		o.Cmd, o.Arg, o.Pipeline = "aggregate", "users", pl
+		if err := Run(o); exitcode.Code(err) != exitcode.BadArgs {
+			t.Errorf("pipeline %q: err = %v, want BadArgs", pl, err)
+		}
+		if len(*calls) != 0 {
+			t.Errorf("pipeline %q: seam invoked", pl)
+		}
+	}
+}
+
+func TestRun_UnknownCommand(t *testing.T) {
+	o, _, stderr := baseOptions(t, fakeEnv())
+	calls := recordRun(o, "")
+	o.Cmd = "distinct"
+	err := Run(o)
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("err = %v, want BadArgs", err)
+	}
+	if len(*calls) != 0 {
+		t.Error("seam invoked for unknown command")
+	}
+	if !strings.Contains(stderr.String(), "aggregate") {
+		t.Errorf("usage = %q, want new commands listed", stderr.String())
 	}
 }
 
 func TestRun_NoMongoURL_FatalNoRun(t *testing.T) {
 	o, _, stderr := baseOptions(t, map[string]string{})
-	called := false
-	o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-		called = true
-		return nil
-	})
+	calls := recordRun(o, "")
 	o.Cmd = "collections"
 	if err := Run(o); err == nil {
 		t.Fatal("Run: want error when MONGO_URL is unset")
 	}
-	if called {
+	if len(*calls) != 0 {
 		t.Error("run seam was invoked despite missing MONGO_URL")
 	}
 	if !strings.Contains(stderr.String(), "MONGO_URL is not set") {
@@ -309,48 +428,54 @@ func TestRun_NoMongoURL_FatalNoRun(t *testing.T) {
 }
 
 func TestRun_ArgRequired(t *testing.T) {
-	for _, cmd := range []string{"doc", "count", "eval", "sql"} {
+	for _, cmd := range []string{"doc", "count", "find", "aggregate", "explain", "sql"} {
 		o, _, _ := baseOptions(t, fakeEnv())
-		called := false
-		o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-			called = true
-			return nil
-		})
-		o.Cmd = cmd
-		o.Arg = ""
-		if err := Run(o); err == nil {
-			t.Errorf("Run(%s): want error for empty arg", cmd)
+		calls := recordRun(o, "")
+		o.Cmd, o.Arg = cmd, ""
+		o.Pipeline = `[{"$match":{}}]`
+		err := Run(o)
+		if exitcode.Code(err) != exitcode.BadArgs {
+			t.Errorf("Run(%s): err = %v, want BadArgs for empty arg", cmd, err)
 		}
-		if called {
+		if len(*calls) != 0 {
 			t.Errorf("Run(%s): run seam invoked despite missing arg", cmd)
 		}
 	}
 }
 
 func TestRun_FR041_NoSecretLeak(t *testing.T) {
-	// Exercises collections, eval-read, and sql-read together and asserts
-	// the fake MONGO_URL and MySQL password never land in captured output.
+	// The fake MONGO_URL and MySQL password must never land in captured
+	// output, success or failure.
 	scenarios := []func(*Options){
 		func(o *Options) { o.Cmd = "collections" },
-		func(o *Options) { o.Cmd = "eval"; o.Arg = "db.tickets.find({})" },
+		func(o *Options) { o.Cmd = "find"; o.Arg = "tickets" },
 		func(o *Options) { o.Cmd = "sql"; o.Arg = "SELECT 1" },
 	}
-	for _, setup := range scenarios {
-		o, stdout, stderr := baseOptions(t, fakeEnv())
-		o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
-			_, _ = fmt.Fprint(o.Stdout, "some-output\n")
-			return nil
-		})
-		setup(o)
-		if err := Run(o); err != nil {
-			t.Fatalf("Run(%s): %v", o.Cmd, err)
-		}
-		combined := stdout.String() + stderr.String()
-		if strings.Contains(combined, fakeMongoURL) {
-			t.Errorf("Run(%s): MONGO_URL leaked into output: %q", o.Cmd, combined)
-		}
-		if strings.Contains(combined, fakeMysqlPassword) {
-			t.Errorf("Run(%s): MySQL password leaked into output: %q", o.Cmd, combined)
+	for _, fail := range []bool{false, true} {
+		for _, setup := range scenarios {
+			o, stdout, stderr := baseOptions(t, fakeEnv())
+			o.SetRun(func(name string, args []string, extraEnv []string, stdin string) error {
+				_, _ = fmt.Fprint(o.Stdout, "some-output\n")
+				if fail {
+					return errors.New("exit status 1")
+				}
+				return nil
+			})
+			setup(o)
+			err := Run(o)
+			if (err != nil) != fail {
+				t.Fatalf("Run(%s) fail=%v: err = %v", o.Cmd, fail, err)
+			}
+			combined := stdout.String() + stderr.String()
+			if err != nil {
+				combined += err.Error()
+			}
+			if strings.Contains(combined, fakeMongoURL) {
+				t.Errorf("Run(%s): MONGO_URL leaked into output: %q", o.Cmd, combined)
+			}
+			if strings.Contains(combined, fakeMysqlPassword) {
+				t.Errorf("Run(%s): MySQL password leaked into output: %q", o.Cmd, combined)
+			}
 		}
 	}
 }
@@ -365,6 +490,37 @@ func TestFilterLines(t *testing.T) {
 	}
 	if got := filterLines(out, ""); got != out {
 		t.Errorf("filterLines empty substr = %q, want unchanged", got)
+	}
+}
+
+func TestCapWriter(t *testing.T) {
+	cases := []struct {
+		name      string
+		chunks    []string
+		limit     int
+		want      string
+		truncated bool
+	}{
+		{"split across writes", []string{"a\nb", "\nc\n", "d\n"}, 2, "a\nb\n", true},
+		{"one write over cap", []string{"a\nb\nc\n"}, 1, "a\n", true},
+		{"exactly limit", []string{"a\n", "b\n"}, 2, "a\nb\n", false},
+		{"under limit no newline", []string{"a\nb"}, 2, "a\nb", false},
+	}
+	for _, c := range cases {
+		var buf bytes.Buffer
+		w := newCapWriter(&buf, c.limit)
+		for _, ch := range c.chunks {
+			n, err := w.Write([]byte(ch))
+			if err != nil || n != len(ch) {
+				t.Errorf("%s: Write(%q) = %d, %v; want %d, nil", c.name, ch, n, err, len(ch))
+			}
+		}
+		if buf.String() != c.want {
+			t.Errorf("%s: out = %q, want %q", c.name, buf.String(), c.want)
+		}
+		if w.Truncated() != c.truncated {
+			t.Errorf("%s: Truncated = %v, want %v", c.name, w.Truncated(), c.truncated)
+		}
 	}
 }
 
