@@ -86,13 +86,13 @@ func TestBuildMongoScript_Limits(t *testing.T) {
 			t.Errorf("want %q in %s", want, s)
 		}
 	}
-	has(MongoQuery{Op: "find", Coll: "u"}, ".limit(50)")
-	has(MongoQuery{Op: "find", Coll: "u", Limit: 200}, ".limit(200)")
+	has(MongoQuery{Op: "find", Coll: "u"}, ".limit(51)")
+	has(MongoQuery{Op: "find", Coll: "u", Limit: 200}, ".limit(201)")
 	has(MongoQuery{Op: "find", Coll: "u"}, ".maxTimeMS(30000)")
 	if _, err := BuildMongoScript(MongoQuery{Op: "find", Coll: "u", Limit: 201}); err == nil || !strings.Contains(err.Error(), "200") {
 		t.Errorf("want error mentioning 200, got %v", err)
 	}
-	has(MongoQuery{Op: "aggregate", Coll: "u", Pipeline: `[{"$match":{"a":1}}]`}, `[...EJSON.parse("[{\"$match\":{\"a\":1}}]"),{"$limit":50}]`)
+	has(MongoQuery{Op: "aggregate", Coll: "u", Pipeline: `[{"$match":{"a":1}}]`}, `[...EJSON.parse("[{\"$match\":{\"a\":1}}]"),{"$limit":51}]`)
 	has(MongoQuery{Op: "aggregate", Coll: "u", Pipeline: `[{"$match":{}}]`}, "maxTimeMS:30000")
 }
 
@@ -169,7 +169,61 @@ func TestBuildMongoScript_ExplainFind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(s, `.find(EJSON.parse("{\"a\":1}")).limit(50).maxTimeMS(30000).explain("executionStats")`) {
+	if !strings.Contains(s, `.find(EJSON.parse("{\"a\":1}")).maxTimeMS(30000).explain("executionStats")`) {
 		t.Errorf("unexpected explain script: %s", s)
+	}
+	if strings.Contains(s, ".limit(") {
+		t.Errorf("explain must run uncapped: %s", s)
+	}
+}
+
+func TestBuildMongoScript_ExplainPipelineUncapped(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "explain", Coll: "u", Pipeline: `[{"$match":{"a":1}}]`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(s, "$limit") {
+		t.Errorf("explain pipeline must not get a trailing $limit: %s", s)
+	}
+	if !strings.Contains(s, `aggregate(EJSON.parse("[{\"$match\":{\"a\":1}}]"),{maxTimeMS:30000})`) {
+		t.Errorf("unexpected explain pipeline script: %s", s)
+	}
+}
+
+// find/aggregate fetch limit+1 so a cut result says so on stderr.
+func TestBuildMongoScript_TruncationNotice(t *testing.T) {
+	notice := `process.stderr.write("… đã cắt ở 50 dòng (--limit, tối đa 200)\n")` //znf:allow-lang
+	for _, op := range []string{"find", "aggregate"} {
+		s, err := BuildMongoScript(MongoQuery{Op: op, Coll: "u", Pipeline: `[{"$match":{}}]`})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(s, "if(r.length>50){r.pop();") || !strings.Contains(s, notice) {
+			t.Errorf("%s: no limit+1 truncation notice: %s", op, s)
+		}
+		// mongosh --eval prints the last statement's value; write() returns true.
+		if !strings.HasSuffix(s, "if(t)void "+notice) {
+			t.Errorf("%s: notice write must be void so stdout gets no 'true': %s", op, s)
+		}
+		if strings.Index(s, "print(EJSON.stringify(r") > strings.Index(s, "process.stderr.write") {
+			t.Errorf("%s: notice must follow the data: %s", op, s)
+		}
+	}
+}
+
+func TestBuildMongoScript_CollectionsOnlyRealCollections(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "collections", Coll: "Chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, `d.getCollectionInfos({type:"collection"}).map(c=>c.name).sort().filter(n=>n.toLowerCase().includes("chat"))`) {
+		t.Errorf("collections must list real collections only: %s", s)
+	}
+}
+
+func TestBuildMongoScript_CountBlankFilterIsEstimated(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "count", Coll: "u", Filter: "  "})
+	if err != nil || !strings.Contains(s, "estimatedDocumentCount()") {
+		t.Fatalf("blank filter: %v %s", err, s)
 	}
 }

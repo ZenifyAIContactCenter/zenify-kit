@@ -188,7 +188,7 @@ func TestRun_Find_ScriptCarriesFlags(t *testing.T) {
 		}
 	}
 	script := args[3]
-	for _, frag := range []string{`d.getCollection("users").find(`, `{\"role\":\"agent\"}`, `{\"_id\":1}`, ".limit(2)"} {
+	for _, frag := range []string{`d.getCollection("users").find(`, `{\"role\":\"agent\"}`, `{\"_id\":1}`, ".limit(3)", "r.length>2"} {
 		if !strings.Contains(script, frag) {
 			t.Errorf("script = %q, missing %q", script, frag)
 		}

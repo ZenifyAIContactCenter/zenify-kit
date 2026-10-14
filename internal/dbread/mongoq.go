@@ -109,7 +109,7 @@ func checkNode(n any) error {
 }
 
 // pipelineFlag validates --pipeline, rejects write stages and returns a JS
-// array expression ending with the $limit stage.
+// array expression, ending with a {$limit: limit} stage when limit > 0.
 func pipelineFlag(q MongoQuery, limit int) (string, error) {
 	p, err := parseJSONArray(q.Pipeline)
 	if err != nil {
@@ -122,7 +122,18 @@ func pipelineFlag(q MongoQuery, limit int) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if limit <= 0 {
+		return e, nil
+	}
 	return fmt.Sprintf(`[...%s,{"$limit":%d}]`, e, limit), nil
+}
+
+// printCapped prints the array expression arr (fetched with limit+1), drops
+// the extra row and, when there was one, writes the truncation notice to
+// stderr after the data.
+func printCapped(b *bytes.Buffer, arr string, limit int) {
+	notice, _ := json.Marshal(fmt.Sprintf(truncNotice, limit, MaxLimit))
+	fmt.Fprintf(b, "const r=%s;let t=false;if(r.length>%d){r.pop();t=true}print(EJSON.stringify(r, null, 2));if(t)void process.stderr.write(%s)", arr, limit, notice)
 }
 
 // BuildMongoScript returns the script for `mongosh --nodb --quiet --eval`.
@@ -164,18 +175,19 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 	switch q.Op {
 	case "collections":
 		subB, _ := json.Marshal(strings.ToLower(q.Coll))
-		fmt.Fprintf(&b, "d.getCollectionNames().sort().filter(n=>n.toLowerCase().includes(%s)).forEach(n=>print(n))", subB)
+		fmt.Fprintf(&b, `d.getCollectionInfos({type:"collection"}).map(c=>c.name).sort().filter(n=>n.toLowerCase().includes(%s)).forEach(n=>print(n))`, subB)
 	case "doc":
 		fmt.Fprintf(&b, "print(EJSON.stringify(%s.findOne(), null, 2))", coll)
 	case "count":
-		if q.Filter == "" {
+		if filter == "" {
 			fmt.Fprintf(&b, "print(%s.estimatedDocumentCount())", coll)
 		} else {
 			fmt.Fprintf(&b, "print(%s.countDocuments(%s,{maxTimeMS:%d}))", coll, filterOrEmpty, QueryTimeoutMS)
 		}
 	case "find", "explain":
+		// explain runs uncapped (FR-3.1): a limit would hide the real scan.
 		if q.Op == "explain" && q.Pipeline != "" {
-			pl, err := pipelineFlag(q, limit)
+			pl, err := pipelineFlag(q, 0)
 			if err != nil {
 				return "", err
 			}
@@ -190,18 +202,19 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 		if sort != "" {
 			cur += ".sort(" + sort + ")"
 		}
-		cur += fmt.Sprintf(".limit(%d).maxTimeMS(%d)", limit, QueryTimeoutMS)
 		if q.Op == "explain" {
+			cur += fmt.Sprintf(".maxTimeMS(%d)", QueryTimeoutMS)
 			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"executionStats\"), null, 2))", cur)
 		} else {
-			fmt.Fprintf(&b, "print(EJSON.stringify(%s.toArray(), null, 2))", cur)
+			cur += fmt.Sprintf(".limit(%d).maxTimeMS(%d)", limit+1, QueryTimeoutMS)
+			printCapped(&b, cur+".toArray()", limit)
 		}
 	case "aggregate":
-		pl, err := pipelineFlag(q, limit)
+		pl, err := pipelineFlag(q, limit+1)
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "print(EJSON.stringify(%s.aggregate(%s,{maxTimeMS:%d}).toArray(), null, 2))", coll, pl, QueryTimeoutMS)
+		printCapped(&b, fmt.Sprintf("%s.aggregate(%s,{maxTimeMS:%d}).toArray()", coll, pl, QueryTimeoutMS), limit)
 	default:
 		return "", fmt.Errorf("op không hợp lệ: %q", q.Op) //znf:allow-lang
 	}
