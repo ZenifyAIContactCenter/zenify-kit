@@ -69,12 +69,42 @@ func TestWrapSQL(t *testing.T) {
 }
 
 func TestCheckSQL_ClientDelimiterCommand(t *testing.T) {
+	if err := CheckSQL("SELECT 1\ndelimiter //\nDROP TABLE t//"); err == nil {
+		t.Error("CheckSQL(delimiter attack) = nil, want error")
+	}
+	// charset is a mysql client command too, but CHARSET() and SHOW CHARSET
+	// are real reads; WrapSQL's flattening keeps it off a line start.
+	got := WrapSQL("SELECT 1\r\ncharset latin1", 50)
+	if strings.ContainsAny(got, "\r\n") {
+		t.Errorf("WrapSQL kept a line break: %q", got)
+	}
+}
+
+func TestCheckSQL_CharsetAllowed(t *testing.T) {
+	for _, s := range []string{"SELECT CHARSET('a')", "SHOW CHARSET"} {
+		if err := CheckSQL(s); err != nil {
+			t.Errorf("CheckSQL(%q) = %v, want nil", s, err)
+		}
+	}
+}
+
+func TestCheckSQL_NewlineInLiteralRefused(t *testing.T) {
 	for _, s := range []string{
-		"SELECT 1\ndelimiter //\nDROP TABLE t//",
-		"SELECT 1\r\ncharset latin1",
+		"SELECT 'x\ny'",
+		"SELECT 'x\ry'",
+		"SELECT \"x\ny\"",
+		"SELECT `c\nd` FROM t",
+		"SELECT 'a\\\nb'",
+		"SELECT 'a\\\rb'",
+		"SELECT `a\\`, 'x`\ndelimiter //\nDROP TABLE t//'",
 	} {
-		if err := CheckSQL(s); err == nil {
+		err := CheckSQL(s)
+		if err == nil {
 			t.Errorf("CheckSQL(%q) = nil, want error", s)
+			continue
+		}
+		if !strings.Contains(err.Error(), "CHAR(10)") {
+			t.Errorf("CheckSQL(%q) = %v, want a hint to use CHAR(10)", s, err)
 		}
 	}
 }
@@ -84,13 +114,16 @@ func TestWrapSQL_FlattensNewlinesOutsideLiterals(t *testing.T) {
 	if strings.ContainsAny(got, "\r\n") {
 		t.Errorf("WrapSQL kept a line break outside literals: %q", got)
 	}
-	stmt := "SELECT a,\n  'x\ny', `c\nd`, \"e\\\"\nf\"\nFROM t\r\nWHERE b = 1"
+	stmt := "SELECT a,\n  'x y', `c d`, \"e\\\" f\"\nFROM t\r\nWHERE b = 1"
 	if err := CheckSQL(stmt); err != nil {
 		t.Fatalf("multi-line SELECT refused: %v", err)
 	}
 	got = WrapSQL(stmt, 50)
-	if !strings.Contains(got, "SELECT a,   'x\ny', `c\nd`, \"e\\\"\nf\" FROM t  WHERE b = 1;") {
-		t.Errorf("WrapSQL = %q, want outer breaks flattened, literal breaks kept", got)
+	if strings.ContainsAny(got, "\r\n") {
+		t.Errorf("WrapSQL output is not one line: %q", got)
+	}
+	if !strings.Contains(got, "SELECT a,   'x y', `c d`, \"e\\\" f\" FROM t  WHERE b = 1;") {
+		t.Errorf("WrapSQL = %q, want outer breaks flattened", got)
 	}
 }
 

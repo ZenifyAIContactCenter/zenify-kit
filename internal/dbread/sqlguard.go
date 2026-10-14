@@ -20,16 +20,23 @@ func isIdentChar(c byte) bool {
 }
 
 // sqlBanned are bare words that make a statement write, or dump to a file/variable.
-// DELIMITER and CHARSET are mysql client commands, refused as defence in depth
-// behind WrapSQL's line flattening.
+// DELIMITER is a mysql client command, refused as defence in depth behind
+// WrapSQL's line flattening. CHARSET is not: CHARSET() and SHOW CHARSET are reads.
 var sqlBanned = map[string]bool{
 	"DELETE": true, "UPDATE": true, "INSERT": true, "INTO": true,
-	"DELIMITER": true, "CHARSET": true,
+	"DELIMITER": true,
 }
+
+// errLiteralNewline refuses a raw line break inside a literal: the mysql client
+// would see the next line start, so WrapSQL could not keep the statement on one line.
+var errLiteralNewline = errors.New("xuống dòng trong chuỗi literal bị từ chối — dùng CHAR(10)") //znf:allow-lang
+
+func isLineBreak(c byte) bool { return c == '\n' || c == '\r' }
 
 // CheckSQL rejects anything but a single read statement. One stateful pass
 // (outside / in ' / in " / in `) so quotes inside comments cannot desync it:
-// comments are rejected outright, outside literals, at any position. Bare words
+// comments are rejected outright, outside literals, at any position. A raw line
+// break inside a literal is refused (escaped or not). Bare words
 // outside literals/backticks are checked against a write/lock denylist.
 //
 // It assumes the sql_mode that WrapSQL sets (no NO_BACKSLASH_ESCAPES, no
@@ -52,7 +59,12 @@ func CheckSQL(stmt string) error {
 		c := s[i]
 		if quote != 0 {
 			switch {
+			case isLineBreak(c):
+				return errLiteralNewline
 			case c == '\\' && quote != '`':
+				if i+1 < len(s) && isLineBreak(s[i+1]) {
+					return errLiteralNewline
+				}
 				i++ // skip the escaped character
 			case c == quote:
 				quote = 0 // a doubled quote closes then reopens on the next char
@@ -98,8 +110,8 @@ const sqlMode = "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_
 
 // flattenSQL replaces every line break outside literals and backticks with a
 // space. The mysql client reads `delimiter`/`charset` as client commands at the
-// start of a line even under --binary-mode -e; it tracks quote state, so
-// breaks inside literals are kept. Same scanner rules as CheckSQL.
+// start of a line even under --binary-mode -e. CheckSQL refuses breaks inside
+// literals, so the result is always one line. Same scanner rules as CheckSQL.
 func flattenSQL(s string) string {
 	b := []byte(s)
 	var quote byte
