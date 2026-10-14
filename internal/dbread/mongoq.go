@@ -23,8 +23,7 @@ type MongoQuery struct {
 	Limit                                        int
 }
 
-// decodeJSON parses s with numbers preserved verbatim (no float64 rounding of
-// large ints).
+// decodeJSON parses s only to validate it (single value, no trailing data).
 func decodeJSON(s string) (any, error) {
 	dec := json.NewDecoder(strings.NewReader(s))
 	dec.UseNumber()
@@ -50,8 +49,24 @@ func parseJSONArray(s string) ([]any, error) {
 	return a, nil
 }
 
-// objectFlag validates a JSON-object flag and returns its re-marshalled form,
-// or "" when the flag is empty.
+// ejsonExpr turns validated JSON text into a JS expression. The compacted
+// original text (key order preserved) becomes a JS string literal handed to
+// EJSON.parse, so Extended JSON ($oid, $date) works and nothing is ever
+// interpolated as raw JS.
+func ejsonExpr(raw string) (string, error) {
+	var c bytes.Buffer
+	if err := json.Compact(&c, []byte(raw)); err != nil {
+		return "", err
+	}
+	lit, err := json.Marshal(c.String())
+	if err != nil {
+		return "", err
+	}
+	return "EJSON.parse(" + string(lit) + ")", nil
+}
+
+// objectFlag validates a JSON-object flag and returns its JS expression, or ""
+// when the flag is empty.
 func objectFlag(flag, s string) (string, error) {
 	if strings.TrimSpace(s) == "" {
 		return "", nil
@@ -63,11 +78,7 @@ func objectFlag(flag, s string) (string, error) {
 	if _, ok := v.(map[string]any); !ok {
 		return "", fmt.Errorf("%s phải là một JSON object", flag) //znf:allow-lang
 	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+	return ejsonExpr(s)
 }
 
 // CheckPipeline rejects any $out or $merge stage key at any depth (maps and
@@ -97,8 +108,8 @@ func checkNode(n any) error {
 	return nil
 }
 
-// pipelineFlag validates --pipeline, rejects write stages and appends the
-// $limit stage. Returns the marshalled array.
+// pipelineFlag validates --pipeline, rejects write stages and returns a JS
+// array expression ending with the $limit stage.
 func pipelineFlag(q MongoQuery, limit int) (string, error) {
 	p, err := parseJSONArray(q.Pipeline)
 	if err != nil {
@@ -107,12 +118,11 @@ func pipelineFlag(q MongoQuery, limit int) (string, error) {
 	if err := CheckPipeline(p); err != nil {
 		return "", err
 	}
-	p = append(p, map[string]any{"$limit": limit})
-	b, err := json.Marshal(p)
+	e, err := ejsonExpr(q.Pipeline)
 	if err != nil {
 		return "", err
 	}
-	return string(b), nil
+	return fmt.Sprintf(`[...%s,{"$limit":%d}]`, e, limit), nil
 }
 
 // BuildMongoScript returns the script for `mongosh --nodb --quiet --eval`.
@@ -139,8 +149,9 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if filter == "" {
-		filter = "{}"
+	filterOrEmpty := filter
+	if filterOrEmpty == "" {
+		filterOrEmpty = "{}"
 	}
 	collB, err := json.Marshal(q.Coll)
 	if err != nil {
@@ -160,7 +171,7 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 		if q.Filter == "" {
 			fmt.Fprintf(&b, "print(%s.estimatedDocumentCount())", coll)
 		} else {
-			fmt.Fprintf(&b, "print(%s.countDocuments(%s,{maxTimeMS:%d}))", coll, filter, QueryTimeoutMS)
+			fmt.Fprintf(&b, "print(%s.countDocuments(%s,{maxTimeMS:%d}))", coll, filterOrEmpty, QueryTimeoutMS)
 		}
 	case "find", "explain":
 		if q.Op == "explain" && q.Pipeline != "" {
@@ -171,7 +182,7 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"queryPlanner\").aggregate(%s,{maxTimeMS:%d}), null, 2))", coll, pl, QueryTimeoutMS)
 			break
 		}
-		args := filter
+		args := filterOrEmpty
 		if proj != "" {
 			args += "," + proj
 		}

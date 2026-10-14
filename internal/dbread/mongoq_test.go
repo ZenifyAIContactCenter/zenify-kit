@@ -92,7 +92,7 @@ func TestBuildMongoScript_Limits(t *testing.T) {
 	if _, err := BuildMongoScript(MongoQuery{Op: "find", Coll: "u", Limit: 201}); err == nil || !strings.Contains(err.Error(), "200") {
 		t.Errorf("want error mentioning 200, got %v", err)
 	}
-	has(MongoQuery{Op: "aggregate", Coll: "u", Pipeline: `[{"$match":{"a":1}}]`}, `[{"$match":{"a":1}},{"$limit":50}]`)
+	has(MongoQuery{Op: "aggregate", Coll: "u", Pipeline: `[{"$match":{"a":1}}]`}, `[...EJSON.parse("[{\"$match\":{\"a\":1}}]"),{"$limit":50}]`)
 	has(MongoQuery{Op: "aggregate", Coll: "u", Pipeline: `[{"$match":{}}]`}, "maxTimeMS:30000")
 }
 
@@ -102,7 +102,7 @@ func TestBuildMongoScript_Count(t *testing.T) {
 		t.Fatalf("no filter: %v %s", err, s)
 	}
 	s, err = BuildMongoScript(MongoQuery{Op: "count", Coll: "u", Filter: `{"a":1}`})
-	if err != nil || !strings.Contains(s, `countDocuments({"a":1},{maxTimeMS:30000})`) {
+	if err != nil || !strings.Contains(s, `countDocuments(EJSON.parse("{\"a\":1}"),{maxTimeMS:30000})`) {
 		t.Fatalf("filter: %v %s", err, s)
 	}
 }
@@ -123,5 +123,53 @@ func TestBuildMongoScript_PrintsEJSON(t *testing.T) {
 		if !strings.Contains(s, "EJSON.stringify") {
 			t.Errorf("%s: no EJSON.stringify: %s", op, s)
 		}
+	}
+}
+
+func TestBuildMongoScript_PreservesKeyOrderAndEJSON(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "find", Coll: "u", Sort: `{"b":1,"a":-1}`, Filter: `{"_id":{"$oid":"507f1f77bcf86cd799439011"}}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, `.sort(EJSON.parse("{\"b\":1,\"a\":-1}"))`) {
+		t.Errorf("sort key order lost: %s", s)
+	}
+	if !strings.Contains(s, `EJSON.parse("{\"_id\":{\"$oid\":\"507f1f77bcf86cd799439011\"}}")`) {
+		t.Errorf("extended JSON filter not passed through EJSON.parse: %s", s)
+	}
+	p, err := BuildMongoScript(MongoQuery{Op: "aggregate", Coll: "u", Pipeline: `[{"$group":{"_id":"$z","n":{"$sum":1}}}]`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p, `{\"_id\":\"$z\",\"n\":{\"$sum\":1}}`) {
+		t.Errorf("pipeline key order lost: %s", p)
+	}
+}
+
+func TestBuildMongoScript_Rejections(t *testing.T) {
+	cases := []struct {
+		name string
+		q    MongoQuery
+	}{
+		{"trailing data", MongoQuery{Op: "find", Coll: "u", Filter: `{"a":1});db.x()`}},
+		{"non-object filter", MongoQuery{Op: "find", Coll: "u", Filter: `[]`}},
+		{"negative limit", MongoQuery{Op: "find", Coll: "u", Limit: -1}},
+		{"unknown op", MongoQuery{Op: "drop", Coll: "u"}},
+		{"non-array pipeline", MongoQuery{Op: "aggregate", Coll: "u", Pipeline: `{}`}},
+	}
+	for _, c := range cases {
+		if _, err := BuildMongoScript(c.q); err == nil {
+			t.Errorf("%s: want error", c.name)
+		}
+	}
+}
+
+func TestBuildMongoScript_ExplainFind(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "explain", Coll: "u", Filter: `{"a":1}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, `.find(EJSON.parse("{\"a\":1}")).limit(50).maxTimeMS(30000).explain("queryPlanner")`) {
+		t.Errorf("unexpected explain script: %s", s)
 	}
 }
