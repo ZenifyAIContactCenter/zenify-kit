@@ -33,7 +33,7 @@ Tám lệnh con:
 | `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline`, không áp `--limit` (chạy truy vấn đọc, tối đa 30 giây) |
 | `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc trong transaction READ ONLY |
 
-Kết nối lấy từ biến môi trường `MONGO_URL` và các biến `MYSQL_*` trong khối `env` của file `.claude/settings.local.json` ở workspace. Lệnh không nhận chuỗi kết nối qua tham số và không in ra màn hình.
+Kết nối lấy từ `MONGO_URL` và các biến `MYSQL_*` trong `<workspace>/.zenify/.env` (xem `zenify env`). Lệnh không nhận chuỗi kết nối qua tham số và không in ra màn hình.
 
 Không lệnh nào nhận code tự do. `--limit` mặc định 50, tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`. Thay cho `distinct`: `zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`.
 
@@ -51,7 +51,7 @@ zenify db-read sql 'DESCRIBE agents'
 
 ## Lưu ý
 
-Chỉ chạy được trong phiên mở tại workspace, vì biến môi trường đến từ settings của workspace. Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực.
+Chỉ chạy được trong phiên mở tại workspace, vì credential nằm ở `.zenify/.env` của workspace. Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực.
 
 ## Cờ
 

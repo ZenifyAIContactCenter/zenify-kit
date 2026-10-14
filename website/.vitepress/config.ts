@@ -94,6 +94,7 @@ export default withMermaid({
       { text: 'Sử dụng', collapsed: false, items: [
         { text: 'Onboard workspace và repo', link: '/guides/onboard-workspace' },
         { text: 'Đọc dữ liệu thật', link: '/guides/read-real-data' },
+        { text: 'Credential dev (zenify env)', link: '/guides/env' },
         { text: 'Review và gate', link: '/guides/review-and-gates' },
         { text: 'Spec, plan và kiểm tra', link: '/guides/spec-and-plan' },
         { text: 'Release và báo cáo', link: '/guides/release' },

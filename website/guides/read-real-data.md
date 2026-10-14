@@ -42,7 +42,7 @@ zenify db-read sql 'DESCRIBE agents'
 
 ## Kết quả
 
-Kết nối lấy từ biến môi trường `MONGO_URL` và các biến `MYSQL_*` trong khối `env` của file `.claude/settings.local.json` ở workspace. Lệnh không nhận chuỗi kết nối qua tham số dòng lệnh và không in ra màn hình, nên chạy `zenify db-read` không bao giờ làm lộ credential.
+Kết nối lấy từ `MONGO_URL` và các biến `MYSQL_*` trong `<workspace>/.zenify/.env`, quản lý bằng [`zenify env`](/guides/env). Lệnh không nhận chuỗi kết nối qua tham số dòng lệnh và không in ra màn hình, nên chạy `zenify db-read` không bao giờ làm lộ credential.
 
 `--limit` mặc định 50 và tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`.
 
@@ -52,20 +52,20 @@ Khi kết quả nhiều hơn `--limit`, lệnh in đủ `--limit` dòng rồi gh
 
 ## Lưu ý
 
-- Lệnh chỉ chạy được trong phiên mở tại workspace, vì biến môi trường đến từ settings của workspace, không phải từ `.env` riêng của một repo.
+- Lệnh chỉ chạy được trong phiên mở tại workspace, vì credential nằm ở `.zenify/.env` của workspace, không phải ở `.env` riêng của một repo.
 - Tên collection trong database luôn ở số nhiều. Tên số ít bạn thấy trong code là tên model, không phải tên collection thật. Luôn liệt kê bằng `zenify db-read collections` trước khi dùng một tên, đừng lấy tên từ tài liệu hay từ một document mẫu.
 - Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực thay vì chỉ báo timeout.
 - `/znf:ground` dùng lệnh này để xác minh field trước khi code chạm vào nó. `/znf:ship` cũng đọc dữ liệu thật qua đường này khi verify một thay đổi chạm DB.
 
-## Secret và settings.local.json
+## Secret và .zenify/.env
 
-Secret dùng để đọc dữ liệu thật, ví dụ chuỗi kết nối DB hay tài khoản đăng nhập test, sống trong khối `env` của file `.claude/settings.local.json` ở workspace. File này không được commit.
+Secret dùng để đọc dữ liệu thật, ví dụ chuỗi kết nối DB hay tài khoản đăng nhập test, sống trong `<workspace>/.zenify/.env`, quyền 0600, không được commit; agent bị luật deny chặn đọc file này. Xem [Credential dev với zenify env](/guides/env).
 
-Các tool như `zenify db-read` đọc secret từ biến môi trường tại thời điểm chạy, chứ không nhận qua tham số dòng lệnh. Nhờ vậy không credential nào lọt vào lịch sử lệnh, log, hay màn hình. `zenify db-read` chỉ nhận các lệnh có cấu trúc cố định, từ chối in ra chuỗi kết nối và từ chối mọi câu lệnh mang tính ghi ngay từ thiết kế, không phải nhờ quyền hạn tài khoản bị giới hạn.
+Các tool như `zenify db-read` đọc secret từ file đó tại thời điểm chạy, chứ không nhận qua tham số dòng lệnh. Nhờ vậy không credential nào lọt vào lịch sử lệnh, log, hay màn hình. `zenify db-read` chỉ nhận các lệnh có cấu trúc cố định, từ chối in ra chuỗi kết nối và từ chối mọi câu lệnh mang tính ghi ngay từ thiết kế, không phải nhờ quyền hạn tài khoản bị giới hạn.
 
 Cùng nguyên tắc đó áp dụng khi bạn tự viết script hay agent chạm secret: không bao giờ ghi một mật khẩu ở dạng chữ thẳng vào file, kể cả file tạm.
 
-`zenify wt new` seed `.claude/settings.local.json` từ checkout chính vào mỗi worktree mới, qua danh sách `copy` khai trong `.claude/worktree.json`. Nhờ vậy một worktree dùng chung đúng bộ secret và đúng bộ nhớ với checkout chính, thay vì mỗi worktree tự ghi vào một bộ nhớ riêng biệt. Xem [Onboard workspace và repo](/guides/onboard-workspace) để biết `copy` còn seed những gì khác.
+`zenify wt new` seed `.claude/settings.local.json` từ checkout chính vào mỗi worktree mới, qua danh sách `copy` khai trong `.claude/worktree.json`. Nhờ vậy một worktree dùng chung đúng bộ nhớ với checkout chính, thay vì mỗi worktree tự ghi vào một bộ nhớ riêng biệt; credential không đi theo đường này vì nằm ở `.zenify/.env` của workspace. Xem [Onboard workspace và repo](/guides/onboard-workspace) để biết `copy` còn seed những gì khác.
 
 ## Xem thêm
 
@@ -74,5 +74,5 @@ Cùng nguyên tắc đó áp dụng khi bạn tự viết script hay agent chạ
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - reference/cli/zenify_db-read.md (generated)
 - reference/skills/ground.md (generated)
-- reference/cli/zenify_wt_new.md, concepts/base-ref-and-ports.md (copy seeding settings.local.json into worktree)
+- reference/cli/zenify_wt_new.md, concepts/base-ref-and-ports.md (copy seeding settings.local.json into worktree), guides/env.md
 -->
