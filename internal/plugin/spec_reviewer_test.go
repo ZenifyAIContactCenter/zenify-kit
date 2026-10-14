@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// FR-6 / SC-5: spec-reviewer agent — fable, read-only Bash, severity labels, 40-line return.
+// FR-6 / SC-5: spec-reviewer agent — opus, read-only Bash, severity labels, 40-line return.
 func TestSpecReviewerAgent_Shipped(t *testing.T) {
 	s := syncedAsset(t, "agents/spec-reviewer.md")
 	assertContainsAll(t, "spec-reviewer.md", s, []string{
 		"name: spec-reviewer",
-		"model: fable",
+		"model: opus",
 		"tools: Read, Grep, Glob, Bash, Write",
 		"at most 40 lines",
 		"model: <",

@@ -13,4 +13,4 @@ Mỗi finding có mức `HIGH`, `MEDIUM` hoặc `LOW`, vị trí trong spec, b�
 
 ## Lưu ý
 
-Agent chạy trên model `fable` khai trong frontmatter, caller không truyền model. `Bash` chỉ dùng để đọc code (`git show`, `git grep`, `rg`); agent không ghi gì ngoài file report.
+Agent chạy trên `opus` khai trong frontmatter. Máy nào đặt env `ZNF_SPEC_REVIEW_MODEL=fable` thì brainstorming truyền `model: fable` khi dispatch. `Bash` chỉ dùng để đọc code (`git show`, `git grep`, `rg`); agent không ghi gì ngoài file report.
