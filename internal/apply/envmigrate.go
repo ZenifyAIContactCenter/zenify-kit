@@ -62,6 +62,13 @@ func loadSettingsDoc(path string, owned *managed.Manifest) (*settingsDoc, error)
 	return d, nil
 }
 
+// CheckSettingsFile reports whether path loads as a settings file the env
+// migration can handle (missing is fine). Values are never returned.
+func CheckSettingsFile(path string) error {
+	_, err := loadSettingsDoc(path, nil)
+	return err
+}
+
 // save writes the document back atomically, keeping an "env" object even when
 // it is now empty.
 func (d *settingsDoc) save() error {

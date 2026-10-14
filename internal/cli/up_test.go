@@ -623,3 +623,38 @@ func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
 		}
 	}
 }
+
+// A worktree copy that does not load is skipped and named; the repo copy still
+// migrates.
+func TestRunApply_SkipsMalformedWorktreeSettings(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	repoSettings := filepath.Join(repo, ".claude", "settings.local.json")
+	badWt := filepath.Join(repo, ".worktrees", "feat-x", ".claude", "settings.local.json")
+	for p, body := range map[string]string{repoSettings: `{"env":{"SVC_URL":"fake-svc-a"}}`, badWt: `{"env":"oops"`} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := &manifest.Manifest{Org: "MyOrg",
+		Repos: []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}}
+	var out bytes.Buffer
+	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("runApply: %v", err)
+	}
+	if b, _ := os.ReadFile(repoSettings); strings.Contains(string(b), "SVC_URL") { //nolint:gosec // G304 -- test temp path
+		t.Errorf("repo copy not migrated: %s", b)
+	}
+	if !strings.Contains(out.String(), badWt) {
+		t.Errorf("output does not name the skipped worktree file:\n%s", out.String())
+	}
+}

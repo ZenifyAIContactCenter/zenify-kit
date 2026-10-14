@@ -130,7 +130,7 @@ func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manife
 			for _, r := range m.Repos {
 				repoPaths = append(repoPaths, r.Path)
 			}
-			paths := settingsEnvPaths(ws, repoPaths)
+			paths, unreadable := settingsEnvPaths(ws, repoPaths)
 			left, err := apply.LeftoverEnvKeys(paths)
 			if err != nil {
 				return false, err.Error()
@@ -174,6 +174,9 @@ func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manife
 			}
 			if len(byHand) > 0 {
 				problems = append(problems, strings.Join(byHand, "; ")+" — fix by hand (values differ between files or .zenify/.env, or a value is not a one-line string): keep one with `zenify env set <KEY>`, then delete the key from the settings env")
+			}
+			if len(unreadable) > 0 {
+				problems = append(problems, strings.Join(unreadable, "; ")+" — worktree settings file does not load (invalid JSON or \"env\" not an object), skipped: fix by hand")
 			}
 			if len(problems) > 0 {
 				return false, strings.Join(problems, "; ")

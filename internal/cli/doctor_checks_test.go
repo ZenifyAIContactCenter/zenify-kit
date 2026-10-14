@@ -364,3 +364,24 @@ func TestDoctor_LeftoverSettingsEnv_ManualFix(t *testing.T) {
 		t.Errorf("detail carries a value: %q", detail)
 	}
 }
+
+// A worktree copy that does not load is named, not a hard error for the check.
+func TestDoctor_SettingsEnv_MalformedWorktreeNamed(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{Repos: []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
+	repoSettings := filepath.Join(ws, "svc", ".claude", "settings.local.json")
+	badWt := filepath.Join(ws, "svc", ".worktrees", "feat-x", ".claude", "settings.local.json")
+	for p, body := range map[string]string{repoSettings: `{"env":{"SVC_URL":"fake-a"}}`, badWt: `not json`} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, badWt) || !strings.Contains(detail, "SVC_URL in "+repoSettings) {
+		t.Errorf("want both the leftover and the skipped worktree file named; ok=%v detail=%q", ok, detail)
+	}
+}

@@ -349,15 +349,23 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 
 // settingsEnvPaths lists the settings.local.json files whose "env" block may
 // hold credentials: the workspace's, each repo's, and each repo worktree's copy
-// (<repo>/.worktrees/*/.claude/settings.local.json).
-func settingsEnvPaths(workspace string, repoPaths []string) []string {
-	paths := []string{filepath.Join(workspace, ".claude", "settings.local.json")}
+// (<repo>/.worktrees/*/.claude/settings.local.json). Worktree copies are
+// best-effort: one that does not load is left out and returned in skipped, so
+// it never blocks the rest; a broken workspace or repo file still aborts.
+func settingsEnvPaths(workspace string, repoPaths []string) (paths, skipped []string) {
+	paths = []string{filepath.Join(workspace, ".claude", "settings.local.json")}
 	for _, rp := range repoPaths {
 		paths = append(paths, filepath.Join(workspace, rp, ".claude", "settings.local.json"))
 		wts, _ := filepath.Glob(filepath.Join(workspace, rp, ".worktrees", "*", ".claude", "settings.local.json"))
-		paths = append(paths, wts...)
+		for _, wt := range wts {
+			if apply.CheckSettingsFile(wt) != nil {
+				skipped = append(skipped, wt)
+				continue
+			}
+			paths = append(paths, wt)
+		}
 	}
-	return paths
+	return paths, skipped
 }
 
 // migrateEnv moves manifest keys out of the workspace, repo and repo worktree
@@ -370,7 +378,10 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 	for _, p := range plans {
 		repoPaths = append(repoPaths, p.Path)
 	}
-	paths := settingsEnvPaths(workspace, repoPaths)
+	paths, skipped := settingsEnvPaths(workspace, repoPaths)
+	for _, p := range skipped {
+		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — file settings của worktree không đọc được, xử lý tay\n", p) //znf:allow-lang
+	}
 	res, err := apply.MigrateSettingsEnv(paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "env: không chuyển được key sang .zenify/.env (%v)\n", err) //znf:allow-lang

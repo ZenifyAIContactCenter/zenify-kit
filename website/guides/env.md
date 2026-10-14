@@ -76,6 +76,7 @@ Lệnh con nhận env hiện có cộng key trong file, mà không cần export 
 - Giá trị giống nhau giữa các nơi: ghi vào `.zenify/.env` và xoá khỏi settings.
 - Hai file settings, hoặc settings và `.zenify/.env`, có giá trị khác nhau cho cùng một key: kit để nguyên mọi nơi và báo `env: bỏ qua <tên> — hai giá trị khác nhau, xử lý tay`. Bạn chọn giá trị đúng rồi tự xoá bản còn lại.
 - Giá trị không phải chuỗi, hoặc chuỗi có xuống dòng: kit để nguyên và báo `env: bỏ qua <tên> — giá trị không phải chuỗi một dòng, xử lý tay`.
+- File settings của một worktree không đọc được (JSON hỏng, hoặc `env` không phải object): kit bỏ qua file đó, báo `env: bỏ qua <đường dẫn> — file settings của worktree không đọc được, xử lý tay` và vẫn chuyển các file còn lại. File settings của workspace hoặc của repo hỏng thì migration dừng.
 - Chỉ key của manifest được chuyển; key khác trong khối `env` giữ nguyên.
 - Output chỉ in tên key, không in giá trị.
 
