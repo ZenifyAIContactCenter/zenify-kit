@@ -17,14 +17,16 @@ Tám lệnh con:
 | `count <collection>` | Đếm document, thêm `--filter` để đếm có điều kiện |
 | `find <collection>` | Tìm document với `--filter`, `--projection`, `--sort`, `--limit` |
 | `aggregate <collection>` | Chạy `--pipeline`, từ chối `$out` và `$merge` |
-| `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline` (chạy truy vấn đọc, tối đa 30 giây) |
+| `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline`, không áp `--limit` (chạy truy vấn đọc, tối đa 30 giây) |
 | `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc trong transaction READ ONLY |
 
 Kết nối lấy từ biến môi trường `MONGO_URL` và các biến `MYSQL_*` trong khối `env` của file `.claude/settings.local.json` ở workspace. Lệnh không nhận chuỗi kết nối qua tham số và không in ra màn hình.
 
 Không lệnh nào nhận code tự do. `--limit` mặc định 50, tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`. Thay cho `distinct`: `zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`.
 
-`sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC` hoặc `EXPLAIN`. Ngoài chuỗi literal, lệnh từ chối comment, ký tự `\`, các từ `DELETE`, `UPDATE`, `INSERT`, `INTO`, `FOR SHARE` và `LOCK IN SHARE MODE`, và báo "refused" rồi dừng.
+Khi kết quả nhiều hơn `--limit`, lệnh in đủ `--limit` dòng rồi ghi thông báo `… đã cắt ở <limit> dòng (--limit, tối đa 200)` ra stderr, nên stdout chỉ chứa dữ liệu. `explain` không áp `--limit`. `--pipeline` không dùng chung với `--filter`, `--projection` hay `--sort`, và `find`, `count` không nhận `--pipeline`. `doc`, `find` và `aggregate` in Extended JSON, ví dụ `{"$oid":"..."}` và `{"$date":"..."}`.
+
+`sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC` hoặc `EXPLAIN`. Ngoài chuỗi literal, lệnh từ chối comment, ký tự `\`, các từ `DELETE`, `UPDATE`, `INSERT`, `INTO`, `DELIMITER`, `CHARSET`, `FOR SHARE` và `LOCK IN SHARE MODE`, và báo "refused" rồi dừng.
 
 ## Ví dụ
 

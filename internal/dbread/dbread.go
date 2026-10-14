@@ -173,8 +173,9 @@ func printUsage(w io.Writer) {
 		"  db-read count <collection> [--filter] count (estimated without --filter)",
 		"  db-read find <collection>             --filter --projection --sort --limit (default 50, max 200)",
 		"  db-read aggregate <collection>        --pipeline '[...]' ($out/$merge refused), --limit",
-		"  db-read explain <collection>          executionStats (runs the read query, max 30 s) for --filter/--sort or --pipeline",
+		"  db-read explain <collection>          executionStats, no --limit (runs the read query, max 30 s) for --filter/--sort or --pipeline",
 		"  db-read sql '<query>'                 one SELECT/WITH/SHOW/DESCRIBE/EXPLAIN in a READ ONLY txn",
+		"  output cut at --limit prints a notice on stderr; --pipeline never combines with --filter/--projection/--sort",
 		"  distinct: db-read aggregate <coll> --pipeline '[{\"$group\":{\"_id\":\"$field\"}}]'",
 	} {
 		_, _ = fmt.Fprintln(w, l)

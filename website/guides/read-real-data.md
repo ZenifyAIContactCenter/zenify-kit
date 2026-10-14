@@ -24,7 +24,7 @@ zenify db-read <collections|tables|doc|count|find|aggregate|explain|sql> [arg]
 | `count <collection>` | Đếm document, thêm `--filter` để đếm có điều kiện |
 | `find <collection>` | Tìm document với `--filter`, `--projection`, `--sort`, `--limit` |
 | `aggregate <collection>` | Chạy `--pipeline`, từ chối `$out` và `$merge` |
-| `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline` (chạy truy vấn đọc, tối đa 30 giây) |
+| `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline`, không áp `--limit` (chạy truy vấn đọc, tối đa 30 giây) |
 | `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc trong transaction READ ONLY |
 
 Không lệnh nào nhận code tự do. Lệnh `eval` đã bị gỡ; muốn lấy mọi giá trị của một field (thay cho `distinct`), dùng `aggregate`:
@@ -46,7 +46,9 @@ Kết nối lấy từ biến môi trường `MONGO_URL` và các biến `MYSQL_
 
 `--limit` mặc định 50 và tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`.
 
-`sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC` hoặc `EXPLAIN`, chạy trong transaction READ ONLY. Ngoài chuỗi literal, lệnh từ chối comment, ký tự `\`, các từ `DELETE`, `UPDATE`, `INSERT`, `INTO`, `FOR SHARE` và `LOCK IN SHARE MODE`. Khi gặp, lệnh báo "refused" và dừng, không thực thi.
+Khi kết quả nhiều hơn `--limit`, lệnh in đủ `--limit` dòng rồi ghi thông báo `… đã cắt ở <limit> dòng (--limit, tối đa 200)` ra stderr, nên stdout chỉ chứa dữ liệu. `explain` không áp `--limit`. `--pipeline` không dùng chung với `--filter`, `--projection` hay `--sort`, và `find`, `count` không nhận `--pipeline`. `doc`, `find` và `aggregate` in Extended JSON, ví dụ `{"$oid":"..."}` và `{"$date":"..."}`.
+
+`sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC` hoặc `EXPLAIN`, chạy trong transaction READ ONLY. Ngoài chuỗi literal, lệnh từ chối comment, ký tự `\`, các từ `DELETE`, `UPDATE`, `INSERT`, `INTO`, `DELIMITER`, `CHARSET`, `FOR SHARE` và `LOCK IN SHARE MODE`. Khi gặp, lệnh báo "refused" và dừng, không thực thi.
 
 ## Lưu ý
 

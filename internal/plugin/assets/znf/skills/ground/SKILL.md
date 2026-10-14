@@ -66,13 +66,14 @@ never from a prefix in its key name.
 shape every version ever wrote. So for any field a condition, `switch`, or enum comparison reads:
 
 ```bash
-zenify db-read aggregate <a-real-name> --pipeline '[{"$group":{"_id":"$<field>"}}]'   # every value that exists
+zenify db-read aggregate <a-real-name> --pipeline '[{"$group":{"_id":"$<field>"}}]'   # values, capped by --limit (max 200)
 zenify db-read count <a-real-name>                                                        # how much data you are landing on
 ```
 
-If the `$group` returns a value the new code has no branch for, that is a bug already written. A
-**new required field** is absent from every existing document: add it optional → switch all
-writers → backfill in batches → only then require it.
+A stderr notice means the list was cut: raise `--limit`. If the `$group` returns a value the new
+code has no branch for, that is a bug already written. A **new required field** is absent from
+every existing document: add it optional → switch all writers → backfill in batches → only then
+require it.
 
 ### Ground the filters a query must carry
 
@@ -130,7 +131,7 @@ docker exec <container> printenv | grep <VAR>   # or printenv in the running she
 see what you saw. So the report carries:
 
 - exact field / collection / table / symbol names, spelled as the source spells them
-- the distinct values a branched-on field actually holds, listed in full
+- the distinct values a branched-on field actually holds, listed in full or marked cut
 - exact signatures, props and config keys
 - the commands you ran and the output lines that answered them
 - for anything you could NOT verify: say so by name. Never fill a gap with a plausible name.

@@ -13,6 +13,9 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 *2026-10-14*
 
 - **Thay đổi phá vỡ:** lệnh con `eval` của `zenify db-read` bị gỡ, vì lệnh này nhận code mongosh tự do. Thay bằng các lệnh có cấu trúc: `find`, `aggregate`, `explain` (cùng `collections`, `tables`, `doc`, `count`, `sql` đã có). Thay cho `distinct`: `zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`. `--limit` mặc định 50, tối đa 200; một truy vấn chạy tối đa 30 giây. `sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE` hoặc `EXPLAIN` trong transaction READ ONLY, và từ chối comment, `\`, `INTO`, `FOR SHARE`, `LOCK IN SHARE MODE` ngoài chuỗi literal. Skill `/znf:ground` và `/znf:explain-plan` đã dùng cú pháp mới. Xem [Đọc dữ liệu thật](/guides/read-real-data).
+- `zenify db-read explain` chạy không áp `--limit`, để executionStats phản ánh đúng số document truy vấn thật quét.
+- Khi kết quả của `find`, `aggregate` hoặc `sql` bị cắt ở `--limit`, thông báo `… đã cắt ở <limit> dòng` in ra stderr thay vì stdout, nên stdout chỉ chứa dữ liệu. Với `sql`, lệnh dừng tải ngay khi đủ `--limit` dòng, kể cả khi câu lệnh có `LIMIT` lớn hơn.
+- `zenify db-read doc` in Extended JSON, ví dụ `{"$oid":"..."}` và `{"$date":"..."}`, giống `find` và `aggregate`.
 
 ## v0.34.1
 

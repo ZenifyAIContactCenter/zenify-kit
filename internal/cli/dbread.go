@@ -25,10 +25,10 @@ var dbReadLong = strings.Join([]string{
 	"  count <collection>         đếm document (--filter để đếm có điều kiện)",  //znf:allow-lang
 	"  find <collection>          --filter --projection --sort --limit",
 	"  aggregate <collection>     --pipeline (từ chối $out/$merge) --limit",                                    //znf:allow-lang
-	"  explain <collection>       executionStats (chạy truy vấn đọc, tối đa 30 s)",                             //znf:allow-lang
+	"  explain <collection>       executionStats, không áp --limit (chạy truy vấn đọc, tối đa 30 s)",           //znf:allow-lang
 	"  sql '<câu lệnh>'           một câu SELECT/WITH/SHOW/DESCRIBE/EXPLAIN, chạy trong transaction READ ONLY", //znf:allow-lang
 	"",
-	"--limit mặc định 50, tối đa 200. Thay cho distinct:", //znf:allow-lang
+	"--limit mặc định 50, tối đa 200; kết quả bị cắt thì in thông báo ra stderr. Thay cho distinct:", //znf:allow-lang
 	`  zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`,
 }, "\n")
 
