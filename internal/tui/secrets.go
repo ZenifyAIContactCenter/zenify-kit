@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/charmbracelet/huh"
 )
 
@@ -53,11 +55,22 @@ func secretStep(cfg OnboardConfig) error {
 	return writeSettingsAtomic(settingsPath, root)
 }
 
-// promptSecrets shows a huh form with one masked Input per key. The
-// SecretPromptFn seam replaces this in tests so no real prompt opens.
+// promptSecrets adapts the wizard's name list to PromptSecrets, keeping the
+// SecretPromptFn seam so no real prompt opens in tests.
 func promptSecrets(cfg OnboardConfig, keys []string) (map[string]string, error) {
-	if cfg.SecretPromptFn != nil {
-		return cfg.SecretPromptFn(keys)
+	ks := make([]manifest.SecretKey, len(keys))
+	for i, k := range keys {
+		ks[i] = manifest.SecretKey{Name: k, Secret: true}
+	}
+	return PromptSecrets(ks, cfg.SecretPromptFn)
+}
+
+// PromptSecrets shows a huh form with one masked Input per key (title = key
+// name, description = Description plus HowTo when set). promptFn, when non-nil,
+// replaces the form (test seam) and receives the key names.
+func PromptSecrets(keys []manifest.SecretKey, promptFn func([]string) (map[string]string, error)) (map[string]string, error) {
+	if promptFn != nil {
+		return promptFn(manifest.KeyNames(keys))
 	}
 	vals := make([]*string, len(keys))
 	fields := make([]huh.Field, 0, len(keys))
@@ -65,8 +78,8 @@ func promptSecrets(cfg OnboardConfig, keys []string) (map[string]string, error) 
 		var s string
 		vals[i] = &s
 		fields = append(fields, huh.NewInput().
-			Title(k).
-			Description("để trống nếu điền sau"). //znf:allow-lang
+			Title(k.Name).
+			Description(secretDescription(k)).
 			EchoMode(huh.EchoModePassword).
 			Value(&s))
 	}
@@ -75,9 +88,23 @@ func promptSecrets(cfg OnboardConfig, keys []string) (map[string]string, error) 
 	}
 	out := make(map[string]string, len(keys))
 	for i, k := range keys {
-		out[k] = *vals[i]
+		out[k.Name] = *vals[i]
 	}
 	return out, nil
+}
+
+func secretDescription(k manifest.SecretKey) string {
+	var parts []string
+	if k.Description != "" {
+		parts = append(parts, k.Description)
+	}
+	if k.HowTo != "" {
+		parts = append(parts, k.HowTo)
+	}
+	if len(parts) == 0 {
+		return "để trống nếu điền sau" //znf:allow-lang
+	}
+	return strings.Join(parts, " — ")
 }
 
 // readEnvBlock reads settings.local.json and returns the env map + root map. Missing file →
@@ -124,4 +151,21 @@ func writeSettingsAtomic(path string, root map[string]any) error {
 		return err
 	}
 	return managed.WriteFileAtomic(path, buf.Bytes())
+}
+
+// PickKey asks which key to fill or edit next. It returns "" when the user is done.
+func PickKey(names []string) (string, error) {
+	opts := []huh.Option[string]{huh.NewOption("xong", "")} //znf:allow-lang
+	for _, n := range names {
+		opts = append(opts, huh.NewOption(n, n))
+	}
+	var pick string
+	sel := huh.NewSelect[string]().
+		Title("Chọn key để điền hoặc sửa"). //znf:allow-lang
+		Options(opts...).
+		Value(&pick)
+	if err := huh.NewForm(huh.NewGroup(sel)).Run(); err != nil {
+		return "", err
+	}
+	return pick, nil
 }

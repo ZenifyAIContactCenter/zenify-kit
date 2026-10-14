@@ -16,6 +16,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | Mở worktree cho một task, chạy dev server | [zenify wt new](./zenify_wt_new) | [zenify wt ls](./zenify_wt_ls), [zenify wt url](./zenify_wt_url), [zenify wt wire](./zenify_wt_wire), [zenify wt rm](./zenify_wt_rm), [zenify wt sweep](./zenify_wt_sweep) |
 | Sửa lỗi trên production | [zenify hotfix baseref](./zenify_hotfix_baseref) | [zenify wt new](./zenify_wt_new) với `--type hotfix` |
 | Đọc dữ liệu thật trước khi viết code | [zenify db-read](./zenify_db-read) | [zenify db-perf](./zenify_db-perf) |
+| Quản lý credential cá nhân cho tool dev và agent | [zenify env](./zenify_env) | [zenify env list](./zenify_env_list), [zenify env set](./zenify_env_set), [zenify env exec](./zenify_env_exec), [zenify env edit](./zenify_env_edit) |
 | Kiểm tra thay đổi chạm tài nguyên chung | [zenify gate participants](./zenify_gate_participants) | [zenify spec contracts](./zenify_spec_contracts) |
 | Kiểm spec và plan trước khi code | [zenify analyze](./zenify_analyze) | [zenify standards](./zenify_standards), [zenify spec status](./zenify_spec_status) |
 | Kiểm thử UI và E2E | [zenify visual check](./zenify_visual_check) | [zenify e2e lint](./zenify_e2e_lint), [zenify e2e run](./zenify_e2e_run) |
@@ -45,6 +46,11 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify e2e lint](./zenify_e2e_lint) | Kiểm tra cơ học các journey trong `.znf/e2e`, chặn journey thiếu re-fetch, assert hoặc cleanup. |
 | [zenify e2e login](./zenify_e2e_login) | Đăng nhập trên host bằng harness e2e và ghi Playwright storage state để `znf:ui-verifier` nạp qua MCP. |
 | [zenify e2e run](./zenify_e2e_run) | Chạy journey E2E trong Docker, trỏ vào dev server đang mở trên máy bạn. |
+| [zenify env](./zenify_env) | Quản lý biến môi trường cá nhân cho tool dev và agent trong `<workspace>/.zenify/.env`, không phải env chạy app. |
+| [zenify env edit](./zenify_env_edit) | Mở `.zenify/.env` bằng `$EDITOR`, tạo file quyền 0600 nếu chưa có. |
+| [zenify env exec](./zenify_env_exec) | Chạy một lệnh với key trong `.zenify/.env`, che giá trị secret trong stdout và stderr. |
+| [zenify env list](./zenify_env_list) | Liệt kê key trong `.zenify/.env`: có hay trống, nguồn, mô tả; chỉ in giá trị của key không phải secret. |
+| [zenify env set](./zenify_env_set) | Nhập ẩn giá trị một key vào `.zenify/.env`, kèm dòng mô tả tuỳ chọn. |
 | [zenify gate](./zenify_gate) | Nhóm lệnh hỗ trợ contract gate, bước quét cross-repo khi bạn chạm tài nguyên chung. |
 | [zenify gate participants](./zenify_gate_participants) | Liệt kê các repo tham gia contract gate cùng cách mỗi repo truy cập DB chung. |
 | [zenify guard](./zenify_guard) | Nhóm lệnh cho git-guard, hook chặn commit, push và merge vào branch deploy. |
