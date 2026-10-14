@@ -123,8 +123,18 @@ func TestConfigDepsDirCustom(t *testing.T) {
 }
 
 // The branch's <username> must come from the dev running wt, never a
-// hardcoded name: declared > user.email local part > $USER.
+// hardcoded name: declared > user.name > user.email local part > $USER.
 func TestBranchUser_Resolution(t *testing.T) {
+	named := fakeRunner{out: map[string]string{
+		"/r|config --get user.name":  "phuthuycoding\n",
+		"/r|config --get user.email": "quyentm@zenify.vn\n",
+	}}
+	if got := BranchUser(named, "/r", ""); got != "phuthuycoding" {
+		t.Errorf("want git user.name, got %q", got)
+	}
+	if got := BranchUser(fakeRunner{out: map[string]string{"/r|config --get user.name": "Ta Manh Quyen\n"}}, "/r", ""); got != "Ta-Manh-Quyen" {
+		t.Errorf("want ref-safe user.name, got %q", got)
+	}
 	email := fakeRunner{out: map[string]string{"/r|config --get user.email": "quyentm@zenify.vn\n"}}
 	if got := BranchUser(email, "/r", "lead"); got != "lead" {
 		t.Errorf("declared user must win, got %q", got)

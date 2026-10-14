@@ -325,14 +325,17 @@ func orEnvFile(c *Config) string {
 
 // BranchUser is the <username> segment of the branch name. worktree.json is
 // committed and shared, so it rarely declares "user"; the default must come
-// from the dev running wt: the local part of git user.email, else $USER
-// ($USERNAME on Windows). Each candidate is cleaned into a valid git ref
+// from the dev running wt: git user.name, else the local part of git
+// user.email, else $USER ($USERNAME on Windows). Each candidate is cleaned into a valid git ref
 // component; one that cleans to nothing falls through to the next.
 func BranchUser(r gitx.Runner, dir, declared string) string {
 	if declared != "" {
 		return declared
 	}
 	var candidates []string
+	if out, err := r.Run(dir, "config", "--get", "user.name"); err == nil {
+		candidates = append(candidates, string(out))
+	}
 	if out, err := r.Run(dir, "config", "--get", "user.email"); err == nil {
 		local, _, _ := strings.Cut(strings.TrimSpace(string(out)), "@")
 		candidates = append(candidates, local)
