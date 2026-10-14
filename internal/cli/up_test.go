@@ -589,3 +589,37 @@ func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
 		}
 	}
 }
+
+// FR-9 covers a worktree's copy of the repo settings.local.json: same key, same
+// value as the repo copy → moved once, gone from both.
+func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	repoSettings := filepath.Join(repo, ".claude", "settings.local.json")
+	wtSettings := filepath.Join(repo, ".worktrees", "feat-x", ".claude", "settings.local.json")
+	for _, p := range []string{repoSettings, wtSettings} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(`{"env":{"SVC_URL":"fake-svc-a"}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := &manifest.Manifest{Org: "MyOrg",
+		Repos: []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}}
+	var out bytes.Buffer
+	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("runApply: %v", err)
+	}
+	for _, p := range []string{repoSettings, wtSettings} {
+		if b, _ := os.ReadFile(p); strings.Contains(string(b), "SVC_URL") { //nolint:gosec // G304 -- test temp path
+			t.Errorf("%s still holds SVC_URL: %s", p, b)
+		}
+	}
+}

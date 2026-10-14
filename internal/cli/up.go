@@ -347,16 +347,30 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	return nil
 }
 
-// migrateEnv moves manifest keys out of the workspace and repo
+// settingsEnvPaths lists the settings.local.json files whose "env" block may
+// hold credentials: the workspace's, each repo's, and each repo worktree's copy
+// (<repo>/.worktrees/*/.claude/settings.local.json).
+func settingsEnvPaths(workspace string, repoPaths []string) []string {
+	paths := []string{filepath.Join(workspace, ".claude", "settings.local.json")}
+	for _, rp := range repoPaths {
+		paths = append(paths, filepath.Join(workspace, rp, ".claude", "settings.local.json"))
+		wts, _ := filepath.Glob(filepath.Join(workspace, rp, ".worktrees", "*", ".claude", "settings.local.json"))
+		paths = append(paths, wts...)
+	}
+	return paths
+}
+
+// migrateEnv moves manifest keys out of the workspace, repo and repo worktree
 // settings.local.json env blocks into <workspace>/.zenify/.env (FR-9), then
 // denies agent reads of that file in ~/.claude/settings.json (FR-10). It runs under the apply lock and
 // before the ownership manifest is saved, so re-recorded fingerprints persist.
 // Fail-open; prints key names only, never a value.
 func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, workspace string, owned *managed.Manifest) {
-	paths := []string{filepath.Join(workspace, ".claude", "settings.local.json")}
+	var repoPaths []string
 	for _, p := range plans {
-		paths = append(paths, filepath.Join(workspace, p.Path, ".claude", "settings.local.json"))
+		repoPaths = append(repoPaths, p.Path)
 	}
+	paths := settingsEnvPaths(workspace, repoPaths)
 	res, err := apply.MigrateSettingsEnv(paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "env: không chuyển được key sang .zenify/.env (%v)\n", err) //znf:allow-lang

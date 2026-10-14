@@ -285,3 +285,27 @@ func TestDoctor_LeftoverSettingsEnv(t *testing.T) {
 		t.Fatalf("clean settings must pass; detail=%q", detail)
 	}
 }
+
+// FR-8.3: a worktree's copy of the repo settings.local.json is checked too.
+func TestDoctor_LeftoverSettingsEnv_Worktree(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "svc", Path: "svc"}},
+	}
+	wt := filepath.Join(ws, "svc", ".worktrees", "feat-x", ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(wt), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(wt, []byte(`{"env":{"MONGO_URL":"fake-wt-value"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, "MONGO_URL in "+wt) {
+		t.Fatalf("worktree leftover must flag with its path; ok=%v detail=%q", ok, detail)
+	}
+	if strings.Contains(detail, "fake-wt-value") {
+		t.Errorf("detail carries a value: %q", detail)
+	}
+}

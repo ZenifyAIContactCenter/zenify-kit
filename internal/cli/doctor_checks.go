@@ -109,7 +109,8 @@ func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest) 
 }
 
 // settingsEnvCheck names the manifest keys that still hold a value in the
-// "env" block of the workspace or a repo settings.local.json (FR-8.3) — they
+// "env" block of the workspace, a repo or a repo worktree settings.local.json
+// (FR-8.3) — they
 // belong in .zenify/.env. Key names and file paths only, never values.
 func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manifest) Check {
 	return Check{
@@ -121,10 +122,11 @@ func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manife
 				return true, "no workspace"
 			}
 			ws := filepath.Dir(filepath.Dir(path)) // envPath is <ws>/.zenify/.env
-			paths := []string{filepath.Join(ws, ".claude", "settings.local.json")}
+			var repoPaths []string
 			for _, r := range m.Repos {
-				paths = append(paths, filepath.Join(ws, r.Path, ".claude", "settings.local.json"))
+				repoPaths = append(repoPaths, r.Path)
 			}
+			paths := settingsEnvPaths(ws, repoPaths)
 			left, err := apply.LeftoverEnvKeys(paths)
 			if err != nil {
 				return false, err.Error()
