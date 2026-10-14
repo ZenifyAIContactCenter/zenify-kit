@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.34.1
+
+*2026-10-14*
+
+- `zenify up` nhận `message-hub-be` và `message-hub-web`, tên mới trên GitHub của `notification-hub-be` và `notification-hub-web`. Trước đây hai repo này hiện `SKIP:no-access` dù bạn vẫn có quyền. Đường dẫn trong manifest đổi thành `repos/message-hub-be` và `repos/message-hub-web`; bản clone cũ ở `repos/notification-hub-*` không được dời tự động, nên đổi tên thư mục bằng tay nếu không muốn `up` clone lại. Xem [Onboard workspace và repo](/guides/onboard-workspace).
+
 ## v0.34.0
 
 *2026-10-14*
