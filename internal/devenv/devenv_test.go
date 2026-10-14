@@ -194,3 +194,19 @@ func TestSetDesc_NewlineCannotInjectKey(t *testing.T) {
 		t.Errorf("keys = %v, want [K]", got)
 	}
 }
+
+// A commented-out assignment is an old value, not a description: Desc must
+// never return it, so `env list` and doctor cannot print it.
+func TestDesc_CommentedAssignmentIsNotADescription(t *testing.T) {
+	p := writeFile(t, "# OLD_TOKEN=abc123secret\nNEW_KEY=x\n#export OLD2 = s3cret\nK2=y\n# rotate = monthly note\nK3=z\n")
+	f, _ := Load(p)
+	if got := f.Desc("NEW_KEY"); got != "" {
+		t.Errorf("Desc(NEW_KEY) = %q, want empty", got)
+	}
+	if got := f.Desc("K2"); got != "" {
+		t.Errorf("Desc(K2) = %q, want empty", got)
+	}
+	if got := f.Desc("K3"); got != "" {
+		t.Errorf("Desc(K3) = %q, want empty", got)
+	}
+}

@@ -239,3 +239,14 @@ func TestEnvSet_DescRejectsNewline(t *testing.T) {
 		t.Error("file written despite rejected --desc")
 	}
 }
+
+func TestEnvList_CommentedOldValueNotPrinted(t *testing.T) {
+	d, _ := envFixture(t, "# OLD_TOKEN=abc123secret\nNEW_KEY=x\n")
+	out, err := runEnv(d, "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "abc123secret") || strings.Contains(out, "OLD_TOKEN") {
+		t.Errorf("list prints a commented-out value:\n%s", out)
+	}
+}

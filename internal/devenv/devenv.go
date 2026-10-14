@@ -5,6 +5,7 @@ package devenv
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -121,12 +122,22 @@ func (f *File) Set(key, value string) {
 	f.lines = append(f.lines, line)
 }
 
+// commentedAssign matches comment text that is a commented-out assignment
+// (an old value, possibly a secret), never a description.
+var commentedAssign = regexp.MustCompile(`^(export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=`)
+
+// descLine returns the description a comment line carries. A commented-out
+// assignment such as "# OLD_TOKEN=..." is not a description.
 func descLine(line string) (string, bool) {
 	t := strings.TrimSpace(line)
 	if !strings.HasPrefix(t, "#") {
 		return "", false
 	}
-	return strings.TrimSpace(strings.TrimPrefix(t, "#")), true
+	d := strings.TrimSpace(strings.TrimPrefix(t, "#"))
+	if commentedAssign.MatchString(d) {
+		return "", false
+	}
+	return d, true
 }
 
 // Desc returns the comment on the line directly above key, if any.
