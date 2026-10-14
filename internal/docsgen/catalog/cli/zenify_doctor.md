@@ -7,7 +7,7 @@ Ngay sau `zenify up`, và mỗi khi một skill báo thiếu tool, thiếu secre
 
 ## Kết quả
 
-Mỗi dòng là một mục kiểm tra kèm dấu đạt hoặc hỏng và chi tiết. Các mục gồm phiên bản binary, đăng nhập git và quyền truy cập GitHub, danh tính commit của git (`user.name`, `user.email`), credential trong `.zenify/.env` (`env-file`, `settings-env`), tool bên ngoài (`git`, `gh`, `mongosh`, `mysql`), Playwright, Docker, hook `git-guard`, plugin skill `znf`, hook Codex (`codex-hooks`), engine review (`reviewer`) và file `AGENTS.md` của từng repo (`agents-md`), skill, agent và rule cá nhân đè bản của kit hoặc workspace (`shadow`) dung lượng file hướng dẫn luôn nạp (`context-budget`), entry ngoài quy ước ở root và `docs/` (`workspace-root`) và MEMORY.md gần trần (`memory-index`). Mục hỏng in luôn chi tiết để bạn sửa. Mục `git-guard` hỏng thì `--fix` tự gắn lại hook.
+Mỗi dòng là một mục kiểm tra kèm dấu đạt hoặc hỏng và chi tiết. Các mục gồm phiên bản binary, đăng nhập git và quyền truy cập GitHub, danh tính commit của git (`user.name`, `user.email`), credential trong `.zenify/.env` (`secrets`, `env-file`, `settings-env`), tool bên ngoài (`git`, `gh`, `mongosh`, `mysql`), Playwright, Docker, hook `git-guard`, plugin skill `znf`, hook Codex (`codex-hooks`), engine review (`reviewer`) và file `AGENTS.md` của từng repo (`agents-md`), skill, agent và rule cá nhân đè bản của kit hoặc workspace (`shadow`) dung lượng file hướng dẫn luôn nạp (`context-budget`), entry ngoài quy ước ở root và `docs/` (`workspace-root`) và MEMORY.md gần trần (`memory-index`). Mục hỏng in luôn chi tiết để bạn sửa. Mục `git-guard` hỏng thì `--fix` tự gắn lại hook.
 
 ## Cờ
 
