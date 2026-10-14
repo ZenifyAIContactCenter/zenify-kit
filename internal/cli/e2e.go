@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/e2e"
@@ -31,14 +32,25 @@ func credLookup(envPath string, getenv func(string) string) func(string) string 
 // childCmd builds a child process. Only the child that runs the journey
 // (`docker run`, `npx playwright test`) gets E2E_* from lookup, so the
 // credentials reach it without being inherited from the shell; install steps
-// (`npm install`, `npx playwright install`) never see them.
+// (`npm install`, `npx playwright install`) never see them, not even a value
+// exported in the shell.
 func childCmd(name string, args, extraEnv []string, lookup func(string) string) *exec.Cmd {
 	c := exec.Command(name, args...) //nolint:gosec // G204 -- name is fixed npm/npx/docker; args computed internally
 	env := append(os.Environ(), extraEnv...)
 	if runsJourney(name, args) {
-		env = devenv.ChildEnv(env, e2eEnvKeys, lookup)
+		c.Env = devenv.ChildEnv(env, e2eEnvKeys, lookup)
+		return c
 	}
-	c.Env = env
+	c.Env = []string{} // non-nil: a nil Env would inherit the parent's
+	cred := map[string]bool{}
+	for _, k := range e2eEnvKeys {
+		cred[k] = true
+	}
+	for _, kv := range env {
+		if k, _, _ := strings.Cut(kv, "="); !cred[k] {
+			c.Env = append(c.Env, kv)
+		}
+	}
 	return c
 }
 

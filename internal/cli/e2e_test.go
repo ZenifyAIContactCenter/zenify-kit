@@ -142,3 +142,26 @@ func TestChildCmd_CredsOnlyForJourney(t *testing.T) {
 		}
 	}
 }
+
+// A shell-exported E2E_* never reaches an install child either.
+func TestChildCmd_StripsShellCredsFromInstall(t *testing.T) {
+	t.Setenv("E2E_PASSWORD", "from-shell")
+	lookup := credLookup("", os.Getenv)
+	has := func(c *exec.Cmd) bool {
+		for _, kv := range c.Env {
+			if strings.HasPrefix(kv, "E2E_PASSWORD=") {
+				return true
+			}
+		}
+		return false
+	}
+	if has(childCmd("npm", []string{"install"}, nil, lookup)) {
+		t.Errorf("npm install child carries E2E_PASSWORD")
+	}
+	if has(childCmd("npx", []string{"playwright", "install", "chromium"}, []string{"E2E_PASSWORD=x"}, lookup)) {
+		t.Errorf("playwright install child carries E2E_PASSWORD")
+	}
+	if !has(childCmd("npx", []string{"playwright", "test"}, nil, lookup)) {
+		t.Errorf("journey child lost E2E_PASSWORD")
+	}
+}
