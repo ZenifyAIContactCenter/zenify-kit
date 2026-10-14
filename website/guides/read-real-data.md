@@ -46,9 +46,9 @@ Kết nối lấy từ biến môi trường `MONGO_URL` và các biến `MYSQL_
 
 `--limit` mặc định 50 và tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`.
 
-Khi kết quả nhiều hơn `--limit`, lệnh in đủ `--limit` dòng rồi ghi thông báo `… đã cắt ở <limit> dòng (--limit, tối đa 200)` ra stderr, nên stdout chỉ chứa dữ liệu. `explain` không áp `--limit`. `--pipeline` không dùng chung với `--filter`, `--projection` hay `--sort`, và `find`, `count` không nhận `--pipeline`. `doc`, `find` và `aggregate` in Extended JSON, ví dụ `{"$oid":"..."}` và `{"$date":"..."}`.
+Khi kết quả nhiều hơn `--limit`, lệnh in đủ `--limit` dòng rồi ghi thông báo `… đã cắt ở <limit> dòng (--limit, tối đa 200)` ra stderr, nên stdout chỉ chứa dữ liệu. Stdout của mọi lệnh đọc tối đa 1 MiB: quá mức này lệnh dừng ở ranh giới dòng gần nhất rồi ghi `… đã cắt ở 1048576 byte (giới hạn output)` ra stderr. `explain` không áp `--limit`. `--pipeline` không dùng chung với `--filter`, `--projection` hay `--sort`, và `find`, `count` không nhận `--pipeline`. Lệnh từ chối flag mà lệnh con không dùng: `collections`, `tables`, `doc`, `sql` không nhận `--filter`, `--projection`, `--sort`, `--pipeline`; `count` không nhận `--projection`, `--sort`. `doc`, `find` và `aggregate` in Extended JSON, ví dụ `{"$oid":"..."}` và `{"$date":"..."}`.
 
-`sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC` hoặc `EXPLAIN`, chạy trong transaction READ ONLY. Ngoài chuỗi literal, lệnh từ chối comment, ký tự `\`, các từ `DELETE`, `UPDATE`, `INSERT`, `INTO`, `DELIMITER`, `CHARSET`, `FOR SHARE` và `LOCK IN SHARE MODE`. Khi gặp, lệnh báo "refused" và dừng, không thực thi.
+`sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC` hoặc `EXPLAIN`, chạy trong transaction READ ONLY. Ngoài chuỗi literal, lệnh từ chối comment, ký tự `\`, các từ `DELETE`, `UPDATE`, `INSERT`, `INTO`, `DELIMITER`, `FOR SHARE` và `LOCK IN SHARE MODE`. Ký tự xuống dòng nằm trong chuỗi literal cũng bị từ chối; dùng `CHAR(10)` thay thế. Xuống dòng ngoài chuỗi vẫn dùng được. Khi gặp, lệnh báo "refused" và dừng, không thực thi.
 
 ## Lưu ý
 

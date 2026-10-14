@@ -15,6 +15,9 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 - **Thay đổi phá vỡ:** lệnh con `eval` của `zenify db-read` bị gỡ, vì lệnh này nhận code mongosh tự do. Thay bằng các lệnh có cấu trúc: `find`, `aggregate`, `explain` (cùng `collections`, `tables`, `doc`, `count`, `sql` đã có). Thay cho `distinct`: `zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`. `--limit` mặc định 50, tối đa 200; một truy vấn chạy tối đa 30 giây. `sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE` hoặc `EXPLAIN` trong transaction READ ONLY, và từ chối comment, `\`, `INTO`, `FOR SHARE`, `LOCK IN SHARE MODE` ngoài chuỗi literal. Skill `/znf:ground` và `/znf:explain-plan` đã dùng cú pháp mới. Xem [Đọc dữ liệu thật](/guides/read-real-data).
 - `zenify db-read explain` chạy không áp `--limit`, để executionStats phản ánh đúng số document truy vấn thật quét.
 - Khi kết quả của `find`, `aggregate` hoặc `sql` bị cắt ở `--limit`, thông báo `… đã cắt ở <limit> dòng` ghi ra stderr, stdout chỉ chứa dữ liệu. Với `sql`, lệnh dừng tải ngay khi đủ `--limit` dòng, kể cả khi câu lệnh có `LIMIT` lớn hơn.
+- Stdout của mọi lệnh `zenify db-read` tối đa 1 MiB. Quá mức này lệnh dừng ở ranh giới dòng, thoát mã 0 và ghi `… đã cắt ở 1048576 byte (giới hạn output)` ra stderr.
+- `zenify db-read sql` từ chối ký tự xuống dòng nằm trong chuỗi literal; dùng `CHAR(10)` thay thế. Xuống dòng ngoài chuỗi vẫn dùng được. `SHOW CHARSET` và hàm `CHARSET()` chạy được.
+- `zenify db-read` từ chối flag mà lệnh con không dùng, ví dụ `--filter` cho `doc` hay `--sort` cho `count`, thay vì lặng lẽ bỏ qua.
 - `zenify db-read doc` in Extended JSON, ví dụ `{"$oid":"..."}` và `{"$date":"..."}`, giống `find` và `aggregate`.
 
 ## v0.34.1
