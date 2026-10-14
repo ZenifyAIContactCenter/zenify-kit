@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -107,5 +108,37 @@ func TestE2ERunner_EnvWinsOverFile(t *testing.T) {
 	}
 	if got := credLookup(envFile, os.Getenv)("E2E_PASSWORD"); got != "from-env" {
 		t.Fatalf("lookup = %q, want live env to win", got)
+	}
+}
+
+// E2E_* reach only the child that runs the journey, never an install step.
+func TestChildCmd_CredsOnlyForJourney(t *testing.T) {
+	for _, k := range e2eEnvKeys {
+		t.Setenv(k, "")
+	}
+	lookup := func(k string) string { return "fake-" + k }
+	envOf := func(c *exec.Cmd) map[string]string {
+		last := map[string]string{}
+		for _, kv := range c.Env {
+			if k, v, ok := strings.Cut(kv, "="); ok {
+				last[k] = v
+			}
+		}
+		return last
+	}
+	for _, tc := range []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"npm", []string{"install", "--no-audit", "--no-fund", "--silent"}, false},
+		{"npx", []string{"playwright", "install", "chromium"}, false},
+		{"npx", []string{"playwright", "test", "--project=setup"}, true},
+		{"docker", []string{"run", "--rm", "img"}, true},
+	} {
+		got := envOf(childCmd(tc.name, tc.args, nil, lookup))["E2E_PASSWORD"] != ""
+		if got != tc.want {
+			t.Errorf("%s %v: has E2E_PASSWORD=%v, want %v", tc.name, tc.args, got, tc.want)
+		}
 	}
 }

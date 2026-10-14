@@ -28,12 +28,29 @@ func credLookup(envPath string, getenv func(string) string) func(string) string 
 	return devenv.Lookup(getenv, f)
 }
 
-// childCmd builds a child process whose Env carries E2E_* from lookup, so the
-// credentials reach the process without being inherited from the shell.
+// childCmd builds a child process. Only the child that runs the journey
+// (`docker run`, `npx playwright test`) gets E2E_* from lookup, so the
+// credentials reach it without being inherited from the shell; install steps
+// (`npm install`, `npx playwright install`) never see them.
 func childCmd(name string, args, extraEnv []string, lookup func(string) string) *exec.Cmd {
 	c := exec.Command(name, args...) //nolint:gosec // G204 -- name is fixed npm/npx/docker; args computed internally
-	c.Env = devenv.ChildEnv(append(os.Environ(), extraEnv...), e2eEnvKeys, lookup)
+	env := append(os.Environ(), extraEnv...)
+	if runsJourney(name, args) {
+		env = devenv.ChildEnv(env, e2eEnvKeys, lookup)
+	}
+	c.Env = env
 	return c
+}
+
+// runsJourney reports whether name+args is the step that runs Playwright tests.
+func runsJourney(name string, args []string) bool {
+	switch name {
+	case "docker":
+		return len(args) > 0 && args[0] == "run"
+	case "npx":
+		return len(args) > 1 && args[0] == "playwright" && args[1] == "test"
+	}
+	return false
 }
 
 func e2eDir(repo string) string { return filepath.Join(repo, ".znf", "e2e") }
