@@ -28,7 +28,7 @@ var dbReadLong = strings.Join([]string{
 	"  explain <collection>       executionStats, không áp --limit (chạy truy vấn đọc, tối đa 30 s)",           //znf:allow-lang
 	"  sql '<câu lệnh>'           một câu SELECT/WITH/SHOW/DESCRIBE/EXPLAIN, chạy trong transaction READ ONLY", //znf:allow-lang
 	"",
-	"--limit mặc định 50, tối đa 200; kết quả bị cắt thì in thông báo ra stderr. Thay cho distinct:", //znf:allow-lang
+	"--limit mặc định 50, tối đa 200; stdout tối đa 1 MiB; kết quả bị cắt thì in thông báo ra stderr. Thay cho distinct:", //znf:allow-lang
 	`  zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`,
 }, "\n")
 
@@ -78,7 +78,7 @@ func newDBReadCmd() *cobra.Command {
 }
 
 // runDBChild runs one mongosh/mysql child under dbReadTimeout. A failed stdout
-// write (dbread's line cap refusing more output) kills the child at once, so
+// write (dbread's line or byte cap refusing more output) kills the child at once, so
 // the rest of a large result is never transferred.
 func runDBChild(parent context.Context, name string, args, extraEnv []string, stdout, stderr io.Writer) error {
 	ctx, cancel := context.WithTimeout(parent, dbReadTimeout)

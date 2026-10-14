@@ -616,21 +616,28 @@ func TestFilterLines(t *testing.T) {
 }
 
 func TestCapWriter(t *testing.T) {
+	const big = 1 << 20
 	cases := []struct {
-		name      string
-		chunks    []string
-		limit     int
-		want      string
-		truncated bool
+		name             string
+		chunks           []string
+		limit, maxBytes  int
+		want             string
+		lineCut, byteCut bool
 	}{
-		{"split across writes", []string{"a\nb", "\nc\n", "d\n"}, 2, "a\nb\n", true},
-		{"one write over cap", []string{"a\nb\nc\n"}, 1, "a\n", true},
-		{"exactly limit", []string{"a\n", "b\n"}, 2, "a\nb\n", false},
-		{"under limit no newline", []string{"a\nb"}, 2, "a\nb", false},
+		{"split across writes", []string{"a\nb", "\nc\n", "d\n"}, 2, big, "a\nb\n", true, false},
+		{"one write over cap", []string{"a\nb\nc\n"}, 1, big, "a\n", true, false},
+		{"exactly limit", []string{"a\n", "b\n"}, 2, big, "a\nb\n", false, false},
+		{"under limit no newline", []string{"a\nb"}, 2, big, "a\nb", false, false},
+		{"bytes at line boundary", []string{"aaa\nbbb\n", "ccc\n"}, -1, 8, "aaa\nbbb\n", false, true},
+		{"half line dropped", []string{"aaa\nbb", "bbbb\n"}, -1, 6, "aaa\n", false, true},
+		{"single line over cap is cut", []string{"abc", "defghij\n"}, -1, 4, "abcd", false, true},
+		{"exact byte cap", []string{"ab\ncd\n"}, -1, 6, "ab\ncd\n", false, false},
+		{"byte cap before line cap", []string{"aaa\nbbb\nccc\n"}, 3, 9, "aaa\nbbb\n", false, true},
+		{"no line cap", []string{"a\nb\nc\n"}, -1, big, "a\nb\nc\n", false, false},
 	}
 	for _, c := range cases {
 		var buf bytes.Buffer
-		w := newCapWriter(&buf, c.limit)
+		w := newCapWriter(&buf, c.limit, c.maxBytes)
 		var werr error
 		for _, ch := range c.chunks {
 			n, err := w.Write([]byte(ch))
@@ -645,15 +652,82 @@ func TestCapWriter(t *testing.T) {
 				t.Errorf("%s: Write(%q) = %d, want %d", c.name, ch, n, len(ch))
 			}
 		}
-		if (werr != nil) != c.truncated {
+		if err := w.Flush(); err != nil {
+			t.Errorf("%s: Flush = %v", c.name, err)
+		}
+		cut := c.lineCut || c.byteCut
+		if (werr != nil) != cut {
 			t.Errorf("%s: write error = %v, want error only when truncated", c.name, werr)
 		}
 		if buf.String() != c.want {
 			t.Errorf("%s: out = %q, want %q", c.name, buf.String(), c.want)
 		}
-		if w.Truncated() != c.truncated {
-			t.Errorf("%s: Truncated = %v, want %v", c.name, w.Truncated(), c.truncated)
+		if w.Truncated() != cut || w.BytesCut() != c.byteCut {
+			t.Errorf("%s: Truncated = %v, BytesCut = %v; want %v, %v", c.name, w.Truncated(), w.BytesCut(), cut, c.byteCut)
 		}
+	}
+}
+
+// killOnCap is a fake child that writes rows until the writer refuses, then
+// fails the way a cancelled mongosh/mysql does.
+func killOnCap(o *Options, row string, rows int) {
+	o.SetRun(func(string, []string, []string, string) error {
+		for i := 0; i < rows; i++ {
+			if _, err := fmt.Fprint(o.Stdout, row); err != nil {
+				return errors.New("signal: killed")
+			}
+		}
+		return nil
+	})
+}
+
+const byteNoticeWant = "… đã cắt ở 1048576 byte (giới hạn output)\n" //znf:allow-lang
+
+func TestRun_ByteCap_SQL(t *testing.T) {
+	o, stdout, stderr := baseOptions(t, fakeEnv())
+	row := strings.Repeat("x", 200000) + "\n"
+	killOnCap(o, row, 10)
+	o.Cmd, o.Arg = "sql", "SELECT body FROM t"
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v, want nil on truncation", err)
+	}
+	if stdout.String() != strings.Repeat(row, 5) {
+		t.Errorf("stdout = %d bytes, want 5 whole rows (%d bytes)", stdout.Len(), 5*len(row))
+	}
+	if stderr.String() != byteNoticeWant {
+		t.Errorf("stderr = %q, want the byte notice", stderr.String())
+	}
+}
+
+func TestRun_ByteCap_Mongo(t *testing.T) {
+	o, stdout, stderr := baseOptions(t, fakeEnv())
+	row := strings.Repeat("y", 1000) + "\n"
+	killOnCap(o, row, 3000)
+	o.Cmd, o.Arg = "find", "users"
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v, want nil on truncation", err)
+	}
+	if want := (MaxOutputBytes / len(row)) * len(row); stdout.Len() != want || !strings.HasSuffix(stdout.String(), "\n") {
+		t.Errorf("stdout = %d bytes, want %d ending on a line break", stdout.Len(), want)
+	}
+	if stderr.String() != byteNoticeWant {
+		t.Errorf("stderr = %q, want only the byte notice (no mongosh failure hint)", stderr.String())
+	}
+}
+
+func TestRun_ByteCap_Tables(t *testing.T) {
+	o, stdout, stderr := baseOptions(t, fakeEnv())
+	row := "agents_" + strings.Repeat("z", 1000) + "\n"
+	recordRun(o, strings.Repeat(row, 2000))
+	o.Cmd, o.Arg = "tables", "agents"
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stdout.Len() > MaxOutputBytes || stdout.Len() == 0 {
+		t.Errorf("stdout = %d bytes, want 1..%d", stdout.Len(), MaxOutputBytes)
+	}
+	if stderr.String() != byteNoticeWant {
+		t.Errorf("stderr = %q, want the byte notice", stderr.String())
 	}
 }
 

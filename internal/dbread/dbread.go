@@ -113,40 +113,105 @@ var errCapReached = errors.New("output cap reached")
 // truncNotice is the stderr line printed when a read is cut at --limit.
 const truncNotice = "… đã cắt ở %d dòng (--limit, tối đa %d)\n" //znf:allow-lang
 
-// capWriter forwards at most limit lines to w. The first byte past the
-// limit-th line marks it truncated and fails the write with errCapReached
-// (a short write), which stops the child's output copy.
+// MaxOutputBytes caps the stdout bytes of every read, mongo and sql alike.
+const MaxOutputBytes = 1 << 20
+
+// byteNotice is the stderr line printed when a read is cut at MaxOutputBytes.
+const byteNotice = "… đã cắt ở %d byte (giới hạn output)\n" //znf:allow-lang
+
+// capWriter forwards at most limit lines (limit < 0: no line cap) and at most
+// maxBytes bytes to w. It holds back a partial line until its line break, so
+// the byte cap cuts on a line boundary; only a single line longer than the
+// whole budget is cut mid-line. The first byte past either cap marks it
+// truncated and fails the write with errCapReached (a short write), which
+// stops the child's output copy. Call Flush after the child returns.
 type capWriter struct {
 	w         io.Writer
 	left      int
-	truncated bool
+	max       int
+	bytesLeft int
+	pending   []byte
+	lineCut   bool
+	byteCut   bool
 }
 
-func newCapWriter(w io.Writer, limit int) *capWriter { return &capWriter{w: w, left: limit} }
+func newCapWriter(w io.Writer, limit, maxBytes int) *capWriter {
+	return &capWriter{w: w, left: limit, max: maxBytes, bytesLeft: maxBytes}
+}
 
 func (c *capWriter) Write(p []byte) (int, error) {
 	n := len(p)
+	if c.Truncated() {
+		return 0, errCapReached
+	}
 	for len(p) > 0 {
 		if c.left == 0 {
-			c.truncated = true
+			c.lineCut = true
 			return n - len(p), errCapReached
 		}
-		i := bytes.IndexByte(p, '\n')
-		if i < 0 {
-			_, err := c.w.Write(p)
-			return n, err
+		seg, complete := p, false
+		if i := bytes.IndexByte(p, '\n'); i >= 0 {
+			seg, complete = p[:i+1], true
 		}
-		if _, err := c.w.Write(p[:i+1]); err != nil {
-			return n, err
+		if len(c.pending)+len(seg) > c.bytesLeft {
+			c.byteCut = true
+			if c.bytesLeft == c.max { // one line longer than the whole budget: cut it
+				line := append(c.pending, seg...)
+				c.pending = nil
+				if _, err := c.w.Write(line[:c.bytesLeft]); err != nil {
+					return n - len(p), err
+				}
+			}
+			c.pending = nil
+			return n - len(p), errCapReached
 		}
-		c.left--
-		p = p[i+1:]
+		if !complete {
+			c.pending = append(c.pending, seg...)
+			return n, nil
+		}
+		line := append(c.pending, seg...)
+		c.pending = c.pending[:0]
+		if _, err := c.w.Write(line); err != nil {
+			return n - len(p), err
+		}
+		c.bytesLeft -= len(line)
+		if c.left > 0 {
+			c.left--
+		}
+		p = p[len(seg):]
 	}
 	return n, nil
 }
 
-// Truncated reports whether any output arrived after the limit-th line.
-func (c *capWriter) Truncated() bool { return c.truncated }
+// Flush writes a held-back final line that had no line break.
+func (c *capWriter) Flush() error {
+	if len(c.pending) == 0 || c.Truncated() {
+		return nil
+	}
+	_, err := c.w.Write(c.pending)
+	c.pending = nil
+	return err
+}
+
+// Truncated reports whether output arrived past either cap.
+func (c *capWriter) Truncated() bool { return c.lineCut || c.byteCut }
+
+// BytesCut reports whether the byte cap, not the line cap, cut the output.
+func (c *capWriter) BytesCut() bool { return c.byteCut }
+
+// finish flushes cw and, when it was cut, prints the matching notice. A cut
+// is a success.
+func finish(cw *capWriter, stderr io.Writer, limit int) error {
+	if !cw.Truncated() {
+		return cw.Flush()
+	}
+	if cw.BytesCut() {
+		_, _ = fmt.Fprintf(stderr, byteNotice, MaxOutputBytes)
+	} else {
+		_, _ = fmt.Fprintf(stderr, truncNotice, limit, MaxLimit)
+	}
+	return nil
+}
 
 const mongoHost = "103.209.34.57"
 
@@ -185,7 +250,7 @@ func printUsage(w io.Writer) {
 		"  db-read aggregate <collection>        --pipeline '[...]' ($out/$merge refused), --limit",
 		"  db-read explain <collection>          executionStats, no --limit (runs the read query, max 30 s) for --filter/--sort or --pipeline",
 		"  db-read sql '<query>'                 one SELECT/WITH/SHOW/DESCRIBE/EXPLAIN in a READ ONLY txn",
-		"  output cut at --limit prints a notice on stderr; --pipeline never combines with --filter/--projection/--sort",
+		"  output cut at --limit or 1 MiB prints a notice on stderr; --pipeline never combines with --filter/--projection/--sort",
 		"  distinct: db-read aggregate <coll> --pipeline '[{\"$group\":{\"_id\":\"$field\"}}]'",
 	} {
 		_, _ = fmt.Fprintln(w, l)
@@ -265,15 +330,21 @@ func Run(o *Options) error {
 		return fmt.Errorf("zenify db-read: MONGO_URL not set")
 	}
 
+	stdout := o.Stdout
+	defer func() { o.Stdout = stdout }()
 	if script != "" {
+		// Mongo caps rows in the script (--limit); here only bytes are capped.
+		cw := newCapWriter(stdout, -1, MaxOutputBytes)
+		o.Stdout = cw
 		err := o.run("mongosh", []string{"--nodb", "--quiet", "--eval", script}, []string{MongoURLEnv + "=" + mongoURL}, "")
-		if err != nil {
+		if err != nil && !cw.Truncated() {
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: mongosh failed. Separate network from credential before theorising:")
 			_, _ = fmt.Fprintf(o.Stderr, "zenify db-read:   nc -z %s 27017   # needs no credential\n", mongoHost)
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port open  -> auth, or a stale $MONGO_URL in settings.local.json")
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port shut  -> network. This host is reachable directly, no VPN.")
+			return err
 		}
-		return err
+		return finish(cw, o.Stderr, limit)
 	}
 
 	host := creds["MYSQL_HOST"]
@@ -297,27 +368,23 @@ func Run(o *Options) error {
 		}, []string{"MYSQL_PWD=" + creds["MYSQL_PASSWORD"]}, "")
 	}
 
-	stdout := o.Stdout
-	defer func() { o.Stdout = stdout }()
 	if o.Cmd == "tables" {
-		// Not capped: the substring filter must see every table.
+		// Not row-capped: the substring filter must see every table.
 		var buf bytes.Buffer
 		o.Stdout = &buf
 		if err := mysqlRun(); err != nil {
 			return err
 		}
-		_, _ = fmt.Fprint(stdout, filterLines(buf.String(), o.Arg))
-		return nil
+		cw := newCapWriter(stdout, -1, MaxOutputBytes)
+		_, _ = io.WriteString(cw, filterLines(buf.String(), o.Arg))
+		return finish(cw, o.Stderr, limit)
 	}
-	cw := newCapWriter(stdout, limit)
+	cw := newCapWriter(stdout, limit, MaxOutputBytes)
 	o.Stdout = cw
-	// Once the cap is hit the runner kills mysql, so its error is expected:
+	// Once a cap is hit the runner kills mysql, so its error is expected:
 	// truncation is a success.
 	if err := mysqlRun(); err != nil && !cw.Truncated() {
 		return err
 	}
-	if cw.Truncated() {
-		_, _ = fmt.Fprintf(o.Stderr, truncNotice, limit, MaxLimit)
-	}
-	return nil
+	return finish(cw, o.Stderr, limit)
 }
