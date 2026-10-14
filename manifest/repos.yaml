@@ -6,52 +6,42 @@ org: ZenifyAIContactCenter
 # EMPTY placeholders (FR-065). Only the key NAMES are versioned here — a secret
 # VALUE is never stored, distributed, or read by the kit (FR-041). A developer
 # fills the values locally; an existing settings file keeps its values and only
-# gains the keys it is missing. Each key carries description/howTo/scope/secret
+# gains the keys it is missing. Each key carries description/scope/secret
 # metadata (still no values).
 secretKeys:
   - name: MONGO_URL
-    description: "Chuỗi kết nối MongoDB staging, dùng cho db-read và script dev"
-    howTo: "Hỏi trưởng nhóm DevOps (kênh #devops); chuỗi này cấp theo từng người hoặc dùng chung của team"
+    description: "Chuỗi kết nối MongoDB cho zenify db-read"
     scope: shared
   - name: MYSQL_HOST
-    description: "Host MySQL của contact-center, dùng cho db-read"
-    howTo: "Hỏi trưởng nhóm DevOps; thường là địa chỉ máy chủ DB nội bộ"
+    description: "Host MySQL cho zenify db-read"
     scope: shared
     secret: false
   - name: MYSQL_PORT
-    description: "Cổng MySQL của contact-center"
-    howTo: "Hỏi trưởng nhóm DevOps; thường là 3306"
+    description: "Cổng MySQL cho zenify db-read"
     scope: shared
     secret: false
   - name: MYSQL_USER
-    description: "Tài khoản MySQL chỉ đọc cho db-read"
-    howTo: "Hỏi trưởng nhóm DevOps để được cấp tài khoản chỉ đọc"
+    description: "Tài khoản MySQL cho zenify db-read"
     scope: shared
   - name: MYSQL_PASSWORD
-    description: "Mật khẩu của tài khoản MySQL chỉ đọc"
-    howTo: "Trưởng nhóm DevOps gửi riêng khi cấp tài khoản MYSQL_USER"
+    description: "Mật khẩu MySQL cho zenify db-read"
     scope: shared
   - name: MYSQL_DATABASE
-    description: "Tên database MySQL của contact-center"
-    howTo: "Hỏi trưởng nhóm DevOps hoặc xem cấu hình dev của contact-center-be"
+    description: "Tên database MySQL cho zenify db-read"
     scope: shared
     secret: false
   - name: E2E_DOMAIN
-    description: "Tên miền (tenant) dùng để đăng nhập khi chạy E2E"
-    howTo: "Dùng tenant dev do QC hoặc trưởng nhóm cấp"
+    description: "Tên miền (tenant) đăng nhập cho zenify e2e login"
     scope: shared
     secret: false
   - name: E2E_EMAIL
-    description: "Email tài khoản dùng đăng nhập khi chạy E2E"
-    howTo: "Tài khoản test của chính bạn trên tenant dev; nhờ QC tạo nếu chưa có"
+    description: "Email đăng nhập cho zenify e2e login"
     scope: personal
   - name: E2E_PASSWORD
-    description: "Mật khẩu của tài khoản E2E"
-    howTo: "Mật khẩu tài khoản test của chính bạn; đặt khi QC tạo tài khoản"
+    description: "Mật khẩu đăng nhập cho zenify e2e login"
     scope: personal
   - name: POSTHOG_API_KEY
-    description: "Khoá API PostHog cá nhân để đọc analytics"
-    howTo: "Tự tạo trong PostHog (Settings > Personal API keys) bằng tài khoản của bạn"
+    description: "Khoá API PostHog"
     scope: personal
 repos:
   - name: contact-center-be
@@ -92,29 +82,23 @@ repos:
     # Repo-scoped: only a developer who clones lumi-agent gets these placeholders.
     secretKeys:
       - name: LUMI_MYSQL_URL_STG
-        description: "URL MySQL của lumi-agent trên staging"
-        howTo: "Hỏi trưởng nhóm DevOps hoặc người phụ trách lumi-agent"
+        description: "URL MySQL của lumi-agent, môi trường staging"
         scope: shared
       - name: LUMI_MYSQL_URL_PRD
-        description: "URL MySQL của lumi-agent trên production (chỉ đọc)"
-        howTo: "Hỏi trưởng nhóm DevOps; chỉ cấp khi cần điều tra production"
+        description: "URL MySQL của lumi-agent, môi trường production"
         scope: shared
       - name: QDRANT_URL_STG
-        description: "URL Qdrant của lumi-agent trên staging"
-        howTo: "Hỏi trưởng nhóm DevOps hoặc người phụ trách lumi-agent"
+        description: "URL Qdrant của lumi-agent, môi trường staging"
         scope: shared
       - name: QDRANT_URL_PRD
-        description: "URL Qdrant của lumi-agent trên production"
-        howTo: "Hỏi trưởng nhóm DevOps; chỉ cấp khi cần điều tra production"
+        description: "URL Qdrant của lumi-agent, môi trường production"
         scope: shared
       - name: LUMI_APP_URL_STG
-        description: "URL ứng dụng lumi-agent trên staging"
-        howTo: "Hỏi người phụ trách lumi-agent"
+        description: "URL ứng dụng lumi-agent, môi trường staging"
         scope: shared
         secret: false
       - name: OPENROUTER_API_KEY
-        description: "Khoá API OpenRouter để chạy lumi-agent cục bộ"
-        howTo: "Tự tạo tại openrouter.ai bằng tài khoản của bạn, hoặc xin hạn mức từ trưởng nhóm AI"
+        description: "Khoá API OpenRouter"
         scope: personal
   - name: message-hub-be
     url: git@github.com:ZenifyAIContactCenter/message-hub-be.git

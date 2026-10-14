@@ -248,8 +248,8 @@ func TestEmbeddedManifest_EveryKeyDescribed(t *testing.T) {
 	notSecret := map[string]bool{"E2E_DOMAIN": true, "MYSQL_HOST": true, "MYSQL_PORT": true, "MYSQL_DATABASE": true, "LUMI_APP_URL_STG": true}
 	personal := map[string]bool{"E2E_EMAIL": true, "E2E_PASSWORD": true, "POSTHOG_API_KEY": true, "OPENROUTER_API_KEY": true}
 	for _, k := range keys {
-		if k.Description == "" || k.HowTo == "" {
-			t.Errorf("%s: description/howTo must be non-empty", k.Name)
+		if k.Description == "" {
+			t.Errorf("%s: description must be non-empty", k.Name)
 		}
 		wantScope := "shared"
 		if personal[k.Name] {
