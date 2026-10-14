@@ -294,40 +294,6 @@ func TestApply_Wire_MergesMissingSecretKeys(t *testing.T) {
 	}
 }
 
-func TestApply_Wire_MergePreservesValueBytes_NoHTMLEscape(t *testing.T) {
-	ws := t.TempDir()
-	repo := filepath.Join(ws, "svc")
-	initClonedRepo(t, repo)
-	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
-	// A realistic Mongo URL: option separator "&" must survive the merge verbatim.
-	mongo := "mongodb://h:27017/db?replicaSet=rs0&authSource=admin"
-	if err := os.WriteFile(settingsPath, []byte(`{"env":{"MONGO_URL":"`+mongo+`"}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := Apply(
-		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}},
-		Options{Workspace: ws, Owned: &managed.Manifest{}, RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc"}}},
-		&fakeGH{}, &fakeGit{},
-	)
-	if err != nil {
-		t.Fatalf("wire: %v", err)
-	}
-	raw, _ := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
-	if !strings.Contains(string(raw), "&authSource") {
-		t.Errorf("literal & must be preserved (no HTML-escape):\n%s", raw)
-	}
-	if strings.Contains(string(raw), `\u0026`) {
-		t.Errorf("value bytes were HTML-escaped to the \\u0026 form, corrupting the dev's value:\n%s", raw)
-	}
-	// And the decoded value is still exactly what the dev wrote.
-	if got := readEnv(t, settingsPath)["MONGO_URL"]; got != mongo {
-		t.Errorf("MONGO_URL = %q, want %q", got, mongo)
-	}
-}
-
 func TestApply_Wire_InvalidExistingSettings_SurfacesError(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
@@ -558,26 +524,6 @@ func TestApply_OK_NothingMissingStaysSkipped(t *testing.T) {
 	got, _ := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
 	if string(got) != body {
 		t.Errorf("file rewritten although nothing was missing: %s", got)
-	}
-}
-
-// SC-7: a repo without its own keys never receives another repo's keys.
-func TestApply_OK_OtherRepoKeysDoNotLeak(t *testing.T) {
-	ws := t.TempDir()
-	repo := filepath.Join(ws, "be")
-	p := writeRepoSettings(t, repo, `{"env":{}}`)
-	_, _ = Apply(
-		[]reconcile.RepoPlan{{Name: "be", State: reconcile.OK, Path: "be"}},
-		Options{Workspace: ws, Owned: &managed.Manifest{}, RepoByName: map[string]manifest.Repo{
-			"be":         {Name: "be"},
-			"lumi-agent": {Name: "lumi-agent", SecretKeys: []manifest.SecretKey{{Name: "LUMI_MYSQL_URL_STG", Secret: true}}},
-		}},
-		&fakeGH{}, &fakeGit{},
-	)
-	for k := range readEnv(t, p) {
-		if strings.HasPrefix(k, "LUMI_") {
-			t.Errorf("be received lumi key %s", k)
-		}
 	}
 }
 

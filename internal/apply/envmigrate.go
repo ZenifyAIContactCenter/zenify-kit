@@ -81,10 +81,12 @@ func (d *settingsDoc) save() error {
 //
 // Every file is read first; a malformed one aborts the run before any write.
 // Per key: two different non-empty values across files are a conflict and
-// that key is left alone everywhere; one value is copied into envPath unless
-// envPath already holds a non-empty value, then deleted from every file; only
+// that key is left alone everywhere; one value is copied into envPath when
+// envPath has none for the key, then deleted from every file; only
 // empty placeholders are just deleted. A non-string value, or one with a line
-// break (it cannot be one dotenv line), is left in place.
+// break (it cannot be one dotenv line), is left in place. .zenify/.env counts as
+// one more place: a non-empty value there that differs is a conflict too, and
+// an equal one just drops the key from settings.
 //
 // envPath is written BEFORE any settings file, so a failed write never leaves
 // a value in neither place. A settings file the kit owns and that was unchanged
@@ -131,18 +133,20 @@ func MigrateSettingsEnv(settingsPaths []string, keys []string, envPath string, o
 		if skip || len(holders) == 0 {
 			continue
 		}
-		switch len(values) {
-		case 0:
+		cur, _ := envFile.Get(k)
+		switch {
+		case len(values) > 1 || (len(values) == 1 && cur != "" && cur != value):
+			// .zenify/.env counts as one more place (FR-9.2).
+			res.Conflicts = append(res.Conflicts, k)
+			continue
+		case len(values) == 0:
 			res.Removed = append(res.Removed, k)
-		case 1:
-			if cur, ok := envFile.Get(k); !ok || cur == "" {
+		default:
+			if cur == "" {
 				envFile.Set(k, value)
 				envDirty = true
 			}
 			res.Moved = append(res.Moved, k)
-		default:
-			res.Conflicts = append(res.Conflicts, k)
-			continue
 		}
 		for _, d := range holders {
 			delete(d.env, k)
@@ -172,7 +176,7 @@ func MigrateSettingsEnv(settingsPaths []string, keys []string, envPath string, o
 }
 
 // LeftoverEnvKeys returns, per settings file, the sorted names of "env" keys
-// that still hold a non-empty string value (FR-8.3). Missing files are skipped;
+// whose value is anything but "" or null (FR-8.3). Missing files are skipped;
 // files with no such key are absent from the map.
 func LeftoverEnvKeys(settingsPaths []string) (map[string][]string, error) {
 	out := map[string][]string{}
@@ -186,8 +190,7 @@ func LeftoverEnvKeys(settingsPaths []string) (map[string][]string, error) {
 		}
 		var names []string
 		for k, raw := range d.env {
-			var v string
-			if json.Unmarshal(raw, &v) == nil && v != "" {
+			if t := string(bytes.TrimSpace(raw)); t != `""` && t != "null" {
 				names = append(names, k)
 			}
 		}

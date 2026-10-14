@@ -154,18 +154,61 @@ func TestMigrate_Conflict(t *testing.T) {
 	}
 }
 
-func TestMigrate_KeepsExistingEnvFileValue(t *testing.T) {
+// FR-9.2: .zenify/.env counts as one of the places; a different value there is a conflict.
+func TestMigrate_EnvFileDiffersIsConflict(t *testing.T) {
 	f := newMigrateFixture(t)
 	writeFileT(t, f.envPath, "MONGO_URL='fake-a'\n")
-	writeFileT(t, f.wsSettings, `{"env":{"MONGO_URL":"fake-b"}}`)
+	body := `{"env":{"MONGO_URL":"fake-b"}}`
+	writeFileT(t, f.wsSettings, body)
+	res, err := MigrateSettingsEnv(f.paths(), []string{"MONGO_URL"}, f.envPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(res.Conflicts, []string{"MONGO_URL"}) || len(res.Moved) != 0 {
+		t.Errorf("result = %+v, want Conflicts [MONGO_URL] only", res)
+	}
+	if got := readFileT(t, f.envPath); got != "MONGO_URL='fake-a'\n" {
+		t.Errorf(".zenify/.env changed")
+	}
+	if readFileT(t, f.wsSettings) != body {
+		t.Errorf("settings changed although the key conflicts with .zenify/.env")
+	}
+}
+
+// Same value in .zenify/.env and settings: drop it from settings, .env untouched.
+func TestMigrate_EnvFileSameValueRemoves(t *testing.T) {
+	f := newMigrateFixture(t)
+	writeFileT(t, f.envPath, "MONGO_URL='fake-a'\n")
+	writeFileT(t, f.wsSettings, `{"env":{"MONGO_URL":"fake-a"}}`)
+	res, err := MigrateSettingsEnv(f.paths(), []string{"MONGO_URL"}, f.envPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Conflicts) != 0 || !reflect.DeepEqual(res.Moved, []string{"MONGO_URL"}) {
+		t.Errorf("result = %+v, want Moved [MONGO_URL]", res)
+	}
+	if got := readFileT(t, f.envPath); got != "MONGO_URL='fake-a'\n" {
+		t.Errorf(".zenify/.env changed")
+	}
+	if _, ok := readEnv(t, f.wsSettings)["MONGO_URL"]; ok {
+		t.Errorf("settings key must be removed")
+	}
+}
+
+// The settings rewrite keeps another key's value bytes (no HTML escaping of &).
+func TestMigrate_RewritePreservesValueBytes(t *testing.T) {
+	f := newMigrateFixture(t)
+	other := "mongodb://h:27017/db?replicaSet=rs0&authSource=admin"
+	writeFileT(t, f.wsSettings, `{"env":{"MONGO_URL":"`+fakeV1+`","OTHER_URL":"`+other+`"}}`)
 	if _, err := MigrateSettingsEnv(f.paths(), []string{"MONGO_URL"}, f.envPath, nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := readFileT(t, f.envPath); got != "MONGO_URL='fake-a'\n" {
-		t.Errorf(".zenify/.env changed:\n%s", got)
+	raw := readFileT(t, f.wsSettings)
+	if !strings.Contains(raw, "&authSource") || strings.Contains(raw, `\u0026`) {
+		t.Errorf("& was escaped or lost:\n%s", raw)
 	}
-	if _, ok := readEnv(t, f.wsSettings)["MONGO_URL"]; ok {
-		t.Errorf("settings key must still be removed")
+	if readEnv(t, f.wsSettings)["OTHER_URL"] != other {
+		t.Errorf("OTHER_URL changed")
 	}
 }
 
@@ -251,12 +294,12 @@ func TestMigrate_MalformedSettingsWritesNothing(t *testing.T) {
 // FR-8.3
 func TestLeftoverEnvKeys(t *testing.T) {
 	f := newMigrateFixture(t)
-	writeFileT(t, f.wsSettings, `{"env":{"MONGO_URL":"`+fakeV1+`","EMPTY":""}}`)
+	writeFileT(t, f.wsSettings, `{"env":{"MONGO_URL":"`+fakeV1+`","EMPTY":"","NUL":null,"PORT":3306,"ON":true}}`)
 	got, err := LeftoverEnvKeys(f.paths())
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string][]string{f.wsSettings: {"MONGO_URL"}}
+	want := map[string][]string{f.wsSettings: {"MONGO_URL", "ON", "PORT"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("LeftoverEnvKeys = %v, want %v", got, want)
 	}
