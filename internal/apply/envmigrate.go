@@ -17,6 +17,7 @@ type MigrateResult struct {
 	Moved     []string // had a value in a settings file; now in .zenify/.env and gone from settings
 	Removed   []string // only empty placeholders existed; deleted from settings
 	Conflicts []string // two settings files hold different values; left everywhere for a manual fix
+	Skipped   []string // a non-string or multi-line value; left in place for a manual fix
 }
 
 // settingsDoc is one parsed settings file held in memory between the read and
@@ -93,6 +94,15 @@ func (d *settingsDoc) save() error {
 // before this run is re-recorded in owned, so its next refresh still sees it as
 // kit-managed.
 func MigrateSettingsEnv(settingsPaths []string, keys []string, envPath string, owned *managed.Manifest) (MigrateResult, error) {
+	return migrateSettingsEnv(settingsPaths, keys, envPath, owned, false)
+}
+
+// PreviewSettingsEnv reports what MigrateSettingsEnv would do, writing nothing.
+func PreviewSettingsEnv(settingsPaths []string, keys []string, envPath string) (MigrateResult, error) {
+	return migrateSettingsEnv(settingsPaths, keys, envPath, nil, true)
+}
+
+func migrateSettingsEnv(settingsPaths []string, keys []string, envPath string, owned *managed.Manifest, dryRun bool) (MigrateResult, error) {
 	var docs []*settingsDoc
 	for _, p := range settingsPaths {
 		d, err := loadSettingsDoc(p, owned)
@@ -130,7 +140,11 @@ func MigrateSettingsEnv(settingsPaths []string, keys []string, envPath string, o
 				value = v
 			}
 		}
-		if skip || len(holders) == 0 {
+		if skip {
+			res.Skipped = append(res.Skipped, k)
+			continue
+		}
+		if len(holders) == 0 {
 			continue
 		}
 		cur, _ := envFile.Get(k)
@@ -154,6 +168,9 @@ func MigrateSettingsEnv(settingsPaths []string, keys []string, envPath string, o
 		}
 	}
 
+	if dryRun {
+		return res, nil
+	}
 	if envDirty {
 		if err := envFile.Save(envPath); err != nil {
 			return MigrateResult{}, fmt.Errorf("write %s: %w", envPath, err)

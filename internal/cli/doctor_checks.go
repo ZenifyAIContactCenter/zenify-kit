@@ -139,20 +139,44 @@ func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manife
 			for _, k := range m.AllKeys() {
 				known[k.Name] = true
 			}
-			var problems []string
+			// Keys the migration skips by design need a manual fix; `up` would
+			// not move them.
+			preview, err := apply.PreviewSettingsEnv(paths, manifest.KeyNames(m.AllKeys()), path)
+			if err != nil {
+				return false, err.Error()
+			}
+			manual := map[string]bool{}
+			for _, k := range append(preview.Conflicts, preview.Skipped...) {
+				manual[k] = true
+			}
+			var movable, byHand []string
 			for _, p := range paths {
-				var names []string
+				var mv, bh []string
 				for _, k := range left[p] {
-					if known[k] {
-						names = append(names, k)
+					switch {
+					case !known[k]:
+					case manual[k]:
+						bh = append(bh, k)
+					default:
+						mv = append(mv, k)
 					}
 				}
-				if len(names) > 0 {
-					problems = append(problems, strings.Join(names, ", ")+" in "+p)
+				if len(mv) > 0 {
+					movable = append(movable, strings.Join(mv, ", ")+" in "+p)
+				}
+				if len(bh) > 0 {
+					byHand = append(byHand, strings.Join(bh, ", ")+" in "+p)
 				}
 			}
+			var problems []string
+			if len(movable) > 0 {
+				problems = append(problems, strings.Join(movable, "; ")+" — run `zenify up --apply` to move them to .zenify/.env")
+			}
+			if len(byHand) > 0 {
+				problems = append(problems, strings.Join(byHand, "; ")+" — fix by hand (values differ between files or .zenify/.env, or a value is not a one-line string): keep one with `zenify env set <KEY>`, then delete the key from the settings env")
+			}
 			if len(problems) > 0 {
-				return false, strings.Join(problems, "; ") + " — run `zenify up --apply` to move them to .zenify/.env"
+				return false, strings.Join(problems, "; ")
 			}
 			return true, "no credential left in settings env"
 		},

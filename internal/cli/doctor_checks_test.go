@@ -313,3 +313,54 @@ func TestDoctor_LeftoverSettingsEnv_Worktree(t *testing.T) {
 		t.Errorf("detail carries a value: %q", detail)
 	}
 }
+
+// Keys migration skips by design (conflicting values, a non-string or
+// multi-line value) get "fix by hand", not the `zenify up --apply` hint.
+func TestDoctor_LeftoverSettingsEnv_ManualFix(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}, {Name: "PORTX", Secret: true}, {Name: "MOVE_ME", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "svc", Path: "svc"}},
+	}
+	write := func(p, body string) {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(ws, ".claude", "settings.local.json"), `{"env":{"MONGO_URL":"fake-a","PORTX":123}}`)
+	write(filepath.Join(ws, "svc", ".claude", "settings.local.json"), `{"env":{"MONGO_URL":"fake-b"}}`)
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, "fix by hand") {
+		t.Fatalf("manual leftovers must say fix by hand; ok=%v detail=%q", ok, detail)
+	}
+	if strings.Contains(detail, "zenify up --apply") {
+		t.Errorf("no key here is movable, the up hint is wrong: %q", detail)
+	}
+	for _, want := range []string{"MONGO_URL", "PORTX"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail %q lacks %q", detail, want)
+		}
+	}
+
+	write(filepath.Join(ws, "svc", ".claude", "settings.local.json"), `{"env":{"MOVE_ME":"fake-c"}}`)
+	write(filepath.Join(ws, ".claude", "settings.local.json"), `{"env":{"PORTX":123}}`)
+	_, detail = settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	up := strings.Index(detail, "zenify up --apply")
+	hand := strings.Index(detail, "fix by hand")
+	if up < 0 || hand < 0 {
+		t.Fatalf("want both hints: %q", detail)
+	}
+	clauses := strings.SplitN(detail, "; ", 2)
+	if len(clauses) != 2 || !strings.Contains(clauses[0], "MOVE_ME") || !strings.Contains(clauses[0], "zenify up --apply") ||
+		!strings.Contains(clauses[1], "PORTX") || !strings.Contains(clauses[1], "fix by hand") {
+		t.Errorf("hints attached to the wrong keys: %q", detail)
+	}
+	if strings.Contains(detail, "fake-") {
+		t.Errorf("detail carries a value: %q", detail)
+	}
+}

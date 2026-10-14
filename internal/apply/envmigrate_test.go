@@ -380,3 +380,27 @@ func TestKitDeny_UserOwnedRuleUntouched(t *testing.T) {
 		t.Errorf("user's own rule was removed")
 	}
 }
+
+// PreviewSettingsEnv reports moves and skips without writing anything.
+func TestPreviewSettingsEnv_WritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "settings.local.json")
+	body := `{"env":{"A":"fake-a","B":7,"C":"x\ny"}}`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(dir, ".zenify", ".env")
+	res, err := PreviewSettingsEnv([]string{p}, []string{"A", "B", "C"}, envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(res.Moved, []string{"A"}) || !reflect.DeepEqual(res.Skipped, []string{"B", "C"}) {
+		t.Errorf("preview = %+v", res)
+	}
+	if got := readFileT(t, p); got != body {
+		t.Errorf("preview rewrote settings: %s", got)
+	}
+	if _, err := os.Stat(envPath); !os.IsNotExist(err) {
+		t.Errorf("preview wrote .zenify/.env, stat err=%v", err)
+	}
+}

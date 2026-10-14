@@ -384,6 +384,9 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 	for _, k := range res.Conflicts {
 		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — hai giá trị khác nhau, xử lý tay\n", k) //znf:allow-lang
 	}
+	for _, k := range res.Skipped {
+		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — giá trị không phải chuỗi một dòng, xử lý tay\n", k) //znf:allow-lang
+	}
 	home, herr := os.UserHomeDir()
 	if herr != nil || home == "" {
 		_, _ = fmt.Fprintf(errW, "permissions: không thêm được luật deny .zenify/.env (home: %v)\n", herr) //znf:allow-lang
