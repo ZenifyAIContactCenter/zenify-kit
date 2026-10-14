@@ -254,7 +254,8 @@ func relocateRepo(from, to string, owned *managed.Manifest, rename func(string, 
 }
 
 // defaultVerifyRepo checks that each file the repo just wrote exists and
-// parses: settings.local.json is JSON with an "env" object; .git/info/exclude
+// parses: settings.local.json is a JSON object whose "env", when present, is an
+// object (adopt records a file with no "env" untouched); .git/info/exclude
 // contains a .worktrees/ line. Only checks files in `wrote` (what this repo
 // actually touched).
 func defaultVerifyRepo(wrote []string) error {
@@ -269,8 +270,10 @@ func defaultVerifyRepo(wrote []string) error {
 			if err := json.Unmarshal(b, &root); err != nil {
 				return fmt.Errorf("verify %s: not valid JSON: %w", f, err)
 			}
-			if _, ok := root["env"].(map[string]any); !ok {
-				return fmt.Errorf("verify %s: missing env object", f)
+			if env, present := root["env"]; present {
+				if _, ok := env.(map[string]any); !ok {
+					return fmt.Errorf("verify %s: \"env\" is not an object", f)
+				}
 			}
 		case strings.HasSuffix(f, filepath.Join("info", "exclude")):
 			b, err := os.ReadFile(f) //nolint:gosec // G304 -- path computed internally from workspace/plan, not externally-tainted

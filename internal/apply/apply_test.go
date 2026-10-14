@@ -554,3 +554,40 @@ func TestApply_Adopt_AddsNoPlaceholders(t *testing.T) {
 		t.Errorf("Action = %q", res[0].Action)
 	}
 }
+
+// A settings.local.json without an "env" key passes verify on adopt; only a
+// present non-object "env" fails.
+func TestApply_Adopt_NoEnvKeyPassesVerify(t *testing.T) {
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	initClonedRepo(t, repo)
+	body := `{"permissions":{}}`
+	writeRepoSettings(t, repo, body)
+	res, err := Apply(
+		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Adopt, Path: "svc"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{},
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc"}}},
+		&fakeGH{}, &fakeGit{},
+	)
+	if err != nil || res[0].Err != nil {
+		t.Fatalf("Apply: %v / %v", err, res[0].Err)
+	}
+}
+
+func TestDefaultVerifyRepo_EnvShape(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "settings.local.json")
+	for body, wantErr := range map[string]bool{
+		`{"permissions":{}}`: false,
+		`{"env":{}}`:         false,
+		`{"env":"x"}`:        true,
+		`{"env":null}`:       true,
+	} {
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := defaultVerifyRepo([]string{p}); (err != nil) != wantErr {
+			t.Errorf("%s: err=%v, wantErr=%v", body, err, wantErr)
+		}
+	}
+}
