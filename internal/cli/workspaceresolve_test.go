@@ -97,7 +97,7 @@ func TestResolveWorkspace_Table(t *testing.T) {
 	}
 }
 
-func TestWorkspaceSettingsPath_FollowsResolvedWorkspace(t *testing.T) {
+func TestWorkspaceEnvPath_FollowsResolvedWorkspace(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ZENIFY_HOME", filepath.Join(home, ".zenify"))
@@ -109,21 +109,21 @@ func TestWorkspaceSettingsPath_FollowsResolvedWorkspace(t *testing.T) {
 	wd, _ := os.Getwd()
 	t.Chdir(t.TempDir()) // cwd is NOT inside the workspace
 	defer func() { _ = os.Chdir(wd) }()
-	if got := workspaceSettingsPath(); got != filepath.Join(ws, ".claude", "settings.local.json") {
-		t.Fatalf("settings path = %q", got)
+	if got := workspaceEnvPath(); got != filepath.Join(ws, ".zenify", ".env") {
+		t.Fatalf("env path = %q", got)
 	}
 }
 
-func TestSecretPresenceCheck_ReadsWorkspaceSettings(t *testing.T) {
+func TestSecretPresenceCheck_ReadsWorkspaceEnvFile(t *testing.T) {
 	ws := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(ws, ".claude"), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	settings := filepath.Join(ws, ".claude", "settings.local.json")
-	if err := os.WriteFile(settings, []byte(`{"env":{"MONGO_URL":"mongodb://x"}}`), 0o600); err != nil {
+	envFile := filepath.Join(ws, ".zenify", ".env")
+	if err := os.WriteFile(envFile, []byte("MONGO_URL='mongodb://x'\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c := secretPresenceCheck(func(string) string { return "" }, func() string { return settings })
+	c := secretPresenceCheck(func(string) string { return "" }, func() string { return envFile }, noManifest)
 	ok, detail := c.Run()
 	if !ok || !strings.Contains(detail, "MONGO_URL=present") {
 		t.Fatalf("ok=%v detail=%q", ok, detail)

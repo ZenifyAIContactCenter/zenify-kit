@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
@@ -62,5 +63,49 @@ func TestE2eLogin_PortOutOfRange(t *testing.T) {
 		if err := c.Execute(); exitcode.Code(err) != exitcode.BadArgs {
 			t.Fatalf("--port %s: want BadArgs, got %v", p, err)
 		}
+	}
+}
+
+// SC-9 / FR-7.2: E2E_* that exist only in the credential file reach the child's Env.
+func TestE2ERunner_InjectsE2EEnv(t *testing.T) {
+	for _, k := range e2eEnvKeys {
+		t.Setenv(k, "")
+	}
+	envFile := filepath.Join(t.TempDir(), ".zenify", ".env")
+	if err := os.MkdirAll(filepath.Dir(envFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := "E2E_DOMAIN=fake.example\nE2E_EMAIL=fake@example.com\nE2E_PASSWORD='fake-pw'\n"
+	if err := os.WriteFile(envFile, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lookup := credLookup(envFile, os.Getenv)
+	if got := lookup("E2E_PASSWORD"); got != "fake-pw" {
+		t.Fatalf("lookup = %q, want the file value", got)
+	}
+	c := childCmd("docker", []string{"run"}, []string{"BASE_URL=http://localhost:1"}, lookup)
+	last := map[string]string{}
+	for _, kv := range c.Env {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			last[k] = v // exec keeps the last duplicate
+		}
+	}
+	if last["E2E_PASSWORD"] != "fake-pw" || last["E2E_EMAIL"] != "fake@example.com" || last["E2E_DOMAIN"] != "fake.example" {
+		t.Errorf("child Env lacks the file's E2E_* values")
+	}
+	if last["BASE_URL"] != "http://localhost:1" {
+		t.Errorf("extraEnv dropped: BASE_URL=%q", last["BASE_URL"])
+	}
+}
+
+// Live env wins over the file.
+func TestE2ERunner_EnvWinsOverFile(t *testing.T) {
+	t.Setenv("E2E_PASSWORD", "from-env")
+	envFile := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(envFile, []byte("E2E_PASSWORD=from-file\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := credLookup(envFile, os.Getenv)("E2E_PASSWORD"); got != "from-env" {
+		t.Fatalf("lookup = %q, want live env to win", got)
 	}
 }

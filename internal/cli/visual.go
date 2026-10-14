@@ -18,6 +18,7 @@ type visualOpts struct {
 	goos   string
 	repo   string
 	port   int
+	getenv func(string) string // credential lookup; nil → os.Getenv
 	update bool
 	out    io.Writer
 }
@@ -37,7 +38,11 @@ func runVisualCheck(o visualOpts) error {
 	if err := visual.WriteHarness(harnessDir); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
-	vo := visual.Options{Runner: o.runner, Getenv: os.Getenv, GOOS: o.goos, Stdout: o.out}
+	getenv := o.getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	vo := visual.Options{Runner: o.runner, Getenv: getenv, GOOS: o.goos, Stdout: o.out}
 	cfg := visual.RunConfig{HarnessDir: harnessDir, SnapshotsDir: snap, Port: o.port, Update: o.update}
 	if err := visual.Check(vo, cfg); err != nil {
 		if o.update {
@@ -90,14 +95,15 @@ func newVisualCmd() *cobra.Command {
 			}); err != nil {
 				return err
 			}
+			lookup := credLookup(workspaceEnvPath(), os.Getenv)
 			runner := func(name string, args []string) error {
-				c := exec.Command(name, args...) //nolint:gosec // G204 -- fixed "docker"; args internally computed
+				c := childCmd(name, args, nil, lookup)
 				c.Stdout = out
 				c.Stderr = os.Stderr
 				return c.Run()
 			}
 			return runVisualCheck(visualOpts{
-				runner: runner, goos: runtime.GOOS, repo: repo, port: port, update: update,
+				runner: runner, getenv: lookup, goos: runtime.GOOS, repo: repo, port: port, update: update,
 				out: out,
 			})
 		},

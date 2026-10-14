@@ -15,35 +15,35 @@ package dbread
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
 
 // Options configures one Run. Stdout/Stderr and the run/Env seams let tests
-// inject without spawning real processes or touching a real settings file.
+// inject without spawning real processes or touching a real credential file.
 //
 // Options is always passed to Run by pointer: Run redirects where the run
 // seam writes (to a filter buffer or a line cap) and the injected run closure
 // reads o.Stdout dynamically at call time — that only works if Run and the
 // closure share the same Options.
 type Options struct {
-	Cmd, Arg     string
-	Filter       string
-	Projection   string
-	Sort         string
-	Pipeline     string
-	Limit        int
-	Stdout       io.Writer
-	Stderr       io.Writer
-	Env          func(string) string
-	SettingsPath string
-	run          func(name string, args []string, extraEnv []string, stdin string) error
+	Cmd, Arg   string
+	Filter     string
+	Projection string
+	Sort       string
+	Pipeline   string
+	Limit      int
+	Stdout     io.Writer
+	Stderr     io.Writer
+	Env        func(string) string
+	EnvPath    string
+	run        func(name string, args []string, extraEnv []string, stdin string) error
 }
 
 // SetRun injects the process-spawning seam. Exported so the cobra command
@@ -53,38 +53,22 @@ func (o *Options) SetRun(run func(name string, args []string, extraEnv []string,
 	o.run = run
 }
 
-// LoadCreds resolves DB credentials: live env first, else the "env" block of
-// the workspace settings.local.json (same store as bash db_read). Returns a
-// map of the six keys that were found (MONGO_URL, MYSQL_HOST/PORT/USER/
-// PASSWORD/DATABASE). Values are NEVER logged. A missing/unreadable
-// settings file is not an error here — the caller decides whether the
-// resulting absence of MONGO_URL is fatal.
-func LoadCreds(getenv func(string) string, settingsPath string) (map[string]string, error) {
+// LoadCreds resolves DB credentials: live env first, else the workspace
+// credential file <workspace>/.zenify/.env at envPath. Returns a map of the
+// six keys that were found (MONGO_URL, MYSQL_HOST/PORT/USER/PASSWORD/DATABASE).
+// Values are NEVER logged. A missing or unreadable file is not an error here —
+// the caller decides whether the resulting absence of MONGO_URL is fatal.
+func LoadCreds(getenv func(string) string, envPath string) (map[string]string, error) {
 	keys := []string{"MONGO_URL", "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"}
+	var f *devenv.File
+	if envPath != "" {
+		f, _ = devenv.Load(envPath) // unreadable → treat as absent
+	}
+	lookup := devenv.Lookup(getenv, f)
 	out := map[string]string{}
 	for _, k := range keys {
-		if v := getenv(k); v != "" {
+		if v := lookup(k); v != "" {
 			out[k] = v
-		}
-	}
-	if out["MONGO_URL"] != "" {
-		return out, nil
-	}
-	b, err := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
-	if err != nil {
-		return out, nil // absent settings is not fatal here
-	}
-	var doc struct {
-		Env map[string]string `json:"env"`
-	}
-	if err := json.Unmarshal(b, &doc); err != nil {
-		return out, nil // malformed → treat as absent, same as bash python failing open
-	}
-	for _, k := range keys {
-		if out[k] == "" {
-			if v := doc.Env[k]; v != "" {
-				out[k] = v
-			}
 		}
 	}
 	return out, nil
@@ -318,15 +302,15 @@ func Run(o *Options) error {
 	if o.Env == nil {
 		o.Env = os.Getenv
 	}
-	creds, _ := LoadCreds(o.Env, o.SettingsPath)
+	creds, _ := LoadCreds(o.Env, o.EnvPath)
 	mongoURL := creds["MONGO_URL"]
 	if mongoURL == "" {
-		if o.SettingsPath == "" {
+		if o.EnvPath == "" {
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: chưa có workspace — chạy `zenify up` trước") //znf:allow-lang
 			return fmt.Errorf("zenify db-read: no workspace")
 		}
-		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $MONGO_URL is not set and %s did not supply it.\n", o.SettingsPath)
-		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: it belongs in the env block of that file, next to E2E_PASSWORD.")
+		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $MONGO_URL is not set and %s did not supply it.\n", o.EnvPath)
+		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: put MONGO_URL there with: zenify env set MONGO_URL")
 		return fmt.Errorf("zenify db-read: MONGO_URL not set")
 	}
 
@@ -340,7 +324,7 @@ func Run(o *Options) error {
 		if err != nil && !cw.Truncated() {
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: mongosh failed. Separate network from credential before theorising:")
 			_, _ = fmt.Fprintf(o.Stderr, "zenify db-read:   nc -z %s 27017   # needs no credential\n", mongoHost)
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port open  -> auth, or a stale $MONGO_URL in settings.local.json")
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port open  -> auth, or a stale $MONGO_URL in .zenify/.env")
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port shut  -> network. This host is reachable directly, no VPN.")
 			return err
 		}

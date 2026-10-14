@@ -8,11 +8,33 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/e2e"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/pwdocker"
 	"github.com/spf13/cobra"
 )
+
+// e2eEnvKeys are the credentials a Playwright child process needs (docker run -e E2E_*).
+var e2eEnvKeys = []string{"E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"}
+
+// credLookup resolves a key from the environment first, then the credential
+// file at envPath (FR-7.2). An unreadable file counts as absent.
+func credLookup(envPath string, getenv func(string) string) func(string) string {
+	var f *devenv.File
+	if envPath != "" {
+		f, _ = devenv.Load(envPath)
+	}
+	return devenv.Lookup(getenv, f)
+}
+
+// childCmd builds a child process whose Env carries E2E_* from lookup, so the
+// credentials reach the process without being inherited from the shell.
+func childCmd(name string, args, extraEnv []string, lookup func(string) string) *exec.Cmd {
+	c := exec.Command(name, args...) //nolint:gosec // G204 -- name is fixed npm/npx/docker; args computed internally
+	c.Env = devenv.ChildEnv(append(os.Environ(), extraEnv...), e2eEnvKeys, lookup)
+	return c
+}
 
 func e2eDir(repo string) string { return filepath.Join(repo, ".znf", "e2e") }
 
@@ -23,7 +45,7 @@ func runE2eLint(dir string, out io.Writer) error {
 }
 
 // runE2eRun writes the harness to tmp, builds a RunConfig, and calls e2e.Check.
-func runE2eRun(runner func(string, []string) error, goos, repo string, port int, out io.Writer) error {
+func runE2eRun(runner func(string, []string) error, lookup func(string) string, goos, repo string, port int, out io.Writer) error {
 	dir := e2eDir(repo)
 	if _, err := os.Stat(filepath.Join(dir, "e2e.config.json")); err != nil {
 		return exitcode.New(exitcode.BadArgs,
@@ -41,7 +63,7 @@ func runE2eRun(runner func(string, []string) error, goos, repo string, port int,
 	if err := e2e.WriteHarness(harnessDir); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
-	o := pwdocker.Options{Runner: runner, Getenv: os.Getenv, GOOS: goos, Stdout: out}
+	o := pwdocker.Options{Runner: runner, Getenv: lookup, GOOS: goos, Stdout: out}
 	cfg := e2e.RunConfig{HarnessDir: harnessDir, E2EDir: dir, Port: port}
 	if err := e2e.Check(o, cfg); err != nil {
 		return exitcode.New(exitcode.Fail, err)
@@ -70,15 +92,15 @@ func newE2eLoginCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
+			lookup := credLookup(workspaceEnvPath(), os.Getenv)
 			runner := func(dir, name string, args []string, extraEnv []string) error {
-				cc := exec.Command(name, args...) //nolint:gosec // G204 -- fixed npm/npx; args computed
+				cc := childCmd(name, args, extraEnv, lookup)
 				cc.Dir = dir
-				cc.Env = append(os.Environ(), extraEnv...)
 				cc.Stdout = os.Stderr
 				cc.Stderr = os.Stderr
 				return cc.Run()
 			}
-			_, err = e2e.Login(e2e.LoginOptions{Home: home, BaseURL: url, Getenv: os.Getenv,
+			_, err = e2e.Login(e2e.LoginOptions{Home: home, BaseURL: url, Getenv: lookup,
 				Run: runner, Stdout: cmd.OutOrStdout()})
 			return err
 		},
@@ -114,13 +136,14 @@ func newE2eCmd() *cobra.Command {
 			}); err != nil {
 				return err
 			}
+			lookup := credLookup(workspaceEnvPath(), os.Getenv)
 			runner := func(name string, args []string) error {
-				cc := exec.Command(name, args...) //nolint:gosec // G204 -- fixed "docker"; args computed
+				cc := childCmd(name, args, nil, lookup)
 				cc.Stdout = out
 				cc.Stderr = os.Stderr
 				return cc.Run()
 			}
-			return runE2eRun(runner, runtime.GOOS, resolveRepo(), port, out)
+			return runE2eRun(runner, lookup, runtime.GOOS, resolveRepo(), port, out)
 		},
 	}
 	lint := &cobra.Command{

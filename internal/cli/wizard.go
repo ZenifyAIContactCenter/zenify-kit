@@ -25,7 +25,7 @@ func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[
 		Workspace:  workspace,
 		Accessible: false,
 		PlanFooter: planFooterRows(workspace),
-		SecretKeys: []string{"MONGO_URL", "E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"},
+		SecretKeys: m.SecretKeys,
 		PlanFn: func() ([]reconcile.RepoPlan, error) {
 			// Already authenticated at entry: the caller's pre-wizard buildPlan
 			// produced this exact plan (same inputs, same auth), and loginStep

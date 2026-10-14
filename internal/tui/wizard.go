@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/charmbracelet/huh"
@@ -58,7 +59,7 @@ type OnboardConfig struct {
 	lookPath func(string) (string, error)
 
 	// SecretKeys are the B8 env keys prompted masked (bootstrap subset). Empty → secretStep no-op.
-	SecretKeys []string
+	SecretKeys []manifest.SecretKey
 	// SecretPromptFn overrides the masked prompt (test seam). Nil → the real huh EchoModePassword.
 	SecretPromptFn func(keys []string) (map[string]string, error)
 	// WelcomeNoteFn overrides welcomeNote (test seam). welcomeNote(false) renders

@@ -1,62 +1,64 @@
 package tui
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 )
 
-// readWSEnv reads the env block of settings.local.json in the test workspace.
-func readWSEnv(t *testing.T, ws string) map[string]string {
+// readEnvFile returns the key→value map of <ws>/.zenify/.env.
+func readEnvFile(t *testing.T, ws string) map[string]string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
+	f, err := devenv.Load(devenv.Path(ws))
 	if err != nil {
-		t.Fatalf("read settings: %v", err)
+		t.Fatalf("load env file: %v", err)
 	}
-	var root struct {
-		Env map[string]string `json:"env"`
-	}
-	if err := json.Unmarshal(b, &root); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	return root.Env
+	return f.Values()
 }
 
-func writeWSSettings(t *testing.T, ws, body string) {
+func writeEnvFileFor(t *testing.T, ws, body string) {
 	t.Helper()
-	dir := filepath.Join(ws, ".claude")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "settings.local.json"), []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(devenv.Path(ws), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func secretKeysOf(names ...string) []manifest.SecretKey {
+	out := make([]manifest.SecretKey, len(names))
+	for i, n := range names {
+		out[i] = manifest.SecretKey{Name: n, Secret: true}
+	}
+	return out
 }
 
 // SC-15: only empty/missing keys go to prompt-set; keys with a value are kept as-is.
 func TestSecretStep_OnlyPromptsEmpty_PreservesFilled(t *testing.T) {
 	ws := t.TempDir()
-	writeWSSettings(t, ws, `{"env":{"MONGO_URL":"mongodb://live","E2E_EMAIL":""}}`)
+	writeEnvFileFor(t, ws, "MONGO_URL='mongodb://live'\nE2E_EMAIL=\n")
 	var asked []string
 	cfg := OnboardConfig{
 		Workspace:  ws,
-		SecretKeys: []string{"MONGO_URL", "E2E_EMAIL", "E2E_PASSWORD"},
-		SecretPromptFn: func(keys []string) (map[string]string, error) {
-			asked = keys
+		SecretKeys: secretKeysOf("MONGO_URL", "E2E_EMAIL", "E2E_PASSWORD"),
+		SecretPromptFn: func(names []string) (map[string]string, error) {
+			asked = names
 			return map[string]string{"E2E_EMAIL": "a@b.com", "E2E_PASSWORD": "pw"}, nil
 		},
 	}
 	if err := secretStep(cfg); err != nil {
 		t.Fatalf("secretStep: %v", err)
 	}
-	// MONGO_URL already has a value → must NOT be prompted.
 	for _, k := range asked {
 		if k == "MONGO_URL" {
 			t.Fatalf("MONGO_URL already has a value but was still prompted: %v", asked)
 		}
 	}
-	env := readWSEnv(t, ws)
+	env := readEnvFile(t, ws)
 	if env["MONGO_URL"] != "mongodb://live" {
 		t.Errorf("MONGO_URL was changed: %q", env["MONGO_URL"])
 	}
@@ -65,36 +67,67 @@ func TestSecretStep_OnlyPromptsEmpty_PreservesFilled(t *testing.T) {
 	}
 }
 
-// SC-16: blank input → keeps the empty placeholder, no overwrite.
-func TestSecretStep_BlankInputKeepsPlaceholder(t *testing.T) {
+// The wizard writes .zenify/.env (0600) and leaves settings.local.json alone.
+func TestSecretStep_WritesEnvFile(t *testing.T) {
 	ws := t.TempDir()
-	writeWSSettings(t, ws, `{"env":{"E2E_EMAIL":""}}`)
+	if err := os.MkdirAll(filepath.Join(ws, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(ws, ".claude", "settings.local.json")
+	const settingsBody = `{"env":{"MONGO_URL":""}}`
+	if err := os.WriteFile(settings, []byte(settingsBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	cfg := OnboardConfig{
 		Workspace:  ws,
-		SecretKeys: []string{"E2E_EMAIL"},
-		SecretPromptFn: func(keys []string) (map[string]string, error) {
-			return map[string]string{"E2E_EMAIL": ""}, nil // dev types blank
+		SecretKeys: secretKeysOf("MONGO_URL"),
+		SecretPromptFn: func([]string) (map[string]string, error) {
+			return map[string]string{"MONGO_URL": "mongodb://fake"}, nil
 		},
 	}
 	if err := secretStep(cfg); err != nil {
 		t.Fatalf("secretStep: %v", err)
 	}
-	if got := readWSEnv(t, ws)["E2E_EMAIL"]; got != "" {
-		t.Errorf("blank input but key changed: %q", got)
+	if got := readEnvFile(t, ws)["MONGO_URL"]; got != "mongodb://fake" {
+		t.Errorf("env file MONGO_URL = %q", got)
+	}
+	fi, err := os.Stat(devenv.Path(ws))
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("env file mode = %v err=%v, want 0600", fi.Mode().Perm(), err)
+	}
+	after, _ := os.ReadFile(settings) //nolint:gosec // G304 -- path is computed internally from t.TempDir
+	if string(after) != settingsBody {
+		t.Errorf("settings.local.json changed: %q", after)
+	}
+}
+
+// SC-16: blank input → nothing written.
+func TestSecretStep_BlankInputWritesNothing(t *testing.T) {
+	ws := t.TempDir()
+	cfg := OnboardConfig{
+		Workspace:  ws,
+		SecretKeys: secretKeysOf("E2E_EMAIL"),
+		SecretPromptFn: func([]string) (map[string]string, error) {
+			return map[string]string{"E2E_EMAIL": ""}, nil
+		},
+	}
+	if err := secretStep(cfg); err != nil {
+		t.Fatalf("secretStep: %v", err)
+	}
+	if _, err := os.Stat(devenv.Path(ws)); !os.IsNotExist(err) {
+		t.Errorf("blank input must not create the env file, stat err=%v", err)
 	}
 }
 
 // SC-17: Accessible → no-op, file untouched.
 func TestSecretStep_AccessibleNoOp(t *testing.T) {
 	ws := t.TempDir()
-	writeWSSettings(t, ws, `{"env":{"E2E_EMAIL":""}}`)
-	before, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
 	called := false
 	cfg := OnboardConfig{
 		Workspace:  ws,
 		Accessible: true,
-		SecretKeys: []string{"E2E_EMAIL"},
-		SecretPromptFn: func(keys []string) (map[string]string, error) {
+		SecretKeys: secretKeysOf("E2E_EMAIL"),
+		SecretPromptFn: func([]string) (map[string]string, error) {
 			called = true
 			return nil, nil
 		},
@@ -105,108 +138,44 @@ func TestSecretStep_AccessibleNoOp(t *testing.T) {
 	if called {
 		t.Error("Accessible=true but still prompted")
 	}
-	after, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
-	if string(before) != string(after) {
-		t.Error("file changed in Accessible mode")
+	if _, err := os.Stat(devenv.Path(ws)); !os.IsNotExist(err) {
+		t.Error("env file created in Accessible mode")
 	}
 }
 
-// SC-18: value containing & / < is preserved byte-for-byte (SetEscapeHTML off).
-func TestSecretStep_DoesNotEscapeSpecialChars(t *testing.T) {
+// A value with '&' or a quote survives the round trip through the file.
+func TestSecretStep_SpecialCharsRoundTrip(t *testing.T) {
 	ws := t.TempDir()
-	writeWSSettings(t, ws, `{"env":{"MONGO_URL":""}}`)
-	const url = "mongodb://h:27017/db?a=1&b=2&tls=true"
+	const url = "mongodb://h:27017/db?a=1&b=2&tls=true&x='y'"
 	cfg := OnboardConfig{
 		Workspace:  ws,
-		SecretKeys: []string{"MONGO_URL"},
-		SecretPromptFn: func(keys []string) (map[string]string, error) {
+		SecretKeys: secretKeysOf("MONGO_URL"),
+		SecretPromptFn: func([]string) (map[string]string, error) {
 			return map[string]string{"MONGO_URL": url}, nil
 		},
 	}
 	if err := secretStep(cfg); err != nil {
 		t.Fatalf("secretStep: %v", err)
 	}
-	if got := readWSEnv(t, ws)["MONGO_URL"]; got != url {
+	if got := readEnvFile(t, ws)["MONGO_URL"]; got != url {
 		t.Errorf("value was mangled: %q != %q", got, url)
 	}
-	raw, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
-	if !strContains(string(raw), "a=1&b=2") {
-		t.Errorf("bytes on disk were escaped: %s", raw)
-	}
 }
 
-// Secret-loss guard: readEnvBlock must validate (malformed JSON / env not an
-// object) and return an error BEFORE secretStep prompts or writes anything — locking in the
-// read-validate-before-write order so a future accidental reorder can't lose a secret.
-func TestSecretStep_CorruptJSON_LeavesFileUnchanged(t *testing.T) {
+// A value holding a newline is refused before anything is written.
+func TestSecretStep_NewlineRefused(t *testing.T) {
 	ws := t.TempDir()
-	writeWSSettings(t, ws, `{"env": {`)
-	before, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
-	if err != nil {
-		t.Fatalf("read before: %v", err)
-	}
-	prompted := false
 	cfg := OnboardConfig{
 		Workspace:  ws,
-		SecretKeys: []string{"MONGO_URL"},
-		SecretPromptFn: func(keys []string) (map[string]string, error) {
-			prompted = true
-			return map[string]string{"MONGO_URL": "mongodb://should-not-write"}, nil
+		SecretKeys: secretKeysOf("MONGO_URL"),
+		SecretPromptFn: func([]string) (map[string]string, error) {
+			return map[string]string{"MONGO_URL": "a\nINJECTED=1"}, nil
 		},
 	}
 	if err := secretStep(cfg); err == nil {
-		t.Fatal("secretStep: expected error on corrupt JSON, got nil")
+		t.Fatal("expected error for a newline value")
 	}
-	if prompted {
-		t.Error("SecretPromptFn was called even though malformed JSON must fail before prompting")
+	if _, err := os.Stat(devenv.Path(ws)); !os.IsNotExist(err) {
+		t.Error("env file written despite the refusal")
 	}
-	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
-	if err != nil {
-		t.Fatalf("read after: %v", err)
-	}
-	if string(before) != string(after) {
-		t.Errorf("file changed on malformed JSON: before=%q after=%q", before, after)
-	}
-}
-
-func TestSecretStep_NonObjectEnv_LeavesFileUnchanged(t *testing.T) {
-	ws := t.TempDir()
-	writeWSSettings(t, ws, `{"env":"oops"}`)
-	before, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
-	if err != nil {
-		t.Fatalf("read before: %v", err)
-	}
-	prompted := false
-	cfg := OnboardConfig{
-		Workspace:  ws,
-		SecretKeys: []string{"MONGO_URL"},
-		SecretPromptFn: func(keys []string) (map[string]string, error) {
-			prompted = true
-			return map[string]string{"MONGO_URL": "mongodb://should-not-write"}, nil
-		},
-	}
-	if err := secretStep(cfg); err == nil {
-		t.Fatal("secretStep: expected error when env is not an object, got nil")
-	}
-	if prompted {
-		t.Error("SecretPromptFn was called even though a non-object env must fail before prompting")
-	}
-	after, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json")) //nolint:gosec // G304 -- path is computed internally from t.TempDir, not externally-tainted input
-	if err != nil {
-		t.Fatalf("read after: %v", err)
-	}
-	if string(before) != string(after) {
-		t.Errorf("file changed when env isn't an object: before=%q after=%q", before, after)
-	}
-}
-
-func strContains(s, sub string) bool {
-	return len(s) >= len(sub) && (func() bool {
-		for i := 0; i+len(sub) <= len(s); i++ {
-			if s[i:i+len(sub)] == sub {
-				return true
-			}
-		}
-		return false
-	})()
 }

@@ -2,9 +2,82 @@ package cli
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 )
+
+func noManifest() *manifest.Manifest { return nil }
+
+func fixedManifest(m *manifest.Manifest) func() *manifest.Manifest {
+	return func() *manifest.Manifest { return m }
+}
+
+func writeEnv(t *testing.T, body string, mode os.FileMode) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(p, []byte(body), mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, mode); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// FR-8.1: a global manifest key missing from env and file is named; a repo-only key is not.
+func TestDoctor_MissingManifestKeys(t *testing.T) {
+	m := &manifest.Manifest{
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}, {Name: "E2E_EMAIL", Secret: true}, {Name: "POSTHOG_API_KEY", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "lumi-agent", SecretKeys: []manifest.SecretKey{{Name: "OPENROUTER_API_KEY", Secret: true}}}},
+	}
+	p := writeEnv(t, "MONGO_URL='mongodb://fake'\nE2E_EMAIL=a@b.c\n", 0o600)
+	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return p }, fixedManifest(m)).Run()
+	if !ok {
+		t.Fatalf("MONGO_URL present, want ok; detail=%q", detail)
+	}
+	for _, want := range []string{"MONGO_URL=present", "E2E_EMAIL=present", "POSTHOG_API_KEY=absent"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail %q lacks %q", detail, want)
+		}
+	}
+	if strings.Contains(detail, "OPENROUTER_API_KEY") {
+		t.Errorf("repo-scoped key must not be reported: %q", detail)
+	}
+}
+
+// SC-10 / FR-8.2: a local key (not in the manifest) with no description line is named.
+func TestDoctor_LocalKeyWithoutDesc(t *testing.T) {
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}}}
+	p := writeEnv(t, "MONGO_URL=x\n# my own token\nDESCRIBED_KEY=1\nBARE_KEY=2\n", 0o600)
+	ok, detail := envFileCheck(func() string { return p }, fixedManifest(m)).Run()
+	if ok {
+		t.Fatalf("a local key without description must flag; detail=%q", detail)
+	}
+	if !strings.Contains(detail, "BARE_KEY") {
+		t.Errorf("detail should name BARE_KEY: %q", detail)
+	}
+	if strings.Contains(detail, "DESCRIBED_KEY") || strings.Contains(detail, "MONGO_URL") {
+		t.Errorf("described / manifest keys must not be flagged: %q", detail)
+	}
+}
+
+// FR-8.4: a file readable by group/other is flagged.
+func TestDoctor_EnvFilePerm(t *testing.T) {
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}}}
+	wide := writeEnv(t, "MONGO_URL=x\n", 0o644)
+	ok, detail := envFileCheck(func() string { return wide }, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, "0644") {
+		t.Fatalf("mode 0644 must flag; ok=%v detail=%q", ok, detail)
+	}
+	tight := writeEnv(t, "MONGO_URL=x\n", 0o600)
+	if ok, detail := envFileCheck(func() string { return tight }, fixedManifest(m)).Run(); !ok {
+		t.Fatalf("mode 0600 must pass; detail=%q", detail)
+	}
+}
 
 func TestSecretPresenceNamesOnlyNeverLeaksValue(t *testing.T) {
 	getenv := func(k string) string {
@@ -13,7 +86,7 @@ func TestSecretPresenceNamesOnlyNeverLeaksValue(t *testing.T) {
 		}
 		return ""
 	}
-	c := secretPresenceCheck(getenv, func() string { return "/nonexistent/settings.local.json" })
+	c := secretPresenceCheck(getenv, func() string { return "/nonexistent/.env" }, noManifest)
 	ok, detail := c.Run()
 	if strings.Contains(detail, "secretpass") || strings.Contains(detail, "10.0.0.1") || strings.Contains(detail, "mongodb://") {
 		t.Fatalf("FR-041 VIOLATION: secret value leaked into detail: %q", detail)
@@ -25,7 +98,7 @@ func TestSecretPresenceNamesOnlyNeverLeaksValue(t *testing.T) {
 }
 
 func TestSecretPresenceReportsAbsent(t *testing.T) {
-	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "/nonexistent/settings.local.json" })
+	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "/nonexistent/.env" }, noManifest)
 	ok, detail := c.Run()
 	if ok {
 		t.Fatal("no MONGO_URL anywhere → check should be not-ok")
@@ -36,7 +109,7 @@ func TestSecretPresenceReportsAbsent(t *testing.T) {
 }
 
 // F3: an exported MONGO_URL must count even when no workspace resolves
-// (settingsPath returns "") — LoadCreds reads env first regardless of path.
+// (envPath returns "") — LoadCreds reads env first regardless of path.
 func TestSecretPresenceCheck_EnvMongoUrlCountsWithNoWorkspace(t *testing.T) {
 	getenv := func(k string) string {
 		if k == "MONGO_URL" {
@@ -44,7 +117,7 @@ func TestSecretPresenceCheck_EnvMongoUrlCountsWithNoWorkspace(t *testing.T) {
 		}
 		return ""
 	}
-	c := secretPresenceCheck(getenv, func() string { return "" })
+	c := secretPresenceCheck(getenv, func() string { return "" }, noManifest)
 	ok, detail := c.Run()
 	if !ok {
 		t.Fatalf("MONGO_URL is set in env, ok should be true; detail=%q", detail)
@@ -58,7 +131,7 @@ func TestSecretPresenceCheck_EnvMongoUrlCountsWithNoWorkspace(t *testing.T) {
 // explains why via the no-workspace hint (previously an early return with a
 // fixed message that ignored env entirely).
 func TestSecretPresenceCheck_NoEnvNoWorkspace(t *testing.T) {
-	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "" })
+	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "" }, noManifest)
 	ok, detail := c.Run()
 	if ok {
 		t.Fatal("no MONGO_URL and no workspace → check should be not-ok")

@@ -1,11 +1,10 @@
 package tui
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 )
 
@@ -99,19 +98,12 @@ func TestLoginStep_HeadlessGHMissingNoPrompt(t *testing.T) {
 
 func TestRunOnboard_RunsSecretStepAfterApply(t *testing.T) {
 	ws := t.TempDir()
-	dir := filepath.Join(ws, ".claude")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "settings.local.json"), []byte(`{"env":{"E2E_EMAIL":""}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	applied := false
 	cfg := OnboardConfig{
 		Workspace:   ws,
 		Accessible:  false, // secretStep only runs when !Accessible
 		AutoConfirm: true,  // skip the Proceed? confirm
-		SecretKeys:  []string{"E2E_EMAIL"},
+		SecretKeys:  []manifest.SecretKey{{Name: "E2E_EMAIL", Secret: true}},
 		SecretPromptFn: func(keys []string) (map[string]string, error) {
 			return map[string]string{"E2E_EMAIL": "x@y.com"}, nil
 		},
@@ -129,19 +121,9 @@ func TestRunOnboard_RunsSecretStepAfterApply(t *testing.T) {
 	if !applied {
 		t.Fatal("ApplyFn did not run")
 	}
-	b, _ := os.ReadFile(filepath.Join(dir, "settings.local.json"))
-	if !strContainsWZ(string(b), "x@y.com") {
-		t.Errorf("secretStep did not write the value after apply: %s", b)
+	if got := readEnvFile(t, ws)["E2E_EMAIL"]; got != "x@y.com" {
+		t.Errorf("secretStep did not write the value after apply: %q", got)
 	}
-}
-
-func strContainsWZ(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
 
 func TestWelcomeNote_SkippedWhenAccessible(t *testing.T) {
