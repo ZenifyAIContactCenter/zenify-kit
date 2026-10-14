@@ -13,7 +13,7 @@ func TestDisciplineSkillIsAgnostic(t *testing.T) {
 	s := strings.ToLower(string(b))
 	for _, f := range []string{
 		"herdr", "3csoft", "contact-center", "ott-gateway",
-		"db_read", "lumi", "personal-zalo", "notification-hub",
+		"db_read", "lumi", "personal-zalo", "notification-hub", "message-hub",
 	} {
 		if strings.Contains(s, f) {
 			t.Errorf("discipline SKILL.md leaks project/personal token %q", f)
