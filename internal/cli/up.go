@@ -234,7 +234,7 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	}
 
 	opts := apply.Options{
-		Workspace: workspace, Org: m.Org, Owned: owned, RepoByName: repoByName, SecretKeys: m.SecretKeys,
+		Workspace: workspace, Org: m.Org, Owned: owned, RepoByName: repoByName, SecretKeys: manifest.KeyNames(m.SecretKeys),
 		SnapshotRoot: filepath.Join(zenifyDir, "snapshots"),
 		ManifestPath: manifestPath,
 		Now:          applyNow,

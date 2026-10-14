@@ -9,21 +9,75 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// SecretKey describes one env key the kit manages: its name plus the metadata a
+// teammate needs to fill it. Never carries a value (FR-041).
+type SecretKey struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	HowTo       string `yaml:"howTo"`  // who or where hands the value out; never the value itself
+	Scope       string `yaml:"scope"`  // "personal" (each dev owns it) or "shared" (team-wide)
+	Secret      bool   `yaml:"secret"` // false → value is safe to echo (host, port, URL)
+}
+
+// UnmarshalYAML accepts a bare string (name only, Secret true) or the object form.
+// In the object form an omitted `secret` also defaults to true.
+func (k *SecretKey) UnmarshalYAML(n *yaml.Node) error {
+	if n.Kind == yaml.ScalarNode {
+		*k = SecretKey{Name: n.Value, Secret: true}
+		return nil
+	}
+	type plain SecretKey
+	p := plain{Secret: true}
+	if err := n.Decode(&p); err != nil {
+		return err
+	}
+	*k = SecretKey(p)
+	return nil
+}
+
+// KeyNames returns the Name of each key, order kept.
+func KeyNames(keys []SecretKey) []string {
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k.Name)
+	}
+	return out
+}
+
+// AllKeys is the global keys followed by each repo's own, deduplicated by Name, order kept.
+func (m *Manifest) AllKeys() []SecretKey {
+	seen := map[string]bool{}
+	var out []SecretKey
+	add := func(list []SecretKey) {
+		for _, k := range list {
+			if !seen[k.Name] {
+				seen[k.Name] = true
+				out = append(out, k)
+			}
+		}
+	}
+	add(m.SecretKeys)
+	for _, r := range m.Repos {
+		add(r.SecretKeys)
+	}
+	return out
+}
+
 // Repo is one entry in the manifest desired-set.
 type Repo struct {
-	Name       string   `yaml:"name"`
-	URL        string   `yaml:"url"`
-	Path       string   `yaml:"path"` // relative to workspace root, overridable via overlay
-	Base       string   `yaml:"base"`
-	Tags       []string `yaml:"tags"`
-	SecretKeys []string `yaml:"secretKeys"` // repo-only env keys, scaffolded on top of Manifest.SecretKeys; names only, never values (FR-041)
+	Name       string      `yaml:"name"`
+	URL        string      `yaml:"url"`
+	Path       string      `yaml:"path"` // relative to workspace root, overridable via overlay
+	Base       string      `yaml:"base"`
+	Tags       []string    `yaml:"tags"`
+	SecretKeys []SecretKey `yaml:"secretKeys"` // repo-only env keys, scaffolded on top of Manifest.SecretKeys; names only, never values (FR-041)
 }
 
 // Manifest is the full desired-set plus the GitHub org that owns it.
 type Manifest struct {
-	Org        string   `yaml:"org"`
-	Repos      []Repo   `yaml:"repos"`
-	SecretKeys []string `yaml:"secretKeys"` // env keys the kit scaffolds as empty placeholders (FR-065); values never distributed
+	Org        string      `yaml:"org"`
+	Repos      []Repo      `yaml:"repos"`
+	SecretKeys []SecretKey `yaml:"secretKeys"` // env keys the kit scaffolds as empty placeholders (FR-065); values never distributed
 }
 
 // Load parses a manifest YAML file. A missing file, empty org, or empty repo

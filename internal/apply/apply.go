@@ -230,7 +230,7 @@ func isActionable(s reconcile.State) bool {
 // keysFor is the global secret keys followed by the repo's own manifest keys
 // (FR-4.2): order kept, duplicates dropped.
 func keysFor(opts Options, name string) []string {
-	repoKeys := opts.RepoByName[name].SecretKeys
+	repoKeys := manifest.KeyNames(opts.RepoByName[name].SecretKeys)
 	if len(repoKeys) == 0 {
 		return opts.SecretKeys
 	}

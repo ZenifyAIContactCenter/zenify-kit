@@ -549,7 +549,7 @@ func writeRepoSettings(t *testing.T, repo, body string) string {
 
 func TestKeysFor_GlobalThenRepo_Deduped(t *testing.T) {
 	opts := Options{SecretKeys: []string{"MONGO_URL", "X"},
-		RepoByName: map[string]manifest.Repo{"r": {Name: "r", SecretKeys: []string{"X", "R_URL"}}}}
+		RepoByName: map[string]manifest.Repo{"r": {Name: "r", SecretKeys: []manifest.SecretKey{{Name: "X", Secret: true}, {Name: "R_URL", Secret: true}}}}}
 	got := keysFor(opts, "r")
 	want := []string{"MONGO_URL", "X", "R_URL"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -568,7 +568,7 @@ func TestApply_OK_MergesMissingRepoKeys(t *testing.T) {
 	res, err := Apply(
 		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
 		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
-			RepoByName: map[string]manifest.Repo{"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}}}},
+			RepoByName: map[string]manifest.Repo{"lumi-agent": {Name: "lumi-agent", SecretKeys: []manifest.SecretKey{{Name: "LUMI_MYSQL_URL_STG", Secret: true}, {Name: "QDRANT_URL_STG", Secret: true}}}}},
 		&fakeGH{}, &fakeGit{},
 	)
 	if err != nil || res[0].Err != nil {
@@ -619,7 +619,7 @@ func TestApply_OK_OtherRepoKeysDoNotLeak(t *testing.T) {
 		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
 			RepoByName: map[string]manifest.Repo{
 				"be":         {Name: "be"},
-				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG"}},
+				"lumi-agent": {Name: "lumi-agent", SecretKeys: []manifest.SecretKey{{Name: "LUMI_MYSQL_URL_STG", Secret: true}}},
 			}},
 		&fakeGH{}, &fakeGit{},
 	)
@@ -640,7 +640,7 @@ func TestApply_Adopt_MergesMissingRepoKeys(t *testing.T) {
 	res, err := Apply(
 		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Adopt, Path: "svc"}},
 		Options{Workspace: ws, Owned: owned,
-			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc", SecretKeys: []string{"SVC_URL"}}}},
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}},
 		&fakeGH{}, &fakeGit{},
 	)
 	if err != nil || res[0].Err != nil {
@@ -678,7 +678,7 @@ func TestApply_OK_MergesMissingRepoKeys_RevertsOnVerifyFailure(t *testing.T) {
 		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
 		Options{Workspace: ws, Owned: owned, SecretKeys: []string{"MONGO_URL"},
 			RepoByName: map[string]manifest.Repo{
-				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}},
+				"lumi-agent": {Name: "lumi-agent", SecretKeys: []manifest.SecretKey{{Name: "LUMI_MYSQL_URL_STG", Secret: true}, {Name: "QDRANT_URL_STG", Secret: true}}},
 			},
 			SnapshotRoot: snapRoot, ManifestPath: manifestPath,
 			Now: func() int64 { return 9 },
@@ -719,7 +719,7 @@ func TestApply_OK_MergesMissingRepoKeys_TransactionSucceeds(t *testing.T) {
 		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
 		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
 			RepoByName: map[string]manifest.Repo{
-				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}},
+				"lumi-agent": {Name: "lumi-agent", SecretKeys: []manifest.SecretKey{{Name: "LUMI_MYSQL_URL_STG", Secret: true}, {Name: "QDRANT_URL_STG", Secret: true}}},
 			},
 			SnapshotRoot: snapRoot, ManifestPath: manifestPath,
 			Now: func() int64 { return 10 },

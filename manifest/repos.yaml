@@ -6,18 +6,53 @@ org: ZenifyAIContactCenter
 # EMPTY placeholders (FR-065). Only the key NAMES are versioned here — a secret
 # VALUE is never stored, distributed, or read by the kit (FR-041). A developer
 # fills the values locally; an existing settings file keeps its values and only
-# gains the keys it is missing.
+# gains the keys it is missing. Each key carries description/howTo/scope/secret
+# metadata (still no values).
 secretKeys:
-  - MONGO_URL
-  - MYSQL_HOST
-  - MYSQL_PORT
-  - MYSQL_USER
-  - MYSQL_PASSWORD
-  - MYSQL_DATABASE
-  - E2E_DOMAIN
-  - E2E_EMAIL
-  - E2E_PASSWORD
-  - POSTHOG_API_KEY
+  - name: MONGO_URL
+    description: "Chuỗi kết nối MongoDB staging, dùng cho db-read và script dev"
+    howTo: "Hỏi trưởng nhóm DevOps (kênh #devops); chuỗi này cấp theo từng người hoặc dùng chung của team"
+    scope: shared
+  - name: MYSQL_HOST
+    description: "Host MySQL của contact-center, dùng cho db-read"
+    howTo: "Hỏi trưởng nhóm DevOps; thường là địa chỉ máy chủ DB nội bộ"
+    scope: shared
+    secret: false
+  - name: MYSQL_PORT
+    description: "Cổng MySQL của contact-center"
+    howTo: "Hỏi trưởng nhóm DevOps; thường là 3306"
+    scope: shared
+    secret: false
+  - name: MYSQL_USER
+    description: "Tài khoản MySQL chỉ đọc cho db-read"
+    howTo: "Hỏi trưởng nhóm DevOps để được cấp tài khoản chỉ đọc"
+    scope: shared
+  - name: MYSQL_PASSWORD
+    description: "Mật khẩu của tài khoản MySQL chỉ đọc"
+    howTo: "Trưởng nhóm DevOps gửi riêng khi cấp tài khoản MYSQL_USER"
+    scope: shared
+  - name: MYSQL_DATABASE
+    description: "Tên database MySQL của contact-center"
+    howTo: "Hỏi trưởng nhóm DevOps hoặc xem cấu hình dev của contact-center-be"
+    scope: shared
+    secret: false
+  - name: E2E_DOMAIN
+    description: "Tên miền (tenant) dùng để đăng nhập khi chạy E2E"
+    howTo: "Dùng tenant dev do QC hoặc trưởng nhóm cấp"
+    scope: shared
+    secret: false
+  - name: E2E_EMAIL
+    description: "Email tài khoản dùng đăng nhập khi chạy E2E"
+    howTo: "Tài khoản test của chính bạn trên tenant dev; nhờ QC tạo nếu chưa có"
+    scope: personal
+  - name: E2E_PASSWORD
+    description: "Mật khẩu của tài khoản E2E"
+    howTo: "Mật khẩu tài khoản test của chính bạn; đặt khi QC tạo tài khoản"
+    scope: personal
+  - name: POSTHOG_API_KEY
+    description: "Khoá API PostHog cá nhân để đọc analytics"
+    howTo: "Tự tạo trong PostHog (Settings > Personal API keys) bằng tài khoản của bạn"
+    scope: personal
 repos:
   - name: contact-center-be
     url: git@github.com:ZenifyAIContactCenter/contact-center-be.git
@@ -56,12 +91,31 @@ repos:
     tags: [ai]
     # Repo-scoped: only a developer who clones lumi-agent gets these placeholders.
     secretKeys:
-      - LUMI_MYSQL_URL_STG
-      - LUMI_MYSQL_URL_PRD
-      - QDRANT_URL_STG
-      - QDRANT_URL_PRD
-      - LUMI_APP_URL_STG
-      - OPENROUTER_API_KEY
+      - name: LUMI_MYSQL_URL_STG
+        description: "URL MySQL của lumi-agent trên staging"
+        howTo: "Hỏi trưởng nhóm DevOps hoặc người phụ trách lumi-agent"
+        scope: shared
+      - name: LUMI_MYSQL_URL_PRD
+        description: "URL MySQL của lumi-agent trên production (chỉ đọc)"
+        howTo: "Hỏi trưởng nhóm DevOps; chỉ cấp khi cần điều tra production"
+        scope: shared
+      - name: QDRANT_URL_STG
+        description: "URL Qdrant của lumi-agent trên staging"
+        howTo: "Hỏi trưởng nhóm DevOps hoặc người phụ trách lumi-agent"
+        scope: shared
+      - name: QDRANT_URL_PRD
+        description: "URL Qdrant của lumi-agent trên production"
+        howTo: "Hỏi trưởng nhóm DevOps; chỉ cấp khi cần điều tra production"
+        scope: shared
+      - name: LUMI_APP_URL_STG
+        description: "URL ứng dụng lumi-agent trên staging"
+        howTo: "Hỏi người phụ trách lumi-agent"
+        scope: shared
+        secret: false
+      - name: OPENROUTER_API_KEY
+        description: "Khoá API OpenRouter để chạy lumi-agent cục bộ"
+        howTo: "Tự tạo tại openrouter.ai bằng tài khoản của bạn, hoặc xin hạn mức từ trưởng nhóm AI"
+        scope: personal
   - name: message-hub-be
     url: git@github.com:ZenifyAIContactCenter/message-hub-be.git
     path: repos/message-hub-be
