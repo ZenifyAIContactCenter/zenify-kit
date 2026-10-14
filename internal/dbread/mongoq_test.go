@@ -169,7 +169,7 @@ func TestBuildMongoScript_ExplainFind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(s, `.find(EJSON.parse("{\"a\":1}")).limit(50).maxTimeMS(30000).explain("queryPlanner")`) {
+	if !strings.Contains(s, `.find(EJSON.parse("{\"a\":1}")).limit(50).maxTimeMS(30000).explain("executionStats")`) {
 		t.Errorf("unexpected explain script: %s", s)
 	}
 }

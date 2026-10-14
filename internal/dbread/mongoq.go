@@ -179,7 +179,7 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"queryPlanner\").aggregate(%s,{maxTimeMS:%d}), null, 2))", coll, pl, QueryTimeoutMS)
+			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"executionStats\").aggregate(%s,{maxTimeMS:%d}), null, 2))", coll, pl, QueryTimeoutMS)
 			break
 		}
 		args := filterOrEmpty
@@ -192,7 +192,7 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 		}
 		cur += fmt.Sprintf(".limit(%d).maxTimeMS(%d)", limit, QueryTimeoutMS)
 		if q.Op == "explain" {
-			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"queryPlanner\"), null, 2))", cur)
+			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"executionStats\"), null, 2))", cur)
 		} else {
 			fmt.Fprintf(&b, "print(EJSON.stringify(%s.toArray(), null, 2))", cur)
 		}

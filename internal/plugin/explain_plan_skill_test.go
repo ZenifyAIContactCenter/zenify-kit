@@ -26,6 +26,7 @@ func TestExplainPlanSkill_Materialized_HasKeyParts(t *testing.T) {
 		"BLOCKING",               // two-tier severity
 		"COLLSCAN",               // Mongo rubric
 		"Seq Scan",               // SQL rubric (relational still covered)
+		"executionStats",         // Mongo rubric input
 		"zenify db-read explain", // how to run explain on Mongo
 		"zenify db-read",         // tool that runs explain
 	} {

@@ -24,7 +24,7 @@ zenify db-read <collections|tables|doc|count|find|aggregate|explain|sql> [arg]
 | `count <collection>` | Đếm document, thêm `--filter` để đếm có điều kiện |
 | `find <collection>` | Tìm document với `--filter`, `--projection`, `--sort`, `--limit` |
 | `aggregate <collection>` | Chạy `--pipeline`, từ chối `$out` và `$merge` |
-| `explain <collection>` | In queryPlanner cho `--filter`/`--sort` hoặc `--pipeline` |
+| `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline` (chạy truy vấn đọc, tối đa 30 giây) |
 | `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc trong transaction READ ONLY |
 
 Không lệnh nào nhận code tự do. Lệnh `eval` đã bị gỡ; muốn lấy mọi giá trị của một field (thay cho `distinct`), dùng `aggregate`:

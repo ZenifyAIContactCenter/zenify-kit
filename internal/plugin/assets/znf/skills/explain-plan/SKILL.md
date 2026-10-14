@@ -50,7 +50,7 @@ zenify db-read sql  'EXPLAIN ANALYZE <real-statement>'
 
 ## Step 3 — dynamic rubric (two-tier)
 
-Mongo: read the `winningPlan` of the `db-read explain` output (`stage`, `indexName`); it is queryPlanner only, so it carries no `totalDocsExamined` and the scan-ratio rows do not apply. SQL: `EXPLAIN ANALYZE` rows give `nReturned`/docs-examined style counts, so the scan-ratio rows apply there.
+Read `executionStats` from `zenify db-read explain` (it runs the read query, max 30 s): `stage`, `nReturned`, `totalDocsExamined`, `totalKeysExamined`.
 
 | Plan shows | Tier |
 |---|---|

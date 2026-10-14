@@ -17,7 +17,7 @@ Tám lệnh con:
 | `count <collection>` | Đếm document, thêm `--filter` để đếm có điều kiện |
 | `find <collection>` | Tìm document với `--filter`, `--projection`, `--sort`, `--limit` |
 | `aggregate <collection>` | Chạy `--pipeline`, từ chối `$out` và `$merge` |
-| `explain <collection>` | In queryPlanner cho `--filter`/`--sort` hoặc `--pipeline` |
+| `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline` (chạy truy vấn đọc, tối đa 30 giây) |
 | `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc trong transaction READ ONLY |
 
 Kết nối lấy từ biến môi trường `MONGO_URL` và các biến `MYSQL_*` trong khối `env` của file `.claude/settings.local.json` ở workspace. Lệnh không nhận chuỗi kết nối qua tham số và không in ra màn hình.
