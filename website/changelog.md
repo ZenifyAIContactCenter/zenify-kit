@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.35.0
+
+*2026-10-14*
+
+- **Thay đổi phá vỡ:** lệnh con `eval` của `zenify db-read` bị gỡ, vì lệnh này nhận code mongosh tự do. Thay bằng các lệnh có cấu trúc: `find`, `aggregate`, `explain` (cùng `collections`, `tables`, `doc`, `count`, `sql` đã có). Thay cho `distinct`: `zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`. `--limit` mặc định 50, tối đa 200; một truy vấn chạy tối đa 30 giây. `sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE` hoặc `EXPLAIN` trong transaction READ ONLY, và từ chối comment, `\`, `INTO`, `FOR SHARE`, `LOCK IN SHARE MODE` ngoài chuỗi literal. Skill `/znf:ground` và `/znf:explain-plan` đã dùng cú pháp mới. Xem [Đọc dữ liệu thật](/guides/read-real-data).
+
 ## v0.34.1
 
 *2026-10-14*

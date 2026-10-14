@@ -66,11 +66,11 @@ never from a prefix in its key name.
 shape every version ever wrote. So for any field a condition, `switch`, or enum comparison reads:
 
 ```bash
-zenify db-read eval 'db.getCollection("<a-real-name>").distinct("<field>")'   # every value that exists
-zenify db-read count <a-real-name>                                            # how much data you are landing on
+zenify db-read aggregate <a-real-name> --pipeline '[{"$group":{"_id":"$<field>"}}]'   # every value that exists
+zenify db-read count <a-real-name>                                                        # how much data you are landing on
 ```
 
-If `distinct` returns a value the new code has no branch for, that is a bug already written. A
+If the `$group` returns a value the new code has no branch for, that is a bug already written. A
 **new required field** is absent from every existing document: add it optional → switch all
 writers → backfill in batches → only then require it.
 
@@ -88,7 +88,7 @@ predicate appears in every one of them — and carry it.
 Grounding a query is the cheapest moment to see its plan. This is the **mandatory** DB-perf gate:
 when the change adds or touches a backend DB query, delegate to **`Skill(znf:explain-plan)`** — it
 runs `zenify db-perf` (the static two-tier scan, no DB needed) plus the dynamic explain, reading
-each query's plan (`zenify db-read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE`) and
+each query's plan (`zenify db-read explain <coll> --filter '<json>'` / `EXPLAIN ANALYZE`) and
 flagging a `COLLSCAN` / `Seq Scan` on a large collection before the code is even written. At ground
 time the gate is advisory; the **same** gate runs with teeth at `/ship`. A missing
 `Skill(znf:explain-plan)` line here when the diff touches a query means the gate was skipped.

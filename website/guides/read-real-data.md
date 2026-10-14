@@ -13,17 +13,26 @@ Dùng lệnh này trước khi viết code chạm một collection, bảng hoặ
 ## Lệnh
 
 ```bash
-zenify db-read <collections|tables|doc|count|eval|sql> [arg]
+zenify db-read <collections|tables|doc|count|find|aggregate|explain|sql> [arg]
 ```
 
 | Lệnh con | Kết quả |
 |---|---|
 | `collections [chuỗi]` | Liệt kê collection Mongo, lọc theo chuỗi con nếu có |
-| `tables` | Liệt kê bảng MySQL |
+| `tables [chuỗi]` | Liệt kê bảng MySQL, lọc theo chuỗi con nếu có |
 | `doc <collection>` | In một document thật để xem tên field |
-| `count <collection>` | Đếm document |
-| `eval '<biểu thức>'` | Chạy một biểu thức mongosh chỉ đọc |
-| `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc |
+| `count <collection>` | Đếm document, thêm `--filter` để đếm có điều kiện |
+| `find <collection>` | Tìm document với `--filter`, `--projection`, `--sort`, `--limit` |
+| `aggregate <collection>` | Chạy `--pipeline`, từ chối `$out` và `$merge` |
+| `explain <collection>` | In queryPlanner cho `--filter`/`--sort` hoặc `--pipeline` |
+| `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc trong transaction READ ONLY |
+
+Không lệnh nào nhận code tự do. Lệnh `eval` đã bị gỡ; muốn lấy mọi giá trị của một field (thay cho `distinct`), dùng `aggregate`:
+
+```bash
+zenify db-read aggregate chat_rooms --pipeline '[{"$group":{"_id":"$status"}}]'
+zenify db-read find chat_rooms --filter '{"_id":{"$oid":"<id>"}}' --limit 5
+```
 
 ```bash
 zenify db-read collections chatbot
@@ -35,7 +44,9 @@ zenify db-read sql 'DESCRIBE agents'
 
 Kết nối lấy từ biến môi trường `MONGO_URL` và các biến `MYSQL_*` trong khối `env` của file `.claude/settings.local.json` ở workspace. Lệnh không nhận chuỗi kết nối qua tham số dòng lệnh và không in ra màn hình, nên chạy `zenify db-read` không bao giờ làm lộ credential.
 
-`eval` và `sql` từ chối mọi động từ ghi. Khi gặp một câu lệnh ghi, lệnh báo "refused write" và dừng, không thực thi.
+`--limit` mặc định 50 và tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`.
+
+`sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC` hoặc `EXPLAIN`, chạy trong transaction READ ONLY. Ngoài chuỗi literal, lệnh từ chối comment, ký tự `\`, các từ `DELETE`, `UPDATE`, `INSERT`, `INTO`, `FOR SHARE` và `LOCK IN SHARE MODE`. Khi gặp, lệnh báo "refused" và dừng, không thực thi.
 
 ## Lưu ý
 
@@ -48,7 +59,7 @@ Kết nối lấy từ biến môi trường `MONGO_URL` và các biến `MYSQL_
 
 Secret dùng để đọc dữ liệu thật, ví dụ chuỗi kết nối DB hay tài khoản đăng nhập test, sống trong khối `env` của file `.claude/settings.local.json` ở workspace. File này không được commit.
 
-Các tool như `zenify db-read` đọc secret từ biến môi trường tại thời điểm chạy, chứ không nhận qua tham số dòng lệnh. Nhờ vậy không credential nào lọt vào lịch sử lệnh, log, hay màn hình. `zenify db-read` từ chối in ra chuỗi kết nối và từ chối mọi câu lệnh mang tính ghi ngay từ thiết kế, không phải nhờ quyền hạn tài khoản bị giới hạn.
+Các tool như `zenify db-read` đọc secret từ biến môi trường tại thời điểm chạy, chứ không nhận qua tham số dòng lệnh. Nhờ vậy không credential nào lọt vào lịch sử lệnh, log, hay màn hình. `zenify db-read` từ chối in ra chuỗi kết nối và chỉ nhận các lệnh có cấu trúc cố định và từ chối mọi câu lệnh mang tính ghi ngay từ thiết kế, không phải nhờ quyền hạn tài khoản bị giới hạn.
 
 Cùng nguyên tắc đó áp dụng khi bạn tự viết script hay agent chạm secret: không bao giờ ghi một mật khẩu ở dạng chữ thẳng vào file, kể cả file tạm.
 
