@@ -402,6 +402,57 @@ func TestRun_FlagCombinationsRefused(t *testing.T) {
 	}
 }
 
+func TestRun_UnusedFlagsRefused(t *testing.T) {
+	flags := map[string]func(*Options){
+		"--filter":     func(o *Options) { o.Filter = `{"a":1}` },
+		"--projection": func(o *Options) { o.Projection = `{"a":1}` },
+		"--sort":       func(o *Options) { o.Sort = `{"a":1}` },
+		"--pipeline":   func(o *Options) { o.Pipeline = `[{"$match":{}}]` },
+	}
+	cases := []struct {
+		cmd, arg string
+		flags    []string
+	}{
+		{"collections", "", []string{"--filter", "--projection", "--sort", "--pipeline"}},
+		{"tables", "", []string{"--filter", "--projection", "--sort", "--pipeline"}},
+		{"doc", "users", []string{"--filter", "--projection", "--sort", "--pipeline"}},
+		{"sql", "SELECT 1", []string{"--filter", "--projection", "--sort", "--pipeline"}},
+		{"count", "users", []string{"--projection", "--sort", "--pipeline"}},
+	}
+	for _, c := range cases {
+		for _, f := range c.flags {
+			o, _, _ := baseOptions(t, fakeEnv())
+			calls := recordRun(o, "")
+			o.Cmd, o.Arg = c.cmd, c.arg
+			flags[f](o)
+			err := Run(o)
+			if exitcode.Code(err) != exitcode.BadArgs {
+				t.Errorf("%s %s: err = %v, want BadArgs", c.cmd, f, err)
+				continue
+			}
+			if !strings.Contains(err.Error(), f) {
+				t.Errorf("%s %s: err = %v, want it to name the flag", c.cmd, f, err)
+			}
+			if len(*calls) != 0 {
+				t.Errorf("%s %s: seam invoked", c.cmd, f)
+			}
+		}
+	}
+	// Blank flags are as good as absent; count keeps --filter.
+	o, _, _ := baseOptions(t, fakeEnv())
+	recordRun(o, "")
+	o.Cmd, o.Filter = "collections", "  "
+	if err := Run(o); err != nil {
+		t.Errorf("collections --filter blank: %v, want nil", err)
+	}
+	o, _, _ = baseOptions(t, fakeEnv())
+	recordRun(o, "")
+	o.Cmd, o.Arg, o.Filter = "count", "users", `{"a":1}`
+	if err := Run(o); err != nil {
+		t.Errorf("count --filter: %v, want nil", err)
+	}
+}
+
 func TestRun_SQL_ExactLimitNotTruncated(t *testing.T) {
 	o, stdout, _ := baseOptions(t, fakeEnv())
 	recordRun(o, "a\nb\nc\n")

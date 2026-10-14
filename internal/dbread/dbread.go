@@ -160,6 +160,16 @@ var argRequired = map[string]string{
 	"sql":       "sql cần một câu SELECT/SHOW/DESCRIBE/EXPLAIN",                     //znf:allow-lang
 }
 
+// unusedFlags lists, per subcommand, the query flags it never reads; passing
+// one is refused rather than silently ignored.
+var unusedFlags = map[string][]string{
+	"collections": {"--filter", "--projection", "--sort", "--pipeline"},
+	"tables":      {"--filter", "--projection", "--sort", "--pipeline"},
+	"doc":         {"--filter", "--projection", "--sort", "--pipeline"},
+	"sql":         {"--filter", "--projection", "--sort", "--pipeline"},
+	"count":       {"--projection", "--sort"},
+}
+
 func badArgs(msg string) error {
 	return exitcode.New(exitcode.BadArgs, errors.New("zenify db-read: "+msg))
 }
@@ -207,6 +217,12 @@ func Run(o *Options) error {
 	}
 	if o.Cmd == "aggregate" && strings.TrimSpace(o.Pipeline) == "" {
 		return badArgs("aggregate cần --pipeline '[...]'") //znf:allow-lang
+	}
+	flagVal := map[string]string{"--filter": o.Filter, "--projection": o.Projection, "--sort": o.Sort, "--pipeline": o.Pipeline}
+	for _, f := range unusedFlags[o.Cmd] {
+		if strings.TrimSpace(flagVal[f]) != "" {
+			return badArgs(fmt.Sprintf("%s không dùng cho %s", f, o.Cmd)) //znf:allow-lang
+		}
 	}
 	hasPipeline := strings.TrimSpace(o.Pipeline) != ""
 	hasFind := strings.TrimSpace(o.Filter+o.Projection+o.Sort) != ""
