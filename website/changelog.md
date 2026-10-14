@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.34.0
+
+*2026-10-14*
+
+- Agent `spec-reviewer` mặc định chạy `opus` thay vì `fable`, để seat Team Standard không cạn hạn mức. Muốn soát spec bằng Fable, đặt `"ZNF_SPEC_REVIEW_MODEL": "fable"` trong khối `env` của `~/.claude/settings.json`; không đặt gì thì chạy `opus`. Xem [Chọn model](/concepts/model-routing#spec-reviewer).
+
 ## v0.33.2
 
 *2026-10-14*

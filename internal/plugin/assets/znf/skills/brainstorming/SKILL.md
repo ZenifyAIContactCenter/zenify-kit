@@ -69,7 +69,7 @@ Classify, announce the path, do the items in order.
 8. **Clarify-lite** — scan the 8 Brief fields (Clear/Partial/Missing), ≤5 MC questions, log `## Clarifications`
 9. **Write design doc** — save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`; never commit it
 10. **Spec self-review** — inline check for placeholders, contradictions, ambiguity, scope (below)
-11. **Spec review** — `Agent(znf:spec-reviewer)` once, no `model`, brief = absolute paths of spec, user's request, report file; print `spec review ran on: <its model line>`; HIGH findings go in the approval ask; no report → `spec review: no report`; never blocks
+11. **Spec review** — `Agent(znf:spec-reviewer)` once; `model: fable` only if `printenv ZNF_SPEC_REVIEW_MODEL` is `fable`, else none; brief = absolute paths of spec, user's request, report file; print `spec review ran on: <its model line>`; HIGH findings go in the approval ask; no report → `spec review: no report`; never blocks
 12. **User reviews written spec** — ask the user to review the spec file before proceeding
 13. **Transition to implementation** — invoke writing-plans to create the implementation plan
 

@@ -26,7 +26,7 @@ Model mạnh điều phối, model rẻ làm phần song song — một agent t�
 | `review` T2 fan-out | `sonnet`; `contracts` lên `opus` khi chạm contract chia sẻ | Sâu hơn ở phần rủi ro |
 | `review` T3 | cả năm trục (`bugs`/`security`/`perf`/`contracts`/`intent`) `opus` | Blast radius auth/tenant/migration cần model mạnh; VERIFY cơ học, không còn vòng skeptic |
 | Agent `code-reviewer`, `scout`, `ui-verifier`, `researcher` | `sonnet` (frontmatter) | Sàn sonnet cho subagent từ v0.22.0 |
-| Agent `spec-reviewer` | `fable` (frontmatter) | Đọc lại spec bằng context mới trước khi bạn duyệt; xem [bên dưới](#spec-reviewer) |
+| Agent `spec-reviewer` | `opus` (frontmatter); `fable` khi bật `ZNF_SPEC_REVIEW_MODEL` | Đọc lại spec bằng context mới trước khi bạn duyệt; xem [bên dưới](#spec-reviewer) |
 | `gate` · các fork skill | `sonnet` | `gate`=drift cross-repo, miss âm thầm+đắt; fork skill ghim sonnet để không kế thừa session |
 | `Explore` | **pin ≤ `sonnet` khi dispatch — KHÔNG để kế thừa Opus** | Tìm kiếm rộng: chạy search ở top tier là lãng phí thuần (`fix`/`gate` đã pin sẵn) |
 
@@ -34,7 +34,7 @@ Model mạnh điều phối, model rẻ làm phần song song — một agent t�
 
 Agent `spec-reviewer` được brainstorming dispatch **một lần**, ở tier architectural, sau bước tự soát spec và trước khi bạn duyệt. Nó đọc spec trong context mới, đối chiếu với yêu cầu gốc của bạn, và chỉ báo: requirement thiếu hoặc mâu thuẫn, FR/SC không kiểm được, mâu thuẫn nội bộ, tên hoặc hợp đồng không có nguồn ground. Finding mức HIGH được đưa vào lời xin duyệt spec. Xem [agent `spec-reviewer`](/reference/agents/spec-reviewer).
 
-Frontmatter ghim `model: fable`. Theo docs Claude Code, khi tổ chức chặn model qua allowlist `availableModels`, subagent chạy trên model kế thừa và phiên tương tác hiện một cảnh báo nêu cả hai tên model. Docs chưa nói gì về trường hợp gói tài khoản không có Fable, và kit chưa đo trường hợp đó. Spec review không chặn: không có báo cáo thì brainstorming in `spec review: no report` rồi đi tiếp. Agent in dòng đầu `model: <tên model nó đang chạy>` và brainstorming in lại `spec review ran on: …`, nên bạn luôn thấy spec được soát bằng model nào.
+Frontmatter ghim `model: opus` để seat Team Standard không cạn hạn mức vì Fable. Muốn soát spec bằng Fable, đặt `"ZNF_SPEC_REVIEW_MODEL": "fable"` trong khối `env` của `~/.claude/settings.json`; brainstorming đọc biến này và truyền `model: fable` khi dispatch. Biến không có hoặc mang giá trị khác thì chạy `opus`. Theo docs Claude Code, khi tổ chức chặn model qua allowlist `availableModels`, subagent chạy trên model kế thừa và phiên tương tác hiện một cảnh báo nêu cả hai tên model. Spec review không chặn: không có báo cáo thì brainstorming in `spec review: no report` rồi đi tiếp. Agent in dòng đầu `model: <tên model nó đang chạy>` và brainstorming in lại `spec review ran on: …`, nên bạn luôn thấy spec được soát bằng model nào.
 
 ## Advisor native
 
@@ -76,6 +76,6 @@ Lưu ý:
 - [Agent `spec-reviewer`](/reference/agents/spec-reviewer) · [`zenify route-log`](/reference/cli/zenify_route-log).
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
-Nội bộ: settings.json "model": claude-opus-5-5[1m]; znf/agents/{code-reviewer,scout,ui-verifier,researcher=sonnet; spec-reviewer=fable}; subagent-driven-development/SKILL.md + references/model-selection.md (dòng **Model:**, FAIL); fix/SKILL.md Step 1 (vòng 1-3); review/SKILL.md; brainstorming/SKILL.md (bước Spec review); cook/references/step6-implementation-notes.md (haiku không xhigh); internal/routelog.
+Nội bộ: settings.json "model": claude-opus-5-5[1m]; znf/agents/{code-reviewer,scout,ui-verifier,researcher=sonnet; spec-reviewer=opus, fable khi ZNF_SPEC_REVIEW_MODEL=fable}; subagent-driven-development/SKILL.md + references/model-selection.md (dòng **Model:**, FAIL); fix/SKILL.md Step 1 (vòng 1-3); review/SKILL.md; brainstorming/SKILL.md (bước Spec review); cook/references/step6-implementation-notes.md (haiku không xhigh); internal/routelog.
 Web: code.claude.com/docs/en/advisor (bảng pairing, cách bật, chi phí); anthropic.com/engineering/multi-agent-research-system (4×/15×); platform.claude.com/docs/.../prompting-claude-opus-5; revert path /model claude-opus-4-8.
 -->

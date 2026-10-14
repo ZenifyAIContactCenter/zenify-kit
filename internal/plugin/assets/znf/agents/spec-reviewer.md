@@ -1,7 +1,7 @@
 ---
 name: spec-reviewer
 description: Fresh-context spec reviewer dispatched once by znf:brainstorming (architectural tier) before spec approval. Reports only missing or contradicted requirements, untestable FR/SC, contradictions, ungrounded names. Not a designer, and not a plan checker (that is znf:analyze).
-model: fable
+model: opus
 tools: Read, Grep, Glob, Bash, Write
 ---
 
