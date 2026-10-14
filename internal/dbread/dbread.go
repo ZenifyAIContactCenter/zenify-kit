@@ -1,37 +1,44 @@
 // Package dbread ports the workspace's `db_read` POSIX shell tool
 // (~/.local/bin/db_read) to a portable Go implementation (FR-033).
 //
-// It shells out to `mongosh`/`mysql` rather than using a native Go DB
-// driver: `eval` runs arbitrary mongosh JavaScript, which a native driver
-// cannot evaluate, and shelling to the same CLIs the bash tool used
-// guarantees byte-identical output for every other subcommand too.
+// It shells out to `mongosh`/`mysql` so output matches the CLIs the bash tool
+// used. No subcommand takes free-form code: Mongo reads are built from
+// structured flags by BuildMongoScript, and SQL is allowlisted by CheckSQL
+// and run inside WrapSQL's READ ONLY transaction.
 //
-// FR-041: credentials ($MONGO_URL, $MYSQL_PASSWORD) are read into memory
-// and passed to child processes ONLY (mongosh URI arg; MYSQL_PWD in the
-// child env). No code path in this package prints, logs, or echoes a
-// connection string or password. Error diagnostics use the hardcoded host
-// 103.209.34.57 only, never the URL.
+// FR-041: credentials ($MONGO_URL, $MYSQL_PASSWORD) are read into memory and
+// passed to child processes ONLY through the child env (ZNF_MONGO_URL,
+// MYSQL_PWD), never on argv. No code path in this package prints, logs, or
+// echoes a connection string or password. Error diagnostics use the hardcoded
+// host 103.209.34.57 only, never the URL.
 package dbread
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
 
 // Options configures one Run. Stdout/Stderr and the run/Env seams let tests
 // inject without spawning real processes or touching a real settings file.
 //
-// Options is always passed to Run by pointer: for the collections/tables
-// substring filter, Run needs to redirect where the run seam writes (to an
-// in-memory buffer, before filtering the result into the real Stdout), and
-// the injected run closure reads o.Stdout dynamically at call time — that
-// only works if Run and the closure share the same Options.
+// Options is always passed to Run by pointer: Run redirects where the run
+// seam writes (to a filter buffer or a line cap) and the injected run closure
+// reads o.Stdout dynamically at call time — that only works if Run and the
+// closure share the same Options.
 type Options struct {
 	Cmd, Arg     string
+	Filter       string
+	Projection   string
+	Sort         string
+	Pipeline     string
+	Limit        int
 	Stdout       io.Writer
 	Stderr       io.Writer
 	Env          func(string) string
@@ -83,26 +90,6 @@ func LoadCreds(getenv func(string) string, settingsPath string) (map[string]stri
 	return out, nil
 }
 
-// RefuseWrites reports true if stmt looks like a mutation and must be
-// rejected. Advisory guard (a determined expression can evade a denylist)
-// — the real rule is "writes go in a reviewed script". Ports bash
-// refuse_writes exactly: match case-insensitively against the same verb
-// list.
-func RefuseWrites(stmt string) bool {
-	s := strings.ToLower(stmt)
-	needles := []string{
-		"insert", "update", "delete", "remove", "replace", "drop", "create",
-		"rename", "save(", "bulkwrite", "findandmodify", "collmod", "truncate",
-		"alter", "grant", "revoke", "set ",
-	}
-	for _, n := range needles {
-		if strings.Contains(s, n) {
-			return true
-		}
-	}
-	return false
-}
-
 // filterLines keeps only the lines of out containing substr, case-insensitively.
 // An empty substr returns out unchanged.
 func filterLines(out, substr string) string {
@@ -119,13 +106,215 @@ func filterLines(out, substr string) string {
 	return strings.Join(keep, "\n")
 }
 
+// errCapReached is returned by capWriter once output arrives past the cap; the
+// runner then stops the child, so the rest is never transferred.
+var errCapReached = errors.New("output cap reached")
+
+// truncNotice is the stderr line printed when a read is cut at --limit.
+const truncNotice = "… đã cắt ở %d dòng (--limit, tối đa %d)\n" //znf:allow-lang
+
+// MaxOutputBytes caps the stdout bytes of every read, mongo and sql alike.
+const MaxOutputBytes = 1 << 20
+
+// byteNotice is the stderr line printed when a read is cut at MaxOutputBytes.
+const byteNotice = "… đã cắt ở %d byte (giới hạn output)\n" //znf:allow-lang
+
+// capWriter forwards at most limit lines (limit < 0: no line cap) and at most
+// maxBytes bytes to w. It holds back a partial line until its line break, so
+// the byte cap cuts on a line boundary; only a single line longer than the
+// whole budget is cut mid-line. The first byte past either cap marks it
+// truncated and fails the write with errCapReached (a short write), which
+// stops the child's output copy. Call Flush after the child returns.
+type capWriter struct {
+	w         io.Writer
+	left      int
+	max       int
+	bytesLeft int
+	pending   []byte
+	lineCut   bool
+	byteCut   bool
+}
+
+func newCapWriter(w io.Writer, limit, maxBytes int) *capWriter {
+	return &capWriter{w: w, left: limit, max: maxBytes, bytesLeft: maxBytes}
+}
+
+func (c *capWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	if c.Truncated() {
+		return 0, errCapReached
+	}
+	for len(p) > 0 {
+		if c.left == 0 {
+			c.lineCut = true
+			return n - len(p), errCapReached
+		}
+		seg, complete := p, false
+		if i := bytes.IndexByte(p, '\n'); i >= 0 {
+			seg, complete = p[:i+1], true
+		}
+		if len(c.pending)+len(seg) > c.bytesLeft {
+			c.byteCut = true
+			if c.bytesLeft == c.max { // one line longer than the whole budget: cut it
+				line := append(c.pending, seg...)
+				c.pending = nil
+				if _, err := c.w.Write(line[:c.bytesLeft]); err != nil {
+					return n - len(p), err
+				}
+			}
+			c.pending = nil
+			return n - len(p), errCapReached
+		}
+		if !complete {
+			c.pending = append(c.pending, seg...)
+			return n, nil
+		}
+		line := append(c.pending, seg...)
+		c.pending = c.pending[:0]
+		if _, err := c.w.Write(line); err != nil {
+			return n - len(p), err
+		}
+		c.bytesLeft -= len(line)
+		if c.left > 0 {
+			c.left--
+		}
+		p = p[len(seg):]
+	}
+	return n, nil
+}
+
+// Flush writes a held-back final line that had no line break.
+func (c *capWriter) Flush() error {
+	if len(c.pending) == 0 || c.Truncated() {
+		return nil
+	}
+	_, err := c.w.Write(c.pending)
+	c.pending = nil
+	return err
+}
+
+// Truncated reports whether output arrived past either cap.
+func (c *capWriter) Truncated() bool { return c.lineCut || c.byteCut }
+
+// BytesCut reports whether the byte cap, not the line cap, cut the output.
+func (c *capWriter) BytesCut() bool { return c.byteCut }
+
+// finish flushes cw and, when it was cut, prints the matching notice. A cut
+// is a success.
+func finish(cw *capWriter, stderr io.Writer, limit int) error {
+	if !cw.Truncated() {
+		return cw.Flush()
+	}
+	if cw.BytesCut() {
+		_, _ = fmt.Fprintf(stderr, byteNotice, MaxOutputBytes)
+	} else {
+		_, _ = fmt.Fprintf(stderr, truncNotice, limit, MaxLimit)
+	}
+	return nil
+}
+
 const mongoHost = "103.209.34.57"
 
-// Run dispatches one db_read subcommand. It resolves creds, requires
-// MONGO_URL, then dispatches on o.Cmd. Output goes to o.Stdout via the
-// injected run seam — Run itself never returns secret values in an error
-// string.
+// argRequired lists the subcommands that need a collection, table or query arg.
+var argRequired = map[string]string{
+	"doc":       "doc cần tên collection — chạy 'zenify db-read collections' trước", //znf:allow-lang
+	"count":     "count cần tên collection",                                         //znf:allow-lang
+	"find":      "find cần tên collection",                                          //znf:allow-lang
+	"aggregate": "aggregate cần tên collection",                                     //znf:allow-lang
+	"explain":   "explain cần tên collection",                                       //znf:allow-lang
+	"sql":       "sql cần một câu SELECT/SHOW/DESCRIBE/EXPLAIN",                     //znf:allow-lang
+}
+
+// unusedFlags lists, per subcommand, the query flags it never reads; passing
+// one is refused rather than silently ignored.
+var unusedFlags = map[string][]string{
+	"collections": {"--filter", "--projection", "--sort", "--pipeline"},
+	"tables":      {"--filter", "--projection", "--sort", "--pipeline"},
+	"doc":         {"--filter", "--projection", "--sort", "--pipeline"},
+	"sql":         {"--filter", "--projection", "--sort", "--pipeline"},
+	"count":       {"--projection", "--sort"},
+}
+
+func badArgs(msg string) error {
+	return exitcode.New(exitcode.BadArgs, errors.New("zenify db-read: "+msg))
+}
+
+func printUsage(w io.Writer) {
+	for _, l := range []string{
+		"Usage:",
+		"  db-read collections [substr]          list Mongo collections in 3csoft, optionally filtered",
+		"  db-read tables [substr]               list MySQL tables in db_acd, optionally filtered",
+		"  db-read doc <collection>              one document, to read field names",
+		"  db-read count <collection> [--filter] count (estimated without --filter)",
+		"  db-read find <collection>             --filter --projection --sort --limit (default 50, max 200)",
+		"  db-read aggregate <collection>        --pipeline '[...]' ($out/$merge refused), --limit",
+		"  db-read explain <collection>          executionStats, no --limit (runs the read query, max 30 s) for --filter/--sort or --pipeline",
+		"  db-read sql '<query>'                 one SELECT/WITH/SHOW/DESCRIBE/EXPLAIN in a READ ONLY txn",
+		"  output cut at --limit or 1 MiB prints a notice on stderr; --pipeline never combines with --filter/--projection/--sort",
+		"  distinct: db-read aggregate <coll> --pipeline '[{\"$group\":{\"_id\":\"$field\"}}]'",
+	} {
+		_, _ = fmt.Fprintln(w, l)
+	}
+}
+
+// Run dispatches one db_read subcommand. It validates every argument and
+// builds the query BEFORE resolving credentials, so a bad request never
+// reaches a database. Output goes to o.Stdout via the injected run seam —
+// Run itself never returns secret values in an error string.
 func Run(o *Options) error {
+	switch o.Cmd {
+	case "collections", "tables", "doc", "count", "find", "aggregate", "explain", "sql":
+	case "eval":
+		return badArgs("db-read eval đã bị gỡ — dùng find/aggregate/count/explain") //znf:allow-lang
+	default:
+		printUsage(o.Stderr)
+		return badArgs(fmt.Sprintf("unknown subcommand %q", o.Cmd))
+	}
+	if msg, ok := argRequired[o.Cmd]; ok && strings.TrimSpace(o.Arg) == "" {
+		return badArgs(msg)
+	}
+	limit := o.Limit
+	if limit == 0 {
+		limit = DefaultLimit
+	}
+	if limit < 0 || limit > MaxLimit {
+		return badArgs(fmt.Sprintf("--limit phải trong khoảng 1..%d", MaxLimit)) //znf:allow-lang
+	}
+	if o.Cmd == "aggregate" && strings.TrimSpace(o.Pipeline) == "" {
+		return badArgs("aggregate cần --pipeline '[...]'") //znf:allow-lang
+	}
+	flagVal := map[string]string{"--filter": o.Filter, "--projection": o.Projection, "--sort": o.Sort, "--pipeline": o.Pipeline}
+	for _, f := range unusedFlags[o.Cmd] {
+		if strings.TrimSpace(flagVal[f]) != "" {
+			return badArgs(fmt.Sprintf("%s không dùng cho %s", f, o.Cmd)) //znf:allow-lang
+		}
+	}
+	hasPipeline := strings.TrimSpace(o.Pipeline) != ""
+	hasFind := strings.TrimSpace(o.Filter+o.Projection+o.Sort) != ""
+	if hasPipeline && (hasFind || o.Cmd == "find" || o.Cmd == "count") {
+		return badArgs("--pipeline không đi cùng --filter/--projection/--sort, và chỉ dùng cho aggregate/explain") //znf:allow-lang
+	}
+
+	var script, sqlStmt string
+	switch o.Cmd {
+	case "tables":
+		sqlStmt = WrapSQLNoLimit("SHOW TABLES")
+	case "sql":
+		if err := CheckSQL(o.Arg); err != nil {
+			return badArgs(err.Error())
+		}
+		sqlStmt = WrapSQL(o.Arg, limit)
+	default:
+		var err error
+		script, err = BuildMongoScript(MongoQuery{
+			Op: o.Cmd, Coll: o.Arg, Filter: o.Filter, Projection: o.Projection,
+			Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit,
+		})
+		if err != nil {
+			return badArgs(err.Error())
+		}
+	}
+
 	if o.Env == nil {
 		o.Env = os.Getenv
 	}
@@ -141,106 +330,61 @@ func Run(o *Options) error {
 		return fmt.Errorf("zenify db-read: MONGO_URL not set")
 	}
 
-	mongoEval := func(js string) error {
-		err := o.run("mongosh", []string{mongoURL, "--quiet", "--eval", js}, nil, "")
-		if err != nil {
+	stdout := o.Stdout
+	defer func() { o.Stdout = stdout }()
+	if script != "" {
+		// Mongo caps rows in the script (--limit); here only bytes are capped.
+		cw := newCapWriter(stdout, -1, MaxOutputBytes)
+		o.Stdout = cw
+		err := o.run("mongosh", []string{"--nodb", "--quiet", "--eval", script}, []string{MongoURLEnv + "=" + mongoURL}, "")
+		if err != nil && !cw.Truncated() {
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: mongosh failed. Separate network from credential before theorising:")
 			_, _ = fmt.Fprintf(o.Stderr, "zenify db-read:   nc -z %s 27017   # needs no credential\n", mongoHost)
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port open  -> auth, or a stale $MONGO_URL in settings.local.json")
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port shut  -> network. This host is reachable directly, no VPN.")
-		}
-		return err
-	}
-
-	mysqlRun := func(sql string) error {
-		host := creds["MYSQL_HOST"]
-		if host == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: $MYSQL_HOST is not set — same source as $MONGO_URL, see above.")
-			return fmt.Errorf("zenify db-read: MYSQL_HOST not set")
-		}
-		port := creds["MYSQL_PORT"]
-		if port == "" {
-			port = "3306"
-		}
-		database := creds["MYSQL_DATABASE"]
-		if database == "" {
-			database = "db_acd"
-		}
-		extraEnv := []string{"MYSQL_PWD=" + creds["MYSQL_PASSWORD"]}
-		return o.run("mysql", []string{
-			"-h", host, "-P", port, "-u", creds["MYSQL_USER"],
-			"-N", "-B", "-e", sql, database,
-		}, extraEnv, "")
-	}
-
-	// runFiltered redirects o.Stdout to a buffer for the duration of fn,
-	// then writes the substring-filtered result to the real o.Stdout.
-	runFiltered := func(fn func() error) error {
-		real := o.Stdout
-		var buf bytes.Buffer
-		o.Stdout = &buf
-		err := fn()
-		o.Stdout = real
-		if err != nil {
 			return err
 		}
-		_, _ = fmt.Fprint(o.Stdout, filterLines(buf.String(), o.Arg))
-		return nil
+		return finish(cw, o.Stderr, limit)
 	}
 
-	switch o.Cmd {
-	case "collections":
-		return runFiltered(func() error {
-			return mongoEval(`db.getSiblingDB("3csoft").getCollectionInfos({type:"collection"}).map(c=>c.name).sort().forEach(n=>print(n))`)
-		})
-	case "tables":
-		return runFiltered(func() error {
-			return mysqlRun("SHOW TABLES")
-		})
-	case "doc":
-		if o.Arg == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: doc needs a collection name — run 'zenify db-read collections' first")
-			return fmt.Errorf("zenify db-read: arg required")
-		}
-		return mongoEval(fmt.Sprintf("printjson(db.getSiblingDB('3csoft').getCollection('%s').findOne())", o.Arg))
-	case "count":
-		if o.Arg == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: count needs a collection name")
-			return fmt.Errorf("zenify db-read: arg required")
-		}
-		return mongoEval(fmt.Sprintf("print(db.getSiblingDB('3csoft').getCollection('%s').estimatedDocumentCount())", o.Arg))
-	case "eval":
-		if o.Arg == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: eval needs a JS expression")
-			return fmt.Errorf("zenify db-read: arg required")
-		}
-		if RefuseWrites(o.Arg) {
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: refusing — this looks like a write.")
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: writes go in a script that connects and runs, never in a direct query.")
-			return fmt.Errorf("zenify db-read: refused write")
-		}
-		return mongoEval(fmt.Sprintf("db = db.getSiblingDB('3csoft'); %s", o.Arg))
-	case "sql":
-		if o.Arg == "" {
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: sql needs a query")
-			return fmt.Errorf("zenify db-read: arg required")
-		}
-		if RefuseWrites(o.Arg) {
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: refusing — this looks like a write.")
-			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: writes go in a script that connects and runs, never in a direct query.")
-			return fmt.Errorf("zenify db-read: refused write")
-		}
-		return mysqlRun(o.Arg)
-	default:
-		_, _ = fmt.Fprintln(o.Stderr, "Usage:")
-		_, _ = fmt.Fprintln(o.Stderr, "  db-read collections            list every Mongo collection in 3csoft")
-		_, _ = fmt.Fprintln(o.Stderr, "  db-read collections <substr>   only names containing <substr>")
-		_, _ = fmt.Fprintln(o.Stderr, "  db-read tables                 list every MySQL table in db_acd")
-		_, _ = fmt.Fprintln(o.Stderr, "  db-read tables <substr>        only names containing <substr>")
-		_, _ = fmt.Fprintln(o.Stderr, "  db-read doc <collection>       findOne() from that collection")
-		_, _ = fmt.Fprintln(o.Stderr, "  db-read count <collection>     estimated document count")
-		_, _ = fmt.Fprintln(o.Stderr, "  db-read eval '<js>'            read-only mongosh expression, with `db` already = 3csoft")
-		_, _ = fmt.Fprintln(o.Stderr, "  db-read sql '<query>'          read-only MySQL query")
-		return fmt.Errorf("zenify db-read: unknown subcommand %q", o.Cmd)
+	host := creds["MYSQL_HOST"]
+	if host == "" {
+		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: $MYSQL_HOST is not set — same source as $MONGO_URL, see above.")
+		return fmt.Errorf("zenify db-read: MYSQL_HOST not set")
 	}
+	port := creds["MYSQL_PORT"]
+	if port == "" {
+		port = "3306"
+	}
+	database := creds["MYSQL_DATABASE"]
+	if database == "" {
+		database = "db_acd"
+	}
+	mysqlRun := func() error {
+		return o.run("mysql", []string{
+			"--binary-mode", "--quick", "--connect-timeout=10",
+			"-h", host, "-P", port, "-u", creds["MYSQL_USER"],
+			"-N", "-B", "-e", sqlStmt, database,
+		}, []string{"MYSQL_PWD=" + creds["MYSQL_PASSWORD"]}, "")
+	}
+
+	if o.Cmd == "tables" {
+		// Not row-capped: the substring filter must see every table.
+		var buf bytes.Buffer
+		o.Stdout = &buf
+		if err := mysqlRun(); err != nil {
+			return err
+		}
+		cw := newCapWriter(stdout, -1, MaxOutputBytes)
+		_, _ = io.WriteString(cw, filterLines(buf.String(), o.Arg))
+		return finish(cw, o.Stderr, limit)
+	}
+	cw := newCapWriter(stdout, limit, MaxOutputBytes)
+	o.Stdout = cw
+	// Once a cap is hit the runner kills mysql, so its error is expected:
+	// truncation is a success.
+	if err := mysqlRun(); err != nil && !cw.Truncated() {
+		return err
+	}
+	return finish(cw, o.Stderr, limit)
 }

@@ -43,13 +43,14 @@ run the plan. If `zenify db-read` is missing or times out, print **"dynamic laye
 and keep only the static findings — never fail.
 
 ```bash
-zenify db-read eval 'db.getCollection("<real-name>").find({…}).explain("executionStats")'
+zenify db-read explain <real-name> --filter '<json>'      # add --sort '<json>' if the query sorts
+zenify db-read explain <real-name> --pipeline '<json>'    # for an aggregate
 zenify db-read sql  'EXPLAIN ANALYZE <real-statement>'
 ```
 
 ## Step 3 — dynamic rubric (two-tier)
 
-Read `executionStats`: `stage`, `nReturned`, `totalDocsExamined`, `totalKeysExamined`.
+Read `executionStats` from `zenify db-read explain` (it runs the read query, max 30 s): `stage`, `nReturned`, `totalDocsExamined`, `totalKeysExamined`.
 
 | Plan shows | Tier |
 |---|---|

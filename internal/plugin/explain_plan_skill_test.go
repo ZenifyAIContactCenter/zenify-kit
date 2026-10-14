@@ -20,14 +20,15 @@ func TestExplainPlanSkill_Materialized_HasKeyParts(t *testing.T) {
 	s := string(b)
 	// Two-tier DB-perf gate contract (FR-02/FR-03) + retained dynamic rubric tokens.
 	for _, want := range []string{
-		"zenify db-perf",            // static layer call (FR-01)
-		"dynamic layer skipped",     // degrade note when DB unreachable (FR-03.3)
-		"scan-ratio",                // enriched dynamic rubric (FR-02.3)
-		"BLOCKING",                  // two-tier severity
-		"COLLSCAN",                  // Mongo rubric
-		"Seq Scan",                  // SQL rubric (relational still covered)
-		`explain("executionStats")`, // how to run explain on Mongo
-		"zenify db-read",            // tool that runs explain
+		"zenify db-perf",         // static layer call (FR-01)
+		"dynamic layer skipped",  // degrade note when DB unreachable (FR-03.3)
+		"scan-ratio",             // enriched dynamic rubric (FR-02.3)
+		"BLOCKING",               // two-tier severity
+		"COLLSCAN",               // Mongo rubric
+		"Seq Scan",               // SQL rubric (relational still covered)
+		"executionStats",         // Mongo rubric input
+		"zenify db-read explain", // how to run explain on Mongo
+		"zenify db-read",         // tool that runs explain
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("explain-plan/SKILL.md missing %q", want)

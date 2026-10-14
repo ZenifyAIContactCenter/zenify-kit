@@ -72,8 +72,8 @@ A field's declared type or enum in the schema is what *new* writes are expected 
 follow — it is not a guarantee about what every existing document already holds.
 Old rows, imports, and other services writing to the same collection can leave
 values the current code never anticipated. Before writing a `switch`/`if` chain
-that branches on a field's value, run `distinct()` on that field against the real
-collection to see every value actually in use:
+that branches on a field's value, list that field's values against the real collection
+with a read-only `aggregate` (`[{"$group":{"_id":"$<field>"}}]`) through the project's read-only accessor, to see every value actually in use. In app code that is a `distinct`:
 
 ```js
 // See every value a field really holds before branching on it

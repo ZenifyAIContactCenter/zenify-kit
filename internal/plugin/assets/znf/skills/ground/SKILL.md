@@ -66,13 +66,14 @@ never from a prefix in its key name.
 shape every version ever wrote. So for any field a condition, `switch`, or enum comparison reads:
 
 ```bash
-zenify db-read eval 'db.getCollection("<a-real-name>").distinct("<field>")'   # every value that exists
-zenify db-read count <a-real-name>                                            # how much data you are landing on
+zenify db-read aggregate <a-real-name> --pipeline '[{"$group":{"_id":"$<field>"}}]'   # values, capped by --limit (max 200)
+zenify db-read count <a-real-name>                                                        # how much data you are landing on
 ```
 
-If `distinct` returns a value the new code has no branch for, that is a bug already written. A
-**new required field** is absent from every existing document: add it optional → switch all
-writers → backfill in batches → only then require it.
+A stderr notice means the list was cut: raise `--limit`. If the `$group` returns a value the new
+code has no branch for, that is a bug already written. A **new required field** is absent from
+every existing document: add it optional → switch all writers → backfill in batches → only then
+require it.
 
 ### Ground the filters a query must carry
 
@@ -88,7 +89,7 @@ predicate appears in every one of them — and carry it.
 Grounding a query is the cheapest moment to see its plan. This is the **mandatory** DB-perf gate:
 when the change adds or touches a backend DB query, delegate to **`Skill(znf:explain-plan)`** — it
 runs `zenify db-perf` (the static two-tier scan, no DB needed) plus the dynamic explain, reading
-each query's plan (`zenify db-read eval '…explain("executionStats")'` / `EXPLAIN ANALYZE`) and
+each query's plan (`zenify db-read explain <coll> --filter '<json>'` / `EXPLAIN ANALYZE`) and
 flagging a `COLLSCAN` / `Seq Scan` on a large collection before the code is even written. At ground
 time the gate is advisory; the **same** gate runs with teeth at `/ship`. A missing
 `Skill(znf:explain-plan)` line here when the diff touches a query means the gate was skipped.
@@ -130,7 +131,7 @@ docker exec <container> printenv | grep <VAR>   # or printenv in the running she
 see what you saw. So the report carries:
 
 - exact field / collection / table / symbol names, spelled as the source spells them
-- the distinct values a branched-on field actually holds, listed in full
+- the distinct values a branched-on field actually holds, listed in full or marked cut
 - exact signatures, props and config keys
 - the commands you ran and the output lines that answered them
 - for anything you could NOT verify: say so by name. Never fill a gap with a plausible name.
@@ -147,7 +148,7 @@ A summary of a shape is not the shape, which is the second-hand step this skill 
 | Library version differs from training | Read installed types; don't use training memory |
 | A doc, README, or CLAUDE.md states the shape | Documentation is not ground truth — it goes stale silently. Verify against live data, the running process, or the code definition. Ground truth is what executes, not what describes |
 | Verified it in one tenant / one environment | One sample is not the shape — check a second before generalising |
-| "The field exists, that's enough" | Not if the code branches on its value. `distinct()` it — the store holds every shape ever written |
+| "The field exists, that's enough" | Not if the code branches on its value. list its values with the `$group` pipeline — the store holds every shape ever written |
 | "The query returns the right rows locally" | Dev data has one tenant, so a missing tenant filter looks correct. Check the predicate, not the result |
 | "I grounded it, so the change is safe" | Grounding is forward-only. Whether an existing caller breaks is `/scout`'s question, and it is unanswered until you ask it |
 
