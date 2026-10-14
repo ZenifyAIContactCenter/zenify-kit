@@ -349,7 +349,7 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 
 // migrateEnv moves manifest keys out of the workspace and repo
 // settings.local.json env blocks into <workspace>/.zenify/.env (FR-9), then
-// denies agent reads of that file. It runs under the apply lock and
+// denies agent reads of that file in ~/.claude/settings.json (FR-10). It runs under the apply lock and
 // before the ownership manifest is saved, so re-recorded fingerprints persist.
 // Fail-open; prints key names only, never a value.
 func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, workspace string, owned *managed.Manifest) {
@@ -370,10 +370,16 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 	for _, k := range res.Conflicts {
 		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — hai giá trị khác nhau, xử lý tay\n", k) //znf:allow-lang
 	}
-	if n, err := apply.EnsureKitDeny(workspace, false); err != nil {
+	home, herr := os.UserHomeDir()
+	if herr != nil || home == "" {
+		_, _ = fmt.Fprintf(errW, "permissions: không thêm được luật deny .zenify/.env (home: %v)\n", herr) //znf:allow-lang
+		return
+	}
+	if n, err := apply.EnsureKitDeny(home, workspace, false); err != nil {
 		_, _ = fmt.Fprintf(errW, "permissions: không thêm được luật deny .zenify/.env (%v)\n", err) //znf:allow-lang
 	} else if n > 0 {
-		_, _ = fmt.Fprintf(w, "permissions: chặn agent đọc .zenify/.env (%s)\n", strings.Join(apply.KitDenyRules, ", ")) //znf:allow-lang
+		rule, _ := apply.KitDenyRule(workspace)
+		_, _ = fmt.Fprintf(w, "permissions: chặn agent đọc .zenify/.env (%s trong ~/.claude/settings.json)\n", rule) //znf:allow-lang
 	}
 }
 

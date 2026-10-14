@@ -519,10 +519,11 @@ func TestRenderCodexSummary(t *testing.T) {
 
 // FR-9 + deny rule through `up --apply`: manifest keys leave the settings env
 // blocks for .zenify/.env, the output names keys only, the deny rule lands in
-// the workspace settings.json, and a second run changes nothing.
+// ~/.claude/settings.json, and a second run changes nothing.
 func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -561,13 +562,17 @@ func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
 	if err != nil || !strings.Contains(string(envBody), "SVC_URL='fake-svc-a'") {
 		t.Errorf(".zenify/.env = %q err=%v", envBody, err)
 	}
-	deny, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.json")) //nolint:gosec // G304 -- test temp path
-	if !strings.Contains(string(deny), "Read(/.zenify/.env)") {
-		t.Errorf("workspace settings.json lacks the deny rule: %s", deny)
+	userSettings := filepath.Join(home, ".claude", "settings.json")
+	deny, _ := os.ReadFile(userSettings) //nolint:gosec // G304 -- test temp path
+	if !strings.Contains(string(deny), "Read(/"+ws+"/.zenify/.env)") {
+		t.Errorf("~/.claude/settings.json lacks the absolute deny rule: %s", deny)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.json")); strings.Contains(string(b), ".zenify/.env") { //nolint:gosec // G304 -- test temp path
+		t.Errorf("workspace settings.json must not carry the deny rule: %s", b)
 	}
 
 	snap := map[string]string{}
-	for _, p := range []string{wsSettings, repoSettings, filepath.Join(ws, ".zenify", ".env"), filepath.Join(ws, ".claude", "settings.json")} {
+	for _, p := range []string{wsSettings, repoSettings, filepath.Join(ws, ".zenify", ".env"), userSettings} {
 		b, _ := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
 		snap[p] = string(b)
 	}

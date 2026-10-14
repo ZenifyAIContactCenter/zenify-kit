@@ -305,35 +305,78 @@ func TestLeftoverEnvKeys(t *testing.T) {
 	}
 }
 
-// SC-13
+// SC-13 + FR-10: the deny rule lands in the USER settings as an absolute
+// "//" rule per workspace; removing one workspace keeps the user's own rule and
+// the other workspace's recorded rule.
 func TestKitDeny_EnsureRemove(t *testing.T) {
-	ws := t.TempDir()
-	writeSettings(t, ws, `{"permissions":{"deny":["Read(/secret)"]}}`)
+	home := t.TempDir()
+	ws1, ws2 := t.TempDir(), t.TempDir()
+	writeSettings(t, home, `{"permissions":{"deny":["Read(/secret)"]}}`)
 	readDeny := func() []string {
 		var doc struct {
 			Permissions struct {
 				Deny []string `json:"deny"`
 			} `json:"permissions"`
 		}
-		if err := json.Unmarshal([]byte(readFileT(t, settingsPath(ws))), &doc); err != nil {
+		if err := json.Unmarshal([]byte(readFileT(t, settingsPath(home))), &doc); err != nil {
 			t.Fatal(err)
 		}
 		return doc.Permissions.Deny
 	}
-	n, err := EnsureKitDeny(ws, false)
-	if err != nil || n != 1 {
-		t.Fatalf("ensure: n=%d err=%v", n, err)
+	r1 := "Read(/" + ws1 + "/.zenify/.env)"
+	r2 := "Read(/" + ws2 + "/.zenify/.env)"
+	if !strings.HasPrefix(r1, "Read(//") {
+		t.Fatalf("rule %q is not an absolute // rule", r1)
 	}
-	if got := readDeny(); !reflect.DeepEqual(got, []string{"Read(/secret)", "Read(/.zenify/.env)"}) {
+	for _, ws := range []string{ws1, ws2} {
+		if n, err := EnsureKitDeny(home, ws, false); err != nil || n != 1 {
+			t.Fatalf("ensure %s: n=%d err=%v", ws, n, err)
+		}
+	}
+	if n, err := EnsureKitDeny(home, ws1, false); err != nil || n != 0 {
+		t.Fatalf("ensure again: n=%d err=%v", n, err)
+	}
+	if got := readDeny(); !reflect.DeepEqual(got, []string{"Read(/secret)", r1, r2}) {
 		t.Errorf("deny after ensure = %v", got)
 	}
-	if _, err := os.Stat(filepath.Join(ws, ".zenify", "kit-deny.json")); err != nil {
+	rec := filepath.Join(home, ".zenify", "kit-deny.json")
+	if _, err := os.Stat(rec); err != nil {
 		t.Errorf("deny record missing: %v", err)
 	}
-	if n, err := RemoveKitDeny(ws, false); err != nil || n != 1 {
-		t.Fatalf("remove: n=%d err=%v", n, err)
+	if n, err := RemoveKitDeny(home, ws1, false); err != nil || n != 1 {
+		t.Fatalf("remove ws1: n=%d err=%v", n, err)
+	}
+	if got := readDeny(); !reflect.DeepEqual(got, []string{"Read(/secret)", r2}) {
+		t.Errorf("deny after remove ws1 = %v", got)
+	}
+	if got := readFileT(t, rec); got != `["`+r2+`"]` {
+		t.Errorf("record after remove ws1 = %s", got)
+	}
+	if n, err := RemoveKitDeny(home, ws2, false); err != nil || n != 1 {
+		t.Fatalf("remove ws2: n=%d err=%v", n, err)
 	}
 	if got := readDeny(); !reflect.DeepEqual(got, []string{"Read(/secret)"}) {
-		t.Errorf("deny after remove = %v", got)
+		t.Errorf("deny after remove ws2 = %v", got)
+	}
+	if _, err := os.Stat(rec); !os.IsNotExist(err) {
+		t.Errorf("record must be gone when empty, stat err=%v", err)
+	}
+}
+
+// A deny rule the user already had for the workspace is never recorded, so
+// RemoveKitDeny leaves it in place.
+func TestKitDeny_UserOwnedRuleUntouched(t *testing.T) {
+	home := t.TempDir()
+	ws := t.TempDir()
+	rule := "Read(/" + ws + "/.zenify/.env)"
+	writeSettings(t, home, `{"permissions":{"deny":["`+rule+`"]}}`)
+	if n, err := EnsureKitDeny(home, ws, false); err != nil || n != 0 {
+		t.Fatalf("ensure: n=%d err=%v", n, err)
+	}
+	if _, err := RemoveKitDeny(home, ws, false); err == nil {
+		t.Errorf("remove without a record must report it")
+	}
+	if !strings.Contains(readFileT(t, settingsPath(home)), rule) {
+		t.Errorf("user's own rule was removed")
 	}
 }
