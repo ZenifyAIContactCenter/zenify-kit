@@ -53,7 +53,7 @@ func TestDoctor_MissingManifestKeys(t *testing.T) {
 func TestDoctor_LocalKeyWithoutDesc(t *testing.T) {
 	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}}}
 	p := writeEnv(t, "MONGO_URL=x\n# my own token\nDESCRIBED_KEY=1\nBARE_KEY=2\n", 0o600)
-	ok, detail := envFileCheck(func() string { return p }, fixedManifest(m)).Run()
+	ok, detail := envFileCheck(func() string { return p }, fixedManifest(m), "linux").Run()
 	if ok {
 		t.Fatalf("a local key without description must flag; detail=%q", detail)
 	}
@@ -69,13 +69,17 @@ func TestDoctor_LocalKeyWithoutDesc(t *testing.T) {
 func TestDoctor_EnvFilePerm(t *testing.T) {
 	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}}}
 	wide := writeEnv(t, "MONGO_URL=x\n", 0o644)
-	ok, detail := envFileCheck(func() string { return wide }, fixedManifest(m)).Run()
+	ok, detail := envFileCheck(func() string { return wide }, fixedManifest(m), "linux").Run()
 	if ok || !strings.Contains(detail, "0644") {
 		t.Fatalf("mode 0644 must flag; ok=%v detail=%q", ok, detail)
 	}
 	tight := writeEnv(t, "MONGO_URL=x\n", 0o600)
-	if ok, detail := envFileCheck(func() string { return tight }, fixedManifest(m)).Run(); !ok {
+	if ok, detail := envFileCheck(func() string { return tight }, fixedManifest(m), "linux").Run(); !ok {
 		t.Fatalf("mode 0600 must pass; detail=%q", detail)
+	}
+	// Windows has no POSIX mode bits: the 0600 check is skipped.
+	if ok, detail := envFileCheck(func() string { return wide }, fixedManifest(m), "windows").Run(); !ok || strings.Contains(detail, "0644") {
+		t.Fatalf("windows must skip the mode check; ok=%v detail=%q", ok, detail)
 	}
 }
 

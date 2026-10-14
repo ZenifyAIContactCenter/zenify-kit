@@ -64,8 +64,9 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 
 // envFileCheck inspects <workspace>/.zenify/.env itself: a mode wider than 0600
 // (FR-8.4) and local keys — keys the manifest does not know — that carry no
-// description line above them (FR-8.2). Names only, never values.
-func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest) Check {
+// description line above them (FR-8.2). Names only, never values. The mode
+// check is skipped when goos is "windows", which has no POSIX mode bits.
+func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest, goos string) Check {
 	return Check{
 		Name: "env-file",
 		Run: func() (bool, string) {
@@ -82,7 +83,7 @@ func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest) 
 				return false, "cannot read " + path
 			}
 			var problems []string
-			if perm := fi.Mode().Perm(); perm&0o077 != 0 {
+			if perm := fi.Mode().Perm(); goos != "windows" && perm&0o077 != 0 {
 				problems = append(problems, fmt.Sprintf("%s has mode %04o, want 0600 — run: chmod 600 %s", path, perm, path))
 			}
 			known := map[string]bool{}
@@ -102,6 +103,9 @@ func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest) 
 			}
 			if len(problems) > 0 {
 				return false, strings.Join(problems, "; ")
+			}
+			if goos == "windows" {
+				return true, "local keys described"
 			}
 			return true, "mode 0600, local keys described"
 		},
@@ -425,7 +429,7 @@ func gitIdentityCheckWith(identOK func(gitVar string) bool) Check {
 // construction. Uses os.Getenv and the workspace default settings path.
 func registerDefaultChecks() {
 	RegisterCheck(secretPresenceCheck(os.Getenv, workspaceEnvPath, workspaceManifest))
-	RegisterCheck(envFileCheck(workspaceEnvPath, workspaceManifest))
+	RegisterCheck(envFileCheck(workspaceEnvPath, workspaceManifest, runtime.GOOS))
 	RegisterCheck(settingsEnvCheck(workspaceEnvPath, workspaceManifest))
 	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
 	RegisterCheck(playwrightCheck())
