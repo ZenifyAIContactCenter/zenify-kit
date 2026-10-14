@@ -228,6 +228,9 @@ func TestRun_Tables_FilteredNotCapped(t *testing.T) {
 	if (*calls)[0].name != "mysql" {
 		t.Errorf("name = %q, want mysql", (*calls)[0].name)
 	}
+	if stmt := strings.Join((*calls)[0].args, " "); strings.Contains(stmt, "SQL_SELECT_LIMIT") {
+		t.Errorf("tables statement carries SQL_SELECT_LIMIT: %q", stmt)
+	}
 }
 
 func TestRun_EvalRemoved(t *testing.T) {
@@ -273,8 +276,10 @@ func TestRun_SQL_Args(t *testing.T) {
 	if c.name != "mysql" {
 		t.Errorf("name = %q, want mysql", c.name)
 	}
-	if !contains(c.args, "--binary-mode") {
-		t.Errorf("args = %v, want --binary-mode", c.args)
+	for _, w := range []string{"--binary-mode", "--quick"} {
+		if !contains(c.args, w) {
+			t.Errorf("args = %v, want %s", c.args, w)
+		}
 	}
 	for _, w := range []string{"-h", "mysql.internal", "-P", "3306", "-u", "clusteradmin", "-N", "-B"} {
 		if !contains(c.args, w) {
@@ -314,7 +319,7 @@ func TestRun_SQL_Args(t *testing.T) {
 }
 
 func TestRun_SQL_Cap(t *testing.T) {
-	o, stdout, _ := baseOptions(t, fakeEnv())
+	o, stdout, stderr := baseOptions(t, fakeEnv())
 	var in, want strings.Builder
 	for i := 1; i <= 60; i++ {
 		fmt.Fprintf(&in, "row%d\n", i)
@@ -322,7 +327,6 @@ func TestRun_SQL_Cap(t *testing.T) {
 			fmt.Fprintf(&want, "row%d\n", i)
 		}
 	}
-	want.WriteString("… đã cắt ở 50 dòng (--limit, tối đa 200)\n") //znf:allow-lang
 	recordRun(o, in.String())
 	o.Cmd, o.Arg = "sql", "SELECT id FROM agents"
 	if err := Run(o); err != nil {
@@ -330,6 +334,71 @@ func TestRun_SQL_Cap(t *testing.T) {
 	}
 	if stdout.String() != want.String() {
 		t.Errorf("stdout =\n%q\nwant\n%q", stdout.String(), want.String())
+	}
+	if got := stderr.String(); got != "… đã cắt ở 50 dòng (--limit, tối đa 200)\n" { //znf:allow-lang
+		t.Errorf("stderr = %q, want the truncation notice", got)
+	}
+}
+
+// The real runner kills the child once the cap writer refuses a write, so the
+// child returns an error; truncation must still be a success.
+func TestRun_SQL_CapStopsChild(t *testing.T) {
+	o, stdout, stderr := baseOptions(t, fakeEnv())
+	written := 0
+	o.SetRun(func(string, []string, []string, string) error {
+		for i := 1; i <= 100000; i++ {
+			if _, err := fmt.Fprintf(o.Stdout, "row%d\n", i); err != nil {
+				return errors.New("signal: killed")
+			}
+			written++
+		}
+		return nil
+	})
+	o.Cmd, o.Arg, o.Limit = "sql", "SELECT id FROM t LIMIT 10000000", 5
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v, want nil on truncation", err)
+	}
+	if written != 5 {
+		t.Errorf("child wrote %d rows after the cap, want it stopped at 5", written)
+	}
+	if stdout.String() != "row1\nrow2\nrow3\nrow4\nrow5\n" {
+		t.Errorf("stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "đã cắt ở 5 dòng") { //znf:allow-lang
+		t.Errorf("stderr = %q, want notice", stderr.String())
+	}
+}
+
+func TestRun_FlagCombinationsRefused(t *testing.T) {
+	cases := []struct {
+		name string
+		set  func(*Options)
+	}{
+		{"find+pipeline", func(o *Options) { o.Cmd = "find"; o.Pipeline = `[{"$match":{}}]` }},
+		{"count+pipeline", func(o *Options) { o.Cmd = "count"; o.Pipeline = `[{"$match":{}}]` }},
+		{"aggregate+filter", func(o *Options) { o.Cmd = "aggregate"; o.Pipeline = `[{"$match":{}}]`; o.Filter = `{"a":1}` }},
+		{"aggregate+projection", func(o *Options) { o.Cmd = "aggregate"; o.Pipeline = `[{"$match":{}}]`; o.Projection = `{"a":1}` }},
+		{"aggregate+sort", func(o *Options) { o.Cmd = "aggregate"; o.Pipeline = `[{"$match":{}}]`; o.Sort = `{"a":1}` }},
+		{"explain+pipeline+filter", func(o *Options) { o.Cmd = "explain"; o.Pipeline = `[{"$match":{}}]`; o.Filter = `{"a":1}` }},
+		{"explain+pipeline+sort", func(o *Options) { o.Cmd = "explain"; o.Pipeline = `[{"$match":{}}]`; o.Sort = `{"a":1}` }},
+	}
+	for _, c := range cases {
+		o, _, _ := baseOptions(t, fakeEnv())
+		calls := recordRun(o, "")
+		o.Arg = "users"
+		c.set(o)
+		if err := Run(o); exitcode.Code(err) != exitcode.BadArgs {
+			t.Errorf("%s: err = %v, want BadArgs", c.name, err)
+		}
+		if len(*calls) != 0 {
+			t.Errorf("%s: seam invoked", c.name)
+		}
+	}
+	o, _, _ := baseOptions(t, fakeEnv())
+	recordRun(o, "")
+	o.Cmd, o.Arg, o.Filter, o.Sort = "explain", "users", `{"a":1}`, `{"b":1}`
+	if err := Run(o); err != nil {
+		t.Errorf("explain --filter --sort: %v, want nil", err)
 	}
 }
 
@@ -353,7 +422,9 @@ func TestRun_LimitOutOfRange(t *testing.T) {
 		o, _, _ := baseOptions(t, fakeEnv())
 		calls := recordRun(o, "")
 		o.Cmd, o.Arg, o.Limit = tc.cmd, "users", tc.limit
-		o.Pipeline = `[{"$match":{}}]`
+		if tc.cmd == "aggregate" {
+			o.Pipeline = `[{"$match":{}}]`
+		}
 		if tc.cmd == "sql" {
 			o.Arg = "SELECT 1"
 		}
@@ -509,11 +580,22 @@ func TestCapWriter(t *testing.T) {
 	for _, c := range cases {
 		var buf bytes.Buffer
 		w := newCapWriter(&buf, c.limit)
+		var werr error
 		for _, ch := range c.chunks {
 			n, err := w.Write([]byte(ch))
-			if err != nil || n != len(ch) {
-				t.Errorf("%s: Write(%q) = %d, %v; want %d, nil", c.name, ch, n, err, len(ch))
+			if err != nil {
+				if !errors.Is(err, errCapReached) || n >= len(ch) {
+					t.Errorf("%s: Write(%q) = %d, %v; want short write + errCapReached", c.name, ch, n, err)
+				}
+				werr = err
+				break
 			}
+			if n != len(ch) {
+				t.Errorf("%s: Write(%q) = %d, want %d", c.name, ch, n, len(ch))
+			}
+		}
+		if (werr != nil) != c.truncated {
+			t.Errorf("%s: write error = %v, want error only when truncated", c.name, werr)
 		}
 		if buf.String() != c.want {
 			t.Errorf("%s: out = %q, want %q", c.name, buf.String(), c.want)

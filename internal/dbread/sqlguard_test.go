@@ -1,6 +1,9 @@
 package dbread
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCheckSQL(t *testing.T) {
 	pass := []string{
@@ -62,5 +65,41 @@ func TestWrapSQL(t *testing.T) {
 	want := "START TRANSACTION READ ONLY; SET SESSION sql_mode='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'; SET SESSION MAX_EXECUTION_TIME=30000; SET SESSION SQL_SELECT_LIMIT=51; SELECT 1; ROLLBACK;"
 	if got != want {
 		t.Errorf("WrapSQL = %q, want %q", got, want)
+	}
+}
+
+func TestCheckSQL_ClientDelimiterCommand(t *testing.T) {
+	for _, s := range []string{
+		"SELECT 1\ndelimiter //\nDROP TABLE t//",
+		"SELECT 1\r\ncharset latin1",
+	} {
+		if err := CheckSQL(s); err == nil {
+			t.Errorf("CheckSQL(%q) = nil, want error", s)
+		}
+	}
+}
+
+func TestWrapSQL_FlattensNewlinesOutsideLiterals(t *testing.T) {
+	got := WrapSQL("SELECT 1\ndelimiter //\r\nDROP TABLE t//", 50)
+	if strings.ContainsAny(got, "\r\n") {
+		t.Errorf("WrapSQL kept a line break outside literals: %q", got)
+	}
+	stmt := "SELECT a,\n  'x\ny', `c\nd`, \"e\\\"\nf\"\nFROM t\r\nWHERE b = 1"
+	if err := CheckSQL(stmt); err != nil {
+		t.Fatalf("multi-line SELECT refused: %v", err)
+	}
+	got = WrapSQL(stmt, 50)
+	if !strings.Contains(got, "SELECT a,   'x\ny', `c\nd`, \"e\\\"\nf\" FROM t  WHERE b = 1;") {
+		t.Errorf("WrapSQL = %q, want outer breaks flattened, literal breaks kept", got)
+	}
+}
+
+func TestWrapSQLNoLimit(t *testing.T) {
+	got := WrapSQLNoLimit("SHOW TABLES")
+	if strings.Contains(got, "SQL_SELECT_LIMIT") {
+		t.Errorf("WrapSQLNoLimit = %q, want no SQL_SELECT_LIMIT", got)
+	}
+	if !strings.HasPrefix(got, "START TRANSACTION READ ONLY;") || !strings.Contains(got, "MAX_EXECUTION_TIME=30000") || !strings.HasSuffix(got, "SHOW TABLES; ROLLBACK;") {
+		t.Errorf("WrapSQLNoLimit = %q", got)
 	}
 }

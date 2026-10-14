@@ -20,7 +20,12 @@ func isIdentChar(c byte) bool {
 }
 
 // sqlBanned are bare words that make a statement write, or dump to a file/variable.
-var sqlBanned = map[string]bool{"DELETE": true, "UPDATE": true, "INSERT": true, "INTO": true}
+// DELIMITER and CHARSET are mysql client commands, refused as defence in depth
+// behind WrapSQL's line flattening.
+var sqlBanned = map[string]bool{
+	"DELETE": true, "UPDATE": true, "INSERT": true, "INTO": true,
+	"DELIMITER": true, "CHARSET": true,
+}
 
 // CheckSQL rejects anything but a single read statement. One stateful pass
 // (outside / in ' / in " / in `) so quotes inside comments cannot desync it:
@@ -91,10 +96,46 @@ func CheckSQL(stmt string) error {
 // double-quoted strings, which CheckSQL's scanner relies on.
 const sqlMode = "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION"
 
+// flattenSQL replaces every line break outside literals and backticks with a
+// space. The mysql client reads `delimiter`/`charset` as client commands at the
+// start of a line even under --binary-mode -e; it tracks quote state, so
+// breaks inside literals are kept. Same scanner rules as CheckSQL.
+func flattenSQL(s string) string {
+	b := []byte(s)
+	var quote byte
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		if quote != 0 {
+			switch {
+			case c == '\\' && quote != '`':
+				i++
+			case c == quote:
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quote = c
+		case '\n', '\r':
+			b[i] = ' '
+		}
+	}
+	return string(b)
+}
+
 // WrapSQL runs stmt in a READ ONLY transaction with a server-side timeout.
 // SQL_SELECT_LIMIT is limit+1 so the caller can detect truncation.
 func WrapSQL(stmt string, limit int) string {
-	s := strings.TrimSuffix(strings.TrimSpace(stmt), ";")
-	return fmt.Sprintf("START TRANSACTION READ ONLY; SET SESSION sql_mode='"+sqlMode+"'; SET SESSION MAX_EXECUTION_TIME=%d; SET SESSION SQL_SELECT_LIMIT=%d; %s; ROLLBACK;",
-		QueryTimeoutMS, limit+1, s)
+	return wrapSQL(stmt, fmt.Sprintf("SET SESSION SQL_SELECT_LIMIT=%d; ", limit+1))
+}
+
+// WrapSQLNoLimit is WrapSQL without SQL_SELECT_LIMIT, for `tables`, whose
+// substring filter must see every table.
+func WrapSQLNoLimit(stmt string) string { return wrapSQL(stmt, "") }
+
+func wrapSQL(stmt, limitClause string) string {
+	s := strings.TrimSuffix(strings.TrimSpace(flattenSQL(stmt)), ";")
+	return fmt.Sprintf("START TRANSACTION READ ONLY; SET SESSION sql_mode='"+sqlMode+"'; SET SESSION MAX_EXECUTION_TIME=%d; %s%s; ROLLBACK;",
+		QueryTimeoutMS, limitClause, s)
 }

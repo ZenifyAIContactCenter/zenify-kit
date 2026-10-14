@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -62,13 +63,7 @@ func newDBReadCmd() *cobra.Command {
 				SettingsPath: workspaceSettingsPath(),
 			}
 			o.SetRun(func(name string, args []string, extraEnv []string, _ string) error {
-				ctx, cancel := context.WithTimeout(cmd.Context(), dbReadTimeout)
-				defer cancel()
-				c := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204 -- name is always "mongosh" or "mysql" from this package's own callers, args are internally-computed subcommands, not attacker-controlled shell input
-				c.Env = append(os.Environ(), extraEnv...)
-				c.Stdout = o.Stdout
-				c.Stderr = o.Stderr
-				return c.Run()
+				return runDBChild(cmd.Context(), name, args, extraEnv, o.Stdout, o.Stderr)
 			})
 			return dbread.Run(o)
 		},
@@ -80,4 +75,31 @@ func newDBReadCmd() *cobra.Command {
 	f.StringVar(&pipeline, "pipeline", "", "JSON array pipeline (aggregate, explain)")
 	f.IntVar(&limit, "limit", dbread.DefaultLimit, "max documents or rows, 1..200")
 	return cmd
+}
+
+// runDBChild runs one mongosh/mysql child under dbReadTimeout. A failed stdout
+// write (dbread's line cap refusing more output) kills the child at once, so
+// the rest of a large result is never transferred.
+func runDBChild(parent context.Context, name string, args, extraEnv []string, stdout, stderr io.Writer) error {
+	ctx, cancel := context.WithTimeout(parent, dbReadTimeout)
+	defer cancel()
+	c := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204 -- name is always "mongosh" or "mysql" from this package's own callers, args are internally-computed subcommands, not attacker-controlled shell input
+	c.Env = append(os.Environ(), extraEnv...)
+	c.Stdout = cancelOnErr{stdout, cancel}
+	c.Stderr = stderr
+	return c.Run()
+}
+
+// cancelOnErr cancels the child's context on the first failed write.
+type cancelOnErr struct {
+	w      io.Writer
+	cancel context.CancelFunc
+}
+
+func (c cancelOnErr) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	if err != nil {
+		c.cancel()
+	}
+	return n, err
 }

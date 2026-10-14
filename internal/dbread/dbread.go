@@ -106,9 +106,16 @@ func filterLines(out, substr string) string {
 	return strings.Join(keep, "\n")
 }
 
-// capWriter forwards at most limit lines to w and silently drops the rest.
-// Write always reports the full length so the child's output copy never
-// fails mid-stream.
+// errCapReached is returned by capWriter once output arrives past the cap; the
+// runner then stops the child, so the rest is never transferred.
+var errCapReached = errors.New("output cap reached")
+
+// truncNotice is the stderr line printed when a read is cut at --limit.
+const truncNotice = "… đã cắt ở %d dòng (--limit, tối đa %d)\n" //znf:allow-lang
+
+// capWriter forwards at most limit lines to w. The first byte past the
+// limit-th line marks it truncated and fails the write with errCapReached
+// (a short write), which stops the child's output copy.
 type capWriter struct {
 	w         io.Writer
 	left      int
@@ -122,7 +129,7 @@ func (c *capWriter) Write(p []byte) (int, error) {
 	for len(p) > 0 {
 		if c.left == 0 {
 			c.truncated = true
-			return n, nil
+			return n - len(p), errCapReached
 		}
 		i := bytes.IndexByte(p, '\n')
 		if i < 0 {
@@ -200,11 +207,16 @@ func Run(o *Options) error {
 	if o.Cmd == "aggregate" && strings.TrimSpace(o.Pipeline) == "" {
 		return badArgs("aggregate cần --pipeline '[...]'") //znf:allow-lang
 	}
+	hasPipeline := strings.TrimSpace(o.Pipeline) != ""
+	hasFind := strings.TrimSpace(o.Filter+o.Projection+o.Sort) != ""
+	if hasPipeline && (hasFind || o.Cmd == "find" || o.Cmd == "count") {
+		return badArgs("--pipeline không đi cùng --filter/--projection/--sort, và chỉ dùng cho aggregate/explain") //znf:allow-lang
+	}
 
 	var script, sqlStmt string
 	switch o.Cmd {
 	case "tables":
-		sqlStmt = WrapSQL("SHOW TABLES", limit)
+		sqlStmt = WrapSQLNoLimit("SHOW TABLES")
 	case "sql":
 		if err := CheckSQL(o.Arg); err != nil {
 			return badArgs(err.Error())
@@ -262,7 +274,7 @@ func Run(o *Options) error {
 	}
 	mysqlRun := func() error {
 		return o.run("mysql", []string{
-			"--binary-mode", "--connect-timeout=10",
+			"--binary-mode", "--quick", "--connect-timeout=10",
 			"-h", host, "-P", port, "-u", creds["MYSQL_USER"],
 			"-N", "-B", "-e", sqlStmt, database,
 		}, []string{"MYSQL_PWD=" + creds["MYSQL_PASSWORD"]}, "")
@@ -282,11 +294,13 @@ func Run(o *Options) error {
 	}
 	cw := newCapWriter(stdout, limit)
 	o.Stdout = cw
-	if err := mysqlRun(); err != nil {
+	// Once the cap is hit the runner kills mysql, so its error is expected:
+	// truncation is a success.
+	if err := mysqlRun(); err != nil && !cw.Truncated() {
 		return err
 	}
 	if cw.Truncated() {
-		_, _ = fmt.Fprintf(stdout, "… đã cắt ở %d dòng (--limit, tối đa %d)\n", limit, MaxLimit) //znf:allow-lang
+		_, _ = fmt.Fprintf(o.Stderr, truncNotice, limit, MaxLimit)
 	}
 	return nil
 }
