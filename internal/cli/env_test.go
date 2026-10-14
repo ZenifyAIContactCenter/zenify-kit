@@ -225,3 +225,17 @@ func TestEnvHelp_MentionsPersonalNotAppEnv(t *testing.T) {
 		t.Errorf("Short = %q", cmd.Short)
 	}
 }
+
+func TestEnvSet_DescRejectsNewline(t *testing.T) {
+	d, ws := envFixture(t, "")
+	d.prompt = func(keys []string) (map[string]string, error) {
+		return map[string]string{keys[0]: "val12345"}, nil
+	}
+	_, err := runEnv(d, "set", "K", "--desc", "x\nEVIL=1")
+	if err == nil || !strings.Contains(err.Error(), "xuống dòng") { //znf:allow-lang
+		t.Errorf("err = %v, want newline refusal", err)
+	}
+	if _, serr := os.Stat(devenv.Path(ws)); serr == nil {
+		t.Error("file written despite rejected --desc")
+	}
+}

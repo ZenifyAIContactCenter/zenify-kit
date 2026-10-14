@@ -182,3 +182,15 @@ func TestChildEnv(t *testing.T) {
 		t.Fatalf("got %v want %v", got, want)
 	}
 }
+
+func TestSetDesc_NewlineCannotInjectKey(t *testing.T) {
+	f := &File{}
+	f.Set("K", "v12345")
+	f.SetDesc("K", "x\nEVIL=1")
+	if _, ok := f.Get("EVIL"); ok {
+		t.Error("newline in desc created a key")
+	}
+	if got := f.Keys(); len(got) != 1 || got[0] != "K" {
+		t.Errorf("keys = %v, want [K]", got)
+	}
+}

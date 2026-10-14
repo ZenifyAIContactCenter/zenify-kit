@@ -145,7 +145,8 @@ func (f *File) SetDesc(key, desc string) {
 	if i < 0 {
 		return
 	}
-	line := "# " + desc
+	// a newline would start a second line that parses as a key: flatten it
+	line := "# " + strings.NewReplacer("\r", " ", "\n", " ").Replace(desc)
 	if i > 0 {
 		if _, ok := descLine(f.lines[i-1]); ok {
 			f.lines[i-1] = line

@@ -256,6 +256,9 @@ func (d envDeps) setCmd() *cobra.Command {
 			if !envKeyName.MatchString(key) {
 				return fmt.Errorf("tên key không hợp lệ: %q", key) //znf:allow-lang
 			}
+			if err := checkValue("--desc", desc); err != nil {
+				return err
+			}
 			ws, m, f, err := d.load()
 			if err != nil {
 				return err
