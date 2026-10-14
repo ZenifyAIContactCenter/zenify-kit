@@ -210,6 +210,11 @@ func (f *File) Save(path string) error {
 		_ = tmp.Close()
 		return err
 	}
+	// flush to disk before the rename, so a crash never leaves an empty file
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
