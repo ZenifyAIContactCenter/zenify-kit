@@ -70,14 +70,14 @@ type Repo struct {
 	Path       string      `yaml:"path"` // relative to workspace root, overridable via overlay
 	Base       string      `yaml:"base"`
 	Tags       []string    `yaml:"tags"`
-	SecretKeys []SecretKey `yaml:"secretKeys"` // repo-only env keys, scaffolded on top of Manifest.SecretKeys; names only, never values (FR-041)
+	SecretKeys []SecretKey `yaml:"secretKeys"` // repo-only env keys on top of Manifest.SecretKeys; names only, never values (FR-041)
 }
 
 // Manifest is the full desired-set plus the GitHub org that owns it.
 type Manifest struct {
 	Org        string      `yaml:"org"`
 	Repos      []Repo      `yaml:"repos"`
-	SecretKeys []SecretKey `yaml:"secretKeys"` // env keys the kit scaffolds as empty placeholders (FR-065); values never distributed
+	SecretKeys []SecretKey `yaml:"secretKeys"` // env keys kept in <workspace>/.zenify/.env; names only, values never distributed
 }
 
 // Load parses a manifest YAML file. A missing file, empty org, or empty repo

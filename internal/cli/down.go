@@ -131,6 +131,15 @@ func newDownCmd() *cobra.Command {
 				}
 			}
 
+			// Workspace deny rule for .zenify/.env.
+			removedDeny, derr := apply.RemoveKitDeny(workspace, dryRun)
+			switch {
+			case derr != nil:
+				u.Step(ui.StatusWarn, "deny", fmt.Sprintf("bỏ qua (%v)", derr)) //znf:allow-lang
+			case removedDeny > 0:
+				u.Step(ui.StatusOK, "deny", fmt.Sprintf("gỡ %d luật deny của kit khỏi .claude/settings.json của workspace", removedDeny)) //znf:allow-lang
+			}
+
 			// 2 + 3. Each repo: exclude line + owned settings skeleton.
 			for _, r := range m.Repos {
 				repoDir := filepath.Join(workspace, r.Path)

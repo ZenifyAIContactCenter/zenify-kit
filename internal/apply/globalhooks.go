@@ -107,7 +107,7 @@ func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 // silently reordering e.g. the inside of "permissions"). The top-level keys are
 // still emitted in sorted order (root is itself a map), and the file's
 // whitespace/indentation is normalized on every write, same as the rest of this
-// package (see mergeSettingsKeys, apply.go:226, which reformats the whole file
+// package (see writeEnv in subagentmodel.go, which reformats the whole file
 // by design) — so this is foreign-value content-and-order preservation, not
 // byte-for-byte identity or top-level key-order preservation.
 func EnsureGlobalHooks(home string, dryRun bool) (HookChanges, error) {

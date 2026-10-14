@@ -38,18 +38,36 @@ var KitSandboxExcluded = []string{
 	"zenify e2e login *",
 }
 
+// KitDenyRules are the rules the kit unions into permissions.deny of
+// <workspace>/.claude/settings.json so an agent never reads the workspace
+// credential file.
+var KitDenyRules = []string{
+	"Read(/.zenify/.env)",
+}
+
 // kitList is one settings array the kit unions entries into, with the record
 // of what it added so removal never touches an entry the user already had.
+// root is the home dir for the global lists and the workspace for deny.
 type kitList struct {
 	outer, inner string
 	rules        []string
-	record       func(home string) string
+	settings     func(root string) string
+	record       func(root string) string
 }
 
 var (
-	allowList   = kitList{"permissions", "allow", KitAllowRules, kitPermissionsRecord}
-	sandboxList = kitList{"sandbox", "excludedCommands", KitSandboxExcluded, kitSandboxRecord}
+	allowList   = kitList{outer: "permissions", inner: "allow", rules: KitAllowRules, settings: claudeSettings, record: kitPermissionsRecord}
+	sandboxList = kitList{outer: "sandbox", inner: "excludedCommands", rules: KitSandboxExcluded, settings: claudeSettings, record: kitSandboxRecord}
+	denyList    = kitList{outer: "permissions", inner: "deny", rules: KitDenyRules, settings: claudeSettings, record: kitDenyRecord}
 )
+
+func claudeSettings(root string) string {
+	return filepath.Join(root, ".claude", "settings.json")
+}
+
+func kitDenyRecord(workspace string) string {
+	return filepath.Join(workspace, ".zenify", "kit-deny.json")
+}
 
 func kitPermissionsRecord(home string) string {
 	return filepath.Join(home, ".zenify", "playwright", "kit-permissions.json")
@@ -137,8 +155,20 @@ func RemoveKitSandbox(home string, dryRun bool) (int, error) {
 	return sandboxList.remove(home, dryRun)
 }
 
+// EnsureKitDeny unions KitDenyRules into permissions.deny of
+// <workspace>/.claude/settings.json, recording what it added in
+// <workspace>/.zenify/kit-deny.json (same user-removal rule as the allow list).
+func EnsureKitDeny(workspace string, dryRun bool) (int, error) {
+	return denyList.ensure(workspace, dryRun)
+}
+
+// RemoveKitDeny removes only the deny rules the kit recorded adding.
+func RemoveKitDeny(workspace string, dryRun bool) (int, error) {
+	return denyList.remove(workspace, dryRun)
+}
+
 func (l kitList) ensure(home string, dryRun bool) (int, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
+	path := l.settings(home)
 	root, mode, err := readSettingsRoot(path)
 	if err != nil {
 		return 0, err
@@ -211,7 +241,7 @@ func (l kitList) remove(home string, dryRun bool) (int, error) {
 		}
 		return 0, err
 	}
-	path := filepath.Join(home, ".claude", "settings.json")
+	path := l.settings(home)
 	root, mode, err := readSettingsRoot(path)
 	if err != nil {
 		return 0, err

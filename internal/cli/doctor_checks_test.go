@@ -241,3 +241,47 @@ func TestKitPermissionsCheck_MissingThenFixed(t *testing.T) {
 		t.Fatalf("after Fix the check should pass, detail=%q", detail)
 	}
 }
+
+// FR-8.3: a manifest key still holding a value in a settings env block is named
+// with its file; a non-manifest key and empty placeholders are not. No values.
+func TestDoctor_LeftoverSettingsEnv(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}},
+	}
+	write := func(p, body string) {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wsSettings := filepath.Join(ws, ".claude", "settings.local.json")
+	repoSettings := filepath.Join(ws, "svc", ".claude", "settings.local.json")
+	write(wsSettings, `{"env":{"MONGO_URL":"fake-value-1","OTHER":"o"}}`)
+	write(repoSettings, `{"env":{"SVC_URL":"fake-value-2","MONGO_URL":""}}`)
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok {
+		t.Fatalf("leftover keys must flag; detail=%q", detail)
+	}
+	for _, want := range []string{"MONGO_URL", wsSettings, "SVC_URL", repoSettings} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail %q lacks %q", detail, want)
+		}
+	}
+	for _, bad := range []string{"OTHER", "fake-value"} {
+		if strings.Contains(detail, bad) {
+			t.Errorf("detail %q must not contain %q", detail, bad)
+		}
+	}
+
+	write(wsSettings, `{"env":{"OTHER":"o"}}`)
+	write(repoSettings, `{"env":{}}`)
+	if ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run(); !ok {
+		t.Fatalf("clean settings must pass; detail=%q", detail)
+	}
+}

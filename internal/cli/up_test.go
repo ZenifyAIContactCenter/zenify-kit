@@ -516,3 +516,71 @@ func TestRenderCodexSummary(t *testing.T) {
 		t.Errorf("trust nudge must only show on changes:\n%s", b.String())
 	}
 }
+
+// FR-9 + deny rule through `up --apply`: manifest keys leave the settings env
+// blocks for .zenify/.env, the output names keys only, the deny rule lands in
+// the workspace settings.json, and a second run changes nothing.
+func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	wsSettings := filepath.Join(ws, ".claude", "settings.local.json")
+	repoSettings := filepath.Join(repo, ".claude", "settings.local.json")
+	for p, body := range map[string]string{
+		wsSettings:   `{"env":{"MONGO_URL":"fake-mongo-value","OTHER":"o"}}`,
+		repoSettings: `{"env":{"MONGO_URL":"","SVC_URL":"fake-svc-a"}}`,
+	} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := &manifest.Manifest{Org: "MyOrg",
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}}
+
+	var out bytes.Buffer
+	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("runApply: %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "env: chuyển 2 key (MONGO_URL, SVC_URL)") { //znf:allow-lang
+		t.Errorf("output lacks the moved-keys line:\n%s", s)
+	}
+	if strings.Contains(s, "fake-") {
+		t.Errorf("output carries a value:\n%s", s)
+	}
+	envBody, err := os.ReadFile(filepath.Join(ws, ".zenify", ".env")) //nolint:gosec // G304 -- test temp path
+	if err != nil || !strings.Contains(string(envBody), "SVC_URL='fake-svc-a'") {
+		t.Errorf(".zenify/.env = %q err=%v", envBody, err)
+	}
+	deny, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.json")) //nolint:gosec // G304 -- test temp path
+	if !strings.Contains(string(deny), "Read(/.zenify/.env)") {
+		t.Errorf("workspace settings.json lacks the deny rule: %s", deny)
+	}
+
+	snap := map[string]string{}
+	for _, p := range []string{wsSettings, repoSettings, filepath.Join(ws, ".zenify", ".env"), filepath.Join(ws, ".claude", "settings.json")} {
+		b, _ := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
+		snap[p] = string(b)
+	}
+	out.Reset()
+	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("second runApply: %v", err)
+	}
+	if strings.Contains(out.String(), "env: ") || strings.Contains(out.String(), "permissions: ") {
+		t.Errorf("second run printed a migration line:\n%s", out.String())
+	}
+	for p, before := range snap {
+		if b, _ := os.ReadFile(p); string(b) != before { //nolint:gosec // G304 -- test temp path
+			t.Errorf("%s changed on second run", p)
+		}
+	}
+}

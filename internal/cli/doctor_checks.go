@@ -108,6 +108,51 @@ func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest) 
 	}
 }
 
+// settingsEnvCheck names the manifest keys that still hold a value in the
+// "env" block of the workspace or a repo settings.local.json (FR-8.3) — they
+// belong in .zenify/.env. Key names and file paths only, never values.
+func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manifest) Check {
+	return Check{
+		Name: "settings-env",
+		Run: func() (bool, string) {
+			path := envPath()
+			m := kitManifest()
+			if path == "" || m == nil {
+				return true, "no workspace"
+			}
+			ws := filepath.Dir(filepath.Dir(path)) // envPath is <ws>/.zenify/.env
+			paths := []string{filepath.Join(ws, ".claude", "settings.local.json")}
+			for _, r := range m.Repos {
+				paths = append(paths, filepath.Join(ws, r.Path, ".claude", "settings.local.json"))
+			}
+			left, err := apply.LeftoverEnvKeys(paths)
+			if err != nil {
+				return false, err.Error()
+			}
+			known := map[string]bool{}
+			for _, k := range m.AllKeys() {
+				known[k.Name] = true
+			}
+			var problems []string
+			for _, p := range paths {
+				var names []string
+				for _, k := range left[p] {
+					if known[k] {
+						names = append(names, k)
+					}
+				}
+				if len(names) > 0 {
+					problems = append(problems, strings.Join(names, ", ")+" in "+p)
+				}
+			}
+			if len(problems) > 0 {
+				return false, strings.Join(problems, "; ") + " — run `zenify up --apply` to move them to .zenify/.env"
+			}
+			return true, "no credential left in settings env"
+		},
+	}
+}
+
 // workspaceManifest loads the kit manifest for the workspace resolved from cwd;
 // nil when there is no workspace or the manifest cannot be loaded.
 func workspaceManifest() *manifest.Manifest {
@@ -379,6 +424,7 @@ func gitIdentityCheckWith(identOK func(gitVar string) bool) Check {
 func registerDefaultChecks() {
 	RegisterCheck(secretPresenceCheck(os.Getenv, workspaceEnvPath, workspaceManifest))
 	RegisterCheck(envFileCheck(workspaceEnvPath, workspaceManifest))
+	RegisterCheck(settingsEnvCheck(workspaceEnvPath, workspaceManifest))
 	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
 	RegisterCheck(playwrightCheck())
 	RegisterCheck(kitPermissionsCheck(os.UserHomeDir))

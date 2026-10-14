@@ -2,12 +2,11 @@
 # Versioned in the kit; adding a repo is one commit, teammates re-run to pick up the delta.
 # `path` is relative to the workspace root (team layout: `repos/<name>`, see `zenify migrate`) and overridable per-dev via a local overlay.
 org: ZenifyAIContactCenter
-# Env keys the kit scaffolds into each repo's .claude/settings.local.json as
-# EMPTY placeholders (FR-065). Only the key NAMES are versioned here — a secret
-# VALUE is never stored, distributed, or read by the kit (FR-041). A developer
-# fills the values locally; an existing settings file keeps its values and only
-# gains the keys it is missing. Each key carries description/scope/secret
-# metadata (still no values).
+# Env keys a developer keeps in <workspace>/.zenify/.env (`zenify env`). Only
+# the key NAMES are versioned here — a secret VALUE is never stored or
+# distributed by the kit (FR-041). `zenify up --apply` moves these keys out of
+# any settings.local.json env block into .zenify/.env. Each key carries
+# description/scope/secret metadata (still no values).
 secretKeys:
   - name: MONGO_URL
     description: "Chuỗi kết nối MongoDB cho zenify db-read"

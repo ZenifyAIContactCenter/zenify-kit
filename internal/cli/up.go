@@ -9,9 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsview"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
@@ -234,7 +236,7 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	}
 
 	opts := apply.Options{
-		Workspace: workspace, Org: m.Org, Owned: owned, RepoByName: repoByName, SecretKeys: manifest.KeyNames(m.SecretKeys),
+		Workspace: workspace, Org: m.Org, Owned: owned, RepoByName: repoByName,
 		SnapshotRoot: filepath.Join(zenifyDir, "snapshots"),
 		ManifestPath: manifestPath,
 		Now:          applyNow,
@@ -276,6 +278,8 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 			}
 		}
 	}
+
+	migrateEnv(w, errW, plans, m, workspace, owned)
 
 	if err := owned.Save(manifestPath); err != nil {
 		return exitcode.New(exitcode.Fail, err)
@@ -341,6 +345,36 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 		return exitcode.New(exitcode.Fail, fmt.Errorf("apply: %d repo(s) failed", failed))
 	}
 	return nil
+}
+
+// migrateEnv moves manifest keys out of the workspace and repo
+// settings.local.json env blocks into <workspace>/.zenify/.env (FR-9), then
+// denies agent reads of that file. It runs under the apply lock and
+// before the ownership manifest is saved, so re-recorded fingerprints persist.
+// Fail-open; prints key names only, never a value.
+func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, workspace string, owned *managed.Manifest) {
+	paths := []string{filepath.Join(workspace, ".claude", "settings.local.json")}
+	for _, p := range plans {
+		paths = append(paths, filepath.Join(workspace, p.Path, ".claude", "settings.local.json"))
+	}
+	res, err := apply.MigrateSettingsEnv(paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned)
+	if err != nil {
+		_, _ = fmt.Fprintf(errW, "env: không chuyển được key sang .zenify/.env (%v)\n", err) //znf:allow-lang
+	}
+	if len(res.Moved) > 0 {
+		_, _ = fmt.Fprintf(w, "env: chuyển %d key (%s)\n", len(res.Moved), strings.Join(res.Moved, ", ")) //znf:allow-lang
+	}
+	if len(res.Removed) > 0 {
+		_, _ = fmt.Fprintf(w, "env: xoá %d placeholder rỗng (%s)\n", len(res.Removed), strings.Join(res.Removed, ", ")) //znf:allow-lang
+	}
+	for _, k := range res.Conflicts {
+		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — hai giá trị khác nhau, xử lý tay\n", k) //znf:allow-lang
+	}
+	if n, err := apply.EnsureKitDeny(workspace, false); err != nil {
+		_, _ = fmt.Fprintf(errW, "permissions: không thêm được luật deny .zenify/.env (%v)\n", err) //znf:allow-lang
+	} else if n > 0 {
+		_, _ = fmt.Fprintf(w, "permissions: chặn agent đọc .zenify/.env (%s)\n", strings.Join(apply.KitDenyRules, ", ")) //znf:allow-lang
+	}
 }
 
 // renderCodexSummary prints the Codex block of `zenify up` (FR-7.2).
