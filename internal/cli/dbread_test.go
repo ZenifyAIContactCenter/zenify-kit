@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -82,6 +83,9 @@ func (f *failAfter) Write(p []byte) (int, error) {
 // A refused stdout write must stop the child at once instead of letting it
 // stream until the 60 s timeout.
 func TestRunDBChild_StopsOnWriteError(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not on PATH")
+	}
 	// SIGPIPE ignored: closing the pipe alone would not stop this child.
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

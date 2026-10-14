@@ -27,7 +27,7 @@ zenify db-read <collections|tables|doc|count|find|aggregate|explain|sql> [arg]
 | `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline`, không áp `--limit` (chạy truy vấn đọc, tối đa 30 giây) |
 | `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc trong transaction READ ONLY |
 
-Không lệnh nào nhận code tự do. Lệnh `eval` đã bị gỡ; muốn lấy mọi giá trị của một field (thay cho `distinct`), dùng `aggregate`:
+Không lệnh nào nhận code tự do. Lệnh `eval` đã bị gỡ; muốn liệt kê các giá trị của một field (thay cho `distinct`), dùng `aggregate`. Danh sách bị giới hạn bởi `--limit` (tối đa 200); có thông báo trên stderr nghĩa là danh sách đã bị cắt:
 
 ```bash
 zenify db-read aggregate chat_rooms --pipeline '[{"$group":{"_id":"$status"}}]'
