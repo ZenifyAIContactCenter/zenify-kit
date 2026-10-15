@@ -242,3 +242,91 @@ func TestEnsure_FailureCachedTenMinutes(t *testing.T) {
 		t.Fatalf("after 10 min: err=%v logins=%d", err, app.logins)
 	}
 }
+
+// blockingApp holds Login for the emails in block until their channel closes,
+// then fails it with ctx's error if ctx ended meanwhile.
+type blockingApp struct {
+	*fakeApp
+	block   map[string]chan struct{}
+	entered chan string
+}
+
+func (b *blockingApp) Login(ctx context.Context, email, password string) (string, error) {
+	if ch, ok := b.block[email]; ok {
+		b.entered <- email
+		<-ch
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+	}
+	return b.fakeApp.Login(ctx, email, password)
+}
+
+func TestEnsure_DifferentLoginsDoNotWaitOnEachOther(t *testing.T) {
+	app := &blockingApp{fakeApp: newFakeApp(), block: map[string]chan struct{}{aliceAgent: make(chan struct{})}, entered: make(chan string, 8)}
+	p := newProvisioner(app)
+	aliceDone := make(chan error, 1)
+	go func() { _, err := p.Ensure(context.Background(), "alice", "agent"); aliceDone <- err }()
+	<-app.entered
+	bobDone := make(chan error, 1)
+	go func() { _, err := p.Ensure(context.Background(), "bob", "agent"); bobDone <- err }()
+	select {
+	case err := <-bobDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("bob waited on alice's provisioning")
+	}
+	close(app.block[aliceAgent])
+	if err := <-aliceDone; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnsure_CancelledWaiterReturnsPromptly(t *testing.T) {
+	app := &blockingApp{fakeApp: newFakeApp(), block: map[string]chan struct{}{aliceAgent: make(chan struct{})}, entered: make(chan string, 8)}
+	p := newProvisioner(app)
+	firstDone := make(chan error, 1)
+	go func() { _, err := p.Ensure(context.Background(), "alice", "agent"); firstDone <- err }()
+	<-app.entered
+
+	ctx, cancel := context.WithCancel(context.Background())
+	waiterDone := make(chan error, 1)
+	go func() { _, err := p.Ensure(ctx, "alice", "agent"); waiterDone <- err }()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-waiterDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("waiter: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancelled waiter did not return")
+	}
+	close(app.block[aliceAgent])
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	// The waiter's cancellation was not cached as a failure.
+	if _, err := p.Ensure(context.Background(), "alice", "agent"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnsure_ClientDisconnectDoesNotAbortProvisioning(t *testing.T) {
+	app := &blockingApp{fakeApp: newFakeApp(), block: map[string]chan struct{}{aliceAgent: make(chan struct{})}, entered: make(chan string, 8)}
+	p := newProvisioner(app)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { _, err := p.Ensure(ctx, "alice", "agent"); done <- err }()
+	<-app.entered
+	cancel()
+	close(app.block[aliceAgent])
+	if err := <-done; err != nil {
+		t.Fatalf("provisioning stopped with the client: %v", err)
+	}
+	if app.creates != 1 || len(app.changes) != 1 {
+		t.Fatalf("creates=%d changes=%d", app.creates, len(app.changes))
+	}
+}

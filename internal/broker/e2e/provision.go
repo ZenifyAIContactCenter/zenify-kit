@@ -319,6 +319,9 @@ const verifiedTTL = time.Hour
 // cannot add up failed hub logins toward the lockout.
 const failedTTL = 10 * time.Minute
 
+// provisionTimeout bounds one provisioning run, which outlives its request.
+const provisionTimeout = 2 * time.Minute
+
 type failure struct {
 	err   error
 	until time.Time
@@ -337,11 +340,39 @@ type Provisioner struct {
 	Domain      string // hub login domain, returned to the caller
 	Now         func() time.Time
 
-	// mu serialises Ensure, so parallel calls cannot create a user twice or
-	// add up failed logins past the lockout.
+	// mu guards the maps below and is never held across a hub/be call.
 	mu       sync.Mutex
 	verified map[cacheKey]time.Time // -> expiry
 	failed   map[cacheKey]failure
+	// keyLocks serialise provisioning per cacheKey (1-slot semaphores), so
+	// parallel calls cannot create a user twice or add up failed logins past
+	// the lockout, while other developers' accounts proceed.
+	keyLocks map[cacheKey]chan struct{}
+}
+
+// lookup answers k from the verified or failed cache.
+func (p *Provisioner) lookup(k cacheKey, now time.Time) (hit bool, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if exp, ok := p.verified[k]; ok && now.Before(exp) {
+		return true, nil
+	}
+	if f, ok := p.failed[k]; ok && now.Before(f.until) {
+		return true, f.err
+	}
+	return false, nil
+}
+
+func (p *Provisioner) keyLock(k cacheKey) chan struct{} {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.keyLocks == nil {
+		p.keyLocks = map[cacheKey]chan struct{}{}
+	}
+	if p.keyLocks[k] == nil {
+		p.keyLocks[k] = make(chan struct{}, 1)
+	}
+	return p.keyLocks[k]
 }
 
 // Ensure returns the account of login for role, following FR-5.2: P(period),
@@ -355,15 +386,35 @@ func (p *Provisioner) Ensure(ctx context.Context, login, role string) (api.E2EAc
 		Password: Password(p.Key, login, role, period), Role: role}
 	k := cacheKey{login, role, period}
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if exp, ok := p.verified[k]; ok && now.Before(exp) {
+	result := func(err error) (api.E2EAccountResponse, error) {
+		if err != nil {
+			return api.E2EAccountResponse{}, err
+		}
 		return resp, nil
 	}
-	if f, ok := p.failed[k]; ok && now.Before(f.until) {
-		return api.E2EAccountResponse{}, f.err
+	if hit, err := p.lookup(k, now); hit {
+		return result(err)
 	}
-	if err := p.provision(ctx, login, role, period, resp.Email); err != nil {
+	sem := p.keyLock(k)
+	select {
+	case sem <- struct{}{}:
+	case <-ctx.Done():
+		return api.E2EAccountResponse{}, ctx.Err()
+	}
+	defer func() { <-sem }()
+	// Whoever held the lock may have settled k meanwhile.
+	if hit, err := p.lookup(k, now); hit {
+		return result(err)
+	}
+
+	// A client that disconnects after the reset must not leave the account
+	// on its temporary password: the run ignores ctx's cancellation.
+	pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), provisionTimeout)
+	defer cancel()
+	err := p.provision(pctx, login, role, period, resp.Email)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if err != nil {
 		if p.failed == nil {
 			p.failed = map[cacheKey]failure{}
 		}
