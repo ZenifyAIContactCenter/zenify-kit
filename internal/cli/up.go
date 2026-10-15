@@ -168,7 +168,7 @@ func ensureDocsStore(w io.Writer, errW io.Writer, git gitx.Runner, workspace str
 // runApply executes the actionable plans under the full b2a safety sequence:
 // version gate → workspace lock → pre-mutation snapshot → apply → persist the
 // ownership manifest. The lock is released on return.
-func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, workspace string, gh ghx.Runner, git gitx.Runner) error {
+func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, src, workspace string, gh ghx.Runner, git gitx.Runner) error {
 	if err := version.GuardMutation(version.Current(), minVersionFloor); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
@@ -279,7 +279,7 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 		}
 	}
 
-	migrateEnv(w, errW, plans, m, workspace, owned)
+	migrateEnv(w, errW, plans, m, src, workspace, owned)
 
 	if err := owned.Save(manifestPath); err != nil {
 		return exitcode.New(exitcode.Fail, err)
@@ -373,7 +373,7 @@ func settingsEnvPaths(workspace string, repoPaths []string) (paths, skipped []st
 // denies agent reads of that file in ~/.claude/settings.json (FR-10). It runs under the apply lock and
 // before the ownership manifest is saved, so re-recorded fingerprints persist.
 // Fail-open; prints key names only, never a value.
-func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, workspace string, owned *managed.Manifest) {
+func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, src, workspace string, owned *managed.Manifest) {
 	var repoPaths []string
 	for _, p := range plans {
 		repoPaths = append(repoPaths, p.Path)
@@ -384,7 +384,7 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 	}
 	if !migrateSettingsAndMerge(w, errW, paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned) {
 		_, _ = fmt.Fprintln(errW, "env: bỏ qua dựng lại .zenify/.env do bước chuyển key lỗi") //znf:allow-lang
-	} else if err := renderEnvStep(w, m, devenv.Path(workspace), owned, false); err != nil {
+	} else if err := renderEnvStep(w, m, src, devenv.Path(workspace), owned, false); err != nil {
 		_, _ = fmt.Fprintf(errW, "env: không dựng được .zenify/.env (%v)\n", err) //znf:allow-lang
 	}
 	home, herr := os.UserHomeDir()
@@ -429,32 +429,101 @@ func migrateSettingsAndMerge(w, errW io.Writer, paths, manifestKeys []string, en
 }
 
 // renderEnvStep rebuilds envPath as the grouped scaffold of the manifest keys.
-// dryRun only prints what would change; otherwise it saves the file and records
-// the kit-managed key names in owned.EnvKeys. Prints key names only, never a value.
-func renderEnvStep(w io.Writer, m *manifest.Manifest, envPath string, owned *managed.Manifest, dryRun bool) error {
+// src is where m came from (loadKitManifest). A recorded key the manifest lacks
+// is deleted only when envDeletionGate allows it; otherwise it stays in the
+// file and in owned.EnvKeys. dryRun only prints what would change; otherwise
+// it saves the file and records the kit-managed key names in owned.EnvKeys.
+// Prints key names only, never a value.
+func renderEnvStep(w io.Writer, m *manifest.Manifest, src, envPath string, owned *managed.Manifest, dryRun bool) error {
 	old, err := devenv.Load(envPath)
 	if err != nil {
 		return err
 	}
-	res := devenv.Render(old, m.PlacedKeys(), owned.EnvKeys)
+	current := manifest.KeyNames(m.AllKeys())
+	prev := owned.EnvKeys
+	allowed, reason := envDeletionGate(src, version.Current(), owned.EnvKeysVersion)
+	var held []string
+	if !allowed {
+		skip := map[string]bool{}
+		for _, k := range current {
+			skip[k] = true
+		}
+		for _, k := range owned.EnvKeys {
+			if _, ok := old.Get(k); ok && !skip[k] {
+				skip[k] = true
+				held = append(held, k)
+			}
+		}
+		prev = nil
+	}
+	res := devenv.Render(old, m.PlacedKeys(), prev)
 	if !dryRun {
 		if err := res.File.Save(envPath); err != nil {
 			return err
 		}
-		owned.EnvKeys = manifest.KeyNames(m.AllKeys())
+		owned.EnvKeys = append(current, held...)
+		if bumpEnvKeysVersion(version.Current(), owned.EnvKeysVersion) {
+			owned.EnvKeysVersion = version.Current()
+		}
 	}
 	for _, l := range []struct {
 		label string
 		names []string
-	}{{"thêm", res.Added}, {"xoá", res.Removed}, {"custom thiếu mô tả", res.Undescribed}} { //znf:allow-lang
+	}{{"thêm", res.Added}, {"xoá", res.Removed}} { //znf:allow-lang
 		if len(l.names) > 0 {
 			_, _ = fmt.Fprintf(w, "env: %s %s\n", l.label, strings.Join(l.names, ", "))
 		}
+	}
+	if len(held) > 0 {
+		_, _ = fmt.Fprintf(w, "env: giữ %s — %s\n", strings.Join(held, ", "), reason) //znf:allow-lang
+	}
+	if len(res.Undescribed) > 0 {
+		_, _ = fmt.Fprintf(w, "env: custom thiếu mô tả %s\n", strings.Join(res.Undescribed, ", ")) //znf:allow-lang
 	}
 	if len(res.Shadowed) > 0 {
 		_, _ = fmt.Fprintf(w, "env: giữ giá trị trùng của %s dưới dạng comment\n", strings.Join(res.Shadowed, ", ")) //znf:allow-lang
 	}
 	return nil
+}
+
+// envDeletionGate reports whether renderEnvStep may delete a recorded key the
+// manifest lacks: only with the manifest embedded in this binary, and only
+// when this binary is not older than the one that last recorded EnvKeys
+// (recorded). When it may not, reason says why, for the keep line.
+func envDeletionGate(src, current, recorded string) (bool, string) {
+	if src != "embedded" {
+		return false, fmt.Sprintf("manifest không phải bản nhúng (%s)", src) //znf:allow-lang
+	}
+	if !envVersionNotOlder(current, recorded) {
+		return false, "binary cũ hơn bản đã ghi" //znf:allow-lang
+	}
+	return true, ""
+}
+
+// envVersionNotOlder reports current >= recorded. A dev build is comparable
+// only to another dev build; an empty or unparsable version is unsure, and
+// unsure is "older".
+func envVersionNotOlder(current, recorded string) bool {
+	if current == "dev" || recorded == "dev" {
+		return current == recorded
+	}
+	ok, err := version.MeetsMin(current, recorded)
+	return err == nil && ok
+}
+
+// bumpEnvKeysVersion reports whether a write by current re-stamps
+// EnvKeysVersion: when nothing is recorded, when current is not older, or
+// when the stamp is a dev or unparsable one and current is a release. A
+// release stamp is never replaced by an older or a dev one.
+func bumpEnvKeysVersion(current, recorded string) bool {
+	if recorded == "" || envVersionNotOlder(current, recorded) {
+		return true
+	}
+	if _, err := version.MeetsMin(current, "v0.0.0"); err != nil || current == "dev" {
+		return false
+	}
+	_, err := version.MeetsMin("v0.0.0", recorded)
+	return err != nil || recorded == "dev"
 }
 
 // mergeMySQLURLStep joins the legacy MYSQL_* keys of .zenify/.env into
@@ -655,7 +724,7 @@ func newUpCmd() *cobra.Command {
 			// is no reason to gate them behind a successful repo-plan build
 			// (SC-10 dry-run parity).
 			isPreview := !applyFlag
-			m, _, err := loadKitManifest(manifestPath, overlayPath)
+			m, mSrc, err := loadKitManifest(manifestPath, overlayPath)
 			if err != nil {
 				if isPreview {
 					printPlanFooterRows(w, workspace)
@@ -692,10 +761,10 @@ func newUpCmd() *cobra.Command {
 			}
 			switch decideMode(isTTY, applyFlag, cmd.Flags().Changed("dry-run"), dryRun, jsonOut, nonInteractive) {
 			case modeWizard:
-				return runWizard(w, m, workspace, sources, plans, auth.LoggedIn)
+				return runWizard(w, m, mSrc, workspace, sources, plans, auth.LoggedIn)
 			case modeApply:
 				uiOut(cmd).Header("zenify up --apply")
-				return runApply(w, cmd.ErrOrStderr(), plans, m, workspace, ghx.ExecRunner(), gitx.ExecRunner())
+				return runApply(w, cmd.ErrOrStderr(), plans, m, mSrc, workspace, ghx.ExecRunner(), gitx.ExecRunner())
 			default: // modeDryRun
 				if jsonOut {
 					return renderPlanJSON(w, plans, auth)
@@ -703,7 +772,7 @@ func newUpCmd() *cobra.Command {
 				uiOut(cmd).Header("zenify up")
 				renderPlanTable(w, plans, auth)
 				if owned, lerr := managed.Load(filepath.Join(workspace, ".zenify", "manifest.json")); lerr == nil {
-					if rerr := renderEnvStep(w, m, devenv.Path(workspace), owned, true); rerr != nil {
+					if rerr := renderEnvStep(w, m, mSrc, devenv.Path(workspace), owned, true); rerr != nil {
 						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "env: không xem trước được .zenify/.env (%v)\n", rerr) //znf:allow-lang
 					}
 				}

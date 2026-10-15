@@ -416,3 +416,32 @@ func TestRender_DuplicateDifferentValuesKeptAsComment(t *testing.T) {
 		t.Fatalf("second Shadowed = %v", again.Shadowed)
 	}
 }
+
+func TestRender_HeldManagedKeyTakesLineOneDescription(t *testing.T) {
+	for _, k := range []manifest.PlacedKey{
+		key("MONGO_URL_PRD", manifest.GroupProduction, "Mongo prod", "devops", "shared", true, ""),
+		key("MYSQL_URL", "", "MySQL staging", "", "personal", true, "contact-center-be"),
+		key("E2E_DOMAIN", "", "Domain E2E", "", "", false, ""),
+	} {
+		first := Render(load(t, k.Name+"='fake'\n"), []manifest.PlacedKey{k}, nil)
+		// the key leaves the manifest; deletion refused → rendered with prevManaged=nil
+		r := Render(first.File, nil, nil)
+		got := text(t, r.File)
+		if d := r.File.Desc(k.Name); d != k.Description {
+			t.Fatalf("%s desc = %q, want %q:\n%s", k.Name, d, k.Description, got)
+		}
+		if strings.Contains(got, noteComment(k)) {
+			t.Fatalf("%s note line kept:\n%s", k.Name, got)
+		}
+		if v, _ := r.File.Get(k.Name); v != "fake" {
+			t.Fatalf("%s value lost:\n%s", k.Name, got)
+		}
+	}
+}
+
+func TestRender_LoneNoteShapedDescriptionStays(t *testing.T) {
+	r := Render(load(t, "# secret\nMY_KEY='v'\n"), nil, nil)
+	if d := r.File.Desc("MY_KEY"); d != "secret" {
+		t.Fatalf("desc = %q, want secret", d)
+	}
+}

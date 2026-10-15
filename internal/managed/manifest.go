@@ -23,6 +23,9 @@ type Manifest struct {
 	// EnvKeys are the key names the kit wrote into .zenify/.env on its last
 	// apply; a key leaving the manifest is deleted only when listed here.
 	EnvKeys []string `json:"envKeys,omitempty"`
+	// EnvKeysVersion is the binary version that last recorded EnvKeys; a
+	// binary older than it never deletes a key from .zenify/.env.
+	EnvKeysVersion string `json:"envKeysVersion,omitempty"`
 }
 
 // Fingerprint returns the hex sha256 of b.

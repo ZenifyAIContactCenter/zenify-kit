@@ -123,7 +123,18 @@ func Render(old *File, keys []manifest.PlacedKey, prevManaged []string) RenderRe
 			seen[k] = true
 			customOrder = append(customOrder, k)
 		}
-		if n := len(block); n > 0 {
+		// A key the kit no longer manages still carries its 2-line kit
+		// block: the description is line 1, the note line is dropped.
+		noted := false
+		if n := len(block); n >= 2 && isNoteComment(block[n-1]) {
+			if d, isDesc := descLine(block[n-2]); isDesc {
+				if d != "" {
+					desc[k] = d
+				}
+				block, noted = block[:n-2], true
+			}
+		}
+		if n := len(block); n > 0 && !noted {
 			if d, isDesc := descLine(block[n-1]); isDesc && d != "" {
 				desc[k] = d
 				block = block[:n-1]
@@ -241,6 +252,42 @@ func noteComment(k manifest.PlacedKey) string {
 		parts = append(parts, oneLine(k.Repo))
 	}
 	return "# " + strings.Join(parts, commentPartJoiner)
+}
+
+// isNoteComment reports whether line is a note line noteComment writes: it
+// parses the parts back into a key and accepts the line only when
+// noteComment of that key reproduces it exactly.
+func isNoteComment(line string) bool {
+	t := strings.TrimSpace(line)
+	body, ok := strings.CutPrefix(t, "# ")
+	if !ok {
+		return false
+	}
+	parts := strings.Split(body, commentPartJoiner)
+	for i, p := range parts {
+		if p != labelSecret && p != labelNotSecret {
+			continue
+		}
+		k := manifest.PlacedKey{SecretKey: manifest.SecretKey{Secret: p == labelSecret}}
+		before, after := parts[:i], parts[i+1:]
+		if len(before) > 0 && strings.HasPrefix(before[0], labelHowTo) {
+			k.HowTo = strings.TrimPrefix(before[0], labelHowTo)
+			before = before[1:]
+		}
+		if len(before) > 1 || len(after) > 1 {
+			continue
+		}
+		if len(before) == 1 {
+			k.Scope = before[0]
+		}
+		if len(after) == 1 {
+			k.Repo = after[0]
+		}
+		if noteComment(k) == t {
+			return true
+		}
+	}
+	return false
 }
 
 func assignLine(key, value string) string {

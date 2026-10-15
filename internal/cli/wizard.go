@@ -23,7 +23,7 @@ func wizardSecretKeys(m *manifest.Manifest) []manifest.SecretKey { return m.Secr
 // answer (nil when it did not run — e.g. the marker/pointer path). prebuilt is
 // the plan the caller already built before the welcome screen; preAuthed says
 // whether the user was already logged in when that plan was built.
-func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[string]reconcile.Source, prebuilt []reconcile.RepoPlan, preAuthed bool) error {
+func runWizard(w io.Writer, m *manifest.Manifest, src, workspace string, sources map[string]reconcile.Source, prebuilt []reconcile.RepoPlan, preAuthed bool) error {
 	gh, git := ghx.ExecRunner(), gitx.ExecRunner()
 	res, err := tui.RunOnboard(tui.OnboardConfig{
 		Workspace:  workspace,
@@ -48,7 +48,7 @@ func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[
 			sp.Stop()
 			return plans, perr
 		},
-		ApplyFn: func(sel []string) error { return runApplySelected(w, m, workspace, sel, gh, git, sources) },
+		ApplyFn: func(sel []string) error { return runApplySelected(w, m, src, workspace, sel, gh, git, sources) },
 	})
 	_ = res
 	return err
@@ -60,7 +60,7 @@ func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[
 // runApply core the headless `--apply` path uses (lock, snapshot, apply,
 // hook wiring, docs store — no logic duplicated here). An empty selection
 // applies the full (unfiltered) plan rather than silently no-op'ing.
-func runApplySelected(w io.Writer, m *manifest.Manifest, workspace string, selected []string, gh ghx.Runner, git gitx.Runner, sources map[string]reconcile.Source) error {
+func runApplySelected(w io.Writer, m *manifest.Manifest, src, workspace string, selected []string, gh ghx.Runner, git gitx.Runner, sources map[string]reconcile.Source) error {
 	plans, _, err := buildPlan(m, gh, git, workspace, sources)
 	if err != nil {
 		return err
@@ -81,5 +81,5 @@ func runApplySelected(w io.Writer, m *manifest.Manifest, workspace string, selec
 			}
 		}
 	}
-	return runApply(w, w, filtered, m, workspace, gh, git)
+	return runApply(w, w, filtered, m, src, workspace, gh, git)
 }

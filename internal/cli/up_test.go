@@ -163,7 +163,7 @@ func TestRunApply_NonTTY_PlainStepLinesNoEscapes(t *testing.T) {
 	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}}
 
 	var out bytes.Buffer
-	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+	if err := runApply(&out, &out, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
 		t.Fatalf("runApply: %v", err)
 	}
 	s := out.String()
@@ -187,7 +187,7 @@ func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{{Name: "svc", Path: "svc"}}}
 	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}}
 
-	err := runApply(io.Discard, io.Discard, plans, m, ws, &fakeGH{}, &fakeGit{})
+	err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{})
 	if err != nil {
 		t.Fatalf("runApply: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestRunApply_LockHeld_ReturnsExit4(t *testing.T) {
 	defer func() { _ = h.Release() }()
 
 	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{}}
-	err = runApply(io.Discard, io.Discard, nil, m, ws, &fakeGH{}, &fakeGit{})
+	err = runApply(io.Discard, io.Discard, nil, m, "embedded", ws, &fakeGH{}, &fakeGit{})
 	if exitcode.Code(err) != exitcode.LockHeld {
 		t.Fatalf("want exit %d (LockHeld), got %d (err %v)", exitcode.LockHeld, exitcode.Code(err), err)
 	}
@@ -237,7 +237,7 @@ func TestRunApply_PartialFailure_SavesManifestAndReturnsFail(t *testing.T) {
 	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{{Name: "svc", Path: "svc"}}}
 	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Clone, Path: "svc"}}
 
-	err := runApply(io.Discard, io.Discard, plans, m, ws, gh, &fakeGit{})
+	err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, gh, &fakeGit{})
 	if exitcode.Code(err) != exitcode.Fail {
 		t.Fatalf("want exit %d (Fail) on a failed repo, got %d (err %v)", exitcode.Fail, exitcode.Code(err), err)
 	}
@@ -549,7 +549,7 @@ func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
 	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}}
 
 	var out bytes.Buffer
-	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+	if err := runApply(&out, &out, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
 		t.Fatalf("runApply: %v", err)
 	}
 	s := out.String()
@@ -578,7 +578,7 @@ func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
 		snap[p] = string(b)
 	}
 	out.Reset()
-	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+	if err := runApply(&out, &out, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
 		t.Fatalf("second runApply: %v", err)
 	}
 	if strings.Contains(out.String(), "env: ") || strings.Contains(out.String(), "permissions: ") {
@@ -615,7 +615,7 @@ func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
 		Repos: []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
 	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}}
 	var out bytes.Buffer
-	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+	if err := runApply(&out, &out, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
 		t.Fatalf("runApply: %v", err)
 	}
 	for _, p := range []string{repoSettings, wtSettings} {
@@ -649,7 +649,7 @@ func TestRunApply_SkipsMalformedWorktreeSettings(t *testing.T) {
 		Repos: []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
 	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}}
 	var out bytes.Buffer
-	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+	if err := runApply(&out, &out, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
 		t.Fatalf("runApply: %v", err)
 	}
 	if b, _ := os.ReadFile(repoSettings); strings.Contains(string(b), "SVC_URL") { //nolint:gosec // G304 -- test temp path
