@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"sync"
 	"testing"
@@ -328,5 +329,47 @@ func TestEnsure_ClientDisconnectDoesNotAbortProvisioning(t *testing.T) {
 	}
 	if app.creates != 1 || len(app.changes) != 1 {
 		t.Fatalf("creates=%d changes=%d", app.creates, len(app.changes))
+	}
+}
+
+// slowApp advances *now by d on every Login, as a slow hub would.
+type slowApp struct {
+	*fakeApp
+	now *time.Time
+	d   time.Duration
+}
+
+func (s *slowApp) Login(ctx context.Context, email, password string) (string, error) {
+	*s.now = s.now.Add(s.d)
+	return s.fakeApp.Login(ctx, email, password)
+}
+
+func TestEnsure_FailureTTLCountsFromTheEnd(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		err  error
+		ttl  time.Duration
+	}{
+		{"other failure", errors.New("hub login: status 400: x"), 10 * time.Minute},
+		{"hub locked", fmt.Errorf("hub login: status 429: x: %w", ErrHubLocked), 15 * time.Minute},
+	} {
+		now := testNow
+		app := &slowApp{fakeApp: newFakeApp(), now: &now, d: 5 * time.Minute}
+		app.loginErr = c.err
+		p := newProvisioner(app)
+		p.Now = func() time.Time { return now }
+		if _, err := p.Ensure(context.Background(), "alice", "agent"); err == nil {
+			t.Fatalf("%s: want error", c.name)
+		}
+		end := now // provisioning took 5 minutes
+		now = end.Add(c.ttl - time.Minute)
+		if _, err := p.Ensure(context.Background(), "alice", "agent"); err == nil || app.logins != 1 {
+			t.Fatalf("%s: within ttl of the end: err=%v logins=%d", c.name, err, app.logins)
+		}
+		now = end.Add(c.ttl + time.Minute)
+		_, _ = p.Ensure(context.Background(), "alice", "agent")
+		if app.logins != 2 {
+			t.Fatalf("%s: after ttl: logins=%d, want a new attempt", c.name, app.logins)
+		}
 	}
 }

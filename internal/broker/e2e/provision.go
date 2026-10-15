@@ -319,6 +319,9 @@ const verifiedTTL = time.Hour
 // cannot add up failed hub logins toward the lockout.
 const failedTTL = 10 * time.Minute
 
+// lockedTTL keeps an ErrHubLocked failure for hub's 15-minute lockout window.
+const lockedTTL = 15 * time.Minute
+
 // provisionTimeout bounds one provisioning run, which outlives its request.
 const provisionTimeout = 2 * time.Minute
 
@@ -418,7 +421,12 @@ func (p *Provisioner) Ensure(ctx context.Context, login, role string) (api.E2EAc
 		if p.failed == nil {
 			p.failed = map[cacheKey]failure{}
 		}
-		p.failed[k] = failure{err, now.Add(failedTTL)}
+		ttl := failedTTL
+		if errors.Is(err, ErrHubLocked) {
+			ttl = lockedTTL
+		}
+		// From when provisioning ended, which can be minutes after now.
+		p.failed[k] = failure{err, p.Now().Add(ttl)}
 		return api.E2EAccountResponse{}, err
 	}
 	if p.verified == nil {
