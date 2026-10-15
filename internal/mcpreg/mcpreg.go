@@ -15,8 +15,14 @@ import (
 // HeadersHelper is the command Claude Code runs to obtain request headers.
 const HeadersHelper = "zenify broker headers"
 
-// notFound is what `claude mcp get` prints for an unknown name.
-const notFound = "No MCP server found"
+// isNotFound reports whether failed `claude mcp get` output says the name is
+// unknown. The exact wording ("No MCP server found with name: …") is not
+// documented, so both common phrasings are accepted; any other failure (a
+// timeout, a crash) is not "absent".
+func isNotFound(out string) bool {
+	o := strings.ToLower(out)
+	return strings.Contains(o, "no mcp server") || strings.Contains(o, "not found")
+}
 
 // Spec names one kit-managed MCP server; URL is <broker.url>/mcp/<name>.
 type Spec struct{ Name, URL string }
@@ -52,7 +58,7 @@ func Bootstrap(o Options) (playwright.RegState, error) {
 		default:
 			return playwright.RegCustom, nil
 		}
-	case !strings.Contains(string(out), notFound):
+	case !isNotFound(string(out)):
 		return playwright.RegAbsent, fmt.Errorf("claude mcp get %s: %w: %s", o.Spec.Name, err, strings.TrimSpace(string(out)))
 	}
 	cfg, err := json.Marshal(map[string]string{"type": "http", "url": o.Spec.URL, "headersHelper": HeadersHelper})
