@@ -2,53 +2,11 @@
 # Versioned in the kit; adding a repo is one commit, teammates re-run to pick up the delta.
 # `path` is relative to the workspace root (team layout: `repos/<name>`, see `zenify migrate`) and overridable per-dev via a local overlay.
 org: ZenifyAIContactCenter
-# Env keys a developer keeps in <workspace>/.zenify/.env (`zenify env`). Only
-# the key NAMES are versioned here — a secret VALUE is never stored or
-# distributed by the kit (FR-041). `zenify up --apply` moves these keys out of
-# any settings.local.json env block into .zenify/.env. Each key carries
-# description/scope/secret metadata (still no values).
-secretKeys:
-  - name: MONGO_URL
-    description: "Chuỗi kết nối MongoDB cho zenify db-read"
-    scope: shared
-    group: staging
-  - name: MYSQL_URL
-    description: "URL MySQL cho zenify db-read (mysql://user:pass@host:port/database)"
-    scope: shared
-    group: staging
-  - name: E2E_DOMAIN
-    description: "Tên miền (tenant) đăng nhập cho zenify e2e login"
-    scope: shared
-    secret: false
-    group: tooling
-  - name: E2E_EMAIL
-    description: "Email đăng nhập cho zenify e2e login"
-    scope: personal
-    group: tooling
-  - name: E2E_PASSWORD
-    description: "Mật khẩu đăng nhập cho zenify e2e login"
-    scope: personal
-    group: tooling
-  - name: POSTHOG_API_KEY
-    description: "Khoá API PostHog"
-    scope: personal
-    group: tooling
-  - name: MONGO_URL_PRD
-    description: "MongoDB production, DB 3csoft"
-    scope: personal
-    group: production
-  - name: MYSQL_URL_PRD
-    description: "MySQL production"
-    scope: personal
-    group: production
-  - name: AUDIT_MONGO_URL_PRD
-    description: "MongoDB audit_logs production"
-    scope: personal
-    group: production
-  - name: REDIS_URL_PRD
-    description: "Redis production"
-    scope: personal
-    group: production
+# Credential broker (zenify-broker): db-read, redis-read, e2e and the grafana/posthog MCPs
+# fetch short-lived credentials from it with the developer's GitHub token, so the
+# DB, E2E and PostHog keys no longer live in .zenify/.env. Only the URL is versioned.
+broker:
+  url: https://broker.zenify.vn
 repos:
   - name: contact-center-be
     url: git@github.com:ZenifyAIContactCenter/contact-center-be.git

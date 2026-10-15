@@ -6,7 +6,7 @@ title: Dùng credential broker
 
 Khi manifest khai báo `broker:`, bạn không giữ chuỗi kết nối DB, mật khẩu Redis, token Grafana hay key PostHog nào trên máy: kit đổi GitHub token của bạn lấy một JWT sống 15 phút, rồi gọi broker. Trang này là phần việc phía dev. Phía maintainer dựng host xem [Dựng host credential broker](/guides/broker-host).
 
-Manifest không khai báo `broker:` thì mọi lệnh kit chạy như cũ, đọc credential từ `<workspace>/.zenify/.env` ([Credential dev với zenify env](/guides/env)). Manifest nhúng sẵn trong binary hiện chưa khai báo `broker:`; một bản phát hành sau (PR-C) bật broker cho workspace zenify, sau khi host broker chạy.
+Manifest không khai báo `broker:` thì mọi lệnh kit chạy như cũ, đọc credential từ `<workspace>/.zenify/.env` ([Credential dev với zenify env](/guides/env)). Manifest nhúng sẵn trong binary khai báo `broker:` cho workspace zenify, nên ở workspace này các lệnh dưới đây đi qua broker.
 
 ## Manifest nào quyết định broker
 
