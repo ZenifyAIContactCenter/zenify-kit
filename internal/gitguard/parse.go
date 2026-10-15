@@ -73,6 +73,9 @@ type Cmd struct {
 type Parsed struct {
 	Cmds        []Cmd
 	Unparseable bool // strict re-parse failed, nesting > 3, or a dangerous git alias (FR-1.5)
+	// PRDExpansion: a _PRD parameter expansion anywhere in the AST at any
+	// nesting level (assignments, declarations, redirects); Task 2's R5 checks it.
+	PRDExpansion bool
 }
 
 // Parse parses command into its simple commands. A recovering parser yields
@@ -95,6 +98,9 @@ func parseInto(src string, depth int, p *Parsed) {
 	file, err := syntax.NewParser(syntax.RecoverErrors(4)).Parse(strings.NewReader(src), "")
 	if file == nil && err != nil {
 		return
+	}
+	if hasPRDExpansion(file) {
+		p.PRDExpansion = true
 	}
 	syntax.Walk(file, func(node syntax.Node) bool {
 		ce, ok := node.(*syntax.CallExpr)

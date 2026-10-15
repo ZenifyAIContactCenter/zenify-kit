@@ -182,3 +182,20 @@ func TestParseSrcStripsQuotes(t *testing.T) {
 		t.Fatalf("Src[1] = %q, want .zenify/.env", got)
 	}
 }
+
+func TestParsedPRDExpansion(t *testing.T) {
+	want := map[string]bool{
+		`URL=$X_PRD; mongosh "$URL"`: true,
+		`export U=$X_PRD`:            true,
+		`cat <<< "$X_PRD"`:           true,
+		`bash -c 'U=$X_PRD; echo x'`: true,
+		`echo $MONGO_URL_PRD`:        true,
+		`echo '$X_PRD'`:              false,
+		`git grep MONGO_URL_PRD`:     false,
+	}
+	for cmd, w := range want {
+		if got := Parse(cmd).PRDExpansion; got != w {
+			t.Errorf("%s: Parsed.PRDExpansion = %v, want %v", cmd, got, w)
+		}
+	}
+}
