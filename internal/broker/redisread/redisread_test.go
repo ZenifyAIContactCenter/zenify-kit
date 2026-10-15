@@ -438,7 +438,7 @@ func TestRedis_MGetOverByteBudgetRefusedWithoutRead(t *testing.T) {
 }
 
 func TestRedis_CollectionOverByteBudgetRefused(t *testing.T) {
-	for cmd, count := range map[string]string{"HGETALL": "HLEN", "HKEYS": "HLEN", "SMEMBERS": "SCARD"} {
+	for cmd, count := range map[string]string{"HGETALL": "HLEN", "SMEMBERS": "SCARD"} {
 		f := newFixture(t)
 		f.stg.byCmd = map[string]any{count: int64(3), "MEMORY": int64(2 << 20)}
 		st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: cmd, Args: []string{"h"}})
@@ -496,5 +496,16 @@ func TestRedis_ConcurrentLimit(t *testing.T) {
 	}
 	if st, _ := f.post(t, req); st != 200 {
 		t.Fatalf("after release: %d", st)
+	}
+}
+
+// HKEYS returns field names only: the entry cap bounds it, MEMORY USAGE
+// (which counts the values) must not refuse it.
+func TestRedis_HKeysSkipsMemoryUsage(t *testing.T) {
+	f := newFixture(t)
+	f.stg.byCmd = map[string]any{"HLEN": int64(3), "MEMORY": int64(50 << 20)}
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "HKEYS", Args: []string{"h"}})
+	if st != 200 || f.stg.sent("MEMORY") || !f.stg.sent("HKEYS") {
+		t.Fatalf("%d %s %v", st, body, f.stg.got)
 	}
 }

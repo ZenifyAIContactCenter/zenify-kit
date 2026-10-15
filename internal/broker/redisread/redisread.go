@@ -156,7 +156,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					"%s on %d entries exceeds the %d-entry limit: %s", argv[0], c, maxCollection, readHint[argv[0]]))
 				return
 			}
-			// Only after the count check: MEMORY USAGE ... SAMPLES 0 is O(entries).
+			// HKEYS returns names only, so the entry cap bounds it; MEMORY USAGE
+			// counts values too. Only after the count check: SAMPLES 0 is O(entries).
+			if argv[0] == "HKEYS" {
+				break
+			}
 			n, ok = run("MEMORY", "USAGE", argv[1], "SAMPLES", "0")
 			if !ok {
 				return
