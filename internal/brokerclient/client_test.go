@@ -266,7 +266,7 @@ func TestDo_ErrorClassification(t *testing.T) {
 	}{
 		{"403 html", "<html>Access</html>", http.StatusForbidden, "not_json", "WARP", true},
 		{"401 html", "<html>Access</html>", http.StatusUnauthorized, "not_json", "WARP", true},
-		{"502 html", "<html>Bad gateway</html>", http.StatusBadGateway, "not_json", "broker lỗi HTTP 502", false},
+		{"502 html", "<html>Bad gateway</html>", http.StatusBadGateway, "not_json", "broker lỗi HTTP 502", false}, //znf:allow-lang
 		{"500 misconfigured", `{"error":"broker_misconfigured","message":"JWT signing key too short"}`, http.StatusInternalServerError, api.CodeBrokerMisconfigured, "JWT signing key too short", false},
 	}
 	for _, tc := range cases {
