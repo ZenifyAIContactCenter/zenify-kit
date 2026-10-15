@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/url"
 	"os"
 	"strings"
 
@@ -22,6 +21,34 @@ type hookPayload struct {
 	} `json:"tool_input"`
 }
 
+// urlHosts returns the lower-cased hosts in the authority of URL v, one per
+// comma-separated entry (replica-set URIs list several); nil when v has no
+// scheme. Ports and IPv6 brackets are stripped.
+func urlHosts(v string) []string {
+	_, rest, ok := strings.Cut(v, "://")
+	if !ok {
+		return nil
+	}
+	if j := strings.IndexAny(rest, "/?#"); j >= 0 {
+		rest = rest[:j]
+	}
+	if at := strings.LastIndex(rest, "@"); at >= 0 {
+		rest = rest[at+1:]
+	}
+	var out []string
+	for _, h := range strings.Split(rest, ",") {
+		if strings.HasPrefix(h, "[") {
+			h, _, _ = strings.Cut(h[1:], "]")
+		} else {
+			h, _, _ = strings.Cut(h, ":")
+		}
+		if h != "" {
+			out = append(out, strings.ToLower(h))
+		}
+	}
+	return out
+}
+
 // prodHosts lists the distinct non-loopback hostnames of every *_PRD key in f.
 func prodHosts(f *devenv.File) []gitguard.ProdHost {
 	var out []gitguard.ProdHost
@@ -31,22 +58,16 @@ func prodHosts(f *devenv.File) []gitguard.ProdHost {
 			continue
 		}
 		v, _ := f.Get(k)
-		if v == "" {
-			continue
+		for _, h := range urlHosts(v) {
+			if h == "localhost" || h == "::1" || h == "0.0.0.0" || seen[h] {
+				continue
+			}
+			if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
+				continue
+			}
+			seen[h] = true
+			out = append(out, gitguard.ProdHost{Key: k, Host: h})
 		}
-		u, err := url.Parse(v)
-		if err != nil {
-			continue
-		}
-		h := strings.ToLower(u.Hostname())
-		if h == "" || h == "localhost" || h == "::1" || h == "0.0.0.0" || seen[h] {
-			continue
-		}
-		if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
-			continue
-		}
-		seen[h] = true
-		out = append(out, gitguard.ProdHost{Key: k, Host: h})
 	}
 	return out
 }
