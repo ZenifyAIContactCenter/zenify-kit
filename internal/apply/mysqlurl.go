@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 )
@@ -34,16 +36,34 @@ type MySQLURLResult struct {
 	Dropped  bool     // MYSQL_URL already equal to the joined value; legacy keys deleted
 	Conflict bool     // MYSQL_URL differs from the joined value; file untouched
 	Missing  []string // required legacy keys absent or empty; file untouched
+	Invalid  bool     // the values do not survive a round trip through a URL; file untouched
 }
 
-// buildMySQLURL joins the legacy values; user and password are percent-encoded.
-func buildMySQLURL(v map[string]string) string {
-	host := v["MYSQL_HOST"]
-	if p := v["MYSQL_PORT"]; p != "" {
-		host = net.JoinHostPort(host, p)
+// buildMySQLURL joins the legacy values; user and password are
+// percent-encoded, an IPv6 host is bracketed. ok is false when the URL does
+// not parse back to the same values (a non-numeric port, a host carrying its
+// own port, …).
+func buildMySQLURL(v map[string]string) (string, bool) {
+	host, port := v["MYSQL_HOST"], v["MYSQL_PORT"]
+	if port != "" {
+		if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+			return "", false
+		}
+		host = net.JoinHostPort(host, port)
+	} else if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
 	}
 	u := url.URL{Scheme: "mysql", User: url.UserPassword(v["MYSQL_USER"], v["MYSQL_PASSWORD"]), Host: host, Path: "/" + v["MYSQL_DATABASE"]}
-	return u.String()
+	s := u.String()
+	back, err := url.Parse(s)
+	if err != nil || back.User == nil {
+		return "", false
+	}
+	pw, _ := back.User.Password()
+	ok := back.User.Username() == v["MYSQL_USER"] && pw == v["MYSQL_PASSWORD"] &&
+		back.Hostname() == strings.Trim(v["MYSQL_HOST"], "[]") && back.Port() == port &&
+		strings.TrimPrefix(back.Path, "/") == v["MYSQL_DATABASE"]
+	return s, ok
 }
 
 // MergeMySQLURL joins the legacy MYSQL_* keys in the credential file at
@@ -74,7 +94,10 @@ func MergeMySQLURL(envPath string) (MySQLURLResult, error) {
 	if len(res.Missing) > 0 {
 		return res, nil
 	}
-	joined := buildMySQLURL(vals)
+	joined, valid := buildMySQLURL(vals)
+	if !valid {
+		return MySQLURLResult{Invalid: true}, nil
+	}
 	cur, ok := f.Get("MYSQL_URL") // an empty value counts as absent
 	switch {
 	case !ok || cur == "":

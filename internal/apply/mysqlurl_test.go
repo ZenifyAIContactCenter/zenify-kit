@@ -140,7 +140,8 @@ func TestMergeMySQLURL_ExistingEqualDropsLegacy(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".env")
 	writeEnvT(t, path, legacyFive)
 	f, _ := devenv.Load(path)
-	f.Set("MYSQL_URL", buildMySQLURL(legacyFive))
+	joined, _ := buildMySQLURL(legacyFive)
+	f.Set("MYSQL_URL", joined)
 	if err := f.Save(path); err != nil {
 		t.Fatal(err)
 	}
@@ -198,5 +199,49 @@ func TestMergeMySQLURL_NoLegacyNoOp(t *testing.T) {
 	}
 	if _, err := MergeMySQLURL(filepath.Join(t.TempDir(), "absent", ".env")); err != nil {
 		t.Fatalf("missing file: %v", err)
+	}
+}
+
+// Values the URL cannot carry faithfully change nothing (fix-1 item 4).
+func TestMergeMySQLURL_InvalidChangesNothing(t *testing.T) {
+	for _, over := range []map[string]string{{"MYSQL_PORT": "abc"}, {"MYSQL_HOST": "h:3307", "MYSQL_PORT": ""}} {
+		vals := map[string]string{}
+		for k, v := range legacyFive {
+			vals[k] = v
+		}
+		for k, v := range over {
+			vals[k] = v
+		}
+		path := filepath.Join(t.TempDir(), ".env")
+		writeEnvT(t, path, vals)
+		before := readFileT(t, path)
+		res, err := MergeMySQLURL(path)
+		if err != nil || !res.Invalid || res.Merged {
+			t.Errorf("%v: res = %+v err = %v, want Invalid", over, res, err)
+		}
+		if readFileT(t, path) != before {
+			t.Errorf("%v: file changed", over)
+		}
+	}
+}
+
+func TestMergeMySQLURL_IPv6RoundTrips(t *testing.T) {
+	for _, port := range []string{"", "3307"} {
+		vals := map[string]string{}
+		for k, v := range legacyFive {
+			vals[k] = v
+		}
+		vals["MYSQL_HOST"], vals["MYSQL_PORT"] = "::1", port
+		path := filepath.Join(t.TempDir(), ".env")
+		writeEnvT(t, path, vals)
+		if res, err := MergeMySQLURL(path); err != nil || !res.Merged {
+			t.Fatalf("port %q: res = %+v err = %v", port, res, err)
+		}
+		f, _ := devenv.Load(path)
+		raw, _ := f.Get("MYSQL_URL")
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() != "::1" || u.Port() != port {
+			t.Errorf("port %q: host %q port %q err %v", port, u.Hostname(), u.Port(), err)
+		}
 	}
 }

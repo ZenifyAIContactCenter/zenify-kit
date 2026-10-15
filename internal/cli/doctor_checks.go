@@ -92,11 +92,22 @@ func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest, 
 					known[k.Name] = true
 				}
 			}
-			var undescribed []string
+			for _, k := range apply.LegacyMySQLKeys {
+				known[k] = true
+			}
+			var undescribed, legacy []string
 			for _, k := range f.Keys() {
 				if !known[k] && f.Desc(k) == "" {
 					undescribed = append(undescribed, k)
 				}
+			}
+			for _, k := range apply.LegacyMySQLKeys {
+				if _, ok := f.Get(k); ok {
+					legacy = append(legacy, k)
+				}
+			}
+			if len(legacy) > 0 {
+				problems = append(problems, "legacy MYSQL_* in .zenify/.env ("+strings.Join(legacy, ", ")+") — run zenify up --apply to merge into MYSQL_URL")
 			}
 			if len(undescribed) > 0 {
 				problems = append(problems, "local keys without a description: "+strings.Join(undescribed, ", ")+" — add one with: zenify env set <KEY> --desc <text>")
