@@ -145,7 +145,7 @@ func (d envDeps) runForm() error {
 	}
 	var empty []manifest.SecretKey
 	for _, k := range m.SecretKeys {
-		if v, _ := f.Get(k.Name); v == "" {
+		if v, _ := f.Get(k.Name); v == "" && k.EffectiveGroup() != manifest.GroupProduction {
 			empty = append(empty, k)
 		}
 	}
@@ -212,7 +212,7 @@ func (d envDeps) listCmd() *cobra.Command {
 }
 
 // listEnv prints one line per key: NAME state source [value if not secret] description.
-// A key in the file but not in keys is "local" and treated as secret.
+// A key in the file but not in keys is "custom" and treated as secret.
 func listEnv(w io.Writer, keys []manifest.SecretKey, f *devenv.File) {
 	line := func(k manifest.SecretKey, source, desc string) {
 		v, _ := f.Get(k.Name)
@@ -236,7 +236,7 @@ func listEnv(w io.Writer, keys []manifest.SecretKey, f *devenv.File) {
 	}
 	for _, name := range f.Keys() {
 		if !known[name] {
-			line(manifest.SecretKey{Name: name, Secret: true}, "local", f.Desc(name))
+			line(manifest.SecretKey{Name: name, Secret: true}, "custom", f.Desc(name))
 		}
 	}
 }
@@ -263,11 +263,14 @@ func (d envDeps) setCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if !contains(manifest.KeyNames(m.AllKeys()), key) && desc == "" && f.Desc(key) == "" {
+				return fmt.Errorf("key %s ngoài manifest cần --desc để agent đọc được mô tả", key) //znf:allow-lang
+			}
 			n, err := d.askValues([]manifest.SecretKey{metaFor(m.AllKeys(), key)}, f)
 			if err != nil {
 				return err
 			}
-			if _, present := f.Get(key); n == 0 && !present {
+			if cur, _ := f.Get(key); n == 0 && cur == "" {
 				return fmt.Errorf("giá trị của %s trống, không ghi", key) //znf:allow-lang
 			}
 			if desc != "" {
