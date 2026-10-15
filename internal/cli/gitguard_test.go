@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitguard"
 )
 
@@ -109,6 +110,77 @@ func TestGitGuardCmdExit2(t *testing.T) {
 	err := c.Run()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 2 {
 		t.Fatalf("must exit 2 (deny), got %v", err)
+	}
+	for cmdline, want := range map[string]int{"gh pr merge 1": 2, "gh pr create --title t": 0} {
+		c := exec.Command(bin, "git-guard") //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+		c.Env = append(os.Environ(), "HOME="+t.TempDir())
+		c.Stdin = strings.NewReader(`{"cwd":"` + repo + `","tool_input":{"command":"` + cmdline + `"}}`)
+		got := 0
+		if err := c.Run(); err != nil {
+			ee, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("%q: %v", cmdline, err)
+			}
+			got = ee.ExitCode()
+		}
+		if got != want {
+			t.Errorf("%q: exit %d, want %d", cmdline, got, want)
+		}
+	}
+}
+
+const fakeProdEnv = "MONGO_URL_PRD='mongodb://u:p@Prod-Host.example:27017/db'\n" +
+	"REDIS_URL_PRD='redis://127.0.0.1:6379'\n" +
+	"QDRANT_URL_PRD=''\n" +
+	"MONGO_URL='mongodb://staging-host/db'\n" +
+	"BAD_PRD='not a url'\n"
+
+func TestProdHosts(t *testing.T) {
+	p := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(p, []byte(fakeProdEnv+"DUP_PRD='mongodb://PROD-host.example/x'\nLOCAL_PRD='http://localhost:1'\nV6_PRD='http://[::1]:1'\nZ_PRD='http://0.0.0.0:1'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := devenv.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := prodHosts(f)
+	want := []gitguard.ProdHost{{Key: "MONGO_URL_PRD", Host: "prod-host.example"}}
+	if len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("prodHosts = %v, want %v", got, want)
+	}
+}
+
+func TestDecideFromPayload_ProdHost(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "manifest.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", ".env"), []byte(fakeProdEnv), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(ws, "repos", "r")
+	gitInit(t, repo, "feat/x", nil)
+	getenv := func(string) string { return "" }
+	run := func(cwd, cmd string) gitguard.Decision {
+		return decideFromPayload([]byte(`{"cwd":"`+cwd+`","tool_input":{"command":"`+cmd+`"}}`), getenv)
+	}
+	d := run(repo, "mongosh mongodb://prod-host.example/db")
+	if !d.Deny {
+		t.Fatal("prod host must deny")
+	}
+	if strings.Contains(d.Message, "prod-host.example") {
+		t.Errorf("message leaks host: %q", d.Message)
+	}
+	if run(repo, "mongosh mongodb://staging-host/db").Deny {
+		t.Error("staging host must allow")
+	}
+	if !run(ws, "cat .zenify/.env").Deny {
+		t.Error("reading the env file must deny")
 	}
 }
 

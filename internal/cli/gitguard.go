@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
+	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitguard"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/secretscan"
 	"github.com/spf13/cobra"
@@ -16,6 +20,53 @@ type hookPayload struct {
 	ToolInput struct {
 		Command string `json:"command"`
 	} `json:"tool_input"`
+}
+
+// prodHosts lists the distinct non-loopback hostnames of every *_PRD key in f.
+func prodHosts(f *devenv.File) []gitguard.ProdHost {
+	var out []gitguard.ProdHost
+	seen := map[string]bool{}
+	for _, k := range f.Keys() {
+		if !strings.HasSuffix(k, "_PRD") {
+			continue
+		}
+		v, _ := f.Get(k)
+		if v == "" {
+			continue
+		}
+		u, err := url.Parse(v)
+		if err != nil {
+			continue
+		}
+		h := strings.ToLower(u.Hostname())
+		if h == "" || h == "localhost" || h == "::1" || h == "0.0.0.0" || seen[h] {
+			continue
+		}
+		if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
+			continue
+		}
+		seen[h] = true
+		out = append(out, gitguard.ProdHost{Key: k, Host: h})
+	}
+	return out
+}
+
+// guardOptions resolves the workspace from cwd and reads its _PRD hosts.
+// Anything missing or unreadable yields fewer options, never an error.
+func guardOptions(cwd string, getenv func(string) string) gitguard.Options {
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	ws, _, ok := resolveWorkspace(cwd, "", getenv, os.UserHomeDir)
+	if !ok {
+		return gitguard.Options{}
+	}
+	path := devenv.Path(ws)
+	f, err := devenv.Load(path)
+	if err != nil {
+		return gitguard.Options{EnvFile: path}
+	}
+	return gitguard.Options{EnvFile: path, ProdHosts: prodHosts(f)}
 }
 
 // decideFromPayload is the pure core: parse the hook payload, call
@@ -40,7 +91,7 @@ func decideFromPayload(payload []byte, getenv func(string) string) gitguard.Deci
 		}
 		return gitguard.Decision{Deny: true, Message: msg}
 	}
-	return gitguard.Decide(p.ToolInput.Command, p.Cwd, getenv, onCommit, gitguard.Options{})
+	return gitguard.Decide(p.ToolInput.Command, p.Cwd, getenv, onCommit, guardOptions(p.Cwd, getenv))
 }
 
 // runGitGuard is the process-exit-code core, factored out of RunE so tests
