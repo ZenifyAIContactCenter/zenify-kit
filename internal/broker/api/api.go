@@ -22,6 +22,12 @@ const (
 	// CodeGitHubUnavailable (502): GitHub could not be asked, so no
 	// membership verdict exists.
 	CodeGitHubUnavailable = "github_unavailable"
+	// CodeUpstreamUnavailable (502): an /mcp/* upstream could not be reached.
+	CodeUpstreamUnavailable = "upstream_unavailable"
+	// CodeBodyTooLarge (413): the request body is over the endpoint's cap.
+	CodeBodyTooLarge = "body_too_large"
+	// CodeInvalidBody (400): the request body could not be read.
+	CodeInvalidBody = "invalid_body"
 )
 
 // Error is the body of every non-2xx response.
