@@ -21,7 +21,7 @@ func writeEnvFile(t *testing.T, path, body string) {
 
 func TestLoadCreds_FromEnvFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".env")
-	writeEnvFile(t, path, "MONGO_URL='mongodb://from-file'\nMYSQL_HOST=file-host\n")
+	writeEnvFile(t, path, "MONGO_URL='mongodb://from-file'\nMYSQL_URL=mysql://u@file-host/db\n")
 
 	creds, err := LoadCreds(func(string) string { return "" }, path)
 	if err != nil {
@@ -30,14 +30,14 @@ func TestLoadCreds_FromEnvFile(t *testing.T) {
 	if creds["MONGO_URL"] != "mongodb://from-file" {
 		t.Errorf("MONGO_URL = %q, want value from the env file", creds["MONGO_URL"])
 	}
-	if creds["MYSQL_HOST"] != "file-host" {
-		t.Errorf("MYSQL_HOST = %q, want value from the env file", creds["MYSQL_HOST"])
+	if creds["MYSQL_URL"] != "mysql://u@file-host/db" {
+		t.Errorf("MYSQL_URL = %q, want value from the env file", creds["MYSQL_URL"])
 	}
 }
 
 func TestLoadCreds_EnvWins(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".env")
-	writeEnvFile(t, path, "MONGO_URL=mongodb://from-file\nMYSQL_HOST=file-host\n")
+	writeEnvFile(t, path, "MONGO_URL=mongodb://from-file\nMYSQL_URL=mysql://u@file-host/db\n")
 
 	env := map[string]string{"MONGO_URL": "mongodb://from-env"}
 	creds, err := LoadCreds(func(k string) string { return env[k] }, path)
@@ -47,8 +47,8 @@ func TestLoadCreds_EnvWins(t *testing.T) {
 	if creds["MONGO_URL"] != "mongodb://from-env" {
 		t.Errorf("MONGO_URL = %q, want live env to win", creds["MONGO_URL"])
 	}
-	if creds["MYSQL_HOST"] != "file-host" {
-		t.Errorf("MYSQL_HOST = %q, want file value for a key env lacks", creds["MYSQL_HOST"])
+	if creds["MYSQL_URL"] != "mysql://u@file-host/db" {
+		t.Errorf("MYSQL_URL = %q, want file value for a key env lacks", creds["MYSQL_URL"])
 	}
 }
 
@@ -64,7 +64,7 @@ func TestLoadCreds_MissingFileNoError(t *testing.T) {
 
 // baseOptions returns Options wired with a fake settings path (empty dir, so
 // LoadCreds falls through to env), fresh buffers, and env carrying a fake
-// MONGO_URL/MYSQL_* set so Run doesn't hit the "not set" fatal path.
+// MONGO_URL/MYSQL_URL set so Run doesn't hit the "not set" fatal path.
 func baseOptions(t *testing.T, env map[string]string) (*Options, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
@@ -82,12 +82,8 @@ const fakeMysqlPassword = "s3cr3t-pw"
 
 func fakeEnv() map[string]string {
 	return map[string]string{
-		"MONGO_URL":      fakeMongoURL,
-		"MYSQL_HOST":     "mysql.internal",
-		"MYSQL_PORT":     "3306",
-		"MYSQL_USER":     "clusteradmin",
-		"MYSQL_PASSWORD": fakeMysqlPassword,
-		"MYSQL_DATABASE": "db_acd",
+		"MONGO_URL": fakeMongoURL,
+		"MYSQL_URL": "mysql://clusteradmin:" + fakeMysqlPassword + "@mysql.internal:3306/db_acd",
 	}
 }
 
@@ -295,6 +291,97 @@ func TestRun_SQL_Args(t *testing.T) {
 	}
 	if stdout.String() != "1\n" || stderr.String() != "" {
 		t.Errorf("stdout = %q stderr = %q", stdout.String(), stderr.String())
+	}
+}
+
+// SC-14: user and password are percent-decoded; the password goes only
+// through MYSQL_PWD, never argv.
+func TestRun_SQL_MySQLURLDecoded(t *testing.T) {
+	env := fakeEnv()
+	env["MYSQL_URL"] = "mysql://u%40x:p%3Aw%40d@h:3307/db" //nolint:gosec // G101 -- test fixture literal
+	o, _, _ := baseOptions(t, env)
+	calls := recordRun(o, "1\n")
+	o.Cmd, o.Arg = "sql", "SELECT 1"
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	c := (*calls)[0]
+	want := map[string]string{"-h": "h", "-P": "3307", "-u": "u@x"}
+	for i, a := range c.args {
+		if v, ok := want[a]; ok {
+			if i+1 >= len(c.args) || c.args[i+1] != v {
+				t.Errorf("args = %v, want %s %s", c.args, a, v)
+			}
+			delete(want, a)
+		}
+	}
+	if len(want) != 0 {
+		t.Errorf("args = %v, missing %v", c.args, want)
+	}
+	if c.args[len(c.args)-1] != "db" {
+		t.Errorf("last arg = %q, want database db", c.args[len(c.args)-1])
+	}
+	if !contains(c.extraEnv, "MYSQL_PWD=p:w@d") {
+		t.Errorf("extraEnv = %v, want MYSQL_PWD=p:w@d", c.extraEnv)
+	}
+	for _, a := range c.args {
+		if strings.Contains(a, "p:w@d") || strings.Contains(a, "p%3Aw") {
+			t.Errorf("password on argv: %q", a)
+		}
+	}
+}
+
+func TestRun_SQL_PortDefault(t *testing.T) {
+	env := fakeEnv()
+	env["MYSQL_URL"] = "mysql://u:pw@h/db"
+	o, _, _ := baseOptions(t, env)
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg = "sql", "SELECT 1"
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	args := (*calls)[0].args
+	for i, a := range args {
+		if a == "-P" && args[i+1] != "3306" {
+			t.Errorf("-P %s, want 3306", args[i+1])
+		}
+	}
+}
+
+func TestRun_SQL_BadMySQLURL(t *testing.T) {
+	const pw = "hunter2-secret"
+	bad := []string{
+		"",
+		"postgres://u:" + pw + "@h/db",
+		"mysql://u:" + pw + "@/db",
+		"mysql://:" + pw + "@h/db",
+		"mysql://h/db",
+		"mysql://u:" + pw + "@h",
+		"mysql://u:" + pw + "@h/",
+		"mysql://u:" + pw + "@h/a/b",
+		"::not a url " + pw,
+	}
+	for _, u := range bad {
+		env := fakeEnv()
+		env["MYSQL_URL"] = u
+		o, stdout, stderr := baseOptions(t, env)
+		calls := recordRun(o, "")
+		o.Cmd, o.Arg = "sql", "SELECT 1"
+		err := Run(o)
+		if err == nil {
+			t.Errorf("MYSQL_URL %q: Run succeeded, want error", u)
+			continue
+		}
+		if len(*calls) != 0 {
+			t.Errorf("MYSQL_URL %q: mysql spawned", u)
+		}
+		out := stdout.String() + stderr.String() + err.Error()
+		if !strings.Contains(out, "MYSQL_URL") || !strings.Contains(out, "mysql://user:pass@host:port/database") {
+			t.Errorf("MYSQL_URL %q: output %q, want the key name and the expected shape", u, out)
+		}
+		if u != "" && (strings.Contains(out, pw) || strings.Contains(out, u)) {
+			t.Errorf("MYSQL_URL %q: value leaked: %q", u, out)
+		}
 	}
 }
 

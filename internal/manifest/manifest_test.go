@@ -242,10 +242,14 @@ func TestEmbeddedManifest_EveryKeyDescribed(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := m.AllKeys()
-	if len(keys) != 16 {
-		t.Fatalf("want 16 keys, got %d", len(keys))
+	if len(keys) != 12 {
+		t.Fatalf("want 12 keys, got %d", len(keys))
 	}
-	notSecret := map[string]bool{"E2E_DOMAIN": true, "MYSQL_HOST": true, "MYSQL_PORT": true, "MYSQL_DATABASE": true, "LUMI_APP_URL_STG": true}
+	names := strings.Join(KeyNames(keys), ",")
+	if !strings.Contains(names, "MYSQL_URL") || strings.Contains(names, "MYSQL_HOST") {
+		t.Fatalf("keys = %s, want MYSQL_URL in place of the five MYSQL_* keys (FR-12.1)", names)
+	}
+	notSecret := map[string]bool{"E2E_DOMAIN": true, "LUMI_APP_URL_STG": true}
 	personal := map[string]bool{"E2E_EMAIL": true, "E2E_PASSWORD": true, "POSTHOG_API_KEY": true, "OPENROUTER_API_KEY": true}
 	for _, k := range keys {
 		if k.Description == "" {
