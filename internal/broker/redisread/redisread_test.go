@@ -21,7 +21,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 )
 
-var testKey = []byte("test-key")
+var testKey = []byte("test-key-0123456789abcdef0123456")
 
 // fakeDoer records every argv it is handed and answers with val / err.
 type fakeDoer struct {
@@ -111,7 +111,7 @@ func newFixture(t *testing.T) *fixture {
 
 func (f *fixture) post(t *testing.T, req api.RedisRequest) (int, []byte) {
 	t.Helper()
-	tok, _ := auth.Issue(testKey, "alice", time.Now())
+	tok, _, _ := auth.Issue(testKey, "alice", time.Now())
 	b, _ := json.Marshal(req)
 	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+tok)
@@ -306,7 +306,7 @@ func TestRedis_AuditLine(t *testing.T) {
 
 func TestRedis_BadBody400(t *testing.T) {
 	f := newFixture(t)
-	tok, _ := auth.Issue(testKey, "alice", time.Now())
+	tok, _, _ := auth.Issue(testKey, "alice", time.Now())
 	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, strings.NewReader("{nope"))
 	r.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := http.DefaultClient.Do(r)

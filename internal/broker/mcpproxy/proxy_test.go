@@ -23,7 +23,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/server"
 )
 
-var jwtKey = []byte("jwt-test-key")
+var jwtKey = []byte("jwt-test-key-0123456789abcdef0123")
 
 // stack is the full broker (server.New + auth.Require) with one MCP route.
 func stack(t *testing.T, name string, upstream string, set func(http.Header), out *bytes.Buffer) (*httptest.Server, string) {
@@ -37,7 +37,7 @@ func stack(t *testing.T, name string, upstream string, set func(http.Header), ou
 		MCP: map[string]http.Handler{name: mcpproxy.New(name, u, set, lg)}})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	tok, _ := auth.Issue(jwtKey, "octocat", time.Now())
+	tok, _, _ := auth.Issue(jwtKey, "octocat", time.Now())
 	return srv, tok
 }
 

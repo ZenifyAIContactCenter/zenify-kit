@@ -15,8 +15,8 @@ func protected() http.Handler {
 }
 
 func TestRequire_401WithoutBearer(t *testing.T) {
-	expired, _ := Issue(testKey, "octocat", time.Now().Add(-time.Hour))
-	other, _ := Issue([]byte("other-key"), "octocat", time.Now())
+	expired, _, _ := Issue(testKey, "octocat", time.Now().Add(-time.Hour))
+	other, _, _ := Issue([]byte("other-key-0123456789abcdef012345678"), "octocat", time.Now())
 	for name, hdr := range map[string]string{
 		"none":    "",
 		"basic":   "Basic dXNlcjpwYXNz",
@@ -42,7 +42,7 @@ func TestRequire_401WithoutBearer(t *testing.T) {
 }
 
 func TestRequire_PassesLogin(t *testing.T) {
-	tok, _ := Issue(testKey, "octocat", time.Now())
+	tok, _, _ := Issue(testKey, "octocat", time.Now())
 	for _, scheme := range []string{"Bearer ", "bearer ", "BEARER "} {
 		req := httptest.NewRequest(http.MethodPost, "/query", nil)
 		req.Header.Set("Authorization", scheme+tok)

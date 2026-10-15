@@ -21,7 +21,7 @@ import (
 const ghToken = "gho_fake-test-token"
 
 var (
-	testKey = []byte("test-key")
+	testKey = []byte("test-key-0123456789abcdef0123456")
 	t0      = time.Date(2026, 10, 15, 8, 0, 0, 0, time.UTC)
 )
 
@@ -231,6 +231,57 @@ func TestToken_GitHubFailureMapping(t *testing.T) {
 	}
 }
 
+func TestToken_GitHubSecondaryRateLimit429(t *testing.T) {
+	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/user" {
+			_, _ = w.Write([]byte(`{"login":"octocat"}`))
+			return
+		}
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, "{}", http.StatusForbidden)
+	}))
+	t.Cleanup(gh.Close)
+	var out bytes.Buffer
+	rec := postToken(newServer(gh, &out), ghToken, "203.0.113.7")
+	if rec.Code != http.StatusTooManyRequests || errCode(t, rec) != api.CodeRateLimited {
+		t.Fatalf("got %d %s, want 429 rate_limited", rec.Code, rec.Body.String())
+	}
+}
+
+func TestToken_ShortKey500(t *testing.T) {
+	var out bytes.Buffer
+	gh := fakeGitHub(t, "active", nil)
+	h := New(Deps{JWTKey: testKey[:auth.MinKeyLen-1], Org: "test-org",
+		GitHub: auth.GitHub{BaseURL: gh.URL, HTTP: gh.Client()}, Audit: &audit.Logger{W: &out}, Now: func() time.Time { return t0 }})
+	rec := postToken(h, ghToken, "203.0.113.7")
+	if rec.Code != http.StatusInternalServerError || errCode(t, rec) != api.CodeBrokerMisconfigured {
+		t.Fatalf("got %d %s, want 500 broker_misconfigured", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "token\"") {
+		t.Fatalf("body carries a token: %s", rec.Body.String())
+	}
+	assertOneAuditLine(t, &out, http.StatusInternalServerError)
+}
+
+func TestLimiter_LongKeyStoredHashed(t *testing.T) {
+	l := newLimiter(1, time.Minute)
+	long := strings.Repeat("x", 1<<20)
+	if !l.allow(long, t0) {
+		t.Fatal("first request refused")
+	}
+	if l.allow(long, t0) {
+		t.Fatal("second request with the same long key allowed: hashing must keep one bucket per key")
+	}
+	for k := range l.buckets {
+		if len(k) > maxKeyLen {
+			t.Fatalf("stored key is %d bytes, want <= %d", len(k), maxKeyLen)
+		}
+	}
+	if !l.allow(long+"y", t0) {
+		t.Fatal("a different long key shares the bucket")
+	}
+}
+
 func TestToken_GitHubUnreachable502(t *testing.T) {
 	gh := httptest.NewServer(http.NotFoundHandler())
 	gh.Close() // connection refused
@@ -340,7 +391,7 @@ func TestE2ERouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
 
 func TestRequire401IsAudited(t *testing.T) { // FR-6.1 / SC-8
 	noop := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
-	expired, _ := auth.Issue(testKey, "octocat", time.Now().Add(-2*time.Hour))
+	expired, _, _ := auth.Issue(testKey, "octocat", time.Now().Add(-2*time.Hour))
 	for path, endpoint := range map[string]string{"/query": "/query", "/redis": "/redis", "/e2e/account": "/e2e/account",
 		"/mcp/grafana": "/mcp/grafana", "/mcp/grafana/sub/path": "/mcp/grafana", "/mcp/evil-injected": "/mcp/?"} {
 		for _, hdr := range []string{"", "Bearer " + expired} {

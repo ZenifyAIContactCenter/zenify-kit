@@ -18,7 +18,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 )
 
-var testKey = []byte("test-key")
+var testKey = []byte("test-key-0123456789abcdef0123456")
 
 const (
 	fakeAuditURL = "mongodb://fake-audit-prd"
@@ -63,7 +63,7 @@ func okRun(_ context.Context, _ string, _ []string, _ []string, out, _ io.Writer
 
 func (f *fixture) post(t *testing.T, login string, req api.QueryRequest) (int, api.QueryResponse, api.Error) {
 	t.Helper()
-	tok, _ := auth.Issue(testKey, login, time.Now())
+	tok, _, _ := auth.Issue(testKey, login, time.Now())
 	b, _ := json.Marshal(req)
 	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+tok)
