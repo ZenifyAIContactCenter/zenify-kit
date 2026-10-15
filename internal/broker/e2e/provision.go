@@ -41,7 +41,7 @@ type App interface {
 	FindUser(ctx context.Context, email string) (id string, found bool, err error)
 	CreateUser(ctx context.Context, name, email, role string) (id string, err error)
 	ResetPassword(ctx context.Context, id, password string) error
-	ChangePassword(ctx context.Context, userToken, old, new string) error
+	ChangePassword(ctx context.Context, userToken, oldPassword, newPassword string) error
 }
 
 const (
@@ -293,9 +293,9 @@ func (a *HTTPApp) ResetPassword(ctx context.Context, id, password string) error 
 }
 
 // ChangePassword is be POST /v2/change-password as the user.
-func (a *HTTPApp) ChangePassword(ctx context.Context, userToken, old, new string) error {
+func (a *HTTPApp) ChangePassword(ctx context.Context, userToken, oldPassword, newPassword string) error {
 	st, b, err := a.do(ctx, "be change-password", http.MethodPost, a.BEURL+"/v2/change-password", userToken,
-		map[string]string{"password": old, "new_password": new, "c_password": new})
+		map[string]string{"password": oldPassword, "new_password": newPassword, "c_password": newPassword})
 	if err != nil {
 		return err
 	}

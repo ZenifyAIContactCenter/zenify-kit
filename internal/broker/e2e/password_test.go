@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -18,14 +19,9 @@ var policy = []*regexp.Regexp{
 	regexp.MustCompile(`^\S{8,64}$`),
 }
 
-func matchesPolicy(s string) bool {
-	for _, re := range policy {
-		if !re.MatchString(s) {
-			return false
-		}
-	}
-	return true
-}
+// prefixShape is what the HMAC part must be: 20 base64url characters with
+// '-' and '_' removed, so every policy class comes from passwordSuffix alone.
+var prefixShape = regexp.MustCompile(`^[A-Za-z0-9]{20}$`)
 
 func TestPassword_MatchesPolicy(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
@@ -35,8 +31,14 @@ func TestPassword_MatchesPolicy(t *testing.T) {
 		role := []string{"agent", "sale", "administrator"}[rng.Intn(3)]
 		period := rng.Int63n(1000)
 		p := Password(key, login, role, period)
-		if !matchesPolicy(p) {
-			t.Fatalf("Password(%q,%q,%d)=%q breaks the policy", login, role, period, p)
+		prefix, ok := strings.CutSuffix(p, passwordSuffix)
+		if !ok || !prefixShape.MatchString(prefix) {
+			t.Fatalf("Password(%q,%q,%d)=%q: want 20 alphanumerics then %q", login, role, period, p, passwordSuffix)
+		}
+		for j, re := range policy {
+			if !re.MatchString(p) {
+				t.Fatalf("Password(%q,%q,%d)=%q fails policy part %d (%s)", login, role, period, p, j, re)
+			}
 		}
 		if p2 := Password(key, login, role, period); p2 != p {
 			t.Fatalf("not deterministic: %q vs %q", p, p2)

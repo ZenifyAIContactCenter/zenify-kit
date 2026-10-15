@@ -422,6 +422,19 @@ func TestProxy_AuditExactKeys(t *testing.T) {
 	}
 }
 
+// A tools/call with malformed or nameless params is audited as op "invalid".
+func TestProxy_AuditMalformedParamsAsInvalid(t *testing.T) {
+	for _, body := range []string{
+		`{"method":"tools/call","params":"junk"}`,
+		`{"method":"tools/call"}`,
+		`{"method":"tools/call","params":{"name":5}}`,
+	} {
+		if ops := toolOps(t, body); !slices.Equal(ops, []string{"invalid"}) {
+			t.Errorf("%s: ops = %v, want [invalid]", body, ops)
+		}
+	}
+}
+
 func TestProxy_StripsEdgeHeaders(t *testing.T) {
 	got := make(chan http.Header, 1)
 	up := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got <- r.Header.Clone() }))
