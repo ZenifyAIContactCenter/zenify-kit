@@ -124,7 +124,7 @@ zenify env exec -- node scripts/check.js
 
 Lệnh con nhận env hiện có cộng key trong file, mà không cần export vào shell. Stdout và stderr được che theo dòng: giá trị của key secret (key manifest có `secret: true` và mọi key `custom`) dài từ 6 ký tự trở lên bị thay bằng `***`; giá trị của key có `secret: false` hoặc ngắn hơn 6 ký tự không bị che. Exit code của lệnh con là exit code của `zenify`.
 
-`zenify env exec` không đưa vào lệnh con các key thuộc nhóm production và các key có tên kết thúc bằng `_PRD`, kể cả khi chúng có sẵn trong môi trường của tiến trình. Muốn đọc production, dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#doc-production).
+`zenify env exec` không đưa vào lệnh con các key thuộc nhóm production và các key có tên kết thúc bằng `_PRD`, kể cả khi chúng có sẵn trong môi trường của tiến trình. Muốn đọc production, dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#đoc-production).
 
 `zenify env exec` dành cho lệnh không tương tác. Output chỉ hiện khi có trọn một dòng, nên một lời nhắc nhập liệu không kết thúc bằng xuống dòng sẽ không hiện ra.
 

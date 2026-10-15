@@ -90,7 +90,7 @@ Lệnh đăng ký hook `PreToolUse` với matcher `Bash` trỏ tới `zenify git
 
 ## Lưu ý
 
-Các luật của git-guard áp ở mọi chế độ quyền, kể cả bypass và auto. Với force push và merge PR, bạn tự chạy lệnh đó bằng `!` ở dấu nhắc của Claude Code khi thật sự cần; agent không có đường nào khác. Đọc production thì agent dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#doc-production).
+Các luật của git-guard áp ở mọi chế độ quyền, kể cả bypass và auto. Với force push và merge PR, bạn tự chạy lệnh đó bằng `!` ở dấu nhắc của Claude Code khi thật sự cần; agent không có đường nào khác. Đọc production thì agent dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#đoc-production).
 
 Git-guard là lớp chặn sai sót, không chặn được agent cố tình lách, ví dụ một script tự mở file `.zenify/.env`.
 

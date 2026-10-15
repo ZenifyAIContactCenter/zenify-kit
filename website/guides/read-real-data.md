@@ -58,7 +58,7 @@ Agent đọc production bằng `zenify db-read --prd <lệnh con>`. Cờ `--prd`
 zenify db-read --prd count chat_rooms
 ```
 
-Không có đường nào cho agent ghi vào production. Git-guard chặn đọc `.zenify/.env` và chặn lệnh chứa host production, còn `zenify env exec` không đưa key production vào lệnh con, nên `zenify db-read --prd` là đường duy nhất. Git-guard chặn sai sót chứ không chặn được agent cố tình lách, xem [Quan sát và an toàn](/guides/observe-and-safety).
+Không có đường nào cho agent ghi vào production. Git-guard chặn đọc `.zenify/.env` và chặn lệnh chứa host production, còn `zenify env exec` không đưa key production vào lệnh con, nên `zenify db-read --prd` là đường được hỗ trợ duy nhất. Git-guard chặn sai sót chứ không chặn được agent cố tình lách, xem [Quan sát và an toàn](/guides/observe-and-safety).
 
 ## Lưu ý
 
