@@ -1,6 +1,6 @@
 # Dựng host credential broker
 
-Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các credential read-only (Mongo, MySQL, Redis, Grafana, PostHog) và cấp cho thành viên org GitHub qua JWT. Dev không cần biết các credential này. Image `ghcr.io/zenifyaicontactcenter/zenify-broker:<version>` do GoReleaser build mỗi release, có sẵn `mongosh`, `mysql` client và `mcp-grafana` 2.0.2. Binary `zenify-broker` không nằm trong brew cask hay scoop.
+Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các credential read-only (Mongo, MySQL, Redis, Grafana, PostHog) và cấp cho thành viên org GitHub qua JWT. Dev không cần biết các credential này; phía dev xem [Dùng credential broker](/guides/broker-client). Image `ghcr.io/zenifyaicontactcenter/zenify-broker:<version>` do GoReleaser build mỗi release, có sẵn `mongosh`, `mysql` client và `mcp-grafana` 2.0.2. Binary `zenify-broker` không nằm trong brew cask hay scoop.
 
 ## Runbook 8 bước
 

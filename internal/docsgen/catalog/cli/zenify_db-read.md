@@ -20,7 +20,7 @@ Tám lệnh con:
 | `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline`, không áp `--limit` (chạy truy vấn đọc, tối đa 30 giây) |
 | `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc trong transaction READ ONLY |
 
-Kết nối lấy từ `MONGO_URL` và `MYSQL_URL` (`mysql://user:pass@host:port/database`, ký tự `@ : / # ? %` và dấu cách trong user hoặc mật khẩu phải percent-encode, ví dụ `%` thành `%25`, dấu cách thành `%20`) trong `<workspace>/.zenify/.env` (xem `zenify env`). Mật khẩu MySQL chỉ đi qua biến `MYSQL_PWD` của tiến trình con. Lệnh không nhận chuỗi kết nối qua tham số và không in ra màn hình.
+Khi manifest khai báo `broker:` (workspace zenify), lệnh gửi truy vấn qua credential broker, nên bạn không giữ chuỗi kết nối nào; `--prd` đọc production. Khi manifest không có `broker:`, kết nối lấy từ `MONGO_URL` và `MYSQL_URL` (`mysql://user:pass@host:port/database`, ký tự `@ : / # ? %` và dấu cách trong user hoặc mật khẩu phải percent-encode, ví dụ `%` thành `%25`, dấu cách thành `%20`) trong `<workspace>/.zenify/.env` (xem `zenify env`), và `--prd` dùng `MONGO_URL_PRD`, `MYSQL_URL_PRD`. Mật khẩu MySQL chỉ đi qua biến `MYSQL_PWD` của tiến trình con. Lệnh không nhận chuỗi kết nối qua tham số và không in ra màn hình.
 
 Không lệnh nào nhận code tự do. `--limit` mặc định 50, tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`. Thay cho `distinct`: `zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`.
 
@@ -40,4 +40,4 @@ zenify db-read sql 'DESCRIBE agents'
 
 Khi manifest khai báo `broker:`, lệnh kiểm tra tham số ở máy bạn như cũ rồi gửi truy vấn qua credential broker, nên không cần `.zenify/.env` và có thêm cờ `--manifest`, `--overlay`. Không có `broker:` thì lệnh chạy tại máy như trước.
 
-Chỉ chạy được trong phiên mở tại workspace, vì credential nằm ở `.zenify/.env` của workspace. Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực.
+Không có broker thì lệnh chỉ chạy được trong phiên mở tại workspace, vì credential nằm ở `.zenify/.env` của workspace. Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực.

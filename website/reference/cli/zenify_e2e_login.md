@@ -22,7 +22,7 @@ Lệnh cần Node (`npm`, `npx` có trên PATH). Lần chạy đầu tải `@pla
 
 ## Kết quả
 
-Lệnh ghi storage state vào `~/.zenify/playwright/state.json` (quyền 0600), ghi qua file tạm rồi đổi tên, nên login lỗi thì state cũ vẫn còn nguyên. Thông tin đăng nhập đọc từ `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `<workspace>/.zenify/.env` (env hiện có của tiến trình thắng nếu không rỗng); chúng không nằm trên argv và không được in ra. Thiếu biến nào thì lệnh thoát với mã 2 và chỉ nêu tên biến.
+Lệnh ghi storage state vào `~/.zenify/playwright/state.json` (quyền 0600), ghi qua file tạm rồi đổi tên, nên login lỗi thì state cũ vẫn còn nguyên. Workspace zenify khai báo `broker:`, nên tài khoản đăng nhập lấy từ broker và bạn không điền gì. Manifest không có `broker:` thì thông tin đăng nhập đọc từ `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `<workspace>/.zenify/.env` (env hiện có của tiến trình thắng nếu không rỗng); thiếu biến nào thì lệnh thoát với mã 2 và chỉ nêu tên biến. Thông tin đăng nhập không nằm trên argv và không được in ra.
 
 ## Cờ
 
@@ -32,7 +32,7 @@ Lệnh ghi storage state vào `~/.zenify/playwright/state.json` (quyền 0600), 
 | `--port` | Port web app trên localhost (1..65535), tương đương `--url http://localhost:<port>`. |
 | `--role` | Role tài khoản E2E xin từ broker: `administrator`, `supervisor`, `team_leader`, `agent`, `sale`, `sale_team_leader`. Ghi state vào `~/.zenify/playwright/state-<role>.json`. Cần manifest khai báo `broker:`, không có thì lệnh thoát mã 2 với "--role cần broker". |
 
-Khi manifest khai báo `broker:`, lệnh lấy tài khoản từ broker thay cho `.zenify/.env`; không có `--role` thì dùng `administrator` và ghi `state.json` như cũ. Thông tin đăng nhập chỉ nằm trong env của tiến trình con, không ghi ra file `.env`.
+Khi manifest khai báo `broker:`, lệnh không đọc `.zenify/.env`; không có `--role` thì dùng `administrator` và ghi `state.json` như cũ. Thông tin đăng nhập chỉ nằm trong env của tiến trình con, không ghi ra file `.env`.
 
 ## Ví dụ
 

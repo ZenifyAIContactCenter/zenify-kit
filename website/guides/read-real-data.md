@@ -42,7 +42,7 @@ zenify db-read sql 'DESCRIBE agents'
 
 ## Kết quả
 
-Kết nối lấy từ `MONGO_URL` và `MYSQL_URL` trong `<workspace>/.zenify/.env`, quản lý bằng [`zenify env`](/guides/env). `MYSQL_URL` có dạng `mysql://user:pass@host:port/database`, cổng mặc định 3306; ký tự `@ : / # ? %` và dấu cách trong user hoặc mật khẩu phải percent-encode, ví dụ `@` thành `%40`, `%` thành `%25`, dấu cách thành `%20`, hoặc nhập bằng `zenify env set MYSQL_URL`. Năm key `MYSQL_*` của bản cũ được `zenify up --apply` ghép thành `MYSQL_URL`, xem [`MYSQL_URL`](/guides/env#mysql-url). Lệnh không nhận chuỗi kết nối qua tham số dòng lệnh và không in ra màn hình, nên chạy `zenify db-read` không bao giờ làm lộ credential.
+Workspace zenify khai báo `broker:` trong manifest, nên lệnh gửi truy vấn qua credential broker và bạn không giữ chuỗi kết nối nào; cài đặt và đăng nhập ở [Dùng credential broker](/guides/broker-client). Phần còn lại của mục này mô tả đường không có broker: manifest không khai báo `broker:` thì lệnh chạy tại máy như trước, và kết nối lấy từ `MONGO_URL` và `MYSQL_URL` trong `<workspace>/.zenify/.env`, quản lý bằng [`zenify env`](/guides/env). `MYSQL_URL` có dạng `mysql://user:pass@host:port/database`, cổng mặc định 3306; ký tự `@ : / # ? %` và dấu cách trong user hoặc mật khẩu phải percent-encode, ví dụ `@` thành `%40`, `%` thành `%25`, dấu cách thành `%20`, hoặc nhập bằng `zenify env set MYSQL_URL`. Năm key `MYSQL_*` của bản cũ được `zenify up --apply` ghép thành `MYSQL_URL`, xem [`MYSQL_URL`](/guides/env#mysql-url). Lệnh không nhận chuỗi kết nối qua tham số dòng lệnh và không in ra màn hình, nên chạy `zenify db-read` không bao giờ làm lộ credential.
 
 `--limit` mặc định 50 và tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`.
 
@@ -52,24 +52,24 @@ Khi kết quả nhiều hơn `--limit`, lệnh in đủ `--limit` dòng rồi gh
 
 ## Đọc production
 
-Agent đọc production bằng `zenify db-read --prd <lệnh con>`. Cờ `--prd` dùng `MONGO_URL_PRD` và `MYSQL_URL_PRD` thay cho `MONGO_URL` và `MYSQL_URL`, với đúng các giới hạn chỉ đọc như khi không có cờ. Khi key được dùng đã có giá trị, lệnh in `zenify db-read: production (<KEY>)` ra stderr, với `<KEY>` là tên key đó. Stderr của `mongosh` hoặc `mysql` được che: URL production, mật khẩu và host trong URL bị thay bằng `***`, trừ giá trị ngắn hơn 6 ký tự, ví dụ một host ngắn, vẫn hiện nguyên. Agent không cần người gõ `!`.
+Agent đọc production bằng `zenify db-read --prd <lệnh con>`, với đúng các giới hạn chỉ đọc như khi không có cờ. Có broker, cờ `--prd` chọn production ở phía broker. Không có broker, cờ `--prd` dùng `MONGO_URL_PRD` và `MYSQL_URL_PRD` thay cho `MONGO_URL` và `MYSQL_URL`. Khi key được dùng đã có giá trị, lệnh in `zenify db-read: production (<KEY>)` ra stderr, với `<KEY>` là tên key đó. Stderr của `mongosh` hoặc `mysql` được che: URL production, mật khẩu và host trong URL bị thay bằng `***`, trừ giá trị ngắn hơn 6 ký tự, ví dụ một host ngắn, vẫn hiện nguyên. Agent không cần người gõ `!`.
 
 ```bash
 zenify db-read --prd count chat_rooms
 ```
 
-Không có đường nào cho agent ghi vào production. Git-guard chặn đọc `.zenify/.env` và chặn lệnh chứa host production, còn `zenify env exec` không đưa key production vào lệnh con, nên `zenify db-read --prd` là đường được hỗ trợ duy nhất. Git-guard chặn sai sót chứ không chặn được agent cố tình lách, xem [Quan sát và an toàn](/guides/observe-and-safety).
+Không có đường nào cho agent ghi vào production. Redis có lệnh chỉ đọc tương ứng là `zenify redis-read`, xem [Dùng credential broker](/guides/broker-client#redis-read). Trên đường không có broker, git-guard chặn đọc `.zenify/.env` và chặn lệnh chứa host production, còn `zenify env exec` không đưa key production vào lệnh con, nên `zenify db-read --prd` là đường được hỗ trợ duy nhất. Git-guard chặn sai sót chứ không chặn được agent cố tình lách, xem [Quan sát và an toàn](/guides/observe-and-safety).
 
 ## Lưu ý
 
-- Lệnh chỉ chạy được trong phiên mở tại workspace, vì credential nằm ở `.zenify/.env` của workspace, không phải ở `.env` riêng của một repo.
+- Không có broker, lệnh chỉ chạy được trong phiên mở tại workspace, vì credential nằm ở `.zenify/.env` của workspace, không phải ở `.env` riêng của một repo.
 - Tên collection trong database luôn ở số nhiều. Tên số ít bạn thấy trong code là tên model, không phải tên collection thật. Luôn liệt kê bằng `zenify db-read collections` trước khi dùng một tên, đừng lấy tên từ tài liệu hay từ một document mẫu.
 - Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực thay vì chỉ báo timeout, trừ khi chạy với `--prd`: khi đó lệnh chỉ nói key nào cần kiểm lại, không nêu host.
 - `/znf:ground` dùng lệnh này để xác minh field trước khi code chạm vào nó. `/znf:ship` cũng đọc dữ liệu thật qua đường này khi verify một thay đổi chạm DB.
 
 ## Secret và .zenify/.env
 
-Secret dùng để đọc dữ liệu thật, ví dụ chuỗi kết nối DB hay tài khoản đăng nhập test, sống trong `<workspace>/.zenify/.env`, quyền 0600, không được commit; agent bị luật deny chặn đọc file này. Xem [Credential dev với zenify env](/guides/env).
+Với workspace có broker, credential DB và tài khoản test nằm ở broker, không nằm trên máy bạn. Với manifest không có `broker:`, secret dùng để đọc dữ liệu thật, ví dụ chuỗi kết nối DB hay tài khoản đăng nhập test, sống trong `<workspace>/.zenify/.env`, quyền 0600, không được commit; agent bị luật deny chặn đọc file này. Xem [Credential dev với zenify env](/guides/env).
 
 Các tool như `zenify db-read` đọc secret từ file đó tại thời điểm chạy, chứ không nhận qua tham số dòng lệnh. Nhờ vậy không credential nào lọt vào lịch sử lệnh, log, hay màn hình. `zenify db-read` chỉ nhận các lệnh có cấu trúc cố định, từ chối in ra chuỗi kết nối và từ chối mọi câu lệnh mang tính ghi ngay từ thiết kế, không phải nhờ quyền hạn tài khoản bị giới hạn.
 
@@ -79,7 +79,7 @@ Cùng nguyên tắc đó áp dụng khi bạn tự viết script hay agent chạ
 
 ## Xem thêm
 
-[`zenify db-read`](/reference/cli/zenify_db-read), [`/znf:ground`](/reference/skills/ground), [Knowledge store](/concepts/knowledge-store), [Onboard workspace và repo](/guides/onboard-workspace), [Quan sát và an toàn](/guides/observe-and-safety)
+[Dùng credential broker](/guides/broker-client), [`zenify db-read`](/reference/cli/zenify_db-read), [`/znf:ground`](/reference/skills/ground), [Knowledge store](/concepts/knowledge-store), [Onboard workspace và repo](/guides/onboard-workspace), [Quan sát và an toàn](/guides/observe-and-safety)
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - reference/cli/zenify_db-read.md (generated)

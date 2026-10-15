@@ -63,6 +63,29 @@ loop is red reliably.
 - [ ] You can run it yourself, without the user — except rung 9, where the user's pasted
       `KEY=value` lines are the evidence.
 
+## Evidence sources via the broker
+
+For a production or staging symptom, pull evidence in this order: Loki, Tempo, `zenify db-read` /
+`zenify redis-read`, PostHog. All of it is read-only. The MCP servers `zenify-grafana` and
+`zenify-posthog` exist when the manifest declares a `broker:` (registered by `zenify up`); without
+one, fall back to the local credentials the project documents. Redact as above before anything
+enters the conversation.
+
+1. **Errors by service over a time range (Loki).** Call `list_loki_label_names` first and use the
+   service label it returns; do not assume a label name. Then `query_loki_logs` with
+   `{<service-label>="<svc>"} |= "error"` over the last 30 minutes.
+2. **One slow or failing request (Tempo).** Find candidates with `search_tempo_traces` using
+   TraceQL, e.g. `{resource.service.name="<svc>" && name="<route>" && duration > 3s}`, then fetch
+   one with `get_tempo_trace` by trace id. A full trace is large (about 200 KB): save it to a file
+   and aggregate with `jq`, never print it.
+3. **Latency by route (Prometheus).** `query_prometheus` on `traces_spanmetrics_latency_bucket`
+   (measured 2026-10-15). Buckets are in **seconds** (`le` 0.001 … 10, then `+Inf`), so a p95 of
+   exactly `10` means "at least 10 s, capped by the top bucket", not 10 ms. The service label is
+   `service`; server spans are `span_kind="SPAN_KIND_SERVER"`.
+
+Then check the stored state with `zenify db-read [--prd]` and `zenify redis-read [--prd]`, and
+user-side behaviour in PostHog (`zenify-posthog`).
+
 ## Regression seam
 
 At Step 5 you choose the seam yourself — the test that runs the bug the way the real caller does —
