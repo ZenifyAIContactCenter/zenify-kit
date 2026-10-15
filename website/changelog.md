@@ -8,6 +8,21 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.38.0
+
+*2026-10-15*
+
+- Hook `git-guard` nay đủ an toàn để agent chạy ở chế độ bypass hoặc auto. Luật chặn áp ở mọi chế độ quyền, kể cả khi lệnh được bọc trong `timeout`, `nohup`, `env`, `bash -c`, `sh -c` hay `eval`. Xem [Quan sát và an toàn](/guides/observe-and-safety).
+  - Force push bị chặn trên mọi branch: `--force`, `-f`, `--force-with-lease`, refspec `+…`.
+  - Merge PR bị chặn: `gh pr merge` và `gh api … PUT …/merge`.
+  - Xoá worktree bằng `--force` bị chặn: `wt rm --force`, `zenify wt rm -f`, `git worktree remove --force`.
+  - Đọc `.zenify/.env` qua Bash bị chặn, kể cả qua redirect (`cat < .zenify/.env`), qua glob `.zenify/*` và qua mở rộng biến `$X_PRD`.
+  - Lệnh nhắc tới host của một URL `*_PRD` trong `.zenify/.env` bị chặn. Thông báo chặn chỉ nêu tên key, không nêu host.
+  - Khi thật sự cần force push hay merge, bạn tự gõ lệnh ở dấu nhắc bằng `!`.
+- **Thay đổi phá vỡ:** `zenify env exec` không còn đưa key nhóm production (`*_PRD`) cho tiến trình con. Script cần key production thì bạn tự chạy ở shell của mình. Xem [Credential dev với zenify env](/guides/env).
+- `zenify db-read --prd` đọc dữ liệu production bằng `MONGO_URL_PRD` hoặc `MYSQL_URL_PRD`, vẫn giữ mọi giới hạn chỉ đọc của `db-read`. Agent tự đọc được production, bạn không cần gõ lệnh hộ. Xem [Đọc dữ liệu thật](/guides/read-real-data).
+- Manifest thêm key `MYSQL_URL_PRD` vào nhóm production.
+
 ## v0.37.0
 
 *2026-10-15*
