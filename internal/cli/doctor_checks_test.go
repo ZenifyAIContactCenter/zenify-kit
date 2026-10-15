@@ -50,7 +50,7 @@ func TestDoctor_MissingManifestKeys(t *testing.T) {
 }
 
 // SC-10 / FR-8.2: a local key (not in the manifest) with no description line is named.
-func TestDoctor_LocalKeyWithoutDesc(t *testing.T) {
+func TestDoctor_CustomKeyWithoutDesc(t *testing.T) {
 	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}}}
 	p := writeEnv(t, "MONGO_URL=x\n# my own token\nDESCRIBED_KEY=1\nBARE_KEY=2\n", 0o600)
 	ok, detail := envFileCheck(func() string { return p }, fixedManifest(m), "linux").Run()
@@ -62,6 +62,9 @@ func TestDoctor_LocalKeyWithoutDesc(t *testing.T) {
 	}
 	if strings.Contains(detail, "DESCRIBED_KEY") || strings.Contains(detail, "MONGO_URL") {
 		t.Errorf("described / manifest keys must not be flagged: %q", detail)
+	}
+	if !strings.Contains(detail, "custom") || strings.Contains(detail, "local") {
+		t.Errorf("message must say custom, not local: %q", detail)
 	}
 }
 
@@ -420,5 +423,28 @@ func TestDoctor_EnvFileLegacyMySQL(t *testing.T) {
 	}
 	if strings.Contains(detail, "without a description") || strings.Contains(detail, "fake-") {
 		t.Errorf("detail = %q", detail)
+	}
+}
+
+// SC-7c: a production key is never reported, even when its line is empty.
+func TestSecretPresence_SkipsProduction(t *testing.T) {
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{
+		{Name: "MONGO_URL", Secret: true},
+		{Name: "MONGO_URL_PRD", Secret: true, Group: manifest.GroupProduction},
+	}}
+	p := writeEnv(t, "MONGO_URL='x'\nMONGO_URL_PRD=\n", 0o600)
+	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return p }, fixedManifest(m)).Run()
+	if !ok || strings.Contains(detail, "MONGO_URL_PRD") {
+		t.Fatalf("production key must be skipped; ok=%v detail=%q", ok, detail)
+	}
+}
+
+// SC-7b: an empty `KEY=` line counts as absent.
+func TestSecretPresence_EmptyLineAbsent(t *testing.T) {
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}}}
+	p := writeEnv(t, "MONGO_URL=\n", 0o600)
+	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return p }, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, "MONGO_URL=absent") {
+		t.Fatalf("empty line must be absent; ok=%v detail=%q", ok, detail)
 	}
 }

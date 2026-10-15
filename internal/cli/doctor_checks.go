@@ -24,7 +24,8 @@ import (
 // never places a credential VALUE into its output. It covers MONGO_URL plus
 // every global manifest key (FR-8.1); repo-scoped keys are not reported.
 // ok = MONGO_URL present (the one key db-read hard-requires); the rest are
-// informational.
+// informational. Production keys are skipped (filled by hand, never required);
+// an empty `KEY=` line counts as absent.
 func secretPresenceCheck(getenv func(string) string, envPath func() string, kitManifest func() *manifest.Manifest) Check {
 	return Check{
 		Name: "secrets",
@@ -39,7 +40,7 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 			keys := []string{"MONGO_URL"}
 			if m := kitManifest(); m != nil {
 				for _, k := range m.SecretKeys {
-					if k.Name != "MONGO_URL" {
+					if k.Name != "MONGO_URL" && k.EffectiveGroup() != manifest.GroupProduction {
 						keys = append(keys, k.Name)
 					}
 				}
@@ -63,7 +64,7 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 }
 
 // envFileCheck inspects <workspace>/.zenify/.env itself: a mode wider than 0600
-// (FR-8.4) and local keys — keys the manifest does not know — that carry no
+// (FR-8.4) and custom keys — keys the manifest does not know — that carry no
 // description line above them (FR-8.2). Names only, never values. The mode
 // check is skipped when goos is "windows", which has no POSIX mode bits.
 func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest, goos string) Check {
@@ -110,15 +111,15 @@ func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest, 
 				problems = append(problems, "legacy MYSQL_* in .zenify/.env ("+strings.Join(legacy, ", ")+") — run zenify up --apply to merge into MYSQL_URL")
 			}
 			if len(undescribed) > 0 {
-				problems = append(problems, "local keys without a description: "+strings.Join(undescribed, ", ")+" — add one with: zenify env set <KEY> --desc <text>")
+				problems = append(problems, "custom keys without a description: "+strings.Join(undescribed, ", ")+" — add one with: zenify env set <KEY> --desc <text>")
 			}
 			if len(problems) > 0 {
 				return false, strings.Join(problems, "; ")
 			}
 			if goos == "windows" {
-				return true, "local keys described"
+				return true, "custom keys described"
 			}
-			return true, "mode 0600, local keys described"
+			return true, "mode 0600, custom keys described"
 		},
 	}
 }

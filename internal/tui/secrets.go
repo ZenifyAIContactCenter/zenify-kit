@@ -27,6 +27,9 @@ func secretStep(cfg OnboardConfig) error {
 	}
 	var missing []manifest.SecretKey
 	for _, k := range cfg.SecretKeys {
+		if k.EffectiveGroup() == manifest.GroupProduction { // filled by hand, never asked
+			continue
+		}
 		if v, _ := f.Get(k.Name); v == "" {
 			missing = append(missing, k)
 		}
