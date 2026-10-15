@@ -39,6 +39,10 @@ func TestRules(t *testing.T) {
 		`wt rm x --force`, `zenify wt rm -f x`,
 		`echo $REDIS_URL_PRD`, `bash -c 'echo ${MONGO_URL_PRD}'`, `printenv MONGO_URL_PRD`,
 		`mongosh mongodb://prod-host.example/db`, `redis-cli -h 10.0.0.15`,
+		`gh api -XPUT repos/o/r/pulls/1/merge`, `gh api --method PUT repos/o/r/pulls/1/merge`,
+		`gh api --method=PUT repos/o/r/pulls/1/merge`, `gh api -X put repos/o/r/pulls/1/merge`,
+		`gh pr merge 1 "`, `curl x/pulls/1/merge "`, `git push origin x -f "`, `echo $MONGO_URL_PRD "`,
+		`cat .zenify/.env "`, `ping prod-host.example "`,
 		`git push --force origin x "`, `git -c alias.fp='push --force' fp`,
 	}
 	allow := []string{
@@ -46,7 +50,7 @@ func TestRules(t *testing.T) {
 		`sh -c "docker compose up"`, `wt rm x`, `wt sweep`, `gh api repos/o/r/pulls/1/merge`,
 		`zenify db-read collections`, `zenify env list`, `git grep MONGO_URL_PRD`, `echo $MONGO_URL`,
 		`mongosh mongodb://staging-host/db`, `ping 10.0.0.150`, `curl http://staging-prod-host.example.net`,
-		`echo "abc`, `git log --merges`, `rm -f build.log`,
+		`echo "abc`, `curl http://localhost:8080`, `git log --merges`, `rm -f build.log`,
 	}
 	for _, cmd := range deny {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
@@ -99,5 +103,21 @@ func TestDenyMessageNoHost(t *testing.T) {
 	// The sub label is literally "prod-host"; the host itself must not leak (SC-6).
 	if strings.Contains(d.Message, "prod-host.example") {
 		t.Errorf("message leaks host: %q", d.Message)
+	}
+}
+
+// SC-1 / SC-11: a push or commit wrapped in bash -c / sh -c / eval / exec is
+// still judged against the current deploy branch.
+func TestDecideNestedOnDeployBranch(t *testing.T) {
+	_, opts := mkWorkspace(t)
+	dir := filepath.Join(t.TempDir(), "repo")
+	mkRepo(t, dir, "staging", []string{"staging"})
+	for _, cmd := range []string{
+		`bash -c 'git push origin staging'`, `sh -c "git commit -m x"`,
+		`eval "git push origin staging"`, `exec git push origin staging`,
+	} {
+		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
+			t.Errorf("want deny: %s", cmd)
+		}
 	}
 }

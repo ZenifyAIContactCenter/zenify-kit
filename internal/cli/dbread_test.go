@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
 
@@ -96,5 +99,44 @@ func TestRunDBChild_StopsOnWriteError(t *testing.T) {
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Errorf("child ran %v after the write error, want it stopped", d)
+	}
+}
+
+// FR-10.1: --prd is wired through cobra into production mode. A stub mongosh on
+// PATH records the URL variable it receives, so no real database is reached.
+func TestDBReadCmd_PrdFlagSelectsProduction(t *testing.T) {
+	isolateHome(t)
+	if f := newDBReadCmd().Flags().Lookup("prd"); f == nil || f.Value.Type() != "bool" || f.DefValue != "false" {
+		t.Fatalf("--prd flag = %+v, want bool default false", f)
+	}
+	bin := t.TempDir()
+	rec := filepath.Join(t.TempDir(), "rec")
+	stub := "#!/bin/sh\necho \"$" + dbread.MongoURLEnv + "\" > \"" + rec + "\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "mongosh"), []byte(stub), 0o700); err != nil { //nolint:gosec // G306 -- test stub must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("MONGO_URL", "fake-dev-url")
+	t.Setenv("MONGO_URL_PRD", "fake-prd-url")
+
+	for _, tc := range []struct {
+		args []string
+		url  string
+		prod bool
+	}{
+		{[]string{"--prd", "count", "users"}, "fake-prd-url", true},
+		{[]string{"count", "users"}, "fake-dev-url", false},
+	} {
+		out, err := runDBRead(t, tc.args...)
+		if err != nil {
+			t.Fatalf("%v: err = %v\n%s", tc.args, err, out)
+		}
+		if got := strings.Contains(out, "production (MONGO_URL_PRD)"); got != tc.prod {
+			t.Errorf("%v: production notice = %v, want %v:\n%s", tc.args, got, tc.prod, out)
+		}
+		b, _ := os.ReadFile(rec) //nolint:gosec // G304 -- test temp path
+		if strings.TrimSpace(string(b)) != tc.url {
+			t.Errorf("%v: child got %q, want %q", tc.args, b, tc.url)
+		}
 	}
 }
