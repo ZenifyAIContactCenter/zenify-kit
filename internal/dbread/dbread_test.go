@@ -994,6 +994,24 @@ func TestRun_Mongo_TruncNoticeSetsTruncated(t *testing.T) {
 	}
 }
 
+func TestRun_Mongo_ExitAfterTruncNoticeIsSuccess(t *testing.T) {
+	o, _, stderr := baseOptions(t, fakeEnv())
+	o.SetRun(func(string, []string, []string, string) error {
+		_, _ = fmt.Fprintf(o.Stderr, truncNotice, 5, MaxLimit)
+		return errors.New("exit status 1")
+	})
+	o.Cmd, o.Arg, o.Limit = "find", "users", 5
+	if err := Run(o); err != nil {
+		t.Fatalf("Run = %v, want success after the row-cut notice", err)
+	}
+	if !o.Truncated {
+		t.Error("Truncated = false, want true")
+	}
+	if strings.Contains(stderr.String(), "mongosh failed") {
+		t.Errorf("stderr = %q, want no failure hint", stderr.String())
+	}
+}
+
 func TestRun_Mongo_DBReachesScript(t *testing.T) {
 	o, _, _ := baseOptions(t, fakeEnv())
 	calls := recordRun(o, "")

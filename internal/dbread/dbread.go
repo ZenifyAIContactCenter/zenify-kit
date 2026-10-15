@@ -403,7 +403,9 @@ func Run(o *Options) error {
 		o.Stderr = &noticeWriter{w: realStderr, needle: fmt.Sprintf(truncNotice, limit, MaxLimit), hit: &o.Truncated}
 		err := o.run("mongosh", []string{"--nodb", "--quiet", "--eval", script}, []string{MongoURLEnv + "=" + mongoURL}, "")
 		o.Stderr = realStderr
-		if err != nil && !cw.Truncated() {
+		// A cut is a success whether the byte cap or the script's own row
+		// cut (its stderr notice, o.Truncated) produced it.
+		if err != nil && !cw.Truncated() && !o.Truncated {
 			if o.Prod {
 				_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: kiểm lại %s trong .zenify/.env\n", mk) //znf:allow-lang
 				return err
