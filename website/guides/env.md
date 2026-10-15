@@ -38,6 +38,10 @@ E2E_DOMAIN=
 # personal · secret
 MONGO_URL_PRD=
 
+# MySQL production
+# personal · secret
+MYSQL_URL_PRD=
+
 # ══ Custom (ngoài manifest) ══
 # key cá nhân
 OPENROUTER_API_KEY='...'
@@ -65,6 +69,7 @@ Manifest `manifest/repos.yaml` khai từng key gồm tên, mô tả, phạm vi (
 | `E2E_EMAIL`, `E2E_PASSWORD` | tài khoản đăng nhập của `zenify e2e login` | personal | tooling |
 | `POSTHOG_API_KEY` | key PostHog của bạn | personal | tooling |
 | `MONGO_URL_PRD` | MongoDB production, DB 3csoft | personal | production |
+| `MYSQL_URL_PRD` | MySQL production, cho `zenify db-read --prd sql` và `--prd tables` | personal | production |
 | `AUDIT_MONGO_URL_PRD` | MongoDB `audit_logs` production | personal | production |
 | `REDIS_URL_PRD` | Redis production | personal | production |
 | `LUMI_MYSQL_URL_STG`, `QDRANT_URL_STG`, `LUMI_APP_URL_STG` | MySQL, Qdrant và URL ứng dụng của `lumi-agent` trên staging | shared; `LUMI_APP_URL_STG` không phải secret | staging |

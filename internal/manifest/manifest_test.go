@@ -242,15 +242,15 @@ func TestEmbeddedManifest_EveryKeyDescribed(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := m.AllKeys()
-	if len(keys) != 14 {
-		t.Fatalf("want 14 keys, got %d", len(keys))
+	if len(keys) != 15 {
+		t.Fatalf("want 15 keys, got %d", len(keys))
 	}
 	names := strings.Join(KeyNames(keys), ",")
 	if !strings.Contains(names, "MYSQL_URL") || strings.Contains(names, "MYSQL_HOST") {
 		t.Fatalf("keys = %s, want MYSQL_URL in place of the five MYSQL_* keys (FR-12.1)", names)
 	}
 	notSecret := map[string]bool{"E2E_DOMAIN": true, "LUMI_APP_URL_STG": true}
-	personal := map[string]bool{"E2E_EMAIL": true, "E2E_PASSWORD": true, "POSTHOG_API_KEY": true, "MONGO_URL_PRD": true, "AUDIT_MONGO_URL_PRD": true, "REDIS_URL_PRD": true}
+	personal := map[string]bool{"E2E_EMAIL": true, "E2E_PASSWORD": true, "POSTHOG_API_KEY": true, "MONGO_URL_PRD": true, "MYSQL_URL_PRD": true, "AUDIT_MONGO_URL_PRD": true, "REDIS_URL_PRD": true}
 	for _, k := range keys {
 		if k.Description == "" {
 			t.Errorf("%s: description must be non-empty", k.Name)
@@ -329,7 +329,7 @@ func TestEmbeddedManifest_Groups(t *testing.T) {
 	want := map[string]string{
 		"MONGO_URL": "staging", "MYSQL_URL": "staging", "LUMI_MYSQL_URL_STG": "staging", "QDRANT_URL_STG": "staging", "LUMI_APP_URL_STG": "staging",
 		"E2E_DOMAIN": "tooling", "E2E_EMAIL": "tooling", "E2E_PASSWORD": "tooling", "POSTHOG_API_KEY": "tooling",
-		"LUMI_MYSQL_URL_PRD": "production", "QDRANT_URL_PRD": "production", "MONGO_URL_PRD": "production", "AUDIT_MONGO_URL_PRD": "production", "REDIS_URL_PRD": "production",
+		"LUMI_MYSQL_URL_PRD": "production", "QDRANT_URL_PRD": "production", "MONGO_URL_PRD": "production", "MYSQL_URL_PRD": "production", "AUDIT_MONGO_URL_PRD": "production", "REDIS_URL_PRD": "production",
 	}
 	got := map[string]string{}
 	for _, k := range m.AllKeys() {
