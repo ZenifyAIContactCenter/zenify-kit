@@ -875,6 +875,9 @@ func TestRun_Prd_MissingKey(t *testing.T) {
 		if len(*calls) != 0 {
 			t.Errorf("%s: runner called without prod key", cmd)
 		}
+		if strings.Contains(stderr.String(), "production (") {
+			t.Errorf("%s: production notice before the key is confirmed: %q", cmd, stderr.String())
+		}
 	}
 }
 

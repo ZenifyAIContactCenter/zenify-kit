@@ -76,6 +76,13 @@ func LoadCreds(getenv func(string) string, envPath string) (map[string]string, e
 	return out, nil
 }
 
+// prodNotice names the production key in use, once it is known to be set.
+func prodNotice(o *Options, key string) {
+	if o.Prod {
+		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: production (%s)\n", key)
+	}
+}
+
 // mysqlConn is MYSQL_URL split into the mysql CLI's parameters.
 type mysqlConn struct {
 	host, port, user, password, database string
@@ -350,17 +357,10 @@ func Run(o *Options) error {
 		return fmt.Errorf("zenify db-read: %s not set", mk)
 	}
 
-	if o.Prod {
-		key := sk
-		if script != "" {
-			key = mk
-		}
-		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: production (%s)\n", key)
-	}
-
 	stdout := o.Stdout
 	defer func() { o.Stdout = stdout }()
 	if script != "" {
+		prodNotice(o, mk)
 		// Mongo caps rows in the script (--limit); here only bytes are capped.
 		cw := newCapWriter(stdout, -1, MaxOutputBytes)
 		o.Stdout = cw
@@ -383,6 +383,7 @@ func Run(o *Options) error {
 		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $%s is not set — same source as $%s: zenify env set %s\n", sk, mk, sk)
 		return fmt.Errorf("zenify db-read: %s not set, want %s", sk, mysqlURLShape)
 	}
+	prodNotice(o, sk)
 	conn, err := parseMySQLURL(creds[sk])
 	if err != nil {
 		_, _ = fmt.Fprintln(o.Stderr, err.Error()+" (percent-encode @ : / # ? in user and password)")

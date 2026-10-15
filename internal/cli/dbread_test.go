@@ -106,6 +106,7 @@ func TestRunDBChild_StopsOnWriteError(t *testing.T) {
 // PATH records the URL variable it receives, so no real database is reached.
 func TestDBReadCmd_PrdFlagSelectsProduction(t *testing.T) {
 	isolateHome(t)
+	t.Chdir(t.TempDir()) // no workspace marker above cwd: no real .zenify/.env is loaded
 	if f := newDBReadCmd().Flags().Lookup("prd"); f == nil || f.Value.Type() != "bool" || f.DefValue != "false" {
 		t.Fatalf("--prd flag = %+v, want bool default false", f)
 	}
@@ -138,5 +139,32 @@ func TestDBReadCmd_PrdFlagSelectsProduction(t *testing.T) {
 		if strings.TrimSpace(string(b)) != tc.url {
 			t.Errorf("%v: child got %q, want %q", tc.args, b, tc.url)
 		}
+	}
+}
+
+// S6: with --prd, the child's stderr is masked — a driver error naming the
+// production URL or its host must not reach the agent.
+func TestDBReadCmd_PrdMasksChildStderr(t *testing.T) {
+	isolateHome(t)
+	t.Chdir(t.TempDir())
+	bin := t.TempDir()
+	stub := "#!/bin/sh\necho \"MongoServerSelectionError: connect ECONNREFUSED prodhost-a.example:27017 via $" + dbread.MongoURLEnv + "\" >&2\nprintf 'tail prodhost-b.example' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "mongosh"), []byte(stub), 0o700); err != nil { //nolint:gosec // G306 -- test stub must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("MONGO_URL_PRD", "mongodb://fakeuser:fakepass1@prodhost-a.example:27017,prodhost-b.example/db")
+
+	out, err := runDBRead(t, "--prd", "count", "users")
+	if err == nil {
+		t.Fatalf("want the stub's failure, got nil:\n%s", out)
+	}
+	for _, leak := range []string{"prodhost-a.example", "prodhost-b.example", "fakepass1", "mongodb://"} {
+		if strings.Contains(out, leak) {
+			t.Errorf("output leaks %q:\n%s", leak, out)
+		}
+	}
+	if !strings.Contains(out, "MongoServerSelectionError") || !strings.Contains(out, "tail") {
+		t.Errorf("masked stderr lost the rest of the message:\n%s", out)
 	}
 }

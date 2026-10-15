@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/spf13/cobra"
 )
 
@@ -65,7 +66,13 @@ func newDBReadCmd() *cobra.Command {
 				EnvPath:    workspaceEnvPath(),
 			}
 			o.SetRun(func(name string, args []string, extraEnv []string, _ string) error {
-				return runDBChild(cmd.Context(), name, args, extraEnv, o.Stdout, o.Stderr)
+				stderr := o.Stderr
+				if prd { // a driver error can name the production URL or its hosts
+					mw := devenv.NewMaskWriter(stderr, prodSecrets(o.Env, o.EnvPath))
+					defer func() { _ = mw.Close() }()
+					stderr = mw
+				}
+				return runDBChild(cmd.Context(), name, args, extraEnv, o.Stdout, stderr)
 			})
 			return dbread.Run(o)
 		},
@@ -78,6 +85,18 @@ func newDBReadCmd() *cobra.Command {
 	f.IntVar(&limit, "limit", dbread.DefaultLimit, "max documents or rows, 1..200")
 	f.BoolVar(&prd, "prd", false, "read production: MONGO_URL_PRD / MYSQL_URL_PRD")
 	return cmd
+}
+
+// prodSecrets is every production DB URL db-read may use, plus its hosts.
+func prodSecrets(getenv func(string) string, envPath string) []string {
+	creds, _ := dbread.LoadCreds(getenv, envPath)
+	var out []string
+	for _, k := range []string{"MONGO_URL_PRD", "MYSQL_URL_PRD"} {
+		if v := creds[k]; v != "" {
+			out = append(append(out, v), urlHosts(v)...)
+		}
+	}
+	return out
 }
 
 // runDBChild runs one mongosh/mysql child under dbReadTimeout. A failed stdout
