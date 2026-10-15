@@ -67,5 +67,12 @@ Image mở cổng 8080 và chạy `zenify-broker --config /etc/zenify-broker/bro
 Làm bước này trước khi bật `broker:` trong manifest zenify (FR-13.4):
 
 1. `curl <url>/healthz` trả `ok`.
-2. Chạy một request thật: `zenify db-read collections`.
+2. Gọi thẳng broker một request thật (`zenify db-read` vẫn chạy local khi manifest chưa có `broker:`, nên không dùng nó để kiểm tra). Lấy JWT bằng GitHub token của bạn, rồi gọi `/query`:
+
+   ```bash
+   curl -s <url>/token -H 'content-type: application/json' -d "{\"github_token\":\"$(gh auth token)\"}"
+   curl -s -H "Authorization: Bearer <jwt>" <url>/query -d '{"env":"stg","engine":"mongo","op":"collections"}'
+   ```
+
+   Lệnh đầu trả `{"token":"<jwt>",...}`; lệnh sau trả danh sách collection của staging.
 3. Mở Grafana Explore, datasource Loki, truy vấn `{app="zenify-broker"}` và xác nhận có dòng audit của request vừa chạy (login, endpoint `/query`, `status` 200). Chưa thấy dòng audit thì chưa bật `broker:` — kiểm tra lại bước 8 của runbook.
