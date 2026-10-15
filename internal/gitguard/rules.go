@@ -48,10 +48,10 @@ func checkRules(p Parsed, raw, base string, getenv func(string) string, opts Opt
 			continue
 		}
 		if c.PRDExpansion || isPrintenvPRD(c.Argv) ||
-			readsEnvFile(c.Argv, base, envFile, getenv) {
+			readsEnvFile(slices.Concat(c.Argv, c.RedirArgv), base, envFile, getenv) {
 			return denyEnvFile
 		}
-		if key := matchHost(strings.ToLower(strings.Join(c.Src, " ")), opts.ProdHosts); key != "" {
+		if key := matchHost(strings.ToLower(strings.Join(slices.Concat(c.Src, c.RedirSrc), " ")), opts.ProdHosts); key != "" {
 			return denyProdHost(key)
 		}
 	}

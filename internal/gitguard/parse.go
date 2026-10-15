@@ -76,7 +76,15 @@ type Cmd struct {
 	Argv         []string // word values per FR-1.6; "" for a word with an expansion
 	Src          []string // source text of each word, quotes removed
 	PRDExpansion bool     // some word expands a parameter whose name ends in _PRD
+	// RedirArgv/RedirSrc: input-redirect words (<, <>, <&, <<<) of the
+	// statement, kept apart from Argv so git parsing never sees them;
+	// RedirSrc also holds heredoc bodies.
+	RedirArgv, RedirSrc []string
 }
+
+// redirectCmd is Argv[0] of the Cmd that carries the input redirects of a
+// statement that is not a simple command (a loop, a subshell, a bare `< f`).
+const redirectCmd = "<redirect>"
 
 // Parsed is every simple command found in a Bash command string, including
 // those inside $(…), subshells and nested `bash -c`/`eval` strings.
@@ -112,7 +120,16 @@ func parseInto(src string, depth int, p *Parsed) {
 	if hasPRDExpansion(file) {
 		p.PRDExpansion = true
 	}
+	redirs := map[*syntax.CallExpr][]*syntax.Redirect{}
 	syntax.Walk(file, func(node syntax.Node) bool {
+		if st, ok := node.(*syntax.Stmt); ok {
+			if ce, ok := st.Cmd.(*syntax.CallExpr); ok && len(ce.Args) > 0 {
+				redirs[ce] = st.Redirs
+			} else if c := addRedirs(Cmd{Argv: []string{redirectCmd}, Src: []string{redirectCmd}}, src, st.Redirs); len(c.RedirSrc) > 0 {
+				p.Cmds = append(p.Cmds, c)
+			}
+			return true
+		}
 		ce, ok := node.(*syntax.CallExpr)
 		if !ok || len(ce.Args) == 0 {
 			return true
@@ -128,7 +145,7 @@ func parseInto(src string, depth int, p *Parsed) {
 				cmd.PRDExpansion = true
 			}
 		}
-		cmd = stripWrappers(cmd)
+		cmd = addRedirs(stripWrappers(cmd), src, redirs[ce])
 		p.Cmds = append(p.Cmds, cmd)
 		if isGitBinary(cmd.Argv[0]) && hasDangerousAlias(cmd.Argv) {
 			p.Unparseable = true
@@ -140,6 +157,22 @@ func parseInto(src string, depth int, p *Parsed) {
 		}
 		return true
 	})
+}
+
+// addRedirs appends the input redirects among rs to c.
+func addRedirs(c Cmd, src string, rs []*syntax.Redirect) Cmd {
+	for _, r := range rs {
+		switch r.Op {
+		case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn, syntax.WordHdoc:
+			c.RedirArgv = append(c.RedirArgv, wordValue(r.Word))
+			c.RedirSrc = append(c.RedirSrc, wordSrc(src, r.Word))
+		case syntax.Hdoc, syntax.DashHdoc:
+			if r.Hdoc != nil {
+				c.RedirSrc = append(c.RedirSrc, wordSrc(src, r.Hdoc))
+			}
+		}
+	}
+	return c
 }
 
 // wordValue returns the word's value when it is made only of literals and

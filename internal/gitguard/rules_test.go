@@ -47,6 +47,8 @@ func TestRules(t *testing.T) {
 		`git push --force origin x "`, `git -c alias.fp='push --force' fp`,
 		`bash -c "git push --force origin $B"`, `eval "gh pr merge $N"`,
 		"bash <<'EOF'\ngit push --force origin x\nEOF", `echo 'gh pr merge 1' | sh`,
+		"python3 - <<'EOF'\nMongoClient('mongodb://prod-host.example')\nEOF",
+		"python3 - <<EOF\nconnect(\"$X\", 'prod-host.example')\nEOF", `mongosh <<< "connect('prod-host.example')"`,
 	}
 	allow := []string{
 		`go test ./...`, `git push origin feat/x`, `git push -u origin feat/x`, `gh pr create --title t`,
@@ -56,6 +58,7 @@ func TestRules(t *testing.T) {
 		`echo "abc`, `curl http://localhost:8080`, `git log --merges`, `rm -f build.log`,
 		`git worktree remove p`, `git worktree list`,
 		`sh -c "go test $X"`, `echo hi | sh`, `bash script.sh`, `bash -x script.sh arg`,
+		"cat <<'EOF'\nhello staging-host\nEOF", `git push origin feat/x < /dev/null`,
 	}
 	for _, cmd := range deny {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
@@ -85,6 +88,12 @@ func TestRuleEnvFilePath(t *testing.T) {
 		{ws, `cd .zenify && cat .env`, true},
 		{ws, `cd .zenify && source .env`, true},
 		{ws, "cat .zenify/.env; cd /tmp", true},
+		{ws, `cat < .zenify/.env`, true},
+		{ws, `cat 3< .zenify/.env`, true},
+		{ws, `while read l; do echo $l; done < .zenify/.env`, true},
+		{ws, `< .zenify/.env cat`, true},
+		{ws, `cat < README.md`, false},
+		{ws, `ls < .zenify/.env`, false},
 		{ws, "cat .zenify/.env && cd /tmp", true},
 		{ws, `chmod 600 .zenify/.env`, false},
 		{ws, `git commit -m "$(printf 'docs: ghi chú .zenify/.env')"`, false}, //znf:allow-lang
@@ -123,6 +132,7 @@ func TestDecideNestedOnDeployBranch(t *testing.T) {
 		`bash -c 'git push origin staging'`, `sh -c "git commit -m x"`,
 		`eval "git push origin staging"`, `exec git push origin staging`,
 		`git -c alias.p=push p origin staging`, `git -c alias.P='push origin' P staging`,
+		`git push origin staging < /dev/null`,
 	} {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
 			t.Errorf("want deny: %s", cmd)
