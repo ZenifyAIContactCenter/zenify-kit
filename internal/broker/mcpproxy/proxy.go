@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,6 +65,24 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 			}
 		},
 		FlushInterval: -1, // SSE must reach the client event by event (FR-4.3)
+		// A client must never be pointed at the upstream's own auth, and an
+		// upstream 401/403 means the broker's credential is bad, not the client's.
+		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Del("WWW-Authenticate")
+			if resp.StatusCode != http.StatusUnauthorized && resp.StatusCode != http.StatusForbidden {
+				return nil
+			}
+			b, err := json.Marshal(api.Error{Error: api.CodeUpstreamUnavailable, Message: "MCP upstream " + name + " rejected the broker's credentials"})
+			if err != nil {
+				return err
+			}
+			b = append(b, '\n')
+			_ = resp.Body.Close()
+			resp.StatusCode, resp.Status = http.StatusBadGateway, http.StatusText(http.StatusBadGateway)
+			resp.Body, resp.ContentLength = io.NopCloser(bytes.NewReader(b)), int64(len(b))
+			resp.Header = http.Header{"Content-Type": {"application/json"}, "Content-Length": {strconv.Itoa(len(b))}}
+			return nil
+		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) {
 			if r.Context().Err() != nil { // the client went away: nobody reads a body
 				if cw, ok := w.(*countingWriter); ok && cw.status == 0 {

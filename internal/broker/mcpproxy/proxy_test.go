@@ -536,3 +536,43 @@ func TestStartGrafana_RefusesFixedFlagsInExtraArgs(t *testing.T) {
 		}
 	}
 }
+
+func TestProxy_UpstreamAuthRejection502(t *testing.T) {
+	for _, st := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Bearer resource_metadata="https://upstream.test/.well-known/oauth-protected-resource"`)
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(st)
+			_, _ = io.WriteString(w, "upstream says no")
+		}))
+		var out bytes.Buffer
+		srv, tok := stack(t, "posthog", up.URL+"/mcp", nil, &out)
+		resp := do(t, http.MethodPost, srv.URL+"/mcp/posthog", tok, `{}`, nil)
+		if resp.StatusCode != http.StatusBadGateway || resp.Header.Get("WWW-Authenticate") != "" {
+			t.Fatalf("%d: got %d, WWW-Authenticate %q", st, resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
+		}
+		code, msg := errBody(t, resp)
+		if code != "upstream_unavailable" || !strings.Contains(msg, "credentials") {
+			t.Errorf("%d: body %q %q", st, code, msg)
+		}
+		srv.Close()
+		up.Close()
+		if lines := auditLines(t, &out); len(lines) != 1 || lines[0]["status"] != float64(502) {
+			t.Errorf("%d: audit = %v", st, lines)
+		}
+	}
+}
+
+func TestProxy_WWWAuthenticateAlwaysDropped(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="upstream"`)
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	t.Cleanup(up.Close)
+	var out bytes.Buffer
+	srv, tok := stack(t, "posthog", up.URL+"/mcp", nil, &out)
+	resp := do(t, http.MethodPost, srv.URL+"/mcp/posthog", tok, `{}`, nil)
+	if resp.StatusCode != 200 || resp.Header.Get("WWW-Authenticate") != "" {
+		t.Fatalf("got %d, WWW-Authenticate %q", resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
+	}
+}
