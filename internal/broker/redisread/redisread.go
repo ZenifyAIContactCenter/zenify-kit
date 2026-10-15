@@ -250,7 +250,7 @@ func capRange(argv []string) ([]string, error) {
 		}
 		for _, o := range argv[4:] {
 			if u := strings.ToUpper(o); u == "BYSCORE" || u == "BYLEX" {
-				return withLimit(argv), nil
+				return withLimit(argv)
 			}
 		}
 		return capIndexes(argv, 2)
@@ -278,18 +278,33 @@ func capIndexes(argv []string, i int) ([]string, error) {
 	return out, nil
 }
 
-// withLimit makes a BYSCORE/BYLEX ZRANGE end in LIMIT 0 maxElems, dropping any LIMIT the caller gave.
-func withLimit(argv []string) []string {
+// withLimit makes a BYSCORE/BYLEX ZRANGE end in exactly one LIMIT: the
+// caller's offset (the last LIMIT given) and a count of at most maxElems; a
+// missing or negative count is maxElems, LIMIT 0 maxElems when none was given.
+func withLimit(argv []string) ([]string, error) {
 	out := append([]string(nil), argv[:4]...)
+	offset, count := int64(0), int64(maxElems)
 	rest := argv[4:]
 	for i := 0; i < len(rest); i++ {
-		if strings.EqualFold(rest[i], "LIMIT") {
-			i += 2
+		if !strings.EqualFold(rest[i], "LIMIT") {
+			out = append(out, rest[i])
 			continue
 		}
-		out = append(out, rest[i])
+		if i+2 >= len(rest) {
+			return nil, errors.New("ZRANGE LIMIT takes offset count")
+		}
+		o, err1 := strconv.ParseInt(rest[i+1], 10, 64)
+		c, err2 := strconv.ParseInt(rest[i+2], 10, 64)
+		if err1 != nil || err2 != nil {
+			return nil, errors.New("ZRANGE LIMIT offset and count must be integers")
+		}
+		offset, count = o, c
+		if count < 0 || count > maxElems {
+			count = maxElems
+		}
+		i += 2
 	}
-	return append(out, "LIMIT", "0", strconv.Itoa(maxElems))
+	return append(out, "LIMIT", strconv.FormatInt(offset, 10), strconv.FormatInt(count, 10)), nil
 }
 
 // capCount rewrites an XRANGE to exactly one COUNT: the last one given, at
