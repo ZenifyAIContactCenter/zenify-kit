@@ -64,6 +64,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify observe report](./zenify_observe_report) | Tóm tắt số lần dispatch subagent và lượng tool output của từng phiên Claude Code. |
 | [zenify observe statusline](./zenify_observe_statusline) | Vẽ một dòng statusline cho Claude Code với model, ngữ cảnh, số dispatch, tool output và chi phí. |
 | [zenify observe statusline install](./zenify_observe_statusline_install) | Ghi key `statusLine` trỏ tới `zenify observe statusline` vào `~/.claude/settings.json`. |
+| [zenify redis-read](./zenify_redis-read) | Chạy một lệnh Redis chỉ đọc qua credential broker. |
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
 | [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace. |
 | [zenify reviewer](./zenify_reviewer) | In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent. |

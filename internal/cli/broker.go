@@ -25,17 +25,10 @@ func newBrokerCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if overlayPath == "" {
-				cwd, _ := os.Getwd()
-				if ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir); ok {
-					overlayPath = filepath.Join(ws, ".zenify-overlay.yaml")
-				}
-			}
-			m, _, err := loadKitManifest(manifestPath, overlayPath)
+			c, ok, err := brokerFromFlags(manifestPath, overlayPath)
 			if err != nil {
 				return err
 			}
-			c, ok := brokerclient.FromManifest(m)
 			if !ok {
 				return exitcode.New(exitcode.BadArgs, errors.New("manifest không khai báo broker")) //znf:allow-lang
 			}
@@ -51,4 +44,27 @@ func newBrokerCmd() *cobra.Command {
 	token.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
 	cmd.AddCommand(token)
 	return cmd
+}
+
+// tuneBrokerClient lets a test point the client at an httptest server.
+var tuneBrokerClient func(*brokerclient.Client)
+
+// brokerFromFlags loads the kit manifest (overlay defaulting to the workspace
+// one) and returns its broker client; ok is false when it declares none.
+func brokerFromFlags(manifestPath, overlayPath string) (c *brokerclient.Client, ok bool, err error) {
+	if overlayPath == "" {
+		cwd, _ := os.Getwd()
+		if ws, _, found := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir); found {
+			overlayPath = filepath.Join(ws, ".zenify-overlay.yaml")
+		}
+	}
+	m, _, err := loadKitManifest(manifestPath, overlayPath)
+	if err != nil {
+		return nil, false, err
+	}
+	c, ok = brokerclient.FromManifest(m)
+	if ok && tuneBrokerClient != nil {
+		tuneBrokerClient(c)
+	}
+	return c, ok, nil
 }

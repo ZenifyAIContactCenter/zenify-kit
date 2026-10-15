@@ -38,4 +38,6 @@ zenify db-read sql 'DESCRIBE agents'
 
 ## Lưu ý
 
+Khi manifest khai báo `broker:`, lệnh kiểm tra tham số ở máy bạn như cũ rồi gửi truy vấn qua credential broker, nên không cần `.zenify/.env` và có thêm cờ `--manifest`, `--overlay`. Không có `broker:` thì lệnh chạy tại máy như trước.
+
 Chỉ chạy được trong phiên mở tại workspace, vì credential nằm ở `.zenify/.env` của workspace. Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực.

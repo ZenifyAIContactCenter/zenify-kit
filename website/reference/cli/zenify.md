@@ -44,6 +44,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify hotfix](./zenify_hotfix): Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve.
 - [zenify migrate](./zenify_migrate): Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team.
 - [zenify observe](./zenify_observe): Nhóm lệnh theo dõi phiên Claude Code: số lần dispatch subagent và lượng tool output.
+- [zenify redis-read](./zenify_redis-read): Chạy một lệnh Redis chỉ đọc qua credential broker.
 - [zenify release-note](./zenify_release-note): Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau.
 - [zenify release-report](./zenify_release-report): Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace.
 - [zenify reviewer](./zenify_reviewer): In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent.

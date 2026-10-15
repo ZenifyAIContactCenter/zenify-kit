@@ -313,65 +313,80 @@ func printUsage(w io.Writer) {
 	}
 }
 
+// Validate runs every check Run does before it touches credentials, so a
+// caller that sends the request elsewhere (the broker) refuses what Run would.
+func Validate(o *Options) error {
+	_, _, _, err := validate(o)
+	return err
+}
+
+// validate checks o and builds the query: the effective limit, the mongo
+// script (empty for SQL commands) and the SQL statement.
+func validate(o *Options) (limit int, script, sqlStmt string, err error) {
+	switch o.Cmd {
+	case "collections", "tables", "doc", "count", "find", "aggregate", "explain", "sql":
+	case "eval":
+		return 0, "", "", badArgs("db-read eval đã bị gỡ — dùng find/aggregate/count/explain") //znf:allow-lang
+	default:
+		printUsage(o.Stderr)
+		return 0, "", "", badArgs(fmt.Sprintf("unknown subcommand %q", o.Cmd))
+	}
+	if msg, ok := argRequired[o.Cmd]; ok && strings.TrimSpace(o.Arg) == "" {
+		return 0, "", "", badArgs(msg)
+	}
+	limit = o.Limit
+	if limit == 0 {
+		limit = DefaultLimit
+	}
+	if limit < 0 || limit > MaxLimit {
+		return 0, "", "", badArgs(fmt.Sprintf("--limit phải trong khoảng 1..%d", MaxLimit)) //znf:allow-lang
+	}
+	if o.Cmd == "aggregate" && strings.TrimSpace(o.Pipeline) == "" {
+		return 0, "", "", badArgs("aggregate cần --pipeline '[...]'") //znf:allow-lang
+	}
+	flagVal := map[string]string{"--filter": o.Filter, "--projection": o.Projection, "--sort": o.Sort, "--pipeline": o.Pipeline}
+	for _, f := range unusedFlags[o.Cmd] {
+		if strings.TrimSpace(flagVal[f]) != "" {
+			return 0, "", "", badArgs(fmt.Sprintf("%s không dùng cho %s", f, o.Cmd)) //znf:allow-lang
+		}
+	}
+	hasPipeline := strings.TrimSpace(o.Pipeline) != ""
+	hasFind := strings.TrimSpace(o.Filter+o.Projection+o.Sort) != ""
+	if hasPipeline && (hasFind || o.Cmd == "find" || o.Cmd == "count") {
+		return 0, "", "", badArgs("--pipeline không đi cùng --filter/--projection/--sort, và chỉ dùng cho aggregate/explain") //znf:allow-lang
+	}
+
+	switch o.Cmd {
+	case "tables":
+		sqlStmt = WrapSQLNoLimit("SHOW TABLES")
+	case "sql":
+		if err = CheckSQL(o.Arg); err != nil {
+			return 0, "", "", badArgs(err.Error())
+		}
+		sqlStmt = WrapSQL(o.Arg, limit)
+	default:
+		script, err = BuildMongoScript(MongoQuery{
+			Op: o.Cmd, Coll: o.Arg, Filter: o.Filter, Projection: o.Projection,
+			Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit, DB: o.MongoDB,
+		})
+		if err != nil {
+			return 0, "", "", badArgs(err.Error())
+		}
+	}
+
+	return limit, script, sqlStmt, nil
+}
+
 // Run dispatches one db_read subcommand. It validates every argument and
 // builds the query BEFORE resolving credentials, so a bad request never
 // reaches a database. Output goes to o.Stdout via the injected run seam —
 // Run itself never returns secret values in an error string.
 func Run(o *Options) error {
 	o.Rows, o.Truncated = 0, false
-	switch o.Cmd {
-	case "collections", "tables", "doc", "count", "find", "aggregate", "explain", "sql":
-	case "eval":
-		return badArgs("db-read eval đã bị gỡ — dùng find/aggregate/count/explain") //znf:allow-lang
-	default:
-		printUsage(o.Stderr)
-		return badArgs(fmt.Sprintf("unknown subcommand %q", o.Cmd))
+	limit, script, sqlStmt, err := validate(o)
+	if err != nil {
+		return err
 	}
-	if msg, ok := argRequired[o.Cmd]; ok && strings.TrimSpace(o.Arg) == "" {
-		return badArgs(msg)
-	}
-	limit := o.Limit
-	if limit == 0 {
-		limit = DefaultLimit
-	}
-	if limit < 0 || limit > MaxLimit {
-		return badArgs(fmt.Sprintf("--limit phải trong khoảng 1..%d", MaxLimit)) //znf:allow-lang
-	}
-	if o.Cmd == "aggregate" && strings.TrimSpace(o.Pipeline) == "" {
-		return badArgs("aggregate cần --pipeline '[...]'") //znf:allow-lang
-	}
-	flagVal := map[string]string{"--filter": o.Filter, "--projection": o.Projection, "--sort": o.Sort, "--pipeline": o.Pipeline}
-	for _, f := range unusedFlags[o.Cmd] {
-		if strings.TrimSpace(flagVal[f]) != "" {
-			return badArgs(fmt.Sprintf("%s không dùng cho %s", f, o.Cmd)) //znf:allow-lang
-		}
-	}
-	hasPipeline := strings.TrimSpace(o.Pipeline) != ""
-	hasFind := strings.TrimSpace(o.Filter+o.Projection+o.Sort) != ""
-	if hasPipeline && (hasFind || o.Cmd == "find" || o.Cmd == "count") {
-		return badArgs("--pipeline không đi cùng --filter/--projection/--sort, và chỉ dùng cho aggregate/explain") //znf:allow-lang
-	}
-
-	var script, sqlStmt string
-	switch o.Cmd {
-	case "tables":
-		sqlStmt = WrapSQLNoLimit("SHOW TABLES")
-	case "sql":
-		if err := CheckSQL(o.Arg); err != nil {
-			return badArgs(err.Error())
-		}
-		sqlStmt = WrapSQL(o.Arg, limit)
-	default:
-		var err error
-		script, err = BuildMongoScript(MongoQuery{
-			Op: o.Cmd, Coll: o.Arg, Filter: o.Filter, Projection: o.Projection,
-			Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit, DB: o.MongoDB,
-		})
-		if err != nil {
-			return badArgs(err.Error())
-		}
-	}
-
 	if o.Env == nil {
 		o.Env = os.Getenv
 	}
