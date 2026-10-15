@@ -27,6 +27,7 @@ func parseGitCall(args []string) (GitCall, bool) {
 	// by Parse; assignment prefixes are not part of Args).
 	i := 1
 	gc := GitCall{}
+	aliases := map[string]string{} // -c alias.<name>=<value>, name lower-cased
 	for i < len(args) {
 		tok := args[i]
 		switch {
@@ -40,6 +41,10 @@ func parseGitCall(args []string) (GitCall, bool) {
 				if tok == "-C" {
 					gc.RepoFlagC = args[i+1]
 				}
+				if key, val, ok := strings.Cut(args[i+1], "="); tok == "-c" && ok &&
+					strings.HasPrefix(strings.ToLower(key), "alias.") {
+					aliases[strings.ToLower(key[len("alias."):])] = val
+				}
 				i += 2 // skip the flag + its arg
 				continue
 			}
@@ -51,6 +56,11 @@ func parseGitCall(args []string) (GitCall, bool) {
 		default:
 			gc.Sub = tok
 			gc.Args = args[i+1:]
+			// A non-shell alias runs its first word as the subcommand.
+			if f := strings.Fields(aliases[strings.ToLower(tok)]); len(f) > 0 && !strings.HasPrefix(f[0], "!") {
+				gc.Sub = f[0]
+				gc.Args = append(f[1:], gc.Args...)
+			}
 			return gc, true
 		}
 	}

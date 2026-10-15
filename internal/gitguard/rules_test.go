@@ -117,6 +117,7 @@ func TestDecideNestedOnDeployBranch(t *testing.T) {
 	for _, cmd := range []string{
 		`bash -c 'git push origin staging'`, `sh -c "git commit -m x"`,
 		`eval "git push origin staging"`, `exec git push origin staging`,
+		`git -c alias.p=push p origin staging`, `git -c alias.P='push origin' P staging`,
 	} {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
 			t.Errorf("want deny: %s", cmd)

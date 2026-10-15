@@ -34,6 +34,9 @@ func TestParseGitCalls(t *testing.T) {
 		{"degenerate bare git", "git", nil},
 		{"degenerate git -C only", "git -C", nil},
 		{"degenerate repeated -C", "git -C -C -C push", []string{"push"}},
+		{"alias resolved", "git -c alias.p=push p origin staging", []string{"push"}},
+		{"alias not used", "git -c alias.p=push status", []string{"status"}},
+		{"shell alias kept", "git -c alias.p='!echo' p", []string{"p"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
