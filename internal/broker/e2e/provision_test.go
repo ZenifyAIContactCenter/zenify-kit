@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -222,26 +223,57 @@ func TestEnsure_ConcurrentCreatesOnce(t *testing.T) {
 	}
 }
 
-func TestEnsure_FailureCachedTenMinutes(t *testing.T) {
+// A failure that cost no failed hub login (the first probe already failed
+// otherwise) is cached for one minute only, and says when the broker retries.
+func TestEnsure_FailureWithoutBadLoginCachedOneMinute(t *testing.T) {
 	app := newFakeApp()
 	app.loginErr = errors.New("hub login: status 401: Domain không tồn tại") //znf:allow-lang (hub reply text)
 	now := testNow
 	p := newProvisioner(app)
 	p.Now = func() time.Time { return now }
 	_, err1 := p.Ensure(context.Background(), "alice", "agent")
-	if err1 == nil {
-		t.Fatal("want error")
+	if err1 == nil || !strings.Contains(err1.Error(), "broker retries after 12:01 UTC") {
+		t.Fatalf("err=%v, want the retry time", err1)
 	}
-	now = now.Add(9 * time.Minute)
+	now = now.Add(50 * time.Second)
 	_, err2 := p.Ensure(context.Background(), "alice", "agent")
 	if err2 == nil || err2.Error() != err1.Error() || app.logins != 1 {
-		t.Fatalf("within 10 min: err=%v logins=%d, want the cached error and no upstream call", err2, app.logins)
+		t.Fatalf("within 1 min: err=%v logins=%d, want the cached error and no upstream call", err2, app.logins)
 	}
-	now = now.Add(2 * time.Minute)
+	now = now.Add(20 * time.Second)
 	app.loginErr = nil
 	if _, err := p.Ensure(context.Background(), "alice", "agent"); err != nil || app.logins < 2 {
-		t.Fatalf("after 10 min: err=%v logins=%d", err, app.logins)
+		t.Fatalf("after 1 min: err=%v logins=%d", err, app.logins)
 	}
+}
+
+// A failure after failed probe logins keeps the 10-minute cache, so retries
+// cannot add up failed hub logins toward hub's lockout.
+func TestEnsure_FailureAfterBadLoginCachedTenMinutes(t *testing.T) {
+	app := &resetFailApp{fakeApp: newFakeApp()}
+	now := testNow
+	p := newProvisioner(app)
+	p.Now = func() time.Time { return now }
+	_, err1 := p.Ensure(context.Background(), "alice", "agent")
+	if err1 == nil || app.badLogins != 2 || !strings.Contains(err1.Error(), "broker retries after 12:10 UTC") {
+		t.Fatalf("err=%v badLogins=%d", err1, app.badLogins)
+	}
+	now = now.Add(9 * time.Minute)
+	if _, err := p.Ensure(context.Background(), "alice", "agent"); err == nil || app.logins != 2 {
+		t.Fatalf("within 10 min: err=%v logins=%d, want the cached error", err, app.logins)
+	}
+	now = now.Add(2 * time.Minute)
+	_, _ = p.Ensure(context.Background(), "alice", "agent")
+	if app.logins != 4 {
+		t.Fatalf("after 10 min: logins=%d, want a new attempt", app.logins)
+	}
+}
+
+// resetFailApp fails every admin password reset.
+type resetFailApp struct{ *fakeApp }
+
+func (r *resetFailApp) ResetPassword(context.Context, string, string) error {
+	return errors.New("be reset-password: status 500")
 }
 
 // blockingApp holds Login for the emails in block until their channel closes,
@@ -350,7 +382,7 @@ func TestEnsure_FailureTTLCountsFromTheEnd(t *testing.T) {
 		err  error
 		ttl  time.Duration
 	}{
-		{"other failure", errors.New("hub login: status 400: x"), 10 * time.Minute},
+		{"other failure", errors.New("hub login: status 400: x"), time.Minute},
 		{"hub locked", fmt.Errorf("hub login: status 429: x: %w", ErrHubLocked), 15 * time.Minute},
 	} {
 		now := testNow
@@ -363,8 +395,12 @@ func TestEnsure_FailureTTLCountsFromTheEnd(t *testing.T) {
 		}
 		end := now // provisioning took 5 minutes
 		now = end.Add(c.ttl - time.Minute)
-		if _, err := p.Ensure(context.Background(), "alice", "agent"); err == nil || app.logins != 1 {
+		_, err := p.Ensure(context.Background(), "alice", "agent")
+		if err == nil || app.logins != 1 {
 			t.Fatalf("%s: within ttl of the end: err=%v logins=%d", c.name, err, app.logins)
+		}
+		if errors.Is(err, ErrHubLocked) != errors.Is(c.err, ErrHubLocked) {
+			t.Fatalf("%s: cached err=%v lost ErrHubLocked", c.name, err)
 		}
 		now = end.Add(c.ttl + time.Minute)
 		_, _ = p.Ensure(context.Background(), "alice", "agent")
