@@ -1,6 +1,6 @@
 # Dựng host credential broker
 
-Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các credential read-only (Mongo, MySQL, Redis, Grafana, PostHog) và cấp cho thành viên org GitHub qua JWT. Dev không cần biết các credential này; phía dev xem [Dùng credential broker](/guides/broker-client). Image `ghcr.io/zenifyaicontactcenter/zenify-broker:<version>` do GoReleaser build mỗi release, có sẵn `mongosh`, `mysql` client và `mcp-grafana` 2.0.2. Binary `zenify-broker` không nằm trong brew cask hay scoop.
+Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các credential read-only (Mongo, MySQL, Redis, Grafana, PostHog) và cấp cho thành viên org GitHub qua JWT. Dev không cần biết các credential này; phía dev xem [Dùng credential broker](/guides/broker-client). Image `ghcr.io/zenifyaicontactcenter/zenify-broker` (linux/amd64) có sẵn `mongosh`, `mysql` client và `mcp-grafana` 2.0.2. GoReleaser build tag `:<version>` mỗi release; workflow `broker-image` build tag `:main-<sha>` và `:main` mỗi khi code broker trên `main` đổi (hoặc chạy tay), để dựng và kiểm host trước khi tag release. Binary `zenify-broker` không nằm trong brew cask hay scoop.
 
 ## Runbook 8 bước
 
@@ -57,17 +57,19 @@ docker run -d --name zenify-broker --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   --env-file /etc/zenify-broker/secrets.env \
   -v /etc/zenify-broker/broker.yaml:/etc/zenify-broker/broker.yaml:ro \
-  ghcr.io/zenifyaicontactcenter/zenify-broker:<version>
+  ghcr.io/zenifyaicontactcenter/zenify-broker:<tag>
 ```
+
+`<tag>` là `main-<sha>` khi dựng trước release, `<version>` (ví dụ `0.39.0`) sau release. Nếu package trên ghcr ở chế độ private, chạy `docker login ghcr.io` trên host bằng một token có quyền `read:packages` trước.
 
 Image mở cổng 8080 và chạy `zenify-broker --config /etc/zenify-broker/broker.yaml`. Nếu `mcp-grafana` thoát, broker cũng thoát (khác 0) để orchestrator khởi động lại cả hai.
 
-## Kiểm tra trước khi bật `broker:` trong manifest
+## Kiểm tra trước khi tag release
 
-Làm bước này trước khi bật `broker:` trong manifest zenify (FR-13.4):
+Manifest trên `main` đã khai `broker:`, nên bản release kế tiếp chuyển mọi dev sang broker. Làm bước này trên host chạy image `:main-<sha>` trước khi tag (FR-13.4):
 
 1. `curl <url>/healthz` trả `ok`.
-2. Gọi thẳng broker một request thật (`zenify db-read` vẫn chạy local khi manifest chưa có `broker:`, nên không dùng nó để kiểm tra). Lấy JWT bằng GitHub token của bạn, rồi gọi `/query`:
+2. Gọi thẳng broker một request thật (bản `zenify` đã cài vẫn là bản release cũ, chạy local, nên không dùng `zenify db-read` để kiểm tra). Lấy JWT bằng GitHub token của bạn, rồi gọi `/query`:
 
    ```bash
    curl -s <url>/token -H 'content-type: application/json' -d "{\"github_token\":\"$(gh auth token)\"}"
@@ -75,4 +77,4 @@ Làm bước này trước khi bật `broker:` trong manifest zenify (FR-13.4):
    ```
 
    Lệnh đầu trả `{"token":"<jwt>",...}`; lệnh sau trả danh sách collection của staging.
-3. Mở Grafana Explore, datasource Loki, truy vấn `{app="zenify-broker"}` và xác nhận có dòng audit của request vừa chạy (login, endpoint `/query`, `status` 200). Chưa thấy dòng audit thì chưa bật `broker:` — kiểm tra lại bước 8 của runbook.
+3. Mở Grafana Explore, datasource Loki, truy vấn `{app="zenify-broker"}` và xác nhận có dòng audit của request vừa chạy (login, endpoint `/query`, `status` 200). Chưa thấy dòng audit thì chưa tag — kiểm tra lại bước 8 của runbook.
