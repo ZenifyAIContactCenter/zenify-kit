@@ -48,6 +48,19 @@ func brokerFixture(t *testing.T, handlers map[string]http.HandlerFunc) (manifest
 	return manifestPath, hits
 }
 
+// hermeticDBRead keeps a db-read command test away from real databases: cwd
+// moves out of the real workspace, the workspace pointer home is an empty
+// dir, and every credential key the local path reads is blanked, so a test
+// that wrongly takes the local path fails on "no workspace"/"not set".
+func hermeticDBRead(t *testing.T) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	for _, k := range []string{"MONGO_URL", "MYSQL_URL", "MONGO_URL_PRD", "MYSQL_URL_PRD"} {
+		t.Setenv(k, "")
+	}
+}
+
 func noBrokerManifest(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "repos.yaml")
@@ -67,6 +80,7 @@ func execCmd(cmd *cobra.Command, args ...string) (stdout, stderr string, err err
 }
 
 func TestDBReadCmd_BrokerPrd(t *testing.T) {
+	hermeticDBRead(t)
 	var got api.QueryRequest
 	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-jwt" {
@@ -89,6 +103,7 @@ func TestDBReadCmd_BrokerPrd(t *testing.T) {
 }
 
 func TestDBReadCmd_BrokerSQLMapsToMySQL(t *testing.T) {
+	hermeticDBRead(t)
 	var got api.QueryRequest
 	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&got)
@@ -104,6 +119,7 @@ func TestDBReadCmd_BrokerSQLMapsToMySQL(t *testing.T) {
 }
 
 func TestDBReadCmd_BrokerValidatesLocally(t *testing.T) {
+	hermeticDBRead(t)
 	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(http.ResponseWriter, *http.Request) {}})
 	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "find", "users", "--limit", "500")
 	if exitcode.Code(err) != exitcode.BadArgs {
@@ -115,6 +131,7 @@ func TestDBReadCmd_BrokerValidatesLocally(t *testing.T) {
 }
 
 func TestDBReadCmd_Broker400IsBadArgs(t *testing.T) {
+	hermeticDBRead(t)
 	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeInvalidQuery, Message: "nope"})
@@ -129,6 +146,7 @@ func TestDBReadCmd_Broker400IsBadArgs(t *testing.T) {
 // workspace's databases, so the test checks the routing decision and that a
 // local validation error still surfaces unchanged.
 func TestDBReadCmd_NoBrokerLocal(t *testing.T) {
+	hermeticDBRead(t)
 	called := false
 	tuneBrokerClient = func(*brokerclient.Client) { called = true }
 	t.Cleanup(func() { tuneBrokerClient = nil })
@@ -145,6 +163,7 @@ func TestDBReadCmd_NoBrokerLocal(t *testing.T) {
 // A manifest that declares an invalid broker must not silently send db-read
 // down the local (credential-holding) path.
 func TestDBReadCmd_InvalidBrokerManifestErrors(t *testing.T) {
+	hermeticDBRead(t)
 	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(http.ResponseWriter, *http.Request) {}})
 	if err := os.WriteFile(mp, []byte("org: o\nrepos:\n  - name: r\n    url: u\nbroker:\n  url: http://x\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -165,6 +184,7 @@ func TestDBReadCmd_InvalidBrokerManifestErrors(t *testing.T) {
 }
 
 func TestDBReadCmd_MissingManifestRunsLocal(t *testing.T) {
+	hermeticDBRead(t)
 	_, _, err := execCmd(newDBReadCmd(), "--manifest", filepath.Join(t.TempDir(), "nope.yaml"), "find", "users", "--limit", "500")
 	if exitcode.Code(err) != exitcode.BadArgs {
 		t.Errorf("err = %v, want the local BadArgs validation error", err)
