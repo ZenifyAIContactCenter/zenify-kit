@@ -79,8 +79,8 @@ func TestEnvList_NoSecretValues(t *testing.T) {
 			cLine = l
 		}
 	}
-	if !strings.Contains(cLine, "local") || !strings.Contains(cLine, "set") {
-		t.Errorf("line C = %q, want set + local", cLine)
+	if !strings.Contains(cLine, "custom") || !strings.Contains(cLine, "set") || strings.Contains(cLine, "local") {
+		t.Errorf("line C = %q, want set + custom, no local", cLine)
 	}
 }
 
@@ -248,5 +248,163 @@ func TestEnvList_CommentedOldValueNotPrinted(t *testing.T) {
 	}
 	if strings.Contains(out, "abc123secret") || strings.Contains(out, "OLD_TOKEN") {
 		t.Errorf("list prints a commented-out value:\n%s", out)
+	}
+}
+
+// withMongoManifest swaps in a manifest holding MONGO_URL (staging) and MONGO_URL_PRD (production).
+func withMongoManifest(d envDeps) envDeps {
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{
+		{Name: "MONGO_URL", Description: "mongo", Secret: true},
+		{Name: "MONGO_URL_PRD", Description: "mongo prd", Secret: true, Group: manifest.GroupProduction},
+	}}
+	d.manifest = func(string) (*manifest.Manifest, error) { return m, nil }
+	return d
+}
+
+func emptyPrompt(keys []string) (map[string]string, error) { return map[string]string{}, nil }
+
+func readEnvFile(t *testing.T, ws string) string {
+	t.Helper()
+	b, err := os.ReadFile(devenv.Path(ws))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestEnvSet_EmptyOnScaffoldedLineRejected(t *testing.T) {
+	const content = "MONGO_URL=\n"
+	d, ws := envFixture(t, content)
+	d = withMongoManifest(d)
+	d.prompt = emptyPrompt
+	_, err := runEnv(d, "set", "MONGO_URL")
+	if err == nil || !strings.Contains(err.Error(), "trống") { //znf:allow-lang
+		t.Fatalf("err = %v, want empty-value refusal", err)
+	}
+	if got := readEnvFile(t, ws); got != content {
+		t.Errorf("file changed: %q", got)
+	}
+}
+
+func TestEnvSet_EmptyKeepsValueWithDesc(t *testing.T) {
+	d, ws := envFixture(t, "MONGO_URL='x'\n")
+	d = withMongoManifest(d)
+	d.prompt = emptyPrompt
+	if _, err := runEnv(d, "set", "MONGO_URL", "--desc", "d"); err != nil {
+		t.Fatal(err)
+	}
+	f, _ := devenv.Load(devenv.Path(ws))
+	if v, _ := f.Get("MONGO_URL"); v != "x" {
+		t.Errorf("value = %q, want x kept", v)
+	}
+	if f.Desc("MONGO_URL") != "d" {
+		t.Errorf("desc = %q, want d", f.Desc("MONGO_URL"))
+	}
+}
+
+func TestEnvSet_CustomNeedsDesc(t *testing.T) {
+	d, ws := envFixture(t, "")
+	d = withMongoManifest(d)
+	d.prompt = func(keys []string) (map[string]string, error) { return map[string]string{keys[0]: "val12345"}, nil }
+	_, err := runEnv(d, "set", "FOO")
+	if err == nil || !strings.Contains(err.Error(), "--desc") {
+		t.Fatalf("err = %v, want --desc required", err)
+	}
+	if _, serr := os.Stat(devenv.Path(ws)); serr == nil {
+		t.Error("file written despite missing --desc")
+	}
+	if _, err := runEnv(d, "set", "FOO", "--desc", "my foo"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readEnvFile(t, ws); got != "# my foo\nFOO='val12345'\n" {
+		t.Errorf("file = %q", got)
+	}
+}
+
+func TestEnvSet_CustomExistingDescNoFlagOK(t *testing.T) {
+	d, ws := envFixture(t, "# described\nFOO='old'\n")
+	d = withMongoManifest(d)
+	d.prompt = func(keys []string) (map[string]string, error) { return map[string]string{keys[0]: "new12345"}, nil }
+	if _, err := runEnv(d, "set", "FOO"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readEnvFile(t, ws); got != "# described\nFOO='new12345'\n" {
+		t.Errorf("file = %q", got)
+	}
+}
+
+func TestEnvList_CustomLabel(t *testing.T) {
+	d, _ := envFixture(t, "# d\nFOO='v'\n")
+	out, err := runEnv(d, "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "FOO  set  custom") {
+		t.Errorf("want custom label:\n%s", out)
+	}
+	if strings.Contains(out, "local") {
+		t.Errorf("output still says local:\n%s", out)
+	}
+}
+
+func TestEnvList_EmptyLineIsEmpty(t *testing.T) {
+	d, _ := envFixture(t, "MONGO_URL=\n")
+	d = withMongoManifest(d)
+	out, err := runEnv(d, "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "MONGO_URL  empty  manifest") {
+		t.Errorf("want MONGO_URL empty:\n%s", out)
+	}
+}
+
+func TestEnvForm_EmptyLineAsked(t *testing.T) {
+	d, _ := envFixture(t, "MONGO_URL=\n")
+	d = withMongoManifest(d)
+	var rounds [][]string
+	d.prompt = func(keys []string) (map[string]string, error) {
+		rounds = append(rounds, keys)
+		return map[string]string{keys[0]: "val12345"}, nil
+	}
+	if _, err := runEnv(d); err != nil {
+		t.Fatal(err)
+	}
+	if len(rounds) == 0 || !contains(rounds[0], "MONGO_URL") {
+		t.Errorf("rounds = %v, want first round to ask MONGO_URL", rounds)
+	}
+}
+
+func TestEnvForm_FirstRoundSkipsProduction(t *testing.T) {
+	d, _ := envFixture(t, "MONGO_URL=\nMONGO_URL_PRD=\n")
+	d = withMongoManifest(d)
+	var rounds [][]string
+	d.prompt = func(keys []string) (map[string]string, error) {
+		rounds = append(rounds, keys)
+		return map[string]string{keys[0]: "val12345"}, nil
+	}
+	var picked []string
+	d.pick = func(names []string) (string, error) { picked = names; return "", nil }
+	if _, err := runEnv(d); err != nil {
+		t.Fatal(err)
+	}
+	if len(rounds) != 1 || strings.Join(rounds[0], ",") != "MONGO_URL" {
+		t.Errorf("rounds = %v, want only MONGO_URL", rounds)
+	}
+	if !contains(picked, "MONGO_URL_PRD") {
+		t.Errorf("pick list = %v, want MONGO_URL_PRD", picked)
+	}
+}
+
+func TestEnvSet_FirstCustomKeyUnderTitleNeedsDesc(t *testing.T) {
+	scaffold := devenv.RenderHeader + "\n\n# ══ Custom (ngoài manifest) ══\nFOO='old'\n" //znf:allow-lang
+	d, ws := envFixture(t, scaffold)
+	d.prompt = func(keys []string) (map[string]string, error) { return map[string]string{keys[0]: "new12345"}, nil }
+	_, err := runEnv(d, "set", "FOO")
+	if err == nil || !strings.Contains(err.Error(), "--desc") {
+		t.Fatalf("err = %v, want --desc required", err)
+	}
+	if got := readEnvFile(t, ws); got != scaffold {
+		t.Errorf("file changed: %q", got)
 	}
 }

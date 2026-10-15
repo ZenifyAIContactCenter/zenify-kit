@@ -179,3 +179,28 @@ func TestSecretStep_NewlineRefused(t *testing.T) {
 		t.Error("env file written despite the refusal")
 	}
 }
+
+// FR-4.4: production keys are never prompted for.
+func TestSecretStep_SkipsProduction(t *testing.T) {
+	ws := t.TempDir()
+	writeEnvFileFor(t, ws, "E2E_EMAIL=\nMONGO_URL_PRD=\n")
+	keys := []manifest.SecretKey{
+		{Name: "E2E_EMAIL", Secret: true, Group: manifest.GroupTooling},
+		{Name: "MONGO_URL_PRD", Secret: true, Group: manifest.GroupProduction},
+	}
+	var asked []string
+	cfg := OnboardConfig{
+		Workspace:  ws,
+		SecretKeys: keys,
+		SecretPromptFn: func(names []string) (map[string]string, error) {
+			asked = names
+			return map[string]string{}, nil
+		},
+	}
+	if err := secretStep(cfg); err != nil {
+		t.Fatalf("secretStep: %v", err)
+	}
+	if len(asked) != 1 || asked[0] != "E2E_EMAIL" {
+		t.Fatalf("want only E2E_EMAIL prompted, got %v", asked)
+	}
+}

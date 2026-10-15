@@ -11,22 +11,40 @@ secretKeys:
   - name: MONGO_URL
     description: "Chuỗi kết nối MongoDB cho zenify db-read"
     scope: shared
+    group: staging
   - name: MYSQL_URL
     description: "URL MySQL cho zenify db-read (mysql://user:pass@host:port/database)"
     scope: shared
+    group: staging
   - name: E2E_DOMAIN
     description: "Tên miền (tenant) đăng nhập cho zenify e2e login"
     scope: shared
     secret: false
+    group: tooling
   - name: E2E_EMAIL
     description: "Email đăng nhập cho zenify e2e login"
     scope: personal
+    group: tooling
   - name: E2E_PASSWORD
     description: "Mật khẩu đăng nhập cho zenify e2e login"
     scope: personal
+    group: tooling
   - name: POSTHOG_API_KEY
     description: "Khoá API PostHog"
     scope: personal
+    group: tooling
+  - name: MONGO_URL_PRD
+    description: "MongoDB production, DB 3csoft"
+    scope: personal
+    group: production
+  - name: AUDIT_MONGO_URL_PRD
+    description: "MongoDB audit_logs production"
+    scope: personal
+    group: production
+  - name: REDIS_URL_PRD
+    description: "Redis production"
+    scope: personal
+    group: production
 repos:
   - name: contact-center-be
     url: git@github.com:ZenifyAIContactCenter/contact-center-be.git
@@ -63,27 +81,29 @@ repos:
     path: repos/lumi-agent
     base: origin/staging
     tags: [ai]
-    # Repo-scoped: only a developer who clones lumi-agent gets these placeholders.
+    # Repo-scoped keys; scaffolded in every workspace's .zenify/.env, filled only by developers working on lumi-agent.
     secretKeys:
       - name: LUMI_MYSQL_URL_STG
         description: "URL MySQL của lumi-agent, môi trường staging"
         scope: shared
+        group: staging
       - name: LUMI_MYSQL_URL_PRD
         description: "URL MySQL của lumi-agent, môi trường production"
         scope: shared
+        group: production
       - name: QDRANT_URL_STG
         description: "URL Qdrant của lumi-agent, môi trường staging"
         scope: shared
+        group: staging
       - name: QDRANT_URL_PRD
         description: "URL Qdrant của lumi-agent, môi trường production"
         scope: shared
+        group: production
       - name: LUMI_APP_URL_STG
         description: "URL ứng dụng lumi-agent, môi trường staging"
         scope: shared
         secret: false
-      - name: OPENROUTER_API_KEY
-        description: "Khoá API OpenRouter"
-        scope: personal
+        group: staging
   - name: message-hub-be
     url: git@github.com:ZenifyAIContactCenter/message-hub-be.git
     path: repos/message-hub-be
