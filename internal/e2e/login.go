@@ -98,9 +98,9 @@ func prepareHarness(o LoginOptions, root, harness string) error {
 	return nil
 }
 
-// checkLoopbackURL refuses any origin that is not a local app: the harness types
+// CheckLoopbackURL refuses any origin that is not a local app: the harness types
 // real credentials into whatever page it is pointed at.
-func checkLoopbackURL(raw string) error {
+func CheckLoopbackURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return exitcode.New(exitcode.BadArgs, fmt.Errorf("login needs an http(s) origin of a local app; got %q", raw))
@@ -121,7 +121,7 @@ func Login(o LoginOptions) (string, error) {
 	if o.Role != "" && !slices.Contains(api.E2ERoles, o.Role) {
 		return "", exitcode.New(exitcode.BadArgs, fmt.Errorf("unknown role %q", o.Role))
 	}
-	if err := checkLoopbackURL(o.BaseURL); err != nil {
+	if err := CheckLoopbackURL(o.BaseURL); err != nil {
 		return "", err
 	}
 	for _, k := range []string{"E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"} {

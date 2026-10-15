@@ -321,7 +321,11 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	}
 
 	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). NON-FATAL.
-	registerBrokerMCP(w, errW, m, func(n string, args ...string) ([]byte, error) {
+	// The broker comes from the trusted (embedded) manifest, never --manifest or
+	// cwd: the registered headersHelper `zenify broker headers` resolves it the
+	// same way, so the MCP URL and its token always name one broker.
+	bm, _ := brokerManifest("", "")
+	registerBrokerMCP(w, errW, bm, func(n string, args ...string) ([]byte, error) {
 		return exec.Command(n, args...).CombinedOutput() //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
 	})
 
@@ -816,10 +820,13 @@ func newUpCmd() *cobra.Command {
 }
 
 // registerBrokerMCP registers the kit's Grafana/PostHog HTTP MCP servers with
-// Claude when the manifest declares a broker; without one it does nothing, so
-// `zenify up` keeps its pre-broker behaviour. Failures only warn.
+// Claude when the manifest declares a broker and claude is on PATH; otherwise
+// it does nothing, so `zenify up` keeps its pre-broker behaviour. Failures only warn.
 func registerBrokerMCP(w, errW io.Writer, m *manifest.Manifest, run func(string, ...string) ([]byte, error)) {
 	if m == nil || m.Broker == nil {
+		return
+	}
+	if _, err := lookPath("claude"); err != nil {
 		return
 	}
 	for _, name := range []string{"grafana", "posthog"} {

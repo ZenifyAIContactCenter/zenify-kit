@@ -48,6 +48,7 @@ func TestDBReadCmd_UseAndFlags(t *testing.T) {
 }
 
 func TestDBReadCmd_EvalRemoved_BadArgs(t *testing.T) {
+	hermeticDBRead(t)
 	_, err := runDBRead(t, "eval", "db.users.find()")
 	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "find/aggregate") {
 		t.Errorf("err = %v (code %d), want BadArgs removal message", err, exitcode.Code(err))
@@ -55,6 +56,7 @@ func TestDBReadCmd_EvalRemoved_BadArgs(t *testing.T) {
 }
 
 func TestDBReadCmd_LimitTooHigh_BadArgs(t *testing.T) {
+	hermeticDBRead(t)
 	_, err := runDBRead(t, "find", "users", "--limit", "500")
 	if exitcode.Code(err) != exitcode.BadArgs {
 		t.Errorf("err = %v (code %d), want BadArgs", err, exitcode.Code(err))
@@ -62,6 +64,7 @@ func TestDBReadCmd_LimitTooHigh_BadArgs(t *testing.T) {
 }
 
 func TestDBReadCmd_SQLWrite_BadArgs(t *testing.T) {
+	hermeticDBRead(t)
 	_, err := runDBRead(t, "sql", "DROP TABLE t")
 	if exitcode.Code(err) != exitcode.BadArgs {
 		t.Errorf("err = %v (code %d), want BadArgs", err, exitcode.Code(err))
@@ -119,7 +122,7 @@ func TestDBReadCmd_PrdFlagSelectsProduction(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("MONGO_URL", "fake-dev-url")
 	t.Setenv("MONGO_URL_PRD", "fake-prd-url")
-	mp := noBrokerManifest(t) // the embedded manifest declares a broker; this test covers the direct path
+	mp := noBrokerManifest(t) // explicit no-broker manifest: this test covers the direct path
 
 	for _, tc := range []struct {
 		args []string

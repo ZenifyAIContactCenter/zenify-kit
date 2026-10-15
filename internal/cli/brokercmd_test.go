@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,6 +27,8 @@ import (
 
 // brokerFixture serves /token plus the handlers given, points the CLI's
 // broker client at it, and returns a manifest path that declares a broker.
+// Commands reach it only through an explicit --manifest, or through
+// useTrustedManifest for the ones without that flag (e2e, visual).
 func brokerFixture(t *testing.T, handlers map[string]http.HandlerFunc) (manifestPath string, hits *int32) {
 	t.Helper()
 	hits = new(int32)
@@ -41,10 +45,11 @@ func brokerFixture(t *testing.T, handlers map[string]http.HandlerFunc) (manifest
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	home := t.TempDir()
+	saved := tuneBrokerClient
 	tuneBrokerClient = func(c *brokerclient.Client) {
-		c.URL, c.Home, c.GHToken = srv.URL, home, func() (string, error) { return "test-gh", nil }
+		c.URL, c.Home, c.GHToken = srv.URL, home, stubGHToken
 	}
-	t.Cleanup(func() { tuneBrokerClient = nil })
+	t.Cleanup(func() { tuneBrokerClient = saved })
 	manifestPath = filepath.Join(t.TempDir(), "repos.yaml")
 	y := "org: o\nrepos:\n  - name: r\n    url: u\nbroker:\n  url: https://broker.example\n"
 	if err := os.WriteFile(manifestPath, []byte(y), 0o600); err != nil {
@@ -67,45 +72,147 @@ func useGH(t *testing.T, r ghx.Runner) {
 	t.Cleanup(func() { ghRunner = saved })
 }
 
-// TestMain replaces the GitHub token source so no test in this package can run
-// a real `gh` or send a real token to a broker.
+func stubGHToken(context.Context) (string, error) { return "test-gh", nil }
+
+const noBrokerYAML = "org: o\nrepos:\n  - name: r\n    url: u\n"
+
+// credentialEnv is every DB/E2E credential key a command could read locally.
+var credentialEnv = []string{"MONGO_URL", "MYSQL_URL", "MONGO_URL_PRD", "MYSQL_URL_PRD", "AUDIT_MONGO_URL_PRD", "REDIS_URL_PRD",
+	"E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD", "POSTHOG_API_KEY"}
+
+// TestMain makes the whole package hermetic before any test runs:
+//   - the GitHub token source errors and the gh runner panics;
+//   - the trusted broker manifest declares no broker, and tuneBrokerClient
+//     panics, so only a test that installs brokerFixture reaches a broker;
+//   - HOME and ZENIFY_HOME are empty temp dirs (no token cache, no workspace
+//     pointer), with the Go caches pinned so `go build` children still work;
+//   - DB/E2E credential env vars are unset;
+//   - PATH starts with failing shims for mongosh, mysql, gh and claude, and
+//     the run fails if any test executed one;
+//   - the workspace marker walk-up refuses the real workspace above this
+//     package, so no test loads its .zenify/.env or .zenify-overlay.yaml.
 func TestMain(m *testing.M) {
-	ghToken = func() (string, error) {
-		return "", fmt.Errorf("test hermeticity: a cli test reached the real gh token source; inject c.GHToken via tuneBrokerClient and pass --manifest")
-	}
-	ghRunner = panicRunner{}
-	os.Exit(m.Run())
+	os.Exit(runHermetic(m))
 }
 
-// hermeticDBRead keeps a db-read command test away from real databases: cwd
-// moves out of the real workspace, the workspace pointer home is an empty
-// dir, and every credential key the local path reads is blanked, so a test
+func runHermetic(m *testing.M) int {
+	ghToken = func(context.Context) (string, error) {
+		return "", fmt.Errorf("test hermeticity: a cli test reached the real gh token source; use brokerFixture")
+	}
+	ghRunner = panicRunner{}
+	trustedBrokerManifest = func() ([]byte, string) { return []byte(noBrokerYAML), "test-no-broker" }
+	tuneBrokerClient = func(*brokerclient.Client) {
+		panic("test hermeticity: a cli test built a broker client without brokerFixture")
+	}
+
+	root, err := os.MkdirTemp("", "zenify-cli-test-*")
+	if err != nil {
+		panic(err)
+	}
+	defer func() { _ = os.RemoveAll(root) }()
+	if home, err := os.UserHomeDir(); err == nil {
+		gopath := os.Getenv("GOPATH")
+		if gopath == "" {
+			gopath = filepath.Join(home, "go")
+		}
+		setDefault("GOPATH", gopath)
+		setDefault("GOMODCACHE", filepath.Join(gopath, "pkg", "mod"))
+		if cache, err := os.UserCacheDir(); err == nil {
+			setDefault("GOCACHE", filepath.Join(cache, "go-build"))
+		}
+	}
+	for _, k := range []string{"HOME", "ZENIFY_HOME"} {
+		d := filepath.Join(root, k)
+		mustMkdir(d)
+		_ = os.Setenv(k, d)
+	}
+	for _, k := range credentialEnv {
+		_ = os.Unsetenv(k)
+	}
+	shims := filepath.Join(root, "shims")
+	mustMkdir(shims)
+	hitLog := filepath.Join(root, "shim-hits")
+	for _, n := range []string{"mongosh", "mysql", "gh", "claude"} {
+		script := "#!/bin/sh\necho " + n + " \"$*\" >> '" + hitLog + "'\necho 'test hermeticity: a cli test ran the real " + n + "' >&2\nexit 97\n"
+		if err := os.WriteFile(filepath.Join(shims, n), []byte(script), 0o700); err != nil { //nolint:gosec // shim must be executable
+			panic(err)
+		}
+	}
+	_ = os.Setenv("PATH", shims+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if wd, err := os.Getwd(); err == nil {
+		if real, ok := findWorkspaceRoot(wd); ok {
+			orig := findWorkspaceRoot
+			findWorkspaceRoot = func(start string) (string, bool) {
+				if r, ok := orig(start); ok && r != real {
+					return r, true
+				}
+				return "", false
+			}
+		}
+	}
+	code := m.Run()
+	if hits, err := os.ReadFile(hitLog); err == nil && len(hits) > 0 { //nolint:gosec // test-owned temp file
+		fmt.Fprintf(os.Stderr, "test hermeticity: tests ran shimmed binaries:\n%s", hits)
+		return 1
+	}
+	return code
+}
+
+func setDefault(k, v string) {
+	if os.Getenv(k) == "" {
+		_ = os.Setenv(k, v)
+	}
+}
+
+func mustMkdir(d string) {
+	if err := os.MkdirAll(d, 0o700); err != nil {
+		panic(err)
+	}
+}
+
+// fakeClaudeNoMCP puts a `claude` first on PATH that knows no MCP server, for
+// tests that run the read-only playwright check (`claude mcp get playwright`).
+func fakeClaudeNoMCP(t *testing.T) {
+	t.Helper()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\necho 'No MCP server found' >&2\nexit 1\n"), 0o700); err != nil { //nolint:gosec // fake must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// useTrustedManifest makes the manifest at path the trusted broker source (the
+// embedded one in production) until the test ends.
+func useTrustedManifest(t *testing.T, path string) {
+	t.Helper()
+	b, err := os.ReadFile(path) //nolint:gosec // test-owned temp file
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := trustedBrokerManifest
+	trustedBrokerManifest = func() ([]byte, string) { return b, path }
+	t.Cleanup(func() { trustedBrokerManifest = saved })
+}
+
+// hermeticDBRead keeps a db-read command test away from real databases on top
+// of TestMain: cwd is an empty temp dir, ZENIFY_HOME and HOME are fresh, PATH
+// has no gh/mongosh/mysql at all, and every credential key is blank, so a test
 // that wrongly takes the local path fails on "no workspace"/"not set".
 func hermeticDBRead(t *testing.T) {
 	t.Helper()
 	t.Chdir(t.TempDir())
 	t.Setenv("ZENIFY_HOME", t.TempDir())
-	t.Setenv("PATH", t.TempDir()) // no gh, no mongosh
-	for _, k := range []string{"MONGO_URL", "MYSQL_URL", "MONGO_URL_PRD", "MYSQL_URL_PRD"} {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	for _, k := range credentialEnv {
 		t.Setenv(k, "")
-	}
-	// cwd manifest without a broker, so the embedded one never applies
-	if err := os.MkdirAll("manifest", 0o750); err != nil {
-		t.Fatal(err)
-	}
-	b, err := os.ReadFile(noBrokerManifest(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join("manifest", "repos.yaml"), b, 0o600); err != nil {
-		t.Fatal(err)
 	}
 }
 
 func noBrokerManifest(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "repos.yaml")
-	if err := os.WriteFile(p, []byte("org: o\nrepos:\n  - name: r\n    url: u\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte(noBrokerYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return p
@@ -138,7 +245,7 @@ func TestDBReadCmd_BrokerPrd(t *testing.T) {
 	if got != want {
 		t.Errorf("request = %+v, want %+v", got, want)
 	}
-	if out != "{\"a\":1}\n" || errOut != "note\n" {
+	if out != "{\"a\":1}\n" || errOut != "zenify db-read: production (via broker)\nnote\n" {
 		t.Errorf("stdout=%q stderr=%q", out, errOut)
 	}
 }
@@ -156,6 +263,27 @@ func TestDBReadCmd_BrokerSQLMapsToMySQL(t *testing.T) {
 	want := api.QueryRequest{Env: "stg", Engine: "mysql", Op: "sql", SQL: "SELECT 1", Limit: 50}
 	if got != want {
 		t.Errorf("request = %+v, want %+v", got, want)
+	}
+}
+
+// tables keeps its substring filter in Coll on the broker path.
+func TestDBReadCmd_BrokerTablesKeepsFilter(t *testing.T) {
+	hermeticDBRead(t)
+	var got api.QueryRequest
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.NewEncoder(w).Encode(api.QueryResponse{})
+	}})
+	out, errOut, err := execCmd(newDBReadCmd(), "--manifest", mp, "tables", "foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := api.QueryRequest{Env: "stg", Engine: "mysql", Op: "tables", Coll: "foo", Limit: 50}
+	if got != want {
+		t.Errorf("request = %+v, want %+v", got, want)
+	}
+	if out != "" || errOut != "" { // no production notice on staging
+		t.Errorf("stdout=%q stderr=%q", out, errOut)
 	}
 }
 
@@ -189,8 +317,9 @@ func TestDBReadCmd_Broker400IsBadArgs(t *testing.T) {
 func TestDBReadCmd_NoBrokerLocal(t *testing.T) {
 	hermeticDBRead(t)
 	called := false
+	saved := tuneBrokerClient
 	tuneBrokerClient = func(*brokerclient.Client) { called = true }
-	t.Cleanup(func() { tuneBrokerClient = nil })
+	t.Cleanup(func() { tuneBrokerClient = saved })
 	mp := noBrokerManifest(t)
 	if c, ok, err := brokerFromFlags(mp, ""); ok || c != nil || err != nil {
 		t.Fatalf("brokerFromFlags = %v, %v, %v; want nil, false, nil", c, ok, err)
@@ -224,15 +353,47 @@ func TestDBReadCmd_InvalidBrokerManifestErrors(t *testing.T) {
 	}
 }
 
-func TestDBReadCmd_MissingManifestRunsLocal(t *testing.T) {
+// A mistyped --manifest is an error, never a silent fallback to local
+// (possibly production) credentials.
+func TestDBReadCmd_MissingManifestErrors(t *testing.T) {
 	hermeticDBRead(t)
-	_, _, err := execCmd(newDBReadCmd(), "--manifest", filepath.Join(t.TempDir(), "nope.yaml"), "find", "users", "--limit", "500")
-	if exitcode.Code(err) != exitcode.BadArgs {
-		t.Errorf("err = %v, want the local BadArgs validation error", err)
+	for _, args := range [][]string{{"find", "users"}, {"--prd", "find", "users"}} {
+		_, errOut, err := execCmd(newDBReadCmd(), append([]string{"--manifest", filepath.Join(t.TempDir(), "nope.yaml")}, args...)...)
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("%v: err = %v, want a not-exist error", args, err)
+		}
+		if strings.Contains(errOut, "MONGO_URL") || strings.Contains(errOut, "workspace") {
+			t.Errorf("local path was taken: stderr = %q", errOut)
+		}
+	}
+}
+
+// Without --manifest the broker comes from the trusted source, never from a
+// manifest/repos.yaml in cwd.
+func TestBrokerFromFlags_IgnoresCwdManifest(t *testing.T) {
+	hermeticDBRead(t)
+	mp, _ := brokerFixture(t, nil)
+	if err := os.MkdirAll("manifest", 0o750); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(mp) //nolint:gosec // test-owned temp file
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("manifest", "repos.yaml"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, ok, err := brokerFromFlags("", ""); ok || c != nil || err != nil {
+		t.Fatalf("brokerFromFlags = %v, %v, %v; want the trusted no-broker manifest", c, ok, err)
+	}
+	useTrustedManifest(t, mp)
+	if _, ok, err := brokerFromFlags("", ""); !ok || err != nil {
+		t.Fatalf("trusted broker manifest: ok=%v err=%v", ok, err)
 	}
 }
 
 func TestRedisRead_NoBroker(t *testing.T) {
+	hermeticDBRead(t)
 	_, _, err := execCmd(newRedisReadCmd(), "--manifest", noBrokerManifest(t), "GET", "k")
 	if err == nil || !strings.Contains(err.Error(), "redis-read cần broker") { //znf:allow-lang
 		t.Fatalf("err = %v", err)
@@ -243,6 +404,7 @@ func TestRedisRead_NoBroker(t *testing.T) {
 }
 
 func TestRedisRead_DelRejectedLocally(t *testing.T) {
+	hermeticDBRead(t)
 	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/redis": func(http.ResponseWriter, *http.Request) {}})
 	_, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "DEL", "k")
 	if exitcode.Code(err) != exitcode.BadArgs {
@@ -254,6 +416,7 @@ func TestRedisRead_DelRejectedLocally(t *testing.T) {
 }
 
 func TestRedisRead_SendsAndIndents(t *testing.T) {
+	hermeticDBRead(t)
 	var got api.RedisRequest
 	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/redis": func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&got)
@@ -279,7 +442,7 @@ func TestBrokerHeaders_PrintsJSON(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: "j1", ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo"})
 		}))
 		t.Cleanup(srv.Close)
-		c.URL, c.Home, c.GHToken = srv.URL, t.TempDir(), func() (string, error) { return "test-gh", nil }
+		c.URL, c.Home, c.GHToken = srv.URL, t.TempDir(), stubGHToken
 	}
 	out, errOut, err := execCmd(newBrokerCmd(), "headers", "--manifest", mp)
 	if err != nil {
@@ -307,6 +470,9 @@ func TestBrokerHeaders_NoBrokerFailsWithoutStdout(t *testing.T) {
 
 func TestRegisterBrokerMCP(t *testing.T) {
 	m := &manifest.Manifest{Broker: &manifest.Broker{URL: "https://broker.example/"}}
+	savedLook := lookPath
+	t.Cleanup(func() { lookPath = savedLook })
+	lookPath = func(string) (string, error) { return "/fake/claude", nil }
 	var adds []string
 	run := func(_ string, args ...string) ([]byte, error) {
 		if args[1] == "get" {
@@ -325,5 +491,10 @@ func TestRegisterBrokerMCP(t *testing.T) {
 	registerBrokerMCP(&out, &errOut, nil, run)
 	if len(adds) != 0 || errOut.Len() != 0 {
 		t.Fatalf("no-broker must be a no-op: adds=%v err=%q", adds, errOut.String())
+	}
+	lookPath = func(string) (string, error) { return "", errors.New("not found") }
+	registerBrokerMCP(&out, &errOut, m, run)
+	if len(adds) != 0 || errOut.Len() != 0 {
+		t.Fatalf("without claude it must be a no-op: adds=%v err=%q", adds, errOut.String())
 	}
 }

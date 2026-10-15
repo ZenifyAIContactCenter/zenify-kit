@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -164,6 +165,7 @@ func TestToolPresenceReportsMissing(t *testing.T) {
 }
 
 func TestPlaywrightCheckIsReadOnlyRegistered(t *testing.T) {
+	fakeClaudeNoMCP(t)
 	c := playwrightCheck()
 	if c.Name != "playwright" {
 		t.Fatalf("name: %q", c.Name)
@@ -475,15 +477,19 @@ func brokerTestServer(t *testing.T, healthz int) *httptest.Server {
 	return srv
 }
 
+// brokerTestClient's GitHub token source errors: a test that needs a token
+// sets c.GHToken itself, so none can reach a real gh.
 func brokerTestClient(url string) *brokerclient.Client {
-	return &brokerclient.Client{URL: url, Home: ""}
+	return &brokerclient.Client{URL: url, Home: "", GHToken: func(context.Context) (string, error) {
+		return "", errors.New("test hermeticity: brokerTestClient has no gh token")
+	}}
 }
 
 func TestBrokerCheck_OK(t *testing.T) {
 	srv := brokerTestServer(t, http.StatusOK)
 	c := brokerTestClient(srv.URL)
 	c.Home = t.TempDir()
-	c.GHToken = func() (string, error) { return "gh-test-value", nil }
+	c.GHToken = func(context.Context) (string, error) { return "gh-test-value", nil }
 	ok, detail := brokerCheck(srv.URL, staticGHRunner{ghOKOut}, srv.Client(), c).Run()
 	if !ok || !strings.Contains(detail, "login=octo") || strings.Contains(detail, "broker-login") {
 		t.Fatalf("ok=%v detail=%q", ok, detail)
@@ -529,11 +535,92 @@ func TestBrokerCheck_HealthzNot200(t *testing.T) {
 	}
 }
 
+func brokerManifestFile(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "repos.yaml")
+	if err := os.WriteFile(p, []byte(noBrokerYAML+"broker:\n  url: https://broker.example\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// The broker decision comes from the trusted manifest, not the workspace one.
 func TestSecretsCheck_BrokerNoMongoOK(t *testing.T) {
-	m := &manifest.Manifest{Broker: &manifest.Broker{URL: "https://broker.example"}}
-	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return "" }, fixedManifest(m)).Run()
+	useTrustedManifest(t, brokerManifestFile(t))
+	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return "" }, fixedManifest(&manifest.Manifest{})).Run()
 	if !ok || detail != "credentials via broker" {
 		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+}
+
+// A workspace manifest declaring a broker does not switch secrets off.
+func TestSecretsCheck_WorkspaceBrokerIgnored(t *testing.T) {
+	m := &manifest.Manifest{Broker: &manifest.Broker{URL: "https://broker.example"}}
+	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return "" }, fixedManifest(m)).Run()
+	if ok || detail == "credentials via broker" {
+		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+}
+
+// With a broker, mongosh and mysql are not required.
+func TestDBToolsCheck_BrokerSkipsDBClients(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if _, d := dbToolsCheck().Run(); !strings.Contains(d, "mongosh=missing") {
+		t.Fatalf("no broker: detail=%q, want mongosh listed", d)
+	}
+	useTrustedManifest(t, brokerManifestFile(t))
+	if _, d := dbToolsCheck().Run(); strings.Contains(d, "mongosh") || strings.Contains(d, "mysql") {
+		t.Fatalf("broker: detail=%q, want no mongosh/mysql", d)
+	}
+}
+
+// The broker's own message (e.g. the SSO hint) reaches the doctor line.
+func TestBrokerCheck_TokenRefusedShowsMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"not_org_member","message":"authorize SSO for the token"}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := brokerTestClient(srv.URL)
+	c.Home = t.TempDir()
+	c.GHToken = func(context.Context) (string, error) { return "gh-test-value", nil }
+	ok, d := brokerCheck(srv.URL, staticGHRunner{ghOKOut}, srv.Client(), c).Run()
+	if ok || !strings.Contains(d, "not_org_member") || !strings.Contains(d, "authorize SSO") {
+		t.Fatalf("ok=%v detail=%q", ok, d)
+	}
+}
+
+// One deadline covers gh too: a hung `gh auth status` fails the check.
+func TestBrokerCheck_GHHangTimesOut(t *testing.T) {
+	saved := brokerCheckTimeout
+	brokerCheckTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { brokerCheckTimeout = saved })
+	block := make(chan struct{})
+	t.Cleanup(func() { close(block) })
+	c := brokerTestClient("https://broker.invalid")
+	ok, d := brokerCheck("https://broker.invalid", hangGHRunner{block}, http.DefaultClient, c).Run()
+	if ok || !strings.Contains(d, "gh auth status") {
+		t.Fatalf("ok=%v detail=%q", ok, d)
+	}
+}
+
+type hangGHRunner struct{ block chan struct{} }
+
+func (h hangGHRunner) Run(...string) ([]byte, error) { <-h.block; return nil, nil }
+
+// The broker check comes from the trusted manifest.
+func TestRegisterBrokerCheck_TrustedBroker(t *testing.T) {
+	mp, _ := brokerFixture(t, nil)
+	useTrustedManifest(t, mp)
+	saved := checks
+	defer func() { checks = saved }()
+	checks = nil
+	registerBrokerCheck()
+	if len(checks) != 1 || checks[0].Name != "broker" {
+		t.Fatalf("checks = %+v, want one broker check", checks)
 	}
 }
 

@@ -351,6 +351,9 @@ func TestManifest_BrokerURLMustBeHTTPS(t *testing.T) {
 		{"empty url", "broker:\n  url: \"\"\n"},
 		{"http url", "broker:\n  url: http://broker.example\n"},
 		{"empty block", "broker: {}\n"},
+		{"no host", "broker:\n  url: https://\n"},
+		{"query", "broker:\n  url: https://broker.example/?x=1\n"},
+		{"fragment", "broker:\n  url: https://broker.example/#f\n"},
 	} {
 		if _, err := Parse([]byte(base+tc.extra), "t"); err == nil {
 			t.Errorf("%s: want error, got nil", tc.name)

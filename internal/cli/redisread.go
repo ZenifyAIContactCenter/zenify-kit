@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,6 +25,8 @@ func newRedisReadCmd() *cobra.Command {
 		Args:          cobra.MinimumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// flags must precede the Redis command (SetInterspersed(false) below)
+		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			argv, err := api.CheckRedis(args[0], args[1:])
 			if err != nil {
@@ -40,8 +43,10 @@ func newRedisReadCmd() *cobra.Command {
 			if prd {
 				req.Env = "prd"
 			}
+			ctx, cancel := context.WithTimeout(cmd.Context(), brokerCallTimeout)
+			defer cancel()
 			var resp api.RedisResponse
-			if err := bc.Post(cmd.Context(), "/redis", req, &resp); err != nil {
+			if err := bc.Post(ctx, "/redis", req, &resp); err != nil {
 				return brokerCallErr(err)
 			}
 			b, err := json.MarshalIndent(resp.Result, "", "  ")
@@ -58,8 +63,8 @@ func newRedisReadCmd() *cobra.Command {
 	cmd.Flags().SetInterspersed(false)
 	f := cmd.Flags()
 	f.BoolVar(&prd, "prd", false, "read production Redis")
-	f.StringVar(&manifestPath, "manifest", "", "path to the repos manifest (default: manifest/repos.yaml under cwd, else the embedded one)")
-	f.StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
+	f.StringVar(&manifestPath, "manifest", "", brokerManifestUsage)
+	f.StringVar(&overlayPath, "overlay", "", brokerOverlayUsage)
 	return cmd
 }
 

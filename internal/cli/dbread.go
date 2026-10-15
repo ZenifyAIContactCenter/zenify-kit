@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -22,6 +21,10 @@ import (
 // dbReadTimeout bounds one mongosh/mysql child, on top of the server-side
 // query timeouts the builders set.
 const dbReadTimeout = 60 * time.Second
+
+// brokerCallTimeout bounds one db-read/redis-read broker call: the broker's own
+// query timeout plus room for gh and the token exchange.
+const brokerCallTimeout = dbReadTimeout + 15*time.Second
 
 var dbReadLong = strings.Join([]string{
 	"Đọc chỉ-đọc các database dùng chung của zenify. Không lệnh nào nhận code tự do.", //znf:allow-lang
@@ -72,8 +75,8 @@ func newDBReadCmd() *cobra.Command {
 				EnvPath:    workspaceEnvPath(),
 			}
 			bc, ok, err := brokerFromFlags(manifestPath, overlayPath)
-			if err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return err // a manifest that exists but is invalid must not fall back to local credentials
+			if err != nil {
+				return err // a missing or invalid manifest must not fall back to local credentials
 			}
 			if ok {
 				return runDBReadBroker(cmd, bc, o)
@@ -96,9 +99,9 @@ func newDBReadCmd() *cobra.Command {
 	f.StringVar(&sort, "sort", "", "JSON object sort (find, explain)")
 	f.StringVar(&pipeline, "pipeline", "", "JSON array pipeline (aggregate, explain)")
 	f.IntVar(&limit, "limit", dbread.DefaultLimit, "max documents or rows, 1..200")
-	f.StringVar(&manifestPath, "manifest", "", "path to the repos manifest (default: manifest/repos.yaml under cwd, else the embedded one)")
-	f.StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
-	f.BoolVar(&prd, "prd", false, "read production: MONGO_URL_PRD / MYSQL_URL_PRD")
+	f.StringVar(&manifestPath, "manifest", "", brokerManifestUsage)
+	f.StringVar(&overlayPath, "overlay", "", brokerOverlayUsage)
+	f.BoolVar(&prd, "prd", false, "read production: via the broker; without one: MONGO_URL_PRD / MYSQL_URL_PRD")
 	return cmd
 }
 
@@ -112,18 +115,21 @@ func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Opti
 		Projection: o.Projection, Sort: o.Sort, Pipeline: o.Pipeline, Limit: o.Limit}
 	if o.Prod {
 		req.Env = "prd"
+		_, _ = io.WriteString(o.Stderr, "zenify db-read: production (via broker)\n")
 	}
-	if o.Cmd == "sql" || o.Cmd == "tables" {
-		req.Engine, req.Coll = "mysql", ""
-	}
-	if o.Cmd == "sql" {
-		req.SQL = o.Arg
+	switch o.Cmd {
+	case "tables": // Coll carries the optional substring filter
+		req.Engine = "mysql"
+	case "sql":
+		req.Engine, req.Coll, req.SQL = "mysql", "", o.Arg
 	}
 	if req.Limit == 0 {
 		req.Limit = dbread.DefaultLimit
 	}
+	ctx, cancel := context.WithTimeout(cmd.Context(), brokerCallTimeout)
+	defer cancel()
 	var resp api.QueryResponse
-	if err := bc.Post(cmd.Context(), "/query", req, &resp); err != nil {
+	if err := bc.Post(ctx, "/query", req, &resp); err != nil {
 		return brokerCallErr(err)
 	}
 	_, _ = io.WriteString(o.Stdout, resp.Stdout)

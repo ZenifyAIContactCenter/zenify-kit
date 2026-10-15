@@ -12,6 +12,7 @@ func TestNoColorGuard_NoEscapesInStdout(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	// doctor runs through the root: keep gh logged out so no check goes to the network
 	useGH(t, staticGHRunner{""})
+	fakeClaudeNoMCP(t) // the playwright check asks claude; never the real one
 	cmds := [][]string{
 		{"doctor"},
 		{"version"},

@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
@@ -35,6 +35,9 @@ func credLookup(envPath string, getenv func(string) string) func(string) string 
 	return devenv.Lookup(getenv, f)
 }
 
+// e2eAccountTimeout bounds the broker account lookup, gh included.
+const e2eAccountTimeout = 30 * time.Second
+
 // brokerLookup fetches the E2E account for role (empty = administrator) from the
 // broker. The returned lookup serves E2E_DOMAIN/E2E_EMAIL/E2E_PASSWORD from the
 // response and falls back to the environment for every other key. The values
@@ -47,9 +50,11 @@ func brokerLookup(ctx context.Context, c *brokerclient.Client, role string) (fun
 		return nil, exitcode.New(exitcode.BadArgs,
 			fmt.Errorf("--role phải là một trong %s", strings.Join(api.E2ERoles, ", "))) //znf:allow-lang
 	}
+	ctx, cancel := context.WithTimeout(ctx, e2eAccountTimeout)
+	defer cancel()
 	var resp api.E2EAccountResponse
 	if err := c.Post(ctx, "/e2e/account", api.E2EAccountRequest{Role: role}, &resp); err != nil {
-		return nil, err
+		return nil, brokerCallErr(err)
 	}
 	return func(k string) string {
 		switch k {
@@ -68,10 +73,10 @@ func brokerLookup(ctx context.Context, c *brokerclient.Client, role string) (fun
 // manifest declares none. A --role without a broker is a usage error.
 func e2eBroker(role string) (*brokerclient.Client, error) {
 	c, ok, err := brokerFromFlags("", "")
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err != nil {
 		return nil, err
 	}
-	if err != nil || !ok {
+	if !ok {
 		if role != "" {
 			return nil, exitcode.New(exitcode.BadArgs, errors.New("--role cần broker: manifest không khai báo broker")) //znf:allow-lang
 		}
@@ -190,6 +195,9 @@ func newE2eLoginCmd() *cobra.Command {
 			}
 			if port != 0 {
 				url = fmt.Sprintf("http://localhost:%d", port)
+			}
+			if err := e2e.CheckLoopbackURL(url); err != nil { // before any broker call
+				return err
 			}
 			home, err := os.UserHomeDir()
 			if err != nil {

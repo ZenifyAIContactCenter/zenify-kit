@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
+	kit "github.com/ZenifyAIContactCenter/zenify-kit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
@@ -60,9 +58,9 @@ func newBrokerCmd() *cobra.Command {
 			if !ok {
 				return exitcode.New(exitcode.BadArgs, errors.New("manifest không khai báo broker")) //znf:allow-lang
 			}
-			// Claude Code drops a headersHelper after 10s.
+			// Claude Code drops a headersHelper after 10s; 8s bounds gh and HTTP.
 			if c.HTTP == nil {
-				c.HTTP = &http.Client{Timeout: 8 * time.Second}
+				c.HTTP = brokerclient.NewHTTPClient(8 * time.Second)
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
 			defer cancel()
@@ -74,8 +72,8 @@ func newBrokerCmd() *cobra.Command {
 		},
 	}
 	for _, c := range []*cobra.Command{token, headers} {
-		c.Flags().StringVar(&manifestPath, "manifest", "", "path to the repos manifest (default: manifest/repos.yaml under cwd, else the embedded one)")
-		c.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
+		c.Flags().StringVar(&manifestPath, "manifest", "", brokerManifestUsage)
+		c.Flags().StringVar(&overlayPath, "overlay", "", brokerOverlayUsage)
 	}
 	cmd.AddCommand(token, headers)
 	return cmd
@@ -95,12 +93,38 @@ type currentGH struct{}
 
 func (currentGH) Run(args ...string) ([]byte, error) { return ghRunner.Run(args...) }
 
+// Flag help shared by every command that resolves the broker.
+const (
+	brokerManifestUsage = "path to the repos manifest whose broker: decides the route (default: the manifest embedded in the binary, never cwd)"
+	brokerOverlayUsage  = "path to a personal overlay (default: none; an overlay never changes broker:)"
+)
+
+// trustedBrokerManifest is the manifest the broker comes from when no
+// --manifest is given: the copy embedded in the binary, never a cwd file, since
+// the broker URL receives the developer's GitHub token. internal/cli's
+// TestMain swaps it for a manifest without a broker.
+var trustedBrokerManifest = func() ([]byte, string) { return kit.DefaultRepos, "embedded" }
+
+// brokerManifest is the one resolver for broker config: an explicit path (a
+// missing or invalid file is an error, never a fallback to local credentials)
+// or trustedBrokerManifest. The overlay only rewrites repo paths.
+func brokerManifest(explicit, overlayPath string) (*manifest.Manifest, error) {
+	if explicit != "" {
+		return manifest.LoadWithOverlay(explicit, overlayPath)
+	}
+	b, label := trustedBrokerManifest()
+	return manifest.ParseWithOverlay(b, label, overlayPath)
+}
+
 // newBrokerClient is the one constructor for a manifest's broker client, so the
-// GitHub-token seam cannot be skipped.
+// GitHub-token and tuneBrokerClient seams cannot be skipped.
 func newBrokerClient(m *manifest.Manifest) (*brokerclient.Client, bool) {
 	c, ok := brokerclient.FromManifest(m)
 	if ok {
 		c.GHToken = ghToken
+		if tuneBrokerClient != nil {
+			tuneBrokerClient(c)
+		}
 	}
 	return c, ok
 }
@@ -108,22 +132,19 @@ func newBrokerClient(m *manifest.Manifest) (*brokerclient.Client, bool) {
 // tuneBrokerClient lets a test point the client at an httptest server.
 var tuneBrokerClient func(*brokerclient.Client)
 
-// brokerFromFlags loads the kit manifest (overlay defaulting to the workspace
-// one) and returns its broker client; ok is false when it declares none.
+// brokerFromFlags resolves the broker via brokerManifest and returns its
+// client; ok is false when that manifest declares none.
 func brokerFromFlags(manifestPath, overlayPath string) (c *brokerclient.Client, ok bool, err error) {
-	if overlayPath == "" {
-		cwd, _ := os.Getwd()
-		if ws, _, found := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir); found {
-			overlayPath = filepath.Join(ws, ".zenify-overlay.yaml")
-		}
-	}
-	m, _, err := loadKitManifest(manifestPath, overlayPath)
+	m, err := brokerManifest(manifestPath, overlayPath)
 	if err != nil {
 		return nil, false, err
 	}
 	c, ok = newBrokerClient(m)
-	if ok && tuneBrokerClient != nil {
-		tuneBrokerClient(c)
-	}
 	return c, ok, nil
+}
+
+// brokerDeclared reports whether the trusted manifest declares a broker.
+func brokerDeclared() bool {
+	m, err := brokerManifest("", "")
+	return err == nil && m.Broker != nil
 }

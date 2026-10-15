@@ -48,6 +48,7 @@ func TestRunE2eLint_Clean_OK(t *testing.T) {
 }
 
 func TestE2eLogin_NeedsExactlyOneOfUrlPort(t *testing.T) {
+	hermeticE2E(t, "")
 	for _, args := range [][]string{{"login"}, {"login", "--url", "x", "--port", "1"}} {
 		c := newE2eCmd()
 		c.SetArgs(args)
@@ -60,6 +61,7 @@ func TestE2eLogin_NeedsExactlyOneOfUrlPort(t *testing.T) {
 }
 
 func TestE2eLogin_PortOutOfRange(t *testing.T) {
+	hermeticE2E(t, "")
 	for _, p := range []string{"-1", "70000"} {
 		c := newE2eCmd()
 		c.SetArgs([]string{"login", "--port", p})
@@ -171,9 +173,10 @@ func TestChildCmd_StripsShellCredsFromInstall(t *testing.T) {
 }
 
 // hermeticE2E keeps an e2e/visual command test away from real accounts and the
-// real workspace: cwd, ZENIFY_HOME and HOME are empty temp dirs, E2E_* is blank,
-// and cwd holds manifest/repos.yaml (copied from manifestPath when given, else
-// a manifest with no broker) so the broker lookup never reads the embedded one.
+// real workspace: cwd, ZENIFY_HOME and HOME are empty temp dirs, PATH has no
+// gh/npx/docker, E2E_* is blank, and the trusted broker manifest is
+// manifestPath when given (else TestMain's no-broker one) — these commands
+// have no --manifest flag.
 func hermeticE2E(t *testing.T, manifestPath string) {
 	t.Helper()
 	cwd := t.TempDir()
@@ -184,18 +187,8 @@ func hermeticE2E(t *testing.T, manifestPath string) {
 	for _, k := range e2eEnvKeys {
 		t.Setenv(k, "")
 	}
-	if manifestPath == "" {
-		manifestPath = noBrokerManifest(t)
-	}
-	b, err := os.ReadFile(manifestPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll("manifest", 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join("manifest", "repos.yaml"), b, 0o600); err != nil {
-		t.Fatal(err)
+	if manifestPath != "" {
+		useTrustedManifest(t, manifestPath)
 	}
 }
 
@@ -288,6 +281,38 @@ func TestE2eLogin_RoleWithoutBroker(t *testing.T) {
 	_, err := runLogin(t, "--role", "agent")
 	if exitcode.Code(err) != exitcode.BadArgs || err == nil || !strings.Contains(err.Error(), "--role cần broker") { //znf:allow-lang
 		t.Fatalf("want BadArgs '--role cần broker', got %v", err) //znf:allow-lang
+	}
+}
+
+// --url is checked before the broker is asked for an account.
+func TestE2eLogin_NonLoopbackURLBeforeBroker(t *testing.T) {
+	var role string
+	mp, hits := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	var saw map[string]string
+	fakeLoginChild(t, &saw)
+	_, _, err := execCmd(newE2eCmd(), "login", "--url", "https://app.example.com")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("want BadArgs, got %v", err)
+	}
+	if *hits != 0 {
+		t.Errorf("broker got %d requests before the --url check, want 0", *hits)
+	}
+}
+
+// A broker 400 from /e2e/account is a usage error.
+func TestBrokerLookup_400IsBadArgs(t *testing.T) {
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/e2e/account": func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeUnknownRole, Message: "nope"})
+	}})
+	hermeticE2E(t, mp)
+	bc, err := e2eBroker("agent")
+	if err != nil || bc == nil {
+		t.Fatalf("e2eBroker: %v %v", bc, err)
+	}
+	if _, err := brokerLookup(t.Context(), bc, "agent"); exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("want BadArgs, got %v", err)
 	}
 }
 

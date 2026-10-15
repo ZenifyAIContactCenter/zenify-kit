@@ -36,7 +36,7 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 	return Check{
 		Name: "secrets",
 		Run: func() (bool, string) {
-			if m := kitManifest(); m != nil && m.Broker != nil {
+			if brokerDeclared() {
 				return true, "credentials via broker"
 			}
 			path := envPath()
@@ -72,6 +72,9 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 	}
 }
 
+// brokerCheckTimeout bounds the whole broker check, both gh calls included.
+var brokerCheckTimeout = 30 * time.Second
+
 // brokerCheck verifies the three things a broker call needs, in order: a gh
 // login with read:org, a broker reachable within 5s (WARP is the usual cause
 // when it is not), and a token exchange. It prints the GitHub login only —
@@ -80,14 +83,29 @@ func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokercl
 	return Check{
 		Name: "broker",
 		Run: func() (bool, string) {
-			auth, err := ghx.CheckAuth(gh)
+			dctx, dcancel := context.WithTimeout(context.Background(), brokerCheckTimeout)
+			defer dcancel()
+			type authResult struct {
+				auth ghx.Auth
+				err  error
+			}
+			ch := make(chan authResult, 1)
+			go func() { a, err := ghx.CheckAuth(gh); ch <- authResult{a, err} }()
+			var auth ghx.Auth
+			var err error
+			select {
+			case r := <-ch:
+				auth, err = r.auth, r.err
+			case <-dctx.Done():
+				return false, "gh auth status quá thời gian" //znf:allow-lang
+			}
 			if err != nil || !auth.LoggedIn {
 				return false, "gh chưa đăng nhập — chạy `gh auth login`" //znf:allow-lang
 			}
 			if !auth.HasScopes("read:org") {
 				return false, "gh thiếu scope read:org — chạy `gh auth refresh -s read:org`" //znf:allow-lang
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(dctx, 5*time.Second)
 			defer cancel()
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(url, "/")+"/healthz", nil)
 			if err != nil {
@@ -101,12 +119,10 @@ func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokercl
 			if resp.StatusCode != http.StatusOK {
 				return false, fmt.Sprintf("broker /healthz trả %d", resp.StatusCode) //znf:allow-lang
 			}
-			tctx, tcancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer tcancel()
-			if _, err := client.Token(tctx); err != nil {
+			if _, err := client.Token(dctx); err != nil {
 				var ae *brokerclient.APIError
 				if errors.As(err, &ae) {
-					return false, fmt.Sprintf("broker từ chối token: %d %s", ae.Status, ae.Code) //znf:allow-lang
+					return false, fmt.Sprintf("broker từ chối token: %d %s: %s", ae.Status, ae.Code, ae.Message) //znf:allow-lang
 				}
 				return false, "không lấy được token từ broker" //znf:allow-lang
 			}
@@ -523,7 +539,7 @@ func registerDefaultChecks() {
 	RegisterCheck(secretPresenceCheck(os.Getenv, workspaceEnvPath, workspaceManifest))
 	RegisterCheck(envFileCheck(workspaceEnvPath, workspaceManifest, runtime.GOOS))
 	RegisterCheck(settingsEnvCheck(workspaceEnvPath, workspaceManifest))
-	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
+	RegisterCheck(dbToolsCheck())
 	RegisterCheck(playwrightCheck())
 	RegisterCheck(kitPermissionsCheck(os.UserHomeDir))
 	RegisterCheck(dockerCheck())
@@ -535,16 +551,29 @@ func registerDefaultChecks() {
 	registerContextChecks()
 }
 
-// registerBrokerCheck adds the `broker` check only when the kit manifest
-// (workspace overlay, else cwd/embedded) declares a broker.
+// registerBrokerCheck adds the `broker` check only when the trusted manifest
+// (brokerManifest: embedded, never cwd) declares a broker.
 func registerBrokerCheck() {
-	m := workspaceManifest()
-	if m == nil {
-		m, _, _ = loadKitManifest("", "")
+	m, err := brokerManifest("", "")
+	if err != nil {
+		return
 	}
 	c, ok := newBrokerClient(m)
 	if !ok {
 		return
 	}
-	RegisterCheck(brokerCheck(c.URL, currentGH{}, &http.Client{Timeout: 5 * time.Second}, c))
+	RegisterCheck(brokerCheck(c.URL, currentGH{}, brokerclient.NewHTTPClient(5*time.Second), c))
+}
+
+// dbToolsCheck is the tools check: with a broker, db-read runs on the broker,
+// so mongosh and mysql are not required.
+func dbToolsCheck() Check {
+	local := toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"})
+	viaBroker := toolPresenceCheck([]string{"git", "gh"})
+	return Check{Name: local.Name, Run: func() (bool, string) {
+		if brokerDeclared() {
+			return viaBroker.Run()
+		}
+		return local.Run()
+	}}
 }

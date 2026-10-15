@@ -4,8 +4,8 @@ package manifest
 
 import (
 	"fmt"
+	"net/url"
 	"os"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -154,8 +154,11 @@ func Parse(b []byte, label string) (*Manifest, error) {
 	if err := validateGroups(&m, label); err != nil {
 		return nil, err
 	}
-	if m.Broker != nil && !strings.HasPrefix(m.Broker.URL, "https://") {
-		return nil, fmt.Errorf("manifest %s: broker.url phải bắt đầu bằng https://", label) //znf:allow-lang
+	if m.Broker != nil {
+		u, err := url.Parse(m.Broker.URL)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+			return nil, fmt.Errorf("manifest %s: broker.url phải là https://host, không query/fragment", label) //znf:allow-lang
+		}
 	}
 	return &m, nil
 }
