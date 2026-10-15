@@ -238,3 +238,28 @@ func TestRender_IdempotentWithAssignmentShapedDescription(t *testing.T) {
 		t.Fatalf("second render changed the file:\n%s\n---\n%s", once, twice)
 	}
 }
+
+// A commented-out assignment directly above a manifest key may hold an old
+// value: it moves to the custom section instead of being dropped with the
+// rest of that comment block.
+func TestRender_CommentedAssignmentAboveManifestKeyKept(t *testing.T) {
+	old := load(t, "# của tôi\n# OLD_MONGO=abc\nMONGO_URL='x'\n") //znf:allow-lang
+	once := text(t, Render(old, scaffoldKeys[:1], nil).File)
+	want := lines(
+		"# zenify-kit — credential dev. Kit giữ khung; bạn chỉ điền giá trị. Key trống = chưa cấu hình.", //znf:allow-lang
+		"",
+		"# ══ Staging ══",
+		"# Mongo staging",
+		"# Lấy: hỏi lead · shared · secret", //znf:allow-lang
+		"MONGO_URL='x'",
+		"",
+		"# ══ Custom (ngoài manifest) ══", //znf:allow-lang
+		"# OLD_MONGO=abc",
+	)
+	if once != want {
+		t.Fatalf("output:\n%s\nwant:\n%s", once, want)
+	}
+	if twice := text(t, Render(load(t, once), scaffoldKeys[:1], nil).File); twice != once {
+		t.Fatalf("second render changed the file:\n%s", twice)
+	}
+}
