@@ -94,7 +94,7 @@ Các luật của git-guard áp ở mọi chế độ quyền, kể cả bypass 
 
 Git-guard là lớp chặn sai sót, không chặn được agent cố tình lách, ví dụ một script tự mở file `.zenify/.env`.
 
-Không chặn: `ssh` hay `scp` tới một host alias trong cấu hình SSH (luật host chỉ biết các host lấy từ URL `*_PRD`); lệnh được ghép lúc chạy, ví dụ tên file hay host nằm trong một biến; `grep -r` chạy từ thư mục gốc workspace; đường dẫn `.zenify/.env` nhắc tới bên trong thân heredoc của một script.
+Không chặn: `ssh` hay `scp` tới một host alias trong cấu hình SSH (luật host chỉ biết các host lấy từ URL `*_PRD`); lệnh được ghép lúc chạy, ví dụ tên file hay host nằm trong một biến; `grep -r` chạy từ thư mục gốc workspace; đường dẫn `.zenify/.env` nhắc tới bên trong thân heredoc của một script; `cd` không đứng đầu lệnh, ví dụ `true; cd <repo> && git push …`, vì git-guard chỉ đổi thư mục gốc theo `cd` chạy đầu tiên.
 
 Một binary vừa build nằm trong cây thư mục có thể tạo finding giả cho `secret-scan`. Xóa binary trước khi quét. Khi git-guard chặn một lệnh, hãy báo lại thay vì tìm cách vòng qua.
 
