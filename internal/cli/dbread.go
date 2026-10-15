@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -70,7 +71,11 @@ func newDBReadCmd() *cobra.Command {
 				Env:        os.Getenv,
 				EnvPath:    workspaceEnvPath(),
 			}
-			if bc, ok, _ := brokerFromFlags(manifestPath, overlayPath); ok {
+			bc, ok, err := brokerFromFlags(manifestPath, overlayPath)
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err // a manifest that exists but is invalid must not fall back to local credentials
+			}
+			if ok {
 				return runDBReadBroker(cmd, bc, o)
 			}
 			o.SetRun(func(name string, args []string, extraEnv []string, _ string) error {

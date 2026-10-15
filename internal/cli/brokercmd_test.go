@@ -142,6 +142,35 @@ func TestDBReadCmd_NoBrokerLocal(t *testing.T) {
 	}
 }
 
+// A manifest that declares an invalid broker must not silently send db-read
+// down the local (credential-holding) path.
+func TestDBReadCmd_InvalidBrokerManifestErrors(t *testing.T) {
+	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(http.ResponseWriter, *http.Request) {}})
+	if err := os.WriteFile(mp, []byte("org: o\nrepos:\n  - name: r\n    url: u\nbroker:\n  url: http://x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"find", "users"}, {"--prd", "find", "users"}} {
+		_, errOut, err := execCmd(newDBReadCmd(), append([]string{"--manifest", mp}, args...)...)
+		if err == nil || !strings.Contains(err.Error(), "https") {
+			t.Fatalf("err = %v, want the manifest https error", err)
+		}
+		// the local path prints a MONGO_URL / workspace complaint on stderr
+		if strings.Contains(errOut, "MONGO_URL") || strings.Contains(errOut, "workspace") {
+			t.Errorf("local path was taken: stderr = %q", errOut)
+		}
+	}
+	if n := atomic.LoadInt32(hits); n != 0 {
+		t.Errorf("broker got %d requests, want 0", n)
+	}
+}
+
+func TestDBReadCmd_MissingManifestRunsLocal(t *testing.T) {
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", filepath.Join(t.TempDir(), "nope.yaml"), "find", "users", "--limit", "500")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("err = %v, want the local BadArgs validation error", err)
+	}
+}
+
 func TestRedisRead_NoBroker(t *testing.T) {
 	_, _, err := execCmd(newRedisReadCmd(), "--manifest", noBrokerManifest(t), "GET", "k")
 	if err == nil || !strings.Contains(err.Error(), "redis-read cần broker") { //znf:allow-lang
