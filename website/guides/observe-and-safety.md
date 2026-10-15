@@ -20,7 +20,7 @@ Chạy `zenify secret-scan` trước khi push một branch có file cấu hình 
 flowchart TD
   A["Hook observe-count / observe-meter"] --> B["zenify observe report"]
   A --> C["Statusline trong Claude Code"]
-  D["Lệnh git chạm branch deploy"] --> E["git-guard chặn"]
+  D["Lệnh git chạm branch deploy, force push, merge PR, đọc .zenify/.env, host production"] --> E["git-guard chặn"]
   F["Staged diff có secret"] --> G["secret-scan chặn"]
   class A,B,C action
   class E,G stop
@@ -81,8 +81,18 @@ Lệnh đăng ký hook `PreToolUse` với matcher `Bash` trỏ tới `zenify git
 | Đoạn statusline | Model, % ngữ cảnh, dispatch, tool output, chi phí |
 | Output `secret-scan` | Danh sách finding `file:line:rule`, giá trị che |
 | Hook git-guard | Chặn commit, push, merge vào branch trong `.claude/deploy-branches` |
+| Hook git-guard (lệnh lồng) | Theo vào `bash -c`, `sh -c`, `zsh -c` và `eval` (tối đa 3 tầng), bỏ các wrapper ở đầu lệnh, rồi áp các luật dưới đây |
+| Hook git-guard (force push) | Chặn force push (`--force`, `--force-with-lease`, `--force-if-includes`) trên mọi branch |
+| Hook git-guard (merge PR) | Chặn `gh pr merge` và `gh api … PUT …/merge` |
+| Hook git-guard (worktree) | Chặn `wt rm --force` |
+| Hook git-guard (secret) | Chặn đọc `<workspace>/.zenify/.env` qua Bash và chặn mở rộng biến `$X_PRD`; chặn lệnh chứa host của một URL `*_PRD`. Vẫn cho `zenify db-read …`, `zenify env list|set|edit` và `chmod`, `ls`, `stat`, `test`, `[` |
+| Hook git-guard (không phân tích được) | Chặn lệnh không phân tích được mà chứa từ khoá nguy hiểm |
 
 ## Lưu ý
+
+Các luật của git-guard áp ở mọi chế độ quyền, kể cả bypass và auto. Với force push và merge PR, bạn tự chạy lệnh đó bằng `!` ở dấu nhắc của Claude Code khi thật sự cần; agent không có đường nào khác. Đọc production thì agent dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#doc-production).
+
+Git-guard là lớp chặn sai sót, không chặn được agent cố tình lách, ví dụ một script tự mở file `.zenify/.env`.
 
 Một binary vừa build nằm trong cây thư mục có thể tạo finding giả cho `secret-scan`. Xóa binary trước khi quét. Khi git-guard chặn một lệnh, hãy báo lại thay vì tìm cách vòng qua.
 
@@ -90,7 +100,7 @@ Git-guard và secret-scan chặn khi rule khớp, không phải advisory. Cách 
 
 ## Xem thêm
 
-[`/reference/cli/zenify_observe_report`](/reference/cli/zenify_observe_report), [`/reference/cli/zenify_observe_statusline_install`](/reference/cli/zenify_observe_statusline_install), [`/reference/cli/zenify_secret-scan`](/reference/cli/zenify_secret-scan), [`/reference/cli/zenify_guard_install`](/reference/cli/zenify_guard_install), [Gate fail-open](/concepts/gate-fail-open)
+[`/reference/cli/zenify_observe_report`](/reference/cli/zenify_observe_report), [`/reference/cli/zenify_observe_statusline_install`](/reference/cli/zenify_observe_statusline_install), [`/reference/cli/zenify_secret-scan`](/reference/cli/zenify_secret-scan), [`/reference/cli/zenify_guard_install`](/reference/cli/zenify_guard_install), [Gate fail-open](/concepts/gate-fail-open), [Đọc dữ liệu thật](/guides/read-real-data)
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - internal/docsgen/catalog/cli/zenify_observe.md, zenify_observe_report.md, zenify_observe_statusline.md, zenify_observe_statusline_install.md, zenify_secret-scan.md, zenify_guard.md, zenify_guard_install.md

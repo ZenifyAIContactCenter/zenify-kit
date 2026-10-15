@@ -50,6 +50,16 @@ Khi kết quả nhiều hơn `--limit`, lệnh in đủ `--limit` dòng rồi gh
 
 `sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC` hoặc `EXPLAIN`, chạy trong transaction READ ONLY. Ngoài chuỗi literal, lệnh từ chối comment, ký tự `\`, các từ `DELETE`, `UPDATE`, `INSERT`, `INTO`, `DELIMITER`, `FOR SHARE` và `LOCK IN SHARE MODE`. Ký tự xuống dòng nằm trong chuỗi literal cũng bị từ chối; dùng `CHAR(10)` thay thế. Xuống dòng ngoài chuỗi vẫn dùng được. Khi gặp, lệnh báo "refused" và dừng, không thực thi.
 
+## Đọc production
+
+Agent đọc production bằng `zenify db-read --prd <lệnh con>`. Cờ `--prd` dùng `MONGO_URL_PRD` và `MYSQL_URL_PRD` thay cho `MONGO_URL` và `MYSQL_URL`, với đúng các giới hạn chỉ đọc như khi không có cờ. Lệnh in `zenify db-read: production (<KEY>)` ra stderr, với `<KEY>` là tên key được dùng. Agent không cần người gõ `!`.
+
+```bash
+zenify db-read --prd count chat_rooms
+```
+
+Không có đường nào cho agent ghi vào production. Git-guard chặn đọc `.zenify/.env` và chặn lệnh chứa host production, còn `zenify env exec` không đưa key production vào lệnh con, nên `zenify db-read --prd` là đường duy nhất. Git-guard chặn sai sót chứ không chặn được agent cố tình lách, xem [Quan sát và an toàn](/guides/observe-and-safety).
+
 ## Lưu ý
 
 - Lệnh chỉ chạy được trong phiên mở tại workspace, vì credential nằm ở `.zenify/.env` của workspace, không phải ở `.env` riêng của một repo.
@@ -69,7 +79,7 @@ Cùng nguyên tắc đó áp dụng khi bạn tự viết script hay agent chạ
 
 ## Xem thêm
 
-[`zenify db-read`](/reference/cli/zenify_db-read), [`/znf:ground`](/reference/skills/ground), [Knowledge store](/concepts/knowledge-store), [Onboard workspace và repo](/guides/onboard-workspace)
+[`zenify db-read`](/reference/cli/zenify_db-read), [`/znf:ground`](/reference/skills/ground), [Knowledge store](/concepts/knowledge-store), [Onboard workspace và repo](/guides/onboard-workspace), [Quan sát và an toàn](/guides/observe-and-safety)
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - reference/cli/zenify_db-read.md (generated)
