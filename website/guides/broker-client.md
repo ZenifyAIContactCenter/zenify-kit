@@ -26,18 +26,23 @@ GitHub token của bạn được gửi tới URL broker, nên kit chỉ lấy `
 
 ## `zenify doctor` mục `broker`
 
-Mục `broker` kiểm tra lần lượt: `gh` đã đăng nhập, `gh` có scope `read:org`, broker trả lời `/healthz` trong 5 giây, rồi đổi được token. Thành công in `broker ok, login=<tên GitHub>`; doctor không bao giờ in token. Khi lỗi, thông báo nói bước nào hỏng:
+Mục `broker` kiểm tra lần lượt: `gh` đã đăng nhập, `gh` có scope `read:org`, broker trả lời `/healthz` trong 5 giây, rồi đổi được token. Bước đổi token luôn xin JWT mới, không dùng cache, nên doctor thật sự kiểm tra lại bạn còn trong org. Thành công in `broker ok, login=<login broker cấp token>`; doctor không bao giờ in token. Khi lỗi, thông báo nói bước nào hỏng:
 
 | Thông báo | Việc cần làm |
 |---|---|
-| `gh chưa đăng nhập — chạy gh auth login` | Đăng nhập `gh` như trên |
-| `gh thiếu scope read:org — chạy gh auth refresh -s read:org` | Chạy lệnh được gợi ý |
+| ``gh chưa đăng nhập — chạy `gh auth login` `` | Đăng nhập `gh` như trên |
+| ``gh thiếu scope read:org — chạy `gh auth refresh -s read:org` `` | Chạy lệnh được gợi ý |
 | `không tới được broker — bật Cloudflare WARP rồi chạy lại` | Bật WARP, kiểm tra WARP đã vào đúng team, chạy lại |
 | `broker từ chối token: <status> not_org_member: <lời nhắn>` | GitHub token chưa thấy bạn trong org: kiểm tra scope `read:org`, và nếu org bật SSO thì authorize token của GitHub CLI cho org trên GitHub, rồi chạy lại |
 | `broker từ chối token: <status> rate_limited: …` hoặc `… github_unavailable: …` | Broker hoặc GitHub đang tạm quá tải; đợi một lát rồi chạy lại |
+| `broker cấu hình sai, báo người quản trị broker: <lời nhắn>` | Lỗi ở phía host broker, không phải máy bạn; gửi nguyên dòng thông báo cho maintainer |
 | `broker từ chối token: <status> <mã khác>: <lời nhắn>` | Hỏi maintainer, kèm nguyên dòng thông báo |
 
 Muốn tự kiểm tra riêng bước đổi token: `zenify broker token` in JWT ra stdout (`zenify broker headers` cũng in một JWT). Đừng dán kết quả vào chat hay log. Khi broker có, mục `tools` của doctor không đòi `mongosh` và `mysql`.
+
+### Broker từ chối token đang cache
+
+`zenify broker headers` (lệnh Claude Code gọi cho `zenify-grafana` và `zenify-posthog`) dùng JWT đang cache tới khi nó hết hạn, và Claude Code không báo lại cho kit khi broker trả 401. Nếu MCP báo lỗi đăng nhập trong khi `zenify doctor` mục `broker` đã ok, chạy `zenify broker token --refresh` để bỏ cache và xin JWT mới, rồi khởi động lại Claude Code.
 
 ## Đọc database: `db-read`
 
@@ -73,7 +78,7 @@ Broker cấp một tài khoản E2E riêng cho bạn theo role, trên tenant tes
 
 ## Grafana và PostHog cho agent
 
-Khi manifest có `broker:`, `zenify up --apply` đăng ký hai MCP server trong Claude Code: `zenify-grafana` (Loki, Prometheus, Tempo) và `zenify-posthog`. Cả hai dùng `type: http` tới broker, và Claude Code lấy header đăng nhập bằng `zenify broker headers` mỗi lần kết nối, nên bạn không điền token nào. Skill `/znf:fix` dùng chúng ở Step 0 để lấy log, trace và latency khi gặp lỗi trên staging hay production.
+Khi manifest nhúng sẵn trong binary có `broker:` và lệnh `claude` có trên PATH, `zenify up --apply` đăng ký hai MCP server trong Claude Code: `zenify-grafana` (Loki, Prometheus, Tempo) và `zenify-posthog`. `--manifest` và file manifest ở thư mục hiện tại không bật bước này. Một bản đăng ký cũ do kit ghi (cùng tên, có helper `zenify broker headers`) mà URL khác broker hiện tại thì được ghi lại với URL mới; server cùng tên mà bạn tự đăng ký thì kit giữ nguyên. Cả hai dùng `type: http` tới broker, và Claude Code lấy header đăng nhập bằng `zenify broker headers` mỗi lần kết nối, nên bạn không điền token nào. Skill `/znf:fix` dùng chúng ở Step 0 để lấy log, trace và latency khi gặp lỗi trên staging hay production.
 
 Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn vào phiên.
 

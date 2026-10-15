@@ -28,11 +28,13 @@ In đúng một dòng là JWT. Lệnh này và `zenify broker headers` đều in
 |---|---|
 | `--manifest` | File manifest có `broker:` quyết định broker. Mặc định là manifest nhúng sẵn trong binary, không bao giờ là file trong thư mục hiện tại. |
 | `--overlay` | File overlay cá nhân. Mặc định không có; overlay không đổi `broker:`. |
+| `--refresh` | Bỏ JWT đang cache, xin JWT mới từ broker rồi ghi đè cache. Dùng khi broker từ chối token đang cache, ví dụ sau khi bạn bị gỡ khỏi org rồi được thêm lại. |
 
 ## Ví dụ
 
 ```bash
 zenify broker token
+zenify broker token --refresh
 ```
 
 ## Lệnh liên quan
