@@ -100,7 +100,7 @@ func TestEnvDeletionGate(t *testing.T) {
 		{"embedded", "v0.40.0", "dev", false, "binary cũ hơn bản đã ghi"},                                                     //znf:allow-lang
 		{"embedded", "v0.40.0", "", false, "binary cũ hơn bản đã ghi"},                                                        //znf:allow-lang
 		{"embedded", "v0.40.0", "garbage", false, "binary cũ hơn bản đã ghi"},                                                 //znf:allow-lang
-		{filepath.Join("manifest", "repos.yaml"), "dev", "dev", false, "manifest không phải bản nhúng (manifest/repos.yaml)"}, //znf:allow-lang
+		{"manifest/repos.yaml", "dev", "dev", false, "manifest không phải bản nhúng (manifest/repos.yaml)"}, //znf:allow-lang
 	} {
 		ok, reason := envDeletionGate(c.src, c.current, c.recorded)
 		if ok != c.allowed || reason != c.reason {
