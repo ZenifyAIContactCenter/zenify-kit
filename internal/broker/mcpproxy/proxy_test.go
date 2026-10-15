@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -380,5 +381,122 @@ func TestProxy_StripsClientAuthWithoutSetHeaders(t *testing.T) {
 	do(t, http.MethodPost, srv.URL+"/mcp/grafana", tok, `{}`, nil)
 	if a := (<-got).Values("Authorization"); len(a) != 0 {
 		t.Errorf("client Authorization reached upstream: %d value(s)", len(a))
+	}
+}
+
+// toolOps posts body through the stack and returns the ops of the tools/call
+// audit lines (the request-level POST line removed).
+func toolOps(t *testing.T, body string) []string {
+	t.Helper()
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }))
+	defer up.Close()
+	var out bytes.Buffer
+	srv, tok := stack(t, "grafana", up.URL+"/mcp", nil, &out)
+	do(t, http.MethodPost, srv.URL+"/mcp/grafana", tok, body, nil)
+	srv.Close()
+	var ops []string
+	for _, l := range auditLines(t, &out) {
+		if l["op"] != "POST" {
+			ops = append(ops, l["op"].(string))
+		}
+	}
+	return ops
+}
+
+// A junk element in a batch hides only itself, not the tools/call next to it.
+func TestProxy_AuditBatchWithJunkElements(t *testing.T) {
+	body := `[1,"x",{"method":5},null,{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"q","arguments":{"a":1}}}]`
+	if ops := toolOps(t, body); !slices.Equal(ops, []string{"q"}) {
+		t.Errorf("ops = %v, want [q]", ops)
+	}
+}
+
+// Keys match exactly, as a JS upstream reads them: "Method" does not shadow
+// "method", and "Method" alone is no tools/call.
+func TestProxy_AuditExactKeys(t *testing.T) {
+	if ops := toolOps(t, `{"method":"tools/call","Method":"ping","params":{"name":"q","Name":"other"}}`); !slices.Equal(ops, []string{"q"}) {
+		t.Errorf("ops = %v, want [q]", ops)
+	}
+	if ops := toolOps(t, `{"Method":"tools/call","params":{"name":"q"}}`); len(ops) != 0 {
+		t.Errorf("ops = %v, want none", ops)
+	}
+}
+
+func TestProxy_StripsEdgeHeaders(t *testing.T) {
+	got := make(chan http.Header, 1)
+	up := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got <- r.Header.Clone() }))
+	defer up.Close()
+	var out bytes.Buffer
+	srv, tok := stack(t, "grafana", up.URL+"/mcp", nil, &out)
+	do(t, http.MethodPost, srv.URL+"/mcp/grafana", tok, `{}`, map[string]string{
+		"CF-Connecting-IP": "203.0.113.9", "Cf-Ray": "r1", "Cf-Access-Jwt-Assertion": "a", "X-Real-IP": "203.0.113.9",
+		"X-Forwarded-For": "203.0.113.9", "X-Forwarded-Host": "h", "X-Forwarded-Proto": "https", "Forwarded": "for=x",
+		"X-Grafana-Org-Id": "2", "X-Grafana-User": "admin"})
+	h := <-got
+	for k := range h {
+		ck := http.CanonicalHeaderKey(k)
+		if strings.HasPrefix(ck, "Cf-") || strings.HasPrefix(ck, "X-Forwarded-") || strings.HasPrefix(ck, "X-Grafana-") ||
+			ck == "X-Real-Ip" || ck == "Forwarded" {
+			t.Errorf("%s reached upstream", ck)
+		}
+	}
+}
+
+// FR-6.1: an authenticated request to an unknown name is audited too.
+func TestMCPRoute_UnknownNameAudited(t *testing.T) {
+	up := httptest.NewServer(http.NotFoundHandler())
+	defer up.Close()
+	var out bytes.Buffer
+	srv, tok := stack(t, "grafana", up.URL+"/mcp", nil, &out)
+	if resp := do(t, http.MethodPost, srv.URL+"/mcp/nope", tok, `{}`, nil); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	srv.Close()
+	lines := auditLines(t, &out)
+	if len(lines) != 1 || lines[0]["status"] != float64(404) || lines[0]["endpoint"] != "/mcp/nope" ||
+		lines[0]["login"] != "octocat" || lines[0]["op"] != "POST" {
+		t.Errorf("audit = %v", lines)
+	}
+}
+
+// The client hangs up while the upstream is still working: audited as 499.
+func TestProxy_ClientGoneAudited499(t *testing.T) {
+	hit := make(chan struct{})
+	up := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body) // lets the server notice the hang-up
+		close(hit)
+		<-r.Context().Done()
+	}))
+	defer up.Close()
+	var out bytes.Buffer
+	srv, tok := stack(t, "grafana", up.URL+"/mcp", nil, &out)
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/mcp/grafana", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	done := make(chan struct{})
+	go func() {
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+		close(done)
+	}()
+	<-hit
+	cancel()
+	<-done
+	srv.Close()
+	lines := auditLines(t, &out)
+	if len(lines) != 1 || lines[0]["status"] != float64(499) {
+		t.Errorf("audit = %v", lines)
+	}
+}
+
+func TestNew_NilAuditLogger(t *testing.T) {
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{}`)) }))
+	defer up.Close()
+	u, _ := url.Parse(up.URL + "/mcp")
+	rec := httptest.NewRecorder()
+	mcpproxy.New("grafana", u, nil, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/mcp/grafana", strings.NewReader(`{}`)))
+	if rec.Code != http.StatusOK {
+		t.Errorf("status %d", rec.Code)
 	}
 }

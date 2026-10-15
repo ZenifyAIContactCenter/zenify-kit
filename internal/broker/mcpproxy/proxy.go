@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
@@ -18,14 +20,35 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 )
 
+// statusClientClosed is audited when the client disconnects before the
+// upstream answered (nginx's 499).
+const statusClientClosed = 499
+
+// stripClientHeaders drops what must not reach an upstream: the client's
+// broker JWT and cookies, Cloudflare and proxy headers, and X-Grafana-*.
+func stripClientHeaders(h http.Header) {
+	for k := range h {
+		ck := http.CanonicalHeaderKey(k)
+		switch {
+		case ck == "Authorization", ck == "Cookie", ck == "Forwarded", ck == "X-Real-Ip",
+			strings.HasPrefix(ck, "Cf-"), strings.HasPrefix(ck, "X-Forwarded-"), strings.HasPrefix(ck, "X-Grafana-"):
+			delete(h, k)
+		}
+	}
+}
+
 // maxBody caps the request body the proxy reads to find tools/call messages.
 const maxBody = 4 << 20
 
 // New proxies every request to upstream as-is: upstream's scheme, host and
-// path, the client's query string. The client's Authorization and Cookie are
-// dropped before setHeaders (nil = none) adds the upstream credential. a gets
-// one line per request plus one per tools/call message in the body.
+// path, the client's query string. The client's credentials and edge/proxy
+// headers are dropped (stripClientHeaders) before setHeaders (nil = none) adds
+// the upstream credential. a (nil = stdout) gets one line per request plus one
+// per tools/call message in the body.
 func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audit.Logger) http.Handler {
+	if a == nil {
+		a = &audit.Logger{W: os.Stdout}
+	}
 	endpoint := "/mcp/" + name
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -35,14 +58,19 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 			pr.Out.URL.RawPath = upstream.RawPath
 			pr.Out.URL.RawQuery = pr.In.URL.RawQuery
 			pr.Out.Host = upstream.Host
-			pr.Out.Header.Del("Authorization")
-			pr.Out.Header.Del("Cookie")
+			stripClientHeaders(pr.Out.Header)
 			if setHeaders != nil {
 				setHeaders(pr.Out.Header)
 			}
 		},
 		FlushInterval: -1, // SSE must reach the client event by event (FR-4.3)
-		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
+		ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) {
+			if r.Context().Err() != nil { // the client went away: nobody reads a body
+				if cw, ok := w.(*countingWriter); ok && cw.status == 0 {
+					cw.status = statusClientClosed
+				}
+				return
+			}
 			auth.WriteError(w, http.StatusBadGateway, api.CodeUpstreamUnavailable, "MCP upstream "+name+" is unavailable")
 		},
 	}
@@ -50,12 +78,12 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 		start := time.Now()
 		login := auth.Login(r.Context())
 		cw := &countingWriter{ResponseWriter: w}
-		var calls []rpcMessage
+		var calls []toolCall
 		defer func() {
 			ms, status := time.Since(start).Milliseconds(), cw.statusCode()
 			for _, c := range calls {
-				a.Log(audit.Entry{TS: start, Login: login, Endpoint: endpoint, Op: c.Params.Name,
-					Args: c.Params.Arguments, MS: ms, Status: status})
+				a.Log(audit.Entry{TS: start, Login: login, Endpoint: endpoint, Op: c.Name,
+					Args: c.Args, MS: ms, Status: status})
 			}
 			a.Log(audit.Entry{TS: start, Login: login, Endpoint: endpoint, Op: r.Method,
 				Bytes: cw.n, MS: ms, Status: status})
@@ -90,36 +118,47 @@ func PostHogHeaders(key, projectID string) func(http.Header) {
 	}
 }
 
-type rpcMessage struct {
-	Method string `json:"method"`
-	Params struct {
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
-	} `json:"params"`
+type toolCall struct {
+	Name string
+	Args json.RawMessage
 }
 
 // toolCalls returns the tools/call messages of a JSON-RPC body, single or
-// batch. An unparseable body has none; the upstream answers it.
-func toolCalls(body []byte) []rpcMessage {
-	var msgs []rpcMessage
+// batch. Batch elements are decoded one by one, so a junk element hides only
+// itself. Keys are matched exactly ("method", not "Method"), as a JS upstream
+// reads them. An unparseable body has none; the upstream answers it.
+func toolCalls(body []byte) []toolCall {
+	msgs := []json.RawMessage{body}
 	if t := bytes.TrimLeft(body, " \t\r\n"); len(t) > 0 && t[0] == '[' {
 		if json.Unmarshal(t, &msgs) != nil {
 			return nil
 		}
-	} else {
-		var m rpcMessage
-		if json.Unmarshal(t, &m) != nil {
-			return nil
-		}
-		msgs = []rpcMessage{m}
 	}
-	var out []rpcMessage
-	for _, m := range msgs {
-		if m.Method == "tools/call" {
-			out = append(out, m)
+	var out []toolCall
+	for _, raw := range msgs {
+		if c, ok := asToolCall(raw); ok {
+			out = append(out, c)
 		}
 	}
 	return out
+}
+
+func asToolCall(raw json.RawMessage) (toolCall, bool) {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil {
+		return toolCall{}, false
+	}
+	var method string
+	if json.Unmarshal(m["method"], &method) != nil || method != "tools/call" {
+		return toolCall{}, false
+	}
+	var c toolCall
+	var params map[string]json.RawMessage
+	if json.Unmarshal(m["params"], &params) == nil {
+		_ = json.Unmarshal(params["name"], &c.Name)
+		c.Args = params["arguments"]
+	}
+	return c, true
 }
 
 // countingWriter records the status and response bytes for the audit line.

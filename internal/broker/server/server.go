@@ -66,6 +66,8 @@ func New(cfg Deps) http.Handler {
 			h, ok := cfg.MCP[r.PathValue("name")]
 			if !ok {
 				http.NotFound(w, r)
+				cfg.Audit.Log(audit.Entry{TS: cfg.Now(), Login: auth.Login(r.Context()),
+					Endpoint: "/mcp/" + r.PathValue("name"), Op: r.Method, Status: http.StatusNotFound})
 				return
 			}
 			h.ServeHTTP(w, r)
