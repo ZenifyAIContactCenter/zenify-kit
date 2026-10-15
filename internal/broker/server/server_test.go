@@ -322,3 +322,18 @@ func TestRedisRouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
 		t.Fatalf("route should be absent when Deps.Redis is nil, got %d", rec.Code)
 	}
 }
+
+func TestE2ERouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
+	var hit int32
+	h := New(Deps{JWTKey: testKey, E2E: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { atomic.AddInt32(&hit, 1) })})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/e2e/account", strings.NewReader("{}")))
+	if rec.Code != http.StatusUnauthorized || atomic.LoadInt32(&hit) != 0 {
+		t.Fatalf("got %d, handler hits %d", rec.Code, hit)
+	}
+	rec = httptest.NewRecorder()
+	New(Deps{JWTKey: testKey}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/e2e/account", strings.NewReader("{}")))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("route should be absent when Deps.E2E is nil, got %d", rec.Code)
+	}
+}
