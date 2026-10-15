@@ -13,12 +13,12 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/perlogin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 )
@@ -42,29 +42,7 @@ type Handler struct {
 	MaxConcurrent int           // per login
 	Timeout       time.Duration // 0 = 60s
 
-	mu     sync.Mutex
-	active map[string]int
-}
-
-func (h *Handler) acquire(login string) bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.active == nil {
-		h.active = map[string]int{}
-	}
-	if h.active[login] >= h.MaxConcurrent {
-		return false
-	}
-	h.active[login]++
-	return true
-}
-
-func (h *Handler) release(login string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.active[login]--; h.active[login] <= 0 {
-		delete(h.active, login)
-	}
+	slots perlogin.Slots
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -90,11 +68,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, code, msg)
 		return
 	}
-	if !h.acquire(login) {
+	if !h.slots.Acquire(login, h.MaxConcurrent) {
 		fail(http.StatusTooManyRequests, api.CodeTooManyConcurrent, "too many concurrent queries for this login")
 		return
 	}
-	defer h.release(login)
+	defer h.slots.Release(login)
 
 	timeout := h.Timeout
 	if timeout == 0 {

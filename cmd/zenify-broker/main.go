@@ -26,7 +26,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/server"
 )
 
-// maxConcurrentPerLogin caps simultaneous /query children per developer.
+// maxConcurrentPerLogin caps simultaneous /query children and /redis commands per developer.
 const maxConcurrentPerLogin = 2
 
 func main() {
@@ -92,7 +92,8 @@ func run(cfgPath string) error {
 				AuditMongoPrd: s.AuditMongoPrd, MainDB: cfg.Mongo.MainDB, AuditDB: cfg.Mongo.AuditDB},
 			Audit: log, Run: query.ExecRun, MaxConcurrent: maxConcurrentPerLogin,
 		},
-		Redis: &redisread.Handler{Clients: map[string]redisread.Doer{"stg": rStg, "prd": rPrd}, Audit: log},
+		Redis: &redisread.Handler{Clients: map[string]redisread.Doer{"stg": rStg, "prd": rPrd}, Audit: log,
+			MaxConcurrent: maxConcurrentPerLogin},
 		E2E: &e2e.Handler{Audit: log, P: &e2e.Provisioner{
 			App: &e2e.HTTPApp{HubURL: cfg.E2E.HubURL, BEURL: cfg.E2E.BEURL, Domain: cfg.E2E.Domain,
 				TenantID: cfg.E2E.TenantID, GroupID: cfg.E2E.GroupID,

@@ -19,6 +19,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/perlogin"
 )
 
 const (
@@ -34,13 +35,24 @@ const (
 // Doer is the seam over *redis.Client.
 type Doer interface {
 	Do(ctx context.Context, args ...any) *redis.Cmd
+	Pipelined(ctx context.Context, fn func(redis.Pipeliner) error) ([]redis.Cmder, error)
 }
 
 // Handler is the POST /redis handler. It must sit behind auth.Require.
 // Clients is keyed by env: "stg" and "prd".
 type Handler struct {
-	Clients map[string]Doer
-	Audit   *audit.Logger
+	Clients       map[string]Doer
+	Audit         *audit.Logger
+	MaxConcurrent int // per login; 0 refuses every request
+
+	slots perlogin.Slots
+}
+
+// readHint names what a caller can read instead of a collection that is too big.
+var readHint = map[string]string{
+	"HGETALL":  "read specific fields with HGET",
+	"HKEYS":    "read specific fields with HGET",
+	"SMEMBERS": "SCARD gives the set's size; its members cannot be read in one call",
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -76,8 +88,28 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.slots.Acquire(login, h.MaxConcurrent) {
+		fail(http.StatusTooManyRequests, api.CodeTooManyConcurrent, "too many concurrent redis commands for this login")
+		return
+	}
+	defer h.slots.Release(login)
+
 	ctx, cancel := context.WithTimeout(r.Context(), cmdTimeout)
 	defer cancel()
+	// check maps a reply error; on failure it has already answered the request.
+	check := func(err error) bool {
+		var rerr redis.Error
+		switch {
+		case err == nil:
+			return true
+		case errors.As(err, &rerr):
+			fail(http.StatusBadGateway, api.CodeQueryFailed, rerr.Error())
+			return false
+		}
+		// Connection errors carry the server address, so none of err is echoed.
+		fail(http.StatusBadGateway, api.CodeQueryFailed, "redis command failed")
+		return false
+	}
 	// run sends one command; on failure it has already answered the request.
 	run := func(args ...string) (any, bool) {
 		anyArgs := make([]any, len(args))
@@ -85,16 +117,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			anyArgs[i] = a
 		}
 		val, err := cli.Do(ctx, anyArgs...).Result()
-		var rerr redis.Error
-		switch {
-		case errors.Is(err, redis.Nil):
+		if errors.Is(err, redis.Nil) {
 			return nil, true
-		case errors.As(err, &rerr):
-			fail(http.StatusBadGateway, api.CodeQueryFailed, rerr.Error())
-			return nil, false
-		case err != nil:
-			// Connection errors carry the server address, so none of err is echoed.
-			fail(http.StatusBadGateway, api.CodeQueryFailed, "redis command failed")
+		}
+		if !check(err) {
 			return nil, false
 		}
 		return val, true
@@ -108,6 +134,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(http.StatusBadRequest, api.CodeCommandNotAllowed, fmt.Sprintf("MGET is limited to %d keys", maxMGetKeys))
 			return
 		}
+		total, ok := mgetBytes(ctx, cli, argv[1:], check)
+		if !ok {
+			return
+		}
+		if total > maxResult {
+			fail(http.StatusBadRequest, api.CodeCommandNotAllowed, fmt.Sprintf(
+				"MGET of these %d keys is %d bytes, over the %d-byte result cap: ask for fewer keys, or GET one key (a big value comes back truncated)",
+				len(argv)-1, total, maxResult))
+			return
+		}
 	case "HGETALL", "HKEYS", "SMEMBERS":
 		count := map[string]string{"HGETALL": "HLEN", "HKEYS": "HLEN", "SMEMBERS": "SCARD"}[argv[0]]
 		if len(argv) == 2 {
@@ -117,7 +153,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			if c, _ := n.(int64); c > maxCollection {
 				fail(http.StatusBadRequest, api.CodeCommandNotAllowed, fmt.Sprintf(
-					"%s on %d entries exceeds the %d limit: use SCAN (HSCAN/SSCAN are not allowed, so narrow the read) instead", argv[0], c, maxCollection))
+					"%s on %d entries exceeds the %d-entry limit: %s", argv[0], c, maxCollection, readHint[argv[0]]))
+				return
+			}
+			// Only after the count check: MEMORY USAGE ... SAMPLES 0 is O(entries).
+			n, ok = run("MEMORY", "USAGE", argv[1], "SAMPLES", "0")
+			if !ok {
+				return
+			}
+			if b, _ := n.(int64); b > maxResult {
+				fail(http.StatusBadRequest, api.CodeCommandNotAllowed, fmt.Sprintf(
+					"%s on this key is about %d bytes, over the %d-byte result cap: %s", argv[0], b, maxResult, readHint[argv[0]]))
+				return
+			}
+		}
+	case "HGET":
+		if len(argv) == 3 {
+			n, ok := run("HSTRLEN", argv[1], argv[2])
+			if !ok {
+				return
+			}
+			if l, _ := n.(int64); l > maxResult {
+				fail(http.StatusBadRequest, api.CodeCommandNotAllowed, fmt.Sprintf(
+					"HGET of this field is %d bytes, over the %d-byte result cap: a hash field cannot be read in part", l, maxResult))
 				return
 			}
 		}
@@ -146,6 +204,35 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	nbytes = len(b)
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(append(b, '\n'))
+}
+
+// mgetBytes sums STRLEN of keys in one pipeline. A key that is not a string
+// counts 0, as MGET returns nil for it. On failure check has answered.
+func mgetBytes(ctx context.Context, cli Doer, keys []string, check func(error) bool) (int64, bool) {
+	cmds, _ := cli.Pipelined(ctx, func(p redis.Pipeliner) error {
+		for _, k := range keys {
+			p.Do(ctx, "STRLEN", k)
+		}
+		return nil
+	})
+	var total int64
+	for _, c := range cmds {
+		cmd, ok := c.(*redis.Cmd)
+		if !ok {
+			continue
+		}
+		val, err := cmd.Result()
+		var rerr redis.Error
+		if errors.As(err, &rerr) && strings.HasPrefix(rerr.Error(), "WRONGTYPE") {
+			continue
+		}
+		if !check(err) {
+			return 0, false
+		}
+		n, _ := val.(int64)
+		total += n
+	}
+	return total, true
 }
 
 // capRange rewrites argv (command first, upper case) so LRANGE, ZRANGE and

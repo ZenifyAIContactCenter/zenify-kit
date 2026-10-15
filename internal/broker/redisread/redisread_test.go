@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,25 +25,73 @@ var testKey = []byte("test-key")
 
 // fakeDoer records every argv it is handed and answers with val / err.
 type fakeDoer struct {
+	mu    sync.Mutex
 	got   [][]any
 	val   any
 	err   error
-	byCmd map[string]any // upper-case command -> reply, consulted before val
+	byCmd map[string]any   // upper-case command -> reply, consulted before val
+	errBy map[string]error // upper-case command -> error, consulted first
+	gate  chan struct{}    // non-nil: a command not in byCmd waits on it
+	enter chan struct{}    // non-nil: signalled before waiting on gate
+}
+
+func (f *fakeDoer) answer(c *redis.Cmd, args []any) {
+	f.mu.Lock()
+	f.got = append(f.got, args)
+	name := strings.ToUpper(args[0].(string))
+	e, hasErr := f.errBy[name]
+	r, ok := f.byCmd[name]
+	f.mu.Unlock()
+	switch {
+	case hasErr:
+		c.SetErr(e)
+	case ok:
+		c.SetVal(r)
+	default:
+		if f.gate != nil {
+			f.enter <- struct{}{}
+			<-f.gate
+		}
+		if f.err != nil {
+			c.SetErr(f.err)
+		} else {
+			c.SetVal(f.val)
+		}
+	}
 }
 
 func (f *fakeDoer) Do(ctx context.Context, args ...any) *redis.Cmd {
-	f.got = append(f.got, args)
 	c := redis.NewCmd(ctx, args...)
-	if r, ok := f.byCmd[strings.ToUpper(args[0].(string))]; ok {
-		c.SetVal(r)
-		return c
-	}
-	if f.err != nil {
-		c.SetErr(f.err)
-	} else {
-		c.SetVal(f.val)
-	}
+	f.answer(c, args)
 	return c
+}
+
+// Pipelined queues fn's commands on a client that never connects, then
+// answers each one as Do would, without Exec.
+func (f *fakeDoer) Pipelined(ctx context.Context, fn func(redis.Pipeliner) error) ([]redis.Cmder, error) {
+	cli := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	defer func() { _ = cli.Close() }()
+	p := cli.Pipeline()
+	if err := fn(p); err != nil {
+		return nil, err
+	}
+	cmds := p.Cmds()
+	for _, c := range cmds {
+		f.answer(c.(*redis.Cmd), c.Args())
+	}
+	return cmds, nil
+}
+
+// sent reports whether cmd (upper case) reached the Doer.
+func (f *fakeDoer) sent(cmd string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, a := range f.got {
+		if strings.EqualFold(a[0].(string), cmd) {
+			return true
+		}
+	}
+	return false
 }
 
 type fixture struct {
@@ -54,7 +103,7 @@ type fixture struct {
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	f := &fixture{stg: &fakeDoer{val: "v"}, prd: &fakeDoer{val: "v"}, audit: &bytes.Buffer{}}
-	h := &Handler{Clients: map[string]Doer{"stg": f.stg, "prd": f.prd}, Audit: &audit.Logger{W: f.audit}}
+	h := &Handler{Clients: map[string]Doer{"stg": f.stg, "prd": f.prd}, Audit: &audit.Logger{W: f.audit}, MaxConcurrent: 2}
 	f.ts = httptest.NewServer(auth.Require(testKey, h))
 	t.Cleanup(f.ts.Close)
 	return f
@@ -357,5 +406,89 @@ func TestRedis_MultiByteStringTruncatedOnBoundary(t *testing.T) {
 	s, _ := r.Result.(string)
 	if !r.Truncated || len(body) > 1<<20+256 || len(s) == 0 || strings.Trim(s, "\u00e9") != "" || strings.ContainsRune(s, '\uFFFD') {
 		t.Fatalf("truncated=%v len=%d", r.Truncated, len(body))
+	}
+}
+
+func TestRedis_MGetOverByteBudgetRefusedWithoutRead(t *testing.T) {
+	f := newFixture(t)
+	f.stg.byCmd = map[string]any{"STRLEN": int64(600 << 10)}
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "MGET", Args: []string{"a", "b"}})
+	if st != 400 || !strings.Contains(string(body), api.CodeCommandNotAllowed) || !strings.Contains(string(body), "GET one key") {
+		t.Fatalf("%d %s", st, body)
+	}
+	if f.stg.sent("MGET") || len(f.stg.got) != 2 {
+		t.Fatalf("want two STRLEN and no MGET, got %v", f.stg.got)
+	}
+	// Under budget, and a non-string key (WRONGTYPE) counts 0: MGET runs.
+	f.stg.byCmd = map[string]any{"STRLEN": int64(10)}
+	if st, body = f.post(t, api.RedisRequest{Env: "stg", Cmd: "MGET", Args: []string{"a", "b"}}); st != 200 || !f.stg.sent("MGET") {
+		t.Fatalf("under budget: %d %s", st, body)
+	}
+	g := newFixture(t)
+	g.stg.errBy = map[string]error{"STRLEN": redisErr("WRONGTYPE Operation against a key holding the wrong kind of value")}
+	if st, body = g.post(t, api.RedisRequest{Env: "stg", Cmd: "MGET", Args: []string{"h"}}); st != 200 || !g.stg.sent("MGET") {
+		t.Fatalf("wrongtype: %d %s", st, body)
+	}
+}
+
+func TestRedis_CollectionOverByteBudgetRefused(t *testing.T) {
+	for cmd, count := range map[string]string{"HGETALL": "HLEN", "HKEYS": "HLEN", "SMEMBERS": "SCARD"} {
+		f := newFixture(t)
+		f.stg.byCmd = map[string]any{count: int64(3), "MEMORY": int64(2 << 20)}
+		st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: cmd, Args: []string{"h"}})
+		if st != 400 || !strings.Contains(string(body), api.CodeCommandNotAllowed) || f.stg.sent(cmd) {
+			t.Fatalf("%s: %d %s %v", cmd, st, body, f.stg.got)
+		}
+		if strings.Contains(string(body), "SCAN") {
+			t.Fatalf("%s: message points at SCAN: %s", cmd, body)
+		}
+		if got := strings.Join(argv(f.stg.got[1]), " "); got != "MEMORY USAGE h SAMPLES 0" {
+			t.Fatalf("%s: second command %q", cmd, got)
+		}
+		// A nil MEMORY USAGE (key absent) lets the read through.
+		f.stg.byCmd = map[string]any{count: int64(0), "MEMORY": nil}
+		if st, body = f.post(t, api.RedisRequest{Env: "stg", Cmd: cmd, Args: []string{"h"}}); st != 200 || !f.stg.sent(cmd) {
+			t.Fatalf("%s absent key: %d %s", cmd, st, body)
+		}
+	}
+}
+
+func TestRedis_HGetOverByteBudgetRefused(t *testing.T) {
+	f := newFixture(t)
+	f.stg.byCmd = map[string]any{"HSTRLEN": int64(2 << 20)}
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "HGET", Args: []string{"h", "f"}})
+	if st != 400 || !strings.Contains(string(body), api.CodeCommandNotAllowed) || f.stg.sent("HGET") {
+		t.Fatalf("%d %s %v", st, body, f.stg.got)
+	}
+	f.stg.byCmd = map[string]any{"HSTRLEN": int64(5)}
+	if st, _ = f.post(t, api.RedisRequest{Env: "stg", Cmd: "HGET", Args: []string{"h", "f"}}); st != 200 || !f.stg.sent("HGET") {
+		t.Fatalf("small field: %d", st)
+	}
+}
+
+func TestRedis_ConcurrentLimit(t *testing.T) {
+	f := newFixture(t)
+	f.stg.gate, f.stg.enter = make(chan struct{}), make(chan struct{}, 4)
+	req := api.RedisRequest{Env: "stg", Cmd: "TTL", Args: []string{"k"}}
+	codes := make(chan int, 2)
+	for i := 0; i < 2; i++ {
+		go func() { st, _ := f.post(t, req); codes <- st }()
+	}
+	<-f.stg.enter
+	<-f.stg.enter
+	st, body := f.post(t, req)
+	var e api.Error
+	_ = json.Unmarshal(body, &e)
+	if st != 429 || e.Error != api.CodeTooManyConcurrent {
+		t.Fatalf("3rd call: %d %s", st, body)
+	}
+	close(f.stg.gate)
+	for i := 0; i < 2; i++ {
+		if st := <-codes; st != 200 {
+			t.Fatalf("held call: %d", st)
+		}
+	}
+	if st, _ := f.post(t, req); st != 200 {
+		t.Fatalf("after release: %d", st)
 	}
 }
