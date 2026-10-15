@@ -500,3 +500,39 @@ func TestNew_NilAuditLogger(t *testing.T) {
 		t.Errorf("status %d", rec.Code)
 	}
 }
+
+func TestStartGrafana_RefusesNonLoopbackAddr(t *testing.T) {
+	for _, addr := range []string{"0.0.0.0:8000", ":8000", "10.1.2.3:8000", "[::]:8000", "grafana.internal:8000", "127.0.0.1"} {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		_, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", addr, nil)
+		cancel(nil)
+		if err == nil || !strings.Contains(err.Error(), "loopback") || strings.Contains(err.Error(), "test-key") {
+			t.Errorf("%q: err = %v", addr, err)
+		}
+	}
+	for _, addr := range []string{"127.0.0.1:8000", "[::1]:8000", "localhost:8000"} {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		_, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", addr, nil)
+		cancel(nil)
+		if err == nil || strings.Contains(err.Error(), "loopback") {
+			t.Errorf("%q: want only the start failure, got %v", addr, err)
+		}
+	}
+}
+
+func TestStartGrafana_RefusesFixedFlagsInExtraArgs(t *testing.T) {
+	for _, a := range []string{"--disable-write=false", "-disable-write", "--address=0.0.0.0:9", "-address",
+		"-t", "--t=sse", "--transport", "-transport=sse", "--endpoint-path=/x", "-endpoint-path"} {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		_, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", "127.0.0.1:8000",
+			[]string{"--usage-stats=disabled", a})
+		cancel(nil)
+		name, _, _ := strings.Cut(a, "=")
+		if err == nil || !strings.Contains(err.Error(), name) || strings.Contains(err.Error(), "start mcp-grafana") {
+			t.Errorf("%q: err = %v", a, err)
+		}
+		if v, ok := strings.CutPrefix(a, name+"="); ok && strings.Contains(err.Error(), v) {
+			t.Errorf("%q: error echoes the value: %v", a, err)
+		}
+	}
+}
