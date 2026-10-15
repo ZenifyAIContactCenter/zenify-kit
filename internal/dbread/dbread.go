@@ -315,9 +315,10 @@ func printUsage(w io.Writer) {
 
 // Validate runs every check Run does before it touches credentials, so a
 // caller that sends the request elsewhere (the broker) refuses what Run would.
-func Validate(o *Options) error {
-	_, _, _, err := validate(o)
-	return err
+// It returns the effective limit (o.Limit, or DefaultLimit when zero).
+func Validate(o *Options) (limit int, err error) {
+	limit, _, _, err = validate(o)
+	return limit, err
 }
 
 // validate checks o and builds the query: the effective limit, the mongo

@@ -108,11 +108,12 @@ func newDBReadCmd() *cobra.Command {
 // runDBReadBroker validates o exactly as dbread.Run would, then sends it to
 // the broker and prints the reply. A 400 is a refused request (BadArgs).
 func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Options) error {
-	if err := dbread.Validate(o); err != nil {
+	limit, err := dbread.Validate(o)
+	if err != nil {
 		return err
 	}
 	req := api.QueryRequest{Env: "stg", Engine: "mongo", Op: o.Cmd, Coll: o.Arg, Filter: o.Filter,
-		Projection: o.Projection, Sort: o.Sort, Pipeline: o.Pipeline, Limit: o.Limit}
+		Projection: o.Projection, Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit}
 	if o.Prod {
 		req.Env = "prd"
 		_, _ = io.WriteString(o.Stderr, "zenify db-read: production (via broker)\n")
@@ -122,9 +123,6 @@ func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Opti
 		req.Engine = "mysql"
 	case "sql":
 		req.Engine, req.Coll, req.SQL = "mysql", "", o.Arg
-	}
-	if req.Limit == 0 {
-		req.Limit = dbread.DefaultLimit
 	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), brokerCallTimeout)
 	defer cancel()
