@@ -21,7 +21,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 )
 
-var testKey = []byte("test-key")
+var testKey = []byte("test-key-0123456789abcdef0123456")
 
 // fakeDoer records every argv it is handed and answers with val / err.
 type fakeDoer struct {
@@ -111,7 +111,7 @@ func newFixture(t *testing.T) *fixture {
 
 func (f *fixture) post(t *testing.T, req api.RedisRequest) (int, []byte) {
 	t.Helper()
-	tok, _ := auth.Issue(testKey, "alice", time.Now())
+	tok, _, _ := auth.Issue(testKey, "alice", time.Now())
 	b, _ := json.Marshal(req)
 	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+tok)
@@ -306,7 +306,7 @@ func TestRedis_AuditLine(t *testing.T) {
 
 func TestRedis_BadBody400(t *testing.T) {
 	f := newFixture(t)
-	tok, _ := auth.Issue(testKey, "alice", time.Now())
+	tok, _, _ := auth.Issue(testKey, "alice", time.Now())
 	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, strings.NewReader("{nope"))
 	r.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := http.DefaultClient.Do(r)
@@ -507,5 +507,47 @@ func TestRedis_HKeysSkipsMemoryUsage(t *testing.T) {
 	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "HKEYS", Args: []string{"h"}})
 	if st != 200 || f.stg.sent("MEMORY") || !f.stg.sent("HKEYS") {
 		t.Fatalf("%d %s %v", st, body, f.stg.got)
+	}
+}
+
+func TestCapValue_MapKeepsCutFirstValue(t *testing.T) {
+	big := strings.Repeat("v", 5000)
+	got, cut := capResult(map[string]any{"a": big, "b": "x"}, 1000)
+	m, _ := got.(map[string]any)
+	s, _ := m["a"].(string)
+	if !cut || len(s) == 0 || strings.Trim(s, "v") != "" {
+		t.Fatalf("got %v cut=%v, want a prefix of field a", got, cut)
+	}
+	if _, ok := m["b"]; ok {
+		t.Fatal("field b must be dropped once a is cut")
+	}
+	if n := size(got); n > 1000 {
+		t.Fatalf("result is %d bytes, over the 1000-byte budget", n)
+	}
+	// Nested: the cut recurses into one oversized value.
+	got, cut = capResult(map[string]any{"a": []any{big}}, 1000)
+	arr, _ := got.(map[string]any)["a"].([]any)
+	if !cut || len(arr) != 1 || size(got) > 1000 {
+		t.Fatalf("nested: got %v cut=%v", got, cut)
+	}
+}
+
+func TestCapValue_HugeKeyNotMarshalled(t *testing.T) {
+	got, cut := capResult(map[string]any{strings.Repeat("k", 1<<20): "v"}, 100)
+	if m, _ := got.(map[string]any); !cut || len(m) != 0 {
+		t.Fatalf("got %v cut=%v, want {} and cut", got, cut)
+	}
+}
+
+func TestHandler_Validate(t *testing.T) {
+	ok := &Handler{Clients: map[string]Doer{"stg": &fakeDoer{}, "prd": &fakeDoer{}}, Audit: &audit.Logger{W: io.Discard}, MaxConcurrent: 2}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("valid handler: %v", err)
+	}
+	err := (&Handler{Clients: map[string]Doer{"stg": &fakeDoer{}}}).Validate()
+	for _, want := range []string{"Audit is nil", "MaxConcurrent", "env prd"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Validate() = %v, want it to name %q", err, want)
+		}
 	}
 }

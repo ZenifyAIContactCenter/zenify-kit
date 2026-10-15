@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net"
 	"net/http"
 	"strings"
@@ -25,6 +27,10 @@ type bucket struct {
 // maxBuckets bounds memory; past it, buckets that have refilled are dropped.
 const maxBuckets = 10000
 
+// maxKeyLen bounds one bucket key: a longer key (a forged CF-Connecting-IP)
+// is stored as its SHA-256 hex, so maxBuckets bounds memory in bytes too.
+const maxKeyLen = 256
+
 func newLimiter(burst int, window time.Duration) *limiter {
 	return &limiter{burst: float64(burst), window: window, buckets: map[string]*bucket{}}
 }
@@ -38,6 +44,10 @@ func (l *limiter) refill(b *bucket, now time.Time) {
 
 // allow takes one token from key's bucket, reporting whether one was there.
 func (l *limiter) allow(key string, now time.Time) bool {
+	if len(key) > maxKeyLen {
+		sum := sha256.Sum256([]byte(key))
+		key = hex.EncodeToString(sum[:])
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	b, ok := l.buckets[key]

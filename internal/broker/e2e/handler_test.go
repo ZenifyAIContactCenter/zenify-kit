@@ -16,14 +16,14 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 )
 
-var jwtKey = []byte("jwt-key")
+var jwtKey = []byte("jwt-key-0123456789abcdef01234567")
 
 func serveE2E(t *testing.T, app App, body string) (int, []byte, string) {
 	t.Helper()
 	buf := &bytes.Buffer{}
 	ts := httptest.NewServer(auth.Require(jwtKey, &Handler{P: newProvisioner(app), Audit: &audit.Logger{W: buf}}))
 	t.Cleanup(ts.Close)
-	tok, _ := auth.Issue(jwtKey, "alice", time.Now())
+	tok, _, _ := auth.Issue(jwtKey, "alice", time.Now())
 	r, _ := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(body))
 	r.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := http.DefaultClient.Do(r)
@@ -79,7 +79,7 @@ func TestHandler_AuditNoPassword(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[0]), &e); err != nil {
 		t.Fatal(err)
 	}
-	if e.Op != "agent" || e.Login != "alice" || e.Endpoint != "/e2e/account" || e.Status != 200 {
+	if e.Op != "agent" || e.Login != "alice" || e.Endpoint != "/e2e/account" || e.Env != "stg" || e.Status != 200 {
 		t.Fatalf("entry %+v", e)
 	}
 	for _, secret := range []string{resp.Password, resp.Email, "tok:"} {
@@ -111,5 +111,21 @@ func TestHandler_MFARequired502(t *testing.T) {
 	_ = json.Unmarshal(body, &e)
 	if st != 502 || e.Error != api.CodeProvisionFailed || !strings.Contains(e.Message, "MFA") {
 		t.Fatalf("got %d %s", st, body)
+	}
+}
+
+func TestHandler_Validate(t *testing.T) {
+	ok := &Handler{Audit: &audit.Logger{W: io.Discard},
+		P: &Provisioner{App: newFakeApp(), Key: []byte(strings.Repeat("k", 32)), Now: time.Now}}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("valid handler: %v", err)
+	}
+	if err := (&Handler{}).Validate(); err == nil || !strings.Contains(err.Error(), "Audit is nil") ||
+		!strings.Contains(err.Error(), "Provisioner is nil") {
+		t.Errorf("Validate() = %v", err)
+	}
+	short := &Handler{Audit: ok.Audit, P: &Provisioner{App: newFakeApp(), Key: []byte("short"), Now: time.Now}}
+	if err := short.Validate(); err == nil || !strings.Contains(err.Error(), "Key") {
+		t.Errorf("short key: Validate() = %v", err)
 	}
 }

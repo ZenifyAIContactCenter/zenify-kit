@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -26,6 +27,12 @@ import (
 const (
 	maxBody        = 64 << 10
 	defaultTimeout = 60 * time.Second
+	// waitDelay bounds how long a killed child's pipes are waited on, so a
+	// grandchild holding stdout/stderr cannot outlive the deadline.
+	waitDelay = time.Second
+	// statusClientClosed is audited when the client went away before the
+	// child finished (nginx's 499); no body is written.
+	statusClientClosed = 499
 )
 
 // Creds are the broker's database credentials. MainDB / AuditDB name the Mongo
@@ -43,6 +50,29 @@ type Handler struct {
 	Timeout       time.Duration // 0 = 60s
 
 	slots perlogin.Slots
+}
+
+// Validate reports wiring mistakes that would otherwise fail every request
+// (MaxConcurrent < 1, a missing credential) or panic (nil Audit or Run).
+func (h *Handler) Validate() error {
+	var errs []error
+	if h.Audit == nil {
+		errs = append(errs, errors.New("query: Audit is nil"))
+	}
+	if h.Run == nil {
+		errs = append(errs, errors.New("query: Run is nil"))
+	}
+	if h.MaxConcurrent < 1 {
+		errs = append(errs, errors.New("query: MaxConcurrent must be at least 1"))
+	}
+	c := h.Creds
+	for name, v := range map[string]string{"MongoStg": c.MongoStg, "MongoPrd": c.MongoPrd, "MySQLStg": c.MySQLStg,
+		"MySQLPrd": c.MySQLPrd, "AuditMongoPrd": c.AuditMongoPrd, "MainDB": c.MainDB, "AuditDB": c.AuditDB} {
+		if v == "" {
+			errs = append(errs, fmt.Errorf("query: Creds.%s is empty", name))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +95,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	o, code, msg := h.options(req)
 	if code != "" {
-		fail(http.StatusBadRequest, code, msg)
+		st := http.StatusBadRequest
+		if code == api.CodeBrokerMisconfigured {
+			st = http.StatusInternalServerError
+		}
+		fail(st, code, msg)
 		return
 	}
 	if !h.slots.Acquire(login, h.MaxConcurrent) {
@@ -94,6 +128,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case dbread.IsBadArgs(err):
 		fail(http.StatusBadRequest, api.CodeInvalidQuery, strings.TrimPrefix(err.Error(), "zenify db-read: "))
+		return
+	case err == nil: // a success that finished near the deadline is still a success
+	case r.Context().Err() != nil: // the client went away: nobody reads a body
+		status = statusClientClosed
 		return
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		fail(http.StatusGatewayTimeout, api.CodeTimeout, "query exceeded the time limit")
@@ -132,6 +170,14 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 		return nil, api.CodeInvalidTarget, "target must be main or audit"
 	}
 	env := map[string]string{"MONGO_URL": c.MongoStg, "MYSQL_URL": c.MySQLStg, "MONGO_URL_PRD": mongoPrd, "MYSQL_URL_PRD": c.MySQLPrd}
+	// dbread needs the Mongo URL for every op and the MySQL URL for sql/tables.
+	mk, sk := "MONGO_URL", "MYSQL_URL"
+	if prd {
+		mk, sk = mk+"_PRD", sk+"_PRD"
+	}
+	if env[mk] == "" || (req.Engine == "mysql" && env[sk] == "") {
+		return nil, api.CodeBrokerMisconfigured, "the broker has no credential configured for env=" + req.Env + " target=" + req.Target
+	}
 	arg := req.Coll
 	if req.Op == "sql" {
 		arg = req.SQL
@@ -141,7 +187,8 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 		Env: func(k string) string { return env[k] }}, "", ""
 }
 
-// secrets are the URLs and URL hosts masked out of child stderr.
+// secrets are the URLs, URL hosts, users and passwords masked out of child
+// stderr; user and password both raw (as written in the URL) and decoded.
 func (h *Handler) secrets() []string {
 	var out []string
 	for _, v := range []string{h.Creds.MongoStg, h.Creds.MongoPrd, h.Creds.MySQLStg, h.Creds.MySQLPrd, h.Creds.AuditMongoPrd} {
@@ -151,6 +198,36 @@ func (h *Handler) secrets() []string {
 		out = append(out, v)
 		if u, err := url.Parse(v); err == nil && u.Hostname() != "" {
 			out = append(out, u.Hostname())
+		}
+		for _, raw := range userinfo(v) {
+			out = append(out, raw)
+			if dec, err := url.PathUnescape(raw); err == nil && dec != raw {
+				out = append(out, dec)
+			}
+		}
+	}
+	return out
+}
+
+// userinfo returns the raw user and password of a scheme://user:pass@host URL
+// (either may be absent), as written in s.
+func userinfo(s string) []string {
+	i := strings.Index(s, "://")
+	if i < 0 {
+		return nil
+	}
+	auth := s[i+3:]
+	if j := strings.IndexAny(auth, "/?#"); j >= 0 {
+		auth = auth[:j]
+	}
+	at := strings.LastIndex(auth, "@")
+	if at < 0 {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.SplitN(auth[:at], ":", 2) {
+		if p != "" {
+			out = append(out, p)
 		}
 	}
 	return out
@@ -178,6 +255,7 @@ func ExecRun(ctx context.Context, name string, args, extraEnv []string, stdout, 
 	c.Env = childEnv(os.Getenv, extraEnv)
 	c.Stdout = cancelOnErr{stdout, cancel}
 	c.Stderr = stderr
+	c.WaitDelay = waitDelay
 	return c.Run()
 }
 

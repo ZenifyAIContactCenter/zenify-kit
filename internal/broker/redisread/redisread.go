@@ -43,9 +43,27 @@ type Doer interface {
 type Handler struct {
 	Clients       map[string]Doer
 	Audit         *audit.Logger
-	MaxConcurrent int // per login; 0 refuses every request
+	MaxConcurrent int // per login; Validate refuses < 1
 
 	slots perlogin.Slots
+}
+
+// Validate reports wiring mistakes that would otherwise fail every request
+// (MaxConcurrent < 1, no client for an env) or panic (nil Audit).
+func (h *Handler) Validate() error {
+	var errs []error
+	if h.Audit == nil {
+		errs = append(errs, errors.New("redis: Audit is nil"))
+	}
+	if h.MaxConcurrent < 1 {
+		errs = append(errs, errors.New("redis: MaxConcurrent must be at least 1"))
+	}
+	for _, env := range []string{"stg", "prd"} {
+		if h.Clients[env] == nil {
+			errs = append(errs, fmt.Errorf("redis: no client for env %s", env))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // readHint names what a caller can read instead of a collection that is too big.
@@ -423,9 +441,10 @@ func capValue(v any, budget int) (any, int, bool) {
 		sort.Strings(keys)
 		out, used, cut := make(map[string]any), 2, false
 		for i, k := range keys {
-			kn := size(k) + 1 // key and colon
-			if len(k) > budget {
-				kn = budget + 1
+			// A key longer than the budget cannot fit; skip marshalling it.
+			kn := budget + 1
+			if len(k) <= budget {
+				kn = size(k) + 1 // key and colon
 			}
 			sep := 0
 			if i > 0 {
@@ -437,6 +456,11 @@ func capValue(v any, budget int) (any, int, bool) {
 			}
 			ev, n, ecut := capValue(t[k], budget-used-sep-kn)
 			if ecut || used+sep+kn+n > budget {
+				// As for arrays: a cut first value is kept, so one oversized
+				// field still returns a prefix rather than {}.
+				if i == 0 && ecut {
+					out[k], used = ev, used+kn+n
+				}
 				cut = true
 				break
 			}

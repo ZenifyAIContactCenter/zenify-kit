@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +20,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 )
 
-var testKey = []byte("test-key")
+var testKey = []byte("test-key-0123456789abcdef0123456")
 
 const (
 	fakeAuditURL = "mongodb://fake-audit-prd"
@@ -35,7 +37,7 @@ func testCreds() Creds {
 
 type fixture struct {
 	h     *Handler
-	audit *bytes.Buffer
+	audit *syncBuffer
 	calls *int32
 	ts    *httptest.Server
 }
@@ -44,7 +46,7 @@ type fixture struct {
 func newFixture(t *testing.T, run func(ctx context.Context, name string, args, env []string, out, errw io.Writer) error) *fixture {
 	t.Helper()
 	var calls int32
-	buf := &bytes.Buffer{}
+	buf := &syncBuffer{}
 	f := &fixture{audit: buf, calls: &calls}
 	f.h = &Handler{Creds: testCreds(), Audit: &audit.Logger{W: buf}, MaxConcurrent: 2,
 		Run: func(ctx context.Context, name string, args, env []string, out, errw io.Writer) error {
@@ -56,6 +58,29 @@ func newFixture(t *testing.T, run func(ctx context.Context, name string, args, e
 	return f
 }
 
+// syncBuffer is a bytes.Buffer safe to read while the handler may still write.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) Bytes() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte(nil), s.b.Bytes()...)
+}
+
+func (s *syncBuffer) String() string { return string(s.Bytes()) }
+
+func (f *fixture) auditLen() int      { return len(f.audit.Bytes()) }
+func (f *fixture) auditBytes() []byte { return f.audit.Bytes() }
+
 func okRun(_ context.Context, _ string, _ []string, _ []string, out, _ io.Writer) error {
 	_, _ = io.WriteString(out, "{\"a\":1}\n{\"b\":2}\n")
 	return nil
@@ -63,7 +88,7 @@ func okRun(_ context.Context, _ string, _ []string, _ []string, out, _ io.Writer
 
 func (f *fixture) post(t *testing.T, login string, req api.QueryRequest) (int, api.QueryResponse, api.Error) {
 	t.Helper()
-	tok, _ := auth.Issue(testKey, login, time.Now())
+	tok, _, _ := auth.Issue(testKey, login, time.Now())
 	b, _ := json.Marshal(req)
 	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+tok)
@@ -255,5 +280,180 @@ func TestChildEnv_OnlyPathHomeAndExtra(t *testing.T) {
 		if !want[kv] {
 			t.Fatalf("unexpected env entry %q", kv)
 		}
+	}
+}
+
+func TestQuery_FailedStderrMasksURLParts(t *testing.T) {
+	f := newFixture(t, func(_ context.Context, _ string, _ []string, _ []string, _, errw io.Writer) error {
+		_, _ = io.WriteString(errw, "auth failed for readonly_user (pw s3cret%2Fpw = s3cret/pw) at db-stg.example.test\n")
+		return errors.New("exit status 1")
+	})
+	f.h.Creds.MySQLStg = "mysql://readonly_user:s3cret%2Fpw@db-stg.example.test:3306/db"
+	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "stg", Engine: "mysql", Op: "sql", SQL: "SELECT 1"})
+	if st != http.StatusBadGateway || e.Error != api.CodeQueryFailed {
+		t.Fatalf("got %d %+v", st, e)
+	}
+	for _, leak := range []string{"readonly_user", "s3cret%2Fpw", "s3cret/pw", "db-stg.example.test"} {
+		if strings.Contains(e.Message, leak) {
+			t.Errorf("message leaks %q: %q", leak, e.Message)
+		}
+	}
+	if !strings.Contains(e.Message, "auth failed for ***") {
+		t.Errorf("message = %q, want the masked stderr", e.Message)
+	}
+}
+
+func TestQuery_TruncatedMapped(t *testing.T) {
+	t.Run("sql row cap", func(t *testing.T) {
+		f := newFixture(t, func(_ context.Context, _ string, _ []string, _ []string, out, _ io.Writer) error {
+			for i := 0; i < 10; i++ {
+				if _, err := io.WriteString(out, "row\n"); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		st, resp, e := f.post(t, "octocat", api.QueryRequest{Env: "stg", Engine: "mysql", Op: "sql", SQL: "SELECT 1", Limit: 3})
+		if st != 200 || !resp.Truncated || resp.Rows != 3 {
+			t.Fatalf("got %d %+v %+v", st, resp, e)
+		}
+	})
+	t.Run("mongo notice", func(t *testing.T) {
+		f := newFixture(t, func(_ context.Context, _ string, _ []string, _ []string, out, errw io.Writer) error {
+			_, _ = io.WriteString(out, "{}\n")
+			// dbread's truncNotice for --limit 5, printed by the generated script.
+			_, _ = fmt.Fprintf(errw, "… đã cắt ở %d dòng (--limit, tối đa %d)\n", 5, 200) //znf:allow-lang
+			return nil
+		})
+		st, resp, e := f.post(t, "octocat", api.QueryRequest{Env: "stg", Engine: "mongo", Op: "find", Coll: "users", Limit: 5})
+		if st != 200 {
+			t.Fatalf("got %d %+v", st, e)
+		}
+		if !resp.Truncated {
+			t.Fatalf("Truncated=%v with stderr %q", resp.Truncated, resp.Stderr)
+		}
+	})
+}
+
+func TestQuery_OversizedBody400(t *testing.T) {
+	f := newFixture(t, okRun)
+	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "stg", Engine: "mongo", Op: "find", Coll: "users",
+		Filter: `{"a":"` + strings.Repeat("x", maxBody) + `"}`})
+	if st != http.StatusBadRequest || e.Error != api.CodeInvalidQuery {
+		t.Fatalf("got %d %+v", st, e)
+	}
+	if atomic.LoadInt32(f.calls) != 0 {
+		t.Fatal("seam must not run")
+	}
+}
+
+func TestQuery_StgUsesStgURL(t *testing.T) {
+	var gotEnv []string
+	f := newFixture(t, func(ctx context.Context, name string, args, env []string, out, errw io.Writer) error {
+		gotEnv = env
+		return okRun(ctx, name, args, env, out, errw)
+	})
+	if st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "stg", Engine: "mongo", Op: "collections"}); st != 200 {
+		t.Fatalf("got %d %+v", st, e)
+	}
+	if got := strings.Join(gotEnv, "\n"); !strings.Contains(got, "ZNF_MONGO_URL=mongodb://fake-stg") || strings.Contains(got, fakePrdURL) {
+		t.Fatalf("env = %v, want the stg URL only", gotEnv)
+	}
+}
+
+func TestQuery_TimeoutAudited504(t *testing.T) {
+	f := newFixture(t, func(ctx context.Context, _ string, _ []string, _ []string, _, _ io.Writer) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	f.h.Timeout = 50 * time.Millisecond
+	if st, _, _ := f.post(t, "octocat", api.QueryRequest{Env: "stg", Engine: "mongo", Op: "collections"}); st != http.StatusGatewayTimeout {
+		t.Fatalf("got %d", st)
+	}
+	var e audit.Entry
+	if err := json.Unmarshal(bytes.TrimSpace(f.audit.Bytes()), &e); err != nil || e.Status != 504 || e.Endpoint != "/query" || e.Login != "octocat" {
+		t.Fatalf("entry %+v err %v", e, err)
+	}
+}
+
+func TestQuery_SuccessNearDeadlineIs200(t *testing.T) {
+	f := newFixture(t, func(ctx context.Context, name string, args, env []string, out, errw io.Writer) error {
+		<-ctx.Done() // finishes only after the deadline, but without an error
+		return okRun(ctx, name, args, env, out, errw)
+	})
+	f.h.Timeout = 30 * time.Millisecond
+	if st, resp, e := f.post(t, "octocat", api.QueryRequest{Env: "stg", Engine: "mongo", Op: "collections"}); st != 200 || resp.Rows != 2 {
+		t.Fatalf("got %d %+v %+v", st, resp, e)
+	}
+}
+
+func TestQuery_ClientCancelAudited499(t *testing.T) {
+	started := make(chan struct{})
+	f := newFixture(t, func(ctx context.Context, _ string, _ []string, _ []string, _, _ io.Writer) error {
+		close(started)
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	tok, _, _ := auth.Issue(testKey, "octocat", time.Now())
+	r, _ := http.NewRequestWithContext(ctx, http.MethodPost, f.ts.URL, strings.NewReader(`{"env":"stg","engine":"mongo","op":"collections"}`))
+	r.Header.Set("Authorization", "Bearer "+tok)
+	go func() { <-started; cancel() }()
+	if resp, err := http.DefaultClient.Do(r); err == nil {
+		_ = resp.Body.Close()
+		t.Fatalf("got a response %d, want the client to give up", resp.StatusCode)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for f.auditLen() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	var e audit.Entry
+	if err := json.Unmarshal(bytes.TrimSpace(f.auditBytes()), &e); err != nil || e.Status != statusClientClosed {
+		t.Fatalf("entry %+v err %v, want status 499", e, err)
+	}
+}
+
+func TestQuery_MissingCredential500(t *testing.T) {
+	f := newFixture(t, okRun)
+	f.h.Creds.MySQLPrd = ""
+	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "prd", Engine: "mysql", Op: "tables"})
+	if st != http.StatusInternalServerError || e.Error != api.CodeBrokerMisconfigured || strings.Contains(e.Message, "zenify up") {
+		t.Fatalf("got %d %+v", st, e)
+	}
+	if atomic.LoadInt32(f.calls) != 0 {
+		t.Fatal("seam must not run")
+	}
+}
+
+func TestHandler_Validate(t *testing.T) {
+	ok := &Handler{Creds: testCreds(), Audit: &audit.Logger{W: io.Discard}, Run: okRun, MaxConcurrent: 2}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("valid handler: %v", err)
+	}
+	bad := &Handler{Creds: testCreds()}
+	bad.Creds.AuditMongoPrd = ""
+	err := bad.Validate()
+	for _, want := range []string{"Audit is nil", "Run is nil", "MaxConcurrent", "Creds.AuditMongoPrd"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Validate() = %v, want it to name %q", err, want)
+		}
+	}
+	if err != nil && strings.Contains(err.Error(), fakePrdURL) {
+		t.Error("Validate leaks a credential")
+	}
+}
+
+func TestExecRun_GrandchildCannotOutliveDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	var out, errw bytes.Buffer
+	start := time.Now()
+	// The background sleep inherits stdout and keeps the pipe open after sh is killed.
+	err := ExecRun(ctx, "sh", []string{"-c", "sleep 10 & sleep 10"}, nil, &out, &errw)
+	if el := time.Since(start); el > 5*time.Second {
+		t.Fatalf("ExecRun returned after %v, want about deadline+waitDelay", el)
+	}
+	if err == nil {
+		t.Fatal("want an error from the killed child")
 	}
 }

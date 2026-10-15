@@ -14,6 +14,7 @@ func TestCheckRedis(t *testing.T) {
 		{"get", []string{"k"}, []string{"GET", "k"}},
 		{"HgetAll", []string{"h"}, []string{"HGETALL", "h"}},
 		{"SCAN", []string{"0"}, []string{"SCAN", "0", "COUNT", "100"}},
+		{"SCAN", nil, []string{"SCAN", "0", "COUNT", "100"}},
 		{"scan", []string{"0", "MATCH", "a:*"}, []string{"SCAN", "0", "MATCH", "a:*", "COUNT", "100"}},
 		{"SCAN", []string{"0", "count", "1000"}, []string{"SCAN", "0", "count", "1000"}},
 		{"SCAN", []string{"0", "COUNT", "10", "MATCH", "a:*", "TYPE", "hash"}, []string{"SCAN", "0", "COUNT", "10", "MATCH", "a:*", "TYPE", "hash"}},
