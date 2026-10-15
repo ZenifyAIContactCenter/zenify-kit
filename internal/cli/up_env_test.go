@@ -189,6 +189,56 @@ func TestRenderEnvStep_StampsEnvKeysVersion(t *testing.T) {
 	if owned.EnvKeysVersion != "dev" {
 		t.Fatalf("EnvKeysVersion = %q, want dev", owned.EnvKeysVersion)
 	}
+	if !reflect.DeepEqual(owned.EnvKeys, []string{"A"}) {
+		t.Fatalf("EnvKeys = %v, want [A]", owned.EnvKeys)
+	}
+}
+
+// A non-embedded manifest never records a key the kit did not already own,
+// so a later embedded run cannot delete a value that manifest introduced.
+func TestRenderEnvStep_NonEmbeddedDoesNotRecordNewKeys(t *testing.T) {
+	p, _, _, owned := envStepFixture(t)
+	if err := os.WriteFile(p, []byte("A='a1'\nB='secretval'\nNEW_KEY='fake-v'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withNew := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "A", Secret: true}, {Name: "NEW_KEY", Secret: true}}}
+	var out bytes.Buffer
+	if err := renderEnvStep(&out, withNew, "manifest/repos.yaml", p, owned, false); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(owned.EnvKeys, []string{"A", "B"}) {
+		t.Fatalf("run 1 EnvKeys = %v, want [A B]", owned.EnvKeys)
+	}
+	if owned.EnvKeysVersion != "dev" {
+		t.Fatalf("run 1 EnvKeysVersion = %q, want dev", owned.EnvKeysVersion)
+	}
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "A", Secret: true}}}
+	out.Reset()
+	if err := renderEnvStep(&out, m, "embedded", p, owned, false); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(p)
+	if !strings.Contains(string(got), "NEW_KEY='fake-v'") {
+		t.Fatalf("NEW_KEY value lost: %q", got)
+	}
+	if strings.Contains(out.String(), "xoá NEW_KEY") { //znf:allow-lang
+		t.Fatalf("run 2 deleted NEW_KEY: %q", out.String())
+	}
+	if strings.Contains(out.String(), "fake-v") {
+		t.Fatalf("output leaks a value: %q", out.String())
+	}
+}
+
+func TestRenderEnvStep_NonEmbeddedLeavesEmptyStamp(t *testing.T) {
+	p, _, m, _ := envStepFixture(t)
+	owned := &managed.Manifest{}
+	var out bytes.Buffer
+	if err := renderEnvStep(&out, m, "manifest/repos.yaml", p, owned, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(owned.EnvKeys) != 0 || owned.EnvKeysVersion != "" {
+		t.Fatalf("EnvKeys = %v, EnvKeysVersion = %q, want none", owned.EnvKeys, owned.EnvKeysVersion)
+	}
 }
 
 func TestBumpEnvKeysVersion(t *testing.T) {

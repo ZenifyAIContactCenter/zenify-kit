@@ -432,7 +432,8 @@ func migrateSettingsAndMerge(w, errW io.Writer, paths, manifestKeys []string, en
 // src is where m came from (loadKitManifest). A recorded key the manifest lacks
 // is deleted only when envDeletionGate allows it; otherwise it stays in the
 // file and in owned.EnvKeys. dryRun only prints what would change; otherwise
-// it saves the file and records the kit-managed key names in owned.EnvKeys.
+// it saves the file and records the kit-managed key names in owned.EnvKeys —
+// new names and the EnvKeysVersion stamp only from the embedded manifest.
 // Prints key names only, never a value.
 func renderEnvStep(w io.Writer, m *manifest.Manifest, src, envPath string, owned *managed.Manifest, dryRun bool) error {
 	old, err := devenv.Load(envPath)
@@ -461,9 +462,25 @@ func renderEnvStep(w io.Writer, m *manifest.Manifest, src, envPath string, owned
 		if err := res.File.Save(envPath); err != nil {
 			return err
 		}
-		owned.EnvKeys = append(current, held...)
-		if bumpEnvKeysVersion(version.Current(), owned.EnvKeysVersion) {
-			owned.EnvKeysVersion = version.Current()
+		if src == "embedded" {
+			owned.EnvKeys = append(current, held...)
+			if bumpEnvKeysVersion(version.Current(), owned.EnvKeysVersion) {
+				owned.EnvKeysVersion = version.Current()
+			}
+		} else {
+			// only the embedded manifest may add a key: one recorded from
+			// a checkout would be deleted by the next embedded run
+			was := map[string]bool{}
+			for _, k := range owned.EnvKeys {
+				was[k] = true
+			}
+			var kept []string
+			for _, k := range current {
+				if was[k] {
+					kept = append(kept, k)
+				}
+			}
+			owned.EnvKeys = append(kept, held...)
 		}
 	}
 	for _, l := range []struct {
