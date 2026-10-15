@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -155,7 +156,8 @@ func (c *Client) Post(ctx context.Context, path string, in, out any) error {
 		return err
 	}
 	err = c.do(ctx, path, tok, in, out)
-	if ae, ok := err.(*APIError); ok && ae.Status == http.StatusUnauthorized {
+	var ae *APIError
+	if errors.As(err, &ae) && ae.Status == http.StatusUnauthorized {
 		p, perr := c.cachePath()
 		if perr != nil {
 			return perr
