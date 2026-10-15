@@ -337,3 +337,33 @@ func TestE2ERouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
 		t.Fatalf("route should be absent when Deps.E2E is nil, got %d", rec.Code)
 	}
 }
+
+func TestRequire401IsAudited(t *testing.T) { // FR-6.1 / SC-8
+	noop := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
+	expired, _ := auth.Issue(testKey, "octocat", time.Now().Add(-2*time.Hour))
+	for path, endpoint := range map[string]string{"/query": "/query", "/redis": "/redis", "/e2e/account": "/e2e/account",
+		"/mcp/grafana": "/mcp/grafana", "/mcp/grafana/sub/path": "/mcp/grafana"} {
+		for _, hdr := range []string{"", "Bearer " + expired} {
+			var out bytes.Buffer
+			h := New(Deps{JWTKey: testKey, Audit: &audit.Logger{W: &out}, Now: func() time.Time { return t0 },
+				Query: noop, Redis: noop, E2E: noop, MCP: map[string]http.Handler{"grafana": noop}})
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+			if hdr != "" {
+				req.Header.Set("Authorization", hdr)
+			}
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+			if rec.Code != http.StatusUnauthorized || len(lines) != 1 {
+				t.Fatalf("%s %q: got %d, audit %q", path, hdr, rec.Code, out.String())
+			}
+			var e audit.Entry
+			if err := json.Unmarshal([]byte(lines[0]), &e); err != nil || e.Status != 401 || e.Endpoint != endpoint || e.Login != "" {
+				t.Fatalf("%s %q: audit line %s", path, hdr, lines[0])
+			}
+			if hdr != "" && strings.Contains(lines[0], expired) {
+				t.Fatalf("audit line leaks the token: %s", lines[0])
+			}
+		}
+	}
+}

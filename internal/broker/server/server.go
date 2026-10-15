@@ -56,17 +56,23 @@ func New(cfg Deps) http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.HandleFunc("POST /token", s.token)
+	// require audits a 401 under endpoint (FR-6.1).
+	require := func(endpoint func(*http.Request) string, h http.Handler) http.Handler {
+		return auth.RequireAudited(cfg.JWTKey, cfg.Audit, endpoint, h)
+	}
+	fixed := func(e string) func(*http.Request) string { return func(*http.Request) string { return e } }
 	if cfg.Query != nil {
-		mux.Handle("POST /query", auth.Require(cfg.JWTKey, cfg.Query))
+		mux.Handle("POST /query", require(fixed("/query"), cfg.Query))
 	}
 	if cfg.Redis != nil {
-		mux.Handle("POST /redis", auth.Require(cfg.JWTKey, cfg.Redis))
+		mux.Handle("POST /redis", require(fixed("/redis"), cfg.Redis))
 	}
 	if cfg.E2E != nil {
-		mux.Handle("POST /e2e/account", auth.Require(cfg.JWTKey, cfg.E2E))
+		mux.Handle("POST /e2e/account", require(fixed("/e2e/account"), cfg.E2E))
 	}
 	if len(cfg.MCP) > 0 {
-		mcp := auth.Require(cfg.JWTKey, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mcpEndpoint := func(r *http.Request) string { return "/mcp/" + r.PathValue("name") }
+		mcp := require(mcpEndpoint, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h, ok := cfg.MCP[r.PathValue("name")]
 			if !ok {
 				http.NotFound(w, r)
