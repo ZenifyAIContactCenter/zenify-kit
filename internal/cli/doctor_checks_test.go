@@ -385,3 +385,40 @@ func TestDoctor_SettingsEnv_MalformedWorktreeNamed(t *testing.T) {
 		t.Errorf("want both the leftover and the skipped worktree file named; ok=%v detail=%q", ok, detail)
 	}
 }
+
+// FR-12: the five legacy MYSQL_* names left the manifest but `up --apply`
+// still moves them, so doctor points at `up --apply`, not a manual fix.
+func TestDoctor_LeftoverSettingsEnv_LegacyMySQLMovable(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MYSQL_URL", Secret: true}}}
+	p := filepath.Join(ws, ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`{"env":{"MYSQL_PASSWORD":"fake-legacy-pw"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, "MYSQL_PASSWORD in "+p+" — run `zenify up --apply`") {
+		t.Fatalf("legacy key must be movable; ok=%v detail=%q", ok, detail)
+	}
+	if strings.Contains(detail, "fake-legacy-pw") {
+		t.Errorf("detail carries a value: %q", detail)
+	}
+}
+
+// FR-12: legacy MYSQL_* left in .zenify/.env are not "local keys without a
+// description"; doctor points at `up --apply` to merge them.
+func TestDoctor_EnvFileLegacyMySQL(t *testing.T) {
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MYSQL_URL", Secret: true}}}
+	p := writeEnv(t, "MYSQL_HOST=fake-host\nMYSQL_PASSWORD=fake-legacy-pw\n", 0o600)
+	ok, detail := envFileCheck(func() string { return p }, fixedManifest(m), "linux").Run()
+	want := "legacy MYSQL_* in .zenify/.env (MYSQL_HOST, MYSQL_PASSWORD) — run zenify up --apply to merge into MYSQL_URL"
+	if ok || !strings.Contains(detail, want) {
+		t.Fatalf("ok=%v detail=%q, want %q", ok, detail, want)
+	}
+	if strings.Contains(detail, "without a description") || strings.Contains(detail, "fake-") {
+		t.Errorf("detail = %q", detail)
+	}
+}

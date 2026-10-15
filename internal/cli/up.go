@@ -382,7 +382,25 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 	for _, p := range skipped {
 		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — file settings của worktree không đọc được, xử lý tay\n", p) //znf:allow-lang
 	}
-	res, err := apply.MigrateSettingsEnv(paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned)
+	migrateSettingsAndMerge(w, errW, paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned)
+	home, herr := os.UserHomeDir()
+	if herr != nil || home == "" {
+		_, _ = fmt.Fprintf(errW, "permissions: không thêm được luật deny .zenify/.env (home: %v)\n", herr) //znf:allow-lang
+		return
+	}
+	if n, err := apply.EnsureKitDeny(home, workspace, false); err != nil {
+		_, _ = fmt.Fprintf(errW, "permissions: không thêm được luật deny .zenify/.env (%v)\n", err) //znf:allow-lang
+	} else if n > 0 {
+		rule, _ := apply.KitDenyRule(workspace)
+		_, _ = fmt.Fprintf(w, "permissions: chặn agent đọc .zenify/.env (%s trong ~/.claude/settings.json)\n", rule) //znf:allow-lang
+	}
+}
+
+// migrateSettingsAndMerge moves manifest and legacy MYSQL_* keys out of the
+// settings files into envPath (FR-9), then joins the legacy keys there into
+// MYSQL_URL (FR-12.3). Prints key names only, never a value.
+func migrateSettingsAndMerge(w, errW io.Writer, paths, manifestKeys []string, envPath string, owned *managed.Manifest) {
+	res, err := apply.MigrateSettingsEnv(paths, apply.MigrationKeys(manifestKeys), envPath, owned)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "env: không chuyển được key sang .zenify/.env (%v)\n", err) //znf:allow-lang
 	}
@@ -398,16 +416,40 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 	for _, k := range res.Skipped {
 		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — giá trị không phải chuỗi một dòng, xử lý tay\n", k) //znf:allow-lang
 	}
-	home, herr := os.UserHomeDir()
-	if herr != nil || home == "" {
-		_, _ = fmt.Fprintf(errW, "permissions: không thêm được luật deny .zenify/.env (home: %v)\n", herr) //znf:allow-lang
-		return
+	if err != nil {
+		return // which keys conflict is unknown; merging could drop a value settings still holds
 	}
-	if n, err := apply.EnsureKitDeny(home, workspace, false); err != nil {
-		_, _ = fmt.Fprintf(errW, "permissions: không thêm được luật deny .zenify/.env (%v)\n", err) //znf:allow-lang
-	} else if n > 0 {
-		rule, _ := apply.KitDenyRule(workspace)
-		_, _ = fmt.Fprintf(w, "permissions: chặn agent đọc .zenify/.env (%s trong ~/.claude/settings.json)\n", rule) //znf:allow-lang
+	mergeMySQLURLStep(w, errW, envPath, append(append([]string{}, res.Conflicts...), res.Skipped...))
+}
+
+// mergeMySQLURLStep joins the legacy MYSQL_* keys of .zenify/.env into
+// MYSQL_URL (FR-12.3). held names keys the settings migration left in a
+// settings file; a legacy key among them blocks the merge, since deleting it
+// from .zenify/.env would leave only the conflicting settings value. Prints
+// key names only, never a value.
+func mergeMySQLURLStep(w, errW io.Writer, envPath string, held []string) {
+	for _, k := range held {
+		for _, l := range apply.LegacyMySQLKeys {
+			if k == l {
+				_, _ = fmt.Fprintln(w, "env: bỏ qua MYSQL_URL — MYSQL_* còn xung đột trong settings, xử lý tay") //znf:allow-lang
+				return
+			}
+		}
+	}
+	res, err := apply.MergeMySQLURL(envPath)
+	switch {
+	case err != nil:
+		_, _ = fmt.Fprintf(errW, "env: không ghép được MYSQL_* thành MYSQL_URL (%v)\n", err) //znf:allow-lang
+	case res.Merged:
+		_, _ = fmt.Fprintln(w, "env: ghép MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE thành MYSQL_URL") //znf:allow-lang
+	case res.Dropped:
+		_, _ = fmt.Fprintln(w, "env: xoá MYSQL_* cũ, MYSQL_URL đã có cùng giá trị") //znf:allow-lang
+	case res.Conflict:
+		_, _ = fmt.Fprintln(w, "env: bỏ qua MYSQL_URL — khác giá trị ghép từ MYSQL_*, xử lý tay") //znf:allow-lang
+	case res.Invalid:
+		_, _ = fmt.Fprintln(w, "env: bỏ qua MYSQL_URL — MYSQL_* không ghép được thành URL hợp lệ, xử lý tay") //znf:allow-lang
+	case len(res.Missing) > 0:
+		_, _ = fmt.Fprintf(w, "env: chưa ghép MYSQL_URL — thiếu %s, xử lý tay\n", strings.Join(res.Missing, ", ")) //znf:allow-lang
 	}
 }
 

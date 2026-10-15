@@ -11,24 +11,9 @@ secretKeys:
   - name: MONGO_URL
     description: "Chuỗi kết nối MongoDB cho zenify db-read"
     scope: shared
-  - name: MYSQL_HOST
-    description: "Host MySQL cho zenify db-read"
+  - name: MYSQL_URL
+    description: "URL MySQL cho zenify db-read (mysql://user:pass@host:port/database)"
     scope: shared
-    secret: false
-  - name: MYSQL_PORT
-    description: "Cổng MySQL cho zenify db-read"
-    scope: shared
-    secret: false
-  - name: MYSQL_USER
-    description: "Tài khoản MySQL cho zenify db-read"
-    scope: shared
-  - name: MYSQL_PASSWORD
-    description: "Mật khẩu MySQL cho zenify db-read"
-    scope: shared
-  - name: MYSQL_DATABASE
-    description: "Tên database MySQL cho zenify db-read"
-    scope: shared
-    secret: false
   - name: E2E_DOMAIN
     description: "Tên miền (tenant) đăng nhập cho zenify e2e login"
     scope: shared

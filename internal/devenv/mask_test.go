@@ -49,3 +49,19 @@ func TestMask_LongerFirst(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// A URL secret also masks its password, both decoded and percent-encoded.
+func TestMask_URLPassword(t *testing.T) {
+	got := maskRun(t, []string{"mysql://u:p%40ssw0rd@h/db"}, "a p@ssw0rd b p%40ssw0rd c\n")
+	if got != "a *** b *** c\n" {
+		t.Errorf("got %q", got)
+	}
+	// the raw form is taken as written, not as Go re-encodes it
+	if got := maskRun(t, []string{"mysql://u:p%21ssword@h/db"}, "p%21ssword p!ssword\n"); got != "*** ***\n" {
+		t.Errorf("got %q", got)
+	}
+	// the 6-character floor still applies to the extracted password
+	if got := maskRun(t, []string{"mysql://u:pw@h/db"}, "pw\n"); got != "pw\n" {
+		t.Errorf("short password masked: %q", got)
+	}
+}

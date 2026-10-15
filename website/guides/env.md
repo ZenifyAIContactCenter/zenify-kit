@@ -19,8 +19,7 @@ Manifest `manifest/repos.yaml` khai từng key gồm tên, mô tả, phạm vi (
 | Key | Dùng cho | Phạm vi |
 |---|---|---|
 | `MONGO_URL` | `zenify db-read` đọc MongoDB | shared |
-| `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE` | `zenify db-read sql` | shared, không phải secret |
-| `MYSQL_USER`, `MYSQL_PASSWORD` | `zenify db-read sql` | shared |
+| `MYSQL_URL` | `zenify db-read sql`, `zenify db-read tables` | shared |
 | `E2E_DOMAIN` | tenant đăng nhập của `zenify e2e login` | shared, không phải secret |
 | `E2E_EMAIL`, `E2E_PASSWORD` | tài khoản đăng nhập của `zenify e2e login` | personal |
 | `POSTHOG_API_KEY` | key PostHog của bạn | personal |
@@ -28,7 +27,15 @@ Manifest `manifest/repos.yaml` khai từng key gồm tên, mô tả, phạm vi (
 
 Bảng này chỉ mô tả kit dùng key để làm gì. Ai cấp key, địa chỉ cụ thể và cách lấy không thuộc về kit, hỏi trong team.
 
-Wizard `zenify up` chỉ hỏi các key toàn cục: `MONGO_URL`, `MYSQL_*`, `E2E_*`, `POSTHOG_API_KEY`. Key của một repo như `OPENROUTER_API_KEY` thêm sau, bằng `zenify env set`, `zenify env` hoặc sửa file.
+Wizard `zenify up` chỉ hỏi các key toàn cục: `MONGO_URL`, `MYSQL_URL`, `E2E_*`, `POSTHOG_API_KEY`. Key của một repo như `OPENROUTER_API_KEY` thêm sau, bằng `zenify env set`, `zenify env` hoặc sửa file.
+
+## `MYSQL_URL`
+
+`MYSQL_URL` gom kết nối MySQL vào một dòng, dạng `mysql://user:pass@host:port/database`. Thiếu `:port` thì dùng cổng 3306. User, host và database là bắt buộc; URL sai dạng làm `zenify db-read sql` báo lỗi nêu tên `MYSQL_URL` và dạng đúng, không in giá trị.
+
+Ký tự `@ : / # ? %` và dấu cách trong user hoặc mật khẩu phải percent-encode: `@` thành `%40`, `:` thành `%3A`, `/` thành `%2F`, `#` thành `%23`, `?` thành `%3F`, `%` thành `%25`, dấu cách thành `%20`. Ví dụ mật khẩu `p@ss` viết là `p%40ss`. `zenify db-read` giải mã trước khi gọi `mysql`, và mật khẩu chỉ đi qua biến `MYSQL_PWD` của tiến trình con, không nằm trên dòng lệnh. Nhập bằng `zenify env set MYSQL_URL` để giá trị không hiện trên màn hình.
+
+Bản kit trước dùng năm key `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`. `zenify up --apply` tự ghép chúng thành `MYSQL_URL`, xem [Chuyển từ khối `env` của settings](#chuyen-tu-khoi-env-cua-settings).
 
 ## Xem và nhập key
 
@@ -77,14 +84,23 @@ Lệnh con nhận env hiện có cộng key trong file, mà không cần export 
 - Hai file settings, hoặc settings và `.zenify/.env`, có giá trị khác nhau cho cùng một key: kit để nguyên mọi nơi và báo `env: bỏ qua <tên> — hai giá trị khác nhau, xử lý tay`. Bạn chọn giá trị đúng rồi tự xoá bản còn lại.
 - Giá trị không phải chuỗi, hoặc chuỗi có xuống dòng: kit để nguyên và báo `env: bỏ qua <tên> — giá trị không phải chuỗi một dòng, xử lý tay`.
 - File settings của một worktree không đọc được (JSON hỏng, hoặc `env` không phải object): kit bỏ qua file đó, báo `env: bỏ qua <đường dẫn> — file settings của worktree không đọc được, xử lý tay` và vẫn chuyển các file còn lại. File settings của workspace hoặc của repo hỏng thì migration dừng.
-- Chỉ key của manifest được chuyển; key khác trong khối `env` giữ nguyên.
+- Chỉ key của manifest được chuyển, cùng năm key MySQL cũ `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`; key khác trong khối `env` giữ nguyên.
 - Output chỉ in tên key, không in giá trị.
 
-`zenify doctor` có ba mục liên quan: `secrets` báo theo tên key toàn cục nào có giá trị, key nào trống; `settings-env` báo theo tên những key còn nằm trong settings, kèm hướng dẫn chạy `zenify up --apply` hoặc xử lý tay với key mà migration bỏ qua; `env-file` báo file có quyền rộng hơn 0600 (trừ trên Windows) và key `local` chưa có mô tả. `zenify down --apply` gỡ luật deny `.zenify/.env` của workspace đó khỏi `~/.claude/settings.json`, giữ nguyên luật bạn tự thêm và luật của workspace khác.
+Sau bước chuyển, `zenify up --apply` ghép năm key MySQL cũ trong `.zenify/.env` thành `MYSQL_URL`:
+
+- Có đủ `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` khác rỗng (`MYSQL_PORT` không bắt buộc) và chưa có `MYSQL_URL`: kit ghi `MYSQL_URL` với user và mật khẩu đã percent-encode, rồi xoá năm dòng cũ cùng dòng mô tả của chúng.
+- Đã có `MYSQL_URL` trùng với giá trị ghép: kit chỉ xoá năm dòng cũ.
+- Đã có `MYSQL_URL` khác giá trị ghép: kit giữ nguyên tất cả và báo `env: bỏ qua MYSQL_URL — khác giá trị ghép từ MYSQL_*, xử lý tay`. Bạn giữ giá trị đúng bằng `zenify env set MYSQL_URL`, rồi xoá năm dòng cũ bằng `zenify env edit`.
+- Thiếu một key bắt buộc: kit không ghép, giữ nguyên file và báo tên key thiếu.
+- Giá trị không ghép được thành URL hợp lệ, ví dụ `MYSQL_PORT` không phải số hoặc `MYSQL_HOST` có kèm cổng: kit giữ nguyên file và báo `env: bỏ qua MYSQL_URL — MYSQL_* không ghép được thành URL hợp lệ, xử lý tay`.
+- Một key `MYSQL_*` cũ còn bị giữ lại trong settings vì xung đột hoặc không phải chuỗi một dòng: kit không ghép, để bạn xử lý xung đột trước, và báo `env: bỏ qua MYSQL_URL — MYSQL_* còn xung đột trong settings, xử lý tay`.
+
+`zenify doctor` có ba mục liên quan: `secrets` báo theo tên key toàn cục nào có giá trị, key nào trống; `settings-env` báo theo tên những key còn nằm trong settings, kèm hướng dẫn chạy `zenify up --apply` hoặc xử lý tay với key mà migration bỏ qua; `env-file` báo file có quyền rộng hơn 0600 (trừ trên Windows), key `local` chưa có mô tả, và các key `MYSQL_*` cũ còn nằm trong `.zenify/.env` chưa được ghép thành `MYSQL_URL`. `zenify down --apply` gỡ luật deny `.zenify/.env` của workspace đó khỏi `~/.claude/settings.json`, giữ nguyên luật bạn tự thêm và luật của workspace khác.
 
 ## Khôi phục khi hạ bản kit
 
-Bản kit cũ đọc credential từ khối `env` của `settings.local.json`. Nếu hạ bản: chạy `zenify env edit`, chép tay các key cần dùng về khối `env` của `<workspace>/.claude/settings.local.json`.
+Bản kit cũ đọc credential từ khối `env` của `settings.local.json`. Nếu hạ bản: chạy `zenify env edit`, chép tay các key cần dùng về khối `env` của `<workspace>/.claude/settings.local.json`. Bản trước `v0.36.0` không đọc `MYSQL_URL`: tách nó lại thành năm key `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, với user và mật khẩu đã giải mã percent-encoding.
 
 ## Xem thêm
 
@@ -92,5 +108,5 @@ Bản kit cũ đọc credential từ khối `env` của `settings.local.json`. N
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - reference/cli/zenify_env*.md (generated)
-- manifest/repos.yaml (secretKeys), internal/cli/doctor_checks.go (env-file, settings-env), internal/cli/doctor_checks.go (secrets), internal/apply/permissions.go (deny rule), internal/devenv/mask.go (exec masking)
+- manifest/repos.yaml (secretKeys), internal/dbread/dbread.go (parseMySQLURL), internal/apply/mysqlurl.go (MergeMySQLURL), internal/cli/doctor_checks.go (env-file, settings-env), internal/cli/doctor_checks.go (secrets), internal/apply/permissions.go (deny rule), internal/devenv/mask.go (exec masking)
 -->

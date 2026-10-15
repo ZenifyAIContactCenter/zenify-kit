@@ -6,9 +6,9 @@
 // structured flags by BuildMongoScript, and SQL is allowlisted by CheckSQL
 // and run inside WrapSQL's READ ONLY transaction.
 //
-// FR-041: credentials ($MONGO_URL, $MYSQL_PASSWORD) are read into memory and
-// passed to child processes ONLY through the child env (ZNF_MONGO_URL,
-// MYSQL_PWD), never on argv. No code path in this package prints, logs, or
+// FR-041: credentials ($MONGO_URL, the password inside $MYSQL_URL) are read
+// into memory and passed to child processes ONLY through the child env
+// (ZNF_MONGO_URL, MYSQL_PWD), never on argv. No code path in this package prints, logs, or
 // echoes a connection string or password. Error diagnostics use the hardcoded
 // host 103.209.34.57 only, never the URL.
 package dbread
@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 
@@ -55,11 +56,11 @@ func (o *Options) SetRun(run func(name string, args []string, extraEnv []string,
 
 // LoadCreds resolves DB credentials: live env first, else the workspace
 // credential file <workspace>/.zenify/.env at envPath. Returns a map of the
-// six keys that were found (MONGO_URL, MYSQL_HOST/PORT/USER/PASSWORD/DATABASE).
+// keys that were found (MONGO_URL, MYSQL_URL).
 // Values are NEVER logged. A missing or unreadable file is not an error here —
 // the caller decides whether the resulting absence of MONGO_URL is fatal.
 func LoadCreds(getenv func(string) string, envPath string) (map[string]string, error) {
-	keys := []string{"MONGO_URL", "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"}
+	keys := []string{"MONGO_URL", "MYSQL_URL"}
 	var f *devenv.File
 	if envPath != "" {
 		f, _ = devenv.Load(envPath) // unreadable → treat as absent
@@ -72,6 +73,36 @@ func LoadCreds(getenv func(string) string, envPath string) (map[string]string, e
 		}
 	}
 	return out, nil
+}
+
+// mysqlConn is MYSQL_URL split into the mysql CLI's parameters.
+type mysqlConn struct {
+	host, port, user, password, database string
+}
+
+// mysqlURLShape is the shape named in every MYSQL_URL error; the value itself
+// is never echoed.
+const mysqlURLShape = "mysql://user:pass@host:port/database"
+
+// parseMySQLURL splits raw (FR-12.2). User and password come back
+// percent-decoded; a missing port is 3306. The returned error never contains
+// raw or any part of it — url.Parse's own error does, so it is dropped.
+func parseMySQLURL(raw string) (mysqlConn, error) {
+	bad := fmt.Errorf("zenify db-read: MYSQL_URL is not of the form %s", mysqlURLShape)
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "mysql" || u.Hostname() == "" || u.User == nil || u.User.Username() == "" {
+		return mysqlConn{}, bad
+	}
+	db := strings.TrimPrefix(u.Path, "/")
+	if db == "" || strings.Contains(db, "/") {
+		return mysqlConn{}, bad
+	}
+	c := mysqlConn{host: u.Hostname(), port: u.Port(), user: u.User.Username(), database: db}
+	c.password, _ = u.User.Password()
+	if c.port == "" {
+		c.port = "3306"
+	}
+	return c, nil
 }
 
 // filterLines keeps only the lines of out containing substr, case-insensitively.
@@ -331,25 +362,21 @@ func Run(o *Options) error {
 		return finish(cw, o.Stderr, limit)
 	}
 
-	host := creds["MYSQL_HOST"]
-	if host == "" {
-		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: $MYSQL_HOST is not set — same source as $MONGO_URL, see above.")
-		return fmt.Errorf("zenify db-read: MYSQL_HOST not set")
+	if creds["MYSQL_URL"] == "" {
+		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: $MYSQL_URL is not set — same source as $MONGO_URL: zenify env set MYSQL_URL")
+		return fmt.Errorf("zenify db-read: MYSQL_URL not set, want %s", mysqlURLShape)
 	}
-	port := creds["MYSQL_PORT"]
-	if port == "" {
-		port = "3306"
-	}
-	database := creds["MYSQL_DATABASE"]
-	if database == "" {
-		database = "db_acd"
+	conn, err := parseMySQLURL(creds["MYSQL_URL"])
+	if err != nil {
+		_, _ = fmt.Fprintln(o.Stderr, err.Error()+" (percent-encode @ : / # ? in user and password)")
+		return err
 	}
 	mysqlRun := func() error {
 		return o.run("mysql", []string{
 			"--binary-mode", "--quick", "--connect-timeout=10",
-			"-h", host, "-P", port, "-u", creds["MYSQL_USER"],
-			"-N", "-B", "-e", sqlStmt, database,
-		}, []string{"MYSQL_PWD=" + creds["MYSQL_PASSWORD"]}, "")
+			"-h", conn.host, "-P", conn.port, "-u", conn.user,
+			"-N", "-B", "-e", sqlStmt, conn.database,
+		}, []string{"MYSQL_PWD=" + conn.password}, "")
 	}
 
 	if o.Cmd == "tables" {
