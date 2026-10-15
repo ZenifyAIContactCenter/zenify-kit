@@ -75,7 +75,8 @@ enters the conversation.
    service label it returns; do not assume a label name. Then `query_loki_logs` with
    `{<service-label>="<svc>"} |= "error"` over the last 30 minutes.
 2. **One slow or failing request (Tempo).** Find candidates with `search_tempo_traces` using
-   TraceQL, e.g. `{resource.service.name="<svc>" && name="<route>" && duration > 3s}`, then fetch
+   TraceQL, e.g. `{ status = error }`; narrow it only with attribute names that
+   `list_tempo_attribute_names` returns, never assumed ones. Then fetch
    one with `get_tempo_trace` by trace id. A full trace is large (about 200 KB): save it to a file
    and aggregate with `jq`, never print it.
 3. **Latency by route (Prometheus).** `query_prometheus` on `traces_spanmetrics_latency_bucket`

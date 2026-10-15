@@ -27,15 +27,16 @@ tail -100 <latest-log-file> 2>/dev/null
 Also run the project's test suite with `pm` (`pm test`, `pm run build`), never an assumed `npm`; a
 verify command in the repo's CLAUDE.md wins.
 
-**A description:** a symptom to search for; still fetch logs. Production or staging symptom → pull
-evidence in this order: Loki, Tempo, `zenify db-read`/`redis-read`, PostHog — recipes:
-`references/feedback-loop.md`.
+**A description:** a symptom to search for; still fetch logs.
 
 **A GitHub Actions URL (`.../actions/runs/...`):**
 ```bash
 gh run view <run-id> --log 2>&1 | grep -A 20 "Error\|FAIL\|error:" | head -100
 # Or: gh run view --log-failed
 ```
+
+**Prod/staging symptom (any input):** pull evidence in order: Loki, Tempo,
+`zenify db-read`/`redis-read`, PostHog — recipes: `references/feedback-loop.md`.
 
 **Build the loop.** Step 0 ends with exactly one named command, already run (show invocation and
 output), red on the symptom the user described. Ladder and redaction:
