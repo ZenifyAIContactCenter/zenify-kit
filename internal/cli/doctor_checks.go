@@ -1,18 +1,26 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
@@ -30,6 +38,9 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 	return Check{
 		Name: "secrets",
 		Run: func() (bool, string) {
+			if brokerDeclared() {
+				return true, "credentials via broker"
+			}
 			path := envPath()
 			creds, _ := dbread.LoadCreds(getenv, path)
 			var f *devenv.File
@@ -61,6 +72,79 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 			return ok, detail
 		},
 	}
+}
+
+// brokerCheckTimeout bounds the whole broker check, both gh calls included.
+var brokerCheckTimeout = 30 * time.Second
+
+// brokerCheck verifies the three things a broker call needs, in order: a gh
+// login with read:org, a broker reachable within 5s (WARP is the usual cause
+// when it is not), and a fresh token exchange — never the cache, so org
+// membership is really re-checked. It prints the login the broker issued the
+// token to — never a token.
+func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokerclient.Client) Check {
+	return Check{
+		Name: "broker",
+		Run: func() (bool, string) {
+			dctx, dcancel := context.WithTimeout(context.Background(), brokerCheckTimeout)
+			defer dcancel()
+			type authResult struct {
+				auth ghx.Auth
+				err  error
+			}
+			ch := make(chan authResult, 1)
+			go func() { a, err := ghx.CheckAuth(gh); ch <- authResult{a, err} }()
+			var auth ghx.Auth
+			var err error
+			select {
+			case r := <-ch:
+				auth, err = r.auth, r.err
+			case <-dctx.Done():
+				return false, "gh auth status quá thời gian" //znf:allow-lang
+			}
+			if err != nil || !auth.LoggedIn {
+				return false, "gh chưa đăng nhập — chạy `gh auth login`" //znf:allow-lang
+			}
+			if !auth.HasScopes("read:org") {
+				return false, "gh thiếu scope read:org — chạy `gh auth refresh -s read:org`" //znf:allow-lang
+			}
+			ctx, cancel := context.WithTimeout(dctx, 5*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(url, "/")+"/healthz", nil)
+			if err != nil {
+				return false, "broker url không hợp lệ" //znf:allow-lang
+			}
+			resp, err := probe.Do(req) //nolint:gosec // G704 -- url comes from the kit manifest, https-only (manifest.Load)
+			if err != nil {
+				return false, "không tới được broker — bật Cloudflare WARP rồi chạy lại" //znf:allow-lang
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return false, fmt.Sprintf("broker /healthz trả %d", resp.StatusCode) //znf:allow-lang
+			}
+			_, login, err := client.Refresh(dctx)
+			if err != nil {
+				var ae *brokerclient.APIError
+				switch {
+				case errors.As(err, &ae) && ae.Code == api.CodeBrokerMisconfigured:
+					return false, "broker cấu hình sai, báo người quản trị broker: " + ae.Message //znf:allow-lang
+				case errors.As(err, &ae):
+					return false, fmt.Sprintf("broker từ chối token: %d %s: %s", ae.Status, ae.Code, ae.Message) //znf:allow-lang
+				}
+				return false, "không lấy được token từ broker" //znf:allow-lang
+			}
+			return true, "broker ok, login=" + login
+		},
+	}
+}
+
+// retiredBrokerKeys are the hand-written .zenify/.env keys the credential
+// broker replaces. When the trusted manifest declares a broker and no longer
+// declares them, they are reported as unused, never as a failure; without a
+// broker db-read still reads them, so they are ordinary custom keys.
+var retiredBrokerKeys = map[string]bool{
+	"MONGO_URL": true, "MYSQL_URL": true, "E2E_DOMAIN": true, "E2E_EMAIL": true, "E2E_PASSWORD": true,
+	"POSTHOG_API_KEY": true, "MONGO_URL_PRD": true, "MYSQL_URL_PRD": true, "AUDIT_MONGO_URL_PRD": true, "REDIS_URL_PRD": true,
 }
 
 // envFileCheck inspects <workspace>/.zenify/.env itself: a mode wider than 0600
@@ -96,9 +180,14 @@ func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest, 
 			for _, k := range apply.LegacyMySQLKeys {
 				known[k] = true
 			}
-			var undescribed, legacy []string
+			var undescribed, legacy, retired []string
+			viaBroker := brokerDeclared()
 			for _, k := range f.Keys() {
-				if !known[k] && f.Desc(k) == "" {
+				switch {
+				case known[k]:
+				case viaBroker && retiredBrokerKeys[k]:
+					retired = append(retired, k)
+				case f.Desc(k) == "":
 					undescribed = append(undescribed, k)
 				}
 			}
@@ -116,10 +205,14 @@ func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest, 
 			if len(problems) > 0 {
 				return false, strings.Join(problems, "; ")
 			}
+			detail := "mode 0600, custom keys described"
 			if goos == "windows" {
-				return true, "custom keys described"
+				detail = "custom keys described"
 			}
-			return true, "mode 0600, custom keys described"
+			if len(retired) > 0 {
+				detail += "; " + strings.Join(retired, ", ") + " không còn dùng, có thể xoá" //znf:allow-lang
+			}
+			return true, detail
 		},
 	}
 }
@@ -471,7 +564,7 @@ func registerDefaultChecks() {
 	RegisterCheck(secretPresenceCheck(os.Getenv, workspaceEnvPath, workspaceManifest))
 	RegisterCheck(envFileCheck(workspaceEnvPath, workspaceManifest, runtime.GOOS))
 	RegisterCheck(settingsEnvCheck(workspaceEnvPath, workspaceManifest))
-	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
+	RegisterCheck(dbToolsCheck())
 	RegisterCheck(playwrightCheck())
 	RegisterCheck(kitPermissionsCheck(os.UserHomeDir))
 	RegisterCheck(dockerCheck())
@@ -480,4 +573,36 @@ func registerDefaultChecks() {
 	RegisterCheck(pluginCheck())
 	registerCodexChecks()
 	registerContextChecks()
+}
+
+// brokerCheckOnce registers the broker check on the first doctor run, so the
+// embedded manifest is parsed only by commands that need it, not by every
+// zenify invocation.
+var brokerCheckOnce sync.Once
+
+// registerBrokerCheck adds the `broker` check only when the trusted manifest
+// (brokerManifest: embedded, never cwd) declares a broker.
+func registerBrokerCheck() {
+	m, err := brokerManifest("", "")
+	if err != nil {
+		return
+	}
+	c, ok := newBrokerClient(m)
+	if !ok {
+		return
+	}
+	RegisterCheck(brokerCheck(c.URL, currentGH{}, brokerclient.NewHTTPClient(5*time.Second), c))
+}
+
+// dbToolsCheck is the tools check: with a broker, db-read runs on the broker,
+// so mongosh and mysql are not required.
+func dbToolsCheck() Check {
+	local := toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"})
+	viaBroker := toolPresenceCheck([]string{"git", "gh"})
+	return Check{Name: local.Name, Run: func() (bool, string) {
+		if brokerDeclared() {
+			return viaBroker.Run()
+		}
+		return local.Run()
+	}}
 }

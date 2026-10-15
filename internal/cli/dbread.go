@@ -2,20 +2,29 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/spf13/cobra"
 )
 
 // dbReadTimeout bounds one mongosh/mysql child, on top of the server-side
 // query timeouts the builders set.
 const dbReadTimeout = 60 * time.Second
+
+// brokerCallTimeout bounds one db-read/redis-read broker call: the broker's own
+// query timeout plus room for gh and the token exchange.
+const brokerCallTimeout = dbReadTimeout + 15*time.Second
 
 var dbReadLong = strings.Join([]string{
 	"Đọc chỉ-đọc các database dùng chung của zenify. Không lệnh nào nhận code tự do.", //znf:allow-lang
@@ -36,7 +45,7 @@ var dbReadLong = strings.Join([]string{
 // newDBReadCmd builds `zenify db-read <collections|tables|doc|count|find|aggregate|explain|sql> [arg]`
 // — the portable port of ~/.local/bin/db_read (FR-033).
 func newDBReadCmd() *cobra.Command {
-	var filter, projection, sort, pipeline string
+	var filter, projection, sort, pipeline, manifestPath, overlayPath string
 	var limit int
 	var prd bool
 	cmd := &cobra.Command{
@@ -65,6 +74,13 @@ func newDBReadCmd() *cobra.Command {
 				Env:        os.Getenv,
 				EnvPath:    workspaceEnvPath(),
 			}
+			bc, ok, err := brokerFromFlags(manifestPath, overlayPath)
+			if err != nil {
+				return err // a missing or invalid manifest must not fall back to local credentials
+			}
+			if ok {
+				return runDBReadBroker(cmd, bc, o)
+			}
 			o.SetRun(func(name string, args []string, extraEnv []string, _ string) error {
 				stderr := o.Stderr
 				if prd { // a driver error can name the production URL or its hosts
@@ -83,8 +99,49 @@ func newDBReadCmd() *cobra.Command {
 	f.StringVar(&sort, "sort", "", "JSON object sort (find, explain)")
 	f.StringVar(&pipeline, "pipeline", "", "JSON array pipeline (aggregate, explain)")
 	f.IntVar(&limit, "limit", dbread.DefaultLimit, "max documents or rows, 1..200")
-	f.BoolVar(&prd, "prd", false, "read production: MONGO_URL_PRD / MYSQL_URL_PRD")
+	f.StringVar(&manifestPath, "manifest", "", brokerManifestUsage)
+	f.StringVar(&overlayPath, "overlay", "", brokerOverlayUsage)
+	f.BoolVar(&prd, "prd", false, "read production: via the broker; without one: MONGO_URL_PRD / MYSQL_URL_PRD")
 	return cmd
+}
+
+// runDBReadBroker validates o exactly as dbread.Run would, then sends it to
+// the broker and prints the reply. A 400 is a refused request (BadArgs).
+func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Options) error {
+	limit, err := dbread.Validate(o)
+	if err != nil {
+		return err
+	}
+	req := api.QueryRequest{Env: "stg", Engine: "mongo", Op: o.Cmd, Coll: o.Arg, Filter: o.Filter,
+		Projection: o.Projection, Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit}
+	if o.Prod {
+		req.Env = "prd"
+		_, _ = io.WriteString(o.Stderr, "zenify db-read: production (via broker)\n")
+	}
+	switch o.Cmd {
+	case "tables": // Coll carries the optional substring filter
+		req.Engine = "mysql"
+	case "sql":
+		req.Engine, req.Coll, req.SQL = "mysql", "", o.Arg
+	}
+	ctx, cancel := context.WithTimeout(cmd.Context(), brokerCallTimeout)
+	defer cancel()
+	var resp api.QueryResponse
+	if err := bc.Post(ctx, "/query", req, &resp); err != nil {
+		return brokerCallErr(err)
+	}
+	_, _ = io.WriteString(o.Stdout, resp.Stdout)
+	_, _ = io.WriteString(o.Stderr, resp.Stderr)
+	return nil
+}
+
+// brokerCallErr maps a broker 400 to BadArgs; anything else passes through.
+func brokerCallErr(err error) error {
+	var ae *brokerclient.APIError
+	if errors.As(err, &ae) && ae.Status == http.StatusBadRequest {
+		return exitcode.New(exitcode.BadArgs, err)
+	}
+	return err
 }
 
 // prodSecrets is every production DB URL db-read may use, plus its hosts.

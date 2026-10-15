@@ -223,3 +223,24 @@ func TestLogin_AcceptsLoopbackURL(t *testing.T) {
 		}
 	}
 }
+
+func TestStatePathRole(t *testing.T) {
+	home := "/h"
+	if got, want := StatePathRole(home, ""), filepath.Join(home, ".zenify", "playwright", "state.json"); got != want {
+		t.Errorf("no role = %q, want %q", got, want)
+	}
+	if got, want := StatePathRole(home, "agent"), filepath.Join(home, ".zenify", "playwright", "state-agent.json"); got != want {
+		t.Errorf("agent = %q, want %q", got, want)
+	}
+	if StatePath(home) != StatePathRole(home, "") {
+		t.Errorf("StatePath must equal StatePathRole(home, \"\")")
+	}
+}
+
+func TestLogin_RejectsUnknownRole(t *testing.T) {
+	_, err := Login(LoginOptions{Home: t.TempDir(), BaseURL: "http://localhost:1", Role: "../x",
+		Getenv: func(string) string { return "v" }})
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("want BadArgs, got %v", err)
+	}
+}

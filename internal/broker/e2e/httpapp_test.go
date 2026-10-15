@@ -1,0 +1,363 @@
+package e2e
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+const (
+	adminPW = "admin-secret-pw"
+	userPW  = "user-secret-pw"
+)
+
+// fakeUpstream plays hub (/auth/login) and be (/v2/...). Shapes follow be's
+// ok.js envelope and list-agents payload.
+type fakeUpstream struct {
+	adminToken  atomic.Value // string: the token be currently accepts
+	adminLogins int32
+	got         map[string]map[string]any // path -> last JSON body
+	gotAuth     map[string]string
+	gotQuery    string
+	carolPW     string // the only password hub accepts for carol
+	changeHits  int32
+	resetHits   int32
+	// hubStatus/hubMsg, when set, answer every non-admin hub login.
+	hubStatus int
+	hubMsg    string
+}
+
+// hubError writes hub's AllExceptionsFilter body.
+func hubError(w http.ResponseWriter, status int, msg string) {
+	w.WriteHeader(status)
+	b, _ := json.Marshal(map[string]any{"status_code": status, "error_code": http.StatusText(status), "message": msg,
+		"path": "/auth/login", "timestamp": "2026-10-15T00:00:00.000Z"})
+	_, _ = w.Write(b)
+}
+
+// hub's two credential messages (auth.service.ts): wrong password, user missing.
+const (
+	hubBadPassword = "Mật khẩu không chính xác"       //znf:allow-lang (hub reply text)
+	hubNoUser      = "Thông tin đăng nhập không đúng" //znf:allow-lang (hub reply text)
+)
+
+const carolEmail = "e2e-carol-agent@e2e.test"
+
+func newUpstream(t *testing.T) (*fakeUpstream, *HTTPApp) {
+	t.Helper()
+	f := &fakeUpstream{got: map[string]map[string]any{}, gotAuth: map[string]string{}}
+	f.adminToken.Store("admin-jwt-1")
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /auth/login", func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		f.got[r.URL.Path] = b
+		if f.hubStatus != 0 && b["email"] != "admin@zenify.test" {
+			hubError(w, f.hubStatus, f.hubMsg)
+			return
+		}
+		switch b["email"] {
+		case "admin@zenify.test":
+			if b["password"] != adminPW {
+				hubError(w, 401, hubBadPassword)
+				return
+			}
+			atomic.AddInt32(&f.adminLogins, 1)
+			_, _ = io.WriteString(w, `{"token":"`+f.adminToken.Load().(string)+`"}`)
+		case "top@e2e.test":
+			if b["password"] != userPW {
+				hubError(w, 401, hubBadPassword)
+				return
+			}
+			_, _ = io.WriteString(w, `{"token":"top-jwt"}`)
+		case "nested@e2e.test":
+			_, _ = io.WriteString(w, `{"data":{"token":"nested-jwt"}}`)
+		case "mfa@e2e.test": // measured hub shape for a 2FA account
+			_, _ = io.WriteString(w, `{"data":{"mfa_required":true,"mfa_token":"secret-mfa-tok","methods":["totp"],"default_method":"totp"}}`)
+		case "mfa2@e2e.test":
+			_, _ = io.WriteString(w, `{"mfa_required":true,"mfa_token":"secret-mfa-tok","methods":["totp"],"default_method":"totp"}`)
+		case "echo@e2e.test": // a message that echoes the password must not leak it
+			hubError(w, 401, "bad credentials for "+userPW)
+		case carolEmail:
+			if b["password"] != f.carolPW {
+				hubError(w, 401, hubNoUser)
+				return
+			}
+			_, _ = io.WriteString(w, `{"data":{"token":"changefail-jwt"}}`)
+		default:
+			w.WriteHeader(503)
+		}
+	})
+	admin := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			f.gotAuth[r.URL.Path] = r.Header.Get("Authorization")
+			// be's checkPermission jwt.verify()s the raw header: a "Bearer " prefix fails.
+			if r.Header.Get("Authorization") != f.adminToken.Load().(string) {
+				w.WriteHeader(401)
+				return
+			}
+			var b map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&b)
+			f.got[r.URL.Path] = b
+			h(w, r)
+		}
+	}
+	mux.HandleFunc("GET /v2/admin/settings/t1/list-agents", admin(func(w http.ResponseWriter, r *http.Request) {
+		f.gotQuery = r.URL.RawQuery
+		_, _ = io.WriteString(w, `{"error":false,"status":200,"data":{"list":[
+			{"_id":"652f00000000000000000001","email":"e2e-alice-agent2@e2e.test"},
+			{"_id":"652f00000000000000000002","email":"E2E-Alice-Agent@e2e.test"},
+			{"_id":"652f00000000000000000003","email":"e2e-alicexagent@e2e.test"}
+		],"total":3,"total_available":3},"meta":{},"message":"ok"}`)
+	}))
+	mux.HandleFunc("POST /v2/admin/settings/t1/create-user", admin(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"error":false,"status":200,"data":{"_id":"652f0000000000000000abcd","email":"x"},"message":"ok"}`)
+	}))
+	mux.HandleFunc("POST /v2/admin/settings/t1/reset-password/{id}", admin(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&f.resetHits, 1)
+		if r.PathValue("id") == "boom" {
+			w.WriteHeader(500)
+			return
+		}
+		_, _ = io.WriteString(w, `{"error":false,"status":200,"data":{}}`)
+	}))
+	mux.HandleFunc("POST /v2/change-password", func(w http.ResponseWriter, r *http.Request) {
+		f.gotAuth[r.URL.Path] = r.Header.Get("Authorization")
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		f.got[r.URL.Path] = b
+		atomic.AddInt32(&f.changeHits, 1)
+		switch tok := r.Header.Get("Authorization"); {
+		case strings.HasPrefix(tok, "Bearer "):
+			w.WriteHeader(401)
+		case tok == "changefail-jwt": // be answers some failures as HTTP 200 with error:true
+			_, _ = io.WriteString(w, `{"error":true,"status":400,"message":"invalid password"}`)
+		default:
+			_, _ = io.WriteString(w, `{"error":false,"status":200,"data":{}}`)
+		}
+	})
+	// Without x-app-version: 2.0, be answers errors as HTTP 200 {"error":true}.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-app-version") != "2.0" {
+			_, _ = io.WriteString(w, `{"error":true,"status":400,"message":"legacy client","token":"legacy-tok","data":{"token":"legacy-tok","list":[]}}`)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
+	t.Cleanup(ts.Close)
+	return f, &HTTPApp{HubURL: ts.URL, BEURL: ts.URL, Domain: "zenifytest", TenantID: "t1", GroupID: "g1",
+		AdminEmail: "admin@zenify.test", AdminPassword: adminPW}
+}
+
+func TestHTTPApp_Login(t *testing.T) {
+	f, a := newUpstream(t)
+	ctx := context.Background()
+	if tok, err := a.Login(ctx, "top@e2e.test", userPW); err != nil || tok != "top-jwt" {
+		t.Fatalf("top-level token: %q %v", tok, err)
+	}
+	b := f.got["/auth/login"]
+	if b["domain"] != "zenifytest" || b["device_type"] != "web" || b["device_id"] != "zenify-broker" || b["email"] != "top@e2e.test" {
+		t.Fatalf("login body %v", b)
+	}
+	if tok, err := a.Login(ctx, "nested@e2e.test", "x"); err != nil || tok != "nested-jwt" {
+		t.Fatalf("data.token: %q %v", tok, err)
+	}
+	if _, err := a.Login(ctx, "top@e2e.test", "wrong"); !errors.Is(err, ErrBadPassword) {
+		t.Fatalf("401 wrong password want ErrBadPassword, got %v", err)
+	}
+	if _, err := a.Login(ctx, "echo@e2e.test", userPW); err == nil || errors.Is(err, ErrBadPassword) ||
+		!strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), userPW) {
+		t.Fatalf("401 other message: want plain error without the password, got %v", err)
+	}
+	_, err := a.Login(ctx, "down@e2e.test", userPW)
+	if err == nil || errors.Is(err, ErrBadPassword) || !strings.Contains(err.Error(), "503") {
+		t.Fatalf("503 want plain error with status, got %v", err)
+	}
+	if strings.Contains(err.Error(), userPW) {
+		t.Fatal("error leaks the password")
+	}
+}
+
+func TestHTTPApp_FindUserExactCaseInsensitive(t *testing.T) {
+	f, a := newUpstream(t)
+	id, found, err := a.FindUser(context.Background(), "e2e-alice-agent@e2e.test")
+	if err != nil || !found || id != "652f00000000000000000002" {
+		t.Fatalf("got %q %v %v", id, found, err)
+	}
+	if f.gotQuery != "limit=10&search=e2e-alice-agent%40e2e.test" {
+		t.Fatalf("query %q", f.gotQuery)
+	}
+	if f.gotAuth["/v2/admin/settings/t1/list-agents"] != "admin-jwt-1" {
+		t.Fatalf("auth %q", f.gotAuth)
+	}
+	if _, found, err := a.FindUser(context.Background(), "e2e-bob-agent@e2e.test"); err != nil || found {
+		t.Fatalf("no exact match must be not found: %v %v", found, err)
+	}
+}
+
+func TestHTTPApp_CreateResetChange(t *testing.T) {
+	f, a := newUpstream(t)
+	ctx := context.Background()
+	id, err := a.CreateUser(ctx, "E2E alice agent", "e2e-alice-agent@e2e.test", "agent")
+	if err != nil || id != "652f0000000000000000abcd" {
+		t.Fatalf("create %q %v", id, err)
+	}
+	cb := f.got["/v2/admin/settings/t1/create-user"]
+	if cb["name"] != "E2E alice agent" || cb["email"] != "e2e-alice-agent@e2e.test" || cb["role"] != "agent" || cb["group_id"] != "g1" {
+		t.Fatalf("create body %v", cb)
+	}
+	if err := a.ResetPassword(ctx, id, userPW); err != nil {
+		t.Fatal(err)
+	}
+	if rb := f.got["/v2/admin/settings/t1/reset-password/"+id]; rb["password"] != userPW {
+		t.Fatalf("reset body %v", rb)
+	}
+	err = a.ResetPassword(ctx, "boom", userPW)
+	if err == nil || !strings.Contains(err.Error(), "500") || strings.Contains(err.Error(), userPW) {
+		t.Fatalf("reset failure %v", err)
+	}
+	if err := a.ChangePassword(ctx, "user-jwt", "old-pw", "new-pw"); err != nil {
+		t.Fatal(err)
+	}
+	if b := f.got["/v2/change-password"]; b["password"] != "old-pw" || b["new_password"] != "new-pw" || b["c_password"] != "new-pw" {
+		t.Fatalf("change body %v", b)
+	}
+	if f.gotAuth["/v2/change-password"] != "user-jwt" {
+		t.Fatalf("change auth %q", f.gotAuth["/v2/change-password"])
+	}
+}
+
+func TestHTTPApp_AdminTokenCachedAndRefreshedOn401(t *testing.T) {
+	f, a := newUpstream(t)
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if _, _, err := a.FindUser(ctx, "x@e2e.test"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := atomic.LoadInt32(&f.adminLogins); n != 1 {
+		t.Fatalf("admin logged in %d times, want 1 (cached)", n)
+	}
+	f.adminToken.Store("admin-jwt-2") // the cached token now gets 401
+	if _, _, err := a.FindUser(ctx, "x@e2e.test"); err != nil {
+		t.Fatal(err)
+	}
+	if n := atomic.LoadInt32(&f.adminLogins); n != 2 {
+		t.Fatalf("admin logged in %d times, want 2 (one refresh)", n)
+	}
+}
+
+func TestHTTPApp_AdminBadPasswordNoLeak(t *testing.T) {
+	_, a := newUpstream(t)
+	a.AdminPassword = "wrong-admin-pw"
+	_, _, err := a.FindUser(context.Background(), "x@e2e.test")
+	if err == nil || strings.Contains(err.Error(), "wrong-admin-pw") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestHTTPApp_MFARequired(t *testing.T) {
+	_, a := newUpstream(t)
+	for _, email := range []string{"mfa@e2e.test", "mfa2@e2e.test"} {
+		tok, err := a.Login(context.Background(), email, userPW)
+		if !errors.Is(err, ErrMFARequired) || errors.Is(err, ErrBadPassword) || tok != "" {
+			t.Fatalf("%s: got %q %v", email, tok, err)
+		}
+		if !strings.Contains(err.Error(), "MFA") || strings.Contains(err.Error(), "secret-mfa-tok") {
+			t.Fatalf("%s: error %q", email, err)
+		}
+	}
+}
+
+func TestHTTPApp_EmptyDomainRefused(t *testing.T) {
+	f, a := newUpstream(t)
+	a.Domain = ""
+	if _, err := a.Login(context.Background(), "top@e2e.test", userPW); err == nil {
+		t.Fatal("want error")
+	}
+	if f.got["/auth/login"] != nil {
+		t.Fatal("hub was called with an empty domain")
+	}
+}
+
+func TestEnsure_ChangePasswordErrorTrueNotCached(t *testing.T) {
+	f, a := newUpstream(t)
+	p := newProvisioner(a)
+	f.carolPW = Password([]byte("testkey"), "carol", "agent", 229) // P(period-1)
+	now := testNow
+	p.Now = func() time.Time { return now }
+	for i := 1; i <= 2; i++ {
+		now = now.Add(11 * time.Minute) // past the failure cache
+		if _, err := p.Ensure(context.Background(), "carol", "agent"); err == nil {
+			t.Fatalf("call %d: HTTP 200 {error:true} on change-password must fail Ensure", i)
+		}
+		if n := atomic.LoadInt32(&f.changeHits); n != int32(i) {
+			t.Fatalf("call %d: change-password hits %d (a failure must not be cached)", i, n)
+		}
+	}
+}
+
+func TestHTTPApp_LoginClassification(t *testing.T) {
+	cases := []struct {
+		name      string
+		status    int
+		msg       string
+		badPW     bool // ErrBadPassword: provisioning moves on
+		locked    bool
+		wantInErr string
+	}{
+		{"wrong password", 401, hubBadPassword, true, false, ""},
+		{"user missing", 401, hubNoUser, true, false, ""},
+		{"domain missing", 401, "Domain không tồn tại", false, false, "Domain không tồn tại"},                        //znf:allow-lang (hub reply text)
+		{"inactive user", 401, "Tài khoản của bạn chưa được kích hoạt hoặc đã bị vô hiệu hóa!", false, false, "401"}, //znf:allow-lang (hub reply text)
+		{"validation", 400, "Email không hợp lệ", false, false, "status 400: Email không hợp lệ"},                    //znf:allow-lang (hub reply text)
+		{"locked out", 429, "Too many attempts", false, true, "429"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, a := newUpstream(t)
+			f.hubStatus, f.hubMsg = c.status, c.msg
+			_, err := a.Login(context.Background(), "x@e2e.test", userPW)
+			if errors.Is(err, ErrBadPassword) != c.badPW || errors.Is(err, ErrHubLocked) != c.locked {
+				t.Fatalf("got %v", err)
+			}
+			if !c.badPW && !strings.Contains(err.Error(), c.wantInErr) {
+				t.Fatalf("error %q lacks %q", err, c.wantInErr)
+			}
+		})
+	}
+}
+
+// Only hub's two credential messages lead to a reset; other refusals stop.
+func TestEnsure_HubRefusalsDoNotReset(t *testing.T) {
+	for _, c := range []struct {
+		status    int
+		msg       string
+		wantReset bool
+	}{
+		{400, "Email không hợp lệ", false},   //znf:allow-lang (hub reply text)
+		{401, "Domain không tồn tại", false}, //znf:allow-lang (hub reply text)
+		{429, "Too many attempts", false},
+		{401, hubBadPassword, true},
+	} {
+		f, a := newUpstream(t)
+		f.hubStatus, f.hubMsg = c.status, c.msg
+		_, err := newProvisioner(a).Ensure(context.Background(), "dave", "agent")
+		if err == nil {
+			t.Fatalf("%d %s: want error (the fake never accepts a login)", c.status, c.msg)
+		}
+		if got := atomic.LoadInt32(&f.resetHits) > 0; got != c.wantReset {
+			t.Fatalf("%d %s: reset=%v want %v (%v)", c.status, c.msg, got, c.wantReset, err)
+		}
+		if c.status == 429 && !errors.Is(err, ErrHubLocked) {
+			t.Fatalf("429: want ErrHubLocked, got %v", err)
+		}
+	}
+}

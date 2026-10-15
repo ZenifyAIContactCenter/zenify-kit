@@ -32,6 +32,9 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | Lệnh | Mô tả |
 |---|---|
 | [zenify analyze](./zenify_analyze) | Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief. |
+| [zenify broker](./zenify_broker) | Nhóm lệnh làm việc với credential broker của zenify. |
+| [zenify broker headers](./zenify_broker_headers) | In header Authorization cho MCP http của Claude Code, dưới dạng một object JSON. |
+| [zenify broker token](./zenify_broker_token) | In JWT của credential broker ra stdout, dùng cache và tự xin lại khi còn dưới 60 giây. |
 | [zenify config](./zenify_config) | Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều. |
 | [zenify cost](./zenify_cost) | Cho biết token Claude Code đi đâu: context mỗi turn, phần subagent, model, skill và dấu hiệu lãng phí, đọc từ transcript local. |
 | [zenify db-perf](./zenify_db-perf) | Quét tĩnh một diff để tìm anti-pattern query DB, chia finding thành BLOCKING và ADVISORY. |
@@ -62,6 +65,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify observe report](./zenify_observe_report) | Tóm tắt số lần dispatch subagent và lượng tool output của từng phiên Claude Code. |
 | [zenify observe statusline](./zenify_observe_statusline) | Vẽ một dòng statusline cho Claude Code với model, ngữ cảnh, số dispatch, tool output và chi phí. |
 | [zenify observe statusline install](./zenify_observe_statusline_install) | Ghi key `statusLine` trỏ tới `zenify observe statusline` vào `~/.claude/settings.json`. |
+| [zenify redis-read](./zenify_redis-read) | Chạy một lệnh Redis chỉ đọc qua credential broker. |
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
 | [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace. |
 | [zenify reviewer](./zenify_reviewer) | In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent. |

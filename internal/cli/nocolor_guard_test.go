@@ -10,6 +10,10 @@ import (
 // and asserts stdout carries no ANSI. Grow `cmds` as migration clusters land.
 func TestNoColorGuard_NoEscapesInStdout(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
+	// doctor runs through the root: keep gh logged out so no check goes to the network
+	useGH(t, staticGHRunner{""})
+	fakeClaudeNoMCP(t) // the playwright check asks claude; never the real one
+	t.Chdir(t.TempDir()) // doctor resolves no workspace from cwd
 	cmds := [][]string{
 		{"doctor"},
 		{"version"},

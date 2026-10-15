@@ -40,7 +40,10 @@ type Options struct {
 	Sort       string
 	Pipeline   string
 	Limit      int
-	Prod       bool // read production: MONGO_URL_PRD / MYSQL_URL_PRD
+	Prod       bool   // read production: MONGO_URL_PRD / MYSQL_URL_PRD
+	MongoDB    string // Mongo database; empty = 3csoft
+	Truncated  bool   // set by Run: output was cut at the line or byte cap
+	Rows       int    // set by Run: stdout lines written, for every op (Mongo: pretty-printed JSON lines, not documents)
 	Stdout     io.Writer
 	Stderr     io.Writer
 	Env        func(string) string
@@ -156,6 +159,7 @@ type capWriter struct {
 	pending   []byte
 	lineCut   bool
 	byteCut   bool
+	rows      int
 }
 
 func newCapWriter(w io.Writer, limit, maxBytes int) *capWriter {
@@ -198,6 +202,7 @@ func (c *capWriter) Write(p []byte) (int, error) {
 			return n - len(p), err
 		}
 		c.bytesLeft -= len(line)
+		c.rows++
 		if c.left > 0 {
 			c.left--
 		}
@@ -222,9 +227,32 @@ func (c *capWriter) Truncated() bool { return c.lineCut || c.byteCut }
 // BytesCut reports whether the byte cap, not the line cap, cut the output.
 func (c *capWriter) BytesCut() bool { return c.byteCut }
 
+// noticeWriter passes every byte through to w unchanged and sets *hit once
+// needle has been written, even when it is split across Write calls.
+type noticeWriter struct {
+	w      io.Writer
+	needle string
+	tail   string
+	hit    *bool
+}
+
+func (n *noticeWriter) Write(p []byte) (int, error) {
+	buf := n.tail + string(p)
+	if strings.Contains(buf, n.needle) {
+		*n.hit = true
+	}
+	if k := len(n.needle) - 1; len(buf) > k {
+		buf = buf[len(buf)-k:]
+	}
+	n.tail = buf
+	return n.w.Write(p)
+}
+
 // finish flushes cw and, when it was cut, prints the matching notice. A cut
 // is a success.
-func finish(cw *capWriter, stderr io.Writer, limit int) error {
+func finish(o *Options, cw *capWriter, limit int) error {
+	o.Rows, o.Truncated = cw.rows, o.Truncated || cw.Truncated()
+	stderr := o.Stderr
 	if !cw.Truncated() {
 		return cw.Flush()
 	}
@@ -262,6 +290,11 @@ func badArgs(msg string) error {
 	return exitcode.New(exitcode.BadArgs, errors.New("zenify db-read: "+msg))
 }
 
+// IsBadArgs reports whether err came from a refused request (badArgs).
+func IsBadArgs(err error) bool {
+	return err != nil && exitcode.Code(err) == exitcode.BadArgs
+}
+
 func printUsage(w io.Writer) {
 	for _, l := range []string{
 		"Usage:",
@@ -280,64 +313,81 @@ func printUsage(w io.Writer) {
 	}
 }
 
-// Run dispatches one db_read subcommand. It validates every argument and
-// builds the query BEFORE resolving credentials, so a bad request never
-// reaches a database. Output goes to o.Stdout via the injected run seam —
-// Run itself never returns secret values in an error string.
-func Run(o *Options) error {
+// Validate runs every check Run does before it touches credentials, so a
+// caller that sends the request elsewhere (the broker) refuses what Run would.
+// It returns the effective limit (o.Limit, or DefaultLimit when zero).
+func Validate(o *Options) (limit int, err error) {
+	limit, _, _, err = validate(o)
+	return limit, err
+}
+
+// validate checks o and builds the query: the effective limit, the mongo
+// script (empty for SQL commands) and the SQL statement.
+func validate(o *Options) (limit int, script, sqlStmt string, err error) {
 	switch o.Cmd {
 	case "collections", "tables", "doc", "count", "find", "aggregate", "explain", "sql":
 	case "eval":
-		return badArgs("db-read eval đã bị gỡ — dùng find/aggregate/count/explain") //znf:allow-lang
+		return 0, "", "", badArgs("db-read eval đã bị gỡ — dùng find/aggregate/count/explain") //znf:allow-lang
 	default:
 		printUsage(o.Stderr)
-		return badArgs(fmt.Sprintf("unknown subcommand %q", o.Cmd))
+		return 0, "", "", badArgs(fmt.Sprintf("unknown subcommand %q", o.Cmd))
 	}
 	if msg, ok := argRequired[o.Cmd]; ok && strings.TrimSpace(o.Arg) == "" {
-		return badArgs(msg)
+		return 0, "", "", badArgs(msg)
 	}
-	limit := o.Limit
+	limit = o.Limit
 	if limit == 0 {
 		limit = DefaultLimit
 	}
 	if limit < 0 || limit > MaxLimit {
-		return badArgs(fmt.Sprintf("--limit phải trong khoảng 1..%d", MaxLimit)) //znf:allow-lang
+		return 0, "", "", badArgs(fmt.Sprintf("--limit phải trong khoảng 1..%d", MaxLimit)) //znf:allow-lang
 	}
 	if o.Cmd == "aggregate" && strings.TrimSpace(o.Pipeline) == "" {
-		return badArgs("aggregate cần --pipeline '[...]'") //znf:allow-lang
+		return 0, "", "", badArgs("aggregate cần --pipeline '[...]'") //znf:allow-lang
 	}
 	flagVal := map[string]string{"--filter": o.Filter, "--projection": o.Projection, "--sort": o.Sort, "--pipeline": o.Pipeline}
 	for _, f := range unusedFlags[o.Cmd] {
 		if strings.TrimSpace(flagVal[f]) != "" {
-			return badArgs(fmt.Sprintf("%s không dùng cho %s", f, o.Cmd)) //znf:allow-lang
+			return 0, "", "", badArgs(fmt.Sprintf("%s không dùng cho %s", f, o.Cmd)) //znf:allow-lang
 		}
 	}
 	hasPipeline := strings.TrimSpace(o.Pipeline) != ""
 	hasFind := strings.TrimSpace(o.Filter+o.Projection+o.Sort) != ""
 	if hasPipeline && (hasFind || o.Cmd == "find" || o.Cmd == "count") {
-		return badArgs("--pipeline không đi cùng --filter/--projection/--sort, và chỉ dùng cho aggregate/explain") //znf:allow-lang
+		return 0, "", "", badArgs("--pipeline không đi cùng --filter/--projection/--sort, và chỉ dùng cho aggregate/explain") //znf:allow-lang
 	}
 
-	var script, sqlStmt string
 	switch o.Cmd {
 	case "tables":
 		sqlStmt = WrapSQLNoLimit("SHOW TABLES")
 	case "sql":
-		if err := CheckSQL(o.Arg); err != nil {
-			return badArgs(err.Error())
+		if err = CheckSQL(o.Arg); err != nil {
+			return 0, "", "", badArgs(err.Error())
 		}
 		sqlStmt = WrapSQL(o.Arg, limit)
 	default:
-		var err error
 		script, err = BuildMongoScript(MongoQuery{
 			Op: o.Cmd, Coll: o.Arg, Filter: o.Filter, Projection: o.Projection,
-			Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit,
+			Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit, DB: o.MongoDB,
 		})
 		if err != nil {
-			return badArgs(err.Error())
+			return 0, "", "", badArgs(err.Error())
 		}
 	}
 
+	return limit, script, sqlStmt, nil
+}
+
+// Run dispatches one db_read subcommand. It validates every argument and
+// builds the query BEFORE resolving credentials, so a bad request never
+// reaches a database. Output goes to o.Stdout via the injected run seam —
+// Run itself never returns secret values in an error string.
+func Run(o *Options) error {
+	o.Rows, o.Truncated = 0, false
+	limit, script, sqlStmt, err := validate(o)
+	if err != nil {
+		return err
+	}
 	if o.Env == nil {
 		o.Env = os.Getenv
 	}
@@ -364,8 +414,14 @@ func Run(o *Options) error {
 		// Mongo caps rows in the script (--limit); here only bytes are capped.
 		cw := newCapWriter(stdout, -1, MaxOutputBytes)
 		o.Stdout = cw
+		// The script cuts rows itself and reports it on stderr; watch for it.
+		realStderr := o.Stderr
+		o.Stderr = &noticeWriter{w: realStderr, needle: fmt.Sprintf(truncNotice, limit, MaxLimit), hit: &o.Truncated}
 		err := o.run("mongosh", []string{"--nodb", "--quiet", "--eval", script}, []string{MongoURLEnv + "=" + mongoURL}, "")
-		if err != nil && !cw.Truncated() {
+		o.Stderr = realStderr
+		// A cut is a success whether the byte cap or the script's own row
+		// cut (its stderr notice, o.Truncated) produced it.
+		if err != nil && !cw.Truncated() && !o.Truncated {
 			if o.Prod {
 				_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: kiểm lại %s trong .zenify/.env\n", mk) //znf:allow-lang
 				return err
@@ -376,7 +432,7 @@ func Run(o *Options) error {
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port shut  -> network. This host is reachable directly, no VPN.")
 			return err
 		}
-		return finish(cw, o.Stderr, limit)
+		return finish(o, cw, limit)
 	}
 
 	if creds[sk] == "" {
@@ -406,7 +462,7 @@ func Run(o *Options) error {
 		}
 		cw := newCapWriter(stdout, -1, MaxOutputBytes)
 		_, _ = io.WriteString(cw, filterLines(buf.String(), o.Arg))
-		return finish(cw, o.Stderr, limit)
+		return finish(o, cw, limit)
 	}
 	cw := newCapWriter(stdout, limit, MaxOutputBytes)
 	o.Stdout = cw
@@ -415,5 +471,5 @@ func Run(o *Options) error {
 	if err := mysqlRun(); err != nil && !cw.Truncated() {
 		return err
 	}
-	return finish(cw, o.Stderr, limit)
+	return finish(o, cw, limit)
 }

@@ -95,6 +95,8 @@ export default withMermaid({
         { text: 'Onboard workspace và repo', link: '/guides/onboard-workspace' },
         { text: 'Đọc dữ liệu thật', link: '/guides/read-real-data' },
         { text: 'Credential dev (zenify env)', link: '/guides/env' },
+        { text: 'Dùng credential broker', link: '/guides/broker-client' },
+        { text: 'Dựng host credential broker', link: '/guides/broker-host' },
         { text: 'Review và gate', link: '/guides/review-and-gates' },
         { text: 'Spec, plan và kiểm tra', link: '/guides/spec-and-plan' },
         { text: 'Release và báo cáo', link: '/guides/release' },

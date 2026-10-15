@@ -4,6 +4,7 @@ package manifest
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -119,6 +120,12 @@ type Manifest struct {
 	Org        string      `yaml:"org"`
 	Repos      []Repo      `yaml:"repos"`
 	SecretKeys []SecretKey `yaml:"secretKeys"` // env keys kept in <workspace>/.zenify/.env; names only, values never distributed
+	Broker     *Broker     `yaml:"broker"`     // credential broker; nil = every command keeps its pre-broker behaviour
+}
+
+// Broker locates the credential broker.
+type Broker struct {
+	URL string `yaml:"url"` // must be https://
 }
 
 // Load parses a manifest YAML file. A missing file, empty org, or empty repo
@@ -146,6 +153,12 @@ func Parse(b []byte, label string) (*Manifest, error) {
 	}
 	if err := validateGroups(&m, label); err != nil {
 		return nil, err
+	}
+	if m.Broker != nil {
+		u, err := url.Parse(m.Broker.URL)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+			return nil, fmt.Errorf("manifest %s: broker.url phải là https://host, không query/fragment", label) //znf:allow-lang
+		}
 	}
 	return &m, nil
 }

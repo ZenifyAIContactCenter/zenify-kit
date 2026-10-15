@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -74,6 +73,7 @@ func newVisualCmd() *cobra.Command {
 	var repo string
 	var port int
 	var update bool
+	var role string
 	c := &cobra.Command{
 		Use:   "visual",
 		Short: "Visual-regression golden-diff (Playwright chạy trong Docker, đã ghim phiên bản)", //znf:allow-lang
@@ -86,21 +86,26 @@ func newVisualCmd() *cobra.Command {
 				repo, _ = os.Getwd()
 			}
 			out := cmd.OutOrStdout()
+			bc, err := e2eBroker(role)
+			if err != nil {
+				return err
+			}
 			if port == 0 {
 				return exitcode.New(exitcode.BadArgs,
 					fmt.Errorf("need --port <host dev-server port>"))
 			}
-			if err := dockerPreflight(exec.LookPath, func() error {
-				return exec.Command("docker", "info").Run() //nolint:gosec // G204 -- fixed args
-			}); err != nil {
+			if err := preflightDocker(); err != nil {
 				return err
 			}
-			lookup := credLookup(workspaceEnvPath(), os.Getenv)
+			lookup, err := e2eLookup(cmd.Context(), bc, role)
+			if err != nil {
+				return err
+			}
 			runner := func(name string, args []string) error {
 				c := childCmd(name, args, nil, lookup)
 				c.Stdout = out
 				c.Stderr = os.Stderr
-				return c.Run()
+				return execChild(c)
 			}
 			return runVisualCheck(visualOpts{
 				runner: runner, getenv: lookup, goos: runtime.GOOS, repo: repo, port: port, update: update,
@@ -108,9 +113,10 @@ func newVisualCmd() *cobra.Command {
 			})
 		},
 	}
-	check.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")   //znf:allow-lang
-	check.Flags().IntVar(&port, "port", 0, "port dev-server trên host")             //znf:allow-lang
-	check.Flags().BoolVar(&update, "update", false, "chụp lại baseline thay vì so") //znf:allow-lang
+	check.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")               //znf:allow-lang
+	check.Flags().IntVar(&port, "port", 0, "port dev-server trên host")                         //znf:allow-lang
+	check.Flags().BoolVar(&update, "update", false, "chụp lại baseline thay vì so")             //znf:allow-lang
+	check.Flags().StringVar(&role, "role", "", "role tài khoản E2E lấy từ broker (cần broker)") //znf:allow-lang
 	c.AddCommand(check)
 	return c
 }

@@ -1,6 +1,7 @@
 package dbread
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -225,5 +226,51 @@ func TestBuildMongoScript_CountBlankFilterIsEstimated(t *testing.T) {
 	s, err := BuildMongoScript(MongoQuery{Op: "count", Coll: "u", Filter: "  "})
 	if err != nil || !strings.Contains(s, "estimatedDocumentCount()") {
 		t.Fatalf("blank filter: %v %s", err, s)
+	}
+}
+
+func TestBuildMongoScript_DBDefault3csoft(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "count", Coll: "users"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, "getSiblingDB('3csoft')") {
+		t.Errorf("script = %q, want default 3csoft db", s)
+	}
+}
+
+func TestBuildMongoScript_DBOverride(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "count", Coll: "users", DB: "audit_logs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, `getSiblingDB("audit_logs")`) || strings.Contains(s, "3csoft") {
+		t.Errorf("script = %q, want audit_logs db only", s)
+	}
+}
+
+func TestBuildMongoScript_DBRejectsQuote(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "count", Coll: "users", DB: "x');"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const pre, post = "getSiblingDB(", ");"
+	i := strings.Index(s, pre)
+	if i < 0 || strings.Count(s, pre) != 1 {
+		t.Fatalf("script = %q, want exactly one getSiblingDB call", s)
+	}
+	rest := s[i+len(pre):]
+	// The argument must be exactly one JS (JSON) string literal that decodes
+	// back to the raw name, followed directly by the closing paren.
+	dec := json.NewDecoder(strings.NewReader(rest))
+	var got string
+	if err := dec.Decode(&got); err != nil {
+		t.Fatalf("argument is not one string literal: %v (script %q)", err, s)
+	}
+	if got != "x');" {
+		t.Errorf("literal decodes to %q, want %q", got, "x');")
+	}
+	if tail := rest[dec.InputOffset():]; !strings.HasPrefix(tail, post) {
+		t.Errorf("after the literal = %q, want %q", tail, post)
 	}
 }

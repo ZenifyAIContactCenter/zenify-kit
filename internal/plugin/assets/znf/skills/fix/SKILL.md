@@ -19,17 +19,13 @@ parallel hypotheses) — criteria in `references/why-diagnosis-first.md`. State 
 
 ## Step 0: Ground in real error data
 
-Before any analysis:
-
 **No argument:**
 ```bash
-# Recent error output: app logs, test output, error files
 ls -t *.log 2>/dev/null | head -3
 tail -100 <latest-log-file> 2>/dev/null
 ```
-Also run the project's test suite. **Don't assume `npm`** — use `pm` (`pm test`, `pm run build`),
-resolved from `packageManager`/lockfile. Read the repo's CLAUDE.md first if it names another
-verify command.
+Also run the project's test suite with `pm` (`pm test`, `pm run build`), never an assumed `npm`; a
+verify command in the repo's CLAUDE.md wins.
 
 **A description:** a symptom to search for; still fetch logs.
 
@@ -39,8 +35,11 @@ gh run view <run-id> --log 2>&1 | grep -A 20 "Error\|FAIL\|error:" | head -100
 # Or: gh run view --log-failed
 ```
 
-**Build the loop.** Step 0 ends with exactly one named command, already run — show the invocation
-and its output — red on the symptom the user described. Ladder and redaction:
+**Prod/staging symptom (any input):** pull evidence in order: Loki, Tempo,
+`zenify db-read`/`redis-read`, PostHog — recipes: `references/feedback-loop.md`.
+
+**Build the loop.** Step 0 ends with exactly one named command, already run (show invocation and
+output), red on the symptom the user described. Ladder and redaction:
 `references/feedback-loop.md`; secrets in logs → `<REDACTED>`. No loop → stop and ask for (a) a
 reproducing environment, (b) a redacted artifact, (c) leave to add temporary logs; no Step 1.
 

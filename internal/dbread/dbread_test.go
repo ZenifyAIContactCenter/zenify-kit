@@ -930,3 +930,97 @@ func TestRun_Prd_MongoshFailureNamesNoHost(t *testing.T) {
 		t.Errorf("stderr = %q, want key named", s)
 	}
 }
+
+func TestRun_SetsTruncatedAndRows(t *testing.T) {
+	o, _, _ := baseOptions(t, fakeEnv())
+	var in strings.Builder
+	for i := 1; i <= 300; i++ {
+		fmt.Fprintf(&in, "row%d\n", i)
+	}
+	recordRun(o, in.String())
+	o.Cmd, o.Arg, o.Limit = "sql", "SELECT id FROM agents", 200
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !o.Truncated || o.Rows != 200 {
+		t.Errorf("Truncated=%v Rows=%d, want true and 200", o.Truncated, o.Rows)
+	}
+}
+
+func TestIsBadArgs(t *testing.T) {
+	o, _, _ := baseOptions(t, fakeEnv())
+	o.SetRun(func(string, []string, []string, string) error { t.Fatal("must not run"); return nil })
+	o.Cmd, o.Arg = "sql", "DELETE FROM x"
+	err := Run(o)
+	if !IsBadArgs(err) {
+		t.Errorf("IsBadArgs(%v) = false, want true", err)
+	}
+	if IsBadArgs(errors.New("plain")) || IsBadArgs(nil) {
+		t.Error("IsBadArgs true for a non-badArgs error")
+	}
+}
+
+func TestRun_Mongo_TruncNoticeSetsTruncated(t *testing.T) {
+	notice := fmt.Sprintf(truncNotice, 5, MaxLimit)
+	cases := []struct {
+		name   string
+		writes []string
+		want   bool
+	}{
+		{"whole", []string{notice}, true},
+		{"split", []string{notice[:10], notice[10:]}, true},
+		{"none", []string{"warning: something else\n"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			o, _, stderr := baseOptions(t, fakeEnv())
+			o.SetRun(func(string, []string, []string, string) error {
+				for _, w := range c.writes {
+					_, _ = fmt.Fprint(o.Stderr, w)
+				}
+				return nil
+			})
+			o.Cmd, o.Arg, o.Limit = "find", "users", 5
+			if err := Run(o); err != nil {
+				t.Fatal(err)
+			}
+			if o.Truncated != c.want {
+				t.Errorf("Truncated = %v, want %v", o.Truncated, c.want)
+			}
+			if got := stderr.String(); got != strings.Join(c.writes, "") {
+				t.Errorf("stderr = %q, want passthrough %q", got, strings.Join(c.writes, ""))
+			}
+		})
+	}
+}
+
+func TestRun_Mongo_ExitAfterTruncNoticeIsSuccess(t *testing.T) {
+	o, _, stderr := baseOptions(t, fakeEnv())
+	o.SetRun(func(string, []string, []string, string) error {
+		_, _ = fmt.Fprintf(o.Stderr, truncNotice, 5, MaxLimit)
+		return errors.New("exit status 1")
+	})
+	o.Cmd, o.Arg, o.Limit = "find", "users", 5
+	if err := Run(o); err != nil {
+		t.Fatalf("Run = %v, want success after the row-cut notice", err)
+	}
+	if !o.Truncated {
+		t.Error("Truncated = false, want true")
+	}
+	if strings.Contains(stderr.String(), "mongosh failed") {
+		t.Errorf("stderr = %q, want no failure hint", stderr.String())
+	}
+}
+
+func TestRun_Mongo_DBReachesScript(t *testing.T) {
+	o, _, _ := baseOptions(t, fakeEnv())
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg, o.MongoDB = "count", "users", "audit_logs"
+	if err := Run(o); err != nil {
+		t.Fatal(err)
+	}
+	script := (*calls)[0].args[len((*calls)[0].args)-1]
+	if !strings.Contains(script, `getSiblingDB("audit_logs")`) {
+		t.Errorf("script = %q", script)
+	}
+}

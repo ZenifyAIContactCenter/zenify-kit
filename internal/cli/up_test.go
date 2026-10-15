@@ -430,6 +430,7 @@ func TestDryRun_ShowsHooksAndDocsRows(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	ws := t.TempDir()
+	useGH(t, staticGHRunner{""})
 
 	cmd := newUpCmd()
 	cmd.SetArgs([]string{"--dry-run", "--workspace", ws})

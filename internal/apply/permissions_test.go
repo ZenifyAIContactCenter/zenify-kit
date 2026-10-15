@@ -283,3 +283,15 @@ func TestKitSandbox_NonObjectSandboxSkips(t *testing.T) {
 		t.Fatalf("settings changed: %s", raw)
 	}
 }
+
+func TestKitAllowRules_BrokerMCPServers(t *testing.T) {
+	for _, want := range []string{"mcp__zenify-grafana__*", "mcp__zenify-posthog__*"} {
+		found := false
+		for _, r := range KitAllowRules {
+			found = found || r == want
+		}
+		if !found {
+			t.Errorf("KitAllowRules lacks %q", want)
+		}
+	}
+}

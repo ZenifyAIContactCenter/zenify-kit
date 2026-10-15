@@ -43,7 +43,7 @@ flowchart TD
 
 ## Agent ui-verifier làm gì
 
-Agent tự đăng nhập, bạn không gõ mật khẩu vào trình duyệt. Trước khi mở màn hình, agent chạy `zenify e2e login --url <app>` trên máy bạn. Lệnh này đăng nhập bằng `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `<workspace>/.zenify/.env` (xem [Credential dev](/guides/env)) và ghi `~/.zenify/playwright/state.json`. Agent nạp file đó vào trình duyệt bằng `browser_set_storage_state`, rồi mới điều hướng. Mỗi lần verify đăng nhập mới, nên không dùng lại phiên cũ. Phiên chính không đăng nhập trình duyệt và không gõ mật khẩu. Sau `zenify up`, các lệnh này chạy không hỏi quyền. Nếu bạn bật sandbox Bash, `zenify up` thêm `zenify e2e login *` vào `sandbox.excludedCommands` để lệnh này ghi được `~/.zenify` và gọi được app local. Agent chạy lệnh nguyên dạng, không nối thêm `; echo` hay `| head`, vì lệnh ghép không khớp mục loại trừ và lại bị sandbox chặn.
+Agent tự đăng nhập, bạn không gõ mật khẩu vào trình duyệt. Trước khi mở màn hình, agent chạy `zenify e2e login --url <app>` trên máy bạn. Lệnh này ghi `~/.zenify/playwright/state.json`. Khi manifest khai báo `broker:`, tài khoản đăng nhập lấy từ broker và bạn không điền gì (xem [Dùng credential broker](/guides/broker-client)). Manifest không có `broker:` thì lệnh đăng nhập bằng `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `<workspace>/.zenify/.env` (xem [Credential dev](/guides/env)). Với broker, thêm `--role <role>` (`administrator`, `supervisor`, `team_leader`, `agent`, `sale`, `sale_team_leader`) để đăng nhập bằng role khác, state ghi vào `~/.zenify/playwright/state-<role>.json`. `zenify e2e run` và `zenify visual check` cũng nhận `--role`. `--role` mà không có broker thì lệnh báo lỗi và thoát mã 2. Agent nạp file đó vào trình duyệt bằng `browser_set_storage_state`, rồi mới điều hướng. Mỗi lần verify đăng nhập mới, nên không dùng lại phiên cũ. Phiên chính không đăng nhập trình duyệt và không gõ mật khẩu. Sau `zenify up`, các lệnh này chạy không hỏi quyền. Nếu bạn bật sandbox Bash, `zenify up` thêm `zenify e2e login *` vào `sandbox.excludedCommands` để lệnh này ghi được `~/.zenify` và gọi được app local. Agent chạy lệnh nguyên dạng, không nối thêm `; echo` hay `| head`, vì lệnh ghép không khớp mục loại trừ và lại bị sandbox chặn.
 
 Agent làm bốn việc trên phần tử bạn vừa đổi:
 
@@ -87,7 +87,7 @@ zenify e2e run --repo repos/contact-center-web --port 3312
 
 `lint` chặn journey hời trước khi chạy. Mỗi scenario phải có đúng một marker `// @domain-assert:<entity>` theo sau là re-fetch qua API và một expect trên field thật. Journey không được chờ bằng `networkidle` hay `waitForTimeout`, không được chọn phần tử bằng xpath hay `nth-child`, và phải dọn dữ liệu đã tạo kể cả khi thất bại.
 
-`run` lint lại, rồi chạy journey trong Docker trên dev server bạn chỉ định. Tài khoản đăng nhập lấy từ ba key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env`. Bạn nhập chúng bằng `zenify env`, không viết mật khẩu vào file khác.
+`run` lint lại, rồi chạy journey trong Docker trên dev server bạn chỉ định. Tài khoản đăng nhập lấy từ broker khi manifest khai báo `broker:`. Không có broker thì lấy từ ba key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env`; bạn nhập chúng bằng `zenify env`, không viết mật khẩu vào file khác.
 
 ## Viết task trong plan để có journey
 
@@ -126,7 +126,7 @@ Task chỉ ghi "test màn tạo ticket" không đủ. Skill sẽ hỏi lại th�
 | `need --port` | Lệnh không tự biết port dev server | Lấy port bằng `git config --get wt.port` trong worktree |
 | `repo has no visual config` | Thiếu `.znf/visual/routes.json` | Tạo file với ít nhất một route, chạy `--update` để có baseline |
 | `docker daemon not running` | Docker Desktop chưa bật | Bật Docker rồi chạy lại. `zenify doctor` kiểm tra môi trường |
-| ui-verifier trả BLOCKED | `zenify e2e login` thất bại (thiếu `E2E_*`, sai tài khoản), hoặc dev server chưa chạy | Kiểm tra ba key `E2E_*` bằng `zenify env list`, kiểm tra dev server bằng `/znf:run`, rồi chạy `zenify doctor` |
+| ui-verifier trả BLOCKED | `zenify e2e login` thất bại (không tới được broker, hoặc thiếu `E2E_*` khi không có broker), hoặc dev server chưa chạy | Chạy `zenify doctor` xem mục `broker` (bật WARP nếu không tới được). Không có broker thì kiểm tra ba key `E2E_*` bằng `zenify env list`. Kiểm tra dev server bằng `/znf:run` |
 | Lint báo thiếu `@domain-assert` | Journey chỉ assert trên màn hình | Thêm re-fetch qua API và expect trên field thật |
 | Lệch ảnh ở badge hoặc đồng hồ | Vùng động chưa che | Thêm selector vào `mask` của route |
 

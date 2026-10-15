@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/lock"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/mcpreg"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tui"
@@ -318,6 +320,13 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 			}
 		}
 	}
+
+	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). NON-FATAL.
+	// The broker comes from the trusted (embedded) manifest, never --manifest or
+	// cwd: the registered headersHelper `zenify broker headers` resolves it the
+	// same way, so the MCP URL and its token always name one broker.
+	bm, _ := brokerManifest("", "")
+	registerBrokerMCP(w, errW, bm, runClaudeBounded)
 
 	// Onboarding convenience (Task 5): clone the docs knowledge store on a
 	// brand-new machine when it's absent, then reconcile the workspace view.
@@ -753,7 +762,7 @@ func newUpCmd() *cobra.Command {
 			}
 			sp := ui.NewSpinner(cmd.ErrOrStderr(), "Đang dựng kế hoạch onboarding") //znf:allow-lang
 			sp.Start()
-			plans, auth, err := buildPlan(m, ghx.ExecRunner(), gitx.ExecRunner(), workspace, sources)
+			plans, auth, err := buildPlan(m, ghRunner, gitx.ExecRunner(), workspace, sources)
 			if err != nil {
 				sp.Fail("Dựng kế hoạch thất bại") //znf:allow-lang
 				if isPreview {
@@ -781,7 +790,7 @@ func newUpCmd() *cobra.Command {
 				return runWizard(w, m, mSrc, workspace, sources, plans, auth.LoggedIn)
 			case modeApply:
 				uiOut(cmd).Header("zenify up --apply")
-				return runApply(w, cmd.ErrOrStderr(), plans, m, mSrc, workspace, ghx.ExecRunner(), gitx.ExecRunner())
+				return runApply(w, cmd.ErrOrStderr(), plans, m, mSrc, workspace, ghRunner, gitx.ExecRunner())
 			default: // modeDryRun
 				if jsonOut {
 					return renderPlanJSON(w, plans, auth)
@@ -807,4 +816,45 @@ func newUpCmd() *cobra.Command {
 	cmd.Flags().StringVar(&reviewer, "reviewer", "", "review engine written to ZNF_REVIEWER in ~/.claude/settings.json: agent or codex (written only with --apply)")
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "apply changes without the interactive wizard (required for non-interactive/CI runs)")
 	return cmd
+}
+
+// registerBrokerMCP registers the kit's Grafana/PostHog HTTP MCP servers with
+// Claude when the manifest declares a broker and claude is on PATH; otherwise
+// it does nothing, so `zenify up` keeps its pre-broker behaviour. Failures only warn.
+func registerBrokerMCP(w, errW io.Writer, m *manifest.Manifest, run func(string, ...string) ([]byte, error)) {
+	if m == nil || m.Broker == nil {
+		return
+	}
+	if _, err := lookPath("claude"); err != nil {
+		return
+	}
+	for _, name := range []string{"grafana", "posthog"} {
+		st, err := mcpreg.Bootstrap(mcpreg.Options{
+			Spec: mcpreg.Spec{Name: "zenify-" + name, URL: strings.TrimRight(m.Broker.URL, "/") + "/mcp/" + name},
+			Run:  run,
+		})
+		switch {
+		case err != nil:
+			_, _ = fmt.Fprintf(errW, "warning: zenify-%s MCP: %v (onboarding otherwise succeeded)\n", name, err)
+		case st == playwright.RegAbsent:
+			_, _ = fmt.Fprintf(w, "zenify-%s: registered MCP server (user scope)\n", name)
+		case st == playwright.RegLegacyDefault:
+			_, _ = fmt.Fprintf(w, "zenify-%s: updated MCP server URL (user scope)\n", name)
+		case st == playwright.RegCustom:
+			_, _ = fmt.Fprintf(w, "zenify-%s: custom MCP registration kept\n", name)
+		}
+	}
+}
+
+// claudeMCPTimeout bounds each `claude mcp` call registerBrokerMCP makes.
+var claudeMCPTimeout = 20 * time.Second
+
+// runClaudeBounded runs one command with claudeMCPTimeout, returning its
+// combined output; WaitDelay stops a child that keeps the pipes open.
+func runClaudeBounded(n string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), claudeMCPTimeout)
+	defer cancel()
+	c := exec.CommandContext(ctx, n, args...) //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
+	c.WaitDelay = 2 * time.Second
+	return c.CombinedOutput()
 }

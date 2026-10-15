@@ -20,7 +20,7 @@ Khi diff đổi giao diện và repo có `.znf/visual/routes.json`. Bước veri
 
 ## Kết quả
 
-Lệnh đăng nhập một lần bằng các key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env`, mở từng route trong `routes.json`, chờ font tải xong, che các vùng khai trong `mask`, rồi so ảnh toàn trang với baseline trong `.znf/visual/__snapshots__`. Lệch thì lệnh báo "visual mismatch" và trỏ tới ảnh diff trong `.znf/visual/__diff__`.
+Lệnh đăng nhập một lần bằng tài khoản E2E lấy từ broker khi manifest khai báo `broker:`, hoặc bằng các key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env` khi không có broker, mở từng route trong `routes.json`, chờ font tải xong, che các vùng khai trong `mask`, rồi so ảnh toàn trang với baseline trong `.znf/visual/__snapshots__`. Lệch thì lệnh báo "visual mismatch" và trỏ tới ảnh diff trong `.znf/visual/__diff__`.
 
 Mỗi route khai `name`, `path`, tùy chọn `waitFor` là selector cần chờ và `mask` là danh sách selector vùng động như badge thông báo hay đồng hồ.
 
@@ -30,6 +30,7 @@ Mỗi route khai `name`, `path`, tùy chọn `waitFor` là selector cần chờ 
 |---|---|
 | `--port` | Port dev server trên máy bạn. Bắt buộc. |
 | `--repo` | Đường dẫn repo. Mặc định thư mục hiện tại. |
+| `--role` | Role tài khoản E2E xin từ broker (`administrator`, `supervisor`, `team_leader`, `agent`, `sale`, `sale_team_leader`). Cần manifest khai báo `broker:`; không có broker thì lệnh thoát mã 2. Thông tin đăng nhập chỉ đi vào tiến trình `docker`. |
 | `--update` | Chụp lại baseline thay cho so. Dùng khi giao diện đổi có chủ ý, rồi commit ảnh mới. |
 
 ## Ví dụ

@@ -11,9 +11,16 @@ import (
 )
 
 // KitAllowRules are the tool rules the kit unions into permissions.allow of
-// ~/.claude/settings.json so Playwright UI-verify and `zenify e2e|visual`
-// run without permission prompts. No server-wide rule and no
-// browser_run_code_unsafe on purpose.
+// ~/.claude/settings.json so Playwright UI-verify, `zenify e2e|visual` and the
+// broker MCPs run without permission prompts. Playwright gets a per-tool list
+// with no server-wide rule and no browser_run_code_unsafe on purpose.
+//
+// zenify-grafana and zenify-posthog DO get server-wide wildcards: every tool
+// is read-only on the broker side (mcp-grafana runs --disable-write with a
+// Viewer service-account token; PostHog gets x-posthog-read-only), so the
+// broker, not this prompt, is the write guard. The zenify- prefix is reserved
+// for kit-registered servers, but the rule matches by name only: a user's own
+// server registered under one of these two names is auto-approved too.
 var KitAllowRules = []string{
 	"mcp__playwright__browser_navigate",
 	"mcp__playwright__browser_snapshot",
@@ -27,6 +34,8 @@ var KitAllowRules = []string{
 	"Bash(zenify e2e *)",
 	"Bash(zenify visual *)",
 	"Bash(zenify ui-verify *)",
+	"mcp__zenify-grafana__*",
+	"mcp__zenify-posthog__*",
 }
 
 // KitSandboxExcluded are the commands the kit unions into

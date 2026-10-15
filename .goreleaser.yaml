@@ -13,8 +13,18 @@ builds:
       - -s -w -X github.com/ZenifyAIContactCenter/zenify-kit/internal/version.Version={{.Version}}
     goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
+  - id: zenify-broker
+    main: ./cmd/zenify-broker
+    binary: zenify-broker
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/ZenifyAIContactCenter/zenify-kit/internal/version.Version={{.Version}}
+    goos: [linux]
+    goarch: [amd64] # the broker host is amd64
 archives:
   - id: zenify
+    ids: [zenify]
     name_template: "zenify_{{ .Os }}_{{ .Arch }}"
     formats: [tar.gz]
     format_overrides:
@@ -22,6 +32,18 @@ archives:
         formats: [zip]
 checksum:
   name_template: checksums.txt
+# The broker ships only as an image (never in the brew cask, scoop or archives):
+# linux/amd64 only (the host is amd64); the build context holds linux/amd64/zenify-broker.
+dockers_v2:
+  - id: zenify-broker
+    ids: [zenify-broker]
+    dockerfile: cmd/zenify-broker/Dockerfile
+    images:
+      - ghcr.io/zenifyaicontactcenter/zenify-broker
+    tags:
+      - "{{ .Version }}"
+    platforms:
+      - linux/amd64
 # The public zenify-kit repo doubles as its own Homebrew tap and Scoop bucket:
 # GoReleaser commits Casks/zenify.rb and the Scoop manifest here on each release,
 # and the release assets are public, so brew/scoop download them with no auth.
@@ -30,6 +52,7 @@ homebrew_casks:
       owner: ZenifyAIContactCenter
       name: zenify-kit
     name: zenify
+    ids: [zenify]
     homepage: https://github.com/ZenifyAIContactCenter/zenify-kit
     description: Portable zenify workspace toolkit
     skip_upload: auto
@@ -54,4 +77,5 @@ scoops:
       owner: ZenifyAIContactCenter
       name: zenify-kit
     name: zenify
+    ids: [zenify]
     skip_upload: auto

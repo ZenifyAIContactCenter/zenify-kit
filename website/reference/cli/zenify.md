@@ -29,6 +29,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 ## Lệnh liên quan
 
 - [zenify analyze](./zenify_analyze): Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief.
+- [zenify broker](./zenify_broker): Nhóm lệnh làm việc với credential broker của zenify.
 - [zenify config](./zenify_config): Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều.
 - [zenify cost](./zenify_cost): Cho biết token Claude Code đi đâu: context mỗi turn, phần subagent, model, skill và dấu hiệu lãng phí, đọc từ transcript local.
 - [zenify db-perf](./zenify_db-perf): Quét tĩnh một diff để tìm anti-pattern query DB, chia finding thành BLOCKING và ADVISORY.
@@ -43,6 +44,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify hotfix](./zenify_hotfix): Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve.
 - [zenify migrate](./zenify_migrate): Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team.
 - [zenify observe](./zenify_observe): Nhóm lệnh theo dõi phiên Claude Code: số lần dispatch subagent và lượng tool output.
+- [zenify redis-read](./zenify_redis-read): Chạy một lệnh Redis chỉ đọc qua credential broker.
 - [zenify release-note](./zenify_release-note): Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau.
 - [zenify release-report](./zenify_release-report): Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace.
 - [zenify reviewer](./zenify_reviewer): In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent.

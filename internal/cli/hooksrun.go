@@ -12,8 +12,9 @@ import (
 )
 
 // findWorkspaceRoot delegates to wt.FindWorkspaceRoot (moved there so
-// internal/wt can use it without importing cli).
-func findWorkspaceRoot(start string) (string, bool) { return wt.FindWorkspaceRoot(start) }
+// internal/wt can use it without importing cli). A var so internal/cli's
+// TestMain can refuse the real workspace above the package directory.
+var findWorkspaceRoot = wt.FindWorkspaceRoot
 
 // writeGuardRun is the write-guard entry point; a var so tests can stub it.
 var writeGuardRun = func() int { return runWriteGuard(os.Stdin, os.Stderr, wt.FindWorkspaceRoot) }
