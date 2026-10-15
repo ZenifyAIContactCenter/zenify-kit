@@ -382,7 +382,11 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 	for _, p := range skipped {
 		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — file settings của worktree không đọc được, xử lý tay\n", p) //znf:allow-lang
 	}
-	migrateSettingsAndMerge(w, errW, paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned)
+	if !migrateSettingsAndMerge(w, errW, paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned) {
+		_, _ = fmt.Fprintln(errW, "env: bỏ qua dựng lại .zenify/.env do bước chuyển key lỗi") //znf:allow-lang
+	} else if err := renderEnvStep(w, m, devenv.Path(workspace), owned, false); err != nil {
+		_, _ = fmt.Fprintf(errW, "env: không dựng được .zenify/.env (%v)\n", err) //znf:allow-lang
+	}
 	home, herr := os.UserHomeDir()
 	if herr != nil || home == "" {
 		_, _ = fmt.Fprintf(errW, "permissions: không thêm được luật deny .zenify/.env (home: %v)\n", herr) //znf:allow-lang
@@ -399,7 +403,8 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 // migrateSettingsAndMerge moves manifest and legacy MYSQL_* keys out of the
 // settings files into envPath (FR-9), then joins the legacy keys there into
 // MYSQL_URL (FR-12.3). Prints key names only, never a value.
-func migrateSettingsAndMerge(w, errW io.Writer, paths, manifestKeys []string, envPath string, owned *managed.Manifest) {
+// It reports false when the settings migration failed.
+func migrateSettingsAndMerge(w, errW io.Writer, paths, manifestKeys []string, envPath string, owned *managed.Manifest) bool {
 	res, err := apply.MigrateSettingsEnv(paths, apply.MigrationKeys(manifestKeys), envPath, owned)
 	if err != nil {
 		_, _ = fmt.Fprintf(errW, "env: không chuyển được key sang .zenify/.env (%v)\n", err) //znf:allow-lang
@@ -417,9 +422,36 @@ func migrateSettingsAndMerge(w, errW io.Writer, paths, manifestKeys []string, en
 		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — giá trị không phải chuỗi một dòng, xử lý tay\n", k) //znf:allow-lang
 	}
 	if err != nil {
-		return // which keys conflict is unknown; merging could drop a value settings still holds
+		return false // which keys conflict is unknown; merging could drop a value settings still holds
 	}
 	mergeMySQLURLStep(w, errW, envPath, append(append([]string{}, res.Conflicts...), res.Skipped...))
+	return true
+}
+
+// renderEnvStep rebuilds envPath as the grouped scaffold of the manifest keys.
+// dryRun only prints what would change; otherwise it saves the file and records
+// the kit-managed key names in owned.EnvKeys. Prints key names only, never a value.
+func renderEnvStep(w io.Writer, m *manifest.Manifest, envPath string, owned *managed.Manifest, dryRun bool) error {
+	old, err := devenv.Load(envPath)
+	if err != nil {
+		return err
+	}
+	res := devenv.Render(old, m.PlacedKeys(), owned.EnvKeys)
+	if !dryRun {
+		if err := res.File.Save(envPath); err != nil {
+			return err
+		}
+		owned.EnvKeys = manifest.KeyNames(m.AllKeys())
+	}
+	for _, l := range []struct {
+		label string
+		names []string
+	}{{"thêm", res.Added}, {"xoá", res.Removed}, {"custom thiếu mô tả", res.Undescribed}} { //znf:allow-lang
+		if len(l.names) > 0 {
+			_, _ = fmt.Fprintf(w, "env: %s %s\n", l.label, strings.Join(l.names, ", "))
+		}
+	}
+	return nil
 }
 
 // mergeMySQLURLStep joins the legacy MYSQL_* keys of .zenify/.env into
@@ -667,6 +699,11 @@ func newUpCmd() *cobra.Command {
 				}
 				uiOut(cmd).Header("zenify up")
 				renderPlanTable(w, plans, auth)
+				if owned, lerr := managed.Load(filepath.Join(workspace, ".zenify", "manifest.json")); lerr == nil {
+					if rerr := renderEnvStep(w, m, devenv.Path(workspace), owned, true); rerr != nil {
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "env: không xem trước được .zenify/.env (%v)\n", rerr) //znf:allow-lang
+					}
+				}
 				printPlanFooterRows(w, workspace)
 				return nil
 			}

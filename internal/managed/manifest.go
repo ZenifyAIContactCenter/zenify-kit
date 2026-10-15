@@ -20,6 +20,9 @@ type Entry struct {
 type Manifest struct {
 	Entries map[string]Entry `json:"entries"`
 	Version string           `json:"version,omitempty"` // binary version stamp (self-heal)
+	// EnvKeys are the key names the kit wrote into .zenify/.env on its last
+	// apply; a key leaving the manifest is deleted only when listed here.
+	EnvKeys []string `json:"envKeys,omitempty"`
 }
 
 // Fingerprint returns the hex sha256 of b.

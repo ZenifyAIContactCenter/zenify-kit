@@ -1,8 +1,11 @@
 package managed
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -87,5 +90,26 @@ func TestRecordLink_RoundTrip(t *testing.T) {
 	e, ok := got.Get("/old/be")
 	if !ok || e.Link != "/ws/repos/be" || e.SHA256 != "" {
 		t.Fatalf("entry = %+v ok=%v", e, ok)
+	}
+}
+
+func TestManifest_EnvKeysOmitEmpty(t *testing.T) {
+	b, err := json.Marshal(&Manifest{Entries: map[string]Entry{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "envKeys") {
+		t.Fatalf("empty EnvKeys must be omitted: %s", b)
+	}
+	p := filepath.Join(t.TempDir(), "manifest.json")
+	if err := (&Manifest{EnvKeys: []string{"A", "B"}}).Save(p); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.EnvKeys, []string{"A", "B"}) {
+		t.Fatalf("EnvKeys = %v", got.EnvKeys)
 	}
 }
