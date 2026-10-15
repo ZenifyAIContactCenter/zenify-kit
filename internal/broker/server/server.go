@@ -71,7 +71,13 @@ func New(cfg Deps) http.Handler {
 		mux.Handle("POST /e2e/account", require(fixed("/e2e/account"), cfg.E2E))
 	}
 	if len(cfg.MCP) > 0 {
-		mcpEndpoint := func(r *http.Request) string { return "/mcp/" + r.PathValue("name") }
+		// The name is caller-chosen; only a configured one reaches the audit log.
+		mcpEndpoint := func(r *http.Request) string {
+			if name := r.PathValue("name"); cfg.MCP[name] != nil {
+				return "/mcp/" + name
+			}
+			return "/mcp/?"
+		}
 		mcp := require(mcpEndpoint, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h, ok := cfg.MCP[r.PathValue("name")]
 			if !ok {
