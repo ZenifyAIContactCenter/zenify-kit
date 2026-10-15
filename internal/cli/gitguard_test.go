@@ -45,7 +45,16 @@ func gitInit(t *testing.T, dir, branch string, deny []string) {
 	}
 }
 
+// isolateHome keeps a hook test off the developer's real workspace: no HOME
+// pointer file and no ZENIFY_HOME override can resolve to it.
+func isolateHome(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+}
+
 func TestDecideFromPayload(t *testing.T) {
+	isolateHome(t)
 	repo := filepath.Join(t.TempDir(), "r")
 	gitInit(t, repo, "main", []string{"main"})
 	getenv := func(string) string { return "" }
@@ -66,6 +75,8 @@ func TestDecideFromPayload(t *testing.T) {
 
 // Degenerate input must not hang/panic (port of test-hooks-hang.sh).
 func TestDecideDegenerate(t *testing.T) {
+	isolateHome(t)
+	t.Chdir(t.TempDir()) // cwd "." must not walk up into the real workspace
 	getenv := func(string) string { return "" }
 	for _, cmd := range []string{"sudo", "env", "-", "git", "cd", "cd &&", "git -C", "git -C -C -C push", "cd cd cd && git push"} {
 		p := `{"cwd":".","tool_input":{"command":"` + cmd + `"}}`
@@ -99,6 +110,8 @@ func TestRunGitGuardPanicFailsOpen(t *testing.T) {
 }
 
 func TestGitGuardCmdExit2(t *testing.T) {
+	home, zhome := t.TempDir(), t.TempDir()
+	isoEnv := append(os.Environ(), "HOME="+home, "ZENIFY_HOME="+zhome)
 	repo := filepath.Join(t.TempDir(), "r")
 	gitInit(t, repo, "main", []string{"main"})
 	bin := filepath.Join(t.TempDir(), "zenify")
@@ -106,6 +119,7 @@ func TestGitGuardCmdExit2(t *testing.T) {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	c := exec.Command(bin, "git-guard") //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+	c.Env = isoEnv
 	c.Stdin = strings.NewReader(`{"cwd":"` + repo + `","tool_input":{"command":"git commit -m x"}}`)
 	err := c.Run()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 2 {
@@ -113,7 +127,7 @@ func TestGitGuardCmdExit2(t *testing.T) {
 	}
 	for cmdline, want := range map[string]int{"gh pr merge 1": 2, "gh pr create --title t": 0} {
 		c := exec.Command(bin, "git-guard") //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
-		c.Env = append(os.Environ(), "HOME="+t.TempDir())
+		c.Env = isoEnv
 		c.Stdin = strings.NewReader(`{"cwd":"` + repo + `","tool_input":{"command":"` + cmdline + `"}}`)
 		got := 0
 		if err := c.Run(); err != nil {
@@ -152,7 +166,7 @@ func TestProdHosts(t *testing.T) {
 }
 
 func TestDecideFromPayload_ProdHost(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	isolateHome(t)
 	ws := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
 		t.Fatal(err)
@@ -189,6 +203,7 @@ func TestDecideFromPayload_ProdHost(t *testing.T) {
 // decideFromPayload) through a real git repo with a real staged secret, and
 // asserts the returned message never contains the raw secret string.
 func TestDecideFromPayload_SecretsIntegration(t *testing.T) {
+	isolateHome(t)
 	getenv := func(string) string { return "" }
 	// Split so no contiguous 20-char AKIA... literal sits in source (the
 	// repo's own `secret-scan .` CI step would otherwise flag this file);
