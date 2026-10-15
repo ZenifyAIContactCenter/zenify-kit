@@ -321,8 +321,12 @@ func hasDangerousAlias(argv []string) bool {
 // ParseGitCalls returns every real git call in the command, built from Parse
 // (so wrappers and nested `bash -c`/`eval` strings are seen through).
 func ParseGitCalls(command string) []GitCall {
+	return gitCalls(Parse(command))
+}
+
+func gitCalls(p Parsed) []GitCall {
 	var calls []GitCall
-	for _, c := range Parse(command).Cmds {
+	for _, c := range p.Cmds {
 		if !isGitBinary(c.Argv[0]) {
 			continue
 		}

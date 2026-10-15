@@ -40,7 +40,7 @@ func decideFromPayload(payload []byte, getenv func(string) string) gitguard.Deci
 		}
 		return gitguard.Decision{Deny: true, Message: msg}
 	}
-	return gitguard.Decide(p.ToolInput.Command, p.Cwd, getenv, onCommit)
+	return gitguard.Decide(p.ToolInput.Command, p.Cwd, getenv, onCommit, gitguard.Options{})
 }
 
 // runGitGuard is the process-exit-code core, factored out of RunE so tests

@@ -54,7 +54,7 @@ func TestDecide(t *testing.T) {
 
 	getenv := func(string) string { return "" }
 	dec := func(cwd, cmd string) bool {
-		return Decide(cmd, cwd, getenv, nil).Deny
+		return Decide(cmd, cwd, getenv, nil, Options{}).Deny
 	}
 	cases := []struct {
 		want     bool
@@ -100,7 +100,7 @@ func TestDecidePushRefspecEdgeCases(t *testing.T) {
 
 	getenv := func(string) string { return "" }
 	dec := func(cwd, cmd string) bool {
-		return Decide(cmd, cwd, getenv, nil).Deny
+		return Decide(cmd, cwd, getenv, nil, Options{}).Deny
 	}
 	cases := []struct {
 		want     bool
@@ -111,7 +111,8 @@ func TestDecidePushRefspecEdgeCases(t *testing.T) {
 		{false, deny, "cd " + nodeny + " && git push origin HEAD"},
 		// Force-push with a leading '+' still checked against its target.
 		{true, other, "git push origin +staging"},
-		{false, other, "git push origin +namph/feat/x"},
+		// R2 (FR-2.1) now blocks every '+' refspec regardless of target.
+		{true, other, "git push origin +namph/feat/x"},
 		// "src:dst" refspec — branch UPDATED on the remote is dst.
 		{true, deny, "git push origin feat:main"},
 		{false, deny, "git push origin main:feat"},
@@ -136,7 +137,7 @@ func TestDecideWorktreeOwnBranch(t *testing.T) {
 	mkRepo(t, deny, "main", []string{"main"})
 	wt := filepath.Join(root, "deny-wt")
 	git(t, deny, "worktree", "add", "-q", wt, "-b", "namph/feat/wt-case")
-	if Decide("git commit -m wf", wt, func(string) string { return "" }, nil).Deny {
+	if Decide("git commit -m wf", wt, func(string) string { return "" }, nil, Options{}).Deny {
 		t.Fatal("worktree on a feature branch must allow commit")
 	}
 }
