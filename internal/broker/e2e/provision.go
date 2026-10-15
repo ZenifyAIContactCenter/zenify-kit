@@ -27,8 +27,8 @@ var ErrHubLocked = errors.New("hub locked logins out after too many failures, re
 // missing user (contact-center-hub apps/auth/src/auth.service.ts). Every
 // other hub login failure is also a 401, so the message is what tells them apart.
 var hubCredentialMessages = map[string]bool{
-	"Mật khẩu không chính xác":       true,
-	"Thông tin đăng nhập không đúng": true,
+	"Mật khẩu không chính xác":       true, //znf:allow-lang (hub reply text)
+	"Thông tin đăng nhập không đúng": true, //znf:allow-lang (hub reply text)
 }
 
 // ErrMFARequired is App.Login's answer when the account has MFA on: hub

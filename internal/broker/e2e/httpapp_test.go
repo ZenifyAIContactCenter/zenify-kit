@@ -44,8 +44,8 @@ func hubError(w http.ResponseWriter, status int, msg string) {
 
 // hub's two credential messages (auth.service.ts): wrong password, user missing.
 const (
-	hubBadPassword = "Mật khẩu không chính xác"
-	hubNoUser      = "Thông tin đăng nhập không đúng"
+	hubBadPassword = "Mật khẩu không chính xác"       //znf:allow-lang (hub reply text)
+	hubNoUser      = "Thông tin đăng nhập không đúng" //znf:allow-lang (hub reply text)
 )
 
 const carolEmail = "e2e-carol-agent@e2e.test"
@@ -315,9 +315,9 @@ func TestHTTPApp_LoginClassification(t *testing.T) {
 	}{
 		{"wrong password", 401, hubBadPassword, true, false, ""},
 		{"user missing", 401, hubNoUser, true, false, ""},
-		{"domain missing", 401, "Domain không tồn tại", false, false, "Domain không tồn tại"},
-		{"inactive user", 401, "Tài khoản của bạn chưa được kích hoạt hoặc đã bị vô hiệu hóa!", false, false, "401"},
-		{"validation", 400, "Email không hợp lệ", false, false, "status 400: Email không hợp lệ"},
+		{"domain missing", 401, "Domain không tồn tại", false, false, "Domain không tồn tại"},                        //znf:allow-lang (hub reply text)
+		{"inactive user", 401, "Tài khoản của bạn chưa được kích hoạt hoặc đã bị vô hiệu hóa!", false, false, "401"}, //znf:allow-lang (hub reply text)
+		{"validation", 400, "Email không hợp lệ", false, false, "status 400: Email không hợp lệ"},                    //znf:allow-lang (hub reply text)
 		{"locked out", 429, "Too many attempts", false, true, "429"},
 	}
 	for _, c := range cases {
@@ -342,8 +342,8 @@ func TestEnsure_HubRefusalsDoNotReset(t *testing.T) {
 		msg       string
 		wantReset bool
 	}{
-		{400, "Email không hợp lệ", false},
-		{401, "Domain không tồn tại", false},
+		{400, "Email không hợp lệ", false},   //znf:allow-lang (hub reply text)
+		{401, "Domain không tồn tại", false}, //znf:allow-lang (hub reply text)
 		{429, "Too many attempts", false},
 		{401, hubBadPassword, true},
 	} {

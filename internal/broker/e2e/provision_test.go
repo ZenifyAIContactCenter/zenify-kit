@@ -223,7 +223,7 @@ func TestEnsure_ConcurrentCreatesOnce(t *testing.T) {
 
 func TestEnsure_FailureCachedTenMinutes(t *testing.T) {
 	app := newFakeApp()
-	app.loginErr = errors.New("hub login: status 401: Domain không tồn tại")
+	app.loginErr = errors.New("hub login: status 401: Domain không tồn tại") //znf:allow-lang (hub reply text)
 	now := testNow
 	p := newProvisioner(app)
 	p.Now = func() time.Time { return now }
