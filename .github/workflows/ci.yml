@@ -32,6 +32,10 @@ jobs:
               GOOS=$goos GOARCH=$goarch go build -o /dev/null ./cmd/zenify
             done
           done
+      # The broker image is multi-platform (dockers_v2): arm64 RUN steps need
+      # qemu and a buildx builder, same as release.yml.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
