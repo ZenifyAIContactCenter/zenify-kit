@@ -8,6 +8,18 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.37.0
+
+*2026-10-15*
+
+- `zenify up --apply` dựng `<workspace>/.zenify/.env` thành file có sẵn khung. Mọi key trong manifest luôn có mặt; key chưa có giá trị là dòng `KEY=` trống. Mỗi key có hai dòng comment: mô tả, rồi `Lấy:` cách lấy · phạm vi · có phải secret không · repo. Key xếp theo bốn mục Staging → Tooling → Production → Custom. Giá trị sẵn có không đổi; comment tự viết dạng `# KEY=...` được giữ ở mục Custom. Xem [Credential dev với zenify env](/guides/env).
+- Manifest thêm ba key production `MONGO_URL_PRD`, `AUDIT_MONGO_URL_PRD`, `REDIS_URL_PRD`. Wizard, form `zenify env set` lượt đầu và `zenify doctor` bỏ qua nhóm production.
+- **Thay đổi phá vỡ:** `OPENROUTER_API_KEY` rời manifest và thành key custom. Ai đang có key này chạy một lần `zenify env set OPENROUTER_API_KEY --desc "<mô tả>"`, nếu không `zenify doctor` báo key custom thiếu mô tả.
+- Key kit từng ghi nhận (`envKeys` trong `.zenify/manifest.json`) mà rời khỏi manifest bị xoá cùng giá trị ở lần `up --apply` kế tiếp, chỉ khi manifest là bản nhúng trong binary và binary không cũ hơn bản đã ghi. Chạy với `--manifest` hoặc trong một kit checkout thì key được giữ và in `env: giữ <tên> — <lý do>`. Key custom không bao giờ bị xoá.
+- Dry-run và màn hình kế hoạch của wizard in trước `env: thêm …`, `env: xoá …`, `env: giữ …`, `env: custom thiếu mô tả …`, trước khi ghi gì.
+- Key gán nhiều lần trong `.env`: kit lấy giá trị không trống cuối cùng, các giá trị khác giữ lại thành dòng `# KEY=...` và báo `env: giữ giá trị trùng của <tên> dưới dạng comment`.
+- `zenify env`: key trống tính là chưa đặt; `list` gắn nhãn `custom` thay cho `local`; `set` một key ngoài manifest bắt buộc `--desc` (trừ khi file đã có mô tả), và từ chối giá trị trống.
+
 ## v0.36.0
 
 *2026-10-15*
