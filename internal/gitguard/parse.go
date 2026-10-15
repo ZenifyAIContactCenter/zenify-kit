@@ -395,7 +395,8 @@ func gitCalls(p Parsed) []GitCall {
 }
 
 // LeadingCd extracts the target of a `cd <dir>` that runs first: the first
-// command of the first statement, or the head of a leading && chain. A cd
+// command of the first statement, or the head of a leading && chain, looking
+// into a leading ( … ) or { …; } group. A cd
 // anywhere else runs after other commands and does not re-anchor them.
 func LeadingCd(command string) string {
 	parser := syntax.NewParser(syntax.RecoverErrors(4))
@@ -405,11 +406,25 @@ func LeadingCd(command string) string {
 	}
 	cmd := file.Stmts[0].Cmd
 	for {
-		bc, ok := cmd.(*syntax.BinaryCmd)
-		if !ok || bc.Op != syntax.AndStmt {
-			break
+		switch x := cmd.(type) {
+		case *syntax.BinaryCmd:
+			if x.Op != syntax.AndStmt {
+				return ""
+			}
+			cmd = x.X.Cmd
+			continue
+		case *syntax.Subshell:
+			if len(x.Stmts) > 0 {
+				cmd = x.Stmts[0].Cmd
+				continue
+			}
+		case *syntax.Block:
+			if len(x.Stmts) > 0 {
+				cmd = x.Stmts[0].Cmd
+				continue
+			}
 		}
-		cmd = bc.X.Cmd
+		break
 	}
 	ce, ok := cmd.(*syntax.CallExpr)
 	if !ok || len(ce.Args) < 2 || ce.Args[0].Lit() != "cd" {

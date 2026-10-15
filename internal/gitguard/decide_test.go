@@ -84,6 +84,9 @@ func TestDecide(t *testing.T) {
 		{true, deny, "git push origin main && cd .."},
 		{true, deny, "git push origin main; cd " + nodeny},
 		{false, deny, "cd " + nodeny + " && cd . && git commit -m x"},
+		{true, deny, "(cd " + other + " && git push origin staging)"},
+		{true, deny, "{ cd " + other + "; git push origin staging; }"},
+		{false, deny, "(cd " + nodeny + " && git commit -m x)"},
 	}
 	for _, tc := range cases {
 		if got := dec(tc.cwd, tc.cmd); got != tc.want {
