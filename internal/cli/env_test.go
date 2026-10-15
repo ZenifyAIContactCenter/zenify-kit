@@ -408,3 +408,29 @@ func TestEnvSet_FirstCustomKeyUnderTitleNeedsDesc(t *testing.T) {
 		t.Errorf("file changed: %q", got)
 	}
 }
+
+func TestEnvExec_DropsProductionKeys(t *testing.T) {
+	d, _ := envFixture(t, "MONGO_URL='mongodb://u:secretpw@staging-host/db'\nMONGO_URL_PRD='mongodb://u:prodpw@prod-host/db'\nGROUPED_KEY='groupedval'\n")
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{
+		{Name: "MONGO_URL", Secret: true},
+		{Name: "MONGO_URL_PRD", Secret: true, Group: manifest.GroupProduction},
+		{Name: "GROUPED_KEY", Secret: true, Group: manifest.GroupProduction},
+	}}
+	d.manifest = func(string) (*manifest.Manifest, error) { return m, nil }
+	d.getenv = func(string) string { return "" }
+	d.environ = func() []string {
+		return []string{"PATH=" + os.Getenv("PATH"), "REDIS_URL_PRD=redis://x", "GROUPED_KEY=inherited"}
+	}
+	out, err := runEnv(d, "exec", "--", "printenv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "MONGO_URL=") {
+		t.Errorf("MONGO_URL missing:\n%s", out)
+	}
+	for _, bad := range []string{"MONGO_URL_PRD=", "REDIS_URL_PRD=", "GROUPED_KEY=", "secretpw", "prodpw"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("output contains %q:\n%s", bad, out)
+		}
+	}
+}
