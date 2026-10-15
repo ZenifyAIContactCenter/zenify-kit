@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -51,6 +52,15 @@ func brokerFixture(t *testing.T, handlers map[string]http.HandlerFunc) (manifest
 	return manifestPath, hits
 }
 
+// TestMain replaces the GitHub token source so no test in this package can run
+// a real `gh` or send a real token to a broker.
+func TestMain(m *testing.M) {
+	ghToken = func() (string, error) {
+		return "", fmt.Errorf("test hermeticity: a cli test reached the real gh token source; inject c.GHToken via tuneBrokerClient and pass --manifest")
+	}
+	os.Exit(m.Run())
+}
+
 // hermeticDBRead keeps a db-read command test away from real databases: cwd
 // moves out of the real workspace, the workspace pointer home is an empty
 // dir, and every credential key the local path reads is blanked, so a test
@@ -59,8 +69,20 @@ func hermeticDBRead(t *testing.T) {
 	t.Helper()
 	t.Chdir(t.TempDir())
 	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir()) // no gh, no mongosh
 	for _, k := range []string{"MONGO_URL", "MYSQL_URL", "MONGO_URL_PRD", "MYSQL_URL_PRD"} {
 		t.Setenv(k, "")
+	}
+	// cwd manifest without a broker, so the embedded one never applies
+	if err := os.MkdirAll("manifest", 0o750); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(noBrokerManifest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("manifest", "repos.yaml"), b, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

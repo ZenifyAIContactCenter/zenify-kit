@@ -466,7 +466,7 @@ func brokerTestServer(t *testing.T, healthz int) *httptest.Server {
 		case "/healthz":
 			w.WriteHeader(healthz)
 		case "/token":
-			_, _ = w.Write([]byte(`{"token":"jwt-test-value","expires_at":"2099-01-01T00:00:00Z","login":"octo"}`))
+			_, _ = w.Write([]byte(`{"token":"jwt-test-value","expires_at":"2099-01-01T00:00:00Z","login":"broker-login"}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -485,7 +485,7 @@ func TestBrokerCheck_OK(t *testing.T) {
 	c.Home = t.TempDir()
 	c.GHToken = func() (string, error) { return "gh-test-value", nil }
 	ok, detail := brokerCheck(srv.URL, staticGHRunner{ghOKOut}, srv.Client(), c).Run()
-	if !ok || !strings.Contains(detail, "login=octo") {
+	if !ok || !strings.Contains(detail, "login=octo") || strings.Contains(detail, "broker-login") {
 		t.Fatalf("ok=%v detail=%q", ok, detail)
 	}
 	if strings.Contains(detail, "jwt-test-value") || strings.Contains(detail, "gh-test-value") {
@@ -534,5 +534,29 @@ func TestSecretsCheck_BrokerNoMongoOK(t *testing.T) {
 	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return "" }, fixedManifest(m)).Run()
 	if !ok || detail != "credentials via broker" {
 		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+}
+
+// FR-11.1: no broker in the manifest, no broker check.
+func TestRegisterBrokerCheck_NoBrokerNoCheck(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	if err := os.MkdirAll("manifest", 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("manifest", "repos.yaml"), []byte("org: o\nrepos:\n  - name: r\n    url: u\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	saved := checks
+	defer func() { checks = saved }()
+	checks = nil
+	registerBrokerCheck()
+	if len(checks) != 0 {
+		t.Fatalf("checks = %d, want 0", len(checks))
+	}
+	for _, c := range checks {
+		if c.Name == "broker" {
+			t.Fatal("broker check registered although the manifest has no broker")
+		}
 	}
 }

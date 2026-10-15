@@ -79,6 +79,10 @@ func newBrokerCmd() *cobra.Command {
 	return cmd
 }
 
+// ghToken supplies the GitHub token for every broker client the cli builds;
+// internal/cli's TestMain swaps it for a stub so no test can run a real gh.
+var ghToken = brokerclient.GHTokenExec
+
 // tuneBrokerClient lets a test point the client at an httptest server.
 var tuneBrokerClient func(*brokerclient.Client)
 
@@ -96,8 +100,11 @@ func brokerFromFlags(manifestPath, overlayPath string) (c *brokerclient.Client, 
 		return nil, false, err
 	}
 	c, ok = brokerclient.FromManifest(m)
-	if ok && tuneBrokerClient != nil {
-		tuneBrokerClient(c)
+	if ok {
+		c.GHToken = ghToken
+		if tuneBrokerClient != nil {
+			tuneBrokerClient(c)
+		}
 	}
 	return c, ok, nil
 }

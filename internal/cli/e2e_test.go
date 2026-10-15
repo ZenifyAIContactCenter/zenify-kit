@@ -180,6 +180,7 @@ func hermeticE2E(t *testing.T, manifestPath string) {
 	t.Chdir(cwd)
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir()) // no gh, no npx, no docker
 	for _, k := range e2eEnvKeys {
 		t.Setenv(k, "")
 	}
