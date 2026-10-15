@@ -119,6 +119,7 @@ func TestDBReadCmd_PrdFlagSelectsProduction(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("MONGO_URL", "fake-dev-url")
 	t.Setenv("MONGO_URL_PRD", "fake-prd-url")
+	mp := noBrokerManifest(t) // the embedded manifest declares a broker; this test covers the direct path
 
 	for _, tc := range []struct {
 		args []string
@@ -128,7 +129,7 @@ func TestDBReadCmd_PrdFlagSelectsProduction(t *testing.T) {
 		{[]string{"--prd", "count", "users"}, "fake-prd-url", true},
 		{[]string{"count", "users"}, "fake-dev-url", false},
 	} {
-		out, err := runDBRead(t, tc.args...)
+		out, err := runDBRead(t, append([]string{"--manifest", mp}, tc.args...)...)
 		if err != nil {
 			t.Fatalf("%v: err = %v\n%s", tc.args, err, out)
 		}
@@ -155,7 +156,7 @@ func TestDBReadCmd_PrdMasksChildStderr(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("MONGO_URL_PRD", "mongodb://fakeuser:fakepass1@prodhost-a.example:27017,prodhost-b.example/db")
 
-	out, err := runDBRead(t, "--prd", "count", "users")
+	out, err := runDBRead(t, "--manifest", noBrokerManifest(t), "--prd", "count", "users")
 	if err == nil {
 		t.Fatalf("want the stub's failure, got nil:\n%s", out)
 	}

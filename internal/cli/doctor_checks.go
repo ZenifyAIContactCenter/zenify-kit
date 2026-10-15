@@ -1,18 +1,24 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
@@ -30,6 +36,9 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 	return Check{
 		Name: "secrets",
 		Run: func() (bool, string) {
+			if m := kitManifest(); m != nil && m.Broker != nil {
+				return true, "credentials via broker"
+			}
 			path := envPath()
 			creds, _ := dbread.LoadCreds(getenv, path)
 			var f *devenv.File
@@ -59,6 +68,49 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 			}
 			ok := creds["MONGO_URL"] != ""
 			return ok, detail
+		},
+	}
+}
+
+// brokerCheck verifies the three things a broker call needs, in order: a gh
+// login with read:org, a broker reachable within 5s (WARP is the usual cause
+// when it is not), and a token exchange. It prints the GitHub login only —
+// never a token.
+func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokerclient.Client) Check {
+	return Check{
+		Name: "broker",
+		Run: func() (bool, string) {
+			auth, err := ghx.CheckAuth(gh)
+			if err != nil || !auth.LoggedIn {
+				return false, "gh chưa đăng nhập — chạy `gh auth login`" //znf:allow-lang
+			}
+			if !auth.HasScopes("read:org") {
+				return false, "gh thiếu scope read:org — chạy `gh auth refresh -s read:org`" //znf:allow-lang
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(url, "/")+"/healthz", nil)
+			if err != nil {
+				return false, "broker url không hợp lệ" //znf:allow-lang
+			}
+			resp, err := probe.Do(req) //nolint:gosec // G704 -- url comes from the kit manifest, https-only (manifest.Load)
+			if err != nil {
+				return false, "không tới được broker — bật Cloudflare WARP rồi chạy lại" //znf:allow-lang
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return false, fmt.Sprintf("broker /healthz trả %d", resp.StatusCode) //znf:allow-lang
+			}
+			tctx, tcancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer tcancel()
+			if _, err := client.Token(tctx); err != nil {
+				var ae *brokerclient.APIError
+				if errors.As(err, &ae) {
+					return false, fmt.Sprintf("broker từ chối token: %d %s", ae.Status, ae.Code) //znf:allow-lang
+				}
+				return false, "không lấy được token từ broker" //znf:allow-lang
+			}
+			return true, "broker ok, login=" + auth.Account
 		},
 	}
 }
@@ -478,6 +530,21 @@ func registerDefaultChecks() {
 	RegisterCheck(gitGuardCheck(os.UserHomeDir))
 	RegisterCheck(gitIdentityCheck())
 	RegisterCheck(pluginCheck())
+	registerBrokerCheck()
 	registerCodexChecks()
 	registerContextChecks()
+}
+
+// registerBrokerCheck adds the `broker` check only when the kit manifest
+// (workspace overlay, else cwd/embedded) declares a broker.
+func registerBrokerCheck() {
+	m := workspaceManifest()
+	if m == nil {
+		m, _, _ = loadKitManifest("", "")
+	}
+	c, ok := brokerclient.FromManifest(m)
+	if !ok {
+		return
+	}
+	RegisterCheck(brokerCheck(c.URL, ghx.ExecRunner(), &http.Client{Timeout: 5 * time.Second}, c))
 }

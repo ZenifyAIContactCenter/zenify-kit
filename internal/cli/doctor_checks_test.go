@@ -2,11 +2,15 @@ package cli
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 )
 
@@ -446,5 +450,89 @@ func TestSecretPresence_EmptyLineAbsent(t *testing.T) {
 	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return p }, fixedManifest(m)).Run()
 	if ok || !strings.Contains(detail, "MONGO_URL=absent") {
 		t.Fatalf("empty line must be absent; ok=%v detail=%q", ok, detail)
+	}
+}
+
+type staticGHRunner struct{ out string }
+
+func (f staticGHRunner) Run(...string) ([]byte, error) { return []byte(f.out), nil }
+
+const ghOKOut = "github.com\n  ✓ Logged in to github.com account octo (keyring)\n  - Git operations protocol: ssh\n  - Token scopes: 'read:org', 'repo'\n"
+
+func brokerTestServer(t *testing.T, healthz int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/healthz":
+			w.WriteHeader(healthz)
+		case "/token":
+			_, _ = w.Write([]byte(`{"token":"jwt-test-value","expires_at":"2099-01-01T00:00:00Z","login":"octo"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func brokerTestClient(url string) *brokerclient.Client {
+	return &brokerclient.Client{URL: url, Home: ""}
+}
+
+func TestBrokerCheck_OK(t *testing.T) {
+	srv := brokerTestServer(t, http.StatusOK)
+	c := brokerTestClient(srv.URL)
+	c.Home = t.TempDir()
+	c.GHToken = func() (string, error) { return "gh-test-value", nil }
+	ok, detail := brokerCheck(srv.URL, staticGHRunner{ghOKOut}, srv.Client(), c).Run()
+	if !ok || !strings.Contains(detail, "login=octo") {
+		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+	if strings.Contains(detail, "jwt-test-value") || strings.Contains(detail, "gh-test-value") {
+		t.Fatalf("token leaked: %q", detail)
+	}
+}
+
+// SC-11: an unreachable broker fails the check and points at WARP.
+func TestBrokerCheck_Unreachable(t *testing.T) {
+	srv := brokerTestServer(t, http.StatusOK)
+	url := srv.URL
+	srv.Close() // connection refused from here on
+	c := brokerTestClient(url)
+	c.Home = t.TempDir()
+	ok, detail := brokerCheck(url, staticGHRunner{ghOKOut}, &http.Client{Timeout: time.Second}, c).Run()
+	if ok || !strings.Contains(detail, "WARP") {
+		t.Fatalf("ok=%v detail=%q, want failure mentioning WARP", ok, detail)
+	}
+}
+
+func TestBrokerCheck_GHProblems(t *testing.T) {
+	srv := brokerTestServer(t, http.StatusOK)
+	c := brokerTestClient(srv.URL)
+	c.Home = t.TempDir()
+	if ok, d := brokerCheck(srv.URL, staticGHRunner{""}, srv.Client(), c).Run(); ok || !strings.Contains(d, "gh auth login") {
+		t.Errorf("logged out: ok=%v detail=%q", ok, d)
+	}
+	noScope := strings.Replace(ghOKOut, "'read:org', ", "", 1)
+	if ok, d := brokerCheck(srv.URL, staticGHRunner{noScope}, srv.Client(), c).Run(); ok || !strings.Contains(d, "read:org") {
+		t.Errorf("missing scope: ok=%v detail=%q", ok, d)
+	}
+}
+
+func TestBrokerCheck_HealthzNot200(t *testing.T) {
+	srv := brokerTestServer(t, http.StatusServiceUnavailable)
+	c := brokerTestClient(srv.URL)
+	c.Home = t.TempDir()
+	ok, d := brokerCheck(srv.URL, staticGHRunner{ghOKOut}, srv.Client(), c).Run()
+	if ok || !strings.Contains(d, "503") {
+		t.Fatalf("ok=%v detail=%q", ok, d)
+	}
+}
+
+func TestSecretsCheck_BrokerNoMongoOK(t *testing.T) {
+	m := &manifest.Manifest{Broker: &manifest.Broker{URL: "https://broker.example"}}
+	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return "" }, fixedManifest(m)).Run()
+	if !ok || detail != "credentials via broker" {
+		t.Fatalf("ok=%v detail=%q", ok, detail)
 	}
 }
