@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 )
 
 var t0 = time.Date(2026, 10, 15, 10, 0, 0, 0, time.UTC)
@@ -251,5 +252,123 @@ func TestGHTokenExec_IncludesStderr(t *testing.T) {
 	_, err := GHTokenExec(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "not logged in") {
 		t.Fatalf("err = %v, want gh stderr in it", err)
+	}
+}
+
+// Only 401/403 non-JSON replies get the WARP hint; a non-JSON 5xx says the
+// broker failed, and a JSON 500 (broker_misconfigured) keeps its own message.
+func TestDo_ErrorClassification(t *testing.T) {
+	cases := []struct {
+		name, body     string
+		status         int
+		code, contains string
+		hint           bool
+	}{
+		{"403 html", "<html>Access</html>", http.StatusForbidden, "not_json", "WARP", true},
+		{"401 html", "<html>Access</html>", http.StatusUnauthorized, "not_json", "WARP", true},
+		{"502 html", "<html>Bad gateway</html>", http.StatusBadGateway, "not_json", "broker lỗi HTTP 502", false},
+		{"500 misconfigured", `{"error":"broker_misconfigured","message":"JWT signing key too short"}`, http.StatusInternalServerError, api.CodeBrokerMisconfigured, "JWT signing key too short", false},
+	}
+	for _, tc := range cases {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tc.status)
+			_, _ = w.Write([]byte(tc.body))
+		}))
+		now := t0
+		_, err := newClient(srv.URL, t.TempDir(), &now).Token(context.Background())
+		srv.Close()
+		var ae *APIError
+		if !errors.As(err, &ae) || ae.Status != tc.status || ae.Code != tc.code || !strings.Contains(ae.Message, tc.contains) || strings.Contains(ae.Message, "WARP") != tc.hint {
+			t.Errorf("%s: err = %#v", tc.name, err)
+		}
+	}
+}
+
+// A reply over maxBody is an error, never a silently cut body.
+func TestDo_OversizedReplyRefused(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"stdout":"`))
+		_, _ = w.Write(make([]byte, maxBody))
+	}))
+	t.Cleanup(srv.Close)
+	now := t0
+	c := newClient(srv.URL, t.TempDir(), &now)
+	err := c.do(context.Background(), "/query", "jwt", struct{}{}, &api.QueryResponse{})
+	if err == nil || !strings.Contains(err.Error(), "over") {
+		t.Fatalf("err = %v, want an over-size error", err)
+	}
+}
+
+// Refresh skips a valid cached JWT, caches the new one and returns the login.
+func TestRefresh_IgnoresCache(t *testing.T) {
+	var calls int32
+	srv := fakeBroker(t, &calls, nil)
+	now := t0
+	c := newClient(srv.URL, t.TempDir(), &now)
+	if _, err := c.Token(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	tok, login, err := c.Refresh(context.Background())
+	if err != nil || tok != "jwt-2" || login != "octo" || calls != 2 {
+		t.Fatalf("tok=%q login=%q err=%v calls=%d, want jwt-2 octo nil 2", tok, login, err, calls)
+	}
+	if again, _ := c.Token(context.Background()); again != "jwt-2" || calls != 2 {
+		t.Fatalf("cached after refresh = %q calls=%d, want jwt-2 2", again, calls)
+	}
+}
+
+// GHTokenExec returns gh's trimmed stdout; empty output is an error.
+func TestGHTokenExec_Output(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script fake")
+	}
+	bin := t.TempDir()
+	gh := filepath.Join(bin, "gh")
+	t.Setenv("PATH", bin)
+	if err := os.WriteFile(gh, []byte("#!/bin/sh\necho '  gho_test  '\n"), 0o700); err != nil { //nolint:gosec // test fake must be executable
+		t.Fatal(err)
+	}
+	if tok, err := GHTokenExec(context.Background()); err != nil || tok != "gho_test" {
+		t.Fatalf("tok=%q err=%v", tok, err)
+	}
+	if err := os.WriteFile(gh, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil { //nolint:gosec // test fake must be executable
+		t.Fatal(err)
+	}
+	if _, err := GHTokenExec(context.Background()); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("err = %v, want empty-output error", err)
+	}
+}
+
+// A gh that never exits is stopped by ctx.
+func TestGHTokenExec_ContextBound(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script fake")
+	}
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\nexec sleep 30\n"), 0o700); err != nil { //nolint:gosec // test fake must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+"/bin")
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := GHTokenExec(ctx); err == nil {
+		t.Fatal("want an error")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("took %v", d)
+	}
+}
+
+func TestFromManifest(t *testing.T) {
+	if _, ok := FromManifest(nil); ok {
+		t.Fatal("nil manifest: ok")
+	}
+	if _, ok := FromManifest(&manifest.Manifest{}); ok {
+		t.Fatal("no broker: ok")
+	}
+	c, ok := FromManifest(&manifest.Manifest{Broker: &manifest.Broker{URL: "https://b.example"}})
+	if !ok || c.URL != "https://b.example" {
+		t.Fatalf("c=%+v ok=%v", c, ok)
 	}
 }

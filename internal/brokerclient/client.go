@@ -27,7 +27,9 @@ const refreshWindow = 60 * time.Second
 // maxBody caps how much of a broker response is read.
 const maxBody = 16 << 20
 
-// accessHint explains a reply that did not come from the broker itself.
+// accessHint explains a reply that did not come from the broker itself: a
+// redirect, a 401/403 or a 2xx that is not JSON (the Cloudflare Access login
+// page).
 const accessHint = "reply is not from the broker (Cloudflare Access login page?) — turn on Cloudflare WARP and retry"
 
 // Client talks to one broker. Zero Home/HTTP/Now/GHToken/Stderr fall back to
@@ -110,31 +112,44 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 			}
 		}
 	}
+	tok, _, err := c.refresh(ctx, p)
+	return tok, err
+}
+
+// Refresh ignores the cache, trades the GitHub token for a new JWT, caches it
+// and returns it with the login the broker issued it to. Use it when a cached
+// JWT may be one the broker now refuses (left the org) or to re-check
+// membership.
+func (c *Client) Refresh(ctx context.Context) (token, login string, err error) {
+	p, err := c.cachePath()
+	if err != nil {
+		return "", "", err
+	}
 	return c.refresh(ctx, p)
 }
 
-func (c *Client) refresh(ctx context.Context, cachePath string) (string, error) {
+func (c *Client) refresh(ctx context.Context, cachePath string) (string, string, error) {
 	gh := c.GHToken
 	if gh == nil {
 		gh = GHTokenExec
 	}
 	ghTok, err := gh(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var resp api.TokenResponse
 	if err := c.do(ctx, "/token", "", api.TokenRequest{GitHubToken: ghTok}, &resp); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if resp.Token == "" {
-		return "", errors.New("broker /token: empty token")
+		return "", "", errors.New("broker /token: empty token")
 	}
 	if _, err := time.Parse(time.RFC3339, resp.ExpiresAt); err != nil {
-		return "", fmt.Errorf("broker /token: bad expires_at %q", resp.ExpiresAt)
+		return "", "", fmt.Errorf("broker /token: bad expires_at %q", resp.ExpiresAt)
 	}
 	b, err := json.Marshal(cached{URL: c.URL, Token: resp.Token, ExpiresAt: resp.ExpiresAt, Login: resp.Login})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	// Best effort: the Claude Code Bash sandbox denies writes under ~/.zenify.
 	if err := writeAtomic(cachePath, b); err != nil {
@@ -144,7 +159,7 @@ func (c *Client) refresh(ctx context.Context, cachePath string) (string, error) 
 		}
 		_, _ = fmt.Fprintf(w, "warning: broker token not cached: %v\n", err)
 	}
-	return resp.Token, nil
+	return resp.Token, resp.Login, nil
 }
 
 // writeAtomic writes data to path via a 0600 temp file in the same directory.
@@ -188,7 +203,7 @@ func (c *Client) Post(ctx context.Context, path string, in, out any) error {
 		if perr != nil {
 			return perr
 		}
-		if tok, err = c.refresh(ctx, p); err != nil {
+		if tok, _, err = c.refresh(ctx, p); err != nil {
 			return err
 		}
 		return c.do(ctx, path, tok, in, out)
@@ -214,9 +229,12 @@ func (c *Client) do(ctx context.Context, path, bearer string, in, out any) error
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
 		return err
+	}
+	if len(b) > maxBody {
+		return fmt.Errorf("broker %s: reply over %d bytes", path, maxBody)
 	}
 	if resp.StatusCode/100 == 3 {
 		return &APIError{Status: resp.StatusCode, Code: "redirect", Message: accessHint}
@@ -224,10 +242,13 @@ func (c *Client) do(ctx context.Context, path, bearer string, in, out any) error
 	if resp.StatusCode/100 != 2 {
 		ae := &APIError{Status: resp.StatusCode}
 		var e api.Error
-		if json.Unmarshal(b, &e) == nil {
+		switch {
+		case json.Unmarshal(b, &e) == nil && e.Error != "":
 			ae.Code, ae.Message = e.Error, e.Message
-		} else {
+		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 			ae.Code, ae.Message = "not_json", accessHint
+		default:
+			ae.Code, ae.Message = "not_json", fmt.Sprintf("broker lỗi HTTP %d", resp.StatusCode) //znf:allow-lang
 		}
 		return ae
 	}
@@ -243,7 +264,9 @@ func (c *Client) do(ctx context.Context, path, bearer string, in, out any) error
 // GHTokenExec returns the developer's GitHub token from `gh auth token`,
 // killed when ctx ends.
 func GHTokenExec(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output() //nolint:gosec // fixed argv
+	cmd := exec.CommandContext(ctx, "gh", "auth", "token") //nolint:gosec // fixed argv
+	cmd.WaitDelay = 2 * time.Second
+	out, err := cmd.Output()
 	if err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {

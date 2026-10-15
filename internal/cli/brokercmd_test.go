@@ -322,6 +322,20 @@ func TestDBReadCmd_Broker400IsBadArgs(t *testing.T) {
 	}
 }
 
+// A misconfigured broker (500 broker_misconfigured) surfaces its own message:
+// not BadArgs, and no WARP hint.
+func TestDBReadCmd_BrokerMisconfigured(t *testing.T) {
+	hermeticDBRead(t)
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeBrokerMisconfigured, Message: "no credential for target audit"})
+	}})
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "count", "users")
+	if err == nil || exitcode.Code(err) == exitcode.BadArgs || !strings.Contains(err.Error(), "no credential for target audit") || strings.Contains(err.Error(), "WARP") {
+		t.Errorf("err = %v (code %d)", err, exitcode.Code(err))
+	}
+}
+
 // No broker: db-read takes the v0.38.0 local path. A real run would open the
 // workspace's databases, so the test checks the routing decision and that a
 // local validation error still surfaces unchanged.
