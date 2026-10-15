@@ -13,7 +13,8 @@ RUN apt-get update \
 COPY --from=mcp-grafana /app/mcp-grafana /usr/local/bin/mcp-grafana
 # Fail the build if a flag the broker passes is gone from this mcp-grafana.
 RUN mcp-grafana --help 2>&1 | tee /tmp/mcp-help.txt >/dev/null; \
-    for f in -t --address --disable-write --enabled-tools --loki-guardrail-mode \
+    grep -qE -- '(^|[ ,])-t[ ,]' /tmp/mcp-help.txt || { echo "mcp-grafana --help lacks -t"; exit 1; }; \
+    for f in --address --disable-write --enabled-tools --loki-guardrail-mode \
              --max-loki-log-limit --loki-guardrail-max-range --usage-stats; do \
       grep -q -- "$f" /tmp/mcp-help.txt || { echo "mcp-grafana --help lacks $f"; exit 1; }; \
     done; rm /tmp/mcp-help.txt

@@ -26,7 +26,7 @@ grafana:
   # addr: 127.0.0.1:8000
   # args: mặc định là bộ cờ team đang dùng (--enabled-tools=..., --loki-guardrail-mode=enforce, ...)
 posthog:
-  upstream: "<URL MCP endpoint của PostHog>"
+  upstream: https://mcp.posthog.com/mcp
   project_id: "137053"
 e2e:
   hub_url: https://hub.example.invalid

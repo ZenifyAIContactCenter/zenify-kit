@@ -27,7 +27,7 @@ import (
 )
 
 // maxConcurrentPerLogin caps simultaneous /query children per developer.
-const maxConcurrentPerLogin = 4
+const maxConcurrentPerLogin = 2
 
 func main() {
 	cfgPath := flag.String("config", "/etc/zenify-broker/broker.yaml", "path to the broker YAML config")
