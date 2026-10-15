@@ -337,29 +337,26 @@ func gitCalls(p Parsed) []GitCall {
 	return calls
 }
 
-// LeadingCd extracts the target of a leading `cd <dir>` in the command (if any).
+// LeadingCd extracts the target of a `cd <dir>` that runs first: the first
+// command of the first statement, or the head of a leading && chain. A cd
+// anywhere else runs after other commands and does not re-anchor them.
 func LeadingCd(command string) string {
 	parser := syntax.NewParser(syntax.RecoverErrors(4))
-	file, err := parser.Parse(strings.NewReader(command), "")
-	if file == nil && err != nil {
+	file, _ := parser.Parse(strings.NewReader(command), "")
+	if file == nil || len(file.Stmts) == 0 {
 		return ""
 	}
-	var target string
-	syntax.Walk(file, func(node syntax.Node) bool {
-		if target != "" {
-			return false
+	cmd := file.Stmts[0].Cmd
+	for {
+		bc, ok := cmd.(*syntax.BinaryCmd)
+		if !ok || bc.Op != syntax.AndStmt {
+			break
 		}
-		ce, ok := node.(*syntax.CallExpr)
-		if !ok || len(ce.Args) < 2 {
-			return true
-		}
-		if ce.Args[0].Lit() == "cd" {
-			if d := ce.Args[1].Lit(); d != "" {
-				target = d
-				return false
-			}
-		}
-		return true
-	})
-	return target
+		cmd = bc.X.Cmd
+	}
+	ce, ok := cmd.(*syntax.CallExpr)
+	if !ok || len(ce.Args) < 2 || ce.Args[0].Lit() != "cd" {
+		return ""
+	}
+	return ce.Args[1].Lit()
 }

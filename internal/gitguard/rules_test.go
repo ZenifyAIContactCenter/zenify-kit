@@ -79,6 +79,8 @@ func TestRuleEnvFilePath(t *testing.T) {
 		{ws, `mongosh "$(grep MONGO_URL_PRD .zenify/.env)"`, true},
 		{ws, `cd .zenify && cat .env`, true},
 		{ws, `cd .zenify && source .env`, true},
+		{ws, "cat .zenify/.env; cd /tmp", true},
+		{ws, "cat .zenify/.env && cd /tmp", true},
 		{ws, `chmod 600 .zenify/.env`, false},
 		{ws, `git commit -m "$(printf 'docs: ghi chú .zenify/.env')"`, false}, //znf:allow-lang
 		{ws, `gh pr create --body "sửa .zenify/.env"`, false},                 //znf:allow-lang

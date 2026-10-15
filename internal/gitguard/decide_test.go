@@ -81,6 +81,9 @@ func TestDecide(t *testing.T) {
 		{true, deny, "git --no-pager commit -m x"},
 		{true, deny, "git merge origin/x"},
 		{true, deny, "git merge"},
+		{true, deny, "git push origin main && cd .."},
+		{true, deny, "git push origin main; cd " + nodeny},
+		{false, deny, "cd " + nodeny + " && cd . && git commit -m x"},
 	}
 	for _, tc := range cases {
 		if got := dec(tc.cwd, tc.cmd); got != tc.want {

@@ -57,6 +57,16 @@ func TestLeadingCd(t *testing.T) {
 	if got := LeadingCd("git commit -m x"); got != "" {
 		t.Fatalf("got %q, want empty", got)
 	}
+	for _, cmd := range []string{"cat f; cd /tmp", "git push origin x && cd ..", "echo $(cd /tmp)"} {
+		if got := LeadingCd(cmd); got != "" {
+			t.Errorf("LeadingCd(%q) = %q, want empty (cd not first)", cmd, got)
+		}
+	}
+	for _, cmd := range []string{"cd /a && cd /b && git push", "cd /a; git push"} {
+		if got := LeadingCd(cmd); got != "/a" {
+			t.Errorf("LeadingCd(%q) = %q, want /a", cmd, got)
+		}
+	}
 }
 
 func TestParseNestedAndWrappers(t *testing.T) {
