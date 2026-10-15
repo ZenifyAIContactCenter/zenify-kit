@@ -109,13 +109,29 @@ func Render(old *File, keys []manifest.PlacedKey, prevManaged []string) RenderRe
 	}
 	flush()
 
+	// The first entry of a name wins; a group outside the three folds into
+	// staging, so a managed key's value is never consumed without a home.
+	groupOf := map[string]string{}
+	for _, k := range keys {
+		if _, dup := groupOf[k.Name]; dup {
+			continue
+		}
+		switch g := k.EffectiveGroup(); g {
+		case manifest.GroupTooling, manifest.GroupProduction:
+			groupOf[k.Name] = g
+		default:
+			groupOf[k.Name] = manifest.GroupStaging
+		}
+	}
 	groupOrder := []string{manifest.GroupStaging, manifest.GroupTooling, manifest.GroupProduction}
 	groups := map[string][][]string{}
 	for _, g := range groupOrder {
+		placed := map[string]bool{}
 		for _, k := range keys {
-			if k.EffectiveGroup() != g {
+			if groupOf[k.Name] != g || placed[k.Name] {
 				continue
 			}
+			placed[k.Name] = true
 			v, ok := old.Get(k.Name)
 			if !ok {
 				res.Added = append(res.Added, k.Name)

@@ -263,3 +263,62 @@ func TestRender_CommentedAssignmentAboveManifestKeyKept(t *testing.T) {
 		t.Fatalf("second render changed the file:\n%s", twice)
 	}
 }
+
+// A key whose group is not one of the three must not lose its value: it is
+// rendered in the staging section.
+func TestRender_UnknownGroupFoldsIntoStaging(t *testing.T) {
+	keys := []manifest.PlacedKey{key("A", "bogus", "a", "", "", true, "")}
+	r := Render(load(t, "A='w'\n"), keys, nil)
+	want := lines(
+		"# zenify-kit — credential dev. Kit giữ khung; bạn chỉ điền giá trị. Key trống = chưa cấu hình.", //znf:allow-lang
+		"",
+		"# ══ Staging ══",
+		"# a",
+		"# secret",
+		"A='w'",
+	)
+	if got := text(t, r.File); got != want {
+		t.Fatalf("output:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRender_DuplicateManifestNameRenderedOnce(t *testing.T) {
+	keys := []manifest.PlacedKey{
+		key("A", "", "a", "", "", true, ""),
+		key("A", manifest.GroupTooling, "a again", "", "", true, "repo"),
+	}
+	r := Render(load(t, "A='w'\n"), keys, nil)
+	want := lines(
+		"# zenify-kit — credential dev. Kit giữ khung; bạn chỉ điền giá trị. Key trống = chưa cấu hình.", //znf:allow-lang
+		"",
+		"# ══ Staging ══",
+		"# a",
+		"# secret",
+		"A='w'",
+	)
+	if got := text(t, r.File); got != want {
+		t.Fatalf("output:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRender_CommentedAssignmentAboveRemovedKeyKept(t *testing.T) {
+	keys := []manifest.PlacedKey{key("A", "", "a", "", "", true, "")}
+	r := Render(load(t, "# b desc\n# OLD_B=1\nB='v'\nA='w'\n"), keys, []string{"A", "B"})
+	want := lines(
+		"# zenify-kit — credential dev. Kit giữ khung; bạn chỉ điền giá trị. Key trống = chưa cấu hình.", //znf:allow-lang
+		"",
+		"# ══ Staging ══",
+		"# a",
+		"# secret",
+		"A='w'",
+		"",
+		"# ══ Custom (ngoài manifest) ══", //znf:allow-lang
+		"# OLD_B=1",
+	)
+	if got := text(t, r.File); got != want {
+		t.Fatalf("output:\n%s\nwant:\n%s", got, want)
+	}
+	if !reflect.DeepEqual(r.Removed, []string{"B"}) {
+		t.Fatalf("Removed = %v, want [B]", r.Removed)
+	}
+}
