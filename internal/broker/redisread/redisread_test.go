@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,14 +24,19 @@ var testKey = []byte("test-key")
 
 // fakeDoer records every argv it is handed and answers with val / err.
 type fakeDoer struct {
-	got [][]any
-	val any
-	err error
+	got   [][]any
+	val   any
+	err   error
+	byCmd map[string]any // upper-case command -> reply, consulted before val
 }
 
 func (f *fakeDoer) Do(ctx context.Context, args ...any) *redis.Cmd {
 	f.got = append(f.got, args)
 	c := redis.NewCmd(ctx, args...)
+	if r, ok := f.byCmd[strings.ToUpper(args[0].(string))]; ok {
+		c.SetVal(r)
+		return c
+	}
 	if f.err != nil {
 		c.SetErr(f.err)
 	} else {
@@ -104,8 +110,10 @@ func TestRedis_RangeRewrites(t *testing.T) {
 		{"lrange small unchanged", "LRANGE", []string{"k", "10", "20"}, []string{"LRANGE", "k", "10", "20"}},
 		{"lrange big", "LRANGE", []string{"k", "0", "5000"}, []string{"LRANGE", "k", "0", "199"}},
 		{"lrange offset", "LRANGE", []string{"k", "100", "-1"}, []string{"LRANGE", "k", "100", "299"}},
-		{"lrange neg both small", "LRANGE", []string{"k", "-10", "-1"}, []string{"LRANGE", "k", "-10", "-1"}},
-		{"lrange neg both big", "LRANGE", []string{"k", "-1000", "-1"}, []string{"LRANGE", "k", "-1000", "-801"}},
+		{"lrange neg both", "LRANGE", []string{"k", "-10", "-1"}, nil},
+		{"lrange min int start", "LRANGE", []string{"k", "-9223372036854775808", "-1"}, nil},
+		{"lrange max int start", "LRANGE", []string{"k", "9223372036854775807", "-1"}, nil},
+		{"lrange huge stop no overflow", "LRANGE", []string{"k", "5", "9223372036854775807"}, []string{"LRANGE", "k", "5", "204"}},
 		{"lrange neg start pos stop", "LRANGE", []string{"k", "-5", "100"}, nil},
 		{"lrange not int", "LRANGE", []string{"k", "a", "b"}, nil},
 		{"lrange wrong arity", "LRANGE", []string{"k", "0"}, nil},
@@ -114,8 +122,11 @@ func TestRedis_RangeRewrites(t *testing.T) {
 		{"zrange bylex overrides limit", "ZRANGE", []string{"z", "-", "+", "bylex", "LIMIT", "5", "9999"}, []string{"ZRANGE", "z", "-", "+", "bylex", "LIMIT", "0", "200"}},
 		{"xrange adds count", "XRANGE", []string{"s", "-", "+"}, []string{"XRANGE", "s", "-", "+", "COUNT", "200"}},
 		{"xrange lowers count", "XRANGE", []string{"s", "-", "+", "COUNT", "5000"}, []string{"XRANGE", "s", "-", "+", "COUNT", "200"}},
-		{"xrange keeps small count", "XRANGE", []string{"s", "-", "+", "count", "50"}, []string{"XRANGE", "s", "-", "+", "count", "50"}},
-		{"get untouched", "GET", []string{"k"}, []string{"GET", "k"}},
+		{"xrange keeps small count", "XRANGE", []string{"s", "-", "+", "count", "50"}, []string{"XRANGE", "s", "-", "+", "COUNT", "50"}},
+		{"xrange duplicate counts last wins capped", "XRANGE", []string{"s", "-", "+", "COUNT", "5", "COUNT", "99999"}, []string{"XRANGE", "s", "-", "+", "COUNT", "200"}},
+		{"xrange duplicate counts last small", "XRANGE", []string{"s", "-", "+", "COUNT", "99999", "COUNT", "5"}, []string{"XRANGE", "s", "-", "+", "COUNT", "5"}},
+		{"xrange count not int", "XRANGE", []string{"s", "-", "+", "COUNT", "x"}, nil},
+		{"ttl untouched", "TTL", []string{"k"}, []string{"TTL", "k"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -140,6 +151,7 @@ func TestRedis_RangeRewrites(t *testing.T) {
 func TestRedis_ResultCapped(t *testing.T) {
 	f := newFixture(t)
 	f.stg.val = strings.Repeat("x", 2<<20)
+	f.stg.byCmd = map[string]any{"STRLEN": int64(100)} // the guard must not hide a reply that is bigger anyway
 	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "GET", Args: []string{"big"}})
 	var r api.RedisResponse
 	if err := json.Unmarshal(body, &r); err != nil || st != 200 {
@@ -249,5 +261,101 @@ func TestRedis_BadBody400(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != 400 || strings.Count(f.audit.String(), "\n") != 1 {
 		t.Fatalf("%d %s", resp.StatusCode, f.audit)
+	}
+}
+
+func TestRedis_BigGetUsesGetRange(t *testing.T) {
+	f := newFixture(t)
+	f.stg.byCmd = map[string]any{"STRLEN": int64(5 << 20), "GETRANGE": strings.Repeat("z", 1<<20)}
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "GET", Args: []string{"big"}})
+	var r api.RedisResponse
+	_ = json.Unmarshal(body, &r)
+	if st != 200 || !r.Truncated || len(body) > 1<<20+256 {
+		t.Fatalf("st=%d truncated=%v len=%d", st, r.Truncated, len(body))
+	}
+	var sent []string
+	for _, a := range f.stg.got {
+		sent = append(sent, strings.Join(argv(a), " "))
+	}
+	if strings.Join(sent, "|") != "STRLEN big|GETRANGE big 0 1048575" {
+		t.Fatalf("sent %v", sent)
+	}
+}
+
+func TestRedis_SmallGetIsPlainGet(t *testing.T) {
+	f := newFixture(t)
+	f.stg.byCmd = map[string]any{"STRLEN": int64(3)}
+	_, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "GET", Args: []string{"k"}})
+	if !strings.Contains(string(body), `"truncated":false`) || len(f.stg.got) != 2 || argv(f.stg.got[1])[0] != "GET" {
+		t.Fatalf("%s %v", body, f.stg.got)
+	}
+}
+
+func TestRedis_MGetKeyLimit(t *testing.T) {
+	f := newFixture(t)
+	keys := make([]string, 101)
+	for i := range keys {
+		keys[i] = "k"
+	}
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "MGET", Args: keys})
+	if st != 400 || !strings.Contains(string(body), api.CodeCommandNotAllowed) || !strings.Contains(string(body), "100") || len(f.stg.got) != 0 {
+		t.Fatalf("%d %s", st, body)
+	}
+	if st, _ = f.post(t, api.RedisRequest{Env: "stg", Cmd: "MGET", Args: keys[:100]}); st != 200 {
+		t.Fatalf("100 keys: %d", st)
+	}
+}
+
+func TestRedis_CollectionSizePrecheck(t *testing.T) {
+	for cmd, count := range map[string]string{"HGETALL": "HLEN", "HKEYS": "HLEN", "SMEMBERS": "SCARD"} {
+		f := newFixture(t)
+		f.stg.byCmd = map[string]any{count: int64(10001)}
+		st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: cmd, Args: []string{"h"}})
+		if st != 400 || !strings.Contains(string(body), api.CodeCommandNotAllowed) || len(f.stg.got) != 1 {
+			t.Fatalf("%s: %d %s calls=%d", cmd, st, body, len(f.stg.got))
+		}
+		f.stg.byCmd = map[string]any{count: int64(10000)}
+		if st, _ = f.post(t, api.RedisRequest{Env: "stg", Cmd: cmd, Args: []string{"h"}}); st != 200 {
+			t.Fatalf("%s at limit: %d", cmd, st)
+		}
+	}
+}
+
+func TestRedis_NaNReplyEncoded(t *testing.T) {
+	f := newFixture(t)
+	f.stg.val = []any{math.NaN(), math.Inf(1), 1.5}
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "MGET", Args: []string{"a"}})
+	if st != 200 || strings.TrimSpace(string(body)) != `{"result":["NaN","+Inf",1.5],"truncated":false}` {
+		t.Fatalf("%d %s", st, body)
+	}
+}
+
+func TestRedis_ServerError502KeepsMessage(t *testing.T) {
+	f := newFixture(t)
+	f.stg.err = redisErr("WRONGTYPE Operation against a key holding the wrong kind of value")
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "GET", Args: []string{"k"}})
+	var e api.Error
+	_ = json.Unmarshal(body, &e)
+	if st != 502 || e.Error != api.CodeQueryFailed || !strings.HasPrefix(e.Message, "WRONGTYPE") {
+		t.Fatalf("%d %s", st, body)
+	}
+}
+
+type redisErr string
+
+func (e redisErr) Error() string { return string(e) }
+func (redisErr) RedisError()     {}
+
+func TestRedis_MultiByteStringTruncatedOnBoundary(t *testing.T) {
+	f := newFixture(t)
+	f.stg.val = strings.Repeat("\u00e9", 700000) // 2 bytes each, 1.4 MB
+	_, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "HGET", Args: []string{"h", "f"}})
+	var r api.RedisResponse
+	if err := json.Unmarshal(body, &r); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := r.Result.(string)
+	if !r.Truncated || len(body) > 1<<20+256 || len(s) == 0 || strings.Trim(s, "\u00e9") != "" || strings.ContainsRune(s, '\uFFFD') {
+		t.Fatalf("truncated=%v len=%d", r.Truncated, len(body))
 	}
 }
