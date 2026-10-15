@@ -20,7 +20,7 @@ Khi `zenify db-read`, `zenify e2e`, `zenify visual` hoặc một script tay cầ
 
 ## Kết quả
 
-Không đối số, lệnh mở form nhập ẩn: hỏi trước các key toàn cục còn trống, rồi cho chọn bất kỳ key nào để điền hoặc sửa. Form cần terminal thật.
+Không đối số, lệnh mở form nhập ẩn: hỏi trước các key toàn cục còn trống (trừ nhóm production), rồi cho chọn bất kỳ key nào để điền hoặc sửa. Form cần terminal thật.
 
 ## Ví dụ
 

@@ -16,7 +16,7 @@ zenify env list
 
 ## Kết quả
 
-Mỗi key một dòng: tên, `set` hoặc `empty`, nguồn `manifest` hoặc `local`, giá trị (chỉ khi key có `secret: false`), mô tả. Key có trong file mà không có trong manifest là `local` và coi như secret, nên giá trị không bao giờ được in.
+Mỗi key một dòng: tên, `set` hoặc `empty`, nguồn `manifest` hoặc `custom`, giá trị (chỉ khi key có `secret: false`), mô tả. Key có trong file mà không có trong manifest là `custom` và coi như secret, nên giá trị không bao giờ được in.
 
 ## Ví dụ
 
