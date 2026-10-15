@@ -38,6 +38,10 @@ E2E_DOMAIN=
 # personal · secret
 MONGO_URL_PRD=
 
+# MySQL production
+# personal · secret
+MYSQL_URL_PRD=
+
 # ══ Custom (ngoài manifest) ══
 # key cá nhân
 OPENROUTER_API_KEY='...'
@@ -65,6 +69,7 @@ Manifest `manifest/repos.yaml` khai từng key gồm tên, mô tả, phạm vi (
 | `E2E_EMAIL`, `E2E_PASSWORD` | tài khoản đăng nhập của `zenify e2e login` | personal | tooling |
 | `POSTHOG_API_KEY` | key PostHog của bạn | personal | tooling |
 | `MONGO_URL_PRD` | MongoDB production, DB 3csoft | personal | production |
+| `MYSQL_URL_PRD` | MySQL production, cho `zenify db-read --prd sql` và `--prd tables` | personal | production |
 | `AUDIT_MONGO_URL_PRD` | MongoDB `audit_logs` production | personal | production |
 | `REDIS_URL_PRD` | Redis production | personal | production |
 | `LUMI_MYSQL_URL_STG`, `QDRANT_URL_STG`, `LUMI_APP_URL_STG` | MySQL, Qdrant và URL ứng dụng của `lumi-agent` trên staging | shared; `LUMI_APP_URL_STG` không phải secret | staging |
@@ -123,6 +128,10 @@ zenify env exec -- node scripts/check.js
 ```
 
 Lệnh con nhận env hiện có cộng key trong file, mà không cần export vào shell. Stdout và stderr được che theo dòng: giá trị của key secret (key manifest có `secret: true` và mọi key `custom`) dài từ 6 ký tự trở lên bị thay bằng `***`; giá trị của key có `secret: false` hoặc ngắn hơn 6 ký tự không bị che. Exit code của lệnh con là exit code của `zenify`.
+
+`zenify env exec` không đưa vào lệnh con các key thuộc nhóm production và các key có tên kết thúc bằng `_PRD`, kể cả khi chúng có sẵn trong môi trường của tiến trình. Muốn đọc production, dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#đoc-production).
+
+Người cần một key production trong script tự chạy thì chạy script đó ở shell của mình, qua `!` ở dấu nhắc của Claude Code hoặc một terminal, với giá trị export ngay tại shell đó. Không bao giờ export key `*_PRD` trong shell mà agent kế thừa.
 
 `zenify env exec` dành cho lệnh không tương tác. Output chỉ hiện khi có trọn một dòng, nên một lời nhắc nhập liệu không kết thúc bằng xuống dòng sẽ không hiện ra.
 

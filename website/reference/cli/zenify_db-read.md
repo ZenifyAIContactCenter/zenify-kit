@@ -60,6 +60,7 @@ Chỉ chạy được trong phiên mở tại workspace, vì credential nằm �
 | `--filter` | JSON object filter (find, count, explain) |
 | `--limit` | max documents or rows, 1..200 (mặc định `50`) |
 | `--pipeline` | JSON array pipeline (aggregate, explain) |
+| `--prd` | read production: MONGO_URL_PRD / MYSQL_URL_PRD |
 | `--projection` | JSON object projection (find, explain) |
 | `--sort` | JSON object sort (find, explain) |
 

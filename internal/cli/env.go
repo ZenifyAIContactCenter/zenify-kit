@@ -324,6 +324,11 @@ func runEditor(path string) error {
 	return c.Run()
 }
 
+// isProdKey reports whether name is a production key: in the manifest's production group or named *_PRD.
+func isProdKey(name string, prod map[string]bool) bool {
+	return prod[name] || strings.HasSuffix(name, "_PRD")
+}
+
 func (d envDeps) execCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:                   "exec -- <lệnh> [args…]",                                                //znf:allow-lang
@@ -343,8 +348,27 @@ func (d envDeps) execCmd() *cobra.Command {
 					public[k.Name] = true
 				}
 			}
-			var secrets []string
+			prod := map[string]bool{}
+			for _, k := range m.AllKeys() {
+				if k.EffectiveGroup() == manifest.GroupProduction {
+					prod[k.Name] = true
+				}
+			}
+			var keys []string
 			for _, k := range f.Keys() {
+				if !isProdKey(k, prod) {
+					keys = append(keys, k)
+				}
+			}
+			var base []string
+			for _, kv := range d.environ() {
+				name, _, _ := strings.Cut(kv, "=")
+				if !isProdKey(name, prod) {
+					base = append(base, kv)
+				}
+			}
+			var secrets []string
+			for _, k := range keys {
 				if public[k] {
 					continue
 				}
@@ -353,7 +377,7 @@ func (d envDeps) execCmd() *cobra.Command {
 				}
 			}
 			c := exec.Command(args[0], args[1:]...) //nolint:gosec // G204 -- the user's own command, run on purpose
-			c.Env = devenv.ChildEnv(d.environ(), f.Keys(), lookup)
+			c.Env = devenv.ChildEnv(base, keys, lookup)
 			c.Stdin = os.Stdin
 			out := devenv.NewMaskWriter(cmd.OutOrStdout(), secrets)
 			errw := devenv.NewMaskWriter(cmd.ErrOrStderr(), secrets)

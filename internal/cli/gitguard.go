@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
+	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitguard"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/secretscan"
 	"github.com/spf13/cobra"
@@ -16,6 +19,75 @@ type hookPayload struct {
 	ToolInput struct {
 		Command string `json:"command"`
 	} `json:"tool_input"`
+}
+
+// urlHosts returns the lower-cased hosts in the authority of URL v, one per
+// comma-separated entry (replica-set URIs list several); nil when v has no
+// scheme. Ports and IPv6 brackets are stripped.
+func urlHosts(v string) []string {
+	_, rest, ok := strings.Cut(v, "://")
+	if !ok {
+		return nil
+	}
+	if j := strings.IndexAny(rest, "/?#"); j >= 0 {
+		rest = rest[:j]
+	}
+	if at := strings.LastIndex(rest, "@"); at >= 0 {
+		rest = rest[at+1:]
+	}
+	var out []string
+	for _, h := range strings.Split(rest, ",") {
+		if strings.HasPrefix(h, "[") {
+			h, _, _ = strings.Cut(h[1:], "]")
+		} else {
+			h, _, _ = strings.Cut(h, ":")
+		}
+		if h != "" {
+			out = append(out, strings.ToLower(h))
+		}
+	}
+	return out
+}
+
+// prodHosts lists the distinct non-loopback hostnames of every *_PRD key in f.
+func prodHosts(f *devenv.File) []gitguard.ProdHost {
+	var out []gitguard.ProdHost
+	seen := map[string]bool{}
+	for _, k := range f.Keys() {
+		if !strings.HasSuffix(k, "_PRD") {
+			continue
+		}
+		v, _ := f.Get(k)
+		for _, h := range urlHosts(v) {
+			if h == "localhost" || h == "::1" || h == "0.0.0.0" || seen[h] {
+				continue
+			}
+			if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
+				continue
+			}
+			seen[h] = true
+			out = append(out, gitguard.ProdHost{Key: k, Host: h})
+		}
+	}
+	return out
+}
+
+// guardOptions resolves the workspace from cwd and reads its _PRD hosts.
+// Anything missing or unreadable yields fewer options, never an error.
+func guardOptions(cwd string, getenv func(string) string) gitguard.Options {
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	ws, _, ok := resolveWorkspace(cwd, "", getenv, os.UserHomeDir)
+	if !ok {
+		return gitguard.Options{}
+	}
+	path := devenv.Path(ws)
+	f, err := devenv.Load(path)
+	if err != nil {
+		return gitguard.Options{EnvFile: path}
+	}
+	return gitguard.Options{EnvFile: path, ProdHosts: prodHosts(f)}
 }
 
 // decideFromPayload is the pure core: parse the hook payload, call
@@ -40,7 +112,7 @@ func decideFromPayload(payload []byte, getenv func(string) string) gitguard.Deci
 		}
 		return gitguard.Decision{Deny: true, Message: msg}
 	}
-	return gitguard.Decide(p.ToolInput.Command, p.Cwd, getenv, onCommit)
+	return gitguard.Decide(p.ToolInput.Command, p.Cwd, getenv, onCommit, guardOptions(p.Cwd, getenv))
 }
 
 // runGitGuard is the process-exit-code core, factored out of RunE so tests

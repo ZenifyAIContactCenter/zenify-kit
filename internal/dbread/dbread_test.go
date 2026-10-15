@@ -811,3 +811,122 @@ func TestRun_NoWorkspaceNoEnv_FriendlyError(t *testing.T) {
 		t.Fatalf("err=%v stderr=%q", err, errb.String())
 	}
 }
+
+func prdEnv() map[string]string {
+	return map[string]string{
+		"MONGO_URL":     "mongodb://s/db",
+		"MONGO_URL_PRD": "mongodb://p/db",
+		"MYSQL_URL_PRD": "mysql://u:pw@p:3306/db", //nolint:gosec // G101 -- test fixture literal
+	}
+}
+
+func TestRun_Prd_UsesPrdURL(t *testing.T) {
+	o, _, stderr := baseOptions(t, prdEnv())
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg, o.Prod = "count", "users", true
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !contains((*calls)[0].extraEnv, "ZNF_MONGO_URL=mongodb://p/db") {
+		t.Errorf("extraEnv = %v, want the _PRD url", (*calls)[0].extraEnv)
+	}
+	if !strings.Contains(stderr.String(), "production (MONGO_URL_PRD)") {
+		t.Errorf("stderr = %q, want production banner", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "mongodb://p") {
+		t.Errorf("stderr leaks url: %q", stderr.String())
+	}
+}
+
+func TestRun_NoPrd_UsesMongoURL(t *testing.T) {
+	o, _, stderr := baseOptions(t, prdEnv())
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg = "count", "users"
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !contains((*calls)[0].extraEnv, "ZNF_MONGO_URL=mongodb://s/db") {
+		t.Errorf("extraEnv = %v, want the plain url", (*calls)[0].extraEnv)
+	}
+	if strings.Contains(stderr.String(), "production") {
+		t.Errorf("stderr = %q, no banner without --prd", stderr.String())
+	}
+}
+
+func TestRun_Prd_MissingKey(t *testing.T) {
+	for cmd, key := range map[string]string{"count": "MONGO_URL_PRD", "sql": "MYSQL_URL_PRD"} {
+		env := map[string]string{"MONGO_URL": "mongodb://s/db", "MYSQL_URL": "mysql://u:pw@s:3306/db"} //nolint:gosec // G101 -- fixture
+		if cmd == "sql" {
+			env["MONGO_URL_PRD"] = "mongodb://p/db" // Run checks the mongo key before the sql branch
+		}
+		o, _, stderr := baseOptions(t, env)
+		calls := recordRun(o, "")
+		o.Cmd, o.Arg, o.Prod = cmd, "users", true
+		if cmd == "sql" {
+			o.Arg = "SELECT 1"
+		}
+		err := Run(o)
+		if err == nil || !strings.Contains(err.Error(), key) {
+			t.Errorf("%s: err = %v, want it to name %s", cmd, err, key)
+		}
+		if !strings.Contains(stderr.String(), "zenify env set "+key) {
+			t.Errorf("%s: stderr = %q, want env set hint", cmd, stderr.String())
+		}
+		if len(*calls) != 0 {
+			t.Errorf("%s: runner called without prod key", cmd)
+		}
+		if strings.Contains(stderr.String(), "production (") {
+			t.Errorf("%s: production notice before the key is confirmed: %q", cmd, stderr.String())
+		}
+	}
+}
+
+func TestRun_Prd_OutRefused(t *testing.T) {
+	o, _, _ := baseOptions(t, prdEnv())
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg, o.Pipeline, o.Prod = "aggregate", "users", `[{"$out":"x"}]`, true
+	if err := Run(o); err == nil {
+		t.Fatal("want $out refused")
+	}
+	if len(*calls) != 0 {
+		t.Error("runner must not be called")
+	}
+}
+
+func TestRun_Prd_SQL(t *testing.T) {
+	o, _, _ := baseOptions(t, prdEnv())
+	calls := recordRun(o, "1\n")
+	o.Cmd, o.Arg, o.Prod = "sql", "SELECT 1", true
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	c := (*calls)[0]
+	if !contains(c.extraEnv, "MYSQL_PWD=pw") {
+		t.Errorf("extraEnv = %v, want MYSQL_PWD=pw", c.extraEnv)
+	}
+	hostOK := false
+	for i, a := range c.args {
+		if a == "-h" && i+1 < len(c.args) && c.args[i+1] == "p" {
+			hostOK = true
+		}
+	}
+	if !hostOK {
+		t.Errorf("args = %v, want -h p", c.args)
+	}
+}
+
+func TestRun_Prd_MongoshFailureNamesNoHost(t *testing.T) {
+	o, _, stderr := baseOptions(t, prdEnv())
+	o.SetRun(func(string, []string, []string, string) error { return errors.New("boom") })
+	o.Cmd, o.Arg, o.Prod = "count", "users", true
+	if err := Run(o); err == nil {
+		t.Fatal("want error")
+	}
+	s := stderr.String()
+	if strings.Contains(s, mongoHost) || strings.Contains(s, "nc -z") {
+		t.Errorf("stderr names a host: %q", s)
+	}
+	if !strings.Contains(s, "MONGO_URL_PRD") {
+		t.Errorf("stderr = %q, want key named", s)
+	}
+}

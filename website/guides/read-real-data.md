@@ -50,11 +50,21 @@ Khi kết quả nhiều hơn `--limit`, lệnh in đủ `--limit` dòng rồi gh
 
 `sql` chỉ nhận một câu `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC` hoặc `EXPLAIN`, chạy trong transaction READ ONLY. Ngoài chuỗi literal, lệnh từ chối comment, ký tự `\`, các từ `DELETE`, `UPDATE`, `INSERT`, `INTO`, `DELIMITER`, `FOR SHARE` và `LOCK IN SHARE MODE`. Ký tự xuống dòng nằm trong chuỗi literal cũng bị từ chối; dùng `CHAR(10)` thay thế. Xuống dòng ngoài chuỗi vẫn dùng được. Khi gặp, lệnh báo "refused" và dừng, không thực thi.
 
+## Đọc production
+
+Agent đọc production bằng `zenify db-read --prd <lệnh con>`. Cờ `--prd` dùng `MONGO_URL_PRD` và `MYSQL_URL_PRD` thay cho `MONGO_URL` và `MYSQL_URL`, với đúng các giới hạn chỉ đọc như khi không có cờ. Khi key được dùng đã có giá trị, lệnh in `zenify db-read: production (<KEY>)` ra stderr, với `<KEY>` là tên key đó. Stderr của `mongosh` hoặc `mysql` được che: URL production, mật khẩu và host trong URL bị thay bằng `***`, trừ giá trị ngắn hơn 6 ký tự, ví dụ một host ngắn, vẫn hiện nguyên. Agent không cần người gõ `!`.
+
+```bash
+zenify db-read --prd count chat_rooms
+```
+
+Không có đường nào cho agent ghi vào production. Git-guard chặn đọc `.zenify/.env` và chặn lệnh chứa host production, còn `zenify env exec` không đưa key production vào lệnh con, nên `zenify db-read --prd` là đường được hỗ trợ duy nhất. Git-guard chặn sai sót chứ không chặn được agent cố tình lách, xem [Quan sát và an toàn](/guides/observe-and-safety).
+
 ## Lưu ý
 
 - Lệnh chỉ chạy được trong phiên mở tại workspace, vì credential nằm ở `.zenify/.env` của workspace, không phải ở `.env` riêng của một repo.
 - Tên collection trong database luôn ở số nhiều. Tên số ít bạn thấy trong code là tên model, không phải tên collection thật. Luôn liệt kê bằng `zenify db-read collections` trước khi dùng một tên, đừng lấy tên từ tài liệu hay từ một document mẫu.
-- Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực thay vì chỉ báo timeout.
+- Khi kết nối lỗi, lệnh gợi ý cách tách lỗi mạng khỏi lỗi xác thực thay vì chỉ báo timeout, trừ khi chạy với `--prd`: khi đó lệnh chỉ nói key nào cần kiểm lại, không nêu host.
 - `/znf:ground` dùng lệnh này để xác minh field trước khi code chạm vào nó. `/znf:ship` cũng đọc dữ liệu thật qua đường này khi verify một thay đổi chạm DB.
 
 ## Secret và .zenify/.env
@@ -69,7 +79,7 @@ Cùng nguyên tắc đó áp dụng khi bạn tự viết script hay agent chạ
 
 ## Xem thêm
 
-[`zenify db-read`](/reference/cli/zenify_db-read), [`/znf:ground`](/reference/skills/ground), [Knowledge store](/concepts/knowledge-store), [Onboard workspace và repo](/guides/onboard-workspace)
+[`zenify db-read`](/reference/cli/zenify_db-read), [`/znf:ground`](/reference/skills/ground), [Knowledge store](/concepts/knowledge-store), [Onboard workspace và repo](/guides/onboard-workspace), [Quan sát và an toàn](/guides/observe-and-safety)
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - reference/cli/zenify_db-read.md (generated)

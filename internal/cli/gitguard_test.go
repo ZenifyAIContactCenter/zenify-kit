@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitguard"
 )
 
@@ -44,7 +45,16 @@ func gitInit(t *testing.T, dir, branch string, deny []string) {
 	}
 }
 
+// isolateHome keeps a hook test off the developer's real workspace: no HOME
+// pointer file and no ZENIFY_HOME override can resolve to it.
+func isolateHome(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+}
+
 func TestDecideFromPayload(t *testing.T) {
+	isolateHome(t)
 	repo := filepath.Join(t.TempDir(), "r")
 	gitInit(t, repo, "main", []string{"main"})
 	getenv := func(string) string { return "" }
@@ -57,6 +67,10 @@ func TestDecideFromPayload(t *testing.T) {
 	if decideFromPayload([]byte(allow), getenv).Deny {
 		t.Error("git status must allow")
 	}
+	prd := `{"cwd":"` + repo + `","tool_input":{"command":"zenify db-read --prd count users"}}`
+	if decideFromPayload([]byte(prd), getenv).Deny {
+		t.Error("zenify db-read --prd must allow")
+	}
 	// Fail-open: broken JSON → allow.
 	if decideFromPayload([]byte("{not json"), getenv).Deny {
 		t.Error("broken JSON must fail-open (allow)")
@@ -65,6 +79,8 @@ func TestDecideFromPayload(t *testing.T) {
 
 // Degenerate input must not hang/panic (port of test-hooks-hang.sh).
 func TestDecideDegenerate(t *testing.T) {
+	isolateHome(t)
+	t.Chdir(t.TempDir()) // cwd "." must not walk up into the real workspace
 	getenv := func(string) string { return "" }
 	for _, cmd := range []string{"sudo", "env", "-", "git", "cd", "cd &&", "git -C", "git -C -C -C push", "cd cd cd && git push"} {
 		p := `{"cwd":".","tool_input":{"command":"` + cmd + `"}}`
@@ -98,6 +114,8 @@ func TestRunGitGuardPanicFailsOpen(t *testing.T) {
 }
 
 func TestGitGuardCmdExit2(t *testing.T) {
+	home, zhome := t.TempDir(), t.TempDir()
+	isoEnv := append(os.Environ(), "HOME="+home, "ZENIFY_HOME="+zhome)
 	repo := filepath.Join(t.TempDir(), "r")
 	gitInit(t, repo, "main", []string{"main"})
 	bin := filepath.Join(t.TempDir(), "zenify")
@@ -105,10 +123,117 @@ func TestGitGuardCmdExit2(t *testing.T) {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	c := exec.Command(bin, "git-guard") //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+	c.Env = isoEnv
 	c.Stdin = strings.NewReader(`{"cwd":"` + repo + `","tool_input":{"command":"git commit -m x"}}`)
 	err := c.Run()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 2 {
 		t.Fatalf("must exit 2 (deny), got %v", err)
+	}
+	for cmdline, want := range map[string]int{"gh pr merge 1": 2, "gh pr create --title t": 0} {
+		c := exec.Command(bin, "git-guard") //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+		c.Env = isoEnv
+		c.Stdin = strings.NewReader(`{"cwd":"` + repo + `","tool_input":{"command":"` + cmdline + `"}}`)
+		got := 0
+		if err := c.Run(); err != nil {
+			ee, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("%q: %v", cmdline, err)
+			}
+			got = ee.ExitCode()
+		}
+		if got != want {
+			t.Errorf("%q: exit %d, want %d", cmdline, got, want)
+		}
+	}
+}
+
+const fakeProdEnv = "MONGO_URL_PRD='mongodb://u:p@Prod-Host.example:27017/db'\n" +
+	"REDIS_URL_PRD='redis://127.0.0.1:6379'\n" +
+	"QDRANT_URL_PRD=''\n" +
+	"MONGO_URL='mongodb://staging-host/db'\n" +
+	"BAD_PRD='not a url'\n"
+
+func TestProdHosts(t *testing.T) {
+	p := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(p, []byte(fakeProdEnv+"DUP_PRD='mongodb://PROD-host.example/x'\nLOCAL_PRD='http://localhost:1'\nV6_PRD='http://[::1]:1'\nZ_PRD='http://0.0.0.0:1'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := devenv.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := prodHosts(f)
+	want := []gitguard.ProdHost{{Key: "MONGO_URL_PRD", Host: "prod-host.example"}}
+	if len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("prodHosts = %v, want %v", got, want)
+	}
+}
+
+// B4: a multi-host or +srv URI yields every host, not none.
+func TestProdHosts_MultiHost(t *testing.T) {
+	p := filepath.Join(t.TempDir(), ".env")
+	body := "MONGO_URL_PRD='mongodb://u:p@H1.example:27017,h2.example:27017,h3.example/db?replicaSet=rs'\n" +
+		"AUDIT_MONGO_URL_PRD='mongodb+srv://u:p@cluster.example/db'\n" +
+		"V6_PRD='redis://[fd00::15]:6379'\n"
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := devenv.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, h := range prodHosts(f) {
+		got[h.Host] = h.Key
+	}
+	want := map[string]string{
+		"h1.example": "MONGO_URL_PRD", "h2.example": "MONGO_URL_PRD", "h3.example": "MONGO_URL_PRD",
+		"cluster.example": "AUDIT_MONGO_URL_PRD", "fd00::15": "V6_PRD",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("prodHosts = %v, want %v", got, want)
+	}
+	for h, k := range want {
+		if got[h] != k {
+			t.Errorf("host %s: key %q, want %q (all: %v)", h, got[h], k, got)
+		}
+	}
+	opts := gitguard.Options{ProdHosts: prodHosts(f)}
+	if d := gitguard.Decide("mongosh mongodb://h2.example/db", t.TempDir(), func(string) string { return "" }, nil, opts); !d.Deny {
+		t.Error("second replica-set host must deny")
+	}
+}
+
+func TestDecideFromPayload_ProdHost(t *testing.T) {
+	isolateHome(t)
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "manifest.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", ".env"), []byte(fakeProdEnv), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(ws, "repos", "r")
+	gitInit(t, repo, "feat/x", nil)
+	getenv := func(string) string { return "" }
+	run := func(cwd, cmd string) gitguard.Decision {
+		return decideFromPayload([]byte(`{"cwd":"`+cwd+`","tool_input":{"command":"`+cmd+`"}}`), getenv)
+	}
+	d := run(repo, "mongosh mongodb://prod-host.example/db")
+	if !d.Deny {
+		t.Fatal("prod host must deny")
+	}
+	if strings.Contains(d.Message, "prod-host.example") {
+		t.Errorf("message leaks host: %q", d.Message)
+	}
+	if run(repo, "mongosh mongodb://staging-host/db").Deny {
+		t.Error("staging host must allow")
+	}
+	if !run(ws, "cat .zenify/.env").Deny {
+		t.Error("reading the env file must deny")
 	}
 }
 
@@ -117,6 +242,7 @@ func TestGitGuardCmdExit2(t *testing.T) {
 // decideFromPayload) through a real git repo with a real staged secret, and
 // asserts the returned message never contains the raw secret string.
 func TestDecideFromPayload_SecretsIntegration(t *testing.T) {
+	isolateHome(t)
 	getenv := func(string) string { return "" }
 	// Split so no contiguous 20-char AKIA... literal sits in source (the
 	// repo's own `secret-scan .` CI step would otherwise flag this file);

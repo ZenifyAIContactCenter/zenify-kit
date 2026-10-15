@@ -37,6 +37,10 @@ secretKeys:
     description: "MongoDB production, DB 3csoft"
     scope: personal
     group: production
+  - name: MYSQL_URL_PRD
+    description: "MySQL production"
+    scope: personal
+    group: production
   - name: AUDIT_MONGO_URL_PRD
     description: "MongoDB audit_logs production"
     scope: personal

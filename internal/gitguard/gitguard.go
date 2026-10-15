@@ -15,27 +15,25 @@ type Decision struct {
 var baselineDeny = []string{"main", "master", "production", "staging", "develop"}
 
 // Decide is the final decision for one command.
-func Decide(command, callCwd string, getenv func(string) string, onCommit func(repoDir string) Decision) Decision {
-	calls := ParseGitCalls(command)
-	if len(calls) == 0 {
-		return Decision{}
-	}
-	// Only cares about commit/merge/push.
-	var relevant []GitCall
-	for _, c := range calls {
-		switch c.Sub {
-		case "commit", "merge", "push":
-			relevant = append(relevant, c)
-		}
-	}
-	if len(relevant) == 0 {
-		return Decision{}
-	}
+func Decide(command, callCwd string, getenv func(string) string, onCommit func(repoDir string) Decision, opts Options) Decision {
+	p := Parse(command)
 
 	// Anchor: -C wins over cd wins over cwd wins over CLAUDE_PROJECT_DIR wins over PWD.
 	base := firstNonEmpty(callCwd, getenv("CLAUDE_PROJECT_DIR"), getenv("PWD"))
 	if cd := LeadingCd(command); cd != "" {
 		base = resolveDir(base, cd, getenv)
+	}
+	if d := checkRules(p, command, base, getenv, opts); d.Deny {
+		return d
+	}
+
+	// The deploy-branch rule only cares about commit/merge/push.
+	var relevant []GitCall
+	for _, c := range gitCalls(p) {
+		switch c.Sub {
+		case "commit", "merge", "push":
+			relevant = append(relevant, c)
+		}
 	}
 	for _, c := range relevant {
 		repodir := base

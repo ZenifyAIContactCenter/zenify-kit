@@ -40,6 +40,7 @@ type Options struct {
 	Sort       string
 	Pipeline   string
 	Limit      int
+	Prod       bool // read production: MONGO_URL_PRD / MYSQL_URL_PRD
 	Stdout     io.Writer
 	Stderr     io.Writer
 	Env        func(string) string
@@ -60,7 +61,7 @@ func (o *Options) SetRun(run func(name string, args []string, extraEnv []string,
 // Values are NEVER logged. A missing or unreadable file is not an error here —
 // the caller decides whether the resulting absence of MONGO_URL is fatal.
 func LoadCreds(getenv func(string) string, envPath string) (map[string]string, error) {
-	keys := []string{"MONGO_URL", "MYSQL_URL"}
+	keys := []string{"MONGO_URL", "MYSQL_URL", "MONGO_URL_PRD", "MYSQL_URL_PRD"}
 	var f *devenv.File
 	if envPath != "" {
 		f, _ = devenv.Load(envPath) // unreadable → treat as absent
@@ -73,6 +74,13 @@ func LoadCreds(getenv func(string) string, envPath string) (map[string]string, e
 		}
 	}
 	return out, nil
+}
+
+// prodNotice names the production key in use, once it is known to be set.
+func prodNotice(o *Options, key string) {
+	if o.Prod {
+		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: production (%s)\n", key)
+	}
 }
 
 // mysqlConn is MYSQL_URL split into the mysql CLI's parameters.
@@ -334,25 +342,34 @@ func Run(o *Options) error {
 		o.Env = os.Getenv
 	}
 	creds, _ := LoadCreds(o.Env, o.EnvPath)
-	mongoURL := creds["MONGO_URL"]
+	mk, sk := "MONGO_URL", "MYSQL_URL"
+	if o.Prod {
+		mk, sk = mk+"_PRD", sk+"_PRD"
+	}
+	mongoURL := creds[mk]
 	if mongoURL == "" {
 		if o.EnvPath == "" {
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: chưa có workspace — chạy `zenify up` trước") //znf:allow-lang
 			return fmt.Errorf("zenify db-read: no workspace")
 		}
-		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $MONGO_URL is not set and %s did not supply it.\n", o.EnvPath)
-		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: put MONGO_URL there with: zenify env set MONGO_URL")
-		return fmt.Errorf("zenify db-read: MONGO_URL not set")
+		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $%s is not set and %s did not supply it.\n", mk, o.EnvPath)
+		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: put "+mk+" there with: zenify env set "+mk)
+		return fmt.Errorf("zenify db-read: %s not set", mk)
 	}
 
 	stdout := o.Stdout
 	defer func() { o.Stdout = stdout }()
 	if script != "" {
+		prodNotice(o, mk)
 		// Mongo caps rows in the script (--limit); here only bytes are capped.
 		cw := newCapWriter(stdout, -1, MaxOutputBytes)
 		o.Stdout = cw
 		err := o.run("mongosh", []string{"--nodb", "--quiet", "--eval", script}, []string{MongoURLEnv + "=" + mongoURL}, "")
 		if err != nil && !cw.Truncated() {
+			if o.Prod {
+				_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: kiểm lại %s trong .zenify/.env\n", mk) //znf:allow-lang
+				return err
+			}
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: mongosh failed. Separate network from credential before theorising:")
 			_, _ = fmt.Fprintf(o.Stderr, "zenify db-read:   nc -z %s 27017   # needs no credential\n", mongoHost)
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port open  -> auth, or a stale $MONGO_URL in .zenify/.env")
@@ -362,11 +379,12 @@ func Run(o *Options) error {
 		return finish(cw, o.Stderr, limit)
 	}
 
-	if creds["MYSQL_URL"] == "" {
-		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: $MYSQL_URL is not set — same source as $MONGO_URL: zenify env set MYSQL_URL")
-		return fmt.Errorf("zenify db-read: MYSQL_URL not set, want %s", mysqlURLShape)
+	if creds[sk] == "" {
+		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $%s is not set — same source as $%s: zenify env set %s\n", sk, mk, sk)
+		return fmt.Errorf("zenify db-read: %s not set, want %s", sk, mysqlURLShape)
 	}
-	conn, err := parseMySQLURL(creds["MYSQL_URL"])
+	prodNotice(o, sk)
+	conn, err := parseMySQLURL(creds[sk])
 	if err != nil {
 		_, _ = fmt.Fprintln(o.Stderr, err.Error()+" (percent-encode @ : / # ? in user and password)")
 		return err
