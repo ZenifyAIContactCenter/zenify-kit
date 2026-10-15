@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const (
@@ -27,7 +28,25 @@ type fakeUpstream struct {
 	gotQuery    string
 	carolPW     string // the only password hub accepts for carol
 	changeHits  int32
+	resetHits   int32
+	// hubStatus/hubMsg, when set, answer every non-admin hub login.
+	hubStatus int
+	hubMsg    string
 }
+
+// hubError writes hub's AllExceptionsFilter body.
+func hubError(w http.ResponseWriter, status int, msg string) {
+	w.WriteHeader(status)
+	b, _ := json.Marshal(map[string]any{"status_code": status, "error_code": http.StatusText(status), "message": msg,
+		"path": "/auth/login", "timestamp": "2026-10-15T00:00:00.000Z"})
+	_, _ = w.Write(b)
+}
+
+// hub's two credential messages (auth.service.ts): wrong password, user missing.
+const (
+	hubBadPassword = "Mật khẩu không chính xác"
+	hubNoUser      = "Thông tin đăng nhập không đúng"
+)
 
 const carolEmail = "e2e-carol-agent@e2e.test"
 
@@ -40,18 +59,21 @@ func newUpstream(t *testing.T) (*fakeUpstream, *HTTPApp) {
 		var b map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		f.got[r.URL.Path] = b
+		if f.hubStatus != 0 && b["email"] != "admin@zenify.test" {
+			hubError(w, f.hubStatus, f.hubMsg)
+			return
+		}
 		switch b["email"] {
 		case "admin@zenify.test":
 			if b["password"] != adminPW {
-				w.WriteHeader(401)
+				hubError(w, 401, hubBadPassword)
 				return
 			}
 			atomic.AddInt32(&f.adminLogins, 1)
 			_, _ = io.WriteString(w, `{"token":"`+f.adminToken.Load().(string)+`"}`)
 		case "top@e2e.test":
 			if b["password"] != userPW {
-				w.WriteHeader(400)
-				_, _ = io.WriteString(w, `{"message":"wrong password `+userPW+`"}`)
+				hubError(w, 401, hubBadPassword)
 				return
 			}
 			_, _ = io.WriteString(w, `{"token":"top-jwt"}`)
@@ -61,9 +83,11 @@ func newUpstream(t *testing.T) (*fakeUpstream, *HTTPApp) {
 			_, _ = io.WriteString(w, `{"data":{"mfa_required":true,"mfa_token":"secret-mfa-tok","methods":["totp"],"default_method":"totp"}}`)
 		case "mfa2@e2e.test":
 			_, _ = io.WriteString(w, `{"mfa_required":true,"mfa_token":"secret-mfa-tok","methods":["totp"],"default_method":"totp"}`)
+		case "echo@e2e.test": // a message that echoes the password must not leak it
+			hubError(w, 401, "bad credentials for "+userPW)
 		case carolEmail:
 			if b["password"] != f.carolPW {
-				w.WriteHeader(400)
+				hubError(w, 401, hubNoUser)
 				return
 			}
 			_, _ = io.WriteString(w, `{"data":{"token":"changefail-jwt"}}`)
@@ -97,6 +121,7 @@ func newUpstream(t *testing.T) (*fakeUpstream, *HTTPApp) {
 		_, _ = io.WriteString(w, `{"error":false,"status":200,"data":{"_id":"652f0000000000000000abcd","email":"x"},"message":"ok"}`)
 	}))
 	mux.HandleFunc("POST /v2/admin/settings/t1/reset-password/{id}", admin(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&f.resetHits, 1)
 		if r.PathValue("id") == "boom" {
 			w.WriteHeader(500)
 			return
@@ -145,7 +170,11 @@ func TestHTTPApp_Login(t *testing.T) {
 		t.Fatalf("data.token: %q %v", tok, err)
 	}
 	if _, err := a.Login(ctx, "top@e2e.test", "wrong"); !errors.Is(err, ErrBadPassword) {
-		t.Fatalf("400 want ErrBadPassword, got %v", err)
+		t.Fatalf("401 wrong password want ErrBadPassword, got %v", err)
+	}
+	if _, err := a.Login(ctx, "echo@e2e.test", userPW); err == nil || errors.Is(err, ErrBadPassword) ||
+		!strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), userPW) {
+		t.Fatalf("401 other message: want plain error without the password, got %v", err)
 	}
 	_, err := a.Login(ctx, "down@e2e.test", userPW)
 	if err == nil || errors.Is(err, ErrBadPassword) || !strings.Contains(err.Error(), "503") {
@@ -262,12 +291,73 @@ func TestEnsure_ChangePasswordErrorTrueNotCached(t *testing.T) {
 	f, a := newUpstream(t)
 	p := newProvisioner(a)
 	f.carolPW = Password([]byte("testkey"), "carol", "agent", 229) // P(period-1)
+	now := testNow
+	p.Now = func() time.Time { return now }
 	for i := 1; i <= 2; i++ {
+		now = now.Add(11 * time.Minute) // past the failure cache
 		if _, err := p.Ensure(context.Background(), "carol", "agent"); err == nil {
 			t.Fatalf("call %d: HTTP 200 {error:true} on change-password must fail Ensure", i)
 		}
 		if n := atomic.LoadInt32(&f.changeHits); n != int32(i) {
 			t.Fatalf("call %d: change-password hits %d (a failure must not be cached)", i, n)
+		}
+	}
+}
+
+func TestHTTPApp_LoginClassification(t *testing.T) {
+	cases := []struct {
+		name      string
+		status    int
+		msg       string
+		badPW     bool // ErrBadPassword: provisioning moves on
+		locked    bool
+		wantInErr string
+	}{
+		{"wrong password", 401, hubBadPassword, true, false, ""},
+		{"user missing", 401, hubNoUser, true, false, ""},
+		{"domain missing", 401, "Domain không tồn tại", false, false, "Domain không tồn tại"},
+		{"inactive user", 401, "Tài khoản của bạn chưa được kích hoạt hoặc đã bị vô hiệu hóa!", false, false, "401"},
+		{"validation", 400, "Email không hợp lệ", false, false, "status 400: Email không hợp lệ"},
+		{"locked out", 429, "Too many attempts", false, true, "429"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, a := newUpstream(t)
+			f.hubStatus, f.hubMsg = c.status, c.msg
+			_, err := a.Login(context.Background(), "x@e2e.test", userPW)
+			if errors.Is(err, ErrBadPassword) != c.badPW || errors.Is(err, ErrHubLocked) != c.locked {
+				t.Fatalf("got %v", err)
+			}
+			if !c.badPW && !strings.Contains(err.Error(), c.wantInErr) {
+				t.Fatalf("error %q lacks %q", err, c.wantInErr)
+			}
+		})
+	}
+}
+
+// Only hub's two credential messages lead to a reset; other refusals stop.
+func TestEnsure_HubRefusalsDoNotReset(t *testing.T) {
+	for _, c := range []struct {
+		status    int
+		msg       string
+		wantReset bool
+	}{
+		{400, "Email không hợp lệ", false},
+		{401, "Domain không tồn tại", false},
+		{429, "Too many attempts", false},
+		{401, hubBadPassword, true},
+	} {
+		f, a := newUpstream(t)
+		f.hubStatus, f.hubMsg = c.status, c.msg
+		_, err := newProvisioner(a).Ensure(context.Background(), "dave", "agent")
+		if err == nil {
+			t.Fatalf("%d %s: want error (the fake never accepts a login)", c.status, c.msg)
+		}
+		if got := atomic.LoadInt32(&f.resetHits) > 0; got != c.wantReset {
+			t.Fatalf("%d %s: reset=%v want %v (%v)", c.status, c.msg, got, c.wantReset, err)
+		}
+		if c.status == 429 && !errors.Is(err, ErrHubLocked) {
+			t.Fatalf("429: want ErrHubLocked, got %v", err)
 		}
 	}
 }

@@ -220,3 +220,25 @@ func TestEnsure_ConcurrentCreatesOnce(t *testing.T) {
 		t.Fatalf("CreateUser called %d times", app.creates)
 	}
 }
+
+func TestEnsure_FailureCachedTenMinutes(t *testing.T) {
+	app := newFakeApp()
+	app.loginErr = errors.New("hub login: status 401: Domain không tồn tại")
+	now := testNow
+	p := newProvisioner(app)
+	p.Now = func() time.Time { return now }
+	_, err1 := p.Ensure(context.Background(), "alice", "agent")
+	if err1 == nil {
+		t.Fatal("want error")
+	}
+	now = now.Add(9 * time.Minute)
+	_, err2 := p.Ensure(context.Background(), "alice", "agent")
+	if err2 == nil || err2.Error() != err1.Error() || app.logins != 1 {
+		t.Fatalf("within 10 min: err=%v logins=%d, want the cached error and no upstream call", err2, app.logins)
+	}
+	now = now.Add(2 * time.Minute)
+	app.loginErr = nil
+	if _, err := p.Ensure(context.Background(), "alice", "agent"); err != nil || app.logins < 2 {
+		t.Fatalf("after 10 min: err=%v logins=%d", err, app.logins)
+	}
+}

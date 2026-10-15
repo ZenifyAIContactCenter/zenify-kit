@@ -19,6 +19,18 @@ import (
 // ErrBadPassword is App.Login's answer when hub rejects the credentials.
 var ErrBadPassword = errors.New("login rejected")
 
+// ErrHubLocked is in App.Login's error when hub answers 429: too many failed
+// logins for the account or for the broker's IP, which the whole team shares.
+var ErrHubLocked = errors.New("hub locked logins out after too many failures, retry in 15 minutes")
+
+// hubCredentialMessages are hub's 401 messages for a wrong password and for a
+// missing user (contact-center-hub apps/auth/src/auth.service.ts). Every
+// other hub login failure is also a 401, so the message is what tells them apart.
+var hubCredentialMessages = map[string]bool{
+	"Mật khẩu không chính xác":       true,
+	"Thông tin đăng nhập không đúng": true,
+}
+
 // ErrMFARequired is App.Login's answer when the account has MFA on: hub
 // returns an MFA challenge instead of a token, which the broker cannot answer.
 var ErrMFARequired = errors.New("MFA is on for this account: turn it off for E2E accounts")
@@ -102,8 +114,33 @@ type envelope struct {
 	Data        json.RawMessage `json:"data"`
 }
 
-// Login is hub POST /auth/login. 400/401 is ErrBadPassword; an MFA challenge
-// is ErrMFARequired.
+// hubMessage is the message of a hub error body, with password masked out.
+// NestJS validation errors carry an array of messages.
+func hubMessage(b []byte, password string) string {
+	var body struct {
+		Message any `json:"message"`
+	}
+	_ = json.Unmarshal(b, &body)
+	var msg string
+	switch m := body.Message.(type) {
+	case string:
+		msg = m
+	case []any:
+		parts := make([]string, 0, len(m))
+		for _, p := range m {
+			parts = append(parts, fmt.Sprint(p))
+		}
+		msg = strings.Join(parts, "; ")
+	}
+	if password != "" {
+		msg = strings.ReplaceAll(msg, password, "***")
+	}
+	return msg
+}
+
+// Login is hub POST /auth/login. A 401 with one of hub's two credential
+// messages is ErrBadPassword; 429 wraps ErrHubLocked; any other 4xx is a plain
+// error carrying hub's message. An MFA challenge is ErrMFARequired.
 func (a *HTTPApp) Login(ctx context.Context, email, password string) (string, error) {
 	if a.Domain == "" {
 		return "", errors.New("hub login: no tenant domain configured")
@@ -113,8 +150,12 @@ func (a *HTTPApp) Login(ctx context.Context, email, password string) (string, er
 	switch {
 	case err != nil:
 		return "", err
-	case st == http.StatusBadRequest || st == http.StatusUnauthorized:
+	case st == http.StatusUnauthorized && hubCredentialMessages[hubMessage(b, "")]:
 		return "", ErrBadPassword
+	case st == http.StatusTooManyRequests:
+		return "", fmt.Errorf("hub login: status %d: %s: %w", st, hubMessage(b, password), ErrHubLocked)
+	case st/100 == 4:
+		return "", fmt.Errorf("hub login: status %d: %s", st, hubMessage(b, password))
 	case st/100 != 2:
 		return "", fmt.Errorf("hub login: status %d", st)
 	}
@@ -274,6 +315,15 @@ func (a *HTTPApp) ChangePassword(ctx context.Context, userToken, old, new string
 // verifiedTTL is how long a confirmed (login, role, period) skips the login check (FR-5.3).
 const verifiedTTL = time.Hour
 
+// failedTTL is how long a failed Ensure is answered from memory, so retries
+// cannot add up failed hub logins toward the lockout.
+const failedTTL = 10 * time.Minute
+
+type failure struct {
+	err   error
+	until time.Time
+}
+
 type cacheKey struct {
 	login, role string
 	period      int64
@@ -291,6 +341,7 @@ type Provisioner struct {
 	// add up failed logins past the lockout.
 	mu       sync.Mutex
 	verified map[cacheKey]time.Time // -> expiry
+	failed   map[cacheKey]failure
 }
 
 // Ensure returns the account of login for role, following FR-5.2: P(period),
@@ -309,7 +360,14 @@ func (p *Provisioner) Ensure(ctx context.Context, login, role string) (api.E2EAc
 	if exp, ok := p.verified[k]; ok && now.Before(exp) {
 		return resp, nil
 	}
+	if f, ok := p.failed[k]; ok && now.Before(f.until) {
+		return api.E2EAccountResponse{}, f.err
+	}
 	if err := p.provision(ctx, login, role, period, resp.Email); err != nil {
+		if p.failed == nil {
+			p.failed = map[cacheKey]failure{}
+		}
+		p.failed[k] = failure{err, now.Add(failedTTL)}
 		return api.E2EAccountResponse{}, err
 	}
 	if p.verified == nil {
