@@ -59,7 +59,7 @@ zenify redis-read --prd LRANGE some:list 0 49
 
 - Chỉ các lệnh chỉ đọc sau được phép: `GET MGET HGET HGETALL HKEYS LRANGE LLEN SMEMBERS SCARD ZRANGE ZCARD XRANGE TTL TYPE EXISTS SCAN`. Lệnh khác bị từ chối ngay ở máy bạn (mã 2), không gửi lên broker.
 - `SCAN` tự thêm `COUNT 100` nếu thiếu; `COUNT` phải trong khoảng 1 đến 1000.
-- Broker giới hạn mỗi lần đọc: `LRANGE`, `ZRANGE`, `XRANGE` tối đa 200 phần tử; kết quả tối đa 1 MiB, quá thì bị cắt và lệnh ghi thông báo ra stderr; `MGET` tối đa 100 key; `HGETALL`, `HKEYS`, `SMEMBERS` từ chối key có hơn 10000 phần tử.
+- Broker giới hạn mỗi lần đọc: `LRANGE`, `ZRANGE`, `XRANGE` tối đa 200 phần tử; kết quả tối đa 1 MiB: `GET` và các lệnh khác bị cắt và lệnh ghi thông báo ra stderr, còn `MGET`, `HGET`, `HGETALL`, `SMEMBERS` vượt mức thì bị từ chối; `MGET` tối đa 100 key; `HGETALL`, `HKEYS`, `SMEMBERS` từ chối key có hơn 10000 phần tử.
 - Cờ (`--prd`) phải đứng trước lệnh Redis, để tham số như `-1` không bị đọc thành cờ.
 - Không có broker thì lệnh thoát mã 2 với "redis-read cần broker".
 

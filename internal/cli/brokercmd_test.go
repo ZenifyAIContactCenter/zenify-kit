@@ -181,6 +181,17 @@ func fakeClaudeNoMCP(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
+// TestMain's guard: from the package dir (inside the real workspace) no test
+// resolves a workspace, so none can load its .zenify/.env or overlay.
+func TestHermetic_PackageDirResolvesNoWorkspace(t *testing.T) {
+	if p := workspaceEnvPath(); p != "" {
+		t.Fatalf("workspaceEnvPath() = %q, want \"\"", p)
+	}
+	if m := workspaceManifest(); m != nil {
+		t.Fatalf("workspaceManifest() = %+v, want nil", m)
+	}
+}
+
 // useTrustedManifest makes the manifest at path the trusted broker source (the
 // embedded one in production) until the test ends.
 func useTrustedManifest(t *testing.T, path string) {

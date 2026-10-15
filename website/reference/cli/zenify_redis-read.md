@@ -22,7 +22,7 @@ Khi cần xem giá trị thật trong Redis (key, hash, list, stream) của stag
 
 In kết quả của lệnh Redis dưới dạng JSON có thụt dòng.
 
-Broker giới hạn mỗi lần đọc: `LRANGE`, `ZRANGE`, `XRANGE` trả tối đa 200 phần tử; kết quả tối đa 1 MiB, quá thì bị cắt và lệnh ghi thông báo ra stderr; `MGET` tối đa 100 key; `HGETALL`, `HKEYS`, `SMEMBERS` từ chối key có hơn 10000 phần tử.
+Broker giới hạn mỗi lần đọc: `LRANGE`, `ZRANGE`, `XRANGE` trả tối đa 200 phần tử; kết quả tối đa 1 MiB: `GET` và các lệnh khác bị cắt và lệnh ghi thông báo ra stderr, còn `MGET`, `HGET`, `HGETALL`, `SMEMBERS` vượt mức thì bị từ chối; `MGET` tối đa 100 key; `HGETALL`, `HKEYS`, `SMEMBERS` từ chối key có hơn 10000 phần tử.
 
 Chỉ các lệnh sau được phép: `GET MGET HGET HGETALL HKEYS LRANGE LLEN SMEMBERS SCARD ZRANGE ZCARD XRANGE TTL TYPE EXISTS SCAN`. Lệnh khác bị từ chối ngay ở máy bạn (mã 2), không gửi lên broker. `SCAN` tự thêm `COUNT 100` nếu thiếu, và `COUNT` phải trong khoảng 1..1000.
 
