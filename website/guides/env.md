@@ -33,7 +33,7 @@ Wizard `zenify up` chỉ hỏi các key toàn cục: `MONGO_URL`, `MYSQL_URL`, `
 
 `MYSQL_URL` gom kết nối MySQL vào một dòng, dạng `mysql://user:pass@host:port/database`. Thiếu `:port` thì dùng cổng 3306. User, host và database là bắt buộc; URL sai dạng làm `zenify db-read sql` báo lỗi nêu tên `MYSQL_URL` và dạng đúng, không in giá trị.
 
-Ký tự `@ : / # ?` trong user hoặc mật khẩu phải percent-encode: `@` thành `%40`, `:` thành `%3A`, `/` thành `%2F`, `#` thành `%23`, `?` thành `%3F`. Ví dụ mật khẩu `p@ss` viết là `p%40ss`. `zenify db-read` giải mã trước khi gọi `mysql`, và mật khẩu chỉ đi qua biến `MYSQL_PWD` của tiến trình con, không nằm trên dòng lệnh. Nhập bằng `zenify env set MYSQL_URL` để giá trị không hiện trên màn hình.
+Ký tự `@ : / # ? %` và dấu cách trong user hoặc mật khẩu phải percent-encode: `@` thành `%40`, `:` thành `%3A`, `/` thành `%2F`, `#` thành `%23`, `?` thành `%3F`, `%` thành `%25`, dấu cách thành `%20`. Ví dụ mật khẩu `p@ss` viết là `p%40ss`. `zenify db-read` giải mã trước khi gọi `mysql`, và mật khẩu chỉ đi qua biến `MYSQL_PWD` của tiến trình con, không nằm trên dòng lệnh. Nhập bằng `zenify env set MYSQL_URL` để giá trị không hiện trên màn hình.
 
 Bản kit trước dùng năm key `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`. `zenify up --apply` tự ghép chúng thành `MYSQL_URL`, xem [Chuyển từ khối `env` của settings](#chuyen-tu-khoi-env-cua-settings).
 
@@ -93,8 +93,10 @@ Sau bước chuyển, `zenify up --apply` ghép năm key MySQL cũ trong `.zenif
 - Đã có `MYSQL_URL` trùng với giá trị ghép: kit chỉ xoá năm dòng cũ.
 - Đã có `MYSQL_URL` khác giá trị ghép: kit giữ nguyên tất cả và báo `env: bỏ qua MYSQL_URL — khác giá trị ghép từ MYSQL_*, xử lý tay`. Bạn giữ giá trị đúng bằng `zenify env set MYSQL_URL`, rồi xoá năm dòng cũ bằng `zenify env edit`.
 - Thiếu một key bắt buộc: kit không ghép, giữ nguyên file và báo tên key thiếu.
+- Giá trị không ghép được thành URL hợp lệ, ví dụ `MYSQL_PORT` không phải số hoặc `MYSQL_HOST` có kèm cổng: kit giữ nguyên file và báo `env: bỏ qua MYSQL_URL — MYSQL_* không ghép được thành URL hợp lệ, xử lý tay`.
+- Một key `MYSQL_*` cũ còn bị giữ lại trong settings vì xung đột hoặc không phải chuỗi một dòng: kit không ghép, để bạn xử lý xung đột trước, và báo `env: bỏ qua MYSQL_URL — MYSQL_* còn xung đột trong settings, xử lý tay`.
 
-`zenify doctor` có ba mục liên quan: `secrets` báo theo tên key toàn cục nào có giá trị, key nào trống; `settings-env` báo theo tên những key còn nằm trong settings, kèm hướng dẫn chạy `zenify up --apply` hoặc xử lý tay với key mà migration bỏ qua; `env-file` báo file có quyền rộng hơn 0600 (trừ trên Windows) và key `local` chưa có mô tả. `zenify down --apply` gỡ luật deny `.zenify/.env` của workspace đó khỏi `~/.claude/settings.json`, giữ nguyên luật bạn tự thêm và luật của workspace khác.
+`zenify doctor` có ba mục liên quan: `secrets` báo theo tên key toàn cục nào có giá trị, key nào trống; `settings-env` báo theo tên những key còn nằm trong settings, kèm hướng dẫn chạy `zenify up --apply` hoặc xử lý tay với key mà migration bỏ qua; `env-file` báo file có quyền rộng hơn 0600 (trừ trên Windows), key `local` chưa có mô tả, và các key `MYSQL_*` cũ còn nằm trong `.zenify/.env` chưa được ghép thành `MYSQL_URL`. `zenify down --apply` gỡ luật deny `.zenify/.env` của workspace đó khỏi `~/.claude/settings.json`, giữ nguyên luật bạn tự thêm và luật của workspace khác.
 
 ## Khôi phục khi hạ bản kit
 

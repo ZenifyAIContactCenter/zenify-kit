@@ -42,7 +42,7 @@ zenify db-read sql 'DESCRIBE agents'
 
 ## Kết quả
 
-Kết nối lấy từ `MONGO_URL` và `MYSQL_URL` trong `<workspace>/.zenify/.env`, quản lý bằng [`zenify env`](/guides/env). `MYSQL_URL` có dạng `mysql://user:pass@host:port/database`, cổng mặc định 3306; ký tự `@ : / # ?` trong user hoặc mật khẩu phải percent-encode, ví dụ `@` thành `%40`, hoặc nhập bằng `zenify env set MYSQL_URL`. Năm key `MYSQL_*` của bản cũ được `zenify up --apply` ghép thành `MYSQL_URL`, xem [`MYSQL_URL`](/guides/env#mysql-url). Lệnh không nhận chuỗi kết nối qua tham số dòng lệnh và không in ra màn hình, nên chạy `zenify db-read` không bao giờ làm lộ credential.
+Kết nối lấy từ `MONGO_URL` và `MYSQL_URL` trong `<workspace>/.zenify/.env`, quản lý bằng [`zenify env`](/guides/env). `MYSQL_URL` có dạng `mysql://user:pass@host:port/database`, cổng mặc định 3306; ký tự `@ : / # ? %` và dấu cách trong user hoặc mật khẩu phải percent-encode, ví dụ `@` thành `%40`, `%` thành `%25`, dấu cách thành `%20`, hoặc nhập bằng `zenify env set MYSQL_URL`. Năm key `MYSQL_*` của bản cũ được `zenify up --apply` ghép thành `MYSQL_URL`, xem [`MYSQL_URL`](/guides/env#mysql-url). Lệnh không nhận chuỗi kết nối qua tham số dòng lệnh và không in ra màn hình, nên chạy `zenify db-read` không bao giờ làm lộ credential.
 
 `--limit` mặc định 50 và tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`.
 

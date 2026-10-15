@@ -33,7 +33,7 @@ Tám lệnh con:
 | `explain <collection>` | In executionStats cho `--filter`/`--sort` hoặc `--pipeline`, không áp `--limit` (chạy truy vấn đọc, tối đa 30 giây) |
 | `sql '<câu lệnh>'` | Chạy một câu SQL chỉ đọc trong transaction READ ONLY |
 
-Kết nối lấy từ `MONGO_URL` và `MYSQL_URL` (`mysql://user:pass@host:port/database`, ký tự `@ : / # ?` trong user hoặc mật khẩu phải percent-encode) trong `<workspace>/.zenify/.env` (xem `zenify env`). Mật khẩu MySQL chỉ đi qua biến `MYSQL_PWD` của tiến trình con. Lệnh không nhận chuỗi kết nối qua tham số và không in ra màn hình.
+Kết nối lấy từ `MONGO_URL` và `MYSQL_URL` (`mysql://user:pass@host:port/database`, ký tự `@ : / # ? %` và dấu cách trong user hoặc mật khẩu phải percent-encode, ví dụ `%` thành `%25`, dấu cách thành `%20`) trong `<workspace>/.zenify/.env` (xem `zenify env`). Mật khẩu MySQL chỉ đi qua biến `MYSQL_PWD` của tiến trình con. Lệnh không nhận chuỗi kết nối qua tham số và không in ra màn hình.
 
 Không lệnh nào nhận code tự do. `--limit` mặc định 50, tối đa 200. Một truy vấn chạy tối đa 30 giây, cả tiến trình tối đa 60 giây. Filter Mongo nhận Extended JSON, ví dụ `{"_id":{"$oid":"..."}}`. Thay cho `distinct`: `zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`.
 

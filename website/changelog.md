@@ -12,7 +12,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 
 *chưa cắt*
 
-- **Thay đổi phá vỡ:** năm key `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` được thay bằng một key `MYSQL_URL` dạng `mysql://user:pass@host:port/database`, cổng mặc định 3306. Ký tự `@ : / # ?` trong user hoặc mật khẩu phải percent-encode, ví dụ `@` thành `%40`; hoặc nhập bằng `zenify env set MYSQL_URL`. `zenify up --apply` tự ghép năm key cũ trong `.zenify/.env` thành `MYSQL_URL` và xoá chúng; nếu `MYSQL_URL` đã có với giá trị khác, kit giữ nguyên và báo `env: bỏ qua MYSQL_URL — khác giá trị ghép từ MYSQL_*, xử lý tay`. `zenify db-read sql` báo lỗi nêu tên key và dạng đúng khi URL sai dạng, không in giá trị. Xem [Credential dev với zenify env](/guides/env#mysql-url).
+- **Thay đổi phá vỡ:** năm key `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` được thay bằng một key `MYSQL_URL` dạng `mysql://user:pass@host:port/database`, cổng mặc định 3306. Ký tự `@ : / # ? %` và dấu cách trong user hoặc mật khẩu phải percent-encode, ví dụ `@` thành `%40`, `%` thành `%25`, dấu cách thành `%20`; hoặc nhập bằng `zenify env set MYSQL_URL`. `zenify up --apply` tự ghép năm key cũ trong `.zenify/.env` thành `MYSQL_URL` và xoá chúng; nếu `MYSQL_URL` đã có với giá trị khác, kit giữ nguyên và báo `env: bỏ qua MYSQL_URL — khác giá trị ghép từ MYSQL_*, xử lý tay`. `zenify db-read sql` báo lỗi nêu tên key và dạng đúng khi URL sai dạng, không in giá trị. Xem [Credential dev với zenify env](/guides/env#mysql-url).
 
 ## v0.35.0
 
