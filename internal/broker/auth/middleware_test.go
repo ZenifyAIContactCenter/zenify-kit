@@ -43,11 +43,13 @@ func TestRequire_401WithoutBearer(t *testing.T) {
 
 func TestRequire_PassesLogin(t *testing.T) {
 	tok, _ := Issue(testKey, "octocat", time.Now())
-	req := httptest.NewRequest(http.MethodPost, "/query", nil)
-	req.Header.Set("Authorization", "Bearer "+tok)
-	rec := httptest.NewRecorder()
-	protected().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || rec.Body.String() != "hi octocat" {
-		t.Errorf("got %d %q", rec.Code, rec.Body.String())
+	for _, scheme := range []string{"Bearer ", "bearer ", "BEARER "} {
+		req := httptest.NewRequest(http.MethodPost, "/query", nil)
+		req.Header.Set("Authorization", scheme+tok)
+		rec := httptest.NewRecorder()
+		protected().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || rec.Body.String() != "hi octocat" {
+			t.Errorf("%q: got %d %q", scheme, rec.Code, rec.Body.String())
+		}
 	}
 }

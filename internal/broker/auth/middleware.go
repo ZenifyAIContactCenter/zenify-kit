@@ -16,9 +16,9 @@ type ctxKey struct{}
 // <broker JWT>" and puts its login on the context; otherwise 401 unauthorized.
 func Require(key []byte, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tok, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		scheme, tok, ok := strings.Cut(r.Header.Get("Authorization"), " ")
 		login, err := Verify(key, strings.TrimSpace(tok), time.Now())
-		if !ok || err != nil {
+		if !ok || !strings.EqualFold(scheme, "Bearer") || err != nil {
 			WriteError(w, http.StatusUnauthorized, api.CodeUnauthorized, "missing or invalid broker token")
 			return
 		}

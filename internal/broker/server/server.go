@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
@@ -17,7 +18,7 @@ type Deps struct {
 	JWTKey []byte
 	Org    string // GitHub org whose active members get a token
 	GitHub auth.GitHub
-	Audit  *audit.Logger
+	Audit  *audit.Logger    // nil = stdout
 	Now    func() time.Time // nil = time.Now
 }
 
@@ -39,6 +40,9 @@ type server struct {
 func New(cfg Deps) http.Handler {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
+	}
+	if cfg.Audit == nil {
+		cfg.Audit = &audit.Logger{W: os.Stdout}
 	}
 	s := &server{d: cfg, tokenRL: newLimiter(tokenBurst, tokenWindow)}
 	mux := http.NewServeMux()
@@ -85,6 +89,13 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, auth.ErrNotMember):
 		fail(http.StatusForbidden, api.CodeNotOrgMember, "not an active member of "+s.d.Org)
+		return
+	case errors.Is(err, auth.ErrOrgAccessDenied):
+		fail(http.StatusForbidden, api.CodeNotOrgMember, "GitHub refused to show membership of "+s.d.Org+
+			": authorize the token for the org's SSO and grant it the read:org scope")
+		return
+	case errors.Is(err, auth.ErrGitHubRateLimited):
+		fail(http.StatusTooManyRequests, api.CodeRateLimited, "GitHub rate-limited the token check, retry later")
 		return
 	case err != nil:
 		fail(http.StatusBadGateway, api.CodeGitHubUnavailable, "could not reach GitHub")

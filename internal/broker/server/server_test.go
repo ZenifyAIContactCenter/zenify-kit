@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -192,5 +194,106 @@ func TestAudit_NoSecrets(t *testing.T) {
 	}
 	if strings.Contains(out.String(), ghToken) || strings.Contains(out.String(), resp.Token) {
 		t.Errorf("audit line leaks a secret: %s", lines[0])
+	}
+}
+
+// codeGitHub answers /user as octocat and the membership endpoint with code.
+func codeGitHub(t *testing.T, code int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/user" {
+			_, _ = w.Write([]byte(`{"login":"octocat"}`))
+			return
+		}
+		http.Error(w, "{}", code)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestToken_GitHubFailureMapping(t *testing.T) {
+	cases := []struct {
+		ghCode, wantStatus int
+		wantCode           string
+	}{
+		{http.StatusInternalServerError, http.StatusBadGateway, api.CodeGitHubUnavailable},
+		{http.StatusBadGateway, http.StatusBadGateway, api.CodeGitHubUnavailable},
+		{http.StatusForbidden, http.StatusForbidden, api.CodeNotOrgMember},
+		{http.StatusTooManyRequests, http.StatusTooManyRequests, api.CodeRateLimited},
+	}
+	for _, c := range cases {
+		var out bytes.Buffer
+		rec := postToken(newServer(codeGitHub(t, c.ghCode), &out), ghToken, "203.0.113.7")
+		if rec.Code != c.wantStatus || errCode(t, rec) != c.wantCode {
+			t.Errorf("GitHub %d: got %d %s", c.ghCode, rec.Code, rec.Body.String())
+		}
+		assertOneAuditLine(t, &out, c.wantStatus)
+	}
+}
+
+func TestToken_GitHubUnreachable502(t *testing.T) {
+	gh := httptest.NewServer(http.NotFoundHandler())
+	gh.Close() // connection refused
+	var out bytes.Buffer
+	rec := postToken(newServer(gh, &out), ghToken, "203.0.113.7")
+	if rec.Code != http.StatusBadGateway || errCode(t, rec) != api.CodeGitHubUnavailable {
+		t.Errorf("got %d %s", rec.Code, rec.Body.String())
+	}
+	assertOneAuditLine(t, &out, http.StatusBadGateway)
+}
+
+func TestToken_AuditOnRateLimitAndNotMember(t *testing.T) {
+	var out bytes.Buffer
+	rec := postToken(newServer(fakeGitHub(t, "pending", nil), &out), ghToken, "203.0.113.7")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status %d", rec.Code)
+	}
+	assertOneAuditLine(t, &out, http.StatusForbidden)
+
+	out.Reset()
+	h := newServer(fakeGitHub(t, "active", nil), &out)
+	for i := 0; i < 31; i++ {
+		postToken(h, ghToken, "198.51.100.3")
+	}
+	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+	if len(lines) != 31 || !strings.Contains(lines[30], `"status":429`) {
+		t.Errorf("got %d lines, last %q", len(lines), lines[len(lines)-1])
+	}
+}
+
+func TestNew_NilAuditDefaults(t *testing.T) {
+	// The default logger writes to os.Stdout as of New; point it at a file.
+	f, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stdout
+	os.Stdout = f
+	t.Cleanup(func() { os.Stdout = orig; f.Close() })
+	h := New(Deps{JWTKey: testKey, Org: "test-org", GitHub: auth.GitHub{BaseURL: codeGitHub(t, 500).URL}})
+	rec := postToken(h, ghToken, "203.0.113.7") // must not panic
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status %d", rec.Code)
+	}
+	if b, _ := os.ReadFile(f.Name()); !strings.Contains(string(b), `"status":502`) {
+		t.Errorf("stdout audit = %q", b)
+	}
+}
+
+func assertOneAuditLine(t *testing.T, out *bytes.Buffer, status int) {
+	t.Helper()
+	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("audit lines = %d: %q", len(lines), out.String())
+	}
+	var e map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &e); err != nil {
+		t.Fatalf("not JSON: %s", lines[0])
+	}
+	if e["status"] != float64(status) || e["endpoint"] != "/token" {
+		t.Errorf("entry = %s, want status %d", lines[0], status)
+	}
+	if strings.Contains(lines[0], ghToken) {
+		t.Errorf("audit line leaks the GitHub token: %s", lines[0])
 	}
 }

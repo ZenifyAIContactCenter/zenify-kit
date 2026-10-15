@@ -69,3 +69,40 @@ func TestGitHub_Member_UpstreamErrorIsNotMembershipVerdict(t *testing.T) {
 		t.Errorf("err = %v, want a plain upstream error", err)
 	}
 }
+
+// statusGitHub answers /user normally and the membership endpoint with code.
+func statusGitHub(t *testing.T, userCode, memberCode int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/user" {
+			if userCode != http.StatusOK {
+				http.Error(w, "{}", userCode)
+				return
+			}
+			_, _ = w.Write([]byte(`{"login":"octocat"}`))
+			return
+		}
+		http.Error(w, "{}", memberCode)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestGitHub_Member_StatusMapping(t *testing.T) {
+	cases := []struct {
+		name               string
+		userCode, memberCd int
+		want               error
+	}{
+		{"membership403", 200, http.StatusForbidden, ErrOrgAccessDenied},
+		{"user429", http.StatusTooManyRequests, 200, ErrGitHubRateLimited},
+		{"membership429", 200, http.StatusTooManyRequests, ErrGitHubRateLimited},
+	}
+	for _, c := range cases {
+		srv := statusGitHub(t, c.userCode, c.memberCd)
+		_, err := GitHub{BaseURL: srv.URL, HTTP: srv.Client()}.Member(context.Background(), "good-token", "test-org")
+		if !errors.Is(err, c.want) {
+			t.Errorf("%s: err = %v, want %v", c.name, err, c.want)
+		}
+	}
+}

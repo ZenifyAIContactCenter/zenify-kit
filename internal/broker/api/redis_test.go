@@ -16,6 +16,7 @@ func TestCheckRedis(t *testing.T) {
 		{"SCAN", []string{"0"}, []string{"SCAN", "0", "COUNT", "100"}},
 		{"scan", []string{"0", "MATCH", "a:*"}, []string{"SCAN", "0", "MATCH", "a:*", "COUNT", "100"}},
 		{"SCAN", []string{"0", "count", "1000"}, []string{"SCAN", "0", "count", "1000"}},
+		{"SCAN", []string{"0", "COUNT", "10", "MATCH", "a:*", "TYPE", "hash"}, []string{"SCAN", "0", "COUNT", "10", "MATCH", "a:*", "TYPE", "hash"}},
 	}
 	for _, c := range ok {
 		got, err := CheckRedis(c.cmd, c.args)
@@ -39,6 +40,10 @@ func TestCheckRedis(t *testing.T) {
 		{"SCAN", []string{"0", "COUNT", "0"}},
 		{"SCAN", []string{"0", "COUNT", "abc"}},
 		{"SCAN", []string{"0", "COUNT"}},
+		{"SCAN", []string{"0", "COUNT", "10", "COUNT", "5000"}},
+		{"SCAN", []string{"0", "COUNT", "10", "COUNT", "20"}},
+		{"SCAN", []string{"0", "MATCH", "COUNT"}},
+		{"SCAN", []string{"0", "MATCH"}},
 	}
 	for _, c := range bad {
 		if got, err := CheckRedis(c.cmd, c.args); err == nil {
@@ -57,5 +62,12 @@ func TestRedisAllowed_ExactSet(t *testing.T) {
 		if !RedisAllowed[c] {
 			t.Errorf("%s missing from RedisAllowed", c)
 		}
+	}
+}
+
+func TestCheckRedis_MissingValueMessage(t *testing.T) {
+	_, err := CheckRedis("SCAN", []string{"0", "MATCH", "COUNT"})
+	if err == nil || err.Error() != "SCAN option MATCH is missing its value" {
+		t.Errorf("err = %v", err)
 	}
 }

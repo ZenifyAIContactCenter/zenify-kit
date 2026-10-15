@@ -19,6 +19,11 @@ const DefaultGitHubURL = "https://api.github.com"
 var (
 	ErrTokenInvalid = errors.New("github token invalid")
 	ErrNotMember    = errors.New("not an active org member")
+	// ErrOrgAccessDenied: the membership endpoint answered 403, i.e. the token
+	// is not SSO-authorized for the org or lacks read:org.
+	ErrOrgAccessDenied = errors.New("github token cannot read org membership")
+	// ErrGitHubRateLimited: GitHub answered 429.
+	ErrGitHubRateLimited = errors.New("github rate limited")
 )
 
 // GitHub checks org membership. Empty BaseURL means DefaultGitHubURL; nil HTTP
@@ -40,6 +45,8 @@ func (g GitHub) Member(ctx context.Context, token, org string) (login string, er
 		return "", err
 	case code == http.StatusUnauthorized:
 		return "", ErrTokenInvalid
+	case code == http.StatusTooManyRequests:
+		return "", ErrGitHubRateLimited
 	case code != http.StatusOK || user.Login == "":
 		return "", fmt.Errorf("github /user: status %d", code)
 	}
@@ -54,6 +61,10 @@ func (g GitHub) Member(ctx context.Context, token, org string) (login string, er
 		return "", ErrTokenInvalid
 	case code == http.StatusNotFound:
 		return "", ErrNotMember
+	case code == http.StatusForbidden:
+		return "", ErrOrgAccessDenied
+	case code == http.StatusTooManyRequests:
+		return "", ErrGitHubRateLimited
 	case code != http.StatusOK:
 		return "", fmt.Errorf("github membership: status %d", code)
 	case m.State != "active":
