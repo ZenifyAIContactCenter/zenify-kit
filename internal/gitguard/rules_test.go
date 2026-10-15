@@ -37,6 +37,7 @@ func TestRules(t *testing.T) {
 		`timeout 60 git push --force origin x`, `nohup nice -n 5 git push -f origin x`, `git "push" --force origin x`,
 		`gh pr merge 1`, `command gh pr merge 1`, `bash -c 'gh pr merge 1'`, `gh api -X PUT repos/o/r/pulls/1/merge`,
 		`wt rm x --force`, `zenify wt rm -f x`,
+		`git worktree remove --force p`, `git worktree remove -f p`, `git -C /r --no-pager worktree remove p --force`,
 		`echo $REDIS_URL_PRD`, `bash -c 'echo ${MONGO_URL_PRD}'`, `printenv MONGO_URL_PRD`,
 		`mongosh mongodb://prod-host.example/db`, `redis-cli -h 10.0.0.15`,
 		`gh api -XPUT repos/o/r/pulls/1/merge`, `gh api --method PUT repos/o/r/pulls/1/merge`,
@@ -51,6 +52,7 @@ func TestRules(t *testing.T) {
 		`zenify db-read collections`, `zenify env list`, `git grep MONGO_URL_PRD`, `echo $MONGO_URL`,
 		`mongosh mongodb://staging-host/db`, `ping 10.0.0.150`, `curl http://staging-prod-host.example.net`,
 		`echo "abc`, `curl http://localhost:8080`, `git log --merges`, `rm -f build.log`,
+		`git worktree remove p`, `git worktree list`,
 	}
 	for _, cmd := range deny {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {

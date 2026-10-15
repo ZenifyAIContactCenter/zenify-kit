@@ -114,16 +114,23 @@ func isPRMerge(argv []string) bool {
 	return mergePath && put
 }
 
-// isWtForceRm: R4 — `wt rm` / `zenify wt rm` with --force or -f.
+// isWtForceRm: R4 — `wt rm` / `zenify wt rm` / `git worktree remove` with
+// --force or -f.
 func isWtForceRm(argv []string) bool {
 	var rest []string
-	switch basename(argv[0]) {
-	case "wt":
+	switch name := basename(argv[0]); {
+	case isGitBinary(argv[0]):
+		gc, ok := parseGitCall(argv)
+		if !ok || gc.Sub != "worktree" || len(gc.Args) == 0 || gc.Args[0] != "remove" {
+			return false
+		}
+		rest = gc.Args[1:]
+	case name == "wt":
 		if len(argv) < 2 || argv[1] != "rm" {
 			return false
 		}
 		rest = argv[2:]
-	case "zenify":
+	case name == "zenify":
 		if len(argv) < 3 || argv[1] != "wt" || argv[2] != "rm" {
 			return false
 		}
