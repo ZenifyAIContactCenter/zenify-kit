@@ -19,7 +19,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w
+      - -s -w -X github.com/ZenifyAIContactCenter/zenify-kit/internal/version.Version={{.Version}}
     goos: [linux]
     goarch: [amd64, arm64]
 archives:

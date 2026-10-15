@@ -24,6 +24,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/query"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/redisread"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/server"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 )
 
 // maxConcurrentPerLogin caps simultaneous /query children and /redis commands per developer.
@@ -31,7 +32,12 @@ const maxConcurrentPerLogin = 2
 
 func main() {
 	cfgPath := flag.String("config", "/etc/zenify-broker/broker.yaml", "path to the broker YAML config")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("zenify-broker", version.Version)
+		return
+	}
 	if err := run(*cfgPath); err != nil {
 		fmt.Fprintln(os.Stderr, "zenify-broker:", err)
 		os.Exit(1)
@@ -71,35 +77,43 @@ func run(cfgPath string) error {
 		return fmt.Errorf("posthog.upstream: %w", err)
 	}
 
+	log := &audit.Logger{W: os.Stdout}
+	queryH := &query.Handler{
+		Creds: query.Creds{MongoStg: s.MongoStg, MongoPrd: s.MongoPrd, MySQLStg: s.MySQLStg, MySQLPrd: s.MySQLPrd,
+			AuditMongoPrd: s.AuditMongoPrd, MainDB: cfg.Mongo.MainDB, AuditDB: cfg.Mongo.AuditDB},
+		Audit: log, Run: query.ExecRun, MaxConcurrent: maxConcurrentPerLogin,
+	}
+	redisH := &redisread.Handler{Clients: map[string]redisread.Doer{"stg": rStg, "prd": rPrd}, Audit: log,
+		MaxConcurrent: maxConcurrentPerLogin}
+	e2eH := &e2e.Handler{Audit: log, P: &e2e.Provisioner{
+		App: &e2e.HTTPApp{HubURL: cfg.E2E.HubURL, BEURL: cfg.E2E.BEURL, Domain: cfg.E2E.Domain,
+			TenantID: cfg.E2E.TenantID, GroupID: cfg.E2E.GroupID,
+			AdminEmail: s.E2EAdminEmail, AdminPassword: s.E2EAdminPassword},
+		Key: s.E2EHMACKey, EmailDomain: cfg.E2E.EmailDomain, Domain: cfg.E2E.Domain, Now: time.Now,
+	}}
+	// A mis-wired handler fails here, at startup, not on every request.
+	if err := errors.Join(queryH.Validate(), redisH.Validate(), e2eH.Validate()); err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	sigs := make(chan os.Signal, 1)
+	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
-	go func() { <-sigs; cancel(nil) }()
+	go watchSignals(sigs, cancel, os.Exit)
 
 	if _, err := mcpproxy.StartGrafana(ctx, cancel, cfg.Grafana.Bin, cfg.Grafana.URL, s.GrafanaToken, cfg.Grafana.Addr, cfg.Grafana.Args); err != nil {
 		return err
 	}
 
-	log := &audit.Logger{W: os.Stdout}
 	handler := server.New(server.Deps{
 		JWTKey: s.JWTKey,
 		Org:    cfg.Org,
 		GitHub: auth.GitHub{},
 		Audit:  log,
-		Query: &query.Handler{
-			Creds: query.Creds{MongoStg: s.MongoStg, MongoPrd: s.MongoPrd, MySQLStg: s.MySQLStg, MySQLPrd: s.MySQLPrd,
-				AuditMongoPrd: s.AuditMongoPrd, MainDB: cfg.Mongo.MainDB, AuditDB: cfg.Mongo.AuditDB},
-			Audit: log, Run: query.ExecRun, MaxConcurrent: maxConcurrentPerLogin,
-		},
-		Redis: &redisread.Handler{Clients: map[string]redisread.Doer{"stg": rStg, "prd": rPrd}, Audit: log,
-			MaxConcurrent: maxConcurrentPerLogin},
-		E2E: &e2e.Handler{Audit: log, P: &e2e.Provisioner{
-			App: &e2e.HTTPApp{HubURL: cfg.E2E.HubURL, BEURL: cfg.E2E.BEURL, Domain: cfg.E2E.Domain,
-				TenantID: cfg.E2E.TenantID, GroupID: cfg.E2E.GroupID,
-				AdminEmail: s.E2EAdminEmail, AdminPassword: s.E2EAdminPassword},
-			Key: s.E2EHMACKey, EmailDomain: cfg.E2E.EmailDomain, Domain: cfg.E2E.Domain, Now: time.Now,
-		}},
+		Query:  queryH,
+		Redis:  redisH,
+		E2E:    e2eH,
 		MCP: map[string]http.Handler{
 			"grafana": mcpproxy.New("grafana", grafanaUp, nil, log),
 			"posthog": mcpproxy.New("posthog", posthogUp, mcpproxy.PostHogHeaders(s.POSTHOGAPIKey, cfg.PostHog.ProjectID), log),
@@ -123,4 +137,13 @@ func run(cfgPath string) error {
 		return cause
 	}
 	return nil
+}
+
+// watchSignals starts a graceful shutdown on the first signal and exits at
+// once on the second, so an operator can cut a stuck shutdown short.
+func watchSignals(sigs <-chan os.Signal, cancel context.CancelCauseFunc, exit func(int)) {
+	<-sigs
+	cancel(nil)
+	<-sigs
+	exit(1)
 }
