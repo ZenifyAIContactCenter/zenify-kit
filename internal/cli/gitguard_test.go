@@ -67,6 +67,10 @@ func TestDecideFromPayload(t *testing.T) {
 	if decideFromPayload([]byte(allow), getenv).Deny {
 		t.Error("git status must allow")
 	}
+	prd := `{"cwd":"` + repo + `","tool_input":{"command":"zenify db-read --prd count users"}}`
+	if decideFromPayload([]byte(prd), getenv).Deny {
+		t.Error("zenify db-read --prd must allow")
+	}
 	// Fail-open: broken JSON → allow.
 	if decideFromPayload([]byte("{not json"), getenv).Deny {
 		t.Error("broken JSON must fail-open (allow)")

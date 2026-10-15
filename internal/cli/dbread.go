@@ -37,6 +37,7 @@ var dbReadLong = strings.Join([]string{
 func newDBReadCmd() *cobra.Command {
 	var filter, projection, sort, pipeline string
 	var limit int
+	var prd bool
 	cmd := &cobra.Command{
 		Use:           "db-read <collections|tables|doc|count|find|aggregate|explain|sql> [arg]",
 		Short:         "Đọc chỉ-đọc các database dùng chung của zenify (không bao giờ ghi, không in secret)", //znf:allow-lang
@@ -57,6 +58,7 @@ func newDBReadCmd() *cobra.Command {
 				Sort:       sort,
 				Pipeline:   pipeline,
 				Limit:      limit,
+				Prod:       prd,
 				Stdout:     cmd.OutOrStdout(),
 				Stderr:     cmd.ErrOrStderr(),
 				Env:        os.Getenv,
@@ -74,6 +76,7 @@ func newDBReadCmd() *cobra.Command {
 	f.StringVar(&sort, "sort", "", "JSON object sort (find, explain)")
 	f.StringVar(&pipeline, "pipeline", "", "JSON array pipeline (aggregate, explain)")
 	f.IntVar(&limit, "limit", dbread.DefaultLimit, "max documents or rows, 1..200")
+	f.BoolVar(&prd, "prd", false, "read production: MONGO_URL_PRD / MYSQL_URL_PRD")
 	return cmd
 }
 
