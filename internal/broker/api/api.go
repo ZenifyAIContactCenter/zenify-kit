@@ -13,9 +13,12 @@ const (
 	CodeInvalidTarget      = "invalid_target"
 	CodeTooManyConcurrent  = "too_many_concurrent"
 	CodeTimeout            = "timeout"
-	CodeCommandNotAllowed  = "command_not_allowed"
-	CodeUnknownRole        = "unknown_role"
-	CodeProvisionFailed    = "provision_failed"
+	// CodeQueryFailed (502): the guards passed but mongosh/mysql failed; the
+	// message is the child's masked stderr.
+	CodeQueryFailed       = "query_failed"
+	CodeCommandNotAllowed = "command_not_allowed"
+	CodeUnknownRole       = "unknown_role"
+	CodeProvisionFailed   = "provision_failed"
 	// CodeGitHubUnavailable (502): GitHub could not be asked, so no
 	// membership verdict exists.
 	CodeGitHubUnavailable = "github_unavailable"

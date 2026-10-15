@@ -20,6 +20,7 @@ type Deps struct {
 	GitHub auth.GitHub
 	Audit  *audit.Logger    // nil = stdout
 	Now    func() time.Time // nil = time.Now
+	Query  http.Handler     // POST /query; nil = route not served
 }
 
 // /token limit per client address (FR-1.3).
@@ -50,6 +51,9 @@ func New(cfg Deps) http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.HandleFunc("POST /token", s.token)
+	if cfg.Query != nil {
+		mux.Handle("POST /query", auth.Require(cfg.JWTKey, cfg.Query))
+	}
 	return mux
 }
 

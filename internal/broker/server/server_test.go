@@ -297,3 +297,13 @@ func assertOneAuditLine(t *testing.T, out *bytes.Buffer, status int) {
 		t.Errorf("audit line leaks the GitHub token: %s", lines[0])
 	}
 }
+
+func TestQueryRouteRequiresAuth(t *testing.T) {
+	var hit int32
+	h := New(Deps{JWTKey: testKey, Query: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { atomic.AddInt32(&hit, 1) })})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/query", strings.NewReader("{}")))
+	if rec.Code != http.StatusUnauthorized || atomic.LoadInt32(&hit) != 0 {
+		t.Fatalf("got %d, handler hits %d", rec.Code, hit)
+	}
+}
