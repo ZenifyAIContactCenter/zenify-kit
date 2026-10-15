@@ -1,0 +1,253 @@
+package redisread
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
+)
+
+var testKey = []byte("test-key")
+
+// fakeDoer records every argv it is handed and answers with val / err.
+type fakeDoer struct {
+	got [][]any
+	val any
+	err error
+}
+
+func (f *fakeDoer) Do(ctx context.Context, args ...any) *redis.Cmd {
+	f.got = append(f.got, args)
+	c := redis.NewCmd(ctx, args...)
+	if f.err != nil {
+		c.SetErr(f.err)
+	} else {
+		c.SetVal(f.val)
+	}
+	return c
+}
+
+type fixture struct {
+	stg, prd *fakeDoer
+	audit    *bytes.Buffer
+	ts       *httptest.Server
+}
+
+func newFixture(t *testing.T) *fixture {
+	t.Helper()
+	f := &fixture{stg: &fakeDoer{val: "v"}, prd: &fakeDoer{val: "v"}, audit: &bytes.Buffer{}}
+	h := &Handler{Clients: map[string]Doer{"stg": f.stg, "prd": f.prd}, Audit: &audit.Logger{W: f.audit}}
+	f.ts = httptest.NewServer(auth.Require(testKey, h))
+	t.Cleanup(f.ts.Close)
+	return f
+}
+
+func (f *fixture) post(t *testing.T, req api.RedisRequest) (int, []byte) {
+	t.Helper()
+	tok, _ := auth.Issue(testKey, "alice", time.Now())
+	b, _ := json.Marshal(req)
+	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, bytes.NewReader(b))
+	r.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, body
+}
+
+func argv(a []any) []string {
+	out := make([]string, len(a))
+	for i, v := range a {
+		out[i] = v.(string)
+	}
+	return out
+}
+
+func TestRedis_DelRejected(t *testing.T) {
+	f := newFixture(t)
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "DEL", Args: []string{"k"}})
+	var e api.Error
+	_ = json.Unmarshal(body, &e)
+	if st != 400 || e.Error != api.CodeCommandNotAllowed {
+		t.Fatalf("got %d %s", st, body)
+	}
+	if len(f.stg.got)+len(f.prd.got) != 0 {
+		t.Fatal("Doer must not be called")
+	}
+	if !strings.Contains(f.audit.String(), `"status":400`) || !strings.Contains(f.audit.String(), `"endpoint":"/redis"`) {
+		t.Fatalf("audit: %s", f.audit)
+	}
+}
+
+func TestRedis_RangeRewrites(t *testing.T) {
+	cases := []struct {
+		name string
+		cmd  string
+		args []string
+		want []string // full argv sent, nil = rejected 400
+	}{
+		{"lrange all", "lrange", []string{"k", "0", "-1"}, []string{"LRANGE", "k", "0", "199"}},
+		{"lrange small unchanged", "LRANGE", []string{"k", "10", "20"}, []string{"LRANGE", "k", "10", "20"}},
+		{"lrange big", "LRANGE", []string{"k", "0", "5000"}, []string{"LRANGE", "k", "0", "199"}},
+		{"lrange offset", "LRANGE", []string{"k", "100", "-1"}, []string{"LRANGE", "k", "100", "299"}},
+		{"lrange neg both small", "LRANGE", []string{"k", "-10", "-1"}, []string{"LRANGE", "k", "-10", "-1"}},
+		{"lrange neg both big", "LRANGE", []string{"k", "-1000", "-1"}, []string{"LRANGE", "k", "-1000", "-801"}},
+		{"lrange neg start pos stop", "LRANGE", []string{"k", "-5", "100"}, nil},
+		{"lrange not int", "LRANGE", []string{"k", "a", "b"}, nil},
+		{"lrange wrong arity", "LRANGE", []string{"k", "0"}, nil},
+		{"zrange index", "ZRANGE", []string{"z", "0", "-1", "WITHSCORES"}, []string{"ZRANGE", "z", "0", "199", "WITHSCORES"}},
+		{"zrange byscore adds limit", "ZRANGE", []string{"z", "0", "100", "BYSCORE"}, []string{"ZRANGE", "z", "0", "100", "BYSCORE", "LIMIT", "0", "200"}},
+		{"zrange bylex overrides limit", "ZRANGE", []string{"z", "-", "+", "bylex", "LIMIT", "5", "9999"}, []string{"ZRANGE", "z", "-", "+", "bylex", "LIMIT", "0", "200"}},
+		{"xrange adds count", "XRANGE", []string{"s", "-", "+"}, []string{"XRANGE", "s", "-", "+", "COUNT", "200"}},
+		{"xrange lowers count", "XRANGE", []string{"s", "-", "+", "COUNT", "5000"}, []string{"XRANGE", "s", "-", "+", "COUNT", "200"}},
+		{"xrange keeps small count", "XRANGE", []string{"s", "-", "+", "count", "50"}, []string{"XRANGE", "s", "-", "+", "count", "50"}},
+		{"get untouched", "GET", []string{"k"}, []string{"GET", "k"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			st, body := f.post(t, api.RedisRequest{Env: "prd", Cmd: c.cmd, Args: c.args})
+			if c.want == nil {
+				if st != 400 || len(f.prd.got) != 0 {
+					t.Fatalf("want 400 and no call, got %d %s calls=%d", st, body, len(f.prd.got))
+				}
+				return
+			}
+			if st != 200 || len(f.prd.got) != 1 {
+				t.Fatalf("got %d %s calls=%d", st, body, len(f.prd.got))
+			}
+			if got := strings.Join(argv(f.prd.got[0]), " "); got != strings.Join(c.want, " ") {
+				t.Fatalf("sent %q, want %q", got, strings.Join(c.want, " "))
+			}
+		})
+	}
+}
+
+func TestRedis_ResultCapped(t *testing.T) {
+	f := newFixture(t)
+	f.stg.val = strings.Repeat("x", 2<<20)
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "GET", Args: []string{"big"}})
+	var r api.RedisResponse
+	if err := json.Unmarshal(body, &r); err != nil || st != 200 {
+		t.Fatalf("%d %v", st, err)
+	}
+	if !r.Truncated || len(body) > 1<<20+256 {
+		t.Fatalf("truncated=%v len=%d", r.Truncated, len(body))
+	}
+	if s, _ := r.Result.(string); len(s) < 1<<19 || strings.Trim(s, "x") != "" {
+		t.Fatalf("result should be a long prefix of the string, len=%d", len(s))
+	}
+}
+
+func TestRedis_ArrayCapped(t *testing.T) {
+	f := newFixture(t)
+	el := strings.Repeat("y", 1000)
+	var arr []any
+	for i := 0; i < 3000; i++ {
+		arr = append(arr, el)
+	}
+	f.stg.val = arr
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "SMEMBERS", Args: []string{"s"}})
+	var r api.RedisResponse
+	_ = json.Unmarshal(body, &r)
+	got, _ := r.Result.([]any)
+	if st != 200 || !r.Truncated || len(body) > 1<<20+256 || len(got) == 0 || len(got) >= 3000 {
+		t.Fatalf("st=%d truncated=%v len=%d n=%d", st, r.Truncated, len(body), len(got))
+	}
+}
+
+func TestRedis_SmallResultNotTruncated(t *testing.T) {
+	f := newFixture(t)
+	f.stg.val = []any{"a", int64(2), nil}
+	_, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "MGET", Args: []string{"a", "b", "c"}})
+	if strings.TrimSpace(string(body)) != `{"result":["a",2,null],"truncated":false}` {
+		t.Fatalf("%s", body)
+	}
+}
+
+func TestRedis_MapAndNil(t *testing.T) {
+	f := newFixture(t)
+	f.stg.val = map[any]any{"f": "1", int64(2): []any{"x"}}
+	_, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "HGETALL", Args: []string{"h"}})
+	if strings.TrimSpace(string(body)) != `{"result":{"2":["x"],"f":"1"},"truncated":false}` {
+		t.Fatalf("%s", body)
+	}
+	f.stg.val, f.stg.err = nil, redis.Nil
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "GET", Args: []string{"missing"}})
+	if st != 200 || strings.TrimSpace(string(body)) != `{"result":null,"truncated":false}` {
+		t.Fatalf("%d %s", st, body)
+	}
+}
+
+func TestRedis_UnknownEnv400(t *testing.T) {
+	f := newFixture(t)
+	for _, env := range []string{"", "dev", "PRD"} {
+		st, body := f.post(t, api.RedisRequest{Env: env, Cmd: "GET", Args: []string{"k"}})
+		var e api.Error
+		_ = json.Unmarshal(body, &e)
+		if st != 400 || e.Error != api.CodeInvalidTarget {
+			t.Fatalf("env %q: %d %s", env, st, body)
+		}
+	}
+	if len(f.stg.got)+len(f.prd.got) != 0 {
+		t.Fatal("Doer must not be called")
+	}
+}
+
+func TestRedis_ExecErrorIs502WithoutAddress(t *testing.T) {
+	f := newFixture(t)
+	f.stg.err = errors.New("dial tcp 10.9.8.7:6379: connection refused")
+	st, body := f.post(t, api.RedisRequest{Env: "stg", Cmd: "GET", Args: []string{"k"}})
+	var e api.Error
+	_ = json.Unmarshal(body, &e)
+	if st != 502 || e.Error != api.CodeQueryFailed || strings.Contains(string(body), "10.9.8.7") {
+		t.Fatalf("%d %s", st, body)
+	}
+}
+
+func TestRedis_AuditLine(t *testing.T) {
+	f := newFixture(t)
+	f.stg.val = "secret-value-123"
+	f.post(t, api.RedisRequest{Env: "stg", Cmd: "get", Args: []string{"user:1"}})
+	lines := strings.Split(strings.TrimSpace(f.audit.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("want exactly 1 audit line, got %d", len(lines))
+	}
+	var e map[string]any
+	_ = json.Unmarshal([]byte(lines[0]), &e)
+	if e["login"] != "alice" || e["endpoint"] != "/redis" || e["env"] != "stg" || e["op"] != "GET" || e["status"] != float64(200) {
+		t.Fatalf("%s", lines[0])
+	}
+	if strings.Contains(lines[0], "secret-value-123") || !strings.Contains(lines[0], "user:1") {
+		t.Fatalf("args must hold the key and never the result: %s", lines[0])
+	}
+}
+
+func TestRedis_BadBody400(t *testing.T) {
+	f := newFixture(t)
+	tok, _ := auth.Issue(testKey, "alice", time.Now())
+	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, strings.NewReader("{nope"))
+	r.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 || strings.Count(f.audit.String(), "\n") != 1 {
+		t.Fatalf("%d %s", resp.StatusCode, f.audit)
+	}
+}

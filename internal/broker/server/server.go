@@ -21,6 +21,7 @@ type Deps struct {
 	Audit  *audit.Logger    // nil = stdout
 	Now    func() time.Time // nil = time.Now
 	Query  http.Handler     // POST /query; nil = route not served
+	Redis  http.Handler     // POST /redis; nil = route not served
 }
 
 // /token limit per client address (FR-1.3).
@@ -53,6 +54,9 @@ func New(cfg Deps) http.Handler {
 	mux.HandleFunc("POST /token", s.token)
 	if cfg.Query != nil {
 		mux.Handle("POST /query", auth.Require(cfg.JWTKey, cfg.Query))
+	}
+	if cfg.Redis != nil {
+		mux.Handle("POST /redis", auth.Require(cfg.JWTKey, cfg.Redis))
 	}
 	return mux
 }

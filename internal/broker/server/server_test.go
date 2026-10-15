@@ -307,3 +307,18 @@ func TestQueryRouteRequiresAuth(t *testing.T) {
 		t.Fatalf("got %d, handler hits %d", rec.Code, hit)
 	}
 }
+
+func TestRedisRouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
+	var hit int32
+	h := New(Deps{JWTKey: testKey, Redis: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { atomic.AddInt32(&hit, 1) })})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/redis", strings.NewReader("{}")))
+	if rec.Code != http.StatusUnauthorized || atomic.LoadInt32(&hit) != 0 {
+		t.Fatalf("got %d, handler hits %d", rec.Code, hit)
+	}
+	rec = httptest.NewRecorder()
+	New(Deps{JWTKey: testKey}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/redis", strings.NewReader("{}")))
+	if rec.Code == http.StatusUnauthorized {
+		t.Fatalf("route should be absent when Deps.Redis is nil, got %d", rec.Code)
+	}
+}
