@@ -368,3 +368,51 @@ func TestSetDesc_UnderSectionTitleInserts(t *testing.T) {
 		t.Errorf("Desc = %q, Undescribed = %v", got, res2.Undescribed)
 	}
 }
+
+func TestRender_DuplicateEmptyLastKeepsValue(t *testing.T) {
+	keys := []manifest.PlacedKey{key("A", "", "a", "", "", true, "")}
+	r := Render(load(t, "A='real'\nA=\nC='x'\nC=\n"), keys, nil)
+	got := text(t, r.File)
+	if v, _ := r.File.Get("A"); v != "real" {
+		t.Fatalf("A = %q, want real\n%s", v, got)
+	}
+	if v, _ := r.File.Get("C"); v != "x" {
+		t.Fatalf("C = %q, want x\n%s", v, got)
+	}
+	if strings.Contains(got, "# A=") || strings.Contains(got, "# C=") || len(r.Shadowed) != 0 {
+		t.Fatalf("unexpected shadow comment / Shadowed=%v:\n%s", r.Shadowed, got)
+	}
+}
+
+func TestRender_DuplicateDifferentValuesKeptAsComment(t *testing.T) {
+	keys := []manifest.PlacedKey{key("A", "", "a", "", "", true, "")}
+	r := Render(load(t, "A='a'\nA='b'\nA='b'\n# c desc\nC='p'\nC='q'\n"), keys, nil)
+	got := text(t, r.File)
+	if v, _ := r.File.Get("A"); v != "b" {
+		t.Fatalf("A = %q, want b\n%s", v, got)
+	}
+	if v, _ := r.File.Get("C"); v != "q" {
+		t.Fatalf("C = %q, want q\n%s", v, got)
+	}
+	for _, want := range []string{"\n# A=" + formatValue("a") + "\n", "\n# C=" + formatValue("p") + "\n"} {
+		if strings.Count(got, want) != 1 {
+			t.Fatalf("want exactly one %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "# A="+formatValue("b")) {
+		t.Fatalf("rendered value duplicated as a comment:\n%s", got)
+	}
+	if !reflect.DeepEqual(r.Shadowed, []string{"A", "C"}) {
+		t.Fatalf("Shadowed = %v, want [A C]", r.Shadowed)
+	}
+	if r.File.Desc("C") != "c desc" {
+		t.Fatalf("C desc = %q", r.File.Desc("C"))
+	}
+	again := Render(r.File, keys, nil)
+	if got2 := text(t, again.File); got2 != got {
+		t.Fatalf("second render differs:\n%s\nfirst:\n%s", got2, got)
+	}
+	if len(again.Shadowed) != 0 {
+		t.Fatalf("second Shadowed = %v", again.Shadowed)
+	}
+}

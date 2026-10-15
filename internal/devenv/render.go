@@ -28,6 +28,7 @@ type RenderResult struct {
 	Added       []string // manifest keys the old file had no assignment for
 	Removed     []string // previously managed keys no longer in the manifest, deleted
 	Undescribed []string // custom keys without a description line
+	Shadowed    []string // keys whose other non-empty assignments were kept as comments
 }
 
 // Render rebuilds the credential file as a grouped scaffold: header, then the
@@ -56,6 +57,29 @@ func Render(old *File, keys []manifest.PlacedKey, prevManaged []string) RenderRe
 		if _, ok := old.Get(k); ok {
 			res.Removed = append(res.Removed, k)
 		}
+	}
+
+	// Every assignment of a key, in file order. The rendered value is the
+	// last non-empty one (empty = unset); every other distinct non-empty
+	// value is kept as a commented assignment, so a duplicate never loses one.
+	vals := map[string][]string{}
+	var assignOrder []string
+	for _, l := range old.lines {
+		if k, v, ok := parseLine(l); ok {
+			if _, dup := vals[k]; !dup {
+				assignOrder = append(assignOrder, k)
+			}
+			vals[k] = append(vals[k], v)
+		}
+	}
+	value := func(k string) string {
+		vs := vals[k]
+		for i := len(vs) - 1; i >= 0; i-- {
+			if vs[i] != "" {
+				return vs[i]
+			}
+		}
+		return ""
 	}
 
 	// Classify old lines. A comment block directly above a manifest (or
@@ -108,6 +132,22 @@ func Render(old *File, keys []manifest.PlacedKey, prevManaged []string) RenderRe
 		flush()
 	}
 	flush()
+	for _, k := range assignOrder {
+		if removed[k] {
+			continue
+		}
+		v, done := value(k), map[string]bool{}
+		for _, sv := range vals[k] {
+			if sv == "" || sv == v || done[sv] {
+				continue
+			}
+			if len(done) == 0 {
+				res.Shadowed = append(res.Shadowed, k)
+			}
+			done[sv] = true
+			kept = append(kept, "# "+assignLine(k, sv))
+		}
+	}
 
 	// The first entry of a name wins; a group outside the three folds into
 	// staging, so a managed key's value is never consumed without a home.
@@ -132,22 +172,20 @@ func Render(old *File, keys []manifest.PlacedKey, prevManaged []string) RenderRe
 				continue
 			}
 			placed[k.Name] = true
-			v, ok := old.Get(k.Name)
-			if !ok {
+			if _, ok := vals[k.Name]; !ok {
 				res.Added = append(res.Added, k.Name)
 			}
 			groups[g] = append(groups[g], []string{
 				descComment(k),
 				noteComment(k),
-				assignLine(k.Name, v),
+				assignLine(k.Name, value(k.Name)),
 			})
 		}
 	}
 
 	var custom [][]string
 	for _, k := range customOrder {
-		v, _ := old.Get(k)
-		b := []string{assignLine(k, v)}
+		b := []string{assignLine(k, value(k))}
 		if d, ok := desc[k]; ok {
 			b = append([]string{"# " + d}, b...)
 		} else {

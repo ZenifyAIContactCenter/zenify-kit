@@ -68,3 +68,20 @@ func TestRenderEnvStep_ApplyRecordsKeys(t *testing.T) {
 		t.Fatalf("mode = %v", st.Mode().Perm())
 	}
 }
+
+func TestRenderEnvStep_PrintsShadowedNamesOnly(t *testing.T) {
+	p, _, m, owned := envStepFixture(t)
+	if err := os.WriteFile(p, []byte("A='fake-old'\nA='fake-new'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := renderEnvStep(&out, m, p, owned, true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "env: giữ giá trị trùng của A dưới dạng comment") { //znf:allow-lang
+		t.Fatalf("output lacks the shadowed line: %q", out.String())
+	}
+	if strings.Contains(out.String(), "fake-") {
+		t.Fatalf("output leaks a value: %q", out.String())
+	}
+}

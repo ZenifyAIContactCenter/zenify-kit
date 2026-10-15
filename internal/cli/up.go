@@ -451,6 +451,9 @@ func renderEnvStep(w io.Writer, m *manifest.Manifest, envPath string, owned *man
 			_, _ = fmt.Fprintf(w, "env: %s %s\n", l.label, strings.Join(l.names, ", "))
 		}
 	}
+	if len(res.Shadowed) > 0 {
+		_, _ = fmt.Fprintf(w, "env: giữ giá trị trùng của %s dưới dạng comment\n", strings.Join(res.Shadowed, ", ")) //znf:allow-lang
+	}
 	return nil
 }
 
