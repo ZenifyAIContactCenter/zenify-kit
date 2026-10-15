@@ -95,11 +95,11 @@ func TestEnvDeletionGate(t *testing.T) {
 		{"embedded", "dev", "dev", true, ""},
 		{"embedded", "v0.41.0", "v0.40.0", true, ""},
 		{"embedded", "0.40.0", "v0.40.0", true, ""},
-		{"embedded", "v0.39.0", "v0.40.0", false, "binary cũ hơn bản đã ghi"},                                                 //znf:allow-lang
-		{"embedded", "dev", "v0.40.0", false, "binary cũ hơn bản đã ghi"},                                                     //znf:allow-lang
-		{"embedded", "v0.40.0", "dev", false, "binary cũ hơn bản đã ghi"},                                                     //znf:allow-lang
-		{"embedded", "v0.40.0", "", false, "binary cũ hơn bản đã ghi"},                                                        //znf:allow-lang
-		{"embedded", "v0.40.0", "garbage", false, "binary cũ hơn bản đã ghi"},                                                 //znf:allow-lang
+		{"embedded", "v0.39.0", "v0.40.0", false, "binary cũ hơn bản đã ghi"},                               //znf:allow-lang
+		{"embedded", "dev", "v0.40.0", false, "binary cũ hơn bản đã ghi"},                                   //znf:allow-lang
+		{"embedded", "v0.40.0", "dev", false, "binary cũ hơn bản đã ghi"},                                   //znf:allow-lang
+		{"embedded", "v0.40.0", "", false, "binary cũ hơn bản đã ghi"},                                      //znf:allow-lang
+		{"embedded", "v0.40.0", "garbage", false, "binary cũ hơn bản đã ghi"},                               //znf:allow-lang
 		{"manifest/repos.yaml", "dev", "dev", false, "manifest không phải bản nhúng (manifest/repos.yaml)"}, //znf:allow-lang
 	} {
 		ok, reason := envDeletionGate(c.src, c.current, c.recorded)
