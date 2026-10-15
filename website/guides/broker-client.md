@@ -4,9 +4,13 @@ title: Dùng credential broker
 
 # Dùng credential broker
 
-Workspace zenify khai báo `broker:` trong manifest (`https://broker.zenify.vn`). Nhờ đó bạn không giữ chuỗi kết nối DB, mật khẩu Redis, token Grafana hay key PostHog nào trên máy: kit đổi GitHub token của bạn lấy một JWT sống 15 phút, rồi gọi broker. Trang này là phần việc phía dev. Phía maintainer dựng host xem [Dựng host credential broker](/guides/broker-host).
+Khi manifest khai báo `broker:`, bạn không giữ chuỗi kết nối DB, mật khẩu Redis, token Grafana hay key PostHog nào trên máy: kit đổi GitHub token của bạn lấy một JWT sống 15 phút, rồi gọi broker. Trang này là phần việc phía dev. Phía maintainer dựng host xem [Dựng host credential broker](/guides/broker-host).
 
-Manifest không khai báo `broker:` thì mọi lệnh kit chạy như cũ, đọc credential từ `<workspace>/.zenify/.env` ([Credential dev với zenify env](/guides/env)).
+Manifest không khai báo `broker:` thì mọi lệnh kit chạy như cũ, đọc credential từ `<workspace>/.zenify/.env` ([Credential dev với zenify env](/guides/env)). Manifest nhúng sẵn trong binary hiện chưa khai báo `broker:`; một bản phát hành sau (PR-C) bật broker cho workspace zenify, sau khi host broker chạy.
+
+## Manifest nào quyết định broker
+
+GitHub token của bạn được gửi tới URL broker, nên kit chỉ lấy `broker:` từ hai nguồn: manifest nhúng sẵn trong binary, hoặc file bạn chỉ rõ bằng `--manifest`. Kit không bao giờ đọc `broker:` từ `manifest/repos.yaml` ở thư mục hiện tại, và overlay cá nhân không đổi được `broker:`. Một `--manifest` không tồn tại hoặc sai là lỗi; lệnh không lùi về credential trên máy. Token cache ở `~/.zenify/broker/token.json` ghi kèm URL broker đã cấp, nên token của broker này không bao giờ gửi sang broker khác.
 
 ## Cài một lần
 
@@ -29,9 +33,11 @@ Mục `broker` kiểm tra lần lượt: `gh` đã đăng nhập, `gh` có scope
 | `gh chưa đăng nhập — chạy gh auth login` | Đăng nhập `gh` như trên |
 | `gh thiếu scope read:org — chạy gh auth refresh -s read:org` | Chạy lệnh được gợi ý |
 | `không tới được broker — bật Cloudflare WARP rồi chạy lại` | Bật WARP, kiểm tra WARP đã vào đúng team, chạy lại |
-| `broker từ chối token: <mã> <lý do>` | GitHub login của bạn không được broker chấp nhận; hỏi maintainer |
+| `broker từ chối token: <status> not_org_member: <lời nhắn>` | GitHub token chưa thấy bạn trong org: kiểm tra scope `read:org`, và nếu org bật SSO thì authorize token của GitHub CLI cho org trên GitHub, rồi chạy lại |
+| `broker từ chối token: <status> rate_limited: …` hoặc `… github_unavailable: …` | Broker hoặc GitHub đang tạm quá tải; đợi một lát rồi chạy lại |
+| `broker từ chối token: <status> <mã khác>: <lời nhắn>` | Hỏi maintainer, kèm nguyên dòng thông báo |
 
-Muốn tự kiểm tra riêng bước đổi token: `zenify broker token` in JWT ra stdout. Đừng dán kết quả vào chat hay log.
+Muốn tự kiểm tra riêng bước đổi token: `zenify broker token` in JWT ra stdout (`zenify broker headers` cũng in một JWT). Đừng dán kết quả vào chat hay log. Khi broker có, mục `tools` của doctor không đòi `mongosh` và `mysql`.
 
 ## Đọc database: `db-read`
 
@@ -48,12 +54,12 @@ Kit vẫn kiểm tra tham số ở máy bạn như cũ trước khi gửi lên b
 
 ```bash
 zenify redis-read GET some:key
-zenify redis-read --prd LRANGE some:list 0 -1
+zenify redis-read --prd LRANGE some:list 0 49
 ```
 
 - Chỉ các lệnh chỉ đọc sau được phép: `GET MGET HGET HGETALL HKEYS LRANGE LLEN SMEMBERS SCARD ZRANGE ZCARD XRANGE TTL TYPE EXISTS SCAN`. Lệnh khác bị từ chối ngay ở máy bạn (mã 2), không gửi lên broker.
 - `SCAN` tự thêm `COUNT 100` nếu thiếu; `COUNT` phải trong khoảng 1 đến 1000.
-- Kết quả quá lớn bị broker cắt bớt, và lệnh ghi thông báo ra stderr.
+- Broker giới hạn mỗi lần đọc: `LRANGE`, `ZRANGE`, `XRANGE` tối đa 200 phần tử; kết quả tối đa 1 MiB, quá thì bị cắt và lệnh ghi thông báo ra stderr; `MGET` tối đa 100 key; `HGETALL`, `HKEYS`, `SMEMBERS` từ chối key có hơn 10000 phần tử.
 - Cờ (`--prd`) phải đứng trước lệnh Redis, để tham số như `-1` không bị đọc thành cờ.
 - Không có broker thì lệnh thoát mã 2 với "redis-read cần broker".
 

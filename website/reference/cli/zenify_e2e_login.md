@@ -22,7 +22,7 @@ Lệnh cần Node (`npm`, `npx` có trên PATH). Lần chạy đầu tải `@pla
 
 ## Kết quả
 
-Lệnh ghi storage state vào `~/.zenify/playwright/state.json` (quyền 0600), ghi qua file tạm rồi đổi tên, nên login lỗi thì state cũ vẫn còn nguyên. Workspace zenify khai báo `broker:`, nên tài khoản đăng nhập lấy từ broker và bạn không điền gì. Manifest không có `broker:` thì thông tin đăng nhập đọc từ `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `<workspace>/.zenify/.env` (env hiện có của tiến trình thắng nếu không rỗng); thiếu biến nào thì lệnh thoát với mã 2 và chỉ nêu tên biến. Thông tin đăng nhập không nằm trên argv và không được in ra.
+Lệnh ghi storage state vào `~/.zenify/playwright/state.json` (quyền 0600), ghi qua file tạm rồi đổi tên, nên login lỗi thì state cũ vẫn còn nguyên. Khi manifest khai báo `broker:`, tài khoản đăng nhập lấy từ broker và bạn không điền gì. Manifest không có `broker:` thì thông tin đăng nhập đọc từ `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `<workspace>/.zenify/.env` (env hiện có của tiến trình thắng nếu không rỗng); thiếu biến nào thì lệnh thoát với mã 2 và chỉ nêu tên biến. Thông tin đăng nhập không nằm trên argv và không được in ra.
 
 ## Cờ
 
