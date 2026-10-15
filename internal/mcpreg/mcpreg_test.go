@@ -29,7 +29,7 @@ const grafanaURL = "https://broker.example/mcp/grafana"
 
 func TestBootstrap_AddsHTTPServer(t *testing.T) {
 	var calls []call
-	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun("No MCP server found with name: zenify-grafana", errors.New("exit 1"), &calls)})
+	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun(`No MCP server named "zenify-grafana".`, errors.New("exit 1"), &calls)})
 	if err != nil || st != playwright.RegAbsent {
 		t.Fatalf("st=%v err=%v", st, err)
 	}
@@ -106,7 +106,7 @@ func TestBootstrap_GetFailureNoAdd(t *testing.T) {
 func TestBootstrap_AddFailureReturnsError(t *testing.T) {
 	run := func(_ string, args ...string) ([]byte, error) {
 		if args[1] == "get" {
-			return []byte("No MCP server found with name: n"), errors.New("exit 1")
+			return []byte(`No MCP server named "n".`), errors.New("exit 1")
 		}
 		return nil, errors.New("boom")
 	}

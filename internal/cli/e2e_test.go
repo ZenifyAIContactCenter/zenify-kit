@@ -489,7 +489,7 @@ func TestE2eRun_InvalidManifestErrors(t *testing.T) {
 	hermeticE2E(t, bad)
 	_, ran := e2eRunRepo(t)
 	_, _, err := execCmd(newE2eCmd(), "run", "--port", "3327")
-	if err == nil || *ran {
-		t.Fatalf("err=%v ran=%v, want an error and no child", err, *ran)
+	if err == nil || !strings.Contains(err.Error(), "manifest") || *ran {
+		t.Fatalf("err=%v ran=%v, want the manifest error and no child", err, *ran)
 	}
 }

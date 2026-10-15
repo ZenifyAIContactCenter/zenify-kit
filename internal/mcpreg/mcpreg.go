@@ -18,11 +18,10 @@ const HeadersHelper = "zenify broker headers"
 
 // isNotFound reports whether failed `claude mcp get` output says the name is
 // unknown (Claude Code 2.1.300 prints `No MCP server named "<name>"` and exits 1).
-// "not found" is also accepted; any other failure (a timeout, a crash) is not
-// "absent".
+// Any other failure (a timeout, a crash) is not "absent".
 func isNotFound(out string) bool {
 	o := strings.ToLower(out)
-	return strings.Contains(o, "no mcp server") || strings.Contains(o, "not found")
+	return strings.Contains(o, "no mcp server")
 }
 
 // Spec names one kit-managed MCP server; URL is <broker.url>/mcp/<name>.
@@ -40,7 +39,8 @@ type Options struct {
 // http entry whose URL ends in the same /mcp/<name> path is the kit's own with a
 // stale broker host: it is removed and re-added (RegLegacyDefault). `claude mcp
 // get` does not print headersHelper (verified on 2.1.300), so the path is the
-// only ownership mark; zenify-* names are kit-reserved. Anything else under that name is
+// only ownership mark. zenify-* names are kit-reserved: a user's own server
+// under that name and path is overwritten too. Anything else under that name is
 // the user's own and is left alone (RegCustom). A `get` failure other than
 // "not found" is an error and nothing is added. Claude only; Codex is a later
 // phase.
