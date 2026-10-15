@@ -227,3 +227,33 @@ func TestBuildMongoScript_CountBlankFilterIsEstimated(t *testing.T) {
 		t.Fatalf("blank filter: %v %s", err, s)
 	}
 }
+
+func TestBuildMongoScript_DBDefault3csoft(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "count", Coll: "users"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, "getSiblingDB('3csoft')") {
+		t.Errorf("script = %q, want default 3csoft db", s)
+	}
+}
+
+func TestBuildMongoScript_DBOverride(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "count", Coll: "users", DB: "audit_logs"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, `getSiblingDB("audit_logs")`) || strings.Contains(s, "3csoft") {
+		t.Errorf("script = %q, want audit_logs db only", s)
+	}
+}
+
+func TestBuildMongoScript_DBRejectsQuote(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "count", Coll: "users", DB: "x');"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, `getSiblingDB("x');")`) {
+		t.Errorf("script = %q, want the db name kept inside one JSON literal", s)
+	}
+}

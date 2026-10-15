@@ -9,17 +9,30 @@ import (
 
 // Query limits and the env var the generated script reads the Mongo URL from.
 const (
-	DefaultLimit     = 50
-	MaxLimit         = 200
-	QueryTimeoutMS   = 30000
-	MongoURLEnv      = "ZNF_MONGO_URL"
-	mongoConnectLine = "const d=connect(process.env." + MongoURLEnv + ").getSiblingDB('3csoft');"
+	DefaultLimit   = 50
+	MaxLimit       = 200
+	QueryTimeoutMS = 30000
+	MongoURLEnv    = "ZNF_MONGO_URL"
+	defaultMongoDB = "3csoft"
 )
+
+// mongoConnectLine connects and picks the database. Empty db keeps the
+// historical single-quoted default; any other name is JSON-encoded so it
+// cannot escape the literal.
+func mongoConnectLine(db string) string {
+	lit := "'" + defaultMongoDB + "'"
+	if db != "" {
+		b, _ := json.Marshal(db)
+		lit = string(b)
+	}
+	return "const d=connect(process.env." + MongoURLEnv + ").getSiblingDB(" + lit + ");"
+}
 
 // MongoQuery is one structured read. Op is one of collections|doc|count|find|
 // aggregate|explain. JSON fields are the raw CLI flag strings (empty = absent).
 type MongoQuery struct {
 	Op, Coll, Filter, Projection, Sort, Pipeline string
+	DB                                           string // empty = "3csoft"
 	Limit                                        int
 }
 
@@ -171,7 +184,7 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 	coll := "d.getCollection(" + string(collB) + ")"
 
 	var b bytes.Buffer
-	b.WriteString(mongoConnectLine)
+	b.WriteString(mongoConnectLine(q.DB))
 	switch q.Op {
 	case "collections":
 		subB, _ := json.Marshal(strings.ToLower(q.Coll))

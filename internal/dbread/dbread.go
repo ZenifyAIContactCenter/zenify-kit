@@ -40,7 +40,10 @@ type Options struct {
 	Sort       string
 	Pipeline   string
 	Limit      int
-	Prod       bool // read production: MONGO_URL_PRD / MYSQL_URL_PRD
+	Prod       bool   // read production: MONGO_URL_PRD / MYSQL_URL_PRD
+	MongoDB    string // Mongo database; empty = 3csoft
+	Truncated  bool   // set by Run: output was cut at the line or byte cap
+	Rows       int    // set by Run: stdout lines written
 	Stdout     io.Writer
 	Stderr     io.Writer
 	Env        func(string) string
@@ -156,6 +159,7 @@ type capWriter struct {
 	pending   []byte
 	lineCut   bool
 	byteCut   bool
+	rows      int
 }
 
 func newCapWriter(w io.Writer, limit, maxBytes int) *capWriter {
@@ -198,6 +202,7 @@ func (c *capWriter) Write(p []byte) (int, error) {
 			return n - len(p), err
 		}
 		c.bytesLeft -= len(line)
+		c.rows++
 		if c.left > 0 {
 			c.left--
 		}
@@ -224,7 +229,9 @@ func (c *capWriter) BytesCut() bool { return c.byteCut }
 
 // finish flushes cw and, when it was cut, prints the matching notice. A cut
 // is a success.
-func finish(cw *capWriter, stderr io.Writer, limit int) error {
+func finish(o *Options, cw *capWriter, limit int) error {
+	o.Rows, o.Truncated = cw.rows, cw.Truncated()
+	stderr := o.Stderr
 	if !cw.Truncated() {
 		return cw.Flush()
 	}
@@ -260,6 +267,11 @@ var unusedFlags = map[string][]string{
 
 func badArgs(msg string) error {
 	return exitcode.New(exitcode.BadArgs, errors.New("zenify db-read: "+msg))
+}
+
+// IsBadArgs reports whether err came from a refused request (badArgs).
+func IsBadArgs(err error) bool {
+	return err != nil && exitcode.Code(err) == exitcode.BadArgs
 }
 
 func printUsage(w io.Writer) {
@@ -331,7 +343,7 @@ func Run(o *Options) error {
 		var err error
 		script, err = BuildMongoScript(MongoQuery{
 			Op: o.Cmd, Coll: o.Arg, Filter: o.Filter, Projection: o.Projection,
-			Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit,
+			Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit, DB: o.MongoDB,
 		})
 		if err != nil {
 			return badArgs(err.Error())
@@ -376,7 +388,7 @@ func Run(o *Options) error {
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: port shut  -> network. This host is reachable directly, no VPN.")
 			return err
 		}
-		return finish(cw, o.Stderr, limit)
+		return finish(o, cw, limit)
 	}
 
 	if creds[sk] == "" {
@@ -406,7 +418,7 @@ func Run(o *Options) error {
 		}
 		cw := newCapWriter(stdout, -1, MaxOutputBytes)
 		_, _ = io.WriteString(cw, filterLines(buf.String(), o.Arg))
-		return finish(cw, o.Stderr, limit)
+		return finish(o, cw, limit)
 	}
 	cw := newCapWriter(stdout, limit, MaxOutputBytes)
 	o.Stdout = cw
@@ -415,5 +427,5 @@ func Run(o *Options) error {
 	if err := mysqlRun(); err != nil && !cw.Truncated() {
 		return err
 	}
-	return finish(cw, o.Stderr, limit)
+	return finish(o, cw, limit)
 }

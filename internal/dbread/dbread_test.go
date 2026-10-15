@@ -930,3 +930,32 @@ func TestRun_Prd_MongoshFailureNamesNoHost(t *testing.T) {
 		t.Errorf("stderr = %q, want key named", s)
 	}
 }
+
+func TestRun_SetsTruncatedAndRows(t *testing.T) {
+	o, _, _ := baseOptions(t, fakeEnv())
+	var in strings.Builder
+	for i := 1; i <= 300; i++ {
+		fmt.Fprintf(&in, "row%d\n", i)
+	}
+	recordRun(o, in.String())
+	o.Cmd, o.Arg, o.Limit = "sql", "SELECT id FROM agents", 200
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !o.Truncated || o.Rows != 200 {
+		t.Errorf("Truncated=%v Rows=%d, want true and 200", o.Truncated, o.Rows)
+	}
+}
+
+func TestIsBadArgs(t *testing.T) {
+	o, _, _ := baseOptions(t, fakeEnv())
+	o.SetRun(func(string, []string, []string, string) error { t.Fatal("must not run"); return nil })
+	o.Cmd, o.Arg = "sql", "DELETE FROM x"
+	err := Run(o)
+	if !IsBadArgs(err) {
+		t.Errorf("IsBadArgs(%v) = false, want true", err)
+	}
+	if IsBadArgs(errors.New("plain")) || IsBadArgs(nil) {
+		t.Error("IsBadArgs true for a non-badArgs error")
+	}
+}
