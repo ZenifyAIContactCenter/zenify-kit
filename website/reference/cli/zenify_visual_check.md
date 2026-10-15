@@ -30,6 +30,7 @@ Mỗi route khai `name`, `path`, tùy chọn `waitFor` là selector cần chờ 
 |---|---|
 | `--port` | Port dev server trên máy bạn. Bắt buộc. |
 | `--repo` | Đường dẫn repo. Mặc định thư mục hiện tại. |
+| `--role` | Role tài khoản E2E xin từ broker (`administrator`, `supervisor`, `team_leader`, `agent`, `sale`, `sale_team_leader`). Cần manifest khai báo `broker:`; không có broker thì lệnh thoát mã 2. Thông tin đăng nhập chỉ đi vào tiến trình `docker`. |
 | `--update` | Chụp lại baseline thay cho so. Dùng khi giao diện đổi có chủ ý, rồi commit ảnh mới. |
 
 ## Ví dụ

@@ -8,9 +8,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
 
@@ -26,6 +28,7 @@ const (
 type LoginOptions struct {
 	Home     string
 	BaseURL  string
+	Role     string // "" = state.json; else state-<role>.json (broker E2E role)
 	Getenv   func(string) string
 	Run      func(dir, name string, args []string, extraEnv []string) error
 	Stdout   io.Writer
@@ -35,7 +38,17 @@ type LoginOptions struct {
 func playwrightDir(home string) string { return filepath.Join(home, ".zenify", "playwright") }
 
 // StatePath is where the Playwright storage state is written.
-func StatePath(home string) string { return filepath.Join(playwrightDir(home), "state.json") }
+func StatePath(home string) string { return StatePathRole(home, "") }
+
+// StatePathRole is the storage state of one E2E role: state.json for "", else
+// state-<role>.json.
+func StatePathRole(home, role string) string {
+	name := "state.json"
+	if role != "" {
+		name = "state-" + role + ".json"
+	}
+	return filepath.Join(playwrightDir(home), name)
+}
 
 // acquireLock takes an O_EXCL lock file, breaking locks older than staleLockAge.
 func acquireLock(path string, wait time.Duration) error {
@@ -105,6 +118,9 @@ func checkLoopbackURL(raw string) error {
 // Login runs the harness setup project on the host and atomically writes the
 // storage state. It returns the state path.
 func Login(o LoginOptions) (string, error) {
+	if o.Role != "" && !slices.Contains(api.E2ERoles, o.Role) {
+		return "", exitcode.New(exitcode.BadArgs, fmt.Errorf("unknown role %q", o.Role))
+	}
 	if err := checkLoopbackURL(o.BaseURL); err != nil {
 		return "", err
 	}
@@ -132,7 +148,7 @@ func Login(o LoginOptions) (string, error) {
 		_ = os.Remove(tmp)
 		return "", exitcode.New(exitcode.Fail, fmt.Errorf("login failed: %w", err))
 	}
-	dst := StatePath(o.Home)
+	dst := StatePathRole(o.Home, o.Role)
 	if err := os.Chmod(tmp, 0o600); err != nil {
 		_ = os.Remove(tmp)
 		return "", exitcode.New(exitcode.Fail, err)

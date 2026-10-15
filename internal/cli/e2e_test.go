@@ -2,12 +2,16 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/e2e"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
 
@@ -163,5 +167,205 @@ func TestChildCmd_StripsShellCredsFromInstall(t *testing.T) {
 	}
 	if !has(childCmd("npx", []string{"playwright", "test"}, nil, lookup)) {
 		t.Errorf("journey child lost E2E_PASSWORD")
+	}
+}
+
+// hermeticE2E keeps an e2e/visual command test away from real accounts and the
+// real workspace: cwd, ZENIFY_HOME and HOME are empty temp dirs, E2E_* is blank,
+// and cwd holds manifest/repos.yaml (copied from manifestPath when given, else
+// a manifest with no broker) so the broker lookup never reads the embedded one.
+func hermeticE2E(t *testing.T, manifestPath string) {
+	t.Helper()
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	for _, k := range e2eEnvKeys {
+		t.Setenv(k, "")
+	}
+	if manifestPath == "" {
+		manifestPath = noBrokerManifest(t)
+	}
+	b, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll("manifest", 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("manifest", "repos.yaml"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func e2eAccountHandler(t *testing.T, gotRole *string) map[string]http.HandlerFunc {
+	return map[string]http.HandlerFunc{"/e2e/account": func(w http.ResponseWriter, r *http.Request) {
+		var req api.E2EAccountRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		*gotRole = req.Role
+		_ = json.NewEncoder(w).Encode(api.E2EAccountResponse{
+			Domain: "e2e.test.example", Email: req.Role + "@test.example", Password: "test-pass", Role: req.Role})
+	}}
+}
+
+func envMap(c *exec.Cmd) map[string]string {
+	m := map[string]string{}
+	for _, kv := range c.Env {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			m[k] = v
+		}
+	}
+	return m
+}
+
+// fakeLoginChild stands in for npm/npx: the setup project writes STORAGE_STATE.
+func fakeLoginChild(t *testing.T, sawEnv *map[string]string) {
+	t.Helper()
+	orig := execChild
+	t.Cleanup(func() { execChild = orig })
+	execChild = func(c *exec.Cmd) error {
+		e := envMap(c)
+		if e["STORAGE_STATE"] != "" {
+			*sawEnv = e
+			return os.WriteFile(e["STORAGE_STATE"], []byte("{}"), 0o600)
+		}
+		return nil
+	}
+}
+
+func runLogin(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	out, _, err := execCmd(newE2eCmd(), append([]string{"login", "--port", "3327"}, args...)...)
+	return out, err
+}
+
+func TestE2eLogin_BrokerDefaultRoleStateJSON(t *testing.T) {
+	var role string
+	mp, _ := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	var saw map[string]string
+	fakeLoginChild(t, &saw)
+	if _, err := runLogin(t); err != nil {
+		t.Fatal(err)
+	}
+	if role != "administrator" {
+		t.Errorf("broker got role %q, want administrator", role)
+	}
+	if _, err := os.Stat(e2e.StatePath(os.Getenv("HOME"))); err != nil {
+		t.Errorf("state.json not written: %v", err)
+	}
+	if saw["E2E_EMAIL"] != "administrator@test.example" || saw["E2E_PASSWORD"] != "test-pass" {
+		t.Errorf("login child lacks the broker credentials")
+	}
+}
+
+func TestE2eLogin_BrokerRoleState(t *testing.T) {
+	var role string
+	mp, _ := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	var saw map[string]string
+	fakeLoginChild(t, &saw)
+	if _, err := runLogin(t, "--role", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if role != "agent" {
+		t.Errorf("broker got role %q, want agent", role)
+	}
+	home := os.Getenv("HOME")
+	if _, err := os.Stat(filepath.Join(home, ".zenify", "playwright", "state-agent.json")); err != nil {
+		t.Errorf("state-agent.json not written: %v", err)
+	}
+	if _, err := os.Stat(e2e.StatePath(home)); err == nil {
+		t.Errorf("state.json must stay untouched for a role login")
+	}
+}
+
+func TestE2eLogin_RoleWithoutBroker(t *testing.T) {
+	hermeticE2E(t, "")
+	var saw map[string]string
+	fakeLoginChild(t, &saw)
+	_, err := runLogin(t, "--role", "agent")
+	if exitcode.Code(err) != exitcode.BadArgs || err == nil || !strings.Contains(err.Error(), "--role cần broker") { //znf:allow-lang
+		t.Fatalf("want BadArgs '--role cần broker', got %v", err) //znf:allow-lang
+	}
+}
+
+func TestE2eLogin_UnknownRoleRejectedLocally(t *testing.T) {
+	var role string
+	mp, hits := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	var saw map[string]string
+	fakeLoginChild(t, &saw)
+	_, err := runLogin(t, "--role", "end_user")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("want BadArgs, got %v", err)
+	}
+	if *hits != 0 {
+		t.Errorf("an unknown role must not reach the broker")
+	}
+}
+
+// Broker credentials live only in the child's env: no .env is written anywhere.
+func TestChildCmd_BrokerCredsOnlyInChild(t *testing.T) {
+	var role string
+	mp, _ := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	bc, err := e2eBroker("agent")
+	if err != nil || bc == nil {
+		t.Fatalf("e2eBroker: %v %v", bc, err)
+	}
+	lookup, err := brokerLookup(t.Context(), bc, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := envMap(childCmd("docker", []string{"run", "img"}, nil, lookup))
+	if env["E2E_EMAIL"] != "agent@test.example" || env["E2E_PASSWORD"] != "test-pass" || env["E2E_DOMAIN"] != "e2e.test.example" {
+		t.Errorf("journey child lacks broker credentials")
+	}
+	if envMap(childCmd("npm", []string{"install"}, nil, lookup))["E2E_PASSWORD"] != "" {
+		t.Errorf("install child must not carry credentials")
+	}
+	for _, root := range []string{".", os.Getenv("HOME"), os.Getenv("ZENIFY_HOME")} {
+		_ = filepath.WalkDir(root, func(p string, d os.DirEntry, _ error) error {
+			if d != nil && !d.IsDir() && d.Name() == ".env" {
+				t.Errorf("unexpected .env written: %s", p)
+			}
+			return nil
+		})
+	}
+}
+
+func TestVisualCheck_BrokerEnvToDocker(t *testing.T) {
+	var role string
+	mp, _ := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	if err := os.MkdirAll(filepath.Join(".znf", "visual"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(".znf", "visual", "routes.json"), []byte("[]"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	origExec, origPre := execChild, preflightDocker
+	t.Cleanup(func() { execChild, preflightDocker = origExec, origPre })
+	var docker map[string]string
+	var name string
+	execChild = func(c *exec.Cmd) error {
+		name, docker = filepath.Base(c.Path), envMap(c)
+		return nil
+	}
+	preflightDocker = func() error { return nil }
+	if _, _, err := execCmd(newVisualCmd(), "check", "--port", "3327", "--role", "sale"); err != nil {
+		t.Fatal(err)
+	}
+	if role != "sale" || name != "docker" || docker["E2E_EMAIL"] != "sale@test.example" || docker["E2E_PASSWORD"] != "test-pass" {
+		t.Errorf("role=%q child=%q: docker env lacks the broker credentials", role, name)
+	}
+}
+
+func TestVisualCheck_RoleWithoutBroker(t *testing.T) {
+	hermeticE2E(t, "")
+	_, _, err := execCmd(newVisualCmd(), "check", "--port", "3327", "--role", "sale")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("want BadArgs, got %v", err)
 	}
 }

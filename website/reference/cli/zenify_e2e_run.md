@@ -30,6 +30,7 @@ Repo cần file `.znf/e2e/e2e.config.json`. Thiếu file này, lệnh báo repo 
 |---|---|
 | `--port` | Port dev server trên máy bạn. Bắt buộc. |
 | `--repo` | Đường dẫn repo. Mặc định thư mục hiện tại. |
+| `--role` | Role tài khoản E2E xin từ broker (`administrator`, `supervisor`, `team_leader`, `agent`, `sale`, `sale_team_leader`). Cần manifest khai báo `broker:`; không có broker thì lệnh thoát mã 2. Không có `--role` mà có broker thì dùng `administrator`. |
 
 ## Ví dụ
 
