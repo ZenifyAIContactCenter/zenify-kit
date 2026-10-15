@@ -95,11 +95,11 @@ func TestEnvDeletionGate(t *testing.T) {
 		{"embedded", "dev", "dev", true, ""},
 		{"embedded", "v0.41.0", "v0.40.0", true, ""},
 		{"embedded", "0.40.0", "v0.40.0", true, ""},
-		{"embedded", "v0.39.0", "v0.40.0", false, "binary cũ hơn bản đã ghi"}, //znf:allow-lang
-		{"embedded", "dev", "v0.40.0", false, "binary cũ hơn bản đã ghi"},     //znf:allow-lang
-		{"embedded", "v0.40.0", "dev", false, "binary cũ hơn bản đã ghi"},     //znf:allow-lang
-		{"embedded", "v0.40.0", "", false, "binary cũ hơn bản đã ghi"},        //znf:allow-lang
-		{"embedded", "v0.40.0", "garbage", false, "binary cũ hơn bản đã ghi"}, //znf:allow-lang
+		{"embedded", "v0.39.0", "v0.40.0", false, "binary cũ hơn bản đã ghi"},                                                 //znf:allow-lang
+		{"embedded", "dev", "v0.40.0", false, "binary cũ hơn bản đã ghi"},                                                     //znf:allow-lang
+		{"embedded", "v0.40.0", "dev", false, "binary cũ hơn bản đã ghi"},                                                     //znf:allow-lang
+		{"embedded", "v0.40.0", "", false, "binary cũ hơn bản đã ghi"},                                                        //znf:allow-lang
+		{"embedded", "v0.40.0", "garbage", false, "binary cũ hơn bản đã ghi"},                                                 //znf:allow-lang
 		{filepath.Join("manifest", "repos.yaml"), "dev", "dev", false, "manifest không phải bản nhúng (manifest/repos.yaml)"}, //znf:allow-lang
 	} {
 		ok, reason := envDeletionGate(c.src, c.current, c.recorded)
@@ -246,5 +246,48 @@ func TestRunApply_NonEmbeddedManifestKeepsRecordedKey(t *testing.T) {
 	}
 	if !reflect.DeepEqual(owned.EnvKeys, []string{"A", "DROPPED"}) {
 		t.Fatalf("EnvKeys = %v", owned.EnvKeys)
+	}
+}
+
+// Fix B: the wizard's plan screen carries the same env preview lines as the
+// text dry-run, built without writing anything.
+func TestWizardPlanFooter_ShowsEnvPreviewWithoutWriting(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	ws := t.TempDir()
+	envPath := filepath.Join(ws, ".zenify", ".env")
+	if err := os.MkdirAll(filepath.Dir(envPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	orig := []byte("A='fake-a'\nB='fake-b'\n")
+	if err := os.WriteFile(envPath, orig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mp := filepath.Join(ws, ".zenify", "manifest.json")
+	if err := (&managed.Manifest{EnvKeys: []string{"A", "B"}, EnvKeysVersion: "dev"}).Save(mp); err != nil {
+		t.Fatal(err)
+	}
+	origManifest, _ := os.ReadFile(mp) //nolint:gosec // G304 -- test temp path
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "A", Secret: true}}}
+
+	rows := wizardPlanFooter(m, "embedded", ws)
+	joined := strings.Join(rows, "\n")
+	if !strings.Contains(joined, "env: xoá B") { //znf:allow-lang
+		t.Fatalf("rows lack the env removal: %q", joined)
+	}
+	if !strings.Contains(joined, "HOOKS") {
+		t.Fatalf("rows lost the plan footer: %q", joined)
+	}
+	if strings.Contains(joined, "fake-") {
+		t.Fatalf("rows leak a value: %q", joined)
+	}
+	if got, _ := os.ReadFile(envPath); !bytes.Equal(got, orig) { //nolint:gosec // G304 -- test temp path
+		t.Fatalf(".env changed: %q", got)
+	}
+	if got, _ := os.ReadFile(mp); !bytes.Equal(got, origManifest) { //nolint:gosec // G304 -- test temp path
+		t.Fatalf("manifest.json changed: %q", got)
+	}
+	if rows := wizardPlanFooter(m, "old/repos.yaml", ws); !strings.Contains(strings.Join(rows, "\n"), "env: giữ B") { //znf:allow-lang
+		t.Fatalf("non-embedded rows = %q", rows)
 	}
 }

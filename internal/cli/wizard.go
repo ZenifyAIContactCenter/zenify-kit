@@ -28,7 +28,7 @@ func runWizard(w io.Writer, m *manifest.Manifest, src, workspace string, sources
 	res, err := tui.RunOnboard(tui.OnboardConfig{
 		Workspace:  workspace,
 		Accessible: false,
-		PlanFooter: planFooterRows(workspace),
+		PlanFooter: wizardPlanFooter(m, src, workspace),
 		SecretKeys: wizardSecretKeys(m),
 		PlanFn: func() ([]reconcile.RepoPlan, error) {
 			// Already authenticated at entry: the caller's pre-wizard buildPlan

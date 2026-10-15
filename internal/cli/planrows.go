@@ -1,11 +1,17 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 )
 
 // hooksRowState reports the HOOKS plan row's state via a dry-run
@@ -69,4 +75,23 @@ func printPlanFooterRows(w io.Writer, workspace string) {
 	for _, r := range planFooterRows(workspace) {
 		_, _ = fmt.Fprintln(w, r)
 	}
+}
+
+// wizardPlanFooter is planFooterRows plus the env preview lines the text
+// dry-run prints (renderEnvStep with dryRun, into a buffer — nothing is
+// written), so the wizard shows them before its apply confirmation.
+func wizardPlanFooter(m *manifest.Manifest, src, workspace string) []string {
+	rows := planFooterRows(workspace)
+	owned, err := managed.Load(filepath.Join(workspace, ".zenify", "manifest.json"))
+	var buf bytes.Buffer
+	if err == nil {
+		err = renderEnvStep(&buf, m, src, devenv.Path(workspace), owned, true)
+	}
+	if err != nil {
+		return append(rows, fmt.Sprintf("env: không xem trước được .zenify/.env (%v)", err)) //znf:allow-lang
+	}
+	if s := strings.TrimSuffix(buf.String(), "\n"); s != "" {
+		rows = append(rows, strings.Split(s, "\n")...)
+	}
+	return rows
 }
