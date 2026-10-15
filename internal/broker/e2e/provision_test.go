@@ -77,15 +77,15 @@ func (f *fakeApp) ResetPassword(_ context.Context, id, password string) error {
 	return errors.New("no such user")
 }
 
-func (f *fakeApp) ChangePassword(_ context.Context, tok, old, new string) error {
+func (f *fakeApp) ChangePassword(_ context.Context, tok, oldPassword, newPassword string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.changes = append(f.changes, [2]string{old, new})
+	f.changes = append(f.changes, [2]string{oldPassword, newPassword})
 	u := f.users[tok[len("tok:"):]]
-	if u == nil || u.password != old {
+	if u == nil || u.password != oldPassword {
 		return errors.New("bad old password")
 	}
-	u.password = new
+	u.password = newPassword
 	return nil
 }
 

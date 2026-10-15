@@ -315,9 +315,10 @@ func printUsage(w io.Writer) {
 
 // Validate runs every check Run does before it touches credentials, so a
 // caller that sends the request elsewhere (the broker) refuses what Run would.
-func Validate(o *Options) error {
-	_, _, _, err := validate(o)
-	return err
+// It returns the effective limit (o.Limit, or DefaultLimit when zero).
+func Validate(o *Options) (limit int, err error) {
+	limit, _, _, err = validate(o)
+	return limit, err
 }
 
 // validate checks o and builds the query: the effective limit, the mongo
@@ -418,7 +419,9 @@ func Run(o *Options) error {
 		o.Stderr = &noticeWriter{w: realStderr, needle: fmt.Sprintf(truncNotice, limit, MaxLimit), hit: &o.Truncated}
 		err := o.run("mongosh", []string{"--nodb", "--quiet", "--eval", script}, []string{MongoURLEnv + "=" + mongoURL}, "")
 		o.Stderr = realStderr
-		if err != nil && !cw.Truncated() {
+		// A cut is a success whether the byte cap or the script's own row
+		// cut (its stderr notice, o.Truncated) produced it.
+		if err != nil && !cw.Truncated() && !o.Truncated {
 			if o.Prod {
 				_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: kiểm lại %s trong .zenify/.env\n", mk) //znf:allow-lang
 				return err

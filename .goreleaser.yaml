@@ -19,7 +19,7 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w
+      - -s -w -X github.com/ZenifyAIContactCenter/zenify-kit/internal/version.Version={{.Version}}
     goos: [linux]
     goarch: [amd64, arm64]
 archives:
@@ -32,29 +32,19 @@ archives:
         formats: [zip]
 checksum:
   name_template: checksums.txt
-# The broker ships only as an image (never in the brew cask, scoop or archives).
-dockers:
-  - id: zenify-broker-amd64
+# The broker ships only as an image (never in the brew cask, scoop or archives):
+# one multi-arch tag; the build context holds linux/<arch>/zenify-broker.
+dockers_v2:
+  - id: zenify-broker
     ids: [zenify-broker]
-    goarch: amd64
-    use: buildx
     dockerfile: cmd/zenify-broker/Dockerfile
-    image_templates:
-      - ghcr.io/zenifyaicontactcenter/zenify-broker:{{ .Version }}-amd64
-    build_flag_templates: ["--platform=linux/amd64"]
-  - id: zenify-broker-arm64
-    ids: [zenify-broker]
-    goarch: arm64
-    use: buildx
-    dockerfile: cmd/zenify-broker/Dockerfile
-    image_templates:
-      - ghcr.io/zenifyaicontactcenter/zenify-broker:{{ .Version }}-arm64
-    build_flag_templates: ["--platform=linux/arm64"]
-docker_manifests:
-  - name_template: ghcr.io/zenifyaicontactcenter/zenify-broker:{{ .Version }}
-    image_templates:
-      - ghcr.io/zenifyaicontactcenter/zenify-broker:{{ .Version }}-amd64
-      - ghcr.io/zenifyaicontactcenter/zenify-broker:{{ .Version }}-arm64
+    images:
+      - ghcr.io/zenifyaicontactcenter/zenify-broker
+    tags:
+      - "{{ .Version }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
 # The public zenify-kit repo doubles as its own Homebrew tap and Scoop bucket:
 # GoReleaser commits Casks/zenify.rb and the Scoop manifest here on each release,
 # and the release assets are public, so brew/scoop download them with no auth.

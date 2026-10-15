@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -325,9 +326,7 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	// cwd: the registered headersHelper `zenify broker headers` resolves it the
 	// same way, so the MCP URL and its token always name one broker.
 	bm, _ := brokerManifest("", "")
-	registerBrokerMCP(w, errW, bm, func(n string, args ...string) ([]byte, error) {
-		return exec.Command(n, args...).CombinedOutput() //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
-	})
+	registerBrokerMCP(w, errW, bm, runClaudeBounded)
 
 	// Onboarding convenience (Task 5): clone the docs knowledge store on a
 	// brand-new machine when it's absent, then reconcile the workspace view.
@@ -839,8 +838,23 @@ func registerBrokerMCP(w, errW io.Writer, m *manifest.Manifest, run func(string,
 			_, _ = fmt.Fprintf(errW, "warning: zenify-%s MCP: %v (onboarding otherwise succeeded)\n", name, err)
 		case st == playwright.RegAbsent:
 			_, _ = fmt.Fprintf(w, "zenify-%s: registered MCP server (user scope)\n", name)
+		case st == playwright.RegLegacyDefault:
+			_, _ = fmt.Fprintf(w, "zenify-%s: updated MCP server URL (user scope)\n", name)
 		case st == playwright.RegCustom:
 			_, _ = fmt.Fprintf(w, "zenify-%s: custom MCP registration kept\n", name)
 		}
 	}
+}
+
+// claudeMCPTimeout bounds each `claude mcp` call registerBrokerMCP makes.
+var claudeMCPTimeout = 20 * time.Second
+
+// runClaudeBounded runs one command with claudeMCPTimeout, returning its
+// combined output; WaitDelay stops a child that keeps the pipes open.
+func runClaudeBounded(n string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), claudeMCPTimeout)
+	defer cancel()
+	c := exec.CommandContext(ctx, n, args...) //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
+	c.WaitDelay = 2 * time.Second
+	return c.CombinedOutput()
 }

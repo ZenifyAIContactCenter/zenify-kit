@@ -24,8 +24,8 @@ const (
 )
 
 // CheckRedis validates one command against RedisAllowed and returns the full
-// argv to send (command upper-cased first, then args). SCAN gets COUNT 100
-// appended when absent and is refused when COUNT is repeated, not in 1..1000,
+// argv to send (command upper-cased first, then args). SCAN with no args gets
+// cursor 0, gets COUNT 100 appended when absent and is refused when COUNT is repeated, not in 1..1000,
 // or any option lacks its value. Any error
 // maps to 400 command_not_allowed.
 func CheckRedis(cmd string, args []string) (normArgs []string, err error) {
@@ -36,6 +36,9 @@ func CheckRedis(cmd string, args []string) (normArgs []string, err error) {
 	out := append([]string{c}, args...)
 	if c != "SCAN" {
 		return out, nil
+	}
+	if len(args) == 0 { // Redis refuses SCAN without a cursor; start a new scan
+		out = append(out, "0")
 	}
 	// SCAN cursor [MATCH p] [COUNT n] [TYPE t]: options come in keyword/value
 	// pairs after the cursor. Every pair is checked, so a later COUNT cannot

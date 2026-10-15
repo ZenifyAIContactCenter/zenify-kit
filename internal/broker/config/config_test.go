@@ -93,7 +93,7 @@ func TestLoad_OK(t *testing.T) {
 	if c.Mongo.MainDB != "3csoft" || c.Mongo.AuditDB != "audit_logs" {
 		t.Errorf("mongo defaults: %+v", c.Mongo)
 	}
-	if c.Grafana.Bin != "mcp-grafana" || c.Grafana.Addr == "" {
+	if c.Grafana.Bin != "mcp-grafana" || c.Grafana.Addr != "127.0.0.1:8000" {
 		t.Errorf("grafana defaults: %+v", c.Grafana)
 	}
 	wantArgs := []string{"--enabled-tools=search,datasource,prometheus,loki,tempo,alerting,dashboard,folder,annotations,navigation",
@@ -122,5 +122,14 @@ func TestLoad_MissingRequiredYAML(t *testing.T) {
 	_, err := Load(writeCfg(t, strings.Replace(sampleYAML, "org: TestOrg\n", "", 1)), envOf(fullEnv()))
 	if err == nil || !strings.Contains(err.Error(), "org") {
 		t.Errorf("want error naming org, got %v", err)
+	}
+}
+
+func TestLoad_YAMLAndEnvErrorsTogether(t *testing.T) {
+	env := fullEnv()
+	delete(env, "POSTHOG_API_KEY")
+	_, err := Load(writeCfg(t, strings.Replace(sampleYAML, "org: TestOrg\n", "", 1)), envOf(env))
+	if err == nil || !strings.Contains(err.Error(), "missing org") || !strings.Contains(err.Error(), "POSTHOG_API_KEY") {
+		t.Errorf("want one error naming both org and POSTHOG_API_KEY, got %v", err)
 	}
 }

@@ -5,12 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 )
 
-var testKey = []byte("test-key")
+var testKey = []byte("test-key-0123456789abcdef0123456")
 
 var t0 = time.Date(2026, 10, 15, 8, 0, 0, 0, time.UTC)
 
@@ -25,7 +26,7 @@ func sign(t *testing.T, key []byte, header, claims string) string {
 }
 
 func TestJWT_RoundTrip(t *testing.T) {
-	tok, exp := Issue(testKey, "octocat", t0)
+	tok, exp, _ := Issue(testKey, "octocat", t0)
 	if !exp.Equal(t0.Add(15 * time.Minute)) {
 		t.Errorf("exp = %v, want t0+15m", exp)
 	}
@@ -59,7 +60,7 @@ func TestJWT_RoundTrip(t *testing.T) {
 }
 
 func TestJWT_RejectsExpired(t *testing.T) {
-	tok, _ := Issue(testKey, "octocat", t0)
+	tok, _, _ := Issue(testKey, "octocat", t0)
 	if _, err := Verify(testKey, tok, t0.Add(15*time.Minute)); err == nil {
 		t.Error("token accepted at exp")
 	}
@@ -80,8 +81,8 @@ func TestJWT_RejectsWrongAud(t *testing.T) {
 }
 
 func TestJWT_RejectsBadSig(t *testing.T) {
-	tok, _ := Issue(testKey, "octocat", t0)
-	if _, err := Verify([]byte("other-key"), tok, t0); err == nil {
+	tok, _, _ := Issue(testKey, "octocat", t0)
+	if _, err := Verify([]byte("other-key-0123456789abcdef012345678"), tok, t0); err == nil {
 		t.Error("token signed with another key accepted")
 	}
 	parts := strings.Split(tok, ".")
@@ -101,5 +102,16 @@ func TestJWT_RejectsBadSig(t *testing.T) {
 	}
 	if _, err := Verify(nil, tok, t0); err == nil {
 		t.Error("empty key accepted")
+	}
+}
+
+func TestIssue_RefusesShortKey(t *testing.T) {
+	short := testKey[:MinKeyLen-1]
+	if tok, _, err := Issue(short, "octocat", t0); !errors.Is(err, ErrKeyTooShort) || tok != "" {
+		t.Fatalf("Issue(31-byte key) = %q, %v; want ErrKeyTooShort", tok, err)
+	}
+	hand := sign(t, short, `{"alg":"HS256","typ":"JWT"}`, `{"sub":"octocat","aud":"zenify-broker","exp":1792052100,"iat":1792051200}`)
+	if _, err := Verify(short, hand, t0); err == nil {
+		t.Fatal("Verify accepted a token under a 31-byte key")
 	}
 }

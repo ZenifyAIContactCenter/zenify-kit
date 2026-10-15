@@ -22,7 +22,8 @@ var (
 	// ErrOrgAccessDenied: the membership endpoint answered 403, i.e. the token
 	// is not SSO-authorized for the org or lacks read:org.
 	ErrOrgAccessDenied = errors.New("github token cannot read org membership")
-	// ErrGitHubRateLimited: GitHub answered 429.
+	// ErrGitHubRateLimited: GitHub answered 429, or a 403 carrying Retry-After
+	// or X-RateLimit-Remaining: 0 (its primary and secondary rate limits).
 	ErrGitHubRateLimited = errors.New("github rate limited")
 )
 
@@ -61,10 +62,10 @@ func (g GitHub) Member(ctx context.Context, token, org string) (login string, er
 		return "", ErrTokenInvalid
 	case code == http.StatusNotFound:
 		return "", ErrNotMember
-	case code == http.StatusForbidden:
-		return "", ErrOrgAccessDenied
 	case code == http.StatusTooManyRequests:
 		return "", ErrGitHubRateLimited
+	case code == http.StatusForbidden:
+		return "", ErrOrgAccessDenied
 	case code != http.StatusOK:
 		return "", fmt.Errorf("github membership: status %d", code)
 	case m.State != "active":
@@ -73,7 +74,9 @@ func (g GitHub) Member(ctx context.Context, token, org string) (login string, er
 	return user.Login, nil
 }
 
-// get calls GitHub and decodes a 200 body into out. Errors never include the token.
+// get calls GitHub and decodes a 200 body into out. A 403 carrying Retry-After
+// or X-RateLimit-Remaining: 0 is a rate limit, not a permission refusal, and
+// comes back as 429. Errors never include the token.
 func (g GitHub) get(ctx context.Context, token, path string, out any) (int, error) {
 	base := g.BaseURL
 	if base == "" {
@@ -96,6 +99,10 @@ func (g GitHub) get(ctx context.Context, token, path string, out any) (int, erro
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		if resp.StatusCode == http.StatusForbidden &&
+			(resp.Header.Get("Retry-After") != "" || resp.Header.Get("X-RateLimit-Remaining") == "0") {
+			return http.StatusTooManyRequests, nil
+		}
 		return resp.StatusCode, nil
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(out); err != nil {

@@ -2,6 +2,8 @@ package e2e
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -21,12 +23,33 @@ type Handler struct {
 	Audit *audit.Logger
 }
 
+// auditEnv is the env of every /e2e/account audit line: E2E accounts live on
+// staging only, spelled as /query and /redis spell it.
+const auditEnv = "stg"
+
+// Validate reports wiring mistakes that would otherwise panic per request.
+func (h *Handler) Validate() error {
+	var errs []error
+	if h.Audit == nil {
+		errs = append(errs, errors.New("e2e: Audit is nil"))
+	}
+	switch {
+	case h.P == nil:
+		errs = append(errs, errors.New("e2e: Provisioner is nil"))
+	case h.P.App == nil || h.P.Now == nil:
+		errs = append(errs, errors.New("e2e: Provisioner needs App and Now"))
+	case len(h.P.Key) < auth.MinKeyLen:
+		errs = append(errs, fmt.Errorf("e2e: Provisioner Key must be at least %d bytes", auth.MinKeyLen))
+	}
+	return errors.Join(errs...)
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	login := auth.Login(r.Context())
 	status, op := http.StatusOK, ""
 	defer func() {
-		h.Audit.Log(audit.Entry{TS: start, Login: login, Endpoint: "/e2e/account", Op: op,
+		h.Audit.Log(audit.Entry{TS: start, Login: login, Endpoint: "/e2e/account", Env: auditEnv, Op: op,
 			MS: time.Since(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {

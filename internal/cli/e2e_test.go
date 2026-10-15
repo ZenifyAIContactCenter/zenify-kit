@@ -351,14 +351,46 @@ func TestChildCmd_BrokerCredsOnlyInChild(t *testing.T) {
 	if envMap(childCmd("npm", []string{"install"}, nil, lookup))["E2E_PASSWORD"] != "" {
 		t.Errorf("install child must not carry credentials")
 	}
-	for _, root := range []string{".", os.Getenv("HOME"), os.Getenv("ZENIFY_HOME")} {
-		_ = filepath.WalkDir(root, func(p string, d os.DirEntry, _ error) error {
-			if d != nil && !d.IsDir() && d.Name() == ".env" {
-				t.Errorf("unexpected .env written: %s", p)
-			}
-			return nil
-		})
+	// The scan must be able to fail: a planted file is found first.
+	probe := t.TempDir()
+	if err := os.WriteFile(filepath.Join(probe, "x"), []byte("pw=test-pass"), 0o600); err != nil {
+		t.Fatal(err)
 	}
+	if got := filesContaining(t, probe, "test-pass"); len(got) != 1 {
+		t.Fatalf("scan self-check found %v, want the planted file", got)
+	}
+	for _, root := range []string{".", os.Getenv("HOME"), os.Getenv("ZENIFY_HOME")} {
+		if got := filesContaining(t, root, "test-pass"); len(got) > 0 {
+			t.Errorf("broker password written to disk: %v", got)
+		}
+	}
+}
+
+// filesContaining lists files under root whose name is .env or whose content
+// contains needle; a walk error fails the test instead of being skipped.
+func filesContaining(t *testing.T, root, needle string) []string {
+	t.Helper()
+	var hits []string
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		b, err := os.ReadFile(p) //nolint:gosec // test-owned temp dirs
+		if err != nil {
+			return err
+		}
+		if d.Name() == ".env" || strings.Contains(string(b), needle) {
+			hits = append(hits, p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
+	return hits
 }
 
 func TestVisualCheck_BrokerEnvToDocker(t *testing.T) {
@@ -393,5 +425,71 @@ func TestVisualCheck_RoleWithoutBroker(t *testing.T) {
 	_, _, err := execCmd(newVisualCmd(), "check", "--port", "3327", "--role", "sale")
 	if exitcode.Code(err) != exitcode.BadArgs {
 		t.Fatalf("want BadArgs, got %v", err)
+	}
+}
+
+// e2eRunRepo makes cwd a repo with one clean journey and swaps the docker
+// seams; the returned map receives the env of the `docker run` child.
+func e2eRunRepo(t *testing.T) (docker *map[string]string, ran *bool) {
+	t.Helper()
+	dir := filepath.Join(".znf", "e2e")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	clean := `test('ok [FR-1]', async ({page, apiClient, cleanupTracker}) => {
+  await page.getByRole('button').click();
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/1'); expect((await r.json()).subject).toBe('x');
+  cleanupTracker.add(async () => {});
+});`
+	for name, body := range map[string]string{"e2e.config.json": "{}", "ok.spec.ts": clean} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	origExec, origPre := execChild, preflightDocker
+	t.Cleanup(func() { execChild, preflightDocker = origExec, origPre })
+	docker, ran = new(map[string]string), new(bool)
+	execChild = func(c *exec.Cmd) error {
+		*ran = true
+		if filepath.Base(c.Path) == "docker" || len(c.Args) > 0 && c.Args[0] == "docker" {
+			*docker = envMap(c)
+		}
+		return nil
+	}
+	preflightDocker = func() error { return nil }
+	return docker, ran
+}
+
+// `e2e run --role sale` asks the broker for the sale account and hands it to
+// the docker child only.
+func TestE2eRun_BrokerRole(t *testing.T) {
+	var role string
+	mp, _ := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	docker, _ := e2eRunRepo(t)
+	if _, _, err := execCmd(newE2eCmd(), "run", "--port", "3327", "--role", "sale"); err != nil {
+		t.Fatal(err)
+	}
+	if role != "sale" {
+		t.Errorf("broker got role %q, want sale", role)
+	}
+	if (*docker)["E2E_EMAIL"] != "sale@test.example" || (*docker)["E2E_PASSWORD"] != "test-pass" || (*docker)["E2E_DOMAIN"] != "e2e.test.example" {
+		t.Errorf("docker child lacks the broker credentials")
+	}
+}
+
+// An unreadable trusted manifest stops e2e run before docker and before any
+// local credential fallback.
+func TestE2eRun_InvalidManifestErrors(t *testing.T) {
+	bad := filepath.Join(t.TempDir(), "repos.yaml")
+	if err := os.WriteFile(bad, []byte("broker: [not a map\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hermeticE2E(t, bad)
+	_, ran := e2eRunRepo(t)
+	_, _, err := execCmd(newE2eCmd(), "run", "--port", "3327")
+	if err == nil || !strings.Contains(err.Error(), "manifest") || *ran {
+		t.Fatalf("err=%v ran=%v, want the manifest error and no child", err, *ran)
 	}
 }

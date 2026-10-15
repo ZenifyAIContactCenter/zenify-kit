@@ -143,6 +143,10 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	login = l
-	tok, exp := auth.Issue(s.d.JWTKey, login, s.d.Now())
+	tok, exp, err := auth.Issue(s.d.JWTKey, login, s.d.Now())
+	if err != nil {
+		fail(http.StatusInternalServerError, api.CodeBrokerMisconfigured, "the broker's signing key is misconfigured")
+		return
+	}
 	writeJSON(w, http.StatusOK, api.TokenResponse{Token: tok, ExpiresAt: exp.UTC().Format(time.RFC3339), Login: login})
 }

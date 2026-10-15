@@ -1,6 +1,7 @@
 package dbread
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -253,7 +254,23 @@ func TestBuildMongoScript_DBRejectsQuote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(s, `getSiblingDB("x');")`) {
-		t.Errorf("script = %q, want the db name kept inside one JSON literal", s)
+	const pre, post = "getSiblingDB(", ");"
+	i := strings.Index(s, pre)
+	if i < 0 || strings.Count(s, pre) != 1 {
+		t.Fatalf("script = %q, want exactly one getSiblingDB call", s)
+	}
+	rest := s[i+len(pre):]
+	// The argument must be exactly one JS (JSON) string literal that decodes
+	// back to the raw name, followed directly by the closing paren.
+	dec := json.NewDecoder(strings.NewReader(rest))
+	var got string
+	if err := dec.Decode(&got); err != nil {
+		t.Fatalf("argument is not one string literal: %v (script %q)", err, s)
+	}
+	if got != "x');" {
+		t.Errorf("literal decodes to %q, want %q", got, "x');")
+	}
+	if tail := rest[dec.InputOffset():]; !strings.HasPrefix(tail, post) {
+		t.Errorf("after the literal = %q, want %q", tail, post)
 	}
 }

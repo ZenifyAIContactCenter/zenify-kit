@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 )
 
 // Config is the broker's whole configuration.
@@ -51,8 +53,6 @@ type Secrets struct {
 	E2EAdminEmail, E2EAdminPassword                       string
 }
 
-const minKeyLen = 32
-
 // DefaultGrafanaArgs is the flag set the team runs mcp-grafana with.
 var DefaultGrafanaArgs = []string{
 	"--enabled-tools=search,datasource,prometheus,loki,tempo,alerting,dashboard,folder,annotations,navigation",
@@ -60,7 +60,7 @@ var DefaultGrafanaArgs = []string{
 }
 
 // Load reads the YAML at path and the secrets via getenv. Errors name keys,
-// never values.
+// never values; missing YAML keys and env problems are reported together.
 func Load(path string, getenv func(string) string) (Config, error) {
 	var c Config
 	raw, err := os.ReadFile(path) //nolint:gosec // G304 -- path is the operator's --config flag
@@ -86,6 +86,7 @@ func Load(path string, getenv func(string) string) (Config, error) {
 		c.Grafana.Args = append([]string(nil), DefaultGrafanaArgs...)
 	}
 
+	var errs []error
 	var missing []string
 	for k, v := range map[string]string{"org": c.Org, "grafana.url": c.Grafana.URL,
 		"posthog.upstream": c.PostHog.Upstream, "posthog.project_id": c.PostHog.ProjectID,
@@ -96,7 +97,7 @@ func Load(path string, getenv func(string) string) (Config, error) {
 		}
 	}
 	if len(missing) > 0 {
-		return c, fmt.Errorf("config %s: missing %s", path, strings.Join(sorted(missing), ", "))
+		errs = append(errs, fmt.Errorf("config %s: missing %s", path, strings.Join(sorted(missing), ", ")))
 	}
 
 	var noEnv []string
@@ -116,13 +117,12 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	s.RedisStg, s.RedisPrd = get("REDIS_URL_STG"), get("REDIS_URL_PRD")
 	s.GrafanaToken, s.POSTHOGAPIKey = get("GRAFANA_SERVICE_ACCOUNT_TOKEN"), get("POSTHOG_API_KEY")
 	s.E2EAdminEmail, s.E2EAdminPassword = get("E2E_ADMIN_EMAIL"), get("E2E_ADMIN_PASSWORD")
-	var errs []error
 	if len(noEnv) > 0 {
 		errs = append(errs, fmt.Errorf("missing required env: %s", strings.Join(sorted(noEnv), ", ")))
 	}
 	for name, v := range map[string]string{"BROKER_JWT_KEY": jwt, "BROKER_E2E_HMAC_KEY": hmac} {
-		if v != "" && len(v) < minKeyLen {
-			errs = append(errs, fmt.Errorf("%s must be at least %d bytes", name, minKeyLen))
+		if v != "" && len(v) < auth.MinKeyLen {
+			errs = append(errs, fmt.Errorf("%s must be at least %d bytes", name, auth.MinKeyLen))
 		}
 	}
 	return c, errors.Join(errs...)

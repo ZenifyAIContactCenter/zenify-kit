@@ -33,9 +33,11 @@ func brokerFixture(t *testing.T, handlers map[string]http.HandlerFunc) (manifest
 	t.Helper()
 	hits = new(int32)
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: "test-jwt", ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo"})
-	})
+	if _, own := handlers["/token"]; !own {
+		mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: "test-jwt", ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo"})
+		})
+	}
 	for path, h := range handlers {
 		mux.HandleFunc("POST "+path, func(w http.ResponseWriter, r *http.Request) {
 			atomic.AddInt32(hits, 1)
@@ -139,15 +141,17 @@ func runHermetic(m *testing.M) int {
 		}
 	}
 	_ = os.Setenv("PATH", shims+string(os.PathListSeparator)+os.Getenv("PATH"))
-	if wd, err := os.Getwd(); err == nil {
-		if real, ok := findWorkspaceRoot(wd); ok {
-			orig := findWorkspaceRoot
-			findWorkspaceRoot = func(start string) (string, bool) {
-				if r, ok := orig(start); ok && r != real {
-					return r, true
-				}
-				return "", false
+	wd, err := os.Getwd()
+	if err != nil {
+		panic("test hermeticity: cannot resolve the package dir, so the real workspace cannot be fenced off: " + err.Error())
+	}
+	if real, ok := findWorkspaceRoot(wd); ok {
+		orig := findWorkspaceRoot
+		findWorkspaceRoot = func(start string) (string, bool) {
+			if r, ok := orig(start); ok && r != real {
+				return r, true
 			}
+			return "", false
 		}
 	}
 	code := m.Run()
@@ -322,6 +326,20 @@ func TestDBReadCmd_Broker400IsBadArgs(t *testing.T) {
 	}
 }
 
+// A misconfigured broker (500 broker_misconfigured) surfaces its own message:
+// not BadArgs, and no WARP hint.
+func TestDBReadCmd_BrokerMisconfigured(t *testing.T) {
+	hermeticDBRead(t)
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeBrokerMisconfigured, Message: "no credential for target audit"})
+	}})
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "count", "users")
+	if err == nil || exitcode.Code(err) == exitcode.BadArgs || !strings.Contains(err.Error(), "no credential for target audit") || strings.Contains(err.Error(), "WARP") {
+		t.Errorf("err = %v (code %d)", err, exitcode.Code(err))
+	}
+}
+
 // No broker: db-read takes the v0.38.0 local path. A real run would open the
 // workspace's databases, so the test checks the routing decision and that a
 // local validation error still surfaces unchanged.
@@ -448,13 +466,6 @@ func TestRedisRead_SendsAndIndents(t *testing.T) {
 func TestBrokerHeaders_PrintsJSON(t *testing.T) {
 	hermeticDBRead(t)
 	mp, _ := brokerFixture(t, nil)
-	tuneBrokerClient = func(c *brokerclient.Client) { // keep fixture server, answer j1
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: "j1", ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo"})
-		}))
-		t.Cleanup(srv.Close)
-		c.URL, c.Home, c.GHToken = srv.URL, t.TempDir(), stubGHToken
-	}
 	out, errOut, err := execCmd(newBrokerCmd(), "headers", "--manifest", mp)
 	if err != nil {
 		t.Fatalf("err=%v stderr=%s", err, errOut)
@@ -463,7 +474,7 @@ func TestBrokerHeaders_PrintsJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("stdout not one JSON object: %q", out)
 	}
-	if !reflect.DeepEqual(got, map[string]string{"Authorization": "Bearer j1"}) {
+	if !reflect.DeepEqual(got, map[string]string{"Authorization": "Bearer test-jwt"}) {
 		t.Fatalf("got=%v", got)
 	}
 	if strings.Count(strings.TrimSpace(out), "\n") != 0 {
@@ -473,9 +484,51 @@ func TestBrokerHeaders_PrintsJSON(t *testing.T) {
 
 func TestBrokerHeaders_NoBrokerFailsWithoutStdout(t *testing.T) {
 	hermeticDBRead(t)
-	out, _, err := execCmd(newBrokerCmd(), "headers", "--manifest", noBrokerManifest(t))
+	for _, sub := range []string{"headers", "token"} {
+		out, _, err := execCmd(newBrokerCmd(), sub, "--manifest", noBrokerManifest(t))
+		if exitcode.Code(err) != exitcode.BadArgs || out != "" {
+			t.Fatalf("%s: err=%v (code %d) out=%q", sub, err, exitcode.Code(err), out)
+		}
+	}
+}
+
+// `broker headers` gives up at brokerHeadersTimeout (8s in production) when
+// the broker hangs, printing nothing.
+func TestBrokerHeaders_Bounded(t *testing.T) {
+	hermeticDBRead(t)
+	saved := brokerHeadersTimeout
+	brokerHeadersTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { brokerHeadersTimeout = saved })
+	release := make(chan struct{})
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/token": func(http.ResponseWriter, *http.Request) { <-release }})
+	t.Cleanup(func() { close(release) })
+	start := time.Now()
+	out, _, err := execCmd(newBrokerCmd(), "headers", "--manifest", mp)
 	if err == nil || out != "" {
 		t.Fatalf("err=%v out=%q", err, out)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Fatalf("took %v, want the injected bound", d)
+	}
+}
+
+// `broker token --refresh` ignores a cached JWT and caches the new one.
+func TestBrokerToken_Refresh(t *testing.T) {
+	hermeticDBRead(t)
+	var n int32
+	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/token": func(w http.ResponseWriter, _ *http.Request) {
+		i := atomic.AddInt32(&n, 1)
+		_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: fmt.Sprintf("jwt-%d", i), ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo"})
+	}})
+	for i, args := range [][]string{{"token"}, {"token"}, {"token", "--refresh"}, {"token"}} {
+		out, _, err := execCmd(newBrokerCmd(), append(args, "--manifest", mp)...)
+		want := []string{"jwt-1", "jwt-1", "jwt-2", "jwt-2"}[i]
+		if err != nil || strings.TrimSpace(out) != want {
+			t.Fatalf("%v: out=%q err=%v, want %s", args, out, err, want)
+		}
+	}
+	if *hits != 2 {
+		t.Fatalf("/token hits = %d, want 2", *hits)
 	}
 }
 
@@ -487,7 +540,7 @@ func TestRegisterBrokerMCP(t *testing.T) {
 	var adds []string
 	run := func(_ string, args ...string) ([]byte, error) {
 		if args[1] == "get" {
-			return nil, errors.New("not found")
+			return []byte("No MCP server found with name: " + args[2]), errors.New("exit status 1")
 		}
 		adds = append(adds, args[2]+" "+args[3])
 		return nil, nil
@@ -507,5 +560,54 @@ func TestRegisterBrokerMCP(t *testing.T) {
 	registerBrokerMCP(&out, &errOut, m, run)
 	if len(adds) != 0 || errOut.Len() != 0 {
 		t.Fatalf("without claude it must be a no-op: adds=%v err=%q", adds, errOut.String())
+	}
+}
+
+// runClaudeBounded kills a hung child at claudeMCPTimeout.
+func TestRunClaudeBounded_TimesOut(t *testing.T) {
+	saved := claudeMCPTimeout
+	claudeMCPTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { claudeMCPTimeout = saved })
+	bin := filepath.Join(t.TempDir(), "hang")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nsleep 30\n"), 0o700); err != nil { //nolint:gosec // test script must be executable
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := runClaudeBounded(bin); err == nil {
+		t.Fatal("want an error from the killed child")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("took %v, want the bound to stop it", d)
+	}
+}
+
+// `broker token --refresh` removes the cached JWT even when /token then fails,
+// so `broker headers` stops serving a token the broker refuses.
+func TestBrokerToken_RefreshDropsCacheOnFailure(t *testing.T) {
+	hermeticDBRead(t)
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/token": func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeNotOrgMember, Message: "left the org"})
+	}})
+	var cache string
+	saved := tuneBrokerClient
+	tuneBrokerClient = func(c *brokerclient.Client) {
+		saved(c)
+		cache = filepath.Join(c.Home, ".zenify", "broker", "token.json")
+		if err := os.MkdirAll(filepath.Dir(cache), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		body := fmt.Sprintf(`{"url":%q,"token":"rejected-jwt","expires_at":"2099-01-01T00:00:00Z","login":"octo"}`, c.URL)
+		if err := os.WriteFile(cache, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { tuneBrokerClient = saved })
+	out, _, err := execCmd(newBrokerCmd(), "token", "--refresh", "--manifest", mp)
+	if err == nil || out != "" {
+		t.Fatalf("out=%q err=%v, want the 403 and no token", out, err)
+	}
+	if _, serr := os.Stat(cache); !errors.Is(serr, fs.ErrNotExist) {
+		t.Fatalf("cache still present after --refresh: %v", serr)
 	}
 }

@@ -28,6 +28,9 @@ const (
 	CodeBodyTooLarge = "body_too_large"
 	// CodeInvalidBody (400): the request body could not be read.
 	CodeInvalidBody = "invalid_body"
+	// CodeBrokerMisconfigured (500): the broker itself is wired wrong (a
+	// signing key too short, a credential missing for the asked target).
+	CodeBrokerMisconfigured = "broker_misconfigured"
 )
 
 // Error is the body of every non-2xx response.

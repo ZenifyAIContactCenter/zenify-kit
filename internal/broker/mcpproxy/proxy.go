@@ -51,7 +51,49 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 		a = &audit.Logger{W: os.Stdout}
 	}
 	endpoint := "/mcp/" + name
-	rp := &httputil.ReverseProxy{
+	rp := newReverseProxy(name, upstream, setHeaders)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		login := auth.Login(r.Context())
+		cw := &countingWriter{ResponseWriter: w}
+		var calls []toolCall
+		defer func() {
+			ms, status := time.Since(start).Milliseconds(), cw.statusCode()
+			// A tools/call line carries the whole request's status and ms, and
+			// Bytes 0: a batch shares one HTTP exchange, and the proxy does not
+			// parse the JSON-RPC response to split it per call. The request line
+			// below carries the response bytes.
+			for _, c := range calls {
+				a.Log(audit.Entry{TS: start, Login: login, Endpoint: endpoint, Op: c.Name,
+					Args: c.Args, MS: ms, Status: status})
+			}
+			a.Log(audit.Entry{TS: start, Login: login, Endpoint: endpoint, Op: r.Method,
+				Bytes: cw.n, MS: ms, Status: status})
+		}()
+
+		if r.Body != nil && r.Body != http.NoBody {
+			body, err := io.ReadAll(http.MaxBytesReader(cw, r.Body, maxBody))
+			if err != nil {
+				var tooBig *http.MaxBytesError
+				if errors.As(err, &tooBig) {
+					auth.WriteError(cw, http.StatusRequestEntityTooLarge, api.CodeBodyTooLarge, "MCP request body over 4 MiB")
+				} else {
+					auth.WriteError(cw, http.StatusBadRequest, api.CodeInvalidBody, "could not read the request body")
+				}
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			r.ContentLength = int64(len(body))
+			calls = toolCalls(body)
+		}
+		rp.ServeHTTP(cw, r)
+	})
+}
+
+// newReverseProxy forwards to upstream with the client's credentials swapped
+// for setHeaders' and SSE flushed event by event.
+func newReverseProxy(name string, upstream *url.URL, setHeaders func(h http.Header)) *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.Out.URL.Scheme = upstream.Scheme
 			pr.Out.URL.Host = upstream.Host
@@ -93,38 +135,6 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 			auth.WriteError(w, http.StatusBadGateway, api.CodeUpstreamUnavailable, "MCP upstream "+name+" is unavailable")
 		},
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		login := auth.Login(r.Context())
-		cw := &countingWriter{ResponseWriter: w}
-		var calls []toolCall
-		defer func() {
-			ms, status := time.Since(start).Milliseconds(), cw.statusCode()
-			for _, c := range calls {
-				a.Log(audit.Entry{TS: start, Login: login, Endpoint: endpoint, Op: c.Name,
-					Args: c.Args, MS: ms, Status: status})
-			}
-			a.Log(audit.Entry{TS: start, Login: login, Endpoint: endpoint, Op: r.Method,
-				Bytes: cw.n, MS: ms, Status: status})
-		}()
-
-		if r.Body != nil && r.Body != http.NoBody {
-			body, err := io.ReadAll(http.MaxBytesReader(cw, r.Body, maxBody))
-			if err != nil {
-				var tooBig *http.MaxBytesError
-				if errors.As(err, &tooBig) {
-					auth.WriteError(cw, http.StatusRequestEntityTooLarge, api.CodeBodyTooLarge, "MCP request body over 4 MiB")
-				} else {
-					auth.WriteError(cw, http.StatusBadRequest, api.CodeInvalidBody, "could not read the request body")
-				}
-				return
-			}
-			r.Body = io.NopCloser(bytes.NewReader(body))
-			r.ContentLength = int64(len(body))
-			calls = toolCalls(body)
-		}
-		rp.ServeHTTP(cw, r)
-	})
 }
 
 // PostHogHeaders sets PostHog's MCP credential, project and read-only mode
@@ -136,6 +146,10 @@ func PostHogHeaders(key, projectID string) func(http.Header) {
 		h.Set("x-posthog-read-only", "true")
 	}
 }
+
+// invalidToolOp is the audited op of a tools/call whose params carry no tool
+// name, so such a call is still visible in the audit log.
+const invalidToolOp = "invalid"
 
 type toolCall struct {
 	Name string
@@ -176,6 +190,9 @@ func asToolCall(raw json.RawMessage) (toolCall, bool) {
 	if json.Unmarshal(m["params"], &params) == nil {
 		_ = json.Unmarshal(params["name"], &c.Name)
 		c.Args = params["arguments"]
+	}
+	if c.Name == "" {
+		c.Name = invalidToolOp
 	}
 	return c, true
 }
