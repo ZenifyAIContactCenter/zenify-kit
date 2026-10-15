@@ -322,3 +322,49 @@ func TestRender_CommentedAssignmentAboveRemovedKeyKept(t *testing.T) {
 		t.Fatalf("Removed = %v, want [B]", r.Removed)
 	}
 }
+
+// renderCustomOnly renders an old value-only file holding one custom key.
+func renderCustomOnly(t *testing.T) RenderResult {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(p, []byte("MY_TOOL='fake'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Render(old, nil, nil)
+}
+
+func TestRender_CustomTitleIsNotDescription(t *testing.T) {
+	res := renderCustomOnly(t)
+	if got := res.File.Desc("MY_TOOL"); got != "" {
+		t.Fatalf("Desc = %q, want empty", got)
+	}
+	p := filepath.Join(t.TempDir(), ".env")
+	if err := res.File.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.Desc("MY_TOOL"); got != "" {
+		t.Errorf("Desc after reload = %q, want empty", got)
+	}
+}
+
+func TestSetDesc_UnderSectionTitleInserts(t *testing.T) {
+	res := renderCustomOnly(t)
+	f := res.File
+	f.SetDesc("MY_TOOL", "d")
+	i := f.index("MY_TOOL")
+	if f.lines[i-1] != "# d" || f.lines[i-2] != titleCustom {
+		t.Fatalf("lines = %q", f.lines)
+	}
+	res2 := Render(f, nil, nil)
+	if got := res2.File.Desc("MY_TOOL"); got != "d" || len(res2.Undescribed) != 0 {
+		t.Errorf("Desc = %q, Undescribed = %v", got, res2.Undescribed)
+	}
+}

@@ -147,10 +147,11 @@ func (f *File) Delete(key string) {
 var commentedAssign = regexp.MustCompile(`^(export\s+)?[A-Za-z_][A-Za-z0-9_]*=`)
 
 // descLine returns the description a comment line carries. A commented-out
-// assignment such as "# OLD_TOKEN=..." is not a description.
+// assignment such as "# OLD_TOKEN=..." is not a description, and neither are
+// the kit's own file header and section titles.
 func descLine(line string) (string, bool) {
 	t := strings.TrimSpace(line)
-	if !strings.HasPrefix(t, "#") {
+	if !strings.HasPrefix(t, "#") || t == RenderHeader || strings.HasPrefix(t, sectionPrefix) {
 		return "", false
 	}
 	d := strings.TrimSpace(strings.TrimPrefix(t, "#"))

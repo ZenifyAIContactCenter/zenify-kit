@@ -395,3 +395,16 @@ func TestEnvForm_FirstRoundSkipsProduction(t *testing.T) {
 		t.Errorf("pick list = %v, want MONGO_URL_PRD", picked)
 	}
 }
+
+func TestEnvSet_FirstCustomKeyUnderTitleNeedsDesc(t *testing.T) {
+	scaffold := devenv.RenderHeader + "\n\n# ══ Custom (ngoài manifest) ══\nFOO='old'\n" //znf:allow-lang
+	d, ws := envFixture(t, scaffold)
+	d.prompt = func(keys []string) (map[string]string, error) { return map[string]string{keys[0]: "new12345"}, nil }
+	_, err := runEnv(d, "set", "FOO")
+	if err == nil || !strings.Contains(err.Error(), "--desc") {
+		t.Fatalf("err = %v, want --desc required", err)
+	}
+	if got := readEnvFile(t, ws); got != scaffold {
+		t.Errorf("file changed: %q", got)
+	}
+}
