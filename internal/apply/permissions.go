@@ -27,6 +27,8 @@ var KitAllowRules = []string{
 	"Bash(zenify e2e *)",
 	"Bash(zenify visual *)",
 	"Bash(zenify ui-verify *)",
+	"mcp__zenify-grafana__*",
+	"mcp__zenify-posthog__*",
 }
 
 // KitSandboxExcluded are the commands the kit unions into

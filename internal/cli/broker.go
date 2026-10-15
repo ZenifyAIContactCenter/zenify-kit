@@ -1,17 +1,21 @@
 package cli
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/spf13/cobra"
 )
 
-// newBrokerCmd builds `zenify broker token`.
+// newBrokerCmd builds `zenify broker token|headers`.
 func newBrokerCmd() *cobra.Command {
 	var manifestPath, overlayPath string
 	cmd := &cobra.Command{
@@ -40,9 +44,38 @@ func newBrokerCmd() *cobra.Command {
 			return err
 		},
 	}
-	token.Flags().StringVar(&manifestPath, "manifest", "", "path to the repos manifest (default: manifest/repos.yaml under cwd, else the embedded one)")
-	token.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
-	cmd.AddCommand(token)
+	headers := &cobra.Command{
+		Use:           "headers",
+		Short:         "In header Authorization cho MCP http của Claude Code (JSON một object)", //znf:allow-lang
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			c, ok, err := brokerFromFlags(manifestPath, overlayPath)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return exitcode.New(exitcode.BadArgs, errors.New("manifest không khai báo broker")) //znf:allow-lang
+			}
+			// Claude Code drops a headersHelper after 10s.
+			if c.HTTP == nil {
+				c.HTTP = &http.Client{Timeout: 8 * time.Second}
+			}
+			ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
+			defer cancel()
+			tok, err := c.Token(ctx)
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]string{"Authorization": "Bearer " + tok})
+		},
+	}
+	for _, c := range []*cobra.Command{token, headers} {
+		c.Flags().StringVar(&manifestPath, "manifest", "", "path to the repos manifest (default: manifest/repos.yaml under cwd, else the embedded one)")
+		c.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
+	}
+	cmd.AddCommand(token, headers)
 	return cmd
 }
 

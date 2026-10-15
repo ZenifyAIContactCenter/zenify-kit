@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,6 +17,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/spf13/cobra"
 )
 
@@ -227,5 +230,62 @@ func TestRedisRead_SendsAndIndents(t *testing.T) {
 	}
 	if want := "[\n  \"a\",\n  \"b\"\n]\n"; out != want {
 		t.Errorf("stdout = %q, want %q", out, want)
+	}
+}
+
+func TestBrokerHeaders_PrintsJSON(t *testing.T) {
+	hermeticDBRead(t)
+	mp, _ := brokerFixture(t, nil)
+	tuneBrokerClient = func(c *brokerclient.Client) { // keep fixture server, answer j1
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: "j1", ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo"})
+		}))
+		t.Cleanup(srv.Close)
+		c.URL, c.Home, c.GHToken = srv.URL, t.TempDir(), func() (string, error) { return "test-gh", nil }
+	}
+	out, errOut, err := execCmd(newBrokerCmd(), "headers", "--manifest", mp)
+	if err != nil {
+		t.Fatalf("err=%v stderr=%s", err, errOut)
+	}
+	var got map[string]string
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("stdout not one JSON object: %q", out)
+	}
+	if !reflect.DeepEqual(got, map[string]string{"Authorization": "Bearer j1"}) {
+		t.Fatalf("got=%v", got)
+	}
+	if strings.Count(strings.TrimSpace(out), "\n") != 0 {
+		t.Fatalf("extra lines: %q", out)
+	}
+}
+
+func TestBrokerHeaders_NoBrokerFailsWithoutStdout(t *testing.T) {
+	hermeticDBRead(t)
+	out, _, err := execCmd(newBrokerCmd(), "headers", "--manifest", noBrokerManifest(t))
+	if err == nil || out != "" {
+		t.Fatalf("err=%v out=%q", err, out)
+	}
+}
+
+func TestRegisterBrokerMCP(t *testing.T) {
+	m := &manifest.Manifest{Broker: &manifest.Broker{URL: "https://broker.example/"}}
+	var adds []string
+	run := func(_ string, args ...string) ([]byte, error) {
+		if args[1] == "get" {
+			return nil, errors.New("not found")
+		}
+		adds = append(adds, args[2]+" "+args[3])
+		return nil, nil
+	}
+	var out, errOut bytes.Buffer
+	registerBrokerMCP(&out, &errOut, m, run)
+	if len(adds) != 2 || !strings.HasPrefix(adds[0], "zenify-grafana ") || !strings.Contains(adds[0], "https://broker.example/mcp/grafana") || !strings.HasPrefix(adds[1], "zenify-posthog ") || !strings.Contains(adds[1], "https://broker.example/mcp/posthog") {
+		t.Fatalf("adds=%v", adds)
+	}
+	adds = nil
+	registerBrokerMCP(&out, &errOut, &manifest.Manifest{}, run)
+	registerBrokerMCP(&out, &errOut, nil, run)
+	if len(adds) != 0 || errOut.Len() != 0 {
+		t.Fatalf("no-broker must be a no-op: adds=%v err=%q", adds, errOut.String())
 	}
 }
