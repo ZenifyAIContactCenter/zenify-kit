@@ -138,7 +138,7 @@ func TestShippedManifestLumiKeysAreRepoScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"LUMI_MYSQL_URL_STG", "LUMI_MYSQL_URL_PRD", "QDRANT_URL_STG", "QDRANT_URL_PRD", "LUMI_APP_URL_STG", "OPENROUTER_API_KEY"}
+	want := []string{"LUMI_MYSQL_URL_STG", "LUMI_MYSQL_URL_PRD", "QDRANT_URL_STG", "QDRANT_URL_PRD", "LUMI_APP_URL_STG"}
 	lumi, ok := m.ByName("lumi-agent")
 	if !ok || len(lumi.SecretKeys) != len(want) {
 		t.Fatalf("lumi-agent secretKeys = %v, want %v", lumi.SecretKeys, want)
@@ -242,15 +242,15 @@ func TestEmbeddedManifest_EveryKeyDescribed(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := m.AllKeys()
-	if len(keys) != 12 {
-		t.Fatalf("want 12 keys, got %d", len(keys))
+	if len(keys) != 14 {
+		t.Fatalf("want 14 keys, got %d", len(keys))
 	}
 	names := strings.Join(KeyNames(keys), ",")
 	if !strings.Contains(names, "MYSQL_URL") || strings.Contains(names, "MYSQL_HOST") {
 		t.Fatalf("keys = %s, want MYSQL_URL in place of the five MYSQL_* keys (FR-12.1)", names)
 	}
 	notSecret := map[string]bool{"E2E_DOMAIN": true, "LUMI_APP_URL_STG": true}
-	personal := map[string]bool{"E2E_EMAIL": true, "E2E_PASSWORD": true, "POSTHOG_API_KEY": true, "OPENROUTER_API_KEY": true}
+	personal := map[string]bool{"E2E_EMAIL": true, "E2E_PASSWORD": true, "POSTHOG_API_KEY": true, "MONGO_URL_PRD": true, "AUDIT_MONGO_URL_PRD": true, "REDIS_URL_PRD": true}
 	for _, k := range keys {
 		if k.Description == "" {
 			t.Errorf("%s: description must be non-empty", k.Name)
@@ -265,5 +265,82 @@ func TestEmbeddedManifest_EveryKeyDescribed(t *testing.T) {
 		if k.Secret == notSecret[k.Name] {
 			t.Errorf("%s: secret=%v unexpected", k.Name, k.Secret)
 		}
+	}
+}
+
+func TestParse_InvalidGroupRejected(t *testing.T) {
+	_, err := Parse([]byte(`org: o
+secretKeys:
+  - name: X
+    group: prod
+repos:
+  - name: r
+    url: u
+`), "t")
+	if err == nil {
+		t.Fatal("want error for invalid group")
+	}
+	for _, s := range []string{"X", "prod", "staging", "tooling", "production"} {
+		if !strings.Contains(err.Error(), s) {
+			t.Errorf("error %q missing %q", err, s)
+		}
+	}
+}
+
+func TestParse_InvalidGroupOnRepoKeyRejected(t *testing.T) {
+	_, err := Parse([]byte(`org: o
+repos:
+  - name: r
+    url: u
+    secretKeys:
+      - name: Y
+        group: nope
+`), "t")
+	if err == nil || !strings.Contains(err.Error(), "Y") {
+		t.Fatalf("want error naming Y, got %v", err)
+	}
+}
+
+func TestEffectiveGroup_DefaultStaging(t *testing.T) {
+	if got := (SecretKey{}).EffectiveGroup(); got != "staging" {
+		t.Fatalf("got %q, want staging", got)
+	}
+	if got := (SecretKey{Group: "tooling"}).EffectiveGroup(); got != "tooling" {
+		t.Fatalf("got %q, want tooling", got)
+	}
+}
+
+func TestPlacedKeys_RepoAttached(t *testing.T) {
+	m := &Manifest{
+		SecretKeys: []SecretKey{{Name: "A"}},
+		Repos:      []Repo{{Name: "r", SecretKeys: []SecretKey{{Name: "B"}, {Name: "A"}}}},
+	}
+	got := m.PlacedKeys()
+	if len(got) != 2 || got[0].Name != "A" || got[0].Repo != "" || got[1].Name != "B" || got[1].Repo != "r" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestEmbeddedManifest_Groups(t *testing.T) {
+	m, err := Load(filepath.Join("..", "..", "manifest", "repos.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"MONGO_URL": "staging", "MYSQL_URL": "staging", "LUMI_MYSQL_URL_STG": "staging", "QDRANT_URL_STG": "staging", "LUMI_APP_URL_STG": "staging",
+		"E2E_DOMAIN": "tooling", "E2E_EMAIL": "tooling", "E2E_PASSWORD": "tooling", "POSTHOG_API_KEY": "tooling",
+		"LUMI_MYSQL_URL_PRD": "production", "QDRANT_URL_PRD": "production", "MONGO_URL_PRD": "production", "AUDIT_MONGO_URL_PRD": "production", "REDIS_URL_PRD": "production",
+	}
+	got := map[string]string{}
+	for _, k := range m.AllKeys() {
+		got[k.Name] = k.EffectiveGroup()
+	}
+	for n, g := range want {
+		if got[n] != g {
+			t.Errorf("%s: group %q, want %q", n, got[n], g)
+		}
+	}
+	if _, ok := got["OPENROUTER_API_KEY"]; ok {
+		t.Error("OPENROUTER_API_KEY must not be in the manifest")
 	}
 }

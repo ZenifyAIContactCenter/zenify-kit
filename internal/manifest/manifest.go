@@ -17,6 +17,28 @@ type SecretKey struct {
 	HowTo       string `yaml:"howTo"`  // who or where hands the value out; never the value itself
 	Scope       string `yaml:"scope"`  // "personal" (each dev owns it) or "shared" (team-wide)
 	Secret      bool   `yaml:"secret"` // false → value is safe to echo (host, port, URL)
+	Group       string `yaml:"group"`  // "staging" (default), "tooling" or "production": section in .zenify/.env
+}
+
+// Valid values of SecretKey.Group.
+const (
+	GroupStaging    = "staging"
+	GroupTooling    = "tooling"
+	GroupProduction = "production"
+)
+
+// EffectiveGroup is Group, with an empty value meaning GroupStaging.
+func (k SecretKey) EffectiveGroup() string {
+	if k.Group == "" {
+		return GroupStaging
+	}
+	return k.Group
+}
+
+// PlacedKey is a SecretKey plus the repo that declares it ("" for a global key).
+type PlacedKey struct {
+	SecretKey
+	Repo string
 }
 
 // UnmarshalYAML accepts a bare string (name only, Secret true) or the object form.
@@ -63,6 +85,25 @@ func (m *Manifest) AllKeys() []SecretKey {
 	return out
 }
 
+// PlacedKeys is AllKeys (same order, same dedup) with the declaring repo attached.
+func (m *Manifest) PlacedKeys() []PlacedKey {
+	seen := map[string]bool{}
+	var out []PlacedKey
+	add := func(list []SecretKey, repo string) {
+		for _, k := range list {
+			if !seen[k.Name] {
+				seen[k.Name] = true
+				out = append(out, PlacedKey{SecretKey: k, Repo: repo})
+			}
+		}
+	}
+	add(m.SecretKeys, "")
+	for _, r := range m.Repos {
+		add(r.SecretKeys, r.Name)
+	}
+	return out
+}
+
 // Repo is one entry in the manifest desired-set.
 type Repo struct {
 	Name       string      `yaml:"name"`
@@ -103,7 +144,32 @@ func Parse(b []byte, label string) (*Manifest, error) {
 	if len(m.Repos) == 0 {
 		return nil, fmt.Errorf("manifest %s: repos is empty", label)
 	}
+	if err := validateGroups(&m, label); err != nil {
+		return nil, err
+	}
 	return &m, nil
+}
+
+func validateGroups(m *Manifest, label string) error {
+	check := func(keys []SecretKey) error {
+		for _, k := range keys {
+			switch k.Group {
+			case "", GroupStaging, GroupTooling, GroupProduction:
+			default:
+				return fmt.Errorf("manifest %s: key %s: group %q không hợp lệ (staging|tooling|production)", label, k.Name, k.Group) //znf:allow-lang
+			}
+		}
+		return nil
+	}
+	if err := check(m.SecretKeys); err != nil {
+		return err
+	}
+	for _, r := range m.Repos {
+		if err := check(r.SecretKeys); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // LoadWithOverlay loads base, then lets a personal overlay override each repo's
