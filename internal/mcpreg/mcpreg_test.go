@@ -65,9 +65,10 @@ func TestBootstrap_MatchingNoop(t *testing.T) {
 
 func TestBootstrap_KeepsCustom(t *testing.T) {
 	for name, out := range map[string]string{
-		"other helper":    "zenify-grafana:\n  Scope: User config (available in all your projects)\n  Type: http\n  URL: https://other.example/mcp\n  Headers helper: my-own-script\n",
+		"other path":      "zenify-grafana:\n  Scope: User config (available in all your projects)\n  Type: http\n  URL: https://other.example/mcp\n",
+		"stdio":           "zenify-grafana:\n  Scope: User config\n  Status: ✓ Connected\n  Type: stdio\n  Command: my-grafana\n",
 		"no helper":       "zenify-grafana:\n  Scope: User config\n  Type: http\n  URL: https://other.example/mcp\n",
-		"project scope":   "zenify-grafana:\n  Scope: Project config\n  Type: http\n  URL: https://old.example/mcp/grafana\n  Headers helper: zenify broker headers\n",
+		"project scope":   "zenify-grafana:\n  Scope: Project config (shared via .mcp.json)\n  Type: http\n  URL: https://old.example/mcp/grafana\n",
 		"url is a prefix": "zenify-grafana:\n  Scope: User config\n  Type: http\n  URL: " + grafanaURL + "/x\n",
 	} {
 		var calls []call
@@ -78,11 +79,12 @@ func TestBootstrap_KeepsCustom(t *testing.T) {
 	}
 }
 
-// A kit-written entry (user scope, the kit's headersHelper) pointing at an old
-// broker URL is removed and re-added with the new URL.
+// A kit-written entry (user scope, http, same /mcp/<name> path) pointing at an
+// old broker host is removed and re-added with the new URL. The fixture mirrors
+// real `claude mcp get` output (2.1.300), which has no headersHelper line.
 func TestBootstrap_StaleKitEntryUpdated(t *testing.T) {
 	var calls []call
-	out := "zenify-grafana:\n  Scope: User config (available in all your projects)\n  Type: http\n  URL: https://old-broker.example/mcp/grafana\n  Headers helper: zenify broker headers\n"
+	out := "zenify-grafana:\n  Scope: User config (available in all your projects)\n  Status: ✓ Connected\n  Type: http\n  URL: https://old-broker.example/mcp/grafana\n\nTo remove this server, run: claude mcp remove zenify-grafana -s user\n"
 	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun(out, nil, &calls)})
 	if err != nil || st != playwright.RegLegacyDefault {
 		t.Fatalf("st=%v err=%v", st, err)
@@ -110,5 +112,15 @@ func TestBootstrap_AddFailureReturnsError(t *testing.T) {
 	}
 	if _, err := Bootstrap(Options{Spec: Spec{Name: "n", URL: grafanaURL}, Run: run}); err == nil || !strings.Contains(err.Error(), "register n MCP") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+// Real "absent" output of `claude mcp get` (2.1.300, exit 1) leads to an add.
+func TestBootstrap_RealNotFoundWordingAdds(t *testing.T) {
+	var calls []call
+	out := `No MCP server named "zenify-grafana". Configured servers: grafana, playwright`
+	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun(out, errors.New("exit status 1"), &calls)})
+	if err != nil || st != playwright.RegAbsent || len(calls) != 2 || calls[1].args[1] != "add-json" {
+		t.Fatalf("st=%v err=%v calls=%v", st, err, calls)
 	}
 }

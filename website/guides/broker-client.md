@@ -78,7 +78,7 @@ Broker cấp một tài khoản E2E riêng cho bạn theo role, trên tenant tes
 
 ## Grafana và PostHog cho agent
 
-Khi manifest nhúng sẵn trong binary có `broker:` và lệnh `claude` có trên PATH, `zenify up --apply` đăng ký hai MCP server trong Claude Code: `zenify-grafana` (Loki, Prometheus, Tempo) và `zenify-posthog`. `--manifest` và file manifest ở thư mục hiện tại không bật bước này. Server cùng tên mà bạn tự đăng ký thì kit giữ nguyên. Cả hai dùng `type: http` tới broker, và Claude Code lấy header đăng nhập bằng `zenify broker headers` mỗi lần kết nối, nên bạn không điền token nào. Skill `/znf:fix` dùng chúng ở Step 0 để lấy log, trace và latency khi gặp lỗi trên staging hay production.
+Khi manifest nhúng sẵn trong binary có `broker:` và lệnh `claude` có trên PATH, `zenify up --apply` đăng ký hai MCP server trong Claude Code: `zenify-grafana` (Loki, Prometheus, Tempo) và `zenify-posthog`. `--manifest` và file manifest ở thư mục hiện tại không bật bước này. Khi URL broker đổi, entry do kit đăng ký (user scope, cùng đường dẫn `/mcp/<tên>`) được đăng ký lại với URL mới; server cùng tên mà bạn tự đăng ký với đường dẫn khác thì kit giữ nguyên. Cả hai dùng `type: http` tới broker, và Claude Code lấy header đăng nhập bằng `zenify broker headers` mỗi lần kết nối, nên bạn không điền token nào. Skill `/znf:fix` dùng chúng ở Step 0 để lấy log, trace và latency khi gặp lỗi trên staging hay production.
 
 Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn vào phiên.
 
