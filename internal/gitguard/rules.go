@@ -166,17 +166,24 @@ func isPrintenvPRD(argv []string) bool {
 	return false
 }
 
-// readsEnvFile: some word names a file called .env that resolves, from base,
-// to the workspace .zenify/.env.
+// readsEnvFile: some word resolves, from base, to the workspace .zenify/.env,
+// to the .zenify directory itself, or to a .env name or a glob inside it.
 func readsEnvFile(argv []string, base, envFile string, getenv func(string) string) bool {
 	if envFile == "" {
 		return false
 	}
+	zdir := filepath.Dir(envFile)
 	for _, a := range argv {
-		if a == "" || filepath.Base(a) != ".env" {
+		if a == "" {
 			continue
 		}
-		if canonical(resolveDir(base, a, getenv)) == envFile {
+		p := resolveDir(base, a, getenv)
+		if filepath.Base(a) == ".env" && canonical(p) == envFile || canonical(p) == zdir {
+			return true
+		}
+		name, d := filepath.Base(p), canonical(filepath.Dir(p))
+		if (d == zdir || strings.HasPrefix(d, zdir+string(filepath.Separator))) &&
+			(name == ".env" || strings.ContainsAny(name, "*?[")) {
 			return true
 		}
 	}
