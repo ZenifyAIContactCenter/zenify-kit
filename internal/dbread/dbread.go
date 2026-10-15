@@ -43,7 +43,7 @@ type Options struct {
 	Prod       bool   // read production: MONGO_URL_PRD / MYSQL_URL_PRD
 	MongoDB    string // Mongo database; empty = 3csoft
 	Truncated  bool   // set by Run: output was cut at the line or byte cap
-	Rows       int    // set by Run: stdout lines written
+	Rows       int    // set by Run: stdout lines written, for every op (Mongo: pretty-printed JSON lines, not documents)
 	Stdout     io.Writer
 	Stderr     io.Writer
 	Env        func(string) string
@@ -227,10 +227,31 @@ func (c *capWriter) Truncated() bool { return c.lineCut || c.byteCut }
 // BytesCut reports whether the byte cap, not the line cap, cut the output.
 func (c *capWriter) BytesCut() bool { return c.byteCut }
 
+// noticeWriter passes every byte through to w unchanged and sets *hit once
+// needle has been written, even when it is split across Write calls.
+type noticeWriter struct {
+	w      io.Writer
+	needle string
+	tail   string
+	hit    *bool
+}
+
+func (n *noticeWriter) Write(p []byte) (int, error) {
+	buf := n.tail + string(p)
+	if strings.Contains(buf, n.needle) {
+		*n.hit = true
+	}
+	if k := len(n.needle) - 1; len(buf) > k {
+		buf = buf[len(buf)-k:]
+	}
+	n.tail = buf
+	return n.w.Write(p)
+}
+
 // finish flushes cw and, when it was cut, prints the matching notice. A cut
 // is a success.
 func finish(o *Options, cw *capWriter, limit int) error {
-	o.Rows, o.Truncated = cw.rows, cw.Truncated()
+	o.Rows, o.Truncated = cw.rows, o.Truncated || cw.Truncated()
 	stderr := o.Stderr
 	if !cw.Truncated() {
 		return cw.Flush()
@@ -297,6 +318,7 @@ func printUsage(w io.Writer) {
 // reaches a database. Output goes to o.Stdout via the injected run seam —
 // Run itself never returns secret values in an error string.
 func Run(o *Options) error {
+	o.Rows, o.Truncated = 0, false
 	switch o.Cmd {
 	case "collections", "tables", "doc", "count", "find", "aggregate", "explain", "sql":
 	case "eval":
@@ -376,7 +398,11 @@ func Run(o *Options) error {
 		// Mongo caps rows in the script (--limit); here only bytes are capped.
 		cw := newCapWriter(stdout, -1, MaxOutputBytes)
 		o.Stdout = cw
+		// The script cuts rows itself and reports it on stderr; watch for it.
+		realStderr := o.Stderr
+		o.Stderr = &noticeWriter{w: realStderr, needle: fmt.Sprintf(truncNotice, limit, MaxLimit), hit: &o.Truncated}
 		err := o.run("mongosh", []string{"--nodb", "--quiet", "--eval", script}, []string{MongoURLEnv + "=" + mongoURL}, "")
+		o.Stderr = realStderr
 		if err != nil && !cw.Truncated() {
 			if o.Prod {
 				_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: kiểm lại %s trong .zenify/.env\n", mk) //znf:allow-lang

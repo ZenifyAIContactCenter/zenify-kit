@@ -959,3 +959,50 @@ func TestIsBadArgs(t *testing.T) {
 		t.Error("IsBadArgs true for a non-badArgs error")
 	}
 }
+
+func TestRun_Mongo_TruncNoticeSetsTruncated(t *testing.T) {
+	notice := fmt.Sprintf(truncNotice, 5, MaxLimit)
+	cases := []struct {
+		name   string
+		writes []string
+		want   bool
+	}{
+		{"whole", []string{notice}, true},
+		{"split", []string{notice[:10], notice[10:]}, true},
+		{"none", []string{"warning: something else\n"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			o, _, stderr := baseOptions(t, fakeEnv())
+			o.SetRun(func(string, []string, []string, string) error {
+				for _, w := range c.writes {
+					_, _ = fmt.Fprint(o.Stderr, w)
+				}
+				return nil
+			})
+			o.Cmd, o.Arg, o.Limit = "find", "users", 5
+			if err := Run(o); err != nil {
+				t.Fatal(err)
+			}
+			if o.Truncated != c.want {
+				t.Errorf("Truncated = %v, want %v", o.Truncated, c.want)
+			}
+			if got := stderr.String(); got != strings.Join(c.writes, "") {
+				t.Errorf("stderr = %q, want passthrough %q", got, strings.Join(c.writes, ""))
+			}
+		})
+	}
+}
+
+func TestRun_Mongo_DBReachesScript(t *testing.T) {
+	o, _, _ := baseOptions(t, fakeEnv())
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg, o.MongoDB = "count", "users", "audit_logs"
+	if err := Run(o); err != nil {
+		t.Fatal(err)
+	}
+	script := (*calls)[0].args[len((*calls)[0].args)-1]
+	if !strings.Contains(script, `getSiblingDB("audit_logs")`) {
+		t.Errorf("script = %q", script)
+	}
+}
