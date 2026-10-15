@@ -341,10 +341,14 @@ func TestRun_SQL_PortDefault(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	args := (*calls)[0].args
+	port := ""
 	for i, a := range args {
-		if a == "-P" && args[i+1] != "3306" {
-			t.Errorf("-P %s, want 3306", args[i+1])
+		if a == "-P" && i+1 < len(args) {
+			port = args[i+1]
 		}
+	}
+	if port != "3306" {
+		t.Errorf("args = %v, want -P 3306", args)
 	}
 }
 
