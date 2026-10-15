@@ -331,7 +331,8 @@ func TestStartGrafana_Args(t *testing.T) {
 
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	c, err := mcpproxy.StartGrafana(ctx, cancel, bin, "http://grafana.test", "test-key", "127.0.0.1:8001")
+	c, err := mcpproxy.StartGrafana(ctx, cancel, bin, "http://grafana.test", "test-key", "127.0.0.1:8001",
+		[]string{"--loki-guardrail-mode=enforce", "--usage-stats=disabled"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +345,8 @@ func TestStartGrafana_Args(t *testing.T) {
 		t.Errorf("cause = %v, want the child's exit error", cause)
 	}
 
-	wantArgs := []string{bin, "-t", "streamable-http", "--address", "127.0.0.1:8001", "--disable-write"}
+	wantArgs := []string{bin, "-t", "streamable-http", "--address", "127.0.0.1:8001", "--disable-write",
+		"--loki-guardrail-mode=enforce", "--usage-stats=disabled"}
 	if !slices.Equal(c.Args, wantArgs) {
 		t.Errorf("argv = %q, want %q", c.Args, wantArgs)
 	}
@@ -361,7 +363,7 @@ func TestStartGrafana_Args(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "arg:-t\narg:streamable-http\narg:--address\narg:127.0.0.1:8001\narg:--disable-write\nurl:http://grafana.test\ntok:test-key\n"
+	want := "arg:-t\narg:streamable-http\narg:--address\narg:127.0.0.1:8001\narg:--disable-write\narg:--loki-guardrail-mode=enforce\narg:--usage-stats=disabled\nurl:http://grafana.test\ntok:test-key\n"
 	if string(b) != want {
 		t.Errorf("child saw:\n%s\nwant:\n%s", b, want)
 	}

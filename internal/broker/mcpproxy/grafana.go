@@ -9,12 +9,14 @@ import (
 
 // StartGrafana starts mcp-grafana read-only on addr (FR-4.1). The child's env
 // is PATH and HOME plus its two Grafana variables only: the broker's env holds
-// every prod secret. Child output goes to the broker's stderr. The child is
-// killed when ctx ends; if it exits on its own, onExit is called with the
-// cause, so the caller can cancel the server context and exit non-zero. The
-// caller must not Wait on the returned Cmd: a goroutine here already does.
-func StartGrafana(ctx context.Context, onExit context.CancelCauseFunc, bin, grafanaURL, token, addr string) (*exec.Cmd, error) {
-	c := exec.CommandContext(ctx, bin, "-t", "streamable-http", "--address", addr, "--disable-write") //nolint:gosec // G204 -- bin and addr come from the broker's config
+// every prod secret. extraArgs (from config) follow the fixed argv. Child
+// output goes to the broker's stderr. The child is killed when ctx ends.
+// onExit is called with a cause on every child exit, including that kill, so
+// the caller can cancel the server context and exit non-zero. The caller must
+// not Wait on the returned Cmd: a goroutine here already does.
+func StartGrafana(ctx context.Context, onExit context.CancelCauseFunc, bin, grafanaURL, token, addr string, extraArgs []string) (*exec.Cmd, error) {
+	args := append([]string{"-t", "streamable-http", "--address", addr, "--disable-write"}, extraArgs...)
+	c := exec.CommandContext(ctx, bin, args...) //nolint:gosec // G204 -- bin, addr and extraArgs come from the broker's config
 	for _, k := range []string{"PATH", "HOME"} {
 		if v := os.Getenv(k); v != "" {
 			c.Env = append(c.Env, k+"="+v)
