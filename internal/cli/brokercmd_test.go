@@ -487,7 +487,7 @@ func TestRegisterBrokerMCP(t *testing.T) {
 	var adds []string
 	run := func(_ string, args ...string) ([]byte, error) {
 		if args[1] == "get" {
-			return nil, errors.New("not found")
+			return []byte("No MCP server found with name: " + args[2]), errors.New("exit status 1")
 		}
 		adds = append(adds, args[2]+" "+args[3])
 		return nil, nil
@@ -507,5 +507,23 @@ func TestRegisterBrokerMCP(t *testing.T) {
 	registerBrokerMCP(&out, &errOut, m, run)
 	if len(adds) != 0 || errOut.Len() != 0 {
 		t.Fatalf("without claude it must be a no-op: adds=%v err=%q", adds, errOut.String())
+	}
+}
+
+// runClaudeBounded kills a hung child at claudeMCPTimeout.
+func TestRunClaudeBounded_TimesOut(t *testing.T) {
+	saved := claudeMCPTimeout
+	claudeMCPTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { claudeMCPTimeout = saved })
+	bin := filepath.Join(t.TempDir(), "hang")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nsleep 30\n"), 0o700); err != nil { //nolint:gosec // test script must be executable
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := runClaudeBounded(bin); err == nil {
+		t.Fatal("want an error from the killed child")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("took %v, want the bound to stop it", d)
 	}
 }
