@@ -12,6 +12,7 @@ type GitCall struct {
 	Sub       string   // the real subcommand (e.g. "commit","push","merge")
 	Args      []string // literal tokens after the subcommand
 	RepoFlagC string   // value of -C <dir> if present, empty otherwise
+	alias     *GitCall // the call with a `-c alias.<Sub>=…` substituted, nil when none
 }
 
 // isGitBinary accepts "git" or a path ending in "/git".
@@ -56,10 +57,10 @@ func parseGitCall(args []string) (GitCall, bool) {
 		default:
 			gc.Sub = tok
 			gc.Args = args[i+1:]
-			// A non-shell alias runs its first word as the subcommand.
+			// A non-shell alias runs its first word as the subcommand. Git
+			// ignores an alias that shadows a built-in, so both are kept.
 			if f := strings.Fields(aliases[strings.ToLower(tok)]); len(f) > 0 && !strings.HasPrefix(f[0], "!") {
-				gc.Sub = f[0]
-				gc.Args = append(f[1:], gc.Args...)
+				gc.alias = &GitCall{Sub: f[0], Args: append(f[1:], gc.Args...), RepoFlagC: gc.RepoFlagC}
 			}
 			return gc, true
 		}
@@ -387,15 +388,26 @@ func gitCalls(p Parsed) []GitCall {
 		if !isGitBinary(c.Argv[0]) {
 			continue
 		}
-		if gc, ok := parseGitCall(c.Argv); ok {
-			calls = append(calls, gc)
-		}
+		calls = append(calls, gitCallVariants(c.Argv)...)
 	}
 	return calls
 }
 
+// gitCallVariants is the git call in argv as written and, when a -c alias
+// names its subcommand, as substituted; a rule denies if either does.
+func gitCallVariants(argv []string) []GitCall {
+	gc, ok := parseGitCall(argv)
+	if !ok {
+		return nil
+	}
+	if gc.alias != nil {
+		return []GitCall{gc, *gc.alias}
+	}
+	return []GitCall{gc}
+}
+
 // LeadingCd extracts the target of a `cd <dir>` that runs first: the first
-// command of the first statement, or the head of a leading && chain, looking
+// command of the first statement, or the head of a leading &&/|| chain, looking
 // into a leading ( … ) or { …; } group. A cd
 // anywhere else runs after other commands and does not re-anchor them.
 func LeadingCd(command string) string {
@@ -408,7 +420,7 @@ func LeadingCd(command string) string {
 	for {
 		switch x := cmd.(type) {
 		case *syntax.BinaryCmd:
-			if x.Op != syntax.AndStmt {
+			if x.Op != syntax.AndStmt && x.Op != syntax.OrStmt {
 				return ""
 			}
 			cmd = x.X.Cmd

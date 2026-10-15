@@ -37,6 +37,7 @@ func TestRules(t *testing.T) {
 		`timeout 60 git push --force origin x`, `nohup nice -n 5 git push -f origin x`, `git "push" --force origin x`,
 		`gh pr merge 1`, `command gh pr merge 1`, `bash -c 'gh pr merge 1'`, `gh api -X PUT repos/o/r/pulls/1/merge`,
 		`wt rm x --force`, `zenify wt rm -f x`,
+		`git -c alias.push=status push --force origin x`,
 		`git worktree remove --force p`, `git worktree remove -f p`, `git -C /r --no-pager worktree remove p --force`,
 		`echo $REDIS_URL_PRD`, `bash -c 'echo ${MONGO_URL_PRD}'`, `printenv MONGO_URL_PRD`,
 		`mongosh mongodb://prod-host.example/db`, `redis-cli -h 10.0.0.15`,
@@ -101,6 +102,13 @@ func TestRuleEnvFilePath(t *testing.T) {
 		{ws, `find .zenify -name .env -exec cat {} +`, true},
 		{ws, `cd .zenify && cat *`, true},
 		{ws, `ls .zenify`, false},
+		{ws, `tar czf x.tgz .zenify`, true},
+		{ws, `cd .zenify`, false},
+		{ws, "cd " + filepath.Join(ws, ".zenify"), false},
+		{ws, `echo .zenify`, false},
+		{ws, `du -sh .zenify`, false},
+		{ws, `tree -I .zenify`, false},
+		{ws, `echo .zenify/*`, true},
 		{ws, `stat .zenify/*`, false},
 		{ws, `zenify env list`, false},
 		{ws, `cat .zenify/manifest.json`, false},
@@ -143,7 +151,7 @@ func TestDecideNestedOnDeployBranch(t *testing.T) {
 		`bash -c 'git push origin staging'`, `sh -c "git commit -m x"`,
 		`eval "git push origin staging"`, `exec git push origin staging`,
 		`git -c alias.p=push p origin staging`, `git -c alias.P='push origin' P staging`,
-		`git push origin staging < /dev/null`,
+		`git push origin staging < /dev/null`, `git -c alias.push=log push origin staging`,
 	} {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
 			t.Errorf("want deny: %s", cmd)

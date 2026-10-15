@@ -69,18 +69,19 @@ func isForcePush(argv []string) bool {
 	if !isGitBinary(argv[0]) {
 		return false
 	}
-	gc, ok := parseGitCall(argv)
-	if !ok || gc.Sub != "push" {
-		return false
-	}
-	for _, a := range gc.Args {
-		switch {
-		case a == "--force", a == "--force-with-lease", a == "--force-if-includes",
-			strings.HasPrefix(a, "--force-with-lease="),
-			strings.HasPrefix(a, "+"):
-			return true
-		case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "f"):
-			return true
+	for _, gc := range gitCallVariants(argv) {
+		if gc.Sub != "push" {
+			continue
+		}
+		for _, a := range gc.Args {
+			switch {
+			case a == "--force", a == "--force-with-lease", a == "--force-if-includes",
+				strings.HasPrefix(a, "--force-with-lease="),
+				strings.HasPrefix(a, "+"):
+				return true
+			case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "f"):
+				return true
+			}
 		}
 	}
 	return false
@@ -120,11 +121,11 @@ func isWtForceRm(argv []string) bool {
 	var rest []string
 	switch name := basename(argv[0]); {
 	case isGitBinary(argv[0]):
-		gc, ok := parseGitCall(argv)
-		if !ok || gc.Sub != "worktree" || len(gc.Args) == 0 || gc.Args[0] != "remove" {
-			return false
+		for _, gc := range gitCallVariants(argv) {
+			if gc.Sub == "worktree" && len(gc.Args) > 0 && gc.Args[0] == "remove" {
+				rest = append(rest, gc.Args[1:]...)
+			}
 		}
-		rest = gc.Args[1:]
 	case name == "wt":
 		if len(argv) < 2 || argv[1] != "rm" {
 			return false
@@ -166,19 +167,25 @@ func isPrintenvPRD(argv []string) bool {
 	return false
 }
 
-// readsEnvFile: some word resolves, from base, to the workspace .zenify/.env,
-// to the .zenify directory itself, or to a .env name or a glob inside it.
+// dirReaders read or copy every file of a directory named on their command line.
+var dirReaders = []string{"grep", "rg", "ag", "find", "tar", "zip", "cp", "rsync",
+	"cat", "head", "tail", "less", "more", "strings", "xxd", "od"}
+
+// readsEnvFile: some word resolves, from base, to the workspace .zenify/.env
+// or to a .env name or a glob inside .zenify; or argv[0] is a dirReader and a
+// word resolves to the .zenify directory itself.
 func readsEnvFile(argv []string, base, envFile string, getenv func(string) string) bool {
 	if envFile == "" {
 		return false
 	}
 	zdir := filepath.Dir(envFile)
+	reader := slices.Contains(dirReaders, basename(argv[0]))
 	for _, a := range argv {
 		if a == "" {
 			continue
 		}
 		p := resolveDir(base, a, getenv)
-		if filepath.Base(a) == ".env" && canonical(p) == envFile || canonical(p) == zdir {
+		if filepath.Base(a) == ".env" && canonical(p) == envFile || reader && canonical(p) == zdir {
 			return true
 		}
 		name, d := filepath.Base(p), canonical(filepath.Dir(p))

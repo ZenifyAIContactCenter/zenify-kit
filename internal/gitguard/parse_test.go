@@ -34,7 +34,7 @@ func TestParseGitCalls(t *testing.T) {
 		{"degenerate bare git", "git", nil},
 		{"degenerate git -C only", "git -C", nil},
 		{"degenerate repeated -C", "git -C -C -C push", []string{"push"}},
-		{"alias resolved", "git -c alias.p=push p origin staging", []string{"push"}},
+		{"alias resolved", "git -c alias.p=push p origin staging", []string{"p", "push"}},
 		{"alias not used", "git -c alias.p=push status", []string{"status"}},
 		{"shell alias kept", "git -c alias.p='!echo' p", []string{"p"}},
 	}
@@ -65,7 +65,7 @@ func TestLeadingCd(t *testing.T) {
 			t.Errorf("LeadingCd(%q) = %q, want empty (cd not first)", cmd, got)
 		}
 	}
-	for _, cmd := range []string{"cd /a && cd /b && git push", "cd /a; git push"} {
+	for _, cmd := range []string{"cd /a && cd /b && git push", "cd /a; git push", "cd /a || exit 1; git push"} {
 		if got := LeadingCd(cmd); got != "/a" {
 			t.Errorf("LeadingCd(%q) = %q, want /a", cmd, got)
 		}
