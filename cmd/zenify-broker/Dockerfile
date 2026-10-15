@@ -1,4 +1,5 @@
-# Built by GoReleaser (dockers): the context holds the prebuilt zenify-broker binary.
+# Built by GoReleaser (dockers_v2): the context holds the prebuilt binary at
+# $TARGETPLATFORM/zenify-broker, one per platform.
 ARG MCP_GRAFANA_VERSION=2.0.2
 FROM grafana/mcp-grafana:${MCP_GRAFANA_VERSION} AS mcp-grafana
 
@@ -19,7 +20,8 @@ RUN mcp-grafana --help 2>&1 | tee /tmp/mcp-help.txt >/dev/null; \
       grep -q -- "$f" /tmp/mcp-help.txt || { echo "mcp-grafana --help lacks $f"; exit 1; }; \
     done; rm /tmp/mcp-help.txt
 
-COPY zenify-broker /usr/local/bin/zenify-broker
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/zenify-broker /usr/local/bin/zenify-broker
 USER node
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/zenify-broker"]
