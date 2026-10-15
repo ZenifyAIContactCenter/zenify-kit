@@ -133,7 +133,9 @@ func parseInto(src string, depth int, p *Parsed) {
 		if isGitBinary(cmd.Argv[0]) && hasDangerousAlias(cmd.Argv) {
 			p.Unparseable = true
 		}
-		if script, ok := nestedScript(cmd.Argv); ok {
+		if script, dynamic := nestedScript(cmd.Argv); dynamic {
+			p.Unparseable = true
+		} else if script != "" {
 			parseInto(script, depth+1, p)
 		}
 		return true
@@ -271,36 +273,48 @@ func skipFlags(argv, withArg []string) int {
 }
 
 // nestedScript returns the command string run by `bash|sh|zsh … -c <s>` or
-// `eval <args…>`, when every part of it has a value (FR-1.1).
-func nestedScript(argv []string) (string, bool) {
+// `eval <args…>` when every part of it has a value (FR-1.1). dynamic is true
+// when that string has an expansion, or the shell reads its script from stdin
+// (no -c and no script operand, or -s): the script cannot be known here.
+func nestedScript(argv []string) (script string, dynamic bool) {
 	switch basename(argv[0]) {
 	case "bash", "sh", "zsh":
-		i := 1
-		for ; i < len(argv); i++ {
+		stdin := false
+		for i := 1; i < len(argv); i++ {
 			t := argv[i]
-			if t == "--" || (!strings.HasPrefix(t, "-") && !strings.HasPrefix(t, "+")) {
-				return "", false // no -c before the operands
+			if t == "--" {
+				return "", stdin || i+1 == len(argv)
+			}
+			if !strings.HasPrefix(t, "-") && !strings.HasPrefix(t, "+") {
+				return "", stdin // a script-file operand, unless -s
 			}
 			if strings.HasPrefix(t, "--") {
 				continue
 			}
 			if strings.HasPrefix(t, "-") && strings.Contains(t, "c") {
-				break
+				for i++; i < len(argv); i++ {
+					if t := argv[i]; t == "" || !strings.HasPrefix(t, "-") {
+						return t, t == ""
+					}
+				}
+				return "", false
+			}
+			if strings.HasPrefix(t, "-") && strings.Contains(t, "s") {
+				stdin = true
 			}
 			if strings.HasSuffix(t, "o") {
 				i++ // -o/+o (or -euo) takes an option name
 			}
 		}
-		for i++; i < len(argv); i++ {
-			if t := argv[i]; t == "" || !strings.HasPrefix(t, "-") {
-				return t, t != ""
-			}
-		}
+		return "", true // no -c and no operand: the script comes from stdin
 	case "eval":
-		if len(argv) < 2 || slices.Contains(argv[1:], "") {
+		if len(argv) < 2 {
 			return "", false
 		}
-		return strings.Join(argv[1:], " "), true
+		if slices.Contains(argv[1:], "") {
+			return "", true
+		}
+		return strings.Join(argv[1:], " "), false
 	}
 	return "", false
 }

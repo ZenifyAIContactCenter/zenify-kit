@@ -45,6 +45,8 @@ func TestRules(t *testing.T) {
 		`gh pr merge 1 "`, `curl x/pulls/1/merge "`, `git push origin x -f "`, `echo $MONGO_URL_PRD "`,
 		`cat .zenify/.env "`, `ping prod-host.example "`,
 		`git push --force origin x "`, `git -c alias.fp='push --force' fp`,
+		`bash -c "git push --force origin $B"`, `eval "gh pr merge $N"`,
+		"bash <<'EOF'\ngit push --force origin x\nEOF", `echo 'gh pr merge 1' | sh`,
 	}
 	allow := []string{
 		`go test ./...`, `git push origin feat/x`, `git push -u origin feat/x`, `gh pr create --title t`,
@@ -53,6 +55,7 @@ func TestRules(t *testing.T) {
 		`mongosh mongodb://staging-host/db`, `ping 10.0.0.150`, `curl http://staging-prod-host.example.net`,
 		`echo "abc`, `curl http://localhost:8080`, `git log --merges`, `rm -f build.log`,
 		`git worktree remove p`, `git worktree list`,
+		`sh -c "go test $X"`, `echo hi | sh`, `bash script.sh`, `bash -x script.sh arg`,
 	}
 	for _, cmd := range deny {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {

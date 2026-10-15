@@ -153,6 +153,15 @@ func TestParseUnparseable(t *testing.T) {
 		`git --git-dir x -c alias.fp=push fp`:             true,
 		`git -c alias.st=status st`:                       false,
 		`git -c color.ui=never status`:                    false,
+		`bash -c "git push origin $B"`:                    true,
+		`eval "gh pr merge $N"`:                           true,
+		`sh -c "go test $X"`:                              true,
+		`echo hi | sh`:                                    true,
+		"bash <<'EOF'\ngit status\nEOF":                   true,
+		`sh -s arg`:                                       true,
+		`bash script.sh`:                                  false,
+		`bash -o pipefail script.sh`:                      false,
+		`bash "$S"`:                                       false,
 	}
 	for cmd, w := range want {
 		if got := Parse(cmd).Unparseable; got != w {
