@@ -50,6 +50,7 @@ Quy tắc khi `zenify up --apply` dựng lại file:
 - Dòng comment không gắn với key nào, và dòng gán bị comment như `# OLD_TOKEN=...` (có thể còn giữ giá trị cũ), được giữ lại ở cuối mục Custom.
 - Key ngoài manifest nằm ở mục Custom. Dòng comment ngay trên nó là mô tả của key đó.
 - Một dòng trống hoặc `KEY=` rỗng nghĩa là chưa đặt: biến môi trường của tiến trình thắng, và `zenify env list` báo `empty`.
+- Một key gán nhiều lần thì giá trị dùng là lần gán cuối cùng khác rỗng; mỗi giá trị khác rỗng còn lại được giữ thành dòng comment `# KEY=...` ở cuối mục Custom, và `zenify up` báo `env: giữ giá trị trùng của <tên> dưới dạng comment`.
 - Chạy lại `zenify up --apply` trên file đã dựng thì file không đổi.
 
 ## Key do manifest khai báo
@@ -127,7 +128,14 @@ Lệnh con nhận env hiện có cộng key trong file, mà không cần export 
 
 ## Key bị bỏ khỏi manifest
 
-Khi một PR gỡ key khỏi manifest, `zenify up --apply` xoá dòng key đó (cùng comment kit sinh) khỏi `.zenify/.env`, nhưng chỉ với key mà kit đã từng ghi nhận; key bạn tự thêm vào mục Custom không bao giờ bị xoá. `zenify up` không có `--apply` xem trước thay đổi, chỉ in tên key:
+Khi một PR gỡ key khỏi manifest, `zenify up --apply` xoá dòng key đó (cùng comment kit sinh) khỏi `.zenify/.env`, nhưng chỉ với key mà kit đã từng ghi nhận; key bạn tự thêm vào mục Custom không bao giờ bị xoá. Kit chỉ xoá khi có đủ hai điều kiện:
+
+- Manifest của lần chạy là bản nhúng trong binary, không phải `--manifest` hay `manifest/repos.yaml` dưới thư mục hiện tại.
+- Binary đang chạy không cũ hơn binary đã ghi nhận danh sách key lần trước. Bản build `dev` chỉ so được với bản `dev`.
+
+Thiếu một trong hai, kit không xoá gì: key vẫn nằm trong file (ở mục Custom, giữ dòng mô tả) và vẫn được ghi nhận, để một lần chạy sau đủ điều kiện xoá nó. Kit báo `env: giữ <tên> — manifest không phải bản nhúng (<nguồn>)` hoặc `env: giữ <tên> — binary cũ hơn bản đã ghi`.
+
+`zenify up` không có `--apply` xem trước thay đổi, chỉ in tên key; wizard `zenify up` hiện cùng các dòng này trên màn hình kế hoạch, trước khi hỏi xác nhận:
 
 ```
 env: thêm MONGO_URL_PRD, AUDIT_MONGO_URL_PRD, REDIS_URL_PRD
