@@ -80,12 +80,12 @@ Lệnh đăng ký hook `PreToolUse` với matcher `Bash` trỏ tới `zenify git
 | Bảng hoặc JSON của `observe report` | Số dispatch subagent và tool output theo phiên |
 | Đoạn statusline | Model, % ngữ cảnh, dispatch, tool output, chi phí |
 | Output `secret-scan` | Danh sách finding `file:line:rule`, giá trị che |
-| Hook git-guard | Chặn commit, push, merge vào branch trong `.claude/deploy-branches` |
-| Hook git-guard (lệnh lồng) | Theo vào `bash -c`, `sh -c`, `zsh -c` và `eval` (tối đa 3 tầng), bỏ các wrapper ở đầu lệnh, rồi áp các luật dưới đây |
-| Hook git-guard (force push) | Chặn force push (`--force`, `--force-with-lease`, `--force-if-includes`) trên mọi branch |
+| Hook git-guard | Chặn commit, push, merge vào branch trong `.claude/deploy-branches`, kể cả khi gọi qua alias `git -c alias.<tên>=push <tên>` |
+| Hook git-guard (lệnh lồng) | Theo vào `bash -c`, `sh -c`, `zsh -c` và `eval` (tối đa 3 tầng), bỏ các wrapper ở đầu lệnh, rồi áp các luật dưới đây. Chuỗi lồng có biến (`bash -c "… $X"`) và shell đọc script từ stdin (heredoc, pipe vào `sh`, `-s`) được coi là không phân tích được |
+| Hook git-guard (force push) | Chặn force push (`--force`, `-f`, cờ gộp như `-uf`, `--force-with-lease`, `--force-if-includes`, refspec `+<branch>`) trên mọi branch |
 | Hook git-guard (merge PR) | Chặn `gh pr merge` và `gh api … PUT …/merge` |
-| Hook git-guard (worktree) | Chặn `wt rm --force` |
-| Hook git-guard (secret) | Chặn đọc `<workspace>/.zenify/.env` qua Bash và chặn mở rộng biến `$X_PRD`; chặn lệnh chứa host của một URL `*_PRD`. Vẫn cho `zenify db-read …`, `zenify env list|set|edit` và `chmod`, `ls`, `stat`, `test`, `[` |
+| Hook git-guard (worktree) | Chặn `wt rm --force`, `wt rm -f`, `zenify wt rm --force` hoặc `-f`, và `git worktree remove --force` hoặc `-f` |
+| Hook git-guard (secret) | Chặn đọc `<workspace>/.zenify/.env` qua Bash, kể cả qua redirect (`<`, `3<`, `<<<`); chặn lệnh nhắm vào chính thư mục `.zenify`, một glob trong đó (`.zenify/*`) hay một file `.env` trong đó; chặn mở rộng biến `$X_PRD` và `printenv X_PRD`; chặn lệnh chứa host của một URL `*_PRD`, kể cả trong redirect và thân heredoc. Vẫn cho `zenify db-read …`, `zenify env list|set|edit` và `chmod`, `ls`, `stat`, `test`, `[` |
 | Hook git-guard (không phân tích được) | Chặn lệnh không phân tích được mà chứa từ khoá nguy hiểm |
 
 ## Lưu ý
@@ -93,6 +93,8 @@ Lệnh đăng ký hook `PreToolUse` với matcher `Bash` trỏ tới `zenify git
 Các luật của git-guard áp ở mọi chế độ quyền, kể cả bypass và auto. Với force push và merge PR, bạn tự chạy lệnh đó bằng `!` ở dấu nhắc của Claude Code khi thật sự cần; agent không có đường nào khác. Đọc production thì agent dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#đoc-production).
 
 Git-guard là lớp chặn sai sót, không chặn được agent cố tình lách, ví dụ một script tự mở file `.zenify/.env`.
+
+Không chặn: `ssh` hay `scp` tới một host alias trong cấu hình SSH (luật host chỉ biết các host lấy từ URL `*_PRD`); lệnh được ghép lúc chạy, ví dụ tên file hay host nằm trong một biến; `grep -r` chạy từ thư mục gốc workspace; đường dẫn `.zenify/.env` nhắc tới bên trong thân heredoc của một script.
 
 Một binary vừa build nằm trong cây thư mục có thể tạo finding giả cho `secret-scan`. Xóa binary trước khi quét. Khi git-guard chặn một lệnh, hãy báo lại thay vì tìm cách vòng qua.
 

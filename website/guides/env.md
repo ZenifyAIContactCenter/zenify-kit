@@ -131,6 +131,8 @@ Lệnh con nhận env hiện có cộng key trong file, mà không cần export 
 
 `zenify env exec` không đưa vào lệnh con các key thuộc nhóm production và các key có tên kết thúc bằng `_PRD`, kể cả khi chúng có sẵn trong môi trường của tiến trình. Muốn đọc production, dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#đoc-production).
 
+Người cần một key production trong script tự chạy thì chạy script đó ở shell của mình, qua `!` ở dấu nhắc của Claude Code hoặc một terminal, với giá trị export ngay tại shell đó. Không bao giờ export key `*_PRD` trong shell mà agent kế thừa.
+
 `zenify env exec` dành cho lệnh không tương tác. Output chỉ hiện khi có trọn một dòng, nên một lời nhắc nhập liệu không kết thúc bằng xuống dòng sẽ không hiện ra.
 
 ## Key bị bỏ khỏi manifest
