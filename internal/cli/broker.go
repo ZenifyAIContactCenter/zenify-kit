@@ -12,6 +12,8 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/spf13/cobra"
 )
 
@@ -83,6 +85,26 @@ func newBrokerCmd() *cobra.Command {
 // internal/cli's TestMain swaps it for a stub so no test can run a real gh.
 var ghToken = brokerclient.GHTokenExec
 
+// ghRunner is the `gh` runner every command and doctor check uses; TestMain
+// swaps it for one that panics, so no test can run a real gh.
+var ghRunner ghx.Runner = ghx.ExecRunner()
+
+// currentGH defers to ghRunner at call time, so a check registered once still
+// sees a runner swapped later.
+type currentGH struct{}
+
+func (currentGH) Run(args ...string) ([]byte, error) { return ghRunner.Run(args...) }
+
+// newBrokerClient is the one constructor for a manifest's broker client, so the
+// GitHub-token seam cannot be skipped.
+func newBrokerClient(m *manifest.Manifest) (*brokerclient.Client, bool) {
+	c, ok := brokerclient.FromManifest(m)
+	if ok {
+		c.GHToken = ghToken
+	}
+	return c, ok
+}
+
 // tuneBrokerClient lets a test point the client at an httptest server.
 var tuneBrokerClient func(*brokerclient.Client)
 
@@ -99,12 +121,9 @@ func brokerFromFlags(manifestPath, overlayPath string) (c *brokerclient.Client, 
 	if err != nil {
 		return nil, false, err
 	}
-	c, ok = brokerclient.FromManifest(m)
-	if ok {
-		c.GHToken = ghToken
-		if tuneBrokerClient != nil {
-			tuneBrokerClient(c)
-		}
+	c, ok = newBrokerClient(m)
+	if ok && tuneBrokerClient != nil {
+		tuneBrokerClient(c)
 	}
 	return c, ok, nil
 }

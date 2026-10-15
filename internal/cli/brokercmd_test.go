@@ -18,6 +18,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/spf13/cobra"
 )
@@ -52,12 +53,27 @@ func brokerFixture(t *testing.T, handlers map[string]http.HandlerFunc) (manifest
 	return manifestPath, hits
 }
 
+type panicRunner struct{}
+
+func (panicRunner) Run(...string) ([]byte, error) {
+	panic("test hermeticity: a cli test reached the real gh runner; inject a ghx.Runner fake")
+}
+
+// useGH swaps the package gh runner for r until the test ends.
+func useGH(t *testing.T, r ghx.Runner) {
+	t.Helper()
+	saved := ghRunner
+	ghRunner = r
+	t.Cleanup(func() { ghRunner = saved })
+}
+
 // TestMain replaces the GitHub token source so no test in this package can run
 // a real `gh` or send a real token to a broker.
 func TestMain(m *testing.M) {
 	ghToken = func() (string, error) {
 		return "", fmt.Errorf("test hermeticity: a cli test reached the real gh token source; inject c.GHToken via tuneBrokerClient and pass --manifest")
 	}
+	ghRunner = panicRunner{}
 	os.Exit(m.Run())
 }
 

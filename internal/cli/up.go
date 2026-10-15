@@ -759,7 +759,7 @@ func newUpCmd() *cobra.Command {
 			}
 			sp := ui.NewSpinner(cmd.ErrOrStderr(), "Đang dựng kế hoạch onboarding") //znf:allow-lang
 			sp.Start()
-			plans, auth, err := buildPlan(m, ghx.ExecRunner(), gitx.ExecRunner(), workspace, sources)
+			plans, auth, err := buildPlan(m, ghRunner, gitx.ExecRunner(), workspace, sources)
 			if err != nil {
 				sp.Fail("Dựng kế hoạch thất bại") //znf:allow-lang
 				if isPreview {
@@ -787,7 +787,7 @@ func newUpCmd() *cobra.Command {
 				return runWizard(w, m, mSrc, workspace, sources, plans, auth.LoggedIn)
 			case modeApply:
 				uiOut(cmd).Header("zenify up --apply")
-				return runApply(w, cmd.ErrOrStderr(), plans, m, mSrc, workspace, ghx.ExecRunner(), gitx.ExecRunner())
+				return runApply(w, cmd.ErrOrStderr(), plans, m, mSrc, workspace, ghRunner, gitx.ExecRunner())
 			default: // modeDryRun
 				if jsonOut {
 					return renderPlanJSON(w, plans, auth)

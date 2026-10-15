@@ -36,9 +36,9 @@ func githubAccessCheck(gh ghx.Runner, org string) (bool, string) {
 
 func init() {
 	RegisterCheck(Check{Name: "git-auth", Run: func() (bool, string) {
-		return gitAuthCheck(ghx.ExecRunner())
+		return gitAuthCheck(ghRunner)
 	}})
 	RegisterCheck(Check{Name: "github-access", Run: func() (bool, string) {
-		return githubAccessCheck(ghx.ExecRunner(), "ZenifyAIContactCenter")
+		return githubAccessCheck(ghRunner, "ZenifyAIContactCenter")
 	}})
 }

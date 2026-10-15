@@ -542,9 +542,9 @@ func registerBrokerCheck() {
 	if m == nil {
 		m, _, _ = loadKitManifest("", "")
 	}
-	c, ok := brokerclient.FromManifest(m)
+	c, ok := newBrokerClient(m)
 	if !ok {
 		return
 	}
-	RegisterCheck(brokerCheck(c.URL, ghx.ExecRunner(), &http.Client{Timeout: 5 * time.Second}, c))
+	RegisterCheck(brokerCheck(c.URL, currentGH{}, &http.Client{Timeout: 5 * time.Second}, c))
 }

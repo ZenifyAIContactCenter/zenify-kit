@@ -24,7 +24,7 @@ func wizardSecretKeys(m *manifest.Manifest) []manifest.SecretKey { return m.Secr
 // the plan the caller already built before the welcome screen; preAuthed says
 // whether the user was already logged in when that plan was built.
 func runWizard(w io.Writer, m *manifest.Manifest, src, workspace string, sources map[string]reconcile.Source, prebuilt []reconcile.RepoPlan, preAuthed bool) error {
-	gh, git := ghx.ExecRunner(), gitx.ExecRunner()
+	gh, git := ghRunner, gitx.ExecRunner()
 	res, err := tui.RunOnboard(tui.OnboardConfig{
 		Workspace:  workspace,
 		Accessible: false,
