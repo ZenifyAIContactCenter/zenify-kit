@@ -580,3 +580,34 @@ func TestRunClaudeBounded_TimesOut(t *testing.T) {
 		t.Fatalf("took %v, want the bound to stop it", d)
 	}
 }
+
+// `broker token --refresh` removes the cached JWT even when /token then fails,
+// so `broker headers` stops serving a token the broker refuses.
+func TestBrokerToken_RefreshDropsCacheOnFailure(t *testing.T) {
+	hermeticDBRead(t)
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/token": func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeNotOrgMember, Message: "left the org"})
+	}})
+	var cache string
+	saved := tuneBrokerClient
+	tuneBrokerClient = func(c *brokerclient.Client) {
+		saved(c)
+		cache = filepath.Join(c.Home, ".zenify", "broker", "token.json")
+		if err := os.MkdirAll(filepath.Dir(cache), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		body := fmt.Sprintf(`{"url":%q,"token":"rejected-jwt","expires_at":"2099-01-01T00:00:00Z","login":"octo"}`, c.URL)
+		if err := os.WriteFile(cache, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { tuneBrokerClient = saved })
+	out, _, err := execCmd(newBrokerCmd(), "token", "--refresh", "--manifest", mp)
+	if err == nil || out != "" {
+		t.Fatalf("out=%q err=%v, want the 403 and no token", out, err)
+	}
+	if _, serr := os.Stat(cache); !errors.Is(serr, fs.ErrNotExist) {
+		t.Fatalf("cache still present after --refresh: %v", serr)
+	}
+}

@@ -76,11 +76,18 @@ func TestDoctor_CustomKeyWithoutDesc(t *testing.T) {
 	}
 }
 
-// A key the broker retired (the manifest no longer declares it) is reported as
-// unused and never fails the check; an unrelated bare custom key still does.
+// With a broker, a key the broker retired (the manifest no longer declares it)
+// is reported as unused and never fails the check; an unrelated bare custom
+// key still does. Without a broker db-read still reads it, so it is never
+// called unused.
 func TestDoctor_RetiredBrokerKeyNotAFailure(t *testing.T) {
 	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "OPENROUTER_API_KEY", Secret: true}}}
 	p := writeEnv(t, "MONGO_URL=x\nE2E_PASSWORD=y\n", 0o600)
+	if _, detail := envFileCheck(func() string { return p }, fixedManifest(m), "linux").Run(); strings.Contains(detail, "không còn dùng") { //znf:allow-lang
+		t.Fatalf("no broker: a key db-read still reads was called unused: %q", detail)
+	}
+	mp, _ := brokerFixture(t, nil)
+	useTrustedManifest(t, mp)
 	ok, detail := envFileCheck(func() string { return p }, fixedManifest(m), "linux").Run()
 	if !ok || !strings.Contains(detail, "MONGO_URL, E2E_PASSWORD không còn dùng, có thể xoá") { //znf:allow-lang
 		t.Fatalf("ok=%v detail=%q", ok, detail)

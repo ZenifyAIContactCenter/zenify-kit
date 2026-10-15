@@ -39,6 +39,10 @@ func newBrokerCmd() *cobra.Command {
 			}
 			var tok string
 			if refresh {
+				// Best effort: the Claude Code Bash sandbox denies writes under ~/.zenify.
+				if derr := c.DropCache(); derr != nil {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: broker token cache not removed: %v\n", derr)
+				}
 				tok, _, err = c.Refresh(cmd.Context())
 			} else {
 				tok, err = c.Token(cmd.Context())

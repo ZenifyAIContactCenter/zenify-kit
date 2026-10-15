@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -126,6 +127,20 @@ func (c *Client) Refresh(ctx context.Context) (token, login string, err error) {
 		return "", "", err
 	}
 	return c.refresh(ctx, p)
+}
+
+// DropCache removes the cached JWT, so a token the broker refuses is not
+// served again even when the next /token call fails. A missing cache is not
+// an error.
+func (c *Client) DropCache() error {
+	p, err := c.cachePath()
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func (c *Client) refresh(ctx context.Context, cachePath string) (string, string, error) {

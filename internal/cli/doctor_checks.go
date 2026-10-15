@@ -139,8 +139,9 @@ func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokercl
 }
 
 // retiredBrokerKeys are the hand-written .zenify/.env keys the credential
-// broker replaces. Once the manifest stops declaring them they are reported as
-// unused, never as a failure.
+// broker replaces. When the trusted manifest declares a broker and no longer
+// declares them, they are reported as unused, never as a failure; without a
+// broker db-read still reads them, so they are ordinary custom keys.
 var retiredBrokerKeys = map[string]bool{
 	"MONGO_URL": true, "MYSQL_URL": true, "E2E_DOMAIN": true, "E2E_EMAIL": true, "E2E_PASSWORD": true,
 	"POSTHOG_API_KEY": true, "MONGO_URL_PRD": true, "MYSQL_URL_PRD": true, "AUDIT_MONGO_URL_PRD": true, "REDIS_URL_PRD": true,
@@ -180,10 +181,11 @@ func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest, 
 				known[k] = true
 			}
 			var undescribed, legacy, retired []string
+			viaBroker := brokerDeclared()
 			for _, k := range f.Keys() {
 				switch {
 				case known[k]:
-				case retiredBrokerKeys[k]:
+				case viaBroker && retiredBrokerKeys[k]:
 					retired = append(retired, k)
 				case f.Desc(k) == "":
 					undescribed = append(undescribed, k)
