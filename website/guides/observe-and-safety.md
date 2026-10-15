@@ -85,7 +85,7 @@ Lệnh đăng ký hook `PreToolUse` với matcher `Bash` trỏ tới `zenify git
 | Hook git-guard (force push) | Chặn force push (`--force`, `-f`, cờ gộp như `-uf`, `--force-with-lease`, `--force-if-includes`, refspec `+<branch>`) trên mọi branch |
 | Hook git-guard (merge PR) | Chặn `gh pr merge` và `gh api … PUT …/merge` |
 | Hook git-guard (worktree) | Chặn `wt rm --force`, `wt rm -f`, `zenify wt rm --force` hoặc `-f`, và `git worktree remove --force` hoặc `-f` |
-| Hook git-guard (secret) | Chặn đọc `<workspace>/.zenify/.env` qua Bash, kể cả qua redirect (`<`, `3<`, `<<<`); chặn lệnh nhắm vào chính thư mục `.zenify`, một glob trong đó (`.zenify/*`) hay một file `.env` trong đó; chặn mở rộng biến `$X_PRD` và `printenv X_PRD`; chặn lệnh chứa host của một URL `*_PRD`, kể cả trong redirect và thân heredoc. Vẫn cho `zenify db-read …`, `zenify env list|set|edit` và `chmod`, `ls`, `stat`, `test`, `[` |
+| Hook git-guard (secret) | Chặn đọc `<workspace>/.zenify/.env` qua Bash, kể cả qua redirect (`<`, `3<`, `<<<`); chặn lệnh đọc cả thư mục (`grep`, `rg`, `find`, `tar`, `cp`, `cat`, …) nhắm vào chính thư mục `.zenify`, và mọi lệnh nhắm vào một glob trong đó (`.zenify/*`) hay một file `.env` trong đó; chặn mở rộng biến `$X_PRD` và `printenv X_PRD`; chặn lệnh chứa host của một URL `*_PRD`, kể cả trong redirect và thân heredoc. Vẫn cho `zenify db-read …`, `zenify env list|set|edit` và `chmod`, `ls`, `stat`, `test`, `[` |
 | Hook git-guard (không phân tích được) | Chặn lệnh không phân tích được mà chứa từ khoá nguy hiểm |
 
 ## Lưu ý

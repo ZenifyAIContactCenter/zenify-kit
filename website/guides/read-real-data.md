@@ -52,7 +52,7 @@ Khi kết quả nhiều hơn `--limit`, lệnh in đủ `--limit` dòng rồi gh
 
 ## Đọc production
 
-Agent đọc production bằng `zenify db-read --prd <lệnh con>`. Cờ `--prd` dùng `MONGO_URL_PRD` và `MYSQL_URL_PRD` thay cho `MONGO_URL` và `MYSQL_URL`, với đúng các giới hạn chỉ đọc như khi không có cờ. Khi key được dùng đã có giá trị, lệnh in `zenify db-read: production (<KEY>)` ra stderr, với `<KEY>` là tên key đó. Stderr của `mongosh` hoặc `mysql` được che: URL production, mật khẩu và host trong URL bị thay bằng `***`. Agent không cần người gõ `!`.
+Agent đọc production bằng `zenify db-read --prd <lệnh con>`. Cờ `--prd` dùng `MONGO_URL_PRD` và `MYSQL_URL_PRD` thay cho `MONGO_URL` và `MYSQL_URL`, với đúng các giới hạn chỉ đọc như khi không có cờ. Khi key được dùng đã có giá trị, lệnh in `zenify db-read: production (<KEY>)` ra stderr, với `<KEY>` là tên key đó. Stderr của `mongosh` hoặc `mysql` được che: URL production, mật khẩu và host trong URL bị thay bằng `***`, trừ giá trị ngắn hơn 6 ký tự, ví dụ một host ngắn, vẫn hiện nguyên. Agent không cần người gõ `!`.
 
 ```bash
 zenify db-read --prd count chat_rooms
