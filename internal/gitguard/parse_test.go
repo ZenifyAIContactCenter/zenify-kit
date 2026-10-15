@@ -86,6 +86,8 @@ func TestParseNestedAndWrappers(t *testing.T) {
 		{`git pu\sh origin x`, []string{"push"}},
 		{`sh -c "docker compose up"`, nil},
 		{`bash -c "$CMD"`, nil},
+		{`bash -o pipefail -c 'git push origin staging'`, []string{"push"}},
+		{`bash -euo pipefail -c 'git push origin staging'`, []string{"push"}},
 		{`bash -c "bash -c \"git push --force origin x\""`, []string{"push"}},
 		{`bash -c 'sh -c "bash -c \"git push origin staging\""'`, []string{"push"}},
 	}
@@ -134,6 +136,8 @@ func TestParseUnparseable(t *testing.T) {
 		`bash -c 'echo "abc'`:                             true,
 		`git -c alias.fp='push --force' fp`:               true,
 		`git -c alias.m=merge m x`:                        true,
+		`git -C /repo -c alias.fp='push --force' fp`:      true,
+		`git --git-dir x -c alias.fp=push fp`:             true,
 		`git -c alias.st=status st`:                       false,
 		`git -c color.ui=never status`:                    false,
 	}

@@ -262,11 +262,17 @@ func nestedScript(argv []string) (string, bool) {
 		i := 1
 		for ; i < len(argv); i++ {
 			t := argv[i]
-			if t == "--" || !strings.HasPrefix(t, "-") {
+			if t == "--" || (!strings.HasPrefix(t, "-") && !strings.HasPrefix(t, "+")) {
 				return "", false // no -c before the operands
 			}
-			if !strings.HasPrefix(t, "--") && strings.Contains(t, "c") {
+			if strings.HasPrefix(t, "--") {
+				continue
+			}
+			if strings.HasPrefix(t, "-") && strings.Contains(t, "c") {
 				break
+			}
+			if strings.HasSuffix(t, "o") {
+				i++ // -o/+o (or -euo) takes an option name
 			}
 		}
 		for i++; i < len(argv); i++ {
@@ -283,11 +289,17 @@ func nestedScript(argv []string) (string, bool) {
 	return "", false
 }
 
+// gitArgFlags are git global options, other than -c, that take an argument.
+var gitArgFlags = []string{"-C", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
+
 // hasDangerousAlias reports `git -c alias.<x>=<v>` among git's global options
 // whose value runs push, merge or commit (FR-1.5).
 func hasDangerousAlias(argv []string) bool {
 	for i := 1; i+1 < len(argv) && strings.HasPrefix(argv[i], "-"); i++ {
 		if argv[i] != "-c" {
+			if slices.Contains(gitArgFlags, argv[i]) {
+				i++
+			}
 			continue
 		}
 		i++
