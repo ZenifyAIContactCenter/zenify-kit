@@ -19,6 +19,10 @@ import (
 // ErrBadPassword is App.Login's answer when hub rejects the credentials.
 var ErrBadPassword = errors.New("login rejected")
 
+// ErrMFARequired is App.Login's answer when the account has MFA on: hub
+// returns an MFA challenge instead of a token, which the broker cannot answer.
+var ErrMFARequired = errors.New("MFA is on for this account: turn it off for E2E accounts")
+
 // App is the seam over hub and be. Errors never carry a password or token.
 type App interface {
 	Login(ctx context.Context, email, password string) (token string, err error)
@@ -29,10 +33,14 @@ type App interface {
 }
 
 const (
-	authHeader   = "Authorization"
-	bearerPrefix = "Bearer "
-	deviceID     = "zenify-broker" // fixed so the broker holds one max_parallel_sessions slot
-	maxReply     = 4 << 20
+	// authHeader carries the raw JWT: be's checkPermission jwt.verify()s the
+	// header as is, so a "Bearer " prefix would fail.
+	authHeader = "Authorization"
+	// Without x-app-version 2.0, be answers errors as HTTP 200 {"error":true}.
+	appVersionHeader = "x-app-version"
+	appVersion       = "2.0"
+	deviceID         = "zenify-broker" // fixed so the broker holds one max_parallel_sessions slot
+	maxReply         = 4 << 20
 )
 
 var defaultClient = &http.Client{Timeout: 30 * time.Second}
@@ -65,8 +73,9 @@ func (a *HTTPApp) do(ctx context.Context, op, method, u, token string, body any)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	req.Header.Set(appVersionHeader, appVersion)
 	if token != "" {
-		req.Header.Set(authHeader, bearerPrefix+token)
+		req.Header.Set(authHeader, token)
 	}
 	c := a.HTTP
 	if c == nil {
@@ -84,8 +93,21 @@ func (a *HTTPApp) do(ctx context.Context, op, method, u, token string, body any)
 	return resp.StatusCode, b, nil
 }
 
-// Login is hub POST /auth/login. 400/401 is ErrBadPassword.
+// envelope is the part of a hub/be reply the broker reads; error:true is a
+// failure even on HTTP 200.
+type envelope struct {
+	Error       bool            `json:"error"`
+	Token       string          `json:"token"`
+	MFARequired bool            `json:"mfa_required"`
+	Data        json.RawMessage `json:"data"`
+}
+
+// Login is hub POST /auth/login. 400/401 is ErrBadPassword; an MFA challenge
+// is ErrMFARequired.
 func (a *HTTPApp) Login(ctx context.Context, email, password string) (string, error) {
+	if a.Domain == "" {
+		return "", errors.New("hub login: no tenant domain configured")
+	}
 	st, b, err := a.do(ctx, "hub login", http.MethodPost, a.HubURL+"/auth/login", "", map[string]string{
 		"email": email, "password": password, "domain": a.Domain, "device_type": "web", "device_id": deviceID})
 	switch {
@@ -96,22 +118,22 @@ func (a *HTTPApp) Login(ctx context.Context, email, password string) (string, er
 	case st/100 != 2:
 		return "", fmt.Errorf("hub login: status %d", st)
 	}
-	var r struct {
-		Token string `json:"token"`
-		Data  struct {
-			Token string `json:"token"`
-		} `json:"data"`
-	}
+	var r, data envelope
 	if json.Unmarshal(b, &r) != nil {
 		return "", errors.New("hub login: unreadable reply")
 	}
-	if r.Token == "" {
-		r.Token = r.Data.Token
+	_ = json.Unmarshal(r.Data, &data) // data may be absent or not an object
+	switch {
+	case r.Error || data.Error:
+		return "", errors.New("hub login: error in reply")
+	case r.MFARequired || data.MFARequired:
+		return "", ErrMFARequired
+	case r.Token != "":
+		return r.Token, nil
+	case data.Token != "":
+		return data.Token, nil
 	}
-	if r.Token == "" {
-		return "", errors.New("hub login: no token in reply")
-	}
-	return r.Token, nil
+	return "", errors.New("hub login: no token in reply")
 }
 
 func (a *HTTPApp) adminToken(ctx context.Context) (string, error) {
@@ -158,11 +180,12 @@ func (a *HTTPApp) admin(ctx context.Context, op, method, path string, body any) 
 		if st/100 != 2 {
 			return nil, fmt.Errorf("%s: status %d", op, st)
 		}
-		var env struct {
-			Data json.RawMessage `json:"data"`
-		}
+		var env envelope
 		if json.Unmarshal(b, &env) != nil {
 			return nil, fmt.Errorf("%s: unreadable reply", op)
+		}
+		if env.Error {
+			return nil, fmt.Errorf("%s: error in reply", op)
 		}
 		return env.Data, nil
 	}
@@ -230,13 +253,20 @@ func (a *HTTPApp) ResetPassword(ctx context.Context, id, password string) error 
 
 // ChangePassword is be POST /v2/change-password as the user.
 func (a *HTTPApp) ChangePassword(ctx context.Context, userToken, old, new string) error {
-	st, _, err := a.do(ctx, "be change-password", http.MethodPost, a.BEURL+"/v2/change-password", userToken,
+	st, b, err := a.do(ctx, "be change-password", http.MethodPost, a.BEURL+"/v2/change-password", userToken,
 		map[string]string{"password": old, "new_password": new, "c_password": new})
 	if err != nil {
 		return err
 	}
 	if st/100 != 2 {
 		return fmt.Errorf("be change-password: status %d", st)
+	}
+	var env envelope
+	if json.Unmarshal(b, &env) != nil {
+		return errors.New("be change-password: unreadable reply")
+	}
+	if env.Error {
+		return errors.New("be change-password: error in reply")
 	}
 	return nil
 }

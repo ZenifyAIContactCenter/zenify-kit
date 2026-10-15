@@ -25,7 +25,11 @@ type fakeUpstream struct {
 	got         map[string]map[string]any // path -> last JSON body
 	gotAuth     map[string]string
 	gotQuery    string
+	carolPW     string // the only password hub accepts for carol
+	changeHits  int32
 }
+
+const carolEmail = "e2e-carol-agent@e2e.test"
 
 func newUpstream(t *testing.T) (*fakeUpstream, *HTTPApp) {
 	t.Helper()
@@ -53,6 +57,16 @@ func newUpstream(t *testing.T) (*fakeUpstream, *HTTPApp) {
 			_, _ = io.WriteString(w, `{"token":"top-jwt"}`)
 		case "nested@e2e.test":
 			_, _ = io.WriteString(w, `{"data":{"token":"nested-jwt"}}`)
+		case "mfa@e2e.test": // measured hub shape for a 2FA account
+			_, _ = io.WriteString(w, `{"data":{"mfa_required":true,"mfa_token":"secret-mfa-tok","methods":["totp"],"default_method":"totp"}}`)
+		case "mfa2@e2e.test":
+			_, _ = io.WriteString(w, `{"mfa_required":true,"mfa_token":"secret-mfa-tok","methods":["totp"],"default_method":"totp"}`)
+		case carolEmail:
+			if b["password"] != f.carolPW {
+				w.WriteHeader(400)
+				return
+			}
+			_, _ = io.WriteString(w, `{"data":{"token":"changefail-jwt"}}`)
 		default:
 			w.WriteHeader(503)
 		}
@@ -60,7 +74,8 @@ func newUpstream(t *testing.T) (*fakeUpstream, *HTTPApp) {
 	admin := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			f.gotAuth[r.URL.Path] = r.Header.Get("Authorization")
-			if r.Header.Get("Authorization") != "Bearer "+f.adminToken.Load().(string) {
+			// be's checkPermission jwt.verify()s the raw header: a "Bearer " prefix fails.
+			if r.Header.Get("Authorization") != f.adminToken.Load().(string) {
 				w.WriteHeader(401)
 				return
 			}
@@ -93,9 +108,24 @@ func newUpstream(t *testing.T) (*fakeUpstream, *HTTPApp) {
 		var b map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		f.got[r.URL.Path] = b
-		_, _ = io.WriteString(w, `{"error":false,"status":200,"data":{}}`)
+		atomic.AddInt32(&f.changeHits, 1)
+		switch tok := r.Header.Get("Authorization"); {
+		case strings.HasPrefix(tok, "Bearer "):
+			w.WriteHeader(401)
+		case tok == "changefail-jwt": // be answers some failures as HTTP 200 with error:true
+			_, _ = io.WriteString(w, `{"error":true,"status":400,"message":"invalid password"}`)
+		default:
+			_, _ = io.WriteString(w, `{"error":false,"status":200,"data":{}}`)
+		}
 	})
-	ts := httptest.NewServer(mux)
+	// Without x-app-version: 2.0, be answers errors as HTTP 200 {"error":true}.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-app-version") != "2.0" {
+			_, _ = io.WriteString(w, `{"error":true,"status":400,"message":"legacy client","token":"legacy-tok","data":{"token":"legacy-tok","list":[]}}`)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
 	t.Cleanup(ts.Close)
 	return f, &HTTPApp{HubURL: ts.URL, BEURL: ts.URL, Domain: "zenifytest", TenantID: "t1", GroupID: "g1",
 		AdminEmail: "admin@zenify.test", AdminPassword: adminPW}
@@ -135,7 +165,7 @@ func TestHTTPApp_FindUserExactCaseInsensitive(t *testing.T) {
 	if f.gotQuery != "limit=10&search=e2e-alice-agent%40e2e.test" {
 		t.Fatalf("query %q", f.gotQuery)
 	}
-	if f.gotAuth["/v2/admin/settings/t1/list-agents"] != "Bearer admin-jwt-1" {
+	if f.gotAuth["/v2/admin/settings/t1/list-agents"] != "admin-jwt-1" {
 		t.Fatalf("auth %q", f.gotAuth)
 	}
 	if _, found, err := a.FindUser(context.Background(), "e2e-bob-agent@e2e.test"); err != nil || found {
@@ -170,7 +200,7 @@ func TestHTTPApp_CreateResetChange(t *testing.T) {
 	if b := f.got["/v2/change-password"]; b["password"] != "old-pw" || b["new_password"] != "new-pw" || b["c_password"] != "new-pw" {
 		t.Fatalf("change body %v", b)
 	}
-	if f.gotAuth["/v2/change-password"] != "Bearer user-jwt" {
+	if f.gotAuth["/v2/change-password"] != "user-jwt" {
 		t.Fatalf("change auth %q", f.gotAuth["/v2/change-password"])
 	}
 }
@@ -201,5 +231,43 @@ func TestHTTPApp_AdminBadPasswordNoLeak(t *testing.T) {
 	_, _, err := a.FindUser(context.Background(), "x@e2e.test")
 	if err == nil || strings.Contains(err.Error(), "wrong-admin-pw") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestHTTPApp_MFARequired(t *testing.T) {
+	_, a := newUpstream(t)
+	for _, email := range []string{"mfa@e2e.test", "mfa2@e2e.test"} {
+		tok, err := a.Login(context.Background(), email, userPW)
+		if !errors.Is(err, ErrMFARequired) || errors.Is(err, ErrBadPassword) || tok != "" {
+			t.Fatalf("%s: got %q %v", email, tok, err)
+		}
+		if !strings.Contains(err.Error(), "MFA") || strings.Contains(err.Error(), "secret-mfa-tok") {
+			t.Fatalf("%s: error %q", email, err)
+		}
+	}
+}
+
+func TestHTTPApp_EmptyDomainRefused(t *testing.T) {
+	f, a := newUpstream(t)
+	a.Domain = ""
+	if _, err := a.Login(context.Background(), "top@e2e.test", userPW); err == nil {
+		t.Fatal("want error")
+	}
+	if f.got["/auth/login"] != nil {
+		t.Fatal("hub was called with an empty domain")
+	}
+}
+
+func TestEnsure_ChangePasswordErrorTrueNotCached(t *testing.T) {
+	f, a := newUpstream(t)
+	p := newProvisioner(a)
+	f.carolPW = Password([]byte("testkey"), "carol", "agent", 229) // P(period-1)
+	for i := 1; i <= 2; i++ {
+		if _, err := p.Ensure(context.Background(), "carol", "agent"); err == nil {
+			t.Fatalf("call %d: HTTP 200 {error:true} on change-password must fail Ensure", i)
+		}
+		if n := atomic.LoadInt32(&f.changeHits); n != int32(i) {
+			t.Fatalf("call %d: change-password hits %d (a failure must not be cached)", i, n)
+		}
 	}
 }

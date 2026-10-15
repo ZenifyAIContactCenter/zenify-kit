@@ -102,3 +102,14 @@ func TestHandler_ProvisionFailed502(t *testing.T) {
 		t.Fatalf("audit %s", line)
 	}
 }
+
+func TestHandler_MFARequired502(t *testing.T) {
+	app := newFakeApp()
+	app.loginErr = ErrMFARequired
+	st, body, _ := serveE2E(t, app, `{"role":"agent"}`)
+	var e api.Error
+	_ = json.Unmarshal(body, &e)
+	if st != 502 || e.Error != api.CodeProvisionFailed || !strings.Contains(e.Message, "MFA") {
+		t.Fatalf("got %d %s", st, body)
+	}
+}
