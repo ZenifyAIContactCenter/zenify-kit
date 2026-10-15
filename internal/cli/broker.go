@@ -18,6 +18,7 @@ import (
 // newBrokerCmd builds `zenify broker token|headers`.
 func newBrokerCmd() *cobra.Command {
 	var manifestPath, overlayPath string
+	var refresh bool
 	cmd := &cobra.Command{
 		Use:   "broker",
 		Short: "Làm việc với credential broker của zenify", //znf:allow-lang
@@ -36,7 +37,12 @@ func newBrokerCmd() *cobra.Command {
 			if !ok {
 				return exitcode.New(exitcode.BadArgs, errors.New("manifest không khai báo broker")) //znf:allow-lang
 			}
-			tok, err := c.Token(cmd.Context())
+			var tok string
+			if refresh {
+				tok, _, err = c.Refresh(cmd.Context())
+			} else {
+				tok, err = c.Token(cmd.Context())
+			}
 			if err != nil {
 				return err
 			}
@@ -58,11 +64,10 @@ func newBrokerCmd() *cobra.Command {
 			if !ok {
 				return exitcode.New(exitcode.BadArgs, errors.New("manifest không khai báo broker")) //znf:allow-lang
 			}
-			// Claude Code drops a headersHelper after 10s; 8s bounds gh and HTTP.
 			if c.HTTP == nil {
-				c.HTTP = brokerclient.NewHTTPClient(8 * time.Second)
+				c.HTTP = brokerclient.NewHTTPClient(brokerHeadersTimeout)
 			}
-			ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
+			ctx, cancel := context.WithTimeout(cmd.Context(), brokerHeadersTimeout)
 			defer cancel()
 			tok, err := c.Token(ctx)
 			if err != nil {
@@ -75,9 +80,14 @@ func newBrokerCmd() *cobra.Command {
 		c.Flags().StringVar(&manifestPath, "manifest", "", brokerManifestUsage)
 		c.Flags().StringVar(&overlayPath, "overlay", "", brokerOverlayUsage)
 	}
+	token.Flags().BoolVar(&refresh, "refresh", false, "drop the cached JWT and fetch a new one (use when the broker refuses the cached token)")
 	cmd.AddCommand(token, headers)
 	return cmd
 }
+
+// brokerHeadersTimeout bounds `broker headers` (gh and HTTP together): Claude
+// Code drops a headersHelper after 10s.
+var brokerHeadersTimeout = 8 * time.Second
 
 // ghToken supplies the GitHub token for every broker client the cli builds;
 // internal/cli's TestMain swaps it for a stub so no test can run a real gh.

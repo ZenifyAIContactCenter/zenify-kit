@@ -72,6 +72,7 @@ func newDoctorCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			brokerCheckOnce.Do(registerBrokerCheck)
 			if doFix {
 				results, _ := runChecks()
 				for i, r := range results {
