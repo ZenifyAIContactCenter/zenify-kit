@@ -27,14 +27,28 @@ const refreshWindow = 60 * time.Second
 // maxBody caps how much of a broker response is read.
 const maxBody = 16 << 20
 
-// Client talks to one broker. Zero Home/HTTP/Now/GHToken fall back to
-// os.UserHomeDir, a 2-minute http.Client, time.Now and GHTokenExec.
+// accessHint explains a reply that did not come from the broker itself.
+const accessHint = "reply is not from the broker (Cloudflare Access login page?) — turn on Cloudflare WARP and retry"
+
+// Client talks to one broker. Zero Home/HTTP/Now/GHToken/Stderr fall back to
+// os.UserHomeDir, NewHTTPClient(2 * time.Minute), time.Now, GHTokenExec and
+// os.Stderr.
 type Client struct {
 	URL     string
 	Home    string
-	GHToken func() (string, error)
+	GHToken func(ctx context.Context) (string, error)
 	HTTP    *http.Client
 	Now     func() time.Time
+	Stderr  io.Writer
+}
+
+// NewHTTPClient returns a client that never follows a redirect: a 307/308
+// would replay the GitHub token body to the Location host.
+func NewHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout:       timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }
 
 // APIError is a non-2xx broker reply.
@@ -49,6 +63,7 @@ func (e *APIError) Error() string {
 }
 
 type cached struct {
+	URL       string `json:"url"` // the broker that issued Token; another URL is a cache miss
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
 	Login     string `json:"login"`
@@ -65,7 +80,7 @@ func (c *Client) httpClient() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
-	return &http.Client{Timeout: 2 * time.Minute}
+	return NewHTTPClient(2 * time.Minute)
 }
 
 func (c *Client) cachePath() (string, error) {
@@ -89,7 +104,7 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 	}
 	if b, err := os.ReadFile(p); err == nil { //nolint:gosec // G304 -- p is under the user's own ~/.zenify
 		var ch cached
-		if json.Unmarshal(b, &ch) == nil && ch.Token != "" {
+		if json.Unmarshal(b, &ch) == nil && ch.Token != "" && ch.URL == c.URL {
 			if exp, err := time.Parse(time.RFC3339, ch.ExpiresAt); err == nil && exp.Sub(c.now()) >= refreshWindow {
 				return ch.Token, nil
 			}
@@ -103,7 +118,7 @@ func (c *Client) refresh(ctx context.Context, cachePath string) (string, error) 
 	if gh == nil {
 		gh = GHTokenExec
 	}
-	ghTok, err := gh()
+	ghTok, err := gh(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -111,12 +126,23 @@ func (c *Client) refresh(ctx context.Context, cachePath string) (string, error) 
 	if err := c.do(ctx, "/token", "", api.TokenRequest{GitHubToken: ghTok}, &resp); err != nil {
 		return "", err
 	}
-	b, err := json.Marshal(cached{Token: resp.Token, ExpiresAt: resp.ExpiresAt, Login: resp.Login})
+	if resp.Token == "" {
+		return "", errors.New("broker /token: empty token")
+	}
+	if _, err := time.Parse(time.RFC3339, resp.ExpiresAt); err != nil {
+		return "", fmt.Errorf("broker /token: bad expires_at %q", resp.ExpiresAt)
+	}
+	b, err := json.Marshal(cached{URL: c.URL, Token: resp.Token, ExpiresAt: resp.ExpiresAt, Login: resp.Login})
 	if err != nil {
 		return "", err
 	}
+	// Best effort: the Claude Code Bash sandbox denies writes under ~/.zenify.
 	if err := writeAtomic(cachePath, b); err != nil {
-		return "", fmt.Errorf("cache broker token: %w", err)
+		w := c.Stderr
+		if w == nil {
+			w = os.Stderr
+		}
+		_, _ = fmt.Fprintf(w, "warning: broker token not cached: %v\n", err)
 	}
 	return resp.Token, nil
 }
@@ -192,24 +218,39 @@ func (c *Client) do(ctx context.Context, path, bearer string, in, out any) error
 	if err != nil {
 		return err
 	}
+	if resp.StatusCode/100 == 3 {
+		return &APIError{Status: resp.StatusCode, Code: "redirect", Message: accessHint}
+	}
 	if resp.StatusCode/100 != 2 {
 		ae := &APIError{Status: resp.StatusCode}
 		var e api.Error
 		if json.Unmarshal(b, &e) == nil {
 			ae.Code, ae.Message = e.Error, e.Message
+		} else {
+			ae.Code, ae.Message = "not_json", accessHint
 		}
 		return ae
 	}
 	if out == nil {
 		return nil
 	}
-	return json.Unmarshal(b, out)
+	if err := json.Unmarshal(b, out); err != nil {
+		return &APIError{Status: resp.StatusCode, Code: "not_json", Message: accessHint}
+	}
+	return nil
 }
 
-// GHTokenExec returns the developer's GitHub token from `gh auth token`.
-func GHTokenExec() (string, error) {
-	out, err := exec.Command("gh", "auth", "token").Output() //nolint:gosec // fixed argv
+// GHTokenExec returns the developer's GitHub token from `gh auth token`,
+// killed when ctx ends.
+func GHTokenExec(ctx context.Context) (string, error) {
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output() //nolint:gosec // fixed argv
 	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			if msg := strings.TrimSpace(string(ee.Stderr)); msg != "" {
+				return "", fmt.Errorf("gh auth token: %w: %s", err, msg)
+			}
+		}
 		return "", fmt.Errorf("gh auth token: %w", err)
 	}
 	tok := strings.TrimSpace(string(out))

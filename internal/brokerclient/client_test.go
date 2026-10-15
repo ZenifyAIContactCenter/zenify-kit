@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -48,7 +50,7 @@ func newClient(url, home string, now *time.Time) *Client {
 	return &Client{
 		URL:     url,
 		Home:    home,
-		GHToken: func() (string, error) { return "test-gh", nil },
+		GHToken: func(context.Context) (string, error) { return "test-gh", nil },
 		HTTP:    http.DefaultClient,
 		Now:     func() time.Time { return *now },
 	}
@@ -139,5 +141,115 @@ func TestPost_APIErrorAndNoSecondRetry(t *testing.T) {
 	}
 	if posts != 2 {
 		t.Fatalf("posts = %d, want exactly 2 (one retry)", posts)
+	}
+}
+
+// A cached JWT is only reused for the broker URL that issued it.
+func TestToken_CacheKeyedByURL(t *testing.T) {
+	var calls1, calls2 int32
+	a, b := fakeBroker(t, &calls1, nil), fakeBroker(t, &calls2, nil)
+	now := t0
+	home := t.TempDir()
+	if _, err := newClient(a.URL, home, &now).Token(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newClient(b.URL, home, &now).Token(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls1 != 1 || calls2 != 1 {
+		t.Fatalf("token calls a=%d b=%d, want 1 1 (no cross-broker cache hit)", calls1, calls2)
+	}
+}
+
+// The default client never follows a redirect, so the GitHub token body is not
+// replayed to the Location host; the 3xx becomes an APIError with a WARP hint.
+func TestToken_RedirectNotFollowed(t *testing.T) {
+	var elsewhere int32
+	other := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { atomic.AddInt32(&elsewhere, 1) }))
+	t.Cleanup(other.Close)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/token", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(srv.Close)
+	now := t0
+	c := newClient(srv.URL, t.TempDir(), &now)
+	c.HTTP = nil // the real redirect policy
+	_, err := c.Token(context.Background())
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.Status != http.StatusTemporaryRedirect || !strings.Contains(ae.Message, "WARP") {
+		t.Fatalf("err = %v, want APIError 307 with a WARP hint", err)
+	}
+	if elsewhere != 0 {
+		t.Fatalf("redirect target got %d requests, want 0", elsewhere)
+	}
+}
+
+func TestToken_NonJSONReplyIsAPIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<html>Cloudflare Access</html>"))
+	}))
+	t.Cleanup(srv.Close)
+	now := t0
+	_, err := newClient(srv.URL, t.TempDir(), &now).Token(context.Background())
+	var ae *APIError
+	if !errors.As(err, &ae) || !strings.Contains(ae.Message, "WARP") {
+		t.Fatalf("err = %v, want APIError with a WARP hint", err)
+	}
+}
+
+func TestToken_BadReplyNotCached(t *testing.T) {
+	for name, body := range map[string]api.TokenResponse{
+		"empty token": {Token: "", ExpiresAt: t0.Add(time.Hour).Format(time.RFC3339)},
+		"bad expiry":  {Token: "jwt", ExpiresAt: "soon"},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_ = json.NewEncoder(w).Encode(body)
+		}))
+		now := t0
+		home := t.TempDir()
+		if _, err := newClient(srv.URL, home, &now).Token(context.Background()); err == nil {
+			t.Errorf("%s: want error", name)
+		}
+		if _, err := os.Stat(filepath.Join(home, ".zenify", "broker", "token.json")); err == nil {
+			t.Errorf("%s: token.json written", name)
+		}
+		srv.Close()
+	}
+}
+
+// A cache write the sandbox denies only warns; the token is still returned.
+func TestToken_CacheWriteFailureWarns(t *testing.T) {
+	var calls int32
+	srv := fakeBroker(t, &calls, nil)
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".zenify"), nil, 0o600); err != nil { // a file where the dir goes
+		t.Fatal(err)
+	}
+	now := t0
+	c := newClient(srv.URL, home, &now)
+	var warn strings.Builder
+	c.Stderr = &warn
+	tok, err := c.Token(context.Background())
+	if err != nil || tok != "jwt-1" {
+		t.Fatalf("tok=%q err=%v, want jwt-1 nil", tok, err)
+	}
+	if !strings.Contains(warn.String(), "not cached") {
+		t.Fatalf("warning = %q", warn.String())
+	}
+}
+
+// GHTokenExec carries gh's stderr; PATH holds only a fake gh.
+func TestGHTokenExec_IncludesStderr(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script fake")
+	}
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\necho 'not logged in to github.com' >&2\nexit 1\n"), 0o700); err != nil { //nolint:gosec // test fake must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	_, err := GHTokenExec(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "not logged in") {
+		t.Fatalf("err = %v, want gh stderr in it", err)
 	}
 }
