@@ -4,9 +4,7 @@ title: Credential dev với zenify env
 
 # Credential dev với `zenify env`
 
-Workspace zenify lấy credential DB, E2E và PostHog qua credential broker, nên bạn không điền các key đó; xem [Dùng credential broker](/guides/broker-client). Trang này mô tả đường không có broker, và các key manifest vẫn khai báo.
-
-Khi manifest không khai báo `broker:`, credential cho tool dev và agent (chuỗi kết nối DB, tài khoản đăng nhập test) nằm trong một file riêng của workspace, không nằm trong khối `env` của Claude settings. [`zenify env`](/reference/cli/zenify_env) quản lý file đó.
+Credential cho tool dev và agent (chuỗi kết nối DB, tài khoản đăng nhập test) nằm trong một file riêng của workspace, không nằm trong khối `env` của Claude settings. [`zenify env`](/reference/cli/zenify_env) quản lý file đó.
 
 ## File nằm ở đâu
 
@@ -22,9 +20,27 @@ Sau `zenify up --apply`, `~/.claude/settings.json` có luật deny `Read(//<work
 # zenify-kit — credential dev. Kit giữ khung; bạn chỉ điền giá trị. Key trống = chưa cấu hình.
 
 # ══ Staging ══
-# URL MySQL của lumi-agent, môi trường staging
-# shared · secret · lumi-agent
-LUMI_MYSQL_URL_STG=
+# Chuỗi kết nối MongoDB cho zenify db-read
+# shared · secret
+MONGO_URL=
+
+# URL MySQL cho zenify db-read (mysql://user:pass@host:port/database)
+# shared · secret
+MYSQL_URL=
+
+# ══ Tooling ══
+# Tên miền (tenant) đăng nhập cho zenify e2e login
+# shared · không secret
+E2E_DOMAIN=
+
+# ══ Production ══
+# MongoDB production, DB 3csoft
+# personal · secret
+MONGO_URL_PRD=
+
+# MySQL production
+# personal · secret
+MYSQL_URL_PRD=
 
 # ══ Custom (ngoài manifest) ══
 # key cá nhân
@@ -47,16 +63,23 @@ Manifest `manifest/repos.yaml` khai từng key gồm tên, mô tả, phạm vi (
 
 | Key | Dùng cho | Phạm vi | Nhóm |
 |---|---|---|---|
+| `MONGO_URL` | `zenify db-read` đọc MongoDB | shared | staging |
+| `MYSQL_URL` | `zenify db-read sql`, `zenify db-read tables` | shared | staging |
+| `E2E_DOMAIN` | tenant đăng nhập của `zenify e2e login` | shared, không phải secret | tooling |
+| `E2E_EMAIL`, `E2E_PASSWORD` | tài khoản đăng nhập của `zenify e2e login` | personal | tooling |
+| `POSTHOG_API_KEY` | key PostHog của bạn | personal | tooling |
+| `MONGO_URL_PRD` | MongoDB production, DB 3csoft | personal | production |
+| `MYSQL_URL_PRD` | MySQL production, cho `zenify db-read --prd sql` và `--prd tables` | personal | production |
+| `AUDIT_MONGO_URL_PRD` | MongoDB `audit_logs` production | personal | production |
+| `REDIS_URL_PRD` | Redis production | personal | production |
 | `LUMI_MYSQL_URL_STG`, `QDRANT_URL_STG`, `LUMI_APP_URL_STG` | MySQL, Qdrant và URL ứng dụng của `lumi-agent` trên staging | shared; `LUMI_APP_URL_STG` không phải secret | staging |
 | `LUMI_MYSQL_URL_PRD`, `QDRANT_URL_PRD` | MySQL và Qdrant của `lumi-agent` trên production | shared | production |
 
 Key của `lumi-agent` có mặt trong `.zenify/.env` của mọi workspace, kể cả workspace không clone repo đó; chỉ người làm trên `lumi-agent` mới điền.
 
-Manifest zenify không còn khai các key `MONGO_URL`, `MYSQL_URL`, `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD`, `POSTHOG_API_KEY`, `MONGO_URL_PRD`, `MYSQL_URL_PRD`, `AUDIT_MONGO_URL_PRD`, `REDIS_URL_PRD`: các credential đó đi qua [credential broker](/guides/broker-client). Một manifest không có `broker:` vẫn khai chúng và `zenify db-read`, `zenify e2e` đọc chúng từ `.zenify/.env` như trước, nên các mục dưới đây về `MYSQL_URL` và `--prd` áp dụng cho manifest kiểu đó.
-
 Bảng này chỉ mô tả kit dùng key để làm gì. Ai cấp key, địa chỉ cụ thể và cách lấy không thuộc về kit, hỏi trong team.
 
-Wizard `zenify up` và form `zenify env` chỉ hỏi các key toàn cục trừ nhóm production (với manifest không có `broker:`: `MONGO_URL`, `MYSQL_URL`, `E2E_*`, `POSTHOG_API_KEY`). Key production, và key của một repo, bạn điền bằng `zenify env set`, chọn trong form `zenify env` hoặc sửa file. `zenify doctor` cũng bỏ qua key production khi báo key nào trống.
+Wizard `zenify up` và form `zenify env` chỉ hỏi các key toàn cục trừ nhóm production: `MONGO_URL`, `MYSQL_URL`, `E2E_*`, `POSTHOG_API_KEY`. Key production, và key của một repo, bạn điền bằng `zenify env set`, chọn trong form `zenify env` hoặc sửa file. `zenify doctor` cũng bỏ qua key production khi báo key nào trống.
 
 ## `MYSQL_URL`
 
@@ -124,7 +147,7 @@ Thiếu một trong hai, kit không xoá gì: key vẫn nằm trong file (ở m�
 `zenify up` không có `--apply` xem trước thay đổi, chỉ in tên key; wizard `zenify up` hiện cùng các dòng này trên màn hình kế hoạch, trước khi hỏi xác nhận:
 
 ```
-env: thêm LUMI_MYSQL_URL_PRD, QDRANT_URL_PRD
+env: thêm MONGO_URL_PRD, AUDIT_MONGO_URL_PRD, REDIS_URL_PRD
 env: xoá OLD_KEY
 env: custom thiếu mô tả OPENROUTER_API_KEY
 ```

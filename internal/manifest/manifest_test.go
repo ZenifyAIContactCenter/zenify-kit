@@ -242,20 +242,25 @@ func TestEmbeddedManifest_EveryKeyDescribed(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := m.AllKeys()
-	if len(keys) != 5 {
-		t.Fatalf("want 5 keys (the lumi ones; the DB/E2E/PostHog keys moved to the broker), got %d", len(keys))
+	if len(keys) != 15 {
+		t.Fatalf("want 15 keys, got %d", len(keys))
 	}
 	names := strings.Join(KeyNames(keys), ",")
-	if strings.Contains(names, "MYSQL_HOST") {
-		t.Fatalf("keys = %s, MYSQL_HOST must not return (FR-12.1)", names)
+	if !strings.Contains(names, "MYSQL_URL") || strings.Contains(names, "MYSQL_HOST") {
+		t.Fatalf("keys = %s, want MYSQL_URL in place of the five MYSQL_* keys (FR-12.1)", names)
 	}
-	notSecret := map[string]bool{"LUMI_APP_URL_STG": true}
+	notSecret := map[string]bool{"E2E_DOMAIN": true, "LUMI_APP_URL_STG": true}
+	personal := map[string]bool{"E2E_EMAIL": true, "E2E_PASSWORD": true, "POSTHOG_API_KEY": true, "MONGO_URL_PRD": true, "MYSQL_URL_PRD": true, "AUDIT_MONGO_URL_PRD": true, "REDIS_URL_PRD": true}
 	for _, k := range keys {
 		if k.Description == "" {
 			t.Errorf("%s: description must be non-empty", k.Name)
 		}
-		if k.Scope != "shared" {
-			t.Errorf("%s: scope %q, want shared", k.Name, k.Scope)
+		wantScope := "shared"
+		if personal[k.Name] {
+			wantScope = "personal"
+		}
+		if k.Scope != wantScope {
+			t.Errorf("%s: scope %q, want %q", k.Name, k.Scope, wantScope)
 		}
 		if k.Secret == notSecret[k.Name] {
 			t.Errorf("%s: secret=%v unexpected", k.Name, k.Secret)
@@ -322,8 +327,9 @@ func TestEmbeddedManifest_Groups(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]string{
-		"LUMI_MYSQL_URL_STG": "staging", "QDRANT_URL_STG": "staging", "LUMI_APP_URL_STG": "staging",
-		"LUMI_MYSQL_URL_PRD": "production", "QDRANT_URL_PRD": "production",
+		"MONGO_URL": "staging", "MYSQL_URL": "staging", "LUMI_MYSQL_URL_STG": "staging", "QDRANT_URL_STG": "staging", "LUMI_APP_URL_STG": "staging",
+		"E2E_DOMAIN": "tooling", "E2E_EMAIL": "tooling", "E2E_PASSWORD": "tooling", "POSTHOG_API_KEY": "tooling",
+		"LUMI_MYSQL_URL_PRD": "production", "QDRANT_URL_PRD": "production", "MONGO_URL_PRD": "production", "MYSQL_URL_PRD": "production", "AUDIT_MONGO_URL_PRD": "production", "REDIS_URL_PRD": "production",
 	}
 	got := map[string]string{}
 	for _, k := range m.AllKeys() {
@@ -369,22 +375,13 @@ func TestManifest_NoBrokerNil(t *testing.T) {
 	}
 }
 
-func TestEmbeddedManifest_HasBrokerNoDBKeys(t *testing.T) {
+// The embedded manifest keeps the broker off until the broker host is live.
+func TestEmbeddedManifest_NoBroker(t *testing.T) {
 	m, err := Load(filepath.Join("..", "..", "manifest", "repos.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Broker == nil || m.Broker.URL == "" {
-		t.Fatalf("Broker = %+v, want a URL", m.Broker)
-	}
-	removed := []string{"MONGO_URL", "MYSQL_URL", "E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD", "POSTHOG_API_KEY", "MONGO_URL_PRD", "MYSQL_URL_PRD", "AUDIT_MONGO_URL_PRD", "REDIS_URL_PRD"}
-	have := map[string]bool{}
-	for _, k := range m.AllKeys() {
-		have[k.Name] = true
-	}
-	for _, n := range removed {
-		if have[n] {
-			t.Errorf("%s must no longer be a manifest key", n)
-		}
+	if m.Broker != nil {
+		t.Fatalf("Broker = %+v, want nil", m.Broker)
 	}
 }
