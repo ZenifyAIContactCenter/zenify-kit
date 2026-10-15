@@ -210,3 +210,22 @@ func TestDesc_CommentedAssignmentIsNotADescription(t *testing.T) {
 		t.Errorf("Desc(K3) = %q, want the prose description", got)
 	}
 }
+
+func TestDelete_RemovesKeyAndItsDescription(t *testing.T) {
+	p := writeFile(t, "# keep me\nA=1\n# desc of B\nB=2\n# OLD=x\nC=3\nB=4\nD=5\n")
+	f, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Delete("B")
+	f.Delete("C")
+	f.Delete("MISSING")
+	if err := f.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
+	want := "# keep me\nA=1\n# OLD=x\nD=5\n"
+	if string(b) != want {
+		t.Fatalf("file =\n%q\nwant\n%q", b, want)
+	}
+}

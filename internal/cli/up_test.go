@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/lock"
@@ -657,4 +658,70 @@ func TestRunApply_SkipsMalformedWorktreeSettings(t *testing.T) {
 	if !strings.Contains(out.String(), badWt) {
 		t.Errorf("output does not name the skipped worktree file:\n%s", out.String())
 	}
+}
+
+// SC-15 / FR-12.3 output: names only, never a value; the conflict line is fixed.
+func TestMergeMySQLURLStep_Output(t *testing.T) {
+	vals := map[string]string{
+		"MYSQL_HOST": "db.fake", "MYSQL_PORT": "3307", "MYSQL_USER": "ro@fake",
+		"MYSQL_PASSWORD": "p@ss:w/rd-fake", "MYSQL_DATABASE": "db_fake",
+	}
+	write := func(path string, extra map[string]string) {
+		f, err := devenv.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for k, v := range vals {
+			f.Set(k, v)
+		}
+		for k, v := range extra {
+			f.Set(k, v)
+		}
+		if err := f.Save(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	noValue := func(out string) {
+		t.Helper()
+		for _, v := range vals {
+			if strings.Contains(out, v) {
+				t.Errorf("output %q carries value %q", out, v)
+			}
+		}
+		if strings.Contains(out, "%40") || strings.Contains(out, "mysql://") {
+			t.Errorf("output %q carries the URL", out)
+		}
+	}
+
+	path := filepath.Join(t.TempDir(), ".zenify", ".env")
+	write(path, nil)
+	var out, errOut bytes.Buffer
+	mergeMySQLURLStep(&out, &errOut, path)
+	if !strings.Contains(out.String(), "MYSQL_URL") || errOut.Len() != 0 {
+		t.Fatalf("out = %q err = %q", out.String(), errOut.String())
+	}
+	noValue(out.String())
+	out.Reset()
+	mergeMySQLURLStep(&out, &errOut, path)
+	if out.Len() != 0 {
+		t.Errorf("second run printed %q, want nothing", out.String())
+	}
+
+	path = filepath.Join(t.TempDir(), ".zenify", ".env")
+	write(path, map[string]string{"MYSQL_URL": "mysql://other:fake-other@h/db"})
+	out.Reset()
+	mergeMySQLURLStep(&out, &errOut, path)
+	if out.String() != "env: bỏ qua MYSQL_URL — khác giá trị ghép từ MYSQL_*, xử lý tay\n" { //znf:allow-lang
+		t.Errorf("conflict out = %q", out.String())
+	}
+
+	path = filepath.Join(t.TempDir(), ".zenify", ".env")
+	delete(vals, "MYSQL_USER")
+	write(path, nil)
+	out.Reset()
+	mergeMySQLURLStep(&out, &errOut, path)
+	if !strings.Contains(out.String(), "MYSQL_USER") {
+		t.Errorf("missing out = %q, want the missing key name", out.String())
+	}
+	noValue(out.String())
 }

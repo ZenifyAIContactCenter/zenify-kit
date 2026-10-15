@@ -135,13 +135,14 @@ func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manife
 			if err != nil {
 				return false, err.Error()
 			}
+			keys := apply.MigrationKeys(manifest.KeyNames(m.AllKeys()))
 			known := map[string]bool{}
-			for _, k := range m.AllKeys() {
-				known[k.Name] = true
+			for _, k := range keys {
+				known[k] = true
 			}
 			// Keys the migration skips by design need a manual fix; `up` would
 			// not move them.
-			preview, err := apply.PreviewSettingsEnv(paths, manifest.KeyNames(m.AllKeys()), path)
+			preview, err := apply.PreviewSettingsEnv(paths, keys, path)
 			if err != nil {
 				return false, err.Error()
 			}

@@ -122,6 +122,25 @@ func (f *File) Set(key, value string) {
 	f.lines = append(f.lines, line)
 }
 
+// Delete removes every assignment to key, each with the description comment
+// directly above it. A commented-out assignment above is not a description
+// and stays. Unknown key is a no-op.
+func (f *File) Delete(key string) {
+	var out []string
+	for _, l := range f.lines {
+		if k, _, ok := parseLine(l); ok && k == key {
+			if n := len(out); n > 0 {
+				if _, isDesc := descLine(out[n-1]); isDesc {
+					out = out[:n-1]
+				}
+			}
+			continue
+		}
+		out = append(out, l)
+	}
+	f.lines = out
+}
+
 // commentedAssign matches comment text that is a commented-out assignment
 // (an old value, possibly a secret), never a description. No space before "="
 // so prose like "rotate = monthly" stays a description.

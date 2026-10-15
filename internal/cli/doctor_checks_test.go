@@ -385,3 +385,25 @@ func TestDoctor_SettingsEnv_MalformedWorktreeNamed(t *testing.T) {
 		t.Errorf("want both the leftover and the skipped worktree file named; ok=%v detail=%q", ok, detail)
 	}
 }
+
+// FR-12: the five legacy MYSQL_* names left the manifest but `up --apply`
+// still moves them, so doctor points at `up --apply`, not a manual fix.
+func TestDoctor_LeftoverSettingsEnv_LegacyMySQLMovable(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MYSQL_URL", Secret: true}}}
+	p := filepath.Join(ws, ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`{"env":{"MYSQL_PASSWORD":"fake-legacy-pw"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, "MYSQL_PASSWORD in "+p+" — run `zenify up --apply`") {
+		t.Fatalf("legacy key must be movable; ok=%v detail=%q", ok, detail)
+	}
+	if strings.Contains(detail, "fake-legacy-pw") {
+		t.Errorf("detail carries a value: %q", detail)
+	}
+}
