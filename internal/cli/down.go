@@ -129,6 +129,14 @@ func newDownCmd() *cobra.Command {
 				case removedSbx > 0:
 					u.Step(ui.StatusOK, "sandbox", fmt.Sprintf("gỡ %d lệnh kit khỏi sandbox.excludedCommands", removedSbx)) //znf:allow-lang
 				}
+				// This workspace's .zenify/.env deny rule (other workspaces' stay).
+				removedDeny, derr := apply.RemoveKitDeny(home, workspace, dryRun)
+				switch {
+				case derr != nil:
+					u.Step(ui.StatusWarn, "deny", fmt.Sprintf("bỏ qua (%v)", derr)) //znf:allow-lang
+				case removedDeny > 0:
+					u.Step(ui.StatusOK, "deny", fmt.Sprintf("gỡ %d luật deny .zenify/.env của workspace khỏi ~/.claude/settings.json", removedDeny)) //znf:allow-lang
+				}
 			}
 
 			// 2 + 3. Each repo: exclude line + owned settings skeleton.

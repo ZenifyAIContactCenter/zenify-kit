@@ -62,8 +62,7 @@ func TestApply_PerRepoPromote_SavesManifestEachRepo(t *testing.T) {
 	plans := []reconcile.RepoPlan{mkWirePlan(t, ws, "repoA"), mkWirePlan(t, ws, "repoB")}
 
 	results, err := Apply(plans, Options{
-		Workspace: ws, SecretKeys: []string{"MONGO_URL"},
-		Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+		Workspace: ws, Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
 		Now: func() int64 { return 1 },
 	}, nil, nil)
 	if err != nil {
@@ -95,8 +94,7 @@ func TestApply_PerRepoRestore_ScopedToFailedRepo(t *testing.T) {
 	plans := []reconcile.RepoPlan{mkWirePlan(t, ws, "repoA"), mkWirePlan(t, ws, "repoB")}
 
 	results, err := Apply(plans, Options{
-		Workspace: ws, SecretKeys: []string{"MONGO_URL"},
-		Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+		Workspace: ws, Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
 		Now: func() int64 { return 2 },
 		VerifyRepoFn: func(repoDir string, wrote []string) error {
 			if strings.HasSuffix(repoDir, "repoB") {
@@ -143,8 +141,7 @@ func TestApply_CrashSafe_ManifestDurableForPromotedRepo(t *testing.T) {
 
 	// repo2 fails → simulates "interrupted after repo1 promoted". repo1 must already be durable.
 	_, err := Apply(plans, Options{
-		Workspace: ws, SecretKeys: []string{"MONGO_URL"},
-		Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
+		Workspace: ws, Owned: owned, SnapshotRoot: snapRoot, ManifestPath: manifestPath,
 		Now: func() int64 { return 3 },
 		VerifyRepoFn: func(repoDir string, wrote []string) error {
 			if strings.HasSuffix(repoDir, "repo2") {
@@ -246,7 +243,8 @@ func TestApply_Wire_PreservesExistingSettings(t *testing.T) {
 	}
 }
 
-func TestApply_Wire_SeedsSecretKeyPlaceholders(t *testing.T) {
+// a created skeleton carries no secret-key placeholders.
+func TestApply_Wire_SeedsEmptyEnvSkeleton(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	initClonedRepo(t, repo)
@@ -254,22 +252,15 @@ func TestApply_Wire_SeedsSecretKeyPlaceholders(t *testing.T) {
 	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
 	_, err := Apply(
 		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}},
-		Options{Workspace: ws, Owned: owned, SecretKeys: []string{"MONGO_URL", "E2E_EMAIL"},
-			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc"}}},
+		Options{Workspace: ws, Owned: owned,
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}},
 		&fakeGH{}, &fakeGit{},
 	)
 	if err != nil {
 		t.Fatalf("wire: %v", err)
 	}
-	env := readEnv(t, settingsPath)
-	for _, k := range []string{"MONGO_URL", "E2E_EMAIL"} {
-		v, ok := env[k]
-		if !ok {
-			t.Errorf("seeded env missing key %q:\n%v", k, env)
-		}
-		if v != "" {
-			t.Errorf("placeholder %q must be empty, got %q (values are never distributed)", k, v)
-		}
+	if env := readEnv(t, settingsPath); len(env) != 0 {
+		t.Errorf("skeleton env must be empty, got %v", env)
 	}
 	// A file the kit created in full is recorded for drift-tracking.
 	if _, ok := owned.Get(settingsPath); !ok {
@@ -277,82 +268,29 @@ func TestApply_Wire_SeedsSecretKeyPlaceholders(t *testing.T) {
 	}
 }
 
+// an existing settings file gains no placeholder keys.
 func TestApply_Wire_MergesMissingSecretKeys(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	initClonedRepo(t, repo)
-	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
-	// MONGO_URL already has a value; custom is an unrelated top-level field.
-	if err := os.WriteFile(settingsPath, []byte(`{"env":{"MONGO_URL":"keep-me"},"custom":true}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	body := `{"env":{"MONGO_URL":"keep-me"},"custom":true}`
+	settingsPath := writeRepoSettings(t, repo, body)
 	owned := &managed.Manifest{}
 	_, err := Apply(
 		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}},
-		Options{Workspace: ws, Owned: owned, SecretKeys: []string{"MONGO_URL", "MYSQL_HOST"},
-			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc"}}},
+		Options{Workspace: ws, Owned: owned,
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "MYSQL_HOST", Secret: true}}}}},
 		&fakeGH{}, &fakeGit{},
 	)
 	if err != nil {
 		t.Fatalf("wire: %v", err)
 	}
-	env := readEnv(t, settingsPath)
-	if env["MONGO_URL"] != "keep-me" {
-		t.Errorf("existing value must be preserved, MONGO_URL = %q, want keep-me", env["MONGO_URL"])
+	if got, _ := os.ReadFile(settingsPath); string(got) != body { //nolint:gosec // G304 -- test temp path
+		t.Errorf("existing settings must be untouched, no placeholder added:\n%s", got)
 	}
-	if v, ok := env["MYSQL_HOST"]; !ok || v != "" {
-		t.Errorf("missing key must be added as empty placeholder, MYSQL_HOST = %q ok=%v", v, ok)
-	}
-	// Unrelated top-level fields survive the merge.
-	var root map[string]any
-	b, _ := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
-	if err := json.Unmarshal(b, &root); err != nil {
-		t.Fatalf("merged settings not valid JSON: %v", err)
-	}
-	if root["custom"] != true {
-		t.Errorf("unrelated top-level field lost: %v", root)
-	}
-	// The kit does not own a pre-existing file, so a merge must not record it.
+	// The kit does not own a pre-existing file.
 	if _, ok := owned.Get(settingsPath); ok {
-		t.Errorf("a merged (pre-existing) settings file must NOT be recorded as kit-owned")
-	}
-}
-
-func TestApply_Wire_MergePreservesValueBytes_NoHTMLEscape(t *testing.T) {
-	ws := t.TempDir()
-	repo := filepath.Join(ws, "svc")
-	initClonedRepo(t, repo)
-	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	settingsPath := filepath.Join(repo, ".claude", "settings.local.json")
-	// A realistic Mongo URL: option separator "&" must survive the merge verbatim.
-	mongo := "mongodb://h:27017/db?replicaSet=rs0&authSource=admin"
-	if err := os.WriteFile(settingsPath, []byte(`{"env":{"MONGO_URL":"`+mongo+`"}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := Apply(
-		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}},
-		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL", "MYSQL_HOST"},
-			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc"}}},
-		&fakeGH{}, &fakeGit{},
-	)
-	if err != nil {
-		t.Fatalf("wire: %v", err)
-	}
-	raw, _ := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own config/workspace state, not externally-tainted input
-	if !strings.Contains(string(raw), "&authSource") {
-		t.Errorf("literal & must be preserved (no HTML-escape):\n%s", raw)
-	}
-	if strings.Contains(string(raw), `\u0026`) {
-		t.Errorf("value bytes were HTML-escaped to the \\u0026 form, corrupting the dev's value:\n%s", raw)
-	}
-	// And the decoded value is still exactly what the dev wrote.
-	if got := readEnv(t, settingsPath)["MONGO_URL"]; got != mongo {
-		t.Errorf("MONGO_URL = %q, want %q", got, mongo)
+		t.Errorf("a pre-existing settings file must NOT be recorded as kit-owned")
 	}
 }
 
@@ -370,8 +308,7 @@ func TestApply_Wire_InvalidExistingSettings_SurfacesError(t *testing.T) {
 	}
 	res, err := Apply(
 		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}},
-		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
-			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc"}}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc"}}},
 		&fakeGH{}, &fakeGit{},
 	)
 	if err != nil {
@@ -547,44 +484,26 @@ func writeRepoSettings(t *testing.T, repo, body string) string {
 	return p
 }
 
-func TestKeysFor_GlobalThenRepo_Deduped(t *testing.T) {
-	opts := Options{SecretKeys: []string{"MONGO_URL", "X"},
-		RepoByName: map[string]manifest.Repo{"r": {Name: "r", SecretKeys: []string{"X", "R_URL"}}}}
-	got := keysFor(opts, "r")
-	want := []string{"MONGO_URL", "X", "R_URL"}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("keysFor = %v, want %v", got, want)
-	}
-	if strings.Join(keysFor(opts, "other"), ",") != "MONGO_URL,X" {
-		t.Fatalf("repo without keys must get the global list only")
-	}
-}
-
-// SC-6: an OK repo missing a repo key gains it; existing values survive.
-func TestApply_OK_MergesMissingRepoKeys(t *testing.T) {
+// an OK repo missing manifest keys stays skipped and untouched.
+func TestApply_OK_MissingKeysStaysSkipped(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "lumi")
-	p := writeRepoSettings(t, repo, `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`)
+	body := `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`
+	p := writeRepoSettings(t, repo, body)
 	res, err := Apply(
 		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
-		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
-			RepoByName: map[string]manifest.Repo{"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}}}},
+		Options{Workspace: ws, Owned: &managed.Manifest{},
+			RepoByName: map[string]manifest.Repo{"lumi-agent": {Name: "lumi-agent", SecretKeys: []manifest.SecretKey{{Name: "LUMI_MYSQL_URL_STG", Secret: true}, {Name: "QDRANT_URL_STG", Secret: true}}}}},
 		&fakeGH{}, &fakeGit{},
 	)
 	if err != nil || res[0].Err != nil {
 		t.Fatalf("Apply: %v / %v", err, res[0].Err)
 	}
-	env := readEnv(t, p)
-	if env["LUMI_MYSQL_URL_STG"] != "x" {
-		t.Errorf("existing value changed: %q", env["LUMI_MYSQL_URL_STG"])
+	if !res[0].Skipped {
+		t.Errorf("want skipped, got Action=%q", res[0].Action)
 	}
-	for _, k := range []string{"QDRANT_URL_STG", "MONGO_URL"} {
-		if v, ok := env[k]; !ok || v != "" {
-			t.Errorf("%s = %q ok=%v, want empty placeholder", k, v, ok)
-		}
-	}
-	if res[0].Skipped || res[0].Action != "ok (settings +2 key)" {
-		t.Errorf("Skipped=%v Action=%q, want false / ok (settings +2 key)", res[0].Skipped, res[0].Action)
+	if got, _ := os.ReadFile(p); string(got) != body { //nolint:gosec // G304 -- test temp path
+		t.Errorf("settings rewritten: %s", got)
 	}
 }
 
@@ -596,8 +515,7 @@ func TestApply_OK_NothingMissingStaysSkipped(t *testing.T) {
 	p := writeRepoSettings(t, repo, body)
 	res, _ := Apply(
 		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}},
-		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
-			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc"}}},
+		Options{Workspace: ws, Owned: &managed.Manifest{}, RepoByName: map[string]manifest.Repo{"svc": {Name: "svc"}}},
 		&fakeGH{}, &fakeGit{},
 	)
 	if !res[0].Skipped {
@@ -609,49 +527,25 @@ func TestApply_OK_NothingMissingStaysSkipped(t *testing.T) {
 	}
 }
 
-// SC-7: a repo without its own keys never receives another repo's keys.
-func TestApply_OK_OtherRepoKeysDoNotLeak(t *testing.T) {
-	ws := t.TempDir()
-	repo := filepath.Join(ws, "be")
-	p := writeRepoSettings(t, repo, `{"env":{}}`)
-	_, _ = Apply(
-		[]reconcile.RepoPlan{{Name: "be", State: reconcile.OK, Path: "be"}},
-		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
-			RepoByName: map[string]manifest.Repo{
-				"be":         {Name: "be"},
-				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG"}},
-			}},
-		&fakeGH{}, &fakeGit{},
-	)
-	for k := range readEnv(t, p) {
-		if strings.HasPrefix(k, "LUMI_") {
-			t.Errorf("be received lumi key %s", k)
-		}
-	}
-}
-
-// FR-4.4: Adopt merges missing keys, keeps values, still records the file.
-func TestApply_Adopt_MergesMissingRepoKeys(t *testing.T) {
+// Adopt adds no placeholder, keeps the file, still records it.
+func TestApply_Adopt_AddsNoPlaceholders(t *testing.T) {
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	initClonedRepo(t, repo)
-	p := writeRepoSettings(t, repo, `{"env":{"SECRET":"live-value"}}`)
+	body := `{"env":{"SECRET":"live-value"}}`
+	p := writeRepoSettings(t, repo, body)
 	owned := &managed.Manifest{}
 	res, err := Apply(
 		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Adopt, Path: "svc"}},
 		Options{Workspace: ws, Owned: owned,
-			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc", SecretKeys: []string{"SVC_URL"}}}},
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}},
 		&fakeGH{}, &fakeGit{},
 	)
 	if err != nil || res[0].Err != nil {
 		t.Fatalf("Apply: %v / %v", err, res[0].Err)
 	}
-	env := readEnv(t, p)
-	if env["SECRET"] != "live-value" {
-		t.Errorf("value changed: %q", env["SECRET"])
-	}
-	if v, ok := env["SVC_URL"]; !ok || v != "" {
-		t.Errorf("SVC_URL = %q ok=%v", v, ok)
+	if got, _ := os.ReadFile(p); string(got) != body { //nolint:gosec // G304 -- test temp path
+		t.Errorf("adopt modified settings: %s", got)
 	}
 	if _, ok := owned.Get(p); !ok {
 		t.Errorf("adopt must still record the settings file")
@@ -661,78 +555,39 @@ func TestApply_Adopt_MergesMissingRepoKeys(t *testing.T) {
 	}
 }
 
-// FR-9a/b: an OK repo with missing keys goes through the same per-repo
-// transaction as Wire/Adopt when SnapshotRoot is set (as it always is from
-// internal/cli/up.go). A verify failure on that path must revert the merged
-// keys, not just skip promoting them.
-func TestApply_OK_MergesMissingRepoKeys_RevertsOnVerifyFailure(t *testing.T) {
+// A settings.local.json without an "env" key passes verify on adopt; only a
+// present non-object "env" fails.
+func TestApply_Adopt_NoEnvKeyPassesVerify(t *testing.T) {
 	ws := t.TempDir()
-	snapRoot := filepath.Join(t.TempDir(), "snaps")
-	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
-	repo := filepath.Join(ws, "lumi")
-	body := `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`
-	p := writeRepoSettings(t, repo, body)
-	owned := &managed.Manifest{}
-
+	repo := filepath.Join(ws, "svc")
+	initClonedRepo(t, repo)
+	body := `{"permissions":{}}`
+	writeRepoSettings(t, repo, body)
 	res, err := Apply(
-		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
-		Options{Workspace: ws, Owned: owned, SecretKeys: []string{"MONGO_URL"},
-			RepoByName: map[string]manifest.Repo{
-				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}},
-			},
-			SnapshotRoot: snapRoot, ManifestPath: manifestPath,
-			Now: func() int64 { return 9 },
-			VerifyRepoFn: func(repoDir string, wrote []string) error {
-				return fmt.Errorf("forced verify fail")
-			},
-		},
-		&fakeGH{}, &fakeGit{},
-	)
-	if err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	if res[0].Err == nil {
-		t.Fatalf("want Err from forced verify failure")
-	}
-	got, readErr := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
-	if readErr != nil {
-		t.Fatalf("read settings: %v", readErr)
-	}
-	if string(got) != body {
-		t.Errorf("settings not reverted after verify failure: %s", got)
-	}
-	if _, ok := owned.Get(p); ok {
-		t.Errorf("manifest must not carry an entry for the reverted repo")
-	}
-}
-
-// Success case on the same transaction path: with verify passing, the merged
-// keys are present afterward (cheap companion to the revert case above).
-func TestApply_OK_MergesMissingRepoKeys_TransactionSucceeds(t *testing.T) {
-	ws := t.TempDir()
-	snapRoot := filepath.Join(t.TempDir(), "snaps")
-	manifestPath := filepath.Join(t.TempDir(), "manifest.json")
-	repo := filepath.Join(ws, "lumi")
-	p := writeRepoSettings(t, repo, `{"env":{"LUMI_MYSQL_URL_STG":"x"}}`)
-
-	res, err := Apply(
-		[]reconcile.RepoPlan{{Name: "lumi-agent", State: reconcile.OK, Path: "lumi"}},
-		Options{Workspace: ws, Owned: &managed.Manifest{}, SecretKeys: []string{"MONGO_URL"},
-			RepoByName: map[string]manifest.Repo{
-				"lumi-agent": {Name: "lumi-agent", SecretKeys: []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG"}},
-			},
-			SnapshotRoot: snapRoot, ManifestPath: manifestPath,
-			Now: func() int64 { return 10 },
-		},
+		[]reconcile.RepoPlan{{Name: "svc", State: reconcile.Adopt, Path: "svc"}},
+		Options{Workspace: ws, Owned: &managed.Manifest{},
+			RepoByName: map[string]manifest.Repo{"svc": {Name: "svc", Path: "svc"}}},
 		&fakeGH{}, &fakeGit{},
 	)
 	if err != nil || res[0].Err != nil {
 		t.Fatalf("Apply: %v / %v", err, res[0].Err)
 	}
-	env := readEnv(t, p)
-	for _, k := range []string{"LUMI_MYSQL_URL_STG", "QDRANT_URL_STG", "MONGO_URL"} {
-		if _, ok := env[k]; !ok {
-			t.Errorf("%s missing after transaction succeeded", k)
+}
+
+func TestDefaultVerifyRepo_EnvShape(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "settings.local.json")
+	for body, wantErr := range map[string]bool{
+		`{"permissions":{}}`: false,
+		`{"env":{}}`:         false,
+		`{"env":"x"}`:        true,
+		`{"env":null}`:       true,
+	} {
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := defaultVerifyRepo([]string{p}); (err != nil) != wantErr {
+			t.Errorf("%s: err=%v, wantErr=%v", body, err, wantErr)
 		}
 	}
 }

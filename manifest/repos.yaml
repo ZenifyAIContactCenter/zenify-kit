@@ -2,22 +2,46 @@
 # Versioned in the kit; adding a repo is one commit, teammates re-run to pick up the delta.
 # `path` is relative to the workspace root (team layout: `repos/<name>`, see `zenify migrate`) and overridable per-dev via a local overlay.
 org: ZenifyAIContactCenter
-# Env keys the kit scaffolds into each repo's .claude/settings.local.json as
-# EMPTY placeholders (FR-065). Only the key NAMES are versioned here — a secret
-# VALUE is never stored, distributed, or read by the kit (FR-041). A developer
-# fills the values locally; an existing settings file keeps its values and only
-# gains the keys it is missing.
+# Env keys a developer keeps in <workspace>/.zenify/.env (`zenify env`). Only
+# the key NAMES are versioned here — a secret VALUE is never stored or
+# distributed by the kit (FR-041). `zenify up --apply` moves these keys out of
+# any settings.local.json env block into .zenify/.env. Each key carries
+# description/scope/secret metadata (still no values).
 secretKeys:
-  - MONGO_URL
-  - MYSQL_HOST
-  - MYSQL_PORT
-  - MYSQL_USER
-  - MYSQL_PASSWORD
-  - MYSQL_DATABASE
-  - E2E_DOMAIN
-  - E2E_EMAIL
-  - E2E_PASSWORD
-  - POSTHOG_API_KEY
+  - name: MONGO_URL
+    description: "Chuỗi kết nối MongoDB cho zenify db-read"
+    scope: shared
+  - name: MYSQL_HOST
+    description: "Host MySQL cho zenify db-read"
+    scope: shared
+    secret: false
+  - name: MYSQL_PORT
+    description: "Cổng MySQL cho zenify db-read"
+    scope: shared
+    secret: false
+  - name: MYSQL_USER
+    description: "Tài khoản MySQL cho zenify db-read"
+    scope: shared
+  - name: MYSQL_PASSWORD
+    description: "Mật khẩu MySQL cho zenify db-read"
+    scope: shared
+  - name: MYSQL_DATABASE
+    description: "Tên database MySQL cho zenify db-read"
+    scope: shared
+    secret: false
+  - name: E2E_DOMAIN
+    description: "Tên miền (tenant) đăng nhập cho zenify e2e login"
+    scope: shared
+    secret: false
+  - name: E2E_EMAIL
+    description: "Email đăng nhập cho zenify e2e login"
+    scope: personal
+  - name: E2E_PASSWORD
+    description: "Mật khẩu đăng nhập cho zenify e2e login"
+    scope: personal
+  - name: POSTHOG_API_KEY
+    description: "Khoá API PostHog"
+    scope: personal
 repos:
   - name: contact-center-be
     url: git@github.com:ZenifyAIContactCenter/contact-center-be.git
@@ -56,12 +80,25 @@ repos:
     tags: [ai]
     # Repo-scoped: only a developer who clones lumi-agent gets these placeholders.
     secretKeys:
-      - LUMI_MYSQL_URL_STG
-      - LUMI_MYSQL_URL_PRD
-      - QDRANT_URL_STG
-      - QDRANT_URL_PRD
-      - LUMI_APP_URL_STG
-      - OPENROUTER_API_KEY
+      - name: LUMI_MYSQL_URL_STG
+        description: "URL MySQL của lumi-agent, môi trường staging"
+        scope: shared
+      - name: LUMI_MYSQL_URL_PRD
+        description: "URL MySQL của lumi-agent, môi trường production"
+        scope: shared
+      - name: QDRANT_URL_STG
+        description: "URL Qdrant của lumi-agent, môi trường staging"
+        scope: shared
+      - name: QDRANT_URL_PRD
+        description: "URL Qdrant của lumi-agent, môi trường production"
+        scope: shared
+      - name: LUMI_APP_URL_STG
+        description: "URL ứng dụng lumi-agent, môi trường staging"
+        scope: shared
+        secret: false
+      - name: OPENROUTER_API_KEY
+        description: "Khoá API OpenRouter"
+        scope: personal
   - name: message-hub-be
     url: git@github.com:ZenifyAIContactCenter/message-hub-be.git
     path: repos/message-hub-be

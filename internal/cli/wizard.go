@@ -12,6 +12,10 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 )
 
+// wizardSecretKeys is what the wizard asks for at onboarding: the manifest's
+// global keys only. Repo-scoped keys are added later with `zenify env` (FR-7.3).
+func wizardSecretKeys(m *manifest.Manifest) []manifest.SecretKey { return m.SecretKeys }
+
 // runWizard drives the interactive onboarding wizard (internal/tui) over the
 // engine's plan/apply callbacks. The TUI holds no reconcile logic itself —
 // PlanFn returns the plan the same way the headless dry-run path builds it, and
@@ -25,7 +29,7 @@ func runWizard(w io.Writer, m *manifest.Manifest, workspace string, sources map[
 		Workspace:  workspace,
 		Accessible: false,
 		PlanFooter: planFooterRows(workspace),
-		SecretKeys: []string{"MONGO_URL", "E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD"},
+		SecretKeys: wizardSecretKeys(m),
 		PlanFn: func() ([]reconcile.RepoPlan, error) {
 			// Already authenticated at entry: the caller's pre-wizard buildPlan
 			// produced this exact plan (same inputs, same auth), and loginStep

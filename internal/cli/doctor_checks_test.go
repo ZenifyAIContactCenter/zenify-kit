@@ -2,9 +2,86 @@ package cli
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 )
+
+func noManifest() *manifest.Manifest { return nil }
+
+func fixedManifest(m *manifest.Manifest) func() *manifest.Manifest {
+	return func() *manifest.Manifest { return m }
+}
+
+func writeEnv(t *testing.T, body string, mode os.FileMode) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(p, []byte(body), mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(p, mode); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// FR-8.1: a global manifest key missing from env and file is named; a repo-only key is not.
+func TestDoctor_MissingManifestKeys(t *testing.T) {
+	m := &manifest.Manifest{
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}, {Name: "E2E_EMAIL", Secret: true}, {Name: "POSTHOG_API_KEY", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "lumi-agent", SecretKeys: []manifest.SecretKey{{Name: "OPENROUTER_API_KEY", Secret: true}}}},
+	}
+	p := writeEnv(t, "MONGO_URL='mongodb://fake'\nE2E_EMAIL=a@b.c\n", 0o600)
+	ok, detail := secretPresenceCheck(func(string) string { return "" }, func() string { return p }, fixedManifest(m)).Run()
+	if !ok {
+		t.Fatalf("MONGO_URL present, want ok; detail=%q", detail)
+	}
+	for _, want := range []string{"MONGO_URL=present", "E2E_EMAIL=present", "POSTHOG_API_KEY=absent"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail %q lacks %q", detail, want)
+		}
+	}
+	if strings.Contains(detail, "OPENROUTER_API_KEY") {
+		t.Errorf("repo-scoped key must not be reported: %q", detail)
+	}
+}
+
+// SC-10 / FR-8.2: a local key (not in the manifest) with no description line is named.
+func TestDoctor_LocalKeyWithoutDesc(t *testing.T) {
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}}}
+	p := writeEnv(t, "MONGO_URL=x\n# my own token\nDESCRIBED_KEY=1\nBARE_KEY=2\n", 0o600)
+	ok, detail := envFileCheck(func() string { return p }, fixedManifest(m), "linux").Run()
+	if ok {
+		t.Fatalf("a local key without description must flag; detail=%q", detail)
+	}
+	if !strings.Contains(detail, "BARE_KEY") {
+		t.Errorf("detail should name BARE_KEY: %q", detail)
+	}
+	if strings.Contains(detail, "DESCRIBED_KEY") || strings.Contains(detail, "MONGO_URL") {
+		t.Errorf("described / manifest keys must not be flagged: %q", detail)
+	}
+}
+
+// FR-8.4: a file readable by group/other is flagged.
+func TestDoctor_EnvFilePerm(t *testing.T) {
+	m := &manifest.Manifest{SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}}}
+	wide := writeEnv(t, "MONGO_URL=x\n", 0o644)
+	ok, detail := envFileCheck(func() string { return wide }, fixedManifest(m), "linux").Run()
+	if ok || !strings.Contains(detail, "0644") {
+		t.Fatalf("mode 0644 must flag; ok=%v detail=%q", ok, detail)
+	}
+	tight := writeEnv(t, "MONGO_URL=x\n", 0o600)
+	if ok, detail := envFileCheck(func() string { return tight }, fixedManifest(m), "linux").Run(); !ok {
+		t.Fatalf("mode 0600 must pass; detail=%q", detail)
+	}
+	// Windows has no POSIX mode bits: the 0600 check is skipped.
+	if ok, detail := envFileCheck(func() string { return wide }, fixedManifest(m), "windows").Run(); !ok || strings.Contains(detail, "0644") {
+		t.Fatalf("windows must skip the mode check; ok=%v detail=%q", ok, detail)
+	}
+}
 
 func TestSecretPresenceNamesOnlyNeverLeaksValue(t *testing.T) {
 	getenv := func(k string) string {
@@ -13,7 +90,7 @@ func TestSecretPresenceNamesOnlyNeverLeaksValue(t *testing.T) {
 		}
 		return ""
 	}
-	c := secretPresenceCheck(getenv, func() string { return "/nonexistent/settings.local.json" })
+	c := secretPresenceCheck(getenv, func() string { return "/nonexistent/.env" }, noManifest)
 	ok, detail := c.Run()
 	if strings.Contains(detail, "secretpass") || strings.Contains(detail, "10.0.0.1") || strings.Contains(detail, "mongodb://") {
 		t.Fatalf("FR-041 VIOLATION: secret value leaked into detail: %q", detail)
@@ -25,7 +102,7 @@ func TestSecretPresenceNamesOnlyNeverLeaksValue(t *testing.T) {
 }
 
 func TestSecretPresenceReportsAbsent(t *testing.T) {
-	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "/nonexistent/settings.local.json" })
+	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "/nonexistent/.env" }, noManifest)
 	ok, detail := c.Run()
 	if ok {
 		t.Fatal("no MONGO_URL anywhere → check should be not-ok")
@@ -36,7 +113,7 @@ func TestSecretPresenceReportsAbsent(t *testing.T) {
 }
 
 // F3: an exported MONGO_URL must count even when no workspace resolves
-// (settingsPath returns "") — LoadCreds reads env first regardless of path.
+// (envPath returns "") — LoadCreds reads env first regardless of path.
 func TestSecretPresenceCheck_EnvMongoUrlCountsWithNoWorkspace(t *testing.T) {
 	getenv := func(k string) string {
 		if k == "MONGO_URL" {
@@ -44,7 +121,7 @@ func TestSecretPresenceCheck_EnvMongoUrlCountsWithNoWorkspace(t *testing.T) {
 		}
 		return ""
 	}
-	c := secretPresenceCheck(getenv, func() string { return "" })
+	c := secretPresenceCheck(getenv, func() string { return "" }, noManifest)
 	ok, detail := c.Run()
 	if !ok {
 		t.Fatalf("MONGO_URL is set in env, ok should be true; detail=%q", detail)
@@ -58,7 +135,7 @@ func TestSecretPresenceCheck_EnvMongoUrlCountsWithNoWorkspace(t *testing.T) {
 // explains why via the no-workspace hint (previously an early return with a
 // fixed message that ignored env entirely).
 func TestSecretPresenceCheck_NoEnvNoWorkspace(t *testing.T) {
-	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "" })
+	c := secretPresenceCheck(func(string) string { return "" }, func() string { return "" }, noManifest)
 	ok, detail := c.Run()
 	if ok {
 		t.Fatal("no MONGO_URL and no workspace → check should be not-ok")
@@ -166,5 +243,145 @@ func TestKitPermissionsCheck_MissingThenFixed(t *testing.T) {
 	}
 	if ok, detail := c.Run(); !ok {
 		t.Fatalf("after Fix the check should pass, detail=%q", detail)
+	}
+}
+
+// FR-8.3: a manifest key still holding a value in a settings env block is named
+// with its file; a non-manifest key and empty placeholders are not. No values.
+func TestDoctor_LeftoverSettingsEnv(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}},
+	}
+	write := func(p, body string) {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wsSettings := filepath.Join(ws, ".claude", "settings.local.json")
+	repoSettings := filepath.Join(ws, "svc", ".claude", "settings.local.json")
+	write(wsSettings, `{"env":{"MONGO_URL":"fake-value-1","OTHER":"o"}}`)
+	write(repoSettings, `{"env":{"SVC_URL":"fake-value-2","MONGO_URL":""}}`)
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok {
+		t.Fatalf("leftover keys must flag; detail=%q", detail)
+	}
+	for _, want := range []string{"MONGO_URL", wsSettings, "SVC_URL", repoSettings} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail %q lacks %q", detail, want)
+		}
+	}
+	for _, bad := range []string{"OTHER", "fake-value"} {
+		if strings.Contains(detail, bad) {
+			t.Errorf("detail %q must not contain %q", detail, bad)
+		}
+	}
+
+	write(wsSettings, `{"env":{"OTHER":"o"}}`)
+	write(repoSettings, `{"env":{}}`)
+	if ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run(); !ok {
+		t.Fatalf("clean settings must pass; detail=%q", detail)
+	}
+}
+
+// FR-8.3: a worktree's copy of the repo settings.local.json is checked too.
+func TestDoctor_LeftoverSettingsEnv_Worktree(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "svc", Path: "svc"}},
+	}
+	wt := filepath.Join(ws, "svc", ".worktrees", "feat-x", ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(wt), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(wt, []byte(`{"env":{"MONGO_URL":"fake-wt-value"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, "MONGO_URL in "+wt) {
+		t.Fatalf("worktree leftover must flag with its path; ok=%v detail=%q", ok, detail)
+	}
+	if strings.Contains(detail, "fake-wt-value") {
+		t.Errorf("detail carries a value: %q", detail)
+	}
+}
+
+// Keys migration skips by design (conflicting values, a non-string or
+// multi-line value) get "fix by hand", not the `zenify up --apply` hint.
+func TestDoctor_LeftoverSettingsEnv_ManualFix(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}, {Name: "PORTX", Secret: true}, {Name: "MOVE_ME", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "svc", Path: "svc"}},
+	}
+	write := func(p, body string) {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(ws, ".claude", "settings.local.json"), `{"env":{"MONGO_URL":"fake-a","PORTX":123}}`)
+	write(filepath.Join(ws, "svc", ".claude", "settings.local.json"), `{"env":{"MONGO_URL":"fake-b"}}`)
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, "fix by hand") {
+		t.Fatalf("manual leftovers must say fix by hand; ok=%v detail=%q", ok, detail)
+	}
+	if strings.Contains(detail, "zenify up --apply") {
+		t.Errorf("no key here is movable, the up hint is wrong: %q", detail)
+	}
+	for _, want := range []string{"MONGO_URL", "PORTX"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail %q lacks %q", detail, want)
+		}
+	}
+
+	write(filepath.Join(ws, "svc", ".claude", "settings.local.json"), `{"env":{"MOVE_ME":"fake-c"}}`)
+	write(filepath.Join(ws, ".claude", "settings.local.json"), `{"env":{"PORTX":123}}`)
+	_, detail = settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	up := strings.Index(detail, "zenify up --apply")
+	hand := strings.Index(detail, "fix by hand")
+	if up < 0 || hand < 0 {
+		t.Fatalf("want both hints: %q", detail)
+	}
+	clauses := strings.SplitN(detail, "; ", 2)
+	if len(clauses) != 2 || !strings.Contains(clauses[0], "MOVE_ME") || !strings.Contains(clauses[0], "zenify up --apply") ||
+		!strings.Contains(clauses[1], "PORTX") || !strings.Contains(clauses[1], "fix by hand") {
+		t.Errorf("hints attached to the wrong keys: %q", detail)
+	}
+	if strings.Contains(detail, "fake-") {
+		t.Errorf("detail carries a value: %q", detail)
+	}
+}
+
+// A worktree copy that does not load is named, not a hard error for the check.
+func TestDoctor_SettingsEnv_MalformedWorktreeNamed(t *testing.T) {
+	ws := t.TempDir()
+	m := &manifest.Manifest{Repos: []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
+	repoSettings := filepath.Join(ws, "svc", ".claude", "settings.local.json")
+	badWt := filepath.Join(ws, "svc", ".worktrees", "feat-x", ".claude", "settings.local.json")
+	for p, body := range map[string]string{repoSettings: `{"env":{"SVC_URL":"fake-a"}}`, badWt: `not json`} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	envPath := func() string { return filepath.Join(ws, ".zenify", ".env") }
+	ok, detail := settingsEnvCheck(envPath, fixedManifest(m)).Run()
+	if ok || !strings.Contains(detail, badWt) || !strings.Contains(detail, "SVC_URL in "+repoSettings) {
+		t.Errorf("want both the leftover and the skipped worktree file named; ok=%v detail=%q", ok, detail)
 	}
 }

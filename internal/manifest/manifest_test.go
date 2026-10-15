@@ -127,7 +127,7 @@ repos:
 	}
 	a, _ := m.ByName("a")
 	b, _ := m.ByName("b")
-	if len(a.SecretKeys) != 2 || a.SecretKeys[0] != "A_URL_STG" || len(b.SecretKeys) != 0 {
+	if len(a.SecretKeys) != 2 || a.SecretKeys[0].Name != "A_URL_STG" || !a.SecretKeys[0].Secret || len(b.SecretKeys) != 0 {
 		t.Fatalf("a=%v b=%v", a.SecretKeys, b.SecretKeys)
 	}
 }
@@ -144,18 +144,122 @@ func TestShippedManifestLumiKeysAreRepoScoped(t *testing.T) {
 		t.Fatalf("lumi-agent secretKeys = %v, want %v", lumi.SecretKeys, want)
 	}
 	for i := range want {
-		if lumi.SecretKeys[i] != want[i] {
+		if lumi.SecretKeys[i].Name != want[i] {
 			t.Fatalf("lumi-agent secretKeys = %v, want %v", lumi.SecretKeys, want)
 		}
 	}
 	for _, k := range m.SecretKeys {
-		if strings.HasPrefix(k, "LUMI_") || strings.HasPrefix(k, "QDRANT_") {
-			t.Errorf("global secretKeys must not carry repo-scoped key %s", k)
+		if strings.HasPrefix(k.Name, "LUMI_") || strings.HasPrefix(k.Name, "QDRANT_") {
+			t.Errorf("global secretKeys must not carry repo-scoped key %s", k.Name)
 		}
 	}
 	for _, r := range m.Repos {
 		if r.Name != "lumi-agent" && len(r.SecretKeys) > 0 {
 			t.Errorf("unexpected repo keys on %s: %v", r.Name, r.SecretKeys)
+		}
+	}
+}
+
+func TestSecretKey_ObjectForm(t *testing.T) {
+	m, err := Parse([]byte(`org: o
+secretKeys:
+  - name: MONGO_URL
+    description: Mongo connection string
+    howTo: Ask the DevOps lead
+    scope: shared
+    secret: true
+  - name: E2E_DOMAIN
+    description: d
+    howTo: h
+    scope: personal
+    secret: false
+repos:
+  - name: a
+    url: u
+    path: p
+    base: b
+`), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := SecretKey{Name: "MONGO_URL", Description: "Mongo connection string", HowTo: "Ask the DevOps lead", Scope: "shared", Secret: true}
+	if m.SecretKeys[0] != want {
+		t.Fatalf("got %+v, want %+v", m.SecretKeys[0], want)
+	}
+	if m.SecretKeys[1].Secret || m.SecretKeys[1].Scope != "personal" {
+		t.Fatalf("explicit secret:false / personal lost: %+v", m.SecretKeys[1])
+	}
+}
+
+func TestSecretKey_ObjectFormDefaultsSecretTrue(t *testing.T) {
+	m, err := Parse([]byte("org: o\nsecretKeys:\n  - name: X\nrepos:\n  - {name: a, url: u, path: p, base: b}\n"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.SecretKeys[0].Secret {
+		t.Fatalf("omitted secret must default to true: %+v", m.SecretKeys[0])
+	}
+}
+
+func TestSecretKey_StringForm(t *testing.T) {
+	m, err := Parse([]byte("org: o\nsecretKeys:\n  - MONGO_URL\nrepos:\n  - {name: a, url: u, path: p, base: b}\n"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.SecretKeys) != 1 || m.SecretKeys[0] != (SecretKey{Name: "MONGO_URL", Secret: true}) {
+		t.Fatalf("got %+v", m.SecretKeys)
+	}
+}
+
+func TestAllKeys_GlobalThenRepoDedupedInOrder(t *testing.T) {
+	m, err := Parse([]byte(`org: o
+secretKeys: [A, B]
+repos:
+  - name: r1
+    url: u
+    path: p
+    base: b
+    secretKeys: [B, C]
+  - name: r2
+    url: u
+    path: p2
+    base: b
+    secretKeys: [C, D]
+`), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := KeyNames(m.AllKeys())
+	want := []string{"A", "B", "C", "D"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestEmbeddedManifest_EveryKeyDescribed(t *testing.T) {
+	m, err := Load(filepath.Join("..", "..", "manifest", "repos.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := m.AllKeys()
+	if len(keys) != 16 {
+		t.Fatalf("want 16 keys, got %d", len(keys))
+	}
+	notSecret := map[string]bool{"E2E_DOMAIN": true, "MYSQL_HOST": true, "MYSQL_PORT": true, "MYSQL_DATABASE": true, "LUMI_APP_URL_STG": true}
+	personal := map[string]bool{"E2E_EMAIL": true, "E2E_PASSWORD": true, "POSTHOG_API_KEY": true, "OPENROUTER_API_KEY": true}
+	for _, k := range keys {
+		if k.Description == "" {
+			t.Errorf("%s: description must be non-empty", k.Name)
+		}
+		wantScope := "shared"
+		if personal[k.Name] {
+			wantScope = "personal"
+		}
+		if k.Scope != wantScope {
+			t.Errorf("%s: scope %q, want %q", k.Name, k.Scope, wantScope)
+		}
+		if k.Secret == notSecret[k.Name] {
+			t.Errorf("%s: secret=%v unexpected", k.Name, k.Secret)
 		}
 	}
 }

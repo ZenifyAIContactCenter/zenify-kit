@@ -2,7 +2,6 @@ package dbread
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,10 +12,32 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
 
-func TestLoadCreds_EnvWinsOverSettings(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "settings.local.json")
-	writeSettings(t, path, map[string]string{"MONGO_URL": "mongodb://from-settings", "MYSQL_HOST": "settings-host"})
+func writeEnvFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadCreds_FromEnvFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	writeEnvFile(t, path, "MONGO_URL='mongodb://from-file'\nMYSQL_HOST=file-host\n")
+
+	creds, err := LoadCreds(func(string) string { return "" }, path)
+	if err != nil {
+		t.Fatalf("LoadCreds: %v", err)
+	}
+	if creds["MONGO_URL"] != "mongodb://from-file" {
+		t.Errorf("MONGO_URL = %q, want value from the env file", creds["MONGO_URL"])
+	}
+	if creds["MYSQL_HOST"] != "file-host" {
+		t.Errorf("MYSQL_HOST = %q, want value from the env file", creds["MYSQL_HOST"])
+	}
+}
+
+func TestLoadCreds_EnvWins(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	writeEnvFile(t, path, "MONGO_URL=mongodb://from-file\nMYSQL_HOST=file-host\n")
 
 	env := map[string]string{"MONGO_URL": "mongodb://from-env"}
 	creds, err := LoadCreds(func(k string) string { return env[k] }, path)
@@ -26,59 +47,18 @@ func TestLoadCreds_EnvWinsOverSettings(t *testing.T) {
 	if creds["MONGO_URL"] != "mongodb://from-env" {
 		t.Errorf("MONGO_URL = %q, want live env to win", creds["MONGO_URL"])
 	}
-}
-
-func TestLoadCreds_SettingsFallbackWhenEnvEmpty(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "settings.local.json")
-	writeSettings(t, path, map[string]string{"MONGO_URL": "mongodb://from-settings", "MYSQL_HOST": "settings-host"})
-
-	creds, err := LoadCreds(func(string) string { return "" }, path)
-	if err != nil {
-		t.Fatalf("LoadCreds: %v", err)
-	}
-	if creds["MONGO_URL"] != "mongodb://from-settings" {
-		t.Errorf("MONGO_URL = %q, want settings fallback", creds["MONGO_URL"])
-	}
-	if creds["MYSQL_HOST"] != "settings-host" {
-		t.Errorf("MYSQL_HOST = %q, want settings fallback", creds["MYSQL_HOST"])
+	if creds["MYSQL_HOST"] != "file-host" {
+		t.Errorf("MYSQL_HOST = %q, want file value for a key env lacks", creds["MYSQL_HOST"])
 	}
 }
 
 func TestLoadCreds_MissingFileNoError(t *testing.T) {
-	creds, err := LoadCreds(func(string) string { return "" }, filepath.Join(t.TempDir(), "nope.json"))
+	creds, err := LoadCreds(func(string) string { return "" }, filepath.Join(t.TempDir(), "nope"))
 	if err != nil {
 		t.Fatalf("LoadCreds: %v", err)
 	}
 	if len(creds) != 0 {
 		t.Errorf("creds = %v, want empty", creds)
-	}
-}
-
-func TestLoadCreds_MalformedJSONNoError(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "settings.local.json")
-	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	creds, err := LoadCreds(func(string) string { return "" }, path)
-	if err != nil {
-		t.Fatalf("LoadCreds: %v", err)
-	}
-	if len(creds) != 0 {
-		t.Errorf("creds = %v, want empty", creds)
-	}
-}
-
-func writeSettings(t *testing.T, path string, env map[string]string) {
-	t.Helper()
-	doc := map[string]any{"env": env}
-	b, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, b, 0o600); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -89,10 +69,10 @@ func baseOptions(t *testing.T, env map[string]string) (*Options, *bytes.Buffer, 
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	o := &Options{
-		Stdout:       &stdout,
-		Stderr:       &stderr,
-		Env:          func(k string) string { return env[k] },
-		SettingsPath: filepath.Join(t.TempDir(), "nope.json"),
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+		Env:     func(k string) string { return env[k] },
+		EnvPath: filepath.Join(t.TempDir(), "nope"),
 	}
 	return o, &stdout, &stderr
 }

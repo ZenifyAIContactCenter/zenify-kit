@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
@@ -96,15 +97,15 @@ func writeWorkspacePointer(getenv func(string) string, userHome func() (string, 
 	return os.Chmod(p, 0o600)
 }
 
-// workspaceSettingsPath is <workspace>/.claude/settings.local.json for the
-// workspace resolved from the current cwd, or "" when there is none (FR-2.3).
-func workspaceSettingsPath() string {
+// workspaceEnvPath is <workspace>/.zenify/.env for the workspace resolved from
+// the current cwd, or "" when there is none (FR-2.3).
+func workspaceEnvPath() string {
 	cwd, _ := os.Getwd()
 	ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
 	if !ok {
 		return ""
 	}
-	return filepath.Join(ws, ".claude", "settings.local.json")
+	return devenv.Path(ws)
 }
 
 // workspaceOrCwd resolves the workspace for commands that used to default to

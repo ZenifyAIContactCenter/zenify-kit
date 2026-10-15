@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 )
 
@@ -107,5 +108,48 @@ func TestDown_DryRun_NoWritesAndNonGoalsUntouched(t *testing.T) {
 	}
 	if ok, err := guardInstalled(home); err != nil || ok {
 		t.Errorf("down --apply must remove git-guard, installed=%v err=%v", ok, err)
+	}
+}
+
+// SC-13: down --apply removes this workspace's .zenify/.env deny rule from
+// ~/.claude/settings.json and keeps the user's own deny rule and another
+// workspace's kit rule.
+func TestDown_Apply_RemovesKitDeny(t *testing.T) {
+	ws := t.TempDir()
+	other := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	userSettings := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(userSettings), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(userSettings, []byte(`{"permissions":{"deny":["Read(/secret)"]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []string{ws, other} {
+		if _, err := apply.EnsureKitDeny(home, w, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repos := filepath.Join(ws, "manifest", "repos.yaml")
+	if err := os.MkdirAll(filepath.Dir(repos), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(repos, []byte("org: TestOrg\nrepos:\n  - name: svc\n    path: svc\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := newDownCmd()
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--workspace", ws, "--manifest", repos, "--apply"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("down --apply: %v", err)
+	}
+	b, err := os.ReadFile(userSettings) //nolint:gosec // G304 -- test temp path
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if strings.Contains(s, "Read(/"+ws+"/.zenify/.env)") || !strings.Contains(s, "Read(/secret)") || !strings.Contains(s, "Read(/"+other+"/.zenify/.env)") {
+		t.Errorf("deny after down = %s", b)
 	}
 }

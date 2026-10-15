@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -38,18 +39,57 @@ var KitSandboxExcluded = []string{
 	"zenify e2e login *",
 }
 
-// kitList is one settings array the kit unions entries into, with the record
-// of what it added so removal never touches an entry the user already had.
+// KitDenyRule is the rule the kit unions into permissions.deny of
+// ~/.claude/settings.json so an agent does not read the workspace credential
+// file by accident (FR-10). It lives in user settings because Claude Code loads
+// a project's .claude/settings.json only from the session's own directory, not
+// from a parent workspace. "//" anchors the path at the filesystem root; a
+// single "/" in user settings would resolve under ~/.claude/.
+func KitDenyRule(workspace string) (string, error) {
+	abs, err := filepath.Abs(workspace)
+	if err != nil {
+		return "", err
+	}
+	return denyRuleFor(abs, runtime.GOOS), nil
+}
+
+// denyRuleFor builds the rule for an absolute path. On Windows Claude Code
+// matches paths in POSIX form (C:\Users\a becomes /c/Users/a), so the drive
+// letter is lowercased, its colon dropped and backslashes turned into "/".
+func denyRuleFor(abs, goos string) string {
+	p := abs
+	if goos == "windows" {
+		p = strings.ReplaceAll(p, `\`, "/")
+		if len(p) >= 2 && p[1] == ':' {
+			p = "/" + strings.ToLower(p[:1]) + p[2:]
+		}
+	}
+	return "Read(/" + p + "/.zenify/.env)"
+}
+
+// kitList is one settings array of ~/.claude/settings.json the kit unions
+// entries into, with the record under ~/.zenify of what it added so removal
+// never touches an entry the user already had.
 type kitList struct {
 	outer, inner string
 	rules        []string
-	record       func(home string) string
+	settings     func(root string) string
+	record       func(root string) string
 }
 
 var (
-	allowList   = kitList{"permissions", "allow", KitAllowRules, kitPermissionsRecord}
-	sandboxList = kitList{"sandbox", "excludedCommands", KitSandboxExcluded, kitSandboxRecord}
+	allowList   = kitList{outer: "permissions", inner: "allow", rules: KitAllowRules, settings: claudeSettings, record: kitPermissionsRecord}
+	sandboxList = kitList{outer: "sandbox", inner: "excludedCommands", rules: KitSandboxExcluded, settings: claudeSettings, record: kitSandboxRecord}
+	denyList    = kitList{outer: "permissions", inner: "deny", settings: claudeSettings, record: kitDenyRecord}
 )
+
+func claudeSettings(root string) string {
+	return filepath.Join(root, ".claude", "settings.json")
+}
+
+func kitDenyRecord(home string) string {
+	return filepath.Join(home, ".zenify", "kit-deny.json")
+}
 
 func kitPermissionsRecord(home string) string {
 	return filepath.Join(home, ".zenify", "playwright", "kit-permissions.json")
@@ -137,8 +177,38 @@ func RemoveKitSandbox(home string, dryRun bool) (int, error) {
 	return sandboxList.remove(home, dryRun)
 }
 
+// EnsureKitDeny unions KitDenyRule(workspace) into permissions.deny of
+// <home>/.claude/settings.json, recording it in <home>/.zenify/kit-deny.json
+// next to the rules of other workspaces (same user-removal rule as the allow
+// list).
+func EnsureKitDeny(home, workspace string, dryRun bool) (int, error) {
+	rule, err := KitDenyRule(workspace)
+	if err != nil {
+		return 0, err
+	}
+	return denyList.ensureRules(home, []string{rule}, dryRun)
+}
+
+// RemoveKitDeny removes this workspace's deny rule, only when the kit recorded
+// adding it; other workspaces' recorded rules stay in settings and record.
+func RemoveKitDeny(home, workspace string, dryRun bool) (int, error) {
+	rule, err := KitDenyRule(workspace)
+	if err != nil {
+		return 0, err
+	}
+	return denyList.removeRules(home, []string{rule}, dryRun)
+}
+
 func (l kitList) ensure(home string, dryRun bool) (int, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
+	return l.ensureRules(home, l.rules, dryRun)
+}
+
+func (l kitList) remove(home string, dryRun bool) (int, error) {
+	return l.removeRules(home, nil, dryRun)
+}
+
+func (l kitList) ensureRules(home string, rules []string, dryRun bool) (int, error) {
+	path := l.settings(home)
 	root, mode, err := readSettingsRoot(path)
 	if err != nil {
 		return 0, err
@@ -165,7 +235,7 @@ func (l kitList) ensure(home string, dryRun bool) (int, error) {
 		recorded[r] = true
 	}
 	var added []string
-	for _, r := range l.rules {
+	for _, r := range rules {
 		if !have[r] && !recorded[r] {
 			added = append(added, r)
 		}
@@ -203,7 +273,10 @@ func (l kitList) ensure(home string, dryRun bool) (int, error) {
 	return len(added), nil
 }
 
-func (l kitList) remove(home string, dryRun bool) (int, error) {
+// removeRules removes the recorded entries named in only (every recorded entry
+// when only is nil) and drops them from the record; the record file goes when
+// nothing is left in it.
+func (l kitList) removeRules(home string, only []string, dryRun bool) (int, error) {
 	rec, err := l.readRecord(home)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -211,7 +284,7 @@ func (l kitList) remove(home string, dryRun bool) (int, error) {
 		}
 		return 0, err
 	}
-	path := filepath.Join(home, ".claude", "settings.json")
+	path := l.settings(home)
 	root, mode, err := readSettingsRoot(path)
 	if err != nil {
 		return 0, err
@@ -223,9 +296,18 @@ func (l kitList) remove(home string, dryRun bool) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	want := map[string]bool{}
+	for _, r := range only {
+		want[r] = true
+	}
 	drop := map[string]bool{}
+	var keep []string
 	for _, r := range rec {
-		drop[r] = true
+		if only == nil || want[r] {
+			drop[r] = true
+		} else {
+			keep = append(keep, r)
+		}
 	}
 	kept := []string{}
 	removed := 0
@@ -244,6 +326,13 @@ func (l kitList) remove(home string, dryRun bool) (int, error) {
 			return 0, err
 		}
 	}
-	_ = os.Remove(l.record(home))
-	return removed, nil
+	if len(keep) == 0 {
+		_ = os.Remove(l.record(home))
+		return removed, nil
+	}
+	kj, err := json.Marshal(keep)
+	if err != nil {
+		return removed, err
+	}
+	return removed, writeAtomic(l.record(home), kj, 0o644)
 }

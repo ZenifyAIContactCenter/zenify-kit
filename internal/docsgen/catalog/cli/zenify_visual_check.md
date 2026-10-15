@@ -7,7 +7,7 @@ Khi diff đổi giao diện và repo có `.znf/visual/routes.json`. Bước veri
 
 ## Kết quả
 
-Lệnh đăng nhập một lần bằng các biến `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD`, mở từng route trong `routes.json`, chờ font tải xong, che các vùng khai trong `mask`, rồi so ảnh toàn trang với baseline trong `.znf/visual/__snapshots__`. Lệch thì lệnh báo "visual mismatch" và trỏ tới ảnh diff trong `.znf/visual/__diff__`.
+Lệnh đăng nhập một lần bằng các key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env`, mở từng route trong `routes.json`, chờ font tải xong, che các vùng khai trong `mask`, rồi so ảnh toàn trang với baseline trong `.znf/visual/__snapshots__`. Lệch thì lệnh báo "visual mismatch" và trỏ tới ảnh diff trong `.znf/visual/__diff__`.
 
 Mỗi route khai `name`, `path`, tùy chọn `waitFor` là selector cần chờ và `mask` là danh sách selector vùng động như badge thông báo hay đồng hồ.
 

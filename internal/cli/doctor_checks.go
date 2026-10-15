@@ -12,26 +12,42 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 )
 
-// secretPresenceCheck reports which DB credential KEYS are resolvable (env or
-// the settings.local.json env block) — names and present/absent ONLY. Per
-// FR-041 it never places a credential VALUE into its output. ok = MONGO_URL
-// present (the one key db-read hard-requires); the rest are informational.
-func secretPresenceCheck(getenv func(string) string, settingsPath func() string) Check {
+// secretPresenceCheck reports which credential KEYS are resolvable (env or
+// <workspace>/.zenify/.env) — names and present/absent ONLY. Per FR-041 it
+// never places a credential VALUE into its output. It covers MONGO_URL plus
+// every global manifest key (FR-8.1); repo-scoped keys are not reported.
+// ok = MONGO_URL present (the one key db-read hard-requires); the rest are
+// informational.
+func secretPresenceCheck(getenv func(string) string, envPath func() string, kitManifest func() *manifest.Manifest) Check {
 	return Check{
 		Name: "secrets",
 		Run: func() (bool, string) {
-			path := settingsPath()
+			path := envPath()
 			creds, _ := dbread.LoadCreds(getenv, path)
-			keys := []string{"MONGO_URL", "MYSQL_HOST", "MYSQL_PORT", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_DATABASE"}
+			var f *devenv.File
+			if path != "" {
+				f, _ = devenv.Load(path)
+			}
+			lookup := devenv.Lookup(getenv, f)
+			keys := []string{"MONGO_URL"}
+			if m := kitManifest(); m != nil {
+				for _, k := range m.SecretKeys {
+					if k.Name != "MONGO_URL" {
+						keys = append(keys, k.Name)
+					}
+				}
+			}
 			var parts []string
 			for _, k := range keys {
 				state := "absent"
-				if creds[k] != "" {
+				if lookup(k) != "" {
 					state = "present"
 				}
 				parts = append(parts, k+"="+state) // key + state only; NEVER the value
@@ -44,6 +60,145 @@ func secretPresenceCheck(getenv func(string) string, settingsPath func() string)
 			return ok, detail
 		},
 	}
+}
+
+// envFileCheck inspects <workspace>/.zenify/.env itself: a mode wider than 0600
+// (FR-8.4) and local keys — keys the manifest does not know — that carry no
+// description line above them (FR-8.2). Names only, never values. The mode
+// check is skipped when goos is "windows", which has no POSIX mode bits.
+func envFileCheck(envPath func() string, kitManifest func() *manifest.Manifest, goos string) Check {
+	return Check{
+		Name: "env-file",
+		Run: func() (bool, string) {
+			path := envPath()
+			if path == "" {
+				return true, "no workspace"
+			}
+			fi, err := os.Stat(path)
+			if err != nil {
+				return true, "chưa có .zenify/.env" //znf:allow-lang
+			}
+			f, err := devenv.Load(path)
+			if err != nil {
+				return false, "cannot read " + path
+			}
+			var problems []string
+			if perm := fi.Mode().Perm(); goos != "windows" && perm&0o077 != 0 {
+				problems = append(problems, fmt.Sprintf("%s has mode %04o, want 0600 — run: chmod 600 %s", path, perm, path))
+			}
+			known := map[string]bool{}
+			if m := kitManifest(); m != nil {
+				for _, k := range m.AllKeys() {
+					known[k.Name] = true
+				}
+			}
+			var undescribed []string
+			for _, k := range f.Keys() {
+				if !known[k] && f.Desc(k) == "" {
+					undescribed = append(undescribed, k)
+				}
+			}
+			if len(undescribed) > 0 {
+				problems = append(problems, "local keys without a description: "+strings.Join(undescribed, ", ")+" — add one with: zenify env set <KEY> --desc <text>")
+			}
+			if len(problems) > 0 {
+				return false, strings.Join(problems, "; ")
+			}
+			if goos == "windows" {
+				return true, "local keys described"
+			}
+			return true, "mode 0600, local keys described"
+		},
+	}
+}
+
+// settingsEnvCheck names the manifest keys that still hold a value in the
+// "env" block of the workspace, a repo or a repo worktree settings.local.json
+// (FR-8.3) — they
+// belong in .zenify/.env. Key names and file paths only, never values.
+func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manifest) Check {
+	return Check{
+		Name: "settings-env",
+		Run: func() (bool, string) {
+			path := envPath()
+			m := kitManifest()
+			if path == "" || m == nil {
+				return true, "no workspace"
+			}
+			ws := filepath.Dir(filepath.Dir(path)) // envPath is <ws>/.zenify/.env
+			var repoPaths []string
+			for _, r := range m.Repos {
+				repoPaths = append(repoPaths, r.Path)
+			}
+			paths, unreadable := settingsEnvPaths(ws, repoPaths)
+			left, err := apply.LeftoverEnvKeys(paths)
+			if err != nil {
+				return false, err.Error()
+			}
+			known := map[string]bool{}
+			for _, k := range m.AllKeys() {
+				known[k.Name] = true
+			}
+			// Keys the migration skips by design need a manual fix; `up` would
+			// not move them.
+			preview, err := apply.PreviewSettingsEnv(paths, manifest.KeyNames(m.AllKeys()), path)
+			if err != nil {
+				return false, err.Error()
+			}
+			manual := map[string]bool{}
+			for _, k := range append(preview.Conflicts, preview.Skipped...) {
+				manual[k] = true
+			}
+			var movable, byHand []string
+			for _, p := range paths {
+				var mv, bh []string
+				for _, k := range left[p] {
+					switch {
+					case !known[k]:
+					case manual[k]:
+						bh = append(bh, k)
+					default:
+						mv = append(mv, k)
+					}
+				}
+				if len(mv) > 0 {
+					movable = append(movable, strings.Join(mv, ", ")+" in "+p)
+				}
+				if len(bh) > 0 {
+					byHand = append(byHand, strings.Join(bh, ", ")+" in "+p)
+				}
+			}
+			var problems []string
+			if len(movable) > 0 {
+				problems = append(problems, strings.Join(movable, "; ")+" — run `zenify up --apply` to move them to .zenify/.env")
+			}
+			if len(byHand) > 0 {
+				problems = append(problems, strings.Join(byHand, "; ")+" — fix by hand (values differ between files or .zenify/.env, or a value is not a one-line string): keep one with `zenify env set <KEY>`, then delete the key from the settings env")
+			}
+			if len(unreadable) > 0 {
+				problems = append(problems, strings.Join(unreadable, "; ")+" — worktree settings file does not load (invalid JSON or \"env\" not an object), skipped: fix by hand")
+			}
+			if len(problems) > 0 {
+				return false, strings.Join(problems, "; ")
+			}
+			return true, "no credential left in settings env"
+		},
+	}
+}
+
+// workspaceManifest loads the kit manifest for the workspace resolved from cwd;
+// nil when there is no workspace or the manifest cannot be loaded.
+func workspaceManifest() *manifest.Manifest {
+	cwd, _ := os.Getwd()
+	ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
+	if !ok {
+		return nil
+	}
+	m, _, err := loadKitManifest("", filepath.Join(ws, ".zenify-overlay.yaml"))
+	if err != nil {
+		return nil
+	}
+	return m
 }
 
 // toolPresenceCheck reports whether each external CLI db-read shells out to is
@@ -300,7 +455,9 @@ func gitIdentityCheckWith(identOK func(gitVar string) bool) Check {
 // registerDefaultChecks wires the foundation-layer checks. Called once at root
 // construction. Uses os.Getenv and the workspace default settings path.
 func registerDefaultChecks() {
-	RegisterCheck(secretPresenceCheck(os.Getenv, workspaceSettingsPath))
+	RegisterCheck(secretPresenceCheck(os.Getenv, workspaceEnvPath, workspaceManifest))
+	RegisterCheck(envFileCheck(workspaceEnvPath, workspaceManifest, runtime.GOOS))
+	RegisterCheck(settingsEnvCheck(workspaceEnvPath, workspaceManifest))
 	RegisterCheck(toolPresenceCheck([]string{"git", "gh", "mongosh", "mysql"}))
 	RegisterCheck(playwrightCheck())
 	RegisterCheck(kitPermissionsCheck(os.UserHomeDir))

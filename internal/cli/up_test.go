@@ -516,3 +516,145 @@ func TestRenderCodexSummary(t *testing.T) {
 		t.Errorf("trust nudge must only show on changes:\n%s", b.String())
 	}
 }
+
+// FR-9 + deny rule through `up --apply`: manifest keys leave the settings env
+// blocks for .zenify/.env, the output names keys only, the deny rule lands in
+// ~/.claude/settings.json, and a second run changes nothing.
+func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	wsSettings := filepath.Join(ws, ".claude", "settings.local.json")
+	repoSettings := filepath.Join(repo, ".claude", "settings.local.json")
+	for p, body := range map[string]string{
+		wsSettings:   `{"env":{"MONGO_URL":"fake-mongo-value","OTHER":"o"}}`,
+		repoSettings: `{"env":{"MONGO_URL":"","SVC_URL":"fake-svc-a"}}`,
+	} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := &manifest.Manifest{Org: "MyOrg",
+		SecretKeys: []manifest.SecretKey{{Name: "MONGO_URL", Secret: true}},
+		Repos:      []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}}
+
+	var out bytes.Buffer
+	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("runApply: %v", err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "env: chuyển 2 key (MONGO_URL, SVC_URL)") { //znf:allow-lang
+		t.Errorf("output lacks the moved-keys line:\n%s", s)
+	}
+	if strings.Contains(s, "fake-") {
+		t.Errorf("output carries a value:\n%s", s)
+	}
+	envBody, err := os.ReadFile(filepath.Join(ws, ".zenify", ".env")) //nolint:gosec // G304 -- test temp path
+	if err != nil || !strings.Contains(string(envBody), "SVC_URL='fake-svc-a'") {
+		t.Errorf(".zenify/.env = %q err=%v", envBody, err)
+	}
+	userSettings := filepath.Join(home, ".claude", "settings.json")
+	deny, _ := os.ReadFile(userSettings) //nolint:gosec // G304 -- test temp path
+	if !strings.Contains(string(deny), "Read(/"+ws+"/.zenify/.env)") {
+		t.Errorf("~/.claude/settings.json lacks the absolute deny rule: %s", deny)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.json")); strings.Contains(string(b), ".zenify/.env") { //nolint:gosec // G304 -- test temp path
+		t.Errorf("workspace settings.json must not carry the deny rule: %s", b)
+	}
+
+	snap := map[string]string{}
+	for _, p := range []string{wsSettings, repoSettings, filepath.Join(ws, ".zenify", ".env"), userSettings} {
+		b, _ := os.ReadFile(p) //nolint:gosec // G304 -- test temp path
+		snap[p] = string(b)
+	}
+	out.Reset()
+	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("second runApply: %v", err)
+	}
+	if strings.Contains(out.String(), "env: ") || strings.Contains(out.String(), "permissions: ") {
+		t.Errorf("second run printed a migration line:\n%s", out.String())
+	}
+	for p, before := range snap {
+		if b, _ := os.ReadFile(p); string(b) != before { //nolint:gosec // G304 -- test temp path
+			t.Errorf("%s changed on second run", p)
+		}
+	}
+}
+
+// FR-9 covers a worktree's copy of the repo settings.local.json: same key, same
+// value as the repo copy → moved once, gone from both.
+func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	repoSettings := filepath.Join(repo, ".claude", "settings.local.json")
+	wtSettings := filepath.Join(repo, ".worktrees", "feat-x", ".claude", "settings.local.json")
+	for _, p := range []string{repoSettings, wtSettings} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(`{"env":{"SVC_URL":"fake-svc-a"}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := &manifest.Manifest{Org: "MyOrg",
+		Repos: []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}}
+	var out bytes.Buffer
+	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("runApply: %v", err)
+	}
+	for _, p := range []string{repoSettings, wtSettings} {
+		if b, _ := os.ReadFile(p); strings.Contains(string(b), "SVC_URL") { //nolint:gosec // G304 -- test temp path
+			t.Errorf("%s still holds SVC_URL: %s", p, b)
+		}
+	}
+}
+
+// A worktree copy that does not load is skipped and named; the repo copy still
+// migrates.
+func TestRunApply_SkipsMalformedWorktreeSettings(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	ws := t.TempDir()
+	repo := filepath.Join(ws, "svc")
+	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	repoSettings := filepath.Join(repo, ".claude", "settings.local.json")
+	badWt := filepath.Join(repo, ".worktrees", "feat-x", ".claude", "settings.local.json")
+	for p, body := range map[string]string{repoSettings: `{"env":{"SVC_URL":"fake-svc-a"}}`, badWt: `{"env":"oops"`} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := &manifest.Manifest{Org: "MyOrg",
+		Repos: []manifest.Repo{{Name: "svc", Path: "svc", SecretKeys: []manifest.SecretKey{{Name: "SVC_URL", Secret: true}}}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.OK, Path: "svc"}}
+	var out bytes.Buffer
+	if err := runApply(&out, &out, plans, m, ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("runApply: %v", err)
+	}
+	if b, _ := os.ReadFile(repoSettings); strings.Contains(string(b), "SVC_URL") { //nolint:gosec // G304 -- test temp path
+		t.Errorf("repo copy not migrated: %s", b)
+	}
+	if !strings.Contains(out.String(), badWt) {
+		t.Errorf("output does not name the skipped worktree file:\n%s", out.String())
+	}
+}

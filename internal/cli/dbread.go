@@ -50,17 +50,17 @@ func newDBReadCmd() *cobra.Command {
 				arg = args[1]
 			}
 			o := &dbread.Options{
-				Cmd:          args[0],
-				Arg:          arg,
-				Filter:       filter,
-				Projection:   projection,
-				Sort:         sort,
-				Pipeline:     pipeline,
-				Limit:        limit,
-				Stdout:       cmd.OutOrStdout(),
-				Stderr:       cmd.ErrOrStderr(),
-				Env:          os.Getenv,
-				SettingsPath: workspaceSettingsPath(),
+				Cmd:        args[0],
+				Arg:        arg,
+				Filter:     filter,
+				Projection: projection,
+				Sort:       sort,
+				Pipeline:   pipeline,
+				Limit:      limit,
+				Stdout:     cmd.OutOrStdout(),
+				Stderr:     cmd.ErrOrStderr(),
+				Env:        os.Getenv,
+				EnvPath:    workspaceEnvPath(),
 			}
 			o.SetRun(func(name string, args []string, extraEnv []string, _ string) error {
 				return runDBChild(cmd.Context(), name, args, extraEnv, o.Stdout, o.Stderr)
