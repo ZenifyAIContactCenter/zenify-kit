@@ -344,3 +344,33 @@ func TestEmbeddedManifest_Groups(t *testing.T) {
 		t.Error("OPENROUTER_API_KEY must not be in the manifest")
 	}
 }
+
+func TestManifest_BrokerURLMustBeHTTPS(t *testing.T) {
+	base := "org: o\nrepos:\n  - name: r\n    url: u\n"
+	for _, tc := range []struct{ name, extra string }{
+		{"empty url", "broker:\n  url: \"\"\n"},
+		{"http url", "broker:\n  url: http://broker.example\n"},
+		{"empty block", "broker: {}\n"},
+	} {
+		if _, err := Parse([]byte(base+tc.extra), "t"); err == nil {
+			t.Errorf("%s: want error, got nil", tc.name)
+		}
+	}
+	m, err := Parse([]byte(base+"broker:\n  url: https://broker.example\n"), "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Broker == nil || m.Broker.URL != "https://broker.example" {
+		t.Fatalf("Broker = %+v", m.Broker)
+	}
+}
+
+func TestManifest_NoBrokerNil(t *testing.T) {
+	m, err := Parse([]byte("org: o\nrepos:\n  - name: r\n    url: u\n"), "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Broker != nil {
+		t.Fatalf("Broker = %+v, want nil", m.Broker)
+	}
+}

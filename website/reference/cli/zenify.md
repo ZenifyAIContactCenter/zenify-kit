@@ -29,6 +29,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 ## Lệnh liên quan
 
 - [zenify analyze](./zenify_analyze): Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief.
+- [zenify broker](./zenify_broker): Nhóm lệnh làm việc với credential broker của zenify.
 - [zenify config](./zenify_config): Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều.
 - [zenify cost](./zenify_cost): Cho biết token Claude Code đi đâu: context mỗi turn, phần subagent, model, skill và dấu hiệu lãng phí, đọc từ transcript local.
 - [zenify db-perf](./zenify_db-perf): Quét tĩnh một diff để tìm anti-pattern query DB, chia finding thành BLOCKING và ADVISORY.
