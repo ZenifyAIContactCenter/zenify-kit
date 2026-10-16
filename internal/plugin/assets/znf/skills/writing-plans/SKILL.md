@@ -35,7 +35,7 @@ Waits for: <other repo> : contract-frozen      (omit this line if the repo is in
 
 ## File Structure
 
-Before defining tasks, map out which files will be created or modified and what each one is responsible for — clear boundaries, one responsibility per file, files that change together live together. See `references/decomposition-rationale.md` for the full reasoning. This structure informs the task decomposition; each task should produce self-contained changes that make sense independently.
+Before defining tasks, map out which files will be created or modified and what each one is responsible for — clear boundaries, one responsibility per file, files that change together live together. See `references/decomposition-rationale.md` for the full reasoning.
 
 ## Task Right-Sizing
 
@@ -73,6 +73,8 @@ argues from the spec, so the spec travels with it; executors read both]
 
 ---
 ```
+
+Stacked PRs: optional `## Stack` block before the first task — `references/stacked-plans.md`.
 
 ## Task Structure
 
@@ -163,4 +165,5 @@ Only after approval, use `znf:subagent-driven-development`. Under `/cook`, retur
 
 ## References
 
-- `references/decomposition-rationale.md` — why files and tasks are sized this way; Review Focus and Proportion with an example.
+- `references/decomposition-rationale.md` — task sizing; Review Focus and Proportion, with an example.
+- `references/stacked-plans.md` — `## Stack` and `**Layer:**`.

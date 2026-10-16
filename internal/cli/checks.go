@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 )
@@ -40,5 +41,16 @@ func init() {
 	}})
 	RegisterCheck(Check{Name: "github-access", Run: func() (bool, string) {
 		return githubAccessCheck(ghRunner, "ZenifyAIContactCenter")
+	}})
+	RegisterCheck(Check{Name: "gh-stack", Run: func() (bool, string) {
+		return ghStackStatus(ghRunner)
+	}, Fix: func() (bool, string) {
+		if ok, detail := ghStackStatus(ghRunner); ok || !strings.Contains(detail, "extension missing") {
+			return ok, detail
+		}
+		if err := installGHStack(ghRunner); err != nil {
+			return false, fmt.Sprintf("gh-stack install: %v", err)
+		}
+		return ghStackStatus(ghRunner)
 	}})
 }

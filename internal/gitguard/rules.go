@@ -21,18 +21,20 @@ func denyHint(sub, why, hint string) Decision {
 }
 
 var (
-	denyForcePush = denyHint("push", "force push", "Chạy tay bằng ! nếu thật sự cần.")                                      //znf:allow-lang
-	denyPRMerge   = denyHint("gh", "merge PR", "Merge là việc của người: chạy tay bằng ! nếu thật sự cần.")                 //znf:allow-lang
-	denyWtForce   = denyHint("wt", "wt rm --force", "Worktree có thể chưa merge — chạy tay bằng ! nếu thật sự cần.")        //znf:allow-lang
-	denyEnvFile   = denyHint("env-file", "đọc .zenify/.env", "Dùng zenify db-read hoặc zenify env list.")                   //znf:allow-lang
-	denyParse     = denyHint("parse", "lệnh không phân tích được có từ khoá nguy hiểm", "Viết lại lệnh, không lồng chuỗi.") //znf:allow-lang
+	denyForcePush  = denyHint("push", "force push", "Chạy tay bằng ! nếu thật sự cần.")                                                   //znf:allow-lang
+	denyPRMerge    = denyHint("gh", "merge PR", "Merge là việc của người: chạy tay bằng ! nếu thật sự cần.")                              //znf:allow-lang
+	denyStack      = denyHint("gh", "merge/gỡ/ghép stack", "Merge hay gỡ stack là việc của người: chạy tay bằng ! nếu thật sự cần.")      //znf:allow-lang
+	denyStackAlias = denyHint("gh", "gh stack alias", "Alias tạo lệnh tắt (gs) mà guard không nhận ra: chạy tay bằng ! nếu thật sự cần.") //znf:allow-lang
+	denyWtForce    = denyHint("wt", "wt rm --force", "Worktree có thể chưa merge — chạy tay bằng ! nếu thật sự cần.")                     //znf:allow-lang
+	denyEnvFile    = denyHint("env-file", "đọc .zenify/.env", "Dùng zenify db-read hoặc zenify env list.")                                //znf:allow-lang
+	denyParse      = denyHint("parse", "lệnh không phân tích được có từ khoá nguy hiểm", "Viết lại lệnh, không lồng chuỗi.")              //znf:allow-lang
 )
 
 func denyProdHost(key string) Decision {
 	return denyHint("prod-host", "host của "+key, "Production chỉ đọc qua zenify db-read.") //znf:allow-lang
 }
 
-// checkRules applies R2–R7 to a parsed command; Deny=false when none fires.
+// checkRules applies R2–R8 to a parsed command; Deny=false when none fires.
 func checkRules(p Parsed, raw, base string, getenv func(string) string, opts Options) Decision {
 	envFile := canonical(opts.EnvFile)
 	for _, c := range p.Cmds {
@@ -41,6 +43,10 @@ func checkRules(p Parsed, raw, base string, getenv func(string) string, opts Opt
 			return denyForcePush
 		case isPRMerge(c.Argv):
 			return denyPRMerge
+		case isStackAlias(c.Argv):
+			return denyStackAlias
+		case isStackForbidden(c.Argv):
+			return denyStack
 		case isWtForceRm(c.Argv):
 			return denyWtForce
 		}
@@ -113,6 +119,80 @@ func isPRMerge(argv []string) bool {
 		}
 	}
 	return mergePath && put
+}
+
+var reStackUnstack = regexp.MustCompile(`(^|/)repos/[^/]+/[^/]+/stacks/\d+/unstack/?(\?.*)?$`)
+
+// stackCall returns the gh-stack subcommand and its args for `gh stack …` or
+// a direct `gh-stack …` call; ok is false for anything else.
+func stackCall(argv []string) (sub string, args []string, ok bool) {
+	rest := argv[1:]
+	switch basename(argv[0]) {
+	case "gh":
+		if len(rest) < 1 || rest[0] != "stack" {
+			return "", nil, false
+		}
+		rest = rest[1:]
+	case "gh-stack":
+	default:
+		return "", nil, false
+	}
+	if len(rest) == 0 {
+		return "", nil, true
+	}
+	return rest[0], rest[1:], true
+}
+
+// isStackAlias: R8 — `gh stack alias` installs a wrapper (default `gs`) that
+// stackCall cannot recognise, so `gs merge` would pass the guard.
+func isStackAlias(argv []string) bool {
+	sub, _, ok := stackCall(argv)
+	return ok && sub == "alias"
+}
+
+// isStackForbidden: R8 — merging, unstacking (server side) or linking a stack.
+func isStackForbidden(argv []string) bool {
+	if basename(argv[0]) == "gh" && len(argv) > 1 && argv[1] == "api" {
+		for _, a := range argv[2:] {
+			if strings.Contains(a, "merge-async") || reStackUnstack.MatchString(a) {
+				return true
+			}
+		}
+		return false
+	}
+	sub, args, ok := stackCall(argv)
+	if !ok {
+		return false
+	}
+	switch sub {
+	case "merge", "link":
+		return true
+	case "unstack", "delete":
+		return !slices.Contains(args, "--local")
+	}
+	return false
+}
+
+// stackBranchArgs returns the positional branch names of `gh stack init|add`,
+// dropping the -b/--base and -m/--message flags together with their values.
+func stackBranchArgs(argv []string) []string {
+	sub, args, ok := stackCall(argv)
+	if !ok || (sub != "init" && sub != "add") {
+		return nil
+	}
+	var out []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-b", a == "--base", a == "-m", a == "--message":
+			i++
+		case strings.HasPrefix(a, "--base="), strings.HasPrefix(a, "--message="):
+		case strings.HasPrefix(a, "-"):
+		default:
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // isWtForceRm: R4 — `wt rm` / `zenify wt rm` / `git worktree remove` with
@@ -243,7 +323,8 @@ var (
 // dangerousRaw: R7 keywords in the raw command (quotes dropped, lower-cased).
 func dangerousRaw(raw string, hosts []ProdHost) bool {
 	s := strings.ToLower(quoteStripper.Replace(raw))
-	for _, k := range []string{"pr merge", "/merge", "--force", ".zenify/.env"} {
+	for _, k := range []string{"pr merge", "/merge", "--force", ".zenify/.env",
+		"stack merge", "stack link", "stack unstack", "stack delete", "stack alias", "gh-stack ", "/unstack"} {
 		if strings.Contains(s, k) {
 			return true
 		}

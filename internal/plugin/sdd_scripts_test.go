@@ -205,3 +205,42 @@ func TestSDDWorkspace_UnwritableExitsNonZero(t *testing.T) {
 		t.Fatal("sdd-workspace looped instead of failing")
 	}
 }
+
+// stackedPlanFixture has a ## Stack block before the first task and a **Layer:** line under **Model:**.
+const stackedPlanFixture = "## Global Constraints\n\n- none\n\n" +
+	"## Stack\n\n" +
+	"- Layer 1: `guard` — `feat(gitguard): block stack merge`\n" +
+	"- Layer 2: `docs` — `docs(site): describe stacks`\n\n---\n\n" +
+	"### Task 1: Guard\n\n**Model:** sonnet\n**Layer:** 1\n\n**Files:**\n- Test: `internal/a_test.go`\n\n- `_Requirements: FR-1_`\n- `_Skills: none_`\n\n" +
+	"### Task 2: Docs\n\n**Model:** sonnet\n**Layer:** 2\n\n**Files:**\n- Test: `internal/b_test.go`\n\n- `_Requirements: FR-2_`\n- `_Skills: none_`\n"
+
+func TestTaskBriefStackedPlan(t *testing.T) {
+	repo := newTempRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "plan.md"), []byte(stackedPlanFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	brief := func(n, out string) string {
+		o := filepath.Join(repo, out)
+		if msg, exit := runSDDScript(t, repo, "task-brief", "plan.md", n, o); exit != 0 {
+			t.Fatalf("task %s: exit=%d out=%q", n, exit, msg)
+		}
+		b, err := os.ReadFile(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	b1 := brief("1", "b1.md")
+	if !strings.Contains(b1, "**Layer:** 1") {
+		t.Errorf("brief 1 lacks Layer 1: %q", b1)
+	}
+	for _, bad := range []string{"## Stack", "Layer 2:", "Task 2"} {
+		if strings.Contains(b1, bad) {
+			t.Errorf("brief 1 contains %q: %q", bad, b1)
+		}
+	}
+	b2 := brief("2", "b2.md")
+	if !strings.Contains(b2, "**Layer:** 2") || strings.Contains(b2, "## Stack") {
+		t.Errorf("brief 2 wrong: %q", b2)
+	}
+}

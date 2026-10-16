@@ -20,6 +20,7 @@ Work in an isolated workspace (`wt new`, znf:discipline §8), or verify the exis
 
 - **Each plan owns a workspace:** `bash scripts/sdd-workspace PLAN_FILE` prints its git-ignored directory (`<repo-root>/.znf/sdd/<plan-basename>/`), holding this plan's artifacts alone.
 - **Track progress in a ledger file, not in todos**, at `<workspace>/progress.md`, first line `# SDD ledger — plan: <plan file path>`. **Resume from it**: `Task <N>: complete` is never re-dispatched; a task ending in a fix round resumes there.
+- **Plan has a `## Stack` block** → build and fix layers per `references/stacked-layers.md`; ledger lines carry `layer <L>`.
 - **Read the plan once** and the Spec it names (conflicts resolve against the spec), note the Global Constraints, then **scan for conflicts before Task 1**, ledgering the table with a ruling per row (`references/setup-rationale.md`).
 
 ## Model Selection
@@ -92,11 +93,12 @@ Use znf:finishing-a-development-branch.
 
 ## References
 
-- `references/diagrams.md` — the process graph.
-- `references/example-workflow.md` — first run.
-- `references/setup-rationale.md` — workspace, scan, lost place.
-- `references/dispatch-and-review-rationale.md` — why each step.
-- `references/dispatch-brief-contract.md` — composing dispatches.
-- `references/fix-loop-mechanics.md` — fix rounds.
-- `references/model-selection.md` — choosing tiers.
-- `references/polyrepo-parallelism.md` — multi-repo.
+- `references/diagrams.md`
+- `references/example-workflow.md`
+- `references/setup-rationale.md`
+- `references/dispatch-and-review-rationale.md`
+- `references/dispatch-brief-contract.md`
+- `references/fix-loop-mechanics.md`
+- `references/model-selection.md`
+- `references/polyrepo-parallelism.md`
+- `references/stacked-layers.md`

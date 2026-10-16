@@ -17,6 +17,8 @@ fp                                                # the stamp
 
 Stamp each check with its `fp`; step 7 requires every stamp == the current one.
 
+**Plan has a `## Stack` block** → steps 2–7 run per `references/stacked-ship.md`; everything below is the one-PR flow.
+
 ## Steps
 
 1. **Scope**: list the changed areas from the changed files.
@@ -99,5 +101,6 @@ Then push and `zenify docs sync` (fails open).
 - `references/gate-evidence.md` — board template; why the gate exists.
 - `references/ui-verification-notes.md` — verifier stalls or logs out.
 - `references/false-green-and-data.md` — the three data checks.
-- `references/ship-pack-rationale.md` — why each pack field exists.
-- `references/pr-message-language.md` — which part of a PR is English.
+- `references/ship-pack-rationale.md`
+- `references/pr-message-language.md` — PR language.
+- `references/stacked-ship.md` — per-layer review.

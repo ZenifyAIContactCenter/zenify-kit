@@ -328,6 +328,9 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	bm, _ := brokerManifest("", "")
 	registerBrokerMCP(w, errW, bm, runClaudeBounded)
 
+	// gh-stack extension for stacked PRs (FR-6.1). NON-FATAL.
+	ensureGHStack(gh, w, errW)
+
 	// Onboarding convenience (Task 5): clone the docs knowledge store on a
 	// brand-new machine when it's absent, then reconcile the workspace view.
 	// FAIL-OPEN — never affects `failed` or the return below.

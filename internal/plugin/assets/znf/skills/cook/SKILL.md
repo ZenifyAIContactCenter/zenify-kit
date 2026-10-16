@@ -61,7 +61,7 @@ zenify db-read doc <a-name-from-that-list>           # real fields
 
 Before dispatching SDD, **`Skill(znf:analyze)`** on the spec+plan pair (absolute path): FR→task coverage, leftover markers, Brief structure. **Advisory — it does NOT block**; surface CRITICAL/HIGH for the user to decide.
 
-**User gate:** give the absolute plan path and the CRITICAL/HIGH findings, ask the user to **approve the plan**. Step 6 only after they agree; changes requested → fix the plan, rerun self-review and `znf:analyze`, ask again.
+**User gate:** give the absolute plan path and the CRITICAL/HIGH findings, ask the user to **approve the plan** (a plan with `## Stack`: also the layer count and each layer's title). Step 6 only after they agree; changes requested → fix the plan, rerun self-review and `znf:analyze`, ask again.
 
 ## Step 6: Implement (`znf:subagent-driven-development`)
 
@@ -76,6 +76,8 @@ cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse
 
 - **Polyrepo:** one worktree per repo, **same slug**; one implementer per repo, a dependent repo gated on the other's **contract-frozen** commit. Re-entering `/cook` is not a second worktree: `cd` into it.
 - A definition of done only the running app can show → **`Skill(znf:run)`** once before the task loop, kept up.
+
+If the plan has a `## Stack` block, `gh stack --help` must run; if not, stop before the first task and report `gh extension install github/gh-stack` (see `references/step6-implementation-notes.md`).
 
 **`Skill(znf:subagent-driven-development)`** at every size, told it runs under `/cook` and the worktree exists (verify, not create). **Under `/cook` SDD skips its own final review**: `/ship` step 5 reviews the branch and picks up the ledger's `minor (deferred)` and `parked` lines.
 

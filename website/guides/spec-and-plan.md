@@ -78,6 +78,21 @@ Kiểm sau khi implement xong một plan, xem mỗi yêu cầu có test thật h
 
 Skill đối chiếu từng yêu cầu trong spec với task trong plan và với file test thực tế trên đĩa: yêu cầu có task nhưng task không khai test, đường dẫn test khai trong plan không tồn tại, hoặc file test tồn tại nhưng rỗng. Sau đó skill tự đọc một vài file test không bị gắn cờ, xem test đó có thật sự khẳng định điều yêu cầu đòi hỏi hay chỉ là một khẳng định trống rỗng, và đối chiếu từng nhánh điều kiện trong tiêu chí thành công với assertion tương ứng.
 
+## Stacked PR
+
+Plan lớn có thể chia thành stack PR của GitHub. Khi đó plan có khối `## Stack`, đặt sau `## Review Focus` và trước dòng `---` ngay trước task đầu tiên, mỗi lớp một dòng, lớp dưới cùng đứng trước:
+
+```markdown
+## Stack
+
+- Layer 1: `store-schema` — `feat(store): add the session table`
+- Layer 2: `store-api` — `feat(api): expose session reads`
+```
+
+Tên kebab (`store-schema`) chỉ là nhãn: branch của lớp 1 là branch `wt`, lớp N >= 2 là `<branch wt>-<N>`. Title trong backtick là title PR mà ship đặt cho lớp đó.
+
+Mỗi task có một dòng `**Layer:** <N>` ngay dưới dòng `**Model:**`, ngoài khối `**Files:**`. Một task thuộc đúng một lớp và chỉ phụ thuộc task ở lớp bằng hoặc thấp hơn. Khối phải đứng trước task đầu: `/znf:analyze` và `/znf:standards` gán mọi dòng sau tiêu đề task cuối cho task đó, nên khối đặt muộn bị đọc như một phần của task cuối. Plan không có `## Stack` thì không task nào có `**Layer:**` và đi luồng một PR như cũ. Xem [cook](/workflows/cook#stacked-pr) và [ship](/workflows/ship#stacked-pr).
+
 ## Kết quả
 
 | Lệnh/skill | Kết quả |

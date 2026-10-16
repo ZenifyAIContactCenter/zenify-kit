@@ -50,6 +50,16 @@ func TestRules(t *testing.T) {
 		"bash <<'EOF'\ngit push --force origin x\nEOF", `echo 'gh pr merge 1' | sh`,
 		"python3 - <<'EOF'\nMongoClient('mongodb://prod-host.example')\nEOF",
 		"python3 - <<EOF\nconnect(\"$X\", 'prod-host.example')\nEOF", `mongosh <<< "connect('prod-host.example')"`,
+		`gh stack merge`, `gh stack merge 3`, `command gh stack merge`, `bash -c 'gh stack merge'`, `gh-stack merge`,
+		`gh api -X PUT repos/o/r/pulls/5/merge-async`, `gh api repos/o/r/pulls/5/merge-async`,
+		`gh stack unstack`, `gh stack delete`, `gh stack link 1 2`,
+		`gh api -X POST repos/o/r/stacks/3/unstack`, `gh api --method POST /repos/o/r/stacks/3/unstack`,
+		`gh api -X POST 'repos/o/r/stacks/3/unstack?x=1'`, `gh api -X POST repos/o/r/stacks/3/unstack/`,
+		`gh api -X POST https://api.github.com/repos/o/r/stacks/3/unstack`,
+		`eval "gh stack merge $N"`, `echo 'gh stack merge 1' | sh`, `bash -c "gh stack unstack $X"`,
+		`bash -c "gh api -X POST repos/o/r/stacks/$N/unstack"`, `eval "gh stack link $A $B"`,
+		`eval "gh stack delete $N"`, `eval "gh stack alias $N"`, `eval "gh-stack merge $N"`,
+		`gh stack alias`, `gh stack alias gs`, `gh-stack alias`, `bash -c 'gh stack alias'`,
 	}
 	allow := []string{
 		`go test ./...`, `git push origin feat/x`, `git push -u origin feat/x`, `gh pr create --title t`,
@@ -60,6 +70,11 @@ func TestRules(t *testing.T) {
 		`git worktree remove p`, `git worktree list`,
 		`sh -c "go test $X"`, `echo hi | sh`, `bash script.sh`, `bash -x script.sh arg`,
 		"cat <<'EOF'\nhello staging-host\nEOF", `git push origin feat/x < /dev/null`,
+		`gh stack push`, `gh stack rebase`, `gh stack rebase --abort`, `gh stack rebase --upstack`,
+		`gh stack submit --auto --open`, `gh stack view --json`, `gh stack unstack --local`, `gh stack delete --local`,
+		`gh stack checkout feat/x-2`, `gh api repos/o/r/stacks`, `gh api -X POST repos/o/r/stacks -f pull_requests[]=1`,
+		`gh stack view`, `gh stack submit`, `gh stack init feat/x`, `gh stack add feat/x-3`, `gh stack --help`,
+		`bash -c "gh stack view $X"`, `eval "gh stack submit --auto $X"`,
 	}
 	for _, cmd := range deny {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
@@ -155,6 +170,35 @@ func TestDecideNestedOnDeployBranch(t *testing.T) {
 	} {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
 			t.Errorf("want deny: %s", cmd)
+		}
+	}
+}
+
+func TestStackAliasMessage(t *testing.T) {
+	dir, opts := mkWorkspace(t)
+	if d := Decide(`gh stack alias gs`, dir, noenv, nil, opts); !d.Deny || !strings.Contains(d.Message, "gh stack alias") {
+		t.Errorf("want alias deny, got %+v", d)
+	}
+}
+
+func TestStackDeployBranch(t *testing.T) {
+	_, opts := mkWorkspace(t)
+	dir := filepath.Join(t.TempDir(), "repo")
+	mkRepo(t, dir, "feat/x", []string{"staging"})
+	for _, cmd := range []string{`gh stack add staging`, `gh stack init staging`, `gh stack init --base main staging`,
+		`gh-stack add staging`, `bash -c 'gh stack add staging'`} {
+		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
+			t.Errorf("want deny: %s", cmd)
+		}
+	}
+	for _, cmd := range []string{
+		`gh stack init --base staging feat/x`, `gh stack init -b staging feat/x`,
+		`gh stack add feat/x-2`, `gh stack add -m "wip" feat/x-2`,
+		`gh stack add -m staging feat/x-2`, `gh stack init --base=staging feat/x`,
+		`gh stack add --message=staging feat/x-2`,
+	} {
+		if d := Decide(cmd, dir, noenv, nil, opts); d.Deny {
+			t.Errorf("want allow: %s: %s", cmd, d.Message)
 		}
 	}
 }
