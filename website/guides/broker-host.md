@@ -31,7 +31,7 @@ grafana:
   # addr: 127.0.0.1:8000
   # args: mặc định là bộ cờ team đang dùng (--enabled-tools=..., --loki-guardrail-mode=enforce, ...)
 posthog:
-  upstream: https://mcp.posthog.com/mcp
+  upstream: https://mcp.posthog.com/mcp?features=insights,flags  # danh sách feature chỉ là ví dụ
   project_id: "137053"
 e2e:
   hub_url: https://hub.example.invalid
@@ -44,6 +44,8 @@ mongo:
   main_db: 3csoft
   audit_db: audit_logs
 ```
+
+Query trong `posthog.upstream` được giữ nguyên khi proxy chuyển tiếp. Nếu client gửi cùng key thì giá trị của upstream thắng; key khác của client vẫn được nối thêm.
 
 Thay các giá trị `example.invalid` và placeholder bằng giá trị thật của staging. Broker không đọc secret từ YAML.
 
