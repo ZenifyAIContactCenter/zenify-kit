@@ -222,3 +222,7 @@ Implementers follow SDD's Model Selection: the plan's `**Model:**` line, default
 dispatch; `FAIL=2` escalates to `opus`. Nothing is hard-pinned at this step. Never pair `haiku` with
 `effort: 'xhigh'`: haiku is not xhigh-capable and the CLI silently downgrades it, so `xhigh` goes
 to `sonnet` and above only.
+
+### Stacked plan
+
+Applies only when the plan has a `## Stack` block. Before the first task run `gh stack --help`. If it fails, the `gh-stack` extension is missing: stop before the first task and tell the user to run `gh extension install github/gh-stack` (needs `gh` 2.90.0 or newer). Do not create the worktree layers or dispatch an implementer until it runs. How SDD builds and submits the layers is in the stacked-layers reference of `znf:subagent-driven-development`. A plan without `## Stack` skips all of this.
