@@ -77,11 +77,11 @@ func (h *Handler) Validate() error {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	login := auth.Login(r.Context())
+	login, role := auth.Login(r.Context()), auth.Role(r.Context())
 	var req api.QueryRequest
 	status, rows, nbytes := http.StatusOK, 0, 0
 	defer func() {
-		h.Audit.Log(audit.Entry{TS: start, Login: login, Endpoint: "/query", Env: req.Env, Op: req.Op,
+		h.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/query", Env: req.Env, Op: req.Op,
 			Args: req, Rows: rows, Bytes: nbytes, MS: time.Since(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
@@ -91,6 +91,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody)).Decode(&req); err != nil {
 		fail(http.StatusBadRequest, api.CodeInvalidQuery, "body must be a JSON query object")
+		return
+	}
+	// Before every guard: CheckSQL refuses comments, which would turn a dev's
+	// comment-prefixed read into 400 instead of lead_only.
+	if role != api.RoleLead && req.Env == "prd" && !devAllowed(req) {
+		fail(http.StatusForbidden, api.CodeLeadOnly, "production data reads are lead-only; dev may use explain/indexes/stats/count")
 		return
 	}
 	o, code, msg := h.options(req)
@@ -154,7 +160,7 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 	switch {
 	case req.Engine == "mysql" && !sqlOp, req.Engine == "mongo" && sqlOp,
 		req.Engine != "mysql" && req.Engine != "mongo":
-		return nil, api.CodeInvalidQuery, "engine must be mongo (collections|doc|count|find|aggregate|explain) or mysql (sql|tables)"
+		return nil, api.CodeInvalidQuery, "engine must be mongo (collections|doc|count|find|aggregate|explain|indexes|stats) or mysql (sql|tables)"
 	}
 	c, prd := h.Creds, req.Env == "prd"
 	db := c.MainDB
@@ -185,6 +191,97 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 	return &dbread.Options{Cmd: req.Op, Arg: arg, Filter: req.Filter, Projection: req.Projection, Sort: req.Sort,
 		Pipeline: req.Pipeline, Limit: req.Limit, Prod: prd, MongoDB: db,
 		Env: func(k string) string { return env[k] }}, "", ""
+}
+
+// devMongoOps are the Mongo ops a dev may run on prd: structure and plans,
+// never document content (FR-14.2).
+var devMongoOps = map[string]bool{"collections": true, "count": true, "explain": true, "indexes": true, "stats": true}
+
+// devAllowed reports whether a dev may send req to prd. It only narrows: the
+// dbread guards still run afterwards.
+func devAllowed(req api.QueryRequest) bool {
+	switch {
+	case req.Target != "" && req.Target != "main":
+		return false
+	case req.Engine == "mongo":
+		return devMongoOps[req.Op]
+	case req.Engine == "mysql":
+		return req.Op == "tables" || (req.Op == "sql" && devSQL(req.SQL))
+	}
+	return false
+}
+
+// devSQL reports whether stmt, after leading whitespace and comments, starts
+// with a plan or schema statement: EXPLAIN [ANALYZE] [FORMAT=x] SELECT|WITH,
+// DESCRIBE/DESC, or SHOW INDEX|INDEXES|KEYS|COLUMNS|TABLES|CREATE TABLE|TABLE
+// STATUS.
+func devSQL(stmt string) bool {
+	w := leadingWords(stmt, 6)
+	at := func(i int) string {
+		if i < len(w) {
+			return w[i]
+		}
+		return ""
+	}
+	switch at(0) {
+	case "DESCRIBE", "DESC":
+		return true
+	case "SHOW":
+		switch at(1) {
+		case "INDEX", "INDEXES", "KEYS", "COLUMNS", "TABLES":
+			return true
+		case "CREATE":
+			return at(2) == "TABLE"
+		case "TABLE":
+			return at(2) == "STATUS"
+		}
+	case "EXPLAIN":
+		i := 1
+		if at(i) == "ANALYZE" {
+			i++
+		}
+		if at(i) == "FORMAT" && at(i+1) == "=" && at(i+2) != "" {
+			i += 3
+		}
+		return at(i) == "SELECT" || at(i) == "WITH"
+	}
+	return false
+}
+
+// leadingWords returns up to n upper-cased leading tokens of s: identifier
+// words and "=", skipping whitespace and /* */, -- and # comments. It stops
+// at any other character or an unterminated comment.
+func leadingWords(s string, n int) []string {
+	var out []string
+	for len(out) < n {
+		s = strings.TrimLeft(s, " \t\r\n\f\v")
+		switch {
+		case strings.HasPrefix(s, "/*"):
+			end := strings.Index(s[2:], "*/")
+			if end < 0 {
+				return out
+			}
+			s = s[2+end+2:]
+		case strings.HasPrefix(s, "--"), strings.HasPrefix(s, "#"):
+			end := strings.IndexAny(s, "\r\n")
+			if end < 0 {
+				return out
+			}
+			s = s[end:]
+		case strings.HasPrefix(s, "="):
+			out, s = append(out, "="), s[1:]
+		default:
+			j := 0
+			for j < len(s) && (s[j] == '_' || s[j] >= '0' && s[j] <= '9' || (s[j]|0x20) >= 'a' && (s[j]|0x20) <= 'z') {
+				j++
+			}
+			if j == 0 {
+				return out
+			}
+			out, s = append(out, strings.ToUpper(s[:j])), s[j:]
+		}
+	}
+	return out
 }
 
 // secrets are the URLs, URL hosts, users and passwords masked out of child

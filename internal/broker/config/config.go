@@ -17,9 +17,15 @@ import (
 
 // Config is the broker's whole configuration.
 type Config struct {
-	Org     string `yaml:"org"`
-	Listen  string `yaml:"listen"`
-	Grafana struct {
+	Org    string `yaml:"org"`
+	Listen string `yaml:"listen"`
+	// LeadTeam / DevTeam are the org team slugs that grant role lead / dev.
+	LeadTeam string `yaml:"lead_team"`
+	DevTeam  string `yaml:"dev_team"`
+	// DenyLogins are GitHub logins refused a token (shared accounts), matched
+	// case-insensitively.
+	DenyLogins []string `yaml:"deny_logins"`
+	Grafana    struct {
 		URL  string   `yaml:"url"`
 		Bin  string   `yaml:"bin"`
 		Addr string   `yaml:"addr"`
@@ -78,6 +84,8 @@ func Load(path string, getenv func(string) string) (Config, error) {
 		}
 	}
 	def(&c.Listen, ":8080")
+	def(&c.LeadTeam, "leaders")
+	def(&c.DevTeam, "zenify-team")
 	def(&c.Grafana.Bin, "mcp-grafana")
 	def(&c.Grafana.Addr, "127.0.0.1:8000")
 	def(&c.Mongo.MainDB, "3csoft")

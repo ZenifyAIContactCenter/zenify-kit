@@ -31,6 +31,18 @@ const (
 	// CodeBrokerMisconfigured (500): the broker itself is wired wrong (a
 	// signing key too short, a credential missing for the asked target).
 	CodeBrokerMisconfigured = "broker_misconfigured"
+	// CodeLeadOnly (403): the caller's role is dev and the request needs lead.
+	CodeLeadOnly = "lead_only"
+	// CodeNotAllowed (403): an org member in neither the lead nor the dev team.
+	CodeNotAllowed = "not_allowed"
+	// CodeLoginDenied (403): the login is in the broker's deny_logins.
+	CodeLoginDenied = "login_denied"
+)
+
+// Roles a broker JWT carries.
+const (
+	RoleLead = "lead"
+	RoleDev  = "dev"
 )
 
 // Error is the body of every non-2xx response.
@@ -49,11 +61,12 @@ type TokenResponse struct {
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
 	Login     string `json:"login"`
+	Role      string `json:"role"` // RoleLead or RoleDev
 }
 
 // QueryRequest is the body of POST /query. Env is stg|prd, Engine mongo|mysql,
 // Target main|audit (empty = main), Op one of collections|doc|count|find|
-// aggregate|explain|sql|tables. Mongo fields mirror dbread.MongoQuery.
+// aggregate|explain|indexes|stats|sql|tables. Mongo fields mirror dbread.MongoQuery.
 type QueryRequest struct {
 	Env        string `json:"env"`
 	Engine     string `json:"engine"`

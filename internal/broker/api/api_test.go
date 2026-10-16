@@ -34,7 +34,7 @@ func TestContract_JSONKeys(t *testing.T) {
 		want []string
 	}{
 		{"TokenRequest", TokenRequest{}, []string{"github_token"}},
-		{"TokenResponse", TokenResponse{}, []string{"expires_at", "login", "token"}},
+		{"TokenResponse", TokenResponse{}, []string{"expires_at", "login", "role", "token"}},
 		{"Error", Error{}, []string{"error", "message"}},
 		{"QueryRequest", QueryRequest{}, []string{"coll", "engine", "env", "filter", "limit", "op", "pipeline", "projection", "sort", "sql", "target"}},
 		{"QueryResponse", QueryResponse{}, []string{"rows", "stderr", "stdout", "truncated"}},

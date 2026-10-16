@@ -11,10 +11,13 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 )
 
-type ctxKey struct{}
+type (
+	ctxKey  struct{}
+	roleKey struct{}
+)
 
 // Require lets a request through only with a valid "Authorization: Bearer
-// <broker JWT>" and puts its login on the context; otherwise 401 unauthorized.
+// <broker JWT>" and puts its login and role on the context; otherwise 401 unauthorized.
 func Require(key []byte, next http.Handler) http.Handler {
 	return RequireAudited(key, nil, nil, next)
 }
@@ -24,7 +27,7 @@ func Require(key []byte, next http.Handler) http.Handler {
 func RequireAudited(key []byte, a *audit.Logger, endpoint func(*http.Request) string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		scheme, tok, ok := strings.Cut(r.Header.Get("Authorization"), " ")
-		login, err := Verify(key, strings.TrimSpace(tok), time.Now())
+		login, role, err := Verify(key, strings.TrimSpace(tok), time.Now())
 		if !ok || !strings.EqualFold(scheme, "Bearer") || err != nil {
 			WriteError(w, http.StatusUnauthorized, api.CodeUnauthorized, "missing or invalid broker token")
 			if a != nil {
@@ -32,13 +35,20 @@ func RequireAudited(key []byte, a *audit.Logger, endpoint func(*http.Request) st
 			}
 			return
 		}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, login)))
+		ctx := context.WithValue(context.WithValue(r.Context(), ctxKey{}, login), roleKey{}, role)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 // Login returns the login Require attached, or "" outside a protected handler.
 func Login(ctx context.Context) string {
 	s, _ := ctx.Value(ctxKey{}).(string)
+	return s
+}
+
+// Role returns the role Require attached, or "" outside a protected handler.
+func Role(ctx context.Context) string {
+	s, _ := ctx.Value(roleKey{}).(string)
 	return s
 }
 

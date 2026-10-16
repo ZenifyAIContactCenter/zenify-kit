@@ -30,7 +30,7 @@ func TestLog_OneLineContractKeys(t *testing.T) {
 		got = append(got, k)
 	}
 	sort.Strings(got)
-	want := []string{"args", "bytes", "endpoint", "env", "login", "ms", "op", "rows", "status", "ts"}
+	want := []string{"args", "bytes", "endpoint", "env", "login", "ms", "op", "role", "rows", "status", "ts"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("keys = %v, want %v", got, want)
 	}

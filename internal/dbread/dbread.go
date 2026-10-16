@@ -273,6 +273,8 @@ var argRequired = map[string]string{
 	"find":      "find cần tên collection",                                          //znf:allow-lang
 	"aggregate": "aggregate cần tên collection",                                     //znf:allow-lang
 	"explain":   "explain cần tên collection",                                       //znf:allow-lang
+	"indexes":   "indexes cần tên collection",                                       //znf:allow-lang
+	"stats":     "stats cần tên collection",                                         //znf:allow-lang
 	"sql":       "sql cần một câu SELECT/SHOW/DESCRIBE/EXPLAIN",                     //znf:allow-lang
 }
 
@@ -282,6 +284,8 @@ var unusedFlags = map[string][]string{
 	"collections": {"--filter", "--projection", "--sort", "--pipeline"},
 	"tables":      {"--filter", "--projection", "--sort", "--pipeline"},
 	"doc":         {"--filter", "--projection", "--sort", "--pipeline"},
+	"indexes":     {"--filter", "--projection", "--sort", "--pipeline"},
+	"stats":       {"--filter", "--projection", "--sort", "--pipeline"},
 	"sql":         {"--filter", "--projection", "--sort", "--pipeline"},
 	"count":       {"--projection", "--sort"},
 }
@@ -305,6 +309,8 @@ func printUsage(w io.Writer) {
 		"  db-read find <collection>             --filter --projection --sort --limit (default 50, max 200)",
 		"  db-read aggregate <collection>        --pipeline '[...]' ($out/$merge refused), --limit",
 		"  db-read explain <collection>          executionStats, no --limit (runs the read query, max 30 s) for --filter/--sort or --pipeline",
+		"  db-read indexes <collection>          getIndexes() of the collection",
+		"  db-read stats <collection>            size, count, storageSize, nindexes, totalIndexSize, avgObjSize",
 		"  db-read sql '<query>'                 one SELECT/WITH/SHOW/DESCRIBE/EXPLAIN in a READ ONLY txn",
 		"  output cut at --limit or 1 MiB prints a notice on stderr; --pipeline never combines with --filter/--projection/--sort",
 		"  distinct: db-read aggregate <coll> --pipeline '[{\"$group\":{\"_id\":\"$field\"}}]'",
@@ -325,7 +331,7 @@ func Validate(o *Options) (limit int, err error) {
 // script (empty for SQL commands) and the SQL statement.
 func validate(o *Options) (limit int, script, sqlStmt string, err error) {
 	switch o.Cmd {
-	case "collections", "tables", "doc", "count", "find", "aggregate", "explain", "sql":
+	case "collections", "tables", "doc", "count", "find", "aggregate", "explain", "indexes", "stats", "sql":
 	case "eval":
 		return 0, "", "", badArgs("db-read eval đã bị gỡ — dùng find/aggregate/count/explain") //znf:allow-lang
 	default:

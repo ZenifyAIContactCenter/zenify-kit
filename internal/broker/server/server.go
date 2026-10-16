@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
@@ -17,12 +18,17 @@ import (
 type Deps struct {
 	JWTKey []byte
 	Org    string // GitHub org whose active members get a token
-	GitHub auth.GitHub
-	Audit  *audit.Logger    // nil = stdout
-	Now    func() time.Time // nil = time.Now
-	Query  http.Handler     // POST /query; nil = route not served
-	Redis  http.Handler     // POST /redis; nil = route not served
-	E2E    http.Handler     // POST /e2e/account; nil = route not served
+	// LeadTeam / DevTeam are the org team slugs granting role lead / dev; an
+	// org member in neither is refused. DenyLogins are refused outright
+	// (case-insensitive).
+	LeadTeam, DevTeam string
+	DenyLogins        []string
+	GitHub            auth.GitHub
+	Audit             *audit.Logger    // nil = stdout
+	Now               func() time.Time // nil = time.Now
+	Query             http.Handler     // POST /query; nil = route not served
+	Redis             http.Handler     // POST /redis; nil = route not served
+	E2E               http.Handler     // POST /e2e/account; nil = route not served
 	// MCP maps a name to its proxy, served on /mcp/<name> (any method, any
 	// subpath); an unknown name is 404. Empty = no /mcp routes.
 	MCP map[string]http.Handler
@@ -82,7 +88,7 @@ func New(cfg Deps) http.Handler {
 			h, ok := cfg.MCP[r.PathValue("name")]
 			if !ok {
 				http.NotFound(w, r)
-				cfg.Audit.Log(audit.Entry{TS: cfg.Now(), Login: auth.Login(r.Context()),
+				cfg.Audit.Log(audit.Entry{TS: cfg.Now(), Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
 					Endpoint: "/mcp/" + r.PathValue("name"), Op: r.Method, Status: http.StatusNotFound})
 				return
 			}
@@ -104,9 +110,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // to d.GitHub and is never stored or logged; neither is the issued JWT.
 func (s *server) token(w http.ResponseWriter, r *http.Request) {
 	start := s.d.Now()
-	login, status := "", http.StatusOK
+	login, role, status := "", "", http.StatusOK
 	defer func() {
-		s.d.Audit.Log(audit.Entry{TS: start, Login: login, Endpoint: "/token",
+		s.d.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/token",
 			MS: s.d.Now().Sub(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
@@ -124,7 +130,17 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	l, err := s.d.GitHub.Member(r.Context(), req.GitHubToken, s.d.Org)
+	if err == nil {
+		login = l
+		role, err = s.role(r, req.GitHubToken, l)
+	}
 	switch {
+	case errors.Is(err, errLoginDenied):
+		fail(http.StatusForbidden, api.CodeLoginDenied, "login "+login+" is not allowed to use the broker")
+		return
+	case errors.Is(err, errNoTeam):
+		fail(http.StatusForbidden, api.CodeNotAllowed, "not an active member of team "+s.d.LeadTeam+" or "+s.d.DevTeam)
+		return
 	case errors.Is(err, auth.ErrTokenInvalid):
 		fail(http.StatusUnauthorized, api.CodeGitHubTokenInvalid, "GitHub rejected the token")
 		return
@@ -142,11 +158,35 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadGateway, api.CodeGitHubUnavailable, "could not reach GitHub")
 		return
 	}
-	login = l
-	tok, exp, err := auth.Issue(s.d.JWTKey, login, s.d.Now())
+	tok, exp, err := auth.Issue(s.d.JWTKey, login, role, s.d.Now())
 	if err != nil {
 		fail(http.StatusInternalServerError, api.CodeBrokerMisconfigured, "the broker's signing key is misconfigured")
 		return
 	}
-	writeJSON(w, http.StatusOK, api.TokenResponse{Token: tok, ExpiresAt: exp.UTC().Format(time.RFC3339), Login: login})
+	writeJSON(w, http.StatusOK, api.TokenResponse{Token: tok, ExpiresAt: exp.UTC().Format(time.RFC3339), Login: login, Role: role})
+}
+
+var (
+	errLoginDenied = errors.New("login denied")
+	errNoTeam      = errors.New("in neither team")
+)
+
+// role decides an org member's role (FR-14.1): deny_logins first, then the
+// lead team, then the dev team, each asked with the caller's own token.
+func (s *server) role(r *http.Request, ghToken, login string) (string, error) {
+	for _, d := range s.d.DenyLogins {
+		if strings.EqualFold(d, login) {
+			return "", errLoginDenied
+		}
+	}
+	for _, t := range []struct{ team, role string }{{s.d.LeadTeam, api.RoleLead}, {s.d.DevTeam, api.RoleDev}} {
+		ok, err := s.d.GitHub.TeamMember(r.Context(), ghToken, s.d.Org, t.team, login)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			return t.role, nil
+		}
+	}
+	return "", errNoTeam
 }

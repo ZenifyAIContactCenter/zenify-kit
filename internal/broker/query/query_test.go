@@ -88,7 +88,12 @@ func okRun(_ context.Context, _ string, _ []string, _ []string, out, _ io.Writer
 
 func (f *fixture) post(t *testing.T, login string, req api.QueryRequest) (int, api.QueryResponse, api.Error) {
 	t.Helper()
-	tok, _, _ := auth.Issue(testKey, login, time.Now())
+	return f.postAs(t, login, api.RoleLead, req)
+}
+
+func (f *fixture) postAs(t *testing.T, login, role string, req api.QueryRequest) (int, api.QueryResponse, api.Error) {
+	t.Helper()
+	tok, _, _ := auth.Issue(testKey, login, role, time.Now())
 	b, _ := json.Marshal(req)
 	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+tok)
@@ -395,7 +400,7 @@ func TestQuery_ClientCancelAudited499(t *testing.T) {
 		return ctx.Err()
 	})
 	ctx, cancel := context.WithCancel(context.Background())
-	tok, _, _ := auth.Issue(testKey, "octocat", time.Now())
+	tok, _, _ := auth.Issue(testKey, "octocat", "lead", time.Now())
 	r, _ := http.NewRequestWithContext(ctx, http.MethodPost, f.ts.URL, strings.NewReader(`{"env":"stg","engine":"mongo","op":"collections"}`))
 	r.Header.Set("Authorization", "Bearer "+tok)
 	go func() { <-started; cancel() }()
@@ -455,5 +460,99 @@ func TestExecRun_GrandchildCannotOutliveDeadline(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("want an error from the killed child")
+	}
+}
+
+func TestQuery_DevPrdDataReadLeadOnly(t *testing.T) { // SC-20
+	for name, req := range map[string]api.QueryRequest{
+		"mongo find":          {Env: "prd", Engine: "mongo", Op: "find", Coll: "accounts"},
+		"mongo doc":           {Env: "prd", Engine: "mongo", Op: "doc", Coll: "accounts"},
+		"mongo aggregate":     {Env: "prd", Engine: "mongo", Op: "aggregate", Coll: "accounts", Pipeline: `[{"$match":{}}]`},
+		"mysql select":        {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SELECT * FROM accounts"},
+		"show processlist":    {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW PROCESSLIST"},
+		"comment then select": {Env: "prd", Engine: "mysql", Op: "sql", SQL: "/* x */ SELECT * FROM accounts"},
+		"explain of a write":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN DELETE FROM accounts"},
+		"explain no select":   {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT=JSON accounts"},
+		"audit target":        {Env: "prd", Engine: "mongo", Target: "audit", Op: "count", Coll: "audit_logs"},
+	} {
+		f := newFixture(t, okRun)
+		st, _, e := f.postAs(t, "devgal", api.RoleDev, req)
+		if st != http.StatusForbidden || e.Error != api.CodeLeadOnly {
+			t.Errorf("%s: got %d %+v, want 403 lead_only", name, st, e)
+		}
+		if n := atomic.LoadInt32(f.calls); n != 0 {
+			t.Errorf("%s: %d processes started, want 0", name, n)
+		}
+		var line audit.Entry
+		if err := json.Unmarshal(f.auditBytes(), &line); err != nil || line.Role != api.RoleDev || line.Status != http.StatusForbidden || line.Login != "devgal" {
+			t.Errorf("%s: audit = %s", name, f.auditBytes())
+		}
+	}
+}
+
+func TestQuery_DevPrdPlanAndSchemaRunAsLead(t *testing.T) { // SC-21
+	for name, req := range map[string]api.QueryRequest{
+		"mysql explain":        {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN SELECT * FROM accounts WHERE id=1"},
+		"explain analyze":      {Env: "prd", Engine: "mysql", Op: "sql", SQL: "explain analyze select 1"},
+		"explain format":       {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT = JSON WITH t AS (SELECT 1) SELECT * FROM t"},
+		"describe":             {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESCRIBE accounts"},
+		"desc":                 {Env: "prd", Engine: "mysql", Op: "sql", SQL: "  desc accounts"},
+		"show index":           {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW INDEX FROM accounts"},
+		"show keys":            {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW KEYS FROM accounts"},
+		"show create table":    {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW CREATE TABLE accounts"},
+		"show table status":    {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW TABLE STATUS"},
+		"show columns":         {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW COLUMNS FROM accounts"},
+		"tables":               {Env: "prd", Engine: "mysql", Op: "tables"},
+		"mongo indexes":        {Env: "prd", Engine: "mongo", Op: "indexes", Coll: "accounts"},
+		"mongo stats":          {Env: "prd", Engine: "mongo", Op: "stats", Coll: "accounts"},
+		"mongo count":          {Env: "prd", Engine: "mongo", Op: "count", Coll: "accounts"},
+		"mongo explain":        {Env: "prd", Engine: "mongo", Op: "explain", Coll: "accounts", Filter: `{"a":1}`},
+		"mongo collections":    {Env: "prd", Engine: "mongo", Op: "collections"},
+		"stg find (full read)": {Env: "stg", Engine: "mongo", Op: "find", Coll: "accounts"},
+		"stg select":           {Env: "stg", Engine: "mysql", Op: "sql", SQL: "SELECT * FROM accounts"},
+	} {
+		f := newFixture(t, okRun)
+		st, _, e := f.postAs(t, "devgal", api.RoleDev, req)
+		if st != http.StatusOK {
+			t.Errorf("%s: got %d %+v, want 200", name, st, e)
+		}
+		if n := atomic.LoadInt32(f.calls); n != 1 {
+			t.Errorf("%s: %d processes started, want 1", name, n)
+		}
+	}
+}
+
+// The dev allowlist only narrows: the read-only guard still refuses what it
+// refuses for a lead.
+func TestQuery_DevGuardStillRuns(t *testing.T) {
+	for name, sql := range map[string]string{
+		"explain select into":  "EXPLAIN SELECT * FROM accounts INTO OUTFILE '/tmp/x'",
+		"comment then explain": "/* x */ EXPLAIN SELECT 1",
+	} {
+		f := newFixture(t, okRun)
+		st, _, e := f.postAs(t, "devgal", api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mysql", Op: "sql", SQL: sql})
+		if st != http.StatusBadRequest || e.Error != api.CodeInvalidQuery || atomic.LoadInt32(f.calls) != 0 {
+			t.Errorf("%s: got %d %+v calls=%d, want 400 invalid_query and no process", name, st, e, atomic.LoadInt32(f.calls))
+		}
+	}
+}
+
+func TestQuery_IndexesAndStatsScripts(t *testing.T) {
+	var script string
+	f := newFixture(t, func(_ context.Context, _ string, args, _ []string, out, _ io.Writer) error {
+		script = args[len(args)-1]
+		return okRun(context.Background(), "", nil, nil, out, nil)
+	})
+	if st, _, e := f.post(t, "boss", api.QueryRequest{Env: "prd", Engine: "mongo", Op: "indexes", Coll: "accounts"}); st != http.StatusOK {
+		t.Fatalf("indexes: %d %+v", st, e)
+	}
+	if !strings.Contains(script, `d.getCollection("accounts").getIndexes()`) {
+		t.Errorf("indexes script = %s", script)
+	}
+	if st, _, e := f.post(t, "boss", api.QueryRequest{Env: "prd", Engine: "mongo", Op: "stats", Coll: "accounts"}); st != http.StatusOK {
+		t.Fatalf("stats: %d %+v", st, e)
+	}
+	if !strings.Contains(script, `d.getCollection("accounts").stats()`) || !strings.Contains(script, "totalIndexSize:s.totalIndexSize") {
+		t.Errorf("stats script = %s", script)
 	}
 }

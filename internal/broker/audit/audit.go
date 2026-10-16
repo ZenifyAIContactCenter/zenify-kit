@@ -14,6 +14,7 @@ import (
 type Entry struct {
 	TS       time.Time `json:"ts"`
 	Login    string    `json:"login"`
+	Role     string    `json:"role"`
 	Endpoint string    `json:"endpoint"`
 	Env      string    `json:"env"`
 	Op       string    `json:"op"`

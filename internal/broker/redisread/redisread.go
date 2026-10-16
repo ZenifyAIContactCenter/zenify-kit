@@ -66,6 +66,10 @@ func (h *Handler) Validate() error {
 	return errors.Join(errs...)
 }
 
+// devRedis are the metadata commands a dev may send to prd: key names, types,
+// TTLs and sizes, never values.
+var devRedis = map[string]bool{"TTL": true, "TYPE": true, "EXISTS": true, "SCAN": true, "LLEN": true, "SCARD": true, "ZCARD": true}
+
 // readHint names what a caller can read instead of a collection that is too big.
 var readHint = map[string]string{
 	"HGETALL":  "read specific fields with HGET",
@@ -75,12 +79,12 @@ var readHint = map[string]string{
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	login := auth.Login(r.Context())
+	login, role := auth.Login(r.Context()), auth.Role(r.Context())
 	var req api.RedisRequest
 	status, nbytes := http.StatusOK, 0
 	defer func() {
 		op := strings.ToUpper(strings.TrimSpace(req.Cmd))
-		h.Audit.Log(audit.Entry{TS: start, Login: login, Endpoint: "/redis", Env: req.Env, Op: op,
+		h.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/redis", Env: req.Env, Op: op,
 			Args: req.Args, Bytes: nbytes, MS: time.Since(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
@@ -95,6 +99,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cli := h.Clients[req.Env]
 	if (req.Env != "stg" && req.Env != "prd") || cli == nil {
 		fail(http.StatusBadRequest, api.CodeInvalidTarget, "env must be stg or prd")
+		return
+	}
+	if role != api.RoleLead && req.Env == "prd" && !devRedis[strings.ToUpper(strings.TrimSpace(req.Cmd))] {
+		fail(http.StatusForbidden, api.CodeLeadOnly, "production redis values are lead-only; dev may use TTL/TYPE/EXISTS/SCAN/LLEN/SCARD/ZCARD")
 		return
 	}
 	argv, err := api.CheckRedis(req.Cmd, req.Args)

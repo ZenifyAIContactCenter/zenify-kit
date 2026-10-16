@@ -74,6 +74,31 @@ func (g GitHub) Member(ctx context.Context, token, org string) (login string, er
 	return user.Login, nil
 }
 
+// TeamMember reports whether login is an active member of org's team, asked
+// with the caller's own token. 404 and a pending membership both mean no;
+// other errors map as in Member.
+func (g GitHub) TeamMember(ctx context.Context, token, org, team, login string) (bool, error) {
+	var m struct {
+		State string `json:"state"`
+	}
+	path := "/orgs/" + url.PathEscape(org) + "/teams/" + url.PathEscape(team) + "/memberships/" + url.PathEscape(login)
+	switch code, err := g.get(ctx, token, path, &m); {
+	case err != nil:
+		return false, err
+	case code == http.StatusUnauthorized:
+		return false, ErrTokenInvalid
+	case code == http.StatusNotFound:
+		return false, nil
+	case code == http.StatusTooManyRequests:
+		return false, ErrGitHubRateLimited
+	case code == http.StatusForbidden:
+		return false, ErrOrgAccessDenied
+	case code != http.StatusOK:
+		return false, fmt.Errorf("github team membership: status %d", code)
+	}
+	return m.State == "active", nil
+}
+
 // get calls GitHub and decodes a 200 body into out. A 403 carrying Retry-After
 // or X-RateLimit-Remaining: 0 is a rate limit, not a permission refusal, and
 // comes back as 429. Errors never include the token.

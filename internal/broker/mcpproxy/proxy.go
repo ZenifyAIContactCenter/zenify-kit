@@ -54,7 +54,7 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 	rp := newReverseProxy(name, upstream, setHeaders)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		login := auth.Login(r.Context())
+		login, role := auth.Login(r.Context()), auth.Role(r.Context())
 		cw := &countingWriter{ResponseWriter: w}
 		var calls []toolCall
 		defer func() {
@@ -64,10 +64,10 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 			// parse the JSON-RPC response to split it per call. The request line
 			// below carries the response bytes.
 			for _, c := range calls {
-				a.Log(audit.Entry{TS: start, Login: login, Endpoint: endpoint, Op: c.Name,
+				a.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: endpoint, Op: c.Name,
 					Args: c.Args, MS: ms, Status: status})
 			}
-			a.Log(audit.Entry{TS: start, Login: login, Endpoint: endpoint, Op: r.Method,
+			a.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: endpoint, Op: r.Method,
 				Bytes: cw.n, MS: ms, Status: status})
 		}()
 

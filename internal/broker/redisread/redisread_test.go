@@ -111,7 +111,12 @@ func newFixture(t *testing.T) *fixture {
 
 func (f *fixture) post(t *testing.T, req api.RedisRequest) (int, []byte) {
 	t.Helper()
-	tok, _, _ := auth.Issue(testKey, "alice", time.Now())
+	return f.postAs(t, api.RoleLead, req)
+}
+
+func (f *fixture) postAs(t *testing.T, role string, req api.RedisRequest) (int, []byte) {
+	t.Helper()
+	tok, _, _ := auth.Issue(testKey, "alice", role, time.Now())
 	b, _ := json.Marshal(req)
 	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+tok)
@@ -306,7 +311,7 @@ func TestRedis_AuditLine(t *testing.T) {
 
 func TestRedis_BadBody400(t *testing.T) {
 	f := newFixture(t)
-	tok, _, _ := auth.Issue(testKey, "alice", time.Now())
+	tok, _, _ := auth.Issue(testKey, "alice", "lead", time.Now())
 	r, _ := http.NewRequest(http.MethodPost, f.ts.URL, strings.NewReader("{nope"))
 	r.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := http.DefaultClient.Do(r)
@@ -549,5 +554,45 @@ func TestHandler_Validate(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Validate() = %v, want it to name %q", err, want)
 		}
+	}
+}
+
+func TestRedis_DevPrdValuesLeadOnly(t *testing.T) { // SC-23
+	for _, cmd := range []string{"GET", "MGET", "HGET", "HGETALL", "HKEYS", "LRANGE", "SMEMBERS", "ZRANGE", "XRANGE"} {
+		f := newFixture(t)
+		st, body := f.postAs(t, api.RoleDev, api.RedisRequest{Env: "prd", Cmd: cmd, Args: []string{"k", "0", "1"}})
+		if st != http.StatusForbidden || !strings.Contains(string(body), api.CodeLeadOnly) {
+			t.Errorf("%s: got %d %s, want 403 lead_only", cmd, st, body)
+		}
+		if f.prd.sent(cmd) {
+			t.Errorf("%s: reached redis", cmd)
+		}
+		if !strings.Contains(f.audit.String(), `"role":"dev"`) || !strings.Contains(f.audit.String(), `"status":403`) {
+			t.Errorf("%s: audit = %s", cmd, f.audit.String())
+		}
+	}
+}
+
+func TestRedis_DevPrdMetadataAllowed(t *testing.T) {
+	for _, req := range []api.RedisRequest{
+		{Env: "prd", Cmd: "TTL", Args: []string{"k"}},
+		{Env: "prd", Cmd: "type", Args: []string{"k"}},
+		{Env: "prd", Cmd: "EXISTS", Args: []string{"k"}},
+		{Env: "prd", Cmd: "SCAN", Args: []string{"0"}},
+		{Env: "prd", Cmd: "LLEN", Args: []string{"k"}},
+		{Env: "prd", Cmd: "SCARD", Args: []string{"k"}},
+		{Env: "prd", Cmd: "ZCARD", Args: []string{"k"}},
+	} {
+		f := newFixture(t)
+		if st, body := f.postAs(t, api.RoleDev, req); st != http.StatusOK {
+			t.Errorf("%s: got %d %s, want 200", req.Cmd, st, body)
+		}
+	}
+}
+
+func TestRedis_DevStgFullAccess(t *testing.T) {
+	f := newFixture(t)
+	if st, body := f.postAs(t, api.RoleDev, api.RedisRequest{Env: "stg", Cmd: "GET", Args: []string{"k"}}); st != http.StatusOK || !f.stg.sent("GET") {
+		t.Fatalf("got %d %s, want 200 and GET sent", st, body)
 	}
 }

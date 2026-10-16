@@ -29,7 +29,7 @@ func mongoConnectLine(db string) string {
 }
 
 // MongoQuery is one structured read. Op is one of collections|doc|count|find|
-// aggregate|explain. JSON fields are the raw CLI flag strings (empty = absent).
+// aggregate|explain|indexes|stats. JSON fields are the raw CLI flag strings (empty = absent).
 type MongoQuery struct {
 	Op, Coll, Filter, Projection, Sort, Pipeline string
 	DB                                           string // empty = "3csoft"
@@ -191,6 +191,12 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 		fmt.Fprintf(&b, `d.getCollectionInfos({type:"collection"}).map(c=>c.name).sort().filter(n=>n.toLowerCase().includes(%s)).forEach(n=>print(n))`, subB)
 	case "doc":
 		fmt.Fprintf(&b, "print(EJSON.stringify(%s.findOne(), null, 2))", coll)
+	case "indexes":
+		fmt.Fprintf(&b, "print(EJSON.stringify(%s.getIndexes(), null, 2))", coll)
+	case "stats":
+		// Sizes and counts only: stats() also carries per-index and storage
+		// engine detail nobody asked for.
+		fmt.Fprintf(&b, "const s=%s.stats();print(EJSON.stringify({ns:s.ns,count:s.count,size:s.size,avgObjSize:s.avgObjSize,storageSize:s.storageSize,nindexes:s.nindexes,totalIndexSize:s.totalIndexSize}, null, 2))", coll)
 	case "count":
 		if filter == "" {
 			fmt.Fprintf(&b, "print(%s.estimatedDocumentCount())", coll)
