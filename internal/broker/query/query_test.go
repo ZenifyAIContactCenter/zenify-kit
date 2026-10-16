@@ -477,6 +477,18 @@ func TestQuery_DevPrdDataReadLeadOnly(t *testing.T) { // SC-20
 		"desc for connection":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESC FOR CONNECTION 1"},
 		"describe format conn": {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESCRIBE FORMAT=JSON FOR CONNECTION 1"},
 		"explain for conn":     {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FOR CONNECTION 1"},
+		// Row channels a dev could open through plan/schema statements.
+		"explain analyze":         {Env: "prd", Engine: "mysql", Op: "sql", SQL: "explain analyze select 1"},
+		"explain tree analyze":    {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT=TREE ANALYZE SELECT * FROM users"},
+		"explain cte":             {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT = JSON WITH t AS (SELECT 1) SELECT * FROM t"},
+		"explain cte delete":      {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN WITH t AS (SELECT 1) DELETE FROM accounts"},
+		"explain const subquery":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN SELECT * FROM users WHERE id = (SELECT 1 FROM users WHERE ASCII(password)>77)"},
+		"show tables where bool":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW TABLES WHERE (SELECT ASCII(SUBSTR(password,1,1)) FROM users LIMIT 1)>77"},
+		"show index where bool":   {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW INDEX FROM users WHERE (SELECT ASCII(SUBSTR(password,1,1)) FROM users LIMIT 1)>77"},
+		"show columns where bool": {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW COLUMNS FROM users WHERE (SELECT ASCII(SUBSTR(password,1,1)) FROM users LIMIT 1)>77"},
+		"show status where bool":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW TABLE STATUS WHERE (SELECT ASCII(SUBSTR(password,1,1)) FROM users LIMIT 1)>77"},
+		"show tables where error": {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW TABLES WHERE EXTRACTVALUE(1,CONCAT(0x7e,(SELECT password FROM users LIMIT 1)))"},
+		"desc subquery":           {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESC (SELECT password FROM users)"},
 	} {
 		f := newFixture(t, okRun)
 		st, _, e := f.postAs(t, "devgal", api.RoleDev, req)
@@ -496,8 +508,7 @@ func TestQuery_DevPrdDataReadLeadOnly(t *testing.T) { // SC-20
 func TestQuery_DevPrdPlanAndSchemaRunAsLead(t *testing.T) { // SC-21
 	for name, req := range map[string]api.QueryRequest{
 		"mysql explain":        {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN SELECT * FROM accounts WHERE id=1"},
-		"explain analyze":      {Env: "prd", Engine: "mysql", Op: "sql", SQL: "explain analyze select 1"},
-		"explain format":       {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT = JSON WITH t AS (SELECT 1) SELECT * FROM t"},
+		"explain format":       {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT = JSON SELECT * FROM accounts WHERE email = 'x'"},
 		"describe":             {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESCRIBE accounts"},
 		"desc":                 {Env: "prd", Engine: "mysql", Op: "sql", SQL: "  desc accounts"},
 		"desc select":          {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESC SELECT 1"},
@@ -533,7 +544,6 @@ func TestQuery_DevGuardStillRuns(t *testing.T) {
 	for name, sql := range map[string]string{
 		"explain select into":  "EXPLAIN SELECT * FROM accounts INTO OUTFILE '/tmp/x'",
 		"comment then explain": "/* x */ EXPLAIN SELECT 1",
-		"explain cte delete":   "EXPLAIN WITH t AS (SELECT 1) DELETE FROM accounts",
 	} {
 		f := newFixture(t, okRun)
 		st, _, e := f.postAs(t, "devgal", api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mysql", Op: "sql", SQL: sql})
