@@ -57,6 +57,17 @@ discovery above, or from the service catalog — never from memory.
   `{ } | count_over_time() by (span.http.status_code)`.
 - A Tempo metrics query covers at most 3 h; split longer ranges.
 - An instant `query_prometheus` needs `endTime`.
+- Tempo keeps traces only for its retention window (measured on one deployment: about two days).
+  An empty Tempo search or metrics query for an older window means "aged out", not "no errors":
+  for older windows use spanmetrics in Prometheus and Loki. Find the edge by searching one hour a
+  day or two back.
+- TraceQL span kind is the intrinsic `kind=server`; `span.kind=server` matches nothing and returns
+  an empty series.
+- Match a route by its exact value read from `list_tempo_attribute_values` (e.g.
+  `span.http.route`), not a regex guess.
+- Deferred MCP tools are called by their full name `mcp__<server>__<tool>`; the bare tool name
+  fails with "No such tool". If the server is still connecting, wait and search again rather than
+  switching approach.
 - `traces_spanmetrics_latency_bucket` buckets are in **seconds** (`le` 0.001 … 10, then `+Inf`),
   so a p95 of exactly `10` means "at least 10 s, capped by the top bucket", not 10 ms. The
   service label is `service`; server spans are `span_kind="SPAN_KIND_SERVER"` (measured
