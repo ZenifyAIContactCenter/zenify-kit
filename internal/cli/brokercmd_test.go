@@ -527,6 +527,10 @@ func TestRedisRead_PrdAfterCommandRefused(t *testing.T) {
 	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "--prd") {
 		t.Fatalf("err = %v (code %d), want BadArgs naming --prd", err, exitcode.Code(err))
 	}
+	_, _, err = execCmd(newRedisReadCmd(), "--manifest", mp, "GET", "x", "--prd=true")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("--prd=true after command: err = %v (code %d), want BadArgs", err, exitcode.Code(err))
+	}
 	if n := atomic.LoadInt32(hits); n != 0 {
 		t.Fatalf("broker got %d requests, want 0", n)
 	}
