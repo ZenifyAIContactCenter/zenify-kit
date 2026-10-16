@@ -1,7 +1,7 @@
 ---
 name: where
 description: Recap where the current task stands — goal, done, in progress, next step, blockers — from the conversation plus the kit's real state (ledger, branch, worktree, PR). Use when the user asks "where are we", "status", "recap", "what is left", or resumes after a break or a compaction.
-allowed-tools: Read Grep Glob Bash(git *) Bash(gh pr *) Bash(zenify wt *)
+allowed-tools: Read Grep Glob Bash(git status*) Bash(git branch --show-current) Bash(git log*) Bash(gh pr view*) Bash(zenify wt ls*)
 ---
 
 **Report, never act.** This skill reads state and prints one recap. It edits no file, runs no
@@ -17,13 +17,15 @@ made and options rejected, the spec/plan paths in play, the last command that ra
 For each repo the task touched (no repo → skip this step):
 
 - `git status --short`, `git branch --show-current`, `git log --oneline -5`; commits ahead of the
-  base: `git log --oneline origin/<base>..HEAD`.
+  base: `git log --oneline origin/<base>..HEAD`, base from the PR's `baseRefName` or the repo's
+  worktree config; no fetch, so the count is as of the last fetch.
 - Worktree: `zenify wt ls` in that repo — which slug, running or merged.
 - Ledger: the SDD ledger at `<repo-root>/.znf/sdd/*/progress.md` matching the plan in play.
   Count `Task <N>: complete` against the plan's tasks; name the first task not complete.
-- PR: `gh pr view --json number,url,state,isDraft,mergeable,statusCheckRollup` for the current
+- PR: `gh pr view --json number,url,state,isDraft,mergeable,baseRefName,statusCheckRollup` for the current
   branch. No PR → say "no PR yet".
-- Dispatched agents: every agent this session dispatched — reported, or still running.
+- Dispatched agents: the ledger lines in `progress.md` (and the ship board, if any) first, then
+  agents this session dispatched — reported, or still running.
   Silence is not a clean result: an agent with no report is **INCOMPLETE**, never "nothing found".
 
 A command that fails or is unavailable → say which one and why, do not guess its answer.
