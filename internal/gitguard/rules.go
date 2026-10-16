@@ -118,7 +118,7 @@ func isPRMerge(argv []string) bool {
 	return mergePath && put
 }
 
-var reStackUnstack = regexp.MustCompile(`^/?repos/[^/]+/[^/]+/stacks/\d+/unstack$`)
+var reStackUnstack = regexp.MustCompile(`(^|/)repos/[^/]+/[^/]+/stacks/\d+/unstack/?(\?.*)?$`)
 
 // stackCall returns the gh-stack subcommand and its args for `gh stack …` or
 // a direct `gh-stack …` call; ok is false for anything else.

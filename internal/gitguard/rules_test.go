@@ -54,6 +54,8 @@ func TestRules(t *testing.T) {
 		`gh api -X PUT repos/o/r/pulls/5/merge-async`, `gh api repos/o/r/pulls/5/merge-async`,
 		`gh stack unstack`, `gh stack delete`, `gh stack link 1 2`,
 		`gh api -X POST repos/o/r/stacks/3/unstack`, `gh api --method POST /repos/o/r/stacks/3/unstack`,
+		`gh api -X POST 'repos/o/r/stacks/3/unstack?x=1'`, `gh api -X POST repos/o/r/stacks/3/unstack/`,
+		`gh api -X POST https://api.github.com/repos/o/r/stacks/3/unstack`,
 	}
 	allow := []string{
 		`go test ./...`, `git push origin feat/x`, `git push -u origin feat/x`, `gh pr create --title t`,
@@ -65,7 +67,7 @@ func TestRules(t *testing.T) {
 		`sh -c "go test $X"`, `echo hi | sh`, `bash script.sh`, `bash -x script.sh arg`,
 		"cat <<'EOF'\nhello staging-host\nEOF", `git push origin feat/x < /dev/null`,
 		`gh stack push`, `gh stack rebase`, `gh stack rebase --abort`, `gh stack rebase --upstack`,
-		`gh stack submit --auto --open`, `gh stack view --json`, `gh stack unstack --local`,
+		`gh stack submit --auto --open`, `gh stack view --json`, `gh stack unstack --local`, `gh stack delete --local`,
 		`gh stack checkout feat/x-2`, `gh api repos/o/r/stacks`, `gh api -X POST repos/o/r/stacks -f pull_requests[]=1`,
 	}
 	for _, cmd := range deny {
@@ -170,7 +172,8 @@ func TestStackDeployBranch(t *testing.T) {
 	_, opts := mkWorkspace(t)
 	dir := filepath.Join(t.TempDir(), "repo")
 	mkRepo(t, dir, "feat/x", []string{"staging"})
-	for _, cmd := range []string{`gh stack add staging`, `gh stack init staging`, `gh stack init --base main staging`} {
+	for _, cmd := range []string{`gh stack add staging`, `gh stack init staging`, `gh stack init --base main staging`,
+		`gh-stack add staging`, `bash -c 'gh stack add staging'`} {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
 			t.Errorf("want deny: %s", cmd)
 		}
@@ -178,6 +181,8 @@ func TestStackDeployBranch(t *testing.T) {
 	for _, cmd := range []string{
 		`gh stack init --base staging feat/x`, `gh stack init -b staging feat/x`,
 		`gh stack add feat/x-2`, `gh stack add -m "wip" feat/x-2`,
+		`gh stack add -m staging feat/x-2`, `gh stack init --base=staging feat/x`,
+		`gh stack add --message=staging feat/x-2`,
 	} {
 		if d := Decide(cmd, dir, noenv, nil, opts); d.Deny {
 			t.Errorf("want allow: %s: %s", cmd, d.Message)
