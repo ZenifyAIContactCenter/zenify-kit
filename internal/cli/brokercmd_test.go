@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -736,5 +737,47 @@ func TestDevPrdPrecheck(t *testing.T) {
 		if _, _, err := execCmd(newRedisReadCmd(), append([]string{"--manifest", mp}, args...)...); err != nil || atomic.LoadInt32(hits) != before+1 {
 			t.Errorf("redis-read %v: err=%v, want sent", args, err)
 		}
+	}
+}
+
+func TestDBReadBroker_TargetAudit(t *testing.T) {
+	hermeticDBRead(t)
+	var body string
+	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		_ = json.NewEncoder(w).Encode(api.QueryResponse{})
+	}})
+	// No cached role yet: the request goes out and caches role=dev.
+	if _, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "--target", "audit", "find", "logs"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `"target":"audit"`) {
+		t.Errorf("body = %s, want target audit", body)
+	}
+	before := atomic.LoadInt32(hits)
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "--target", "audit", "find", "logs")
+	if err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || atomic.LoadInt32(hits) != before {
+		t.Errorf("dev: err=%v hits %d→%d, want lead-only and no request", err, before, atomic.LoadInt32(hits))
+	}
+}
+
+func TestDBReadBroker_TargetAuditNeedsPrd(t *testing.T) {
+	hermeticDBRead(t)
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeInvalidTarget, Message: "target audit needs env=prd"})
+	}})
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--target", "audit", "find", "logs")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("err = %v (code %d), want BadArgs", err, exitcode.Code(err))
+	}
+}
+
+func TestDBRead_TargetAuditNeedsBroker(t *testing.T) {
+	hermeticDBRead(t)
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", noBrokerManifest(t), "--target", "audit", "find", "logs")
+	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "--target audit cần broker") { //znf:allow-lang
+		t.Errorf("err = %v (code %d), want BadArgs naming the broker", err, exitcode.Code(err))
 	}
 }

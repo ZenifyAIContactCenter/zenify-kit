@@ -42,6 +42,7 @@ type Options struct {
 	Limit      int
 	Prod       bool   // read production: MONGO_URL_PRD / MYSQL_URL_PRD
 	MongoDB    string // Mongo database; empty = 3csoft
+	Brokered   bool   // set by the broker: no local-credential hints (env var names, .zenify/.env) on stderr
 	PlanOnly   bool   // explain without executing (queryPlanner); the broker sets it for dev on prd
 	Truncated  bool   // set by Run: output was cut at the line or byte cap
 	Rows       int    // set by Run: stdout lines written, for every op (Mongo: pretty-printed JSON lines, not documents)
@@ -82,7 +83,7 @@ func LoadCreds(getenv func(string) string, envPath string) (map[string]string, e
 
 // prodNotice names the production key in use, once it is known to be set.
 func prodNotice(o *Options, key string) {
-	if o.Prod {
+	if o.Prod && !o.Brokered {
 		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: production (%s)\n", key)
 	}
 }
@@ -430,7 +431,9 @@ func Run(o *Options) error {
 		// cut (its stderr notice, o.Truncated) produced it.
 		if err != nil && !cw.Truncated() && !o.Truncated {
 			if o.Prod {
-				_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: kiểm lại %s trong .zenify/.env\n", mk) //znf:allow-lang
+				if !o.Brokered {
+					_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: kiểm lại %s trong .zenify/.env\n", mk) //znf:allow-lang
+				}
 				return err
 			}
 			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: mongosh failed. Separate network from credential before theorising:")

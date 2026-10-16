@@ -71,6 +71,7 @@ Không có broker thì lệnh chỉ chạy được trong phiên mở tại work
 | `--prd` | read production: via the broker; without one: MONGO_URL_PRD / MYSQL_URL_PRD |
 | `--projection` | JSON object projection (find, explain) |
 | `--sort` | JSON object sort (find, explain) |
+| `--target` | database: main (default) or audit (Mongo, prd only) |
 
 ## Lệnh liên quan
 

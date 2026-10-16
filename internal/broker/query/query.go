@@ -206,7 +206,7 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 		arg = req.SQL
 	}
 	return &dbread.Options{Cmd: req.Op, Arg: arg, Filter: req.Filter, Projection: req.Projection, Sort: req.Sort,
-		Pipeline: req.Pipeline, Limit: req.Limit, Prod: prd, MongoDB: db,
+		Pipeline: req.Pipeline, Limit: req.Limit, Prod: prd, Brokered: true, MongoDB: db,
 		Env: func(k string) string { return env[k] }}, "", ""
 }
 

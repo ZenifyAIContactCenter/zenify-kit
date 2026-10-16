@@ -1024,3 +1024,24 @@ func TestRun_Mongo_DBReachesScript(t *testing.T) {
 		t.Errorf("script = %q", script)
 	}
 }
+
+func TestRun_BrokeredHidesEnvNames(t *testing.T) {
+	o, _, stderr := baseOptions(t, prdEnv())
+	calls := recordRun(o, "")
+	o.Cmd, o.Arg, o.Prod, o.Brokered = "count", "users", true, true
+	if err := Run(o); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	_ = calls
+	o2, _, stderr2 := baseOptions(t, prdEnv())
+	o2.SetRun(func(string, []string, []string, string) error { return errors.New("boom") })
+	o2.Cmd, o2.Arg, o2.Prod, o2.Brokered = "count", "users", true, true
+	if err := Run(o2); err == nil {
+		t.Fatal("want error")
+	}
+	for _, s := range []string{stderr.String(), stderr2.String()} {
+		if strings.Contains(s, "MONGO_URL_PRD") || strings.Contains(s, ".zenify/.env") {
+			t.Errorf("brokered stderr leaks a local-credential hint: %q", s)
+		}
+	}
+}

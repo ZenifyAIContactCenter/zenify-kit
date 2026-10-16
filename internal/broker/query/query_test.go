@@ -688,3 +688,17 @@ func TestQuery_DevPrdFailureWithholdsStderr(t *testing.T) {
 		}
 	}
 }
+
+func TestQuery_PrdStderrHasNoEnvNames(t *testing.T) {
+	f := newFixture(t, func(_ context.Context, _ string, _ []string, _ []string, out, _ io.Writer) error {
+		_, _ = io.WriteString(out, "{\"a\":1}\n")
+		return nil
+	})
+	st, resp, e := f.post(t, "octocat", api.QueryRequest{Env: "prd", Engine: "mongo", Op: "count", Coll: "users"})
+	if st != 200 {
+		t.Fatalf("got %d %+v", st, e)
+	}
+	if strings.Contains(resp.Stderr, "MONGO_URL_PRD") {
+		t.Errorf("stderr = %q, want no env var name", resp.Stderr)
+	}
+}
