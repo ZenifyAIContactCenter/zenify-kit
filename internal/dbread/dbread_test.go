@@ -1044,4 +1044,16 @@ func TestRun_BrokeredHidesEnvNames(t *testing.T) {
 			t.Errorf("brokered stderr leaks a local-credential hint: %q", s)
 		}
 	}
+	// stg: a brokered failure must not send the user to a local .env or nc.
+	o3, _, stderr3 := baseOptions(t, prdEnv())
+	o3.SetRun(func(string, []string, []string, string) error { return errors.New("boom") })
+	o3.Cmd, o3.Arg, o3.Brokered = "count", "users", true
+	if err := Run(o3); err == nil {
+		t.Fatal("want error")
+	}
+	for _, bad := range []string{".zenify/.env", "MONGO_URL", "nc -z"} {
+		if strings.Contains(stderr3.String(), bad) {
+			t.Errorf("brokered stg stderr contains %q: %q", bad, stderr3.String())
+		}
+	}
 }
