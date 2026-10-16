@@ -27,6 +27,19 @@ func Decide(command, callCwd string, getenv func(string) string, onCommit func(r
 		return d
 	}
 
+	for _, c := range p.Cmds {
+		bs := stackBranchArgs(c.Argv)
+		if len(bs) == 0 {
+			continue
+		}
+		patterns := loadDeny(repoRoot(base))
+		for _, b := range bs {
+			if matchDeny(b, patterns) {
+				return deny("gh", "cannot stack deploy branch '"+b+"'")
+			}
+		}
+	}
+
 	// The deploy-branch rule only cares about commit/merge/push.
 	var relevant []GitCall
 	for _, c := range gitCalls(p) {
