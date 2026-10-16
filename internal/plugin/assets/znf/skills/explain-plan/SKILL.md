@@ -48,12 +48,13 @@ zenify db-read explain <real-name> --pipeline '<json>'    # for an aggregate
 zenify db-read sql  'EXPLAIN ANALYZE <real-statement>'
 ```
 
-**Measure volume where it bites.** Dev data hides the problem, so when your role allows it run
-`count`, `stats` and `explain` on production too, with `--prd` before the subcommand
-(`zenify db-read --prd explain <real-name> --filter '<json>'`). Role dev on production gets the
-`queryPlanner` plan only — no `executionStats` — and `count` without `--filter`, and SQL limited
-to `EXPLAIN SELECT` (no `ANALYZE`): read the winning stage and index from prd, the scan ratio
-from a non-prd run. Full list: `znf:_shared/evidence-sources` (Role dev on production). Say which
+**Measure volume where it bites.** Dev data hides the problem, so read production volume too,
+with `--prd` before the subcommand (`zenify db-read --prd count <real-name>`). On `--prd`, every
+role — lead included — runs only `count`, `stats` and a plan that does not execute: SQL
+`EXPLAIN SELECT` (no `ANALYZE`); Mongo `explain` only under `role=dev`, where the broker caps it
+at `queryPlanner` (for a lead it executes the query, so skip it). Read the winning stage and
+index from prd; take `executionStats` / `EXPLAIN ANALYZE` and the scan ratio from staging. Dev
+limits: `znf:_shared/evidence-sources` (Role dev on production). Say which
 environment each number came from.
 
 ## Step 3 — dynamic rubric (two-tier)
