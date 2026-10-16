@@ -7,7 +7,7 @@ Agent `ui-verifier` gọi lệnh này ngay trước khi xoá screenshot của n�
 
 ## Kết quả
 
-Lệnh tính fingerprint `fp` trên working tree của `--repo`, copy ảnh vào `<repo>/.znf/ui-verify/<fp>-<screen>.png`, rồi upsert screen vào `<repo>/.znf/ui-verify/<fp>.json`. Đổi working tree sau khi ghi (vd một fix ở vòng review) làm `fp` lệch, nên artifact cũ không còn khớp lần `check` kế tiếp — buộc phải đo lại.
+Lệnh tính fingerprint `fp` trên working tree của `--repo`, copy ảnh vào `<repo>/.znf/ui-verify/<fp>-<screen>.png` (ký tự ngoài `A-Z a-z 0-9 . _ -` trong tên screen, như `/` của một route, được đổi thành `-` và thêm 8 ký tự hash để hai tên khác nhau không ghi đè ảnh của nhau), rồi upsert screen vào `<repo>/.znf/ui-verify/<fp>.json`. Đổi working tree sau khi ghi (vd một fix ở vòng review) làm `fp` lệch, nên artifact cũ không còn khớp lần `check` kế tiếp — buộc phải đo lại.
 
 ## Cờ
 

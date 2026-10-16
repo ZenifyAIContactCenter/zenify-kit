@@ -5,6 +5,7 @@
 package uiverify
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +23,21 @@ import (
 // component/style file, or a directory segment that conventionally holds
 // screens/components. FR-2.1 — keep this exact pattern in sync with the brief.
 var renderRe = regexp.MustCompile(`\.(tsx|jsx|vue|svelte|css|scss|less)$|components?/|pages?/|views?/`)
+
+// unsafeFileRe matches what may not appear in a screenshot file name: a
+// route-shaped screen ("chat/room") would otherwise become a missing subdir.
+var unsafeFileRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+// screenFileName is the screenshot file name for a screen. A name that had to
+// be rewritten carries a short hash of the raw name, so "chat/room" and
+// "chat-room" never overwrite each other's screenshot.
+func screenFileName(fp, screen string) string {
+	safe := unsafeFileRe.ReplaceAllString(screen, "-")
+	if safe != screen {
+		safe = fmt.Sprintf("%s-%x", safe, sha256.Sum256([]byte(screen)))[:len(safe)+9]
+	}
+	return fmt.Sprintf("%s-%s.png", fp, safe)
+}
 
 // waiverMarker: a line containing this in a diff or the working tree waives
 // the gate; the reason is whatever follows the ':'. FR-2.3.
@@ -247,7 +263,7 @@ func Record(d Deps, repo string, s Screen, screenshotSrc string) error {
 		return exitcode.New(exitcode.Fail, err)
 	}
 
-	destName := fmt.Sprintf("%s-%s.png", fp, s.Screen)
+	destName := screenFileName(fp, s.Screen)
 	dest := filepath.Join(dir, destName)
 	if err := copyFile(screenshotSrc, dest); err != nil {
 		return exitcode.New(exitcode.Fail, fmt.Errorf("copy screenshot: %w", err))

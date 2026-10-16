@@ -225,3 +225,71 @@ func TestRunRm_RegisteredDirRemoveFailureIsError(t *testing.T) {
 		t.Fatal("registered dir must not be deleted behind git's back")
 	}
 }
+
+// wt rm must refresh origin before judging merge state: a PR merged after the
+// last fetch read as "no merge trace" (measured on contact-center-web, 2026-10-17).
+func TestRunRm_FetchesBeforeMergeCheck(t *testing.T) {
+	root := rmRepo(t, "foo", "namph/feat/foo")
+	wtPath := filepath.Join(root, ".worktrees", "foo")
+	s := &rmStub{out: map[string]string{
+		wtPath + "|symbolic-ref --quiet --short HEAD": "namph/feat/foo",
+		wtPath + "|status --porcelain":                "",
+	}}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "foo", Fetch: true, Runner: s, Stderr: io.Discard, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	fetchAt, mergeAt := -1, -1
+	for i, k := range s.seen {
+		if k == root+"|fetch origin --quiet" && fetchAt < 0 {
+			fetchAt = i
+		}
+		if strings.HasPrefix(k, root+"|merge-base --is-ancestor") && mergeAt < 0 {
+			mergeAt = i
+		}
+	}
+	if fetchAt < 0 || mergeAt < 0 || fetchAt > mergeAt {
+		t.Fatalf("want fetch before merge check, got %v", s.seen)
+	}
+}
+
+// A hotfix lands on the release branch it was cut from, not on baseRef: the
+// merge check must accept the base recorded at wt new time (wt.base).
+func TestRunRm_AcceptsMergeIntoRecordedBase(t *testing.T) {
+	root := rmRepo(t, "hf", "namph/hotfix/hf")
+	wtPath := filepath.Join(root, ".worktrees", "hf")
+	s := &rmStub{
+		out: map[string]string{
+			wtPath + "|symbolic-ref --quiet --short HEAD": "namph/hotfix/hf",
+			wtPath + "|status --porcelain":                "",
+			wtPath + "|config --get wt.base":              "origin/release91\n",
+			root + "|diff origin/main..namph/hotfix/hf":   "d",
+		},
+		err: map[string]error{root + "|merge-base --is-ancestor namph/hotfix/hf origin/main": errors.New("no")},
+	}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "hf", Runner: s, Stderr: io.Discard, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("hotfix merged into its release base should remove: %v", err)
+	}
+}
+
+// Unmerged in both refs: refused, and the message names both refs it tried.
+func TestRunRm_RefusalNamesRecordedBase(t *testing.T) {
+	root := rmRepo(t, "hf", "namph/hotfix/hf")
+	wtPath := filepath.Join(root, ".worktrees", "hf")
+	s := &rmStub{
+		out: map[string]string{
+			wtPath + "|symbolic-ref --quiet --short HEAD":    "namph/hotfix/hf",
+			wtPath + "|status --porcelain":                   "",
+			wtPath + "|config --get wt.base":                 "origin/release91\n",
+			root + "|diff origin/main..namph/hotfix/hf":      "d",
+			root + "|diff origin/release91..namph/hotfix/hf": "d",
+		},
+		err: map[string]error{
+			root + "|merge-base --is-ancestor namph/hotfix/hf origin/main":      errors.New("no"),
+			root + "|merge-base --is-ancestor namph/hotfix/hf origin/release91": errors.New("no"),
+		},
+	}
+	err := RunRm(RmOptions{RepoRoot: root, Slug: "hf", Runner: s, Stderr: io.Discard, Pid: 1, Now: 2, Host: "h"})
+	if err == nil || !strings.Contains(err.Error(), "origin/main or origin/release91") {
+		t.Fatalf("want refusal naming both refs, got %v", err)
+	}
+}
