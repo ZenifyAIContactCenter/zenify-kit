@@ -27,7 +27,7 @@ type bucket struct {
 // maxBuckets bounds memory; past it, buckets that have refilled are dropped.
 const maxBuckets = 10000
 
-// maxKeyLen bounds one bucket key: a longer key (a forged CF-Connecting-IP)
+// maxKeyLen bounds one bucket key: a longer key (a forged X-Real-IP)
 // is stored as its SHA-256 hex, so maxBuckets bounds memory in bytes too.
 const maxKeyLen = 256
 
@@ -70,10 +70,12 @@ func (l *limiter) allow(key string, now time.Time) bool {
 	return true
 }
 
-// clientIP is CF-Connecting-IP (every request arrives via cloudflared), else
-// the connection's host.
+// clientIP is X-Real-IP, else the connection's host. Every request arrives
+// through the TLS proxy in front of the broker, which overwrites X-Real-IP
+// with the peer address. The broker is published on 127.0.0.1 only, so a
+// client cannot reach it with a forged value.
 func clientIP(r *http.Request) string {
-	if ip := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); ip != "" {
+	if ip := strings.TrimSpace(r.Header.Get("X-Real-IP")); ip != "" {
 		return ip
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {

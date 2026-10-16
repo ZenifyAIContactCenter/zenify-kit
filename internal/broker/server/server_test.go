@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -59,10 +60,10 @@ func newServer(gh *httptest.Server, out *bytes.Buffer) http.Handler {
 	})
 }
 
-func postToken(h http.Handler, ghTok, cfIP string) *httptest.ResponseRecorder {
+func postToken(h http.Handler, ghTok, ip string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(`{"github_token":"`+ghTok+`"}`))
-	if cfIP != "" {
-		req.Header.Set("CF-Connecting-IP", cfIP)
+	if ip != "" {
+		req.Header.Set("X-Real-IP", ip)
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -127,7 +128,25 @@ func TestToken_BadGitHubToken401(t *testing.T) {
 	}
 }
 
-func TestToken_RateLimitPerCFConnectingIP(t *testing.T) {
+// The bucket key is X-Real-IP (set by the TLS proxy); a forged
+// CF-Connecting-IP no longer picks a fresh bucket.
+func TestToken_RateLimitIgnoresCFConnectingIP(t *testing.T) {
+	var out bytes.Buffer
+	h := newServer(fakeGitHub(t, "active", nil), &out)
+	var rec *httptest.ResponseRecorder
+	for i := 1; i <= 31; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(`{"github_token":"`+ghToken+`"}`))
+		req.Header.Set("X-Real-IP", "198.51.100.9")
+		req.Header.Set("CF-Connecting-IP", fmt.Sprintf("203.0.113.%d", i))
+		rec = httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+	}
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("31st with rotating CF-Connecting-IP: got %d, want 429", rec.Code)
+	}
+}
+
+func TestToken_RateLimitPerClientIP(t *testing.T) {
 	var out bytes.Buffer
 	var calls int32
 	h := newServer(fakeGitHub(t, "active", &calls), &out)

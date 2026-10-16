@@ -163,7 +163,7 @@ func TestToken_CacheKeyedByURL(t *testing.T) {
 }
 
 // The default client never follows a redirect, so the GitHub token body is not
-// replayed to the Location host; the 3xx becomes an APIError with a WARP hint.
+// replayed to the Location host; the 3xx becomes an APIError with a broker.url hint.
 func TestToken_RedirectNotFollowed(t *testing.T) {
 	var elsewhere int32
 	other := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { atomic.AddInt32(&elsewhere, 1) }))
@@ -177,8 +177,8 @@ func TestToken_RedirectNotFollowed(t *testing.T) {
 	c.HTTP = nil // the real redirect policy
 	_, err := c.Token(context.Background())
 	var ae *APIError
-	if !errors.As(err, &ae) || ae.Status != http.StatusTemporaryRedirect || !strings.Contains(ae.Message, "WARP") {
-		t.Fatalf("err = %v, want APIError 307 with a WARP hint", err)
+	if !errors.As(err, &ae) || ae.Status != http.StatusTemporaryRedirect || !strings.Contains(ae.Message, "broker.url") {
+		t.Fatalf("err = %v, want APIError 307 with a broker.url hint", err)
 	}
 	if elsewhere != 0 {
 		t.Fatalf("redirect target got %d requests, want 0", elsewhere)
@@ -187,14 +187,14 @@ func TestToken_RedirectNotFollowed(t *testing.T) {
 
 func TestToken_NonJSONReplyIsAPIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("<html>Cloudflare Access</html>"))
+		_, _ = w.Write([]byte("<html>proxy login</html>"))
 	}))
 	t.Cleanup(srv.Close)
 	now := t0
 	_, err := newClient(srv.URL, t.TempDir(), &now).Token(context.Background())
 	var ae *APIError
-	if !errors.As(err, &ae) || !strings.Contains(ae.Message, "WARP") {
-		t.Fatalf("err = %v, want APIError with a WARP hint", err)
+	if !errors.As(err, &ae) || !strings.Contains(ae.Message, "broker.url") {
+		t.Fatalf("err = %v, want APIError with a broker.url hint", err)
 	}
 }
 
@@ -255,7 +255,7 @@ func TestGHTokenExec_IncludesStderr(t *testing.T) {
 	}
 }
 
-// Only 401/403 non-JSON replies get the WARP hint; a non-JSON 5xx says the
+// Only 401/403 non-JSON replies get the broker.url hint; a non-JSON 5xx says the
 // broker failed, and a JSON 500 (broker_misconfigured) keeps its own message.
 func TestDo_ErrorClassification(t *testing.T) {
 	cases := []struct {
@@ -264,8 +264,8 @@ func TestDo_ErrorClassification(t *testing.T) {
 		code, contains string
 		hint           bool
 	}{
-		{"403 html", "<html>Access</html>", http.StatusForbidden, "not_json", "WARP", true},
-		{"401 html", "<html>Access</html>", http.StatusUnauthorized, "not_json", "WARP", true},
+		{"403 html", "<html>Access</html>", http.StatusForbidden, "not_json", "broker.url", true},
+		{"401 html", "<html>Access</html>", http.StatusUnauthorized, "not_json", "broker.url", true},
 		{"502 html", "<html>Bad gateway</html>", http.StatusBadGateway, "not_json", "broker lỗi HTTP 502", false}, //znf:allow-lang
 		{"500 misconfigured", `{"error":"broker_misconfigured","message":"JWT signing key too short"}`, http.StatusInternalServerError, api.CodeBrokerMisconfigured, "JWT signing key too short", false},
 	}
@@ -278,7 +278,7 @@ func TestDo_ErrorClassification(t *testing.T) {
 		_, err := newClient(srv.URL, t.TempDir(), &now).Token(context.Background())
 		srv.Close()
 		var ae *APIError
-		if !errors.As(err, &ae) || ae.Status != tc.status || ae.Code != tc.code || !strings.Contains(ae.Message, tc.contains) || strings.Contains(ae.Message, "WARP") != tc.hint {
+		if !errors.As(err, &ae) || ae.Status != tc.status || ae.Code != tc.code || !strings.Contains(ae.Message, tc.contains) || strings.Contains(ae.Message, "broker.url") != tc.hint {
 			t.Errorf("%s: err = %#v", tc.name, err)
 		}
 	}

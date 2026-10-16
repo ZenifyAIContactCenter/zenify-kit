@@ -4,7 +4,7 @@ Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các cred
 
 ## Runbook 8 bước
 
-1. Tạo Cloudflare Tunnel từ host broker, cùng một Access application cho hostname broker. Policy: IdP GitHub, org `ZenifyAIContactCenter`. Bật WARP enrollment với cùng policy.
+1. Trỏ A record hostname broker (`broker.zenify.vn`) về IP public của host. Đặt nginx trên host trước broker, cấp cert bằng `certbot --nginx -d <hostname>`, và cho broker chỉ nghe trên `127.0.0.1` (xem [Reverse proxy TLS](#reverse-proxy-tls)). Lớp kiểm soát truy cập là GitHub auth của broker; khi có VPN thì giới hạn vhost theo dải VPN.
 2. Tạo user read-only trên Mongo staging và prod, MySQL staging và prod, và ACL Redis read-only (`+@read -@dangerous` hoặc tương đương) cho staging và prod.
 3. Tạo service-account Grafana riêng `zenify-broker` với role Viewer, có quyền Query trên datasource Loki, Prometheus, Tempo nếu Grafana bật datasource permissions. Không dùng lại token đang chia cho dev; thu hồi token cũ sau khi broker chạy ổn.
 4. Tạo key PostHog với preset "MCP Server", read-only, gắn project 137053, thuộc một user bot riêng chứ không phải tài khoản cá nhân.
@@ -54,7 +54,7 @@ Giữ giá trị secret trong file env của host (`chmod 600`), không đưa l�
 
 ```bash
 docker run -d --name zenify-broker --restart unless-stopped \
-  -p 127.0.0.1:8080:8080 \
+  -p 127.0.0.1:18080:8080 \
   --env-file /etc/zenify-broker/secrets.env \
   -v /etc/zenify-broker/broker.yaml:/etc/zenify-broker/broker.yaml:ro \
   ghcr.io/zenifyaicontactcenter/zenify-broker:<tag>
@@ -63,6 +63,25 @@ docker run -d --name zenify-broker --restart unless-stopped \
 `<tag>` là `main-<sha>` khi dựng trước release, `<version>` (ví dụ `0.39.0`) sau release. Nếu package trên ghcr ở chế độ private, chạy `docker login ghcr.io` trên host bằng một token có quyền `read:packages` trước.
 
 Image mở cổng 8080 và chạy `zenify-broker --config /etc/zenify-broker/broker.yaml`. Nếu `mcp-grafana` thoát, broker cũng thoát (khác 0) để orchestrator khởi động lại cả hai.
+
+## Reverse proxy TLS
+
+Kit chỉ nhận `broker.url` dạng `https://`, còn broker phục vụ HTTP thường, nên một reverse proxy trên host lo TLS. Broker giới hạn `/token` theo IP lấy từ header `X-Real-IP`, vì vậy proxy **phải ghi đè** header này bằng địa chỉ thật của client, và broker không được mở cổng nào ra ngoài `127.0.0.1` (nếu không, client tự gửi `X-Real-IP` giả để né rate limit).
+
+```nginx
+server {
+    listen 80;
+    server_name broker.zenify.vn;
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+Sau đó `nginx -t && systemctl reload nginx` rồi `certbot --nginx -d broker.zenify.vn`; certbot thêm khối `listen 443 ssl` và redirect từ 80.
 
 ## Kiểm tra trước khi tag release
 

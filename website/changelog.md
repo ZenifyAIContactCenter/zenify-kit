@@ -12,7 +12,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 
 *2026-10-16*
 
-- **Credential broker:** dev không còn tự điền credential database, PostHog và tài khoản E2E. Kit lấy chúng qua broker của team, xác thực bằng tài khoản GitHub (`gh auth login`) thuộc org ZenifyAIContactCenter. Broker chỉ truy cập được qua Cloudflare Zero Trust (bật WARP). Xem [Dùng credential broker](/guides/broker-client).
+- **Credential broker:** dev không còn tự điền credential database, PostHog và tài khoản E2E. Kit lấy chúng qua broker của team, xác thực bằng tài khoản GitHub (`gh auth login`) thuộc org ZenifyAIContactCenter. Broker chạy sau HTTPS tại `broker.zenify.vn`. Xem [Dùng credential broker](/guides/broker-client).
   - `zenify db-read` (cả `--prd`) chạy qua broker, giữ nguyên mọi giới hạn chỉ đọc.
   - Lệnh mới `zenify redis-read` đọc Redis staging hoặc production, chỉ các lệnh đọc, có giới hạn kích thước kết quả.
   - `zenify e2e login|run --role <role>` và `zenify visual check --role <role>` dùng tài khoản E2E riêng của từng dev, do broker cấp.
@@ -20,7 +20,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
   - `zenify broker token [--refresh]` và `zenify broker headers` lấy JWT của broker.
   - `zenify doctor` có mục `broker`: kiểm tra đăng nhập GitHub, quyền org và kết nối tới broker.
 - **Thay đổi phá vỡ:** manifest bỏ 10 key mà broker thay thế (database, PostHog, E2E). Sau `zenify up --apply`, các key này không còn trong `.zenify/.env`; `zenify doctor` báo chúng là "không còn dùng" nếu file còn giữ.
-- Người vận hành dựng broker theo [Dựng host credential broker](/guides/broker-host): image `zenify-broker`, Cloudflare Tunnel và Access, audit log từng lệnh theo GitHub login.
+- Người vận hành dựng broker theo [Dựng host credential broker](/guides/broker-host): image `zenify-broker` sau nginx và cert certbot, audit log từng lệnh theo GitHub login.
 
 ## v0.38.0
 
