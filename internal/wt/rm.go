@@ -17,6 +17,7 @@ type RmOptions struct {
 	Slug     string
 	Host     string
 	Force    bool
+	Fetch    bool // refresh origin before the merge check (the CLI sets it; sweep has fetched already)
 	Pid      int
 	Now      int64
 	Runner   gitx.Runner
@@ -89,8 +90,13 @@ func RunRm(o RmOptions) error {
 		if branch == "" {
 			return fmt.Errorf("wt: %q is on a detached HEAD — wt cannot tell whether its commits are safe; re-run with --force", o.Slug)
 		}
-		if !BranchMerged(r, o.RepoRoot, branch, base) {
-			return fmt.Errorf("wt: %q (%s) has no merge trace in %s — if it was squash-merged, re-run with --force", o.Slug, branch, base)
+		if o.Fetch {
+			if _, e := r.Run(o.RepoRoot, "fetch", "origin", "--quiet"); e != nil {
+				_, _ = fmt.Fprintf(o.Stderr, "wt: fetch failed (%v) — merge state may be stale\n", e)
+			}
+		}
+		if ok, checked := WorktreeMerged(r, o.RepoRoot, path, branch, base); !ok {
+			return fmt.Errorf("wt: %q (%s) has no merge trace in %s — if it was squash-merged, re-run with --force", o.Slug, branch, checked)
 		}
 	}
 

@@ -47,7 +47,7 @@ var dbReadLong = strings.Join([]string{
 // newDBReadCmd builds `zenify db-read <collections|tables|doc|count|find|aggregate|explain|indexes|stats|sql> [arg]`
 // — the portable port of ~/.local/bin/db_read (FR-033).
 func newDBReadCmd() *cobra.Command {
-	var filter, projection, sort, pipeline, manifestPath, overlayPath string
+	var filter, projection, sort, pipeline, manifestPath, overlayPath, target string
 	var limit int
 	var prd bool
 	cmd := &cobra.Command{
@@ -81,7 +81,10 @@ func newDBReadCmd() *cobra.Command {
 				return err // a missing or invalid manifest must not fall back to local credentials
 			}
 			if ok {
-				return runDBReadBroker(cmd, bc, o)
+				return runDBReadBroker(cmd, bc, o, target)
+			}
+			if target != "" && target != "main" {
+				return exitcode.New(exitcode.BadArgs, errors.New("zenify db-read: --target "+target+" cần broker")) //znf:allow-lang
 			}
 			o.SetRun(func(name string, args []string, extraEnv []string, _ string) error {
 				stderr := o.Stderr
@@ -103,19 +106,20 @@ func newDBReadCmd() *cobra.Command {
 	f.IntVar(&limit, "limit", dbread.DefaultLimit, "max documents or rows, 1..200")
 	f.StringVar(&manifestPath, "manifest", "", brokerManifestUsage)
 	f.StringVar(&overlayPath, "overlay", "", brokerOverlayUsage)
+	f.StringVar(&target, "target", "", "database: main (default) or audit (Mongo, prd only)")
 	f.BoolVar(&prd, "prd", false, "read production: via the broker; without one: MONGO_URL_PRD / MYSQL_URL_PRD")
 	return cmd
 }
 
 // runDBReadBroker validates o exactly as dbread.Run would, then sends it to
 // the broker and prints the reply. A 400 is a refused request (BadArgs).
-func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Options) error {
+func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Options, target string) error {
 	limit, err := dbread.Validate(o)
 	if err != nil {
 		return err
 	}
 	req := api.QueryRequest{Env: "stg", Engine: "mongo", Op: o.Cmd, Coll: o.Arg, Filter: o.Filter,
-		Projection: o.Projection, Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit}
+		Projection: o.Projection, Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit, Target: target}
 	if o.Prod {
 		req.Env = "prd"
 		_, _ = io.WriteString(o.Stderr, "zenify db-read: production (via broker)\n")
@@ -141,14 +145,16 @@ func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Opti
 }
 
 // leadOnlyMsg is FR-14.6's answer to a dev hitting a lead-only request.
-const leadOnlyMsg = "lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count" //znf:allow-lang
+func leadOnlyMsg() string {
+	return "lệnh này chỉ dành cho lead (team leaders); dev trên prd chỉ dùng " + api.DevPrdSummary() //znf:allow-lang
+}
 
 // devPrdPrecheck refuses, without calling the broker, a prd request the
 // cached role (dev) is not allowed to make; the broker enforces the same
 // lists. No cached role: the broker decides.
 func devPrdPrecheck(bc *brokerclient.Client, env string, allowed bool) error {
 	if env == "prd" && !allowed && bc.CachedRole() == api.RoleDev {
-		return errors.New("zenify: " + leadOnlyMsg)
+		return errors.New("zenify: " + leadOnlyMsg())
 	}
 	return nil
 }
@@ -159,7 +165,7 @@ func brokerCallErr(err error) error {
 	var ae *brokerclient.APIError
 	switch {
 	case errors.As(err, &ae) && ae.Code == api.CodeLeadOnly:
-		return errors.New("zenify: " + leadOnlyMsg)
+		return errors.New("zenify: " + leadOnlyMsg())
 	case errors.As(err, &ae) && ae.Status == http.StatusBadRequest:
 		return exitcode.New(exitcode.BadArgs, err)
 	}

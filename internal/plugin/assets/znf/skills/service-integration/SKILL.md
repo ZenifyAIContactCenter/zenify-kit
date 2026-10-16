@@ -75,10 +75,12 @@ const queue = new Queue(queueName, {connection});
 When adding or renaming a queue: define the name in exactly one place per
 repo, have every producer and every consumer import it from that place
 rather than re-deriving the fallback string locally, and when diagnosing a
-job that never runs, check the queue's actual consumer count on the Redis
-instance in use before assuming the handler code is broken — a queue with
-the right name and zero consumers looks, from the producer's side, exactly
-like a queue that is working.
+job that never runs, read the project's queue metrics (backlog, lag,
+consumers) if it exports them, then the real keys with the kit's read-only
+`redis-read` on the instance in use (`znf:_shared/evidence-sources`),
+before assuming the handler code is broken — a queue with the right name
+and zero consumers looks, from the producer's side, exactly like a queue
+that is working.
 
 ## HTTP contract between services
 

@@ -58,7 +58,9 @@ Agent đọc production bằng `zenify db-read --prd <lệnh con>`, với đúng
 zenify db-read --prd count chat_rooms
 ```
 
-Không có đường nào cho agent ghi vào production. Redis có lệnh chỉ đọc tương ứng là `zenify redis-read`, xem [Dùng credential broker](/guides/broker-client#redis-read). Trên đường không có broker, git-guard chặn đọc `.zenify/.env` và chặn lệnh chứa host production, còn `zenify env exec` không đưa key production vào lệnh con, nên `zenify db-read --prd` là đường được hỗ trợ duy nhất. Git-guard chặn sai sót chứ không chặn được agent cố tình lách, xem [Quan sát và an toàn](/guides/observe-and-safety).
+Có broker và bạn là lead thì `--target audit` đọc database audit log thay cho database chính (chỉ Mongo, chỉ production, luôn đi kèm `--prd`): `zenify db-read --prd --target audit collections`. Qua broker, lỗi kết nối không gợi ý `.zenify/.env` hay tên biến `MONGO_URL_PRD`.
+
+Không có đường nào cho agent ghi vào production. Redis có lệnh chỉ đọc tương ứng là `zenify redis-read`, xem [Dùng credential broker](/guides/broker-client#redis-read). Hai điểm cần nhớ: `--prd` phải đứng trước lệnh Redis, `--prd` đứng sau bị từ chối (mã 2, không gửi request nào); và kết quả `LRANGE`/`ZRANGE`/`XRANGE` bị cắt ở 200 phần tử thì có thông báo trên stderr. Trên đường không có broker, git-guard chặn đọc `.zenify/.env` và chặn lệnh chứa host production, còn `zenify env exec` không đưa key production vào lệnh con, nên `zenify db-read --prd` là đường được hỗ trợ duy nhất. Git-guard chặn sai sót chứ không chặn được agent cố tình lách, xem [Quan sát và an toàn](/guides/observe-and-safety).
 
 ## Lưu ý
 

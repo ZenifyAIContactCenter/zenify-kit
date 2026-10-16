@@ -318,6 +318,7 @@ func newWtRmCmd() *cobra.Command {
 				RepoRoot: root,
 				Slug:     args[0],
 				Force:    force,
+				Fetch:    true,
 				Host:     host,
 				Pid:      os.Getpid(),
 				Now:      time.Now().Unix(),

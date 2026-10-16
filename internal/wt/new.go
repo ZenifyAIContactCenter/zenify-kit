@@ -248,7 +248,7 @@ func RunNew(o NewOptions) error {
 	}
 
 	// Record worktree-scoped git config so `wt ls`/guards can rebuild from git.
-	for _, kv := range [][2]string{{"wt.slug", o.Slug}, {"wt.type", o.Type}, {"wt.port", fmt.Sprintf("%d", port)}, {"wt.deps", deps}} {
+	for _, kv := range [][2]string{{"wt.slug", o.Slug}, {"wt.type", o.Type}, {"wt.port", fmt.Sprintf("%d", port)}, {"wt.deps", deps}, {"wt.base", base}} {
 		if _, err := r.Run(path, "config", "--worktree", kv[0], kv[1]); err != nil {
 			return abort(fmt.Errorf("wt: could not record %s: %w", kv[0], err))
 		}

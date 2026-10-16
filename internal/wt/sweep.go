@@ -75,8 +75,8 @@ func sweepPlan(r gitx.Runner, repoRoot, base, worktreeDir string, st *StateFile)
 			items = append(items, it)
 			return
 		}
-		if !BranchMerged(r, repoRoot, branch, base) {
-			it.Reason = fmt.Sprintf("no merge trace in %s", base)
+		if ok, checked := WorktreeMerged(r, repoRoot, curPath, branch, base); !ok {
+			it.Reason = fmt.Sprintf("no merge trace in %s", checked)
 			items = append(items, it)
 			return
 		}

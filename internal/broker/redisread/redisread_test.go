@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -160,32 +161,35 @@ func TestRedis_RangeRewrites(t *testing.T) {
 		args []string
 		want []string // full argv sent, nil = rejected 400
 	}{
-		{"lrange all", "lrange", []string{"k", "0", "-1"}, []string{"LRANGE", "k", "0", "199"}},
+		{"lrange all", "lrange", []string{"k", "0", "-1"}, []string{"LRANGE", "k", "0", "200"}},
 		{"lrange small unchanged", "LRANGE", []string{"k", "10", "20"}, []string{"LRANGE", "k", "10", "20"}},
-		{"lrange big", "LRANGE", []string{"k", "0", "5000"}, []string{"LRANGE", "k", "0", "199"}},
-		{"lrange offset", "LRANGE", []string{"k", "100", "-1"}, []string{"LRANGE", "k", "100", "299"}},
+		{"lrange big", "LRANGE", []string{"k", "0", "5000"}, []string{"LRANGE", "k", "0", "200"}},
+		{"lrange offset", "LRANGE", []string{"k", "100", "-1"}, []string{"LRANGE", "k", "100", "300"}},
 		{"lrange neg both", "LRANGE", []string{"k", "-10", "-1"}, nil},
 		{"lrange min int start", "LRANGE", []string{"k", "-9223372036854775808", "-1"}, nil},
 		{"lrange max int start", "LRANGE", []string{"k", "9223372036854775807", "-1"}, nil},
-		{"lrange huge stop no overflow", "LRANGE", []string{"k", "5", "9223372036854775807"}, []string{"LRANGE", "k", "5", "204"}},
+		{"lrange huge stop no overflow", "LRANGE", []string{"k", "5", "9223372036854775807"}, []string{"LRANGE", "k", "5", "205"}},
 		{"lrange neg start pos stop", "LRANGE", []string{"k", "-5", "100"}, nil},
 		{"lrange not int", "LRANGE", []string{"k", "a", "b"}, nil},
 		{"lrange wrong arity", "LRANGE", []string{"k", "0"}, nil},
-		{"zrange index", "ZRANGE", []string{"z", "0", "-1", "WITHSCORES"}, []string{"ZRANGE", "z", "0", "199", "WITHSCORES"}},
-		{"zrange byscore adds limit", "ZRANGE", []string{"z", "0", "100", "BYSCORE"}, []string{"ZRANGE", "z", "0", "100", "BYSCORE", "LIMIT", "0", "200"}},
-		{"zrange bylex keeps offset caps count", "ZRANGE", []string{"z", "-", "+", "bylex", "LIMIT", "5", "9999"}, []string{"ZRANGE", "z", "-", "+", "bylex", "LIMIT", "5", "200"}},
+		{"zrange index", "ZRANGE", []string{"z", "0", "-1", "WITHSCORES"}, []string{"ZRANGE", "z", "0", "200", "WITHSCORES"}},
+		{"zrange byscore adds limit", "ZRANGE", []string{"z", "0", "100", "BYSCORE"}, []string{"ZRANGE", "z", "0", "100", "BYSCORE", "LIMIT", "0", "201"}},
+		{"zrange bylex keeps offset caps count", "ZRANGE", []string{"z", "-", "+", "bylex", "LIMIT", "5", "9999"}, []string{"ZRANGE", "z", "-", "+", "bylex", "LIMIT", "5", "201"}},
 		{"zrange byscore small limit kept", "ZRANGE", []string{"z", "0", "100", "BYSCORE", "limit", "10", "50"}, []string{"ZRANGE", "z", "0", "100", "BYSCORE", "LIMIT", "10", "50"}},
-		{"zrange negative count", "ZRANGE", []string{"z", "0", "100", "BYSCORE", "LIMIT", "5", "-1"}, []string{"ZRANGE", "z", "0", "100", "BYSCORE", "LIMIT", "5", "200"}},
-		{"zrange last limit wins", "ZRANGE", []string{"z", "0", "100", "BYSCORE", "LIMIT", "1", "2", "WITHSCORES", "LIMIT", "3", "400"}, []string{"ZRANGE", "z", "0", "100", "BYSCORE", "WITHSCORES", "LIMIT", "3", "200"}},
+		{"zrange negative count", "ZRANGE", []string{"z", "0", "100", "BYSCORE", "LIMIT", "5", "-1"}, []string{"ZRANGE", "z", "0", "100", "BYSCORE", "LIMIT", "5", "201"}},
+		{"zrange last limit wins", "ZRANGE", []string{"z", "0", "100", "BYSCORE", "LIMIT", "1", "2", "WITHSCORES", "LIMIT", "3", "400"}, []string{"ZRANGE", "z", "0", "100", "BYSCORE", "WITHSCORES", "LIMIT", "3", "201"}},
 		{"zrange limit not int", "ZRANGE", []string{"z", "0", "100", "BYSCORE", "LIMIT", "a", "5"}, nil},
 		{"zrange limit count not int", "ZRANGE", []string{"z", "0", "100", "BYSCORE", "LIMIT", "5", "1.5"}, nil},
 		{"zrange limit missing value", "ZRANGE", []string{"z", "0", "100", "BYSCORE", "LIMIT", "5"}, nil},
-		{"xrange adds count", "XRANGE", []string{"s", "-", "+"}, []string{"XRANGE", "s", "-", "+", "COUNT", "200"}},
-		{"xrange lowers count", "XRANGE", []string{"s", "-", "+", "COUNT", "5000"}, []string{"XRANGE", "s", "-", "+", "COUNT", "200"}},
+		{"xrange adds count", "XRANGE", []string{"s", "-", "+"}, []string{"XRANGE", "s", "-", "+", "COUNT", "201"}},
+		{"xrange lowers count", "XRANGE", []string{"s", "-", "+", "COUNT", "5000"}, []string{"XRANGE", "s", "-", "+", "COUNT", "201"}},
 		{"xrange keeps small count", "XRANGE", []string{"s", "-", "+", "count", "50"}, []string{"XRANGE", "s", "-", "+", "COUNT", "50"}},
-		{"xrange duplicate counts last wins capped", "XRANGE", []string{"s", "-", "+", "COUNT", "5", "COUNT", "99999"}, []string{"XRANGE", "s", "-", "+", "COUNT", "200"}},
+		{"xrange duplicate counts last wins capped", "XRANGE", []string{"s", "-", "+", "COUNT", "5", "COUNT", "99999"}, []string{"XRANGE", "s", "-", "+", "COUNT", "201"}},
 		{"xrange duplicate counts last small", "XRANGE", []string{"s", "-", "+", "COUNT", "99999", "COUNT", "5"}, []string{"XRANGE", "s", "-", "+", "COUNT", "5"}},
 		{"xrange count not int", "XRANGE", []string{"s", "-", "+", "COUNT", "x"}, nil},
+		{"zrange byscore limit at cap kept", "ZRANGE", []string{"z", "0", "100", "BYSCORE", "LIMIT", "0", "200"}, []string{"ZRANGE", "z", "0", "100", "BYSCORE", "LIMIT", "0", "200"}},
+		{"xrange count at cap kept", "XRANGE", []string{"s", "-", "+", "COUNT", "200"}, []string{"XRANGE", "s", "-", "+", "COUNT", "200"}},
+		{"lrange exactly cap unchanged", "LRANGE", []string{"k", "0", "199"}, []string{"LRANGE", "k", "0", "199"}},
 		{"ttl untouched", "TTL", []string{"k"}, []string{"TTL", "k"}},
 	}
 	for _, c := range cases {
@@ -205,6 +209,73 @@ func TestRedis_RangeRewrites(t *testing.T) {
 				t.Fatalf("sent %q, want %q", got, strings.Join(c.want, " "))
 			}
 		})
+	}
+}
+
+// strs returns n distinct string elements, as a go-redis array reply.
+func strs(n int) []any {
+	out := make([]any, n)
+	for i := range out {
+		out[i] = "e" + strconv.Itoa(i)
+	}
+	return out
+}
+
+// rangeReply posts req on stg, whose Doer answers val, and decodes the response.
+func rangeReply(t *testing.T, req api.RedisRequest, val any) api.RedisResponse {
+	t.Helper()
+	f := newFixture(t)
+	f.stg.val = val
+	st, body := f.post(t, req)
+	var r api.RedisResponse
+	if err := json.Unmarshal(body, &r); err != nil || st != 200 {
+		t.Fatalf("%d %s %v", st, body, err)
+	}
+	return r
+}
+
+func TestRedis_RangeTruncatedFlag(t *testing.T) {
+	r := rangeReply(t, api.RedisRequest{Env: "stg", Cmd: "LRANGE", Args: []string{"k", "0", "-1"}}, strs(201))
+	got, _ := r.Result.([]any)
+	if len(got) != 200 || !r.Truncated {
+		t.Fatalf("len=%d truncated=%v, want 200 true", len(got), r.Truncated)
+	}
+	if got[0] != "e0" || got[199] != "e199" {
+		t.Fatalf("kept %v..%v, want the leading 200", got[0], got[199])
+	}
+}
+
+func TestRedis_RangeExactlyCapNotTruncated(t *testing.T) {
+	for _, n := range []int{200, 150} {
+		r := rangeReply(t, api.RedisRequest{Env: "stg", Cmd: "LRANGE", Args: []string{"k", "0", "-1"}}, strs(n))
+		if got, _ := r.Result.([]any); len(got) != n || r.Truncated {
+			t.Fatalf("reply of %d: len=%d truncated=%v, want %d false", n, len(got), r.Truncated, n)
+		}
+	}
+	// A count the caller chose within the cap is not the kit's limit: a full reply is not cut.
+	r := rangeReply(t, api.RedisRequest{Env: "stg", Cmd: "XRANGE", Args: []string{"s", "-", "+", "COUNT", "200"}}, strs(200))
+	if got, _ := r.Result.([]any); len(got) != 200 || r.Truncated {
+		t.Fatalf("XRANGE COUNT 200: len=%d truncated=%v", len(got), r.Truncated)
+	}
+}
+
+func TestRedis_ZRangeWithScoresTrim(t *testing.T) {
+	req := api.RedisRequest{Env: "stg", Cmd: "ZRANGE", Args: []string{"z", "0", "-1", "WITHSCORES"}}
+	r := rangeReply(t, req, strs(402)) // RESP2: member, score, member, score...
+	if got, _ := r.Result.([]any); len(got) != 400 || !r.Truncated {
+		t.Fatalf("flat: len=%d truncated=%v, want 400 true", len(got), r.Truncated)
+	}
+	nested := make([]any, 201) // RESP3: [member, score] pairs
+	for i := range nested {
+		nested[i] = []any{"m" + strconv.Itoa(i), float64(i)}
+	}
+	r = rangeReply(t, req, nested)
+	got, _ := r.Result.([]any)
+	if len(got) != 200 || !r.Truncated {
+		t.Fatalf("nested: len=%d truncated=%v, want 200 true", len(got), r.Truncated)
+	}
+	if p, _ := got[199].([]any); len(p) != 2 || p[0] != "m199" {
+		t.Fatalf("nested pair kept as %v", got[199])
 	}
 }
 
@@ -563,6 +634,11 @@ func TestRedis_DevPrdValuesLeadOnly(t *testing.T) { // SC-23
 		st, body := f.postAs(t, api.RoleDev, api.RedisRequest{Env: "prd", Cmd: cmd, Args: []string{"k", "0", "1"}})
 		if st != http.StatusForbidden || !strings.Contains(string(body), api.CodeLeadOnly) {
 			t.Errorf("%s: got %d %s, want 403 lead_only", cmd, st, body)
+		}
+		var env api.Error
+		_ = json.Unmarshal(body, &env)
+		if !strings.Contains(env.Message, api.DevPrdSummary()) {
+			t.Errorf("%s: body %s lacks DevPrdSummary", cmd, body)
 		}
 		if f.prd.sent(cmd) {
 			t.Errorf("%s: reached redis", cmd)

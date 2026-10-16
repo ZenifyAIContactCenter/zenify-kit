@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -28,6 +29,10 @@ func newRedisReadCmd() *cobra.Command {
 		// flags must precede the Redis command (SetInterspersed(false) below)
 		DisableFlagsInUseLine: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Flags stop at the Redis command, so a trailing --prd would be sent as a Redis arg and run on stg.
+			if slices.ContainsFunc(args[1:], func(a string) bool { return a == "--prd" || strings.HasPrefix(a, "--prd=") }) {
+				return exitcode.New(exitcode.BadArgs, errors.New("zenify redis-read: --prd phải đứng trước lệnh Redis, vd: zenify redis-read --prd GET <key>")) //znf:allow-lang
+			}
 			argv, err := api.CheckRedis(args[0], args[1:])
 			if err != nil {
 				return exitcode.New(exitcode.BadArgs, fmt.Errorf("zenify redis-read: %w", err))

@@ -48,6 +48,21 @@ func BranchMerged(r gitx.Runner, repoRoot, branch, base string) bool {
 	return strings.TrimSpace(string(out)) == ""
 }
 
+// WorktreeMerged reports whether the worktree's branch landed in base or in the
+// base it was cut from (wt.base, recorded by wt new — a hotfix lands on its
+// release branch, never on baseRef). checked names the ref(s) tried, for the
+// refusal message.
+func WorktreeMerged(r gitx.Runner, repoRoot, worktreePath, branch, base string) (ok bool, checked string) {
+	if BranchMerged(r, repoRoot, branch, base) {
+		return true, base
+	}
+	recorded := cfgGet(r, worktreePath, "wt.base")
+	if recorded == "" || recorded == base {
+		return false, base
+	}
+	return BranchMerged(r, repoRoot, branch, recorded), base + " or " + recorded
+}
+
 // OpenTask is one unmerged worktree belonging to the querying user.
 type OpenTask struct {
 	Slug   string

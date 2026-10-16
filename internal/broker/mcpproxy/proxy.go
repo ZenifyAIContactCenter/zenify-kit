@@ -41,8 +41,9 @@ func stripClientHeaders(h http.Header) {
 // maxBody caps the request body the proxy reads to find tools/call messages.
 const maxBody = 4 << 20
 
-// New proxies every request to upstream as-is: upstream's scheme, host and
-// path, the client's query string. The client's credentials and edge/proxy
+// New proxies every request to upstream as-is: upstream's scheme, host, path
+// and query; the client's query pairs are appended unless upstream's own query
+// already has that key. The client's credentials and edge/proxy
 // headers are dropped (stripClientHeaders) before setHeaders (nil = none) adds
 // the upstream credential. a (nil = stdout) gets one line per request plus one
 // per tools/call message in the body.
@@ -90,6 +91,37 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 	})
 }
 
+// mergeQuery returns upstreamRaw byte for byte (never re-encoded, so a comma
+// stays a comma) followed by the client pairs whose key upstreamRaw lacks, each
+// in its original form. A client pair holding ';' or an undecodable key is
+// dropped: the upstream may split on ';' and read a key it owns. With no
+// upstream query it is the client's query.
+func mergeQuery(upstreamRaw, clientRaw string) string {
+	if upstreamRaw == "" {
+		return clientRaw
+	}
+	have, _ := url.ParseQuery(upstreamRaw)
+	out := upstreamRaw
+	for _, pair := range strings.Split(clientRaw, "&") {
+		if pair == "" {
+			continue
+		}
+		if strings.Contains(pair, ";") {
+			continue
+		}
+		k, _, _ := strings.Cut(pair, "=")
+		k, err := url.QueryUnescape(k)
+		if err != nil {
+			continue
+		}
+		if _, dup := have[k]; dup {
+			continue
+		}
+		out += "&" + pair
+	}
+	return out
+}
+
 // newReverseProxy forwards to upstream with the client's credentials swapped
 // for setHeaders' and SSE flushed event by event.
 func newReverseProxy(name string, upstream *url.URL, setHeaders func(h http.Header)) *httputil.ReverseProxy {
@@ -99,7 +131,7 @@ func newReverseProxy(name string, upstream *url.URL, setHeaders func(h http.Head
 			pr.Out.URL.Host = upstream.Host
 			pr.Out.URL.Path = upstream.Path
 			pr.Out.URL.RawPath = upstream.RawPath
-			pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+			pr.Out.URL.RawQuery = mergeQuery(upstream.RawQuery, pr.In.URL.RawQuery)
 			pr.Out.Host = upstream.Host
 			stripClientHeaders(pr.Out.Header)
 			if setHeaders != nil {

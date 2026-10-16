@@ -81,7 +81,9 @@ For target 1 on a **shared MongoDB collection, HTTP endpoint between services, B
 Redis channel**, delegate to `/gate` instead of re-deriving it: `/gate` already carries the
 eight-repo list and the three-pass search, and the two must not drift. `/scout` covers the rest
 — tests, dual-write partners, line history — and the cases `/gate` does not model: a symbol
-inside one repo, a component's props, a config key.
+inside one repo, a component's props, a config key. For a queue or Redis key, read the project's
+queue metrics first if it exports them, then the real key names with `zenify redis-read` — never
+infer a key from code (`znf:_shared/evidence-sources`).
 
 ### Pin the repo list into the brief — never let the agent discover it
 

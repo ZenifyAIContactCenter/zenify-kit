@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 )
 
@@ -213,7 +214,7 @@ func writeBrokerCache(t *testing.T, home, body string) {
 func TestSessionStart_BrokerRoleLine(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", "")
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
-	const devLine = "broker: login=devgal role=dev — prd: chỉ explain/indexes/stats/count (db-read), Redis prd chỉ TTL/TYPE/EXISTS/SCAN/LLEN/SCARD/ZCARD; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n" //znf:allow-lang
+	devLine := "broker: login=devgal role=dev — prd: " + api.DevPrdSummary() + "; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n" //znf:allow-lang
 	for name, c := range map[string]struct{ cache, want string }{
 		"dev expired": {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2000-01-01T00:00:00Z","login":"devgal","role":"dev"}`, devLine},
 		"lead":        {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"boss","role":"lead"}`, ""},

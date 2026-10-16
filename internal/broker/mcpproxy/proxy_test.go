@@ -589,3 +589,52 @@ func TestProxy_WWWAuthenticateAlwaysDropped(t *testing.T) {
 		t.Fatalf("got %d, WWW-Authenticate %q", resp.StatusCode, resp.Header.Get("WWW-Authenticate"))
 	}
 }
+
+func TestProxy_UpstreamQueryOverridesClient(t *testing.T) {
+	var got string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.RawQuery
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(up.Close)
+
+	tests := []struct {
+		name, upstreamQuery, clientQuery, wantRaw string
+		wantPairs                                 map[string]string
+	}{
+		{"client key not in upstream is appended", "?features=a,b", "x=1", "features=a,b&x=1",
+			map[string]string{"x": "1", "features": "a,b"}},
+		{"upstream wins over the same client key", "?features=a,b", "features=z&x=1", "features=a,b&x=1",
+			map[string]string{"x": "1", "features": "a,b"}},
+		{"client pair keeps its raw form", "?features=a,b", "q=a%20b", "features=a,b&q=a%20b",
+			map[string]string{"q": "a b", "features": "a,b"}},
+		{"no upstream query passes the client query through", "", "x=1&features=z", "x=1&features=z",
+			map[string]string{"x": "1", "features": "z"}},
+		{"client pair smuggling an upstream key after ; is dropped", "?features=a,b", "x=1;features=evil&y=2", "features=a,b&y=2",
+			map[string]string{"y": "2", "features": "a,b"}},
+		{"client pair with an undecodable key is dropped", "?features=a,b", "%zz=1&y=2", "features=a,b&y=2",
+			map[string]string{"y": "2", "features": "a,b"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			srv, tok := stack(t, "posthog", up.URL+"/mcp"+tc.upstreamQuery, nil, &out)
+			resp := do(t, http.MethodPost, srv.URL+"/mcp/posthog?"+tc.clientQuery, tok, `{}`, nil)
+			if resp.StatusCode != 200 {
+				t.Fatalf("status %d", resp.StatusCode)
+			}
+			if got != tc.wantRaw {
+				t.Fatalf("upstream RawQuery = %q, want %q", got, tc.wantRaw)
+			}
+			q, err := url.ParseQuery(got)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for k, v := range tc.wantPairs {
+				if q.Get(k) != v {
+					t.Errorf("upstream %s = %q, want %q", k, q.Get(k), v)
+				}
+			}
+		})
+	}
+}

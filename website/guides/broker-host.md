@@ -31,7 +31,7 @@ grafana:
   # addr: 127.0.0.1:8000
   # args: mặc định là bộ cờ team đang dùng (--enabled-tools=..., --loki-guardrail-mode=enforce, ...)
 posthog:
-  upstream: https://mcp.posthog.com/mcp
+  upstream: https://mcp.posthog.com/mcp?features=insights,flags  # danh sách feature chỉ là ví dụ
   project_id: "137053"
 e2e:
   hub_url: https://hub.example.invalid
@@ -44,6 +44,12 @@ mongo:
   main_db: 3csoft
   audit_db: audit_logs
 ```
+
+Query trong `posthog.upstream` được giữ nguyên khi proxy chuyển tiếp. Nếu client gửi cùng key thì giá trị của upstream thắng; key khác của client vẫn được nối thêm. Cặp nào của client chứa dấu `;` hoặc có key không giải mã được thì bị bỏ, để client không chèn được key mà upstream giữ.
+
+::: warning Khi nâng cấp broker
+Bản broker này đổi cách chuyển tiếp một URL upstream MCP đã có sẵn query string: query của client giờ được nối thêm vào sau query của upstream (key của upstream thắng, cặp của client chứa `;` bị bỏ). Sau khi nâng cấp, kiểm tra lại từng URL upstream có query (ví dụ `posthog.upstream`) để chắc upstream vẫn nhận đúng tham số.
+:::
 
 Thay các giá trị `example.invalid` và placeholder bằng giá trị thật của staging. Broker không đọc secret từ YAML.
 

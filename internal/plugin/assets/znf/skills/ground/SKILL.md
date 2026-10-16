@@ -2,7 +2,7 @@
 name: ground
 description: Verify real shapes and values before writing code. Use when about to write code touching a DB field, API payload, queue message, external library API, in-repo function, symbol or component props, a config key or an env var. Answers "what is X?" only; for "what depends on X?" use /scout.
 argument-hint: "<names / shapes to verify>"
-allowed-tools: Read Grep Glob Bash(zenify db-read *) Bash(mongosh *) Bash(mysql *) Bash(psql *) Bash(grep *) Bash(find *) Agent
+allowed-tools: Read Grep Glob Bash(zenify db-read *) Bash(grep *) Bash(find *) Agent
 context: fork
 model: sonnet
 background: false
@@ -144,7 +144,7 @@ A summary of a shape is not the shape, which is the second-hand step this skill 
 |---|---|
 | "I remember this field" | Re-fetch; memory is stale |
 | "The name is obvious" | Dynamic code doesn't enforce obvious; fetch anyway |
-| No .env or DB config visible | Ask user for connection before proceeding |
+| Shape needed from a DB | `zenify db-read`; never read .env for credentials |
 | Library version differs from training | Read installed types; don't use training memory |
 | A doc, README, or CLAUDE.md states the shape | Documentation is not ground truth — it goes stale silently. Verify against live data, the running process, or the code definition. Ground truth is what executes, not what describes |
 | Verified it in one tenant / one environment | One sample is not the shape — check a second before generalising |

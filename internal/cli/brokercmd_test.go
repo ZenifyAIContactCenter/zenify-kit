@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -334,7 +335,7 @@ func TestDBReadCmd_BrokerLeadOnly(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeLeadOnly, Message: "production data reads are lead-only"})
 	}})
 	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "find", "users")
-	if err == nil || !strings.Contains(err.Error(), "lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count") || exitcode.Code(err) == exitcode.BadArgs { //znf:allow-lang
+	if err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || exitcode.Code(err) == exitcode.BadArgs { //znf:allow-lang
 		t.Errorf("err = %v (code %d)", err, exitcode.Code(err))
 	}
 }
@@ -495,6 +496,49 @@ func TestRedisRead_SendsAndIndents(t *testing.T) {
 	}
 	if want := "[\n  \"a\",\n  \"b\"\n]\n"; out != want {
 		t.Errorf("stdout = %q, want %q", out, want)
+	}
+}
+
+func TestRedisRead_TruncatedNotice(t *testing.T) {
+	hermeticDBRead(t)
+	const notice = "kết quả đã bị cắt bớt" //znf:allow-lang
+	for _, truncated := range []bool{true, false} {
+		mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/redis": func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = fmt.Fprintf(w, `{"result":["a"],"truncated":%v}`, truncated)
+		}})
+		_, stderr, err := execCmd(newRedisReadCmd(), "--manifest", mp, "LRANGE", "q", "0", "-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(stderr, notice) != truncated {
+			t.Errorf("truncated=%v: stderr = %q", truncated, stderr)
+		}
+	}
+}
+
+func TestRedisRead_PrdAfterCommandRefused(t *testing.T) {
+	hermeticDBRead(t)
+	var got api.RedisRequest
+	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/redis": func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.NewEncoder(w).Encode(api.RedisResponse{Result: "v"})
+	}})
+	_, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "GET", "x", "--prd")
+	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "--prd") {
+		t.Fatalf("err = %v (code %d), want BadArgs naming --prd", err, exitcode.Code(err))
+	}
+	_, _, err = execCmd(newRedisReadCmd(), "--manifest", mp, "GET", "x", "--prd=true")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("--prd=true after command: err = %v (code %d), want BadArgs", err, exitcode.Code(err))
+	}
+	if n := atomic.LoadInt32(hits); n != 0 {
+		t.Fatalf("broker got %d requests, want 0", n)
+	}
+	if _, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "--prd", "GET", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if got.Env != "prd" || got.Cmd != "GET" {
+		t.Errorf("request = %+v, want env prd GET", got)
 	}
 }
 
@@ -672,7 +716,7 @@ func TestDevPrdPrecheck(t *testing.T) {
 	} {
 		before := atomic.LoadInt32(hits)
 		_, _, err := execCmd(newDBReadCmd(), append([]string{"--manifest", mp}, args...)...)
-		if err == nil || !strings.Contains(err.Error(), leadOnlyMsg) || atomic.LoadInt32(hits) != before {
+		if err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || !strings.Contains(err.Error(), "collections") || atomic.LoadInt32(hits) != before {
 			t.Errorf("db-read %v: err=%v hits %d→%d, want lead_only and no call", args, err, before, *hits)
 		}
 	}
@@ -689,7 +733,7 @@ func TestDevPrdPrecheck(t *testing.T) {
 		}
 	}
 	before := atomic.LoadInt32(hits)
-	if _, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "--prd", "GET", "k"); err == nil || !strings.Contains(err.Error(), leadOnlyMsg) || atomic.LoadInt32(hits) != before {
+	if _, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "--prd", "GET", "k"); err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || !strings.Contains(err.Error(), "collections") || atomic.LoadInt32(hits) != before {
 		t.Errorf("redis-read --prd GET: err=%v, want lead_only and no call", err)
 	}
 	for _, args := range [][]string{{"--prd", "TTL", "k"}, {"GET", "k"}} {
@@ -697,5 +741,47 @@ func TestDevPrdPrecheck(t *testing.T) {
 		if _, _, err := execCmd(newRedisReadCmd(), append([]string{"--manifest", mp}, args...)...); err != nil || atomic.LoadInt32(hits) != before+1 {
 			t.Errorf("redis-read %v: err=%v, want sent", args, err)
 		}
+	}
+}
+
+func TestDBReadBroker_TargetAudit(t *testing.T) {
+	hermeticDBRead(t)
+	var body string
+	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		_ = json.NewEncoder(w).Encode(api.QueryResponse{})
+	}})
+	// No cached role yet: the request goes out and caches role=dev.
+	if _, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "--target", "audit", "find", "logs"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `"target":"audit"`) {
+		t.Errorf("body = %s, want target audit", body)
+	}
+	before := atomic.LoadInt32(hits)
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "--target", "audit", "find", "logs")
+	if err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || atomic.LoadInt32(hits) != before {
+		t.Errorf("dev: err=%v hits %d→%d, want lead-only and no request", err, before, atomic.LoadInt32(hits))
+	}
+}
+
+func TestDBReadBroker_TargetAuditNeedsPrd(t *testing.T) {
+	hermeticDBRead(t)
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeInvalidTarget, Message: "target audit needs env=prd"})
+	}})
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--target", "audit", "find", "logs")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("err = %v (code %d), want BadArgs", err, exitcode.Code(err))
+	}
+}
+
+func TestDBRead_TargetAuditNeedsBroker(t *testing.T) {
+	hermeticDBRead(t)
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", noBrokerManifest(t), "--target", "audit", "find", "logs")
+	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "--target audit cần broker") { //znf:allow-lang
+		t.Errorf("err = %v (code %d), want BadArgs naming the broker", err, exitcode.Code(err))
 	}
 }

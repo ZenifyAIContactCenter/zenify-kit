@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -98,12 +99,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if role != api.RoleLead && req.Env == "prd" && !api.DevRedisAllowed(req.Cmd) {
-		fail(http.StatusForbidden, api.CodeLeadOnly, "production redis values are lead-only; dev may use TTL/TYPE/EXISTS/SCAN/LLEN/SCARD/ZCARD")
+		fail(http.StatusForbidden, api.CodeLeadOnly, "production values are lead-only; dev on prd may only use "+api.DevPrdSummary())
 		return
 	}
 	argv, err := api.CheckRedis(req.Cmd, req.Args)
+	keep := 0
 	if err == nil {
-		argv, err = capRange(argv)
+		argv, keep, err = capRange(argv)
 	}
 	if err != nil {
 		fail(http.StatusBadRequest, api.CodeCommandNotAllowed, err.Error())
@@ -224,8 +226,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	cut2 := false
+	if keep > 0 {
+		val, cut2 = trimElems(val, keep, flatPairs(argv, val))
+	}
 	res, cut := capResult(jsonSafe(val), maxResult)
-	b, err := json.Marshal(api.RedisResponse{Result: res, Truncated: truncated || cut})
+	b, err := json.Marshal(api.RedisResponse{Result: res, Truncated: truncated || cut || cut2})
 	if err != nil {
 		fail(http.StatusBadGateway, api.CodeQueryFailed, "redis reply could not be encoded")
 		return
@@ -265,17 +271,19 @@ func mgetBytes(ctx context.Context, cli Doer, keys []string, check func(error) b
 }
 
 // capRange rewrites argv (command first, upper case) so LRANGE, ZRANGE and
-// XRANGE return at most maxElems elements.
-func capRange(argv []string) ([]string, error) {
+// XRANGE return at most maxElems elements. When the kit's cap applies, out asks
+// for keep+1 elements and keep is maxElems, so the reply shows whether more
+// existed; keep is 0 when the command is not limited by the kit.
+func capRange(argv []string) (out []string, keep int, err error) {
 	switch argv[0] {
 	case "LRANGE":
 		if len(argv) != 4 {
-			return nil, errors.New("LRANGE takes key start stop")
+			return nil, 0, errors.New("LRANGE takes key start stop")
 		}
 		return capIndexes(argv, 2)
 	case "ZRANGE":
 		if len(argv) < 4 {
-			return nil, errors.New("ZRANGE takes key start stop [options]")
+			return nil, 0, errors.New("ZRANGE takes key start stop [options]")
 		}
 		for _, o := range argv[4:] {
 			if u := strings.ToUpper(o); u == "BYSCORE" || u == "BYLEX" {
@@ -286,33 +294,34 @@ func capRange(argv []string) ([]string, error) {
 	case "XRANGE":
 		return capCount(argv)
 	}
-	return argv, nil
+	return argv, 0, nil
 }
 
-// capIndexes caps the start/stop pair at argv[i], argv[i+1] to maxElems entries.
-// A negative start counts from the end of the list, so it is refused.
-func capIndexes(argv []string, i int) ([]string, error) {
+// capIndexes caps the start/stop pair at argv[i], argv[i+1] to maxElems entries,
+// asking for one more. A negative start counts from the end of the list, so it is refused.
+func capIndexes(argv []string, i int) ([]string, int, error) {
 	start, err1 := strconv.ParseInt(argv[i], 10, 64)
 	stop, err2 := strconv.ParseInt(argv[i+1], 10, 64)
 	if err1 != nil || err2 != nil {
-		return nil, fmt.Errorf("%s start and stop must be integers", argv[0])
+		return nil, 0, fmt.Errorf("%s start and stop must be integers", argv[0])
 	}
 	if start < 0 || start > math.MaxInt64-maxElems {
-		return nil, fmt.Errorf("%s needs a non-negative start (and at most %d)", argv[0], int64(math.MaxInt64-maxElems))
+		return nil, 0, fmt.Errorf("%s needs a non-negative start (and at most %d)", argv[0], int64(math.MaxInt64-maxElems))
 	}
 	out := append([]string(nil), argv...)
 	if stop < 0 || stop-start >= maxElems {
-		out[i+1] = strconv.FormatInt(start+maxElems-1, 10)
+		out[i+1] = strconv.FormatInt(start+maxElems, 10)
+		return out, maxElems, nil
 	}
-	return out, nil
+	return out, 0, nil
 }
 
 // withLimit makes a BYSCORE/BYLEX ZRANGE end in exactly one LIMIT: the
-// caller's offset (the last LIMIT given) and a count of at most maxElems; a
-// missing or negative count is maxElems, LIMIT 0 maxElems when none was given.
-func withLimit(argv []string) ([]string, error) {
+// caller's offset (the last LIMIT given) and the caller's count when it is
+// 0..maxElems; a missing, negative or larger count asks for maxElems+1.
+func withLimit(argv []string) ([]string, int, error) {
 	out := append([]string(nil), argv[:4]...)
-	offset, count := int64(0), int64(maxElems)
+	offset, count := int64(0), int64(-1)
 	rest := argv[4:]
 	for i := 0; i < len(rest); i++ {
 		if !strings.EqualFold(rest[i], "LIMIT") {
@@ -320,27 +329,28 @@ func withLimit(argv []string) ([]string, error) {
 			continue
 		}
 		if i+2 >= len(rest) {
-			return nil, errors.New("ZRANGE LIMIT takes offset count")
+			return nil, 0, errors.New("ZRANGE LIMIT takes offset count")
 		}
 		o, err1 := strconv.ParseInt(rest[i+1], 10, 64)
 		c, err2 := strconv.ParseInt(rest[i+2], 10, 64)
 		if err1 != nil || err2 != nil {
-			return nil, errors.New("ZRANGE LIMIT offset and count must be integers")
+			return nil, 0, errors.New("ZRANGE LIMIT offset and count must be integers")
 		}
 		offset, count = o, c
-		if count < 0 || count > maxElems {
-			count = maxElems
-		}
 		i += 2
 	}
-	return append(out, "LIMIT", strconv.FormatInt(offset, 10), strconv.FormatInt(count, 10)), nil
+	keep := 0
+	if count < 0 || count > maxElems {
+		count, keep = maxElems+1, maxElems
+	}
+	return append(out, "LIMIT", strconv.FormatInt(offset, 10), strconv.FormatInt(count, 10)), keep, nil
 }
 
-// capCount rewrites an XRANGE to exactly one COUNT: the last one given, at
-// most maxElems (Redis reads the last COUNT), or maxElems when none was given.
-func capCount(argv []string) ([]string, error) {
+// capCount rewrites an XRANGE to exactly one COUNT: the last one given when it
+// is at most maxElems (Redis reads the last COUNT), else maxElems+1.
+func capCount(argv []string) ([]string, int, error) {
 	out := append([]string(nil), argv[:min(4, len(argv))]...)
-	n := int64(maxElems)
+	n, given := int64(0), false
 	rest := argv[min(4, len(argv)):]
 	for i := 0; i < len(rest); i++ {
 		if !strings.EqualFold(rest[i], "COUNT") {
@@ -348,16 +358,47 @@ func capCount(argv []string) ([]string, error) {
 			continue
 		}
 		if i+1 >= len(rest) {
-			return nil, errors.New("XRANGE COUNT is missing its value")
+			return nil, 0, errors.New("XRANGE COUNT is missing its value")
 		}
 		v, err := strconv.ParseInt(rest[i+1], 10, 64)
 		if err != nil {
-			return nil, errors.New("XRANGE COUNT must be an integer")
+			return nil, 0, errors.New("XRANGE COUNT must be an integer")
 		}
-		n = min(v, maxElems)
+		n, given = v, true
 		i++
 	}
-	return append(out, "COUNT", strconv.FormatInt(n, 10)), nil
+	keep := 0
+	if !given || n > maxElems {
+		n, keep = maxElems+1, maxElems
+	}
+	return append(out, "COUNT", strconv.FormatInt(n, 10)), keep, nil
+}
+
+// flatPairs reports whether val is a ZRANGE WITHSCORES reply in the flat
+// RESP2 shape (member, score, member, score...) rather than RESP3 pairs.
+func flatPairs(argv []string, val any) bool {
+	if argv[0] != "ZRANGE" || !slices.ContainsFunc(argv[4:], func(o string) bool { return strings.EqualFold(o, "WITHSCORES") }) {
+		return false
+	}
+	a, ok := val.([]any)
+	if !ok || len(a) == 0 {
+		return false
+	}
+	_, nested := a[0].([]any)
+	return !nested
+}
+
+// trimElems cuts an array reply to keep logical elements (two entries each
+// when pairs) and reports whether any were dropped.
+func trimElems(val any, keep int, pairs bool) (any, bool) {
+	a, ok := val.([]any)
+	if pairs {
+		keep *= 2
+	}
+	if !ok || len(a) <= keep {
+		return val, false
+	}
+	return a[:keep], true
 }
 
 // jsonSafe converts a go-redis reply to values encoding/json can marshal:

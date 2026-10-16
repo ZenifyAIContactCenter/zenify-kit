@@ -28,6 +28,7 @@ Two rules for skill authors:
 | Fetch a page or search the web | `WebFetch` / `WebSearch` | Codex web search |
 | Drive a browser (UI verification) | `mcp__playwright__browser_*` via `znf:ui-verifier` | MCP `playwright` |
 | Wait on a condition or a background process | `Monitor` | poll with a shell loop |
+| Query logs, traces, metrics or product analytics | MCP `mcp__<broker-grafana>__*`, `mcp__<broker-posthog>__exec` — see `evidence-sources.md` | same MCP servers |
 
 Codex notes: `Workflow` has no equivalent (only `contract-sweep` uses it); review T3 is a plain parallel `Agent` fan-out and runs the same on Codex. `context: fork` frontmatter is
 ignored, the skill runs inline. Codex passes the text after `$znf:<name>` as plain prompt text.

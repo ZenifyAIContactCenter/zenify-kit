@@ -468,3 +468,37 @@ func TestFingerprint_ConcatenatesAndTruncates(t *testing.T) {
 		t.Errorf("hash input = %q, want %q", gotHashInput, want)
 	}
 }
+
+// A route-shaped screen name ("chat/room") must not become a path segment of
+// the screenshot file: the copy failed with "no such file or directory".
+func TestRecord_ScreenNameWithSlash(t *testing.T) {
+	repo := t.TempDir()
+	src := writeTempScreenshot(t, t.TempDir(), "shot.png", 16)
+	d := stubDeps("abc1234567")
+
+	if err := Record(d, repo, Screen{Screen: "chat/room", Verdict: "pass"}, src); err != nil {
+		t.Fatal(err)
+	}
+	if err := Record(d, repo, Screen{Screen: "chat-room", Verdict: "pass"}, src); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(repo, ".znf", "ui-verify", "abc1234567.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var art Artifact
+	if err := json.Unmarshal(b, &art); err != nil {
+		t.Fatal(err)
+	}
+	if len(art.Screens) != 2 || art.Screens[0].Screen != "chat/room" || art.Screens[0].Screenshot == art.Screens[1].Screenshot {
+		t.Fatalf("screens must be distinct files: %+v", art.Screens)
+	}
+	for _, sc := range art.Screens {
+		if strings.Contains(sc.Screenshot, "/") {
+			t.Fatalf("screenshot name has a path separator: %q", sc.Screenshot)
+		}
+		if _, err := os.Stat(filepath.Join(repo, ".znf", "ui-verify", sc.Screenshot)); err != nil {
+			t.Fatalf("screenshot not written flat: %v", err)
+		}
+	}
+}

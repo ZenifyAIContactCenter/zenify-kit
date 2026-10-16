@@ -98,7 +98,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// devPrd: plan and schema only, explain without execution (FR-14.2).
 	devPrd := role != api.RoleLead && req.Env == "prd"
 	if devPrd && !api.DevQueryAllowed(req) {
-		msg := "production data reads are lead-only; dev may use explain/indexes/stats/count"
+		msg := "production data reads are lead-only; dev on prd may only use " + api.DevPrdSummary()
 		if req.Engine == "mongo" && req.Op == "count" {
 			msg = "a filtered count on production is lead-only; dev gets the collection total (estimatedDocumentCount) by omitting the filter"
 		}
@@ -206,7 +206,7 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 		arg = req.SQL
 	}
 	return &dbread.Options{Cmd: req.Op, Arg: arg, Filter: req.Filter, Projection: req.Projection, Sort: req.Sort,
-		Pipeline: req.Pipeline, Limit: req.Limit, Prod: prd, MongoDB: db,
+		Pipeline: req.Pipeline, Limit: req.Limit, Prod: prd, Brokered: true, MongoDB: db,
 		Env: func(k string) string { return env[k] }}, "", ""
 }
 

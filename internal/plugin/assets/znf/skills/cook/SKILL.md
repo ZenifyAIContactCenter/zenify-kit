@@ -23,7 +23,7 @@ Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
 ```bash
 git -C <repo> fetch origin                    # per affected repo
 node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)'
-git -C <repo> rev-list --count HEAD..<baseRef> # how far behind the checkout is
+git -C <repo> rev-list --count HEAD..<baseRef> # how far behind
 ```
 
 **`fetch`, never `pull`; never switch the checkout's branch.** Report per repo: base · on it · behind · dirty.
@@ -53,7 +53,7 @@ zenify db-read doc <a-name-from-that-list>           # real fields
 
 **`Skill(znf:writing-plans)`**. Files first, then tasks that record decisions per its "What a Step Contains" — no "TBD", no "similar to Task N". Run its self-review. Polyrepo plans → SDD "Cross-worktree parallelism". Save to `<main-checkout>/docs/superpowers/plans/<filename>.md`.
 
-**Decide per task, here and only here, whether its definition of done requires a `znf:ui-verifier` verdict** (renders correctly; overflow measured against its container) **or an E2E journey** — decide the E2E journey here (`.znf/e2e/<journey>.spec.ts` green under `zenify e2e lint` + `zenify e2e run`, `znf:e2e`). Step 6 infers neither.
+**Decide per task, here and only here, whether its definition of done requires a `znf:ui-verifier` verdict** (renders correctly; overflow measured against its container) **or an E2E journey** — decide the E2E journey here (`.znf/e2e/<journey>.spec.ts` green under `zenify e2e lint` + `zenify e2e run`, `znf:e2e`), and its login `--role` (the screen's role, never admin by default). Step 6 infers neither.
 
 **Then `Skill(znf:ground)` a third time**, on any name the plan introduced. **Always Subagent-Driven**; there is no execution-choice question.
 
@@ -70,7 +70,7 @@ Before dispatching SDD, **`Skill(znf:analyze)`** on the spec+plan pair (absolute
 **A worktree, always — house rule #8, no conditions.**
 
 ```bash
-git -C <repo> fetch origin                                    # belt-and-suspenders
+git -C <repo> fetch origin
 cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
 ```
 

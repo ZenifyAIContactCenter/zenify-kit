@@ -495,6 +495,9 @@ func TestQuery_DevPrdDataReadLeadOnly(t *testing.T) { // SC-20
 		if st != http.StatusForbidden || e.Error != api.CodeLeadOnly {
 			t.Errorf("%s: got %d %+v, want 403 lead_only", name, st, e)
 		}
+		if req.Op != "count" && !strings.Contains(e.Message, api.DevPrdSummary()) { // count has its own filter message
+			t.Errorf("%s: message %q lacks DevPrdSummary", name, e.Message)
+		}
 		if n := atomic.LoadInt32(f.calls); n != 0 {
 			t.Errorf("%s: %d processes started, want 0", name, n)
 		}
@@ -683,5 +686,19 @@ func TestQuery_DevPrdFailureWithholdsStderr(t *testing.T) {
 		if !strings.Contains(f.audit.String(), `"status":502`) {
 			t.Errorf("%s %s: failure not audited: %s", c.role, c.req.Op, f.audit.String())
 		}
+	}
+}
+
+func TestQuery_PrdStderrHasNoEnvNames(t *testing.T) {
+	f := newFixture(t, func(_ context.Context, _ string, _ []string, _ []string, out, _ io.Writer) error {
+		_, _ = io.WriteString(out, "{\"a\":1}\n")
+		return nil
+	})
+	st, resp, e := f.post(t, "octocat", api.QueryRequest{Env: "prd", Engine: "mongo", Op: "count", Coll: "users"})
+	if st != 200 {
+		t.Fatalf("got %d %+v", st, e)
+	}
+	if strings.Contains(resp.Stderr, "MONGO_URL_PRD") {
+		t.Errorf("stderr = %q, want no env var name", resp.Stderr)
 	}
 }

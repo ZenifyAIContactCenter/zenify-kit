@@ -43,7 +43,7 @@ confirmation, you were on the wide path all along.
    never branch from it: steps 6 and 9 depend on knowing which code is actually running.
 
 3. **Diagnose — before touching anything.** Run **`/fix` steps 0-2**: ground in the real error
-   output first (logs, stacktrace, `docker logs <container>`), then hypotheses, then confirm the
+   output first (logs, traces, metrics: `znf:_shared/evidence-sources`), then hypotheses, then confirm the
    root cause. If you cannot confirm it, say so — **do not guess-fix production.** This comes
    before the worktree on purpose (see references). On production use only read-only rungs and
    redact output (`<REDACTED>`); with no read-only loop, confirm the cause from logs — the no-loop
@@ -98,8 +98,8 @@ confirmation, you were on the wide path all along.
    fixed without evidence (or `/run` the app and observe it).
 
    Narrow question here: *did the bug go away*. The authoritative pass, and the only dispatch of
-   a UI verifier agent, is `/ship` step 4. If the bug was visual, look at it
-   in the browser yourself now; that leaves it logged in for the verifier at step 9.
+   `znf:ui-verifier`, is `/ship` step 4. If the bug was visual, the look is checked there, not by
+   you.
 
    **A clean check is not yet evidence.** A negative result that lets you proceed needs a second
    independent mechanism to agree. Sweep with `rg`, not `grep -R`; confirm a wrapper tool's "not
@@ -117,6 +117,9 @@ confirmation, you were on the wide path all along.
     base ref by hand and merge it (= deploy), then **sync the fix back to the repo's normal
     feature base** (merge/cherry-pick) so the next release doesn't lose it. Once synced, tear
     down each worktree with `wt rm <slug>` (in each affected repo).
+
+    **After they deploy, check the result** for the area the fix touched — the checks that fit,
+    not all of them: `references/post-deploy-check.md`. Add the numbers to the hotfix report.
 
 ## Output
 ```
@@ -144,3 +147,4 @@ feature base.
 ## References
 
 - `references/why-these-rules.md` — why diagnosis precedes the worktree, why the base ref is fetched before it is resolved, why the response is the user's call, and the evidence behind the unconditional `/ship`.
+- `references/post-deploy-check.md` — which numbers to compare before and after the deploy, per changed area (backend, web, queue).

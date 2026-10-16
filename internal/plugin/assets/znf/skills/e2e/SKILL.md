@@ -47,6 +47,11 @@ cleans up its own data, isolated by a unique marker, never touching another test
 Write the journey from the worked template in `references/deep-scenario-template.md` — it carries
 every element the hard rules below require, with the trap each line avoids noted inline.
 
+**Log in as the role the screen requires, never admin by default.** On a permission-gated screen,
+pick a role that holds that permission and pass it as `--role <role>` to `zenify e2e login` and
+`zenify e2e run` (the account comes from the credential broker). An admin account passes checks a
+real user of that screen would fail.
+
 ## Hard rules (lint fails on violation)
 
 - A `// @domain-assert:<entity>` marker after the UI block; after it, an `apiClient` re-fetch plus an
@@ -92,6 +97,7 @@ hardcoding it, and remove testids that are no longer used (see references).
 ```bash
 zenify e2e lint --repo <repo>            # mechanical gate, run first
 zenify e2e run --repo <repo> --port <N>  # real run in Docker (dev-server on port N)
+zenify e2e run --repo <repo> --port <N> --role <role>  # as the role the screen requires
 ```
 
 ## References

@@ -27,7 +27,7 @@ Chỉ bạn gõ được `/znf:hotfix`. Agent không tự gọi được lệnh 
 | Repo | Repo đang chạy bản lỗi |
 | Release đang chạy | Bản đang chạy production, không phải nhánh tích hợp |
 | Ảnh hưởng | Ai hoặc luồng nào đang bị chặn |
-| Bằng chứng | Log thật, ticket, `docker logs <container>` |
+| Bằng chứng | Log, trace hoặc metric thật, ticket |
 
 ## Các bước
 
@@ -56,7 +56,7 @@ flowchart TD
 |---|---|---|
 | 1 | Chốt repo bị ảnh hưởng | Xác nhận đúng repo |
 | 2 | `fetch` rồi resolve base ref hotfix bằng `zenify hotfix baseref` | Xác nhận đây đúng là bản đang chạy production |
-| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix`. Ở bước này chỉ dùng các cách tái hiện chỉ đọc và lọc output thành `<REDACTED>`; nếu không có thì xác nhận nguyên nhân từ log, không dừng và không thêm log tạm trên production | Đọc nguyên nhân đã xác nhận |
+| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix`. Ở bước này chỉ dùng các cách tái hiện chỉ đọc và lọc output thành `<REDACTED>`; nếu không có thì xác nhận nguyên nhân từ log, không dừng và không thêm log tạm trên production. Nguồn bằng chứng (log, trace, metric, `db-read`/`redis-read`, PostHog) và thứ tự tra cứu lấy từ tài liệu tham chiếu chung `_shared/evidence-sources`, xem [Quan sát và an toàn](/guides/observe-and-safety#nguon-bang-chung-cho-agent) | Đọc nguyên nhân đã xác nhận |
 | 4 | Trình bày ba lựa chọn kèm khuyến nghị | Chọn revert, disable hoặc fix forward. Revert và disable dừng tại đây, không tạo worktree |
 | 5 | Tạo worktree `--type hotfix --base <release>` (chỉ khi fix forward) | Không cần làm gì |
 | 6 | Chạy `/znf:scout` trên ref đã resolve, không phải base thường ngày | Đọc báo cáo scout |
@@ -64,6 +64,7 @@ flowchart TD
 | 8 | Chạy lại lệnh đỏ, kỳ vọng xanh, xoá log `[DEBUG-xxxx]` (theo bước 6 của `/znf:fix`), verify trên code path thật | Đọc kết quả |
 | 9 | Chạy `/znf:gate` rồi `/znf:ship`, kể cả khi đang gấp. Ship mở PR vào base ref release | Đọc board ship, nhận PR URL |
 | 10 | Nhắc bước tay còn lại | Merge PR (tức là deploy), rồi đồng bộ fix ngược về base feature bằng merge hoặc cherry-pick |
+| Sau deploy | Sau khi bạn merge và deploy, kiểm tra kết quả trên đúng vùng fix chạm tới: chỉ chạy các kiểm tra hợp với vùng đó (backend: tỉ lệ lỗi, p95 và số dòng lỗi của route; web: exception PostHog của màn hình; queue: backlog hoặc lag), so cửa sổ trước và sau deploy có độ dài bằng nhau, kèm số request để phân biệt "0 lỗi" với "0 request". Số liệu ghi vào báo cáo hotfix; kiểm tra không chạy được thì ghi là chưa chạy, không ghi là sạch | Đọc số liệu. Triệu chứng chưa giảm hoặc chỉ số lân cận tăng thì chọn lại cách xử lý như bước 4 |
 
 ## Kết quả
 

@@ -1,6 +1,9 @@
 package api
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDevSQL_RowChannelsRefused(t *testing.T) {
 	for _, sql := range []string{
@@ -59,6 +62,27 @@ func TestDevSQL_PlanAndSchemaAllowed(t *testing.T) {
 	} {
 		if !devSQL(sql) {
 			t.Errorf("devSQL(%q) = false, want true", sql)
+		}
+	}
+}
+
+func TestDevPrdSummary_ListsEveryAllowedOp(t *testing.T) {
+	got := DevPrdSummary()
+	keys := []string{}
+	for k := range devMongoOps {
+		keys = append(keys, k)
+	}
+	for k := range devRedis {
+		keys = append(keys, k)
+	}
+	for _, k := range keys {
+		if !strings.Contains(got, k) {
+			t.Errorf("summary %q lacks %q", got, k)
+		}
+	}
+	for _, want := range []string{DevSQLRule, "no --filter"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary %q lacks %q", got, want)
 		}
 	}
 }
