@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.38.1
+
+*2026-10-16*
+
+- Skill mới `/znf:where`: tóm tắt task đang tới đâu (mục tiêu, pha, đã xong kèm bằng chứng, đang làm, bước tiếp theo với lệnh kit, blocker). Skill đọc state thật: SDD ledger, branch, worktree, PR và các agent đã dispatch; agent chưa có báo cáo bị ghi là INCOMPLETE. Skill chỉ đọc, không sửa gì. Dùng khi quay lại sau khi nghỉ hoặc sau khi phiên bị nén. Xem [`/znf:where`](/reference/skills/where).
+
 ## v0.38.0
 
 *2026-10-15*
