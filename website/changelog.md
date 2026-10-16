@@ -12,6 +12,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 
 *2026-10-16*
 
+- **Stacked PR:** plan lớn có thể chia thành stack PR của GitHub; agent dựng các lớp, review từng lớp và mở stack bằng `gh stack`, người merge từ dưới lên. `zenify up --apply` cài extension `gh-stack`. Xem [ship](/workflows/ship).
 - **Credential broker:** dev không còn tự điền credential database, PostHog và tài khoản E2E. Kit lấy chúng qua broker của team, xác thực bằng tài khoản GitHub (`gh auth login`) thuộc org ZenifyAIContactCenter. Broker chạy sau HTTPS tại `broker.zenify.vn`. Xem [Dùng credential broker](/guides/broker-client).
   - `zenify db-read` (cả `--prd`) chạy qua broker, giữ nguyên mọi giới hạn chỉ đọc.
   - Lệnh mới `zenify redis-read` đọc Redis staging hoặc production, chỉ các lệnh đọc, có giới hạn kích thước kết quả.

@@ -73,6 +73,12 @@ flowchart TD
 | 6 | Tạo worktree, chạy SDD: mỗi task một implementer (`sonnet`, viết test trước và chạy cả suite; phần kết nối hoặc cấu hình không có giá trị kỳ vọng độc lập thì báo `No TDD: <lý do>` kèm output chạy thật thay cho cặp đỏ/xanh). Giá trị kỳ vọng của test lấy từ nguồn độc lập, không tính lại theo cách code tính; chỉ mock ở ranh giới hệ thống (API ngoài, thời gian, ngẫu nhiên), không mock module của chính mình; assert qua giao diện công khai. Reviewer của task soát cả các luật này | Theo dõi ledger `.znf/sdd/<plan>/progress.md` |
 | 7 | Gọi `/znf:ship` | Đọc board ship, nhận PR |
 
+### Stacked PR
+
+Plan lớn (diff dự kiến vượt khoảng 600 dòng, hoặc task chia được thành các lớp tự build và test được) có thể ship thành một stack PR của GitHub thay vì một PR. Kit chỉ đề xuất; ở gate duyệt plan (bước 5) kit nêu số lớp và tiêu đề từng lớp, và bạn quyết định. Không duyệt thì plan không có khối `## Stack` và đi luồng một PR như cũ.
+
+Plan có `## Stack` thì ở bước 6 SDD dựng từng lớp bằng `gh stack` (mỗi task thuộc đúng một lớp), và [ship](/workflows/ship#stacked-pr) review từng lớp, rồi mở cả stack. Plan cần `gh` từ 2.90.0 và extension `gh-stack`; thiếu thì kit dừng trước task đầu và báo lệnh `gh extension install github/gh-stack`. Định dạng khối `## Stack` nằm ở [Spec, plan và kiểm tra](/guides/spec-and-plan#stacked-pr).
+
 ## Kết quả
 
 | Artifact | Đường dẫn |
@@ -81,7 +87,7 @@ flowchart TD
 | Plan | `docs/plans/<repo>/YYYY-MM-DD-<topic>.md` |
 | Ledger tiến độ | `.znf/sdd/<plan>/progress.md` |
 | Branch | `<user>/feat/<slug>` |
-| PR | Mở, chưa merge |
+| PR | Mở, chưa merge. Plan có `## Stack`: một PR mỗi lớp |
 
 ## Quyết định thuộc về bạn
 
