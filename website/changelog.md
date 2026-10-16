@@ -22,6 +22,12 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 - **Thay đổi phá vỡ:** manifest bỏ 10 key mà broker thay thế (database, PostHog, E2E). Sau `zenify up --apply`, các key này không còn trong `.zenify/.env`; `zenify doctor` báo chúng là "không còn dùng" nếu file còn giữ.
 - Người vận hành dựng broker theo [Dựng host credential broker](/guides/broker-host): image `zenify-broker` sau nginx và cert certbot, audit log từng lệnh theo GitHub login.
 
+## v0.38.1
+
+*2026-10-16*
+
+- Skill mới `/znf:where`: tóm tắt task đang tới đâu (mục tiêu, pha, đã xong kèm bằng chứng, đang làm, bước tiếp theo với lệnh kit, blocker). Skill đọc state thật: SDD ledger, branch, worktree, PR và các agent đã dispatch; agent chưa có báo cáo bị ghi là INCOMPLETE. Skill chỉ đọc, không sửa gì. Dùng khi quay lại sau khi nghỉ hoặc sau khi phiên bị nén. Xem [`/znf:where`](/reference/skills/where).
+
 ## v0.38.0
 
 *2026-10-15*
