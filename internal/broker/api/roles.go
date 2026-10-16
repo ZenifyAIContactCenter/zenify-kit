@@ -1,6 +1,9 @@
 package api
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // What role dev may read on prd (FR-14.2, FR-14.3): structure, plans and
 // metadata, never record content. Shared by the broker, which enforces it,
@@ -190,4 +193,33 @@ var devRedis = map[string]bool{"TTL": true, "TYPE": true, "EXISTS": true, "SCAN"
 // DevRedisAllowed reports whether a dev may send cmd to prd Redis.
 func DevRedisAllowed(cmd string) bool {
 	return devRedis[strings.ToUpper(strings.TrimSpace(cmd))]
+}
+
+// DevSQLRule is the one-line statement of what devSQL accepts.
+const DevSQLRule = "sql: EXPLAIN SELECT without subquery, DESCRIBE <table>, SHOW INDEX|COLUMNS|TABLES|CREATE TABLE|TABLE STATUS"
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// DevPrdOps returns the sorted Mongo ops and Redis commands a dev may run on prd.
+func DevPrdOps() (mongo, redis []string) {
+	return sortedKeys(devMongoOps), sortedKeys(devRedis)
+}
+
+// DevPrdSummary is the one sentence every dev-facing message uses to say what
+// prd allows, derived from the lists above so it cannot drift from them.
+func DevPrdSummary() string {
+	mongo, redis := DevPrdOps()
+	for i, op := range mongo {
+		if op == "count" {
+			mongo[i] = "count (no --filter)"
+		}
+	}
+	return "db-read: " + strings.Join(mongo, ", ") + ", tables, " + DevSQLRule + "; redis-read: " + strings.Join(redis, " ")
 }

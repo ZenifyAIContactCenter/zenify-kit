@@ -564,6 +564,11 @@ func TestRedis_DevPrdValuesLeadOnly(t *testing.T) { // SC-23
 		if st != http.StatusForbidden || !strings.Contains(string(body), api.CodeLeadOnly) {
 			t.Errorf("%s: got %d %s, want 403 lead_only", cmd, st, body)
 		}
+		var env api.Error
+		_ = json.Unmarshal(body, &env)
+		if !strings.Contains(env.Message, api.DevPrdSummary()) {
+			t.Errorf("%s: body %s lacks DevPrdSummary", cmd, body)
+		}
 		if f.prd.sent(cmd) {
 			t.Errorf("%s: reached redis", cmd)
 		}

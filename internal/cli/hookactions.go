@@ -91,7 +91,7 @@ func brokerRoleLine(w io.Writer) {
 		return
 	}
 	if _, login, role, ok := brokerclient.CachedIdentity(home); ok && role == api.RoleDev {
-		fmt.Fprintf(w, "broker: login=%s role=dev — prd: chỉ explain/indexes/stats/count (db-read), Redis prd chỉ TTL/TYPE/EXISTS/SCAN/LLEN/SCARD/ZCARD; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n", login) //znf:allow-lang
+		fmt.Fprintf(w, "broker: login=%s role=dev — prd: %s; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n", login, api.DevPrdSummary()) //znf:allow-lang
 	}
 }
 

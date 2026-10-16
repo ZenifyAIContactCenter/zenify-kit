@@ -98,7 +98,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if role != api.RoleLead && req.Env == "prd" && !api.DevRedisAllowed(req.Cmd) {
-		fail(http.StatusForbidden, api.CodeLeadOnly, "production redis values are lead-only; dev may use TTL/TYPE/EXISTS/SCAN/LLEN/SCARD/ZCARD")
+		fail(http.StatusForbidden, api.CodeLeadOnly, "production values are lead-only; dev on prd may only use "+api.DevPrdSummary())
 		return
 	}
 	argv, err := api.CheckRedis(req.Cmd, req.Args)

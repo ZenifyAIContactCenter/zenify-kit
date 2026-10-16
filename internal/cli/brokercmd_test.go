@@ -334,7 +334,7 @@ func TestDBReadCmd_BrokerLeadOnly(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeLeadOnly, Message: "production data reads are lead-only"})
 	}})
 	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "find", "users")
-	if err == nil || !strings.Contains(err.Error(), "lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count") || exitcode.Code(err) == exitcode.BadArgs { //znf:allow-lang
+	if err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || exitcode.Code(err) == exitcode.BadArgs { //znf:allow-lang
 		t.Errorf("err = %v (code %d)", err, exitcode.Code(err))
 	}
 }
@@ -672,7 +672,7 @@ func TestDevPrdPrecheck(t *testing.T) {
 	} {
 		before := atomic.LoadInt32(hits)
 		_, _, err := execCmd(newDBReadCmd(), append([]string{"--manifest", mp}, args...)...)
-		if err == nil || !strings.Contains(err.Error(), leadOnlyMsg) || atomic.LoadInt32(hits) != before {
+		if err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || !strings.Contains(err.Error(), "collections") || atomic.LoadInt32(hits) != before {
 			t.Errorf("db-read %v: err=%v hits %d→%d, want lead_only and no call", args, err, before, *hits)
 		}
 	}
@@ -689,7 +689,7 @@ func TestDevPrdPrecheck(t *testing.T) {
 		}
 	}
 	before := atomic.LoadInt32(hits)
-	if _, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "--prd", "GET", "k"); err == nil || !strings.Contains(err.Error(), leadOnlyMsg) || atomic.LoadInt32(hits) != before {
+	if _, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "--prd", "GET", "k"); err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || !strings.Contains(err.Error(), "collections") || atomic.LoadInt32(hits) != before {
 		t.Errorf("redis-read --prd GET: err=%v, want lead_only and no call", err)
 	}
 	for _, args := range [][]string{{"--prd", "TTL", "k"}, {"GET", "k"}} {
