@@ -624,6 +624,34 @@ func TestQuery_DevPrdMongoNoRowChannel(t *testing.T) {
 	}
 }
 
+// A successful child can still write row content to stderr, so dev on prd
+// gets none of it; lead and stg keep it.
+func TestQuery_DevPrdSuccessDropsChildStderr(t *testing.T) {
+	okRun := func(_ context.Context, _ string, _ []string, _ []string, out, errw io.Writer) error {
+		_, _ = io.WriteString(out, "{}\n")
+		_, _ = io.WriteString(errw, "warning: SECRET-ROW-CONTENT\n")
+		return nil
+	}
+	for _, c := range []struct {
+		role string
+		env  string
+		leak bool
+	}{
+		{api.RoleDev, "prd", false},
+		{api.RoleLead, "prd", true},
+		{api.RoleDev, "stg", true},
+	} {
+		f := newFixture(t, okRun)
+		st, resp, e := f.postAs(t, "someone", c.role, api.QueryRequest{Env: c.env, Engine: "mongo", Op: "explain", Coll: "users"})
+		if st != http.StatusOK {
+			t.Fatalf("%s %s: got %d %+v", c.role, c.env, st, e)
+		}
+		if got := strings.Contains(resp.Stderr, "SECRET-ROW-CONTENT"); got != c.leak {
+			t.Errorf("%s %s: stderr = %q, want child stderr shown=%v", c.role, c.env, resp.Stderr, c.leak)
+		}
+	}
+}
+
 // A server error can quote the row it failed on, so dev on prd gets a
 // generic message; lead and stg keep the child's stderr.
 func TestQuery_DevPrdFailureWithholdsStderr(t *testing.T) {

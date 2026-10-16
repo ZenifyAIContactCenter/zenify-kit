@@ -133,7 +133,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mw := devenv.NewMaskWriter(&stderr, h.secrets())
 	o.Stderr = mw
 	o.SetRun(func(name string, args, extraEnv []string, _ string) error {
-		return h.Run(ctx, name, args, extraEnv, o.Stdout, o.Stderr)
+		childErr := o.Stderr
+		if devPrd {
+			// Child stderr can quote a document even on success; the kit's own
+			// truncation notices still reach o.Stderr.
+			childErr = io.Discard
+		}
+		return h.Run(ctx, name, args, extraEnv, o.Stdout, childErr)
 	})
 	err := dbread.Run(o)
 	_ = mw.Close()
