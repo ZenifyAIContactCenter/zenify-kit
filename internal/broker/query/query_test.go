@@ -495,6 +495,9 @@ func TestQuery_DevPrdDataReadLeadOnly(t *testing.T) { // SC-20
 		if st != http.StatusForbidden || e.Error != api.CodeLeadOnly {
 			t.Errorf("%s: got %d %+v, want 403 lead_only", name, st, e)
 		}
+		if req.Op != "count" && !strings.Contains(e.Message, api.DevPrdSummary()) { // count has its own filter message
+			t.Errorf("%s: message %q lacks DevPrdSummary", name, e.Message)
+		}
 		if n := atomic.LoadInt32(f.calls); n != 0 {
 			t.Errorf("%s: %d processes started, want 0", name, n)
 		}
