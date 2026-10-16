@@ -5,8 +5,8 @@
 The one place a skill learns how to pull runtime evidence: logs, traces and metrics through the
 Grafana MCP server, product analytics through the PostHog MCP server, and stored state through
 `zenify db-read` / `zenify redis-read`. All of it is read-only. The broker MCP servers exist when
-the manifest declares a `broker:` (registered by `zenify up`); their tool names are listed in
-`harness-tools.md`. Everything project-specific — datasource uids, app names, attribute and metric
+the manifest declares a `broker:` (registered by `zenify up`); read their server names from the
+session's MCP tool list, where each tool name starts `mcp__<server>__`. Everything project-specific — datasource uids, app names, attribute and metric
 names — is discovered at run time or read from the project's service catalog; never hard-code it.
 
 ## Before the first query
@@ -25,7 +25,7 @@ names — is discovered at run time or read from the project's service catalog; 
   line → `get_tempo_trace`. For the web front end, PostHog exceptions first.
 - **Slow** — p95 by route from the Tempo spanmetrics histogram (`query_prometheus` on
   `traces_spanmetrics_latency_bucket`) → TraceQL `{ duration > 2s }` on that route
-  (`search_tempo_traces`) → `get_tempo_trace` saved to a file.
+  (`search_tempo_traces`) → `get_tempo_trace` (see Output size).
 - **Queue / background job** — find the project's backlog or lag metric with
   `list_prometheus_metric_names`, query it, then confirm the real keys with `zenify redis-read`.
 - **User-side** (what a user saw or clicked) — PostHog: events, sessions, exceptions.
@@ -39,7 +39,8 @@ Then confirm stored state with `zenify db-read [--prd]` and `zenify redis-read [
   holds it is project-specific — find it with `list_tempo_attribute_names`, then open the linked
   trace.
 - **Trace → log**: search the trace id as a plain string across every app
-  (`{<app-label>=~".+"} |= "<trace id>"`), not only the app you expect.
+  (`{<app-label>=~".+"} |= "<trace id>"`), not only the app you expect — bounded to a few minutes
+  around the trace's own start and end, with a line limit.
 - **Analytics → trace**: take tenant, user and time window from the PostHog event, then search
   Tempo with the matching resource or span attributes over that window.
 
@@ -83,8 +84,9 @@ inside the command (a `sed` filter) so the raw value never enters the conversati
 ## Output size
 
 - Narrow every query: one app, the smallest time window, a line or row limit.
-- A large result (a full `get_tempo_trace` is about 200 KB) goes to a file, then `jq` pulls the
-  fields you need; never print it whole.
+- An MCP result cannot be shell-redirected. Narrow the call by its own arguments first (time
+  range, limit, filters); a large result (a full `get_tempo_trace` is about 200 KB) is saved to a
+  file by the harness on its own — `jq` that file for the fields you need, never read it whole.
 - `zenify redis-read` prints a truncation notice on stderr when it cut the reply; narrow and
   re-run rather than reasoning over a partial list.
 - `zenify db-read` `--limit` defaults to 50 and caps at 200.
