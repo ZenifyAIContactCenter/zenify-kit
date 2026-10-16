@@ -235,3 +235,29 @@ func TestAnalyze_RiskTagBacktickWrapped(t *testing.T) {
 		}
 	}
 }
+
+// stackedPlanFixture has a ## Stack block before the first task and a **Layer:** line under **Model:**.
+const stackedPlanFixture = "## Global Constraints\n\n- none\n\n" +
+	"## Stack\n\n" +
+	"- Layer 1: `guard` — `feat(gitguard): block stack merge`\n" +
+	"- Layer 2: `docs` — `docs(site): describe stacks`\n\n---\n\n" +
+	"### Task 1: Guard\n\n**Model:** sonnet\n**Layer:** 1\n\n**Files:**\n- Test: `internal/a_test.go`\n\n- `_Requirements: FR-1_`\n- `_Skills: none_`\n\n" +
+	"### Task 2: Docs\n\n**Model:** sonnet\n**Layer:** 2\n\n**Files:**\n- Test: `internal/b_test.go`\n\n- `_Requirements: FR-2_`\n- `_Skills: none_`\n"
+
+func TestAnalyzeStackedPlan(t *testing.T) {
+	spec := "**FR-1.** guard.\n**FR-2.** docs.\n"
+	r := Analyze(spec, stackedPlanFixture)
+	if got := r.Coverage["FR-1"]; len(got) != 1 || !strings.Contains(got[0], "1") {
+		t.Errorf("FR-1 coverage = %v, want only task 1", got)
+	}
+	if got := r.Coverage["FR-2"]; len(got) != 1 || !strings.Contains(got[0], "2") {
+		t.Errorf("FR-2 coverage = %v, want only task 2", got)
+	}
+	for _, k := range []string{"orphan-task", "orphan-fr", "dangling-ref"} {
+		for _, f := range r.Findings {
+			if f.Kind == k {
+				t.Errorf("unexpected %s finding: %+v", k, f)
+			}
+		}
+	}
+}

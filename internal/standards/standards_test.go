@@ -282,3 +282,28 @@ func TestCheck_BareNameSkipsGitAndNodeModules(t *testing.T) {
 		t.Fatalf("matches under .git/node_modules must not count, got %v", k)
 	}
 }
+
+// stackedPlanFixture has a ## Stack block before the first task and a **Layer:** line under **Model:**.
+const stackedPlanFixture = "## Global Constraints\n\n- none\n\n" +
+	"## Stack\n\n" +
+	"- Layer 1: `guard` — `feat(gitguard): block stack merge`\n" +
+	"- Layer 2: `docs` — `docs(site): describe stacks`\n\n---\n\n" +
+	"### Task 1: Guard\n\n**Model:** sonnet\n**Layer:** 1\n\n**Files:**\n- Test: `internal/a_test.go`\n\n- `_Requirements: FR-1_`\n- `_Skills: none_`\n\n" +
+	"### Task 2: Docs\n\n**Model:** sonnet\n**Layer:** 2\n\n**Files:**\n- Test: `internal/b_test.go`\n\n- `_Requirements: FR-2_`\n- `_Skills: none_`\n"
+
+func TestStandardsStackedPlan(t *testing.T) {
+	spec := "**FR-1.** guard.\n**FR-2.** docs.\n"
+	read := func(p string) ([]byte, error) {
+		if p == "/r/internal/a_test.go" || p == "/r/internal/b_test.go" {
+			return []byte("package x\nfunc TestX(t *testing.T){}\n"), nil
+		}
+		return nil, os.ErrNotExist
+	}
+	r := Check(spec, stackedPlanFixture, "/r", read)
+	if len(r.TestPaths) != 2 || r.TestPaths[0] != "internal/a_test.go" || r.TestPaths[1] != "internal/b_test.go" {
+		t.Errorf("TestPaths = %v", r.TestPaths)
+	}
+	for _, f := range r.Findings {
+		t.Errorf("unexpected finding: %+v", f)
+	}
+}
