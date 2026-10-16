@@ -14,15 +14,14 @@ GitHub token của bạn được gửi tới URL broker, nên kit chỉ lấy `
 
 ## Cài một lần
 
-1. **Cài Cloudflare WARP và vào team.** Cài ứng dụng Cloudflare WARP, đăng nhập bằng GitHub theo policy của org `ZenifyAIContactCenter` rồi bật WARP. Broker chỉ tới được khi WARP đang bật.
-2. **Đăng nhập GitHub CLI với scope `read:org`.**
+1. **Đăng nhập GitHub CLI với scope `read:org`.**
 
    ```bash
    gh auth login -s read:org
    ```
 
    Đã đăng nhập từ trước mà thiếu scope thì chạy `gh auth refresh -s read:org`. Broker kiểm tra bạn thuộc org qua GitHub token này; không thuộc org thì broker từ chối và không cấp JWT.
-3. **Chạy `zenify doctor`** để kiểm tra cả ba điều kiện cùng lúc.
+2. **Chạy `zenify doctor`** để kiểm tra broker đã dùng được chưa.
 
 ## `zenify doctor` mục `broker`
 
@@ -32,7 +31,7 @@ Mục `broker` kiểm tra lần lượt: `gh` đã đăng nhập, `gh` có scope
 |---|---|
 | ``gh chưa đăng nhập — chạy `gh auth login` `` | Đăng nhập `gh` như trên |
 | ``gh thiếu scope read:org — chạy `gh auth refresh -s read:org` `` | Chạy lệnh được gợi ý |
-| `không tới được broker — bật Cloudflare WARP rồi chạy lại` | Bật WARP, kiểm tra WARP đã vào đúng team, chạy lại |
+| `không tới được broker — kiểm tra mạng và broker.url trong manifest rồi chạy lại` | Mở `https://broker.zenify.vn/healthz` trên trình duyệt; không mở được thì báo maintainer |
 | `broker từ chối token: <status> not_org_member: <lời nhắn>` | GitHub token chưa thấy bạn trong org: kiểm tra scope `read:org`, và nếu org bật SSO thì authorize token của GitHub CLI cho org trên GitHub, rồi chạy lại |
 | `broker từ chối token: <status> rate_limited: …` hoặc `… github_unavailable: …` | Broker hoặc GitHub đang tạm quá tải; đợi một lát rồi chạy lại |
 | `broker cấu hình sai, báo người quản trị broker: <lời nhắn>` | Lỗi ở phía host broker, không phải máy bạn; gửi nguyên dòng thông báo cho maintainer |
@@ -84,7 +83,7 @@ Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn v�
 
 ## Sandbox của Claude Code
 
-Chưa rõ sandbox Bash của Claude Code có chặn request đi qua WARP hay không: phần kiểm tra này đang chờ, ghi chú về sandbox sẽ được bổ sung vào trang này.
+Chưa kiểm tra sandbox Bash của Claude Code có chặn request tới broker hay không; ghi chú về sandbox sẽ được bổ sung vào trang này.
 
 ## Xem thêm
 

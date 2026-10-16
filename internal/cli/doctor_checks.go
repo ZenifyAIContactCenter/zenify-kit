@@ -78,8 +78,8 @@ func secretPresenceCheck(getenv func(string) string, envPath func() string, kitM
 var brokerCheckTimeout = 30 * time.Second
 
 // brokerCheck verifies the three things a broker call needs, in order: a gh
-// login with read:org, a broker reachable within 5s (WARP is the usual cause
-// when it is not), and a fresh token exchange — never the cache, so org
+// login with read:org, a broker reachable within 5s (network or firewall is the
+// usual cause when it is not), and a fresh token exchange — never the cache, so org
 // membership is really re-checked. It prints the login the broker issued the
 // token to — never a token.
 func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokerclient.Client) Check {
@@ -116,7 +116,7 @@ func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokercl
 			}
 			resp, err := probe.Do(req) //nolint:gosec // G704 -- url comes from the kit manifest, https-only (manifest.Load)
 			if err != nil {
-				return false, "không tới được broker — bật Cloudflare WARP rồi chạy lại" //znf:allow-lang
+				return false, "không tới được broker — kiểm tra mạng và broker.url trong manifest rồi chạy lại" //znf:allow-lang
 			}
 			_ = resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {

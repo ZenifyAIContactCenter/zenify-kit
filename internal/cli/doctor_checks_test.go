@@ -524,7 +524,7 @@ func TestBrokerCheck_OK(t *testing.T) {
 	}
 }
 
-// SC-11: an unreachable broker fails the check and points at WARP.
+// SC-11: an unreachable broker fails the check and points at broker.url.
 func TestBrokerCheck_Unreachable(t *testing.T) {
 	srv := brokerTestServer(t, http.StatusOK)
 	url := srv.URL
@@ -532,8 +532,8 @@ func TestBrokerCheck_Unreachable(t *testing.T) {
 	c := brokerTestClient(url)
 	c.Home = t.TempDir()
 	ok, detail := brokerCheck(url, staticGHRunner{ghOKOut}, &http.Client{Timeout: time.Second}, c).Run()
-	if ok || !strings.Contains(detail, "WARP") {
-		t.Fatalf("ok=%v detail=%q, want failure mentioning WARP", ok, detail)
+	if ok || !strings.Contains(detail, "broker.url") {
+		t.Fatalf("ok=%v detail=%q, want failure mentioning broker.url", ok, detail)
 	}
 }
 

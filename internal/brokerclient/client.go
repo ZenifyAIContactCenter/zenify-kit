@@ -29,9 +29,9 @@ const refreshWindow = 60 * time.Second
 const maxBody = 16 << 20
 
 // accessHint explains a reply that did not come from the broker itself: a
-// redirect, a 401/403 or a 2xx that is not JSON (the Cloudflare Access login
-// page).
-const accessHint = "reply is not from the broker (Cloudflare Access login page?) — turn on Cloudflare WARP and retry"
+// redirect, a 401/403 or a 2xx that is not JSON (a proxy or captive portal in
+// between).
+const accessHint = "reply is not from the broker (a proxy or captive portal in between?) — check broker.url in the kit manifest and your network, then retry"
 
 // Client talks to one broker. Zero Home/HTTP/Now/GHToken/Stderr fall back to
 // os.UserHomeDir, NewHTTPClient(2 * time.Minute), time.Now, GHTokenExec and
