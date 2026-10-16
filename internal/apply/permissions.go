@@ -34,7 +34,14 @@ var KitAllowRules = []string{
 	"Bash(zenify e2e *)",
 	"Bash(zenify visual *)",
 	"Bash(zenify ui-verify *)",
-	"Bash(gh stack *)",
+	"Bash(gh stack --help)",
+	"Bash(gh stack init *)",
+	"Bash(gh stack add *)",
+	"Bash(gh stack checkout *)",
+	"Bash(gh stack rebase *)",
+	"Bash(gh stack push *)",
+	"Bash(gh stack submit *)",
+	"Bash(gh stack view *)",
 	"mcp__zenify-grafana__*",
 	"mcp__zenify-posthog__*",
 }
@@ -43,12 +50,20 @@ var KitAllowRules = []string{
 // sandbox.excludedCommands: `zenify e2e login` writes ~/.zenify and reaches the
 // local web app, both of which the Bash sandbox denies, so without this the
 // verifier would have to ask for the sandbox to be disabled. Only login: other
-// e2e subcommands run repo journey code and stay sandboxed. `gh stack` reads gh
-// auth and calls GitHub, both denied by the sandbox; git-guard still blocks
-// merge/unstack/link before any permission rule. Inert when the sandbox is off.
+// e2e subcommands run repo journey code and stay sandboxed. The `gh stack`
+// subcommands the skills run read gh auth and call GitHub, both denied by the
+// sandbox; only those are listed, so a new or dangerous subcommand still asks
+// and stays sandboxed, and git-guard blocks merge/unstack/link/alias before any
+// permission rule. Inert when the sandbox is off.
 var KitSandboxExcluded = []string{
 	"zenify e2e login *",
-	"gh stack *",
+	"gh stack init *",
+	"gh stack add *",
+	"gh stack checkout *",
+	"gh stack rebase *",
+	"gh stack push *",
+	"gh stack submit *",
+	"gh stack view *",
 }
 
 // KitDenyRule is the rule the kit unions into permissions.deny of
