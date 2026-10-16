@@ -610,6 +610,10 @@ func TestProxy_UpstreamQueryOverridesClient(t *testing.T) {
 			map[string]string{"q": "a b", "features": "a,b"}},
 		{"no upstream query passes the client query through", "", "x=1&features=z", "x=1&features=z",
 			map[string]string{"x": "1", "features": "z"}},
+		{"client pair smuggling an upstream key after ; is dropped", "?features=a,b", "x=1;features=evil&y=2", "features=a,b&y=2",
+			map[string]string{"y": "2", "features": "a,b"}},
+		{"client pair with an undecodable key is dropped", "?features=a,b", "%zz=1&y=2", "features=a,b&y=2",
+			map[string]string{"y": "2", "features": "a,b"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

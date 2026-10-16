@@ -93,7 +93,9 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 
 // mergeQuery returns upstreamRaw byte for byte (never re-encoded, so a comma
 // stays a comma) followed by the client pairs whose key upstreamRaw lacks, each
-// in its original form. With no upstream query it is the client's query.
+// in its original form. A client pair holding ';' or an undecodable key is
+// dropped: the upstream may split on ';' and read a key it owns. With no
+// upstream query it is the client's query.
 func mergeQuery(upstreamRaw, clientRaw string) string {
 	if upstreamRaw == "" {
 		return clientRaw
@@ -104,11 +106,16 @@ func mergeQuery(upstreamRaw, clientRaw string) string {
 		if pair == "" {
 			continue
 		}
+		if strings.Contains(pair, ";") {
+			continue
+		}
 		k, _, _ := strings.Cut(pair, "=")
-		if k, err := url.QueryUnescape(k); err == nil {
-			if _, dup := have[k]; dup {
-				continue
-			}
+		k, err := url.QueryUnescape(k)
+		if err != nil {
+			continue
+		}
+		if _, dup := have[k]; dup {
+			continue
 		}
 		out += "&" + pair
 	}
