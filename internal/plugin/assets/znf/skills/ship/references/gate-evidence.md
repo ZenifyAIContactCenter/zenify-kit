@@ -96,6 +96,7 @@ Verified at fingerprint = <fp10>
       not blocking: <MEDIUM/LOW findings, plus any out-of-scope observations>
       deferred from the ledger: <N minor · which the reviewer called must-fix-before-merge,
                                  or "no ledger" for a /fix or /hotfix run>
+Layer <i>/<N> <branch> — <PR url>   (stacked plan only: one line per layer, bottom first)
 Deploy order: ...
 Gate log: <SHIPPED|BLOCKED> · blocked <N> of last <M> runs
 

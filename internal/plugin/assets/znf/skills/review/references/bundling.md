@@ -2,7 +2,7 @@
 
 ### Step 1c — BUNDLE (split a large diff, seam BUNDLE — M4c)
 
-Only runs when `ADDED > 2000`. Smaller diffs (the vast majority) skip this step and go straight to Step 2 (select-tier on the WHOLE diff) as before.
+Only runs when `ADDED > 2000`. A stacked plan is reviewed one layer at a time by ship, so never bundle the whole stack: each layer's diff goes through this step on its own. Smaller diffs (the vast majority) skip this step and go straight to Step 2 (select-tier on the WHOLE diff) as before.
 
 ```bash
 if [ "$ADDED" -le 2000 ]; then
