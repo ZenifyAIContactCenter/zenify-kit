@@ -649,3 +649,50 @@ func TestBrokerToken_RefreshDropsCacheOnFailure(t *testing.T) {
 		t.Fatalf("cache still present after --refresh: %v", serr)
 	}
 }
+
+// With a cached dev role, a prd read outside the dev allowlist fails before
+// any broker call; allowed ops, stg, and a missing cache still reach it.
+func TestDevPrdPrecheck(t *testing.T) {
+	hermeticDBRead(t)
+	ok := func(w http.ResponseWriter, _ *http.Request) { _ = json.NewEncoder(w).Encode(map[string]any{}) }
+	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/query": ok, "/redis": ok})
+
+	// No cache yet: the broker decides, so the request is sent.
+	if _, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "find", "users"); err != nil || atomic.LoadInt32(hits) != 1 {
+		t.Fatalf("no cache: err=%v hits=%d, want sent", err, *hits)
+	}
+	// That call cached role=dev.
+	for _, args := range [][]string{
+		{"--prd", "find", "users"},
+		{"--prd", "doc", "users"},
+		{"--prd", "sql", "SELECT * FROM accounts"},
+		{"--prd", "sql", "SHOW PROCESSLIST"},
+	} {
+		before := atomic.LoadInt32(hits)
+		_, _, err := execCmd(newDBReadCmd(), append([]string{"--manifest", mp}, args...)...)
+		if err == nil || !strings.Contains(err.Error(), leadOnlyMsg) || atomic.LoadInt32(hits) != before {
+			t.Errorf("db-read %v: err=%v hits %d→%d, want lead_only and no call", args, err, before, *hits)
+		}
+	}
+	for _, args := range [][]string{
+		{"--prd", "indexes", "users"},
+		{"--prd", "stats", "users"},
+		{"--prd", "sql", "EXPLAIN SELECT * FROM accounts WHERE id=1"},
+		{"find", "users"}, // stg
+	} {
+		before := atomic.LoadInt32(hits)
+		if _, _, err := execCmd(newDBReadCmd(), append([]string{"--manifest", mp}, args...)...); err != nil || atomic.LoadInt32(hits) != before+1 {
+			t.Errorf("db-read %v: err=%v, want sent", args, err)
+		}
+	}
+	before := atomic.LoadInt32(hits)
+	if _, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "--prd", "GET", "k"); err == nil || !strings.Contains(err.Error(), leadOnlyMsg) || atomic.LoadInt32(hits) != before {
+		t.Errorf("redis-read --prd GET: err=%v, want lead_only and no call", err)
+	}
+	for _, args := range [][]string{{"--prd", "TTL", "k"}, {"GET", "k"}} {
+		before := atomic.LoadInt32(hits)
+		if _, _, err := execCmd(newRedisReadCmd(), append([]string{"--manifest", mp}, args...)...); err != nil || atomic.LoadInt32(hits) != before+1 {
+			t.Errorf("redis-read %v: err=%v, want sent", args, err)
+		}
+	}
+}

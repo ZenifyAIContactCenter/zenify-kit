@@ -66,10 +66,6 @@ func (h *Handler) Validate() error {
 	return errors.Join(errs...)
 }
 
-// devRedis are the metadata commands a dev may send to prd: key names, types,
-// TTLs and sizes, never values.
-var devRedis = map[string]bool{"TTL": true, "TYPE": true, "EXISTS": true, "SCAN": true, "LLEN": true, "SCARD": true, "ZCARD": true}
-
 // readHint names what a caller can read instead of a collection that is too big.
 var readHint = map[string]string{
 	"HGETALL":  "read specific fields with HGET",
@@ -101,7 +97,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, api.CodeInvalidTarget, "env must be stg or prd")
 		return
 	}
-	if role != api.RoleLead && req.Env == "prd" && !devRedis[strings.ToUpper(strings.TrimSpace(req.Cmd))] {
+	if role != api.RoleLead && req.Env == "prd" && !api.DevRedisAllowed(req.Cmd) {
 		fail(http.StatusForbidden, api.CodeLeadOnly, "production redis values are lead-only; dev may use TTL/TYPE/EXISTS/SCAN/LLEN/SCARD/ZCARD")
 		return
 	}

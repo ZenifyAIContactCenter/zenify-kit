@@ -85,7 +85,8 @@ enters the conversation.
    `service`; server spans are `span_kind="SPAN_KIND_SERVER"`.
 
 Then check the stored state with `zenify db-read [--prd]` and `zenify redis-read [--prd]`, and
-user-side behaviour in PostHog (`zenify-posthog`).
+user-side behaviour in PostHog (`zenify-posthog`). If the session-start line says `role=dev`, use only
+`explain`/`indexes`/`stats`/`count` and Grafana logs on prd; for data, read stg or ask a lead.
 
 ## Regression seam
 

@@ -399,3 +399,29 @@ func TestTokenInfo_RolelessCacheIsMiss(t *testing.T) {
 		t.Fatalf("second call tok=%q role=%q calls=%d, want cache hit", tok2, role2, calls)
 	}
 }
+
+// CachedRole reads only the cache, ignores expiry, and trusts no other broker's entry.
+func TestCachedRole_NoNetworkURLScoped(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".zenify", "broker")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"url":"https://b.example","token":"t","expires_at":"2000-01-01T00:00:00Z","login":"devgal","role":"dev"}`
+	if err := os.WriteFile(filepath.Join(dir, "token.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	noNet := func(context.Context) (string, error) { t.Fatal("gh token asked"); return "", nil }
+	if r := (&Client{URL: "https://b.example", Home: home, GHToken: noNet}).CachedRole(); r != "dev" {
+		t.Errorf("same URL: role %q, want dev", r)
+	}
+	if r := (&Client{URL: "https://other.example", Home: home, GHToken: noNet}).CachedRole(); r != "" {
+		t.Errorf("other URL: role %q, want empty", r)
+	}
+	if r := (&Client{URL: "https://b.example", Home: t.TempDir(), GHToken: noNet}).CachedRole(); r != "" {
+		t.Errorf("no cache: role %q, want empty", r)
+	}
+	if u, l, r, ok := CachedIdentity(home); !ok || u != "https://b.example" || l != "devgal" || r != "dev" {
+		t.Errorf("CachedIdentity = %q %q %q %v", u, l, r, ok)
+	}
+}

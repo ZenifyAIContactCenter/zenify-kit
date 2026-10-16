@@ -43,6 +43,9 @@ func newRedisReadCmd() *cobra.Command {
 			if prd {
 				req.Env = "prd"
 			}
+			if err := devPrdPrecheck(bc, req.Env, api.DevRedisAllowed(req.Cmd)); err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), brokerCallTimeout)
 			defer cancel()
 			var resp api.RedisResponse

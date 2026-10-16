@@ -55,7 +55,7 @@ Broker cấp role theo team GitHub trong org: thuộc team `leaders` là `lead`,
   - `redis-read`: chỉ `TTL`, `TYPE`, `EXISTS`, `SCAN`, `LLEN`, `SCARD`, `ZCARD`.
 - MCP Grafana, PostHog và tài khoản E2E mở cho cả hai role.
 
-Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count` và không chạy truy vấn nào. Giới hạn chỉ đọc vẫn áp cho mọi người, kể cả lead. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
+Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count` và không chạy truy vấn nào. Khi token cache (`~/.zenify/broker/token.json`) ghi role `dev`, kit từ chối ngay tại máy, không gọi broker; chưa có cache thì broker quyết định. Đầu mỗi phiên Claude Code, hook SessionStart đọc cache này (không gọi mạng) và với dev in một dòng `broker: login=<login> role=dev — prd: …` để agent biết trước giới hạn production. Giới hạn chỉ đọc vẫn áp cho mọi người, kể cả lead. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
 
 ## Đọc database: `db-read`
 

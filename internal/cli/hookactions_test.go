@@ -195,3 +195,46 @@ func TestSessionStart_UpdateFailureIsSilent(t *testing.T) {
 		t.Fatalf("failure must be silent on stdout: %q", buf.String())
 	}
 }
+
+// writeBrokerCache writes ~/.zenify/broker/token.json under home.
+func writeBrokerCache(t *testing.T, home, body string) {
+	t.Helper()
+	dir := filepath.Join(home, ".zenify", "broker")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "token.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A dev session learns its prd limits from the cache alone (no network, an
+// expired token still counts); lead, role-less and absent caches print nothing.
+func TestSessionStart_BrokerRoleLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	const devLine = "broker: login=devgal role=dev — prd: chỉ explain/indexes/stats/count (db-read), Redis prd chỉ TTL/TYPE/EXISTS/SCAN/LLEN/SCARD/ZCARD; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n" //znf:allow-lang
+	for name, c := range map[string]struct{ cache, want string }{
+		"dev expired": {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2000-01-01T00:00:00Z","login":"devgal","role":"dev"}`, devLine},
+		"lead":        {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"boss","role":"lead"}`, ""},
+		"no role":     {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"old"}`, ""},
+		"no cache":    {"", ""},
+	} {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if c.cache != "" {
+			writeBrokerCache(t, home, c.cache)
+		}
+		var line bytes.Buffer
+		brokerRoleLine(&line)
+		if line.String() != c.want {
+			t.Errorf("%s: line = %q, want %q", name, line.String(), c.want)
+		}
+		var buf bytes.Buffer
+		runSessionStart(mkWorkspace(t), &buf)
+		if strings.Contains(buf.String(), "jwt-secret-value") || (c.want != "" && !strings.Contains(buf.String(), c.want)) ||
+			(c.want == "" && strings.Contains(buf.String(), "broker: login=")) {
+			t.Errorf("%s: session-start output = %q", name, buf.String())
+		}
+	}
+}

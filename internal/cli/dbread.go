@@ -126,6 +126,9 @@ func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Opti
 	case "sql":
 		req.Engine, req.Coll, req.SQL = "mysql", "", o.Arg
 	}
+	if err := devPrdPrecheck(bc, req.Env, api.DevQueryAllowed(req)); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), brokerCallTimeout)
 	defer cancel()
 	var resp api.QueryResponse
@@ -139,6 +142,16 @@ func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Opti
 
 // leadOnlyMsg is FR-14.6's answer to a dev hitting a lead-only request.
 const leadOnlyMsg = "lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count" //znf:allow-lang
+
+// devPrdPrecheck refuses, without calling the broker, a prd request the
+// cached role (dev) is not allowed to make; the broker enforces the same
+// lists. No cached role: the broker decides.
+func devPrdPrecheck(bc *brokerclient.Client, env string, allowed bool) error {
+	if env == "prd" && !allowed && bc.CachedRole() == api.RoleDev {
+		return errors.New("zenify: " + leadOnlyMsg)
+	}
+	return nil
+}
 
 // brokerCallErr maps a broker 400 to BadArgs and 403 lead_only to leadOnlyMsg;
 // anything else passes through.

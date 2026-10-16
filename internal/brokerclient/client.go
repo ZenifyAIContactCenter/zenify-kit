@@ -99,6 +99,39 @@ func (c *Client) cachePath() (string, error) {
 	return filepath.Join(home, ".zenify", "broker", "token.json"), nil
 }
 
+// CachedIdentity reads the token cache under home without any network call
+// and ignoring expiry: the broker URL, login and role it holds. ok is false
+// when there is no readable cache. The JWT itself is never returned.
+func CachedIdentity(home string) (url, login, role string, ok bool) {
+	return readIdentity(filepath.Join(home, ".zenify", "broker", "token.json"))
+}
+
+func readIdentity(path string) (url, login, role string, ok bool) {
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- the token cache under the user's own home
+	if err != nil {
+		return "", "", "", false
+	}
+	var ch cached
+	if json.Unmarshal(b, &ch) != nil {
+		return "", "", "", false
+	}
+	return ch.URL, ch.Login, ch.Role, true
+}
+
+// CachedRole is the role in this client's cache when it was issued by c.URL,
+// read without any network call and ignoring expiry; "" when unknown.
+func (c *Client) CachedRole() string {
+	p, err := c.cachePath()
+	if err != nil {
+		return ""
+	}
+	url, _, role, ok := readIdentity(p)
+	if !ok || url != c.URL {
+		return ""
+	}
+	return role
+}
+
 // Token returns a JWT valid for at least 60 more seconds, from the cache when
 // possible, otherwise from POST /token with the developer's GitHub token.
 func (c *Client) Token(ctx context.Context) (string, error) {
