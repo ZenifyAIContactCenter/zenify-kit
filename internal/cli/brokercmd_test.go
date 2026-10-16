@@ -498,6 +498,45 @@ func TestRedisRead_SendsAndIndents(t *testing.T) {
 	}
 }
 
+func TestRedisRead_TruncatedNotice(t *testing.T) {
+	hermeticDBRead(t)
+	const notice = "kết quả đã bị cắt bớt" //znf:allow-lang
+	for _, truncated := range []bool{true, false} {
+		mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/redis": func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = fmt.Fprintf(w, `{"result":["a"],"truncated":%v}`, truncated)
+		}})
+		_, stderr, err := execCmd(newRedisReadCmd(), "--manifest", mp, "LRANGE", "q", "0", "-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(stderr, notice) != truncated {
+			t.Errorf("truncated=%v: stderr = %q", truncated, stderr)
+		}
+	}
+}
+
+func TestRedisRead_PrdAfterCommandRefused(t *testing.T) {
+	hermeticDBRead(t)
+	var got api.RedisRequest
+	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/redis": func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.NewEncoder(w).Encode(api.RedisResponse{Result: "v"})
+	}})
+	_, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "GET", "x", "--prd")
+	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "--prd") {
+		t.Fatalf("err = %v (code %d), want BadArgs naming --prd", err, exitcode.Code(err))
+	}
+	if n := atomic.LoadInt32(hits); n != 0 {
+		t.Fatalf("broker got %d requests, want 0", n)
+	}
+	if _, _, err := execCmd(newRedisReadCmd(), "--manifest", mp, "--prd", "GET", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if got.Env != "prd" || got.Cmd != "GET" {
+		t.Errorf("request = %+v, want env prd GET", got)
+	}
+}
+
 func TestBrokerHeaders_PrintsJSON(t *testing.T) {
 	hermeticDBRead(t)
 	mp, _ := brokerFixture(t, nil)
