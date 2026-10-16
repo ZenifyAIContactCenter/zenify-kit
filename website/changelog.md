@@ -10,7 +10,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 
 ## v0.39.0
 
-*2026-10-16*
+*2026-10-17*
 
 - **Stacked PR:** plan lớn có thể chia thành stack PR của GitHub; agent dựng các lớp, review từng lớp và mở stack bằng `gh stack`, người merge từ dưới lên. `zenify up --apply` cài extension `gh-stack`. Xem [ship](/workflows/ship).
 - **Credential broker:** dev không còn tự điền credential database, PostHog và tài khoản E2E. Kit lấy chúng qua broker của team, xác thực bằng tài khoản GitHub (`gh auth login`) thuộc org ZenifyAIContactCenter. Broker chạy sau HTTPS tại `broker.zenify.vn`. Xem [Dùng credential broker](/guides/broker-client).
@@ -22,6 +22,14 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
   - Hai role theo team GitHub: team `leaders` là lead, đọc như trên; team `zenify-team` là dev, trên production chỉ đọc được cấu trúc và plan (`explain` ở mức `queryPlanner`, lệnh mới `db-read indexes|stats`, `count` không có `--filter`, schema SQL không có `WHERE` hay subquery, Redis metadata), lệnh khác báo `lead_only`. Staging, MCP và tài khoản E2E mở cho cả hai role. `zenify doctor` và `zenify broker token` in role. Xem [Lead và dev](/guides/broker-client#lead-dev).
   - `zenify doctor` có mục `broker`: kiểm tra đăng nhập GitHub, quyền org và kết nối tới broker.
 - **Thay đổi phá vỡ:** manifest bỏ 10 key mà broker thay thế (database, PostHog, E2E). Sau `zenify up --apply`, các key này không còn trong `.zenify/.env`; `zenify doctor` báo chúng là "không còn dùng" nếu file còn giữ.
+- **Skill dùng log, trace, metric và PostHog có chủ đích:** trang tham chiếu chung `evidence-sources` chỉ cho agent nguồn nào trả lời câu hỏi nào, thứ tự tra theo triệu chứng (lỗi, chậm, queue, phía người dùng), cách nối log → trace → dữ liệu, và các ngõ cụt đã đo (Tempo chỉ giữ khoảng 2 ngày, tham số đúng của từng tool). `/znf:hotfix`, `/znf:fix`, `/znf:explain-plan`, `/znf:ground`, `/znf:gate`, `/znf:scout`, `/znf:ship`, `/znf:cook` và `/znf:e2e` dùng trang này thay cho `docker logs` hay truy cập database trực tiếp. Xem [hotfix](/workflows/hotfix) và [Đọc dữ liệu thật](/guides/read-real-data).
+  - `/znf:hotfix` có bước kiểm tra sau deploy: xác nhận production đã chạy bản sửa, so hai cửa sổ thời gian bằng nhau quanh lúc deploy, và nhóm lỗi còn lại theo client để tách tab cũ chưa tải lại khỏi bản sửa không có tác dụng.
+  - `/znf:explain-plan` trên production chỉ đọc `count`, `stats` và plan không thực thi.
+  - `zenify db-read --target audit` đọc database audit qua broker.
+  - `zenify redis-read` báo chính xác khi kết quả dạng range bị cắt.
+- **Sửa lỗi:**
+  - `wt rm` fetch `origin` trước khi kiểm tra merge, và nhận cả base mà `wt new` đã tách worktree ra: hotfix đã merge vào `release<N>` gỡ được mà không cần `--force`. Worktree tạo bằng bản cũ hơn chưa ghi base này.
+  - `zenify ui-verify record --screen` nhận tên có `/` (tên route) thay vì báo lỗi.
 - Người vận hành dựng broker theo [Dựng host credential broker](/guides/broker-host): image `zenify-broker` sau nginx và cert certbot, audit log từng lệnh theo GitHub login.
 
 ## v0.38.1
