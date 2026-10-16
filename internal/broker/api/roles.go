@@ -179,6 +179,10 @@ func sqlTokens(s string) (out []string, ok bool) {
 	}
 }
 
+// DevPrdErrorWithheld replaces a failed query's error text for dev on prd:
+// a server error can quote the row or value it failed on.
+const DevPrdErrorWithheld = "query failed; error detail is withheld for role dev on prd"
+
 // devRedis are the metadata commands a dev may send to prd: key names, types,
 // TTLs and sizes, never values.
 var devRedis = map[string]bool{"TTL": true, "TYPE": true, "EXISTS": true, "SCAN": true, "LLEN": true, "SCARD": true, "ZCARD": true}

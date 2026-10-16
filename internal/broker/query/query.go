@@ -149,6 +149,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		fail(http.StatusGatewayTimeout, api.CodeTimeout, "query exceeded the time limit")
 		return
+	case devPrd:
+		// Server error text can quote the document or row it failed on.
+		fail(http.StatusBadGateway, api.CodeQueryFailed, api.DevPrdErrorWithheld)
+		return
 	case err != nil:
 		fail(http.StatusBadGateway, api.CodeQueryFailed, strings.TrimSpace(stderr.String()))
 		return

@@ -623,3 +623,37 @@ func TestQuery_DevPrdMongoNoRowChannel(t *testing.T) {
 		t.Errorf("dev count: script = %s, want estimatedDocumentCount", s)
 	}
 }
+
+// A server error can quote the row it failed on, so dev on prd gets a
+// generic message; lead and stg keep the child's stderr.
+func TestQuery_DevPrdFailureWithholdsStderr(t *testing.T) {
+	failRun := func(_ context.Context, _ string, _ []string, _ []string, _, errw io.Writer) error {
+		_, _ = io.WriteString(errw, "MongoServerError: SECRET-ROW-CONTENT\n")
+		return errors.New("exit status 1")
+	}
+	for _, c := range []struct {
+		role string
+		req  api.QueryRequest
+		leak bool
+	}{
+		{api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mongo", Op: "explain", Coll: "users"}, false},
+		{api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN SELECT * FROM users"}, false},
+		{api.RoleLead, api.QueryRequest{Env: "prd", Engine: "mongo", Op: "explain", Coll: "users"}, true},
+		{api.RoleDev, api.QueryRequest{Env: "stg", Engine: "mongo", Op: "find", Coll: "users"}, true},
+	} {
+		f := newFixture(t, failRun)
+		st, _, e := f.postAs(t, "someone", c.role, c.req)
+		if st != http.StatusBadGateway || e.Error != api.CodeQueryFailed {
+			t.Fatalf("%s %+v: got %d %+v", c.role, c.req, st, e)
+		}
+		if got := strings.Contains(e.Message, "SECRET-ROW-CONTENT"); got != c.leak {
+			t.Errorf("%s %s %s: message = %q, want stderr shown=%v", c.role, c.req.Env, c.req.Op, e.Message, c.leak)
+		}
+		if !c.leak && e.Message != api.DevPrdErrorWithheld {
+			t.Errorf("%s %s: message = %q, want the withheld notice", c.role, c.req.Op, e.Message)
+		}
+		if !strings.Contains(f.audit.String(), `"status":502`) {
+			t.Errorf("%s %s: failure not audited: %s", c.role, c.req.Op, f.audit.String())
+		}
+	}
+}

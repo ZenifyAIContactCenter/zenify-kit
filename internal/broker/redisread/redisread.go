@@ -124,6 +124,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case err == nil:
 			return true
+		case errors.As(err, &rerr) && role != api.RoleLead && req.Env == "prd":
+			fail(http.StatusBadGateway, api.CodeQueryFailed, api.DevPrdErrorWithheld)
+			return false
 		case errors.As(err, &rerr):
 			fail(http.StatusBadGateway, api.CodeQueryFailed, rerr.Error())
 			return false

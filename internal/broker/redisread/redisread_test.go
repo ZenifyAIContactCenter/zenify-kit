@@ -596,3 +596,18 @@ func TestRedis_DevStgFullAccess(t *testing.T) {
 		t.Fatalf("got %d %s, want 200 and GET sent", st, body)
 	}
 }
+
+func TestRedis_DevPrdServerErrorWithheld(t *testing.T) {
+	f := newFixture(t)
+	f.prd.err = redisErr("ERR SECRET-ROW-CONTENT")
+	st, body := f.postAs(t, api.RoleDev, api.RedisRequest{Env: "prd", Cmd: "TTL", Args: []string{"k"}})
+	var e api.Error
+	_ = json.Unmarshal(body, &e)
+	if st != 502 || e.Error != api.CodeQueryFailed || e.Message != api.DevPrdErrorWithheld || strings.Contains(string(body), "SECRET-ROW-CONTENT") {
+		t.Fatalf("dev prd: %d %s", st, body)
+	}
+	st, body = f.postAs(t, api.RoleLead, api.RedisRequest{Env: "prd", Cmd: "TTL", Args: []string{"k"}})
+	if st != 502 || !strings.Contains(string(body), "SECRET-ROW-CONTENT") {
+		t.Fatalf("lead prd: %d %s", st, body)
+	}
+}
