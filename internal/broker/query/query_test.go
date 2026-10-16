@@ -465,15 +465,18 @@ func TestExecRun_GrandchildCannotOutliveDeadline(t *testing.T) {
 
 func TestQuery_DevPrdDataReadLeadOnly(t *testing.T) { // SC-20
 	for name, req := range map[string]api.QueryRequest{
-		"mongo find":          {Env: "prd", Engine: "mongo", Op: "find", Coll: "accounts"},
-		"mongo doc":           {Env: "prd", Engine: "mongo", Op: "doc", Coll: "accounts"},
-		"mongo aggregate":     {Env: "prd", Engine: "mongo", Op: "aggregate", Coll: "accounts", Pipeline: `[{"$match":{}}]`},
-		"mysql select":        {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SELECT * FROM accounts"},
-		"show processlist":    {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW PROCESSLIST"},
-		"comment then select": {Env: "prd", Engine: "mysql", Op: "sql", SQL: "/* x */ SELECT * FROM accounts"},
-		"explain of a write":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN DELETE FROM accounts"},
-		"explain no select":   {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT=JSON accounts"},
-		"audit target":        {Env: "prd", Engine: "mongo", Target: "audit", Op: "count", Coll: "audit_logs"},
+		"mongo find":           {Env: "prd", Engine: "mongo", Op: "find", Coll: "accounts"},
+		"mongo doc":            {Env: "prd", Engine: "mongo", Op: "doc", Coll: "accounts"},
+		"mongo aggregate":      {Env: "prd", Engine: "mongo", Op: "aggregate", Coll: "accounts", Pipeline: `[{"$match":{}}]`},
+		"mysql select":         {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SELECT * FROM accounts"},
+		"show processlist":     {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW PROCESSLIST"},
+		"comment then select":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "/* x */ SELECT * FROM accounts"},
+		"explain of a write":   {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN DELETE FROM accounts"},
+		"explain no select":    {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT=JSON accounts"},
+		"audit target":         {Env: "prd", Engine: "mongo", Target: "audit", Op: "count", Coll: "audit_logs"},
+		"desc for connection":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESC FOR CONNECTION 1"},
+		"describe format conn": {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESCRIBE FORMAT=JSON FOR CONNECTION 1"},
+		"explain for conn":     {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FOR CONNECTION 1"},
 	} {
 		f := newFixture(t, okRun)
 		st, _, e := f.postAs(t, "devgal", api.RoleDev, req)
@@ -497,6 +500,8 @@ func TestQuery_DevPrdPlanAndSchemaRunAsLead(t *testing.T) { // SC-21
 		"explain format":       {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT = JSON WITH t AS (SELECT 1) SELECT * FROM t"},
 		"describe":             {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESCRIBE accounts"},
 		"desc":                 {Env: "prd", Engine: "mysql", Op: "sql", SQL: "  desc accounts"},
+		"desc select":          {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESC SELECT 1"},
+		"describe backticked":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESCRIBE `accounts`"},
 		"show index":           {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW INDEX FROM accounts"},
 		"show keys":            {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW KEYS FROM accounts"},
 		"show create table":    {Env: "prd", Engine: "mysql", Op: "sql", SQL: "SHOW CREATE TABLE accounts"},
@@ -528,6 +533,7 @@ func TestQuery_DevGuardStillRuns(t *testing.T) {
 	for name, sql := range map[string]string{
 		"explain select into":  "EXPLAIN SELECT * FROM accounts INTO OUTFILE '/tmp/x'",
 		"comment then explain": "/* x */ EXPLAIN SELECT 1",
+		"explain cte delete":   "EXPLAIN WITH t AS (SELECT 1) DELETE FROM accounts",
 	} {
 		f := newFixture(t, okRun)
 		st, _, e := f.postAs(t, "devgal", api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mysql", Op: "sql", SQL: sql})

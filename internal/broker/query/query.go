@@ -213,7 +213,7 @@ func devAllowed(req api.QueryRequest) bool {
 
 // devSQL reports whether stmt, after leading whitespace and comments, starts
 // with a plan or schema statement: EXPLAIN [ANALYZE] [FORMAT=x] SELECT|WITH,
-// DESCRIBE/DESC, or SHOW INDEX|INDEXES|KEYS|COLUMNS|TABLES|CREATE TABLE|TABLE
+// DESCRIBE/DESC <table> (or with an EXPLAIN tail), or SHOW INDEX|INDEXES|KEYS|COLUMNS|TABLES|CREATE TABLE|TABLE
 // STATUS.
 func devSQL(stmt string) bool {
 	w := leadingWords(stmt, 6)
@@ -223,8 +223,25 @@ func devSQL(stmt string) bool {
 		}
 		return ""
 	}
+	// explainTail checks what follows EXPLAIN at i: [ANALYZE] [FORMAT=x]
+	// then SELECT|WITH. FOR CONNECTION (another session's plan) never passes.
+	explainTail := func(i int) bool {
+		if at(i) == "ANALYZE" {
+			i++
+		}
+		if at(i) == "FORMAT" && at(i+1) == "=" && at(i+2) != "" {
+			i += 3
+		}
+		return at(i) == "SELECT" || at(i) == "WITH"
+	}
 	switch at(0) {
 	case "DESCRIBE", "DESC":
+		// DESCRIBE is EXPLAIN's synonym: a statement after it is an explain
+		// and gets the same rule; otherwise it describes a table.
+		switch at(1) {
+		case "ANALYZE", "FORMAT", "FOR", "SELECT", "WITH", "TABLE", "DELETE", "INSERT", "REPLACE", "UPDATE":
+			return explainTail(1)
+		}
 		return true
 	case "SHOW":
 		switch at(1) {
@@ -236,14 +253,7 @@ func devSQL(stmt string) bool {
 			return at(2) == "STATUS"
 		}
 	case "EXPLAIN":
-		i := 1
-		if at(i) == "ANALYZE" {
-			i++
-		}
-		if at(i) == "FORMAT" && at(i+1) == "=" && at(i+2) != "" {
-			i += 3
-		}
-		return at(i) == "SELECT" || at(i) == "WITH"
+		return explainTail(1)
 	}
 	return false
 }
