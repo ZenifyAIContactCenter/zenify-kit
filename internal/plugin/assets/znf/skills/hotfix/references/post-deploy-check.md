@@ -20,22 +20,40 @@ areas you checked and why the others did not apply.
   found with `list_prometheus_metric_names` or read from the service catalog. No such metric →
   say so and confirm with `zenify redis-read` instead.
 
+## Confirm production runs the fix
+
+Before reading any number, check that the deployed build contains the change — an unchanged number
+may only mean the deploy has not reached production. For a web bundle, fetch the served page, find
+the chunk that holds the changed component and search it for a string the fix introduced (minified
+names change; search a literal or property path). For a backend, use the project's version or
+commit endpoint or its deploy log, if it has one. Neither available → say so.
+
 ## Compare two windows of equal length
 
 Take the deploy time as the pivot. Compare a window **before** the deploy with a window of the
 **same length after** it — for example 30 minutes each side, once the after-window is complete.
-Unequal windows make a rate look better or worse than it is. If the incident started long before
+Unequal windows make a rate look better or worse than it is. Start the after-window at the deploy
+time, never "the last hour", which mixes in pre-deploy traffic; the Tempo tools default to the past
+hour when `start`/`end` are omitted, so always pass both. If the incident started long before
 the deploy, take the before-window from inside the incident, not from a quiet period earlier.
 
 A low-traffic route can show zero errors in both windows simply because nobody called it. Report
 the request count next to the error count, so "0 errors" can be told apart from "0 requests".
+
+## Errors that remain after the deploy
+
+Group what remains by an attribute that identifies the client — user, client IP or user agent; read
+the names with `list_tempo_attribute_names`, never assume them. Count distinct clients in each
+window. Most clients stopped and a few repeat the old call → clients still running the old build (a
+loaded web page keeps its bundle until it is reloaded); re-check later before acting. The same
+spread of clients as before → the fix did not take effect.
 
 ## Record the result
 
 Add one line per check to the hotfix report:
 
 ```
-Post-deploy (<area>): <metric> before <value> → after <value> (windows <length>, pivot <deploy time>)
+Post-deploy (<area>): <metric> before <value> → after <value> (windows <length>, pivot <deploy time>, clients <before> → <after> when the check has a client attribute)
 ```
 
 The symptom metric did not drop, or a neighbouring one rose → tell the user at once; the response

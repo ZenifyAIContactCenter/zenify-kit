@@ -50,6 +50,9 @@ discovery above, or from the service catalog — never from memory.
 ## Measured dead ends
 
 - `get_tempo_trace` takes `trace_id`, not `traceId`.
+- The Tempo tools reject unknown arguments, and neither `search_tempo_traces` nor
+  `query_tempo_metrics` has a `limit`: narrow with the query and `start`/`end` (RFC3339). Omitting
+  `start`/`end` searches the past hour. `query_tempo_metrics` takes `type`: `instant` or `range`.
 - Datasource arguments take the uid from `list_datasources`; a name fails.
 - The Loki app name differs from the repo name and from Tempo's `service.name`; read it with
   `list_loki_label_values`.
