@@ -75,8 +75,10 @@ func (g GitHub) Member(ctx context.Context, token, org string) (login string, er
 }
 
 // TeamMember reports whether login is an active member of org's team, asked
-// with the caller's own token. 404 and a pending membership both mean no;
-// other errors map as in Member.
+// with the caller's own token. 404 and a pending membership both mean no.
+// 401 and 429 map as in Member; a 403 is a plain error, not
+// ErrOrgAccessDenied: the caller is already a confirmed org member, so it
+// must not be reported as one who is not.
 func (g GitHub) TeamMember(ctx context.Context, token, org, team, login string) (bool, error) {
 	var m struct {
 		State string `json:"state"`
@@ -91,8 +93,6 @@ func (g GitHub) TeamMember(ctx context.Context, token, org, team, login string) 
 		return false, nil
 	case code == http.StatusTooManyRequests:
 		return false, ErrGitHubRateLimited
-	case code == http.StatusForbidden:
-		return false, ErrOrgAccessDenied
 	case code != http.StatusOK:
 		return false, fmt.Errorf("github team membership: status %d", code)
 	}

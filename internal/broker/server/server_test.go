@@ -526,6 +526,9 @@ func TestToken_TeamCheckFailureMapping(t *testing.T) {
 		{http.StatusInternalServerError, http.StatusBadGateway, api.CodeGitHubUnavailable},
 		{http.StatusTooManyRequests, http.StatusTooManyRequests, api.CodeRateLimited},
 		{http.StatusUnauthorized, http.StatusUnauthorized, api.CodeGitHubTokenInvalid},
+		// The caller is a confirmed org member: a 403 on the team check is
+		// not not_org_member.
+		{http.StatusForbidden, http.StatusBadGateway, api.CodeGitHubUnavailable},
 	} {
 		gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
