@@ -57,7 +57,7 @@ Broker cấp role theo team GitHub trong org: thuộc team `leaders` là `lead`,
   - Giới hạn này là rào chắn để agent không vô tình đọc dữ liệu production, không phải ranh giới chống người cố tình dò dữ liệu: `EXPLAIN` của MySQL vẫn đọc trước dòng khớp khoá chính khi lập plan.
 - MCP Grafana, PostHog và tài khoản E2E mở cho cả hai role.
 
-Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count` và không chạy truy vấn nào. Khi token cache (`~/.zenify/broker/token.json`) ghi role `dev`, kit từ chối ngay tại máy, không gọi broker; chưa có cache thì broker quyết định. Đầu mỗi phiên Claude Code, hook SessionStart đọc cache này (không gọi mạng) và với dev in một dòng `broker: login=<login> role=dev — prd: …` để agent biết trước giới hạn production. Giới hạn chỉ đọc vẫn áp cho mọi người, kể cả lead. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
+Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev trên prd chỉ dùng db-read: collections, count (no --filter), explain, indexes, stats, tables, sql: EXPLAIN SELECT without subquery, DESCRIBE <table>, SHOW INDEX|COLUMNS|TABLES|CREATE TABLE|TABLE STATUS; redis-read: EXISTS LLEN SCARD SCAN TTL TYPE ZCARD` (danh sách này sinh từ đúng bảng quyền mà broker áp, nên không lệch với broker) và không chạy truy vấn nào. Khi token cache (`~/.zenify/broker/token.json`) ghi role `dev`, kit từ chối ngay tại máy, không gọi broker; chưa có cache thì broker quyết định. Đầu mỗi phiên Claude Code, hook SessionStart đọc cache này (không gọi mạng) và với dev in một dòng `broker: login=<login> role=dev — prd: …` để agent biết trước giới hạn production. Giới hạn chỉ đọc vẫn áp cho mọi người, kể cả lead. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
 
 ## Đọc database: `db-read`
 
@@ -69,6 +69,8 @@ zenify db-read --prd sql 'DESCRIBE agents'
 zenify db-read --prd indexes chat_rooms
 zenify db-read --prd stats chat_rooms
 ```
+
+Cờ `--target audit` (chỉ Mongo và chỉ production, chỉ dành cho lead) đọc database audit log thay cho database chính; dùng với `--prd`, ví dụ `zenify db-read --prd --target audit collections`. Dev, hoặc `--target audit` không kèm `--prd` hay dùng với truy vấn MySQL, bị từ chối. Qua broker, lỗi kết nối không còn gợi ý `.zenify/.env` hay tên biến `MONGO_URL_PRD`, vì bạn không giữ chuỗi kết nối nào.
 
 Kit vẫn kiểm tra tham số ở máy bạn như cũ trước khi gửi lên broker.
 
@@ -82,7 +84,8 @@ zenify redis-read --prd LRANGE some:list 0 49
 - Chỉ các lệnh chỉ đọc sau được phép: `GET MGET HGET HGETALL HKEYS LRANGE LLEN SMEMBERS SCARD ZRANGE ZCARD XRANGE TTL TYPE EXISTS SCAN`. Lệnh khác bị từ chối ngay ở máy bạn (mã 2), không gửi lên broker.
 - `SCAN` tự thêm `COUNT 100` nếu thiếu; `COUNT` phải trong khoảng 1 đến 1000.
 - Broker giới hạn mỗi lần đọc: `LRANGE`, `ZRANGE`, `XRANGE` tối đa 200 phần tử; kết quả tối đa 1 MiB: `GET` và các lệnh khác bị cắt và lệnh ghi thông báo ra stderr, còn `MGET`, `HGET`, `HGETALL`, `SMEMBERS` vượt mức thì bị từ chối; `MGET` tối đa 100 key; `HGETALL`, `HKEYS`, `SMEMBERS` từ chối key có hơn 10000 phần tử.
-- Cờ (`--prd`) phải đứng trước lệnh Redis, để tham số như `-1` không bị đọc thành cờ.
+- Cờ (`--prd`) phải đứng trước lệnh Redis, để tham số như `-1` không bị đọc thành cờ. `--prd` đứng sau lệnh (ví dụ `zenify redis-read GET k --prd`) bị từ chối ngay ở máy bạn với mã 2 (BadArgs), không gửi request nào, vì nếu không `--prd` sẽ thành tham số Redis và lệnh chạy nhầm trên staging.
+- Kết quả `LRANGE`, `ZRANGE`, `XRANGE` bị cắt ở 200 phần tử thì lệnh in `zenify redis-read: kết quả đã bị cắt bớt` ra stderr; stdout chỉ chứa dữ liệu. Không có thông báo nghĩa là danh sách đã trả đủ, kể cả khi đúng 200 phần tử.
 - Không có broker thì lệnh thoát mã 2 với "redis-read cần broker".
 
 ## Tài khoản E2E: `e2e login --role`

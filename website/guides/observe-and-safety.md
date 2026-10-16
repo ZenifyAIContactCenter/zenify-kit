@@ -73,6 +73,10 @@ zenify guard install
 
 Lệnh đăng ký hook `PreToolUse` với matcher `Bash` trỏ tới `zenify git-guard`, và gỡ mục cũ nếu còn. Chạy lại khi đã có cấu hình, lệnh chỉ báo đã sẵn và không ghi gì. Danh sách branch deploy đọc từ `.claude/deploy-branches` của từng repo.
 
+## Nguồn bằng chứng cho agent {#nguon-bang-chung-cho-agent}
+
+Khi điều tra một triệu chứng trên staging hay production, các skill `/znf:fix`, `/znf:hotfix`, `/znf:ground`, `/znf:scout`, `/znf:gate`, `/znf:ship` và `/znf:explain-plan` cùng đọc một tài liệu tham chiếu chung, `_shared/evidence-sources.md` (nằm trong `internal/plugin/assets/znf/skills/_shared/`). Tài liệu này nêu thứ tự tra cứu theo triệu chứng (log, trace, metric, `zenify db-read`/`redis-read`, PostHog), cách chuyển từ nguồn này sang nguồn khác, các ngõ cụt đã đo, giới hạn kích thước output và việc phải làm khi một nguồn không có. Phần về role dev trên production lấy đúng danh sách lệnh từ broker, nên khớp với [giới hạn dev ở trang broker](/guides/broker-client#lead-dev). Agent không tự gõ tên công cụ hay mã định danh từ trí nhớ mà đọc từ tài liệu này.
+
 ## Kết quả
 
 | Artifact | Nội dung |
