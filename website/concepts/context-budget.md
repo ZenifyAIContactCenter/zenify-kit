@@ -38,7 +38,7 @@ Hook `PostToolUse` đo byte kết quả tool. Một kết quả trên 50 KB sinh
 
 ## Task list của harness: tắt
 
-Kit không dùng `TodoWrite`/`TaskCreate`. Đo trên bốn phiên (2026-09-20): mỗi lệnh task list là một lượt API riêng, không lượt nào gộp cùng tool khác, và các lượt đó chiếm 7 đến 18% chi phí lượt tool (đọc cache cộng token suy nghĩ), trong khi nội dung bảng chỉ dưới 3% byte. Tiến độ nằm trong ledger file mà skill đặt tên: `progress.md` của SDD, board của ship, scope block của research. Agent im lặng vẫn hiện là dòng chưa tick trong file, và file sống qua compaction. Đừng đặt `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` trong settings.
+Kit không dùng `TodoWrite`/`TaskCreate`. Đo trên bốn phiên (2026-09-20): mỗi lệnh task list là một lượt API riêng, không lượt nào gộp cùng tool khác, và các lượt đó chiếm 7 đến 18% chi phí lượt tool (đọc cache cộng token suy nghĩ), trong khi nội dung bảng chỉ dưới 3% byte. Tiến độ nằm trong ledger file mà skill đặt tên: `progress.md` của SDD, board của ship, scope block của research. Agent im lặng vẫn hiện là dòng chưa tick trong file, và file sống qua compaction. Sau khi compact hoặc quay lại sau khi nghỉ, [`/znf:where`](/reference/skills/where) đọc lại các ledger này cùng branch, worktree và PR để tóm tắt task tới đâu. Đừng đặt `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` trong settings.
 
 ## Việc bạn tự làm
 

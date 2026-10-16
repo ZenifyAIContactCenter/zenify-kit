@@ -1,0 +1,17 @@
+---
+summary: Tóm tắt task đang tới đâu (mục tiêu, đã xong, đang làm, bước tiếp, blocker) từ hội thoại và state thật của kit: ledger, branch, worktree, PR.
+---
+## Khi nào dùng
+
+Khi bạn hỏi "tới đâu rồi", "status", "recap", hoặc quay lại sau khi nghỉ hay sau khi phiên bị nén.
+
+## Cách hoạt động
+
+1. Skill đọc hội thoại trong context, kể cả bản tóm tắt sau khi nén: mục tiêu, quyết định đã chốt, spec/plan đang dùng.
+2. Với mỗi repo task đã đụng, skill đọc state thật, chỉ đọc: git status, branch, commit chưa lên base, worktree (`zenify wt ls`), SDD ledger `.znf/sdd/*/progress.md`, PR của branch (`gh pr view`), và các agent đã dispatch. Agent chưa có báo cáo bị ghi là INCOMPLETE.
+3. Skill xác định task đang ở pha nào trong pipeline (branch → spec → ground → plan → implement → ship → merged → sweep) và đề xuất lệnh kit cho bước tiếp theo.
+4. Skill trả lời ngắn theo một khung cố định, mỗi mục "đã xong" kèm bằng chứng (sha, lệnh test và kết quả, số PR).
+
+## Lưu ý
+
+Skill chỉ báo cáo: không sửa file, không chạy lệnh thay đổi state, không tự làm bước tiếp theo. Khi state thật (git, ledger, PR) khác với hội thoại, skill nêu chỗ khác nhau thay vì chọn một bên.
