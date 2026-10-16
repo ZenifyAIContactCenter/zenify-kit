@@ -1,6 +1,9 @@
 package plugin
 
 import (
+	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -60,5 +63,61 @@ func TestEvidenceSources(t *testing.T) {
 	}
 	if strings.Contains(fl, "role=dev") {
 		t.Error("feedback-loop.md still carries the role=dev sentence; it moved to evidence-sources (FR-10.3)")
+	}
+}
+
+// FR-2, FR-4, FR-5, FR-6.1, FR-7.1, SC-1: skills point at the evidence reference instead of raw tools.
+func TestSkillsUseEvidenceSources(t *testing.T) {
+	dest := t.TempDir()
+	if _, err := Sync(dest, filepath.Join(dest, ".manifest.json")); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	err := filepath.WalkDir(filepath.Join(dest, "skills"), func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), "docker logs") {
+			t.Errorf("%s still says docker logs (SC-1)", p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk skills: %v", err)
+	}
+	read := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(dest, rel))
+		if err != nil {
+			t.Fatalf("%s not materialized: %v", rel, err)
+		}
+		return string(b)
+	}
+
+	if m := regexp.MustCompile(`mongosh|mysql|psql`).FindString(read("skills/ground/SKILL.md")); m != "" {
+		t.Errorf("ground/SKILL.md still names raw DB client %q (FR-5.1, SC-1)", m)
+	}
+	assertContainsAll(t, "ground/SKILL.md", read("skills/ground/SKILL.md"), []string{"never read .env for credentials"})
+
+	h := read("skills/hotfix/SKILL.md")
+	assertContainsAll(t, "hotfix/SKILL.md", h, []string{"evidence-sources", "references/post-deploy-check.md", "znf:ui-verifier"})
+	if strings.Contains(h, "browser yourself now") {
+		t.Error("hotfix/SKILL.md still tells the agent to drive the browser itself (FR-2.3)")
+	}
+	assertContainsAll(t, "explain-plan/SKILL.md", read("skills/explain-plan/SKILL.md"), []string{"type=ALL", "--prd", "queryPlanner", "Postgres"})
+	for _, s := range []string{"ship", "cook", "e2e"} {
+		assertContainsAll(t, s+"/SKILL.md", read("skills/"+s+"/SKILL.md"), []string{"--role"})
+	}
+	for _, s := range []string{"service-integration", "scout", "gate"} {
+		assertContainsAll(t, s+"/SKILL.md", read("skills/"+s+"/SKILL.md"), []string{"redis-read"})
+	}
+
+	pd := read("skills/hotfix/references/post-deploy-check.md")
+	assertContainsAll(t, "post-deploy-check.md", pd, []string{"before", "after", "Backend", "Web", "Queue", "p95", "PostHog", "Loki"})
+	sc2 := regexp.MustCompile(`ady8|dfh52|ffk50|ccbe|cch-hub|link_trace_id|messaging\.producer|bullmq:|192\.168`)
+	if m := sc2.FindString(pd); m != "" {
+		t.Errorf("post-deploy-check.md carries project-specific string %q (SC-2)", m)
 	}
 }

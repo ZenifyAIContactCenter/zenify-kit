@@ -48,15 +48,25 @@ zenify db-read explain <real-name> --pipeline '<json>'    # for an aggregate
 zenify db-read sql  'EXPLAIN ANALYZE <real-statement>'
 ```
 
+**Measure volume where it bites.** Dev data hides the problem, so when your role allows it run
+`count`, `stats` and `explain` on production too, with `--prd` before the subcommand
+(`zenify db-read --prd explain <real-name> --filter '<json>'`). Role dev on production gets the
+`queryPlanner` plan only — no `executionStats` — and `count` without `--filter`, and SQL limited
+to `EXPLAIN SELECT` (no `ANALYZE`): read the winning stage and index from prd, the scan ratio
+from a non-prd run. Full list: `znf:_shared/evidence-sources` (Role dev on production). Say which
+environment each number came from.
+
 ## Step 3 — dynamic rubric (two-tier)
 
 Read `executionStats` from `zenify db-read explain` (it runs the read query, max 30 s): `stage`, `nReturned`, `totalDocsExamined`, `totalKeysExamined`.
+For SQL the full-scan marker depends on the engine: **MySQL** `EXPLAIN` shows `type=ALL` on the
+row for that table; **Postgres** shows `Seq Scan`. Do not look for `Seq Scan` in MySQL output.
 
 | Plan shows | Tier |
 |---|---|
 | `IXSCAN`, ratio `totalDocsExamined/nReturned` ≤ 10 | ok |
 | `COLLSCAN` on a large collection (`zenify db-read count` > 100k) | BLOCKING |
-| `Seq Scan` (SQL) on a large table | BLOCKING |
+| `type=ALL` (MySQL) or `Seq Scan` (Postgres) on a large table | BLOCKING |
 | scan-ratio > 100 | BLOCKING |
 | scan-ratio 10–100 | ADVISORY |
 | `SORT` stage present despite `IXSCAN` (ESR violation) | ADVISORY |

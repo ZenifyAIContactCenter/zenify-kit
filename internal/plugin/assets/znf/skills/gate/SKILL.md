@@ -89,8 +89,7 @@ step instead of an inline sweep.
 
 ## 3. Verify names and fields against REAL data (anti-fabrication — required for DB resources)
 
-Do **not** trust a collection/table name or a field name from code or docs. Both have been
-wrong in this kind of sweep before.
+Do **not** trust a collection/table name or a field name from code or docs.
 
 **Resolve the real name first — never type one from memory.** A schema's declared name and the
 store's actual name can differ (an ORM may pluralise, a project may declare one thing and use
@@ -101,9 +100,11 @@ Use the `dbAccessor` reported by `zenify gate participants --json` for the repo 
 workspace's own read-only query tool for that repo, if configured. If none is configured, say so
 rather than guessing at a query tool.
 
-> ⚠️ **A read-only accessor is a guard against accidents, not a barrier** if the underlying
-> connection can write. **Never issue a write query directly** — a write goes in a
-> purpose-written script that connects and runs, so the intent is reviewable before it executes.
+For a queue or Redis key, read the real name with `zenify redis-read` (SCAN/TYPE); where the
+project exports queue metrics, check them first — `znf:_shared/evidence-sources`.
+
+> ⚠️ **A read-only accessor is no barrier** if its connection can write. Never write directly —
+> a write goes in a purpose-written script, reviewable before it runs.
 
 ## Output
 
