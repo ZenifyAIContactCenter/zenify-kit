@@ -315,9 +315,15 @@ func (a *HTTPApp) ChangePassword(ctx context.Context, userToken, oldPassword, ne
 // verifiedTTL is how long a confirmed (login, role, period) skips the login check (FR-5.3).
 const verifiedTTL = time.Hour
 
-// failedTTL is how long a failed Ensure is answered from memory, so retries
-// cannot add up failed hub logins toward the lockout.
+// failedTTL is how long a failed Ensure that cost failed hub logins is
+// answered from memory, so retries cannot add up toward the lockout.
 const failedTTL = 10 * time.Minute
+
+// quickFailedTTL caches a failure that cost no failed hub login (hub, be or
+// network trouble), so a fixed cause is picked up within a minute. A probe
+// that timed out may still have counted at hub; hub needs 5 failures in 15
+// minutes to lock, so one probe a minute stays under it.
+const quickFailedTTL = time.Minute
 
 // lockedTTL keeps an ErrHubLocked failure for hub's 15-minute lockout window.
 const lockedTTL = 15 * time.Minute
@@ -414,19 +420,26 @@ func (p *Provisioner) Ensure(ctx context.Context, login, role string) (api.E2EAc
 	// on its temporary password: the run ignores ctx's cancellation.
 	pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), provisionTimeout)
 	defer cancel()
-	err := p.provision(pctx, login, role, period, resp.Email)
+	badLogins, err := p.provision(pctx, login, role, period, resp.Email)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err != nil {
 		if p.failed == nil {
 			p.failed = map[cacheKey]failure{}
 		}
-		ttl := failedTTL
-		if errors.Is(err, ErrHubLocked) {
+		ttl := quickFailedTTL
+		switch {
+		case errors.Is(err, ErrHubLocked):
 			ttl = lockedTTL
+		case badLogins > 0:
+			ttl = failedTTL
 		}
 		// From when provisioning ended, which can be minutes after now.
-		p.failed[k] = failure{err, p.Now().Add(ttl)}
+		until := p.Now().Add(ttl)
+		// Rounded up, so a retry at the shown minute is never answered from cache.
+		shown := until.Add(time.Minute - time.Nanosecond).Truncate(time.Minute)
+		err = fmt.Errorf("%w (broker retries after %s)", err, shown.UTC().Format("15:04 UTC"))
+		p.failed[k] = failure{err, until}
 		return api.E2EAccountResponse{}, err
 	}
 	if p.verified == nil {
@@ -438,35 +451,36 @@ func (p *Provisioner) Ensure(ctx context.Context, login, role string) (api.E2EAc
 
 // provision runs FR-5.2. Only ErrBadPassword moves on to the next step, so a
 // hub outage never triggers a reset; at most two probe logins fail per call.
-func (p *Provisioner) provision(ctx context.Context, login, role string, period int64, email string) error {
+// It returns how many probe logins failed, which sets the failure cache TTL.
+func (p *Provisioner) provision(ctx context.Context, login, role string, period int64, email string) (int, error) {
 	cur := Password(p.Key, login, role, period)
 	if _, err := p.App.Login(ctx, email, cur); !errors.Is(err, ErrBadPassword) {
-		return err
+		return 0, err
 	}
 	prev := Password(p.Key, login, role, period-1)
 	tok, err := p.App.Login(ctx, email, prev)
 	if err == nil {
-		return p.App.ChangePassword(ctx, tok, prev, cur)
+		return 1, p.App.ChangePassword(ctx, tok, prev, cur)
 	}
 	if !errors.Is(err, ErrBadPassword) {
-		return err
+		return 1, err
 	}
 
 	id, found, err := p.App.FindUser(ctx, email)
 	if err != nil {
-		return err
+		return 2, err
 	}
 	if !found {
 		if id, err = p.App.CreateUser(ctx, "E2E "+login+" "+role, email, role); err != nil {
-			return err
+			return 2, err
 		}
 	}
 	tmp := Password(p.Key, login, role+":tmp", period)
 	if err := p.App.ResetPassword(ctx, id, tmp); err != nil {
-		return err
+		return 2, err
 	}
 	if tok, err = p.App.Login(ctx, email, tmp); err != nil {
-		return fmt.Errorf("login after reset: %w", err)
+		return 2, fmt.Errorf("login after reset: %w", err)
 	}
-	return p.App.ChangePassword(ctx, tok, tmp, cur)
+	return 2, p.App.ChangePassword(ctx, tok, tmp, cur)
 }
