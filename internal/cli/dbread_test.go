@@ -31,7 +31,7 @@ func runDBRead(t *testing.T, args ...string) (string, error) {
 
 func TestDBReadCmd_UseAndFlags(t *testing.T) {
 	cmd := newDBReadCmd()
-	if !strings.HasPrefix(cmd.Use, "db-read <collections|tables|doc|count|find|aggregate|explain|sql>") {
+	if !strings.HasPrefix(cmd.Use, "db-read <collections|tables|doc|count|find|aggregate|explain|indexes|stats|sql>") {
 		t.Errorf("Use = %q", cmd.Use)
 	}
 	if strings.Contains(cmd.Use, "eval") {

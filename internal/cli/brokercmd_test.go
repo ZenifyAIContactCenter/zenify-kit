@@ -35,7 +35,7 @@ func brokerFixture(t *testing.T, handlers map[string]http.HandlerFunc) (manifest
 	mux := http.NewServeMux()
 	if _, own := handlers["/token"]; !own {
 		mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
-			_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: "test-jwt", ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo"})
+			_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: "test-jwt", ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo", Role: "dev"})
 		})
 	}
 	for path, h := range handlers {
@@ -326,6 +326,41 @@ func TestDBReadCmd_Broker400IsBadArgs(t *testing.T) {
 	}
 }
 
+// A dev's lead-only request prints FR-14.6's message.
+func TestDBReadCmd_BrokerLeadOnly(t *testing.T) {
+	hermeticDBRead(t)
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(api.Error{Error: api.CodeLeadOnly, Message: "production data reads are lead-only"})
+	}})
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "find", "users")
+	if err == nil || !strings.Contains(err.Error(), "lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count") || exitcode.Code(err) == exitcode.BadArgs { //znf:allow-lang
+		t.Errorf("err = %v (code %d)", err, exitcode.Code(err))
+	}
+}
+
+// indexes and stats are Mongo ops sent with the collection, no flags.
+func TestDBReadCmd_BrokerIndexesAndStats(t *testing.T) {
+	hermeticDBRead(t)
+	var got api.QueryRequest
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_ = json.NewEncoder(w).Encode(api.QueryResponse{})
+	}})
+	for _, op := range []string{"indexes", "stats"} {
+		if _, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", op, "users"); err != nil {
+			t.Fatal(err)
+		}
+		want := api.QueryRequest{Env: "prd", Engine: "mongo", Op: op, Coll: "users", Limit: 50}
+		if got != want {
+			t.Errorf("request = %+v, want %+v", got, want)
+		}
+	}
+	if _, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "stats", "users", "--filter", `{"a":1}`); exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("stats --filter: err = %v, want BadArgs", err)
+	}
+}
+
 // A misconfigured broker (500 broker_misconfigured) surfaces its own message:
 // not BadArgs, and no WARP hint.
 func TestDBReadCmd_BrokerMisconfigured(t *testing.T) {
@@ -518,13 +553,16 @@ func TestBrokerToken_Refresh(t *testing.T) {
 	var n int32
 	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/token": func(w http.ResponseWriter, _ *http.Request) {
 		i := atomic.AddInt32(&n, 1)
-		_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: fmt.Sprintf("jwt-%d", i), ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo"})
+		_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: fmt.Sprintf("jwt-%d", i), ExpiresAt: time.Now().Add(15 * time.Minute).Format(time.RFC3339), Login: "octo", Role: "dev"})
 	}})
 	for i, args := range [][]string{{"token"}, {"token"}, {"token", "--refresh"}, {"token"}} {
-		out, _, err := execCmd(newBrokerCmd(), append(args, "--manifest", mp)...)
+		out, errOut, err := execCmd(newBrokerCmd(), append(args, "--manifest", mp)...)
 		want := []string{"jwt-1", "jwt-1", "jwt-2", "jwt-2"}[i]
 		if err != nil || strings.TrimSpace(out) != want {
 			t.Fatalf("%v: out=%q err=%v, want %s", args, out, err, want)
+		}
+		if errOut != "login=octo, role=dev\n" { // stderr, so $(zenify broker token) stays the JWT
+			t.Fatalf("%v: stderr=%q, want login and role", args, errOut)
 		}
 	}
 	if *hits != 2 {
@@ -597,7 +635,7 @@ func TestBrokerToken_RefreshDropsCacheOnFailure(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(cache), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		body := fmt.Sprintf(`{"url":%q,"token":"rejected-jwt","expires_at":"2099-01-01T00:00:00Z","login":"octo"}`, c.URL)
+		body := fmt.Sprintf(`{"url":%q,"token":"rejected-jwt","expires_at":"2099-01-01T00:00:00Z","login":"octo","role":"dev"}`, c.URL)
 		if err := os.WriteFile(cache, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}

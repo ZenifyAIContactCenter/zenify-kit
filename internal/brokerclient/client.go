@@ -70,6 +70,7 @@ type cached struct {
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
 	Login     string `json:"login"`
+	Role      string `json:"role"`
 }
 
 func (c *Client) now() time.Time {
@@ -101,30 +102,37 @@ func (c *Client) cachePath() (string, error) {
 // Token returns a JWT valid for at least 60 more seconds, from the cache when
 // possible, otherwise from POST /token with the developer's GitHub token.
 func (c *Client) Token(ctx context.Context) (string, error) {
-	p, err := c.cachePath()
-	if err != nil {
-		return "", err
-	}
-	if b, err := os.ReadFile(p); err == nil { //nolint:gosec // G304 -- p is under the user's own ~/.zenify
-		var ch cached
-		if json.Unmarshal(b, &ch) == nil && ch.Token != "" && ch.URL == c.URL {
-			if exp, err := time.Parse(time.RFC3339, ch.ExpiresAt); err == nil && exp.Sub(c.now()) >= refreshWindow {
-				return ch.Token, nil
-			}
-		}
-	}
-	tok, _, err := c.refresh(ctx, p)
+	tok, _, _, err := c.TokenInfo(ctx)
 	return tok, err
 }
 
-// Refresh ignores the cache, trades the GitHub token for a new JWT, caches it
-// and returns it with the login the broker issued it to. Use it when a cached
-// JWT may be one the broker now refuses (left the org) or to re-check
-// membership.
-func (c *Client) Refresh(ctx context.Context) (token, login string, err error) {
+// TokenInfo is Token plus the login and role the JWT was issued for. A cached
+// entry without a role predates roles; the broker refuses its JWT, so it is a
+// cache miss.
+func (c *Client) TokenInfo(ctx context.Context) (token, login, role string, err error) {
 	p, err := c.cachePath()
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
+	}
+	if b, err := os.ReadFile(p); err == nil { //nolint:gosec // G304 -- p is under the user's own ~/.zenify
+		var ch cached
+		if json.Unmarshal(b, &ch) == nil && ch.Token != "" && ch.Role != "" && ch.URL == c.URL {
+			if exp, err := time.Parse(time.RFC3339, ch.ExpiresAt); err == nil && exp.Sub(c.now()) >= refreshWindow {
+				return ch.Token, ch.Login, ch.Role, nil
+			}
+		}
+	}
+	return c.refresh(ctx, p)
+}
+
+// Refresh ignores the cache, trades the GitHub token for a new JWT, caches it
+// and returns it with the login and role the broker issued it to. Use it when
+// a cached JWT may be one the broker now refuses (left the org) or to re-check
+// membership.
+func (c *Client) Refresh(ctx context.Context) (token, login, role string, err error) {
+	p, err := c.cachePath()
+	if err != nil {
+		return "", "", "", err
 	}
 	return c.refresh(ctx, p)
 }
@@ -143,28 +151,28 @@ func (c *Client) DropCache() error {
 	return nil
 }
 
-func (c *Client) refresh(ctx context.Context, cachePath string) (string, string, error) {
+func (c *Client) refresh(ctx context.Context, cachePath string) (token, login, role string, err error) {
 	gh := c.GHToken
 	if gh == nil {
 		gh = GHTokenExec
 	}
 	ghTok, err := gh(ctx)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	var resp api.TokenResponse
 	if err := c.do(ctx, "/token", "", api.TokenRequest{GitHubToken: ghTok}, &resp); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if resp.Token == "" {
-		return "", "", errors.New("broker /token: empty token")
+		return "", "", "", errors.New("broker /token: empty token")
 	}
 	if _, err := time.Parse(time.RFC3339, resp.ExpiresAt); err != nil {
-		return "", "", fmt.Errorf("broker /token: bad expires_at %q", resp.ExpiresAt)
+		return "", "", "", fmt.Errorf("broker /token: bad expires_at %q", resp.ExpiresAt)
 	}
-	b, err := json.Marshal(cached{URL: c.URL, Token: resp.Token, ExpiresAt: resp.ExpiresAt, Login: resp.Login})
+	b, err := json.Marshal(cached{URL: c.URL, Token: resp.Token, ExpiresAt: resp.ExpiresAt, Login: resp.Login, Role: resp.Role})
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	// Best effort: the Claude Code Bash sandbox denies writes under ~/.zenify.
 	if err := writeAtomic(cachePath, b); err != nil {
@@ -174,7 +182,7 @@ func (c *Client) refresh(ctx context.Context, cachePath string) (string, string,
 		}
 		_, _ = fmt.Fprintf(w, "warning: broker token not cached: %v\n", err)
 	}
-	return resp.Token, resp.Login, nil
+	return resp.Token, resp.Login, resp.Role, nil
 }
 
 // writeAtomic writes data to path via a 0600 temp file in the same directory.
@@ -218,7 +226,7 @@ func (c *Client) Post(ctx context.Context, path string, in, out any) error {
 		if perr != nil {
 			return perr
 		}
-		if tok, _, err = c.refresh(ctx, p); err != nil {
+		if tok, _, _, err = c.refresh(ctx, p); err != nil {
 			return err
 		}
 		return c.do(ctx, path, tok, in, out)

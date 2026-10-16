@@ -15,11 +15,16 @@ Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các cred
 
 ## Config không chứa secret
 
-File YAML mount vào `/etc/zenify-broker/broker.yaml`. Các khoá `listen`, `grafana.bin`, `grafana.addr`, `grafana.args`, `mongo.main_db`, `mongo.audit_db` có mặc định; các khoá còn lại bắt buộc.
+File YAML mount vào `/etc/zenify-broker/broker.yaml`. Các khoá `listen`, `lead_team`, `dev_team`, `deny_logins`, `grafana.bin`, `grafana.addr`, `grafana.args`, `mongo.main_db`, `mongo.audit_db` có mặc định; các khoá còn lại bắt buộc.
 
 ```yaml
 org: ZenifyAIContactCenter
 listen: ":8080"
+# lead_team: leaders        # team cấp role lead (mặc định leaders)
+# dev_team: zenify-team     # team cấp role dev (mặc định zenify-team)
+deny_logins:                # tài khoản dùng chung, không cấp token (không phân biệt hoa thường)
+  - zenifydevteam
+  - zenifydeveloper
 grafana:
   url: https://monitor.zenify.vn
   # bin: mcp-grafana
@@ -41,6 +46,8 @@ mongo:
 ```
 
 Thay các giá trị `example.invalid` và placeholder bằng giá trị thật của staging. Broker không đọc secret từ YAML.
+
+Role: ở `POST /token`, sau khi xác nhận member org, broker từ chối login trong `deny_logins` (403 `login_denied`), rồi hỏi GitHub membership của `lead_team` (`state=active` → `lead`), rồi `dev_team` (→ `dev`); không thuộc team nào thì 403 `not_allowed`. Trên production, dev chỉ đọc được cấu trúc và plan (explain, indexes, stats, count, schema SQL, Redis metadata); phần còn lại trả 403 `lead_only` và vẫn ghi audit. Dòng audit có field `role`. Xem [Dùng credential broker](/guides/broker-client#lead-dev).
 
 ## Secret qua env của host
 

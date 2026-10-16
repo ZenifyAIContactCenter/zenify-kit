@@ -25,7 +25,7 @@ GitHub token của bạn được gửi tới URL broker, nên kit chỉ lấy `
 
 ## `zenify doctor` mục `broker`
 
-Mục `broker` kiểm tra lần lượt: `gh` đã đăng nhập, `gh` có scope `read:org`, broker trả lời `/healthz` trong 5 giây, rồi đổi được token. Bước đổi token luôn xin JWT mới, không dùng cache, nên doctor thật sự kiểm tra lại bạn còn trong org. Thành công in `broker ok, login=<login broker cấp token>`; doctor không bao giờ in token. Khi lỗi, thông báo nói bước nào hỏng:
+Mục `broker` kiểm tra lần lượt: `gh` đã đăng nhập, `gh` có scope `read:org`, broker trả lời `/healthz` trong 5 giây, rồi đổi được token. Bước đổi token luôn xin JWT mới, không dùng cache, nên doctor thật sự kiểm tra lại bạn còn trong org. Thành công in `broker ok, login=<login broker cấp token>, role=<lead|dev>`; doctor không bao giờ in token. Khi lỗi, thông báo nói bước nào hỏng:
 
 | Thông báo | Việc cần làm |
 |---|---|
@@ -33,15 +33,29 @@ Mục `broker` kiểm tra lần lượt: `gh` đã đăng nhập, `gh` có scope
 | ``gh thiếu scope read:org — chạy `gh auth refresh -s read:org` `` | Chạy lệnh được gợi ý |
 | `không tới được broker — kiểm tra mạng và broker.url trong manifest rồi chạy lại` | Mở `https://broker.zenify.vn/healthz` trên trình duyệt; không mở được thì báo maintainer |
 | `broker từ chối token: <status> not_org_member: <lời nhắn>` | GitHub token chưa thấy bạn trong org: kiểm tra scope `read:org`, và nếu org bật SSO thì authorize token của GitHub CLI cho org trên GitHub, rồi chạy lại |
+| `broker từ chối token: 403 not_allowed: …` | Bạn thuộc org nhưng không thuộc team `leaders` hay `zenify-team`; nhờ maintainer thêm vào team đúng |
+| `broker từ chối token: 403 login_denied: …` | Login này là tài khoản dùng chung, broker không cấp token; đăng nhập `gh` bằng tài khoản cá nhân |
 | `broker từ chối token: <status> rate_limited: …` hoặc `… github_unavailable: …` | Broker hoặc GitHub đang tạm quá tải; đợi một lát rồi chạy lại |
 | `broker cấu hình sai, báo người quản trị broker: <lời nhắn>` | Lỗi ở phía host broker, không phải máy bạn; gửi nguyên dòng thông báo cho maintainer |
 | `broker từ chối token: <status> <mã khác>: <lời nhắn>` | Hỏi maintainer, kèm nguyên dòng thông báo |
 
-Muốn tự kiểm tra riêng bước đổi token: `zenify broker token` in JWT ra stdout (`zenify broker headers` cũng in một JWT). Đừng dán kết quả vào chat hay log. Khi broker có, mục `tools` của doctor không đòi `mongosh` và `mysql`.
+Muốn tự kiểm tra riêng bước đổi token: `zenify broker token` in JWT ra stdout và `login=<login>, role=<role>` ra stderr (`zenify broker headers` cũng in một JWT). Đừng dán kết quả vào chat hay log. Khi broker có, mục `tools` của doctor không đòi `mongosh` và `mysql`.
 
 ### Broker từ chối token đang cache
 
 `zenify broker headers` (lệnh Claude Code gọi cho `zenify-grafana` và `zenify-posthog`) dùng JWT đang cache tới khi nó hết hạn, và Claude Code không báo lại cho kit khi broker trả 401. Nếu MCP báo lỗi đăng nhập trong khi `zenify doctor` mục `broker` đã ok, chạy `zenify broker token --refresh` để bỏ cache và xin JWT mới, rồi khởi động lại Claude Code.
+
+## Lead và dev {#lead-dev}
+
+Broker cấp role theo team GitHub trong org: thuộc team `leaders` là `lead`, không thì thuộc team `zenify-team` là `dev`. Org member không thuộc team nào trong hai team bị từ chối (`not_allowed`).
+
+- **Lead** đọc như mọi lệnh ở trang này.
+- **Dev** trên staging đọc như lead. Trên production (`--prd`), dev chỉ thấy cấu trúc và plan, không thấy nội dung bản ghi:
+  - `db-read`: `collections`, `count`, `explain`, `indexes`, `stats`, `tables`, và `sql` khi câu lệnh bắt đầu bằng `EXPLAIN` (theo sau là `SELECT`/`WITH`, có thể có `ANALYZE` hoặc `FORMAT=…`), `DESCRIBE`/`DESC`, `SHOW INDEX`/`SHOW INDEXES`/`SHOW KEYS`, `SHOW CREATE TABLE`, `SHOW TABLE STATUS`, `SHOW TABLES`, `SHOW COLUMNS`. Database audit log (`target=audit`) chỉ dành cho lead.
+  - `redis-read`: chỉ `TTL`, `TYPE`, `EXISTS`, `SCAN`, `LLEN`, `SCARD`, `ZCARD`.
+- MCP Grafana, PostHog và tài khoản E2E mở cho cả hai role.
+
+Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count` và không chạy truy vấn nào. Giới hạn chỉ đọc vẫn áp cho mọi người, kể cả lead. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
 
 ## Đọc database: `db-read`
 
@@ -50,6 +64,8 @@ Cùng lệnh và cùng giới hạn chỉ đọc như [Đọc dữ liệu thật
 ```bash
 zenify db-read --prd count chat_rooms
 zenify db-read --prd sql 'DESCRIBE agents'
+zenify db-read --prd indexes chat_rooms
+zenify db-read --prd stats chat_rooms
 ```
 
 Kit vẫn kiểm tra tham số ở máy bạn như cũ trước khi gửi lên broker.

@@ -7,7 +7,7 @@ Khi cần kiểm tra bạn đã đăng nhập được vào broker chưa, hoặc
 
 ## Kết quả
 
-In đúng một dòng là JWT. Lệnh này và `zenify broker headers` đều in một JWT còn hiệu lực; đừng dán kết quả vào chat hay log. Manifest không khai báo `broker:` thì lệnh thoát mã 2 với thông báo "manifest không khai báo broker".
+In đúng một dòng là JWT ra stdout, và dòng `login=<login>, role=<lead|dev>` ra stderr, nên `$(zenify broker token)` vẫn chỉ lấy JWT. Lệnh này và `zenify broker headers` đều in một JWT còn hiệu lực; đừng dán kết quả vào chat hay log. Manifest không khai báo `broker:` thì lệnh thoát mã 2 với thông báo "manifest không khai báo broker".
 
 ## Cờ
 

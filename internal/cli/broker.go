@@ -37,19 +37,21 @@ func newBrokerCmd() *cobra.Command {
 			if !ok {
 				return exitcode.New(exitcode.BadArgs, errors.New("manifest không khai báo broker")) //znf:allow-lang
 			}
-			var tok string
+			var tok, login, role string
 			if refresh {
 				// Best effort: the Claude Code Bash sandbox denies writes under ~/.zenify.
 				if derr := c.DropCache(); derr != nil {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: broker token cache not removed: %v\n", derr)
 				}
-				tok, _, err = c.Refresh(cmd.Context())
+				tok, login, role, err = c.Refresh(cmd.Context())
 			} else {
-				tok, err = c.Token(cmd.Context())
+				tok, login, role, err = c.TokenInfo(cmd.Context())
 			}
 			if err != nil {
 				return err
 			}
+			// stderr, so `$(zenify broker token)` still captures only the JWT.
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "login=%s, role=%s\n", login, role)
 			_, err = fmt.Fprintln(cmd.OutOrStdout(), tok)
 			return err
 		},
