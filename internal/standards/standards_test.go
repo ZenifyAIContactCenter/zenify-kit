@@ -3,6 +3,7 @@ package standards
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -300,7 +301,9 @@ func TestStandardsStackedPlan(t *testing.T) {
 		return nil, os.ErrNotExist
 	}
 	r := Check(spec, stackedPlanFixture, "/r", read)
-	if len(r.TestPaths) != 2 || r.TestPaths[0] != "internal/a_test.go" || r.TestPaths[1] != "internal/b_test.go" {
+	got := append([]string(nil), r.TestPaths...)
+	sort.Strings(got) // Check walks a map, so path order is not stable
+	if len(got) != 2 || got[0] != "internal/a_test.go" || got[1] != "internal/b_test.go" {
 		t.Errorf("TestPaths = %v", r.TestPaths)
 	}
 	for _, f := range r.Findings {
