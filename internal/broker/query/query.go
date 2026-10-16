@@ -95,8 +95,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	// Before every guard: CheckSQL refuses comments, which would turn a dev's
 	// comment-prefixed read into 400 instead of lead_only.
-	if role != api.RoleLead && req.Env == "prd" && !api.DevQueryAllowed(req) {
-		fail(http.StatusForbidden, api.CodeLeadOnly, "production data reads are lead-only; dev may use explain/indexes/stats/count")
+	// devPrd: plan and schema only, explain without execution (FR-14.2).
+	devPrd := role != api.RoleLead && req.Env == "prd"
+	if devPrd && !api.DevQueryAllowed(req) {
+		msg := "production data reads are lead-only; dev may use explain/indexes/stats/count"
+		if req.Engine == "mongo" && req.Op == "count" {
+			msg = "a filtered count on production is lead-only; dev gets the collection total (estimatedDocumentCount) by omitting the filter"
+		}
+		fail(http.StatusForbidden, api.CodeLeadOnly, msg)
 		return
 	}
 	o, code, msg := h.options(req)
@@ -113,6 +119,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer h.slots.Release(login)
+	o.PlanOnly = devPrd
 
 	timeout := h.Timeout
 	if timeout == 0 {

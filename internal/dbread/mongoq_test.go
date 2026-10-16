@@ -294,3 +294,18 @@ func TestBuildMongoScript_IndexesAndStats(t *testing.T) {
 		t.Errorf("stats reads more than sizes: %s", s)
 	}
 }
+
+func TestBuildMongoScript_ExplainPlanOnly(t *testing.T) {
+	for _, q := range []MongoQuery{
+		{Op: "explain", Coll: "u", Filter: `{"a":1}`, PlanOnly: true},
+		{Op: "explain", Coll: "u", Pipeline: `[{"$match":{"a":1}}]`, PlanOnly: true},
+	} {
+		s, err := BuildMongoScript(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(s, `explain("queryPlanner")`) || strings.Contains(s, "executionStats") {
+			t.Errorf("PlanOnly script = %s, want queryPlanner only", s)
+		}
+	}
+}

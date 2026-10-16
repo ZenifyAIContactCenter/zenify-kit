@@ -572,3 +572,54 @@ func TestQuery_IndexesAndStatsScripts(t *testing.T) {
 		t.Errorf("stats script = %s", script)
 	}
 }
+
+// Exploits from the security review: a filtered count is an oracle, and an
+// explain that executes surfaces documents through its error text.
+func TestQuery_DevPrdMongoNoRowChannel(t *testing.T) {
+	for name, filter := range map[string]string{
+		"count regex oracle": `{"email":{"$regex":"^a"}}`,
+		"count toInt error":  `{"$expr":{"$eq":[{"$toInt":"$email"},0]}}`,
+		"count eq oracle":    `{"email":"a@b.c"}`,
+	} {
+		f := newFixture(t, okRun)
+		st, _, e := f.postAs(t, "devgal", api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mongo", Op: "count", Coll: "users", Filter: filter})
+		if st != http.StatusForbidden || e.Error != api.CodeLeadOnly || !strings.Contains(e.Message, "estimatedDocumentCount") {
+			t.Errorf("%s: got %d %+v, want 403 lead_only naming estimatedDocumentCount", name, st, e)
+		}
+		if n := atomic.LoadInt32(f.calls); n != 0 {
+			t.Errorf("%s: %d processes started, want 0", name, n)
+		}
+	}
+
+	script := func(role string, req api.QueryRequest) string {
+		t.Helper()
+		var s string
+		f := newFixture(t, func(_ context.Context, _ string, args, _ []string, out, _ io.Writer) error {
+			s = args[len(args)-1]
+			return okRun(context.Background(), "", nil, nil, out, nil)
+		})
+		if st, _, e := f.postAs(t, "someone", role, req); st != http.StatusOK {
+			t.Fatalf("%s %+v: %d %+v", role, req, st, e)
+		}
+		return s
+	}
+	where := api.QueryRequest{Env: "prd", Engine: "mongo", Op: "explain", Coll: "users", Filter: `{"$where":"throw new Error(tojson(this))"}`}
+	pipe := api.QueryRequest{Env: "prd", Engine: "mongo", Op: "explain", Coll: "users",
+		Pipeline: `[{"$addFields":{"x":{"$toInt":"$email"}}},{"$addFields":{"y":{"$function":{"body":"function(e){throw new Error(e)}","args":["$email"],"lang":"js"}}}}]`}
+	for name, req := range map[string]api.QueryRequest{"explain $where": where, "explain pipeline": pipe} {
+		if s := script(api.RoleDev, req); !strings.Contains(s, `explain("queryPlanner")`) || strings.Contains(s, "executionStats") {
+			t.Errorf("dev %s: script = %s, want queryPlanner only", name, s)
+		}
+		if s := script(api.RoleLead, req); !strings.Contains(s, `explain("executionStats")`) {
+			t.Errorf("lead %s: script = %s, want executionStats", name, s)
+		}
+	}
+	stg := where
+	stg.Env = "stg"
+	if s := script(api.RoleDev, stg); !strings.Contains(s, `explain("executionStats")`) {
+		t.Errorf("dev stg explain: script = %s, want executionStats", s)
+	}
+	if s := script(api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mongo", Op: "count", Coll: "users"}); !strings.Contains(s, `d.getCollection("users").estimatedDocumentCount()`) {
+		t.Errorf("dev count: script = %s, want estimatedDocumentCount", s)
+	}
+}

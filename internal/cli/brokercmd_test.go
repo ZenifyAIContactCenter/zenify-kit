@@ -667,6 +667,8 @@ func TestDevPrdPrecheck(t *testing.T) {
 		{"--prd", "doc", "users"},
 		{"--prd", "sql", "SELECT * FROM accounts"},
 		{"--prd", "sql", "SHOW PROCESSLIST"},
+		{"--prd", "sql", "SHOW TABLES WHERE (SELECT 1)>0"},
+		{"--prd", "count", "users", "--filter", `{"email":{"$regex":"^a"}}`},
 	} {
 		before := atomic.LoadInt32(hits)
 		_, _, err := execCmd(newDBReadCmd(), append([]string{"--manifest", mp}, args...)...)
@@ -677,6 +679,7 @@ func TestDevPrdPrecheck(t *testing.T) {
 	for _, args := range [][]string{
 		{"--prd", "indexes", "users"},
 		{"--prd", "stats", "users"},
+		{"--prd", "count", "users"},
 		{"--prd", "sql", "EXPLAIN SELECT * FROM accounts WHERE id=1"},
 		{"find", "users"}, // stg
 	} {

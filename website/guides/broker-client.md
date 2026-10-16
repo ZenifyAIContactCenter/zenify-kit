@@ -51,7 +51,7 @@ Broker cấp role theo team GitHub trong org: thuộc team `leaders` là `lead`,
 
 - **Lead** đọc như mọi lệnh ở trang này.
 - **Dev** trên staging đọc như lead. Trên production (`--prd`), dev chỉ thấy cấu trúc và plan, không thấy nội dung bản ghi:
-  - `db-read`: `collections`, `count`, `explain`, `indexes`, `stats`, `tables`, và `sql` dạng `EXPLAIN [FORMAT=…] SELECT …` (đúng một `SELECT`, không subquery, không `ANALYZE`, không `WITH`), `DESCRIBE`/`DESC <bảng>`, `SHOW INDEX`/`SHOW INDEXES`/`SHOW KEYS`, `SHOW CREATE TABLE`, `SHOW TABLE STATUS`, `SHOW TABLES`, `SHOW COLUMNS`. Câu `SHOW`/`DESCRIBE` chỉ gồm từ khoá, tên bảng hoặc database và `LIKE '<chuỗi>'`; có `WHERE`, `(` hay `SELECT` thì bị từ chối. Database audit log (`target=audit`) chỉ dành cho lead.
+  - `db-read`: `collections`, `count` không có `--filter` (tổng số ước lượng qua `estimatedDocumentCount`; `count` có `--filter` chỉ dành cho lead), `explain` ở mức `queryPlanner` (chỉ in plan, không chạy truy vấn nên không có executionStats), `indexes`, `stats`, `tables`, và `sql` dạng `EXPLAIN [FORMAT=…] SELECT …` (đúng một `SELECT`, không subquery, không `ANALYZE`, không `WITH`), `DESCRIBE`/`DESC <bảng>`, `SHOW INDEX`/`SHOW INDEXES`/`SHOW KEYS`, `SHOW CREATE TABLE`, `SHOW TABLE STATUS`, `SHOW TABLES`, `SHOW COLUMNS`. Câu `SHOW`/`DESCRIBE` chỉ gồm từ khoá, tên bảng hoặc database và `LIKE '<chuỗi>'`; có `WHERE`, `(` hay `SELECT` thì bị từ chối. Database audit log (`target=audit`) chỉ dành cho lead.
   - `redis-read`: chỉ `TTL`, `TYPE`, `EXISTS`, `SCAN`, `LLEN`, `SCARD`, `ZCARD`.
 - MCP Grafana, PostHog và tài khoản E2E mở cho cả hai role.
 

@@ -34,6 +34,9 @@ type MongoQuery struct {
 	Op, Coll, Filter, Projection, Sort, Pipeline string
 	DB                                           string // empty = "3csoft"
 	Limit                                        int
+	// PlanOnly runs explain at "queryPlanner" verbosity: the plan without
+	// executing the query, so nothing the query reads can surface.
+	PlanOnly bool
 }
 
 // decodeJSON parses s only to validate it (single value, no trailing data).
@@ -183,6 +186,11 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 	}
 	coll := "d.getCollection(" + string(collB) + ")"
 
+	verbosity := "executionStats"
+	if q.PlanOnly {
+		verbosity = "queryPlanner"
+	}
+
 	var b bytes.Buffer
 	b.WriteString(mongoConnectLine(q.DB))
 	switch q.Op {
@@ -210,7 +218,7 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"executionStats\").aggregate(%s,{maxTimeMS:%d}), null, 2))", coll, pl, QueryTimeoutMS)
+			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(%q).aggregate(%s,{maxTimeMS:%d}), null, 2))", coll, verbosity, pl, QueryTimeoutMS)
 			break
 		}
 		args := filterOrEmpty
@@ -223,7 +231,7 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 		}
 		if q.Op == "explain" {
 			cur += fmt.Sprintf(".maxTimeMS(%d)", QueryTimeoutMS)
-			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"executionStats\"), null, 2))", cur)
+			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(%q), null, 2))", cur, verbosity)
 		} else {
 			cur += fmt.Sprintf(".limit(%d).maxTimeMS(%d)", limit+1, QueryTimeoutMS)
 			printCapped(&b, cur+".toArray()", limit)

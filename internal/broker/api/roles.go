@@ -17,6 +17,10 @@ func DevQueryAllowed(req QueryRequest) bool {
 	switch {
 	case req.Target != "" && req.Target != "main":
 		return false
+	case req.Engine == "mongo" && req.Op == "count":
+		// A filtered count answers yes/no about record content ({"email":
+		// {"$regex":"^a"}}), so dev gets the unfiltered estimate only.
+		return strings.TrimSpace(req.Filter) == ""
 	case req.Engine == "mongo":
 		return devMongoOps[req.Op]
 	case req.Engine == "mysql":

@@ -42,6 +42,7 @@ type Options struct {
 	Limit      int
 	Prod       bool   // read production: MONGO_URL_PRD / MYSQL_URL_PRD
 	MongoDB    string // Mongo database; empty = 3csoft
+	PlanOnly   bool   // explain without executing (queryPlanner); the broker sets it for dev on prd
 	Truncated  bool   // set by Run: output was cut at the line or byte cap
 	Rows       int    // set by Run: stdout lines written, for every op (Mongo: pretty-printed JSON lines, not documents)
 	Stdout     io.Writer
@@ -374,7 +375,7 @@ func validate(o *Options) (limit int, script, sqlStmt string, err error) {
 	default:
 		script, err = BuildMongoScript(MongoQuery{
 			Op: o.Cmd, Coll: o.Arg, Filter: o.Filter, Projection: o.Projection,
-			Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit, DB: o.MongoDB,
+			Sort: o.Sort, Pipeline: o.Pipeline, Limit: limit, DB: o.MongoDB, PlanOnly: o.PlanOnly,
 		})
 		if err != nil {
 			return 0, "", "", badArgs(err.Error())
