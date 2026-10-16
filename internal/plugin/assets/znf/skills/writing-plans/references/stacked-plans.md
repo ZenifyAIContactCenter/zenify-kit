@@ -20,6 +20,8 @@ Add a `## Stack` block after `## Review Focus` and before the `---` that precede
 - Layer 2: `store-api` — `feat(api): expose session reads`
 ```
 
+The kebab name (`store-schema`) is a label only: branches are the `wt` branch for layer 1 and `<wt branch>-<N>` for layer N >= 2. The backticked title is the PR title `znf:ship` gives that layer's PR.
+
 Each task carries one `**Layer:** <N>` line directly under its `**Model:**` line, outside the `**Files:**` block:
 
 ```markdown

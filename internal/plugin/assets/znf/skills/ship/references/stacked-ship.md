@@ -12,10 +12,13 @@ in that stripped form; git commands use `<baseRef>` itself.
 
 2. **Step 5 runs once per layer, i = 1..N, bottom first.**
    - `gh stack checkout <layer i branch>` on a clean tree.
-   - `BASE=$(git merge-base <layer i-1 branch> HEAD)`; for layer 1 use `<baseRef>` (the `origin/...`
-     ref, as in ship step 5), never the local trunk branch, which may be stale.
+   - `BASE=$(git merge-base <layer i-1 branch> HEAD)`; for layer 1,
+     `BASE=$(git merge-base <baseRef> HEAD)` with the `origin/...` ref as in ship step 5, never the
+     local trunk branch, which may be stale.
    - The layer's ship-pack uses `$BASE..<layer i branch>` for `## Diff`; then `Skill(znf:review)`
      with that `BASE`, so the tier follows the layer's own diff.
+   - The layer's `## Deferred` keeps only the `Task <N>:` deferred and parked lines whose task has
+     `**Layer:** i` in the plan; a line with no task number goes into the top layer's pack only.
    - Never run `review-bundle` over the whole stack. A layer whose review returns `too-large` →
      STOP and propose splitting that layer.
    - After layer N, `gh stack checkout <layer N branch>` again.
@@ -27,21 +30,24 @@ in that stripped form; git commands use `<baseRef>` itself.
    one-PR fix loop: recompute `fp` on the top layer and re-run steps 2-4 per its rules, then
    re-review layer k and every layer above it. The two-round cap still applies.
 
-4. **Step 7.**
-   - Append one gate-log line per layer with ship step 7's `printf`: column 2 is `<basename>#L<i>`,
-     and `fp` is computed with that layer's branch checked out.
-   - `zenify release-note` once for the whole stack.
-   - `gh stack submit --auto --open`.
-   - For each PR, bottom to top: `gh pr edit <n> --title "<type(scope): ...>" --body-file <file>`,
-     title and body per `pr-message-language.md`; the body states `lớp i/N`.
+4. **Step 7, in this order. Nothing is pushed until (b) is all ✅.**
+   - (a) Append ONE gate-log line for the ship run with step 7's `printf`, as in the one-PR flow:
+     column 2 is the plain basename and `fp` is the top layer's. Read it back (`tail -30`); if this
+     gate has never blocked, say so.
+   - (b) Fill the board as in the one-PR flow (every check stamped by its `fp`, `Shippable: YES` only
+     if every stamp equals the current one) plus one line per layer, bottom first:
+     `Layer <i>/<N> <branch> — <pending>`. Run `zenify ui-verify check` as in step 7 (non-zero → BLOCKED). Write
+     the board to `ship-board-$(fp).md` and `cat` it. Any ❌ → STOP, push nothing.
+   - (c) `zenify release-note` once for the whole stack.
+   - (d) `gh stack submit --auto --open`. This replaces step 7's commit-and-push and its
+     `gh pr create`; never run `gh pr create` in a stacked ship.
+   - (e) For each PR, bottom to top: `gh pr edit <n> --title "<title>" --body-file <file>`, the title
+     taken from the plan's `## Stack` line for layer i, the body per `pr-message-language.md` and
+     stating `lớp i/N`.
+   - (f) Replace each `<pending>` on the board with that layer's PR URL and `cat` the board again.
+   - (g) `zenify docs sync` (fails open).
    - A fix after submit: commit per item 3, then `gh stack push`; re-run `gh pr edit` if the title or
-     body was overwritten.
-   - The board carries one line per layer: `Layer <i>/<N> <branch> — <PR url>`.
-   - Everything else in ship step 7 still applies once, on the top layer: the gate-log read-back
-     (if this gate has never blocked, say so), the board with every check stamped by its `fp` and
-     `Shippable: YES` only if every stamp equals the current one, written to
-     `ship-board-$(fp).md` and `cat`ed, `zenify ui-verify check` (non-zero → BLOCKED), and
-     `zenify docs sync` after the push. Step 6 (deploy order) is unchanged.
+     body was overwritten. Step 6 (deploy order) is unchanged.
 
 5. **Report** every PR URL, bottom to top, and this sentence: merge the stack bottom-up; merging PR N
    also merges every unmerged PR below it. **Never `gh stack merge`, never merge** — merging is the

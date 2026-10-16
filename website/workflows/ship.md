@@ -64,9 +64,9 @@ flowchart TD
 Khi plan có khối `## Stack`, ship đổi vài chỗ của luồng trên; plan không có khối này thì luồng một PR giữ nguyên.
 
 - Bước 2-4 chạy một lần trên lớp trên cùng, nơi thấy cả stack.
-- Bước 5 chạy riêng cho từng lớp, từ dưới lên: diff của lớp i tính từ lớp i-1 (lớp 1 tính từ base ref). Lớp nào quá lớn để review thì ship dừng và đề xuất tách lớp đó.
+- Bước 5 chạy riêng cho từng lớp, từ dưới lên: diff của lớp i tính từ lớp i-1 (lớp 1 tính từ base ref). Lớp nào quá lớn để review thì ship dừng và đề xuất tách lớp đó. Gói review của mỗi lớp chỉ mang các mục deferred/parked của task thuộc lớp đó; mục không gắn task nằm ở lớp trên cùng.
 - Sửa một finding thuộc lớp thấp hơn thì kit sửa ở lớp đó, `gh stack rebase --upstack`, rồi review lại lớp đó và các lớp trên. Rebase conflict thì kit abort, không tự giải, không push và báo bạn.
-- Bước 7 mở stack bằng `gh stack submit --auto --open`, rồi đặt title và body cho từng PR; body ghi `lớp i/N`. Board có một dòng mỗi lớp kèm URL PR.
+- Bước 7 ghi một dòng gate log cho cả lần ship và điền board trước khi push gì; board có một dòng mỗi lớp, ban đầu là `<pending>`. Có ❌ thì ship dừng và không push. Board xanh thì ship mở stack bằng `gh stack submit --auto --open` (thay cho push và `gh pr create`), rồi đặt title cho từng PR theo dòng của lớp đó trong khối `## Stack` của plan và body ghi `lớp i/N`, sau cùng thay `<pending>` bằng URL PR.
 
 Bạn merge stack từ dưới lên; merge PR N thì mọi PR chưa merge bên dưới nó cũng được merge theo. Agent không merge và không chạy `gh stack merge`.
 

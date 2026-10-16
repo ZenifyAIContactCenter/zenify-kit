@@ -89,6 +89,8 @@ Plan lớn có thể chia thành stack PR của GitHub. Khi đó plan có khối
 - Layer 2: `store-api` — `feat(api): expose session reads`
 ```
 
+Tên kebab (`store-schema`) chỉ là nhãn: branch của lớp 1 là branch `wt`, lớp N >= 2 là `<branch wt>-<N>`. Title trong backtick là title PR mà ship đặt cho lớp đó.
+
 Mỗi task có một dòng `**Layer:** <N>` ngay dưới dòng `**Model:**`, ngoài khối `**Files:**`. Một task thuộc đúng một lớp và chỉ phụ thuộc task ở lớp bằng hoặc thấp hơn. Khối phải đứng trước task đầu: `/znf:analyze` và `/znf:standards` gán mọi dòng sau tiêu đề task cuối cho task đó, nên khối đặt muộn bị đọc như một phần của task cuối. Plan không có `## Stack` thì không task nào có `**Layer:**` và đi luồng một PR như cũ. Xem [cook](/workflows/cook#stacked-pr) và [ship](/workflows/ship#stacked-pr).
 
 ## Kết quả
