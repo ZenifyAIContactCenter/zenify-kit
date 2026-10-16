@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
@@ -68,6 +70,7 @@ func runSessionStart(wsRoot string, w io.Writer) int {
 	// One line, only when a newer release exists; before the digest so the
 	// digest's early return cannot swallow it.
 	updateNudge(w)
+	brokerRoleLine(w)
 	if !sentinelPresent() {
 		digest := readBootstrapDigest()
 		if digest != "" {
@@ -76,6 +79,20 @@ func runSessionStart(wsRoot string, w io.Writer) int {
 		}
 	}
 	return 0
+}
+
+// brokerRoleLine tells a dev session up front what it may read on prd, so the
+// agent does not try data reads the broker refuses. It reads only the token
+// cache (no network, expiry ignored) and prints nothing for a lead, an
+// unknown role or no cache. The JWT is never printed.
+func brokerRoleLine(w io.Writer) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	if _, login, role, ok := brokerclient.CachedIdentity(home); ok && role == api.RoleDev {
+		fmt.Fprintf(w, "broker: login=%s role=dev — prd: chỉ explain/indexes/stats/count (db-read), Redis prd chỉ TTL/TYPE/EXISTS/SCAN/LLEN/SCARD/ZCARD; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n", login) //znf:allow-lang
+	}
 }
 
 func sentinelPresent() bool {

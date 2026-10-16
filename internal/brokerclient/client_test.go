@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,6 +38,7 @@ func fakeBroker(t *testing.T, tokenCalls *int32, onPost func(w http.ResponseWrit
 			Token:     "jwt-" + string(rune('0'+n)),
 			ExpiresAt: t0.Add(15 * time.Minute).Format(time.RFC3339),
 			Login:     "octo",
+			Role:      "dev",
 		})
 	})
 	if onPost != nil {
@@ -308,7 +310,7 @@ func TestRefresh_IgnoresCache(t *testing.T) {
 	if _, err := c.Token(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	tok, login, err := c.Refresh(context.Background())
+	tok, login, _, err := c.Refresh(context.Background())
 	if err != nil || tok != "jwt-2" || login != "octo" || calls != 2 {
 		t.Fatalf("tok=%q login=%q err=%v calls=%d, want jwt-2 octo nil 2", tok, login, err, calls)
 	}
@@ -370,5 +372,56 @@ func TestFromManifest(t *testing.T) {
 	c, ok := FromManifest(&manifest.Manifest{Broker: &manifest.Broker{URL: "https://b.example"}})
 	if !ok || c.URL != "https://b.example" {
 		t.Fatalf("c=%+v ok=%v", c, ok)
+	}
+}
+
+// A cache entry written before roles existed holds a JWT the broker now
+// refuses, so it is a miss; the new entry carries the role.
+func TestTokenInfo_RolelessCacheIsMiss(t *testing.T) {
+	var calls int32
+	srv := fakeBroker(t, &calls, nil)
+	now := t0
+	home := t.TempDir()
+	dir := filepath.Join(home, ".zenify", "broker")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := fmt.Sprintf(`{"url":%q,"token":"old-jwt","expires_at":"2099-01-01T00:00:00Z","login":"octo"}`, srv.URL)
+	if err := os.WriteFile(filepath.Join(dir, "token.json"), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(srv.URL, home, &now)
+	tok, login, role, err := c.TokenInfo(context.Background())
+	if err != nil || tok == "old-jwt" || login != "octo" || role != "dev" || calls != 1 {
+		t.Fatalf("tok=%q login=%q role=%q err=%v calls=%d, want fresh dev token", tok, login, role, err, calls)
+	}
+	if tok2, _, role2, _ := c.TokenInfo(context.Background()); tok2 != tok || role2 != "dev" || calls != 1 {
+		t.Fatalf("second call tok=%q role=%q calls=%d, want cache hit", tok2, role2, calls)
+	}
+}
+
+// CachedRole reads only the cache, ignores expiry, and trusts no other broker's entry.
+func TestCachedRole_NoNetworkURLScoped(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".zenify", "broker")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"url":"https://b.example","token":"t","expires_at":"2000-01-01T00:00:00Z","login":"devgal","role":"dev"}`
+	if err := os.WriteFile(filepath.Join(dir, "token.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	noNet := func(context.Context) (string, error) { t.Fatal("gh token asked"); return "", nil }
+	if r := (&Client{URL: "https://b.example", Home: home, GHToken: noNet}).CachedRole(); r != "dev" {
+		t.Errorf("same URL: role %q, want dev", r)
+	}
+	if r := (&Client{URL: "https://other.example", Home: home, GHToken: noNet}).CachedRole(); r != "" {
+		t.Errorf("other URL: role %q, want empty", r)
+	}
+	if r := (&Client{URL: "https://b.example", Home: t.TempDir(), GHToken: noNet}).CachedRole(); r != "" {
+		t.Errorf("no cache: role %q, want empty", r)
+	}
+	if u, l, r, ok := CachedIdentity(home); !ok || u != "https://b.example" || l != "devgal" || r != "dev" {
+		t.Errorf("CachedIdentity = %q %q %q %v", u, l, r, ok)
 	}
 }

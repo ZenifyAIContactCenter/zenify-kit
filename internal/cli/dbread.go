@@ -36,20 +36,22 @@ var dbReadLong = strings.Join([]string{
 	"  find <collection>          --filter --projection --sort --limit",
 	"  aggregate <collection>     --pipeline (từ chối $out/$merge) --limit",                                    //znf:allow-lang
 	"  explain <collection>       executionStats, không áp --limit (chạy truy vấn đọc, tối đa 30 s)",           //znf:allow-lang
+	"  indexes <collection>       in getIndexes() của collection",                                              //znf:allow-lang
+	"  stats <collection>         kích thước, số document, số index của collection",                            //znf:allow-lang
 	"  sql '<câu lệnh>'           một câu SELECT/WITH/SHOW/DESCRIBE/EXPLAIN, chạy trong transaction READ ONLY", //znf:allow-lang
 	"",
 	"--limit mặc định 50, tối đa 200; stdout tối đa 1 MiB; kết quả bị cắt thì in thông báo ra stderr. Thay cho distinct:", //znf:allow-lang
 	`  zenify db-read aggregate <collection> --pipeline '[{"$group":{"_id":"$field"}}]'`,
 }, "\n")
 
-// newDBReadCmd builds `zenify db-read <collections|tables|doc|count|find|aggregate|explain|sql> [arg]`
+// newDBReadCmd builds `zenify db-read <collections|tables|doc|count|find|aggregate|explain|indexes|stats|sql> [arg]`
 // — the portable port of ~/.local/bin/db_read (FR-033).
 func newDBReadCmd() *cobra.Command {
 	var filter, projection, sort, pipeline, manifestPath, overlayPath string
 	var limit int
 	var prd bool
 	cmd := &cobra.Command{
-		Use:           "db-read <collections|tables|doc|count|find|aggregate|explain|sql> [arg]",
+		Use:           "db-read <collections|tables|doc|count|find|aggregate|explain|indexes|stats|sql> [arg]",
 		Short:         "Đọc chỉ-đọc các database dùng chung của zenify (không bao giờ ghi, không in secret)", //znf:allow-lang
 		Long:          dbReadLong,
 		Args:          cobra.RangeArgs(1, 2),
@@ -124,6 +126,9 @@ func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Opti
 	case "sql":
 		req.Engine, req.Coll, req.SQL = "mysql", "", o.Arg
 	}
+	if err := devPrdPrecheck(bc, req.Env, api.DevQueryAllowed(req)); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), brokerCallTimeout)
 	defer cancel()
 	var resp api.QueryResponse
@@ -135,10 +140,27 @@ func runDBReadBroker(cmd *cobra.Command, bc *brokerclient.Client, o *dbread.Opti
 	return nil
 }
 
-// brokerCallErr maps a broker 400 to BadArgs; anything else passes through.
+// leadOnlyMsg is FR-14.6's answer to a dev hitting a lead-only request.
+const leadOnlyMsg = "lệnh này chỉ dành cho lead (team leaders); dev dùng explain/indexes/stats/count" //znf:allow-lang
+
+// devPrdPrecheck refuses, without calling the broker, a prd request the
+// cached role (dev) is not allowed to make; the broker enforces the same
+// lists. No cached role: the broker decides.
+func devPrdPrecheck(bc *brokerclient.Client, env string, allowed bool) error {
+	if env == "prd" && !allowed && bc.CachedRole() == api.RoleDev {
+		return errors.New("zenify: " + leadOnlyMsg)
+	}
+	return nil
+}
+
+// brokerCallErr maps a broker 400 to BadArgs and 403 lead_only to leadOnlyMsg;
+// anything else passes through.
 func brokerCallErr(err error) error {
 	var ae *brokerclient.APIError
-	if errors.As(err, &ae) && ae.Status == http.StatusBadRequest {
+	switch {
+	case errors.As(err, &ae) && ae.Code == api.CodeLeadOnly:
+		return errors.New("zenify: " + leadOnlyMsg)
+	case errors.As(err, &ae) && ae.Status == http.StatusBadRequest:
 		return exitcode.New(exitcode.BadArgs, err)
 	}
 	return err

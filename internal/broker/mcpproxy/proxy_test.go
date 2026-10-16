@@ -37,7 +37,7 @@ func stack(t *testing.T, name string, upstream string, set func(http.Header), ou
 		MCP: map[string]http.Handler{name: mcpproxy.New(name, u, set, lg)}})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	tok, _, _ := auth.Issue(jwtKey, "octocat", time.Now())
+	tok, _, _ := auth.Issue(jwtKey, "octocat", "lead", time.Now())
 	return srv, tok
 }
 

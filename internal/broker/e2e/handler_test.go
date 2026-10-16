@@ -23,7 +23,7 @@ func serveE2E(t *testing.T, app App, body string) (int, []byte, string) {
 	buf := &bytes.Buffer{}
 	ts := httptest.NewServer(auth.Require(jwtKey, &Handler{P: newProvisioner(app), Audit: &audit.Logger{W: buf}}))
 	t.Cleanup(ts.Close)
-	tok, _, _ := auth.Issue(jwtKey, "alice", time.Now())
+	tok, _, _ := auth.Issue(jwtKey, "alice", "lead", time.Now())
 	r, _ := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(body))
 	r.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := http.DefaultClient.Do(r)

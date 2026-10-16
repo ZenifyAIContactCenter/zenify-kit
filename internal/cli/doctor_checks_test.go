@@ -493,7 +493,7 @@ func brokerTestServer(t *testing.T, healthz int) *httptest.Server {
 		case "/healthz":
 			w.WriteHeader(healthz)
 		case "/token":
-			_, _ = w.Write([]byte(`{"token":"jwt-test-value","expires_at":"2099-01-01T00:00:00Z","login":"broker-login"}`))
+			_, _ = w.Write([]byte(`{"token":"jwt-test-value","expires_at":"2099-01-01T00:00:00Z","login":"broker-login","role":"dev"}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -516,7 +516,7 @@ func TestBrokerCheck_OK(t *testing.T) {
 	c.Home = t.TempDir()
 	c.GHToken = func(context.Context) (string, error) { return "gh-test-value", nil }
 	ok, detail := brokerCheck(srv.URL, staticGHRunner{ghOKOut}, srv.Client(), c).Run()
-	if !ok || !strings.Contains(detail, "login=broker-login") || strings.Contains(detail, "octo") {
+	if !ok || !strings.Contains(detail, "login=broker-login, role=dev") || strings.Contains(detail, "octo") {
 		t.Fatalf("ok=%v detail=%q, want the broker-issued login", ok, detail)
 	}
 	if strings.Contains(detail, "jwt-test-value") || strings.Contains(detail, "gh-test-value") {
@@ -754,7 +754,7 @@ func TestBrokerCheck_IgnoresCachedToken(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	cache := fmt.Sprintf(`{"url":%q,"token":"cached-jwt","expires_at":"2099-01-01T00:00:00Z","login":"octo"}`, srv.URL)
+	cache := fmt.Sprintf(`{"url":%q,"token":"cached-jwt","expires_at":"2099-01-01T00:00:00Z","login":"octo","role":"dev"}`, srv.URL)
 	if err := os.WriteFile(filepath.Join(dir, "token.json"), []byte(cache), 0o600); err != nil {
 		t.Fatal(err)
 	}

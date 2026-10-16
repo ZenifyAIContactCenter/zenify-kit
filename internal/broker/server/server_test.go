@@ -26,8 +26,16 @@ var (
 	t0      = time.Date(2026, 10, 15, 8, 0, 0, 0, time.UTC)
 )
 
-// fakeGitHub: ghToken is octocat; membership in "test-org" has the given state.
+// fakeGitHub: ghToken is octocat; membership in "test-org" has the given state
+// and octocat is an active member of team "leaders".
 func fakeGitHub(t *testing.T, state string, calls *int32) *httptest.Server {
+	t.Helper()
+	return fakeGitHubTeams(t, "octocat", state, map[string]string{"leaders": "active"}, calls)
+}
+
+// fakeGitHubTeams: ghToken is login; org membership has state; teams maps a
+// team slug to login's membership state there (absent = 404).
+func fakeGitHubTeams(t *testing.T, login, state string, teams map[string]string, calls *int32) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if calls != nil {
@@ -39,10 +47,16 @@ func fakeGitHub(t *testing.T, state string, calls *int32) *httptest.Server {
 		}
 		switch r.URL.Path {
 		case "/user":
-			_, _ = w.Write([]byte(`{"login":"octocat"}`))
+			_, _ = w.Write([]byte(`{"login":"` + login + `"}`))
 		case "/user/memberships/orgs/test-org":
 			_, _ = w.Write([]byte(`{"state":"` + state + `"}`))
 		default:
+			team, ok := strings.CutPrefix(r.URL.Path, "/orgs/test-org/teams/")
+			team, ok2 := strings.CutSuffix(team, "/memberships/"+login)
+			if st, in := teams[team]; ok && ok2 && in {
+				_, _ = w.Write([]byte(`{"state":"` + st + `","role":"member"}`))
+				return
+			}
 			http.NotFound(w, r)
 		}
 	}))
@@ -52,11 +66,14 @@ func fakeGitHub(t *testing.T, state string, calls *int32) *httptest.Server {
 
 func newServer(gh *httptest.Server, out *bytes.Buffer) http.Handler {
 	return New(Deps{
-		JWTKey: testKey,
-		Org:    "test-org",
-		GitHub: auth.GitHub{BaseURL: gh.URL, HTTP: gh.Client()},
-		Audit:  &audit.Logger{W: out},
-		Now:    func() time.Time { return t0 },
+		JWTKey:     testKey,
+		Org:        "test-org",
+		LeadTeam:   "leaders",
+		DevTeam:    "zenify-team",
+		DenyLogins: []string{"zenifydevteam", "ZenifyDeveloper"},
+		GitHub:     auth.GitHub{BaseURL: gh.URL, HTTP: gh.Client()},
+		Audit:      &audit.Logger{W: out},
+		Now:        func() time.Time { return t0 },
 	})
 }
 
@@ -102,9 +119,9 @@ func TestToken_Issues(t *testing.T) {
 	if resp["login"] != "octocat" || resp["expires_at"] != "2026-10-15T08:15:00Z" {
 		t.Errorf("resp = %v", resp)
 	}
-	login, err := auth.Verify(testKey, resp["token"], t0.Add(time.Minute))
-	if err != nil || login != "octocat" {
-		t.Errorf("Verify = %q, %v", login, err)
+	login, role, err := auth.Verify(testKey, resp["token"], t0.Add(time.Minute))
+	if err != nil || login != "octocat" || role != api.RoleLead || resp["role"] != api.RoleLead {
+		t.Errorf("Verify = %q %q, %v; resp role %q", login, role, err, resp["role"])
 	}
 }
 
@@ -270,7 +287,7 @@ func TestToken_GitHubSecondaryRateLimit429(t *testing.T) {
 func TestToken_ShortKey500(t *testing.T) {
 	var out bytes.Buffer
 	gh := fakeGitHub(t, "active", nil)
-	h := New(Deps{JWTKey: testKey[:auth.MinKeyLen-1], Org: "test-org",
+	h := New(Deps{JWTKey: testKey[:auth.MinKeyLen-1], Org: "test-org", LeadTeam: "leaders",
 		GitHub: auth.GitHub{BaseURL: gh.URL, HTTP: gh.Client()}, Audit: &audit.Logger{W: &out}, Now: func() time.Time { return t0 }})
 	rec := postToken(h, ghToken, "203.0.113.7")
 	if rec.Code != http.StatusInternalServerError || errCode(t, rec) != api.CodeBrokerMisconfigured {
@@ -410,7 +427,7 @@ func TestE2ERouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
 
 func TestRequire401IsAudited(t *testing.T) { // FR-6.1 / SC-8
 	noop := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
-	expired, _, _ := auth.Issue(testKey, "octocat", time.Now().Add(-2*time.Hour))
+	expired, _, _ := auth.Issue(testKey, "octocat", "lead", time.Now().Add(-2*time.Hour))
 	for path, endpoint := range map[string]string{"/query": "/query", "/redis": "/redis", "/e2e/account": "/e2e/account",
 		"/mcp/grafana": "/mcp/grafana", "/mcp/grafana/sub/path": "/mcp/grafana", "/mcp/evil-injected": "/mcp/?"} {
 		for _, hdr := range []string{"", "Bearer " + expired} {
@@ -434,6 +451,100 @@ func TestRequire401IsAudited(t *testing.T) { // FR-6.1 / SC-8
 			if hdr != "" && strings.Contains(lines[0], expired) {
 				t.Fatalf("audit line leaks the token: %s", lines[0])
 			}
+		}
+	}
+}
+
+// tokenFor posts /token against a fake GitHub where login has the given team
+// states (org membership active) and returns the response and audit buffer.
+func tokenFor(t *testing.T, login string, teams map[string]string, calls *int32) (*httptest.ResponseRecorder, *bytes.Buffer) {
+	t.Helper()
+	var out bytes.Buffer
+	rec := postToken(newServer(fakeGitHubTeams(t, login, "active", teams, calls), &out), ghToken, "203.0.113.7")
+	return rec, &out
+}
+
+func TestToken_DevTeamGetsRoleDev(t *testing.T) { // SC-19
+	rec, out := tokenFor(t, "devgal", map[string]string{"zenify-team": "active", "ript": "active"}, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var resp api.TokenResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	login, role, err := auth.Verify(testKey, resp.Token, t0.Add(time.Minute))
+	if err != nil || login != "devgal" || role != api.RoleDev || resp.Role != api.RoleDev {
+		t.Fatalf("Verify = %q %q %v, resp.Role = %q; want devgal dev", login, role, err, resp.Role)
+	}
+	if !strings.Contains(out.String(), `"role":"dev"`) {
+		t.Errorf("audit line lacks role=dev: %s", out.String())
+	}
+}
+
+func TestToken_LeadWinsOverDev(t *testing.T) {
+	rec, _ := tokenFor(t, "boss", map[string]string{"leaders": "active", "zenify-team": "active"}, nil)
+	var resp api.TokenResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil || resp.Role != api.RoleLead {
+		t.Fatalf("got %d %s, want role lead", rec.Code, rec.Body.String())
+	}
+}
+
+func TestToken_DenyAndNoTeam403(t *testing.T) { // SC-22
+	for _, c := range []struct {
+		login string
+		teams map[string]string
+		code  string
+	}{
+		{"zenifydevteam", map[string]string{"leaders": "active"}, api.CodeLoginDenied},
+		{"ZENIFYDEVTEAM", map[string]string{"zenify-team": "active"}, api.CodeLoginDenied}, // case-insensitive
+		{"zenifydeveloper", nil, api.CodeLoginDenied},                                      // listed as ZenifyDeveloper
+		{"outsider", map[string]string{"ript": "active"}, api.CodeNotAllowed},
+		{"newbie", map[string]string{"leaders": "pending", "zenify-team": "pending"}, api.CodeNotAllowed}, // pending = not a member
+	} {
+		var calls int32
+		rec, out := tokenFor(t, c.login, c.teams, &calls)
+		if rec.Code != http.StatusForbidden || errCode(t, rec) != c.code {
+			t.Errorf("%s: got %d %s, want 403 %s", c.login, rec.Code, rec.Body.String(), c.code)
+		}
+		if strings.Contains(rec.Body.String(), `"token"`) {
+			t.Errorf("%s: body carries a token", c.login)
+		}
+		assertOneAuditLine(t, out, http.StatusForbidden)
+		// /user + org membership only: a denied login never reaches the team checks.
+		if c.code == api.CodeLoginDenied && atomic.LoadInt32(&calls) != 2 {
+			t.Errorf("%s: %d GitHub calls, want 2", c.login, calls)
+		}
+	}
+}
+
+func TestToken_TeamCheckFailureMapping(t *testing.T) {
+	for _, c := range []struct {
+		ghCode, wantStatus int
+		wantCode           string
+	}{
+		{http.StatusInternalServerError, http.StatusBadGateway, api.CodeGitHubUnavailable},
+		{http.StatusTooManyRequests, http.StatusTooManyRequests, api.CodeRateLimited},
+		{http.StatusUnauthorized, http.StatusUnauthorized, api.CodeGitHubTokenInvalid},
+		// The caller is a confirmed org member: a 403 on the team check is
+		// not not_org_member.
+		{http.StatusForbidden, http.StatusBadGateway, api.CodeGitHubUnavailable},
+	} {
+		gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/user":
+				_, _ = w.Write([]byte(`{"login":"octocat"}`))
+			case "/user/memberships/orgs/test-org":
+				_, _ = w.Write([]byte(`{"state":"active"}`))
+			default:
+				http.Error(w, "{}", c.ghCode)
+			}
+		}))
+		t.Cleanup(gh.Close)
+		var out bytes.Buffer
+		rec := postToken(newServer(gh, &out), ghToken, "203.0.113.7")
+		if rec.Code != c.wantStatus || errCode(t, rec) != c.wantCode {
+			t.Errorf("team check %d: got %d %s", c.ghCode, rec.Code, rec.Body.String())
 		}
 	}
 }

@@ -75,12 +75,12 @@ var readHint = map[string]string{
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	login := auth.Login(r.Context())
+	login, role := auth.Login(r.Context()), auth.Role(r.Context())
 	var req api.RedisRequest
 	status, nbytes := http.StatusOK, 0
 	defer func() {
 		op := strings.ToUpper(strings.TrimSpace(req.Cmd))
-		h.Audit.Log(audit.Entry{TS: start, Login: login, Endpoint: "/redis", Env: req.Env, Op: op,
+		h.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/redis", Env: req.Env, Op: op,
 			Args: req.Args, Bytes: nbytes, MS: time.Since(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
@@ -95,6 +95,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cli := h.Clients[req.Env]
 	if (req.Env != "stg" && req.Env != "prd") || cli == nil {
 		fail(http.StatusBadRequest, api.CodeInvalidTarget, "env must be stg or prd")
+		return
+	}
+	if role != api.RoleLead && req.Env == "prd" && !api.DevRedisAllowed(req.Cmd) {
+		fail(http.StatusForbidden, api.CodeLeadOnly, "production redis values are lead-only; dev may use TTL/TYPE/EXISTS/SCAN/LLEN/SCARD/ZCARD")
 		return
 	}
 	argv, err := api.CheckRedis(req.Cmd, req.Args)
@@ -120,6 +124,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case err == nil:
 			return true
+		case errors.As(err, &rerr) && role != api.RoleLead && req.Env == "prd":
+			fail(http.StatusBadGateway, api.CodeQueryFailed, api.DevPrdErrorWithheld)
+			return false
 		case errors.As(err, &rerr):
 			fail(http.StatusBadGateway, api.CodeQueryFailed, rerr.Error())
 			return false

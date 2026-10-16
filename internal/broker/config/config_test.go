@@ -133,3 +133,20 @@ func TestLoad_YAMLAndEnvErrorsTogether(t *testing.T) {
 		t.Errorf("want one error naming both org and POSTHOG_API_KEY, got %v", err)
 	}
 }
+
+func TestLoad_TeamDefaultsAndDenyLogins(t *testing.T) {
+	c, err := Load(writeCfg(t, sampleYAML), envOf(fullEnv()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.LeadTeam != "leaders" || c.DevTeam != "zenify-team" || len(c.DenyLogins) != 0 {
+		t.Errorf("defaults = %q %q %v", c.LeadTeam, c.DevTeam, c.DenyLogins)
+	}
+	c, err = Load(writeCfg(t, sampleYAML+"lead_team: core\ndev_team: devs\ndeny_logins: [zenifydevteam, zenifydeveloper]\n"), envOf(fullEnv()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.LeadTeam != "core" || c.DevTeam != "devs" || strings.Join(c.DenyLogins, ",") != "zenifydevteam,zenifydeveloper" {
+		t.Errorf("set = %q %q %v", c.LeadTeam, c.DevTeam, c.DenyLogins)
+	}
+}

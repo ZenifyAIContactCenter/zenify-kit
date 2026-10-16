@@ -122,7 +122,7 @@ func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokercl
 			if resp.StatusCode != http.StatusOK {
 				return false, fmt.Sprintf("broker /healthz trả %d", resp.StatusCode) //znf:allow-lang
 			}
-			_, login, err := client.Refresh(dctx)
+			_, login, role, err := client.Refresh(dctx)
 			if err != nil {
 				var ae *brokerclient.APIError
 				switch {
@@ -133,7 +133,7 @@ func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokercl
 				}
 				return false, "không lấy được token từ broker" //znf:allow-lang
 			}
-			return true, "broker ok, login=" + login
+			return true, "broker ok, login=" + login + ", role=" + role
 		},
 	}
 }

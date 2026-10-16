@@ -274,3 +274,38 @@ func TestBuildMongoScript_DBRejectsQuote(t *testing.T) {
 		t.Errorf("after the literal = %q, want %q", tail, post)
 	}
 }
+
+// stats prints only sizes and counts, never documents.
+func TestBuildMongoScript_IndexesAndStats(t *testing.T) {
+	s, err := BuildMongoScript(MongoQuery{Op: "indexes", Coll: "users"})
+	if err != nil || s != connectLine+`print(EJSON.stringify(d.getCollection("users").getIndexes(), null, 2))` {
+		t.Errorf("indexes = %q, %v", s, err)
+	}
+	s, err = BuildMongoScript(MongoQuery{Op: "stats", Coll: "users"})
+	if err != nil || !strings.HasPrefix(s, connectLine+`const s=d.getCollection("users").stats();`) {
+		t.Fatalf("stats = %q, %v", s, err)
+	}
+	for _, f := range []string{"ns", "count", "size", "avgObjSize", "storageSize", "nindexes", "totalIndexSize"} {
+		if !strings.Contains(s, f+":s."+f) {
+			t.Errorf("stats lacks %s: %s", f, s)
+		}
+	}
+	if strings.Contains(s, "find") || strings.Contains(s, "indexDetails") {
+		t.Errorf("stats reads more than sizes: %s", s)
+	}
+}
+
+func TestBuildMongoScript_ExplainPlanOnly(t *testing.T) {
+	for _, q := range []MongoQuery{
+		{Op: "explain", Coll: "u", Filter: `{"a":1}`, PlanOnly: true},
+		{Op: "explain", Coll: "u", Pipeline: `[{"$match":{"a":1}}]`, PlanOnly: true},
+	} {
+		s, err := BuildMongoScript(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(s, `explain("queryPlanner")`) || strings.Contains(s, "executionStats") {
+			t.Errorf("PlanOnly script = %s, want queryPlanner only", s)
+		}
+	}
+}

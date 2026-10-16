@@ -77,11 +77,11 @@ func (h *Handler) Validate() error {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	login := auth.Login(r.Context())
+	login, role := auth.Login(r.Context()), auth.Role(r.Context())
 	var req api.QueryRequest
 	status, rows, nbytes := http.StatusOK, 0, 0
 	defer func() {
-		h.Audit.Log(audit.Entry{TS: start, Login: login, Endpoint: "/query", Env: req.Env, Op: req.Op,
+		h.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/query", Env: req.Env, Op: req.Op,
 			Args: req, Rows: rows, Bytes: nbytes, MS: time.Since(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
@@ -91,6 +91,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody)).Decode(&req); err != nil {
 		fail(http.StatusBadRequest, api.CodeInvalidQuery, "body must be a JSON query object")
+		return
+	}
+	// Before every guard: CheckSQL refuses comments, which would turn a dev's
+	// comment-prefixed read into 400 instead of lead_only.
+	// devPrd: plan and schema only, explain without execution (FR-14.2).
+	devPrd := role != api.RoleLead && req.Env == "prd"
+	if devPrd && !api.DevQueryAllowed(req) {
+		msg := "production data reads are lead-only; dev may use explain/indexes/stats/count"
+		if req.Engine == "mongo" && req.Op == "count" {
+			msg = "a filtered count on production is lead-only; dev gets the collection total (estimatedDocumentCount) by omitting the filter"
+		}
+		fail(http.StatusForbidden, api.CodeLeadOnly, msg)
 		return
 	}
 	o, code, msg := h.options(req)
@@ -107,6 +119,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer h.slots.Release(login)
+	o.PlanOnly = devPrd
 
 	timeout := h.Timeout
 	if timeout == 0 {
@@ -120,7 +133,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mw := devenv.NewMaskWriter(&stderr, h.secrets())
 	o.Stderr = mw
 	o.SetRun(func(name string, args, extraEnv []string, _ string) error {
-		return h.Run(ctx, name, args, extraEnv, o.Stdout, o.Stderr)
+		childErr := o.Stderr
+		if devPrd {
+			// Child stderr can quote a document even on success; the kit's own
+			// truncation notices still reach o.Stderr.
+			childErr = io.Discard
+		}
+		return h.Run(ctx, name, args, extraEnv, o.Stdout, childErr)
 	})
 	err := dbread.Run(o)
 	_ = mw.Close()
@@ -135,6 +154,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		fail(http.StatusGatewayTimeout, api.CodeTimeout, "query exceeded the time limit")
+		return
+	case devPrd:
+		// Server error text can quote the document or row it failed on.
+		fail(http.StatusBadGateway, api.CodeQueryFailed, api.DevPrdErrorWithheld)
 		return
 	case err != nil:
 		fail(http.StatusBadGateway, api.CodeQueryFailed, strings.TrimSpace(stderr.String()))
@@ -154,7 +177,7 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 	switch {
 	case req.Engine == "mysql" && !sqlOp, req.Engine == "mongo" && sqlOp,
 		req.Engine != "mysql" && req.Engine != "mongo":
-		return nil, api.CodeInvalidQuery, "engine must be mongo (collections|doc|count|find|aggregate|explain) or mysql (sql|tables)"
+		return nil, api.CodeInvalidQuery, "engine must be mongo (collections|doc|count|find|aggregate|explain|indexes|stats) or mysql (sql|tables)"
 	}
 	c, prd := h.Creds, req.Env == "prd"
 	db := c.MainDB

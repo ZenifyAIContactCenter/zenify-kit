@@ -29,11 +29,14 @@ func mongoConnectLine(db string) string {
 }
 
 // MongoQuery is one structured read. Op is one of collections|doc|count|find|
-// aggregate|explain. JSON fields are the raw CLI flag strings (empty = absent).
+// aggregate|explain|indexes|stats. JSON fields are the raw CLI flag strings (empty = absent).
 type MongoQuery struct {
 	Op, Coll, Filter, Projection, Sort, Pipeline string
 	DB                                           string // empty = "3csoft"
 	Limit                                        int
+	// PlanOnly runs explain at "queryPlanner" verbosity: the plan without
+	// executing the query, so nothing the query reads can surface.
+	PlanOnly bool
 }
 
 // decodeJSON parses s only to validate it (single value, no trailing data).
@@ -183,6 +186,11 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 	}
 	coll := "d.getCollection(" + string(collB) + ")"
 
+	verbosity := "executionStats"
+	if q.PlanOnly {
+		verbosity = "queryPlanner"
+	}
+
 	var b bytes.Buffer
 	b.WriteString(mongoConnectLine(q.DB))
 	switch q.Op {
@@ -191,6 +199,12 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 		fmt.Fprintf(&b, `d.getCollectionInfos({type:"collection"}).map(c=>c.name).sort().filter(n=>n.toLowerCase().includes(%s)).forEach(n=>print(n))`, subB)
 	case "doc":
 		fmt.Fprintf(&b, "print(EJSON.stringify(%s.findOne(), null, 2))", coll)
+	case "indexes":
+		fmt.Fprintf(&b, "print(EJSON.stringify(%s.getIndexes(), null, 2))", coll)
+	case "stats":
+		// Sizes and counts only: stats() also carries per-index and storage
+		// engine detail nobody asked for.
+		fmt.Fprintf(&b, "const s=%s.stats();print(EJSON.stringify({ns:s.ns,count:s.count,size:s.size,avgObjSize:s.avgObjSize,storageSize:s.storageSize,nindexes:s.nindexes,totalIndexSize:s.totalIndexSize}, null, 2))", coll)
 	case "count":
 		if filter == "" {
 			fmt.Fprintf(&b, "print(%s.estimatedDocumentCount())", coll)
@@ -204,7 +218,7 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"executionStats\").aggregate(%s,{maxTimeMS:%d}), null, 2))", coll, pl, QueryTimeoutMS)
+			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(%q).aggregate(%s,{maxTimeMS:%d}), null, 2))", coll, verbosity, pl, QueryTimeoutMS)
 			break
 		}
 		args := filterOrEmpty
@@ -217,7 +231,7 @@ func BuildMongoScript(q MongoQuery) (string, error) {
 		}
 		if q.Op == "explain" {
 			cur += fmt.Sprintf(".maxTimeMS(%d)", QueryTimeoutMS)
-			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(\"executionStats\"), null, 2))", cur)
+			fmt.Fprintf(&b, "print(EJSON.stringify(%s.explain(%q), null, 2))", cur, verbosity)
 		} else {
 			cur += fmt.Sprintf(".limit(%d).maxTimeMS(%d)", limit+1, QueryTimeoutMS)
 			printCapped(&b, cur+".toArray()", limit)
