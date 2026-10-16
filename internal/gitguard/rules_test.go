@@ -56,6 +56,10 @@ func TestRules(t *testing.T) {
 		`gh api -X POST repos/o/r/stacks/3/unstack`, `gh api --method POST /repos/o/r/stacks/3/unstack`,
 		`gh api -X POST 'repos/o/r/stacks/3/unstack?x=1'`, `gh api -X POST repos/o/r/stacks/3/unstack/`,
 		`gh api -X POST https://api.github.com/repos/o/r/stacks/3/unstack`,
+		`eval "gh stack merge $N"`, `echo 'gh stack merge 1' | sh`, `bash -c "gh stack unstack $X"`,
+		`bash -c "gh api -X POST repos/o/r/stacks/$N/unstack"`, `eval "gh stack link $A $B"`,
+		`eval "gh stack delete $N"`, `eval "gh stack alias $N"`, `eval "gh-stack merge $N"`,
+		`gh stack alias`, `gh stack alias gs`, `gh-stack alias`, `bash -c 'gh stack alias'`,
 	}
 	allow := []string{
 		`go test ./...`, `git push origin feat/x`, `git push -u origin feat/x`, `gh pr create --title t`,
@@ -69,6 +73,8 @@ func TestRules(t *testing.T) {
 		`gh stack push`, `gh stack rebase`, `gh stack rebase --abort`, `gh stack rebase --upstack`,
 		`gh stack submit --auto --open`, `gh stack view --json`, `gh stack unstack --local`, `gh stack delete --local`,
 		`gh stack checkout feat/x-2`, `gh api repos/o/r/stacks`, `gh api -X POST repos/o/r/stacks -f pull_requests[]=1`,
+		`gh stack view`, `gh stack submit`, `gh stack init feat/x`, `gh stack add feat/x-3`, `gh stack --help`,
+		`bash -c "gh stack view $X"`, `eval "gh stack submit --auto $X"`,
 	}
 	for _, cmd := range deny {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
@@ -165,6 +171,13 @@ func TestDecideNestedOnDeployBranch(t *testing.T) {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
 			t.Errorf("want deny: %s", cmd)
 		}
+	}
+}
+
+func TestStackAliasMessage(t *testing.T) {
+	dir, opts := mkWorkspace(t)
+	if d := Decide(`gh stack alias gs`, dir, noenv, nil, opts); !d.Deny || !strings.Contains(d.Message, "gh stack alias") {
+		t.Errorf("want alias deny, got %+v", d)
 	}
 }
 
