@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -252,7 +253,7 @@ func TestKitSandbox_UnionKeepsSandboxThenRemovesOnlyKit(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"git *", "zenify e2e login *"}
+	want := []string{"git *", "zenify e2e login *", "gh stack *"}
 	if !doc.Sandbox.Enabled || !reflect.DeepEqual(doc.Sandbox.Excluded, want) {
 		t.Fatalf("sandbox=%+v", doc.Sandbox)
 	}
@@ -260,7 +261,7 @@ func TestKitSandbox_UnionKeepsSandboxThenRemovesOnlyKit(t *testing.T) {
 		t.Fatalf("sandbox ensure must not touch the allow record: %v", err)
 	}
 	removed, err := RemoveKitSandbox(home, false)
-	if err != nil || removed != 1 {
+	if err != nil || removed != len(KitSandboxExcluded) {
 		t.Fatalf("removed=%d err=%v", removed, err)
 	}
 	raw, _ = os.ReadFile(settingsPath(home))
@@ -293,5 +294,14 @@ func TestKitAllowRules_BrokerMCPServers(t *testing.T) {
 		if !found {
 			t.Errorf("KitAllowRules lacks %q", want)
 		}
+	}
+}
+
+func TestKitStackEntries(t *testing.T) {
+	if !slices.Contains(KitAllowRules, "Bash(gh stack *)") {
+		t.Error("KitAllowRules missing Bash(gh stack *)")
+	}
+	if !slices.Contains(KitSandboxExcluded, "gh stack *") {
+		t.Error("KitSandboxExcluded missing gh stack *")
 	}
 }
