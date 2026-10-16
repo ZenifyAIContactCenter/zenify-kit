@@ -41,7 +41,7 @@ Stamp each check with its `fp`; step 7 requires every stamp == the current one.
 
    **Three data checks, triggered mechanically** — trigger commands, tenant and pagination rules in
    `references/false-green-and-data.md`; run them and say which the diff could not trigger. **A DB
-   query added or changed → `Skill(znf:explain-plan)`** (`COLLSCAN` / `Seq Scan` / scan-ratio): an unwaived **BLOCKING** finding
+   query added or changed → `Skill(znf:explain-plan)`** (`COLLSCAN` / `Seq Scan` / MySQL `type=ALL` / scan-ratio): an unwaived **BLOCKING** finding
    (`// znf:db-perf-ok: <reason>`) means **ship does not complete**; ADVISORY prints under `## DB-Perf`.
 
 5. **Independent review** — never pick the reviewer. First `BASE=$(git merge-base <baseRef> HEAD)` (`baseRef` in `.claude/worktree.json`). Write the pack to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md`, then **`Skill(znf:review)`** with `BASE=$BASE` and the pack: it picks the tier and returns `findings[]` (`znf:review/_shared/finding-schema.md`) plus `shippable`. CRITICAL/HIGH enter the fix loop, MEDIUM/LOW and each `Declined:` line the board.
