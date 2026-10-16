@@ -43,4 +43,5 @@ Mọi skill của kit, kể cả bộ skill coding theo stack (Express, NestJS, 
 | [/znf:sweep](./sweep) | Dọn dẹp một task đã xong — dừng dev server, đóng workspace, xoá worktree và branch, trên mọi repo task đó chạm tới. |
 | [/znf:understand-codebase](./understand-codebase) | Đọc song song từng phần của một codebase lạ để dựng bản đồ cấu trúc ban đầu. |
 | [/znf:using-zenify-kit](./using-zenify-kit) | Cách ZenifyKit chọn skill nào cho việc gì, dựa trên thứ bạn chưa biết chứ không phải quy mô việc. |
+| [/znf:where](./where) | Tóm tắt task đang tới đâu (mục tiêu, đã xong, đang làm, bước tiếp, blocker) từ hội thoại và state thật của kit: ledger, branch, worktree, PR. |
 | [/znf:writing-plans](./writing-plans) | Viết plan thực thi chi tiết từ một spec, trước khi chạm vào code. |
