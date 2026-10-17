@@ -383,7 +383,11 @@ func TestDrift_OneAtATimePerLogin(t *testing.T) {
 	// One prd drift asks Grafana 3 times (loki, tempo, prometheus).
 	waitArrivals := func(n int) {
 		for i := 0; i < n; i++ {
-			<-gate.arrived
+			select {
+			case <-gate.arrived:
+			case <-time.After(5 * time.Second):
+				t.Fatalf("Grafana saw %d of %d requests within 5s", i, n)
+			}
 		}
 	}
 	gs := httptest.NewServer(gate)

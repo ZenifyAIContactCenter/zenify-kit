@@ -45,6 +45,7 @@ type Handler struct {
 	cat         *catalog.Catalog
 	fetchedAt   time.Time
 	lastFailure time.Time // zero = the last fetch succeeded (or none failed yet)
+	lastErr     error     // the error of the fetch at lastFailure; never holds the token
 }
 
 // Option tunes a Handler.
@@ -78,8 +79,9 @@ func New(cfg config.Catalog, token string, opts ...Option) *Handler {
 
 // Current returns the catalog and the age in seconds of the copy served (0 =
 // fresh). When GitHub cannot be asked or serves an unusable file, the last
-// good copy is returned with its age; with none, the error. After a failure
-// with a stale copy, GitHub is not asked again for retryInterval.
+// good copy is returned with its age; with none, the error. After a failure,
+// GitHub is not asked again for retryInterval: callers get the stale copy, or
+// with none the last error, at once.
 func (h *Handler) Current(ctx context.Context) (*catalog.Catalog, int, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -90,18 +92,24 @@ func (h *Handler) Current(ctx context.Context) (*catalog.Catalog, int, error) {
 	stale := func() (*catalog.Catalog, int, error) {
 		return h.cat, int(now.Sub(h.fetchedAt) / time.Second), nil
 	}
-	if h.cat != nil && !h.lastFailure.IsZero() && now.Sub(h.lastFailure) < retryInterval {
+	if !h.lastFailure.IsZero() && now.Sub(h.lastFailure) < retryInterval {
+		if h.cat == nil {
+			return nil, 0, h.lastErr
+		}
 		return stale()
 	}
 	c, err := h.fetch(ctx)
 	if err != nil {
-		h.lastFailure = now
+		// A caller that went away is not a GitHub failure; do not hold off others.
+		if ctx.Err() == nil {
+			h.lastFailure, h.lastErr = h.now(), err // after the fetch: a 10s timeout still gets the full hold-off
+		}
 		if h.cat == nil {
 			return nil, 0, err
 		}
 		return stale()
 	}
-	h.cat, h.fetchedAt, h.lastFailure = c, now, time.Time{}
+	h.cat, h.fetchedAt, h.lastFailure, h.lastErr = c, now, time.Time{}, nil
 	return c, 0, nil
 }
 

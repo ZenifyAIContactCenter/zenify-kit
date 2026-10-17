@@ -248,17 +248,90 @@ func TestCatalog_RetryBackoffAfterFailure(t *testing.T) {
 	}
 }
 
-// TestCatalog_NeverFetchedRetriesEveryCall: with no stale copy there is
-// nothing to serve, so every call asks GitHub (and gets the error).
-func TestCatalog_NeverFetchedRetriesEveryCall(t *testing.T) {
-	h, st, _ := setup(t, 500, "boom")
-	for i := 0; i < 3; i++ {
-		if _, _, err := h.Current(context.Background()); err == nil {
-			t.Fatal("want error")
+// TestCatalog_ColdStartBackoff: with no copy to serve, a failure is returned
+// at once for retryInterval without asking GitHub, then GitHub is asked again.
+func TestCatalog_ColdStartBackoff(t *testing.T) {
+	h, st, clk := setup(t, 500, "boom")
+	calls := func() int32 { return atomic.LoadInt32(&st.calls) }
+	_, _, first := h.Current(context.Background())
+	if first == nil || calls() != 1 {
+		t.Fatalf("first: err %v calls %d, want error and 1", first, calls())
+	}
+	for _, d := range []time.Duration{0, 29 * time.Second} {
+		clk.advance(d)
+		if _, _, err := h.Current(context.Background()); err == nil || err.Error() != first.Error() || calls() != 1 {
+			t.Fatalf("within %s: err %v calls %d, want %q and 1", retryInterval, err, calls(), first)
 		}
 	}
-	if n := atomic.LoadInt32(&st.calls); n != 3 {
-		t.Fatalf("stub calls = %d, want 3", n)
+	code, _, raw := post(h)
+	if code != 503 || !strings.Contains(raw, api.CodeCatalogUnavailable) || strings.Contains(raw, "ghp_secret_token") || calls() != 1 {
+		t.Fatalf("ServeHTTP within hold-off: %d %s calls %d", code, raw, calls())
+	}
+	clk.advance(time.Second) // 30s after the failure
+	if _, _, err := h.Current(context.Background()); err == nil || calls() != 2 {
+		t.Fatalf("at %s: err %v calls %d, want error and 2", retryInterval, err, calls())
+	}
+	st.set(200, goodYAML)
+	clk.advance(retryInterval)
+	if c, age, err := h.Current(context.Background()); err != nil || age != 0 || c.Services[0].ID != "svc-a" || calls() != 3 {
+		t.Fatalf("recovery: %+v %d %v calls %d", c, age, err, calls())
+	}
+}
+
+func TestCatalog_ConcurrentColdStartAsksOnce(t *testing.T) {
+	h, st, _ := setup(t, 500, "boom")
+	var wg sync.WaitGroup
+	codes := make(chan int, 20)
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); c, _, _ := post(h); codes <- c }()
+	}
+	wg.Wait()
+	close(codes)
+	for c := range codes {
+		if c != 503 {
+			t.Errorf("code = %d, want 503", c)
+		}
+	}
+	if n := atomic.LoadInt32(&st.calls); n != 1 {
+		t.Fatalf("stub calls = %d, want 1", n)
+	}
+}
+
+// TestCatalog_HoldOffCountsFromFetchEnd: lastFailure is taken after the
+// fetch returns, so a slow failing fetch still gets the full hold-off.
+func TestCatalog_HoldOffCountsFromFetchEnd(t *testing.T) {
+	clk := &clock{}
+	clk.t.Store(1_000_000)
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		clk.advance(10 * time.Second) // the fetch "takes" 10s
+		w.WriteHeader(500)
+	}))
+	t.Cleanup(srv.Close)
+	h := New(config.Catalog{Repo: "org/monitoring", Path: "catalog.yaml", Ref: "main"}, "ghp_secret_token",
+		WithBaseURL(srv.URL), WithClock(clk.now))
+	_, _, _ = h.Current(context.Background())
+	clk.advance(25 * time.Second) // 35s after the fetch began, 25s after it failed
+	_, _, _ = h.Current(context.Background())
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("calls = %d, want 1 (hold-off counts from the end of the fetch)", n)
+	}
+}
+
+func TestCatalog_CancelledCallerDoesNotHoldOff(t *testing.T) {
+	h, st, _ := setup(t, 200, goodYAML)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := h.Current(ctx); err == nil {
+		t.Fatal("want error for a cancelled caller")
+	}
+	if c, _, err := h.Current(context.Background()); err != nil || c.Services[0].ID != "svc-a" {
+		t.Fatalf("next caller: %+v %v", c, err)
+	}
+	if n := atomic.LoadInt32(&st.calls); n != 1 {
+		t.Fatalf("stub calls = %d, want 1", n)
 	}
 }
 
