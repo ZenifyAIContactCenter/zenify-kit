@@ -84,7 +84,7 @@ func Decide(command, callCwd string, getenv func(string) string, onCommit func(r
 }
 
 func deny(sub, why string) Decision {
-	return Decision{Deny: true, Message: "🚫 [git-guard] BLOCKED — " + why + " (" + sub + ")."}
+	return Decision{Deny: true, Message: "🚫 [git-guard] BLOCKED — " + why + " (" + sub + ")." + stopHint}
 }
 
 func firstNonEmpty(vs ...string) string {

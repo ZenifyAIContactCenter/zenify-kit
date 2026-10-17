@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"strings"
 
@@ -49,31 +48,8 @@ func urlHosts(v string) []string {
 	return out
 }
 
-// prodHosts lists the distinct non-loopback hostnames of every *_PRD key in f.
-func prodHosts(f *devenv.File) []gitguard.ProdHost {
-	var out []gitguard.ProdHost
-	seen := map[string]bool{}
-	for _, k := range f.Keys() {
-		if !strings.HasSuffix(k, "_PRD") {
-			continue
-		}
-		v, _ := f.Get(k)
-		for _, h := range urlHosts(v) {
-			if h == "localhost" || h == "::1" || h == "0.0.0.0" || seen[h] {
-				continue
-			}
-			if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
-				continue
-			}
-			seen[h] = true
-			out = append(out, gitguard.ProdHost{Key: k, Host: h})
-		}
-	}
-	return out
-}
-
-// guardOptions resolves the workspace from cwd and reads its _PRD hosts.
-// Anything missing or unreadable yields fewer options, never an error.
+// guardOptions resolves the workspace from cwd and names its .zenify/.env.
+// No workspace yields empty options, never an error.
 func guardOptions(cwd string, getenv func(string) string) gitguard.Options {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -82,12 +58,7 @@ func guardOptions(cwd string, getenv func(string) string) gitguard.Options {
 	if !ok {
 		return gitguard.Options{}
 	}
-	path := devenv.Path(ws)
-	f, err := devenv.Load(path)
-	if err != nil {
-		return gitguard.Options{EnvFile: path}
-	}
-	return gitguard.Options{EnvFile: path, ProdHosts: prodHosts(f)}
+	return gitguard.Options{EnvFile: devenv.Path(ws)}
 }
 
 // decideFromPayload is the pure core: parse the hook payload, call

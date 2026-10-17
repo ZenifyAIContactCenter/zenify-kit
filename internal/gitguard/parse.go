@@ -74,9 +74,8 @@ const maxNestDepth = 3
 
 // Cmd is one simple command after wrapper stripping.
 type Cmd struct {
-	Argv         []string // word values per FR-1.6; "" for a word with an expansion
-	Src          []string // source text of each word, quotes removed
-	PRDExpansion bool     // some word expands a parameter whose name ends in _PRD
+	Argv []string // word values per FR-1.6; "" for a word with an expansion
+	Src  []string // source text of each word, quotes removed
 	// RedirArgv/RedirSrc: input-redirect words (<, <>, <&, <<<) of the
 	// statement, kept apart from Argv so git parsing never sees them;
 	// RedirSrc also holds heredoc bodies.
@@ -92,9 +91,6 @@ const redirectCmd = "<redirect>"
 type Parsed struct {
 	Cmds        []Cmd
 	Unparseable bool // strict re-parse failed, nesting > 3, or a dangerous git alias (FR-1.5)
-	// PRDExpansion: a _PRD parameter expansion anywhere in the AST at any
-	// nesting level (assignments, declarations, redirects); Task 2's R5 checks it.
-	PRDExpansion bool
 }
 
 // Parse parses command into its simple commands. A recovering parser yields
@@ -118,9 +114,6 @@ func parseInto(src string, depth int, p *Parsed) {
 	if file == nil && err != nil {
 		return
 	}
-	if hasPRDExpansion(file) {
-		p.PRDExpansion = true
-	}
 	redirs := map[*syntax.CallExpr][]*syntax.Redirect{}
 	syntax.Walk(file, func(node syntax.Node) bool {
 		if st, ok := node.(*syntax.Stmt); ok {
@@ -139,12 +132,6 @@ func parseInto(src string, depth int, p *Parsed) {
 		for i, w := range ce.Args {
 			cmd.Argv[i] = wordValue(w)
 			cmd.Src[i] = wordSrc(src, w)
-			cmd.PRDExpansion = cmd.PRDExpansion || hasPRDExpansion(w)
-		}
-		for _, a := range ce.Assigns {
-			if a.Value != nil && hasPRDExpansion(a.Value) {
-				cmd.PRDExpansion = true
-			}
 		}
 		cmd = addRedirs(stripWrappers(cmd), src, redirs[ce])
 		p.Cmds = append(p.Cmds, cmd)
@@ -231,19 +218,6 @@ func wordSrc(src string, w *syntax.Word) string {
 	return quoteStripper.Replace(src[s:e])
 }
 
-// hasPRDExpansion reports a parameter expansion of a name ending in _PRD
-// anywhere under n ($X_PRD, ${X_PRD}, ${X_PRD:-…}).
-func hasPRDExpansion(n syntax.Node) bool {
-	found := false
-	syntax.Walk(n, func(node syntax.Node) bool {
-		if pe, ok := node.(*syntax.ParamExp); ok && pe.Param != nil && strings.HasSuffix(pe.Param.Value, "_PRD") {
-			found = true
-		}
-		return !found
-	})
-	return found
-}
-
 func basename(tok string) string {
 	return tok[strings.LastIndexByte(tok, '/')+1:]
 }
@@ -289,6 +263,12 @@ func wrapperLen(argv []string) int {
 		return skipFlags(argv, []string{"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"})
 	case "xargs":
 		return skipFlags(argv, []string{"-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a"})
+	case "zenify": // `zenify data run [flags] -- <child>` runs everything after the first --
+		if len(argv) > 2 && argv[1] == "data" && argv[2] == "run" {
+			if i := slices.Index(argv, "--"); i >= 0 {
+				return i + 1
+			}
+		}
 	}
 	return 0
 }

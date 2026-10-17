@@ -7,34 +7,29 @@ import (
 	"strings"
 )
 
-// ProdHost is one production host and the _PRD key it came from.
-type ProdHost struct{ Key, Host string } // Host lower-cased hostname
-
 // Options carries what the rules need from the workspace.
 type Options struct {
-	ProdHosts []ProdHost
-	EnvFile   string // absolute path of the workspace .zenify/.env; "" = unknown
+	EnvFile string // absolute path of the workspace .zenify/.env; "" = unknown
 }
 
 func denyHint(sub, why, hint string) Decision {
 	return Decision{Deny: true, Message: "🚫 [git-guard] BLOCKED — " + why + " (" + sub + "). " + hint}
 }
 
+// stopHint ends every deny that only a human may lift.
+const stopHint = " Dừng và báo người dùng; không thử biến thể." //znf:allow-lang
+
 var (
-	denyForcePush  = denyHint("push", "force push", "Chạy tay bằng ! nếu thật sự cần.")                                                   //znf:allow-lang
-	denyPRMerge    = denyHint("gh", "merge PR", "Merge là việc của người: chạy tay bằng ! nếu thật sự cần.")                              //znf:allow-lang
-	denyStack      = denyHint("gh", "merge/gỡ/ghép stack", "Merge hay gỡ stack là việc của người: chạy tay bằng ! nếu thật sự cần.")      //znf:allow-lang
-	denyStackAlias = denyHint("gh", "gh stack alias", "Alias tạo lệnh tắt (gs) mà guard không nhận ra: chạy tay bằng ! nếu thật sự cần.") //znf:allow-lang
-	denyWtForce    = denyHint("wt", "wt rm --force", "Worktree có thể chưa merge — chạy tay bằng ! nếu thật sự cần.")                     //znf:allow-lang
-	denyEnvFile    = denyHint("env-file", "đọc .zenify/.env", "Dùng zenify db-read hoặc zenify env list.")                                //znf:allow-lang
-	denyParse      = denyHint("parse", "lệnh không phân tích được có từ khoá nguy hiểm", "Viết lại lệnh, không lồng chuỗi.")              //znf:allow-lang
+	denyForcePush  = denyHint("push", "force push", "Chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                                               //znf:allow-lang
+	denyPRMerge    = denyHint("gh", "merge PR", "Merge là việc của người: chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                          //znf:allow-lang
+	denyStack      = denyHint("gh", "merge/gỡ/ghép stack", "Merge hay gỡ stack là việc của người: chạy tay bằng ! nếu thật sự cần."+stopHint)                                                  //znf:allow-lang
+	denyStackAlias = denyHint("gh", "gh stack alias", "Alias tạo lệnh tắt (gs) mà guard không nhận ra: chạy tay bằng ! nếu thật sự cần."+stopHint)                                             //znf:allow-lang
+	denyWtForce    = denyHint("wt", "wt rm --force", "Worktree có thể chưa merge — chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                 //znf:allow-lang
+	denyEnvFile    = denyHint("env-file", "đọc .zenify/.env", "Không đọc .zenify/.env. Cần DB: đọc bằng zenify db-read / redis-read; chạy script bằng zenify data run --stg|--prd -- <lệnh>.") //znf:allow-lang
+	denyParse      = denyHint("parse", "lệnh không phân tích được có từ khoá nguy hiểm", "Viết lại lệnh, không lồng chuỗi; script DB chạy thẳng qua zenify data run.")                         //znf:allow-lang
 )
 
-func denyProdHost(key string) Decision {
-	return denyHint("prod-host", "host của "+key, "Production chỉ đọc qua zenify db-read.") //znf:allow-lang
-}
-
-// checkRules applies R2–R8 to a parsed command; Deny=false when none fires.
+// checkRules applies R2–R5, R7 and R8 to a parsed command; Deny=false when none fires.
 func checkRules(p Parsed, raw, base string, getenv func(string) string, opts Options) Decision {
 	envFile := canonical(opts.EnvFile)
 	for _, c := range p.Cmds {
@@ -53,18 +48,11 @@ func checkRules(p Parsed, raw, base string, getenv func(string) string, opts Opt
 		if exempt(c) {
 			continue
 		}
-		if c.PRDExpansion || isPrintenvPRD(c.Argv) ||
-			readsEnvFile(slices.Concat(c.Argv, c.RedirArgv), base, envFile, getenv) {
+		if readsEnvFile(slices.Concat(c.Argv, c.RedirArgv), base, envFile, getenv) {
 			return denyEnvFile
 		}
-		if key := matchHost(strings.ToLower(strings.Join(slices.Concat(c.Src, c.RedirSrc), " ")), opts.ProdHosts); key != "" {
-			return denyProdHost(key)
-		}
 	}
-	if p.PRDExpansion { // _PRD expansion outside any Cmd (assignment, redirect, declaration)
-		return denyEnvFile
-	}
-	if p.Unparseable && dangerousRaw(raw, opts.ProdHosts) {
+	if p.Unparseable && dangerousRaw(raw) {
 		return denyParse
 	}
 	return Decision{}
@@ -222,27 +210,16 @@ func isWtForceRm(argv []string) bool {
 	return slices.Contains(rest, "--force") || slices.Contains(rest, "-f")
 }
 
-// exempt: FR-5.2 commands that R5 and R6 skip.
+// exempt: FR-5.2 commands that R5 skips. `zenify data run … --` is not
+// here: Parse strips it as a wrapper, so its child is checked.
 func exempt(c Cmd) bool {
 	a := c.Argv
 	switch basename(a[0]) {
 	case "zenify":
-		return len(a) > 1 && (a[1] == "db-read" ||
+		return len(a) > 1 && (a[1] == "db-read" || a[1] == "redis-read" ||
 			(a[1] == "env" && len(a) > 2 && slices.Contains([]string{"list", "set", "edit"}, a[2])))
 	case "chmod", "ls", "stat", "test", "[":
 		return true
-	}
-	return false
-}
-
-func isPrintenvPRD(argv []string) bool {
-	if basename(argv[0]) != "printenv" {
-		return false
-	}
-	for _, a := range argv[1:] {
-		if strings.HasSuffix(a, "_PRD") {
-			return true
-		}
 	}
 	return false
 }
@@ -252,13 +229,15 @@ var dirReaders = []string{"grep", "rg", "ag", "find", "tar", "zip", "cp", "rsync
 	"cat", "head", "tail", "less", "more", "strings", "xxd", "od"}
 
 // readsEnvFile: some word resolves, from base, to the workspace .zenify/.env
-// or to a .env name or a glob inside .zenify; or argv[0] is a dirReader and a
-// word resolves to the .zenify directory itself.
+// or to a .env name or a glob inside .zenify (outside .zenify/data-runs, the
+// `zenify data run` records); or argv[0] is a dirReader and a word resolves to
+// the .zenify directory itself.
 func readsEnvFile(argv []string, base, envFile string, getenv func(string) string) bool {
 	if envFile == "" {
 		return false
 	}
 	zdir := filepath.Dir(envFile)
+	runs := filepath.Join(zdir, "data-runs")
 	reader := slices.Contains(dirReaders, basename(argv[0]))
 	for _, a := range argv {
 		if a == "" {
@@ -269,6 +248,9 @@ func readsEnvFile(argv []string, base, envFile string, getenv func(string) strin
 			return true
 		}
 		name, d := filepath.Base(p), canonical(filepath.Dir(p))
+		if d == runs || strings.HasPrefix(d, runs+string(filepath.Separator)) {
+			continue
+		}
 		if (d == zdir || strings.HasPrefix(d, zdir+string(filepath.Separator))) &&
 			(name == ".env" || strings.ContainsAny(name, "*?[")) {
 			return true
@@ -289,39 +271,10 @@ func canonical(path string) string {
 	return path
 }
 
-func isHostByte(b byte) bool {
-	return b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '.' || b == '-'
-}
-
-// matchHost returns the key of the first host found in s (lower-cased) at a
-// host boundary, "" when none.
-func matchHost(s string, hosts []ProdHost) string {
-	for _, h := range hosts {
-		if h.Host == "" {
-			continue
-		}
-		for i := 0; ; {
-			j := strings.Index(s[i:], h.Host)
-			if j < 0 {
-				break
-			}
-			start, end := i+j, i+j+len(h.Host)
-			if (start == 0 || !isHostByte(s[start-1])) && (end == len(s) || !isHostByte(s[end])) {
-				return h.Key
-			}
-			i = start + 1
-		}
-	}
-	return ""
-}
-
-var (
-	reRawPushF  = regexp.MustCompile(`push.* -f( |$)`)
-	reRawPRDVar = regexp.MustCompile(`\$\{?[a-z0-9_]*_prd\b`)
-)
+var reRawPushF = regexp.MustCompile(`push.* -f( |$)`)
 
 // dangerousRaw: R7 keywords in the raw command (quotes dropped, lower-cased).
-func dangerousRaw(raw string, hosts []ProdHost) bool {
+func dangerousRaw(raw string) bool {
 	s := strings.ToLower(quoteStripper.Replace(raw))
 	for _, k := range []string{"pr merge", "/merge", "--force", ".zenify/.env",
 		"stack merge", "stack link", "stack unstack", "stack delete", "stack alias", "gh-stack ", "/unstack"} {
@@ -329,5 +282,5 @@ func dangerousRaw(raw string, hosts []ProdHost) bool {
 			return true
 		}
 	}
-	return reRawPushF.MatchString(s) || reRawPRDVar.MatchString(s) || matchHost(s, hosts) != ""
+	return reRawPushF.MatchString(s)
 }
