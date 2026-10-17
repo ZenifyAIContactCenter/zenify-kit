@@ -91,8 +91,9 @@ func TestDataRun_MasksValues(t *testing.T) {
 			t.Errorf("%q leaked: stdout %q stderr %q", s, out, errOut)
 		}
 	}
-	if !strings.Contains(out, "***") {
-		t.Errorf("stdout %q shows no mask", out)
+	// The final printf has no newline: only the flush on Close emits it.
+	if want := "***\n***"; out != want {
+		t.Errorf("stdout = %q, want %q", out, want)
 	}
 }
 
@@ -224,13 +225,12 @@ func TestDataRun_WriteLog(t *testing.T) {
 
 func TestDataRun_LeadOnly(t *testing.T) {
 	f := newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL}, "")
-	// A dry-run recorded for stg must stay usable after a refused prd call.
 	if _, _, err := runData("--stg", "--", "true"); err != nil {
 		t.Fatal(err)
 	}
-	// Re-point the broker at a refusing stub.
+	// A refused --write must leave the dry-run record unclaimed (MarkUsed only after the broker accepts).
 	g := newDataFixtureAt(t, f.ws, nil, api.CodeLeadOnly)
-	_, _, err := runData("--prd", "--", "true")
+	_, _, err := runData("--stg", "--write", "--", "true")
 	if exitcode.Code(err) != exitcode.Fail || err == nil || !strings.HasPrefix(err.Error(), "data run: ") || !strings.Contains(err.Error(), "prd needs role lead") {
 		t.Fatalf("err = %v (exit %d)", err, exitcode.Code(err))
 	}
