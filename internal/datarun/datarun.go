@@ -94,7 +94,7 @@ func (s Store) RecordDryRun(key, env, login string, exit int) error {
 		if err != nil {
 			return err
 		}
-		f, err := os.OpenFile(filepath.Join(s.Dir, id+".json"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		f, err := os.OpenFile(filepath.Join(s.Dir, id+".json"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304 -- path is the store dir plus an id this function generated
 		if errors.Is(err, os.ErrExist) {
 			continue
 		}
@@ -110,7 +110,7 @@ func (s Store) RecordDryRun(key, env, login string, exit int) error {
 }
 
 func (s Store) load(path string) (record, bool) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path comes from listing the store dir, not external input
 	if err != nil {
 		return record{}, false
 	}
