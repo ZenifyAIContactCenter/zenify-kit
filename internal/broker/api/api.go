@@ -3,6 +3,8 @@
 // JSON tags may only be added to, never renamed or removed.
 package api
 
+import "github.com/ZenifyAIContactCenter/zenify-kit/internal/catalog"
+
 // Error codes returned in Error.Error.
 const (
 	CodeGitHubTokenInvalid = "github_token_invalid" //nolint:gosec // G101 -- an error code name, not a credential
@@ -37,6 +39,9 @@ const (
 	CodeNotAllowed = "not_allowed"
 	// CodeLoginDenied (403): the login is in the broker's deny_logins.
 	CodeLoginDenied = "login_denied"
+	// CodeCatalogUnavailable (503): the catalog was never fetched and GitHub
+	// cannot be reached (or serves an unusable file).
+	CodeCatalogUnavailable = "catalog_unavailable"
 )
 
 // Roles a broker JWT carries.
@@ -137,4 +142,12 @@ type CredsRequest struct {
 // An engine with no secret is absent.
 type CredsResponse struct {
 	Values map[string]string `json:"values"`
+}
+
+// CatalogResponse is the 200 body of POST /catalog. StaleAgeSeconds is 0 for a
+// fresh catalog and the age of the last good fetch when GitHub could not be
+// reached or served an unusable file.
+type CatalogResponse struct {
+	Catalog         *catalog.Catalog `json:"catalog"`
+	StaleAgeSeconds int              `json:"stale_age_seconds"`
 }

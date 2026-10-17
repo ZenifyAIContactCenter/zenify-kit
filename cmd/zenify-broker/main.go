@@ -18,6 +18,7 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/catalogsvc"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/config"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/creds"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/e2e"
@@ -108,6 +109,11 @@ func run(cfgPath string) error {
 		return err
 	}
 
+	var catalogH http.Handler
+	if cfg.Catalog != nil {
+		catalogH = catalogsvc.New(*cfg.Catalog, s.CatalogGitHubToken)
+	}
+
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 	sigs := make(chan os.Signal, 2)
@@ -130,6 +136,7 @@ func run(cfgPath string) error {
 		Redis:      redisH,
 		E2E:        e2eH,
 		Creds:      credsH,
+		Catalog:    catalogH,
 		MCP: map[string]http.Handler{
 			"grafana": mcpproxy.New("grafana", grafanaUp, nil, log),
 			"posthog": mcpproxy.New("posthog", posthogUp, mcpproxy.PostHogHeaders(s.POSTHOGAPIKey, cfg.PostHog.ProjectID), log),

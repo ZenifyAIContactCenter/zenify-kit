@@ -440,6 +440,48 @@ func TestCredsRouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
 	}
 }
 
+func TestServer_CatalogRouteAbsentWithoutHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	New(Deps{JWTKey: testKey}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/catalog", strings.NewReader("{}")))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("route should be absent when Deps.Catalog is nil, got %d", rec.Code)
+	}
+}
+
+func TestServer_CatalogRouteAudited(t *testing.T) {
+	var hit int32
+	var buf bytes.Buffer
+	h := New(Deps{JWTKey: testKey, Audit: &audit.Logger{W: &buf},
+		Catalog: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { atomic.AddInt32(&hit, 1) })})
+	call := func(bearer string) int {
+		req := httptest.NewRequest(http.MethodPost, "/catalog", strings.NewReader("{}"))
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for _, role := range []string{"dev", "lead"} {
+		tok, _, err := auth.Issue(testKey, "octocat", role, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := call(tok); got != http.StatusOK {
+			t.Errorf("role %s: got %d, want 200", role, got)
+		}
+	}
+	if got := call(""); got != http.StatusUnauthorized {
+		t.Errorf("no token: got %d, want 401", got)
+	}
+	if n := atomic.LoadInt32(&hit); n != 2 {
+		t.Errorf("handler hits = %d, want 2", n)
+	}
+	if !strings.Contains(buf.String(), `"endpoint":"/catalog"`) {
+		t.Errorf("401 not audited under /catalog: %s", buf.String())
+	}
+}
+
 func TestRequire401IsAudited(t *testing.T) { // FR-6.1 / SC-8
 	noop := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
 	expired, _, _ := auth.Issue(testKey, "octocat", "lead", time.Now().Add(-2*time.Hour))
