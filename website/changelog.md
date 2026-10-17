@@ -8,6 +8,19 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.40.0
+
+*2026-10-17*
+
+- **Agent tự chạy script dữ liệu:** lệnh mới `zenify data run --stg|--prd [--write] [--lumi] -- <lệnh>` chạy script với credential do broker cấp, nạp vào bộ nhớ của tiến trình con, không ghi ra file và không cần ai dán credential. Agent tự chạy script đọc hoặc sửa dữ liệu, không còn nhờ bạn chạy `!`. Xem [Chạy script với credential broker](/guides/broker-client#data-run).
+  - Ghi trên staging mở cho cả lead và dev; ghi trên production chỉ lead.
+  - `--write` chỉ chạy khi cùng lệnh đó đã dry-run thành công trong 60 phút trước, mỗi lần dry-run dùng được một lần; sửa script sau dry-run thì phải dry-run lại. Thiếu dry-run, lệnh thoát mã 7 và in đúng lệnh dry-run cần chạy.
+  - Dry-run nhận credential chỉ đọc; output che giá trị credential và host. Lần chạy `--write` ghi log cạnh script trong `docs/scripts/<repo>/`.
+  - `--lumi` cấp thêm credential MySQL và Qdrant của lumi-agent.
+- **Thay đổi phá vỡ:** manifest bỏ 5 key của lumi-agent (`LUMI_MYSQL_URL_STG/PRD`, `QDRANT_URL_STG/PRD`, `LUMI_APP_URL_STG`). `zenify up --apply` xoá chúng khỏi `.zenify/.env`; từ bản này broker cấp chúng qua `zenify data run --lumi`.
+- **Broker:** endpoint mới `POST /creds`; secret ghi và secret lumi là tuỳ chọn trong cấu hình broker. Người vận hành broker xem [Secret ghi và lumi](/guides/broker-host#secret-ghi-lumi), và nâng cấp broker trước khi teammate cài bản này.
+- `zenify doctor` có mục `broker-creds`: kiểm tra broker cấp được credential staging; broker cũ chưa có `/creds` thì mục này bỏ qua.
+
 ## v0.39.0
 
 *2026-10-17*
