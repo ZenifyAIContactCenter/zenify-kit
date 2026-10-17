@@ -310,3 +310,34 @@ func TestDataRun_PrdLeadOnlyNamesRole(t *testing.T) {
 		t.Fatalf("requests = %+v", *f.reqs)
 	}
 }
+
+// A dry-run binds --lumi: one without it does not unlock `--write --lumi`, and vice versa.
+func TestDataRun_DryRunLumiMismatch(t *testing.T) {
+	for _, tc := range []struct{ name, dry, write string }{
+		{"dry plain, write lumi", "", "--lumi"},
+		{"dry lumi, write plain", "--lumi", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL}, "")
+			flags := func(extra ...string) []string {
+				var out []string
+				for _, a := range append([]string{"--stg"}, extra...) {
+					if a != "" {
+						out = append(out, a)
+					}
+				}
+				return append(out, "--", "sh", "-c", "true")
+			}
+			if _, _, err := runData(flags(tc.dry)...); err != nil {
+				t.Fatal(err)
+			}
+			_, _, err := runData(flags("--write", tc.write)...)
+			if exitcode.Code(err) != exitcode.NeedsDryRun {
+				t.Fatalf("exit %d (err %v), want 7", exitcode.Code(err), err)
+			}
+			if len(*f.reqs) != 1 {
+				t.Fatalf("broker saw %d requests, want 1 (the dry-run)", len(*f.reqs))
+			}
+		})
+	}
+}

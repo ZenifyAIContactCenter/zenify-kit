@@ -91,13 +91,13 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 	}
 	ws := workspaceOrCwd("", cmd.ErrOrStderr())
 	store := datarun.Store{Dir: filepath.Join(ws, ".zenify", "data-runs"), Now: d.now}
-	key, err := datarun.Key(argv, cwd, os.ReadFile)
+	key, err := datarun.Key(argv, cwd, openForKey)
 	if err != nil {
 		return dataErr(exitcode.Fail, "%v", err)
 	}
 	var recID string
 	if write {
-		recID, err = store.FindForWrite(key, env)
+		recID, err = store.FindForWrite(key, env, lumi)
 		if errors.Is(err, datarun.ErrNoDryRun) {
 			return dataErr(exitcode.NeedsDryRun, "--write needs a dry-run of the same command first (within %d minutes); run: zenify data run --%s -- %s", //znf:allow-lang
 				int(datarun.Window.Minutes()), env, strings.Join(argv, " "))
@@ -186,7 +186,7 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 	}
 	if !write {
 		_, login, _, _ := brokerclient.CachedIdentity(cacheHome(bc))
-		if rerr := store.RecordDryRun(key, env, login, code); rerr != nil && code == 0 {
+		if rerr := store.RecordDryRun(key, env, lumi, login, code); rerr != nil && code == 0 {
 			return dataErr(exitcode.Fail, "cannot record the dry-run: %v", rerr) //znf:allow-lang
 		}
 	}
@@ -194,6 +194,11 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 		return exitcode.New(code, fmt.Errorf("data run: command exited with code %d", code))
 	}
 	return nil
+}
+
+// openForKey is the datarun.Key seam: it opens each argv file the key hashes.
+func openForKey(p string) (io.ReadCloser, error) {
+	return os.Open(p) //nolint:gosec // G304 -- a file the user named in their own command
 }
 
 func cacheHome(bc *brokerclient.Client) string {

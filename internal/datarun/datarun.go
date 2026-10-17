@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,8 +25,9 @@ var ErrNoDryRun = errors.New("no matching dry-run record")
 
 // Key hashes argv (minus tokens exactly "--dry-run"), cwd, and the contents of
 // every remaining argv that names an existing regular file. Fields are
-// length-prefixed, so token boundaries are unambiguous.
-func Key(argv []string, cwd string, readFile func(string) ([]byte, error)) (string, error) {
+// length-prefixed, so token boundaries are unambiguous. Each file is streamed
+// through open into its own sha256, and only that digest enters the key.
+func Key(argv []string, cwd string, open func(string) (io.ReadCloser, error)) (string, error) {
 	h := sha256.New()
 	put := func(tag byte, b []byte) {
 		var n [8]byte
@@ -45,11 +47,11 @@ func Key(argv []string, cwd string, readFile func(string) ([]byte, error)) (stri
 			p = filepath.Join(cwd, p)
 		}
 		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
-			b, err := readFile(p)
+			d, err := fileDigest(p, open)
 			if err != nil {
 				return "", fmt.Errorf("read %s: %w", a, err)
 			}
-			files = append(files, b)
+			files = append(files, d)
 		}
 	}
 	put('c', []byte(cwd))
@@ -57,6 +59,22 @@ func Key(argv []string, cwd string, readFile func(string) ([]byte, error)) (stri
 		put('f', f)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func fileDigest(p string, open func(string) (io.ReadCloser, error)) ([]byte, error) {
+	f, err := open(p)
+	if err != nil {
+		return nil, err
+	}
+	h := sha256.New()
+	_, err = io.Copy(h, f)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
 
 // Store keeps one JSON file per dry-run under Dir.
@@ -69,6 +87,7 @@ type record struct {
 	ID    string    `json:"id"`
 	Key   string    `json:"key"`
 	Env   string    `json:"env"`
+	Lumi  bool      `json:"lumi"`
 	Login string    `json:"login"`
 	Time  time.Time `json:"time"`
 	Exit  int       `json:"exit"`
@@ -82,14 +101,14 @@ func (s Store) now() time.Time {
 }
 
 // RecordDryRun writes a new record for one dry-run execution.
-func (s Store) RecordDryRun(key, env, login string, exit int) error {
+func (s Store) RecordDryRun(key, env string, lumi bool, login string, exit int) error {
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
 	}
 	t := s.now()
 	for i := 0; ; i++ {
 		id := fmt.Sprintf("%d-%d", t.UnixNano(), i)
-		r := record{ID: id, Key: key, Env: env, Login: login, Time: t, Exit: exit}
+		r := record{ID: id, Key: key, Env: env, Lumi: lumi, Login: login, Time: t, Exit: exit}
 		b, err := json.Marshal(r)
 		if err != nil {
 			return err
@@ -122,8 +141,8 @@ func (s Store) load(path string) (record, bool) {
 }
 
 // FindForWrite returns the id of the newest unused exit-0 record with the same
-// key and env within Window, else ErrNoDryRun.
-func (s Store) FindForWrite(key, env string) (string, error) {
+// key, env and lumi within Window, else ErrNoDryRun.
+func (s Store) FindForWrite(key, env string, lumi bool) (string, error) {
 	ents, err := os.ReadDir(s.Dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -139,7 +158,7 @@ func (s Store) FindForWrite(key, env string) (string, error) {
 			continue
 		}
 		r, ok := s.load(filepath.Join(s.Dir, e.Name()))
-		if !ok || r.Exit != 0 || r.Key != key || r.Env != env || now.Sub(r.Time) > Window {
+		if !ok || r.Exit != 0 || r.Key != key || r.Env != env || r.Lumi != lumi || now.Sub(r.Time) > Window {
 			continue
 		}
 		if !found || r.Time.After(best.Time) {
