@@ -62,7 +62,7 @@ func TestRules(t *testing.T) {
 		`zenify data run --stg -- git push --force origin x`, `zenify data run --prd --write -- gh pr merge 1`,
 		`zenify data run --stg -- bash -c 'gh pr merge 1'`,
 		`zenify --no-color data run --stg -- gh pr merge 1`, `zenify data --no-color run -- git push --force`,
-		`zenify db-read --manifest /tmp/m.yaml collections`, `zenify --no-color redis-read --manifest=/tmp/m.yaml get k`,
+		`zenify db-read --manifest /tmp/m.yaml collections`, `zenify --manifest /tmp/m.yaml db-read collections`, `zenify --no-color redis-read --manifest=/tmp/m.yaml get k`,
 	}
 	allow := []string{
 		`go test ./...`, `git push origin feat/x`, `git push -u origin feat/x`, `gh pr create --title t`,
@@ -144,12 +144,22 @@ func TestRuleEnvFilePath(t *testing.T) {
 		{ws, `gh pr create --body "sửa .zenify/.env"`, false},                 //znf:allow-lang
 		{repo, `grep -rn ".zenify/.env" internal/`, false},
 		{ws, `cat .zenify/data-runs/*.log`, false},
-		{ws, `rg x .zenify/data-runs/*`, false},
+		{ws, `rg x .zenify/data-runs/*`, true}, // the glob reaches the link to .env
 		{ws, `cat .zenify/data-runs/../.env`, true},
 		{ws, `cat .zenify/data-runs/{..,}/.env`, true},
-		{ws, `cat .zenify/data-runs/{x,../../.env}`, true},
+		{ws, `cat .zenify/data-runs/{x,../.env}`, true},
 		{ws, `cat .zenify/data-runs/*/../.env`, true},
-		{ws, `cat .zenify/data-runs/link`, true}, // symlink to .env, made below
+		{ws, `cat .zenify/data-runs/link`, true}, // symlink to .env, made in mkWorkspace
+		{ws, `cat .zenify/data-runs/l*`, true},
+		{ws, `cat .zenif{y,}/.env`, true},
+		{ws, `cat {.zenify,x}/.e{nv,}`, true},
+		{ws, `cat .zenif{x..z}/.env`, true},
+		{ws, `cat .zenify/data-runs/d/../.env`, true},
+		{ws, `ln -s ../.env .zenify/data-runs/x`, true},
+		{ws, `ln -s ../.env x`, false},
+		{ws, `cat .zenify/data-runs/x.json`, false},
+		{filepath.Join(ws, ".zenify", "data-runs"), `awk '{print $1}' x.log`, false},
+		{ws, `echo {a,b}{1..3}`, false},
 		{ws, `zenify --no-color data run --stg -- cat .zenify/.env`, true},
 		{ws, `zenify redis-read --prd get .zenify/.env`, false},
 		{ws, `zenify data run -- cat .zenify/.env`, true},

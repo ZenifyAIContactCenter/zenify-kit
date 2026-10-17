@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -235,7 +236,9 @@ func isBrokerManifestFlag(argv []string) bool {
 	if basename(argv[0]) != "zenify" {
 		return false
 	}
-	if sub := zenifySub(argv); len(sub) == 0 || sub[0] != "db-read" && sub[0] != "redis-read" {
+	// Any word, not just the first: a flag value before the subcommand
+	// (`zenify --manifest m db-read`) shifts it.
+	if sub := zenifySub(argv); !slices.Contains(sub, "db-read") && !slices.Contains(sub, "redis-read") {
 		return false
 	}
 	return slices.ContainsFunc(argv, func(t string) bool {
@@ -258,29 +261,148 @@ func readsEnvFile(argv []string, base, envFile string, getenv func(string) strin
 	zdir := filepath.Dir(envFile)
 	runs := filepath.Join(zdir, "data-runs")
 	reader := slices.Contains(dirReaders, basename(argv[0]))
-	for _, a := range argv {
-		if a == "" {
-			continue
-		}
-		p := resolveDir(base, a, getenv)
-		if cp := canonical(p); cp == envFile || reader && cp == zdir {
-			return true
-		}
-		// A brace word is expanded by the shell, not here: it never earns the
-		// data-runs exemption, and inside .zenify it counts as a glob.
-		name, d, brace := filepath.Base(p), canonical(filepath.Dir(p)), strings.Contains(a, "{")
-		// filepath.Dir cleans `*/..` away, so test the raw directory part.
-		if !brace && !strings.ContainsAny(a[:max(strings.LastIndex(a, "/"), 0)], "*?[") &&
-			(d == runs || strings.HasPrefix(d, runs+string(filepath.Separator))) {
-			continue
-		}
-		if (d == zdir || strings.HasPrefix(d, zdir+string(filepath.Separator))) &&
-			(name == ".env" || brace || strings.ContainsAny(name, "*?[")) {
-			return true
+	linker := basename(argv[0]) == "ln"
+	under := func(d, dir string) bool { return d == dir || strings.HasPrefix(d, dir+string(filepath.Separator)) }
+	for _, w := range argv {
+		for _, a := range expandBraces(w) {
+			if a == "" {
+				continue
+			}
+			p := resolveDir(base, a, getenv)
+			if cp := canonical(p); cp == envFile || reader && cp == zdir {
+				return true
+			}
+			name, d := filepath.Base(p), canonical(filepath.Dir(p))
+			if linker && under(d, zdir) { // a link planted in .zenify can point anywhere
+				return true
+			}
+			// The data-runs records are readable; a `..` or a glob in the directory
+			// part (filepath.Dir cleans `*/..` away) never earns that, and a glob is
+			// expanded here so a link it reaches cannot lead back to .env.
+			if !strings.Contains(a, "..") && !strings.ContainsAny(a[:max(strings.LastIndex(a, "/"), 0)], "*?[") && under(d, runs) {
+				if m, _ := filepath.Glob(p); slices.ContainsFunc(m, func(f string) bool { return canonical(f) == envFile }) {
+					return true
+				}
+				continue
+			}
+			if under(d, zdir) && (name == ".env" || strings.ContainsAny(name, "*?[")) {
+				return true
+			}
 		}
 	}
 	return false
 }
+
+// expandBraces expands a word the way the shell's brace expansion would —
+// comma lists and {a..z}/{1..9} ranges, nested — up to maxBraceWords results.
+func expandBraces(w string) []string {
+	out := []string{}
+	var walk func(string)
+	walk = func(s string) {
+		if len(out) >= maxBraceWords {
+			return
+		}
+		open, close, alts := braceGroup(s)
+		if open < 0 {
+			out = append(out, s)
+			return
+		}
+		for _, a := range alts {
+			walk(s[:open] + a + s[close+1:])
+		}
+	}
+	walk(w)
+	return out
+}
+
+const maxBraceWords = 256
+
+// braceGroup finds the first {…} in s that expands (a top-level comma or a
+// range) and returns its bounds and alternatives; open < 0 when there is none.
+func braceGroup(s string) (open, close int, alts []string) {
+	for i := 0; i < len(s); i++ {
+		if s[i] != '{' {
+			continue
+		}
+		depth, start := 0, i+1
+		var parts []string
+		for j := i; j < len(s); j++ {
+			switch s[j] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					parts = append(parts, s[start:j])
+					if len(parts) > 1 {
+						return i, j, parts
+					}
+					if r := braceRange(parts[0]); r != nil {
+						return i, j, r
+					}
+					j = len(s) // not an expansion: look for the next {
+				}
+			case ',':
+				if depth == 1 {
+					parts = append(parts, s[start:j])
+					start = j + 1
+				}
+			}
+		}
+	}
+	return -1, -1, nil
+}
+
+var reBraceRange = regexp.MustCompile(`^(-?\d+|[a-zA-Z])\.\.(-?\d+|[a-zA-Z])$`)
+
+// braceRange expands `a..z` or `1..9`; nil when body is not a range.
+func braceRange(body string) []string {
+	m := reBraceRange.FindStringSubmatch(body)
+	if m == nil {
+		return nil
+	}
+	var r []string
+	if x, y, ok := atoi2(m[1], m[2]); ok {
+		for i, step := x, sign(y-x); len(r) < maxBraceWords; i += step {
+			r = append(r, strconv.Itoa(i))
+			if i == y {
+				break
+			}
+		}
+		return r
+	}
+	if len(m[1]) == 1 && len(m[2]) == 1 && !isDigit(m[1][0]) && !isDigit(m[2][0]) {
+		x, y := m[1][0], m[2][0]
+		for c := x; ; {
+			r = append(r, string(c))
+			if c == y {
+				break
+			}
+			if y > x {
+				c++
+			} else {
+				c--
+			}
+		}
+		return r
+	}
+	return nil
+}
+
+func atoi2(a, b string) (int, int, bool) {
+	x, err1 := strconv.Atoi(a)
+	y, err2 := strconv.Atoi(b)
+	return x, y, err1 == nil && err2 == nil
+}
+
+func sign(n int) int {
+	if n < 0 {
+		return -1
+	}
+	return 1
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 // canonical cleans path and resolves symlinks in its longest existing prefix,
 // so a missing tail (a glob or brace word) still compares on the real directory.
