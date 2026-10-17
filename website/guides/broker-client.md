@@ -91,7 +91,7 @@ zenify redis-read --prd LRANGE some:list 0 49
 ## Chạy script với credential broker: `data run` {#data-run}
 
 ```bash
-zenify data run --stg -- node docs/scripts/contact-center-be/fix-tags.js
+zenify data run --stg -- node docs/scripts/contact-center-be/fix-tags.js --dry-run
 zenify data run --stg --write -- node docs/scripts/contact-center-be/fix-tags.js
 ```
 

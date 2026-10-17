@@ -36,7 +36,7 @@ Chạy không có `--write` là dry-run: credential chỉ đọc, lệnh ghi m�
 ## Ví dụ
 
 ```bash
-zenify data run --stg -- node docs/scripts/contact-center-be/fix-tags.js
+zenify data run --stg -- node docs/scripts/contact-center-be/fix-tags.js --dry-run
 zenify data run --stg --write -- node docs/scripts/contact-center-be/fix-tags.js
 ```
 

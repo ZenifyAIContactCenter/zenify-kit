@@ -2,8 +2,9 @@
 
 A data script reads or changes records in a shared database: a backfill, a repair, a one-off
 export. The agent writes it, dry-runs it, and runs it through `zenify data run`. The command hands
-the script short-lived credentials from the broker, so nobody pastes a credential and nobody has
-to run anything by hand.
+the script credentials from the broker, so nobody pastes a credential and nobody has to run
+anything by hand. The credentials are long-lived and held only in the child process's memory; do
+not print them.
 
 Hard rules:
 
@@ -35,6 +36,14 @@ lands next to it.
 8. **Write the command down.** The `--write` run must be the same command minus --dry-run: same
    interpreter, same script path, same arguments, same working directory. If the dry-run needs
    an extra argument the write does not, the two commands differ and the gate refuses the write.
+9. **Name the script file directly in argv** (`node docs/scripts/<repo>/x.js`), never through
+   `sh -c` or `npm run`: the gate hashes only files named in argv, so indirection hides the
+   script from it.
+10. **Keep outputs out of argv.** A file named in argv that the dry-run creates or changes
+    changes the key, and the `--write` run then refuses. Write outputs to a path the command
+    line does not name.
+11. **A prd sample shows ids and counts only**, never customer PII fields (names, phones,
+    emails, message text). Output masking covers credentials only, not PII.
 
 ## Running it
 
@@ -83,8 +92,9 @@ Production data is the user's call, not the agent's.
 | You see | Meaning | What to do |
 |---|---|---|
 | `prd needs role lead (yours: dev)`, exit 1 (broker code `lead_only`) | Production credentials are for role lead only | Stop. Tell the user; a lead runs the production step, or the user changes the plan. Do not hunt for other credentials. |
-| exit 7 (`--write needs a dry-run of the same command first`) | No successful dry-run of this exact command for this env in the last 60 minutes, or it was already used | Run the dry-run the message prints, then the write. A write consumes its dry-run: another write needs another dry-run. |
+| exit 7 (`--write needs a dry-run of the same command first`) | No successful dry-run of this exact command for this env (and the same `--lumi` setting) in the last 60 minutes, or it was already used | Run the dry-run the message prints, then the write. A write consumes its dry-run: another write needs another dry-run. |
 | `broker_misconfigured` | The operator has not configured write credentials for that env | Report it to the user as an operator task. Do not try another path. |
+| `broker chưa hỗ trợ /creds — cần nâng cấp broker`, exit 1 | The broker answered 404: it is older than `zenify data run` and has no `/creds` endpoint | Report it to the user as an operator task (upgrade the broker). Do not fall back to a credential file. |
 | `data run needs a broker` | The workspace manifest declares no broker | Report it; do not fall back to a credential file. |
 | any other non-zero exit | The script itself failed | Read the masked output, fix the script, dry-run again. |
 

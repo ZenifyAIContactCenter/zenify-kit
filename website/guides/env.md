@@ -16,7 +16,7 @@ Sau `zenify up --apply`, `~/.claude/settings.json` có luật deny `Read(//<work
 
 ## Khung file
 
-`zenify up --apply` dựng `.zenify/.env` như một file cấu hình: mọi key của manifest luôn có mặt, key chưa có giá trị là dòng `KEY=` rỗng. Mỗi key có hai dòng comment ngay phía trên: dòng 1 là mô tả; dòng 2 là `Lấy: <howTo> · <phạm vi> · secret hoặc không secret · <repo>`, trong đó `Lấy:` chỉ hiện khi manifest có `howTo`, và `<repo>` chỉ hiện với key khai trong một repo (như `lumi-agent`). Các key xếp theo bốn mục, đúng thứ tự: Staging, Tooling, Production, rồi Custom. Ví dụ rút gọn (file thật liệt kê đủ mọi key của manifest):
+`zenify up --apply` dựng `.zenify/.env` như một file cấu hình: mọi key của manifest luôn có mặt, key chưa có giá trị là dòng `KEY=` rỗng. Mỗi key có hai dòng comment ngay phía trên: dòng 1 là mô tả; dòng 2 là `Lấy: <howTo> · <phạm vi> · secret hoặc không secret · <repo>`, trong đó `Lấy:` chỉ hiện khi manifest có `howTo`, và `<repo>` chỉ hiện với key khai riêng trong một repo. Các key xếp theo bốn mục, đúng thứ tự: Staging, Tooling, Production, rồi Custom. Ví dụ rút gọn (file thật liệt kê đủ mọi key của manifest):
 
 ```bash
 # zenify-kit — credential dev. Kit giữ khung; bạn chỉ điền giá trị. Key trống = chưa cấu hình.
@@ -117,9 +117,9 @@ Thiếu một trong hai, kit không xoá gì: key vẫn nằm trong file (ở m�
 `zenify up` không có `--apply` xem trước thay đổi, chỉ in tên key; wizard `zenify up` hiện cùng các dòng này trên màn hình kế hoạch, trước khi hỏi xác nhận:
 
 ```
-env: thêm OPENROUTER_API_KEY
+env: thêm NEW_KEY
 env: xoá OLD_KEY
-env: custom thiếu mô tả OPENROUTER_API_KEY
+env: custom thiếu mô tả MY_KEY
 ```
 
 Muốn giữ giá trị của một key sắp bị xoá, chép nó sang tên khác hoặc sang nơi khác trước khi chạy `zenify up --apply`.

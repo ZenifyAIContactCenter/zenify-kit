@@ -76,6 +76,8 @@ lumi:
   app_url_stg: https://lumi.example.invalid
 ```
 
+Chỉ thêm khối `lumi:` vào `broker.yaml` sau khi image mới (có `POST /creds`) đã chạy. Image cũ đọc config với `KnownFields` nên từ chối khoá lạ và không khởi động: trước khi quay lại một image cũ, xoá khối `lumi:` khỏi `broker.yaml`.
+
 **URI phải dùng được từ máy dev.** Broker chuyển nguyên chuỗi kết nối cho máy dev, và script chạy trên máy dev, nên mọi URI trên (kể cả `MONGO_URL_*`, `MYSQL_URL_*`, `REDIS_URL_*` và các URI ghi) phải trỏ tới địa chỉ mà máy dev tới được (qua VPN hay hostname công khai), không phải địa chỉ chỉ host broker mới thấy như `localhost` hay IP nội bộ của docker network.
 
 Kiểm tra từ máy dev: chạy một lệnh chỉ in tên biến, không in giá trị.
