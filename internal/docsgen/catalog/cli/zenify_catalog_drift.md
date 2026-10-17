@@ -1,0 +1,34 @@
+---
+summary: So danh mục với tên đang có thật trong Loki, Tempo và Prometheus trong 24 giờ qua.
+---
+## Khi nào dùng
+
+Khi muốn biết danh mục còn khớp thực tế không: có app mới chạy mà chưa vào danh mục, hoặc tên trong danh mục đã không còn dữ liệu.
+
+## Kết quả
+
+In bảng `ENV  SOURCE  UNLISTED  MISSING  ERROR`, mỗi dòng là một môi trường và một nguồn (`loki`, `tempo`, `prometheus`):
+
+| Cột | Ý nghĩa |
+|---|---|
+| `UNLISTED` | Có thật trong 24 giờ qua nhưng không có trong danh mục lẫn danh sách `ignore` |
+| `MISSING` | Có trong danh mục nhưng không có dữ liệu trong 24 giờ qua |
+| `ERROR` | Lý do không đọc được nguồn đó; khi đó hai cột kia để trống |
+
+Giá trị rỗng in là `-`. Lệnh thoát mã 0 khi mọi nguồn không có `UNLISTED`, `MISSING` và `ERROR`; ngược lại thoát mã 6. Mã 5 khi chưa cấu hình danh mục (như `zenify catalog`).
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--prd` | Chỉ kiểm production. Không dùng chung với `--stg`. |
+| `--stg` | Chỉ kiểm staging. Không dùng chung với `--prd`. |
+| `--manifest` | File manifest có `broker:` quyết định broker. |
+| `--overlay` | File overlay cá nhân. |
+
+## Ví dụ
+
+```bash
+zenify catalog drift
+zenify catalog drift --stg
+```
