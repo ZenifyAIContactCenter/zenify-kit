@@ -111,7 +111,7 @@ func run(cfgPath string) error {
 
 	var catalogH http.Handler
 	if cfg.Catalog != nil {
-		catalogH = catalogsvc.New(*cfg.Catalog, s.CatalogGitHubToken)
+		catalogH = catalogsvc.New(*cfg.Catalog, s.CatalogGitHubToken, catalogsvc.WithAudit(log))
 	}
 
 	ctx, cancel := context.WithCancelCause(context.Background())

@@ -17,6 +17,8 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/catalogsvc"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/config"
 )
 
 const ghToken = "gho_fake-test-token"
@@ -449,10 +451,15 @@ func TestServer_CatalogRouteAbsentWithoutHandler(t *testing.T) {
 }
 
 func TestServer_CatalogRouteAudited(t *testing.T) {
-	var hit int32
+	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("version: 1\n"))
+	}))
+	t.Cleanup(gh.Close)
 	var buf bytes.Buffer
-	h := New(Deps{JWTKey: testKey, Audit: &audit.Logger{W: &buf},
-		Catalog: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { atomic.AddInt32(&hit, 1) })})
+	log := &audit.Logger{W: &buf}
+	h := New(Deps{JWTKey: testKey, Audit: log,
+		Catalog: catalogsvc.New(config.Catalog{Repo: "org/m", Path: "c.yaml", Ref: "main"}, "tok",
+			catalogsvc.WithBaseURL(gh.URL), catalogsvc.WithAudit(log))})
 	call := func(bearer string) int {
 		req := httptest.NewRequest(http.MethodPost, "/catalog", strings.NewReader("{}"))
 		if bearer != "" {
@@ -474,11 +481,19 @@ func TestServer_CatalogRouteAudited(t *testing.T) {
 	if got := call(""); got != http.StatusUnauthorized {
 		t.Errorf("no token: got %d, want 401", got)
 	}
-	if n := atomic.LoadInt32(&hit); n != 2 {
-		t.Errorf("handler hits = %d, want 2", n)
+	rows := map[string]int{}
+	for _, l := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var e struct {
+			Endpoint, Role string
+			Status         int
+		}
+		if err := json.Unmarshal([]byte(l), &e); err != nil || e.Endpoint != "/catalog" {
+			t.Fatalf("bad audit row %q: %v", l, err)
+		}
+		rows[fmt.Sprintf("%s/%d", e.Role, e.Status)]++
 	}
-	if !strings.Contains(buf.String(), `"endpoint":"/catalog"`) {
-		t.Errorf("401 not audited under /catalog: %s", buf.String())
+	if rows["dev/200"] != 1 || rows["lead/200"] != 1 || rows["/401"] != 1 || len(rows) != 3 {
+		t.Errorf("audit rows = %v, want one each of dev/200, lead/200, /401", rows)
 	}
 }
 

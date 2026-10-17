@@ -1,6 +1,7 @@
 package catalogsvc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/config"
 )
 
@@ -121,7 +124,7 @@ func TestCatalog_BadYAMLNotCached(t *testing.T) {
 	clk.advance(6 * time.Minute)
 	st.set(200, "version: [unclosed")
 	code, resp, _ := post(h)
-	if code != 200 || resp.StaleAgeSeconds <= 0 || resp.Catalog.Services[0].ID != "svc-a" {
+	if code != 200 || resp.StaleAgeSeconds != 360 || resp.Catalog.Services[0].ID != "svc-a" {
 		t.Fatalf("bad yaml: code %d age %d catalog %+v", code, resp.StaleAgeSeconds, resp.Catalog)
 	}
 	st.set(200, goodYAML2)
@@ -161,5 +164,52 @@ func TestCatalog_ConcurrentCurrent(t *testing.T) {
 	wg.Wait()
 	if n := atomic.LoadInt32(&st.calls); n != 1 {
 		t.Fatalf("stub calls = %d, want 1", n)
+	}
+}
+
+func TestCatalog_AuditsEveryRequest(t *testing.T) {
+	st := &stub{status: 200, body: goodYAML}
+	srv := httptest.NewServer(st)
+	t.Cleanup(srv.Close)
+	var buf bytes.Buffer
+	h := New(config.Catalog{Repo: "org/monitoring", Path: "catalog.yaml", Ref: "main"}, "ghp_secret_token",
+		WithBaseURL(srv.URL), WithAudit(&audit.Logger{W: &buf}), WithTTL(0))
+	key := []byte("test-key-0123456789abcdef0123456")
+	tok, _, err := auth.Issue(key, "octocat", "dev", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(h http.Handler) int {
+		req := httptest.NewRequest(http.MethodPost, "/catalog", strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rec := httptest.NewRecorder()
+		auth.RequireAudited(key, &audit.Logger{W: &buf}, func(*http.Request) string { return "/catalog" }, h).ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if c := call(h); c != 200 {
+		t.Fatalf("first call = %d", c)
+	}
+	// A fresh handler that has never fetched: 503.
+	st.set(500, "boom")
+	h2 := New(config.Catalog{Repo: "org/monitoring", Path: "catalog.yaml", Ref: "main"}, "ghp_secret_token",
+		WithBaseURL(srv.URL), WithAudit(&audit.Logger{W: &buf}))
+	if c := call(h2); c != 503 {
+		t.Fatalf("second call = %d", c)
+	}
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("audit rows = %d, want 2: %v", len(lines), lines)
+	}
+	for i, want := range []int{200, 503} {
+		var e map[string]any
+		if err := json.Unmarshal([]byte(lines[i]), &e); err != nil {
+			t.Fatal(err)
+		}
+		if e["endpoint"] != "/catalog" || e["login"] != "octocat" || e["role"] != "dev" || e["status"] != float64(want) {
+			t.Errorf("row %d = %s, want status %d", i, lines[i], want)
+		}
+	}
+	if strings.Contains(buf.String(), "ghp_secret_token") {
+		t.Error("audit leaks the token")
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/config"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/catalog"
@@ -26,7 +27,7 @@ const (
 	maxFileBytes   = 1 << 20
 )
 
-// Handler is the POST /catalog handler. It must sit behind auth.Require.
+// Handler is the POST /catalog handler. It must sit behind auth.RequireAudited.
 type Handler struct {
 	cfg     config.Catalog
 	token   string
@@ -34,6 +35,7 @@ type Handler struct {
 	ttl     time.Duration
 	now     func() time.Time
 	client  *http.Client
+	audit   *audit.Logger // nil = no audit rows
 
 	mu        sync.Mutex // held across fetch+cache so concurrent callers share one fetch
 	cat       *catalog.Catalog
@@ -48,6 +50,9 @@ func WithBaseURL(u string) Option { return func(h *Handler) { h.baseURL = u } }
 
 // WithClock replaces time.Now (tests).
 func WithClock(now func() time.Time) Option { return func(h *Handler) { h.now = now } }
+
+// WithAudit makes ServeHTTP write one audit row per request.
+func WithAudit(l *audit.Logger) Option { return func(h *Handler) { h.audit = l } }
 
 // WithTTL overrides the 5-minute cache lifetime.
 func WithTTL(d time.Duration) Option { return func(h *Handler) { h.ttl = d } }
@@ -108,9 +113,18 @@ func (h *Handler) fetch(ctx context.Context) (*catalog.Catalog, error) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := h.now()
+	status := http.StatusOK
+	defer func() {
+		if h.audit != nil {
+			h.audit.Log(audit.Entry{TS: start, Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
+				Endpoint: "/catalog", Op: r.Method, Status: status})
+		}
+	}()
 	c, age, err := h.Current(r.Context())
 	if err != nil {
-		auth.WriteError(w, http.StatusServiceUnavailable, api.CodeCatalogUnavailable, err.Error())
+		status = http.StatusServiceUnavailable
+		auth.WriteError(w, status, api.CodeCatalogUnavailable, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
