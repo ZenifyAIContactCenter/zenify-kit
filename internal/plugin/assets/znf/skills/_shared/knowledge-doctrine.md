@@ -113,7 +113,7 @@ The workspace root holds only `repos/ docs/ CLAUDE.md AGENTS.md .claude/ .zenify
 - spec → `docs/specs/<repo>/`; plan → `docs/plans/<repo>/`; release report → `docs/releases/`
 - research draft → `docs/research/<repo>/`; a spec that links it moves it to `docs/reference/<repo>/`
 - session note → `docs/notes/`; handoff to someone else → `docs/handoff/` (swept after 30 days)
-- script the user runs (data fix, backfill, `--dry-run`) and its result files → `docs/scripts/<repo>/`
+- data script (data fix, backfill, `--dry-run`), its before-image and write logs → `docs/scripts/<repo>/`; how to write and run one → `_shared/data-scripts.md`
 - deliverable for people (docx, xlsx, pdf, report) → `docs/exports/`; document the user gives you → `docs/external/`
 - Playwright screenshot/snapshot → call `browser_take_screenshot` without a `filename`; the MCP output dir is pinned
 - code → `repos/<repo>/.worktrees/<slug>/`; kit state → `<repo>/.znf/` (gitignored)

@@ -11,6 +11,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | Mở worktree cho một task, chạy dev server | [zenify wt new](./zenify_wt_new) | [zenify wt ls](./zenify_wt_ls), [zenify wt url](./zenify_wt_url), [zenify wt wire](./zenify_wt_wire), [zenify wt rm](./zenify_wt_rm), [zenify wt sweep](./zenify_wt_sweep) |
 | Sửa lỗi trên production | [zenify hotfix baseref](./zenify_hotfix_baseref) | [zenify wt new](./zenify_wt_new) với `--type hotfix` |
 | Đọc dữ liệu thật trước khi viết code | [zenify db-read](./zenify_db-read) | [zenify db-perf](./zenify_db-perf) |
+| Chạy script dữ liệu với credential từ broker | [zenify data run](./zenify_data_run) | |
 | Quản lý credential cá nhân cho tool dev và agent | [zenify env](./zenify_env) | [zenify env list](./zenify_env_list), [zenify env set](./zenify_env_set), [zenify env exec](./zenify_env_exec), [zenify env edit](./zenify_env_edit) |
 | Kiểm tra thay đổi chạm tài nguyên chung | [zenify gate participants](./zenify_gate_participants) | [zenify spec contracts](./zenify_spec_contracts) |
 | Kiểm spec và plan trước khi code | [zenify analyze](./zenify_analyze) | [zenify standards](./zenify_standards), [zenify spec status](./zenify_spec_status) |

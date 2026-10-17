@@ -118,3 +118,23 @@ type E2EAccountResponse struct {
 // E2ERoles are the roles POST /e2e/account accepts: be's UserRole minus
 // end_user and chatbot.
 var E2ERoles = []string{"administrator", "supervisor", "team_leader", "agent", "sale", "sale_team_leader"}
+
+// Modes POST /creds accepts.
+const (
+	CredsModeRead  = "read"
+	CredsModeWrite = "write"
+)
+
+// CredsRequest is the body of POST /creds. Env is stg|prd, Mode read|write;
+// Lumi opts in to the lumi-agent credentials.
+type CredsRequest struct {
+	Env  string `json:"env"`
+	Mode string `json:"mode"`
+	Lumi bool   `json:"lumi,omitempty"`
+}
+
+// CredsResponse is the 200 body of POST /creds: fixed variable name -> value.
+// An engine with no secret is absent.
+type CredsResponse struct {
+	Values map[string]string `json:"values"`
+}

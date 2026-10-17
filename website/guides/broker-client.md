@@ -57,7 +57,7 @@ Broker cấp role theo team GitHub trong org: thuộc team `leaders` là `lead`,
   - Giới hạn này là rào chắn để agent không vô tình đọc dữ liệu production, không phải ranh giới chống người cố tình dò dữ liệu: `EXPLAIN` của MySQL vẫn đọc trước dòng khớp khoá chính khi lập plan.
 - MCP Grafana, PostHog và tài khoản E2E mở cho cả hai role.
 
-Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev trên prd chỉ dùng db-read: collections, count (no --filter), explain, indexes, stats, tables, sql: EXPLAIN SELECT without subquery, DESCRIBE <table>, SHOW INDEX|COLUMNS|TABLES|CREATE TABLE|TABLE STATUS; redis-read: EXISTS LLEN SCAN SCARD TTL TYPE ZCARD` và không chạy truy vấn nào. Danh sách này do CLI tự in từ bảng quyền của chính nó, nên khớp với broker cùng phiên bản; broker cũ hơn hoặc mới hơn CLI có thể áp danh sách khác, khi đó nâng cấp cả hai lên cùng phiên bản. Khi token cache (`~/.zenify/broker/token.json`) ghi role `dev`, kit từ chối ngay tại máy, không gọi broker; chưa có cache thì broker quyết định. Đầu mỗi phiên Claude Code, hook SessionStart đọc cache này (không gọi mạng) và với dev in một dòng `broker: login=<login> role=dev — prd: …` để agent biết trước giới hạn production. Giới hạn chỉ đọc vẫn áp cho mọi người, kể cả lead. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
+Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev trên prd chỉ dùng db-read: collections, count (no --filter), explain, indexes, stats, tables, sql: EXPLAIN SELECT without subquery, DESCRIBE <table>, SHOW INDEX|COLUMNS|TABLES|CREATE TABLE|TABLE STATUS; redis-read: EXISTS LLEN SCAN SCARD TTL TYPE ZCARD` và không chạy truy vấn nào. Danh sách này do CLI tự in từ bảng quyền của chính nó, nên khớp với broker cùng phiên bản; broker cũ hơn hoặc mới hơn CLI có thể áp danh sách khác, khi đó nâng cấp cả hai lên cùng phiên bản. Khi token cache (`~/.zenify/broker/token.json`) ghi role `dev`, kit từ chối ngay tại máy, không gọi broker; chưa có cache thì broker quyết định. Đầu mỗi phiên Claude Code, hook SessionStart đọc cache này (không gọi mạng). Với dev nó in một dòng `broker: login=<login> role=dev — prd: …` để agent biết trước giới hạn production. Với mọi role đã có cache, nó in thêm một dòng `data: zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; xem _shared/data-scripts.md)`, dev thêm hậu tố `; prd: cần lead`. Giới hạn chỉ đọc của `db-read` và `redis-read` áp cho mọi người, kể cả lead; việc ghi chỉ đi qua `zenify data run`. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
 
 ## Đọc database: `db-read`
 
@@ -88,6 +88,23 @@ zenify redis-read --prd LRANGE some:list 0 49
 - Kết quả `LRANGE`, `ZRANGE`, `XRANGE` bị cắt ở 200 phần tử thì lệnh in `zenify redis-read: kết quả đã bị cắt bớt` ra stderr; stdout chỉ chứa dữ liệu. Không có thông báo nghĩa là danh sách đã trả đủ, kể cả khi đúng 200 phần tử.
 - Không có broker thì lệnh thoát mã 2 với "redis-read cần broker".
 
+## Chạy script với credential broker: `data run` {#data-run}
+
+```bash
+zenify data run --stg -- node docs/scripts/contact-center-be/fix-tags.js --dry-run
+zenify data run --stg --write -- node docs/scripts/contact-center-be/fix-tags.js
+```
+
+`zenify data run` xin credential từ broker rồi chạy lệnh sau `--` với các biến `MONGO_URL`, `MYSQL_URL`, `REDIS_URL` (thêm `LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL` khi có `--lumi`). Bạn không giữ chuỗi kết nối nào trong shell. Agent tự chạy lệnh này, không cần bạn gõ `!`.
+
+- Phải chọn đúng một trong `--stg` hoặc `--prd`; không thì thoát mã 2. `--prd` chỉ dành cho lead.
+- Chạy không có `--write` là dry-run: credential chỉ đọc, lệnh ghi một bản ghi dưới `.zenify/data-runs/`.
+- `--write` xin credential ghi và cần một dry-run thành công của đúng lệnh đó (cùng nội dung script) trong 60 phút; bản ghi dùng một lần. Thiếu bản ghi thì lệnh thoát mã 7 trước khi gọi broker và in lệnh dry-run cần chạy trước. Log lần ghi (đã che giá trị) nằm ở `docs/scripts/<repo>/<script>.<UTC>.<env>.write.log` khi script nằm dưới `docs/scripts/<repo>/`, không thì ở `.zenify/data-runs/`.
+- Stdout và stderr được che giá trị và host. Exit code của lệnh con là exit code của `zenify`.
+- Broker ghi audit mỗi lần xin credential (env, mode, tên biến) và không ghi giá trị. Broker chưa cấu hình secret ghi thì `--write` báo `broker_misconfigured`; nhờ maintainer xem [Secret ghi và lumi](/guides/broker-host#secret-ghi-lumi).
+
+Mục `broker-creds` của `zenify doctor` xin thử credential staging chế độ đọc và in tên các biến broker cấp (không in giá trị); không có broker thì mục này bỏ qua. Lỗi ở đây nghĩa là `zenify data run --stg` cũng sẽ lỗi. Khi `.zenify/.env` còn các key `LUMI_MYSQL_URL_*` hay `QDRANT_URL_*` cũ, mục `env-file` báo `không còn dùng, có thể xoá`: xoá chúng đi, broker cấp thay.
+
 ## Tài khoản E2E: `e2e login --role`
 
 ```bash
@@ -108,4 +125,4 @@ Chưa kiểm tra sandbox Bash của Claude Code có chặn request tới broker 
 
 ## Xem thêm
 
-[`zenify broker token`](/reference/cli/zenify_broker_token), [`zenify broker headers`](/reference/cli/zenify_broker_headers), [`zenify redis-read`](/reference/cli/zenify_redis-read), [`zenify db-read`](/reference/cli/zenify_db-read), [`zenify e2e login`](/reference/cli/zenify_e2e_login), [Đọc dữ liệu thật](/guides/read-real-data), [Dựng host credential broker](/guides/broker-host)
+[`zenify broker token`](/reference/cli/zenify_broker_token), [`zenify broker headers`](/reference/cli/zenify_broker_headers), [`zenify redis-read`](/reference/cli/zenify_redis-read), [`zenify db-read`](/reference/cli/zenify_db-read), [`zenify data run`](/reference/cli/zenify_data_run), [`zenify e2e login`](/reference/cli/zenify_e2e_login), [Đọc dữ liệu thật](/guides/read-real-data), [Dựng host credential broker](/guides/broker-host)

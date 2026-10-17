@@ -10,6 +10,8 @@ const (
 	BadArgs   = 2
 	Cancelled = 3
 	LockHeld  = 4
+	// 5 and 6 are reserved (NoCatalog, Drift).
+	NeedsDryRun = 7
 )
 
 // Error carries an exit code alongside an underlying error.

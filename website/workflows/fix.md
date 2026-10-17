@@ -82,7 +82,7 @@ flowchart TD
 
 ## Worktree
 
-Worktree được tạo trước lần ghi file đầu tiên của vòng phản hồi (test, harness, log debug) hoặc trước lần khởi động server, chậm nhất trước bước 5. Các cách chỉ đọc (đọc log, chạy test có sẵn đang fail, request GET/HEAD vào môi trường đang chạy) không cần worktree. Request có side effect hoặc replay payload chỉ chạy trên port của worktree hoặc target local; ghi vào môi trường dùng chung hay production cần bạn duyệt và đi qua script dry-run do bạn chạy.
+Worktree được tạo trước lần ghi file đầu tiên của vòng phản hồi (test, harness, log debug) hoặc trước lần khởi động server, chậm nhất trước bước 5. Các cách chỉ đọc (đọc log, chạy test có sẵn đang fail, request GET/HEAD vào môi trường đang chạy) không cần worktree. Request có side effect hoặc replay payload chỉ chạy trên port của worktree hoặc target local; ghi vào môi trường dùng chung hay production đi qua `zenify data run`: agent tự chạy dry-run trước rồi `--write`; production chỉ lead chạy được. Xem [Dùng credential broker](/guides/broker-client#data-run).
 
 ## Quyết định thuộc về bạn
 

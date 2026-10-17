@@ -16,15 +16,13 @@ Sau `zenify up --apply`, `~/.claude/settings.json` có luật deny `Read(//<work
 
 ## Khung file
 
-`zenify up --apply` dựng `.zenify/.env` như một file cấu hình: mọi key của manifest luôn có mặt, key chưa có giá trị là dòng `KEY=` rỗng. Mỗi key có hai dòng comment ngay phía trên: dòng 1 là mô tả; dòng 2 là `Lấy: <howTo> · <phạm vi> · secret hoặc không secret · <repo>`, trong đó `Lấy:` chỉ hiện khi manifest có `howTo`, và `<repo>` chỉ hiện với key khai trong một repo (như `lumi-agent`). Các key xếp theo bốn mục, đúng thứ tự: Staging, Tooling, Production, rồi Custom. Ví dụ rút gọn (file thật liệt kê đủ mọi key của manifest):
+`zenify up --apply` dựng `.zenify/.env` như một file cấu hình: mọi key của manifest luôn có mặt, key chưa có giá trị là dòng `KEY=` rỗng. Mỗi key có hai dòng comment ngay phía trên: dòng 1 là mô tả; dòng 2 là `Lấy: <howTo> · <phạm vi> · secret hoặc không secret · <repo>`, trong đó `Lấy:` chỉ hiện khi manifest có `howTo`, và `<repo>` chỉ hiện với key khai riêng trong một repo. Các key xếp theo bốn mục, đúng thứ tự: Staging, Tooling, Production, rồi Custom. Ví dụ rút gọn (file thật liệt kê đủ mọi key của manifest):
 
 ```bash
 # zenify-kit — credential dev. Kit giữ khung; bạn chỉ điền giá trị. Key trống = chưa cấu hình.
 
 # ══ Staging ══
-# URL MySQL của lumi-agent, môi trường staging
-# shared · secret · lumi-agent
-LUMI_MYSQL_URL_STG=
+# (các key do manifest khai báo)
 
 # ══ Custom (ngoài manifest) ══
 # key cá nhân
@@ -45,14 +43,9 @@ Quy tắc khi `zenify up --apply` dựng lại file:
 
 Manifest `manifest/repos.yaml` khai từng key gồm tên, mô tả, phạm vi (`shared` hoặc `personal`), cờ `secret` và nhóm (`group`, mặc định `staging`). Giá trị không bao giờ nằm trong manifest.
 
-| Key | Dùng cho | Phạm vi | Nhóm |
-|---|---|---|---|
-| `LUMI_MYSQL_URL_STG`, `QDRANT_URL_STG`, `LUMI_APP_URL_STG` | MySQL, Qdrant và URL ứng dụng của `lumi-agent` trên staging | shared; `LUMI_APP_URL_STG` không phải secret | staging |
-| `LUMI_MYSQL_URL_PRD`, `QDRANT_URL_PRD` | MySQL và Qdrant của `lumi-agent` trên production | shared | production |
+Manifest zenify hiện không khai key nào cho `lumi-agent`: `LUMI_MYSQL_URL_STG`, `LUMI_MYSQL_URL_PRD`, `QDRANT_URL_STG`, `QDRANT_URL_PRD`, `LUMI_APP_URL_STG` đã bị gỡ, vì broker cấp chúng qua `zenify data run --lumi` ([Dùng credential broker](/guides/broker-client#data-run)). Còn dòng cũ trong `.zenify/.env` thì `zenify doctor` mục `env-file` báo `không còn dùng, có thể xoá`.
 
-Key của `lumi-agent` có mặt trong `.zenify/.env` của mọi workspace, kể cả workspace không clone repo đó; chỉ người làm trên `lumi-agent` mới điền.
-
-Manifest zenify không còn khai các key `MONGO_URL`, `MYSQL_URL`, `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD`, `POSTHOG_API_KEY`, `MONGO_URL_PRD`, `MYSQL_URL_PRD`, `AUDIT_MONGO_URL_PRD`, `REDIS_URL_PRD`: các credential đó đi qua [credential broker](/guides/broker-client). Một manifest không có `broker:` vẫn khai chúng và `zenify db-read`, `zenify e2e` đọc chúng từ `.zenify/.env` như trước, nên các mục dưới đây về `MYSQL_URL` và `--prd` áp dụng cho manifest kiểu đó.
+Manifest zenify không còn khai các key `LUMI_MYSQL_URL_STG`, `LUMI_MYSQL_URL_PRD`, `QDRANT_URL_STG`, `QDRANT_URL_PRD`, `LUMI_APP_URL_STG`, `MONGO_URL`, `MYSQL_URL`, `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD`, `POSTHOG_API_KEY`, `MONGO_URL_PRD`, `MYSQL_URL_PRD`, `AUDIT_MONGO_URL_PRD`, `REDIS_URL_PRD`: các credential đó đi qua [credential broker](/guides/broker-client). Một manifest không có `broker:` vẫn khai chúng và `zenify db-read`, `zenify e2e` đọc chúng từ `.zenify/.env` như trước, nên các mục dưới đây về `MYSQL_URL` và `--prd` áp dụng cho manifest kiểu đó.
 
 Bảng này chỉ mô tả kit dùng key để làm gì. Ai cấp key, địa chỉ cụ thể và cách lấy không thuộc về kit, hỏi trong team.
 
@@ -108,7 +101,7 @@ Lệnh con nhận env hiện có cộng key trong file, mà không cần export 
 
 `zenify env exec` không đưa vào lệnh con các key thuộc nhóm production và các key có tên kết thúc bằng `_PRD`, kể cả khi chúng có sẵn trong môi trường của tiến trình. Muốn đọc production, dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#đoc-production).
 
-Người cần một key production trong script tự chạy thì chạy script đó ở shell của mình, qua `!` ở dấu nhắc của Claude Code hoặc một terminal, với giá trị export ngay tại shell đó. Không bao giờ export key `*_PRD` trong shell mà agent kế thừa.
+Cần credential DB trong một script (staging hay production, đọc hay ghi) thì dùng `zenify data run`, xem [Dùng credential broker](/guides/broker-client#data-run). Không bao giờ export key `*_PRD` trong shell mà agent kế thừa.
 
 `zenify env exec` dành cho lệnh không tương tác. Output chỉ hiện khi có trọn một dòng, nên một lời nhắc nhập liệu không kết thúc bằng xuống dòng sẽ không hiện ra.
 
@@ -124,9 +117,9 @@ Thiếu một trong hai, kit không xoá gì: key vẫn nằm trong file (ở m�
 `zenify up` không có `--apply` xem trước thay đổi, chỉ in tên key; wizard `zenify up` hiện cùng các dòng này trên màn hình kế hoạch, trước khi hỏi xác nhận:
 
 ```
-env: thêm LUMI_MYSQL_URL_PRD, QDRANT_URL_PRD
+env: thêm NEW_KEY
 env: xoá OLD_KEY
-env: custom thiếu mô tả OPENROUTER_API_KEY
+env: custom thiếu mô tả MY_KEY
 ```
 
 Muốn giữ giá trị của một key sắp bị xoá, chép nó sang tên khác hoặc sang nơi khác trước khi chạy `zenify up --apply`.

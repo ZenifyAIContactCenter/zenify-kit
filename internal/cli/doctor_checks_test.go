@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 )
@@ -762,4 +764,83 @@ func TestBrokerCheck_IgnoresCachedToken(t *testing.T) {
 	if ok || tokenHits != 1 || !strings.Contains(d, "left the org") {
 		t.Fatalf("ok=%v hits=%d detail=%q", ok, tokenHits, d)
 	}
+}
+
+// FR-6.2: the five lumi keys the broker now vends are reported as unused, never
+// as a failure, when the trusted manifest declares a broker and no keys.
+func TestEnvFileCheck_RetiredLumiKey(t *testing.T) {
+	mp, _ := brokerFixture(t, nil)
+	useTrustedManifest(t, mp)
+	p := writeEnv(t, "LUMI_MYSQL_URL_PRD=x\nQDRANT_URL_STG=y\n", 0o600)
+	ok, detail := envFileCheck(func() string { return p }, fixedManifest(&manifest.Manifest{}), "linux").Run()
+	if !ok || !strings.Contains(detail, "LUMI_MYSQL_URL_PRD") || !strings.Contains(detail, "QDRANT_URL_STG") || !strings.Contains(detail, "không còn dùng, có thể xoá") { //znf:allow-lang
+		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+}
+
+// FR-6.3: the check names the engines the broker vends and never a value.
+func TestDoctor_BrokerCreds(t *testing.T) {
+	var got api.CredsRequest
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{
+		"/creds": func(w http.ResponseWriter, r *http.Request) {
+			_ = json.NewDecoder(r.Body).Decode(&got)
+			_ = json.NewEncoder(w).Encode(api.CredsResponse{Values: map[string]string{
+				"REDIS_URL": "redis://u:redispw@h", "MONGO_URL": "mongodb://u:mongopw@h",
+			}})
+		},
+	})
+	useTrustedManifest(t, mp)
+	ok, detail := brokerCredsCheck().Run()
+	if !ok || !strings.Contains(detail, "MONGO_URL, REDIS_URL") {
+		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+	if strings.Contains(detail, "redispw") || strings.Contains(detail, "mongopw") {
+		t.Fatalf("value leaked: %q", detail)
+	}
+	if got.Env != "stg" || got.Mode != api.CredsModeRead {
+		t.Fatalf("request = %+v, want env=stg mode=read", got)
+	}
+}
+
+// FR-6.3: no broker, no verdict.
+func TestDoctor_BrokerCredsSkipWithoutBroker(t *testing.T) {
+	useTrustedManifest(t, writeNoBrokerManifest(t))
+	ok, detail := brokerCredsCheck().Run()
+	if !ok || !strings.Contains(detail, "skip") {
+		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+}
+
+func TestDoctor_BrokerCredsFailureNamesNoValue(t *testing.T) {
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{
+		"/creds": func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"forbidden","message":"no"}`))
+		},
+	})
+	useTrustedManifest(t, mp)
+	if ok, detail := brokerCredsCheck().Run(); ok || detail == "" {
+		t.Fatalf("ok=%v detail=%q, want failure", ok, detail)
+	}
+}
+
+// A broker built before /creds answers 404: the check skips with a note, it does not fail.
+func TestDoctor_BrokerCredsSkipOnOldBroker(t *testing.T) {
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{
+		"/creds": func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) },
+	})
+	useTrustedManifest(t, mp)
+	ok, detail := brokerCredsCheck().Run()
+	if !ok || !strings.Contains(detail, "broker chưa có /creds — cần nâng cấp broker") { //znf:allow-lang
+		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+}
+
+func writeNoBrokerManifest(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "repos.yaml")
+	if err := os.WriteFile(p, []byte(noBrokerYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

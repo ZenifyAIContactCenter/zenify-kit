@@ -19,6 +19,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/config"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/creds"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/e2e"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/mcpproxy"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/query"
@@ -91,8 +92,19 @@ func run(cfgPath string) error {
 			AdminEmail: s.E2EAdminEmail, AdminPassword: s.E2EAdminPassword},
 		Key: s.E2EHMACKey, EmailDomain: cfg.E2E.EmailDomain, Domain: cfg.E2E.Domain, Now: time.Now,
 	}}
+	credsH := &creds.Handler{Audit: log,
+		Read: map[string]map[string]string{
+			"stg": nonEmpty("MONGO_URL", s.MongoStg, "MYSQL_URL", s.MySQLStg, "REDIS_URL", s.RedisStg),
+			"prd": nonEmpty("MONGO_URL", s.MongoPrd, "MYSQL_URL", s.MySQLPrd, "REDIS_URL", s.RedisPrd)},
+		Write: map[string]map[string]string{
+			"stg": nonEmpty("MONGO_URL", s.MongoWriteStg, "MYSQL_URL", s.MySQLWriteStg, "REDIS_URL", s.RedisWriteStg),
+			"prd": nonEmpty("MONGO_URL", s.MongoWritePrd, "MYSQL_URL", s.MySQLWritePrd, "REDIS_URL", s.RedisWritePrd)},
+		Lumi: map[string]map[string]string{
+			"stg": nonEmpty("LUMI_MYSQL_URL", s.LumiMySQLStg, "QDRANT_URL", s.QdrantStg, "LUMI_APP_URL", cfg.Lumi.AppURLStg),
+			"prd": nonEmpty("LUMI_MYSQL_URL", s.LumiMySQLPrd, "QDRANT_URL", s.QdrantPrd)},
+	}
 	// A mis-wired handler fails here, at startup, not on every request.
-	if err := errors.Join(queryH.Validate(), redisH.Validate(), e2eH.Validate()); err != nil {
+	if err := errors.Join(queryH.Validate(), redisH.Validate(), e2eH.Validate(), credsH.Validate()); err != nil {
 		return err
 	}
 
@@ -117,6 +129,7 @@ func run(cfgPath string) error {
 		Query:      queryH,
 		Redis:      redisH,
 		E2E:        e2eH,
+		Creds:      credsH,
 		MCP: map[string]http.Handler{
 			"grafana": mcpproxy.New("grafana", grafanaUp, nil, log),
 			"posthog": mcpproxy.New("posthog", posthogUp, mcpproxy.PostHogHeaders(s.POSTHOGAPIKey, cfg.PostHog.ProjectID), log),
@@ -149,4 +162,15 @@ func watchSignals(sigs <-chan os.Signal, cancel context.CancelCauseFunc, exit fu
 	cancel(nil)
 	<-sigs
 	exit(1)
+}
+
+// nonEmpty builds a name -> value map from name, value pairs, skipping empty values.
+func nonEmpty(pairs ...string) map[string]string {
+	m := map[string]string{}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if pairs[i+1] != "" {
+			m[pairs[i]] = pairs[i+1]
+		}
+	}
+	return m
 }

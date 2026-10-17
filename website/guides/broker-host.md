@@ -1,6 +1,6 @@
 # Dựng host credential broker
 
-Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các credential read-only (Mongo, MySQL, Redis, Grafana, PostHog) và cấp cho thành viên org GitHub qua JWT. Dev không cần biết các credential này; phía dev xem [Dùng credential broker](/guides/broker-client). Image `ghcr.io/zenifyaicontactcenter/zenify-broker` (linux/amd64) có sẵn `mongosh`, `mysql` client và `mcp-grafana` 2.0.2. GoReleaser build tag `:<version>` mỗi release; workflow `broker-image` build tag `:main-<sha>` và `:main` mỗi khi code broker trên `main` đổi (hoặc chạy tay), để dựng và kiểm host trước khi tag release. Binary `zenify-broker` không nằm trong brew cask hay scoop.
+Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các credential của Mongo, MySQL, Redis, Grafana, PostHog và cấp cho thành viên org GitHub qua JWT. Credential đọc (`db-read`, `redis-read`) là read-only; credential ghi (tuỳ chọn, xem [Secret ghi và lumi](#secret-ghi-lumi)) chỉ đi qua `zenify data run`. Dev không cần biết các credential này; phía dev xem [Dùng credential broker](/guides/broker-client). Image `ghcr.io/zenifyaicontactcenter/zenify-broker` (linux/amd64) có sẵn `mongosh`, `mysql` client và `mcp-grafana` 2.0.2. GoReleaser build tag `:<version>` mỗi release; workflow `broker-image` build tag `:main-<sha>` và `:main` mỗi khi code broker trên `main` đổi (hoặc chạy tay), để dựng và kiểm host trước khi tag release. Binary `zenify-broker` không nằm trong brew cask hay scoop.
 
 ## Runbook 8 bước
 
@@ -60,6 +60,33 @@ Role: ở `POST /token`, sau khi xác nhận member org, broker từ chối logi
 Broker từ chối khởi động nếu thiếu một biến, và thông báo lỗi chỉ liệt kê tên biến, không in giá trị. `BROKER_JWT_KEY` và `BROKER_E2E_HMAC_KEY` ngắn hơn 32 byte cũng bị từ chối.
 
 `BROKER_JWT_KEY` `BROKER_E2E_HMAC_KEY` `MONGO_URL_STG` `MONGO_URL_PRD` `MYSQL_URL_STG` `MYSQL_URL_PRD` `AUDIT_MONGO_URL_PRD` `REDIS_URL_STG` `REDIS_URL_PRD` `GRAFANA_SERVICE_ACCOUNT_TOKEN` `POSTHOG_API_KEY` `E2E_ADMIN_EMAIL` `E2E_ADMIN_PASSWORD`
+
+## Secret ghi và lumi {#secret-ghi-lumi}
+
+Các biến sau là tuỳ chọn: thiếu thì broker vẫn khởi động. `POST /creds` (lệnh `zenify data run`) chỉ cấp được những gì đã được đặt.
+
+`MONGO_WRITE_URL_STG` `MONGO_WRITE_URL_PRD` `MYSQL_WRITE_URL_STG` `MYSQL_WRITE_URL_PRD` `REDIS_WRITE_URL_STG` `REDIS_WRITE_URL_PRD` `LUMI_MYSQL_URL_STG` `LUMI_MYSQL_URL_PRD` `QDRANT_URL_STG` `QDRANT_URL_PRD`
+
+- Ba cặp `*_WRITE_URL_*` là credential của user có quyền ghi. Thiếu chúng thì yêu cầu `--write` nhận 500 `broker_misconfigured`; yêu cầu đọc không bị ảnh hưởng. Dev chỉ lấy được credential staging; production chỉ dành cho lead.
+- `LUMI_MYSQL_URL_*` và `QDRANT_URL_*` là credential của `lumi-agent`, cấp khi người dùng chạy `zenify data run --lumi`. Trước đây dev tự điền các key này vào `.zenify/.env`; nay broker cấp, manifest không còn hỏi.
+- URL ứng dụng lumi staging đặt trong YAML, không phải env: khối `lumi:` với khoá `app_url_stg`.
+
+```yaml
+lumi:
+  app_url_stg: https://lumi.example.invalid
+```
+
+Chỉ thêm khối `lumi:` vào `broker.yaml` sau khi image mới (có `POST /creds`) đã chạy. Image cũ đọc config với `KnownFields` nên từ chối khoá lạ và không khởi động: trước khi quay lại một image cũ, xoá khối `lumi:` khỏi `broker.yaml`.
+
+**URI phải dùng được từ máy dev.** Broker chuyển nguyên chuỗi kết nối cho máy dev, và script chạy trên máy dev, nên mọi URI trên (kể cả `MONGO_URL_*`, `MYSQL_URL_*`, `REDIS_URL_*` và các URI ghi) phải trỏ tới địa chỉ mà máy dev tới được (qua VPN hay hostname công khai), không phải địa chỉ chỉ host broker mới thấy như `localhost` hay IP nội bộ của docker network.
+
+Kiểm tra từ máy dev: chạy một lệnh chỉ in tên biến, không in giá trị.
+
+```bash
+zenify data run --stg -- sh -c 'env | grep -E "^(MONGO|MYSQL|REDIS)_URL=" | cut -d= -f1'
+```
+
+Kết quả phải liệt kê `MONGO_URL`, `MYSQL_URL`, `REDIS_URL`. Muốn chắc kết nối tới được thì chạy thêm một lệnh đọc thật, ví dụ `zenify db-read collections`. Biến ghi chỉ lộ ra khi chạy `--write` sau một dry-run, xem [Dùng credential broker](/guides/broker-client#data-run).
 
 ## Chạy bằng docker
 

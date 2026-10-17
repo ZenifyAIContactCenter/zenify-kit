@@ -215,10 +215,11 @@ func TestSessionStart_BrokerRoleLine(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", "")
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	devLine := "broker: login=devgal role=dev — prd: " + api.DevPrdSummary() + "; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n" //znf:allow-lang
+	dataLine := "data: zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; xem _shared/data-scripts.md)"            //znf:allow-lang
 	for name, c := range map[string]struct{ cache, want string }{
-		"dev expired": {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2000-01-01T00:00:00Z","login":"devgal","role":"dev"}`, devLine},
-		"lead":        {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"boss","role":"lead"}`, ""},
-		"no role":     {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"old"}`, ""},
+		"dev expired": {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2000-01-01T00:00:00Z","login":"devgal","role":"dev"}`, devLine + dataLine + "; prd: cần lead\n"}, //znf:allow-lang
+		"lead":        {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"boss","role":"lead"}`, dataLine + "\n"},
+		"no role":     {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"old"}`, dataLine + "\n"},
 		"no cache":    {"", ""},
 	} {
 		home := t.TempDir()
@@ -234,7 +235,7 @@ func TestSessionStart_BrokerRoleLine(t *testing.T) {
 		var buf bytes.Buffer
 		runSessionStart(mkWorkspace(t), &buf)
 		if strings.Contains(buf.String(), "jwt-secret-value") || (c.want != "" && !strings.Contains(buf.String(), c.want)) ||
-			(c.want == "" && strings.Contains(buf.String(), "broker: login=")) {
+			(c.want == "" && strings.Contains(buf.String(), "data: zenify data run")) {
 			t.Errorf("%s: session-start output = %q", name, buf.String())
 		}
 	}

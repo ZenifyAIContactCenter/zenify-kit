@@ -81,18 +81,26 @@ func runSessionStart(wsRoot string, w io.Writer) int {
 	return 0
 }
 
-// brokerRoleLine tells a dev session up front what it may read on prd, so the
-// agent does not try data reads the broker refuses. It reads only the token
-// cache (no network, expiry ignored) and prints nothing for a lead, an
-// unknown role or no cache. The JWT is never printed.
+// brokerRoleLine tells a session up front what the broker allows: the dev prd
+// limits (so the agent does not try refused reads) and, for any cached role,
+// the `zenify data run` entry point. It reads only the token cache (no
+// network, expiry ignored) and prints nothing without one. The JWT is never
+// printed.
 func brokerRoleLine(w io.Writer) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return
 	}
-	if _, login, role, ok := brokerclient.CachedIdentity(home); ok && role == api.RoleDev {
-		fmt.Fprintf(w, "broker: login=%s role=dev — prd: %s; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n", login, api.DevPrdSummary()) //znf:allow-lang
+	_, login, role, ok := brokerclient.CachedIdentity(home)
+	if !ok {
+		return
 	}
+	suffix := ""
+	if role == api.RoleDev {
+		fmt.Fprintf(w, "broker: login=%s role=dev — prd: %s; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n", login, api.DevPrdSummary()) //znf:allow-lang
+		suffix = "; prd: cần lead"                                                                                                      //znf:allow-lang
+	}
+	fmt.Fprintf(w, "data: zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; xem _shared/data-scripts.md)%s\n", suffix) //znf:allow-lang
 }
 
 func sentinelPresent() bool {

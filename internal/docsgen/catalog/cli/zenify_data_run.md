@@ -1,0 +1,28 @@
+---
+summary: Chạy một lệnh với credential DB từ broker, che giá trị trong stdout và stderr, ghi thật phải dry-run trước.
+---
+## Khi nào dùng
+
+Khi script cần đọc hoặc ghi dữ liệu stg hoặc prd mà bạn không giữ credential trong shell. Manifest phải khai báo `broker:`; không có broker lệnh thoát mã 2.
+
+## Kết quả
+
+Lệnh con nhận đúng các biến broker cấp trong sáu tên `MONGO_URL`, `MYSQL_URL`, `REDIS_URL`, `LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL`. Sáu tên này và mọi biến `*_PRD` thừa hưởng từ shell bị bỏ trước khi chạy. Stdout và stderr được che giá trị và host. Exit code của lệnh con trở thành exit code của `zenify`.
+
+Chạy không có `--write` là dry-run: credential chỉ đọc, lệnh ghi một bản ghi dưới `.zenify/data-runs/`. Chạy `--write` cần một dry-run thành công của đúng lệnh đó (cùng nội dung script) trong 60 phút; bản ghi dùng một lần. Thiếu bản ghi, lệnh thoát mã 7 trước khi gọi broker và in lệnh dry-run cần chạy. Lần `--write` ghi log đã che vào `docs/scripts/<repo>/<script>.<UTC>.<env>.write.log` khi script nằm dưới `docs/scripts/<repo>/`, nếu không thì vào `.zenify/data-runs/`.
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--stg` | Credential staging. Phải chọn đúng một trong `--stg` hoặc `--prd`, nếu không lệnh thoát mã 2. |
+| `--prd` | Credential production. Cần role lead; role khác bị từ chối với mã 1. |
+| `--write` | Xin credential ghi. Cần dry-run khớp trước đó, nếu không thoát mã 7. |
+| `--lumi` | Xin thêm credential của lumi-agent. |
+
+## Ví dụ
+
+```bash
+zenify data run --stg -- node docs/scripts/contact-center-be/fix-tags.js --dry-run
+zenify data run --stg --write -- node docs/scripts/contact-center-be/fix-tags.js
+```

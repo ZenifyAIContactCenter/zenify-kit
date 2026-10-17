@@ -41,6 +41,8 @@ func TestContract_JSONKeys(t *testing.T) {
 		{"RedisRequest", RedisRequest{}, []string{"args", "cmd", "env"}},
 		{"RedisResponse", RedisResponse{}, []string{"result", "truncated"}},
 		{"E2EAccountRequest", E2EAccountRequest{}, []string{"role"}},
+		{"CredsRequest", CredsRequest{}, []string{"env", "mode"}}, // lumi is omitempty: absent at its zero value
+		{"CredsResponse", CredsResponse{}, []string{"values"}},
 		{"E2EAccountResponse", E2EAccountResponse{}, []string{"domain", "email", "password", "role"}},
 	}
 	for _, c := range cases {

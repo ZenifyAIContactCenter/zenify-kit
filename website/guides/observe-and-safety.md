@@ -95,7 +95,7 @@ Khi điều tra một triệu chứng trên staging hay production, các skill `
 
 ## Lưu ý
 
-Các luật của git-guard áp ở mọi chế độ quyền, kể cả bypass và auto. Với force push và merge PR, bạn tự chạy lệnh đó bằng `!` ở dấu nhắc của Claude Code khi thật sự cần; agent không có đường nào khác. Đọc production thì agent dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#đoc-production).
+Các luật của git-guard áp ở mọi chế độ quyền, kể cả bypass và auto. Với force push và merge PR, bạn tự chạy lệnh đó bằng `!` ở dấu nhắc của Claude Code khi thật sự cần; agent không có đường nào khác. Đọc production thì agent dùng `zenify db-read --prd`, xem [Đọc dữ liệu thật](/guides/read-real-data#đoc-production). Ghi vào database thật thì agent dùng `zenify data run`: bắt buộc dry-run trước, credential ghi chỉ do broker cấp theo role (production chỉ lead), xem [Dùng credential broker](/guides/broker-client#data-run).
 
 Git-guard là lớp chặn sai sót, không chặn được agent cố tình lách, ví dụ một script tự mở file `.zenify/.env`.
 

@@ -29,6 +29,7 @@ type Deps struct {
 	Query             http.Handler     // POST /query; nil = route not served
 	Redis             http.Handler     // POST /redis; nil = route not served
 	E2E               http.Handler     // POST /e2e/account; nil = route not served
+	Creds             http.Handler     // POST /creds; nil = route not served
 	// MCP maps a name to its proxy, served on /mcp/<name> (any method, any
 	// subpath); an unknown name is 404. Empty = no /mcp routes.
 	MCP map[string]http.Handler
@@ -75,6 +76,9 @@ func New(cfg Deps) http.Handler {
 	}
 	if cfg.E2E != nil {
 		mux.Handle("POST /e2e/account", require(fixed("/e2e/account"), cfg.E2E))
+	}
+	if cfg.Creds != nil {
+		mux.Handle("POST /creds", require(fixed("/creds"), cfg.Creds))
 	}
 	if len(cfg.MCP) > 0 {
 		// The name is caller-chosen; only a configured one reaches the audit log.

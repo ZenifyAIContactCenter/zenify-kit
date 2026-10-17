@@ -12,12 +12,15 @@ production, so it needs *more* diagnostic discipline than an ordinary bug fix, n
 
 At step 3 use only the read-only rungs of the `/fix` loop: logs, an existing failing test, a GET or
 HEAD request against a running environment. Anything with a side effect — a POST, a payload replay,
-a job re-run — never touches production or a shared environment from the agent: it needs the user's
-approval and goes through a dry-run script the user runs. With no read-only loop, confirm the cause
+a job re-run — never touches production or a shared environment directly: it goes through a data
+script run with `zenify data run`, dry-run first and the user's "ok" before a production write (see
+`_shared/data-scripts.md`). With no read-only loop, confirm the cause
 from the logs as before; `/fix`'s no-loop stop and its offer of temporary logging do not apply to
 production. For a forward fix, the red command is built in the worktree after step 5 and must be
-red before the step 7 fix. Prod output is scrubbed inside the command, before it reaches the
-conversation: secrets, customer PII and tenant/account ids become `<REDACTED>`.
+red before the step 7 fix. Scrub prod output before it reaches the conversation: secrets,
+customer PII and tenant/account ids become `<REDACTED>`. `zenify data run` does not do this for
+you — it masks credential values and hosts only (as `***`) — so a prod data script prints
+record ids and counts only, never PII fields.
 
 ## Why the response is the user's call
 

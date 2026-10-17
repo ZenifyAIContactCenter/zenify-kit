@@ -132,29 +132,23 @@ repos:
 	}
 }
 
-// SC-7 at the source: lumi keys live on the lumi entry only, never in the global list.
-func TestShippedManifestLumiKeysAreRepoScoped(t *testing.T) {
+// FR-6.1: the lumi credentials come from the broker, so the embedded manifest
+// declares none of the five hand-written lumi keys, global or repo-scoped.
+func TestShippedManifestDeclaresNoLumiKeys(t *testing.T) {
 	m, err := Load(filepath.Join("..", "..", "manifest", "repos.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"LUMI_MYSQL_URL_STG", "LUMI_MYSQL_URL_PRD", "QDRANT_URL_STG", "QDRANT_URL_PRD", "LUMI_APP_URL_STG"}
-	lumi, ok := m.ByName("lumi-agent")
-	if !ok || len(lumi.SecretKeys) != len(want) {
-		t.Fatalf("lumi-agent secretKeys = %v, want %v", lumi.SecretKeys, want)
-	}
-	for i := range want {
-		if lumi.SecretKeys[i].Name != want[i] {
-			t.Fatalf("lumi-agent secretKeys = %v, want %v", lumi.SecretKeys, want)
-		}
-	}
-	for _, k := range m.SecretKeys {
-		if strings.HasPrefix(k.Name, "LUMI_") || strings.HasPrefix(k.Name, "QDRANT_") {
-			t.Errorf("global secretKeys must not carry repo-scoped key %s", k.Name)
+	retired := []string{"LUMI_MYSQL_URL_STG", "LUMI_MYSQL_URL_PRD", "QDRANT_URL_STG", "QDRANT_URL_PRD", "LUMI_APP_URL_STG"}
+	for _, k := range m.AllKeys() {
+		for _, r := range retired {
+			if k.Name == r {
+				t.Errorf("manifest still declares retired key %s", r)
+			}
 		}
 	}
 	for _, r := range m.Repos {
-		if r.Name != "lumi-agent" && len(r.SecretKeys) > 0 {
+		if len(r.SecretKeys) > 0 {
 			t.Errorf("unexpected repo keys on %s: %v", r.Name, r.SecretKeys)
 		}
 	}
@@ -242,24 +236,8 @@ func TestEmbeddedManifest_EveryKeyDescribed(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := m.AllKeys()
-	if len(keys) != 5 {
-		t.Fatalf("want 5 keys (the lumi ones; the DB/E2E/PostHog keys moved to the broker), got %d", len(keys))
-	}
-	names := strings.Join(KeyNames(keys), ",")
-	if strings.Contains(names, "MYSQL_HOST") {
-		t.Fatalf("keys = %s, MYSQL_HOST must not return (FR-12.1)", names)
-	}
-	notSecret := map[string]bool{"LUMI_APP_URL_STG": true}
-	for _, k := range keys {
-		if k.Description == "" {
-			t.Errorf("%s: description must be non-empty", k.Name)
-		}
-		if k.Scope != "shared" {
-			t.Errorf("%s: scope %q, want shared", k.Name, k.Scope)
-		}
-		if k.Secret == notSecret[k.Name] {
-			t.Errorf("%s: secret=%v unexpected", k.Name, k.Secret)
-		}
+	if len(keys) != 0 {
+		t.Fatalf("want no keys (DB/E2E/PostHog/lumi credentials all come from the broker), got %v", KeyNames(keys))
 	}
 }
 
@@ -313,29 +291,6 @@ func TestPlacedKeys_RepoAttached(t *testing.T) {
 	got := m.PlacedKeys()
 	if len(got) != 2 || got[0].Name != "A" || got[0].Repo != "" || got[1].Name != "B" || got[1].Repo != "r" {
 		t.Fatalf("got %+v", got)
-	}
-}
-
-func TestEmbeddedManifest_Groups(t *testing.T) {
-	m, err := Load(filepath.Join("..", "..", "manifest", "repos.yaml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]string{
-		"LUMI_MYSQL_URL_STG": "staging", "QDRANT_URL_STG": "staging", "LUMI_APP_URL_STG": "staging",
-		"LUMI_MYSQL_URL_PRD": "production", "QDRANT_URL_PRD": "production",
-	}
-	got := map[string]string{}
-	for _, k := range m.AllKeys() {
-		got[k.Name] = k.EffectiveGroup()
-	}
-	for n, g := range want {
-		if got[n] != g {
-			t.Errorf("%s: group %q, want %q", n, got[n], g)
-		}
-	}
-	if _, ok := got["OPENROUTER_API_KEY"]; ok {
-		t.Error("OPENROUTER_API_KEY must not be in the manifest")
 	}
 }
 

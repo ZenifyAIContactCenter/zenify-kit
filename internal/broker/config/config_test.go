@@ -150,3 +150,46 @@ func TestLoad_TeamDefaultsAndDenyLogins(t *testing.T) {
 		t.Errorf("set = %q %q %v", c.LeadTeam, c.DevTeam, c.DenyLogins)
 	}
 }
+
+func TestLoad_OptionalSecretsAbsent(t *testing.T) {
+	c, err := Load(writeCfg(t, sampleYAML), envOf(fullEnv()))
+	if err != nil {
+		t.Fatalf("optional secrets absent must not error: %v", err)
+	}
+	s := c.Secrets
+	for name, v := range map[string]string{"MongoWriteStg": s.MongoWriteStg, "MongoWritePrd": s.MongoWritePrd,
+		"MySQLWriteStg": s.MySQLWriteStg, "MySQLWritePrd": s.MySQLWritePrd, "RedisWriteStg": s.RedisWriteStg,
+		"RedisWritePrd": s.RedisWritePrd, "LumiMySQLStg": s.LumiMySQLStg, "LumiMySQLPrd": s.LumiMySQLPrd,
+		"QdrantStg": s.QdrantStg, "QdrantPrd": s.QdrantPrd} {
+		if v != "" {
+			t.Errorf("%s should be empty, got a value", name)
+		}
+	}
+}
+
+func TestLoad_OptionalSecretsRead(t *testing.T) {
+	env := fullEnv()
+	env["MONGO_WRITE_URL_PRD"] = "a"
+	env["QDRANT_URL_STG"] = "b"
+	env["LUMI_MYSQL_URL_PRD"] = "c"
+	c, err := Load(writeCfg(t, sampleYAML), envOf(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Secrets.MongoWritePrd != "a" || c.Secrets.QdrantStg != "b" || c.Secrets.LumiMySQLPrd != "c" {
+		t.Errorf("optional secrets not read: %q %q %q", c.Secrets.MongoWritePrd, c.Secrets.QdrantStg, c.Secrets.LumiMySQLPrd)
+	}
+	if c.Secrets.MongoWriteStg != "" || c.Secrets.QdrantPrd != "" {
+		t.Errorf("unset optional secrets should stay empty")
+	}
+}
+
+func TestLoad_LumiAppURL(t *testing.T) {
+	c, err := Load(writeCfg(t, sampleYAML+"lumi:\n  app_url_stg: https://x\n"), envOf(fullEnv()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Lumi.AppURLStg != "https://x" {
+		t.Errorf("lumi.app_url_stg = %q", c.Lumi.AppURLStg)
+	}
+}
