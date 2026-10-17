@@ -1,6 +1,6 @@
 # Evidence sources — shared reference
 
-**Last updated:** 2026-10-16
+**Last updated:** 2026-10-18
 
 The one place a skill learns how to pull runtime evidence: logs, traces and metrics through the
 Grafana MCP server, product analytics through the PostHog MCP server, and stored state through
@@ -8,17 +8,23 @@ Grafana MCP server, product analytics through the PostHog MCP server, and stored
 `zenify data run` (`data-scripts.md`). The broker MCP servers exist when
 the manifest declares a `broker:` (registered by `zenify up`); read their server names from the
 session's MCP tool list, where each tool name starts `mcp__<server>__`. Everything project-specific — datasource uids, app names, attribute and metric
-names — is discovered at run time or read from the project's service catalog; never hard-code it.
+names — is discovered at run time or read from the project's service catalog (`zenify catalog`); never hard-code it.
 
 ## Before the first query
 
-1. `list_datasources` → the uid of each Loki, Tempo and Prometheus datasource. Tool arguments
+1. Run `zenify catalog <id> --prd|--stg` (`<id>` = the service or datastore; omit it for the whole
+   catalog). It prints YAML with the datasource uids and the real app, `service.name` and metric
+   names. Use those names as given. `no catalog configured` (exit 5), exit 2 (unknown id, which
+   lists the valid ones) or any other error → steps 2-3 below. A `catalog is <N>s old` line on
+   stderr means the broker served a stale copy; the names are still usable.
+2. `list_datasources` → the uid of each Loki, Tempo and Prometheus datasource. Tool arguments
    take the **uid**, not the display name.
-2. `list_loki_label_names`, then `list_loki_label_values` on the app label it returns → the real
+3. `list_loki_label_names`, then `list_loki_label_values` on the app label it returns → the real
    app names. The app name in Loki, the `service.name` in Tempo and the repo name can all differ;
    map them once here instead of guessing.
-3. If the project ships a service catalog (uids, app names, attribute names), read it instead of
-   steps 1-2.
+
+A live name the catalog lacks: run `zenify catalog drift [--prd|--stg]` (table; exit 6 means drift,
+0 clean). Report the drift to the user and carry on with the live name; do not edit the catalog.
 
 ## Order by symptom
 
