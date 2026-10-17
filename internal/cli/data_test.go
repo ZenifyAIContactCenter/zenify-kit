@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
@@ -133,8 +134,12 @@ func TestDataRun_WriteWithoutDryRun(t *testing.T) {
 	if exitcode.Code(err) != exitcode.NeedsDryRun || err == nil || !strings.HasPrefix(err.Error(), "data run: ") {
 		t.Fatalf("err = %v (exit %d)", err, exitcode.Code(err))
 	}
-	if !strings.Contains(err.Error(), "zenify data run --stg --") {
-		t.Errorf("error does not name the dry-run command: %v", err)
+	if want := "run: zenify data run --stg -- sh -c true --dry-run"; !strings.HasSuffix(err.Error(), want) {
+		t.Errorf("error = %q, want suffix %q", err, want)
+	}
+	_, _, err = runData("--stg", "--write", "--lumi", "--", "sh", "-c", "echo $X", "it's")
+	if want := `run: zenify data run --stg --lumi -- sh -c 'echo $X' 'it'\''s' --dry-run`; err == nil || !strings.HasSuffix(err.Error(), want) {
+		t.Errorf("lumi error = %v, want suffix %q", err, want)
 	}
 	if len(*f.reqs) != 0 {
 		t.Errorf("broker got %d /creds requests, want 0", len(*f.reqs))
@@ -339,5 +344,75 @@ func TestDataRun_DryRunLumiMismatch(t *testing.T) {
 				t.Fatalf("broker saw %d requests, want 1 (the dry-run)", len(*f.reqs))
 			}
 		})
+	}
+}
+
+// A broker built before /creds answers a plain-text 404: data run names the upgrade.
+func TestDataRun_BrokerWithoutCreds(t *testing.T) {
+	f := newDataFixture(t, nil, "")
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{})
+	useTrustedManifest(t, mp)
+	_, _, err := runData("--stg", "--", "true")
+	if exitcode.Code(err) != exitcode.Fail || err == nil || !strings.Contains(err.Error(), "broker chưa hỗ trợ /creds — cần nâng cấp broker") { //znf:allow-lang
+		t.Fatalf("err = %v (exit %d)", err, exitcode.Code(err))
+	}
+	if recs, _ := filepath.Glob(filepath.Join(f.ws, ".zenify", "data-runs", "*.json")); len(recs) != 0 {
+		t.Errorf("a refused run wrote dry-run records: %v", recs)
+	}
+}
+
+// Only the six data names reach the child; any other key is skipped and named on stderr.
+func TestDataRun_SkipsUnknownBrokerKeys(t *testing.T) {
+	newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL, "NODE_OPTIONS": "--require=/x/evil.js"}, "")
+	out, errOut, err := runData("--stg", "--", "env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "NODE_OPTIONS=") {
+		t.Errorf("unknown broker key reached the child env")
+	}
+	if !strings.Contains(out, "MONGO_URL=") {
+		t.Errorf("known broker key missing from the child env")
+	}
+	if !strings.Contains(errOut, "NODE_OPTIONS") {
+		t.Errorf("stderr does not name the skipped key: %q", errOut)
+	}
+	if strings.Contains(out+errOut, "evil") {
+		t.Errorf("the skipped value was printed: stdout %q stderr %q", out, errOut)
+	}
+}
+
+// The write log goes by the script, not the interpreter given as an absolute path.
+func TestOpenWriteLog_PicksScriptNotInterpreter(t *testing.T) {
+	ws := t.TempDir()
+	interp := filepath.Join(t.TempDir(), "node")
+	inside := filepath.Join(ws, "docs", "scripts", "r1", "fix.js")
+	outside := filepath.Join(ws, "job.js")
+	for _, p := range []string{interp, inside, outside} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Date(2026, 10, 17, 10, 0, 0, 0, time.UTC)
+	for i, tc := range []struct {
+		argv []string
+		want string
+	}{
+		{[]string{interp, inside, "--tenant", "T"}, filepath.Join(ws, "docs", "scripts", "r1", "fix.js.")},
+		{[]string{interp, outside}, filepath.Join(ws, ".zenify", "data-runs", "job.js.")},
+		{[]string{outside, inside}, filepath.Join(ws, "docs", "scripts", "r1", "fix.js.")},
+		{[]string{interp, "--flag"}, filepath.Join(ws, ".zenify", "data-runs", "node.")},
+	} {
+		f, err := openWriteLog(ws, ws, "stg", tc.argv, now.Add(time.Duration(i)*time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = f.Close()
+		if !strings.HasPrefix(f.Name(), tc.want) {
+			t.Errorf("argv %v: log %s, want prefix %s", tc.argv, f.Name(), tc.want)
+		}
 	}
 }

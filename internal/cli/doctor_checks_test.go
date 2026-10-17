@@ -824,6 +824,18 @@ func TestDoctor_BrokerCredsFailureNamesNoValue(t *testing.T) {
 	}
 }
 
+// A broker built before /creds answers 404: the check skips with a note, it does not fail.
+func TestDoctor_BrokerCredsSkipOnOldBroker(t *testing.T) {
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{
+		"/creds": func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) },
+	})
+	useTrustedManifest(t, mp)
+	ok, detail := brokerCredsCheck().Run()
+	if !ok || !strings.Contains(detail, "broker chưa có /creds — cần nâng cấp broker") { //znf:allow-lang
+		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+}
+
 func writeNoBrokerManifest(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "repos.yaml")

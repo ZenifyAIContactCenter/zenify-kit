@@ -609,6 +609,9 @@ func dbToolsCheck() Check {
 	}}
 }
 
+// brokerCredsCheckTimeout bounds the one /creds call of the broker-creds check.
+const brokerCredsCheckTimeout = 5 * time.Second
+
 // brokerCredsCheck asks the trusted-manifest broker for staging read
 // credentials and names the engines it vends (sorted keys) — never a value.
 // Without a broker there is nothing to verify, so it skips.
@@ -620,10 +623,14 @@ func brokerCredsCheck() Check {
 			if err != nil || !ok {
 				return true, "skip: không có broker" //znf:allow-lang
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), brokerCheckTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), brokerCredsCheckTimeout)
 			defer cancel()
 			var resp api.CredsResponse
 			if err := bc.Post(ctx, "/creds", api.CredsRequest{Env: "stg", Mode: api.CredsModeRead}, &resp); err != nil {
+				var ae *brokerclient.APIError
+				if errors.As(err, &ae) && ae.Status == http.StatusNotFound {
+					return true, "skip: broker chưa có /creds — cần nâng cấp broker" //znf:allow-lang
+				}
 				return false, "broker không cấp được credential staging: " + brokerCallErr(err).Error() //znf:allow-lang
 			}
 			names := make([]string, 0, len(resp.Values))

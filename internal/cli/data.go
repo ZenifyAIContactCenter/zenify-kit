@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
@@ -99,8 +102,8 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 	if write {
 		recID, err = store.FindForWrite(key, env, lumi)
 		if errors.Is(err, datarun.ErrNoDryRun) {
-			return dataErr(exitcode.NeedsDryRun, "--write needs a dry-run of the same command first (within %d minutes); run: zenify data run --%s -- %s", //znf:allow-lang
-				int(datarun.Window.Minutes()), env, strings.Join(argv, " "))
+			return dataErr(exitcode.NeedsDryRun, "--write needs a dry-run of the same command first (within %d minutes); run: %s", //znf:allow-lang
+				int(datarun.Window.Minutes()), dryRunCmd(env, lumi, argv))
 		}
 		if err != nil {
 			return dataErr(exitcode.Fail, "%v", err)
@@ -125,6 +128,9 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 			_, _, role, _ := brokerclient.CachedIdentity(home)
 			return dataErr(exitcode.Fail, "prd needs role lead (yours: %s)", role)
 		}
+		if errors.As(err, &ae) && ae.Status == http.StatusNotFound {
+			return dataErr(exitcode.Fail, "broker chưa hỗ trợ /creds — cần nâng cấp broker") //znf:allow-lang
+		}
 		err = brokerCallErr(err)
 		return dataErr(exitcode.Code(err), "%v", err)
 	}
@@ -132,6 +138,10 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 	var secrets []string
 	var granted []string
 	for k, v := range resp.Values {
+		if !slices.Contains(dataEnvNames, k) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "data run: skipping unknown broker key %q\n", k)
+			continue
+		}
 		if v == "" {
 			continue
 		}
@@ -173,7 +183,25 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 	mo := devenv.NewMaskWriter(out, secrets)
 	me := devenv.NewMaskWriter(errw, secrets)
 	c.Stdout, c.Stderr = mo, me
-	runErr := c.Run()
+	if err := c.Start(); err != nil {
+		return dataErr(exitcode.Fail, "%v", err)
+	}
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case s := <-sigs:
+				_ = c.Process.Signal(s)
+			case <-done:
+				return
+			}
+		}
+	}()
+	runErr := c.Wait()
+	signal.Stop(sigs)
+	close(done)
 	_ = mo.Close()
 	_ = me.Close()
 	var ee *exec.ExitError
@@ -201,6 +229,27 @@ func openForKey(p string) (io.ReadCloser, error) {
 	return os.Open(p) //nolint:gosec // G304 -- a file the user named in their own command
 }
 
+// dryRunCmd is the exact dry-run command a refused --write should run first.
+func dryRunCmd(env string, lumi bool, argv []string) string {
+	parts := []string{"zenify", "data", "run", "--" + env}
+	if lumi {
+		parts = append(parts, "--lumi")
+	}
+	parts = append(parts, "--")
+	for _, a := range append(slices.Clone(argv), "--dry-run") {
+		parts = append(parts, shQuote(a))
+	}
+	return strings.Join(parts, " ")
+}
+
+// shQuote single-quotes a token for a POSIX shell unless it is plainly safe.
+func shQuote(s string) string {
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./=:,@%+-") == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 func cacheHome(bc *brokerclient.Client) string {
 	if bc.Home != "" {
 		return bc.Home
@@ -223,22 +272,38 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 
 // openWriteLog creates the --write log (FR-4.4): next to the script when it
 // lives under <ws>/docs/scripts/<repo>/, else under <ws>/.zenify/data-runs/.
+// The script is the first argv under docs/scripts, else the first regular file
+// after argv[0] (the interpreter), else argv[0] itself.
 func openWriteLog(ws, cwd, env string, argv []string, now time.Time) (*os.File, error) {
 	dir, base := filepath.Join(ws, ".zenify", "data-runs"), "run"
 	scripts := filepath.Join(ws, "docs", "scripts")
+	var files []string
 	for _, a := range argv {
 		p := a
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(cwd, p)
 		}
-		if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
-			continue
+		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+			files = append(files, filepath.Clean(p))
+		} else {
+			files = append(files, "")
 		}
-		base = filepath.Base(p)
-		if rel, err := filepath.Rel(scripts, filepath.Clean(p)); err == nil && !strings.HasPrefix(rel, "..") && filepath.Dir(rel) != "." {
-			dir = filepath.Join(scripts, strings.Split(rel, string(filepath.Separator))[0])
+	}
+	pick := ""
+	for _, p := range files {
+		if rel, err := filepath.Rel(scripts, p); p != "" && err == nil && !strings.HasPrefix(rel, "..") && filepath.Dir(rel) != "." {
+			pick, dir = p, filepath.Join(scripts, strings.Split(rel, string(filepath.Separator))[0])
+			break
 		}
-		break
+	}
+	for i := 1; pick == "" && i < len(files); i++ {
+		pick = files[i]
+	}
+	if pick == "" && len(files) > 0 {
+		pick = files[0]
+	}
+	if pick != "" {
+		base = filepath.Base(pick)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:gosec // G301 -- docs/scripts is a shared, readable workspace dir
 		return nil, err
