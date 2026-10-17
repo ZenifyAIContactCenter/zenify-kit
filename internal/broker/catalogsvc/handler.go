@@ -25,6 +25,9 @@ const (
 	defaultBaseURL = "https://api.github.com"
 	fetchTimeout   = 10 * time.Second
 	maxFileBytes   = 1 << 20
+	// retryInterval: after a failed fetch with a stale copy in hand, GitHub is
+	// not asked again for this long; callers get the stale copy at once.
+	retryInterval = 30 * time.Second
 )
 
 // Handler is the POST /catalog handler. It must sit behind auth.RequireAudited.
@@ -36,10 +39,12 @@ type Handler struct {
 	now     func() time.Time
 	client  *http.Client
 	audit   *audit.Logger // nil = no audit rows
+	slots   int           // NewDrift only: concurrent drift requests per login
 
-	mu        sync.Mutex // held across fetch+cache so concurrent callers share one fetch
-	cat       *catalog.Catalog
-	fetchedAt time.Time
+	mu          sync.Mutex // held across fetch+cache so concurrent callers share one fetch
+	cat         *catalog.Catalog
+	fetchedAt   time.Time
+	lastFailure time.Time // zero = the last fetch succeeded (or none failed yet)
 }
 
 // Option tunes a Handler.
@@ -53,6 +58,10 @@ func WithClock(now func() time.Time) Option { return func(h *Handler) { h.now = 
 
 // WithAudit makes ServeHTTP write one audit row per request.
 func WithAudit(l *audit.Logger) Option { return func(h *Handler) { h.audit = l } }
+
+// WithSlots caps how many /catalog/drift requests one login runs at once
+// (default 1); it applies to NewDrift only.
+func WithSlots(n int) Option { return func(h *Handler) { h.slots = n } }
 
 // WithTTL overrides the 5-minute cache lifetime.
 func WithTTL(d time.Duration) Option { return func(h *Handler) { h.ttl = d } }
@@ -69,7 +78,8 @@ func New(cfg config.Catalog, token string, opts ...Option) *Handler {
 
 // Current returns the catalog and the age in seconds of the copy served (0 =
 // fresh). When GitHub cannot be asked or serves an unusable file, the last
-// good copy is returned with its age; with none, the error.
+// good copy is returned with its age; with none, the error. After a failure
+// with a stale copy, GitHub is not asked again for retryInterval.
 func (h *Handler) Current(ctx context.Context) (*catalog.Catalog, int, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -77,14 +87,21 @@ func (h *Handler) Current(ctx context.Context) (*catalog.Catalog, int, error) {
 	if h.cat != nil && now.Sub(h.fetchedAt) < h.ttl {
 		return h.cat, 0, nil
 	}
+	stale := func() (*catalog.Catalog, int, error) {
+		return h.cat, int(now.Sub(h.fetchedAt) / time.Second), nil
+	}
+	if h.cat != nil && !h.lastFailure.IsZero() && now.Sub(h.lastFailure) < retryInterval {
+		return stale()
+	}
 	c, err := h.fetch(ctx)
 	if err != nil {
+		h.lastFailure = now
 		if h.cat == nil {
 			return nil, 0, err
 		}
-		return h.cat, int(now.Sub(h.fetchedAt) / time.Second), nil
+		return stale()
 	}
-	h.cat, h.fetchedAt = c, now
+	h.cat, h.fetchedAt, h.lastFailure = c, now, time.Time{}
 	return c, 0, nil
 }
 
@@ -105,9 +122,12 @@ func (h *Handler) fetch(ctx context.Context) (*catalog.Catalog, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("catalog fetch failed: GitHub returned %d", resp.StatusCode)
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxFileBytes))
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxFileBytes+1))
 	if err != nil {
 		return nil, errors.New("catalog fetch failed: reading the body")
+	}
+	if len(b) > maxFileBytes {
+		return nil, fmt.Errorf("catalog fetch failed: file is over %d bytes", maxFileBytes)
 	}
 	return catalog.Parse(b)
 }

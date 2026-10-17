@@ -128,6 +128,7 @@ func TestCatalog_BadYAMLNotCached(t *testing.T) {
 		t.Fatalf("bad yaml: code %d age %d catalog %+v", code, resp.StaleAgeSeconds, resp.Catalog)
 	}
 	st.set(200, goodYAML2)
+	clk.advance(retryInterval) // a failure holds off the next GitHub call for retryInterval
 	code, resp, _ = post(h)
 	if code != 200 || resp.StaleAgeSeconds != 0 || resp.Catalog.Services[0].ID != "svc-b" {
 		t.Fatalf("recovery: code %d age %d catalog %+v", code, resp.StaleAgeSeconds, resp.Catalog)
@@ -211,5 +212,99 @@ func TestCatalog_AuditsEveryRequest(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "ghp_secret_token") {
 		t.Error("audit leaks the token")
+	}
+}
+
+// TestCatalog_RetryBackoffAfterFailure: after a failed refresh with a stale
+// copy, callers get the stale copy without asking GitHub until 30s have passed.
+func TestCatalog_RetryBackoffAfterFailure(t *testing.T) {
+	h, st, clk := setup(t, 200, goodYAML)
+	post(h)
+	clk.advance(6 * time.Minute)
+	st.set(500, "boom")
+	calls := func() int32 { return atomic.LoadInt32(&st.calls) }
+	c, age, err := h.Current(context.Background())
+	if err != nil || c.Services[0].ID != "svc-a" || age != 360 || calls() != 2 {
+		t.Fatalf("first after TTL: age %d err %v calls %d, want 360 nil 2", age, err, calls())
+	}
+	for _, d := range []time.Duration{0, 10 * time.Second, 19 * time.Second} { // 0s, 10s, 29s after the failure
+		clk.advance(d)
+		c, age, err = h.Current(context.Background())
+		if err != nil || c.Services[0].ID != "svc-a" || calls() != 2 {
+			t.Fatalf("within %s: err %v calls %d, want nil 2", retryInterval, err, calls())
+		}
+	}
+	if age != 389 {
+		t.Fatalf("age at 29s after the failure = %d, want 389", age)
+	}
+	clk.advance(time.Second) // 30s after the failure: retry
+	if _, age, _ = h.Current(context.Background()); calls() != 3 || age != 390 {
+		t.Fatalf("at %s: calls %d age %d, want 3 390", retryInterval, calls(), age)
+	}
+	st.set(200, goodYAML2)
+	clk.advance(retryInterval)
+	if c, age, _ = h.Current(context.Background()); calls() != 4 || age != 0 || c.Services[0].ID != "svc-b" {
+		t.Fatalf("recovery: calls %d age %d catalog %+v", calls(), age, c)
+	}
+}
+
+// TestCatalog_NeverFetchedRetriesEveryCall: with no stale copy there is
+// nothing to serve, so every call asks GitHub (and gets the error).
+func TestCatalog_NeverFetchedRetriesEveryCall(t *testing.T) {
+	h, st, _ := setup(t, 500, "boom")
+	for i := 0; i < 3; i++ {
+		if _, _, err := h.Current(context.Background()); err == nil {
+			t.Fatal("want error")
+		}
+	}
+	if n := atomic.LoadInt32(&st.calls); n != 3 {
+		t.Fatalf("stub calls = %d, want 3", n)
+	}
+}
+
+func TestCatalog_ConcurrentFailingRefreshAsksOnce(t *testing.T) {
+	h, st, clk := setup(t, 200, goodYAML)
+	post(h)
+	clk.advance(6 * time.Minute)
+	st.set(500, "boom")
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c, age, err := h.Current(context.Background())
+			if err != nil || c == nil || c.Services[0].ID != "svc-a" || age != 360 {
+				t.Errorf("Current = %+v, %d, %v", c, age, err)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := atomic.LoadInt32(&st.calls); n != 2 { // 1 prime + 1 failed refresh
+		t.Fatalf("stub calls = %d, want 2", n)
+	}
+}
+
+func TestCatalog_OversizeFileRefused(t *testing.T) {
+	big := goodYAML + "# " + strings.Repeat("x", maxFileBytes) + "\n"
+	// Never fetched: 503.
+	h, _, _ := setup(t, 200, big)
+	code, _, raw := post(h)
+	if code != 503 || !strings.Contains(raw, "over") {
+		t.Fatalf("never fetched: got %d %s", code, raw)
+	}
+	// With a stale copy: the stale copy.
+	h, st, clk := setup(t, 200, goodYAML)
+	post(h)
+	clk.advance(6 * time.Minute)
+	st.set(200, big)
+	code, resp, _ := post(h)
+	if code != 200 || resp.StaleAgeSeconds != 360 || resp.Catalog.Services[0].ID != "svc-a" {
+		t.Fatalf("stale: code %d age %d", code, resp.StaleAgeSeconds)
+	}
+	// Exactly maxFileBytes is accepted.
+	exact := goodYAML + "#" + strings.Repeat("x", maxFileBytes-len(goodYAML)-1)
+	h, _, _ = setup(t, 200, exact)
+	if code, _, raw := post(h); code != 200 {
+		t.Fatalf("exactly %d bytes: got %d %s", maxFileBytes, code, raw)
 	}
 }

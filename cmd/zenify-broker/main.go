@@ -115,7 +115,7 @@ func run(cfgPath string) error {
 	if cfg.Catalog != nil {
 		ch := catalogsvc.New(*cfg.Catalog, s.CatalogGitHubToken, catalogsvc.WithAudit(log))
 		catalogH = ch
-		driftH = catalogsvc.NewDrift(ch, cfg.Grafana.URL, s.GrafanaToken, catalogsvc.WithAudit(log))
+		driftH = catalogsvc.NewDrift(ch, cfg.Grafana.URL, s.GrafanaToken, catalogsvc.WithAudit(log), catalogsvc.WithSlots(1))
 	}
 
 	ctx, cancel := context.WithCancelCause(context.Background())

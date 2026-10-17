@@ -12,6 +12,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/perlogin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/catalog"
 )
 
@@ -30,16 +31,19 @@ type Drift struct {
 	g     *grafana
 	now   func() time.Time
 	audit *audit.Logger // nil = no audit rows
+
+	maxConcurrent int // per login
+	slots         perlogin.Slots
 }
 
 // NewDrift builds the drift handler over h's catalog. Of the Options, only
-// WithClock and WithAudit apply; the Grafana base URL is grafanaURL.
+// WithClock, WithAudit and WithSlots apply; the Grafana base URL is grafanaURL.
 func NewDrift(h *Handler, grafanaURL, grafanaToken string, opts ...Option) *Drift {
-	o := &Handler{now: time.Now}
+	o := &Handler{now: time.Now, slots: 1}
 	for _, opt := range opts {
 		opt(o)
 	}
-	return &Drift{h: h, g: newGrafana(grafanaURL, grafanaToken), now: o.now, audit: o.audit}
+	return &Drift{h: h, g: newGrafana(grafanaURL, grafanaToken), now: o.now, audit: o.audit, maxConcurrent: o.slots}
 }
 
 func (d *Drift) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +71,14 @@ func (d *Drift) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, status, api.CodeInvalidBody, "env must be prd, stg or empty")
 		return
 	}
+	// Each drift fans out one 24-hour Grafana query per env x source.
+	login := auth.Login(r.Context())
+	if !d.slots.Acquire(login, d.maxConcurrent) {
+		status = http.StatusTooManyRequests
+		auth.WriteError(w, status, api.CodeTooManyConcurrent, "a catalog drift for this login is already running")
+		return
+	}
+	defer d.slots.Release(login)
 	c, _, err := d.h.Current(r.Context())
 	if err != nil {
 		status = http.StatusServiceUnavailable

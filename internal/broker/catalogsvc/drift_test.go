@@ -354,3 +354,96 @@ func TestDrift_AuditsEveryRequest(t *testing.T) {
 		t.Error("audit leaks a token")
 	}
 }
+
+// gatedGrafana holds every request until release is closed; each request
+// sends on arrived first.
+type gatedGrafana struct {
+	next    http.Handler
+	arrived chan struct{}
+	release chan struct{}
+}
+
+func (g *gatedGrafana) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	g.arrived <- struct{}{}
+	<-g.release
+	g.next.ServeHTTP(w, r)
+}
+
+// TestDrift_OneAtATimePerLogin: a second drift by the same login while the
+// first is in flight gets 429 too_many_concurrent (audited); another login is
+// not blocked, and the slot is free again afterwards.
+func TestDrift_OneAtATimePerLogin(t *testing.T) {
+	gh := httptest.NewServer(&stub{status: 200, body: driftYAML})
+	t.Cleanup(gh.Close)
+	fg := &fakeGrafana{routes: map[string]struct {
+		status int
+		body   string
+	}{}}
+	gate := &gatedGrafana{next: fg, arrived: make(chan struct{}, 16), release: make(chan struct{})}
+	// One prd drift asks Grafana 3 times (loki, tempo, prometheus).
+	waitArrivals := func(n int) {
+		for i := 0; i < n; i++ {
+			<-gate.arrived
+		}
+	}
+	gs := httptest.NewServer(gate)
+	t.Cleanup(gs.Close)
+	var buf bytes.Buffer
+	log := &audit.Logger{W: &buf}
+	h := New(config.Catalog{Repo: "org/monitoring", Path: "catalog.yaml", Ref: "main"}, "ghp_secret_token", WithBaseURL(gh.URL))
+	d := NewDrift(h, gs.URL, "glsa_secret_token", WithAudit(log))
+
+	key := []byte("test-key-0123456789abcdef0123456")
+	call := func(login string) int {
+		tok, _, err := auth.Issue(key, login, "dev", time.Now())
+		if err != nil {
+			t.Error(err)
+			return 0
+		}
+		req := httptest.NewRequest(http.MethodPost, "/catalog/drift", strings.NewReader(`{"env":"prd"}`))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rec := httptest.NewRecorder()
+		auth.RequireAudited(key, log, func(*http.Request) string { return "/catalog/drift" }, d).ServeHTTP(rec, req)
+		if rec.Code == http.StatusTooManyRequests {
+			var e api.Error
+			_ = json.Unmarshal(rec.Body.Bytes(), &e)
+			if e.Error != api.CodeTooManyConcurrent {
+				t.Errorf("429 code = %q, want %q", e.Error, api.CodeTooManyConcurrent)
+			}
+		}
+		return rec.Code
+	}
+
+	first := make(chan int, 1)
+	go func() { first <- call("octocat") }()
+	waitArrivals(3)
+	if c := call("octocat"); c != http.StatusTooManyRequests {
+		t.Fatalf("second drift by the same login = %d, want 429", c)
+	}
+	other := make(chan int, 1)
+	go func() { other <- call("hubot") }()
+	waitArrivals(3) // hubot's drift is in flight beside octocat's
+	close(gate.release)
+	if c := <-first; c != 200 {
+		t.Errorf("first drift = %d, want 200", c)
+	}
+	if c := <-other; c != 200 {
+		t.Errorf("other login = %d, want 200", c)
+	}
+	if c := call("octocat"); c != 200 {
+		t.Errorf("after release = %d, want 200", c)
+	}
+	var statuses []float64
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var e map[string]any
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatal(err)
+		}
+		if e["login"] == "octocat" {
+			statuses = append(statuses, e["status"].(float64))
+		}
+	}
+	if !reflect.DeepEqual(statuses, []float64{429, 200, 200}) {
+		t.Errorf("octocat audit statuses = %v, want [429 200 200]", statuses)
+	}
+}

@@ -73,7 +73,11 @@ func (g *grafana) get(ctx context.Context, uid, path, start, end string, out any
 	if err != nil {
 		return errors.New("grafana unreachable")
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		// Drain a bounded tail so the keep-alive connection can be reused.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("grafana returned %d", resp.StatusCode)
 	}
