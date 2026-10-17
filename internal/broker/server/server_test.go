@@ -425,15 +425,30 @@ func TestE2ERouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
 	}
 }
 
+func TestCredsRouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
+	var hit int32
+	h := New(Deps{JWTKey: testKey, Creds: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { atomic.AddInt32(&hit, 1) })})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/creds", strings.NewReader("{}")))
+	if rec.Code != http.StatusUnauthorized || atomic.LoadInt32(&hit) != 0 {
+		t.Fatalf("got %d, handler hits %d", rec.Code, hit)
+	}
+	rec = httptest.NewRecorder()
+	New(Deps{JWTKey: testKey}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/creds", strings.NewReader("{}")))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("route should be absent when Deps.Creds is nil, got %d", rec.Code)
+	}
+}
+
 func TestRequire401IsAudited(t *testing.T) { // FR-6.1 / SC-8
 	noop := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
 	expired, _, _ := auth.Issue(testKey, "octocat", "lead", time.Now().Add(-2*time.Hour))
-	for path, endpoint := range map[string]string{"/query": "/query", "/redis": "/redis", "/e2e/account": "/e2e/account",
+	for path, endpoint := range map[string]string{"/query": "/query", "/redis": "/redis", "/e2e/account": "/e2e/account", "/creds": "/creds",
 		"/mcp/grafana": "/mcp/grafana", "/mcp/grafana/sub/path": "/mcp/grafana", "/mcp/evil-injected": "/mcp/?"} {
 		for _, hdr := range []string{"", "Bearer " + expired} {
 			var out bytes.Buffer
 			h := New(Deps{JWTKey: testKey, Audit: &audit.Logger{W: &out}, Now: func() time.Time { return t0 },
-				Query: noop, Redis: noop, E2E: noop, MCP: map[string]http.Handler{"grafana": noop}})
+				Query: noop, Redis: noop, E2E: noop, Creds: noop, MCP: map[string]http.Handler{"grafana": noop}})
 			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
 			if hdr != "" {
 				req.Header.Set("Authorization", hdr)
