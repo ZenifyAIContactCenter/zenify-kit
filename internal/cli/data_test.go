@@ -264,3 +264,49 @@ func newDataFixtureAt(t *testing.T, ws string, values map[string]string, refuseC
 	useTrustedManifest(t, mp)
 	return dataFixture{ws: ws, reqs: reqs, hits: hits}
 }
+
+func TestDataRun_EditedScriptNeedsNewDryRun(t *testing.T) {
+	f := newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL}, "")
+	script := filepath.Join(f.ws, "job.sh")
+	if err := os.WriteFile(script, []byte("true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runData("--stg", "--", "sh", script); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, []byte("true # edited\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := runData("--stg", "--write", "--", "sh", script)
+	if exitcode.Code(err) != exitcode.NeedsDryRun {
+		t.Fatalf("exit %d (err %v), want 7", exitcode.Code(err), err)
+	}
+	if len(*f.reqs) != 1 || (*f.reqs)[0].Mode != api.CredsModeRead {
+		t.Fatalf("requests = %+v, want only the dry-run read", *f.reqs)
+	}
+}
+
+func TestDataRun_DryRunEnvMismatch(t *testing.T) {
+	f := newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL}, "")
+	if _, _, err := runData("--stg", "--", "sh", "-c", "true"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := runData("--prd", "--write", "--", "sh", "-c", "true")
+	if exitcode.Code(err) != exitcode.NeedsDryRun {
+		t.Fatalf("exit %d (err %v), want 7", exitcode.Code(err), err)
+	}
+	if len(*f.reqs) != 1 {
+		t.Fatalf("broker saw %d requests, want 1 (the stg dry-run)", len(*f.reqs))
+	}
+}
+
+func TestDataRun_PrdLeadOnlyNamesRole(t *testing.T) {
+	f := newDataFixture(t, nil, api.CodeLeadOnly)
+	_, _, err := runData("--prd", "--", "true")
+	if exitcode.Code(err) != exitcode.Fail || err == nil || !strings.Contains(err.Error(), "prd needs role lead (yours: dev)") {
+		t.Fatalf("err = %v (exit %d)", err, exitcode.Code(err))
+	}
+	if len(*f.reqs) != 1 || (*f.reqs)[0].Env != "prd" {
+		t.Fatalf("requests = %+v", *f.reqs)
+	}
+}
