@@ -72,7 +72,6 @@ type record struct {
 	Login string    `json:"login"`
 	Time  time.Time `json:"time"`
 	Exit  int       `json:"exit"`
-	Used  bool      `json:"used"`
 }
 
 func (s Store) now() time.Time {
@@ -140,7 +139,7 @@ func (s Store) FindForWrite(key, env string) (string, error) {
 			continue
 		}
 		r, ok := s.load(filepath.Join(s.Dir, e.Name()))
-		if !ok || r.Used || r.Exit != 0 || r.Key != key || r.Env != env || now.Sub(r.Time) > Window {
+		if !ok || r.Exit != 0 || r.Key != key || r.Env != env || now.Sub(r.Time) > Window {
 			continue
 		}
 		if !found || r.Time.After(best.Time) {
@@ -153,24 +152,15 @@ func (s Store) FindForWrite(key, env string) (string, error) {
 	return best.ID, nil
 }
 
-// MarkUsed flags a record so it cannot authorize another write.
+// MarkUsed atomically claims a record by renaming it to <id>.used, which
+// FindForWrite ignores. A caller that loses the race gets ErrNoDryRun.
 func (s Store) MarkUsed(id string) error {
 	if id == "" || id != filepath.Base(id) || strings.ContainsAny(id, `/\`) {
 		return fmt.Errorf("invalid record id %q", id)
 	}
-	path := filepath.Join(s.Dir, id+".json")
-	r, ok := s.load(path)
-	if !ok {
-		return fmt.Errorf("record %q not found", id)
+	err := os.Rename(filepath.Join(s.Dir, id+".json"), filepath.Join(s.Dir, id+".used"))
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrNoDryRun
 	}
-	r.Used = true
-	b, err := json.Marshal(r)
-	if err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return err
 }

@@ -178,3 +178,23 @@ func TestStore_MarkUsedRejectsBadID(t *testing.T) {
 		t.Errorf("path traversal id accepted")
 	}
 }
+
+func TestStore_MarkUsedTwiceSecondLoses(t *testing.T) {
+	s, _ := newStore(t)
+	if err := s.RecordDryRun("k", "staging", "me", 0); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.FindForWrite("k", "staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkUsed(id); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MarkUsed(id); !errors.Is(err, ErrNoDryRun) {
+		t.Errorf("second MarkUsed: err=%v, want ErrNoDryRun", err)
+	}
+	if _, err := s.FindForWrite("k", "staging"); !errors.Is(err, ErrNoDryRun) {
+		t.Errorf("FindForWrite after MarkUsed: err=%v", err)
+	}
+}
