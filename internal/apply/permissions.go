@@ -80,10 +80,12 @@ var KitSandboxExcluded = []string{
 // write through `zenify data run` prompts even in bypassPermissions mode,
 // since an ask rule beats the allow rule above. That turns "wait for the user's
 // ok before --prd --write" into a real prompt; stg writes stay unprompted. Both
-// flag orders are listed, and the leading * also covers root flags.
+// flag orders are listed, and the leading * also covers root flags. ssh asks
+// too: a command on a remote host is outside git-guard and cannot be undone.
 var KitAskRules = []string{
 	"Bash(zenify *data run*--prd*--write*)",
 	"Bash(zenify *data run*--write*--prd*)",
+	"Bash(ssh *)",
 }
 
 // KitDenyRule is the rule the kit unions into permissions.deny of

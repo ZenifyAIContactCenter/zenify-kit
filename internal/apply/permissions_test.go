@@ -394,6 +394,9 @@ func TestKitAskRules_MatchProdWritesOnly(t *testing.T) {
 			t.Errorf("prd write %q prompts nothing", c)
 		}
 	}
+	if !hit("ssh host 'docker compose down'") {
+		t.Error("ssh prompts nothing")
+	}
 	for _, c := range []string{
 		"zenify data run --stg --write -- node x.js",
 		"zenify data run --prd -- node x.js --dry-run",
