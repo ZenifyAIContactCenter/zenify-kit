@@ -1,0 +1,38 @@
+---
+summary: In danh mục dịch vụ giám sát (datasource Grafana, tên log, trace, metric) dưới dạng YAML.
+---
+## Khi nào dùng
+
+Trước khi truy vấn Grafana, Loki, Tempo hoặc Prometheus và bạn cần biết đúng uid datasource, tên app trong Loki, tên service trong Tempo hay job Prometheus của một dịch vụ. Không đoán các tên này từ tên repo.
+
+## Kết quả
+
+In danh mục ra stdout dưới dạng YAML. Broker trả toàn bộ danh mục; lệnh lọc tại máy bạn theo `[id]` (một service hoặc datastore) và theo `--prd` hoặc `--stg`. Không truyền gì thì in tất cả.
+
+Khi broker không làm mới được danh mục và đang trả bản cũ, lệnh ghi `catalog is <N>s old (broker could not refresh it)` ra stderr; stdout vẫn chỉ chứa YAML.
+
+Mã thoát:
+
+| Mã | Ý nghĩa |
+|---|---|
+| 0 | Thành công |
+| 2 | `id` không có trong danh mục (stderr liệt kê các id hợp lệ), hoặc dùng cả `--prd` lẫn `--stg` |
+| 5 | Chưa cấu hình danh mục: manifest không khai báo `broker:`, hoặc broker trả 404 |
+| 1 | Lỗi khác |
+
+## Cờ
+
+| Cờ | Ý nghĩa |
+|---|---|
+| `--prd` | Chỉ phần production. Không dùng chung với `--stg`. |
+| `--stg` | Chỉ phần staging. Không dùng chung với `--prd`. |
+| `--manifest` | File manifest có `broker:` quyết định broker. Mặc định là manifest nhúng sẵn trong binary. |
+| `--overlay` | File overlay cá nhân. Overlay không đổi `broker:`. |
+
+## Ví dụ
+
+```bash
+zenify catalog
+zenify catalog --stg
+zenify catalog some-service --prd
+```

@@ -18,6 +18,7 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/catalogsvc"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/config"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/creds"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/e2e"
@@ -108,6 +109,15 @@ func run(cfgPath string) error {
 		return err
 	}
 
+	// grafana.url and GRAFANA_SERVICE_ACCOUNT_TOKEN are required by config.Load,
+	// so drift is served whenever the catalog is.
+	var catalogH, driftH http.Handler
+	if cfg.Catalog != nil {
+		ch := catalogsvc.New(*cfg.Catalog, s.CatalogGitHubToken, catalogsvc.WithAudit(log))
+		catalogH = ch
+		driftH = catalogsvc.NewDrift(ch, cfg.Grafana.URL, s.GrafanaToken, catalogsvc.WithAudit(log), catalogsvc.WithSlots(1))
+	}
+
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
 	sigs := make(chan os.Signal, 2)
@@ -119,17 +129,19 @@ func run(cfgPath string) error {
 	}
 
 	handler := server.New(server.Deps{
-		JWTKey:     s.JWTKey,
-		Org:        cfg.Org,
-		LeadTeam:   cfg.LeadTeam,
-		DevTeam:    cfg.DevTeam,
-		DenyLogins: cfg.DenyLogins,
-		GitHub:     auth.GitHub{},
-		Audit:      log,
-		Query:      queryH,
-		Redis:      redisH,
-		E2E:        e2eH,
-		Creds:      credsH,
+		JWTKey:       s.JWTKey,
+		Org:          cfg.Org,
+		LeadTeam:     cfg.LeadTeam,
+		DevTeam:      cfg.DevTeam,
+		DenyLogins:   cfg.DenyLogins,
+		GitHub:       auth.GitHub{},
+		Audit:        log,
+		Query:        queryH,
+		Redis:        redisH,
+		E2E:          e2eH,
+		Creds:        credsH,
+		Catalog:      catalogH,
+		CatalogDrift: driftH,
 		MCP: map[string]http.Handler{
 			"grafana": mcpproxy.New("grafana", grafanaUp, nil, log),
 			"posthog": mcpproxy.New("posthog", posthogUp, mcpproxy.PostHogHeaders(s.POSTHOGAPIKey, cfg.PostHog.ProjectID), log),

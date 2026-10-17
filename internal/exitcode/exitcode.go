@@ -5,12 +5,13 @@ package exitcode
 import "errors"
 
 const (
-	OK        = 0
-	Fail      = 1
-	BadArgs   = 2
-	Cancelled = 3
-	LockHeld  = 4
-	// 5 and 6 are reserved (NoCatalog, Drift).
+	OK          = 0
+	Fail        = 1
+	BadArgs     = 2
+	Cancelled   = 3
+	LockHeld    = 4
+	NoCatalog   = 5
+	Drift       = 6
 	NeedsDryRun = 7
 )
 
