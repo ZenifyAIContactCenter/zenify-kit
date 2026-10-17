@@ -193,3 +193,60 @@ func TestLoad_LumiAppURL(t *testing.T) {
 		t.Errorf("lumi.app_url_stg = %q", c.Lumi.AppURLStg)
 	}
 }
+
+const catalogBlock = "catalog:\n  repo: org/catalog-repo\n  path: catalog.yaml\n"
+
+func TestLoad_NoCatalogNoToken(t *testing.T) {
+	c, err := Load(writeCfg(t, sampleYAML), envOf(fullEnv()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Catalog != nil {
+		t.Errorf("Catalog = %+v, want nil", c.Catalog)
+	}
+}
+
+func TestLoad_CatalogNeedsToken(t *testing.T) {
+	env := fullEnv()
+	_, err := Load(writeCfg(t, sampleYAML+catalogBlock), envOf(env))
+	if err == nil || !strings.Contains(err.Error(), "CATALOG_GITHUB_TOKEN") {
+		t.Fatalf("want error naming CATALOG_GITHUB_TOKEN, got %v", err)
+	}
+	env["CATALOG_GITHUB_TOKEN"] = "tok-secret-value"
+	c, err := Load(writeCfg(t, sampleYAML+catalogBlock), envOf(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Secrets.CatalogGitHubToken != "tok-secret-value" {
+		t.Error("token not loaded")
+	}
+	env["CATALOG_GITHUB_TOKEN"] = ""
+	delete(env, "POSTHOG_API_KEY")
+	env["X"] = "tok-secret-value"
+	_, err = Load(writeCfg(t, sampleYAML+catalogBlock), envOf(env))
+	if err == nil || strings.Contains(err.Error(), "tok-secret-value") ||
+		!strings.Contains(err.Error(), "CATALOG_GITHUB_TOKEN") || !strings.Contains(err.Error(), "POSTHOG_API_KEY") {
+		t.Errorf("joined error wrong: %v", err)
+	}
+}
+
+func TestLoad_CatalogDefaultsRef(t *testing.T) {
+	env := fullEnv()
+	env["CATALOG_GITHUB_TOKEN"] = "t"
+	c, err := Load(writeCfg(t, sampleYAML+catalogBlock), envOf(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Catalog == nil || c.Catalog.Ref != "main" || c.Catalog.Repo != "org/catalog-repo" || c.Catalog.Path != "catalog.yaml" {
+		t.Errorf("Catalog = %+v", c.Catalog)
+	}
+}
+
+func TestLoad_CatalogMissingRepoPath(t *testing.T) {
+	env := fullEnv()
+	env["CATALOG_GITHUB_TOKEN"] = "t"
+	_, err := Load(writeCfg(t, sampleYAML+"catalog:\n  ref: dev\n"), envOf(env))
+	if err == nil || !strings.Contains(err.Error(), "catalog.repo") || !strings.Contains(err.Error(), "catalog.path") {
+		t.Errorf("got %v", err)
+	}
+}
