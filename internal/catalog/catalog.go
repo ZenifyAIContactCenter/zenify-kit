@@ -5,6 +5,8 @@ package catalog
 import (
 	"bytes"
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -13,7 +15,9 @@ import (
 // Envs are the environments a catalog describes.
 var Envs = []string{"prd", "stg"}
 
-// Catalog is the parsed catalog file.
+// Catalog is the parsed catalog file. Its json tags are part of the broker
+// wire contract (api.CatalogResponse embeds it): fields may only be added,
+// never renamed or removed, as in internal/broker/api.
 type Catalog struct {
 	Version     int                    `yaml:"version" json:"version"`
 	Datasources map[string]Datasources `yaml:"datasources" json:"datasources"`
@@ -64,7 +68,7 @@ type Names struct {
 
 // PostHog describes the PostHog project and which entries it covers.
 type PostHog struct {
-	ProjectID string   `yaml:"project_id" json:"project_id"`
+	ProjectID int64    `yaml:"project_id" json:"project_id"`
 	Covers    []string `yaml:"covers" json:"covers"`
 }
 
@@ -79,7 +83,40 @@ func Parse(b []byte) (*Catalog, error) {
 	if c.Version != 1 {
 		return nil, fmt.Errorf("catalog version %d is not supported (want 1)", c.Version)
 	}
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
 	return &c, nil
+}
+
+var (
+	uidRE   = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	labelRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+)
+
+// validate rejects datasource uids and label names that would change a
+// Grafana proxy path (the broker builds one from each). Empty values stay
+// legal: they mean "not set", which drift reports per source.
+func (c *Catalog) validate() error {
+	envs := make([]string, 0, len(c.Datasources))
+	for env := range c.Datasources {
+		envs = append(envs, env)
+	}
+	sort.Strings(envs)
+	for _, env := range envs {
+		d := c.Datasources[env]
+		for _, f := range []struct{ key, v string }{{"prometheus", d.Prometheus}, {"loki", d.Loki}, {"tempo", d.Tempo}} {
+			if f.v != "" && !uidRE.MatchString(f.v) {
+				return fmt.Errorf("parse catalog: datasources.%s.%s is not a valid uid (want %s)", env, f.key, uidRE)
+			}
+		}
+	}
+	for _, f := range []struct{ key, v string }{{"loki_app", c.Labels.LokiApp}, {"loki_host", c.Labels.LokiHost}} {
+		if f.v != "" && !labelRE.MatchString(f.v) {
+			return fmt.Errorf("parse catalog: labels.%s is not a valid label name (want %s)", f.key, labelRE)
+		}
+	}
+	return nil
 }
 
 // UnknownIDError reports an id that is in neither services nor datastores.

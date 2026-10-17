@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -35,7 +36,7 @@ datastores:
 attributes:
   tenant: tenant.id
 posthog:
-  project_id: "42"
+  project_id: 42
   covers: [svc-a]
 ignore:
   prd:
@@ -66,7 +67,7 @@ func TestParse_RoundTrip(t *testing.T) {
 		},
 		Datastores: []Entry{{ID: "db-a", Stg: &EnvNames{PrometheusJob: []string{"job-db"}}}},
 		Attributes: map[string]string{"tenant": "tenant.id"},
-		PostHog:    PostHog{ProjectID: "42", Covers: []string{"svc-a"}},
+		PostHog:    PostHog{ProjectID: 42, Covers: []string{"svc-a"}},
 		Ignore: map[string]Names{
 			"prd": {Loki: []string{"noise-prd"}, Tempo: []string{"noise-tempo"}, PrometheusJob: []string{"noise-job"}},
 			"stg": {Loki: []string{"noise-stg"}},
@@ -150,5 +151,49 @@ func TestFilter_NarrowsIgnoreToEnv(t *testing.T) {
 	}
 	if len(f.Ignore) != 1 || !reflect.DeepEqual(f.Ignore["stg"].Loki, []string{"noise-stg"}) {
 		t.Errorf("Ignore = %+v", f.Ignore)
+	}
+}
+
+func TestParse_RejectsUnsafeNames(t *testing.T) {
+	for _, c := range []struct{ name, from, to, key string }{
+		{"dotdot uid", "loki: uid-prd-loki", "loki: ..", "datasources.prd.loki"},
+		{"slash uid", "tempo: uid-stg-tempo", "tempo: a/b", "datasources.stg.tempo"},
+		{"long uid", "prometheus: uid-prd-prom", "prometheus: " + strings.Repeat("a", 65), "datasources.prd.prometheus"},
+		{"dot label", "loki_app: app", "loki_app: a.b", "labels.loki_app"},
+		{"digit-first label", "loki_host: host", "loki_host: 1host", "labels.loki_host"},
+	} {
+		src := strings.Replace(fixture, c.from, c.to, 1)
+		if src == fixture {
+			t.Fatalf("%s: fixture has no %q", c.name, c.from)
+		}
+		_, err := Parse([]byte(src))
+		if err == nil || !strings.Contains(err.Error(), c.key) {
+			t.Errorf("%s: err = %v, want one naming %s", c.name, err, c.key)
+		}
+	}
+}
+
+func TestParse_AcceptsEmptyAndBoundaryNames(t *testing.T) {
+	src := strings.Replace(fixture, "loki_app: app", "loki_app: _App_1", 1)
+	src = strings.Replace(src, "tempo: uid-prd-tempo", "tempo: "+strings.Repeat("a", 64), 1)
+	if _, err := Parse([]byte(src)); err != nil {
+		t.Fatalf("boundary names: %v", err)
+	}
+	if _, err := Parse([]byte("version: 1\ndatasources:\n  prd: {loki: uid-a}\n")); err != nil {
+		t.Fatalf("absent uids and labels: %v", err)
+	}
+}
+
+func TestParse_ProjectIDIsNumberOnTheWire(t *testing.T) {
+	c, err := Parse([]byte(fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(c.PostHog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"project_id":42,"covers":["svc-a"]}`; string(b) != want {
+		t.Errorf("posthog json = %s, want %s", b, want)
 	}
 }
