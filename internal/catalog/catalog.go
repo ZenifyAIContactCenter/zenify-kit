@@ -68,11 +68,11 @@ type PostHog struct {
 	Covers    []string `yaml:"covers" json:"covers"`
 }
 
-// Parse decodes a catalog, rejecting unknown keys and any version but 1.
+// Parse decodes a catalog. Unknown keys are tolerated (the file is versioned
+// independently of this binary); any version but 1 is rejected.
 func Parse(b []byte) (*Catalog, error) {
 	var c Catalog
 	dec := yaml.NewDecoder(bytes.NewReader(b))
-	dec.KnownFields(true)
 	if err := dec.Decode(&c); err != nil {
 		return nil, fmt.Errorf("parse catalog: %w", err)
 	}

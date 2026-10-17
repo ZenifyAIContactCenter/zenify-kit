@@ -123,3 +123,32 @@ func TestFilter_UnknownID(t *testing.T) {
 		t.Errorf("message should list known ids: %v", err)
 	}
 }
+
+func TestParse_ToleratesUnknownKeys(t *testing.T) {
+	src := "version: 1\nfuture_key: x\nservices:\n  - id: svc-a\n    new_field: y\n    prd: {loki: [a], extra: 1}\n"
+	c, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Services) != 1 || c.Services[0].ID != "svc-a" || c.Services[0].Prd.Loki[0] != "a" {
+		t.Errorf("got %+v", c.Services)
+	}
+}
+
+func TestFilter_UnknownEnv(t *testing.T) {
+	c, _ := Parse([]byte(fixture))
+	if _, err := c.Filter("", "dev"); err == nil {
+		t.Fatal("want error for env dev")
+	}
+}
+
+func TestFilter_NarrowsIgnoreToEnv(t *testing.T) {
+	c, _ := Parse([]byte(fixture))
+	f, err := c.Filter("", "stg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Ignore) != 1 || !reflect.DeepEqual(f.Ignore["stg"].Loki, []string{"noise-stg"}) {
+		t.Errorf("Ignore = %+v", f.Ignore)
+	}
+}

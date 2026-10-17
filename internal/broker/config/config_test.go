@@ -220,11 +220,11 @@ func TestLoad_CatalogNeedsToken(t *testing.T) {
 	if c.Secrets.CatalogGitHubToken != "tok-secret-value" {
 		t.Error("token not loaded")
 	}
-	env["CATALOG_GITHUB_TOKEN"] = ""
+	env = fullEnv()
+	env["REDIS_URL_PRD"] = "redis-secret-value"
 	delete(env, "POSTHOG_API_KEY")
-	env["X"] = "tok-secret-value"
 	_, err = Load(writeCfg(t, sampleYAML+catalogBlock), envOf(env))
-	if err == nil || strings.Contains(err.Error(), "tok-secret-value") ||
+	if err == nil || strings.Contains(err.Error(), "redis-secret-value") ||
 		!strings.Contains(err.Error(), "CATALOG_GITHUB_TOKEN") || !strings.Contains(err.Error(), "POSTHOG_API_KEY") {
 		t.Errorf("joined error wrong: %v", err)
 	}
