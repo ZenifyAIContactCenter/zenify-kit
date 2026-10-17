@@ -76,6 +76,16 @@ var KitSandboxExcluded = []string{
 	"gh stack view *",
 }
 
+// KitAskRules are the rules the kit unions into permissions.ask: a production
+// write through `zenify data run` prompts even in bypassPermissions mode,
+// since an ask rule beats the allow rule above. That turns "wait for the user's
+// ok before --prd --write" into a real prompt; stg writes stay unprompted. Both
+// flag orders are listed, and the leading * also covers root flags.
+var KitAskRules = []string{
+	"Bash(zenify *data run*--prd*--write*)",
+	"Bash(zenify *data run*--write*--prd*)",
+}
+
 // KitDenyRule is the rule the kit unions into permissions.deny of
 // ~/.claude/settings.json so an agent does not read the workspace credential
 // file by accident (FR-10). It lives in user settings because Claude Code loads
@@ -117,6 +127,7 @@ type kitList struct {
 var (
 	allowList   = kitList{outer: "permissions", inner: "allow", rules: KitAllowRules, settings: claudeSettings, record: kitPermissionsRecord}
 	sandboxList = kitList{outer: "sandbox", inner: "excludedCommands", rules: KitSandboxExcluded, settings: claudeSettings, record: kitSandboxRecord}
+	askList     = kitList{outer: "permissions", inner: "ask", rules: KitAskRules, settings: claudeSettings, record: kitAskRecord}
 	denyList    = kitList{outer: "permissions", inner: "deny", settings: claudeSettings, record: kitDenyRecord}
 )
 
@@ -126,6 +137,10 @@ func claudeSettings(root string) string {
 
 func kitDenyRecord(home string) string {
 	return filepath.Join(home, ".zenify", "kit-deny.json")
+}
+
+func kitAskRecord(home string) string {
+	return filepath.Join(home, ".zenify", "kit-ask.json")
 }
 
 func kitPermissionsRecord(home string) string {
@@ -201,6 +216,17 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 // with the same record and user-removal rules as EnsureKitPermissions.
 func EnsureKitSandbox(home string, dryRun bool) (int, error) {
 	return sandboxList.ensure(home, dryRun)
+}
+
+// EnsureKitAsk unions KitAskRules into permissions.ask, with the same record
+// and user-removal rules as EnsureKitPermissions.
+func EnsureKitAsk(home string, dryRun bool) (int, error) {
+	return askList.ensure(home, dryRun)
+}
+
+// RemoveKitAsk removes only the ask rules the kit recorded adding.
+func RemoveKitAsk(home string, dryRun bool) (int, error) {
+	return askList.remove(home, dryRun)
 }
 
 // RemoveKitPermissions removes only the rules the kit recorded adding.

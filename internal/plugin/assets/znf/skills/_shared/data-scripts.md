@@ -87,8 +87,9 @@ Production data is the user's call, not the agent's.
    before-image path and the exact `--write` command you will run.
 3. **Wait for the user's `"ok"`.** Silence, a thumbs-up on something else, or "looks fine" about
    the plan is not an `"ok"` for this command. If the user changes the scope, dry-run again.
-4. Run the `--prd --write` command unchanged, then report the counts from the write log and the
-   path of the before-image file.
+4. Run the `--prd --write` command unchanged. Claude Code then prompts the user (a kit ask rule,
+   even in bypass mode); that prompt is the second check, not a substitute for step 3. Report the
+   counts from the write log and the path of the before-image file.
 
 ## When the command refuses
 
