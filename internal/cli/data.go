@@ -193,7 +193,10 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 		for {
 			select {
 			case s := <-sigs:
-				_ = c.Process.Signal(s)
+				// SIGINT is only caught: a terminal Ctrl-C already reaches the child via the foreground process group.
+				if s == syscall.SIGTERM {
+					_ = c.Process.Signal(s)
+				}
 			case <-done:
 				return
 			}
