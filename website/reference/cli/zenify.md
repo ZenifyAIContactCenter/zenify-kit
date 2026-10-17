@@ -32,6 +32,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify broker](./zenify_broker): Nhóm lệnh làm việc với credential broker của zenify.
 - [zenify config](./zenify_config): Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều.
 - [zenify cost](./zenify_cost): Cho biết token Claude Code đi đâu: context mỗi turn, phần subagent, model, skill và dấu hiệu lãng phí, đọc từ transcript local.
+- [zenify data](./zenify_data): Nhóm lệnh chạy script dữ liệu với credential DB do broker cấp, không để lộ giá trị trong output.
 - [zenify db-perf](./zenify_db-perf): Quét tĩnh một diff để tìm anti-pattern query DB, chia finding thành BLOCKING và ADVISORY.
 - [zenify db-read](./zenify_db-read): Đọc database dùng chung ở chế độ chỉ đọc, không bao giờ ghi và không in secret.
 - [zenify docs](./zenify_docs): Nhóm lệnh cho docs layer: đồng bộ knowledge store và sinh trang tham chiếu.

@@ -35,6 +35,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newDownCmd())
 	root.AddCommand(newWtCmd())
 	root.AddCommand(newDBReadCmd())
+	root.AddCommand(newDataCmd())
 	root.AddCommand(newBrokerCmd())
 	root.AddCommand(newRedisReadCmd())
 	root.AddCommand(newEnvCmd())
