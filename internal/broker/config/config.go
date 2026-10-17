@@ -47,6 +47,9 @@ type Config struct {
 		MainDB  string `yaml:"main_db"`
 		AuditDB string `yaml:"audit_db"`
 	} `yaml:"mongo"`
+	Lumi struct {
+		AppURLStg string `yaml:"app_url_stg"`
+	} `yaml:"lumi"`
 
 	Secrets Secrets `yaml:"-"`
 }
@@ -57,6 +60,10 @@ type Secrets struct {
 	MongoStg, MongoPrd, MySQLStg, MySQLPrd, AuditMongoPrd string
 	RedisStg, RedisPrd, GrafanaToken, POSTHOGAPIKey       string
 	E2EAdminEmail, E2EAdminPassword                       string
+	// Optional: empty when the env var is unset; never an error.
+	MongoWriteStg, MongoWritePrd, MySQLWriteStg, MySQLWritePrd string
+	RedisWriteStg, RedisWritePrd, LumiMySQLStg, LumiMySQLPrd   string
+	QdrantStg, QdrantPrd                                       string
 }
 
 // DefaultGrafanaArgs is the flag set the team runs mcp-grafana with.
@@ -125,6 +132,11 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	s.RedisStg, s.RedisPrd = get("REDIS_URL_STG"), get("REDIS_URL_PRD")
 	s.GrafanaToken, s.POSTHOGAPIKey = get("GRAFANA_SERVICE_ACCOUNT_TOKEN"), get("POSTHOG_API_KEY")
 	s.E2EAdminEmail, s.E2EAdminPassword = get("E2E_ADMIN_EMAIL"), get("E2E_ADMIN_PASSWORD")
+	s.MongoWriteStg, s.MongoWritePrd = getenv("MONGO_WRITE_URL_STG"), getenv("MONGO_WRITE_URL_PRD")
+	s.MySQLWriteStg, s.MySQLWritePrd = getenv("MYSQL_WRITE_URL_STG"), getenv("MYSQL_WRITE_URL_PRD")
+	s.RedisWriteStg, s.RedisWritePrd = getenv("REDIS_WRITE_URL_STG"), getenv("REDIS_WRITE_URL_PRD")
+	s.LumiMySQLStg, s.LumiMySQLPrd = getenv("LUMI_MYSQL_URL_STG"), getenv("LUMI_MYSQL_URL_PRD")
+	s.QdrantStg, s.QdrantPrd = getenv("QDRANT_URL_STG"), getenv("QDRANT_URL_PRD")
 	if len(noEnv) > 0 {
 		errs = append(errs, fmt.Errorf("missing required env: %s", strings.Join(sorted(noEnv), ", ")))
 	}
