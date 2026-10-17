@@ -4,7 +4,8 @@
 
 The one place a skill learns how to pull runtime evidence: logs, traces and metrics through the
 Grafana MCP server, product analytics through the PostHog MCP server, and stored state through
-`zenify db-read` / `zenify redis-read`. All of it is read-only. The broker MCP servers exist when
+`zenify db-read` / `zenify redis-read`. All of it is read-only; writes and scripts go through
+`zenify data run` (`data-scripts.md`). The broker MCP servers exist when
 the manifest declares a `broker:` (registered by `zenify up`); read their server names from the
 session's MCP tool list, where each tool name starts `mcp__<server>__`. Everything project-specific — datasource uids, app names, attribute and metric
 names — is discovered at run time or read from the project's service catalog; never hard-code it.
@@ -121,4 +122,4 @@ db-read: collections, count (no --filter), explain, indexes, stats, tables, sql:
 - `explain` for dev on prd returns the `queryPlanner` plan only — no `executionStats`.
 - `count` takes no `--filter`.
 - `db-read --target audit` (Mongo, prd only) is lead-only.
-- Grafana logs, traces and metrics stay available. For row data, read staging or ask a lead.
+- Grafana logs, traces and metrics stay available. For row data, read staging, or ask a lead to run the prd step.

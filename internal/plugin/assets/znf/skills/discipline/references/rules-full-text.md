@@ -72,6 +72,7 @@ always                      verify with real output before saying it works
 
 ### 6 — Balance
 - These rules serve "fast but correct". Read-before-write and verify-before-claim are required at risky boundaries (data fields, contracts, anything irreversible). For obviously trivial changes, keep the diff small and don't invent.
+- Data work (DB reads, backfills, repairs, seeds): run `zenify db-read` / `redis-read` / `zenify data run` yourself per `_shared/data-scripts.md`; never ask the user to run `!` or paste a credential.
 
 ### 7 — Git safety
 - **Feature branches: commit + push freely**, no need to ask. Verify first (rule #3), then commit atomically in the repo's existing convention (infer it from the commit log). On a deploy branch, branch off before you start.

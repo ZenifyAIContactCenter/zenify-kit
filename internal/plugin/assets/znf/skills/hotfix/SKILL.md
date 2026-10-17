@@ -45,8 +45,9 @@ confirmation, you were on the wide path all along.
 3. **Diagnose — before touching anything.** Run **`/fix` steps 0-2**: ground in the real error
    output first (logs, traces, metrics: `znf:_shared/evidence-sources`), then hypotheses, then confirm the
    root cause. If you cannot confirm it, say so — **do not guess-fix production.** This comes
-   before the worktree on purpose (see references). On production use only read-only rungs and
-   redact output (`<REDACTED>`); with no read-only loop, confirm the cause from logs — the no-loop
+   before the worktree on purpose (see references). On production run read-only rungs directly,
+   redact output (`<REDACTED>`); a side-effect rung goes via `zenify data run` (dry-run; user's
+   "ok" before `--prd --write`); with no read-only loop, confirm the cause from logs — the no-loop
    stop and temporary logging do not apply.
 
 4. **Decide the response — the user's call, not yours.** With the cause confirmed, there are

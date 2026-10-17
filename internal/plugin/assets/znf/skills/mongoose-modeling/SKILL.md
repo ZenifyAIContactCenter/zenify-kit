@@ -130,8 +130,9 @@ instead of adding it as `required` from the start:
 2. **Switch writers to populate it.** Deploy the code that starts setting the
    field on every new write. At this point old documents still lack it, new ones
    have it.
-3. **Backfill existing documents.** Run a migration that sets the field on every
-   document that predates step 2, in batches, with a way to re-run it safely if
+3. **Backfill existing documents.** Run a migration script yourself through
+   the project's data-script runner (staging first; the production write only
+   after the user's "ok") that sets the field on every document that predates step 2, in batches, with a way to re-run it safely if
    it's interrupted partway.
 4. **Make it required (optional).** Only once the backfill is confirmed complete
    — checked against the real collection, not assumed — is it safe to mark the

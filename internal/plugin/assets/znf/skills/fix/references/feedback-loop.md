@@ -34,7 +34,8 @@ Try the rungs top-down; stop at the first one that goes red on the right symptom
 9. **Numbered manual steps** — last resort: steps for the user to perform by hand, each returning
    one `KEY=value` line you can read back. No script. This is the one exception to "already run" and
    "you can run it yourself": the user's pasted `KEY=value` lines are the red evidence, and Step 6
-   asks the user to repeat the same steps and paste the lines again.
+   asks the user to repeat the same steps and paste the lines again. Only for UI or device steps;
+   never for DB reads or data scripts — run `zenify db-read` / `redis-read` / `data run` yourself.
 
 Read-only means log reads, running an existing failing test, and GET or HEAD requests — nothing
 else. Those need no worktree. A request with a side effect, or a payload replay, runs only against
@@ -60,8 +61,8 @@ loop is red reliably.
 - [ ] It is red on the symptom the user described, not a neighbouring error.
 - [ ] It is stable across repeated runs.
 - [ ] It is fast enough to re-run after every change.
-- [ ] You can run it yourself, without the user — except rung 9, where the user's pasted
-      `KEY=value` lines are the evidence.
+- [ ] You can run it yourself, without the user — except rung 9 (UI or device steps only, never
+      DB reads or data scripts), where the user's pasted `KEY=value` lines are the evidence.
 
 ## Evidence sources
 

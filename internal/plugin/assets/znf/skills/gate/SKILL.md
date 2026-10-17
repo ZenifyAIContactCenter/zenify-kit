@@ -104,7 +104,7 @@ For a queue or Redis key, read the real name with `zenify redis-read` (SCAN/TYPE
 project exports queue metrics, check them first — `znf:_shared/evidence-sources`.
 
 > ⚠️ **A read-only accessor is no barrier** if its connection can write. Never write directly —
-> a write goes in a purpose-written script, reviewable before it runs.
+> a write goes in a script you dry-run, then run via `zenify data run` (`_shared/data-scripts.md`).
 
 ## Output
 
