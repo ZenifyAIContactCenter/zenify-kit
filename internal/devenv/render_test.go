@@ -445,3 +445,19 @@ func TestRender_LoneNoteShapedDescriptionStays(t *testing.T) {
 		t.Fatalf("desc = %q, want secret", d)
 	}
 }
+
+// FR-6.4: with no manifest keys the scaffold carries no manifest section and
+// keeps the user's custom key.
+func TestRender_NoManifestKeys(t *testing.T) {
+	r := Render(load(t, "# my note\nCUSTOM_KEY='v'\n"), nil, nil)
+	managedSections := []string{"Staging", "Tooling", "Production"}
+	got := text(t, r.File)
+	if !strings.Contains(got, "CUSTOM_KEY='v'") {
+		t.Errorf("custom key lost:\n%s", got)
+	}
+	for _, sec := range managedSections {
+		if strings.Contains(got, "══ "+sec) || strings.Contains(text(t, Render(nil, nil, nil).File), "══ "+sec) {
+			t.Errorf("manifest section %q rendered for no keys:\n%s", sec, got)
+		}
+	}
+}

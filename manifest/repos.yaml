@@ -43,29 +43,6 @@ repos:
     path: repos/lumi-agent
     base: origin/staging
     tags: [ai]
-    # Repo-scoped keys; scaffolded in every workspace's .zenify/.env, filled only by developers working on lumi-agent.
-    secretKeys:
-      - name: LUMI_MYSQL_URL_STG
-        description: "URL MySQL của lumi-agent, môi trường staging"
-        scope: shared
-        group: staging
-      - name: LUMI_MYSQL_URL_PRD
-        description: "URL MySQL của lumi-agent, môi trường production"
-        scope: shared
-        group: production
-      - name: QDRANT_URL_STG
-        description: "URL Qdrant của lumi-agent, môi trường staging"
-        scope: shared
-        group: staging
-      - name: QDRANT_URL_PRD
-        description: "URL Qdrant của lumi-agent, môi trường production"
-        scope: shared
-        group: production
-      - name: LUMI_APP_URL_STG
-        description: "URL ứng dụng lumi-agent, môi trường staging"
-        scope: shared
-        secret: false
-        group: staging
   - name: message-hub-be
     url: git@github.com:ZenifyAIContactCenter/message-hub-be.git
     path: repos/message-hub-be

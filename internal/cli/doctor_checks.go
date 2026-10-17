@@ -145,6 +145,7 @@ func brokerCheck(url string, gh ghx.Runner, probe *http.Client, client *brokercl
 var retiredBrokerKeys = map[string]bool{
 	"MONGO_URL": true, "MYSQL_URL": true, "E2E_DOMAIN": true, "E2E_EMAIL": true, "E2E_PASSWORD": true,
 	"POSTHOG_API_KEY": true, "MONGO_URL_PRD": true, "MYSQL_URL_PRD": true, "AUDIT_MONGO_URL_PRD": true, "REDIS_URL_PRD": true,
+	"LUMI_MYSQL_URL_STG": true, "LUMI_MYSQL_URL_PRD": true, "QDRANT_URL_STG": true, "QDRANT_URL_PRD": true, "LUMI_APP_URL_STG": true,
 }
 
 // envFileCheck inspects <workspace>/.zenify/.env itself: a mode wider than 0600
@@ -564,6 +565,7 @@ func registerDefaultChecks() {
 	RegisterCheck(secretPresenceCheck(os.Getenv, workspaceEnvPath, workspaceManifest))
 	RegisterCheck(envFileCheck(workspaceEnvPath, workspaceManifest, runtime.GOOS))
 	RegisterCheck(settingsEnvCheck(workspaceEnvPath, workspaceManifest))
+	RegisterCheck(brokerCredsCheck())
 	RegisterCheck(dbToolsCheck())
 	RegisterCheck(playwrightCheck())
 	RegisterCheck(kitPermissionsCheck(os.UserHomeDir))
@@ -605,4 +607,31 @@ func dbToolsCheck() Check {
 		}
 		return local.Run()
 	}}
+}
+
+// brokerCredsCheck asks the trusted-manifest broker for staging read
+// credentials and names the engines it vends (sorted keys) — never a value.
+// Without a broker there is nothing to verify, so it skips.
+func brokerCredsCheck() Check {
+	return Check{
+		Name: "broker-creds",
+		Run: func() (bool, string) {
+			bc, ok, err := brokerFromFlags("", "")
+			if err != nil || !ok {
+				return true, "skip: không có broker" //znf:allow-lang
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), brokerCheckTimeout)
+			defer cancel()
+			var resp api.CredsResponse
+			if err := bc.Post(ctx, "/creds", api.CredsRequest{Env: "stg", Mode: api.CredsModeRead}, &resp); err != nil {
+				return false, "broker không cấp được credential staging: " + brokerCallErr(err).Error() //znf:allow-lang
+			}
+			names := make([]string, 0, len(resp.Values))
+			for k := range resp.Values {
+				names = append(names, k)
+			}
+			sort.Strings(names)
+			return true, "broker cấp credential staging: " + strings.Join(names, ", ") //znf:allow-lang
+		},
+	}
 }

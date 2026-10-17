@@ -434,3 +434,23 @@ func TestEnvExec_DropsProductionKeys(t *testing.T) {
 		}
 	}
 }
+
+// FR-6.4: a manifest that declares no keys still runs `zenify env`: the form
+// asks nothing, and a user-added custom key stays editable via the picker.
+func TestEnvForm_NoManifestKeys(t *testing.T) {
+	d, _ := envFixture(t, "")
+	d.manifest = func(string) (*manifest.Manifest, error) { return &manifest.Manifest{}, nil }
+	asked := false
+	d.prompt = func([]string) (map[string]string, error) { asked = true; return nil, nil }
+	var offered []string
+	d.pick = func(names []string) (string, error) { offered = names; return "", nil }
+	if _, err := runEnv(d); err != nil {
+		t.Fatal(err)
+	}
+	if asked {
+		t.Error("form asked for a key although the manifest declares none")
+	}
+	if len(offered) != 0 {
+		t.Errorf("picker offered %v, want none", offered)
+	}
+}
