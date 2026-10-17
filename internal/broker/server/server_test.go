@@ -497,6 +497,42 @@ func TestServer_CatalogRouteAudited(t *testing.T) {
 	}
 }
 
+func TestServer_CatalogDriftRouteAbsentWithoutHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	New(Deps{JWTKey: testKey}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/catalog/drift", strings.NewReader("{}")))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("route should be absent when Deps.CatalogDrift is nil, got %d", rec.Code)
+	}
+}
+
+func TestServer_CatalogDriftRouteRequiresAuth(t *testing.T) {
+	var buf bytes.Buffer
+	log := &audit.Logger{W: &buf}
+	served := false
+	h := New(Deps{JWTKey: testKey, Audit: log, CatalogDrift: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		served = true
+	})})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/catalog/drift", strings.NewReader("{}")))
+	if rec.Code != http.StatusUnauthorized || served {
+		t.Fatalf("no token: got %d served=%v, want 401 and not served", rec.Code, served)
+	}
+	if !strings.Contains(buf.String(), `"endpoint":"/catalog/drift"`) {
+		t.Errorf("401 not audited under /catalog/drift: %s", buf.String())
+	}
+	tok, _, err := auth.Issue(testKey, "octocat", "dev", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/catalog/drift", strings.NewReader("{}"))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !served {
+		t.Fatalf("with token: got %d served=%v", rec.Code, served)
+	}
+}
+
 func TestRequire401IsAudited(t *testing.T) { // FR-6.1 / SC-8
 	noop := http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})
 	expired, _, _ := auth.Issue(testKey, "octocat", "lead", time.Now().Add(-2*time.Hour))

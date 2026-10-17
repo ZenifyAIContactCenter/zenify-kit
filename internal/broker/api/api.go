@@ -151,3 +151,24 @@ type CatalogResponse struct {
 	Catalog         *catalog.Catalog `json:"catalog"`
 	StaleAgeSeconds int              `json:"stale_age_seconds"`
 }
+
+// DriftRequest is the body of POST /catalog/drift. Env "" means prd and stg.
+type DriftRequest struct {
+	Env string `json:"env"`
+}
+
+// DriftResponse is the 200 body of POST /catalog/drift: env -> source (loki,
+// tempo, prometheus) -> result.
+type DriftResponse struct {
+	Envs map[string]map[string]DriftResult `json:"envs"`
+}
+
+// DriftResult compares one source's live label values over the last 24 hours
+// with the catalog. Unlisted: live, in neither the catalog nor ignore.
+// Missing: in the catalog, not live. Both sorted. Error is set when the source
+// could not be read; the lists are then empty.
+type DriftResult struct {
+	Unlisted []string `json:"unlisted"`
+	Missing  []string `json:"missing"`
+	Error    string   `json:"error,omitempty"`
+}
