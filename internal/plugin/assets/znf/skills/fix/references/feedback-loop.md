@@ -37,8 +37,8 @@ Try the rungs top-down; stop at the first one that goes red on the right symptom
    asks the user to repeat the same steps and paste the lines again. Only for UI or device steps;
    never for DB reads or data scripts — run `zenify db-read` / `redis-read` / `data run` yourself.
 
-Read-only means log reads, running an existing failing test, and GET or HEAD requests — nothing
-else. Those need no worktree. A request with a side effect, or a payload replay, runs only against
+Read-only means log reads, `zenify db-read` / `redis-read`, running an existing failing test, and
+GET or HEAD requests — nothing else. Those need no worktree. A request with a side effect, or a payload replay, runs only against
 the worktree's own port or a local target. Anything that writes to a shared or production
 environment goes through a data script: dry-run first, then `--write` via `zenify data run`, with
 the user's "ok" before any production write — see `_shared/data-scripts.md`. A rung that writes a file or starts a server needs the worktree first.

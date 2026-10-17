@@ -263,14 +263,29 @@ func wrapperLen(argv []string) int {
 		return skipFlags(argv, []string{"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"})
 	case "xargs":
 		return skipFlags(argv, []string{"-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a"})
-	case "zenify": // `zenify data run [flags] -- <child>` runs everything after the first --
-		if len(argv) > 2 && argv[1] == "data" && argv[2] == "run" {
-			if i := slices.Index(argv, "--"); i >= 0 {
+	case "zenify": // `zenify [flags] data [flags] run [flags] -- <child>` runs everything after the first --
+		if i := slices.Index(argv, "--"); i > 0 {
+			if sub := zenifySub(argv[:i]); len(sub) > 1 && sub[0] == "data" && sub[1] == "run" {
 				return i + 1
 			}
 		}
 	}
 	return 0
+}
+
+// zenifySub returns the non-flag words of a zenify command line, so a root flag
+// (`zenify --no-color data run`) cannot hide the subcommand.
+func zenifySub(argv []string) []string {
+	var sub []string
+	for _, t := range argv[1:] {
+		if t == "--" {
+			break
+		}
+		if !strings.HasPrefix(t, "-") {
+			sub = append(sub, t)
+		}
+	}
+	return sub
 }
 
 // skipFlags returns the index of the first token after argv[0] that is not a

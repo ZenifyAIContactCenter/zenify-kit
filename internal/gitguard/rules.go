@@ -20,13 +20,14 @@ func denyHint(sub, why, hint string) Decision {
 const stopHint = " Dừng và báo người dùng; không thử biến thể." //znf:allow-lang
 
 var (
-	denyForcePush  = denyHint("push", "force push", "Chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                                               //znf:allow-lang
-	denyPRMerge    = denyHint("gh", "merge PR", "Merge là việc của người: chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                          //znf:allow-lang
-	denyStack      = denyHint("gh", "merge/gỡ/ghép stack", "Merge hay gỡ stack là việc của người: chạy tay bằng ! nếu thật sự cần."+stopHint)                                                  //znf:allow-lang
-	denyStackAlias = denyHint("gh", "gh stack alias", "Alias tạo lệnh tắt (gs) mà guard không nhận ra: chạy tay bằng ! nếu thật sự cần."+stopHint)                                             //znf:allow-lang
-	denyWtForce    = denyHint("wt", "wt rm --force", "Worktree có thể chưa merge — chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                 //znf:allow-lang
-	denyEnvFile    = denyHint("env-file", "đọc .zenify/.env", "Không đọc .zenify/.env. Cần DB: đọc bằng zenify db-read / redis-read; chạy script bằng zenify data run --stg|--prd -- <lệnh>.") //znf:allow-lang
-	denyParse      = denyHint("parse", "lệnh không phân tích được có từ khoá nguy hiểm", "Viết lại lệnh, không lồng chuỗi; script DB chạy thẳng qua zenify data run.")                         //znf:allow-lang
+	denyForcePush  = denyHint("push", "force push", "Chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                                                                                           //znf:allow-lang
+	denyPRMerge    = denyHint("gh", "merge PR", "Merge là việc của người: chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                                                                      //znf:allow-lang
+	denyStack      = denyHint("gh", "merge/gỡ/ghép stack", "Merge hay gỡ stack là việc của người: chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                                              //znf:allow-lang
+	denyStackAlias = denyHint("gh", "gh stack alias", "Alias tạo lệnh tắt (gs) mà guard không nhận ra: chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                                         //znf:allow-lang
+	denyWtForce    = denyHint("wt", "wt rm --force", "Worktree có thể chưa merge — chạy tay bằng ! nếu thật sự cần."+stopHint)                                                                                                             //znf:allow-lang
+	denyEnvFile    = denyHint("env-file", "đọc .zenify/.env", "Không đọc .zenify/.env. Cần DB: đọc bằng zenify db-read / redis-read; chạy script bằng zenify data run --stg|--prd -- <lệnh>.")                                             //znf:allow-lang
+	denyParse      = denyHint("parse", "lệnh không phân tích được có từ khoá nguy hiểm", "Viết lại thành lệnh đơn, không lồng chuỗi; script DB chạy thẳng qua zenify data run. Nếu lệnh thật sự là merge, force push hay stack:"+stopHint) //znf:allow-lang
+	denyManifest   = denyHint("zenify", "--manifest cho db-read/redis-read", "Bỏ --manifest: lệnh tự dùng manifest nhúng sẵn. Manifest khác đổi broker nhận GitHub token, việc của người."+stopHint)                                       //znf:allow-lang
 )
 
 // checkRules applies R2–R5, R7 and R8 to a parsed command; Deny=false when none fires.
@@ -44,6 +45,8 @@ func checkRules(p Parsed, raw, base string, getenv func(string) string, opts Opt
 			return denyStack
 		case isWtForceRm(c.Argv):
 			return denyWtForce
+		case isBrokerManifestFlag(c.Argv):
+			return denyManifest
 		}
 		if exempt(c) {
 			continue
@@ -216,12 +219,28 @@ func exempt(c Cmd) bool {
 	a := c.Argv
 	switch basename(a[0]) {
 	case "zenify":
-		return len(a) > 1 && (a[1] == "db-read" || a[1] == "redis-read" ||
-			(a[1] == "env" && len(a) > 2 && slices.Contains([]string{"list", "set", "edit"}, a[2])))
+		sub := zenifySub(a)
+		return len(sub) > 0 && (sub[0] == "db-read" || sub[0] == "redis-read" ||
+			(sub[0] == "env" && len(sub) > 1 && slices.Contains([]string{"list", "set", "edit"}, sub[1])))
 	case "chmod", "ls", "stat", "test", "[":
 		return true
 	}
 	return false
+}
+
+// isBrokerManifestFlag: `zenify db-read|redis-read --manifest …`. Those two run
+// without a prompt and outside the sandbox, and --manifest picks the broker URL
+// that receives the developer's GitHub token.
+func isBrokerManifestFlag(argv []string) bool {
+	if basename(argv[0]) != "zenify" {
+		return false
+	}
+	if sub := zenifySub(argv); len(sub) == 0 || sub[0] != "db-read" && sub[0] != "redis-read" {
+		return false
+	}
+	return slices.ContainsFunc(argv, func(t string) bool {
+		return t == "--manifest" || strings.HasPrefix(t, "--manifest=")
+	})
 }
 
 // dirReaders read or copy every file of a directory named on their command line.
@@ -244,22 +263,27 @@ func readsEnvFile(argv []string, base, envFile string, getenv func(string) strin
 			continue
 		}
 		p := resolveDir(base, a, getenv)
-		if filepath.Base(a) == ".env" && canonical(p) == envFile || reader && canonical(p) == zdir {
+		if cp := canonical(p); cp == envFile || reader && cp == zdir {
 			return true
 		}
-		name, d := filepath.Base(p), canonical(filepath.Dir(p))
-		if d == runs || strings.HasPrefix(d, runs+string(filepath.Separator)) {
+		// A brace word is expanded by the shell, not here: it never earns the
+		// data-runs exemption, and inside .zenify it counts as a glob.
+		name, d, brace := filepath.Base(p), canonical(filepath.Dir(p)), strings.Contains(a, "{")
+		// filepath.Dir cleans `*/..` away, so test the raw directory part.
+		if !brace && !strings.ContainsAny(a[:max(strings.LastIndex(a, "/"), 0)], "*?[") &&
+			(d == runs || strings.HasPrefix(d, runs+string(filepath.Separator))) {
 			continue
 		}
 		if (d == zdir || strings.HasPrefix(d, zdir+string(filepath.Separator))) &&
-			(name == ".env" || strings.ContainsAny(name, "*?[")) {
+			(name == ".env" || brace || strings.ContainsAny(name, "*?[")) {
 			return true
 		}
 	}
 	return false
 }
 
-// canonical cleans path and resolves symlinks when it can.
+// canonical cleans path and resolves symlinks in its longest existing prefix,
+// so a missing tail (a glob or brace word) still compares on the real directory.
 func canonical(path string) string {
 	if path == "" {
 		return ""
@@ -267,6 +291,9 @@ func canonical(path string) string {
 	path = filepath.Clean(path)
 	if r, err := filepath.EvalSymlinks(path); err == nil {
 		return r
+	}
+	if dir := filepath.Dir(path); dir != path {
+		return filepath.Join(canonical(dir), filepath.Base(path))
 	}
 	return path
 }

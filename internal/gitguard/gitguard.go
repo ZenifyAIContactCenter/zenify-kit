@@ -71,7 +71,7 @@ func Decide(command, callCwd string, getenv func(string) string, onCommit func(r
 			}
 		case "commit", "merge":
 			if matchDeny(branch, patterns) {
-				return deny(c.Sub, "cannot commit/merge on deploy branch '"+branch+"'")
+				return denyHint(c.Sub, "cannot commit/merge on deploy branch '"+branch+"'", "Làm trong worktree riêng (wt new <slug>) rồi commit ở đó.") //znf:allow-lang
 			}
 			if c.Sub == "commit" && onCommit != nil {
 				if d := onCommit(root); d.Deny {

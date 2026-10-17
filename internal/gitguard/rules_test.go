@@ -21,6 +21,9 @@ func mkWorkspace(t *testing.T) (string, Options) {
 	if err := os.MkdirAll(filepath.Join(ws, ".zenify", "data-runs"), 0o750); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Symlink("../.env", filepath.Join(ws, ".zenify", "data-runs", "link")); err != nil {
+		t.Fatal(err)
+	}
 	return ws, Options{EnvFile: filepath.Join(ws, ".zenify/.env")}
 }
 
@@ -58,6 +61,8 @@ func TestRules(t *testing.T) {
 		`gh stack alias`, `gh stack alias gs`, `gh-stack alias`, `bash -c 'gh stack alias'`,
 		`zenify data run --stg -- git push --force origin x`, `zenify data run --prd --write -- gh pr merge 1`,
 		`zenify data run --stg -- bash -c 'gh pr merge 1'`,
+		`zenify --no-color data run --stg -- gh pr merge 1`, `zenify data --no-color run -- git push --force`,
+		`zenify db-read --manifest /tmp/m.yaml collections`, `zenify --no-color redis-read --manifest=/tmp/m.yaml get k`,
 	}
 	allow := []string{
 		`go test ./...`, `git push origin feat/x`, `git push -u origin feat/x`, `gh pr create --title t`,
@@ -141,6 +146,11 @@ func TestRuleEnvFilePath(t *testing.T) {
 		{ws, `cat .zenify/data-runs/*.log`, false},
 		{ws, `rg x .zenify/data-runs/*`, false},
 		{ws, `cat .zenify/data-runs/../.env`, true},
+		{ws, `cat .zenify/data-runs/{..,}/.env`, true},
+		{ws, `cat .zenify/data-runs/{x,../../.env}`, true},
+		{ws, `cat .zenify/data-runs/*/../.env`, true},
+		{ws, `cat .zenify/data-runs/link`, true}, // symlink to .env, made below
+		{ws, `zenify --no-color data run --stg -- cat .zenify/.env`, true},
 		{ws, `zenify redis-read --prd get .zenify/.env`, false},
 		{ws, `zenify data run -- cat .zenify/.env`, true},
 		{ws, `zenify data run --prd -- cat .zenify/.env`, true},
@@ -165,10 +175,17 @@ func TestDenyMessages(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "repo")
 	mkRepo(t, repo, "staging", []string{"staging"})
 	for _, cmd := range []string{`git push --force origin x`, `gh pr merge 1`, `gh stack merge`, `gh stack alias`,
-		`wt rm x --force`, `git commit -m x`, `git push origin staging`, `gh stack add staging`} {
+		`wt rm x --force`, `git push origin staging`, `gh stack add staging`} {
 		if d := Decide(cmd, repo, noenv, nil, opts); !strings.HasSuffix(d.Message, "Dừng và báo người dùng; không thử biến thể.") { //znf:allow-lang
 			t.Errorf("%s: human-only deny lacks stop line: %q", cmd, d.Message)
 		}
+	}
+	// A commit on a deploy branch is the agent's to fix: branch off, do not stop.
+	if d := Decide(`git commit -m x`, repo, noenv, nil, opts); !d.Deny || !strings.Contains(d.Message, "wt new") {
+		t.Errorf("deploy-branch commit hint lacks wt new: %q", d.Message)
+	}
+	if d := Decide(`gh pr merge 1 "`, ws, noenv, nil, opts); !strings.HasSuffix(d.Message, "không thử biến thể.") { //znf:allow-lang
+		t.Errorf("parse deny on a merge keyword lacks stop line: %q", d.Message)
 	}
 }
 
