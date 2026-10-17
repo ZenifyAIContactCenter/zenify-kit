@@ -99,7 +99,7 @@ catalog:
   # ref: main               # mặc định main
 ```
 
-Khi có khối này, broker bắt buộc biến env `CATALOG_GITHUB_TOKEN` và từ chối khởi động nếu thiếu. Tạo một fine-grained personal access token chỉ cho đúng một repo đó, với quyền Repository permissions, Contents: Read-only, rồi đặt vào file env của host (`chmod 600`).
+Khi có khối này, broker bắt buộc biến env `CATALOG_GITHUB_TOKEN` và từ chối khởi động nếu thiếu. Tạo một fine-grained personal access token chỉ cho đúng một repo đó, với quyền Repository permissions, Contents: Read-only, rồi đặt vào file env của host (`chmod 600`). Khi tạo token, chọn org làm Resource owner; nếu org bắt duyệt fine-grained token thì chờ admin duyệt. Lỗi `broker 503 catalog_unavailable: catalog fetch failed: GitHub returned 404` nghĩa là token chưa thấy được repo.
 
 Chỉ thêm khối `catalog:` vào `broker.yaml` sau khi image mới (có `/catalog`) đã chạy. Image cũ từ chối khoá lạ và không khởi động; trước khi quay lại image cũ, xoá khối `catalog:`.
 

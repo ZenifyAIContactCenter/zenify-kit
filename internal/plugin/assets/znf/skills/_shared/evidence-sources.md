@@ -14,17 +14,20 @@ names — is discovered at run time or read from the project's service catalog (
 
 1. Run `zenify catalog <id> --prd|--stg` (`<id>` = the service or datastore; omit it for the whole
    catalog). It prints YAML with the datasource uids and the real app, `service.name` and metric
-   names. Use those names as given. `no catalog configured` (exit 5), exit 2 (unknown id, which
-   lists the valid ones) or any other error → steps 2-3 below. A `catalog is <N>s old` line on
-   stderr means the broker served a stale copy; the names are still usable.
+   names. Use those names as given. Exit 2 (unknown id) lists the valid ids: pick the one that
+   matches, or run `zenify catalog --prd|--stg` without an id and match on `repo`, then retry.
+   `no catalog configured` (exit 5) or any other error → steps 2-3 below. A `catalog is <N>s old`
+   line on stderr means the broker served a stale copy; the names are still usable.
 2. `list_datasources` → the uid of each Loki, Tempo and Prometheus datasource. Tool arguments
    take the **uid**, not the display name.
 3. `list_loki_label_names`, then `list_loki_label_values` on the app label it returns → the real
    app names. The app name in Loki, the `service.name` in Tempo and the repo name can all differ;
    map them once here instead of guessing.
 
-A live name the catalog lacks: run `zenify catalog drift [--prd|--stg]` (table; exit 6 means drift,
-0 clean). Report the drift to the user and carry on with the live name; do not edit the catalog.
+A live name the catalog lacks: run `zenify catalog drift [--prd|--stg]` (table; exit 6 means drift
+or an unread source, 0 clean). Report the drift to the user and carry on with the live name; do not
+edit the catalog. A row with an `ERROR` value is a source the broker could not read: report it as
+that, not as catalog drift.
 
 ## Order by symptom
 

@@ -30,6 +30,8 @@ In bảng `ENV  SOURCE  UNLISTED  MISSING  ERROR`, mỗi dòng là một môi tr
 
 Giá trị rỗng in là `-`. Lệnh thoát mã 0 khi mọi nguồn không có `UNLISTED`, `MISSING` và `ERROR`; ngược lại thoát mã 6. Mã 5 khi chưa cấu hình danh mục (như `zenify catalog`).
 
+Một dòng có giá trị ở cột `ERROR` là nguồn mà broker không đọc được, không phải danh mục lệch: báo đúng là không đọc được nguồn đó.
+
 ## Cờ
 
 | Cờ | Ý nghĩa |
