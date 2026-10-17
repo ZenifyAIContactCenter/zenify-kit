@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -80,6 +81,30 @@ type Cmd struct {
 	// statement, kept apart from Argv so git parsing never sees them;
 	// RedirSrc also holds heredoc bodies.
 	RedirArgv, RedirSrc []string
+	// Braced: values of the brace expansions ({a,b}, {1..9..2}; never inside
+	// quotes) of every word above, as the shell would expand them.
+	// BraceOverflow: some word expands to more than maxBraceWords.
+	Braced        []string
+	BraceOverflow bool
+}
+
+const maxBraceWords = 1024
+
+// addBraces appends w's brace expansions to c.Braced. w itself is not
+// changed: SplitBraces rewrites the copy's parts.
+func (c *Cmd) addBraces(w *syntax.Word) {
+	cp := &syntax.Word{Parts: slices.Clone(w.Parts)}
+	if !syntax.SplitBraces(cp) {
+		return
+	}
+	n := 0
+	for bw, err := range expand.BracesSeq(nil, cp) {
+		if n++; err != nil || n > maxBraceWords {
+			c.BraceOverflow = true
+			return
+		}
+		c.Braced = append(c.Braced, wordValue(bw))
+	}
 }
 
 // redirectCmd is Argv[0] of the Cmd that carries the input redirects of a
@@ -132,6 +157,7 @@ func parseInto(src string, depth int, p *Parsed) {
 		for i, w := range ce.Args {
 			cmd.Argv[i] = wordValue(w)
 			cmd.Src[i] = wordSrc(src, w)
+			cmd.addBraces(w)
 		}
 		cmd = addRedirs(stripWrappers(cmd), src, redirs[ce])
 		p.Cmds = append(p.Cmds, cmd)
@@ -154,6 +180,7 @@ func addRedirs(c Cmd, src string, rs []*syntax.Redirect) Cmd {
 		case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn, syntax.WordHdoc:
 			c.RedirArgv = append(c.RedirArgv, wordValue(r.Word))
 			c.RedirSrc = append(c.RedirSrc, wordSrc(src, r.Word))
+			c.addBraces(r.Word)
 		case syntax.Hdoc, syntax.DashHdoc:
 			if r.Hdoc != nil {
 				c.RedirSrc = append(c.RedirSrc, wordSrc(src, r.Hdoc))

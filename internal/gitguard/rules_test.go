@@ -62,7 +62,7 @@ func TestRules(t *testing.T) {
 		`zenify data run --stg -- git push --force origin x`, `zenify data run --prd --write -- gh pr merge 1`,
 		`zenify data run --stg -- bash -c 'gh pr merge 1'`,
 		`zenify --no-color data run --stg -- gh pr merge 1`, `zenify data --no-color run -- git push --force`,
-		`zenify db-read --manifest /tmp/m.yaml collections`, `zenify --manifest /tmp/m.yaml db-read collections`, `zenify --no-color redis-read --manifest=/tmp/m.yaml get k`,
+		`zenify db-read --manifest /tmp/m.yaml collections`, `zenify --manifest /tmp/m.yaml db-read collections`, `zenify db-read --{manifest,x} /tmp/m.yaml c`, `zenify --no-color redis-read --manifest=/tmp/m.yaml get k`,
 	}
 	allow := []string{
 		`go test ./...`, `git push origin feat/x`, `git push -u origin feat/x`, `gh pr create --title t`,
@@ -154,6 +154,14 @@ func TestRuleEnvFilePath(t *testing.T) {
 		{ws, `cat .zenif{y,}/.env`, true},
 		{ws, `cat {.zenify,x}/.e{nv,}`, true},
 		{ws, `cat .zenif{x..z}/.env`, true},
+		{ws, `cat .zenif{x..z..1}/.env`, true},
+		{ws, `cat {{1..256},.zenify/.env}`, true},
+		{ws, `cat {1..99999}`, true}, // past the cap: fail closed
+		{ws, `{cat,.zenify/.env}`, true},
+		{ws, `cat .zenify/data-runs/{a,b}.log`, false},
+		{ws, `echo {1..300}`, false},
+		{ws, `git commit -m "fix: .zenif{y,}/.env {1..99999}"`, false}, // quoted: the shell does not expand it
+		{ws, `jq '{a: .x, b: .y}' f.json`, false},
 		{ws, `cat .zenify/data-runs/d/../.env`, true},
 		{ws, `ln -s ../.env .zenify/data-runs/x`, true},
 		{ws, `ln -s ../.env x`, false},
