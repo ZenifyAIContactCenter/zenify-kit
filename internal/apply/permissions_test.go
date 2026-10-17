@@ -317,10 +317,10 @@ func TestKitStackEntries(t *testing.T) {
 	}
 }
 
-// The broker read commands run without a prompt and outside the sandbox (they
-// reach the broker and write ~/.zenify); `zenify data run` stays prompted.
-func TestKitBrokerReadEntries(t *testing.T) {
-	for _, c := range []string{"zenify db-read *", "zenify redis-read *"} {
+// The broker commands run without a prompt and outside the sandbox (they reach
+// the broker and the DB); no blanket zenify entry is listed.
+func TestKitBrokerEntries(t *testing.T) {
+	for _, c := range []string{"zenify db-read *", "zenify redis-read *", "zenify data run *"} {
 		if !slices.Contains(KitAllowRules, "Bash("+c+")") {
 			t.Errorf("KitAllowRules missing Bash(%s)", c)
 		}
@@ -329,8 +329,8 @@ func TestKitBrokerReadEntries(t *testing.T) {
 		}
 	}
 	for _, r := range slices.Concat(KitAllowRules, KitSandboxExcluded) {
-		if strings.Contains(r, "data run") || r == "Bash(zenify *)" || r == "zenify *" {
-			t.Errorf("entry %q auto-allows zenify data run", r)
+		if r == "Bash(zenify *)" || r == "zenify *" {
+			t.Errorf("blanket entry %q auto-allows every zenify command", r)
 		}
 	}
 }

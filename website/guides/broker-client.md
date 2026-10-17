@@ -121,7 +121,10 @@ Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn v�
 
 ## Sandbox của Claude Code
 
-Chưa kiểm tra sandbox Bash của Claude Code có chặn request tới broker hay không; ghi chú về sandbox sẽ được bổ sung vào trang này.
+Khi sandbox Bash của Claude Code bật, lệnh chạy trong sandbox chỉ ra mạng qua proxy lọc của Claude Code, nên script nối thẳng tới MongoDB, MySQL hay Redis không kết nối được. Vì vậy `zenify up` thêm `zenify db-read *`, `zenify redis-read *` và `zenify data run *` vào cả `sandbox.excludedCommands` và `permissions.allow`. Lệnh gọi trần (một lệnh, không pipe, không redirect, không `cd`, không `$(…)`) chạy ngoài sandbox, có mạng thẳng và không hỏi quyền. Lệnh ghép, ví dụ có redirect ra file, `cd` hay `$(…)`, vẫn nằm trong sandbox và không nối được, nên hãy chạy lại dạng trần, với script ghi bằng đường dẫn tuyệt đối.
+
+- **Lệnh con của `data run`:** phần sau `--` cũng chạy ngoài sandbox. git-guard vẫn áp luật của nó lên lệnh con. Ghi production vẫn cần role lead ở broker và một lần dry-run trước.
+- **Khi nào có hiệu lực:** chỉ sau khi chạy `zenify up` và mở phiên Claude Code mới. Khi sandbox tắt, các mục này không có tác dụng.
 
 ## Xem thêm
 

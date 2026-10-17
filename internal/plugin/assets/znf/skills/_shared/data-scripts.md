@@ -48,15 +48,18 @@ lands next to it.
 ## Running it
 
 ```bash
-zenify data run --stg -- node docs/scripts/<repo>/fix-tags.js --tenant T --dry-run
-zenify data run --stg --write -- node docs/scripts/<repo>/fix-tags.js --tenant T
+zenify data run --stg -- node <workspace>/docs/scripts/<repo>/fix-tags.js --tenant T --dry-run
+zenify data run --stg --write -- node <workspace>/docs/scripts/<repo>/fix-tags.js --tenant T
 ```
 
 - One of `--stg` or `--prd` is required. `--write` asks for write credentials. `--lumi` adds the
   second service's variables (`LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL`).
-- The command needs a broker and network access, so run it with the sandbox **off**
-  (`dangerouslyDisableSandbox`); inside the sandbox it fails to connect, and that failure is not
-  a reason to look for another way in.
+- **Run it bare:** one `zenify data run …` call, no `cd`, pipe, redirect, `&&` or `$(...)`, the
+  script named by absolute path. `zenify up` allows it and excludes it from the Bash sandbox, so a
+  bare call runs without a prompt and reaches the broker and the DB; a compound call stays
+  sandboxed and fails to connect. Re-issue it bare; if a bare call still fails to connect, retry
+  it with the sandbox off (`dangerouslyDisableSandbox`). That failure is not a reason to look for
+  another way in.
 - The child process gets `MONGO_URL`, `MYSQL_URL`, `REDIS_URL` (and the `--lumi` names). Any copy
   of those names inherited from the shell, and every `*_PRD` variable, is stripped first.
 - Output is masked: credential values and hosts are replaced before they reach you. Still do not

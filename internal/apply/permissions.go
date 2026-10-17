@@ -12,8 +12,8 @@ import (
 
 // KitAllowRules are the tool rules the kit unions into permissions.allow of
 // ~/.claude/settings.json so Playwright UI-verify, `zenify e2e|visual`, the
-// read-only `zenify db-read|redis-read` and the broker MCPs run without
-// permission prompts. Playwright gets a per-tool list
+// broker commands `zenify db-read|redis-read|data run` and the broker MCPs run
+// without permission prompts. Playwright gets a per-tool list
 // with no server-wide rule and no browser_run_code_unsafe on purpose.
 //
 // zenify-grafana and zenify-posthog DO get server-wide wildcards: every tool
@@ -37,6 +37,7 @@ var KitAllowRules = []string{
 	"Bash(zenify ui-verify *)",
 	"Bash(zenify db-read *)",
 	"Bash(zenify redis-read *)",
+	"Bash(zenify data run *)",
 	"Bash(gh stack --help)",
 	"Bash(gh stack init *)",
 	"Bash(gh stack add *)",
@@ -57,13 +58,15 @@ var KitAllowRules = []string{
 // subcommands the skills run read gh auth and call GitHub, both denied by the
 // sandbox; only those are listed, so a new or dangerous subcommand still asks
 // and stays sandboxed, and git-guard blocks merge/unstack/link/alias before any
-// permission rule. `zenify db-read` / `redis-read` reach the broker and are
-// read-only; `zenify data run` is not listed, so it still asks. Inert when the
-// sandbox is off.
+// permission rule. `zenify db-read` / `redis-read` / `data run` reach the
+// broker, and `data run`'s child dials the DB directly; the child is still
+// checked by git-guard, and prd writes stay gated by the broker role and the
+// dry-run key. Inert when the sandbox is off.
 var KitSandboxExcluded = []string{
 	"zenify e2e login *",
 	"zenify db-read *",
 	"zenify redis-read *",
+	"zenify data run *",
 	"gh stack init *",
 	"gh stack add *",
 	"gh stack checkout *",
