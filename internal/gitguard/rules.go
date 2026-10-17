@@ -48,11 +48,15 @@ func checkRules(p Parsed, raw, base string, getenv func(string) string, opts Opt
 		case isBrokerManifestFlag(slices.Concat(c.Argv, c.Braced)):
 			return denyManifest
 		}
+		// Brace words are checked as the shell expands them; too many to check
+		// fails closed, before any exemption, since a hidden word could be anything.
+		if c.BraceOverflow {
+			return denyEnvFile
+		}
 		if exempt(c) {
 			continue
 		}
-		// Brace words are checked as the shell expands them; too many to check fails closed.
-		if c.BraceOverflow || readsEnvFile(slices.Concat(c.Argv, c.RedirArgv, c.Braced), base, envFile, getenv) {
+		if readsEnvFile(slices.Concat(c.Argv, c.RedirArgv, c.Braced), base, envFile, getenv) {
 			return denyEnvFile
 		}
 	}

@@ -83,7 +83,7 @@ type Cmd struct {
 	RedirArgv, RedirSrc []string
 	// Braced: values of the brace expansions ({a,b}, {1..9..2}; never inside
 	// quotes) of every word above, as the shell would expand them.
-	// BraceOverflow: some word expands to more than maxBraceWords.
+	// BraceOverflow: the words expand to more than maxBraceWords in all.
 	Braced        []string
 	BraceOverflow bool
 }
@@ -97,9 +97,8 @@ func (c *Cmd) addBraces(w *syntax.Word) {
 	if !syntax.SplitBraces(cp) {
 		return
 	}
-	n := 0
 	for bw, err := range expand.BracesSeq(nil, cp) {
-		if n++; err != nil || n > maxBraceWords {
+		if err != nil || len(c.Braced) >= maxBraceWords { // cap per command, not per word
 			c.BraceOverflow = true
 			return
 		}

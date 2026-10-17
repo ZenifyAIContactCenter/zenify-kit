@@ -160,6 +160,8 @@ func TestRuleEnvFilePath(t *testing.T) {
 		{ws, `{cat,.zenify/.env}`, true},
 		{ws, `cat .zenify/data-runs/{a,b}.log`, false},
 		{ws, `echo {1..300}`, false},
+		{ws, `echo {1..600} {1..600}`, true}, // the cap counts the whole command
+		{ws, `zenify db-read {--no-color{,}{,}{,}{,}{,}{,}{,}{,}{,}{,}{,},--manifest} /tmp/m.yaml c`, true},
 		{ws, `git commit -m "fix: .zenif{y,}/.env {1..99999}"`, false}, // quoted: the shell does not expand it
 		{ws, `jq '{a: .x, b: .y}' f.json`, false},
 		{ws, `cat .zenify/data-runs/d/../.env`, true},
