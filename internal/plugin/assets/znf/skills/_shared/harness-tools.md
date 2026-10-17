@@ -28,7 +28,7 @@ Two rules for skill authors:
 | Fetch a page or search the web | `WebFetch` / `WebSearch` | Codex web search |
 | Drive a browser (UI verification) | `mcp__playwright__browser_*` via `znf:ui-verifier` | MCP `playwright` |
 | Wait on a condition or a background process | `Monitor` | poll with a shell loop |
-| Run a data script against stg or prd with broker credentials | `Bash`: `zenify data run (--stg\|--prd) [--write] -- <cmd>`, sandbox off — see `data-scripts.md` | same command |
+| Run a data script against stg or prd with broker credentials | `Bash`: `zenify data run (--stg\|--prd) [--write] -- <cmd>`, a bare call (no pipe, redirect or `cd`) — see `data-scripts.md` | same command |
 | Query logs, traces, metrics or product analytics | MCP `mcp__<broker-grafana>__*`, `mcp__<broker-posthog>__exec` — see `evidence-sources.md` | same MCP servers |
 
 Codex notes: `Workflow` has no equivalent (only `contract-sweep` uses it); review T3 is a plain parallel `Agent` fan-out and runs the same on Codex. `context: fork` frontmatter is

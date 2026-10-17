@@ -20,7 +20,7 @@ Chạy `zenify secret-scan` trước khi push một branch có file cấu hình 
 flowchart TD
   A["Hook observe-count / observe-meter"] --> B["zenify observe report"]
   A --> C["Statusline trong Claude Code"]
-  D["Lệnh git chạm branch deploy, force push, merge PR, đọc .zenify/.env, host production"] --> E["git-guard chặn"]
+  D["Lệnh git chạm branch deploy, force push, merge PR, đọc .zenify/.env"] --> E["git-guard chặn"]
   F["Staged diff có secret"] --> G["secret-scan chặn"]
   class A,B,C action
   class E,G stop
@@ -90,8 +90,9 @@ Khi điều tra một triệu chứng trên staging hay production, các skill `
 | Hook git-guard (merge PR) | Chặn `gh pr merge` và `gh api … PUT …/merge` |
 | Hook git-guard (stack) | Chặn `gh stack merge`, `gh stack unstack` và `gh stack delete` (trừ khi có `--local`), `gh stack link`, `gh stack alias` (lệnh tắt nó cài, mặc định `gs`, guard không nhận ra), `gh api` tới đường dẫn `merge-async` hoặc `/stacks/<n>/unstack`, và `gh stack init`, `gh stack add` với tên deploy branch. Merge, gỡ và ghép stack là việc của người |
 | Hook git-guard (worktree) | Chặn `wt rm --force`, `wt rm -f`, `zenify wt rm --force` hoặc `-f`, và `git worktree remove --force` hoặc `-f` |
-| Hook git-guard (secret) | Chặn đọc `<workspace>/.zenify/.env` qua Bash, kể cả qua redirect (`<`, `3<`, `<<<`); chặn lệnh đọc cả thư mục (`grep`, `rg`, `find`, `tar`, `cp`, `cat`, …) nhắm vào chính thư mục `.zenify`, và mọi lệnh nhắm vào một glob trong đó (`.zenify/*`) hay một file `.env` trong đó; chặn mở rộng biến `$X_PRD` và `printenv X_PRD`; chặn lệnh chứa host của một URL `*_PRD`, kể cả trong redirect và thân heredoc. Vẫn cho `zenify db-read …`, `zenify env list|set|edit` và `chmod`, `ls`, `stat`, `test`, `[` |
+| Hook git-guard (secret) | Chặn đọc `<workspace>/.zenify/.env` qua Bash, kể cả qua redirect (`<`, `3<`, `<<<`); chặn lệnh đọc cả thư mục (`grep`, `rg`, `find`, `tar`, `cp`, `cat`, …) nhắm vào chính thư mục `.zenify`, và mọi lệnh nhắm vào một glob trong đó (`.zenify/*`) hay một file `.env` trong đó. Thư mục `.zenify/data-runs/` (bản ghi dry-run và log ghi của `zenify data run`) không tính: `cat .zenify/data-runs/*.log` được chạy. git-guard bung dấu ngoặc nhọn ngoài dấu nháy (`.zenif{y,}`, `{x..z..1}`) như shell trước khi xét, và chặn luôn lệnh bung ra quá 1024 từ; trong `data-runs`, từ có `..`, glob ở phần thư mục, hay glob chạm tới symlink trỏ về `.zenify/.env` không được miễn, và `ln` tạo link trong `.zenify` bị chặn. Vẫn cho `zenify db-read …`, `zenify redis-read …`, `zenify env list|set|edit` và `chmod`, `ls`, `stat`, `test`, `[`. Với `zenify data run … -- <lệnh>`, git-guard bỏ phần `zenify data run` (kể cả khi có flag gốc như `zenify --no-color data run`) và áp mọi luật lên lệnh con, nên `zenify data run --prd -- cat .zenify/.env` vẫn bị chặn. `zenify db-read` và `redis-read` kèm `--manifest` bị chặn, vì hai lệnh này chạy không hỏi quyền, ngoài sandbox, và `--manifest` quyết định URL broker nhận GitHub token |
 | Hook git-guard (không phân tích được) | Chặn lệnh không phân tích được mà chứa từ khoá nguy hiểm |
+| Thông báo chặn | Lệnh chỉ người được làm (force push, merge PR, stack, `wt rm --force`, push vào deploy branch, `--manifest` cho db-read/redis-read, lệnh không phân tích được có từ khoá merge/force/stack) kết thúc bằng `Dừng và báo người dùng; không thử biến thể.`; commit hay merge trên deploy branch chỉ agent sang worktree riêng (`wt new <slug>`); chặn đọc `.zenify/.env` chỉ agent sang `zenify db-read`, `redis-read` và `zenify data run` |
 
 ## Lưu ý
 
@@ -99,7 +100,7 @@ Các luật của git-guard áp ở mọi chế độ quyền, kể cả bypass 
 
 Git-guard là lớp chặn sai sót, không chặn được agent cố tình lách, ví dụ một script tự mở file `.zenify/.env`.
 
-Không chặn: `ssh` hay `scp` tới một host alias trong cấu hình SSH (luật host chỉ biết các host lấy từ URL `*_PRD`); lệnh được ghép lúc chạy, ví dụ tên file hay host nằm trong một biến; `grep -r` chạy từ thư mục gốc workspace; đường dẫn `.zenify/.env` nhắc tới bên trong thân heredoc của một script; `cd` không đứng đầu lệnh, ví dụ `true; cd <repo> && git push …`, vì git-guard chỉ đổi thư mục gốc theo `cd` chạy đầu tiên.
+Không chặn: lệnh được ghép lúc chạy, ví dụ tên file nằm trong một biến; `grep -r` chạy từ thư mục gốc workspace; đường dẫn `.zenify/.env` nhắc tới bên trong thân heredoc của một script; `cd` không đứng đầu lệnh, ví dụ `true; cd <repo> && git push …`, vì git-guard chỉ đổi thư mục gốc theo `cd` chạy đầu tiên.
 
 Một binary vừa build nằm trong cây thư mục có thể tạo finding giả cho `secret-scan`. Xóa binary trước khi quét. Khi git-guard chặn một lệnh, hãy báo lại thay vì tìm cách vòng qua.
 

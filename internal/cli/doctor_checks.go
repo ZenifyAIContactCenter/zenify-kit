@@ -506,10 +506,14 @@ func kitPermissionsCheck(home func() (string, error)) Check {
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
-			if n > 0 || s > 0 {
-				return false, fmt.Sprintf("missing %d kit allow rules, %d sandbox exclusions; run `zenify doctor --fix` or `zenify up`", n, s)
+			a, err := apply.EnsureKitAsk(h, true)
+			if err != nil {
+				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
-			return true, "allow rules and sandbox exclusions present"
+			if n > 0 || s > 0 || a > 0 {
+				return false, fmt.Sprintf("missing %d kit allow rules, %d sandbox exclusions, %d ask rules; run `zenify doctor --fix` or `zenify up`", n, s, a)
+			}
+			return true, "allow rules, sandbox exclusions and ask rules present"
 		},
 		Fix: func() (bool, string) {
 			h, err := home()
@@ -524,7 +528,11 @@ func kitPermissionsCheck(home func() (string, error)) Check {
 			if err != nil {
 				return false, err.Error()
 			}
-			return true, fmt.Sprintf("added %d kit allow rules, %d sandbox exclusions", n, s)
+			a, err := apply.EnsureKitAsk(h, false)
+			if err != nil {
+				return false, err.Error()
+			}
+			return true, fmt.Sprintf("added %d kit allow rules, %d sandbox exclusions, %d ask rules", n, s, a)
 		},
 	}
 }

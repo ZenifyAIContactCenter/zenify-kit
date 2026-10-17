@@ -61,7 +61,8 @@ failing and no error anywhere.
 The same question applies to a **new required field**: it is absent from every existing document.
 Adding it without a backfill means the invariant your code assumes is false for all data written
 before today. Ordering that works: add it optional → switch all writers → backfill in batches →
-only then require it.
+only then require it. The backfill is a script you run via `zenify data run`: stg first, prd
+`--write` only after the user's "ok".
 
 ## Why the tenant filter is the most severe class
 

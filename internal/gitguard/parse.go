@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -74,13 +75,35 @@ const maxNestDepth = 3
 
 // Cmd is one simple command after wrapper stripping.
 type Cmd struct {
-	Argv         []string // word values per FR-1.6; "" for a word with an expansion
-	Src          []string // source text of each word, quotes removed
-	PRDExpansion bool     // some word expands a parameter whose name ends in _PRD
+	Argv []string // word values per FR-1.6; "" for a word with an expansion
+	Src  []string // source text of each word, quotes removed
 	// RedirArgv/RedirSrc: input-redirect words (<, <>, <&, <<<) of the
 	// statement, kept apart from Argv so git parsing never sees them;
 	// RedirSrc also holds heredoc bodies.
 	RedirArgv, RedirSrc []string
+	// Braced: values of the brace expansions ({a,b}, {1..9..2}; never inside
+	// quotes) of every word above, as the shell would expand them.
+	// BraceOverflow: the words expand to more than maxBraceWords in all.
+	Braced        []string
+	BraceOverflow bool
+}
+
+const maxBraceWords = 1024
+
+// addBraces appends w's brace expansions to c.Braced. w itself is not
+// changed: SplitBraces rewrites the copy's parts.
+func (c *Cmd) addBraces(w *syntax.Word) {
+	cp := &syntax.Word{Parts: slices.Clone(w.Parts)}
+	if !syntax.SplitBraces(cp) {
+		return
+	}
+	for bw, err := range expand.BracesSeq(nil, cp) {
+		if err != nil || len(c.Braced) >= maxBraceWords { // cap per command, not per word
+			c.BraceOverflow = true
+			return
+		}
+		c.Braced = append(c.Braced, wordValue(bw))
+	}
 }
 
 // redirectCmd is Argv[0] of the Cmd that carries the input redirects of a
@@ -92,9 +115,6 @@ const redirectCmd = "<redirect>"
 type Parsed struct {
 	Cmds        []Cmd
 	Unparseable bool // strict re-parse failed, nesting > 3, or a dangerous git alias (FR-1.5)
-	// PRDExpansion: a _PRD parameter expansion anywhere in the AST at any
-	// nesting level (assignments, declarations, redirects); Task 2's R5 checks it.
-	PRDExpansion bool
 }
 
 // Parse parses command into its simple commands. A recovering parser yields
@@ -118,9 +138,6 @@ func parseInto(src string, depth int, p *Parsed) {
 	if file == nil && err != nil {
 		return
 	}
-	if hasPRDExpansion(file) {
-		p.PRDExpansion = true
-	}
 	redirs := map[*syntax.CallExpr][]*syntax.Redirect{}
 	syntax.Walk(file, func(node syntax.Node) bool {
 		if st, ok := node.(*syntax.Stmt); ok {
@@ -139,12 +156,7 @@ func parseInto(src string, depth int, p *Parsed) {
 		for i, w := range ce.Args {
 			cmd.Argv[i] = wordValue(w)
 			cmd.Src[i] = wordSrc(src, w)
-			cmd.PRDExpansion = cmd.PRDExpansion || hasPRDExpansion(w)
-		}
-		for _, a := range ce.Assigns {
-			if a.Value != nil && hasPRDExpansion(a.Value) {
-				cmd.PRDExpansion = true
-			}
+			cmd.addBraces(w)
 		}
 		cmd = addRedirs(stripWrappers(cmd), src, redirs[ce])
 		p.Cmds = append(p.Cmds, cmd)
@@ -167,6 +179,7 @@ func addRedirs(c Cmd, src string, rs []*syntax.Redirect) Cmd {
 		case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn, syntax.WordHdoc:
 			c.RedirArgv = append(c.RedirArgv, wordValue(r.Word))
 			c.RedirSrc = append(c.RedirSrc, wordSrc(src, r.Word))
+			c.addBraces(r.Word)
 		case syntax.Hdoc, syntax.DashHdoc:
 			if r.Hdoc != nil {
 				c.RedirSrc = append(c.RedirSrc, wordSrc(src, r.Hdoc))
@@ -231,19 +244,6 @@ func wordSrc(src string, w *syntax.Word) string {
 	return quoteStripper.Replace(src[s:e])
 }
 
-// hasPRDExpansion reports a parameter expansion of a name ending in _PRD
-// anywhere under n ($X_PRD, ${X_PRD}, ${X_PRD:-…}).
-func hasPRDExpansion(n syntax.Node) bool {
-	found := false
-	syntax.Walk(n, func(node syntax.Node) bool {
-		if pe, ok := node.(*syntax.ParamExp); ok && pe.Param != nil && strings.HasSuffix(pe.Param.Value, "_PRD") {
-			found = true
-		}
-		return !found
-	})
-	return found
-}
-
 func basename(tok string) string {
 	return tok[strings.LastIndexByte(tok, '/')+1:]
 }
@@ -289,8 +289,29 @@ func wrapperLen(argv []string) int {
 		return skipFlags(argv, []string{"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-T", "-U"})
 	case "xargs":
 		return skipFlags(argv, []string{"-I", "-n", "-P", "-L", "-d", "-E", "-s", "-a"})
+	case "zenify": // `zenify [flags] data [flags] run [flags] -- <child>` runs everything after the first --
+		if i := slices.Index(argv, "--"); i > 0 {
+			if sub := zenifySub(argv[:i]); len(sub) > 1 && sub[0] == "data" && sub[1] == "run" {
+				return i + 1
+			}
+		}
 	}
 	return 0
+}
+
+// zenifySub returns the non-flag words of a zenify command line, so a root flag
+// (`zenify --no-color data run`) cannot hide the subcommand.
+func zenifySub(argv []string) []string {
+	var sub []string
+	for _, t := range argv[1:] {
+		if t == "--" {
+			break
+		}
+		if !strings.HasPrefix(t, "-") {
+			sub = append(sub, t)
+		}
+	}
+	return sub
 }
 
 // skipFlags returns the index of the first token after argv[0] that is not a

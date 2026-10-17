@@ -10,8 +10,8 @@ decided that is the right response. A hotfix is written under time pressure and 
 production, so it needs *more* diagnostic discipline than an ordinary bug fix, not less.
 "It looked obvious" is the most expensive sentence available here.
 
-At step 3 use only the read-only rungs of the `/fix` loop: logs, an existing failing test, a GET or
-HEAD request against a running environment. Anything with a side effect — a POST, a payload replay,
+At step 3 use only the read-only rungs of the `/fix` loop: logs, `zenify db-read` / `redis-read`,
+an existing failing test, a GET or HEAD request against a running environment. Anything with a side effect — a POST, a payload replay,
 a job re-run — never touches production or a shared environment directly: it goes through a data
 script run with `zenify data run`, dry-run first and the user's "ok" before a production write (see
 `_shared/data-scripts.md`). With no read-only loop, confirm the cause

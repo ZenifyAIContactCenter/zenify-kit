@@ -56,7 +56,7 @@ flowchart TD
 |---|---|---|
 | 1 | Chốt repo bị ảnh hưởng | Xác nhận đúng repo |
 | 2 | `fetch` rồi resolve base ref hotfix bằng `zenify hotfix baseref` | Xác nhận đây đúng là bản đang chạy production |
-| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix`. Ở bước này chỉ dùng các cách tái hiện chỉ đọc và lọc output thành `<REDACTED>`; nếu không có thì xác nhận nguyên nhân từ log, không dừng và không thêm log tạm trên production. Nguồn bằng chứng (log, trace, metric, `db-read`/`redis-read`, PostHog) và thứ tự tra cứu lấy từ tài liệu tham chiếu chung `_shared/evidence-sources`, xem [Quan sát và an toàn](/guides/observe-and-safety#nguon-bang-chung-cho-agent) | Đọc nguyên nhân đã xác nhận |
+| 3 | Chẩn đoán bằng bước 0-2 của `/znf:fix`. Ở bước này agent tự chạy các cách tái hiện chỉ đọc trên production và lọc output thành `<REDACTED>`; cách nào có side effect thì đi qua `zenify data run` (dry-run trước, chờ "ok" của bạn trước `--prd --write`); nếu không có thì xác nhận nguyên nhân từ log, không dừng và không thêm log tạm trên production. Nguồn bằng chứng (log, trace, metric, `db-read`/`redis-read`, PostHog) và thứ tự tra cứu lấy từ tài liệu tham chiếu chung `_shared/evidence-sources`, xem [Quan sát và an toàn](/guides/observe-and-safety#nguon-bang-chung-cho-agent) | Đọc nguyên nhân đã xác nhận |
 | 4 | Trình bày ba lựa chọn kèm khuyến nghị | Chọn revert, disable hoặc fix forward. Revert và disable dừng tại đây, không tạo worktree |
 | 5 | Tạo worktree `--type hotfix --base <release>` (chỉ khi fix forward) | Không cần làm gì |
 | 6 | Chạy `/znf:scout` trên ref đã resolve, không phải base thường ngày | Đọc báo cáo scout |

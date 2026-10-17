@@ -48,15 +48,18 @@ lands next to it.
 ## Running it
 
 ```bash
-zenify data run --stg -- node docs/scripts/<repo>/fix-tags.js --tenant T --dry-run
-zenify data run --stg --write -- node docs/scripts/<repo>/fix-tags.js --tenant T
+zenify data run --stg -- node <workspace>/docs/scripts/<repo>/fix-tags.js --tenant T --dry-run
+zenify data run --stg --write -- node <workspace>/docs/scripts/<repo>/fix-tags.js --tenant T
 ```
 
 - One of `--stg` or `--prd` is required. `--write` asks for write credentials. `--lumi` adds the
   second service's variables (`LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL`).
-- The command needs a broker and network access, so run it with the sandbox **off**
-  (`dangerouslyDisableSandbox`); inside the sandbox it fails to connect, and that failure is not
-  a reason to look for another way in.
+- **Run it bare:** one `zenify data run …` call, no `cd`, pipe, redirect, `&&` or `$(...)`, the
+  script named by absolute path. `zenify up` allows it and excludes it from the Bash sandbox, so a
+  bare call runs without a prompt and reaches the broker and the DB; a compound call stays
+  sandboxed and fails to connect. Re-issue it bare; if a bare call still fails to connect, retry
+  it with the sandbox off (`dangerouslyDisableSandbox`). That failure is not a reason to look for
+  another way in.
 - The child process gets `MONGO_URL`, `MYSQL_URL`, `REDIS_URL` (and the `--lumi` names). Any copy
   of those names inherited from the shell, and every `*_PRD` variable, is stripped first.
 - Output is masked: credential values and hosts are replaced before they reach you. Still do not
@@ -84,8 +87,9 @@ Production data is the user's call, not the agent's.
    before-image path and the exact `--write` command you will run.
 3. **Wait for the user's `"ok"`.** Silence, a thumbs-up on something else, or "looks fine" about
    the plan is not an `"ok"` for this command. If the user changes the scope, dry-run again.
-4. Run the `--prd --write` command unchanged, then report the counts from the write log and the
-   path of the before-image file.
+4. Run the `--prd --write` command unchanged. Claude Code then prompts the user (a kit ask rule,
+   even in bypass mode); that prompt is the second check, not a substitute for step 3. Report the
+   counts from the write log and the path of the before-image file.
 
 ## When the command refuses
 

@@ -869,8 +869,8 @@ func TestRun_Prd_MissingKey(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), key) {
 			t.Errorf("%s: err = %v, want it to name %s", cmd, err, key)
 		}
-		if !strings.Contains(stderr.String(), "zenify env set "+key) {
-			t.Errorf("%s: stderr = %q, want env set hint", cmd, stderr.String())
+		if !strings.Contains(stderr.String(), "cần broker (zenify up; xem guides/broker-client)") || strings.Contains(stderr.String(), "env set") { //znf:allow-lang
+			t.Errorf("%s: stderr = %q, want broker hint, no env set", cmd, stderr.String())
 		}
 		if len(*calls) != 0 {
 			t.Errorf("%s: runner called without prod key", cmd)

@@ -72,8 +72,8 @@ zenify db-read count <a-real-name>                                              
 
 A stderr notice means the list was cut: raise `--limit`. If the `$group` returns a value the new
 code has no branch for, that is a bug already written. A **new required field** is absent from
-every existing document: add it optional → switch all writers → backfill in batches → only then
-require it.
+every existing document: add it optional → switch all writers → backfill in batches (you run it via
+`zenify data run`) → only then require it.
 
 ### Ground the filters a query must carry
 

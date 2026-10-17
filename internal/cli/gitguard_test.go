@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitguard"
 )
 
@@ -153,58 +152,7 @@ const fakeProdEnv = "MONGO_URL_PRD='mongodb://u:p@Prod-Host.example:27017/db'\n"
 	"MONGO_URL='mongodb://staging-host/db'\n" +
 	"BAD_PRD='not a url'\n"
 
-func TestProdHosts(t *testing.T) {
-	p := filepath.Join(t.TempDir(), ".env")
-	if err := os.WriteFile(p, []byte(fakeProdEnv+"DUP_PRD='mongodb://PROD-host.example/x'\nLOCAL_PRD='http://localhost:1'\nV6_PRD='http://[::1]:1'\nZ_PRD='http://0.0.0.0:1'\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	f, err := devenv.Load(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := prodHosts(f)
-	want := []gitguard.ProdHost{{Key: "MONGO_URL_PRD", Host: "prod-host.example"}}
-	if len(got) != 1 || got[0] != want[0] {
-		t.Fatalf("prodHosts = %v, want %v", got, want)
-	}
-}
-
-// B4: a multi-host or +srv URI yields every host, not none.
-func TestProdHosts_MultiHost(t *testing.T) {
-	p := filepath.Join(t.TempDir(), ".env")
-	body := "MONGO_URL_PRD='mongodb://u:p@H1.example:27017,h2.example:27017,h3.example/db?replicaSet=rs'\n" +
-		"AUDIT_MONGO_URL_PRD='mongodb+srv://u:p@cluster.example/db'\n" +
-		"V6_PRD='redis://[fd00::15]:6379'\n"
-	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	f, err := devenv.Load(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]string{}
-	for _, h := range prodHosts(f) {
-		got[h.Host] = h.Key
-	}
-	want := map[string]string{
-		"h1.example": "MONGO_URL_PRD", "h2.example": "MONGO_URL_PRD", "h3.example": "MONGO_URL_PRD",
-		"cluster.example": "AUDIT_MONGO_URL_PRD", "fd00::15": "V6_PRD",
-	}
-	if len(got) != len(want) {
-		t.Fatalf("prodHosts = %v, want %v", got, want)
-	}
-	for h, k := range want {
-		if got[h] != k {
-			t.Errorf("host %s: key %q, want %q (all: %v)", h, got[h], k, got)
-		}
-	}
-	opts := gitguard.Options{ProdHosts: prodHosts(f)}
-	if d := gitguard.Decide("mongosh mongodb://h2.example/db", t.TempDir(), func(string) string { return "" }, nil, opts); !d.Deny {
-		t.Error("second replica-set host must deny")
-	}
-}
-
-func TestDecideFromPayload_ProdHost(t *testing.T) {
+func TestDecideFromPayload_EnvFile(t *testing.T) {
 	isolateHome(t)
 	ws := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
@@ -222,15 +170,9 @@ func TestDecideFromPayload_ProdHost(t *testing.T) {
 	run := func(cwd, cmd string) gitguard.Decision {
 		return decideFromPayload([]byte(`{"cwd":"`+cwd+`","tool_input":{"command":"`+cmd+`"}}`), getenv)
 	}
-	d := run(repo, "mongosh mongodb://prod-host.example/db")
-	if !d.Deny {
-		t.Fatal("prod host must deny")
-	}
-	if strings.Contains(d.Message, "prod-host.example") {
-		t.Errorf("message leaks host: %q", d.Message)
-	}
-	if run(repo, "mongosh mongodb://staging-host/db").Deny {
-		t.Error("staging host must allow")
+	// R6 prod-host is gone: prod access goes through the broker.
+	if d := run(repo, "mongosh mongodb://prod-host.example/db"); d.Deny {
+		t.Errorf("prod host must allow: %s", d.Message)
 	}
 	if !run(ws, "cat .zenify/.env").Deny {
 		t.Error("reading the env file must deny")

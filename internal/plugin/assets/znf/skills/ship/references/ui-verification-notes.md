@@ -47,7 +47,8 @@ not optional prep:
    old surface and verifies nothing new.
 3. **Seed the config the enabled path needs through a script the user can see.** A DB write goes in a
    purpose-written script (never `zenify db-read`, which is read-only; never a raw mutate) — so seeding
-   a permission/flag/tenant-setting row or a view-as user is reviewable. Ground the real collection +
+   a permission/flag/tenant-setting row or a view-as user is reviewable. Dry-run it, then run it
+   yourself with `zenify data run --stg --write` (`_shared/data-scripts.md`). Ground the real collection +
    user with `zenify db-read` first.
 4. Only then dispatch `znf:ui-verifier` onto the already-authenticated, already-enabled screen.
 

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -313,6 +314,96 @@ func TestKitStackEntries(t *testing.T) {
 	for _, r := range slices.Concat(KitAllowRules, KitSandboxExcluded) {
 		if r == "Bash(gh stack *)" || r == "gh stack *" {
 			t.Errorf("blanket stack entry %q auto-allows every subcommand", r)
+		}
+	}
+}
+
+// The broker commands run without a prompt and outside the sandbox (they reach
+// the broker and the DB); no blanket zenify entry is listed.
+func TestKitBrokerEntries(t *testing.T) {
+	for _, c := range []string{"zenify db-read *", "zenify redis-read *", "zenify data run *"} {
+		if !slices.Contains(KitAllowRules, "Bash("+c+")") {
+			t.Errorf("KitAllowRules missing Bash(%s)", c)
+		}
+		if !slices.Contains(KitSandboxExcluded, c) {
+			t.Errorf("KitSandboxExcluded missing %s", c)
+		}
+	}
+	for _, r := range slices.Concat(KitAllowRules, KitSandboxExcluded) {
+		if r == "Bash(zenify *)" || r == "zenify *" {
+			t.Errorf("blanket entry %q auto-allows every zenify command", r)
+		}
+	}
+}
+
+func TestKitAsk_UnionThenRemovesOnlyKit(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{"permissions":{"allow":["Bash(ls *)"],"ask":["Bash(rm *)"]}}`)
+	added, err := EnsureKitAsk(home, false)
+	if err != nil || added != len(KitAskRules) {
+		t.Fatalf("added=%d err=%v", added, err)
+	}
+	raw, _ := os.ReadFile(settingsPath(home))
+	var doc struct {
+		Permissions struct {
+			Allow []string `json:"allow"`
+			Ask   []string `json:"ask"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if want := slices.Concat([]string{"Bash(rm *)"}, KitAskRules); !reflect.DeepEqual(doc.Permissions.Ask, want) {
+		t.Fatalf("ask=%v", doc.Permissions.Ask)
+	}
+	if want := []string{"Bash(ls *)"}; !reflect.DeepEqual(doc.Permissions.Allow, want) {
+		t.Fatalf("ask ensure changed allow: %v", doc.Permissions.Allow)
+	}
+	removed, err := RemoveKitAsk(home, false)
+	if err != nil || removed != len(KitAskRules) {
+		t.Fatalf("removed=%d err=%v", removed, err)
+	}
+	raw, _ = os.ReadFile(settingsPath(home))
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Bash(rm *)"}; !reflect.DeepEqual(doc.Permissions.Ask, want) {
+		t.Fatalf("after remove: %v", doc.Permissions.Ask)
+	}
+}
+
+// Claude Code reads * in a Bash rule as any text; a prd write in either flag
+// order (root flags too) must hit an ask rule, a stg write or prd dry-run none.
+func TestKitAskRules_MatchProdWritesOnly(t *testing.T) {
+	var res []*regexp.Regexp
+	for _, r := range KitAskRules {
+		body := strings.TrimSuffix(strings.TrimPrefix(r, "Bash("), ")")
+		res = append(res, regexp.MustCompile("^"+strings.ReplaceAll(regexp.QuoteMeta(body), `\*`, ".*")+"$"))
+	}
+	hit := func(cmd string) bool {
+		return slices.ContainsFunc(res, func(re *regexp.Regexp) bool { return re.MatchString(cmd) })
+	}
+	for _, c := range []string{
+		"zenify data run --prd --write -- node /w/docs/scripts/x.js",
+		"zenify data run --write --prd -- node /w/docs/scripts/x.js",
+		"zenify data run --prd --lumi --write -- node x.js",
+		"zenify --no-color data run --prd --write -- node x.js",
+		"zenify data run --prd --write=true -- node x.js",
+	} {
+		if !hit(c) {
+			t.Errorf("prd write %q prompts nothing", c)
+		}
+	}
+	if !hit("ssh host 'docker compose down'") {
+		t.Error("ssh prompts nothing")
+	}
+	for _, c := range []string{
+		"zenify data run --stg --write -- node x.js",
+		"zenify data run --prd -- node x.js --dry-run",
+		"zenify db-read --prd collections",
+	} {
+		if hit(c) {
+			t.Errorf("%q prompts, want no ask", c)
 		}
 	}
 }

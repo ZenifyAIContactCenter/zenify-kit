@@ -57,7 +57,7 @@ Broker cấp role theo team GitHub trong org: thuộc team `leaders` là `lead`,
   - Giới hạn này là rào chắn để agent không vô tình đọc dữ liệu production, không phải ranh giới chống người cố tình dò dữ liệu: `EXPLAIN` của MySQL vẫn đọc trước dòng khớp khoá chính khi lập plan.
 - MCP Grafana, PostHog và tài khoản E2E mở cho cả hai role.
 
-Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev trên prd chỉ dùng db-read: collections, count (no --filter), explain, indexes, stats, tables, sql: EXPLAIN SELECT without subquery, DESCRIBE <table>, SHOW INDEX|COLUMNS|TABLES|CREATE TABLE|TABLE STATUS; redis-read: EXISTS LLEN SCAN SCARD TTL TYPE ZCARD` và không chạy truy vấn nào. Danh sách này do CLI tự in từ bảng quyền của chính nó, nên khớp với broker cùng phiên bản; broker cũ hơn hoặc mới hơn CLI có thể áp danh sách khác, khi đó nâng cấp cả hai lên cùng phiên bản. Khi token cache (`~/.zenify/broker/token.json`) ghi role `dev`, kit từ chối ngay tại máy, không gọi broker; chưa có cache thì broker quyết định. Đầu mỗi phiên Claude Code, hook SessionStart đọc cache này (không gọi mạng). Với dev nó in một dòng `broker: login=<login> role=dev — prd: …` để agent biết trước giới hạn production. Với mọi role đã có cache, nó in thêm một dòng `data: zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; xem _shared/data-scripts.md)`, dev thêm hậu tố `; prd: cần lead`. Giới hạn chỉ đọc của `db-read` và `redis-read` áp cho mọi người, kể cả lead; việc ghi chỉ đi qua `zenify data run`. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
+Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev trên prd chỉ dùng db-read: collections, count (no --filter), explain, indexes, stats, tables, sql: EXPLAIN SELECT without subquery, DESCRIBE <table>, SHOW INDEX|COLUMNS|TABLES|CREATE TABLE|TABLE STATUS; redis-read: EXISTS LLEN SCAN SCARD TTL TYPE ZCARD` và không chạy truy vấn nào. Danh sách này do CLI tự in từ bảng quyền của chính nó, nên khớp với broker cùng phiên bản; broker cũ hơn hoặc mới hơn CLI có thể áp danh sách khác, khi đó nâng cấp cả hai lên cùng phiên bản. Khi token cache (`~/.zenify/broker/token.json`) ghi role `dev`, kit từ chối ngay tại máy, không gọi broker; chưa có cache thì broker quyết định. Đầu mỗi phiên Claude Code, hook SessionStart đọc cache này (không gọi mạng). Với dev nó in một dòng `broker: login=<login> role=dev — prd: …` để agent biết trước giới hạn production. Với mọi role đã có cache, nó in thêm một dòng `data: agent tự chạy zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; --prd --write chờ "ok" của người dùng; xem _shared/data-scripts.md)`, dev thêm hậu tố `; prd: cần lead`. Giới hạn chỉ đọc của `db-read` và `redis-read` áp cho mọi người, kể cả lead; việc ghi chỉ đi qua `zenify data run`. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
 
 ## Đọc database: `db-read`
 
@@ -98,6 +98,7 @@ zenify data run --stg --write -- node docs/scripts/contact-center-be/fix-tags.js
 `zenify data run` xin credential từ broker rồi chạy lệnh sau `--` với các biến `MONGO_URL`, `MYSQL_URL`, `REDIS_URL` (thêm `LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL` khi có `--lumi`). Bạn không giữ chuỗi kết nối nào trong shell. Agent tự chạy lệnh này, không cần bạn gõ `!`.
 
 - Phải chọn đúng một trong `--stg` hoặc `--prd`; không thì thoát mã 2. `--prd` chỉ dành cho lead.
+- Lệnh có cả `--prd` và `--write` luôn hiện prompt hỏi bạn trong Claude Code, kể cả khi bật bypass. Lý do: kit thêm hai rule `permissions.ask` phủ cả hai thứ tự cờ, và rule ask thắng rule allow. Ghi staging và dry-run production chạy không hỏi.
 - Chạy không có `--write` là dry-run: credential chỉ đọc, lệnh ghi một bản ghi dưới `.zenify/data-runs/`.
 - `--write` xin credential ghi và cần một dry-run thành công của đúng lệnh đó (cùng nội dung script) trong 60 phút; bản ghi dùng một lần. Thiếu bản ghi thì lệnh thoát mã 7 trước khi gọi broker và in lệnh dry-run cần chạy trước. Log lần ghi (đã che giá trị) nằm ở `docs/scripts/<repo>/<script>.<UTC>.<env>.write.log` khi script nằm dưới `docs/scripts/<repo>/`, không thì ở `.zenify/data-runs/`.
 - Stdout và stderr được che giá trị và host. Exit code của lệnh con là exit code của `zenify`.
@@ -121,7 +122,10 @@ Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn v�
 
 ## Sandbox của Claude Code
 
-Chưa kiểm tra sandbox Bash của Claude Code có chặn request tới broker hay không; ghi chú về sandbox sẽ được bổ sung vào trang này.
+Khi sandbox Bash của Claude Code bật, lệnh chạy trong sandbox chỉ ra mạng qua proxy lọc của Claude Code, nên script nối thẳng tới MongoDB, MySQL hay Redis không kết nối được. Vì vậy `zenify up` thêm `zenify db-read *`, `zenify redis-read *` và `zenify data run *` vào cả `sandbox.excludedCommands` và `permissions.allow`. Lệnh gọi trần (một lệnh, không pipe, không redirect, không `cd`, không `$(…)`) chạy ngoài sandbox, có mạng thẳng và không hỏi quyền. Lệnh ghép, ví dụ có redirect ra file, `cd` hay `$(…)`, vẫn nằm trong sandbox và không nối được, nên hãy chạy lại dạng trần, với script ghi bằng đường dẫn tuyệt đối.
+
+- **Lệnh con của `data run`:** phần sau `--` cũng chạy ngoài sandbox. git-guard vẫn áp luật của nó lên lệnh con. Ghi production vẫn cần role lead ở broker và một lần dry-run trước.
+- **Khi nào có hiệu lực:** chỉ sau khi chạy `zenify up` và mở phiên Claude Code mới. Khi sandbox tắt, các mục này không có tác dụng.
 
 ## Xem thêm
 

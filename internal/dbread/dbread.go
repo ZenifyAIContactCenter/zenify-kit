@@ -386,6 +386,10 @@ func validate(o *Options) (limit int, script, sqlStmt string, err error) {
 	return limit, script, sqlStmt, nil
 }
 
+// prodBrokerHint: production credentials come from the broker, never from a
+// key the user is told to paste into .zenify/.env.
+const prodBrokerHint = "zenify db-read: production cần broker (zenify up; xem guides/broker-client)" //znf:allow-lang
+
 // Run dispatches one db_read subcommand. It validates every argument and
 // builds the query BEFORE resolving credentials, so a bad request never
 // reaches a database. Output goes to o.Stdout via the injected run seam —
@@ -411,7 +415,11 @@ func Run(o *Options) error {
 			return fmt.Errorf("zenify db-read: no workspace")
 		}
 		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $%s is not set and %s did not supply it.\n", mk, o.EnvPath)
-		_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: put "+mk+" there with: zenify env set "+mk)
+		if o.Prod {
+			_, _ = fmt.Fprintln(o.Stderr, prodBrokerHint)
+		} else {
+			_, _ = fmt.Fprintln(o.Stderr, "zenify db-read: put "+mk+" there with: zenify env set "+mk)
+		}
 		return fmt.Errorf("zenify db-read: %s not set", mk)
 	}
 
@@ -432,7 +440,7 @@ func Run(o *Options) error {
 		if err != nil && !cw.Truncated() && !o.Truncated {
 			if o.Prod {
 				if !o.Brokered {
-					_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: kiểm lại %s trong .zenify/.env\n", mk) //znf:allow-lang
+					_, _ = fmt.Fprintln(o.Stderr, prodBrokerHint)
 				}
 				return err
 			}
@@ -448,7 +456,12 @@ func Run(o *Options) error {
 	}
 
 	if creds[sk] == "" {
-		_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $%s is not set — same source as $%s: zenify env set %s\n", sk, mk, sk)
+		if o.Prod {
+			_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $%s is not set.\n", sk)
+			_, _ = fmt.Fprintln(o.Stderr, prodBrokerHint)
+		} else {
+			_, _ = fmt.Fprintf(o.Stderr, "zenify db-read: $%s is not set — same source as $%s: zenify env set %s\n", sk, mk, sk)
+		}
 		return fmt.Errorf("zenify db-read: %s not set, want %s", sk, mysqlURLShape)
 	}
 	prodNotice(o, sk)

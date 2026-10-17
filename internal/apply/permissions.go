@@ -11,8 +11,9 @@ import (
 )
 
 // KitAllowRules are the tool rules the kit unions into permissions.allow of
-// ~/.claude/settings.json so Playwright UI-verify, `zenify e2e|visual` and the
-// broker MCPs run without permission prompts. Playwright gets a per-tool list
+// ~/.claude/settings.json so Playwright UI-verify, `zenify e2e|visual`, the
+// broker commands `zenify db-read|redis-read|data run` and the broker MCPs run
+// without permission prompts. Playwright gets a per-tool list
 // with no server-wide rule and no browser_run_code_unsafe on purpose.
 //
 // zenify-grafana and zenify-posthog DO get server-wide wildcards: every tool
@@ -34,6 +35,9 @@ var KitAllowRules = []string{
 	"Bash(zenify e2e *)",
 	"Bash(zenify visual *)",
 	"Bash(zenify ui-verify *)",
+	"Bash(zenify db-read *)",
+	"Bash(zenify redis-read *)",
+	"Bash(zenify data run *)",
 	"Bash(gh stack --help)",
 	"Bash(gh stack init *)",
 	"Bash(gh stack add *)",
@@ -54,9 +58,15 @@ var KitAllowRules = []string{
 // subcommands the skills run read gh auth and call GitHub, both denied by the
 // sandbox; only those are listed, so a new or dangerous subcommand still asks
 // and stays sandboxed, and git-guard blocks merge/unstack/link/alias before any
-// permission rule. Inert when the sandbox is off.
+// permission rule. `zenify db-read` / `redis-read` / `data run` reach the
+// broker, and `data run`'s child dials the DB directly; the child is still
+// checked by git-guard, and prd writes stay gated by the broker role and the
+// dry-run key. Inert when the sandbox is off.
 var KitSandboxExcluded = []string{
 	"zenify e2e login *",
+	"zenify db-read *",
+	"zenify redis-read *",
+	"zenify data run *",
 	"gh stack init *",
 	"gh stack add *",
 	"gh stack checkout *",
@@ -64,6 +74,18 @@ var KitSandboxExcluded = []string{
 	"gh stack push *",
 	"gh stack submit *",
 	"gh stack view *",
+}
+
+// KitAskRules are the rules the kit unions into permissions.ask: a production
+// write through `zenify data run` prompts even in bypassPermissions mode,
+// since an ask rule beats the allow rule above. That turns "wait for the user's
+// ok before --prd --write" into a real prompt; stg writes stay unprompted. Both
+// flag orders are listed, and the leading * also covers root flags. ssh asks
+// too: a command on a remote host is outside git-guard and cannot be undone.
+var KitAskRules = []string{
+	"Bash(zenify *data run*--prd*--write*)",
+	"Bash(zenify *data run*--write*--prd*)",
+	"Bash(ssh *)",
 }
 
 // KitDenyRule is the rule the kit unions into permissions.deny of
@@ -107,6 +129,7 @@ type kitList struct {
 var (
 	allowList   = kitList{outer: "permissions", inner: "allow", rules: KitAllowRules, settings: claudeSettings, record: kitPermissionsRecord}
 	sandboxList = kitList{outer: "sandbox", inner: "excludedCommands", rules: KitSandboxExcluded, settings: claudeSettings, record: kitSandboxRecord}
+	askList     = kitList{outer: "permissions", inner: "ask", rules: KitAskRules, settings: claudeSettings, record: kitAskRecord}
 	denyList    = kitList{outer: "permissions", inner: "deny", settings: claudeSettings, record: kitDenyRecord}
 )
 
@@ -116,6 +139,10 @@ func claudeSettings(root string) string {
 
 func kitDenyRecord(home string) string {
 	return filepath.Join(home, ".zenify", "kit-deny.json")
+}
+
+func kitAskRecord(home string) string {
+	return filepath.Join(home, ".zenify", "kit-ask.json")
 }
 
 func kitPermissionsRecord(home string) string {
@@ -191,6 +218,17 @@ func EnsureKitPermissions(home string, dryRun bool) (int, error) {
 // with the same record and user-removal rules as EnsureKitPermissions.
 func EnsureKitSandbox(home string, dryRun bool) (int, error) {
 	return sandboxList.ensure(home, dryRun)
+}
+
+// EnsureKitAsk unions KitAskRules into permissions.ask, with the same record
+// and user-removal rules as EnsureKitPermissions.
+func EnsureKitAsk(home string, dryRun bool) (int, error) {
+	return askList.ensure(home, dryRun)
+}
+
+// RemoveKitAsk removes only the ask rules the kit recorded adding.
+func RemoveKitAsk(home string, dryRun bool) (int, error) {
+	return askList.remove(home, dryRun)
 }
 
 // RemoveKitPermissions removes only the rules the kit recorded adding.

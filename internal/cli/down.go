@@ -129,6 +129,13 @@ func newDownCmd() *cobra.Command {
 				case removedSbx > 0:
 					u.Step(ui.StatusOK, "sandbox", fmt.Sprintf("gỡ %d lệnh kit khỏi sandbox.excludedCommands", removedSbx)) //znf:allow-lang
 				}
+				removedAsk, aerr := apply.RemoveKitAsk(home, dryRun)
+				switch {
+				case aerr != nil:
+					u.Step(ui.StatusWarn, "ask", fmt.Sprintf("bỏ qua (%v)", aerr)) //znf:allow-lang
+				case removedAsk > 0:
+					u.Step(ui.StatusOK, "ask", fmt.Sprintf("gỡ %d rule ask của kit khỏi ~/.claude/settings.json", removedAsk)) //znf:allow-lang
+				}
 				// This workspace's .zenify/.env deny rule (other workspaces' stay).
 				removedDeny, derr := apply.RemoveKitDeny(home, workspace, dryRun)
 				switch {

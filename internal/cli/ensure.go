@@ -125,6 +125,11 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 	} else if n > 0 {
 		fmt.Fprintf(stdout, "excluded %d kit commands from the Bash sandbox in ~/.claude/settings.json\n", n)
 	}
+	if n, err := apply.EnsureKitAsk(home, false); err != nil {
+		fmt.Fprintln(stderr, "znf ensure: ask:", err)
+	} else if n > 0 {
+		fmt.Fprintf(stdout, "added %d kit ask rules (prd data writes prompt) in ~/.claude/settings.json\n", n)
+	}
 
 	// runConfig prints its whole plan to stdout; ensure only wants the count
 	// plus the CREATE/UPDATE lines (so the overwrite is visible in the

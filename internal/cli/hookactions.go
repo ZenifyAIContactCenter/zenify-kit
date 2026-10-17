@@ -100,7 +100,7 @@ func brokerRoleLine(w io.Writer) {
 		fmt.Fprintf(w, "broker: login=%s role=dev — prd: %s; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n", login, api.DevPrdSummary()) //znf:allow-lang
 		suffix = "; prd: cần lead"                                                                                                      //znf:allow-lang
 	}
-	fmt.Fprintf(w, "data: zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; xem _shared/data-scripts.md)%s\n", suffix) //znf:allow-lang
+	fmt.Fprintf(w, `data: agent tự chạy zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; --prd --write chờ "ok" của người dùng; xem _shared/data-scripts.md)%s`+"\n", suffix) //znf:allow-lang
 }
 
 func sentinelPresent() bool {

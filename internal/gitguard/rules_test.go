@@ -18,10 +18,13 @@ func mkWorkspace(t *testing.T) (string, Options) {
 	if err := os.WriteFile(filepath.Join(ws, ".zenify", ".env"), []byte("MONGO_URL_PRD=fake\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return ws, Options{
-		ProdHosts: []ProdHost{{"MONGO_URL_PRD", "prod-host.example"}, {"REDIS_URL_PRD", "10.0.0.15"}},
-		EnvFile:   filepath.Join(ws, ".zenify/.env"),
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify", "data-runs"), 0o750); err != nil {
+		t.Fatal(err)
 	}
+	if err := os.Symlink("../.env", filepath.Join(ws, ".zenify", "data-runs", "link")); err != nil {
+		t.Fatal(err)
+	}
+	return ws, Options{EnvFile: filepath.Join(ws, ".zenify/.env")}
 }
 
 func noenv(string) string { return "" }
@@ -39,17 +42,13 @@ func TestRules(t *testing.T) {
 		`wt rm x --force`, `zenify wt rm -f x`,
 		`git -c alias.push=status push --force origin x`,
 		`git worktree remove --force p`, `git worktree remove -f p`, `git -C /r --no-pager worktree remove p --force`,
-		`echo $REDIS_URL_PRD`, `bash -c 'echo ${MONGO_URL_PRD}'`, `printenv MONGO_URL_PRD`,
-		`mongosh mongodb://prod-host.example/db`, `redis-cli -h 10.0.0.15`,
 		`gh api -XPUT repos/o/r/pulls/1/merge`, `gh api --method PUT repos/o/r/pulls/1/merge`,
 		`gh api --method=PUT repos/o/r/pulls/1/merge`, `gh api -X put repos/o/r/pulls/1/merge`,
-		`gh pr merge 1 "`, `curl x/pulls/1/merge "`, `git push origin x -f "`, `echo $MONGO_URL_PRD "`,
-		`cat .zenify/.env "`, `ping prod-host.example "`,
+		`gh pr merge 1 "`, `curl x/pulls/1/merge "`, `git push origin x -f "`,
+		`cat .zenify/.env "`,
 		`git push --force origin x "`, `git -c alias.fp='push --force' fp`,
 		`bash -c "git push --force origin $B"`, `eval "gh pr merge $N"`,
 		"bash <<'EOF'\ngit push --force origin x\nEOF", `echo 'gh pr merge 1' | sh`,
-		"python3 - <<'EOF'\nMongoClient('mongodb://prod-host.example')\nEOF",
-		"python3 - <<EOF\nconnect(\"$X\", 'prod-host.example')\nEOF", `mongosh <<< "connect('prod-host.example')"`,
 		`gh stack merge`, `gh stack merge 3`, `command gh stack merge`, `bash -c 'gh stack merge'`, `gh-stack merge`,
 		`gh api -X PUT repos/o/r/pulls/5/merge-async`, `gh api repos/o/r/pulls/5/merge-async`,
 		`gh stack unstack`, `gh stack delete`, `gh stack link 1 2`,
@@ -60,6 +59,10 @@ func TestRules(t *testing.T) {
 		`bash -c "gh api -X POST repos/o/r/stacks/$N/unstack"`, `eval "gh stack link $A $B"`,
 		`eval "gh stack delete $N"`, `eval "gh stack alias $N"`, `eval "gh-stack merge $N"`,
 		`gh stack alias`, `gh stack alias gs`, `gh-stack alias`, `bash -c 'gh stack alias'`,
+		`zenify data run --stg -- git push --force origin x`, `zenify data run --prd --write -- gh pr merge 1`,
+		`zenify data run --stg -- bash -c 'gh pr merge 1'`,
+		`zenify --no-color data run --stg -- gh pr merge 1`, `zenify data --no-color run -- git push --force`,
+		`zenify db-read --manifest /tmp/m.yaml collections`, `zenify --manifest /tmp/m.yaml db-read collections`, `zenify db-read --{manifest,x} /tmp/m.yaml c`, `zenify --no-color redis-read --manifest=/tmp/m.yaml get k`,
 	}
 	allow := []string{
 		`go test ./...`, `git push origin feat/x`, `git push -u origin feat/x`, `gh pr create --title t`,
@@ -75,6 +78,13 @@ func TestRules(t *testing.T) {
 		`gh stack checkout feat/x-2`, `gh api repos/o/r/stacks`, `gh api -X POST repos/o/r/stacks -f pull_requests[]=1`,
 		`gh stack view`, `gh stack submit`, `gh stack init feat/x`, `gh stack add feat/x-3`, `gh stack --help`,
 		`bash -c "gh stack view $X"`, `eval "gh stack submit --auto $X"`,
+		// R5 _PRD and R6 prod-host are gone: prod access goes through the broker.
+		`echo $REDIS_URL_PRD`, `bash -c 'echo ${MONGO_URL_PRD}'`, `printenv MONGO_URL_PRD`,
+		`mongosh mongodb://prod-host.example/db`, `redis-cli -h 10.0.0.15`,
+		`echo $MONGO_URL_PRD "`, `ping prod-host.example "`,
+		"python3 - <<'EOF'\nMongoClient('mongodb://prod-host.example')\nEOF",
+		"python3 - <<EOF\nconnect(\"$X\", 'prod-host.example')\nEOF", `mongosh <<< "connect('prod-host.example')"`,
+		`zenify data run --stg --write -- node docs/scripts/x.js`, `zenify redis-read --prd get k`,
 	}
 	for _, cmd := range deny {
 		if d := Decide(cmd, dir, noenv, nil, opts); !d.Deny {
@@ -133,6 +143,39 @@ func TestRuleEnvFilePath(t *testing.T) {
 		{ws, `git commit -m "$(printf 'docs: ghi chú .zenify/.env')"`, false}, //znf:allow-lang
 		{ws, `gh pr create --body "sửa .zenify/.env"`, false},                 //znf:allow-lang
 		{repo, `grep -rn ".zenify/.env" internal/`, false},
+		{ws, `cat .zenify/data-runs/*.log`, false},
+		{ws, `rg x .zenify/data-runs/*`, true}, // the glob reaches the link to .env
+		{ws, `cat .zenify/data-runs/../.env`, true},
+		{ws, `cat .zenify/data-runs/{..,}/.env`, true},
+		{ws, `cat .zenify/data-runs/{x,../.env}`, true},
+		{ws, `cat .zenify/data-runs/*/../.env`, true},
+		{ws, `cat .zenify/data-runs/link`, true}, // symlink to .env, made in mkWorkspace
+		{ws, `cat .zenify/data-runs/l*`, true},
+		{ws, `cat .zenif{y,}/.env`, true},
+		{ws, `cat {.zenify,x}/.e{nv,}`, true},
+		{ws, `cat .zenif{x..z}/.env`, true},
+		{ws, `cat .zenif{x..z..1}/.env`, true},
+		{ws, `cat {{1..256},.zenify/.env}`, true},
+		{ws, `cat {1..99999}`, true}, // past the cap: fail closed
+		{ws, `{cat,.zenify/.env}`, true},
+		{ws, `cat .zenify/data-runs/{a,b}.log`, false},
+		{ws, `echo {1..300}`, false},
+		{ws, `echo {1..600} {1..600}`, true}, // the cap counts the whole command
+		{ws, `zenify db-read {--no-color{,}{,}{,}{,}{,}{,}{,}{,}{,}{,}{,},--manifest} /tmp/m.yaml c`, true},
+		{ws, `git commit -m "fix: .zenif{y,}/.env {1..99999}"`, false}, // quoted: the shell does not expand it
+		{ws, `jq '{a: .x, b: .y}' f.json`, false},
+		{ws, `cat .zenify/data-runs/d/../.env`, true},
+		{ws, `ln -s ../.env .zenify/data-runs/x`, true},
+		{ws, `ln -s ../.env x`, false},
+		{ws, `cat .zenify/data-runs/x.json`, false},
+		{filepath.Join(ws, ".zenify", "data-runs"), `awk '{print $1}' x.log`, false},
+		{ws, `echo {a,b}{1..3}`, false},
+		{ws, `zenify --no-color data run --stg -- cat .zenify/.env`, true},
+		{ws, `zenify redis-read --prd get .zenify/.env`, false},
+		{ws, `zenify data run -- cat .zenify/.env`, true},
+		{ws, `zenify data run --prd -- cat .zenify/.env`, true},
+		{ws, `zenify data run --stg -- bash -c 'cat .zenify/.env'`, true},
+		{ws, `zenify data run --stg -- node x.js`, false},
 	}
 	for _, tc := range cases {
 		if d := Decide(tc.cmd, tc.cwd, noenv, nil, opts); d.Deny != tc.deny {
@@ -141,18 +184,28 @@ func TestRuleEnvFilePath(t *testing.T) {
 	}
 }
 
-func TestDenyMessageNoHost(t *testing.T) {
-	_, opts := mkWorkspace(t)
-	d := Decide(`mongosh mongodb://prod-host.example/db`, t.TempDir(), noenv, nil, opts)
-	if !d.Deny {
-		t.Fatal("want deny")
+func TestDenyMessages(t *testing.T) {
+	ws, opts := mkWorkspace(t)
+	if d := Decide(`cat .zenify/.env`, ws, noenv, nil, opts); !strings.Contains(d.Message, "zenify data run --stg|--prd") {
+		t.Errorf("env-file hint lacks data run: %q", d.Message)
 	}
-	if !strings.Contains(d.Message, "host của MONGO_URL_PRD") { //znf:allow-lang
-		t.Errorf("message lacks key: %q", d.Message)
+	if d := Decide(`curl x/pulls/1/merge "`, ws, noenv, nil, opts); !strings.Contains(d.Message, "zenify data run") {
+		t.Errorf("parse hint lacks data run: %q", d.Message)
 	}
-	// The sub label is literally "prod-host"; the host itself must not leak (SC-6).
-	if strings.Contains(d.Message, "prod-host.example") {
-		t.Errorf("message leaks host: %q", d.Message)
+	repo := filepath.Join(t.TempDir(), "repo")
+	mkRepo(t, repo, "staging", []string{"staging"})
+	for _, cmd := range []string{`git push --force origin x`, `gh pr merge 1`, `gh stack merge`, `gh stack alias`,
+		`wt rm x --force`, `git push origin staging`, `gh stack add staging`} {
+		if d := Decide(cmd, repo, noenv, nil, opts); !strings.HasSuffix(d.Message, "Dừng và báo người dùng; không thử biến thể.") { //znf:allow-lang
+			t.Errorf("%s: human-only deny lacks stop line: %q", cmd, d.Message)
+		}
+	}
+	// A commit on a deploy branch is the agent's to fix: branch off, do not stop.
+	if d := Decide(`git commit -m x`, repo, noenv, nil, opts); !d.Deny || !strings.Contains(d.Message, "wt new") {
+		t.Errorf("deploy-branch commit hint lacks wt new: %q", d.Message)
+	}
+	if d := Decide(`gh pr merge 1 "`, ws, noenv, nil, opts); !strings.HasSuffix(d.Message, "không thử biến thể.") { //znf:allow-lang
+		t.Errorf("parse deny on a merge keyword lacks stop line: %q", d.Message)
 	}
 }
 
