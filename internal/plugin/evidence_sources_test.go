@@ -22,6 +22,7 @@ func TestEvidenceSources(t *testing.T) {
 		"list_datasources", "list_loki_label_values", "list_tempo_attribute_names",
 		"list_prometheus_metric_names", "trace_id", "endTime", "seconds", "count_over_time",
 		"span.http.status_code", "search", "info", "call", "jq",
+		"zenify obs", "--trace", "32-char", "splits the range for you", "split it by hand",
 		api.DevSQLRule,
 	})
 
@@ -46,6 +47,9 @@ func TestEvidenceSources(t *testing.T) {
 	sc2 := regexp.MustCompile(`ady8|dfh52|ffk50|ccbe|cch-hub|link_trace_id|messaging\.producer|bullmq:|192\.168`)
 	if m := sc2.FindString(s); m != "" {
 		t.Errorf("evidence-sources.md carries project-specific string %q (SC-2)", m)
+	}
+	if strings.Contains(s, `=~".+"`) {
+		t.Error("evidence-sources.md still carries the match-everything Loki selector, which Loki rejects")
 	}
 	if n := strings.Count(s, "\n"); n > 200 {
 		t.Errorf("evidence-sources.md has %d lines, want <= 200", n)

@@ -19,6 +19,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/catalogsvc"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/config"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/obssvc"
 )
 
 const ghToken = "gho_fake-test-token"
@@ -653,6 +654,54 @@ func TestToken_TeamCheckFailureMapping(t *testing.T) {
 		rec := postToken(newServer(gh, &out), ghToken, "203.0.113.7")
 		if rec.Code != c.wantStatus || errCode(t, rec) != c.wantCode {
 			t.Errorf("team check %d: got %d %s", c.ghCode, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestServer_ObsRoutesAbsentWithoutHandler(t *testing.T) {
+	for _, path := range []string{"/obs/route", "/obs/trace"} {
+		rec := httptest.NewRecorder()
+		New(Deps{JWTKey: testKey}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}")))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s should be absent when its Deps field is nil, got %d", path, rec.Code)
+		}
+	}
+}
+
+// The real obssvc handlers behind the real mux: 401 without a token (audited
+// under the route), and role dev reaches the handler (anything but 401/403/404).
+func TestServer_ObsRoutesRequireAuthAndAllowDev(t *testing.T) {
+	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("version: 1\n"))
+	}))
+	t.Cleanup(gh.Close)
+	var buf bytes.Buffer
+	log := &audit.Logger{W: &buf}
+	cat := catalogsvc.New(config.Catalog{Repo: "org/m", Path: "c.yaml", Ref: "main"}, "tok",
+		catalogsvc.WithBaseURL(gh.URL), catalogsvc.WithAudit(log))
+	oh := obssvc.New(cat, "http://127.0.0.1:1", "gtok", obssvc.WithAudit(log))
+	h := New(Deps{JWTKey: testKey, Audit: log, ObsRoute: oh.Route(), ObsTrace: oh.Trace()})
+	dev, _, err := auth.Issue(testKey, "octocat", "dev", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/obs/route", "/obs/trace"} {
+		buf.Reset()
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}")))
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s no token: got %d, want 401", path, rec.Code)
+		}
+		if !strings.Contains(buf.String(), `"endpoint":"`+path+`"`) || !strings.Contains(buf.String(), `"status":401`) {
+			t.Errorf("%s 401 not audited: %s", path, buf.String())
+		}
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer "+dev)
+		rec = httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		switch rec.Code {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+			t.Errorf("%s role dev: got %d, want the handler to run", path, rec.Code)
 		}
 	}
 }

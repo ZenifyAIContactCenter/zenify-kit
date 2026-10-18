@@ -2,33 +2,22 @@ package catalogsvc
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/grafanaproxy"
 )
 
-const (
-	grafanaTimeout = 30 * time.Second
-	maxLabelBytes  = 4 << 20
-)
+const maxLabelBytes = 4 << 20
 
 // grafana reads label values through Grafana's datasource proxy with a
 // service-account token. Errors name the status or the cause only, never the
 // token or the upstream body.
-type grafana struct {
-	baseURL string
-	token   string
-	client  *http.Client
-}
+type grafana struct{ c *grafanaproxy.Client }
 
 func newGrafana(baseURL, token string) *grafana {
-	return &grafana{baseURL: strings.TrimRight(baseURL, "/"), token: token, client: &http.Client{Timeout: grafanaTimeout}}
+	return &grafana{c: grafanaproxy.New(baseURL, token)}
 }
 
 // lokiLabelValues: start/end are nanosecond epochs.
@@ -62,27 +51,5 @@ func (g *grafana) tempoTagValues(ctx context.Context, uid, tag string, start, en
 }
 
 func (g *grafana) get(ctx context.Context, uid, path, start, end string, out any) error {
-	u := g.baseURL + "/api/datasources/proxy/uid/" + url.PathEscape(uid) + path +
-		"?" + url.Values{"start": {start}, "end": {end}}.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
-	if err != nil {
-		return errors.New("grafana request could not be built")
-	}
-	req.Header.Set("Authorization", "Bearer "+g.token)
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return errors.New("grafana unreachable")
-	}
-	defer func() {
-		// Drain a bounded tail so the keep-alive connection can be reused.
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-		_ = resp.Body.Close()
-	}()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("grafana returned %d", resp.StatusCode)
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxLabelBytes)).Decode(out); err != nil {
-		return errors.New("grafana response could not be decoded")
-	}
-	return nil
+	return g.c.Get(ctx, uid, path, url.Values{"start": {start}, "end": {end}}, maxLabelBytes, out)
 }

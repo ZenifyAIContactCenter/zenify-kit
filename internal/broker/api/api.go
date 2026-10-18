@@ -42,6 +42,19 @@ const (
 	// CodeCatalogUnavailable (503): the catalog was never fetched and GitHub
 	// cannot be reached (or serves an unusable file).
 	CodeCatalogUnavailable = "catalog_unavailable"
+	// CodeUnknownService (400): the obs service id is not in the catalog.
+	CodeUnknownService = "unknown_service"
+	// CodeNoTempoName (400): the service has no Tempo name (or the env no
+	// Tempo datasource) in the catalog.
+	CodeNoTempoName = "no_tempo_name"
+	// CodeBadSince (400): since is not a duration in (0, 48h].
+	CodeBadSince = "bad_since"
+	// CodeBadTraceID (400): the trace id is not 1-32 hex characters.
+	CodeBadTraceID = "bad_trace_id"
+	// CodeTraceNotFound (404): Tempo has no trace with that id.
+	CodeTraceNotFound = "trace_not_found"
+	// CodeTraceTooLarge (422): the trace is over the broker's 16 MB read cap.
+	CodeTraceTooLarge = "trace_too_large"
 )
 
 // Roles a broker JWT carries.
@@ -171,4 +184,125 @@ type DriftResult struct {
 	Unlisted []string `json:"unlisted"`
 	Missing  []string `json:"missing"`
 	Error    string   `json:"error,omitempty"`
+}
+
+// ObsRouteRequest is the body of POST /obs/route. Route is "<METHOD> <path>";
+// Since is a Go duration, "" = 24h; Env is prd or stg.
+type ObsRouteRequest struct {
+	Service string `json:"service"`
+	Route   string `json:"route"`
+	Since   string `json:"since"`
+	Env     string `json:"env"`
+}
+
+// ObsRouteResponse is the 200 body of POST /obs/route. Stats is null when
+// TraceQL metrics gave nothing usable (StatsNote says why). SinceEffective is
+// the total length of the metric windows that answered.
+type ObsRouteResponse struct {
+	Service        string         `json:"service"`
+	Route          string         `json:"route"`
+	Env            string         `json:"env"`
+	SinceEffective string         `json:"since_effective"`
+	Stats          *ObsStats      `json:"stats"`
+	StatsNote      string         `json:"stats_note,omitempty"`
+	Samples        ObsSamples     `json:"samples"`
+	Logs           ObsLogCount    `json:"logs"`
+	Notes          []string       `json:"notes"`
+	Truncated      bool           `json:"truncated"`
+	Omitted        map[string]int `json:"omitted,omitempty"`
+}
+
+// ObsStats summarises span durations (seconds) over the effective range.
+// Status maps an HTTP status (or "unset") to its span count.
+type ObsStats struct {
+	Count      int64            `json:"count"`
+	RatePerMin float64          `json:"rate_per_min"`
+	P50        float64          `json:"p50"`
+	P95        float64          `json:"p95"`
+	P99        float64          `json:"p99"`
+	ErrorRatio float64          `json:"error_ratio"`
+	Resolution string           `json:"resolution"`
+	Status     map[string]int64 `json:"status"`
+}
+
+// ObsSamples holds up to 5 trace samples of each kind.
+type ObsSamples struct {
+	Slowest []ObsSample `json:"slowest"`
+	Errors  []ObsSample `json:"errors"`
+}
+
+// ObsSample is one trace from Tempo search; TraceID is padded to 32 chars.
+type ObsSample struct {
+	TraceID    string  `json:"trace_id"`
+	Start      string  `json:"start"`
+	DurationMS float64 `json:"duration_ms"`
+	Status     string  `json:"status"`
+}
+
+// ObsLogCount is the number of Loki error lines of the service's apps over
+// since; Scope is always "app" (not per route).
+type ObsLogCount struct {
+	ErrorLines int64  `json:"error_lines"`
+	Scope      string `json:"scope"`
+}
+
+// ObsTraceRequest is the body of POST /obs/trace. TraceID is 1-32 hex
+// characters; Env is prd or stg.
+type ObsTraceRequest struct {
+	TraceID string `json:"trace_id"`
+	Env     string `json:"env"`
+}
+
+// ObsTraceResponse is the 200 body of POST /obs/trace. TraceID is padded to
+// 32 chars; every string in it has been through the PII mask.
+type ObsTraceResponse struct {
+	TraceID   string         `json:"trace_id"`
+	Root      ObsSpanRef     `json:"root"`
+	Services  []string       `json:"services"`
+	SpanCount int            `json:"span_count"`
+	Groups    []ObsGroup     `json:"groups"`
+	Errors    []ObsErrSpan   `json:"errors"`
+	Logs      ObsTraceLogs   `json:"logs"`
+	Notes     []string       `json:"notes"`
+	Truncated bool           `json:"truncated"`
+	Omitted   map[string]int `json:"omitted,omitempty"`
+}
+
+// ObsSpanRef names one span: its service, name, start (RFC 3339) and duration.
+type ObsSpanRef struct {
+	Service    string  `json:"service"`
+	Name       string  `json:"name"`
+	Start      string  `json:"start"`
+	DurationMS float64 `json:"duration_ms"`
+}
+
+// ObsGroup aggregates the spans sharing one (service, name) pair.
+type ObsGroup struct {
+	Service string  `json:"service"`
+	Name    string  `json:"name"`
+	Count   int     `json:"count"`
+	TotalMS float64 `json:"total_ms"`
+	MaxMS   float64 `json:"max_ms"`
+	Errors  int     `json:"errors"`
+}
+
+// ObsErrSpan is one failed span with its allowlisted attributes.
+type ObsErrSpan struct {
+	Service    string            `json:"service"`
+	Name       string            `json:"name"`
+	Attributes map[string]string `json:"attributes"`
+}
+
+// ObsTraceLogs holds the Loki lines mentioning the trace id, and the trace's
+// services the catalog could not map to a Loki app.
+type ObsTraceLogs struct {
+	Lines            []ObsLogLine `json:"lines"`
+	UnmappedServices []string     `json:"unmapped_services"`
+}
+
+// ObsLogLine is one Loki line; TS is RFC 3339 with nanoseconds.
+type ObsLogLine struct {
+	TS   string `json:"ts"`
+	App  string `json:"app"`
+	Line string `json:"line"`
 }

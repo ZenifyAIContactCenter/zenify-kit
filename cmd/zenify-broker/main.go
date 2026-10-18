@@ -23,6 +23,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/creds"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/e2e"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/mcpproxy"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/obssvc"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/query"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/redisread"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/server"
@@ -111,11 +112,13 @@ func run(cfgPath string) error {
 
 	// grafana.url and GRAFANA_SERVICE_ACCOUNT_TOKEN are required by config.Load,
 	// so drift is served whenever the catalog is.
-	var catalogH, driftH http.Handler
+	var catalogH, driftH, obsRouteH, obsTraceH http.Handler
 	if cfg.Catalog != nil {
 		ch := catalogsvc.New(*cfg.Catalog, s.CatalogGitHubToken, catalogsvc.WithAudit(log))
 		catalogH = ch
 		driftH = catalogsvc.NewDrift(ch, cfg.Grafana.URL, s.GrafanaToken, catalogsvc.WithAudit(log), catalogsvc.WithSlots(1))
+		oh := obssvc.New(ch, cfg.Grafana.URL, s.GrafanaToken, obssvc.WithAudit(log))
+		obsRouteH, obsTraceH = oh.Route(), oh.Trace()
 	}
 
 	ctx, cancel := context.WithCancelCause(context.Background())
@@ -142,6 +145,8 @@ func run(cfgPath string) error {
 		Creds:        credsH,
 		Catalog:      catalogH,
 		CatalogDrift: driftH,
+		ObsRoute:     obsRouteH,
+		ObsTrace:     obsTraceH,
 		MCP: map[string]http.Handler{
 			"grafana": mcpproxy.New("grafana", grafanaUp, nil, log),
 			"posthog": mcpproxy.New("posthog", posthogUp, mcpproxy.PostHogHeaders(s.POSTHOGAPIKey, cfg.PostHog.ProjectID), log),

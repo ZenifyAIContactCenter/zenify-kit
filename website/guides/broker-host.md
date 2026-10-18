@@ -109,6 +109,8 @@ Kiểm tra từ máy dev bằng `zenify catalog` (in YAML; mã thoát 5 và `no 
 curl -s -X POST -H "Authorization: Bearer <jwt>" -d '{}' <url>/catalog
 ```
 
+`zenify obs` (tóm tắt route và trace, xem [Quan sát và an toàn](/guides/observe-and-safety#zenify-obs)) không có khối cấu hình riêng: broker phục vụ `POST /obs/route` và `POST /obs/trace` khi có khối `catalog:`, vì cần danh mục để biết tên app Loki và `service.name` Tempo của từng service. Chưa có khối `catalog:` thì `zenify obs` thoát mã 5. Image cũ chưa có `/obs` trả 404 và lệnh cũng thoát mã 5, nên nâng broker trước khi teammate dùng bản kit mới.
+
 ## Chạy bằng docker
 
 Giữ giá trị secret trong file env của host (`chmod 600`), không đưa lên dòng lệnh.
