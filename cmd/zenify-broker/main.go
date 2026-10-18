@@ -83,7 +83,8 @@ func run(cfgPath string) error {
 	log := &audit.Logger{W: os.Stdout}
 	queryH := &query.Handler{
 		Creds: query.Creds{MongoStg: s.MongoStg, MongoPrd: s.MongoPrd, MySQLStg: s.MySQLStg, MySQLPrd: s.MySQLPrd,
-			AuditMongoPrd: s.AuditMongoPrd, MainDB: cfg.Mongo.MainDB, AuditDB: cfg.Mongo.AuditDB},
+			AuditMongoPrd: s.AuditMongoPrd, MainDB: cfg.Mongo.MainDB, AuditDB: cfg.Mongo.AuditDB,
+			LumiMySQLStg: s.LumiMySQLStg, LumiMySQLPrd: s.LumiMySQLPrd},
 		Audit: log, Run: query.ExecRun, MaxConcurrent: maxConcurrentPerLogin,
 	}
 	redisH := &redisread.Handler{Clients: map[string]redisread.Doer{"stg": rStg, "prd": rPrd}, Audit: log,
