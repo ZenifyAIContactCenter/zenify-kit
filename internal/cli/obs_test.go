@@ -64,7 +64,7 @@ func TestObs_RouteRequestAndYAML(t *testing.T) {
 	}
 }
 
-func TestObs_TraceDefaultSinceAndJSON(t *testing.T) {
+func TestObs_TraceRequestAndJSON(t *testing.T) {
 	var req api.ObsTraceRequest
 	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/obs/trace": func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&req)
@@ -145,5 +145,32 @@ func TestObs_Broker400IsBadArgs(t *testing.T) {
 	_, _, err := execCmd(newObsCmd(), "--manifest", mp, "nope", "--route", "GET /x", "--prd")
 	if exitcode.Code(err) != exitcode.BadArgs {
 		t.Errorf("code = %d (err %v)", exitcode.Code(err), err)
+	}
+}
+
+func TestObs_RouteDefaultSince24h(t *testing.T) {
+	var req api.ObsRouteRequest
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/obs/route": func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		routeOK(w, r)
+	}})
+	if _, _, err := execCmd(newObsCmd(), "--manifest", mp, "svc-a", "--route", "GET /x", "--prd"); err != nil {
+		t.Fatal(err)
+	}
+	if req.Since != "24h" {
+		t.Errorf("since sent = %q, want 24h", req.Since)
+	}
+}
+
+func TestObs_YAMLLargeIntegersNotExponent(t *testing.T) {
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/obs/route": func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.ObsRouteResponse{Stats: &api.ObsStats{Count: 12345678, RatePerMin: 1.5}})
+	}})
+	out, _, err := execCmd(newObsCmd(), "--manifest", mp, "svc-a", "--route", "GET /x", "--prd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "count: 12345678\n") || strings.Contains(out, "e+") || !strings.Contains(out, "rate_per_min: 1.5") {
+		t.Errorf("yaml:\n%s", out)
 	}
 }

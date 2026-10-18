@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -93,9 +94,12 @@ func newObsCmd() *cobra.Command {
 			}
 			if !asJSON {
 				var generic any
-				if err := json.Unmarshal(b, &generic); err != nil {
+				dec := json.NewDecoder(bytes.NewReader(b))
+				dec.UseNumber()
+				if err := dec.Decode(&generic); err != nil {
 					return err
 				}
+				generic = intNumbers(generic)
 				if b, err = yaml.Marshal(generic); err != nil {
 					return err
 				}
@@ -144,4 +148,26 @@ func truncationLine(omitted map[string]int) string {
 		parts[i] = fmt.Sprintf("%s=%d", k, omitted[k])
 	}
 	return "obs: response truncated (" + strings.Join(parts, ", ") + ")"
+}
+
+// intNumbers replaces json.Number with int64 when it is whole, else float64,
+// so yaml prints 12345678 rather than 1.2345678e+07.
+func intNumbers(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, e := range x {
+			x[k] = intNumbers(e)
+		}
+	case []any:
+		for i, e := range x {
+			x[i] = intNumbers(e)
+		}
+	case json.Number:
+		if i, err := x.Int64(); err == nil {
+			return i
+		}
+		f, _ := x.Float64()
+		return f
+	}
+	return v
 }
