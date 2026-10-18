@@ -38,7 +38,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify broker headers](./zenify_broker_headers) | In header Authorization cho MCP http của Claude Code, dưới dạng một object JSON. |
 | [zenify broker token](./zenify_broker_token) | In JWT của credential broker ra stdout, dùng cache và tự xin lại khi còn dưới 60 giây. |
 | [zenify catalog](./zenify_catalog) | In danh mục dịch vụ giám sát (datasource Grafana, tên log, trace, metric) dưới dạng YAML. |
-| [zenify catalog drift](./zenify_catalog_drift) | So danh mục với tên đang có thật trong Loki, Tempo và Prometheus trong 24 giờ qua. |
+| [zenify catalog drift](./zenify_catalog_drift) | So danh mục với tên đang có thật trong Loki, Prometheus (7 ngày qua) và Tempo (72 giờ qua). |
 | [zenify config](./zenify_config) | Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều. |
 | [zenify cost](./zenify_cost) | Cho biết token Claude Code đi đâu: context mỗi turn, phần subagent, model, skill và dấu hiệu lãng phí, đọc từ transcript local. |
 | [zenify data](./zenify_data) | Nhóm lệnh chạy script dữ liệu với credential DB do broker cấp, không để lộ giá trị trong output. |

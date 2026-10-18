@@ -6,7 +6,7 @@ title: zenify catalog drift
 
 # `zenify catalog drift`
 
-So danh mục với tên đang có thật trong Loki, Tempo và Prometheus trong 24 giờ qua.
+So danh mục với tên đang có thật trong Loki, Prometheus (7 ngày qua) và Tempo (72 giờ qua).
 
 ## Cú pháp
 
@@ -24,9 +24,11 @@ In bảng `ENV  SOURCE  UNLISTED  MISSING  ERROR`, mỗi dòng là một môi tr
 
 | Cột | Ý nghĩa |
 |---|---|
-| `UNLISTED` | Có thật trong 24 giờ qua nhưng không có trong danh mục lẫn danh sách `ignore` |
-| `MISSING` | Có trong danh mục nhưng không có dữ liệu trong 24 giờ qua |
+| `UNLISTED` | Có thật trong cửa sổ thời gian (xem dưới) nhưng không có trong danh mục lẫn danh sách `ignore` |
+| `MISSING` | Có trong danh mục nhưng không có dữ liệu trong cửa sổ thời gian |
 | `ERROR` | Lý do không đọc được nguồn đó; khi đó hai cột kia để trống |
+
+Cửa sổ 7 ngày để worker ít chạy không bị báo `MISSING` nhầm. Riêng `tempo` dùng 72 giờ: Tempo từ chối khoảng thời gian dài hơn, và production hiện chỉ giữ trace khoảng 2 ngày.
 
 Giá trị rỗng in là `-`. Lệnh thoát mã 0 khi mọi nguồn không có `UNLISTED`, `MISSING` và `ERROR`; ngược lại thoát mã 6. Mã 5 khi chưa cấu hình danh mục (như `zenify catalog`).
 

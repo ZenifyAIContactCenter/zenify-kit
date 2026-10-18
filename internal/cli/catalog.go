@@ -105,7 +105,7 @@ func newCatalogCmd() *cobra.Command {
 
 	cmd.AddCommand(&cobra.Command{
 		Use:           "drift",
-		Short:         "So danh mục với tên đang có thật trong Loki, Tempo, Prometheus (24 giờ qua)", //znf:allow-lang
+		Short:         "So danh mục với tên đang có thật trong Loki, Tempo, Prometheus (Tempo 72 giờ, còn lại 7 ngày)", //znf:allow-lang
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -17,14 +17,17 @@ import (
 )
 
 const (
-	driftWindow  = 24 * time.Hour
+	driftWindow = 7 * 24 * time.Hour
+	// tempoWindow: Tempo refuses a tag-values range over 72h (staging returned
+	// "exceeds 72h0m0s"), and keeps about 2 days anyway.
+	tempoWindow  = 72 * time.Hour
 	maxDriftBody = 4 << 10
 	tempoTag     = "resource.service.name"
 	promLabel    = "job"
 )
 
 // Drift is the POST /catalog/drift handler: it compares the catalog with the
-// label values Grafana saw in the last 24 hours. It must sit behind
+// label values Grafana saw in the last 7 days (Tempo: 72 hours). It must sit behind
 // auth.RequireAudited.
 type Drift struct {
 	h     *Handler
@@ -71,7 +74,7 @@ func (d *Drift) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		auth.WriteError(w, status, api.CodeInvalidBody, "env must be prd, stg or empty")
 		return
 	}
-	// Each drift fans out one 24-hour Grafana query per env x source.
+	// Each drift fans out one Grafana label-values query per env x source.
 	login := auth.Login(r.Context())
 	if !d.slots.Acquire(login, d.maxConcurrent) {
 		status = http.StatusTooManyRequests
@@ -95,6 +98,7 @@ type source struct {
 	listed  func(*catalog.EnvNames) []string
 	ignored func(catalog.Names) []string
 	live    func(context.Context, *grafana, *catalog.Catalog, catalog.Datasources, time.Time, time.Time) ([]string, error)
+	window  time.Duration
 }
 
 var sources = []source{
@@ -109,7 +113,7 @@ var sources = []source{
 				return nil, errors.New("labels.loki_app is not set")
 			}
 			return g.lokiLabelValues(ctx, ds.Loki, c.Labels.LokiApp, s, e)
-		}},
+		}, driftWindow},
 	{"tempo",
 		func(n *catalog.EnvNames) []string { return n.Tempo },
 		func(n catalog.Names) []string { return n.Tempo },
@@ -118,7 +122,7 @@ var sources = []source{
 				return nil, errors.New("no tempo datasource uid for this env")
 			}
 			return g.tempoTagValues(ctx, ds.Tempo, tempoTag, s, e)
-		}},
+		}, tempoWindow},
 	{"prometheus",
 		func(n *catalog.EnvNames) []string { return n.PrometheusJob },
 		func(n catalog.Names) []string { return n.PrometheusJob },
@@ -127,7 +131,7 @@ var sources = []source{
 				return nil, errors.New("no prometheus datasource uid for this env")
 			}
 			return g.promLabelValues(ctx, ds.Prometheus, promLabel, s, e)
-		}},
+		}, driftWindow},
 }
 
 // compare asks every env x source in parallel; one source failing sets only
@@ -145,7 +149,7 @@ func (d *Drift) compare(ctx context.Context, c *catalog.Catalog, envs []string, 
 			go func() {
 				defer wg.Done()
 				res := api.DriftResult{Unlisted: []string{}, Missing: []string{}}
-				live, err := src.live(ctx, d.g, c, c.Datasources[env], end.Add(-driftWindow), end)
+				live, err := src.live(ctx, d.g, c, c.Datasources[env], end.Add(-src.window), end)
 				if err != nil {
 					res.Error = err.Error()
 				} else {
