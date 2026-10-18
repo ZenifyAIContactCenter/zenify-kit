@@ -717,7 +717,7 @@ func TestQuery_TargetLumiUsesLumiURL(t *testing.T) {
 			var gotArgs, gotEnv []string
 			f := newFixture(t, func(_ context.Context, _ string, args, env []string, out, _ io.Writer) error {
 				gotArgs, gotEnv = args, env
-				return okRun(nil, "", nil, nil, out, nil)
+				return okRun(context.TODO(), "", nil, nil, out, nil)
 			})
 			f.h.Creds.LumiMySQLStg = "mysql+pymysql://lu:lp@lumi-stg:3307/mass_chatbot_v2"
 			f.h.Creds.LumiMySQLPrd = "mysql+pymysql://lu:lp@lumi-prd:3306/db_chatbot"
@@ -743,7 +743,7 @@ func TestQuery_TargetLumiTables(t *testing.T) {
 	var gotArgs []string
 	f := newFixture(t, func(_ context.Context, _ string, args, _ []string, out, _ io.Writer) error {
 		gotArgs = args
-		return okRun(nil, "", nil, nil, out, nil)
+		return okRun(context.TODO(), "", nil, nil, out, nil)
 	})
 	f.h.Creds.LumiMySQLPrd = "mysql+pymysql://lu:lp@lumi-prd:3306/db_chatbot"
 	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "prd", Engine: "mysql", Target: "lumi", Op: "tables"})
