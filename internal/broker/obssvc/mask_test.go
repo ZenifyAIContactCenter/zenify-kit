@@ -49,6 +49,14 @@ func TestMask(t *testing.T) {
 		// greedy 11-digit match "0912 345 678 9" is standalone and single-separator: whole run masked
 		{"call 0912 345 678 9", "call <phone>"},
 		{"x0912345678", "x0912345678"},
+		// any authorization scheme other than an already-masked Bearer/Basic token is masked to the end of the field
+		{"Authorization: Token 9944b09199c62bcf", "Authorization: <secret>"},
+		{"Authorization: Basic abc", "Authorization: <secret>"},
+		{"authorization=ApiKey xyz123", "authorization=<secret>"},
+		{"Authorization: Digest username=u, nonce=n", "Authorization: <secret>, nonce=n"},
+		{`{"authorization":"Token abc"}`, `{"authorization":"<secret>"}`},
+		{"password='hunter2'", "password='<secret>'"},
+		{"token: 'a b' next", "token: '<secret>' next"},
 	}
 	for _, c := range cases {
 		if got := Mask(c.in); got != c.want {

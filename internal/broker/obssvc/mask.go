@@ -21,6 +21,10 @@ var (
 	reEmail    = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 	reIPv4     = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 	rePhone    = regexp.MustCompile(`\+?\d(?:[ .-]?\d){8,10}`)
+
+	reKVSingle = regexp.MustCompile(`(?i)(^|[^\w-])('?(?:` + secretKeys + `)'?[ \t]*[:=][ \t]*')[^']*'`)
+	// reAuth: an authorization value runs to the end of the field, whatever its scheme.
+	reAuth = regexp.MustCompile(`(?i)(^|[^\w-])(authorization[ \t]*[:=][ \t]*)([^\s"'][^\r\n"'&,;]*)`)
 )
 
 // Mask replaces credentials, tokens, emails, IPs and phone numbers with
@@ -31,6 +35,8 @@ func Mask(s string) string {
 	s = reBasic.ReplaceAllString(s, "Basic <token>")
 	s = reJWT.ReplaceAllString(s, "<jwt>")
 	s = reKVQuoted.ReplaceAllString(s, `${1}${2}<secret>"`)
+	s = reKVSingle.ReplaceAllString(s, `${1}${2}<secret>'`)
+	s = reAuth.ReplaceAllStringFunc(s, maskAuth)
 	s = reKV.ReplaceAllStringFunc(s, maskKV)
 	s = reEmail.ReplaceAllString(s, "<email>")
 	s = reIPv4.ReplaceAllString(s, "<ip>")
@@ -42,6 +48,16 @@ func Mask(s string) string {
 func maskKV(m string) string {
 	g := reKV.FindStringSubmatch(m)
 	if v := strings.ToLower(g[3]); v == "bearer" || v == "basic" {
+		return m
+	}
+	return g[1] + g[2] + "<secret>"
+}
+
+// maskAuth hides an authorization value, keeping only a Bearer or Basic token
+// the token masks already replaced.
+func maskAuth(m string) string {
+	g := reAuth.FindStringSubmatch(m)
+	if strings.HasPrefix(g[3], "Bearer <token>") || strings.HasPrefix(g[3], "Basic <token>") {
 		return m
 	}
 	return g[1] + g[2] + "<secret>"
