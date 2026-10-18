@@ -341,7 +341,8 @@ func (h *Handler) search(ctx context.Context, q routeQuery, cond string) ([]api.
 		} `json:"traces"`
 	}
 	v := url.Values{
-		"q":     {"{ " + q.filter + cond + " }"},
+		// Tempo returns only the attributes a query names; select asks for the status ones.
+		"q":     {"{ " + q.filter + cond + " } | select(span.http.status_code, span.http.response.status_code, status)"},
 		"start": {strconv.FormatInt(q.windows[0].Start.Unix(), 10)},
 		"end":   {strconv.FormatInt(q.end.Unix(), 10)},
 		"limit": {searchLimit},

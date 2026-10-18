@@ -86,8 +86,11 @@ func (g *fakeGrafana) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case searchPath:
 		if strings.Contains(q.Get("q"), ">= 500") {
 			_, _ = w.Write([]byte(errs))
-		} else {
+		} else if strings.Contains(q.Get("q"), "| select(") {
 			_, _ = w.Write([]byte(slow))
+		} else {
+			// Tempo returns only the attributes a query names.
+			_, _ = w.Write([]byte(strings.Replace(slow, `{"key":"http.status_code","value":{"intValue":"500"}}`, "", 1)))
 		}
 	case lokiPath:
 		_, _ = w.Write([]byte(lokiBody))
@@ -172,6 +175,9 @@ func TestRoute_StatsFromHistogram(t *testing.T) {
 	}
 	if n := g.count(); n != 15 {
 		t.Errorf("grafana calls = %d, want 15", n)
+	}
+	if len(resp.Samples.Slowest) != 1 || resp.Samples.Slowest[0].Status != "500" {
+		t.Errorf("slowest = %+v, want one sample with status 500", resp.Samples.Slowest)
 	}
 	if resp.Logs.ErrorLines != 7 || resp.Logs.Scope != "app" {
 		t.Errorf("logs = %+v", resp.Logs)
