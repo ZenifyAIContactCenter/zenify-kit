@@ -81,7 +81,7 @@ func TestQuantile(t *testing.T) {
 }
 
 func TestTruncate(t *testing.T) {
-	s := strings.Repeat("Việt Nam ", 67) // > 600 B
+	s := strings.Repeat("Việt Nam ", 67) //znf:allow-lang
 	if len(s) < 600 {
 		t.Fatalf("fixture only %d B", len(s))
 	}
