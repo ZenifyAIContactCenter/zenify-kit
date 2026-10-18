@@ -435,6 +435,11 @@ func TestHandler_Validate(t *testing.T) {
 	if err := ok.Validate(); err != nil {
 		t.Fatalf("valid handler: %v", err)
 	}
+	optional := &Handler{Creds: testCreds(), Audit: &audit.Logger{W: io.Discard}, Run: okRun, MaxConcurrent: 2}
+	optional.Creds.LumiMySQLStg, optional.Creds.LumiMySQLPrd = "", ""
+	if err := optional.Validate(); err != nil { // SC-3: lumi creds optional
+		t.Fatalf("empty lumi creds must validate: %v", err)
+	}
 	bad := &Handler{Creds: testCreds()}
 	bad.Creds.AuditMongoPrd = ""
 	err := bad.Validate()
@@ -700,5 +705,112 @@ func TestQuery_PrdStderrHasNoEnvNames(t *testing.T) {
 	}
 	if strings.Contains(resp.Stderr, "MONGO_URL_PRD") {
 		t.Errorf("stderr = %q, want no env var name", resp.Stderr)
+	}
+}
+
+func TestQuery_TargetLumiUsesLumiURL(t *testing.T) {
+	for _, tc := range []struct{ env, host, port, db string }{
+		{"stg", "lumi-stg", "3307", "mass_chatbot_v2"},
+		{"prd", "lumi-prd", "3306", "db_chatbot"},
+	} {
+		t.Run(tc.env, func(t *testing.T) {
+			var gotArgs, gotEnv []string
+			f := newFixture(t, func(_ context.Context, _ string, args, env []string, out, _ io.Writer) error {
+				gotArgs, gotEnv = args, env
+				return okRun(context.TODO(), "", nil, nil, out, nil)
+			})
+			f.h.Creds.LumiMySQLStg = "mysql+pymysql://lu:lp@lumi-stg:3307/mass_chatbot_v2"
+			f.h.Creds.LumiMySQLPrd = "mysql+pymysql://lu:lp@lumi-prd:3306/db_chatbot"
+			st, _, e := f.post(t, "octocat", api.QueryRequest{Env: tc.env, Engine: "mysql", Target: "lumi", Op: "sql", SQL: "SELECT 1"})
+			if st != http.StatusOK {
+				t.Fatalf("got %d %+v", st, e)
+			}
+			args := strings.Join(gotArgs, " ")
+			if !strings.Contains(args, "-h "+tc.host+" -P "+tc.port+" -u lu") || !strings.HasSuffix(strings.TrimSpace(args), tc.db) {
+				t.Errorf("argv = %q", args)
+			}
+			if !strings.Contains(strings.Join(gotEnv, "\n"), "MYSQL_PWD=lp") {
+				t.Errorf("env lacks MYSQL_PWD=lp: %v", gotEnv)
+			}
+			if strings.Contains(args, "fake-stg") || strings.Contains(args, "fake-prd") {
+				t.Errorf("argv used the main URL: %q", args)
+			}
+		})
+	}
+}
+
+func TestQuery_TargetLumiTables(t *testing.T) {
+	var gotArgs []string
+	f := newFixture(t, func(_ context.Context, _ string, args, _ []string, out, _ io.Writer) error {
+		gotArgs = args
+		return okRun(context.TODO(), "", nil, nil, out, nil)
+	})
+	f.h.Creds.LumiMySQLPrd = "mysql+pymysql://lu:lp@lumi-prd:3306/db_chatbot"
+	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "prd", Engine: "mysql", Target: "lumi", Op: "tables"})
+	if st != http.StatusOK || !strings.Contains(strings.Join(gotArgs, " "), "lumi-prd") {
+		t.Fatalf("got %d %+v args=%v", st, e, gotArgs)
+	}
+}
+
+func TestQuery_TargetLumiMongoInvalid(t *testing.T) {
+	f := newFixture(t, okRun)
+	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "prd", Engine: "mongo", Target: "lumi", Op: "collections"})
+	if st != http.StatusBadRequest || e.Error != api.CodeInvalidTarget || atomic.LoadInt32(f.calls) != 0 {
+		t.Fatalf("got %d %+v calls=%d", st, e, atomic.LoadInt32(f.calls))
+	}
+}
+
+func TestQuery_TargetLumiMissingCredential500(t *testing.T) {
+	f := newFixture(t, okRun)
+	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "stg", Engine: "mysql", Target: "lumi", Op: "tables"})
+	if st != http.StatusInternalServerError || e.Error != api.CodeBrokerMisconfigured || atomic.LoadInt32(f.calls) != 0 {
+		t.Fatalf("got %d %+v calls=%d", st, e, atomic.LoadInt32(f.calls))
+	}
+}
+
+func TestQuery_TargetLumiStderrMasked(t *testing.T) {
+	for _, env := range []string{"stg", "prd"} {
+		t.Run(env, func(t *testing.T) {
+			f := newFixture(t, func(_ context.Context, _ string, _ []string, _ []string, _, errw io.Writer) error {
+				_, _ = io.WriteString(errw, "auth failed for lumi_user (pw lumi%2Fpass = lumi/pass) at lumi-"+env+".example.test\n")
+				return errors.New("exit status 1")
+			})
+			f.h.Creds.LumiMySQLStg = "mysql+pymysql://lumi_user:lumi%2Fpass@lumi-stg.example.test:3307/mass_chatbot_v2"
+			f.h.Creds.LumiMySQLPrd = "mysql+pymysql://lumi_user:lumi%2Fpass@lumi-prd.example.test:3306/db_chatbot"
+			st, _, e := f.post(t, "octocat", api.QueryRequest{Env: env, Engine: "mysql", Target: "lumi", Op: "sql", SQL: "SELECT 1"})
+			if st != http.StatusBadGateway || e.Error != api.CodeQueryFailed {
+				t.Fatalf("got %d %+v", st, e)
+			}
+			for _, leak := range []string{"lumi_user", "lumi%2Fpass", "lumi/pass", "lumi-" + env + ".example.test"} {
+				if strings.Contains(e.Message, leak) {
+					t.Errorf("message leaks %q: %q", leak, e.Message)
+				}
+			}
+		})
+	}
+}
+
+func TestQuery_TargetLumiDevPrdLeadOnly(t *testing.T) {
+	f := newFixture(t, okRun)
+	st, _, e := f.postAs(t, "octocat", api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mysql", Target: "lumi", Op: "sql", SQL: "DESCRIBE goals"})
+	if st != http.StatusForbidden || e.Error != api.CodeLeadOnly {
+		t.Fatalf("got %d %+v", st, e)
+	}
+	// Control: the same statement on main is dev-allowed, so the 403 above is the lumi gate.
+	st, _, e = f.postAs(t, "octocat", api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESCRIBE goals"})
+	if st == http.StatusForbidden && e.Error == api.CodeLeadOnly {
+		t.Fatalf("control (main target) refused lead_only: %d %+v", st, e)
+	}
+}
+
+func TestMySQLScheme(t *testing.T) {
+	for in, want := range map[string]string{
+		"mysql+pymysql://u:p@h:1/d": "mysql://u:p@h:1/d",
+		"mysql://u:p@h:1/d":         "mysql://u:p@h:1/d",
+		"":                          "",
+	} {
+		if got := mysqlScheme(in); got != want {
+			t.Errorf("mysqlScheme(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

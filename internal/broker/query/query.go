@@ -39,6 +39,8 @@ const (
 // database used for target main / audit.
 type Creds struct {
 	MongoStg, MongoPrd, MySQLStg, MySQLPrd, AuditMongoPrd, MainDB, AuditDB string
+	// LumiMySQLStg/Prd are optional: empty means target=lumi answers 500.
+	LumiMySQLStg, LumiMySQLPrd string
 }
 
 // Handler is the POST /query handler. It must sit behind auth.Require.
@@ -189,10 +191,17 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 			return nil, api.CodeInvalidTarget, "target=audit needs engine=mongo and env=prd"
 		}
 		db, mongoPrd = c.AuditDB, c.AuditMongoPrd
+	case "lumi":
+		if req.Engine != "mysql" {
+			return nil, api.CodeInvalidTarget, "target=lumi needs engine=mysql"
+		}
 	default:
-		return nil, api.CodeInvalidTarget, "target must be main or audit"
+		return nil, api.CodeInvalidTarget, "target must be main, audit or lumi"
 	}
 	env := map[string]string{"MONGO_URL": c.MongoStg, "MYSQL_URL": c.MySQLStg, "MONGO_URL_PRD": mongoPrd, "MYSQL_URL_PRD": c.MySQLPrd}
+	if req.Target == "lumi" {
+		env["MYSQL_URL"], env["MYSQL_URL_PRD"] = mysqlScheme(c.LumiMySQLStg), mysqlScheme(c.LumiMySQLPrd)
+	}
 	// dbread needs the Mongo URL for every op and the MySQL URL for sql/tables.
 	mk, sk := "MONGO_URL", "MYSQL_URL"
 	if prd {
@@ -210,11 +219,21 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 		Env: func(k string) string { return env[k] }}, "", ""
 }
 
+// mysqlScheme turns a SQLAlchemy-style mysql+pymysql:// URL into the mysql://
+// form dbread's parser accepts; any other URL is returned unchanged.
+func mysqlScheme(u string) string {
+	if rest, ok := strings.CutPrefix(u, "mysql+pymysql://"); ok {
+		return "mysql://" + rest
+	}
+	return u
+}
+
 // secrets are the URLs, URL hosts, users and passwords masked out of child
 // stderr; user and password both raw (as written in the URL) and decoded.
 func (h *Handler) secrets() []string {
 	var out []string
-	for _, v := range []string{h.Creds.MongoStg, h.Creds.MongoPrd, h.Creds.MySQLStg, h.Creds.MySQLPrd, h.Creds.AuditMongoPrd} {
+	for _, v := range []string{h.Creds.MongoStg, h.Creds.MongoPrd, h.Creds.MySQLStg, h.Creds.MySQLPrd, h.Creds.AuditMongoPrd,
+		h.Creds.LumiMySQLStg, h.Creds.LumiMySQLPrd} {
 		if v == "" {
 			continue
 		}

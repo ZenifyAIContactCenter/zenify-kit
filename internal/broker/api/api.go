@@ -83,7 +83,7 @@ type TokenResponse struct {
 }
 
 // QueryRequest is the body of POST /query. Env is stg|prd, Engine mongo|mysql,
-// Target main|audit (empty = main), Op one of collections|doc|count|find|
+// Target main|audit|lumi (empty = main; lumi = lumi-agent MySQL), Op one of collections|doc|count|find|
 // aggregate|explain|indexes|stats|sql|tables. Mongo fields mirror dbread.MongoQuery.
 type QueryRequest struct {
 	Env        string `json:"env"`
