@@ -8,6 +8,15 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.42.0
+
+*2026-10-18*
+
+- **Tóm tắt route và trace:** lệnh mới `zenify obs <id> --route "<METHOD path>" --prd|--stg` cho biết route chậm hay lỗi (tốc độ, p50/p95/p99, tỉ lệ lỗi, trace mẫu), và `zenify obs --trace <trace-id> --prd|--stg` tóm tắt một trace cùng log liên quan. Broker che PII theo mẫu (tên và địa chỉ viết tự do không được che) và cắt output ở 32 KB. Xem [zenify obs](/reference/cli/zenify_obs) và [Quan sát và an toàn](/guides/observe-and-safety#zenify-obs).
+  - Agent điều tra lỗi hoặc chậm chạy `zenify obs` trước, chỉ dùng tool Grafana trực tiếp khi cần chi tiết. Mã thoát 5 nghĩa là broker chưa bật `obs`.
+  - Công thức "trace sang log" trong tài liệu agent sửa lại: tra app Loki của từng service từ `zenify catalog` thay vì selector khớp mọi giá trị mà Loki từ chối.
+- **Broker:** route mới `POST /obs/route` và `POST /obs/trace`, bật cùng khối `catalog:`. Người vận hành broker xem [Danh mục dịch vụ](/guides/broker-host#danh-muc-dich-vu).
+
 ## v0.41.0
 
 *2026-10-18*

@@ -79,6 +79,22 @@ Khi điều tra một triệu chứng trên staging hay production, các skill `
 
 Bước đầu tiên của tài liệu là đọc danh mục dịch vụ giám sát. [`zenify catalog [id] [--prd|--stg]`](/reference/cli/zenify_catalog) in ra stdout dạng YAML các uid datasource Grafana và tên app trong Loki, service trong Tempo, metric Prometheus của một dịch vụ; lệnh thoát mã 5 khi broker hoặc danh mục chưa được cấu hình (khi đó agent quay về các bước khám phá bằng `list_datasources` và `list_loki_label_values`), mã 2 khi `id` không có trong danh mục. [`zenify catalog drift [--prd|--stg]`](/reference/cli/zenify_catalog_drift) so danh mục với tên đang có thật trong Loki và Prometheus trong 7 ngày qua, Tempo trong 72 giờ qua, in bảng `UNLISTED`/`MISSING`/`ERROR` và thoát mã 6 khi có lệch, mã 0 khi khớp, mã 5 khi chưa có danh mục. Agent chỉ báo chỗ lệch cho người dùng, không tự sửa danh mục. Phía host broker bật tính năng này theo [mục danh mục dịch vụ](/guides/broker-host#danh-muc-dich-vu).
 
+### Tóm tắt route và trace: `zenify obs` {#zenify-obs}
+
+Khi cần biết "route này đang chậm hay lỗi?" hoặc "trace này hỏng ở đâu?", agent chạy [`zenify obs`](/reference/cli/zenify_obs) trước khi tự viết truy vấn Tempo và Loki. Broker gọi Grafana thay agent, gộp kết quả và trả về một bản tóm tắt nhỏ. Lệnh có hai chế độ, chọn đúng một, và phải kèm đúng một trong `--prd`/`--stg`:
+
+- `zenify obs <id> --route "<METHOD path>" [--since 6h]`: thống kê route của service `<id>` (số lượng, tốc độ, p50/p95/p99, tỉ lệ lỗi, phân bố status), vài trace chậm nhất và trace lỗi làm mẫu, số dòng log lỗi. `--since` mặc định 24h, tối đa 48h.
+- `zenify obs --trace <trace-id>`: tóm tắt một trace (span gốc, các service, nhóm span, span lỗi) cùng các dòng log nhắc tới trace id. Trace id dài 1 đến 32 ký tự hex; broker tìm log theo cả dạng 32 ký tự lẫn dạng gốc.
+
+Giới hạn cần biết:
+
+- Broker che PII theo mẫu: số điện thoại, email, địa chỉ IPv4, bearer token, JWT và mật khẩu nhúng trong URL. Chữ tự do như tên người, địa chỉ không có mẫu nên không được che. Vì vậy output vẫn không được dán vào spec, PR hay báo cáo, theo quy tắc dữ liệu ở trên.
+- Response tối đa 32 KB, mỗi dòng log tối đa 500 byte; khi broker cắt bớt, lệnh ghi một dòng `obs: response truncated (…)` ra stderr.
+- Staging không có thống kê: với `--stg`, phần thống kê route có thể vắng (kèm ghi chú `TraceQL metrics unavailable on this env`) hoặc lệnh báo service chưa có tên Tempo trên staging; khi đó dựa vào trace mẫu và log.
+- Mã thoát 5 nghĩa là broker chưa bật `obs`; agent quay về các tool Grafana trực tiếp.
+
+Phía host broker bật `obs` cùng khối `catalog:`, xem [mục danh mục dịch vụ](/guides/broker-host#danh-muc-dich-vu).
+
 ## Kết quả
 
 | Artifact | Nội dung |
