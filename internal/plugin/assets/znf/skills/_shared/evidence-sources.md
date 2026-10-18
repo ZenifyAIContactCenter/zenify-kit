@@ -63,11 +63,11 @@ service catalog — never from memory.
 - The Tempo tools reject unknown arguments, and neither `search_tempo_traces` nor
   `query_tempo_metrics` has a `limit`: narrow with the query and `start`/`end` (RFC3339). Omitting
   `start`/`end` searches the past hour. `query_tempo_metrics` takes `type`: `instant` or `range`.
-- Datasource arguments take the uid from `list_datasources`; a name fails.
 - Spanmetrics carry no HTTP status. Count statuses with Tempo metrics:
   `{ } | count_over_time() by (span.http.status_code)`.
-- Tempo metrics queries of 3 h or more are refused; split the range. Tempo can return a trace id
-  shorter than 32 chars (leading zeros dropped): pad it to 32 before comparing or searching logs.
+- Tempo metrics queries of 3 h or more are refused: `zenify obs` splits the range for you; a direct
+  MCP call must split it by hand. Tempo can drop a trace id's leading zeros: pad it to 32 chars to
+  compare, and search logs for both the 32-char id and the original short id.
 - Loki refuses a selector matching every value of a label (regex `.+`): name real apps.
 - An instant `query_prometheus` needs `endTime`.
 - Tempo keeps traces only for its retention window (one deployment: about two days). An empty Tempo search or metrics query for an older window means "aged out", not "no errors":
