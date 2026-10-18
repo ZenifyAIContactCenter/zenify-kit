@@ -1,13 +1,10 @@
 package obssvc
 
 import (
-	"net/http"
 	"strings"
 	"time"
 
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/catalogsvc"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/grafanaproxy"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/perlogin"
@@ -21,6 +18,8 @@ const (
 	maxUpstream = 4 << 20
 	// parallel is how many Grafana calls one request runs at once.
 	parallel = 3
+	// maxTrace caps the Tempo trace body POST /obs/trace reads.
+	maxTrace = 16 << 20
 )
 
 // Handler serves POST /obs/route and POST /obs/trace over the catalog and
@@ -34,6 +33,7 @@ type Handler struct {
 	now        func() time.Time
 	audit      *audit.Logger // nil = no audit rows
 	slots      perlogin.Slots
+	traceMax   int64
 }
 
 // Option tunes a Handler.
@@ -45,24 +45,20 @@ func WithAudit(l *audit.Logger) Option { return func(h *Handler) { h.audit = l }
 // WithClock replaces time.Now (tests).
 func WithClock(now func() time.Time) Option { return func(h *Handler) { h.now = now } }
 
+// WithTraceMaxBytes lowers the trace read cap (tests).
+func WithTraceMaxBytes(n int64) Option { return func(h *Handler) { h.traceMax = n } }
+
 // WithGrafanaBaseURL points the Grafana client elsewhere (tests).
 func WithGrafanaBaseURL(u string) Option { return func(h *Handler) { h.grafanaURL = u } }
 
 // New builds the obs handler over cat's catalog and the Grafana at grafanaURL.
 func New(cat *catalogsvc.Handler, grafanaURL, grafanaToken string, opts ...Option) *Handler {
-	h := &Handler{cat: cat, grafanaURL: grafanaURL, token: grafanaToken, now: time.Now}
+	h := &Handler{cat: cat, grafanaURL: grafanaURL, token: grafanaToken, now: time.Now, traceMax: maxTrace}
 	for _, o := range opts {
 		o(h)
 	}
 	h.g = grafanaproxy.New(h.grafanaURL, h.token)
 	return h
-}
-
-// Trace is the POST /obs/trace handler.
-func (h *Handler) Trace() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		auth.WriteError(w, http.StatusNotImplemented, api.CodeBrokerMisconfigured, "obs trace is not implemented yet")
-	})
 }
 
 // findEntry returns the service or datastore with id, or nil.

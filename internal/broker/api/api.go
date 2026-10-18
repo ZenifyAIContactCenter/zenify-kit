@@ -53,7 +53,7 @@ const (
 	CodeBadTraceID = "bad_trace_id"
 	// CodeTraceNotFound (404): Tempo has no trace with that id.
 	CodeTraceNotFound = "trace_not_found"
-	// CodeTraceTooLarge (502): the trace is over the broker's read cap.
+	// CodeTraceTooLarge (422): the trace is over the broker's 16 MB read cap.
 	CodeTraceTooLarge = "trace_too_large"
 )
 
@@ -244,4 +244,65 @@ type ObsSample struct {
 type ObsLogCount struct {
 	ErrorLines int64  `json:"error_lines"`
 	Scope      string `json:"scope"`
+}
+
+// ObsTraceRequest is the body of POST /obs/trace. TraceID is 1-32 hex
+// characters; Env is prd or stg.
+type ObsTraceRequest struct {
+	TraceID string `json:"trace_id"`
+	Env     string `json:"env"`
+}
+
+// ObsTraceResponse is the 200 body of POST /obs/trace. TraceID is padded to
+// 32 chars; every string in it has been through the PII mask.
+type ObsTraceResponse struct {
+	TraceID   string         `json:"trace_id"`
+	Root      ObsSpanRef     `json:"root"`
+	Services  []string       `json:"services"`
+	SpanCount int            `json:"span_count"`
+	Groups    []ObsGroup     `json:"groups"`
+	Errors    []ObsErrSpan   `json:"errors"`
+	Logs      ObsTraceLogs   `json:"logs"`
+	Notes     []string       `json:"notes"`
+	Truncated bool           `json:"truncated"`
+	Omitted   map[string]int `json:"omitted,omitempty"`
+}
+
+// ObsSpanRef names one span: its service, name, start (RFC 3339) and duration.
+type ObsSpanRef struct {
+	Service    string  `json:"service"`
+	Name       string  `json:"name"`
+	Start      string  `json:"start"`
+	DurationMS float64 `json:"duration_ms"`
+}
+
+// ObsGroup aggregates the spans sharing one (service, name) pair.
+type ObsGroup struct {
+	Service string  `json:"service"`
+	Name    string  `json:"name"`
+	Count   int     `json:"count"`
+	TotalMS float64 `json:"total_ms"`
+	MaxMS   float64 `json:"max_ms"`
+	Errors  int     `json:"errors"`
+}
+
+// ObsErrSpan is one failed span with its allowlisted attributes.
+type ObsErrSpan struct {
+	Service    string            `json:"service"`
+	Name       string            `json:"name"`
+	Attributes map[string]string `json:"attributes"`
+}
+
+// ObsTraceLogs holds the Loki lines mentioning the trace id, and the trace's
+// services the catalog could not map to a Loki app.
+type ObsTraceLogs struct {
+	Lines            []ObsLogLine `json:"lines"`
+	UnmappedServices []string     `json:"unmapped_services"`
+}
+
+// ObsLogLine is one Loki line; TS is RFC 3339 with nanoseconds.
+type ObsLogLine struct {
+	TS   string `json:"ts"`
+	App  string `json:"app"`
+	Line string `json:"line"`
 }

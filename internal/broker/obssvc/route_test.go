@@ -26,6 +26,7 @@ const routeYAML = `version: 1
 datasources:
   prd: {loki: uid-loki, tempo: uid-tempo}
 labels: {loki_app: app}
+attributes: {tenant.id: "span attribute"}
 services:
   - id: svc-a
     repo: org/svc-a

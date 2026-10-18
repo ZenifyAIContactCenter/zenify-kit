@@ -48,6 +48,13 @@ func TestContract_JSONKeys(t *testing.T) {
 		{"ObsRouteResponse", ObsRouteResponse{}, []string{"env", "logs", "notes", "route", "samples", "service", "since_effective", "stats", "truncated"}},
 		{"ObsStats", ObsStats{}, []string{"count", "error_ratio", "p50", "p95", "p99", "rate_per_min", "resolution", "status"}},
 		{"ObsSample", ObsSample{}, []string{"duration_ms", "start", "status", "trace_id"}},
+		{"ObsTraceRequest", ObsTraceRequest{}, []string{"env", "trace_id"}},
+		{"ObsTraceResponse", ObsTraceResponse{}, []string{"errors", "groups", "logs", "notes", "root", "services", "span_count", "trace_id", "truncated"}},
+		{"ObsSpanRef", ObsSpanRef{}, []string{"duration_ms", "name", "service", "start"}},
+		{"ObsGroup", ObsGroup{}, []string{"count", "errors", "max_ms", "name", "service", "total_ms"}},
+		{"ObsErrSpan", ObsErrSpan{}, []string{"attributes", "name", "service"}},
+		{"ObsTraceLogs", ObsTraceLogs{}, []string{"lines", "unmapped_services"}},
+		{"ObsLogLine", ObsLogLine{}, []string{"app", "line", "ts"}},
 	}
 	for _, c := range cases {
 		if got := keys(t, c.v); !reflect.DeepEqual(got, c.want) {
