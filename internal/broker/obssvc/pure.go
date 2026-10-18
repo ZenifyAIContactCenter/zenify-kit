@@ -103,6 +103,21 @@ func Truncate(s string, max int) string {
 	return s[:n]
 }
 
+// preCut cuts s to at most max bytes for masking. A longer s is cut back to
+// the last whitespace or value separator before max, then a trailing run of
+// phone or IP characters is dropped, so no token straddling the cut survives
+// as a fragment the masks no longer recognise.
+func preCut(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	i := strings.LastIndexAny(s[:max], " \t\r\n\"'&,;")
+	if i < 0 {
+		return ""
+	}
+	return strings.TrimRight(s[:i], "0123456789 \t.+-")
+}
+
 var allowed = map[string]bool{
 	"http.method": true, "http.request.method": true, "http.route": true,
 	"http.status_code": true, "http.response.status_code": true,

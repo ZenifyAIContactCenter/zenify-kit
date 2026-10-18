@@ -441,18 +441,37 @@ func TestTrace_HugeAttributeCut(t *testing.T) {
 // TestTrace_LogLinePreCut: only the first 1024 B of a line are masked and
 // kept, so text past that never reaches the reply even when masking shortens
 // the head.
+// A token straddling the 1024 B cut must not survive as an unmasked fragment.
 func TestTrace_LogLinePreCut(t *testing.T) {
-	f := newTempo(t)
-	line := strings.Repeat(strings.Repeat("a", 30)+"@example.com ", 30) + "TAIL"
-	b, _ := json.Marshal(line)
-	f.loki = `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"app-a"},"values":[["1792281000001000000",` +
-		string(b) + `]]}]}}`
-	code, resp, raw := postTrace(setup(t, f).Trace(), traceBody)
-	if code != 200 || len(resp.Logs.Lines) != 1 {
-		t.Fatalf("code %d: %s", code, raw)
+	cases := []struct {
+		name, line string
+		leaks      []string
+	}{
+		// 23 chunks of 43 B end at 989; the cut lands in "@exam|ple.com"
+		{"email", strings.Repeat(strings.Repeat("a", 30)+"@example.com ", 30) + "TAIL", []string{"TAIL", "example.com", "@exam"}},
+		// 1018 B that mask to under 500, then "0912 345 678": the cut lands in "0912 3|45 678"
+		{"phone", strings.Repeat(strings.Repeat("a", 30)+"@example.com ", 23) + strings.Repeat("w", 26) + " x 0912 345 678 TAIL", []string{"TAIL", "0912"}},
 	}
-	if l := resp.Logs.Lines[0].Line; strings.Contains(l, "TAIL") || strings.Contains(l, "example.com") || len(l) > 500 {
-		t.Errorf("line = %q", l)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newTempo(t)
+			b, _ := json.Marshal(c.line)
+			f.loki = `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"app-a"},"values":[["1792281000001000000",` +
+				string(b) + `]]}]}}`
+			code, resp, raw := postTrace(setup(t, f).Trace(), traceBody)
+			if code != 200 || len(resp.Logs.Lines) != 1 {
+				t.Fatalf("code %d: %s", code, raw)
+			}
+			l := resp.Logs.Lines[0].Line
+			for _, leak := range c.leaks {
+				if strings.Contains(l, leak) {
+					t.Errorf("line contains %q: %q", leak, l)
+				}
+			}
+			if len(l) > 500 {
+				t.Errorf("len %d > 500", len(l))
+			}
+		})
 	}
 }
 

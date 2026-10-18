@@ -402,7 +402,7 @@ func (h *Handler) lokiLines(ctx context.Context, uid, label string, apps []strin
 		for _, val := range res.Values {
 			ns, _ := strconv.ParseInt(val[0], 10, 64)
 			all = append(all, entry{ns, api.ObsLogLine{TS: time.Unix(0, ns).UTC().Format(time.RFC3339Nano),
-				App: app, Line: Truncate(Mask(Truncate(val[1], maxLogRead)), maxLogLine)}})
+				App: app, Line: Truncate(Mask(preCut(val[1], maxLogRead)), maxLogLine)}})
 		}
 	}
 	sort.SliceStable(all, func(i, j int) bool { return all[i].ns < all[j].ns })
