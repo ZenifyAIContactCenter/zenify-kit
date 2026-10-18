@@ -32,6 +32,8 @@ type Deps struct {
 	Creds             http.Handler     // POST /creds; nil = route not served
 	Catalog           http.Handler     // POST /catalog; nil = route not served
 	CatalogDrift      http.Handler     // POST /catalog/drift; nil = route not served
+	ObsRoute          http.Handler     // POST /obs/route; nil = route not served
+	ObsTrace          http.Handler     // POST /obs/trace; nil = route not served
 	// MCP maps a name to its proxy, served on /mcp/<name> (any method, any
 	// subpath); an unknown name is 404. Empty = no /mcp routes.
 	MCP map[string]http.Handler
@@ -87,6 +89,12 @@ func New(cfg Deps) http.Handler {
 	}
 	if cfg.CatalogDrift != nil {
 		mux.Handle("POST /catalog/drift", require(fixed("/catalog/drift"), cfg.CatalogDrift))
+	}
+	if cfg.ObsRoute != nil {
+		mux.Handle("POST /obs/route", require(fixed("/obs/route"), cfg.ObsRoute))
+	}
+	if cfg.ObsTrace != nil {
+		mux.Handle("POST /obs/trace", require(fixed("/obs/trace"), cfg.ObsTrace))
 	}
 	if len(cfg.MCP) > 0 {
 		// The name is caller-chosen; only a configured one reaches the audit log.
