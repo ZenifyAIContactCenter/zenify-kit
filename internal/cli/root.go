@@ -39,6 +39,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newBrokerCmd())
 	root.AddCommand(newRedisReadCmd())
 	root.AddCommand(newCatalogCmd())
+	root.AddCommand(newObsCmd())
 	root.AddCommand(newEnvCmd())
 	root.AddCommand(newGitGuardCmd())
 	root.AddCommand(newSecretScanCmd())
