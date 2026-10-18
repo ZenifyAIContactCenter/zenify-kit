@@ -81,16 +81,16 @@ func TestQuantile(t *testing.T) {
 }
 
 func TestTruncate(t *testing.T) {
-	s := strings.Repeat("Việt Nam ", 67) //znf:allow-lang
-	if len(s) < 600 {
-		t.Fatalf("fixture only %d B", len(s))
-	}
+	s := "a" + strings.Repeat("\u1ec7", 300) // 901 B; byte 500 is inside a 3-byte rune
 	got := Truncate(s, 500)
-	if len(got) > 500 || !utf8.ValidString(got) {
-		t.Errorf("len %d valid %v", len(got), utf8.ValidString(got))
+	if len(got) != 499 || !utf8.ValidString(got) {
+		t.Errorf("len %d want 499, valid %v", len(got), utf8.ValidString(got))
 	}
 	if Truncate("abc", 500) != "abc" {
 		t.Error("short string changed")
+	}
+	if got := Truncate("abc", -1); got != "" {
+		t.Errorf("negative max: %q", got)
 	}
 }
 
