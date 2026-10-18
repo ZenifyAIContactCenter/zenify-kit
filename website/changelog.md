@@ -8,6 +8,19 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.41.0
+
+*2026-10-18*
+
+- **Danh mục dịch vụ:** lệnh mới `zenify catalog [id…]` in tên thật của từng service và datastore trên Loki (`app`, `host`), Tempo (`service.name`), Prometheus (`job`) và PostHog, cho cả prd và stg. Agent tra danh mục trước, chỉ tự dò khi danh mục không có. Nguồn là `catalog/services.yaml` trong repo monitoring, broker đọc từ GitHub và cache 5 phút. Xem [zenify catalog](/reference/cli/zenify_catalog).
+  - `zenify catalog drift` so danh mục với label đang có thật trên Grafana và thoát mã 6 khi lệch. Dòng ERROR nghĩa là không đọc được nguồn đó, không phải lệch.
+  - Exit code mới: 5 khi broker chưa có danh mục, 6 khi có drift. Id không có trong danh mục thoát mã 2.
+- **Broker:** route mới `POST /catalog` và `POST /catalog/drift`, chỉ bật khi cấu hình broker có khối `catalog:` và secret `CATALOG_GITHUB_TOKEN`. Người vận hành broker xem [Danh mục dịch vụ](/guides/broker-host#danh-muc-dich-vu).
+- **Agent tự dùng `db-read`, `redis-read`, `data run`:** git-guard bỏ các luật chặn host production và biến `_PRD`, vốn đã lỗi thời từ khi credential production do broker cấp. Agent không còn nhờ bạn chạy `!` để đọc dữ liệu hay chạy script. `zenify up --apply` cho ba lệnh này chạy không hỏi quyền và ngoài sandbox. Xem [Sandbox của Claude Code](/guides/broker-client#sandbox-cua-claude-code).
+  - Chặn đọc `.zenify/.env` vẫn giữ và chặt hơn: bung dấu ngoặc nhọn như shell trước khi xét, áp luật lên lệnh bên trong `zenify data run`, chặn `--manifest` trên `db-read`/`redis-read`.
+  - `zenify data run` có cả `--prd` và `--write` luôn hiện prompt xác nhận, kể cả khi bật bypass. Mọi lệnh `ssh` cũng luôn hỏi.
+  - Khi thiếu key production, `zenify db-read --prd` chỉ sang broker thay vì `zenify env set`.
+
 ## v0.40.0
 
 *2026-10-17*
