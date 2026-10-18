@@ -25,7 +25,11 @@ const (
 	maxErrSpans   = 10
 	maxLogLines   = 50
 	maxLogLine    = 500
+	maxLogRead    = 1024
+	maxAttr       = 500
 	maxStatement  = 300
+	lokiTimeout   = 15 * time.Second
+	lokiReserve   = 5 * time.Second
 	logPad        = 2 * time.Minute
 	noRootNote    = "no root span"
 	noLokiAppNote = "no loki app"
@@ -66,13 +70,15 @@ func (h *Handler) serveTrace(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, api.CodeBadTraceID, err.Error())
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), h.budget)
+	defer cancel()
 	login := auth.Login(r.Context())
 	if !h.slots.Acquire(login, 1) {
 		fail(http.StatusTooManyRequests, api.CodeTooManyConcurrent, "an obs request for this login is already running")
 		return
 	}
 	defer h.slots.Release(login)
-	c, _, err := h.cat.Current(r.Context())
+	c, _, err := h.cat.Current(ctx)
 	if err != nil {
 		fail(http.StatusServiceUnavailable, api.CodeCatalogUnavailable, err.Error())
 		return
@@ -82,7 +88,7 @@ func (h *Handler) serveTrace(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, api.CodeNoTempoName, "the catalog has no tempo datasource uid for "+req.Env)
 		return
 	}
-	spans, err := h.fetchTrace(r.Context(), ds.Tempo, padded)
+	spans, partial, err := h.fetchTrace(ctx, ds.Tempo, padded)
 	switch {
 	case errors.Is(err, grafanaproxy.ErrNotFound) || err == nil && len(spans) == 0:
 		fail(http.StatusNotFound, api.CodeTraceNotFound, notFoundMsg)
@@ -96,7 +102,13 @@ func (h *Handler) serveTrace(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := summarize(spans, c.Attributes)
 	resp.TraceID = padded
-	h.traceLogs(r.Context(), &resp, c, req.Env, spans, padded, orig)
+	if partial != "" {
+		resp.Notes = append(resp.Notes, partial)
+		resp.Truncated = true
+	}
+	lctx, lcancel := lokiContext(ctx)
+	defer lcancel()
+	h.traceLogs(lctx, &resp, c, req.Env, spans, padded, orig)
 	b, err := CapJSON(cappedTrace{&resp}, maxResponse)
 	if err != nil || len(b) > maxResponse {
 		fail(http.StatusInternalServerError, api.CodeBrokerMisconfigured, "trace summary does not fit the response cap")
@@ -105,6 +117,16 @@ func (h *Handler) serveTrace(w http.ResponseWriter, r *http.Request) {
 	size = len(b)
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(b)
+}
+
+// lokiContext gives the Loki call min(lokiTimeout, remaining budget - lokiReserve),
+// so a slow Loki leaves time to send the trace summary.
+func lokiContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	d := lokiTimeout
+	if dl, ok := ctx.Deadline(); ok {
+		d = min(d, time.Until(dl)-lokiReserve)
+	}
+	return context.WithTimeout(ctx, d)
 }
 
 // otlpValue is an OTLP-JSON AnyValue; intValue may come quoted or bare.
@@ -144,9 +166,13 @@ type span struct {
 }
 
 // fetchTrace reads GET /api/v2/traces/<padded> (OTLP JSON) into flat spans.
-func (h *Handler) fetchTrace(ctx context.Context, uid, padded string) ([]span, error) {
+// partial is the note to add when Tempo says the trace is incomplete. Only
+// failed spans keep their attributes.
+func (h *Handler) fetchTrace(ctx context.Context, uid, padded string) (spans []span, partial string, err error) {
 	var out struct {
-		Trace struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		Trace   struct {
 			ResourceSpans []struct {
 				Resource struct {
 					Attributes []otlpAttr `json:"attributes"`
@@ -167,9 +193,11 @@ func (h *Handler) fetchTrace(ctx context.Context, uid, padded string) ([]span, e
 		} `json:"trace"`
 	}
 	if err := h.g.Get(ctx, uid, "/api/v2/traces/"+padded, nil, h.traceMax, &out); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	var spans []span
+	if strings.EqualFold(out.Status, "partial") {
+		partial = strings.TrimSuffix("tempo returned a partial trace: "+Mask(out.Message), ": ")
+	}
 	for _, rs := range out.Trace.ResourceSpans {
 		svc := ""
 		for _, a := range rs.Resource.Attributes {
@@ -177,12 +205,13 @@ func (h *Handler) fetchTrace(ctx context.Context, uid, padded string) ([]span, e
 				svc = a.Value.String()
 			}
 		}
+		service := Mask(svc)
 		for _, ss := range rs.ScopeSpans {
 			for _, sp := range ss.Spans {
 				code := unquote(sp.Status.Code)
-				s := span{svc: svc, service: Mask(svc), name: Mask(sp.Name),
+				s := span{svc: svc, service: service, name: Mask(sp.Name),
 					start: nanos(sp.Start), end: nanos(sp.End), root: sp.ParentSpanID == "",
-					failed: code == "STATUS_CODE_ERROR" || code == "2", attrs: sp.Attributes}
+					failed: code == "STATUS_CODE_ERROR" || code == "2"}
 				for _, a := range sp.Attributes {
 					if a.Key == "http.status_code" || a.Key == "http.response.status_code" {
 						if n, err := strconv.Atoi(a.Value.String()); err == nil && n >= 500 {
@@ -190,11 +219,14 @@ func (h *Handler) fetchTrace(ctx context.Context, uid, padded string) ([]span, e
 						}
 					}
 				}
+				if s.failed {
+					s.attrs = sp.Attributes
+				}
 				spans = append(spans, s)
 			}
 		}
 	}
-	return spans, nil
+	return spans, partial, nil
 }
 
 // summarize builds root, services, groups and error spans (FR-3.3, FR-3.4).
@@ -264,18 +296,19 @@ func summarize(spans []span, extra map[string]string) api.ObsTraceResponse {
 	return resp
 }
 
-// keepAttrs keeps the allowlisted attributes, masked; db.statement is cut to 300 B.
+// keepAttrs keeps the allowlisted attributes, masked and cut to 500 B;
+// db.statement is cut to 300 B.
 func keepAttrs(attrs []otlpAttr, extra map[string]string) map[string]string {
 	out := map[string]string{}
 	for _, a := range attrs {
 		if !AllowAttr(a.Key, extra) {
 			continue
 		}
-		v := Mask(a.Value.String())
+		limit := maxAttr
 		if a.Key == "db.statement" {
-			v = Truncate(v, maxStatement)
+			limit = min(limit, maxStatement)
 		}
-		out[a.Key] = v
+		out[a.Key] = Truncate(Mask(a.Value.String()), limit)
 	}
 	return out
 }
@@ -369,7 +402,7 @@ func (h *Handler) lokiLines(ctx context.Context, uid, label string, apps []strin
 		for _, val := range res.Values {
 			ns, _ := strconv.ParseInt(val[0], 10, 64)
 			all = append(all, entry{ns, api.ObsLogLine{TS: time.Unix(0, ns).UTC().Format(time.RFC3339Nano),
-				App: app, Line: Truncate(Mask(val[1]), maxLogLine)}})
+				App: app, Line: Truncate(Mask(Truncate(val[1], maxLogRead)), maxLogLine)}})
 		}
 	}
 	sort.SliceStable(all, func(i, j int) bool { return all[i].ns < all[j].ns })

@@ -39,6 +39,7 @@ type fakeTempo struct {
 	trace       string
 	traceStatus int
 	loki        string
+	lokiHang    bool // the Loki query hangs until the caller gives up
 	tracePaths  []string
 	lokiQueries []url.Values
 }
@@ -56,6 +57,12 @@ func (f *fakeTempo) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(f.trace))
 	case r.URL.Path == lokiRange:
 		f.lokiQueries = append(f.lokiQueries, r.URL.Query())
+		if f.lokiHang {
+			f.mu.Unlock()
+			hang(r)
+			f.mu.Lock()
+			return
+		}
 		_, _ = w.Write([]byte(f.loki))
 	default:
 		http.NotFound(w, r)
@@ -352,16 +359,22 @@ func TestTrace_SizeCap(t *testing.T) {
 
 func TestTrace_CapsErrorsThenGroups(t *testing.T) {
 	f := newTempo(t)
-	// 40 failed svc-b spans with distinct names, each with a 4 KB message:
-	// 30 groups and 10 error spans survive the fixed caps, and 10 x 4 KB is
-	// over 32 KB, so error spans are shed before any group.
+	// 40 failed svc-b spans with distinct names, each with 8 allowlisted 4 KB
+	// attributes cut to 500 B: 30 groups and 10 error spans survive the fixed
+	// caps, and 10 x 8 x 500 B is over 32 KB, so error spans are shed before
+	// any group.
 	msg := strings.Repeat("x", 4096)
+	var attrs []string
+	for _, k := range []string{"exception.message", "exception.type", "otel.status_description", "http.route",
+		"rpc.service", "rpc.method", "messaging.destination.name", "db.name"} {
+		attrs = append(attrs, `{"key":"`+k+`","value":{"stringValue":"`+msg+`"}}`)
+	}
 	spans := make([]string, 40)
 	for i := range spans {
 		spans[i] = `{"spanId":"s` + strconv.Itoa(i) + `","parentSpanId":"p","name":"op-` + strconv.Itoa(i) +
 			`","startTimeUnixNano":"` + strconv.Itoa(1792281000000000000+i*1000000) + `","endTimeUnixNano":"` +
 			strconv.Itoa(1792281000000000000+i*1000000+(i+1)*1000) + `","status":{"code":"STATUS_CODE_ERROR"},` +
-			`"attributes":[{"key":"exception.message","value":{"stringValue":"` + msg + `"}}]}`
+			`"attributes":[` + strings.Join(attrs, ",") + `]}`
 	}
 	f.trace = `{"trace":{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"svc-b"}}]},` +
 		`"scopeSpans":[{"spans":[` + strings.Join(spans, ",") + `]}]}]}}`
@@ -381,5 +394,84 @@ func TestTrace_CapsErrorsThenGroups(t *testing.T) {
 	}
 	if resp.Omitted["errors"] == 0 || len(resp.Errors)+resp.Omitted["errors"] != 10 {
 		t.Errorf("errors=%d omitted=%v, want 10 in all with some omitted", len(resp.Errors), resp.Omitted)
+	}
+}
+
+// errSpanTrace is one failed svc-b root span carrying attrs (JSON list body),
+// wrapped with the given extra top-level fields.
+func errSpanTrace(attrs, extra string) string {
+	return `{"trace":{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"svc-b"}}]},` +
+		`"scopeSpans":[{"spans":[{"spanId":"r","parentSpanId":"","name":"op","startTimeUnixNano":"1792281000000000000",` +
+		`"endTimeUnixNano":"1792281000005000000","status":{"code":"STATUS_CODE_ERROR"},"attributes":[` + attrs + `]}]}]}]}` + extra + `}`
+}
+
+func TestTrace_PartialTrace(t *testing.T) {
+	f := newTempo(t)
+	f.trace = errSpanTrace(``, `,"status":"partial","message":"trace exceeds max size, ops@example.com"`)
+	code, resp, raw := postTrace(setup(t, f).Trace(), traceBody)
+	if code != 200 {
+		t.Fatalf("code %d: %s", code, raw)
+	}
+	if !resp.Truncated || !contains(resp.Notes, "tempo returned a partial trace: trace exceeds max size, <email>") {
+		t.Errorf("truncated=%v notes=%v", resp.Truncated, resp.Notes)
+	}
+	f.trace = errSpanTrace(``, `,"status":"complete"`)
+	if _, resp, _ := postTrace(setup(t, f).Trace(), traceBody); resp.Truncated || contains(resp.Notes, "partial") {
+		t.Errorf("complete: truncated=%v notes=%v", resp.Truncated, resp.Notes)
+	}
+}
+
+// TestTrace_HugeAttributeCut: a 100 KB exception.message is cut to 500 B, so
+// the error span survives the 32 KB cap.
+func TestTrace_HugeAttributeCut(t *testing.T) {
+	f := newTempo(t)
+	f.trace = errSpanTrace(`{"key":"exception.message","value":{"stringValue":"`+strings.Repeat("y", 100<<10)+`"}}`, ``)
+	code, resp, raw := postTrace(setup(t, f).Trace(), traceBody)
+	if code != 200 || len(raw) > 32768 {
+		t.Fatalf("code %d, %d bytes", code, len(raw))
+	}
+	if len(resp.Errors) != 1 || resp.Omitted["errors"] != 0 {
+		t.Fatalf("errors=%d omitted=%v, want the error span kept", len(resp.Errors), resp.Omitted)
+	}
+	if n := len(resp.Errors[0].Attributes["exception.message"]); n == 0 || n > 500 {
+		t.Errorf("exception.message = %d B, want 1-500", n)
+	}
+}
+
+// TestTrace_LogLinePreCut: only the first 1024 B of a line are masked and
+// kept, so text past that never reaches the reply even when masking shortens
+// the head.
+func TestTrace_LogLinePreCut(t *testing.T) {
+	f := newTempo(t)
+	line := strings.Repeat(strings.Repeat("a", 30)+"@example.com ", 30) + "TAIL"
+	b, _ := json.Marshal(line)
+	f.loki = `{"status":"success","data":{"resultType":"streams","result":[{"stream":{"app":"app-a"},"values":[["1792281000001000000",` +
+		string(b) + `]]}]}}`
+	code, resp, raw := postTrace(setup(t, f).Trace(), traceBody)
+	if code != 200 || len(resp.Logs.Lines) != 1 {
+		t.Fatalf("code %d: %s", code, raw)
+	}
+	if l := resp.Logs.Lines[0].Line; strings.Contains(l, "TAIL") || strings.Contains(l, "example.com") || len(l) > 500 {
+		t.Errorf("line = %q", l)
+	}
+}
+
+// TestTrace_BudgetCutsLoki: a hung Loki query is cut at min(15 s, budget-5 s)
+// and becomes the Loki note; the summary is still returned.
+func TestTrace_BudgetCutsLoki(t *testing.T) {
+	const budget = 5*time.Second + 300*time.Millisecond
+	f := newTempo(t)
+	f.lokiHang = true
+	t0 := time.Now()
+	code, resp, raw := postTrace(setup(t, f, obssvc.WithBudget(budget)).Trace(), traceBody)
+	took := time.Since(t0)
+	if code != 200 || resp.SpanCount != 109 {
+		t.Fatalf("code %d: %s", code, raw)
+	}
+	if took > budget-4*time.Second {
+		t.Errorf("took %v, want about 300ms (budget %v minus the 5 s reserve)", took, budget)
+	}
+	if !contains(resp.Notes, "loki query failed") {
+		t.Errorf("notes = %v", resp.Notes)
 	}
 }

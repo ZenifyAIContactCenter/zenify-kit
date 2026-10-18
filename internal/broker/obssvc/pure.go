@@ -13,11 +13,12 @@ import (
 )
 
 var (
-	ErrBadSince   = errors.New("since must be > 0 and <= 48h")
+	ErrBadSince   = errors.New("since must be >= 1m and <= 48h")
 	ErrBadTraceID = errors.New("trace id must be 1-32 hex characters")
 )
 
 const (
+	minSince  = time.Minute
 	maxSince  = 48 * time.Hour
 	maxWindow = 2 * time.Hour
 )
@@ -27,7 +28,7 @@ type Window struct{ Start, End time.Time }
 
 // Windows splits [end-since, end) into contiguous windows of at most 2h.
 func Windows(since time.Duration, end time.Time) ([]Window, error) {
-	if since <= 0 || since > maxSince {
+	if since < minSince || since > maxSince {
 		return nil, ErrBadSince
 	}
 	var out []Window
@@ -49,7 +50,7 @@ func PadTraceID(s string) (padded, orig string, err error) {
 		return "", "", ErrBadTraceID
 	}
 	for _, c := range s {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return "", "", ErrBadTraceID
 		}
 	}

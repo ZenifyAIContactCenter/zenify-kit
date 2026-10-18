@@ -76,13 +76,15 @@ func (h *Handler) serveRoute(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, api.CodeBadSince, err.Error())
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), h.budget)
+	defer cancel()
 	login := auth.Login(r.Context())
 	if !h.slots.Acquire(login, 1) {
 		fail(http.StatusTooManyRequests, api.CodeTooManyConcurrent, "an obs request for this login is already running")
 		return
 	}
 	defer h.slots.Release(login)
-	c, _, err := h.cat.Current(r.Context())
+	c, _, err := h.cat.Current(ctx)
 	if err != nil {
 		fail(http.StatusServiceUnavailable, api.CodeCatalogUnavailable, err.Error())
 		return
@@ -103,7 +105,7 @@ func (h *Handler) serveRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := routeQuery{c: c, ds: ds, names: names, filter: spanFilter(names.Tempo, method, path), windows: windows, since: d, end: start}
-	resp := h.route(r.Context(), q)
+	resp := h.route(ctx, q)
 	resp.Service, resp.Route, resp.Env = req.Service, req.Route, req.Env
 	b, err := CapJSON(cappedRoute{&resp}, maxResponse)
 	if err != nil || len(b) > maxResponse {
@@ -152,14 +154,15 @@ type routeQuery struct {
 }
 
 // route runs the metric windows, the error search and the Loki count at most
-// `parallel` at a time, then the slow search (it needs p95). A failing call
-// only adds a note.
+// `parallel` at a time, and the slow search (it needs p95) as soon as the
+// windows are done. A failing call, or one cut off by ctx, only adds a note.
 func (h *Handler) route(ctx context.Context, q routeQuery) api.ObsRouteResponse {
 	resp := api.ObsRouteResponse{Notes: []string{}, Logs: api.ObsLogCount{Scope: "app"},
 		Samples: api.ObsSamples{Slowest: []api.ObsSample{}, Errors: []api.ObsSample{}}}
 	var (
 		mu       sync.Mutex
-		wg       sync.WaitGroup
+		winWG    sync.WaitGroup // metric windows
+		restWG   sync.WaitGroup // error search and Loki count
 		hist     = Hist{}
 		byStatus = map[string]float64{}
 		okDur    time.Duration
@@ -169,7 +172,7 @@ func (h *Handler) route(ctx context.Context, q routeQuery) api.ObsRouteResponse 
 		lokiErr  error
 	)
 	sem := make(chan struct{}, parallel)
-	run := func(f func()) {
+	run := func(wg *sync.WaitGroup, f func()) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -179,7 +182,7 @@ func (h *Handler) route(ctx context.Context, q routeQuery) api.ObsRouteResponse 
 		}()
 	}
 	for _, win := range q.windows {
-		run(func() {
+		run(&winWG, func() {
 			series, err := h.metrics(ctx, q.ds.Tempo, q.filter, win)
 			mu.Lock()
 			defer mu.Unlock()
@@ -194,7 +197,7 @@ func (h *Handler) route(ctx context.Context, q routeQuery) api.ObsRouteResponse 
 			}
 		})
 	}
-	run(func() {
+	run(&restWG, func() {
 		s, err := h.search(ctx, q, " && (span.http.status_code >= 500 || span.http.response.status_code >= 500 || status = error)")
 		mu.Lock()
 		errs, errsErr = s, err
@@ -205,14 +208,28 @@ func (h *Handler) route(ctx context.Context, q routeQuery) api.ObsRouteResponse 
 		apps = q.names.Loki
 	}
 	if len(apps) > 0 {
-		run(func() {
+		run(&restWG, func() {
 			n, err := h.lokiErrors(ctx, q, apps)
 			mu.Lock()
 			resp.Logs.ErrorLines, lokiErr = n, err
 			mu.Unlock()
 		})
 	}
-	wg.Wait()
+	winWG.Wait()
+
+	// The windows are done, so hist and failed are no longer written.
+	var total float64
+	for _, n := range hist {
+		total += n
+	}
+	slowCond := ""
+	if total > 0 {
+		slowCond = " && duration > " + strconv.FormatFloat(Quantile(hist, 0.95)*1000, 'f', 3, 64) + "ms"
+	}
+	sem <- struct{}{}
+	slow, slowErr := h.search(ctx, q, slowCond)
+	<-sem
+	restWG.Wait()
 
 	if failed > 0 {
 		resp.Notes = append(resp.Notes, fmt.Sprintf("%d of %d metric windows failed", failed, len(q.windows)))
@@ -222,17 +239,9 @@ func (h *Handler) route(ctx context.Context, q routeQuery) api.ObsRouteResponse 
 	} else if lokiErr != nil {
 		resp.Notes = append(resp.Notes, "loki error count failed: "+lokiErr.Error())
 	}
-	var total float64
-	for _, n := range hist {
-		total += n
-	}
-	slowCond := ""
-	if total > 0 {
-		slowCond = " && duration > " + strconv.FormatFloat(Quantile(hist, 0.95)*1000, 'f', 3, 64) + "ms"
-	} else {
+	if total == 0 {
 		resp.Notes = append(resp.Notes, unfilteredNote)
 	}
-	slow, slowErr := h.search(ctx, q, slowCond)
 	if slowErr != nil {
 		resp.Notes = append(resp.Notes, "slow sample search failed: "+slowErr.Error())
 	}
@@ -270,18 +279,6 @@ func stats(hist Hist, byStatus map[string]float64, total float64, d time.Duratio
 	return s
 }
 
-// tqValue is an OTLP-JSON attribute value as Tempo returns it.
-type tqValue struct {
-	IntValue    string  `json:"intValue"`
-	DoubleValue float64 `json:"doubleValue"`
-	StringValue string  `json:"stringValue"`
-}
-
-type tqAttr struct {
-	Key   string  `json:"key"`
-	Value tqValue `json:"value"`
-}
-
 type point struct {
 	status        string
 	bucket, value float64
@@ -291,8 +288,8 @@ type point struct {
 func (h *Handler) metrics(ctx context.Context, uid, filter string, win Window) ([]point, error) {
 	var out struct {
 		Series []struct {
-			Labels []tqAttr `json:"labels"`
-			Value  float64  `json:"value"`
+			Labels []otlpAttr `json:"labels"`
+			Value  float64    `json:"value"`
 		} `json:"series"`
 	}
 	v := url.Values{
@@ -310,11 +307,13 @@ func (h *Handler) metrics(ctx context.Context, uid, filter string, win Window) (
 		for _, l := range s.Labels {
 			switch l.Key {
 			case "__bucket":
-				p.bucket = l.Value.DoubleValue
+				if l.Value.DoubleValue != nil {
+					p.bucket = *l.Value.DoubleValue
+				}
 			case "span.http.status_code":
-				code = l.Value.IntValue
+				code = l.Value.String()
 			case "span.http.response.status_code":
-				respCode = l.Value.IntValue
+				respCode = l.Value.String()
 			}
 		}
 		p.status = firstOf(code, respCode, "unset")
@@ -328,7 +327,7 @@ func (h *Handler) metrics(ctx context.Context, uid, filter string, win Window) (
 func (h *Handler) search(ctx context.Context, q routeQuery, cond string) ([]api.ObsSample, error) {
 	type spanSet struct {
 		Spans []struct {
-			Attributes []tqAttr `json:"attributes"`
+			Attributes []otlpAttr `json:"attributes"`
 		} `json:"spans"`
 	}
 	var out struct {
@@ -378,16 +377,16 @@ func (h *Handler) search(ctx context.Context, q routeQuery, cond string) ([]api.
 }
 
 // spanStatus is the span's HTTP status, else "error" for status = error, else "".
-func spanStatus(attrs []tqAttr) string {
+func spanStatus(attrs []otlpAttr) string {
 	var code, errStatus string
 	for _, a := range attrs {
 		switch strings.TrimPrefix(a.Key, "span.") {
 		case "http.status_code", "http.response.status_code":
 			if code == "" {
-				code = a.Value.IntValue
+				code = a.Value.String()
 			}
 		case "status":
-			if a.Value.StringValue == "error" {
+			if a.Value.String() == "error" {
 				errStatus = "error"
 			}
 		}
@@ -395,7 +394,8 @@ func spanStatus(attrs []tqAttr) string {
 	return Mask(firstOf(code, errStatus, ""))
 }
 
-// lokiErrors counts the apps' lines matching \berror\b over since.
+// lokiErrors counts the apps' lines matching \berror\b over since; the plain
+// "error" filter first lets Loki skip most lines before the regex.
 func (h *Handler) lokiErrors(ctx context.Context, q routeQuery, apps []string) (int64, error) {
 	re := make([]string, len(apps))
 	for i, a := range apps {
@@ -413,7 +413,7 @@ func (h *Handler) lokiErrors(ctx context.Context, q routeQuery, apps []string) (
 		} `json:"data"`
 	}
 	v := url.Values{
-		"query": {fmt.Sprintf(`sum(count_over_time({%s=~"%s"} |~ "(?i)\\berror\\b" [%ds]))`, q.c.Labels.LokiApp, quote(strings.Join(re, "|")), secs)},
+		"query": {fmt.Sprintf(`sum(count_over_time({%s=~"%s"} |~ "(?i)error" |~ "(?i)\\berror\\b" [%ds]))`, q.c.Labels.LokiApp, quote(strings.Join(re, "|")), secs)},
 		"time":  {strconv.FormatInt(q.end.UnixNano(), 10)},
 	}
 	if err := h.g.Get(ctx, q.ds.Loki, "/loki/api/v1/query", v, maxUpstream, &out); err != nil {

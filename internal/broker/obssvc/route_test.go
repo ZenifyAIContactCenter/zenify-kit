@@ -66,8 +66,19 @@ type fakeGrafana struct {
 	metrics     string
 	slow, errs  string
 	failMetrics int32 // this many metric calls answer 500
+	hangMetrics int32 // this many metric calls hang until the caller gives up
+	hangErrs    bool  // the error search hangs
+	hangLoki    bool  // the Loki count hangs
 	calls       int
 	queries     []string
+}
+
+// hang blocks until the caller cancels the request (or 10 s pass).
+func hang(r *http.Request) {
+	select {
+	case <-r.Context().Done():
+	case <-time.After(10 * time.Second):
+	}
 }
 
 func (g *fakeGrafana) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -76,9 +87,14 @@ func (g *fakeGrafana) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.calls++
 	g.queries = append(g.queries, q.Get("q")+q.Get("query"))
 	metrics, slow, errs := g.metrics, g.slow, g.errs
+	hangErrs, hangLoki := g.hangErrs, g.hangLoki
 	g.mu.Unlock()
 	switch r.URL.Path {
 	case metricsPath:
+		if atomic.AddInt32(&g.hangMetrics, -1) >= 0 {
+			hang(r)
+			return
+		}
 		if atomic.AddInt32(&g.failMetrics, -1) >= 0 {
 			w.WriteHeader(500)
 			return
@@ -86,6 +102,10 @@ func (g *fakeGrafana) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(metrics))
 	case searchPath:
 		if strings.Contains(q.Get("q"), ">= 500") {
+			if hangErrs {
+				hang(r)
+				return
+			}
 			_, _ = w.Write([]byte(errs))
 		} else if strings.Contains(q.Get("q"), "| select(") {
 			_, _ = w.Write([]byte(slow))
@@ -94,6 +114,10 @@ func (g *fakeGrafana) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(strings.Replace(slow, `{"key":"http.status_code","value":{"intValue":"500"}}`, "", 1)))
 		}
 	case lokiPath:
+		if hangLoki {
+			hang(r)
+			return
+		}
 		_, _ = w.Write([]byte(lokiBody))
 	default:
 		http.NotFound(w, r)
@@ -195,7 +219,7 @@ func TestRoute_StatsFromHistogram(t *testing.T) {
 	if !strings.Contains(slowQ, "&& duration > 65.028ms }") {
 		t.Errorf("slow search q = %q, want the p95 condition", slowQ)
 	}
-	if lokiQ != `sum(count_over_time({app=~"app-a"} |~ "(?i)\\berror\\b" [86400s]))` {
+	if lokiQ != `sum(count_over_time({app=~"app-a"} |~ "(?i)error" |~ "(?i)\\berror\\b" [86400s]))` {
 		t.Errorf("loki query = %q", lokiQ)
 	}
 	var row map[string]any
@@ -235,6 +259,7 @@ func TestRoute_BadInput(t *testing.T) {
 		{`{"service":"svc-a","route":"GET a","env":"prd"}`, api.CodeInvalidBody},
 		{`{"service":"svc-a","route":"/a","env":"prd"}`, api.CodeInvalidBody},
 		{`{"service":"svc-a","route":"GET /a","since":"soon","env":"prd"}`, api.CodeBadSince},
+		{`{"service":"svc-a","route":"GET /a","since":"59s","env":"prd"}`, api.CodeBadSince},
 		{`not json`, api.CodeInvalidBody},
 	} {
 		code, _, raw := post(h.Route(), c.body)
@@ -450,5 +475,72 @@ func TestRoute_CapsResponse(t *testing.T) {
 	}
 	if resp.Stats == nil || resp.Stats.Count != 36000 || len(resp.Stats.Status)+resp.Omitted["status"] != 3000 {
 		t.Errorf("stats count=%d status entries=%d", resp.Stats.Count, len(resp.Stats.Status))
+	}
+}
+
+// TestRoute_StringStatusLabel: a status label sent as stringValue still counts.
+func TestRoute_StringStatusLabel(t *testing.T) {
+	g := newFake()
+	g.metrics = `{"series":[{"labels":[{"key":"span.http.status_code","value":{"stringValue":"503"}},{"key":"__bucket","value":{"doubleValue":0.5}}],"value":4}]}`
+	g.errs = strings.Replace(searchOne, `{"intValue":"500"}`, `{"stringValue":"502"}`, 1)
+	h := setup(t, g)
+	code, resp, raw := post(h.Route(), okBody)
+	if code != 200 || resp.Stats == nil {
+		t.Fatalf("code %d: %s", code, raw)
+	}
+	if resp.Stats.Status["503"] != 48 || resp.Stats.ErrorRatio != 1 {
+		t.Errorf("status=%v error_ratio=%v, want {503:48} 1", resp.Stats.Status, resp.Stats.ErrorRatio)
+	}
+	if len(resp.Samples.Errors) != 1 || resp.Samples.Errors[0].Status != "502" {
+		t.Errorf("errors = %+v, want status 502", resp.Samples.Errors)
+	}
+}
+
+// TestRoute_BudgetCutsHungWindows: hung metric windows end at the request
+// budget and count as failed; the slow search, which waits for them, fails
+// too. Still a 200 with the stats of the other windows.
+func TestRoute_BudgetCutsHungWindows(t *testing.T) {
+	const budget = 300 * time.Millisecond
+	g := newFake()
+	g.hangMetrics = 2
+	h := setup(t, g, obssvc.WithBudget(budget))
+	t0 := time.Now()
+	code, resp, raw := post(h.Route(), okBody)
+	took := time.Since(t0)
+	if code != 200 {
+		t.Fatalf("code %d: %s", code, raw)
+	}
+	// The deadline is the budget itself; allow the time to write the reply.
+	if took > budget+200*time.Millisecond {
+		t.Errorf("took %v, want about the %v budget", took, budget)
+	}
+	for _, n := range []string{"2 of 12 metric windows failed", "slow sample search failed"} {
+		if !contains(resp.Notes, n) {
+			t.Errorf("notes = %v, want %q", resp.Notes, n)
+		}
+	}
+	if resp.Stats == nil || resp.SinceEffective != "20h0m0s" {
+		t.Errorf("stats=%+v since_effective=%q", resp.Stats, resp.SinceEffective)
+	}
+}
+
+// TestRoute_SlowSearchDoesNotWaitForLoki: the slow search starts once the
+// metric windows are done, so a hung Loki count and error search do not
+// starve it; both end at the budget as failure notes.
+func TestRoute_SlowSearchDoesNotWaitForLoki(t *testing.T) {
+	const budget = 300 * time.Millisecond
+	g := newFake()
+	g.hangErrs, g.hangLoki = true, true
+	h := setup(t, g, obssvc.WithBudget(budget))
+	t0 := time.Now()
+	code, resp, raw := post(h.Route(), okBody)
+	if code != 200 || time.Since(t0) > budget+200*time.Millisecond {
+		t.Fatalf("code %d after %v: %s", code, time.Since(t0), raw)
+	}
+	if len(resp.Samples.Slowest) != 1 || contains(resp.Notes, "slow sample search failed") {
+		t.Errorf("slowest=%+v notes=%v, want the slow sample", resp.Samples.Slowest, resp.Notes)
+	}
+	if !contains(resp.Notes, "error sample search failed") || !contains(resp.Notes, "loki error count failed") {
+		t.Errorf("notes = %v, want the error search and Loki failures", resp.Notes)
 	}
 }

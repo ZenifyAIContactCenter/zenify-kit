@@ -22,6 +22,8 @@ func TestWindows(t *testing.T) {
 		{5 * time.Hour, 3, time.Hour, nil},
 		{49 * time.Hour, 0, 0, ErrBadSince},
 		{0, 0, 0, ErrBadSince},
+		{59 * time.Second, 0, 0, ErrBadSince},
+		{time.Minute, 1, time.Minute, nil},
 	}
 	for _, c := range cases {
 		w, err := Windows(c.since, end)
