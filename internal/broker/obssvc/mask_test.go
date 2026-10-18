@@ -22,6 +22,9 @@ func TestMask(t *testing.T) {
 		{"order 12345 0912345678", "order 12345 <phone>"},
 		{"2026-10-18 0912345678", "2026-10-18 <phone>"},
 		{"bearer x", "Bearer <token>"},
+		{"0912345678 12", "<phone> 12"},
+		// greedy 11-digit match "0912 345 678 9" is standalone and single-separator: whole run masked
+		{"call 0912 345 678 9", "call <phone>"},
 		{"x0912345678", "x0912345678"},
 	}
 	for _, c := range cases {
