@@ -51,7 +51,17 @@ type Config struct {
 		AppURLStg string `yaml:"app_url_stg"`
 	} `yaml:"lumi"`
 
+	// Catalog is optional; when set the broker serves the service catalog.
+	Catalog *Catalog `yaml:"catalog"`
+
 	Secrets Secrets `yaml:"-"`
+}
+
+// Catalog locates the catalog file in a GitHub repo.
+type Catalog struct {
+	Repo string `yaml:"repo"`
+	Path string `yaml:"path"`
+	Ref  string `yaml:"ref"`
 }
 
 // Secrets come from the host environment only.
@@ -64,6 +74,8 @@ type Secrets struct {
 	MongoWriteStg, MongoWritePrd, MySQLWriteStg, MySQLWritePrd string
 	RedisWriteStg, RedisWritePrd, LumiMySQLStg, LumiMySQLPrd   string
 	QdrantStg, QdrantPrd                                       string
+	// Required only when Config.Catalog is set.
+	CatalogGitHubToken string
 }
 
 // DefaultGrafanaArgs is the flag set the team runs mcp-grafana with.
@@ -111,6 +123,15 @@ func Load(path string, getenv func(string) string) (Config, error) {
 			missing = append(missing, k)
 		}
 	}
+	if c.Catalog != nil {
+		def(&c.Catalog.Ref, "main")
+		if c.Catalog.Repo == "" {
+			missing = append(missing, "catalog.repo")
+		}
+		if c.Catalog.Path == "" {
+			missing = append(missing, "catalog.path")
+		}
+	}
 	if len(missing) > 0 {
 		errs = append(errs, fmt.Errorf("config %s: missing %s", path, strings.Join(sorted(missing), ", ")))
 	}
@@ -137,6 +158,9 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	s.RedisWriteStg, s.RedisWritePrd = getenv("REDIS_WRITE_URL_STG"), getenv("REDIS_WRITE_URL_PRD")
 	s.LumiMySQLStg, s.LumiMySQLPrd = getenv("LUMI_MYSQL_URL_STG"), getenv("LUMI_MYSQL_URL_PRD")
 	s.QdrantStg, s.QdrantPrd = getenv("QDRANT_URL_STG"), getenv("QDRANT_URL_PRD")
+	if c.Catalog != nil {
+		s.CatalogGitHubToken = get("CATALOG_GITHUB_TOKEN")
+	}
 	if len(noEnv) > 0 {
 		errs = append(errs, fmt.Errorf("missing required env: %s", strings.Join(sorted(noEnv), ", ")))
 	}

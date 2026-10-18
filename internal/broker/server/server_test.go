@@ -17,6 +17,8 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/audit"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/auth"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/catalogsvc"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/config"
 )
 
 const ghToken = "gho_fake-test-token"
@@ -437,6 +439,97 @@ func TestCredsRouteRequiresAuthAndIsAbsentWhenNil(t *testing.T) {
 	New(Deps{JWTKey: testKey}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/creds", strings.NewReader("{}")))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("route should be absent when Deps.Creds is nil, got %d", rec.Code)
+	}
+}
+
+func TestServer_CatalogRouteAbsentWithoutHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	New(Deps{JWTKey: testKey}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/catalog", strings.NewReader("{}")))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("route should be absent when Deps.Catalog is nil, got %d", rec.Code)
+	}
+}
+
+func TestServer_CatalogRouteAudited(t *testing.T) {
+	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("version: 1\n"))
+	}))
+	t.Cleanup(gh.Close)
+	var buf bytes.Buffer
+	log := &audit.Logger{W: &buf}
+	h := New(Deps{JWTKey: testKey, Audit: log,
+		Catalog: catalogsvc.New(config.Catalog{Repo: "org/m", Path: "c.yaml", Ref: "main"}, "tok",
+			catalogsvc.WithBaseURL(gh.URL), catalogsvc.WithAudit(log))})
+	call := func(bearer string) int {
+		req := httptest.NewRequest(http.MethodPost, "/catalog", strings.NewReader("{}"))
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for _, role := range []string{"dev", "lead"} {
+		tok, _, err := auth.Issue(testKey, "octocat", role, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := call(tok); got != http.StatusOK {
+			t.Errorf("role %s: got %d, want 200", role, got)
+		}
+	}
+	if got := call(""); got != http.StatusUnauthorized {
+		t.Errorf("no token: got %d, want 401", got)
+	}
+	rows := map[string]int{}
+	for _, l := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var e struct {
+			Endpoint, Role string
+			Status         int
+		}
+		if err := json.Unmarshal([]byte(l), &e); err != nil || e.Endpoint != "/catalog" {
+			t.Fatalf("bad audit row %q: %v", l, err)
+		}
+		rows[fmt.Sprintf("%s/%d", e.Role, e.Status)]++
+	}
+	if rows["dev/200"] != 1 || rows["lead/200"] != 1 || rows["/401"] != 1 || len(rows) != 3 {
+		t.Errorf("audit rows = %v, want one each of dev/200, lead/200, /401", rows)
+	}
+}
+
+func TestServer_CatalogDriftRouteAbsentWithoutHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	New(Deps{JWTKey: testKey}).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/catalog/drift", strings.NewReader("{}")))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("route should be absent when Deps.CatalogDrift is nil, got %d", rec.Code)
+	}
+}
+
+func TestServer_CatalogDriftRouteRequiresAuth(t *testing.T) {
+	var buf bytes.Buffer
+	log := &audit.Logger{W: &buf}
+	served := false
+	h := New(Deps{JWTKey: testKey, Audit: log, CatalogDrift: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		served = true
+	})})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/catalog/drift", strings.NewReader("{}")))
+	if rec.Code != http.StatusUnauthorized || served {
+		t.Fatalf("no token: got %d served=%v, want 401 and not served", rec.Code, served)
+	}
+	if !strings.Contains(buf.String(), `"endpoint":"/catalog/drift"`) {
+		t.Errorf("401 not audited under /catalog/drift: %s", buf.String())
+	}
+	tok, _, err := auth.Issue(testKey, "octocat", "dev", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/catalog/drift", strings.NewReader("{}"))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !served {
+		t.Fatalf("with token: got %d served=%v", rec.Code, served)
 	}
 }
 

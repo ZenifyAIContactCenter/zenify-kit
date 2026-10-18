@@ -16,6 +16,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | Mở worktree cho một task, chạy dev server | [zenify wt new](./zenify_wt_new) | [zenify wt ls](./zenify_wt_ls), [zenify wt url](./zenify_wt_url), [zenify wt wire](./zenify_wt_wire), [zenify wt rm](./zenify_wt_rm), [zenify wt sweep](./zenify_wt_sweep) |
 | Sửa lỗi trên production | [zenify hotfix baseref](./zenify_hotfix_baseref) | [zenify wt new](./zenify_wt_new) với `--type hotfix` |
 | Đọc dữ liệu thật trước khi viết code | [zenify db-read](./zenify_db-read) | [zenify db-perf](./zenify_db-perf) |
+| Tra tên datasource, log, trace, metric của dịch vụ | [zenify catalog](./zenify_catalog) | [zenify catalog drift](./zenify_catalog_drift) |
 | Chạy script dữ liệu với credential từ broker | [zenify data run](./zenify_data_run) | |
 | Quản lý credential cá nhân cho tool dev và agent | [zenify env](./zenify_env) | [zenify env list](./zenify_env_list), [zenify env set](./zenify_env_set), [zenify env exec](./zenify_env_exec), [zenify env edit](./zenify_env_edit) |
 | Kiểm tra thay đổi chạm tài nguyên chung | [zenify gate participants](./zenify_gate_participants) | [zenify spec contracts](./zenify_spec_contracts) |
@@ -36,6 +37,8 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify broker](./zenify_broker) | Nhóm lệnh làm việc với credential broker của zenify. |
 | [zenify broker headers](./zenify_broker_headers) | In header Authorization cho MCP http của Claude Code, dưới dạng một object JSON. |
 | [zenify broker token](./zenify_broker_token) | In JWT của credential broker ra stdout, dùng cache và tự xin lại khi còn dưới 60 giây. |
+| [zenify catalog](./zenify_catalog) | In danh mục dịch vụ giám sát (datasource Grafana, tên log, trace, metric) dưới dạng YAML. |
+| [zenify catalog drift](./zenify_catalog_drift) | So danh mục với tên đang có thật trong Loki, Tempo và Prometheus trong 24 giờ qua. |
 | [zenify config](./zenify_config) | Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều. |
 | [zenify cost](./zenify_cost) | Cho biết token Claude Code đi đâu: context mỗi turn, phần subagent, model, skill và dấu hiệu lãng phí, đọc từ transcript local. |
 | [zenify data](./zenify_data) | Nhóm lệnh chạy script dữ liệu với credential DB do broker cấp, không để lộ giá trị trong output. |
