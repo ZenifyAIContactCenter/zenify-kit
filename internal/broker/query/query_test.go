@@ -792,9 +792,14 @@ func TestQuery_TargetLumiStderrMasked(t *testing.T) {
 
 func TestQuery_TargetLumiDevPrdLeadOnly(t *testing.T) {
 	f := newFixture(t, okRun)
-	st, _, e := f.postAs(t, "octocat", api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mysql", Target: "lumi", Op: "sql", SQL: "SELECT 1"})
+	st, _, e := f.postAs(t, "octocat", api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mysql", Target: "lumi", Op: "sql", SQL: "DESCRIBE goals"})
 	if st != http.StatusForbidden || e.Error != api.CodeLeadOnly {
 		t.Fatalf("got %d %+v", st, e)
+	}
+	// Control: the same statement on main is dev-allowed, so the 403 above is the lumi gate.
+	st, _, e = f.postAs(t, "octocat", api.RoleDev, api.QueryRequest{Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESCRIBE goals"})
+	if st == http.StatusForbidden && e.Error == api.CodeLeadOnly {
+		t.Fatalf("control (main target) refused lead_only: %d %+v", st, e)
 	}
 }
 

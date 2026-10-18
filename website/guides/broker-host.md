@@ -68,7 +68,7 @@ Các biến sau là tuỳ chọn: thiếu thì broker vẫn khởi động. `POS
 `MONGO_WRITE_URL_STG` `MONGO_WRITE_URL_PRD` `MYSQL_WRITE_URL_STG` `MYSQL_WRITE_URL_PRD` `REDIS_WRITE_URL_STG` `REDIS_WRITE_URL_PRD` `LUMI_MYSQL_URL_STG` `LUMI_MYSQL_URL_PRD` `QDRANT_URL_STG` `QDRANT_URL_PRD`
 
 - Ba cặp `*_WRITE_URL_*` là credential của user có quyền ghi. Thiếu chúng thì yêu cầu `--write` nhận 500 `broker_misconfigured`; yêu cầu đọc không bị ảnh hưởng. Dev chỉ lấy được credential staging; production chỉ dành cho lead.
-- `LUMI_MYSQL_URL_*` và `QDRANT_URL_*` là credential của `lumi-agent`, cấp khi người dùng chạy `zenify data run --lumi`. Trước đây dev tự điền các key này vào `.zenify/.env`; nay broker cấp, manifest không còn hỏi. Broker cũng tự dùng `LUMI_MYSQL_URL_*` cho `zenify db-read --target lumi`, nên URL phải tới được từ container broker: production (`192.168.0.14`) tới thẳng, staging cần [tunnel bên dưới](#lumi-stg-tunnel). Hậu tố `+pymysql` giữ nguyên, broker tự bỏ.
+- `LUMI_MYSQL_URL_*` và `QDRANT_URL_*` là credential của `lumi-agent`, cấp khi người dùng chạy `zenify data run --lumi`. Trước đây dev tự điền các key này vào `.zenify/.env`; nay broker cấp, manifest không còn hỏi. Broker cũng tự dùng `LUMI_MYSQL_URL_*` cho `zenify db-read --target lumi`, nên URL phải tới được từ container broker: production (`<lumi-prd-mysql-host>`) tới thẳng, staging cần [tunnel bên dưới](#lumi-stg-tunnel). Hậu tố `+pymysql` giữ nguyên, broker tự bỏ.
 - URL ứng dụng lumi staging đặt trong YAML, không phải env: khối `lumi:` với khoá `app_url_stg`.
 
 ```yaml
@@ -78,7 +78,7 @@ lumi:
 
 Chỉ thêm khối `lumi:` vào `broker.yaml` sau khi image mới (có `POST /creds`) đã chạy. Image cũ đọc config với `KnownFields` nên từ chối khoá lạ và không khởi động: trước khi quay lại một image cũ, xoá khối `lumi:` khỏi `broker.yaml`.
 
-**URI phải dùng được từ máy dev.** Broker chuyển nguyên chuỗi kết nối cho máy dev, và script chạy trên máy dev, nên mọi URI trên (kể cả `MONGO_URL_*`, `MYSQL_URL_*`, `REDIS_URL_*` và các URI ghi) phải trỏ tới địa chỉ mà máy dev tới được (qua VPN hay hostname công khai), không phải địa chỉ chỉ host broker mới thấy như `localhost` hay IP nội bộ của docker network.
+**URI phải dùng được từ máy dev.** Broker chuyển nguyên chuỗi kết nối cho máy dev, và script chạy trên máy dev, nên mọi URI trên (kể cả `MONGO_URL_*`, `MYSQL_URL_*`, `REDIS_URL_*` và các URI ghi) phải trỏ tới địa chỉ mà máy dev tới được (qua VPN hay hostname công khai), không phải địa chỉ chỉ host broker mới thấy như `localhost` hay IP nội bộ của docker network. Ngoại lệ có chủ đích: `LUMI_MYSQL_URL_STG` giữ nguyên `127.0.0.1:3307`; trong broker nó chạy qua container tunnel, còn trên máy dev nó chỉ dùng được khi dev tự mở SSH tunnel tới cổng local 3307 (cần cho `zenify data run --stg --lumi`).
 
 Kiểm tra từ máy dev: chạy một lệnh chỉ in tên biến, không in giá trị.
 
@@ -129,13 +129,13 @@ Image mở cổng 8080 và chạy `zenify-broker --config /etc/zenify-broker/bro
 
 ### Tunnel MySQL lumi staging {#lumi-stg-tunnel}
 
-MySQL staging của lumi (`mass_chatbot_v2`) chỉ tới được qua SSH tới `son@222.252.29.85` cổng `12822`. Đặt `LUMI_MYSQL_URL_STG` trỏ `127.0.0.1:3307` rồi chạy một container tunnel dùng chung network namespace với broker, để cổng 3307 chỉ có trong container broker và không publish ra host.
+MySQL staging của lumi (`mass_chatbot_v2`) chỉ tới được qua SSH tới `<lumi-stg-ssh-user>@<lumi-stg-ssh-host>` cổng `<lumi-stg-ssh-port>`. Đặt `LUMI_MYSQL_URL_STG` trỏ `127.0.0.1:3307` rồi chạy một container tunnel dùng chung network namespace với broker, để cổng 3307 chỉ có trong container broker và không publish ra host. Giá trị thật của `<lumi-stg-ssh-host>`, `<lumi-stg-ssh-port>`, `<lumi-stg-ssh-user>` và `<lumi-prd-mysql-host>` nằm trong ghi chú vận hành riêng của host broker, không đưa vào hướng dẫn công khai này. Không bao giờ publish cổng 3307 từ container tunnel và không bind `-L` vào địa chỉ nào khác `127.0.0.1`.
 
 Trên host broker chạy bằng docker compose (service `zenify-broker`, thư mục `/root/zenify-broker`), thêm service:
 
 ```yaml
   lumi-stg-tunnel:
-    image: alpine
+    image: alpine:3.20
     network_mode: "service:zenify-broker"
     restart: unless-stopped
     volumes:
@@ -147,7 +147,7 @@ Trên host broker chạy bằng docker compose (service `zenify-broker`, thư m�
         apk add --no-cache openssh-client &&
         exec ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3
         -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts -i /ssh/id_ed25519
-        -p 12822 -L 127.0.0.1:3307:127.0.0.1:3307 son@222.252.29.85
+        -p <lumi-stg-ssh-port> -L 127.0.0.1:3307:127.0.0.1:3307 <lumi-stg-ssh-user>@<lumi-stg-ssh-host>
 ```
 
 Nếu broker chạy bằng `docker run --name zenify-broker` như phần trên, chạy tunnel với `--network container:zenify-broker` thay cho `network_mode`:
@@ -156,14 +156,14 @@ Nếu broker chạy bằng `docker run --name zenify-broker` như phần trên, 
 docker run -d --name lumi-stg-tunnel --restart unless-stopped \
   --network container:zenify-broker \
   -v /etc/zenify-broker/ssh:/ssh:ro \
-  alpine sh -c 'apk add --no-cache openssh-client && exec ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts -i /ssh/id_ed25519 -p 12822 -L 127.0.0.1:3307:127.0.0.1:3307 son@222.252.29.85'
+  alpine:3.20 sh -c 'apk add --no-cache openssh-client && exec ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts -i /ssh/id_ed25519 -p <lumi-stg-ssh-port> -L 127.0.0.1:3307:127.0.0.1:3307 <lumi-stg-ssh-user>@<lumi-stg-ssh-host>'
 ```
 
-Container tunnel chạy `apk add openssh-client` ở mỗi lần khởi động nên cần ra internet tới mirror Alpine; nếu không có, hãy build sẵn một image nhỏ đã cài `openssh-client`.
+Container tunnel chạy `apk add openssh-client` ở mỗi lần khởi động nên cần ra internet tới mirror Alpine; nếu không có, hãy build sẵn một image nhỏ đã cài `openssh-client`. Nên dùng image dựng sẵn với `openssh-client` ghim theo digest, vì container này giữ SSH key và dùng chung network namespace với broker.
 
-Thư mục `/ssh` gồm `id_ed25519` (key riêng của tunnel) và `known_hosts` đã có host key của `222.252.29.85:12822`.
+Thư mục `/ssh` gồm `id_ed25519` (key riêng của tunnel) và `known_hosts` đã có host key của `<lumi-stg-ssh-host>:<lumi-stg-ssh-port>`.
 
-Trên box `.28` (user `son`), thêm vào `authorized_keys` một dòng chỉ cho phép forward tới đúng cổng MySQL, không cho chạy lệnh:
+Trên host SSH của lumi staging (user `<lumi-stg-ssh-user>`), thêm vào `authorized_keys` một dòng chỉ cho phép forward tới đúng cổng MySQL, không cho chạy lệnh:
 
 ```text
 restrict,port-forwarding,permitopen="127.0.0.1:3307",command="/bin/false" ssh-ed25519 AAAA… lumi-stg-tunnel
