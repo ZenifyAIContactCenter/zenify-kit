@@ -92,6 +92,7 @@ Giới hạn cần biết:
 - Response tối đa 32 KB, mỗi dòng log tối đa 500 byte; khi broker cắt bớt, lệnh ghi một dòng `obs: response truncated (…)` ra stderr.
 - Staging không có thống kê: với `--stg`, phần thống kê route có thể vắng (kèm ghi chú `TraceQL metrics unavailable on this env`) hoặc lệnh báo service chưa có tên Tempo trên staging; khi đó dựa vào trace mẫu và log.
 - Mã thoát 5 nghĩa là broker chưa bật `obs`; agent quay về các tool Grafana trực tiếp.
+- Tempo từ chối truy vấn metrics trải từ 3 giờ trở lên: `zenify obs` tự chia khoảng thời gian, còn khi gọi tool MCP trực tiếp thì agent phải tự chia. Tempo có thể bỏ các số 0 đầu của trace id; khi tự tìm log, agent tìm theo cả dạng 32 ký tự đã đệm lẫn dạng ngắn gốc.
 
 Phía host broker bật `obs` cùng khối `catalog:`, xem [mục danh mục dịch vụ](/guides/broker-host#danh-muc-dich-vu).
 
