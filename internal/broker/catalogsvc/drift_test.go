@@ -277,16 +277,17 @@ func TestDrift_BadEnv(t *testing.T) {
 	}
 }
 
-// TestDrift_RequestShape checks the auth header and the 24-hour window units
-// each source receives: Loki ns, Tempo s, Prometheus unix seconds.
+// TestDrift_RequestShape checks the auth header and the window each source
+// receives: Loki 7 days in ns, Tempo 72 hours in s, Prometheus 7 days in s.
 func TestDrift_RequestShape(t *testing.T) {
 	d, g := driftSetup(t)
 	postDrift(d, `{"env":"prd"}`)
-	// driftNow = 2026-10-18T00:00:00Z = 1792281600; minus 24h = 1792195200.
-	const end, start = "1792281600", "1792195200"
+	// driftNow = 2026-10-18T00:00:00Z = 1792281600; minus 7 days = 1791676800,
+	// minus 72 hours = 1792022400.
+	const end, start, tempoStart = "1792281600", "1791676800", "1792022400"
 	for _, c := range []struct{ path, start, end string }{
 		{lokiPrd, start + "000000000", end + "000000000"},
-		{tempoPrd, start, end},
+		{tempoPrd, tempoStart, end},
 		{promPrd, start, end},
 	} {
 		r := g.request(c.path)

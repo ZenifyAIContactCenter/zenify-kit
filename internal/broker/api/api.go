@@ -163,7 +163,7 @@ type DriftResponse struct {
 	Envs map[string]map[string]DriftResult `json:"envs"`
 }
 
-// DriftResult compares one source's live label values over the last 24 hours
+// DriftResult compares one source's live label values over its drift window
 // with the catalog. Unlisted: live, in neither the catalog nor ignore.
 // Missing: in the catalog, not live. Both sorted. Error is set when the source
 // could not be read; the lists are then empty.
