@@ -1,14 +1,26 @@
 package obssvc
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
+
+// secretKeys are the keys whose value Mask hides in key=value, key: value and
+// "key":"value" forms.
+const secretKeys = `password|passwd|pwd|secret|token|access_token|refresh_token|api_key|apikey|x-api-key|authorization`
 
 var (
-	reCred   = regexp.MustCompile(`(://)[^/\s:@]+:[^/\s@]*@`)
+	// reCred: the user is optional and the password runs to the last @ of the authority.
+	reCred   = regexp.MustCompile(`(://)[^/\s:@]*:[^/\s]*@`)
 	reBearer = regexp.MustCompile(`(?i)bearer\s+\S+`)
-	reJWT    = regexp.MustCompile(`eyJ[\w-]+\.[\w-]+\.[\w-]+`)
-	reEmail  = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
-	reIPv4   = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
-	rePhone  = regexp.MustCompile(`\+?\d(?:[ .-]?\d){8,10}`)
+	reBasic  = regexp.MustCompile(`(?i)\bbasic\s+[A-Za-z0-9+/]{8,}={0,2}`)
+	// reKVQuoted masks a quoted value, reKV a bare one; the key must stand alone.
+	reKVQuoted = regexp.MustCompile(`(?i)(^|[^\w-])("?(?:` + secretKeys + `)"?[ \t]*[:=][ \t]*")[^"]*"`)
+	reKV       = regexp.MustCompile(`(?i)(^|[^\w-])((?:` + secretKeys + `)[ \t]*[:=][ \t]*)([^\s"'&,;]+)`)
+	reJWT      = regexp.MustCompile(`eyJ[\w-]+\.[\w-]+\.[\w-]+`)
+	reEmail    = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+	reIPv4     = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	rePhone    = regexp.MustCompile(`\+?\d(?:[ .-]?\d){8,10}`)
 )
 
 // Mask replaces credentials, tokens, emails, IPs and phone numbers with
@@ -16,10 +28,23 @@ var (
 func Mask(s string) string {
 	s = reCred.ReplaceAllString(s, "${1}<cred>@")
 	s = reBearer.ReplaceAllString(s, "Bearer <token>")
+	s = reBasic.ReplaceAllString(s, "Basic <token>")
 	s = reJWT.ReplaceAllString(s, "<jwt>")
+	s = reKVQuoted.ReplaceAllString(s, `${1}${2}<secret>"`)
+	s = reKV.ReplaceAllStringFunc(s, maskKV)
 	s = reEmail.ReplaceAllString(s, "<email>")
 	s = reIPv4.ReplaceAllString(s, "<ip>")
 	return maskPhone(s)
+}
+
+// maskKV hides the value of one reKV match, keeping a Bearer or Basic scheme
+// word that the token masks already handled.
+func maskKV(m string) string {
+	g := reKV.FindStringSubmatch(m)
+	if v := strings.ToLower(g[3]); v == "bearer" || v == "basic" {
+		return m
+	}
+	return g[1] + g[2] + "<secret>"
 }
 
 // maskPhone applies rePhone, accepting a match only when it uses a single
@@ -88,9 +113,19 @@ func singleSep(m string) bool {
 }
 
 func standalone(s string, start, end int) bool {
-	return (start == 0 || !wordish(s[start-1])) && (end == len(s) || !wordish(s[end]))
+	return (start == 0 || !wordish(s, start-1, -1)) && (end == len(s) || !wordish(s, end, 1))
 }
 
-func wordish(c byte) bool {
-	return c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == ':' || c == '/'
+// wordish reports whether s[i] joins the phone to its neighbour: a letter or
+// digit, or a ':' or '/' whose next character away from the phone (dir) is a
+// digit, as in 12:34 or 2026/10/18.
+func wordish(s string, i, dir int) bool {
+	c := s[i]
+	if c == ':' || c == '/' {
+		j := i + dir
+		return j >= 0 && j < len(s) && isDigit(s[j])
+	}
+	return isDigit(c) || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
