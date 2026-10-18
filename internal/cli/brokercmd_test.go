@@ -796,9 +796,14 @@ func TestDBReadBroker_TargetLumiDevPrdRefusedLocally(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := atomic.LoadInt32(hits)
-	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "--target", "lumi", "sql", "SELECT 1")
+	// DESCRIBE <table> is dev-allowed on prd for the main target, so only lumi gating can refuse it.
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "--target", "lumi", "sql", "DESCRIBE goals")
 	if err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || atomic.LoadInt32(hits) != before {
 		t.Errorf("dev: err=%v hits %d→%d, want lead-only and no request", err, before, atomic.LoadInt32(hits))
+	}
+	// Control: same statement on the main target goes out.
+	if _, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "sql", "DESCRIBE goals"); err != nil || atomic.LoadInt32(hits) != before+1 {
+		t.Errorf("control: err=%v hits %d→%d, want request sent", err, before, atomic.LoadInt32(hits))
 	}
 }
 

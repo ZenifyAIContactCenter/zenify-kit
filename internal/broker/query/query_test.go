@@ -435,6 +435,11 @@ func TestHandler_Validate(t *testing.T) {
 	if err := ok.Validate(); err != nil {
 		t.Fatalf("valid handler: %v", err)
 	}
+	optional := &Handler{Creds: testCreds(), Audit: &audit.Logger{W: io.Discard}, Run: okRun, MaxConcurrent: 2}
+	optional.Creds.LumiMySQLStg, optional.Creds.LumiMySQLPrd = "", ""
+	if err := optional.Validate(); err != nil { // SC-3: lumi creds optional
+		t.Fatalf("empty lumi creds must validate: %v", err)
+	}
 	bad := &Handler{Creds: testCreds()}
 	bad.Creds.AuditMongoPrd = ""
 	err := bad.Validate()

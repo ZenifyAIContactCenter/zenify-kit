@@ -159,6 +159,8 @@ docker run -d --name lumi-stg-tunnel --restart unless-stopped \
   alpine sh -c 'apk add --no-cache openssh-client && exec ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts -i /ssh/id_ed25519 -p 12822 -L 127.0.0.1:3307:127.0.0.1:3307 son@222.252.29.85'
 ```
 
+Container tunnel chạy `apk add openssh-client` ở mỗi lần khởi động nên cần ra internet tới mirror Alpine; nếu không có, hãy build sẵn một image nhỏ đã cài `openssh-client`.
+
 Thư mục `/ssh` gồm `id_ed25519` (key riêng của tunnel) và `known_hosts` đã có host key của `222.252.29.85:12822`.
 
 Trên box `.28` (user `son`), thêm vào `authorized_keys` một dòng chỉ cho phép forward tới đúng cổng MySQL, không cho chạy lệnh:
