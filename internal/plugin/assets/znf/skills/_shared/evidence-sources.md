@@ -129,4 +129,5 @@ db-read: collections, count (no --filter), explain, indexes, stats, tables, sql:
 - `explain` for dev on prd returns the `queryPlanner` plan only — no `executionStats`.
 - `count` takes no `--filter`.
 - `db-read --target audit` (Mongo, prd only) is lead-only.
+- `db-read --target lumi` (lumi-agent MySQL, sql|tables) is lead-only on prd; staging is open. Read lumi MySQL with it, not ssh and not `data run`.
 - Grafana logs, traces and metrics stay available. For row data, read staging, or ask a lead to run the prd step.

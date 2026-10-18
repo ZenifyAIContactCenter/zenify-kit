@@ -68,7 +68,7 @@ Các biến sau là tuỳ chọn: thiếu thì broker vẫn khởi động. `POS
 `MONGO_WRITE_URL_STG` `MONGO_WRITE_URL_PRD` `MYSQL_WRITE_URL_STG` `MYSQL_WRITE_URL_PRD` `REDIS_WRITE_URL_STG` `REDIS_WRITE_URL_PRD` `LUMI_MYSQL_URL_STG` `LUMI_MYSQL_URL_PRD` `QDRANT_URL_STG` `QDRANT_URL_PRD`
 
 - Ba cặp `*_WRITE_URL_*` là credential của user có quyền ghi. Thiếu chúng thì yêu cầu `--write` nhận 500 `broker_misconfigured`; yêu cầu đọc không bị ảnh hưởng. Dev chỉ lấy được credential staging; production chỉ dành cho lead.
-- `LUMI_MYSQL_URL_*` và `QDRANT_URL_*` là credential của `lumi-agent`, cấp khi người dùng chạy `zenify data run --lumi`. Trước đây dev tự điền các key này vào `.zenify/.env`; nay broker cấp, manifest không còn hỏi.
+- `LUMI_MYSQL_URL_*` và `QDRANT_URL_*` là credential của `lumi-agent`, cấp khi người dùng chạy `zenify data run --lumi`. Trước đây dev tự điền các key này vào `.zenify/.env`; nay broker cấp, manifest không còn hỏi. Broker cũng tự dùng `LUMI_MYSQL_URL_*` cho `zenify db-read --target lumi`, nên URL phải tới được từ container broker: production (`192.168.0.14`) tới thẳng, staging cần [tunnel bên dưới](#lumi-stg-tunnel). Hậu tố `+pymysql` giữ nguyên, broker tự bỏ.
 - URL ứng dụng lumi staging đặt trong YAML, không phải env: khối `lumi:` với khoá `app_url_stg`.
 
 ```yaml
@@ -126,6 +126,56 @@ docker run -d --name zenify-broker --restart unless-stopped \
 `<tag>` là `main-<sha>` khi dựng trước release, `<version>` (ví dụ `0.39.0`) sau release. Nếu package trên ghcr ở chế độ private, chạy `docker login ghcr.io` trên host bằng một token có quyền `read:packages` trước.
 
 Image mở cổng 8080 và chạy `zenify-broker --config /etc/zenify-broker/broker.yaml`. Nếu `mcp-grafana` thoát, broker cũng thoát (khác 0) để orchestrator khởi động lại cả hai.
+
+### Tunnel MySQL lumi staging {#lumi-stg-tunnel}
+
+MySQL staging của lumi (`mass_chatbot_v2`) chỉ tới được qua SSH tới `son@222.252.29.85` cổng `12822`. Đặt `LUMI_MYSQL_URL_STG` trỏ `127.0.0.1:3307` rồi chạy một container tunnel dùng chung network namespace với broker, để cổng 3307 chỉ có trong container broker và không publish ra host.
+
+Trên host broker chạy bằng docker compose (service `zenify-broker`, thư mục `/root/zenify-broker`), thêm service:
+
+```yaml
+  lumi-stg-tunnel:
+    image: alpine
+    network_mode: "service:zenify-broker"
+    restart: unless-stopped
+    volumes:
+      - /etc/zenify-broker/ssh:/ssh:ro
+    command:
+      - sh
+      - -c
+      - >-
+        apk add --no-cache openssh-client &&
+        exec ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3
+        -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts -i /ssh/id_ed25519
+        -p 12822 -L 127.0.0.1:3307:127.0.0.1:3307 son@222.252.29.85
+```
+
+Nếu broker chạy bằng `docker run --name zenify-broker` như phần trên, chạy tunnel với `--network container:zenify-broker` thay cho `network_mode`:
+
+```bash
+docker run -d --name lumi-stg-tunnel --restart unless-stopped \
+  --network container:zenify-broker \
+  -v /etc/zenify-broker/ssh:/ssh:ro \
+  alpine sh -c 'apk add --no-cache openssh-client && exec ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/ssh/known_hosts -i /ssh/id_ed25519 -p 12822 -L 127.0.0.1:3307:127.0.0.1:3307 son@222.252.29.85'
+```
+
+Thư mục `/ssh` gồm `id_ed25519` (key riêng của tunnel) và `known_hosts` đã có host key của `222.252.29.85:12822`.
+
+Trên box `.28` (user `son`), thêm vào `authorized_keys` một dòng chỉ cho phép forward tới đúng cổng MySQL, không cho chạy lệnh:
+
+```text
+restrict,port-forwarding,permitopen="127.0.0.1:3307",command="/bin/false" ssh-ed25519 AAAA… lumi-stg-tunnel
+```
+
+Tunnel dùng network của container broker lúc nó được tạo. Recreate broker bằng `docker compose up -d` thì compose recreate cả tunnel; `docker restart zenify-broker` đơn lẻ thì phải restart thêm `lumi-stg-tunnel`.
+
+Kiểm tra từ máy dev:
+
+```bash
+zenify db-read --target lumi sql 'SELECT DATABASE()'
+```
+
+Kết quả phải là `mass_chatbot_v2`.
 
 ## Reverse proxy TLS
 

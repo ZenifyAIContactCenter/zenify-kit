@@ -767,6 +767,41 @@ func TestDBReadBroker_TargetAudit(t *testing.T) {
 	}
 }
 
+func TestDBReadBroker_TargetLumiSQL(t *testing.T) {
+	hermeticDBRead(t)
+	var body string
+	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		_ = json.NewEncoder(w).Encode(api.QueryResponse{})
+	}})
+	if _, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--target", "lumi", "sql", "SELECT 1"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `"target":"lumi"`) || !strings.Contains(body, `"engine":"mysql"`) {
+		t.Errorf("body = %s, want target lumi and engine mysql", body)
+	}
+	if u := newDBReadCmd().Flags().Lookup("target").Usage; !strings.Contains(u, "lumi") {
+		t.Errorf("--target usage = %q, want it to mention lumi", u)
+	}
+}
+
+func TestDBReadBroker_TargetLumiDevPrdRefusedLocally(t *testing.T) {
+	hermeticDBRead(t)
+	mp, hits := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.QueryResponse{})
+	}})
+	// First call caches role=dev.
+	if _, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "--target", "lumi", "sql", "SELECT 1"); err != nil {
+		t.Fatal(err)
+	}
+	before := atomic.LoadInt32(hits)
+	_, _, err := execCmd(newDBReadCmd(), "--manifest", mp, "--prd", "--target", "lumi", "sql", "SELECT 1")
+	if err == nil || !strings.Contains(err.Error(), leadOnlyMsg()) || atomic.LoadInt32(hits) != before {
+		t.Errorf("dev: err=%v hits %d→%d, want lead-only and no request", err, before, atomic.LoadInt32(hits))
+	}
+}
+
 func TestDBReadBroker_TargetAuditNeedsPrd(t *testing.T) {
 	hermeticDBRead(t)
 	mp, _ := brokerFixture(t, map[string]http.HandlerFunc{"/query": func(w http.ResponseWriter, _ *http.Request) {
