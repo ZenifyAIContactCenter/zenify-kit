@@ -44,6 +44,10 @@ func TestContract_JSONKeys(t *testing.T) {
 		{"CredsRequest", CredsRequest{}, []string{"env", "mode"}}, // lumi is omitempty: absent at its zero value
 		{"CredsResponse", CredsResponse{}, []string{"values"}},
 		{"E2EAccountResponse", E2EAccountResponse{}, []string{"domain", "email", "password", "role"}},
+		{"ObsRouteRequest", ObsRouteRequest{}, []string{"env", "route", "service", "since"}},
+		{"ObsRouteResponse", ObsRouteResponse{}, []string{"env", "logs", "notes", "route", "samples", "service", "since_effective", "stats", "truncated"}},
+		{"ObsStats", ObsStats{}, []string{"count", "error_ratio", "p50", "p95", "p99", "rate_per_min", "resolution", "status"}},
+		{"ObsSample", ObsSample{}, []string{"duration_ms", "start", "status", "trace_id"}},
 	}
 	for _, c := range cases {
 		if got := keys(t, c.v); !reflect.DeepEqual(got, c.want) {
@@ -55,10 +59,12 @@ func TestContract_JSONKeys(t *testing.T) {
 func TestContract_Codes(t *testing.T) {
 	got := []string{CodeGitHubTokenInvalid, CodeNotOrgMember, CodeRateLimited, CodeUnauthorized,
 		CodeInvalidQuery, CodeInvalidTarget, CodeTooManyConcurrent, CodeTimeout,
-		CodeCommandNotAllowed, CodeUnknownRole, CodeProvisionFailed, CodeGitHubUnavailable}
+		CodeCommandNotAllowed, CodeUnknownRole, CodeProvisionFailed, CodeGitHubUnavailable,
+		CodeUnknownService, CodeNoTempoName, CodeBadSince, CodeBadTraceID, CodeTraceNotFound, CodeTraceTooLarge}
 	want := []string{"github_token_invalid", "not_org_member", "rate_limited", "unauthorized",
 		"invalid_query", "invalid_target", "too_many_concurrent", "timeout",
-		"command_not_allowed", "unknown_role", "provision_failed", "github_unavailable"}
+		"command_not_allowed", "unknown_role", "provision_failed", "github_unavailable",
+		"unknown_service", "no_tempo_name", "bad_since", "bad_trace_id", "trace_not_found", "trace_too_large"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("codes = %v, want %v", got, want)
 	}
