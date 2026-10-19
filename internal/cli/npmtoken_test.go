@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,6 +121,8 @@ func TestNPMToken_ReadProfileState(t *testing.T) {
 		{"user export", "export NPM_TOKEN=abc\n", profileHasUserToken},
 		{"user plain assign", "NPM_TOKEN=abc\n", profileHasUserToken},
 		{"commented out", "# export NPM_TOKEN=abc\n", profileMissing},
+		{"other variable with same suffix", "MY_NPM_TOKEN=x\n", profileMissing},
+		{"export with tab", "export\tNPM_TOKEN=x\n", profileHasUserToken},
 	}
 	for _, c := range cases {
 		if got := readProfileState(c.content); got != c.want {
@@ -183,6 +186,15 @@ func TestNPMToken_EnsureNPMToken(t *testing.T) {
 			wantOut: []string{"NPM_TOKEN", ".zshrc"},
 		},
 		{
+			name: "user token kept, scope missing interactive: no refresh", ghpkg: true, auth: npmTokenTestAuthNoScope, interactive: true,
+			pre: strPtr("export NPM_TOKEN=abc\n"), wantRefresh: 0, wantProfile: "export NPM_TOKEN=abc\n",
+			wantOut: []string{"NPM_TOKEN", ".zshrc"},
+		},
+		{
+			name: "gh logged out", ghpkg: true, auth: "You are not logged into any GitHub hosts. To log in, run: gh auth login\n", interactive: true,
+			wantRefresh: 0, wantProfile: "", wantOut: []string{"gh auth login"},
+		},
+		{
 			name: "scope missing interactive", ghpkg: true, auth: npmTokenTestAuthNoScope, interactive: true,
 			wantRefresh: 1, wantProfile: "\n" + npmTokenTestWantLine + "\n", wantOut: []string{".zshrc"},
 		},
@@ -234,6 +246,63 @@ func TestNPMToken_EnsureNPMToken(t *testing.T) {
 			}
 			if strings.Contains(out.String(), "ghp_FAKE") {
 				t.Errorf("token leaked in second-run output: %q", out.String())
+			}
+		})
+	}
+}
+
+func TestNPMToken_EnsureNPMToken_RefreshError(t *testing.T) {
+	zshrc, dirs := npmTokenTestEnv(t, true)
+	refresh := func() error { return errors.New("browser flow aborted") }
+	var out bytes.Buffer
+	err := ensureNPMToken(&out, dirs, stubGH{auth: []byte(npmTokenTestAuthNoScope)}, true, refresh)
+	if err == nil || !strings.Contains(err.Error(), "browser flow aborted") || !strings.Contains(err.Error(), "gh auth refresh") {
+		t.Fatalf("want refresh error surfaced, got %v", err)
+	}
+	if got := npmTokenTestRead(t, zshrc); got != "" {
+		t.Errorf("profile touched after refresh error: %q", got)
+	}
+}
+
+func npmTokenCheckRun(t *testing.T, ghpkg bool, auth, profile, envToken string) (bool, string) {
+	t.Helper()
+	_, dirs := npmTokenTestEnv(t, ghpkg)
+	t.Setenv("NPM_TOKEN", envToken)
+	c := npmTokenCheck(func() []string { return dirs }, stubGH{auth: []byte(auth)}, func() string { return profile })
+	if c.Name != "npm token (GitHub Packages)" {
+		t.Errorf("name = %q", c.Name)
+	}
+	ok, detail := c.Run()
+	if strings.Contains(detail, "ghp_FAKE") || (envToken != "" && strings.Contains(detail, envToken)) {
+		t.Errorf("token leaked in detail: %q", detail)
+	}
+	return ok, detail
+}
+
+func TestNPMTokenCheck(t *testing.T) {
+	loggedOut := "You are not logged into any GitHub hosts. To log in, run: gh auth login\n"
+	cases := []struct {
+		name    string
+		ghpkg   bool
+		auth    string
+		profile string
+		env     string
+		wantOK  bool
+		want    string
+	}{
+		{"not needed", false, loggedOut, "", "", true, "n/a — no repo uses GitHub Packages"},
+		{"scope missing", true, npmTokenTestAuthNoScope, npmTokenTestWantLine, "", false, "gh lacks read:packages — run `gh auth refresh -h github.com -s read:packages`"},
+		{"logged out", true, loggedOut, npmTokenTestWantLine, "", false, "gh not logged in — run `gh auth login`"},
+		{"profile lacks marker, env empty", true, npmTokenTestAuthWithScope, "alias ll='ls -l'\n", "", false, "NPM_TOKEN not set — run `zenify up`"},
+		{"profile lacks marker, env set by user", true, npmTokenTestAuthWithScope, "", "user-set-value", true, "ok"},
+		{"marker in profile", true, npmTokenTestAuthWithScope, npmTokenTestWantLine + "\n", "", true, "ok"},
+		{"user token in profile", true, npmTokenTestAuthWithScope, "export NPM_TOKEN=abc\n", "", true, "ok"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ok, detail := npmTokenCheckRun(t, c.ghpkg, c.auth, c.profile, c.env)
+			if ok != c.wantOK || detail != c.want {
+				t.Errorf("got (%v, %q), want (%v, %q)", ok, detail, c.wantOK, c.want)
 			}
 		})
 	}

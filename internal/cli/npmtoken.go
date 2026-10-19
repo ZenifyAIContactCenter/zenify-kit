@@ -72,8 +72,11 @@ func readProfileState(content string) profileState {
 		if strings.HasPrefix(l, "#") {
 			continue
 		}
-		l = strings.TrimSpace(strings.TrimPrefix(l, "export "))
-		if strings.HasPrefix(l, "NPM_TOKEN=") {
+		f := strings.Fields(l)
+		if len(f) > 1 && f[0] == "export" {
+			f = f[1:]
+		}
+		if len(f) > 0 && strings.HasPrefix(f[0], "NPM_TOKEN=") {
 			return profileHasUserToken
 		}
 	}
@@ -114,15 +117,6 @@ func ensureNPMToken(w io.Writer, repoDirs []string, gh ghx.Runner, interactive b
 		fmt.Fprintln(w, "npm token: gh is not logged in; run `gh auth login`, then `zenify up` again")
 		return nil
 	}
-	if !auth.HasScopes(npmTokenScope) {
-		if !interactive {
-			fmt.Fprintf(w, "npm token: gh lacks %s; run `%s`, then `zenify up` again\n", npmTokenScope, npmTokenRefreshCmd)
-			return nil
-		}
-		if err := refresh(); err != nil {
-			return fmt.Errorf("npm token: %s: %w", npmTokenRefreshCmd, err)
-		}
-	}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return fmt.Errorf("npm token: home dir: %w", err)
@@ -143,6 +137,15 @@ func ensureNPMToken(w io.Writer, repoDirs []string, gh ghx.Runner, interactive b
 		fmt.Fprintf(w, "npm token: %s already sets NPM_TOKEN; left unchanged\n", path)
 		return nil
 	}
+	if !auth.HasScopes(npmTokenScope) {
+		if !interactive {
+			fmt.Fprintf(w, "npm token: gh lacks %s; run `%s`, then `zenify up` again\n", npmTokenScope, npmTokenRefreshCmd)
+			return nil
+		}
+		if err := refresh(); err != nil {
+			return fmt.Errorf("npm token: %s: %w", npmTokenRefreshCmd, err)
+		}
+	}
 	changed, err := ensureNPMTokenProfile(path)
 	if err != nil {
 		return fmt.Errorf("npm token: write %s: %w", path, err)
@@ -151,4 +154,71 @@ func ensureNPMToken(w io.Writer, repoDirs []string, gh ghx.Runner, interactive b
 		fmt.Fprintf(w, "npm token: added NPM_TOKEN to %s (takes effect in new shells)\n", path)
 	}
 	return nil
+}
+
+// currentShellProfile returns the content of the user's shell profile, "" when the shell is
+// unknown or the file is unreadable.
+func currentShellProfile() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	path := shellProfilePath(os.Getenv("SHELL"), home, func(p string) bool {
+		_, err := os.Stat(p)
+		return err == nil
+	})
+	if path == "" {
+		return ""
+	}
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- the user's own shell profile
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// workspaceRepoDirs lists the manifest repo directories of the current workspace.
+func workspaceRepoDirs() []string {
+	cwd, _ := os.Getwd()
+	ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
+	if !ok {
+		return nil
+	}
+	rels, err := manifestRepoPaths(ws)
+	if err != nil {
+		return nil
+	}
+	dirs := make([]string, 0, len(rels))
+	for _, r := range rels {
+		if !filepath.IsAbs(r) {
+			r = filepath.Join(ws, r)
+		}
+		dirs = append(dirs, r)
+	}
+	return dirs
+}
+
+// npmTokenCheck is the doctor check for FR-6: when a workspace repo installs from GitHub
+// Packages, gh must carry read:packages and NPM_TOKEN must reach new shells (our profile line,
+// a user-set export, or the current environment). The token value is never read into the detail.
+func npmTokenCheck(repoDirs func() []string, gh ghx.Runner, profile func() string) Check {
+	return Check{
+		Name: "npm token (GitHub Packages)",
+		Run: func() (bool, string) {
+			if !needsGitHubPackagesToken(repoDirs()) {
+				return true, "n/a — no repo uses GitHub Packages"
+			}
+			auth, err := ghx.CheckAuth(gh)
+			if err != nil || !auth.LoggedIn {
+				return false, "gh not logged in — run `gh auth login`"
+			}
+			if !auth.HasScopes(npmTokenScope) {
+				return false, "gh lacks " + npmTokenScope + " — run `" + npmTokenRefreshCmd + "`"
+			}
+			if readProfileState(profile()) == profileMissing && os.Getenv("NPM_TOKEN") == "" {
+				return false, "NPM_TOKEN not set — run `zenify up`"
+			}
+			return true, "ok"
+		},
+	}
 }
