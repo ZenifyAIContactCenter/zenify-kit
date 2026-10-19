@@ -353,6 +353,25 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 		renderCodexSummary(rep, w)
 	}
 
+	// NPM_TOKEN for repos installing from GitHub Packages (FR-6). FAIL-OPEN.
+	if rels, err := manifestRepoPaths(workspace); err != nil {
+		fmt.Fprintf(errW, "warning: npm token: %v\n", err)
+	} else {
+		dirs := make([]string, 0, len(rels))
+		for _, r := range rels {
+			dirs = append(dirs, filepath.Join(workspace, r))
+		}
+		interactive := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+		refresh := func() error {
+			cmd := exec.Command("gh", "auth", "refresh", "-h", "github.com", "-s", "read:packages")
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			return cmd.Run()
+		}
+		if err := ensureNPMToken(w, dirs, gh, interactive, refresh); err != nil {
+			fmt.Fprintf(errW, "warning: %v\n", err)
+		}
+	}
+
 	if failed > 0 {
 		return exitcode.New(exitcode.Fail, fmt.Errorf("apply: %d repo(s) failed", failed))
 	}
