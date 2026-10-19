@@ -171,6 +171,12 @@ func ensureDocsStore(w io.Writer, errW io.Writer, git gitx.Runner, workspace str
 // version gate → workspace lock → pre-mutation snapshot → apply → persist the
 // ownership manifest. The lock is released on return.
 func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, src, workspace string, gh ghx.Runner, git gitx.Runner) error {
+	return runApplyWith(w, errW, plans, m, src, workspace, gh, git, false)
+}
+
+// runApplyWith is runApply with --non-interactive threaded through: when set, no step may
+// launch an interactive child process even from a terminal.
+func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manifest, src, workspace string, gh ghx.Runner, git gitx.Runner, nonInteractive bool) error {
 	if err := version.GuardMutation(version.Current(), minVersionFloor); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
@@ -354,14 +360,10 @@ func runApply(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *manife
 	}
 
 	// NPM_TOKEN for repos installing from GitHub Packages (FR-6). FAIL-OPEN.
-	if rels, err := manifestRepoPaths(workspace); err != nil {
+	if dirs, err := repoDirsFor(workspace); err != nil {
 		fmt.Fprintf(errW, "warning: npm token: %v\n", err)
 	} else {
-		dirs := make([]string, 0, len(rels))
-		for _, r := range rels {
-			dirs = append(dirs, filepath.Join(workspace, r))
-		}
-		interactive := term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+		interactive := npmTokenInteractive(nonInteractive, term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd())))
 		refresh := func() error {
 			cmd := exec.Command("gh", "auth", "refresh", "-h", "github.com", "-s", "read:packages")
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -812,7 +814,7 @@ func newUpCmd() *cobra.Command {
 				return runWizard(w, m, mSrc, workspace, sources, plans, auth.LoggedIn)
 			case modeApply:
 				uiOut(cmd).Header("zenify up --apply")
-				return runApply(w, cmd.ErrOrStderr(), plans, m, mSrc, workspace, ghRunner, gitx.ExecRunner())
+				return runApplyWith(w, cmd.ErrOrStderr(), plans, m, mSrc, workspace, ghRunner, gitx.ExecRunner(), nonInteractive)
 			default: // modeDryRun
 				if jsonOut {
 					return renderPlanJSON(w, plans, auth)
