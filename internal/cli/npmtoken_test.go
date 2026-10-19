@@ -322,6 +322,9 @@ func TestNPMTokenCheck(t *testing.T) {
 		{"marker in profile", true, npmTokenTestAuthWithScope, npmTokenTestWantLine + "\n", "", true, "ok", false},
 		{"user token in profile", true, npmTokenTestAuthWithScope, "export NPM_TOKEN=abc\n", "", true, "ok", false},
 		{"commented-out marker, env empty", true, npmTokenTestAuthWithScope, "# " + npmTokenTestWantLine + "\n", "", false, "NPM_TOKEN not set — run `zenify up`", false},
+		{"scopes unknown, marker in profile", true, npmTokenTestAuthNoScopes, npmTokenTestWantLine + "\n", "", true, "ok (gh token scopes unknown)", false},
+		{"scopes unknown, env set", true, npmTokenTestAuthNoScopes, "", "user-set-value", true, "ok (gh token scopes unknown)", false},
+		{"scopes unknown, profile missing", true, npmTokenTestAuthNoScopes, "", "", false, "NPM_TOKEN not set — run `zenify up`", false},
 		{"unknown shell, env set", true, npmTokenTestAuthWithScope, "", "user-set-value", true, "ok", true},
 		{"unknown shell, env empty", true, npmTokenTestAuthWithScope, "", "", false, "NPM_TOKEN not set — add `" + npmTokenTestWantLine + "` to your shell profile", true},
 	}

@@ -253,11 +253,16 @@ func npmTokenCheck(repoDirs func() []string, gh ghx.Runner, profile func() (stri
 			if err != nil || !auth.LoggedIn {
 				return false, "gh not logged in — run `gh auth login`"
 			}
-			if !auth.HasScopes(npmTokenScope) {
+			// No scopes line (token from GH_TOKEN/GITHUB_TOKEN): the scope is unknowable, so
+			// judge only by NPM_TOKEN below.
+			okDetail := "ok"
+			if len(auth.Scopes) == 0 {
+				okDetail = "ok (gh token scopes unknown)"
+			} else if !auth.HasScopes(npmTokenScope) {
 				return false, "gh lacks " + npmTokenScope + " — run `" + npmTokenRefreshCmd + "`"
 			}
 			if os.Getenv("NPM_TOKEN") != "" {
-				return true, "ok"
+				return true, okDetail
 			}
 			content, known := profile()
 			if !known {
@@ -266,7 +271,7 @@ func npmTokenCheck(repoDirs func() []string, gh ghx.Runner, profile func() (stri
 			if readProfileState(content) == profileMissing {
 				return false, "NPM_TOKEN not set — run `zenify up`"
 			}
-			return true, "ok"
+			return true, okDetail
 		},
 	}
 }
