@@ -152,7 +152,7 @@ func ensureNPMToken(w io.Writer, repoDirs []string, gh ghx.Runner, interactive b
 // setupNPMToken is ensureNPMToken without the workspace check: it judges the active gh account
 // and writes the profile line regardless of which repos exist.
 func setupNPMToken(w io.Writer, gh ghx.Runner, interactive bool, refresh func() error) error {
-	auth, err := ghx.CheckActiveAuth(gh, "github.com")
+	auth, err := checkActiveAuthBounded(gh)
 	if err != nil {
 		return fmt.Errorf("npm token: gh auth status: %w", err)
 	}
@@ -265,21 +265,30 @@ func npmTokenCheck(repoDirs func() []string, gh ghx.Runner, profile func() (stri
 // npmTokenCheckTimeout bounds the gh auth status call so a hung gh cannot stall doctor.
 var npmTokenCheckTimeout = 10 * time.Second
 
-// npmTokenStatus judges the active gh account and NPM_TOKEN reachability, without the workspace
-// check. The token value is never read into the detail.
-func npmTokenStatus(gh ghx.Runner, profile func() (string, bool)) (bool, string) {
+// errNPMTokenGhTimeout is returned when gh auth status does not answer within npmTokenCheckTimeout.
+var errNPMTokenGhTimeout = errors.New("gh auth status timed out")
+
+// checkActiveAuthBounded runs ghx.CheckActiveAuth but gives up after npmTokenCheckTimeout.
+func checkActiveAuthBounded(gh ghx.Runner) (ghx.Auth, error) {
 	type authResult struct {
 		auth ghx.Auth
 		err  error
 	}
 	ch := make(chan authResult, 1)
 	go func() { a, err := ghx.CheckActiveAuth(gh, "github.com"); ch <- authResult{a, err} }()
-	var auth ghx.Auth
-	var err error
 	select {
 	case r := <-ch:
-		auth, err = r.auth, r.err
+		return r.auth, r.err
 	case <-time.After(npmTokenCheckTimeout):
+		return ghx.Auth{}, errNPMTokenGhTimeout
+	}
+}
+
+// npmTokenStatus judges the active gh account and NPM_TOKEN reachability, without the workspace
+// check. The token value is never read into the detail.
+func npmTokenStatus(gh ghx.Runner, profile func() (string, bool)) (bool, string) {
+	auth, err := checkActiveAuthBounded(gh)
+	if errors.Is(err, errNPMTokenGhTimeout) {
 		return false, "gh auth status timed out"
 	}
 	if err != nil || !auth.LoggedIn {

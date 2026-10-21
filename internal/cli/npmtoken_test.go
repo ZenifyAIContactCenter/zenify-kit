@@ -452,6 +452,29 @@ func TestNPMTokenStatus_TimesOut(t *testing.T) {
 	}
 }
 
+func TestSetupNPMToken_TimesOut(t *testing.T) {
+	zshrc, _ := npmTokenTestEnv(t, false)
+	old := npmTokenCheckTimeout
+	npmTokenCheckTimeout = 50 * time.Millisecond
+	release := make(chan struct{})
+	t.Cleanup(func() {
+		npmTokenCheckTimeout = old
+		close(release)
+	})
+	start := time.Now()
+	var out bytes.Buffer
+	err := setupNPMToken(&out, hangGH{release}, false, func() error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("err = %v", err)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Errorf("took %v", time.Since(start))
+	}
+	if _, statErr := os.Stat(zshrc); statErr == nil {
+		t.Errorf("profile file written")
+	}
+}
+
 func TestSetupNPMToken_IgnoresRepoDirs(t *testing.T) {
 	zshrc, _ := npmTokenTestEnv(t, false)
 	refreshed := 0
