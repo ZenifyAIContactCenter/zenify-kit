@@ -580,6 +580,7 @@ func registerDefaultChecks() {
 	RegisterCheck(dockerCheck())
 	RegisterCheck(gitGuardCheck(os.UserHomeDir))
 	RegisterCheck(gitIdentityCheck())
+	RegisterCheck(npmTokenCheck(workspaceRepoDirs, currentGH{}, currentShellProfile))
 	RegisterCheck(pluginCheck())
 	registerCodexChecks()
 	registerContextChecks()
