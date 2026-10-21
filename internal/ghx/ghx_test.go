@@ -10,10 +10,15 @@ type fakeRunner struct {
 	out  []byte
 	err  error
 	args []string
+	// respond, when set, overrides out/err per call.
+	respond func(args []string) ([]byte, error)
 }
 
 func (f *fakeRunner) Run(args ...string) ([]byte, error) {
 	f.args = args
+	if f.respond != nil {
+		return f.respond(args)
+	}
 	return f.out, f.err
 }
 
@@ -79,5 +84,51 @@ func TestListRepos(t *testing.T) {
 		if f.args[i] != wantArgs[i] {
 			t.Errorf("args[%d] = %q want %q", i, f.args[i], wantArgs[i])
 		}
+	}
+}
+
+const activeAuthOut = `github.com
+  ✓ Logged in to github.com account phuthuycoding (keyring)
+  - Active account: true
+  - Git operations protocol: ssh
+  - Token: <redacted>
+  - Token scopes: 'admin:public_key', 'gist', 'project', 'read:org', 'read:packages', 'repo'
+`
+
+func TestCheckActiveAuth_Args(t *testing.T) {
+	f := &fakeRunner{out: []byte(activeAuthOut)}
+	a, err := CheckActiveAuth(f, "github.com")
+	if err != nil {
+		t.Fatalf("CheckActiveAuth: %v", err)
+	}
+	want := []string{"auth", "status", "--active", "-h", "github.com"}
+	if len(f.args) != len(want) {
+		t.Fatalf("args = %v", f.args)
+	}
+	for i := range want {
+		if f.args[i] != want[i] {
+			t.Errorf("args[%d] = %q want %q", i, f.args[i], want[i])
+		}
+	}
+	if !a.LoggedIn || !a.HasScopes("read:packages") {
+		t.Errorf("Auth = %+v", a)
+	}
+}
+
+func TestCheckActiveAuth_FallbackOnOldGh(t *testing.T) {
+	f := &fakeRunner{respond: func(args []string) ([]byte, error) {
+		for _, x := range args {
+			if x == "--active" {
+				return []byte("unknown flag: --active\n"), errors.New("exit 1")
+			}
+		}
+		return []byte(activeAuthOut), nil
+	}}
+	a, err := CheckActiveAuth(f, "github.com")
+	if err != nil {
+		t.Fatalf("CheckActiveAuth: %v", err)
+	}
+	if !a.LoggedIn || !a.HasScopes("read:packages") {
+		t.Errorf("Auth = %+v", a)
 	}
 }

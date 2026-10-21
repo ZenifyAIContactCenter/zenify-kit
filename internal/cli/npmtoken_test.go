@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -291,7 +292,7 @@ func npmTokenCheckRun(t *testing.T, ghpkg bool, auth, profile, envToken string, 
 	t.Helper()
 	_, dirs := npmTokenTestEnv(t, ghpkg)
 	t.Setenv("NPM_TOKEN", envToken)
-	c := npmTokenCheck(func() []string { return dirs }, stubGH{auth: []byte(auth)}, func() (string, bool) { return profile, shellKnown })
+	c := npmTokenCheck(func() []string { return dirs }, stubGH{auth: []byte(auth)}, func() (string, bool) { return profile, shellKnown }, nil)
 	if c.Name != "npm token (GitHub Packages)" {
 		t.Errorf("name = %q", c.Name)
 	}
@@ -422,5 +423,71 @@ func TestNPMToken_RepoDirsFor(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Errorf("dirs %v missing %v", dirs, want)
+	}
+}
+
+// hangGH blocks every call until release is closed.
+type hangGH struct{ release chan struct{} }
+
+func (h hangGH) Run(args ...string) ([]byte, error) {
+	<-h.release
+	return nil, nil
+}
+
+func TestNPMTokenStatus_TimesOut(t *testing.T) {
+	old := npmTokenCheckTimeout
+	npmTokenCheckTimeout = 50 * time.Millisecond
+	release := make(chan struct{})
+	t.Cleanup(func() {
+		npmTokenCheckTimeout = old
+		close(release)
+	})
+	start := time.Now()
+	ok, detail := npmTokenStatus(hangGH{release}, func() (string, bool) { return "", true })
+	if ok || detail != "gh auth status timed out" {
+		t.Errorf("got ok=%v detail=%q", ok, detail)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Errorf("took %v", time.Since(start))
+	}
+}
+
+func TestSetupNPMToken_TimesOut(t *testing.T) {
+	zshrc, _ := npmTokenTestEnv(t, false)
+	old := npmTokenCheckTimeout
+	npmTokenCheckTimeout = 50 * time.Millisecond
+	release := make(chan struct{})
+	t.Cleanup(func() {
+		npmTokenCheckTimeout = old
+		close(release)
+	})
+	start := time.Now()
+	var out bytes.Buffer
+	err := setupNPMToken(&out, hangGH{release}, false, func() error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("err = %v", err)
+	}
+	if time.Since(start) > 2*time.Second {
+		t.Errorf("took %v", time.Since(start))
+	}
+	if _, statErr := os.Stat(zshrc); statErr == nil {
+		t.Errorf("profile file written")
+	}
+}
+
+func TestSetupNPMToken_IgnoresRepoDirs(t *testing.T) {
+	zshrc, _ := npmTokenTestEnv(t, false)
+	refreshed := 0
+	var out bytes.Buffer
+	err := setupNPMToken(&out, stubGH{auth: []byte(npmTokenTestAuthWithScope)}, false, func() error { refreshed++; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := npmTokenTestRead(t, zshrc)
+	if !strings.Contains(b, npmTokenTestWantLine) {
+		t.Errorf("zshrc missing line: %q", b)
+	}
+	if refreshed != 0 {
+		t.Errorf("refresh called %d times", refreshed)
 	}
 }
