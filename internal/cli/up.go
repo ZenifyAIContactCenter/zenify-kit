@@ -364,11 +364,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		fmt.Fprintf(errW, "warning: npm token: %v\n", err)
 	} else {
 		interactive := npmTokenInteractive(nonInteractive, term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd())))
-		refresh := func() error {
-			cmd := exec.Command("gh", "auth", "refresh", "-h", "github.com", "-s", "read:packages")
-			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-			return cmd.Run()
-		}
+		refresh := npmRefresh(os.Stdout)
 		if err := ensureNPMToken(w, dirs, gh, interactive, refresh); err != nil {
 			fmt.Fprintf(errW, "warning: %v\n", err)
 		}

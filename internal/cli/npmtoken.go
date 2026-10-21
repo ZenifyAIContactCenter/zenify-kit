@@ -249,7 +249,7 @@ func workspaceRepoDirs() []string {
 // Packages, gh must carry read:packages and NPM_TOKEN must reach new shells (our profile line,
 // a user-set export, or the current environment). profile returns the shell profile content and
 // whether the shell is known. The token value is never read into the detail.
-func npmTokenCheck(repoDirs func() []string, gh ghx.Runner, profile func() (string, bool)) Check {
+func npmTokenCheck(repoDirs func() []string, gh ghx.Runner, profile func() (string, bool), fix func() (bool, string)) Check {
 	return Check{
 		Name: "npm token (GitHub Packages)",
 		Run: func() (bool, string) {
@@ -258,6 +258,7 @@ func npmTokenCheck(repoDirs func() []string, gh ghx.Runner, profile func() (stri
 			}
 			return npmTokenStatus(gh, profile)
 		},
+		Fix: fix,
 	}
 }
 

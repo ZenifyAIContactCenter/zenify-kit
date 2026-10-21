@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/term"
 	"net/http"
 	"os"
 	"os/exec"
@@ -580,7 +581,11 @@ func registerDefaultChecks() {
 	RegisterCheck(dockerCheck())
 	RegisterCheck(gitGuardCheck(os.UserHomeDir))
 	RegisterCheck(gitIdentityCheck())
-	RegisterCheck(npmTokenCheck(workspaceRepoDirs, currentGH{}, currentShellProfile))
+	npmInteractive := func() bool {
+		return npmTokenInteractive(false, term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd())))
+	}
+	RegisterCheck(npmTokenCheck(workspaceRepoDirs, currentGH{}, currentShellProfile,
+		npmTokenFix(currentGH{}, currentShellProfile, npmInteractive, npmRefresh(os.Stderr))))
 	RegisterCheck(pluginCheck())
 	registerCodexChecks()
 	registerContextChecks()

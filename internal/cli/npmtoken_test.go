@@ -292,7 +292,7 @@ func npmTokenCheckRun(t *testing.T, ghpkg bool, auth, profile, envToken string, 
 	t.Helper()
 	_, dirs := npmTokenTestEnv(t, ghpkg)
 	t.Setenv("NPM_TOKEN", envToken)
-	c := npmTokenCheck(func() []string { return dirs }, stubGH{auth: []byte(auth)}, func() (string, bool) { return profile, shellKnown })
+	c := npmTokenCheck(func() []string { return dirs }, stubGH{auth: []byte(auth)}, func() (string, bool) { return profile, shellKnown }, nil)
 	if c.Name != "npm token (GitHub Packages)" {
 		t.Errorf("name = %q", c.Name)
 	}
