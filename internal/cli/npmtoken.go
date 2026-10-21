@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 )
@@ -145,7 +146,13 @@ func ensureNPMToken(w io.Writer, repoDirs []string, gh ghx.Runner, interactive b
 	if !needsGitHubPackagesToken(repoDirs) {
 		return nil
 	}
-	auth, err := ghx.CheckAuth(gh)
+	return setupNPMToken(w, gh, interactive, refresh)
+}
+
+// setupNPMToken is ensureNPMToken without the workspace check: it judges the active gh account
+// and writes the profile line regardless of which repos exist.
+func setupNPMToken(w io.Writer, gh ghx.Runner, interactive bool, refresh func() error) error {
+	auth, err := ghx.CheckActiveAuth(gh, "github.com")
 	if err != nil {
 		return fmt.Errorf("npm token: gh auth status: %w", err)
 	}
@@ -249,29 +256,51 @@ func npmTokenCheck(repoDirs func() []string, gh ghx.Runner, profile func() (stri
 			if !needsGitHubPackagesToken(repoDirs()) {
 				return true, "n/a — no repo uses GitHub Packages"
 			}
-			auth, err := ghx.CheckAuth(gh)
-			if err != nil || !auth.LoggedIn {
-				return false, "gh not logged in — run `gh auth login`"
-			}
-			// No scopes line (token from GH_TOKEN/GITHUB_TOKEN): the scope is unknowable, so
-			// judge only by NPM_TOKEN below.
-			okDetail := "ok"
-			if len(auth.Scopes) == 0 {
-				okDetail = "ok (gh token scopes unknown)"
-			} else if !auth.HasScopes(npmTokenScope) {
-				return false, "gh lacks " + npmTokenScope + " — run `" + npmTokenRefreshCmd + "`"
-			}
-			if os.Getenv("NPM_TOKEN") != "" {
-				return true, okDetail
-			}
-			content, known := profile()
-			if !known {
-				return false, "NPM_TOKEN not set — add `" + npmTokenLine + "` to your shell profile"
-			}
-			if readProfileState(content) == profileMissing {
-				return false, "NPM_TOKEN not set — run `zenify up`"
-			}
-			return true, okDetail
+			return npmTokenStatus(gh, profile)
 		},
 	}
+}
+
+// npmTokenCheckTimeout bounds the gh auth status call so a hung gh cannot stall doctor.
+var npmTokenCheckTimeout = 10 * time.Second
+
+// npmTokenStatus judges the active gh account and NPM_TOKEN reachability, without the workspace
+// check. The token value is never read into the detail.
+func npmTokenStatus(gh ghx.Runner, profile func() (string, bool)) (bool, string) {
+	type authResult struct {
+		auth ghx.Auth
+		err  error
+	}
+	ch := make(chan authResult, 1)
+	go func() { a, err := ghx.CheckActiveAuth(gh, "github.com"); ch <- authResult{a, err} }()
+	var auth ghx.Auth
+	var err error
+	select {
+	case r := <-ch:
+		auth, err = r.auth, r.err
+	case <-time.After(npmTokenCheckTimeout):
+		return false, "gh auth status timed out"
+	}
+	if err != nil || !auth.LoggedIn {
+		return false, "gh not logged in — run `gh auth login`"
+	}
+	// No scopes line (token from GH_TOKEN/GITHUB_TOKEN): the scope is unknowable, so
+	// judge only by NPM_TOKEN below.
+	okDetail := "ok"
+	if len(auth.Scopes) == 0 {
+		okDetail = "ok (gh token scopes unknown)"
+	} else if !auth.HasScopes(npmTokenScope) {
+		return false, "gh lacks " + npmTokenScope + " — run `" + npmTokenRefreshCmd + "`"
+	}
+	if os.Getenv("NPM_TOKEN") != "" {
+		return true, okDetail
+	}
+	content, known := profile()
+	if !known {
+		return false, "NPM_TOKEN not set — add `" + npmTokenLine + "` to your shell profile"
+	}
+	if readProfileState(content) == profileMissing {
+		return false, "NPM_TOKEN not set — run `zenify up`"
+	}
+	return true, okDetail
 }
