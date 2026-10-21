@@ -55,16 +55,30 @@ func (a Auth) HasScopes(need ...string) bool {
 // CheckAuth parses `gh auth status`. A logged-out state (gh exits non-zero) is
 // reported as Auth{LoggedIn:false}, not an error. The token line is ignored.
 func CheckAuth(r Runner) (Auth, error) {
-	out, err := r.Run("auth", "status")
+	out, _ := r.Run("auth", "status") // gh exits non-zero when logged out; the text decides
+	return parseAuth(string(out)), nil
+}
+
+// CheckActiveAuth is CheckAuth scoped to the active account on host. gh < 2.40
+// has no --active flag; on "unknown flag" it falls back to CheckAuth.
+func CheckActiveAuth(r Runner, host string) (Auth, error) {
+	out, _ := r.Run("auth", "status", "--active", "-h", host)
 	text := string(out)
+	if strings.Contains(text, "unknown flag") {
+		return CheckAuth(r)
+	}
+	return parseAuth(text), nil
+}
+
+// parseAuth parses `gh auth status` text into an Auth. The token line is ignored.
+func parseAuth(text string) Auth {
 	a := Auth{}
 	if strings.Contains(text, "Logged in to") {
 		a.LoggedIn = true
 	}
 	if !a.LoggedIn {
-		return a, nil // logged-out; gh's non-zero exit is expected, not fatal
+		return a // logged-out
 	}
-	_ = err
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
@@ -89,7 +103,7 @@ func CheckAuth(r Runner) (Auth, error) {
 			}
 		}
 	}
-	return a, nil
+	return a
 }
 
 // RemoteRepo is one repo from `gh repo list --json ...`.
