@@ -8,6 +8,17 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.43.0
+
+*2026-10-21*
+
+- **NPM_TOKEN cho package private trên GitHub Packages:** khi một repo trong workspace cài package từ `npm.pkg.github.com` (`.npmrc` đọc token từ `${NPM_TOKEN}`), `zenify up` thêm dòng `export NPM_TOKEN="${NPM_TOKEN:-$(gh auth token 2>/dev/null)}" # zenify-npm-token` vào profile shell và xin thêm scope `read:packages` cho `gh` khi cần. `NPM_TOKEN` bạn đã tự đặt thì được giữ nguyên. Xem [Onboard workspace](/guides/onboard-workspace).
+  - Lệnh mới `zenify npm login` làm riêng bước này, kể cả khi không có repo nào cần hoặc khi đứng ngoài workspace. Xem [zenify npm login](/reference/cli/zenify_npm_login).
+  - `zenify doctor` có mục `npm token (GitHub Packages)`, và `zenify doctor --fix` tự sửa mục này. Trong terminal, bước sửa có thể mở trình duyệt để cấp scope `read:packages`.
+  - Mục này chỉ xét account github.com đang active, và báo `gh auth status timed out` nếu `gh` không trả lời sau 10 giây.
+  - Lưu ý: `NPM_TOKEN` là toàn bộ token của `gh auth token`, không chỉ scope `read:packages`. Gỡ bằng cách xoá dòng có `# zenify-npm-token`.
+- **`zenify db-read --target lumi`:** đọc MySQL của lumi-agent qua broker, chỉ `sql` và `tables`; trên production chỉ dành cho lead. Xem [Broker cho người dùng](/guides/broker-client). Người vận hành broker cần thêm tunnel staging, xem [Broker host](/guides/broker-host).
+
 ## v0.42.0
 
 *2026-10-18*
