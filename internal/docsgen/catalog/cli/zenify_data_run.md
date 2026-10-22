@@ -18,7 +18,7 @@ Chạy không có `--write` là dry-run: credential chỉ đọc, lệnh ghi m�
 | `--stg` | Credential staging. Phải chọn đúng một trong `--stg` hoặc `--prd`, nếu không lệnh thoát mã 2. |
 | `--prd` | Credential production. Cần role lead; role khác bị từ chối với mã 1. |
 | `--write` | Xin credential ghi. Cần dry-run khớp trước đó, nếu không thoát mã 7. |
-| `--lumi` | Xin thêm credential của lumi-agent. |
+| `--lumi` | Xin thêm credential của lumi-agent. Trên production chỉ lead được cấp, kể cả khi chỉ đọc. |
 
 ## Ví dụ
 

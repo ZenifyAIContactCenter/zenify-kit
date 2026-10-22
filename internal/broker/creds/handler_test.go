@@ -3,6 +3,7 @@ package creds
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -173,26 +174,30 @@ func TestValidate(t *testing.T) {
 func TestCreds_RoleEnvMode(t *testing.T) {
 	for _, c := range []struct {
 		role, env, mode string
+		lumi            bool
 		want            int
 	}{
-		{"agent", "stg", "read", 200}, {"agent", "stg", "write", 200},
-		{"agent", "prd", "read", 200}, {"agent", "prd", "write", 403},
-		{"dev", "prd", "read", 403}, {"dev", "prd", "write", 403},
-		{"lead", "stg", "read", 200}, {"lead", "stg", "write", 200},
-		{"lead", "prd", "read", 200}, {"lead", "prd", "write", 200},
+		{"agent", "stg", "read", false, 200}, {"agent", "stg", "write", false, 200},
+		{"agent", "prd", "read", false, 200}, {"agent", "prd", "write", false, 403},
+		// lumi-agent's prd credentials are its own read-write ones: lead only.
+		{"agent", "stg", "read", true, 200}, {"agent", "prd", "read", true, 403},
+		{"dev", "prd", "read", false, 403}, {"dev", "prd", "write", false, 403},
+		{"lead", "stg", "read", false, 200}, {"lead", "stg", "write", false, 200},
+		{"lead", "prd", "read", false, 200}, {"lead", "prd", "write", false, 200},
+		{"lead", "prd", "read", true, 200},
 	} {
 		h := fixture()
 		h.Write["prd"] = map[string]string{"MONGO_URL": "mongodb://rw-prd-secret"}
-		st, body, _ := serve(t, h, c.role, `{"env":"`+c.env+`","mode":"`+c.mode+`"}`)
+		st, body, _ := serve(t, h, c.role, fmt.Sprintf(`{"env":%q,"mode":%q,"lumi":%t}`, c.env, c.mode, c.lumi))
 		if st != c.want {
-			t.Errorf("%s %s/%s: got %d %s, want %d", c.role, c.env, c.mode, st, body, c.want)
+			t.Errorf("%s %s/%s lumi=%t: got %d %s, want %d", c.role, c.env, c.mode, c.lumi, st, body, c.want)
 		}
 		if c.want == 403 {
 			if code, _ := errCode(body); code != api.CodeLeadOnly {
-				t.Errorf("%s %s/%s: code %q", c.role, c.env, c.mode, code)
+				t.Errorf("%s %s/%s lumi=%t: code %q", c.role, c.env, c.mode, c.lumi, code)
 			}
-			if strings.Contains(string(body), "rw-prd-secret") {
-				t.Errorf("%s: leaked prd write creds", c.role)
+			if strings.Contains(string(body), "rw-prd-secret") || strings.Contains(string(body), "lumi-prd-secret") {
+				t.Errorf("%s: leaked prd creds", c.role)
 			}
 		}
 	}

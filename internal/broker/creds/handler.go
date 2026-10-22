@@ -57,7 +57,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	env, mode, lumi = req.Env, req.Mode, req.Lumi // allowlisted, safe to audit
-	if env == "prd" && (role == api.RoleDev || (role == api.RoleAgent && mode == api.CredsModeWrite)) {
+	// prd: lead gets everything; agent only the read set, never lumi-agent's own
+	// read-write credentials; any other role nothing.
+	if env == "prd" && role != api.RoleLead && (role != api.RoleAgent || mode == api.CredsModeWrite || lumi) {
 		fail(http.StatusForbidden, api.CodeLeadOnly, "prd credentials are lead-only")
 		return
 	}
