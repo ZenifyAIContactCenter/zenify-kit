@@ -370,6 +370,22 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		}
 	}
 
+	// wt / pm shims so skills and headless workers can call them. FAIL-OPEN.
+	if home, err := os.UserHomeDir(); err != nil || home == "" {
+		fmt.Fprintf(errW, "warning: shims: cannot resolve home: %v\n", err)
+	} else {
+		written, skipped, serr := apply.InstallShims(home, false)
+		if serr != nil {
+			fmt.Fprintf(errW, "warning: shims: %v\n", serr)
+		}
+		for _, p := range written {
+			fmt.Fprintf(w, "shim: wrote %s\n", p)
+		}
+		for _, p := range skipped {
+			fmt.Fprintf(errW, "warning: %s exists and is not managed by zenify; left unchanged\n", p)
+		}
+	}
+
 	if failed > 0 {
 		return exitcode.New(exitcode.Fail, fmt.Errorf("apply: %d repo(s) failed", failed))
 	}
