@@ -7,7 +7,7 @@ Khi cần merge-base của worktree với base mà nó đã tách ra. Một work
 
 ## Kết quả
 
-Lệnh in đúng một dòng là ref base, theo thứ tự ưu tiên: `wt.base` do `wt new` ghi lúc tạo worktree, rồi `baseRef` trong `.claude/worktree.json`, rồi `origin/main`. Chạy trong thư mục của worktree.
+Lệnh in đúng một dòng là ref base, theo thứ tự ưu tiên: `wt.base` do `wt new` ghi lúc tạo worktree, rồi `baseRef` trong `.claude/worktree.json`, rồi `origin/main`. Chạy trong thư mục của worktree. Khi lùi về `origin/main`, lệnh vẫn thoát 0 và stdout vẫn chỉ có ref, nhưng in thêm ra stderr `wt base: no wt.base or baseRef found; using origin/main`.
 
 ## Ví dụ
 

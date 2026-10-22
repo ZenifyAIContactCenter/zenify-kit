@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"os/exec"
 	"path/filepath"
@@ -39,12 +40,43 @@ func TestResolveWtBase(t *testing.T) {
 		{"both missing", baseFakeRunner{}, noCfg, "origin/main"},
 		{"nil load func", baseFakeRunner{err: map[string]bool{key: true}}, nil, "origin/main"},
 	}
+	const warn = "wt base: no wt.base or baseRef found; using origin/main\n"
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := resolveWtBase(c.r, "/wt", c.load); got != c.want {
+			var errb bytes.Buffer
+			if got := resolveWtBase(c.r, "/wt", c.load, &errb); got != c.want {
 				t.Fatalf("got %q want %q", got, c.want)
 			}
+			// Only the origin/main fallback says so, on stderr.
+			if want := map[bool]string{true: warn, false: ""}[c.want == "origin/main"]; errb.String() != want {
+				t.Fatalf("stderr = %q, want %q", errb.String(), want)
+			}
 		})
+	}
+}
+
+// The fallback keeps the stdout contract ($(zenify wt base) gets the ref and
+// nothing else) and exit 0; the warning goes to stderr only.
+func TestWtBaseCmd_FallbackWarnsOnStderr(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := gitRepo(t) // no wt.base and no .claude/worktree.json
+	t.Chdir(dir)
+	t.Setenv("WT_REPO_ROOT", dir)
+	cmd := newWtBaseCmd()
+	var out, errb bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errb)
+	cmd.SetArgs(nil)
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "origin/main\n" {
+		t.Fatalf("stdout = %q, want %q", out.String(), "origin/main\n")
+	}
+	if errb.String() != "wt base: no wt.base or baseRef found; using origin/main\n" {
+		t.Fatalf("stderr = %q", errb.String())
 	}
 }
 

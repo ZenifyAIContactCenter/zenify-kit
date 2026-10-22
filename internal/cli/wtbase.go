@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -12,9 +13,10 @@ import (
 
 // resolveWtBase returns the ref this worktree was really cut from: wt.base
 // (recorded by `wt new`), else baseRef of .claude/worktree.json, else
-// origin/main. Skills use it as the merge-base target, since a worktree
-// branched from a feature branch must not be diffed against the repo trunk.
-func resolveWtBase(r gitx.Runner, worktree string, load func(string) (*wt.Config, error)) string {
+// origin/main, which it reports on warn. Skills use it as the merge-base
+// target, since a worktree branched from a feature branch must not be diffed
+// against the repo trunk.
+func resolveWtBase(r gitx.Runner, worktree string, load func(string) (*wt.Config, error), warn io.Writer) string {
 	if b, err := r.Run(worktree, "config", "--worktree", "--get", "wt.base"); err == nil {
 		if v := strings.TrimSpace(string(b)); v != "" {
 			return v
@@ -25,6 +27,7 @@ func resolveWtBase(r gitx.Runner, worktree string, load func(string) (*wt.Config
 			return cfg.BaseRef
 		}
 	}
+	_, _ = fmt.Fprintln(warn, "wt base: no wt.base or baseRef found; using origin/main")
 	return "origin/main"
 }
 
@@ -46,7 +49,7 @@ func newWtBaseCmd() *cobra.Command {
 				return wt.Load(root)
 			}
 			// Output contract: exactly the ref + newline, so `$(zenify wt base)` is usable.
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), resolveWtBase(gitx.ExecRunner(), cwd, load))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), resolveWtBase(gitx.ExecRunner(), cwd, load, cmd.ErrOrStderr()))
 			return nil
 		},
 	}

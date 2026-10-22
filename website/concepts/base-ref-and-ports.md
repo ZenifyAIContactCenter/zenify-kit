@@ -59,7 +59,7 @@ Repo không khai báo gì vẫn nhận branch tích hợp làm base mà không b
 zenify wt base
 ```
 
-Lệnh in đúng một dòng, là ref đầu tiên có giá trị theo thứ tự: `wt.base` (git config của worktree, do `wt new` ghi lúc tạo), rồi `baseRef` trong `.claude/worktree.json`, rồi `origin/main`. Vì chỉ in ref và xuống dòng nên dùng được trong `$(zenify wt base)`. Ví dụ thật trong một repo tạm, đặt `wt.base` rồi bỏ nó đi:
+Lệnh in đúng một dòng, là ref đầu tiên có giá trị theo thứ tự: `wt.base` (git config của worktree, do `wt new` ghi lúc tạo), rồi `baseRef` trong `.claude/worktree.json`, rồi `origin/main`. Vì stdout chỉ có ref và xuống dòng nên dùng được trong `$(zenify wt base)`. Khi phải lùi về `origin/main` (không có `wt.base` lẫn `baseRef`), lệnh vẫn thoát 0 nhưng in thêm một dòng cảnh báo ra stderr `wt base: no wt.base or baseRef found; using origin/main`, để bạn biết merge-base đang tính với trunk mặc định. Ví dụ thật trong một repo tạm, đặt `wt.base` rồi bỏ nó đi:
 
 ```text
 $ git config --worktree wt.base origin/staging
@@ -68,6 +68,7 @@ origin/staging
 $ git config --worktree --unset wt.base
 $ zenify wt base
 origin/main
+wt base: no wt.base or baseRef found; using origin/main      # dòng này ra stderr
 ```
 
 Các skill `ship` và `subagent-driven-development` tính merge-base bằng lệnh này.
