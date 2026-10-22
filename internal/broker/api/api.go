@@ -61,6 +61,8 @@ const (
 const (
 	RoleLead = "lead"
 	RoleDev  = "dev"
+	// RoleAgent is a GitHub App installation listed in the broker's agent_ids.
+	RoleAgent = "agent"
 )
 
 // Error is the body of every non-2xx response.

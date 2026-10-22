@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -122,5 +123,64 @@ func TestGitHub_Member_StatusMapping(t *testing.T) {
 		if !errors.Is(err, c.want) {
 			t.Errorf("%s: err = %v, want %v", c.name, err, c.want)
 		}
+	}
+}
+
+// graphqlGitHub answers POST /graphql with code, body and headers, and records
+// what it saw.
+func graphqlGitHub(t *testing.T, code int, body string, hdr map[string]string, seen *http.Request) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if seen != nil {
+			*seen = *r.Clone(context.Background())
+		}
+		for k, v := range hdr {
+			w.Header().Set(k, v)
+		}
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestViewer_OK(t *testing.T) {
+	var seen http.Request
+	srv := graphqlGitHub(t, http.StatusOK, `{"data":{"viewer":{"login":"zenie-dev[bot]","databaseId":346015963}}}`, nil, &seen)
+	login, id, err := GitHub{BaseURL: srv.URL, HTTP: srv.Client()}.Viewer(context.Background(), "ghs_abc")
+	if err != nil || login != "zenie-dev[bot]" || id != 346015963 {
+		t.Fatalf("Viewer = %q %d %v", login, id, err)
+	}
+	if seen.Method != http.MethodPost || seen.URL.Path != "/graphql" || seen.Header.Get("Authorization") != "Bearer ghs_abc" {
+		t.Errorf("request = %s %s auth %q", seen.Method, seen.URL.Path, seen.Header.Get("Authorization"))
+	}
+}
+
+func TestViewer_ErrorMapping(t *testing.T) {
+	for name, c := range map[string]struct {
+		code int
+		body string
+		hdr  map[string]string
+		want error
+	}{
+		"graphql errors": {http.StatusOK, `{"errors":[{"message":"x"}]}`, nil, ErrTokenInvalid},
+		"no viewer":      {http.StatusOK, `{"data":{}}`, nil, ErrTokenInvalid},
+		"401":            {http.StatusUnauthorized, `{"message":"Bad credentials"}`, nil, ErrTokenInvalid},
+		"403 ratelimit":  {http.StatusForbidden, `{}`, map[string]string{"X-RateLimit-Remaining": "0"}, ErrGitHubRateLimited},
+		"429":            {http.StatusTooManyRequests, `{}`, nil, ErrGitHubRateLimited},
+	} {
+		srv := graphqlGitHub(t, c.code, c.body, c.hdr, nil)
+		_, _, err := GitHub{BaseURL: srv.URL, HTTP: srv.Client()}.Viewer(context.Background(), "ghs_secret")
+		if !errors.Is(err, c.want) {
+			t.Errorf("%s: err = %v, want %v", name, err, c.want)
+		}
+	}
+	srv := graphqlGitHub(t, http.StatusInternalServerError, `{}`, nil, nil)
+	_, _, err := GitHub{BaseURL: srv.URL, HTTP: srv.Client()}.Viewer(context.Background(), "ghs_secret")
+	if err == nil || errors.Is(err, ErrTokenInvalid) || errors.Is(err, ErrGitHubRateLimited) {
+		t.Errorf("500: err = %v, want a plain error", err)
+	}
+	if err != nil && strings.Contains(err.Error(), "ghs_secret") {
+		t.Errorf("error leaks the token: %v", err)
 	}
 }

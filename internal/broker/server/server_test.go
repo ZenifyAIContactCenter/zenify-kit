@@ -705,3 +705,77 @@ func TestServer_ObsRoutesRequireAuthAndAllowDev(t *testing.T) {
 		}
 	}
 }
+
+const agentToken = "ghs_fake-installation-token"
+
+// fakeGitHubApp answers POST /graphql with graphqlBody and counts calls to
+// /user, which an installation token must never reach.
+func fakeGitHubApp(t *testing.T, graphqlBody string, userCalls *int32) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/graphql" && r.Header.Get("Authorization") == "Bearer "+agentToken:
+			_, _ = w.Write([]byte(graphqlBody))
+		case r.URL.Path == "/user":
+			atomic.AddInt32(userCalls, 1)
+			http.Error(w, `{"message":"Resource not accessible by integration"}`, http.StatusForbidden)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestToken_InstallationTokenAgent(t *testing.T) { // FR-1, SC-1, SC-2
+	const viewerBot = `{"data":{"viewer":{"login":"zenie-dev[bot]","databaseId":346015963}}}`
+	for _, c := range []struct {
+		name       string
+		graphql    string
+		agentIDs   []int64
+		deny       []string
+		wantStatus int
+		wantCode   string
+	}{
+		{"allowed", viewerBot, []int64{346015963}, nil, http.StatusOK, ""},
+		{"other id", `{"data":{"viewer":{"login":"other[bot]","databaseId":999}}}`, []int64{346015963}, nil, http.StatusForbidden, api.CodeNotAllowed},
+		{"no agent_ids", viewerBot, nil, nil, http.StatusForbidden, api.CodeNotAllowed},
+		{"denied login", viewerBot, []int64{346015963}, []string{"ZENIE-DEV[bot]"}, http.StatusForbidden, api.CodeLoginDenied},
+		{"graphql errors", `{"errors":[{"message":"x"}]}`, []int64{346015963}, nil, http.StatusUnauthorized, api.CodeGitHubTokenInvalid},
+	} {
+		var userCalls int32
+		var out bytes.Buffer
+		gh := fakeGitHubApp(t, c.graphql, &userCalls)
+		h := New(Deps{JWTKey: testKey, Org: "test-org", LeadTeam: "leaders", DevTeam: "zenify-team",
+			DenyLogins: c.deny, AgentIDs: c.agentIDs, GitHub: auth.GitHub{BaseURL: gh.URL, HTTP: gh.Client()},
+			Audit: &audit.Logger{W: &out}, Now: func() time.Time { return t0 }})
+		rec := postToken(h, agentToken, "203.0.113.7")
+		if rec.Code != c.wantStatus {
+			t.Errorf("%s: got %d %s, want %d", c.name, rec.Code, rec.Body.String(), c.wantStatus)
+			continue
+		}
+		if n := atomic.LoadInt32(&userCalls); n != 0 {
+			t.Errorf("%s: %d calls to /user, want 0", c.name, n)
+		}
+		if strings.Contains(out.String(), agentToken) || strings.Contains(rec.Body.String(), agentToken) {
+			t.Errorf("%s: installation token leaked", c.name)
+		}
+		if c.wantStatus != http.StatusOK {
+			if errCode(t, rec) != c.wantCode {
+				t.Errorf("%s: code %q, want %q", c.name, errCode(t, rec), c.wantCode)
+			}
+			continue
+		}
+		var resp api.TokenResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		login, role, err := auth.Verify(testKey, resp.Token, t0.Add(time.Minute))
+		if err != nil || login != "zenie-dev[bot]" || role != "agent" || resp.Role != "agent" || resp.Login != "zenie-dev[bot]" {
+			t.Errorf("%s: Verify = %q %q %v; resp %+v", c.name, login, role, err, resp)
+		}
+		if !strings.Contains(out.String(), `"role":"agent"`) {
+			t.Errorf("%s: audit line lacks role=agent: %s", c.name, out.String())
+		}
+	}
+}

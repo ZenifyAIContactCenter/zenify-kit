@@ -99,10 +99,49 @@ func (g GitHub) TeamMember(ctx context.Context, token, org, team, login string) 
 	return m.State == "active", nil
 }
 
-// get calls GitHub and decodes a 200 body into out. A 403 carrying Retry-After
+// Viewer returns the login and database id of the token's owner, asked via
+// GraphQL. It is how an installation token (ghs_) is identified: GitHub
+// refuses such a token on /user. A 200 carrying GraphQL errors or no viewer
+// is ErrTokenInvalid.
+func (g GitHub) Viewer(ctx context.Context, token string) (login string, databaseID int64, err error) {
+	var out struct {
+		Data *struct {
+			Viewer *struct {
+				Login      string `json:"login"`
+				DatabaseID int64  `json:"databaseId"`
+			} `json:"viewer"`
+		} `json:"data"`
+		Errors []json.RawMessage `json:"errors"`
+	}
+	switch code, err := g.post(ctx, token, "/graphql", `{"query":"{viewer{login databaseId}}"}`, &out); {
+	case err != nil:
+		return "", 0, err
+	case code == http.StatusUnauthorized:
+		return "", 0, ErrTokenInvalid
+	case code == http.StatusTooManyRequests:
+		return "", 0, ErrGitHubRateLimited
+	case code != http.StatusOK:
+		return "", 0, fmt.Errorf("github /graphql: status %d", code)
+	case len(out.Errors) > 0 || out.Data == nil || out.Data.Viewer == nil || out.Data.Viewer.Login == "":
+		return "", 0, ErrTokenInvalid
+	}
+	return out.Data.Viewer.Login, out.Data.Viewer.DatabaseID, nil
+}
+
+// get calls GitHub and decodes a 200 body into out; see do.
+func (g GitHub) get(ctx context.Context, token, path string, out any) (int, error) {
+	return g.do(ctx, http.MethodGet, token, path, "", out)
+}
+
+// post sends a JSON body to GitHub and decodes a 200 body into out; see do.
+func (g GitHub) post(ctx context.Context, token, path, body string, out any) (int, error) {
+	return g.do(ctx, http.MethodPost, token, path, body, out)
+}
+
+// do calls GitHub and decodes a 200 body into out. A 403 carrying Retry-After
 // or X-RateLimit-Remaining: 0 is a rate limit, not a permission refusal, and
 // comes back as 429. Errors never include the token.
-func (g GitHub) get(ctx context.Context, token, path string, out any) (int, error) {
+func (g GitHub) do(ctx context.Context, method, token, path, body string, out any) (int, error) {
 	base := g.BaseURL
 	if base == "" {
 		base = DefaultGitHubURL
@@ -111,12 +150,19 @@ func (g GitHub) get(ctx context.Context, token, path string, out any) (int, erro
 	if client == nil {
 		client = defaultGitHubClient
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+path, nil)
+	var rb io.Reader
+	if body != "" {
+		rb = strings.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(base, "/")+path, rb)
 	if err != nil {
 		return 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("github %s: %w", path, err)

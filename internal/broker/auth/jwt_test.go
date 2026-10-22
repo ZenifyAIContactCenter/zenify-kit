@@ -133,3 +133,18 @@ func TestJWT_RejectsMissingOrUnknownRole(t *testing.T) {
 		t.Errorf("dev: role %q, %v", role, err)
 	}
 }
+
+func TestJWT_AgentRoleAccepted(t *testing.T) {
+	tok, _, err := Issue(testKey, "zenie-dev[bot]", "agent", t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if login, role, err := Verify(testKey, tok, t0); err != nil || login != "zenie-dev[bot]" || role != "agent" {
+		t.Errorf("Verify = %q %q %v", login, role, err)
+	}
+	root := sign(t, testKey, `{"alg":"HS256","typ":"JWT"}`,
+		`{"sub":"octocat","role":"root","aud":"zenify-broker","exp":1792052100,"iat":1792051200}`)
+	if _, _, err := Verify(testKey, root, t0); err == nil {
+		t.Error("role root accepted")
+	}
+}
