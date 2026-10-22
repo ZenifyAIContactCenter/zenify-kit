@@ -5,7 +5,7 @@ summary: Chọn đúng package manager JS của project (pnpm, yarn, npm, bun) r
 
 Khi cần chạy `install`, `run <script>` hay `test` trong một repo JS mà bạn không chắc nó dùng manager nào. Skill của kit gọi `pm` thay vì đoán; `zenify up` sẽ cài shim `~/.local/bin/pm` trỏ về lệnh này.
 
-Thứ tự quyết định: trường `packageManager` trong `package.json` gần nhất (phần trước dấu `@`), rồi lockfile có mặt theo thứ tự pnpm, yarn, npm, bun. Không có tín hiệu nào thì lệnh từ chối và thoát mã 1, không tự chọn. Chạy được từ thư mục con vì lệnh tìm `package.json` ở các thư mục cha.
+Thứ tự quyết định: trường `packageManager` trong `package.json` gần nhất (phần trước dấu `@`, chỉ nhận `pnpm`, `yarn`, `npm`, `bun`; tên khác bị từ chối với mã 1 kèm giá trị), rồi lockfile có mặt theo thứ tự pnpm, yarn, npm, bun. Package con của monorepo không có cả hai thì lệnh lấy tín hiệu của thư mục cha gần nhất có một trong hai, dừng ở git toplevel (thư mục có `.git`); `reason` ghi kèm thư mục đó. Không có tín hiệu nào thì lệnh từ chối và thoát mã 1, không tự chọn. Chạy được từ thư mục con vì lệnh tìm `package.json` ở các thư mục cha.
 
 ## Kết quả
 

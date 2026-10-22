@@ -48,6 +48,7 @@ func TestDetectPM(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeFiles(t, dir, tc.files)
+			writeFiles(t, dir, map[string]string{".git": "gitdir: x"}) // git toplevel: the walk stops here
 			mgr, root, reason, err := detectPM(dir, tc.look)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
@@ -63,6 +64,73 @@ func TestDetectPM(t *testing.T) {
 			}
 		})
 	}
+}
+
+// packageManager names only pnpm, yarn, npm or bun; anything else is refused
+// by value before it is looked up, since a name with a slash is a path.
+func TestDetectPMPackageManagerAllowlist(t *testing.T) {
+	noLook := func(s string) (string, error) { t.Fatalf("lookPath(%q) for a refused name", s); return "", nil }
+	for _, v := range []string{"corepack@0.29.0", "../../tmp/evil@1", "@scope/pnpm@1", "PNPM@9"} {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"package.json": `{"packageManager":"` + v + `"}`, "yarn.lock": "", ".git": ""})
+		_, _, _, err := detectPM(dir, noLook)
+		if err == nil || !strings.Contains(err.Error(), `"`+v+`"`) {
+			t.Errorf("%s: err = %v, want a refusal naming the value", v, err)
+		}
+	}
+	for _, v := range []string{"pnpm@9.1.0+sha512.abc", "yarn@4.1.0", "npm@10.0.0", "bun@1.1.0"} {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"package.json": `{"packageManager":"` + v + `"}`, ".git": ""})
+		if mgr, _, _, err := detectPM(dir, lookAll); err != nil || mgr != strings.SplitN(v, "@", 2)[0] {
+			t.Errorf("%s: mgr=%q err=%v", v, mgr, err)
+		}
+	}
+}
+
+// A monorepo package has its own package.json but no signal: the manager comes
+// from the nearest ancestor that has one, and still runs in the package dir.
+// The walk stops at the git toplevel (.git, a dir or a worktree's file).
+func TestDetectPMMonorepoAncestor(t *testing.T) {
+	mk := func(t *testing.T, top string, files map[string]string) string {
+		t.Helper()
+		pkg := filepath.Join(top, "packages", "a")
+		if err := os.MkdirAll(pkg, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFiles(t, pkg, map[string]string{"package.json": `{"name":"a"}`})
+		writeFiles(t, top, files)
+		return pkg
+	}
+	t.Run("lockfile at the workspace root", func(t *testing.T) {
+		top := t.TempDir()
+		if err := os.Mkdir(filepath.Join(top, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		pkg := mk(t, top, map[string]string{"package.json": `{"private":true}`, "pnpm-lock.yaml": ""})
+		mgr, root, reason, err := detectPM(pkg, lookAll)
+		if err != nil || mgr != "pnpm" || root != pkg || reason != "pnpm-lock.yaml ("+top+")" {
+			t.Fatalf("got (%q,%q,%q,%v), want pnpm in %s from %s", mgr, root, reason, err, pkg, top)
+		}
+	})
+	t.Run("packageManager at the workspace root", func(t *testing.T) {
+		top := t.TempDir()
+		pkg := mk(t, top, map[string]string{"package.json": `{"packageManager":"yarn@4.1.0"}`, ".git": "gitdir: x"})
+		if mgr, root, _, err := detectPM(pkg, lookAll); err != nil || mgr != "yarn" || root != pkg {
+			t.Fatalf("got (%q,%q,%v), want yarn in %s", mgr, root, err, pkg)
+		}
+	})
+	t.Run("nothing above the git toplevel counts", func(t *testing.T) {
+		outer := t.TempDir()
+		writeFiles(t, outer, map[string]string{"yarn.lock": ""})
+		top := filepath.Join(outer, "repo")
+		if err := os.Mkdir(top, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		pkg := mk(t, top, map[string]string{".git": "gitdir: x"})
+		if _, _, _, err := detectPM(pkg, lookAll); err == nil || !strings.Contains(err.Error(), "no packageManager field and no lockfile") {
+			t.Fatalf("err = %v, want no signal", err)
+		}
+	})
 }
 
 func TestDetectPMNoPackageJSON(t *testing.T) {

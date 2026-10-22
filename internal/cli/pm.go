@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -29,41 +30,67 @@ func fileExists(p string) bool {
 	return err == nil && !st.IsDir()
 }
 
+// pmNames are the only managers a packageManager field may name.
+var pmNames = []string{"pnpm", "yarn", "npm", "bun"}
+
 // detectPM picks the JS package manager for dir: the packageManager field of the nearest
-// package.json first, then the lockfile present (pnpm, yarn, npm, bun); otherwise an error.
+// package.json first, then the lockfile present (pnpm, yarn, npm, bun). A monorepo package
+// with neither takes the signal of the nearest ancestor that has one, up to the git
+// toplevel; the manager still runs at the package's root. No signal is an error.
 func detectPM(dir string, lookPath func(string) (string, error)) (mgr, root, reason string, err error) {
 	root, ok := findPackageRoot(dir)
 	if !ok {
 		return "", "", "", fmt.Errorf("pm: no package.json in %s or any parent", dir)
 	}
-	if b, rerr := os.ReadFile(filepath.Join(root, "package.json")); rerr == nil { //nolint:gosec // G304 -- root is the nearest ancestor holding package.json, found by findPackageRoot
-		var pj struct {
-			PackageManager string `json:"packageManager"`
+	for d := root; ; d = filepath.Dir(d) {
+		if mgr, reason, err = pmSignal(d); err != nil {
+			return "", root, "", err
 		}
-		if json.Unmarshal(b, &pj) == nil && pj.PackageManager != "" {
-			mgr = strings.SplitN(pj.PackageManager, "@", 2)[0]
-			reason = "packageManager field in package.json"
+		if mgr != "" {
+			if d != root {
+				reason += " (" + d + ")"
+			}
+			break
 		}
-	}
-	if mgr == "" {
-		switch {
-		case fileExists(filepath.Join(root, "pnpm-lock.yaml")):
-			mgr, reason = "pnpm", "pnpm-lock.yaml"
-		case fileExists(filepath.Join(root, "yarn.lock")):
-			mgr, reason = "yarn", "yarn.lock"
-		case fileExists(filepath.Join(root, "package-lock.json")):
-			mgr, reason = "npm", "package-lock.json"
-		case fileExists(filepath.Join(root, "bun.lock")), fileExists(filepath.Join(root, "bun.lockb")):
-			mgr, reason = "bun", "bun lockfile"
+		if _, serr := os.Stat(filepath.Join(d, ".git")); serr == nil || filepath.Dir(d) == d {
+			break
 		}
 	}
 	if mgr == "" {
-		return "", root, "", fmt.Errorf("pm: %s has no packageManager field and no lockfile, so the manager is unknown; run the intended manager once by hand so a lockfile exists", root) //znf:allow-lang
+		return "", root, "", fmt.Errorf("pm: %s and its parents up to the git toplevel have no packageManager field and no lockfile, so the manager is unknown; run the intended manager once by hand so a lockfile exists", root) //znf:allow-lang
 	}
 	if _, lerr := lookPath(mgr); lerr != nil {
 		return "", root, reason, fmt.Errorf("pm: detected %s (from %s) but it is not installed", mgr, reason)
 	}
 	return mgr, root, reason, nil
+}
+
+// pmSignal is dir's own signal: the packageManager field of its package.json,
+// else its lockfile; "" when it has neither.
+func pmSignal(dir string) (mgr, reason string, err error) {
+	if b, rerr := os.ReadFile(filepath.Join(dir, "package.json")); rerr == nil { //nolint:gosec // G304 -- dir is the package root or one of its ancestors
+		var pj struct {
+			PackageManager string `json:"packageManager"`
+		}
+		if json.Unmarshal(b, &pj) == nil && pj.PackageManager != "" {
+			name := strings.SplitN(pj.PackageManager, "@", 2)[0]
+			if !slices.Contains(pmNames, name) {
+				return "", "", fmt.Errorf("pm: packageManager %q in %s is not one of %s", pj.PackageManager, filepath.Join(dir, "package.json"), strings.Join(pmNames, ", "))
+			}
+			return name, "packageManager field in package.json", nil
+		}
+	}
+	switch {
+	case fileExists(filepath.Join(dir, "pnpm-lock.yaml")):
+		return "pnpm", "pnpm-lock.yaml", nil
+	case fileExists(filepath.Join(dir, "yarn.lock")):
+		return "yarn", "yarn.lock", nil
+	case fileExists(filepath.Join(dir, "package-lock.json")):
+		return "npm", "package-lock.json", nil
+	case fileExists(filepath.Join(dir, "bun.lock")), fileExists(filepath.Join(dir, "bun.lockb")):
+		return "bun", "bun lockfile", nil
+	}
+	return "", "", nil
 }
 
 // pmRunner starts the manager at path (argv[0] is the manager name) inside root and returns

@@ -65,7 +65,7 @@ Cơ chế nhắc phiên bản mới ở đầu mỗi session chỉ có từ `v0.
 
 ## Lệnh `wt` và `pm`
 
-`zenify up --apply` cài hai shim `~/.local/bin/wt` và `~/.local/bin/pm` (mode 0755), mỗi file chạy `zenify wt` và `zenify pm`, để skill và worker chạy nền gọi được `wt` và `pm` mà không cần gõ `zenify`. `pm` chọn đúng package manager JS của project: trường `packageManager` của `package.json` gần nhất, không có thì theo lockfile (`pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`, `bun.lock`/`bun.lockb`). Chạy `pm` không đối số thì in tên manager ra stdout, kèm `root` và `reason` ra stderr:
+`zenify up --apply` cài hai shim `~/.local/bin/wt` và `~/.local/bin/pm` (mode 0755), mỗi file chạy `zenify wt` và `zenify pm`, để skill và worker chạy nền gọi được `wt` và `pm` mà không cần gõ `zenify`. `pm` chọn đúng package manager JS của project: trường `packageManager` của `package.json` gần nhất, không có thì theo lockfile (`pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`, `bun.lock`/`bun.lockb`). Trong monorepo, package con không có cả hai thì `pm` lấy tín hiệu của thư mục cha gần nhất có một trong hai, tới git toplevel, và vẫn chạy manager tại thư mục của package con. `packageManager` chỉ nhận `pnpm`, `yarn`, `npm`, `bun`; tên khác bị từ chối kèm giá trị. Chạy `pm` không đối số thì in tên manager ra stdout, kèm `root` và `reason` ra stderr:
 
 ```text
 $ cd website && pm
