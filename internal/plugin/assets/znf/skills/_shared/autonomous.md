@@ -30,6 +30,7 @@ A `Ruling` never replaces these; they win over the catch-all above:
 | `cook` Step 5b plan approval | `zenify await plan` |
 | `fix` Step 4, when the approach is a trade-off | `Ruling` |
 | `ship` fix-loop still open after round 2 | `zenify await needs-human` |
+| `ship` step 4, diff renders (ui-verifier needed) | `zenify await needs-human` (`zenify ui-verify check` does it for you: exit 8, prints the id) |
 | `_shared/data-scripts.md` prd gate before `--write` | `zenify await data-write` |
 | SDD "Four things stop you": first three (irreversible/destructive, security-sensitive, side effect outside the worktree) | `zenify await irreversible` |
 | SDD "Four things stop you": plan too broken to act on | `zenify await needs-human` |

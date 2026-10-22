@@ -30,9 +30,9 @@ func TestAutonomousDoc(t *testing.T) {
 	if p, m := strings.Index(s, "## Precedence"), strings.Index(s, "## Gate map"); p < 0 || m < 0 || p > m {
 		t.Errorf("## Precedence must come before ## Gate map")
 	}
-	// One table row per human gate of spec FR-5.2, nine in all.
+	// One table row per human gate of spec FR-5.2, plus the ui-verify stop of FR-08.4: ten in all.
 	rows := []string{"`brainstorming` steps 2, 4, 7, 8", "`brainstorming` step 12", "`cook` Step 5b", "`fix` Step 4",
-		"`ship` fix-loop", "`_shared/data-scripts.md`", "Four things stop you\": first three", "Four things stop you\": plan too broken", "`discipline`"}
+		"`ship` fix-loop", "`ship` step 4", "`_shared/data-scripts.md`", "Four things stop you\": first three", "Four things stop you\": plan too broken", "`discipline`"}
 	n := 0
 	for _, line := range strings.Split(s, "\n") {
 		if strings.HasPrefix(line, "| ") && !strings.HasPrefix(line, "| Human gate") {

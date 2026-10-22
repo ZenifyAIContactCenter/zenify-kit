@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -142,5 +143,71 @@ func TestRealRunGit_RawStdoutNoTrim(t *testing.T) {
 	}
 	if !strings.HasSuffix(out, "\n") {
 		t.Errorf("expected raw stdout with trailing newline, got %q", out)
+	}
+}
+
+// writeRenderChange leaves an uncommitted rendering file in repo, so Check
+// returns state "required" (no artifact for the fingerprint).
+func writeRenderChange(t *testing.T, repo string) {
+	t.Helper()
+	compDir := filepath.Join(repo, "src", "components")
+	if err := os.MkdirAll(compDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(compDir, "Foo.tsx"), []byte("export {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// FR-08.4: under autonomous mode a diff that needs ui-verify stops at a
+// needs-human await instead of a BLOCKED ship with no way out.
+func TestUIVerifyCheckAutonomousAwaits(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ZENIFY_HOME", home)
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	repo := initUIVerifyRepo(t)
+	writeRenderChange(t, repo)
+
+	out, err := runUIVerifyCheck(repo, "HEAD")
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("want exit %d (Awaiting), got %d (%v)", exitcode.Awaiting, exitcode.Code(err), err)
+	}
+	matches, _ := filepath.Glob(filepath.Join(home, "await", "needs-human-*.json"))
+	if len(matches) != 1 {
+		t.Fatalf("want exactly one needs-human await record, got %v", matches)
+	}
+	b, rerr := os.ReadFile(matches[0]) //nolint:gosec // G304 -- test temp dir
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	var rec struct {
+		ID      string `json:"id"`
+		Kind    string `json:"kind"`
+		Summary string `json:"summary"`
+	}
+	if jerr := json.Unmarshal(b, &rec); jerr != nil {
+		t.Fatal(jerr)
+	}
+	if rec.Kind != "needs-human" || !strings.Contains(rec.Summary, "cần kiểm UI") { //znf:allow-lang
+		t.Errorf("record kind=%q summary=%q", rec.Kind, rec.Summary)
+	}
+	if !strings.Contains(out, rec.ID) {
+		t.Errorf("output %q does not print await id %q", out, rec.ID)
+	}
+}
+
+func TestUIVerifyCheckInteractiveUnchanged(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ZENIFY_HOME", home)
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	repo := initUIVerifyRepo(t)
+	writeRenderChange(t, repo)
+
+	_, err := runUIVerifyCheck(repo, "HEAD")
+	if exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("want exit %d (Fail), got %d (%v)", exitcode.Fail, exitcode.Code(err), err)
+	}
+	if _, serr := os.Stat(filepath.Join(home, "await")); !os.IsNotExist(serr) {
+		t.Errorf("await dir created outside autonomous mode (stat err=%v)", serr)
 	}
 }

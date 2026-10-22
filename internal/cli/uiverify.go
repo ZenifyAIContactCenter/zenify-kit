@@ -114,6 +114,16 @@ func newUIVerifyCheckCmd() *cobra.Command {
 				{"state", string(state)},
 				{"msg", msg},
 			})
+			// Autonomous runs have no person to dispatch a ui-verifier, so a
+			// missing verdict stops at a needs-human await (FR-08.4).
+			if state == "required" && os.Getenv("ZNF_AUTONOMOUS") == "1" {
+				id, aerr := awaitNow("needs-human", "cần kiểm UI: "+msg, "", nil) //znf:allow-lang
+				if aerr != nil {
+					return aerr
+				}
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), id)
+				return exitcode.New(exitcode.Awaiting, fmt.Errorf("awaiting human: needs-human (%s)", id))
+			}
 			return err
 		},
 	}

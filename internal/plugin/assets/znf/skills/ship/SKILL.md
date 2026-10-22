@@ -15,7 +15,7 @@ fp() { { git rev-parse HEAD; git diff HEAD; git status --porcelain -uall; } \
 fp
 ```
 
-Stamp each check with its `fp`; step 7 requires every stamp == the current one.
+Stamp each check with its `fp`; step 7 requires all == the current one.
 
 **Plan has a `## Stack` block** → steps 2–7 run per `references/stacked-ship.md`; below is the one-PR flow.
 
@@ -27,13 +27,13 @@ Stamp each check with its `fp`; step 7 requires every stamp == the current one.
 
 3. **Contract gate**: anything shared touched (collection, endpoint, queue, pub/sub channel) → run the project's contract gate and report the repos it found. Never judge a change "local".
 
-4. **Behavioural verification**: tests if any exist, else **`Skill(znf:run)`**, which runs the real code path and reports the URL `znf:ui-verifier` needs — "it builds" is not "it works". **A suite that ran nothing is not a pass**: report the count.
+4. **Behavioural verification**: tests if any exist, else **`Skill(znf:run)`**, which reports the URL `znf:ui-verifier` needs — "it builds" is not "it works". **A suite that ran nothing is not a pass**: report the count.
 
    ```bash
    git diff --name-only HEAD | rg -c '\.(tsx|jsx|vue|svelte|css|scss|less)$|components?/|pages?/|views?/'
    ```
 
-   Non-zero → dispatch **`znf:ui-verifier`**; **do not drive the browser yourself**. Zero (literally, never a judgement that it "won't show in dev") → "nothing renders in this diff". **A non-zero with no verdict = BLOCKED (❌, Shippable NO).** Setup — flag ON, seed, FE+BE up — is work you perform, never a skip. Cannot this session → BLOCKED, naming the one missing thing.
+   Non-zero → dispatch **`znf:ui-verifier`**; **do not drive the browser yourself**. Zero (literally, never a judgement that it "won't show in dev") → "nothing renders in this diff". **A non-zero with no verdict = BLOCKED (❌, Shippable NO).** Setup — flag ON, seed, FE+BE up — is work you perform, never a skip. Cannot this session → BLOCKED, naming the one missing thing. `ZNF_AUTONOMOUS=1`: non-zero → `zenify await needs-human`, no ui-verifier.
 
    - **`.znf/visual/routes.json` present → `zenify visual check --repo <path> --port <P>` FIRST**, a hard gate on non-zero exit; then still dispatch `znf:ui-verifier`. `.znf/e2e/` → `zenify e2e lint`.
    - The verifier logs itself in (`zenify e2e login --role <r>`, also on `visual check`: a role the screen needs, never admin by default); require **both** a screenshot **and** a `getBoundingClientRect` of the changed element against its container. `--repo` = this worktree; it records via `zenify ui-verify record`. Never two browser agents at once.
@@ -78,7 +78,7 @@ printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(basename "$PWD")" "$(fp)" 
   "SHIPPED|BLOCKED" "<step that blocked, or -->" >> ~/.cache/claude-ship-gate.tsv
 ```
 
-Read it back (`tail -30`); **if this gate has never blocked, say so plainly.** Commit trailer `Spec: <spec path>` is encouraged when a spec exists. Then fill the board (template: `references/gate-evidence.md`) — a `✅/❌ <check> (<fp10>) <evidence>` line for lint, build, contract gate, behaviour and review, plus `Deploy order:`, `Gate log: <SHIPPED|BLOCKED> · blocked <N> of last <M>`, `Shippable: YES only if every fingerprint above == the current one`.
+Read it back (`tail -30`); **if this gate has never blocked, say so plainly.** Trailer `Spec: <spec path>` when a spec exists. Then fill the board (template: `references/gate-evidence.md`) — a `✅/❌ <check> (<fp10>) <evidence>` line for lint, build, contract gate, behaviour and review, plus `Deploy order:`, `Gate log: <SHIPPED|BLOCKED> · blocked <N> of last <M>`, `Shippable: YES only if every fingerprint above == the current one`.
 
 Fill the `look:` and review sub-lines per the template. **Before concluding: `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` — non-zero → append `❌ BLOCKED` and Shippable NO; a waiver appends `waived: <reason>`.**
 
