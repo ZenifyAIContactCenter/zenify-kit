@@ -53,7 +53,7 @@ zenify data run --stg --write -- node <workspace>/docs/scripts/<repo>/fix-tags.j
 ```
 
 - One of `--stg` or `--prd` is required. `--write` asks for write credentials. `--lumi` adds the
-  second service's variables (`LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL`).
+  second service's variables (`LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL`). `ELASTIC_URL` (read mode only) is granted whenever the broker has one configured.
 - **Run it bare:** one `zenify data run …` call, no `cd`, pipe, redirect, `&&` or `$(...)`, the
   script named by absolute path. `zenify up` allows it and excludes it from the Bash sandbox, so a
   bare call runs without a prompt and reaches the broker and the DB; a compound call stays

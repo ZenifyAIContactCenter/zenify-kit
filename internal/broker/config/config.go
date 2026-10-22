@@ -77,6 +77,7 @@ type Secrets struct {
 	MongoWriteStg, MongoWritePrd, MySQLWriteStg, MySQLWritePrd string
 	RedisWriteStg, RedisWritePrd, LumiMySQLStg, LumiMySQLPrd   string
 	QdrantStg, QdrantPrd                                       string
+	ElasticStg, ElasticPrd                                     string
 	// Required only when Config.Catalog is set.
 	CatalogGitHubToken string
 }
@@ -161,6 +162,7 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	s.RedisWriteStg, s.RedisWritePrd = getenv("REDIS_WRITE_URL_STG"), getenv("REDIS_WRITE_URL_PRD")
 	s.LumiMySQLStg, s.LumiMySQLPrd = getenv("LUMI_MYSQL_URL_STG"), getenv("LUMI_MYSQL_URL_PRD")
 	s.QdrantStg, s.QdrantPrd = getenv("QDRANT_URL_STG"), getenv("QDRANT_URL_PRD")
+	s.ElasticStg, s.ElasticPrd = getenv("ELASTIC_URL_STG"), getenv("ELASTIC_URL_PRD")
 	if c.Catalog != nil {
 		s.CatalogGitHubToken = get("CATALOG_GITHUB_TOKEN")
 	}

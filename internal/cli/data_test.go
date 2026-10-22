@@ -363,7 +363,7 @@ func TestDataRun_BrokerWithoutCreds(t *testing.T) {
 	}
 }
 
-// Only the six data names reach the child; any other key is skipped and named on stderr.
+// Only the seven data names reach the child; any other key is skipped and named on stderr.
 func TestDataRun_SkipsUnknownBrokerKeys(t *testing.T) {
 	newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL, "NODE_OPTIONS": "--require=/x/evil.js"}, "")
 	out, errOut, err := runData("--stg", "--", "env")
@@ -502,5 +502,20 @@ func TestDataRun_AgentStopCommandRunsForLead(t *testing.T) {
 		" && zenify data run --prd --write -- sh -c " + script
 	if string(out) != want {
 		t.Fatalf("command =\n%s\nwant\n%s", out, want)
+	}
+}
+
+func TestDataRun_ElasticURLGranted(t *testing.T) {
+	newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL, "ELASTIC_URL": "https://es-broker.example"}, "")
+	t.Setenv("ELASTIC_URL", "https://inherited.example")
+	out, errOut, err := runData("--stg", "--", "sh", "-c", `[ -n "$ELASTIC_URL" ] && echo has-elastic; env | grep -c inherited || true`)
+	if err != nil || !strings.Contains(out, "has-elastic") {
+		t.Errorf("child lacks ELASTIC_URL: out %q err %v", out, err)
+	}
+	if strings.Contains(out, "es-broker") || strings.Contains(errOut, "skipping unknown") {
+		t.Errorf("unexpected output: stdout %q stderr %q", out, errOut)
+	}
+	if !strings.HasSuffix(out, "0\n") {
+		t.Errorf("inherited ELASTIC_URL survived: %q", out)
 	}
 }

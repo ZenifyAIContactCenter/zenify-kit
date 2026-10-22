@@ -222,3 +222,28 @@ func TestCreds_AuditRecordsTask(t *testing.T) {
 		t.Errorf("audit = %s", buf.String())
 	}
 }
+
+// ELASTIC_URL is a read-set key: write mode never carries it, and the audit
+// names the key without its value.
+func TestCreds_ElasticReadOnly(t *testing.T) {
+	h := fixture()
+	h.Read["stg"]["ELASTIC_URL"] = "https://es-stg-secret.example"
+	st, body, auditLine := serve(t, h, "agent", `{"env":"stg","mode":"read"}`)
+	if st != 200 || values(t, body)["ELASTIC_URL"] != "https://es-stg-secret.example" {
+		t.Fatalf("read: %d %s", st, body)
+	}
+	if !strings.Contains(auditLine, "ELASTIC_URL") || strings.Contains(auditLine, "es-stg-secret") {
+		t.Errorf("audit = %s", auditLine)
+	}
+	st, body, _ = serve(t, h, "agent", `{"env":"stg","mode":"write"}`)
+	if st != 200 {
+		t.Fatalf("write: %d %s", st, body)
+	}
+	if _, ok := values(t, body)["ELASTIC_URL"]; ok {
+		t.Errorf("write mode returned ELASTIC_URL")
+	}
+	st, body, _ = serve(t, fixture(), "agent", `{"env":"stg","mode":"read"}`)
+	if _, ok := values(t, body)["ELASTIC_URL"]; st != 200 || ok {
+		t.Errorf("unconfigured read: %d %s", st, body)
+	}
+}

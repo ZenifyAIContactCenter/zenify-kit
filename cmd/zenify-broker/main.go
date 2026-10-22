@@ -97,8 +97,10 @@ func run(cfgPath string) error {
 	}}
 	credsH := &creds.Handler{Audit: log,
 		Read: map[string]map[string]string{
-			"stg": nonEmpty("MONGO_URL", s.MongoStg, "MYSQL_URL", s.MySQLStg, "REDIS_URL", s.RedisStg),
-			"prd": nonEmpty("MONGO_URL", s.MongoPrd, "MYSQL_URL", s.MySQLPrd, "REDIS_URL", s.RedisPrd)},
+			"stg": nonEmpty("MONGO_URL", s.MongoStg, "MYSQL_URL", s.MySQLStg, "REDIS_URL", s.RedisStg,
+				"ELASTIC_URL", s.ElasticStg),
+			"prd": nonEmpty("MONGO_URL", s.MongoPrd, "MYSQL_URL", s.MySQLPrd, "REDIS_URL", s.RedisPrd,
+				"ELASTIC_URL", s.ElasticPrd)},
 		Write: map[string]map[string]string{
 			"stg": nonEmpty("MONGO_URL", s.MongoWriteStg, "MYSQL_URL", s.MySQLWriteStg, "REDIS_URL", s.RedisWriteStg),
 			"prd": nonEmpty("MONGO_URL", s.MongoWritePrd, "MYSQL_URL", s.MySQLWritePrd, "REDIS_URL", s.RedisWritePrd)},
