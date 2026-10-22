@@ -15,7 +15,7 @@ Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các cred
 
 ## Config không chứa secret
 
-File YAML mount vào `/etc/zenify-broker/broker.yaml`. Các khoá `listen`, `lead_team`, `dev_team`, `deny_logins`, `grafana.bin`, `grafana.addr`, `grafana.args`, `mongo.main_db`, `mongo.audit_db` có mặc định; các khoá còn lại bắt buộc.
+File YAML mount vào `/etc/zenify-broker/broker.yaml`. Các khoá `listen`, `lead_team`, `dev_team`, `deny_logins`, `agent_ids`, `grafana.bin`, `grafana.addr`, `grafana.args`, `mongo.main_db`, `mongo.audit_db` có mặc định; các khoá còn lại bắt buộc.
 
 ```yaml
 org: ZenifyAIContactCenter
@@ -25,6 +25,7 @@ listen: ":8080"
 deny_logins:                # tài khoản dùng chung, không cấp token (không phân biệt hoa thường)
   - zenifydevteam
   - zenifydeveloper
+# agent_ids: [346015963]    # databaseId của bot GitHub App được cấp role agent (mặc định rỗng: không nhận token ghs_)
 grafana:
   url: https://monitor.zenify.vn
   # bin: mcp-grafana
@@ -54,6 +55,14 @@ Bản broker này đổi cách chuyển tiếp một URL upstream MCP đã có s
 Thay các giá trị `example.invalid` và placeholder bằng giá trị thật của staging. Broker không đọc secret từ YAML.
 
 Role: ở `POST /token`, sau khi xác nhận member org, broker từ chối login trong `deny_logins` (403 `login_denied`), rồi hỏi GitHub membership của `lead_team` (`state=active` → `lead`), rồi `dev_team` (→ `dev`); không thuộc team nào thì 403 `not_allowed`. Trên production, dev chỉ đọc được cấu trúc và plan (explain, indexes, stats, count, schema SQL, Redis metadata); phần còn lại trả 403 `lead_only` và vẫn ghi audit. Dòng audit có field `role`. Xem [Dùng credential broker](/guides/broker-client#lead-dev).
+
+### Role `agent` cho GitHub App {#role-agent}
+
+Worker không người ([Chế độ không người](/guides/autonomous)) không có tài khoản người dùng. Nó gửi một installation token của GitHub App (tiền tố `ghs_`) tới `POST /token`. GitHub không cho token này gọi `/user`, nên broker hỏi GraphQL `viewer { login databaseId }` để biết bot nào đang gọi. Quy trình: `deny_logins` trước (403 `login_denied`), rồi `databaseId` của bot phải nằm trong `agent_ids` (không thì 403 `not_allowed`, "GitHub App installation is not in agent_ids"). Khớp thì broker cấp JWT role `agent`. Token `ghs_` mà GraphQL trả lỗi hoặc không có `viewer` thì nhận 401 `github_token_invalid`, không có JWT; riêng lỗi GraphQL loại `RATE_LIMITED` thì nhận 429 `rate_limited`, chờ rồi thử lại. `agent_ids` rỗng nghĩa là broker không nhận installation token nào.
+
+Quyền của `agent`: đọc staging và production như lead (`db-read`, `redis-read`, `data run` chế độ đọc); ghi staging được; **không bao giờ** lấy được credential `--prd --write`, cũng không lấy được credential lumi-agent của production (`data run --prd --lumi`, vì đó là credential đọc-ghi của chính lumi-agent): cả hai đều nhận 403 `lead_only` ở `POST /creds`. Muốn thêm một bot, lấy `databaseId` của nó rồi thêm vào `agent_ids` và restart broker.
+
+Mỗi request có thể mang header `X-Zenify-Task` (giá trị khớp `^[A-Za-z0-9._-]{1,64}$`; giá trị khác bị bỏ qua, request vẫn chạy). Dòng audit khi đó có thêm field `task`, để lần ngược một dòng audit về task của worker. Field `task` bỏ trống khi không có header hợp lệ.
 
 ## Secret qua env của host
 

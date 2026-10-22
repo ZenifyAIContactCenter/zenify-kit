@@ -136,6 +136,7 @@ func runHermetic(m *testing.M) int {
 	for _, k := range credentialEnv {
 		_ = os.Unsetenv(k)
 	}
+	_ = os.Unsetenv("GH_TOKEN") // a ghs_ value would make the process an agent
 	shims := filepath.Join(root, "shims")
 	mustMkdir(shims)
 	hitLog := filepath.Join(root, "shim-hits")
@@ -827,5 +828,22 @@ func TestDBRead_TargetAuditNeedsBroker(t *testing.T) {
 	_, _, err := execCmd(newDBReadCmd(), "--manifest", noBrokerManifest(t), "--target", "audit", "find", "logs")
 	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "--target audit cần broker") { //znf:allow-lang
 		t.Errorf("err = %v (code %d), want BadArgs naming the broker", err, exitcode.Code(err))
+	}
+}
+
+func TestBrokerHeaders_IncludesTaskID(t *testing.T) {
+	hermeticDBRead(t)
+	t.Setenv("ZNF_TASK_ID", "ZEN-12")
+	mp, _ := brokerFixture(t, nil)
+	out, errOut, err := execCmd(newBrokerCmd(), "headers", "--manifest", mp)
+	if err != nil {
+		t.Fatalf("err=%v stderr=%s", err, errOut)
+	}
+	var got map[string]string
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("stdout not one JSON object: %q", out)
+	}
+	if !reflect.DeepEqual(got, map[string]string{"Authorization": "Bearer test-jwt", "X-Zenify-Task": "ZEN-12"}) {
+		t.Fatalf("got=%v", got)
 	}
 }

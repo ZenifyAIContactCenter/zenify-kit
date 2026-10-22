@@ -54,7 +54,7 @@ flowchart TD
 | 2 | Lint và build/typecheck vùng đó, lấy output thật | Đọc output |
 | 3 | Nếu chạm DB collection, endpoint, queue hoặc channel chung, chạy contract gate | Đọc repo nào bị ảnh hưởng |
 | 4 | Verify hành vi: test nếu có, hoặc `/znf:run`. **Nếu diff chạm giao diện**, ship kiểm thử UI — golden-diff `zenify visual check` (khi repo có `.znf/visual/routes.json`) rồi `znf:ui-verifier` đo overflow phần tử đã đổi. Chi tiết ở [Kiểm thử UI](/workflows/ui-testing) | Đọc kết quả, kể cả số liệu overflow nếu là UI |
-| 5 | Review độc lập (gói ý định của `/znf:fix` và `/znf:hotfix` có dòng `Loop:`/`Regression:`) trên diff tính từ `git merge-base <baseRef> HEAD`, nên commit mới trên base không hiện thành xoá giả. CRITICAL/HIGH vào vòng sửa, MEDIUM/LOW lên board | Đọc finding |
+| 5 | Review độc lập (gói ý định của `/znf:fix` và `/znf:hotfix` có dòng `Loop:`/`Regression:`) trên diff tính từ `git merge-base "$(zenify wt base)" HEAD` (xem [base thật của worktree](/concepts/base-ref-and-ports#wt-base)), nên commit mới trên base không hiện thành xoá giả. CRITICAL/HIGH vào vòng sửa, MEDIUM/LOW lên board | Đọc finding |
 | Vòng sửa | Sửa hết finding mở trong một wave, chạy lại check liên quan, tối đa 2 vòng | Nếu còn mở sau vòng 2, ship dừng, không commit, và báo bạn |
 | 6 | Xác định thứ tự deploy (đa service) | Đọc thứ tự |
 | 7 | Ghi board vào file, commit và push branch, mở PR với body gồm tóm tắt, thay đổi, cách kiểm, rủi ro merge (một chiều/hai chiều) (không chép SC, tên test hay dòng ledger) | Đọc board bằng `cat`, không đọc bản tóm tắt. Nhận PR URL |

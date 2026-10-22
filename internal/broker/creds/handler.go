@@ -41,7 +41,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	lumi := false
 	defer func() {
 		// Args hold only variable names and the lumi flag, never a value (FR-2.5).
-		h.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/creds", Env: env, Op: mode,
+		h.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: login, Role: role, Endpoint: "/creds", Env: env, Op: mode,
 			Args: map[string]any{"keys": keys, "lumi": lumi}, MS: time.Since(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
@@ -57,7 +57,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	env, mode, lumi = req.Env, req.Mode, req.Lumi // allowlisted, safe to audit
-	if env == "prd" && role != api.RoleLead {
+	// prd: lead gets everything; agent only the read set, never lumi-agent's own
+	// read-write credentials; any other role nothing.
+	if env == "prd" && role != api.RoleLead && (role != api.RoleAgent || mode == api.CredsModeWrite || lumi) {
 		fail(http.StatusForbidden, api.CodeLeadOnly, "prd credentials are lead-only")
 		return
 	}

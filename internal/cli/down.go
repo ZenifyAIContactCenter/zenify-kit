@@ -144,6 +144,13 @@ func newDownCmd() *cobra.Command {
 				case removedDeny > 0:
 					u.Step(ui.StatusOK, "deny", fmt.Sprintf("gỡ %d luật deny .zenify/.env của workspace khỏi ~/.claude/settings.json", removedDeny)) //znf:allow-lang
 				}
+				removedShims, sherr := apply.RemoveShims(home, dryRun)
+				switch {
+				case sherr != nil:
+					u.Step(ui.StatusWarn, "shims", fmt.Sprintf("bỏ qua (%v)", sherr)) //znf:allow-lang
+				case len(removedShims) > 0:
+					u.Step(ui.StatusOK, "shims", fmt.Sprintf("gỡ %d shim wt/pm khỏi ~/.local/bin", len(removedShims))) //znf:allow-lang
+				}
 			}
 
 			// 2 + 3. Each repo: exclude line + owned settings skeleton.

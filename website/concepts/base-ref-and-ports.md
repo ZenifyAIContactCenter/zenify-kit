@@ -51,10 +51,32 @@ flowchart LR
 
 Repo không khai báo gì vẫn nhận branch tích hợp làm base mà không báo lỗi. Vì vậy xác nhận `--base` bằng tay là bước bảo vệ production thật sự. `zenify wt url <slug>` in port đã cấp cho worktree.
 
+## Base thật của worktree: `zenify wt base` {#wt-base}
+
+`baseRef` là base mặc định của repo, còn một worktree có thể được cắt từ branch khác (ví dụ chồng PR lên một feature branch). Skill cần merge-base đúng với base thật, không phải trunk của repo, nên kit có lệnh in nó ra:
+
+```sh
+zenify wt base
+```
+
+Lệnh in đúng một dòng, là ref đầu tiên có giá trị theo thứ tự: `wt.base` (git config của worktree, do `wt new` ghi lúc tạo), rồi `baseRef` trong `.claude/worktree.json`, rồi `origin/main`. Vì stdout chỉ có ref và xuống dòng nên dùng được trong `$(zenify wt base)`. Khi phải lùi về `origin/main` (không có `wt.base` lẫn `baseRef`), lệnh vẫn thoát 0 nhưng in thêm một dòng cảnh báo ra stderr `wt base: no wt.base or baseRef found; using origin/main`, để bạn biết merge-base đang tính với trunk mặc định. Ví dụ thật trong một repo tạm, đặt `wt.base` rồi bỏ nó đi:
+
+```text
+$ git config --worktree wt.base origin/staging
+$ zenify wt base
+origin/staging
+$ git config --worktree --unset wt.base
+$ zenify wt base
+origin/main
+wt base: no wt.base or baseRef found; using origin/main      # dòng này ra stderr
+```
+
+Các skill `ship` và `subagent-driven-development` tính merge-base bằng lệnh này.
+
 ## Liên quan
 
 - [Worktree theo slug](/concepts/worktree-per-slug): nơi `--base` được dùng.
-- Tham chiếu lệnh: [`zenify wt config`](/reference/cli/zenify_wt_config).
+- Tham chiếu lệnh: [`zenify wt config`](/reference/cli/zenify_wt_config), [`zenify wt base`](/reference/cli/zenify_wt_base).
 
 ## Lưu ý
 

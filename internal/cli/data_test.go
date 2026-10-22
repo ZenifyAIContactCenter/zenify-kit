@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
 
@@ -414,5 +416,91 @@ func TestOpenWriteLog_PicksScriptNotInterpreter(t *testing.T) {
 		if !strings.HasPrefix(f.Name(), tc.want) {
 			t.Errorf("argv %v: log %s, want prefix %s", tc.argv, f.Name(), tc.want)
 		}
+	}
+}
+
+// seedAgentCache makes the broker client of the fixture start with a valid
+// cached JWT of role agent, so no /token call is needed.
+func seedAgentCache(t *testing.T) {
+	t.Helper()
+	saved := tuneBrokerClient
+	tuneBrokerClient = func(c *brokerclient.Client) {
+		saved(c)
+		body := `{"url":"` + c.URL + `","token":"jwt-agent","expires_at":"2099-01-01T00:00:00Z","login":"bot","role":"agent"}`
+		writeBrokerCache(t, c.Home, body)
+	}
+	t.Cleanup(func() { tuneBrokerClient = saved })
+}
+
+// A role-agent session never reaches /creds for a prd write: it stops and
+// points at `zenify await data-write`; the dry-run check still comes first.
+func TestDataRun_AgentPrdWriteStopsBeforeCreds(t *testing.T) {
+	f := newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL}, "")
+	seedAgentCache(t)
+	args := []string{"--", "sh", "-c", "true"}
+	_, _, err := runData(append([]string{"--prd", "--write"}, args...)...)
+	if exitcode.Code(err) != exitcode.NeedsDryRun {
+		t.Fatalf("no dry-run: exit %d (err %v), want NeedsDryRun", exitcode.Code(err), err)
+	}
+	if _, _, err := runData(append([]string{"--prd"}, args...)...); err != nil {
+		t.Fatalf("agent prd dry-run: %v", err)
+	}
+	before := len(*f.reqs)
+	_, _, err = runData(append([]string{"--prd", "--write"}, args...)...)
+	if exitcode.Code(err) != exitcode.Fail || err == nil || !strings.Contains(err.Error(), "zenify await data-write") {
+		t.Fatalf("err = %v (exit %d), want Fail naming zenify await data-write", err, exitcode.Code(err))
+	}
+	if len(*f.reqs) != before {
+		t.Errorf("broker got %d /creds requests after the stop, want 0", len(*f.reqs)-before)
+	}
+}
+
+// An installation token in GH_TOKEN (ghs_…) stops a prd write even when the
+// token cache holds another role: the cache may be a lead's JWT.
+func TestDataRun_AgentGHTokenPrdWriteStops(t *testing.T) {
+	f := newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL}, "")
+	t.Setenv("GH_TOKEN", "ghs_x")
+	args := []string{"--", "sh", "-c", "true"}
+	if _, _, err := runData(append([]string{"--prd"}, args...)...); err != nil {
+		t.Fatalf("prd dry-run: %v", err)
+	}
+	before := len(*f.reqs)
+	_, _, err := runData(append([]string{"--prd", "--write"}, args...)...)
+	if exitcode.Code(err) != exitcode.Fail || err == nil || !strings.Contains(err.Error(), "zenify await data-write") {
+		t.Fatalf("err = %v (exit %d), want Fail naming zenify await data-write", err, exitcode.Code(err))
+	}
+	if len(*f.reqs) != before {
+		t.Errorf("broker got %d /creds requests after the stop, want 0", len(*f.reqs)-before)
+	}
+}
+
+// The stop hands the lead a command that runs on the lead's machine: cd to
+// the absolute cwd (the dry-run record is keyed by it), the dry-run, then
+// the write. The summary placeholder is quoted so a paste is no redirect.
+func TestDataRun_AgentStopCommandRunsForLead(t *testing.T) {
+	f := newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL}, "")
+	seedAgentCache(t)
+	args := []string{"--", "sh", "-c", "true 'a b'"}
+	if _, _, err := runData(append([]string{"--prd"}, args...)...); err != nil {
+		t.Fatalf("agent prd dry-run: %v", err)
+	}
+	_, _, err := runData(append([]string{"--prd", "--write"}, args...)...)
+	if err == nil {
+		t.Fatal("want the stop")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "--summary '<what it changes>' --command ") {
+		t.Fatalf("summary placeholder not quoted: %s", msg)
+	}
+	quoted := msg[strings.Index(msg, "--command ")+len("--command "):]
+	out, xerr := exec.Command("sh", "-c", "printf %s "+quoted).Output()
+	if xerr != nil {
+		t.Fatalf("sh cannot unquote %s: %v", quoted, xerr)
+	}
+	const script = `'true '\''a b'\'''` // "true 'a b'" quoted for sh
+	want := "cd " + f.ws + " && zenify data run --prd -- sh -c " + script + " --dry-run" +
+		" && zenify data run --prd --write -- sh -c " + script
+	if string(out) != want {
+		t.Fatalf("command =\n%s\nwant\n%s", out, want)
 	}
 }

@@ -31,7 +31,7 @@ func stripClientHeaders(h http.Header) {
 	for k := range h {
 		ck := http.CanonicalHeaderKey(k)
 		switch {
-		case ck == "Authorization", ck == "Cookie", ck == "Forwarded", ck == "X-Real-Ip",
+		case ck == "Authorization", ck == "Cookie", ck == "Forwarded", ck == "X-Real-Ip", ck == "X-Zenify-Task",
 			strings.HasPrefix(ck, "Cf-"), strings.HasPrefix(ck, "X-Forwarded-"), strings.HasPrefix(ck, "X-Grafana-"):
 			delete(h, k)
 		}
@@ -65,10 +65,10 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 			// parse the JSON-RPC response to split it per call. The request line
 			// below carries the response bytes.
 			for _, c := range calls {
-				a.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: endpoint, Op: c.Name,
+				a.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: login, Role: role, Endpoint: endpoint, Op: c.Name,
 					Args: c.Args, MS: ms, Status: status})
 			}
-			a.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: endpoint, Op: r.Method,
+			a.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: login, Role: role, Endpoint: endpoint, Op: r.Method,
 				Bytes: cw.n, MS: ms, Status: status})
 		}()
 

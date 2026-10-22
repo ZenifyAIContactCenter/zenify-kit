@@ -145,7 +145,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusOK
 	defer func() {
 		if h.audit != nil {
-			h.audit.Log(audit.Entry{TS: start, Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
+			h.audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
 				Endpoint: "/catalog", Op: r.Method, Status: status})
 		}
 	}()

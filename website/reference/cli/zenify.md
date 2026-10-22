@@ -29,6 +29,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 ## Lệnh liên quan
 
 - [zenify analyze](./zenify_analyze): Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief.
+- [zenify await](./zenify_await): Dừng một lượt chạy không người ở cổng cần người duyệt, ghi bản ghi await rồi thoát mã 8.
 - [zenify broker](./zenify_broker): Nhóm lệnh làm việc với credential broker của zenify.
 - [zenify catalog](./zenify_catalog): In danh mục dịch vụ giám sát (datasource Grafana, tên log, trace, metric) dưới dạng YAML.
 - [zenify config](./zenify_config): Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều.
@@ -48,6 +49,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify npm](./zenify_npm): Nhóm lệnh cấu hình npm cho package private trên GitHub Packages.
 - [zenify obs](./zenify_obs): Tóm tắt sức khỏe một route hoặc một trace qua broker, đã che PII và giới hạn kích thước.
 - [zenify observe](./zenify_observe): Nhóm lệnh theo dõi phiên Claude Code: số lần dispatch subagent và lượng tool output.
+- [zenify pm](./zenify_pm): Chọn đúng package manager JS của project (pnpm, yarn, npm, bun) rồi chạy nó, để không sinh thêm lockfile thứ hai.
 - [zenify redis-read](./zenify_redis-read): Chạy một lệnh Redis chỉ đọc qua credential broker.
 - [zenify release-note](./zenify_release-note): Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau.
 - [zenify release-report](./zenify_release-report): Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace.

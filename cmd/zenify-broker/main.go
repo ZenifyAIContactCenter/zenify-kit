@@ -138,6 +138,7 @@ func run(cfgPath string) error {
 		LeadTeam:     cfg.LeadTeam,
 		DevTeam:      cfg.DevTeam,
 		DenyLogins:   cfg.DenyLogins,
+		AgentIDs:     cfg.AgentIDs,
 		GitHub:       auth.GitHub{},
 		Audit:        log,
 		Query:        queryH,

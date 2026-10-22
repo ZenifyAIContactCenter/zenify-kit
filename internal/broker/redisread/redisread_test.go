@@ -687,3 +687,36 @@ func TestRedis_DevPrdServerErrorWithheld(t *testing.T) {
 		t.Fatalf("lead prd: %d %s", st, body)
 	}
 }
+
+func TestRedis_AgentPrdActsAsLead(t *testing.T) {
+	f := newFixture(t)
+	if st, body := f.postAs(t, api.RoleAgent, api.RedisRequest{Env: "prd", Cmd: "GET", Args: []string{"k"}}); st != http.StatusOK || !f.prd.sent("GET") {
+		t.Fatalf("agent GET on prd: %d %s", st, body)
+	}
+	f = newFixture(t)
+	f.prd.err = redisErr("ERR VISIBLE-DETAIL")
+	st, body := f.postAs(t, api.RoleAgent, api.RedisRequest{Env: "prd", Cmd: "TTL", Args: []string{"k"}})
+	if st != 502 || !strings.Contains(string(body), "VISIBLE-DETAIL") || strings.Contains(string(body), api.DevPrdErrorWithheld) {
+		t.Fatalf("agent prd error: %d %s", st, body)
+	}
+}
+
+// Only lead and agent are elevated on prd: a role the code does not know
+// (here none, as outside auth.Require) is restricted like dev.
+func TestRedis_UnknownRolePrdTreatedAsDev(t *testing.T) {
+	prd := &fakeDoer{val: "v"}
+	h := &Handler{Clients: map[string]Doer{"prd": prd}, Audit: &audit.Logger{W: &bytes.Buffer{}}, MaxConcurrent: 2}
+	b, _ := json.Marshal(api.RedisRequest{Env: "prd", Cmd: "GET", Args: []string{"k"}})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/redis", bytes.NewReader(b)))
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), api.CodeLeadOnly) || prd.sent("GET") {
+		t.Fatalf("GET: got %d %s (sent %v), want 403 lead_only", rec.Code, rec.Body.String(), prd.sent("GET"))
+	}
+	prd.err = redisErr("ERR SECRET-ROW-CONTENT")
+	b, _ = json.Marshal(api.RedisRequest{Env: "prd", Cmd: "TTL", Args: []string{"k"}})
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/redis", bytes.NewReader(b)))
+	if rec.Code != http.StatusBadGateway || strings.Contains(rec.Body.String(), "SECRET-ROW-CONTENT") {
+		t.Fatalf("TTL error: got %d %s, want 502 withheld", rec.Code, rec.Body.String())
+	}
+}

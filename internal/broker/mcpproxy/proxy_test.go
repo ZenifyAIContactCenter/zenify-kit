@@ -638,3 +638,18 @@ func TestProxy_UpstreamQueryOverridesClient(t *testing.T) {
 		})
 	}
 }
+
+func TestProxy_StripsTaskHeader(t *testing.T) {
+	got := make(chan http.Header, 1)
+	up := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got <- r.Header.Clone() }))
+	defer up.Close()
+	var out bytes.Buffer
+	srv, tok := stack(t, "grafana", up.URL+"/mcp", nil, &out)
+	do(t, http.MethodPost, srv.URL+"/mcp/grafana", tok, `{}`, map[string]string{"X-Zenify-Task": "ZEN-12"})
+	if v := (<-got).Get("X-Zenify-Task"); v != "" {
+		t.Errorf("X-Zenify-Task reached upstream: %q", v)
+	}
+	if !strings.Contains(out.String(), `"task":"ZEN-12"`) {
+		t.Errorf("audit = %s", out.String())
+	}
+}

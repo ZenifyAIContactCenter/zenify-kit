@@ -63,6 +63,21 @@ Bản build tay từ mã nguồn in `dev` thay cho số phiên bản.
 Cơ chế nhắc phiên bản mới ở đầu mỗi session chỉ có từ `v0.17.7`. Nếu binary trên máy cũ hơn, bạn cần nâng cấp tay một lần bằng `brew upgrade --cask zenify`, `scoop update zenify`, hoặc chạy lại install script. Từ đó về sau, `zenify update` xử lý các lần nâng cấp tiếp theo.
 :::
 
+## Lệnh `wt` và `pm`
+
+`zenify up --apply` cài hai shim `~/.local/bin/wt` và `~/.local/bin/pm` (mode 0755), mỗi file chạy `zenify wt` và `zenify pm`, để skill và worker chạy nền gọi được `wt` và `pm` mà không cần gõ `zenify`. `pm` chọn đúng package manager JS của project: trường `packageManager` của `package.json` gần nhất, không có thì theo lockfile (`pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`, `bun.lock`/`bun.lockb`). Trong monorepo, package con không có cả hai thì `pm` lấy tín hiệu của thư mục cha gần nhất có một trong hai, tới git toplevel, và vẫn chạy manager tại thư mục của package con. `packageManager` chỉ nhận `pnpm`, `yarn`, `npm`, `bun`; tên khác bị từ chối kèm giá trị. Chạy `pm` không đối số thì in tên manager ra stdout, kèm `root` và `reason` ra stderr:
+
+```text
+$ cd website && pm
+npm
+root: /…/zenify-kit/website
+reason: package-lock.json
+```
+
+Mỗi shim có dòng `# managed by zenify`. File `wt` hay `pm` bạn tự viết (không có dòng này) được giữ nguyên: `zenify up` chỉ cảnh báo `… exists and is not managed by zenify; left unchanged`. `zenify down --apply` gỡ các shim có dấu này và để file của bạn yên.
+
+`zenify doctor` có mục `shims`, đòi `wt` và `pm` resolve được trên `PATH`. Thiếu thì in `shims   wt=missing pm=missing — add ~/.local/bin to PATH`; đủ thì in `shims   wt=ok pm=ok`.
+
 Sau khi cài, đi tiếp tới [Bắt đầu nhanh](/getting-started/quickstart) để onboard workspace.
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):

@@ -216,9 +216,11 @@ func TestSessionStart_BrokerRoleLine(t *testing.T) {
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	devLine := "broker: login=devgal role=dev — prd: " + api.DevPrdSummary() + "; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n"                                           //znf:allow-lang
 	dataLine := `data: agent tự chạy zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; --prd --write chờ "ok" của người dùng; xem _shared/data-scripts.md)` //znf:allow-lang
+	agentLine := "broker: login=bot role=agent — prd: read only; ghi prd cần lead, dừng bằng zenify await data-write\n" + dataLine + "\n"                                 //znf:allow-lang
 	for name, c := range map[string]struct{ cache, want string }{
 		"dev expired": {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2000-01-01T00:00:00Z","login":"devgal","role":"dev"}`, devLine + dataLine + "; prd: cần lead\n"}, //znf:allow-lang
 		"lead":        {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"boss","role":"lead"}`, dataLine + "\n"},
+		"agent":       {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"bot","role":"agent"}`, agentLine},
 		"no role":     {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"old"}`, dataLine + "\n"},
 		"no cache":    {"", ""},
 	} {
@@ -237,6 +239,38 @@ func TestSessionStart_BrokerRoleLine(t *testing.T) {
 		if strings.Contains(buf.String(), "jwt-secret-value") || (c.want != "" && !strings.Contains(buf.String(), c.want)) ||
 			(c.want == "" && strings.Contains(buf.String(), "data: zenify data run")) {
 			t.Errorf("%s: session-start output = %q", name, buf.String())
+		}
+	}
+}
+
+// FR-5.3: ZNF_AUTONOMOUS=1 (exactly "1") makes SessionStart point at the autonomous doc,
+// even when the bootstrap digest is printed.
+func TestSessionStart_AutonomousLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	want := "autonomous: ZNF_AUTONOMOUS=1 — read ~/.claude/skills/znf/skills/_shared/autonomous.md first; it overrides every human gate in znf skills\n"
+	for _, v := range []string{"1", "0", ""} {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		digest := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-zenify-kit")
+		if err := os.MkdirAll(digest, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(digest, "BOOTSTRAP.txt"), []byte("DIGEST\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ZNF_AUTONOMOUS", v)
+		var buf bytes.Buffer
+		runSessionStart(mkWorkspace(t), &buf)
+		out := buf.String()
+		if !strings.Contains(out, "DIGEST") {
+			t.Fatalf("ZNF_AUTONOMOUS=%q: digest not printed: %q", v, out)
+		}
+		if got := strings.Contains(out, "_shared/autonomous.md"); got != (v == "1") {
+			t.Errorf("ZNF_AUTONOMOUS=%q: output = %q", v, out)
+		}
+		if v == "1" && !strings.Contains(out, want) {
+			t.Errorf("ZNF_AUTONOMOUS=1: missing line %q in %q", want, out)
 		}
 	}
 }

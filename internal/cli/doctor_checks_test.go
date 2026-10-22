@@ -844,3 +844,25 @@ func writeNoBrokerManifest(t *testing.T) string {
 	}
 	return p
 }
+
+func TestShimsCheck(t *testing.T) {
+	look := func(missing string) func(string) (string, error) {
+		return func(n string) (string, error) {
+			if n == missing {
+				return "", errors.New("not found")
+			}
+			return "/x/" + n, nil
+		}
+	}
+	c := shimsCheck(look("pm"))
+	if c.Name != "shims" {
+		t.Fatalf("name = %q", c.Name)
+	}
+	ok, detail := c.Run()
+	if ok || detail != "wt=ok pm=missing — add ~/.local/bin to PATH" {
+		t.Errorf("missing pm: ok=%v detail=%q", ok, detail)
+	}
+	if ok, _ := shimsCheck(look("")).Run(); !ok {
+		t.Error("both present should be ok")
+	}
+}

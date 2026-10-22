@@ -79,7 +79,11 @@ func newBrokerCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]string{"Authorization": "Bearer " + tok})
+			h := map[string]string{"Authorization": "Bearer " + tok}
+			if task, ok := brokerclient.TaskHeader(); ok {
+				h[brokerclient.TaskHeaderName] = task
+			}
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(h)
 		},
 	}
 	for _, c := range []*cobra.Command{token, headers} {

@@ -71,6 +71,7 @@ func runSessionStart(wsRoot string, w io.Writer) int {
 	// digest's early return cannot swallow it.
 	updateNudge(w)
 	brokerRoleLine(w)
+	autonomousLine(w)
 	if !sentinelPresent() {
 		digest := readBootstrapDigest()
 		if digest != "" {
@@ -96,11 +97,23 @@ func brokerRoleLine(w io.Writer) {
 		return
 	}
 	suffix := ""
+	if role == api.RoleAgent {
+		fmt.Fprintf(w, "broker: login=%s role=agent — prd: read only; ghi prd cần lead, dừng bằng zenify await data-write\n", login) //znf:allow-lang
+	}
 	if role == api.RoleDev {
 		fmt.Fprintf(w, "broker: login=%s role=dev — prd: %s; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n", login, api.DevPrdSummary()) //znf:allow-lang
 		suffix = "; prd: cần lead"                                                                                                      //znf:allow-lang
 	}
 	fmt.Fprintf(w, `data: agent tự chạy zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; --prd --write chờ "ok" của người dùng; xem _shared/data-scripts.md)%s`+"\n", suffix) //znf:allow-lang
+}
+
+// autonomousLine points an unattended worker (ZNF_AUTONOMOUS=1, exactly "1")
+// at the shared doc that overrides every human gate; otherwise it prints nothing.
+func autonomousLine(w io.Writer) {
+	if os.Getenv("ZNF_AUTONOMOUS") != "1" {
+		return
+	}
+	fmt.Fprintln(w, "autonomous: ZNF_AUTONOMOUS=1 — read ~/.claude/skills/znf/skills/_shared/autonomous.md first; it overrides every human gate in znf skills")
 }
 
 func sentinelPresent() bool {

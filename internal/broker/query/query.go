@@ -83,7 +83,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req api.QueryRequest
 	status, rows, nbytes := http.StatusOK, 0, 0
 	defer func() {
-		h.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/query", Env: req.Env, Op: req.Op,
+		h.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: login, Role: role, Endpoint: "/query", Env: req.Env, Op: req.Op,
 			Args: req, Rows: rows, Bytes: nbytes, MS: time.Since(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
@@ -98,7 +98,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Before every guard: CheckSQL refuses comments, which would turn a dev's
 	// comment-prefixed read into 400 instead of lead_only.
 	// devPrd: plan and schema only, explain without execution (FR-14.2).
-	devPrd := role != api.RoleLead && req.Env == "prd"
+	// Allowlist: only lead and agent are elevated; any other role is a dev.
+	restricted := role != api.RoleLead && role != api.RoleAgent
+	devPrd := restricted && req.Env == "prd"
 	if devPrd && !api.DevQueryAllowed(req) {
 		msg := "production data reads are lead-only; dev on prd may only use " + api.DevPrdSummary()
 		if req.Engine == "mongo" && req.Op == "count" {

@@ -25,7 +25,10 @@ type Config struct {
 	// DenyLogins are GitHub logins refused a token (shared accounts), matched
 	// case-insensitively.
 	DenyLogins []string `yaml:"deny_logins"`
-	Grafana    struct {
+	// AgentIDs are GitHub databaseIds of App installations' bot users that get
+	// role agent from an installation token (ghs_).
+	AgentIDs []int64 `yaml:"agent_ids"`
+	Grafana  struct {
 		URL  string   `yaml:"url"`
 		Bin  string   `yaml:"bin"`
 		Addr string   `yaml:"addr"`

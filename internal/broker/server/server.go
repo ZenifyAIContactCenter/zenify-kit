@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,17 +24,20 @@ type Deps struct {
 	// (case-insensitive).
 	LeadTeam, DevTeam string
 	DenyLogins        []string
-	GitHub            auth.GitHub
-	Audit             *audit.Logger    // nil = stdout
-	Now               func() time.Time // nil = time.Now
-	Query             http.Handler     // POST /query; nil = route not served
-	Redis             http.Handler     // POST /redis; nil = route not served
-	E2E               http.Handler     // POST /e2e/account; nil = route not served
-	Creds             http.Handler     // POST /creds; nil = route not served
-	Catalog           http.Handler     // POST /catalog; nil = route not served
-	CatalogDrift      http.Handler     // POST /catalog/drift; nil = route not served
-	ObsRoute          http.Handler     // POST /obs/route; nil = route not served
-	ObsTrace          http.Handler     // POST /obs/trace; nil = route not served
+	// AgentIDs are the GitHub databaseIds whose installation token (ghs_)
+	// gets role agent; empty = no installation token is accepted.
+	AgentIDs     []int64
+	GitHub       auth.GitHub
+	Audit        *audit.Logger    // nil = stdout
+	Now          func() time.Time // nil = time.Now
+	Query        http.Handler     // POST /query; nil = route not served
+	Redis        http.Handler     // POST /redis; nil = route not served
+	E2E          http.Handler     // POST /e2e/account; nil = route not served
+	Creds        http.Handler     // POST /creds; nil = route not served
+	Catalog      http.Handler     // POST /catalog; nil = route not served
+	CatalogDrift http.Handler     // POST /catalog/drift; nil = route not served
+	ObsRoute     http.Handler     // POST /obs/route; nil = route not served
+	ObsTrace     http.Handler     // POST /obs/trace; nil = route not served
 	// MCP maps a name to its proxy, served on /mcp/<name> (any method, any
 	// subpath); an unknown name is 404. Empty = no /mcp routes.
 	MCP map[string]http.Handler
@@ -108,7 +112,7 @@ func New(cfg Deps) http.Handler {
 			h, ok := cfg.MCP[r.PathValue("name")]
 			if !ok {
 				http.NotFound(w, r)
-				cfg.Audit.Log(audit.Entry{TS: cfg.Now(), Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
+				cfg.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: cfg.Now(), Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
 					Endpoint: "/mcp/" + r.PathValue("name"), Op: r.Method, Status: http.StatusNotFound})
 				return
 			}
@@ -132,7 +136,7 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 	start := s.d.Now()
 	login, role, status := "", "", http.StatusOK
 	defer func() {
-		s.d.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/token",
+		s.d.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: login, Role: role, Endpoint: "/token",
 			MS: s.d.Now().Sub(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
@@ -149,14 +153,22 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusUnauthorized, api.CodeGitHubTokenInvalid, "body must be {\"github_token\":\"...\"}")
 		return
 	}
-	l, err := s.d.GitHub.Member(r.Context(), req.GitHubToken, s.d.Org)
-	if err == nil {
-		login = l
-		role, err = s.role(r, req.GitHubToken, l)
+	var err error
+	if strings.HasPrefix(req.GitHubToken, "ghs_") {
+		login, role, err = s.agent(r, req.GitHubToken)
+	} else {
+		var l string
+		if l, err = s.d.GitHub.Member(r.Context(), req.GitHubToken, s.d.Org); err == nil {
+			login = l
+			role, err = s.role(r, req.GitHubToken, l)
+		}
 	}
 	switch {
 	case errors.Is(err, errLoginDenied):
 		fail(http.StatusForbidden, api.CodeLoginDenied, "login "+login+" is not allowed to use the broker")
+		return
+	case errors.Is(err, errNotAgent):
+		fail(http.StatusForbidden, api.CodeNotAllowed, "GitHub App installation is not in agent_ids")
 		return
 	case errors.Is(err, errNoTeam):
 		fail(http.StatusForbidden, api.CodeNotAllowed, "not an active member of team "+s.d.LeadTeam+" or "+s.d.DevTeam)
@@ -189,15 +201,40 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 var (
 	errLoginDenied = errors.New("login denied")
 	errNoTeam      = errors.New("in neither team")
+	errNotAgent    = errors.New("installation not in agent_ids")
 )
+
+// agent identifies an installation token's bot via GraphQL (GitHub refuses it
+// on /user): deny_logins first, then the bot's databaseId must be in agent_ids.
+// login is returned on errLoginDenied too, for the error message and audit.
+func (s *server) agent(r *http.Request, ghToken string) (string, string, error) {
+	login, id, err := s.d.GitHub.Viewer(r.Context(), ghToken)
+	if err != nil {
+		return "", "", err
+	}
+	if s.denied(login) {
+		return login, "", errLoginDenied
+	}
+	if !slices.Contains(s.d.AgentIDs, id) {
+		return login, "", errNotAgent
+	}
+	return login, api.RoleAgent, nil
+}
+
+func (s *server) denied(login string) bool {
+	for _, d := range s.d.DenyLogins {
+		if strings.EqualFold(d, login) {
+			return true
+		}
+	}
+	return false
+}
 
 // role decides an org member's role (FR-14.1): deny_logins first, then the
 // lead team, then the dev team, each asked with the caller's own token.
 func (s *server) role(r *http.Request, ghToken, login string) (string, error) {
-	for _, d := range s.d.DenyLogins {
-		if strings.EqualFold(d, login) {
-			return "", errLoginDenied
-		}
+	if s.denied(login) {
+		return "", errLoginDenied
 	}
 	for _, t := range []struct{ team, role string }{{s.d.LeadTeam, api.RoleLead}, {s.d.DevTeam, api.RoleDev}} {
 		ok, err := s.d.GitHub.TeamMember(r.Context(), ghToken, s.d.Org, t.team, login)

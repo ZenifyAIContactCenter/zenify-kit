@@ -126,6 +126,22 @@ func TestEnsure_FreshUser(t *testing.T) { // SC-7
 	}
 }
 
+// A GitHub App bot login (zenie-dev[bot]) is not a valid email local-part:
+// the email is sanitised, while the password still derives from the login.
+func TestEnsure_BotLoginEmailSanitised(t *testing.T) {
+	app := newFakeApp()
+	r, err := newProvisioner(app).Ensure(context.Background(), "Zenie-Dev[bot]", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Email != "e2e-zenie-dev-bot--agent@e2e.test" {
+		t.Fatalf("email = %q", r.Email)
+	}
+	if want := Password([]byte("testkey"), "zenie-dev[bot]", "agent", 230); r.Password != want {
+		t.Fatal("password must derive from the unsanitised login")
+	}
+}
+
 func TestEnsure_CacheExpiresAfterAnHour(t *testing.T) {
 	app := newFakeApp()
 	now := testNow

@@ -250,3 +250,13 @@ func TestLoad_CatalogMissingRepoPath(t *testing.T) {
 		t.Errorf("got %v", err)
 	}
 }
+
+func TestLoad_AgentIDs(t *testing.T) {
+	c, err := Load(writeCfg(t, sampleYAML+"agent_ids: [346015963]\n"), envOf(fullEnv()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.AgentIDs) != 1 || c.AgentIDs[0] != 346015963 {
+		t.Errorf("AgentIDs = %v, want [346015963]", c.AgentIDs)
+	}
+}

@@ -332,6 +332,31 @@ func toolPresenceCheck(tools []string) Check {
 	}
 }
 
+// shimsCheck reports whether the wt and pm commands resolve on PATH, i.e. the
+// shims `zenify up` writes to ~/.local/bin are installed and reachable.
+func shimsCheck(lookPath func(string) (string, error)) Check {
+	return Check{
+		Name: "shims",
+		Run: func() (bool, string) {
+			ok := true
+			var parts []string
+			for _, t := range []string{"wt", "pm"} {
+				if _, err := lookPath(t); err != nil {
+					ok = false
+					parts = append(parts, t+"=missing")
+				} else {
+					parts = append(parts, t+"=ok")
+				}
+			}
+			detail := strings.Join(parts, " ")
+			if !ok {
+				detail += " — add ~/.local/bin to PATH"
+			}
+			return ok, detail
+		},
+	}
+}
+
 // playwrightCheck reports whether the Playwright MCP is registered and whether
 // browser binaries are present — READ-ONLY, it never launches a browser (FR-012/
 // FR-066). ok = MCP registered; browser absence is surfaced in the detail rather
@@ -581,6 +606,7 @@ func registerDefaultChecks() {
 	RegisterCheck(dockerCheck())
 	RegisterCheck(gitGuardCheck(os.UserHomeDir))
 	RegisterCheck(gitIdentityCheck())
+	RegisterCheck(shimsCheck(exec.LookPath))
 	npmInteractive := func() bool {
 		return npmTokenInteractive(false, term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd())))
 	}

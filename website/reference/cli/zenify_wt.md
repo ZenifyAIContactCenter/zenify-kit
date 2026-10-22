@@ -23,6 +23,7 @@ Mọi lệnh trong nhóm chạy từ bên trong repo, hoặc bên trong một wo
 ## Lệnh liên quan
 
 - [zenify](./zenify): Binary dòng lệnh của ZenifyKit, chứa mọi lệnh workspace và plugin skill đi kèm.
+- [zenify wt base](./zenify_wt_base): In base thật của worktree hiện tại, để skill tính merge-base đúng.
 - [zenify wt config](./zenify_wt_config): In cấu hình worktree đã resolve của repo hiện tại, hoặc port sẽ cấp cho một key.
 - [zenify wt ls](./zenify_wt_ls): Liệt kê worktree trong repo hiện tại, kèm branch, port, trạng thái merge và dev server đang chạy.
 - [zenify wt new](./zenify_wt_new): Tạo worktree mới cho một task, kèm branch, port riêng và môi trường dev đã seed.

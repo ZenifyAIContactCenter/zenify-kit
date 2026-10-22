@@ -384,6 +384,18 @@ func (p *Provisioner) keyLock(k cacheKey) chan struct{} {
 	return p.keyLocks[k]
 }
 
+// emailLocal makes a lowercased login safe for an email local-part: a bot
+// login such as zenie-dev[bot] has characters an email cannot carry. Only the
+// email uses it; the cache key and password keep the login itself.
+func emailLocal(login string) string {
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			return r
+		}
+		return '-'
+	}, login)
+}
+
 // Ensure returns the account of login for role, following FR-5.2: P(period),
 // then P(period-1) rotated to P(period), then create-if-missing, admin reset
 // to a temporary password and self-change to P(period).
@@ -391,7 +403,7 @@ func (p *Provisioner) Ensure(ctx context.Context, login, role string) (api.E2EAc
 	login = strings.ToLower(login)
 	now := p.Now()
 	period := Period(now)
-	resp := api.E2EAccountResponse{Domain: p.Domain, Email: "e2e-" + login + "-" + role + "@" + p.EmailDomain,
+	resp := api.E2EAccountResponse{Domain: p.Domain, Email: "e2e-" + emailLocal(login) + "-" + role + "@" + p.EmailDomain,
 		Password: Password(p.Key, login, role, period), Role: role}
 	k := cacheKey{login, role, period}
 

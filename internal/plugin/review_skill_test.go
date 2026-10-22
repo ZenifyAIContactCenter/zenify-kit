@@ -153,3 +153,34 @@ func TestReviewSkill_FourGatesIntentOpusT3(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeBaseUsesWtBase(t *testing.T) {
+	dest := t.TempDir()
+	if _, err := Sync(dest, filepath.Join(dest, ".manifest.json")); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	for _, f := range []string{
+		"skills/ship/SKILL.md",
+		"skills/ship/references/gate-evidence.md",
+		"skills/ship/references/ui-verification-notes.md",
+		"skills/ship/references/stacked-ship.md",
+		"skills/subagent-driven-development/SKILL.md",
+	} {
+		b, err := os.ReadFile(filepath.Join(dest, f))
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		s := string(b)
+		if !strings.Contains(s, `git merge-base "$(zenify wt base)" HEAD`) {
+			t.Errorf("%s: missing `git merge-base \"$(zenify wt base)\" HEAD`", f)
+		}
+		if strings.Contains(s, "git merge-base <baseRef> HEAD") {
+			t.Errorf("%s: still uses `git merge-base <baseRef> HEAD`", f)
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(dest, "skills/ship/references/stacked-ship.md"))
+	head := strings.Join(strings.SplitN(string(b), "\n", 12)[6:8], "\n")
+	if !strings.Contains(head, "Trunk is `baseRef`") {
+		t.Errorf("stacked-ship.md lines 7-8 must keep `Trunk is `baseRef``; got %q", head)
+	}
+}

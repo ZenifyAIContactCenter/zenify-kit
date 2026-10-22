@@ -13,6 +13,7 @@ const (
 	NoCatalog   = 5
 	Drift       = 6
 	NeedsDryRun = 7
+	Awaiting    = 8 // an unattended run stopped at a human gate; see `zenify await`
 )
 
 // Error carries an exit code alongside an underlying error.

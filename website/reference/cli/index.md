@@ -34,6 +34,8 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | Lệnh | Mô tả |
 |---|---|
 | [zenify analyze](./zenify_analyze) | Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief. |
+| [zenify await](./zenify_await) | Dừng một lượt chạy không người ở cổng cần người duyệt, ghi bản ghi await rồi thoát mã 8. |
+| [zenify await show](./zenify_await_show) | In lại bản ghi await theo id. |
 | [zenify broker](./zenify_broker) | Nhóm lệnh làm việc với credential broker của zenify. |
 | [zenify broker headers](./zenify_broker_headers) | In header Authorization cho MCP http của Claude Code, dưới dạng một object JSON. |
 | [zenify broker token](./zenify_broker_token) | In JWT của credential broker ra stdout, dùng cache và tự xin lại khi còn dưới 60 giây. |
@@ -74,6 +76,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify observe report](./zenify_observe_report) | Tóm tắt số lần dispatch subagent và lượng tool output của từng phiên Claude Code. |
 | [zenify observe statusline](./zenify_observe_statusline) | Vẽ một dòng statusline cho Claude Code với model, ngữ cảnh, số dispatch, tool output và chi phí. |
 | [zenify observe statusline install](./zenify_observe_statusline_install) | Ghi key `statusLine` trỏ tới `zenify observe statusline` vào `~/.claude/settings.json`. |
+| [zenify pm](./zenify_pm) | Chọn đúng package manager JS của project (pnpm, yarn, npm, bun) rồi chạy nó, để không sinh thêm lockfile thứ hai. |
 | [zenify redis-read](./zenify_redis-read) | Chạy một lệnh Redis chỉ đọc qua credential broker. |
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
 | [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace. |
@@ -98,6 +101,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify visual](./zenify_visual) | Nhóm lệnh visual regression: chụp từng route và so với ảnh baseline đã commit. |
 | [zenify visual check](./zenify_visual_check) | So ảnh chụp từng route với baseline, hoặc chụp lại baseline khi giao diện đổi có chủ ý. |
 | [zenify wt](./zenify_wt) | Nhóm lệnh quản lý worktree theo slug: tạo, liệt kê, gỡ, dọn, kèm port và môi trường dev riêng cho từng task. |
+| [zenify wt base](./zenify_wt_base) | In base thật của worktree hiện tại, để skill tính merge-base đúng. |
 | [zenify wt config](./zenify_wt_config) | In cấu hình worktree đã resolve của repo hiện tại, hoặc port sẽ cấp cho một key. |
 | [zenify wt ls](./zenify_wt_ls) | Liệt kê worktree trong repo hiện tại, kèm branch, port, trạng thái merge và dev server đang chạy. |
 | [zenify wt new](./zenify_wt_new) | Tạo worktree mới cho một task, kèm branch, port riêng và môi trường dev đã seed. |

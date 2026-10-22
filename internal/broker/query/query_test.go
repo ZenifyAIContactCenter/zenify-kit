@@ -814,3 +814,36 @@ func TestMySQLScheme(t *testing.T) {
 		}
 	}
 }
+
+func TestQuery_AgentPrdActsAsLead(t *testing.T) {
+	req := api.QueryRequest{Env: "prd", Engine: "mongo", Op: "find", Coll: "accounts"}
+	f := newFixture(t, okRun)
+	if st, _, e := f.postAs(t, "bot", api.RoleDev, req); st != http.StatusForbidden {
+		t.Fatalf("dev control: %d %+v", st, e)
+	}
+	f = newFixture(t, okRun)
+	st, _, e := f.postAs(t, "bot", api.RoleAgent, req)
+	if st != http.StatusOK {
+		t.Fatalf("agent: %d %+v", st, e)
+	}
+	if atomic.LoadInt32(f.calls) != 1 {
+		t.Fatal("seam must run once")
+	}
+}
+
+// Only lead and agent are elevated on prd: a role the code does not know
+// (here none, as outside auth.Require) is restricted like dev.
+func TestQuery_UnknownRolePrdTreatedAsDev(t *testing.T) {
+	f := newFixture(t, okRun)
+	b, _ := json.Marshal(api.QueryRequest{Env: "prd", Engine: "mongo", Op: "find", Coll: "accounts"})
+	rec := httptest.NewRecorder()
+	f.h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/query", bytes.NewReader(b)))
+	var e api.Error
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	if rec.Code != http.StatusForbidden || e.Error != api.CodeLeadOnly {
+		t.Fatalf("got %d %s, want 403 lead_only", rec.Code, rec.Body.Bytes())
+	}
+	if n := atomic.LoadInt32(f.calls); n != 0 {
+		t.Fatalf("%d processes started, want 0", n)
+	}
+}

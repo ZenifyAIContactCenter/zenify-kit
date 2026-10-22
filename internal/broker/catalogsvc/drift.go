@@ -55,7 +55,7 @@ func (d *Drift) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req api.DriftRequest
 	defer func() {
 		if d.audit != nil {
-			d.audit.Log(audit.Entry{TS: start, Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
+			d.audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
 				Endpoint: "/catalog/drift", Env: req.Env, Op: r.Method, Status: status})
 		}
 	}()
