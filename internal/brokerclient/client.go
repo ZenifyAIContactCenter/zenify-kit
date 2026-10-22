@@ -72,6 +72,38 @@ type cached struct {
 	ExpiresAt string `json:"expires_at"`
 	Login     string `json:"login"`
 	Role      string `json:"role"`
+	// Src is the GitHub token source Token was traded for: srcAgent or
+	// srcUser. Another source is a cache miss, so a lead's JWT never serves an
+	// agent process or the reverse. Empty (written before the field) is srcUser.
+	Src string `json:"src,omitempty"`
+}
+
+const (
+	srcUser  = "user"
+	srcAgent = "agent"
+)
+
+// AgentGHToken reports whether GH_TOKEN holds a GitHub App installation token
+// (ghs_…), i.e. this process trades for the agent role. It reads only the
+// environment, never the token cache.
+func AgentGHToken() bool {
+	return strings.HasPrefix(strings.TrimSpace(os.Getenv("GH_TOKEN")), "ghs_")
+}
+
+// tokenSource is the source a JWT traded by this process is cached under.
+func tokenSource() string {
+	if AgentGHToken() {
+		return srcAgent
+	}
+	return srcUser
+}
+
+// source is the entry's Src, with a pre-field entry read as srcUser.
+func (ch cached) source() string {
+	if ch.Src == "" {
+		return srcUser
+	}
+	return ch.Src
 }
 
 func (c *Client) now() time.Time {
@@ -108,29 +140,35 @@ func CachedIdentity(home string) (url, login, role string, ok bool) {
 }
 
 func readIdentity(path string) (url, login, role string, ok bool) {
+	ch, ok := readCache(path)
+	return ch.URL, ch.Login, ch.Role, ok
+}
+
+func readCache(path string) (cached, bool) {
 	b, err := os.ReadFile(path) //nolint:gosec // G304 -- the token cache under the user's own home
 	if err != nil {
-		return "", "", "", false
+		return cached{}, false
 	}
 	var ch cached
 	if json.Unmarshal(b, &ch) != nil {
-		return "", "", "", false
+		return cached{}, false
 	}
-	return ch.URL, ch.Login, ch.Role, true
+	return ch, true
 }
 
-// CachedRole is the role in this client's cache when it was issued by c.URL,
-// read without any network call and ignoring expiry; "" when unknown.
+// CachedRole is the role in this client's cache when it was issued by c.URL
+// for this process's token source, read without any network call and
+// ignoring expiry; "" when unknown.
 func (c *Client) CachedRole() string {
 	p, err := c.cachePath()
 	if err != nil {
 		return ""
 	}
-	url, _, role, ok := readIdentity(p)
-	if !ok || url != c.URL {
+	ch, ok := readCache(p)
+	if !ok || ch.URL != c.URL || ch.source() != tokenSource() {
 		return ""
 	}
-	return role
+	return ch.Role
 }
 
 // Token returns a JWT valid for at least 60 more seconds, from the cache when
@@ -142,18 +180,15 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 
 // TokenInfo is Token plus the login and role the JWT was issued for. A cached
 // entry without a role predates roles; the broker refuses its JWT, so it is a
-// cache miss.
+// cache miss. An entry from another token source (see cached.Src) is a miss.
 func (c *Client) TokenInfo(ctx context.Context) (token, login, role string, err error) {
 	p, err := c.cachePath()
 	if err != nil {
 		return "", "", "", err
 	}
-	if b, err := os.ReadFile(p); err == nil { //nolint:gosec // G304 -- p is under the user's own ~/.zenify
-		var ch cached
-		if json.Unmarshal(b, &ch) == nil && ch.Token != "" && ch.Role != "" && ch.URL == c.URL {
-			if exp, err := time.Parse(time.RFC3339, ch.ExpiresAt); err == nil && exp.Sub(c.now()) >= refreshWindow {
-				return ch.Token, ch.Login, ch.Role, nil
-			}
+	if ch, ok := readCache(p); ok && ch.Token != "" && ch.Role != "" && ch.URL == c.URL && ch.source() == tokenSource() {
+		if exp, err := time.Parse(time.RFC3339, ch.ExpiresAt); err == nil && exp.Sub(c.now()) >= refreshWindow {
+			return ch.Token, ch.Login, ch.Role, nil
 		}
 	}
 	return c.refresh(ctx, p)
@@ -186,6 +221,7 @@ func (c *Client) DropCache() error {
 }
 
 func (c *Client) refresh(ctx context.Context, cachePath string) (token, login, role string, err error) {
+	src := tokenSource() // before the token is asked for, as GHTokenExec reads the same GH_TOKEN
 	gh := c.GHToken
 	if gh == nil {
 		gh = GHTokenExec
@@ -204,7 +240,7 @@ func (c *Client) refresh(ctx context.Context, cachePath string) (token, login, r
 	if _, err := time.Parse(time.RFC3339, resp.ExpiresAt); err != nil {
 		return "", "", "", fmt.Errorf("broker /token: bad expires_at %q", resp.ExpiresAt)
 	}
-	b, err := json.Marshal(cached{URL: c.URL, Token: resp.Token, ExpiresAt: resp.ExpiresAt, Login: resp.Login, Role: resp.Role})
+	b, err := json.Marshal(cached{URL: c.URL, Token: resp.Token, ExpiresAt: resp.ExpiresAt, Login: resp.Login, Role: resp.Role, Src: src})
 	if err != nil {
 		return "", "", "", err
 	}

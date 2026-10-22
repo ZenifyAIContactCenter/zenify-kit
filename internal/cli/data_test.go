@@ -453,3 +453,22 @@ func TestDataRun_AgentPrdWriteStopsBeforeCreds(t *testing.T) {
 		t.Errorf("broker got %d /creds requests after the stop, want 0", len(*f.reqs)-before)
 	}
 }
+
+// An installation token in GH_TOKEN (ghs_…) stops a prd write even when the
+// token cache holds another role: the cache may be a lead's JWT.
+func TestDataRun_AgentGHTokenPrdWriteStops(t *testing.T) {
+	f := newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL}, "")
+	t.Setenv("GH_TOKEN", "ghs_x")
+	args := []string{"--", "sh", "-c", "true"}
+	if _, _, err := runData(append([]string{"--prd"}, args...)...); err != nil {
+		t.Fatalf("prd dry-run: %v", err)
+	}
+	before := len(*f.reqs)
+	_, _, err := runData(append([]string{"--prd", "--write"}, args...)...)
+	if exitcode.Code(err) != exitcode.Fail || err == nil || !strings.Contains(err.Error(), "zenify await data-write") {
+		t.Fatalf("err = %v (exit %d), want Fail naming zenify await data-write", err, exitcode.Code(err))
+	}
+	if len(*f.reqs) != before {
+		t.Errorf("broker got %d /creds requests after the stop, want 0", len(*f.reqs)-before)
+	}
+}

@@ -405,6 +405,7 @@ func TestTokenInfo_RolelessCacheIsMiss(t *testing.T) {
 
 // CachedRole reads only the cache, ignores expiry, and trusts no other broker's entry.
 func TestCachedRole_NoNetworkURLScoped(t *testing.T) {
+	t.Setenv("GH_TOKEN", "")
 	home := t.TempDir()
 	dir := filepath.Join(home, ".zenify", "broker")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -461,6 +462,65 @@ func TestDo_SendsTaskHeader(t *testing.T) {
 		}
 		if got != c.want || (c.want == "" && seen) {
 			t.Errorf("%s: header = %q (present %v), want %q", name, got, seen, c.want)
+		}
+	}
+}
+
+func writeCache(t *testing.T, home, body string) {
+	t.Helper()
+	dir := filepath.Join(home, ".zenify", "broker")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "token.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A JWT cached for one token source is never served to the other: a lead's
+// JWT (src user, or no src from before the field) must not reach a process
+// holding an installation token (GH_TOKEN=ghs_…), and an agent's JWT must not
+// reach a developer's process.
+func TestTokenInfo_SourceMismatchIsMiss(t *testing.T) {
+	for name, c := range map[string]struct{ src, ghToken, wantSrc string }{
+		"lead entry, agent process":         {`"src":"user",`, "ghs_x", "agent"},
+		"pre-src lead entry, agent process": {``, "ghs_x", "agent"},
+		"agent entry, user process":         {`"src":"agent",`, "", "user"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GH_TOKEN", c.ghToken)
+			var calls int32
+			srv := fakeBroker(t, &calls, nil)
+			now := t0
+			home := t.TempDir()
+			writeCache(t, home, fmt.Sprintf(`{"url":%q,%s"token":"cached-jwt","expires_at":"2099-01-01T00:00:00Z","login":"octo","role":"lead"}`, srv.URL, c.src))
+			c2 := newClient(srv.URL, home, &now)
+			if r := c2.CachedRole(); r != "" {
+				t.Errorf("CachedRole = %q, want empty on a source mismatch", r)
+			}
+			tok, _, role, err := c2.TokenInfo(context.Background())
+			if err != nil || tok == "cached-jwt" || role != "dev" || calls != 1 {
+				t.Fatalf("tok=%q role=%q err=%v calls=%d, want a fresh token from /token", tok, role, err, calls)
+			}
+			b, _ := os.ReadFile(filepath.Join(home, ".zenify", "broker", "token.json"))
+			if !strings.Contains(string(b), `"src":"`+c.wantSrc+`"`) {
+				t.Errorf("cache = %s, want src %s", b, c.wantSrc)
+			}
+			if tok2, _, _, _ := c2.TokenInfo(context.Background()); tok2 != tok || calls != 1 {
+				t.Errorf("second call tok=%q calls=%d, want a cache hit", tok2, calls)
+			}
+			if r := c2.CachedRole(); r != "dev" {
+				t.Errorf("CachedRole after refresh = %q, want dev", r)
+			}
+		})
+	}
+}
+
+func TestAgentGHToken(t *testing.T) {
+	for v, want := range map[string]bool{"": false, "ghp_x": false, "gho_x": false, "ghs_x": true, "  ghs_x\n": true} {
+		t.Setenv("GH_TOKEN", v)
+		if got := AgentGHToken(); got != want {
+			t.Errorf("GH_TOKEN=%q: %v, want %v", v, got, want)
 		}
 	}
 }

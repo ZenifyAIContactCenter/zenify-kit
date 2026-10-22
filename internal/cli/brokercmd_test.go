@@ -136,6 +136,7 @@ func runHermetic(m *testing.M) int {
 	for _, k := range credentialEnv {
 		_ = os.Unsetenv(k)
 	}
+	_ = os.Unsetenv("GH_TOKEN") // a ghs_ value would make the process an agent
 	shims := filepath.Join(root, "shims")
 	mustMkdir(shims)
 	hitLog := filepath.Join(root, "shim-hits")

@@ -110,7 +110,8 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 		}
 	}
 
-	if env == "prd" && write && bc.CachedRole() == api.RoleAgent {
+	// GH_TOKEN=ghs_… stops too: the cache may still hold a lead's JWT.
+	if env == "prd" && write && (bc.CachedRole() == api.RoleAgent || brokerclient.AgentGHToken()) {
 		cmdline := []string{"zenify", "data", "run", "--prd", "--write"}
 		if lumi {
 			cmdline = append(cmdline, "--lumi")
