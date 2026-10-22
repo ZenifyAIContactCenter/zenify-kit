@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.45.0
+
+*2026-10-22*
+
+- **Worker tự động kiểm UI bằng `needs-human`:** khi `ZNF_AUTONOMOUS=1`, `zenify ui-verify check` mà chưa có bằng chứng UI-verify khớp HEAD thì ghi một bản ghi chờ duyệt `needs-human` (summary bắt đầu bằng `cần kiểm UI:`), in `id` rồi thoát mã 8, thay vì mã 1 (BLOCKED). Bước 4 của `/ship` cũng dừng bằng `zenify await needs-human` thay vì dispatch ui-verifier khi diff có file hiển thị UI. Ngoài chế độ tự động, lệnh giữ nguyên hành vi cũ. Xem [Chế độ tự động](/guides/autonomous#ui).
+- **`wt` seed deps từ `ZENIFY_DEPS_CACHE`:** khi biến này được đặt và có `<repo>/<thư mục deps>` trong cache, `zenify wt new` (chế độ `symlink` hoặc `clone`) lấy deps từ cache nếu `package-lock.json` của cache khớp từng byte với worktree. Lock khác hoặc không đọc được thì bỏ cache và chạy lệnh install như trước. Không đặt biến thì hành vi không đổi.
+- **Skill `run` có quy tắc khởi động cho sandbox của worker:** khi `ZNF_AUTONOMOUS=1`, skill trỏ tới `references/autonomous-sandbox.md`: chỉ khởi động app mà thay đổi cần, chạy `worker-env.mjs` trước, be chạy Node 16, đọc port từ `deploy/worker/AGENTS.md`. Sandbox không có FE nên không có URL cho `znf:ui-verifier`; kiểm bằng request thật và trích output.
+
 ## v0.44.0
 
 *2026-10-22*
