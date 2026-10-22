@@ -48,6 +48,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify npm](./zenify_npm): Nhóm lệnh cấu hình npm cho package private trên GitHub Packages.
 - [zenify obs](./zenify_obs): Tóm tắt sức khỏe một route hoặc một trace qua broker, đã che PII và giới hạn kích thước.
 - [zenify observe](./zenify_observe): Nhóm lệnh theo dõi phiên Claude Code: số lần dispatch subagent và lượng tool output.
+- [zenify pm](./zenify_pm): Chọn đúng package manager JS của project (pnpm, yarn, npm, bun) rồi chạy nó, để không sinh thêm lockfile thứ hai.
 - [zenify redis-read](./zenify_redis-read): Chạy một lệnh Redis chỉ đọc qua credential broker.
 - [zenify release-note](./zenify_release-note): Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau.
 - [zenify release-report](./zenify_release-report): Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace.

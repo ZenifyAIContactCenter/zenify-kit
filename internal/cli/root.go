@@ -69,5 +69,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newVisualCmd())
 	root.AddCommand(newE2eCmd())
 	root.AddCommand(newHooksRunCmd())
+	root.AddCommand(newPmCmd())
 	return root
 }
