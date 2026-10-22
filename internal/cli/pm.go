@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -67,8 +66,12 @@ func detectPM(dir string, lookPath func(string) (string, error)) (mgr, root, rea
 	return mgr, root, reason, nil
 }
 
+// pmRunner starts the manager at path (argv[0] is the manager name) inside root and returns
+// the exit code. On Unix it replaces the process (syscall.Exec) and only returns on failure.
+type pmRunner func(path string, argv []string, root string, stdout, stderr io.Writer) int
+
 // runPM implements `pm [args…]` and returns the process exit code.
-func runPM(args []string, dir string, stdout, stderr io.Writer, lookPath func(string) (string, error)) int {
+func runPM(args []string, dir string, stdout, stderr io.Writer, lookPath func(string) (string, error), run pmRunner) int {
 	mgr, root, reason, err := detectPM(dir, lookPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
@@ -79,18 +82,12 @@ func runPM(args []string, dir string, stdout, stderr io.Writer, lookPath func(st
 		fmt.Fprintf(stderr, "root: %s\nreason: %s\n", root, reason)
 		return 0
 	}
-	c := exec.Command(mgr, args...)
-	c.Dir = root
-	c.Stdin, c.Stdout, c.Stderr = os.Stdin, stdout, stderr
-	if err := c.Run(); err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			return ee.ExitCode()
-		}
-		fmt.Fprintf(stderr, "pm: %v\n", err)
+	path, err := lookPath(mgr)
+	if err != nil {
+		fmt.Fprintf(stderr, "pm: detected %s (from %s) but it is not installed\n", mgr, reason)
 		return 1
 	}
-	return 0
+	return run(path, append([]string{mgr}, args...), root, stdout, stderr)
 }
 
 func newPmCmd() *cobra.Command {
@@ -104,7 +101,7 @@ func newPmCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if code := runPM(args, dir, cmd.OutOrStdout(), cmd.ErrOrStderr(), exec.LookPath); code != 0 {
+			if code := runPM(args, dir, cmd.OutOrStdout(), cmd.ErrOrStderr(), exec.LookPath, execPM); code != 0 {
 				os.Exit(code)
 			}
 			return nil

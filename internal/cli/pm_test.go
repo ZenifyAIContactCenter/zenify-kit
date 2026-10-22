@@ -3,8 +3,11 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -86,7 +89,7 @@ func TestPmCmdNoArgs(t *testing.T) {
 	root := t.TempDir()
 	writeFiles(t, root, map[string]string{"package.json": `{}`, "yarn.lock": ""})
 	var out, errb bytes.Buffer
-	code := runPM(nil, root, &out, &errb, lookAll)
+	code := runPM(nil, root, &out, &errb, lookAll, nil)
 	if code != 0 || out.String() != "yarn\n" {
 		t.Fatalf("code=%d stdout=%q", code, out.String())
 	}
@@ -97,8 +100,77 @@ func TestPmCmdNoArgs(t *testing.T) {
 
 func TestPmCmdErrorExit1(t *testing.T) {
 	var out, errb bytes.Buffer
-	code := runPM(nil, t.TempDir(), &out, &errb, lookAll)
+	code := runPM(nil, t.TempDir(), &out, &errb, lookAll, nil)
 	if code != 1 || !strings.Contains(errb.String(), "pm: no package.json") {
 		t.Fatalf("code=%d stderr=%q", code, errb.String())
+	}
+}
+
+func TestPmRunsResolvedPathVerbatim(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{"package.json": `{}`, "yarn.lock": ""})
+	var gotPath, gotRoot string
+	var gotArgv []string
+	rec := func(path string, argv []string, r string, _, _ io.Writer) int {
+		gotPath, gotArgv, gotRoot = path, argv, r
+		return 3
+	}
+	code := runPM([]string{"run", "--help", "-x"}, root, io.Discard, io.Discard, lookAll, rec)
+	if code != 3 || gotPath != "/bin/yarn" || gotRoot != root {
+		t.Fatalf("code=%d path=%q root=%q", code, gotPath, gotRoot)
+	}
+	if strings.Join(gotArgv, "|") != "yarn|run|--help|-x" {
+		t.Fatalf("argv=%v", gotArgv)
+	}
+}
+
+// TestPmHelperProcess is the subprocess body for TestPmExecRealManager (not a real test).
+func TestPmHelperProcess(t *testing.T) {
+	if os.Getenv("ZNF_PM_HELPER") != "1" {
+		t.Skip("helper")
+	}
+	args := os.Args
+	for i, a := range args {
+		if a == "--" {
+			args = args[i+1:]
+			break
+		}
+	}
+	dir, _ := os.Getwd()
+	os.Exit(runPM(args, dir, os.Stdout, os.Stderr, exec.LookPath, execPM))
+}
+
+func TestPmExecRealManager(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fake manager")
+	}
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{"package.json": `{}`, "yarn.lock": ""})
+	sub := filepath.Join(root, "a", "b")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	rec := filepath.Join(t.TempDir(), "rec")
+	script := "#!/bin/sh\n{ pwd -P; for a in \"$@\"; do echo \"arg:$a\"; done; } > " + rec + "\nexit 3\n"
+	if err := os.WriteFile(filepath.Join(bin, "yarn"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command(os.Args[0], "-test.run=TestPmHelperProcess", "--", "run", "--help", "-x")
+	c.Dir = sub
+	c.Env = append(os.Environ(), "ZNF_PM_HELPER=1", "PATH="+bin+":"+os.Getenv("PATH"))
+	err := c.Run()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 3 {
+		t.Fatalf("want exit 3, got %v", err)
+	}
+	b, rerr := os.ReadFile(rec)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	wantRoot, _ := filepath.EvalSymlinks(root)
+	want := wantRoot + "\narg:run\narg:--help\narg:-x\n"
+	if string(b) != want {
+		t.Fatalf("recorded %q, want %q", b, want)
 	}
 }
