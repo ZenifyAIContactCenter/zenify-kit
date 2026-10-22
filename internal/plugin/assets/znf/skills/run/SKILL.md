@@ -169,3 +169,4 @@ Materialized at `~/.claude/skills/znf/skills/run/references/`. Read one when its
 - `references/sandbox-port-checks.md` — read when `nc`/`curl` says a port is closed.
 - `references/launch-and-readiness.md` — read when the server will not start, readiness misbehaves, or a monorepo needs several servers.
 - `references/red-flags.md` — read before justifying skipping a step of `/run`.
+- `references/autonomous-sandbox.md` — read when ZNF_AUTONOMOUS=1 (worker sandbox).
