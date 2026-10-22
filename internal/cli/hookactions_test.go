@@ -242,3 +242,35 @@ func TestSessionStart_BrokerRoleLine(t *testing.T) {
 		}
 	}
 }
+
+// FR-5.3: ZNF_AUTONOMOUS=1 (exactly "1") makes SessionStart point at the autonomous doc,
+// even when the bootstrap digest is printed.
+func TestSessionStart_AutonomousLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	want := "autonomous: ZNF_AUTONOMOUS=1 — read ~/.claude/skills/znf/skills/_shared/autonomous.md first; it overrides every human gate in znf skills\n"
+	for _, v := range []string{"1", "0", ""} {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		digest := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-zenify-kit")
+		if err := os.MkdirAll(digest, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(digest, "BOOTSTRAP.txt"), []byte("DIGEST\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ZNF_AUTONOMOUS", v)
+		var buf bytes.Buffer
+		runSessionStart(mkWorkspace(t), &buf)
+		out := buf.String()
+		if !strings.Contains(out, "DIGEST") {
+			t.Fatalf("ZNF_AUTONOMOUS=%q: digest not printed: %q", v, out)
+		}
+		if got := strings.Contains(out, "_shared/autonomous.md"); got != (v == "1") {
+			t.Errorf("ZNF_AUTONOMOUS=%q: output = %q", v, out)
+		}
+		if v == "1" && !strings.Contains(out, want) {
+			t.Errorf("ZNF_AUTONOMOUS=1: missing line %q in %q", want, out)
+		}
+	}
+}
