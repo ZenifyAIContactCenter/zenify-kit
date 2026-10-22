@@ -163,11 +163,13 @@ func TestViewer_ErrorMapping(t *testing.T) {
 		hdr  map[string]string
 		want error
 	}{
-		"graphql errors": {http.StatusOK, `{"errors":[{"message":"x"}]}`, nil, ErrTokenInvalid},
-		"no viewer":      {http.StatusOK, `{"data":{}}`, nil, ErrTokenInvalid},
-		"401":            {http.StatusUnauthorized, `{"message":"Bad credentials"}`, nil, ErrTokenInvalid},
-		"403 ratelimit":  {http.StatusForbidden, `{}`, map[string]string{"X-RateLimit-Remaining": "0"}, ErrGitHubRateLimited},
-		"429":            {http.StatusTooManyRequests, `{}`, nil, ErrGitHubRateLimited},
+		"graphql errors":       {http.StatusOK, `{"errors":[{"message":"x"}]}`, nil, ErrTokenInvalid},
+		"graphql rate limited": {http.StatusOK, `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`, nil, ErrGitHubRateLimited},
+		"graphql other type":   {http.StatusOK, `{"errors":[{"type":"FORBIDDEN","message":"x"}]}`, nil, ErrTokenInvalid},
+		"no viewer":            {http.StatusOK, `{"data":{}}`, nil, ErrTokenInvalid},
+		"401":                  {http.StatusUnauthorized, `{"message":"Bad credentials"}`, nil, ErrTokenInvalid},
+		"403 ratelimit":        {http.StatusForbidden, `{}`, map[string]string{"X-RateLimit-Remaining": "0"}, ErrGitHubRateLimited},
+		"429":                  {http.StatusTooManyRequests, `{}`, nil, ErrGitHubRateLimited},
 	} {
 		srv := graphqlGitHub(t, c.code, c.body, c.hdr, nil)
 		_, _, err := GitHub{BaseURL: srv.URL, HTTP: srv.Client()}.Viewer(context.Background(), "ghs_secret")

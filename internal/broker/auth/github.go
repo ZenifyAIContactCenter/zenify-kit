@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -101,8 +102,9 @@ func (g GitHub) TeamMember(ctx context.Context, token, org, team, login string) 
 
 // Viewer returns the login and database id of the token's owner, asked via
 // GraphQL. It is how an installation token (ghs_) is identified: GitHub
-// refuses such a token on /user. A 200 carrying GraphQL errors or no viewer
-// is ErrTokenInvalid.
+// refuses such a token on /user. A 200 carrying a RATE_LIMITED GraphQL error
+// is ErrGitHubRateLimited; any other GraphQL error, or no viewer, is
+// ErrTokenInvalid.
 func (g GitHub) Viewer(ctx context.Context, token string) (login string, databaseID int64, err error) {
 	var out struct {
 		Data *struct {
@@ -111,7 +113,7 @@ func (g GitHub) Viewer(ctx context.Context, token string) (login string, databas
 				DatabaseID int64  `json:"databaseId"`
 			} `json:"viewer"`
 		} `json:"data"`
-		Errors []json.RawMessage `json:"errors"`
+		Errors []graphQLError `json:"errors"`
 	}
 	switch code, err := g.post(ctx, token, "/graphql", `{"query":"{viewer{login databaseId}}"}`, &out); {
 	case err != nil:
@@ -122,10 +124,17 @@ func (g GitHub) Viewer(ctx context.Context, token string) (login string, databas
 		return "", 0, ErrGitHubRateLimited
 	case code != http.StatusOK:
 		return "", 0, fmt.Errorf("github /graphql: status %d", code)
+	case slices.ContainsFunc(out.Errors, func(e graphQLError) bool { return e.Type == "RATE_LIMITED" }):
+		return "", 0, ErrGitHubRateLimited
 	case len(out.Errors) > 0 || out.Data == nil || out.Data.Viewer == nil || out.Data.Viewer.Login == "":
 		return "", 0, ErrTokenInvalid
 	}
 	return out.Data.Viewer.Login, out.Data.Viewer.DatabaseID, nil
+}
+
+// graphQLError is one entry of a GraphQL errors array; only its type is read.
+type graphQLError struct {
+	Type string `json:"type"`
 }
 
 // get calls GitHub and decodes a 200 body into out; see do.
