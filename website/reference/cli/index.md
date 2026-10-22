@@ -34,6 +34,8 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | Lệnh | Mô tả |
 |---|---|
 | [zenify analyze](./zenify_analyze) | Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief. |
+| [zenify await](./zenify_await) | Dừng một lượt chạy không người ở cổng cần người duyệt, ghi bản ghi await rồi thoát mã 8. |
+| [zenify await show](./zenify_await_show) | In lại bản ghi await theo id. |
 | [zenify broker](./zenify_broker) | Nhóm lệnh làm việc với credential broker của zenify. |
 | [zenify broker headers](./zenify_broker_headers) | In header Authorization cho MCP http của Claude Code, dưới dạng một object JSON. |
 | [zenify broker token](./zenify_broker_token) | In JWT của credential broker ra stdout, dùng cache và tự xin lại khi còn dưới 60 giây. |

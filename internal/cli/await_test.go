@@ -1,0 +1,182 @@
+package cli
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+)
+
+// runAwait runs the root command with args and returns stdout and the error.
+func runAwait(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	root := NewRootCmd()
+	var out, errb bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errb)
+	root.SetArgs(args)
+	err := root.Execute()
+	return out.String(), err
+}
+
+func awaitEnv(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("ZENIFY_HOME", home)
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	t.Setenv("ZNF_TASK_ID", "task-42")
+	return home
+}
+
+func gitRepo(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range [][]string{{"init", "-q", "-b", "feat-x"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i"}} {
+		c := exec.Command("git", a...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", a, err, out)
+		}
+	}
+	return dir
+}
+
+func readRecord(t *testing.T, home, id string) (awaitRecord, os.FileInfo) {
+	t.Helper()
+	p := filepath.Join(home, "await", id+".json")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, _ := os.Stat(p)
+	var r awaitRecord
+	if err := json.Unmarshal(b, &r); err != nil {
+		t.Fatal(err)
+	}
+	return r, st
+}
+
+func TestAwaitSpecInGitRepo(t *testing.T) {
+	home := awaitEnv(t)
+	repo := gitRepo(t)
+	chdir(t, repo)
+	spec := filepath.Join(repo, "spec.md")
+	_ = os.WriteFile(spec, []byte("x"), 0o644)
+
+	out, err := runAwait(t, "await", "spec", "--summary", "s", "--file", "spec.md")
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("code = %d (%v), want 8", exitcode.Code(err), err)
+	}
+	id := strings.TrimSuffix(out, "\n")
+	if !regexp.MustCompile(`^spec-\d{8}T\d{6}Z-[0-9a-f]{8}$`).MatchString(id) {
+		t.Fatalf("stdout %q is not <id>\\n", out)
+	}
+	r, st := readRecord(t, home, id)
+	if r.Kind != "spec" || r.ID != id || r.Summary != "s" || r.Task != "task-42" {
+		t.Errorf("record = %+v", r)
+	}
+	if len(r.Files) != 1 || r.Files[0] != spec {
+		t.Errorf("files = %v, want [%s]", r.Files, spec)
+	}
+	if r.Repo != repo || r.Branch != "feat-x" || r.Cwd != repo || r.CreatedAt.IsZero() {
+		t.Errorf("repo/branch/cwd/created_at = %q %q %q %v", r.Repo, r.Branch, r.Cwd, r.CreatedAt)
+	}
+	if st.Mode().Perm() != 0o600 {
+		t.Errorf("file mode = %v, want 0600", st.Mode().Perm())
+	}
+	dst, _ := os.Stat(filepath.Join(home, "await"))
+	if dst.Mode().Perm() != 0o700 {
+		t.Errorf("dir mode = %v, want 0700", dst.Mode().Perm())
+	}
+}
+
+func TestAwaitOutsideGit(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	out, err := runAwait(t, "await", "needs-human", "--summary", "s")
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("code = %d (%v)", exitcode.Code(err), err)
+	}
+	r, _ := readRecord(t, home, strings.TrimSpace(out))
+	if r.Repo != "" || r.Branch != "" {
+		t.Errorf("repo/branch = %q/%q, want empty", r.Repo, r.Branch)
+	}
+}
+
+func TestAwaitDataWriteCommand(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	const c = "zenify data run --prd --write -- node x.js"
+	out, err := runAwait(t, "await", "data-write", "--summary", "s", "--command", c)
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("code = %d (%v)", exitcode.Code(err), err)
+	}
+	r, _ := readRecord(t, home, strings.TrimSpace(out))
+	if r.Command != c {
+		t.Errorf("command = %q", r.Command)
+	}
+}
+
+func TestAwaitRefusals(t *testing.T) {
+	cases := []struct {
+		name string
+		env  string
+		args []string
+	}{
+		{"not autonomous", "", []string{"await", "spec", "--summary", "s"}},
+		{"bad kind", "1", []string{"await", "deploy", "--summary", "s"}},
+		{"missing file", "1", []string{"await", "spec", "--summary", "s", "--file", "nope.md"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := awaitEnv(t)
+			t.Setenv("ZNF_AUTONOMOUS", tc.env)
+			chdir(t, t.TempDir())
+			_, err := runAwait(t, tc.args...)
+			if exitcode.Code(err) != exitcode.BadArgs {
+				t.Fatalf("code = %d (%v), want BadArgs", exitcode.Code(err), err)
+			}
+			if _, e := os.Stat(filepath.Join(home, "await")); e == nil {
+				ents, _ := os.ReadDir(filepath.Join(home, "await"))
+				if len(ents) != 0 {
+					t.Errorf("record written: %v", ents)
+				}
+			}
+		})
+	}
+}
+
+func TestAwaitShow(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	out, _ := runAwait(t, "await", "plan", "--summary", "s")
+	id := strings.TrimSpace(out)
+	want, err := os.ReadFile(filepath.Join(home, "await", id+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := runAwait(t, "await", "show", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(got) != strings.TrimSpace(string(want)) {
+		t.Errorf("show = %q, want %q", got, want)
+	}
+	_, err = runAwait(t, "await", "show", "plan-nope")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("unknown id code = %d, want BadArgs", exitcode.Code(err))
+	}
+	_, err = runAwait(t, "await", "show", "../x")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("path-ish id code = %d, want BadArgs", exitcode.Code(err))
+	}
+}

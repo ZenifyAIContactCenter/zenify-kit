@@ -22,3 +22,12 @@ func TestCode(t *testing.T) {
 	wrapped := errors.New("outer")
 	_ = wrapped
 }
+
+func TestAwaitingCode(t *testing.T) {
+	if Awaiting != 8 {
+		t.Errorf("Awaiting = %d, want 8", Awaiting)
+	}
+	if Code(New(Awaiting, errors.New("w"))) != 8 {
+		t.Errorf("Code(Awaiting error) != 8")
+	}
+}

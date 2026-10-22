@@ -29,6 +29,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 ## Lệnh liên quan
 
 - [zenify analyze](./zenify_analyze): Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief.
+- [zenify await](./zenify_await): Dừng một lượt chạy không người ở cổng cần người duyệt, ghi bản ghi await rồi thoát mã 8.
 - [zenify broker](./zenify_broker): Nhóm lệnh làm việc với credential broker của zenify.
 - [zenify catalog](./zenify_catalog): In danh mục dịch vụ giám sát (datasource Grafana, tên log, trace, metric) dưới dạng YAML.
 - [zenify config](./zenify_config): Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều.
