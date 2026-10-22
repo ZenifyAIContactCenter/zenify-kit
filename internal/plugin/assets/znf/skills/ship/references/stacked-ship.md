@@ -13,7 +13,7 @@ in that stripped form; git commands use `<baseRef>` itself.
 2. **Step 5 runs once per layer, i = 1..N, bottom first.**
    - `gh stack checkout <layer i branch>` on a clean tree.
    - `BASE=$(git merge-base <layer i-1 branch> HEAD)`; for layer 1,
-     `BASE=$(git merge-base <baseRef> HEAD)` with the `origin/...` ref as in ship step 5, never the
+     `BASE=$(git merge-base "$(zenify wt base)" HEAD)` with the `origin/...` ref as in ship step 5, never the
      local trunk branch, which may be stale.
    - The layer's ship-pack uses `$BASE..<layer i branch>` for `## Diff`; then `Skill(znf:review)`
      with that `BASE`, so the tier follows the layer's own diff.
