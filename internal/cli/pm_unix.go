@@ -16,7 +16,7 @@ func execPM(path string, argv []string, root string, _, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "pm: %v\n", err)
 		return 1
 	}
-	err := syscall.Exec(path, argv, os.Environ())
+	err := syscall.Exec(path, argv, os.Environ()) //nolint:gosec // G204 -- path is the manager detectPM resolved via LookPath; argv is the user's own command line
 	fmt.Fprintf(stderr, "pm: %v\n", err)
 	return 1
 }

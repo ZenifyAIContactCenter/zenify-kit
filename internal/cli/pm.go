@@ -36,7 +36,7 @@ func detectPM(dir string, lookPath func(string) (string, error)) (mgr, root, rea
 	if !ok {
 		return "", "", "", fmt.Errorf("pm: no package.json in %s or any parent", dir)
 	}
-	if b, rerr := os.ReadFile(filepath.Join(root, "package.json")); rerr == nil {
+	if b, rerr := os.ReadFile(filepath.Join(root, "package.json")); rerr == nil { //nolint:gosec // G304 -- root is the nearest ancestor holding package.json, found by findPackageRoot
 		var pj struct {
 			PackageManager string `json:"packageManager"`
 		}
@@ -58,7 +58,7 @@ func detectPM(dir string, lookPath func(string) (string, error)) (mgr, root, rea
 		}
 	}
 	if mgr == "" {
-		return "", root, "", fmt.Errorf("pm: %s has no packageManager field and no lockfile — cannot tell which manager to use.\npm: run the intended manager once by hand so a lockfile exists.", root) //znf:allow-lang
+		return "", root, "", fmt.Errorf("pm: %s has no packageManager field and no lockfile, so the manager is unknown; run the intended manager once by hand so a lockfile exists", root) //znf:allow-lang
 	}
 	if _, lerr := lookPath(mgr); lerr != nil {
 		return "", root, reason, fmt.Errorf("pm: detected %s (from %s) but it is not installed", mgr, reason)
