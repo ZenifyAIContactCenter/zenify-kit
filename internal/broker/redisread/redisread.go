@@ -98,7 +98,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, api.CodeInvalidTarget, "env must be stg or prd")
 		return
 	}
-	if role == api.RoleDev && req.Env == "prd" && !api.DevRedisAllowed(req.Cmd) {
+	// Allowlist: only lead and agent are elevated; any other role is a dev.
+	restricted := role != api.RoleLead && role != api.RoleAgent
+	if restricted && req.Env == "prd" && !api.DevRedisAllowed(req.Cmd) {
 		fail(http.StatusForbidden, api.CodeLeadOnly, "production values are lead-only; dev on prd may only use "+api.DevPrdSummary())
 		return
 	}
@@ -126,7 +128,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case err == nil:
 			return true
-		case errors.As(err, &rerr) && role == api.RoleDev && req.Env == "prd":
+		case errors.As(err, &rerr) && restricted && req.Env == "prd":
 			fail(http.StatusBadGateway, api.CodeQueryFailed, api.DevPrdErrorWithheld)
 			return false
 		case errors.As(err, &rerr):
