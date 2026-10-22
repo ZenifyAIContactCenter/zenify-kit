@@ -126,6 +126,74 @@ func TestAwaitDataWriteCommand(t *testing.T) {
 	}
 }
 
+// The record is renamed into place from .<id>.json.tmp: nothing else is left
+// in the await dir for the host to pick up.
+func TestAwaitWritesOnlyTheRecord(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	out, err := runAwait(t, "await", "needs-human", "--summary", "s")
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("code = %d (%v)", exitcode.Code(err), err)
+	}
+	ents, _ := os.ReadDir(filepath.Join(home, "await"))
+	if len(ents) != 1 || ents[0].Name() != strings.TrimSpace(out)+".json" {
+		t.Fatalf("await dir = %v, want only %s.json", ents, strings.TrimSpace(out))
+	}
+}
+
+// The record goes through an exclusive .<id>.json.tmp: a stale temp file of
+// the same id is an error, and no half-written record appears.
+func TestWriteAwaitRecordViaExclusiveTemp(t *testing.T) {
+	home := awaitEnv(t)
+	dir := filepath.Join(home, "await")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tmp := filepath.Join(dir, ".plan-x.json.tmp")
+	if err := os.WriteFile(tmp, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAwaitRecord(awaitRecord{ID: "plan-x", Kind: "plan", Summary: "s"}); err == nil {
+		t.Fatal("want an error while .plan-x.json.tmp exists")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "plan-x.json")); err == nil {
+		t.Fatal("record written despite the temp-file failure")
+	}
+	_ = os.Remove(tmp)
+	if err := writeAwaitRecord(awaitRecord{ID: "plan-x", Kind: "plan", Summary: "s"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(tmp); err == nil {
+		t.Fatal("temp file left behind")
+	}
+}
+
+// task is recorded only when ZNF_TASK_ID is a plain id, as the broker header.
+func TestAwaitTaskOnlyWhenValid(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	t.Setenv("ZNF_TASK_ID", "bad value!")
+	out, _ := runAwait(t, "await", "plan", "--summary", "s")
+	if r, _ := readRecord(t, home, strings.TrimSpace(out)); r.Task != "" {
+		t.Errorf("task = %q, want empty for an invalid id", r.Task)
+	}
+}
+
+// The command `data run` prints when it stops an agent's prd write passes the
+// data-write check as is.
+func TestAwaitAcceptsLeadWriteCmd(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	c := leadWriteCmd("/abs/repo dir", "prd", true, []string{"node", "x.js", "--tenant", "a b"})
+	out, err := runAwait(t, "await", "data-write", "--summary", "s", "--command", c)
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("code = %d (%v)", exitcode.Code(err), err)
+	}
+	if r, _ := readRecord(t, home, strings.TrimSpace(out)); r.Command != c {
+		t.Errorf("command = %q, want %q", r.Command, c)
+	}
+}
+
 func TestAwaitRefusals(t *testing.T) {
 	cases := []struct {
 		name string
@@ -135,6 +203,11 @@ func TestAwaitRefusals(t *testing.T) {
 		{"not autonomous", "", []string{"await", "spec", "--summary", "s"}},
 		{"bad kind", "1", []string{"await", "deploy", "--summary", "s"}},
 		{"missing file", "1", []string{"await", "spec", "--summary", "s", "--file", "nope.md"}},
+		{"no summary", "1", []string{"await", "spec"}},
+		{"blank summary", "1", []string{"await", "plan", "--summary", " \t"}},
+		{"data-write without command", "1", []string{"await", "data-write", "--summary", "s"}},
+		{"data-write blank command", "1", []string{"await", "data-write", "--summary", "s", "--command", "  "}},
+		{"data-write other command", "1", []string{"await", "data-write", "--summary", "s", "--command", "zenify data run --stg --write -- node x.js"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

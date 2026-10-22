@@ -37,7 +37,7 @@ Chỗ nào skill định hỏi hay chờ người, agent tự quyết và ghi m�
 zenify await <spec|plan|data-write|irreversible|needs-human> --summary "<điều người cần quyết>" [--file <đường dẫn>]… [--command "<lệnh>"]
 ```
 
-Lệnh ghi một bản ghi JSON vào `$ZENIFY_HOME/await/<id>.json` (mặc định `~/.zenify/await/`), in `id` ra stdout rồi thoát với **mã 8**. Mã 8 là điểm dừng đúng kế hoạch, không phải lỗi: agent kết thúc session ngay, không thử lại. Host của worker nhặt bản ghi trong thư mục đó. `--file` lặp được, mỗi file phải tồn tại và được lưu thành đường dẫn tuyệt đối; `--command` dùng cho `data-write`.
+Lệnh ghi một bản ghi JSON vào `$ZENIFY_HOME/await/<id>.json` (mặc định `~/.zenify/await/`), in `id` ra stdout rồi thoát với **mã 8**. Mã 8 là điểm dừng đúng kế hoạch, không phải lỗi: agent kết thúc session ngay, không thử lại. Host của worker nhặt bản ghi trong thư mục đó. Bản ghi được ghi qua file tạm `.<id>.json.tmp` rồi đổi tên, nên host không đọc phải bản ghi dở. `--summary` bắt buộc, không được trống. `--file` lặp được, mỗi file phải tồn tại và được lưu thành đường dẫn tuyệt đối. `--command` bắt buộc với `data-write` và phải chứa `zenify data run --prd --write`. Sai một trong các điều này thì lệnh thoát mã 2, không ghi bản ghi.
 
 Ví dụ thật (chạy với `ZENIFY_HOME` tạm):
 
@@ -73,7 +73,7 @@ $ zenify await show spec-20261022T030837Z-68f708ec
 }
 ```
 
-`task` lấy từ `ZNF_TASK_ID`; `repo` và `branch` để trống khi lệnh chạy ngoài git repo. `id` chỉ là tên file trần: `await show` từ chối id có dấu `/` hoặc bắt đầu bằng `.` (mã 2), và báo `no await record "<id>"` khi không có bản ghi.
+`task` lấy từ `ZNF_TASK_ID` khi biến này khớp `^[A-Za-z0-9._-]{1,64}$` (như header gửi broker), không thì để rỗng; `repo` và `branch` để trống khi lệnh chạy ngoài git repo. `id` chỉ là tên file trần: `await show` từ chối id có dấu `/` hoặc bắt đầu bằng `.` (mã 2), và báo `no await record "<id>"` khi không có bản ghi.
 
 ## `data-write`: ghi production {#data-write}
 
