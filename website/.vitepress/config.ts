@@ -97,6 +97,7 @@ export default withMermaid({
         { text: 'Credential dev (zenify env)', link: '/guides/env' },
         { text: 'Dùng credential broker', link: '/guides/broker-client' },
         { text: 'Dựng host credential broker', link: '/guides/broker-host' },
+        { text: 'Chế độ không người', link: '/guides/autonomous' },
         { text: 'Review và gate', link: '/guides/review-and-gates' },
         { text: 'Spec, plan và kiểm tra', link: '/guides/spec-and-plan' },
         { text: 'Release và báo cáo', link: '/guides/release' },

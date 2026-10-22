@@ -25,7 +25,7 @@ GitHub token của bạn được gửi tới URL broker, nên kit chỉ lấy `
 
 ## `zenify doctor` mục `broker`
 
-Mục `broker` kiểm tra lần lượt: `gh` đã đăng nhập, `gh` có scope `read:org`, broker trả lời `/healthz` trong 5 giây, rồi đổi được token. Bước đổi token luôn xin JWT mới, không dùng cache, nên doctor thật sự kiểm tra lại bạn còn trong org. Thành công in `broker ok, login=<login broker cấp token>, role=<lead|dev>`; doctor không bao giờ in token. Khi lỗi, thông báo nói bước nào hỏng:
+Mục `broker` kiểm tra lần lượt: `gh` đã đăng nhập, `gh` có scope `read:org`, broker trả lời `/healthz` trong 5 giây, rồi đổi được token. Bước đổi token luôn xin JWT mới, không dùng cache, nên doctor thật sự kiểm tra lại bạn còn trong org. Thành công in `broker ok, login=<login broker cấp token>, role=<lead|dev|agent>`; doctor không bao giờ in token. Khi lỗi, thông báo nói bước nào hỏng:
 
 | Thông báo | Việc cần làm |
 |---|---|
@@ -56,6 +56,15 @@ Broker cấp role theo team GitHub trong org: thuộc team `leaders` là `lead`,
   - Truy vấn lỗi chỉ báo `query failed; error detail is withheld for role dev on prd`, vì thông báo lỗi của database có thể trích nội dung bản ghi. Stderr của `mongosh`/`mysql` cũng không được trả về khi truy vấn thành công. Cần xem lỗi chi tiết thì chạy lại trên staging.
   - Giới hạn này là rào chắn để agent không vô tình đọc dữ liệu production, không phải ranh giới chống người cố tình dò dữ liệu: `EXPLAIN` của MySQL vẫn đọc trước dòng khớp khoá chính khi lập plan.
 - MCP Grafana, PostHog và tài khoản E2E mở cho cả hai role.
+
+### Role `agent` (worker không người) {#role-agent}
+
+Worker chạy không người dùng GitHub App thay cho tài khoản cá nhân, và broker cấp role `agent` nếu bot của App nằm trong `agent_ids` ([Dựng host credential broker](/guides/broker-host#role-agent)). Phía client có hai biến môi trường:
+
+- `GH_TOKEN`: khi có giá trị, kit dùng nó làm GitHub token để đổi JWT; không có thì vẫn gọi `gh auth token` như trước. Đặt installation token (`ghs_`) của App vào đây.
+- `ZNF_TASK_ID`: nếu khớp `^[A-Za-z0-9._-]{1,64}$`, kit gửi nó trong header `X-Zenify-Task` ở mọi request tới broker và broker ghi vào field `task` của audit. Giá trị không hợp lệ bị bỏ qua.
+
+`agent` đọc production như lead và ghi staging như lead, nhưng không ghi được production. `zenify data run --prd --write` ở role `agent` dừng ngay (sau khi kiểm dry-run như thường lệ) và in lệnh cần chạy để chuyển cho lead: `zenify await data-write --summary <what it changes> --command '<lệnh data run --prd --write ...>'`. Xem [Chế độ không người](/guides/autonomous#data-write).
 
 Lệnh vượt quyền của dev báo `lệnh này chỉ dành cho lead (team leaders); dev trên prd chỉ dùng db-read: collections, count (no --filter), explain, indexes, stats, tables, sql: EXPLAIN SELECT without subquery, DESCRIBE <table>, SHOW INDEX|COLUMNS|TABLES|CREATE TABLE|TABLE STATUS; redis-read: EXISTS LLEN SCAN SCARD TTL TYPE ZCARD` và không chạy truy vấn nào. Danh sách này do CLI tự in từ bảng quyền của chính nó, nên khớp với broker cùng phiên bản; broker cũ hơn hoặc mới hơn CLI có thể áp danh sách khác, khi đó nâng cấp cả hai lên cùng phiên bản. Khi token cache (`~/.zenify/broker/token.json`) ghi role `dev`, kit từ chối ngay tại máy, không gọi broker; chưa có cache thì broker quyết định. Đầu mỗi phiên Claude Code, hook SessionStart đọc cache này (không gọi mạng). Với dev nó in một dòng `broker: login=<login> role=dev — prd: …` để agent biết trước giới hạn production. Với mọi role đã có cache, nó in thêm một dòng `data: agent tự chạy zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; --prd --write chờ "ok" của người dùng; xem _shared/data-scripts.md)`, dev thêm hậu tố `; prd: cần lead`. Giới hạn chỉ đọc của `db-read` và `redis-read` áp cho mọi người, kể cả lead; việc ghi chỉ đi qua `zenify data run`. `zenify doctor` mục `broker` và `zenify broker token` in role hiện tại; vừa được thêm vào team `leaders` thì chạy `zenify broker token --refresh` để xin JWT mang role mới.
 
