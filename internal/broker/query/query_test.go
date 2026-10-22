@@ -814,3 +814,19 @@ func TestMySQLScheme(t *testing.T) {
 		}
 	}
 }
+
+func TestQuery_AgentPrdActsAsLead(t *testing.T) {
+	req := api.QueryRequest{Env: "prd", Engine: "mongo", Op: "find", Coll: "accounts"}
+	f := newFixture(t, okRun)
+	if st, _, e := f.postAs(t, "bot", api.RoleDev, req); st != http.StatusForbidden {
+		t.Fatalf("dev control: %d %+v", st, e)
+	}
+	f = newFixture(t, okRun)
+	st, _, e := f.postAs(t, "bot", api.RoleAgent, req)
+	if st != http.StatusOK {
+		t.Fatalf("agent: %d %+v", st, e)
+	}
+	if atomic.LoadInt32(f.calls) != 1 {
+		t.Fatal("seam must run once")
+	}
+}

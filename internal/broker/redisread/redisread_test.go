@@ -687,3 +687,16 @@ func TestRedis_DevPrdServerErrorWithheld(t *testing.T) {
 		t.Fatalf("lead prd: %d %s", st, body)
 	}
 }
+
+func TestRedis_AgentPrdActsAsLead(t *testing.T) {
+	f := newFixture(t)
+	if st, body := f.postAs(t, api.RoleAgent, api.RedisRequest{Env: "prd", Cmd: "GET", Args: []string{"k"}}); st != http.StatusOK || !f.prd.sent("GET") {
+		t.Fatalf("agent GET on prd: %d %s", st, body)
+	}
+	f = newFixture(t)
+	f.prd.err = redisErr("ERR VISIBLE-DETAIL")
+	st, body := f.postAs(t, api.RoleAgent, api.RedisRequest{Env: "prd", Cmd: "TTL", Args: []string{"k"}})
+	if st != 502 || !strings.Contains(string(body), "VISIBLE-DETAIL") || strings.Contains(string(body), api.DevPrdErrorWithheld) {
+		t.Fatalf("agent prd error: %d %s", st, body)
+	}
+}

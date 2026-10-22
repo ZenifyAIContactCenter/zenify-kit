@@ -81,7 +81,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status, nbytes := http.StatusOK, 0
 	defer func() {
 		op := strings.ToUpper(strings.TrimSpace(req.Cmd))
-		h.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/redis", Env: req.Env, Op: op,
+		h.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: login, Role: role, Endpoint: "/redis", Env: req.Env, Op: op,
 			Args: req.Args, Bytes: nbytes, MS: time.Since(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
@@ -98,7 +98,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, api.CodeInvalidTarget, "env must be stg or prd")
 		return
 	}
-	if role != api.RoleLead && req.Env == "prd" && !api.DevRedisAllowed(req.Cmd) {
+	if role == api.RoleDev && req.Env == "prd" && !api.DevRedisAllowed(req.Cmd) {
 		fail(http.StatusForbidden, api.CodeLeadOnly, "production values are lead-only; dev on prd may only use "+api.DevPrdSummary())
 		return
 	}
@@ -126,7 +126,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case err == nil:
 			return true
-		case errors.As(err, &rerr) && role != api.RoleLead && req.Env == "prd":
+		case errors.As(err, &rerr) && role == api.RoleDev && req.Env == "prd":
 			fail(http.StatusBadGateway, api.CodeQueryFailed, api.DevPrdErrorWithheld)
 			return false
 		case errors.As(err, &rerr):

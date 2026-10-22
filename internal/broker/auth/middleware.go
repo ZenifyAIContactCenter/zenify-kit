@@ -31,7 +31,7 @@ func RequireAudited(key []byte, a *audit.Logger, endpoint func(*http.Request) st
 		if !ok || !strings.EqualFold(scheme, "Bearer") || err != nil {
 			WriteError(w, http.StatusUnauthorized, api.CodeUnauthorized, "missing or invalid broker token")
 			if a != nil {
-				a.Log(audit.Entry{TS: time.Now(), Endpoint: endpoint(r), Op: r.Method, Status: http.StatusUnauthorized})
+				a.Log(audit.Entry{Task: audit.TaskOf(r), TS: time.Now(), Endpoint: endpoint(r), Op: r.Method, Status: http.StatusUnauthorized})
 			}
 			return
 		}

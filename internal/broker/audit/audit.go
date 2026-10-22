@@ -6,6 +6,8 @@ package audit
 import (
 	"encoding/json"
 	"io"
+	"net/http"
+	"regexp"
 	"sync"
 	"time"
 )
@@ -23,6 +25,17 @@ type Entry struct {
 	Bytes    int       `json:"bytes"`
 	MS       int64     `json:"ms"`
 	Status   int       `json:"status"`
+	Task     string    `json:"task,omitempty"`
+}
+
+var taskRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+// TaskOf returns the X-Zenify-Task header when it is a plain task id, else "".
+func TaskOf(r *http.Request) string {
+	if v := r.Header.Get("X-Zenify-Task"); taskRE.MatchString(v) {
+		return v
+	}
+	return ""
 }
 
 // Logger serialises entries to W, one line each.

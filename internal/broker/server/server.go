@@ -112,7 +112,7 @@ func New(cfg Deps) http.Handler {
 			h, ok := cfg.MCP[r.PathValue("name")]
 			if !ok {
 				http.NotFound(w, r)
-				cfg.Audit.Log(audit.Entry{TS: cfg.Now(), Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
+				cfg.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: cfg.Now(), Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
 					Endpoint: "/mcp/" + r.PathValue("name"), Op: r.Method, Status: http.StatusNotFound})
 				return
 			}
@@ -136,7 +136,7 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 	start := s.d.Now()
 	login, role, status := "", "", http.StatusOK
 	defer func() {
-		s.d.Audit.Log(audit.Entry{TS: start, Login: login, Role: role, Endpoint: "/token",
+		s.d.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: login, Role: role, Endpoint: "/token",
 			MS: s.d.Now().Sub(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {

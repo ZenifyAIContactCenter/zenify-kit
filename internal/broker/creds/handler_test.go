@@ -169,3 +169,51 @@ func TestValidate(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCreds_RoleEnvMode(t *testing.T) {
+	for _, c := range []struct {
+		role, env, mode string
+		want            int
+	}{
+		{"agent", "stg", "read", 200}, {"agent", "stg", "write", 200},
+		{"agent", "prd", "read", 200}, {"agent", "prd", "write", 403},
+		{"dev", "prd", "read", 403}, {"dev", "prd", "write", 403},
+		{"lead", "stg", "read", 200}, {"lead", "stg", "write", 200},
+		{"lead", "prd", "read", 200}, {"lead", "prd", "write", 200},
+	} {
+		h := fixture()
+		h.Write["prd"] = map[string]string{"MONGO_URL": "mongodb://rw-prd-secret"}
+		st, body, _ := serve(t, h, c.role, `{"env":"`+c.env+`","mode":"`+c.mode+`"}`)
+		if st != c.want {
+			t.Errorf("%s %s/%s: got %d %s, want %d", c.role, c.env, c.mode, st, body, c.want)
+		}
+		if c.want == 403 {
+			if code, _ := errCode(body); code != api.CodeLeadOnly {
+				t.Errorf("%s %s/%s: code %q", c.role, c.env, c.mode, code)
+			}
+			if strings.Contains(string(body), "rw-prd-secret") {
+				t.Errorf("%s: leaked prd write creds", c.role)
+			}
+		}
+	}
+}
+
+func TestCreds_AuditRecordsTask(t *testing.T) {
+	h := fixture()
+	buf := &bytes.Buffer{}
+	h.Audit = &audit.Logger{W: buf}
+	ts := httptest.NewServer(auth.Require(jwtKey, h))
+	defer ts.Close()
+	tok, _, _ := auth.Issue(jwtKey, "alice", "agent", time.Now())
+	r, _ := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(`{"env":"stg","mode":"read"}`))
+	r.Header.Set("Authorization", "Bearer "+tok)
+	r.Header.Set("X-Zenify-Task", "ZEN-12")
+	resp, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if !strings.Contains(buf.String(), `"task":"ZEN-12"`) {
+		t.Errorf("audit = %s", buf.String())
+	}
+}

@@ -48,7 +48,7 @@ func (h *Handler) serveTrace(w http.ResponseWriter, r *http.Request) {
 	padded := ""
 	defer func() {
 		if h.audit != nil {
-			h.audit.Log(audit.Entry{TS: start, Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
+			h.audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: auth.Login(r.Context()), Role: auth.Role(r.Context()),
 				Endpoint: "/obs/trace", Env: req.Env, Op: "trace", Args: map[string]string{"trace_id": padded},
 				Bytes: size, MS: h.now().Sub(start).Milliseconds(), Status: status})
 		}

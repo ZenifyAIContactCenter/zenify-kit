@@ -49,7 +49,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	login := auth.Login(r.Context())
 	status, op := http.StatusOK, ""
 	defer func() {
-		h.Audit.Log(audit.Entry{TS: start, Login: login, Role: auth.Role(r.Context()), Endpoint: "/e2e/account", Env: auditEnv, Op: op,
+		h.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: login, Role: auth.Role(r.Context()), Endpoint: "/e2e/account", Env: auditEnv, Op: op,
 			MS: time.Since(start).Milliseconds(), Status: status})
 	}()
 	fail := func(st int, code, msg string) {
