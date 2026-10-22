@@ -235,17 +235,21 @@ func TestApplyDepsUsesCacheWhenLockMatches(t *testing.T) {
 	}
 }
 
-func TestApplyDepsCacheLockMismatchFallsBackToInstall(t *testing.T) {
+func TestApplyDepsCacheLockMismatchFallsBackToOwn(t *testing.T) {
 	repo, wtp, _ := cacheFixture(t, `{"a":1}`, `{"a":2}`)
-	marker := filepath.Join(wtp, "ran.txt")
-	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", "echo ok > "+marker); err != nil {
+	own := filepath.Join(repo, "node_modules")
+	if err := os.MkdirAll(own, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Fatalf("installCmd should have run on lock mismatch: %v", err)
+	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Lstat(filepath.Join(wtp, "node_modules")); !os.IsNotExist(err) {
-		t.Fatalf("node_modules must not be linked on lock mismatch (err=%v)", err)
+	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
+	if err != nil {
+		t.Fatalf("node_modules not a symlink: %v", err)
+	}
+	if got != own {
+		t.Fatalf("symlink target = %q, want own %q", got, own)
 	}
 }
 

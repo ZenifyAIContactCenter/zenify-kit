@@ -141,16 +141,13 @@ func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
 //
 // When ZENIFY_DEPS_CACHE is set and holds <repo>/<depsDirName>, symlink/clone
 // seed from that cache if its package-lock.json matches the worktree's; on a
-// lock mismatch the cache is ignored and installCmd runs instead.
+// lock mismatch the cache is skipped (with a warning) and the repo root's dir
+// is used, as without a cache.
 func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) error {
 	dst := filepath.Join(worktreePath, depsDirName)
 	src := filepath.Join(repoRoot, depsDirName)
 	if mode == "symlink" || mode == "clone" {
-		cached, _ := depsSource(repoRoot, worktreePath, depsDirName, os.Getenv)
-		if cached == "" {
-			return runInstall(worktreePath, installCmd)
-		}
-		src = cached
+		src, _ = depsSource(repoRoot, worktreePath, depsDirName, os.Getenv)
 	}
 	switch mode {
 	case "symlink":
@@ -182,7 +179,7 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 // repo root's dir (fromCache=false). If the cache entry exists and its
 // package-lock.json is byte-equal to the worktree's, it is the cache dir
 // (fromCache=true). If the entry exists but the lock differs (or is unreadable)
-// it returns "" so the caller installs instead of using stale deps.
+// it warns on stderr and returns own (fromCache=false) — only the cache is skipped.
 func depsSource(repoRoot, worktreePath, depsDirName string, getenv func(string) string) (src string, fromCache bool) {
 	own := filepath.Join(repoRoot, depsDirName)
 	cache := getenv("ZENIFY_DEPS_CACHE")
@@ -197,7 +194,8 @@ func depsSource(repoRoot, worktreePath, depsDirName string, getenv func(string) 
 	a, errA := os.ReadFile(filepath.Join(entry, "package-lock.json"))        //nolint:gosec // G304 -- path built from operator-set cache dir and repo basename
 	b, errB := os.ReadFile(filepath.Join(worktreePath, "package-lock.json")) //nolint:gosec // G304 -- path is the worktree this tool created
 	if errA != nil || errB != nil || !bytes.Equal(a, b) {
-		return "", false
+		fmt.Fprintf(os.Stderr, "wt: deps cache %s skipped (package-lock.json differs or unreadable); using %s\n", entry, own)
+		return own, false
 	}
 	return cached, true
 }

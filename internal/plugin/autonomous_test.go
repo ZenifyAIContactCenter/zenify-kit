@@ -15,6 +15,7 @@ func TestAutonomousDoc(t *testing.T) {
 		"Ruling: <decision> — <why> — <cost if wrong>",
 		"resume <id> approved", "resume <id> rejected:", "zenify await show <id>",
 		"--summary", "--file", "--command", "never merge",
+		"znf:ui-verify-ok: <reason> (await <id>)", "zenify ui-verify check",
 	})
 	// Precedence: gates a Ruling never replaces, named, and above the map.
 	precedence := []string{
