@@ -8,6 +8,17 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.44.0
+
+*2026-10-22*
+
+- **Chế độ tự động cho worker không người trông (`ZNF_AUTONOMOUS=1`):** khi biến này bật, dòng đầu session nhắc agent đọc `_shared/autonomous.md`. Ở các cổng duyệt, agent tự quyết và ghi lại thành một dòng `Ruling`. Riêng spec, plan, ghi dữ liệu production, merge, xoá không khôi phục được, revert hay tắt production và credential thì agent dừng lại chờ người. Xem [Chế độ tự động](/guides/autonomous).
+  - Lệnh mới `zenify await <spec|plan|data-write|irreversible|needs-human>` ghi một bản ghi chờ duyệt vào `~/.zenify/await/` rồi thoát mã 8; `zenify await show <id>` in lại bản ghi đó.
+- **Role `agent` trên broker:** token cài đặt GitHub App (`ghs_`) của bot có trong `agent_ids` nhận role `agent`. Role này đọc được staging và production, ghi được staging. Nó không nhận credential ghi production, cũng không nhận credential lumi-agent trên production. Danh tính agent lấy từ `GH_TOKEN`. Nếu `ZNF_TASK_ID` được đặt, mỗi dòng audit của broker ghi kèm mã task đó. Xem [Broker cho người dùng](/guides/broker-client) và [Broker host](/guides/broker-host).
+  - `zenify data run --prd --write` chạy dưới role `agent` thì dừng lại và in sẵn lệnh `zenify await data-write`, kèm chuỗi lệnh để lead chạy trên máy mình.
+- **`zenify pm`:** chạy đúng trình quản lý package của repo (pnpm, yarn, npm hoặc bun), chọn theo trường `packageManager` hoặc theo lockfile. Không xác định được thì lệnh từ chối, không đoán. `zenify up` cài thêm shim `wt` và `pm` vào `~/.local/bin`. Xem [zenify pm](/reference/cli/zenify_pm).
+- **`zenify wt base`:** in base ref của worktree hiện tại (`wt.base`, nếu không có thì `baseRef`, cuối cùng là `origin/main`). Bước review của `/ship` và SDD giờ tính merge-base từ base ref này. Xem [zenify wt base](/reference/cli/zenify_wt_base).
+
 ## v0.43.0
 
 *2026-10-21*
