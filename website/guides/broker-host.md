@@ -78,7 +78,7 @@ Các biến sau là tuỳ chọn: thiếu thì broker vẫn khởi động. `POS
 
 - Ba cặp `*_WRITE_URL_*` là credential của user có quyền ghi. Thiếu chúng thì yêu cầu `--write` nhận 500 `broker_misconfigured`; yêu cầu đọc không bị ảnh hưởng. Dev chỉ lấy được credential staging; production chỉ dành cho lead.
 - `LUMI_MYSQL_URL_*` và `QDRANT_URL_*` là credential của `lumi-agent`, cấp khi người dùng chạy `zenify data run --lumi`. Trước đây dev tự điền các key này vào `.zenify/.env`; nay broker cấp, manifest không còn hỏi. Broker cũng tự dùng `LUMI_MYSQL_URL_*` cho `zenify db-read --target lumi`, nên URL phải tới được từ container broker: production (`<lumi-prd-mysql-host>`) tới thẳng, staging cần [tunnel bên dưới](#lumi-stg-tunnel). Hậu tố `+pymysql` giữ nguyên, broker tự bỏ.
-- `ELASTIC_URL_*` là URL Elasticsearch chỉ đọc (kèm thông tin đăng nhập nếu có). Broker chỉ cấp key `ELASTIC_URL` cho yêu cầu `read`, không bao giờ cho `--write`, và chỉ khi biến đã được đặt.
+- `ELASTIC_URL_*` là URL Elasticsearch chỉ đọc (kèm thông tin đăng nhập nếu có). Broker chỉ cấp key `ELASTIC_URL` cho yêu cầu `read`, không bao giờ cho `--write`, và chỉ khi biến đã được đặt. Role `agent` cũng nhận `ELASTIC_URL_PRD`, nên user ES trong URL phải là user chỉ đọc (quyền `read`, `view_index_metadata`, `monitor`); broker không tự kiểm quyền này. Đặt biến sau khi bản kit có `ELASTIC_URL` đã phát hành, nếu không client cũ sẽ in cảnh báo `skipping unknown broker key`.
 - URL ứng dụng lumi staging đặt trong YAML, không phải env: khối `lumi:` với khoá `app_url_stg`.
 
 ```yaml
