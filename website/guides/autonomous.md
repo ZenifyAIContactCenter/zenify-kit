@@ -15,7 +15,7 @@ export ZNF_AUTONOMOUS=1
 export ZNF_TASK_ID=task-42   # tuỳ chọn: id task, ghi vào bản ghi await và audit của broker
 ```
 
-Khi biến này bật, dòng đầu session có thêm một dòng nhắc agent đọc `~/.claude/skills/znf/skills/_shared/autonomous.md`; file đó là luật agent theo. Worker nên chạy với role `agent` của broker, xem [Dùng credential broker](/guides/broker-client#role-agent): đọc được staging và production, ghi được staging, không ghi được production.
+Khi biến này bật, dòng đầu session có thêm một dòng nhắc agent đọc `~/.claude/skills/znf/skills/_shared/autonomous.md`; file đó là luật agent theo. Worker nên chạy với role `agent` của broker, xem [Dùng credential broker](/guides/broker-client#role-agent): đọc được staging và production (trừ credential lumi-agent trên production), ghi được staging, không ghi được production.
 
 ## Agent tự quyết, không hỏi
 
