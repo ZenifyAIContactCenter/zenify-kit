@@ -24,9 +24,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// dataEnvNames are the six variables `data run` grants a child; any of them
+// dataEnvNames are the seven variables `data run` grants a child; any of them
 // inherited from the parent is removed first so only the broker's values stay.
-var dataEnvNames = []string{"MONGO_URL", "MYSQL_URL", "REDIS_URL", "LUMI_MYSQL_URL", "QDRANT_URL", "LUMI_APP_URL"}
+var dataEnvNames = []string{"MONGO_URL", "MYSQL_URL", "REDIS_URL", "LUMI_MYSQL_URL", "QDRANT_URL", "LUMI_APP_URL", "ELASTIC_URL"}
 
 // dataDeps are the process boundaries `zenify data run` touches; tests replace them.
 type dataDeps struct {

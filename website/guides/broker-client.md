@@ -104,7 +104,7 @@ zenify data run --stg -- node docs/scripts/contact-center-be/fix-tags.js --dry-r
 zenify data run --stg --write -- node docs/scripts/contact-center-be/fix-tags.js
 ```
 
-`zenify data run` xin credential từ broker rồi chạy lệnh sau `--` với các biến `MONGO_URL`, `MYSQL_URL`, `REDIS_URL` (thêm `LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL` khi có `--lumi`). Bạn không giữ chuỗi kết nối nào trong shell. Agent tự chạy lệnh này, không cần bạn gõ `!`.
+`zenify data run` xin credential từ broker rồi chạy lệnh sau `--` với các biến `MONGO_URL`, `MYSQL_URL`, `REDIS_URL` (và `ELASTIC_URL` khi broker có cấu hình, chỉ ở chế độ đọc; thêm `LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL` khi có `--lumi`). Bạn không giữ chuỗi kết nối nào trong shell. Agent tự chạy lệnh này, không cần bạn gõ `!`.
 
 - Phải chọn đúng một trong `--stg` hoặc `--prd`; không thì thoát mã 2. `--prd` chỉ dành cho lead.
 - Lệnh có cả `--prd` và `--write` luôn hiện prompt hỏi bạn trong Claude Code, kể cả khi bật bypass. Lý do: kit thêm hai rule `permissions.ask` phủ cả hai thứ tự cờ, và rule ask thắng rule allow. Ghi staging và dry-run production chạy không hỏi.

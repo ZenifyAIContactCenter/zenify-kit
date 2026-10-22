@@ -20,7 +20,7 @@ Khi script cần đọc hoặc ghi dữ liệu stg hoặc prd mà bạn không g
 
 ## Kết quả
 
-Lệnh con nhận đúng các biến broker cấp trong sáu tên `MONGO_URL`, `MYSQL_URL`, `REDIS_URL`, `LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL`. Sáu tên này và mọi biến `*_PRD` thừa hưởng từ shell bị bỏ trước khi chạy. Stdout và stderr được che giá trị và host. Exit code của lệnh con trở thành exit code của `zenify`.
+Lệnh con nhận đúng các biến broker cấp trong bảy tên `MONGO_URL`, `MYSQL_URL`, `REDIS_URL`, `LUMI_MYSQL_URL`, `QDRANT_URL`, `LUMI_APP_URL`, `ELASTIC_URL`. Bảy tên này và mọi biến `*_PRD` thừa hưởng từ shell bị bỏ trước khi chạy. Stdout và stderr được che giá trị và host. Exit code của lệnh con trở thành exit code của `zenify`.
 
 Chạy không có `--write` là dry-run: credential chỉ đọc, lệnh ghi một bản ghi dưới `.zenify/data-runs/`. Chạy `--write` cần một dry-run thành công của đúng lệnh đó (cùng nội dung script) trong 60 phút; bản ghi dùng một lần. Thiếu bản ghi, lệnh thoát mã 7 trước khi gọi broker và in lệnh dry-run cần chạy. Lần `--write` ghi log đã che vào `docs/scripts/<repo>/<script>.<UTC>.<env>.write.log` khi script nằm dưới `docs/scripts/<repo>/`, nếu không thì vào `.zenify/data-runs/`.
 

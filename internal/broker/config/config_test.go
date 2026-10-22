@@ -260,3 +260,23 @@ func TestLoad_AgentIDs(t *testing.T) {
 		t.Errorf("AgentIDs = %v, want [346015963]", c.AgentIDs)
 	}
 }
+
+func TestLoad_ElasticOptional(t *testing.T) {
+	c, err := Load(writeCfg(t, sampleYAML), envOf(fullEnv()))
+	if err != nil {
+		t.Fatalf("ELASTIC_URL_* absent must not error: %v", err)
+	}
+	if c.Secrets.ElasticStg != "" || c.Secrets.ElasticPrd != "" {
+		t.Errorf("unset elastic secrets should stay empty")
+	}
+	env := fullEnv()
+	env["ELASTIC_URL_STG"] = "https://es-stg.example"
+	env["ELASTIC_URL_PRD"] = "https://es-prd.example"
+	c, err = Load(writeCfg(t, sampleYAML), envOf(env))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Secrets.ElasticStg != "https://es-stg.example" || c.Secrets.ElasticPrd != "https://es-prd.example" {
+		t.Errorf("elastic secrets not read")
+	}
+}

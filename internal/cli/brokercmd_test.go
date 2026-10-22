@@ -81,7 +81,7 @@ const noBrokerYAML = "org: o\nrepos:\n  - name: r\n    url: u\n"
 
 // credentialEnv is every DB/E2E credential key a command could read locally.
 var credentialEnv = []string{"MONGO_URL", "MYSQL_URL", "MONGO_URL_PRD", "MYSQL_URL_PRD", "AUDIT_MONGO_URL_PRD", "REDIS_URL_PRD",
-	"REDIS_URL", "LUMI_MYSQL_URL", "QDRANT_URL", "LUMI_APP_URL",
+	"REDIS_URL", "LUMI_MYSQL_URL", "QDRANT_URL", "LUMI_APP_URL", "ELASTIC_URL",
 	"E2E_DOMAIN", "E2E_EMAIL", "E2E_PASSWORD", "POSTHOG_API_KEY"}
 
 // TestMain makes the whole package hermetic before any test runs:
