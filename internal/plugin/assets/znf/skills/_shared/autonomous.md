@@ -32,7 +32,7 @@ zenify await <spec|plan|data-write|irreversible|needs-human> --summary "<what th
 
 Pass every file the person must read as an absolute `--file`. Exit 8 is the expected stop, not a failure: after the command prints its id, end the session at once, with no further step and no retry.
 
-`data-write`: dry-run first (`zenify data run --prd -- …`); `--command` carries exactly the `zenify data run --prd --write -- …` command you dry-ran. This is the worker's end point: approval means a lead runs that command; never resume to write. A `--stg --write` script does not stop: it runs right after its dry-run as `_shared/data-scripts.md` says.
+`data-write`: dry-run first (`zenify data run --prd -- …`); never run `--prd --write` yourself. `--command` is the chain a lead runs on their own machine, since a dry-run record is keyed by cwd and argv: `cd <abs cwd> && <the dry-run you ran> && zenify data run --prd --write -- <same argv without --dry-run>`. A `--prd --write` run under role agent refuses and prints exactly that `zenify await data-write` line. This is the worker's end point: approval means a lead runs that command; never resume to write. A `--stg --write` script does not stop: it runs right after its dry-run as `_shared/data-scripts.md` says.
 
 ## Resuming
 

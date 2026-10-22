@@ -112,16 +112,8 @@ func (d dataDeps) run(cmd *cobra.Command, env string, write, lumi bool, argv []s
 
 	// GH_TOKEN=ghs_… stops too: the cache may still hold a lead's JWT.
 	if env == "prd" && write && (bc.CachedRole() == api.RoleAgent || brokerclient.AgentGHToken()) {
-		cmdline := []string{"zenify", "data", "run", "--prd", "--write"}
-		if lumi {
-			cmdline = append(cmdline, "--lumi")
-		}
-		cmdline = append(cmdline, "--")
-		for _, a := range argv {
-			cmdline = append(cmdline, shQuote(a))
-		}
-		return dataErr(exitcode.Fail, "prd write needs a lead; stop and run: zenify await data-write --summary <what it changes> --command %s", //znf:allow-lang
-			shQuote(strings.Join(cmdline, " ")))
+		return dataErr(exitcode.Fail, "prd write needs a lead; stop and run: zenify await data-write --summary '<what it changes>' --command %s", //znf:allow-lang
+			shQuote(leadWriteCmd(cwd, env, lumi, argv)))
 	}
 
 	mode := api.CredsModeRead
@@ -257,6 +249,21 @@ func dryRunCmd(env string, lumi bool, argv []string) string {
 		parts = append(parts, shQuote(a))
 	}
 	return strings.Join(parts, " ")
+}
+
+// leadWriteCmd is what a lead runs for a write an agent may not make: the
+// dry-run record is keyed by the absolute cwd and argv, so it cds there, runs
+// the dry-run on the lead's own machine, then the write.
+func leadWriteCmd(cwd, env string, lumi bool, argv []string) string {
+	parts := []string{"zenify", "data", "run", "--" + env, "--write"}
+	if lumi {
+		parts = append(parts, "--lumi")
+	}
+	parts = append(parts, "--")
+	for _, a := range argv {
+		parts = append(parts, shQuote(a))
+	}
+	return "cd " + shQuote(cwd) + " && " + dryRunCmd(env, lumi, argv) + " && " + strings.Join(parts, " ")
 }
 
 // shQuote single-quotes a token for a POSIX shell unless it is plainly safe.

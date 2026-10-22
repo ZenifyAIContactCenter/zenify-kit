@@ -77,7 +77,7 @@ $ zenify await show spec-20261022T030837Z-68f708ec
 
 ## `data-write`: ghi production {#data-write}
 
-Role `agent` không bao giờ lấy được credential ghi production. Quy trình: agent dry-run (`zenify data run --prd -- …`), rồi chạy `zenify await data-write --summary "<script sửa gì>" --command "zenify data run --prd --write -- …"`, với `--command` là đúng lệnh đã dry-run. Duyệt nghĩa là một lead chạy lệnh đó; worker không resume để ghi. Nếu agent lỡ chạy thẳng `zenify data run --prd --write` ở role `agent` (sau khi đã dry-run, vì thứ tự kiểm không đổi), lệnh thoát mã 1 và in sẵn lệnh `zenify await data-write` cần chạy. Script ghi staging (`--stg --write`) không dừng: nó chạy ngay sau dry-run như [`data run`](/guides/broker-client#data-run) mô tả.
+Role `agent` không bao giờ lấy được credential ghi production. Quy trình: agent dry-run (`zenify data run --prd -- …`), không tự chạy `--prd --write`, rồi chạy `zenify await data-write --summary "<script sửa gì>" --command '<lệnh cho lead>'`. Lệnh cho lead có dạng `cd <thư mục tuyệt đối> && <lệnh dry-run đã chạy> && zenify data run --prd --write -- …`: bản ghi dry-run gắn với thư mục và lệnh, nên lead chạy lại dry-run trên máy mình rồi mới ghi. Duyệt nghĩa là một lead chạy lệnh đó; worker không resume để ghi. Nếu agent lỡ chạy thẳng `zenify data run --prd --write` ở role `agent` (sau khi đã dry-run, vì thứ tự kiểm không đổi), lệnh thoát mã 1 và in sẵn đúng dòng `zenify await data-write --summary '<what it changes>' --command '<lệnh cho lead>'` cần chạy. Script ghi staging (`--stg --write`) không dừng: nó chạy ngay sau dry-run như [`data run`](/guides/broker-client#data-run) mô tả.
 
 ## Resume
 

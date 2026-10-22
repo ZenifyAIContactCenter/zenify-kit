@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -470,5 +471,36 @@ func TestDataRun_AgentGHTokenPrdWriteStops(t *testing.T) {
 	}
 	if len(*f.reqs) != before {
 		t.Errorf("broker got %d /creds requests after the stop, want 0", len(*f.reqs)-before)
+	}
+}
+
+// The stop hands the lead a command that runs on the lead's machine: cd to
+// the absolute cwd (the dry-run record is keyed by it), the dry-run, then
+// the write. The summary placeholder is quoted so a paste is no redirect.
+func TestDataRun_AgentStopCommandRunsForLead(t *testing.T) {
+	f := newDataFixture(t, map[string]string{"MONGO_URL": dataMongoURL}, "")
+	seedAgentCache(t)
+	args := []string{"--", "sh", "-c", "true 'a b'"}
+	if _, _, err := runData(append([]string{"--prd"}, args...)...); err != nil {
+		t.Fatalf("agent prd dry-run: %v", err)
+	}
+	_, _, err := runData(append([]string{"--prd", "--write"}, args...)...)
+	if err == nil {
+		t.Fatal("want the stop")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "--summary '<what it changes>' --command ") {
+		t.Fatalf("summary placeholder not quoted: %s", msg)
+	}
+	quoted := msg[strings.Index(msg, "--command ")+len("--command "):]
+	out, xerr := exec.Command("sh", "-c", "printf %s "+quoted).Output()
+	if xerr != nil {
+		t.Fatalf("sh cannot unquote %s: %v", quoted, xerr)
+	}
+	const script = `'true '\''a b'\'''` // "true 'a b'" quoted for sh
+	want := "cd " + f.ws + " && zenify data run --prd -- sh -c " + script + " --dry-run" +
+		" && zenify data run --prd --write -- sh -c " + script
+	if string(out) != want {
+		t.Fatalf("command =\n%s\nwant\n%s", out, want)
 	}
 }

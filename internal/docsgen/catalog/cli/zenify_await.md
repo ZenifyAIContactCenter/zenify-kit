@@ -17,5 +17,5 @@ Bản ghi gồm `id`, `kind`, `summary`, `files` (đường dẫn tuyệt đối
 
 ```bash
 zenify await spec --summary "Spec cho tính năng X" --file docs/specs/zenify-kit/x-design.md
-zenify await data-write --summary "Backfill field y" --command "zenify data run --prd --write -- node y.js"
+zenify await data-write --summary "Backfill field y" --command 'cd /abs/repo && zenify data run --prd -- node y.js --dry-run && zenify data run --prd --write -- node y.js'
 ```
