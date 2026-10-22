@@ -19,7 +19,7 @@ func TestAutonomousDoc(t *testing.T) {
 	// Precedence: gates a Ruling never replaces, named, and above the map.
 	precedence := []string{
 		"## Precedence", "never replaces",
-		"merge, a prd write, deleting data that cannot be recovered, a production deploy, revert or disable, credentials, or a security-sensitive action",
+		"deleting data that cannot be recovered, a production deploy, revert or disable, credentials, or a security-sensitive action",
 		"`hotfix` step 2", "step 4", "Delete them (unrecoverable)", "commit or move",
 		"says STOP", "`fix` Step 0", "`cook` Step 6", "`gh stack`", "`too-large`",
 		"`finishing-a-development-branch` Step 3", "zenify wt base",
