@@ -243,6 +243,7 @@ func TestToken_CacheWriteFailureWarns(t *testing.T) {
 
 // GHTokenExec carries gh's stderr; PATH holds only a fake gh.
 func TestGHTokenExec_IncludesStderr(t *testing.T) {
+	t.Setenv("GH_TOKEN", "")
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script fake")
 	}
@@ -321,6 +322,7 @@ func TestRefresh_IgnoresCache(t *testing.T) {
 
 // GHTokenExec returns gh's trimmed stdout; empty output is an error.
 func TestGHTokenExec_Output(t *testing.T) {
+	t.Setenv("GH_TOKEN", "")
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script fake")
 	}
@@ -343,6 +345,7 @@ func TestGHTokenExec_Output(t *testing.T) {
 
 // A gh that never exits is stopped by ctx.
 func TestGHTokenExec_ContextBound(t *testing.T) {
+	t.Setenv("GH_TOKEN", "")
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script fake")
 	}
@@ -423,5 +426,41 @@ func TestCachedRole_NoNetworkURLScoped(t *testing.T) {
 	}
 	if u, l, r, ok := CachedIdentity(home); !ok || u != "https://b.example" || l != "devgal" || r != "dev" {
 		t.Errorf("CachedIdentity = %q %q %q %v", u, l, r, ok)
+	}
+}
+
+// GH_TOKEN (the agent's installation token) wins over `gh`, which must not run.
+func TestGHTokenExec_PrefersGHTokenEnv(t *testing.T) {
+	t.Setenv("PATH", t.TempDir()) // no gh on PATH: running it would fail
+	t.Setenv("GH_TOKEN", "  ghs_abc \n")
+	tok, err := GHTokenExec(context.Background())
+	if err != nil || tok != "ghs_abc" {
+		t.Fatalf("tok=%q err=%v", tok, err)
+	}
+}
+
+func TestDo_SendsTaskHeader(t *testing.T) {
+	for name, c := range map[string]struct{ env, want string }{
+		"set":      {"ZEN-12", "ZEN-12"},
+		"unset":    {"", ""},
+		"invalid":  {"bad value!", ""},
+		"too long": {strings.Repeat("a", 65), ""},
+	} {
+		t.Setenv("ZNF_TASK_ID", c.env)
+		var got string
+		var seen bool
+		var calls int32
+		srv := fakeBroker(t, &calls, func(w http.ResponseWriter, r *http.Request) {
+			got = r.Header.Get("X-Zenify-Task")
+			_, seen = r.Header["X-Zenify-Task"]
+			_, _ = w.Write([]byte("{}"))
+		})
+		now := t0
+		if err := newClient(srv.URL, t.TempDir(), &now).Post(context.Background(), "/query", map[string]string{}, nil); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got != c.want || (c.want == "" && seen) {
+			t.Errorf("%s: header = %q (present %v), want %q", name, got, seen, c.want)
+		}
 	}
 }

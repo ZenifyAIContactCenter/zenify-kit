@@ -96,6 +96,9 @@ func brokerRoleLine(w io.Writer) {
 		return
 	}
 	suffix := ""
+	if role == api.RoleAgent {
+		fmt.Fprintf(w, "broker: login=%s role=agent — prd: read only; ghi prd cần lead, dừng bằng zenify await data-write\n", login) //znf:allow-lang
+	}
 	if role == api.RoleDev {
 		fmt.Fprintf(w, "broker: login=%s role=dev — prd: %s; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n", login, api.DevPrdSummary()) //znf:allow-lang
 		suffix = "; prd: cần lead"                                                                                                      //znf:allow-lang

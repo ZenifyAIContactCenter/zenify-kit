@@ -216,9 +216,11 @@ func TestSessionStart_BrokerRoleLine(t *testing.T) {
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	devLine := "broker: login=devgal role=dev — prd: " + api.DevPrdSummary() + "; cần dữ liệu prd thì dùng stg hoặc nhờ lead\n"                                           //znf:allow-lang
 	dataLine := `data: agent tự chạy zenify data run --stg|--prd [--write] -- <lệnh> (dry-run trước; --prd --write chờ "ok" của người dùng; xem _shared/data-scripts.md)` //znf:allow-lang
+	agentLine := "broker: login=bot role=agent — prd: read only; ghi prd cần lead, dừng bằng zenify await data-write\n" + dataLine + "\n"                                 //znf:allow-lang
 	for name, c := range map[string]struct{ cache, want string }{
 		"dev expired": {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2000-01-01T00:00:00Z","login":"devgal","role":"dev"}`, devLine + dataLine + "; prd: cần lead\n"}, //znf:allow-lang
 		"lead":        {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"boss","role":"lead"}`, dataLine + "\n"},
+		"agent":       {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"bot","role":"agent"}`, agentLine},
 		"no role":     {`{"url":"https://b.example","token":"jwt-secret-value","expires_at":"2099-01-01T00:00:00Z","login":"old"}`, dataLine + "\n"},
 		"no cache":    {"", ""},
 	} {

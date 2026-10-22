@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -280,6 +281,9 @@ func (c *Client) do(ctx context.Context, path, bearer string, in, out any) error
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
+	if task, ok := TaskHeader(); ok {
+		req.Header.Set(TaskHeaderName, task)
+	}
 	resp, err := c.httpClient().Do(req) //nolint:gosec // G704 -- URL comes from the team manifest, https-validated
 	if err != nil {
 		return err
@@ -317,9 +321,25 @@ func (c *Client) do(ctx context.Context, path, bearer string, in, out any) error
 	return nil
 }
 
-// GHTokenExec returns the developer's GitHub token from `gh auth token`,
-// killed when ctx ends.
+// TaskHeaderName carries the task id the broker records in its audit log.
+const TaskHeaderName = "X-Zenify-Task"
+
+// taskRE matches what the broker accepts (audit.TaskOf); anything else is dropped.
+var taskRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+// TaskHeader returns the task id from ZNF_TASK_ID when it is a plain id.
+func TaskHeader() (string, bool) {
+	v := os.Getenv("ZNF_TASK_ID")
+	return v, taskRE.MatchString(v)
+}
+
+// GHTokenExec returns the GitHub token: GH_TOKEN when set (an agent's
+// installation token), else the developer's from `gh auth token`, killed when
+// ctx ends.
 func GHTokenExec(ctx context.Context) (string, error) {
+	if tok := strings.TrimSpace(os.Getenv("GH_TOKEN")); tok != "" {
+		return tok, nil
+	}
 	cmd := exec.CommandContext(ctx, "gh", "auth", "token") //nolint:gosec // fixed argv
 	cmd.WaitDelay = 2 * time.Second
 	out, err := cmd.Output()
