@@ -50,5 +50,5 @@ Pass every file the person must read as an absolute `--file`. Exit 8 is the expe
 
 The prompt is `resume <id> approved` or `resume <id> rejected: <reason>`. Run `zenify await show <id>` first, then:
 
-- approved: continue from the stop point. After a `needs-human` UI await, record the waiver the check honours: add a comment line `znf:ui-verify-ok: <reason> (await <id>)` to a changed tracked file, then re-run `zenify ui-verify check`.
+- approved: continue from the stop point. After a `needs-human` UI await, record the waiver the check honours: add `znf:ui-verify-ok: <reason> (await <id>)` as a comment, in that file's comment syntax, to a changed source file (never JSON), commit it, then re-run `zenify ui-verify check`.
 - rejected: fix what the reason names, then `zenify await` again at the same gate.

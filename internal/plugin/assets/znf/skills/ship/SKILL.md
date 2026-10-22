@@ -33,7 +33,7 @@ Stamp each check with its `fp`; step 7 needs all current.
    git diff --name-only HEAD | rg -c '\.(tsx|jsx|vue|svelte|css|scss|less)$|components?/|pages?/|views?/'
    ```
 
-   Non-zero → dispatch **`znf:ui-verifier`**; **do not drive the browser yourself**. Zero (literally, never a judgement) → "nothing renders in this diff". **A non-zero with no verdict = BLOCKED (❌, Shippable NO).** Setup (flag ON, seed, FE+BE up) is work you perform, never a skip; cannot → BLOCKED, naming what is missing. `ZNF_AUTONOMOUS=1`: no ui-verifier; run `zenify ui-verify check` — exit 8 means it already wrote the needs-human await, so end the session; verified/waived pass.
+   Non-zero → dispatch **`znf:ui-verifier`**; **do not drive the browser yourself**. Zero (literally, never a judgement) → "nothing renders in this diff". **A non-zero with no verdict = BLOCKED (❌, Shippable NO).** Setup (flag ON, seed, FE+BE up) is work you perform, never a skip; cannot → BLOCKED, naming what is missing. `ZNF_AUTONOMOUS=1`: no ui-verifier; run step 7's `zenify ui-verify check --repo … --base …` — exit 8 = await written: end the session; verified/waived pass.
 
    - **`.znf/visual/routes.json` present → `zenify visual check --repo <path> --port <P>` FIRST**, a hard gate on non-zero exit; then still dispatch `znf:ui-verifier`. `.znf/e2e/` → `zenify e2e lint`.
    - The verifier logs itself in (`zenify e2e login --role <r>`, also on `visual check`: a role the screen needs, never admin by default); require **both** a screenshot **and** a `getBoundingClientRect` of the changed element against its container. `--repo` = this worktree; it records via `zenify ui-verify record`. Never two browser agents at once.
