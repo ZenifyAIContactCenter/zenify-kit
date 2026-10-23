@@ -62,7 +62,7 @@ func origin(raw string) string {
 // CheckBaseURL allows rawURL only when its origin is listed in the repo's
 // <e2eDir>/e2e.config.json "baseUrls" (path ignored, host case-insensitive).
 func CheckBaseURL(e2eDir, rawURL string) error {
-	b, err := os.ReadFile(filepath.Join(e2eDir, "e2e.config.json"))
+	b, err := os.ReadFile(filepath.Join(e2eDir, "e2e.config.json")) //nolint:gosec // G304 -- e2eDir is the repo's own .znf/e2e dir, not user input
 	if err != nil {
 		return exitcode.New(exitcode.BadArgs, fmt.Errorf("read e2e.config.json: %w", err))
 	}
