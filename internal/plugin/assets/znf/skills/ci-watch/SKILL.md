@@ -1,12 +1,13 @@
 ---
 name: ci-watch
-description: Watch the GitHub Actions runs of the commit just pushed, in the background, and wake the session when they finish — on a failure, read the log, fix it on the feature branch, push and watch again. Use when the user runs /znf:ci-watch or asks to watch or wait for CI.
-allowed-tools: Bash(git rev-parse*) Bash(git branch --show-current) Bash(git status*) Bash(gh repo view*) Bash(gh run list*) Bash(gh run view*)
+description: Watch the GitHub Actions runs of the commit just pushed, in the background, and wake the session when they finish — on a failure, hand the failed run to znf:fix without asking, then watch the new commit. Use when the user runs /znf:ci-watch or asks to watch or wait for CI.
+allowed-tools: Bash(git rev-parse*) Bash(git branch --show-current) Bash(git status*) Bash(gh repo view*) Bash(gh run list*) Bash(gh pr view*)
 ---
 
-**Watch, then fix without asking — on a feature branch only.** This skill waits for CI and, on a
-failure, fixes it and pushes again on its own. It never touches a deploy branch, never re-runs,
-cancels or approves a workflow, and never merges.
+**Watch and hand off — never fix here.** This skill only waits for CI and wakes the session. On a
+failure it hands the failed run to `znf:fix`, which reads the log, fixes and ships through
+`znf:ship`'s gate; this skill then watches the new commit. It reads no log, edits no file and
+pushes nothing itself.
 
 ## Step 1: Pin the commit
 
@@ -47,17 +48,16 @@ Output is one line per run: `id  status  conclusion  workflow  url`. Exit codes:
 ## Step 3: When the watcher wakes the session
 
 - **0** → one line: the workflows that passed, with the sha. Stop.
-- **1** → for each run whose conclusion is `failure`, `timed_out` or `startup_failure`:
-  `gh run view <id> --log-failed`, read the failing step's last lines (not the whole log), and
-  name the root cause with `file:line` where the log gives one. A `cancelled` run is reported, not
-  diagnosed: it is usually a newer push replacing it. Then, without asking:
-  - The branch is a deploy branch (the workspace's list, or the git guard refuses) → stop and
-    report the cause; do not fix there.
-  - Otherwise fix through `znf:fix` in the same worktree, commit, push the feature branch, and go
-    back to Step 1 for the new commit.
-  - Stop and hand back to the user after **2** fix rounds that did not turn CI green, or when the
-    cause is outside the repo (a secret, a runner, an external service, a flaky test you cannot
-    make deterministic). Report what each round changed and the failure still left.
+- **1** → the runs whose conclusion is `failure`, `timed_out` or `startup_failure` are the failed
+  runs; a `cancelled` run is only reported (usually a newer push replaced it). Then, without asking:
+  - The branch is a deploy branch (the workspace's list) → report the failed run URLs and stop.
+  - Otherwise invoke `Skill(znf:fix)` with the failed run URLs and the line
+    `CI round <n>/2 for <branch>` (n = 1 on the first failure of this watch). A PR usually exists
+    for the branch already: when ship's `gh pr create` says so, the push has updated that PR — do
+    not open another.
+  - After fix has pushed, go back to Step 1 for the new commit, round n+1.
+  - Round 2 still red, or fix stops without a push (cause outside the repo, escalation to cook) →
+    stop and hand back: each round's failed run and what fix changed.
 - **2, 3, 4** → say which, quote the watcher's last line, and stop. Exit 3 often means the repo
   has no workflow for this branch or event.
 
@@ -65,6 +65,4 @@ Output is one line per run: `id  status  conclusion  workflow  url`. Exit codes:
 
 - One watcher per commit. A new push makes the old watch stale: start a new one for the new sha.
 - Never re-run, cancel or approve a workflow, and never merge, from this skill.
-- A fix stays within the failure: no refactor, no unrelated cleanup, no weakened or skipped test
-  to make CI pass.
-- No fabrication: a cause is named only from the log you read; "the log does not say" is an answer.
+- Diagnosis, the fix and the push belong to `znf:fix` and `znf:ship`; do not duplicate them here.

@@ -6,7 +6,7 @@ title: /znf:ci-watch
 
 # `/znf:ci-watch`
 
-Theo dõi CI GitHub Actions của commit vừa push ở chế độ nền và đánh thức phiên khi CI chạy xong; nếu fail, đọc log lỗi, tự sửa trên feature branch, push và theo dõi lại.
+Theo dõi CI GitHub Actions của commit vừa push ở chế độ nền và đánh thức phiên khi CI chạy xong; nếu fail, tự giao run lỗi cho `/znf:fix` rồi theo dõi commit mới.
 
 ## Cách gọi
 
@@ -23,14 +23,15 @@ Sau khi push một branch, khi bạn muốn Claude tự biết CI xanh hay đỏ
 1. Skill xác định repo, branch và commit `HEAD`, kiểm commit đã có trên remote. Chưa push thì dừng và báo.
 2. Skill chạy một vòng lặp ở chế độ nền: cứ 20 giây gọi `gh run list --commit <sha>` một lần, chờ mọi workflow của commit đó chạy xong. Vòng lặp chỉ in bảng kết quả cuối, mỗi run một dòng.
 3. Khi vòng lặp kết thúc, Claude Code đánh thức phiên, kể cả khi phiên đang rảnh.
-4. CI xanh: báo một dòng. Có run `failure`, `timed_out` hoặc `startup_failure`: đọc `gh run view <id> --log-failed`, nêu nguyên nhân, rồi tự sửa qua `/znf:fix` (không hỏi), commit, push feature branch và theo dõi lại commit mới.
-5. Sau 2 vòng sửa mà CI vẫn đỏ, hoặc nguyên nhân nằm ngoài repo (secret, runner, dịch vụ ngoài, test chập chờn), skill dừng và báo bạn từng vòng đã sửa gì.
+4. CI xanh: báo một dòng. Có run `failure`, `timed_out` hoặc `startup_failure`: skill không tự đọc log hay sửa, mà gọi luôn `/znf:fix` với URL các run lỗi (không hỏi). `/znf:fix` đọc log, chẩn đoán, sửa và đi qua gate của `/znf:ship` để push; PR đã có thì push cập nhật vào PR đó.
+5. Sau khi `/znf:fix` push, skill theo dõi commit mới. Vòng 2 vẫn đỏ, hoặc `/znf:fix` dừng mà không push (nguyên nhân nằm ngoài repo, cần `/znf:cook`), skill dừng và báo từng vòng.
 
 ## Lưu ý
 
-- Skill chỉ sửa và push trên feature branch. Gặp deploy branch thì chỉ báo nguyên nhân, không sửa.
-- Skill không chạy lại, huỷ hay duyệt workflow, không merge, không nới hoặc bỏ test để CI qua.
-- Mỗi lần theo dõi gắn với một commit. Push mới thì gọi lại skill cho commit mới.
+- Skill chỉ canh CI và chuyển việc: chẩn đoán, sửa và push là việc của `/znf:fix` và `/znf:ship`.
+- Gặp deploy branch thì chỉ báo URL run lỗi, không gọi sửa.
+- Skill không chạy lại, huỷ hay duyệt workflow, không merge.
+- Mỗi lần theo dõi gắn với một commit. Bạn tự push thêm (ngoài `/znf:fix`) thì gọi lại skill cho commit mới.
 - Sau 5 phút mà commit không có run nào, skill dừng và báo (thường do repo không có workflow cho branch hoặc event đó). Chờ quá 90 phút thì dừng và báo trạng thái hiện tại.
 - Phiên đóng thì vòng lặp nền dừng theo.
 

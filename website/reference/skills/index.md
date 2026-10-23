@@ -14,7 +14,7 @@ Mọi skill của kit, kể cả bộ skill coding theo stack (Express, NestJS, 
 |---|---|
 | [/znf:analyze](./analyze) | Kiểm tra cặp spec và plan trước khi code: độ phủ FR sang task, marker chưa làm rõ, cấu trúc Brief và bốn tiêu chí chất lượng. |
 | [/znf:brainstorming](./brainstorming) | Biến ý tưởng thành thiết kế đã được bạn duyệt qua hội thoại, phân loại việc thành spike, bounded hoặc architectural. |
-| [/znf:ci-watch](./ci-watch) | Theo dõi CI GitHub Actions của commit vừa push ở chế độ nền và đánh thức phiên khi CI chạy xong; nếu fail, đọc log lỗi, tự sửa trên feature branch, push và theo dõi lại. |
+| [/znf:ci-watch](./ci-watch) | Theo dõi CI GitHub Actions của commit vừa push ở chế độ nền và đánh thức phiên khi CI chạy xong; nếu fail, tự giao run lỗi cho `/znf:fix` rồi theo dõi commit mới. |
 | [/znf:contract-sweep](./contract-sweep) | Quét một contract chung qua nhiều repo, mỗi repo một agent, phán BREAKING, RISKY hoặc SAFE cho từng chỗ dùng. |
 | [/znf:cook](./cook) | Pipeline xây tính năng trọn vẹn: ground, brainstorm ra spec, scout, plan, implement bằng subagent, rồi ship. |
 | [/znf:discipline](./discipline) | Bộ quy tắc làm việc thường trực của kit: định tuyến theo blast radius, không bịa, verify trước khi báo xong, worktree cho mọi thay đổi, git safety. |
