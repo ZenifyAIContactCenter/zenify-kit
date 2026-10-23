@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.45.1
+
+*2026-10-23*
+
+- **Skill `znf:ci-watch` theo dõi CI của commit vừa push:** sau khi push, gõ `/znf:ci-watch` để Claude theo dõi GitHub Actions của commit `HEAD` ở chế độ nền và đánh thức phiên khi CI chạy xong. Skill chỉ báo xanh khi danh sách run đứng yên ít nhất 60 giây. Có run lỗi thì skill tự giao URL run cho `/znf:fix`, rồi theo dõi commit mới; vòng 2 vẫn đỏ thì dừng và báo. Xem [/znf:ci-watch](/reference/skills/ci-watch).
+  - `/znf:ship --watch` tự gọi `znf:ci-watch` sau khi mở PR.
+
 ## v0.45.0
 
 *2026-10-22*
