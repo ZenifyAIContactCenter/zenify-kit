@@ -66,6 +66,7 @@ Ba workflow trên tự gọi các skill sau khi cần. Bạn cũng có thể g�
 | `/znf:scout` | Liệt kê nơi phụ thuộc vào code sắp sửa | Sắp sửa code hoặc data shape đã có nơi khác dùng |
 | `/znf:gate` | Quét cross-repo cho một tài nguyên chung, chỉ đọc | Vừa sửa collection, endpoint, queue hoặc channel chung |
 | `/znf:run` | Chạy app trong worktree hiện tại, trả về URL | Cần quan sát hành vi thật của app |
+| `/znf:ci-watch` | Theo dõi CI của commit vừa push ở chế độ nền, đánh thức phiên khi xong; fail thì đọc log, tự sửa trên feature branch, push và theo dõi lại (dừng sau 2 vòng). Xem [`ci-watch`](/reference/skills/ci-watch) | Vừa push, muốn Claude tự biết CI xanh hay đỏ |
 | `/znf:sweep` | Dọn dev server, worktree và branch đã merge | Công việc đã merge, cần dọn workspace |
 | `/znf:where` | Tóm tắt task tới đâu: đã xong (kèm bằng chứng), đang làm, bước tiếp với lệnh kit, đọc ledger, branch, worktree, PR | Quay lại sau khi nghỉ hoặc sau khi phiên bị nén |
 | `/znf:retro` | Rút bài học tốn kém của phiên về đúng một nơi (check, rule, CLAUDE.md, memory), bạn duyệt trước khi ghi | Cuối phiên vừa có chỗ phải làm lại hoặc bị sửa |

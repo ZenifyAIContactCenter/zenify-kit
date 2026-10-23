@@ -28,6 +28,7 @@ Two rules for skill authors:
 | Fetch a page or search the web | `WebFetch` / `WebSearch` | Codex web search |
 | Drive a browser (UI verification) | `mcp__playwright__browser_*` via `znf:ui-verifier` | MCP `playwright` |
 | Wait on a condition or a background process | `Monitor` | poll with a shell loop |
+| Run a command in the background and be woken when it exits (waits longer than a `Monitor` deadline, e.g. CI) | `Bash` with `run_in_background: true` | run it in the foreground (blocks the turn) |
 | Run a data script against stg or prd with broker credentials | `Bash`: `zenify data run (--stg\|--prd) [--write] -- <cmd>`, a bare call (no pipe, redirect or `cd`) — see `data-scripts.md` | same command |
 | Query logs, traces, metrics or product analytics | MCP `mcp__<broker-grafana>__*`, `mcp__<broker-posthog>__exec` — see `evidence-sources.md` | same MCP servers |
 
