@@ -174,8 +174,12 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, api.CodeInvalidBody, "body must carry github_token or oidc_token, not both")
 		return
 	case err == nil && req.OIDCToken != "":
-		if len(s.d.E2EWorkflows) == 0 || s.d.Actions == nil {
+		if len(s.d.E2EWorkflows) == 0 {
 			fail(http.StatusForbidden, api.CodeNotAllowed, "the broker accepts no OIDC token: e2e_workflows is empty")
+			return
+		}
+		if s.d.Actions == nil {
+			fail(http.StatusForbidden, api.CodeNotAllowed, "the broker accepts no OIDC token: no OIDC verifier is configured")
 			return
 		}
 		c, err := s.d.Actions.Verify(r.Context(), req.OIDCToken)
