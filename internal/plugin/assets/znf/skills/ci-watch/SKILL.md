@@ -17,6 +17,8 @@ In the repo the task is working in (a worktree when there is one):
 - The commit must be on the remote: `git rev-parse @{u}` equals `HEAD`. No upstream, or the
   upstream differs → say so and stop; CI only runs on a pushed commit.
 - The user named a branch, PR or sha → watch that commit instead (`gh pr view <n> --json headRefOid`).
+- The repo has no `.github/workflows/*.yml` or `*.yaml` → there is no CI to watch; say so and stop.
+- Invoked from `znf:ship --watch` with several repos → one watcher per repo.
 
 ## Step 2: Start the watcher in the background
 

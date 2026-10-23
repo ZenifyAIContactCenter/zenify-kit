@@ -16,11 +16,11 @@ Theo dõi CI GitHub Actions của commit vừa push ở chế độ nền và đ
 
 ## Khi nào dùng
 
-Sau khi push một branch, khi bạn muốn Claude tự biết CI xanh hay đỏ mà không phải chép log vào: gõ `/znf:ci-watch`, hoặc nhờ "theo dõi CI branch này".
+Sau khi push một branch, khi bạn muốn Claude tự biết CI xanh hay đỏ mà không phải chép log vào: gõ `/znf:ci-watch`, nhờ "theo dõi CI branch này", hoặc chạy `/znf:ship --watch` để ship tự gọi skill sau khi mở PR.
 
 ## Cách hoạt động
 
-1. Skill xác định repo, branch và commit `HEAD`, kiểm commit đã có trên remote. Chưa push thì dừng và báo.
+1. Skill xác định repo, branch và commit `HEAD`, kiểm commit đã có trên remote. Chưa push thì dừng và báo. Repo không có file nào trong `.github/workflows/` thì báo không có CI và dừng.
 2. Skill chạy một vòng lặp ở chế độ nền: cứ 20 giây gọi `gh run list --commit <sha>` một lần, chờ mọi workflow của commit đó chạy xong. Vòng lặp chỉ in bảng kết quả cuối, mỗi run một dòng.
 3. Khi vòng lặp kết thúc, Claude Code đánh thức phiên, kể cả khi phiên đang rảnh.
 4. CI xanh: báo một dòng. Có run `failure`, `timed_out` hoặc `startup_failure`: skill không tự đọc log hay sửa, mà gọi luôn `/znf:fix` với URL các run lỗi (không hỏi). `/znf:fix` đọc log, chẩn đoán, sửa và đi qua gate của `/znf:ship` để push; PR đã có thì push cập nhật vào PR đó.
