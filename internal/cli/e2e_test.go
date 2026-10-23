@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -491,5 +492,46 @@ func TestE2eRun_InvalidManifestErrors(t *testing.T) {
 	_, _, err := execCmd(newE2eCmd(), "run", "--port", "3327")
 	if err == nil || !strings.Contains(err.Error(), "manifest") || *ran {
 		t.Fatalf("err=%v ran=%v, want the manifest error and no child", err, *ran)
+	}
+}
+
+func TestE2eRun_BaseURLRefusedBeforeDocker(t *testing.T) {
+	_, ran := e2eRunRepo(t)
+	err := os.WriteFile(filepath.Join(".znf", "e2e", "e2e.config.json"), []byte(`{"baseUrls":["https://web-staging.zenify.vn"]}`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	runner := func(string, []string) error { called = true; return nil }
+	err = runE2eRun(runner, func(string) string { return "" }, "linux", ".", 0, "https://zenify.vn", io.Discard)
+	if exitcode.Code(err) != exitcode.BadArgs || called || *ran {
+		t.Fatalf("err=%v called=%v ran=%v, want BadArgs and no docker", err, called, *ran)
+	}
+}
+
+func TestE2eRun_BaseURLAllowedReachesDocker(t *testing.T) {
+	e2eRunRepo(t)
+	err := os.WriteFile(filepath.Join(".znf", "e2e", "e2e.config.json"), []byte(`{"baseUrls":["https://web-staging.zenify.vn"]}`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	runner := func(_ string, a []string) error { got = a; return nil }
+	if err := runE2eRun(runner, func(string) string { return "" }, "linux", ".", 0, "https://web-staging.zenify.vn", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(got, " "), "BASE_URL=https://web-staging.zenify.vn") {
+		t.Fatalf("docker args lack BASE_URL: %v", got)
+	}
+}
+
+func TestE2eRun_NeedsExactlyOneOfPortBaseURL(t *testing.T) {
+	hermeticE2E(t, "")
+	e2eRunRepo(t)
+	for _, args := range [][]string{{"run"}, {"run", "--port", "3327", "--base-url", "https://web-staging.zenify.vn"}} {
+		_, _, err := execCmd(newE2eCmd(), args...)
+		if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "need exactly one of --port or --base-url") {
+			t.Errorf("%v: got %v", args, err)
+		}
 	}
 }
