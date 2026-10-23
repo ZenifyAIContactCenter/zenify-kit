@@ -524,3 +524,84 @@ func TestAgentGHToken(t *testing.T) {
 		}
 	}
 }
+
+// actionsEnv serves the GitHub Actions OIDC endpoint and returns a Getenv
+// pointing at it.
+func actionsEnv(t *testing.T, idTok string, hits *int32) func(string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(hits, 1)
+		if r.URL.Query().Get("audience") != "zenify-broker" || r.URL.Query().Get("x") != "1" || r.Header.Get("Authorization") != "Bearer req-tok" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"value":%q}`, idTok)
+	}))
+	t.Cleanup(srv.Close)
+	env := map[string]string{
+		"ACTIONS_ID_TOKEN_REQUEST_URL":   srv.URL + "/oidc?x=1",
+		"ACTIONS_ID_TOKEN_REQUEST_TOKEN": "req-tok",
+	}
+	return func(k string) string { return env[k] }
+}
+
+func TestActionsOIDCToken(t *testing.T) {
+	var hits int32
+	getenv := actionsEnv(t, "oidc-jwt", &hits)
+	tok, ok, err := ActionsOIDCToken(context.Background(), http.DefaultClient, getenv)
+	if err != nil || !ok || tok != "oidc-jwt" {
+		t.Fatalf("tok=%q ok=%v err=%v, want oidc-jwt true nil", tok, ok, err)
+	}
+	tok, ok, err = ActionsOIDCToken(context.Background(), http.DefaultClient, func(string) string { return "" })
+	if err != nil || ok || tok != "" || hits != 1 {
+		t.Fatalf("no env: tok=%q ok=%v err=%v hits=%d, want empty false nil 1", tok, ok, err, hits)
+	}
+}
+
+func oidcBroker(t *testing.T, bodies *[]map[string]any) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&m)
+		*bodies = append(*bodies, m)
+		_ = json.NewEncoder(w).Encode(api.TokenResponse{Token: "ci-jwt", ExpiresAt: t0.Add(15 * time.Minute).Format(time.RFC3339), Login: "ci", Role: "e2e"})
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestRefresh_OIDCMode(t *testing.T) {
+	var hits int32
+	var bodies []map[string]any
+	srv := oidcBroker(t, &bodies)
+	now := t0
+	home := t.TempDir()
+	c := newClient(srv.URL, home, &now)
+	c.GHToken = func(context.Context) (string, error) { t.Fatal("GHToken called in OIDC mode"); return "", nil }
+	c.Getenv = actionsEnv(t, "oidc-jwt", &hits)
+	tok, _, role, err := c.Refresh(context.Background())
+	if err != nil || tok != "ci-jwt" || role != "e2e" {
+		t.Fatalf("tok=%q role=%q err=%v", tok, role, err)
+	}
+	if len(bodies) != 1 || bodies[0]["oidc_token"] != "oidc-jwt" || len(bodies[0]) != 1 {
+		t.Fatalf("body = %v, want only oidc_token", bodies)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".zenify", "broker", "token.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache file written in OIDC mode: %v", err)
+	}
+}
+
+func TestTokenInfo_OIDCModeIgnoresCache(t *testing.T) {
+	var hits int32
+	var bodies []map[string]any
+	srv := oidcBroker(t, &bodies)
+	now := t0
+	home := t.TempDir()
+	writeCache(t, home, fmt.Sprintf(`{"url":%q,"token":"user-jwt","expires_at":%q,"login":"dev","role":"dev","src":"user"}`, srv.URL, t0.Add(10*time.Minute).Format(time.RFC3339)))
+	c := newClient(srv.URL, home, &now)
+	c.Getenv = actionsEnv(t, "oidc-jwt", &hits)
+	tok, _, _, err := c.TokenInfo(context.Background())
+	if err != nil || tok != "ci-jwt" || len(bodies) != 1 || bodies[0]["oidc_token"] != "oidc-jwt" {
+		t.Fatalf("tok=%q err=%v bodies=%v, want ci-jwt via oidc", tok, err, bodies)
+	}
+}
