@@ -28,7 +28,10 @@ type Config struct {
 	// AgentIDs are GitHub databaseIds of App installations' bot users that get
 	// role agent from an installation token (ghs_).
 	AgentIDs []int64 `yaml:"agent_ids"`
-	Grafana  struct {
+	// E2EWorkflows are the exact GitHub Actions workflow_ref values whose OIDC
+	// token gets role e2e; empty = no OIDC token is accepted.
+	E2EWorkflows []string `yaml:"e2e_workflows"`
+	Grafana      struct {
 		URL  string   `yaml:"url"`
 		Bin  string   `yaml:"bin"`
 		Addr string   `yaml:"addr"`

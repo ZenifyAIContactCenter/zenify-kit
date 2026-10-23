@@ -148,3 +148,12 @@ func TestJWT_AgentRoleAccepted(t *testing.T) {
 		t.Error("role root accepted")
 	}
 }
+
+func TestJWT_E2ERoleAccepted(t *testing.T) {
+	tok := sign(t, testKey, `{"alg":"HS256","typ":"JWT"}`,
+		`{"sub":"oidc:ZenifyAIContactCenter/contact-center-web","role":"e2e","aud":"zenify-broker","exp":1792052100,"iat":1792051200}`)
+	login, role, err := Verify(testKey, tok, t0)
+	if err != nil || login != "oidc:ZenifyAIContactCenter/contact-center-web" || role != "e2e" {
+		t.Errorf("Verify = %q %q %v", login, role, err)
+	}
+}

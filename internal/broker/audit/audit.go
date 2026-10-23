@@ -26,6 +26,10 @@ type Entry struct {
 	MS       int64     `json:"ms"`
 	Status   int       `json:"status"`
 	Task     string    `json:"task,omitempty"`
+	// WorkflowRef / RunID identify the GitHub Actions run of an OIDC /token
+	// request; empty otherwise.
+	WorkflowRef string `json:"workflow_ref,omitempty"`
+	RunID       string `json:"run_id,omitempty"`
 }
 
 var taskRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)

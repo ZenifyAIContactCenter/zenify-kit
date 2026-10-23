@@ -15,7 +15,7 @@ Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các cred
 
 ## Config không chứa secret
 
-File YAML mount vào `/etc/zenify-broker/broker.yaml`. Các khoá `listen`, `lead_team`, `dev_team`, `deny_logins`, `agent_ids`, `grafana.bin`, `grafana.addr`, `grafana.args`, `mongo.main_db`, `mongo.audit_db` có mặc định; các khoá còn lại bắt buộc.
+File YAML mount vào `/etc/zenify-broker/broker.yaml`. Các khoá `listen`, `lead_team`, `dev_team`, `deny_logins`, `agent_ids`, `e2e_workflows`, `grafana.bin`, `grafana.addr`, `grafana.args`, `mongo.main_db`, `mongo.audit_db` có mặc định; các khoá còn lại bắt buộc.
 
 ```yaml
 org: ZenifyAIContactCenter
@@ -26,6 +26,8 @@ deny_logins:                # tài khoản dùng chung, không cấp token (khô
   - zenifydevteam
   - zenifydeveloper
 # agent_ids: [346015963]    # databaseId của bot GitHub App được cấp role agent (mặc định rỗng: không nhận token ghs_)
+# e2e_workflows:            # workflow_ref được cấp role e2e qua OIDC (mặc định rỗng: không nhận oidc_token)
+#   - ZenifyAIContactCenter/contact-center-web/.github/workflows/e2e-staging.yml@refs/heads/staging
 grafana:
   url: https://monitor.zenify.vn
   # bin: mcp-grafana
@@ -61,6 +63,22 @@ Role: ở `POST /token`, sau khi xác nhận member org, broker từ chối logi
 Worker không người ([Chế độ không người](/guides/autonomous)) không có tài khoản người dùng. Nó gửi một installation token của GitHub App (tiền tố `ghs_`) tới `POST /token`. GitHub không cho token này gọi `/user`, nên broker hỏi GraphQL `viewer { login databaseId }` để biết bot nào đang gọi. Quy trình: `deny_logins` trước (403 `login_denied`), rồi `databaseId` của bot phải nằm trong `agent_ids` (không thì 403 `not_allowed`, "GitHub App installation is not in agent_ids"). Khớp thì broker cấp JWT role `agent`. Token `ghs_` mà GraphQL trả lỗi hoặc không có `viewer` thì nhận 401 `github_token_invalid`, không có JWT; riêng lỗi GraphQL loại `RATE_LIMITED` thì nhận 429 `rate_limited`, chờ rồi thử lại. `agent_ids` rỗng nghĩa là broker không nhận installation token nào.
 
 Quyền của `agent`: đọc staging và production như lead (`db-read`, `redis-read`, `data run` chế độ đọc); ghi staging được; **không bao giờ** lấy được credential `--prd --write`, cũng không lấy được credential lumi-agent của production (`data run --prd --lumi`, vì đó là credential đọc-ghi của chính lumi-agent): cả hai đều nhận 403 `lead_only` ở `POST /creds`. Muốn thêm một bot, lấy `databaseId` của nó rồi thêm vào `agent_ids` và restart broker.
+
+### Role `e2e` cho GitHub Actions {#role-e2e}
+
+Workflow E2E chạy trên GitHub Actions không có token người dùng. Nó xin một OIDC token của GitHub Actions với audience `zenify-broker` rồi gửi `{"oidc_token":"..."}` tới `POST /token`. Broker kiểm chữ ký RS256 bằng JWKS của `https://token.actions.githubusercontent.com`, kiểm `iss`, `aud`, `exp`, `nbf`, rồi so claim `workflow_ref` với từng dòng trong `e2e_workflows` (khớp tuyệt đối, kể cả `@refs/heads/<nhánh>`). Kết quả:
+
+- Khớp: JWT role `e2e`, `login` là `oidc:<repository>` (ví dụ `oidc:ZenifyAIContactCenter/contact-center-web`), thời hạn như JWT thường.
+- `workflow_ref` không có trong danh sách, hoặc `e2e_workflows` rỗng: 403 `not_allowed`.
+- Token sai chữ ký, sai `aud`/`iss`, hết hạn: 401 `unauthorized`.
+- Không tải được JWKS: 502 `github_unavailable`, thử lại sau.
+- Body có cả `github_token` lẫn `oidc_token`: 400 `invalid_body`. Body chỉ có `github_token` chạy y như trước.
+
+Role `e2e` chỉ gọi được `POST /e2e/account`. Mọi route khác (`/query`, `/redis`, `/creds`, `/catalog`, `/obs/*`, `/mcp/*`) trả 403 `not_allowed` trước khi vào handler, và vẫn ghi audit. Dòng audit của `/token` qua OIDC có thêm `workflow_ref` và `run_id`; token OIDC không bao giờ được ghi.
+
+::: warning Thứ tự deploy
+Deploy image broker mới trước, rồi mới thêm `e2e_workflows` vào `broker.yaml`. Broker đọc YAML với chế độ từ chối khoá lạ, nên image cũ gặp `e2e_workflows` sẽ không khởi động. Muốn thêm một workflow, thêm đúng `workflow_ref` của nó vào danh sách rồi restart broker.
+:::
 
 Mỗi request có thể mang header `X-Zenify-Task` (giá trị khớp `^[A-Za-z0-9._-]{1,64}$`; giá trị khác bị bỏ qua, request vẫn chạy). Dòng audit khi đó có thêm field `task`, để lần ngược một dòng audit về task của worker. Field `task` bỏ trống khi không có header hợp lệ.
 

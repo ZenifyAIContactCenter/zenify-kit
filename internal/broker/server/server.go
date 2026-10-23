@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -26,7 +27,13 @@ type Deps struct {
 	DenyLogins        []string
 	// AgentIDs are the GitHub databaseIds whose installation token (ghs_)
 	// gets role agent; empty = no installation token is accepted.
-	AgentIDs     []int64
+	AgentIDs []int64
+	// Actions verifies GitHub Actions OIDC tokens; E2EWorkflows are the exact
+	// workflow_ref values that get role e2e (empty or nil Actions = none).
+	Actions interface {
+		Verify(context.Context, string) (auth.ActionsClaims, error)
+	}
+	E2EWorkflows []string
 	GitHub       auth.GitHub
 	Audit        *audit.Logger    // nil = stdout
 	Now          func() time.Time // nil = time.Now
@@ -72,8 +79,18 @@ func New(cfg Deps) http.Handler {
 	})
 	mux.HandleFunc("POST /token", s.token)
 	// require audits a 401 under endpoint (FR-6.1).
+	// It is also the only gate keeping role e2e on /e2e/account: handlers
+	// treat any role other than lead/agent as dev (FR-2.4).
 	require := func(endpoint func(*http.Request) string, h http.Handler) http.Handler {
-		return auth.RequireAudited(cfg.JWTKey, cfg.Audit, endpoint, h)
+		return auth.RequireAudited(cfg.JWTKey, cfg.Audit, endpoint, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if auth.Role(r.Context()) == api.RoleE2E && endpoint(r) != "/e2e/account" {
+				auth.WriteError(w, http.StatusForbidden, api.CodeNotAllowed, "role e2e may only call /e2e/account")
+				cfg.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: cfg.Now(), Login: auth.Login(r.Context()), Role: api.RoleE2E,
+					Endpoint: endpoint(r), Op: r.Method, Status: http.StatusForbidden})
+				return
+			}
+			h.ServeHTTP(w, r)
+		}))
 	}
 	fixed := func(e string) func(*http.Request) string { return func(*http.Request) string { return e } }
 	if cfg.Query != nil {
@@ -130,14 +147,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// token exchanges a GitHub token for a broker JWT. The GitHub token goes only
-// to d.GitHub and is never stored or logged; neither is the issued JWT.
+// token exchanges a GitHub token or a GitHub Actions OIDC token for a broker
+// JWT. Either token goes only to its verifier and is never stored or logged;
+// neither is the issued JWT.
 func (s *server) token(w http.ResponseWriter, r *http.Request) {
 	start := s.d.Now()
 	login, role, status := "", "", http.StatusOK
+	workflowRef, runID := "", ""
 	defer func() {
 		s.d.Audit.Log(audit.Entry{Task: audit.TaskOf(r), TS: start, Login: login, Role: role, Endpoint: "/token",
-			MS: s.d.Now().Sub(start).Milliseconds(), Status: status})
+			MS: s.d.Now().Sub(start).Milliseconds(), Status: status, WorkflowRef: workflowRef, RunID: runID})
 	}()
 	fail := func(st int, code, msg string) {
 		status = st
@@ -149,11 +168,37 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req api.TokenRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTokenBody)).Decode(&req); err != nil || req.GitHubToken == "" {
+	err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxTokenBody)).Decode(&req)
+	switch {
+	case err == nil && req.GitHubToken != "" && req.OIDCToken != "":
+		fail(http.StatusBadRequest, api.CodeInvalidBody, "body must carry github_token or oidc_token, not both")
+		return
+	case err == nil && req.OIDCToken != "":
+		if len(s.d.E2EWorkflows) == 0 || s.d.Actions == nil {
+			fail(http.StatusForbidden, api.CodeNotAllowed, "the broker accepts no OIDC token: e2e_workflows is empty")
+			return
+		}
+		c, err := s.d.Actions.Verify(r.Context(), req.OIDCToken)
+		switch {
+		case errors.Is(err, auth.ErrOIDCInvalid):
+			fail(http.StatusUnauthorized, api.CodeUnauthorized, "invalid GitHub Actions OIDC token")
+			return
+		case err != nil:
+			fail(http.StatusBadGateway, api.CodeGitHubUnavailable, "could not fetch GitHub Actions signing keys")
+			return
+		}
+		login, workflowRef, runID = "oidc:"+c.Repository, c.WorkflowRef, c.RunID
+		if !slices.Contains(s.d.E2EWorkflows, c.WorkflowRef) {
+			fail(http.StatusForbidden, api.CodeNotAllowed, "workflow "+c.WorkflowRef+" is not in e2e_workflows")
+			return
+		}
+		role = api.RoleE2E
+		s.issue(w, login, role, fail)
+		return
+	case err != nil || req.GitHubToken == "":
 		fail(http.StatusUnauthorized, api.CodeGitHubTokenInvalid, "body must be {\"github_token\":\"...\"}")
 		return
 	}
-	var err error
 	if strings.HasPrefix(req.GitHubToken, "ghs_") {
 		login, role, err = s.agent(r, req.GitHubToken)
 	} else {
@@ -190,6 +235,11 @@ func (s *server) token(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadGateway, api.CodeGitHubUnavailable, "could not reach GitHub")
 		return
 	}
+	s.issue(w, login, role, fail)
+}
+
+// issue signs and writes the broker JWT for login and role.
+func (s *server) issue(w http.ResponseWriter, login, role string, fail func(int, string, string)) {
 	tok, exp, err := auth.Issue(s.d.JWTKey, login, role, s.d.Now())
 	if err != nil {
 		fail(http.StatusInternalServerError, api.CodeBrokerMisconfigured, "the broker's signing key is misconfigured")

@@ -280,3 +280,18 @@ func TestLoad_ElasticOptional(t *testing.T) {
 		t.Errorf("elastic secrets not read")
 	}
 }
+
+func TestLoad_E2EWorkflows(t *testing.T) {
+	c, err := Load(writeCfg(t, sampleYAML), envOf(fullEnv()))
+	if err != nil || len(c.E2EWorkflows) != 0 {
+		t.Fatalf("default E2EWorkflows = %v, %v", c.E2EWorkflows, err)
+	}
+	const wf = "ZenifyAIContactCenter/contact-center-web/.github/workflows/e2e-staging.yml@refs/heads/staging"
+	c, err = Load(writeCfg(t, sampleYAML+"e2e_workflows:\n  - "+wf+"\n"), envOf(fullEnv()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.E2EWorkflows) != 1 || c.E2EWorkflows[0] != wf {
+		t.Errorf("E2EWorkflows = %v, want [%s]", c.E2EWorkflows, wf)
+	}
+}

@@ -141,6 +141,8 @@ func run(cfgPath string) error {
 		DevTeam:      cfg.DevTeam,
 		DenyLogins:   cfg.DenyLogins,
 		AgentIDs:     cfg.AgentIDs,
+		Actions:      &auth.ActionsVerifier{},
+		E2EWorkflows: cfg.E2EWorkflows,
 		GitHub:       auth.GitHub{},
 		Audit:        log,
 		Query:        queryH,
