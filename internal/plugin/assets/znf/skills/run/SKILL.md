@@ -10,14 +10,15 @@ line: `references/why-this-skill-exists.md`.
 
 ## Step 1: The port is already decided — read it, never hunt for it
 
+Under `ZNF_AUTONOMOUS=1` read `references/autonomous-sandbox.md` first; its ports override `wt.port`.
+
 `wt` allocated one port per worktree and recorded it. Hunting throws that away.
 
 ```bash
 PORT=$(git config --get wt.port)      # inside a wt worktree
 ```
 
-Empty means this is not a `wt` worktree. Say which, and use the project's documented default;
-do not invent one.
+Empty means not a `wt` worktree: say so, use the project's documented default, never invent one.
 
 ### Then stop, if something is already serving it
 
@@ -25,8 +26,7 @@ do not invent one.
 lsof -nP -iTCP:"$PORT" -sTCP:LISTEN            # never `nc` — see Step 5
 ```
 
-Something there → do **not** start a second: it drifts to the next port, so every URL you report is
-wrong. **Reuse depends on whose code it runs.** Ask the process, not the port:
+Something there → do **not** start a second: it drifts to another port and your URL is wrong. **Reuse depends on whose code it runs.** Ask the process, not the port:
 
 ```bash
 PID=$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t | head -1)
@@ -39,8 +39,8 @@ lsof -a -p "$PID" -d cwd -Fn | grep '^n' | sed 's/^n//'      # `-a`, or lsof ORs
 | **your own worktree** | reuse it — it is your code |
 | **another worktree** | **do not reuse** — another task's uncommitted code. Say whose it is and stop |
 
-**A task only needs a local server for a repo it actually touched.** Read the frontend's env
-first: if it points at staging, a local backend serves nobody (same reference).
+**Only a repo the task touched needs a local server.** Read the frontend's env first: if it
+points at staging, a local backend serves nobody (same reference).
 
 ## Step 2: How the port reaches the app is per-repo — read it from code
 
@@ -153,11 +153,11 @@ State in the reply:
 <the actual startup line, quoted>
 ```
 
-The URL is not decoration — `znf:ui-verifier` takes it from the caller, so the Step 1 port must
-arrive there. Then exercise the changed path and quote what came back: `/run` is done when there is
-real output to paste, not when the server started.
+`znf:ui-verifier` takes the URL from the caller: pass the Step 1 port. Then
+exercise the changed path and quote what came back: `/run` is done when there is real output to
+paste, not when the server started.
 
-Stop a server only when the user asks, or at `/sweep` — never as end-of-task cleanup:
+Stop a server only when asked or at `/sweep`, never as end-of-task cleanup:
 `kill` the pid from `lsof -nP -iTCP:$PORT -sTCP:LISTEN -t`.
 
 ## References
@@ -169,3 +169,4 @@ Materialized at `~/.claude/skills/znf/skills/run/references/`. Read one when its
 - `references/sandbox-port-checks.md` — read when `nc`/`curl` says a port is closed.
 - `references/launch-and-readiness.md` — read when the server will not start, readiness misbehaves, or a monorepo needs several servers.
 - `references/red-flags.md` — read before justifying skipping a step of `/run`.
+- `references/autonomous-sandbox.md` — read when ZNF_AUTONOMOUS=1 (worker sandbox).

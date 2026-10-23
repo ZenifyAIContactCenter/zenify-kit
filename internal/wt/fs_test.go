@@ -193,3 +193,78 @@ func TestUpsertEnvVar_ReplacesExisting(t *testing.T) {
 		t.Errorf("upsert must not drop other keys; got:\n%s", got)
 	}
 }
+
+// cacheFixture builds <tmp>/cache/repo/{node_modules/x,package-lock.json} and a
+// worktree whose package-lock.json is wtLock. Returns repoRoot (named "repo",
+// without node_modules) and the worktree path.
+func cacheFixture(t *testing.T, cacheLock, wtLock string) (repo, wtp, cache string) {
+	t.Helper()
+	tmp := t.TempDir()
+	cache = filepath.Join(tmp, "cache")
+	repo = filepath.Join(tmp, "repo")
+	wtp = filepath.Join(tmp, "wt")
+	for _, d := range []string{filepath.Join(cache, "repo", "node_modules"), repo, wtp} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(cache, "repo", "node_modules", "x"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cache, "repo", "package-lock.json"), []byte(cacheLock), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtp, "package-lock.json"), []byte(wtLock), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+	return repo, wtp, cache
+}
+
+func TestApplyDepsUsesCacheWhenLockMatches(t *testing.T) {
+	repo, wtp, cache := cacheFixture(t, `{"lockfileVersion":3}`, `{"lockfileVersion":3}`)
+	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
+	if err != nil {
+		t.Fatalf("node_modules not a symlink: %v", err)
+	}
+	if want := filepath.Join(cache, "repo", "node_modules"); got != want {
+		t.Fatalf("symlink target = %q, want %q", got, want)
+	}
+}
+
+func TestApplyDepsCacheLockMismatchFallsBackToOwn(t *testing.T) {
+	repo, wtp, _ := cacheFixture(t, `{"a":1}`, `{"a":2}`)
+	own := filepath.Join(repo, "node_modules")
+	if err := os.MkdirAll(own, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
+	if err != nil {
+		t.Fatalf("node_modules not a symlink: %v", err)
+	}
+	if got != own {
+		t.Fatalf("symlink target = %q, want own %q", got, own)
+	}
+}
+
+func TestApplyDepsNoCacheEnvUnchanged(t *testing.T) {
+	t.Setenv("ZENIFY_DEPS_CACHE", "")
+	repo := t.TempDir()
+	wtp := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, "node_modules"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
+	if err != nil || got != filepath.Join(repo, "node_modules") {
+		t.Fatalf("readlink = %q, %v; want repo's node_modules", got, err)
+	}
+}

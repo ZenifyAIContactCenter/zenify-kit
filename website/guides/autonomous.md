@@ -40,7 +40,7 @@ Chỗ nào skill định hỏi hay chờ người, agent tự quyết và ghi m�
 | `plan` | plan của `cook` cần người duyệt trước khi chạy SDD |
 | `data-write` | script ghi dữ liệu production đã dry-run, chờ lead chạy `--write` |
 | `irreversible` | việc không hoàn tác được, nhạy cảm về bảo mật, hoặc có tác dụng ngoài worktree; mọi cổng loại này ở [Thứ tự ưu tiên](#precedence) |
-| `needs-human` | vòng sửa của `ship` vẫn còn lỗi sau vòng 2, plan hỏng đến mức không làm tiếp được, hoặc skill ghi STOP ở một điểm ngoài bảng cổng |
+| `needs-human` | vòng sửa của `ship` vẫn còn lỗi sau vòng 2, diff có file hiển thị UI (cần kiểm UI, xem dưới), plan hỏng đến mức không làm tiếp được, hoặc skill ghi STOP ở một điểm ngoài bảng cổng |
 
 ## `zenify await`
 
@@ -86,6 +86,10 @@ $ zenify await show spec-20261022T030837Z-68f708ec
 
 `task` lấy từ `ZNF_TASK_ID` khi biến này khớp `^[A-Za-z0-9._-]{1,64}$` (như header gửi broker), không thì để rỗng; `repo` và `branch` để trống khi lệnh chạy ngoài git repo. `id` chỉ là tên file trần: `await show` từ chối id có dấu `/` hoặc bắt đầu bằng `.` (mã 2), và báo `no await record "<id>"` khi không có bản ghi.
 
+## Diff đụng UI {#ui}
+
+Chế độ không người không có ai chạy ui-verifier, nên ở bước 4 của `ship` diff có file hiển thị UI thì agent dừng bằng `zenify await needs-human` thay vì dispatch ui-verifier. `zenify ui-verify check` cũng tự làm việc này: khi `ZNF_AUTONOMOUS=1` và chưa có bằng chứng UI-verify khớp HEAD (trạng thái `required`), lệnh ghi bản ghi `needs-human` với `summary` bắt đầu bằng `cần kiểm UI:`, in `id` rồi thoát mã 8, thay vì mã 1 (BLOCKED). Ngoài chế độ không người, lệnh giữ nguyên hành vi cũ.
+
 ## `data-write`: ghi production {#data-write}
 
 Role `agent` không bao giờ lấy được credential ghi production. Quy trình: agent dry-run (`zenify data run --prd -- …`), không tự chạy `--prd --write`, rồi chạy `zenify await data-write --summary "<script sửa gì>" --command '<lệnh cho lead>'`. Lệnh cho lead có dạng `cd <thư mục tuyệt đối> && <lệnh dry-run đã chạy> && zenify data run --prd --write -- …`: bản ghi dry-run gắn với thư mục và lệnh, nên lead chạy lại dry-run trên máy mình rồi mới ghi. Duyệt nghĩa là một lead chạy lệnh đó; worker không resume để ghi. Nếu agent lỡ chạy thẳng `zenify data run --prd --write` ở role `agent` (sau khi đã dry-run, vì thứ tự kiểm không đổi), lệnh thoát mã 1 và in sẵn đúng dòng `zenify await data-write --summary '<what it changes>' --command '<lệnh cho lead>'` cần chạy. Script `--prd --lumi` thì role `agent` không dry-run được (broker từ chối credential lumi-agent trên production, CLI in `prd needs role lead`), nên agent bỏ bước dry-run và chạy `zenify await data-write` ngay, với `--command` dạng `cd <thư mục tuyệt đối> && zenify data run --prd --lumi -- … --dry-run && zenify data run --prd --write --lumi -- …`. Script ghi staging (`--stg --write`) không dừng: nó chạy ngay sau dry-run như [`data run`](/guides/broker-client#data-run) mô tả.
@@ -106,4 +110,5 @@ Worker được khởi động lại với prompt `resume <id> approved` hoặc 
 - `internal/plugin/assets/znf/skills/_shared/autonomous.md` (luật, bảng cổng, resume)
 - `internal/cli/hookactions.go` autonomousLine (dòng SessionStart)
 - `internal/cli/data.go` (data run --prd --write với role agent)
+- `internal/cli/uiverify.go` newUIVerifyCheckCmd (await needs-human khi autonomous)
 -->

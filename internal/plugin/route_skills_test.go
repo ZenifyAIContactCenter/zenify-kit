@@ -137,3 +137,16 @@ func TestHotfixSkill_PointsAtFixLoop(t *testing.T) {
 	w := syncedAsset(t, "skills/hotfix/references/why-these-rules.md")
 	assertContainsAll(t, "hotfix why-these-rules", w, []string{"<REDACTED>", "read-only"})
 }
+
+func TestRunSkillAutonomousSandbox(t *testing.T) {
+	s := syncedAsset(t, "skills/run/SKILL.md")
+	assertContainsAll(t, "run/SKILL.md", s, []string{"ZNF_AUTONOMOUS", "references/autonomous-sandbox.md"})
+	if len(s) > 8192 || strings.Count(s, "\n") > 200 {
+		t.Fatalf("run over cap: %d bytes", len(s))
+	}
+	r := syncedAsset(t, "skills/run/references/autonomous-sandbox.md")
+	assertContainsAll(t, "autonomous-sandbox.md", r, []string{
+		"ZNF_AUTONOMOUS", "/opt/sandbox/worker-env.mjs", "/opt/node16/bin/node", "only the apps the change needs",
+		"PATH=/opt/node16/bin:$PATH npm ci", "3001", "3002", "3005", "deploy/worker/AGENTS.md",
+	})
+}

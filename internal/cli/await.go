@@ -46,15 +46,12 @@ func newAwaitCmd() *cobra.Command {
 		Long:  "Các kind hợp lệ: " + strings.Join(awaitKinds, ", "),            //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rec, err := buildAwaitRecord(args[0], summary, command, files)
+			id, err := awaitNow(args[0], summary, command, files)
 			if err != nil {
-				return exitcode.New(exitcode.BadArgs, err)
-			}
-			if err := writeAwaitRecord(rec); err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), rec.ID)
-			return exitcode.New(exitcode.Awaiting, fmt.Errorf("awaiting human: %s (%s)", rec.Kind, rec.ID))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), id)
+			return exitcode.New(exitcode.Awaiting, fmt.Errorf("awaiting human: %s (%s)", args[0], id))
 		},
 	}
 	cmd.Flags().StringVar(&summary, "summary", "", "tóm tắt điều cần người quyết định") //znf:allow-lang
@@ -82,6 +79,19 @@ func newAwaitShowCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// awaitNow builds and writes one await record and returns its id. An invalid
+// request (not autonomous, unknown kind, empty summary, …) is BadArgs.
+func awaitNow(kind, summary, command string, files []string) (string, error) {
+	rec, err := buildAwaitRecord(kind, summary, command, files)
+	if err != nil {
+		return "", exitcode.New(exitcode.BadArgs, err)
+	}
+	if err := writeAwaitRecord(rec); err != nil {
+		return "", err
+	}
+	return rec.ID, nil
 }
 
 func buildAwaitRecord(kind, summary, command string, files []string) (awaitRecord, error) {
