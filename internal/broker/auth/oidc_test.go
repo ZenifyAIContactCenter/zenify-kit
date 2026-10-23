@@ -24,6 +24,9 @@ type oidcFixture struct {
 	key     *rsa.PrivateKey
 	srv     *httptest.Server
 	fetches atomic.Int32
+	fail    atomic.Bool   // answer 503
+	block   atomic.Bool   // hold the response until release is closed
+	release chan struct{} // closed by the test to let blocked fetches finish
 }
 
 func newOIDCFixture(t *testing.T) *oidcFixture {
@@ -32,7 +35,7 @@ func newOIDCFixture(t *testing.T) *oidcFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &oidcFixture{key: key}
+	f := &oidcFixture{key: key, release: make(chan struct{})}
 	enc := base64.RawURLEncoding
 	jwks := map[string]any{"keys": []map[string]string{{
 		"kty": "RSA", "alg": "RS256", "use": "sig", "kid": "k1",
@@ -41,6 +44,13 @@ func newOIDCFixture(t *testing.T) *oidcFixture {
 	}}}
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.fetches.Add(1)
+		if f.block.Load() {
+			<-f.release
+		}
+		if f.fail.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(jwks)
 	}))
 	t.Cleanup(f.srv.Close)
@@ -131,6 +141,8 @@ func TestActionsVerify_Rejects(t *testing.T) {
 		"no exp":                           rs256(t, f.key, okHeader, claimsJSON(func(m map[string]any) { delete(m, "exp") })),
 		"nbf in future":                    rs256(t, f.key, okHeader, claimsJSON(func(m map[string]any) { m["nbf"] = 1792051200 + 120 })),
 		"unknown kid":                      rs256(t, f.key, `{"alg":"RS256","typ":"JWT","kid":"nope"}`, claimsJSON(nil)),
+		"no repository":                    rs256(t, f.key, okHeader, claimsJSON(func(m map[string]any) { delete(m, "repository") })),
+		"now == exp":                       rs256(t, f.key, okHeader, claimsJSON(func(m map[string]any) { m["exp"] = 1792051200 })),
 		"no workflow_ref":                  rs256(t, f.key, okHeader, claimsJSON(func(m map[string]any) { delete(m, "workflow_ref") })),
 		"tampered claims":                  parts[0] + "." + enc.EncodeToString([]byte(claimsJSON(func(m map[string]any) { m["workflow_ref"] = "x/y/.github/workflows/z.yml@refs/heads/main" }))) + "." + parts[2],
 		"two parts":                        parts[0] + "." + parts[1],
@@ -220,4 +232,62 @@ func TestActionsVerify_JWKSDown(t *testing.T) {
 	if _, err := v.Verify(context.Background(), tok); err == nil || errors.Is(err, ErrOIDCInvalid) {
 		t.Errorf("503: err = %v, want a non-ErrOIDCInvalid error", err)
 	}
+}
+
+func TestActionsVerify_FailedFetchNotRetriedWithinMinute(t *testing.T) {
+	f := newOIDCFixture(t)
+	f.fail.Store(true)
+	now := t0
+	v := &ActionsVerifier{JWKSURL: f.srv.URL, Now: func() time.Time { return now }}
+	tok := rs256(t, f.key, okHeader, claimsJSON(func(m map[string]any) { m["exp"] = 1792051200 + 3600 }))
+	for i := 0; i < 3; i++ {
+		if _, err := v.Verify(context.Background(), tok); err == nil || errors.Is(err, ErrOIDCInvalid) {
+			t.Fatalf("verify %d: err = %v, want upstream error", i, err)
+		}
+	}
+	if n := f.fetches.Load(); n != 1 {
+		t.Fatalf("fetches after failed fetch = %d, want 1", n)
+	}
+	// After the window the fetch is retried and, upstream healthy again, succeeds.
+	f.fail.Store(false)
+	now = t0.Add(61 * time.Second)
+	if _, err := v.Verify(context.Background(), tok); err != nil {
+		t.Fatalf("after window: %v", err)
+	}
+	if n := f.fetches.Load(); n != 2 {
+		t.Fatalf("fetches after window = %d, want 2", n)
+	}
+}
+
+func TestActionsVerify_CachedKidDoesNotWaitOnDownload(t *testing.T) {
+	f := newOIDCFixture(t)
+	var now atomic.Int64
+	now.Store(t0.Unix())
+	v := &ActionsVerifier{JWKSURL: f.srv.URL, Now: func() time.Time { return time.Unix(now.Load(), 0) }}
+	ctx := context.Background()
+	tok := rs256(t, f.key, okHeader, claimsJSON(func(m map[string]any) { m["exp"] = 1792051200 + 3600 }))
+	if _, err := v.Verify(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	// Start an unknown-kid refetch that hangs in the JWKS server.
+	f.block.Store(true)
+	now.Store(t0.Add(61 * time.Second).Unix())
+	unknown := rs256(t, f.key, `{"alg":"RS256","typ":"JWT","kid":"rotated"}`, claimsJSON(func(m map[string]any) { m["exp"] = 1792051200 + 3600 }))
+	hung := make(chan struct{})
+	go func() { _, _ = v.Verify(ctx, unknown); close(hung) }()
+	for f.fetches.Load() < 2 {
+		time.Sleep(time.Millisecond)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := v.Verify(ctx, tok); done <- err }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("cached kid: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("cached kid verify waited on the JWKS download")
+	}
+	close(f.release)
+	<-hung
 }

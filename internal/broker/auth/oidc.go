@@ -47,9 +47,11 @@ type ActionsVerifier struct {
 	HTTP    *http.Client
 	Now     func() time.Time
 
-	mu      sync.Mutex
-	keys    map[string]*rsa.PublicKey
-	fetched time.Time
+	mu       sync.Mutex // guards keys, fetched, fetchErr; never held across a download
+	fetchMu  sync.Mutex // serializes JWKS downloads
+	keys     map[string]*rsa.PublicKey
+	fetched  time.Time // last download attempt, successful or not
+	fetchErr error     // last download's error, nil after a success
 }
 
 // Verify checks alg, signature, issuer, audience, exp and nbf and returns the
@@ -117,26 +119,49 @@ func (v *ActionsVerifier) now() time.Time {
 	return time.Now()
 }
 
-// key returns the public key for kid, fetching the JWKS when the cache is
-// empty, or when kid is unknown and the last fetch is at least a minute old.
+// key returns the public key for kid. The JWKS is downloaded at most once per
+// jwksRefetchEvery: the attempt time is recorded on failure too, and inside
+// the window a missing kid answers ErrOIDCInvalid (or the last fetch error).
+// A cached kid never waits on a download: mu guards state only, fetchMu
+// serializes downloads.
 func (v *ActionsVerifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if k, ok := v.keys[kid]; ok {
-		return k, nil
+	if k, done, err := v.cached(kid); done {
+		return k, err
 	}
-	if v.keys != nil && v.now().Sub(v.fetched) < jwksRefetchEvery {
-		return nil, ErrOIDCInvalid
+	v.fetchMu.Lock()
+	defer v.fetchMu.Unlock()
+	// Another caller may have fetched while we waited.
+	if k, done, err := v.cached(kid); done {
+		return k, err
 	}
 	keys, err := v.fetch(ctx)
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.fetched, v.fetchErr = v.now(), err
 	if err != nil {
 		return nil, err
 	}
-	v.keys, v.fetched = keys, v.now()
+	v.keys = keys
 	if k, ok := keys[kid]; ok {
 		return k, nil
 	}
 	return nil, ErrOIDCInvalid
+}
+
+// cached answers from state alone; done is false when a fetch is due.
+func (v *ActionsVerifier) cached(kid string) (k *rsa.PublicKey, done bool, err error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if k, ok := v.keys[kid]; ok {
+		return k, true, nil
+	}
+	if !v.fetched.IsZero() && v.now().Sub(v.fetched) < jwksRefetchEvery {
+		if v.fetchErr != nil {
+			return nil, true, v.fetchErr
+		}
+		return nil, true, ErrOIDCInvalid
+	}
+	return nil, false, nil
 }
 
 var defaultActionsClient = &http.Client{Timeout: 10 * time.Second}
