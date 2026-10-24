@@ -87,7 +87,7 @@ zenify e2e run --repo repos/contact-center-web --port 3312
 
 `lint` chặn journey hời trước khi chạy. Mỗi scenario phải có đúng một marker `// @domain-assert:<entity>` theo sau là re-fetch qua API và một expect trên field thật. Journey không được chờ bằng `networkidle` hay `waitForTimeout`, không được chọn phần tử bằng xpath hay `nth-child`, và phải dọn dữ liệu đã tạo kể cả khi thất bại.
 
-`run` lint lại, rồi chạy journey trong Docker trên dev server bạn chỉ định. Để chạy trên staging thay cho dev server local, dùng `--base-url <origin>` thay cho `--port`, ví dụ `zenify e2e run --repo repos/contact-center-web --base-url https://web-staging.zenify.vn --role agent`. Origin phải nằm trong `baseUrls` của `.znf/e2e/e2e.config.json`, nếu không lệnh thoát mã 2 trước khi chạy Docker. Tài khoản đăng nhập lấy từ broker khi manifest khai báo `broker:`. Không có broker thì lấy từ ba key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env`; bạn nhập chúng bằng `zenify env`, không viết mật khẩu vào file khác.
+`run` lint lại, rồi chạy journey trong Docker trên dev server bạn chỉ định. Để chạy trên staging thay cho dev server local, dùng `--base-url <origin>` thay cho `--port`, ví dụ `zenify e2e run --repo repos/contact-center-web --base-url https://staging.example.com --role agent`. Origin phải nằm trong `baseUrls` của `.znf/e2e/e2e.config.json`, nếu không lệnh thoát mã 2 trước khi chạy Docker. Tài khoản đăng nhập lấy từ broker khi manifest khai báo `broker:`. Không có broker thì lấy từ ba key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env`; bạn nhập chúng bằng `zenify env`, không viết mật khẩu vào file khác.
 
 ## Viết task trong plan để có journey
 
