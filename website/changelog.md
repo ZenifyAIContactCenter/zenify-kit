@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.47.0
+
+*2026-10-25*
+
+- **`znf:ui-verifier` điều khiển trình duyệt qua `zenify browser` thay cho Playwright MCP:** lệnh mới `zenify browser -s=<phiên> <lệnh>` chạy `@playwright/cli` 0.1.22 đã ghim. Mỗi phiên có thư mục riêng dưới `~/.zenify/playwright/sessions/<phiên>/` và in đường dẫn tuyệt đối cho mọi file nó ghi, nên nhiều verifier chạy song song được mà không lẫn trang của nhau. Lệnh chỉ nhận các lệnh con verifier cần (`open`, `goto`, `snapshot`, `find`, `click`, `fill`, `eval`, `screenshot`, `console`, `resize`, `state-load`, `close`…), và từ chối `run-code`, `upload`, `close-all`, cờ `--config`/`--profile`/`--persistent` cùng `--filename` có đường dẫn. Xem [Kiểm UI](/workflows/ui-testing) và [`zenify browser`](/reference/cli/zenify_browser).
+- **`zenify up` cài playwright-cli và gỡ Playwright MCP của kit:** workspace có repo frontend được cài CLI cùng chromium 1247. Đăng ký MCP `playwright` do kit tạo bị gỡ khỏi Claude và Codex, cùng các quyền `mcp__playwright__*`; đăng ký bạn tự cấu hình được giữ nguyên. `zenify doctor` giờ kiểm CLI và chromium thay cho MCP. Sau khi nâng cấp phải chạy `zenify up --apply` một lần, nếu không ui-verifier báo BLOCKED vì thiếu playwright-cli.
+
 ## v0.46.0
 
 *2026-10-24*
