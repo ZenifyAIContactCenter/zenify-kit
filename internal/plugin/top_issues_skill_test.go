@@ -25,6 +25,12 @@ func TestTopIssuesSkill(t *testing.T) {
 		"docs/exports/_cross/",
 		"no alert rules",
 		"40 MCP calls",
+		// F1: trace logs read as error-level messages only; raw lines carry unmasked PII.
+		"Trace error messages",
+		"Never read `.logs.lines` whole",
+		"Edit or create a file",
+		"`<REDACTED>`",
+		"with the service, route, time window, trace id",
 	})
 	for _, bad := range []string{"disable-model-invocation", "Skill(znf:hotfix)", "edit the code", "apply the fix"} {
 		if strings.Contains(s, bad) {
@@ -39,11 +45,35 @@ func TestTopIssuesSkill(t *testing.T) {
 		"unknown",
 		"| 5 | P0 | P1 | P1 |", "| 1 | P3 | P3 | P3 |",
 		"GET",
+		"| 4 | P1 | P1 | P2 |", "| 3 | P1 | P2 | P3 |", "| 2 | P2 | P3 | P3 |",
+		"≥ 20%", "≥ 5%", "≥ 1000 errors", "≥ 200 errors", "Widespread = ≥ 10 tenants", "**2h**",
+		"1. Higher Impact first.",
+		"2. A money-path issue before",
+		"3. Audience: External > Tenant users > Internal.",
+		"4. More tenants affected first",
+		"5. Trend: New > Rising > Stable > Falling.",
+		"6. Larger absolute error count",
+		"7. `service + route` in alphabetical order.",
+		"Sort all issues by Severity, then the tie-breaks; keep the first 5",
+		"Take the first that applies, in this order",
+		// F2: a level-parsed prev of 0 may be a log-format change, not a new issue.
+		"may be a log-format change",
+		`|= "<message prefix>"`,
 	})
 
 	q := syncedAsset(t, "skills/top-issues/references/queries.md")
 	assertContainsAll(t, "top-issues/references/queries.md", q, []string{
 		"offset", "count_over_time() by (span.<tenant_attr>)", "query_loki_patterns", "1h",
+		// F1
+		"## Trace error messages",
+		`select(.level=="error" or .level=="fatal") | .msg | split("\n")[0][0:120]`,
+		// F2
+		`|= "<message prefix>" [<W>] offset <W>`,
+		// F3: group on a new label, never on the parsed msg field.
+		"topk(5, sum by (m) (count_over_time(",
+		"never on the parsed `msg` field itself",
+		// M3
+		"drill fallback slot",
 	})
 
 	dest := t.TempDir()

@@ -64,8 +64,10 @@ Print every `now`/`prev` number used to score, so a reader can recompute the ran
 For each top-5 issue:
 
 1. Route issue: `zenify obs <id> --route "<METHOD path>" --prd|--stg --since <W>`, then
-   `zenify obs --trace <trace-id> --prd|--stg` on one sampled trace. No route → a narrowed log
-   sample or pattern (`references/queries.md`).
+   one sampled trace via `zenify obs --trace`, read as error-level messages only
+   (`references/queries.md`, "Trace error messages"). Never read `.logs.lines` whole or print a
+   request body: `obs` does not mask them. No route → a narrowed log sample or pattern
+   (`references/queries.md`).
 2. Issue with spans: count tenants with errors over the last 2h (`references/queries.md`, Tenant).
    Read the tenant denominator once per run.
 3. A Grafana deeplink for the evidence.
@@ -98,7 +100,7 @@ Each issue carries these `**Label:** value` lines:
 - One detail section per issue (Step 6).
 - Prose in the project's language; identifiers, queries and labels stay as they are.
 
-Print it in chat, then edit or create a file (`_shared/harness-tools.md`)
+Print it in chat, then Edit or create a file (`_shared/harness-tools.md`)
 `docs/exports/_cross/YYYY-MM-DD-top-issues-<env>.md`; a rerun on the same day overwrites that day's
 file. Write is for this file only.
 

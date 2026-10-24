@@ -89,6 +89,10 @@ Take the highest level the issue meets.
 ## Trend
 
 - New: `prev = 0` and `now > 0`.
+- A Loki candidate with `prev = 0` from the level-parsed query may be a log-format change (the
+  previous window's lines were not JSON-parseable), not a new issue. Before scoring it New, count
+  its top error message as a substring (`|= "<message prefix>"`) over the previous window; a
+  non-zero count is its `prev`.
 - Rising: `now ≥ 2 × prev`.
 - Falling: `now ≤ 0.5 × prev`.
 - Stable: everything else.
@@ -107,7 +111,8 @@ For an error candidate `now`/`prev` are error counts; for a latency candidate th
 
 ## Ranking and tie-breaks
 
-Sort the top 5 by Severity. Within the same Severity, compare in order:
+Sort all issues by Severity, then the tie-breaks; keep the first 5. Within the same Severity,
+compare in order:
 
 1. Higher Impact first.
 2. A money-path issue before a non-money-path one.
@@ -120,6 +125,8 @@ Sort the top 5 by Severity. Within the same Severity, compare in order:
 Fewer than 5 issues → print only those; never pad.
 
 ## Risk if left (7 days)
+
+Take the first that applies, in this order:
 
 - High: Impact ≥ 3 and trend New or Rising; or the issue touches data; or the issue is on a write
   money path; or audience External and trend not Falling.

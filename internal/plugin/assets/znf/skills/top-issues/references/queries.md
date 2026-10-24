@@ -52,6 +52,21 @@ sum by (<app_label>) (count_over_time({<app_label>=~"<apps>"} | json | level=~"e
 
 - `prev`: the same query with `offset <W>` after `[<W>]`.
 - Never filter on the substring "error": it counts info lines that mention the word.
+- Top error messages per app (measured: 5 rows); replace `msg` with the discovered message field:
+
+```logql
+topk(5, sum by (m) (count_over_time({<app_label>="<app>"} | json | level=~"error|fatal" | line_format "{{.msg}}" | regexp `^(?P<m>[^:{"]{0,70})` [<W>])))
+```
+
+- Group on a new label name (`m`), never on the parsed `msg` field itself: grouping on `msg`
+  returned 361 series / 67 KB.
+- `prev` of 0 for a candidate (Trend in the scoring rubric): count its top message as a substring
+  over the previous window; non-zero → use it as `prev`:
+
+```logql
+sum(count_over_time({<app_label>="<app>"} |= "<message prefix>" [<W>] offset <W>))
+```
+
 - `query_loki_patterns` only on a candidate's app, with a window of at most 1h
   (`startRfc3339: now-1h`): one app over 1h already returns about 10 KB, mostly info patterns.
 
@@ -69,14 +84,26 @@ A match → query it over `<W>` and check whether it grew through the whole wind
 { resource.service.name="<service>" && span.http.route="<route>" && kind=server && status=error } | count_over_time() by (span.<tenant_attr>)
 ```
 
-Take `<route>` as its exact value from `list_tempo_attribute_values`. Denominator, once per run,
-same 2h:
+Take `<route>` from the spanmetrics `span_name` (strip the method). Only when this query returns
+nothing, look up the exact value with `list_tempo_attribute_values`; that call counts against the
+drill fallback slot. Denominator, once per run, same 2h:
 
 ```traceql
 { kind=server } | count_over_time() by (span.<tenant_attr>)
 ```
 
 Do not count `nil` or empty series as tenants.
+
+## Trace error messages (drill)
+
+`zenify obs --trace` prints raw log lines, including request bodies with customer names and
+message content that `obs` does not mask. Read only error-level messages, first line, truncated:
+
+```bash
+zenify obs --trace <trace-id> --prd|--stg --json | jq -r '.logs.lines[] | .line | fromjson? | select(.level=="error" or .level=="fatal") | .msg | split("\n")[0][0:120]' | sort | uniq -c | sort -rn
+```
+
+Never read `.logs.lines` whole or print a request body. The `jq` pipe may ask for permission.
 
 ## Deeplink
 
