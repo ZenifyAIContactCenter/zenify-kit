@@ -75,7 +75,7 @@ sum by (<app_label>) (count_over_time({<app_label>=~"<apps>"} |~ "(?i)(error|fat
   replace `msg` with the discovered message field:
 
 ```logql
-topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal|\"level\":(50|60))" | json | level=~"(?i)(error|fatal|50|60)" | line_format `{{ regexReplaceAll "[0-9a-fA-F-]{8,}|[0-9]{4,}" (regexReplaceAll "[^ \"]+@[^ \"]+" .msg "<E>") "<N>" }}` | regexp `^(?P<m>[^:{"]{0,70})` [<W>])))
+topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal|\"level\":(50|60))" | json | level=~"(?i)(error|fatal|50|60)" | line_format `{{ regexReplaceAll "[0-9a-fA-F-]{8,}|[0-9]{4,}" (regexReplaceAll "[^ \"]+@[^ \"]+" .msg "<E>") "<N>" }}` | regexp `^(?P<m>[^:{"\n]{0,70})` [<W>])))
 ```
 
 - Group on a new label name (`m`), never on the parsed `msg` field itself: grouping on `msg`
@@ -94,11 +94,19 @@ topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal|\
   `<template regex>`: the template regex-escaped, `<N>` → `[0-9a-fA-F-]+`, `<E>` → `[^ "]+`, its
   suffix kept (measured on prd: accepted, 50 = 50 lines on a template without a colliding
   message). Cannot build it → score Trend as Stable, *inferred*; never use the prefix total.
+- `<template regex>` runs on the raw line, before `| json`, where JSON escapes some characters.
+  The top-message query already cuts each template at its first newline, `:`, `{` or `"`; a
+  template that still contains a backslash cannot be matched on the raw line → Stable,
+  *inferred*.
+- New needs both counts empty: `<search prefix>` alone finds no line in the previous window.
+  The prefix finds lines but `<template regex>` finds none → the windows cannot be compared →
+  Stable, *inferred*, never New.
 - A level-parsed `prev` of 0 is a real 0 unless the template's own lines failed to parse. Check
   the template, not the whole app: in the previous window, count the lines that contain
   `<search prefix>`, and
   those of them that fail to parse (`drop` the error labels so the metric query is accepted;
-  measured on prd: 518 of 518 failing after a format change). None contain it → New. Most of them
+  measured on prd: 518 of 518 failing after a format change). None contain it → New (see the
+  rule above on prefix-only matches). Most of them
   fail to parse → the level count is not trustworthy. They parse fine → the 0 is real → New:
 
 ```logql

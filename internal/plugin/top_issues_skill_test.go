@@ -106,6 +106,9 @@ func TestTopIssuesSkill(t *testing.T) {
 		`|= "<search prefix>" |~ "<template regex>" [<W>] offset <W>`,
 		// Zenie round 4: the prefix only narrows; the whole template is matched.
 		"never use the prefix total",
+		// Zenie round 5: raw-line matching and prefix-only matches.
+		"regexp `^(?P<m>[^:{\"\\n]{0,70})`",
+		"Stable, *inferred*, never New.",
 		// Zenie round 3: substring queries search a raw-log prefix, never the normalised template.
 		"built before any substring query",
 		"Shorter than 8 characters →\n  no reliable prefix: skip every substring query below",
