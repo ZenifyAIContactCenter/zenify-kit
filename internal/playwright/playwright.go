@@ -91,8 +91,12 @@ func SessionsDir(home string) string {
 	return filepath.Join(home, ".zenify", "playwright", "sessions")
 }
 
-// CLIInstalled reports whether the pinned CLI version is installed.
+// CLIInstalled reports whether the pinned CLI version is installed: package.json at
+// CLIVersion and the entry script, so an interrupted npm install is reinstalled.
 func CLIInstalled(home string) bool {
+	if _, err := os.Stat(CLIScript(home)); err != nil {
+		return false
+	}
 	b, err := os.ReadFile(filepath.Join(CLIDir(home), "node_modules", "@playwright", "cli", "package.json")) //nolint:gosec // G304 -- path derived from home
 	if err != nil {
 		return false

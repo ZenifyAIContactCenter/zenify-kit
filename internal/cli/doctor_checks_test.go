@@ -212,6 +212,7 @@ func installFakePlaywright(t *testing.T, home, browsers string) {
 	}
 	must(os.MkdirAll(pkg, 0o700))
 	must(os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"`+playwright.CLIVersion+`"}`), 0o600))
+	must(os.WriteFile(playwright.CLIScript(home), nil, 0o600))
 	for _, d := range []string{"chromium-1247", "chromium_headless_shell-1247"} {
 		must(os.MkdirAll(filepath.Join(browsers, d), 0o700))
 		must(os.WriteFile(filepath.Join(browsers, d, "INSTALLATION_COMPLETE"), nil, 0o600))

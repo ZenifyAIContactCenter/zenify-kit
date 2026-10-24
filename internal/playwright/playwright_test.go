@@ -181,6 +181,24 @@ func writeCLIPackage(t *testing.T, home, version string) {
 	if err := os.WriteFile(filepath.Join(p, "package.json"), []byte(`{"name":"@playwright/cli","version":"`+version+`"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(CLIScript(home), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An interrupted npm install can leave package.json without the entry script.
+func TestCLIInstalledRequiresScript(t *testing.T) {
+	home := t.TempDir()
+	writeCLIPackage(t, home, CLIVersion)
+	if !CLIInstalled(home) {
+		t.Fatal("full install reported missing")
+	}
+	if err := os.Remove(CLIScript(home)); err != nil {
+		t.Fatal(err)
+	}
+	if CLIInstalled(home) {
+		t.Error("package.json without playwright-cli.js reported installed")
+	}
 }
 
 func recorder(calls *[]string) func(string, []string) error {
