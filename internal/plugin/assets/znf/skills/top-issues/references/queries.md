@@ -89,6 +89,11 @@ topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal|\
   `|=` matches text verbatim and the template carries `<N>`/`<E>` placeholders the raw lines do
   not, so take the template's text before its first `<N>` or `<E>`. Shorter than 8 characters →
   no reliable prefix: skip every substring query below and score Trend as Stable, *inferred*.
+- The prefix only narrows the search; it can also match other messages (a success line sharing
+  the same start). Every substring count below therefore also matches the whole template with
+  `<template regex>`: the template regex-escaped, `<N>` → `[0-9a-fA-F-]+`, `<E>` → `[^ "]+`, its
+  suffix kept (measured on prd: accepted, 50 = 50 lines on a template without a colliding
+  message). Cannot build it → score Trend as Stable, *inferred*; never use the prefix total.
 - A level-parsed `prev` of 0 is a real 0 unless the template's own lines failed to parse. Check
   the template, not the whole app: in the previous window, count the lines that contain
   `<search prefix>`, and
@@ -97,16 +102,16 @@ topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal|\
   fail to parse → the level count is not trustworthy. They parse fine → the 0 is real → New:
 
 ```logql
-sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" [<W>] offset <W>))
-sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" | json | __error__!="" | drop __error__, __error_details__ [<W>] offset <W>))
+sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" |~ "<template regex>" [<W>] offset <W>))
+sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" |~ "<template regex>" | json | __error__!="" | drop __error__, __error_details__ [<W>] offset <W>))
 ```
 
 - Only then use the trend fallback: count both windows with the same `<search prefix>` and print
-  both:
+  both, each with `<template regex>`:
 
 ```logql
-sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" [<W>]))
-sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" [<W>] offset <W>))
+sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" |~ "<template regex>" [<W>]))
+sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" |~ "<template regex>" [<W>] offset <W>))
 ```
 
 - `query_loki_patterns` only on a candidate's app, with a window of at most 1h

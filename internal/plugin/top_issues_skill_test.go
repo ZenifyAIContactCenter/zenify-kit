@@ -76,7 +76,7 @@ func TestTopIssuesSkill(t *testing.T) {
 		"Take the first that applies, in this order",
 		// F2, H4, Zenie #5: prev 0 is New unless parse failures are proven; compare like with like.
 		"checked on the template, never on the app's whole log\n  volume",
-		`|= "<search prefix>"`,
+		`|= "<search prefix>" |~ "<template regex>"`,
 		"never compare a level-filtered `now` with a substring `prev`",
 		"score Trend as Stable and mark it *inferred*",
 		// H2, Zenie #2
@@ -102,8 +102,10 @@ func TestTopIssuesSkill(t *testing.T) {
 		"An empty result means \"not read: no error-level lines parsed\", never \"no errors\".",
 		"Never run\n  `zenify obs --trace` without this filter",
 		// F2, H4: both windows measured with the same substring count.
-		`|= "<search prefix>" [<W>]))`,
-		`|= "<search prefix>" [<W>] offset <W>`,
+		`|= "<search prefix>" |~ "<template regex>" [<W>]))`,
+		`|= "<search prefix>" |~ "<template regex>" [<W>] offset <W>`,
+		// Zenie round 4: the prefix only narrows; the whole template is matched.
+		"never use the prefix total",
 		// Zenie round 3: substring queries search a raw-log prefix, never the normalised template.
 		"built before any substring query",
 		"Shorter than 8 characters →\n  no reliable prefix: skip every substring query below",
