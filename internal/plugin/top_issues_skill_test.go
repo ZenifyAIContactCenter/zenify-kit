@@ -76,7 +76,7 @@ func TestTopIssuesSkill(t *testing.T) {
 		"Take the first that applies, in this order",
 		// F2, H4, Zenie #5: prev 0 is New unless parse failures are proven; compare like with like.
 		"checked on the template, never on the app's whole log\n  volume",
-		`|= "<message template>"`,
+		`|= "<search prefix>"`,
 		"never compare a level-filtered `now` with a substring `prev`",
 		"score Trend as Stable and mark it *inferred*",
 		// H2, Zenie #2
@@ -102,8 +102,13 @@ func TestTopIssuesSkill(t *testing.T) {
 		"An empty result means \"not read: no error-level lines parsed\", never \"no errors\".",
 		"Never run\n  `zenify obs --trace` without this filter",
 		// F2, H4: both windows measured with the same substring count.
-		`|= "<message template>" [<W>]))`,
-		`|= "<message template>" [<W>] offset <W>`,
+		`|= "<search prefix>" [<W>]))`,
+		`|= "<search prefix>" [<W>] offset <W>`,
+		// Zenie round 3: substring queries search a raw-log prefix, never the normalised template.
+		"built before any substring query",
+		"Shorter than 8 characters →\n  no reliable prefix: skip every substring query below",
+		// Zenie round 3: spaced numeric levels.
+		"drop the pre-filter for it\n  and keep only the level match",
 		// H2, H3: calls for the error rate; prev filtered to the now-set.
 		`[<W>] offset <W>)) and on(service, span_name) topk(15,`,
 		`sum by (service, span_name) (increase(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_SERVER"}[<W>])) and on(service, span_name) topk(15,`,
@@ -118,7 +123,6 @@ func TestTopIssuesSkill(t *testing.T) {
 		`| json | __error__!="" | drop __error__, __error_details__ [<W>] offset <W>`,
 		"Never quote its lines verbatim; count and group them only.",
 		`gsub("[^ ]+@[^ ]+"; "<REDACTED>")`,
-		"shorter than 8\n  characters, skip the count",
 		// M6, M7
 		"only for the top 3\n  apps by error count",
 		// Zenie #4: case-insensitive and numeric levels.

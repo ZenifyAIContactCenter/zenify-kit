@@ -59,8 +59,11 @@ whole `now` query above, so only the series of `now` come back (measured: 10 row
   "Measured dead ends").
 - `query_loki_logs` on `<loki_uid>`, `queryType: instant`, `endRfc3339: now`; replace `level` with
   the discovered field name. The level match is case-insensitive and accepts numeric levels
-  (50 error, 60 fatal). The `|~` pre-filter only drops lines cheaply and lets numeric levels
-  through; the level match stays the criterion (why: evidence-sources, "Measured dead ends"):
+  (50 error, 60 fatal). The `|~` pre-filter only drops lines cheaply and lets compact numeric
+  levels (`"level":50`) through; the level match stays the criterion (why: evidence-sources,
+  "Measured dead ends"). An app that logs `"level": 50` with a space: drop the pre-filter for it
+  and keep only the level match (costlier, misses nothing); on prd every pre-filter variant that
+  allowed a character after the colon (`\s*`, ` ?`, `.?`) returned 502:
 
 ```logql
 sum by (<app_label>) (count_over_time({<app_label>=~"<apps>"} |~ "(?i)(error|fatal|\"level\":(50|60))" | json | level=~"(?i)(error|fatal|50|60)" [<W>]))
@@ -82,24 +85,28 @@ topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal|\
   template, and the raw value never reaches the conversation. Never scrub after the query instead.
 - Each `m` value is one Loki candidate. Names are not caught: read `m` as possibly carrying PII and
   pass only the template, never more, into the report or the handoff.
+- `<search prefix>`: the raw-log search string for a template, built before any substring query.
+  `|=` matches text verbatim and the template carries `<N>`/`<E>` placeholders the raw lines do
+  not, so take the template's text before its first `<N>` or `<E>`. Shorter than 8 characters →
+  no reliable prefix: skip every substring query below and score Trend as Stable, *inferred*.
 - A level-parsed `prev` of 0 is a real 0 unless the template's own lines failed to parse. Check
-  the template, not the whole app: in the previous window, count the lines that contain it, and
+  the template, not the whole app: in the previous window, count the lines that contain
+  `<search prefix>`, and
   those of them that fail to parse (`drop` the error labels so the metric query is accepted;
   measured on prd: 518 of 518 failing after a format change). None contain it → New. Most of them
   fail to parse → the level count is not trustworthy. They parse fine → the 0 is real → New:
 
 ```logql
-sum(count_over_time({<app_label>="<app>"} |= "<message template>" [<W>] offset <W>))
-sum(count_over_time({<app_label>="<app>"} |= "<message template>" | json | __error__!="" | drop __error__, __error_details__ [<W>] offset <W>))
+sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" [<W>] offset <W>))
+sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" | json | __error__!="" | drop __error__, __error_details__ [<W>] offset <W>))
 ```
 
-- Only then use the trend fallback: count both windows with the same substring filter and print
-  both. Use the template's text before its first `<N>` or `<E>`; when that text is shorter than 8
-  characters, skip the count and score Trend as Stable, *inferred*:
+- Only then use the trend fallback: count both windows with the same `<search prefix>` and print
+  both:
 
 ```logql
-sum(count_over_time({<app_label>="<app>"} |= "<message template>" [<W>]))
-sum(count_over_time({<app_label>="<app>"} |= "<message template>" [<W>] offset <W>))
+sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" [<W>]))
+sum(count_over_time({<app_label>="<app>"} |= "<search prefix>" [<W>] offset <W>))
 ```
 
 - `query_loki_patterns` only on a candidate's app, with a window of at most 1h
