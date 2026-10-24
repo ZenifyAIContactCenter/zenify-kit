@@ -23,7 +23,8 @@ var (
 )
 
 // parseBrowserArgs extracts the session name and the pass-through args (session
-// tokens removed). The subcommand is the first positional that is not a session value.
+// tokens removed). The subcommand is the first token that is not a session token, --raw or --json;
+// any other dash token before it is refused (it could take a value and hide the subcommand).
 func parseBrowserArgs(args []string) (session string, rest []string, sub string, err error) {
 	have := false
 	for i := 0; i < len(args); i++ {
@@ -39,14 +40,20 @@ func parseBrowserArgs(args []string) (session string, rest []string, sub string,
 			i++
 			session, have = args[i], true
 		default:
-			if sub == "" && !strings.HasPrefix(a, "-") {
-				sub = a
+			if sub == "" {
+				switch {
+				case a == "--raw" || a == "--json":
+				case strings.HasPrefix(a, "-"):
+					return "", nil, "", fmt.Errorf("browser: %q đứng trước lệnh con không được phép, chỉ nhận --raw và --json", a) //znf:allow-lang
+				default:
+					sub = a
+				}
 			}
 			rest = append(rest, a)
 		}
 	}
 	if !have {
-		return "", nil, "", errors.New("browser: thiếu -s=<phiên>, ví dụ: zenify browser -s=ten open <url>") //znf:allow-lang
+		return "", nil, "", errors.New("browser: thiếu -s=<phiên>, ví dụ: zenify browser -s=<phiên> open <url>") //znf:allow-lang
 	}
 	return session, rest, sub, nil
 }

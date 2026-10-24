@@ -52,6 +52,8 @@ func TestBrowserRejects(t *testing.T) {
 	for _, args := range [][]string{
 		{"open"}, {"-s=../x", "open"}, {"-s=", "open"},
 		{"-s=a", "close-all"}, {"-s=a", "kill-all"}, {"-s=a", "install"},
+		{"-s=a", "--raw", "close-all"}, {"-s=a", "--config", "x.json", "close-all"},
+		{"-s=a", "--", "close-all"}, {"-s=a", "-s=../x", "open"},
 	} {
 		called := false
 		var stderr bytes.Buffer
@@ -133,5 +135,17 @@ func TestBrowserPassesExitCode(t *testing.T) {
 	code := runBrowser([]string{"-s=a", "open"}, home, &bytes.Buffer{}, &bytes.Buffer{}, func(*exec.Cmd) error { return err })
 	if code != 3 {
 		t.Errorf("code=%d want 3", code)
+	}
+}
+
+func TestBrowserGlobalFlagsBeforeSubcommand(t *testing.T) {
+	home := browserHome(t, true)
+	var got *exec.Cmd
+	code := runBrowser([]string{"-s=a", "--json", "eval", "close-all"}, home, &bytes.Buffer{}, &bytes.Buffer{}, func(c *exec.Cmd) error { got = c; return nil })
+	if code != 0 || got == nil {
+		t.Fatalf("code=%d", code)
+	}
+	if want := "-s=a|--json|eval|close-all"; strings.Join(got.Args[2:], "|") != want {
+		t.Errorf("argv tail=%v want %s", got.Args[2:], want)
 	}
 }
