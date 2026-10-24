@@ -14,6 +14,8 @@ A candidate is kept only above these minimums:
 
 The same 10 errors/window threshold holds for money-path routes.
 
+A Loki candidate is one error message pattern (a top-message template), never an app-wide total.
+
 ## Audience
 
 Each issue belongs to exactly one group; take the highest that applies.
@@ -39,8 +41,13 @@ Each issue belongs to exactly one group; take the highest that applies.
 ## Tenants affected
 
 - The number of distinct tenants with error spans of the issue, counted with Tempo metrics grouped
-  by the tenant attribute. The attribute name comes from the catalog's `attributes`: the key whose
-  description contains "tenant"; none → `list_tempo_attribute_names`.
+  by the tenant attribute. The attribute comes from the catalog's `attributes`: the entry whose key
+  or value names the tenant, taking whichever side is a dotted attribute name; none →
+  `list_tempo_attribute_names`, whose scope (`span.` or `resource.`) is used as reported.
+- Error spans often carry no tenant attribute, so `unknown` is common; a query that timed out
+  twice is "not read: timeout", not `unknown`.
+- Two passes: pass 1 scores every candidate with tenants `unknown` and keeps the top 8; tenants
+  are counted for those 8; pass 2 re-scores with the tenant level and keeps the top 5.
 - Counted over the last **2h**: Tempo metrics refuse ranges of 3h or more; 2h keeps a margin and
   was measured working on prd. The report states that the number covers 2h.
 - A series whose value is `nil` or empty is not a tenant. Every series `nil`, or no tenant
@@ -65,7 +72,9 @@ invoices, orders, plans/subscriptions, wallet/top-up, and paid messaging (SMS, Z
 
 ## Impact
 
-Take the highest level the issue meets.
+Take the highest level the issue meets. The audience clauses with error counts or error rates
+apply to error candidates; latency candidates use the latency scale below. The error rate is
+errors / calls of the same series, both from spanmetrics.
 
 - **5**:
   - touches data (records lost, written wrong or routed wrong); or
@@ -81,18 +90,25 @@ Take the highest level the issue meets.
 - **3**:
   - Tenant users below level 4 (usually 1 tenant); or
   - Internal with ≥ 200 errors/window; or
-  - queue backlog growing through the whole window; or
-  - p95 ≥ 5s with audience External or Tenant users.
-- **2**: Internal with < 200 errors/window; or p95 between 2s and 5s; or Internal with p95 ≥ 5s.
+  - queue backlog growing through the whole window.
+- **2**: Internal with < 200 errors/window.
 - **1**: only error log lines, with no request or job failing (the error was handled, then logged).
+  A Loki-only pattern with no failing request or job tied to it by a trace or log sample scores 1.
+
+Latency scale (latency candidates only; data touch and money path still apply):
+
+- External or Tenant users with p95 ≥ 5s → 3.
+- p95 between 2s and 5s, or p95 ≥ 2 × the previous window's → 2.
+- Internal → 2.
 
 ## Trend
 
 - New: `prev = 0` and `now > 0`.
-- A Loki candidate with `prev = 0` from the level-parsed query may be a log-format change (the
-  previous window's lines were not JSON-parseable), not a new issue. Before scoring it New, count
-  its top error message as a substring (`|= "<message prefix>"`) over the previous window; a
-  non-zero count is its `prev`.
+- A Loki candidate whose level-parsed `prev` is 0 while the app had log volume in the previous
+  window may be a log-format change (the lines did not parse), not a new issue. Measure both
+  windows with the same substring count (`|= "<message template>"`, `now` without offset, `prev`
+  with offset) and print both; never compare a level-filtered `now` with a substring `prev`.
+  If the windows still cannot be compared, score Trend as Stable and mark it *inferred*.
 - Rising: `now ≥ 2 × prev`.
 - Falling: `now ≤ 0.5 × prev`.
 - Stable: everything else.
@@ -155,25 +171,29 @@ Hypothetical candidates, window 24h, all above the Thresholds.
 | A: `svc-a POST /orders` | errors | 366 | 18 | 9000 | 3 of 40 | Tenant users | yes, write |
 | B: `svc-b GET /reports` | errors | 700 | 1500 | 23000 | 12 of 40 | Tenant users | no |
 | C: `svc-c POST /webhook/inbound` | latency p95 (s) | 6.2 | 5.9 | 800 | `unknown` | External | no |
+| D: `svc-d GET /search` | latency p95 (s) | 3.1 | 1.4 | 5000 | `unknown` | Tenant users | no |
 
 Trend:
 
 - A: 366 ≥ 2 × 18 = 36 → Rising.
 - B: 700 ≤ 0.5 × 1500 = 750 → Falling.
 - C: 6.2 is neither ≥ 11.8 nor ≤ 2.95 → Stable.
+- D: 3.1 ≥ 2 × 1.4 = 2.8 → Rising.
 
 Impact:
 
 - A: write money path above the Thresholds → 4. No log or trace shows a failed or repeated write,
   so no data touch and not 5.
 - B: Widespread (12 ≥ 10), but error rate 700 / 23000 ≈ 3% < 5% → not 5; Widespread → 4.
-- C: External above the Thresholds → 4 (p95 ≥ 5s External would give only 3).
+- C: a latency candidate, so the latency scale: External with p95 ≥ 5s → 3 (the error clause
+  "External above the Thresholds → 4" does not apply).
+- D: latency scale, p95 between 2s and 5s and doubled → 2.
 
-Severity: A = 4 Rising → P1; B = 4 Falling → P2; C = 4 Stable → P1.
+Severity: A = 4 Rising → P1; B = 4 Falling → P2; C = 3 Stable → P2; D = 2 Rising → P2.
 
-Tie-break between A and C (both P1, both Impact 4): step 2, A is on a money path and C is not →
-A first.
+Tie-break among B, C and D (all P2): step 1, higher Impact first → B (4), C (3), D (2).
 
-Ranking: 1. A (P1), 2. C (P1), 3. B (P2).
+Ranking: 1. A (P1), 2. B (P2), 3. C (P2), 4. D (P2).
 
-Risk if left: A High (write money path); C High (External, trend not Falling); B Low (Falling).
+Risk if left: A High (write money path); B Low (Falling); C High (External, trend not Falling);
+D Medium (Impact 2, so not High; not Falling).

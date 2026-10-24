@@ -11,16 +11,16 @@ Khi bạn muốn biết hệ thống đang có vấn đề gì nặng nhất tr�
 2. Skill lấy nguồn dữ liệu từ `zenify catalog`: datasource uid, tên app Loki, tên service Tempo, và thuộc tính tenant.
 3. Skill thu thập năm tín hiệu: alert đang firing hoặc pending, lỗi theo service và route, p95 theo route, dòng lỗi Loki theo app, và backlog queue nếu có metric. Mỗi tín hiệu được ghi "read" hoặc "not read" kèm lý do; kết quả rỗng hay lỗi không bao giờ được coi là "không có issue".
 4. Skill gộp các ứng viên cùng call chain hoặc cùng mẫu lỗi thành một issue.
-5. Skill chấm điểm theo rubric cố định (đối tượng, mức tenant, money path, chạm data, impact, xu hướng, severity) rồi giữ top 5. Có ít hơn 5 issue thì chỉ in số đó, không độn thêm. Mọi số `now`/`prev` dùng để chấm đều được in ra để bạn tự tính lại.
-6. Với mỗi issue trong top 5, skill đào sâu: `zenify obs` theo route và một trace mẫu, đếm số tenant lỗi trong 2h gần nhất, và tạo deeplink Grafana làm bằng chứng.
+5. Skill chấm điểm theo rubric cố định (đối tượng, mức tenant, money path, chạm data, impact, xu hướng, severity) qua hai lượt: lượt 1 chấm tạm và giữ top 8, đếm số tenant lỗi trong 2h gần nhất cho 8 ứng viên đó, lượt 2 chấm lại với mức tenant rồi giữ top 5. Có ít hơn 5 issue thì chỉ in số đó, không độn thêm. Mọi số `now`/`prev` dùng để chấm đều được in ra để bạn tự tính lại.
+6. Với mỗi issue trong top 5, skill đào sâu: `zenify obs` theo route và một trace mẫu (chỉ đọc mẫu thông điệp lỗi đã lọc giá trị), và tạo deeplink Grafana làm bằng chứng.
 7. Skill viết phần xử lý cho từng issue: tín hiệu, đối tượng, tenant, money path, impact, rủi ro nếu để 7 ngày, giả thuyết nguyên nhân (đánh dấu confirmed hoặc inferred), cách xử lý tạm và sửa gốc, rủi ro và cách rollback, repo cần sửa, lệnh handoff, bằng chứng.
-8. Skill in báo cáo trong chat và ghi file, rồi hỏi bạn chọn issue #1 đến #5 hoặc "none". Chọn một issue thì skill gọi `/znf:fix` với service, route, khung thời gian, trace id và bằng chứng của issue đó.
+8. Skill in báo cáo trong chat và ghi file, rồi hỏi bạn chọn issue #1 đến #5 hoặc "none". Chọn một issue thì skill gọi `/znf:fix` chỉ với các trường có cấu trúc: catalog id, repo, route, khung thời gian, trace id, số đếm và mẫu thông điệp lỗi đã lọc giá trị.
 
 ## Lưu ý
 
 - Skill chỉ đọc: không sửa code, config hay data, chỉ gọi các tool MCP đọc của Grafana, và không chuyển việc cho ai khi bạn chưa chọn.
-- Số tenant bị ảnh hưởng được tính trên 2h gần nhất, không phải cả cửa sổ khảo sát.
-- Không có alert rule thì skill vẫn chạy: tín hiệu alert được ghi là không có rule và các tín hiệu còn lại tiếp tục.
+- Số tenant bị ảnh hưởng được tính trên 2h gần nhất, không phải cả cửa sổ khảo sát. Số tenant thường là "không xác định" khi span lỗi không mang thuộc tính tenant.
+- Không có alert rule thì skill vẫn chạy: tín hiệu alert được ghi là không có alert rule do Grafana quản lý (skill vẫn đọc thêm rule do datasource quản lý) và các tín hiệu còn lại tiếp tục.
 - Hotfix chỉ được gợi ý: với issue P0 trên prd, skill nhắc bạn tự gõ `/znf:hotfix`, skill không tự gọi.
 - Mỗi lần chạy tối đa 40 lượt gọi MCP; chạm trần thì skill dừng thu thập và liệt kê phần chưa đọc ở đầu báo cáo. `zenify obs` là lệnh CLI nên không tính vào trần.
 - Báo cáo được ghi vào `docs/exports/_cross/YYYY-MM-DD-top-issues-<env>.md`; chạy lại trong cùng ngày thì ghi đè file của ngày đó. Nội dung tin nhắn, số điện thoại, email, tên khách và token được thay bằng `<REDACTED>`; tenant id được phép in (tối đa 3).
