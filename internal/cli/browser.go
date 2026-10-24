@@ -18,9 +18,45 @@ import (
 var (
 	browserSessionRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 	browserPathRe    = regexp.MustCompile(`(^|[^/\w.-])\.playwright-cli/`)
-	// browserBlocked are subcommands that would touch every session or the shared install.
-	browserBlocked = map[string]bool{"close-all": true, "kill-all": true, "install": true}
+	// browserAllowed is the only set of subcommands passed through. `Bash(zenify browser *)` is
+	// auto-allowed with no prompt and runs outside the sandbox, so this wrapper is the only gate:
+	// anything else (run-code, upload, drop, attach, show, install, close-all, …) is refused.
+	browserAllowed = map[string]bool{
+		"open": true, "goto": true, "go-back": true, "go-forward": true, "reload": true,
+		"snapshot": true, "find": true, "click": true, "dblclick": true, "hover": true,
+		"fill": true, "type": true, "press": true, "select": true, "check": true, "uncheck": true,
+		"eval": true, "screenshot": true, "console": true, "resize": true, "state-load": true,
+		"tab-list": true, "tab-new": true, "tab-select": true, "tab-close": true,
+		"dialog-accept": true, "dialog-dismiss": true, "close": true,
+	}
+	// browserBlockedFlags would load another config or a persistent profile.
+	browserBlockedFlags = []string{"--config", "--profile", "--persistent"}
 )
+
+// checkBrowserFlags refuses blocked flags anywhere in rest, a --filename that is not a plain
+// basename, and joined short session forms (-s5) the parser did not consume.
+func checkBrowserFlags(rest []string) error {
+	for i, a := range rest {
+		name, val, hasVal := strings.Cut(a, "=")
+		for _, f := range browserBlockedFlags {
+			if name == f {
+				return fmt.Errorf("browser: cờ %s không được phép qua zenify browser", f) //znf:allow-lang
+			}
+		}
+		if name == "--filename" {
+			if !hasVal && i+1 < len(rest) {
+				val = rest[i+1]
+			}
+			if strings.ContainsAny(val, `/\`) || strings.HasPrefix(val, "..") {
+				return fmt.Errorf("browser: --filename %q phải là tên file, không chứa đường dẫn", val) //znf:allow-lang
+			}
+		}
+		if strings.HasPrefix(a, "-s") && !strings.HasPrefix(a, "--") {
+			return fmt.Errorf("browser: %q không được phép, dùng -s=<phiên> trước lệnh con", a) //znf:allow-lang
+		}
+	}
+	return nil
+}
 
 // parseBrowserArgs extracts the session name and the pass-through args (session
 // tokens removed). The subcommand is the first token that is not a session token, --raw or --json;
@@ -99,8 +135,11 @@ func runBrowser(args []string, home string, stdout, stderr io.Writer, run func(c
 	if err == nil && !browserSessionRe.MatchString(session) {
 		err = fmt.Errorf("browser: tên phiên %q không hợp lệ, chỉ nhận chữ, số, _ và -", session) //znf:allow-lang
 	}
-	if err == nil && browserBlocked[sub] {
-		err = fmt.Errorf("browser: lệnh %q bị chặn vì ảnh hưởng mọi phiên hoặc bản cài chung", sub) //znf:allow-lang
+	if err == nil && !browserAllowed[sub] {
+		err = fmt.Errorf("browser: lệnh %q không được phép qua zenify browser", sub) //znf:allow-lang
+	}
+	if err == nil {
+		err = checkBrowserFlags(rest)
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())

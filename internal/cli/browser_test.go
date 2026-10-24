@@ -22,6 +22,9 @@ func browserHome(t *testing.T, installed bool) string {
 		if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"version":"`+playwright.CLIVersion+`"}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.WriteFile(playwright.CLIScript(home), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return home
 }
@@ -54,6 +57,13 @@ func TestBrowserRejects(t *testing.T) {
 		{"-s=a", "close-all"}, {"-s=a", "kill-all"}, {"-s=a", "install"},
 		{"-s=a", "--raw", "close-all"}, {"-s=a", "--config", "x.json", "close-all"},
 		{"-s=a", "--", "close-all"}, {"-s=a", "-s=../x", "open"},
+		{"-s=a", "run-code", "x"}, {"-s=a", "upload", "f"}, {"-s=a", "drop"}, {"-s=a", "attach"},
+		{"-s=a", "show"}, {"-s=a", "tray"}, {"-s=a", "install-browser"}, {"-s=a", "delete-data"},
+		{"-s=a", "list"}, {"-s=a", "state-save"},
+		{"-s=a", "open", "--config", "x"}, {"-s=a", "open", "--profile=p"}, {"-s=a", "open", "--persistent"},
+		{"-s=a", "screenshot", "--filename", "/tmp/x.png"}, {"-s=a", "screenshot", "--filename=../x.png"},
+		{"-s=a", "screenshot", "--filename", `a\b.png`},
+		{"-s=a", "click", "e1", "-s5"},
 	} {
 		called := false
 		var stderr bytes.Buffer
@@ -147,5 +157,21 @@ func TestBrowserGlobalFlagsBeforeSubcommand(t *testing.T) {
 	}
 	if want := "-s=a|--json|eval|close-all"; strings.Join(got.Args[2:], "|") != want {
 		t.Errorf("argv tail=%v want %s", got.Args[2:], want)
+	}
+}
+
+func TestBrowserFilenameBasenamePasses(t *testing.T) {
+	home := browserHome(t, true)
+	for _, args := range [][]string{
+		{"-s=a", "screenshot", "--filename", "shot.png"}, {"-s=a", "screenshot", "--filename=shot.png"},
+	} {
+		var got *exec.Cmd
+		code := runBrowser(args, home, &bytes.Buffer{}, &bytes.Buffer{}, func(c *exec.Cmd) error { got = c; return nil })
+		if code != 0 || got == nil {
+			t.Fatalf("%v: code=%d", args, code)
+		}
+		if want := strings.Join(args[1:], "|"); strings.Join(got.Args[3:], "|") != want {
+			t.Errorf("%v: argv tail=%v", args, got.Args[3:])
+		}
 	}
 }

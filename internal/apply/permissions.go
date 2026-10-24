@@ -13,8 +13,9 @@ import (
 // KitAllowRules are the tool rules the kit unions into permissions.allow of
 // ~/.claude/settings.json so Playwright UI-verify, `zenify e2e|visual`, the
 // broker commands `zenify db-read|redis-read|data run` and the broker MCPs run
-// without permission prompts. Playwright gets a per-tool list
-// with no server-wide rule and no browser_run_code_unsafe on purpose.
+// without permission prompts. `zenify browser *` is a wildcard: the wrapper
+// refuses every subcommand outside its allowlist (run-code, upload, drop,
+// attach, show, …), so the wrapper, not this prompt, is the guard.
 //
 // zenify-grafana and zenify-posthog DO get server-wide wildcards: every tool
 // is read-only on the broker side (mcp-grafana runs --disable-write with a
@@ -53,7 +54,9 @@ var KitAllowRules = []string{
 // permission rule. `zenify db-read` / `redis-read` / `data run` reach the
 // broker, and `data run`'s child dials the DB directly; the child is still
 // checked by git-guard, and prd writes stay gated by the broker role and the
-// dry-run key. Inert when the sandbox is off.
+// dry-run key. `zenify browser *` is listed because the playwright-cli daemon
+// writes ~/.zenify/playwright and reaches the local dev app. Inert when the
+// sandbox is off.
 var KitSandboxExcluded = []string{
 	"zenify e2e login *",
 	"zenify browser *",

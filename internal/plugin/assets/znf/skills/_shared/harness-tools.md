@@ -32,7 +32,7 @@ Two rules for skill authors:
 | Run a data script against stg or prd with broker credentials | `Bash`: `zenify data run (--stg\|--prd) [--write] -- <cmd>`, a bare call (no pipe, redirect or `cd`) — see `data-scripts.md` | same command |
 | Query logs, traces, metrics or product analytics | MCP `mcp__<broker-grafana>__*`, `mcp__<broker-posthog>__exec` — see `evidence-sources.md` | same MCP servers |
 
-Codex notes: `Workflow` has no equivalent (only `contract-sweep` uses it); review T3 is a plain parallel `Agent` fan-out and runs the same on Codex. `context: fork` frontmatter is
+Codex notes: `zenify browser` runs inside Codex's shell sandbox and is not verified there; Codex in this workflow does CI review only. `Workflow` has no equivalent (only `contract-sweep` uses it); review T3 is a plain parallel `Agent` fan-out and runs the same on Codex. `context: fork` frontmatter is
 ignored, the skill runs inline. Codex passes the text after `$znf:<name>` as plain prompt text.
 
 ## Boundary
