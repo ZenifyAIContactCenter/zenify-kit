@@ -27,7 +27,7 @@ func BuildArgs(o pwdocker.Options, cfg RunConfig) []string {
 	args := pwdocker.BaseArgs(o.GOOS)
 	baseURL := fmt.Sprintf("http://host.docker.internal:%d", cfg.Port)
 	if cfg.BaseURL != "" {
-		baseURL = cfg.BaseURL
+		baseURL = origin(cfg.BaseURL) // the origin that passed CheckBaseURL, never the raw URL
 	}
 	args = append(args,
 		"-v", cfg.HarnessDir+":/harness",

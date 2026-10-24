@@ -54,6 +54,15 @@ func TestBuildArgs_BaseURL(t *testing.T) {
 	}
 }
 
+func TestBuildArgs_BaseURLNormalisedToOrigin(t *testing.T) {
+	got := strings.Join(BuildArgs(pwdocker.Options{GOOS: "darwin"}, RunConfig{
+		HarnessDir: "/tmp/h", E2EDir: "/repo/.znf/e2e", BaseURL: "https://web-staging.zenify.vn/some/path?x=1",
+	}), " ")
+	if !strings.Contains(got, "BASE_URL=https://web-staging.zenify.vn ") {
+		t.Fatalf("BASE_URL not reduced to origin: %q", got)
+	}
+}
+
 func TestCheckBaseURL(t *testing.T) {
 	dir := t.TempDir()
 	write := func(body string) {
