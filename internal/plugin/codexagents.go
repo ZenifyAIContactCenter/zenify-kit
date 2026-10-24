@@ -86,7 +86,7 @@ func agentTOML(name string, fm agentMeta, body string) (string, error) {
 	}
 	// No mcp_servers key: real Codex 0.155.1 requires a table (name -> server config),
 	// not the list the plan sketched, and rejects the whole file otherwise. A ui-verifier
-	// reaches Playwright through the user's own Codex MCP config.
+	// drives the browser through `zenify browser` (Bash), so it needs no MCP server.
 	sb.WriteString("developer_instructions = '''\n")
 	sb.WriteString(strings.TrimLeft(body, "\n"))
 	if !strings.HasSuffix(body, "\n") {

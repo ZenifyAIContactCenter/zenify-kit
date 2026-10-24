@@ -70,6 +70,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newE2eCmd())
 	root.AddCommand(newHooksRunCmd())
 	root.AddCommand(newPmCmd())
+	root.AddCommand(newBrowserCmd())
 	root.AddCommand(newAwaitCmd())
 	return root
 }

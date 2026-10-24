@@ -13,8 +13,9 @@ import (
 // KitAllowRules are the tool rules the kit unions into permissions.allow of
 // ~/.claude/settings.json so Playwright UI-verify, `zenify e2e|visual`, the
 // broker commands `zenify db-read|redis-read|data run` and the broker MCPs run
-// without permission prompts. Playwright gets a per-tool list
-// with no server-wide rule and no browser_run_code_unsafe on purpose.
+// without permission prompts. `zenify browser *` is a wildcard: the wrapper
+// refuses every subcommand outside its allowlist (run-code, upload, drop,
+// attach, show, …), so the wrapper, not this prompt, is the guard.
 //
 // zenify-grafana and zenify-posthog DO get server-wide wildcards: every tool
 // is read-only on the broker side (mcp-grafana runs --disable-write with a
@@ -23,18 +24,10 @@ import (
 // for kit-registered servers, but the rule matches by name only: a user's own
 // server registered under one of these two names is auto-approved too.
 var KitAllowRules = []string{
-	"mcp__playwright__browser_navigate",
-	"mcp__playwright__browser_snapshot",
-	"mcp__playwright__browser_take_screenshot",
-	"mcp__playwright__browser_click",
-	"mcp__playwright__browser_type",
-	"mcp__playwright__browser_evaluate",
-	"mcp__playwright__browser_console_messages",
-	"mcp__playwright__browser_wait_for",
-	"mcp__playwright__browser_set_storage_state",
 	"Bash(zenify e2e *)",
 	"Bash(zenify visual *)",
 	"Bash(zenify ui-verify *)",
+	"Bash(zenify browser *)",
 	"Bash(zenify db-read *)",
 	"Bash(zenify redis-read *)",
 	"Bash(zenify data run *)",
@@ -61,9 +54,12 @@ var KitAllowRules = []string{
 // permission rule. `zenify db-read` / `redis-read` / `data run` reach the
 // broker, and `data run`'s child dials the DB directly; the child is still
 // checked by git-guard, and prd writes stay gated by the broker role and the
-// dry-run key. Inert when the sandbox is off.
+// dry-run key. `zenify browser *` is listed because the playwright-cli daemon
+// writes ~/.zenify/playwright and reaches the local dev app. Inert when the
+// sandbox is off.
 var KitSandboxExcluded = []string{
 	"zenify e2e login *",
+	"zenify browser *",
 	"zenify db-read *",
 	"zenify redis-read *",
 	"zenify data run *",
@@ -235,6 +231,29 @@ func RemoveKitAsk(home string, dryRun bool) (int, error) {
 // Without a record it removes nothing and returns an error.
 func RemoveKitPermissions(home string, dryRun bool) (int, error) {
 	return allowList.remove(home, dryRun)
+}
+
+// RetiredKitAllowRules are the Playwright MCP rules earlier kits added; they
+// are no longer in KitAllowRules and `zenify up` removes them.
+var RetiredKitAllowRules = []string{
+	"mcp__playwright__browser_navigate",
+	"mcp__playwright__browser_snapshot",
+	"mcp__playwright__browser_take_screenshot",
+	"mcp__playwright__browser_click",
+	"mcp__playwright__browser_type",
+	"mcp__playwright__browser_evaluate",
+	"mcp__playwright__browser_console_messages",
+	"mcp__playwright__browser_wait_for",
+	"mcp__playwright__browser_set_storage_state",
+}
+
+// RemoveRetiredKitPermissions removes only RetiredKitAllowRules the kit
+// recorded adding. A machine with no record has nothing to remove: (0, nil).
+func RemoveRetiredKitPermissions(home string, dryRun bool) (int, error) {
+	if _, err := os.Stat(kitPermissionsRecord(home)); os.IsNotExist(err) {
+		return 0, nil
+	}
+	return allowList.removeRules(home, RetiredKitAllowRules, dryRun)
 }
 
 // RemoveKitSandbox removes only the excluded commands the kit recorded adding.

@@ -26,13 +26,13 @@ Two rules for skill authors:
 | Edit or create a file | `Edit` / `Write` | `apply_patch` |
 | Run a shell command | `Bash` | shell |
 | Fetch a page or search the web | `WebFetch` / `WebSearch` | Codex web search |
-| Drive a browser (UI verification) | `mcp__playwright__browser_*` via `znf:ui-verifier` | MCP `playwright` |
+| Drive a browser (UI verification) | `Bash: zenify browser -s=<session> …` via `znf:ui-verifier` | `Bash: zenify browser -s=<session> …` |
 | Wait on a condition or a background process | `Monitor` | poll with a shell loop |
 | Run a command in the background and be woken when it exits (waits longer than a `Monitor` deadline, e.g. CI) | `Bash` with `run_in_background: true` | run it in the foreground (blocks the turn) |
 | Run a data script against stg or prd with broker credentials | `Bash`: `zenify data run (--stg\|--prd) [--write] -- <cmd>`, a bare call (no pipe, redirect or `cd`) — see `data-scripts.md` | same command |
 | Query logs, traces, metrics or product analytics | MCP `mcp__<broker-grafana>__*`, `mcp__<broker-posthog>__exec` — see `evidence-sources.md` | same MCP servers |
 
-Codex notes: `Workflow` has no equivalent (only `contract-sweep` uses it); review T3 is a plain parallel `Agent` fan-out and runs the same on Codex. `context: fork` frontmatter is
+Codex notes: `zenify browser` runs inside Codex's shell sandbox and is not verified there; Codex in this workflow does CI review only. `Workflow` has no equivalent (only `contract-sweep` uses it); review T3 is a plain parallel `Agent` fan-out and runs the same on Codex. `context: fork` frontmatter is
 ignored, the skill runs inline. Codex passes the text after `$znf:<name>` as plain prompt text.
 
 ## Boundary

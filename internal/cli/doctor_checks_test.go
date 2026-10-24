@@ -18,6 +18,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 )
 
 func noManifest() *manifest.Manifest { return nil }
@@ -191,16 +192,75 @@ func TestToolPresenceReportsMissing(t *testing.T) {
 	}
 }
 
-func TestPlaywrightCheckIsReadOnlyRegistered(t *testing.T) {
+func TestPlaywrightCheck_NameAndNoFix(t *testing.T) {
 	fakeClaudeNoMCP(t)
 	c := playwrightCheck()
-	if c.Name != "playwright" {
-		t.Fatalf("name: %q", c.Name)
+	if c.Name != "playwright" || c.Fix != nil {
+		t.Fatalf("name=%q fix=%v", c.Name, c.Fix != nil)
 	}
-	// Run must not panic and must return a detail mentioning mcp state.
-	_, detail := c.Run()
-	if !strings.Contains(detail, "mcp=") {
-		t.Fatalf("detail should report mcp state: %q", detail)
+}
+
+// installFakePlaywright lays down the files Status reads as "CLI + chromium installed".
+func installFakePlaywright(t *testing.T, home, browsers string) {
+	t.Helper()
+	pkg := filepath.Join(playwright.CLIDir(home), "node_modules", "@playwright", "cli")
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(os.MkdirAll(pkg, 0o700))
+	must(os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"`+playwright.CLIVersion+`"}`), 0o600))
+	must(os.WriteFile(playwright.CLIScript(home), nil, 0o600))
+	for _, d := range []string{"chromium-1247", "chromium_headless_shell-1247"} {
+		must(os.MkdirAll(filepath.Join(browsers, d), 0o700))
+		must(os.WriteFile(filepath.Join(browsers, d, "INSTALLATION_COMPLETE"), nil, 0o600))
+	}
+}
+
+func playwrightOpts(home, browsers, claudeGet string) playwright.Options {
+	return playwright.Options{
+		Home:   home,
+		Getenv: func(k string) string { return map[string]string{"PLAYWRIGHT_BROWSERS_PATH": browsers}[k] },
+		GOOS:   "linux",
+		Output: func(name string, args []string) ([]byte, error) {
+			if claudeGet == "" {
+				return nil, errors.New("No MCP server found")
+			}
+			return []byte(claudeGet), nil
+		},
+	}
+}
+
+func TestPlaywrightCheckWith_MissingCLIPointsAtUp(t *testing.T) {
+	home, browsers := t.TempDir(), t.TempDir()
+	ok, detail := playwrightCheckWith(playwrightOpts(home, browsers, ""), false)
+	if ok || !strings.Contains(detail, "zenify up") {
+		t.Fatalf("ok=%v detail=%q", ok, detail)
+	}
+}
+
+func TestPlaywrightCheckWith_InstalledNoKitMCPIsOK(t *testing.T) {
+	home, browsers := t.TempDir(), t.TempDir()
+	installFakePlaywright(t, home, browsers)
+	if ok, detail := playwrightCheckWith(playwrightOpts(home, browsers, ""), false); !ok {
+		t.Fatalf("want ok, detail=%q", detail)
+	}
+	// a custom registration is the user's: still ok
+	custom := "Scope: User config\nCommand: node\nArgs: my.js\n"
+	if ok, detail := playwrightCheckWith(playwrightOpts(home, browsers, custom), false); !ok {
+		t.Fatalf("custom MCP must not fail the check, detail=%q", detail)
+	}
+}
+
+func TestPlaywrightCheckWith_KitMCPStillRegisteredFails(t *testing.T) {
+	home, browsers := t.TempDir(), t.TempDir()
+	installFakePlaywright(t, home, browsers)
+	desired := "Scope: User config\nCommand: npx\nArgs: " + strings.Join(playwright.DesiredArgs(home), " ") + "\n"
+	ok, detail := playwrightCheckWith(playwrightOpts(home, browsers, desired), false)
+	if ok || !strings.Contains(detail, "zenify up") {
+		t.Fatalf("ok=%v detail=%q", ok, detail)
 	}
 }
 

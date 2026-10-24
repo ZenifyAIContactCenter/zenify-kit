@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/lock"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
 )
 
@@ -505,12 +507,15 @@ func TestRenderCodexSummary(t *testing.T) {
 		t.Fatalf("not installed: %q", got)
 	}
 	b.Reset()
-	renderCodexSummary(ensureReport{CodexInstalled: true, CodexLinkPath: "/h/.agents/skills/znf", CodexHooks: apply.HookChanges{Added: 2, Unchanged: 5}, CodexAgents: 5, CodexMCP: "desired"}, &b)
+	renderCodexSummary(ensureReport{CodexInstalled: true, CodexLinkPath: "/h/.agents/skills/znf", CodexHooks: apply.HookChanges{Added: 2, Unchanged: 5}, CodexAgents: 5}, &b)
 	s := b.String()
-	for _, want := range []string{"Codex:", "skills: symlink /h/.agents/skills/znf", "hooks: 7 entry", "/hooks", "agents: 5", "MCP playwright: desired"} {
+	for _, want := range []string{"Codex:", "skills: symlink /h/.agents/skills/znf", "hooks: 7 entry", "/hooks", "agents: 5"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in\n%s", want, s)
 		}
+	}
+	if strings.Contains(s, "MCP playwright") {
+		t.Errorf("summary must not report the retired Playwright MCP:\n%s", s)
 	}
 	b.Reset()
 	renderCodexSummary(ensureReport{CodexInstalled: true, CodexHooks: apply.HookChanges{Unchanged: 7}}, &b)
@@ -766,5 +771,110 @@ func TestMigrateEnvStep_LegacyConflictBlocksMerge(t *testing.T) {
 		if read(envPath) != envBefore || read(settings) != setBefore {
 			t.Fatalf("run %d changed a file", i)
 		}
+	}
+}
+
+// fakePlaywrightEnv returns Options whose Output answers `<bin> mcp get playwright`
+// from regs (bin -> raw output; absent bin = command fails) and whose Runner
+// records every command line into *calls.
+func fakePlaywrightEnv(t *testing.T, regs map[string]string, calls *[]string) playwright.Options {
+	t.Helper()
+	home := t.TempDir()
+	return playwright.Options{
+		Home:   home,
+		Getenv: func(string) string { return "" },
+		GOOS:   "linux",
+		Runner: func(name string, args []string) error {
+			*calls = append(*calls, name+" "+strings.Join(args, " "))
+			return nil
+		},
+		Output: func(name string, args []string) ([]byte, error) {
+			if out, ok := regs[name]; ok {
+				return []byte(out), nil
+			}
+			return nil, errors.New("no such server")
+		},
+	}
+}
+
+func desiredClaudeMCP(home string) string {
+	return "Scope: User config (available in all your projects)\nCommand: npx\nArgs: " + strings.Join(playwright.DesiredArgs(home), " ") + "\n"
+}
+
+func hasCall(calls []string, prefix string) bool {
+	for _, c := range calls {
+		if strings.HasPrefix(c, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestProvisionPlaywright_FrontendInstallsAndRetiresKitMCP(t *testing.T) {
+	var calls []string
+	po := fakePlaywrightEnv(t, nil, &calls)
+	po.Output = func(name string, args []string) ([]byte, error) { return []byte(desiredClaudeMCP(po.Home)), nil }
+	var out, errOut bytes.Buffer
+	provisionPlaywright(&out, &errOut, true, false, po)
+	if !hasCall(calls, "npm install") {
+		t.Errorf("Install not run: %v", calls)
+	}
+	if !hasCall(calls, "claude mcp remove playwright -s user") {
+		t.Errorf("kit MCP not removed: %v", calls)
+	}
+	if hasCall(calls, "codex") {
+		t.Errorf("codex not on PATH but codex ran: %v", calls)
+	}
+	if !strings.Contains(out.String(), `đã gỡ MCP "playwright" của kit (claude)`) { //znf:allow-lang
+		t.Errorf("missing removal line:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "MCP playwright:") {
+		t.Errorf("old MCP summary line leaked:\n%s", out.String())
+	}
+}
+
+func TestProvisionPlaywright_CustomRegistrationKept(t *testing.T) {
+	var calls []string
+	po := fakePlaywrightEnv(t, map[string]string{"claude": "Scope: User config\nCommand: node\nArgs: my-server.js\n"}, &calls)
+	var out, errOut bytes.Buffer
+	provisionPlaywright(&out, &errOut, true, false, po)
+	if hasCall(calls, "claude mcp remove") {
+		t.Errorf("custom registration removed: %v", calls)
+	}
+	if !strings.Contains(out.String(), "giữ đăng ký") { //znf:allow-lang
+		t.Errorf("missing keep notice:\n%s", out.String())
+	}
+}
+
+func TestProvisionPlaywright_NoFrontendStillRetiresMCP(t *testing.T) {
+	var calls []string
+	po := fakePlaywrightEnv(t, nil, &calls)
+	po.Output = func(name string, args []string) ([]byte, error) { return []byte(desiredClaudeMCP(po.Home)), nil }
+	var out, errOut bytes.Buffer
+	provisionPlaywright(&out, &errOut, false, false, po)
+	if hasCall(calls, "npm") || hasCall(calls, "node") {
+		t.Errorf("Install ran without a frontend repo: %v", calls)
+	}
+	if !hasCall(calls, "claude mcp remove playwright -s user") {
+		t.Errorf("kit MCP not removed: %v", calls)
+	}
+}
+
+func TestProvisionPlaywright_CodexAlsoRetired(t *testing.T) {
+	var calls []string
+	po := fakePlaywrightEnv(t, nil, &calls)
+	po.Output = func(name string, args []string) ([]byte, error) {
+		if name == "claude" {
+			return []byte(desiredClaudeMCP(po.Home)), nil
+		}
+		return nil, errors.New("absent")
+	}
+	var out, errOut bytes.Buffer
+	provisionPlaywright(&out, &errOut, false, true, po)
+	if !hasCall(calls, "claude mcp remove") {
+		t.Errorf("claude not removed: %v", calls)
+	}
+	if hasCall(calls, "codex mcp remove") {
+		t.Errorf("absent codex registration removed: %v", calls)
 	}
 }

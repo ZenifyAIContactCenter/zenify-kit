@@ -8,7 +8,7 @@ Kit chạy được trên cả Claude Code và Codex. Khi máy có `codex` trên
 
 ## Cài và kiểm tra
 
-Cài Codex theo hướng dẫn của OpenAI, rồi chạy `zenify up` như thường lệ. Cuối lần chạy, `up` in một khối `Codex:` gồm bốn dòng: skills, hooks, agents và MCP playwright.
+Cài Codex theo hướng dẫn của OpenAI, rồi chạy `zenify up` như thường lệ. Cuối lần chạy, `up` in một khối `Codex:` gồm ba dòng: skills, hooks và agents.
 
 - **Skills:** Codex đọc cây skill của kit qua một symlink ở `~/.agents/skills`, trỏ về cùng cây skill Claude đang dùng.
 - **Hooks:** nằm ở `~/.codex/hooks.json`, sinh từ cùng bảng hook với Claude (xem [Hook](/reference/hooks), cột Runtime).

@@ -121,7 +121,7 @@ Mục `broker-creds` của `zenify doctor` xin thử credential staging chế đ
 zenify e2e login --port 3327 --role agent
 ```
 
-Broker cấp một tài khoản E2E riêng cho bạn theo role, trên tenant test của staging. Role hợp lệ: `administrator`, `supervisor`, `team_leader`, `agent`, `sale`, `sale_team_leader`. Lệnh ghi Playwright storage state vào `~/.zenify/playwright/state-<role>.json`; không có `--role` thì dùng `administrator` và ghi `~/.zenify/playwright/state.json` như cũ. Agent `znf:ui-verifier` nạp file này bằng `browser_set_storage_state`. `zenify e2e run` và `zenify visual check` cũng nhận `--role`. Xem [Kiểm thử UI](/workflows/ui-testing).
+Broker cấp một tài khoản E2E riêng cho bạn theo role, trên tenant test của staging. Role hợp lệ: `administrator`, `supervisor`, `team_leader`, `agent`, `sale`, `sale_team_leader`. Lệnh ghi Playwright storage state vào `~/.zenify/playwright/state-<role>.json`; không có `--role` thì dùng `administrator` và ghi `~/.zenify/playwright/state.json` như cũ. Agent `znf:ui-verifier` nạp file này bằng `zenify browser -s=<phiên> state-load <file>`. `zenify e2e run` và `zenify visual check` cũng nhận `--role`. Xem [Kiểm thử UI](/workflows/ui-testing).
 
 ## Grafana và PostHog cho agent
 

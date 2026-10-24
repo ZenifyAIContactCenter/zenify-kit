@@ -39,6 +39,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify broker](./zenify_broker) | Nhóm lệnh làm việc với credential broker của zenify. |
 | [zenify broker headers](./zenify_broker_headers) | In header Authorization cho MCP http của Claude Code, dưới dạng một object JSON. |
 | [zenify broker token](./zenify_broker_token) | In JWT của credential broker ra stdout, dùng cache và tự xin lại khi còn dưới 60 giây. |
+| [zenify browser](./zenify_browser) | Điều khiển trình duyệt qua playwright-cli đã ghim, mỗi phiên một trình duyệt và một thư mục riêng, để `znf:ui-verifier` chạy song song. |
 | [zenify catalog](./zenify_catalog) | In danh mục dịch vụ giám sát (datasource Grafana, tên log, trace, metric) dưới dạng YAML. |
 | [zenify catalog drift](./zenify_catalog_drift) | So danh mục với tên đang có thật trong Loki, Prometheus (7 ngày qua) và Tempo (72 giờ qua). |
 | [zenify config](./zenify_config) | Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều. |
@@ -55,7 +56,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify down](./zenify_down) | Gỡ phần ZenifyKit đã cài vào máy và repo, giữ nguyên code, workspace và knowledge store. |
 | [zenify e2e](./zenify_e2e) | Nhóm lệnh cho journey E2E: lint chống test hời và chạy journey Playwright thật trong Docker. |
 | [zenify e2e lint](./zenify_e2e_lint) | Kiểm tra cơ học các journey trong `.znf/e2e`, chặn journey thiếu re-fetch, assert hoặc cleanup. |
-| [zenify e2e login](./zenify_e2e_login) | Đăng nhập trên host bằng harness e2e và ghi Playwright storage state để `znf:ui-verifier` nạp qua MCP. |
+| [zenify e2e login](./zenify_e2e_login) | Đăng nhập trên host bằng harness e2e và ghi Playwright storage state để `znf:ui-verifier` nạp bằng `zenify browser state-load`. |
 | [zenify e2e run](./zenify_e2e_run) | Chạy journey E2E trong Docker, trỏ vào dev server đang mở trên máy bạn. |
 | [zenify env](./zenify_env) | Quản lý biến môi trường cá nhân cho tool dev và agent trong `<workspace>/.zenify/.env`, không phải env chạy app. |
 | [zenify env edit](./zenify_env_edit) | Mở `.zenify/.env` bằng `$EDITOR`, tạo file quyền 0600 nếu chưa có. |
