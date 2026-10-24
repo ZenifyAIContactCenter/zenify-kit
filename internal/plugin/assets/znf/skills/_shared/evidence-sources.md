@@ -91,9 +91,10 @@ service catalog — never from memory.
 - Counting Loki errors with a substring filter (`|~ "(?i)error"`) matches info lines that merely
   mention the word, inflating counts by orders of magnitude; filter on the parsed level field (a
   level label or `| json | level=~"error|fatal"`).
-- A level-parsed Loki count of 0 for an app that has log volume means its lines did not parse (a
-  log format change or a text prefix), not "no errors"; check with a substring count of a known
-  message.
+- A level-parsed Loki count of 0 is "no errors" unless the lines failed to parse; prove it with
+  `| json | __error__!=""` over the same window. Most lines failing (one app measured at 99% after
+  a log format change) means the count is not trustworthy; only then compare a known message by
+  substring in both windows.
 
 ## PostHog exec
 

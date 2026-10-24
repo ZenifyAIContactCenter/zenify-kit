@@ -46,8 +46,8 @@ Each issue belongs to exactly one group; take the highest that applies.
   `list_tempo_attribute_names`, whose scope (`span.` or `resource.`) is used as reported.
 - Error spans often carry no tenant attribute, so `unknown` is common; a query that timed out
   twice is "not read: timeout", not `unknown`.
-- Two passes: pass 1 scores every candidate with tenants `unknown` and keeps the top 8; tenants
-  are counted for those 8; pass 2 re-scores with the tenant level and keeps the top 5.
+- Tenants are counted for every candidate before ranking, with one grouped query; no candidate
+  is cut while its tenant level is still unknown.
 - Counted over the last **2h**: Tempo metrics refuse ranges of 3h or more; 2h keeps a margin and
   was measured working on prd. The report states that the number covers 2h.
 - A series whose value is `nil` or empty is not a tenant. Every series `nil`, or no tenant
@@ -104,8 +104,8 @@ Latency scale (latency candidates only; data touch and money path still apply):
 ## Trend
 
 - New: `prev = 0` and `now > 0`.
-- A Loki candidate whose level-parsed `prev` is 0 while the app had log volume in the previous
-  window may be a log-format change (the lines did not parse), not a new issue. Measure both
+- A Loki candidate whose level-parsed `prev` is 0 is New, unless parse failures are proven: 50%
+  or more of the previous window's lines failing to parse (`__error__!=""`). Only then measure both
   windows with the same substring count (`|= "<message template>"`, `now` without offset, `prev`
   with offset) and print both; never compare a level-filtered `now` with a substring `prev`.
   If the windows still cannot be compared, score Trend as Stable and mark it *inferred*.

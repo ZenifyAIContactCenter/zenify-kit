@@ -58,30 +58,42 @@ whole `now` query above, so only the series of `now` come back (measured: 10 row
   line with a text prefix before the JSON needs the JSON tail cut first (evidence-sources,
   "Measured dead ends").
 - `query_loki_logs` on `<loki_uid>`, `queryType: instant`, `endRfc3339: now`; replace `level` with
-  the discovered field name. The `|~` pre-filter only drops lines cheaply; the level match stays
-  the criterion (why: evidence-sources, "Measured dead ends"):
+  the discovered field name. The level match is case-insensitive and accepts numeric levels
+  (50 error, 60 fatal). The `|~` pre-filter only drops lines cheaply and lets numeric levels
+  through; the level match stays the criterion (why: evidence-sources, "Measured dead ends"):
 
 ```logql
-sum by (<app_label>) (count_over_time({<app_label>=~"<apps>"} |~ "(?i)(error|fatal)" | json | level=~"error|fatal" [<W>]))
+sum by (<app_label>) (count_over_time({<app_label>=~"<apps>"} |~ "(?i)(error|fatal|\"level\":(50|60))" | json | level=~"(?i)(error|fatal|50|60)" [<W>]))
 ```
 
 - `prev`: the same query with `offset <W>` after `[<W>]`.
 - An app total only ranks apps; it is never a candidate. Top error messages, only for the top 3
-  apps by error count (measured: 5 rows); replace `msg` with the discovered message field:
+  apps by error count (measured on prd: 5 rows, values already normalised, e.g. `room=<N>`);
+  replace `msg` with the discovered message field:
 
 ```logql
-topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal)" | json | level=~"error|fatal" | line_format "{{.msg}}" | regexp `^(?P<m>[^:{"]{0,70})` [<W>])))
+topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal|\"level\":(50|60))" | json | level=~"(?i)(error|fatal|50|60)" | line_format `{{ regexReplaceAll "[0-9a-fA-F-]{8,}|[0-9]{4,}" (regexReplaceAll "[^ \"]+@[^ \"]+" .msg "<E>") "<N>" }}` | regexp `^(?P<m>[^:{"]{0,70})` [<W>])))
 ```
 
 - Group on a new label name (`m`), never on the parsed `msg` field itself: grouping on `msg`
   returned 361 series / 67 KB.
-- Each `m` value is one Loki candidate. It may still carry values: replace digit runs of 4 or more
-  and emails with `<REDACTED>` before printing it or reusing it as `<message template>` or in a
-  deeplink.
-- Trend fallback: when the level-parsed `prev` of a template is 0 while the app had log volume in
-  the previous window (its lines did not parse), count both windows with the same substring filter
-  and print both. Use the template's text before its first `<REDACTED>`; when that text is
-  shorter than 8 characters, skip the count and score Trend as Stable, *inferred*:
+- Values are normalised inside the query, before grouping: emails become `<E>`, hex or id runs of
+  8 or more and digit runs of 4 or more become `<N>`. So one error with varying ids counts as one
+  template, and the raw value never reaches the conversation. Never scrub after the query instead.
+- Each `m` value is one Loki candidate. Names are not caught: read `m` as possibly carrying PII and
+  pass only the template, never more, into the report or the handoff.
+- A level-parsed `prev` of 0 is a real 0 unless the lines failed to parse. Prove it first: count
+  the previous window's parse failures; 50% or more of its lines failing (measured on prd: one app
+  had 4.30M of 4.33M lines failing after a format change) → the count is not trustworthy:
+
+```logql
+sum(count_over_time({<app_label>="<app>"} | json | __error__!="" [<W>] offset <W>))
+sum(count_over_time({<app_label>="<app>"} [<W>] offset <W>))
+```
+
+- Only then use the trend fallback: count both windows with the same substring filter and print
+  both. Use the template's text before its first `<N>` or `<E>`; when that text is shorter than 8
+  characters, skip the count and score Trend as Stable, *inferred*:
 
 ```logql
 sum(count_over_time({<app_label>="<app>"} |= "<message template>" [<W>]))
@@ -98,24 +110,25 @@ sum(count_over_time({<app_label>="<app>"} |= "<message template>" [<W>] offset <
 A match → query it over `<W>` and check whether it grew through the whole window. No match → record
 "not read: no queue metric".
 
-## Tenant count (Step 4, pass 2)
+## Tenant count (Step 4, before ranking)
 
 `<tenant_attr>`: in the catalog's `attributes`, take the entry whose key or value names the
 tenant; the attribute is whichever side is a dotted attribute name. Use the scope `<scope>`
 (`span` or `resource`) the catalog gives; when it does not say, the scope
 `list_tempo_attribute_names` reports for it, never a fixed `span.` prefix.
 
-`query_tempo_metrics` on `<tempo_uid>`, `type: instant`, `start`/`end` = the last 2h (RFC3339);
-keep only the count of tenants and the top 3 ids:
+One grouped query counts the tenants of every error candidate at once, before any candidate is
+cut (measured on prd: 9 series for two services). `query_tempo_metrics` on `<tempo_uid>`,
+`type: instant`, `start`/`end` = the last 2h (RFC3339):
 
 ```traceql
-{ resource.service.name="<service>" && span.http.route="<route>" && kind=server && status=error } | count_over_time() by (<scope>.<tenant_attr>)
+{ kind=server && status=error && resource.service.name=~"<svc1>|<svc2>" } | count_over_time() by (span.http.route, <scope>.<tenant_attr>)
 ```
 
-Take `<route>` from the spanmetrics `span_name` (strip the method). Only when this query returns
-nothing, look up the exact value with `list_tempo_attribute_values`; that call uses the issue's
-drill fallback slot. Denominator, once per run, same 2h, narrowed to the services of the 8
-candidates; keep only the count, not the series list:
+Match each series to a candidate by route: the spanmetrics `span_name` without its method. Per
+candidate keep only the count of tenants and the top 3 ids. A series with no tenant label is not a
+tenant. Denominator, once per run, same 2h, narrowed to the candidates' services; keep only the
+count, not the series list:
 
 ```traceql
 { resource.service.name=~"<svc1>|<svc2>" && kind=server } | count_over_time() by (<scope>.<tenant_attr>)

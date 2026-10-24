@@ -49,7 +49,7 @@ it and continue.
 - Cap: 40 MCP calls per run. `zenify obs` is a CLI command and does not count. Budget:
   - sources ≤ 4 (datasource fallback, tenant attribute);
   - signals ≤ 15 (a 2, b 3, c 2, d label 1 + now/prev 2 + top messages ≤ 3, e ≤ 2);
-  - tenant pass ≤ 9 (8 candidates + denominator);
+  - tenants ≤ 3 (one grouped query for every candidate, the denominator, one retry);
   - drill ≤ 2 per top-5 issue (deeplink, log/pattern or fallback) = 10. The per-issue allowance
     is not shared: every top-5 issue is drilled while calls remain.
 - At the cap, stop collecting and list what was not read at the top of the report.
@@ -59,15 +59,12 @@ it and continue.
 Candidates on the same call chain (e.g. the same route on two services that call each other) or
 with the same error pattern are one issue.
 
-## Step 4: Score (two passes)
+## Step 4: Score
 
-Apply `references/scoring.md`: audience, tenant level, money path, data touch, Impact, trend,
-Severity, then the tie-breaks.
-
-1. Pass 1: score provisionally with tenants `unknown`; keep the top 8.
-2. Count tenants for those 8 (1 call each, `references/queries.md`, Tenant) plus the denominator
-   once.
-3. Pass 2: re-score with the tenant level; keep the top 5.
+First count the tenants of every candidate with one grouped query, plus the denominator once
+(`references/queries.md`, Tenant count): no candidate is cut while its tenant level is unknown.
+Then apply `references/scoring.md`: audience, tenant level, money path, data touch, Impact,
+trend, Severity, then the tie-breaks; keep the top 5.
 
 Fewer than 5 issues → print only those, never pad. Print every `now`/`prev` number used to score,
 so a reader can recompute the ranking by hand.
