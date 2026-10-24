@@ -26,7 +26,7 @@ Mọi máy đã `zenify up` dùng chung một quy ước: root workspace chỉ c
 | Script cho người chạy (sửa data, backfill, `--dry-run`) và json kết quả | agent | `docs/scripts/<repo>/` | không | người dùng |
 | Sản phẩm cho người đọc: docx, xlsx, pdf, báo cáo, hình minh họa | agent | `docs/exports/` | không (gửi đi bằng kênh khác) | người dùng |
 | Tài liệu bên ngoài người đưa cho agent đọc | người dùng | `docs/external/` | không | người dùng |
-| Ảnh, snapshot, console log của Playwright | MCP | `~/.zenify/playwright/` | không | người dùng |
+| Ảnh, snapshot, console log của Playwright | `zenify browser` | `~/.zenify/playwright/sessions/<phiên>/.playwright-cli/` | không | người dùng |
 | Release report | kit M7 | `docs/releases/` | có | không đụng |
 | Ledger SDD, ship board, review log, e2e, visual | kit | `<repo>/.znf/` (gitignored), `$TMPDIR` | không | kit |
 | Code | agent | worktree `<repo>/.worktrees/<slug>/` | PR | `wt sweep` |
@@ -35,7 +35,7 @@ Mọi máy đã `zenify up` dùng chung một quy ước: root workspace chỉ c
 
 ## Hook write-guard
 
-Hook `PreToolUse` trên Write, Edit và NotebookEdit. Nó từ chối ghi vào root workspace ngoài danh sách cho phép, vào file ngay dưới `docs/`, hoặc vào `docs/<tên>` ngoài mười tên. Hook chỉ chạy trên Claude; Codex không có hook cho thao tác Write. Hook không bắt được ghi của MCP, nên ảnh Playwright vẫn phải chụp không truyền `filename`.
+Hook `PreToolUse` trên Write, Edit và NotebookEdit. Nó từ chối ghi vào root workspace ngoài danh sách cho phép, vào file ngay dưới `docs/`, hoặc vào `docs/<tên>` ngoài mười tên. Hook chỉ chạy trên Claude; Codex không có hook cho thao tác Write. Ảnh Playwright không đi qua hook này: `zenify browser` chạy từ thư mục phiên dưới `~/.zenify/playwright/sessions/` và in đường dẫn tuyệt đối, nên ảnh không rơi vào repo.
 
 Khi bị chặn, agent thấy message (exit 2):
 

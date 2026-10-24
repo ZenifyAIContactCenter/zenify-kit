@@ -31,6 +31,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify analyze](./zenify_analyze): Kiểm tra cơ học một cặp spec và plan trước khi code: coverage FR, marker còn sót, cấu trúc Brief.
 - [zenify await](./zenify_await): Dừng một lượt chạy không người ở cổng cần người duyệt, ghi bản ghi await rồi thoát mã 8.
 - [zenify broker](./zenify_broker): Nhóm lệnh làm việc với credential broker của zenify.
+- [zenify browser](./zenify_browser): Điều khiển trình duyệt qua playwright-cli đã ghim, mỗi phiên một trình duyệt và một thư mục riêng, để `znf:ui-verifier` chạy song song.
 - [zenify catalog](./zenify_catalog): In danh mục dịch vụ giám sát (datasource Grafana, tên log, trace, metric) dưới dạng YAML.
 - [zenify config](./zenify_config): Kéo cấu hình chung của team từ knowledge store vào workspace theo một chiều.
 - [zenify cost](./zenify_cost): Cho biết token Claude Code đi đâu: context mỗi turn, phần subagent, model, skill và dấu hiệu lãng phí, đọc từ transcript local.

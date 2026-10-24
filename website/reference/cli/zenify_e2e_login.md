@@ -6,7 +6,7 @@ title: zenify e2e login
 
 # `zenify e2e login`
 
-Đăng nhập trên host bằng harness e2e và ghi Playwright storage state để `znf:ui-verifier` nạp qua MCP.
+Đăng nhập trên host bằng harness e2e và ghi Playwright storage state để `znf:ui-verifier` nạp bằng `zenify browser state-load`.
 
 ## Cú pháp
 
