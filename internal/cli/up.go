@@ -315,12 +315,12 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 				GOOS:   runtime.GOOS,
 				Stdout: w,
 			}
-			if err := playwright.Bootstrap(po); err != nil {
+			if err := playwright.Install(po); err != nil {
 				_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
 			}
 			if codexOnPath() {
 				po.Target = playwright.TargetCodex
-				if err := playwright.Bootstrap(po); err != nil {
+				if err := playwright.Install(po); err != nil {
 					_, _ = fmt.Fprintf(errW, "znf ensure: playwright codex: %v\n", err) //znf:allow-lang
 				}
 			}

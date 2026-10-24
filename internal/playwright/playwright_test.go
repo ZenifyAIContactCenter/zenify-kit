@@ -1,6 +1,7 @@
 package playwright
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -44,47 +45,6 @@ func TestBrowsersDirPerOS(t *testing.T) {
 	}
 }
 
-func TestStatusRegisteredAndBrowsersPresent(t *testing.T) {
-	dir := t.TempDir()
-	// a non-empty browsers dir
-	if err := os.WriteFile(filepath.Join(dir, "chromium-1234"), []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	o := Options{
-		Output: getOutput(desiredOut("/h")),
-		Home:   "/h",
-		Getenv: func(k string) string {
-			if k == "PLAYWRIGHT_BROWSERS_PATH" {
-				return dir
-			}
-			return ""
-		},
-		GOOS: "linux",
-	}
-	reg, browsers, detail := Status(o)
-	if !reg || !browsers {
-		t.Fatalf("want registered+present, got reg=%v browsers=%v (%s)", reg, browsers, detail)
-	}
-}
-
-func TestStatusUnregisteredEmptyBrowsers(t *testing.T) {
-	dir := t.TempDir() // empty
-	o := Options{
-		Output: func(string, []string) ([]byte, error) { return nil, os.ErrNotExist }, // get fails → absent
-		Getenv: func(k string) string {
-			if k == "PLAYWRIGHT_BROWSERS_PATH" {
-				return dir
-			}
-			return ""
-		},
-		GOOS: "linux",
-	}
-	reg, browsers, _ := Status(o)
-	if reg || browsers {
-		t.Fatalf("want unregistered+absent, got reg=%v browsers=%v", reg, browsers)
-	}
-}
-
 func getOutput(out string) func(string, []string) ([]byte, error) {
 	return func(string, []string) ([]byte, error) { return []byte(out), nil }
 }
@@ -112,92 +72,10 @@ func TestDesiredArgsWindowsHome(t *testing.T) {
 	}
 }
 
-func TestBootstrapMigration(t *testing.T) {
-	const home = "/h"
-	const spaced = "/Users/John Doe"
-	addFor := func(h string) string {
-		return "claude mcp add playwright -s user -- npx " + strings.Join(DesiredArgs(h), " ")
-	}
-	const rm = "claude mcp remove playwright -s user"
-	cases := []struct {
-		name      string
-		home      string
-		out       string
-		getErr    error
-		wantCalls []string // exact mutating calls, in order
-		wantOut   string
-	}{
-		{"absent", home, "", os.ErrNotExist, []string{addFor(home)}, ""},
-		{"legacy", home, mcpOut("  Args: @playwright/mcp@latest\n"), nil, []string{rm, addFor(home)}, ""},
-		{"custom", home, mcpOut("  Args: @playwright/mcp@latest --headless\n"), nil, nil, "custom MCP registration kept"},
-		{"desired", home, desiredOut(home), nil, nil, ""},
-		{"no args line", home, mcpOut(""), nil, nil, "custom MCP registration kept"},
-		{"desired with spaced home", spaced, desiredOut(spaced), nil, nil, ""},
-		{"legacy at local scope", home, strings.Replace(mcpOut("  Args: @playwright/mcp@latest\n"), "User config (available in all your projects)", "Local config (private to you in this project)", 1), nil, nil, "custom MCP registration kept"},
-		{"no scope line", home, strings.Replace(mcpOut("  Args: @playwright/mcp@latest\n"), "  Scope: User config (available in all your projects)\n", "", 1), nil, nil, "custom MCP registration kept"},
-		{"legacy with spaced home", spaced, mcpOut("  Args: @playwright/mcp@latest\n"), nil, []string{rm, addFor(spaced)}, ""},
-		{"older pin with kit flags", home, mcpOut("  Args: @playwright/mcp@0.0.1 " + strings.Join(DesiredArgs(home)[1:], " ") + "\n"), nil, []string{rm, addFor(home)}, ""},
-		{"older pin with user flags", home, mcpOut("  Args: @playwright/mcp@0.0.1 --headless\n"), nil, nil, "custom MCP registration kept"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var calls []string
-			var buf strings.Builder
-			o := Options{
-				Runner: func(name string, args []string) error {
-					calls = append(calls, name+" "+strings.Join(args, " "))
-					return nil
-				},
-				Output: func(string, []string) ([]byte, error) { return []byte(c.out), c.getErr },
-				Getenv: func(string) string { return "" },
-				GOOS:   "linux",
-				Home:   c.home,
-				Stdout: &buf,
-			}
-			if err := Bootstrap(o); err != nil {
-				t.Fatal(err)
-			}
-			var mut []string
-			for _, cl := range calls {
-				if strings.HasPrefix(cl, "claude mcp") {
-					mut = append(mut, cl)
-				}
-			}
-			if strings.Join(mut, "\n") != strings.Join(c.wantCalls, "\n") {
-				t.Fatalf("mutating calls %v, want %v", mut, c.wantCalls)
-			}
-			if !strings.Contains(buf.String(), c.wantOut) {
-				t.Fatalf("stdout %q missing %q", buf.String(), c.wantOut)
-			}
-			if last := calls[len(calls)-1]; last != "npx --yes --package "+MCPPackage+" playwright install chromium" {
-				t.Fatalf("chromium install step missing: %v", calls)
-			}
-		})
-	}
-}
-
 func TestRegistrationMissingArgs(t *testing.T) {
 	st, missing := Registration(Options{Output: getOutput(mcpOut("  Args: @playwright/mcp@latest --headless\n")), Home: "/h"})
 	if st != RegCustom || len(missing) != 5 || missing[0] != MCPPackage || missing[1] != "--isolated" {
 		t.Fatalf("got %v %v", st, missing)
-	}
-}
-
-func TestBootstrapReturnsAddError(t *testing.T) {
-	o := Options{
-		Runner: func(name string, args []string) error {
-			if name == "claude" && len(args) >= 2 && args[0] == "mcp" && args[1] == "add" {
-				return errTest
-			}
-			return nil
-		},
-		Output: func(string, []string) ([]byte, error) { return nil, os.ErrNotExist },
-		Getenv: func(string) string { return "" },
-		GOOS:   "linux",
-		Home:   "/h",
-	}
-	if err := Bootstrap(o); err == nil {
-		t.Fatal("expected the add error to propagate")
 	}
 }
 
@@ -273,117 +151,172 @@ func TestRegistrationCodexAbsent(t *testing.T) {
 	}
 }
 
-func TestBootstrapCodexAddsWithoutScopeFlag(t *testing.T) {
-	var calls [][]string
-	o := Options{
-		Target: TargetCodex,
-		Runner: func(name string, args []string) error {
-			calls = append(calls, append([]string{name}, args...))
-			return nil
-		},
-		Output: func(string, []string) ([]byte, error) { return nil, errTest },
-		Getenv: func(string) string { return "" },
-		GOOS:   "linux",
-		Home:   "/h",
+func envFor(dir string) func(string) string {
+	return func(k string) string {
+		if k == "PLAYWRIGHT_BROWSERS_PATH" {
+			return dir
+		}
+		return ""
 	}
-	if err := Bootstrap(o); err != nil {
-		t.Fatal(err)
-	}
-	want := append([]string{"codex", "mcp", "add", "playwright", "--", "npx"}, DesiredArgs("/h")...)
-	if len(calls) != 1 || strings.Join(calls[0], "\x00") != strings.Join(want, "\x00") {
-		t.Fatalf("calls %v, want [%v]", calls, want)
-	}
-	for _, a := range calls[0] {
-		if a == "-s" || a == "install" {
-			t.Fatalf("unexpected %q in %v", a, calls[0])
+}
+
+func markChromium(t *testing.T, dir string, names ...string) {
+	t.Helper()
+	for _, m := range names {
+		if err := os.MkdirAll(filepath.Join(dir, m), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, m, "INSTALLATION_COMPLETE"), nil, 0o600); err != nil {
+			t.Fatal(err)
 		}
 	}
 }
 
-func TestBootstrapCodexLegacyRemovesThenAdds(t *testing.T) {
-	var calls [][]string
-	o := Options{
-		Target: TargetCodex,
-		Runner: func(name string, args []string) error {
-			calls = append(calls, append([]string{name}, args...))
-			return nil
-		},
-		Output: func(string, []string) ([]byte, error) {
-			return []byte(`{"transport":{"command":"npx","args":["@playwright/mcp@latest"]}}`), nil
-		},
-		Home: "/h",
-	}
-	if err := Bootstrap(o); err != nil {
+func writeCLIPackage(t *testing.T, home, version string) {
+	t.Helper()
+	p := filepath.Join(CLIDir(home), "node_modules", "@playwright", "cli")
+	if err := os.MkdirAll(p, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	want := [][]string{
-		{"codex", "mcp", "remove", "playwright"},
-		append([]string{"codex", "mcp", "add", "playwright", "--", "npx"}, DesiredArgs("/h")...),
-	}
-	if len(calls) != 2 || strings.Join(calls[0], "\x00") != strings.Join(want[0], "\x00") || strings.Join(calls[1], "\x00") != strings.Join(want[1], "\x00") {
-		t.Fatalf("calls %v, want %v", calls, want)
+	if err := os.WriteFile(filepath.Join(p, "package.json"), []byte(`{"name":"@playwright/cli","version":"`+version+`"}`), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestBootstrapSkipsInstalledChromium(t *testing.T) {
-	install := "npx --yes --package " + MCPPackage + " playwright install chromium"
+func recorder(calls *[]string) func(string, []string) error {
+	return func(name string, args []string) error {
+		*calls = append(*calls, name+" "+strings.Join(args, " "))
+		return nil
+	}
+}
+
+func TestInstallRunsNpmThenBrowser(t *testing.T) {
+	home := t.TempDir()
+	var calls []string
+	o := Options{Runner: recorder(&calls), Home: home, Getenv: envFor(t.TempDir()), GOOS: "linux"}
+	if err := Install(o); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"npm install --prefix " + home + "/.zenify/playwright/cli/pkg --no-audit --no-fund @playwright/cli@0.1.22",
+		"node " + home + "/.zenify/playwright/cli/pkg/node_modules/@playwright/cli/playwright-cli.js install-browser chromium",
+	}
+	if strings.Join(calls, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("calls:\n%v\nwant:\n%v", calls, want)
+	}
+}
+
+func TestInstallSkipsWhenPresent(t *testing.T) {
+	home, dir := t.TempDir(), t.TempDir()
+	writeCLIPackage(t, home, "0.1.22")
+	markChromium(t, dir, "chromium-1247", "chromium_headless_shell-1247")
+	var calls []string
+	var buf strings.Builder
+	o := Options{Runner: recorder(&calls), Home: home, Getenv: envFor(dir), GOOS: "linux", Stdout: &buf}
+	if err := Install(o); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("want no commands, got %v", calls)
+	}
+	if !strings.Contains(buf.String(), "chromium 1247 already installed") {
+		t.Fatalf("stdout %q", buf.String())
+	}
+}
+
+func TestInstallReinstallsOtherVersion(t *testing.T) {
+	home := t.TempDir()
+	writeCLIPackage(t, home, "0.1.20")
+	var calls []string
+	o := Options{Runner: recorder(&calls), Home: home, Getenv: envFor(t.TempDir()), GOOS: "linux"}
+	if err := Install(o); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) == 0 || !strings.HasPrefix(calls[0], "npm install") {
+		t.Fatalf("want npm install, got %v", calls)
+	}
+}
+
+func TestDeregisterRemovesKitOwned(t *testing.T) {
+	const legacy = "  Args: @playwright/mcp@latest\n"
 	cases := []struct {
-		name        string
-		markers     []string
-		wantInstall bool
-		wantOut     string
+		name   string
+		target Target
+		out    string
+		want   RegState
+		rm     string
 	}{
-		{"both markers", []string{"chromium-1247", "chromium_headless_shell-1247"}, false, "chromium 1247 already installed"},
-		{"headless shell missing", []string{"chromium-1247"}, true, "ensuring chromium"},
-		{"other revision only", []string{"chromium-1248", "chromium_headless_shell-1248"}, true, "ensuring chromium"},
+		{"claude desired", TargetClaude, desiredOut("/h"), RegDesired, "claude mcp remove playwright -s user"},
+		{"claude legacy", TargetClaude, mcpOut(legacy), RegLegacyDefault, "claude mcp remove playwright -s user"},
+		{"codex desired", TargetCodex, "", RegDesired, "codex mcp remove playwright"},
+		{"codex legacy", TargetCodex, "", RegLegacyDefault, "codex mcp remove playwright"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			dir := t.TempDir()
-			for _, m := range c.markers {
-				if err := os.MkdirAll(filepath.Join(dir, m), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(dir, m, "INSTALLATION_COMPLETE"), nil, 0o600); err != nil {
-					t.Fatal(err)
-				}
-			}
 			var calls []string
-			var buf strings.Builder
-			o := Options{
-				Runner: func(name string, args []string) error {
-					calls = append(calls, name+" "+strings.Join(args, " "))
-					return nil
-				},
-				Output: getOutput(desiredOut("/h")),
-				Getenv: func(k string) string {
-					if k == "PLAYWRIGHT_BROWSERS_PATH" {
-						return dir
-					}
-					return ""
-				},
-				GOOS:   "linux",
-				Home:   "/h",
-				Stdout: &buf,
+			out := c.out
+			if c.target == TargetCodex {
+				args := DesiredArgs("/h")
+				if c.want == RegLegacyDefault {
+					args = []string{"@playwright/mcp@latest"}
+				}
+				b, _ := json.Marshal(map[string]any{"transport": map[string]any{"command": "npx", "args": args}})
+				out = string(b)
 			}
-			if err := Bootstrap(o); err != nil {
-				t.Fatal(err)
+			o := Options{Target: c.target, Runner: recorder(&calls), Output: getOutput(out), Home: "/h"}
+			got, err := Deregister(o)
+			if err != nil || got != c.want {
+				t.Fatalf("got %v, %v want %v", got, err, c.want)
 			}
-			got := strings.Contains(strings.Join(calls, "\n"), install)
-			if got != c.wantInstall {
-				t.Fatalf("install called = %v, want %v (calls %v)", got, c.wantInstall, calls)
-			}
-			if !strings.Contains(buf.String(), c.wantOut) {
-				t.Fatalf("stdout %q missing %q", buf.String(), c.wantOut)
+			if len(calls) != 1 || calls[0] != c.rm {
+				t.Fatalf("calls %v want [%s]", calls, c.rm)
 			}
 		})
 	}
 }
 
-// A bump of MCPVersion must come with the chromium revision its bundled
-// playwright-core pins (browsers.json), or Bootstrap installs on every run.
-func TestChromiumRevisionPinnedForMCPVersion(t *testing.T) {
-	if chromiumRevision[MCPVersion] == "" {
-		t.Fatalf("chromiumRevision has no entry for MCPVersion %s", MCPVersion)
+func TestDeregisterKeepsCustom(t *testing.T) {
+	var calls []string
+	custom := mcpOut("  Args: some-other-server --flag\n")
+	o := Options{Runner: recorder(&calls), Output: getOutput(custom), Home: "/h"}
+	got, err := Deregister(o)
+	if err != nil || got != RegCustom {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("custom must not be removed: %v", calls)
+	}
+}
+
+func TestDeregisterAbsent(t *testing.T) {
+	var calls []string
+	o := Options{Runner: recorder(&calls), Output: func(string, []string) ([]byte, error) { return nil, errTest }, Home: "/h"}
+	got, err := Deregister(o)
+	if err != nil || got != RegAbsent || len(calls) != 0 {
+		t.Fatalf("got %v, %v, calls %v", got, err, calls)
+	}
+}
+
+func TestStatusReadOnly(t *testing.T) {
+	home, dir := t.TempDir(), t.TempDir()
+	fail := func(string, []string) error { t.Fatal("runner must not be called"); return nil }
+	o := Options{Runner: fail, Home: home, Getenv: envFor(dir), GOOS: "linux"}
+
+	cli, br, detail := Status(o)
+	if cli || br || !strings.Contains(detail, "zenify up") {
+		t.Fatalf("missing: cli=%v br=%v detail=%q", cli, br, detail)
+	}
+
+	writeCLIPackage(t, home, CLIVersion)
+	markChromium(t, dir, "chromium-1247", "chromium_headless_shell-1247")
+	cli, br, detail = Status(o)
+	if !cli || !br {
+		t.Fatalf("want ok: cli=%v br=%v detail=%q", cli, br, detail)
+	}
+}
+
+func TestChromiumRevisionPinnedForCLIVersion(t *testing.T) {
+	if chromiumRevision[CLIVersion] != "1247" {
+		t.Fatalf("chromiumRevision[%s] = %q", CLIVersion, chromiumRevision[CLIVersion])
 	}
 }

@@ -1,8 +1,8 @@
-// Package playwright bootstraps and inspects the Playwright MCP server and its
-// browser binaries for zenify (FR-014/FR-066). It shells out to `claude` and
-// `npx` through an injected Runner so every path is unit-testable without
-// mutating the machine; Status is strictly read-only and never launches a
-// browser.
+// Package playwright installs and inspects the pinned @playwright/cli and its
+// chromium for zenify, and removes the kit-owned Playwright MCP registration it
+// replaces. It shells out to `npm`, `node`, `claude` and `codex` through an
+// injected Runner so every path is unit-testable without mutating the machine;
+// Status is strictly read-only and never launches a browser.
 package playwright
 
 import (
@@ -58,21 +58,50 @@ func browsersDir(getenv func(string) string, goos string) string {
 	}
 }
 
-// MCPVersion pins @playwright/mcp. The MCP server bundles its own
-// playwright-core, whose browsers.json names the one chromium revision it can
-// launch (0.0.83 → 1247). A bare `npx playwright install chromium` resolves a
-// different playwright and installs a different revision (1248 on 2026-10-12),
-// so the browser is installed through the pinned MCP package itself, and a new
-// chromium download reaches users only when this constant is bumped.
-const MCPVersion = "0.0.83"
+// CLIVersion pins @playwright/cli. Its bundled playwright-core names the one
+// chromium revision it can launch (0.1.22 → 1247), so the browser is installed
+// through the pinned CLI itself and a new download reaches users only when this
+// constant is bumped.
+const CLIVersion = "0.1.22"
 
-// chromiumRevision maps MCPVersion to the chromium revision its bundled
-// playwright-core pins (node_modules/playwright-core/browsers.json). Bump it
-// with MCPVersion; a version with no entry installs on every run.
-var chromiumRevision = map[string]string{"0.0.83": "1247"}
+// CLIPackage is the npm package spec installed under CLIDir.
+const CLIPackage = "@playwright/cli@" + CLIVersion
 
-// MCPPackage is the npx package spec the kit registers and installs browsers with.
-const MCPPackage = "@playwright/mcp@" + MCPVersion
+// chromiumRevision maps CLIVersion to the chromium revision its bundled
+// playwright-core pins. Bump it with CLIVersion; a version with no entry
+// installs on every run.
+var chromiumRevision = map[string]string{"0.1.22": "1247"}
+
+// MCPPackage is the @playwright/mcp spec the kit used to register; it is kept
+// to recognise (and remove) that registration.
+const MCPPackage = "@playwright/mcp@0.0.83"
+
+// CLIDir is where the CLI package is installed.
+func CLIDir(home string) string {
+	return filepath.Join(home, ".zenify", "playwright", "cli", "pkg")
+}
+
+// CLIScript is the CLI entry point run with `node`.
+func CLIScript(home string) string {
+	return filepath.Join(CLIDir(home), "node_modules", "@playwright", "cli", "playwright-cli.js")
+}
+
+// SessionsDir holds per-session browser state.
+func SessionsDir(home string) string {
+	return filepath.Join(home, ".zenify", "playwright", "sessions")
+}
+
+// CLIInstalled reports whether the pinned CLI version is installed.
+func CLIInstalled(home string) bool {
+	b, err := os.ReadFile(filepath.Join(CLIDir(home), "node_modules", "@playwright", "cli", "package.json")) //nolint:gosec // G304 -- path derived from home
+	if err != nil {
+		return false
+	}
+	var v struct {
+		Version string `json:"version"`
+	}
+	return json.Unmarshal(b, &v) == nil && v.Version == CLIVersion
+}
 
 // isKitPackage reports whether a is any @playwright/mcp@<spec>: the slot the
 // kit owns, so an older pin (or the pre-pin @latest) migrates instead of
@@ -208,80 +237,72 @@ func registrationCodex(o Options) (RegState, []string) {
 	return RegCustom, missing
 }
 
-// Status reports whether the Playwright MCP is registered as the kit wants it
-// and whether browser binaries are present — READ-ONLY, no browser is
-// launched. mcpOK is true only for RegDesired. Browser presence is a directory
-// existence + non-empty check.
-func Status(o Options) (mcpOK bool, browsersPresent bool, detail string) {
-	state, missing := Registration(o)
-	mcpOK = state == RegDesired
-	dir := browsersDir(o.Getenv, o.GOOS)
-	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
-		browsersPresent = true
+// Status reports whether the pinned CLI and its chromium are installed —
+// READ-ONLY, nothing is run or launched.
+func Status(o Options) (cliOK bool, browsersOK bool, detail string) {
+	cliOK = CLIInstalled(o.Home)
+	rev := chromiumRevision[CLIVersion]
+	browsersOK = rev != "" && chromiumInstalled(browsersDir(o.Getenv, o.GOOS), rev)
+	state := func(ok bool) string {
+		if ok {
+			return "ok"
+		}
+		return "missing"
 	}
-	br := "absent"
-	if browsersPresent {
-		br = "present"
+	detail = fmt.Sprintf("cli=%s browsers=%s", state(cliOK), state(browsersOK))
+	if !cliOK || !browsersOK {
+		detail += " (run `zenify up`)"
 	}
-	detail = fmt.Sprintf("mcp=%s browsers=%s", state, br)
-	if len(missing) > 0 {
-		detail += " missing=" + strings.Join(missing, ",")
-	}
-	return mcpOK, browsersPresent, detail
+	return cliOK, browsersOK, detail
 }
 
-// Bootstrap registers the Playwright MCP and ensures chromium is installed.
-// Absent -> add; kit-written legacy default -> remove + add (claude mcp add
-// fails on an existing name); custom -> left untouched with a warning.
-// Callers decide whether a returned error is fatal — in `zenify up` it is
-// non-fatal (a warning).
-func Bootstrap(o Options) error {
+// Install installs the pinned CLI under CLIDir and its chromium. Each step is
+// skipped when already satisfied; callers decide whether an error is fatal.
+func Install(o Options) error {
 	note := func(format string, a ...any) {
 		if o.Stdout != nil {
 			_, _ = fmt.Fprintf(o.Stdout, format+"\n", a...)
 		}
 	}
-	if o.Target == TargetCodex {
-		return bootstrapCodex(o, note)
-	}
-	add := func() error {
-		cmd := append([]string{"mcp", "add", "playwright", "-s", "user", "--", "npx"}, DesiredArgs(o.Home)...)
-		if err := o.Runner("claude", cmd); err != nil {
-			return fmt.Errorf("register playwright MCP: %w", err)
+	if !CLIInstalled(o.Home) {
+		note("playwright: installing %s", CLIPackage)
+		if err := os.MkdirAll(CLIDir(o.Home), 0o755); err != nil { //nolint:gosec // G301 -- user cache dir
+			return fmt.Errorf("create %s: %w", CLIDir(o.Home), err)
 		}
+		if err := o.Runner("npm", []string{"install", "--prefix", CLIDir(o.Home), "--no-audit", "--no-fund", CLIPackage}); err != nil {
+			return fmt.Errorf("install %s: %w", CLIPackage, err)
+		}
+	} else {
+		note("playwright: %s already installed", CLIPackage)
+	}
+	rev := chromiumRevision[CLIVersion]
+	if rev != "" && chromiumInstalled(browsersDir(o.Getenv, o.GOOS), rev) {
+		note("playwright: chromium %s already installed for %s", rev, CLIPackage)
 		return nil
 	}
-	state, missing := Registration(o)
-	switch state {
-	case RegAbsent:
-		note("playwright: registering MCP server (user scope)")
-		if err := add(); err != nil {
-			return err
-		}
-	case RegLegacyDefault:
-		note("playwright: migrating MCP registration to %s", MCPPackage)
-		if err := o.Runner("claude", []string{"mcp", "remove", "playwright", "-s", "user"}); err != nil {
-			return fmt.Errorf("remove legacy playwright MCP: %w", err)
-		}
-		if err := add(); err != nil {
-			return err
-		}
-	case RegCustom:
-		note("playwright: custom MCP registration kept; missing args: %s", strings.Join(missing, " "))
-	default:
-		note("playwright: MCP server already registered")
-	}
-	if rev := chromiumRevision[MCPVersion]; rev != "" && chromiumInstalled(browsersDir(o.Getenv, o.GOOS), rev) {
-		// Skip npx: playwright prints its "without first installing your
-		// project's dependencies" box on every npx run, installed or not.
-		note("playwright: chromium %s already installed for %s", rev, MCPPackage)
-		return nil
-	}
-	note("playwright: ensuring chromium for %s (downloads a few hundred MB when its revision is missing)", MCPPackage)
-	if err := o.Runner("npx", []string{"--yes", "--package", MCPPackage, "playwright", "install", "chromium"}); err != nil {
+	note("playwright: ensuring chromium for %s (downloads a few hundred MB when its revision is missing)", CLIPackage)
+	if err := o.Runner("node", []string{CLIScript(o.Home), "install-browser", "chromium"}); err != nil {
 		return fmt.Errorf("install chromium: %w", err)
 	}
 	return nil
+}
+
+// Deregister removes the kit-owned Playwright MCP registration (RegDesired,
+// RegLegacyDefault) for o.Target and returns the state found before removal.
+// A custom registration is left untouched.
+func Deregister(o Options) (RegState, error) {
+	state, _ := Registration(o)
+	if state != RegDesired && state != RegLegacyDefault {
+		return state, nil
+	}
+	bin, args := "claude", []string{"mcp", "remove", "playwright", "-s", "user"}
+	if o.Target == TargetCodex {
+		bin, args = "codex", []string{"mcp", "remove", "playwright"}
+	}
+	if err := o.Runner(bin, args); err != nil {
+		return state, fmt.Errorf("remove playwright MCP (%s): %w", bin, err)
+	}
+	return state, nil
 }
 
 // chromiumInstalled reports whether both browsers `playwright install
@@ -296,33 +317,4 @@ func chromiumInstalled(dir, rev string) bool {
 		}
 	}
 	return true
-}
-
-// bootstrapCodex registers the Playwright MCP with Codex (no scope flag, no
-// browser install: chromium is already provisioned by the claude target).
-func bootstrapCodex(o Options, note func(string, ...any)) error {
-	add := func() error {
-		cmd := append([]string{"mcp", "add", "playwright", "--", "npx"}, DesiredArgs(o.Home)...)
-		if err := o.Runner("codex", cmd); err != nil {
-			return fmt.Errorf("register playwright MCP (codex): %w", err)
-		}
-		return nil
-	}
-	state, missing := Registration(o)
-	switch state {
-	case RegAbsent:
-		note("playwright: registering MCP server (codex)")
-		return add()
-	case RegLegacyDefault:
-		note("playwright: migrating codex MCP registration to %s", MCPPackage)
-		if err := o.Runner("codex", []string{"mcp", "remove", "playwright"}); err != nil {
-			return fmt.Errorf("remove legacy playwright MCP (codex): %w", err)
-		}
-		return add()
-	case RegCustom:
-		note("playwright: custom codex MCP registration kept; missing args: %s", strings.Join(missing, " "))
-	default:
-		note("playwright: codex MCP server already registered")
-	}
-	return nil
 }
