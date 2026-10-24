@@ -115,7 +115,7 @@ The workspace root holds only `repos/ docs/ CLAUDE.md AGENTS.md .claude/ .zenify
 - session note → `docs/notes/`; handoff to someone else → `docs/handoff/` (swept after 30 days)
 - data script (data fix, backfill, `--dry-run`), its before-image and write logs → `docs/scripts/<repo>/`; how to write and run one → `_shared/data-scripts.md`
 - deliverable for people (docx, xlsx, pdf, report) → `docs/exports/`; document the user gives you → `docs/external/`
-- Playwright screenshot/snapshot → `zenify browser -s=<session> screenshot`; it writes under `~/.zenify/playwright/sessions/<session>/`, never into the repo
+- Playwright screenshot/snapshot → `zenify browser -s=<session> screenshot` without a `filename`; it writes under `~/.zenify/playwright/sessions/<session>/`, never into the repo
 - code → `repos/<repo>/.worktrees/<slug>/`; kit state → `<repo>/.znf/` (gitignored)
 
 ## Retirement — taking a thing OUT

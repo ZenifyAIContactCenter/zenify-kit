@@ -81,7 +81,7 @@ If the plan has a `## Stack` block, `gh stack --help` must run; if not, stop bef
 
 **`Skill(znf:subagent-driven-development)`** at every size, told it runs under `/cook` and the worktree exists (verify, not create). **Under `/cook` SDD skips its own final review**: `/ship` step 5 reviews the branch and picks up the ledger's `minor (deferred)` and `parked` lines.
 
-**A task the plan flagged — and only the plan — is verified before its ledger line:** after its reviewer passes and **before** appending `Task <N>: complete`, `Skill(znf:run)` for the URL, then `znf:ui-verifier` on **that deliverable only**; the verdict joins the line; each verifier uses its own `zenify browser` session, so flagged tasks' verifiers may run in parallel; give each a distinct session name. Unlooked-at: `Task <N>: complete (commits …, review clean — appearance not checked)`.
+**A task the plan flagged — and only the plan — is verified before its ledger line:** after its reviewer passes and **before** appending `Task <N>: complete`, `Skill(znf:run)` for the URL, then `znf:ui-verifier` on **that deliverable only**; the verdict joins the line; verifiers may run in parallel (own browser session). Unlooked-at: `Task <N>: complete (commits …, review clean — appearance not checked)`.
 
 ## Step 6b: Test-traceability (`znf:standards`) — advisory
 
