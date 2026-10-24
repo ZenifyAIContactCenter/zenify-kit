@@ -181,7 +181,7 @@ func mustMkdir(d string) {
 }
 
 // fakeClaudeNoMCP puts a `claude` first on PATH that knows no MCP server, for
-// tests that run the read-only playwright check (`claude mcp get playwright`).
+// tests that run the read-only playwright check (it reads the `claude mcp get playwright` registration).
 func fakeClaudeNoMCP(t *testing.T) {
 	t.Helper()
 	bin := t.TempDir()

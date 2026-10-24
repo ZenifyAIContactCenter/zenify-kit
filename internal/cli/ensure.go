@@ -21,7 +21,6 @@ type ensureReport struct {
 	CodexLinkPath  string
 	CodexHooks     apply.HookChanges
 	CodexAgents    int
-	CodexMCP       string // playwright registration state; filled by `up`
 }
 
 // ensureWorkspace brings a workspace to the state the kit expects (W0 FR-01):

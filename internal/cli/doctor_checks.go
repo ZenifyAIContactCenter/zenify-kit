@@ -357,10 +357,10 @@ func shimsCheck(lookPath func(string) (string, error)) Check {
 	}
 }
 
-// playwrightCheck reports whether the Playwright MCP is registered and whether
-// browser binaries are present — READ-ONLY, it never launches a browser (FR-012/
-// FR-066). ok = MCP registered; browser absence is surfaced in the detail rather
-// than failing, since the MCP server lazy-installs.
+// playwrightCheck reports whether the pinned playwright-cli and its chromium are
+// installed and the kit's retired Playwright MCP registration is gone (Claude,
+// and Codex when it is on PATH) — READ-ONLY, it never launches a browser. A
+// custom registration is the user's and does not fail the check.
 func playwrightCheck() Check {
 	return Check{
 		Name: "playwright",
@@ -369,22 +369,31 @@ func playwrightCheck() Check {
 			if herr != nil || home == "" {
 				return false, fmt.Sprintf("cannot resolve home: %v", herr)
 			}
-			o := playwright.Options{
-				Runner: func(name string, args []string) error { return exec.Command(name, args...).Run() },              //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+			return playwrightCheckWith(playwright.Options{
 				Output: func(name string, args []string) ([]byte, error) { return exec.Command(name, args...).Output() }, //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
 				Home:   home,
 				Getenv: os.Getenv,
 				GOOS:   runtime.GOOS,
-			}
-			reg, _, detail := playwright.Status(o)
-			if codexOnPath() {
-				o.Target = playwright.TargetCodex
-				cs, _ := playwright.Registration(o)
-				detail += fmt.Sprintf("; codex mcp=%s", cs) //znf:allow-lang
-			}
-			return reg, detail // ok = MCP registered; browser absence shown in detail
+			}, codexOnPath())
 		},
 	}
+}
+
+func playwrightCheckWith(o playwright.Options, codex bool) (bool, string) {
+	cliOK, browsersOK, detail := playwright.Status(o)
+	ok := cliOK && browsersOK
+	targets := []playwright.Target{playwright.TargetClaude}
+	if codex {
+		targets = append(targets, playwright.TargetCodex)
+	}
+	for _, t := range targets {
+		o.Target = t
+		if st, _ := playwright.Registration(o); st == playwright.RegDesired || st == playwright.RegLegacyDefault {
+			ok = false
+			detail += fmt.Sprintf("; kit MCP playwright still registered (%s) — run `zenify up` to remove it", t)
+		}
+	}
+	return ok, detail
 }
 
 // pluginCheck reports whether the znf plugin has materialized: plugin.json exists

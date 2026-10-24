@@ -296,35 +296,24 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		_, _ = fmt.Fprintln(errW, "warning: could not record workspace pointer:", err)
 	}
 
-	// Provision the Playwright MCP + browsers when onboarding a frontend repo
-	// (FR-014). NON-FATAL: a failure warns but does not fail onboarding or the
-	// failed-count return — mirrors the gh-scope warning.
-	if hasFrontendRepo(m) {
-		if home, herr := os.UserHomeDir(); herr != nil || home == "" {
-			_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: cannot resolve home: %v\n", herr)
-		} else {
-			po := playwright.Options{
-				Runner: func(name string, args []string) error { // stream: the chromium download is otherwise a silent multi-minute wait
-					c := exec.Command(name, args...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
-					c.Stdout, c.Stderr = w, errW
-					return c.Run()
-				},
-				Output: func(name string, args []string) ([]byte, error) { return exec.Command(name, args...).Output() }, //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
-				Home:   home,
-				Getenv: os.Getenv,
-				GOOS:   runtime.GOOS,
-				Stdout: w,
-			}
-			if err := playwright.Install(po); err != nil {
-				_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
-			}
-			if codexOnPath() {
-				po.Target = playwright.TargetCodex
-				if err := playwright.Install(po); err != nil {
-					_, _ = fmt.Fprintf(errW, "znf ensure: playwright codex: %v\n", err) //znf:allow-lang
-				}
-			}
-		}
+	// Provision playwright-cli (frontend workspaces only), retire the kit's
+	// Playwright MCP and its allow rules (every workspace). NON-FATAL: a failure
+	// warns but does not fail onboarding or the failed-count return.
+	if home, herr := os.UserHomeDir(); herr != nil || home == "" {
+		_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: cannot resolve home: %v\n", herr)
+	} else {
+		provisionPlaywright(w, errW, hasFrontendRepo(m), codexOnPath(), playwright.Options{
+			Runner: func(name string, args []string) error { // stream: the chromium download is otherwise a silent multi-minute wait
+				c := exec.Command(name, args...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+				c.Stdout, c.Stderr = w, errW
+				return c.Run()
+			},
+			Output: func(name string, args []string) ([]byte, error) { return exec.Command(name, args...).Output() }, //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
+			Home:   home,
+			Getenv: os.Getenv,
+			GOOS:   runtime.GOOS,
+			Stdout: w,
+		})
 	}
 
 	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). NON-FATAL.
@@ -346,16 +335,6 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	// never affects `failed`.
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		rep := ensureWorkspace(workspace, home, w, errW)
-		if rep.CodexInstalled {
-			st, _ := playwright.Registration(playwright.Options{
-				Target: playwright.TargetCodex,
-				Output: func(name string, args []string) ([]byte, error) { return exec.Command(name, args...).Output() }, //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
-				Home:   home,
-				Getenv: os.Getenv,
-				GOOS:   runtime.GOOS,
-			})
-			rep.CodexMCP = st.String()
-		}
 		renderCodexSummary(rep, w)
 	}
 
@@ -632,7 +611,38 @@ func renderCodexSummary(rep ensureReport, w io.Writer) {
 		fmt.Fprintln(w, "    hook mới/đổi chưa chạy cho tới khi trust: mở codex, gõ /hooks, chọn trust") //znf:allow-lang
 	}
 	fmt.Fprintf(w, "  agents: %d\n", rep.CodexAgents)
-	fmt.Fprintf(w, "  MCP playwright: %s\n", rep.CodexMCP)
+}
+
+// provisionPlaywright installs the pinned playwright-cli when the workspace has
+// a frontend repo, then (for every workspace) removes the kit-owned Playwright
+// MCP registration for Claude and, when codex is on PATH, Codex, and drops the
+// retired kit allow rules. NON-FATAL: every failure only warns.
+func provisionPlaywright(w, errW io.Writer, frontend, codex bool, po playwright.Options) {
+	if frontend {
+		if err := playwright.Install(po); err != nil {
+			_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: %v (onboarding otherwise succeeded)\n", err)
+		}
+	}
+	targets := []playwright.Target{playwright.TargetClaude}
+	if codex {
+		targets = append(targets, playwright.TargetCodex)
+	}
+	for _, t := range targets {
+		o := po
+		o.Target = t
+		state, err := playwright.Deregister(o)
+		switch {
+		case err != nil:
+			_, _ = fmt.Fprintf(errW, "warning: playwright MCP removal (%s): %v\n", t, err)
+		case state == playwright.RegCustom:
+			_, _ = fmt.Fprintf(w, "playwright: giữ đăng ký MCP \"playwright\" bạn tự cấu hình (%s); znf:ui-verifier giờ dùng zenify browser\n", t) //znf:allow-lang
+		case state == playwright.RegDesired || state == playwright.RegLegacyDefault:
+			_, _ = fmt.Fprintf(w, "playwright: đã gỡ MCP \"playwright\" của kit (%s)\n", t) //znf:allow-lang
+		}
+	}
+	if _, err := apply.RemoveRetiredKitPermissions(po.Home, false); err != nil {
+		_, _ = fmt.Fprintf(errW, "warning: playwright permissions: %v\n", err)
+	}
 }
 
 // hasFrontendRepo reports whether the manifest onboards any frontend repo,
