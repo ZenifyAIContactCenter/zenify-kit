@@ -50,7 +50,7 @@ topk(10, histogram_quantile(0.95, sum by (service, span_name, le) (rate(traces_s
 ```
 
 `prev`: the p95 with `offset <W>` on its range selector, then `and on(service, span_name)` the
-whole `now` query above, so only the series of `now` come back (this form is unmeasured).
+whole `now` query above, so only the series of `now` come back (measured: 10 rows).
 
 ## d. Loki errors by app
 
@@ -80,7 +80,8 @@ topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal)"
   deeplink.
 - Trend fallback: when the level-parsed `prev` of a template is 0 while the app had log volume in
   the previous window (its lines did not parse), count both windows with the same substring filter
-  and print both. Use the template's text before its first `<REDACTED>`:
+  and print both. Use the template's text before its first `<REDACTED>`; when that text is
+  shorter than 8 characters, skip the count and score Trend as Stable, *inferred*:
 
 ```logql
 sum(count_over_time({<app_label>="<app>"} |= "<message template>" [<W>]))
@@ -130,11 +131,12 @@ customer names or message content. Read only error-level messages through this f
 `<level_field>` and `<msg_field>` with the discovered names:
 
 ```bash
-zenify obs --trace <trace-id> --prd|--stg --json | jq -r '.logs.lines[] | .line | fromjson? | select((.<level_field>|tostring)|test("^(error|fatal|50|60)$")) | (.<msg_field> // .msg // .message // "<no msg>") | tostring | split("\n")[0] | sub("[:{\"].*$"; "") | gsub("\\b[0-9]{4,}\\b"; "<REDACTED>")' | sort | uniq -c | sort -rn
+zenify obs --trace <trace-id> --prd|--stg --json | jq -r '.logs.lines[] | .line | fromjson? | select((.<level_field>|tostring)|test("^(error|fatal|50|60)$")) | (.<msg_field> // .msg // .message // "<no msg>") | tostring | split("\n")[0] | sub("[:{\"].*$"; "") | gsub("\\b[0-9]{4,}\\b"; "<REDACTED>") | gsub("[^ ]+@[^ ]+"; "<REDACTED>")' | sort | uniq -c | sort -rn
 ```
 
 - It keeps the message template only: the value-bearing tail after the first `:`, `{` or `"` is
-  dropped and digit runs of 4 or more are replaced.
+  dropped; digit runs of 4 or more and emails are replaced. Names are not caught: read each
+  template as possibly carrying PII before it goes into the report or the handoff.
 - An empty result means "not read: no error-level lines parsed", never "no errors".
 - The `jq` pipe may ask for permission. Denied or empty → record the trace as not read. Never run
   `zenify obs --trace` without this filter, and never read `.logs.lines` whole.

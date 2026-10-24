@@ -115,6 +115,8 @@ func TestTopIssuesSkill(t *testing.T) {
 		// M5
 		"replace digit runs of 4 or more\n  and emails with `<REDACTED>`",
 		"Never quote its lines verbatim; count and group them only.",
+		`gsub("[^ ]+@[^ ]+"; "<REDACTED>")`,
+		"shorter than 8 characters, skip the count",
 		// M6, M7
 		"only for the top 3\n  apps by error count",
 		`|~ "(?i)(error|fatal)" | json | level=~"error|fatal" [<W>]`,
