@@ -104,8 +104,9 @@ Latency scale (latency candidates only; data touch and money path still apply):
 ## Trend
 
 - New: `prev = 0` and `now > 0`.
-- A Loki candidate whose level-parsed `prev` is 0 is New, unless parse failures are proven: 50%
-  or more of the previous window's lines failing to parse (`__error__!=""`). Only then measure both
+- A Loki candidate whose level-parsed `prev` is 0 is New, unless the template's own lines in the
+  previous window mostly failed to parse (checked on the template, never on the app's whole log
+  volume). Only then measure both
   windows with the same substring count (`|= "<message template>"`, `now` without offset, `prev`
   with offset) and print both; never compare a level-filtered `now` with a substring `prev`.
   If the windows still cannot be compared, score Trend as Stable and mark it *inferred*.

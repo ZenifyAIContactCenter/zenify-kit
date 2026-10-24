@@ -75,7 +75,7 @@ func TestTopIssuesSkill(t *testing.T) {
 		"Sort all issues by Severity, then the tie-breaks; keep the first 5",
 		"Take the first that applies, in this order",
 		// F2, H4, Zenie #5: prev 0 is New unless parse failures are proven; compare like with like.
-		"is New, unless parse failures are proven",
+		"checked on the template, never on the app's whole log\n  volume",
 		`|= "<message template>"`,
 		"never compare a level-filtered `now` with a substring `prev`",
 		"score Trend as Stable and mark it *inferred*",
@@ -115,7 +115,7 @@ func TestTopIssuesSkill(t *testing.T) {
 		`line_format ` + "`" + `{{ regexReplaceAll "[0-9a-fA-F-]{8,}|[0-9]{4,}" (regexReplaceAll "[^ \"]+@[^ \"]+" .msg "<E>") "<N>" }}` + "`",
 		"Never scrub after the query instead.",
 		// Zenie #5: parse failures proven before the substring fallback.
-		`| json | __error__!="" [<W>] offset <W>`,
+		`| json | __error__!="" | drop __error__, __error_details__ [<W>] offset <W>`,
 		"Never quote its lines verbatim; count and group them only.",
 		`gsub("[^ ]+@[^ ]+"; "<REDACTED>")`,
 		"shorter than 8\n  characters, skip the count",
@@ -135,7 +135,8 @@ func TestTopIssuesSkill(t *testing.T) {
 		"topk(5, sum by (m) (count_over_time(",
 		"never on the parsed `msg` field itself",
 		// Zenie #2: one grouped tenant query for all candidates.
-		"count_over_time() by (span.http.route, <scope>.<tenant_attr>)",
+		"count_over_time() by (resource.service.name, span.http.route, <scope>.<tenant_attr>)",
+		"by service and route together",
 	})
 	for _, bad := range []string{"[0:120]", "Never filter on the substring", "A p95 of exactly `10`", "references/"} {
 		if strings.Contains(q, bad) {

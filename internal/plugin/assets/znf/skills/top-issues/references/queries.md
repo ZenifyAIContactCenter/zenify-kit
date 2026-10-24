@@ -82,13 +82,15 @@ topk(5, sum by (m) (count_over_time({<app_label>="<app>"} |~ "(?i)(error|fatal|\
   template, and the raw value never reaches the conversation. Never scrub after the query instead.
 - Each `m` value is one Loki candidate. Names are not caught: read `m` as possibly carrying PII and
   pass only the template, never more, into the report or the handoff.
-- A level-parsed `prev` of 0 is a real 0 unless the lines failed to parse. Prove it first: count
-  the previous window's parse failures; 50% or more of its lines failing (measured on prd: one app
-  had 4.30M of 4.33M lines failing after a format change) → the count is not trustworthy:
+- A level-parsed `prev` of 0 is a real 0 unless the template's own lines failed to parse. Check
+  the template, not the whole app: in the previous window, count the lines that contain it, and
+  those of them that fail to parse (`drop` the error labels so the metric query is accepted;
+  measured on prd: 518 of 518 failing after a format change). None contain it → New. Most of them
+  fail to parse → the level count is not trustworthy. They parse fine → the 0 is real → New:
 
 ```logql
-sum(count_over_time({<app_label>="<app>"} | json | __error__!="" [<W>] offset <W>))
-sum(count_over_time({<app_label>="<app>"} [<W>] offset <W>))
+sum(count_over_time({<app_label>="<app>"} |= "<message template>" [<W>] offset <W>))
+sum(count_over_time({<app_label>="<app>"} |= "<message template>" | json | __error__!="" | drop __error__, __error_details__ [<W>] offset <W>))
 ```
 
 - Only then use the trend fallback: count both windows with the same substring filter and print
@@ -118,14 +120,16 @@ tenant; the attribute is whichever side is a dotted attribute name. Use the scop
 `list_tempo_attribute_names` reports for it, never a fixed `span.` prefix.
 
 One grouped query counts the tenants of every error candidate at once, before any candidate is
-cut (measured on prd: 9 series for two services). `query_tempo_metrics` on `<tempo_uid>`,
+cut (measured on prd: 11 series for two services). `query_tempo_metrics` on `<tempo_uid>`,
 `type: instant`, `start`/`end` = the last 2h (RFC3339):
 
 ```traceql
-{ kind=server && status=error && resource.service.name=~"<svc1>|<svc2>" } | count_over_time() by (span.http.route, <scope>.<tenant_attr>)
+{ kind=server && status=error && resource.service.name=~"<svc1>|<svc2>" } | count_over_time() by (resource.service.name, span.http.route, <scope>.<tenant_attr>)
 ```
 
-Match each series to a candidate by route: the spanmetrics `span_name` without its method. Per
+Match each series to a candidate by service and route together (two services can share a
+route): `resource.service.name` = the spanmetrics `service`, route = its `span_name` without the
+method. Per
 candidate keep only the count of tenants and the top 3 ids. A series with no tenant label is not a
 tenant. Denominator, once per run, same 2h, narrowed to the candidates' services; keep only the
 count, not the series list:
