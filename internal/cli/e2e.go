@@ -186,7 +186,7 @@ func newE2eLoginCmd() *cobra.Command {
 	var port int
 	c := &cobra.Command{
 		Use:   "login",
-		Short: "Đăng nhập trên host, ghi storage state cho Playwright MCP (đọc E2E_* từ env)", //znf:allow-lang
+		Short: "Đăng nhập trên host, ghi storage state để zenify browser state-load nạp (đọc E2E_* từ env)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			bc, err := e2eBroker(role)
 			if err != nil {

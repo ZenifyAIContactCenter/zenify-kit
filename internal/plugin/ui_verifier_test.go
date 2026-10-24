@@ -10,7 +10,7 @@ import (
 )
 
 // FR-7: the kit ships the ui-verifier agent cook/ship dispatch (sonnet,
-// project-agnostic, single shared Playwright browser).
+// project-agnostic, drives its own `zenify browser` session).
 func TestUIVerifierAgent_Shipped(t *testing.T) {
 	dest := t.TempDir()
 	if _, err := Sync(dest, filepath.Join(dest, ".manifest.json")); err != nil {
@@ -21,9 +21,14 @@ func TestUIVerifierAgent_Shipped(t *testing.T) {
 		t.Fatalf("agents/ui-verifier.md not materialized: %v", err)
 	}
 	s := string(b)
-	for _, want := range []string{"name: ui-verifier", "model: sonnet", "single shared instance", "mcp__playwright__browser_snapshot", "Run it as the whole command, nothing appended"} {
+	for _, want := range []string{"name: ui-verifier", "model: sonnet", "zenify browser", "state-load", "close", "Run it as the whole command, nothing appended"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("ui-verifier.md missing %q", want)
+		}
+	}
+	for _, bad := range []string{"mcp__", "single shared instance"} {
+		if strings.Contains(s, bad) {
+			t.Errorf("ui-verifier.md must not contain %q", bad)
 		}
 	}
 	// "zenify" itself is allowed: the agent optionally shells out to the kit's own
@@ -45,8 +50,7 @@ func TestUIVerifierAgent_Shipped(t *testing.T) {
 	}
 }
 
-// FR-4: every playwright tool the verifier declares is auto-allowed by the kit,
-// and it carries browser_set_storage_state so it can log itself in.
+// FR-4: every tool the verifier declares is a built-in or auto-allowed by the kit.
 func TestUIVerifierToolsCoveredByKitAllowRules(t *testing.T) {
 	s := readAsset(t, "assets/znf/agents/ui-verifier.md")
 	var tools []string
@@ -61,21 +65,37 @@ func TestUIVerifierToolsCoveredByKitAllowRules(t *testing.T) {
 	if len(tools) == 0 {
 		t.Fatal("no tools: line in ui-verifier.md")
 	}
-	allowed := map[string]bool{}
+	allowed := map[string]bool{"Bash": true, "Read": true, "ToolSearch": true}
 	for _, r := range apply.KitAllowRules {
 		allowed[r] = true
 	}
-	hasState := false
 	for _, tool := range tools {
-		if tool == "mcp__playwright__browser_set_storage_state" {
-			hasState = true
-		}
-		if strings.HasPrefix(tool, "mcp__playwright__") && !allowed[tool] {
-			t.Errorf("tool %q is not in apply.KitAllowRules", tool)
+		if !allowed[tool] {
+			t.Errorf("tool %q is neither Bash/Read/ToolSearch nor in apply.KitAllowRules", tool)
 		}
 	}
-	if !hasState {
-		t.Error("ui-verifier tools must include mcp__playwright__browser_set_storage_state")
+}
+
+// No asset may still describe the retired shared-MCP-browser model.
+func TestNoSharedBrowserRule(t *testing.T) {
+	banned := []string{"single shared", "never two browser", "mcp__playwright", "browser_take_screenshot", "browser_set_storage_state"}
+	err := filepath.WalkDir("assets/znf", func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, rerr := os.ReadFile(p)
+		if rerr != nil {
+			return rerr
+		}
+		for _, w := range banned {
+			if strings.Contains(strings.ToLower(string(b)), w) {
+				t.Errorf("%s still contains %q", p, w)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -104,13 +124,15 @@ func TestUIVerifierBashCoveredByKitAllowRules(t *testing.T) {
 	if strings.Contains(s, "curl ") || strings.Contains(s, "command -v") || strings.Contains(s, "rm -f") {
 		t.Error("ui-verifier.md must not use curl or command -v (uncovered Bash prompts)")
 	}
-	found := false
-	for _, r := range apply.KitAllowRules {
-		if r == "Bash(zenify ui-verify *)" {
-			found = true
+	for _, want := range []string{"Bash(zenify browser *)", "Bash(zenify ui-verify *)"} {
+		found := false
+		for _, r := range apply.KitAllowRules {
+			if r == want {
+				found = true
+			}
 		}
-	}
-	if !found {
-		t.Error("KitAllowRules must contain Bash(zenify ui-verify *)")
+		if !found {
+			t.Errorf("KitAllowRules must contain %s", want)
+		}
 	}
 }

@@ -26,7 +26,7 @@ Two rules for skill authors:
 | Edit or create a file | `Edit` / `Write` | `apply_patch` |
 | Run a shell command | `Bash` | shell |
 | Fetch a page or search the web | `WebFetch` / `WebSearch` | Codex web search |
-| Drive a browser (UI verification) | `mcp__playwright__browser_*` via `znf:ui-verifier` | MCP `playwright` |
+| Drive a browser (UI verification) | `Bash: zenify browser -s=<session> …` via `znf:ui-verifier` | `Bash: zenify browser -s=<session> …` |
 | Wait on a condition or a background process | `Monitor` | poll with a shell loop |
 | Run a command in the background and be woken when it exits (waits longer than a `Monitor` deadline, e.g. CI) | `Bash` with `run_in_background: true` | run it in the foreground (blocks the turn) |
 | Run a data script against stg or prd with broker credentials | `Bash`: `zenify data run (--stg\|--prd) [--write] -- <cmd>`, a bare call (no pipe, redirect or `cd`) — see `data-scripts.md` | same command |

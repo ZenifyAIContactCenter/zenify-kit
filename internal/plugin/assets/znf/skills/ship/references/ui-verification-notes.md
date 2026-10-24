@@ -62,7 +62,7 @@ it could not authenticate, and a verifier being handed an *old* session whose sc
 design, so the check verified nothing.
 
 The mechanics: the verifier logs itself in. Before its first navigate it runs
-`zenify e2e login --url <app base URL>` via Bash and calls `browser_set_storage_state` with the path
+`zenify e2e login --url <app base URL>` via Bash and runs `zenify browser -s=<session> state-load <path>` with the path
 that prints — nobody types a password through a tool call, which the classifier blocks. If the command
 fails or is missing, the verifier reports BLOCKED with its message. The main session only passes the
 web URL and does not touch the browser to log in. Tell the verifier **not** to clear `localStorage`
@@ -99,5 +99,5 @@ seed the row — then look. If you cannot this session, that is BLOCKED, and the
 missing thing.
 
 Also moved here: require the measurement next to an *unchanged sibling*, so an overflow that was
-already there is not reported as yours. The browser is a single shared instance, so a multi-screen
-change is one verifier covering every screen, never several agents.
+already there is not reported as yours. A multi-screen
+change is one verifier covering every screen; if you do split it, each verifier gets its own `zenify browser` session.

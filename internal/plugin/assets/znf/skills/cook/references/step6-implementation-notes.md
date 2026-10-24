@@ -125,11 +125,10 @@ Do not re-derive the decision here from file extensions: an earlier version of t
 and it fired on any task that so much as touched a `.css` file, which is a browser run bought with
 nothing.
 
-**This check does not parallelise, even when the implementers around it do.** The browser is a
-single shared instance, so two flagged tasks' verifier runs go one after the other, and the main
-session must not touch it while either is running. Implementers are concurrent; the browser is a serial resource inside that concurrency. A
-task whose verifier has not run yet does not get its ledger line, so a queued browser run holds up
-exactly one task rather than the whole group.
+**This check may run in parallel.** Each verifier uses its own `zenify browser` session, so flagged
+tasks' verifiers may run in parallel; give each a distinct session name. A task whose verifier has
+not run yet does not get its ledger line, so a pending browser run holds up exactly one task rather
+than the whole group.
 
 ### From § A task the plan flagged gets looked at before its ledger line is written
 
@@ -150,10 +149,8 @@ is not a clean look). Worth paying wherever a frontend is a primary focus: rende
 the common case rather than the exception, so the cost and the benefit both land on the work you
 actually do.
 
-**Serialisation is not a problem, and the reason is in SDD itself:** SDD's rule "Never dispatch
-multiple implementation subagents in parallel" means tasks run one at a time, so only one agent can
-ever be holding the single shared browser. The rule against two browser drivers is about
-concurrency, and there is none here.
+**Concurrency is safe:** a verifier drives only its own named session, so two verifiers never
+share a browser, whether or not the implementers around them run concurrently.
 
 None of this edits the plugin. It is a constraint on the brief you hand SDD and on when you write the
 ledger line, both of which are yours.
