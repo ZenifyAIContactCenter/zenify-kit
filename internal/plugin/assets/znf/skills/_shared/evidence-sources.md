@@ -85,6 +85,12 @@ service catalog — never from memory.
   2026-10-15).
 - `| json` fails on a log line with a text prefix before the JSON. Cut the JSON tail first with
   ``| regexp `(?P<payload>\{.*\})$` ``, then `| line_format "{{.payload}}" | json`.
+- `alerting_rules_read` (`operation: list`) returns `null` when the instance has no
+  Grafana-managed alert rules — that is "no rules", not a connection failure; rank from metrics
+  and logs instead.
+- Counting Loki errors with a substring filter (`|~ "(?i)error"`) matches info lines that merely
+  mention the word, inflating counts by orders of magnitude; filter on the parsed level field (a
+  level label or `| json | level=~"error|fatal"`).
 
 ## PostHog exec
 
