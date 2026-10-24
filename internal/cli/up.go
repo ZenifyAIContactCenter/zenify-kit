@@ -308,7 +308,13 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 				c.Stdout, c.Stderr = w, errW
 				return c.Run()
 			},
-			Output: func(name string, args []string) ([]byte, error) { return exec.Command(name, args...).Output() }, //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
+			Output: func(name string, args []string) ([]byte, error) { // bounded like runClaudeBounded; stdout only, the parser reads it
+				ctx, cancel := context.WithTimeout(context.Background(), claudeMCPTimeout)
+				defer cancel()
+				c := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
+				c.WaitDelay = 2 * time.Second
+				return c.Output()
+			},
 			Home:   home,
 			Getenv: os.Getenv,
 			GOOS:   runtime.GOOS,
