@@ -302,7 +302,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	if home, herr := os.UserHomeDir(); herr != nil || home == "" {
 		_, _ = fmt.Fprintf(errW, "warning: playwright bootstrap: cannot resolve home: %v\n", herr)
 	} else {
-		provisionPlaywright(w, errW, hasFrontendRepo(m), codexOnPath(), playwright.Options{
+		playwrightProvision(w, errW, hasFrontendRepo(m), codexOnPath(), playwright.Options{
 			Runner: func(name string, args []string) error { // stream: the chromium download is otherwise a silent multi-minute wait
 				c := exec.Command(name, args...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 				c.Stdout, c.Stderr = w, errW
@@ -612,6 +612,10 @@ func renderCodexSummary(rep ensureReport, w io.Writer) {
 	}
 	fmt.Fprintf(w, "  agents: %d\n", rep.CodexAgents)
 }
+
+// playwrightProvision is the seam runApplyWith reaches provisionPlaywright
+// through; TestMain swaps it so no test shells out to the real claude/codex.
+var playwrightProvision = provisionPlaywright
 
 // provisionPlaywright installs the pinned playwright-cli when the workspace has
 // a frontend repo, then (for every workspace) removes the kit-owned Playwright

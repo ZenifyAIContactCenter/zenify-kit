@@ -23,6 +23,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 	"github.com/spf13/cobra"
 )
 
@@ -160,6 +161,9 @@ func runHermetic(m *testing.M) int {
 			return "", false
 		}
 	}
+	// runApplyWith would run `claude mcp get playwright` for every workspace;
+	// tests of provisionPlaywright call it directly with fake runners.
+	playwrightProvision = func(io.Writer, io.Writer, bool, bool, playwright.Options) {}
 	code := m.Run()
 	if hits, err := os.ReadFile(hitLog); err == nil && len(hits) > 0 { //nolint:gosec // test-owned temp file
 		fmt.Fprintf(os.Stderr, "test hermeticity: tests ran shimmed binaries:\n%s", hits)
