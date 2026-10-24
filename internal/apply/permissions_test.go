@@ -116,7 +116,7 @@ func TestEnsureKitPermissions_NoServerWideRule(t *testing.T) {
 
 func TestRemoveKitPermissions_KeepsPreexisting(t *testing.T) {
 	home := t.TempDir()
-	writeSettings(t, home, `{"permissions":{"allow":["mcp__playwright__browser_click","Bash(git status)"]}}`)
+	writeSettings(t, home, `{"permissions":{"allow":["Bash(zenify visual *)","Bash(git status)"]}}`)
 	if _, err := EnsureKitPermissions(home, false); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestRemoveKitPermissions_KeepsPreexisting(t *testing.T) {
 	if err != nil || removed != len(KitAllowRules)-1 {
 		t.Fatalf("removed=%d err=%v", removed, err)
 	}
-	want := []string{"mcp__playwright__browser_click", "Bash(git status)"}
+	want := []string{"Bash(zenify visual *)", "Bash(git status)"}
 	if got := readAllow(t, home); !reflect.DeepEqual(got, want) {
 		t.Fatalf("allow=%v", got)
 	}
@@ -132,7 +132,7 @@ func TestRemoveKitPermissions_KeepsPreexisting(t *testing.T) {
 
 func TestRemoveKitPermissions_NoRecord(t *testing.T) {
 	home := t.TempDir()
-	writeSettings(t, home, `{"permissions":{"allow":["mcp__playwright__browser_click"]}}`)
+	writeSettings(t, home, `{"permissions":{"allow":["Bash(zenify visual *)"]}}`)
 	removed, err := RemoveKitPermissions(home, false)
 	if removed != 0 || err == nil || !strings.Contains(err.Error(), "no kit-permissions record") {
 		t.Fatalf("removed=%d err=%v", removed, err)
@@ -405,5 +405,103 @@ func TestKitAskRules_MatchProdWritesOnly(t *testing.T) {
 		if hit(c) {
 			t.Errorf("%q prompts, want no ask", c)
 		}
+	}
+}
+
+var retiredMCPFixture = []string{
+	"mcp__playwright__browser_navigate",
+	"mcp__playwright__browser_snapshot",
+	"mcp__playwright__browser_take_screenshot",
+	"mcp__playwright__browser_click",
+	"mcp__playwright__browser_type",
+	"mcp__playwright__browser_evaluate",
+	"mcp__playwright__browser_console_messages",
+	"mcp__playwright__browser_wait_for",
+	"mcp__playwright__browser_set_storage_state",
+}
+
+func TestKitAllowRulesNoPlaywrightMCP(t *testing.T) {
+	found := false
+	for _, r := range KitAllowRules {
+		if strings.HasPrefix(r, "mcp__playwright__") {
+			t.Fatalf("playwright MCP rule still present: %q", r)
+		}
+		if r == "Bash(zenify browser *)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("Bash(zenify browser *) missing")
+	}
+}
+
+func TestKitSandboxExcludesBrowser(t *testing.T) {
+	for _, r := range KitSandboxExcluded {
+		if r == "zenify browser *" {
+			return
+		}
+	}
+	t.Fatal("zenify browser * missing from KitSandboxExcluded")
+}
+
+// seedRetired writes settings + record holding the 9 retired MCP rules, one
+// kit rule and (in settings only) a user rule.
+func seedRetired(t *testing.T, home string) {
+	t.Helper()
+	recorded := append(append([]string{}, retiredMCPFixture...), "Bash(zenify e2e *)")
+	allow := append(append([]string{}, recorded...), "Bash(ls *)")
+	aj, _ := json.Marshal(allow)
+	writeSettings(t, home, `{"permissions":{"allow":`+string(aj)+`}}`)
+	rj, _ := json.Marshal(recorded)
+	if err := os.MkdirAll(filepath.Dir(kitPermissionsRecord(home)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(kitPermissionsRecord(home), rj, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRemoveRetiredKitPermissions(t *testing.T) {
+	home := t.TempDir()
+	seedRetired(t, home)
+	n, err := RemoveRetiredKitPermissions(home, false)
+	if err != nil || n != 9 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	want := []string{"Bash(zenify e2e *)", "Bash(ls *)"}
+	if got := readAllow(t, home); !reflect.DeepEqual(got, want) {
+		t.Fatalf("allow=%v", got)
+	}
+	raw, _ := os.ReadFile(kitPermissionsRecord(home))
+	var rec []string
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rec, []string{"Bash(zenify e2e *)"}) {
+		t.Fatalf("record=%v", rec)
+	}
+}
+
+func TestRemoveKitPermissionsStillRemovesAll(t *testing.T) {
+	home := t.TempDir()
+	seedRetired(t, home)
+	n, err := RemoveKitPermissions(home, false)
+	if err != nil || n != 10 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	if got := readAllow(t, home); !reflect.DeepEqual(got, []string{"Bash(ls *)"}) {
+		t.Fatalf("allow=%v", got)
+	}
+	if _, err := os.Stat(kitPermissionsRecord(home)); !os.IsNotExist(err) {
+		t.Fatalf("record should be gone: %v", err)
+	}
+}
+
+func TestRemoveRetiredKitPermissionsNoRecord(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{"permissions":{"allow":["Bash(ls *)"]}}`)
+	n, err := RemoveRetiredKitPermissions(home, false)
+	if n != 0 || err != nil {
+		t.Fatalf("n=%d err=%v", n, err)
 	}
 }
