@@ -649,6 +649,7 @@ func TestProxy_StripsTaskHeader(t *testing.T) {
 	if v := (<-got).Get("X-Zenify-Task"); v != "" {
 		t.Errorf("X-Zenify-Task reached upstream: %q", v)
 	}
+	srv.Close() // wait for the handler (and its deferred audit) to finish
 	if !strings.Contains(out.String(), `"task":"ZEN-12"`) {
 		t.Errorf("audit = %s", out.String())
 	}
