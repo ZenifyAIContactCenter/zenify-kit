@@ -44,9 +44,9 @@ func TestBuildArgs_LinuxAddHost(t *testing.T) {
 
 func TestBuildArgs_BaseURL(t *testing.T) {
 	got := strings.Join(BuildArgs(pwdocker.Options{GOOS: "darwin"}, RunConfig{
-		HarnessDir: "/tmp/h", E2EDir: "/repo/.znf/e2e", BaseURL: "https://web-staging.zenify.vn",
+		HarnessDir: "/tmp/h", E2EDir: "/repo/.znf/e2e", BaseURL: "https://staging.example.com",
 	}), " ")
-	if !strings.Contains(got, "BASE_URL=https://web-staging.zenify.vn") {
+	if !strings.Contains(got, "BASE_URL=https://staging.example.com") {
 		t.Fatalf("BASE_URL missing: %q", got)
 	}
 	if strings.Contains(got, "BASE_URL=http://host.docker.internal") {
@@ -56,9 +56,9 @@ func TestBuildArgs_BaseURL(t *testing.T) {
 
 func TestBuildArgs_BaseURLNormalisedToOrigin(t *testing.T) {
 	got := strings.Join(BuildArgs(pwdocker.Options{GOOS: "darwin"}, RunConfig{
-		HarnessDir: "/tmp/h", E2EDir: "/repo/.znf/e2e", BaseURL: "https://web-staging.zenify.vn/some/path?x=1",
+		HarnessDir: "/tmp/h", E2EDir: "/repo/.znf/e2e", BaseURL: "https://staging.example.com/some/path?x=1",
 	}), " ")
-	if !strings.Contains(got, "BASE_URL=https://web-staging.zenify.vn ") {
+	if !strings.Contains(got, "BASE_URL=https://staging.example.com ") {
 		t.Fatalf("BASE_URL not reduced to origin: %q", got)
 	}
 }
@@ -70,20 +70,20 @@ func TestCheckBaseURL(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(`{"apiBaseUrl":"x","baseUrls":["https://web-staging.zenify.vn"]}`)
-	for _, u := range []string{"https://web-staging.zenify.vn", "https://web-staging.zenify.vn/login", "https://WEB-staging.zenify.vn/"} {
+	write(`{"apiBaseUrl":"x","baseUrls":["https://staging.example.com"]}`)
+	for _, u := range []string{"https://staging.example.com", "https://staging.example.com/login", "https://STAGING.example.com/"} {
 		if err := CheckBaseURL(dir, u); err != nil {
 			t.Errorf("%s: want nil, got %v", u, err)
 		}
 	}
-	for _, u := range []string{"https://zenify.vn", "http://web-staging.zenify.vn", "https://web-staging.zenify.vn:8443", "nope"} {
+	for _, u := range []string{"https://example.com", "http://staging.example.com", "https://staging.example.com:8443", "nope"} {
 		err := CheckBaseURL(dir, u)
-		if err == nil || !strings.Contains(err.Error(), "web-staging.zenify.vn") {
+		if err == nil || !strings.Contains(err.Error(), "staging.example.com") {
 			t.Errorf("%s: want error listing allowed origin, got %v", u, err)
 		}
 	}
 	write(`{"apiBaseUrl":"x"}`)
-	if err := CheckBaseURL(dir, "https://web-staging.zenify.vn"); err == nil {
+	if err := CheckBaseURL(dir, "https://staging.example.com"); err == nil {
 		t.Error("config without baseUrls must refuse")
 	}
 }
