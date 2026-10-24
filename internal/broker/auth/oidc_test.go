@@ -259,6 +259,24 @@ func TestActionsVerify_FailedFetchNotRetriedWithinMinute(t *testing.T) {
 	}
 }
 
+// A caller that hangs up mid-download must not poison the cache for others.
+func TestActionsVerify_CanceledCallerDoesNotCacheError(t *testing.T) {
+	f := newOIDCFixture(t)
+	v := f.verifier(t0)
+	tok := rs256(t, f.key, okHeader, claimsJSON(nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := v.Verify(ctx, tok); err != nil {
+		t.Fatalf("canceled caller: %v", err)
+	}
+	if _, err := v.Verify(context.Background(), tok); err != nil {
+		t.Fatalf("next caller: %v", err)
+	}
+	if n := f.fetches.Load(); n != 1 {
+		t.Fatalf("fetches = %d, want 1", n)
+	}
+}
+
 func TestActionsVerify_CachedKidDoesNotWaitOnDownload(t *testing.T) {
 	f := newOIDCFixture(t)
 	var now atomic.Int64

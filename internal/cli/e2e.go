@@ -255,6 +255,12 @@ func newE2eCmd() *cobra.Command {
 			if (port == 0) == (baseURL == "") {
 				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need exactly one of --port or --base-url"))
 			}
+			// Refuse a disallowed origin before Docker or the broker is touched.
+			if baseURL != "" {
+				if err := e2e.CheckBaseURL(e2eDir(resolveRepo()), baseURL); err != nil {
+					return err
+				}
+			}
 			if err := preflightDocker(); err != nil {
 				return err
 			}

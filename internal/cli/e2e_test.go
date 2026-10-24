@@ -496,31 +496,48 @@ func TestE2eRun_InvalidManifestErrors(t *testing.T) {
 }
 
 func TestE2eRun_BaseURLRefusedBeforeDocker(t *testing.T) {
+	hermeticE2E(t, "")
 	_, ran := e2eRunRepo(t)
-	err := os.WriteFile(filepath.Join(".znf", "e2e", "e2e.config.json"), []byte(`{"baseUrls":["https://web-staging.zenify.vn"]}`), 0o600)
+	err := os.WriteFile(filepath.Join(".znf", "e2e", "e2e.config.json"), []byte(`{"baseUrls":["https://staging.example.com"]}`), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 	called := false
 	runner := func(string, []string) error { called = true; return nil }
-	err = runE2eRun(runner, func(string) string { return "" }, "linux", ".", 0, "https://zenify.vn", io.Discard)
+	err = runE2eRun(runner, func(string) string { return "" }, "linux", ".", 0, "https://other.example.com", io.Discard)
 	if exitcode.Code(err) != exitcode.BadArgs || called || *ran {
 		t.Fatalf("err=%v called=%v ran=%v, want BadArgs and no docker", err, called, *ran)
 	}
 }
 
+// A disallowed --base-url is refused before the broker is asked for an account.
+func TestE2eRun_BaseURLRefusedBeforeBroker(t *testing.T) {
+	var role string
+	mp, _ := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	_, ran := e2eRunRepo(t)
+	if err := os.WriteFile(filepath.Join(".znf", "e2e", "e2e.config.json"), []byte(`{"baseUrls":["https://staging.example.com"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := execCmd(newE2eCmd(), "run", "--base-url", "https://other.example.com", "--role", "sale")
+	if exitcode.Code(err) != exitcode.BadArgs || role != "" || *ran {
+		t.Fatalf("err=%v role=%q ran=%v, want BadArgs, no broker call, no child", err, role, *ran)
+	}
+}
+
 func TestE2eRun_BaseURLAllowedReachesDocker(t *testing.T) {
+	hermeticE2E(t, "")
 	e2eRunRepo(t)
-	err := os.WriteFile(filepath.Join(".znf", "e2e", "e2e.config.json"), []byte(`{"baseUrls":["https://web-staging.zenify.vn"]}`), 0o600)
+	err := os.WriteFile(filepath.Join(".znf", "e2e", "e2e.config.json"), []byte(`{"baseUrls":["https://staging.example.com"]}`), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got []string
 	runner := func(_ string, a []string) error { got = a; return nil }
-	if err := runE2eRun(runner, func(string) string { return "" }, "linux", ".", 0, "https://web-staging.zenify.vn", io.Discard); err != nil {
+	if err := runE2eRun(runner, func(string) string { return "" }, "linux", ".", 0, "https://staging.example.com", io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(got, " "), "BASE_URL=https://web-staging.zenify.vn") {
+	if !strings.Contains(strings.Join(got, " "), "BASE_URL=https://staging.example.com") {
 		t.Fatalf("docker args lack BASE_URL: %v", got)
 	}
 }
@@ -528,7 +545,7 @@ func TestE2eRun_BaseURLAllowedReachesDocker(t *testing.T) {
 func TestE2eRun_NeedsExactlyOneOfPortBaseURL(t *testing.T) {
 	hermeticE2E(t, "")
 	e2eRunRepo(t)
-	for _, args := range [][]string{{"run"}, {"run", "--port", "3327", "--base-url", "https://web-staging.zenify.vn"}} {
+	for _, args := range [][]string{{"run"}, {"run", "--port", "3327", "--base-url", "https://staging.example.com"}} {
 		_, _, err := execCmd(newE2eCmd(), args...)
 		if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "need exactly one of --port or --base-url") {
 			t.Errorf("%v: got %v", args, err)

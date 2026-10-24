@@ -33,6 +33,10 @@ const nbfSkew = 60 * time.Second
 // jwksRefetchEvery bounds how often an unknown kid may trigger a JWKS refetch.
 const jwksRefetchEvery = time.Minute
 
+// jwksFetchTimeout bounds one JWKS download, which runs detached from the
+// request that triggered it.
+const jwksFetchTimeout = 10 * time.Second
+
 // ActionsClaims are the claims the broker authorizes on. sub is deliberately
 // absent: its format is customizable per repo; authorize by WorkflowRef.
 type ActionsClaims struct {
@@ -134,7 +138,11 @@ func (v *ActionsVerifier) key(ctx context.Context, kid string) (*rsa.PublicKey, 
 	if k, done, err := v.cached(kid); done {
 		return k, err
 	}
-	keys, err := v.fetch(ctx)
+	// The download outlives the request that triggered it: a caller hanging up
+	// must not leave a context error cached for every other caller.
+	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), jwksFetchTimeout)
+	defer cancel()
+	keys, err := v.fetch(fctx)
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.fetched, v.fetchErr = v.now(), err
