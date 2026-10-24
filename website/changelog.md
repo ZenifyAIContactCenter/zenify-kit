@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.46.0
+
+*2026-10-24*
+
+- **`zenify e2e run --base-url <origin>` chạy journey trên staging:** thay `--port` bằng `--base-url` để journey chạy trên một origin có sẵn thay cho dev server local, ví dụ `https://web-staging.zenify.vn`. Origin phải nằm trong `baseUrls` của `.znf/e2e/e2e.config.json` (so khớp scheme, host và port; path bị bỏ qua), nếu không lệnh thoát mã 2 trước khi chạy Docker. Container nhận đúng origin đã qua kiểm tra, không nhận path hay query. `--base-url` loại trừ `--port`: phải đưa đúng một trong hai. Xem [Journey E2E](/workflows/ui-testing#journey-e2e).
+- **Broker nhận OIDC token của GitHub Actions trên `/token`:** workflow E2E không có token người dùng có thể gửi `{"oidc_token":"..."}` tới `POST /token` để nhận role `e2e`. Broker chỉ cấp role này cho workflow có `workflow_ref` nằm trong khoá `e2e_workflows` của config broker (mặc định rỗng: không nhận OIDC). Role `e2e` chỉ gọi được `POST /e2e/account`, mọi route khác trả 403. Deploy image broker mới trước rồi mới thêm `e2e_workflows`, vì image cũ không khởi động khi gặp khoá lạ. Xem [Role `e2e` cho GitHub Actions](/guides/broker-host#role-e2e).
+- **brokerclient tự dùng OIDC trong GitHub Actions:** khi chạy trong Actions và job được cấp `permissions: id-token: write`, các lệnh gọi broker (như `zenify e2e run`) tự xin OIDC token và đổi lấy token role `e2e`, không cần đăng nhập GitHub. Ngoài Actions hoặc thiếu `id-token: write` thì luồng đăng nhập cũ giữ nguyên.
+
 ## v0.45.1
 
 *2026-10-23*

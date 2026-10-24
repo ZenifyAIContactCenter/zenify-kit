@@ -88,7 +88,7 @@ func Verify(key []byte, token string, now time.Time) (login, role string, err er
 	if err != nil || json.Unmarshal(cb, &c) != nil {
 		return "", "", ErrJWTInvalid
 	}
-	if c.Aud != Audience || c.Sub == "" || now.Unix() >= c.Exp || (c.Role != api.RoleLead && c.Role != api.RoleDev && c.Role != api.RoleAgent) {
+	if c.Aud != Audience || c.Sub == "" || now.Unix() >= c.Exp || (c.Role != api.RoleLead && c.Role != api.RoleDev && c.Role != api.RoleAgent && c.Role != api.RoleE2E) {
 		return "", "", ErrJWTInvalid
 	}
 	return c.Sub, c.Role, nil

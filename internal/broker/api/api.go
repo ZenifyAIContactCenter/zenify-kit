@@ -63,6 +63,9 @@ const (
 	RoleDev  = "dev"
 	// RoleAgent is a GitHub App installation listed in the broker's agent_ids.
 	RoleAgent = "agent"
+	// RoleE2E is a GitHub Actions workflow listed in the broker's
+	// e2e_workflows; it may call POST /e2e/account and nothing else.
+	RoleE2E = "e2e"
 )
 
 // Error is the body of every non-2xx response.
@@ -71,9 +74,11 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-// TokenRequest is the body of POST /token.
+// TokenRequest is the body of POST /token: exactly one of GitHubToken or
+// OIDCToken (a GitHub Actions OIDC token with audience zenify-broker).
 type TokenRequest struct {
-	GitHubToken string `json:"github_token"`
+	GitHubToken string `json:"github_token,omitempty"`
+	OIDCToken   string `json:"oidc_token,omitempty"`
 }
 
 // TokenResponse is the 200 body of POST /token. ExpiresAt is RFC3339.
@@ -81,7 +86,7 @@ type TokenResponse struct {
 	Token     string `json:"token"`
 	ExpiresAt string `json:"expires_at"`
 	Login     string `json:"login"`
-	Role      string `json:"role"` // RoleLead or RoleDev
+	Role      string `json:"role"` // RoleLead, RoleDev, RoleAgent or RoleE2E
 }
 
 // QueryRequest is the body of POST /query. Env is stg|prd, Engine mongo|mysql,

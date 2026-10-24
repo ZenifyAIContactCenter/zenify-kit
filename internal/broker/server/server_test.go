@@ -2,12 +2,15 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -776,6 +779,265 @@ func TestToken_InstallationTokenAgent(t *testing.T) { // FR-1, SC-1, SC-2
 		}
 		if !strings.Contains(out.String(), `"role":"agent"`) {
 			t.Errorf("%s: audit line lacks role=agent: %s", c.name, out.String())
+		}
+	}
+}
+
+const (
+	webWorkflow = "ZenifyAIContactCenter/contact-center-web/.github/workflows/e2e-staging.yml@refs/heads/staging"
+	oidcToken   = "eyJoidc.fake-actions.token" //nolint:gosec // G101 -- a test value, not a credential
+)
+
+// fakeActions returns claims for oidcToken, err otherwise; calls counts Verify.
+type fakeActions struct {
+	claims auth.ActionsClaims
+	err    error
+	calls  int32
+}
+
+func (f *fakeActions) Verify(_ context.Context, tok string) (auth.ActionsClaims, error) {
+	atomic.AddInt32(&f.calls, 1)
+	if f.err != nil {
+		return auth.ActionsClaims{}, f.err
+	}
+	if tok != oidcToken {
+		return auth.ActionsClaims{}, auth.ErrOIDCInvalid
+	}
+	return f.claims, nil
+}
+
+func webClaims() auth.ActionsClaims {
+	return auth.ActionsClaims{Repository: "ZenifyAIContactCenter/contact-center-web", WorkflowRef: webWorkflow, RunID: "18765432101"}
+}
+
+func oidcServer(t *testing.T, act *fakeActions, workflows []string, out *bytes.Buffer) http.Handler {
+	t.Helper()
+	return New(Deps{
+		JWTKey: testKey, Org: "test-org", LeadTeam: "leaders", DevTeam: "zenify-team",
+		GitHub:  auth.GitHub{BaseURL: fakeGitHub(t, "active", nil).URL},
+		Actions: act, E2EWorkflows: workflows,
+		Audit: &audit.Logger{W: out}, Now: func() time.Time { return t0 },
+	})
+}
+
+func postBody(h http.Handler, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(body))
+	req.Header.Set("X-Real-IP", "203.0.113.9")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestToken_OIDCIssuesE2E(t *testing.T) { // FR-2.3, SC-2
+	var out bytes.Buffer
+	act := &fakeActions{claims: webClaims()}
+	rec := postBody(oidcServer(t, act, []string{"other/repo/.github/workflows/x.yml@refs/heads/main", webWorkflow}, &out), `{"oidc_token":"`+oidcToken+`"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	var resp api.TokenResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Role != "e2e" || resp.Login != "oidc:ZenifyAIContactCenter/contact-center-web" || resp.ExpiresAt != "2026-10-15T08:15:00Z" {
+		t.Errorf("resp = %+v", resp)
+	}
+	login, role, err := auth.Verify(testKey, resp.Token, t0.Add(time.Minute))
+	if err != nil || login != "oidc:ZenifyAIContactCenter/contact-center-web" || role != "e2e" {
+		t.Errorf("Verify = %q %q %v", login, role, err)
+	}
+}
+
+func TestToken_OIDCWorkflowNotAllowed(t *testing.T) { // FR-2.2
+	for name, ref := range map[string]string{
+		"other workflow": "ZenifyAIContactCenter/contact-center-web/.github/workflows/deploy.yml@refs/heads/staging",
+		"other branch":   "ZenifyAIContactCenter/contact-center-web/.github/workflows/e2e-staging.yml@refs/heads/feature",
+		"prefix":         "ZenifyAIContactCenter/contact-center-web/.github/workflows/e2e-staging.yml@refs/heads/staging-evil",
+	} {
+		var out bytes.Buffer
+		c := webClaims()
+		c.WorkflowRef = ref
+		rec := postBody(oidcServer(t, &fakeActions{claims: c}, []string{webWorkflow}, &out), `{"oidc_token":"`+oidcToken+`"}`)
+		if rec.Code != http.StatusForbidden || errCode(t, rec) != api.CodeNotAllowed {
+			t.Errorf("%s: %d %s", name, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestToken_OIDCNoAllowlist(t *testing.T) { // FR-2.5
+	for _, wfs := range [][]string{nil, {}} {
+		var out bytes.Buffer
+		rec := postBody(oidcServer(t, &fakeActions{claims: webClaims()}, wfs, &out), `{"oidc_token":"`+oidcToken+`"}`)
+		if rec.Code != http.StatusForbidden || errCode(t, rec) != api.CodeNotAllowed {
+			t.Errorf("%v: %d %s", wfs, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestToken_OIDCInvalid(t *testing.T) {
+	var out bytes.Buffer
+	act := &fakeActions{err: fmt.Errorf("bad aud: %w", auth.ErrOIDCInvalid)}
+	rec := postBody(oidcServer(t, act, []string{webWorkflow}, &out), `{"oidc_token":"`+oidcToken+`"}`)
+	if rec.Code != http.StatusUnauthorized || errCode(t, rec) != api.CodeUnauthorized {
+		t.Errorf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestToken_OIDCJWKSDown(t *testing.T) {
+	var out bytes.Buffer
+	act := &fakeActions{err: errors.New("fetch jwks: connection refused")}
+	rec := postBody(oidcServer(t, act, []string{webWorkflow}, &out), `{"oidc_token":"`+oidcToken+`"}`)
+	if rec.Code != http.StatusBadGateway || errCode(t, rec) != api.CodeGitHubUnavailable {
+		t.Errorf("%d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestToken_BothFields(t *testing.T) { // FR-2.5
+	var out bytes.Buffer
+	act := &fakeActions{claims: webClaims()}
+	rec := postBody(oidcServer(t, act, []string{webWorkflow}, &out), `{"github_token":"`+ghToken+`","oidc_token":"`+oidcToken+`"}`)
+	if rec.Code != http.StatusBadRequest || errCode(t, rec) != api.CodeInvalidBody {
+		t.Errorf("%d %s", rec.Code, rec.Body.String())
+	}
+	if act.calls != 0 {
+		t.Errorf("verifier called %d times", act.calls)
+	}
+}
+
+func TestToken_GitHubOnlyUnchangedWithOIDCWired(t *testing.T) { // SC-4
+	var out bytes.Buffer
+	act := &fakeActions{claims: webClaims()}
+	h := oidcServer(t, act, []string{webWorkflow}, &out)
+	rec := postToken(h, ghToken, "203.0.113.7")
+	var resp api.TokenResponse
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &resp) != nil || resp.Role != api.RoleLead || resp.Login != "octocat" {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	if rec := postBody(h, `{}`); rec.Code != http.StatusUnauthorized || errCode(t, rec) != api.CodeGitHubTokenInvalid {
+		t.Errorf("empty body: %d %s", rec.Code, rec.Body.String())
+	}
+	if act.calls != 0 {
+		t.Errorf("verifier called %d times", act.calls)
+	}
+}
+
+func TestAudit_OIDCFields(t *testing.T) { // FR-2.6
+	for name, tc := range map[string]struct {
+		wfs    []string
+		status int
+	}{"issued": {[]string{webWorkflow}, 200}, "refused": {[]string{"x/y/.github/workflows/z.yml@refs/heads/main"}, 403}} {
+		var out bytes.Buffer
+		rec := postBody(oidcServer(t, &fakeActions{claims: webClaims()}, tc.wfs, &out), `{"oidc_token":"`+oidcToken+`"}`)
+		lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+		if rec.Code != tc.status || len(lines) != 1 {
+			t.Fatalf("%s: %d, audit %q", name, rec.Code, out.String())
+		}
+		var e map[string]any
+		if err := json.Unmarshal([]byte(lines[0]), &e); err != nil {
+			t.Fatal(err)
+		}
+		if e["workflow_ref"] != webWorkflow || e["run_id"] != "18765432101" || e["status"] != float64(tc.status) ||
+			e["login"] != "oidc:ZenifyAIContactCenter/contact-center-web" || e["endpoint"] != "/token" {
+			t.Errorf("%s: entry = %s", name, lines[0])
+		}
+		if tc.status == 200 && e["role"] != "e2e" {
+			t.Errorf("%s: role = %v", name, e["role"])
+		}
+		var resp api.TokenResponse
+		_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+		if strings.Contains(out.String(), oidcToken) || (resp.Token != "" && strings.Contains(out.String(), resp.Token)) {
+			t.Errorf("%s: audit leaks a token: %s", name, lines[0])
+		}
+	}
+	// A GitHub-token issue carries neither field.
+	var out bytes.Buffer
+	postToken(newServer(fakeGitHub(t, "active", nil), &out), ghToken, "203.0.113.7")
+	if strings.Contains(out.String(), "workflow_ref") || strings.Contains(out.String(), "run_id") {
+		t.Errorf("github issue audit has OIDC fields: %s", out.String())
+	}
+}
+
+// routePaths maps every http.Handler field of Deps to a path it serves.
+// TestRouter_E2ERoleOnlyE2EAccount fails when Deps gains a handler not listed here.
+var routePaths = map[string]string{
+	"Query": "/query", "Redis": "/redis", "E2E": "/e2e/account", "Creds": "/creds", "Catalog": "/catalog",
+	"CatalogDrift": "/catalog/drift", "ObsRoute": "/obs/route", "ObsTrace": "/obs/trace",
+}
+
+func TestRouter_E2ERoleOnlyE2EAccount(t *testing.T) { // FR-2.4, SC-3
+	var out bytes.Buffer
+	hits := map[string]*int32{}
+	counter := func(name string) http.Handler {
+		n := new(int32)
+		hits[name] = n
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			atomic.AddInt32(n, 1)
+			w.WriteHeader(http.StatusOK)
+		})
+	}
+	d := Deps{JWTKey: testKey, Audit: &audit.Logger{W: &out}, Now: func() time.Time { return t0 },
+		MCP: map[string]http.Handler{"grafana": counter("mcp/grafana")}}
+	paths := map[string]string{"mcp/grafana": "/mcp/grafana/sub/path"}
+	hType := reflect.TypeOf((*http.Handler)(nil)).Elem()
+	dv := reflect.ValueOf(&d).Elem()
+	for i := 0; i < dv.NumField(); i++ {
+		f := dv.Type().Field(i)
+		if f.Type != hType {
+			continue
+		}
+		p, ok := routePaths[f.Name]
+		if !ok {
+			t.Fatalf("Deps.%s is a route handler missing from routePaths", f.Name)
+		}
+		dv.Field(i).Set(reflect.ValueOf(counter(f.Name)))
+		paths[f.Name] = p
+	}
+	h := New(d)
+	e2eTok, _, _ := auth.Issue(testKey, "oidc:ZenifyAIContactCenter/contact-center-web", "e2e", time.Now())
+	devTok, _, _ := auth.Issue(testKey, "octocat", api.RoleDev, time.Now())
+	for name, path := range paths {
+		for _, method := range []string{http.MethodPost, http.MethodGet} {
+			if method == http.MethodGet && !strings.HasPrefix(path, "/mcp/") {
+				continue
+			}
+			out.Reset()
+			req := httptest.NewRequest(method, path, strings.NewReader("{}"))
+			req.Header.Set("Authorization", "Bearer "+e2eTok)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if name == "E2E" {
+				if rec.Code != http.StatusOK || atomic.LoadInt32(hits[name]) != 1 {
+					t.Errorf("%s: e2e role got %d, hits %d", path, rec.Code, atomic.LoadInt32(hits[name]))
+				}
+				continue
+			}
+			if rec.Code != http.StatusForbidden || errCode(t, rec) != api.CodeNotAllowed || atomic.LoadInt32(hits[name]) != 0 {
+				t.Errorf("%s %s: e2e role got %d %s, hits %d", method, path, rec.Code, rec.Body.String(), atomic.LoadInt32(hits[name]))
+			}
+			var e audit.Entry
+			if err := json.Unmarshal([]byte(strings.TrimSpace(out.String())), &e); err != nil || e.Status != 403 || e.Role != "e2e" ||
+				e.Login != "oidc:ZenifyAIContactCenter/contact-center-web" {
+				t.Errorf("%s: audit %q", path, out.String())
+			}
+		}
+	}
+	// An unknown MCP name is refused too, before the 404.
+	req := httptest.NewRequest(http.MethodPost, "/mcp/posthog", nil)
+	req.Header.Set("Authorization", "Bearer "+e2eTok)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("/mcp/posthog: %d", rec.Code)
+	}
+	// SC-4: role dev still reaches every handler.
+	for name, path := range paths {
+		before := atomic.LoadInt32(hits[name])
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer "+devTok)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || atomic.LoadInt32(hits[name]) != before+1 {
+			t.Errorf("%s: dev got %d", path, rec.Code)
 		}
 	}
 }

@@ -44,6 +44,8 @@ type Client struct {
 	HTTP    *http.Client
 	Now     func() time.Time
 	Stderr  io.Writer
+	// Getenv reads the GitHub Actions OIDC variables; zero is os.Getenv.
+	Getenv func(string) string
 }
 
 // NewHTTPClient returns a client that never follows a redirect: a 307/308
@@ -182,6 +184,9 @@ func (c *Client) Token(ctx context.Context) (string, error) {
 // entry without a role predates roles; the broker refuses its JWT, so it is a
 // cache miss. An entry from another token source (see cached.Src) is a miss.
 func (c *Client) TokenInfo(ctx context.Context) (token, login, role string, err error) {
+	if c.inActions() {
+		return c.refresh(ctx, "") // short-lived CI token: never read the shared cache
+	}
 	p, err := c.cachePath()
 	if err != nil {
 		return "", "", "", err
@@ -220,18 +225,73 @@ func (c *Client) DropCache() error {
 	return nil
 }
 
-func (c *Client) refresh(ctx context.Context, cachePath string) (token, login, role string, err error) {
-	src := tokenSource() // before the token is asked for, as GHTokenExec reads the same GH_TOKEN
-	gh := c.GHToken
-	if gh == nil {
-		gh = GHTokenExec
+func (c *Client) getenv() func(string) string {
+	if c.Getenv != nil {
+		return c.Getenv
 	}
-	ghTok, err := gh(ctx)
+	return os.Getenv
+}
+
+// inActions reports whether the GitHub Actions OIDC variables are present.
+func (c *Client) inActions() bool {
+	g := c.getenv()
+	return g("ACTIONS_ID_TOKEN_REQUEST_URL") != "" && g("ACTIONS_ID_TOKEN_REQUEST_TOKEN") != ""
+}
+
+// ActionsOIDCToken fetches the workflow's OIDC token for the broker audience.
+// ok is false outside GitHub Actions (or without id-token: write).
+func ActionsOIDCToken(ctx context.Context, hc *http.Client, getenv func(string) string) (token string, ok bool, err error) {
+	u, rt := getenv("ACTIONS_ID_TOKEN_REQUEST_URL"), getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+	if u == "" || rt == "" {
+		return "", false, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u+"&audience=zenify-broker", nil)
 	if err != nil {
+		return "", true, err
+	}
+	req.Header.Set("Authorization", "Bearer "+rt)
+	resp, err := hc.Do(req) //nolint:gosec // G704 -- URL is injected by the GitHub Actions runner
+	if err != nil {
+		return "", true, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode/100 != 2 {
+		return "", true, fmt.Errorf("actions oidc: HTTP %d", resp.StatusCode)
+	}
+	var out struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(&out); err != nil || out.Value == "" {
+		return "", true, errors.New("actions oidc: reply has no token")
+	}
+	return out.Value, true, nil
+}
+
+func (c *Client) refresh(ctx context.Context, cachePath string) (token, login, role string, err error) {
+	if oidc, ok, err := ActionsOIDCToken(ctx, c.httpClient(), c.getenv()); err != nil {
 		return "", "", "", err
+	} else if ok {
+		return c.trade(ctx, api.TokenRequest{OIDCToken: oidc}, "", "")
+	}
+	return c.trade(ctx, api.TokenRequest{}, cachePath, tokenSource())
+}
+
+// trade posts /token; with a cachePath the reply is cached under src. The
+// GitHub token is only fetched when req carries no OIDC token.
+func (c *Client) trade(ctx context.Context, req api.TokenRequest, cachePath, src string) (token, login, role string, err error) {
+	if req.OIDCToken == "" {
+		gh := c.GHToken
+		if gh == nil {
+			gh = GHTokenExec
+		}
+		ghTok, err := gh(ctx)
+		if err != nil {
+			return "", "", "", err
+		}
+		req.GitHubToken = ghTok
 	}
 	var resp api.TokenResponse
-	if err := c.do(ctx, "/token", "", api.TokenRequest{GitHubToken: ghTok}, &resp); err != nil {
+	if err := c.do(ctx, "/token", "", req, &resp); err != nil {
 		return "", "", "", err
 	}
 	if resp.Token == "" {
@@ -239,6 +299,9 @@ func (c *Client) refresh(ctx context.Context, cachePath string) (token, login, r
 	}
 	if _, err := time.Parse(time.RFC3339, resp.ExpiresAt); err != nil {
 		return "", "", "", fmt.Errorf("broker /token: bad expires_at %q", resp.ExpiresAt)
+	}
+	if cachePath == "" {
+		return resp.Token, resp.Login, resp.Role, nil
 	}
 	b, err := json.Marshal(cached{URL: c.URL, Token: resp.Token, ExpiresAt: resp.ExpiresAt, Login: resp.Login, Role: resp.Role, Src: src})
 	if err != nil {

@@ -149,11 +149,16 @@ func runE2eLint(dir string, out io.Writer) error {
 }
 
 // runE2eRun writes the harness to tmp, builds a RunConfig, and calls e2e.Check.
-func runE2eRun(runner func(string, []string) error, lookup func(string) string, goos, repo string, port int, out io.Writer) error {
+func runE2eRun(runner func(string, []string) error, lookup func(string) string, goos, repo string, port int, baseURL string, out io.Writer) error {
 	dir := e2eDir(repo)
 	if _, err := os.Stat(filepath.Join(dir, "e2e.config.json")); err != nil {
 		return exitcode.New(exitcode.BadArgs,
 			fmt.Errorf("not found %s — repo has no e2e configured", filepath.Join(dir, "e2e.config.json")))
+	}
+	if baseURL != "" {
+		if err := e2e.CheckBaseURL(dir, baseURL); err != nil {
+			return err
+		}
 	}
 	// lint before running: a shallow journey isn't worth spending a Docker run on.
 	if _, err := e2e.Lint(dir, out); err != nil {
@@ -168,7 +173,7 @@ func runE2eRun(runner func(string, []string) error, lookup func(string) string, 
 		return exitcode.New(exitcode.Fail, err)
 	}
 	o := pwdocker.Options{Runner: runner, Getenv: lookup, GOOS: goos, Stdout: out}
-	cfg := e2e.RunConfig{HarnessDir: harnessDir, E2EDir: dir, Port: port}
+	cfg := e2e.RunConfig{HarnessDir: harnessDir, E2EDir: dir, Port: port, BaseURL: baseURL}
 	if err := e2e.Check(o, cfg); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
@@ -226,7 +231,7 @@ func newE2eLoginCmd() *cobra.Command {
 }
 
 func newE2eCmd() *cobra.Command {
-	var repo, role string
+	var repo, role, baseURL string
 	var port int
 	c := &cobra.Command{
 		Use:   "e2e",
@@ -240,15 +245,21 @@ func newE2eCmd() *cobra.Command {
 	}
 	run := &cobra.Command{
 		Use:   "run",
-		Short: "Chạy journey .znf/e2e trong Docker (cần --port dev-server host)", //znf:allow-lang
+		Short: "Chạy journey .znf/e2e trong Docker (cần --port dev-server host hoặc --base-url trong allowlist)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
 			bc, err := e2eBroker(role)
 			if err != nil {
 				return err
 			}
-			if port == 0 {
-				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need --port <dev-server host port>"))
+			if (port == 0) == (baseURL == "") {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need exactly one of --port or --base-url"))
+			}
+			// Refuse a disallowed origin before Docker or the broker is touched.
+			if baseURL != "" {
+				if err := e2e.CheckBaseURL(e2eDir(resolveRepo()), baseURL); err != nil {
+					return err
+				}
 			}
 			if err := preflightDocker(); err != nil {
 				return err
@@ -263,7 +274,7 @@ func newE2eCmd() *cobra.Command {
 				cc.Stderr = os.Stderr
 				return execChild(cc)
 			}
-			return runE2eRun(runner, lookup, runtime.GOOS, resolveRepo(), port, out)
+			return runE2eRun(runner, lookup, runtime.GOOS, resolveRepo(), port, baseURL, out)
 		},
 	}
 	lint := &cobra.Command{
@@ -273,10 +284,11 @@ func newE2eCmd() *cobra.Command {
 			return runE2eLint(e2eDir(resolveRepo()), cmd.OutOrStdout())
 		},
 	}
-	run.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")               //znf:allow-lang
-	run.Flags().IntVar(&port, "port", 0, "port dev-server trên host")                         //znf:allow-lang
-	run.Flags().StringVar(&role, "role", "", "role tài khoản E2E lấy từ broker (cần broker)") //znf:allow-lang
-	lint.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")              //znf:allow-lang
+	run.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")                                      //znf:allow-lang
+	run.Flags().IntVar(&port, "port", 0, "port dev-server trên host")                                                //znf:allow-lang
+	run.Flags().StringVar(&baseURL, "base-url", "", "origin cần test (phải nằm trong baseUrls của e2e.config.json)") //znf:allow-lang
+	run.Flags().StringVar(&role, "role", "", "role tài khoản E2E lấy từ broker (cần broker)")                        //znf:allow-lang
+	lint.Flags().StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")                                     //znf:allow-lang
 	c.AddCommand(run, lint, newE2eLoginCmd())
 	return c
 }
