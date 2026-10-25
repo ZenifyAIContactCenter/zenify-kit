@@ -1,0 +1,27 @@
+---
+summary: Run QA viết kịch bản nghiệm thu đóng băng trước khi có code dev, viết journey phải đỏ trên code gốc, rồi gắn journey vào code đã xong mà không sửa kết quả mong đợi.
+---
+## Khi nào dùng
+
+Khi zenie chạy worker QA cho một item. Skill có ba chế độ: `scenario` viết kịch bản nghiệm thu, `journey` viết journey cho bug hoặc tweak trước khi có bản sửa, `bind` gắn journey của feature vào code dev vừa viết xong. Bạn không gọi tay skill này khi làm việc thường ngày; với journey tự viết trong `/znf:cook`, dùng `/znf:e2e`.
+
+## Cách hoạt động
+
+1. Run QA không đọc nhánh, plan, diff hay commit của run dev. Nó chỉ đọc code gốc và app đang chạy trong sandbox, nên test không bị nắn theo code.
+2. Chế độ `scenario` viết `.znf/e2e/scenarios/ZEN-<n>.md`: mỗi dòng nghiệm thu là một `@ac`, câu chép nguyên văn, các bước và điều nhìn thấy dùng đúng chữ trên màn hình. Dòng cần hỏi người đặt item đi qua `zenify await needs-human`, tối đa 2 vòng; quá 2 vòng thì dòng đó chuyển sang `ngoài-e2e` kèm lý do.
+3. Chế độ `journey` viết `.znf/e2e/zen-<n>.spec.ts` theo `/znf:e2e`, chạy `zenify e2e lint` rồi `zenify e2e run --local` trên code gốc. Journey phải đỏ ở đúng `expect` của một `@ac`. Thử 2 lần không đạt thì xóa journey, chỉ giữ kịch bản.
+4. Chế độ `bind` chỉ được thêm locator, điều hướng và dữ liệu seed. Không sửa file kịch bản, không đổi chuỗi trong `expect`. Chạy đỏ thì báo lỗi cho run dev, không sửa `expect`.
+5. Kịch bản và journey nằm ở `.znf/e2e/` của repo chính: repo nơi thấy lỗi khi tái hiện (bug), hoặc repo có màn được đổi (tweak, feature; màn web thì là `contact-center-web`). Repo chưa có `.znf/e2e/e2e.config.json` thì run QA tạo luôn trong cùng commit.
+6. Run QA không `git push`, chỉ commit qua `api-commit.mjs` của sandbox, và luôn ghi kết quả vào `/out/qa-result.json`.
+
+## Ví dụ
+
+```text
+/znf:qa scenario ZEN-123
+/znf:qa journey ZEN-123
+/znf:qa bind ZEN-123
+```
+
+## Lưu ý
+
+Kịch bản dùng từ khóa tiếng Việt cố định (`Vai:`, `Bước:`, `Thấy:`, `Dữ liệu sau:`, `## Câu hỏi mở`) vì `zenify e2e lint` đọc đúng các chữ này. Câu hỏi gửi người đặt item viết bằng lời thường, không chứa `@ac`, locator, đường dẫn API hay tên field.
