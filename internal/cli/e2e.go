@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -38,17 +39,86 @@ func credLookup(envPath string, getenv func(string) string) func(string) string 
 // e2eAccountTimeout bounds the broker account lookup, gh included.
 const e2eAccountTimeout = 30 * time.Second
 
+// e2eAccountsEnv names a JSON file of per-role E2E accounts. When set, `e2e login`
+// and `e2e run --local` read the account from it and never call the broker.
+const e2eAccountsEnv = "ZNF_E2E_ACCOUNTS_FILE"
+
+// e2eRole defaults an empty role to administrator and rejects an unknown one.
+func e2eRole(role string) (string, error) {
+	if role == "" {
+		role = "administrator"
+	}
+	if !slices.Contains(api.E2ERoles, role) {
+		return "", exitcode.New(exitcode.BadArgs,
+			fmt.Errorf("--role phải là một trong %s", strings.Join(api.E2ERoles, ", "))) //znf:allow-lang
+	}
+	return role, nil
+}
+
+// fileLookup reads the account of role from the JSON file at path and serves
+// E2E_DOMAIN/E2E_EMAIL/E2E_PASSWORD from it, every other key from the
+// environment. Error messages name the path, role and field, never a value.
+func fileLookup(path, role string) (func(string) string, error) {
+	role, err := e2eRole(role)
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is the operator-set accounts file
+	if err != nil {
+		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("cannot read %s: %w", path, err))
+	}
+	var accounts map[string]struct {
+		Domain   string `json:"domain"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.Unmarshal(b, &accounts); err != nil {
+		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("%s is not valid JSON accounts", path))
+	}
+	acc, ok := accounts[role]
+	if !ok {
+		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("role %s not found in %s", role, path))
+	}
+	for field, v := range map[string]string{"domain": acc.Domain, "email": acc.Email, "password": acc.Password} {
+		if v == "" {
+			return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("role %s has an empty %s in %s", role, field, path))
+		}
+	}
+	return func(k string) string {
+		switch k {
+		case "E2E_DOMAIN":
+			return acc.Domain
+		case "E2E_EMAIL":
+			return acc.Email
+		case "E2E_PASSWORD":
+			return acc.Password
+		}
+		return os.Getenv(k)
+	}, nil
+}
+
+// e2eLocalResolver picks the credential source for the host-side paths
+// (`e2e login`, `e2e run --local`): the accounts file when e2eAccountsEnv is
+// set (no broker involved), else the broker/env behaviour.
+func e2eLocalResolver(ctx context.Context, role string) (func() (func(string) string, error), error) {
+	if path := os.Getenv(e2eAccountsEnv); path != "" {
+		return func() (func(string) string, error) { return fileLookup(path, role) }, nil
+	}
+	bc, err := e2eBroker(role)
+	if err != nil {
+		return nil, err
+	}
+	return func() (func(string) string, error) { return e2eLookup(ctx, bc, role) }, nil
+}
+
 // brokerLookup fetches the E2E account for role (empty = administrator) from the
 // broker. The returned lookup serves E2E_DOMAIN/E2E_EMAIL/E2E_PASSWORD from the
 // response and falls back to the environment for every other key. The values
 // live in memory and reach only the child process env (FR-10.2).
 func brokerLookup(ctx context.Context, c *brokerclient.Client, role string) (func(string) string, error) {
-	if role == "" {
-		role = "administrator"
-	}
-	if !slices.Contains(api.E2ERoles, role) {
-		return nil, exitcode.New(exitcode.BadArgs,
-			fmt.Errorf("--role phải là một trong %s", strings.Join(api.E2ERoles, ", "))) //znf:allow-lang
+	role, err := e2eRole(role)
+	if err != nil {
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, e2eAccountTimeout)
 	defer cancel()
@@ -200,7 +270,7 @@ func runE2ePrepare() error {
 }
 
 // runE2eLocal lints, then runs the journeys on the host Playwright (no Docker).
-func runE2eLocal(ctx context.Context, bc *brokerclient.Client, role, repo string, port int, baseURL string, out io.Writer) error {
+func runE2eLocal(resolve func() (func(string) string, error), repo string, port int, baseURL string, out io.Writer) error {
 	if port != 0 {
 		baseURL = fmt.Sprintf("http://localhost:%d", port)
 	}
@@ -219,7 +289,7 @@ func runE2eLocal(ctx context.Context, bc *brokerclient.Client, role, repo string
 	if err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
-	lookup, err := e2eLookup(ctx, bc, role)
+	lookup, err := resolve()
 	if err != nil {
 		return err
 	}
@@ -232,9 +302,9 @@ func newE2eLoginCmd() *cobra.Command {
 	var port int
 	c := &cobra.Command{
 		Use:   "login",
-		Short: "Đăng nhập trên host, ghi storage state để zenify browser state-load nạp (đọc E2E_* từ env)", //znf:allow-lang
+		Short: "Đăng nhập trên host, ghi storage state để zenify browser state-load nạp (đọc E2E_* từ env, hoặc tài khoản từ ZNF_E2E_ACCOUNTS_FILE)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			bc, err := e2eBroker(role)
+			resolve, err := e2eLocalResolver(cmd.Context(), role)
 			if err != nil {
 				return err
 			}
@@ -254,7 +324,7 @@ func newE2eLoginCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
-			lookup, err := e2eLookup(cmd.Context(), bc, role)
+			lookup, err := resolve()
 			if err != nil {
 				return err
 			}
@@ -270,9 +340,9 @@ func newE2eLoginCmd() *cobra.Command {
 			return err
 		},
 	}
-	c.Flags().StringVar(&url, "url", "", "origin của web app (vd http://localhost:3327)")                          //znf:allow-lang
-	c.Flags().IntVar(&port, "port", 0, "port web app trên localhost")                                              //znf:allow-lang
-	c.Flags().StringVar(&role, "role", "", "role tài khoản E2E lấy từ broker, ghi state-<role>.json (cần broker)") //znf:allow-lang
+	c.Flags().StringVar(&url, "url", "", "origin của web app (vd http://localhost:3327)")                                         //znf:allow-lang
+	c.Flags().IntVar(&port, "port", 0, "port web app trên localhost")                                                             //znf:allow-lang
+	c.Flags().StringVar(&role, "role", "", "role tài khoản E2E (broker, hoặc file ZNF_E2E_ACCOUNTS_FILE), ghi state-<role>.json") //znf:allow-lang
 	return c
 }
 
@@ -301,7 +371,14 @@ func newE2eCmd() *cobra.Command {
 			if prepare {
 				return runE2ePrepare()
 			}
-			bc, err := e2eBroker(role)
+			var bc *brokerclient.Client
+			var resolve func() (func(string) string, error)
+			var err error
+			if local {
+				resolve, err = e2eLocalResolver(cmd.Context(), role)
+			} else {
+				bc, err = e2eBroker(role)
+			}
 			if err != nil {
 				return err
 			}
@@ -309,7 +386,7 @@ func newE2eCmd() *cobra.Command {
 				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need exactly one of --port or --base-url"))
 			}
 			if local {
-				return runE2eLocal(cmd.Context(), bc, role, resolveRepo(), port, baseURL, out)
+				return runE2eLocal(resolve, resolveRepo(), port, baseURL, out)
 			}
 			// Refuse a disallowed origin before Docker or the broker is touched.
 			if baseURL != "" {
