@@ -3,6 +3,7 @@ package e2e
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -73,8 +74,10 @@ func ParseScenario(src string) (Scenario, error) {
 				}
 				continue // e.g. the open-questions section
 			}
-			var n int
-			fmt.Sscanf(h[1], "%d", &n)
+			n, err := strconv.Atoi(h[1])
+			if err != nil {
+				return sc, fmt.Errorf("malformed @ac number in %q: %w", l, err)
+			}
 			if seen[n] {
 				return sc, fmt.Errorf("duplicate @ac:%d", n)
 			}

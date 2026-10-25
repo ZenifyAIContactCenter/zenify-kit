@@ -2,6 +2,8 @@
 package e2e
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -215,6 +217,14 @@ func TestLintScenarioRules(t *testing.T) {
 		{"ac-coverage missing ac2", journey(hdr, "x @ac:1", ""), nil, "ac-coverage", ""},
 		{"expect-literal bad", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText('Sai chữ');"), nil, "expect-literal", ""},              //znf:allow-lang
 		{"expect-literal ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText('Vui lòng nhập tiêu đề');"), nil, "", "expect-literal"}, //znf:allow-lang
+		{"getByText copy checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText('Sai chữ')).toBeVisible();"), nil, "expect-literal", ""},                //znf:allow-lang
+		{"getByRole role only ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toBeVisible();"), nil, "", "expect-literal"},
+		{"getByRole name checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('button', { name: 'Lưu' })).toBeVisible();"), nil, "expect-literal", ""},         //znf:allow-lang
+		{"getByLabel checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByLabel('Nhãn lạ')).toBeVisible();"), nil, "expect-literal", ""},                            //znf:allow-lang
+		{"filter hasText checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('tr').filter({ hasText: 'Dòng lạ' })).toBeVisible();"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"getByTestId exempt", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByTestId('save-btn')).toBeVisible();"), nil, "", "expect-literal"},
+		{"paren inside literal", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText('Tạo (mới)')).toBeVisible();"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"unknown ac number", journey(hdr, "x @ac:1 @ac:2 @ac:7", ""), nil, "ac-coverage", ""},
 		{"expect var ok", journey(hdr, "x @ac:1 @ac:2", ""), nil, "", "expect-literal"},
 		{"no-skip skip", journey(hdr, "x @ac:1 @ac:2", "  test.skip(true, 'later');"), nil, "no-skip", ""},
 		{"no-skip fixme", journey(hdr, "x @ac:1 @ac:2", "  test.fixme(true);"), nil, "no-skip", ""},
@@ -266,6 +276,57 @@ func TestLintScenarioRules(t *testing.T) {
 		got := rules(LintSource("a.spec.ts", src, nil))
 		if !got["traceability"] || got["no-skip"] || got["scenario-link"] || got["ac-coverage"] {
 			t.Fatalf("legacy journey must keep traceability only, got %+v", got)
+		}
+	})
+}
+
+func TestLint_LoadsScenarios(t *testing.T) {
+	write := func(t *testing.T, dir, rel, body string) {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := func(dir string) string {
+		var buf strings.Builder
+		_, _ = Lint(dir, &buf)
+		return buf.String()
+	}
+	t.Run("missing scenarios dir", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "a.spec.ts", passing)
+		if out := run(dir); out != "" {
+			t.Fatalf("legacy journey must lint clean, got %q", out)
+		}
+	})
+	t.Run("malformed scenario", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "a.spec.ts", passing)
+		write(t, dir, "scenarios/ZEN-7.md", "not a scenario\n")
+		out := run(dir)
+		if strings.Count(out, "[scenario-parse]") != 1 || !strings.Contains(out, "ZEN-7.md") || strings.Count(out, "\n") != 1 {
+			t.Fatalf("want exactly one scenario-parse on ZEN-7.md, got %q", out)
+		}
+	})
+	t.Run("filename and heading mismatch", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "a.spec.ts", passing)
+		write(t, dir, "scenarios/ZEN-9.md", "# ZEN-8: t\nVai: a\n\n## @ac:1 [e2e] x\n")
+		out := run(dir)
+		if strings.Count(out, "[scenario-parse]") != 1 || !strings.Contains(out, "ZEN-9.md") {
+			t.Fatalf("want scenario-parse on ZEN-9.md, got %q", out)
+		}
+	})
+	t.Run("valid scenario is linked", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "zen-9.spec.ts", journey("// @scenario ZEN-9", "x @ac:1", ""))
+		write(t, dir, "scenarios/ZEN-9.md", "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] x\n")
+		if out := run(dir); out != "" {
+			t.Fatalf("want clean, got %q", out)
 		}
 	})
 }

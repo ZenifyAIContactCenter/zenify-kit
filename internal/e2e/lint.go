@@ -30,8 +30,10 @@ var (
 	reScenarioHdr = regexp.MustCompile(`(?m)^\s*//\s*@scenario\s+(ZEN-\d+)\b`)
 	reACTag       = regexp.MustCompile(`@ac:(\d+)`)
 	reSkipOnly    = regexp.MustCompile(`\btest\.(?:skip|fixme|only)\s*\(`)
-	// Locator calls hold selectors, not asserted copy — dropped before literal extraction.
-	reLocatorCall = regexp.MustCompile(`\.(?:getBy\w+|locator|filter)\([^)]*\)`)
+	// Only selector-ish arguments are exempt from expect-literal: getByRole's role (first arg),
+	// getByTestId's id and locator(...) CSS. getByText/getByLabel/getByPlaceholder, getByRole name
+	// and hasText carry user-visible copy and stay checked.
+	reSelectorArg = regexp.MustCompile(`\.(?:getByRole|getByTestId|locator)\(\s*(?:'[^'\n]*'|"[^"\n]*"|` + "`[^`\n]*`" + `)`)
 	reLiteral     = regexp.MustCompile(`'([^'\n]*)'|"([^"\n]*)"|` + "`" + `([^` + "`" + `\n]*)` + "`")
 )
 
@@ -48,6 +50,15 @@ func splitTests(src string) [][2]int {
 		spans = append(spans, [2]int{l[0], end})
 	}
 	return spans
+}
+
+func hasAC(sc Scenario, n int) bool {
+	for _, ac := range sc.ACs {
+		if ac.N == n {
+			return true
+		}
+	}
+	return false
 }
 
 func lineAt(src string, off int) int { return 1 + strings.Count(src[:off], "\n") }
@@ -92,16 +103,21 @@ func LintSource(name, src string, scenarios map[string]Scenario) []Finding {
 		}
 		acs := reACTag.FindAllStringSubmatch(title, -1)
 		for _, a := range acs {
-			var n int
-			fmt.Sscanf(a[1], "%d", &n)
+			n, err := strconv.Atoi(a[1])
+			if err != nil {
+				continue
+			}
 			covered[n] = true
+			if bound && !hasAC(sc, n) {
+				add(base, "ac-coverage", "test is tagged @ac:"+a[1]+" but the scenario has no such @ac")
+			}
 		}
 
 		if bound && len(acs) > 0 {
 			off := 0
 			for _, line := range strings.SplitAfter(block, "\n") {
 				if reExpect.MatchString(line) {
-					stripped := reLocatorCall.ReplaceAllString(line, "")
+					stripped := reSelectorArg.ReplaceAllString(line, "")
 					for _, lm := range reLiteral.FindAllStringSubmatch(stripped, -1) {
 						lit := lm[1] + lm[2] + lm[3]
 						if lit == "" || strings.Contains(lit, "${") {
@@ -209,7 +225,13 @@ func Lint(specDir string, out io.Writer) (int, error) {
 			total++
 			continue
 		}
-		scenarios[strings.TrimSuffix(filepath.Base(f), ".md")] = sc
+		key := strings.TrimSuffix(filepath.Base(f), ".md")
+		if sc.Key != key {
+			fmt.Fprintf(out, "%s:1 [scenario-parse] heading key %s does not match file name %s\n", filepath.Join("scenarios", filepath.Base(f)), sc.Key, key)
+			total++
+			continue
+		}
+		scenarios[key] = sc
 	}
 	for _, f := range entries {
 		b, err := os.ReadFile(f) //nolint:gosec // G304 -- f is a lint-target path enumerated internally from the scan root, not externally-tainted
