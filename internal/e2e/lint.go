@@ -158,6 +158,22 @@ func statementEnd(src string, start int) int {
 					i++
 				}
 			}
+		case '/':
+			// A regex literal (`/\)/g`) can hold brackets; skip it so they are not counted.
+			if regexStart(src, start, i) {
+				for i++; i < len(src) && src[i] != '/' && src[i] != '\n'; i++ {
+					switch src[i] {
+					case '\\':
+						i++
+					case '[':
+						for i++; i < len(src) && src[i] != ']' && src[i] != '\n'; i++ {
+							if src[i] == '\\' {
+								i++
+							}
+						}
+					}
+				}
+			}
 		case '(', '[', '{':
 			depth++
 		case ')', ']', '}':
@@ -176,6 +192,38 @@ func statementEnd(src string, start int) int {
 		}
 	}
 	return len(src)
+}
+
+// regexStart reports whether the `/` at src[i] opens a regex literal rather than dividing:
+// the previous non-space character (within the statement) is an operator or an opening bracket.
+func regexStart(src string, start, i int) bool {
+	j := i - 1
+	for j >= start && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r') {
+		j--
+	}
+	return j < start || strings.IndexByte("(,=:[!&|?{};+-*%<>~^", src[j]) >= 0
+}
+
+// blankStrings replaces the contents of string literals with spaces (quotes, newlines and
+// offsets kept), so a rule that matches code is not tripped by on-screen copy like 'step.skip()'.
+func blankStrings(src string) string {
+	b := []byte(src)
+	for i := 0; i < len(b); i++ {
+		c := b[i]
+		if c != '\'' && c != '"' && c != '`' {
+			continue
+		}
+		for i++; i < len(b) && b[i] != c && (c == '`' || b[i] != '\n'); i++ {
+			if b[i] == '\\' && i+1 < len(b) {
+				b[i] = ' '
+				i++
+			}
+			if b[i] != '\n' {
+				b[i] = ' '
+			}
+		}
+	}
+	return string(b)
 }
 
 // selectorCopy returns the user-visible copy carried by a locator(...) selector's text
@@ -255,7 +303,7 @@ func LintSource(name, src string, scenarios map[string]Scenario) []Finding {
 			add(m[0], "scenario-link", "journey references "+key+" but no scenarios/"+key+".md was found")
 		}
 		hasScenario = true
-		for _, l := range reSkipOnly.FindAllStringIndex(src, -1) {
+		for _, l := range reSkipOnly.FindAllStringIndex(blankStrings(src), -1) {
 			add(l[0], "no-skip", "test.skip/fixme/only/fail and test.describe.skip/fixme/only are not allowed in a scenario-bound journey")
 		}
 	}

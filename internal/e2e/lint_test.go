@@ -196,6 +196,8 @@ const scenTwoE2E = "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] one\nThấy:\n- Vui lò
 
 const scenEscaped = "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] one\nThấy:\n- O'Reilly\n\n## @ac:2 [e2e] two\n" //znf:allow-lang
 
+const scenSkipText = "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] one\nThấy:\n- Vui lòng nhập tiêu đề step.skip()\n\n## @ac:2 [e2e] two\n" //znf:allow-lang
+
 func journey(header, title, body string) string {
 	return header + "\nimport { test, expect } from '../../fixtures';\ntest('" + title + "', async ({ page, apiClient, cleanupTracker }) => {\n" + body + `
   // @domain-assert:ticket
@@ -264,6 +266,8 @@ func TestLintScenarioRules(t *testing.T) {
 		{"no-skip testInfo.skip", journey(hdr, "x @ac:1 @ac:2", "  test.info().skip();"), nil, "no-skip", ""},
 		{"escaped quote in literal ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText('O\\'Reilly');"), scenarioFor(t, scenEscaped), "", "expect-literal"},
 		{"escaped quote in title", strings.Replace(journey(hdr, "T", ""), "test('T'", "test('user\\'s ticket @ac:1 @ac:2'", 1), nil, "", "traceability"},
+		{"regex with paren keeps the matcher", journey(hdr, "x @ac:1 @ac:2", "  expect((await r.json()).subject.replace(/\\)/g, '')).toBe('Wrong');"), nil, "expect-literal", ""},
+		{"skip text in a string is not a skip", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText('Vui lòng nhập tiêu đề step.skip()')).toBeVisible();"), scenarioFor(t, scenSkipText), "", "no-skip"}, //znf:allow-lang
 		{"apostrophe in title", strings.Replace(journey(hdr, "T", ""), "test('T'", "test(\"user's ticket @ac:1 @ac:2\"", 1), nil, "", "traceability"},
 	}
 	for _, c := range cases {
