@@ -1,11 +1,13 @@
 package e2e
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 type localCall struct {
@@ -73,8 +75,10 @@ func TestRunLocalArgs(t *testing.T) {
 
 func TestRunLocalSkipsInstall(t *testing.T) {
 	browsers := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(browsers, "chromium-1187"), 0o750); err != nil {
-		t.Fatal(err)
+	for _, d := range []string{"chromium-1187", "chromium_headless_shell-1187"} {
+		if err := os.MkdirAll(filepath.Join(browsers, d), 0o750); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", browsers)
 	home, repo := t.TempDir(), localRepo(t)
@@ -131,17 +135,23 @@ func writeBrowsersJSON(t *testing.T, home, rev string) {
 	if err := os.MkdirAll(d, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	body := `{"browsers":[{"name":"firefox","revision":"9"},{"name":"chromium","revision":"` + rev + `"}]}`
+	body := `{"browsers":[{"name":"firefox","revision":"9"},{"name":"chromium","revision":"` + rev + `"},` +
+		`{"name":"chromium-headless-shell","revision":"` + rev + `"}]}`
 	if err := os.WriteFile(filepath.Join(d, "browsers.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func prepareWithBrowsers(t *testing.T, have, want string, writeJSON bool) []string {
+func prepareWithBrowsers(t *testing.T, have, want string, writeJSON bool, dirs ...string) []string {
 	t.Helper()
 	browsers := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(browsers, "chromium-"+have), 0o750); err != nil {
-		t.Fatal(err)
+	if len(dirs) == 0 {
+		dirs = []string{"chromium-", "chromium_headless_shell-"}
+	}
+	for _, d := range dirs {
+		if err := os.MkdirAll(filepath.Join(browsers, d+have), 0o750); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", browsers)
 	home := t.TempDir()
@@ -176,6 +186,10 @@ func TestPrepareChromiumRevision(t *testing.T) {
 	if c := prepareWithBrowsers(t, "1187", "", false); !slices.Equal(c, []string{install}) {
 		t.Errorf("no browsers.json: calls = %v, want the install", c)
 	}
+	// headless runs use chromium-headless-shell; chromium alone is not enough
+	if c := prepareWithBrowsers(t, "1187", "1187", true, "chromium-"); !slices.Equal(c, []string{install}) {
+		t.Errorf("no headless shell: calls = %v, want the install", c)
+	}
 }
 
 func TestRunLocalSkipsOutputDir(t *testing.T) {
@@ -195,5 +209,36 @@ func TestRunLocalSkipsOutputDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(playwrightDir(home), "harness", ".znf", "e2e", "__output__")); !os.IsNotExist(err) {
 		t.Errorf("__output__ was copied: %v", err)
+	}
+}
+
+// RunLocal swaps the shared harness's journeys, so it must hold harness.lock while it
+// copies them and while Playwright runs, and release it afterwards (also on failure).
+func TestRunLocalHoldsLockDuringRun(t *testing.T) {
+	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", t.TempDir())
+	for _, fail := range []bool{false, true} {
+		home, repo := t.TempDir(), localRepo(t)
+		lock := filepath.Join(playwrightDir(home), "harness.lock")
+		held := false
+		err := RunLocal(LocalOptions{RepoDir: repo, BaseURL: "http://localhost:4100", Home: home, LockWait: time.Second,
+			Run: func(_, name string, args, _ []string) error {
+				if name+" "+strings.Join(args, " ") == "npx playwright test" {
+					_, serr := os.Stat(lock)
+					held = serr == nil
+					if fail {
+						return errors.New("red")
+					}
+				}
+				return nil
+			}})
+		if (err != nil) != fail {
+			t.Fatalf("fail=%v: err = %v", fail, err)
+		}
+		if !held {
+			t.Errorf("fail=%v: harness.lock not held while playwright ran", fail)
+		}
+		if _, serr := os.Stat(lock); !os.IsNotExist(serr) {
+			t.Errorf("fail=%v: lock left behind: %v", fail, serr)
+		}
 	}
 }

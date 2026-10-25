@@ -67,7 +67,7 @@ func acquireLock(path string, wait time.Duration) error {
 			continue
 		}
 		if time.Now().After(deadline) {
-			return errors.New("harness locked by another login")
+			return errors.New("harness locked by another e2e login or run")
 		}
 		time.Sleep(lockPoll)
 	}
@@ -77,15 +77,28 @@ func acquireLock(path string, wait time.Duration) error {
 // The chromium install is skipped when PLAYWRIGHT_BROWSERS_PATH already holds the
 // revision Playwright expects (an offline worker image baked it at build time).
 func PrepareHarness(o LoginOptions, root, harness string) error {
-	wait := o.LockWait
+	unlock, err := lockHarness(root, o.LockWait)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return prepareHarness(o, harness)
+}
+
+// lockHarness takes root/harness.lock (wait 0 = 120s) and returns its release.
+func lockHarness(root string, wait time.Duration) (func(), error) {
 	if wait == 0 {
 		wait = defaultLockWait
 	}
 	lock := filepath.Join(root, "harness.lock")
 	if err := acquireLock(lock, wait); err != nil {
-		return err
+		return nil, err
 	}
-	defer func() { _ = os.Remove(lock) }()
+	return func() { _ = os.Remove(lock) }, nil
+}
+
+// prepareHarness is PrepareHarness without the lock; the caller holds it.
+func prepareHarness(o LoginOptions, harness string) error {
 	if err := WriteHarness(harness); err != nil {
 		return err
 	}
@@ -116,8 +129,8 @@ func pinnedInstalled(pkg string) bool {
 	return json.Unmarshal(b, &v) == nil && v.Version == pinnedPlaywrightVersion
 }
 
-// hasChromium reports whether dir (a PLAYWRIGHT_BROWSERS_PATH) holds the chromium
-// revision the harness's Playwright expects. Unreadable browsers.json = false.
+// hasChromium reports whether dir (a PLAYWRIGHT_BROWSERS_PATH) holds the chromium and
+// chromium-headless-shell revisions the harness's Playwright expects. Unreadable browsers.json = false.
 func hasChromium(dir, harness string) bool {
 	if dir == "" {
 		return false
@@ -135,13 +148,20 @@ func hasChromium(dir, harness string) bool {
 	if json.Unmarshal(b, &v) != nil {
 		return false
 	}
+	// Headless runs launch chromium-headless-shell, which lives in its own dir.
+	need := map[string]string{"chromium": "chromium-", "chromium-headless-shell": "chromium_headless_shell-"}
+	found := 0
 	for _, br := range v.Browsers {
-		if br.Name == "chromium" && br.Revision != "" {
-			_, err := os.Stat(filepath.Join(dir, "chromium-"+br.Revision))
-			return err == nil
+		prefix, ok := need[br.Name]
+		if !ok || br.Revision == "" {
+			continue
 		}
+		if _, err := os.Stat(filepath.Join(dir, prefix+br.Revision)); err != nil {
+			return false
+		}
+		found++
 	}
-	return false
+	return found == len(need)
 }
 
 // CheckLoopbackURL refuses any origin that is not a local app: the harness types

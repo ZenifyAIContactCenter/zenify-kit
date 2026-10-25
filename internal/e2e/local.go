@@ -40,16 +40,25 @@ func PrepareLocal(o LocalOptions) error {
 }
 
 // RunLocal prepares the harness, copies <RepoDir>/.znf/e2e into it and runs
-// `npx playwright test` there. The journeys are copied, not symlinked: they import
+// `npx playwright test` there, all under harness.lock. The journeys are copied, not symlinked: they import
 // '../../fixtures', and a symlink may resolve outside the harness.
 func RunLocal(o LocalOptions) error {
 	if err := CheckLoopbackURL(o.BaseURL); err != nil {
 		return err
 	}
-	if err := PrepareLocal(o); err != nil {
-		return err
-	}
 	root, harness := o.paths()
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	// Hold harness.lock through the copy and the run: the journeys dir is shared.
+	unlock, err := lockHarness(root, o.LockWait)
+	if err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	defer unlock()
+	if err := prepareHarness(LoginOptions{Home: o.Home, Run: o.Run}, harness); err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
 	dst := filepath.Join(harness, ".znf", "e2e")
 	if err := os.RemoveAll(dst); err != nil {
 		return exitcode.New(exitcode.Fail, err)
