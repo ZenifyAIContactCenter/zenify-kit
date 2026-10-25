@@ -189,6 +189,7 @@ func hermeticE2E(t *testing.T, manifestPath string) {
 	for _, k := range e2eEnvKeys {
 		t.Setenv(k, "")
 	}
+	t.Setenv(e2eAccountsEnv, "")
 	if manifestPath != "" {
 		useTrustedManifest(t, manifestPath)
 	}
@@ -593,5 +594,158 @@ func TestE2eRunPrepareNeedsLocal(t *testing.T) {
 	_, _, err := execCmd(newE2eCmd(), "run", "--prepare")
 	if exitcode.Code(err) != exitcode.BadArgs || *ran {
 		t.Fatalf("err=%v ran=%v, want BadArgs and no child", err, *ran)
+	}
+}
+
+// writeAccounts writes an accounts file (role -> fields) and returns its path.
+func writeAccounts(t *testing.T, m map[string]map[string]string) string {
+	t.Helper()
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(t.TempDir(), "accounts.json")
+	if err := os.WriteFile(p, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestE2eLogin_AccountsFileSkipsBroker(t *testing.T) {
+	var role string
+	mp, hits := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	t.Setenv(e2eAccountsEnv, writeAccounts(t, map[string]map[string]string{
+		"agent": {"domain": "zenifytest", "email": "e2e-sandbox-agent@zenify.vn", "password": "pw-agent-123"}}))
+	var saw map[string]string
+	fakeLoginChild(t, &saw)
+	if _, err := runLogin(t, "--role", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	if *hits != 0 {
+		t.Errorf("broker got %d requests, want 0", *hits)
+	}
+	if saw["E2E_EMAIL"] != "e2e-sandbox-agent@zenify.vn" || saw["E2E_PASSWORD"] != "pw-agent-123" || saw["E2E_DOMAIN"] != "zenifytest" {
+		t.Errorf("login child lacks the file credentials")
+	}
+	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".zenify", "playwright", "state-agent.json")); err != nil {
+		t.Errorf("state-agent.json not written: %v", err)
+	}
+}
+
+func TestE2eLogin_AccountsFileDefaultRole(t *testing.T) {
+	hermeticE2E(t, "")
+	t.Setenv(e2eAccountsEnv, writeAccounts(t, map[string]map[string]string{
+		"administrator": {"domain": "d", "email": "admin@zenify.vn", "password": "pw-admin-1"}}))
+	var saw map[string]string
+	fakeLoginChild(t, &saw)
+	if _, err := runLogin(t); err != nil {
+		t.Fatal(err)
+	}
+	if saw["E2E_EMAIL"] != "admin@zenify.vn" {
+		t.Errorf("E2E_EMAIL = %q, want admin@zenify.vn", saw["E2E_EMAIL"])
+	}
+}
+
+func TestE2eLogin_AccountsFileNoBrokerManifest(t *testing.T) {
+	hermeticE2E(t, "")
+	t.Setenv(e2eAccountsEnv, writeAccounts(t, map[string]map[string]string{
+		"agent": {"domain": "d", "email": "a@zenify.vn", "password": "pw-agent-123"}}))
+	var saw map[string]string
+	fakeLoginChild(t, &saw)
+	if _, err := runLogin(t, "--role", "agent"); err != nil {
+		t.Fatalf("want nil without a broker manifest, got %v", err)
+	}
+}
+
+func TestE2eRunLocal_AccountsFile(t *testing.T) {
+	var role string
+	mp, hits := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	_, _ = e2eRunRepo(t)
+	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", t.TempDir())
+	t.Setenv(e2eAccountsEnv, writeAccounts(t, map[string]map[string]string{
+		"sale": {"domain": "zenifytest", "email": "e2e-sandbox-sale@zenify.vn", "password": "pw-sale-456"}}))
+	var emails []string
+	execChild = func(c *exec.Cmd) error {
+		if e := envMap(c)["E2E_EMAIL"]; e != "" {
+			emails = append(emails, e)
+		}
+		return nil
+	}
+	if _, _, err := execCmd(newE2eCmd(), "run", "--local", "--port", "4100", "--role", "sale"); err != nil {
+		t.Fatal(err)
+	}
+	if *hits != 0 {
+		t.Errorf("broker got %d requests, want 0", *hits)
+	}
+	if len(emails) == 0 {
+		t.Fatal("no child received E2E_EMAIL")
+	}
+	for _, e := range emails {
+		if e != "e2e-sandbox-sale@zenify.vn" {
+			t.Errorf("child E2E_EMAIL = %q", e)
+		}
+	}
+}
+
+func TestE2eAccountsFile_Errors(t *testing.T) {
+	good := map[string]map[string]string{"agent": {"domain": "d", "email": "a@zenify.vn", "password": "pw-agent-123"}}
+	badJSON := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(badJSON, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "nope.json")
+	cases := []struct {
+		name string
+		path string
+		args []string
+		want string
+	}{
+		{"missing role", writeAccounts(t, good), []string{"--role", "sale"}, "sale"},
+		{"no such file", missing, []string{"--role", "agent"}, missing},
+		{"bad json", badJSON, []string{"--role", "agent"}, badJSON},
+		{"empty password", writeAccounts(t, map[string]map[string]string{
+			"agent": {"domain": "d", "email": "a@zenify.vn", "password": ""}}), []string{"--role", "agent"}, "password"},
+		{"unknown role", writeAccounts(t, good), []string{"--role", "ceo"}, "--role"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hermeticE2E(t, "")
+			t.Setenv(e2eAccountsEnv, tc.path)
+			var saw map[string]string
+			fakeLoginChild(t, &saw)
+			_, err := runLogin(t, tc.args...)
+			if exitcode.Code(err) != exitcode.BadArgs || err == nil {
+				t.Fatalf("want BadArgs, got %v", err)
+			}
+			if saw != nil {
+				t.Error("child ran")
+			}
+			if strings.Contains(err.Error(), "pw-agent-123") {
+				t.Error("error leaks the password")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q lacks %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestE2eRun_DockerIgnoresAccountsFile(t *testing.T) {
+	var role string
+	mp, _ := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	t.Setenv(e2eAccountsEnv, writeAccounts(t, map[string]map[string]string{
+		"sale": {"domain": "d", "email": "file-sale@zenify.vn", "password": "pw-file"}}))
+	docker, _ := e2eRunRepo(t)
+	if _, _, err := execCmd(newE2eCmd(), "run", "--port", "3327", "--role", "sale"); err != nil {
+		t.Fatal(err)
+	}
+	if role != "sale" {
+		t.Errorf("broker got role %q, want sale", role)
+	}
+	if (*docker)["E2E_EMAIL"] != "sale@test.example" {
+		t.Errorf("docker E2E_EMAIL = %q, want sale@test.example", (*docker)["E2E_EMAIL"])
 	}
 }

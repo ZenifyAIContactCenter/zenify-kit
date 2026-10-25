@@ -7,7 +7,7 @@ Khi journey đã qua `zenify e2e lint` và dev server của worktree đang chạ
 
 ## Kết quả
 
-Lệnh khởi động container Playwright đã ghim phiên bản, đăng nhập một lần bằng tài khoản E2E lấy từ broker khi manifest khai báo `broker:`, hoặc bằng các key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env` khi không có broker, rồi chạy mọi journey trong `.znf/e2e`. Kết quả Playwright in ra màn hình.
+Lệnh khởi động container Playwright đã ghim phiên bản, đăng nhập một lần bằng tài khoản E2E lấy từ broker khi manifest khai báo `broker:`, hoặc bằng các key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env` khi không có broker, rồi chạy mọi journey trong `.znf/e2e`. Kết quả Playwright in ra màn hình. Khi `ZNF_E2E_ACCOUNTS_FILE` khác rỗng (chỉ `e2e login` và `e2e run --local`), tài khoản của vai đọc từ file JSON đó (`{"<role>": {"domain", "email", "password"}}`), không gọi broker, không cần manifest khai `broker:`.
 
 Repo cần file `.znf/e2e/e2e.config.json`. Thiếu file này, lệnh báo repo chưa cấu hình e2e và dừng.
 
