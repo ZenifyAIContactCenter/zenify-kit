@@ -50,6 +50,8 @@ func TestParseScenario(t *testing.T) {
 		{"duplicate ac", "# ZEN-1: t\nVai: a\n\n## @ac:1 [e2e] x\n\n## @ac:1 [e2e] y\n", "duplicate"},
 		{"no ac", "# ZEN-1: t\nVai: a\n", "no @ac"}, //znf:allow-lang
 		{"bad title", "hello\n## @ac:1 [e2e] x\n", "ZEN-"},
+		{"mis-levelled ac", "# ZEN-1: t\nVai: a\n\n## @ac:1 [e2e] x\n\n### @ac:2 [e2e] y\n", "malformed @ac heading"},
+		{"mis-cased ac", "# ZEN-1: t\nVai: a\n\n## @ac:1 [e2e] x\n\n## @AC:2 [e2e] y\n", "malformed @ac heading"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

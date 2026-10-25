@@ -230,6 +230,31 @@ func TestLintScenarioRules(t *testing.T) {
 		{"no-skip fixme", journey(hdr, "x @ac:1 @ac:2", "  test.fixme(true);"), nil, "no-skip", ""},
 		{"no-skip only", journey(hdr, "x @ac:1 @ac:2", "  test.only(true);"), nil, "no-skip", ""},
 		{"ac tag replaces FR", journey(hdr, "x @ac:1 @ac:2", ""), nil, "", "traceability"},
+		{"no-skip describe.skip", journey(hdr, "x @ac:1 @ac:2", "  test.describe.skip('later', () => {});"), nil, "no-skip", ""},
+		{"no-skip describe.serial.only", journey(hdr, "x @ac:1 @ac:2", "  test.describe.serial.only('later', () => {});"), nil, "no-skip", ""},
+		{"no-skip describe.fixme", journey(hdr, "x @ac:1 @ac:2", "  test.describe.fixme('later', () => {});"), nil, "no-skip", ""},
+		{"no-skip fail", journey(hdr, "x @ac:1 @ac:2", "  test.fail();"), nil, "no-skip", ""},
+		{"expect.soft checked", journey(hdr, "x @ac:1 @ac:2", "  await expect.soft(page.getByText('Sai chữ')).toBeVisible();"), nil, "expect-literal", ""},                           //znf:allow-lang
+		{"expect.poll checked", journey(hdr, "x @ac:1 @ac:2", "  await expect.poll(async () => page.getByRole('alert').textContent()).toBe('Sai chữ');"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"expect.poll api path ok", journey(hdr, "x @ac:1 @ac:2", "  await expect.poll(async () => (await apiClient.get('/v2/ticket/abc')).status()).toBe(200);"), nil, "", "expect-literal"},
+		{"regex matcher flagged", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText(/.*/);"), nil, "expect-literal", ""},
+		{"regex getByText flagged", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText(/Vui/)).toBeVisible();"), nil, "expect-literal", ""},
+		{"regex name flagged", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('button', { name: /L/ })).toBeVisible();"), nil, "expect-literal", ""},
+		{"regex hasText flagged", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('tr').filter({ hasText: /./ })).toBeVisible();"), nil, "expect-literal", ""},
+		{"toHaveURL regex ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page).toHaveURL(/ticket/);"), nil, "", "expect-literal"},
+		{"template static part checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText(`${''}Sai chữ`)).toBeVisible();"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"template static part ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText(`Vui lòng ${x}`)).toBeVisible();"), nil, "", "expect-literal"},     //znf:allow-lang
+		{"locator text= checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('text=Other copy')).toBeVisible();"), nil, "expect-literal", ""},
+		{"locator has-text checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('button:has-text(\"Sai chữ\")')).toBeVisible();"), nil, "expect-literal", ""},       //znf:allow-lang
+		{"locator has-text ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('div:has-text(\"Vui lòng nhập tiêu đề\")')).toBeVisible();"), nil, "", "expect-literal"}, //znf:allow-lang
+		{"locator internal:text checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('internal:text=\"Sai chữ\"i')).toBeVisible();"), nil, "expect-literal", ""},    //znf:allow-lang
+		{"locator text-is checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('span:text-is(\"Sai chữ\")')).toBeVisible();"), nil, "expect-literal", ""},           //znf:allow-lang
+		{"locator css ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('[data-text=foo] > .row')).toBeVisible();"), nil, "", "expect-literal"},
+		{"url literal is not a comment", journey(hdr, "x @ac:1 @ac:2", "  await page.goto('https://x.test/'); test.skip(true);"), nil, "no-skip", ""},
+		{"commented test does not cover", journey(hdr, "x @ac:1", "") + "// test('y @ac:2', async () => {\n//   // @domain-assert:ticket\n//   expect(apiClient.x).toBe(1);\n// });\n", nil, "ac-coverage", ""},
+		{"block-commented test does not cover", journey(hdr, "x @ac:1", "") + "/*\ntest('y @ac:2', async () => {\n  // @domain-assert:ticket\n});\n*/\n", nil, "ac-coverage", ""},
+		{"commented skip ignored", journey(hdr, "x @ac:1 @ac:2", "  // test.skip(true);"), nil, "", "no-skip"},
+		{"apostrophe in title", strings.Replace(journey(hdr, "T", ""), "test('T'", "test(\"user's ticket @ac:1 @ac:2\"", 1), nil, "", "traceability"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

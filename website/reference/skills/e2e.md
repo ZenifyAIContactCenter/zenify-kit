@@ -22,7 +22,7 @@ Khi một task có user flow đi qua UI và BE làm đổi trạng thái entity:
 
 1. Journey nằm ở `.znf/e2e/<journey>.spec.ts` trong repo, config ở `.znf/e2e/e2e.config.json` với `apiBaseUrl`. Kit cấp sẵn fixture `page` đã đăng nhập, `apiClient` đã xác thực và `cleanupTracker`.
 2. Mỗi test tự tạo dữ liệu qua API với marker duy nhất theo lượt chạy; chỉ flow cần kiểm đi qua trình duyệt. Sau khối UI có đúng một marker `// @domain-assert:<entity>`, tiếp theo là một lần `apiClient` đọc lại entity và `expect` trên field thật. Cuối test đăng ký dọn dẹp qua API; dọn dẹp chạy cả khi test fail.
-3. `zenify e2e lint` fail khi thiếu marker hoặc re-fetch, có hai marker trong một scenario, dùng `networkidle` hoặc `waitForTimeout`, dùng xpath, `nth-child` hoặc CSS cấu trúc, thiếu cleanup, hoặc header scenario không nhắc `FR-`, `SC-` hay `@ac:<n>` (với journey có `// @scenario ZEN-<n>`, lint còn kiểm kịch bản, độ phủ `@ac`, chuỗi `expect` và cấm skip).
+3. `zenify e2e lint` fail khi thiếu marker hoặc re-fetch, có hai marker trong một scenario, dùng `networkidle` hoặc `waitForTimeout`, dùng xpath, `nth-child` hoặc CSS cấu trúc, thiếu cleanup, hoặc header scenario không nhắc `FR-` hay `SC-` (journey có `// @scenario ZEN-<n>` được dùng `@ac:<n>` thay thế; với journey đó, lint còn kiểm kịch bản, độ phủ `@ac`, chuỗi `expect` và cấm skip).
 4. Locator theo thứ tự cố định: `getByRole`, `getByLabel`, `getByPlaceholder`, `getByText` là mặc định; `getByTestId` chỉ khi phần tử nằm trong iframe hoặc shadow DOM, không có accessible name ổn định, hoặc label sinh từ i18n.
 
 ## Ví dụ

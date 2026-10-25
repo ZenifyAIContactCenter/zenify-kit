@@ -71,8 +71,8 @@ A journey whose header has `// @scenario ZEN-<n>` is bound to the frozen scenari
 
 - Tag every test title with the criterion it proves: `@ac:<n>` (this replaces the `FR-`/`SC-` reference).
 - `scenario-link`: the scenario file must exist. `ac-coverage`: every `@ac:<n>` of kind `e2e` needs a test.
-- `expect-literal`: every quoted string on an `expect(...)` line of an `@ac` test must appear verbatim in the scenario file, except the role argument of `getByRole`, the argument of `getByTestId` and `locator(...)` selectors; `getByText`, `getByLabel`, `getByPlaceholder`, the `name` of `getByRole` and `hasText` are checked. A test tagged with an `@ac:<n>` the scenario lacks is an `ac-coverage` finding.
-- `no-skip`: no `test.skip`, `test.fixme` or `test.only`.
+- `expect-literal`: every quoted string on an `expect(...)`, `expect.soft(...)` or `expect.poll(...)` line of an `@ac` test must appear verbatim in the scenario file, except the role argument of `getByRole`, the argument of `getByTestId`, an `apiClient` path, and `locator(...)` selectors without a text engine; `getByText`, `getByLabel`, `getByPlaceholder`, the `name` of `getByRole`, `hasText`, the text of `text=`, `:has-text(...)`, `:text(...)` and `:text-is(...)` selectors, and the static parts of a template literal are checked. A regex in place of on-screen text (`toHaveText(/…/)`, `getByText(/…/)`, `name: /…/`, `hasText: /…/`) is a finding. A variable argument is allowed. A test tagged with an `@ac:<n>` the scenario lacks is an `ac-coverage` finding; a commented-out test covers nothing.
+- `no-skip`: no `test.skip`, `test.fixme`, `test.only`, `test.fail`, or `test.describe.skip`/`fixme`/`only` (also under `.serial`/`.parallel`).
 
 ## Doctrine rules (lint can't catch these yet — author + reviewer must hold them)
 

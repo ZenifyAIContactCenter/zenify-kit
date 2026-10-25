@@ -36,6 +36,7 @@ type Scenario struct {
 var (
 	reScenTitle = regexp.MustCompile(`^#\s+(ZEN-\d+):`)
 	reACHead    = regexp.MustCompile(`^##\s+@ac:(\d+)\s+\[([^\]]*)\]\s*(.*)$`)
+	reACLoose   = regexp.MustCompile(`(?i)^#+\s*@ac`)
 	reStepItem  = regexp.MustCompile(`^\d+[.)]\s+(.*)$`)
 	reSeeItem   = regexp.MustCompile(`^[-*]\s+(.*)$`)
 )
@@ -65,13 +66,13 @@ func ParseScenario(src string) (Scenario, error) {
 		switch {
 		case strings.HasPrefix(l, "Vai:") && cur == nil: //znf:allow-lang
 			sc.Role = strings.TrimSpace(strings.TrimPrefix(l, "Vai:")) //znf:allow-lang
+		case reACLoose.MatchString(l) && !reACHead.MatchString(l):
+			// a mis-levelled or mis-cased heading would otherwise drop the AC silently
+			return sc, fmt.Errorf("malformed @ac heading: %q", l)
 		case strings.HasPrefix(l, "## "):
 			cur, mode = nil, ""
 			h := reACHead.FindStringSubmatch(l)
 			if h == nil {
-				if strings.HasPrefix(l, "## @ac") {
-					return sc, fmt.Errorf("malformed @ac heading: %q", l)
-				}
 				continue // e.g. the open-questions section
 			}
 			n, err := strconv.Atoi(h[1])
