@@ -22,8 +22,18 @@ dev run cannot bend the test to fit the code. Every rule below protects that.
 - Exit 2 = a path was rejected: fix the path list, never move files outside `.znf/e2e/`. Any other
   non-zero exit: stop and put it in `reason`. Success prints the commit sha: record it as `"commit"`.
 - Always finish by writing `/out/qa-result.json`, success or not:
-  `{"mode","key","repo","journey":bool,"green"?:bool,"reason"?:string,"commit"?:string,"acs":[{"n","kind"}]}`
-  (`mode` = `scenario` | `journey` | `bind`; `acs` lists every `@ac` with its final kind).
+  `{"mode","key","repo","journey":bool,"green"?:bool,"reason"?:string,"commit"?:string,"acs":[{"n","kind"}],"failures"?:[{"ac":n,"message":string}]}`
+  (`mode` = `scenario` | `journey` | `bind`; `acs` lists every `@ac` with its final kind; `failures`
+  only for a red bind: one entry per failing `@ac`, `message` = the Playwright assertion message).
+
+## Role and login (all modes)
+
+- `Vai:` names the role in plain words. Map it to one broker E2E role: `administrator`, `supervisor`,
+  `team_leader`, `agent`, `sale` or `sale_team_leader` (for example `nhân viên` → `agent`). Call it `<role>` below.
+- Driving the app with `zenify browser`: first `zenify e2e login --port $ZNF_SANDBOX_WEB_PORT --role <role>`,
+  then `zenify browser -s=<session> open` and `zenify browser -s=<session> state-load <path the login printed>`
+  before you navigate (`znf:run`, autonomous sandbox notes).
+- Every journey run is `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT --role <role>`, so it runs as the scenario's role.
 
 ## Primary repo
 
@@ -39,7 +49,8 @@ Write `.znf/e2e/scenarios/ZEN-<n>.md` from `references/scenario-template.md`.
 
 1. One `@ac` per acceptance line of the item; copy the acceptance sentence verbatim into the heading.
 2. Kind is exactly one of `e2e`, `hỏi`, `ngoài-e2e`. A `ngoài-e2e` line says how it is checked instead (ui-verifier or unit).
-3. `Bước` and `Thấy` use the exact words on screen. Find them by driving the sandbox app with `zenify browser`; never invent a label.
+3. `Bước` and `Thấy` use the exact words on screen. Find them by driving the sandbox app with `zenify browser`,
+   logged in as `<role>` (see Role and login); never invent a label.
 4. A `hỏi` line: ask the item owner with `zenify await needs-human --summary "<plain-language question>"`.
    The question carries no `@ac`, locator, API path, id or field name. At most 2 rounds; still
    unanswered → change the kind to `ngoài-e2e` with the reason on that line.
@@ -48,28 +59,36 @@ Write `.znf/e2e/scenarios/ZEN-<n>.md` from `references/scenario-template.md`.
 
 ## Mode `journey ZEN-<n>` (bug, tweak — before any fix exists)
 
-Write `.znf/e2e/zen-<n>.spec.ts` following `znf:e2e` (deep scenario, domain assert, cleanup, locator ladder).
+A bug or tweak gets only this run, so it writes the scenario too: run Mode `scenario` steps 1-5 first,
+then write `.znf/e2e/zen-<n>.spec.ts` following `znf:e2e` (deep scenario, domain assert, cleanup, locator ladder).
 
 1. The header carries `// @scenario ZEN-<n>`. Every test title carries the `@ac:<n>` it proves; every `e2e` `@ac` gets a test.
 2. Every string inside an `expect` is copied verbatim from that `@ac`'s `Thấy` lines.
-3. Run `zenify e2e lint`, then `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT` on base.
+3. Run `zenify e2e lint`, then `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT --role <role>` on base.
    An attempt is one `zenify e2e run --local` on base after `zenify e2e lint` passes; lint failures and their fixes are not attempts.
 4. It must be red at the `expect` of an `@ac`. Red at a locator, navigation, seed or login step does
    not count: fix the journey (never the expect) and run again.
-5. Two attempts without that red → delete the journey file, keep the scenario, write
-   `{"journey":false,"reason":"<why>"}` (plus the common fields). Do not commit a journey that is green on base.
-6. Red as required → commit; result `"journey":true`.
+5. Two attempts without that red → delete the journey file, commit the scenario (and the config if
+   created), write `{"journey":false,"reason":"<why>"}` (plus the common fields). Do not commit a journey that is green on base.
+6. Red as required → commit the scenario, the journey (and the config if created); result `"journey":true`.
 
 ## Mode `bind ZEN-<n>` (feature — after the dev code exists)
 
-The journey and scenario are frozen. You may add ONLY locators, navigation and seed data.
+The scenario is frozen; the journey's expects come from it, verbatim.
 
-- Never edit the scenario file.
+1. No `.znf/e2e/zen-<n>.spec.ts` yet (a feature: the `qa` run wrote only the scenario) → write it
+   following `znf:e2e`: header `// @scenario ZEN-<n>`, one test per `e2e` `@ac` with `@ac:<n>` in its
+   title, and every string inside an `expect` copied verbatim from that `@ac`'s `Thấy` lines.
+2. From then on, and whenever the journey already exists, you may add or change ONLY locators,
+   navigation and seed data.
+
+- Never edit `.znf/e2e/scenarios/ZEN-<n>.md` and never pass it to `api-commit.mjs`. zenie compares it
+  with its content at the `qa` commit and fails the run on any difference.
 - Never change a literal inside an `expect`, and never delete, skip or weaken an `expect`.
-- Run `zenify e2e lint`, then `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT`.
-- Green → commit; `"green":true`.
-- Red → do not fix the `expect`; write `{"green":false,"failures":[…]}` with each failing `@ac` and
-  its message. The failure is a finding for the dev run, not for you.
+- Run `zenify e2e lint`, then `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT --role <role>`.
+- Green → commit the journey; `"green":true`.
+- Red → do not fix the `expect`; write `{"green":false,"failures":[{"ac":<n>,"message":"<assertion message>"}]}`
+  (plus the common fields), one entry per failing `@ac`. The failure is a finding for the dev run, not for you.
 
 ## References
 

@@ -6,14 +6,14 @@ parses them by these exact words. Copy the skeleton, keep every keyword spelled 
 ## Syntax
 
 - Line 1: `# ZEN-<n>: <title>` — the item key, digits only.
-- `Vai: <role>` — the role that logs in (a role name, not an account).
+- `Vai: <role>` — the role that logs in, in plain words (a role name, not an account); the QA run maps it to a broker E2E role.
 - One section per acceptance line: `## @ac:<n> [<kind>] <acceptance sentence, verbatim>`.
   `<n>` is unique; `<kind>` is exactly `e2e`, `hỏi` or `ngoài-e2e`.
 - Under an `e2e` section: `Bước:` then numbered steps (`1.`); `Thấy:` then `-` bullets, each the
   exact text visible on screen; optional `Dữ liệu sau:` then `-` bullets for the data outcome.
 - A `hỏi` section holds the plain-language question; a `ngoài-e2e` section says how it is checked
   (ui-verifier or unit) and why it is not a journey.
-- Optional last section `## Câu hỏi mở` for open questions. Any other `## @ac` heading shape is a parse error.
+- Optional last section `## Câu hỏi mở` for open questions. Any other `@ac` heading (another `#` level, another case, another shape) is a parse error.
 
 The skeleton below is a shape, not a valid file: its `<placeholders>` (starting with `ZEN-<n>`)
 do not parse until replaced. The worked example after it is valid as written.

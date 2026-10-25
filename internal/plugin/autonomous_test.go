@@ -62,6 +62,7 @@ func TestAutonomousSandboxFE(t *testing.T) {
 	s := syncedAsset(t, "skills/run/references/autonomous-sandbox.md")
 	assertContainsAll(t, "autonomous-sandbox.md", s, []string{
 		"ZNF_SANDBOX_WEB_PORT", "contact-center-web", "zenify e2e run --local",
+		"zenify e2e login --port $ZNF_SANDBOX_WEB_PORT --role <role>",
 	})
 	if strings.Contains(s, "There is no FE in the sandbox") {
 		t.Error("autonomous-sandbox.md still claims there is no FE in the sandbox")
