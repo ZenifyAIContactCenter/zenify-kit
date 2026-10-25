@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,10 +18,10 @@ import (
 )
 
 const (
-	pinnedPlaywright = `"version": "1.55.0"`
-	staleLockAge     = 10 * time.Minute
-	defaultLockWait  = 120 * time.Second
-	lockPoll         = 500 * time.Millisecond
+	pinnedPlaywrightVersion = "1.55.0"
+	staleLockAge            = 10 * time.Minute
+	defaultLockWait         = 120 * time.Second
+	lockPoll                = 500 * time.Millisecond
 )
 
 // LoginOptions configures Login. Credentials are read only through Getenv by the
@@ -66,36 +67,102 @@ func acquireLock(path string, wait time.Duration) error {
 			continue
 		}
 		if time.Now().After(deadline) {
-			return errors.New("harness locked by another login")
+			return errors.New("harness locked by another e2e login or run")
 		}
 		time.Sleep(lockPoll)
 	}
 }
 
-// prepareHarness writes the harness and installs deps + chromium, under the lock.
-func prepareHarness(o LoginOptions, root, harness string) error {
-	wait := o.LockWait
+// PrepareHarness writes the harness and installs deps + chromium, under the lock.
+// The chromium install is skipped when PLAYWRIGHT_BROWSERS_PATH already holds the
+// revision Playwright expects (an offline worker image baked it at build time).
+func PrepareHarness(o LoginOptions, root, harness string) error {
+	unlock, err := lockHarness(root, o.LockWait)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return prepareHarness(o, harness)
+}
+
+// lockHarness takes root/harness.lock (wait 0 = 120s) and returns its release.
+func lockHarness(root string, wait time.Duration) (func(), error) {
 	if wait == 0 {
 		wait = defaultLockWait
 	}
 	lock := filepath.Join(root, "harness.lock")
 	if err := acquireLock(lock, wait); err != nil {
-		return err
+		return nil, err
 	}
-	defer func() { _ = os.Remove(lock) }()
+	return func() { _ = os.Remove(lock) }, nil
+}
+
+// prepareHarness is PrepareHarness without the lock; the caller holds it.
+func prepareHarness(o LoginOptions, harness string) error {
 	if err := WriteHarness(harness); err != nil {
 		return err
 	}
 	pkg := filepath.Join(harness, "node_modules", "@playwright", "test", "package.json")
-	if b, err := os.ReadFile(pkg); err != nil || !strings.Contains(string(b), pinnedPlaywright) { //nolint:gosec // G304 -- path built from home
+	if !pinnedInstalled(pkg) {
 		if err := o.Run(harness, "npm", []string{"install", "--no-audit", "--no-fund", "--silent"}, nil); err != nil {
 			return fmt.Errorf("npm install: %w", err)
 		}
+	}
+	if hasChromium(os.Getenv("PLAYWRIGHT_BROWSERS_PATH"), harness) {
+		return nil
 	}
 	if err := o.Run(harness, "npx", []string{"playwright", "install", "chromium"}, nil); err != nil {
 		return fmt.Errorf("playwright install: %w", err)
 	}
 	return nil
+}
+
+// pinnedInstalled reports whether the package.json at pkg is the pinned Playwright.
+func pinnedInstalled(pkg string) bool {
+	b, err := os.ReadFile(pkg) //nolint:gosec // G304 -- path built from home
+	if err != nil {
+		return false
+	}
+	var v struct {
+		Version string `json:"version"`
+	}
+	return json.Unmarshal(b, &v) == nil && v.Version == pinnedPlaywrightVersion
+}
+
+// hasChromium reports whether dir (a PLAYWRIGHT_BROWSERS_PATH) holds the chromium and
+// chromium-headless-shell revisions the harness's Playwright expects, fully installed. Unreadable browsers.json = false.
+func hasChromium(dir, harness string) bool {
+	if dir == "" {
+		return false
+	}
+	b, err := os.ReadFile(filepath.Join(harness, "node_modules", "playwright-core", "browsers.json")) //nolint:gosec // G304 -- path built from home
+	if err != nil {
+		return false
+	}
+	var v struct {
+		Browsers []struct {
+			Name     string `json:"name"`
+			Revision string `json:"revision"`
+		} `json:"browsers"`
+	}
+	if json.Unmarshal(b, &v) != nil {
+		return false
+	}
+	// Headless runs launch chromium-headless-shell, which lives in its own dir.
+	need := map[string]string{"chromium": "chromium-", "chromium-headless-shell": "chromium_headless_shell-"}
+	found := 0
+	for _, br := range v.Browsers {
+		prefix, ok := need[br.Name]
+		if !ok || br.Revision == "" {
+			continue
+		}
+		// The installer writes this marker last; a dir without it is a half-extracted download.
+		if _, err := os.Stat(filepath.Join(dir, prefix+br.Revision, "INSTALLATION_COMPLETE")); err != nil { //nolint:gosec // G703 -- dir is the browsers path we chose, revision comes from the harness's own browsers.json
+			return false
+		}
+		found++
+	}
+	return found == len(need)
 }
 
 // CheckLoopbackURL refuses any origin that is not a local app: the harness types
@@ -134,7 +201,13 @@ func Login(o LoginOptions) (string, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", exitcode.New(exitcode.Fail, err)
 	}
-	if err := prepareHarness(o, root, harness); err != nil {
+	// Hold harness.lock through the setup run too: `e2e run --local` rewrites the harness.
+	unlock, err := lockHarness(root, o.LockWait)
+	if err != nil {
+		return "", exitcode.New(exitcode.Fail, err)
+	}
+	defer unlock()
+	if err := prepareHarness(o, harness); err != nil {
 		return "", exitcode.New(exitcode.Fail, err)
 	}
 	f, err := os.CreateTemp(root, "state-*.json.tmp")

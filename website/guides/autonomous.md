@@ -88,7 +88,7 @@ $ zenify await show spec-20261022T030837Z-68f708ec
 
 ## Diff đụng UI {#ui}
 
-Chế độ không người không có ai chạy ui-verifier, nên ở bước 4 của `ship` diff có file hiển thị UI thì agent dừng bằng `zenify await needs-human` thay vì dispatch ui-verifier. `zenify ui-verify check` cũng tự làm việc này: khi `ZNF_AUTONOMOUS=1` và chưa có bằng chứng UI-verify khớp HEAD (trạng thái `required`), lệnh ghi bản ghi `needs-human` với `summary` bắt đầu bằng `cần kiểm UI:`, in `id` rồi thoát mã 8, thay vì mã 1 (BLOCKED). Ngoài chế độ không người, lệnh giữ nguyên hành vi cũ.
+Khi sandbox của worker có web app (biến `ZNF_SANDBOX_WEB_PORT` được đặt, FE là `contact-center-web`), agent chạy web, đăng nhập bằng `zenify e2e login --port $ZNF_SANDBOX_WEB_PORT --role <vai>` và dispatch ui-verifier như chế độ người; journey chạy bằng `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT`. Khi không có biến đó, không ai chạy ui-verifier, nên ở bước 4 của `ship` diff có file hiển thị UI thì agent dừng bằng `zenify await needs-human` thay vì dispatch ui-verifier. `zenify ui-verify check` cũng tự làm việc này: khi `ZNF_AUTONOMOUS=1` và chưa có bằng chứng UI-verify khớp HEAD (trạng thái `required`), lệnh ghi bản ghi `needs-human` với `summary` bắt đầu bằng `cần kiểm UI:`, in `id` rồi thoát mã 8, thay vì mã 1 (BLOCKED). Ngoài chế độ không người, lệnh giữ nguyên hành vi cũ.
 
 ## `data-write`: ghi production {#data-write}
 
@@ -96,10 +96,11 @@ Role `agent` không bao giờ lấy được credential ghi production. Quy trì
 
 ## Resume
 
-Worker được khởi động lại với prompt `resume <id> approved` hoặc `resume <id> rejected: <lý do>`. Agent chạy `zenify await show <id>` trước, rồi:
+Worker được khởi động lại với prompt `resume <id> approved`, `resume <id> rejected: <lý do>` hoặc `resume <id> answered: <câu trả lời>`. Agent chạy `zenify await show <id>` trước, rồi:
 
 - `approved`: làm tiếp từ điểm đã dừng.
 - `rejected`: sửa điều lý do nêu, rồi `zenify await` lại ở đúng cổng đó.
+- `answered`: dùng câu trả lời làm đáp án cho câu hỏi mà await đó nêu rồi làm tiếp; không `zenify await` lại cho cùng câu hỏi.
 
 ## Xem thêm
 

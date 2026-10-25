@@ -1,7 +1,12 @@
 // internal/e2e/lint_test.go
 package e2e
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 const passing = `
 import { test, expect } from '../../fixtures';
@@ -23,7 +28,7 @@ func rules(findings []Finding) map[string]bool {
 }
 
 func TestLint_PassingCleans(t *testing.T) {
-	if fs := LintSource("ok.spec.ts", passing); len(fs) != 0 {
+	if fs := LintSource("ok.spec.ts", passing, nil); len(fs) != 0 {
 		t.Fatalf("clean spec must have 0 findings, got %+v", fs)
 	}
 }
@@ -36,7 +41,7 @@ test('x [FR-1]', async ({ page, cleanupTracker }) => {
   await expect(page).toHaveURL(/ok/);
   cleanupTracker.add(async () => {});
 });`
-	if !rules(LintSource("a.spec.ts", src))["refetch"] {
+	if !rules(LintSource("a.spec.ts", src, nil))["refetch"] {
 		t.Fatal("missing apiClient re-fetch must be caught")
 	}
 }
@@ -51,7 +56,7 @@ test('shallow [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   expect(1).toBe(1);
   cleanupTracker.add(async () => { await apiClient.put('/v2/ticket/x', { data: { is_deleted: true } }); });
 });`
-	if !rules(LintSource("a.spec.ts", src))["refetch"] {
+	if !rules(LintSource("a.spec.ts", src, nil))["refetch"] {
 		t.Fatal("apiClient only inside cleanup closure — must be caught as missing refetch")
 	}
 }
@@ -64,7 +69,7 @@ test.only('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   cleanupTracker.add(async () => {});
 });`
 	// missing // @domain-assert marker → must be caught (proves test.only is scanned)
-	if !rules(LintSource("a.spec.ts", src))["marker"] {
+	if !rules(LintSource("a.spec.ts", src, nil))["marker"] {
 		t.Fatal("test.only missing @domain-assert must be caught — must not bypass")
 	}
 }
@@ -74,7 +79,7 @@ func TestLint_ZeroTestBlocksFlagged(t *testing.T) {
 	src := `import { test } from '../../fixtures';
 // every scenario is commented out
 const helper = 1;`
-	if !rules(LintSource("empty.spec.ts", src))["no-test"] {
+	if !rules(LintSource("empty.spec.ts", src, nil))["no-test"] {
 		t.Fatal("*.spec.ts with no test(...) must be caught as no-test")
 	}
 }
@@ -87,7 +92,7 @@ test('x [SC-1]', async ({ page, apiClient, cleanupTracker }) => {
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
   cleanupTracker.add(async () => {});
 });`
-	if !rules(LintSource("a.spec.ts", src))["no-networkidle"] {
+	if !rules(LintSource("a.spec.ts", src, nil))["no-networkidle"] {
 		t.Fatal("networkidle must be caught")
 	}
 }
@@ -99,7 +104,7 @@ test('x [FR-1]', async ({ page, apiClient }) => {
   // @domain-assert:ticket
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
 });`
-	if !rules(LintSource("a.spec.ts", src))["cleanup"] {
+	if !rules(LintSource("a.spec.ts", src, nil))["cleanup"] {
 		t.Fatal("missing cleanup must be caught")
 	}
 }
@@ -110,7 +115,7 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
   cleanupTracker.add(async () => {});
 });`
-	if !rules(LintSource("a.spec.ts", src))["marker"] {
+	if !rules(LintSource("a.spec.ts", src, nil))["marker"] {
 		t.Fatal("missing @domain-assert must be caught")
 	}
 }
@@ -122,7 +127,7 @@ test('no ref', async ({ page, apiClient, cleanupTracker }) => {
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
   cleanupTracker.add(async () => {});
 });`
-	if !rules(LintSource("a.spec.ts", src))["traceability"] {
+	if !rules(LintSource("a.spec.ts", src, nil))["traceability"] {
 		t.Fatal("missing FR/SC ref must be caught")
 	}
 }
@@ -136,7 +141,7 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   const r2 = await apiClient.get('/v2/ticket/2'); expect(r2.ok()).toBeTruthy();
   cleanupTracker.add(async () => {});
 });`
-	if !rules(LintSource("a.spec.ts", src))["marker"] {
+	if !rules(LintSource("a.spec.ts", src, nil))["marker"] {
 		t.Fatal("two @domain-assert in one scenario must be caught")
 	}
 }
@@ -149,7 +154,7 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
   cleanupTracker.add(async () => {});
 });`
-	if !rules(LintSource("a.spec.ts", src))["no-hardwait"] {
+	if !rules(LintSource("a.spec.ts", src, nil))["no-hardwait"] {
 		t.Fatal("waitForTimeout must be caught")
 	}
 }
@@ -162,7 +167,7 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
   cleanupTracker.add(async () => {});
 });`
-	if !rules(LintSource("a.spec.ts", xpath))["no-fragile-selector"] {
+	if !rules(LintSource("a.spec.ts", xpath, nil))["no-fragile-selector"] {
 		t.Fatal("xpath= must be caught")
 	}
 
@@ -173,7 +178,197 @@ test('x [FR-1]', async ({ page, apiClient, cleanupTracker }) => {
   const r = await apiClient.get('/v2/ticket/1'); expect(r.ok()).toBeTruthy();
   cleanupTracker.add(async () => {});
 });`
-	if !rules(LintSource("a.spec.ts", nthChild))["no-fragile-selector"] {
+	if !rules(LintSource("a.spec.ts", nthChild, nil))["no-fragile-selector"] {
 		t.Fatal("nth-child( must be caught")
 	}
+}
+
+func scenarioFor(t *testing.T, src string) map[string]Scenario {
+	t.Helper()
+	sc, err := ParseScenario(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return map[string]Scenario{sc.Key: sc}
+}
+
+const scenTwoE2E = "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] one\nThấy:\n- Vui lòng nhập tiêu đề\n\n## @ac:2 [e2e] two\n\n## @ac:3 [ngoài-e2e] three\n" //znf:allow-lang
+
+const scenEscaped = "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] one\nThấy:\n- O'Reilly\n\n## @ac:2 [e2e] two\n" //znf:allow-lang
+
+const scenSkipText = "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] one\nThấy:\n- Vui lòng nhập tiêu đề step.skip()\n\n## @ac:2 [e2e] two\n" //znf:allow-lang
+
+func journey(header, title, body string) string {
+	return header + "\nimport { test, expect } from '../../fixtures';\ntest('" + title + "', async ({ page, apiClient, cleanupTracker }) => {\n" + body + `
+  // @domain-assert:ticket
+  const r = await apiClient.get('/v2/ticket/abc');
+  expect((await r.json()).subject).toBe(subject);
+  cleanupTracker.add(async () => {});
+});
+`
+}
+
+func TestLintScenarioRules(t *testing.T) {
+	const hdr = "// @scenario ZEN-9"
+	cases := []struct {
+		name  string
+		src   string
+		scens map[string]Scenario
+		want  string // rule expected exactly once; "" = no scenario-rule/traceability finding
+		not   string // rule that must be absent
+	}{
+		{"scenario-link missing", journey(hdr, "x @ac:1", ""), map[string]Scenario{}, "scenario-link", ""},
+		{"ac-coverage missing ac2", journey(hdr, "x @ac:1", ""), nil, "ac-coverage", ""},
+		{"expect-literal bad", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText('Sai chữ');"), nil, "expect-literal", ""},              //znf:allow-lang
+		{"expect-literal ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText('Vui lòng nhập tiêu đề');"), nil, "", "expect-literal"}, //znf:allow-lang
+		{"getByText copy checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText('Sai chữ')).toBeVisible();"), nil, "expect-literal", ""},                //znf:allow-lang
+		{"getByRole role only ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toBeVisible();"), nil, "", "expect-literal"},
+		{"getByRole name checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('button', { name: 'Lưu' })).toBeVisible();"), nil, "expect-literal", ""},         //znf:allow-lang
+		{"getByLabel checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByLabel('Nhãn lạ')).toBeVisible();"), nil, "expect-literal", ""},                            //znf:allow-lang
+		{"filter hasText checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('tr').filter({ hasText: 'Dòng lạ' })).toBeVisible();"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"getByTestId exempt", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByTestId('save-btn')).toBeVisible();"), nil, "", "expect-literal"},
+		{"paren inside literal", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText('Tạo (mới)')).toBeVisible();"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"unknown ac number", journey(hdr, "x @ac:1 @ac:2 @ac:7", ""), nil, "ac-coverage", ""},
+		{"expect var ok", journey(hdr, "x @ac:1 @ac:2", ""), nil, "", "expect-literal"},
+		{"no-skip skip", journey(hdr, "x @ac:1 @ac:2", "  test.skip(true, 'later');"), nil, "no-skip", ""},
+		{"no-skip fixme", journey(hdr, "x @ac:1 @ac:2", "  test.fixme(true);"), nil, "no-skip", ""},
+		{"no-skip only", journey(hdr, "x @ac:1 @ac:2", "  test.only(true);"), nil, "no-skip", ""},
+		{"ac tag replaces FR", journey(hdr, "x @ac:1 @ac:2", ""), nil, "", "traceability"},
+		{"no-skip describe.skip", journey(hdr, "x @ac:1 @ac:2", "  test.describe.skip('later', () => {});"), nil, "no-skip", ""},
+		{"no-skip describe.serial.only", journey(hdr, "x @ac:1 @ac:2", "  test.describe.serial.only('later', () => {});"), nil, "no-skip", ""},
+		{"no-skip describe.fixme", journey(hdr, "x @ac:1 @ac:2", "  test.describe.fixme('later', () => {});"), nil, "no-skip", ""},
+		{"no-skip fail", journey(hdr, "x @ac:1 @ac:2", "  test.fail();"), nil, "no-skip", ""},
+		{"expect.soft checked", journey(hdr, "x @ac:1 @ac:2", "  await expect.soft(page.getByText('Sai chữ')).toBeVisible();"), nil, "expect-literal", ""},                           //znf:allow-lang
+		{"expect.poll checked", journey(hdr, "x @ac:1 @ac:2", "  await expect.poll(async () => page.getByRole('alert').textContent()).toBe('Sai chữ');"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"expect.poll api path ok", journey(hdr, "x @ac:1 @ac:2", "  await expect.poll(async () => (await apiClient.get('/v2/ticket/abc')).status()).toBe(200);"), nil, "", "expect-literal"},
+		{"regex matcher flagged", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText(/.*/);"), nil, "expect-literal", ""},
+		{"regex getByText flagged", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText(/Vui/)).toBeVisible();"), nil, "expect-literal", ""},
+		{"regex name flagged", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('button', { name: /L/ })).toBeVisible();"), nil, "expect-literal", ""},
+		{"regex hasText flagged", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('tr').filter({ hasText: /./ })).toBeVisible();"), nil, "expect-literal", ""},
+		{"toHaveURL regex ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page).toHaveURL(/ticket/);"), nil, "", "expect-literal"},
+		{"template static part checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText(`${''}Sai chữ`)).toBeVisible();"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"template static part ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText(`Vui lòng ${x}`)).toBeVisible();"), nil, "", "expect-literal"},     //znf:allow-lang
+		{"locator text= checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('text=Other copy')).toBeVisible();"), nil, "expect-literal", ""},
+		{"locator has-text checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('button:has-text(\"Sai chữ\")')).toBeVisible();"), nil, "expect-literal", ""},       //znf:allow-lang
+		{"locator has-text ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('div:has-text(\"Vui lòng nhập tiêu đề\")')).toBeVisible();"), nil, "", "expect-literal"}, //znf:allow-lang
+		{"locator internal:text checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('internal:text=\"Sai chữ\"i')).toBeVisible();"), nil, "expect-literal", ""},    //znf:allow-lang
+		{"locator text-is checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('span:text-is(\"Sai chữ\")')).toBeVisible();"), nil, "expect-literal", ""},           //znf:allow-lang
+		{"locator css ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.locator('[data-text=foo] > .row')).toBeVisible();"), nil, "", "expect-literal"},
+		{"url literal is not a comment", journey(hdr, "x @ac:1 @ac:2", "  await page.goto('https://x.test/'); test.skip(true);"), nil, "no-skip", ""},
+		{"commented test does not cover", journey(hdr, "x @ac:1", "") + "// test('y @ac:2', async () => {\n//   // @domain-assert:ticket\n//   expect(apiClient.x).toBe(1);\n// });\n", nil, "ac-coverage", ""},
+		{"block-commented test does not cover", journey(hdr, "x @ac:1", "") + "/*\ntest('y @ac:2', async () => {\n  // @domain-assert:ticket\n});\n*/\n", nil, "ac-coverage", ""},
+		{"commented skip ignored", journey(hdr, "x @ac:1 @ac:2", "  // test.skip(true);"), nil, "", "no-skip"},
+		{"multi-line matcher checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert'))\n    .toHaveText('Sai chữ');"), nil, "expect-literal", ""},                             //znf:allow-lang
+		{"multi-line argument checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText(\n    'Sai chữ',\n  );"), nil, "expect-literal", ""},                       //znf:allow-lang
+		{"multi-line ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert'))\n    .toHaveText('Vui lòng nhập tiêu đề');"), nil, "", "expect-literal"},                            //znf:allow-lang
+		{"multi-line poll checked", journey(hdr, "x @ac:1 @ac:2", "  await expect\n    .poll(async () => page.getByRole('alert').textContent())\n    .toBe('Sai chữ');"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"no-skip test.step.skip", journey(hdr, "x @ac:1 @ac:2", "  await test.step.skip('check', async () => {});"), nil, "no-skip", ""},
+		{"no-skip testInfo.skip", journey(hdr, "x @ac:1 @ac:2", "  test.info().skip();"), nil, "no-skip", ""},
+		{"escaped quote in literal ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText('O\\'Reilly');"), scenarioFor(t, scenEscaped), "", "expect-literal"},
+		{"escaped quote in title", strings.Replace(journey(hdr, "T", ""), "test('T'", "test('user\\'s ticket @ac:1 @ac:2'", 1), nil, "", "traceability"},
+		{"regex with paren keeps the matcher", journey(hdr, "x @ac:1 @ac:2", "  expect((await r.json()).subject.replace(/\\)/g, '')).toBe('Wrong');"), nil, "expect-literal", ""},
+		{"skip text in a string is not a skip", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText('Vui lòng nhập tiêu đề step.skip()')).toBeVisible();"), scenarioFor(t, scenSkipText), "", "no-skip"}, //znf:allow-lang
+		{"skip inside template expression caught", journey(hdr, "x @ac:1 @ac:2", "  const note = `${test.skip(true)}`;"), nil, "no-skip", ""},
+		{"skip after quote-holding regex caught", journey(hdr, "x @ac:1 @ac:2", "  const quote = /'/; test.skip(true);"), nil, "no-skip", ""},
+		{"non-null then division is not a regex", journey(hdr, "x @ac:1 @ac:2", "  expect(total! / count).toBe(2);\n  await page.goto('/tickets');"), nil, "", "expect-literal"},
+		{"apostrophe in title", strings.Replace(journey(hdr, "T", ""), "test('T'", "test(\"user's ticket @ac:1 @ac:2\"", 1), nil, "", "traceability"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			scens := c.scens
+			if scens == nil {
+				scens = scenarioFor(t, scenTwoE2E)
+			}
+			fs := LintSource("zen-9.spec.ts", c.src, scens)
+			got := map[string]int{}
+			for _, f := range fs {
+				got[f.Rule]++
+			}
+			if c.want != "" && got[c.want] != 1 {
+				t.Fatalf("want exactly one %s, got %+v", c.want, fs)
+			}
+			if c.not != "" && got[c.not] != 0 {
+				t.Fatalf("%s must be absent, got %+v", c.not, fs)
+			}
+			if c.want == "" {
+				for _, r := range []string{"scenario-link", "ac-coverage", "expect-literal", "no-skip"} {
+					if got[r] != 0 {
+						t.Fatalf("unexpected %s: %+v", r, fs)
+					}
+				}
+			}
+		})
+	}
+
+	t.Run("ac-coverage names the uncovered ac", func(t *testing.T) {
+		fs := LintSource("zen-9.spec.ts", journey(hdr, "x @ac:1", ""), scenarioFor(t, scenTwoE2E))
+		for _, f := range fs {
+			if f.Rule == "ac-coverage" {
+				if !strings.Contains(f.Msg, "@ac:2") || strings.Contains(f.Msg, "@ac:3") {
+					t.Fatalf("msg should name @ac:2 only: %s", f.Msg)
+				}
+				return
+			}
+		}
+		t.Fatal("no ac-coverage finding")
+	})
+
+	t.Run("without @scenario behaviour is unchanged", func(t *testing.T) {
+		src := journey("", "x", "  test.skip(true);")
+		got := rules(LintSource("a.spec.ts", src, nil))
+		if !got["traceability"] || got["no-skip"] || got["scenario-link"] || got["ac-coverage"] {
+			t.Fatalf("legacy journey must keep traceability only, got %+v", got)
+		}
+	})
+}
+
+func TestLint_LoadsScenarios(t *testing.T) {
+	write := func(t *testing.T, dir, rel, body string) {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := func(dir string) string {
+		var buf strings.Builder
+		_, _ = Lint(dir, &buf)
+		return buf.String()
+	}
+	t.Run("missing scenarios dir", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "a.spec.ts", passing)
+		if out := run(dir); out != "" {
+			t.Fatalf("legacy journey must lint clean, got %q", out)
+		}
+	})
+	t.Run("malformed scenario", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "a.spec.ts", passing)
+		write(t, dir, "scenarios/ZEN-7.md", "not a scenario\n")
+		out := run(dir)
+		if strings.Count(out, "[scenario-parse]") != 1 || !strings.Contains(out, "ZEN-7.md") || strings.Count(out, "\n") != 1 {
+			t.Fatalf("want exactly one scenario-parse on ZEN-7.md, got %q", out)
+		}
+	})
+	t.Run("filename and heading mismatch", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "a.spec.ts", passing)
+		write(t, dir, "scenarios/ZEN-9.md", "# ZEN-8: t\nVai: a\n\n## @ac:1 [e2e] x\n")
+		out := run(dir)
+		if strings.Count(out, "[scenario-parse]") != 1 || !strings.Contains(out, "ZEN-9.md") {
+			t.Fatalf("want scenario-parse on ZEN-9.md, got %q", out)
+		}
+	})
+	t.Run("valid scenario is linked", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, "zen-9.spec.ts", journey("// @scenario ZEN-9", "x @ac:1", ""))
+		write(t, dir, "scenarios/ZEN-9.md", "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] x\n")
+		if out := run(dir); out != "" {
+			t.Fatalf("want clean, got %q", out)
+		}
+	})
 }

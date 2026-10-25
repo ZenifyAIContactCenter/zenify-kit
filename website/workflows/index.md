@@ -67,6 +67,7 @@ Ba workflow trên tự gọi các skill sau khi cần. Bạn cũng có thể g�
 | `/znf:gate` | Quét cross-repo cho một tài nguyên chung, chỉ đọc | Vừa sửa collection, endpoint, queue hoặc channel chung |
 | `/znf:top-issues` | Khảo sát Grafana, xếp top 5 issue hệ thống kèm đánh giá impact/rủi ro và phương án. Xem [`top-issues`](/reference/skills/top-issues) | Muốn biết hệ thống đang có vấn đề gì nặng nhất trước khi chọn bug để fix |
 | `/znf:run` | Chạy app trong worktree hiện tại, trả về URL | Cần quan sát hành vi thật của app |
+| `/znf:qa` | Run QA của zenie viết kịch bản nghiệm thu đóng băng trước khi có code dev, journey phải đỏ trên code gốc, rồi gắn journey vào code xong mà không sửa `expect`. Xem [`qa`](/reference/skills/qa) | Không gọi tay; zenie chạy khi `ZENIE_QA=on`. Journey tự viết trong `/znf:cook` dùng `/znf:e2e` |
 | `/znf:ci-watch` | Theo dõi CI của commit vừa push ở chế độ nền, đánh thức phiên khi xong; fail thì giao run lỗi cho `/znf:fix` và theo dõi commit mới (dừng sau 2 vòng). Xem [`ci-watch`](/reference/skills/ci-watch) | Vừa push, muốn Claude tự biết CI xanh hay đỏ |
 | `/znf:sweep` | Dọn dev server, worktree và branch đã merge | Công việc đã merge, cần dọn workspace |
 | `/znf:where` | Tóm tắt task tới đâu: đã xong (kèm bằng chứng), đang làm, bước tiếp với lệnh kit, đọc ledger, branch, worktree, PR | Quay lại sau khi nghỉ hoặc sau khi phiên bị nén |

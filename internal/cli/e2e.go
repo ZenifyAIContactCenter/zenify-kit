@@ -180,6 +180,52 @@ func runE2eRun(runner func(string, []string) error, lookup func(string) string, 
 	return nil
 }
 
+func localRunner(lookup func(string) string) func(dir, name string, args, extraEnv []string) error {
+	return func(dir, name string, args, extraEnv []string) error {
+		cc := childCmd(name, args, extraEnv, lookup)
+		cc.Dir = dir
+		cc.Stdout = os.Stderr
+		cc.Stderr = os.Stderr
+		return execChild(cc)
+	}
+}
+
+// runE2ePrepare installs the host harness (deps + chromium) and runs nothing else.
+func runE2ePrepare() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	return e2e.PrepareLocal(e2e.LocalOptions{Home: home, Run: localRunner(func(string) string { return "" })})
+}
+
+// runE2eLocal lints, then runs the journeys on the host Playwright (no Docker).
+func runE2eLocal(ctx context.Context, bc *brokerclient.Client, role, repo string, port int, baseURL string, out io.Writer) error {
+	if port != 0 {
+		baseURL = fmt.Sprintf("http://localhost:%d", port)
+	}
+	if err := e2e.CheckLoopbackURL(baseURL); err != nil { // before any broker call
+		return err
+	}
+	dir := e2eDir(repo)
+	if _, err := os.Stat(filepath.Join(dir, "e2e.config.json")); err != nil {
+		return exitcode.New(exitcode.BadArgs,
+			fmt.Errorf("not found %s — repo has no e2e configured", filepath.Join(dir, "e2e.config.json")))
+	}
+	if _, err := e2e.Lint(dir, out); err != nil {
+		return err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	lookup, err := e2eLookup(ctx, bc, role)
+	if err != nil {
+		return err
+	}
+	return e2e.RunLocal(e2e.LocalOptions{RepoDir: repo, BaseURL: baseURL, Home: home, Run: localRunner(lookup)})
+}
+
 // newE2eLoginCmd logs in on the host (not Docker) and writes the Playwright storage state.
 func newE2eLoginCmd() *cobra.Command {
 	var url, role string
@@ -233,6 +279,7 @@ func newE2eLoginCmd() *cobra.Command {
 func newE2eCmd() *cobra.Command {
 	var repo, role, baseURL string
 	var port int
+	var local, prepare bool
 	c := &cobra.Command{
 		Use:   "e2e",
 		Short: "E2E functional (Playwright journey thật trong Docker) + lint chống test hợt", //znf:allow-lang
@@ -248,12 +295,21 @@ func newE2eCmd() *cobra.Command {
 		Short: "Chạy journey .znf/e2e trong Docker (cần --port dev-server host hoặc --base-url trong allowlist)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
+			if prepare && !local {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("--prepare needs --local"))
+			}
+			if prepare {
+				return runE2ePrepare()
+			}
 			bc, err := e2eBroker(role)
 			if err != nil {
 				return err
 			}
 			if (port == 0) == (baseURL == "") {
 				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need exactly one of --port or --base-url"))
+			}
+			if local {
+				return runE2eLocal(cmd.Context(), bc, role, resolveRepo(), port, baseURL, out)
 			}
 			// Refuse a disallowed origin before Docker or the broker is touched.
 			if baseURL != "" {
@@ -277,6 +333,8 @@ func newE2eCmd() *cobra.Command {
 			return runE2eRun(runner, lookup, runtime.GOOS, resolveRepo(), port, baseURL, out)
 		},
 	}
+	run.Flags().BoolVar(&local, "local", false, "chạy trên Playwright của host thay vì Docker (chỉ nhận app loopback)")          //znf:allow-lang
+	run.Flags().BoolVar(&prepare, "prepare", false, "với --local: chuẩn bị harness (npm + chromium) rồi thoát, không chạy test") //znf:allow-lang
 	lint := &cobra.Command{
 		Use:   "lint",
 		Short: "Chặn cơ học journey 'hợt' (thiếu re-fetch/assert/cleanup, dùng anti-pattern)", //znf:allow-lang

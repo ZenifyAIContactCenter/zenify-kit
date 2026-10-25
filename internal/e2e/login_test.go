@@ -244,3 +244,35 @@ func TestLogin_RejectsUnknownRole(t *testing.T) {
 		t.Fatalf("want BadArgs, got %v", err)
 	}
 }
+
+// The setup project runs in the shared harness, so Login must hold harness.lock while
+// Playwright runs (a concurrent `e2e run --local` would rewrite the harness under it).
+func TestLogin_HoldsLockDuringSetup(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		home := t.TempDir()
+		lock := filepath.Join(pwDir(home), "harness.lock")
+		held := false
+		f := &fakeRun{content: "{}"}
+		if fail {
+			f.failOn = "test"
+		}
+		o := opts(home, f, &bytes.Buffer{})
+		inner := o.Run
+		o.Run = func(dir, name string, args, extraEnv []string) error {
+			if len(args) >= 2 && args[1] == "test" {
+				_, serr := os.Stat(lock)
+				held = serr == nil
+			}
+			return inner(dir, name, args, extraEnv)
+		}
+		if _, err := Login(o); (err != nil) != fail {
+			t.Fatalf("fail=%v: err = %v", fail, err)
+		}
+		if !held {
+			t.Errorf("fail=%v: harness.lock not held while the setup project ran", fail)
+		}
+		if _, serr := os.Stat(lock); !os.IsNotExist(serr) {
+			t.Errorf("fail=%v: lock left behind: %v", fail, serr)
+		}
+	}
+}

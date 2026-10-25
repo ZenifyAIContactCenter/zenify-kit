@@ -30,7 +30,7 @@ A `Ruling` never replaces these; they win over the catch-all above:
 | `cook` Step 5b plan approval | `zenify await plan` |
 | `fix` Step 4, when the approach is a trade-off | `Ruling` |
 | `ship` fix-loop still open after round 2 | `zenify await needs-human` |
-| `ship` step 4, diff renders (ui-verifier needed) | `zenify await needs-human` (`zenify ui-verify check` does it for you: exit 8, prints the id) |
+| `ship` step 4, diff renders (ui-verifier needed), no `ZNF_SANDBOX_WEB_PORT` | `zenify await needs-human` (`zenify ui-verify check` does it for you: exit 8, prints the id); with `ZNF_SANDBOX_WEB_PORT` set, run `znf:ui-verifier` as in human mode |
 | `_shared/data-scripts.md` prd gate before `--write` | `zenify await data-write` |
 | SDD "Four things stop you": first three (irreversible/destructive, security-sensitive, side effect outside the worktree) | `zenify await irreversible` |
 | SDD "Four things stop you": plan too broken to act on | `zenify await needs-human` |
@@ -48,7 +48,8 @@ Pass every file the person must read as an absolute `--file`. Exit 8 is the expe
 
 ## Resuming
 
-The prompt is `resume <id> approved` or `resume <id> rejected: <reason>`. Run `zenify await show <id>` first, then:
+The prompt is `resume <id> approved`, `resume <id> rejected: <reason>` or `resume <id> answered: <text>`. Run `zenify await show <id>` first, then:
 
 - approved: continue from the stop point. After a `needs-human` UI await, record the waiver the check honours: add `znf:ui-verify-ok: <reason> (await <id>)` as a comment, in that file's comment syntax, to a changed source file (never JSON), commit it, then re-run `zenify ui-verify check`.
 - rejected: fix what the reason names, then `zenify await` again at the same gate.
+- answered: use the text as the answer to the question that await asked and continue; never `zenify await` again for the same question.
