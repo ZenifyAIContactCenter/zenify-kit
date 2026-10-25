@@ -8,6 +8,16 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.48.0
+
+*2026-10-25*
+
+- **`zenify e2e run --local` chạy journey không cần Docker:** journey chạy trên Playwright của máy, dùng chung harness với `zenify e2e login`, chỉ nhận app loopback (`--port` hoặc `--base-url` localhost). Lệnh giữ khóa `harness.lock` suốt lần chạy, nên hai lần `--local` trên cùng máy đi lần lượt. Đã có đúng revision `chromium` và `chromium-headless-shell` (cài trọn vẹn) thì không cần mạng. `--prepare` chỉ chuẩn bị harness rồi thoát. Xem [Journey E2E](/workflows/ui-testing#journey-e2e).
+- **Journey gắn kịch bản nghiệm thu đã chốt:** journey có dòng `// @scenario ZEN-<n>` được lint với `.znf/e2e/scenarios/ZEN-<n>.md`. Mỗi test mang `@ac:<n>` trong tiêu đề, mọi `@ac` loại `e2e` phải có test, mọi chuỗi trong câu lệnh `expect` phải có nguyên văn trong kịch bản, và mọi kiểu skip (`test.skip`, `test.step.skip`, `.skip()` của `testInfo`…) bị chặn. Journey không có dòng `@scenario` giữ luật cũ. Xem [Journey E2E](/workflows/ui-testing#journey-e2e).
+- **Skill `/znf:qa` cho run QA của worker:** viết kịch bản nghiệm thu đóng băng trước khi có code dev, journey phải đỏ ở một `expect` trên code gốc, và chế độ `bind` gắn journey vào code đã xong mà không sửa expect. Xem [/znf:qa](/reference/skills/qa).
+- **Chế độ không người chạy ui-verifier khi sandbox có web app:** khi biến `ZNF_SANDBOX_WEB_PORT` được đặt, agent đăng nhập bằng `zenify e2e login --port $ZNF_SANDBOX_WEB_PORT --role <vai>`, dispatch ui-verifier như chế độ người, và chạy journey bằng `zenify e2e run --local`. Không có biến đó thì hành vi cũ giữ nguyên. Xem [Diff đụng UI](/guides/autonomous#ui).
+- **Resume một câu hỏi bằng `answered:`:** worker nhận thêm prompt `resume <id> answered: <câu trả lời>` cho bản ghi `needs-human` là câu hỏi, bên cạnh `approved` và `rejected: <lý do>`. Xem [Resume](/guides/autonomous#resume).
+
 ## v0.47.0
 
 *2026-10-25*
