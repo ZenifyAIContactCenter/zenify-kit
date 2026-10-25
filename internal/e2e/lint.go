@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
@@ -25,6 +26,13 @@ var (
 	reMarker     = regexp.MustCompile(`//\s*@domain-assert:`)
 	reExpect     = regexp.MustCompile(`\bexpect\s*\(`)
 	reExpectPgAt = regexp.MustCompile(`^\bexpect\s*\(\s*page\b`)
+
+	reScenarioHdr = regexp.MustCompile(`(?m)^\s*//\s*@scenario\s+(ZEN-\d+)\b`)
+	reACTag       = regexp.MustCompile(`@ac:(\d+)`)
+	reSkipOnly    = regexp.MustCompile(`\btest\.(?:skip|fixme|only)\s*\(`)
+	// Locator calls hold selectors, not asserted copy — dropped before literal extraction.
+	reLocatorCall = regexp.MustCompile(`\.(?:getBy\w+|locator|filter)\([^)]*\)`)
+	reLiteral     = regexp.MustCompile(`'([^'\n]*)'|"([^"\n]*)"|` + "`" + `([^` + "`" + `\n]*)` + "`")
 )
 
 // splitTests cuts the file into test blocks by `test(` position. Block i runs from the start
@@ -45,7 +53,7 @@ func splitTests(src string) [][2]int {
 func lineAt(src string, off int) int { return 1 + strings.Count(src[:off], "\n") }
 
 // LintSource scans one spec file, returning findings (empty = pass).
-func LintSource(name, src string) []Finding {
+func LintSource(name, src string, scenarios map[string]Scenario) []Finding {
 	var out []Finding
 	hasAfterEach := strings.Contains(src, "test.afterEach")
 	add := func(off int, rule, msg string) {
@@ -59,12 +67,58 @@ func LintSource(name, src string) []Finding {
 		add(0, "no-test", "*.spec.ts không có scenario test(...) nào để soi") //znf:allow-lang
 		return out
 	}
+	// Scenario-bound rules apply only to journeys that declare `// @scenario ZEN-<n>`.
+	var sc Scenario
+	bound, hasScenario := false, false
+	if m := reScenarioHdr.FindStringSubmatchIndex(src); m != nil {
+		key := src[m[2]:m[3]]
+		if s, ok := scenarios[key]; ok {
+			sc, bound = s, true
+		} else {
+			add(m[0], "scenario-link", "journey references "+key+" but no scenarios/"+key+".md was found")
+		}
+		hasScenario = true
+		for _, l := range reSkipOnly.FindAllStringIndex(src, -1) {
+			add(l[0], "no-skip", "test.skip/test.fixme/test.only is not allowed in a scenario-bound journey")
+		}
+	}
+	covered := map[int]bool{}
 	for _, sp := range spans {
 		block := src[sp[0]:sp[1]]
 		base := sp[0]
+		title := ""
+		if tm := reTestBlock.FindStringSubmatch(block); tm != nil {
+			title = tm[1]
+		}
+		acs := reACTag.FindAllStringSubmatch(title, -1)
+		for _, a := range acs {
+			var n int
+			fmt.Sscanf(a[1], "%d", &n)
+			covered[n] = true
+		}
 
-		// traceability
-		if !strings.Contains(block, "FR-") && !strings.Contains(block, "SC-") {
+		if bound && len(acs) > 0 {
+			off := 0
+			for _, line := range strings.SplitAfter(block, "\n") {
+				if reExpect.MatchString(line) {
+					stripped := reLocatorCall.ReplaceAllString(line, "")
+					for _, lm := range reLiteral.FindAllStringSubmatch(stripped, -1) {
+						lit := lm[1] + lm[2] + lm[3]
+						if lit == "" || strings.Contains(lit, "${") {
+							continue
+						}
+						if !strings.Contains(sc.Raw, lit) {
+							add(base+off, "expect-literal", "expected text "+strconv.Quote(lit)+" is not in the scenario file")
+						}
+					}
+				}
+				off += len(line)
+			}
+		}
+
+		// traceability (a scenario-bound journey may use @ac:<n> instead of FR-/SC-)
+		acOK := hasScenario && len(acs) > 0
+		if !acOK && !strings.Contains(block, "FR-") && !strings.Contains(block, "SC-") {
 			add(base, "traceability", "scenario thiếu tham chiếu FR-/SC-") //znf:allow-lang
 		}
 		// anti-pattern
@@ -117,6 +171,17 @@ func LintSource(name, src string) []Finding {
 			add(base, "cleanup", "scenario tạo entity phải cleanupTracker.add(...) hoặc test.afterEach xoá") //znf:allow-lang
 		}
 	}
+	if bound {
+		var missing []string
+		for _, ac := range sc.ACs {
+			if ac.Kind == ACKindE2E && !covered[ac.N] {
+				missing = append(missing, "@ac:"+strconv.Itoa(ac.N))
+			}
+		}
+		if len(missing) > 0 {
+			add(0, "ac-coverage", "no test covers "+strings.Join(missing, ", "))
+		}
+	}
 	return out
 }
 
@@ -131,12 +196,27 @@ func Lint(specDir string, out io.Writer) (int, error) {
 			fmt.Errorf("no *.spec.ts found in %s", specDir))
 	}
 	total := 0
+	scenarios := map[string]Scenario{}
+	scenFiles, _ := filepath.Glob(filepath.Join(specDir, "scenarios", "*.md"))
+	for _, f := range scenFiles {
+		b, err := os.ReadFile(f) //nolint:gosec // G304 -- f enumerated from the scan root
+		if err != nil {
+			return total, exitcode.New(exitcode.Fail, err)
+		}
+		sc, perr := ParseScenario(string(b))
+		if perr != nil {
+			fmt.Fprintf(out, "%s:1 [scenario-parse] %v\n", filepath.Join("scenarios", filepath.Base(f)), perr)
+			total++
+			continue
+		}
+		scenarios[strings.TrimSuffix(filepath.Base(f), ".md")] = sc
+	}
 	for _, f := range entries {
 		b, err := os.ReadFile(f) //nolint:gosec // G304 -- f is a lint-target path enumerated internally from the scan root, not externally-tainted
 		if err != nil {
 			return total, exitcode.New(exitcode.Fail, err)
 		}
-		for _, fd := range LintSource(filepath.Base(f), string(b)) {
+		for _, fd := range LintSource(filepath.Base(f), string(b), scenarios) {
 			fmt.Fprintf(out, "%s:%d [%s] %s\n", fd.File, fd.Line, fd.Rule, fd.Msg)
 			total++
 		}

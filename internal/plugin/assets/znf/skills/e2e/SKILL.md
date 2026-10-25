@@ -64,6 +64,16 @@ real user of that screen would fail.
 - A `cleanupTracker.add(...)` (or `test.afterEach`) that removes every entity created.
 - The scenario header carries an `FR-`/`SC-` reference.
 
+### Scenario-bound journeys (`// @scenario ZEN-<n>`)
+
+A journey whose header has `// @scenario ZEN-<n>` is bound to the frozen scenario
+`.znf/e2e/scenarios/ZEN-<n>.md`. Journeys without that line keep the rules above unchanged.
+
+- Tag every test title with the criterion it proves: `@ac:<n>` (this replaces the `FR-`/`SC-` reference).
+- `scenario-link`: the scenario file must exist. `ac-coverage`: every `@ac:<n>` of kind `e2e` needs a test.
+- `expect-literal`: a quoted string in an `expect(...)` line of an `@ac` test must appear verbatim in the scenario file.
+- `no-skip`: no `test.skip`, `test.fixme` or `test.only`.
+
 ## Doctrine rules (lint can't catch these yet — author + reviewer must hold them)
 
 Mistakes AI/humans make often that the mechanical gate misses — violating them is shallow:
