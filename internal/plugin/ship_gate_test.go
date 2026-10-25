@@ -29,3 +29,13 @@ func TestShipGate_RunsRulesLint(t *testing.T) {
 		t.Error("ship gate must run the full-tree --include-go gate for the kit repo")
 	}
 }
+
+// FR-03.2: ship step 4 under ZNF_AUTONOMOUS=1 keeps its UI path in a reference (SKILL.md is at its byte budget).
+func TestShipGate_AutonomousUI(t *testing.T) {
+	skill := syncedAsset(t, "skills/ship/SKILL.md")
+	if !strings.Contains(skill, "references/autonomous-ui.md") {
+		t.Error("ship SKILL.md must link references/autonomous-ui.md")
+	}
+	ref := syncedAsset(t, "skills/ship/references/autonomous-ui.md")
+	assertContainsAll(t, "autonomous-ui.md", ref, []string{"ZNF_SANDBOX_WEB_PORT", "exit 8"})
+}

@@ -56,3 +56,14 @@ func TestAutonomousDoc(t *testing.T) {
 	}
 	assertProjectAgnostic(t, "autonomous.md", s)
 }
+
+// FR-03.1: the worker sandbox now carries contact-center-web, so the run skill must say how to start it.
+func TestAutonomousSandboxFE(t *testing.T) {
+	s := syncedAsset(t, "skills/run/references/autonomous-sandbox.md")
+	assertContainsAll(t, "autonomous-sandbox.md", s, []string{
+		"ZNF_SANDBOX_WEB_PORT", "contact-center-web", "zenify e2e run --local",
+	})
+	if strings.Contains(s, "There is no FE in the sandbox") {
+		t.Error("autonomous-sandbox.md still claims there is no FE in the sandbox")
+	}
+}
