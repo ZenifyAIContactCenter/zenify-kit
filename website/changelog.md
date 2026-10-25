@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.49.0
+
+*2026-10-26*
+
+- **`zenify e2e login` và `zenify e2e run --local` đọc tài khoản theo vai từ file:** khi `ZNF_E2E_ACCOUNTS_FILE` trỏ tới file JSON dạng `{"<vai>": {"domain", "email", "password"}}`, lệnh lấy tài khoản của `--role` từ file đó, không gọi broker và không cần manifest khai `broker:`. Không có `--role` thì dùng vai `administrator`. Vai không có trong file, file không đọc được, JSON hỏng hay trường rỗng đều thoát mã 2, thông báo không bao giờ in giá trị. `e2e run` chạy Docker và `visual check` không đọc biến này. Dùng cho sandbox của worker, nơi tài khoản broker trên staging không đăng nhập được. Xem [Journey E2E](/workflows/ui-testing#journey-e2e).
+- **Trang hướng dẫn Zenie review trên PR:** giải thích khi nào Zenie review, cách chấm điểm, check `Zenie Review` xanh hay đỏ khi nào, và các lệnh `@zenieai` gõ được trên PR. Xem [Zenie review trên PR](/guides/zenie-review).
+
 ## v0.48.0
 
 *2026-10-25*
