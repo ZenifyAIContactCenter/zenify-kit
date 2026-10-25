@@ -1,9 +1,9 @@
 package cli
 
 import (
-	"errors"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -568,5 +568,30 @@ func TestE2eRunLocalSkipsDocker(t *testing.T) {
 	}
 	if _, _, err := execCmd(newE2eCmd(), "run", "--port", "4100"); err == nil || !strings.Contains(err.Error(), "docker not running") {
 		t.Fatalf("without --local: err = %v, want the docker error", err)
+	}
+}
+
+// A lint failure stops --local before any child (install or test) runs.
+func TestE2eRunLocalLintFailureStopsBeforeRun(t *testing.T) {
+	hermeticE2E(t, "")
+	_, ran := e2eRunRepo(t)
+	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", t.TempDir())
+	if err := os.WriteFile(filepath.Join(".znf", "e2e", "shallow.spec.ts"), []byte("test('x [FR-1]', async ({page}) => {});"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := execCmd(newE2eCmd(), "run", "--local", "--port", "4100"); err == nil {
+		t.Fatal("want a lint error")
+	}
+	if *ran {
+		t.Error("a child ran after the lint failure")
+	}
+}
+
+func TestE2eRunPrepareNeedsLocal(t *testing.T) {
+	hermeticE2E(t, "")
+	_, ran := e2eRunRepo(t)
+	_, _, err := execCmd(newE2eCmd(), "run", "--prepare")
+	if exitcode.Code(err) != exitcode.BadArgs || *ran {
+		t.Fatalf("err=%v ran=%v, want BadArgs and no child", err, *ran)
 	}
 }

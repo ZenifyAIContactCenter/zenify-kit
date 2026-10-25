@@ -74,8 +74,8 @@ func acquireLock(path string, wait time.Duration) error {
 }
 
 // PrepareHarness writes the harness and installs deps + chromium, under the lock.
-// The chromium install is skipped when PLAYWRIGHT_BROWSERS_PATH already holds one
-// (an offline worker image baked it at build time).
+// The chromium install is skipped when PLAYWRIGHT_BROWSERS_PATH already holds the
+// revision Playwright expects (an offline worker image baked it at build time).
 func PrepareHarness(o LoginOptions, root, harness string) error {
 	wait := o.LockWait
 	if wait == 0 {
@@ -95,7 +95,7 @@ func PrepareHarness(o LoginOptions, root, harness string) error {
 			return fmt.Errorf("npm install: %w", err)
 		}
 	}
-	if hasChromium(os.Getenv("PLAYWRIGHT_BROWSERS_PATH")) {
+	if hasChromium(os.Getenv("PLAYWRIGHT_BROWSERS_PATH"), harness) {
 		return nil
 	}
 	if err := o.Run(harness, "npx", []string{"playwright", "install", "chromium"}, nil); err != nil {
@@ -116,13 +116,32 @@ func pinnedInstalled(pkg string) bool {
 	return json.Unmarshal(b, &v) == nil && v.Version == pinnedPlaywrightVersion
 }
 
-// hasChromium reports whether dir (a PLAYWRIGHT_BROWSERS_PATH) holds a chromium-* build.
-func hasChromium(dir string) bool {
+// hasChromium reports whether dir (a PLAYWRIGHT_BROWSERS_PATH) holds the chromium
+// revision the harness's Playwright expects. Unreadable browsers.json = false.
+func hasChromium(dir, harness string) bool {
 	if dir == "" {
 		return false
 	}
-	m, _ := filepath.Glob(filepath.Join(dir, "chromium-*"))
-	return len(m) > 0
+	b, err := os.ReadFile(filepath.Join(harness, "node_modules", "playwright-core", "browsers.json")) //nolint:gosec // G304 -- path built from home
+	if err != nil {
+		return false
+	}
+	var v struct {
+		Browsers []struct {
+			Name     string `json:"name"`
+			Revision string `json:"revision"`
+		} `json:"browsers"`
+	}
+	if json.Unmarshal(b, &v) != nil {
+		return false
+	}
+	for _, br := range v.Browsers {
+		if br.Name == "chromium" && br.Revision != "" {
+			_, err := os.Stat(filepath.Join(dir, "chromium-"+br.Revision))
+			return err == nil
+		}
+	}
+	return false
 }
 
 // CheckLoopbackURL refuses any origin that is not a local app: the harness types

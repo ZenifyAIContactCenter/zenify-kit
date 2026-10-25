@@ -78,6 +78,7 @@ func TestRunLocalSkipsInstall(t *testing.T) {
 	}
 	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", browsers)
 	home, repo := t.TempDir(), localRepo(t)
+	writeBrowsersJSON(t, home, "1187")
 	pkg := filepath.Join(playwrightDir(home), "harness", "node_modules", "@playwright", "test")
 	if err := os.MkdirAll(pkg, 0o750); err != nil {
 		t.Fatal(err)
@@ -121,5 +122,78 @@ func TestPrepareLocalDoesNotRunTests(t *testing.T) {
 	want := []string{"npm install --no-audit --no-fund --silent", "npx playwright install chromium"}
 	if !slices.Equal(calls, want) {
 		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+}
+
+func writeBrowsersJSON(t *testing.T, home, rev string) {
+	t.Helper()
+	d := filepath.Join(playwrightDir(home), "harness", "node_modules", "playwright-core")
+	if err := os.MkdirAll(d, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"browsers":[{"name":"firefox","revision":"9"},{"name":"chromium","revision":"` + rev + `"}]}`
+	if err := os.WriteFile(filepath.Join(d, "browsers.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func prepareWithBrowsers(t *testing.T, have, want string, writeJSON bool) []string {
+	t.Helper()
+	browsers := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(browsers, "chromium-"+have), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", browsers)
+	home := t.TempDir()
+	if writeJSON {
+		writeBrowsersJSON(t, home, want)
+	}
+	pkg := filepath.Join(playwrightDir(home), "harness", "node_modules", "@playwright", "test")
+	if err := os.MkdirAll(pkg, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"1.55.0"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	if err := PrepareLocal(LocalOptions{Home: home, Run: func(_, name string, args, _ []string) error {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	return calls
+}
+
+func TestPrepareChromiumRevision(t *testing.T) {
+	install := "npx playwright install chromium"
+	if c := prepareWithBrowsers(t, "1247", "1187", true); !slices.Equal(c, []string{install}) {
+		t.Errorf("revision mismatch: calls = %v, want the install", c)
+	}
+	if c := prepareWithBrowsers(t, "1187", "1187", true); len(c) != 0 {
+		t.Errorf("revision match: calls = %v, want none", c)
+	}
+	if c := prepareWithBrowsers(t, "1187", "", false); !slices.Equal(c, []string{install}) {
+		t.Errorf("no browsers.json: calls = %v, want the install", c)
+	}
+}
+
+func TestRunLocalSkipsOutputDir(t *testing.T) {
+	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", t.TempDir())
+	home, repo := t.TempDir(), localRepo(t)
+	out := filepath.Join(repo, ".znf", "e2e", "__output__")
+	if err := os.MkdirAll(out, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "trace.zip"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := RunLocal(LocalOptions{RepoDir: repo, BaseURL: "http://localhost:4100", Home: home,
+		Run: func(_, _ string, _, _ []string) error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(playwrightDir(home), "harness", ".znf", "e2e", "__output__")); !os.IsNotExist(err) {
+		t.Errorf("__output__ was copied: %v", err)
 	}
 }

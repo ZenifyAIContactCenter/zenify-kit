@@ -81,6 +81,9 @@ func copyTree(src, dst string) error {
 		}
 		rel, _ := filepath.Rel(src, p)
 		target := filepath.Join(dst, rel)
+		if d.IsDir() && d.Name() == "__output__" {
+			return fs.SkipDir
+		}
 		if d.IsDir() {
 			return os.MkdirAll(target, 0o750)
 		}
