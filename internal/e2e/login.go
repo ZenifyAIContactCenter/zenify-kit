@@ -200,7 +200,13 @@ func Login(o LoginOptions) (string, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", exitcode.New(exitcode.Fail, err)
 	}
-	if err := PrepareHarness(o, root, harness); err != nil {
+	// Hold harness.lock through the setup run too: `e2e run --local` rewrites the harness.
+	unlock, err := lockHarness(root, o.LockWait)
+	if err != nil {
+		return "", exitcode.New(exitcode.Fail, err)
+	}
+	defer unlock()
+	if err := prepareHarness(o, harness); err != nil {
 		return "", exitcode.New(exitcode.Fail, err)
 	}
 	f, err := os.CreateTemp(root, "state-*.json.tmp")
