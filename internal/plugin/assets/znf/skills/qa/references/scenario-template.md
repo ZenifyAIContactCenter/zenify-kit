@@ -15,6 +15,9 @@ parses them by these exact words. Copy the skeleton, keep every keyword spelled 
   (ui-verifier or unit) and why it is not a journey.
 - Optional last section `## Câu hỏi mở` for open questions. Any other `## @ac` heading shape is a parse error.
 
+The skeleton below is a shape, not a valid file: its `<placeholders>` (starting with `ZEN-<n>`)
+do not parse until replaced. The worked example after it is valid as written.
+
 ```text
 # ZEN-<n>: <title>
 Vai: <role>

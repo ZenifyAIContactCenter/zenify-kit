@@ -15,9 +15,14 @@ dev run cannot bend the test to fit the code. Every rule below protects that.
 ## Isolation (all modes)
 
 - Never read the dev run's branch, plan, diff or commits. Read only the code at base and the running sandbox app.
-- Never `git push`. Commit only through `node /opt/sandbox/api-commit.mjs`, passing the `.znf/e2e/**` files you wrote.
+- Never `git push`. Commit only with (repo, branch and base sha exactly as the run prompt gives them;
+  the item branch is `zen-<n>`, `--repo` is the primary repo below):
+  `node /opt/sandbox/api-commit.mjs --repo <repo> --branch zen-<n> --message "test(e2e): <mode> ZEN-<n>" --base-sha <base sha> <path>...`
+  Each `<path>` is a file you wrote under `.znf/e2e/`. `--base-sha` creates the branch when it does not exist yet.
+- Exit 2 = a path was rejected: fix the path list, never move files outside `.znf/e2e/`. Any other
+  non-zero exit: stop and put it in `reason`. Success prints the commit sha: record it as `"commit"`.
 - Always finish by writing `/out/qa-result.json`, success or not:
-  `{"mode","key","repo","journey":bool,"green"?:bool,"reason"?:string,"acs":[{"n","kind"}]}`
+  `{"mode","key","repo","journey":bool,"green"?:bool,"reason"?:string,"commit"?:string,"acs":[{"n","kind"}]}`
   (`mode` = `scenario` | `journey` | `bind`; `acs` lists every `@ac` with its final kind).
 
 ## Primary repo
@@ -48,6 +53,7 @@ Write `.znf/e2e/zen-<n>.spec.ts` following `znf:e2e` (deep scenario, domain asse
 1. The header carries `// @scenario ZEN-<n>`. Every test title carries the `@ac:<n>` it proves; every `e2e` `@ac` gets a test.
 2. Every string inside an `expect` is copied verbatim from that `@ac`'s `Thấy` lines.
 3. Run `zenify e2e lint`, then `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT` on base.
+   An attempt is one `zenify e2e run --local` on base after `zenify e2e lint` passes; lint failures and their fixes are not attempts.
 4. It must be red at the `expect` of an `@ac`. Red at a locator, navigation, seed or login step does
    not count: fix the journey (never the expect) and run again.
 5. Two attempts without that red → delete the journey file, keep the scenario, write

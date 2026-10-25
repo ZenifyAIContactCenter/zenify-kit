@@ -38,12 +38,29 @@ func TestQASkillContract(t *testing.T) {
 		`{"journey":false,"reason":`,
 		`{"green":false,"failures":`,
 		"Never `git push`",
+		"--repo",
+		"--branch",
+		"--message",
+		"--base-sha",
+		"zen-<n>",
+		`"commit"`,
+		"Exit 2",
+		"An attempt is one `zenify e2e run --local` on base after `zenify e2e lint` passes",
 	})
 
 	tpl := syncedAsset(t, "skills/qa/references/scenario-template.md")
 	ex := fencedBlockStarting(tpl, "# ZEN-123:")
 	if ex == "" {
 		t.Fatal("scenario-template.md has no fenced example starting with `# ZEN-123:`")
+	}
+	// The skeleton is documented as a shape, not a valid file: it must keep
+	// failing to parse so nobody commits it with placeholders left in.
+	skel := fencedBlockStarting(tpl, "# ZEN-<n>:")
+	if skel == "" {
+		t.Fatal("scenario-template.md has no skeleton fence starting with `# ZEN-<n>:`")
+	}
+	if _, err := e2e.ParseScenario(skel); err == nil {
+		t.Error("skeleton parses; the template says it is not a valid file")
 	}
 	sc, err := e2e.ParseScenario(ex)
 	if err != nil {
