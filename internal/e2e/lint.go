@@ -201,19 +201,43 @@ func regexStart(src string, start, i int) bool {
 	for j >= start && (src[j] == ' ' || src[j] == '\t' || src[j] == '\n' || src[j] == '\r') {
 		j--
 	}
-	return j < start || strings.IndexByte("(,=:[!&|?{};+-*%<>~^", src[j]) >= 0
+	// `!` is left out: in TypeScript `total! / count` is a non-null assertion, then a division.
+	return j < start || strings.IndexByte("(,=:[&|?{};+-*%<>~^", src[j]) >= 0
 }
 
 // blankStrings replaces the contents of string literals with spaces (quotes, newlines and
 // offsets kept), so a rule that matches code is not tripped by on-screen copy like 'step.skip()'.
+// Code inside a template's ${...} stays, and a regex literal is skipped whole, so a quote
+// inside `/'/` does not open a string.
 func blankStrings(src string) string {
 	b := []byte(src)
 	for i := 0; i < len(b); i++ {
 		c := b[i]
+		if c == '/' && regexStart(src, 0, i) {
+			for i++; i < len(b) && b[i] != '/' && b[i] != '\n'; i++ {
+				if b[i] == '\\' {
+					i++
+				}
+			}
+			continue
+		}
 		if c != '\'' && c != '"' && c != '`' {
 			continue
 		}
 		for i++; i < len(b) && b[i] != c && (c == '`' || b[i] != '\n'); i++ {
+			if c == '`' && b[i] == '$' && i+1 < len(b) && b[i+1] == '{' {
+				depth := 0
+				for i++; i < len(b); i++ {
+					if b[i] == '{' {
+						depth++
+					} else if b[i] == '}' {
+						if depth--; depth == 0 {
+							break
+						}
+					}
+				}
+				continue
+			}
 			if b[i] == '\\' && i+1 < len(b) {
 				b[i] = ' '
 				i++

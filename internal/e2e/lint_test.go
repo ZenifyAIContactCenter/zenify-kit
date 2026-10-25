@@ -268,6 +268,9 @@ func TestLintScenarioRules(t *testing.T) {
 		{"escaped quote in title", strings.Replace(journey(hdr, "T", ""), "test('T'", "test('user\\'s ticket @ac:1 @ac:2'", 1), nil, "", "traceability"},
 		{"regex with paren keeps the matcher", journey(hdr, "x @ac:1 @ac:2", "  expect((await r.json()).subject.replace(/\\)/g, '')).toBe('Wrong');"), nil, "expect-literal", ""},
 		{"skip text in a string is not a skip", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByText('Vui lòng nhập tiêu đề step.skip()')).toBeVisible();"), scenarioFor(t, scenSkipText), "", "no-skip"}, //znf:allow-lang
+		{"skip inside template expression caught", journey(hdr, "x @ac:1 @ac:2", "  const note = `${test.skip(true)}`;"), nil, "no-skip", ""},
+		{"skip after quote-holding regex caught", journey(hdr, "x @ac:1 @ac:2", "  const quote = /'/; test.skip(true);"), nil, "no-skip", ""},
+		{"non-null then division is not a regex", journey(hdr, "x @ac:1 @ac:2", "  expect(total! / count).toBe(2);\n  await page.goto('/tickets');"), nil, "", "expect-literal"},
 		{"apostrophe in title", strings.Replace(journey(hdr, "T", ""), "test('T'", "test(\"user's ticket @ac:1 @ac:2\"", 1), nil, "", "traceability"},
 	}
 	for _, c := range cases {
