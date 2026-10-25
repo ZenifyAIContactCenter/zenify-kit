@@ -86,8 +86,9 @@ The scenario is frozen; the journey's expects come from it, verbatim.
   with its content at the `qa` commit and fails the run on any difference.
 - Never change a literal inside an `expect`, and never delete, skip or weaken an `expect`.
 - Run `zenify e2e lint`, then `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT --role <role>`.
+- Red at a locator, navigation, seed or login step is yours: fix the journey (never the `expect`) and run again.
 - Green → commit the journey; `"green":true`.
-- Red → do not fix the `expect`; write `{"green":false,"failures":[{"ac":<n>,"message":"<assertion message>"}]}`
+- Red at the `expect` of an `@ac` → still commit the journey (the dev run's autofix runs it), do not fix the `expect`; write `{"green":false,"failures":[{"ac":<n>,"message":"<assertion message>"}]}`
   (plus the common fields), one entry per failing `@ac`. The failure is a finding for the dev run, not for you.
 
 ## References

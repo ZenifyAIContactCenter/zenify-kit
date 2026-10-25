@@ -45,6 +45,7 @@ func TestQASkillContract(t *testing.T) {
 		"/out/qa-result.json",
 		`{"journey":false,"reason":`,
 		`{"green":false,"failures":`,
+		"still commit the journey (the dev run's autofix runs it)",
 		"Never `git push`",
 		"--repo",
 		"--branch",
