@@ -17,6 +17,8 @@ Repo cần file `.znf/e2e/e2e.config.json`. Thiếu file này, lệnh báo repo 
 |---|---|
 | `--port` | Port dev server trên máy bạn. Cần đúng một trong `--port` hoặc `--base-url`. |
 | `--base-url` | Origin cần test thay cho dev server, ví dụ `https://staging.example.com`. Chỉ nhận origin (bỏ path, host không phân biệt hoa thường) nằm trong `baseUrls` của `.znf/e2e/e2e.config.json`; ngoài danh sách hoặc thiếu `baseUrls` thì lệnh thoát mã 2 trước khi chạy Docker. |
+| `--local` | Chạy trên Playwright của host (cùng harness với `zenify e2e login`) thay vì Docker, không cần Docker. Chỉ nhận app loopback (`--port`, hoặc `--base-url` là localhost/127.0.0.1). Lệnh vẫn lint trước, rồi chép `.znf/e2e` vào harness và chạy `npx playwright test`. Bỏ qua `npm install` khi harness đã có `@playwright/test` 1.55.0, bỏ qua tải chromium khi `PLAYWRIGHT_BROWSERS_PATH` đã có `chromium-*`, nên chạy được khi không có mạng. |
+| `--prepare` | Chỉ đi cùng `--local`: chuẩn bị harness (npm và chromium) rồi thoát mã 0, không chạy test. Image worker gọi lúc build. |
 | `--repo` | Đường dẫn repo. Mặc định thư mục hiện tại. |
 | `--role` | Role tài khoản E2E xin từ broker (`administrator`, `supervisor`, `team_leader`, `agent`, `sale`, `sale_team_leader`). Cần manifest khai báo `broker:`; không có broker thì lệnh thoát mã 2. Không có `--role` mà có broker thì dùng `administrator`. |
 
@@ -28,4 +30,4 @@ zenify e2e run --repo repos/contact-center-web --port $(git -C repos/contact-cen
 
 ## Lưu ý
 
-Cần Docker đang chạy. Nếu thiếu Docker, chạy `zenify doctor` để xem môi trường.
+Không có `--local` thì cần Docker đang chạy. Nếu thiếu Docker, chạy `zenify doctor` để xem môi trường.

@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,10 +18,10 @@ import (
 )
 
 const (
-	pinnedPlaywright = `"version": "1.55.0"`
-	staleLockAge     = 10 * time.Minute
-	defaultLockWait  = 120 * time.Second
-	lockPoll         = 500 * time.Millisecond
+	pinnedPlaywrightVersion = "1.55.0"
+	staleLockAge            = 10 * time.Minute
+	defaultLockWait         = 120 * time.Second
+	lockPoll                = 500 * time.Millisecond
 )
 
 // LoginOptions configures Login. Credentials are read only through Getenv by the
@@ -72,8 +73,10 @@ func acquireLock(path string, wait time.Duration) error {
 	}
 }
 
-// prepareHarness writes the harness and installs deps + chromium, under the lock.
-func prepareHarness(o LoginOptions, root, harness string) error {
+// PrepareHarness writes the harness and installs deps + chromium, under the lock.
+// The chromium install is skipped when PLAYWRIGHT_BROWSERS_PATH already holds one
+// (an offline worker image baked it at build time).
+func PrepareHarness(o LoginOptions, root, harness string) error {
 	wait := o.LockWait
 	if wait == 0 {
 		wait = defaultLockWait
@@ -87,15 +90,39 @@ func prepareHarness(o LoginOptions, root, harness string) error {
 		return err
 	}
 	pkg := filepath.Join(harness, "node_modules", "@playwright", "test", "package.json")
-	if b, err := os.ReadFile(pkg); err != nil || !strings.Contains(string(b), pinnedPlaywright) { //nolint:gosec // G304 -- path built from home
+	if !pinnedInstalled(pkg) {
 		if err := o.Run(harness, "npm", []string{"install", "--no-audit", "--no-fund", "--silent"}, nil); err != nil {
 			return fmt.Errorf("npm install: %w", err)
 		}
+	}
+	if hasChromium(os.Getenv("PLAYWRIGHT_BROWSERS_PATH")) {
+		return nil
 	}
 	if err := o.Run(harness, "npx", []string{"playwright", "install", "chromium"}, nil); err != nil {
 		return fmt.Errorf("playwright install: %w", err)
 	}
 	return nil
+}
+
+// pinnedInstalled reports whether the package.json at pkg is the pinned Playwright.
+func pinnedInstalled(pkg string) bool {
+	b, err := os.ReadFile(pkg) //nolint:gosec // G304 -- path built from home
+	if err != nil {
+		return false
+	}
+	var v struct {
+		Version string `json:"version"`
+	}
+	return json.Unmarshal(b, &v) == nil && v.Version == pinnedPlaywrightVersion
+}
+
+// hasChromium reports whether dir (a PLAYWRIGHT_BROWSERS_PATH) holds a chromium-* build.
+func hasChromium(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	m, _ := filepath.Glob(filepath.Join(dir, "chromium-*"))
+	return len(m) > 0
 }
 
 // CheckLoopbackURL refuses any origin that is not a local app: the harness types
@@ -134,7 +161,7 @@ func Login(o LoginOptions) (string, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", exitcode.New(exitcode.Fail, err)
 	}
-	if err := prepareHarness(o, root, harness); err != nil {
+	if err := PrepareHarness(o, root, harness); err != nil {
 		return "", exitcode.New(exitcode.Fail, err)
 	}
 	f, err := os.CreateTemp(root, "state-*.json.tmp")
