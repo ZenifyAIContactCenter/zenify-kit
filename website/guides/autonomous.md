@@ -96,10 +96,11 @@ Role `agent` không bao giờ lấy được credential ghi production. Quy trì
 
 ## Resume
 
-Worker được khởi động lại với prompt `resume <id> approved` hoặc `resume <id> rejected: <lý do>`. Agent chạy `zenify await show <id>` trước, rồi:
+Worker được khởi động lại với prompt `resume <id> approved`, `resume <id> rejected: <lý do>` hoặc `resume <id> answered: <câu trả lời>`. Agent chạy `zenify await show <id>` trước, rồi:
 
 - `approved`: làm tiếp từ điểm đã dừng.
 - `rejected`: sửa điều lý do nêu, rồi `zenify await` lại ở đúng cổng đó.
+- `answered`: dùng câu trả lời làm đáp án cho câu hỏi mà await đó nêu rồi làm tiếp; không `zenify await` lại cho cùng câu hỏi.
 
 ## Xem thêm
 

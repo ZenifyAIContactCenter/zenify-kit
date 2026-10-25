@@ -53,7 +53,8 @@ Write `.znf/e2e/scenarios/ZEN-<n>.md` from `references/scenario-template.md`.
    logged in as `<role>` (see Role and login); never invent a label.
 4. A `hỏi` line: ask the item owner with `zenify await needs-human --summary "<plain-language question>"`.
    The question carries no `@ac`, locator, API path, id or field name. At most 2 rounds; still
-   unanswered → change the kind to `ngoài-e2e` with the reason on that line.
+   unanswered → change the kind to `ngoài-e2e` with the reason on that line. The reply arrives as
+   `resume <id> answered: <text>`.
 5. Open questions go under the open-questions section, never into a `Thấy` line.
 6. Commit the scenario (and the config if created). Result: `"journey":false`.
 
