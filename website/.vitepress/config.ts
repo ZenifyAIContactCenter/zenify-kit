@@ -99,6 +99,7 @@ export default withMermaid({
         { text: 'Dựng host credential broker', link: '/guides/broker-host' },
         { text: 'Chế độ không người', link: '/guides/autonomous' },
         { text: 'Review và gate', link: '/guides/review-and-gates' },
+        { text: 'Zenie review trên PR', link: '/guides/zenie-review' },
         { text: 'Spec, plan và kiểm tra', link: '/guides/spec-and-plan' },
         { text: 'Release và báo cáo', link: '/guides/release' },
         { text: 'Changelog', link: '/changelog' },
