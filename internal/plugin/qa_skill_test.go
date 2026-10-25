@@ -39,8 +39,8 @@ func TestQASkillContract(t *testing.T) {
 		"zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT --role <role>",
 		"e2e.config.json",
 		"$ZNF_SANDBOX_WEB_PORT",
-		"http://127.0.0.1:3001",
-		"contact-center-web",
+		"autonomous sandbox notes name",
+		"never hardcode a repo name or port here",
 		"api-commit.mjs",
 		"/out/qa-result.json",
 		`{"journey":false,"reason":`,
@@ -56,6 +56,14 @@ func TestQASkillContract(t *testing.T) {
 		"Exit 2",
 		"An attempt is one `zenify e2e run --local` on base after `zenify e2e lint` passes",
 	})
+
+	// Public-distribution invariant (ARCHITECTURE.md): the workspace's repo names and
+	// backend ports are read from the sandbox notes at run time, never embedded here.
+	for _, forbidden := range []string{"contact-center", "127.0.0.1:300"} {
+		if strings.Contains(s, forbidden) {
+			t.Errorf("qa/SKILL.md embeds workspace-specific %q", forbidden)
+		}
+	}
 
 	tpl := syncedAsset(t, "skills/qa/references/scenario-template.md")
 	ex := fencedBlockStarting(tpl, "# ZEN-123:")

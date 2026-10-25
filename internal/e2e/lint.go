@@ -23,16 +23,18 @@ var (
 	// Match test.only/.skip/.fixme too — otherwise a `test.only(...)` scenario would
 	// NOT match, splitTests returns empty and the whole gate skips it (bypasses the rule entirely).
 	// One alternative per quote kind, so an apostrophe inside a "..." title does not end it.
-	reTestBlock  = regexp.MustCompile(`\btest(?:\.(?:only|skip|fixme))?\s*\(\s*(?:'([^']*)'|"([^"]*)"|` + "`([^`]*)`" + `)`)
+	// Escape-aware, so `'it\'s @ac:1'` keeps its tag; jsUnescape decodes the title.
+	reTestBlock  = regexp.MustCompile(`\btest(?:\.(?:only|skip|fixme))?\s*\(\s*(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|` + "`((?:[^`\\\\]|\\\\.)*)`" + `)`)
 	reMarker     = regexp.MustCompile(`//\s*@domain-assert:`)
 	reExpect     = regexp.MustCompile(`\bexpect\s*\(`)
 	reExpectPgAt = regexp.MustCompile(`^\bexpect\s*\(\s*page\b`)
 
 	reScenarioHdr = regexp.MustCompile(`(?m)^\s*//\s*@scenario\s+(ZEN-\d+)\b`)
 	reACTag       = regexp.MustCompile(`@ac:(\d+)`)
-	reSkipOnly    = regexp.MustCompile(`\btest\.(?:describe(?:\.(?:serial|parallel))?\.(?:skip|fixme|only)|skip|fixme|only|fail)\s*\(`)
-	// expect-literal scans expect(, expect.soft( and expect.poll( lines.
-	reExpectLine = regexp.MustCompile(`\bexpect(?:\.(?:soft|poll))?\s*\(`)
+	// The trailing alternative catches test.step.skip(...) and testInfo/step.skip(...): a skipped step's expects never run.
+	reSkipOnly = regexp.MustCompile(`\btest\.(?:describe(?:\.(?:serial|parallel))?\.(?:skip|fixme|only)|skip|fixme|only|fail)\s*\(|\.(?:skip|fixme)\s*\(`)
+	// expect-literal scans expect(, expect.soft( and expect.poll( statements.
+	reExpectLine = regexp.MustCompile(`\bexpect(?:\s*\.(?:soft|poll))?\s*\(`)
 	// A regex in a copy-bearing position escapes the literal check, so it is flagged.
 	reCopyRegex = regexp.MustCompile(`(?:\.(?:toHaveText|toContainText|toHaveValue|toHaveValues|toHaveAccessibleName|toHaveAccessibleDescription|getByText|getByLabel|getByPlaceholder|getByAltText|getByTitle)\(\s*\[?\s*|\b(?:name|hasText|hasNotText)\s*:\s*)/[^/\n]`)
 	// Text engines inside a locator(...) selector carry user-visible copy.
@@ -44,10 +46,10 @@ var (
 	// Only selector-ish arguments are exempt from expect-literal: getByRole's role (first arg),
 	// getByTestId's id and locator(...) CSS without a text engine. getByText/getByLabel/
 	// getByPlaceholder, getByRole name and hasText carry user-visible copy and stay checked.
-	reSelectorArg = regexp.MustCompile(`\.(?:getByRole|getByTestId|locator)\(\s*(?:'([^'\n]*)'|"([^"\n]*)"|` + "`([^`\n]*)`" + `)`)
+	reSelectorArg = regexp.MustCompile(`\.(?:getByRole|getByTestId|locator)\(\s*(?:'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|` + "`((?:[^`\\\\\n]|\\\\.)*)`" + `)`)
 	// An apiClient call's path is not copy (expect.poll re-fetches through it).
-	reAPIArg  = regexp.MustCompile(`\bapiClient\.\w+\(\s*(?:'[^'\n]*'|"[^"\n]*"|` + "`[^`\n]*`" + `)`)
-	reLiteral = regexp.MustCompile(`'([^'\n]*)'|"([^"\n]*)"|` + "`" + `([^` + "`" + `\n]*)` + "`")
+	reAPIArg  = regexp.MustCompile(`\bapiClient\.\w+\(\s*(?:'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|` + "`(?:[^`\\\\\n]|\\\\.)*`" + `)`)
+	reLiteral = regexp.MustCompile(`'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|` + "`((?:[^`\\\\\n]|\\\\.)*)`")
 )
 
 // splitTests cuts the file into test blocks by `test(` position. Block i runs from the start
@@ -119,6 +121,63 @@ func blankComments(src string) string {
 	return string(b)
 }
 
+// jsUnescape decodes a JS string literal body: `\'` → `'`, `\n` → newline, `\\` → `\`.
+func jsUnescape(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' || i+1 == len(s) {
+			b.WriteByte(s[i])
+			continue
+		}
+		i++
+		switch s[i] {
+		case 'n':
+			b.WriteByte('\n')
+		case 't':
+			b.WriteByte('\t')
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return b.String()
+}
+
+// statementEnd returns the offset in src where the statement starting at start ends: a `;`
+// outside brackets and strings, or a newline outside them not followed by a `.` chain
+// (`expect(x)\n  .toHaveText('y')` is one statement), or the end of src.
+func statementEnd(src string, start int) int {
+	depth := 0
+	for i := start; i < len(src); i++ {
+		switch c := src[i]; c {
+		case '\'', '"', '`':
+			for i++; i < len(src) && src[i] != c; i++ {
+				if src[i] == '\\' {
+					i++
+				}
+			}
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+			if depth < 0 {
+				return i
+			}
+		case ';':
+			if depth == 0 {
+				return i
+			}
+		case '\n':
+			if depth == 0 && !strings.HasPrefix(strings.TrimLeft(src[i:], " \t\r\n"), ".") {
+				return i
+			}
+		}
+	}
+	return len(src)
+}
+
 // selectorCopy returns the user-visible copy carried by a locator(...) selector's text
 // engines; ok=false when the selector has a text engine whose text cannot be extracted.
 func selectorCopy(sel string) (texts []string, ok bool) {
@@ -135,7 +194,7 @@ func selectorCopy(sel string) (texts []string, ok bool) {
 	return texts, len(texts) > 0
 }
 
-// expectLiterals returns the literal copy one expect line asserts: string literals outside
+// expectLiterals returns the literal copy one expect statement asserts: string literals outside
 // selector and apiClient arguments, text-engine copy inside locator selectors, and the
 // static parts of template literals.
 func expectLiterals(line string) []string {
@@ -144,7 +203,7 @@ func expectLiterals(line string) []string {
 		if !strings.Contains(m[0], ".locator(") {
 			continue
 		}
-		sel := m[1] + m[2] + m[3]
+		sel := jsUnescape(m[1] + m[2] + m[3])
 		texts, ok := selectorCopy(sel)
 		if !ok {
 			texts = []string{sel}
@@ -155,13 +214,13 @@ func expectLiterals(line string) []string {
 	for _, lm := range reLiteral.FindAllStringSubmatch(stripped, -1) {
 		if lm[3] != "" {
 			for _, part := range reTplExpr.Split(lm[3], -1) {
-				if p := strings.TrimSpace(part); p != "" {
+				if p := strings.TrimSpace(jsUnescape(part)); p != "" {
 					lits = append(lits, p)
 				}
 			}
 			continue
 		}
-		if lit := lm[1] + lm[2]; lit != "" {
+		if lit := jsUnescape(lm[1] + lm[2]); lit != "" {
 			lits = append(lits, lit)
 		}
 	}
@@ -206,7 +265,7 @@ func LintSource(name, src string, scenarios map[string]Scenario) []Finding {
 		base := sp[0]
 		title := ""
 		if tm := reTestBlock.FindStringSubmatch(block); tm != nil {
-			title = tm[1] + tm[2] + tm[3]
+			title = jsUnescape(tm[1] + tm[2] + tm[3])
 		}
 		acs := reACTag.FindAllStringSubmatch(title, -1)
 		for _, a := range acs {
@@ -221,19 +280,23 @@ func LintSource(name, src string, scenarios map[string]Scenario) []Finding {
 		}
 
 		if bound && len(acs) > 0 {
-			off := 0
-			for _, line := range strings.SplitAfter(block, "\n") {
-				if reExpectLine.MatchString(line) {
-					if reCopyRegex.MatchString(line) {
-						add(base+off, "expect-literal", "a regex in place of on-screen text cannot be checked against the scenario; use the exact text")
-					}
-					for _, lit := range expectLiterals(line) {
-						if !strings.Contains(sc.Raw, lit) {
-							add(base+off, "expect-literal", "expected text "+strconv.Quote(lit)+" is not in the scenario file")
-						}
+			// Whole statements, not lines: a matcher or its argument on a continuation line
+			// (`expect(loc)\n  .toHaveText('x')`) is still checked.
+			done := 0
+			for _, m := range reExpectLine.FindAllStringIndex(block, -1) {
+				if m[0] < done {
+					continue // inside the previous statement (expect within expect.poll)
+				}
+				done = statementEnd(block, m[0])
+				stmt := strings.ReplaceAll(block[m[0]:done], "\n", " ")
+				if reCopyRegex.MatchString(stmt) {
+					add(base+m[0], "expect-literal", "a regex in place of on-screen text cannot be checked against the scenario; use the exact text")
+				}
+				for _, lit := range expectLiterals(stmt) {
+					if !strings.Contains(sc.Raw, lit) {
+						add(base+m[0], "expect-literal", "expected text "+strconv.Quote(lit)+" is not in the scenario file")
 					}
 				}
-				off += len(line)
 			}
 		}
 

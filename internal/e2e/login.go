@@ -130,7 +130,7 @@ func pinnedInstalled(pkg string) bool {
 }
 
 // hasChromium reports whether dir (a PLAYWRIGHT_BROWSERS_PATH) holds the chromium and
-// chromium-headless-shell revisions the harness's Playwright expects. Unreadable browsers.json = false.
+// chromium-headless-shell revisions the harness's Playwright expects, fully installed. Unreadable browsers.json = false.
 func hasChromium(dir, harness string) bool {
 	if dir == "" {
 		return false
@@ -156,7 +156,8 @@ func hasChromium(dir, harness string) bool {
 		if !ok || br.Revision == "" {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(dir, prefix+br.Revision)); err != nil {
+		// The installer writes this marker last; a dir without it is a half-extracted download.
+		if _, err := os.Stat(filepath.Join(dir, prefix+br.Revision, "INSTALLATION_COMPLETE")); err != nil { //nolint:gosec // G703 -- dir is the browsers path we chose, revision comes from the harness's own browsers.json
 			return false
 		}
 		found++

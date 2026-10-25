@@ -194,6 +194,8 @@ func scenarioFor(t *testing.T, src string) map[string]Scenario {
 
 const scenTwoE2E = "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] one\nThấy:\n- Vui lòng nhập tiêu đề\n\n## @ac:2 [e2e] two\n\n## @ac:3 [ngoài-e2e] three\n" //znf:allow-lang
 
+const scenEscaped = "# ZEN-9: t\nVai: a\n\n## @ac:1 [e2e] one\nThấy:\n- O'Reilly\n\n## @ac:2 [e2e] two\n" //znf:allow-lang
+
 func journey(header, title, body string) string {
 	return header + "\nimport { test, expect } from '../../fixtures';\ntest('" + title + "', async ({ page, apiClient, cleanupTracker }) => {\n" + body + `
   // @domain-assert:ticket
@@ -254,6 +256,14 @@ func TestLintScenarioRules(t *testing.T) {
 		{"commented test does not cover", journey(hdr, "x @ac:1", "") + "// test('y @ac:2', async () => {\n//   // @domain-assert:ticket\n//   expect(apiClient.x).toBe(1);\n// });\n", nil, "ac-coverage", ""},
 		{"block-commented test does not cover", journey(hdr, "x @ac:1", "") + "/*\ntest('y @ac:2', async () => {\n  // @domain-assert:ticket\n});\n*/\n", nil, "ac-coverage", ""},
 		{"commented skip ignored", journey(hdr, "x @ac:1 @ac:2", "  // test.skip(true);"), nil, "", "no-skip"},
+		{"multi-line matcher checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert'))\n    .toHaveText('Sai chữ');"), nil, "expect-literal", ""},                             //znf:allow-lang
+		{"multi-line argument checked", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText(\n    'Sai chữ',\n  );"), nil, "expect-literal", ""},                       //znf:allow-lang
+		{"multi-line ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert'))\n    .toHaveText('Vui lòng nhập tiêu đề');"), nil, "", "expect-literal"},                            //znf:allow-lang
+		{"multi-line poll checked", journey(hdr, "x @ac:1 @ac:2", "  await expect\n    .poll(async () => page.getByRole('alert').textContent())\n    .toBe('Sai chữ');"), nil, "expect-literal", ""}, //znf:allow-lang
+		{"no-skip test.step.skip", journey(hdr, "x @ac:1 @ac:2", "  await test.step.skip('check', async () => {});"), nil, "no-skip", ""},
+		{"no-skip testInfo.skip", journey(hdr, "x @ac:1 @ac:2", "  test.info().skip();"), nil, "no-skip", ""},
+		{"escaped quote in literal ok", journey(hdr, "x @ac:1 @ac:2", "  await expect(page.getByRole('alert')).toHaveText('O\\'Reilly');"), scenarioFor(t, scenEscaped), "", "expect-literal"},
+		{"escaped quote in title", strings.Replace(journey(hdr, "T", ""), "test('T'", "test('user\\'s ticket @ac:1 @ac:2'", 1), nil, "", "traceability"},
 		{"apostrophe in title", strings.Replace(journey(hdr, "T", ""), "test('T'", "test(\"user's ticket @ac:1 @ac:2\"", 1), nil, "", "traceability"},
 	}
 	for _, c := range cases {

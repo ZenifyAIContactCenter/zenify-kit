@@ -38,10 +38,11 @@ dev run cannot bend the test to fit the code. Every rule below protects that.
 ## Primary repo
 
 - Bug: the repo where you see the failure when you reproduce it.
-- Tweak or feature: the repo that owns the changed screen; a web screen means `contact-center-web`.
+- Tweak or feature: the repo that owns the changed screen; for a web screen, the web app the `znf:run` autonomous sandbox notes name.
 - Scenario and journey live only in that repo's `.znf/e2e/`. Write `repo` into `/out/qa-result.json`.
 - No `.znf/e2e/e2e.config.json` there yet: create it in the same commit, with `baseUrls` =
-  `["http://127.0.0.1:$ZNF_SANDBOX_WEB_PORT"]` (the port value, resolved) and `apiBaseUrl` = `http://127.0.0.1:3001` (be).
+  `["http://127.0.0.1:$ZNF_SANDBOX_WEB_PORT"]` (the port value, resolved) and `apiBaseUrl` = the backend
+  address those notes point the web app at. Read both from the notes; never hardcode a repo name or port here.
 
 ## Mode `scenario ZEN-<n>`
 

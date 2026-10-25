@@ -97,11 +97,12 @@ func ParseScenario(src string) (Scenario, error) {
 		case strings.HasPrefix(l, "Dữ liệu sau:"): //znf:allow-lang
 			mode = ""
 		default:
-			if mode == "steps" {
+			switch mode {
+			case "steps":
 				if s := reStepItem.FindStringSubmatch(l); s != nil {
 					cur.Steps = append(cur.Steps, strings.TrimSpace(s[1]))
 				}
-			} else if mode == "sees" {
+			case "sees":
 				if s := reSeeItem.FindStringSubmatch(l); s != nil {
 					cur.Sees = append(cur.Sees, strings.TrimSpace(s[1]))
 				}

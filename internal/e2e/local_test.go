@@ -76,9 +76,7 @@ func TestRunLocalArgs(t *testing.T) {
 func TestRunLocalSkipsInstall(t *testing.T) {
 	browsers := t.TempDir()
 	for _, d := range []string{"chromium-1187", "chromium_headless_shell-1187"} {
-		if err := os.MkdirAll(filepath.Join(browsers, d), 0o750); err != nil {
-			t.Fatal(err)
-		}
+		mkBrowser(t, filepath.Join(browsers, d), true)
 	}
 	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", browsers)
 	home, repo := t.TempDir(), localRepo(t)
@@ -142,16 +140,32 @@ func writeBrowsersJSON(t *testing.T, home, rev string) {
 	}
 }
 
+// mkBrowser creates a browser revision dir; complete adds the marker the installer writes last.
+func mkBrowser(t *testing.T, dir string, complete bool) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if complete {
+		if err := os.WriteFile(filepath.Join(dir, "INSTALLATION_COMPLETE"), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func prepareWithBrowsers(t *testing.T, have, want string, writeJSON bool, dirs ...string) []string {
+	t.Helper()
+	return prepareWithCache(t, have, want, writeJSON, true, dirs...)
+}
+
+func prepareWithCache(t *testing.T, have, want string, writeJSON, complete bool, dirs ...string) []string {
 	t.Helper()
 	browsers := t.TempDir()
 	if len(dirs) == 0 {
 		dirs = []string{"chromium-", "chromium_headless_shell-"}
 	}
 	for _, d := range dirs {
-		if err := os.MkdirAll(filepath.Join(browsers, d+have), 0o750); err != nil {
-			t.Fatal(err)
-		}
+		mkBrowser(t, filepath.Join(browsers, d+have), complete)
 	}
 	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", browsers)
 	home := t.TempDir()
@@ -182,6 +196,9 @@ func TestPrepareChromiumRevision(t *testing.T) {
 	}
 	if c := prepareWithBrowsers(t, "1187", "1187", true); len(c) != 0 {
 		t.Errorf("revision match: calls = %v, want none", c)
+	}
+	if c := prepareWithCache(t, "1187", "1187", true, false); !slices.Equal(c, []string{install}) {
+		t.Errorf("half-installed cache (no INSTALLATION_COMPLETE): calls = %v, want the install", c)
 	}
 	if c := prepareWithBrowsers(t, "1187", "", false); !slices.Equal(c, []string{install}) {
 		t.Errorf("no browsers.json: calls = %v, want the install", c)
