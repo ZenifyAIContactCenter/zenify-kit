@@ -91,7 +91,7 @@ Journey có dòng `// @scenario ZEN-<n>` gắn với kịch bản đã chốt `.
 
 `run` lint lại, rồi chạy journey trong Docker trên dev server bạn chỉ định. Để chạy trên staging thay cho dev server local, dùng `--base-url <origin>` thay cho `--port`, ví dụ `zenify e2e run --repo repos/contact-center-web --base-url https://staging.example.com --role agent`. Origin phải nằm trong `baseUrls` của `.znf/e2e/e2e.config.json`, nếu không lệnh thoát mã 2 trước khi chạy Docker. Tài khoản đăng nhập lấy từ broker khi manifest khai báo `broker:`. Không có broker thì lấy từ ba key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env`; bạn nhập chúng bằng `zenify env`, không viết mật khẩu vào file khác.
 
-Máy không có Docker (ví dụ sandbox của worker) thì thêm `--local`: journey chạy trên Playwright của host, dùng chung harness với `zenify e2e login`, chỉ nhận app loopback (`--port` hoặc `--base-url` localhost). Lệnh vẫn lint trước. Harness đã có `@playwright/test` 1.55.0 và `PLAYWRIGHT_BROWSERS_PATH` đã có chromium thì lệnh không cần mạng. `zenify e2e run --local --prepare` chỉ chuẩn bị harness rồi thoát, dùng lúc build image.
+Máy không có Docker (ví dụ sandbox của worker) thì thêm `--local`: journey chạy trên Playwright của host, dùng chung harness với `zenify e2e login`, chỉ nhận app loopback (`--port` hoặc `--base-url` localhost). Lệnh vẫn lint trước. Harness đã có `@playwright/test` 1.55.0 và `PLAYWRIGHT_BROWSERS_PATH` đã có đúng revision chromium mà harness cần thì lệnh không cần mạng. `zenify e2e run --local --prepare` chỉ chuẩn bị harness rồi thoát, dùng lúc build image.
 
 ## Viết task trong plan để có journey
 
