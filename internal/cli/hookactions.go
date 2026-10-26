@@ -14,6 +14,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
@@ -72,6 +73,7 @@ func runSessionStart(wsRoot string, w io.Writer) int {
 	updateNudge(w)
 	brokerRoleLine(w)
 	autonomousLine(w)
+	featuresLine(wsRoot, w)
 	if !sentinelPresent() {
 		digest := readBootstrapDigest()
 		if digest != "" {
@@ -114,6 +116,22 @@ func autonomousLine(w io.Writer) {
 		return
 	}
 	fmt.Fprintln(w, "autonomous: ZNF_AUTONOMOUS=1 — read ~/.claude/skills/znf/skills/_shared/autonomous.md first; it overrides every human gate in znf skills")
+}
+
+// featuresLine announces enabled overlay feature toggles. A read error goes to
+// stderr and prints nothing on w; the hook never fails because of it.
+func featuresLine(wsRoot string, w io.Writer) {
+	if wsRoot == "" {
+		return
+	}
+	feats, err := manifest.ReadFeatures(filepath.Join(wsRoot, ".zenify-overlay.yaml"))
+	if err != nil {
+		ui.New(os.Stderr).Note(fmt.Sprintf("znf features: %v", err))
+		return
+	}
+	if feats["github.issues"] {
+		fmt.Fprintln(w, "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR; znf:nonstop plans from assigned issues")
+	}
 }
 
 func sentinelPresent() bool {

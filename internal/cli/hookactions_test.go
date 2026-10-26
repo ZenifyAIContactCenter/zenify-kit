@@ -274,3 +274,44 @@ func TestSessionStart_AutonomousLine(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionStart_FeaturesLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	want := "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR; znf:nonstop plans from assigned issues\n"
+	cases := []struct {
+		name    string
+		overlay *string
+		wantOn  bool
+	}{
+		{"on", ptr("features:\n  github.issues: true\n"), true},
+		{"off", ptr("features:\n  github.issues: false\n"), false},
+		{"no overlay", nil, false},
+		{"broken overlay", ptr("repos: [\n"), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			ws := mkWorkspace(t)
+			if c.overlay != nil {
+				if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte(*c.overlay), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var buf bytes.Buffer
+			if rc := runSessionStart(ws, &buf); rc != 0 {
+				t.Fatalf("rc = %d", rc)
+			}
+			out := buf.String()
+			if c.wantOn && !strings.Contains(out, want) {
+				t.Errorf("missing line %q in %q", want, out)
+			}
+			if !c.wantOn && strings.Contains(out, "features:") {
+				t.Errorf("unexpected features line in %q", out)
+			}
+		})
+	}
+}
+
+func ptr(s string) *string { return &s }
