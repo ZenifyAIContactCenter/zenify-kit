@@ -31,24 +31,25 @@ One section per day, `## YYYY-MM-DD`; one line per task:
 Today is the output of `date +%F` (local machine time), run every time a date is needed — never the
 date the harness injected when the session opened.
 
-On every `/znf:nonstop` (and after a compaction) read the ledger first:
-- it has a section `## <date +%F>` → **re-entry**: resume that day. `running` lines whose worker has
-  no report are re-asked by name; `done` lines are never re-dispatched. Go to the Loop.
-- it has none → **new day**: Morning plan.
+On every `/znf:nonstop` (heartbeat and compaction included) read the ledger first, then:
+- the last section is `## <date +%F>` → **re-entry**: resume it.
+- the last section is an older date but still has `running` or `queued` lines, and the USER did not
+  ask for a new day → **re-entry** into that section. A heartbeat or a compaction never cuts the day.
+- otherwise (no section, or the user asked for a new day and `date +%F` differs) → **new day**:
+  Morning plan.
 
-The loop never cuts the day at midnight: running work keeps writing to the section whose plan was
-approved. A new day starts only when the user calls `/znf:nonstop` or says it is a new day **and**
-`date +%F` differs from the last section.
+Re-entry: `running` lines whose worker has no report are re-asked by name; `done` lines are never
+re-dispatched; go to the Loop. Running work keeps writing to the section whose plan was approved.
 
 ## Phase 1 — Morning plan
 
-Build it per `references/daily-plan.md`: carry-over from the last section, the backlog sources in
+Build it per `references/daily-plan.md`: every non-`done` line of the last section, the backlog sources in
 priority order, filters, sizes and the batch budget from `references/estimation.md`. With a
 session line `features: github.issues on`, add the issues assigned to the user; otherwise the
 issue column is `-` and no issue command runs.
 
 Print the plan, then **stop and wait for the user's approval** (or their edits) before the first
-dispatch. After approval, write the `## <date +%F>` section, then dispatch.
+dispatch. After approval, write the `## <date +%F>` section, then dispatch Batch 1 only.
 `ZNF_AUTONOMOUS=1` → no stop: record `Ruling: plan approved — <why> — <cost if wrong>` in the
 ledger and go on, per `znf:_shared/autonomous.md`.
 
@@ -72,16 +73,24 @@ on start and on EVERY wake-up (worker finished, watcher exited, user replied):
   every dispatch: default `sonnet`; a task that failed twice → `opus`.
 - Long quiet periods: run under `/loop /znf:nonstop` for a fallback heartbeat.
 
-### Independent review — the orchestrator's one gate
+### Review and the PR
 
-A worker returning `READY_FOR_REVIEW` (verified, committed, pushed) →
-1. dispatch a fresh `znf:code-reviewer` on that worktree's diff vs its base (never the same worker);
-2. CRITICAL/HIGH findings → resume the same worker (`SendMessage`) with the findings verbatim;
-   max 2 rounds, then `blocked`;
-3. clean → resume the worker to open the PR (never merge) and run `Skill(znf:ci-watch)`.
+Routes that end in `znf:ship` (fix, hotfix, cook) already get ship's independent review and open
+the PR themselves; the worker returns `DONE` with the PR URL. A route that skips ship ("implement
+directly") returns `READY_FOR_REVIEW` → dispatch a fresh `znf:code-reviewer` on its diff (never the
+same worker); CRITICAL/HIGH → resume the worker (`SendMessage`) with the findings verbatim, max 2
+rounds, then `blocked`; clean → resume it to run `Skill(znf:ship)`, which opens the PR. Never merge.
 
-A worker's ci-watch result feeds the progress block: exit 0 gives the PR URL and
-`! gh pr merge -R <owner/repo> <n> --merge`. A CI failure it could not fix is a new `znf:fix` task.
+### CI watch — the orchestrator owns it
+
+For each new PR URL, run `Skill(znf:ci-watch)` yourself, in the background (a worker's watcher
+would wake no one). The PR branch is not your checkout's, so ci-watch only reports. Each exit
+wakes the Loop:
+- CI exit 1 (failed runs) → queue a new `znf:fix` worker task with the failed run URLs and the PR
+  URL — never fix inline;
+- mergeable-wait exit 0 → record the PR URL and `! gh pr merge -R <owner/repo> <n> --merge` on the
+  ledger line, for the progress block and the end of day;
+- any other exit → `blocked` with the state ci-watch printed.
 
 ### User gates and BLOCKED
 
@@ -103,8 +112,8 @@ Tick N — running: A/SLOTS | done: X | blocked: Z | queued: R | points: P
 
 When the user says stop / end of day, or the backlog is empty with nothing actionable: run the end
 of day in `references/daily-plan.md` — done tasks with full PR/issue URLs, the merge line for each
-CLEAN PR, BLOCKED questions, estimate stats, and every unfinished line rewritten as `carry-over`
-for tomorrow's plan. That is the only way this skill ends.
+CLEAN PR, BLOCKED questions, estimate stats, and every unfinished line marked for tomorrow's plan
+(`carry-over`; `blocked` stays `blocked`). That is the only way this skill ends.
 
 ## References
 

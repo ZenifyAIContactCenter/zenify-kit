@@ -45,5 +45,5 @@ Next to `progress.md`. One line per finished task:
 - Read the last ~30 lines of `estimates.md`. For each planned task, filter the same repo + kind;
   when they show a consistent gap, state the rule (e.g. "<repo> fix: estimate one size up") and the
   history lines it rests on.
-- **Batch budget** = the median daily throughput when there are ≥ 3 days of data; fewer than 3 days
-  → 10 tasks.
+- **Batch budget** = the median daily throughput, in points (S=1 … XL=8), when there are ≥ 3 days
+  of data; fewer than 3 days → 10 tasks (a count, not points).

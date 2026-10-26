@@ -4,17 +4,20 @@ Read when: the ledger has no section `## <date +%F>` (morning plan), or the day 
 
 ## Morning plan
 
-1. **Carry-over.** Read the most recent `## YYYY-MM-DD` section. Every line not `done` becomes
-   carry-over for today. A `deferred until <YYYY-MM-DD>` line joins only when that date ≤ `date +%F`
-   (compared when the plan is built); a later date stays hidden.
+1. **Carry-over.** Read the most recent `## YYYY-MM-DD` section. Every line not `done` comes along:
+   - `carry-over`, `queued`, `failed`, a `running` line with no report → carry-over for today;
+   - `blocked` → "Needs you" with its question, never dispatched until answered;
+   - `deferred until <YYYY-MM-DD>` → carry-over when that date ≤ `date +%F` (compared when the plan
+     is built); a later date is hidden from the plan but still copied.
 2. **Gather the backlog** from the sources below.
 3. **Filter, size and order** it; read `estimates.md` for calibration and the batch budget (see the
    estimation reference).
 4. **Print the plan and wait for the user's approval or edits.** No worker is dispatched before
    the user approves. `ZNF_AUTONOMOUS=1` → record a `Ruling:` line in the ledger instead of
    stopping (`znf:_shared/autonomous.md`).
-5. **Write today's section** `## <date +%F>` with the approved lines (status `queued`), then
-   dispatch the first worker.
+5. **Write today's section** `## <date +%F>`: the approved plan lines (status `queued`), plus every
+   non-`done` line copied from the previous section that is not in the plan — still-future
+   `deferred until`, backlog beyond Batch 1, `blocked`. Then dispatch Batch 1 only.
 
 ### Sources, in this order
 
@@ -46,7 +49,7 @@ Same level → carry-over first, then the older task first.
 Each line: `# · repo · task · source · issue · size · skill · parallel/sequential`.
 
 ```
-Batch 1 (budget: <N> tasks | <P> points, from estimates.md or the default)
+Batch 1 (budget: <P> points from estimates.md with ≥ 3 days of data | else 10 tasks)
   1 · <repo> · <task> · carry-over · #12 · M · znf:fix · parallel
 Needs you
   - <question> — <full URL>
@@ -76,10 +79,11 @@ Toggle off → the issue column is `-` and no issue command runs.
 Run when the user says stop or end of day, or the backlog is empty with nothing actionable.
 
 1. Done tasks, each with its full PR/issue URL; every CLEAN PR with its line
-   `! gh pr merge -R <owner/repo> <n> --merge` (from the worker's ci-watch result).
+   `! gh pr merge -R <owner/repo> <n> --merge` (from the orchestrator's ci-watch result).
 2. `blocked` tasks, each with its exact question.
 3. Open CI watchers still running.
 4. Estimate stats per the estimation reference: hit rate, bias, throughput, and the weekly warning.
-5. Rewrite every line in today's section that is not `done` as `carry-over` (keep its id, repo,
-   issue and evidence), or as `deferred until <YYYY-MM-DD>` when the user names a date. Tomorrow's
-   morning plan starts from these lines.
+5. Rewrite every `queued`, `running` or `failed` line in today's section as `carry-over` (keep its
+   id, repo, issue and evidence), or as `deferred until <YYYY-MM-DD>` when the user names a date.
+   `blocked` and `deferred until` lines stay as they are. Tomorrow's morning plan starts from these
+   lines.

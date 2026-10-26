@@ -3,7 +3,7 @@
 Read when: dispatching a worker.
 
 Workers are sub agents and **cannot spawn agents**. Tell each one to run its znf skill and do inline
-any step that skill would normally dispatch, except the independent review (the orchestrator's).
+any step that skill would normally dispatch (including ship's review).
 
 ## Brief — every dispatch
 
@@ -18,12 +18,15 @@ Rules:      znf:discipline floor — ground before use, verify with real output,
             Issue: #N → ship uses it as the issue to close (Closes #N); Issue: - → ship's own rule.
 Stop & report (do not guess) on: a user gate of the skill, a destructive or irreversible action,
             anything outside the worktree.
-After the PR is open (when the orchestrator resumes you to open it): run Skill(znf:ci-watch) and
-            report its result — PR URL and the merge line, or the blocking state.
-Return ≤ 40 lines: status (DONE | READY_FOR_REVIEW | BLOCKED | FAILED), worktree path, base ref,
-            commits, fix/review rounds, commands + real output, question if BLOCKED,
-            new tasks found. Long output → file path.
+Do not run znf:ci-watch; the orchestrator watches CI for your PR.
+Return ≤ 40 lines: status (DONE | READY_FOR_REVIEW | BLOCKED | FAILED), PR URL when ship opened
+            one, worktree path, base ref, commits, fix/review rounds, commands + real output,
+            question if BLOCKED, new tasks found. Long output → file path.
 ```
+
+`DONE` = the route ended in `znf:ship` and the PR is open. `READY_FOR_REVIEW` = the "implement
+directly" route: verified, committed, pushed, no PR yet; the orchestrator reviews, then resumes you
+to run `znf:ship`.
 
 The worktree path and base ref let the orchestrator run `git diff --shortstat <base>...HEAD`. The
 worker does not report its own time; `duration_ms` comes from the harness.
@@ -38,6 +41,6 @@ worker does not report its own time; `duration_ms` comes from the harness.
 | approved plan `.md` | `znf:cook <plan.md>` |
 | PR review threads | `znf:fix` with the thread URLs; reply and resolve each after the fix |
 | kanban item | the project's kanban skill when installed, else `znf:cook` |
-| clear task, one repo, what + why stated | implement directly, then `znf:ship` |
+| clear task, one repo, what + why stated | implement directly; `znf:ship` only after the orchestrator's review |
 | merged PR found | `znf:sweep` |
 | empty backlog | `znf:top-issues` (report only; the user picks) |
