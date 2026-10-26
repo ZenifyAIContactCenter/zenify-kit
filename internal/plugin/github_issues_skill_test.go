@@ -14,6 +14,9 @@ func TestShipGithubIssues(t *testing.T) {
 		"gh issue create --assignee @me",
 		"gh issue list --state open --search",
 		"gh pr list --state open",
+		"--body-file",
+		"Features: github.issues on",
+		"<owner>/<repo>#N",
 		"top layer",
 		"default branch",
 	})

@@ -96,7 +96,20 @@ func SetFeature(overlayPath, key string, on bool) error {
 		return fmt.Errorf("encode overlay: %w", err)
 	}
 	out := buf.Bytes()
-	tmp, err := os.CreateTemp(filepath.Dir(overlayPath), ".overlay-*.tmp")
+	// Write through a symlinked overlay to its target, and keep an existing file's mode.
+	target, mode := overlayPath, os.FileMode(0o644)
+	switch resolved, err := filepath.EvalSymlinks(overlayPath); {
+	case os.IsNotExist(err):
+	case err != nil:
+		return fmt.Errorf("write overlay: %w", err)
+	default:
+		st, err := os.Stat(resolved)
+		if err != nil {
+			return fmt.Errorf("write overlay: %w", err)
+		}
+		target, mode = resolved, st.Mode().Perm()
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".overlay-*.tmp")
 	if err != nil {
 		return fmt.Errorf("write overlay: %w", err)
 	}
@@ -108,10 +121,10 @@ func SetFeature(overlayPath, key string, on bool) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("write overlay: %w", err)
 	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil { //nolint:gosec // overlay is a user-readable workspace file
+	if err := os.Chmod(tmp.Name(), mode); err != nil {
 		return fmt.Errorf("write overlay: %w", err)
 	}
-	if err := os.Rename(tmp.Name(), overlayPath); err != nil {
+	if err := os.Rename(tmp.Name(), target); err != nil {
 		return fmt.Errorf("write overlay: %w", err)
 	}
 	return nil

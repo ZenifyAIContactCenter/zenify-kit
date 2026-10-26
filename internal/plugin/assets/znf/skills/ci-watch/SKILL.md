@@ -19,6 +19,8 @@ In the repo the task is working in (a worktree when there is one):
 - The user named a branch, PR or sha → watch that commit instead (`gh pr view <n> --json
   headRefOid,headRefName`). Record its branch; a bare sha has none. Only a target whose branch is
   the current worktree's branch may be handed to fix in Step 3 — any other target is report-only.
+- Invoked with `report-only` (e.g. by `znf:nonstop`) → the target is report-only: never hand it
+  to `znf:fix`.
 - The repo has no `.github/workflows/*.yml` or `*.yaml` → there is no CI to watch; say so. The
   branch has an open PR (`gh pr view <branch> -R "$REPO" --json number,state`, state `OPEN`) →
   go to Step 4; otherwise stop.
@@ -84,7 +86,7 @@ while :; do
   if st=$(gh pr view "$PR" -R "$REPO" --json mergeStateStatus,reviewDecision,url \
       --jq '[.mergeStateStatus, .reviewDecision, .url] | @tsv'); then errs=0
   else errs=$((errs+1)); [ "$errs" -lt 3 ] || { echo "ci-watch: gh pr view failed 3 times in a row"; exit 7; }; sleep 30; continue; fi
-  gh pr checks "$PR" -R "$REPO" >/dev/null 2>&1; rc=$?   # 8 = checks still pending
+  case "$st" in UNSTABLE*|BLOCKED*) gh pr checks "$PR" -R "$REPO" >/dev/null 2>&1; rc=$? ;; esac   # 8 = pending
   case "$st" in
     CLEAN*) echo "$st"; exit 0 ;;
     DIRTY*) echo "$st"; exit 3 ;;

@@ -15,5 +15,6 @@ func TestCiWatchWaitsForClean(t *testing.T) {
 		"Skill(znf:fix)",
 		"CI round <n>/2",
 		"pushes nothing itself",
+		"report-only",
 	})
 }

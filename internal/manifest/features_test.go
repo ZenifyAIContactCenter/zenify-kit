@@ -143,3 +143,38 @@ func TestReadFeatures_KnownNonBoolErrors(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestSetFeature_PreservesMode(t *testing.T) {
+	p := writeTmp(t, "ov.yaml", "repos: []\n")
+	if err := os.Chmod(p, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetFeature(p, "github.issues", true); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v, want 0600", st.Mode().Perm())
+	}
+}
+
+func TestSetFeature_WritesThroughSymlink(t *testing.T) {
+	target := writeTmp(t, "real.yaml", "repos: []\n")
+	link := filepath.Join(t.TempDir(), "ov.yaml")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetFeature(link, "github.issues", true); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("overlay symlink replaced: %v %v", fi, err)
+	}
+	got, err := ReadFeatures(target)
+	if err != nil || !got["github.issues"] {
+		t.Fatalf("target not updated: %v %v", got, err)
+	}
+}

@@ -36,6 +36,10 @@ func TestNonstopSkill(t *testing.T) {
 	if strings.Contains(ref["worker-brief.md"], "Skill(znf:ci-watch)") {
 		t.Errorf("nonstop/references/worker-brief.md must not tell the worker to run Skill(znf:ci-watch)")
 	}
+	// Workers never see SessionStart: the brief carries the feature line for ship's gate.
+	assertContainsAll(t, "nonstop/references/worker-brief.md", ref["worker-brief.md"], []string{"Features: github.issues"})
+	// The orchestrator's ci-watch only reports; it never hands a worker's PR to znf:fix.
+	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"report-only"})
 	// The morning plan carries every open line of the last section.
 	assertContainsAll(t, "nonstop/references/daily-plan.md", ref["daily-plan.md"], []string{"non-done"})
 	assertContainsAll(t, "nonstop skill + references", all, []string{

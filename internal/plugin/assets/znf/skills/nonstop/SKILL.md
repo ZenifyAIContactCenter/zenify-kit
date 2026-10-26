@@ -16,7 +16,7 @@ Allowed inline: ledger edits, `date +%F`, `git fetch`/`git status`/`git worktree
 `gh pr|issue|run|search` status queries — cheap reads that decide what to dispatch next; to
 package a review file only: `git merge-base`, `git diff <merge-base>` and
 `git ls-files --others --exclude-standard` in a worker's worktree, writing that file next to the
-ledger; `Skill(znf:ci-watch)` per PR (below).
+ledger; `Skill(znf:ci-watch)` per PR (below) with the commands it runs, `gh api graphql` included.
 
 ## Ledger — the single source of state
 
@@ -65,9 +65,10 @@ SLOTS = 3 (slots=N in the arguments overrides)
 on start and on EVERY wake-up (worker finished, watcher exited, user replied):
   collect  → read each finished worker's report by name; silence = INCOMPLETE, re-ask
   record   → ledger status; measure the finished task per references/estimation.md
-  discover → tasks the worker found along the way → ledger with source `discovered`
+  discover → tasks the worker found → ledger, source `discovered`, `blocked` in "Needs you" until
+             the user approves; a follow-up of an approved task (its CI fix, its threads) → `queued`
   refill   → while running < SLOTS and an actionable task exists: dispatch the top one
-  report   → one progress block
+  report   → one progress block (layout in references/daily-plan.md)
   end turn → only while ≥ 1 worker or watcher is still running
 ```
 
@@ -95,30 +96,21 @@ Every route stops `znf:ship` before its step 5 (a worker cannot dispatch the rev
 
 ### CI watch — the orchestrator owns it
 
-For each new PR URL, run `Skill(znf:ci-watch)` yourself, in the background (a worker's watcher
-would wake no one). The PR branch is not your checkout's, so ci-watch only reports. Each exit
-wakes the Loop:
-- CI exit 1 (failed runs) → queue a new `znf:fix` worker task with the failed run URLs and the PR
-  URL — never fix inline;
-- mergeable-wait exit 0 → record the PR URL and `! gh pr merge -R <owner/repo> <n> --merge` on the
-  ledger line, for the progress block and the end of day;
-- any other exit → `blocked` with the state ci-watch printed.
+For every PR URL a worker returns — a new PR, or a `znf:fix` push to an existing one (new head) —
+run `Skill(znf:ci-watch)` yourself in the background (a worker's watcher would wake no one), with
+`report-only`, its commands run in that worker's worktree (the pushed branch, so Step 1 holds).
+Each exit wakes the Loop:
+- CI exit 1 (failed runs) → queue a `znf:fix` worker task with the failed run URLs and the PR
+  URL — never fix inline; CI exit 0, or 3 with the PR → ci-watch goes on to Step 4; other → `blocked`;
+- Step 4 exit 0 or 1 → record the PR URL and `! gh pr merge -R <owner/repo> <n> --merge` on the
+  ledger line (exit 1 also lists the failing non-required checks);
+- Step 4 exit 2 → `blocked` with the thread/review list; 3, 4, 5, 6, 7 → `blocked` with the state.
 
 ### User gates and BLOCKED
 
 Design/spec/plan approval, a top-issues pick, destructive actions, deploy-branch pushes → ledger
 `blocked` with the exact question, print it, **keep the other slots running**; resume that worker
 via `SendMessage` when the user answers. Same task failed 3 times → `blocked` with evidence.
-
-### Progress block
-
-```
-Tick N — running: A/SLOTS | done: X | blocked: Z | queued: R | points: P
-✓ t3 fix-login (M→M) — <PR URL> — ! gh pr merge -R <owner/repo> <n> --merge
-✗ t5 — <reason> (re-queued)
-⏸ t7 — needs: <question>
-▶ running: t8 (worker-a), t9 (worker-b)
-```
 
 ## Phase 3 — End of day
 
@@ -129,6 +121,6 @@ CLEAN PR, BLOCKED questions, estimate stats, and every unfinished line marked fo
 
 ## References
 
-- `references/daily-plan.md` — sources, priority, filters, plan layout, approval gate, issues, end of day.
+- `references/daily-plan.md` — sources, priority, filters, plan layout, approval gate, issues, progress block, end of day.
 - `references/estimation.md` — T-shirt sizes, measuring, `estimates.md`, calibration, batch budget.
 - `references/worker-brief.md` — the brief every dispatch carries and the routing table.
