@@ -1,7 +1,7 @@
 ---
 name: ci-watch
 description: Watch the GitHub Actions runs of the commit just pushed, in the background, and wake the session when they finish — on a failure, hand the failed run to znf:fix without asking, then watch the new commit. Use when the user runs /znf:ci-watch or asks to watch or wait for CI.
-allowed-tools: Bash(git rev-parse*) Bash(git branch --show-current) Bash(git status*) Bash(gh repo view*) Bash(gh run list*) Bash(gh pr view*)
+allowed-tools: Bash(git rev-parse*) Bash(git branch --show-current) Bash(git status*) Bash(gh repo view*) Bash(gh run list*) Bash(gh pr view*) Bash(gh pr checks*) Bash(gh api graphql*)
 ---
 
 **Watch and hand off — never fix here.** This skill only waits for CI and wakes the session. On a
@@ -19,7 +19,9 @@ In the repo the task is working in (a worktree when there is one):
 - The user named a branch, PR or sha → watch that commit instead (`gh pr view <n> --json
   headRefOid,headRefName`). Record its branch; a bare sha has none. Only a target whose branch is
   the current worktree's branch may be handed to fix in Step 3 — any other target is report-only.
-- The repo has no `.github/workflows/*.yml` or `*.yaml` → there is no CI to watch; say so and stop.
+- The repo has no `.github/workflows/*.yml` or `*.yaml` → there is no CI to watch; say so. The
+  branch has an open PR (`gh pr view <branch> -R "$REPO" --json number,state`, state `OPEN`) →
+  go to Step 4; otherwise stop.
 - Invoked from `znf:ship --watch` with several repos → one watcher per repo.
 
 ## Step 2: Start the watcher in the background
@@ -55,7 +57,8 @@ Output is one line per run: `id  status  conclusion  workflow  url`. Exit codes:
 
 ## Step 3: When the watcher wakes the session
 
-- **0** → one line: the workflows that passed, with the sha. Stop.
+- **0** → one line: the workflows that passed, with the sha. The branch has an open PR (as in
+  Step 1) → Step 4; otherwise stop.
 - **1** → the runs whose conclusion is `failure`, `timed_out` or `startup_failure` are the failed
   runs; a `cancelled` run is only reported (usually a newer push replaced it). Then, without asking:
   - The target is report-only (Step 1), or its branch is a deploy branch (the workspace's list) →
@@ -68,10 +71,49 @@ Output is one line per run: `id  status  conclusion  workflow  url`. Exit codes:
   - Round 2 still red, or fix stops without a push (cause outside the repo, escalation to cook) →
     stop and hand back: each round's failed run and what fix changed.
 - **2, 3, 4, 5** → say which, quote the watcher's last line, and stop. Exit 3 often means the repo
-  has no workflow for this branch or event.
+  has no workflow for this branch or event; then an open PR for the branch → Step 4 instead of stopping.
+
+## Step 4: Wait for the PR to be mergeable
+
+Green CI is not a mergeable PR: required reviews, review threads and checks from other apps still
+gate it. Run this loop in the background exactly like Step 2, with `REPO` and the PR number `PR`:
+
+```bash
+REPO=<owner/repo>; PR=<number>; deadline=$((SECONDS+3600)); errs=0; st=
+while :; do
+  if st=$(gh pr view "$PR" -R "$REPO" --json mergeStateStatus,reviewDecision,url \
+      --jq '[.mergeStateStatus, .reviewDecision, .url] | @tsv'); then errs=0
+  else errs=$((errs+1)); [ "$errs" -lt 3 ] || { echo "ci-watch: gh pr view failed 3 times in a row"; exit 7; }; sleep 30; continue; fi
+  gh pr checks "$PR" -R "$REPO" >/dev/null 2>&1; rc=$?   # 8 = checks still pending
+  case "$st" in
+    CLEAN*) echo "$st"; exit 0 ;;
+    DIRTY*) echo "$st"; exit 3 ;;
+    BEHIND*) echo "$st"; exit 4 ;;
+    DRAFT*) echo "$st"; exit 5 ;;
+    UNSTABLE*) [ "$rc" = 8 ] || { echo "$st"; exit 1; } ;;
+    BLOCKED*) [ "$rc" = 8 ] || { echo "$st"; exit 2; } ;;
+  esac   # UNKNOWN, HAS_HOOKS, or checks pending → poll again
+  [ "$SECONDS" -lt "$deadline" ] || { echo "ci-watch: PR not mergeable after 60 min"; echo "$st"; exit 6; }
+  sleep 30
+done
+```
+
+The last line is `mergeStateStatus  reviewDecision  url`. When it wakes the session:
+
+- **0** → the full PR URL and the merge command for the user: `! gh pr merge -R <owner/repo> <n> --merge`.
+- **1** → the failing non-required checks (`gh pr checks <n> -R <owner/repo>`), the PR URL and the
+  same merge command; the user decides.
+- **2** → list what blocks it. Unresolved threads:
+  `gh api graphql -f o=<owner> -f r=<repo> -F n=<n> -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){nodes{isResolved path comments(first:1){nodes{url}}}}}}}'`
+  → each node with `isResolved: false`, as path + comment URL. No unresolved thread → the
+  `reviewDecision` and the failing required checks (`gh pr checks <n> -R <owner/repo> --required`).
+  Do not resolve a thread and do not poll again; stop.
+- **3** conflicts, **4** behind the base, **5** draft, **6** timed out, **7** `gh` kept failing →
+  say which, quote the last line, and stop.
 
 ## Rules
 
 - One watcher per commit. A new push makes the old watch stale: start a new one for the new sha.
-- Never re-run, cancel or approve a workflow, and never merge, from this skill.
+- Never re-run, cancel or approve a workflow, never resolve a review thread, and never merge, from
+  this skill.
 - Diagnosis, the fix and the push belong to `znf:fix` and `znf:ship`; do not duplicate them here.
