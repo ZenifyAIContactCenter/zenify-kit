@@ -63,6 +63,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newSpecCmd())
 	root.AddCommand(newReleaseNoteCmd())
 	root.AddCommand(newConfigCmd())
+	root.AddCommand(newFeatureCmd())
 	root.AddCommand(newRulesCmd())
 	root.AddCommand(newMigrateCmd())
 	root.AddCommand(newDocsCmd())
