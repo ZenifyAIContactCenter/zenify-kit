@@ -102,3 +102,44 @@ func TestSetFeature_Off(t *testing.T) {
 		t.Fatalf("got:\n%s", b)
 	}
 }
+
+func TestSetFeature_KeepsTwoSpaceIndent(t *testing.T) {
+	p := writeTmp(t, "ov.yaml", "repos:\n  - name: a\n    path: x\n")
+	if err := SetFeature(p, "github.issues", true); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	want := "repos:\n  - name: a\n    path: x\nfeatures:\n  github.issues: true\n"
+	if string(b) != want {
+		t.Fatalf("got:\n%q\nwant:\n%q", b, want)
+	}
+}
+
+func TestSetFeature_NullFeaturesReplaced(t *testing.T) {
+	p := writeTmp(t, "ov.yaml", "features:\nrepos:\n  - name: a\n")
+	if err := SetFeature(p, "github.issues", true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadFeatures(p)
+	if err != nil || !got["github.issues"] {
+		t.Fatalf("got %v err %v", got, err)
+	}
+}
+
+func TestReadFeatures_UnknownNonBoolIgnored(t *testing.T) {
+	p := writeTmp(t, "ov.yaml", "features:\n  github.issues: true\n  other: foo\n")
+	got, err := ReadFeatures(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"github.issues": true}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestReadFeatures_KnownNonBoolErrors(t *testing.T) {
+	p := writeTmp(t, "ov.yaml", "features:\n  github.issues: maybe\n")
+	if _, err := ReadFeatures(p); err == nil || !strings.Contains(err.Error(), "parse overlay") {
+		t.Fatalf("err = %v", err)
+	}
+}

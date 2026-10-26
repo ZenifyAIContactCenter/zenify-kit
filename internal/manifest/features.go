@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,13 +25,17 @@ func ReadFeatures(overlayPath string) (map[string]bool, error) {
 		return nil, fmt.Errorf("read overlay: %w", err)
 	}
 	var ov struct {
-		Features map[string]bool `yaml:"features"`
+		Features map[string]yaml.Node `yaml:"features"`
 	}
 	if err := yaml.Unmarshal(b, &ov); err != nil {
 		return nil, fmt.Errorf("parse overlay: %w", err)
 	}
 	for _, k := range KnownFeatures {
-		if v, ok := ov.Features[k]; ok {
+		if n, ok := ov.Features[k]; ok {
+			var v bool
+			if err := n.Decode(&v); err != nil {
+				return nil, fmt.Errorf("parse overlay: feature %q: %w", k, err)
+			}
 			out[k] = v
 		}
 	}
@@ -67,6 +72,9 @@ func SetFeature(overlayPath, key string, on bool) error {
 		feats = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 		root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "features"}, feats)
 	}
+	if feats.Kind == yaml.ScalarNode && feats.Tag == "!!null" {
+		*feats = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	}
 	if feats.Kind != yaml.MappingNode {
 		return fmt.Errorf("parse overlay: features is not a mapping")
 	}
@@ -78,10 +86,16 @@ func SetFeature(overlayPath, key string, on bool) error {
 			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
 			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: val})
 	}
-	out, err := yaml.Marshal(&doc)
-	if err != nil {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
 		return fmt.Errorf("encode overlay: %w", err)
 	}
+	if err := enc.Close(); err != nil {
+		return fmt.Errorf("encode overlay: %w", err)
+	}
+	out := buf.Bytes()
 	tmp, err := os.CreateTemp(filepath.Dir(overlayPath), ".overlay-*.tmp")
 	if err != nil {
 		return fmt.Errorf("write overlay: %w", err)
