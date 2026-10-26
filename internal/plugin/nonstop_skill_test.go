@@ -45,5 +45,7 @@ func TestNonstopSkill(t *testing.T) {
 		"gh search issues --assignee=@me --state=open --owner=",
 		"deferred until",
 		"Issue: #N",
+		"READY_FOR_REVIEW",
+		"znf:code-reviewer",
 	})
 }

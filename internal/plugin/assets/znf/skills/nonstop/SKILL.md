@@ -73,13 +73,17 @@ on start and on EVERY wake-up (worker finished, watcher exited, user replied):
   every dispatch: default `sonnet`; a task that failed twice → `opus`.
 - Long quiet periods: run under `/loop /znf:nonstop` for a fallback heartbeat.
 
-### Review and the PR
+### Review — before every PR
 
-Routes that end in `znf:ship` (fix, hotfix, cook) already get ship's independent review and open
-the PR themselves; the worker returns `DONE` with the PR URL. A route that skips ship ("implement
-directly") returns `READY_FOR_REVIEW` → dispatch a fresh `znf:code-reviewer` on its diff (never the
-same worker); CRITICAL/HIGH → resume the worker (`SendMessage`) with the findings verbatim, max 2
-rounds, then `blocked`; clean → resume it to run `Skill(znf:ship)`, which opens the PR. Never merge.
+Every route stops `znf:ship` before its step 5 (a worker cannot dispatch the reviewer) and returns
+`READY_FOR_REVIEW` with worktree path, base ref, ship fingerprint and steps 1-4 evidence. Then:
+1. write the diff: `git -C <worktree> diff "$(git -C <worktree> merge-base <base> HEAD)"...HEAD > <file>`;
+2. dispatch a fresh `znf:code-reviewer` with the worktree path and the diff file path (it reads
+   files only — give paths, never "check the PR");
+3. CRITICAL/HIGH → resume the same worker (`SendMessage`) with the findings verbatim; max 2 rounds,
+   then `blocked`;
+4. clean → resume the worker to finish ship (review recorded as done by your reviewer, commit,
+   push, open the PR) and return the PR URL. Never merge.
 
 ### CI watch — the orchestrator owns it
 

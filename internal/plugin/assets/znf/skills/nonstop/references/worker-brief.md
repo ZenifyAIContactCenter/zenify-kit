@@ -3,7 +3,8 @@
 Read when: dispatching a worker.
 
 Workers are sub agents and **cannot spawn agents**. Tell each one to run its znf skill and do inline
-any step that skill would normally dispatch (including ship's review).
+any step that skill would normally dispatch. The one exception is ship's step 5 (independent
+review): the orchestrator runs it.
 
 ## Brief — every dispatch
 
@@ -18,15 +19,17 @@ Rules:      znf:discipline floor — ground before use, verify with real output,
             Issue: #N → ship uses it as the issue to close (Closes #N); Issue: - → ship's own rule.
 Stop & report (do not guess) on: a user gate of the skill, a destructive or irreversible action,
             anything outside the worktree.
-Do not run znf:ci-watch; the orchestrator watches CI for your PR.
-Return ≤ 40 lines: status (DONE | READY_FOR_REVIEW | BLOCKED | FAILED), PR URL when ship opened
-            one, worktree path, base ref, commits, fix/review rounds, commands + real output,
-            question if BLOCKED, new tasks found. Long output → file path.
+Ship: stop before step 5 (independent review). Commit on the feature branch, do not push, and
+            return READY_FOR_REVIEW. When resumed clean: finish ship with the review recorded as
+            done by the orchestrator's znf:code-reviewer — board, push, open the PR — and return
+            DONE with the PR URL. Resumed with findings: fix them, re-run steps 1-4, report again.
+            Do not run znf:ci-watch; the orchestrator watches CI for your PR.
+Return ≤ 40 lines: status (DONE | READY_FOR_REVIEW | BLOCKED | FAILED), PR URL (DONE), worktree
+            path, base ref, ship fingerprint, steps 1-4 evidence, commits, fix/review rounds,
+            commands + real output, question if BLOCKED, new tasks found. Long output → file path.
 ```
 
-`DONE` = the route ended in `znf:ship` and the PR is open. `READY_FOR_REVIEW` = the "implement
-directly" route: verified, committed, pushed, no PR yet; the orchestrator reviews, then resumes you
-to run `znf:ship`.
+This holds for every route, "implement directly" included (it runs `znf:ship` the same way).
 
 The worktree path and base ref let the orchestrator run `git diff --shortstat <base>...HEAD`. The
 worker does not report its own time; `duration_ms` comes from the harness.
@@ -41,6 +44,6 @@ worker does not report its own time; `duration_ms` comes from the harness.
 | approved plan `.md` | `znf:cook <plan.md>` |
 | PR review threads | `znf:fix` with the thread URLs; reply and resolve each after the fix |
 | kanban item | the project's kanban skill when installed, else `znf:cook` |
-| clear task, one repo, what + why stated | implement directly; `znf:ship` only after the orchestrator's review |
+| clear task, one repo, what + why stated | implement directly, then `znf:ship` |
 | merged PR found | `znf:sweep` |
 | empty backlog | `znf:top-issues` (report only; the user picks) |
