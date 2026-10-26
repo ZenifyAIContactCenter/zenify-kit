@@ -4,7 +4,7 @@ description: Pre-ship gate. Use when work is complete and about to be committed 
 allowed-tools: Bash(git *) Bash(pm *) Bash(zenify db-read *) Bash(rg *) Bash(printf *) Bash(cat *) Bash(tail *) Bash(wc *) Read Grep Agent
 ---
 
-Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
+Tool names for each action: `znf:_shared/harness-tools`.
 
 ## Fingerprint the tree, not HEAD
 
@@ -82,7 +82,7 @@ Read it back (`tail -30`); **if never blocked, say so.** Trailer `Spec: <spec pa
 
 Fill the `look:`/review sub-lines per the template. **Before concluding: `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` — non-zero → append `❌ BLOCKED` and Shippable NO (`ZNF_AUTONOMOUS=1` exit 8 = the await stop: end the session, no BLOCKED line); a waiver appends `waived: <reason>`.**
 
-**Every ✅ carries the fingerprint it was earned at**; a differing one: re-run. **Write the board to `${TMPDIR:-/tmp}/ship-board-$(fp).md`**, `cat` it, report path.
+**Write the board to `${TMPDIR:-/tmp}/ship-board-$(fp).md`**, `cat` it, report path.
 
 **7b.** Before pushing, write the risk-metadata note-commit (`_Blast-radius:`/`_DB:`/`_Rollback:` from the Brief spec's tags, else blank):
 
@@ -92,7 +92,7 @@ Fill the `look:`/review sub-lines per the template. **Before concluding: `zenify
 
 Then push and `zenify docs sync` (fails open).
 
-**On all-green, commit and push the FEATURE branch** — same branch name across repos, message in the repo's convention. **Then open the PR yourself and stop** (`--watch` → `Skill(znf:ci-watch)`): `gh pr create`, one per repo onto its base (protected is fine, a PR deploys nothing), title and body per `references/pr-message-language.md`. Report each URL.
+**On all-green, commit and push the FEATURE branch** — same branch name across repos, message in the repo's convention. **Then open the PR yourself and stop** (`--watch` → `Skill(znf:ci-watch)`). `features: github.issues on` in the session → `references/github-issues.md` first. `gh pr create`, one per repo onto its base (protected is fine, a PR deploys nothing), title and body per `references/pr-message-language.md`. Report each URL.
 
 **Merging is the user's deploy decision — NEVER merge, including a PR you opened**: no `gh pr merge`, no merge or push into a deploy/protected branch (listed in the project's CLAUDE.md or `.claude/deploy-branches`). Anything ❌ → fix first, do not commit.
 
@@ -105,3 +105,4 @@ Then push and `zenify docs sync` (fails open).
 - `references/pr-message-language.md` — PR language.
 - `references/stacked-ship.md` — per-layer review.
 - `references/autonomous-ui.md` — step 4 under `ZNF_AUTONOMOUS=1`.
+- `references/github-issues.md` — `github.issues` on.

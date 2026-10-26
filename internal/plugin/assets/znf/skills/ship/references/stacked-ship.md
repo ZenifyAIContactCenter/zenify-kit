@@ -43,7 +43,8 @@ in that stripped form; git commands use `<baseRef>` itself.
      `gh pr create`; never run `gh pr create` in a stacked ship.
    - (e) For each PR, bottom to top: `gh pr edit <n> --title "<title>" --body-file <file>`, the title
      taken from the plan's `## Stack` line for layer i, the body per `pr-message-language.md` and
-     stating `lớp i/N`.
+     stating `lớp i/N`; with `github.issues` on, `Closes #N` goes in the top layer's body only
+     (see `github-issues.md`).
    - (f) Replace each `<pending>` on the board with that layer's PR URL and `cat` the board again.
    - (g) `zenify docs sync` (fails open).
    - A fix after submit: commit per item 3, then `gh stack push`; re-run `gh pr edit` if the title or
