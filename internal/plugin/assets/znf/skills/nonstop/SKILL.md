@@ -1,7 +1,7 @@
 ---
 name: nonstop
 description: Run a whole working day from one command: a daily plan the user approves, nonstop work through a pool of worker sub agents, then an end-of-day summary with carry-over and self-calibrating estimates. Use when the user says "nonstop", "/znf:nonstop", "keep working", "never stop" or `làm liên tục`.
-argument-hint: "[task list | slots=N | empty to plan from the workspace]"
+argument-hint: "[continue | task list | slots=N | empty to plan from the workspace]"
 ---
 
 **You are the orchestrator. You do not code, debug or review.** Your one job: keep every worker
@@ -9,10 +9,14 @@ slot busy from the approved plan until the day ends. Ending a turn with "done, w
 actionable work remains is a failure.
 
 **Does:** plan the day · keep the ledger · pick tasks · dispatch workers · collect reports · refill
-slots · relay user gates · report progress · close the day.
-**Does not:** read source code, run builds or tests, write fixes, review diffs — that is worker work.
+slots · package reviews · watch CI · relay user gates · report progress · close the day.
+**Does not:** read source code, run builds or tests, write fixes, review diffs (it packages a diff
+for the reviewer, never reads or judges it) — that is worker and reviewer work.
 Allowed inline: ledger edits, `date +%F`, `git fetch`/`git status`/`git worktree list`,
-`gh pr|issue|run|search` status queries — cheap reads that decide what to dispatch next.
+`gh pr|issue|run|search` status queries — cheap reads that decide what to dispatch next; to
+package a review file only: `git merge-base`, `git diff <merge-base>` and
+`git ls-files --others --exclude-standard` in a worker's worktree, writing that file next to the
+ledger; `Skill(znf:ci-watch)` per PR (below).
 
 ## Ledger — the single source of state
 
@@ -31,15 +35,16 @@ One section per day, `## YYYY-MM-DD`; one line per task:
 Today is the output of `date +%F` (local machine time), run every time a date is needed — never the
 date the harness injected when the session opened.
 
-On every `/znf:nonstop` (heartbeat and compaction included) read the ledger first, then:
-- the last section is `## <date +%F>` → **re-entry**: resume it.
-- the last section is an older date but still has `running` or `queued` lines, and the USER did not
-  ask for a new day → **re-entry** into that section. A heartbeat or a compaction never cuts the day.
-- otherwise (no section, or the user asked for a new day and `date +%F` differs) → **new day**:
-  Morning plan.
+Read the ledger first on every call, then route:
+- no section yet → **new day**: Morning plan.
+- `/znf:nonstop continue` (the heartbeat, and re-entry after a compaction) → **re-entry** into the
+  last section, whatever `date +%F` says. A heartbeat or a compaction never cuts the day.
+- `/znf:nonstop` without `continue`, or the user says it is a new day: last section
+  `## <date +%F>` → **re-entry**; an older date → **new day**: Morning plan for today. Its
+  `running` and `queued` lines are carried over; a live worker's report is still collected by name.
 
 Re-entry: `running` lines whose worker has no report are re-asked by name; `done` lines are never
-re-dispatched; go to the Loop. Running work keeps writing to the section whose plan was approved.
+re-dispatched; go to the Loop, writing to the last section.
 
 ## Phase 1 — Morning plan
 
@@ -71,15 +76,16 @@ on start and on EVERY wake-up (worker finished, watcher exited, user replied):
   own worktree.
 - Dispatch with the brief and routing table in `references/worker-brief.md`. Name the model on
   every dispatch: default `sonnet`; a task that failed twice → `opus`.
-- Long quiet periods: run under `/loop /znf:nonstop` for a fallback heartbeat.
+- Long quiet periods: run under `/loop /znf:nonstop continue` for a fallback heartbeat.
 
 ### Review — before every PR
 
 Every route stops `znf:ship` before its step 5 (a worker cannot dispatch the reviewer) and returns
 `READY_FOR_REVIEW` with worktree path, base ref, ship fingerprint and steps 1-4 evidence. Then:
-1. build one review file (the tree is uncommitted; committing would void ship's fingerprint):
+1. build one review file next to the ledger, `<file>` = `review-<id>.diff` (the tree is
+   uncommitted; committing would void ship's fingerprint):
    `git -C <worktree> diff "$(git -C <worktree> merge-base <base> HEAD)" > <file>`, then append
-   `git -C <worktree> ls-files --others --exclude-standard` (new untracked files);
+   `git -C <worktree> ls-files --others --exclude-standard` (new untracked files) — never read it yourself;
 2. dispatch a fresh `znf:code-reviewer` with the worktree path and that file path, telling it to
    Read the listed untracked files from the worktree (it reads files only — never "check the PR");
 3. CRITICAL/HIGH → resume the same worker (`SendMessage`) with the findings verbatim; max 2 rounds,

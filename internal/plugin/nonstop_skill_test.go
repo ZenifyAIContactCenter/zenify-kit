@@ -11,6 +11,7 @@ func TestNonstopSkill(t *testing.T) {
 	refs := []string{"daily-plan.md", "estimation.md", "worker-brief.md"}
 	skill := syncedAsset(t, "skills/nonstop/SKILL.md")
 	all := skill
+	ref := map[string]string{}
 	for _, r := range refs {
 		body := syncedAsset(t, "skills/nonstop/references/"+r)
 		if strings.Contains(body, "references/") {
@@ -19,13 +20,24 @@ func TestNonstopSkill(t *testing.T) {
 		if !strings.Contains(skill, "references/"+r) {
 			t.Errorf("nonstop/SKILL.md must link references/%s", r)
 		}
+		ref[r] = body
 		all += "\n" + body
 	}
+	// The orchestrator owns ci-watch, routes the day (heartbeat = continue) and packages the review file.
 	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{
 		"name: nonstop",
 		"wait for the user's approval",
 		"ZNF_AUTONOMOUS=1",
+		"/znf:nonstop continue",
+		"Skill(znf:ci-watch)",
+		"ls-files --others --exclude-standard",
 	})
+	// A worker never runs ci-watch: its watcher would wake no one.
+	if strings.Contains(ref["worker-brief.md"], "Skill(znf:ci-watch)") {
+		t.Errorf("nonstop/references/worker-brief.md must not tell the worker to run Skill(znf:ci-watch)")
+	}
+	// The morning plan carries every open line of the last section.
+	assertContainsAll(t, "nonstop/references/daily-plan.md", ref["daily-plan.md"], []string{"non-done"})
 	assertContainsAll(t, "nonstop skill + references", all, []string{
 		"progress.md",
 		"## YYYY-MM-DD",

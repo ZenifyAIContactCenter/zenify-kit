@@ -1,11 +1,13 @@
 # Daily plan and end of day
 
-Read when: the ledger has no section `## <date +%F>` (morning plan), or the day is ending.
+Read when: the skill routes a call to a new day (morning plan), or the day is ending.
 
 ## Morning plan
 
-1. **Carry-over.** Read the most recent `## YYYY-MM-DD` section. Every line not `done` comes along:
-   - `carry-over`, `queued`, `failed`, a `running` line with no report → carry-over for today;
+1. **Carry-over.** Read the most recent `## YYYY-MM-DD` section. Every non-done line comes along:
+   - `carry-over`, `queued`, `failed` → carry-over for today;
+   - `running` → stays `running` with its worker; its report is still collected by name (no
+     worker to ask → carry-over);
    - `blocked` → "Needs you" with its question, never dispatched until answered;
    - `deferred until <YYYY-MM-DD>` → carry-over when that date ≤ `date +%F` (compared when the plan
      is built); a later date is hidden from the plan but still copied.
@@ -15,9 +17,10 @@ Read when: the ledger has no section `## <date +%F>` (morning plan), or the day 
 4. **Print the plan and wait for the user's approval or edits.** No worker is dispatched before
    the user approves. `ZNF_AUTONOMOUS=1` → record a `Ruling:` line in the ledger instead of
    stopping (`znf:_shared/autonomous.md`).
-5. **Write today's section** `## <date +%F>`: the approved plan lines (status `queued`), plus every
-   non-`done` line copied from the previous section that is not in the plan — still-future
-   `deferred until`, backlog beyond Batch 1, `blocked`. Then dispatch Batch 1 only.
+5. **Write today's section** `## <date +%F>`: the approved plan lines (status `queued`, carried
+   `running` lines as they are), plus every non-done line copied from the previous section that
+   is not in the plan — still-future `deferred until`, backlog beyond Batch 1, `blocked`. Then
+   dispatch Batch 1 only.
 
 ### Sources, in this order
 

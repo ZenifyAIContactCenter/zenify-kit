@@ -4,27 +4,27 @@ title: /znf:nonstop
 
 [Skill](/reference/skills/) / `/znf:nonstop`
 
-# `/znf:nonstop [task list | slots=N | empty to plan from the workspace]`
+# `/znf:nonstop [continue | task list | slots=N | empty to plan from the workspace]`
 
 Chạy cả ngày làm việc từ một lệnh — lập plan đầu ngày chờ bạn duyệt, giao việc liên tục cho một nhóm worker, rồi tổng kết cuối ngày kèm carry-over và estimate tự hiệu chỉnh.
 
 ## Cách gọi
 
 ```text
-/znf:nonstop [task list | slots=N | empty to plan from the workspace]
+/znf:nonstop [continue | task list | slots=N | empty to plan from the workspace]
 ```
 
 ## Khi nào dùng
 
-Đầu ngày, khi bạn muốn Claude tự gom việc từ workspace và làm liên tục đến hết ngày mà không phải giao từng việc: gõ `/znf:nonstop` (có thể kèm danh sách việc hoặc `slots=N`), hoặc nói "làm liên tục", "keep working". Gọi lại `/znf:nonstop` trong cùng ngày thì skill chạy tiếp ngày đó; heartbeat hay compaction qua 0h cũng không cắt ngày khi section cuối còn việc đang chạy hoặc chờ.
+Đầu ngày, khi bạn muốn Claude tự gom việc từ workspace và làm liên tục đến hết ngày mà không phải giao từng việc: gõ `/znf:nonstop` (có thể kèm danh sách việc hoặc `slots=N`), hoặc nói "làm liên tục", "keep working". Gọi lại `/znf:nonstop` trong cùng ngày thì skill chạy tiếp ngày đó; sáng hôm sau gọi `/znf:nonstop` thì skill lập plan mới cho hôm nay và mang theo việc còn dở (worker đang chạy vẫn được thu báo cáo). Heartbeat `/loop /znf:nonstop continue` và lần chạy lại sau compaction luôn chạy tiếp ngày đang dở, kể cả khi qua 0h.
 
 ## Cách hoạt động
 
 1. Phiên chính đóng vai điều phối: không tự đọc code, sửa hay review, chỉ lập plan, giao việc cho worker (mặc định 3 slot), thu báo cáo và giữ mọi slot luôn bận.
 2. Trạng thái nằm trong ledger `.znf/nonstop/progress.md` của main checkout (ở workspace root đa repo thì `.zenify/nonstop/progress.md`), mỗi ngày một section `## YYYY-MM-DD`, mỗi việc một dòng gồm repo, nguồn, issue, size, skill, worker, trạng thái và PR. Ngày lấy từ `date +%F` trên máy, không tự sang ngày lúc 0h.
-3. Plan đầu ngày (khi ledger chưa có section hôm nay): lấy các dòng chưa xong của ngày gần nhất làm carry-over, gom thêm việc theo thứ tự — việc bạn giao, PR của bạn CI đỏ hoặc còn review thread, SDD dở, issue được assign (khi đã bật `zenify feature github.issues on`), kanban/TODO; rỗng thì chạy `/znf:top-issues`. Việc đã có PR mở hoặc worktree thì không xếp lại. Plan chia Đợt 1 · Cần anh · Chờ merge (kèm lệnh merge) · số việc còn lại trong backlog.
+3. Plan đầu ngày (khi gọi `/znf:nonstop` không kèm `continue` mà ledger chưa có section hôm nay): lấy các dòng chưa xong của ngày gần nhất làm carry-over, gom thêm việc theo thứ tự — việc bạn giao, PR của bạn CI đỏ hoặc còn review thread, SDD dở, issue được assign (khi đã bật `zenify feature github.issues on`), kanban/TODO; rỗng thì chạy `/znf:top-issues`. Việc đã có PR mở hoặc worktree thì không xếp lại. Plan chia Đợt 1 · Cần anh · Chờ merge (kèm lệnh merge) · số việc còn lại trong backlog.
 4. Skill **dừng chờ bạn duyệt hoặc sửa plan** rồi mới giao việc đầu tiên. Khi chạy tự động (`ZNF_AUTONOMOUS=1`) thì skill tự quyết và ghi lý do vào ledger.
-5. Trong ngày, mỗi lần worker xong: ghi kết quả, thêm việc phát sinh (nguồn `discovered`), giao việc tiếp cho slot trống và in một khối tiến độ. Hết Đợt 1 thì tự kéo tiếp từ backlog. Mọi việc đều được review trước khi mở PR: worker dừng `/znf:ship` trước bước review, phiên điều phối giao diff cho một reviewer độc lập (`znf:code-reviewer`); có lỗi nặng thì worker sửa (tối đa 2 vòng), sạch thì worker hoàn tất ship và mở PR. Với mỗi PR mới, phiên điều phối tự chạy `/znf:ci-watch` ở chế độ nền: CI đỏ thì xếp một việc `/znf:fix` mới, PR CLEAN thì khối tiến độ có URL PR và lệnh `! gh pr merge -R <owner/repo> <n> --merge`.
+5. Trong ngày, mỗi lần worker xong: ghi kết quả, thêm việc phát sinh (nguồn `discovered`), giao việc tiếp cho slot trống và in một khối tiến độ. Hết Đợt 1 thì tự kéo tiếp từ backlog. Mọi việc đều được review trước khi mở PR: worker dừng `/znf:ship` trước bước review, phiên điều phối gói diff vào một file cạnh ledger (không tự đọc) và giao cho một reviewer độc lập (`znf:code-reviewer`); có lỗi nặng thì worker sửa (tối đa 2 vòng), sạch thì worker hoàn tất ship và mở PR. Với mỗi PR mới, phiên điều phối tự chạy `/znf:ci-watch` ở chế độ nền: CI đỏ thì xếp một việc `/znf:fix` mới, PR CLEAN thì khối tiến độ có URL PR và lệnh `! gh pr merge -R <owner/repo> <n> --merge`.
 6. Mỗi việc được ước lượng theo T-shirt: S=1 (< 30 phút, ≤ 3 file) · M=2 (30 phút–2 giờ, ≤ 10 file) · L=4 (2–4 giờ, ≤ 30 file) · XL=8 (> 4 giờ, > 30 file hoặc cần spec; plan đánh dấu nên tách). Xong việc, skill đo thời gian thật (`duration_ms` của worker) và số file (`git diff --shortstat`), ghi một dòng vào `estimates.md`. Plan sáng đọc khoảng 30 dòng gần nhất để hiệu chỉnh; ngân sách đợt bằng median throughput (tính bằng điểm) khi có từ 3 ngày dữ liệu, chưa đủ thì 10 việc.
 7. Cuối ngày (bạn nói dừng hoặc hết việc): in việc đã xong kèm URL PR/issue đầy đủ, lệnh merge cho từng PR CLEAN, câu hỏi của việc bị chặn, hit rate, bias và throughput của estimate; các việc dở được ghi lại thành `carry-over` cho sáng hôm sau (việc bị chặn giữ nguyên `blocked`, vào mục Cần anh).
 
