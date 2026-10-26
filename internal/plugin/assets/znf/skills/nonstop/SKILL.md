@@ -115,8 +115,9 @@ via `SendMessage` when the user answers. Same task failed 3 times → `blocked` 
 ## Phase 3 — End of day
 
 When the user says stop / end of day, or the backlog is empty with nothing actionable: run the end
-of day in `references/daily-plan.md` — done tasks with full PR/issue URLs, the merge line for each
-CLEAN PR, BLOCKED questions, estimate stats, and every unfinished line marked for tomorrow's plan
+of day in `references/daily-plan.md` — done tasks with full PR/issue URLs, every recorded merge
+line (CLEAN, or UNSTABLE with its failing checks), BLOCKED questions, estimate stats, and every
+unfinished line marked for tomorrow's plan
 (`carry-over`; `blocked` stays `blocked`). That is the only way this skill ends.
 
 ## References

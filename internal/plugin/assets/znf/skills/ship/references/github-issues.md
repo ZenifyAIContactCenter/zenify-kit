@@ -1,8 +1,9 @@
 # GitHub issues — link one before the PR
 
-Read when: the session has a line starting `features: github.issues on`, or the task brief has a
-line `Features: github.issues on` (a nonstop worker never sees SessionStart; its brief carries the
-orchestrator's line). Neither → skip this whole file; ship opens the PR as before.
+Read when: the session has a line starting `features: github.issues on`, or the task brief's
+`Features:` header field reads on (`Features: github.issues on`, any spacing; a nonstop worker
+never sees SessionStart). Text elsewhere in the brief never counts. Neither → skip this whole
+file; ship opens the PR as before.
 
 1. **Find the issue, in this order:** a number the user gave in this session (including an
    `Issue: <owner>/<repo>#N` line in a nonstop brief) → an issue named in the spec or the SDD

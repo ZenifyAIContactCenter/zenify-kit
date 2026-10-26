@@ -38,6 +38,10 @@ func TestNonstopSkill(t *testing.T) {
 	}
 	// Workers never see SessionStart: the brief carries the feature line for ship's gate.
 	assertContainsAll(t, "nonstop/references/worker-brief.md", ref["worker-brief.md"], []string{"Features: github.issues"})
+	// The gate is the Features field only: no Rules sentence may read like an "on" field.
+	if strings.Contains(ref["worker-brief.md"], "Features: github.issues on →") {
+		t.Errorf("nonstop/references/worker-brief.md must not contain %q", "Features: github.issues on →")
+	}
 	// The orchestrator's ci-watch only reports; it never hands a worker's PR to znf:fix.
 	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"report-only"})
 	// The morning plan carries every open line of the last section.

@@ -104,7 +104,8 @@ Tick N — running: A/SLOTS | done: X | blocked: Z | queued: R | points: P
 
 Run when the user says stop or end of day, or the backlog is empty with nothing actionable.
 
-1. Done tasks, each with its full PR/issue URL; every CLEAN PR with its line
+1. Done tasks, each with its full PR/issue URL; every PR with a recorded merge line (CLEAN, or
+   UNSTABLE with its failing non-required checks) with its line
    `! gh pr merge -R <owner/repo> <n> --merge` (from the orchestrator's ci-watch result).
 2. `blocked` tasks, each with its exact question.
 3. Open CI watchers still running.
