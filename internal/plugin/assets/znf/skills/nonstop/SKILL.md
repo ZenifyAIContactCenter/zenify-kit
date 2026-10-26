@@ -77,13 +77,15 @@ on start and on EVERY wake-up (worker finished, watcher exited, user replied):
 
 Every route stops `znf:ship` before its step 5 (a worker cannot dispatch the reviewer) and returns
 `READY_FOR_REVIEW` with worktree path, base ref, ship fingerprint and steps 1-4 evidence. Then:
-1. write the diff: `git -C <worktree> diff "$(git -C <worktree> merge-base <base> HEAD)"...HEAD > <file>`;
-2. dispatch a fresh `znf:code-reviewer` with the worktree path and the diff file path (it reads
-   files only — give paths, never "check the PR");
+1. build one review file (the tree is uncommitted; committing would void ship's fingerprint):
+   `git -C <worktree> diff "$(git -C <worktree> merge-base <base> HEAD)" > <file>`, then append
+   `git -C <worktree> ls-files --others --exclude-standard` (new untracked files);
+2. dispatch a fresh `znf:code-reviewer` with the worktree path and that file path, telling it to
+   Read the listed untracked files from the worktree (it reads files only — never "check the PR");
 3. CRITICAL/HIGH → resume the same worker (`SendMessage`) with the findings verbatim; max 2 rounds,
    then `blocked`;
-4. clean → resume the worker to finish ship (review recorded as done by your reviewer, commit,
-   push, open the PR) and return the PR URL. Never merge.
+4. clean → resume the worker to finish ship from its board/commit/push/PR step with the unchanged
+   fingerprint (review recorded as done by your reviewer) and return the PR URL. Never merge.
 
 ### CI watch — the orchestrator owns it
 

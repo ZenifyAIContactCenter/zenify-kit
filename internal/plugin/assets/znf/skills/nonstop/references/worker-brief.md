@@ -19,10 +19,11 @@ Rules:      znf:discipline floor — ground before use, verify with real output,
             Issue: #N → ship uses it as the issue to close (Closes #N); Issue: - → ship's own rule.
 Stop & report (do not guess) on: a user gate of the skill, a destructive or irreversible action,
             anything outside the worktree.
-Ship: stop before step 5 (independent review). Commit on the feature branch, do not push, and
-            return READY_FOR_REVIEW. When resumed clean: finish ship with the review recorded as
-            done by the orchestrator's znf:code-reviewer — board, push, open the PR — and return
-            DONE with the PR URL. Resumed with findings: fix them, re-run steps 1-4, report again.
+Ship: stop before step 5 (independent review). Do NOT commit (it changes ship's fingerprint);
+            return READY_FOR_REVIEW. When resumed clean: continue ship at its board/commit/push/PR
+            step with the unchanged fingerprint, the review recorded as done by the orchestrator's
+            znf:code-reviewer, and return DONE with the PR URL. Resumed with findings: fix them,
+            re-run steps 2-4 as ship requires, report READY_FOR_REVIEW again.
             Do not run znf:ci-watch; the orchestrator watches CI for your PR.
 Return ≤ 40 lines: status (DONE | READY_FOR_REVIEW | BLOCKED | FAILED), PR URL (DONE), worktree
             path, base ref, ship fingerprint, steps 1-4 evidence, commits, fix/review rounds,
