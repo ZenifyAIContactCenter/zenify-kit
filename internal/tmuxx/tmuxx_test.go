@@ -97,7 +97,7 @@ func TestDisplayMessage(t *testing.T) {
 	if err := DisplayMessage(r, "be#812: ci-failed"); err != nil {
 		t.Fatal(err)
 	}
-	want := [][]string{{"display-message", "-d", "5000", "-t", "zenify", "be#812: ci-failed"}}
+	want := [][]string{{"display-message", "-d", "5000", "-t", "=zenify", "be#812: ci-failed"}}
 	if !reflect.DeepEqual(r.calls, want) {
 		t.Errorf("calls = %v, want %v", r.calls, want)
 	}
@@ -118,8 +118,12 @@ func TestSelectPane(t *testing.T) {
 }
 
 func TestHasSession(t *testing.T) {
-	if !HasSession(&fakeRunner{}) {
+	r := &fakeRunner{}
+	if !HasSession(r) {
 		t.Error("want true when has-session succeeds")
+	}
+	if want := [][]string{{"has-session", "-t", "=zenify"}}; !reflect.DeepEqual(r.calls, want) {
+		t.Errorf("calls = %v, want %v (exact-match target)", r.calls, want)
 	}
 	if HasSession(&fakeRunner{err: errors.New("no session")}) {
 		t.Error("want false when has-session fails")
