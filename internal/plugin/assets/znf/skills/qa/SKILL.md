@@ -49,6 +49,8 @@ dev run cannot bend the test to fit the code. Every rule below protects that.
 Write `.znf/e2e/scenarios/ZEN-<n>.md` from `references/scenario-template.md`.
 
 1. One `@ac` per acceptance line of the item; copy the acceptance sentence verbatim into the heading.
+   A line with several conditions (`khi A thì X; khi B thì Y`, `nếu …, còn nếu …`) gets one
+   `Bước:`/`Thấy:` pair per condition under that heading, so a fix that handles only one condition fails.
 2. Kind is exactly one of `e2e`, `hỏi`, `ngoài-e2e`. A `ngoài-e2e` line says how it is checked instead (ui-verifier or unit).
 3. `Bước` and `Thấy` use the exact words on screen. Find them by driving the sandbox app with `zenify browser`,
    logged in as `<role>` (see Role and login); never invent a label.
@@ -65,6 +67,8 @@ A bug or tweak gets only this run, so it writes the scenario too: run Mode `scen
 then write `.znf/e2e/zen-<n>.spec.ts` following `znf:e2e` (deep scenario, domain assert, cleanup, locator ladder).
 
 1. The header carries `// @scenario ZEN-<n>`. Every test title carries the `@ac:<n>` it proves; every `e2e` `@ac` gets a test.
+   An `@ac` with several `Bước:`/`Thấy:` pairs gets one test per pair, each setting up the data that
+   triggers its own condition; a journey that exercises one condition of a multi-condition line is incomplete.
 2. Every string inside an `expect` is copied verbatim from that `@ac`'s `Thấy` lines.
 3. Run `zenify e2e lint`, then `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT --role <role>` on base.
    An attempt is one `zenify e2e run --local` on base after `zenify e2e lint` passes; lint failures and their fixes are not attempts.
@@ -80,7 +84,8 @@ The scenario is frozen; the journey's expects come from it, verbatim.
 
 1. No `.znf/e2e/zen-<n>.spec.ts` yet (a feature: the `qa` run wrote only the scenario) → write it
    following `znf:e2e`: header `// @scenario ZEN-<n>`, one test per `e2e` `@ac` with `@ac:<n>` in its
-   title, and every string inside an `expect` copied verbatim from that `@ac`'s `Thấy` lines.
+   title (one test per `Bước:`/`Thấy:` pair when an `@ac` has several), and every string inside an
+   `expect` copied verbatim from that `@ac`'s `Thấy` lines.
 2. From then on, and whenever the journey already exists, you may add or change ONLY locators,
    navigation and seed data.
 
