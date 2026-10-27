@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -58,13 +59,77 @@ type State struct {
 
 func statePath(home string) string { return filepath.Join(Dir(home), "state.json") }
 
-// normalizeOrigin reduces a GitHub origin URL to owner/repo. It errors when
-// the host is not github.com or a dotless ssh-config alias (gitlab.com,
-// bitbucket.org, an internal git server), or when the result is not exactly
-// two non-empty path segments.
-func normalizeOrigin(url string) (string, error) {
-	if host := originHost(url); !strings.EqualFold(host, "github.com") && (host == "" || strings.Contains(host, ".")) {
-		return "", fmt.Errorf("origin %q is not a github remote", strings.TrimSpace(url))
+// SSHRunner abstracts invoking `ssh` so tests can inject a fake.
+type SSHRunner interface {
+	Run(args ...string) ([]byte, error)
+}
+
+type execSSH struct{}
+
+func (execSSH) Run(args ...string) ([]byte, error) {
+	return exec.Command("ssh", args...).Output() //nolint:gosec // G204 -- fixed trusted binary; the host is validated by HostResolver.Resolve
+}
+
+// HostResolver maps an ssh host or ssh-config alias to its real hostname via
+// `ssh -G`, caching each answer for the lifetime of the resolver.
+type HostResolver struct {
+	ssh   SSHRunner
+	mu    sync.Mutex
+	cache map[string]string
+}
+
+// NewHostResolver returns a resolver that runs ssh through r.
+func NewHostResolver(r SSHRunner) *HostResolver {
+	return &HostResolver{ssh: r, cache: map[string]string{}}
+}
+
+// defaultHosts is the process-wide resolver used when none is injected.
+var defaultHosts = NewHostResolver(execSSH{})
+
+// Resolve returns the hostname ssh would connect to for host. Errors are not
+// cached.
+func (h *HostResolver) Resolve(host string) (string, error) {
+	if host == "" || strings.HasPrefix(host, "-") {
+		return "", fmt.Errorf("invalid ssh host %q", host)
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if v, ok := h.cache[host]; ok {
+		return v, nil
+	}
+	out, err := h.ssh.Run("-G", host)
+	if err != nil {
+		return "", fmt.Errorf("resolve ssh host %q: %w", host, err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if k, v, ok := strings.Cut(strings.TrimSpace(line), " "); ok && strings.EqualFold(k, "hostname") {
+			v = strings.TrimSpace(v)
+			h.cache[host] = v
+			return v, nil
+		}
+	}
+	return "", fmt.Errorf("resolve ssh host %q: no hostname in ssh -G output", host)
+}
+
+// normalizeOrigin reduces a GitHub origin URL to owner/repo. https origins
+// must be on github.com; any other ssh host (scp-like or ssh://) is resolved
+// with res and must map to github.com. It errors when the host is not GitHub,
+// when resolution fails, or when the result is not exactly two non-empty path
+// segments.
+func normalizeOrigin(url string, res *HostResolver) (string, error) {
+	host := originHost(url)
+	if !strings.EqualFold(host, "github.com") {
+		trimmed := strings.TrimSpace(url)
+		if host == "" || strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+			return "", fmt.Errorf("origin %q is not a github remote", trimmed)
+		}
+		real, err := res.Resolve(host)
+		if err != nil {
+			return "", fmt.Errorf("origin %q: %w", trimmed, err)
+		}
+		if !strings.EqualFold(real, "github.com") {
+			return "", fmt.Errorf("origin %q is not a github remote (host %s resolves to %s)", trimmed, host, real)
+		}
 	}
 	slug := gitx.NormalizeRemote(url, nil)
 	owner, repo, ok := strings.Cut(slug, "/")
@@ -103,7 +168,10 @@ func originHost(url string) string {
 // repo whose origin cannot be read or parsed keeps its worktrees with an empty
 // Repo (no PR can attach). Those errors are joined and returned with the
 // remaining tasks, sorted by slug.
-func CollectLocal(root string, git gitx.Runner) (tasks []Task, owners, failed []string, err error) {
+func CollectLocal(root string, git gitx.Runner, res *HostResolver) (tasks []Task, owners, failed []string, err error) {
+	if res == nil {
+		res = defaultHosts
+	}
 	var errs []error
 	bySlug := map[string]*Task{}
 	ownerSet := map[string]bool{}
@@ -124,7 +192,7 @@ func CollectLocal(root string, git gitx.Runner) (tasks []Task, owners, failed []
 		repo := ""
 		if out, err := git.Run(repoRoot, "remote", "get-url", "origin"); err != nil {
 			errs = append(errs, fmt.Errorf("%s: read origin: %w", name, err))
-		} else if repo, err = normalizeOrigin(string(out)); err != nil {
+		} else if repo, err = normalizeOrigin(string(out), res); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 		} else {
 			owner, _, _ := strings.Cut(repo, "/")
@@ -333,7 +401,9 @@ type Poller struct {
 	Git        gitx.Runner
 	GH         ghx.Runner
 	Tmux       tmuxx.Runner
-	Now        func() int64 // unix seconds
+	// Hosts resolves ssh aliases in origins; nil means the process-wide ssh resolver.
+	Hosts *HostResolver
+	Now   func() int64 // unix seconds
 	// NowNano stamps PR.AlertAt in unix nanoseconds; nil means
 	// time.Now().UnixNano().
 	NowNano func() int64
@@ -355,7 +425,7 @@ type Poller struct {
 func (p *Poller) Local() error {
 	now := p.Now()
 	start := time.Now()
-	tasks, owners, failed, collectErr := CollectLocal(p.Root, p.Git)
+	tasks, owners, failed, collectErr := CollectLocal(p.Root, p.Git, p.Hosts)
 	p.LocalDuration = time.Since(start)
 	agents, agentsErr := LoadAgents(p.Home)
 

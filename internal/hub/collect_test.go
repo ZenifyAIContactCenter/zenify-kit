@@ -31,24 +31,67 @@ func (failGit) Run(dir string, args ...string) ([]byte, error) {
 	return nil, errors.New("git must not be called")
 }
 
+type fakeSSH struct {
+	hosts map[string]string
+	err   error
+	calls []string
+}
+
+func (f *fakeSSH) Run(args ...string) ([]byte, error) {
+	host := args[len(args)-1]
+	f.calls = append(f.calls, host)
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []byte("user git\nhostname " + f.hosts[host] + "\nport 22\n"), nil
+}
+
 func TestNormalizeOrigin(t *testing.T) {
+	res := NewHostResolver(&fakeSSH{hosts: map[string]string{
+		"github-work": "github.com", "github.work": "GitHub.com", "gh": "github.com",
+		"gitlab.com": "gitlab.com", "git.example.internal": "git.example.internal",
+	}})
 	for _, url := range []string{
 		"git@github.com:acme/tools.git",
 		"https://github.com/acme/tools.git",
 		"ssh://git@github.com/acme/tools.git",
 		"git@github-work:acme/tools.git",
+		"git@github.work:acme/tools.git",
+		"ssh://git@github.work/acme/tools.git",
 		"gh:acme/tools",
 	} {
-		got, err := normalizeOrigin(url)
+		got, err := normalizeOrigin(url, res)
 		if err != nil || got != "acme/tools" {
 			t.Errorf("%s: got %q, %v", url, got, err)
 		}
 	}
 	for _, bad := range []string{"", "/srv/git/tools", "https://github.com/onlyowner",
-		"https://gitlab.com/acme/tools.git", "git@bitbucket.org:acme/tools.git", "ssh://git@git.example.internal/acme/tools.git"} {
-		if got, err := normalizeOrigin(bad); err == nil {
+		"https://gitlab.com/acme/tools.git", "https://github.work/acme/tools.git",
+		"git@gitlab.com:acme/tools.git", "git@bitbucket.org:acme/tools.git", "ssh://git@git.example.internal/acme/tools.git"} {
+		if got, err := normalizeOrigin(bad, res); err == nil {
 			t.Errorf("%q: want error, got %q", bad, got)
 		}
+	}
+}
+
+func TestNormalizeOrigin_ResolverError(t *testing.T) {
+	res := NewHostResolver(&fakeSSH{err: errors.New("ssh missing")})
+	_, err := normalizeOrigin("git@github.work:acme/tools.git", res)
+	if err == nil || !strings.Contains(err.Error(), "github.work") || !strings.Contains(err.Error(), "ssh missing") {
+		t.Errorf("want error naming host and cause, got %v", err)
+	}
+}
+
+func TestHostResolver_Caches(t *testing.T) {
+	f := &fakeSSH{hosts: map[string]string{"github.work": "github.com"}}
+	res := NewHostResolver(f)
+	for i := 0; i < 3; i++ {
+		if _, err := normalizeOrigin("git@github.work:acme/tools.git", res); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(f.calls) != 1 {
+		t.Errorf("ssh calls = %v, want 1", f.calls)
 	}
 }
 
@@ -361,7 +404,7 @@ func TestCollectLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tasks, owners, failed, err := CollectLocal(root, gitx.ExecRunner())
+	tasks, owners, failed, err := CollectLocal(root, gitx.ExecRunner(), NewHostResolver(&fakeSSH{}))
 	if want := []string{"broken"}; !reflect.DeepEqual(failed, want) {
 		t.Errorf("failed = %q, want %q (an origin error is not a failed repo)", failed, want)
 	}
@@ -546,7 +589,7 @@ func TestCollectLocal_UnmanagedUsesDirName(t *testing.T) {
 		wtPath := mkRepo(t, root, name, "git@github.com:acme/"+name+".git", "shared-task", "u/feat/shared-"+name)
 		git(t, wtPath, "config", "--worktree", "--unset", "wt.slug") // no wt.slug: wt.List says (unmanaged)
 	}
-	tasks, _, _, err := CollectLocal(root, gitx.ExecRunner())
+	tasks, _, _, err := CollectLocal(root, gitx.ExecRunner(), NewHostResolver(&fakeSSH{}))
 	if err != nil {
 		t.Fatalf("CollectLocal: %v", err)
 	}
