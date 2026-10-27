@@ -39,7 +39,8 @@ func nextTick() tea.Cmd {
 // when it started.
 type polledMsg struct {
 	at          time.Time
-	github      bool // a GitHub round; otherwise a local one
+	github      bool  // a GitHub round; otherwise a local one
+	githubAt    int64 // State.GitHubAt when a GitHub round started
 	repos       []string
 	fingerprint string
 	err         error
@@ -142,6 +143,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.localErr = msg.err
 		}
 		m.err = m.reload()
+		if msg.github && m.state.GitHubAt == msg.githubAt {
+			// Deferred (owners unknown) or failed: retry next tick, not after GitHubInterval.
+			m.lastGitHub = time.Time{}
+		}
 		m.logErr(msg.at)
 		return m, again
 	case openedMsg:
@@ -229,7 +234,8 @@ func (m *Model) pollIfDue(now time.Time, worktreesChanged bool) (tea.Cmd, error)
 	}
 	if m.lastGitHub.IsZero() || now.Sub(m.lastGitHub) >= GitHubInterval(m.state) || refresh.After(m.refreshSeen) {
 		m.githubBusy, m.lastGitHub, m.refreshSeen = true, now, refresh
-		cmds = append(cmds, func() tea.Msg { return polledMsg{at: now, github: true, err: p.GitHub()} })
+		since := m.state.GitHubAt
+		cmds = append(cmds, func() tea.Msg { return polledMsg{at: now, github: true, githubAt: since, err: p.GitHub()} })
 	}
 	return tea.Batch(cmds...), nil
 }
@@ -417,20 +423,17 @@ func (m Model) fix(it Item) Model {
 		m.notice, m.failed = "no agent on this task", false
 		return m
 	}
-	// The cached state may be up to a poll round old: re-read the agent file.
-	fresh, err := readAgent(m.home, a.SessionID)
-	if err != nil {
-		return m.done("", err)
-	}
-	if fresh == nil { // SessionEnd removed the file
-		return m.done("agent session ended", nil)
-	}
-	a.State = fresh.State
-	if fresh.Pane != "" {
-		a.Pane = fresh.Pane
+	a, m, ok = m.freshAgent(a)
+	if !ok {
+		return m
 	}
 	pr := *it.PR
 	send := func(m Model) Model {
+		// The session may have ended or moved while the prompt was up.
+		a, m, ok := m.freshAgent(a)
+		if !ok {
+			return m
+		}
 		err := tmuxx.SendKeys(m.tm, a.Pane, FixPrompt(pr))
 		if err == nil {
 			err = m.ack(&pr)
@@ -441,6 +444,24 @@ func (m Model) fix(it Item) Model {
 		return m.ask("Agent is waiting for input — send anyway? y/n", send)
 	}
 	return send(m)
+}
+
+// freshAgent re-reads a's agent file, since the cached state may be up to a
+// poll round old, and returns a with its current state and pane; ok is false
+// (with the notice or error set on m) when the file is gone or unreadable.
+func (m Model) freshAgent(a Agent) (Agent, Model, bool) {
+	fresh, err := readAgent(m.home, a.SessionID)
+	if err != nil {
+		return a, m.done("", err), false
+	}
+	if fresh == nil { // SessionEnd removed the file
+		return a, m.done("agent session ended", nil), false
+	}
+	a.State = fresh.State
+	if fresh.Pane != "" {
+		a.Pane = fresh.Pane
+	}
+	return a, m, true
 }
 
 // jump focuses a's pane, switching the client to its session first (a no-op

@@ -128,7 +128,7 @@ Trạng thái agent đến từ Claude Code hooks. `zenify up` cài hook `hub-re
 
 | Event | Trạng thái |
 |---|---|
-| `SessionStart` | idle (`source` là `compact` hoặc `resume` thì giữ nguyên trạng thái) |
+| `SessionStart` | idle (chỉ `source=compact` giữ nguyên trạng thái; `resume` về idle) |
 | `UserPromptSubmit`, `PostToolUse` | working |
 | `Notification` loại `permission_prompt`, `agent_needs_input` hoặc `elicitation_dialog` | blocked (loại khác giữ nguyên trạng thái) |
 | `Stop` | done |

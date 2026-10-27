@@ -11,18 +11,18 @@ import (
 
 var pr812 = PR{
 	Number: 812,
-	Repo:   "ZenifyAIContactCenter/contact-center-be",
-	URL:    "https://github.com/ZenifyAIContactCenter/contact-center-be/pull/812",
+	Repo:   "acme/api",
+	URL:    "https://github.com/acme/api/pull/812",
 }
 
 func TestCopyURL(t *testing.T) {
-	if got, want := CopyURL(pr812), "https://github.com/ZenifyAIContactCenter/contact-center-be/pull/812"; got != want {
+	if got, want := CopyURL(pr812), "https://github.com/acme/api/pull/812"; got != want {
 		t.Errorf("CopyURL = %q, want %q", got, want)
 	}
 }
 
 func TestMergeCommand(t *testing.T) {
-	if got, want := MergeCommand(pr812), "gh pr merge 812 --repo ZenifyAIContactCenter/contact-center-be --merge"; got != want {
+	if got, want := MergeCommand(pr812), "gh pr merge 812 --repo acme/api --merge"; got != want {
 		t.Errorf("MergeCommand = %q, want %q", got, want)
 	}
 }
@@ -50,7 +50,7 @@ func TestAck_CreatesFile(t *testing.T) {
 	if err := Ack(home, pr812); err != nil {
 		t.Fatalf("Ack: %v", err)
 	}
-	p := filepath.Join(home, ".zenify", "hub", "acks", "ZenifyAIContactCenter_contact-center-be_812")
+	p := filepath.Join(home, ".zenify", "hub", "acks", "acme_api_812")
 	if _, err := os.Stat(p); err != nil {
 		t.Errorf("ack file: %v", err)
 	}

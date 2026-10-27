@@ -29,8 +29,14 @@ func (f *scriptTmux) Run(args ...string) ([]byte, error) {
 	return []byte(f.out[args[0]]), nil
 }
 
-// countTicker counts the local and GitHub rounds it ran.
-type countTicker struct{ local, github int }
+// countTicker counts the local and GitHub rounds it ran. A GitHub round
+// stamps State.GitHubAt in home, as a real round with known owners does,
+// unless deferred is set (owners unknown: GitHubAt stays put).
+type countTicker struct {
+	home          string
+	deferred      bool
+	local, github int
+}
 
 func (c *countTicker) Local() error {
 	c.local++
@@ -39,7 +45,15 @@ func (c *countTicker) Local() error {
 
 func (c *countTicker) GitHub() error {
 	c.github++
-	return nil
+	if c.deferred {
+		return nil
+	}
+	s, err := ReadState(c.home)
+	if err != nil {
+		return err
+	}
+	s.GitHubAt = time.Now().Unix()
+	return WriteState(c.home, s)
 }
 
 // t0 is in the past so files touched at wall-clock time are newer.
@@ -53,7 +67,7 @@ func newTestModel(t *testing.T, home string, s State) (Model, *scriptTmux, *coun
 		t.Fatal(err)
 	}
 	tm := &scriptTmux{}
-	ct := &countTicker{}
+	ct := &countTicker{home: home}
 	m := NewModel(home, "/ws", tm, &Poller{})
 	m.poll = ct
 	m.every = func() tea.Cmd { return nil } // tests send tickMsg themselves
@@ -315,6 +329,17 @@ func TestRefreshForcesGitHub(t *testing.T) {
 	update(t, m, tickMsg(t0.Add(time.Second)))
 	if ct.github != 2 {
 		t.Errorf("github rounds = %d, want 2", ct.github)
+	}
+}
+
+func TestDeferredGitHubRoundRetriesNextTick(t *testing.T) {
+	m, _, ct := newTestModel(t, t.TempDir(), State{})
+	ct.deferred = true         // owners unknown: the round leaves GitHubAt as it was
+	m = update(t, m, key("r")) // forces GitHub round 2
+	m = update(t, m, tickMsg(t0.Add(time.Second)))
+	update(t, m, tickMsg(t0.Add(2*time.Second)))
+	if ct.github != 3 {
+		t.Errorf("github rounds = %d, want 3 (the deferred round retried on the next tick)", ct.github)
 	}
 }
 
@@ -755,6 +780,24 @@ func TestKeyF_EndedSessionRefuses(t *testing.T) {
 	m = update(t, m, key("j"))
 	m = update(t, m, key("j")) // PR row #812
 	m = update(t, m, key("f"))
+	if len(tm.calls) != 0 {
+		t.Errorf("sent to an ended session: %q", tm.calls)
+	}
+	if !strings.Contains(m.View(), "agent session ended") {
+		t.Errorf("View missing notice:\n%s", m.View())
+	}
+}
+
+func TestKeyF_ConfirmAfterSessionEndedRefuses(t *testing.T) {
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, fixState(Blocked)))
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
+	m = update(t, m, key("f"))
+	if err := os.Remove(agentPath(home, "s1")); err != nil { // SessionEnd while the prompt is up
+		t.Fatal(err)
+	}
+	m = update(t, m, key("y"))
 	if len(tm.calls) != 0 {
 		t.Errorf("sent to an ended session: %q", tm.calls)
 	}
