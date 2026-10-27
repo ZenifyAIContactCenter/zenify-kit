@@ -440,7 +440,7 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 			m.relayout()
 		case k == " ": // Space only folds
 		default:
-			if a, ok := TargetAgent(m.state, it); ok && !a.OnHub() {
+			if a, ok := TargetAgent(m.state, it); ok && a.OtherTmux() {
 				m.notice, m.failed = otherTmuxNotice, false
 			} else if ok && a.Open {
 				m = m.jump(a, it.PR)
@@ -491,7 +491,7 @@ func (m Model) fix(it Item) Model {
 		m.notice, m.failed = "no agent on this task", false
 		return m
 	}
-	if !a.OnHub() {
+	if a.OtherTmux() {
 		m.notice, m.failed = otherTmuxNotice, false
 		return m
 	}
@@ -832,7 +832,7 @@ func (m Model) forget(it Item) Model {
 		return m
 	}
 	a := *it.Agent
-	if !a.OnHub() {
+	if a.OtherTmux() {
 		m.notice, m.failed = otherTmuxNotice, false
 		return m
 	}

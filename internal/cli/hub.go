@@ -141,15 +141,16 @@ func resumable(env hubEnv, now int64) []hub.Agent {
 	return out
 }
 
-// resumeCandidates keeps the closed agents of the hub tmux server (an agent
-// on another server may still run there) updated within resumeMaxAge whose
+// resumeCandidates keeps the closed agents, except those of another live
+// tmux server (hub.Agent.OtherTmux: they may still run there), updated
+// within resumeMaxAge whose
 // session id is safe for a command line, newest first, at most resumeMax.
 // Unsafe ids are skipped and returned as errors.
 func resumeCandidates(agents map[string]hub.Agent, now int64) ([]hub.Agent, error) {
 	var out []hub.Agent
 	var errs []error
 	for _, a := range agents {
-		if a.Open || !a.OnHub() || now-a.UpdatedAt > resumeMaxAge {
+		if a.Open || a.OtherTmux() || now-a.UpdatedAt > resumeMaxAge {
 			continue
 		}
 		if !hub.ValidSessionID(a.SessionID) {

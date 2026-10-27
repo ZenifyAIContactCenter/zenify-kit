@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -451,10 +452,19 @@ func TestResumeCandidates_AgeCutoff(t *testing.T) {
 	}
 }
 
+// withAlive makes hub.ProcessAlive report alive exactly for the given pids.
+func withAlive(t *testing.T, pids ...int) {
+	t.Helper()
+	old := hub.ProcessAlive
+	hub.ProcessAlive = func(pid int) bool { return slices.Contains(pids, pid) }
+	t.Cleanup(func() { hub.ProcessAlive = old })
+}
+
 func TestHubCmd_SkipsAgentOfOtherTmuxServer(t *testing.T) { // I1
 	root := hubWorkspace(t)
 	t.Chdir(root)
 	t.Setenv("TMUX", "")
+	withAlive(t, 77)
 	rt := &recTmux{failOn: map[string]bool{"has-session": true}}
 	var attached []string
 	home := withHubEnv(t, rt, &attached)
@@ -468,15 +478,51 @@ func TestHubCmd_SkipsAgentOfOtherTmuxServer(t *testing.T) { // I1
 	}
 }
 
-func TestResumeCandidates_OnlyHubServer(t *testing.T) { // I1
+func TestResumeCandidates_OtherTmuxServers(t *testing.T) { // I1
 	const now = 1_000_000_000
+	withAlive(t, 77)
+	idA, idB := "2d7a9e3c-1b5f-4e4a-8c8d-3f4a5b6c7d8e", "3e8b0f4d-2c6a-4f5b-9d9e-4a5b6c7d8e9f"
 	agents := map[string]hub.Agent{
-		idNew: {SessionID: idNew, UpdatedAt: now - 60, TmuxSocket: "/tmp/tmux-1000/default"},
-		idOld: {SessionID: idOld, UpdatedAt: now - 120}, // recorded before tmux_socket existed
+		idNew: {SessionID: idNew, UpdatedAt: now - 60, TmuxServer: "77", TmuxSocket: "/tmp/tmux-1000/default"}, // other server alive
+		idOld: {SessionID: idOld, UpdatedAt: now - 120, TmuxServer: "77"},                                      // legacy, server alive
+		idA:   {SessionID: idA, UpdatedAt: now - 180, TmuxServer: "88"},                                        // legacy, server gone
+		idB:   {SessionID: idB, UpdatedAt: now - 240, TmuxServer: "88", TmuxSocket: "/tmp/tmux-1000/default"},  // other server gone
 	}
 	got, err := resumeCandidates(agents, now)
-	if err != nil || len(got) != 0 {
-		t.Errorf("got %+v, %v; want none", got, err)
+	var ids []string
+	for _, a := range got {
+		ids = append(ids, a.SessionID)
+	}
+	if err != nil || !reflect.DeepEqual(ids, []string{idA, idB}) {
+		t.Errorf("got %v, %v; want %v", ids, err, []string{idA, idB})
+	}
+}
+
+func TestHubCmd_ResumesLegacyAgentOfDeadServer(t *testing.T) {
+	root := hubWorkspace(t)
+	t.Chdir(root)
+	t.Setenv("TMUX", "")
+	withAlive(t)
+	rt := &recTmux{failOn: map[string]bool{"has-session": true}}
+	var attached []string
+	home := withHubEnv(t, rt, &attached)
+	now := time.Now().Unix()
+	// Written by hand: writeHubAgent would record it on the hub socket.
+	if err := os.MkdirAll(hub.AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(hub.Agent{SessionID: idNew, Pane: "%2", TmuxServer: "77", UpdatedAt: now - 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hub.AgentsDir(home), idNew+".json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runHub(t); err != nil {
+		t.Fatal(err)
+	}
+	if got := sessionCalls(rt.calls)[0]; got != confArg(home)+"new-session -d -s zenify -P -F #{window_id} -c "+root+" -n agent claude --resume "+idNew {
+		t.Errorf("first call = %q, want the legacy agent resumed", got)
 	}
 }
 

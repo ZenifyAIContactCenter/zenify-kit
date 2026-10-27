@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -317,16 +318,32 @@ func TestTmuxSocket(t *testing.T) {
 	}
 }
 
-func TestAgent_OnHub(t *testing.T) {
+// withAlive makes ProcessAlive report alive exactly for the given pids.
+func withAlive(t *testing.T, pids ...int) {
+	t.Helper()
+	old := ProcessAlive
+	ProcessAlive = func(pid int) bool { return slices.Contains(pids, pid) }
+	t.Cleanup(func() { ProcessAlive = old })
+}
+
+func TestAgent_OtherTmux(t *testing.T) {
 	t.Setenv("ZENIFY_HUB_SOCKET", "")
-	cases := map[string]bool{
-		"/tmp/tmux-1000/zenify":  true,
-		"/tmp/tmux-1000/default": false,
-		"":                       false, // recorded before tmux_socket existed
+	withAlive(t, 77)
+	cases := []struct {
+		a    Agent
+		want bool
+	}{
+		{Agent{TmuxSocket: "/tmp/tmux-1000/zenify", TmuxServer: "77"}, false},  // hub server
+		{Agent{TmuxSocket: "/tmp/tmux-1000/default", TmuxServer: "77"}, true},  // other server, alive
+		{Agent{TmuxSocket: "/tmp/tmux-1000/default", TmuxServer: "88"}, false}, // other server, gone
+		{Agent{TmuxServer: "77"}, true},                                        // legacy, server alive
+		{Agent{TmuxServer: "88"}, false},                                       // legacy, server gone
+		{Agent{}, false},                                                       // legacy, no pid
+		{Agent{TmuxServer: "x"}, false},                                        // unparsable pid
 	}
-	for sock, want := range cases {
-		if got := (Agent{TmuxSocket: sock}).OnHub(); got != want {
-			t.Errorf("OnHub(%q) = %v, want %v", sock, got, want)
+	for _, c := range cases {
+		if got := c.a.OtherTmux(); got != c.want {
+			t.Errorf("OtherTmux(%+v) = %v, want %v", c.a, got, c.want)
 		}
 	}
 }

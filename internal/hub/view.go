@@ -99,9 +99,9 @@ func agentLabel(a *Agent) string {
 	return a.SessionID
 }
 
-// live marks an agent open (▶), closed (⏸) or on another tmux server (⇄).
+// live marks an agent open (▶), closed (⏸) or on another live tmux server (⇄).
 func live(a *Agent) string {
-	if !a.OnHub() {
+	if a.OtherTmux() {
 		return "⇄"
 	}
 	if a.Open {
@@ -146,7 +146,7 @@ func itemLine(it Item) string {
 		if it.Task != nil { // under its worktree
 			return "      " + live(a) + " " + stateIcon(a.State) + " " + agentName(a)
 		}
-		if !a.OnHub() {
+		if a.OtherTmux() {
 			return live(a) + " " + agentLabel(a) + " · other tmux"
 		}
 		line := live(a) + " " + stateIcon(a.State) + " " + agentLabel(a)

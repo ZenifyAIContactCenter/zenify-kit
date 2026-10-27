@@ -843,6 +843,7 @@ func otherTmuxState() State {
 }
 
 func TestView_OtherTmuxAgent(t *testing.T) { // I1
+	withAlive(t, 999)
 	m, _, _ := newTestModel(t, t.TempDir(), otherTmuxState())
 	v := m.View()
 	for _, want := range []string{" ⇄ elsewhere · other tmux\n", "   ○ t1  ⇄ elsewhere\n"} {
@@ -853,6 +854,7 @@ func TestView_OtherTmuxAgent(t *testing.T) { // I1
 }
 
 func TestEnter_OtherTmuxAgentRefusesWithoutTmux(t *testing.T) { // I1
+	withAlive(t, 999)
 	home := t.TempDir()
 	id := otherID
 	m, tm, _ := newTestModel(t, home, liveAgents(t, home, otherTmuxState()))
@@ -877,10 +879,11 @@ func TestEnter_OtherTmuxAgentRefusesWithoutTmux(t *testing.T) { // I1
 }
 
 func TestKeyF_OtherTmuxAgentSendsNothing(t *testing.T) { // I1
+	withAlive(t, 999)
 	home := t.TempDir()
 	s := fixState(Idle)
 	a := s.Agents["s1"]
-	a.TmuxSocket = "/tmp/tmux-1000/default"
+	a.TmuxSocket, a.TmuxServer = "/tmp/tmux-1000/default", "999"
 	s.Agents["s1"] = a
 	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
 	m = update(t, m, key("j"))
@@ -888,5 +891,52 @@ func TestKeyF_OtherTmuxAgentSendsNothing(t *testing.T) { // I1
 	m = update(t, m, key("f"))
 	if m.notice != "agent runs in another tmux server — use that terminal" || len(tm.calls) != 0 {
 		t.Errorf("notice %q, tmux calls %q", m.notice, tm.calls)
+	}
+}
+
+func TestView_LegacyAgentAliveServerIsOtherTmux(t *testing.T) {
+	withAlive(t, 999)
+	s := otherTmuxState()
+	a := s.Agents[otherID]
+	a.TmuxSocket = "" // recorded before tmux_socket existed
+	s.Agents[otherID] = a
+	m, _, _ := newTestModel(t, t.TempDir(), s)
+	m.state.Agents[otherID] = a // newTestModel records socket-less agents on the hub
+	m.relayout()
+	if v := m.View(); !strings.Contains(v, " ⇄ elsewhere · other tmux\n") {
+		t.Errorf("View missing ⇄ row:\n%s", v)
+	}
+}
+
+func TestEnter_OtherSocketDeadServerResumes(t *testing.T) {
+	withAlive(t) // nothing alive: the default server of agent o is gone
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, otherTmuxState()))
+	tm.out = map[string]string{"display-message": "4242\n", "new-window": "@7\n"}
+	m = toAgent(t, m, otherID)
+	if v := m.View(); !strings.Contains(v, "▌⏸ ● elsewhere · t1\n") {
+		t.Errorf("View missing closed row:\n%s", v)
+	}
+	m = update(t, m, key("enter"))
+	if m.failed || m.notice != "resumed elsewhere in a new window" {
+		t.Errorf("notice %q failed=%v, calls %q", m.notice, m.failed, tm.calls)
+	}
+}
+
+func TestKeyX_LegacyDeadServerForgets(t *testing.T) {
+	withAlive(t)
+	home := t.TempDir()
+	s := otherTmuxState()
+	a := s.Agents[otherID]
+	a.TmuxSocket = ""
+	s.Agents[otherID] = a
+	m, _, _ := newTestModel(t, home, liveAgents(t, home, s))
+	m.state.Agents[otherID] = a
+	m.relayout()
+	m = toAgent(t, m, otherID)
+	m = update(t, m, key("x"))
+	m = update(t, m, key("y"))
+	if got, _ := readAgent(home, otherID); got != nil {
+		t.Errorf("legacy agent of a dead server not forgotten: notice %q", m.notice)
 	}
 }

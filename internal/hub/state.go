@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tmuxx"
 )
@@ -66,10 +67,19 @@ type Agent struct {
 	Window int  `json:"window,omitempty"`
 }
 
-// OnHub reports whether a runs on the hub tmux server (socket name
-// tmuxx.Socket()); a record without a socket does not.
-func (a Agent) OnHub() bool {
-	return a.TmuxSocket != "" && filepath.Base(a.TmuxSocket) == tmuxx.Socket()
+// ProcessAlive reports whether process pid runs; tests replace it.
+var ProcessAlive = processAlive
+
+// OtherTmux reports whether a runs on another tmux server than the hub's
+// that is still alive: its socket is not the hub's (or was never recorded)
+// and its server pid is a live process. The hub then leaves the agent alone;
+// otherwise the agent belongs to the hub, open or closed.
+func (a Agent) OtherTmux() bool {
+	if a.TmuxSocket != "" && filepath.Base(a.TmuxSocket) == tmuxx.Socket() {
+		return false
+	}
+	pid, err := strconv.Atoi(a.TmuxServer)
+	return err == nil && pid > 0 && ProcessAlive(pid)
 }
 
 // Dir is the hub data directory under home.
