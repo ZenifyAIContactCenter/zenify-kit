@@ -186,6 +186,7 @@ func TestDispatchHook_HubReportFailOpen(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("TMUX_PANE", "%1")
+	t.Setenv("TMUX", "/tmp/tmux-1000/default,4242,0")
 
 	r, w, err := os.Pipe()
 	if err != nil {

@@ -822,3 +822,74 @@ func TestRound_LocalFailedRepoKeepsOwnerPRs(t *testing.T) {
 		t.Errorf("OtherPRs %+v, want PR 9 kept", got.OtherPRs)
 	}
 }
+
+// liveTmux is a tmux server with pid 4242 whose only pane is %5 in window 3.
+func liveTmux() *scriptTmux {
+	return &scriptTmux{out: map[string]string{"display-message": "4242\n", "list-panes": "%5 3\n"}}
+}
+
+func TestRound_LocalMarksLiveness(t *testing.T) { // SC-23 (poller side)
+	p := newPoller(t, &fakeGH{}, &fakeTmux{}, 10)
+	p.Tmux = liveTmux()
+	for _, a := range []Agent{
+		{SessionID: "a", Pane: "%5", TmuxServer: "1111"}, // pane id reused on a new server: closed
+		{SessionID: "b", Pane: "%5", TmuxServer: "4242"}, // open in window 3
+		{SessionID: "c", Pane: "%9", TmuxServer: "4242"}, // pane gone: closed
+		{SessionID: "d", Pane: "%5"},                     // written before tmux_server existed: pane alone decides
+	} {
+		if err := writeAgent(p.Home, &a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.Local(); err != nil {
+		t.Fatalf("Local: %v", err)
+	}
+	s, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][2]any{}
+	for id, a := range s.Agents {
+		got[id] = [2]any{a.Open, a.Window}
+	}
+	want := map[string][2]any{"a": {false, 0}, "b": {true, 3}, "c": {false, 0}, "d": {true, 3}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("liveness = %v, want %v", got, want)
+	}
+}
+
+func TestRound_NoTmuxServerAllClosedNoError(t *testing.T) {
+	p := newPoller(t, &fakeGH{}, &fakeTmux{}, 10)
+	p.Tmux = &scriptTmux{fail: map[string]error{"display-message": errors.New("tmux display-message: exit status 1: no server running on /tmp/tmux-1000/default")}}
+	if err := writeAgent(p.Home, &Agent{SessionID: "b", Pane: "%5", TmuxServer: "4242"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Local(); err != nil {
+		t.Fatalf("no server must not fail the round: %v", err)
+	}
+	s, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Agents["b"].Open || s.LocalError != "" {
+		t.Errorf("agent %+v, LocalError %q", s.Agents["b"], s.LocalError)
+	}
+}
+
+func TestRound_TmuxLivenessErrorSurfaces(t *testing.T) {
+	p := newPoller(t, &fakeGH{}, &fakeTmux{}, 10)
+	p.Tmux = &scriptTmux{out: map[string]string{"display-message": "4242\n"}, fail: map[string]error{"list-panes": errors.New("list-panes: protocol error")}}
+	if err := writeAgent(p.Home, &Agent{SessionID: "b", Pane: "%5", TmuxServer: "4242"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Local(); err == nil || !strings.Contains(err.Error(), "protocol error") {
+		t.Fatalf("want liveness error, got %v", err)
+	}
+	s, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Agents["b"].Open || !strings.Contains(s.LocalError, "protocol error") {
+		t.Errorf("agent %+v, LocalError %q", s.Agents["b"], s.LocalError)
+	}
+}

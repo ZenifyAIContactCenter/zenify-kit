@@ -54,6 +54,12 @@ type Agent struct {
 	Slug      string     `json:"slug"`
 	Title     string     `json:"title"`
 	UpdatedAt int64      `json:"updated_at"`
+	// TmuxServer is the pid of the tmux server the hook ran under.
+	TmuxServer string `json:"tmux_server,omitempty"`
+	// Open and Window are set by the poller's local round: the agent's pane
+	// is alive on the current tmux server, in the window with that index.
+	Open   bool `json:"open,omitempty"`
+	Window int  `json:"window,omitempty"`
 }
 
 // Dir is the hub data directory under home.
@@ -80,6 +86,14 @@ func readAgent(home, sessionID string) (*Agent, error) {
 		return nil, fmt.Errorf("decode agent %s: %w", sessionID, err)
 	}
 	return &a, nil
+}
+
+// ForgetAgent deletes the agent file of sessionID; a missing file is not an error.
+func ForgetAgent(home, sessionID string) error {
+	if err := os.Remove(agentPath(home, sessionID)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("remove agent %s: %w", sessionID, err)
+	}
+	return nil
 }
 
 // writeAgent writes the agent file atomically (temp file + rename, mode 0600).

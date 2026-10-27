@@ -151,7 +151,7 @@ func fixState(agentState AgentState) State {
 	}
 	return State{
 		Tasks:  []Task{{Slug: "t1", Repos: []TaskRepo{{Name: "be", Repo: "o/r", PR: &pr}}, Agents: []string{"s1"}, State: agentState}},
-		Agents: map[string]Agent{"s1": {SessionID: "s1", Pane: "%3", State: agentState, Slug: "t1", UpdatedAt: 5}},
+		Agents: map[string]Agent{"s1": {SessionID: "s1", Pane: "%3", State: agentState, Slug: "t1", UpdatedAt: 5, Open: true, Window: 1}},
 	}
 }
 
@@ -165,7 +165,7 @@ func TestView_ShowsError(t *testing.T) {
 func TestView_Rows(t *testing.T) {
 	m, _, _ := newTestModel(t, t.TempDir(), fixState(Blocked))
 	v := m.View()
-	for _, want := range []string{"TASKS 1", "   ◆ t1  s1\n", "       #812 ✗ !\n", "AGENTS 0", "MY PRS 0"} {
+	for _, want := range []string{"TASKS 1", "   ◆ t1  ▶ s1\n", "       #812 ✗ !\n", "AGENTS 1/1", " ▶ ◆ t1 · t1 w1\n", "MY PRS 0"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("View missing %q:\n%s", want, v)
 		}

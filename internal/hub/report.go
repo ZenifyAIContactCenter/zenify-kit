@@ -155,10 +155,24 @@ func firstRunes(s string, n int) string {
 // maxPayload caps the hook JSON read from stdin.
 const maxPayload = 8 << 20
 
+// TmuxServer is the server pid in a TMUX env value ("socket,pid,session"),
+// or "" when the value has no such field. Fields are taken from the right so
+// a comma in the socket path does not shift them.
+func TmuxServer(tmuxEnv string) string {
+	f := strings.Split(tmuxEnv, ",")
+	if len(f) < 3 {
+		return ""
+	}
+	return f[len(f)-2]
+}
+
 // Report applies one hook event read from stdin to the agent files under home.
-// Outside tmux (pane == "") it only drains stdin.
-func Report(home string, stdin io.Reader, pane string, now int64) error {
-	if pane == "" {
+// tmuxEnv is the TMUX env value, naming the tmux server. Outside tmux (pane or
+// tmuxEnv empty) it only drains stdin. After writing the agent it removes every
+// other agent file recorded on the same server and pane: a pane runs one
+// Claude, so those sessions are gone (FR-11.2).
+func Report(home string, stdin io.Reader, pane, tmuxEnv string, now int64) error {
+	if pane == "" || tmuxEnv == "" {
 		if _, err := io.Copy(io.Discard, stdin); err != nil {
 			return fmt.Errorf("drain hook input: %w", err)
 		}
@@ -184,11 +198,16 @@ func Report(home string, stdin io.Reader, pane string, now int64) error {
 		}
 		return nil
 	}
+	server := TmuxServer(tmuxEnv)
 	for attempt := 0; attempt < reportAttempts; attempt++ {
-		err := reportOnce(home, in, pane, now)
-		if !errors.Is(err, errAgentChanged) {
+		err := reportOnce(home, in, pane, server, now)
+		if errors.Is(err, errAgentChanged) {
+			continue
+		}
+		if err != nil {
 			return err
 		}
+		return dropSamePane(home, in.SessionID, server, pane)
 	}
 	return fmt.Errorf("report agent %s: file kept changing after %d attempts", in.SessionID, reportAttempts)
 }
@@ -203,7 +222,7 @@ var reportHook = func() {}
 // reportOnce is one read-apply-write attempt of Report. It returns
 // errAgentChanged when another report rewrote the file in between, so the
 // event is re-applied on top of that newer record.
-func reportOnce(home string, in HookInput, pane string, now int64) error {
+func reportOnce(home string, in HookInput, pane, server string, now int64) error {
 	path := agentPath(home, in.SessionID)
 	fi, err := os.Stat(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -214,6 +233,9 @@ func reportOnce(home string, in HookInput, pane string, now int64) error {
 		return err
 	}
 	next, _ := ApplyEvent(prev, in, pane, now)
+	if server != "" {
+		next.TmuxServer = server
+	}
 	b, err := json.Marshal(next)
 	if err != nil {
 		return fmt.Errorf("encode agent: %w", err)
@@ -224,6 +246,25 @@ func reportOnce(home string, in HookInput, pane string, now int64) error {
 		return fmt.Errorf("write agent %s: %w", in.SessionID, err)
 	}
 	return err
+}
+
+// dropSamePane removes every agent file other than keepID recorded on server
+// and pane. Unreadable files are reported, not removed.
+func dropSamePane(home, keepID, server, pane string) error {
+	if server == "" {
+		return nil
+	}
+	agents, err := LoadAgents(home)
+	errs := []error{err}
+	for id, a := range agents {
+		if id == keepID || a.TmuxServer != server || a.Pane != pane {
+			continue
+		}
+		if err := ForgetAgent(home, id); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // LogError appends one line to hub.log. If the log itself cannot be written,

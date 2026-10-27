@@ -86,6 +86,26 @@ func agentName(a *Agent) string {
 	return a.SessionID
 }
 
+// agentLabel is an AGENTS row's name: the title, else the slug, else the
+// session id.
+func agentLabel(a *Agent) string {
+	if a.Title != "" {
+		return a.Title
+	}
+	if a.Slug != "" {
+		return a.Slug
+	}
+	return a.SessionID
+}
+
+// live marks an agent open (▶) or closed (⏸).
+func live(a *Agent) string {
+	if a.Open {
+		return "▶"
+	}
+	return "⏸"
+}
+
 // fold is the arrow of a group row: open or closed.
 func fold(open bool) string {
 	if open {
@@ -97,7 +117,11 @@ func fold(open bool) string {
 func itemLine(it Item) string {
 	switch it.Kind {
 	case KindHeader:
-		return bold.Render(it.Title + " " + strconv.Itoa(it.Count))
+		count := strconv.Itoa(it.Count)
+		if it.Title == agentsHeader {
+			count += "/" + strconv.Itoa(it.Total)
+		}
+		return bold.Render(it.Title + " " + count)
 	case KindRepoGroup:
 		return fold(it.Expanded) + " " + it.Title + " " + strconv.Itoa(it.Count)
 	case KindMergedGroup:
@@ -105,7 +129,7 @@ func itemLine(it Item) string {
 	case KindTask:
 		line := "  " + stateIcon(it.Task.State) + " " + it.Title
 		if it.Agent != nil {
-			line += "  " + agentName(it.Agent)
+			line += "  " + live(it.Agent) + " " + agentName(it.Agent)
 		}
 		if it.Merged {
 			line += gray.Render(" merged")
@@ -114,11 +138,18 @@ func itemLine(it Item) string {
 	case KindTaskPR:
 		return "      " + prLine("", it.PR)
 	case KindAgent:
-		indent := ""
-		if it.Task != nil {
-			indent = "      "
+		a := it.Agent
+		if it.Task != nil { // under its worktree
+			return "      " + live(a) + " " + stateIcon(a.State) + " " + agentName(a)
 		}
-		return indent + stateIcon(it.Agent.State) + " " + agentName(it.Agent)
+		line := live(a) + " " + stateIcon(a.State) + " " + agentLabel(a)
+		if a.Slug != "" {
+			line += " · " + a.Slug
+		}
+		if a.Open {
+			line += " w" + strconv.Itoa(a.Window)
+		}
+		return line
 	case KindPR:
 		return prLine(path.Base(it.PR.Repo), it.PR)
 	}

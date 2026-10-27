@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 
 // hubEnv holds the host boundaries of the launcher, injectable for tests.
 type hubEnv struct {
+	home     func() (string, error)
 	lookPath func(string) (string, error)
 	runner   tmuxx.Runner
 	attach   func(args ...string) error
@@ -28,6 +30,7 @@ type hubEnv struct {
 }
 
 var hubLauncher = hubEnv{
+	home:     os.UserHomeDir,
 	lookPath: exec.LookPath,
 	runner:   tmuxx.ExecRunner(),
 	attach:   attachTmux,
@@ -67,7 +70,7 @@ func runHubLauncher(cmd *cobra.Command, env hubEnv) error {
 		if err != nil {
 			return fmt.Errorf("resolve executable: %w", err)
 		}
-		if err := buildHubSession(env.runner, root, self); err != nil {
+		if err := buildHubSession(env.runner, root, self, resumable(env, time.Now().Unix())); err != nil {
 			return fmt.Errorf("setting up tmux session failed: %w", err)
 		}
 	}
@@ -82,21 +85,111 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// buildHubSession creates the detached session with the agent window and the
-// sidebar pane. When new-session fails (another run may have created the
-// session meanwhile) it kills nothing; when a later step fails it kills the
-// session it created, since a half-built one would make the next run attach
-// without a sidebar.
-func buildHubSession(r tmuxx.Runner, root, self string) error {
-	target := tmuxx.Target + ":agent"
-	if _, err := r.Run("new-session", "-d", "-s", tmuxx.Session, "-c", root, "-n", "agent", "claude"); err != nil {
+// resumeMaxAge and resumeMax bound the agents a new hub session resumes.
+const (
+	resumeMaxAge = 7 * 24 * 3600 // seconds
+	resumeMax    = 8
+)
+
+// resumable loads the agent files and returns the closed agents a new hub
+// session resumes (FR-11.3). Errors go to hub.log (stderr when home is
+// unknown); an unreadable tmux server resumes nothing, since an agent still
+// running there must not be started twice.
+func resumable(env hubEnv, now int64) []hub.Agent {
+	home, err := env.home()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "zenify hub: resolve home, no agent resumed: %v\n", err)
+		return nil
+	}
+	agents, err := hub.LoadAgents(home)
+	if err != nil {
+		hub.LogError(home, fmt.Errorf("hub: load agents to resume: %w", err), now)
+	}
+	if len(agents) == 0 {
+		return nil
+	}
+	if agents, err = hub.MarkOpen(env.runner, agents); err != nil {
+		hub.LogError(home, fmt.Errorf("hub: tmux liveness, no agent resumed: %w", err), now)
+		return nil
+	}
+	out, err := resumeCandidates(agents, now)
+	if err != nil {
+		hub.LogError(home, fmt.Errorf("hub: resume: %w", err), now)
+	}
+	return out
+}
+
+// resumeCandidates keeps the closed agents updated within resumeMaxAge whose
+// session id is safe for a command line, newest first, at most resumeMax.
+// Unsafe ids are skipped and returned as errors.
+func resumeCandidates(agents map[string]hub.Agent, now int64) ([]hub.Agent, error) {
+	var out []hub.Agent
+	var errs []error
+	for _, a := range agents {
+		if a.Open || now-a.UpdatedAt > resumeMaxAge {
+			continue
+		}
+		if !hub.ValidSessionID(a.SessionID) {
+			errs = append(errs, fmt.Errorf("skip agent: invalid session id %q", a.SessionID))
+			continue
+		}
+		out = append(out, a)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].UpdatedAt != out[j].UpdatedAt {
+			return out[i].UpdatedAt > out[j].UpdatedAt
+		}
+		return out[i].SessionID < out[j].SessionID
+	})
+	if len(out) > resumeMax {
+		out = out[:resumeMax]
+	}
+	return out, errors.Join(errs...)
+}
+
+// buildHubSession creates the detached session: the first window runs a new
+// claude, or resumes resume[0], and every further agent in resume gets its own
+// window; each window has the sidebar pane on its left. When new-session fails
+// (another run may have created the session meanwhile) it kills nothing; when
+// a later step fails it kills the session it created, since a half-built one
+// would make the next run attach without a sidebar.
+func buildHubSession(r tmuxx.Runner, root, self string, resume []hub.Agent) error {
+	name, command := "agent", []string{"claude"}
+	if len(resume) > 0 {
+		name, command = hub.WindowName(resume[0].Slug), []string{"claude", "--resume", resume[0].SessionID}
+	}
+	if _, err := r.Run(append([]string{"new-session", "-d", "-s", tmuxx.Session, "-c", root, "-n", name}, command...)...); err != nil {
 		return err
 	}
-	if _, err := r.Run("split-window", "-d", "-h", "-b", "-l", "30%", "-t", target, "-c", root, shellQuote(self)+" hub sidebar"); err != nil {
+	if err := sidebarPane(r, root, self, tmuxx.Target+":"+name); err != nil {
 		_, kerr := r.Run("kill-session", "-t", tmuxx.Target)
 		return errors.Join(err, kerr)
 	}
-	// Best effort: OSC 52 copy needs it, tmux < 3.3 rejects the option.
+	for _, a := range resume[min(1, len(resume)):] {
+		out, err := r.Run("new-window", "-d", "-t", tmuxx.Target+":", "-P", "-F", "#{window_id}", "-n", hub.WindowName(a.Slug), "-c", root, "claude", "--resume", a.SessionID)
+		win := strings.TrimSpace(string(out))
+		if err == nil && win == "" {
+			err = errors.New("tmux new-window printed no window id")
+		}
+		if err == nil {
+			err = sidebarPane(r, root, self, win)
+		}
+		if err != nil {
+			_, kerr := r.Run("kill-session", "-t", tmuxx.Target)
+			return errors.Join(err, kerr)
+		}
+	}
+	return nil
+}
+
+// sidebarPane splits the hub sidebar to the left of window target, then
+// enables allow-passthrough there. Only the split can fail: passthrough is
+// best effort (OSC 52 copy needs it, tmux < 3.3 rejects the option) and its
+// error goes to hub.log.
+func sidebarPane(r tmuxx.Runner, root, self, target string) error {
+	if _, err := r.Run("split-window", "-d", "-h", "-b", "-l", "30%", "-t", target, "-c", root, shellQuote(self)+" hub sidebar"); err != nil {
+		return err
+	}
 	if _, err := r.Run("set-option", "-w", "-t", target, "allow-passthrough", "on"); err != nil {
 		perr := fmt.Errorf("hub: allow-passthrough: %w", err)
 		if home, herr := os.UserHomeDir(); herr == nil {
@@ -139,7 +232,7 @@ func runHubReport(stdin io.Reader, pane string, now int64) {
 		fmt.Fprintf(os.Stderr, "zenify hub: resolve home: %v\n", err)
 		return
 	}
-	if err := hub.Report(home, stdin, pane, now); err != nil {
+	if err := hub.Report(home, stdin, pane, os.Getenv("TMUX"), now); err != nil {
 		hub.LogError(home, err, now)
 	}
 }

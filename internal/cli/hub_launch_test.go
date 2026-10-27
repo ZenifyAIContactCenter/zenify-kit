@@ -2,17 +2,26 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/hub"
 )
 
-// recTmux records every tmux call; calls named in failOn return an error.
+// recTmux records every tmux call; calls named in failOn return an error,
+// others answer out[subcommand]. new-window prints window ids @1, @2, ...
 type recTmux struct {
-	calls  []string
-	failOn map[string]bool
+	calls   []string
+	failOn  map[string]bool
+	out     map[string]string
+	windows int
 }
 
 func (r *recTmux) Run(args ...string) ([]byte, error) {
@@ -20,16 +29,22 @@ func (r *recTmux) Run(args ...string) ([]byte, error) {
 	if r.failOn[args[0]] {
 		return nil, errors.New("fail " + args[0])
 	}
-	if args[0] == "-V" {
+	switch args[0] {
+	case "-V":
 		return []byte("tmux 3.4\n"), nil
+	case "new-window":
+		r.windows++
+		return []byte(fmt.Sprintf("@%d\n", r.windows)), nil
 	}
-	return nil, nil
+	return []byte(r.out[args[0]]), nil
 }
 
-func withHubEnv(t *testing.T, rt *recTmux, attached *[]string) {
+func withHubEnv(t *testing.T, rt *recTmux, attached *[]string) string {
 	t.Helper()
+	home := t.TempDir()
 	old := hubLauncher
 	hubLauncher = hubEnv{
+		home:     func() (string, error) { return home, nil },
 		lookPath: lookPathWith("tmux"),
 		runner:   rt,
 		self:     func() (string, error) { return "/Users/John Doe/it's/zenify", nil },
@@ -39,6 +54,7 @@ func withHubEnv(t *testing.T, rt *recTmux, attached *[]string) {
 		},
 	}
 	t.Cleanup(func() { hubLauncher = old })
+	return home
 }
 
 func hubWorkspace(t *testing.T) string {
@@ -223,5 +239,144 @@ func TestHubCmd_NewSessionFailureKillsNothing(t *testing.T) {
 		if strings.HasPrefix(c, "kill-session") {
 			t.Errorf("killed a session it did not create: %q", rt.calls)
 		}
+	}
+}
+
+const (
+	idNew = "0b5e7c1a-9f3d-4c2e-8a6b-1d2e3f4a5b6c"
+	idOld = "1c6f8d2b-0a4e-4d3f-9b7c-2e3f4a5b6c7d"
+)
+
+// writeHubAgent writes an agent file as the hub-report hook would.
+func writeHubAgent(t *testing.T, home string, a hub.Agent) {
+	t.Helper()
+	dir := hub.AgentsDir(home)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, a.SessionID+".json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// sessionCalls keeps the calls that build the session, dropping probes.
+func sessionCalls(calls []string) []string {
+	var out []string
+	for _, c := range calls {
+		for _, p := range []string{"new-session", "new-window", "split-window", "set-option", "kill-session"} {
+			if strings.HasPrefix(c, p+" ") {
+				out = append(out, c)
+			}
+		}
+	}
+	return out
+}
+
+func TestHubCmd_ResumesClosedAgents(t *testing.T) { // SC-24
+	root := hubWorkspace(t)
+	t.Chdir(root)
+	t.Setenv("TMUX", "")
+	rt := &recTmux{failOn: map[string]bool{"has-session": true}}
+	var attached []string
+	home := withHubEnv(t, rt, &attached)
+	now := time.Now().Unix()
+	writeHubAgent(t, home, hub.Agent{SessionID: idOld, Pane: "%1", TmuxServer: "99", UpdatedAt: now - 120})
+	writeHubAgent(t, home, hub.Agent{SessionID: idNew, Pane: "%2", TmuxServer: "99", Slug: "be.2:x", UpdatedAt: now - 60})
+	if _, err := runHub(t); err != nil {
+		t.Fatal(err)
+	}
+	sidebar := `'/Users/John Doe/it'\''s/zenify' hub sidebar`
+	want := []string{
+		"new-session -d -s zenify -c " + root + " -n be-2-x claude --resume " + idNew,
+		"split-window -d -h -b -l 30% -t =zenify:be-2-x -c " + root + " " + sidebar,
+		"set-option -w -t =zenify:be-2-x allow-passthrough on",
+		"new-window -d -t =zenify: -P -F #{window_id} -n agent -c " + root + " claude --resume " + idOld,
+		"split-window -d -h -b -l 30% -t @1 -c " + root + " " + sidebar,
+		"set-option -w -t @1 allow-passthrough on",
+	}
+	if got := sessionCalls(rt.calls); !reflect.DeepEqual(got, want) {
+		t.Errorf("calls:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if got := strings.Join(attached, " "); got != "attach -t =zenify" {
+		t.Errorf("attach args = %q", got)
+	}
+}
+
+func TestHubCmd_SkipsOpenAgent(t *testing.T) {
+	root := hubWorkspace(t)
+	t.Chdir(root)
+	t.Setenv("TMUX", "")
+	// Another tmux session on server 99 still runs idNew in pane %2.
+	rt := &recTmux{failOn: map[string]bool{"has-session": true}, out: map[string]string{"display-message": "99\n", "list-panes": "%2 0\n"}}
+	var attached []string
+	home := withHubEnv(t, rt, &attached)
+	writeHubAgent(t, home, hub.Agent{SessionID: idNew, Pane: "%2", TmuxServer: "99", UpdatedAt: time.Now().Unix()})
+	if _, err := runHub(t); err != nil {
+		t.Fatal(err)
+	}
+	if got := sessionCalls(rt.calls)[0]; got != "new-session -d -s zenify -c "+root+" -n agent claude" {
+		t.Errorf("first call = %q, want a fresh claude", got)
+	}
+}
+
+func TestHubCmd_ResumeWindowFailureKillsSession(t *testing.T) {
+	root := hubWorkspace(t)
+	t.Chdir(root)
+	t.Setenv("TMUX", "")
+	rt := &recTmux{failOn: map[string]bool{"has-session": true, "new-window": true}}
+	var attached []string
+	home := withHubEnv(t, rt, &attached)
+	now := time.Now().Unix()
+	writeHubAgent(t, home, hub.Agent{SessionID: idOld, UpdatedAt: now - 120})
+	writeHubAgent(t, home, hub.Agent{SessionID: idNew, UpdatedAt: now - 60})
+	_, err := runHub(t)
+	if err == nil || !strings.Contains(err.Error(), "fail new-window") {
+		t.Fatalf("err = %v", err)
+	}
+	if last := rt.calls[len(rt.calls)-1]; last != "kill-session -t =zenify" {
+		t.Errorf("last call = %q, want kill-session", last)
+	}
+}
+
+func TestResumeCandidates(t *testing.T) {
+	const now = 1_000_000_000
+	agents := map[string]hub.Agent{}
+	add := func(id string, age int64, open bool) {
+		agents[id] = hub.Agent{SessionID: id, UpdatedAt: now - age, Open: open}
+	}
+	for i := 0; i < 10; i++ { // ten closed agents, newest a0
+		add(fmt.Sprintf("a%d", i), int64(i+1)*60, false)
+	}
+	add("b0", 30, true)             // open: never resumed
+	add("c0", 7*24*3600+1, false)   // older than 7 days
+	add("d0", 7*24*3600, false)     // exactly 7 days: kept by age, but over the cap
+	add("bad; rm -rf ~", 10, false) // unsafe id: skipped with an error
+	got, err := resumeCandidates(agents, now)
+	if err == nil || !strings.Contains(err.Error(), `invalid session id "bad; rm -rf ~"`) {
+		t.Errorf("err = %v", err)
+	}
+	var ids []string
+	for _, a := range got {
+		ids = append(ids, a.SessionID)
+	}
+	want := []string{"a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"}
+	if !reflect.DeepEqual(ids, want) {
+		t.Errorf("candidates = %v, want %v", ids, want)
+	}
+}
+
+func TestResumeCandidates_AgeCutoff(t *testing.T) {
+	const now = 1_000_000_000
+	agents := map[string]hub.Agent{
+		"a1": {SessionID: "a1", UpdatedAt: now - 7*24*3600},
+		"a2": {SessionID: "a2", UpdatedAt: now - 7*24*3600 - 1},
+	}
+	got, err := resumeCandidates(agents, now)
+	if err != nil || len(got) != 1 || got[0].SessionID != "a1" {
+		t.Errorf("got %+v, %v", got, err)
 	}
 }

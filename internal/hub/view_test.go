@@ -58,10 +58,10 @@ func inZone(t *testing.T) {
 func TestView_HeaderSectionsFooter(t *testing.T) {
 	inZone(t)
 	s := State{
-		Tasks:      []Task{{Slug: "zenify-hub", Repos: []TaskRepo{{Name: "kit"}}}},
-		Unattached: []Agent{{SessionID: "s9", Title: "Daily work"}},
-		OtherPRs:   []PR{{Number: 205, Repo: "o/tools", Checks: "PENDING", MergeState: "BLOCKED"}},
-		LocalAt:    1_700_000_000,
+		Tasks:    []Task{{Slug: "zenify-hub", Repos: []TaskRepo{{Name: "kit"}}}},
+		Agents:   map[string]Agent{"s9": {SessionID: "s9", Title: "Daily work"}},
+		OtherPRs: []PR{{Number: 205, Repo: "o/tools", Checks: "PENDING", MergeState: "BLOCKED"}},
+		LocalAt:  1_700_000_000,
 	}
 	m, _, _ := newTestModel(t, t.TempDir(), s)
 	m = update(t, m, tea.WindowSizeMsg{Width: 40})
@@ -72,8 +72,8 @@ func TestView_HeaderSectionsFooter(t *testing.T) {
 		" TASKS 1",
 		"▌▸ kit 1",
 		rule,
-		" AGENTS 1",
-		" ○ Daily work",
+		" AGENTS 0/1",
+		" ⏸ ○ Daily work",
 		rule,
 		" MY PRS 1",
 		" tools #205 ◐ BLOCKED",
@@ -126,10 +126,10 @@ func TestView_RepoOrderAndMergedGroup(t *testing.T) {
 	want := []string{
 		" TASKS 6",
 		"▌▾ web 2",
-		"   ◆ d-block  agent#2",
+		"   ◆ d-block  ⏸ agent#2",
 		"   ○ z-half",
 		" ▾ be 3",
-		"   ● c-work  agent#1",
+		"   ● c-work  ⏸ agent#1",
 		"   ○ b-pr",
 		"       #7",
 		"   ○ a-idle",
@@ -170,7 +170,7 @@ func sc21State() State {
 			{Name: "be", PR: &PR{Number: 1, Repo: "o/be", URL: "https://github.com/o/be/pull/1", Alert: AlertReady, AlertAt: 1}},
 			{Name: "web", PR: &PR{Number: 2, Repo: "o/web", URL: "https://github.com/o/web/pull/2", Alert: AlertReady, AlertAt: 1}},
 		}}},
-		Agents: map[string]Agent{"a": {SessionID: "a", Title: "A", Pane: "%4", State: Working, Slug: "t"}},
+		Agents: map[string]Agent{"a": {SessionID: "a", Title: "A", Pane: "%4", State: Working, Slug: "t", Open: true, Window: 1}},
 	}
 }
 
@@ -179,10 +179,10 @@ func TestView_TaskUnderEachRepo(t *testing.T) { // SC-21
 	want := []string{
 		" TASKS 2",
 		"▌▾ be 1",
-		"   ● t  A",
+		"   ● t  ▶ A",
 		"       #1 !",
 		" ▾ web 1",
-		"   ● t  A",
+		"   ● t  ▶ A",
 		"       #2 !",
 	}
 	if got := taskBlock(m.View()); !reflect.DeepEqual(got, want) {
@@ -251,13 +251,13 @@ func TestFold_IdleRepoCollapsedUserChoiceSurvivesReload(t *testing.T) { // SC-22
 	s.Agents = map[string]Agent{"a": {SessionID: "a", Title: "A", State: Working, Slug: "v"}}
 	rewriteState(t, home, s, time.Now().Add(time.Hour))
 	m = update(t, m, tickMsg(t0.Add(time.Second)))
-	want := []string{" TASKS 2", " ▾ be 1", "   ● v  A", "▌▾ x 1", "   ○ w"}
+	want := []string{" TASKS 2", " ▾ be 1", "   ● v  ⏸ A", "▌▾ x 1", "   ○ w"}
 	if got := taskBlock(m.View()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("after reload:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 
 	m = update(t, m, key(" "))
-	want = []string{" TASKS 2", " ▾ be 1", "   ● v  A", "▌▸ x 1"}
+	want = []string{" TASKS 2", " ▾ be 1", "   ● v  ⏸ A", "▌▸ x 1"}
 	if got := taskBlock(m.View()); !reflect.DeepEqual(got, want) {
 		t.Errorf("after space:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
@@ -278,7 +278,7 @@ func TestView_MultiAgentTaskListsAgents(t *testing.T) {
 		},
 	}
 	m, _, _ := newTestModel(t, t.TempDir(), s)
-	want := []string{" TASKS 1", "▌▾ be 1", "   ● t1", "       ● one", "       ○ two"}
+	want := []string{" TASKS 1", "▌▾ be 1", "   ● t1", "       ⏸ ● one", "       ⏸ ○ two"}
 	if got := taskBlock(m.View()); !reflect.DeepEqual(got, want) {
 		t.Errorf("TASKS block:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
@@ -316,7 +316,7 @@ func TestView_MergedTaskWithAgentStaysActive(t *testing.T) {
 		Agents: map[string]Agent{"k": {SessionID: "k", Title: "agent#2", State: Blocked, Slug: "m2"}},
 	}
 	m, _, _ := newTestModel(t, t.TempDir(), s)
-	want := []string{" TASKS 1", "▌▾ kit 1", "   ◆ m2  agent#2 merged", " ▸ merged (1)"}
+	want := []string{" TASKS 1", "▌▾ kit 1", "   ◆ m2  ⏸ agent#2 merged", " ▸ merged (1)"}
 	if got := taskBlock(m.View()); !reflect.DeepEqual(got, want) {
 		t.Errorf("TASKS block:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
@@ -362,5 +362,155 @@ func TestView_MultiLineErrorKeepsCursorVisible(t *testing.T) {
 	}
 	if n := strings.Count(v, "\n") + 1; n != 20 {
 		t.Errorf("View has %d lines, want 20:\n%s", n, v)
+	}
+}
+
+// agentsBlock is the AGENTS section of v: from its header up to the next rule.
+func agentsBlock(v string) []string {
+	var out []string
+	in := false
+	for _, l := range strings.Split(v, "\n") {
+		if strings.HasPrefix(l, " AGENTS") {
+			in = true
+		} else if in && strings.HasPrefix(l, "─") {
+			break
+		}
+		if in {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// livenessState has agent A on an old tmux server (closed) and agent B whose
+// pane is live in window 2 (open), both on task t1, plus closed agents C (no
+// slug) and D (no title), with B and D also open-sorting candidates.
+func livenessState() State {
+	return State{
+		Tasks: []Task{{Slug: "t1", Repos: []TaskRepo{{Name: "be"}}, Agents: []string{"b"}, State: Working}},
+		Agents: map[string]Agent{
+			"a": {SessionID: "a", Title: "old run", Slug: "gone", State: Idle, UpdatedAt: 50},
+			"b": {SessionID: "b", Title: "new run", Slug: "t1", State: Working, UpdatedAt: 10, Open: true, Window: 2},
+			"c": {SessionID: "c", Title: "scratch", State: Done, UpdatedAt: 70},
+			"d": {SessionID: "d", Slug: "t9", State: Blocked, UpdatedAt: 5, Open: true, Window: 4},
+		},
+	}
+}
+
+func TestView_AgentsLiveness(t *testing.T) { // SC-23 (view side)
+	m, _, _ := newTestModel(t, t.TempDir(), livenessState())
+	v := m.View()
+	want := []string{
+		" AGENTS 2/4",
+		" ▶ ◆ t9 · t9 w4",
+		" ▶ ● new run · t1 w2",
+		" ⏸ ✓ scratch",
+		" ⏸ ○ old run · gone",
+	}
+	if got := agentsBlock(v); !reflect.DeepEqual(got, want) {
+		t.Errorf("AGENTS block:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if !strings.Contains(v, "   ● t1  ▶ new run\n") {
+		t.Errorf("worktree row missing liveness:\n%s", v)
+	}
+}
+
+// toAgent moves the cursor down until it rests on the agent row of id.
+func toAgent(t *testing.T, m Model, id string) Model {
+	t.Helper()
+	for range len(m.items) {
+		if it := m.current(); it.Kind == KindAgent && it.Agent.SessionID == id {
+			return m
+		}
+		m = update(t, m, key("j"))
+	}
+	t.Fatalf("no agent row %s", id)
+	return m
+}
+
+func TestEnter_ClosedAgentResumes(t *testing.T) {
+	m, tm, _ := newTestModel(t, t.TempDir(), livenessState())
+	tm.out = map[string]string{"new-window": "@7\n"}
+	tm.fail = map[string]error{"has-session": errors.New("can't find session: zenify")}
+	a := uuidAgent()
+	m.state.Agents[a.SessionID] = a
+	m.relayout()
+	m = toAgent(t, m, a.SessionID)
+	m = update(t, m, key("enter"))
+	want := [][]string{
+		{"has-session", "-t", "=zenify"},
+		{"new-window", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "be-2376-tests", "claude", "--resume", a.SessionID},
+		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
+		{"set-option", "-w", "-t", "@7", "allow-passthrough", "on"},
+	}
+	if !reflect.DeepEqual(tm.calls, want) {
+		t.Errorf("calls = %q\nwant %q", tm.calls, want)
+	}
+	if m.failed {
+		t.Errorf("notice error: %s", m.notice)
+	}
+}
+
+// uuidAgent is a closed agent with a real-looking session id and a slug that
+// needs no window-name escaping.
+func uuidAgent() Agent {
+	return Agent{SessionID: "0b5e7c1a-9f3d-4c2e-8a6b-1d2e3f4a5b6c", Slug: "be-2376-tests", Title: "tests", UpdatedAt: 1}
+}
+
+func TestEnter_OpenAgentJumps(t *testing.T) {
+	m, tm, _ := newTestModel(t, t.TempDir(), livenessState())
+	m = toAgent(t, m, "b")
+	update(t, m, key("enter"))
+	if len(tm.calls) == 0 || tm.calls[0][0] != "switch-client" {
+		t.Errorf("calls = %q, want a jump", tm.calls)
+	}
+}
+
+func TestKeyX_ClosedAgentConfirmThenForget(t *testing.T) {
+	home := t.TempDir()
+	s := liveAgents(t, home, livenessState())
+	m, _, _ := newTestModel(t, home, s)
+	m = toAgent(t, m, "a")
+	m = update(t, m, key("x"))
+	if !strings.Contains(m.View(), "Forget agent old run? y/n") {
+		t.Fatalf("View missing prompt:\n%s", m.View())
+	}
+	if a, _ := readAgent(home, "a"); a == nil {
+		t.Fatal("deleted before confirm")
+	}
+	m = update(t, m, key("y"))
+	if a, err := readAgent(home, "a"); a != nil || err != nil {
+		t.Errorf("agent file kept: %+v %v", a, err)
+	}
+	if m.failed || m.notice != "forgot agent old run" {
+		t.Errorf("notice %q failed=%v", m.notice, m.failed)
+	}
+}
+
+func TestKeyX_ForgetErrorShown(t *testing.T) {
+	home := t.TempDir()
+	m, _, _ := newTestModel(t, home, livenessState())
+	// A directory in place of the agent file makes the removal fail.
+	if err := os.MkdirAll(filepath.Join(AgentsDir(home), "a.json", "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	m = toAgent(t, m, "a")
+	m = update(t, m, key("x"))
+	m = update(t, m, key("y"))
+	if !m.failed || !strings.Contains(m.notice, "remove agent a") {
+		t.Errorf("notice %q failed=%v", m.notice, m.failed)
+	}
+}
+
+func TestKeyX_OpenAgentRefuses(t *testing.T) {
+	home := t.TempDir()
+	m, _, _ := newTestModel(t, home, liveAgents(t, home, livenessState()))
+	m = toAgent(t, m, "b")
+	m = update(t, m, key("x"))
+	if m.prompt != "" || m.notice != "agent is running" {
+		t.Errorf("prompt %q notice %q", m.prompt, m.notice)
+	}
+	if a, _ := readAgent(home, "b"); a == nil {
+		t.Error("open agent deleted")
 	}
 }

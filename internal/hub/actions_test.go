@@ -108,7 +108,7 @@ func TestFlatten_Sections(t *testing.T) {
 			titles = append(titles, it.Title)
 		}
 	}
-	want := []ItemKind{KindHeader, KindRepoGroup, KindTask, KindTaskPR, KindRepoGroup, KindTask, KindHeader, KindHeader, KindPR}
+	want := []ItemKind{KindHeader, KindRepoGroup, KindTask, KindTaskPR, KindRepoGroup, KindTask, KindHeader, KindAgent, KindHeader, KindPR}
 	if !reflect.DeepEqual(kinds, want) {
 		t.Errorf("kinds = %v, want %v", kinds, want)
 	}
@@ -174,5 +174,50 @@ func TestNewAgentWindow_NoZenifySessionUsesCurrent(t *testing.T) {
 	}
 	if !reflect.DeepEqual(f.calls, want) {
 		t.Errorf("calls = %q\nwant %q", f.calls, want)
+	}
+}
+
+func TestResumeAgentWindow_ZenifySession(t *testing.T) {
+	f := &scriptTmux{out: map[string]string{"new-window": "@3\n"}}
+	id := "0b5e7c1a-9f3d-4c2e-8a6b-1d2e3f4a5b6c"
+	if err := ResumeAgentWindow(f, "/ws", "/bin/zenify", id, "t1"); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{
+		{"has-session", "-t", "=zenify"},
+		{"new-window", "-t", "=zenify:", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "t1", "claude", "--resume", id},
+		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@3", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
+		{"set-option", "-w", "-t", "@3", "allow-passthrough", "on"},
+	}
+	if !reflect.DeepEqual(f.calls, want) {
+		t.Errorf("calls = %q\nwant %q", f.calls, want)
+	}
+}
+
+func TestResumeAgentWindow_InvalidSessionID(t *testing.T) {
+	f := &scriptTmux{}
+	err := ResumeAgentWindow(f, "/ws", "/bin/zenify", "abc; rm -rf ~", "t1")
+	if err == nil || !strings.Contains(err.Error(), "invalid session id") {
+		t.Errorf("err = %v", err)
+	}
+	if len(f.calls) != 0 {
+		t.Errorf("tmux called: %q", f.calls)
+	}
+}
+
+func TestWindowName(t *testing.T) {
+	cases := map[string]string{"": "agent", "be-1": "be-1", "v1.2:x": "v1-2-x"}
+	for slug, want := range cases {
+		if got := WindowName(slug); got != want {
+			t.Errorf("WindowName(%q) = %q, want %q", slug, got, want)
+		}
+	}
+}
+
+func TestValidSessionID(t *testing.T) {
+	for id, want := range map[string]bool{"0b5e7c1a-9f3d-4c2e-8a6b-1d2e3f4a5b6c": true, "ABCdef-01": true, "": false, "s1 x": false, "../x": false, "-": false, "-a1": false} {
+		if got := ValidSessionID(id); got != want {
+			t.Errorf("ValidSessionID(%q) = %v, want %v", id, got, want)
+		}
 	}
 }

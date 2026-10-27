@@ -129,3 +129,52 @@ func TestHasSession(t *testing.T) {
 		t.Error("want false when has-session fails")
 	}
 }
+
+func TestServerPID(t *testing.T) {
+	f := &fakeRunner{out: "4242\n"}
+	pid, err := ServerPID(f)
+	if err != nil || pid != "4242" {
+		t.Fatalf("ServerPID = %q, %v", pid, err)
+	}
+	want := [][]string{{"display-message", "-p", "#{pid}"}}
+	if !reflect.DeepEqual(f.calls, want) {
+		t.Errorf("calls = %q, want %q", f.calls, want)
+	}
+}
+
+func TestLivePanes(t *testing.T) {
+	f := &fakeRunner{out: "%0 0\n%3 2\n%12 10\n"}
+	panes, err := LivePanes(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{"%0": 0, "%3": 2, "%12": 10}
+	if !reflect.DeepEqual(panes, want) {
+		t.Errorf("panes = %v, want %v", panes, want)
+	}
+	if got := f.calls[0]; !reflect.DeepEqual(got, []string{"list-panes", "-a", "-F", "#{pane_id} #{window_index}"}) {
+		t.Errorf("args = %q", got)
+	}
+}
+
+func TestLivePanes_BadLine(t *testing.T) {
+	if _, err := LivePanes(&fakeRunner{out: "%1 x\n"}); err == nil {
+		t.Error("want parse error")
+	}
+}
+
+func TestNoServer(t *testing.T) {
+	cases := map[string]bool{
+		"tmux list-panes: exit status 1: no server running on /tmp/tmux-1000/default":                            true,
+		"tmux list-panes: exit status 1: error connecting to /tmp/tmux-1000/default (No such file or directory)": true,
+		"tmux list-panes: exit status 1: can't find session":                                                     false,
+	}
+	for msg, want := range cases {
+		if got := NoServer(errors.New(msg)); got != want {
+			t.Errorf("NoServer(%q) = %v, want %v", msg, got, want)
+		}
+	}
+	if NoServer(nil) {
+		t.Error("NoServer(nil) = true")
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -67,7 +68,7 @@ const (
 	KindRepoGroup            // a repo in TASKS; Enter or Space expands or collapses it
 	KindTask                 // a worktree (task × repo), under its repo group or the merged group
 	KindTaskPR               // the open PR of the worktree row above it
-	KindAgent                // under a task with several agents, or in the AGENTS section when unattached
+	KindAgent                // under a task with several agents, or in the AGENTS section
 	KindPR                   // a PR that matches no task
 	KindMergedGroup          // the "merged (n)" row; Enter or Space expands or collapses it
 )
@@ -78,7 +79,8 @@ const (
 type Item struct {
 	Kind     ItemKind
 	Title    string // header text, repo group name, or worktree label
-	Count    int    // header count; group size
+	Count    int    // header count; group size; open agents in the AGENTS header
+	Total    int    // all agents, in the AGENTS header only
 	Expanded bool   // a repo or merged group is open
 	Merged   bool   // a worktree row whose repo is merged, kept in its repo group
 	Task     *Task
@@ -113,8 +115,8 @@ type repoGroup struct {
 	top    int // highest roll-up rank of its active worktrees
 }
 
-// Flatten lays s out as rows: TASKS, AGENTS (unattached) and MY PRS (other
-// PRs); headers are always present. TASKS groups worktrees by repo: repos
+// Flatten lays s out as rows: TASKS, AGENTS (every agent, open ones first)
+// and MY PRS (other PRs); headers are always present. TASKS groups worktrees by repo: repos
 // with an active worktree come first (by highest roll-up, then name) and are
 // open unless folds says otherwise, the rest follow by name, collapsed
 // unless folds opens them. Inside a repo, active worktrees come first (by
@@ -193,15 +195,48 @@ func Flatten(s State, expanded bool, folds map[string]bool) []Item {
 			}
 		}
 	}
-	items = append(items, Item{Kind: KindHeader, Title: "AGENTS", Count: len(s.Unattached)})
-	for i := range s.Unattached {
-		items = append(items, Item{Kind: KindAgent, Agent: &s.Unattached[i]})
+	agents := sortedAgents(s.Agents)
+	open := 0
+	for _, a := range agents {
+		if a.Open {
+			open++
+		}
+	}
+	items = append(items, Item{Kind: KindHeader, Title: agentsHeader, Count: open, Total: len(agents)})
+	for i := range agents {
+		items = append(items, Item{Kind: KindAgent, Agent: &agents[i]})
 	}
 	items = append(items, Item{Kind: KindHeader, Title: "MY PRS", Count: len(s.OtherPRs)})
 	for i := range s.OtherPRs {
 		items = append(items, Item{Kind: KindPR, PR: &s.OtherPRs[i]})
 	}
 	return items
+}
+
+// agentsHeader is the title of the AGENTS section, whose count is open/total.
+const agentsHeader = "AGENTS"
+
+// sortedAgents lists agents open first (by state rank, then newest
+// UpdatedAt), then closed (newest UpdatedAt); ties by session id.
+func sortedAgents(agents map[string]Agent) []Agent {
+	out := make([]Agent, 0, len(agents))
+	for _, a := range agents {
+		out = append(out, a)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Open != b.Open {
+			return a.Open
+		}
+		if a.Open && rank(a.State) != rank(b.State) {
+			return rank(a.State) > rank(b.State)
+		}
+		if a.UpdatedAt != b.UpdatedAt {
+			return a.UpdatedAt > b.UpdatedAt
+		}
+		return a.SessionID < b.SessionID
+	})
+	return out
 }
 
 // label is a worktree's name in the merged group.
@@ -285,7 +320,38 @@ func TargetAgent(s State, it Item) (Agent, bool) {
 // enables allow-passthrough for OSC 52 copy; a failure there (tmux < 3.3) is
 // returned for the footer after the window is complete.
 func NewAgentWindow(r tmuxx.Runner, root, self string) error {
-	args := []string{"new-window", "-P", "-F", "#{window_id}", "-c", root, "-n", "agent", "claude"}
+	return agentWindow(r, root, self, "agent", "claude")
+}
+
+// ResumeAgentWindow is NewAgentWindow running `claude --resume sessionID` in
+// a window called name. An invalid session id is refused before any tmux call.
+func ResumeAgentWindow(r tmuxx.Runner, root, self, sessionID, name string) error {
+	if !ValidSessionID(sessionID) {
+		return fmt.Errorf("invalid session id %q", sessionID)
+	}
+	return agentWindow(r, root, self, name, "claude", "--resume", sessionID)
+}
+
+// sessionIDRe is the UUID-ish shape of a Claude session id; it starts with a
+// hex digit so it can never pass for a flag.
+var sessionIDRe = regexp.MustCompile(`^[0-9a-fA-F][0-9a-fA-F-]*$`)
+
+// ValidSessionID reports whether id is safe to put on a command line.
+func ValidSessionID(id string) bool { return sessionIDRe.MatchString(id) }
+
+// WindowName is the tmux window name for an agent on slug: the slug, or
+// "agent" without one, with '.' and ':' (tmux target separators) as '-'.
+func WindowName(slug string) string {
+	if slug == "" {
+		return "agent"
+	}
+	return strings.NewReplacer(".", "-", ":", "-").Replace(slug)
+}
+
+// agentWindow opens the window name running command, with the sidebar split
+// to its left; see NewAgentWindow.
+func agentWindow(r tmuxx.Runner, root, self, name string, command ...string) error {
+	args := append([]string{"new-window", "-P", "-F", "#{window_id}", "-c", root, "-n", name}, command...)
 	if tmuxx.HasSession(r) {
 		args = append([]string{"new-window", "-t", tmuxx.Target + ":"}, args[1:]...)
 	}

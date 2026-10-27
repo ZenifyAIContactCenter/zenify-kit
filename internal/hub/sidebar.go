@@ -379,8 +379,10 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 			m.relayout()
 		case k == " ": // Space only folds
 		default:
-			if a, ok := TargetAgent(m.state, it); ok {
+			if a, ok := TargetAgent(m.state, it); ok && a.Open {
 				m = m.jump(a, it.PR)
+			} else if ok {
+				m = m.resume(a)
 			} else if it.Task != nil {
 				m = m.ask("Open a new agent for "+it.Task.Slug+"? y/n", Model.openAgent)
 			} else if it.Kind == KindPR && it.PR != nil {
@@ -405,6 +407,8 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 		m = m.done("refresh requested", touch(filepath.Join(Dir(m.home), "refresh"), time.Now()))
 	case "f":
 		m = m.fix(it)
+	case "x":
+		m = m.forget(it)
 	}
 	return m, nil
 }
@@ -491,6 +495,31 @@ func (m Model) openAgent() Model {
 		return m.done("", fmt.Errorf("locate zenify binary: %w", m.selfErr))
 	}
 	return m.done("opened a new agent window", NewAgentWindow(m.tm, m.root, m.self))
+}
+
+// resume opens a new window running `claude --resume` for the closed agent a.
+func (m Model) resume(a Agent) Model {
+	if m.selfErr != nil {
+		return m.done("", fmt.Errorf("locate zenify binary: %w", m.selfErr))
+	}
+	err := ResumeAgentWindow(m.tm, m.root, m.self, a.SessionID, WindowName(a.Slug))
+	return m.done("resumed "+agentLabel(&a)+" in a new window", err)
+}
+
+// forget asks, then deletes the file of the closed agent on an AGENTS row.
+func (m Model) forget(it Item) Model {
+	if it.Kind != KindAgent || it.Agent == nil {
+		return m
+	}
+	a := *it.Agent
+	if a.Open {
+		m.notice, m.failed = "agent is running", false
+		return m
+	}
+	name := agentLabel(&a)
+	return m.ask("Forget agent "+name+"? y/n", func(m Model) Model {
+		return m.done("forgot agent "+name, ForgetAgent(m.home, a.SessionID))
+	})
 }
 
 func (m Model) copy(s string) Model {

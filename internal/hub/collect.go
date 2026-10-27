@@ -448,6 +448,7 @@ func (p *Poller) Local() error {
 	tasks, owners, failed, collectErr := CollectLocal(p.Root, p.Git, p.Hosts)
 	p.LocalDuration = time.Since(start)
 	agents, agentsErr := LoadAgents(p.Home)
+	pid, panes, liveErr := liveness(p.Tmux)
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -475,6 +476,10 @@ func (p *Poller) Local() error {
 			agents = old.Agents
 		}
 	}
+	if liveErr != nil {
+		errs = append(errs, fmt.Errorf("tmux liveness: %w", liveErr))
+	}
+	agents = markOpen(agents, pid, panes)
 	prs, err := DropAcked(allPRs(old), AcksDir(p.Home))
 	if err != nil {
 		errs = append(errs, err)
@@ -484,6 +489,52 @@ func (p *Poller) Local() error {
 	s.Owners, s.LocalAt, s.GitHubAt = owners, localAt, old.GitHubAt
 	s.LocalError, s.GitHubError = stamp(now, errs), old.GitHubError
 	return p.write(s, errs)
+}
+
+// liveness returns the current tmux server pid and its live panes (pane id →
+// window index). No running server is not an error: every agent is closed.
+func liveness(r tmuxx.Runner) (pid string, panes map[string]int, err error) {
+	pid, err = tmuxx.ServerPID(r)
+	if err == nil {
+		panes, err = tmuxx.LivePanes(r)
+	}
+	if tmuxx.NoServer(err) {
+		return "", nil, nil
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	return pid, panes, nil
+}
+
+// MarkOpen returns agents with Open and Window set from the tmux server r
+// talks to; see markOpen.
+func MarkOpen(r tmuxx.Runner, agents map[string]Agent) (map[string]Agent, error) {
+	pid, panes, err := liveness(r)
+	if err != nil {
+		return nil, err
+	}
+	return markOpen(agents, pid, panes), nil
+}
+
+// markOpen returns a copy of agents with Open and Window set: an agent is
+// open when its pane is live and it was recorded on server pid. An agent
+// recorded before TmuxServer existed is judged by its pane alone.
+func markOpen(agents map[string]Agent, pid string, panes map[string]int) map[string]Agent {
+	if agents == nil {
+		return nil
+	}
+	out := make(map[string]Agent, len(agents))
+	for id, a := range agents {
+		w, live := panes[a.Pane]
+		a.Open = live && a.Pane != "" && (a.TmuxServer == "" || a.TmuxServer == pid)
+		a.Window = 0
+		if a.Open {
+			a.Window = w
+		}
+		out[id] = a
+	}
+	return out
 }
 
 // GitHub fetches the user's PRs, fires alerts and writes them into

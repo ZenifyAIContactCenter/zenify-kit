@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -72,7 +74,7 @@ func TestApplyEvent(t *testing.T) {
 
 func TestReport_BadStdin(t *testing.T) {
 	home := t.TempDir()
-	if err := Report(home, strings.NewReader("not json"), "%1", 1); err == nil {
+	if err := Report(home, strings.NewReader("not json"), "%1", tmuxEnv, 1); err == nil {
 		t.Fatal("want error")
 	}
 	if _, err := os.Stat(AgentsDir(home)); err == nil {
@@ -85,7 +87,7 @@ func TestReport_BadStdin(t *testing.T) {
 
 func TestReport_NoTmux(t *testing.T) {
 	home := t.TempDir()
-	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "", 1); err != nil {
+	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "", "", 1); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(AgentsDir(home)); err == nil {
@@ -98,20 +100,20 @@ func TestReport_NoTmux(t *testing.T) {
 
 func TestReport_WritesAndRemoves(t *testing.T) {
 	home := t.TempDir()
-	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", 5); err != nil {
+	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", tmuxEnv, 5); err != nil {
 		t.Fatal(err)
 	}
 	a, err := readAgent(home, "s")
 	if err != nil || a == nil || a.State != Done || a.Pane != "%2" || a.UpdatedAt != 5 {
 		t.Fatalf("agent: %+v %v", a, err)
 	}
-	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"SessionEnd"}`), "%2", 6); err != nil {
+	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"SessionEnd"}`), "%2", tmuxEnv, 6); err != nil {
 		t.Fatal(err)
 	}
 	if a, _ := readAgent(home, "s"); a != nil {
 		t.Fatalf("not removed: %+v", a)
 	}
-	if err := Report(home, strings.NewReader(`{"session_id":"a/b","hook_event_name":"Stop"}`), "%2", 6); err == nil {
+	if err := Report(home, strings.NewReader(`{"session_id":"a/b","hook_event_name":"Stop"}`), "%2", tmuxEnv, 6); err == nil {
 		t.Fatal("want error for slash id")
 	}
 }
@@ -180,20 +182,20 @@ func (errReader) Read([]byte) (int, error) { return 0, errors.New("pipe broken")
 
 func TestReport_NoTmuxDrainsStdin(t *testing.T) {
 	r := strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`)
-	if err := Report(t.TempDir(), r, "", 1); err != nil {
+	if err := Report(t.TempDir(), r, "", "", 1); err != nil {
 		t.Fatal(err)
 	}
 	if r.Len() != 0 {
 		t.Errorf("stdin not drained: %d bytes left", r.Len())
 	}
-	if err := Report(t.TempDir(), errReader{}, "", 1); err == nil || !strings.Contains(err.Error(), "pipe broken") {
+	if err := Report(t.TempDir(), errReader{}, "", "", 1); err == nil || !strings.Contains(err.Error(), "pipe broken") {
 		t.Errorf("want drain error, got %v", err)
 	}
 }
 
 func TestReport_PayloadLimit(t *testing.T) {
 	big := `{"session_id":"s","hook_event_name":"Stop","prompt":"` + strings.Repeat("x", 8<<20) + `"}`
-	err := Report(t.TempDir(), strings.NewReader(big), "%1", 1)
+	err := Report(t.TempDir(), strings.NewReader(big), "%1", tmuxEnv, 1)
 	if err == nil || !strings.Contains(err.Error(), "hook payload over 8 MiB") {
 		t.Errorf("want payload limit error, got %v", err)
 	}
@@ -227,7 +229,7 @@ func TestReport_ConcurrentReportSlugSurvives(t *testing.T) {
 		}
 	}
 	t.Cleanup(func() { reportHook = func() {} })
-	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", 5); err != nil {
+	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", tmuxEnv, 5); err != nil {
 		t.Fatalf("Report: %v", err)
 	}
 	a, err := readAgent(home, "s")
@@ -252,7 +254,7 @@ func TestReport_ConcurrentCreateIsReapplied(t *testing.T) {
 		}
 	}
 	t.Cleanup(func() { reportHook = func() {} })
-	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", 5); err != nil {
+	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", tmuxEnv, 5); err != nil {
 		t.Fatalf("Report: %v", err)
 	}
 	if a, err := readAgent(home, "s"); err != nil || a == nil || a.Slug != "new-task" {
@@ -272,7 +274,7 @@ func TestReport_GivesUpAfterThreeChanges(t *testing.T) {
 		writeSlugAt(t, home, "s", "task-"+string(rune('a'+calls)), time.Unix(int64(2000+calls), 0))
 	}
 	t.Cleanup(func() { reportHook = func() {} })
-	err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", 5)
+	err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", tmuxEnv, 5)
 	if err == nil || !strings.Contains(err.Error(), "3 attempts") {
 		t.Fatalf("want error after 3 attempts, got %v", err)
 	}
@@ -281,5 +283,88 @@ func TestReport_GivesUpAfterThreeChanges(t *testing.T) {
 	}
 	if a, _ := readAgent(home, "s"); a == nil || a.Slug != "task-d" || a.State != Working {
 		t.Errorf("agent %+v, want the last concurrent write kept", a)
+	}
+}
+
+// tmuxEnv is a TMUX value on server pid 4242.
+const tmuxEnv = "/tmp/tmux-1000/default,4242,0"
+
+func TestTmuxServer(t *testing.T) {
+	cases := map[string]string{
+		"/tmp/tmux-1000/default,4242,0": "4242",
+		"/tmp/a,b/c,77,3":               "77", // a comma in the socket path
+		"/tmp/tmux-1000/default":        "",
+		"":                              "",
+	}
+	for env, want := range cases {
+		if got := TmuxServer(env); got != want {
+			t.Errorf("TmuxServer(%q) = %q, want %q", env, got, want)
+		}
+	}
+}
+
+func TestReport_RecordsTmuxServer(t *testing.T) {
+	home := t.TempDir()
+	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", tmuxEnv, 5); err != nil {
+		t.Fatal(err)
+	}
+	a, err := readAgent(home, "s")
+	if err != nil || a == nil || a.TmuxServer != "4242" || a.Pane != "%2" {
+		t.Fatalf("agent: %+v %v", a, err)
+	}
+}
+
+func TestReport_EmptyTMUXIsNoTmux(t *testing.T) {
+	home := t.TempDir()
+	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", "", 5); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := readAgent(home, "s"); a != nil || err != nil {
+		t.Fatalf("agent written outside tmux: %+v %v", a, err)
+	}
+}
+
+func TestReport_DropsOtherAgentOnSamePane(t *testing.T) { // SC-25
+	home := t.TempDir()
+	for _, a := range []Agent{
+		{SessionID: "old", Pane: "%3", TmuxServer: "4242"},   // same server and pane: dropped
+		{SessionID: "other", Pane: "%3", TmuxServer: "1111"}, // same pane on another server: kept
+		{SessionID: "near", Pane: "%4", TmuxServer: "4242"},  // other pane: kept
+	} {
+		if err := writeAgent(home, &a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Report(home, strings.NewReader(`{"session_id":"new","hook_event_name":"SessionStart","source":"resume"}`), "%3", tmuxEnv, 9); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadAgents(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for id := range got {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	if want := []string{"near", "new", "other"}; !reflect.DeepEqual(ids, want) {
+		t.Errorf("agents = %v, want %v", ids, want)
+	}
+}
+
+func TestReport_DropSamePaneErrorReturned(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(AgentsDir(home), "bad.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := Report(home, strings.NewReader(`{"session_id":"new","hook_event_name":"Stop"}`), "%3", tmuxEnv, 9)
+	if err == nil || !strings.Contains(err.Error(), "bad.json") {
+		t.Errorf("want bad.json error, got %v", err)
+	}
+	if a, _ := readAgent(home, "new"); a == nil {
+		t.Error("agent not written")
 	}
 }

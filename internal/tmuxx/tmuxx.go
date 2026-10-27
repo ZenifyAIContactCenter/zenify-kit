@@ -118,3 +118,42 @@ func SendKeys(r Runner, paneID, text string) error {
 	_, err := r.Run("send-keys", "-t", paneID, "Enter")
 	return err
 }
+
+// ServerPID is the pid of the tmux server r talks to.
+func ServerPID(r Runner) (string, error) {
+	out, err := r.Run("display-message", "-p", "#{pid}")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// LivePanes maps every pane id on the server to the index of its window.
+func LivePanes(r Runner) (map[string]int, error) {
+	out, err := r.Run("list-panes", "-a", "-F", "#{pane_id} #{window_index}")
+	if err != nil {
+		return nil, err
+	}
+	panes := map[string]int{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		id, idx, _ := strings.Cut(line, " ")
+		n, err := strconv.Atoi(idx)
+		if err != nil {
+			return nil, fmt.Errorf("parse list-panes line %q: %w", line, err)
+		}
+		panes[id] = n
+	}
+	return panes, nil
+}
+
+// NoServer reports whether err is tmux saying no server is running.
+func NoServer(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "no server running") || strings.Contains(msg, "error connecting to")
+}
