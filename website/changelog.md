@@ -8,6 +8,16 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.50.0
+
+*2026-10-27*
+
+- **`zenify feature` bật/tắt tính năng tuỳ chọn:** `zenify feature github.issues on|off` ghi khoá `features:` trong `.zenify-overlay.yaml`, `zenify feature` không đối số liệt kê trạng thái. Đầu phiên có dòng `features: …` khi có tính năng đang bật. Khi `github.issues` bật, ship gắn một issue GitHub trước khi mở PR (dùng issue có sẵn trong phiên, spec hay ledger, kiểm trùng trước khi tạo mới). Xem [Gắn issue GitHub](/workflows/ship#gắn-issue-github-tuỳ-chọn).
+- **`ci-watch` chờ PR sẵn sàng merge:** CI xanh chưa đủ, skill chờ PR ở trạng thái CLEAN rồi in URL PR kèm lệnh `! gh pr merge …` cho bạn tự chạy; bị chặn thì liệt kê review thread chưa xử lý. Skill không tự merge. Xem [Sau khi mở PR: `--watch`](/workflows/ship#sau-khi-mở-pr-watch).
+- **Skill mới `znf:nonstop`:** chạy cả ngày làm việc từ một lệnh: lập plan đầu ngày chờ bạn duyệt, giao việc liên tục cho các worker, review từng việc trước khi mở PR, tổng kết cuối ngày kèm việc chuyển sang hôm sau. Chỉ lấy issue và PR của chính bạn hoặc được giao cho bạn; không bao giờ merge. Xem [Chọn workflow](/workflows/).
+- **Review không bỏ sót file mới chưa commit:** khi review một cây chưa commit, file mới chưa track được đếm dòng và đưa vào bundle (file nhị phân tính 0 dòng, tên file Unicode giữ nguyên), nên diff lớn không còn lọt file mới khỏi review.
+- **QA tách tiêu chí nhiều điều kiện:** một dòng tiêu chí dạng "khi A thì X; khi B thì Y" được `znf:qa` viết thành một cặp `Bước:`/`Thấy:` cho mỗi điều kiện, và journey có một test cho mỗi cặp, nên bản sửa chỉ xử lý một điều kiện sẽ bị đỏ. Xem [Journey E2E](/workflows/ui-testing#journey-e2e).
+
 ## v0.49.0
 
 *2026-10-26*
