@@ -674,15 +674,15 @@ func cursorState(more bool) State {
 			{Slug: "t1", Agents: []string{"a1"}, State: Idle, Repos: []TaskRepo{{Name: "api", Repo: "o/api", PR: &PR{Number: 1, Repo: "o/api", Checks: "FAILURE", FailedURL: "u1"}}}},
 			{Slug: "t2", Repos: []TaskRepo{{Name: "web", Repo: "o/web", PR: &PR{Number: 2, Repo: "o/web"}}}},
 		},
-		Agents: map[string]Agent{"a1": {SessionID: "a1", Pane: "%5", State: Idle, Slug: "t1"}},
+		Agents: map[string]Agent{"a1": {SessionID: "a1", Pane: "%5", State: Idle, Slug: "t1", Open: true}},
 	}
 	if more {
 		s.Tasks = append(s.Tasks,
 			Task{Slug: "t0", Agents: []string{"a0"}, State: Blocked, Repos: []TaskRepo{{Name: "web", Repo: "o/web"}}},
 			Task{Slug: "t00", Agents: []string{"a2"}, State: Working, Repos: []TaskRepo{{Name: "api", Repo: "o/api"}}},
 		)
-		s.Agents["a0"] = Agent{SessionID: "a0", Pane: "%6", State: Blocked, Slug: "t0"}
-		s.Agents["a2"] = Agent{SessionID: "a2", Pane: "%7", State: Working, Slug: "t00"}
+		s.Agents["a0"] = Agent{SessionID: "a0", Pane: "%6", State: Blocked, Slug: "t0", Open: true}
+		s.Agents["a2"] = Agent{SessionID: "a2", Pane: "%7", State: Working, Slug: "t00", Open: true}
 	}
 	return s
 }

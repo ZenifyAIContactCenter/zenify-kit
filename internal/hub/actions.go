@@ -289,8 +289,8 @@ func itemKey(it Item) string {
 }
 
 // TargetAgent picks the agent a row jumps to: an agent row is itself; a row
-// inside a task picks the task agent with the highest roll-up state, ties
-// broken by the newest UpdatedAt.
+// inside a task picks an open task agent when there is one, then the highest
+// roll-up state, ties broken by the newest UpdatedAt.
 func TargetAgent(s State, it Item) (Agent, bool) {
 	if it.Kind == KindAgent && it.Agent != nil {
 		return *it.Agent, true
@@ -305,8 +305,8 @@ func TargetAgent(s State, it Item) (Agent, bool) {
 		if !ok {
 			continue
 		}
-		if !found || rank(a.State) > rank(best.State) ||
-			(rank(a.State) == rank(best.State) && a.UpdatedAt > best.UpdatedAt) {
+		if !found || (a.Open && !best.Open) || (a.Open == best.Open && (rank(a.State) > rank(best.State) ||
+			(rank(a.State) == rank(best.State) && a.UpdatedAt > best.UpdatedAt))) {
 			best, found = a, true
 		}
 	}
@@ -339,13 +339,20 @@ var sessionIDRe = regexp.MustCompile(`^[0-9a-fA-F][0-9a-fA-F-]*$`)
 // ValidSessionID reports whether id is safe to put on a command line.
 func ValidSessionID(id string) bool { return sessionIDRe.MatchString(id) }
 
-// WindowName is the tmux window name for an agent on slug: the slug, or
-// "agent" without one, with '.' and ':' (tmux target separators) as '-'.
+// WindowName is the tmux window name for an agent on slug: the lowercased
+// slug with every rune outside [a-z0-9-] as '-' and outer '-' trimmed, or
+// "agent" when nothing is left.
 func WindowName(slug string) string {
-	if slug == "" {
+	name := strings.Trim(strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' {
+			return r
+		}
+		return '-'
+	}, strings.ToLower(slug)), "-")
+	if name == "" {
 		return "agent"
 	}
-	return strings.NewReplacer(".", "-", ":", "-").Replace(slug)
+	return name
 }
 
 // agentWindow opens the window name running command, with the sidebar split

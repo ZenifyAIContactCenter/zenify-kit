@@ -105,7 +105,7 @@ func TestAssemble(t *testing.T) {
 		{Number: 431, Repo: "acme/tools", Branch: "u/fix/redis-scan"},
 	}
 	agents := map[string]Agent{
-		"A": {SessionID: "A", Slug: "redis-scan", State: Blocked},
+		"A": {SessionID: "A", Slug: "redis-scan", State: Blocked, Open: true},
 		"B": {SessionID: "B", Slug: "gone", State: Working},
 	}
 	s := Assemble(tasks, prs, agents)
@@ -601,8 +601,8 @@ func TestCollectLocal_UnmanagedUsesDirName(t *testing.T) {
 
 func TestAssemble_BlockedWinsOverWorking(t *testing.T) {
 	agents := map[string]Agent{
-		"a": {SessionID: "a", Slug: "x", State: Working},
-		"b": {SessionID: "b", Slug: "x", State: Blocked},
+		"a": {SessionID: "a", Slug: "x", State: Working, Open: true},
+		"b": {SessionID: "b", Slug: "x", State: Blocked, Open: true},
 	}
 	s := Assemble([]Task{{Slug: "x"}}, nil, agents)
 	if s.Tasks[0].State != Blocked {
@@ -835,7 +835,7 @@ func TestRound_LocalMarksLiveness(t *testing.T) { // SC-23 (poller side)
 		{SessionID: "a", Pane: "%5", TmuxServer: "1111"}, // pane id reused on a new server: closed
 		{SessionID: "b", Pane: "%5", TmuxServer: "4242"}, // open in window 3
 		{SessionID: "c", Pane: "%9", TmuxServer: "4242"}, // pane gone: closed
-		{SessionID: "d", Pane: "%5"},                     // written before tmux_server existed: pane alone decides
+		{SessionID: "d", Pane: "%5"},                     // written before tmux_server existed: closed
 	} {
 		if err := writeAgent(p.Home, &a); err != nil {
 			t.Fatal(err)
@@ -852,7 +852,7 @@ func TestRound_LocalMarksLiveness(t *testing.T) { // SC-23 (poller side)
 	for id, a := range s.Agents {
 		got[id] = [2]any{a.Open, a.Window}
 	}
-	want := map[string][2]any{"a": {false, 0}, "b": {true, 3}, "c": {false, 0}, "d": {true, 3}}
+	want := map[string][2]any{"a": {false, 0}, "b": {true, 3}, "c": {false, 0}, "d": {false, 0}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("liveness = %v, want %v", got, want)
 	}
@@ -891,5 +891,16 @@ func TestRound_TmuxLivenessErrorSurfaces(t *testing.T) {
 	}
 	if s.Agents["b"].Open || !strings.Contains(s.LocalError, "protocol error") {
 		t.Errorf("agent %+v, LocalError %q", s.Agents["b"], s.LocalError)
+	}
+}
+
+func TestAssemble_RollupCountsOpenAgentsOnly(t *testing.T) {
+	agents := map[string]Agent{
+		"a": {SessionID: "a", Slug: "x", State: Blocked},          // closed
+		"b": {SessionID: "b", Slug: "x", State: Idle, Open: true}, // open
+	}
+	s := Assemble([]Task{{Slug: "x"}}, nil, agents)
+	if s.Tasks[0].State != Idle {
+		t.Errorf("roll-up %q, want idle", s.Tasks[0].State)
 	}
 }

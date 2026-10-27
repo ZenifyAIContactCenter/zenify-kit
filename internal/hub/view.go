@@ -20,7 +20,7 @@ var (
 )
 
 // keyHint is the last line of the sidebar, clipped to the pane width.
-const keyHint = " ⏎ jump  ␣ fold  o open  y copy  m merge  f fix  r refresh  q quit"
+const keyHint = " ⏎ jump  ␣ fold  o open  y copy  m merge  f fix  x forget  r refresh  q quit"
 
 // defaultRule is the rule width before the pane size is known.
 const defaultRule = 30

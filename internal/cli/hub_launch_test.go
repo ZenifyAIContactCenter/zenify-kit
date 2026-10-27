@@ -32,7 +32,7 @@ func (r *recTmux) Run(args ...string) ([]byte, error) {
 	switch args[0] {
 	case "-V":
 		return []byte("tmux 3.4\n"), nil
-	case "new-window":
+	case "new-session", "new-window":
 		r.windows++
 		return []byte(fmt.Sprintf("@%d\n", r.windows)), nil
 	}
@@ -110,9 +110,9 @@ func TestHubCmd_NewSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"new-session -d -s zenify -c " + root + " -n agent claude",
-		`split-window -d -h -b -l 30% -t =zenify:agent -c ` + root + ` '/Users/John Doe/it'\''s/zenify' hub sidebar`,
-		"set-option -w -t =zenify:agent allow-passthrough on",
+		"new-session -d -s zenify -P -F #{window_id} -c " + root + " -n agent claude",
+		`split-window -d -h -b -l 30% -t @1 -c ` + root + ` '/Users/John Doe/it'\''s/zenify' hub sidebar`,
+		"set-option -w -t @1 allow-passthrough on",
 	}
 	for _, w := range want {
 		found := false
@@ -291,12 +291,12 @@ func TestHubCmd_ResumesClosedAgents(t *testing.T) { // SC-24
 	}
 	sidebar := `'/Users/John Doe/it'\''s/zenify' hub sidebar`
 	want := []string{
-		"new-session -d -s zenify -c " + root + " -n be-2-x claude --resume " + idNew,
-		"split-window -d -h -b -l 30% -t =zenify:be-2-x -c " + root + " " + sidebar,
-		"set-option -w -t =zenify:be-2-x allow-passthrough on",
-		"new-window -d -t =zenify: -P -F #{window_id} -n agent -c " + root + " claude --resume " + idOld,
+		"new-session -d -s zenify -P -F #{window_id} -c " + root + " -n be-2-x claude --resume " + idNew,
 		"split-window -d -h -b -l 30% -t @1 -c " + root + " " + sidebar,
 		"set-option -w -t @1 allow-passthrough on",
+		"new-window -d -t =zenify: -P -F #{window_id} -n agent -c " + root + " claude --resume " + idOld,
+		"split-window -d -h -b -l 30% -t @2 -c " + root + " " + sidebar,
+		"set-option -w -t @2 allow-passthrough on",
 	}
 	if got := sessionCalls(rt.calls); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -318,7 +318,7 @@ func TestHubCmd_SkipsOpenAgent(t *testing.T) {
 	if _, err := runHub(t); err != nil {
 		t.Fatal(err)
 	}
-	if got := sessionCalls(rt.calls)[0]; got != "new-session -d -s zenify -c "+root+" -n agent claude" {
+	if got := sessionCalls(rt.calls)[0]; got != "new-session -d -s zenify -P -F #{window_id} -c "+root+" -n agent claude" {
 		t.Errorf("first call = %q, want a fresh claude", got)
 	}
 }

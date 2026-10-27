@@ -83,6 +83,28 @@ func TestTargetAgent_TieNewest(t *testing.T) {
 	}
 }
 
+func TestTargetAgent_PrefersOpen(t *testing.T) {
+	s := State{
+		Tasks: []Task{{Slug: "t1", Agents: []string{"closed", "open"}}},
+		Agents: map[string]Agent{
+			"closed": {SessionID: "closed", Pane: "%1", State: Blocked, UpdatedAt: 300},
+			"open":   {SessionID: "open", Pane: "%2", State: Idle, UpdatedAt: 100, Open: true},
+		},
+	}
+	if a, ok := TargetAgent(s, Item{Kind: KindTask, Task: &s.Tasks[0]}); !ok || a.SessionID != "open" {
+		t.Errorf("TargetAgent = %+v, %v; want open agent", a, ok)
+	}
+}
+
+func TestWindowName_Sanitizes(t *testing.T) {
+	cases := map[string]string{"Be_1 x": "be-1-x", "--a--": "a", "...": "agent", "zns#2": "zns-2"}
+	for slug, want := range cases {
+		if got := WindowName(slug); got != want {
+			t.Errorf("WindowName(%q) = %q, want %q", slug, got, want)
+		}
+	}
+}
+
 func TestTargetAgent_NoAgent(t *testing.T) {
 	s := State{Tasks: []Task{{Slug: "t1"}}}
 	if _, ok := TargetAgent(s, Item{Kind: KindTask, Task: &s.Tasks[0]}); ok {

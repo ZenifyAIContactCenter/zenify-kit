@@ -514,3 +514,87 @@ func TestKeyX_OpenAgentRefuses(t *testing.T) {
 		t.Error("open agent deleted")
 	}
 }
+
+func TestEnter_TaskRowJumpsToOpenAgent(t *testing.T) {
+	s := State{
+		Tasks: []Task{{Slug: "t1", Repos: []TaskRepo{{Name: "be"}}, Agents: []string{"a", "b"}}},
+		Agents: map[string]Agent{
+			"a": {SessionID: "a", Pane: "%1", State: Blocked, Slug: "t1", UpdatedAt: 9},
+			"b": {SessionID: "b", Pane: "%2", State: Idle, Slug: "t1", UpdatedAt: 1, Open: true},
+		},
+	}
+	m, tm, _ := newTestModel(t, t.TempDir(), s)
+	m = update(t, m, key("j")) // worktree row t1
+	update(t, m, key("enter"))
+	if len(tm.calls) == 0 || !reflect.DeepEqual(tm.calls[0], []string{"switch-client", "-t", "%2"}) {
+		t.Errorf("calls = %q, want a jump to %%2", tm.calls)
+	}
+}
+
+func TestEnter_DoubleResumeGuarded(t *testing.T) {
+	m, tm, _ := newTestModel(t, t.TempDir(), livenessState())
+	tm.out = map[string]string{"new-window": "@7\n"}
+	m = toAgent(t, m, "a")
+	m = update(t, m, key("enter"))
+	n := len(tm.calls)
+	m = update(t, m, key("enter"))
+	if len(tm.calls) != n || m.notice != "already resuming" {
+		t.Errorf("second enter: calls %q notice %q", tm.calls[n:], m.notice)
+	}
+}
+
+func TestResuming_ClearedWhenOpen(t *testing.T) {
+	home := t.TempDir()
+	s := livenessState()
+	m, tm, _ := newTestModel(t, home, s)
+	tm.out = map[string]string{"new-window": "@7\n"}
+	m = toAgent(t, m, "a")
+	m = update(t, m, key("enter"))
+	a := s.Agents["a"]
+	a.Open, a.Window = true, 5
+	s.Agents["a"] = a
+	rewriteState(t, home, s, time.Now().Add(time.Hour))
+	m = update(t, m, tickMsg(t0.Add(time.Second)))
+	if _, ok := m.resuming["a"]; ok {
+		t.Error("resuming kept after the agent opened")
+	}
+}
+
+func TestKeyF_ClosedAgentRefuses(t *testing.T) {
+	s := fixState(Done)
+	a := s.Agents["s1"]
+	a.Open = false
+	s.Agents["s1"] = a
+	m, tm, _ := newTestModel(t, t.TempDir(), s)
+	m = update(t, m, key("j"))
+	m = update(t, m, key("f"))
+	if len(tm.calls) != 0 || m.notice != "agent is closed — press Enter to resume" {
+		t.Errorf("calls %q notice %q", tm.calls, m.notice)
+	}
+}
+
+func TestKeyF_ConfirmAfterAgentClosedRefuses(t *testing.T) {
+	home := t.TempDir()
+	s := liveAgents(t, home, fixState(Blocked))
+	m, tm, _ := newTestModel(t, home, s)
+	m = update(t, m, key("j"))
+	m = update(t, m, key("f")) // blocked: asks first
+	if m.prompt == "" {
+		t.Fatal("no prompt")
+	}
+	a := s.Agents["s1"]
+	a.Open = false
+	s.Agents["s1"] = a
+	rewriteState(t, home, s, time.Now().Add(time.Hour))
+	m = update(t, m, tickMsg(t0.Add(time.Second)))
+	m = update(t, m, key("y"))
+	if len(tm.calls) != 0 || m.notice != "agent is closed — press Enter to resume" {
+		t.Errorf("calls %q notice %q", tm.calls, m.notice)
+	}
+}
+
+func TestKeyHint_Forget(t *testing.T) {
+	if !strings.Contains(keyHint, "x forget") {
+		t.Errorf("keyHint %q missing x forget", keyHint)
+	}
+}

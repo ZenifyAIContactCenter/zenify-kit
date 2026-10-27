@@ -330,6 +330,7 @@ func TestReport_DropsOtherAgentOnSamePane(t *testing.T) { // SC-25
 		{SessionID: "old", Pane: "%3", TmuxServer: "4242"},   // same server and pane: dropped
 		{SessionID: "other", Pane: "%3", TmuxServer: "1111"}, // same pane on another server: kept
 		{SessionID: "near", Pane: "%4", TmuxServer: "4242"},  // other pane: kept
+		{SessionID: "legacy", Pane: "%3"},                    // no server recorded, same pane: dropped
 	} {
 		if err := writeAgent(home, &a); err != nil {
 			t.Fatal(err)

@@ -97,6 +97,9 @@ type Model struct {
 	failed    bool   // notice is an error
 	prompt    string // pending y/n question
 	confirm   func(Model) Model
+	// resuming holds when Enter last resumed each closed agent, so a second
+	// Enter before it shows open does not start it twice.
+	resuming map[string]time.Time
 }
 
 // NewModel builds the sidebar for the workspace root; poller.GH opens PRs.
@@ -109,6 +112,7 @@ func NewModel(home, root string, tm tmuxx.Runner, poller *Poller) Model {
 	}
 	m.host = host
 	m.folds = map[string]bool{}
+	m.resuming = map[string]time.Time{}
 	m.relayout()
 	return m
 }
@@ -295,6 +299,11 @@ func (m *Model) reload() error {
 		return err
 	}
 	m.state, m.stateMod = s, mod
+	for id := range m.resuming {
+		if s.Agents[id].Open {
+			delete(m.resuming, id)
+		}
+	}
 	m.relayout()
 	return nil
 }
@@ -428,13 +437,21 @@ func (m Model) fix(it Item) Model {
 		m.notice, m.failed = "no agent on this task", false
 		return m
 	}
+	if !a.Open {
+		m.notice, m.failed = closedNotice, false
+		return m
+	}
 	a, m, ok = m.freshAgent(a)
 	if !ok {
 		return m
 	}
 	pr := *it.PR
 	send := func(m Model) Model {
-		// The session may have ended or moved while the prompt was up.
+		// The session may have ended, closed or moved while the prompt was up.
+		if !m.state.Agents[a.SessionID].Open {
+			m.notice, m.failed = closedNotice, false
+			return m
+		}
 		a, m, ok := m.freshAgent(a)
 		if !ok {
 			return m
@@ -497,12 +514,29 @@ func (m Model) openAgent() Model {
 	return m.done("opened a new agent window", NewAgentWindow(m.tm, m.root, m.self))
 }
 
-// resume opens a new window running `claude --resume` for the closed agent a.
+// closedNotice answers f on an agent whose pane is gone: typing into it could
+// land in whatever reuses the pane id.
+const closedNotice = "agent is closed — press Enter to resume"
+
+// resumeGuard is how long a resumed agent may take to show open before Enter
+// may resume it again.
+const resumeGuard = 15 * time.Second
+
+// resume opens a new window running `claude --resume` for the closed agent a,
+// unless Enter already resumed it within resumeGuard.
 func (m Model) resume(a Agent) Model {
 	if m.selfErr != nil {
 		return m.done("", fmt.Errorf("locate zenify binary: %w", m.selfErr))
 	}
+	now := time.Now()
+	if at, ok := m.resuming[a.SessionID]; ok && now.Sub(at) < resumeGuard {
+		m.notice, m.failed = "already resuming", false
+		return m
+	}
 	err := ResumeAgentWindow(m.tm, m.root, m.self, a.SessionID, WindowName(a.Slug))
+	if err == nil {
+		m.resuming[a.SessionID] = now
+	}
 	return m.done("resumed "+agentLabel(&a)+" in a new window", err)
 }
 

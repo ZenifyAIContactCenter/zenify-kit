@@ -158,10 +158,17 @@ func buildHubSession(r tmuxx.Runner, root, self string, resume []hub.Agent) erro
 	if len(resume) > 0 {
 		name, command = hub.WindowName(resume[0].Slug), []string{"claude", "--resume", resume[0].SessionID}
 	}
-	if _, err := r.Run(append([]string{"new-session", "-d", "-s", tmuxx.Session, "-c", root, "-n", name}, command...)...); err != nil {
+	out, err := r.Run(append([]string{"new-session", "-d", "-s", tmuxx.Session, "-P", "-F", "#{window_id}", "-c", root, "-n", name}, command...)...)
+	if err != nil {
 		return err
 	}
-	if err := sidebarPane(r, root, self, tmuxx.Target+":"+name); err != nil {
+	win := strings.TrimSpace(string(out))
+	if win == "" {
+		err = errors.New("tmux new-session printed no window id")
+	} else {
+		err = sidebarPane(r, root, self, win)
+	}
+	if err != nil {
 		_, kerr := r.Run("kill-session", "-t", tmuxx.Target)
 		return errors.Join(err, kerr)
 	}

@@ -306,8 +306,8 @@ func prMatchKey(repo, branch string) string { return strings.ToLower(repo) + "\x
 // Assemble attaches each PR to the task repo with the same (Repo, Branch) and
 // each agent to the task with its slug. Unmatched PRs go to OtherPRs, as do
 // further PRs of an already attached repo and branch (e.g. one per base); agents
-// whose slug matches no task (including a swept one) go to Unattached. The
-// input tasks are not modified.
+// whose slug matches no task (including a swept one) go to Unattached. A
+// task's State rolls up its open agents only. The input tasks are not modified.
 func Assemble(tasks []Task, prs []PR, agents map[string]Agent) State {
 	s := State{Agents: agents}
 	index := map[string]int{} // slug → position in s.Tasks
@@ -346,7 +346,9 @@ func Assemble(tasks []Task, prs []PR, agents map[string]Agent) State {
 			continue
 		}
 		s.Tasks[i].Agents = append(s.Tasks[i].Agents, a.SessionID)
-		states[i] = append(states[i], a.State)
+		if a.Open {
+			states[i] = append(states[i], a.State)
+		}
 	}
 	for i := range s.Tasks {
 		s.Tasks[i].State = Rollup(states[i]...)
@@ -518,8 +520,8 @@ func MarkOpen(r tmuxx.Runner, agents map[string]Agent) (map[string]Agent, error)
 }
 
 // markOpen returns a copy of agents with Open and Window set: an agent is
-// open when its pane is live and it was recorded on server pid. An agent
-// recorded before TmuxServer existed is judged by its pane alone.
+// open when it was recorded on server pid and its pane is live there. A
+// record without TmuxServer is closed.
 func markOpen(agents map[string]Agent, pid string, panes map[string]int) map[string]Agent {
 	if agents == nil {
 		return nil
@@ -527,7 +529,7 @@ func markOpen(agents map[string]Agent, pid string, panes map[string]int) map[str
 	out := make(map[string]Agent, len(agents))
 	for id, a := range agents {
 		w, live := panes[a.Pane]
-		a.Open = live && a.Pane != "" && (a.TmuxServer == "" || a.TmuxServer == pid)
+		a.Open = live && a.TmuxServer != "" && a.TmuxServer == pid
 		a.Window = 0
 		if a.Open {
 			a.Window = w
