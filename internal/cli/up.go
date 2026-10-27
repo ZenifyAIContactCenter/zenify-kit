@@ -344,6 +344,9 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		renderCodexSummary(rep, w)
 	}
 
+	// tmux is required by `zenify hub`; hint only, never install from up.
+	printTmuxHint(w, defaultTmuxEnv)
+
 	// NPM_TOKEN for repos installing from GitHub Packages (FR-6). FAIL-OPEN.
 	if dirs, err := repoDirsFor(workspace); err != nil {
 		fmt.Fprintf(errW, "warning: npm token: %v\n", err)

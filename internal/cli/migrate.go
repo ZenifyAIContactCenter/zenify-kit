@@ -85,7 +85,7 @@ func runMigrate(root, toDir string, apply bool, stdout, stderr io.Writer) error 
 		u.Note(note)
 	}
 	u.Blank()
-	u.Note("Xong. Worktree đã được repair; nhớ restart dev server / herdr workspace của các repo đã move (process cũ vẫn trỏ path cũ).") //znf:allow-lang
+	u.Note("Xong. Worktree đã được repair; nhớ restart dev server của các repo đã move (process cũ vẫn trỏ path cũ).") //znf:allow-lang
 	return nil
 }
 

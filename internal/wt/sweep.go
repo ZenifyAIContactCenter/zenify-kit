@@ -2,7 +2,6 @@ package wt
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -132,7 +131,7 @@ func cfgStatusDirty(r gitx.Runner, worktreePath string) bool {
 
 // SweepOptions drives RunSweep. Stdout carries the per-task report (sweep is a
 // report, not a value-returning command); side effects go through the real
-// stopServer/closeWorkspace below.
+// stopServer below.
 type SweepOptions struct {
 	RepoRoot string
 	Host     string
@@ -147,7 +146,7 @@ type SweepOptions struct {
 }
 
 // RunSweep tears down every finished task in the repo: for each removable
-// worktree it stops the dev server holding its port, closes the herdr workspace,
+// worktree it stops the dev server holding its port,
 // then removes it via RunRm. Kept tasks print why. --dry-run reports without
 // touching anything; --fetch refreshes origin first so a merged branch is not
 // misread as unmerged against a stale base.
@@ -215,7 +214,6 @@ func RunSweep(o SweepOptions) error {
 		}
 		_, _ = fmt.Fprintf(o.Stdout, "wt: sweeping %s (%s)\n", it.Slug, it.Branch)
 		stopServer(it.Path, o.Stdout)
-		closeWorkspace(it.Path, o.Stdout)
 		if e := RunRm(RmOptions{RepoRoot: o.RepoRoot, Slug: it.Slug, Host: o.Host, Pid: o.Pid, Now: o.Now, Runner: r, Stderr: o.Stderr}); e != nil {
 			_, _ = fmt.Fprintf(o.Stderr, "wt:   could not remove %s: %v\n", it.Slug, e)
 			kept++
@@ -331,74 +329,6 @@ func lsofCwd(pid string) string {
 		line := sc.Text()
 		if strings.HasPrefix(line, "n") {
 			return strings.TrimPrefix(line, "n")
-		}
-	}
-	return ""
-}
-
-// closeWorkspace closes the herdr workspace bound to path, best-effort. A missing
-// herdr never blocks a sweep, and the workspace this sweep runs inside is left
-// open (closing it would kill the shell mid-sweep). Drop-in port of bash
-// close_workspace; NOT unit-tested.
-func closeWorkspace(path string, out io.Writer) {
-	if _, err := exec.LookPath("herdr"); err != nil {
-		return
-	}
-	listed, err := exec.Command("herdr", "workspace", "list").Output()
-	if err != nil {
-		return
-	}
-	ws := herdrWorkspaceFor(string(listed), path)
-	if ws == "" {
-		return
-	}
-	if cur := os.Getenv("HERDR_WORKSPACE_ID"); cur != "" && cur == ws {
-		_, _ = fmt.Fprintf(out, "wt:   workspace %s is the one you are in — left open, close it yourself\n", ws)
-		return
-	}
-	if e := exec.Command("herdr", "workspace", "close", ws).Run(); e == nil { //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
-		_, _ = fmt.Fprintf(out, "wt:   closed herdr workspace %s\n", ws)
-	}
-}
-
-// herdrWorkspaceFor parses `herdr workspace list` JSON and returns the
-// workspace_id whose worktree.checkout_path matches path, or "" if none. Mirrors
-// bash close_workspace's reader (wt:551-556): `.result` is either an array or an
-// object with a `workspaces` array; each element carries `worktree.checkout_path`
-// and `workspace_id`. Fail-safe: any parse failure or ambiguity returns "" so a
-// wrong workspace is never closed. Matches on an exact path or a symlink-resolved
-// equal (macOS /private/...) — never a prefix, which could match a sibling.
-func herdrWorkspaceFor(listJSON, path string) string {
-	type herdrWS struct {
-		WorkspaceID string `json:"workspace_id"`
-		Worktree    struct {
-			CheckoutPath string `json:"checkout_path"`
-		} `json:"worktree"`
-	}
-	var envelope struct {
-		Result json.RawMessage `json:"result"`
-	}
-	if err := json.Unmarshal([]byte(listJSON), &envelope); err != nil || len(envelope.Result) == 0 {
-		return ""
-	}
-	var list []herdrWS
-	if err := json.Unmarshal(envelope.Result, &list); err != nil {
-		var obj struct {
-			Workspaces []herdrWS `json:"workspaces"`
-		}
-		if err := json.Unmarshal(envelope.Result, &obj); err != nil {
-			return ""
-		}
-		list = obj.Workspaces
-	}
-	want := canon(path)
-	for _, w := range list {
-		cp := w.Worktree.CheckoutPath
-		if cp == "" {
-			continue
-		}
-		if cp == path || canon(cp) == want {
-			return w.WorkspaceID
 		}
 	}
 	return ""

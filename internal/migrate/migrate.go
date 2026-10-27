@@ -70,7 +70,7 @@ type ApplyIO struct {
 }
 
 // newWorktreePath maps the old worktree path → the path after the move. An internal
-// worktree (under repoOld) is rebased onto repoNew; a worktree outside the repo (herdr)
+// worktree (under repoOld) is rebased onto repoNew; a worktree outside the repo (external worktree dir)
 // stays unchanged (not moved).
 func newWorktreePath(wtOld, repoOld, repoNew string) string {
 	rel, err := filepath.Rel(repoOld, wtOld)
