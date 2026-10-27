@@ -102,13 +102,13 @@ func TestFlatten_Sections(t *testing.T) {
 	}
 	var kinds []ItemKind
 	var titles []string
-	for _, it := range Flatten(s, false) {
+	for _, it := range Flatten(s, false, nil) {
 		kinds = append(kinds, it.Kind)
 		if it.Kind == KindHeader {
 			titles = append(titles, it.Title)
 		}
 	}
-	want := []ItemKind{KindHeader, KindTask, KindRepo, KindRepo, KindHeader, KindHeader, KindPR}
+	want := []ItemKind{KindHeader, KindRepoGroup, KindTask, KindTaskPR, KindRepoGroup, KindTask, KindHeader, KindHeader, KindPR}
 	if !reflect.DeepEqual(kinds, want) {
 		t.Errorf("kinds = %v, want %v", kinds, want)
 	}

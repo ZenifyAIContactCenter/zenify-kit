@@ -128,7 +128,7 @@ func TestView_ShowsError(t *testing.T) {
 func TestView_Rows(t *testing.T) {
 	m, _, _ := newTestModel(t, t.TempDir(), fixState(Blocked))
 	v := m.View()
-	for _, want := range []string{"TASKS 1", "▌◆ t1  s1\n", "     be #812 ✗ !\n", "AGENTS 0", "MY PRS 0"} {
+	for _, want := range []string{"TASKS 1", "   ◆ t1  s1\n", "       #812 ✗ !\n", "AGENTS 0", "MY PRS 0"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("View missing %q:\n%s", want, v)
 		}
@@ -137,7 +137,8 @@ func TestView_Rows(t *testing.T) {
 
 func TestEnter_SelectsPane(t *testing.T) {
 	m, tm, _ := newTestModel(t, t.TempDir(), fixState(Done))
-	update(t, m, key("enter")) // cursor starts on task t1
+	m = update(t, m, key("j")) // worktree row t1
+	update(t, m, key("enter"))
 	want := [][]string{{"switch-client", "-t", "%3"}, {"select-window", "-t", "%3"}, {"select-pane", "-t", "%3"}}
 	if !reflect.DeepEqual(tm.calls, want) {
 		t.Errorf("tmux calls = %q, want %q", tm.calls, want)
@@ -150,6 +151,7 @@ func TestEnter_MarksSeen(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _, _ := newTestModel(t, home, fixState(Done))
+	m = update(t, m, key("j"))
 	update(t, m, key("enter"))
 	a, err := readAgent(home, "s1")
 	if err != nil || a.State != Idle {
@@ -158,8 +160,10 @@ func TestEnter_MarksSeen(t *testing.T) {
 }
 
 func TestEnter_NoAgentAsksThenOpens(t *testing.T) {
-	m, tm, _ := newTestModel(t, t.TempDir(), State{Tasks: []Task{{Slug: "t2"}}})
+	m, tm, _ := newTestModel(t, t.TempDir(), State{Tasks: []Task{{Slug: "t2", Repos: []TaskRepo{{Name: "be"}}}}})
 	tm.out = map[string]string{"new-window": "@9\n"}
+	m = update(t, m, key("enter")) // open the idle repo be
+	m = update(t, m, key("j"))
 	m = update(t, m, key("enter"))
 	if !strings.Contains(m.View(), "Open a new agent for t2? y/n") {
 		t.Fatalf("View missing prompt:\n%s", m.View())
@@ -176,7 +180,8 @@ func TestEnter_NoAgentAsksThenOpens(t *testing.T) {
 func TestKeyF_SendsFix(t *testing.T) {
 	home := t.TempDir()
 	m, tm, _ := newTestModel(t, home, fixState(Idle))
-	m = update(t, m, key("j")) // repo row be #812
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	update(t, m, key("f"))
 	want := [][]string{
 		{"send-keys", "-t", "%3", "-l", "/znf:fix https://github.com/o/r/actions/runs/1/job/2"},
@@ -193,6 +198,7 @@ func TestKeyF_SendsFix(t *testing.T) {
 func TestKeyF_BlockedAsks(t *testing.T) {
 	m, tm, _ := newTestModel(t, t.TempDir(), fixState(Blocked))
 	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	m = update(t, m, key("f"))
 	if len(tm.calls) != 0 {
 		t.Fatalf("sent before confirm: %q", tm.calls)
@@ -211,6 +217,7 @@ func TestKeyF_NoAgent(t *testing.T) {
 	s.Tasks[0].Agents = nil
 	m, tm, _ := newTestModel(t, t.TempDir(), s)
 	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	m = update(t, m, key("f"))
 	if len(tm.calls) != 0 {
 		t.Errorf("tmux called: %q", tm.calls)
@@ -225,6 +232,7 @@ func TestKeyF_NotFailingDoesNothing(t *testing.T) {
 	s.Tasks[0].Repos[0].PR.Checks = "SUCCESS"
 	m, tm, _ := newTestModel(t, t.TempDir(), s)
 	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	update(t, m, key("f"))
 	if len(tm.calls) != 0 {
 		t.Errorf("tmux called: %q", tm.calls)
@@ -237,6 +245,7 @@ func TestKeyYM_CopyOSC52(t *testing.T) {
 	out := &bytes.Buffer{}
 	m.clip = osc52Clipboard(out)
 	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	m = update(t, m, key("y"))
 	m = update(t, m, key("m"))
 	want := OSC52("https://github.com/o/r/pull/812") + OSC52("gh pr merge 812 --repo o/r --merge")
@@ -249,6 +258,7 @@ func TestKeyO_OpensBrowser(t *testing.T) {
 	m, _, _ := newTestModel(t, t.TempDir(), fixState(Idle))
 	gh := m.gh.(*fakeGH)
 	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	update(t, m, key("o"))
 	want := [][]string{{"pr", "view", "812", "--repo", "o/r", "--web"}}
 	if !reflect.DeepEqual(gh.args, want) {
@@ -355,7 +365,7 @@ func TestView_ReviewState(t *testing.T) {
 	pr := s.Tasks[0].Repos[0].PR
 	pr.Checks, pr.MergeState, pr.ReviewDecision, pr.UnresolvedThreads, pr.Alert = "SUCCESS", "BLOCKED", "CHANGES_REQUESTED", 2, ""
 	m, _, _ := newTestModel(t, t.TempDir(), s)
-	if v := m.View(); !strings.Contains(v, "be #812 ✓ BLOCKED changes 2 threads\n") {
+	if v := m.View(); !strings.Contains(v, "       #812 ✓ BLOCKED changes 2 threads\n") {
 		t.Errorf("View missing review state:\n%s", v)
 	}
 }
@@ -365,6 +375,7 @@ func TestKeyF_BlockedDecline(t *testing.T) {
 		home := t.TempDir()
 		m, tm, _ := newTestModel(t, home, fixState(Blocked))
 		m = update(t, m, key("j"))
+		m = update(t, m, key("j")) // PR row #812
 		m = update(t, m, key("f"))
 		m = update(t, m, key(k))
 		if len(tm.calls) != 0 {
@@ -388,6 +399,7 @@ func TestKeyF_NoAgentKeepsAlert(t *testing.T) {
 	s.Tasks[0].Agents = nil
 	m, _, _ := newTestModel(t, home, s)
 	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	update(t, m, key("f"))
 	if _, err := os.Stat(filepath.Join(home, ".zenify", "hub", "acks", "o_r_812")); !os.IsNotExist(err) {
 		t.Errorf("ack file exists without an agent (err=%v)", err)
@@ -402,6 +414,7 @@ func TestKeyO_AckErrorShown(t *testing.T) {
 		t.Fatal(err)
 	}
 	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	m = update(t, m, key("o"))
 	if v := m.View(); !strings.Contains(v, "ack o/r#812") {
 		t.Errorf("View missing ack error:\n%s", v)
@@ -470,6 +483,7 @@ func TestNewWorktreeWhileLocalInFlightRerunsAfter(t *testing.T) {
 func TestEnter_ClearsOldNotice(t *testing.T) {
 	m, _, _ := newTestModel(t, t.TempDir(), fixState(Done))
 	m.notice, m.failed = "old failure", true
+	m = update(t, m, key("j"))
 	m = update(t, m, key("enter"))
 	if m.notice != "" || m.failed {
 		t.Errorf("notice %q failed %v after a clean jump, want cleared", m.notice, m.failed)
@@ -482,7 +496,8 @@ func TestEnter_RepoRowAcksAndMarksSeen(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _, _ := newTestModel(t, home, fixState(Done))
-	m = update(t, m, key("j")) // repo row be #812
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	update(t, m, key("enter"))
 	if _, err := os.Stat(filepath.Join(home, ".zenify", "hub", "acks", "o_r_812")); err != nil {
 		t.Errorf("ack file after enter: %v", err)
@@ -512,6 +527,7 @@ func TestKeyF_NoFailedURL(t *testing.T) {
 	s.Tasks[0].Repos[0].PR.FailedURL = ""
 	m, tm, _ := newTestModel(t, t.TempDir(), s)
 	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
 	m = update(t, m, key("f"))
 	if len(tm.calls) != 0 {
 		t.Errorf("tmux called: %q", tm.calls)

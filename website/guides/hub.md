@@ -46,11 +46,36 @@ Dòng đầu là `zenify hub` kèm giờ của vòng quét local gần nhất (H
 
 | Mục | Nội dung |
 |---|---|
-| `TASKS` | Từng task với icon trạng thái roll-up và agent gắn kèm; dưới mỗi task là từng repo, kèm PR `#n`, icon CI, review và mergeState. Task có agent hoặc PR lên trước (theo roll-up), còn lại theo slug. Task một repo chưa có PR gọn một dòng `<icon> <slug> · <repo>`. Task mà mọi repo đã merged, không có agent và không có PR open, gom vào dòng `▸ merged (n)` cuối mục, `Enter` để mở/đóng |
+| `TASKS` | Nhóm theo repo rồi worktree (xem [Mục TASKS](#muc-tasks)) |
 | `AGENTS` | Agent chưa có slug, hoặc có slug không khớp task nào hiện có (ví dụ worktree đã sweep) |
 | `MY PRS` | PR open của bạn không khớp worktree nào, chỉ lấy PR thuộc owner của remote `origin` các repo workspace (PR repo cá nhân bị bỏ; khi chưa đọc được owner nào thì không hiện PR nào, áp dụng cho mọi PR gồm cả badge ở TASKS) |
 
-Dòng PR có dạng `<repo> #<n> <CI> <mergeState> <review> <n> threads`; phần review hiện `approved`, `changes` (CHANGES_REQUESTED) hoặc `review` (REVIEW_REQUIRED), kèm số thread chưa resolve.
+### Mục TASKS
+
+```
+ TASKS 5
+ ▾ contact-center-be 3
+   ◆ zns-campaign-trace  agent#2
+       #799 ✗ BLOCKED changes
+   ● redis-scan-storm  agent#1
+       #812 ✓ CLEAN
+   ○ be-2376-tests
+ ▾ contact-center-web 2
+   ◆ zns-campaign-trace  agent#2
+       #455 ◐ review
+   ○ web-sync-release92
+ ▸ zenify-packages 6
+ ▸ merged (21)
+```
+
+- Cấp 1 là repo (tên thư mục repo) kèm số worktree; cấp 2 là worktree `<icon> <slug>  <agent>`, dòng PR của branch đó nằm ngay dưới. Task nhiều repo xuất hiện dưới mỗi repo của nó, mỗi chỗ với PR riêng của repo đó, agent hiện ở mọi chỗ.
+- Repo có ít nhất một worktree có agent hoặc PR open thì mở sẵn và xếp trước (theo roll-up cao nhất, rồi tên); repo còn lại thu gọn và xếp sau theo tên. Trong một repo, worktree có agent hoặc PR lên trước (theo roll-up, rồi slug), còn lại theo slug.
+- `Enter` hoặc `Space` trên dòng repo để mở/đóng; lựa chọn của bạn được giữ khi state reload.
+- Worktree mà repo đã merged và task không có agent, không có PR open, gom vào dòng `▸ merged (n)` cuối mục (n là số worktree); mở ra thì liệt kê `repo/slug`.
+- Số ở header `TASKS` là số worktree không nằm trong nhóm merged.
+- Các phím `Enter`, `o`, `y`, `m`, `f` trên dòng worktree hoặc dòng PR của nó tác động lên PR của đúng repo đó.
+
+Dòng PR có dạng `#<n> <CI> <mergeState> <review> <n> threads` (ở mục `MY PRS` có thêm tên repo phía trước); phần review hiện `approved`, `changes` (CHANGES_REQUESTED) hoặc `review` (REVIEW_REQUIRED), kèm số thread chưa resolve.
 
 ### Icon
 
@@ -70,7 +95,8 @@ Icon của task là roll-up của các agent trong task, theo ưu tiên blocked,
 | Phím | Tác dụng |
 |---|---|
 | `j` / `k` / `↓` / `↑` | Di chuyển |
-| `Enter` | Nhảy tới pane agent của task hoặc agent, kể cả khi pane nằm ở session tmux khác; task có nhiều agent thì chọn agent có trạng thái ưu tiên cao nhất, hoà thì agent mới cập nhật nhất. Task chưa có agent thì hỏi `y/n` rồi mở window agent mới. Trên dòng ở mục `MY PRS` thì mở PR như `o` |
+| `Enter` | Nhảy tới pane agent của task hoặc agent, kể cả khi pane nằm ở session tmux khác; task có nhiều agent thì chọn agent có trạng thái ưu tiên cao nhất, hoà thì agent mới cập nhật nhất. Task chưa có agent thì hỏi `y/n` rồi mở window agent mới. Trên dòng ở mục `MY PRS` thì mở PR như `o`. Trên dòng repo hoặc dòng `merged (n)` thì mở/đóng nhóm |
+| `Space` | Mở/đóng nhóm repo hoặc nhóm `merged (n)`; trên dòng khác không làm gì |
 | `n` | Mở window agent mới ở root |
 | `o` | Mở PR bằng trình duyệt (`gh pr view --web`) |
 | `y` | Copy URL PR |

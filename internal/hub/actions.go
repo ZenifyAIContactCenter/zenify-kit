@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -62,35 +63,27 @@ func touch(path string, now time.Time) error {
 type ItemKind int
 
 const (
-	KindHeader ItemKind = iota
-	KindTask
-	KindRepo        // a task's worktree, with its PR when one is open
-	KindAgent       // under a task with several agents, or in the AGENTS section when unattached
-	KindPR          // a PR that matches no task
-	KindMergedGroup // the "merged (n)" row; Enter expands or collapses it
+	KindHeader      ItemKind = iota
+	KindRepoGroup            // a repo in TASKS; Enter or Space expands or collapses it
+	KindTask                 // a worktree (task × repo), under its repo group or the merged group
+	KindTaskPR               // the open PR of the worktree row above it
+	KindAgent                // under a task with several agents, or in the AGENTS section when unattached
+	KindPR                   // a PR that matches no task
+	KindMergedGroup          // the "merged (n)" row; Enter or Space expands or collapses it
 )
 
-// Item is one sidebar row. Task is set on every row inside a task. A task row
-// carries Repo when its only repo has no PR (shown on the same line) and
+// Item is one sidebar row. Worktree rows and the rows under them carry Task
+// and the Repo they render under, with that repo's PR; a worktree row carries
 // Agent when the task has exactly one agent.
 type Item struct {
-	Kind  ItemKind
-	Title string // header text
-	Count int    // header count; merged group size
-	Task  *Task
-	Repo  *TaskRepo
-	Agent *Agent
-	PR    *PR
-}
-
-// merged reports whether every repo of t is merged (and it has one).
-func merged(t Task) bool {
-	for _, r := range t.Repos {
-		if !r.Merged {
-			return false
-		}
-	}
-	return len(t.Repos) > 0
+	Kind     ItemKind
+	Title    string // header text, repo group name, or worktree label
+	Count    int    // header count; group size
+	Expanded bool   // a repo or merged group is open
+	Task     *Task
+	Repo     *TaskRepo
+	Agent    *Agent
+	PR       *PR
 }
 
 func hasPR(t Task) bool {
@@ -102,41 +95,100 @@ func hasPR(t Task) bool {
 	return false
 }
 
+// worktree is one task in one of its repos.
+type worktree struct {
+	t *Task
+	r *TaskRepo
+}
+
+// active reports work in flight: an agent on the task or an open PR here.
+func (w worktree) active() bool { return len(w.t.Agents) > 0 || w.r.PR != nil }
+
+// repoGroup is the worktrees of one repo, sorted for display.
+type repoGroup struct {
+	name   string
+	ws     []worktree
+	active bool
+	top    int // highest roll-up rank of its active worktrees
+}
+
 // Flatten lays s out as rows: TASKS, AGENTS (unattached) and MY PRS (other
-// PRs); headers are always present. Tasks with an agent or a PR come first by
-// roll-up state, then the rest by slug; tasks with neither an agent nor an
-// open PR whose repos are all merged collapse into one merged-group row at
-// the end, listed after it when expanded.
-func Flatten(s State, expanded bool) []Item {
-	var active, rest, done []*Task
+// PRs); headers are always present. TASKS groups worktrees by repo: repos
+// with an active worktree come first (by highest roll-up, then name) and are
+// open unless folds says otherwise, the rest follow by name, collapsed
+// unless folds opens them. Inside a repo, active worktrees come first (by
+// roll-up, then slug), then the rest by slug. A worktree whose repo is merged
+// while its task has neither an agent nor an open PR goes into one merged
+// group at the end, listed as repo/slug when expanded.
+func Flatten(s State, expanded bool, folds map[string]bool) []Item {
+	byName := map[string]*repoGroup{}
+	var groups []*repoGroup
+	var done []worktree
 	for i := range s.Tasks {
 		t := &s.Tasks[i]
-		switch {
-		case len(t.Agents) > 0 || hasPR(*t): // work in flight: never hidden in the merged group
-			active = append(active, t)
-		case merged(*t):
-			done = append(done, t)
-		default:
-			rest = append(rest, t)
+		for j := range t.Repos {
+			w := worktree{t: t, r: &t.Repos[j]}
+			if w.r.Merged && len(t.Agents) == 0 && !hasPR(*t) {
+				done = append(done, w)
+				continue
+			}
+			g := byName[w.r.Name]
+			if g == nil {
+				g = &repoGroup{name: w.r.Name}
+				byName[w.r.Name] = g
+				groups = append(groups, g)
+			}
+			g.ws = append(g.ws, w)
+			if w.active() {
+				g.top = max(g.top, rank(t.State))
+				g.active = true
+			}
 		}
 	}
-	bySlug := func(ts []*Task) {
-		sort.SliceStable(ts, func(i, j int) bool { return ts[i].Slug < ts[j].Slug })
+	sort.Slice(groups, func(i, j int) bool {
+		a, b := groups[i], groups[j]
+		if a.active != b.active {
+			return a.active
+		}
+		if a.active && a.top != b.top {
+			return a.top > b.top
+		}
+		return a.name < b.name
+	})
+	n := 0
+	for _, g := range groups {
+		n += len(g.ws)
+		sort.Slice(g.ws, func(i, j int) bool {
+			a, b := g.ws[i], g.ws[j]
+			if a.active() != b.active() {
+				return a.active()
+			}
+			if a.active() && rank(a.t.State) != rank(b.t.State) {
+				return rank(a.t.State) > rank(b.t.State)
+			}
+			return a.t.Slug < b.t.Slug
+		})
 	}
-	bySlug(active)
-	sort.SliceStable(active, func(i, j int) bool { return rank(active[i].State) > rank(active[j].State) })
-	bySlug(rest)
-	bySlug(done)
+	sort.Slice(done, func(i, j int) bool { return label(done[i]) < label(done[j]) })
 
-	items := []Item{{Kind: KindHeader, Title: "TASKS", Count: len(active) + len(rest)}}
-	for _, t := range append(active, rest...) {
-		items = appendTask(items, s, t)
+	items := []Item{{Kind: KindHeader, Title: "TASKS", Count: n}}
+	for _, g := range groups {
+		open := g.active
+		if v, ok := folds[g.name]; ok {
+			open = v
+		}
+		items = append(items, Item{Kind: KindRepoGroup, Title: g.name, Count: len(g.ws), Expanded: open})
+		if open {
+			for _, w := range g.ws {
+				items = appendWorktree(items, s, w, w.t.Slug)
+			}
+		}
 	}
 	if len(done) > 0 {
-		items = append(items, Item{Kind: KindMergedGroup, Count: len(done)})
+		items = append(items, Item{Kind: KindMergedGroup, Count: len(done), Expanded: expanded})
 		if expanded {
-			for _, t := range done {
-				items = appendTask(items, s, t)
+			for _, w := range done {
+				items = appendWorktree(items, s, w, label(w))
 			}
 		}
 	}
@@ -151,36 +203,52 @@ func Flatten(s State, expanded bool) []Item {
 	return items
 }
 
-// appendTask adds t's row, its repo rows (none when its only repo has no PR)
-// and, when it has several agents, its agent rows.
-func appendTask(items []Item, s State, t *Task) []Item {
+// label is a worktree's name in the merged group.
+func label(w worktree) string { return w.r.Name + "/" + w.t.Slug }
+
+// appendWorktree adds w's row titled title, its PR row when the repo has an
+// open PR and, when the task has several agents, its agent rows.
+func appendWorktree(items []Item, s State, w worktree, title string) []Item {
 	var agents []*Agent
-	for _, id := range t.Agents {
+	for _, id := range w.t.Agents {
 		if a, ok := s.Agents[id]; ok {
 			agents = append(agents, &a)
 		}
 	}
-	row := Item{Kind: KindTask, Task: t}
+	row := Item{Kind: KindTask, Title: title, Task: w.t, Repo: w.r, PR: w.r.PR}
 	if len(agents) == 1 {
 		row.Agent = agents[0]
 	}
-	folded := len(t.Repos) == 1 && t.Repos[0].PR == nil
-	if folded {
-		row.Repo = &t.Repos[0]
-	}
 	items = append(items, row)
-	if !folded {
-		for j := range t.Repos {
-			r := &t.Repos[j]
-			items = append(items, Item{Kind: KindRepo, Task: t, Repo: r, PR: r.PR})
-		}
+	if w.r.PR != nil {
+		items = append(items, Item{Kind: KindTaskPR, Task: w.t, Repo: w.r, PR: w.r.PR})
 	}
 	if len(agents) > 1 {
 		for _, a := range agents {
-			items = append(items, Item{Kind: KindAgent, Task: t, Agent: a})
+			items = append(items, Item{Kind: KindAgent, Task: w.t, Repo: w.r, Agent: a})
 		}
 	}
 	return items
+}
+
+// itemKey identifies a row across layouts, so the cursor can follow it.
+func itemKey(it Item) string {
+	switch it.Kind {
+	case KindHeader, KindRepoGroup:
+		return fmt.Sprintf("%d/%s", it.Kind, it.Title)
+	case KindMergedGroup:
+		return "merged"
+	case KindPR:
+		return fmt.Sprintf("pr/%s#%d", it.PR.Repo, it.PR.Number)
+	}
+	k := strconv.Itoa(int(it.Kind))
+	if it.Repo != nil {
+		k += "/" + it.Repo.Name + "/" + it.Task.Slug
+	}
+	if it.Agent != nil {
+		k += "/" + it.Agent.SessionID
+	}
+	return k
 }
 
 // TargetAgent picks the agent a row jumps to: an agent row is itself; a row

@@ -81,7 +81,8 @@ type Model struct {
 	state    State
 	items    []Item
 	cursor   int
-	expanded bool // the merged group is open
+	expanded bool            // the merged group is open
+	folds    map[string]bool // repo name → open; only the user's choices, default otherwise
 	width    int
 	height   int
 
@@ -101,8 +102,8 @@ func NewModel(home, root string, tm tmuxx.Runner, poller *Poller) Model {
 		LogError(home, fmt.Errorf("hub sidebar: hostname: %w", err), time.Now().Unix())
 	}
 	m.host = host
-	m.items = Flatten(m.state, false)
-	m.clampCursor(1)
+	m.folds = map[string]bool{}
+	m.relayout()
 	return m
 }
 
@@ -261,9 +262,25 @@ func (m *Model) reload() error {
 		return err
 	}
 	m.state, m.stateMod = s, mod
-	m.items = Flatten(s, m.expanded)
-	m.clampCursor(1)
+	m.relayout()
 	return nil
+}
+
+// relayout rebuilds the rows and keeps the cursor on the same row when it
+// still exists, then clamps it off headers.
+func (m *Model) relayout() {
+	var at string
+	if m.cursor >= 0 && m.cursor < len(m.items) {
+		at = itemKey(m.items[m.cursor])
+	}
+	m.items = Flatten(m.state, m.expanded, m.folds)
+	for i, it := range m.items {
+		if at != "" && itemKey(it) == at {
+			m.cursor = i
+			break
+		}
+	}
+	m.clampCursor(1)
 }
 
 // clampCursor keeps the cursor in range and off headers, stepping in dir.
@@ -313,16 +330,23 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 			m.cursor--
 		}
 		m.clampCursor(-1)
-	case "enter":
-		if it.Kind == KindMergedGroup {
+	case "enter", " ":
+		switch {
+		case it.Kind == KindMergedGroup:
 			m.expanded = !m.expanded
-			m.items = Flatten(m.state, m.expanded)
-		} else if a, ok := TargetAgent(m.state, it); ok {
-			m = m.jump(a, it.PR)
-		} else if it.Task != nil {
-			m = m.ask("Open a new agent for "+it.Task.Slug+"? y/n", Model.openAgent)
-		} else if it.Kind == KindPR && it.PR != nil {
-			return m, m.openPR(*it.PR)
+			m.relayout()
+		case it.Kind == KindRepoGroup:
+			m.folds[it.Title] = !it.Expanded
+			m.relayout()
+		case k == " ": // Space only folds
+		default:
+			if a, ok := TargetAgent(m.state, it); ok {
+				m = m.jump(a, it.PR)
+			} else if it.Task != nil {
+				m = m.ask("Open a new agent for "+it.Task.Slug+"? y/n", Model.openAgent)
+			} else if it.Kind == KindPR && it.PR != nil {
+				return m, m.openPR(*it.PR)
+			}
 		}
 	case "n":
 		m = m.openAgent()

@@ -1,12 +1,10 @@
 package hub
 
 import (
-	"fmt"
 	"path"
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -22,7 +20,7 @@ var (
 )
 
 // keyHint is the last line of the sidebar, clipped to the pane width.
-const keyHint = " ⏎ jump  o open  y copy  m merge  f fix  r refresh  q quit"
+const keyHint = " ⏎ jump  ␣ fold  o open  y copy  m merge  f fix  r refresh  q quit"
 
 // defaultRule is the rule width before the pane size is known.
 const defaultRule = 30
@@ -59,9 +57,13 @@ var reviewShort = map[string]string{
 }
 
 // prLine renders "<name> #<n> <checks> <mergeState> <review> <n threads>"
-// plus "!" on an alert; empty parts are omitted.
+// plus "!" on an alert; empty parts (name included) are omitted.
 func prLine(name string, pr *PR) string {
-	parts := []string{name, "#" + strconv.Itoa(pr.Number)}
+	var parts []string
+	if name != "" {
+		parts = append(parts, name)
+	}
+	parts = append(parts, "#"+strconv.Itoa(pr.Number))
 	threads := ""
 	if pr.UnresolvedThreads > 0 {
 		threads = strconv.Itoa(pr.UnresolvedThreads) + " threads"
@@ -84,43 +86,34 @@ func agentName(a *Agent) string {
 	return a.SessionID
 }
 
-// repoName is r's name padded to the longest repo name of t, so PR columns
-// line up.
-func repoName(t *Task, r *TaskRepo) string {
-	w := 0
-	for _, x := range t.Repos {
-		w = max(w, utf8.RuneCountInString(x.Name)) // %-*s pads by runes
+// fold is the arrow of a group row: open or closed.
+func fold(open bool) string {
+	if open {
+		return "▾"
 	}
-	return fmt.Sprintf("%-*s", w, r.Name)
+	return "▸"
 }
 
 func itemLine(it Item) string {
 	switch it.Kind {
 	case KindHeader:
 		return bold.Render(it.Title + " " + strconv.Itoa(it.Count))
+	case KindRepoGroup:
+		return fold(it.Expanded) + " " + it.Title + " " + strconv.Itoa(it.Count)
 	case KindMergedGroup:
-		return "▸ merged (" + strconv.Itoa(it.Count) + ")"
+		return fold(it.Expanded) + " merged (" + strconv.Itoa(it.Count) + ")"
 	case KindTask:
-		line := stateIcon(it.Task.State) + " " + it.Task.Slug
-		if it.Repo != nil {
-			line += " · " + it.Repo.Name
-		}
+		line := "  " + stateIcon(it.Task.State) + " " + it.Title
 		if it.Agent != nil {
 			line += "  " + agentName(it.Agent)
 		}
 		return line
-	case KindRepo:
-		if it.PR != nil {
-			return "    " + prLine(repoName(it.Task, it.Repo), it.PR)
-		}
-		if it.Repo.Merged {
-			return "    " + it.Repo.Name + gray.Render(" merged")
-		}
-		return "    " + it.Repo.Name
+	case KindTaskPR:
+		return "      " + prLine("", it.PR)
 	case KindAgent:
 		indent := ""
 		if it.Task != nil {
-			indent = "    "
+			indent = "      "
 		}
 		return indent + stateIcon(it.Agent.State) + " " + agentName(it.Agent)
 	case KindPR:
@@ -138,9 +131,6 @@ func (m Model) body() (lines []string, cursorLine int) {
 			lines = append(lines, rule)
 		}
 		line := itemLine(it)
-		if it.Kind == KindMergedGroup && m.expanded {
-			line = "▾" + strings.TrimPrefix(line, "▸")
-		}
 		if i == m.cursor {
 			cursorLine = len(lines)
 			// Plain text: a styled piece's reset would end the background early.
