@@ -30,13 +30,19 @@ var defaultTmuxEnv = tmuxEnv{
 	isTerminal: func() bool { return term.IsTerminal(int(os.Stdin.Fd())) },
 }
 
-// runInstall runs the installer with stdio attached to the terminal so sudo can prompt.
+// runInstall runs the installer built by installCmd.
 func runInstall(name string, args ...string) error {
+	return installCmd(name, args...).Run()
+}
+
+// installCmd builds the installer with stdin/stderr attached to the terminal so sudo can
+// prompt. Stdout goes to stderr: `zenify doctor --fix --json` must keep stdout pure JSON.
+func installCmd(name string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...) //nolint:gosec // G204 -- name/args come from tmuxInstallCommand's fixed package-manager commands, not user input
 	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return cmd
 }
 
 // tmuxInstallCommand picks the package-manager command that installs tmux on this host.

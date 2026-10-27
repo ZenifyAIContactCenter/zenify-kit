@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -176,5 +177,17 @@ func TestTmuxFix_BrewWithoutTerminalStillInstalls(t *testing.T) {
 	}
 	if _, detail := tmuxCheck(env).Fix(); !called || detail != "install failed: boom" {
 		t.Fatalf("called=%v detail=%q", called, detail)
+	}
+}
+
+// The installer must never write to stdout: `zenify doctor --fix --json > out.json`
+// would otherwise mix package-manager output into the JSON.
+func TestInstallCmd_StdoutGoesToStderr(t *testing.T) {
+	cmd := installCmd("brew", "install", "tmux")
+	if cmd.Stdout != os.Stderr {
+		t.Fatalf("Stdout = %v, want os.Stderr", cmd.Stdout)
+	}
+	if cmd.Stdin != os.Stdin || cmd.Stderr != os.Stderr {
+		t.Fatalf("Stdin/Stderr must stay attached to the terminal")
 	}
 }
