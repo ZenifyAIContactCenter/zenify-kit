@@ -17,8 +17,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// localEvery is how often the lock holder runs a local poll round.
-const localEvery = 2 * time.Second
+// localEvery is how often the lock holder runs a local poll round; a worktree
+// added or removed triggers one at once.
+const localEvery = 10 * time.Second
 
 // rounds is the poll dependency (*Poller in production).
 type rounds interface {
@@ -293,10 +294,14 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 	it := m.current()
 	switch k {
 	case "q", "ctrl+c":
-		if err := m.lock.Release(); err != nil {
-			LogError(m.home, fmt.Errorf("release hub lock: %w", err), time.Now().Unix())
+		// A round in flight still writes state.json: leave the lock to process
+		// exit, which frees the flock.
+		if !m.localBusy && !m.githubBusy {
+			if err := m.lock.Release(); err != nil {
+				LogError(m.home, fmt.Errorf("release hub lock: %w", err), time.Now().Unix())
+			}
+			m.lock = nil
 		}
-		m.lock = nil
 		return m, tea.Quit
 	case "j", "down":
 		if m.cursor < len(m.items)-1 {
@@ -316,16 +321,14 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 			m = m.jump(a, it.PR)
 		} else if it.Task != nil {
 			m = m.ask("Open a new agent for "+it.Task.Slug+"? y/n", Model.openAgent)
+		} else if it.Kind == KindPR && it.PR != nil {
+			return m, m.openPR(*it.PR)
 		}
 	case "n":
 		m = m.openAgent()
 	case "o":
 		if it.PR != nil {
-			gh, pr := m.gh, *it.PR
-			return m, func() tea.Msg {
-				_, err := gh.Run("pr", "view", strconv.Itoa(pr.Number), "--repo", pr.Repo, "--web")
-				return openedMsg{pr: pr, err: err}
-			}
+			return m, m.openPR(*it.PR)
 		}
 	case "y":
 		if it.PR != nil {
@@ -346,7 +349,11 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 // fix types /znf:fix <failed job> into the task's agent, asking first when the
 // agent is blocked (the text could land in a permission dialog).
 func (m Model) fix(it Item) Model {
-	if it.PR == nil || it.PR.Checks != "FAILURE" || it.PR.FailedURL == "" {
+	if it.PR == nil || it.PR.Checks != "FAILURE" {
+		return m
+	}
+	if it.PR.FailedURL == "" {
+		m.notice, m.failed = "no failed job URL for this PR", false
 		return m
 	}
 	a, ok := TargetAgent(m.state, it)
@@ -368,12 +375,25 @@ func (m Model) fix(it Item) Model {
 	return send(m)
 }
 
-// jump focuses a's pane, marks it seen and acks pr's alert (pr may be nil).
+// jump focuses a's pane, switching the client to its session first (a no-op
+// in the same session), then marks it seen and acks pr's alert (pr may be nil).
 func (m Model) jump(a Agent, pr *PR) Model {
+	if _, err := m.tm.Run("switch-client", "-t", a.Pane); err != nil {
+		return m.done("", err)
+	}
 	if err := tmuxx.SelectPane(m.tm, a.Pane); err != nil {
 		return m.done("", err)
 	}
 	return m.done("", errors.Join(MarkSeen(m.home, a.SessionID), m.ack(pr)))
+}
+
+// openPR opens pr in the browser; its alert is acked once that succeeded.
+func (m Model) openPR(pr PR) tea.Cmd {
+	gh := m.gh
+	return func() tea.Msg {
+		_, err := gh.Run("pr", "view", strconv.Itoa(pr.Number), "--repo", pr.Repo, "--web")
+		return openedMsg{pr: pr, err: err}
+	}
 }
 
 func (m Model) openAgent() Model {
@@ -400,11 +420,11 @@ func (m Model) ask(prompt string, run func(Model) Model) Model {
 	return m
 }
 
-// done shows err in the footer, or msg when err is nil and msg is non-empty.
+// done shows err in the footer, else msg (an empty msg clears the footer).
 func (m Model) done(msg string, err error) Model {
 	if err != nil {
 		m.notice, m.failed = err.Error(), true
-	} else if msg != "" {
+	} else {
 		m.notice, m.failed = msg, false
 	}
 	return m

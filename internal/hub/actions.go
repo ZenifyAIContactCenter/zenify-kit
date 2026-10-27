@@ -209,7 +209,9 @@ func TargetAgent(s State, it Item) (Agent, bool) {
 }
 
 // NewAgentWindow opens a window running claude in root, with a hub sidebar
-// (self is the zenify binary) split to its left.
+// (self is the zenify binary) split to its left; focus stays on claude. It
+// then enables allow-passthrough for OSC 52 copy; a failure there (tmux < 3.3)
+// is returned for the footer after the window is complete.
 func NewAgentWindow(r tmuxx.Runner, root, self string) error {
 	out, err := r.Run("new-window", "-t", tmuxx.Session, "-P", "-F", "#{window_id}", "-c", root, "-n", "agent", "claude")
 	if err != nil {
@@ -219,6 +221,11 @@ func NewAgentWindow(r tmuxx.Runner, root, self string) error {
 	if win == "" {
 		return errors.New("tmux new-window printed no window id")
 	}
-	_, err = r.Run("split-window", "-h", "-b", "-l", "30%", "-t", win, "-c", root, self, "hub", "sidebar")
-	return err
+	if _, err := r.Run("split-window", "-d", "-h", "-b", "-l", "30%", "-t", win, "-c", root, self, "hub", "sidebar"); err != nil {
+		return err
+	}
+	if _, err := r.Run("set-option", "-w", "-t", win, "allow-passthrough", "on"); err != nil {
+		return fmt.Errorf("window opened, but allow-passthrough failed (copy may not reach the terminal): %w", err)
+	}
+	return nil
 }

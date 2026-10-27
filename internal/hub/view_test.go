@@ -2,13 +2,54 @@ package hub
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
+
+// TestMain renders without colour so View tests do not depend on the
+// terminal running them.
+func TestMain(m *testing.M) {
+	lipgloss.SetColorProfile(termenv.Ascii)
+	os.Exit(m.Run())
+}
+
+// withProfile renders with p for the rest of the test.
+func withProfile(t *testing.T, p termenv.Profile) {
+	t.Helper()
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(p)
+	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
+}
+
+func TestView_SelectedRowFullBackground(t *testing.T) {
+	withProfile(t, termenv.ANSI256)
+	m, _, _ := newTestModel(t, t.TempDir(), fixState(Working))
+	var row string
+	for _, l := range strings.Split(m.View(), "\n") {
+		if strings.Contains(l, "t1") {
+			row = l
+			break
+		}
+	}
+	bg, reset, slug := strings.Index(row, "48;5;237"), strings.Index(row, "\x1b[0m"), strings.Index(row, "t1")
+	if bg < 0 || reset < slug {
+		t.Errorf("selected row background must span the row past the icon: %q", row)
+	}
+}
+
+func TestRepoName_PadsByRunes(t *testing.T) {
+	task := &Task{Repos: []TaskRepo{{Name: "\u00df\u00df"}, {Name: "ab"}}} // two runes, four bytes
+	if got := repoName(task, &task.Repos[1]); got != "ab" {
+		t.Errorf("repoName = %q, want %q", got, "ab")
+	}
+}
 
 // inZone runs the test with time.Local set to UTC+7.
 func inZone(t *testing.T) {

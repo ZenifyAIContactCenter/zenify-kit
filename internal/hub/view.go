@@ -6,8 +6,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -87,7 +89,7 @@ func agentName(a *Agent) string {
 func repoName(t *Task, r *TaskRepo) string {
 	w := 0
 	for _, x := range t.Repos {
-		w = max(w, len(x.Name))
+		w = max(w, utf8.RuneCountInString(x.Name)) // %-*s pads by runes
 	}
 	return fmt.Sprintf("%-*s", w, r.Name)
 }
@@ -141,7 +143,8 @@ func (m Model) body() (lines []string, cursorLine int) {
 		}
 		if i == m.cursor {
 			cursorLine = len(lines)
-			line = selected.Render("▌" + line)
+			// Plain text: a styled piece's reset would end the background early.
+			line = selected.Render("▌" + ansi.Strip(line))
 		} else {
 			line = " " + line
 		}

@@ -33,11 +33,12 @@ flowchart TD
 
 *Cách `zenify hub` mở sidebar*
 
+- Không tìm thấy workspace root: hub báo `not inside a zenify workspace` và thoát với mã khác 0.
+- Thiếu tmux hoặc tmux thấp hơn 3.1: hub báo lỗi kèm hướng dẫn cài tmux và thoát với mã khác 0. Check này chạy trước check "đang ở trong tmux" bên dưới.
 - Ngoài tmux: nếu session `zenify` chưa có, hub tạo nó với cwd là root workspace, window đầu gồm sidebar trái và `claude` phải, rồi attach. Đã có session thì chỉ attach.
 - Đang ở trong tmux (bất kỳ session nào): hub không lồng session, chỉ in hướng dẫn chạy `zenify hub sidebar` trong một pane rồi thoát với mã 0.
-- Không tìm thấy workspace root hoặc không có tmux: hub báo lỗi kèm hướng dẫn cài tmux và thoát với mã khác 0.
 
-Phím `n` trong sidebar mở thêm một window agent mới ở root, mỗi window cũng có sidebar bên trái. Chỉ một sidebar giữ lock và chạy poller; các sidebar khác đọc cùng `state.json`. Không có daemon riêng, đóng hết session thì poller mất theo.
+Phím `n` trong sidebar mở thêm một window agent mới ở root, mỗi window cũng có sidebar bên trái; con trỏ ở lại pane `claude`. Hub bật `allow-passthrough` cho window đó để copy OSC 52 chạy được; tmux cũ hơn 3.3 không có option này nên footer báo lỗi nhưng window vẫn dùng được. Chỉ một sidebar giữ lock và chạy poller; các sidebar khác đọc cùng `state.json`. Không có daemon riêng, đóng hết session thì poller mất theo.
 
 ## Sidebar
 
@@ -47,7 +48,7 @@ Dòng đầu là `zenify hub` kèm giờ của vòng quét local gần nhất (H
 |---|---|
 | `TASKS` | Từng task với icon trạng thái roll-up và agent gắn kèm; dưới mỗi task là từng repo, kèm PR `#n`, icon CI, review và mergeState. Task có agent hoặc PR lên trước (theo roll-up), còn lại theo slug. Task một repo chưa có PR gọn một dòng `<icon> <slug> · <repo>`. Task mà mọi repo đã merged, không có agent và không có PR open, gom vào dòng `▸ merged (n)` cuối mục, `Enter` để mở/đóng |
 | `AGENTS` | Agent chưa có slug, hoặc có slug không khớp task nào hiện có (ví dụ worktree đã sweep) |
-| `MY PRS` | PR open của bạn không khớp worktree nào, chỉ lấy PR thuộc owner của remote `origin` các repo workspace (PR repo cá nhân bị bỏ) |
+| `MY PRS` | PR open của bạn không khớp worktree nào, chỉ lấy PR thuộc owner của remote `origin` các repo workspace (PR repo cá nhân bị bỏ; khi chưa đọc được owner nào thì không hiện PR nào) |
 
 Dòng PR có dạng `<repo> #<n> <CI> <mergeState> <review> <n> threads`; phần review hiện `approved`, `changes` (CHANGES_REQUESTED) hoặc `review` (REVIEW_REQUIRED), kèm số thread chưa resolve.
 
@@ -69,7 +70,7 @@ Icon của task là roll-up của các agent trong task, theo ưu tiên blocked,
 | Phím | Tác dụng |
 |---|---|
 | `j` / `k` / `↓` / `↑` | Di chuyển |
-| `Enter` | Nhảy tới pane agent của task hoặc agent; task có nhiều agent thì chọn agent có trạng thái ưu tiên cao nhất, hoà thì agent mới cập nhật nhất. Task chưa có agent thì hỏi `y/n` rồi mở window agent mới |
+| `Enter` | Nhảy tới pane agent của task hoặc agent, kể cả khi pane nằm ở session tmux khác; task có nhiều agent thì chọn agent có trạng thái ưu tiên cao nhất, hoà thì agent mới cập nhật nhất. Task chưa có agent thì hỏi `y/n` rồi mở window agent mới. Trên dòng ở mục `MY PRS` thì mở PR như `o` |
 | `n` | Mở window agent mới ở root |
 | `o` | Mở PR bằng trình duyệt (`gh pr view --web`) |
 | `y` | Copy URL PR |
@@ -90,9 +91,9 @@ Poller so PR giữa hai vòng và tạo alert, báo bằng một thông báo tmu
 | `ready` | PR đạt mergeState `CLEAN` và không còn thread chưa resolve |
 | `new-review` | Số thread chưa resolve tăng |
 
-Alert được xoá khi bạn bấm `o` hoặc `f` trên PR đó, hoặc `Enter` khi nhảy tới agent (xác nhận mở agent mới không xoá alert). Nhịp poll GitHub là 20 giây khi bạn có ít nhất một PR đang `PENDING`, ngược lại 60 giây; phím `r` bỏ qua nhịp chờ.
+Alert được xoá khi bạn bấm `o` hoặc `f` trên PR đó, `Enter` trên PR ở mục `MY PRS`, hoặc `Enter` khi nhảy tới agent (xác nhận mở agent mới không xoá alert). Nhịp poll GitHub là 20 giây khi bạn có ít nhất một PR đang `PENDING`, ngược lại 60 giây; phím `r` bỏ qua nhịp chờ.
 
-Phím `f` chỉ hoạt động trên PR có CI thất bại. Nó gõ `/znf:fix <url job lỗi đầu tiên>` vào pane agent của task, chỉ khi bạn bấm, không bao giờ tự động. Nếu agent đang `blocked` (có thể đang ở hộp thoại quyền), hub hỏi `y/n` trước khi gõ. Task chưa có agent thì sidebar báo `no agent on this task` và không gõ gì. Alert chỉ được xác nhận sau khi thao tác của `f` chạy xong.
+Phím `f` chỉ hoạt động trên PR có CI thất bại. Job lỗi là check run kết thúc `FAILURE`, `TIMED_OUT`, `STARTUP_FAILURE`, `CANCELLED` hoặc `ACTION_REQUIRED`, hoặc commit status `FAILURE`/`ERROR` có link; PR không có link job lỗi nào thì sidebar báo `no failed job URL for this PR` và không gõ gì. Nó gõ `/znf:fix <url job lỗi đầu tiên>` vào pane agent của task, chỉ khi bạn bấm, không bao giờ tự động. Nếu agent đang `blocked` (có thể đang ở hộp thoại quyền), hub hỏi `y/n` trước khi gõ. Task chưa có agent thì sidebar báo `no agent on this task` và không gõ gì. Alert chỉ được xác nhận sau khi thao tác của `f` chạy xong.
 
 ## Hook hub-report
 
@@ -100,13 +101,13 @@ Trạng thái agent đến từ Claude Code hooks. `zenify up` cài hook `hub-re
 
 | Event | Trạng thái |
 |---|---|
-| `SessionStart` | idle |
+| `SessionStart` | idle (`source` là `compact` hoặc `resume` thì giữ nguyên trạng thái) |
 | `UserPromptSubmit`, `PostToolUse` | working |
 | `Notification` loại `permission_prompt`, `agent_needs_input` hoặc `elicitation_dialog` | blocked (loại khác giữ nguyên trạng thái) |
 | `Stop` | done |
 | `SessionEnd` | xoá bản ghi agent |
 
-Task của agent được suy ra từ đường dẫn `/.worktrees/<slug>/` xuất hiện trong tool input; không khớp thì giữ slug cũ; agent chưa có slug nằm ở mục `AGENTS`. Hook fail-open: ngoài tmux (không có `TMUX_PANE`) nó không ghi gì, và mọi lỗi chỉ ghi vào `~/.zenify/hub/hub.log` rồi thoát mã 0, nên không bao giờ chặn agent. Bạn cũng có thể gọi tay `zenify hub report` với JSON hook trên stdin để debug.
+Task của agent được suy ra từ đường dẫn `/.worktrees/<slug>` xuất hiện trong tool input, xét các key `file_path`, `notebook_path`, `path`, `command`, `cwd` trước rồi mới tới các key khác; không khớp thì giữ slug cũ; agent chưa có slug nằm ở mục `AGENTS`. Hook fail-open: ngoài tmux (không có `TMUX_PANE`) nó không ghi gì, và mọi lỗi chỉ ghi vào `~/.zenify/hub/hub.log` rồi thoát mã 0, nên không bao giờ chặn agent. Bạn cũng có thể gọi tay `zenify hub report` với JSON hook trên stdin để debug.
 
 ## Dữ liệu
 
@@ -115,7 +116,7 @@ Mọi dữ liệu hub nằm ở `~/.zenify/hub/`: `state.json` (cache chung cho 
 ## Lưu ý
 
 - Kit không còn dùng herdr. `zenify wt sweep` không đóng workspace hay window nào nữa; window shell bạn tự mở trong worktree vẫn giữ nguyên, bạn tự đóng.
-- Task xuất hiện sau tối đa vài giây kể từ `zenify wt new` (vòng quét local 2 giây, chạy độc lập với vòng GitHub).
+- Task xuất hiện sau khoảng một giây kể từ `zenify wt new`: thêm hoặc xoá thư mục worktree kích hoạt vòng quét local ngay; ngoài ra vòng quét local chạy mỗi 10 giây (cập nhật trạng thái merged), độc lập với vòng GitHub.
 
 ### Giới hạn của v1
 

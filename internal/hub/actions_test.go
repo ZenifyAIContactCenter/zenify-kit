@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -123,9 +124,35 @@ func TestNewAgentWindow(t *testing.T) {
 	}
 	want := [][]string{
 		{"new-window", "-t", "zenify", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "agent", "claude"},
-		{"split-window", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
+		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
+		{"set-option", "-w", "-t", "@7", "allow-passthrough", "on"},
 	}
 	if !reflect.DeepEqual(f.calls, want) {
 		t.Errorf("calls = %q\nwant %q", f.calls, want)
+	}
+}
+
+// failSetOption answers new-window with a window id and fails set-option.
+type failSetOption struct{ calls [][]string }
+
+func (f *failSetOption) Run(args ...string) ([]byte, error) {
+	f.calls = append(f.calls, args)
+	switch args[0] {
+	case "new-window":
+		return []byte("@7\n"), nil
+	case "set-option":
+		return nil, errors.New("invalid option: allow-passthrough")
+	}
+	return nil, nil
+}
+
+func TestNewAgentWindow_PassthroughErrorIsReported(t *testing.T) {
+	f := &failSetOption{}
+	err := NewAgentWindow(f, "/ws", "/bin/zenify")
+	if err == nil || !strings.Contains(err.Error(), "allow-passthrough") {
+		t.Errorf("want allow-passthrough error, got %v", err)
+	}
+	if len(f.calls) != 3 || f.calls[1][0] != "split-window" {
+		t.Errorf("window not fully built: %q", f.calls)
 	}
 }
