@@ -27,7 +27,7 @@ Cần tmux từ 3.1 trở lên (hub dùng `split-window -l <n>%`). `zenify docto
 flowchart TD
   A["zenify hub"] --> B{"Đang ở trong tmux?"}
   B -- "Không" --> C["Tạo hoặc attach session zenify ở root workspace"]
-  B -- "Có" --> D["In hướng dẫn chạy zenify hub sidebar trong một pane"]
+  B -- "Có" --> D["In hướng dẫn rồi thoát, không lồng tmux"]
   C --> E["Window đầu: sidebar trái, claude phải"]
 ```
 
@@ -36,10 +36,10 @@ flowchart TD
 - Không tìm thấy workspace root: hub báo `not inside a zenify workspace` và thoát với mã khác 0.
 - Thiếu tmux hoặc tmux thấp hơn 3.1: hub báo lỗi kèm hướng dẫn cài tmux và thoát với mã khác 0. Check này chạy trước check "đang ở trong tmux" bên dưới.
 - Ngoài tmux: nếu session `zenify` chưa có, hub tạo nó với cwd là root workspace, window đầu gồm sidebar trái và `claude` phải, rồi attach (xem [Resume agent khi mở hub](#resume-agent-khi-mo-hub)). Đã có session thì chỉ attach. Nếu bước dựng sau `new-session` lỗi, hub xoá session vừa tạo; nếu chính `new-session` lỗi (ví dụ một lần chạy `zenify hub` khác vừa tạo session) thì hub báo lỗi và không xoá gì.
-- Đang ở trong tmux (bất kỳ session nào): hub không lồng session, chỉ in hướng dẫn chạy `zenify hub sidebar` trong một pane rồi thoát với mã 0.
-- Mỗi lần chạy, hub ghi lại file cấu hình `~/.zenify/hub/tmux.conf` (sửa tay sẽ bị ghi đè) và khởi động server hub với file đó (`-f`) khi server chưa chạy. Mọi lệnh tmux của hub (sidebar, hook, phím tắt) đi qua server này. Xem session của hub bằng `tmux -L zenify ls`; đổi tên server bằng env `ZENIFY_HUB_SOCKET` (dùng khi test).
+- Đang ở trong tmux: hub không lồng session và thoát với mã 0. Trong tmux server khác (ví dụ server mặc định của bạn), hub in `already inside another tmux — run "zenify hub" from a plain terminal, or attach with: tmux -L zenify attach -t =zenify`; đã ở trong chính server hub thì hub báo hub đang mở và gợi ý `Alt+n` để mở agent mới.
+- Mỗi lần chạy, hub ghi lại file cấu hình `~/.zenify/hub/tmux.conf` (sửa tay sẽ bị ghi đè) và khởi động server hub với file đó (`-f`) khi server chưa chạy; session `zenify` đã có thì hub nạp lại file bằng `source-file` (lỗi chỉ ghi `hub.log`, vẫn attach). Mọi lệnh tmux của hub (sidebar, phím tắt) đi qua server này. Xem session của hub bằng `tmux -L zenify ls`; đổi tên server bằng env `ZENIFY_HUB_SOCKET` (dùng khi test).
 
-Phím `n` trong sidebar mở thêm một window agent mới ở root trong session `zenify` (chưa có session đó thì mở trong session hiện tại của sidebar), mỗi window cũng có sidebar bên trái; con trỏ ở lại pane `claude`. Hub bật `allow-passthrough` cho window đó để copy OSC 52 chạy được; tmux cũ hơn 3.3 không có option này nên footer báo lỗi nhưng window vẫn dùng được. Chỉ một sidebar giữ lock và chạy poller; các sidebar khác đọc cùng `state.json`. Không có daemon riêng, đóng hết session thì poller mất theo.
+Phím `n` trong sidebar mở thêm một window agent mới ở root trong session `zenify` (chưa có session đó thì mở trong session hiện tại của sidebar), mỗi window cũng có sidebar bên trái; con trỏ ở lại pane `claude`. Nếu bước tách pane sidebar lỗi, hub đóng window vừa mở và báo lỗi ở footer. `allow-passthrough` (để copy OSC 52 chạy được) bật chung trong `tmux.conf`; tmux cũ hơn 3.3 không có option này và bỏ qua nó. Chỉ một sidebar giữ lock và chạy poller; các sidebar khác đọc cùng `state.json`. Không có daemon riêng, đóng hết session thì poller mất theo.
 
 ## Dùng chuột và phím tắt
 
@@ -52,7 +52,7 @@ Hub bật chuột và đặt phím không cần prefix tmux; prefix mặc địn
 | Click một dòng trong sidebar | Chọn dòng; click lại dòng đang chọn = `Enter`. Click vào tiêu đề, header mục, đường kẻ hoặc footer không làm gì; khi đang hỏi `y/n` thì chuột bị bỏ qua |
 | Cuộn chuột trong sidebar | Như `j` / `k` |
 | Click vào pane | Chuyển con trỏ sang pane đó |
-| `Alt+←` / `Alt+→` | Chuyển sang pane trái / phải |
+| `Alt+←` / `Alt+→` | Chuyển sang pane trái / phải. Hub giữ hai phím này nên phím nhảy từng từ (`Alt+←/→`) trong ô nhập của Claude hoặc shell không còn tác dụng trong hub |
 | `Alt+1` … `Alt+9` | Chuyển tới window số 1 … 9 (window đánh số từ 1) |
 | `Alt+n` | Mở window agent mới |
 | `Alt+d` | Detach khỏi hub; agent vẫn chạy, chạy lại `zenify hub` để vào lại |
@@ -112,6 +112,8 @@ Dòng PR có dạng `#<n> <CI> <mergeState> <review> <n> threads` (ở mục `MY
 
 - Header `AGENTS <mở>/<tổng>`. Mỗi dòng: `▶`/`⏸`, icon trạng thái, tiêu đề agent (không có tiêu đề thì slug), `· <slug>` khi agent gắn với task, và `w<số window>` khi agent đang mở.
 - Agent **đang mở** khi pane của nó còn sống trên đúng tmux server mà hook đã ghi (pid server lấy từ trường thứ 2 của env `TMUX`); ngược lại là **đã đóng**, ví dụ sau khi tmux server bị tắt hoặc máy reboot. Bản ghi chưa có pid server (ghi trước khi hub lưu trường này) luôn là đã đóng. Poller tính lại mỗi vòng quét local; không có tmux server nào chạy thì mọi agent là đã đóng.
+- Agent mà hook ghi trên tmux server khác server hub (so tên socket, trường đầu của `TMUX`, với `zenify` hoặc `ZENIFY_HUB_SOCKET`), kể cả bản ghi cũ chưa có socket, hiện `⇄ <tên> · other tmux` (dòng worktree hiện `⇄` thay cho `▶`/`⏸`). Hub không nhảy tới, không resume, không quên (`x`) và không gửi `f` cho agent đó; `Enter` chỉ báo `agent runs in another tmux server — use that terminal`. Khi mở hub, các agent này không được resume.
+- `Enter` trên agent đang mở đọc lại bản ghi và so pid tmux server với server hub; agent đã chuyển sang server khác thì sidebar báo `agent moved to another tmux server` và không nhảy.
 - Agent đang mở xếp trước (theo trạng thái blocked, working, done, idle, rồi mới cập nhật nhất), sau đó agent đã đóng (mới cập nhật nhất trước).
 - `Enter` trên agent đang mở nhảy tới pane của nó; trên agent đã đóng mở một window mới `sidebar | claude --resume <session id>` trong session `zenify` (chưa có session đó thì trong session hiện tại). `claude --resume` giữ nguyên session id nên agent tiếp tục ghi vào bản ghi cũ.
 - `x` trên một dòng agent đã đóng (ở mục `AGENTS` hoặc dòng agent dưới worktree) hỏi `y/n · forget <tên>?` rồi xoá bản ghi của agent; trên agent đang mở thì sidebar báo `agent is running` và không xoá gì. Lúc bấm `y`, hub đọc lại bản ghi và kiểm tra pane trên tmux: agent đã mở lại thì báo `agent is open again`, bản ghi đã đổi kể từ lúc hỏi thì báo `agent changed`, và không xoá gì.
@@ -154,7 +156,7 @@ Copy dùng công cụ clipboard có trên máy theo thứ tự `wl-copy` (khi c�
 
 Khi `zenify hub` tạo session `zenify` mới, nó resume các agent đã đóng thay vì mở một `claude` trống:
 
-- Ứng viên là agent đã đóng có cập nhật trong 7 ngày gần nhất, tối đa 8 agent, mới nhất trước. Agent còn đang mở ở session tmux khác không bị resume lần nữa; agent có khoá `agents/<session id>.resuming` tạo dưới 30 giây trước (một sidebar đang resume nó) cũng bị bỏ qua.
+- Ứng viên là agent đã đóng có cập nhật trong 7 ngày gần nhất, tối đa 8 agent, mới nhất trước. Chỉ agent ghi trên server hub được xét; agent còn đang mở ở session tmux khác không bị resume lần nữa; agent có khoá `agents/<session id>.resuming` tạo dưới 30 giây trước (một sidebar đang resume nó) cũng bị bỏ qua.
 - Window đầu chạy `claude --resume <session id>` của ứng viên mới nhất; mỗi ứng viên còn lại có một window riêng `sidebar | claude --resume <session id>`. Tên window là slug của agent viết thường, mọi ký tự ngoài `a-z`, `0-9`, `-` đổi thành `-` và bỏ `-` ở hai đầu (không còn gì thì `agent`); cwd là root workspace.
 - Session id không đúng dạng UUID (chỉ chữ số hex và `-`) bị bỏ qua và ghi lỗi vào `hub.log`.
 - Không có ứng viên nào thì hub mở `claude` mới như trước. Một bước dựng window lỗi thì hub xoá session vừa tạo.
@@ -185,7 +187,7 @@ Trạng thái agent đến từ Claude Code hooks. `zenify up` cài hook `hub-re
 | `Stop` | done |
 | `SessionEnd` | xoá bản ghi agent |
 
-Hook ghi cùng bản ghi pane (`TMUX_PANE`) và pid tmux server (trường thứ 2 của `TMUX`). Khi một hook báo từ pane P trên server S, mọi bản ghi agent khác cùng (S, P) bị xoá, vì một pane chỉ chạy một Claude; bản ghi bị hook khác ghi lại sau lúc hub đọc thì được giữ. Bản ghi chưa có pid server (ghi trước khi hub lưu trường này) được giữ: nó hiện là đã đóng, vẫn resume hoặc quên (`x`) được. Task của agent được suy ra từ đường dẫn `/.worktrees/<slug>` xuất hiện trong tool input, xét các key `file_path`, `notebook_path`, `path`, `command`, `cwd` trước rồi mới tới các key khác; không khớp thì giữ slug cũ; agent chưa có slug chỉ hiện ở mục `AGENTS`. Hook fail-open: ngoài tmux (không có `TMUX_PANE` hoặc `TMUX`) nó không ghi gì, và mọi lỗi chỉ ghi vào `~/.zenify/hub/hub.log` rồi thoát mã 0, nên không bao giờ chặn agent. Bạn cũng có thể gọi tay `zenify hub report` với JSON hook trên stdin để debug.
+Hook ghi cùng bản ghi pane (`TMUX_PANE`), pid tmux server (trường thứ 2 tính từ cuối của `TMUX`) và đường dẫn socket (`tmux_socket`, phần trước hai trường cuối). Khi một hook báo từ pane P trên server S, mọi bản ghi agent khác cùng (S, P) bị xoá, vì một pane chỉ chạy một Claude; bản ghi bị hook khác ghi lại sau lúc hub đọc thì được giữ. Bản ghi chưa có pid server (ghi trước khi hub lưu trường này) được giữ; bản ghi chưa có socket hiện `⇄ … · other tmux` và hub không resume hay quên nó. Task của agent được suy ra từ đường dẫn `/.worktrees/<slug>` xuất hiện trong tool input, xét các key `file_path`, `notebook_path`, `path`, `command`, `cwd` trước rồi mới tới các key khác; không khớp thì giữ slug cũ; agent chưa có slug chỉ hiện ở mục `AGENTS`. Hook fail-open: ngoài tmux (không có `TMUX_PANE` hoặc `TMUX`) nó không ghi gì, và mọi lỗi chỉ ghi vào `~/.zenify/hub/hub.log` rồi thoát mã 0, nên không bao giờ chặn agent. Bạn cũng có thể gọi tay `zenify hub report` với JSON hook trên stdin để debug.
 
 ## Dữ liệu
 

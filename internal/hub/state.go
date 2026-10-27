@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tmuxx"
 )
 
 // AgentState is the lifecycle state of one coding agent.
@@ -56,10 +58,18 @@ type Agent struct {
 	UpdatedAt int64      `json:"updated_at"`
 	// TmuxServer is the pid of the tmux server the hook ran under.
 	TmuxServer string `json:"tmux_server,omitempty"`
+	// TmuxSocket is the socket path of that server (field 0 of TMUX).
+	TmuxSocket string `json:"tmux_socket,omitempty"`
 	// Open and Window are set by the poller's local round: the agent's pane
 	// is alive on the current tmux server, in the window with that index.
 	Open   bool `json:"open,omitempty"`
 	Window int  `json:"window,omitempty"`
+}
+
+// OnHub reports whether a runs on the hub tmux server (socket name
+// tmuxx.Socket()); a record without a socket does not.
+func (a Agent) OnHub() bool {
+	return a.TmuxSocket != "" && filepath.Base(a.TmuxSocket) == tmuxx.Socket()
 }
 
 // Dir is the hub data directory under home.

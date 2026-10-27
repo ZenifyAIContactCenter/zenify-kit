@@ -175,11 +175,13 @@ func LivePanes(r Runner) (map[string]Pane, error) {
 	return panes, nil
 }
 
-// NoServer reports whether err is tmux saying no server is running.
+// NoServer reports whether err is tmux saying no server is running: none
+// listens on the socket, or the socket file does not exist. Any other connect
+// error (permission denied, ...) is a real error.
 func NoServer(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := err.Error()
-	return strings.Contains(msg, "no server running") || strings.Contains(msg, "error connecting to")
+	return strings.Contains(msg, "no server running") || strings.Contains(msg, "No such file or directory")
 }

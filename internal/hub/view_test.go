@@ -206,12 +206,12 @@ func TestKeyO_WorktreePRRowOpensThatRepoPR(t *testing.T) {
 
 func TestEnter_WorktreeRowJumpsAndAcksThatRepoPR(t *testing.T) {
 	home := t.TempDir()
-	m, tm, _ := newTestModel(t, home, sc21State())
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, sc21State()))
 	for i := 0; i < 4; i++ { // worktree t under web
 		m = update(t, m, key("j"))
 	}
 	update(t, m, key("enter"))
-	if len(tm.calls) == 0 || !reflect.DeepEqual(tm.calls[0], []string{"switch-client", "-t", "%4"}) {
+	if len(tm.calls) < 2 || !reflect.DeepEqual(tm.calls[1], []string{"switch-client", "-t", "%4"}) {
 		t.Errorf("tmux calls = %q, want a jump to %%4", tm.calls)
 	}
 	acks := filepath.Join(home, ".zenify", "hub", "acks")
@@ -227,7 +227,7 @@ func TestEnter_WorktreeRowJumpsAndAcksThatRepoPR(t *testing.T) {
 // reloads it.
 func rewriteState(t *testing.T, home string, s State, at time.Time) {
 	t.Helper()
-	if err := WriteState(home, s); err != nil {
+	if err := WriteState(home, onHub(s)); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(statePath(home), at, at); err != nil {
@@ -447,7 +447,6 @@ func TestEnter_ClosedAgentResumes(t *testing.T) {
 		{"has-session", "-t", "=zenify"},
 		{"new-window", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "be-2376-tests", "claude", "--resume", a.SessionID},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
-		{"set-option", "-w", "-t", "@7", "allow-passthrough", "on"},
 	}
 	if !reflect.DeepEqual(tm.calls, want) {
 		t.Errorf("calls = %q\nwant %q", tm.calls, want)
@@ -463,14 +462,15 @@ func TestEnter_ClosedAgentResumes(t *testing.T) {
 // uuidAgent is a closed agent with a real-looking session id and a slug that
 // needs no window-name escaping.
 func uuidAgent() Agent {
-	return Agent{SessionID: "0b5e7c1a-9f3d-4c2e-8a6b-1d2e3f4a5b6c", Slug: "be-2376-tests", Title: "tests", UpdatedAt: 1}
+	return Agent{SessionID: "0b5e7c1a-9f3d-4c2e-8a6b-1d2e3f4a5b6c", Slug: "be-2376-tests", Title: "tests", UpdatedAt: 1, TmuxSocket: hubSocket()}
 }
 
 func TestEnter_OpenAgentJumps(t *testing.T) {
-	m, tm, _ := newTestModel(t, t.TempDir(), livenessState())
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, livenessState()))
 	m = toAgent(t, m, "b")
 	update(t, m, key("enter"))
-	if len(tm.calls) == 0 || tm.calls[0][0] != "switch-client" {
+	if len(tm.calls) < 2 || tm.calls[1][0] != "switch-client" {
 		t.Errorf("calls = %q, want a jump", tm.calls)
 	}
 }
@@ -532,10 +532,11 @@ func TestEnter_TaskRowJumpsToOpenAgent(t *testing.T) {
 			"b": {SessionID: "b", Pane: "%2", State: Idle, Slug: "t1", UpdatedAt: 1, Open: true},
 		},
 	}
-	m, tm, _ := newTestModel(t, t.TempDir(), s)
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
 	m = update(t, m, key("j")) // worktree row t1
 	update(t, m, key("enter"))
-	if len(tm.calls) == 0 || !reflect.DeepEqual(tm.calls[0], []string{"switch-client", "-t", "%2"}) {
+	if len(tm.calls) < 2 || !reflect.DeepEqual(tm.calls[1], []string{"switch-client", "-t", "%2"}) {
 		t.Errorf("calls = %q, want a jump to %%2", tm.calls)
 	}
 }
@@ -824,5 +825,68 @@ func TestView_NarrowErrorKeepsFirstWords(t *testing.T) {
 	m = update(t, m, tea.WindowSizeMsg{Width: 20, Height: 20})
 	if v := m.View(); !strings.Contains(v, "dial tcp") || strings.Contains(v, "hub.log") {
 		t.Errorf("error at width 20 kept the hint or lost the message:\n%s", v)
+	}
+}
+
+// otherTmuxState is agent o on the user's default tmux server, closed as
+// seen from the hub server, attached to task t1.
+const otherID = "0b5e7c1a-9f3d-4c2e-8a6b-1d2e3f4a5b6c"
+
+func otherTmuxState() State {
+	return State{
+		Tasks: []Task{{Slug: "t1", Repos: []TaskRepo{{Name: "be"}}, Agents: []string{otherID}, State: Idle}},
+		Agents: map[string]Agent{otherID: {
+			SessionID: otherID, Title: "elsewhere", Slug: "t1", State: Working,
+			Pane: "%1", TmuxServer: "999", TmuxSocket: "/tmp/tmux-1000/default", UpdatedAt: 9,
+		}},
+	}
+}
+
+func TestView_OtherTmuxAgent(t *testing.T) { // I1
+	m, _, _ := newTestModel(t, t.TempDir(), otherTmuxState())
+	v := m.View()
+	for _, want := range []string{" ⇄ elsewhere · other tmux\n", "   ○ t1  ⇄ elsewhere\n"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("View missing %q:\n%s", want, v)
+		}
+	}
+}
+
+func TestEnter_OtherTmuxAgentRefusesWithoutTmux(t *testing.T) { // I1
+	home := t.TempDir()
+	id := otherID
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, otherTmuxState()))
+	m = toAgent(t, m, id)
+	m = update(t, m, key("enter"))
+	if m.notice != "agent runs in another tmux server — use that terminal" || m.failed {
+		t.Errorf("notice %q failed=%v", m.notice, m.failed)
+	}
+	if len(tm.calls) != 0 {
+		t.Errorf("tmux calls = %q, want none", tm.calls)
+	}
+	if _, err := os.Stat(resumeLockPath(home, id)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("resume lock taken: %v", err)
+	}
+	m = update(t, m, key("x"))
+	if m.prompt != "" || m.notice != "agent runs in another tmux server — use that terminal" {
+		t.Errorf("x: prompt %q notice %q", m.prompt, m.notice)
+	}
+	if got, _ := readAgent(home, id); got == nil {
+		t.Error("x forgot an agent of another tmux server")
+	}
+}
+
+func TestKeyF_OtherTmuxAgentSendsNothing(t *testing.T) { // I1
+	home := t.TempDir()
+	s := fixState(Idle)
+	a := s.Agents["s1"]
+	a.TmuxSocket = "/tmp/tmux-1000/default"
+	s.Agents["s1"] = a
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
+	m = update(t, m, key("f"))
+	if m.notice != "agent runs in another tmux server — use that terminal" || len(tm.calls) != 0 {
+		t.Errorf("notice %q, tmux calls %q", m.notice, tm.calls)
 	}
 }

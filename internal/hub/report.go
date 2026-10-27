@@ -166,6 +166,16 @@ func TmuxServer(tmuxEnv string) string {
 	return f[len(f)-2]
 }
 
+// TmuxSocket is the socket path in a TMUX env value ("socket,pid,session"):
+// everything before the last two fields, or "" when there are not three.
+func TmuxSocket(tmuxEnv string) string {
+	f := strings.Split(tmuxEnv, ",")
+	if len(f) < 3 {
+		return ""
+	}
+	return strings.Join(f[:len(f)-2], ",")
+}
+
 // Report applies one hook event read from stdin to the agent files under home.
 // tmuxEnv is the TMUX env value, naming the tmux server. Outside tmux (pane or
 // tmuxEnv empty) it only drains stdin. After writing the agent it removes every
@@ -198,9 +208,9 @@ func Report(home string, stdin io.Reader, pane, tmuxEnv string, now int64) error
 		}
 		return nil
 	}
-	server := TmuxServer(tmuxEnv)
+	server, socket := TmuxServer(tmuxEnv), TmuxSocket(tmuxEnv)
 	for attempt := 0; attempt < reportAttempts; attempt++ {
-		err := reportOnce(home, in, pane, server, now)
+		err := reportOnce(home, in, pane, server, socket, now)
 		if errors.Is(err, errAgentChanged) {
 			continue
 		}
@@ -222,7 +232,7 @@ var reportHook = func() {}
 // reportOnce is one read-apply-write attempt of Report. It returns
 // errAgentChanged when another report rewrote the file in between, so the
 // event is re-applied on top of that newer record.
-func reportOnce(home string, in HookInput, pane, server string, now int64) error {
+func reportOnce(home string, in HookInput, pane, server, socket string, now int64) error {
 	path := agentPath(home, in.SessionID)
 	fi, err := os.Stat(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -235,6 +245,9 @@ func reportOnce(home string, in HookInput, pane, server string, now int64) error
 	next, _ := ApplyEvent(prev, in, pane, now)
 	if server != "" {
 		next.TmuxServer = server
+	}
+	if socket != "" {
+		next.TmuxSocket = socket
 	}
 	b, err := json.Marshal(next)
 	if err != nil {

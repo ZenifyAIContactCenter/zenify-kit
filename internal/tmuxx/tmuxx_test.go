@@ -188,6 +188,7 @@ func TestNoServer(t *testing.T) {
 		"tmux list-panes: exit status 1: no server running on /tmp/tmux-1000/default":                            true,
 		"tmux list-panes: exit status 1: error connecting to /tmp/tmux-1000/default (No such file or directory)": true,
 		"tmux list-panes: exit status 1: can't find session":                                                     false,
+		"tmux list-panes: exit status 1: error connecting to /tmp/tmux-1000/zenify (Permission denied)":          false,
 	}
 	for msg, want := range cases {
 		if got := NoServer(errors.New(msg)); got != want {

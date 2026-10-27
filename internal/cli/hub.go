@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -62,8 +63,12 @@ func runHubLauncher(cmd *cobra.Command, env hubEnv) error {
 	if _, ok, detail := tmuxx.Available(env.lookPath, env.runner); !ok {
 		return errors.New(detail)
 	}
-	if os.Getenv("TMUX") != "" {
-		fmt.Fprintln(cmd.OutOrStdout(), `already inside tmux — run "zenify hub sidebar" in a pane`)
+	if t := os.Getenv("TMUX"); t != "" {
+		if filepath.Base(hub.TmuxSocket(t)) == tmuxx.Socket() {
+			fmt.Fprintln(cmd.OutOrStdout(), "zenify hub is already open in this tmux — Alt+n opens a new agent")
+		} else {
+			fmt.Fprintf(cmd.OutOrStdout(), "already inside another tmux — run \"zenify hub\" from a plain terminal, or attach with: tmux -L %s attach -t %s\n", tmuxx.Socket(), tmuxx.Target)
+		}
 		return nil
 	}
 	home, err := env.home()
@@ -82,16 +87,14 @@ func runHubLauncher(cmd *cobra.Command, env hubEnv) error {
 		if err := buildHubSession(env.runner, root, self, conf, resumable(env, time.Now().Unix())); err != nil {
 			return fmt.Errorf("setting up tmux session failed: %w", err)
 		}
+	} else if _, err := env.runner.Run("source-file", conf); err != nil {
+		// The session still works with the config it started with.
+		hub.LogError(home, fmt.Errorf("hub: reload tmux.conf: %w", err), time.Now().Unix())
 	}
 	if err := env.attach("-L", tmuxx.Socket(), "attach", "-t", tmuxx.Target); err != nil {
 		return fmt.Errorf("tmux attach: %w", err)
 	}
 	return nil
-}
-
-// shellQuote single-quotes s for sh, escaping embedded single quotes.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // resumeMaxAge and resumeMax bound the agents a new hub session resumes.
@@ -138,14 +141,15 @@ func resumable(env hubEnv, now int64) []hub.Agent {
 	return out
 }
 
-// resumeCandidates keeps the closed agents updated within resumeMaxAge whose
+// resumeCandidates keeps the closed agents of the hub tmux server (an agent
+// on another server may still run there) updated within resumeMaxAge whose
 // session id is safe for a command line, newest first, at most resumeMax.
 // Unsafe ids are skipped and returned as errors.
 func resumeCandidates(agents map[string]hub.Agent, now int64) ([]hub.Agent, error) {
 	var out []hub.Agent
 	var errs []error
 	for _, a := range agents {
-		if a.Open || now-a.UpdatedAt > resumeMaxAge {
+		if a.Open || !a.OnHub() || now-a.UpdatedAt > resumeMaxAge {
 			continue
 		}
 		if !hub.ValidSessionID(a.SessionID) {
@@ -209,23 +213,10 @@ func buildHubSession(r tmuxx.Runner, root, self, conf string, resume []hub.Agent
 	return nil
 }
 
-// sidebarPane splits the hub sidebar to the left of window target, then
-// enables allow-passthrough there. Only the split can fail: passthrough is
-// best effort (OSC 52 copy needs it, tmux < 3.3 rejects the option) and its
-// error goes to hub.log.
+// sidebarPane splits the hub sidebar to the left of window target.
 func sidebarPane(r tmuxx.Runner, root, self, target string) error {
-	if _, err := r.Run("split-window", "-d", "-h", "-b", "-l", "30%", "-t", target, "-c", root, shellQuote(self)+" hub sidebar"); err != nil {
-		return err
-	}
-	if _, err := r.Run("set-option", "-w", "-t", target, "allow-passthrough", "on"); err != nil {
-		perr := fmt.Errorf("hub: allow-passthrough: %w", err)
-		if home, herr := os.UserHomeDir(); herr == nil {
-			hub.LogError(home, perr, time.Now().Unix())
-		} else {
-			fmt.Fprintln(os.Stderr, perr)
-		}
-	}
-	return nil
+	_, err := r.Run("split-window", "-d", "-h", "-b", "-l", "30%", "-t", target, "-c", root, hub.ShellQuote(self)+" hub sidebar")
+	return err
 }
 
 func runHubSidebar() error {

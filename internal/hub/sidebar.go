@@ -440,7 +440,9 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 			m.relayout()
 		case k == " ": // Space only folds
 		default:
-			if a, ok := TargetAgent(m.state, it); ok && a.Open {
+			if a, ok := TargetAgent(m.state, it); ok && !a.OnHub() {
+				m.notice, m.failed = otherTmuxNotice, false
+			} else if ok && a.Open {
 				m = m.jump(a, it.PR)
 			} else if ok {
 				m = m.resume(a)
@@ -487,6 +489,10 @@ func (m Model) fix(it Item) Model {
 	a, ok := TargetAgent(m.state, it)
 	if !ok || it.Kind == KindPR {
 		m.notice, m.failed = "no agent on this task", false
+		return m
+	}
+	if !a.OnHub() {
+		m.notice, m.failed = otherTmuxNotice, false
 		return m
 	}
 	if !a.Open {
@@ -549,7 +555,21 @@ func (m Model) freshAgent(a Agent) (Agent, Model, bool) {
 
 // jump focuses a's pane, switching the client to its session first (a no-op
 // in the same session), then marks it seen and acks pr's alert (pr may be nil).
+// It re-reads a's file first and refuses when the agent now records another
+// tmux server than the one the sidebar talks to.
 func (m Model) jump(a Agent, pr *PR) Model {
+	a, m, ok := m.freshAgent(a)
+	if !ok {
+		return m
+	}
+	pid, err := tmuxx.ServerPID(m.tm)
+	if err != nil {
+		return m.done("", err)
+	}
+	if a.TmuxServer != pid {
+		m.notice, m.failed = "agent moved to another tmux server", false
+		return m
+	}
 	if _, err := m.tm.Run("switch-client", "-t", a.Pane); err != nil {
 		return m.done("", err)
 	}
@@ -574,6 +594,11 @@ func (m Model) openAgent() Model {
 	}
 	return m.done("opened a new agent window", NewAgentWindow(m.tm, m.root, m.self))
 }
+
+// otherTmuxNotice answers an action on an agent recorded on another tmux
+// server than the hub's: the hub cannot reach it, and resuming it would run
+// it twice.
+const otherTmuxNotice = "agent runs in another tmux server — use that terminal"
 
 // closedNotice answers f on an agent whose pane is gone: typing into it could
 // land in whatever reuses the pane id.
@@ -807,6 +832,10 @@ func (m Model) forget(it Item) Model {
 		return m
 	}
 	a := *it.Agent
+	if !a.OnHub() {
+		m.notice, m.failed = otherTmuxNotice, false
+		return m
+	}
 	if a.Open {
 		m.notice, m.failed = "agent is running", false
 		return m

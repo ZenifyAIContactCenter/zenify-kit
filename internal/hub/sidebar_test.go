@@ -11,6 +11,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tmuxx"
 )
 
 // scriptTmux records every tmux call and answers with out[subcommand], or
@@ -82,10 +84,31 @@ func (c *countTicker) GitHub() error {
 // t0 is in the past so files touched at wall-clock time are newer.
 var t0 = time.Unix(1_700_000_000, 0)
 
+// hubSocket is a socket path of the hub tmux server.
+func hubSocket() string { return "/tmp/tmux-1000/" + tmuxx.Socket() }
+
+// onHub records every agent of s without a socket on the hub server, as a
+// hook running in the hub would.
+func onHub(s State) State {
+	agents := make(map[string]Agent, len(s.Agents))
+	for id, a := range s.Agents {
+		if a.TmuxSocket == "" {
+			a.TmuxSocket = hubSocket()
+		}
+		agents[id] = a
+	}
+	if s.Agents != nil {
+		s.Agents = agents
+	}
+	return s
+}
+
 // newTestModel builds a sidebar over home with fake tmux, gh and poll
-// dependencies, writes s as state.json and runs one tick to load it.
+// dependencies, writes s (its agents on the hub server, see onHub) as
+// state.json and runs one tick to load it.
 func newTestModel(t *testing.T, home string, s State) (Model, *scriptTmux, *countTicker) {
 	t.Helper()
+	s = onHub(s)
 	if err := WriteState(home, s); err != nil {
 		t.Fatal(err)
 	}
@@ -191,10 +214,11 @@ func TestView_Rows(t *testing.T) {
 }
 
 func TestEnter_SelectsPane(t *testing.T) {
-	m, tm, _ := newTestModel(t, t.TempDir(), fixState(Done))
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, fixState(Done)))
 	m = update(t, m, key("j")) // worktree row t1
 	update(t, m, key("enter"))
-	want := [][]string{{"switch-client", "-t", "%3"}, {"select-window", "-t", "%3"}, {"select-pane", "-t", "%3"}}
+	want := [][]string{{"display-message", "-p", "#{pid}"}, {"switch-client", "-t", "%3"}, {"select-window", "-t", "%3"}, {"select-pane", "-t", "%3"}}
 	if !reflect.DeepEqual(tm.calls, want) {
 		t.Errorf("tmux calls = %q, want %q", tm.calls, want)
 	}
@@ -227,8 +251,8 @@ func TestEnter_NoAgentAsksThenOpens(t *testing.T) {
 		t.Fatalf("tmux called before confirm: %q", tm.calls)
 	}
 	update(t, m, key("y"))
-	if len(tm.calls) != 5 || tm.calls[0][0] != "has-session" || tm.calls[1][0] != "new-window" || tm.calls[2][0] != "split-window" ||
-		!reflect.DeepEqual(tm.calls[3], []string{"switch-client", "-t", "@9"}) || tm.calls[4][0] != "set-option" {
+	if len(tm.calls) != 4 || tm.calls[0][0] != "has-session" || tm.calls[1][0] != "new-window" || tm.calls[2][0] != "split-window" ||
+		!reflect.DeepEqual(tm.calls[3], []string{"switch-client", "-t", "@9"}) {
 		t.Errorf("tmux calls = %q", tm.calls)
 	}
 }
@@ -577,7 +601,8 @@ func TestNewWorktreeWhileLocalInFlightRerunsAfter(t *testing.T) {
 }
 
 func TestEnter_ClearsOldNotice(t *testing.T) {
-	m, _, _ := newTestModel(t, t.TempDir(), fixState(Done))
+	home := t.TempDir()
+	m, _, _ := newTestModel(t, home, liveAgents(t, home, fixState(Done)))
 	m.notice, m.failed = "old failure", true
 	m = update(t, m, key("j"))
 	m = update(t, m, key("enter"))
@@ -953,5 +978,29 @@ func TestKeyF_OtherTmuxServerSendsNothing(t *testing.T) {
 	}
 	if !strings.Contains(m.View(), "agent runs on another tmux server") {
 		t.Errorf("View missing notice:\n%s", m.View())
+	}
+}
+
+func TestEnter_AgentMovedToAnotherServerRefuses(t *testing.T) { // Zd
+	home := t.TempDir()
+	s := fixState(Done)
+	a := s.Agents["s1"]
+	a.TmuxServer = "111" // the hook last ran on another server
+	s.Agents["s1"] = a
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
+	tm.out = map[string]string{"display-message": "222\n"}
+	m = update(t, m, key("j")) // worktree row t1
+	m = update(t, m, key("enter"))
+	if want := [][]string{{"display-message", "-p", "#{pid}"}}; !reflect.DeepEqual(tm.calls, want) {
+		t.Errorf("tmux calls = %q, want only the server pid lookup", tm.calls)
+	}
+	if m.notice != "agent moved to another tmux server" || m.failed {
+		t.Errorf("notice %q failed=%v", m.notice, m.failed)
+	}
+	if got, err := readAgent(home, "s1"); err != nil || got.State != Done {
+		t.Errorf("agent %+v, %v; want still done (not marked seen)", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".zenify", "hub", "acks", "o_r_812")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("alert acked: %v", err)
 	}
 }

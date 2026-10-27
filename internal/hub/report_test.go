@@ -303,13 +303,41 @@ func TestTmuxServer(t *testing.T) {
 	}
 }
 
+func TestTmuxSocket(t *testing.T) {
+	cases := map[string]string{
+		"/tmp/tmux-1000/default,4242,0": "/tmp/tmux-1000/default",
+		"/tmp/a,b/c,77,3":               "/tmp/a,b/c", // a comma in the socket path
+		"/tmp/tmux-1000/default":        "",
+		"":                              "",
+	}
+	for env, want := range cases {
+		if got := TmuxSocket(env); got != want {
+			t.Errorf("TmuxSocket(%q) = %q, want %q", env, got, want)
+		}
+	}
+}
+
+func TestAgent_OnHub(t *testing.T) {
+	t.Setenv("ZENIFY_HUB_SOCKET", "")
+	cases := map[string]bool{
+		"/tmp/tmux-1000/zenify":  true,
+		"/tmp/tmux-1000/default": false,
+		"":                       false, // recorded before tmux_socket existed
+	}
+	for sock, want := range cases {
+		if got := (Agent{TmuxSocket: sock}).OnHub(); got != want {
+			t.Errorf("OnHub(%q) = %v, want %v", sock, got, want)
+		}
+	}
+}
+
 func TestReport_RecordsTmuxServer(t *testing.T) {
 	home := t.TempDir()
 	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", tmuxEnv, 5); err != nil {
 		t.Fatal(err)
 	}
 	a, err := readAgent(home, "s")
-	if err != nil || a == nil || a.TmuxServer != "4242" || a.Pane != "%2" {
+	if err != nil || a == nil || a.TmuxServer != "4242" || a.TmuxSocket != "/tmp/tmux-1000/default" || a.Pane != "%2" {
 		t.Fatalf("agent: %+v %v", a, err)
 	}
 }

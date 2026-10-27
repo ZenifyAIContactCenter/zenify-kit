@@ -149,35 +149,29 @@ func TestNewAgentWindow(t *testing.T) {
 		{"new-window", "-t", "=zenify:", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "agent", "claude"},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
 		{"switch-client", "-t", "@7"},
-		{"set-option", "-w", "-t", "@7", "allow-passthrough", "on"},
 	}
 	if !reflect.DeepEqual(f.calls, want) {
 		t.Errorf("calls = %q\nwant %q", f.calls, want)
 	}
 }
 
-// failSetOption answers new-window with a window id and fails set-option.
-type failSetOption struct{ calls [][]string }
-
-func (f *failSetOption) Run(args ...string) ([]byte, error) {
-	f.calls = append(f.calls, args)
-	switch args[0] {
-	case "new-window":
-		return []byte("@7\n"), nil
-	case "set-option":
-		return nil, errors.New("invalid option: allow-passthrough")
+func TestNewAgentWindow_SplitFailureKillsWindow(t *testing.T) {
+	f := &scriptTmux{
+		out:  map[string]string{"new-window": "@7\n"},
+		fail: map[string]error{"split-window": errors.New("fail split"), "kill-window": errors.New("fail kill")},
 	}
-	return nil, nil
-}
-
-func TestNewAgentWindow_PassthroughErrorIsReported(t *testing.T) {
-	f := &failSetOption{}
 	err := NewAgentWindow(f, "/ws", "/bin/zenify")
-	if err == nil || !strings.Contains(err.Error(), "allow-passthrough") {
-		t.Errorf("want allow-passthrough error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "fail split") || !strings.Contains(err.Error(), "fail kill") {
+		t.Errorf("want split and kill errors joined, got %v", err)
 	}
-	if len(f.calls) != 5 || f.calls[2][0] != "split-window" || f.calls[3][0] != "switch-client" {
-		t.Errorf("window not fully built: %q", f.calls)
+	want := [][]string{
+		{"has-session", "-t", "=zenify"},
+		{"new-window", "-t", "=zenify:", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "agent", "claude"},
+		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
+		{"kill-window", "-t", "@7"},
+	}
+	if !reflect.DeepEqual(f.calls, want) {
+		t.Errorf("calls = %q\nwant %q", f.calls, want)
 	}
 }
 
@@ -193,7 +187,6 @@ func TestNewAgentWindow_NoZenifySessionUsesCurrent(t *testing.T) {
 		{"has-session", "-t", "=zenify"},
 		{"new-window", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "agent", "claude"},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@8", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
-		{"set-option", "-w", "-t", "@8", "allow-passthrough", "on"},
 	}
 	if !reflect.DeepEqual(f.calls, want) {
 		t.Errorf("calls = %q\nwant %q", f.calls, want)
@@ -211,7 +204,6 @@ func TestResumeAgentWindow_ZenifySession(t *testing.T) {
 		{"new-window", "-t", "=zenify:", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "t1", "claude", "--resume", id},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@3", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
 		{"switch-client", "-t", "@3"},
-		{"set-option", "-w", "-t", "@3", "allow-passthrough", "on"},
 	}
 	if !reflect.DeepEqual(f.calls, want) {
 		t.Errorf("calls = %q\nwant %q", f.calls, want)

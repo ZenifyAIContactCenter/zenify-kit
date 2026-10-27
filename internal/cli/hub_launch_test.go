@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/hub"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/tmuxx"
 )
 
 // recTmux records every tmux call; calls named in failOn return an error,
@@ -90,10 +91,10 @@ func runHub(t *testing.T) (string, error) {
 	return out.String(), err
 }
 
-func TestHubCmd_InsideTmux(t *testing.T) {
+func TestHubCmd_InsideOtherTmux(t *testing.T) { // I2
 	root := hubWorkspace(t)
 	t.Chdir(root)
-	t.Setenv("TMUX", "x")
+	t.Setenv("TMUX", "/tmp/tmux-1000/default,123,0")
 	rt := &recTmux{}
 	var attached []string
 	withHubEnv(t, rt, &attached)
@@ -101,8 +102,28 @@ func TestHubCmd_InsideTmux(t *testing.T) {
 	if err != nil {
 		t.Fatalf("want exit 0, got %v", err)
 	}
-	if !strings.Contains(out, "already inside tmux") {
-		t.Errorf("output %q missing hint", out)
+	want := `already inside another tmux — run "zenify hub" from a plain terminal, or attach with: tmux -L hubtest attach -t =zenify` + "\n"
+	if out != want {
+		t.Errorf("output %q, want %q", out, want)
+	}
+	if attached != nil {
+		t.Errorf("must not attach, got %v", attached)
+	}
+}
+
+func TestHubCmd_InsideHubTmux(t *testing.T) { // I2
+	root := hubWorkspace(t)
+	t.Chdir(root)
+	t.Setenv("TMUX", "/tmp/tmux-1000/hubtest,123,0")
+	rt := &recTmux{}
+	var attached []string
+	withHubEnv(t, rt, &attached)
+	out, err := runHub(t)
+	if err != nil {
+		t.Fatalf("want exit 0, got %v", err)
+	}
+	if want := "zenify hub is already open in this tmux — Alt+n opens a new agent\n"; out != want {
+		t.Errorf("output %q, want %q", out, want)
 	}
 	if attached != nil {
 		t.Errorf("must not attach, got %v", attached)
@@ -122,7 +143,6 @@ func TestHubCmd_NewSession(t *testing.T) {
 	want := []string{
 		confArg(home) + "new-session -d -s zenify -P -F #{window_id} -c " + root + " -n agent claude",
 		`split-window -d -h -b -l 30% -t @1 -c ` + root + ` '/Users/John Doe/it'\''s/zenify' hub sidebar`,
-		"set-option -w -t @1 allow-passthrough on",
 	}
 	for _, w := range want {
 		found := false
@@ -164,19 +184,27 @@ func TestHubCmd_ExistingSessionOnlyAttaches(t *testing.T) {
 	}
 }
 
-func TestHubCmd_PassthroughFailureNotFatal(t *testing.T) {
+func TestHubCmd_ExistingSessionSourcesConf(t *testing.T) { // M3
 	root := hubWorkspace(t)
 	t.Chdir(root)
 	t.Setenv("TMUX", "")
-	t.Setenv("HOME", t.TempDir())
-	rt := &recTmux{failOn: map[string]bool{"has-session": true, "set-option": true}}
+	rt := &recTmux{failOn: map[string]bool{"source-file": true}}
 	var attached []string
-	withHubEnv(t, rt, &attached)
+	home := withHubEnv(t, rt, &attached)
 	if _, err := runHub(t); err != nil {
-		t.Fatalf("passthrough failure must not fail: %v", err)
+		t.Fatalf("source-file failure must not fail: %v", err)
+	}
+	conf := filepath.Join(home, ".zenify", "hub", "tmux.conf")
+	want := []string{"-V", "has-session -t =zenify", "source-file " + conf}
+	if !reflect.DeepEqual(rt.calls, want) {
+		t.Errorf("calls = %q, want %q", rt.calls, want)
 	}
 	if attached == nil {
 		t.Error("must still attach")
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".zenify", "hub", "hub.log"))
+	if err != nil || !strings.Contains(string(b), "fail source-file") {
+		t.Errorf("hub.log = %q, %v", b, err)
 	}
 }
 
@@ -261,9 +289,16 @@ const (
 	idOld = "1c6f8d2b-0a4e-4d3f-9b7c-2e3f4a5b6c7d"
 )
 
-// writeHubAgent writes an agent file as the hub-report hook would.
+// hubSock is a socket path of the hub tmux server.
+func hubSock() string { return "/tmp/tmux-1000/" + tmuxx.Socket() }
+
+// writeHubAgent writes an agent file as the hub-report hook would; an agent
+// without a socket is recorded on the hub server.
 func writeHubAgent(t *testing.T, home string, a hub.Agent) {
 	t.Helper()
+	if a.TmuxSocket == "" {
+		a.TmuxSocket = hubSock()
+	}
 	dir := hub.AgentsDir(home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -307,10 +342,8 @@ func TestHubCmd_ResumesClosedAgents(t *testing.T) { // SC-24
 	want := []string{
 		confArg(home) + "new-session -d -s zenify -P -F #{window_id} -c " + root + " -n be-2-x claude --resume " + idNew,
 		"split-window -d -h -b -l 30% -t @1 -c " + root + " " + sidebar,
-		"set-option -w -t @1 allow-passthrough on",
 		"new-window -d -t =zenify: -P -F #{window_id} -n agent -c " + root + " claude --resume " + idOld,
 		"split-window -d -h -b -l 30% -t @2 -c " + root + " " + sidebar,
-		"set-option -w -t @2 allow-passthrough on",
 	}
 	if got := sessionCalls(rt.calls); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -383,7 +416,7 @@ func TestResumeCandidates(t *testing.T) {
 	const now = 1_000_000_000
 	agents := map[string]hub.Agent{}
 	add := func(id string, age int64, open bool) {
-		agents[id] = hub.Agent{SessionID: id, UpdatedAt: now - age, Open: open}
+		agents[id] = hub.Agent{SessionID: id, UpdatedAt: now - age, Open: open, TmuxSocket: hubSock()}
 	}
 	for i := 0; i < 10; i++ { // ten closed agents, newest a0
 		add(fmt.Sprintf("a%d", i), int64(i+1)*60, false)
@@ -409,12 +442,41 @@ func TestResumeCandidates(t *testing.T) {
 func TestResumeCandidates_AgeCutoff(t *testing.T) {
 	const now = 1_000_000_000
 	agents := map[string]hub.Agent{
-		"a1": {SessionID: "a1", UpdatedAt: now - 7*24*3600},
-		"a2": {SessionID: "a2", UpdatedAt: now - 7*24*3600 - 1},
+		"a1": {SessionID: "a1", UpdatedAt: now - 7*24*3600, TmuxSocket: hubSock()},
+		"a2": {SessionID: "a2", UpdatedAt: now - 7*24*3600 - 1, TmuxSocket: hubSock()},
 	}
 	got, err := resumeCandidates(agents, now)
 	if err != nil || len(got) != 1 || got[0].SessionID != "a1" {
 		t.Errorf("got %+v, %v", got, err)
+	}
+}
+
+func TestHubCmd_SkipsAgentOfOtherTmuxServer(t *testing.T) { // I1
+	root := hubWorkspace(t)
+	t.Chdir(root)
+	t.Setenv("TMUX", "")
+	rt := &recTmux{failOn: map[string]bool{"has-session": true}}
+	var attached []string
+	home := withHubEnv(t, rt, &attached)
+	now := time.Now().Unix()
+	writeHubAgent(t, home, hub.Agent{SessionID: idNew, Pane: "%2", TmuxServer: "77", TmuxSocket: "/tmp/tmux-1000/default", UpdatedAt: now - 60})
+	if _, err := runHub(t); err != nil {
+		t.Fatal(err)
+	}
+	if got := sessionCalls(rt.calls)[0]; got != confArg(home)+"new-session -d -s zenify -P -F #{window_id} -c "+root+" -n agent claude" {
+		t.Errorf("first call = %q, want a fresh claude", got)
+	}
+}
+
+func TestResumeCandidates_OnlyHubServer(t *testing.T) { // I1
+	const now = 1_000_000_000
+	agents := map[string]hub.Agent{
+		idNew: {SessionID: idNew, UpdatedAt: now - 60, TmuxSocket: "/tmp/tmux-1000/default"},
+		idOld: {SessionID: idOld, UpdatedAt: now - 120}, // recorded before tmux_socket existed
+	}
+	got, err := resumeCandidates(agents, now)
+	if err != nil || len(got) != 0 {
+		t.Errorf("got %+v, %v; want none", got, err)
 	}
 }
 
@@ -429,7 +491,6 @@ func TestHubNewAgent_FromWorkspaceCwd(t *testing.T) { // FR-12.2 [+ agent], FR-1
 		"new-window -t =zenify: -P -F #{window_id} -c " + root + " -n agent claude",
 		"split-window -d -h -b -l 30% -t @1 -c " + root + " /bin/zenify hub sidebar",
 		"switch-client -t @1",
-		"set-option -w -t @1 allow-passthrough on",
 	}
 	if !reflect.DeepEqual(rt.calls, want) {
 		t.Errorf("calls:\n%s\nwant:\n%s", strings.Join(rt.calls, "\n"), strings.Join(want, "\n"))
