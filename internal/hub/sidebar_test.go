@@ -348,7 +348,7 @@ func TestRefreshForcesGitHub(t *testing.T) {
 
 func TestDeferredGitHubRoundRetriesWhenOwnersAppear(t *testing.T) {
 	m, _, ct := newTestModel(t, t.TempDir(), State{})
-	ct.deferred = true         // owners unknown: the round leaves GitHubAt as it was
+	ct.deferred = true // owners unknown: the round leaves GitHubAt as it was
 	ct.ownersOnDefer = []string{"o"}
 	m = update(t, m, key("r")) // forces GitHub round 2
 	m = update(t, m, tickMsg(t0.Add(time.Second)))
