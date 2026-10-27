@@ -67,7 +67,20 @@ type SSHRunner interface {
 type execSSH struct{}
 
 func (execSSH) Run(args ...string) ([]byte, error) {
-	return exec.Command("ssh", args...).Output() //nolint:gosec // G204 -- fixed trusted binary; the host is validated by HostResolver.Resolve
+	out, err := exec.Command("ssh", args...).Output() //nolint:gosec // G204 -- fixed trusted binary; the host is validated by HostResolver.Resolve
+	return out, wrapSSHErr(err)
+}
+
+// wrapSSHErr appends ssh's captured stderr to an *exec.ExitError so the
+// caller can see why ssh failed.
+func wrapSSHErr(err error) error {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if msg := strings.TrimSpace(string(ee.Stderr)); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+	}
+	return err
 }
 
 // HostResolver maps an ssh host or ssh-config alias to its real hostname via
