@@ -343,7 +343,9 @@ func (p *Poller) GitHub() error {
 	} else {
 		var fired []PR
 		prs, fired = DetectAlerts(prs, FilterOwners(cur, old.Owners), now)
-		githubAt = now
+		if len(old.Owners) > 0 { // no owners yet: every PR was filtered out, retry next tick
+			githubAt = now
+		}
 		for _, f := range fired {
 			msg := fmt.Sprintf("%s#%d: %s", path.Base(f.Repo), f.Number, f.Alert)
 			// tmux expands #{...} and #(cmd) in the message; ## is a literal #.

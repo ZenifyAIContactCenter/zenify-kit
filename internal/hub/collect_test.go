@@ -422,6 +422,33 @@ func TestRound_GitHubKeepsWorkspaceOwnersOnly(t *testing.T) {
 	}
 }
 
+func TestRound_GitHubWaitsForOwners(t *testing.T) {
+	p := newPoller(t, &fakeGH{body: []byte(twoOwnerBody)}, &fakeTmux{}, 2000)
+	if err := WriteState(p.Home, State{GitHubAt: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.GitHub(); err != nil {
+		t.Fatalf("GitHub: %v", err)
+	}
+	got, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GitHubAt != 1000 || len(got.OtherPRs) != 0 {
+		t.Fatalf("no owners: GitHubAt %d PRs %+v, want 1000 and none", got.GitHubAt, got.OtherPRs)
+	}
+	if err := WriteState(p.Home, State{Owners: []string{"ZenifyAIContactCenter"}, GitHubAt: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.GitHub(); err != nil {
+		t.Fatalf("GitHub: %v", err)
+	}
+	got, _ = ReadState(p.Home)
+	if got.GitHubAt != 2000 || len(got.OtherPRs) != 1 {
+		t.Errorf("with owners: GitHubAt %d PRs %+v, want 2000 and 1 PR", got.GitHubAt, got.OtherPRs)
+	}
+}
+
 // blockingGH answers only after release is closed; started is closed on the
 // first call.
 type blockingGH struct {
