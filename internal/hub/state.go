@@ -100,8 +100,12 @@ func writeFileAtomic(dir, path, pattern string, b []byte) error {
 	return writeFileAtomicIf(dir, path, pattern, b, nil)
 }
 
+// removeTemp deletes a temp file; tests replace it to inject a failure.
+var removeTemp = os.Remove
+
 // writeFileAtomicIf is writeFileAtomic that runs check (when non-nil) right
-// before the rename; a check error aborts the write and is returned as is.
+// before the rename; a check error aborts the write and is returned as is
+// (wrapped with the cleanup error when the temp file could not be removed).
 func writeFileAtomicIf(dir, path, pattern string, b []byte, check func() error) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create dir: %w", err)
@@ -133,8 +137,9 @@ func writeFileAtomicIf(dir, path, pattern string, b []byte, check func() error) 
 	}
 	if check != nil {
 		if err := check(); err != nil {
-			if rerr := os.Remove(tmp.Name()); rerr != nil {
-				err = errors.Join(err, rerr)
+			if rerr := removeTemp(tmp.Name()); rerr != nil {
+				// Not the bare sentinel: callers matching it would swallow the leftover temp file.
+				return fmt.Errorf("remove temp file after %v: %w", err, rerr)
 			}
 			return err
 		}
@@ -201,7 +206,7 @@ func markSeenOnce(home, sessionID string) error {
 		if err != nil {
 			return fmt.Errorf("stat agent %s: %w", sessionID, err)
 		}
-		if !now.ModTime().Equal(fi.ModTime()) {
+		if !os.SameFile(fi, now) || !now.ModTime().Equal(fi.ModTime()) {
 			return errAgentChanged
 		}
 		return nil

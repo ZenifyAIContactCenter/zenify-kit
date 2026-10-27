@@ -343,6 +343,8 @@ func (p *Poller) Local() error {
 		tasks = keepFailedRepos(tasks, old.Tasks, failed)
 		if owners == nil {
 			owners = old.Owners
+		} else if len(failed) > 0 { // keep PRs of the failed repo's owner
+			owners = unionOwners(owners, old.Owners)
 		}
 	}
 	if agentsErr != nil {
@@ -429,4 +431,18 @@ func stamp(now int64, errs []error) string {
 		return ""
 	}
 	return fmt.Sprintf("%s %v", time.Unix(now, 0).UTC().Format(time.RFC3339), joined)
+}
+
+// unionOwners returns the sorted union of a and b, case-insensitively distinct.
+func unionOwners(a, b []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, o := range append(append([]string{}, a...), b...) {
+		if k := strings.ToLower(o); !seen[k] {
+			seen[k] = true
+			out = append(out, o)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

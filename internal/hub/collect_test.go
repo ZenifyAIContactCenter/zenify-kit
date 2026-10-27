@@ -732,3 +732,27 @@ func TestRound_LocalSweptRepoClearsDespiteOtherFailure(t *testing.T) {
 		t.Errorf("tasks %q, want %q", slugsOf(got.Tasks), want)
 	}
 }
+
+// PRs of a failed repo's owner survive: the fresh owner set is unioned with the old one.
+func TestRound_LocalFailedRepoKeepsOwnerPRs(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	p := newPoller(t, &fakeGH{err: errors.New("must not be called")}, &fakeTmux{}, 2000)
+	p.Git = gitx.ExecRunner()
+	mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
+	mkBrokenRepo(t, p.Root, "contact-center-web")
+	old := State{LocalAt: 1000, Owners: []string{"ZenifyAIContactCenter", "OtherOrg"},
+		OtherPRs: []PR{{Number: 9, Repo: "OtherOrg/web", Branch: "b"}}}
+	if err := WriteState(p.Home, old); err != nil {
+		t.Fatal(err)
+	}
+	_ = p.Local()
+	got, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.OtherPRs) != 1 || got.OtherPRs[0].Number != 9 {
+		t.Errorf("OtherPRs %+v, want PR 9 kept", got.OtherPRs)
+	}
+}

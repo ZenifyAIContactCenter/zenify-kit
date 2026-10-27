@@ -1,8 +1,10 @@
 package hub
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -115,5 +117,20 @@ func TestMarkSeen_GivesUpAfterSecondChange(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Errorf("hook calls %d, want 2 (one retry)", calls)
+	}
+}
+
+func TestMarkSeen_SurfacesTempRemoveError(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeAgentAt(t, home, "a", Done, time.Unix(1000, 0))
+	markSeenHook = func() { writeAgentAt(t, home, "a", Done, time.Unix(2000, 0)) }
+	removeTemp = func(string) error { return errors.New("boom") }
+	t.Cleanup(func() { markSeenHook = func() {}; removeTemp = os.Remove })
+	err := MarkSeen(home, "a")
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("MarkSeen = %v, want the remove error surfaced", err)
 	}
 }
