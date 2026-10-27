@@ -69,11 +69,11 @@ func runHubLauncher(cmd *cobra.Command, env hubEnv) error {
 		}
 		if err := buildHubSession(env.runner, root, self); err != nil {
 			// A half-built session would make the next run attach without a sidebar.
-			_, kerr := env.runner.Run("kill-session", "-t", tmuxx.Session)
+			_, kerr := env.runner.Run("kill-session", "-t", tmuxx.Target)
 			return errors.Join(fmt.Errorf("setting up tmux session failed: %w", err), kerr)
 		}
 	}
-	if err := env.attach("attach", "-t", tmuxx.Session); err != nil {
+	if err := env.attach("attach", "-t", tmuxx.Target); err != nil {
 		return fmt.Errorf("tmux attach: %w", err)
 	}
 	return nil
@@ -87,7 +87,7 @@ func shellQuote(s string) string {
 // buildHubSession creates the detached session with the agent window and the
 // sidebar pane. The caller cleans up the session when this fails.
 func buildHubSession(r tmuxx.Runner, root, self string) error {
-	target := tmuxx.Session + ":agent"
+	target := tmuxx.Target + ":agent"
 	if _, err := r.Run("new-session", "-d", "-s", tmuxx.Session, "-c", root, "-n", "agent", "claude"); err != nil {
 		return err
 	}

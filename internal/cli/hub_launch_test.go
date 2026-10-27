@@ -95,8 +95,8 @@ func TestHubCmd_NewSession(t *testing.T) {
 	}
 	want := []string{
 		"new-session -d -s zenify -c " + root + " -n agent claude",
-		`split-window -d -h -b -l 30% -t zenify:agent -c ` + root + ` '/Users/John Doe/it'\''s/zenify' hub sidebar`,
-		"set-option -w -t zenify:agent allow-passthrough on",
+		`split-window -d -h -b -l 30% -t =zenify:agent -c ` + root + ` '/Users/John Doe/it'\''s/zenify' hub sidebar`,
+		"set-option -w -t =zenify:agent allow-passthrough on",
 	}
 	for _, w := range want {
 		found := false
@@ -109,7 +109,7 @@ func TestHubCmd_NewSession(t *testing.T) {
 			t.Errorf("calls missing %q in %q", w, rt.calls)
 		}
 	}
-	if got := strings.Join(attached, " "); got != "attach -t zenify" {
+	if got := strings.Join(attached, " "); got != "attach -t =zenify" {
 		t.Errorf("attach args = %q", got)
 	}
 }
@@ -129,7 +129,7 @@ func TestHubCmd_ExistingSessionOnlyAttaches(t *testing.T) {
 			t.Errorf("unexpected %q for existing session", c)
 		}
 	}
-	if got := strings.Join(attached, " "); got != "attach -t zenify" {
+	if got := strings.Join(attached, " "); got != "attach -t =zenify" {
 		t.Errorf("attach args = %q", got)
 	}
 }
@@ -173,7 +173,7 @@ func TestHubCmd_SplitFailureKillsSession(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "setting up tmux session failed: fail split-window") {
 		t.Fatalf("err = %v", err)
 	}
-	if last := rt.calls[len(rt.calls)-1]; last != "kill-session -t zenify" {
+	if last := rt.calls[len(rt.calls)-1]; last != "kill-session -t =zenify" {
 		t.Errorf("last call = %q, want kill-session", last)
 	}
 	if attached != nil {

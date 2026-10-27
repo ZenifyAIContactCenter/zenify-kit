@@ -123,7 +123,7 @@ func TestNewAgentWindow(t *testing.T) {
 		t.Fatalf("NewAgentWindow: %v", err)
 	}
 	want := [][]string{
-		{"new-window", "-t", "zenify", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "agent", "claude"},
+		{"new-window", "-t", "=zenify:", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "agent", "claude"},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
 		{"set-option", "-w", "-t", "@7", "allow-passthrough", "on"},
 	}

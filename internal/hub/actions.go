@@ -213,7 +213,7 @@ func TargetAgent(s State, it Item) (Agent, bool) {
 // then enables allow-passthrough for OSC 52 copy; a failure there (tmux < 3.3)
 // is returned for the footer after the window is complete.
 func NewAgentWindow(r tmuxx.Runner, root, self string) error {
-	out, err := r.Run("new-window", "-t", tmuxx.Session, "-P", "-F", "#{window_id}", "-c", root, "-n", "agent", "claude")
+	out, err := r.Run("new-window", "-t", tmuxx.Target+":", "-P", "-F", "#{window_id}", "-c", root, "-n", "agent", "claude")
 	if err != nil {
 		return err
 	}

@@ -48,7 +48,7 @@ Dòng đầu là `zenify hub` kèm giờ của vòng quét local gần nhất (H
 |---|---|
 | `TASKS` | Từng task với icon trạng thái roll-up và agent gắn kèm; dưới mỗi task là từng repo, kèm PR `#n`, icon CI, review và mergeState. Task có agent hoặc PR lên trước (theo roll-up), còn lại theo slug. Task một repo chưa có PR gọn một dòng `<icon> <slug> · <repo>`. Task mà mọi repo đã merged, không có agent và không có PR open, gom vào dòng `▸ merged (n)` cuối mục, `Enter` để mở/đóng |
 | `AGENTS` | Agent chưa có slug, hoặc có slug không khớp task nào hiện có (ví dụ worktree đã sweep) |
-| `MY PRS` | PR open của bạn không khớp worktree nào, chỉ lấy PR thuộc owner của remote `origin` các repo workspace (PR repo cá nhân bị bỏ; khi chưa đọc được owner nào thì không hiện PR nào) |
+| `MY PRS` | PR open của bạn không khớp worktree nào, chỉ lấy PR thuộc owner của remote `origin` các repo workspace (PR repo cá nhân bị bỏ; khi chưa đọc được owner nào thì không hiện PR nào, áp dụng cho mọi PR gồm cả badge ở TASKS) |
 
 Dòng PR có dạng `<repo> #<n> <CI> <mergeState> <review> <n> threads`; phần review hiện `approved`, `changes` (CHANGES_REQUESTED) hoặc `review` (REVIEW_REQUIRED), kèm số thread chưa resolve.
 
