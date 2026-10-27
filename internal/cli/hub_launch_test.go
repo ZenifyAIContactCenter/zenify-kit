@@ -103,7 +103,7 @@ func TestHubCmd_InsideOtherTmux(t *testing.T) { // I2
 	if err != nil {
 		t.Fatalf("want exit 0, got %v", err)
 	}
-	want := `already inside another tmux — run "zenify hub" from a plain terminal, or attach with: tmux -L hubtest attach -t =zenify` + "\n"
+	want := `already inside another tmux — run "zenify hub" from a plain terminal, or: env -u TMUX tmux -L hubtest attach -t =zenify` + "\n"
 	if out != want {
 		t.Errorf("output %q, want %q", out, want)
 	}

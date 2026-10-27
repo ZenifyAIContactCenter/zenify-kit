@@ -883,7 +883,7 @@ func TestKeyF_OtherTmuxAgentSendsNothing(t *testing.T) { // I1
 	home := t.TempDir()
 	s := fixState(Idle)
 	a := s.Agents["s1"]
-	a.TmuxSocket, a.TmuxServer = "/tmp/tmux-1000/default", "999"
+	a.TmuxSocket, a.TmuxServer, a.Open = "/tmp/tmux-1000/default", "999", false // not live on the hub
 	s.Agents["s1"] = a
 	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
 	m = update(t, m, key("j"))
@@ -938,5 +938,28 @@ func TestKeyX_LegacyDeadServerForgets(t *testing.T) {
 	m = update(t, m, key("y"))
 	if got, _ := readAgent(home, otherID); got != nil {
 		t.Errorf("legacy agent of a dead server not forgotten: notice %q", m.notice)
+	}
+}
+
+func TestEnter_LegacyOpenAgentOnHubJumps(t *testing.T) {
+	withAlive(t, 4242) // the hub server itself
+	home := t.TempDir()
+	s := fixState(Done)
+	a := s.Agents["s1"]
+	a.TmuxServer = "4242"
+	s.Agents["s1"] = a
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
+	a.TmuxSocket = "" // recorded before tmux_socket existed, open on the hub
+	m.state.Agents["s1"] = a
+	m.relayout()
+	if a.OtherTmux() {
+		t.Fatal("open legacy agent counted as other tmux")
+	}
+	tm.out = map[string]string{"display-message": "4242\n"}
+	m = update(t, m, key("j")) // worktree row t1
+	update(t, m, key("enter"))
+	want := [][]string{{"display-message", "-p", "#{pid}"}, {"switch-client", "-t", "%3"}, {"select-window", "-t", "%3"}, {"select-pane", "-t", "%3"}}
+	if !reflect.DeepEqual(tm.calls, want) {
+		t.Errorf("tmux calls = %q, want a jump", tm.calls)
 	}
 }

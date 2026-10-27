@@ -20,7 +20,7 @@ Khi chạy nhiều agent Claude cùng lúc và muốn một màn hình xem task 
 
 ## Kết quả
 
-Lệnh tạo (hoặc nối lại) phiên tmux `zenify` trên tmux server riêng `tmux -L zenify` (server mặc định của bạn không bị đụng tới): cửa sổ `agent` chạy `claude` ở bên phải, sidebar `zenify hub sidebar` chiếm 30% bên trái. Đang ở trong tmux thì lệnh không lồng session: ở tmux server khác thì in lệnh `tmux -L zenify attach -t =zenify`, ở chính server hub thì báo hub đang mở. Cần tmux 3.1 trở lên; thiếu thì lệnh báo cách cài.
+Lệnh tạo (hoặc nối lại) phiên tmux `zenify` trên tmux server riêng `tmux -L zenify` (server mặc định của bạn không bị đụng tới): cửa sổ `agent` chạy `claude` ở bên phải, sidebar `zenify hub sidebar` chiếm 30% bên trái. Đang ở trong tmux thì lệnh không lồng session: ở tmux server khác thì in lệnh `env -u TMUX tmux -L zenify attach -t =zenify`, ở chính server hub thì báo hub đang mở. Cần tmux 3.1 trở lên; thiếu thì lệnh báo cách cài.
 
 ## Ví dụ
 

@@ -528,7 +528,9 @@ func MarkOpen(r tmuxx.Runner, agents map[string]Agent) (map[string]Agent, error)
 
 // markOpen returns a copy of agents with Open and Window set: an agent is
 // open when it was recorded on server pid and its pane is live there. A
-// record without TmuxServer is closed.
+// record without TmuxServer is closed. A record without TmuxSocket made on
+// server pid (the hub server) gets the hub socket name, so it is not taken
+// for an agent of another tmux server.
 func markOpen(agents map[string]Agent, pid string, panes map[string]tmuxx.Pane) map[string]Agent {
 	if agents == nil {
 		return nil
@@ -537,6 +539,9 @@ func markOpen(agents map[string]Agent, pid string, panes map[string]tmuxx.Pane) 
 	for id, a := range agents {
 		w, live := panes[a.Pane]
 		a.Open = live && a.TmuxServer != "" && a.TmuxServer == pid
+		if a.TmuxSocket == "" && a.TmuxServer != "" && a.TmuxServer == pid {
+			a.TmuxSocket = tmuxx.Socket()
+		}
 		a.Window = 0
 		if a.Open {
 			a.Window = w.Window

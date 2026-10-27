@@ -73,9 +73,10 @@ var ProcessAlive = processAlive
 // OtherTmux reports whether a runs on another tmux server than the hub's
 // that is still alive: its socket is not the hub's (or was never recorded)
 // and its server pid is a live process. The hub then leaves the agent alone;
-// otherwise the agent belongs to the hub, open or closed.
+// otherwise the agent belongs to the hub, open or closed. An open agent is
+// live on the hub server, so it is never other.
 func (a Agent) OtherTmux() bool {
-	if a.TmuxSocket != "" && filepath.Base(a.TmuxSocket) == tmuxx.Socket() {
+	if a.Open || a.TmuxSocket != "" && filepath.Base(a.TmuxSocket) == tmuxx.Socket() {
 		return false
 	}
 	pid, err := strconv.Atoi(a.TmuxServer)

@@ -992,3 +992,23 @@ func TestRound_TabStateErrorLoggedNotFatal(t *testing.T) {
 		t.Errorf("retry set-option calls = %q, want %q", got, want)
 	}
 }
+
+func TestRound_LegacyClosedAgentOfHubServerIsLocal(t *testing.T) {
+	withAlive(t, 4242) // the hub server itself
+	p := newPoller(t, &fakeGH{}, &fakeTmux{}, 10)
+	p.Tmux = liveTmux()
+	// Recorded on the hub server before tmux_socket existed; its pane is gone.
+	if err := writeAgent(p.Home, &Agent{SessionID: "b", Pane: "%9", TmuxServer: "4242"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Local(); err != nil {
+		t.Fatalf("Local: %v", err)
+	}
+	s, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := s.Agents["b"]; a.Open || a.OtherTmux() {
+		t.Errorf("agent %+v: want closed and of the hub", a)
+	}
+}

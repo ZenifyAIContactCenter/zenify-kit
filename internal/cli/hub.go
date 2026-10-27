@@ -67,7 +67,7 @@ func runHubLauncher(cmd *cobra.Command, env hubEnv) error {
 		if filepath.Base(hub.TmuxSocket(t)) == tmuxx.Socket() {
 			fmt.Fprintln(cmd.OutOrStdout(), "zenify hub is already open in this tmux — Alt+n opens a new agent")
 		} else {
-			fmt.Fprintf(cmd.OutOrStdout(), "already inside another tmux — run \"zenify hub\" from a plain terminal, or attach with: tmux -L %s attach -t %s\n", tmuxx.Socket(), tmuxx.Target)
+			fmt.Fprintf(cmd.OutOrStdout(), "already inside another tmux — run \"zenify hub\" from a plain terminal, or: env -u TMUX tmux -L %s attach -t %s\n", tmuxx.Socket(), tmuxx.Target)
 		}
 		return nil
 	}
