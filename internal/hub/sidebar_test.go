@@ -38,12 +38,21 @@ type countTicker struct {
 	deferred      bool
 	ownersOnDefer []string // written to state.json by a deferred round, as a local round landing meanwhile would
 	githubErr     error
+	ownersOnLocal []string // written to state.json by a local round, as one that discovers workspace owners does
 	local, github int
 }
 
 func (c *countTicker) Local() error {
 	c.local++
-	return nil
+	if c.ownersOnLocal == nil {
+		return nil
+	}
+	s, err := ReadState(c.home)
+	if err != nil {
+		return err
+	}
+	s.Owners = c.ownersOnLocal
+	return WriteState(c.home, s)
 }
 
 func (c *countTicker) GitHub() error {
@@ -858,5 +867,37 @@ func TestKeyF_UsesFreshPane(t *testing.T) {
 	update(t, m, key("f"))
 	if len(tm.calls) == 0 || tm.calls[0][2] != "%9" {
 		t.Errorf("tmux calls = %q, want send-keys to the fresh pane %%9", tm.calls)
+	}
+}
+
+func TestFirstRunLocalRoundSupplyingOwnersRetriesGitHub(t *testing.T) {
+	home := t.TempDir()
+	if err := WriteState(home, State{}); err != nil {
+		t.Fatal(err)
+	}
+	ct := &countTicker{home: home, deferred: true, ownersOnLocal: []string{"o"}}
+	m := NewModel(home, "/ws", &scriptTmux{}, &Poller{})
+	m.poll = ct
+	m.every = func() tea.Cmd { return nil }
+	m.gh = &fakeGH{}
+	m.clip = osc52Clipboard(&bytes.Buffer{})
+	m.self = "/bin/zenify"
+	m, cmd := send(t, m, tickMsg(t0)) // first tick starts a local and a GitHub round
+	t.Cleanup(func() {
+		if err := m.lock.Release(); err != nil {
+			t.Error(err)
+		}
+	})
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("first tick returned %T, want a batch of 2 rounds", batch)
+	}
+	// The GitHub round (second) finishes before the local one, which then
+	// supplies the owners.
+	m = update(t, m, batch[1]())
+	m = update(t, m, batch[0]())
+	update(t, m, tickMsg(t0.Add(time.Second)))
+	if ct.github != 2 {
+		t.Errorf("github rounds = %d, want 2 (retried once the local round supplied owners)", ct.github)
 	}
 }

@@ -147,7 +147,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.localErr = msg.err
 		}
+		ownersBefore := len(m.state.Owners) > 0
 		m.err = m.reload()
+		if !msg.github && m.state.GitHubAt == 0 && !ownersBefore && len(m.state.Owners) > 0 {
+			// First run: the GitHub round was deferred while owners were
+			// unknown and this local round supplied them; retry next tick.
+			m.lastGitHub = time.Time{}
+		}
 		if msg.github && msg.err == nil && m.state.GitHubError == "" && m.state.GitHubAt == msg.githubAt &&
 			!msg.ownersKnown && len(m.state.Owners) > 0 {
 			// Deferred while owners were unknown, and they are known now: retry
@@ -593,57 +599,107 @@ func resumeLockPath(home, id string) string {
 }
 
 // takeResumeLock creates agents/<id>.resuming holding now as unix seconds,
-// so sidebars in other processes do not resume the same agent. A lock older
-// than resumeLockTTL is replaced; a younger one yields false.
+// so sidebars in other processes do not resume the same agent. The lock is
+// created already filled (temp file + hard link), so no reader sees it empty.
+// A lock older than resumeLockTTL is replaced; a younger one yields false.
 func takeResumeLock(home, id string, now time.Time) (bool, error) {
 	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
 		return false, fmt.Errorf("create agents dir: %w", err)
 	}
 	p := resumeLockPath(home, id)
 	for attempt := 0; attempt < 2; attempt++ {
-		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- path is the hub agents dir plus a validated session id
+		err := linkResumeLock(p, now)
 		if err == nil {
-			_, werr := f.WriteString(strconv.FormatInt(now.Unix(), 10))
-			if cerr := f.Close(); werr == nil {
-				werr = cerr
-			}
-			if werr != nil {
-				return false, errors.Join(fmt.Errorf("write resume lock %s: %w", id, werr), removeResumeLock(home, id))
-			}
 			return true, nil
 		}
 		if !errors.Is(err, fs.ErrExist) {
 			return false, fmt.Errorf("create resume lock %s: %w", id, err)
 		}
-		at, err := resumeLockTime(p)
+		at, mtime, err := readResumeLock(p)
 		if err != nil {
 			return false, err
 		}
 		if now.Sub(at) < resumeLockTTL {
 			return false, nil
 		}
-		if err := removeResumeLock(home, id); err != nil {
+		if ok, err := removeStaleResumeLock(p, mtime); err != nil || !ok {
 			return false, err
 		}
 	}
 	return false, nil // another sidebar replaced the stale lock first
 }
 
-// resumeLockTime reads the unix time a resume lock holds; unparsable content
-// counts as the zero time, so the lock is stale.
+// linkResumeLock writes now to a temp file next to p and hard-links it to p,
+// which fails with fs.ErrExist when the lock is held.
+func linkResumeLock(p string, now time.Time) error {
+	tmp, err := os.CreateTemp(filepath.Dir(p), ".resume-*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	_, werr := tmp.WriteString(strconv.FormatInt(now.Unix(), 10))
+	if cerr := tmp.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return errors.Join(werr, os.Remove(name))
+	}
+	lerr := os.Link(name, p)
+	if rerr := os.Remove(name); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+		return errors.Join(lerr, rerr)
+	}
+	return lerr
+}
+
+// removeStaleResumeLock removes the lock at p only when its mtime is still
+// seen; a changed mtime means another sidebar took it, so it counts as held
+// (false). A lock that is already gone is reported as removed.
+func removeStaleResumeLock(p string, seen time.Time) (bool, error) {
+	fi, err := os.Stat(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("stat resume lock %s: %w", filepath.Base(p), err)
+	}
+	if !fi.ModTime().Equal(seen) {
+		return false, nil
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, fmt.Errorf("remove resume lock %s: %w", filepath.Base(p), err)
+	}
+	return true, nil
+}
+
+// resumeLockTime reads the time a resume lock was taken: the unix seconds it
+// holds, or the file mtime when the content is empty or unparsable.
 func resumeLockTime(p string) (time.Time, error) {
+	at, _, err := readResumeLock(p)
+	return at, err
+}
+
+// readResumeLock returns the lock time and the file mtime. A missing file
+// yields the zero time; an empty or unparsable lock falls back to the mtime.
+func readResumeLock(p string) (at, mtime time.Time, err error) {
+	fi, err := os.Stat(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return time.Time{}, time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("stat resume lock %s: %w", filepath.Base(p), err)
+	}
 	b, err := os.ReadFile(p) //nolint:gosec // G304 -- path is built from the hub agents dir, not external input
 	if errors.Is(err, fs.ErrNotExist) {
-		return time.Time{}, nil
+		return time.Time{}, time.Time{}, nil
 	}
 	if err != nil {
-		return time.Time{}, fmt.Errorf("read resume lock %s: %w", filepath.Base(p), err)
+		return time.Time{}, time.Time{}, fmt.Errorf("read resume lock %s: %w", filepath.Base(p), err)
 	}
-	sec, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
-	if err != nil {
-		return time.Time{}, nil
+	sec, perr := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+	if perr != nil {
+		return fi.ModTime(), fi.ModTime(), nil
 	}
-	return time.Unix(sec, 0), nil
+	return time.Unix(sec, 0), fi.ModTime(), nil
 }
 
 func removeResumeLock(home, id string) error {

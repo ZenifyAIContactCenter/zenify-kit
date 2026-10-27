@@ -721,3 +721,75 @@ func TestKeyHint_Forget(t *testing.T) {
 		t.Errorf("keyHint %q missing x forget", keyHint)
 	}
 }
+
+func TestTakeResumeLock_EmptyFreshLockRefuses(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(resumeLockPath(home, "a"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := takeResumeLock(home, "a", time.Now())
+	if err != nil || got {
+		t.Fatalf("got %v err %v, want refused", got, err)
+	}
+	if _, err := os.Stat(resumeLockPath(home, "a")); err != nil {
+		t.Errorf("fresh empty lock was removed: %v", err)
+	}
+}
+
+func TestTakeResumeLock_StaleReplaced(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	writeResumeLock(t, home, "a", now.Add(-time.Minute))
+	got, err := takeResumeLock(home, "a", now)
+	if err != nil || !got {
+		t.Fatalf("got %v err %v, want taken", got, err)
+	}
+	b, err := os.ReadFile(resumeLockPath(home, "a"))
+	if err != nil || string(b) != strconv.FormatInt(now.Unix(), 10) {
+		t.Errorf("lock content %q err %v", b, err)
+	}
+	left, _ := filepath.Glob(filepath.Join(AgentsDir(home), ".resume-*.tmp"))
+	if len(left) != 0 {
+		t.Errorf("temp files left: %v", left)
+	}
+}
+
+func TestTakeResumeLock_HeldWhenLinkedTwice(t *testing.T) {
+	home := t.TempDir()
+	now := time.Now()
+	if got, err := takeResumeLock(home, "a", now); err != nil || !got {
+		t.Fatalf("first: %v %v", got, err)
+	}
+	if got, err := takeResumeLock(home, "a", now); err != nil || got {
+		t.Fatalf("second: got %v err %v, want refused", got, err)
+	}
+}
+
+func TestRemoveStaleResumeLock_MtimeChangedRefuses(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeResumeLock(t, home, "a", time.Now().Add(-time.Minute))
+	p := resumeLockPath(home, "a")
+	_, seen, err := readResumeLock(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p, seen.Add(time.Hour), seen.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := removeStaleResumeLock(p, seen)
+	if err != nil || ok {
+		t.Fatalf("got %v err %v, want refused", ok, err)
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Errorf("lock removed despite changed mtime: %v", err)
+	}
+}
