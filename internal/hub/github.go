@@ -27,7 +27,10 @@ type PR struct {
 	Alert             string `json:"alert"` // ci-failed | ready | new-review | ""
 	Draft             bool   `json:"draft"`
 	UnresolvedThreads int    `json:"unresolved_threads"`
-	AlertAt           int64  `json:"alert_at"`
+	// ThreadsTruncated is true when the PR has more review threads than the
+	// query returned, so UnresolvedThreads is a lower bound.
+	ThreadsTruncated bool  `json:"threads_truncated"`
+	AlertAt          int64 `json:"alert_at"`
 }
 
 const (
@@ -36,7 +39,10 @@ const (
 	AlertNewReview = "new-review"
 )
 
-const prQuery = `query { search(query: "is:open is:pr author:@me archived:false", type: ISSUE, first: 100) { nodes { ... on PullRequest { number url isDraft headRefName mergeStateStatus reviewDecision repository { nameWithOwner } commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 50) { nodes { ... on CheckRun { conclusion detailsUrl } ... on StatusContext { state targetUrl } } } } } } } reviewThreads(first: 100) { nodes { isResolved } } } } } }`
+// prQuery fetches the user's open PRs. Known v1 limits: at most 100 PRs and
+// 50 check contexts per PR are read (no pagination); review threads past the
+// first 100 set PR.ThreadsTruncated instead of being counted.
+const prQuery = `query { search(query: "is:open is:pr author:@me archived:false", type: ISSUE, first: 100) { nodes { ... on PullRequest { number url isDraft headRefName mergeStateStatus reviewDecision repository { nameWithOwner } commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 50) { nodes { ... on CheckRun { conclusion detailsUrl } ... on StatusContext { state targetUrl } } } } } } } reviewThreads(first: 100) { totalCount nodes { isResolved } } } } } }`
 
 // FetchPRs lists the user's open PRs through `gh api graphql`.
 func FetchPRs(r ghx.Runner) ([]PR, error) {
@@ -81,7 +87,8 @@ type prResponse struct {
 					} `json:"nodes"`
 				} `json:"commits"`
 				ReviewThreads struct {
-					Nodes []struct {
+					TotalCount int `json:"totalCount"`
+					Nodes      []struct {
 						IsResolved bool `json:"isResolved"`
 					} `json:"nodes"`
 				} `json:"reviewThreads"`
@@ -132,6 +139,7 @@ func parsePRs(body []byte) ([]PR, error) {
 				}
 			}
 		}
+		pr.ThreadsTruncated = n.ReviewThreads.TotalCount > len(n.ReviewThreads.Nodes)
 		for _, th := range n.ReviewThreads.Nodes {
 			if !th.IsResolved {
 				pr.UnresolvedThreads++
@@ -156,7 +164,10 @@ func checksState(s string) string {
 
 func prKey(p PR) string { return p.Repo + "#" + strconv.Itoa(p.Number) }
 
-func isReady(p PR) bool { return p.MergeState == "CLEAN" && p.UnresolvedThreads == 0 }
+// isReady is false for a PR with truncated threads: its unresolved count is unknown.
+func isReady(p PR) bool {
+	return p.MergeState == "CLEAN" && p.UnresolvedThreads == 0 && !p.ThreadsTruncated
+}
 
 // DetectAlerts compares this round's PRs with the previous round's (matched by
 // Repo and Number). A new alert is stamped with now and returned in fired; a PR
@@ -201,8 +212,9 @@ func ackName(p PR) string {
 	return strings.ReplaceAll(p.Repo, "/", "_") + "_" + strconv.Itoa(p.Number)
 }
 
-// DropAcked clears the alert of every PR whose ack file is at least as new as
-// AlertAt. It returns the updated copy plus any error statting an ack file
+// DropAcked clears the alert of every PR whose ack file is strictly newer than
+// AlertAt (both in Unix seconds), so an ack in the alert's own second, which may
+// predate it, does not clear it. It returns the updated copy plus any error statting an ack file
 // (such a PR keeps its alert).
 func DropAcked(prs []PR, ackDir string) ([]PR, error) {
 	out := make([]PR, len(prs))
@@ -220,7 +232,7 @@ func DropAcked(prs []PR, ackDir string) ([]PR, error) {
 			errs = append(errs, fmt.Errorf("stat ack for %s: %w", prKey(p), err))
 			continue
 		}
-		if fi.ModTime().Unix() >= p.AlertAt {
+		if fi.ModTime().Unix() > p.AlertAt {
 			out[i].Alert, out[i].AlertAt = "", 0
 		}
 	}

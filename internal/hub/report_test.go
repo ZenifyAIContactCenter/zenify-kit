@@ -154,20 +154,21 @@ func TestApplyEvent_TitleStripsControl(t *testing.T) {
 	}
 }
 
-func TestApplyEvent_SessionStartResumeKeepsState(t *testing.T) {
-	for _, src := range []string{"compact", "resume"} {
+// FR-4.2: only compact continues the session; every other source starts idle.
+func TestApplyEvent_SessionStartOnlyCompactKeepsState(t *testing.T) {
+	n, _ := ApplyEvent(&Agent{State: Working}, HookInput{HookEventName: "SessionStart", Source: "compact"}, "%1", 1)
+	if n.State != Working {
+		t.Errorf("compact: state %q, want working", n.State)
+	}
+	for _, src := range []string{"resume", "startup", "clear", "fork"} {
 		n, _ := ApplyEvent(&Agent{State: Working}, HookInput{HookEventName: "SessionStart", Source: src}, "%1", 1)
-		if n.State != Working {
-			t.Errorf("source %s: state %q, want working", src, n.State)
+		if n.State != Idle {
+			t.Errorf("source %s: state %q, want idle", src, n.State)
 		}
 	}
-	n, _ := ApplyEvent(&Agent{State: Working}, HookInput{HookEventName: "SessionStart", Source: "startup"}, "%1", 1)
+	n, _ = ApplyEvent(nil, HookInput{HookEventName: "SessionStart", Source: "compact"}, "%1", 1)
 	if n.State != Idle {
-		t.Errorf("startup: state %q, want idle", n.State)
-	}
-	n, _ = ApplyEvent(nil, HookInput{HookEventName: "SessionStart", Source: "resume"}, "%1", 1)
-	if n.State != Idle {
-		t.Errorf("resume without record: state %q, want idle", n.State)
+		t.Errorf("compact without record: state %q, want idle", n.State)
 	}
 }
 

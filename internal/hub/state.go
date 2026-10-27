@@ -97,6 +97,12 @@ func writeAgent(home string, a *Agent) error {
 // writeFileAtomic writes b to path (inside dir, created 0700 if missing) via a
 // temp file named by pattern plus rename, so readers never see a partial file.
 func writeFileAtomic(dir, path, pattern string, b []byte) error {
+	return writeFileAtomicIf(dir, path, pattern, b, nil)
+}
+
+// writeFileAtomicIf is writeFileAtomic that runs check (when non-nil) right
+// before the rename; a check error aborts the write and is returned as is.
+func writeFileAtomicIf(dir, path, pattern string, b []byte, check func() error) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
@@ -125,6 +131,14 @@ func writeFileAtomic(dir, path, pattern string, b []byte) error {
 		}
 		return fmt.Errorf("close temp file: %w", err)
 	}
+	if check != nil {
+		if err := check(); err != nil {
+			if rerr := os.Remove(tmp.Name()); rerr != nil {
+				err = errors.Join(err, rerr)
+			}
+			return err
+		}
+	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
 		if rerr := os.Remove(tmp.Name()); rerr != nil {
 			err = errors.Join(err, rerr)
@@ -134,9 +148,38 @@ func writeFileAtomic(dir, path, pattern string, b []byte) error {
 	return nil
 }
 
+// errAgentChanged aborts a MarkSeen write whose agent file changed after it was read.
+var errAgentChanged = errors.New("agent file changed")
+
+// markSeenHook runs between MarkSeen's read and write; tests use it to land a
+// concurrent hook report.
+var markSeenHook = func() {}
+
 // MarkSeen flips a Done agent to Idle (the user looked at it). Other states
-// and unknown sessions are left untouched.
+// and unknown sessions are left untouched. It is a compare-and-set on the
+// file's mtime: when a hook report rewrites the file between the read and the
+// rename, MarkSeen rereads once; if it changes again, the newer report wins and
+// MarkSeen gives up without error.
 func MarkSeen(home, sessionID string) error {
+	for attempt := 0; attempt < 2; attempt++ {
+		err := markSeenOnce(home, sessionID)
+		if !errors.Is(err, errAgentChanged) {
+			return err
+		}
+	}
+	return nil
+}
+
+// markSeenOnce is one read-check-write attempt of MarkSeen.
+func markSeenOnce(home, sessionID string) error {
+	path := agentPath(home, sessionID)
+	fi, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat agent %s: %w", sessionID, err)
+	}
 	a, err := readAgent(home, sessionID)
 	if err != nil {
 		return err
@@ -145,5 +188,27 @@ func MarkSeen(home, sessionID string) error {
 		return nil
 	}
 	a.State = Idle
-	return writeAgent(home, a)
+	b, err := json.Marshal(a)
+	if err != nil {
+		return fmt.Errorf("encode agent: %w", err)
+	}
+	markSeenHook()
+	unchanged := func() error {
+		now, err := os.Stat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			return errAgentChanged
+		}
+		if err != nil {
+			return fmt.Errorf("stat agent %s: %w", sessionID, err)
+		}
+		if !now.ModTime().Equal(fi.ModTime()) {
+			return errAgentChanged
+		}
+		return nil
+	}
+	err = writeFileAtomicIf(AgentsDir(home), path, ".agent-*.tmp", b, unchanged)
+	if err != nil && !errors.Is(err, errAgentChanged) {
+		return fmt.Errorf("write agent %s: %w", sessionID, err)
+	}
+	return err
 }

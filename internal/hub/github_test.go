@@ -141,16 +141,18 @@ func TestDropAcked(t *testing.T) {
 	}
 	touch("o_be_812", time.Unix(2000, 0)) // newer than AlertAt → drop
 	touch("o_be_813", time.Unix(500, 0))  // older than AlertAt → keep
+	touch("o_be_815", time.Unix(1000, 0)) // same second as AlertAt → keep
 	in := []PR{
 		{Repo: "o/be", Number: 812, Alert: "ci-failed", AlertAt: 1000},
 		{Repo: "o/be", Number: 813, Alert: "ready", AlertAt: 1000},
+		{Repo: "o/be", Number: 815, Alert: "ready", AlertAt: 1000},
 		{Repo: "o/be", Number: 814, Alert: "new-review", AlertAt: 1000}, // no ack file
 	}
 	got, err := DropAcked(in, dir)
 	if err != nil {
 		t.Fatalf("DropAcked: %v", err)
 	}
-	want := map[int]string{812: "", 813: "ready", 814: "new-review"}
+	want := map[int]string{812: "", 813: "ready", 814: "new-review", 815: "ready"}
 	for _, p := range got {
 		if p.Alert != want[p.Number] {
 			t.Errorf("#%d: alert %q, want %q", p.Number, p.Alert, want[p.Number])
@@ -194,5 +196,26 @@ func TestParsePRs_FailedURL_OtherConclusions(t *testing.T) {
 	}
 	if !strings.Contains(prQuery, "... on StatusContext { state targetUrl }") {
 		t.Error("prQuery must request StatusContext state and targetUrl")
+	}
+}
+
+// A PR with more review threads than one page returns has an unknown
+// unresolved count, so it must never be reported ready.
+func TestParsePRs_TruncatedThreadsNeverReady(t *testing.T) {
+	nodes := strings.TrimSuffix(strings.Repeat(`{"isResolved":true},`, 100), ",")
+	body := []byte(`{"data":{"search":{"nodes":[{"number":9,"url":"u","headRefName":"b","mergeStateStatus":"CLEAN",
+		"repository":{"nameWithOwner":"o/r"},"commits":{"nodes":[]},
+		"reviewThreads":{"totalCount":150,"nodes":[` + nodes + `]}}]}}}`)
+	cur, err := parsePRs(body)
+	if err != nil {
+		t.Fatalf("parsePRs: %v", err)
+	}
+	if len(cur) != 1 || !cur[0].ThreadsTruncated || cur[0].UnresolvedThreads != 0 {
+		t.Fatalf("got %+v, want ThreadsTruncated with 0 counted unresolved", cur)
+	}
+	prev := []PR{{Repo: "o/r", Number: 9, MergeState: "BLOCKED"}}
+	out, fired := DetectAlerts(prev, cur, 1000)
+	if len(fired) != 0 || out[0].Alert == AlertReady {
+		t.Errorf("truncated PR fired %+v, alert %q; want no ready", fired, out[0].Alert)
 	}
 }

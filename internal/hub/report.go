@@ -102,8 +102,9 @@ func ApplyEvent(prev *Agent, in HookInput, pane string, now int64) (next *Agent,
 	}
 	switch in.HookEventName {
 	case "SessionStart":
-		// compact and resume continue the session: keep its state.
-		if (in.Source != "compact" && in.Source != "resume") || a.State == "" {
+		// Only compact continues the session in place (FR-4.2); resume,
+		// startup, clear and fork start idle.
+		if in.Source != "compact" || a.State == "" {
 			a.State = Idle
 		}
 	case "UserPromptSubmit":

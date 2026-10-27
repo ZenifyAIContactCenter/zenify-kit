@@ -356,7 +356,10 @@ func TestCollectLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tasks, owners, err := CollectLocal(root, gitx.ExecRunner())
+	tasks, owners, failed, err := CollectLocal(root, gitx.ExecRunner())
+	if want := []string{"broken"}; !reflect.DeepEqual(failed, want) {
+		t.Errorf("failed = %q, want %q (an origin error is not a failed repo)", failed, want)
+	}
 	if want := []string{"ZenifyAIContactCenter"}; !reflect.DeepEqual(owners, want) {
 		t.Errorf("owners = %q, want %q", owners, want)
 	}
@@ -538,7 +541,7 @@ func TestCollectLocal_UnmanagedUsesDirName(t *testing.T) {
 		wtPath := mkRepo(t, root, name, "git@github.com:ZenifyAIContactCenter/"+name+".git", "zns-campaign-trace", "u/feat/zns-"+name)
 		git(t, wtPath, "config", "--worktree", "--unset", "wt.slug") // no wt.slug: wt.List says (unmanaged)
 	}
-	tasks, _, err := CollectLocal(root, gitx.ExecRunner())
+	tasks, _, _, err := CollectLocal(root, gitx.ExecRunner())
 	if err != nil {
 		t.Fatalf("CollectLocal: %v", err)
 	}
@@ -628,5 +631,104 @@ func TestRound_UnknownOwnersDropsPRs(t *testing.T) {
 	}
 	if len(got.OtherPRs) != 0 {
 		t.Errorf("OtherPRs = %+v, want none while owners are unknown", got.OtherPRs)
+	}
+}
+
+// GitHub owner names are case-insensitive: a lower-case origin owner still
+// matches the PR's canonical nameWithOwner. The branch stays exact.
+func TestAssemble_RepoMatchIgnoresCase(t *testing.T) {
+	tasks := []Task{{Slug: "s", Repos: []TaskRepo{{Repo: "zenifyaicontactcenter/chatting", Branch: "u/feat/x"}}}}
+	prs := []PR{
+		{Number: 1, Repo: "ZenifyAIContactCenter/chatting", Branch: "u/feat/x"},
+		{Number: 2, Repo: "ZenifyAIContactCenter/chatting", Branch: "U/feat/x"},
+	}
+	s := Assemble(tasks, prs, nil)
+	if got := s.Tasks[0].Repos[0].PR; got == nil || got.Number != 1 {
+		t.Fatalf("PR attached %+v, want #1", got)
+	}
+	if len(s.OtherPRs) != 1 || s.OtherPRs[0].Number != 2 {
+		t.Errorf("OtherPRs %+v, want only #2 (branch differs in case)", s.OtherPRs)
+	}
+}
+
+// mkBrokenRepo adds root/repos/<name> with an unreadable worktree.json, so
+// CollectLocal reports it as failed.
+func mkBrokenRepo(t *testing.T, root, name string) {
+	t.Helper()
+	dir := filepath.Join(root, "repos", name)
+	if err := os.MkdirAll(filepath.Join(dir, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	git(t, dir, "init", "-q")
+	if err := os.WriteFile(filepath.Join(dir, ".claude", "worktree.json"), []byte(`{not json`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func slugsOf(tasks []Task) []string {
+	var out []string
+	for _, t := range tasks {
+		for _, r := range t.Repos {
+			out = append(out, t.Slug+"/"+r.Name)
+		}
+	}
+	return out
+}
+
+// A failed repo keeps its previous rows; a healthy repo's rows are replaced.
+func TestRound_LocalFailedRepoKeepsItsRows(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	p := newPoller(t, &fakeGH{err: errors.New("must not be called")}, &fakeTmux{}, 2000)
+	p.Git = gitx.ExecRunner()
+	mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
+	mkBrokenRepo(t, p.Root, "contact-center-web")
+	old := State{LocalAt: 1000, Tasks: []Task{
+		{Slug: "old-be", Repos: []TaskRepo{{Name: "contact-center-be", Branch: "u/feat/old"}}},
+		{Slug: "web-task", Repos: []TaskRepo{{Name: "contact-center-web", Branch: "u/feat/web"}}},
+	}}
+	if err := WriteState(p.Home, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Local(); err == nil || !strings.Contains(err.Error(), "contact-center-web") {
+		t.Errorf("want error naming contact-center-web, got %v", err)
+	}
+	got, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"alpha/contact-center-be", "web-task/contact-center-web"}; !reflect.DeepEqual(slugsOf(got.Tasks), want) {
+		t.Errorf("tasks %q, want %q", slugsOf(got.Tasks), want)
+	}
+}
+
+// A sweep that removed a healthy repo's last worktree clears its rows even
+// while another repo fails.
+func TestRound_LocalSweptRepoClearsDespiteOtherFailure(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	p := newPoller(t, &fakeGH{err: errors.New("must not be called")}, &fakeTmux{}, 2000)
+	p.Git = gitx.ExecRunner()
+	wtPath := mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
+	git(t, filepath.Join(p.Root, "repos", "contact-center-be"), "worktree", "remove", wtPath)
+	mkBrokenRepo(t, p.Root, "contact-center-web")
+	old := State{LocalAt: 1000, Tasks: []Task{
+		{Slug: "alpha", Repos: []TaskRepo{{Name: "contact-center-be", Branch: "u/feat/alpha", Path: wtPath}}},
+		{Slug: "web-task", Repos: []TaskRepo{{Name: "contact-center-web", Branch: "u/feat/web"}}},
+	}}
+	if err := WriteState(p.Home, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Local(); err == nil {
+		t.Error("want error for contact-center-web")
+	}
+	got, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"web-task/contact-center-web"}; !reflect.DeepEqual(slugsOf(got.Tasks), want) {
+		t.Errorf("tasks %q, want %q", slugsOf(got.Tasks), want)
 	}
 }

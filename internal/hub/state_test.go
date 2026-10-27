@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestRollup(t *testing.T) {
@@ -52,5 +53,67 @@ func TestMarkSeen(t *testing.T) {
 	}
 	if got("b") != Working {
 		t.Errorf("b: want working, got %q", got("b"))
+	}
+}
+
+// writeAgentAt writes an agent file with an explicit mtime so a change is
+// visible to the compare-and-set regardless of filesystem timestamp resolution.
+func writeAgentAt(t *testing.T, home, id string, state AgentState, at time.Time) {
+	t.Helper()
+	p := agentPath(home, id)
+	body := `{"session_id":"` + id + `","state":"` + string(state) + `"}`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p, at, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMarkSeen_ConcurrentReportWins(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeAgentAt(t, home, "a", Done, time.Unix(1000, 0))
+	calls := 0
+	markSeenHook = func() {
+		calls++
+		writeAgentAt(t, home, "a", Working, time.Unix(2000, 0)) // a hook report lands mid-flight
+	}
+	t.Cleanup(func() { markSeenHook = func() {} })
+	if err := MarkSeen(home, "a"); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+	a, err := readAgent(home, "a")
+	if err != nil || a == nil || a.State != Working {
+		t.Fatalf("state %+v %v, want working kept", a, err)
+	}
+	if calls != 1 {
+		t.Errorf("hook calls %d, want 1 (reread finds working and stops)", calls)
+	}
+}
+
+func TestMarkSeen_GivesUpAfterSecondChange(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeAgentAt(t, home, "a", Done, time.Unix(1000, 0))
+	calls := 0
+	markSeenHook = func() {
+		calls++
+		writeAgentAt(t, home, "a", Done, time.Unix(int64(2000+calls), 0))
+	}
+	t.Cleanup(func() { markSeenHook = func() {} })
+	if err := MarkSeen(home, "a"); err != nil {
+		t.Fatalf("MarkSeen: %v", err)
+	}
+	a, err := readAgent(home, "a")
+	if err != nil || a == nil || a.State != Done {
+		t.Fatalf("state %+v %v, want the newer done kept", a, err)
+	}
+	if calls != 2 {
+		t.Errorf("hook calls %d, want 2 (one retry)", calls)
 	}
 }

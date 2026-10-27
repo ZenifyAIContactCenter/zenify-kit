@@ -71,10 +71,11 @@ func normalizeOrigin(url string) (string, error) {
 
 // CollectLocal groups the worktrees of every wt-managed repo under root by slug
 // and returns the distinct origin owners, sorted. A repo whose config or
-// worktree list fails is skipped; a repo whose origin cannot be read or parsed
-// keeps its worktrees with an empty Repo (no PR can attach). Those errors are
-// joined and returned with the remaining tasks, sorted by slug.
-func CollectLocal(root string, git gitx.Runner) ([]Task, []string, error) {
+// worktree list fails is skipped and its directory name returned in failed; a
+// repo whose origin cannot be read or parsed keeps its worktrees with an empty
+// Repo (no PR can attach). Those errors are joined and returned with the
+// remaining tasks, sorted by slug.
+func CollectLocal(root string, git gitx.Runner) (tasks []Task, owners, failed []string, err error) {
 	var errs []error
 	bySlug := map[string]*Task{}
 	ownerSet := map[string]bool{}
@@ -83,11 +84,13 @@ func CollectLocal(root string, git gitx.Runner) ([]Task, []string, error) {
 		cfg, err := wt.Load(repoRoot)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+			failed = append(failed, name)
 			continue
 		}
 		rows, err := wt.List(git, repoRoot, cfg)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: list worktrees: %w", name, err))
+			failed = append(failed, name)
 			continue
 		}
 		repo := ""
@@ -115,17 +118,49 @@ func CollectLocal(root string, git gitx.Runner) ([]Task, []string, error) {
 			t.Repos = append(t.Repos, TaskRepo{Repo: repo, Name: name, Branch: row.Branch, Path: row.Path, Merged: row.Merged == "merged"})
 		}
 	}
-	var tasks []Task // nil when nothing was collected, so Tick can keep old tasks
-	for _, t := range bySlug {
+	for _, t := range bySlug { // tasks stays nil when nothing was collected
 		tasks = append(tasks, *t)
 	}
 	sort.Slice(tasks, func(i, j int) bool { return tasks[i].Slug < tasks[j].Slug })
-	var owners []string
 	for o := range ownerSet {
 		owners = append(owners, o)
 	}
 	sort.Strings(owners)
-	return tasks, owners, errors.Join(errs...)
+	return tasks, owners, failed, errors.Join(errs...)
+}
+
+// keepFailedRepos adds to tasks the previous rows of every repo named in
+// failed (matched by TaskRepo.Name), so a repo that could not be listed this
+// round keeps what it showed before while every other repo shows only its
+// fresh rows. The result is sorted by slug.
+func keepFailedRepos(tasks, old []Task, failed []string) []Task {
+	if len(failed) == 0 {
+		return tasks
+	}
+	isFailed := map[string]bool{}
+	for _, name := range failed {
+		isFailed[name] = true
+	}
+	index := map[string]int{}
+	for i, t := range tasks {
+		index[t.Slug] = i
+	}
+	for _, t := range old {
+		for _, r := range t.Repos {
+			if !isFailed[r.Name] {
+				continue
+			}
+			i, ok := index[t.Slug]
+			if !ok {
+				i = len(tasks)
+				index[t.Slug] = i
+				tasks = append(tasks, Task{Slug: t.Slug})
+			}
+			tasks[i].Repos = append(tasks[i].Repos, r)
+		}
+	}
+	sort.Slice(tasks, func(i, j int) bool { return tasks[i].Slug < tasks[j].Slug })
+	return tasks
 }
 
 // FilterOwners keeps the PRs whose repo owner is in owners (case-insensitive).
@@ -148,6 +183,10 @@ func FilterOwners(prs []PR, owners []string) []PR {
 	return out
 }
 
+// prMatchKey keys a PR to a task repo: Repo case-insensitively (GitHub owner
+// and repo names are), Branch exactly.
+func prMatchKey(repo, branch string) string { return strings.ToLower(repo) + "\x00" + branch }
+
 // Assemble attaches each PR to the task repo with the same (Repo, Branch) and
 // each agent to the task with its slug. Unmatched PRs go to OtherPRs; agents
 // whose slug matches no task (including a swept one) go to Unattached. The
@@ -162,14 +201,14 @@ func Assemble(tasks []Task, prs []PR, agents map[string]Agent) State {
 			r.PR = nil
 			nt.Repos[j] = r
 			if r.Repo != "" {
-				repoAt[r.Repo+"\x00"+r.Branch] = [2]int{i, j}
+				repoAt[prMatchKey(r.Repo, r.Branch)] = [2]int{i, j}
 			}
 		}
 		s.Tasks = append(s.Tasks, nt)
 		index[t.Slug] = i
 	}
 	for _, p := range prs {
-		if at, ok := repoAt[p.Repo+"\x00"+p.Branch]; ok {
+		if at, ok := repoAt[prMatchKey(p.Repo, p.Branch)]; ok {
 			pr := p
 			s.Tasks[at[0]].Repos[at[1]].PR = &pr
 			continue
@@ -275,14 +314,16 @@ type Poller struct {
 }
 
 // Local collects worktrees and agents and writes them into state.json,
-// keeping the latest GitHub data. A source that fails outright keeps its
-// previous data; partial results replace it. Errors are recorded in
+// keeping the latest GitHub data. A repo whose worktrees cannot be listed
+// keeps its previous rows; every other repo's rows are replaced, so a swept
+// worktree disappears even while another repo fails. Agents that fail to load
+// outright keep their previous data; partial results replace it. Errors are recorded in
 // State.LocalError with the round time (empty after a clean round) and
 // returned joined for the caller to log.
 func (p *Poller) Local() error {
 	now := p.Now()
 	start := time.Now()
-	tasks, owners, collectErr := CollectLocal(p.Root, p.Git)
+	tasks, owners, failed, collectErr := CollectLocal(p.Root, p.Git)
 	p.LocalDuration = time.Since(start)
 	agents, agentsErr := LoadAgents(p.Home)
 
@@ -296,10 +337,10 @@ func (p *Poller) Local() error {
 	localAt := now
 	if collectErr != nil {
 		errs = append(errs, fmt.Errorf("collect worktrees: %w", collectErr))
-		if tasks == nil { // nothing collected: the old tasks are as old as before
-			tasks = old.Tasks
+		if tasks == nil && len(failed) > 0 { // nothing fresh: the kept rows are as old as before
 			localAt = old.LocalAt
 		}
+		tasks = keepFailedRepos(tasks, old.Tasks, failed)
 		if owners == nil {
 			owners = old.Owners
 		}
