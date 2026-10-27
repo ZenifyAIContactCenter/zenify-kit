@@ -198,22 +198,29 @@ func markSeenOnce(home, sessionID string) error {
 		return fmt.Errorf("encode agent: %w", err)
 	}
 	markSeenHook()
-	unchanged := func() error {
-		now, err := os.Stat(path)
-		if errors.Is(err, fs.ErrNotExist) {
-			return errAgentChanged
-		}
-		if err != nil {
-			return fmt.Errorf("stat agent %s: %w", sessionID, err)
-		}
-		if !os.SameFile(fi, now) || !now.ModTime().Equal(fi.ModTime()) {
-			return errAgentChanged
-		}
-		return nil
-	}
-	err = writeFileAtomicIf(AgentsDir(home), path, ".agent-*.tmp", b, unchanged)
+	err = writeFileAtomicIf(AgentsDir(home), path, ".agent-*.tmp", b, func() error { return unchangedSince(path, fi) })
 	if err != nil && !errors.Is(err, errAgentChanged) {
 		return fmt.Errorf("write agent %s: %w", sessionID, err)
 	}
 	return err
+}
+
+// unchangedSince returns errAgentChanged when the file at path is not the one
+// described by fi (nil: the file did not exist then) — created, removed,
+// replaced or modified since.
+func unchangedSince(path string, fi os.FileInfo) error {
+	now, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		if fi == nil {
+			return nil
+		}
+		return errAgentChanged
+	}
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", filepath.Base(path), err)
+	}
+	if fi == nil || !os.SameFile(fi, now) || !now.ModTime().Equal(fi.ModTime()) {
+		return errAgentChanged
+	}
+	return nil
 }

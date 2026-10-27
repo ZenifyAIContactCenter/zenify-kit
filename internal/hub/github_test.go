@@ -33,13 +33,13 @@ func TestParsePRs(t *testing.T) {
 	}
 	want := []PR{
 		{
-			Number: 812, URL: "https://github.com/ZenifyAIContactCenter/contact-center-be/pull/812",
-			Repo: "ZenifyAIContactCenter/contact-center-be", Branch: "phuthuycoding/fix/redis-scan-storm",
+			Number: 812, URL: "https://github.com/acme/api/pull/812",
+			Repo: "acme/api", Branch: "u/fix/redis-scan",
 			MergeState: "CLEAN", ReviewDecision: "APPROVED", Checks: "SUCCESS",
 		},
 		{
-			Number: 431, URL: "https://github.com/ZenifyAIContactCenter/contact-center-hub/pull/431",
-			Repo: "ZenifyAIContactCenter/contact-center-hub", Branch: "phuthuycoding/feat/sla-export",
+			Number: 431, URL: "https://github.com/acme/tools/pull/431",
+			Repo: "acme/tools", Branch: "u/feat/sla-export",
 			MergeState: "BLOCKED", ReviewDecision: "REVIEW_REQUIRED", Checks: "PENDING",
 			Draft: true, UnresolvedThreads: 2,
 		},
@@ -217,5 +217,32 @@ func TestParsePRs_TruncatedThreadsNeverReady(t *testing.T) {
 	out, fired := DetectAlerts(prev, cur, 1000)
 	if len(fired) != 0 || out[0].Alert == AlertReady {
 		t.Errorf("truncated PR fired %+v, alert %q; want no ready", fired, out[0].Alert)
+	}
+}
+
+func TestDropAcked_SameSecondNanoseconds(t *testing.T) {
+	dir := t.TempDir()
+	ack := func(name string, at time.Time) {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	alert := time.Unix(3000, 400*int64(time.Millisecond))
+	ack("o_api_1", alert.Add(200*time.Millisecond))  // 0.2 s after, same second → cleared
+	ack("o_api_2", alert.Add(-200*time.Millisecond)) // 0.2 s before, same second → kept
+	in := []PR{
+		{Repo: "o/api", Number: 1, Alert: "ready", AlertAt: alert.UnixNano()},
+		{Repo: "o/api", Number: 2, Alert: "ready", AlertAt: alert.UnixNano()},
+	}
+	got, err := DropAcked(in, dir)
+	if err != nil {
+		t.Fatalf("DropAcked: %v", err)
+	}
+	if got[0].Alert != "" || got[1].Alert != "ready" {
+		t.Errorf("alerts %q/%q, want cleared/kept", got[0].Alert, got[1].Alert)
 	}
 }

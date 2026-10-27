@@ -178,18 +178,52 @@ func Report(home string, stdin io.Reader, pane string, now int64) error {
 	if in.SessionID == "" || strings.ContainsAny(in.SessionID, `/\`) {
 		return fmt.Errorf("invalid session_id %q", in.SessionID)
 	}
-	prev, err := readAgent(home, in.SessionID)
-	if err != nil {
-		return err
-	}
-	next, remove := ApplyEvent(prev, in, pane, now)
-	if remove {
+	if in.HookEventName == "SessionEnd" {
 		if err := os.Remove(agentPath(home, in.SessionID)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("remove agent %s: %w", in.SessionID, err)
 		}
 		return nil
 	}
-	return writeAgent(home, next)
+	for attempt := 0; attempt < reportAttempts; attempt++ {
+		err := reportOnce(home, in, pane, now)
+		if !errors.Is(err, errAgentChanged) {
+			return err
+		}
+	}
+	return fmt.Errorf("report agent %s: file kept changing after %d attempts", in.SessionID, reportAttempts)
+}
+
+// reportAttempts bounds Report's compare-and-set retries.
+const reportAttempts = 3
+
+// reportHook runs between reportOnce's read and write; tests use it to land a
+// concurrent hook report.
+var reportHook = func() {}
+
+// reportOnce is one read-apply-write attempt of Report. It returns
+// errAgentChanged when another report rewrote the file in between, so the
+// event is re-applied on top of that newer record.
+func reportOnce(home string, in HookInput, pane string, now int64) error {
+	path := agentPath(home, in.SessionID)
+	fi, err := os.Stat(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("stat agent %s: %w", in.SessionID, err)
+	}
+	prev, err := readAgent(home, in.SessionID)
+	if err != nil {
+		return err
+	}
+	next, _ := ApplyEvent(prev, in, pane, now)
+	b, err := json.Marshal(next)
+	if err != nil {
+		return fmt.Errorf("encode agent: %w", err)
+	}
+	reportHook()
+	err = writeFileAtomicIf(AgentsDir(home), path, ".agent-*.tmp", b, func() error { return unchangedSince(path, fi) })
+	if err != nil && !errors.Is(err, errAgentChanged) {
+		return fmt.Errorf("write agent %s: %w", in.SessionID, err)
+	}
+	return err
 }
 
 // LogError appends one line to hub.log. If the log itself cannot be written,

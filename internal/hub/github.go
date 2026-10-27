@@ -29,8 +29,10 @@ type PR struct {
 	UnresolvedThreads int    `json:"unresolved_threads"`
 	// ThreadsTruncated is true when the PR has more review threads than the
 	// query returned, so UnresolvedThreads is a lower bound.
-	ThreadsTruncated bool  `json:"threads_truncated"`
-	AlertAt          int64 `json:"alert_at"`
+	ThreadsTruncated bool `json:"threads_truncated"`
+	// AlertAt is when Alert fired, in unix nanoseconds (state files written
+	// before this used seconds; see alertAtNano).
+	AlertAt int64 `json:"alert_at"`
 }
 
 const (
@@ -172,7 +174,7 @@ func isReady(p PR) bool {
 // DetectAlerts compares this round's PRs with the previous round's (matched by
 // Repo and Number). A new alert is stamped with now and returned in fired; a PR
 // without a new alert keeps its previous Alert/AlertAt. A PR not seen last
-// round has nothing to compare against and never fires.
+// round has nothing to compare against and never fires. now is unix nanoseconds.
 func DetectAlerts(prev, cur []PR, now int64) (out []PR, fired []PR) {
 	before := make(map[string]PR, len(prev))
 	for _, p := range prev {
@@ -212,10 +214,19 @@ func ackName(p PR) string {
 	return strings.ReplaceAll(p.Repo, "/", "_") + "_" + strconv.Itoa(p.Number)
 }
 
+// alertAtNano returns AlertAt in unix nanoseconds; a value below 1e12 comes
+// from an older state file that stored seconds.
+func alertAtNano(at int64) int64 {
+	if at < 1e12 {
+		return at * int64(time.Second)
+	}
+	return at
+}
+
 // DropAcked clears the alert of every PR whose ack file is strictly newer than
-// AlertAt (both in Unix seconds), so an ack in the alert's own second, which may
-// predate it, does not clear it. It returns the updated copy plus any error statting an ack file
-// (such a PR keeps its alert).
+// AlertAt, compared in nanoseconds so an ack later in the alert's own second
+// clears it and one earlier in that second does not. It returns the updated
+// copy plus any error statting an ack file (such a PR keeps its alert).
 func DropAcked(prs []PR, ackDir string) ([]PR, error) {
 	out := make([]PR, len(prs))
 	copy(out, prs)
@@ -232,7 +243,7 @@ func DropAcked(prs []PR, ackDir string) ([]PR, error) {
 			errs = append(errs, fmt.Errorf("stat ack for %s: %w", prKey(p), err))
 			continue
 		}
-		if fi.ModTime().Unix() > p.AlertAt {
+		if fi.ModTime().UnixNano() > alertAtNano(p.AlertAt) {
 			out[i].Alert, out[i].AlertAt = "", 0
 		}
 	}

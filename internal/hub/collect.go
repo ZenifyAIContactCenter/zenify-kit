@@ -58,15 +58,43 @@ type State struct {
 
 func statePath(home string) string { return filepath.Join(Dir(home), "state.json") }
 
-// normalizeOrigin reduces an origin URL to owner/repo, or errors when the
-// result is not exactly two non-empty path segments.
+// normalizeOrigin reduces a GitHub origin URL to owner/repo. It errors when
+// the host is not github.com or a dotless ssh-config alias (gitlab.com,
+// bitbucket.org, an internal git server), or when the result is not exactly
+// two non-empty path segments.
 func normalizeOrigin(url string) (string, error) {
+	if host := originHost(url); !strings.EqualFold(host, "github.com") && (host == "" || strings.Contains(host, ".")) {
+		return "", fmt.Errorf("origin %q is not a github remote", strings.TrimSpace(url))
+	}
 	slug := gitx.NormalizeRemote(url, nil)
 	owner, repo, ok := strings.Cut(slug, "/")
 	if !ok || owner == "" || repo == "" || strings.Contains(repo, "/") {
 		return "", fmt.Errorf("origin %q is not a github owner/repo URL", strings.TrimSpace(url))
 	}
 	return slug, nil
+}
+
+// originHost is the host of a remote URL (scheme://[user@]host[:port]/... or
+// [user@]host:path), or "" for a local path.
+func originHost(url string) string {
+	u := strings.TrimSpace(url)
+	var host string
+	if _, rest, ok := strings.Cut(u, "://"); ok {
+		host, _, _ = strings.Cut(rest, "/")
+		if i := strings.LastIndex(host, "@"); i >= 0 {
+			host = host[i+1:]
+		}
+		host, _, _ = strings.Cut(host, ":")
+		return host
+	}
+	host, _, ok := strings.Cut(u, ":")
+	if !ok || strings.Contains(host, "/") {
+		return ""
+	}
+	if i := strings.LastIndex(host, "@"); i >= 0 {
+		host = host[i+1:]
+	}
+	return host
 }
 
 // CollectLocal groups the worktrees of every wt-managed repo under root by slug
@@ -188,7 +216,8 @@ func FilterOwners(prs []PR, owners []string) []PR {
 func prMatchKey(repo, branch string) string { return strings.ToLower(repo) + "\x00" + branch }
 
 // Assemble attaches each PR to the task repo with the same (Repo, Branch) and
-// each agent to the task with its slug. Unmatched PRs go to OtherPRs; agents
+// each agent to the task with its slug. Unmatched PRs go to OtherPRs, as do
+// further PRs of an already attached repo and branch (e.g. one per base); agents
 // whose slug matches no task (including a swept one) go to Unattached. The
 // input tasks are not modified.
 func Assemble(tasks []Task, prs []PR, agents map[string]Agent) State {
@@ -208,7 +237,7 @@ func Assemble(tasks []Task, prs []PR, agents map[string]Agent) State {
 		index[t.Slug] = i
 	}
 	for _, p := range prs {
-		if at, ok := repoAt[prMatchKey(p.Repo, p.Branch)]; ok {
+		if at, ok := repoAt[prMatchKey(p.Repo, p.Branch)]; ok && s.Tasks[at[0]].Repos[at[1]].PR == nil {
 			pr := p
 			s.Tasks[at[0]].Repos[at[1]].PR = &pr
 			continue
@@ -305,6 +334,9 @@ type Poller struct {
 	GH         ghx.Runner
 	Tmux       tmuxx.Runner
 	Now        func() int64 // unix seconds
+	// NowNano stamps PR.AlertAt in unix nanoseconds; nil means
+	// time.Now().UnixNano().
+	NowNano func() int64
 
 	// LocalDuration is how long the last local round's CollectLocal took, for
 	// the caller to log (wt.List across many repos may be slow).
@@ -374,6 +406,10 @@ func (p *Poller) GitHub() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	now := p.Now() // after the fetch, so alerts are not older than the data
+	alertAt := time.Now().UnixNano()
+	if p.NowNano != nil {
+		alertAt = p.NowNano()
+	}
 	var errs []error
 	old, err := ReadState(p.Home)
 	if err != nil {
@@ -385,7 +421,7 @@ func (p *Poller) GitHub() error {
 		errs = append(errs, fetchErr)
 	} else {
 		var fired []PR
-		prs, fired = DetectAlerts(prs, FilterOwners(cur, old.Owners), now)
+		prs, fired = DetectAlerts(prs, FilterOwners(cur, old.Owners), alertAt)
 		if len(old.Owners) > 0 { // no owners yet: every PR was filtered out, retry next tick
 			githubAt = now
 		}

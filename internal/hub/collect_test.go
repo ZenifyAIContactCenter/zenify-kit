@@ -33,15 +33,19 @@ func (failGit) Run(dir string, args ...string) ([]byte, error) {
 
 func TestNormalizeOrigin(t *testing.T) {
 	for _, url := range []string{
-		"git@github.com:ZenifyAIContactCenter/chatting.git",
-		"https://github.com/ZenifyAIContactCenter/chatting.git",
+		"git@github.com:acme/tools.git",
+		"https://github.com/acme/tools.git",
+		"ssh://git@github.com/acme/tools.git",
+		"git@github-work:acme/tools.git",
+		"gh:acme/tools",
 	} {
 		got, err := normalizeOrigin(url)
-		if err != nil || got != "ZenifyAIContactCenter/chatting" {
+		if err != nil || got != "acme/tools" {
 			t.Errorf("%s: got %q, %v", url, got, err)
 		}
 	}
-	for _, bad := range []string{"", "/srv/git/chatting", "https://github.com/onlyowner"} {
+	for _, bad := range []string{"", "/srv/git/tools", "https://github.com/onlyowner",
+		"https://gitlab.com/acme/tools.git", "git@bitbucket.org:acme/tools.git", "ssh://git@git.example.internal/acme/tools.git"} {
 		if got, err := normalizeOrigin(bad); err == nil {
 			t.Errorf("%q: want error, got %q", bad, got)
 		}
@@ -49,16 +53,16 @@ func TestNormalizeOrigin(t *testing.T) {
 }
 
 func TestAssemble(t *testing.T) {
-	tasks := []Task{{Slug: "redis-scan-storm", Repos: []TaskRepo{{
-		Repo: "ZenifyAIContactCenter/contact-center-be", Name: "contact-center-be",
-		Branch: "phuthuycoding/fix/redis-scan-storm", Path: "/ws/repos/contact-center-be/.worktrees/redis-scan-storm",
+	tasks := []Task{{Slug: "redis-scan", Repos: []TaskRepo{{
+		Repo: "acme/api", Name: "api",
+		Branch: "u/fix/redis-scan", Path: "/ws/repos/api/.worktrees/redis-scan",
 	}}}}
 	prs := []PR{
-		{Number: 812, Repo: "ZenifyAIContactCenter/contact-center-be", Branch: "phuthuycoding/fix/redis-scan-storm", MergeState: "CLEAN"},
-		{Number: 431, Repo: "ZenifyAIContactCenter/contact-center-hub", Branch: "phuthuycoding/fix/redis-scan-storm"},
+		{Number: 812, Repo: "acme/api", Branch: "u/fix/redis-scan", MergeState: "CLEAN"},
+		{Number: 431, Repo: "acme/tools", Branch: "u/fix/redis-scan"},
 	}
 	agents := map[string]Agent{
-		"A": {SessionID: "A", Slug: "redis-scan-storm", State: Blocked},
+		"A": {SessionID: "A", Slug: "redis-scan", State: Blocked},
 		"B": {SessionID: "B", Slug: "gone", State: Working},
 	}
 	s := Assemble(tasks, prs, agents)
@@ -157,7 +161,8 @@ func TestLoadAgents(t *testing.T) {
 
 func newPoller(t *testing.T, gh *fakeGH, tm *fakeTmux, now int64) *Poller {
 	t.Helper()
-	return &Poller{Home: t.TempDir(), Root: t.TempDir(), Git: failGit{}, GH: gh, Tmux: tm, Now: func() int64 { return now }}
+	return &Poller{Home: t.TempDir(), Root: t.TempDir(), Git: failGit{}, GH: gh, Tmux: tm, Now: func() int64 { return now },
+		NowNano: func() int64 { return now * int64(time.Second) }}
 }
 
 func TestRound_GitHubErrorKeepsOld(t *testing.T) {
@@ -167,8 +172,8 @@ func TestRound_GitHubErrorKeepsOld(t *testing.T) {
 	p := newPoller(t, &fakeGH{err: errors.New("gh: HTTP 502")}, &fakeTmux{}, 2000)
 	// A real repo gives the local round a workspace owner, so it keeps the PR.
 	p.Git = gitx.ExecRunner()
-	mkRepo(t, p.Root, "contact-center-hub", "git@github.com:ZenifyAIContactCenter/contact-center-hub.git", "alpha", "u/feat/alpha")
-	old := State{OtherPRs: []PR{{Number: 431, Repo: "ZenifyAIContactCenter/contact-center-hub", Checks: "PENDING"}}, GitHubAt: 1000}
+	mkRepo(t, p.Root, "tools", "git@github.com:acme/tools.git", "alpha", "u/feat/alpha")
+	old := State{OtherPRs: []PR{{Number: 431, Repo: "acme/tools", Checks: "PENDING"}}, GitHubAt: 1000}
 	if err := WriteState(p.Home, old); err != nil {
 		t.Fatal(err)
 	}
@@ -242,21 +247,21 @@ func TestRound_LocalOnlyKeepsGitHubError(t *testing.T) {
 }
 
 const failingPRBody = `{"data":{"search":{"nodes":[{"number":812,"url":"u","headRefName":"b",
-	"mergeStateStatus":"BLOCKED","repository":{"nameWithOwner":"ZenifyAIContactCenter/contact-center-be"},
+	"mergeStateStatus":"BLOCKED","repository":{"nameWithOwner":"acme/api"},
 	"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE","contexts":{"nodes":[]}}}}]},
 	"reviewThreads":{"nodes":[]}}]}}}`
 
 func TestRound_FiresDisplayMessage(t *testing.T) {
 	tm := &fakeTmux{}
 	p := newPoller(t, &fakeGH{body: []byte(failingPRBody)}, tm, 3000)
-	old := State{Owners: []string{"ZenifyAIContactCenter"}, OtherPRs: []PR{{Number: 812, Repo: "ZenifyAIContactCenter/contact-center-be", Branch: "b", Checks: "PENDING"}}}
+	old := State{Owners: []string{"acme"}, OtherPRs: []PR{{Number: 812, Repo: "acme/api", Branch: "b", Checks: "PENDING"}}}
 	if err := WriteState(p.Home, old); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.GitHub(); err != nil {
 		t.Fatalf("round: %v", err)
 	}
-	want := [][]string{{"display-message", "-d", "5000", "-t", "=zenify", "contact-center-be##812: ci-failed"}}
+	want := [][]string{{"display-message", "-d", "5000", "-t", "=zenify", "api##812: ci-failed"}}
 	if !reflect.DeepEqual(tm.calls, want) {
 		t.Errorf("tmux calls %q, want %q", tm.calls, want)
 	}
@@ -264,7 +269,7 @@ func TestRound_FiresDisplayMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.OtherPRs) != 1 || got.OtherPRs[0].Alert != "ci-failed" || got.OtherPRs[0].AlertAt != 3000 {
+	if len(got.OtherPRs) != 1 || got.OtherPRs[0].Alert != "ci-failed" || got.OtherPRs[0].AlertAt != 3000*int64(time.Second) {
 		t.Errorf("OtherPRs %+v", got.OtherPRs)
 	}
 
@@ -280,7 +285,7 @@ func TestRound_FiresDisplayMessage(t *testing.T) {
 func TestRound_TmuxErrorGoesToStateError(t *testing.T) {
 	tm := &fakeTmux{err: errors.New("no server running")}
 	p := newPoller(t, &fakeGH{body: []byte(failingPRBody)}, tm, 3000)
-	if err := WriteState(p.Home, State{Owners: []string{"ZenifyAIContactCenter"}, OtherPRs: []PR{{Number: 812, Repo: "ZenifyAIContactCenter/contact-center-be", Checks: "PENDING"}}}); err != nil {
+	if err := WriteState(p.Home, State{Owners: []string{"acme"}, OtherPRs: []PR{{Number: 812, Repo: "acme/api", Checks: "PENDING"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.GitHub(); err == nil {
@@ -343,9 +348,9 @@ func TestCollectLocal(t *testing.T) {
 		t.Skip("git not available")
 	}
 	root := t.TempDir()
-	bePath := mkRepo(t, root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "redis-scan-storm", "u/fix/redis-scan-storm")
-	hubPath := mkRepo(t, root, "contact-center-hub", "https://github.com/ZenifyAIContactCenter/contact-center-hub.git", "redis-scan-storm", "u/fix/redis-scan-storm")
-	webPath := mkRepo(t, root, "contact-center-web", "", "alpha", "u/feat/alpha") // no origin → error, rows kept without Repo
+	bePath := mkRepo(t, root, "api", "git@github.com:acme/api.git", "redis-scan", "u/fix/redis-scan")
+	hubPath := mkRepo(t, root, "tools", "https://github.com/acme/tools.git", "redis-scan", "u/fix/redis-scan")
+	webPath := mkRepo(t, root, "web", "", "alpha", "u/feat/alpha") // no origin → error, rows kept without Repo
 	// broken worktree.json → this repo is dropped, error reported.
 	broken := filepath.Join(root, "repos", "broken")
 	if err := os.MkdirAll(filepath.Join(broken, ".claude"), 0o750); err != nil {
@@ -360,11 +365,11 @@ func TestCollectLocal(t *testing.T) {
 	if want := []string{"broken"}; !reflect.DeepEqual(failed, want) {
 		t.Errorf("failed = %q, want %q (an origin error is not a failed repo)", failed, want)
 	}
-	if want := []string{"ZenifyAIContactCenter"}; !reflect.DeepEqual(owners, want) {
+	if want := []string{"acme"}; !reflect.DeepEqual(owners, want) {
 		t.Errorf("owners = %q, want %q", owners, want)
 	}
-	if err == nil || !strings.Contains(err.Error(), "broken") || !strings.Contains(err.Error(), "contact-center-web") {
-		t.Errorf("want errors naming broken and contact-center-web, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "broken") || !strings.Contains(err.Error(), "web") {
+		t.Errorf("want errors naming broken and web, got %v", err)
 	}
 	canon := func(p string) string {
 		r, e := filepath.EvalSymlinks(p)
@@ -380,11 +385,11 @@ func TestCollectLocal(t *testing.T) {
 	}
 	want := []Task{
 		{Slug: "alpha", Repos: []TaskRepo{
-			{Repo: "", Name: "contact-center-web", Branch: "u/feat/alpha", Path: canon(webPath)},
+			{Repo: "", Name: "web", Branch: "u/feat/alpha", Path: canon(webPath)},
 		}},
-		{Slug: "redis-scan-storm", Repos: []TaskRepo{
-			{Repo: "ZenifyAIContactCenter/contact-center-be", Name: "contact-center-be", Branch: "u/fix/redis-scan-storm", Path: canon(bePath)},
-			{Repo: "ZenifyAIContactCenter/contact-center-hub", Name: "contact-center-hub", Branch: "u/fix/redis-scan-storm", Path: canon(hubPath)},
+		{Slug: "redis-scan", Repos: []TaskRepo{
+			{Repo: "acme/api", Name: "api", Branch: "u/fix/redis-scan", Path: canon(bePath)},
+			{Repo: "acme/tools", Name: "tools", Branch: "u/fix/redis-scan", Path: canon(hubPath)},
 		}},
 	}
 	if !reflect.DeepEqual(tasks, want) {
@@ -393,9 +398,9 @@ func TestCollectLocal(t *testing.T) {
 }
 
 func TestFilterOwners(t *testing.T) {
-	prs := []PR{{Number: 1, Repo: "ZenifyAIContactCenter/x"}, {Number: 459, Repo: "someone/moicash"}}
-	got := FilterOwners(prs, []string{"zenifyaicontactcenter"})
-	if want := []PR{{Number: 1, Repo: "ZenifyAIContactCenter/x"}}; !reflect.DeepEqual(got, want) {
+	prs := []PR{{Number: 1, Repo: "acme/x"}, {Number: 459, Repo: "someone/side"}}
+	got := FilterOwners(prs, []string{"ACME"})
+	if want := []PR{{Number: 1, Repo: "acme/x"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("FilterOwners = %+v, want %+v", got, want)
 	}
 	if got := FilterOwners(prs, nil); got != nil {
@@ -405,12 +410,12 @@ func TestFilterOwners(t *testing.T) {
 
 // twoOwnerBody is a PR query answer with one company PR and one personal PR.
 const twoOwnerBody = `{"data":{"search":{"nodes":[
-	{"number":1,"url":"u1","headRefName":"b1","repository":{"nameWithOwner":"ZenifyAIContactCenter/x"},"commits":{"nodes":[]},"reviewThreads":{"nodes":[]}},
-	{"number":459,"url":"u2","headRefName":"b2","repository":{"nameWithOwner":"someone/moicash"},"commits":{"nodes":[]},"reviewThreads":{"nodes":[]}}]}}}`
+	{"number":1,"url":"u1","headRefName":"b1","repository":{"nameWithOwner":"acme/x"},"commits":{"nodes":[]},"reviewThreads":{"nodes":[]}},
+	{"number":459,"url":"u2","headRefName":"b2","repository":{"nameWithOwner":"someone/side"},"commits":{"nodes":[]},"reviewThreads":{"nodes":[]}}]}}}`
 
 func TestRound_GitHubKeepsWorkspaceOwnersOnly(t *testing.T) {
 	p := newPoller(t, &fakeGH{body: []byte(twoOwnerBody)}, &fakeTmux{}, 2000)
-	if err := WriteState(p.Home, State{Owners: []string{"ZenifyAIContactCenter"}}); err != nil {
+	if err := WriteState(p.Home, State{Owners: []string{"acme"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.GitHub(); err != nil {
@@ -440,7 +445,7 @@ func TestRound_GitHubWaitsForOwners(t *testing.T) {
 	if got.GitHubAt != 1000 || len(got.OtherPRs) != 0 {
 		t.Fatalf("no owners: GitHubAt %d PRs %+v, want 1000 and none", got.GitHubAt, got.OtherPRs)
 	}
-	if err := WriteState(p.Home, State{Owners: []string{"ZenifyAIContactCenter"}, GitHubAt: 1000}); err != nil {
+	if err := WriteState(p.Home, State{Owners: []string{"acme"}, GitHubAt: 1000}); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.GitHub(); err != nil {
@@ -475,7 +480,7 @@ func TestRound_LocalNotBlockedByGitHub(t *testing.T) {
 	// A real repo gives the local rounds a workspace owner, so the GitHub
 	// round keeps the company PR.
 	p.Git = gitx.ExecRunner()
-	mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
+	mkRepo(t, p.Root, "api", "git@github.com:acme/api.git", "alpha", "u/feat/alpha")
 	if err := writeAgent(p.Home, &Agent{SessionID: "s1", Slug: "gone"}); err != nil {
 		t.Fatal(err)
 	}
@@ -537,17 +542,17 @@ func TestCollectLocal_UnmanagedUsesDirName(t *testing.T) {
 		t.Skip("git not available")
 	}
 	root := t.TempDir()
-	for _, name := range []string{"contact-center-be", "contact-center-web"} {
-		wtPath := mkRepo(t, root, name, "git@github.com:ZenifyAIContactCenter/"+name+".git", "zns-campaign-trace", "u/feat/zns-"+name)
+	for _, name := range []string{"api", "web"} {
+		wtPath := mkRepo(t, root, name, "git@github.com:acme/"+name+".git", "shared-task", "u/feat/shared-"+name)
 		git(t, wtPath, "config", "--worktree", "--unset", "wt.slug") // no wt.slug: wt.List says (unmanaged)
 	}
 	tasks, _, _, err := CollectLocal(root, gitx.ExecRunner())
 	if err != nil {
 		t.Fatalf("CollectLocal: %v", err)
 	}
-	if len(tasks) != 1 || tasks[0].Slug != "zns-campaign-trace" || len(tasks[0].Repos) != 2 ||
-		tasks[0].Repos[0].Name != "contact-center-be" || tasks[0].Repos[1].Name != "contact-center-web" {
-		t.Errorf("tasks = %+v, want one task zns-campaign-trace with both repos", tasks)
+	if len(tasks) != 1 || tasks[0].Slug != "shared-task" || len(tasks[0].Repos) != 2 ||
+		tasks[0].Repos[0].Name != "api" || tasks[0].Repos[1].Name != "web" {
+		t.Errorf("tasks = %+v, want one task shared-task with both repos", tasks)
 	}
 }
 
@@ -568,13 +573,13 @@ func TestRound_LocalPartialAdvancesLocalAt(t *testing.T) {
 	}
 	p := newPoller(t, &fakeGH{err: errors.New("must not be called")}, &fakeTmux{}, 2000)
 	p.Git = gitx.ExecRunner()
-	mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
-	mkRepo(t, p.Root, "contact-center-web", "/srv/git/contact-center-web", "beta", "u/feat/beta") // unparseable origin
+	mkRepo(t, p.Root, "api", "git@github.com:acme/api.git", "alpha", "u/feat/alpha")
+	mkRepo(t, p.Root, "web", "/srv/git/web", "beta", "u/feat/beta") // unparseable origin
 	if err := WriteState(p.Home, State{LocalAt: 1000}); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Local(); err == nil || !strings.Contains(err.Error(), "contact-center-web") {
-		t.Errorf("want origin error naming contact-center-web, got %v", err)
+	if err := p.Local(); err == nil || !strings.Contains(err.Error(), "web") {
+		t.Errorf("want origin error naming web, got %v", err)
 	}
 	got, err := ReadState(p.Home)
 	if err != nil {
@@ -583,7 +588,7 @@ func TestRound_LocalPartialAdvancesLocalAt(t *testing.T) {
 	if got.LocalAt != 2000 {
 		t.Errorf("LocalAt %d, want 2000 (partial results collected)", got.LocalAt)
 	}
-	if !strings.Contains(got.LocalError, "contact-center-web") || len(got.Tasks) != 2 {
+	if !strings.Contains(got.LocalError, "web") || len(got.Tasks) != 2 {
 		t.Errorf("LocalError %q tasks %+v", got.LocalError, got.Tasks)
 	}
 }
@@ -604,7 +609,8 @@ func TestRound_AlertAtAfterFetch(t *testing.T) {
 	p := newPoller(t, nil, &fakeTmux{}, 0)
 	p.GH = &clockGH{now: &now, body: []byte(failingPRBody)}
 	p.Now = func() int64 { return now }
-	old := State{Owners: []string{"ZenifyAIContactCenter"}, OtherPRs: []PR{{Number: 812, Repo: "ZenifyAIContactCenter/contact-center-be", Branch: "b", Checks: "PENDING"}}}
+	p.NowNano = func() int64 { return now * int64(time.Second) }
+	old := State{Owners: []string{"acme"}, OtherPRs: []PR{{Number: 812, Repo: "acme/api", Branch: "b", Checks: "PENDING"}}}
 	if err := WriteState(p.Home, old); err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +621,7 @@ func TestRound_AlertAtAfterFetch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.OtherPRs) != 1 || got.OtherPRs[0].AlertAt != 5000 || got.GitHubAt != 5000 {
+	if len(got.OtherPRs) != 1 || got.OtherPRs[0].AlertAt != 5000*int64(time.Second) || got.GitHubAt != 5000 {
 		t.Errorf("want AlertAt and GitHubAt stamped after the fetch (5000), got %+v at %d", got.OtherPRs, got.GitHubAt)
 	}
 }
@@ -634,13 +640,13 @@ func TestRound_UnknownOwnersDropsPRs(t *testing.T) {
 	}
 }
 
-// GitHub owner names are case-insensitive: a lower-case origin owner still
+// GitHub owner names are case-insensitive: an origin owner in another case still
 // matches the PR's canonical nameWithOwner. The branch stays exact.
 func TestAssemble_RepoMatchIgnoresCase(t *testing.T) {
-	tasks := []Task{{Slug: "s", Repos: []TaskRepo{{Repo: "zenifyaicontactcenter/chatting", Branch: "u/feat/x"}}}}
+	tasks := []Task{{Slug: "s", Repos: []TaskRepo{{Repo: "ACME/Tools", Branch: "u/feat/x"}}}}
 	prs := []PR{
-		{Number: 1, Repo: "ZenifyAIContactCenter/chatting", Branch: "u/feat/x"},
-		{Number: 2, Repo: "ZenifyAIContactCenter/chatting", Branch: "U/feat/x"},
+		{Number: 1, Repo: "acme/tools", Branch: "u/feat/x"},
+		{Number: 2, Repo: "acme/tools", Branch: "U/feat/x"},
 	}
 	s := Assemble(tasks, prs, nil)
 	if got := s.Tasks[0].Repos[0].PR; got == nil || got.Number != 1 {
@@ -648,6 +654,23 @@ func TestAssemble_RepoMatchIgnoresCase(t *testing.T) {
 	}
 	if len(s.OtherPRs) != 1 || s.OtherPRs[0].Number != 2 {
 		t.Errorf("OtherPRs %+v, want only #2 (branch differs in case)", s.OtherPRs)
+	}
+}
+
+// Two open PRs from one repo and branch (different bases): the first attaches,
+// the second is kept in OtherPRs instead of being dropped.
+func TestAssemble_DuplicateBranchPRGoesToOther(t *testing.T) {
+	tasks := []Task{{Slug: "s", Repos: []TaskRepo{{Repo: "acme/api", Branch: "u/fix/redis-scan"}}}}
+	prs := []PR{
+		{Number: 812, Repo: "acme/api", Branch: "u/fix/redis-scan"},
+		{Number: 813, Repo: "acme/api", Branch: "u/fix/redis-scan"},
+	}
+	s := Assemble(tasks, prs, nil)
+	if got := s.Tasks[0].Repos[0].PR; got == nil || got.Number != 812 {
+		t.Fatalf("PR attached %+v, want #812", got)
+	}
+	if len(s.OtherPRs) != 1 || s.OtherPRs[0].Number != 813 {
+		t.Errorf("OtherPRs %+v, want #813", s.OtherPRs)
 	}
 }
 
@@ -682,23 +705,23 @@ func TestRound_LocalFailedRepoKeepsItsRows(t *testing.T) {
 	}
 	p := newPoller(t, &fakeGH{err: errors.New("must not be called")}, &fakeTmux{}, 2000)
 	p.Git = gitx.ExecRunner()
-	mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
-	mkBrokenRepo(t, p.Root, "contact-center-web")
+	mkRepo(t, p.Root, "api", "git@github.com:acme/api.git", "alpha", "u/feat/alpha")
+	mkBrokenRepo(t, p.Root, "web")
 	old := State{LocalAt: 1000, Tasks: []Task{
-		{Slug: "old-be", Repos: []TaskRepo{{Name: "contact-center-be", Branch: "u/feat/old"}}},
-		{Slug: "web-task", Repos: []TaskRepo{{Name: "contact-center-web", Branch: "u/feat/web"}}},
+		{Slug: "old-be", Repos: []TaskRepo{{Name: "api", Branch: "u/feat/old"}}},
+		{Slug: "web-task", Repos: []TaskRepo{{Name: "web", Branch: "u/feat/web"}}},
 	}}
 	if err := WriteState(p.Home, old); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Local(); err == nil || !strings.Contains(err.Error(), "contact-center-web") {
-		t.Errorf("want error naming contact-center-web, got %v", err)
+	if err := p.Local(); err == nil || !strings.Contains(err.Error(), "web") {
+		t.Errorf("want error naming web, got %v", err)
 	}
 	got, err := ReadState(p.Home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"alpha/contact-center-be", "web-task/contact-center-web"}; !reflect.DeepEqual(slugsOf(got.Tasks), want) {
+	if want := []string{"alpha/api", "web-task/web"}; !reflect.DeepEqual(slugsOf(got.Tasks), want) {
 		t.Errorf("tasks %q, want %q", slugsOf(got.Tasks), want)
 	}
 }
@@ -711,24 +734,24 @@ func TestRound_LocalSweptRepoClearsDespiteOtherFailure(t *testing.T) {
 	}
 	p := newPoller(t, &fakeGH{err: errors.New("must not be called")}, &fakeTmux{}, 2000)
 	p.Git = gitx.ExecRunner()
-	wtPath := mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
-	git(t, filepath.Join(p.Root, "repos", "contact-center-be"), "worktree", "remove", wtPath)
-	mkBrokenRepo(t, p.Root, "contact-center-web")
+	wtPath := mkRepo(t, p.Root, "api", "git@github.com:acme/api.git", "alpha", "u/feat/alpha")
+	git(t, filepath.Join(p.Root, "repos", "api"), "worktree", "remove", wtPath)
+	mkBrokenRepo(t, p.Root, "web")
 	old := State{LocalAt: 1000, Tasks: []Task{
-		{Slug: "alpha", Repos: []TaskRepo{{Name: "contact-center-be", Branch: "u/feat/alpha", Path: wtPath}}},
-		{Slug: "web-task", Repos: []TaskRepo{{Name: "contact-center-web", Branch: "u/feat/web"}}},
+		{Slug: "alpha", Repos: []TaskRepo{{Name: "api", Branch: "u/feat/alpha", Path: wtPath}}},
+		{Slug: "web-task", Repos: []TaskRepo{{Name: "web", Branch: "u/feat/web"}}},
 	}}
 	if err := WriteState(p.Home, old); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.Local(); err == nil {
-		t.Error("want error for contact-center-web")
+		t.Error("want error for web")
 	}
 	got, err := ReadState(p.Home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"web-task/contact-center-web"}; !reflect.DeepEqual(slugsOf(got.Tasks), want) {
+	if want := []string{"web-task/web"}; !reflect.DeepEqual(slugsOf(got.Tasks), want) {
 		t.Errorf("tasks %q, want %q", slugsOf(got.Tasks), want)
 	}
 }
@@ -740,9 +763,9 @@ func TestRound_LocalFailedRepoKeepsOwnerPRs(t *testing.T) {
 	}
 	p := newPoller(t, &fakeGH{err: errors.New("must not be called")}, &fakeTmux{}, 2000)
 	p.Git = gitx.ExecRunner()
-	mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
-	mkBrokenRepo(t, p.Root, "contact-center-web")
-	old := State{LocalAt: 1000, Owners: []string{"ZenifyAIContactCenter", "OtherOrg"},
+	mkRepo(t, p.Root, "api", "git@github.com:acme/api.git", "alpha", "u/feat/alpha")
+	mkBrokenRepo(t, p.Root, "web")
+	old := State{LocalAt: 1000, Owners: []string{"acme", "OtherOrg"},
 		OtherPRs: []PR{{Number: 9, Repo: "OtherOrg/web", Branch: "b"}}}
 	if err := WriteState(p.Home, old); err != nil {
 		t.Fatal(err)

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSlugFromToolInput(t *testing.T) {
@@ -195,5 +196,90 @@ func TestReport_PayloadLimit(t *testing.T) {
 	err := Report(t.TempDir(), strings.NewReader(big), "%1", 1)
 	if err == nil || !strings.Contains(err.Error(), "hook payload over 8 MiB") {
 		t.Errorf("want payload limit error, got %v", err)
+	}
+}
+
+// writeSlugAt writes agent id with slug and an explicit mtime, as a concurrent
+// hook report would.
+func writeSlugAt(t *testing.T, home, id, slug string, at time.Time) {
+	t.Helper()
+	p := agentPath(home, id)
+	body := `{"session_id":"` + id + `","state":"working","slug":"` + slug + `"}`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p, at, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReport_ConcurrentReportSlugSurvives(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeSlugAt(t, home, "s", "old-task", time.Unix(1000, 0))
+	calls := 0
+	reportHook = func() {
+		calls++
+		if calls == 1 { // a report naming a newer worktree lands mid-flight
+			writeSlugAt(t, home, "s", "new-task", time.Unix(2000, 0))
+		}
+	}
+	t.Cleanup(func() { reportHook = func() {} })
+	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", 5); err != nil {
+		t.Fatalf("Report: %v", err)
+	}
+	a, err := readAgent(home, "s")
+	if err != nil || a == nil || a.Slug != "new-task" || a.State != Done {
+		t.Fatalf("agent %+v %v, want slug new-task with the Stop applied", a, err)
+	}
+	if calls != 2 {
+		t.Errorf("hook calls %d, want 2 (one re-apply)", calls)
+	}
+}
+
+func TestReport_ConcurrentCreateIsReapplied(t *testing.T) {
+	home := t.TempDir()
+	calls := 0
+	reportHook = func() {
+		calls++
+		if calls == 1 { // the file did not exist at read time; another report creates it
+			if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			writeSlugAt(t, home, "s", "new-task", time.Unix(2000, 0))
+		}
+	}
+	t.Cleanup(func() { reportHook = func() {} })
+	if err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", 5); err != nil {
+		t.Fatalf("Report: %v", err)
+	}
+	if a, err := readAgent(home, "s"); err != nil || a == nil || a.Slug != "new-task" {
+		t.Fatalf("agent %+v %v, want slug new-task kept", a, err)
+	}
+}
+
+func TestReport_GivesUpAfterThreeChanges(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeSlugAt(t, home, "s", "old-task", time.Unix(1000, 0))
+	calls := 0
+	reportHook = func() {
+		calls++
+		writeSlugAt(t, home, "s", "task-"+string(rune('a'+calls)), time.Unix(int64(2000+calls), 0))
+	}
+	t.Cleanup(func() { reportHook = func() {} })
+	err := Report(home, strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`), "%2", 5)
+	if err == nil || !strings.Contains(err.Error(), "3 attempts") {
+		t.Fatalf("want error after 3 attempts, got %v", err)
+	}
+	if calls != 3 {
+		t.Errorf("hook calls %d, want 3", calls)
+	}
+	if a, _ := readAgent(home, "s"); a == nil || a.Slug != "task-d" || a.State != Working {
+		t.Errorf("agent %+v, want the last concurrent write kept", a)
 	}
 }
