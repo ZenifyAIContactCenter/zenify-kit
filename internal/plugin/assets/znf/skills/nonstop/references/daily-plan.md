@@ -27,10 +27,12 @@ is ending.
 
 1. Carry-over, including `deferred until` lines whose date has come.
 2. Tasks the user gave as arguments when calling the skill.
-3. The user's open PRs (`gh pr list --author @me --state open` per repo) with red CI or unresolved
-   review threads → tasks; CLEAN and waiting for merge → "Waiting to merge" only, never dispatched.
+3. The user's open PRs — authored by or assigned to the user, nobody else's: for each org among the
+   workspace repos' `origin` remotes, `gh search prs --state=open --owner=<org> --author=@me --limit
+   1000` and the same with `--assignee=@me`, merged by URL, repos of the workspace only — with red CI or unresolved review threads → tasks; CLEAN and waiting for merge → "Waiting to merge" only, never dispatched.
 4. Unfinished SDD ledgers `.znf/sdd/*/progress.md`.
-5. Issues assigned to the user — only with the session line `features: github.issues on` (below).
+5. Issues assigned to or opened by the user, nobody else's — only with the session line
+   `features: github.issues on` (below).
 6. Kanban items, `- [ ]` lines in `TODO.md` / `BACKLOG.md` / plan files.
 7. All empty → dispatch one worker to run `znf:top-issues`; its top 5 go to "Needs you" as "pick one".
 
@@ -77,8 +79,8 @@ When Batch 1 is done, pull the next tasks from the backlog in the same order wit
 Only when the session has a line starting `features: github.issues on`:
 
 - Source 5: for each org among the workspace repos' `origin` remotes (`git -C <repo> remote get-url
-  origin`), run `gh search issues --assignee=@me --state=open --owner=<org>`; keep issues of repos
-  in the workspace.
+  origin`), run `gh search issues --assignee=@me --state=open --owner=<org> --limit 1000` and the
+  same with `--author=@me`; merge by URL and keep issues of repos in the workspace.
 - The ledger and plan `issue` column always carries the full `<owner>/<repo>#N`: the issue lives in
   one repo, and a task in another repo closes it as `Closes <owner>/<repo>#N`.
 - The worker brief carries `Features: github.issues on` and `Issue: <owner>/<repo>#N` (never a

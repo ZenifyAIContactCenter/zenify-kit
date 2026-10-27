@@ -48,9 +48,10 @@ re-dispatched; go to the Loop, writing to the last section.
 ## Phase 1 — Morning plan
 
 Build it per `references/daily-plan.md`: every non-`done` line of the last section, the backlog sources in
-priority order, filters, sizes and the batch budget from `references/estimation.md`. With a
-session line `features: github.issues on`, add the issues assigned to the user; otherwise the
-issue column is `-` and no issue command runs.
+priority order, filters, sizes and the batch budget from `references/estimation.md`. PRs are always
+only the user's own or assigned to them. With a session line `features: github.issues on`, add
+the issues assigned to or opened by the user; otherwise the issue column is `-` and no issue
+command runs.
 
 Print the plan, then **stop and wait for the user's approval** (or their edits) before the first
 dispatch. After approval, write the `## <date +%F>` section, then dispatch Batch 1 only.
