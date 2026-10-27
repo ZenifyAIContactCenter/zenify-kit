@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -124,30 +125,30 @@ func orderState() State {
 func TestView_RepoOrderAndMergedGroup(t *testing.T) {
 	m, _, _ := newTestModel(t, t.TempDir(), orderState())
 	want := []string{
-		" TASKS 6",
+		" TASKS 7",
 		"▌▾ web 2",
 		"   ◆ d-block  ⏸ agent#2",
 		"   ○ z-half",
-		" ▾ be 3",
+		" ▾ be 4",
 		"   ● c-work  ⏸ agent#1",
 		"   ○ b-pr",
 		"       #7",
 		"   ○ a-idle",
+		"   ○ z-half merged",
 		" ▸ api 1",
-		" ▸ merged (4)",
+		" ▸ merged (3)",
 	}
 	if got := taskBlock(m.View()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("TASKS block:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 
-	for i := 0; i < 9; i++ {
+	for i := 0; i < 10; i++ {
 		m = update(t, m, key("j"))
 	}
 	m = update(t, m, key("enter"))
-	want = append(want[:10],
-		"▌▾ merged (4)",
+	want = append(want[:11],
+		"▌▾ merged (3)",
 		"   ○ be/m1",
-		"   ○ be/z-half",
 		"   ○ kit/m2",
 		"   ○ web/m1",
 	)
@@ -157,7 +158,7 @@ func TestView_RepoOrderAndMergedGroup(t *testing.T) {
 	}
 
 	m = update(t, m, key(" "))
-	if got := taskBlock(m.View()); got[len(got)-1] != "▌▸ merged (4)" {
+	if got := taskBlock(m.View()); got[len(got)-1] != "▌▸ merged (3)" {
 		t.Errorf("space did not collapse:\n%s", strings.Join(got, "\n"))
 	}
 }
@@ -180,10 +181,10 @@ func TestView_TaskUnderEachRepo(t *testing.T) { // SC-21
 		" TASKS 2",
 		"▌▾ be 1",
 		"   ● t  ▶ A",
-		"       #1 !",
+		"       ! #1",
 		" ▾ web 1",
 		"   ● t  ▶ A",
-		"       #2 !",
+		"       ! #2",
 	}
 	if got := taskBlock(m.View()); !reflect.DeepEqual(got, want) {
 		t.Errorf("TASKS block:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -433,11 +434,16 @@ func TestEnter_ClosedAgentResumes(t *testing.T) {
 	tm.out = map[string]string{"new-window": "@7\n"}
 	tm.fail = map[string]error{"has-session": errors.New("can't find session: zenify")}
 	a := uuidAgent()
+	if err := writeAgent(m.home, &a); err != nil {
+		t.Fatal(err)
+	}
 	m.state.Agents[a.SessionID] = a
 	m.relayout()
 	m = toAgent(t, m, a.SessionID)
 	m = update(t, m, key("enter"))
 	want := [][]string{
+		{"display-message", "-p", "#{pid}"},
+		{"list-panes", "-a", "-F", "#{pane_id} #{window_index}"},
 		{"has-session", "-t", "=zenify"},
 		{"new-window", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "be-2376-tests", "claude", "--resume", a.SessionID},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
@@ -448,6 +454,9 @@ func TestEnter_ClosedAgentResumes(t *testing.T) {
 	}
 	if m.failed {
 		t.Errorf("notice error: %s", m.notice)
+	}
+	if _, err := os.Stat(resumeLockPath(m.home, a.SessionID)); err != nil {
+		t.Errorf("resume lock not taken: %v", err)
 	}
 }
 
@@ -497,7 +506,7 @@ func TestKeyX_ForgetErrorShown(t *testing.T) {
 	m = toAgent(t, m, "a")
 	m = update(t, m, key("x"))
 	m = update(t, m, key("y"))
-	if !m.failed || !strings.Contains(m.notice, "remove agent a") {
+	if !m.failed || !strings.Contains(m.notice, "read agent a") {
 		t.Errorf("notice %q failed=%v", m.notice, m.failed)
 	}
 }
@@ -532,7 +541,8 @@ func TestEnter_TaskRowJumpsToOpenAgent(t *testing.T) {
 }
 
 func TestEnter_DoubleResumeGuarded(t *testing.T) {
-	m, tm, _ := newTestModel(t, t.TempDir(), livenessState())
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, livenessState()))
 	tm.out = map[string]string{"new-window": "@7\n"}
 	m = toAgent(t, m, "a")
 	m = update(t, m, key("enter"))
@@ -545,7 +555,7 @@ func TestEnter_DoubleResumeGuarded(t *testing.T) {
 
 func TestResuming_ClearedWhenOpen(t *testing.T) {
 	home := t.TempDir()
-	s := livenessState()
+	s := liveAgents(t, home, livenessState())
 	m, tm, _ := newTestModel(t, home, s)
 	tm.out = map[string]string{"new-window": "@7\n"}
 	m = toAgent(t, m, "a")
@@ -557,6 +567,119 @@ func TestResuming_ClearedWhenOpen(t *testing.T) {
 	m = update(t, m, tickMsg(t0.Add(time.Second)))
 	if _, ok := m.resuming["a"]; ok {
 		t.Error("resuming kept after the agent opened")
+	}
+	if _, err := os.Stat(resumeLockPath(home, "a")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("resume lock kept after the agent opened: %v", err)
+	}
+}
+
+// writeResumeLock leaves a resume lock for id taken at, as another sidebar would.
+func writeResumeLock(t *testing.T, home, id string, at time.Time) {
+	t.Helper()
+	if err := os.WriteFile(resumeLockPath(home, id), []byte(strconv.FormatInt(at.Unix(), 10)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEnter_FreshResumeLockRefuses(t *testing.T) {
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, livenessState()))
+	writeResumeLock(t, home, "a", time.Now().Add(-5*time.Second))
+	m = toAgent(t, m, "a")
+	m = update(t, m, key("enter"))
+	if len(tm.calls) != 0 || m.notice != "already resuming in another sidebar" || m.failed {
+		t.Errorf("calls %q notice %q failed=%v", tm.calls, m.notice, m.failed)
+	}
+}
+
+func TestEnter_StaleResumeLockProceeds(t *testing.T) {
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, livenessState()))
+	tm.out = map[string]string{"new-window": "@7\n"}
+	writeResumeLock(t, home, "a", time.Now().Add(-time.Minute))
+	m = toAgent(t, m, "a")
+	m = update(t, m, key("enter"))
+	if m.failed || m.notice != "resumed old run in a new window" {
+		t.Errorf("notice %q failed=%v", m.notice, m.failed)
+	}
+	b, err := os.ReadFile(resumeLockPath(home, "a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sec, _ := strconv.ParseInt(string(b), 10, 64); time.Since(time.Unix(sec, 0)) > 5*time.Second {
+		t.Errorf("stale lock not replaced: %s", b)
+	}
+}
+
+func TestEnter_OpenOnFreshCheckRefuses(t *testing.T) {
+	home := t.TempDir()
+	s := livenessState()
+	a := s.Agents["a"] // closed in the cached state, open on the server now
+	a.Pane, a.TmuxServer = "%9", "4242"
+	s.Agents["a"] = a
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
+	tm.out = map[string]string{"display-message": "4242\n", "list-panes": "%9 3\n"}
+	m = toAgent(t, m, "a")
+	m = update(t, m, key("enter"))
+	for _, c := range tm.calls {
+		if c[0] == "new-window" {
+			t.Fatalf("resumed an open agent: %q", tm.calls)
+		}
+	}
+	if m.notice != "agent is already open" || m.failed {
+		t.Errorf("notice %q failed=%v", m.notice, m.failed)
+	}
+	if _, err := os.Stat(resumeLockPath(home, "a")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("resume lock kept after refusing: %v", err)
+	}
+}
+
+func TestLoadAgents_IgnoresResumeLocks(t *testing.T) {
+	home := t.TempDir()
+	liveAgents(t, home, livenessState())
+	writeResumeLock(t, home, "a", time.Now())
+	got, err := LoadAgents(home)
+	if err != nil || len(got) != 4 {
+		t.Errorf("agents %d err %v, want 4 and nil", len(got), err)
+	}
+}
+
+func TestKeyX_OpenAtConfirmRefuses(t *testing.T) {
+	home := t.TempDir()
+	s := livenessState()
+	a := s.Agents["a"]
+	a.Pane, a.TmuxServer = "%9", "4242"
+	s.Agents["a"] = a
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
+	m = toAgent(t, m, "a")
+	m = update(t, m, key("x"))
+	tm.out = map[string]string{"display-message": "4242\n", "list-panes": "%9 3\n"} // resumed elsewhere meanwhile
+	m = update(t, m, key("y"))
+	if m.notice != "agent is open again" || m.failed {
+		t.Errorf("notice %q failed=%v", m.notice, m.failed)
+	}
+	if got, _ := readAgent(home, "a"); got == nil {
+		t.Error("open agent deleted")
+	}
+}
+
+func TestKeyX_ChangedAtConfirmRefuses(t *testing.T) {
+	home := t.TempDir()
+	s := liveAgents(t, home, livenessState())
+	m, _, _ := newTestModel(t, home, s)
+	m = toAgent(t, m, "a")
+	m = update(t, m, key("x"))
+	a := s.Agents["a"]
+	a.UpdatedAt++ // a hook reported meanwhile
+	if err := writeAgent(home, &a); err != nil {
+		t.Fatal(err)
+	}
+	m = update(t, m, key("y"))
+	if m.notice != "agent changed" || m.failed {
+		t.Errorf("notice %q failed=%v", m.notice, m.failed)
+	}
+	if got, _ := readAgent(home, "a"); got == nil {
+		t.Error("changed agent deleted")
 	}
 }
 

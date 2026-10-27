@@ -36,6 +36,7 @@ func (f *scriptTmux) Run(args ...string) ([]byte, error) {
 type countTicker struct {
 	home          string
 	deferred      bool
+	ownersOnDefer []string // written to state.json by a deferred round, as a local round landing meanwhile would
 	githubErr     error
 	local, github int
 }
@@ -51,7 +52,15 @@ func (c *countTicker) GitHub() error {
 		return c.githubErr
 	}
 	if c.deferred {
-		return nil
+		if c.ownersOnDefer == nil {
+			return nil
+		}
+		s, err := ReadState(c.home)
+		if err != nil {
+			return err
+		}
+		s.Owners = c.ownersOnDefer
+		return WriteState(c.home, s)
 	}
 	s, err := ReadState(c.home)
 	if err != nil {
@@ -165,7 +174,7 @@ func TestView_ShowsError(t *testing.T) {
 func TestView_Rows(t *testing.T) {
 	m, _, _ := newTestModel(t, t.TempDir(), fixState(Blocked))
 	v := m.View()
-	for _, want := range []string{"TASKS 1", "   ◆ t1  ▶ s1\n", "       #812 ✗ !\n", "AGENTS 1/1", " ▶ ◆ t1 · t1 w1\n", "MY PRS 0"} {
+	for _, want := range []string{"TASKS 1", "   ◆ t1  ▶ s1\n", "       ! #812 ✗\n", "AGENTS 1/1", " ▶ ◆ t1 · t1 w1\n", "MY PRS 0"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("View missing %q:\n%s", want, v)
 		}
@@ -337,14 +346,26 @@ func TestRefreshForcesGitHub(t *testing.T) {
 	}
 }
 
-func TestDeferredGitHubRoundRetriesNextTick(t *testing.T) {
+func TestDeferredGitHubRoundRetriesWhenOwnersAppear(t *testing.T) {
 	m, _, ct := newTestModel(t, t.TempDir(), State{})
 	ct.deferred = true         // owners unknown: the round leaves GitHubAt as it was
+	ct.ownersOnDefer = []string{"o"}
 	m = update(t, m, key("r")) // forces GitHub round 2
 	m = update(t, m, tickMsg(t0.Add(time.Second)))
 	update(t, m, tickMsg(t0.Add(2*time.Second)))
 	if ct.github != 3 {
-		t.Errorf("github rounds = %d, want 3 (the deferred round retried on the next tick)", ct.github)
+		t.Errorf("github rounds = %d, want 3 (the deferred round retried once owners appeared)", ct.github)
+	}
+}
+
+func TestDeferredGitHubRoundWaitsWhileOwnersUnknown(t *testing.T) {
+	m, _, ct := newTestModel(t, t.TempDir(), State{})
+	ct.deferred = true         // owners stay unknown
+	m = update(t, m, key("r")) // forces GitHub round 2
+	m = update(t, m, tickMsg(t0.Add(time.Second)))
+	update(t, m, tickMsg(t0.Add(2*time.Second)))
+	if ct.github != 2 {
+		t.Errorf("github rounds = %d, want 2 (no retry every tick while owners are unknown)", ct.github)
 	}
 }
 

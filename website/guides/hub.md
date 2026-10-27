@@ -71,14 +71,14 @@ Dòng đầu là `zenify hub` kèm giờ của vòng quét local gần nhất (H
 - Cấp 1 là repo (tên thư mục repo) kèm số worktree; cấp 2 là worktree `<icon> <slug>  <agent>`, dòng PR của branch đó nằm ngay dưới. Task nhiều repo xuất hiện dưới mỗi repo của nó, mỗi chỗ với PR riêng của repo đó, agent hiện ở mọi chỗ.
 - Repo có ít nhất một worktree có agent hoặc PR open thì mở sẵn và xếp trước (theo roll-up cao nhất, rồi tên); repo còn lại thu gọn và xếp sau theo tên. Trong một repo, worktree có agent hoặc PR lên trước (theo roll-up, rồi slug), còn lại theo slug.
 - `Enter` hoặc `Space` trên dòng repo để mở/đóng; lựa chọn của bạn được giữ khi state reload.
-- Worktree mà repo đã merged nhưng task vẫn có agent hoặc PR open ở repo khác thì ở lại nhóm repo, dòng của nó có hậu tố mờ ` merged`.
-- Worktree mà repo đã merged và task không có agent, không có PR open, gom vào dòng `▸ merged (n)` cuối mục (n là số worktree); mở ra thì liệt kê `repo/slug`.
+- Worktree mà repo đã merged nhưng task vẫn có agent, PR open, hoặc repo khác chưa merged thì ở lại nhóm repo, dòng của nó có hậu tố mờ ` merged`.
+- Worktree của task đã merged ở mọi repo và không có agent, không có PR open, gom vào dòng `▸ merged (n)` cuối mục (n là số worktree); mở ra thì liệt kê `repo/slug`.
 - Số ở header `TASKS` là số worktree không nằm trong nhóm merged.
 - Các phím `Enter`, `o`, `y`, `m`, `f` trên dòng worktree hoặc dòng PR của nó tác động lên PR của đúng repo đó.
 
 Dòng worktree có agent hiện `▶` (agent đang mở) hoặc `⏸` (đã đóng) ngay trước tên agent, ví dụ `● redis-scan-storm  ▶ agent#1`.
 
-Dòng PR có dạng `#<n> <CI> <mergeState> <review> <n> threads` (ở mục `MY PRS` có thêm tên repo phía trước); phần review hiện `approved`, `changes` (CHANGES_REQUESTED) hoặc `review` (REVIEW_REQUIRED), kèm số thread chưa resolve.
+Dòng PR có dạng `#<n> <CI> <mergeState> <review> <n> threads` (ở mục `MY PRS` có thêm tên repo phía trước), có `!` đứng đầu dòng khi PR có cảnh báo, ví dụ `! #812 ✗ BLOCKED`; phần review hiện `approved`, `changes` (CHANGES_REQUESTED) hoặc `review` (REVIEW_REQUIRED), kèm số thread chưa resolve.
 
 ### Mục AGENTS
 
@@ -93,8 +93,9 @@ Dòng PR có dạng `#<n> <CI> <mergeState> <review> <n> threads` (ở mục `MY
 - Agent **đang mở** khi pane của nó còn sống trên đúng tmux server mà hook đã ghi (pid server lấy từ trường thứ 2 của env `TMUX`); ngược lại là **đã đóng**, ví dụ sau khi tmux server bị tắt hoặc máy reboot. Bản ghi chưa có pid server (ghi trước khi hub lưu trường này) luôn là đã đóng. Poller tính lại mỗi vòng quét local; không có tmux server nào chạy thì mọi agent là đã đóng.
 - Agent đang mở xếp trước (theo trạng thái blocked, working, done, idle, rồi mới cập nhật nhất), sau đó agent đã đóng (mới cập nhật nhất trước).
 - `Enter` trên agent đang mở nhảy tới pane của nó; trên agent đã đóng mở một window mới `sidebar | claude --resume <session id>` trong session `zenify` (chưa có session đó thì trong session hiện tại). `claude --resume` giữ nguyên session id nên agent tiếp tục ghi vào bản ghi cũ.
-- `x` trên một dòng agent đã đóng (ở mục `AGENTS` hoặc dòng agent dưới worktree) hỏi `Forget agent <tên>? y/n` rồi xoá bản ghi của agent; trên agent đang mở thì sidebar báo `agent is running` và không xoá gì.
+- `x` trên một dòng agent đã đóng (ở mục `AGENTS` hoặc dòng agent dưới worktree) hỏi `Forget agent <tên>? y/n` rồi xoá bản ghi của agent; trên agent đang mở thì sidebar báo `agent is running` và không xoá gì. Lúc bấm `y`, hub đọc lại bản ghi và kiểm tra pane trên tmux: agent đã mở lại thì báo `agent is open again`, bản ghi đã đổi kể từ lúc hỏi thì báo `agent changed`, và không xoá gì.
 - Bấm `Enter` lần nữa trên agent vừa resume (trong 15 giây, khi nó chưa hiện đang mở) chỉ báo `already resuming`, không mở window thứ hai.
+- Trước khi resume, hub tạo file khoá `agents/<session id>.resuming` (chứa giờ unix). Nếu một sidebar khác đã tạo khoá này dưới 30 giây trước, sidebar báo `already resuming in another sidebar` và không mở gì; khoá cũ hơn 30 giây bị thay. Sau đó hub đọc lại bản ghi và kiểm tra pane trên tmux; agent đang mở thì báo `agent is already open`. Khoá bị xoá khi agent hiện đang mở hoặc sau 30 giây.
 
 ### Icon
 
@@ -163,7 +164,7 @@ Trạng thái agent đến từ Claude Code hooks. `zenify up` cài hook `hub-re
 | `Stop` | done |
 | `SessionEnd` | xoá bản ghi agent |
 
-Hook ghi cùng bản ghi pane (`TMUX_PANE`) và pid tmux server (trường thứ 2 của `TMUX`). Khi một hook báo từ pane P trên server S, mọi bản ghi agent khác cùng (S, P), hoặc cùng pane P mà chưa có pid server, bị xoá, vì một pane chỉ chạy một Claude (pane id được tái dùng sau khi server khởi động lại). Task của agent được suy ra từ đường dẫn `/.worktrees/<slug>` xuất hiện trong tool input, xét các key `file_path`, `notebook_path`, `path`, `command`, `cwd` trước rồi mới tới các key khác; không khớp thì giữ slug cũ; agent chưa có slug chỉ hiện ở mục `AGENTS`. Hook fail-open: ngoài tmux (không có `TMUX_PANE` hoặc `TMUX`) nó không ghi gì, và mọi lỗi chỉ ghi vào `~/.zenify/hub/hub.log` rồi thoát mã 0, nên không bao giờ chặn agent. Bạn cũng có thể gọi tay `zenify hub report` với JSON hook trên stdin để debug.
+Hook ghi cùng bản ghi pane (`TMUX_PANE`) và pid tmux server (trường thứ 2 của `TMUX`). Khi một hook báo từ pane P trên server S, mọi bản ghi agent khác cùng (S, P) bị xoá, vì một pane chỉ chạy một Claude. Bản ghi chưa có pid server (ghi trước khi hub lưu trường này) được giữ: nó hiện là đã đóng, vẫn resume hoặc quên (`x`) được. Task của agent được suy ra từ đường dẫn `/.worktrees/<slug>` xuất hiện trong tool input, xét các key `file_path`, `notebook_path`, `path`, `command`, `cwd` trước rồi mới tới các key khác; không khớp thì giữ slug cũ; agent chưa có slug chỉ hiện ở mục `AGENTS`. Hook fail-open: ngoài tmux (không có `TMUX_PANE` hoặc `TMUX`) nó không ghi gì, và mọi lỗi chỉ ghi vào `~/.zenify/hub/hub.log` rồi thoát mã 0, nên không bao giờ chặn agent. Bạn cũng có thể gọi tay `zenify hub report` với JSON hook trên stdin để debug.
 
 ## Dữ liệu
 

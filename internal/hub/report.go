@@ -249,7 +249,8 @@ func reportOnce(home string, in HookInput, pane, server string, now int64) error
 }
 
 // dropSamePane removes every agent file other than keepID recorded on pane
-// with server or with no server (written before TmuxServer existed).
+// and server. Records without a server (written before TmuxServer existed)
+// are kept: they show closed and stay resumable or forgettable (FR-11.2).
 // Unreadable files are reported, not removed.
 func dropSamePane(home, keepID, server, pane string) error {
 	if server == "" {
@@ -258,7 +259,7 @@ func dropSamePane(home, keepID, server, pane string) error {
 	agents, err := LoadAgents(home)
 	errs := []error{err}
 	for id, a := range agents {
-		if id == keepID || a.Pane != pane || (a.TmuxServer != server && a.TmuxServer != "") {
+		if id == keepID || a.Pane != pane || a.TmuxServer != server {
 			continue
 		}
 		if err := ForgetAgent(home, id); err != nil {

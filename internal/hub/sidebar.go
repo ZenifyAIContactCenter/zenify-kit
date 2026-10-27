@@ -41,6 +41,7 @@ type polledMsg struct {
 	at          time.Time
 	github      bool  // a GitHub round; otherwise a local one
 	githubAt    int64 // State.GitHubAt when a GitHub round started
+	ownersKnown bool  // State.Owners was non-empty when a GitHub round started
 	repos       []string
 	fingerprint string
 	err         error
@@ -147,9 +148,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.localErr = msg.err
 		}
 		m.err = m.reload()
-		if msg.github && msg.err == nil && m.state.GitHubError == "" && m.state.GitHubAt == msg.githubAt {
-			// Deferred (owners unknown): retry next tick. A failed round keeps
-			// lastGitHub, so an outage is retried only every GitHubInterval.
+		if msg.github && msg.err == nil && m.state.GitHubError == "" && m.state.GitHubAt == msg.githubAt &&
+			!msg.ownersKnown && len(m.state.Owners) > 0 {
+			// Deferred while owners were unknown, and they are known now: retry
+			// next tick. Otherwise keep the normal interval, so owners that never
+			// appear do not start a round every tick, and a failed round is
+			// retried only every GitHubInterval.
 			m.lastGitHub = time.Time{}
 		}
 		m.logErr(msg.at)
@@ -239,8 +243,10 @@ func (m *Model) pollIfDue(now time.Time, worktreesChanged bool) (tea.Cmd, error)
 	}
 	if m.lastGitHub.IsZero() || now.Sub(m.lastGitHub) >= GitHubInterval(m.state) || refresh.After(m.refreshSeen) {
 		m.githubBusy, m.lastGitHub, m.refreshSeen = true, now, refresh
-		since := m.state.GitHubAt
-		cmds = append(cmds, func() tea.Msg { return polledMsg{at: now, github: true, githubAt: since, err: p.GitHub()} })
+		since, known := m.state.GitHubAt, len(m.state.Owners) > 0
+		cmds = append(cmds, func() tea.Msg {
+			return polledMsg{at: now, github: true, githubAt: since, ownersKnown: known, err: p.GitHub()}
+		})
 	}
 	return tea.Batch(cmds...), nil
 }
@@ -305,7 +311,7 @@ func (m *Model) reload() error {
 		}
 	}
 	m.relayout()
-	return nil
+	return sweepResumeLocks(m.home, s.Agents, time.Now())
 }
 
 // relayout rebuilds the rows and keeps the cursor on the same row when it
@@ -523,7 +529,8 @@ const closedNotice = "agent is closed — press Enter to resume"
 const resumeGuard = 15 * time.Second
 
 // resume opens a new window running `claude --resume` for the closed agent a,
-// unless Enter already resumed it within resumeGuard.
+// unless Enter already resumed it within resumeGuard, another sidebar holds
+// its resume lock, or a fresh check finds it open.
 func (m Model) resume(a Agent) Model {
 	if m.selfErr != nil {
 		return m.done("", fmt.Errorf("locate zenify binary: %w", m.selfErr))
@@ -533,14 +540,153 @@ func (m Model) resume(a Agent) Model {
 		m.notice, m.failed = "already resuming", false
 		return m
 	}
-	err := ResumeAgentWindow(m.tm, m.root, m.self, a.SessionID, WindowName(a.Slug))
-	if err == nil {
-		m.resuming[a.SessionID] = now
+	if !ValidSessionID(a.SessionID) { // it names the lock file below
+		return m.done("", fmt.Errorf("invalid session id %q", a.SessionID))
 	}
-	return m.done("resumed "+agentLabel(&a)+" in a new window", err)
+	got, err := takeResumeLock(m.home, a.SessionID, now)
+	if err != nil {
+		return m.done("", err)
+	}
+	if !got {
+		m.notice, m.failed = "already resuming in another sidebar", false
+		return m
+	}
+	// The cached state may be a poll round old: another sidebar may have
+	// resumed the agent already.
+	fresh, open, err := freshLiveness(m.home, m.tm, a.SessionID)
+	switch {
+	case err != nil:
+		return m.done("", errors.Join(err, removeResumeLock(m.home, a.SessionID)))
+	case fresh == nil:
+		return m.done("agent session ended", removeResumeLock(m.home, a.SessionID))
+	case open:
+		return m.done("agent is already open", removeResumeLock(m.home, a.SessionID))
+	}
+	err = ResumeAgentWindow(m.tm, m.root, m.self, a.SessionID, WindowName(a.Slug))
+	if err != nil {
+		return m.done("", errors.Join(err, removeResumeLock(m.home, a.SessionID)))
+	}
+	m.resuming[a.SessionID] = now
+	return m.done("resumed "+agentLabel(&a)+" in a new window", nil)
+}
+
+// freshLiveness re-reads id's agent file and asks tmux whether its pane is
+// live right now; a is nil when the file is gone.
+func freshLiveness(home string, tm tmuxx.Runner, id string) (a *Agent, open bool, err error) {
+	a, err = readAgent(home, id)
+	if err != nil || a == nil {
+		return a, false, err
+	}
+	marked, err := MarkOpen(tm, map[string]Agent{id: *a})
+	if err != nil {
+		return a, false, fmt.Errorf("check agent %s liveness: %w", id, err)
+	}
+	return a, marked[id].Open, nil
+}
+
+// resumeLockTTL is how long a resume lock keeps other sidebars from resuming
+// the same agent.
+const resumeLockTTL = 30 * time.Second
+
+func resumeLockPath(home, id string) string {
+	return filepath.Join(AgentsDir(home), id+".resuming")
+}
+
+// takeResumeLock creates agents/<id>.resuming holding now as unix seconds,
+// so sidebars in other processes do not resume the same agent. A lock older
+// than resumeLockTTL is replaced; a younger one yields false.
+func takeResumeLock(home, id string, now time.Time) (bool, error) {
+	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {
+		return false, fmt.Errorf("create agents dir: %w", err)
+	}
+	p := resumeLockPath(home, id)
+	for attempt := 0; attempt < 2; attempt++ {
+		f, err := os.OpenFile(p, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- path is the hub agents dir plus a validated session id
+		if err == nil {
+			_, werr := f.WriteString(strconv.FormatInt(now.Unix(), 10))
+			if cerr := f.Close(); werr == nil {
+				werr = cerr
+			}
+			if werr != nil {
+				return false, errors.Join(fmt.Errorf("write resume lock %s: %w", id, werr), removeResumeLock(home, id))
+			}
+			return true, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return false, fmt.Errorf("create resume lock %s: %w", id, err)
+		}
+		at, err := resumeLockTime(p)
+		if err != nil {
+			return false, err
+		}
+		if now.Sub(at) < resumeLockTTL {
+			return false, nil
+		}
+		if err := removeResumeLock(home, id); err != nil {
+			return false, err
+		}
+	}
+	return false, nil // another sidebar replaced the stale lock first
+}
+
+// resumeLockTime reads the unix time a resume lock holds; unparsable content
+// counts as the zero time, so the lock is stale.
+func resumeLockTime(p string) (time.Time, error) {
+	b, err := os.ReadFile(p) //nolint:gosec // G304 -- path is built from the hub agents dir, not external input
+	if errors.Is(err, fs.ErrNotExist) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("read resume lock %s: %w", filepath.Base(p), err)
+	}
+	sec, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+	if err != nil {
+		return time.Time{}, nil
+	}
+	return time.Unix(sec, 0), nil
+}
+
+func removeResumeLock(home, id string) error {
+	if err := os.Remove(resumeLockPath(home, id)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("remove resume lock %s: %w", id, err)
+	}
+	return nil
+}
+
+// sweepResumeLocks removes the resume locks of agents that show open and of
+// locks older than resumeLockTTL.
+func sweepResumeLocks(home string, agents map[string]Agent, now time.Time) error {
+	entries, err := os.ReadDir(AgentsDir(home))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read agents dir: %w", err)
+	}
+	var errs []error
+	for _, e := range entries {
+		id, ok := strings.CutSuffix(e.Name(), ".resuming")
+		if !ok || e.IsDir() {
+			continue
+		}
+		if !agents[id].Open {
+			at, err := resumeLockTime(resumeLockPath(home, id))
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			if now.Sub(at) < resumeLockTTL {
+				continue
+			}
+		}
+		errs = append(errs, removeResumeLock(home, id))
+	}
+	return errors.Join(errs...)
 }
 
 // forget asks, then deletes the file of the closed agent on an AGENTS row.
+// At confirm time it re-reads the file and liveness, and refuses when the
+// agent opened again or its record changed since the prompt.
 func (m Model) forget(it Item) Model {
 	if it.Kind != KindAgent || it.Agent == nil {
 		return m
@@ -552,6 +698,17 @@ func (m Model) forget(it Item) Model {
 	}
 	name := agentLabel(&a)
 	return m.ask("Forget agent "+name+"? y/n", func(m Model) Model {
+		fresh, open, err := freshLiveness(m.home, m.tm, a.SessionID)
+		switch {
+		case err != nil:
+			return m.done("", err)
+		case fresh == nil:
+			return m.done("agent session ended", nil)
+		case open:
+			return m.done("agent is open again", nil)
+		case fresh.UpdatedAt != a.UpdatedAt:
+			return m.done("agent changed", nil)
+		}
 		return m.done("forgot agent "+name, ForgetAgent(m.home, a.SessionID))
 	})
 }

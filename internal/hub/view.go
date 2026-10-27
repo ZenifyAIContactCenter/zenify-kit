@@ -56,10 +56,14 @@ var reviewShort = map[string]string{
 	"REVIEW_REQUIRED":   "review",
 }
 
-// prLine renders "<name> #<n> <checks> <mergeState> <review> <n threads>"
-// plus "!" on an alert; empty parts (name included) are omitted.
+// prLine renders "<name> #<n> <checks> <mergeState> <review> <n threads>",
+// led by "!" on an alert so truncation never hides it; empty parts (name
+// included) are omitted.
 func prLine(name string, pr *PR) string {
 	var parts []string
+	if pr.Alert != "" {
+		parts = append(parts, red.Render("!"))
+	}
 	if name != "" {
 		parts = append(parts, name)
 	}
@@ -72,9 +76,6 @@ func prLine(name string, pr *PR) string {
 		if p != "" {
 			parts = append(parts, p)
 		}
-	}
-	if pr.Alert != "" {
-		parts = append(parts, red.Render("!"))
 	}
 	return strings.Join(parts, " ")
 }

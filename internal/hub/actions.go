@@ -89,6 +89,16 @@ type Item struct {
 	PR       *PR
 }
 
+// allMerged reports whether every repo of t is merged (FR-10.4).
+func allMerged(t Task) bool {
+	for _, r := range t.Repos {
+		if !r.Merged {
+			return false
+		}
+	}
+	return len(t.Repos) > 0
+}
+
 func hasPR(t Task) bool {
 	for _, r := range t.Repos {
 		if r.PR != nil {
@@ -120,9 +130,9 @@ type repoGroup struct {
 // with an active worktree come first (by highest roll-up, then name) and are
 // open unless folds says otherwise, the rest follow by name, collapsed
 // unless folds opens them. Inside a repo, active worktrees come first (by
-// roll-up, then slug), then the rest by slug. A worktree whose repo is merged
-// while its task has neither an agent nor an open PR goes into one merged
-// group at the end, listed as repo/slug when expanded.
+// roll-up, then slug), then the rest by slug. A worktree whose task is merged
+// in every repo and has neither an agent nor an open PR goes into one merged
+// group at the end, listed as repo/slug when expanded (FR-10.4).
 func Flatten(s State, expanded bool, folds map[string]bool) []Item {
 	byName := map[string]*repoGroup{}
 	var groups []*repoGroup
@@ -131,7 +141,7 @@ func Flatten(s State, expanded bool, folds map[string]bool) []Item {
 		t := &s.Tasks[i]
 		for j := range t.Repos {
 			w := worktree{t: t, r: &t.Repos[j]}
-			if w.r.Merged && len(t.Agents) == 0 && !hasPR(*t) {
+			if allMerged(*t) && len(t.Agents) == 0 && !hasPR(*t) {
 				done = append(done, w)
 				continue
 			}
