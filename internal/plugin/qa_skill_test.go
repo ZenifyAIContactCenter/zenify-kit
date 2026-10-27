@@ -55,6 +55,9 @@ func TestQASkillContract(t *testing.T) {
 		`"commit"`,
 		"Exit 2",
 		"An attempt is one `zenify e2e run --local` on base after `zenify e2e lint` passes",
+		// A wrong fix that handles one condition of a multi-condition line went green (eval 2026-10-27).
+		"gets one\n   `Bước:`/`Thấy:` pair per condition", //znf:allow-lang
+		"gets one test per pair, each setting up the data that\n   triggers its own condition",
 	})
 
 	// Public-distribution invariant (ARCHITECTURE.md): the workspace's repo names and
@@ -92,6 +95,9 @@ func TestQASkillContract(t *testing.T) {
 		if ac.Kind == e2e.ACKindE2E && (len(ac.Steps) == 0 || len(ac.Sees) == 0) {
 			t.Errorf("e2e @ac:%d needs steps and seen text: %+v", ac.N, ac)
 		}
+	}
+	if !strings.Contains(ex, "Thấy:\n- Tiêu đề tối đa 200 ký tự\nBước:") { //znf:allow-lang
+		t.Error("template example lacks a multi-condition @ac with one Bước/Thấy pair per condition") //znf:allow-lang
 	}
 	for _, k := range []e2e.ACKind{e2e.ACKindE2E, e2e.ACKindAsk, e2e.ACKindOut} {
 		if !kinds[k] {
