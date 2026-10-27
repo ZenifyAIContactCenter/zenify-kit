@@ -326,7 +326,8 @@ func TargetAgent(s State, it Item) (Agent, bool) {
 // NewAgentWindow opens a window running claude in root, with a hub sidebar
 // (self is the zenify binary) split to its left; focus stays on claude. The
 // window goes into the zenify session, or into the caller's current session
-// (tmux resolves it from the TMUX env) when no zenify session exists. It then
+// (tmux resolves it from the TMUX env) when no zenify session exists; in the
+// zenify session the client is switched to the new window. It then
 // enables allow-passthrough for OSC 52 copy; a failure there (tmux < 3.3) is
 // returned for the footer after the window is complete.
 func NewAgentWindow(r tmuxx.Runner, root, self string) error {
@@ -369,7 +370,8 @@ func WindowName(slug string) string {
 // to its left; see NewAgentWindow.
 func agentWindow(r tmuxx.Runner, root, self, name string, command ...string) error {
 	args := append([]string{"new-window", "-P", "-F", "#{window_id}", "-c", root, "-n", name}, command...)
-	if tmuxx.HasSession(r) {
+	inHub := tmuxx.HasSession(r)
+	if inHub {
 		args = append([]string{"new-window", "-t", tmuxx.Target + ":"}, args[1:]...)
 	}
 	out, err := r.Run(args...)
@@ -382,6 +384,11 @@ func agentWindow(r tmuxx.Runner, root, self, name string, command ...string) err
 	}
 	if _, err := r.Run("split-window", "-d", "-h", "-b", "-l", "30%", "-t", win, "-c", root, self, "hub", "sidebar"); err != nil {
 		return err
+	}
+	if inHub { // the caller may sit in another session; follow the window like jump
+		if _, err := r.Run("switch-client", "-t", win); err != nil {
+			return err
+		}
 	}
 	if _, err := r.Run("set-option", "-w", "-t", win, "allow-passthrough", "on"); err != nil {
 		return fmt.Errorf("window opened, but allow-passthrough failed (copy may not reach the terminal): %w", err)

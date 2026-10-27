@@ -74,11 +74,14 @@ type Model struct {
 	lastGitHub  time.Time
 	refreshSeen time.Time
 	stateMod    time.Time
-	localBusy   bool     // a local round is in flight
-	localAgain  bool     // worktrees changed while a local round was in flight
-	githubBusy  bool     // a GitHub round is in flight
-	repos       []string // wt-managed workspace repos, refreshed by each local round
-	fingerprint string   // worktree dirs of repos, as last seen
+	localBusy   bool // a local round is in flight
+	localAgain  bool // worktrees changed while a local round was in flight
+	githubBusy  bool // a GitHub round is in flight
+	// githubRetried: the first-run GitHub retry already ran; reset once
+	// State.GitHubAt is set.
+	githubRetried bool
+	repos         []string // wt-managed workspace repos, refreshed by each local round
+	fingerprint   string   // worktree dirs of repos, as last seen
 
 	state    State
 	items    []Item
@@ -147,13 +150,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.localErr = msg.err
 		}
-		ownersBefore := len(m.state.Owners) > 0
 		m.err = m.reload()
-		if !msg.github && m.state.GitHubAt == 0 && !ownersBefore && len(m.state.Owners) > 0 {
-			// First run: the GitHub round was deferred while owners were
-			// unknown and this local round supplied them; retry next tick.
-			m.lastGitHub = time.Time{}
-		}
 		if msg.github && msg.err == nil && m.state.GitHubError == "" && m.state.GitHubAt == msg.githubAt &&
 			!msg.ownersKnown && len(m.state.Owners) > 0 {
 			// Deferred while owners were unknown, and they are known now: retry
@@ -201,6 +198,7 @@ func (m Model) tick(now time.Time) (Model, tea.Cmd) {
 		if changed {
 			m.fingerprint = fp
 		}
+		m.retryFirstGitHub()
 		if poll, err = m.pollIfDue(now, changed); err != nil {
 			errs = append(errs, err)
 		}
@@ -211,6 +209,20 @@ func (m Model) tick(now time.Time) (Model, tea.Cmd) {
 	m.err = errors.Join(errs...)
 	m.logErr(now)
 	return m, poll
+}
+
+// retryFirstGitHub makes a GitHub round due once on first run: no round has
+// completed yet (GitHubAt 0), owners are known now and none is in flight, so
+// the earlier round was deferred while owners were unknown. It does not depend
+// on whether a tick or the local round's result loaded the owners first.
+func (m *Model) retryFirstGitHub() {
+	if m.state.GitHubAt != 0 {
+		m.githubRetried = false
+		return
+	}
+	if !m.githubRetried && len(m.state.Owners) > 0 && !m.githubBusy && !m.lastGitHub.IsZero() {
+		m.lastGitHub, m.githubRetried = time.Time{}, true
+	}
 }
 
 // logErr appends m.err to hub.log when it differs from the last one logged,
@@ -405,7 +417,7 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 			} else if ok {
 				m = m.resume(a)
 			} else if it.Task != nil {
-				m = m.ask("Open a new agent for "+it.Task.Slug+"? y/n", Model.openAgent)
+				m = m.ask("y/n · open new agent for "+it.Task.Slug+"?", Model.openAgent)
 			} else if it.Kind == KindPR && it.PR != nil {
 				return m, m.openPR(*it.PR)
 			}
@@ -468,20 +480,29 @@ func (m Model) fix(it Item) Model {
 		if !ok {
 			return m
 		}
-		err := tmuxx.SendKeys(m.tm, a.Pane, FixPrompt(pr))
+		// A pane id is only meaningful on the server that recorded it.
+		pid, err := tmuxx.ServerPID(m.tm)
+		if err != nil {
+			return m.done("", err)
+		}
+		if a.TmuxServer != pid {
+			m.notice, m.failed = "agent runs on another tmux server", false
+			return m
+		}
+		err = tmuxx.SendKeys(m.tm, a.Pane, FixPrompt(pr))
 		if err == nil {
 			err = m.ack(&pr)
 		}
 		return m.done("sent to "+a.Pane, err)
 	}
 	if a.State == Blocked {
-		return m.ask("Agent is waiting for input — send anyway? y/n", send)
+		return m.ask("y/n · send to waiting agent?", send)
 	}
 	return send(m)
 }
 
 // freshAgent re-reads a's agent file, since the cached state may be up to a
-// poll round old, and returns a with its current state and pane; ok is false
+// poll round old, and returns a with its current state, pane and server; ok is false
 // (with the notice or error set on m) when the file is gone or unreadable.
 func (m Model) freshAgent(a Agent) (Agent, Model, bool) {
 	fresh, err := readAgent(m.home, a.SessionID)
@@ -491,7 +512,7 @@ func (m Model) freshAgent(a Agent) (Agent, Model, bool) {
 	if fresh == nil { // SessionEnd removed the file
 		return a, m.done("agent session ended", nil), false
 	}
-	a.State = fresh.State
+	a.State, a.TmuxServer = fresh.State, fresh.TmuxServer
 	if fresh.Pane != "" {
 		a.Pane = fresh.Pane
 	}
@@ -678,6 +699,16 @@ func resumeLockTime(p string) (time.Time, error) {
 	return at, err
 }
 
+// ResumeLocked reports whether agent id has a resume lock taken less than
+// resumeLockTTL before now, i.e. a sidebar is resuming it right now.
+func ResumeLocked(home, id string, now time.Time) (bool, error) {
+	at, err := resumeLockTime(resumeLockPath(home, id))
+	if err != nil || at.IsZero() {
+		return false, err
+	}
+	return now.Sub(at) < resumeLockTTL, nil
+}
+
 // readResumeLock returns the lock time and the file mtime. A missing file
 // yields the zero time; an empty or unparsable lock falls back to the mtime.
 func readResumeLock(p string) (at, mtime time.Time, err error) {
@@ -753,7 +784,7 @@ func (m Model) forget(it Item) Model {
 		return m
 	}
 	name := agentLabel(&a)
-	return m.ask("Forget agent "+name+"? y/n", func(m Model) Model {
+	return m.ask("y/n · forget "+name+"?", func(m Model) Model {
 		fresh, open, err := freshLiveness(m.home, m.tm, a.SessionID)
 		switch {
 		case err != nil:

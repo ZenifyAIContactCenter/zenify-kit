@@ -220,14 +220,15 @@ func TestEnter_NoAgentAsksThenOpens(t *testing.T) {
 	m = update(t, m, key("enter")) // open the idle repo be
 	m = update(t, m, key("j"))
 	m = update(t, m, key("enter"))
-	if !strings.Contains(m.View(), "Open a new agent for t2? y/n") {
+	if !strings.Contains(m.View(), "y/n · open new agent for t2?") {
 		t.Fatalf("View missing prompt:\n%s", m.View())
 	}
 	if len(tm.calls) != 0 {
 		t.Fatalf("tmux called before confirm: %q", tm.calls)
 	}
 	update(t, m, key("y"))
-	if len(tm.calls) != 4 || tm.calls[0][0] != "has-session" || tm.calls[1][0] != "new-window" || tm.calls[2][0] != "split-window" || tm.calls[3][0] != "set-option" {
+	if len(tm.calls) != 5 || tm.calls[0][0] != "has-session" || tm.calls[1][0] != "new-window" || tm.calls[2][0] != "split-window" ||
+		!reflect.DeepEqual(tm.calls[3], []string{"switch-client", "-t", "@9"}) || tm.calls[4][0] != "set-option" {
 		t.Errorf("tmux calls = %q", tm.calls)
 	}
 }
@@ -239,6 +240,7 @@ func TestKeyF_SendsFix(t *testing.T) {
 	m = update(t, m, key("j")) // PR row #812
 	update(t, m, key("f"))
 	want := [][]string{
+		{"display-message", "-p", "#{pid}"},
 		{"send-keys", "-t", "%3", "-l", "/znf:fix https://github.com/o/r/actions/runs/1/job/2"},
 		{"send-keys", "-t", "%3", "Enter"},
 	}
@@ -259,11 +261,11 @@ func TestKeyF_BlockedAsks(t *testing.T) {
 	if len(tm.calls) != 0 {
 		t.Fatalf("sent before confirm: %q", tm.calls)
 	}
-	if !strings.Contains(m.View(), "Agent is waiting for input — send anyway? y/n") {
+	if !strings.Contains(m.View(), "y/n · send to waiting agent?") {
 		t.Fatalf("View missing prompt:\n%s", m.View())
 	}
 	update(t, m, key("y"))
-	if len(tm.calls) != 2 || tm.calls[0][0] != "send-keys" {
+	if len(tm.calls) != 3 || tm.calls[0][0] != "display-message" || tm.calls[1][0] != "send-keys" {
 		t.Errorf("tmux calls after y = %q", tm.calls)
 	}
 }
@@ -669,7 +671,7 @@ func TestKeyF_FreshBlockedAsks(t *testing.T) {
 	if len(tm.calls) != 0 {
 		t.Fatalf("sent to a blocked agent without asking: %q", tm.calls)
 	}
-	if !strings.Contains(m.View(), "Agent is waiting for input — send anyway? y/n") {
+	if !strings.Contains(m.View(), "y/n · send to waiting agent?") {
 		t.Errorf("View missing prompt:\n%s", m.View())
 	}
 }
@@ -748,7 +750,7 @@ func TestCursor_FollowsRowAcrossReorder(t *testing.T) {
 		t.Errorf("o: gh calls = %q, want %q", gh.args, want)
 	}
 	update(t, m, key("f"))
-	want := [][]string{{"send-keys", "-t", "%5", "-l", "/znf:fix u1"}, {"send-keys", "-t", "%5", "Enter"}}
+	want := [][]string{{"display-message", "-p", "#{pid}"}, {"send-keys", "-t", "%5", "-l", "/znf:fix u1"}, {"send-keys", "-t", "%5", "Enter"}}
 	if !reflect.DeepEqual(tm.calls, want) {
 		t.Errorf("f: tmux calls = %q, want %q", tm.calls, want)
 	}
@@ -805,7 +807,7 @@ func TestTickError_LoggedOnceAndHinted(t *testing.T) {
 		t.Errorf("tick error logged %d times, want 1:\n%s", n, hubLog(t, home))
 	}
 	m.localErr = errors.New("a\nb") // a second source hides the tick error behind the hint
-	if !strings.Contains(m.View(), "more, see ~/.zenify/hub/hub.log)") {
+	if !strings.Contains(m.View(), ", hub.log)") {
 		t.Errorf("footer missing hub.log hint:\n%s", m.View())
 	}
 }
@@ -865,7 +867,7 @@ func TestKeyF_UsesFreshPane(t *testing.T) {
 	m = update(t, m, key("j"))
 	m = update(t, m, key("j")) // PR row #812
 	update(t, m, key("f"))
-	if len(tm.calls) == 0 || tm.calls[0][2] != "%9" {
+	if len(tm.calls) < 2 || tm.calls[1][2] != "%9" {
 		t.Errorf("tmux calls = %q, want send-keys to the fresh pane %%9", tm.calls)
 	}
 }
@@ -899,5 +901,57 @@ func TestFirstRunLocalRoundSupplyingOwnersRetriesGitHub(t *testing.T) {
 	update(t, m, tickMsg(t0.Add(time.Second)))
 	if ct.github != 2 {
 		t.Errorf("github rounds = %d, want 2 (retried once the local round supplied owners)", ct.github)
+	}
+}
+
+func TestFirstRunTickBeforeLocalResultRetriesGitHub(t *testing.T) {
+	home := t.TempDir()
+	if err := WriteState(home, State{}); err != nil {
+		t.Fatal(err)
+	}
+	ct := &countTicker{home: home, deferred: true, ownersOnLocal: []string{"o"}}
+	m := NewModel(home, "/ws", &scriptTmux{}, &Poller{})
+	m.poll = ct
+	m.every = func() tea.Cmd { return nil }
+	m.gh = &fakeGH{}
+	m.clip = osc52Clipboard(&bytes.Buffer{})
+	m.self = "/bin/zenify"
+	m, cmd := send(t, m, tickMsg(t0)) // first tick starts a local and a GitHub round
+	t.Cleanup(func() {
+		if err := m.lock.Release(); err != nil {
+			t.Error(err)
+		}
+	})
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("first tick returned %T, want a batch of 2 rounds", batch)
+	}
+	m = update(t, m, batch[1]())                   // deferred GitHub round: owners unknown
+	local := batch[0]()                            // the local round writes the owners to state.json
+	m = update(t, m, tickMsg(t0.Add(time.Second))) // a tick reloads them first
+	m = update(t, m, local)
+	m = update(t, m, tickMsg(t0.Add(2*time.Second)))
+	update(t, m, tickMsg(t0.Add(3*time.Second)))
+	if ct.github != 2 {
+		t.Errorf("github rounds = %d, want 2 (retried once although a tick loaded the owners first)", ct.github)
+	}
+}
+
+func TestKeyF_OtherTmuxServerSendsNothing(t *testing.T) {
+	home := t.TempDir()
+	s := fixState(Idle)
+	a := s.Agents["s1"]
+	a.TmuxServer = "111"
+	s.Agents["s1"] = a
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
+	tm.out = map[string]string{"display-message": "222\n"}
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
+	m = update(t, m, key("f"))
+	if want := [][]string{{"display-message", "-p", "#{pid}"}}; !reflect.DeepEqual(tm.calls, want) {
+		t.Errorf("tmux calls = %q, want only the server pid lookup", tm.calls)
+	}
+	if !strings.Contains(m.View(), "agent runs on another tmux server") {
+		t.Errorf("View missing notice:\n%s", m.View())
 	}
 }

@@ -148,6 +148,7 @@ func TestNewAgentWindow(t *testing.T) {
 		{"has-session", "-t", "=zenify"},
 		{"new-window", "-t", "=zenify:", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "agent", "claude"},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
+		{"switch-client", "-t", "@7"},
 		{"set-option", "-w", "-t", "@7", "allow-passthrough", "on"},
 	}
 	if !reflect.DeepEqual(f.calls, want) {
@@ -175,7 +176,7 @@ func TestNewAgentWindow_PassthroughErrorIsReported(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "allow-passthrough") {
 		t.Errorf("want allow-passthrough error, got %v", err)
 	}
-	if len(f.calls) != 4 || f.calls[2][0] != "split-window" {
+	if len(f.calls) != 5 || f.calls[2][0] != "split-window" || f.calls[3][0] != "switch-client" {
 		t.Errorf("window not fully built: %q", f.calls)
 	}
 }
@@ -209,6 +210,7 @@ func TestResumeAgentWindow_ZenifySession(t *testing.T) {
 		{"has-session", "-t", "=zenify"},
 		{"new-window", "-t", "=zenify:", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "t1", "claude", "--resume", id},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@3", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
+		{"switch-client", "-t", "@3"},
 		{"set-option", "-w", "-t", "@3", "allow-passthrough", "on"},
 	}
 	if !reflect.DeepEqual(f.calls, want) {

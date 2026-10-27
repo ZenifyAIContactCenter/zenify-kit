@@ -251,7 +251,8 @@ func reportOnce(home string, in HookInput, pane, server string, now int64) error
 // dropSamePane removes every agent file other than keepID recorded on pane
 // and server. Records without a server (written before TmuxServer existed)
 // are kept: they show closed and stay resumable or forgettable (FR-11.2).
-// Unreadable files are reported, not removed.
+// Unreadable files are reported, not removed; a file rewritten since it was
+// read (another hook moved that agent) is kept.
 func dropSamePane(home, keepID, server, pane string) error {
 	if server == "" {
 		return nil
@@ -262,11 +263,40 @@ func dropSamePane(home, keepID, server, pane string) error {
 		if id == keepID || a.Pane != pane || a.TmuxServer != server {
 			continue
 		}
-		if err := ForgetAgent(home, id); err != nil {
+		if err := dropIfSamePane(home, id, server, pane); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// dropHook runs between dropIfSamePane's read and remove; tests use it to
+// land a concurrent hook report.
+var dropHook = func() {}
+
+// dropIfSamePane removes agent id's file only while it still records pane on
+// server and is unchanged since that read (compare-and-delete on the file).
+func dropIfSamePane(home, id, server, pane string) error {
+	path := agentPath(home, id)
+	fi, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("stat agent %s: %w", id, err)
+	}
+	a, err := readAgent(home, id)
+	if err != nil || a == nil || a.Pane != pane || a.TmuxServer != server {
+		return err
+	}
+	dropHook()
+	if err := unchangedSince(path, fi); err != nil {
+		if errors.Is(err, errAgentChanged) {
+			return nil
+		}
+		return err
+	}
+	return ForgetAgent(home, id)
 }
 
 // LogError appends one line to hub.log. If the log itself cannot be written,

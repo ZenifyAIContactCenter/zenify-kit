@@ -92,7 +92,8 @@ const (
 )
 
 // resumable loads the agent files and returns the closed agents a new hub
-// session resumes (FR-11.3). Errors go to hub.log (stderr when home is
+// session resumes (FR-11.3), skipping agents a sidebar is resuming (fresh
+// agents/<id>.resuming lock). Errors go to hub.log (stderr when home is
 // unknown); an unreadable tmux server resumes nothing, since an agent still
 // running there must not be started twice.
 func resumable(env hubEnv, now int64) []hub.Agent {
@@ -111,6 +112,15 @@ func resumable(env hubEnv, now int64) []hub.Agent {
 	if agents, err = hub.MarkOpen(env.runner, agents); err != nil {
 		hub.LogError(home, fmt.Errorf("hub: tmux liveness, no agent resumed: %w", err), now)
 		return nil
+	}
+	for id := range agents { // a sidebar resuming it right now would start it twice
+		locked, err := hub.ResumeLocked(home, id, time.Unix(now, 0))
+		if err != nil {
+			hub.LogError(home, fmt.Errorf("hub: resume lock, agent %s not resumed: %w", id, err), now)
+		}
+		if locked || err != nil {
+			delete(agents, id)
+		}
 	}
 	out, err := resumeCandidates(agents, now)
 	if err != nil {

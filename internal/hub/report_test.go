@@ -353,6 +353,29 @@ func TestReport_DropsOtherAgentOnSamePane(t *testing.T) { // SC-25
 	}
 }
 
+func TestReport_DropSamePaneKeepsRecordRewrittenMeanwhile(t *testing.T) {
+	home := t.TempDir()
+	old := Agent{SessionID: "old", Pane: "%3", TmuxServer: "4242", State: Idle}
+	if err := writeAgent(home, &old); err != nil {
+		t.Fatal(err)
+	}
+	dropHook = func() { // a hook for "old" lands after the snapshot (rename: new inode)
+		dropHook = func() {}
+		moved := old
+		moved.State = Working
+		if err := writeAgent(home, &moved); err != nil {
+			t.Error(err)
+		}
+	}
+	t.Cleanup(func() { dropHook = func() {} })
+	if err := Report(home, strings.NewReader(`{"session_id":"new","hook_event_name":"SessionStart","source":"resume"}`), "%3", tmuxEnv, 9); err != nil {
+		t.Fatal(err)
+	}
+	if a, err := readAgent(home, "old"); err != nil || a == nil || a.State != Working {
+		t.Errorf("rewritten record dropped: %+v %v", a, err)
+	}
+}
+
 func TestReport_DropSamePaneErrorReturned(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(AgentsDir(home), 0o700); err != nil {

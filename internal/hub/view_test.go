@@ -358,7 +358,7 @@ func TestView_MultiLineErrorKeepsCursorVisible(t *testing.T) {
 	if !strings.Contains(v, "\n▌  ○ task-25") {
 		t.Errorf("selected row pushed off-screen:\n%s", v)
 	}
-	if !strings.Contains(v, "line 1 (+19 more, see ~/.zenify/hub/hub.log)") || strings.Contains(v, "line 2") {
+	if !strings.Contains(v, "line 1 (+19, hub.log)") || strings.Contains(v, "line 2") {
 		t.Errorf("error not shown as one line:\n%s", v)
 	}
 	if n := strings.Count(v, "\n") + 1; n != 20 {
@@ -481,7 +481,7 @@ func TestKeyX_ClosedAgentConfirmThenForget(t *testing.T) {
 	m, _, _ := newTestModel(t, home, s)
 	m = toAgent(t, m, "a")
 	m = update(t, m, key("x"))
-	if !strings.Contains(m.View(), "Forget agent old run? y/n") {
+	if !strings.Contains(m.View(), "y/n · forget old run?") {
 		t.Fatalf("View missing prompt:\n%s", m.View())
 	}
 	if a, _ := readAgent(home, "a"); a == nil {
@@ -791,5 +791,38 @@ func TestRemoveStaleResumeLock_MtimeChangedRefuses(t *testing.T) {
 	}
 	if _, err := os.Stat(p); err != nil {
 		t.Errorf("lock removed despite changed mtime: %v", err)
+	}
+}
+
+func TestView_NarrowPromptWrapsWithYN(t *testing.T) {
+	m, _, _ := newTestModel(t, t.TempDir(), State{})
+	m = update(t, m, tea.WindowSizeMsg{Width: 36, Height: 20})
+	m = m.ask("y/n · open new agent for "+strings.Repeat("long-slug-", 8)+"?", func(m Model) Model { return m })
+	v := m.View()
+	lines := strings.Split(v, "\n")
+	at := -1
+	for i, l := range lines {
+		if lipgloss.Width(l) > 36 {
+			t.Errorf("line wider than 36: %q", l)
+		}
+		if strings.HasPrefix(l, "y/n · open") {
+			at = i
+		}
+	}
+	if at < 0 || at+2 >= len(lines) || !strings.HasSuffix(lines[at+1], "…") || strings.Contains(lines[at+2], "long-slug") {
+		t.Errorf("prompt not shown as 2 lines with y/n first:\n%s", v)
+	}
+}
+
+func TestView_NarrowErrorKeepsFirstWords(t *testing.T) {
+	m, _, _ := newTestModel(t, t.TempDir(), State{})
+	m = update(t, m, tea.WindowSizeMsg{Width: 36, Height: 20})
+	m.err = errors.New("dial tcp 127.0.0.1: connection refused\nsecond line")
+	if v := m.View(); !strings.Contains(v, "dial tcp") || !strings.Contains(v, "(+1, hub.log)") {
+		t.Errorf("error at width 36:\n%s", v)
+	}
+	m = update(t, m, tea.WindowSizeMsg{Width: 20, Height: 20})
+	if v := m.View(); !strings.Contains(v, "dial tcp") || strings.Contains(v, "hub.log") {
+		t.Errorf("error at width 20 kept the hint or lost the message:\n%s", v)
 	}
 }

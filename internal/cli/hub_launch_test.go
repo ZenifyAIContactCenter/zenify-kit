@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -320,6 +321,29 @@ func TestHubCmd_SkipsOpenAgent(t *testing.T) {
 	}
 	if got := sessionCalls(rt.calls)[0]; got != "new-session -d -s zenify -P -F #{window_id} -c "+root+" -n agent claude" {
 		t.Errorf("first call = %q, want a fresh claude", got)
+	}
+}
+
+func TestHubCmd_SkipsAgentWithFreshResumeLock(t *testing.T) {
+	root := hubWorkspace(t)
+	t.Chdir(root)
+	t.Setenv("TMUX", "")
+	rt := &recTmux{failOn: map[string]bool{"has-session": true}}
+	var attached []string
+	home := withHubEnv(t, rt, &attached)
+	now := time.Now().Unix()
+	writeHubAgent(t, home, hub.Agent{SessionID: idOld, UpdatedAt: now - 120})
+	writeHubAgent(t, home, hub.Agent{SessionID: idNew, UpdatedAt: now - 60})
+	lock := filepath.Join(hub.AgentsDir(home), idNew+".resuming")
+	if err := os.WriteFile(lock, []byte(strconv.FormatInt(now-5, 10)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runHub(t); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(sessionCalls(rt.calls), "\n")
+	if strings.Contains(got, idNew) || !strings.Contains(got, "claude --resume "+idOld) {
+		t.Errorf("calls resume the locked agent or miss the other:\n%s", got)
 	}
 }
 

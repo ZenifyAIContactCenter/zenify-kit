@@ -202,7 +202,9 @@ func (m Model) View() string {
 	var foot []string
 	switch {
 	case m.prompt != "":
-		foot = append(foot, yellow.Render(m.prompt))
+		for _, l := range wrapLines(m.prompt, m.width, 2) {
+			foot = append(foot, yellow.Render(l))
+		}
 	case m.notice != "" && m.failed:
 		foot = append(foot, red.Render(oneLine(m.notice, m.width)))
 	case m.notice != "":
@@ -240,16 +242,38 @@ func (m Model) View() string {
 	return strings.Join(lines, "\n")
 }
 
+// wrapLines word-wraps s to width and keeps at most limit lines, the last one
+// truncated when more text follows.
+func wrapLines(s string, width, limit int) []string {
+	if width <= 0 {
+		return []string{s}
+	}
+	lines := strings.Split(ansi.Wrap(s, width, ""), "\n")
+	if len(lines) > limit {
+		rest := strings.Join(lines[limit-1:], " ")
+		lines = append(lines[:limit-1], ansi.Truncate(rest, width-1, "")+"…")
+	}
+	return lines
+}
+
+// minErrWidth is the fewest columns an error keeps before its hub.log hint is
+// dropped.
+const minErrWidth = 10
+
 // oneLine renders s as its first line, truncated so that it and, when s has
-// more lines, a "+N more" hint pointing at hub.log fit width.
+// more lines, a "(+N, hub.log)" hint fit width; the hint is dropped when it
+// would leave the message fewer than minErrWidth columns.
 func oneLine(s string, width int) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	suffix := ""
 	if n := len(lines) - 1; n > 0 {
-		suffix = " (+" + strconv.Itoa(n) + " more, see ~/.zenify/hub/hub.log)"
+		suffix = " (+" + strconv.Itoa(n) + ", hub.log)"
 	}
 	first := lines[0]
 	if width > 0 {
+		if width-ansi.StringWidth(suffix) < minErrWidth {
+			suffix = ""
+		}
 		first = ansi.Truncate(first, max(width-ansi.StringWidth(suffix), 1), "…")
 	}
 	return first + suffix
