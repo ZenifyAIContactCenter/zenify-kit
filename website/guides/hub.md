@@ -183,6 +183,7 @@ Mọi dữ liệu hub nằm ở `~/.zenify/hub/`: `state.json` (cache chung cho 
 - Không có thông báo desktop; chỉ thấy khi đang ở terminal.
 - Agent có tool input không chứa đường dẫn worktree không được gắn vào task nào; nó chỉ hiện ở mục `AGENTS`.
 - Hub không bao giờ tự merge PR và không tự gửi `/znf:fix`.
+- Remote SSH dùng alias được phân giải bằng `ssh -G` theo `~/.ssh/config` chuẩn. Repo đặt `core.sshCommand` với file cấu hình riêng (`ssh -F …`) hoặc wrapper khác thì hub không đọc được; repo đó không gắn được PR. Dùng alias trong `~/.ssh/config` hoặc remote `github.com`.
 
 ## Xem thêm
 
