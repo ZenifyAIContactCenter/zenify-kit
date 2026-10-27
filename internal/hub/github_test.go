@@ -170,3 +170,29 @@ func TestGitHubInterval(t *testing.T) {
 		t.Errorf("no pending: got %v want 60s", got)
 	}
 }
+
+func TestParsePRs_FailedURL_OtherConclusions(t *testing.T) {
+	mk := func(ctx string) []byte {
+		return []byte(`{"data":{"search":{"nodes":[{"number":7,"url":"u","headRefName":"b",
+		"repository":{"nameWithOwner":"o/r"},
+		"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE","contexts":{"nodes":[` + ctx + `]}}}}]},
+		"reviewThreads":{"nodes":[]}}]}}}`)
+	}
+	cases := []struct{ name, ctx, want string }{
+		{"timed out check run", `{"conclusion":"SUCCESS","detailsUrl":"ok"},{"conclusion":"TIMED_OUT","detailsUrl":"https://ci/timed-out"}`, "https://ci/timed-out"},
+		{"status context error", `{"state":"SUCCESS","targetUrl":"ok"},{"state":"ERROR","targetUrl":"https://ci/status-error"}`, "https://ci/status-error"},
+		{"status context failure", `{"state":"FAILURE","targetUrl":"https://ci/status-failure"}`, "https://ci/status-failure"},
+	}
+	for _, c := range cases {
+		got, err := parsePRs(mk(c.ctx))
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if len(got) != 1 || got[0].FailedURL != c.want {
+			t.Errorf("%s: got %+v, want FailedURL %q", c.name, got, c.want)
+		}
+	}
+	if !strings.Contains(prQuery, "... on StatusContext { state targetUrl }") {
+		t.Error("prQuery must request StatusContext state and targetUrl")
+	}
+}

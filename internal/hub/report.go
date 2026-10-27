@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // HookInput is the subset of the Claude Code hook JSON that hub reads.
@@ -23,9 +25,14 @@ type HookInput struct {
 	ToolInput        json.RawMessage `json:"tool_input"`
 	NotificationType string          `json:"notification_type"`
 	Prompt           string          `json:"prompt"`
+	Source           string          `json:"source"` // SessionStart: startup | resume | clear | compact
 }
 
-var slugRe = regexp.MustCompile(`/\.worktrees/([a-z0-9][a-z0-9-]*)(/|$|\s|')`)
+var slugRe = regexp.MustCompile(`/\.worktrees/([a-z0-9][a-z0-9-]*)(?:[^a-z0-9-]|$)`)
+
+// pathKeys are searched first, in this order, so a path the tool acts on wins
+// over a worktree merely mentioned in other input such as file content.
+var pathKeys = []string{"file_path", "notebook_path", "path", "command", "cwd"}
 
 // SlugFromToolInput returns the worktree slug named by the first string in the
 // tool input that contains a `/.worktrees/<slug>` path, or "" when none does.
@@ -53,10 +60,17 @@ func findSlug(v any) string {
 			}
 		}
 	case map[string]any:
-		// Sorted keys keep the result deterministic.
+		for _, k := range pathKeys {
+			if s := findSlug(x[k]); s != "" {
+				return s
+			}
+		}
+		// Remaining keys sorted keep the result deterministic.
 		keys := make([]string, 0, len(x))
 		for k := range x {
-			keys = append(keys, k)
+			if !slices.Contains(pathKeys, k) {
+				keys = append(keys, k)
+			}
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
@@ -88,11 +102,14 @@ func ApplyEvent(prev *Agent, in HookInput, pane string, now int64) (next *Agent,
 	}
 	switch in.HookEventName {
 	case "SessionStart":
-		a.State = Idle
+		// compact and resume continue the session: keep its state.
+		if (in.Source != "compact" && in.Source != "resume") || a.State == "" {
+			a.State = Idle
+		}
 	case "UserPromptSubmit":
 		a.State = Working
 		if a.Title == "" {
-			a.Title = firstRunes(in.Prompt, 60)
+			a.Title = firstRunes(stripControl(in.Prompt), 60)
 		}
 	case "PreToolUse", "PostToolUse":
 		a.State = Working
@@ -115,6 +132,17 @@ func ApplyEvent(prev *Agent, in HookInput, pane string, now int64) (next *Agent,
 	return &a, false
 }
 
+// stripControl maps control runes (newlines, ESC, ...) to spaces so a title
+// cannot break or recolour the sidebar row.
+func stripControl(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
+}
+
 func firstRunes(s string, n int) string {
 	r := []rune(s)
 	if len(r) > n {
@@ -123,14 +151,27 @@ func firstRunes(s string, n int) string {
 	return string(r)
 }
 
+// maxPayload caps the hook JSON read from stdin.
+const maxPayload = 8 << 20
+
 // Report applies one hook event read from stdin to the agent files under home.
-// Outside tmux (pane == "") it does nothing.
+// Outside tmux (pane == "") it only drains stdin.
 func Report(home string, stdin io.Reader, pane string, now int64) error {
 	if pane == "" {
+		if _, err := io.Copy(io.Discard, stdin); err != nil {
+			return fmt.Errorf("drain hook input: %w", err)
+		}
 		return nil
 	}
+	b, err := io.ReadAll(io.LimitReader(stdin, maxPayload+1))
+	if err != nil {
+		return fmt.Errorf("read hook input: %w", err)
+	}
+	if len(b) > maxPayload {
+		return errors.New("hook payload over 8 MiB")
+	}
 	var in HookInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
+	if err := json.Unmarshal(b, &in); err != nil {
 		return fmt.Errorf("decode hook input: %w", err)
 	}
 	if in.SessionID == "" || strings.ContainsAny(in.SessionID, `/\`) {

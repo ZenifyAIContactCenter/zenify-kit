@@ -126,3 +126,73 @@ func TestLogError(t *testing.T) {
 		t.Errorf("log line: %q", b)
 	}
 }
+
+func TestSlugFromToolInput_PathKeysFirst(t *testing.T) {
+	in := `{"content":"see /ws/repos/be/.worktrees/bbb/x.go","file_path":"/ws/repos/be/.worktrees/aaa/y.go"}`
+	if got := SlugFromToolInput(json.RawMessage(in)); got != "aaa" {
+		t.Errorf("got %q, want aaa (file_path wins over content)", got)
+	}
+}
+
+func TestSlugFromToolInput_Terminators(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{`{"command":"git -C \"/ws/repos/be/.worktrees/foo\" status"}`, "foo"},
+		{`{"command":"cd /ws/repos/be/.worktrees/foo; ls"}`, "foo"},
+		{`{"command":"(cd /ws/repos/be/.worktrees/foo)"}`, "foo"},
+	}
+	for _, c := range cases {
+		if got := SlugFromToolInput(json.RawMessage(c.in)); got != c.want {
+			t.Errorf("%s: got %q want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestApplyEvent_TitleStripsControl(t *testing.T) {
+	n, _ := ApplyEvent(nil, HookInput{HookEventName: "UserPromptSubmit", Prompt: "a\nb\x1b[31mc"}, "%1", 1)
+	if n.Title != "a b [31mc" {
+		t.Errorf("title %q, want %q", n.Title, "a b [31mc")
+	}
+}
+
+func TestApplyEvent_SessionStartResumeKeepsState(t *testing.T) {
+	for _, src := range []string{"compact", "resume"} {
+		n, _ := ApplyEvent(&Agent{State: Working}, HookInput{HookEventName: "SessionStart", Source: src}, "%1", 1)
+		if n.State != Working {
+			t.Errorf("source %s: state %q, want working", src, n.State)
+		}
+	}
+	n, _ := ApplyEvent(&Agent{State: Working}, HookInput{HookEventName: "SessionStart", Source: "startup"}, "%1", 1)
+	if n.State != Idle {
+		t.Errorf("startup: state %q, want idle", n.State)
+	}
+	n, _ = ApplyEvent(nil, HookInput{HookEventName: "SessionStart", Source: "resume"}, "%1", 1)
+	if n.State != Idle {
+		t.Errorf("resume without record: state %q, want idle", n.State)
+	}
+}
+
+// errReader fails every read.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errors.New("pipe broken") }
+
+func TestReport_NoTmuxDrainsStdin(t *testing.T) {
+	r := strings.NewReader(`{"session_id":"s","hook_event_name":"Stop"}`)
+	if err := Report(t.TempDir(), r, "", 1); err != nil {
+		t.Fatal(err)
+	}
+	if r.Len() != 0 {
+		t.Errorf("stdin not drained: %d bytes left", r.Len())
+	}
+	if err := Report(t.TempDir(), errReader{}, "", 1); err == nil || !strings.Contains(err.Error(), "pipe broken") {
+		t.Errorf("want drain error, got %v", err)
+	}
+}
+
+func TestReport_PayloadLimit(t *testing.T) {
+	big := `{"session_id":"s","hook_event_name":"Stop","prompt":"` + strings.Repeat("x", 8<<20) + `"}`
+	err := Report(t.TempDir(), strings.NewReader(big), "%1", 1)
+	if err == nil || !strings.Contains(err.Error(), "hook payload over 8 MiB") {
+		t.Errorf("want payload limit error, got %v", err)
+	}
+}

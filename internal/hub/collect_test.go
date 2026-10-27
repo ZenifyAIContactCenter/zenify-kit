@@ -161,7 +161,13 @@ func newPoller(t *testing.T, gh *fakeGH, tm *fakeTmux, now int64) *Poller {
 }
 
 func TestRound_GitHubErrorKeepsOld(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
 	p := newPoller(t, &fakeGH{err: errors.New("gh: HTTP 502")}, &fakeTmux{}, 2000)
+	// A real repo gives the local round a workspace owner, so it keeps the PR.
+	p.Git = gitx.ExecRunner()
+	mkRepo(t, p.Root, "contact-center-hub", "git@github.com:ZenifyAIContactCenter/contact-center-hub.git", "alpha", "u/feat/alpha")
 	old := State{OtherPRs: []PR{{Number: 431, Repo: "ZenifyAIContactCenter/contact-center-hub", Checks: "PENDING"}}, GitHubAt: 1000}
 	if err := WriteState(p.Home, old); err != nil {
 		t.Fatal(err)
@@ -243,14 +249,14 @@ const failingPRBody = `{"data":{"search":{"nodes":[{"number":812,"url":"u","head
 func TestRound_FiresDisplayMessage(t *testing.T) {
 	tm := &fakeTmux{}
 	p := newPoller(t, &fakeGH{body: []byte(failingPRBody)}, tm, 3000)
-	old := State{OtherPRs: []PR{{Number: 812, Repo: "ZenifyAIContactCenter/contact-center-be", Branch: "b", Checks: "PENDING"}}}
+	old := State{Owners: []string{"ZenifyAIContactCenter"}, OtherPRs: []PR{{Number: 812, Repo: "ZenifyAIContactCenter/contact-center-be", Branch: "b", Checks: "PENDING"}}}
 	if err := WriteState(p.Home, old); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.GitHub(); err != nil {
 		t.Fatalf("round: %v", err)
 	}
-	want := [][]string{{"display-message", "-d", "5000", "-t", "zenify", "contact-center-be##812: ci-failed"}}
+	want := [][]string{{"display-message", "-d", "5000", "-t", "=zenify", "contact-center-be##812: ci-failed"}}
 	if !reflect.DeepEqual(tm.calls, want) {
 		t.Errorf("tmux calls %q, want %q", tm.calls, want)
 	}
@@ -274,7 +280,7 @@ func TestRound_FiresDisplayMessage(t *testing.T) {
 func TestRound_TmuxErrorGoesToStateError(t *testing.T) {
 	tm := &fakeTmux{err: errors.New("no server running")}
 	p := newPoller(t, &fakeGH{body: []byte(failingPRBody)}, tm, 3000)
-	if err := WriteState(p.Home, State{OtherPRs: []PR{{Number: 812, Repo: "ZenifyAIContactCenter/contact-center-be", Checks: "PENDING"}}}); err != nil {
+	if err := WriteState(p.Home, State{Owners: []string{"ZenifyAIContactCenter"}, OtherPRs: []PR{{Number: 812, Repo: "ZenifyAIContactCenter/contact-center-be", Checks: "PENDING"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := p.GitHub(); err == nil {
@@ -389,8 +395,8 @@ func TestFilterOwners(t *testing.T) {
 	if want := []PR{{Number: 1, Repo: "ZenifyAIContactCenter/x"}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("FilterOwners = %+v, want %+v", got, want)
 	}
-	if got := FilterOwners(prs, nil); !reflect.DeepEqual(got, prs) {
-		t.Errorf("no known owner must keep every PR, got %+v", got)
+	if got := FilterOwners(prs, nil); got != nil {
+		t.Errorf("no known owner must drop every PR, got %+v", got)
 	}
 }
 
@@ -431,8 +437,15 @@ func (b *blockingGH) Run(args ...string) ([]byte, error) {
 
 func TestRound_LocalNotBlockedByGitHub(t *testing.T) {
 	gh := &blockingGH{started: make(chan struct{}), release: make(chan struct{}), body: []byte(failingPRBody)}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
 	p := newPoller(t, nil, &fakeTmux{}, 2000)
 	p.GH = gh
+	// A real repo gives the local rounds a workspace owner, so the GitHub
+	// round keeps the company PR.
+	p.Git = gitx.ExecRunner()
+	mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
 	if err := writeAgent(p.Home, &Agent{SessionID: "s1", Slug: "gone"}); err != nil {
 		t.Fatal(err)
 	}
@@ -505,5 +518,88 @@ func TestCollectLocal_UnmanagedUsesDirName(t *testing.T) {
 	if len(tasks) != 1 || tasks[0].Slug != "zns-campaign-trace" || len(tasks[0].Repos) != 2 ||
 		tasks[0].Repos[0].Name != "contact-center-be" || tasks[0].Repos[1].Name != "contact-center-web" {
 		t.Errorf("tasks = %+v, want one task zns-campaign-trace with both repos", tasks)
+	}
+}
+
+func TestAssemble_BlockedWinsOverWorking(t *testing.T) {
+	agents := map[string]Agent{
+		"a": {SessionID: "a", Slug: "x", State: Working},
+		"b": {SessionID: "b", Slug: "x", State: Blocked},
+	}
+	s := Assemble([]Task{{Slug: "x"}}, nil, agents)
+	if s.Tasks[0].State != Blocked {
+		t.Errorf("task state %q, want blocked", s.Tasks[0].State)
+	}
+}
+
+func TestRound_LocalPartialAdvancesLocalAt(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	p := newPoller(t, &fakeGH{err: errors.New("must not be called")}, &fakeTmux{}, 2000)
+	p.Git = gitx.ExecRunner()
+	mkRepo(t, p.Root, "contact-center-be", "git@github.com:ZenifyAIContactCenter/contact-center-be.git", "alpha", "u/feat/alpha")
+	mkRepo(t, p.Root, "contact-center-web", "/srv/git/contact-center-web", "beta", "u/feat/beta") // unparseable origin
+	if err := WriteState(p.Home, State{LocalAt: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Local(); err == nil || !strings.Contains(err.Error(), "contact-center-web") {
+		t.Errorf("want origin error naming contact-center-web, got %v", err)
+	}
+	got, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LocalAt != 2000 {
+		t.Errorf("LocalAt %d, want 2000 (partial results collected)", got.LocalAt)
+	}
+	if !strings.Contains(got.LocalError, "contact-center-web") || len(got.Tasks) != 2 {
+		t.Errorf("LocalError %q tasks %+v", got.LocalError, got.Tasks)
+	}
+}
+
+// clockGH advances *now when the fetch returns, like a slow network call.
+type clockGH struct {
+	now  *int64
+	body []byte
+}
+
+func (c *clockGH) Run(args ...string) ([]byte, error) {
+	*c.now = 5000
+	return c.body, nil
+}
+
+func TestRound_AlertAtAfterFetch(t *testing.T) {
+	now := int64(3000)
+	p := newPoller(t, nil, &fakeTmux{}, 0)
+	p.GH = &clockGH{now: &now, body: []byte(failingPRBody)}
+	p.Now = func() int64 { return now }
+	old := State{Owners: []string{"ZenifyAIContactCenter"}, OtherPRs: []PR{{Number: 812, Repo: "ZenifyAIContactCenter/contact-center-be", Branch: "b", Checks: "PENDING"}}}
+	if err := WriteState(p.Home, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.GitHub(); err != nil {
+		t.Fatalf("GitHub: %v", err)
+	}
+	got, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.OtherPRs) != 1 || got.OtherPRs[0].AlertAt != 5000 || got.GitHubAt != 5000 {
+		t.Errorf("want AlertAt and GitHubAt stamped after the fetch (5000), got %+v at %d", got.OtherPRs, got.GitHubAt)
+	}
+}
+
+func TestRound_UnknownOwnersDropsPRs(t *testing.T) {
+	p := newPoller(t, &fakeGH{body: []byte(twoOwnerBody)}, &fakeTmux{}, 2000)
+	if err := p.GitHub(); err != nil {
+		t.Fatalf("GitHub: %v", err)
+	}
+	got, err := ReadState(p.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.OtherPRs) != 0 {
+		t.Errorf("OtherPRs = %+v, want none while owners are unknown", got.OtherPRs)
 	}
 }

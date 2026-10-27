@@ -129,10 +129,11 @@ func CollectLocal(root string, git gitx.Runner) ([]Task, []string, error) {
 }
 
 // FilterOwners keeps the PRs whose repo owner is in owners (case-insensitive).
-// With no known owner (no origin read yet) every PR is kept.
+// With no known owner (no origin read yet) every PR is dropped, so personal
+// PRs never enter the state or the alert baseline.
 func FilterOwners(prs []PR, owners []string) []PR {
 	if len(owners) == 0 {
-		return prs
+		return nil
 	}
 	var out []PR
 	for _, p := range prs {
@@ -295,9 +296,9 @@ func (p *Poller) Local() error {
 	localAt := now
 	if collectErr != nil {
 		errs = append(errs, fmt.Errorf("collect worktrees: %w", collectErr))
-		localAt = old.LocalAt
-		if tasks == nil {
+		if tasks == nil { // nothing collected: the old tasks are as old as before
 			tasks = old.Tasks
+			localAt = old.LocalAt
 		}
 		if owners == nil {
 			owners = old.Owners
@@ -325,11 +326,11 @@ func (p *Poller) Local() error {
 // previous PRs. Errors are recorded in State.GitHubError with the round time
 // (empty after a clean round) and returned joined for the caller to log.
 func (p *Poller) GitHub() error {
-	now := p.Now()
 	cur, fetchErr := FetchPRs(p.GH)
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	now := p.Now() // after the fetch, so alerts are not older than the data
 	var errs []error
 	old, err := ReadState(p.Home)
 	if err != nil {

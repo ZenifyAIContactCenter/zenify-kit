@@ -36,7 +36,7 @@ const (
 	AlertNewReview = "new-review"
 )
 
-const prQuery = `query { search(query: "is:open is:pr author:@me archived:false", type: ISSUE, first: 100) { nodes { ... on PullRequest { number url isDraft headRefName mergeStateStatus reviewDecision repository { nameWithOwner } commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 50) { nodes { ... on CheckRun { conclusion detailsUrl } } } } } } } reviewThreads(first: 100) { nodes { isResolved } } } } } }`
+const prQuery = `query { search(query: "is:open is:pr author:@me archived:false", type: ISSUE, first: 100) { nodes { ... on PullRequest { number url isDraft headRefName mergeStateStatus reviewDecision repository { nameWithOwner } commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 50) { nodes { ... on CheckRun { conclusion detailsUrl } ... on StatusContext { state targetUrl } } } } } } } reviewThreads(first: 100) { nodes { isResolved } } } } } }`
 
 // FetchPRs lists the user's open PRs through `gh api graphql`.
 func FetchPRs(r ghx.Runner) ([]PR, error) {
@@ -70,8 +70,10 @@ type prResponse struct {
 								State    string `json:"state"`
 								Contexts struct {
 									Nodes []struct {
-										Conclusion string `json:"conclusion"`
+										Conclusion string `json:"conclusion"` // CheckRun
 										DetailsURL string `json:"detailsUrl"`
+										State      string `json:"state"` // StatusContext
+										TargetURL  string `json:"targetUrl"`
 									} `json:"nodes"`
 								} `json:"contexts"`
 							} `json:"statusCheckRollup"`
@@ -86,6 +88,11 @@ type prResponse struct {
 			} `json:"nodes"`
 		} `json:"search"`
 	} `json:"data"`
+}
+
+// failedConclusions are the CheckRun conclusions that count as a failed job.
+var failedConclusions = map[string]bool{
+	"FAILURE": true, "TIMED_OUT": true, "STARTUP_FAILURE": true, "CANCELLED": true, "ACTION_REQUIRED": true,
 }
 
 // parsePRs decodes the prQuery response body.
@@ -114,8 +121,12 @@ func parsePRs(body []byte) ([]PR, error) {
 			if roll := n.Commits.Nodes[0].Commit.StatusCheckRollup; roll != nil {
 				pr.Checks = checksState(roll.State)
 				for _, c := range roll.Contexts.Nodes {
-					if c.Conclusion == "FAILURE" {
+					if failedConclusions[c.Conclusion] && c.DetailsURL != "" {
 						pr.FailedURL = c.DetailsURL
+						break
+					}
+					if (c.State == "FAILURE" || c.State == "ERROR") && c.TargetURL != "" {
+						pr.FailedURL = c.TargetURL
 						break
 					}
 				}
