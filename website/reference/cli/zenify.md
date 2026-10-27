@@ -42,6 +42,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify doctor](./zenify_doctor): Kiểm tra sức khỏe môi trường ZenifyKit trên máy và báo từng mục đạt hay hỏng.
 - [zenify down](./zenify_down): Gỡ phần ZenifyKit đã cài vào máy và repo, giữ nguyên code, workspace và knowledge store.
 - [zenify e2e](./zenify_e2e): Nhóm lệnh cho journey E2E: lint chống test hời và chạy journey Playwright thật trong Docker.
+- [zenify ensure](./zenify_ensure): Ghi hook, model và env của kit vào máy và workspace mà không cần zenify up.
 - [zenify env](./zenify_env): Quản lý biến môi trường cá nhân cho tool dev và agent trong `<workspace>/.zenify/.env`, không phải env chạy app.
 - [zenify feature](./zenify_feature): Liệt kê hoặc bật/tắt các tính năng opt-in của kit trong overlay của workspace.
 - [zenify gate](./zenify_gate): Nhóm lệnh hỗ trợ contract gate, bước quét cross-repo khi bạn chạm tài nguyên chung.

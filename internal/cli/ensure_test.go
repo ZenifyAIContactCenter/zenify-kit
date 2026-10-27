@@ -378,3 +378,44 @@ func TestEnsureWorkspace_CodexPresent_WritesHooksAndTrustOnce(t *testing.T) {
 		t.Fatalf("trust line printed twice: %s", o2.String())
 	}
 }
+
+// `zenify ensure --workspace` runs the same step without `zenify up` or a manifest:
+// the workspace gets the model pin, ~/.claude/settings.json the hooks and subagent env.
+func TestEnsureCmd_PinsWorkspaceWithoutManifest(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	t.Setenv("ZENIFY_HOME", t.TempDir()) // no knowledge store: the config step fails open
+	ws := t.TempDir()
+
+	cmd := newEnsureCmd()
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"--workspace", ws})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ensure: %v (stderr=%s)", err, errOut.String())
+	}
+
+	var wsSettings map[string]any
+	raw, _ := os.ReadFile(filepath.Join(ws, ".claude", "settings.json"))
+	_ = json.Unmarshal(raw, &wsSettings)
+	if wsSettings["model"] != apply.DefaultModel {
+		t.Fatalf("model pin missing: %v", wsSettings["model"])
+	}
+	var global struct {
+		Env   map[string]string `json:"env"`
+		Hooks map[string]any    `json:"hooks"`
+	}
+	raw, _ = os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	_ = json.Unmarshal(raw, &global)
+	if global.Env[apply.SubagentModelEnv] != apply.SubagentModelDefault {
+		t.Fatalf("subagent model env missing: %v", global.Env)
+	}
+	if _, ok := global.Hooks["SessionStart"]; !ok {
+		t.Fatalf("hooks not wired: %s", raw)
+	}
+	if !strings.Contains(out.String(), "pinned workspace model") {
+		t.Fatalf("stdout: %s", out.String())
+	}
+}

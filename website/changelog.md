@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.51.0
+
+*2026-10-27*
+
+- Lệnh mới `zenify ensure --workspace <dir>`: ghi hook, model phiên chính và `CLAUDE_CODE_SUBAGENT_MODEL` giống `zenify up`, dùng cho máy không chạy `zenify up`, ví dụ worker zenie trong container. Worker nhờ đó chạy cùng cấu hình với máy local trên cùng bản kit.
+
 ## v0.50.0
 
 *2026-10-27*
