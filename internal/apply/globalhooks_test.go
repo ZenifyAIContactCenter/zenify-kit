@@ -480,3 +480,53 @@ func TestCodexEntries_DropsWriteGuard(t *testing.T) {
 		t.Fatalf("codexEntries len = %d, want 7", len(got))
 	}
 }
+
+func hubCommandsFor(t *testing.T, home, event string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(settingsPath(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string `json:"command"`
+			} `json:"hooks"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, g := range doc.Hooks[event] {
+		for _, h := range g.Hooks {
+			out = append(out, h.Command)
+		}
+	}
+	return out
+}
+
+func TestEnsureGlobalHooks_HubReport(t *testing.T) {
+	home := t.TempDir()
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "Notification", "Stop", "SessionEnd"} {
+		found := false
+		for _, c := range hubCommandsFor(t, home, ev) {
+			if c == "zenify hooks-run hub-report" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("event %s lacks command %q", ev, "zenify hooks-run hub-report")
+		}
+	}
+	ch, err := EnsureGlobalHooks(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch.Added != 0 || ch.Updated != 0 {
+		t.Errorf("second run Added=%d Updated=%d, want 0/0", ch.Added, ch.Updated)
+	}
+}

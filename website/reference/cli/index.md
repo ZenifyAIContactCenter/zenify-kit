@@ -69,6 +69,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify guard install](./zenify_guard_install) | Gắn hook git-guard vào ~/.claude/settings.json để chặn thao tác git vào branch deploy. |
 | [zenify hotfix](./zenify_hotfix) | Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve. |
 | [zenify hotfix baseref](./zenify_hotfix_baseref) | In base ref mà hotfix của một repo sẽ xuất phát, theo chiến lược khai trong `worktree.json`. |
+| [zenify hub](./zenify_hub) | Mở phiên tmux có sidebar theo dõi task, agent và PR của workspace. |
 | [zenify migrate](./zenify_migrate) | Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team. |
 | [zenify npm](./zenify_npm) | Nhóm lệnh cấu hình npm cho package private trên GitHub Packages. |
 | [zenify npm login](./zenify_npm_login) | Đặt NPM_TOKEN từ gh vào shell profile và cấp scope read:packages để npm install được package private. |
@@ -121,6 +122,8 @@ Hook và skill gọi các lệnh này; bạn không cần gõ tay nên chúng kh
 |---|---|
 | `zenify git-guard` | Hook PreToolUse: chặn commit/merge/push vào deploy branch + secret đã stage |
 | `zenify hooks-run` | Bộ điều phối nội bộ cho hook znf (chỉ chạy trong workspace, fail-open) |
+| `zenify hub report` | Record one Claude Code hook event (reads the hook JSON on stdin) |
+| `zenify hub sidebar` | Run the hub sidebar TUI (started by zenify hub) |
 | `zenify observe count` | PreToolUse hook: đếm dispatch Task + soft-cap warn (không chặn) |
 | `zenify observe meter` | PostToolUse hook: đo tool-output per-session; nhắc khi một result \> 50KB hoặc phiên \> 2MB (không sửa output) |
 | `zenify review-bundle` | Cơ học chia diff lớn thành bundle cụm-file cho znf:review (seam BUNDLE) |

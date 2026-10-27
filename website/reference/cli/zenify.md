@@ -46,6 +46,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify gate](./zenify_gate): Nhóm lệnh hỗ trợ contract gate, bước quét cross-repo khi bạn chạm tài nguyên chung.
 - [zenify guard](./zenify_guard): Nhóm lệnh cho git-guard, hook chặn commit, push và merge vào branch deploy.
 - [zenify hotfix](./zenify_hotfix): Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve.
+- [zenify hub](./zenify_hub): Mở phiên tmux có sidebar theo dõi task, agent và PR của workspace.
 - [zenify migrate](./zenify_migrate): Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team.
 - [zenify npm](./zenify_npm): Nhóm lệnh cấu hình npm cho package private trên GitHub Packages.
 - [zenify obs](./zenify_obs): Tóm tắt sức khỏe một route hoặc một trace qua broker, đã che PII và giới hạn kích thước.

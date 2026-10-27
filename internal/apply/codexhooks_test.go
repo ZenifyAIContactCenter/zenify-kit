@@ -244,3 +244,11 @@ func assertFoo(t *testing.T, raw json.RawMessage) {
 		t.Fatalf("foo = %s (err=%v)", raw, err)
 	}
 }
+
+func TestCodexEntries_NoHubReport(t *testing.T) {
+	for _, s := range codexEntries(znfHookSpecs()) {
+		if s.ID == "hub-report" {
+			t.Fatalf("codex entries contain hub-report for event %s", s.Event)
+		}
+	}
+}

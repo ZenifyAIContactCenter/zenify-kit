@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitstate"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
@@ -29,6 +30,11 @@ func dispatchHook(id, wsRoot string, w io.Writer) int {
 	noop := func() int { fmt.Fprintln(w, "{}"); return 0 }
 	if id == "write-guard" {
 		return writeGuardRun()
+	}
+	if id == "hub-report" {
+		// Reports agent state by tmux pane, not by workspace, and prints nothing.
+		runHubReport(os.Stdin, os.Getenv("TMUX_PANE"), time.Now().Unix())
+		return 0
 	}
 	if wsRoot == "" {
 		return noop()

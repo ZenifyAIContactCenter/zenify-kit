@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
@@ -144,5 +145,22 @@ func TestRemoveOwnedSettings_KeepsModifiedRemovesUnchanged(t *testing.T) {
 	}
 	if _, err := os.Stat(dirty); err != nil {
 		t.Error("dirty (user-modified) must be kept")
+	}
+}
+
+func TestRemoveGlobalHooks_HubReport(t *testing.T) {
+	home := t.TempDir()
+	if _, err := EnsureGlobalHooks(home, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RemoveGlobalHooks(home, false); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(settingsPath(home))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "hub-report") {
+		t.Errorf("hub-report still present after remove: %s", raw)
 	}
 }

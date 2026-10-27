@@ -3,12 +3,13 @@ package apply
 
 import "testing"
 
-// znfHookSpecs must cover exactly the four events the kit wires. Event coverage
+// znfHookSpecs must cover exactly the seven events the kit wires. Event coverage
 // is enough to catch the main drift: a hook dispatch id added to hooksrun.go
 // without a spec here, or vice versa.
 func TestHookSpecsCoverPluginEvents(t *testing.T) {
 	wantEvents := map[string]bool{
 		"SessionStart": false, "Stop": false, "PreToolUse": false, "PostToolUse": false,
+		"UserPromptSubmit": false, "Notification": false, "SessionEnd": false,
 	}
 	for _, s := range znfHookSpecs() {
 		if _, ok := wantEvents[s.Event]; !ok {

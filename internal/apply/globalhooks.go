@@ -37,6 +37,12 @@ func znfHookSpecs() []hookSpec {
 		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter", Purpose: "Ghi nhận việc dùng tool để đo usage"},                                                                         //znf:allow-lang
 		{Event: "PreToolUse", Matcher: "Read", ID: "read-guard", Purpose: "Chặn Read file quá lớn (text > 200 KB không có offset+limit, PDF không có pages, ảnh > 300 KB) trước khi kết quả vào context"},                       //znf:allow-lang
 		{Event: "PreToolUse", Matcher: "Write|Edit|NotebookEdit", ID: "write-guard", Purpose: "Chặn Write/Edit ra ngoài quy ước thư mục workspace (root ngoài allowlist, file ngay dưới docs/, docs/<tên lạ>) và chỉ chỗ đúng"}, //znf:allow-lang
+		{Event: "SessionStart", Matcher: "", ID: "hub-report", Purpose: "Report agent state to the zenify hub sidebar"},
+		{Event: "UserPromptSubmit", Matcher: "", ID: "hub-report", Purpose: "Report agent state to the zenify hub sidebar"},
+		{Event: "PostToolUse", Matcher: "", ID: "hub-report", Purpose: "Report agent state to the zenify hub sidebar"},
+		{Event: "Notification", Matcher: "", ID: "hub-report", Purpose: "Report agent state to the zenify hub sidebar"},
+		{Event: "Stop", Matcher: "", ID: "hub-report", Purpose: "Report agent state to the zenify hub sidebar"},
+		{Event: "SessionEnd", Matcher: "", ID: "hub-report", Purpose: "Report agent state to the zenify hub sidebar"},
 	}
 }
 
@@ -54,14 +60,14 @@ func HookSpecs() []HookSpec { return znfHookSpecs() }
 const codexSubagentTool = "collaborationspawn_agent"
 
 // codexEntries derives the Codex hook specs from the Claude ones: read-guard and
-// write-guard are dropped (Codex has no matching Read/Write/Edit tools) and
+// write-guard are dropped (Codex has no matching Read/Write/Edit tools), hub-report is dropped (Claude-only sidebar) and
 // Claude subagent tool names in matchers are replaced by codexSubagentTool.
 // ID and Purpose are kept.
 func codexEntries(specs []hookSpec) []hookSpec {
 	out := make([]hookSpec, 0, len(specs))
 	for _, s := range specs {
 		switch {
-		case s.ID == "read-guard" || s.ID == "write-guard":
+		case s.ID == "read-guard" || s.ID == "write-guard" || s.ID == "hub-report":
 			continue
 		case s.Matcher == "Task|Agent":
 			s.Matcher = codexSubagentTool

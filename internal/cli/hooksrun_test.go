@@ -178,3 +178,38 @@ func TestHooksRun_WriteGuardBypassesWorkspaceGuard(t *testing.T) {
 		t.Fatalf("must not print {} on deny: %q", buf.String())
 	}
 }
+
+// A hub-report payload that cannot be decoded must be logged to hub.log and
+// still exit 0 — a hook never makes the harness report an error.
+func TestDispatchHook_HubReportFailOpen(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("TMUX_PANE", "%1")
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.WriteString("not json"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	oldStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = oldStdin; r.Close() })
+
+	var buf bytes.Buffer
+	if code := dispatchHook("hub-report", mkWorkspace(t), &buf); code != 0 {
+		t.Fatalf("dispatchHook(hub-report) = %d, want 0", code)
+	}
+	log, err := os.ReadFile(filepath.Join(home, ".zenify", "hub", "hub.log"))
+	if err != nil {
+		t.Fatalf("hub.log not written: %v", err)
+	}
+	if !strings.Contains(string(log), "decode hook input") {
+		t.Errorf("hub.log = %q, want decode error", log)
+	}
+}
