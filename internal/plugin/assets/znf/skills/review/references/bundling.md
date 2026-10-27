@@ -26,6 +26,9 @@ Handle based on `$PLAN`'s `verdict`:
      - `SHARED_b` = the shared-contract signal computed on `git diff "$BASE" -- <b.files>` (same regex as Step 1).
      - `TIER_b` = `bash .../select-tier "$ADDED_b" "$SHARED_b" "$CRITICAL"` (print the tier + reason for this bundle on the report).
      - Dispatch REVIEW by `TIER_b` (Step 3), diff scope = `git diff "$BASE" -- <b.files>`, with `MANIFEST` as context.
+       With `WT=` (an uncommitted tree), `b.files` may hold untracked new files: no diff shows them,
+       so add them (`git ls-files --others --exclude-standard`) to `MANIFEST` and hand that bundle's
+       reviewer their paths to read whole from `$WT`.
      - Collect the bundle's `findings[]`.
   3. Merge findings from every bundle, dedup by `title+file`.
   4. Skip Step 2 (tier already selected per-bundle) and proceed to **Step 4** (VERIFY) on the union of findings.
