@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -25,11 +26,27 @@ type Runner interface {
 	Run(args ...string) ([]byte, error)
 }
 
+// Socket is the name of the dedicated tmux server the hub runs on (`tmux -L
+// <name>`): $ZENIFY_HUB_SOCKET, or "zenify". The user's default server is
+// never touched.
+func Socket() string {
+	if s := os.Getenv("ZENIFY_HUB_SOCKET"); s != "" {
+		return s
+	}
+	return "zenify"
+}
+
+// execArgs is args addressed to the hub server.
+func execArgs(args []string) []string {
+	return append([]string{"-L", Socket()}, args...)
+}
+
 type execRunner struct{}
 
+// Run invokes tmux on the hub server; every hub tmux call goes through here.
 func (execRunner) Run(args ...string) ([]byte, error) {
 	var stderr bytes.Buffer
-	cmd := exec.Command("tmux", args...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+	cmd := exec.Command("tmux", execArgs(args)...) //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
@@ -128,23 +145,32 @@ func ServerPID(r Runner) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// LivePanes maps every pane id on the server to the index of its window.
-func LivePanes(r Runner) (map[string]int, error) {
-	out, err := r.Run("list-panes", "-a", "-F", "#{pane_id} #{window_index}")
+// Pane is the window holding a live pane: its index and its id (@N).
+type Pane struct {
+	Window   int
+	WindowID string
+}
+
+// LivePanes maps every pane id on the server to its window.
+func LivePanes(r Runner) (map[string]Pane, error) {
+	out, err := r.Run("list-panes", "-a", "-F", "#{pane_id} #{window_index} #{window_id}")
 	if err != nil {
 		return nil, err
 	}
-	panes := map[string]int{}
+	panes := map[string]Pane{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if line == "" {
 			continue
 		}
-		id, idx, _ := strings.Cut(line, " ")
-		n, err := strconv.Atoi(idx)
+		f := strings.Fields(line)
+		if len(f) != 3 {
+			return nil, fmt.Errorf("parse list-panes line %q: want 3 fields", line)
+		}
+		n, err := strconv.Atoi(f[1])
 		if err != nil {
 			return nil, fmt.Errorf("parse list-panes line %q: %w", line, err)
 		}
-		panes[id] = n
+		panes[f[0]] = Pane{Window: n, WindowID: f[2]}
 	}
 	return panes, nil
 }

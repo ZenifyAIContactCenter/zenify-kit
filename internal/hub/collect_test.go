@@ -825,7 +825,7 @@ func TestRound_LocalFailedRepoKeepsOwnerPRs(t *testing.T) {
 
 // liveTmux is a tmux server with pid 4242 whose only pane is %5 in window 3.
 func liveTmux() *scriptTmux {
-	return &scriptTmux{out: map[string]string{"display-message": "4242\n", "list-panes": "%5 3\n"}}
+	return &scriptTmux{out: map[string]string{"display-message": "4242\n", "list-panes": "%5 3 @3\n"}}
 }
 
 func TestRound_LocalMarksLiveness(t *testing.T) { // SC-23 (poller side)
@@ -902,5 +902,93 @@ func TestAssemble_RollupCountsOpenAgentsOnly(t *testing.T) {
 	s := Assemble([]Task{{Slug: "x"}}, nil, agents)
 	if s.Tasks[0].State != Idle {
 		t.Errorf("roll-up %q, want idle", s.Tasks[0].State)
+	}
+}
+
+// setOptionCalls keeps the set-option calls of calls.
+func setOptionCalls(calls [][]string) [][]string {
+	var out [][]string
+	for _, c := range calls {
+		if c[0] == "set-option" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func TestRound_LocalSetsTabState(t *testing.T) { // FR-12.5
+	p := newPoller(t, &fakeGH{}, &fakeTmux{}, 10)
+	tm := &scriptTmux{out: map[string]string{"display-message": "4242\n", "list-panes": "%5 3 @3\n%6 4 @4\n%7 5 @5\n%8 6 @6\n"}}
+	p.Tmux = tm
+	agents := []Agent{
+		{SessionID: "b", Pane: "%5", TmuxServer: "4242", State: Blocked},
+		{SessionID: "w", Pane: "%6", TmuxServer: "4242", State: Working},
+		{SessionID: "i", Pane: "%7", TmuxServer: "4242", State: Idle},
+		{SessionID: "x", Pane: "%8", TmuxServer: "1111", State: Working}, // another server: closed, no icon
+	}
+	for _, a := range agents {
+		if err := writeAgent(p.Home, &a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.Local(); err != nil {
+		t.Fatalf("Local: %v", err)
+	}
+	want := [][]string{
+		{"set-option", "-w", "-t", "@3", "@hub_state", "◆"},
+		{"set-option", "-w", "-t", "@4", "@hub_state", "●"},
+		{"set-option", "-wu", "-t", "@5", "@hub_state"},
+		{"set-option", "-wu", "-t", "@6", "@hub_state"},
+	}
+	if got := setOptionCalls(tm.calls); !reflect.DeepEqual(got, want) {
+		t.Errorf("first round set-option calls = %q, want %q", got, want)
+	}
+
+	tm.calls = nil
+	if err := p.Local(); err != nil {
+		t.Fatalf("Local: %v", err)
+	}
+	if got := setOptionCalls(tm.calls); got != nil {
+		t.Errorf("unchanged round set-option calls = %q, want none", got)
+	}
+
+	tm.calls = nil
+	agents[0].State = Done
+	if err := writeAgent(p.Home, &agents[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Local(); err != nil {
+		t.Fatalf("Local: %v", err)
+	}
+	want = [][]string{{"set-option", "-w", "-t", "@3", "@hub_state", "✓"}}
+	if got := setOptionCalls(tm.calls); !reflect.DeepEqual(got, want) {
+		t.Errorf("changed round set-option calls = %q, want %q", got, want)
+	}
+}
+
+func TestRound_TabStateErrorLoggedNotFatal(t *testing.T) {
+	p := newPoller(t, &fakeGH{}, &fakeTmux{}, 10)
+	tm := &scriptTmux{
+		out:  map[string]string{"display-message": "4242\n", "list-panes": "%5 3 @3\n"},
+		fail: map[string]error{"set-option": errors.New("tmux set-option: no such window")},
+	}
+	p.Tmux = tm
+	if err := writeAgent(p.Home, &Agent{SessionID: "b", Pane: "%5", TmuxServer: "4242", State: Working}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Local(); err != nil {
+		t.Fatalf("tab state error must not fail the round: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(Dir(p.Home), "hub.log"))
+	if err != nil || !strings.Contains(string(b), "no such window") {
+		t.Errorf("hub.log = %q, %v; want the set-option error", b, err)
+	}
+	tm.calls, tm.fail = nil, nil
+	if err := p.Local(); err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{"set-option", "-w", "-t", "@3", "@hub_state", "●"}}
+	if got := setOptionCalls(tm.calls); !reflect.DeepEqual(got, want) {
+		t.Errorf("retry set-option calls = %q, want %q", got, want)
 	}
 }

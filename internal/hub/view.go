@@ -158,12 +158,14 @@ func itemLine(it Item) string {
 }
 
 // body renders the item rows, with a rule before every section after the
-// first, and returns the line index of the cursor.
-func (m Model) body() (lines []string, cursorLine int) {
+// first, and returns the line index of the cursor and, for every line, the
+// index of its item (-1 for a rule).
+func (m Model) body() (lines []string, cursorLine int, lineItem []int) {
 	rule := m.rule()
 	for i, it := range m.items {
 		if it.Kind == KindHeader && i > 0 {
 			lines = append(lines, rule)
+			lineItem = append(lineItem, -1)
 		}
 		line := itemLine(it)
 		if i == m.cursor {
@@ -174,8 +176,24 @@ func (m Model) body() (lines []string, cursorLine int) {
 			line = " " + line
 		}
 		lines = append(lines, line)
+		lineItem = append(lineItem, i)
 	}
-	return lines, cursorLine
+	return lines, cursorLine, lineItem
+}
+
+// headerLines is the title and the rule above the rows.
+const headerLines = 2
+
+// scroll returns the first body line shown and how many are shown, so the
+// cursor stays visible above the footer (all of them before the pane size
+// is known).
+func (m Model) scroll(lines, cursor, footLines int) (off, n int) {
+	if m.height <= 0 {
+		return 0, lines
+	}
+	visible := max(m.height-headerLines-1-footLines, 1)
+	off = max(cursor-visible+1, 0)
+	return off, min(off+visible, lines) - off
 }
 
 func (m Model) rule() string {
@@ -196,9 +214,8 @@ func (m Model) title() string {
 	return bold.Render(left) + strings.Repeat(" ", gap) + gray.Render(right)
 }
 
-// View is the title and a rule, the item rows scrolled so the cursor stays
-// visible, then a rule, any prompt, notice or error, and the key hint.
-func (m Model) View() string {
+// footer is any prompt, notice or error, and the key hint.
+func (m Model) footer() []string {
 	var foot []string
 	switch {
 	case m.prompt != "":
@@ -222,15 +239,27 @@ func (m Model) View() string {
 	if len(errs) > 0 {
 		foot = append(foot, red.Render(oneLine(strings.Join(errs, "\n"), m.width)))
 	}
-	foot = append(foot, gray.Render(keyHint))
+	return append(foot, gray.Render(keyHint))
+}
 
-	rows, cursor := m.body()
-	if m.height > 0 {
-		footLines := len(foot)
-		visible := max(m.height-2-1-footLines, 1)
-		off := max(cursor-visible+1, 0)
-		rows = rows[off:min(off+visible, len(rows))]
+// itemAt is the index of the item drawn on screen line y, or -1 for the
+// title, a rule, the footer or past the end.
+func (m Model) itemAt(y int) int {
+	rows, cursor, lineItem := m.body()
+	off, n := m.scroll(len(rows), cursor, len(m.footer()))
+	if y < headerLines || y >= headerLines+n {
+		return -1
 	}
+	return lineItem[off+y-headerLines]
+}
+
+// View is the title and a rule, the item rows scrolled so the cursor stays
+// visible, then a rule, any prompt, notice or error, and the key hint.
+func (m Model) View() string {
+	foot := m.footer()
+	rows, cursor, _ := m.body()
+	off, n := m.scroll(len(rows), cursor, len(foot))
+	rows = rows[off : off+n]
 	lines := append([]string{m.title(), m.rule()}, rows...)
 	lines = append(append(lines, m.rule()), foot...)
 	if m.width > 0 {

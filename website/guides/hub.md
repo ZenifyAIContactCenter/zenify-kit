@@ -4,7 +4,7 @@ title: zenify hub
 
 # zenify hub: sidebar agent
 
-`zenify hub` mở một tmux session `zenify` ở root workspace, gồm một sidebar bên trái và agent `claude` bên phải. Sidebar gom theo task (slug của worktree): mỗi task hiện agent đang làm, PR, CI, review và mergeState của từng repo, để bạn không phải nhớ tay task nào đang chạy hay PR nào đã CLEAN.
+`zenify hub` mở một tmux session `zenify` ở root workspace, trên tmux server riêng `tmux -L zenify` (không đụng tới tmux server mặc định của bạn), gồm một sidebar bên trái và agent `claude` bên phải. Sidebar gom theo task (slug của worktree): mỗi task hiện agent đang làm, PR, CI, review và mergeState của từng repo, để bạn không phải nhớ tay task nào đang chạy hay PR nào đã CLEAN.
 
 ## Khi nào dùng
 
@@ -37,8 +37,29 @@ flowchart TD
 - Thiếu tmux hoặc tmux thấp hơn 3.1: hub báo lỗi kèm hướng dẫn cài tmux và thoát với mã khác 0. Check này chạy trước check "đang ở trong tmux" bên dưới.
 - Ngoài tmux: nếu session `zenify` chưa có, hub tạo nó với cwd là root workspace, window đầu gồm sidebar trái và `claude` phải, rồi attach (xem [Resume agent khi mở hub](#resume-agent-khi-mo-hub)). Đã có session thì chỉ attach. Nếu bước dựng sau `new-session` lỗi, hub xoá session vừa tạo; nếu chính `new-session` lỗi (ví dụ một lần chạy `zenify hub` khác vừa tạo session) thì hub báo lỗi và không xoá gì.
 - Đang ở trong tmux (bất kỳ session nào): hub không lồng session, chỉ in hướng dẫn chạy `zenify hub sidebar` trong một pane rồi thoát với mã 0.
+- Mỗi lần chạy, hub ghi lại file cấu hình `~/.zenify/hub/tmux.conf` (sửa tay sẽ bị ghi đè) và khởi động server hub với file đó (`-f`) khi server chưa chạy. Mọi lệnh tmux của hub (sidebar, hook, phím tắt) đi qua server này. Xem session của hub bằng `tmux -L zenify ls`; đổi tên server bằng env `ZENIFY_HUB_SOCKET` (dùng khi test).
 
 Phím `n` trong sidebar mở thêm một window agent mới ở root trong session `zenify` (chưa có session đó thì mở trong session hiện tại của sidebar), mỗi window cũng có sidebar bên trái; con trỏ ở lại pane `claude`. Hub bật `allow-passthrough` cho window đó để copy OSC 52 chạy được; tmux cũ hơn 3.3 không có option này nên footer báo lỗi nhưng window vẫn dùng được. Chỉ một sidebar giữ lock và chạy poller; các sidebar khác đọc cùng `state.json`. Không có daemon riêng, đóng hết session thì poller mất theo.
+
+## Dùng chuột và phím tắt
+
+Hub bật chuột và đặt phím không cần prefix tmux; prefix mặc định (`Ctrl+b`) vẫn dùng được.
+
+| Thao tác | Tác dụng |
+|---|---|
+| Click một tab trên thanh trạng thái (trên cùng) | Chuyển tới window đó. Tab có dạng `<icon> <tên window>`, window hiện tại được tô đảo màu |
+| Click `[+ agent]` (góc phải thanh trạng thái) | Mở window agent mới ở root workspace, như phím `n` trong sidebar |
+| Click một dòng trong sidebar | Chọn dòng; click lại dòng đang chọn = `Enter`. Click vào tiêu đề, header mục, đường kẻ hoặc footer không làm gì; khi đang hỏi `y/n` thì chuột bị bỏ qua |
+| Cuộn chuột trong sidebar | Như `j` / `k` |
+| Click vào pane | Chuyển con trỏ sang pane đó |
+| `Alt+←` / `Alt+→` | Chuyển sang pane trái / phải |
+| `Alt+1` … `Alt+9` | Chuyển tới window số 1 … 9 (window đánh số từ 1) |
+| `Alt+n` | Mở window agent mới |
+| `Alt+d` | Detach khỏi hub; agent vẫn chạy, chạy lại `zenify hub` để vào lại |
+
+Icon trên tab là trạng thái của agent đang mở trong window đó (`◆` blocked, `●` working, `✓` done; idle hoặc window không có agent thì không có icon). Sidebar giữ lock cập nhật icon sau mỗi vòng quét local (khoảng 10 giây). Lỗi khi đặt icon hoặc khi mở agent mới bằng `Alt+n`/`[+ agent]` được ghi vào `hub.log`.
+
+Terminal cần gửi phím Alt dạng Meta (macOS Terminal/iTerm2: bật "Use Option as Meta key").
 
 ## Sidebar
 
@@ -191,7 +212,8 @@ Mọi dữ liệu hub nằm ở `~/.zenify/hub/`: `state.json` (cache chung cho 
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - `internal/hub/sidebar.go`, `actions.go`, `github.go` (phím, icon, alert, interval)
-- `internal/hub/collect.go` (liveness agent), `internal/cli/hub.go` (resume khi mở hub)
+- `internal/hub/collect.go` (liveness agent, icon tab), `internal/cli/hub.go` (resume khi mở hub, `hub new-agent`)
+- `internal/hub/tmuxconf.go` (tmux.conf của server hub), `internal/tmuxx/tmuxx.go` (`tmux -L`)
 - `internal/apply/globalhooks.go` (hub-report events)
 - `internal/cli/doctor_tmux.go` (check tmux, --fix)
 - spec 2026-10-27-zenify-hub-design.md

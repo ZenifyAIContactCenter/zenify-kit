@@ -122,6 +122,7 @@ Hook và skill gọi các lệnh này; bạn không cần gõ tay nên chúng kh
 |---|---|
 | `zenify git-guard` | Hook PreToolUse: chặn commit/merge/push vào deploy branch + secret đã stage |
 | `zenify hooks-run` | Bộ điều phối nội bộ cho hook znf (chỉ chạy trong workspace, fail-open) |
+| `zenify hub new-agent` | Open a new agent window (bound to Alt+n and [+ agent] in the hub tmux server) |
 | `zenify hub report` | Record one Claude Code hook event (reads the hook JSON on stdin) |
 | `zenify hub sidebar` | Run the hub sidebar TUI (started by zenify hub) |
 | `zenify observe count` | PreToolUse hook: đếm dispatch Task + soft-cap warn (không chặn) |

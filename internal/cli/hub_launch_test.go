@@ -27,6 +27,9 @@ type recTmux struct {
 
 func (r *recTmux) Run(args ...string) ([]byte, error) {
 	r.calls = append(r.calls, strings.Join(args, " "))
+	if len(args) > 2 && args[0] == "-f" { // config file for a server new-session starts
+		args = args[2:]
+	}
 	if r.failOn[args[0]] {
 		return nil, errors.New("fail " + args[0])
 	}
@@ -55,7 +58,13 @@ func withHubEnv(t *testing.T, rt *recTmux, attached *[]string) string {
 		},
 	}
 	t.Cleanup(func() { hubLauncher = old })
+	t.Setenv("ZENIFY_HUB_SOCKET", "hubtest")
 	return home
+}
+
+// confArg is the -f argument new-session gets for home.
+func confArg(home string) string {
+	return "-f " + filepath.Join(home, ".zenify", "hub", "tmux.conf") + " "
 }
 
 func hubWorkspace(t *testing.T) string {
@@ -106,12 +115,12 @@ func TestHubCmd_NewSession(t *testing.T) {
 	t.Setenv("TMUX", "")
 	rt := &recTmux{failOn: map[string]bool{"has-session": true}}
 	var attached []string
-	withHubEnv(t, rt, &attached)
+	home := withHubEnv(t, rt, &attached)
 	if _, err := runHub(t); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
-		"new-session -d -s zenify -P -F #{window_id} -c " + root + " -n agent claude",
+		confArg(home) + "new-session -d -s zenify -P -F #{window_id} -c " + root + " -n agent claude",
 		`split-window -d -h -b -l 30% -t @1 -c ` + root + ` '/Users/John Doe/it'\''s/zenify' hub sidebar`,
 		"set-option -w -t @1 allow-passthrough on",
 	}
@@ -126,7 +135,7 @@ func TestHubCmd_NewSession(t *testing.T) {
 			t.Errorf("calls missing %q in %q", w, rt.calls)
 		}
 	}
-	if got := strings.Join(attached, " "); got != "attach -t =zenify" {
+	if got := strings.Join(attached, " "); got != "-L hubtest attach -t =zenify" {
 		t.Errorf("attach args = %q", got)
 	}
 }
@@ -137,16 +146,20 @@ func TestHubCmd_ExistingSessionOnlyAttaches(t *testing.T) {
 	t.Setenv("TMUX", "")
 	rt := &recTmux{}
 	var attached []string
-	withHubEnv(t, rt, &attached)
+	home := withHubEnv(t, rt, &attached)
 	if _, err := runHub(t); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range rt.calls {
-		if strings.HasPrefix(c, "new-session") || strings.HasPrefix(c, "split-window") {
+		if strings.HasPrefix(c, "-f ") || strings.HasPrefix(c, "new-session") || strings.HasPrefix(c, "split-window") {
 			t.Errorf("unexpected %q for existing session", c)
 		}
 	}
-	if got := strings.Join(attached, " "); got != "attach -t =zenify" {
+	b, err := os.ReadFile(filepath.Join(home, ".zenify", "hub", "tmux.conf"))
+	if err != nil || !strings.Contains(string(b), "set -g mouse on") {
+		t.Errorf("tmux.conf not written every launch: %q, %v", b, err)
+	}
+	if got := strings.Join(attached, " "); got != "-L hubtest attach -t =zenify" {
 		t.Errorf("attach args = %q", got)
 	}
 }
@@ -268,7 +281,7 @@ func writeHubAgent(t *testing.T, home string, a hub.Agent) {
 func sessionCalls(calls []string) []string {
 	var out []string
 	for _, c := range calls {
-		for _, p := range []string{"new-session", "new-window", "split-window", "set-option", "kill-session"} {
+		for _, p := range []string{"-f", "new-session", "new-window", "split-window", "set-option", "kill-session"} {
 			if strings.HasPrefix(c, p+" ") {
 				out = append(out, c)
 			}
@@ -292,7 +305,7 @@ func TestHubCmd_ResumesClosedAgents(t *testing.T) { // SC-24
 	}
 	sidebar := `'/Users/John Doe/it'\''s/zenify' hub sidebar`
 	want := []string{
-		"new-session -d -s zenify -P -F #{window_id} -c " + root + " -n be-2-x claude --resume " + idNew,
+		confArg(home) + "new-session -d -s zenify -P -F #{window_id} -c " + root + " -n be-2-x claude --resume " + idNew,
 		"split-window -d -h -b -l 30% -t @1 -c " + root + " " + sidebar,
 		"set-option -w -t @1 allow-passthrough on",
 		"new-window -d -t =zenify: -P -F #{window_id} -n agent -c " + root + " claude --resume " + idOld,
@@ -302,7 +315,7 @@ func TestHubCmd_ResumesClosedAgents(t *testing.T) { // SC-24
 	if got := sessionCalls(rt.calls); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if got := strings.Join(attached, " "); got != "attach -t =zenify" {
+	if got := strings.Join(attached, " "); got != "-L hubtest attach -t =zenify" {
 		t.Errorf("attach args = %q", got)
 	}
 }
@@ -312,14 +325,14 @@ func TestHubCmd_SkipsOpenAgent(t *testing.T) {
 	t.Chdir(root)
 	t.Setenv("TMUX", "")
 	// Another tmux session on server 99 still runs idNew in pane %2.
-	rt := &recTmux{failOn: map[string]bool{"has-session": true}, out: map[string]string{"display-message": "99\n", "list-panes": "%2 0\n"}}
+	rt := &recTmux{failOn: map[string]bool{"has-session": true}, out: map[string]string{"display-message": "99\n", "list-panes": "%2 0 @0\n"}}
 	var attached []string
 	home := withHubEnv(t, rt, &attached)
 	writeHubAgent(t, home, hub.Agent{SessionID: idNew, Pane: "%2", TmuxServer: "99", UpdatedAt: time.Now().Unix()})
 	if _, err := runHub(t); err != nil {
 		t.Fatal(err)
 	}
-	if got := sessionCalls(rt.calls)[0]; got != "new-session -d -s zenify -P -F #{window_id} -c "+root+" -n agent claude" {
+	if got := sessionCalls(rt.calls)[0]; got != confArg(home)+"new-session -d -s zenify -P -F #{window_id} -c "+root+" -n agent claude" {
 		t.Errorf("first call = %q, want a fresh claude", got)
 	}
 }
@@ -402,5 +415,70 @@ func TestResumeCandidates_AgeCutoff(t *testing.T) {
 	got, err := resumeCandidates(agents, now)
 	if err != nil || len(got) != 1 || got[0].SessionID != "a1" {
 		t.Errorf("got %+v, %v", got, err)
+	}
+}
+
+func TestHubNewAgent_FromWorkspaceCwd(t *testing.T) { // FR-12.2 [+ agent], FR-12.3 Alt+n
+	root := hubWorkspace(t)
+	rt := &recTmux{}
+	if err := hubNewAgent(rt, root, "/bin/zenify"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"has-session -t =zenify",
+		"new-window -t =zenify: -P -F #{window_id} -c " + root + " -n agent claude",
+		"split-window -d -h -b -l 30% -t @1 -c " + root + " /bin/zenify hub sidebar",
+		"switch-client -t @1",
+		"set-option -w -t @1 allow-passthrough on",
+	}
+	if !reflect.DeepEqual(rt.calls, want) {
+		t.Errorf("calls:\n%s\nwant:\n%s", strings.Join(rt.calls, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestHubNewAgent_FallsBackToSessionPath(t *testing.T) {
+	root := hubWorkspace(t)
+	rt := &recTmux{out: map[string]string{"display-message": root + "\n"}}
+	if err := hubNewAgent(rt, t.TempDir(), "/bin/zenify"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.calls[0] != "display-message -p -t =zenify #{session_path}" {
+		t.Errorf("first call = %q", rt.calls[0])
+	}
+	if want := "new-window -t =zenify: -P -F #{window_id} -c " + root + " -n agent claude"; rt.calls[2] != want {
+		t.Errorf("new-window call = %q, want %q", rt.calls[2], want)
+	}
+}
+
+func TestHubNewAgent_NoWorkspace(t *testing.T) {
+	outside := t.TempDir()
+	rt := &recTmux{out: map[string]string{"display-message": outside + "\n"}}
+	err := hubNewAgent(rt, outside, "/bin/zenify")
+	if err == nil || !strings.Contains(err.Error(), "not inside a zenify workspace") {
+		t.Fatalf("err = %v", err)
+	}
+	for _, c := range rt.calls {
+		if strings.HasPrefix(c, "new-window") {
+			t.Errorf("opened a window outside a workspace: %q", rt.calls)
+		}
+	}
+}
+
+func TestHubNewAgentCmd_ErrorLoggedExitZero(t *testing.T) {
+	t.Chdir(t.TempDir())
+	rt := &recTmux{failOn: map[string]bool{"display-message": true}}
+	var attached []string
+	home := withHubEnv(t, rt, &attached)
+	cmd := newHubCmd()
+	cmd.SetArgs([]string{"new-agent"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("want exit 0, got %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".zenify", "hub", "hub.log"))
+	if err != nil || !strings.Contains(string(b), "fail display-message") {
+		t.Errorf("hub.log = %q, %v", b, err)
 	}
 }

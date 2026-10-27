@@ -170,6 +170,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 	case tea.KeyMsg:
 		return m.key(msg.String())
+	case tea.MouseMsg:
+		return m.mouse(msg)
+	}
+	return m, nil
+}
+
+// mouse handles a press (FR-12.4): the wheel moves like j/k; a left click on
+// a row selects it, and on the selected row acts like Enter. Clicks on the
+// title, headers, rules and footer are ignored, and so is every event while
+// a y/n prompt is up.
+func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action != tea.MouseActionPress || m.confirm != nil {
+		return m, nil
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		return m.key("k")
+	case tea.MouseButtonWheelDown:
+		return m.key("j")
+	case tea.MouseButtonLeft:
+		i := m.itemAt(msg.Y)
+		if i < 0 || m.items[i].Kind == KindHeader {
+			return m, nil
+		}
+		if i == m.cursor {
+			return m.key("enter")
+		}
+		m.cursor, m.moved = i, true
 	}
 	return m, nil
 }

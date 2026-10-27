@@ -143,17 +143,37 @@ func TestServerPID(t *testing.T) {
 }
 
 func TestLivePanes(t *testing.T) {
-	f := &fakeRunner{out: "%0 0\n%3 2\n%12 10\n"}
+	f := &fakeRunner{out: "%0 0 @1\n%3 2 @4\n%12 10 @11\n"}
 	panes, err := LivePanes(f)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]int{"%0": 0, "%3": 2, "%12": 10}
+	want := map[string]Pane{"%0": {Window: 0, WindowID: "@1"}, "%3": {Window: 2, WindowID: "@4"}, "%12": {Window: 10, WindowID: "@11"}}
 	if !reflect.DeepEqual(panes, want) {
 		t.Errorf("panes = %v, want %v", panes, want)
 	}
-	if got := f.calls[0]; !reflect.DeepEqual(got, []string{"list-panes", "-a", "-F", "#{pane_id} #{window_index}"}) {
+	if got := f.calls[0]; !reflect.DeepEqual(got, []string{"list-panes", "-a", "-F", "#{pane_id} #{window_index} #{window_id}"}) {
 		t.Errorf("args = %q", got)
+	}
+}
+
+func TestSocket(t *testing.T) {
+	t.Setenv("ZENIFY_HUB_SOCKET", "")
+	if got := Socket(); got != "zenify" {
+		t.Errorf("Socket() = %q, want zenify", got)
+	}
+	t.Setenv("ZENIFY_HUB_SOCKET", "hubtest")
+	if got := Socket(); got != "hubtest" {
+		t.Errorf("Socket() = %q, want hubtest", got)
+	}
+}
+
+func TestExecArgs_PrependsSocket(t *testing.T) {
+	t.Setenv("ZENIFY_HUB_SOCKET", "hubtest")
+	got := execArgs([]string{"has-session", "-t", "=zenify"})
+	want := []string{"-L", "hubtest", "has-session", "-t", "=zenify"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("execArgs = %q, want %q", got, want)
 	}
 }
 

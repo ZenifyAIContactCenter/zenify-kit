@@ -47,8 +47,9 @@ func attachTmux(args ...string) error {
 	return cmd.Run()
 }
 
-// runHubLauncher opens (or re-attaches to) the zenify tmux session: the agent
-// window on the right, the hub sidebar pane on the left.
+// runHubLauncher opens (or re-attaches to) the zenify tmux session on the
+// hub's own tmux server (tmuxx.Socket): the agent window on the right, the hub
+// sidebar pane on the left. It rewrites the server's tmux.conf every launch.
 func runHubLauncher(cmd *cobra.Command, env hubEnv) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -65,16 +66,24 @@ func runHubLauncher(cmd *cobra.Command, env hubEnv) error {
 		fmt.Fprintln(cmd.OutOrStdout(), `already inside tmux — run "zenify hub sidebar" in a pane`)
 		return nil
 	}
+	home, err := env.home()
+	if err != nil {
+		return fmt.Errorf("resolve home: %w", err)
+	}
+	self, err := env.self()
+	if err != nil {
+		return fmt.Errorf("resolve executable: %w", err)
+	}
+	conf, err := hub.WriteTmuxConf(home, self)
+	if err != nil {
+		return err
+	}
 	if !tmuxx.HasSession(env.runner) {
-		self, err := env.self()
-		if err != nil {
-			return fmt.Errorf("resolve executable: %w", err)
-		}
-		if err := buildHubSession(env.runner, root, self, resumable(env, time.Now().Unix())); err != nil {
+		if err := buildHubSession(env.runner, root, self, conf, resumable(env, time.Now().Unix())); err != nil {
 			return fmt.Errorf("setting up tmux session failed: %w", err)
 		}
 	}
-	if err := env.attach("attach", "-t", tmuxx.Target); err != nil {
+	if err := env.attach("-L", tmuxx.Socket(), "attach", "-t", tmuxx.Target); err != nil {
 		return fmt.Errorf("tmux attach: %w", err)
 	}
 	return nil
@@ -157,18 +166,19 @@ func resumeCandidates(agents map[string]hub.Agent, now int64) ([]hub.Agent, erro
 	return out, errors.Join(errs...)
 }
 
-// buildHubSession creates the detached session: the first window runs a new
+// buildHubSession creates the detached session, starting the hub server with
+// config file conf when none runs: the first window runs a new
 // claude, or resumes resume[0], and every further agent in resume gets its own
 // window; each window has the sidebar pane on its left. When new-session fails
 // (another run may have created the session meanwhile) it kills nothing; when
 // a later step fails it kills the session it created, since a half-built one
 // would make the next run attach without a sidebar.
-func buildHubSession(r tmuxx.Runner, root, self string, resume []hub.Agent) error {
+func buildHubSession(r tmuxx.Runner, root, self, conf string, resume []hub.Agent) error {
 	name, command := "agent", []string{"claude"}
 	if len(resume) > 0 {
 		name, command = hub.WindowName(resume[0].Slug), []string{"claude", "--resume", resume[0].SessionID}
 	}
-	out, err := r.Run(append([]string{"new-session", "-d", "-s", tmuxx.Session, "-P", "-F", "#{window_id}", "-c", root, "-n", name}, command...)...)
+	out, err := r.Run(append([]string{"-f", conf, "new-session", "-d", "-s", tmuxx.Session, "-P", "-F", "#{window_id}", "-c", root, "-n", name}, command...)...)
 	if err != nil {
 		return err
 	}
@@ -237,7 +247,7 @@ func runHubSidebar() error {
 		Git: gitx.ExecRunner(), GH: ghx.ExecRunner(), Tmux: tm,
 		Now: func() int64 { return time.Now().Unix() },
 	}
-	_, err = tea.NewProgram(hub.NewModel(home, root, tm, poller), tea.WithAltScreen()).Run()
+	_, err = tea.NewProgram(hub.NewModel(home, root, tm, poller), tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
 	return err
 }
 
@@ -252,6 +262,50 @@ func runHubReport(stdin io.Reader, pane string, now int64) {
 	if err := hub.Report(home, stdin, pane, os.Getenv("TMUX"), now); err != nil {
 		hub.LogError(home, err, now)
 	}
+}
+
+// hubNewAgent opens a new agent window in the workspace that holds cwd, or,
+// when cwd is outside one, in the workspace of the zenify session's start
+// directory.
+func hubNewAgent(r tmuxx.Runner, cwd, self string) error {
+	root, ok := wt.FindWorkspaceRoot(cwd)
+	if !ok {
+		out, err := r.Run("display-message", "-p", "-t", tmuxx.Target, "#{session_path}")
+		if err != nil {
+			return fmt.Errorf("hub new-agent: session path: %w", err)
+		}
+		dir := strings.TrimSpace(string(out))
+		if root, ok = wt.FindWorkspaceRoot(dir); !ok {
+			return fmt.Errorf("hub new-agent: %s is not inside a zenify workspace", dir)
+		}
+	}
+	return hub.NewAgentWindow(r, root, self)
+}
+
+// runHubNewAgent is `zenify hub new-agent`, run by tmux run-shell from Alt+n
+// or a click on [+ agent]. It always exits 0, since run-shell would show any
+// output over the pane: errors go to hub.log (stderr when home is unknown).
+func runHubNewAgent(env hubEnv) {
+	err := func() error {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("hub new-agent: resolve cwd: %w", err)
+		}
+		self, err := env.self()
+		if err != nil {
+			return fmt.Errorf("hub new-agent: resolve executable: %w", err)
+		}
+		return hubNewAgent(env.runner, cwd, self)
+	}()
+	if err == nil {
+		return
+	}
+	home, herr := env.home()
+	if herr != nil {
+		fmt.Fprintf(os.Stderr, "zenify hub: resolve home: %v (original error: %v)\n", herr, err)
+		return
+	}
+	hub.LogError(home, err, time.Now().Unix())
 }
 
 func newHubCmd() *cobra.Command {
@@ -269,6 +323,13 @@ func newHubCmd() *cobra.Command {
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE:   func(*cobra.Command, []string) error { return runHubSidebar() },
+	})
+	cmd.AddCommand(&cobra.Command{
+		Use:    "new-agent",
+		Short:  "Open a new agent window (bound to Alt+n and [+ agent] in the hub tmux server)",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		Run:    func(*cobra.Command, []string) { runHubNewAgent(hubLauncher) },
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:    "report",

@@ -443,7 +443,7 @@ func TestEnter_ClosedAgentResumes(t *testing.T) {
 	m = update(t, m, key("enter"))
 	want := [][]string{
 		{"display-message", "-p", "#{pid}"},
-		{"list-panes", "-a", "-F", "#{pane_id} #{window_index}"},
+		{"list-panes", "-a", "-F", "#{pane_id} #{window_index} #{window_id}"},
 		{"has-session", "-t", "=zenify"},
 		{"new-window", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "be-2376-tests", "claude", "--resume", a.SessionID},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
@@ -618,7 +618,7 @@ func TestEnter_OpenOnFreshCheckRefuses(t *testing.T) {
 	a.Pane, a.TmuxServer = "%9", "4242"
 	s.Agents["a"] = a
 	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
-	tm.out = map[string]string{"display-message": "4242\n", "list-panes": "%9 3\n"}
+	tm.out = map[string]string{"display-message": "4242\n", "list-panes": "%9 3 @3\n"}
 	m = toAgent(t, m, "a")
 	m = update(t, m, key("enter"))
 	for _, c := range tm.calls {
@@ -653,7 +653,7 @@ func TestKeyX_OpenAtConfirmRefuses(t *testing.T) {
 	m, tm, _ := newTestModel(t, home, liveAgents(t, home, s))
 	m = toAgent(t, m, "a")
 	m = update(t, m, key("x"))
-	tm.out = map[string]string{"display-message": "4242\n", "list-panes": "%9 3\n"} // resumed elsewhere meanwhile
+	tm.out = map[string]string{"display-message": "4242\n", "list-panes": "%9 3 @3\n"} // resumed elsewhere meanwhile
 	m = update(t, m, key("y"))
 	if m.notice != "agent is open again" || m.failed {
 		t.Errorf("notice %q failed=%v", m.notice, m.failed)

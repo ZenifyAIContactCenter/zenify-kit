@@ -435,6 +435,10 @@ type Poller struct {
 	LocalDuration time.Duration
 
 	mu sync.Mutex // serializes the read-modify-write of state.json
+
+	// tabs is the @hub_state last set on each window id; only Local touches
+	// it, and local rounds never overlap.
+	tabs map[string]string
 }
 
 // Local collects worktrees and agents and writes them into state.json,
@@ -482,6 +486,9 @@ func (p *Poller) Local() error {
 		errs = append(errs, fmt.Errorf("tmux liveness: %w", liveErr))
 	}
 	agents = markOpen(agents, pid, panes)
+	if liveErr == nil {
+		p.syncTabs(panes, agents, now)
+	}
 	prs, err := DropAcked(allPRs(old), AcksDir(p.Home))
 	if err != nil {
 		errs = append(errs, err)
@@ -494,8 +501,8 @@ func (p *Poller) Local() error {
 }
 
 // liveness returns the current tmux server pid and its live panes (pane id →
-// window index). No running server is not an error: every agent is closed.
-func liveness(r tmuxx.Runner) (pid string, panes map[string]int, err error) {
+// window). No running server is not an error: every agent is closed.
+func liveness(r tmuxx.Runner) (pid string, panes map[string]tmuxx.Pane, err error) {
 	pid, err = tmuxx.ServerPID(r)
 	if err == nil {
 		panes, err = tmuxx.LivePanes(r)
@@ -522,7 +529,7 @@ func MarkOpen(r tmuxx.Runner, agents map[string]Agent) (map[string]Agent, error)
 // markOpen returns a copy of agents with Open and Window set: an agent is
 // open when it was recorded on server pid and its pane is live there. A
 // record without TmuxServer is closed.
-func markOpen(agents map[string]Agent, pid string, panes map[string]int) map[string]Agent {
+func markOpen(agents map[string]Agent, pid string, panes map[string]tmuxx.Pane) map[string]Agent {
 	if agents == nil {
 		return nil
 	}
@@ -532,11 +539,65 @@ func markOpen(agents map[string]Agent, pid string, panes map[string]int) map[str
 		a.Open = live && a.TmuxServer != "" && a.TmuxServer == pid
 		a.Window = 0
 		if a.Open {
-			a.Window = w
+			a.Window = w.Window
 		}
 		out[id] = a
 	}
 	return out
+}
+
+// tabIcon is the @hub_state of a window whose open agents roll up to s;
+// idle shows no icon.
+func tabIcon(s AgentState) string {
+	switch s {
+	case Blocked:
+		return "◆"
+	case Working:
+		return "●"
+	case Done:
+		return "✓"
+	}
+	return ""
+}
+
+// syncTabs sets the window option @hub_state, shown on the status-line tab,
+// of every live window to the icon of its open agents (FR-12.5), unsetting it
+// on windows without one. Only values that changed since the last round are
+// sent; a failed call is logged to hub.log and retried next round.
+func (p *Poller) syncTabs(panes map[string]tmuxx.Pane, agents map[string]Agent, now int64) {
+	states := map[string][]AgentState{}
+	for _, pn := range panes {
+		states[pn.WindowID] = nil
+	}
+	for _, a := range agents {
+		if a.Open {
+			w := panes[a.Pane].WindowID
+			states[w] = append(states[w], a.State)
+		}
+	}
+	ids := make([]string, 0, len(states))
+	for id := range states {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	next := make(map[string]string, len(ids))
+	for _, id := range ids {
+		icon := tabIcon(Rollup(states[id]...))
+		if old, ok := p.tabs[id]; ok && old == icon {
+			next[id] = icon
+			continue
+		}
+		args := []string{"set-option", "-w", "-t", id, "@hub_state", icon}
+		if icon == "" {
+			args = []string{"set-option", "-wu", "-t", id, "@hub_state"}
+		}
+		if _, err := p.Tmux.Run(args...); err != nil {
+			LogError(p.Home, fmt.Errorf("hub: tab state of window %s: %w", id, err), now)
+			continue
+		}
+		next[id] = icon
+	}
+	p.tabs = next
 }
 
 // GitHub fetches the user's PRs, fires alerts and writes them into
