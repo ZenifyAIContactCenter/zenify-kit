@@ -198,8 +198,27 @@ func (m Model) scroll(lines, cursor, footLines int) (off, n int) {
 		return 0, lines
 	}
 	visible := max(m.height-headerLines-1-footLines, 1)
-	off = max(cursor-visible+1, 0)
+	off = min(max(m.offset, 0), max(lines-visible, 0))
 	return off, min(off+visible, lines) - off
+}
+
+// syncOffset keeps the stored scroll offset valid: it moves only when the
+// cursor left the visible window (or the window shrank or the list got
+// shorter), so a click inside the window never shifts the list.
+func (m *Model) syncOffset() {
+	if m.height <= 0 {
+		m.offset = 0
+		return
+	}
+	rows, cursor, _ := m.body()
+	visible := max(m.height-headerLines-1-len(m.footer()), 1)
+	switch {
+	case cursor < m.offset:
+		m.offset = cursor
+	case cursor >= m.offset+visible:
+		m.offset = cursor - visible + 1
+	}
+	m.offset = min(max(m.offset, 0), max(len(rows)-visible, 0))
 }
 
 func (m Model) rule() string {

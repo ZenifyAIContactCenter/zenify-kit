@@ -86,6 +86,7 @@ type Model struct {
 	state    State
 	items    []Item
 	cursor   int
+	offset   int             // first body line shown; moves only when the cursor leaves the window
 	expanded bool            // the merged group is open
 	folds    map[string]bool // repo name → open; only the user's choices, default otherwise
 	width    int
@@ -126,6 +127,15 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	if nm, ok := next.(Model); ok {
+		nm.syncOffset()
+		next = nm
+	}
+	return next, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tickMsg:
 		next, poll := m.tick(time.Time(msg))

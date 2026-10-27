@@ -2,6 +2,8 @@ package hub
 
 import (
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -107,5 +109,46 @@ func TestMouse_IgnoredWhilePromptIsUp(t *testing.T) {
 	}
 	if it := m.current(); it.PR.Number != 1 {
 		t.Errorf("a click moved the cursor under a prompt to %+v", it)
+	}
+}
+
+func TestMouse_ScrolledClickKeepsOffsetAndSecondClickActs(t *testing.T) {
+	m, _, _ := newTestModel(t, t.TempDir(), prRows())
+	m = update(t, m, tea.WindowSizeMsg{Width: 40, Height: 8})
+	for range 5 {
+		m = update(t, m, key("j")) // cursor on PR #5; rows #2..#5 shown
+	}
+	off := m.offset
+	m = update(t, m, click(4)) // third shown row: PR #4
+	if it := m.current(); it.Kind != KindPR || it.PR.Number != 4 {
+		t.Fatalf("first click selected %+v, want PR #4\n%s", it, m.View())
+	}
+	if m.offset != off {
+		t.Fatalf("click shifted offset %d -> %d", off, m.offset)
+	}
+	gh := m.gh.(*fakeGH)
+	if gh.args != nil {
+		t.Fatalf("first click ran %q", gh.args)
+	}
+	m = update(t, m, click(4))
+	if it := m.current(); it.PR.Number != 4 {
+		t.Errorf("second click moved cursor to %+v", it)
+	}
+	if want := [][]string{{"pr", "view", "4", "--repo", "o/d", "--web"}}; !reflect.DeepEqual(gh.args, want) {
+		t.Errorf("second click gh calls = %q, want %q", gh.args, want)
+	}
+}
+
+func TestScroll_KeyboardKeepsCursorVisible(t *testing.T) {
+	m, _, _ := newTestModel(t, t.TempDir(), prRows())
+	m = update(t, m, tea.WindowSizeMsg{Width: 40, Height: 8})
+	for range 5 {
+		m = update(t, m, key("j"))
+	}
+	for range 5 {
+		m = update(t, m, key("k"))
+		if !strings.Contains(m.View(), "#"+strconv.Itoa(m.current().PR.Number)) {
+			t.Fatalf("cursor row not visible:\n%s", m.View())
+		}
 	}
 }
