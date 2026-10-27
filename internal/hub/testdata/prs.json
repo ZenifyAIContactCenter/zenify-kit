@@ -1,0 +1,39 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "number": 812,
+          "url": "https://github.com/ZenifyAIContactCenter/contact-center-be/pull/812",
+          "isDraft": false,
+          "headRefName": "phuthuycoding/fix/redis-scan-storm",
+          "mergeStateStatus": "CLEAN",
+          "reviewDecision": "APPROVED",
+          "repository": { "nameWithOwner": "ZenifyAIContactCenter/contact-center-be" },
+          "commits": { "nodes": [ { "commit": { "statusCheckRollup": {
+            "state": "SUCCESS",
+            "contexts": { "nodes": [
+              { "conclusion": "SUCCESS", "detailsUrl": "https://github.com/ZenifyAIContactCenter/contact-center-be/actions/runs/10/job/11" },
+              {}
+            ] }
+          } } } ] },
+          "reviewThreads": { "nodes": [ { "isResolved": true } ] }
+        },
+        {
+          "number": 431,
+          "url": "https://github.com/ZenifyAIContactCenter/contact-center-hub/pull/431",
+          "isDraft": true,
+          "headRefName": "phuthuycoding/feat/sla-export",
+          "mergeStateStatus": "BLOCKED",
+          "reviewDecision": "REVIEW_REQUIRED",
+          "repository": { "nameWithOwner": "ZenifyAIContactCenter/contact-center-hub" },
+          "commits": { "nodes": [ { "commit": { "statusCheckRollup": {
+            "state": "PENDING",
+            "contexts": { "nodes": [ { "conclusion": null, "detailsUrl": "https://github.com/ZenifyAIContactCenter/contact-center-hub/actions/runs/20/job/21" } ] }
+          } } } ] },
+          "reviewThreads": { "nodes": [ { "isResolved": false }, { "isResolved": true }, { "isResolved": false } ] }
+        }
+      ]
+    }
+  }
+}
