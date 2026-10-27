@@ -31,10 +31,12 @@ func (f *scriptTmux) Run(args ...string) ([]byte, error) {
 
 // countTicker counts the local and GitHub rounds it ran. A GitHub round
 // stamps State.GitHubAt in home, as a real round with known owners does,
-// unless deferred is set (owners unknown: GitHubAt stays put).
+// unless deferred is set (owners unknown: GitHubAt stays put) or githubErr
+// fails the round.
 type countTicker struct {
 	home          string
 	deferred      bool
+	githubErr     error
 	local, github int
 }
 
@@ -45,6 +47,9 @@ func (c *countTicker) Local() error {
 
 func (c *countTicker) GitHub() error {
 	c.github++
+	if c.githubErr != nil {
+		return c.githubErr
+	}
 	if c.deferred {
 		return nil
 	}
@@ -340,6 +345,21 @@ func TestDeferredGitHubRoundRetriesNextTick(t *testing.T) {
 	update(t, m, tickMsg(t0.Add(2*time.Second)))
 	if ct.github != 3 {
 		t.Errorf("github rounds = %d, want 3 (the deferred round retried on the next tick)", ct.github)
+	}
+}
+
+func TestFailedGitHubRoundWaitsForInterval(t *testing.T) {
+	m, _, ct := newTestModel(t, t.TempDir(), State{})
+	ct.githubErr = errors.New("gh: rate limited")
+	m = update(t, m, key("r"))                     // forces GitHub round 2, which fails
+	m = update(t, m, tickMsg(t0.Add(time.Second))) // round 2
+	m = update(t, m, tickMsg(t0.Add(2*time.Second)))
+	if ct.github != 2 {
+		t.Fatalf("github rounds after a failed round = %d, want 2 (no retry on the next tick)", ct.github)
+	}
+	update(t, m, tickMsg(t0.Add(time.Second+GitHubInterval(m.state))))
+	if ct.github != 3 {
+		t.Errorf("github rounds after the interval = %d, want 3", ct.github)
 	}
 }
 

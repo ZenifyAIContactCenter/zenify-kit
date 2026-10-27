@@ -143,8 +143,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.localErr = msg.err
 		}
 		m.err = m.reload()
-		if msg.github && m.state.GitHubAt == msg.githubAt {
-			// Deferred (owners unknown) or failed: retry next tick, not after GitHubInterval.
+		if msg.github && msg.err == nil && m.state.GitHubError == "" && m.state.GitHubAt == msg.githubAt {
+			// Deferred (owners unknown): retry next tick. A failed round keeps
+			// lastGitHub, so an outage is retried only every GitHubInterval.
 			m.lastGitHub = time.Time{}
 		}
 		m.logErr(msg.at)
