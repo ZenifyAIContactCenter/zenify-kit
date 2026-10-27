@@ -154,7 +154,10 @@ func untrackedNumstat(dir string) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			lines = bytes.Count(data, []byte("\n"))
+			// git's binary heuristic: a NUL in the first 8000 bytes → binary, 0 lines (numstat "-\t-").
+			if !bytes.Contains(data[:min(len(data), 8000)], []byte{0}) {
+				lines = bytes.Count(data, []byte("\n"))
+			}
 		}
 		fmt.Fprintf(&b, "%d\t0\t%s\n", lines, p)
 	}

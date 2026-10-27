@@ -209,3 +209,23 @@ func TestUntrackedNumstat_SymlinkNotRead(t *testing.T) {
 		t.Errorf("got %q, want %q", got, "0\t0\tlink\n")
 	}
 }
+
+// An untracked binary file counts 0 lines, like git's "-\t-" numstat, so new assets cannot push
+// a plan to too-large and stop the review.
+func TestUntrackedNumstat_BinaryCountsZero(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	data := append([]byte{0x89, 'P', 'N', 'G', 0x00}, bytes.Repeat([]byte("\n"), 700)...)
+	if err := os.WriteFile(filepath.Join(dir, "logo.png"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := untrackedNumstat(dir)
+	if err != nil {
+		t.Fatalf("untrackedNumstat: %v", err)
+	}
+	if string(got) != "0\t0\tlogo.png\n" {
+		t.Errorf("got %q, want %q", got, "0\t0\tlogo.png\n")
+	}
+}
