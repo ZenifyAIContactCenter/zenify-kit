@@ -21,7 +21,7 @@ read. Untracked new files count: add their lines to `ADDED` and list them to eve
 BASE=${BASE:-HEAD}            # ship: merge-base; standalone: HEAD (working tree)
 PACK=${PACK:-}                # ship-pack path from ship step 5; empty standalone
 ADDED=$(git diff --numstat "$BASE" | awk '{a+=$1+$2} END{print a+0}')
-NEW=$(git ls-files --others --exclude-standard)   # untracked new files, invisible to git diff
+NEW=$(git -c core.quotePath=false ls-files --others --exclude-standard)   # untracked new files, invisible to git diff; raw (unquoted) names
 [ -z "$NEW" ] || ADDED=$((ADDED + $(printf '%s\n' "$NEW" | tr '\n' '\0' | xargs -0 cat | wc -l)))
 # CODE lines only — a DELETION escalates; `.md` stays excluded or this file self-matches.
 SHARED=$({ git diff "$BASE" -- ':(exclude)*.json' ':(exclude)*.md' ':(exclude)*.lock' ':(exclude)*.snap' \

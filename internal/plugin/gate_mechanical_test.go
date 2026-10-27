@@ -221,6 +221,19 @@ func TestGate_PythonSyntaxErrorBlocks(t *testing.T) {
 	}
 }
 
+// A Unicode file name must reach compileall unquoted (git's default core.quotePath escapes it).
+func TestGate_PythonSyntaxErrorInUnicodeNameBlocks(t *testing.T) {
+	pyAvailable(t)
+	dir, base := gitInit(t)
+	writeFile(t, dir, "requirements.txt", "fastapi\n")
+	writeFile(t, dir, "\u6570\u636e.py", "def f(:\n    return 1\n")
+	gitCommitAll(t, dir)
+	res := runGate(t, dir, base)
+	if res.Verdict != "block" {
+		t.Errorf("verdict=%q, want block (syntax error in a Unicode-named file)", res.Verdict)
+	}
+}
+
 // SC-2: valid Python, no linter config → pass with LOW "no linter configured".
 func TestGate_PythonNoLinterIsLowNote(t *testing.T) {
 	pyAvailable(t)
