@@ -13,13 +13,20 @@ Four gates: PRE, BUNDLE, REVIEW, VERIFY — one step each below (`references/lif
 
 ## Step 1 — compute tier input (mechanical)
 
+`WT=<worktree>` (znf:nonstop reviews a worker's uncommitted tree from its own checkout) → run every
+command block of this skill inside `cd "$WT" && …`, and give every reviewer `$WT` as the tree to
+read. Untracked new files count: add their lines to `ADDED` and list them to every reviewer.
+
 ```bash
 BASE=${BASE:-HEAD}            # ship: merge-base; standalone: HEAD (working tree)
 PACK=${PACK:-}                # ship-pack path from ship step 5; empty standalone
 ADDED=$(git diff --numstat "$BASE" | awk '{a+=$1+$2} END{print a+0}')
+NEW=$(git -c core.quotePath=false ls-files --others --exclude-standard)   # untracked new files, invisible to git diff; raw (unquoted) names
+[ -z "$NEW" ] || ADDED=$((ADDED + $(printf '%s\n' "$NEW" | tr '\n' '\0' | xargs -0 cat | wc -l)))
 # CODE lines only — a DELETION escalates; `.md` stays excluded or this file self-matches.
-SHARED=$(git diff "$BASE" -- ':(exclude)*.json' ':(exclude)*.md' ':(exclude)*.lock' ':(exclude)*.snap' \
-  | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' \
+SHARED=$({ git diff "$BASE" -- ':(exclude)*.json' ':(exclude)*.md' ':(exclude)*.lock' ':(exclude)*.snap' \
+    | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) '
+  printf '%s\n' "$NEW" | grep -vE '\.(json|md|lock|snap)$' | grep . | tr '\n' '\0' | xargs -0 -r cat; } \
   | rg -c 'collection\(|@InjectModel|emit\(|publish\(|subscribe\(|\.route\(|router\.(get|post|put|delete)' >/dev/null && echo 1 || echo 0)
 CRITICAL=0                    # caller sets 1 for a sensitive area (auth/tenant/migration)
 ```

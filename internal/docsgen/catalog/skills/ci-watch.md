@@ -7,17 +7,22 @@ Sau khi push một branch, khi bạn muốn Claude tự biết CI xanh hay đỏ
 
 ## Cách hoạt động
 
-1. Skill xác định repo, branch và commit `HEAD`, kiểm commit đã có trên remote. Chưa push thì dừng và báo. Repo không có file nào trong `.github/workflows/` thì báo không có CI và dừng.
+1. Skill xác định repo, branch và commit `HEAD`, kiểm commit đã có trên remote. Chưa push thì dừng và báo. Repo không có file nào trong `.github/workflows/` thì báo không có CI; branch có PR mở thì sang bước chờ PR (bước 6), không thì dừng.
 2. Skill chạy một vòng lặp ở chế độ nền: cứ 20 giây gọi `gh run list --commit <sha>` một lần, chờ mọi workflow của commit đó chạy xong. Chỉ báo xanh khi danh sách run đứng yên ít nhất 60 giây, vì run `pull_request` có thể xuất hiện sau khi run `push` đã xong. Vòng lặp chỉ in bảng kết quả cuối, mỗi run một dòng.
 3. Khi vòng lặp kết thúc, Claude Code đánh thức phiên, kể cả khi phiên đang rảnh.
-4. CI xanh: báo một dòng. Có run `failure`, `timed_out` hoặc `startup_failure`: skill không tự đọc log hay sửa, mà gọi luôn `/znf:fix` với URL các run lỗi (không hỏi). `/znf:fix` đọc log, chẩn đoán, sửa và đi qua gate của `/znf:ship` để push; PR đã có thì push cập nhật vào PR đó.
+4. CI xanh: báo một dòng, rồi nếu branch có PR mở thì sang bước 6. Có run `failure`, `timed_out` hoặc `startup_failure`: skill không tự đọc log hay sửa, mà gọi luôn `/znf:fix` với URL các run lỗi (không hỏi). `/znf:fix` đọc log, chẩn đoán, sửa và đi qua gate của `/znf:ship` để push; PR đã có thì push cập nhật vào PR đó.
 5. Sau khi `/znf:fix` push, skill theo dõi commit mới. Vòng 2 vẫn đỏ, hoặc `/znf:fix` dừng mà không push (nguyên nhân nằm ngoài repo, cần `/znf:cook`), skill dừng và báo từng vòng.
+6. Chờ PR merge được: CI xanh chưa chắc PR merge được (còn review bắt buộc, review thread, check của app khác). Skill chạy thêm một vòng lặp nền, cứ 30 giây đọc `mergeStateStatus` của PR (chỉ gọi thêm `gh pr checks` khi trạng thái là `BLOCKED` hoặc `UNSTABLE`), tối đa 60 phút. Kết quả:
+   - `CLEAN`: báo URL PR đầy đủ và lệnh merge để bạn tự chạy: `! gh pr merge -R <owner/repo> <n> --merge`.
+   - `UNSTABLE` (check không bắt buộc fail, không còn check chờ): báo check fail kèm lệnh merge, bạn tự quyết.
+   - `BLOCKED` (không còn check chờ): liệt kê review thread chưa resolve (path + URL comment); không có thread thì báo `reviewDecision` và check bắt buộc đang fail. Skill không tự resolve thread và không chờ tiếp.
+   - `DIRTY` (conflict), `BEHIND` (tụt base), `DRAFT`, hết 60 phút, hoặc `gh` lỗi 3 lần liên tiếp: báo trạng thái và dừng.
 
 ## Lưu ý
 
 - Skill chỉ canh CI và chuyển việc: chẩn đoán, sửa và push là việc của `/znf:fix` và `/znf:ship`.
-- Chỉ giao cho `/znf:fix` khi branch đang theo dõi chính là branch của worktree hiện tại. Theo dõi PR hay commit của branch khác, hoặc gặp deploy branch, thì chỉ báo URL run lỗi.
-- Skill không chạy lại, huỷ hay duyệt workflow, không merge.
+- Chỉ giao cho `/znf:fix` khi branch đang theo dõi chính là branch của worktree hiện tại. Theo dõi PR hay commit của branch khác, được gọi với `report-only` (như `/znf:nonstop`), hoặc gặp deploy branch, thì chỉ báo URL run lỗi.
+- Skill không chạy lại, huỷ hay duyệt workflow, không resolve review thread, không merge — lệnh merge chỉ được in ra cho bạn chạy.
 - Mỗi lần theo dõi gắn với một commit. Bạn tự push thêm (ngoài `/znf:fix`) thì gọi lại skill cho commit mới.
-- Sau 5 phút mà commit không có run nào, skill dừng và báo (thường do repo không có workflow cho branch hoặc event đó). Chờ quá 90 phút thì dừng và báo trạng thái hiện tại. Commit có từ 1000 run trở lên thì báo không xác định, không báo xanh.
+- Sau 5 phút mà commit không có run nào, skill dừng và báo (thường do repo không có workflow cho branch hoặc event đó). Chờ quá 90 phút thì dừng và báo trạng thái hiện tại. Commit có từ 1000 run trở lên thì báo không xác định, không báo xanh. Commit không có run nào mà branch có PR mở thì vẫn sang bước chờ PR.
 - Phiên đóng thì vòng lặp nền dừng theo.

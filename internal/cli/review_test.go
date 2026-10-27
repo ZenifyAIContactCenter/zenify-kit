@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -165,5 +166,66 @@ func TestReviewVerify_KeepsIntentDimension(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"kept":1`) || !strings.Contains(out.String(), `"dimension":"intent"`) {
 		t.Errorf("intent finding not kept: %s", out.String())
+	}
+}
+
+// znf:nonstop reviews an uncommitted tree: untracked new files must reach the bundler as numstat
+// lines, or a large diff bundles without them and they are never reviewed.
+func TestUntrackedNumstat_ListsNewFiles(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "pkg", "new.go"), []byte("a\nb\nc\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := untrackedNumstat(dir)
+	if err != nil {
+		t.Fatalf("untrackedNumstat: %v", err)
+	}
+	if string(got) != "3\t0\tpkg/new.go\n" {
+		t.Errorf("got %q, want %q", got, "3\t0\tpkg/new.go\n")
+	}
+}
+
+// A dangling symlink among the untracked files is listed with 0 lines instead of failing the
+// whole bundle plan.
+func TestUntrackedNumstat_SymlinkNotRead(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	if err := os.Symlink("missing-target", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := untrackedNumstat(dir)
+	if err != nil {
+		t.Fatalf("untrackedNumstat: %v", err)
+	}
+	if string(got) != "0\t0\tlink\n" {
+		t.Errorf("got %q, want %q", got, "0\t0\tlink\n")
+	}
+}
+
+// An untracked binary file counts 0 lines, like git's "-\t-" numstat, so new assets cannot push
+// a plan to too-large and stop the review.
+func TestUntrackedNumstat_BinaryCountsZero(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	data := append([]byte{0x89, 'P', 'N', 'G', 0x00}, bytes.Repeat([]byte("\n"), 700)...)
+	if err := os.WriteFile(filepath.Join(dir, "logo.png"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := untrackedNumstat(dir)
+	if err != nil {
+		t.Fatalf("untrackedNumstat: %v", err)
+	}
+	if string(got) != "0\t0\tlogo.png\n" {
+		t.Errorf("got %q, want %q", got, "0\t0\tlogo.png\n")
 	}
 }

@@ -103,6 +103,18 @@ func TestGate_ConflictMarkerBlocks(t *testing.T) {
 	}
 }
 
+// znf:nonstop reviews an uncommitted tree: a conflict marker in an untracked new file still blocks.
+func TestGate_ConflictMarkerInUntrackedFileBlocks(t *testing.T) {
+	dir, base := gitInit(t)
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("<<<<<<< HEAD\nb\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res := runGate(t, dir, base)
+	if res.Verdict != "block" {
+		t.Errorf("verdict=%q, want block (conflict marker in untracked file)", res.Verdict)
+	}
+}
+
 // SC-02: STATIC_OK=1 skips the build → a broken go.mod still passes (build never runs), no "build fail".
 func TestGate_StaticOKSkipsBuild(t *testing.T) {
 	dir, base := gitInit(t)
@@ -206,6 +218,19 @@ func TestGate_PythonSyntaxErrorBlocks(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "__pycache__")); err == nil {
 		t.Errorf("gate must not write __pycache__ into the repo")
+	}
+}
+
+// A Unicode file name must reach compileall unquoted (git's default core.quotePath escapes it).
+func TestGate_PythonSyntaxErrorInUnicodeNameBlocks(t *testing.T) {
+	pyAvailable(t)
+	dir, base := gitInit(t)
+	writeFile(t, dir, "requirements.txt", "fastapi\n")
+	writeFile(t, dir, "\u6570\u636e.py", "def f(:\n    return 1\n")
+	gitCommitAll(t, dir)
+	res := runGate(t, dir, base)
+	if res.Verdict != "block" {
+		t.Errorf("verdict=%q, want block (syntax error in a Unicode-named file)", res.Verdict)
 	}
 }
 

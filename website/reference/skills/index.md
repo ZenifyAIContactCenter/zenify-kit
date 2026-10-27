@@ -29,6 +29,7 @@ Mọi skill của kit, kể cả bộ skill coding theo stack (Express, NestJS, 
 | [/znf:mongo-data-safety](./mongo-data-safety) | Đọc/ghi MongoDB an toàn trong một codebase đa tenant không có schema cứng. |
 | [/znf:mongoose-modeling](./mongoose-modeling) | Thiết kế schema Mongoose an toàn — index, lean/populate, discriminator, thứ tự thêm field mới. |
 | [/znf:nestjs-patterns](./nestjs-patterns) | Quy ước viết backend NestJS — module, DTO, guard, truy cập model qua DI, envelope lỗi thống nhất. |
+| [/znf:nonstop](./nonstop) | Chạy cả ngày làm việc từ một lệnh — lập plan đầu ngày chờ bạn duyệt, giao việc liên tục cho một nhóm worker, rồi tổng kết cuối ngày kèm carry-over và estimate tự hiệu chỉnh. |
 | [/znf:prune-memory](./prune-memory) | Rà soát và dọn bộ nhớ tự động trong một lượt, gộp bản trùng và xoá ghi chú đã cũ. |
 | [/znf:qa](./qa) | Run QA viết kịch bản nghiệm thu đóng băng trước khi có code dev, viết journey phải đỏ trên code gốc, rồi gắn journey vào code đã xong mà không sửa kết quả mong đợi. |
 | [/znf:react-patterns](./react-patterns) | Quy ước viết frontend React (Vite/TanStack) — state, bảng phân trang, form, axios interceptor, i18n. |

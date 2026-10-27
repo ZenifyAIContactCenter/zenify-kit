@@ -63,6 +63,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify env exec](./zenify_env_exec) | Chạy một lệnh với key trong `.zenify/.env`, che giá trị secret trong stdout và stderr. |
 | [zenify env list](./zenify_env_list) | Liệt kê key trong `.zenify/.env`: có hay trống, nguồn, mô tả; chỉ in giá trị của key không phải secret. |
 | [zenify env set](./zenify_env_set) | Nhập ẩn giá trị một key vào `.zenify/.env`, kèm dòng mô tả tuỳ chọn. |
+| [zenify feature](./zenify_feature) | Liệt kê hoặc bật/tắt các tính năng opt-in của kit trong overlay của workspace. |
 | [zenify gate](./zenify_gate) | Nhóm lệnh hỗ trợ contract gate, bước quét cross-repo khi bạn chạm tài nguyên chung. |
 | [zenify gate participants](./zenify_gate_participants) | Liệt kê các repo tham gia contract gate cùng cách mỗi repo truy cập DB chung. |
 | [zenify guard](./zenify_guard) | Nhóm lệnh cho git-guard, hook chặn commit, push và merge vào branch deploy. |

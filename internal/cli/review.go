@@ -112,11 +112,56 @@ func newReviewBundleCmd() *cobra.Command {
 				// LOC on BOTH lines (a pure rename → 2×filesize, not 0), inflating TotalLOC —
 				// but only ever in the over-bundle (safe) direction; correct diff matching
 				// beats exact LOC accounting.
-				return exec.Command("git", "diff", "--no-renames", "--numstat", base).Output() //nolint:gosec // G204 -- fixed git subcommand; base is a validated ref, not shell input
+				out, err := exec.Command("git", "diff", "--no-renames", "--numstat", base).Output() //nolint:gosec // G204 -- fixed git subcommand; base is a validated ref, not shell input
+				if err != nil {
+					return nil, err
+				}
+				extra, err := untrackedNumstat("")
+				if err != nil {
+					return nil, err
+				}
+				return append(out, extra...), nil
 			}
 			return runReviewBundle(args[0], rundiff, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
+}
+
+// untrackedNumstat renders the untracked new files under dir ("" = cwd) as numstat lines
+// ("<lines>\t0\t<path>"). git diff never lists them, so without these lines a worker's
+// uncommitted tree (znf:nonstop) would bundle without its new files and leave them unreviewed.
+// -z keeps non-ASCII paths unquoted.
+func untrackedNumstat(dir string) ([]byte, error) {
+	cmd := exec.Command("git", "ls-files", "-z", "--others", "--exclude-standard")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var b bytes.Buffer
+	for _, p := range strings.Split(strings.TrimRight(string(out), "\x00"), "\x00") {
+		if p == "" {
+			continue
+		}
+		path := filepath.Join(dir, p)
+		info, err := os.Lstat(path)
+		if err != nil {
+			return nil, err
+		}
+		lines := 0
+		if info.Mode().IsRegular() { // a symlink, FIFO or nested repo is listed with 0 lines, never read
+			data, err := os.ReadFile(path) //nolint:gosec // G304 -- path comes from git ls-files of the reviewed tree
+			if err != nil {
+				return nil, err
+			}
+			// git's binary heuristic: a NUL in the first 8000 bytes → binary, 0 lines (numstat "-\t-").
+			if !bytes.Contains(data[:min(len(data), 8000)], []byte{0}) {
+				lines = bytes.Count(data, []byte("\n"))
+			}
+		}
+		fmt.Fprintf(&b, "%d\t0\t%s\n", lines, p)
+	}
+	return b.Bytes(), nil
 }
 
 // gitCommonDirRun runs the real `git <args>` (a seam for test injection).

@@ -60,7 +60,7 @@ if [ "$run_static" = "1" ]; then
     pyfiles=()
     while IFS= read -r f; do
       [ -n "$f" ] && [ -f "$f" ] && pyfiles+=("$f")
-    done < <(git diff --name-only --diff-filter=AM "$BASE" -- '*.py' 2>/dev/null || true)
+    done < <(git -c core.quotePath=false diff --name-only --diff-filter=AM "$BASE" -- '*.py' 2>/dev/null || true)
     if [ ${#pyfiles[@]} -gt 0 ]; then
       if [ -z "$PY" ]; then
         emit LOW bugs "skip build" "skipped: python unavailable" "cài python3 hoặc tạo .venv" "" ""
@@ -100,8 +100,10 @@ if [ "$run_static" = "1" ]; then
   fi
 fi
 
-# Quét anti-pattern trên các dòng ADDED của diff (bỏ header +++).
-added=$(git diff "$BASE" 2>/dev/null | grep '^+' | grep -v '^+++' || true)
+# Scan anti-patterns on the diff's ADDED lines (minus the +++ header), plus every line of untracked
+# new files: an uncommitted tree (znf:nonstop) keeps new files out of git diff.
+added=$({ git diff "$BASE" 2>/dev/null | grep '^+' | grep -v '^+++'
+  git ls-files --others --exclude-standard -z 2>/dev/null | xargs -0 -r cat | sed 's/^/+/'; } || true)
 
 # Conflict marker: chỉ dùng <<<<<<< và >>>>>>> (không dùng ======= để tránh trùng
 # gạch dưới tiêu đề markdown). Hai dấu góc này gần như không bao giờ hợp lệ trong code.

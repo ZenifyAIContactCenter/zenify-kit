@@ -105,3 +105,4 @@ Then push and `zenify docs sync` (fails open).
 - `references/pr-message-language.md` — PR language.
 - `references/stacked-ship.md` — per-layer review.
 - `references/autonomous-ui.md` — step 4 under `ZNF_AUTONOMOUS=1`.
+- `references/github-issues.md` — issues.
