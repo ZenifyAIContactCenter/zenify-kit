@@ -35,8 +35,9 @@ SDD ledger lines (`minor (deferred)` / `parked`) — the reviewer cannot act on 
 ship board and ledger already hold them. Name in plain words only what was NOT verified and what a
 person still has to decide or do by hand.
 
-With `github.issues` on (`github-issues.md`), the body carries a `Closes #N` line right before the
-attribution line.
+With `github.issues on` in the session or in the task brief's `Features:` field, follow
+`github-issues.md` before `gh pr create` (find or create the issue); the body then carries a
+`Closes #N` line right before the attribution line.
 
 ### Merge risk section
 
