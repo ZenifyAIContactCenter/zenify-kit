@@ -14,9 +14,9 @@ import (
 // Session is the tmux session name the hub runs in.
 const Session = "zenify"
 
-// exactSession is the exact-match target for Session; a bare name would let
+// Target is the exact-match target for Session; a bare name would let
 // tmux prefix-match another session such as "zenify-old".
-const exactSession = "=" + Session
+const Target = "=" + Session
 
 const installHint = "install: brew install tmux (macOS) or sudo apt install tmux (Linux)"
 
@@ -91,7 +91,7 @@ func versionNumbers(v string) (major, minor int, ok bool) {
 
 // HasSession reports whether the hub session exists.
 func HasSession(r Runner) bool {
-	_, err := r.Run("has-session", "-t", exactSession)
+	_, err := r.Run("has-session", "-t", Target)
 	return err == nil
 }
 
@@ -106,7 +106,7 @@ func SelectPane(r Runner, paneID string) error {
 
 // DisplayMessage shows msg in the hub session status line for 5 seconds.
 func DisplayMessage(r Runner, msg string) error {
-	_, err := r.Run("display-message", "-d", "5000", "-t", exactSession, msg)
+	_, err := r.Run("display-message", "-d", "5000", "-t", Target, msg)
 	return err
 }
 
