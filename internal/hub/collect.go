@@ -99,29 +99,36 @@ func NewHostResolver(r SSHRunner) *HostResolver {
 // defaultHosts is the process-wide resolver used when none is injected.
 var defaultHosts = NewHostResolver(execSSH{})
 
-// Resolve returns the hostname ssh would connect to for host. Errors are not
+// Resolve returns the hostname ssh would connect to for host when logging in
+// as user (empty user means no -l, so ssh_config's User applies). Config can be
+// per-user via Match, so the cache is keyed by user@host. Errors are not
 // cached.
-func (h *HostResolver) Resolve(host string) (string, error) {
-	if host == "" || strings.HasPrefix(host, "-") {
-		return "", fmt.Errorf("invalid ssh host %q", host)
+func (h *HostResolver) Resolve(user, host string) (string, error) {
+	if host == "" || strings.HasPrefix(host, "-") || strings.HasPrefix(user, "-") {
+		return "", fmt.Errorf("invalid ssh host %q", user+"@"+host)
 	}
+	key := user + "@" + host
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if v, ok := h.cache[host]; ok {
+	if v, ok := h.cache[key]; ok {
 		return v, nil
 	}
-	out, err := h.ssh.Run("-G", host)
+	args := []string{"-G"}
+	if user != "" {
+		args = append(args, "-l", user)
+	}
+	out, err := h.ssh.Run(append(args, host)...)
 	if err != nil {
-		return "", fmt.Errorf("resolve ssh host %q: %w", host, err)
+		return "", fmt.Errorf("resolve ssh host %q: %w", key, err)
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		if k, v, ok := strings.Cut(strings.TrimSpace(line), " "); ok && strings.EqualFold(k, "hostname") {
 			v = strings.TrimSpace(v)
-			h.cache[host] = v
+			h.cache[key] = v
 			return v, nil
 		}
 	}
-	return "", fmt.Errorf("resolve ssh host %q: no hostname in ssh -G output", host)
+	return "", fmt.Errorf("resolve ssh host %q: no hostname in ssh -G output", key)
 }
 
 // normalizeOrigin reduces a GitHub origin URL to owner/repo. https origins
@@ -130,13 +137,13 @@ func (h *HostResolver) Resolve(host string) (string, error) {
 // when resolution fails, or when the result is not exactly two non-empty path
 // segments.
 func normalizeOrigin(url string, res *HostResolver) (string, error) {
-	host := originHost(url)
+	user, host := originHost(url)
 	if !strings.EqualFold(host, "github.com") {
 		trimmed := strings.TrimSpace(url)
 		if host == "" || strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
 			return "", fmt.Errorf("origin %q is not a github remote", trimmed)
 		}
-		real, err := res.Resolve(host)
+		real, err := res.Resolve(user, host)
 		if err != nil {
 			return "", fmt.Errorf("origin %q: %w", trimmed, err)
 		}
@@ -152,27 +159,27 @@ func normalizeOrigin(url string, res *HostResolver) (string, error) {
 	return slug, nil
 }
 
-// originHost is the host of a remote URL (scheme://[user@]host[:port]/... or
-// [user@]host:path), or "" for a local path.
-func originHost(url string) string {
+// originHost is the user and host of a remote URL
+// (scheme://[user@]host[:port]/... or [user@]host:path); host is "" for a
+// local path and user is "" when the URL has none.
+func originHost(url string) (user, host string) {
 	u := strings.TrimSpace(url)
-	var host string
 	if _, rest, ok := strings.Cut(u, "://"); ok {
 		host, _, _ = strings.Cut(rest, "/")
 		if i := strings.LastIndex(host, "@"); i >= 0 {
-			host = host[i+1:]
+			user, host = host[:i], host[i+1:]
 		}
 		host, _, _ = strings.Cut(host, ":")
-		return host
+		return user, host
 	}
 	host, _, ok := strings.Cut(u, ":")
 	if !ok || strings.Contains(host, "/") {
-		return ""
+		return "", ""
 	}
 	if i := strings.LastIndex(host, "@"); i >= 0 {
-		host = host[i+1:]
+		user, host = host[:i], host[i+1:]
 	}
-	return host
+	return user, host
 }
 
 // CollectLocal groups the worktrees of every wt-managed repo under root by slug
