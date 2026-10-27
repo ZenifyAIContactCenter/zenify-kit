@@ -80,6 +80,7 @@ type Item struct {
 	Title    string // header text, repo group name, or worktree label
 	Count    int    // header count; group size
 	Expanded bool   // a repo or merged group is open
+	Merged   bool   // a worktree row whose repo is merged, kept in its repo group
 	Task     *Task
 	Repo     *TaskRepo
 	Agent    *Agent
@@ -180,7 +181,7 @@ func Flatten(s State, expanded bool, folds map[string]bool) []Item {
 		items = append(items, Item{Kind: KindRepoGroup, Title: g.name, Count: len(g.ws), Expanded: open})
 		if open {
 			for _, w := range g.ws {
-				items = appendWorktree(items, s, w, w.t.Slug)
+				items = appendWorktree(items, s, w, w.t.Slug, w.r.Merged)
 			}
 		}
 	}
@@ -188,7 +189,7 @@ func Flatten(s State, expanded bool, folds map[string]bool) []Item {
 		items = append(items, Item{Kind: KindMergedGroup, Count: len(done), Expanded: expanded})
 		if expanded {
 			for _, w := range done {
-				items = appendWorktree(items, s, w, label(w))
+				items = appendWorktree(items, s, w, label(w), false)
 			}
 		}
 	}
@@ -206,16 +207,17 @@ func Flatten(s State, expanded bool, folds map[string]bool) []Item {
 // label is a worktree's name in the merged group.
 func label(w worktree) string { return w.r.Name + "/" + w.t.Slug }
 
-// appendWorktree adds w's row titled title, its PR row when the repo has an
+// appendWorktree adds w's row titled title (tagged merged when its repo is
+// merged but it stays in its repo group), its PR row when the repo has an
 // open PR and, when the task has several agents, its agent rows.
-func appendWorktree(items []Item, s State, w worktree, title string) []Item {
+func appendWorktree(items []Item, s State, w worktree, title string, merged bool) []Item {
 	var agents []*Agent
 	for _, id := range w.t.Agents {
 		if a, ok := s.Agents[id]; ok {
 			agents = append(agents, &a)
 		}
 	}
-	row := Item{Kind: KindTask, Title: title, Task: w.t, Repo: w.r, PR: w.r.PR}
+	row := Item{Kind: KindTask, Title: title, Task: w.t, Repo: w.r, PR: w.r.PR, Merged: merged}
 	if len(agents) == 1 {
 		row.Agent = agents[0]
 	}
@@ -277,11 +279,17 @@ func TargetAgent(s State, it Item) (Agent, bool) {
 }
 
 // NewAgentWindow opens a window running claude in root, with a hub sidebar
-// (self is the zenify binary) split to its left; focus stays on claude. It
-// then enables allow-passthrough for OSC 52 copy; a failure there (tmux < 3.3)
-// is returned for the footer after the window is complete.
+// (self is the zenify binary) split to its left; focus stays on claude. The
+// window goes into the zenify session, or into the caller's current session
+// (tmux resolves it from the TMUX env) when no zenify session exists. It then
+// enables allow-passthrough for OSC 52 copy; a failure there (tmux < 3.3) is
+// returned for the footer after the window is complete.
 func NewAgentWindow(r tmuxx.Runner, root, self string) error {
-	out, err := r.Run("new-window", "-t", tmuxx.Target+":", "-P", "-F", "#{window_id}", "-c", root, "-n", "agent", "claude")
+	args := []string{"new-window", "-P", "-F", "#{window_id}", "-c", root, "-n", "agent", "claude"}
+	if tmuxx.HasSession(r) {
+		args = append([]string{"new-window", "-t", tmuxx.Target + ":"}, args[1:]...)
+	}
+	out, err := r.Run(args...)
 	if err != nil {
 		return err
 	}

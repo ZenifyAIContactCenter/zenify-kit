@@ -86,11 +86,15 @@ type Model struct {
 	width    int
 	height   int
 
-	err     error  // last tick's lock/state error
-	notice  string // result of the last key action
-	failed  bool   // notice is an error
-	prompt  string // pending y/n question
-	confirm func(Model) Model
+	moved bool // the user moved the cursor; until then it stays on the first row
+
+	err       error  // last tick's lock/state error
+	localErr  error  // last local round's error, nil once one succeeds
+	githubErr error  // last GitHub round's error, nil once one succeeds
+	notice    string // result of the last key action
+	failed    bool   // notice is an error
+	prompt    string // pending y/n question
+	confirm   func(Model) Model
 }
 
 // NewModel builds the sidebar for the workspace root; poller.GH opens PRs.
@@ -129,6 +133,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			LogError(m.home, msg.err, msg.at.Unix())
+		}
+		// Kept until the next round of the same kind succeeds; a reload never clears it.
+		if msg.github {
+			m.githubErr = msg.err
+		} else {
+			m.localErr = msg.err
 		}
 		m.err = m.reload()
 		return m, again
@@ -267,10 +277,13 @@ func (m *Model) reload() error {
 }
 
 // relayout rebuilds the rows and keeps the cursor on the same row when it
-// still exists, then clamps it off headers.
+// still exists, then clamps it off headers. Until the user moved the cursor
+// it goes to the first selectable row instead.
 func (m *Model) relayout() {
 	var at string
-	if m.cursor >= 0 && m.cursor < len(m.items) {
+	if !m.moved {
+		m.cursor = 0
+	} else if m.cursor >= 0 && m.cursor < len(m.items) {
 		at = itemKey(m.items[m.cursor])
 	}
 	m.items = Flatten(m.state, m.expanded, m.folds)
@@ -321,16 +334,19 @@ func (m Model) key(k string) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case "j", "down":
+		m.moved = true
 		if m.cursor < len(m.items)-1 {
 			m.cursor++
 		}
 		m.clampCursor(1)
 	case "k", "up":
+		m.moved = true
 		if m.cursor > 0 {
 			m.cursor--
 		}
 		m.clampCursor(-1)
 	case "enter", " ":
+		m.moved = true
 		switch {
 		case it.Kind == KindMergedGroup:
 			m.expanded = !m.expanded
@@ -384,6 +400,14 @@ func (m Model) fix(it Item) Model {
 	if !ok || it.Kind == KindPR {
 		m.notice, m.failed = "no agent on this task", false
 		return m
+	}
+	// The cached state may be up to a poll round old: re-read the agent file.
+	fresh, err := readAgent(m.home, a.SessionID)
+	if err != nil {
+		return m.done("", err)
+	}
+	if fresh != nil {
+		a.State = fresh.State
 	}
 	pr := *it.PR
 	send := func(m Model) Model {

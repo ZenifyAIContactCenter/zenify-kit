@@ -2,6 +2,7 @@ package hub
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,14 +13,19 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// scriptTmux records every tmux call and answers with out[subcommand].
+// scriptTmux records every tmux call and answers with out[subcommand], or
+// with fail[subcommand] when set.
 type scriptTmux struct {
 	out   map[string]string
+	fail  map[string]error
 	calls [][]string
 }
 
 func (f *scriptTmux) Run(args ...string) ([]byte, error) {
 	f.calls = append(f.calls, args)
+	if err := f.fail[args[0]]; err != nil {
+		return nil, err
+	}
 	return []byte(f.out[args[0]]), nil
 }
 
@@ -172,7 +178,7 @@ func TestEnter_NoAgentAsksThenOpens(t *testing.T) {
 		t.Fatalf("tmux called before confirm: %q", tm.calls)
 	}
 	update(t, m, key("y"))
-	if len(tm.calls) != 3 || tm.calls[0][0] != "new-window" || tm.calls[1][0] != "split-window" || tm.calls[2][0] != "set-option" {
+	if len(tm.calls) != 4 || tm.calls[0][0] != "has-session" || tm.calls[1][0] != "new-window" || tm.calls[2][0] != "split-window" || tm.calls[3][0] != "set-option" {
 		t.Errorf("tmux calls = %q", tm.calls)
 	}
 }
@@ -559,5 +565,124 @@ func TestLockFailover(t *testing.T) {
 	b = update(t, b, tickMsg(t0.Add(time.Second)))
 	if b.lock == nil || cb.local != 1 {
 		t.Errorf("after a quit: b holds=%v local=%d, want the lock and one local round", b.lock != nil, cb.local)
+	}
+}
+
+func TestKeyF_FreshBlockedAsks(t *testing.T) {
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, fixState(Working))
+	// The agent became blocked after state.json was written.
+	if err := writeAgent(home, &Agent{SessionID: "s1", Pane: "%3", State: Blocked, Slug: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
+	m = update(t, m, key("f"))
+	if len(tm.calls) != 0 {
+		t.Fatalf("sent to a blocked agent without asking: %q", tm.calls)
+	}
+	if !strings.Contains(m.View(), "Agent is waiting for input — send anyway? y/n") {
+		t.Errorf("View missing prompt:\n%s", m.View())
+	}
+}
+
+// failTicker fails every local round with err.
+type failTicker struct{ err error }
+
+func (f *failTicker) Local() error  { return f.err }
+func (f *failTicker) GitHub() error { return nil }
+
+func TestPollError_SurvivesReload(t *testing.T) {
+	m, _, ct := newTestModel(t, t.TempDir(), fixState(Idle))
+	m.poll = &failTicker{err: errors.New("write state: disk full")}
+	m = update(t, m, tickMsg(t0.Add(localEvery)))
+	m = update(t, m, tickMsg(t0.Add(localEvery+time.Second))) // state.json mtime unchanged
+	if !strings.Contains(m.View(), "write state: disk full") {
+		t.Fatalf("View lost the poll error after a reload:\n%s", m.View())
+	}
+	m.poll = ct
+	m = update(t, m, tickMsg(t0.Add(2*localEvery)))
+	if strings.Contains(m.View(), "write state: disk full") {
+		t.Errorf("View keeps the poll error after a successful local round:\n%s", m.View())
+	}
+}
+
+// cursorState is task t1 in api (PR #1 failing, agent a1 on %5) and task t2
+// in web (PR #2). With more, it adds t0 (web, blocked) and t00 (api,
+// working), which sort web above api and t00 above t1.
+func cursorState(more bool) State {
+	s := State{
+		Tasks: []Task{
+			{Slug: "t1", Agents: []string{"a1"}, State: Idle, Repos: []TaskRepo{{Name: "api", Repo: "o/api", PR: &PR{Number: 1, Repo: "o/api", Checks: "FAILURE", FailedURL: "u1"}}}},
+			{Slug: "t2", Repos: []TaskRepo{{Name: "web", Repo: "o/web", PR: &PR{Number: 2, Repo: "o/web"}}}},
+		},
+		Agents: map[string]Agent{"a1": {SessionID: "a1", Pane: "%5", State: Idle, Slug: "t1"}},
+	}
+	if more {
+		s.Tasks = append(s.Tasks,
+			Task{Slug: "t0", Agents: []string{"a0"}, State: Blocked, Repos: []TaskRepo{{Name: "web", Repo: "o/web"}}},
+			Task{Slug: "t00", Agents: []string{"a2"}, State: Working, Repos: []TaskRepo{{Name: "api", Repo: "o/api"}}},
+		)
+		s.Agents["a0"] = Agent{SessionID: "a0", Pane: "%6", State: Blocked, Slug: "t0"}
+		s.Agents["a2"] = Agent{SessionID: "a2", Pane: "%7", State: Working, Slug: "t00"}
+	}
+	return s
+}
+
+func TestCursor_FollowsRowAcrossReorder(t *testing.T) {
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, cursorState(false))
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // api: t1, #1
+	if it := m.current(); it.Kind != KindTaskPR || it.PR.Number != 1 {
+		t.Fatalf("setup: cursor on %+v", it)
+	}
+
+	rewriteState(t, home, cursorState(true), time.Now().Add(time.Hour))
+	m = update(t, m, tickMsg(t0.Add(time.Second)))
+	if it := m.current(); it.Kind != KindTaskPR || it.PR.Number != 1 || it.Repo.Name != "api" {
+		t.Fatalf("after reorder the cursor left PR #1: %+v\n%s", it, m.View())
+	}
+	if got := taskBlock(m.View())[1]; got != " ▾ web 2" {
+		t.Fatalf("reload did not reorder repos, first group %q", got)
+	}
+
+	m = update(t, m, key("k")) // worktree api/t1
+	rewriteState(t, home, cursorState(false), time.Now().Add(2*time.Hour))
+	m = update(t, m, tickMsg(t0.Add(2*time.Second)))
+	if it := m.current(); it.Kind != KindTask || it.Repo.Name != "api" || it.Task.Slug != "t1" {
+		t.Fatalf("after reorder the cursor left api/t1: %+v\n%s", it, m.View())
+	}
+
+	gh := m.gh.(*fakeGH)
+	m = update(t, m, key("o"))
+	if want := [][]string{{"pr", "view", "1", "--repo", "o/api", "--web"}}; !reflect.DeepEqual(gh.args, want) {
+		t.Errorf("o: gh calls = %q, want %q", gh.args, want)
+	}
+	update(t, m, key("f"))
+	want := [][]string{{"send-keys", "-t", "%5", "-l", "/znf:fix u1"}, {"send-keys", "-t", "%5", "Enter"}}
+	if !reflect.DeepEqual(tm.calls, want) {
+		t.Errorf("f: tmux calls = %q, want %q", tm.calls, want)
+	}
+}
+
+func TestCursor_FirstLoadStaysOnFirstRow(t *testing.T) {
+	home := t.TempDir()
+	m, _, _ := newTestModel(t, home, State{})
+	s := State{Tasks: []Task{
+		{Slug: "x", Repos: []TaskRepo{{Name: "a-repo"}}},
+		{Slug: "y", Repos: []TaskRepo{{Name: "b-repo"}}},
+	}}
+	rewriteState(t, home, s, time.Now().Add(time.Hour))
+	m = update(t, m, tickMsg(t0.Add(time.Second)))
+	if it := m.current(); it.Kind != KindRepoGroup || it.Title != "a-repo" {
+		t.Fatalf("cursor on %+v, want a-repo", it)
+	}
+	s.Tasks = append(s.Tasks, Task{Slug: "z", Repos: []TaskRepo{{Name: "z-repo"}}, Agents: []string{"a"}, State: Working})
+	s.Agents = map[string]Agent{"a": {SessionID: "a", State: Working, Slug: "z"}}
+	rewriteState(t, home, s, time.Now().Add(2*time.Hour))
+	m = update(t, m, tickMsg(t0.Add(2*time.Second)))
+	if it := m.current(); it.Kind != KindRepoGroup || it.Title != "z-repo" {
+		t.Errorf("cursor on %+v, want the first row z-repo\n%s", it, m.View())
 	}
 }

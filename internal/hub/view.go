@@ -107,6 +107,9 @@ func itemLine(it Item) string {
 		if it.Agent != nil {
 			line += "  " + agentName(it.Agent)
 		}
+		if it.Merged {
+			line += gray.Render(" merged")
+		}
 		return line
 	case KindTaskPR:
 		return "      " + prLine("", it.PR)
@@ -169,21 +172,27 @@ func (m Model) View() string {
 	case m.prompt != "":
 		foot = append(foot, yellow.Render(m.prompt))
 	case m.notice != "" && m.failed:
-		foot = append(foot, red.Render(m.notice))
+		foot = append(foot, red.Render(oneLine(m.notice, m.width)))
 	case m.notice != "":
-		foot = append(foot, gray.Render(m.notice))
+		foot = append(foot, gray.Render(oneLine(m.notice, m.width)))
 	}
-	if m.err != nil {
-		foot = append(foot, red.Render(m.err.Error()))
+	var errs []string
+	for _, err := range []error{m.err, m.localErr, m.githubErr} {
+		if err != nil {
+			errs = append(errs, err.Error())
+		}
 	}
 	if m.state.Error != "" {
-		foot = append(foot, red.Render(m.state.Error))
+		errs = append(errs, m.state.Error)
+	}
+	if len(errs) > 0 {
+		foot = append(foot, red.Render(oneLine(strings.Join(errs, "\n"), m.width)))
 	}
 	foot = append(foot, gray.Render(keyHint))
 
 	rows, cursor := m.body()
 	if m.height > 0 {
-		footLines := strings.Count(strings.Join(foot, "\n"), "\n") + 1 // errors may span lines
+		footLines := len(foot)
 		visible := max(m.height-2-1-footLines, 1)
 		off := max(cursor-visible+1, 0)
 		rows = rows[off:min(off+visible, len(rows))]
@@ -197,4 +206,19 @@ func (m Model) View() string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// oneLine renders s as its first line, truncated so that it and, when s has
+// more lines, a "+N more" hint pointing at hub.log fit width.
+func oneLine(s string, width int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	suffix := ""
+	if n := len(lines) - 1; n > 0 {
+		suffix = " (+" + strconv.Itoa(n) + " more, see ~/.zenify/hub/hub.log)"
+	}
+	first := lines[0]
+	if width > 0 {
+		first = ansi.Truncate(first, max(width-ansi.StringWidth(suffix), 1), "…")
+	}
+	return first + suffix
 }

@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -315,7 +316,7 @@ func TestView_MergedTaskWithAgentStaysActive(t *testing.T) {
 		Agents: map[string]Agent{"k": {SessionID: "k", Title: "agent#2", State: Blocked, Slug: "m2"}},
 	}
 	m, _, _ := newTestModel(t, t.TempDir(), s)
-	want := []string{" TASKS 1", "▌▾ kit 1", "   ◆ m2  agent#2", " ▸ merged (1)"}
+	want := []string{" TASKS 1", "▌▾ kit 1", "   ◆ m2  agent#2 merged", " ▸ merged (1)"}
 	if got := taskBlock(m.View()); !reflect.DeepEqual(got, want) {
 		t.Errorf("TASKS block:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
@@ -329,8 +330,37 @@ func TestView_MergedTaskWithOpenPRStaysActive(t *testing.T) {
 		},
 	}
 	m, _, _ := newTestModel(t, t.TempDir(), s)
-	want := []string{" TASKS 1", "▌▾ kit 1", "   ○ m2", "       #9", " ▸ merged (1)"}
+	want := []string{" TASKS 1", "▌▾ kit 1", "   ○ m2 merged", "       #9", " ▸ merged (1)"}
 	if got := taskBlock(m.View()); !reflect.DeepEqual(got, want) {
 		t.Errorf("TASKS block:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestView_MultiLineErrorKeepsCursorVisible(t *testing.T) {
+	var s State
+	for i := 1; i <= 25; i++ {
+		s.Tasks = append(s.Tasks, Task{Slug: fmt.Sprintf("task-%02d", i), Repos: []TaskRepo{{Name: "be"}}})
+	}
+	m, _, _ := newTestModel(t, t.TempDir(), s)
+	m = update(t, m, tea.WindowSizeMsg{Width: 60, Height: 20})
+	m = update(t, m, key("enter")) // open the idle repo be
+	for i := 0; i < 25; i++ {
+		m = update(t, m, key("j"))
+	}
+	var lines []string
+	for i := 1; i <= 20; i++ {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	m.poll = &failTicker{err: errors.New(strings.Join(lines, "\n"))}
+	m = update(t, m, tickMsg(t0.Add(localEvery)))
+	v := m.View()
+	if !strings.Contains(v, "\n▌  ○ task-25") {
+		t.Errorf("selected row pushed off-screen:\n%s", v)
+	}
+	if !strings.Contains(v, "line 1 (+19 more, see ~/.zenify/hub/hub.log)") || strings.Contains(v, "line 2") {
+		t.Errorf("error not shown as one line:\n%s", v)
+	}
+	if n := strings.Count(v, "\n") + 1; n != 20 {
+		t.Errorf("View has %d lines, want 20:\n%s", n, v)
 	}
 }

@@ -68,9 +68,7 @@ func runHubLauncher(cmd *cobra.Command, env hubEnv) error {
 			return fmt.Errorf("resolve executable: %w", err)
 		}
 		if err := buildHubSession(env.runner, root, self); err != nil {
-			// A half-built session would make the next run attach without a sidebar.
-			_, kerr := env.runner.Run("kill-session", "-t", tmuxx.Target)
-			return errors.Join(fmt.Errorf("setting up tmux session failed: %w", err), kerr)
+			return fmt.Errorf("setting up tmux session failed: %w", err)
 		}
 	}
 	if err := env.attach("attach", "-t", tmuxx.Target); err != nil {
@@ -85,14 +83,18 @@ func shellQuote(s string) string {
 }
 
 // buildHubSession creates the detached session with the agent window and the
-// sidebar pane. The caller cleans up the session when this fails.
+// sidebar pane. When new-session fails (another run may have created the
+// session meanwhile) it kills nothing; when a later step fails it kills the
+// session it created, since a half-built one would make the next run attach
+// without a sidebar.
 func buildHubSession(r tmuxx.Runner, root, self string) error {
 	target := tmuxx.Target + ":agent"
 	if _, err := r.Run("new-session", "-d", "-s", tmuxx.Session, "-c", root, "-n", "agent", "claude"); err != nil {
 		return err
 	}
 	if _, err := r.Run("split-window", "-d", "-h", "-b", "-l", "30%", "-t", target, "-c", root, shellQuote(self)+" hub sidebar"); err != nil {
-		return err
+		_, kerr := r.Run("kill-session", "-t", tmuxx.Target)
+		return errors.Join(err, kerr)
 	}
 	// Best effort: OSC 52 copy needs it, tmux < 3.3 rejects the option.
 	if _, err := r.Run("set-option", "-w", "-t", target, "allow-passthrough", "on"); err != nil {

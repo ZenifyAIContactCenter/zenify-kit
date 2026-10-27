@@ -123,6 +123,7 @@ func TestNewAgentWindow(t *testing.T) {
 		t.Fatalf("NewAgentWindow: %v", err)
 	}
 	want := [][]string{
+		{"has-session", "-t", "=zenify"},
 		{"new-window", "-t", "=zenify:", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "agent", "claude"},
 		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@7", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
 		{"set-option", "-w", "-t", "@7", "allow-passthrough", "on"},
@@ -152,7 +153,26 @@ func TestNewAgentWindow_PassthroughErrorIsReported(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "allow-passthrough") {
 		t.Errorf("want allow-passthrough error, got %v", err)
 	}
-	if len(f.calls) != 3 || f.calls[1][0] != "split-window" {
+	if len(f.calls) != 4 || f.calls[2][0] != "split-window" {
 		t.Errorf("window not fully built: %q", f.calls)
+	}
+}
+
+func TestNewAgentWindow_NoZenifySessionUsesCurrent(t *testing.T) {
+	f := &scriptTmux{
+		out:  map[string]string{"new-window": "@8\n"},
+		fail: map[string]error{"has-session": errors.New("can't find session: zenify")},
+	}
+	if err := NewAgentWindow(f, "/ws", "/bin/zenify"); err != nil {
+		t.Fatalf("NewAgentWindow: %v", err)
+	}
+	want := [][]string{
+		{"has-session", "-t", "=zenify"},
+		{"new-window", "-P", "-F", "#{window_id}", "-c", "/ws", "-n", "agent", "claude"},
+		{"split-window", "-d", "-h", "-b", "-l", "30%", "-t", "@8", "-c", "/ws", "/bin/zenify", "hub", "sidebar"},
+		{"set-option", "-w", "-t", "@8", "allow-passthrough", "on"},
+	}
+	if !reflect.DeepEqual(f.calls, want) {
+		t.Errorf("calls = %q\nwant %q", f.calls, want)
 	}
 }

@@ -207,3 +207,21 @@ func TestHubCmd_AttachErrorWrapped(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestHubCmd_NewSessionFailureKillsNothing(t *testing.T) {
+	root := hubWorkspace(t)
+	t.Chdir(root)
+	t.Setenv("TMUX", "")
+	rt := &recTmux{failOn: map[string]bool{"has-session": true, "new-session": true}}
+	var attached []string
+	withHubEnv(t, rt, &attached)
+	_, err := runHub(t)
+	if err == nil || !strings.Contains(err.Error(), "fail new-session") {
+		t.Fatalf("err = %v", err)
+	}
+	for _, c := range rt.calls {
+		if strings.HasPrefix(c, "kill-session") {
+			t.Errorf("killed a session it did not create: %q", rt.calls)
+		}
+	}
+}

@@ -35,14 +35,14 @@ flowchart TD
 
 - Không tìm thấy workspace root: hub báo `not inside a zenify workspace` và thoát với mã khác 0.
 - Thiếu tmux hoặc tmux thấp hơn 3.1: hub báo lỗi kèm hướng dẫn cài tmux và thoát với mã khác 0. Check này chạy trước check "đang ở trong tmux" bên dưới.
-- Ngoài tmux: nếu session `zenify` chưa có, hub tạo nó với cwd là root workspace, window đầu gồm sidebar trái và `claude` phải, rồi attach. Đã có session thì chỉ attach.
+- Ngoài tmux: nếu session `zenify` chưa có, hub tạo nó với cwd là root workspace, window đầu gồm sidebar trái và `claude` phải, rồi attach. Đã có session thì chỉ attach. Nếu bước dựng sau `new-session` lỗi, hub xoá session vừa tạo; nếu chính `new-session` lỗi (ví dụ một lần chạy `zenify hub` khác vừa tạo session) thì hub báo lỗi và không xoá gì.
 - Đang ở trong tmux (bất kỳ session nào): hub không lồng session, chỉ in hướng dẫn chạy `zenify hub sidebar` trong một pane rồi thoát với mã 0.
 
-Phím `n` trong sidebar mở thêm một window agent mới ở root, mỗi window cũng có sidebar bên trái; con trỏ ở lại pane `claude`. Hub bật `allow-passthrough` cho window đó để copy OSC 52 chạy được; tmux cũ hơn 3.3 không có option này nên footer báo lỗi nhưng window vẫn dùng được. Chỉ một sidebar giữ lock và chạy poller; các sidebar khác đọc cùng `state.json`. Không có daemon riêng, đóng hết session thì poller mất theo.
+Phím `n` trong sidebar mở thêm một window agent mới ở root trong session `zenify` (chưa có session đó thì mở trong session hiện tại của sidebar), mỗi window cũng có sidebar bên trái; con trỏ ở lại pane `claude`. Hub bật `allow-passthrough` cho window đó để copy OSC 52 chạy được; tmux cũ hơn 3.3 không có option này nên footer báo lỗi nhưng window vẫn dùng được. Chỉ một sidebar giữ lock và chạy poller; các sidebar khác đọc cùng `state.json`. Không có daemon riêng, đóng hết session thì poller mất theo.
 
 ## Sidebar
 
-Dòng đầu là `zenify hub` kèm giờ của vòng quét local gần nhất (HH:MM:SS); mỗi mục có số đếm (`TASKS 4`), các mục cách nhau bằng đường kẻ, dòng cuối gợi ý phím. Danh sách cuộn theo con trỏ, dòng đang chọn có nền highlight. Sidebar có ba mục:
+Dòng đầu là `zenify hub` kèm giờ của vòng quét local gần nhất (HH:MM:SS); mỗi mục có số đếm (`TASKS 4`), các mục cách nhau bằng đường kẻ, dòng cuối gợi ý phím. Danh sách cuộn theo con trỏ, dòng đang chọn có nền highlight. Khi bạn chưa di chuyển con trỏ, nó luôn ở dòng chọn được đầu tiên; sau đó nó bám theo đúng dòng (repo + worktree, hoặc PR) dù danh sách đổi thứ tự sau mỗi lần nạp lại. Lỗi ở footer chỉ hiện dòng đầu, cắt theo bề rộng pane, kèm `(+N more, see ~/.zenify/hub/hub.log)` khi còn dòng khác. Sidebar có ba mục:
 
 | Mục | Nội dung |
 |---|---|
@@ -71,6 +71,7 @@ Dòng đầu là `zenify hub` kèm giờ của vòng quét local gần nhất (H
 - Cấp 1 là repo (tên thư mục repo) kèm số worktree; cấp 2 là worktree `<icon> <slug>  <agent>`, dòng PR của branch đó nằm ngay dưới. Task nhiều repo xuất hiện dưới mỗi repo của nó, mỗi chỗ với PR riêng của repo đó, agent hiện ở mọi chỗ.
 - Repo có ít nhất một worktree có agent hoặc PR open thì mở sẵn và xếp trước (theo roll-up cao nhất, rồi tên); repo còn lại thu gọn và xếp sau theo tên. Trong một repo, worktree có agent hoặc PR lên trước (theo roll-up, rồi slug), còn lại theo slug.
 - `Enter` hoặc `Space` trên dòng repo để mở/đóng; lựa chọn của bạn được giữ khi state reload.
+- Worktree mà repo đã merged nhưng task vẫn có agent hoặc PR open ở repo khác thì ở lại nhóm repo, dòng của nó có hậu tố mờ ` merged`.
 - Worktree mà repo đã merged và task không có agent, không có PR open, gom vào dòng `▸ merged (n)` cuối mục (n là số worktree); mở ra thì liệt kê `repo/slug`.
 - Số ở header `TASKS` là số worktree không nằm trong nhóm merged.
 - Các phím `Enter`, `o`, `y`, `m`, `f` trên dòng worktree hoặc dòng PR của nó tác động lên PR của đúng repo đó.
@@ -119,7 +120,7 @@ Poller so PR giữa hai vòng và tạo alert, báo bằng một thông báo tmu
 
 Alert được xoá khi bạn bấm `o` hoặc `f` trên PR đó, `Enter` trên PR ở mục `MY PRS`, hoặc `Enter` khi nhảy tới agent (xác nhận mở agent mới không xoá alert). Nhịp poll GitHub là 20 giây khi bạn có ít nhất một PR đang `PENDING`, ngược lại 60 giây; phím `r` bỏ qua nhịp chờ.
 
-Phím `f` chỉ hoạt động trên PR có CI thất bại. Job lỗi là check run kết thúc `FAILURE`, `TIMED_OUT`, `STARTUP_FAILURE`, `CANCELLED` hoặc `ACTION_REQUIRED`, hoặc commit status `FAILURE`/`ERROR` có link; PR không có link job lỗi nào thì sidebar báo `no failed job URL for this PR` và không gõ gì. Nó gõ `/znf:fix <url job lỗi đầu tiên>` vào pane agent của task, chỉ khi bạn bấm, không bao giờ tự động. Nếu agent đang `blocked` (có thể đang ở hộp thoại quyền), hub hỏi `y/n` trước khi gõ. Task chưa có agent thì sidebar báo `no agent on this task` và không gõ gì. Alert chỉ được xác nhận sau khi thao tác của `f` chạy xong.
+Phím `f` chỉ hoạt động trên PR có CI thất bại. Job lỗi là check run kết thúc `FAILURE`, `TIMED_OUT`, `STARTUP_FAILURE`, `CANCELLED` hoặc `ACTION_REQUIRED`, hoặc commit status `FAILURE`/`ERROR` có link; PR không có link job lỗi nào thì sidebar báo `no failed job URL for this PR` và không gõ gì. Nó gõ `/znf:fix <url job lỗi đầu tiên>` vào pane agent của task, chỉ khi bạn bấm, không bao giờ tự động. Hub đọc lại file trạng thái của agent ngay lúc bấm (không dùng cache của vòng quét); nếu agent đang `blocked` (có thể đang ở hộp thoại quyền), hub hỏi `y/n` trước khi gõ. Task chưa có agent thì sidebar báo `no agent on this task` và không gõ gì. Alert chỉ được xác nhận sau khi thao tác của `f` chạy xong.
 
 ## Hook hub-report
 
@@ -137,7 +138,7 @@ Task của agent được suy ra từ đường dẫn `/.worktrees/<slug>` xuấ
 
 ## Dữ liệu
 
-Mọi dữ liệu hub nằm ở `~/.zenify/hub/`: `state.json` (cache chung cho các sidebar), `agents/<session>.json` (trạng thái từng agent; có `title` là 60 ký tự đầu của prompt đầu tiên, chỉ lưu trên máy bạn), `acks/` (alert đã xác nhận) và `hub.log` (lỗi). Khi poller gặp lỗi `gh` hoặc `git`, nó giữ dữ liệu cũ và sidebar hiện lỗi gần nhất.
+Mọi dữ liệu hub nằm ở `~/.zenify/hub/`: `state.json` (cache chung cho các sidebar), `agents/<session>.json` (trạng thái từng agent; có `title` là 60 ký tự đầu của prompt đầu tiên, chỉ lưu trên máy bạn), `acks/` (alert đã xác nhận) và `hub.log` (lỗi). Khi poller gặp lỗi `gh` hoặc `git`, nó giữ dữ liệu cũ và sidebar hiện lỗi gần nhất của vòng local và vòng GitHub cho tới khi vòng cùng loại kế tiếp chạy thành công.
 
 ## Lưu ý
 
