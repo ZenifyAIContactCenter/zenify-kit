@@ -111,6 +111,18 @@ func key(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
 
+// liveAgents writes every agent of s as its agent file, as the hook would for
+// a running session, and returns s.
+func liveAgents(t *testing.T, home string, s State) State {
+	t.Helper()
+	for _, a := range s.Agents {
+		if err := writeAgent(home, &a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return s
+}
+
 // fixState is one task t1 with repo be (PR 812 failing, alert ci-failed) and
 // an agent on pane %3 in the given state.
 func fixState(agentState AgentState) State {
@@ -185,7 +197,7 @@ func TestEnter_NoAgentAsksThenOpens(t *testing.T) {
 
 func TestKeyF_SendsFix(t *testing.T) {
 	home := t.TempDir()
-	m, tm, _ := newTestModel(t, home, fixState(Idle))
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, fixState(Idle)))
 	m = update(t, m, key("j"))
 	m = update(t, m, key("j")) // PR row #812
 	update(t, m, key("f"))
@@ -202,7 +214,8 @@ func TestKeyF_SendsFix(t *testing.T) {
 }
 
 func TestKeyF_BlockedAsks(t *testing.T) {
-	m, tm, _ := newTestModel(t, t.TempDir(), fixState(Blocked))
+	home := t.TempDir()
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, fixState(Blocked)))
 	m = update(t, m, key("j"))
 	m = update(t, m, key("j")) // PR row #812
 	m = update(t, m, key("f"))
@@ -379,7 +392,7 @@ func TestView_ReviewState(t *testing.T) {
 func TestKeyF_BlockedDecline(t *testing.T) {
 	for _, k := range []string{"n", "q"} {
 		home := t.TempDir()
-		m, tm, _ := newTestModel(t, home, fixState(Blocked))
+		m, tm, _ := newTestModel(t, home, liveAgents(t, home, fixState(Blocked)))
 		m = update(t, m, key("j"))
 		m = update(t, m, key("j")) // PR row #812
 		m = update(t, m, key("f"))
@@ -631,7 +644,7 @@ func cursorState(more bool) State {
 
 func TestCursor_FollowsRowAcrossReorder(t *testing.T) {
 	home := t.TempDir()
-	m, tm, _ := newTestModel(t, home, cursorState(false))
+	m, tm, _ := newTestModel(t, home, liveAgents(t, home, cursorState(false)))
 	m = update(t, m, key("j"))
 	m = update(t, m, key("j")) // api: t1, #1
 	if it := m.current(); it.Kind != KindTaskPR || it.PR.Number != 1 {
@@ -684,5 +697,82 @@ func TestCursor_FirstLoadStaysOnFirstRow(t *testing.T) {
 	m = update(t, m, tickMsg(t0.Add(2*time.Second)))
 	if it := m.current(); it.Kind != KindRepoGroup || it.Title != "z-repo" {
 		t.Errorf("cursor on %+v, want the first row z-repo\n%s", it, m.View())
+	}
+}
+
+// hubLog is the content of home's hub.log ("" when missing).
+func hubLog(t *testing.T, home string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(Dir(home), "hub.log"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestTickError_LoggedOnceAndHinted(t *testing.T) {
+	home := t.TempDir()
+	m, _, _ := newTestModel(t, home, fixState(Idle))
+	m = update(t, m, tea.WindowSizeMsg{Width: 200, Height: 40})
+	// state.json replaced by a directory: every tick fails to read it.
+	if err := os.Remove(statePath(home)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(statePath(home), "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	m = update(t, m, tickMsg(t0.Add(time.Second)))
+	m = update(t, m, tickMsg(t0.Add(2*time.Second)))
+	if m.err == nil {
+		t.Fatal("setup: tick produced no error")
+	}
+	if n := strings.Count(hubLog(t, home), m.err.Error()); n != 1 {
+		t.Errorf("tick error logged %d times, want 1:\n%s", n, hubLog(t, home))
+	}
+	m.localErr = errors.New("a\nb") // a second source hides the tick error behind the hint
+	if !strings.Contains(m.View(), "more, see ~/.zenify/hub/hub.log)") {
+		t.Errorf("footer missing hub.log hint:\n%s", m.View())
+	}
+}
+
+func TestKeyF_SendErrorLogged(t *testing.T) {
+	home := t.TempDir()
+	if err := writeAgent(home, &Agent{SessionID: "s1", Pane: "%3", State: Idle, Slug: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	m, tm, _ := newTestModel(t, home, fixState(Idle))
+	tm.fail = map[string]error{"send-keys": errors.New("can't find pane: %3")}
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
+	update(t, m, key("f"))
+	if !strings.Contains(hubLog(t, home), "can't find pane: %3") {
+		t.Errorf("hub.log missing the send error:\n%s", hubLog(t, home))
+	}
+}
+
+func TestKeyF_EndedSessionRefuses(t *testing.T) {
+	m, tm, _ := newTestModel(t, t.TempDir(), fixState(Idle)) // no agent file: the session ended
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
+	m = update(t, m, key("f"))
+	if len(tm.calls) != 0 {
+		t.Errorf("sent to an ended session: %q", tm.calls)
+	}
+	if !strings.Contains(m.View(), "agent session ended") {
+		t.Errorf("View missing notice:\n%s", m.View())
+	}
+}
+
+func TestKeyF_UsesFreshPane(t *testing.T) {
+	home := t.TempDir()
+	if err := writeAgent(home, &Agent{SessionID: "s1", Pane: "%9", State: Idle, Slug: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	m, tm, _ := newTestModel(t, home, fixState(Idle)) // cached pane %3
+	m = update(t, m, key("j"))
+	m = update(t, m, key("j")) // PR row #812
+	update(t, m, key("f"))
+	if len(tm.calls) == 0 || tm.calls[0][2] != "%9" {
+		t.Errorf("tmux calls = %q, want send-keys to the fresh pane %%9", tm.calls)
 	}
 }

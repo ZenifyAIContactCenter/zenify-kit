@@ -89,6 +89,7 @@ type Model struct {
 	moved bool // the user moved the cursor; until then it stays on the first row
 
 	err       error  // last tick's lock/state error
+	loggedErr string // err as last written to hub.log, so a repeated error logs once
 	localErr  error  // last local round's error, nil once one succeeds
 	githubErr error  // last GitHub round's error, nil once one succeeds
 	notice    string // result of the last key action
@@ -141,6 +142,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.localErr = msg.err
 		}
 		m.err = m.reload()
+		m.logErr(msg.at)
 		return m, again
 	case openedMsg:
 		if msg.err == nil {
@@ -187,7 +189,21 @@ func (m Model) tick(now time.Time) (Model, tea.Cmd) {
 		errs = append(errs, err)
 	}
 	m.err = errors.Join(errs...)
+	m.logErr(now)
 	return m, poll
+}
+
+// logErr appends m.err to hub.log when it differs from the last one logged,
+// so the footer's hub.log hint holds for it too.
+func (m *Model) logErr(now time.Time) {
+	var s string
+	if m.err != nil {
+		s = m.err.Error()
+	}
+	if s != "" && s != m.loggedErr {
+		LogError(m.home, m.err, now.Unix())
+	}
+	m.loggedErr = s
 }
 
 // pollIfDue starts a local round every localEvery or at once when the
@@ -406,8 +422,12 @@ func (m Model) fix(it Item) Model {
 	if err != nil {
 		return m.done("", err)
 	}
-	if fresh != nil {
-		a.State = fresh.State
+	if fresh == nil { // SessionEnd removed the file
+		return m.done("agent session ended", nil)
+	}
+	a.State = fresh.State
+	if fresh.Pane != "" {
+		a.Pane = fresh.Pane
 	}
 	pr := *it.PR
 	send := func(m Model) Model {
@@ -468,9 +488,11 @@ func (m Model) ask(prompt string, run func(Model) Model) Model {
 	return m
 }
 
-// done shows err in the footer, else msg (an empty msg clears the footer).
+// done shows err in the footer and appends it to hub.log, else shows msg (an
+// empty msg clears the footer).
 func (m Model) done(msg string, err error) Model {
 	if err != nil {
+		LogError(m.home, err, time.Now().Unix())
 		m.notice, m.failed = err.Error(), true
 	} else {
 		m.notice, m.failed = msg, false

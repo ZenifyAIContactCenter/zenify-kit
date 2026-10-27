@@ -42,7 +42,7 @@ Phím `n` trong sidebar mở thêm một window agent mới ở root trong sessi
 
 ## Sidebar
 
-Dòng đầu là `zenify hub` kèm giờ của vòng quét local gần nhất (HH:MM:SS); mỗi mục có số đếm (`TASKS 4`), các mục cách nhau bằng đường kẻ, dòng cuối gợi ý phím. Danh sách cuộn theo con trỏ, dòng đang chọn có nền highlight. Khi bạn chưa di chuyển con trỏ, nó luôn ở dòng chọn được đầu tiên; sau đó nó bám theo đúng dòng (repo + worktree, hoặc PR) dù danh sách đổi thứ tự sau mỗi lần nạp lại. Lỗi ở footer chỉ hiện dòng đầu, cắt theo bề rộng pane, kèm `(+N more, see ~/.zenify/hub/hub.log)` khi còn dòng khác. Sidebar có ba mục:
+Dòng đầu là `zenify hub` kèm giờ của vòng quét local gần nhất (HH:MM:SS); mỗi mục có số đếm (`TASKS 4`), các mục cách nhau bằng đường kẻ, dòng cuối gợi ý phím. Danh sách cuộn theo con trỏ, dòng đang chọn có nền highlight. Khi bạn chưa di chuyển con trỏ, nó luôn ở dòng chọn được đầu tiên; sau đó nó bám theo đúng dòng (repo + worktree, hoặc PR) dù danh sách đổi thứ tự sau mỗi lần nạp lại. Lỗi ở footer chỉ hiện dòng đầu, cắt theo bề rộng pane, kèm `(+N more, see ~/.zenify/hub/hub.log)` khi còn dòng khác; mọi lỗi hiện ở footer (lỗi phím bấm, lỗi lock/đọc state, lỗi vòng quét) đều được ghi vào `hub.log`, lỗi lặp lại ở mỗi tick chỉ ghi một lần. Sidebar có ba mục:
 
 | Mục | Nội dung |
 |---|---|
@@ -120,7 +120,7 @@ Poller so PR giữa hai vòng và tạo alert, báo bằng một thông báo tmu
 
 Alert được xoá khi bạn bấm `o` hoặc `f` trên PR đó, `Enter` trên PR ở mục `MY PRS`, hoặc `Enter` khi nhảy tới agent (xác nhận mở agent mới không xoá alert). Nhịp poll GitHub là 20 giây khi bạn có ít nhất một PR đang `PENDING`, ngược lại 60 giây; phím `r` bỏ qua nhịp chờ.
 
-Phím `f` chỉ hoạt động trên PR có CI thất bại. Job lỗi là check run kết thúc `FAILURE`, `TIMED_OUT`, `STARTUP_FAILURE`, `CANCELLED` hoặc `ACTION_REQUIRED`, hoặc commit status `FAILURE`/`ERROR` có link; PR không có link job lỗi nào thì sidebar báo `no failed job URL for this PR` và không gõ gì. Nó gõ `/znf:fix <url job lỗi đầu tiên>` vào pane agent của task, chỉ khi bạn bấm, không bao giờ tự động. Hub đọc lại file trạng thái của agent ngay lúc bấm (không dùng cache của vòng quét); nếu agent đang `blocked` (có thể đang ở hộp thoại quyền), hub hỏi `y/n` trước khi gõ. Task chưa có agent thì sidebar báo `no agent on this task` và không gõ gì. Alert chỉ được xác nhận sau khi thao tác của `f` chạy xong.
+Phím `f` chỉ hoạt động trên PR có CI thất bại. Job lỗi là check run kết thúc `FAILURE`, `TIMED_OUT`, `STARTUP_FAILURE`, `CANCELLED` hoặc `ACTION_REQUIRED`, hoặc commit status `FAILURE`/`ERROR` có link; PR không có link job lỗi nào thì sidebar báo `no failed job URL for this PR` và không gõ gì. Nó gõ `/znf:fix <url job lỗi đầu tiên>` vào pane agent của task, chỉ khi bạn bấm, không bao giờ tự động. Hub đọc lại file trạng thái của agent ngay lúc bấm (không dùng cache của vòng quét) và gõ vào pane trong file đó; file không còn (session agent đã kết thúc) thì sidebar báo `agent session ended` và không gõ gì; nếu agent đang `blocked` (có thể đang ở hộp thoại quyền), hub hỏi `y/n` trước khi gõ. Task chưa có agent thì sidebar báo `no agent on this task` và không gõ gì. Alert chỉ được xác nhận sau khi thao tác của `f` chạy xong.
 
 ## Hook hub-report
 
