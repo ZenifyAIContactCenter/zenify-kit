@@ -23,14 +23,14 @@ func TestNonstopSkill(t *testing.T) {
 		ref[r] = body
 		all += "\n" + body
 	}
-	// The orchestrator owns ci-watch, routes the day (heartbeat = continue) and packages the review file.
+	// The orchestrator owns ci-watch, routes the day (heartbeat = continue) and runs znf:review on the worker tree.
 	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{
 		"name: nonstop",
 		"wait for the user's approval",
 		"ZNF_AUTONOMOUS=1",
 		"/znf:nonstop continue",
 		"Skill(znf:ci-watch)",
-		"ls-files --others --exclude-standard",
+		"WT=<worktree>",
 	})
 	// A worker never runs ci-watch: its watcher would wake no one.
 	if strings.Contains(ref["worker-brief.md"], "Skill(znf:ci-watch)") {
@@ -66,6 +66,6 @@ func TestNonstopSkill(t *testing.T) {
 		"deferred until",
 		"Issue: #N",
 		"READY_FOR_REVIEW",
-		"znf:code-reviewer",
+		"Skill(znf:review)",
 	})
 }

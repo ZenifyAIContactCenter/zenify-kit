@@ -83,17 +83,19 @@ gate it. Run this loop in the background exactly like Step 2, with `REPO` and th
 ```bash
 REPO=<owner/repo>; PR=<number>; deadline=$((SECONDS+3600)); errs=0; st=
 while :; do
-  if st=$(gh pr view "$PR" -R "$REPO" --json mergeStateStatus,reviewDecision,url \
-      --jq '[.mergeStateStatus, .reviewDecision, .url] | @tsv'); then errs=0
+  # Pending checks are counted from statusCheckRollup in the same call: `gh pr checks` exits 1 when
+  # any check failed (even with others pending) and when the PR has no checks at all.
+  if row=$(gh pr view "$PR" -R "$REPO" --json mergeStateStatus,reviewDecision,url,statusCheckRollup \
+      --jq '[.mergeStateStatus, .reviewDecision, .url, ([.statusCheckRollup[] | select((.__typename=="CheckRun" and .status!="COMPLETED") or (.__typename=="StatusContext" and (.state=="PENDING" or .state=="EXPECTED")))] | length)] | @tsv'); then errs=0
   else errs=$((errs+1)); [ "$errs" -lt 3 ] || { echo "ci-watch: gh pr view failed 3 times in a row"; exit 7; }; sleep 30; continue; fi
-  case "$st" in UNSTABLE*|BLOCKED*) gh pr checks "$PR" -R "$REPO" >/dev/null 2>&1; rc=$? ;; esac   # 8 = pending
+  st=${row%$'\t'*}; pend=${row##*$'\t'}
   case "$st" in
     CLEAN*) echo "$st"; exit 0 ;;
     DIRTY*) echo "$st"; exit 3 ;;
     BEHIND*) echo "$st"; exit 4 ;;
     DRAFT*) echo "$st"; exit 5 ;;
-    UNSTABLE*) [ "$rc" = 8 ] || { echo "$st"; exit 1; } ;;
-    BLOCKED*) [ "$rc" = 8 ] || { echo "$st"; exit 2; } ;;
+    UNSTABLE*) [ "$pend" -gt 0 ] || { echo "$st"; exit 1; } ;;
+    BLOCKED*) [ "$pend" -gt 0 ] || { echo "$st"; exit 2; } ;;
   esac   # UNKNOWN, HAS_HOOKS, or checks pending → poll again
   [ "$SECONDS" -lt "$deadline" ] || { echo "ci-watch: PR not mergeable after 60 min"; echo "$st"; exit 6; }
   sleep 30
@@ -106,8 +108,8 @@ The last line is `mergeStateStatus  reviewDecision  url`. When it wakes the sess
 - **1** → the failing non-required checks (`gh pr checks <n> -R <owner/repo>`), the PR URL and the
   same merge command; the user decides.
 - **2** → list what blocks it. Unresolved threads:
-  `gh api graphql -f o=<owner> -f r=<repo> -F n=<n> -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){nodes{isResolved path comments(first:1){nodes{url}}}}}}}'`
-  → each node with `isResolved: false`, as path + comment URL. No unresolved thread → the
+  `gh api graphql --paginate -f o=<owner> -f r=<repo> -F n=<n> -f query='query($o:String!,$r:String!,$n:Int!,$endCursor:String){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100,after:$endCursor){nodes{isResolved path comments(first:1){nodes{url}}} pageInfo{hasNextPage endCursor}}}}}'`
+  (`--paginate` follows every page) → each node with `isResolved: false`, as path + comment URL. No unresolved thread → the
   `reviewDecision` and the failing required checks (`gh pr checks <n> -R <owner/repo> --required`).
   Do not resolve a thread and do not poll again; stop.
 - **3** conflicts, **4** behind the base, **5** draft, **6** timed out, **7** `gh` kept failing →

@@ -22,7 +22,9 @@ func TestReviewSkill_Materialized_HasKeyParts(t *testing.T) {
 		"select-tier",    // calls the tier script
 		"T1", "T2", "T3", // 3 tiers
 		"PRE", "BUNDLE", "REVIEW", "VERIFY", // 4 seams
-		"finding-schema.md", // references the shared schema
+		"finding-schema.md",                    // references the shared schema
+		"WT=<worktree>",                        // nonstop reviews a worker tree from its own checkout
+		"ls-files --others --exclude-standard", // untracked files count toward ADDED
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("review/SKILL.md missing %q", want)

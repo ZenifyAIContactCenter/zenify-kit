@@ -103,6 +103,18 @@ func TestGate_ConflictMarkerBlocks(t *testing.T) {
 	}
 }
 
+// znf:nonstop reviews an uncommitted tree: a conflict marker in an untracked new file still blocks.
+func TestGate_ConflictMarkerInUntrackedFileBlocks(t *testing.T) {
+	dir, base := gitInit(t)
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("<<<<<<< HEAD\nb\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res := runGate(t, dir, base)
+	if res.Verdict != "block" {
+		t.Errorf("verdict=%q, want block (conflict marker in untracked file)", res.Verdict)
+	}
+}
+
 // SC-02: STATIC_OK=1 skips the build → a broken go.mod still passes (build never runs), no "build fail".
 func TestGate_StaticOKSkipsBuild(t *testing.T) {
 	dir, base := gitInit(t)

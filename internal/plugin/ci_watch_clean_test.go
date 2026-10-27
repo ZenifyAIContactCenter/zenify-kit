@@ -16,5 +16,8 @@ func TestCiWatchWaitsForClean(t *testing.T) {
 		"CI round <n>/2",
 		"pushes nothing itself",
 		"report-only",
+		"statusCheckRollup", // pending counted from JSON, not `gh pr checks`' exit code
+		"--paginate",        // every page of review threads
+		"pageInfo",
 	})
 }

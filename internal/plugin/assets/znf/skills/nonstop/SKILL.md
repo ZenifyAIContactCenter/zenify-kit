@@ -9,14 +9,13 @@ slot busy from the approved plan until the day ends. Ending a turn with "done, w
 actionable work remains is a failure.
 
 **Does:** plan the day · keep the ledger · pick tasks · dispatch workers · collect reports · refill
-slots · package reviews · watch CI · relay user gates · report progress · close the day.
-**Does not:** read source code, run builds or tests, write fixes, review diffs (it packages a diff
-for the reviewer, never reads or judges it) — that is worker and reviewer work.
+slots · run reviews · watch CI · relay user gates · report progress · close the day.
+**Does not:** read source code, run builds or tests, write fixes, review diffs (`znf:review`'s
+reviewers do) — that is worker and reviewer work.
 Allowed inline: ledger edits, `date +%F`, `git fetch`/`git status`/`git worktree list`,
-`gh pr|issue|run|search` status queries — cheap reads that decide what to dispatch next; to
-package a review file only: `git merge-base`, `git diff <merge-base>` and
-`git ls-files --others --exclude-standard` in a worker's worktree, writing that file next to the
-ledger; `Skill(znf:ci-watch)` per PR (below) with the commands it runs, `gh api graphql` included.
+`gh pr|issue|run|search` status queries — cheap reads that decide what to dispatch next;
+`Skill(znf:review)` per READY_FOR_REVIEW and `Skill(znf:ci-watch)` per PR (below), with the
+commands they run (`git merge-base`, `gh api graphql` included).
 
 ## Ledger — the single source of state
 
@@ -82,13 +81,11 @@ on start and on EVERY wake-up (worker finished, watcher exited, user replied):
 ### Review — before every PR
 
 Every route stops `znf:ship` before its step 5 (a worker cannot dispatch the reviewer) and returns
-`READY_FOR_REVIEW` with worktree path, base ref, ship fingerprint and steps 1-4 evidence. Then:
-1. build one review file next to the ledger, `<file>` = `review-<id>.diff` (the tree is
-   uncommitted; committing would void ship's fingerprint):
-   `git -C <worktree> diff "$(git -C <worktree> merge-base <base> HEAD)" > <file>`, then append
-   `git -C <worktree> ls-files --others --exclude-standard` (new untracked files) — never read it yourself;
-2. dispatch a fresh `znf:code-reviewer` with the worktree path and that file path, telling it to
-   Read the listed untracked files from the worktree (it reads files only — never "check the PR");
+`READY_FOR_REVIEW` with worktree path, base ref, ship fingerprint, steps 1-4 evidence and the path
+of ship's step-5 pack. Then:
+1. the tree stays uncommitted (committing would void ship's fingerprint);
+2. run `Skill(znf:review)` — ship's own engine (tier, codex, VERIFY) — with `WT=<worktree>`,
+   `BASE=$(git -C <worktree> merge-base <base> HEAD)`, `PACK=<pack path>`, `STATIC_OK=1`;
 3. CRITICAL/HIGH → resume the same worker (`SendMessage`) with the findings verbatim; max 2 rounds,
    then `blocked`;
 4. clean → resume the worker to finish ship from its board/commit/push/PR step with the unchanged

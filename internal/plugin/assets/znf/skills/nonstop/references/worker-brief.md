@@ -26,14 +26,15 @@ Rules:      znf:discipline floor — ground before use, verify with real output,
             or permission changes, or a destructive action → BLOCKED with the question.
 Stop & report (do not guess) on: a user gate of the skill, a destructive or irreversible action,
             anything outside the worktree.
-Ship: stop before step 5 (independent review). Do NOT commit (it changes ship's fingerprint);
-            return READY_FOR_REVIEW. When resumed clean: continue ship at its board/commit/push/PR
-            step with the unchanged fingerprint, the review recorded as done by the orchestrator's
-            znf:code-reviewer, and return DONE with the PR URL. Resumed with findings: fix them,
-            re-run steps 2-4 as ship requires, report READY_FOR_REVIEW again.
+Ship: at step 5 write its pack, then stop before `Skill(znf:review)` (the orchestrator runs it).
+            Do NOT commit (it changes ship's fingerprint); return READY_FOR_REVIEW. When resumed
+            clean: continue ship at its board/commit/push/PR step with the unchanged fingerprint,
+            the review recorded as done by the orchestrator's znf:review, and return DONE with the
+            PR URL. Resumed with findings: fix them, re-run steps 2-4 as ship requires, report
+            READY_FOR_REVIEW again.
             Do not run znf:ci-watch; the orchestrator watches CI for your PR.
 Return ≤ 40 lines: status (DONE | READY_FOR_REVIEW | BLOCKED | FAILED), PR URL (DONE), worktree
-            path, base ref, ship fingerprint, steps 1-4 evidence, commits, fix/review rounds,
+            path, base ref, ship fingerprint, ship pack path, steps 1-4 evidence, commits, fix/review rounds,
             commands + real output, question if BLOCKED, new tasks found. Long output → file path.
 ```
 
