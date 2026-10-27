@@ -60,7 +60,7 @@ func TestView_HeaderSectionsFooter(t *testing.T) {
 	s := State{
 		Tasks:      []Task{{Slug: "zenify-hub", Repos: []TaskRepo{{Name: "kit"}}}},
 		Unattached: []Agent{{SessionID: "s9", Title: "Daily work"}},
-		OtherPRs:   []PR{{Number: 205, Repo: "o/monitoring", Checks: "PENDING", MergeState: "BLOCKED"}},
+		OtherPRs:   []PR{{Number: 205, Repo: "o/tools", Checks: "PENDING", MergeState: "BLOCKED"}},
 		LocalAt:    1_700_000_000,
 	}
 	m, _, _ := newTestModel(t, t.TempDir(), s)
@@ -76,7 +76,7 @@ func TestView_HeaderSectionsFooter(t *testing.T) {
 		" ○ Daily work",
 		rule,
 		" MY PRS 1",
-		" monitoring #205 ◐ BLOCKED",
+		" tools #205 ◐ BLOCKED",
 		rule,
 		" ⏎ jump  ␣ fold  o open  y copy  m merge",
 	}, "\n")
