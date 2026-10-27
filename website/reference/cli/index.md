@@ -58,6 +58,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify e2e lint](./zenify_e2e_lint) | Kiểm tra cơ học các journey trong `.znf/e2e`, chặn journey thiếu re-fetch, assert hoặc cleanup. |
 | [zenify e2e login](./zenify_e2e_login) | Đăng nhập trên host bằng harness e2e và ghi Playwright storage state để `znf:ui-verifier` nạp bằng `zenify browser state-load`. |
 | [zenify e2e run](./zenify_e2e_run) | Chạy journey E2E trong Docker, trỏ vào dev server đang mở trên máy bạn. |
+| [zenify ensure](./zenify_ensure) | Ghi hook, model và env của kit vào máy và workspace mà không cần zenify up. |
 | [zenify env](./zenify_env) | Quản lý biến môi trường cá nhân cho tool dev và agent trong `<workspace>/.zenify/.env`, không phải env chạy app. |
 | [zenify env edit](./zenify_env_edit) | Mở `.zenify/.env` bằng `$EDITOR`, tạo file quyền 0600 nếu chưa có. |
 | [zenify env exec](./zenify_env_exec) | Chạy một lệnh với key trong `.zenify/.env`, che giá trị secret trong stdout và stderr. |
