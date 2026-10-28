@@ -8,7 +8,7 @@ import (
 // FR-5.1..FR-5.9, SC-12, SC-13, SC-15: nonstop plans the day behind an approval gate, runs the
 // worker loop, closes the day with carry-over and calibrates its T-shirt estimates.
 func TestNonstopSkill(t *testing.T) {
-	refs := []string{"daily-plan.md", "estimation.md", "worker-brief.md"}
+	refs := []string{"daily-plan.md", "estimation.md", "worker-brief.md", "ledger-format.md"}
 	skill := syncedAsset(t, "skills/nonstop/SKILL.md")
 	all := skill
 	ref := map[string]string{}
@@ -23,6 +23,8 @@ func TestNonstopSkill(t *testing.T) {
 		ref[r] = body
 		all += "\n" + body
 	}
+	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"no tables"})
+	assertContainsAll(t, "ledger-format.md", ref["ledger-format.md"], []string{"Needs you: <id> — <question>", "rewrite"})
 	// The orchestrator owns ci-watch, routes the day (heartbeat = continue) and runs znf:review on the worker tree.
 	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{
 		"name: nonstop",
