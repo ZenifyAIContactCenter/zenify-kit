@@ -41,6 +41,10 @@ type World = {
   threads?: (n: string) => { exitCode: number; stdout: string; stderr: string }
   // Panes already open before the plugin acts (the legacy single pane).
   openPanes?: string[]
+  // The answer to `zenify nonstop stats`; defaults to a missing estimates.md.
+  stats?: { exitCode: number; stdout: string; stderr: string }
+  // mtime of estimates.md next to the ledger; absent = the file does not exist.
+  estimatesMtime?: number
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
 }
 
@@ -70,6 +74,18 @@ const threadsOf = (open: number, total: number) => () => ({
   }),
   stderr: '',
 })
+
+const statsJson = (over: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    missing: false,
+    scale: { source: 'default', n: 7, S: 5, M: 20, L: 60 },
+    today: { date: today(), hit: 0, total: 0, over: 0, under: 0, points: 0, ids: [] },
+    week: { hitRate: null, pointsPerDay: null },
+    rules: [],
+    malformed: 0,
+    ...over,
+  })
+const zenifyRuns = (calls: Calls) => calls.run.filter(a => a[0] === 'zenify')
 
 // Every hook here stands for the engine beneath the plugin.
 function engine(on: any, world: World): Calls {
@@ -108,6 +124,10 @@ function engine(on: any, world: World): Calls {
   on('fs.stat', (_: unknown, e: { path: string }) => {
     calls.stat.push(e.path)
     if (world.statError) return { deny: world.statError }
+    if (e.path.endsWith('/estimates.md')) {
+      if (world.estimatesMtime === undefined) return { deny: `ENOENT: no such file, stat '${e.path}'` }
+      return { value: { kind: 'file', size: 1, mtimeMs: world.estimatesMtime, isLink: false } }
+    }
     // With gitDir set the cwd is a worktree: the ledger lives only in the main checkout.
     const isLedger = world.gitDir && !world.isLocal ? e.path.endsWith('/.znf/nonstop/progress.md') : e.path === LOCAL
     if (!world.file || !isLedger) return { deny: `ENOENT: no such file, stat '${e.path}'` }
@@ -125,6 +145,7 @@ function engine(on: any, world: World): Calls {
       if (!world.gitDir) return { value: { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } }
       return { value: { exitCode: 0, stdout: `${world.gitDir}\n`, stderr: '' } }
     }
+    if (e.argv[0] === 'zenify') return { value: world.stats ?? { exitCode: 0, stdout: statsJson({ missing: true }), stderr: '' } }
     if (e.argv[0] === 'gh' && e.argv[2] === 'merge') {
       calls.merges.push([...e.argv])
       if (world.holdMerge) await world.holdMerge
@@ -1163,4 +1184,102 @@ test('FR-2.8: before the first threads answer the row shows thread … and the P
   await human.unmount()
   release()
   await clock.settle()
+})
+
+const openDone = async ($: any, on: any, world: World) => {
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  return { calls, clock }
+}
+
+test('FR-3.10: the Done tab shows the learned scale, today and week lines, and a rule', async ($, on) => {
+  const stats = statsJson({
+    scale: { source: 'learned', n: 31, S: 4, M: 12, L: 40 },
+    today: { date: today(), hit: 3, total: 5, over: 1, under: 1, points: 11, ids: ['t1'] },
+    week: { hitRate: 0.714, pointsPerDay: 9.25 },
+    rules: ['hub fix: est lên 1 size'],
+  })
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 0, stdout: stats, stderr: '' }, estimatesMtime: 5 }
+  const { calls } = await openDone($, on, world)
+  const ui = await $.ui.mount(pane(DONE))
+  const t = await texts(ui)
+  expect(t).toContain('THỐNG KÊ')
+  expect(t).toContain('thang (học từ 31 task): S<4m · M<12m · L<40m')
+  expect(t).toContain('hôm nay: đúng 3/5 · 1 cao · 1 thấp · 11 điểm')
+  expect(t).toContain('7 ngày: đúng 71% · 9.3 điểm/ngày')
+  expect(t).toContain('hub fix: est lên 1 size')
+  expect(zenifyRuns(calls)[0]).toEqual(['zenify', 'nonstop', 'stats', '--json', '--dir', `${CWD}/.zenify/nonstop`])
+  await ui.unmount()
+})
+
+test('FR-3.10: default scale line and null week render as dashes', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 0, stdout: statsJson(), stderr: '' } }
+  await openDone($, on, world)
+  const ui = await $.ui.mount(pane(DONE))
+  const t = await texts(ui)
+  expect(t).toContain('thang (mặc định, 7/20 task): S<5m · M<20m · L<60m')
+  expect(t).toContain('7 ngày: đúng — · — điểm/ngày')
+  await ui.unmount()
+})
+
+test('FR-3.10: a done task with no estimate line is named; malformed lines are counted', async ($, on) => {
+  const stats = statsJson({ today: { date: today(), hit: 1, total: 1, over: 0, under: 0, points: 1, ids: ['t1'] }, malformed: 2 })
+  const world: World = {
+    file: { text: ledgerText([row('t1', 'done'), row('t4', 'done')]), mtimeMs: 1 },
+    stats: { exitCode: 0, stdout: stats, stderr: '' },
+  }
+  await openDone($, on, world)
+  const ui = await $.ui.mount(pane(DONE))
+  const t = await texts(ui)
+  expect(t).toContain('⚠ 1 task done hôm nay chưa ghi estimate: t4')
+  expect(t).toContain('⚠ 2 dòng estimates sai format')
+  await ui.unmount()
+})
+
+test('FR-3.10: missing estimates.md reads "chưa có estimates.md"', async ($, on) => {
+  await openDone($, on, { file: { text: ledgerText(BASE), mtimeMs: 1 } })
+  const ui = await $.ui.mount(pane(DONE))
+  expect(await texts(ui)).toContain('chưa có estimates.md')
+  await ui.unmount()
+})
+
+test('FR-3.10: a failing stats command shows its first stderr line, not a swallowed error', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 1, stdout: '', stderr: 'boom: cannot read\nmore' } }
+  await openDone($, on, world)
+  const ui = await $.ui.mount(pane(DONE))
+  expect(await texts(ui)).toContain('lỗi thống kê: boom: cannot read')
+  await ui.unmount()
+})
+
+test('FR-3.10: output that is not stats JSON reports the parse failure', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 0, stdout: 'not json', stderr: '' } }
+  await openDone($, on, world)
+  const ui = await $.ui.mount(pane(DONE))
+  expect((await texts(ui)).some(x => x.startsWith('lỗi thống kê: '))).toBe(true)
+  await ui.unmount()
+})
+
+test('FR-3.10: stats re-run on a 2s tick only when estimates.md mtime changed', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, estimatesMtime: 10 }
+  const { calls, clock } = await openDone($, on, world)
+  expect(zenifyRuns(calls)).toHaveLength(1)
+  await clock.advance(2000)
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(1)
+  world.estimatesMtime = 20
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(2)
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(2)
+})
+
+test('FR-3.10: a plain session makes no zenify call', async ($, on) => {
+  const calls = engine(on, { file: { text: ledgerText([row('t1', 'done')]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await clock.advance(4000)
+  expect(zenifyRuns(calls)).toHaveLength(0)
 })

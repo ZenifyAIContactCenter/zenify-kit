@@ -3,6 +3,8 @@ import type { EngineInterface as $, Register, Timer } from 'claude-code'
 
 import { parseLedger } from './ledger'
 import type { Ledger } from './ledger'
+import { parseStats, statsLines } from './stats'
+import type { NonstopStats } from './stats'
 import {
   isReadyToMerge,
   notReadyReason,
@@ -32,6 +34,7 @@ const SPIN_TICK_MS = 250
 const LEDGER_TICK_MS = 2000
 const PR_TICK_MS = 60000
 const GH_TIMEOUT_MS = 20000
+const STATS_TIMEOUT_MS = 20000
 const MERGE_TIMEOUT_MS = 60000
 const CONFIRM_MS = 5000
 const GH_PARALLEL = 4
@@ -50,6 +53,8 @@ const prInfo = atom({ plugin: 'znf', key: 'prInfo' } as const, {} as Record<stri
 const confirming = atom({ plugin: 'znf', key: 'confirming' } as const, {}, { shape: 'nonstop-2' })
 // Urls whose merge runs now; mirrors `mergeInFlight` so the pane redraws.
 const merging = atom({ plugin: 'znf', key: 'merging' } as const, [], { shape: 'nonstop-1' })
+// The last `zenify nonstop stats --json` answer, or why it failed.
+const stats = atom({ plugin: 'znf', key: 'stats' } as const, null, { shape: 'nonstop-1' })
 const frame = atom({ plugin: 'znf', key: 'frame' } as const, 0, { shape: 'nonstop-1' })
 // Ids of the task lines the user expanded; shared by the three tabs.
 const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
@@ -59,6 +64,9 @@ let timers: Timer[] = []
 let spinTimer: Timer | undefined
 let ledgerFile: string | undefined
 let lastMtime: number | undefined
+// mtime of estimates.md at the last stats run; 'missing' when it was absent; undefined = never ran.
+let lastStatsKey: number | 'missing' | undefined
+let isStatting = false
 let isRefreshing = false
 let isPolling = false
 
@@ -142,6 +150,37 @@ async function refresh($: $, force = false): Promise<void> {
     if (loaded !== 'unchanged') await apply($, loaded)
   } finally {
     isRefreshing = false
+  }
+}
+
+// FR-3.10: the numbers come from the CLI, never from parsing estimates.md here. Runs when the
+// file's mtime changed since the last run (or on `force`); an absent file still runs once.
+async function refreshStats($: $, force = false): Promise<void> {
+  if (isStatting) return
+  isStatting = true
+  try {
+    const file = await ledgerPath($)
+    if (!file) return
+    const dir = file.slice(0, file.lastIndexOf('/'))
+    let key: number | 'missing'
+    try {
+      key = (await $.fs.stat(`${dir}/estimates.md`)).mtimeMs
+    } catch (err) {
+      if (!isMissing(err)) throw err
+      key = 'missing'
+    }
+    if (!force && key === lastStatsKey) return
+    lastStatsKey = key
+    try {
+      const out = await $.process.run(['zenify', 'nonstop', 'stats', '--json', '--dir', dir], { timeoutMs: STATS_TIMEOUT_MS })
+      if (out.exitCode !== 0) throw new Error(out.stderr.split('\n')[0] || `exit ${out.exitCode}`)
+      const data: NonstopStats = parseStats(out.stdout)
+      await update($, stats, () => ({ data }))
+    } catch (err) {
+      await update($, stats, () => ({ error: message(err).split('\n')[0] }))
+    }
+  } finally {
+    isStatting = false
   }
 }
 
@@ -288,9 +327,13 @@ async function openPane($: $): Promise<void> {
   if ((await $.ui.panes()).some(p => p.id === LEGACY_PANE_ID)) await $.ui.close({ id: LEGACY_PANE_ID })
   for (const p of PANES) await $.ui.open({ ...p })
   await syncSpin($)
+  await refreshStats($, true).catch(err => report($, err))
   if (timers.length) return
   timers = [
-    $.clock.every(LEDGER_TICK_MS, () => void refresh($).catch(err => report($, err))),
+    $.clock.every(
+      LEDGER_TICK_MS,
+      () => void refresh($).then(() => refreshStats($)).catch(err => report($, err)),
+    ),
     $.clock.every(PR_TICK_MS, () => void pollPrs($).catch(err => report($, err))),
   ]
   // The first PR labels come now, not a full tick after the open.
@@ -319,6 +362,7 @@ export const register: Register = on => {
     stopTimers()
     ledgerFile = undefined
     lastMtime = undefined
+    lastStatsKey = undefined
     // A reload keeps shaped state but not the in-flight set; a plain session start (resume,
     // /clear, compact) keeps both, so `merging` is reset to what is really running.
     await update($, merging, () => [...mergeInFlight])
@@ -416,6 +460,7 @@ export const register: Register = on => {
       const armedUntil = await read($, confirming)
       const inMerge = await read($, merging)
       const now = await $.clock.now()
+      const st = await read($, stats)
 
       if (error) return <Box flexDirection="column">{line(`lỗi ledger: ${error}`, { color: 'red' })}</Box>
       if (!l) return <Box flexDirection="column">{line('chưa có ledger nonstop', { dimColor: true })}</Box>
@@ -509,13 +554,31 @@ export const register: Register = on => {
 
       if (id === 'nonstop-done') {
         const done = by('done')
-        if (!done.length && !settled.length) return empty()
+        if (!done.length && !settled.length && (!st || st.data?.missing)) return empty()
+        // Ledger tasks done today; empty when the ledger is another day's, so stale days never warn.
+        const doneToday = st?.data && l.date === st.data.today.date ? done.map(t => t.id) : []
         return (
           <Box flexDirection="column">
             {done.length > 0 && line('DONE', { bold: true })}
             {done.map(t => taskLine(t, t.evidence))}
             {settled.length > 0 && line('PR', { bold: true })}
             {settled.map(url => prRow(url, label(url)))}
+            {st && line('THỐNG KÊ', { bold: true })}
+            {st?.error && (
+              <Text wrap="wrap" color="red">
+                {`lỗi thống kê: ${st.error}`}
+              </Text>
+            )}
+            {st?.data &&
+              statsLines(st.data, doneToday).map(s =>
+                s.cut ? (
+                  line(s.text, s.warn ? { color: 'yellow' } : {})
+                ) : (
+                  <Text wrap="wrap" {...(s.warn ? { color: 'yellow' } : {})}>
+                    {s.text}
+                  </Text>
+                ),
+              )}
           </Box>
         )
       }

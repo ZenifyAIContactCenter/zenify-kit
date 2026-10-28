@@ -18,11 +18,23 @@ export type Ledger = {
   malformed: string[]
 }
 
+// The JSON of `zenify nonstop stats --json`.
+export type NonstopStats = {
+  missing: boolean
+  scale: { source: 'learned' | 'default'; n: number; S: number; M: number; L: number }
+  today: { date: string; hit: number; total: number; over: number; under: number; points: number; ids: string[] }
+  week: { hitRate: number | null; pointsPerDay: number | null }
+  rules: string[]
+  malformed: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     znf: {
       ledger: Shaped<Ledger | null>
       ledgerError: Shaped<string | null>
+      // the last `zenify nonstop stats` answer, or why it failed
+      stats: Shaped<{ data?: NonstopStats; error?: string } | null>
       // PR url -> one poll's label, Zenie state, base branch and review threads (undefined: being
       // fetched; null: the query failed)
       prInfo: Shaped<
