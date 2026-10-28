@@ -103,25 +103,39 @@ export function zenieState(view: PrView): Zenie {
 
 export type Threads = { open: number; total: number }
 
-export function threadsArgv(url: string): string[] {
+const SAFE_NAME = /^[A-Za-z0-9_.-]+$/
+
+// undefined when owner or repo holds a character that could break out of the query.
+export function threadsArgv(url: string): string[] | undefined {
   const { repo, n } = parseUrl(url)
   const [owner, name] = repo.split('/')
-  const query = `query{repository(owner:"${owner}",name:"${name}"){pullRequest(number:${n}){reviewThreads(first:100){nodes{isResolved}}}}}`
+  if (!SAFE_NAME.test(owner ?? '') || !SAFE_NAME.test(name ?? '') || !/^\d+$/.test(n)) return undefined
+  const query = `query{repository(owner:"${owner}",name:"${name}"){pullRequest(number:${n}){reviewThreads(first:100){pageInfo{hasNextPage}nodes{isResolved}}}}}`
   return ['gh', 'api', 'graphql', '-f', `query=${query}`]
 }
 
-// Open and total review threads from the threadsArgv answer; undefined when unreadable.
+// Open and total review threads from the threadsArgv answer; undefined when unreadable
+// or when there is a second page (the count would be partial).
 export function threadCount(result: PrView): Threads | undefined {
   if (result.exitCode !== 0) return undefined
   try {
-    const nodes = JSON.parse(result.stdout)?.data?.repository?.pullRequest?.reviewThreads?.nodes
-    if (!Array.isArray(nodes)) return undefined
-    return { open: nodes.filter((t: { isResolved?: boolean }) => !t.isResolved).length, total: nodes.length }
+    const list = JSON.parse(result.stdout)?.data?.repository?.pullRequest?.reviewThreads
+    if (!Array.isArray(list?.nodes) || list.pageInfo?.hasNextPage) return undefined
+    return { open: list.nodes.filter((t: { isResolved?: boolean }) => !t.isResolved).length, total: list.nodes.length }
   } catch {
     return undefined
   }
 }
 
+// Why a PR may not be merged yet, or undefined when it may. Zenie must have passed.
+export function notReadyReason(label: string, zenie: string, threads: Threads | undefined): string | undefined {
+  if (!isMergeable(label)) return label || 'chưa poll'
+  if (zenie !== 'pass') return `Zenie ${zenie}`
+  if (threads === undefined) return 'thread ?'
+  if (threads.open > 0) return `còn ${threads.open} thread mở`
+  return undefined
+}
+
 export function isReadyToMerge(label: string, zenie: string, threads: Threads | undefined): boolean {
-  return isMergeable(label) && (zenie === 'pass' || zenie === '—') && threads !== undefined && threads.open === 0
+  return notReadyReason(label, zenie, threads) === undefined
 }

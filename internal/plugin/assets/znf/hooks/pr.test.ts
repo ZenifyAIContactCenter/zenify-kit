@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { LedgerTask } from './ledger'
-import { isMergeable, isReadyToMerge, issueUrl, mergeArgv, mergeCommand, prBase, threadCount, threadsArgv, zenieState, prLabel, prRef, prUrls } from './pr'
+import { isMergeable, isReadyToMerge, issueUrl, notReadyReason, mergeArgv, mergeCommand, prBase, threadCount, threadsArgv, zenieState, prLabel, prRef, prUrls } from './pr'
 
 const view = (o: object) => ({ exitCode: 0, stdout: JSON.stringify(o), stderr: '' })
 const run = (name: string, conclusion: string, status = 'COMPLETED') => ({
@@ -90,16 +90,38 @@ test('threadsArgv queries the review threads of the PR', () => {
     'api',
     'graphql',
     '-f',
-    'query=query{repository(owner:"Z",name:"kit"){pullRequest(number:238){reviewThreads(first:100){nodes{isResolved}}}}}',
+    'query=query{repository(owner:"Z",name:"kit"){pullRequest(number:238){reviewThreads(first:100){pageInfo{hasNextPage}nodes{isResolved}}}}}',
   ])
 })
 
 test('isReadyToMerge needs a mergeable label, Zenie pass or none, and no open thread', () => {
   expect(isReadyToMerge('CLEAN', 'pass', { open: 0, total: 3 })).toBe(true)
-  expect(isReadyToMerge('UNSTABLE', '—', { open: 0, total: 0 })).toBe(true)
+  expect(isReadyToMerge('UNSTABLE', 'pass', { open: 0, total: 0 })).toBe(true)
+  expect(isReadyToMerge('CLEAN', '—', { open: 0, total: 0 })).toBe(false)
   expect(isReadyToMerge('CLEAN', 'pass', { open: 1, total: 3 })).toBe(false)
   expect(isReadyToMerge('CLEAN', 'đang chạy', { open: 0, total: 0 })).toBe(false)
   expect(isReadyToMerge('CLEAN', 'fail', { open: 0, total: 0 })).toBe(false)
   expect(isReadyToMerge('CLEAN', 'pass', undefined)).toBe(false)
   expect(isReadyToMerge('BLOCKED', 'pass', { open: 0, total: 0 })).toBe(false)
+})
+
+test('threadsArgv refuses an owner or repo outside [A-Za-z0-9_.-]', () => {
+  expect(threadsArgv('https://github.com/Z/ki"t/pull/5')).toBeUndefined()
+  expect(threadsArgv('https://github.com/Z}/kit/pull/5')).toBeUndefined()
+  expect(threadsArgv('https://github.com/my-org/my.repo_1/pull/5')).toBeDefined()
+})
+
+test('threadCount is undefined when more than one page of threads exists', () => {
+  const paged = view({
+    data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: true }, nodes: [{ isResolved: true }] } } } },
+  })
+  expect(threadCount(paged)).toBeUndefined()
+})
+
+test('notReadyReason names the first failing condition', () => {
+  expect(notReadyReason('CLEAN', 'pass', { open: 0, total: 1 })).toBeUndefined()
+  expect(notReadyReason('BLOCKED', 'pass', { open: 0, total: 1 })).toBe('BLOCKED')
+  expect(notReadyReason('CLEAN', 'fail', { open: 0, total: 1 })).toBe('Zenie fail')
+  expect(notReadyReason('CLEAN', 'pass', { open: 2, total: 5 })).toBe('còn 2 thread mở')
+  expect(notReadyReason('CLEAN', 'pass', undefined)).toBe('thread ?')
 })

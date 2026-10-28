@@ -35,6 +35,8 @@ type World = {
   mergeRejects?: string
   // Holds `gh pr merge` until this resolves.
   holdMerge?: Promise<void>
+  // Holds the review-threads query until this resolves (read on each call).
+  holdThreads?: Promise<void>
   // The answer to the review-threads graphql call, by PR number; defaults to no threads.
   threads?: (n: string) => { exitCode: number; stdout: string; stderr: string }
   // Panes already open before the plugin acts (the legacy single pane).
@@ -131,11 +133,12 @@ function engine(on: any, world: World): Calls {
     }
     if (e.argv[0] === 'gh' && e.argv[1] === 'api') {
       calls.graphql.push([...e.argv])
+      if (world.holdThreads) await world.holdThreads
       return { value: (world.threads ?? threadsOf(0, 0))(/number:(\d+)/.exec(e.argv[4])?.[1] ?? '') }
     }
     const view = world.gh
       ? await world.gh(e.argv[3])
-      : { exitCode: 0, stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: [], baseRefName: 'main' }), stderr: '' }
+      : { exitCode: 0, stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: [{ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'SUCCESS' }], baseRefName: 'main' }), stderr: '' }
     return { value: view }
   })
   return calls
@@ -392,7 +395,7 @@ test('FR-3.2: each tab shows only its own content', async ($, on) => {
         ? view('MERGED')
         : url === URL_C
           ? view('OPEN', 'BLOCKED', [{ name: 'lint', conclusion: 'FAILURE', status: 'COMPLETED' }])
-          : view('OPEN', 'CLEAN'),
+          : view('OPEN', 'CLEAN', [{ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'SUCCESS' }]),
   }
   engine(on, world)
   const clock = mock.clock(on)
@@ -419,7 +422,7 @@ test('FR-3.2: each tab shows only its own content', async ($, on) => {
   expect(has(pr, /^(⠋ )?t2/)).toBe(true)
   expect(has(p, /CI đỏ \(lint\)/)).toBe(true)
   expect(p).toContain('done 1 · queued 1 · blocked 1')
-  expect(has(p, /Z\/hub#9 CLEAN/)).toBe(false)
+  expect(has(await rows(progress), /^Z\/hub#9 CLEAN/)).toBe(true)
   await progress.unmount()
 
   const done = await $.ui.mount(pane(DONE))
@@ -771,7 +774,12 @@ test('FR-2.7: the second press runs gh pr merge once, toasts and re-polls into D
   const { calls } = await mergeWorld(on, {
     gh: async () => ({
       exitCode: 0,
-      stdout: JSON.stringify({ state, mergeStateStatus: 'CLEAN', statusCheckRollup: [], baseRefName: 'main' }),
+      stdout: JSON.stringify({
+        state,
+        mergeStateStatus: 'CLEAN',
+        statusCheckRollup: [{ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+        baseRefName: 'main',
+      }),
       stderr: '',
     }),
   })
@@ -1077,4 +1085,68 @@ test('FR-2.8: each poll runs gh pr view and the threads query per open PR, none 
   await clock.advance(60000)
   expect(ghRuns(calls)).toHaveLength(5)
   expect(calls.graphql).toHaveLength(4)
+})
+
+test('FR-2.8: a Zenie check that is absent is not ready', async ($, on) => {
+  await mergeWorld(on, { gh: async () => viewWith([]), threads: threadsOf(0, 0) })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const human = await $.ui.mount(pane(HUMAN))
+  expect(await mergeButton(human)).toBeUndefined()
+  await human.unmount()
+})
+
+test('FR-2.8: the PR is not ready while a poll waits for its threads, and stays not ready with open threads', async ($, on) => {
+  const { world } = await mergeWorld(on, { gh: async () => viewWith(READY_CHECKS), threads: threadsOf(0, 3) })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const human = await $.ui.mount(pane(HUMAN))
+  expect(await mergeButton(human)).toBeDefined()
+
+  let release: () => void = () => {}
+  world.holdThreads = new Promise<void>(r => (release = r))
+  world.threads = threadsOf(2, 3)
+  await clock.advance(60000)
+  expect(await mergeButton(human)).toBeUndefined()
+  expect(await texts(human)).not.toContain('CHỜ MERGE')
+
+  release()
+  await clock.settle()
+  expect(await mergeButton(human)).toBeUndefined()
+  await human.unmount()
+})
+
+test('FR-2.8: the press after a poll that found an open thread never merges', async ($, on) => {
+  let open = 0
+  const { calls } = await mergeWorld(on, { gh: async () => viewWith(READY_CHECKS), threads: n => threadsOf(open, 1)(n) })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const human = await $.ui.mount(pane(HUMAN))
+  await human.press({ key: `merge:${URL_A}` })
+  open = 1
+  await clock.advance(60000)
+  // The button is gone once the poll lands; a press by key must not merge either way.
+  await human.press({ key: `merge:${URL_A}` }).catch(() => {})
+  expect(calls.merges).toEqual([])
+  await human.unmount()
+})
+
+test('FR-2.8: before the first threads answer the row shows thread … and the PR is not ready', async ($, on) => {
+  let release: () => void = () => {}
+  const holdThreads = new Promise<void>(r => (release = r))
+  await mergeWorld(on, { gh: async () => viewWith(READY_CHECKS), holdThreads })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const progress = await $.ui.mount(pane(PROGRESS))
+  expect((await watchOf(progress))[0]).toContain('thread …')
+  await progress.unmount()
+  const human = await $.ui.mount(pane(HUMAN))
+  expect(await mergeButton(human)).toBeUndefined()
+  await human.unmount()
+  release()
+  await clock.settle()
 })

@@ -23,14 +23,19 @@ declare module 'claude-code' {
     znf: {
       ledger: Shaped<Ledger | null>
       ledgerError: Shaped<string | null>
-      // PR url -> label from prLabel
-      prs: Shaped<Record<string, string>>
-      // PR url -> Zenie Review state
-      zenie: Shaped<Record<string, string>>
-      // PR url -> review threads; null when the query failed
-      threads: Shaped<Record<string, { open: number; total: number } | null>>
-      // PR url -> base branch
-      bases: Shaped<Record<string, string>>
+      // PR url -> one poll's label, Zenie state, base branch and review threads (undefined: being
+      // fetched; null: the query failed)
+      prInfo: Shaped<
+        Record<
+          string,
+          {
+            label: string
+            zenie: string
+            base?: string
+            threads?: { open: number; total: number } | null
+          }
+        >
+      >
       // url -> epoch ms until which its merge button is armed
       confirming: Shaped<Record<string, number>>
       // urls whose merge is running
