@@ -6,10 +6,12 @@ Read when: sizing the morning plan, recording a finished task, or writing the en
 
 | Size | Points | Time | Files changed |
 |---|---|---|---|
-| S=1 | 1 | < 30 min | ≤ 3 |
-| M=2 | 2 | 30 min – 2 h | ≤ 10 |
-| L=4 | 4 | 2 – 4 h | ≤ 30 |
-| XL=8 | 8 | > 4 h | > 30, or the task needs a spec → plan |
+| S=1 | 1 | < 5 min | ≤ 3 |
+| M=2 | 2 | 5 – 20 min | ≤ 10 |
+| L=4 | 4 | 20 – 60 min | ≤ 30 |
+| XL=8 | 8 | > 60 min | > 30, or the task needs a spec → plan |
+
+The scale is agent time: a worker's `duration_ms`, not a person's hours.
 
 The size is the higher of the two criteria (time, files). An XL estimate is marked "should split"
 in the plan before it is dispatched.
@@ -32,6 +34,10 @@ Next to `progress.md`. One line per finished task:
 
 `kind` is the task type (fix, feature, review, chore, …). A task cancelled or restarted from scratch
 → `actual -`, excluded from every statistic.
+
+Every task that reaches `done` gets its line in the same Loop wake-up that records it done — the pane flags a done task without one.
+
+Lines dated before 2026-10-29 were sized on the old human scale (S < 30 min …): for calibration, recompute their actual from the time column with this scale; never use their actual column.
 
 ## End-of-day stats
 
