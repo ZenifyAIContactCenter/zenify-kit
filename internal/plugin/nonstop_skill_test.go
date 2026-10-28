@@ -23,7 +23,7 @@ func TestNonstopSkill(t *testing.T) {
 		ref[r] = body
 		all += "\n" + body
 	}
-	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"no tables"})
+	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"no tables", "has a table or `###` → rewrite it first"})
 	assertContainsAll(t, "ledger-format.md", ref["ledger-format.md"], []string{"Needs you: <id> — <question>", "rewrite", "inside a field", "on one line"})
 	// The orchestrator owns ci-watch, routes the day (heartbeat = continue) and runs znf:review on the worker tree.
 	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{

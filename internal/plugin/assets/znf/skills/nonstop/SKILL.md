@@ -45,6 +45,8 @@ Read the ledger first on every call, then route:
 
 Re-entry: `running` lines whose worker has no report are re-asked by name; `done` lines are never
 re-dispatched; go to the Loop, writing to the last section.
+Before any dispatch, a last section that has a table or `###` → rewrite it first per
+references/ledger-format.md.
 
 ## Phase 1 — Morning plan
 
