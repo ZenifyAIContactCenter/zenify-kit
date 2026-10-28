@@ -664,3 +664,35 @@ test('FR-3.9: opening the pane closes the legacy nonstop pane', async ($, on) =>
   await clock.settle()
   expect(calls.close).toContainEqual(expect.objectContaining({ id: 'nonstop' }))
 })
+
+test('FR-3.7: a needs line sharing its id with a task expands to the fields and the full question', async ($, on) => {
+  const question = `q-${'q'.repeat(100)}`
+  engine(on, { file: { text: ledgerText([row('t1', 'running'), `Needs you: t1 — ${question}`]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: 'task:nonstop-human:t1' })
+  expect(await ui.find({ type: 'Text', text: new RegExp(`^ +${question}$`) })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /kit · issue ·/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('FR-3.8: the spinner stops when the ledger goes missing', async ($, on) => {
+  const world: World = { file: { text: ledgerText([row('t1', 'running')]), mtimeMs: 1 } }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  // 2s of spinning (frame 7 or 8), then the ledger vanishes at the 2s tick.
+  world.file = null
+  await clock.advance(2000)
+  await clock.advance(1250)
+  // The ledger returns; the next ledger tick (t=4s) re-arms the spinner. A timer that
+  // kept running through the gap would sit near frame 5 or 6 by now.
+  world.file = { text: ledgerText([row('t1', 'running')]), mtimeMs: 9 }
+  await clock.advance(750)
+  const ui = await $.ui.mount(pane(PROGRESS))
+  expect(['▶ ⠧ đang chạy 1 worker', '▶ ⠇ đang chạy 1 worker']).toContain(await first(ui))
+  await ui.unmount()
+})

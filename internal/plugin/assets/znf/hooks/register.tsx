@@ -22,11 +22,11 @@ const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision'
 
 // Change the shape tag when Ledger or the PR map changes: it declines what an
 // earlier version stored, which outlives a reload.
-const ledger = atom({ plugin: 'znf', key: 'ledger' } as const, null, { shape: 'nonstop-1' })
+const ledger = atom({ plugin: 'znf', key: 'ledger' } as const, null, { shape: 'nonstop-2' })
 const ledgerError = atom({ plugin: 'znf', key: 'ledgerError' } as const, null, { shape: 'nonstop-1' })
 const prs = atom({ plugin: 'znf', key: 'prs' } as const, {}, { shape: 'nonstop-1' })
-// Ids of the task lines the user expanded; shared by the three tabs.
 const frame = atom({ plugin: 'znf', key: 'frame' } as const, 0, { shape: 'nonstop-1' })
+// Ids of the task lines the user expanded; shared by the three tabs.
 const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
 
 // Module state: lost on a reload, which also drops the timers; the next open re-arms them.
@@ -84,6 +84,11 @@ async function load($: $, since?: number): Promise<Loaded | 'unchanged'> {
 }
 
 async function apply($: $, loaded: Loaded): Promise<void> {
+  await applyLoaded($, loaded)
+  await syncSpin($)
+}
+
+async function applyLoaded($: $, loaded: Loaded): Promise<void> {
   if ('ledger' in loaded) {
     lastMtime = loaded.mtimeMs
     const tasks = loaded.ledger.tasks
@@ -91,7 +96,6 @@ async function apply($: $, loaded: Loaded): Promise<void> {
     const r = count('running')
     await update($, ledger, () => loaded.ledger)
     await update($, ledgerError, () => null)
-    await syncSpin($)
     $.ui.status(`nonstop ${r}/${r + count('queued')} ▶ · ${count('blocked')} cần anh`)
     return
   }
@@ -159,11 +163,15 @@ function stopTimers(): void {
 // FR-3.8: the spinner timer runs only while a nonstop tab is open and a task is running.
 async function syncSpin($: $): Promise<void> {
   const current = await read($, ledger)
-  const isRunning = !!current?.tasks.some(t => t.status === 'running')
+  const failed = await read($, ledgerError)
+  const isRunning = !failed && !!current?.tasks.some(t => t.status === 'running')
   const isOpen = (await $.ui.panes()).some(p => isTab(p.id))
   const isWanted = isRunning && isOpen
   if (isWanted && !spinTimer) {
-    spinTimer = $.clock.every(SPIN_TICK_MS, () => void update($, frame, f => (f + 1) % SPINNER.length))
+    spinTimer = $.clock.every(
+      SPIN_TICK_MS,
+      () => void update($, frame, f => (f + 1) % SPINNER.length).catch(err => report($, err)),
+    )
   } else if (!isWanted && spinTimer) {
     spinTimer.cancel()
     spinTimer = undefined
@@ -297,7 +305,6 @@ export const register: Register = on => {
       const l = await read($, ledger)
       const labels = await read($, prs)
       const open = await read($, expanded)
-      const spin = SPINNER[await read($, frame)]
 
       if (error) return <Box flexDirection="column">{line(`lỗi ledger: ${error}`, { color: 'red' })}</Box>
       if (!l) return <Box flexDirection="column">{line('chưa có ledger nonstop', { dimColor: true })}</Box>
@@ -334,7 +341,7 @@ export const register: Register = on => {
         return (
           <Box flexDirection="column">
             {row([prefix(n.priority), { taskId: n.id }, ` ${n.question}`])}
-            {open.includes(n.id) && detail(task ? [fields(task), task.evidence] : [n.question])}
+            {open.includes(n.id) && detail(task ? [fields(task), n.question] : [n.question])}
           </Box>
         )
       }
@@ -383,6 +390,7 @@ export const register: Register = on => {
 
       const running = by('running')
       const queued = by('queued')
+      const spin = SPINNER[await read($, frame)]
       const isIdle = !running.length && !queued.length && !active.length && !l.malformed.length
       return (
         <Box flexDirection="column">
