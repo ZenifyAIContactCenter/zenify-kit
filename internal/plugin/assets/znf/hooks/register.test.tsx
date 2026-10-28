@@ -33,6 +33,8 @@ type World = {
   // The answer to `gh pr merge`; defaults to success.
   merge?: { exitCode: number; stdout: string; stderr: string }
   mergeRejects?: string
+  // Holds `gh pr merge` until this resolves.
+  holdMerge?: Promise<void>
   // Panes already open before the plugin acts (the legacy single pane).
   openPanes?: string[]
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
@@ -106,6 +108,7 @@ function engine(on: any, world: World): Calls {
     }
     if (e.argv[0] === 'gh' && e.argv[2] === 'merge') {
       calls.merges.push([...e.argv])
+      if (world.holdMerge) await world.holdMerge
       if (world.mergeRejects) return { deny: world.mergeRejects }
       return { value: world.merge ?? { exitCode: 0, stdout: '', stderr: '' } }
     }
@@ -819,4 +822,69 @@ test('FR-2.7: a PR that is not mergeable has no merge button', async ($, on) => 
     expect(await mergeButton(ui)).toBeUndefined()
     await ui.unmount()
   }
+})
+
+test('FR-2.7: an arming whose timer never fired still expires after 5 s', async ($, on) => {
+  const { calls } = await mergeWorld(on)
+  // A hand-driven clock whose timers never fire (a hot reload cancels pending waits).
+  let now = 1_000_000
+  on('clock.now', () => ({ value: now }))
+  on('clock.after', () => new Promise(() => {}))
+  on('clock.every', () => new Promise(() => {}))
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await new Promise(r => setTimeout(r, 20))
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  expect((await mergeButton(ui))?.props.label).toBe('xác nhận → main?')
+  now += 5001
+  await ui.press({ key: `merge:${URL_A}` })
+  expect(calls.merges).toEqual([])
+  expect((await mergeButton(ui))?.props.label).toBe('xác nhận → main?')
+  await ui.unmount()
+})
+
+test('FR-2.7: two concurrent confirming presses merge once; a press while merging does nothing', async ($, on) => {
+  let release: () => void = () => {}
+  const holdMerge = new Promise<void>(r => (release = r))
+  const { calls } = await mergeWorld(on, { holdMerge })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  const both = Promise.all([ui.press({ key: `merge:${URL_A}` }), ui.press({ key: `merge:${URL_A}` })])
+  await clock.settle()
+  await ui.press({ key: `merge:${URL_A}` })
+  expect((await mergeButton(ui))?.props.label).toBe('đang merge…')
+  release()
+  await both
+  await clock.settle()
+  expect(calls.merges).toEqual([MERGE_ARGV])
+  await ui.unmount()
+})
+
+test('FR-2.7: no merge button until the base branch is known', async ($, on) => {
+  await mergeWorld(on, {
+    gh: async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: [] }),
+      stderr: '',
+    }),
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  expect(await mergeButton(ui)).toBeUndefined()
+  await ui.unmount()
+})
+
+test('FR-2.7: the button row draws no stray comma', async ($, on) => {
+  await mergeWorld(on)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  expect((await rows(ui)).some(t => t.includes(','))).toBe(false)
+  await ui.unmount()
 })

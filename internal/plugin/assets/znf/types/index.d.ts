@@ -27,8 +27,10 @@ declare module 'claude-code' {
       prs: Shaped<Record<string, string>>
       // PR url -> base branch
       bases: Shaped<Record<string, string>>
-      // urls whose merge button awaits the second press
-      confirming: Shaped<string[]>
+      // url -> epoch ms until which its merge button is armed
+      confirming: Shaped<Record<string, number>>
+      // urls whose merge is running
+      merging: Shaped<string[]>
       // spinner frame index
       frame: Shaped<number>
       // ids of the expanded task lines

@@ -28,8 +28,11 @@ const ledger = atom({ plugin: 'znf', key: 'ledger' } as const, null, { shape: 'n
 const ledgerError = atom({ plugin: 'znf', key: 'ledgerError' } as const, null, { shape: 'nonstop-1' })
 const prs = atom({ plugin: 'znf', key: 'prs' } as const, {}, { shape: 'nonstop-1' })
 const bases = atom({ plugin: 'znf', key: 'bases' } as const, {}, { shape: 'nonstop-1' })
-// Urls whose merge button was pressed once and awaits the second press.
-const confirming = atom({ plugin: 'znf', key: 'confirming' } as const, [], { shape: 'nonstop-1' })
+// url -> epoch ms until which its merge button is armed. An expiry, not a flag: a reload
+// cancels the disarm timer but keeps this state, so the time itself must end the arming.
+const confirming = atom({ plugin: 'znf', key: 'confirming' } as const, {}, { shape: 'nonstop-2' })
+// Urls whose merge runs now; mirrors `mergeInFlight` so the pane redraws.
+const merging = atom({ plugin: 'znf', key: 'merging' } as const, [], { shape: 'nonstop-1' })
 const frame = atom({ plugin: 'znf', key: 'frame' } as const, 0, { shape: 'nonstop-1' })
 // Ids of the task lines the user expanded; shared by the three tabs.
 const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
@@ -160,25 +163,51 @@ async function pollPrs($: $): Promise<void> {
 }
 
 const without = (urls: string[], url: string) => urls.filter(u => u !== url)
+const omit = (map: Record<string, number>, url: string) => Object.fromEntries(Object.entries(map).filter(([u]) => u !== url))
+
+// Checked and added with no await between, so two presses never both merge.
+const mergeInFlight = new Set<string>()
 
 // FR-2.7: the first press arms the button for CONFIRM_MS, the second press merges.
 async function pressMerge($: $, url: string): Promise<void> {
-  if (!(await read($, confirming)).includes(url)) {
-    await update($, confirming, urls => [...urls, url])
-    $.clock.after(CONFIRM_MS, () => void update($, confirming, urls => without(urls, url)).catch(err => report($, err)))
+  if (mergeInFlight.has(url)) return
+  const now = await $.clock.now()
+  const until = (await read($, confirming))[url]
+  if (until === undefined || now >= until) {
+    const expiry = now + CONFIRM_MS
+    await update($, confirming, map => ({ ...map, [url]: expiry }))
+    // Clears only the arming it was made for, not a later one.
+    $.clock.after(
+      CONFIRM_MS,
+      () =>
+        void update($, confirming, map => (map[url] === expiry ? omit(map, url) : map)).catch(err =>
+          $.ui.toast(`lỗi pane: ${message(err)}`),
+        ),
+    )
     return
   }
-  await update($, confirming, urls => without(urls, url))
+  if (mergeInFlight.has(url)) return
+  mergeInFlight.add(url)
   try {
+    await update($, merging, urls => [...urls, url])
+    await update($, confirming, map => omit(map, url))
     const out = await $.process.run(mergeArgv(url), { timeoutMs: MERGE_TIMEOUT_MS })
     if (out.exitCode !== 0) {
       $.ui.toast(`merge lỗi: ${out.stderr.split('\n')[0] || `exit ${out.exitCode}`}`)
       return
     }
     $.ui.toast(`đã merge ${prRef(url)}`)
-    await pollPr($, url)
   } catch (err) {
     $.ui.toast(`merge lỗi: ${message(err)}`)
+    return
+  } finally {
+    mergeInFlight.delete(url)
+    await update($, merging, urls => without(urls, url))
+  }
+  try {
+    await pollPr($, url)
+  } catch (err) {
+    $.ui.toast(`đã merge, nhưng không đọc lại PR: ${message(err)}`)
   }
 }
 
@@ -338,7 +367,9 @@ export const register: Register = on => {
       const l = await read($, ledger)
       const labels = await read($, prs)
       const open = await read($, expanded)
-      const armed = await read($, confirming)
+      const armedUntil = await read($, confirming)
+      const inMerge = await read($, merging)
+      const now = await $.clock.now()
       const baseOf = await read($, bases)
 
       if (error) return <Box flexDirection="column">{line(`lỗi ledger: ${error}`, { color: 'red' })}</Box>
@@ -350,6 +381,9 @@ export const register: Register = on => {
       const active = urls.filter(u => !isSettled(label(u)) && !isMergeable(label(u)))
       const settled = urls.filter(u => isSettled(label(u)))
       const by = (s: string) => byPriority(l.tasks.filter(t => t.status === s))
+      const isArmed = (url: string) => now < (armedUntil[url] ?? 0)
+      const mergeLabel = (url: string) =>
+        inMerge.includes(url) ? 'đang merge…' : isArmed(url) ? `xác nhận → ${baseOf[url]}?` : 'merge'
       // FR-3.7: the expanded lines are indented and wrapped, never cut.
       const detail = (lines: string[]) =>
         lines.map(s => (
@@ -404,13 +438,15 @@ export const register: Register = on => {
                     await $.ui.copy({ text: mergeCommand(url), surface: press.surface })
                     $.ui.toast('đã copy lệnh merge')
                   }}
-                />,
-                <Button
-                  key={`merge:${url}`}
-                  label={armed.includes(url) ? `xác nhận → ${baseOf[url] ?? 'base'}?` : 'merge'}
-                  variant={armed.includes(url) ? 'primary' : undefined}
-                  onPress={() => pressMerge($, url).catch(err => report($, err))}
                 />
+                {baseOf[url] && (
+                  <Button
+                    key={`merge:${url}`}
+                    label={mergeLabel(url)}
+                    variant={isArmed(url) ? 'primary' : undefined}
+                    onPress={() => pressMerge($, url).catch(err => $.ui.toast(`lỗi pane: ${message(err)}`))}
+                  />
+                )}
                 </Box>,
               )
             ))}
