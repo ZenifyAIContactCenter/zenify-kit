@@ -137,3 +137,55 @@ func TestBuildByTagRealRepos(t *testing.T) {
 		t.Fatalf("missing tag note = %q", rep.Repos[0].Err)
 	}
 }
+
+// Team flow since 2026-10-28: feature PRs merge into staging, the weekly release is a PR
+// staging→main tagged vYYMMDD.n, a hotfix is a PR straight into main then synced main→staging.
+// The release merge must expand into its inner PRs (no "staging" row), the hotfix keeps its own
+// branch, and the main→staging sync must not drag the already-shipped hotfix into the next week.
+func TestRangeCommitsGroupedExpandsReleaseMerge(t *testing.T) {
+	dir, git := gitRepo(t)
+	git("commit", "-q", "--allow-empty", "-m", "base")
+	git("tag", "v261028.0")
+	git("checkout", "-q", "-b", "staging")
+	pr := func(into, branch, num, subject string) {
+		git("checkout", "-q", "-b", branch, into)
+		git("commit", "-q", "--allow-empty", "-m", subject)
+		git("checkout", "-q", into)
+		git("merge", "-q", "--no-ff", "-m", "Merge pull request #"+num+" from Org/"+branch, branch)
+	}
+	pr("staging", "u/feat/foo", "11", "feat(foo): add foo")
+	pr("staging", "u/fix/bar", "12", "fix(bar): fix bar")
+	git("checkout", "-q", "main")
+	git("merge", "-q", "--no-ff", "-m", "Merge pull request #100 from Org/staging", "staging")
+	git("tag", "v261104.0")
+	pr("main", "u/hotfix/baz", "13", "fix(baz): hotfix baz")
+	git("tag", "v261104.1")
+	git("checkout", "-q", "staging")
+	git("merge", "-q", "--no-ff", "-m", "Merge pull request #14 from Org/main", "main")
+	pr("staging", "u/feat/qux", "15", "feat(qux): add qux")
+	git("checkout", "-q", "main")
+	git("merge", "-q", "--no-ff", "-m", "Merge pull request #101 from Org/staging", "staging")
+	git("tag", "v261111.0")
+
+	branches := func(from, to string) map[string]int {
+		t.Helper()
+		cs, err := RangeCommitsGrouped(gitx.ExecRunner(), dir, from, to)
+		if err != nil {
+			t.Fatalf("RangeCommitsGrouped(%s..%s) err = %v", from, to, err)
+		}
+		got := map[string]int{}
+		for _, c := range cs {
+			got[c.PRBranch]++
+		}
+		return got
+	}
+	if got, want := branches("v261028.0", "v261104.0"), map[string]int{"u/feat/foo": 2, "u/fix/bar": 2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("weekly release PRBranch counts = %v, want %v", got, want)
+	}
+	if got, want := branches("v261104.0", "v261104.1"), map[string]int{"u/hotfix/baz": 2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("hotfix PRBranch counts = %v, want %v", got, want)
+	}
+	if got := branches("v261104.1", "v261111.0"); got["u/hotfix/baz"] != 0 || got["staging"] != 0 || got["u/feat/qux"] != 2 {
+		t.Fatalf("next weekly release PRBranch counts = %v, want u/feat/qux:2 and no hotfix/staging", got)
+	}
+}

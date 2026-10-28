@@ -134,32 +134,62 @@ func ReachableCommits(r gitx.Runner, dir, ref string) ([]Commit, error) {
 // mainline with --first-parent; for each merge-commit that is a PR (ParseMergeBranch matches),
 // it sets PRBranch=branch on the merge-commit, THEN expands git log <merge>^1..<merge>^2 and
 // sets PRBranch=branch on each expanded commit. A mainline commit that is not a PR (a direct
-// push, or a non-PR merge like a back-merge) keeps PRBranch="". Used for group-by-PR
-// aggregation; counts/regression still use the flat RangeCommits.
+// push, or a non-PR merge like a back-merge) keeps PRBranch="". A release merge (staging→main)
+// whose side walked with --first-parent holds "Merge pull request" commits is not a change of its
+// own: its side is grouped the same way, so each inner PR keeps its own branch. Used for
+// group-by-PR aggregation; counts/regression still use the flat RangeCommits.
 func RangeCommitsGrouped(r gitx.Runner, dir, from, to string) ([]Commit, error) {
 	out, err := r.Run(dir, "log", "--first-parent", logFormat, from+".."+to)
 	if err != nil {
 		return nil, err
 	}
-	mainline := parseCommits(out)
+	return groupMainline(r, dir, parseCommits(out), nil), nil
+}
+
+// maxReleaseDepth bounds nested release merges (a release branch merged into staging, then
+// staging into main); deeper merges group as an ordinary PR.
+const maxReleaseDepth = 3
+
+// groupMainline labels one first-parent walk. not holds ^<outer>^1 of each enclosing release
+// merge: an inner side must not reach what the outer mainline already shipped (a main→staging
+// sync would otherwise drag last week's hotfix back in).
+func groupMainline(r gitx.Runner, dir string, mainline []Commit, not []string) []Commit {
 	var cs []Commit
 	for _, m := range mainline {
-		if m.Merge && m.Branch != "" {
-			m.PRBranch = m.Branch
+		if !m.Merge || m.Branch == "" {
 			cs = append(cs, m)
-			bout, err := r.Run(dir, "log", logFormat, m.SHA+"^1.."+m.SHA+"^2")
-			if err != nil {
-				continue
-			}
-			for _, child := range parseCommits(bout) {
-				child.PRBranch = m.Branch
-				cs = append(cs, child)
-			}
 			continue
 		}
+		side := append([]string{logFormat, m.SHA + "^1.." + m.SHA + "^2"}, not...)
+		if len(not) < maxReleaseDepth {
+			fout, err := r.Run(dir, append([]string{"log", "--first-parent"}, side...)...)
+			if inner := parseCommits(fout); err == nil && hasPRMerge(inner) {
+				cs = append(cs, groupMainline(r, dir, inner, append(not[:len(not):len(not)], "^"+m.SHA+"^1"))...)
+				continue
+			}
+		}
+		m.PRBranch = m.Branch
 		cs = append(cs, m)
+		bout, err := r.Run(dir, append([]string{"log"}, side...)...)
+		if err != nil {
+			continue
+		}
+		for _, child := range parseCommits(bout) {
+			child.PRBranch = m.Branch
+			cs = append(cs, child)
+		}
 	}
-	return cs, nil
+	return cs
+}
+
+// hasPRMerge: cs holds a "Merge pull request" commit; a "Merge branch" back-merge does not count.
+func hasPRMerge(cs []Commit) bool {
+	for _, c := range cs {
+		if prMergeRe.MatchString(c.Subject) {
+			return true
+		}
+	}
+	return false
 }
 
 // ChangedFiles returns the list of files changed in from..to.
