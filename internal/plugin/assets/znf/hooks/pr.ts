@@ -68,3 +68,18 @@ export function issueUrl(issue: string): string | undefined {
   const m = /^([^/\s#]+\/[^/\s#]+)#(\d+)$/.exec(issue)
   return m ? `https://github.com/${m[1]}/issues/${m[2]}` : undefined
 }
+
+export function mergeArgv(url: string): string[] {
+  const { repo, n } = parseUrl(url)
+  return ['gh', 'pr', 'merge', '-R', repo, n, '--merge']
+}
+
+// The branch the PR merges into, from `gh pr view --json baseRefName`.
+export function prBase(view: PrView): string | undefined {
+  if (view.exitCode !== 0) return undefined
+  try {
+    return (JSON.parse(view.stdout) as { baseRefName?: string }).baseRefName
+  } catch {
+    return undefined
+  }
+}

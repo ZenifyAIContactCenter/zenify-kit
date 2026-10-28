@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { LedgerTask } from './ledger'
-import { isMergeable, issueUrl, mergeCommand, prLabel, prRef, prUrls } from './pr'
+import { isMergeable, issueUrl, mergeArgv, mergeCommand, prBase, prLabel, prRef, prUrls } from './pr'
 
 const view = (o: object) => ({ exitCode: 0, stdout: JSON.stringify(o), stderr: '' })
 const run = (name: string, conclusion: string, status = 'COMPLETED') => ({
@@ -49,4 +49,14 @@ test('issueUrl turns owner/repo#N into an issue URL and rejects the rest', () =>
   expect(issueUrl('Z/be#12')).toBe('https://github.com/Z/be/issues/12')
   expect(issueUrl('-')).toBeUndefined()
   expect(issueUrl('#12')).toBeUndefined()
+})
+
+test('mergeArgv builds the gh pr merge argv for a PR url', () => {
+  expect(mergeArgv('https://github.com/Z/kit/pull/238')).toEqual(['gh', 'pr', 'merge', '-R', 'Z/kit', '238', '--merge'])
+})
+
+test('prBase reads baseRefName and is undefined on a failure or bad JSON', () => {
+  expect(prBase(view({ state: 'OPEN', baseRefName: 'staging' }))).toBe('staging')
+  expect(prBase({ exitCode: 1, stdout: '', stderr: 'x' })).toBeUndefined()
+  expect(prBase({ exitCode: 0, stdout: 'nope', stderr: '' })).toBeUndefined()
 })

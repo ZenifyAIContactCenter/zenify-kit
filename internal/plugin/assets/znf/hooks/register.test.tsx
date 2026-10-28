@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 const CWD = '/w/app'
 const LOCAL = `${CWD}/.zenify/nonstop/progress.md`
-const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision'
+const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision,baseRefName'
 const URL_A = 'https://github.com/Z/kit/pull/238'
 const URL_B = 'https://github.com/Z/hub/pull/9'
 
@@ -30,6 +30,9 @@ type World = {
   isLocal?: boolean
   // A pane id the engine keeps open when asked to close it (a tab that outlives the others).
   keepOpen?: string
+  // The answer to `gh pr merge`; defaults to success.
+  merge?: { exitCode: number; stdout: string; stderr: string }
+  mergeRejects?: string
   // Panes already open before the plugin acts (the legacy single pane).
   openPanes?: string[]
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
@@ -44,11 +47,12 @@ type Calls = {
   copy: string[]
   status: (string | undefined)[]
   toast: string[]
+  merges: string[][]
 }
 
 // Every hook here stands for the engine beneath the plugin.
 function engine(on: any, world: World): Calls {
-  const calls: Calls = { open: [], close: [], stat: [], read: [], run: [], copy: [], status: [], toast: [] }
+  const calls: Calls = { open: [], close: [], stat: [], read: [], run: [], copy: [], status: [], toast: [], merges: [] }
   const panes: { id: string }[] = (world.openPanes ?? []).map(id => ({ id }))
   on('command.register', () => ({ value: { command: 'nonstop-pane' } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
@@ -100,9 +104,14 @@ function engine(on: any, world: World): Calls {
       if (!world.gitDir) return { value: { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } }
       return { value: { exitCode: 0, stdout: `${world.gitDir}\n`, stderr: '' } }
     }
+    if (e.argv[0] === 'gh' && e.argv[2] === 'merge') {
+      calls.merges.push([...e.argv])
+      if (world.mergeRejects) return { deny: world.mergeRejects }
+      return { value: world.merge ?? { exitCode: 0, stdout: '', stderr: '' } }
+    }
     const view = world.gh
       ? await world.gh(e.argv[3])
-      : { exitCode: 0, stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: [] }), stderr: '' }
+      : { exitCode: 0, stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: [], baseRefName: 'main' }), stderr: '' }
     return { value: view }
   })
   return calls
@@ -144,7 +153,7 @@ const rows = async (ui: { findAll: (q: { type: string }) => Promise<{ text: stri
 const links = async (ui: { findAll: (q: { type: string }) => Promise<{ props: Record<string, unknown> }[]> }) =>
   (await ui.findAll({ type: 'Link' })).map(e => e.props.href)
 
-const ghRuns = (calls: Calls) => calls.run.filter(a => a[0] === 'gh')
+const ghRuns = (calls: Calls) => calls.run.filter(a => a[0] === 'gh' && a[2] === 'view')
 
 test('SC-7: only a nonstop prompt or Skill call opens the pane', async ($, on) => {
   const calls = engine(on, { file: null })
@@ -695,4 +704,119 @@ test('FR-3.8: the spinner stops when the ledger goes missing', async ($, on) => 
   const ui = await $.ui.mount(pane(PROGRESS))
   expect(['▶ ⠧ đang chạy 1 worker', '▶ ⠇ đang chạy 1 worker']).toContain(await first(ui))
   await ui.unmount()
+})
+
+const MERGE_ARGV = ['gh', 'pr', 'merge', '-R', 'Z/kit', '238', '--merge']
+const mergeButton = (ui: Parameters<typeof texts>[0] & { find: (q: { type: string; key: string }) => Promise<{ props: Record<string, unknown> } | undefined> }) =>
+  ui.find({ type: 'Button', key: `merge:${URL_A}` })
+
+async function mergeWorld(on: any, extra: Partial<World> = {}) {
+  const world: World = { file: { text: ledgerText([row('t1', 'running', URL_A)]), mtimeMs: 1 }, ...extra }
+  const calls = engine(on, world)
+  return { world, calls }
+}
+
+test('FR-2.7: one press arms the merge button with the base branch and merges nothing', async ($, on) => {
+  const { calls } = await mergeWorld(on)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  expect((await mergeButton(ui))?.props.label).toBe('merge')
+  await ui.press({ key: `merge:${URL_A}` })
+  expect((await mergeButton(ui))?.props.label).toBe('xác nhận → main?')
+  expect(calls.merges).toEqual([])
+  await ui.unmount()
+})
+
+test('FR-2.7: an armed button disarms after 5 s without merging', async ($, on) => {
+  const { calls } = await mergeWorld(on)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  await clock.advance(5000)
+  expect((await mergeButton(ui))?.props.label).toBe('merge')
+  expect(calls.merges).toEqual([])
+  await ui.unmount()
+})
+
+test('FR-2.7: the second press runs gh pr merge once, toasts and re-polls into Done', async ($, on) => {
+  let state = 'OPEN'
+  const { calls } = await mergeWorld(on, {
+    gh: async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ state, mergeStateStatus: 'CLEAN', statusCheckRollup: [], baseRefName: 'main' }),
+      stderr: '',
+    }),
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  state = 'MERGED'
+  await ui.press({ key: `merge:${URL_A}` })
+  await clock.settle()
+  expect(calls.merges).toEqual([MERGE_ARGV])
+  expect(calls.toast).toContain('đã merge Z/kit#238')
+  expect(await mergeButton(ui)).toBeUndefined()
+  await ui.unmount()
+
+  const done = await $.ui.mount(pane(DONE))
+  expect(await texts(done)).toEqual(expect.arrayContaining(['Z/kit#238', ' MERGED']))
+  await done.unmount()
+})
+
+test('FR-2.7: a failed merge toasts the first stderr line and the PR stays in Need Human', async ($, on) => {
+  const { calls } = await mergeWorld(on, {
+    merge: { exitCode: 1, stdout: '', stderr: 'GraphQL: Pull request is not mergeable\nmore' },
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  await ui.press({ key: `merge:${URL_A}` })
+  await clock.settle()
+  expect(calls.toast).toContain('merge lỗi: GraphQL: Pull request is not mergeable')
+  expect((await mergeButton(ui))?.props.label).toBe('merge')
+  await ui.unmount()
+})
+
+test('FR-2.7: a rejected merge call is toasted, not swallowed', async ($, on) => {
+  const { calls } = await mergeWorld(on, { mergeRejects: 'spawn gh ENOENT' })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  await ui.press({ key: `merge:${URL_A}` })
+  await clock.settle()
+  expect(calls.toast.some(t => t.startsWith('merge lỗi: ') && t.includes('spawn gh ENOENT'))).toBe(true)
+  await ui.unmount()
+})
+
+test('FR-2.7: a PR that is not mergeable has no merge button', async ($, on) => {
+  await mergeWorld(on, {
+    gh: async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        state: 'OPEN',
+        mergeStateStatus: 'BLOCKED',
+        statusCheckRollup: [{ name: 'lint', conclusion: 'FAILURE', status: 'COMPLETED' }],
+        baseRefName: 'main',
+      }),
+      stderr: '',
+    }),
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  for (const id of [HUMAN, PROGRESS]) {
+    const ui = await $.ui.mount(pane(id))
+    expect(await mergeButton(ui)).toBeUndefined()
+    await ui.unmount()
+  }
 })

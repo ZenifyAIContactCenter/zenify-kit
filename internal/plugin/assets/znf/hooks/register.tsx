@@ -3,7 +3,7 @@ import type { EngineInterface as $, Register, Timer } from 'claude-code'
 
 import { parseLedger } from './ledger'
 import type { Ledger } from './ledger'
-import { isMergeable, isSettled, issueUrl, mergeCommand, prLabel, prRef, prUrls } from './pr'
+import { isMergeable, isSettled, issueUrl, mergeArgv, mergeCommand, prBase, prLabel, prRef, prUrls } from './pr'
 
 const PANES = [
   { id: 'nonstop-human', title: 'Need Human', columns: 44 },
@@ -17,14 +17,19 @@ const SPIN_TICK_MS = 250
 const LEDGER_TICK_MS = 2000
 const PR_TICK_MS = 60000
 const GH_TIMEOUT_MS = 20000
+const MERGE_TIMEOUT_MS = 60000
+const CONFIRM_MS = 5000
 const GH_PARALLEL = 4
-const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision'
+const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision,baseRefName'
 
 // Change the shape tag when Ledger or the PR map changes: it declines what an
 // earlier version stored, which outlives a reload.
 const ledger = atom({ plugin: 'znf', key: 'ledger' } as const, null, { shape: 'nonstop-2' })
 const ledgerError = atom({ plugin: 'znf', key: 'ledgerError' } as const, null, { shape: 'nonstop-1' })
 const prs = atom({ plugin: 'znf', key: 'prs' } as const, {}, { shape: 'nonstop-1' })
+const bases = atom({ plugin: 'znf', key: 'bases' } as const, {}, { shape: 'nonstop-1' })
+// Urls whose merge button was pressed once and awaits the second press.
+const confirming = atom({ plugin: 'znf', key: 'confirming' } as const, [], { shape: 'nonstop-1' })
 const frame = atom({ plugin: 'znf', key: 'frame' } as const, 0, { shape: 'nonstop-1' })
 // Ids of the task lines the user expanded; shared by the three tabs.
 const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
@@ -120,13 +125,19 @@ async function refresh($: $, force = false): Promise<void> {
   }
 }
 
-async function viewPr($: $, url: string): Promise<string> {
+async function viewPr($: $, url: string): Promise<{ label: string; base?: string }> {
   try {
     const view = await $.process.run(['gh', 'pr', 'view', url, '--json', GH_FIELDS], { timeoutMs: GH_TIMEOUT_MS })
-    return prLabel(view)
+    return { label: prLabel(view), base: prBase(view) }
   } catch (err) {
-    return `gh lỗi: ${message(err).split('\n')[0]}`
+    return { label: `gh lỗi: ${message(err).split('\n')[0]}` }
   }
+}
+
+async function pollPr($: $, url: string): Promise<void> {
+  const { label, base } = await viewPr($, url)
+  await update($, prs, map => ({ ...map, [url]: label }))
+  if (base) await update($, bases, map => ({ ...map, [url]: base }))
 }
 
 // FR-2.2: every PR of the last section, at most GH_PARALLEL gh calls at once.
@@ -139,13 +150,35 @@ async function pollPrs($: $): Promise<void> {
     const queue = current ? prUrls(current.tasks).filter(url => !isSettled(known[url] ?? '')) : []
     const worker = async () => {
       for (let url = queue.shift(); url; url = queue.shift()) {
-        const label = await viewPr($, url)
-        await update($, prs, map => ({ ...map, [url]: label }))
+        await pollPr($, url)
       }
     }
     await Promise.all(Array.from({ length: Math.min(GH_PARALLEL, queue.length) }, worker))
   } finally {
     isPolling = false
+  }
+}
+
+const without = (urls: string[], url: string) => urls.filter(u => u !== url)
+
+// FR-2.7: the first press arms the button for CONFIRM_MS, the second press merges.
+async function pressMerge($: $, url: string): Promise<void> {
+  if (!(await read($, confirming)).includes(url)) {
+    await update($, confirming, urls => [...urls, url])
+    $.clock.after(CONFIRM_MS, () => void update($, confirming, urls => without(urls, url)).catch(err => report($, err)))
+    return
+  }
+  await update($, confirming, urls => without(urls, url))
+  try {
+    const out = await $.process.run(mergeArgv(url), { timeoutMs: MERGE_TIMEOUT_MS })
+    if (out.exitCode !== 0) {
+      $.ui.toast(`merge lỗi: ${out.stderr.split('\n')[0] || `exit ${out.exitCode}`}`)
+      return
+    }
+    $.ui.toast(`đã merge ${prRef(url)}`)
+    await pollPr($, url)
+  } catch (err) {
+    $.ui.toast(`merge lỗi: ${message(err)}`)
   }
 }
 
@@ -305,6 +338,8 @@ export const register: Register = on => {
       const l = await read($, ledger)
       const labels = await read($, prs)
       const open = await read($, expanded)
+      const armed = await read($, confirming)
+      const baseOf = await read($, bases)
 
       if (error) return <Box flexDirection="column">{line(`lỗi ledger: ${error}`, { color: 'red' })}</Box>
       if (!l) return <Box flexDirection="column">{line('chưa có ledger nonstop', { dimColor: true })}</Box>
@@ -360,6 +395,7 @@ export const register: Register = on => {
               prRow(
                 url,
                 label(url),
+                <Box flexDirection="row">
                 <Button
                   key={url}
                   label="c"
@@ -369,6 +405,13 @@ export const register: Register = on => {
                     $.ui.toast('đã copy lệnh merge')
                   }}
                 />,
+                <Button
+                  key={`merge:${url}`}
+                  label={armed.includes(url) ? `xác nhận → ${baseOf[url] ?? 'base'}?` : 'merge'}
+                  variant={armed.includes(url) ? 'primary' : undefined}
+                  onPress={() => pressMerge($, url).catch(err => report($, err))}
+                />
+                </Box>,
               )
             ))}
           </Box>
