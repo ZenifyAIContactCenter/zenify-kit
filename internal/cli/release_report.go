@@ -40,10 +40,12 @@ func runReleaseReport(workspaceDir string, tag string, noFetch bool, outDir stri
 	resolve := func(name string) (string, bool) {
 		return workspace.Resolve(workspaceDir, name, workspace.DefaultMaxDepth, os.ReadDir)
 	}
-	// fetch tags first: auto-detect and the default tag read local tags.
+	// fetch tags first: auto-detect and the default tag read local tags. "--tags" alone also
+	// fetches the default refspec (origin/staging when it exists); naming "staging" would abort
+	// the whole fetch in a repo without that branch.
 	if !noFetch {
 		for _, rp := range disc {
-			_ = release.Fetch(r, rp.Path, "--tags", "staging")
+			_ = release.Fetch(r, rp.Path, "--tags")
 		}
 	}
 	repos, err := release.Resolve(r, workspaceDir, os.ReadFile, disc)
