@@ -33,6 +33,9 @@ func TestNonstopSkill(t *testing.T) {
 		"brainstorming path", "Calibration line",
 		"date · id · repo · kind · est · actual · work · review · files · rounds · path · tier · reason for the gap",
 	})
+	if strings.Contains(ref["estimation.md"], "adds the\n  `duration_ms`") || strings.Contains(ref["worker-brief.md"], "comes from the harness") {
+		t.Errorf("time must come from durations.log, not the harness duration_ms")
+	}
 	morning := ref["estimation.md"][strings.Index(ref["estimation.md"], "## Morning calibration"):]
 	assertContainsAll(t, "estimation.md Morning calibration", morning, []string{"zenify nonstop stats --json"})
 	assertContainsAll(t, "worker-brief.md", ref["worker-brief.md"], []string{"brainstorming path (spike|bounded|architectural|-)", "the pane mod reads"})

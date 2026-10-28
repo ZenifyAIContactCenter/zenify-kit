@@ -24,10 +24,9 @@ Run `zenify nonstop stats --json` (in the workspace) at the morning plan and at 
 
 ## Measuring a finished task
 
-- **Time** = the worker's `duration_ms`, which the harness returns when the worker finishes. Time
-  spent waiting on the user is not counted: a worker resumed after a user gate adds the
-  `duration_ms` of each run.
-  Time now comes from `durations.log` next to `estimates.md`: the pane mod appends one line per
+- **Time** = the sum of the task's runs in `durations.log`. Time spent waiting on the user is not
+  counted: a worker resumed after a user gate adds each run.
+  `durations.log` sits next to `estimates.md`: the pane mod appends one line per
   worker run (`work`) and per reviewer run (`review`) and `zenify nonstop stats` sums them per
   task. The orchestrator no longer writes times by hand; `-` in the work and review columns is fine.
 - **Files** = `git diff --shortstat <base>...HEAD` run in the worker's worktree, with the base ref

@@ -44,7 +44,7 @@ Keep `Task:` as the first line and `worktree slug:` in the Repo line: the pane m
 attribute a run's time to the task.
 
 The worktree path and base ref let the orchestrator run `git diff --shortstat <base>...HEAD`. The
-worker does not report its own time; `duration_ms` comes from the harness.
+worker does not report its own time; it comes from `durations.log`, written by the pane mod.
 
 ## Routing table
 
