@@ -64,7 +64,10 @@ async function load($: $, since?: number): Promise<Loaded | 'unchanged'> {
     const text = await $.fs.read(file)
     return { ledger: parseLedger(String(text)), mtimeMs: stat.mtimeMs }
   } catch (err) {
-    return isMissing(err) ? { missing: true } : { error: message(err) }
+    if (!isMissing(err)) return { error: message(err) }
+    // FR-1.1 "if it exists": forget the path so the next load looks at the cwd's ledger again.
+    ledgerFile = undefined
+    return { missing: true }
   }
 }
 
@@ -145,6 +148,8 @@ async function openPane($: $): Promise<void> {
     $.clock.every(LEDGER_TICK_MS, () => void refresh($).catch(err => report($, err))),
     $.clock.every(PR_TICK_MS, () => void pollPrs($).catch(err => report($, err))),
   ]
+  // The first PR labels come now, not a full tick after the open.
+  void pollPrs($).catch(err => report($, err))
 }
 
 async function show($: $): Promise<void> {

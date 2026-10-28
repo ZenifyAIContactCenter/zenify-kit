@@ -26,6 +26,8 @@ type World = {
   statError?: string
   readError?: string
   gitDir?: string
+  // The ledger sits at the cwd's own path even inside a git checkout.
+  isLocal?: boolean
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
 }
 
@@ -78,7 +80,7 @@ function engine(on: any, world: World): Calls {
     calls.stat.push(e.path)
     if (world.statError) return { deny: world.statError }
     // With gitDir set the cwd is a worktree: the ledger lives only in the main checkout.
-    const isLedger = world.gitDir ? e.path.endsWith('/.znf/nonstop/progress.md') : e.path === LOCAL
+    const isLedger = world.gitDir && !world.isLocal ? e.path.endsWith('/.znf/nonstop/progress.md') : e.path === LOCAL
     if (!world.file || !isLedger) return { deny: `ENOENT: no such file, stat '${e.path}'` }
     return { value: { kind: 'file', size: world.file.text.length, mtimeMs: world.file.mtimeMs, isLink: false } }
   })
@@ -125,14 +127,17 @@ const ghRuns = (calls: Calls) => calls.run.filter(a => a[0] === 'gh')
 
 test('SC-7: only a nonstop prompt or Skill call opens the pane', async ($, on) => {
   const calls = engine(on, { file: null })
-  mock.clock(on)
+  const clock = mock.clock(on)
   await $.prompt.submit({ text: 'hello' })
+  await clock.settle()
   expect(calls.open).toHaveLength(0)
 
   await $.prompt.submit({ text: '/znf:nonstop continue', command: { name: 'znf:nonstop', args: 'continue' } })
+  await clock.settle()
   expect(calls.open).toEqual([{ id: 'nonstop', title: 'Nonstop', columns: 44 }])
 
   await $.tool.call({ tool: 'Skill', skill: 'znf:nonstop' })
+  await clock.settle()
   expect(calls.open).toHaveLength(2)
   expect(calls.open[1]).toMatchObject({ id: 'nonstop' })
 })
@@ -142,6 +147,7 @@ test('SC-5: a ledger edit shows after the 2s tick; an unchanged mtime is not re-
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
 
   const ui = await $.ui.mount(pane())
   expect((await ui.find({ type: 'Text', text: /t2/ }))?.text).toContain('t2')
@@ -162,10 +168,11 @@ test('SC-6: the 60s tick runs gh pr view per URL; [c] copies the merge command',
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
-  expect(ghRuns(calls)).toHaveLength(0)
+  await clock.settle()
+  expect(ghRuns(calls)).toHaveLength(2)
 
   await clock.advance(60000)
-  const runs = ghRuns(calls)
+  const runs = ghRuns(calls).slice(2)
   expect(runs).toHaveLength(2)
   expect(runs.map(a => a.slice(0, 6)).sort()).toEqual(
     [URL_A, URL_B].map(u => ['gh', 'pr', 'view', u, '--json', GH_FIELDS]).sort(),
@@ -181,15 +188,17 @@ test('SC-6: the 60s tick runs gh pr view per URL; [c] copies the merge command',
 
 test('FR-3.3: the status line counts running, queued and blocked', async ($, on) => {
   const calls = engine(on, { file: { text: ledgerText(BASE), mtimeMs: 1 } })
-  mock.clock(on)
+  const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
   expect(calls.status.at(-1)).toBe('nonstop 1/2 ▶ · 1 cần anh')
 })
 
 test('FR-1.1: no ledger on either path shows the empty state and clears the status', async ($, on) => {
   const calls = engine(on, { file: null, gitDir: '/w/repo/.git' })
-  mock.clock(on)
+  const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
   const ui = await $.ui.mount(pane())
   expect(await texts(ui)).toEqual(['chưa có ledger nonstop'])
   expect(calls.status.at(-1)).toBeUndefined()
@@ -199,8 +208,9 @@ test('FR-1.1: no ledger on either path shows the empty state and clears the stat
 
 test('FR-1.2: a read error other than missing is shown, not swallowed', async ($, on) => {
   engine(on, { file: { text: ledgerText(BASE), mtimeMs: 1 }, readError: 'EACCES: permission denied' })
-  mock.clock(on)
+  const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
   const ui = await $.ui.mount(pane())
   expect((await ui.find({ type: 'Text', text: /EACCES/ }))?.text).toContain('EACCES')
   await ui.unmount()
@@ -208,8 +218,9 @@ test('FR-1.2: a read error other than missing is shown, not swallowed', async ($
 
 test('FR-1.1: from a worktree the ledger is found in the main checkout', async ($, on) => {
   const calls = engine(on, { file: { text: ledgerText(BASE), mtimeMs: 1 }, gitDir: '/w/repo/.git' })
-  mock.clock(on)
+  const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
   expect(calls.stat[0]).toBe(LOCAL)
   expect(calls.stat).toContain('/w/repo/.znf/nonstop/progress.md')
   expect(calls.run.find(a => a[0] === 'git')).toEqual(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'])
@@ -239,7 +250,7 @@ test('FR-2.2: at most 4 gh calls run at once', async ($, on) => {
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
-  await clock.advance(60000)
+  await clock.settle()
   expect(ghRuns(calls)).toHaveLength(4)
   while (held.length) {
     held.shift()!()
@@ -260,6 +271,7 @@ test('FR-3.2/FR-3.4: sections in order, every line cut to bodyColumns', async ($
   engine(on, world)
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
   await clock.advance(60000)
 
   const ui = await $.ui.mount(pane(20))
@@ -277,8 +289,9 @@ test('FR-3.2/FR-3.4: sections in order, every line cut to bodyColumns', async ($
 
 test('FR-3.2: an empty section is hidden', async ($, on) => {
   engine(on, { file: { text: ledgerText([row('t1', 'done'), row('t3', 'queued')]), mtimeMs: 1 } })
-  mock.clock(on)
+  const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
   const ui = await $.ui.mount(pane())
   const all = await texts(ui)
   expect(all).not.toContain('RUNNING')
@@ -292,6 +305,7 @@ test('FR-1.2: a normal session polls nothing', async ($, on) => {
   const calls = engine(on, { file: { text: ledgerText([row('t1', 'done', URL_A)]), mtimeMs: 1 } })
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await clock.settle()
   await clock.advance(60000)
   expect(calls.open).toHaveLength(0)
   expect(ghRuns(calls)).toHaveLength(0)
@@ -300,15 +314,17 @@ test('FR-1.2: a normal session polls nothing', async ($, on) => {
 
 test('FR-3.1: session.start reopens the pane on a live day', async ($, on) => {
   const calls = engine(on, { file: { text: ledgerText(BASE), mtimeMs: 1 } })
-  mock.clock(on)
+  const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await clock.settle()
   expect(calls.open).toEqual([{ id: 'nonstop', title: 'Nonstop', columns: 44 }])
 })
 
 test('FR-3.1: session.start stays closed when today has no running task', async ($, on) => {
   const calls = engine(on, { file: { text: ledgerText([row('t1', 'done'), row('t2', 'carry-over')]), mtimeMs: 1 } })
-  mock.clock(on)
+  const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await clock.settle()
   expect(calls.open).toHaveLength(0)
 })
 
@@ -317,15 +333,46 @@ test('FR-1.2: the nonstop-pane command toggles; closing stops the timers', async
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await clock.settle()
   await $.command.run({ command: 'nonstop-pane', args: '' })
   expect(calls.close).toHaveLength(1)
 
   const reads = calls.read.length
+  const gh = ghRuns(calls).length
   world.file = { text: ledgerText([row('t1', 'running', URL_A), row('t2', 'running')]), mtimeMs: 2 }
   await clock.advance(60000)
   expect(calls.read).toHaveLength(reads)
-  expect(ghRuns(calls)).toHaveLength(0)
+  expect(ghRuns(calls)).toHaveLength(gh)
 
   await $.command.run({ command: 'nonstop-pane', args: '' })
+  await clock.settle()
   expect(calls.open).toHaveLength(2)
+})
+
+test('FR-2.2: opening the pane polls its PRs at once', async ($, on) => {
+  const calls = engine(on, { file: { text: ledgerText([row('t1', 'running', URL_A)]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  expect(ghRuns(calls)).toEqual([['gh', 'pr', 'view', URL_A, '--json', GH_FIELDS]])
+  const ui = await $.ui.mount(pane())
+  expect((await ui.find({ type: 'Text', text: /Z\/kit#238/ }))?.text).toContain('CLEAN')
+  await ui.unmount()
+})
+
+test('FR-1.1: a local ledger created after session start is found', async ($, on) => {
+  const world: World = { file: null, gitDir: '/w/repo/.git' }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  // Neither path has a ledger yet: session.start falls back to the main checkout's.
+  await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(calls.stat).toContain('/w/repo/.znf/nonstop/progress.md')
+  world.file = { text: ledgerText(BASE), mtimeMs: 5 }
+  world.isLocal = true
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane())
+  expect((await ui.find({ type: 'Text', text: /t2/ }))?.text).toContain('t2')
+  await ui.unmount()
 })
