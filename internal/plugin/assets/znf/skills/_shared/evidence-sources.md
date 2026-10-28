@@ -141,4 +141,5 @@ db-read: collections, count (no --filter), explain, indexes, stats, tables, sql:
 - `count` takes no `--filter`.
 - `db-read --target audit` (Mongo, prd only) is lead-only.
 - `db-read --target lumi` (lumi-agent MySQL, sql|tables) is lead-only on prd; staging is open. Read lumi MySQL with it, not ssh and not `data run`.
+- `db-read --target msghub` (message-hub Mongo, every Mongo op) is lead-only on prd; staging is open. Read msghub data (`tenants`, `api_keys`, msghub `zns_sending_logs`) with it — the main target's `zns_sending_logs` is CCBE's.
 - Grafana logs, traces and metrics stay available. For row data, read staging, or ask a lead to run the prd step.

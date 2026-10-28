@@ -15,7 +15,7 @@ Trang này dành cho maintainer: dựng `zenify-broker`, service giữ các cred
 
 ## Config không chứa secret
 
-File YAML mount vào `/etc/zenify-broker/broker.yaml`. Các khoá `listen`, `lead_team`, `dev_team`, `deny_logins`, `agent_ids`, `e2e_workflows`, `grafana.bin`, `grafana.addr`, `grafana.args`, `mongo.main_db`, `mongo.audit_db` có mặc định; các khoá còn lại bắt buộc.
+File YAML mount vào `/etc/zenify-broker/broker.yaml`. Các khoá `listen`, `lead_team`, `dev_team`, `deny_logins`, `agent_ids`, `e2e_workflows`, `grafana.bin`, `grafana.addr`, `grafana.args`, `mongo.main_db`, `mongo.audit_db`, `mongo.msghub_db` có mặc định; các khoá còn lại bắt buộc.
 
 ```yaml
 org: ZenifyAIContactCenter
@@ -92,11 +92,12 @@ Broker từ chối khởi động nếu thiếu một biến, và thông báo l�
 
 Các biến sau là tuỳ chọn: thiếu thì broker vẫn khởi động. `POST /creds` (lệnh `zenify data run`) chỉ cấp được những gì đã được đặt.
 
-`MONGO_WRITE_URL_STG` `MONGO_WRITE_URL_PRD` `MYSQL_WRITE_URL_STG` `MYSQL_WRITE_URL_PRD` `REDIS_WRITE_URL_STG` `REDIS_WRITE_URL_PRD` `LUMI_MYSQL_URL_STG` `LUMI_MYSQL_URL_PRD` `QDRANT_URL_STG` `QDRANT_URL_PRD` `ELASTIC_URL_STG` `ELASTIC_URL_PRD`
+`MONGO_WRITE_URL_STG` `MONGO_WRITE_URL_PRD` `MYSQL_WRITE_URL_STG` `MYSQL_WRITE_URL_PRD` `REDIS_WRITE_URL_STG` `REDIS_WRITE_URL_PRD` `LUMI_MYSQL_URL_STG` `LUMI_MYSQL_URL_PRD` `QDRANT_URL_STG` `QDRANT_URL_PRD` `ELASTIC_URL_STG` `ELASTIC_URL_PRD` `MSGHUB_MONGO_URL_STG` `MSGHUB_MONGO_URL_PRD`
 
 - Ba cặp `*_WRITE_URL_*` là credential của user có quyền ghi. Thiếu chúng thì yêu cầu `--write` nhận 500 `broker_misconfigured`; yêu cầu đọc không bị ảnh hưởng. Dev chỉ lấy được credential staging; production chỉ dành cho lead.
 - `LUMI_MYSQL_URL_*` và `QDRANT_URL_*` là credential của `lumi-agent`, cấp khi người dùng chạy `zenify data run --lumi`. Trước đây dev tự điền các key này vào `.zenify/.env`; nay broker cấp, manifest không còn hỏi. Broker cũng tự dùng `LUMI_MYSQL_URL_*` cho `zenify db-read --target lumi`, nên URL phải tới được từ container broker: production (`<lumi-prd-mysql-host>`) tới thẳng, staging cần [tunnel bên dưới](#lumi-stg-tunnel). Hậu tố `+pymysql` giữ nguyên, broker tự bỏ.
 - `ELASTIC_URL_*` là URL Elasticsearch chỉ đọc (kèm thông tin đăng nhập nếu có). Broker chỉ cấp key `ELASTIC_URL` cho yêu cầu `read`, không bao giờ cho `--write`, và chỉ khi biến đã được đặt. Role `agent` cũng nhận `ELASTIC_URL_PRD`, nên user ES trong URL phải là user chỉ đọc (quyền `read`, `view_index_metadata`, `monitor`); broker không tự kiểm quyền này. Đặt biến sau khi bản kit có `ELASTIC_URL` đã phát hành, nếu không client cũ sẽ in cảnh báo `skipping unknown broker key`.
+- `MSGHUB_MONGO_URL_*` là URL Mongo chỉ đọc của message-hub, chỉ broker dùng cho `zenify db-read --target msghub` (không cấp qua `POST /creds`), nên URL phải tới được từ container broker. Database đọc là `mongo.msghub_db` trong YAML (mặc định `msghub`), không lấy từ path của URL: tên database production khác `msghub` thì đặt khoá này, và chỉ đặt sau khi image mới đã chạy (image cũ đọc config với `KnownFields` nên từ chối khoá lạ và không khởi động). Thiếu biến của env nào thì `--target msghub` ở env đó nhận 500 `broker_misconfigured`; user Mongo trong URL phải là user chỉ đọc.
 - URL ứng dụng lumi staging đặt trong YAML, không phải env: khối `lumi:` với khoá `app_url_stg`.
 
 ```yaml

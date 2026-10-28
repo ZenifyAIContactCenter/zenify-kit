@@ -52,6 +52,8 @@ type Config struct {
 	Mongo struct {
 		MainDB  string `yaml:"main_db"`
 		AuditDB string `yaml:"audit_db"`
+		// MsghubDB is the database read by db-read --target msghub.
+		MsghubDB string `yaml:"msghub_db"`
 	} `yaml:"mongo"`
 	Lumi struct {
 		AppURLStg string `yaml:"app_url_stg"`
@@ -79,6 +81,7 @@ type Secrets struct {
 	// Optional: empty when the env var is unset; never an error.
 	MongoWriteStg, MongoWritePrd, MySQLWriteStg, MySQLWritePrd string
 	RedisWriteStg, RedisWritePrd, LumiMySQLStg, LumiMySQLPrd   string
+	MsghubMongoStg, MsghubMongoPrd                             string
 	QdrantStg, QdrantPrd                                       string
 	ElasticStg, ElasticPrd                                     string
 	// Required only when Config.Catalog is set.
@@ -116,6 +119,7 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	def(&c.Grafana.Addr, "127.0.0.1:8000")
 	def(&c.Mongo.MainDB, "3csoft")
 	def(&c.Mongo.AuditDB, "audit_logs")
+	def(&c.Mongo.MsghubDB, "msghub")
 	if c.Grafana.Args == nil {
 		c.Grafana.Args = append([]string(nil), DefaultGrafanaArgs...)
 	}
@@ -164,6 +168,7 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	s.MySQLWriteStg, s.MySQLWritePrd = getenv("MYSQL_WRITE_URL_STG"), getenv("MYSQL_WRITE_URL_PRD")
 	s.RedisWriteStg, s.RedisWritePrd = getenv("REDIS_WRITE_URL_STG"), getenv("REDIS_WRITE_URL_PRD")
 	s.LumiMySQLStg, s.LumiMySQLPrd = getenv("LUMI_MYSQL_URL_STG"), getenv("LUMI_MYSQL_URL_PRD")
+	s.MsghubMongoStg, s.MsghubMongoPrd = getenv("MSGHUB_MONGO_URL_STG"), getenv("MSGHUB_MONGO_URL_PRD")
 	s.QdrantStg, s.QdrantPrd = getenv("QDRANT_URL_STG"), getenv("QDRANT_URL_PRD")
 	s.ElasticStg, s.ElasticPrd = getenv("ELASTIC_URL_STG"), getenv("ELASTIC_URL_PRD")
 	if c.Catalog != nil {

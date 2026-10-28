@@ -106,7 +106,7 @@ func newDBReadCmd() *cobra.Command {
 	f.IntVar(&limit, "limit", dbread.DefaultLimit, "max documents or rows, 1..200")
 	f.StringVar(&manifestPath, "manifest", "", brokerManifestUsage)
 	f.StringVar(&overlayPath, "overlay", "", brokerOverlayUsage)
-	f.StringVar(&target, "target", "", "database: main (default), audit (Mongo, prd only) or lumi (lumi-agent MySQL)")
+	f.StringVar(&target, "target", "", "database: main (default), audit (Mongo, prd only), lumi (lumi-agent MySQL) or msghub (message-hub Mongo)")
 	f.BoolVar(&prd, "prd", false, "read production: via the broker; without one: MONGO_URL_PRD / MYSQL_URL_PRD")
 	return cmd
 }
