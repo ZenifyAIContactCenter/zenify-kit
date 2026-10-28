@@ -22,6 +22,8 @@ const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision'
 const ledger = atom({ plugin: 'znf', key: 'ledger' } as const, null, { shape: 'nonstop-1' })
 const ledgerError = atom({ plugin: 'znf', key: 'ledgerError' } as const, null, { shape: 'nonstop-1' })
 const prs = atom({ plugin: 'znf', key: 'prs' } as const, {}, { shape: 'nonstop-1' })
+// Ids of the task lines the user expanded; shared by the three tabs.
+const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
 
 // Module state: lost on a reload, which also drops the timers; the next open re-arms them.
 let timers: Timer[] = []
@@ -228,10 +230,25 @@ export const register: Register = on => {
       const cols = Math.max(1, e.props.bodyColumns)
       const line = (s: string, props: Record<string, unknown> = {}) => <Text {...props}>{cut(s, cols)}</Text>
       // A row of plain text and links; the text pieces are cut so the row fits the width.
-      type Part = string | { href: string; label: string }
+      type Part = string | { href: string; label: string } | { taskId: string }
       const row = (parts: Part[], extra: unknown = null) => {
         let left = cols
         const cells = parts.map(p => {
+          if (typeof p !== 'string' && 'taskId' in p) {
+            left -= p.taskId.length
+            return (
+              <Button
+                key={`task:${id}:${p.taskId}`}
+                label={p.taskId}
+                plain
+                onPress={async () => {
+                  await update($, expanded, ids =>
+                    ids.includes(p.taskId) ? ids.filter(x => x !== p.taskId) : [...ids, p.taskId],
+                  )
+                }}
+              />
+            )
+          }
           if (typeof p !== 'string') {
             left -= p.label.length
             return <Link href={p.href} label={p.label} />
@@ -253,6 +270,7 @@ export const register: Register = on => {
       const error = await read($, ledgerError)
       const l = await read($, ledger)
       const labels = await read($, prs)
+      const open = await read($, expanded)
 
       if (error) return <Box flexDirection="column">{line(`lỗi ledger: ${error}`, { color: 'red' })}</Box>
       if (!l) return <Box flexDirection="column">{line('chưa có ledger nonstop', { dimColor: true })}</Box>
@@ -263,10 +281,35 @@ export const register: Register = on => {
       const active = urls.filter(u => !isSettled(label(u)) && !isMergeable(label(u)))
       const settled = urls.filter(u => isSettled(label(u)))
       const by = (s: string) => byPriority(l.tasks.filter(t => t.status === s))
+      // FR-3.7: the expanded lines are indented and wrapped, never cut.
+      const detail = (lines: string[]) =>
+        lines.map(s => (
+          <Text wrap="wrap" dimColor>
+            {`  ${s}`}
+          </Text>
+        ))
+      const fields = (t: (typeof l.tasks)[number]) =>
+        [t.repo, t.source, t.issue, t.size, t.skill, t.worker, t.status].join(' · ')
+      const prefix = (priority: string): string => withPriority(priority, '')
       const taskLine = (t: (typeof l.tasks)[number], tail: string) => {
         const href = issueUrl(t.issue)
         const issue: Part[] = href ? [' ', { href, label: t.issue }] : []
-        return row([withPriority(t.priority, `${t.id} ${t.repo}`), ...issue, ` ${tail}`])
+        return (
+          <Box flexDirection="column">
+            {row([prefix(t.priority), { taskId: t.id }, ` ${t.repo}`, ...issue, ` ${tail}`])}
+            {open.includes(t.id) && detail([fields(t), t.evidence])}
+          </Box>
+        )
+      }
+      const needLine = (n: { id: string; question: string; priority: string }) => {
+        if (!n.id) return line(n.question)
+        const task = l.tasks.find(t => t.id === n.id)
+        return (
+          <Box flexDirection="column">
+            {row([prefix(n.priority), { taskId: n.id }, ` ${n.question}`])}
+            {open.includes(n.id) && detail(task ? [fields(task), task.evidence] : [n.question])}
+          </Box>
+        )
       }
 
       const priorityOf = (taskId: string) => l.tasks.find(t => t.id === taskId)?.priority ?? '-'
@@ -277,7 +320,7 @@ export const register: Register = on => {
         return (
           <Box flexDirection="column">
             {needs.length > 0 && line('CẦN ANH', { bold: true, color: 'yellow' })}
-            {needs.map(n => line(withPriority(n.priority, n.id ? `${n.id} ${n.question}` : n.question)))}
+            {needs.map(needLine)}
             {mergeable.length > 0 && line('CHỜ MERGE', { bold: true })}
             {mergeable.map(url => (
               prRow(

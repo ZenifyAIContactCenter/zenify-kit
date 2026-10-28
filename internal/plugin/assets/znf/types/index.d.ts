@@ -25,6 +25,8 @@ declare module 'claude-code' {
       ledgerError: Shaped<string | null>
       // PR url -> label from prLabel
       prs: Shaped<Record<string, string>>
+      // ids of the expanded task lines
+      expanded: Shaped<string[]>
     }
   }
 }

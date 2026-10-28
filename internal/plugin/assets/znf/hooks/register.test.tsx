@@ -135,6 +135,10 @@ const pane = (requestId: string, bodyColumns = 44) =>
 const texts = async (ui: { findAll: (q: { type?: string }) => Promise<{ type: string; text?: string }[]> }) =>
   (await ui.findAll({})).filter(e => e.type === 'Text' || e.type === 'Link').map(e => e.text ?? '')
 
+// The text of every row Box: one drawn line each, whatever its cells.
+const rows = async (ui: { findAll: (q: { type: string }) => Promise<{ text: string; props: Record<string, unknown> }[]> }) =>
+  (await ui.findAll({ type: 'Box' })).filter(b => b.props.flexDirection === 'row').map(b => b.text)
+
 const links = async (ui: { findAll: (q: { type: string }) => Promise<{ props: Record<string, unknown> }[]> }) =>
   (await ui.findAll({ type: 'Link' })).map(e => e.props.href)
 
@@ -308,8 +312,8 @@ test('FR-3.2/FR-3.4: sections in order, every line cut to bodyColumns', async ($
   await ui.unmount()
 
   const human = await $.ui.mount(pane(HUMAN, 20))
-  const needs = await texts(human)
-  expect(needs[0]).toBe('CẦN ANH')
+  expect((await texts(human))[0]).toBe('CẦN ANH')
+  const needs = await rows(human)
   expect(needs.some(t => t.startsWith('t9') && t.endsWith('…'))).toBe(true)
   expect(needs.every(t => t.length <= 20)).toBe(true)
   await human.unmount()
@@ -362,19 +366,21 @@ test('FR-3.2: each tab shows only its own content', async ($, on) => {
   const has = (all: string[], re: RegExp) => all.some(t => re.test(t))
   const human = await $.ui.mount(pane(HUMAN))
   const h = await texts(human)
-  expect(has(h, /t9 duyệt spec\?/)).toBe(true)
-  expect(has(h, /t3 chọn A\/B\?/)).toBe(true)
+  const hr = await rows(human)
+  expect(has(hr, /t9 duyệt spec\?/)).toBe(true)
+  expect(has(hr, /t3 chọn A\/B\?/)).toBe(true)
   expect(h).toEqual(expect.arrayContaining(['Z/hub#9', ' CLEAN']))
   expect(await links(human)).toEqual([URL_B])
-  expect(has(h, /^t1/)).toBe(false)
+  expect(has(hr, /^t1/)).toBe(false)
   await human.unmount()
 
   const progress = await $.ui.mount(pane(PROGRESS))
   const p = await texts(progress)
-  expect(has(p, /^t1/)).toBe(true)
+  const pr = await rows(progress)
+  expect(has(pr, /^t1/)).toBe(true)
   expect(p).toContain('Z/be#12')
   expect(await links(progress)).toEqual(expect.arrayContaining(['https://github.com/Z/be/issues/12', URL_C]))
-  expect(has(p, /^t2/)).toBe(true)
+  expect(has(pr, /^t2/)).toBe(true)
   expect(has(p, /CI đỏ \(lint\)/)).toBe(true)
   expect(p).toContain('done 1 · queued 1 · blocked 1')
   expect(has(p, /Z\/hub#9/)).toBe(false)
@@ -382,7 +388,7 @@ test('FR-3.2: each tab shows only its own content', async ($, on) => {
 
   const done = await $.ui.mount(pane(DONE))
   const d = await texts(done)
-  expect(has(d, /^t4/)).toBe(true)
+  expect(has(await rows(done), /^t4/)).toBe(true)
   expect(d).toEqual(expect.arrayContaining(['Z/kit#238', ' MERGED']))
   await done.unmount()
 })
@@ -543,12 +549,48 @@ test('FR-3.6: each section sorts by priority and prefixes it; a legacy 9-field l
   await clock.settle()
 
   const progress = await $.ui.mount(pane(PROGRESS))
-  const p = (await texts(progress)).filter(t => /^(P\d )?t\d/.test(t))
+  const p = (await rows(progress)).filter(t => /^(P\d )?t\d/.test(t))
   expect(p.map(t => t.split(' kit')[0])).toEqual(['P0 t2', 'P2 t1', 't3'])
   await progress.unmount()
 
   const human = await $.ui.mount(pane(HUMAN))
-  const h = await texts(human)
+  const h = await rows(human)
   expect(h.filter(t => /t\d/.test(t))).toEqual(['P0 t2 duyệt spec?', 't8 không rõ?'])
   await human.unmount()
+})
+
+test('FR-3.7: pressing a task id expands its full line, pressing again collapses it', async ($, on) => {
+  const evidence = `ev-${'e'.repeat(116)}`
+  engine(on, { file: { text: ledgerText([row('t1', 'done', evidence)]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+
+  const ui = await $.ui.mount(pane(DONE))
+  const has = async (re: RegExp) => (await ui.find({ type: 'Text', text: re })) !== undefined
+  expect((await rows(ui))[0].endsWith('…')).toBe(true)
+  expect(await has(new RegExp(evidence))).toBe(false)
+
+  await ui.press({ key: 'task:nonstop-done:t1' })
+  expect(await has(new RegExp(evidence))).toBe(true)
+  expect(await has(/kit · issue ·/)).toBe(true)
+
+  await ui.press({ key: 'task:nonstop-done:t1' })
+  expect(await has(new RegExp(evidence))).toBe(false)
+  await ui.unmount()
+})
+
+test('FR-3.7: a Needs you line without a task expands to its full question', async ($, on) => {
+  const question = `q-${'q'.repeat(100)}`
+  engine(on, { file: { text: ledgerText([row('t1', 'running'), `Needs you: t9 — ${question}`]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+
+  const ui = await $.ui.mount(pane(HUMAN))
+  const full = () => ui.find({ type: 'Text', text: new RegExp(`^ +${question}$`) })
+  expect(await full()).toBeUndefined()
+  await ui.press({ key: 'task:nonstop-human:t9' })
+  expect(await full()).toBeDefined()
+  await ui.unmount()
 })
