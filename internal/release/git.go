@@ -131,13 +131,14 @@ func ReachableCommits(r gitx.Runner, dir, ref string) ([]Commit, error) {
 }
 
 // RangeCommitsGrouped returns the commits in from..to with PR LABELS attached: it walks the
-// mainline with --first-parent; for each merge-commit that is a PR (ParseMergeBranch matches),
-// it sets PRBranch=branch on the merge-commit, THEN expands git log <merge>^1..<merge>^2 and
-// sets PRBranch=branch on each expanded commit. A mainline commit that is not a PR (a direct
-// push, or a non-PR merge like a back-merge) keeps PRBranch="". A release merge (staging→main)
-// whose side walked with --first-parent holds "Merge pull request" commits is not a change of its
-// own: its side is grouped the same way, so each inner PR keeps its own branch. Used for
-// group-by-PR aggregation; counts/regression still use the flat RangeCommits.
+// mainline with --first-parent; for each merge-commit that is a PR ("Merge pull request"), it
+// sets PRBranch=branch on the merge-commit, THEN expands git log <merge>^1..<merge>^2 and sets
+// PRBranch=branch on each expanded commit. A mainline commit that is not a PR (a direct push)
+// keeps PRBranch=""; a non-PR merge (a back-merge) is dropped and its expanded commits stay
+// plain, and an inner merge with nothing left after the outer exclusion is dropped. A release
+// merge (staging→main) whose side walked with --first-parent holds "Merge pull request" commits
+// is not a change of its own: its side is grouped the same way, so each inner PR keeps its own
+// branch. Used for group-by-PR aggregation; counts/regression still use the flat RangeCommits.
 func RangeCommitsGrouped(r gitx.Runner, dir, from, to string) ([]Commit, error) {
 	out, err := r.Run(dir, "log", "--first-parent", logFormat, from+".."+to)
 	if err != nil {
@@ -168,13 +169,18 @@ func groupMainline(r gitx.Runner, dir string, mainline []Commit, not []string) [
 				continue
 			}
 		}
-		m.PRBranch = m.Branch
-		cs = append(cs, m)
 		bout, err := r.Run(dir, append([]string{"log"}, side...)...)
-		if err != nil {
+		children := parseCommits(bout)
+		if err == nil && len(children) == 0 && len(not) > 0 {
+			continue // nothing left after the outer exclusion (a main→staging sync): no empty row
+		}
+		if !prMergeRe.MatchString(m.Subject) {
+			cs = append(cs, children...) // a back-merge is no PR: its commits stay plain, no row of its own
 			continue
 		}
-		for _, child := range parseCommits(bout) {
+		m.PRBranch = m.Branch
+		cs = append(cs, m)
+		for _, child := range children {
 			child.PRBranch = m.Branch
 			cs = append(cs, child)
 		}
