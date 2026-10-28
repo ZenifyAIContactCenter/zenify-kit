@@ -157,6 +157,15 @@ func TestReviewSkill_FourGatesIntentOpusT3(t *testing.T) {
 	}
 }
 
+func TestShipPRTitle_ZenKey(t *testing.T) {
+	ship := syncedAsset(t, "skills/ship/SKILL.md")
+	assertContainsAll(t, "ship/SKILL.md", ship, []string{"ZEN-<n>", "Part of ZEN-"})
+	pr := syncedAsset(t, "skills/ship/references/pr-message-language.md")
+	assertContainsAll(t, "pr-message-language.md", pr, []string{"zen-(\\d+)", "ZEN-<n>", "Part of ZEN-<n>"})
+	st := syncedAsset(t, "skills/ship/references/stacked-ship.md")
+	assertContainsAll(t, "stacked-ship.md", st, []string{"Part of ZEN-<n>", "top layer"})
+}
+
 func TestMergeBaseUsesWtBase(t *testing.T) {
 	dest := t.TempDir()
 	if _, err := Sync(dest, filepath.Join(dest, ".manifest.json")); err != nil {

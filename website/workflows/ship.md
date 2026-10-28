@@ -75,6 +75,10 @@ Khi tính năng bật, ship tìm issue theo thứ tự: số issue bạn đưa t
 - Stacked PR: một issue cho cả stack, `Closes #N` chỉ nằm trong body của PR lớp trên cùng.
 - Ship báo mọi issue và PR bằng URL đầy đủ.
 
+### Mã ticket trong tiêu đề PR
+
+Khi tên branch chứa `zen-<n>` (không phân biệt hoa thường, ví dụ `<user>/fix/zen-123-foo`), ship đặt mã viết hoa ngay sau dấu hai chấm: `<type>(<scope>): ZEN-<n> <mô tả>`. Branch không có mã thì tiêu đề giữ nguyên. Với stacked PR, thân PR của mọi lớp trừ lớp trên cùng có dòng `Part of ZEN-<n>`.
+
 ### Stacked PR
 
 Khi plan có khối `## Stack`, ship đổi vài chỗ của luồng trên; plan không có khối này thì luồng một PR giữ nguyên.
