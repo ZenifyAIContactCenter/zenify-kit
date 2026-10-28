@@ -1,21 +1,6 @@
-export type LedgerTask = {
-  id: string
-  repo: string
-  source: string
-  issue: string
-  size: string
-  skill: string
-  worker: string
-  status: string
-  evidence: string
-}
+import type { Ledger, LedgerTask } from '../types'
 
-export type Ledger = {
-  date: string | null
-  tasks: LedgerTask[]
-  needs: { id: string; question: string }[]
-  malformed: string[]
-}
+export type { Ledger, LedgerTask }
 
 const DATE_HEADING = /^## (\d{4}-\d{2}-\d{2})\s*$/
 const NEEDS = /^Needs you:\s*(.*)$/
