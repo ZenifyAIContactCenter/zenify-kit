@@ -30,6 +30,8 @@ type World = {
   isLocal?: boolean
   // A pane id the engine keeps open when asked to close it (a tab that outlives the others).
   keepOpen?: string
+  // Panes already open before the plugin acts (the legacy single pane).
+  openPanes?: string[]
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
 }
 
@@ -47,7 +49,7 @@ type Calls = {
 // Every hook here stands for the engine beneath the plugin.
 function engine(on: any, world: World): Calls {
   const calls: Calls = { open: [], close: [], stat: [], read: [], run: [], copy: [], status: [], toast: [] }
-  const panes: { id: string }[] = []
+  const panes: { id: string }[] = (world.openPanes ?? []).map(id => ({ id }))
   on('command.register', () => ({ value: { command: 'nonstop-pane' } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: CWD }))
@@ -306,7 +308,8 @@ test('FR-3.2/FR-3.4: sections in order, every line cut to bodyColumns', async ($
   const at = heads.map(h => all.indexOf(h))
   expect(at.every(i => i >= 0)).toBe(true)
   expect([...at].sort((a, b) => a - b)).toEqual(at)
-  expect(all.every(t => t.length <= 20)).toBe(true)
+  // The indicator line is never cut; every other line fits.
+  expect(all.slice(1).every(t => t.length <= 20)).toBe(true)
   expect(all.some(t => t.startsWith('⚠ 1'))).toBe(true)
   expect(all.some(t => t.startsWith('this line'))).toBe(true)
   await ui.unmount()
@@ -377,10 +380,10 @@ test('FR-3.2: each tab shows only its own content', async ($, on) => {
   const progress = await $.ui.mount(pane(PROGRESS))
   const p = await texts(progress)
   const pr = await rows(progress)
-  expect(has(pr, /^t1/)).toBe(true)
+  expect(has(pr, /^(⠋ )?t1/)).toBe(true)
   expect(p).toContain('Z/be#12')
   expect(await links(progress)).toEqual(expect.arrayContaining(['https://github.com/Z/be/issues/12', URL_C]))
-  expect(has(pr, /^t2/)).toBe(true)
+  expect(has(pr, /^(⠋ )?t2/)).toBe(true)
   expect(has(p, /CI đỏ \(lint\)/)).toBe(true)
   expect(p).toContain('done 1 · queued 1 · blocked 1')
   expect(has(p, /Z\/hub#9/)).toBe(false)
@@ -549,7 +552,7 @@ test('FR-3.6: each section sorts by priority and prefixes it; a legacy 9-field l
   await clock.settle()
 
   const progress = await $.ui.mount(pane(PROGRESS))
-  const p = (await rows(progress)).filter(t => /^(P\d )?t\d/.test(t))
+  const p = (await rows(progress)).map(t => t.replace(/^⠋ /, '')).filter(t => /^(P\d )?t\d/.test(t))
   expect(p.map(t => t.split(' kit')[0])).toEqual(['P0 t2', 'P2 t1', 't3'])
   await progress.unmount()
 
@@ -593,4 +596,71 @@ test('FR-3.7: a Needs you line without a task expands to its full question', asy
   await ui.press({ key: 'task:nonstop-human:t9' })
   expect(await full()).toBeDefined()
   await ui.unmount()
+})
+
+const first = async (ui: Parameters<typeof texts>[0]) => (await texts(ui))[0]
+
+test('FR-3.8: a running task spins the indicator every 250 ms', async ($, on) => {
+  engine(on, { file: { text: ledgerText([row('t1', 'running')]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(PROGRESS))
+  expect(await first(ui)).toBe('▶ ⠋ đang chạy 1 worker')
+  expect((await texts(ui)).some(t => t.startsWith('⠋ '))).toBe(true)
+  await clock.advance(250)
+  expect(await first(ui)).toBe('▶ ⠙ đang chạy 1 worker')
+  await clock.advance(500)
+  expect(await first(ui)).toBe('▶ ⠸ đang chạy 1 worker')
+  await ui.unmount()
+})
+
+test('FR-3.8: with no running task it shows the pause line and never spins', async ($, on) => {
+  engine(on, { file: { text: ledgerText([row('t1', 'queued')]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(PROGRESS))
+  expect(await first(ui)).toBe('⏸ tạm dừng')
+  await clock.advance(1000)
+  expect(await first(ui)).toBe('⏸ tạm dừng')
+  await ui.unmount()
+})
+
+test('FR-3.8: the spinner stops when the last running task finishes', async ($, on) => {
+  const world: World = { file: { text: ledgerText([row('t1', 'running')]), mtimeMs: 1 } }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(PROGRESS))
+  world.file = { text: ledgerText([row('t1', 'done')]), mtimeMs: 2 }
+  await clock.advance(2000)
+  expect(await first(ui)).toBe('⏸ tạm dừng')
+  const text = await texts(ui)
+  await clock.advance(1000)
+  expect(await texts(ui)).toEqual(text)
+  await ui.unmount()
+})
+
+test('FR-3.8: closing all tabs stops the spinner', async ($, on) => {
+  const world: World = { file: { text: ledgerText([row('t1', 'running')]), mtimeMs: 1 } }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  await $.command.run({ command: 'nonstop-pane', args: '' })
+  const ui = await $.ui.mount(pane(PROGRESS))
+  const before = await first(ui)
+  await clock.advance(1000)
+  expect(await first(ui)).toBe(before)
+  await ui.unmount()
+})
+
+test('FR-3.9: opening the pane closes the legacy nonstop pane', async ($, on) => {
+  const calls = engine(on, { file: null, openPanes: ['nonstop'] })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  expect(calls.close).toContainEqual(expect.objectContaining({ id: 'nonstop' }))
 })

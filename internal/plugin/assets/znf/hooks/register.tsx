@@ -11,6 +11,9 @@ const PANES = [
   { id: 'nonstop-done', title: 'Done', columns: 44 },
 ] as const
 const isTab = (id: string) => PANES.some(p => p.id === id)
+const LEGACY_PANE_ID = 'nonstop'
+const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+const SPIN_TICK_MS = 250
 const LEDGER_TICK_MS = 2000
 const PR_TICK_MS = 60000
 const GH_TIMEOUT_MS = 20000
@@ -23,10 +26,12 @@ const ledger = atom({ plugin: 'znf', key: 'ledger' } as const, null, { shape: 'n
 const ledgerError = atom({ plugin: 'znf', key: 'ledgerError' } as const, null, { shape: 'nonstop-1' })
 const prs = atom({ plugin: 'znf', key: 'prs' } as const, {}, { shape: 'nonstop-1' })
 // Ids of the task lines the user expanded; shared by the three tabs.
+const frame = atom({ plugin: 'znf', key: 'frame' } as const, 0, { shape: 'nonstop-1' })
 const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
 
 // Module state: lost on a reload, which also drops the timers; the next open re-arms them.
 let timers: Timer[] = []
+let spinTimer: Timer | undefined
 let ledgerFile: string | undefined
 let lastMtime: number | undefined
 let isRefreshing = false
@@ -86,6 +91,7 @@ async function apply($: $, loaded: Loaded): Promise<void> {
     const r = count('running')
     await update($, ledger, () => loaded.ledger)
     await update($, ledgerError, () => null)
+    await syncSpin($)
     $.ui.status(`nonstop ${r}/${r + count('queued')} ▶ · ${count('blocked')} cần anh`)
     return
   }
@@ -146,11 +152,30 @@ function report($: $, err: unknown): void {
 function stopTimers(): void {
   for (const t of timers) t.cancel()
   timers = []
+  spinTimer?.cancel()
+  spinTimer = undefined
+}
+
+// FR-3.8: the spinner timer runs only while a nonstop tab is open and a task is running.
+async function syncSpin($: $): Promise<void> {
+  const current = await read($, ledger)
+  const isRunning = !!current?.tasks.some(t => t.status === 'running')
+  const isOpen = (await $.ui.panes()).some(p => isTab(p.id))
+  const isWanted = isRunning && isOpen
+  if (isWanted && !spinTimer) {
+    spinTimer = $.clock.every(SPIN_TICK_MS, () => void update($, frame, f => (f + 1) % SPINNER.length))
+  } else if (!isWanted && spinTimer) {
+    spinTimer.cancel()
+    spinTimer = undefined
+  }
 }
 
 // FR-1.2: the timers start with the first open and stop when the pane closes.
 async function openPane($: $): Promise<void> {
+  // FR-3.9: the one-pane version used the id `nonstop`.
+  if ((await $.ui.panes()).some(p => p.id === LEGACY_PANE_ID)) await $.ui.close({ id: LEGACY_PANE_ID })
   for (const p of PANES) await $.ui.open({ ...p })
+  await syncSpin($)
   if (timers.length) return
   timers = [
     $.clock.every(LEDGER_TICK_MS, () => void refresh($).catch(err => report($, err))),
@@ -221,6 +246,7 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     const result = await next(e)
     if (isTab(e.id) && !(await $.ui.panes()).some(p => isTab(p.id))) stopTimers()
+    else await syncSpin($)
     return result
   })
 
@@ -271,6 +297,7 @@ export const register: Register = on => {
       const l = await read($, ledger)
       const labels = await read($, prs)
       const open = await read($, expanded)
+      const spin = SPINNER[await read($, frame)]
 
       if (error) return <Box flexDirection="column">{line(`lỗi ledger: ${error}`, { color: 'red' })}</Box>
       if (!l) return <Box flexDirection="column">{line('chưa có ledger nonstop', { dimColor: true })}</Box>
@@ -291,12 +318,12 @@ export const register: Register = on => {
       const fields = (t: (typeof l.tasks)[number]) =>
         [t.repo, t.source, t.issue, t.size, t.skill, t.worker, t.status].join(' · ')
       const prefix = (priority: string): string => withPriority(priority, '')
-      const taskLine = (t: (typeof l.tasks)[number], tail: string) => {
+      const taskLine = (t: (typeof l.tasks)[number], tail: string, lead = '') => {
         const href = issueUrl(t.issue)
         const issue: Part[] = href ? [' ', { href, label: t.issue }] : []
         return (
           <Box flexDirection="column">
-            {row([prefix(t.priority), { taskId: t.id }, ` ${t.repo}`, ...issue, ` ${tail}`])}
+            {row([lead + prefix(t.priority), { taskId: t.id }, ` ${t.repo}`, ...issue, ` ${tail}`])}
             {open.includes(t.id) && detail([fields(t), t.evidence])}
           </Box>
         )
@@ -356,11 +383,17 @@ export const register: Register = on => {
 
       const running = by('running')
       const queued = by('queued')
-      if (!running.length && !queued.length && !active.length && !l.malformed.length) return empty()
+      const isIdle = !running.length && !queued.length && !active.length && !l.malformed.length
       return (
         <Box flexDirection="column">
+          {running.length > 0 ? (
+            <Text>{`▶ ${spin} đang chạy ${running.length} worker`}</Text>
+          ) : (
+            <Text dimColor>⏸ tạm dừng</Text>
+          )}
+          {isIdle && line('trống', { dimColor: true })}
           {running.length > 0 && line('RUNNING', { bold: true })}
-          {running.map(t => taskLine(t, `${t.skill} ${t.worker}`))}
+          {running.map(t => taskLine(t, `${t.skill} ${t.worker}`, `${spin} `))}
           {queued.length > 0 && line('QUEUED', { bold: true })}
           {queued.map(t => taskLine(t, `${t.skill} ${t.worker}`))}
           {active.length > 0 && line('PR', { bold: true })}
