@@ -2,10 +2,14 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
 // nopRunner: git is never called when the workspace is empty (no participant repo).
@@ -55,15 +59,15 @@ func TestRunReleaseReportFailOpenEmptyWorkspace(t *testing.T) {
 	zh := t.TempDir()
 	t.Setenv("ZENIFY_HOME", zh)
 	var out, errb bytes.Buffer
-	if err := runReleaseReport(ws, 84, true, "", false, nopRunner{}, &out, &errb); err != nil {
+	if err := runReleaseReport(ws, "v261104.0", true, "", false, nopRunner{}, &out, &errb); err != nil {
 		t.Fatalf("fail-open violated: returned err %v", err)
 	}
-	path := filepath.Join(zh, "knowledge", "releases", "R84.md")
+	path := filepath.Join(zh, "knowledge", "releases", "v261104.0.md")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("an empty report must still be written: %v", err)
 	}
-	if !strings.Contains(string(b), "# Release 84") {
+	if !strings.Contains(string(b), "# Release v261104.0") {
 		t.Errorf("report missing header: %s", b)
 	}
 }
@@ -74,11 +78,161 @@ func TestRunReleaseReportVerboseFailOpen(t *testing.T) {
 	zh := t.TempDir()
 	t.Setenv("ZENIFY_HOME", zh)
 	var out, errb bytes.Buffer
-	if err := runReleaseReport(ws, 84, true, "", true, nopRunner{}, &out, &errb); err != nil {
+	if err := runReleaseReport(ws, "v261104.0", true, "", true, nopRunner{}, &out, &errb); err != nil {
 		t.Fatalf("fail-open violated (verbose): returned err %v", err)
 	}
-	path := filepath.Join(zh, "knowledge", "releases", "R84.md")
+	path := filepath.Join(zh, "knowledge", "releases", "v261104.0.md")
 	if _, err := os.ReadFile(path); err != nil {
 		t.Fatalf("verbose report must still be written: %v", err)
+	}
+}
+
+// initTaggedRepo makes a real git repo at dir with one empty commit per subject, tagging after each
+// commit whose tag is non-empty. Global/system git config is isolated so signing cannot interfere.
+func initTaggedRepo(t *testing.T, dir string, steps [][2]string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		full := append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t",
+			"-c", "commit.gpgsign=false", "-c", "tag.gpgSign=false"}, args...)
+		if out, err := exec.Command("git", full...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	for _, s := range steps {
+		git("commit", "-q", "--allow-empty", "-m", s[0])
+		if s[1] != "" {
+			git("tag", s[1])
+		}
+	}
+}
+
+func isolateGit(t *testing.T) {
+	empty := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(empty, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", empty)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+}
+
+// No tag argument: the report is built for the newest vYYMMDD.n tag, over prevTag..tag (the
+// midweek hotfix tag is the lower bound), written as <tag>.md; a pinned repo with no tag gets a
+// "chưa có tag" line instead of the command exiting silently. //znf:allow-lang
+func TestRunReleaseReportByTag(t *testing.T) { //znf:allow-lang
+	isolateGit(t)
+	ws := t.TempDir()
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
+	initTaggedRepo(t, filepath.Join(ws, "be"), [][2]string{
+		{"feat(a): weekly one", "v261028.0"},
+		{"fix(b): hotfix midweek", "v261028.2"},
+		{"feat(c): next week", "v261104.0"},
+	})
+	initTaggedRepo(t, filepath.Join(ws, "bare"), [][2]string{{"chore: init", ""}})
+	initTaggedRepo(t, filepath.Join(ws, "old"), [][2]string{
+		{"feat(o): old weekly", "v261028.0"},
+		{"fix(o): old hotfix", "v261028.2"},
+	})
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "release-repos.txt"), []byte("be\nold\nbare\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if err := runReleaseReport(ws, "", true, "", true, gitx.ExecRunner(), &out, &errb); err != nil {
+		t.Fatalf("fail-open violated: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(zh, "knowledge", "releases", "v261104.0.md"))
+	if err != nil {
+		t.Fatalf("report v261104.0.md not written: %v (stderr %s)", err, errb.String())
+	}
+	rep := string(b)
+	for _, want := range []string{"# Release v261104.0", "## be (v261028.2..v261104.0)", "feat(c): next week", "chưa có tag vYYMMDD.n"} { //znf:allow-lang
+		if !strings.Contains(rep, want) {
+			t.Errorf("report missing %q:\n%s", want, rep)
+		}
+	}
+	for _, notWant := range []string{"weekly one", "hotfix midweek", "## old", "old hotfix"} {
+		if strings.Contains(rep, notWant) {
+			t.Errorf("commit %q is outside v261028.2..v261104.0 and must not be in the report:\n%s", notWant, rep)
+		}
+	}
+}
+
+// No repo carries a release tag: no report file, but a stderr line says so, exit 0.
+func TestRunReleaseReportNoTagAnywhere(t *testing.T) {
+	isolateGit(t)
+	ws := t.TempDir()
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
+	initTaggedRepo(t, filepath.Join(ws, "bare"), [][2]string{{"chore: init", ""}})
+	var out, errb bytes.Buffer
+	if err := runReleaseReport(ws, "", true, "", false, gitx.ExecRunner(), &out, &errb); err != nil {
+		t.Fatalf("fail-open violated: %v", err)
+	}
+	if !strings.Contains(errb.String(), "chưa có tag") { //znf:allow-lang
+		t.Errorf("stderr must say no tag: %q", errb.String())
+	}
+}
+
+// recordRunner records every git call and returns empty output.
+type recordRunner struct{ calls *[][]string }
+
+func (r recordRunner) Run(dir string, args ...string) ([]byte, error) {
+	*r.calls = append(*r.calls, args)
+	return nil, nil
+}
+
+// The fetch must ask for tags only: naming a branch (staging) aborts the whole fetch in a repo
+// that lacks it, and the tags never arrive.
+func TestRunReleaseReportFetchesTagsOnly(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(ws, "kit", ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	var calls [][]string
+	var out, errb bytes.Buffer
+	_ = runReleaseReport(ws, "", false, "", false, recordRunner{&calls}, &out, &errb)
+	var fetches [][]string
+	for _, c := range calls {
+		if len(c) > 0 && c[0] == "fetch" {
+			fetches = append(fetches, c)
+		}
+	}
+	if len(fetches) != 1 || strings.Join(fetches[0], " ") != "fetch origin --tags" {
+		t.Fatalf("fetch calls = %v, want exactly [fetch origin --tags]", fetches)
+	}
+}
+
+// failFetchRunner fails every fetch and returns empty output for the rest.
+type failFetchRunner struct{}
+
+func (failFetchRunner) Run(dir string, args ...string) ([]byte, error) {
+	if len(args) > 0 && args[0] == "fetch" {
+		return nil, errors.New("no network")
+	}
+	return nil, nil
+}
+
+// A failed tag fetch must be visible on stderr (naming the repo) while the report keeps going.
+func TestRunReleaseReportWarnsOnFetchFailure(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(ws, "kit", ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if err := runReleaseReport(ws, "", false, "", false, failFetchRunner{}, &out, &errb); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errb.String(), "không fetch được tag của kit") { //znf:allow-lang
+		t.Fatalf("stderr = %q, want fetch warning naming kit", errb.String())
 	}
 }

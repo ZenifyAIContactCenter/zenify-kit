@@ -7,12 +7,12 @@ import (
 
 func sampleReport() Report {
 	return Report{
-		N: 84, GeneratedAt: "2026-09-05 16:10",
+		Tag: "v261104.0", GeneratedAt: "2026-09-05 16:10",
 		ShippingRepos: []string{"be"},
 		TotalFeat:     1, TotalFix: 1, TotalHotfix: 1, HotfixesNotSynced: 1,
 		Migrations: []string{"be"}, SpecLinked: 1, SpecTotal: 3,
 		Repos: []RepoReport{{
-			Name: "be", PrevRelease: 83, CutDate: "2026-08-26",
+			Name: "be", Tag: "v261104.0", PrevTag: "v261028.2",
 			HasMigration: true, HasTestTouch: true, SharedHits: []string{"**/chat_*"},
 			Changes: []Change{
 				{Title: "Linked fields", Slug: "linked-fields", Type: "feat", PRNum: "12", Commits: make([]Commit, 20),
@@ -25,7 +25,6 @@ func sampleReport() Report {
 				{Title: "Khác (chore)", Slug: "misc:chore", Type: "chore", Commits: make([]Commit, 3)}, //znf:allow-lang
 			},
 		}},
-		NotShipped:      []string{"notification"},
 		SharedCrossRepo: map[string][]string{"**/chat_*": {"be", "chatting"}},
 		DeployOrderNote: true,
 	}
@@ -34,7 +33,8 @@ func sampleReport() Report {
 func TestRenderHeadlineAndSections(t *testing.T) {
 	out := Render(sampleReport(), false)
 	for _, want := range []string{
-		"# Release 84", "Quyết định nhanh", "notification", // not shipped //znf:allow-lang
+		"# Release v261104.0", "Quyết định nhanh", //znf:allow-lang
+		"## be (v261028.2..v261104.0)",
 		"migration → BE", "**/chat_*", // shared + deploy order
 		"Shared-collection: **/chat_*",                    // FR-3.4 per-repo risk-proxy
 		"| Thay đổi | Mô tả | # | Dev | Spec | Staging |", // table header (Mô tả column from _Release-Note) //znf:allow-lang
@@ -87,7 +87,7 @@ func TestRenderVerboseExpandsChore(t *testing.T) {
 // The risk block must exclude chore/other (their table row is verbose-gated) — otherwise
 // non-verbose would have a risk block pointing to a change that appears in no table. Mirror release.go:175.
 func TestRenderRiskDetailExcludesChore(t *testing.T) {
-	rep := Report{N: 84, SharedCrossRepo: map[string][]string{}, Repos: []RepoReport{{
+	rep := Report{Tag: "v261104.0", SharedCrossRepo: map[string][]string{}, Repos: []RepoReport{{
 		Name: "be", Changes: []Change{
 			{Title: "Choreish", Slug: "cho", Type: "chore", PRNum: "9", Commits: make([]Commit, 1),
 				Risk: RiskMeta{SpecPath: "note", BlastRadius: "x"}},
@@ -102,7 +102,7 @@ func TestRenderRiskDetailExcludesChore(t *testing.T) {
 // Risk block: a Title-only header when there's no PR, and oneLine trims trailing emphasis (** leaking
 // from the "**_Label:**" tag). These two branches had no test before.
 func TestRenderRiskDetailTrimAndHeaderNoPR(t *testing.T) {
-	rep := Report{N: 84, SharedCrossRepo: map[string][]string{}, Repos: []RepoReport{{
+	rep := Report{Tag: "v261104.0", SharedCrossRepo: map[string][]string{}, Repos: []RepoReport{{
 		Name: "be", Changes: []Change{
 			{Title: "No PR change", Slug: "npr", Type: "feat", Commits: make([]Commit, 1),
 				Risk: RiskMeta{SpecPath: "specs/x.md", BlastRadius: "** be leaked *", DB: "", Rollback: "revert"}},
@@ -125,8 +125,8 @@ func TestRenderRiskDetailTrimAndHeaderNoPR(t *testing.T) {
 }
 
 func TestRenderEmptyReportNoPanic(t *testing.T) {
-	out := Render(Report{N: 84, GeneratedAt: "x", SharedCrossRepo: map[string][]string{}}, false)
-	if !strings.Contains(out, "# Release 84") {
+	out := Render(Report{Tag: "v261104.0", GeneratedAt: "x", SharedCrossRepo: map[string][]string{}}, false)
+	if !strings.Contains(out, "# Release v261104.0") {
 		t.Errorf("empty render missing header: %s", out)
 	}
 }

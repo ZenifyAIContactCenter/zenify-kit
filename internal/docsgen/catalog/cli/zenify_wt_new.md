@@ -20,6 +20,8 @@ Lệnh tạo worktree trong `.worktrees/<slug>`, checkout branch `<user>/<type>/
 | `--another` | Cho phép mở task thứ hai trong repo khi đã có một worktree chưa merge. |
 | `--install` | Buộc cài deps mới dù config khai `symlink` hoặc `clone`. |
 
+Slug có thể mang mã ticket, ví dụ `zen-123-session-timeout` cho branch `<user>/fix/zen-123-session-timeout`. Mã `zen-<n>` trong tên branch là thứ `/znf:ship` đọc để đặt `ZEN-<n>` vào tiêu đề PR.
+
 ## Ví dụ
 
 ```bash

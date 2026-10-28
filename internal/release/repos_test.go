@@ -24,7 +24,7 @@ func TestResolveFromConfig(t *testing.T) {
 	readFile := func(p string) ([]byte, error) {
 		return []byte("contact-center-be\nchatting\n\n"), nil
 	}
-	got, err := Resolve(nil, "/ws", 84, readFile, nil)
+	got, err := Resolve(nil, "/ws", readFile, nil)
 	if err != nil || len(got) != 2 || got[0] != "contact-center-be" || got[1] != "chatting" {
 		t.Fatalf("got=%v err=%v", got, err)
 	}
@@ -34,7 +34,7 @@ func TestResolveConfigSkipsComments(t *testing.T) {
 	readFile := func(p string) ([]byte, error) {
 		return []byte("# header\ncontact-center-be\n  # indented comment\nchatting\n"), nil
 	}
-	got, err := Resolve(nil, "/ws", 84, readFile, nil)
+	got, err := Resolve(nil, "/ws", readFile, nil)
 	if err != nil || len(got) != 2 || got[0] != "contact-center-be" || got[1] != "chatting" {
 		t.Fatalf("comment lines must be dropped: got=%v err=%v", got, err)
 	}
@@ -47,10 +47,10 @@ func TestResolveAutoDetect(t *testing.T) {
 		{Name: "repoB", Path: "/ws/repoB"},
 	}
 	fr := dirRouter{per: map[string]fakeRunner{
-		"/ws/repoA": {out: map[string]string{"branch -r": "  origin/release84\n"}},
-		"/ws/repoB": {out: map[string]string{"branch -r": "  origin/release83\n"}},
+		"/ws/repoA": {out: map[string]string{"tag --list": "v261028.0\n"}},
+		"/ws/repoB": {out: map[string]string{"tag --list": "v0.52.0\nrelease84\n"}},
 	}}
-	got, err := Resolve(fr, "/ws", 84, readFile, discovered)
+	got, err := Resolve(fr, "/ws", readFile, discovered)
 	if err != nil || len(got) != 1 || got[0] != "repoA" {
 		t.Fatalf("got=%v err=%v", got, err)
 	}

@@ -47,6 +47,23 @@ func TestRunNew_RejectsBadSlug(t *testing.T) {
 	}
 }
 
+func TestRunNew_ZenKeySlug(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	seedCfg(t, root)
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	// A slug carrying a tracker key is valid: it reaches the branch-exists check
+	// with the branch name namph/fix/zen-123-x.
+	g.out[root+"|show-ref --verify --quiet refs/heads/namph/fix/zen-123-x"] = ""
+	o := baseOpts(root, g)
+	o.Slug = "zen-123-x"
+	o.Type = "fix"
+	err := RunNew(o)
+	if err == nil || !strings.Contains(err.Error(), "namph/fix/zen-123-x") || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("zen-123-x must be accepted and map to branch namph/fix/zen-123-x, got %v", err)
+	}
+}
+
 func TestRunNew_RejectsBadType(t *testing.T) {
 	t.Setenv("WT_SESSION", "")
 	root := t.TempDir()
