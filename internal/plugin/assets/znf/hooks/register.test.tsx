@@ -888,3 +888,70 @@ test('FR-2.7: the button row draws no stray comma', async ($, on) => {
   expect((await rows(ui)).some(t => t.includes(','))).toBe(false)
   await ui.unmount()
 })
+
+test('FR-2.7: an expired arming draws as merge without a new press', async ($, on) => {
+  await mergeWorld(on)
+  let now = 1_000_000
+  on('clock.now', () => ({ value: now }))
+  on('clock.after', () => new Promise(() => {}))
+  on('clock.every', () => new Promise(() => {}))
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await new Promise(r => setTimeout(r, 20))
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  expect((await mergeButton(ui))?.props.label).toBe('xác nhận → main?')
+  now += 5001
+  await ui.unmount()
+  const fresh = await $.ui.mount(pane(HUMAN))
+  expect((await mergeButton(fresh))?.props.label).toBe('merge')
+  await fresh.unmount()
+})
+
+test('FR-2.7: a press that read the arming before another merge finished does not merge again', async ($, on) => {
+  const { calls } = await mergeWorld(on)
+  let now = 1_000_000
+  let held = false
+  let reads = 0
+  let letB: () => void = () => {}
+  const gateB = new Promise<void>(r => (letB = r))
+  on('clock.now', async () => {
+    if (held && ++reads === 2) await gateB
+    return { value: now }
+  })
+  on('clock.after', () => new Promise(() => {}))
+  on('clock.every', () => new Promise(() => {}))
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await new Promise(r => setTimeout(r, 20))
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  held = true
+  // Press B reads the clock second and waits there; press A merges meanwhile.
+  const a = ui.press({ key: `merge:${URL_A}` })
+  const b = ui.press({ key: `merge:${URL_A}` })
+  await new Promise(r => setTimeout(r, 30))
+  letB()
+  await Promise.all([a, b])
+  await new Promise(r => setTimeout(r, 30))
+  expect(calls.merges).toHaveLength(1)
+  await ui.unmount()
+})
+
+test('FR-2.7: a session start clears a merging state left by an earlier load', async ($, on) => {
+  let release: () => void = () => {}
+  const holdMerge = new Promise<void>(r => (release = r))
+  await mergeWorld(on, { holdMerge })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  void ui.press({ key: `merge:${URL_A}` })
+  await clock.settle()
+  expect((await mergeButton(ui))?.props.label).toBe('đang merge…')
+  await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect((await mergeButton(ui))?.props.label).toBe('merge')
+  release()
+  await clock.settle()
+  await ui.unmount()
+})

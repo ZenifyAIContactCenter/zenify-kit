@@ -171,8 +171,8 @@ const mergeInFlight = new Set<string>()
 // FR-2.7: the first press arms the button for CONFIRM_MS, the second press merges.
 async function pressMerge($: $, url: string): Promise<void> {
   if (mergeInFlight.has(url)) return
-  const now = await $.clock.now()
   const until = (await read($, confirming))[url]
+  const now = await $.clock.now()
   if (until === undefined || now >= until) {
     const expiry = now + CONFIRM_MS
     await update($, confirming, map => ({ ...map, [url]: expiry }))
@@ -189,8 +189,12 @@ async function pressMerge($: $, url: string): Promise<void> {
   if (mergeInFlight.has(url)) return
   mergeInFlight.add(url)
   try {
-    await update($, merging, urls => [...urls, url])
+    // `until` may be stale: a merge that finished meanwhile cleared the arming. Confirm it
+    // still stands, then clear it, before gh runs.
+    const still = (await read($, confirming))[url]
+    if (still !== until || now >= until) return
     await update($, confirming, map => omit(map, url))
+    await update($, merging, urls => [...urls, url])
     const out = await $.process.run(mergeArgv(url), { timeoutMs: MERGE_TIMEOUT_MS })
     if (out.exitCode !== 0) {
       $.ui.toast(`merge lỗi: ${out.stderr.split('\n')[0] || `exit ${out.exitCode}`}`)
@@ -277,6 +281,10 @@ export const register: Register = on => {
     stopTimers()
     ledgerFile = undefined
     lastMtime = undefined
+    // A reload keeps shaped state but drops timers and the in-flight set: start the merge UI clean.
+    mergeInFlight.clear()
+    await update($, merging, () => [])
+    await update($, confirming, () => ({}))
     await $.command.register({
       name: 'nonstop-pane',
       description: 'Toggle the nonstop orchestrator pane',
