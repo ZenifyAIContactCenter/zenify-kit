@@ -49,3 +49,20 @@ test('parseLedger reads a table section rewritten per ledger-format', async () =
   expect(l.tasks.length).toBe(5)
   expect(l.malformed.length).toBe(0)
 })
+
+test('parseLedger reads a 10-field line with its priority', async () => {
+  const l = parseLedger(['## 2026-10-28', 'p1 · P1 · kit · user · Z/kit#3 · S · znf:fix · w1 · running · -'].join('\n'))
+  expect(l.malformed).toEqual([])
+  expect(l.tasks[0]).toMatchObject({ id: 'p1', priority: 'P1', repo: 'kit', skill: 'znf:fix', status: 'running' })
+})
+
+test('parseLedger reads a legacy 9-field line with priority -', async () => {
+  const l = parseLedger(['## 2026-10-28', 'p1 · kit · user · - · S · znf:fix · w1 · running · -'].join('\n'))
+  expect(l.tasks[0]).toMatchObject({ priority: '-', repo: 'kit' })
+})
+
+test('parseLedger marks an 11-field line malformed', async () => {
+  const l = parseLedger(['## 2026-10-28', 'p1 · P1 · kit · user · - · S · znf:fix · w1 · running · - · x'].join('\n'))
+  expect(l.tasks).toEqual([])
+  expect(l.malformed).toHaveLength(1)
+})

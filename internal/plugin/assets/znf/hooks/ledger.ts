@@ -8,17 +8,20 @@ const KNOWN_LABEL = /^[A-Z][A-Za-z ]*:|^Batch \d/
 
 function parseTask(line: string): LedgerTask | null {
   const f = line.split(' · ').map(s => s.trim())
-  if (f.length !== 9) return null
+  // 10 fields carry a priority after the id; the legacy 9-field line has none.
+  if (f.length !== 9 && f.length !== 10) return null
+  if (f.length === 9) f.splice(1, 0, '-')
   return {
     id: f[0],
-    repo: f[1],
-    source: f[2],
-    issue: f[3],
-    size: f[4],
-    skill: f[5],
-    worker: f[6],
-    status: f[7].split(/\s+/)[0],
-    evidence: f[8],
+    priority: f[1],
+    repo: f[2],
+    source: f[3],
+    issue: f[4],
+    size: f[5],
+    skill: f[6],
+    worker: f[7],
+    status: f[8].split(/\s+/)[0],
+    evidence: f[9],
   }
 }
 

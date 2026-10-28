@@ -12,8 +12,8 @@ function today(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-const row = (id: string, status: string, evidence = '-', issue = `#${id}`) =>
-  `${id} · kit · issue · ${issue} · S · znf:fix · w-${id} · ${status} · ${evidence}`
+const row = (id: string, status: string, evidence = '-', issue = `#${id}`, priority = '-') =>
+  `${id} · ${priority} · kit · issue · ${issue} · S · znf:fix · w-${id} · ${status} · ${evidence}`
 
 function ledgerText(rows: string[], date = today()): string {
   return [`## 2026-01-01`, row('old', 'running'), '', `## ${date}`, ...rows].join('\n')
@@ -522,4 +522,33 @@ test('a settled PR appears only in Done and is not polled again', async ($, on) 
 
   await clock.advance(60000)
   expect(ghRuns(calls).slice(3).map(a => a[3])).toEqual([URL_B])
+})
+
+test('FR-3.6: each section sorts by priority and prefixes it; a legacy 9-field line has none', async ($, on) => {
+  const legacy = 't3 · kit · issue · #t3 · S · znf:fix · w-t3 · running · -'
+  engine(on, {
+    file: {
+      text: ledgerText([
+        row('t1', 'running', '-', '#t1', 'P2'),
+        row('t2', 'running', '-', '#t2', 'P0'),
+        legacy,
+        'Needs you: t2 — duyệt spec?',
+        'Needs you: t8 — không rõ?',
+      ]),
+      mtimeMs: 1,
+    },
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+
+  const progress = await $.ui.mount(pane(PROGRESS))
+  const p = (await texts(progress)).filter(t => /^(P\d )?t\d/.test(t))
+  expect(p.map(t => t.split(' kit')[0])).toEqual(['P0 t2', 'P2 t1', 't3'])
+  await progress.unmount()
+
+  const human = await $.ui.mount(pane(HUMAN))
+  const h = await texts(human)
+  expect(h.filter(t => /t\d/.test(t))).toEqual(['P0 t2 duyệt spec?', 't8 không rõ?'])
+  await human.unmount()
 })

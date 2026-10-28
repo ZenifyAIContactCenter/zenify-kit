@@ -1,5 +1,6 @@
 export type LedgerTask = {
   id: string
+  priority: string
   repo: string
   source: string
   issue: string

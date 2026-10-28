@@ -166,6 +166,13 @@ async function show($: $): Promise<void> {
 const isNonstopPrompt = (e: { text: string; command?: { name: string } }) =>
   e.command?.name === 'znf:nonstop' || /^\/?znf:nonstop\b/.test(e.text)
 
+const RANKS = ['P0', 'P1', 'P2', 'P3']
+const rank = (p: string) => (RANKS.includes(p) ? RANKS.indexOf(p) : RANKS.length)
+// Stable: equal ranks keep the ledger order.
+const byPriority = <T extends { priority: string }>(items: T[]): T[] =>
+  [...items].sort((a, b) => rank(a.priority) - rank(b.priority))
+const withPriority = (priority: string, text: string) => (priority && priority !== '-' ? `${priority} ${text}` : text)
+
 const cut = (s: string, cols: number) => (s.length > cols ? `${s.slice(0, Math.max(0, cols - 1))}…` : s)
 
 export const register: Register = on => {
@@ -255,19 +262,22 @@ export const register: Register = on => {
       const mergeable = urls.filter(u => isMergeable(label(u)))
       const active = urls.filter(u => !isSettled(label(u)) && !isMergeable(label(u)))
       const settled = urls.filter(u => isSettled(label(u)))
-      const by = (s: string) => l.tasks.filter(t => t.status === s)
+      const by = (s: string) => byPriority(l.tasks.filter(t => t.status === s))
       const taskLine = (t: (typeof l.tasks)[number], tail: string) => {
         const href = issueUrl(t.issue)
         const issue: Part[] = href ? [' ', { href, label: t.issue }] : []
-        return row([`${t.id} ${t.repo}`, ...issue, ` ${tail}`])
+        return row([withPriority(t.priority, `${t.id} ${t.repo}`), ...issue, ` ${tail}`])
       }
 
+      const priorityOf = (taskId: string) => l.tasks.find(t => t.id === taskId)?.priority ?? '-'
+      const needs = byPriority(l.needs.map(n => ({ ...n, priority: priorityOf(n.id) })))
+
       if (id === 'nonstop-human') {
-        if (!l.needs.length && !mergeable.length) return empty()
+        if (!needs.length && !mergeable.length) return empty()
         return (
           <Box flexDirection="column">
-            {l.needs.length > 0 && line('CẦN ANH', { bold: true, color: 'yellow' })}
-            {l.needs.map(n => line(n.id ? `${n.id} ${n.question}` : n.question))}
+            {needs.length > 0 && line('CẦN ANH', { bold: true, color: 'yellow' })}
+            {needs.map(n => line(withPriority(n.priority, n.id ? `${n.id} ${n.question}` : n.question)))}
             {mergeable.length > 0 && line('CHỜ MERGE', { bold: true })}
             {mergeable.map(url => (
               prRow(
