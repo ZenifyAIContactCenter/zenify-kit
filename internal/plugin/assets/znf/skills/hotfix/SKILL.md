@@ -38,8 +38,8 @@ confirmation, you were on the wide path all along.
    REF=$(zenify hotfix baseref <repo>)
    echo "$REF"                              # confirm with the user that this is what is live
    ```
-   **Fetch BEFORE resolving the release ref** — a stale local ref branches from the wrong release
-   entirely, and the tool's own fetch is too late. See references. You need this ref even if you
+   **Fetch BEFORE resolving the base ref** — the tool's own fetch is too late. An error means a
+   stale `worktree.json`: fix it, never guess a branch name. See references. You need this ref even if you
    never branch from it: steps 6 and 9 depend on knowing which code is actually running.
 
 3. **Diagnose — before touching anything.** Run **`/fix` steps 0-2**: ground in the real error
@@ -125,7 +125,7 @@ confirmation, you were on the wide path all along.
 ## Output
 ```
 Affected repos: ...
-Base ref confirmed: <ref, e.g. origin/release12 or staging — the code actually running>
+Base ref confirmed: <ref, e.g. origin/main — the code actually running>
 Root cause confirmed: <cause, with the real error output that showed it>
 Response chosen: revert | disable | fix forward  — <why, and what was rejected>
 

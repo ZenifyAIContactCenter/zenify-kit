@@ -26,7 +26,7 @@ Lệnh gỡ worktree khỏi git, xóa branch cục bộ và cập nhật state c
 - đang ở detached HEAD,
 - branch chưa có dấu vết merge trong base.
 
-Lệnh fetch `origin` trước khi kiểm tra merge, nên một PR vừa merge sau lần fetch trước vẫn được nhận ra. Branch được tính là đã merge khi nó nằm trong `baseRef` hoặc trong base mà `wt new` đã tách worktree ra (ghi ở `wt.base`). Nhờ vậy một hotfix đã merge vào `release<N>` cũng gỡ được mà không cần `--force`.
+Lệnh fetch `origin` trước khi kiểm tra merge, nên một PR vừa merge sau lần fetch trước vẫn được nhận ra. Branch được tính là đã merge khi nó nằm trong `baseRef` hoặc trong base mà `wt new` đã tách worktree ra (ghi ở `wt.base`). Nhờ vậy một hotfix đã merge vào base hotfix (ví dụ `main`) cũng gỡ được mà không cần `--force`.
 
 Bạn có thể gọi thử mà không sợ mất việc chưa land.
 

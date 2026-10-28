@@ -3,6 +3,7 @@ package wt
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -166,5 +167,39 @@ func TestBranchUser_SanitizesAndFallsThrough(t *testing.T) {
 		if got := BranchUser(r, "/r", ""); got != want {
 			t.Errorf("email %q: got %q, want %q", email, got, want)
 		}
+	}
+}
+
+func TestHotfixBase(t *testing.T) {
+	cases := []struct {
+		name, body, want, errHas string
+	}{
+		{"custom ref", `{"abbrev":"x","baseRef":"origin/staging","hotfixBaseRef":"origin/main","hotfix":{"baseStrategy":"custom"}}`, "origin/main", ""},
+		{"custom without ref", `{"abbrev":"x","hotfix":{"baseStrategy":"custom"}}`, "", "hotfixBaseRef"},
+		{"release-latest retired", `{"abbrev":"x","hotfix":{"baseStrategy":"release-latest"}}`, "", "custom"},
+		{"no stanza follows baseRef", `{"abbrev":"x","baseRef":"origin/main"}`, "origin/main", ""},
+		{"staging follows baseRef", `{"abbrev":"x","baseRef":"origin/develop","hotfix":{"baseStrategy":"staging"}}`, "origin/develop", ""},
+		{"hotfixBaseRef wins without custom", `{"abbrev":"x","baseRef":"origin/staging","hotfixBaseRef":"origin/main"}`, "origin/main", ""},
+		{"unknown strategy", `{"abbrev":"x","hotfix":{"baseStrategy":"latest"}}`, "", "baseStrategy"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeWorktreeJSON(t, dir, tc.body)
+			c, err := Load(dir)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			got, err := HotfixBase(c)
+			if tc.errHas != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.errHas) {
+					t.Fatalf("want error containing %q, got %q, %v", tc.errHas, got, err)
+				}
+				return
+			}
+			if err != nil || got != tc.want {
+				t.Fatalf("got %q, %v; want %q", got, err, tc.want)
+			}
+		})
 	}
 }

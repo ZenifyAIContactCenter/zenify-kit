@@ -20,8 +20,8 @@ func seedRepoCfg(t *testing.T, body string) string {
 }
 
 func TestHotfixBaserefStandalone(t *testing.T) {
-	dir := seedRepoCfg(t, `{"abbrev":"lumi","hotfix":{"baseStrategy":"standalone"}}`)
-	out, err := resolveHotfixBaseRef(dir, nil) // standalone doesn't need git
+	dir := seedRepoCfg(t, `{"abbrev":"lumi","baseRef":"origin/staging","hotfix":{"baseStrategy":"standalone"}}`)
+	out, err := resolveHotfixBaseRef(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,12 +31,19 @@ func TestHotfixBaserefStandalone(t *testing.T) {
 }
 
 func TestHotfixBaserefCustom(t *testing.T) {
-	dir := seedRepoCfg(t, `{"abbrev":"x","hotfixBaseRef":"origin/release99","hotfix":{"baseStrategy":"custom"}}`)
-	out, err := resolveHotfixBaseRef(dir, nil)
+	dir := seedRepoCfg(t, `{"abbrev":"x","hotfixBaseRef":"origin/main","hotfix":{"baseStrategy":"custom"}}`)
+	out, err := resolveHotfixBaseRef(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "origin/release99" {
-		t.Fatalf("custom → %q, want origin/release99", out)
+	if out != "origin/main" {
+		t.Fatalf("custom → %q, want origin/main", out)
+	}
+}
+
+func TestHotfixBaserefReleaseLatestRetired(t *testing.T) {
+	dir := seedRepoCfg(t, `{"abbrev":"x","hotfix":{"baseStrategy":"release-latest"}}`)
+	if out, err := resolveHotfixBaseRef(dir); err == nil {
+		t.Fatalf("release-latest must fail instead of guessing a release branch, got %q", out)
 	}
 }

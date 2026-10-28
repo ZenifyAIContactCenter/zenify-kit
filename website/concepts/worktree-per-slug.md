@@ -45,7 +45,7 @@ Một plan chia thành nhiều SDD task (Task 1, Task 2, ...). Tất cả task �
 ## Lưu ý
 
 - `--another` mở worktree thứ hai trong cùng repo. Dùng cho một yêu cầu thật sự tách biệt, không dùng khi chỉ thấy "việc này hơi khác". Lạm dụng cờ này là cách một slug thành nhiều branch trong một ngày.
-- Hotfix được miễn quy tắc trên. Base ref của hotfix là release mới nhất, không phải branch tích hợp, vì production có thể cần sửa ngay giữa lúc bạn đang làm tính năng.
+- Hotfix được miễn quy tắc trên. Base ref của hotfix là base hotfix repo khai (`zenify hotfix baseref`, ví dụ `origin/main`), không phải branch tích hợp, vì production có thể cần sửa ngay giữa lúc bạn đang làm tính năng.
 - `zenify wt rm <slug>` từ chối xóa worktree chưa có dấu vết merge, trừ khi thêm `--force`. Bạn có thể gọi thử mà không mất công việc chưa land.
 - `.worktrees/` phải nằm trong `.gitignore` đã commit, không nằm trong `.git/info/exclude`. Khai báo cục bộ không đi theo repo, nên đồng nghiệp clone lần đầu sẽ thấy checkout bị bẩn ngay khi chạy `zenify wt new`.
 

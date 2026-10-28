@@ -44,7 +44,7 @@ Tài nguyên chung là thứ nhiều service cùng dùng: collection trong DB, e
 
 `/znf:cook` và `/znf:fix` phân biệt theo mức hiểu về công việc. `/znf:hotfix` phân biệt theo nơi code sẽ được merge.
 
-Hotfix tạo branch từ release đang chạy, không từ nhánh tích hợp hằng ngày. Phần chẩn đoán dùng lại các bước của `/znf:fix`. Xem chi tiết ở [hotfix](/workflows/hotfix).
+Hotfix tạo branch từ base hotfix mà repo khai trong `worktree.json` (ví dụ `origin/main`), không từ nhánh tích hợp hằng ngày. Phần chẩn đoán dùng lại các bước của `/znf:fix`. Xem chi tiết ở [hotfix](/workflows/hotfix).
 
 ## Bước cuối: ship
 

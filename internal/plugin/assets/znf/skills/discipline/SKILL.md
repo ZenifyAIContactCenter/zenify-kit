@@ -29,7 +29,7 @@ always   verify with real output before saying it works
 |---|---|
 | what to build, or how — no agreed design | `znf:cook` (suggested, never auto-run — it has user gates) |
 | it's wrong and I don't know why | `znf:fix` (just start it) |
-| nothing unknown, but it's broken in production now | `znf:hotfix` (+ `znf:fix` steps 0-2); composes with fix, lands on the release base |
+| nothing unknown, but it's broken in production now | `znf:hotfix` (+ `znf:fix` steps 0-2); composes with fix, lands on the repo's declared hotfix base |
 | **nothing unknown** — the user stated both the what and the why | no skill; spine only |
 
 **Skip the skill only when all four hold:** one repo · no shared resource touched · the user stated both what and why · not broken in production. "No skill" never means no branch, no gate.
@@ -74,7 +74,7 @@ always   verify with real output before saying it works
 **About to change code in a git repo? Work in a worktree. No conditions, no judgement.** The main checkout stays clean: reading, running, holding the record.
 
 - **One worktree per slug, not per edit** — sub-tasks and follow-up fixes share the one already open (take the `cd` the tool prints). A hotfix is exempt (different base ref).
-- **Base = the repo's DECLARED base ref, never hardcoded**; a hotfix overrides it to the latest release ref, resolved *after* `git fetch origin`. **The fetch is not optional.**
+- **Base = the repo's DECLARED base ref, never hardcoded**; a hotfix overrides it to `zenify hotfix baseref`, resolved *after* `git fetch origin` — never guessed. **The fetch is not optional.**
 - **Polyrepo:** one worktree per affected repo, same slug in all of them.
 - **Spec and plan files live in the MAIN checkout, never in the worktree**; hand subagents **absolute** paths.
 

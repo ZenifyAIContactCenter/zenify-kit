@@ -29,8 +29,8 @@ inline costs ~60% more main-context tokens and lowers accuracy (see references).
 
 Tell the agent:
 - what is about to change (symbol, collection, endpoint, or `file:line`)
-- **which ref to scout** — the branch the change will land on. A hotfix branches from a release
-  ref, and the consumers there are not the consumers on the development branch. A map of the
+- **which ref to scout** — the branch the change will land on. A hotfix branches from the repo's
+  declared hotfix base (`zenify hotfix baseref`), and the consumers there are not the consumers on the development branch. A map of the
   wrong branch looks entirely plausible.
 - which of the four targets to emphasise, if the caller has a reason
 

@@ -90,14 +90,15 @@ func RunNew(o NewOptions) error {
 	branch := fmt.Sprintf("%s/%s/%s", user, o.Type, o.Slug)
 	path := filepath.Join(o.RepoRoot, cfg.WorktreeDir, o.Slug)
 
-	// base: explicit override > hotfixBaseRef (hotfix only) > configured baseRef.
+	// base: explicit override > HotfixBase (hotfix only) > configured baseRef.
 	base := cfg.BaseRef
 	if o.BaseOverride != "" {
 		base = o.BaseOverride
 	} else if o.Type == "hotfix" {
-		if cfg.HotfixBaseRef != "" {
-			base = cfg.HotfixBaseRef
-		} else {
+		if base, err = HotfixBase(cfg); err != nil {
+			return fmt.Errorf("wt: %w", err)
+		}
+		if cfg.HotfixBaseRef == "" {
 			_, _ = fmt.Fprintf(o.Stderr, "wt: no hotfixBaseRef declared — branching this hotfix from %s\n", base)
 		}
 	}
