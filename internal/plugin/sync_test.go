@@ -164,7 +164,7 @@ func TestSync_PrunesRecordedFilesMissingFromEmbed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Plant a stale, recorded file (what an old install left behind).
-	stale := filepath.Join(dest, "hooks", "hooks.json")
+	stale := filepath.Join(dest, "legacy", "stale.json")
 	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestSync_PrunesRecordedFilesMissingFromEmbed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// And an unrecorded user file that must survive.
-	user := filepath.Join(dest, "hooks", "mine.sh")
+	user := filepath.Join(dest, "legacy", "mine.sh")
 	if err := os.WriteFile(user, []byte("#!/bin/sh\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestSync_PruneKeepsUserModifiedFile(t *testing.T) {
 	}
 	// Plant a stale, recorded file (as if the embed shipped it once), then
 	// modify its content so the on-disk SHA no longer matches the recorded one.
-	stale := filepath.Join(dest, "hooks", "hooks.json")
+	stale := filepath.Join(dest, "legacy", "stale.json")
 	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -258,8 +258,8 @@ func TestSync_RemovedIsSorted(t *testing.T) {
 	if _, err := Sync(dest, man); err != nil {
 		t.Fatal(err)
 	}
-	stale1 := filepath.Join(dest, "hooks", "old-lib.json")
-	stale2 := filepath.Join(dest, "hooks", "hooks.json")
+	stale1 := filepath.Join(dest, "legacy", "old-lib.json")
+	stale2 := filepath.Join(dest, "legacy", "stale.json")
 	if err := os.MkdirAll(filepath.Dir(stale1), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +279,7 @@ func TestSync_RemovedIsSorted(t *testing.T) {
 	}
 	// Keep the directory non-empty so this test stays about ordering, not
 	// about the empty-parent-dir prune (covered separately below).
-	user := filepath.Join(dest, "hooks", "mine.sh")
+	user := filepath.Join(dest, "legacy", "mine.sh")
 	if err := os.WriteFile(user, []byte("#!/bin/sh\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -303,8 +303,8 @@ func TestSync_PruneRemovesEmptyParentDirs(t *testing.T) {
 	if _, err := Sync(dest, man); err != nil {
 		t.Fatal(err)
 	}
-	// hooks/ ends up empty once its only recorded file is pruned.
-	staleHook := filepath.Join(dest, "hooks", "hooks.json")
+	// legacy/ ends up empty once its only recorded file is pruned.
+	staleHook := filepath.Join(dest, "legacy", "stale.json")
 	if err := os.MkdirAll(filepath.Dir(staleHook), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -336,8 +336,8 @@ func TestSync_PruneRemovesEmptyParentDirs(t *testing.T) {
 	if _, err := Sync(dest, man); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dest, "hooks")); !os.IsNotExist(err) {
-		t.Fatalf("hooks/ must be removed once empty, err=%v", err)
+	if _, err := os.Stat(filepath.Join(dest, "legacy")); !os.IsNotExist(err) {
+		t.Fatalf("legacy/ must be removed once empty, err=%v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dest, "extra")); err != nil {
 		t.Fatalf("extra/ must survive (keep.txt still there): %v", err)
@@ -347,14 +347,16 @@ func TestSync_PruneRemovesEmptyParentDirs(t *testing.T) {
 	}
 }
 
-// Guard: nothing under assets/znf/hooks is shipped any more (FR-06.1).
-func TestSync_ShipsNoHooksDir(t *testing.T) {
+// Guard: the hooks module (the nonstop pane) ships with the plugin.
+func TestSync_ShipsHooksModule(t *testing.T) {
 	dest := t.TempDir()
 	if _, err := Sync(dest, filepath.Join(dest, ".manifest.json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dest, "hooks")); !os.IsNotExist(err) {
-		t.Fatalf("hooks/ must not be materialized (err=%v)", err)
+	for _, f := range []string{"hooks/hooks.json", "hooks/register.tsx", "types/index.d.ts"} {
+		if _, err := os.Stat(filepath.Join(dest, f)); err != nil {
+			t.Fatalf("%s must be materialized: %v", f, err)
+		}
 	}
 }
 
