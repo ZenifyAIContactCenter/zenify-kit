@@ -85,8 +85,9 @@ const statsJson = (over: Record<string, unknown> = {}) =>
   JSON.stringify({
     missing: false,
     scale: { source: 'default', n: 7, S: 5, M: 20, L: 60 },
-    today: { date: today(), hit: 0, total: 0, over: 0, under: 0, points: 0, ids: [] },
-    week: { hitRate: null, pointsPerDay: null },
+    today: { date: today(), hit: 0, total: 0, over: 0, under: 0, points: 0, reviewMinutes: 0, ids: [] },
+    week: { hitRate: null, pointsPerDay: null, reviewShare: null },
+    tiers: { T1: 0, T2: 0, T3: 0 },
     rules: [],
     malformed: 0,
     ...over,
@@ -1215,8 +1216,9 @@ const openDone = async ($: any, on: any, world: World) => {
 test('FR-3.10: the Done tab shows the learned scale, today and week lines, and a rule', async ($, on) => {
   const stats = statsJson({
     scale: { source: 'learned', n: 31, S: 4, M: 12, L: 40 },
-    today: { date: today(), hit: 3, total: 5, over: 1, under: 1, points: 11, ids: ['t1'] },
-    week: { hitRate: 0.714, pointsPerDay: 9.25 },
+    today: { date: today(), hit: 3, total: 5, over: 1, under: 1, points: 11, reviewMinutes: 7, ids: ['t1'] },
+    week: { hitRate: 0.714, pointsPerDay: 9.25, reviewShare: 0.334 },
+    tiers: { T1: 4, T2: 2, T3: 1 },
     rules: ['hub fix: est lên 1 size'],
   })
   const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 0, stdout: stats, stderr: '' }, estimatesMtime: 5 }
@@ -1226,6 +1228,8 @@ test('FR-3.10: the Done tab shows the learned scale, today and week lines, and a
   expect(t).toContain('THỐNG KÊ')
   expect(t).toContain('thang (học từ 31 task): S<4m · M<12m · L<40m')
   expect(t).toContain('hôm nay: đúng 3/5 · 1 cao · 1 thấp · 11 điểm')
+  expect(t).toContain('review: 7 phút (33% thời gian)')
+  expect(t).toContain('tier 7 ngày: T1 4 · T2 2 · T3 1')
   expect(t).toContain('7 ngày: đúng 71% · 9.3 điểm/ngày')
   expect(t).toContain('hub fix: est lên 1 size')
   expect(zenifyRuns(calls)[0]).toEqual(['zenify', 'nonstop', 'stats', '--json', '--dir', `${CWD}/.zenify/nonstop`])
@@ -1239,11 +1243,13 @@ test('FR-3.10: default scale line and null week render as dashes', async ($, on)
   const t = await texts(ui)
   expect(t).toContain('thang (mặc định, 7/20 task): S<5m · M<20m · L<60m')
   expect(t).toContain('7 ngày: đúng — · — điểm/ngày')
+  expect(t).toContain('review: 0 phút')
+  expect(t).not.toContain('thời gian)')
   await ui.unmount()
 })
 
 test('FR-3.10: a done task with no estimate line is named; malformed lines are counted', async ($, on) => {
-  const stats = statsJson({ today: { date: today(), hit: 1, total: 1, over: 0, under: 0, points: 1, ids: ['t1'] }, malformed: 2 })
+  const stats = statsJson({ today: { date: today(), hit: 1, total: 1, over: 0, under: 0, points: 1, reviewMinutes: 0, ids: ['t1'] }, malformed: 2 })
   const world: World = {
     file: { text: ledgerText([row('t1', 'done'), row('t4', 'done')]), mtimeMs: 1 },
     stats: { exitCode: 0, stdout: stats, stderr: '' },

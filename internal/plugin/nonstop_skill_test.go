@@ -27,6 +27,15 @@ func TestNonstopSkill(t *testing.T) {
 	assertContainsAll(t, "ledger-format.md", ref["ledger-format.md"], []string{"Needs you: <id> — <question>", "rewrite", "inside a field", "on one line"})
 	// FR-4.3: sizes are agent time, and the old human-scale lines are recomputed.
 	assertContainsAll(t, "estimation.md", ref["estimation.md"], []string{"< 5 min", "agent time", "before 2026-10-29", "pane flags a done task", "zenify nonstop stats --json", "Learned scale"})
+	// FR-6.4: the 13-field v2 line, durations.log timing, tier + path, and the stats pointers.
+	assertContainsAll(t, "estimation.md", ref["estimation.md"], []string{
+		"13 fields", "v1 lines still read", "durations.log", "line 1 of `znf:review`'s select-tier output",
+		"brainstorming path", "Calibration line",
+		"date · id · repo · kind · est · actual · work · review · files · rounds · path · tier · reason for the gap",
+	})
+	morning := ref["estimation.md"][strings.Index(ref["estimation.md"], "## Morning calibration"):]
+	assertContainsAll(t, "estimation.md Morning calibration", morning, []string{"zenify nonstop stats --json"})
+	assertContainsAll(t, "worker-brief.md", ref["worker-brief.md"], []string{"brainstorming path (spike|bounded|architectural|-)", "the pane mod reads"})
 	assertContainsAll(t, "ledger-format.md", ref["ledger-format.md"], []string{"P0", "id · priority · repo"})
 	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"id · priority · repo"})
 	// The orchestrator owns ci-watch, routes the day (heartbeat = continue) and runs znf:review on the worker tree.

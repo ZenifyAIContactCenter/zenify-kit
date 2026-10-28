@@ -22,8 +22,9 @@ export type Ledger = {
 export type NonstopStats = {
   missing: boolean
   scale: { source: 'learned' | 'default'; n: number; S: number; M: number; L: number }
-  today: { date: string; hit: number; total: number; over: number; under: number; points: number; ids: string[] }
-  week: { hitRate: number | null; pointsPerDay: number | null }
+  today: { date: string; hit: number; total: number; over: number; under: number; points: number; reviewMinutes: number; ids: string[] }
+  week: { hitRate: number | null; pointsPerDay: number | null; reviewShare: number | null }
+  tiers: { T1: number; T2: number; T3: number }
   rules: string[]
   malformed: number
 }

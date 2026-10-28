@@ -34,11 +34,14 @@ Ship: at step 5 write its pack, then stop before `Skill(znf:review)` (the orches
             READY_FOR_REVIEW again.
             Do not run znf:ci-watch; the orchestrator watches CI for your PR.
 Return ≤ 40 lines: status (DONE | READY_FOR_REVIEW | BLOCKED | FAILED), PR URL (DONE), worktree
-            path, base ref, ship fingerprint, ship pack path, steps 1-4 evidence, commits, fix/review rounds,
+            path, base ref, brainstorming path (spike|bounded|architectural|-), ship fingerprint, ship pack path, steps 1-4 evidence, commits, fix/review rounds,
             commands + real output, question if BLOCKED, new tasks found. Long output → file path.
 ```
 
 This holds for every route, "implement directly" included (it runs `znf:ship` the same way).
+
+Keep `Task:` as the first line and `worktree slug:` in the Repo line: the pane mod reads both to
+attribute a run's time to the task.
 
 The worktree path and base ref let the orchestrator run `git diff --shortstat <base>...HEAD`. The
 worker does not report its own time; `duration_ms` comes from the harness.
