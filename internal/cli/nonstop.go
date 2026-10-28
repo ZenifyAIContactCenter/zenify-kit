@@ -70,7 +70,18 @@ func runNonstopStats(w io.Writer, dir, today string, asJSON bool) error {
 		return exitcode.New(exitcode.Fail, err)
 	default:
 		lines, malformed := nonstopstats.Parse(string(b))
+		var d nonstopstats.Durations
+		dmal := 0
+		db, derr := os.ReadFile(filepath.Join(dir, "durations.log")) //nolint:gosec // G304 -- same CLI-flag dir as estimates.md
+		switch {
+		case derr == nil:
+			d, dmal = nonstopstats.ParseDurations(string(db))
+			nonstopstats.ApplyDurations(lines, d)
+		case !errors.Is(derr, os.ErrNotExist):
+			return exitcode.New(exitcode.Fail, derr)
+		}
 		res = nonstopstats.Compute(lines, malformed, today)
+		res.DurationsMalformed = dmal
 	}
 	if asJSON {
 		out, err := json.MarshalIndent(res, "", "  ")
@@ -93,6 +104,12 @@ func renderNonstopStats(w io.Writer, r nonstopstats.Result) {
 	_, _ = fmt.Fprintf(w, "scale (%s, %d tasks): S<%dm M<%dm L<%dm\n", s.Source, s.N, s.S, s.M, s.L)
 	t := r.Today
 	_, _ = fmt.Fprintf(w, "today: %d/%d hit, %d over, %d under, points %d\n", t.Hit, t.Total, t.Over, t.Under, t.Points)
+	share := "-"
+	if r.Week.ReviewShare != nil {
+		share = fmt.Sprintf("%.0f%%", *r.Week.ReviewShare*100)
+	}
+	_, _ = fmt.Fprintf(w, "review: %dm (%s)\n", t.ReviewMinutes, share)
+	_, _ = fmt.Fprintf(w, "tiers 7d: T1 %d · T2 %d · T3 %d\n", r.Tiers.T1, r.Tiers.T2, r.Tiers.T3)
 	hit, ppd := "-", "-"
 	if r.Week.HitRate != nil {
 		hit = fmt.Sprintf("%.0f%%", *r.Week.HitRate*100)
@@ -106,5 +123,8 @@ func renderNonstopStats(w io.Writer, r nonstopstats.Result) {
 	}
 	if r.Malformed > 0 {
 		_, _ = fmt.Fprintf(w, "malformed lines: %d\n", r.Malformed)
+	}
+	if r.DurationsMalformed > 0 {
+		_, _ = fmt.Fprintf(w, "durations.log malformed lines: %d\n", r.DurationsMalformed)
 	}
 }

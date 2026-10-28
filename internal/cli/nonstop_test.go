@@ -90,3 +90,63 @@ func TestNonstopStats_HumanTable(t *testing.T) {
 		}
 	}
 }
+
+func TestNonstopStats_DurationsLog(t *testing.T) {
+	dir := t.TempDir()
+	est := "2026-10-28 · a · hub · fix · M · M · ~9m · ~9m · 1 · 0 · bounded · T2 · -\n"
+	log := "2026-10-28T09:00:00.000Z · a · work · 120000\n" +
+		"2026-10-28T09:05:00.000Z · a · review · 180000\n" +
+		"broken line\n"
+	for name, body := range map[string]string{"estimates.md": est, "durations.log": log} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := execNonstopStats(t, "--json", "--dir", dir, "--today", "2026-10-28")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Today struct {
+			ReviewMinutes int `json:"reviewMinutes"`
+			Points        int `json:"points"`
+		} `json:"today"`
+		Week struct {
+			ReviewShare float64 `json:"reviewShare"`
+		} `json:"week"`
+		Tiers              map[string]int `json:"tiers"`
+		DurationsMalformed int            `json:"durationsMalformed"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	// log: work 2m (S), review 3m -> share 0.6; the ledger's 9m columns lose
+	if got.Today.ReviewMinutes != 3 || got.Week.ReviewShare != 0.6 || got.Today.Points != 1 {
+		t.Errorf("log must win: %+v", got)
+	}
+	if got.Tiers["T2"] != 1 || got.Tiers["T1"] != 0 || got.DurationsMalformed != 1 {
+		t.Errorf("tiers/malformed: %+v", got)
+	}
+	human, err := execNonstopStats(t, "--dir", dir, "--today", "2026-10-28")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"review: 3m (60%)", "tiers 7d: T1 0 · T2 1 · T3 0", "durations.log malformed lines: 1"} {
+		if !strings.Contains(human, want) {
+			t.Errorf("human output missing %q:\n%s", want, human)
+		}
+	}
+}
+
+func TestNonstopStats_DurationsLogUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "durations.log"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "estimates.md"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := execNonstopStats(t, "--json", "--dir", dir); err == nil {
+		t.Fatal("a directory named durations.log must fail")
+	}
+}

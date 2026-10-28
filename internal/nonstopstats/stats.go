@@ -20,6 +20,7 @@ const (
 	// Calibration rules are output data consumed by the orchestrator and the pane.
 	RuleUp   = "est lên 1 size"   //znf:allow-lang
 	RuleDown = "est xuống 1 size" //znf:allow-lang
+	RuleTier = "thường"           //znf:allow-lang
 )
 
 var sizeRank = map[string]int{"S": 1, "M": 2, "L": 3, "XL": 4}
@@ -27,16 +28,33 @@ var sizePoints = map[string]int{"S": 1, "M": 2, "L": 4, "XL": 8}
 var rankSize = []string{"", "S", "M", "L", "XL"}
 
 // Line is one valid row of estimates.md. Actual is "" when the file has "-"
-// (cancelled or restarted task); Minutes is 0 when the time column has none.
+// (cancelled or restarted task); Minutes (work) and ReviewMin are 0 when the
+// column has none. Path and Tier are "-" for a v1 line or when unrecorded.
 type Line struct {
-	Date    string
-	ID      string
-	Repo    string
-	Kind    string
-	Est     string
-	Actual  string
-	Minutes int
-	Files   int
+	Date      string
+	ID        string
+	Repo      string
+	Kind      string
+	Est       string
+	Actual    string
+	Minutes   int
+	ReviewMin int
+	Files     int
+	Path      string
+	Tier      string
+}
+
+// Durations holds the per-id minutes summed from durations.log.
+type Durations struct {
+	Work   map[string]int
+	Review map[string]int
+}
+
+// Tiers counts the reviews of the week by tier.
+type Tiers struct {
+	T1 int `json:"T1"`
+	T2 int `json:"T2"`
+	T3 int `json:"T3"`
 }
 
 // Scale holds the exclusive upper time bounds, in minutes, of S, M and L.
@@ -49,18 +67,20 @@ type Scale struct {
 }
 
 type Today struct {
-	Date   string   `json:"date"`
-	Hit    int      `json:"hit"`
-	Total  int      `json:"total"`
-	Over   int      `json:"over"`
-	Under  int      `json:"under"`
-	Points int      `json:"points"`
-	IDs    []string `json:"ids"`
+	Date          string   `json:"date"`
+	Hit           int      `json:"hit"`
+	Total         int      `json:"total"`
+	Over          int      `json:"over"`
+	Under         int      `json:"under"`
+	Points        int      `json:"points"`
+	ReviewMinutes int      `json:"reviewMinutes"`
+	IDs           []string `json:"ids"`
 }
 
 type Week struct {
 	HitRate      *float64 `json:"hitRate"`
 	PointsPerDay *float64 `json:"pointsPerDay"`
+	ReviewShare  *float64 `json:"reviewShare"`
 }
 
 type Result struct {
@@ -70,10 +90,13 @@ type Result struct {
 	Week      Week     `json:"week"`
 	Rules     []string `json:"rules"`
 	Malformed int      `json:"malformed"`
+	Tiers     Tiers    `json:"tiers"`
+	// DurationsMalformed is set by the caller that reads durations.log.
+	DurationsMalformed int `json:"durationsMalformed"`
 }
 
 // Parse reads the ledger text. Blank and '#' lines are skipped; any other line
-// that is not a valid 10-field row is counted as malformed.
+// that is not a valid 10-field (v1) or 13-field (v2) row is counted as malformed.
 func Parse(text string) (lines []Line, malformed int) {
 	for _, raw := range strings.Split(text, "\n") {
 		raw = strings.TrimSpace(raw)
@@ -92,13 +115,13 @@ func Parse(text string) (lines []Line, malformed int) {
 
 func parseLine(raw string) (Line, bool) {
 	f := strings.Split(raw, fieldSep)
-	if len(f) != 10 {
+	if len(f) != 10 && len(f) != 13 {
 		return Line{}, false
 	}
 	if _, err := time.Parse(dateLayout, f[0]); err != nil {
 		return Line{}, false
 	}
-	l := Line{Date: f[0], ID: f[1], Repo: f[2], Kind: f[3], Est: f[4], Actual: f[5], Files: -1}
+	l := Line{Date: f[0], ID: f[1], Repo: f[2], Kind: f[3], Est: f[4], Actual: f[5], Files: -1, Path: "-", Tier: "-"}
 	if sizeRank[l.Est] == 0 {
 		return Line{}, false
 	}
@@ -108,10 +131,73 @@ func parseLine(raw string) (Line, bool) {
 		return Line{}, false
 	}
 	l.Minutes = parseMinutes(f[6])
-	if n, err := strconv.Atoi(f[7]); err == nil && n >= 0 {
+	filesCol := 7
+	if len(f) == 13 {
+		l.ReviewMin = parseMinutes(f[7])
+		filesCol = 8
+		switch f[10] {
+		case "spike", "bounded", "architectural", "-":
+			l.Path = f[10]
+		default:
+			return Line{}, false
+		}
+		switch f[11] {
+		case "T1", "T2", "T3", "-":
+			l.Tier = f[11]
+		default:
+			return Line{}, false
+		}
+	}
+	if n, err := strconv.Atoi(f[filesCol]); err == nil && n >= 0 {
 		l.Files = n
 	}
 	return l, true
+}
+
+// ParseDurations sums durations.log (`<ISO time> · <id> · work|review · <ms>`)
+// into minutes per id, rounded up. Any other non-blank line is malformed.
+func ParseDurations(text string) (Durations, int) {
+	ms := map[string]map[string]int{"work": {}, "review": {}}
+	malformed := 0
+	for _, raw := range strings.Split(text, "\n") {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		f := strings.Split(raw, fieldSep)
+		n, err := 0, error(nil)
+		if len(f) == 4 {
+			_, err = time.Parse(time.RFC3339, f[0])
+			if err == nil {
+				n, err = strconv.Atoi(f[3])
+			}
+		}
+		if len(f) != 4 || err != nil || n <= 0 || ms[f[2]] == nil {
+			malformed++
+			continue
+		}
+		ms[f[2]][f[1]] += n
+	}
+	d := Durations{Work: map[string]int{}, Review: map[string]int{}}
+	for id, v := range ms["work"] {
+		d.Work[id] = (v + 59999) / 60000
+	}
+	for id, v := range ms["review"] {
+		d.Review[id] = (v + 59999) / 60000
+	}
+	return d, malformed
+}
+
+// ApplyDurations makes the log win over the ledger columns, per id and kind.
+func ApplyDurations(lines []Line, d Durations) {
+	for i := range lines {
+		if m, ok := d.Work[lines[i].ID]; ok {
+			lines[i].Minutes = m
+		}
+		if m, ok := d.Review[lines[i].ID]; ok {
+			lines[i].ReviewMin = m
+		}
+	}
 }
 
 // parseMinutes reads "~16m", "16m" or "45s" (rounded up); 0 means no measurement.
@@ -149,7 +235,7 @@ func LearnScale(lines []Line) Scale {
 		return Scale{Source: "default", N: n, S: 5, M: 20, L: 60}
 	}
 	sort.Ints(mins)
-	s := Scale{Source: "learned", N: n, S: nearestRank(mins, 25), M: nearestRank(mins, 50), L: nearestRank(mins, 75)}
+	s := Scale{Source: "learned", N: n, S: nearestRank(mins, 25), M: nearestRank(mins, 50), L: nearestRank(mins, 90)}
 	if s.M < s.S+1 {
 		s.M = s.S + 1
 	}
@@ -213,8 +299,14 @@ func Compute(lines []Line, malformed int, today string) Result {
 		weekStart = t.AddDate(0, 0, -6).Format(dateLayout)
 	}
 	type group struct{ n, up, down int }
+	type tierGroup struct {
+		n    int
+		tier string
+		same bool
+	}
 	groups := map[string]*group{}
-	var weekHit, weekTotal, weekPoints int
+	var weekHit, weekTotal, weekPoints, weekWork, weekReview int
+	tierGroups := map[string]*tierGroup{}
 	weekDays := map[string]bool{}
 
 	for _, l := range lines {
@@ -222,9 +314,29 @@ func Compute(lines []Line, malformed int, today string) Result {
 		inWeek := weekStart != "" && l.Date >= weekStart && l.Date <= today
 		if l.Date == today {
 			res.Today.IDs = append(res.Today.IDs, l.ID)
+			res.Today.ReviewMinutes += l.ReviewMin
+		}
+		if l.Date <= today {
+			tg := tierGroups[l.Repo+" "+l.Kind]
+			if tg == nil {
+				tg = &tierGroup{tier: l.Tier, same: l.Tier != "-"}
+				tierGroups[l.Repo+" "+l.Kind] = tg
+			}
+			tg.n++
+			tg.same = tg.same && l.Tier == tg.tier
 		}
 		if inWeek {
 			weekDays[l.Date] = true
+			weekWork += l.Minutes
+			weekReview += l.ReviewMin
+			switch l.Tier {
+			case "T1":
+				res.Tiers.T1++
+			case "T2":
+				res.Tiers.T2++
+			case "T3":
+				res.Tiers.T3++
+			}
 		}
 		if act == "" {
 			continue
@@ -272,6 +384,11 @@ func Compute(lines []Line, malformed int, today string) Result {
 		res.Week.PointsPerDay = &v
 	}
 
+	if weekWork+weekReview > 0 {
+		v := float64(weekReview) / float64(weekWork+weekReview)
+		res.Week.ReviewShare = &v
+	}
+
 	keys := make([]string, 0, len(groups))
 	for k := range groups {
 		keys = append(keys, k)
@@ -286,6 +403,16 @@ func Compute(lines []Line, malformed int, today string) Result {
 			res.Rules = append(res.Rules, k+": "+RuleUp)
 		} else if g.down == g.n {
 			res.Rules = append(res.Rules, k+": "+RuleDown)
+		}
+	}
+	tkeys := make([]string, 0, len(tierGroups))
+	for k := range tierGroups {
+		tkeys = append(tkeys, k)
+	}
+	sort.Strings(tkeys)
+	for _, k := range tkeys {
+		if g := tierGroups[k]; g.n >= minRuleRow && g.same {
+			res.Rules = append(res.Rules, k+": "+RuleTier+" "+g.tier)
 		}
 	}
 	return res

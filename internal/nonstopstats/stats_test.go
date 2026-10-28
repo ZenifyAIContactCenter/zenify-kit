@@ -68,7 +68,7 @@ func TestLearnScale(t *testing.T) {
 		want Scale
 	}{
 		{"19 lines stay default", seq(19), Scale{Source: "default", N: 19, S: 5, M: 20, L: 60}},
-		{"1..20", seq(20), Scale{Source: "learned", N: 20, S: 5, M: 10, L: 15}},
+		{"1..20", seq(20), Scale{Source: "learned", N: 20, S: 5, M: 10, L: 18}},
 		{"duplicates forced increasing", dup, Scale{Source: "learned", N: 20, S: 3, M: 4, L: 5}},
 	}
 	for _, c := range cases {
@@ -169,5 +169,119 @@ func TestComputeRules(t *testing.T) {
 	}
 	if got := run(over...); !reflect.DeepEqual(got, []string{"web chore: " + RuleDown}) {
 		t.Errorf("3 over: %v", got)
+	}
+}
+
+func ln13(date, id, repo, kind, est, actual, work, review, path, tier string) string {
+	return fmt.Sprintf("%s · %s · %s · %s · %s · %s · %s · %s · 1 · 0 · %s · %s · -", date, id, repo, kind, est, actual, work, review, path, tier)
+}
+
+func TestParseV2(t *testing.T) {
+	text := strings.Join([]string{
+		ln13("2026-10-28", "a", "r", "fix", "S", "S", "~4m", "~2m", "bounded", "T2"),
+		ln13("2026-10-28", "b", "r", "fix", "S", "S", "-", "-", "-", "-"),
+		ln13("2026-10-28", "c", "r", "fix", "S", "S", "~4m", "~2m", "huge", "T2"),
+		ln13("2026-10-28", "d", "r", "fix", "S", "S", "~4m", "~2m", "spike", "T4"),
+		ln("2026-10-28", "e", "r", "fix", "S", "S", "~3m", 2), // v1 still parses
+	}, "\n")
+	lines, malformed := Parse(text)
+	if malformed != 2 || len(lines) != 3 {
+		t.Fatalf("lines=%d malformed=%d, want 3 and 2", len(lines), malformed)
+	}
+	if l := lines[0]; l.Minutes != 4 || l.ReviewMin != 2 || l.Path != "bounded" || l.Tier != "T2" || l.Files != 1 {
+		t.Errorf("v2 line = %+v", l)
+	}
+	if l := lines[1]; l.Minutes != 0 || l.ReviewMin != 0 || l.Path != "-" || l.Tier != "-" {
+		t.Errorf("dash line = %+v", l)
+	}
+	if l := lines[2]; l.Minutes != 3 || l.Files != 2 || l.Path != "-" || l.Tier != "-" || l.ReviewMin != 0 {
+		t.Errorf("v1 line = %+v", l)
+	}
+}
+
+func TestParseDurations(t *testing.T) {
+	text := strings.Join([]string{
+		"2026-10-28T09:00:00.000Z · t1 · work · 90000",
+		"2026-10-28T09:05:00.000Z · t1 · work · 60001",
+		"2026-10-28T09:06:00.000Z · t1 · review · 30000",
+		"2026-10-28T09:07:00.000Z · t2 · review · 120000",
+		"",
+		"garbage",
+		"2026-10-28T09:08:00.000Z · t3 · other · 5",
+		"2026-10-28T09:09:00.000Z · t3 · work · -5",
+		"not-a-time · t3 · work · 5",
+	}, "\n")
+	d, malformed := ParseDurations(text)
+	if malformed != 4 {
+		t.Errorf("malformed = %d, want 4", malformed)
+	}
+	// t1 work 150001 ms = 2.5 min -> 3; review 30000 ms -> 1; t2 review 2
+	if d.Work["t1"] != 3 || d.Review["t1"] != 1 || d.Review["t2"] != 2 || len(d.Work) != 1 {
+		t.Errorf("durations = %+v", d)
+	}
+}
+
+func TestApplyDurations(t *testing.T) {
+	lines := []Line{
+		{ID: "a", Minutes: 9, ReviewMin: 9},
+		{ID: "b", Minutes: 7, ReviewMin: 4},
+	}
+	ApplyDurations(lines, Durations{Work: map[string]int{"a": 3}, Review: map[string]int{"a": 1}})
+	if lines[0].Minutes != 3 || lines[0].ReviewMin != 1 {
+		t.Errorf("log must win: %+v", lines[0])
+	}
+	if lines[1].Minutes != 7 || lines[1].ReviewMin != 4 {
+		t.Errorf("no log keeps the columns: %+v", lines[1])
+	}
+}
+
+func TestComputeReviewAndTiers(t *testing.T) {
+	text := strings.Join([]string{
+		ln13("2026-10-21", "old", "r", "fix", "S", "S", "~5m", "~5m", "-", "T3"), // outside the week
+		ln13("2026-10-24", "a", "r", "fix", "S", "S", "~1m", "~3m", "-", "T1"),
+		ln13("2026-10-28", "b", "r", "fix", "S", "S", "~2m", "~1m", "-", "T2"),
+		ln13("2026-10-28", "c", "r", "fix", "S", "S", "~1m", "~2m", "-", "T2"),
+		ln13("2026-10-28", "d", "r", "fix", "S", "S", "~2m", "-", "-", "-"),
+	}, "\n")
+	lines, mal := Parse(text)
+	r := Compute(lines, mal, "2026-10-28")
+	if r.Today.ReviewMinutes != 3 {
+		t.Errorf("today review = %d, want 3", r.Today.ReviewMinutes)
+	}
+	// week review 3+1+2 = 6, work 1+2+1+2 = 6 -> 0.5
+	if r.Week.ReviewShare == nil || *r.Week.ReviewShare != 0.5 {
+		t.Errorf("reviewShare = %v, want 0.5", r.Week.ReviewShare)
+	}
+	if r.Tiers != (Tiers{T1: 1, T2: 2, T3: 0}) {
+		t.Errorf("tiers = %+v", r.Tiers)
+	}
+	if e := Compute(nil, 0, "2026-10-28"); e.Week.ReviewShare != nil {
+		t.Errorf("empty reviewShare must be nil")
+	}
+}
+
+func TestComputeTierRule(t *testing.T) {
+	rows := func(tiers ...string) []string {
+		var out []string
+		for i, tr := range tiers {
+			out = append(out, ln13("2026-10-20", fmt.Sprintf("x%d", i), "hub", "fix", "S", "S", "~1m", "-", "-", tr))
+		}
+		return out
+	}
+	run := func(rs []string) []string {
+		lines, mal := Parse(strings.Join(rs, "\n"))
+		return Compute(lines, mal, "2026-10-28").Rules
+	}
+	if got := run(rows("T1", "T1", "T1")); !reflect.DeepEqual(got, []string{"hub fix: " + RuleTier + " T1"}) {
+		t.Errorf("3 same: %v", got)
+	}
+	if got := run(rows("T1", "T1")); len(got) != 0 {
+		t.Errorf("2 same: %v", got)
+	}
+	if got := run(rows("T1", "T1", "T2")); len(got) != 0 {
+		t.Errorf("mixed: %v", got)
+	}
+	if got := run(rows("-", "-", "-")); len(got) != 0 {
+		t.Errorf("no tier: %v", got)
 	}
 }
