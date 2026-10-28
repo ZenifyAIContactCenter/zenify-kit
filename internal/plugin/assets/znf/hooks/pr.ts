@@ -43,6 +43,11 @@ export function isMergeable(label: string): boolean {
   return label === 'CLEAN' || label === 'UNSTABLE'
 }
 
+// A merged or closed PR is final: the pane stops showing and polling it.
+export function isSettled(label: string): boolean {
+  return label === 'MERGED' || label === 'CLOSED'
+}
+
 function parseUrl(url: string): { repo: string; n: string } {
   const m = /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(url)
   return { repo: m ? m[1] : '', n: m ? m[2] : '' }

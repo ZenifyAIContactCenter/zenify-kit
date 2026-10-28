@@ -3,7 +3,7 @@ import type { EngineInterface as $, Register, Timer } from 'claude-code'
 
 import { parseLedger } from './ledger'
 import type { Ledger } from './ledger'
-import { isMergeable, mergeCommand, prLabel, prRef, prUrls } from './pr'
+import { isMergeable, isSettled, mergeCommand, prLabel, prRef, prUrls } from './pr'
 
 const PANE = { id: 'nonstop', title: 'Nonstop', columns: 44 } as const
 const LEDGER_TICK_MS = 2000
@@ -118,7 +118,8 @@ async function pollPrs($: $): Promise<void> {
   isPolling = true
   try {
     const current = await read($, ledger)
-    const queue = current ? prUrls(current.tasks) : []
+    const known = await read($, prs)
+    const queue = current ? prUrls(current.tasks).filter(url => !isSettled(known[url] ?? '')) : []
     const worker = async () => {
       for (let url = queue.shift(); url; url = queue.shift()) {
         const label = await viewPr($, url)
@@ -221,7 +222,9 @@ export const register: Register = on => {
 
     const count = (s: string) => l.tasks.filter(t => t.status === s).length
     const running = l.tasks.filter(t => t.status === 'running')
-    const urls = prUrls(l.tasks)
+    const all = prUrls(l.tasks)
+    const urls = all.filter(u => !isSettled(labels[u] ?? ''))
+    const merged = all.filter(u => labels[u] === 'MERGED').length
     const firstMergeable = urls.find(u => isMergeable(labels[u] ?? ''))
 
     return (
@@ -250,6 +253,7 @@ export const register: Register = on => {
           )
         })}
         {line(`done ${count('done')} · queued ${count('queued')} · blocked ${count('blocked')}`, { dimColor: true })}
+        {merged > 0 && line(`✓ ${merged} PR đã merge`, { dimColor: true })}
         {l.malformed.length > 0 && line(`⚠ ${l.malformed.length} dòng không đúng format`, { color: 'yellow' })}
         {l.malformed.slice(0, 3).map(m => line(m, { dimColor: true }))}
       </Box>

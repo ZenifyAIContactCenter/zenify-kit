@@ -376,3 +376,32 @@ test('FR-1.1: a local ledger created after session start is found', async ($, on
   expect((await ui.find({ type: 'Text', text: /t2/ }))?.text).toContain('t2')
   await ui.unmount()
 })
+
+test('a merged or closed PR leaves the PR section, is counted, and is not polled again', async ($, on) => {
+  const URL_C = 'https://github.com/Z/web/pull/7'
+  const view = (state: string, merge = 'UNKNOWN') => ({
+    exitCode: 0,
+    stdout: JSON.stringify({ state, mergeStateStatus: merge, statusCheckRollup: [] }),
+    stderr: '',
+  })
+  const world: World = {
+    file: { text: ledgerText([row('t1', 'done', URL_A), row('t2', 'running', URL_B), row('t3', 'done', URL_C)]), mtimeMs: 1 },
+    gh: async url => (url === URL_A ? view('MERGED') : url === URL_C ? view('CLOSED') : view('OPEN', 'CLEAN')),
+  }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  expect(ghRuns(calls)).toHaveLength(3)
+
+  const ui = await $.ui.mount(pane())
+  const shown = await texts(ui)
+  expect(shown.some(t => t.includes('Z/kit#238'))).toBe(false)
+  expect(shown.some(t => t.includes('Z/web#7'))).toBe(false)
+  expect(shown.some(t => t.includes('Z/hub#9') && t.includes('CLEAN'))).toBe(true)
+  expect(shown).toContain('✓ 1 PR đã merge')
+  await ui.unmount()
+
+  await clock.advance(60000)
+  expect(ghRuns(calls).slice(3).map(a => a[3])).toEqual([URL_B])
+})
