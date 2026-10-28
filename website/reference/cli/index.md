@@ -72,6 +72,8 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify hotfix](./zenify_hotfix) | Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve. |
 | [zenify hotfix baseref](./zenify_hotfix_baseref) | In base ref mà hotfix của một repo sẽ xuất phát, theo chiến lược khai trong `worktree.json`. |
 | [zenify migrate](./zenify_migrate) | Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team. |
+| [zenify nonstop](./zenify_nonstop) | Nhóm lệnh phụ trợ cho orchestrator ngày znf:nonstop. |
+| [zenify nonstop stats](./zenify_nonstop_stats) | Tính thang size S/M/L đã học và thống kê hôm nay, 7 ngày, luật calibration từ estimates.md của nonstop. |
 | [zenify npm](./zenify_npm) | Nhóm lệnh cấu hình npm cho package private trên GitHub Packages. |
 | [zenify npm login](./zenify_npm_login) | Đặt NPM_TOKEN từ gh vào shell profile và cấp scope read:packages để npm install được package private. |
 | [zenify obs](./zenify_obs) | Tóm tắt sức khỏe một route hoặc một trace qua broker, đã che PII và giới hạn kích thước. |
