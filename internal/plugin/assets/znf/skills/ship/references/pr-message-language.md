@@ -12,8 +12,9 @@ A PR carries two audiences in one artifact. Keep them apart:
   English (`feat` / `fix` / `docs` / `perf` / `refactor` / `chore`) whatever the project's language
   is. This is the one machine token in the whole PR.
 
-- **Tracker key — machine.** If the current branch name contains `zen-(\d+)` (case-insensitive, for
-  example `u/fix/zen-123-foo`), the title becomes `<type>(<scope>): ZEN-<n> <description>` with the key
+- **Tracker key — machine.** If the current branch name matches `(^|[/-])zen-(\d+)(-|$)`
+  (case-insensitive, at a slug boundary, for example `u/fix/zen-123-foo`; `frozen-12-x`, `citizen-3` and
+  `dozen-5` do not match; if several match, the first wins), the title becomes `<type>(<scope>): ZEN-<n> <description>` with the key
   in uppercase, right after the colon. A branch without a key keeps the title unchanged. In a stack,
   layer N>=2 branches are `<layer-1>-<N>`, so the key stays in every branch name. In a stacked plan
   (`## Stack`) every layer except the top one also gets the body line `Part of ZEN-<n>`, placed right

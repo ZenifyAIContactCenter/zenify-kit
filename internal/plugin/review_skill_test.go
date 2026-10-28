@@ -161,9 +161,9 @@ func TestShipPRTitle_ZenKey(t *testing.T) {
 	ship := syncedAsset(t, "skills/ship/SKILL.md")
 	assertContainsAll(t, "ship/SKILL.md", ship, []string{"ZEN-<n>", "Part of ZEN-"})
 	pr := syncedAsset(t, "skills/ship/references/pr-message-language.md")
-	assertContainsAll(t, "pr-message-language.md", pr, []string{"zen-(\\d+)", "ZEN-<n>", "Part of ZEN-<n>"})
+	assertContainsAll(t, "pr-message-language.md", pr, []string{"(^|[/-])zen-(\\d+)(-|$)", "slug boundary", "frozen-12-x", "first wins", "ZEN-<n>", "Part of ZEN-<n>"})
 	st := syncedAsset(t, "skills/ship/references/stacked-ship.md")
-	assertContainsAll(t, "stacked-ship.md", st, []string{"Part of ZEN-<n>", "top layer"})
+	assertContainsAll(t, "stacked-ship.md", st, []string{"Part of ZEN-<n>", "every layer except the top"})
 }
 
 func TestMergeBaseUsesWtBase(t *testing.T) {

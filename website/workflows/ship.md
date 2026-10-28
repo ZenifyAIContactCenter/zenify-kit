@@ -77,7 +77,7 @@ Khi tính năng bật, ship tìm issue theo thứ tự: số issue bạn đưa t
 
 ### Mã ticket trong tiêu đề PR
 
-Khi tên branch chứa `zen-<n>` (không phân biệt hoa thường, ví dụ `<user>/fix/zen-123-foo`), ship đặt mã viết hoa ngay sau dấu hai chấm: `<type>(<scope>): ZEN-<n> <mô tả>`. Branch không có mã thì tiêu đề giữ nguyên. Với stacked PR, thân PR của mọi lớp trừ lớp trên cùng có dòng `Part of ZEN-<n>`.
+Khi tên branch có `zen-<n>` ở ranh giới slug (regex `(^|[/-])zen-(\d+)(-|$)`, không phân biệt hoa thường, ví dụ `<user>/fix/zen-123-foo`; `frozen-12-x`, `citizen-3`, `dozen-5` không khớp; nhiều chỗ khớp thì lấy chỗ đầu tiên), ship đặt mã viết hoa ngay sau dấu hai chấm: `<type>(<scope>): ZEN-<n> <mô tả>`. Branch không có mã thì tiêu đề giữ nguyên. Với stacked PR, thân PR của mọi lớp trừ lớp trên cùng có dòng `Part of ZEN-<n>`.
 
 ### Stacked PR
 
