@@ -1,6 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as $, Register, Timer } from 'claude-code'
 
+import { logLine, slugFromPrompt, taskFromPrompt } from './durations'
 import { parseLedger } from './ledger'
 import type { Ledger } from './ledger'
 import { parseStats, statsLines } from './stats'
@@ -58,6 +59,10 @@ const stats = atom({ plugin: 'znf', key: 'stats' } as const, null, { shape: 'non
 const frame = atom({ plugin: 'znf', key: 'frame' } as const, 0, { shape: 'nonstop-1' })
 // Ids of the task lines the user expanded; shared by the three tabs.
 const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
+// FR-6.1: subagent id -> the task its runs are logged under, and worktree slug -> task id.
+// State, not module variables: a worker outlives a reload of this module.
+const runTags = atom({ plugin: 'znf', key: 'runTags' } as const, {}, { shape: 'nonstop-1' })
+const slugTasks = atom({ plugin: 'znf', key: 'slugTasks' } as const, {}, { shape: 'nonstop-1' })
 
 // Module state: lost on a reload, which also drops the timers; the next open re-arms them.
 let timers: Timer[] = []
@@ -292,6 +297,60 @@ async function pressMerge($: $, url: string): Promise<void> {
   }
 }
 
+// The directory of the resolved ledger when the ledger exists; undefined in a plain session.
+async function ledgerDir($: $): Promise<string | undefined> {
+  const file = await ledgerPath($)
+  if (!file) return undefined
+  try {
+    await $.fs.stat(file)
+  } catch (err) {
+    if (isMissing(err)) return undefined
+    throw err
+  }
+  return file.slice(0, file.lastIndexOf('/'))
+}
+
+// FR-6.1: a worker brief tags its agent `work` and maps its slug to the task; a prompt naming a
+// worktree tags its agent `review` of that slug's task. Any other agent is not tracked.
+async function tagRun($: $, agentId: string, prompt: string): Promise<void> {
+  const { id, slug } = taskFromPrompt(prompt)
+  const reviewed = id ? undefined : slugFromPrompt(prompt)
+  if (!id && !reviewed) return
+  if (!(await ledgerDir($))) return
+  if (id) {
+    await update($, runTags, tags => ({ ...tags, [agentId]: { id, kind: 'work' } }))
+    if (slug) await update($, slugTasks, map => ({ ...map, [slug]: id }))
+    return
+  }
+  const task = (await read($, slugTasks))[reviewed as string] ?? 'unknown'
+  await update($, runTags, tags => ({ ...tags, [agentId]: { id: task, kind: 'review' } }))
+}
+
+// Runs one append at a time: there is no fs append, so each is a read and a whole write.
+let appending: Promise<void> = Promise.resolve()
+
+async function logRun($: $, agentId: string, ms: number): Promise<void> {
+  const tag = (await read($, runTags))[agentId]
+  if (!tag) return
+  const dir = await ledgerDir($)
+  if (!dir) return
+  const line = logLine(new Date(await $.clock.now()).toISOString(), tag.id, tag.kind, ms)
+  const write = appending.then(async () => {
+    const file = `${dir}/durations.log`
+    let text = ''
+    try {
+      text = String(await $.fs.read(file))
+    } catch (err) {
+      if (!isMissing(err)) throw err
+    }
+    await $.fs.write(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}${line}\n`)
+  })
+  appending = write.catch(() => undefined)
+  await write
+}
+
+const timingError = ($: $) => (err: unknown) => $.ui.toast(`lỗi đo thời gian: ${message(err)}`)
+
 function report($: $, err: unknown): void {
   void update($, ledgerError, () => message(err))
 }
@@ -391,6 +450,21 @@ export const register: Register = on => {
   on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
     if ((e as { skill?: string }).skill === 'znf:nonstop') await show($)
     return next(e)
+  })
+
+  // FR-6.1: tagged on spawn, not on the Agent tool call: a foreground agent's turn ends before
+  // its tool call answers. A resume keeps the tag its first spawn got.
+  on('agent.spawn', async ($, e, next) => {
+    const result = await next(e)
+    if (!e.resume && result.agentId) await tagRun($, result.agentId, e.prompt).catch(timingError($))
+    return result
+  })
+
+  // Each run of a subagent's loop is one turn; its durationMs is that run's wall time.
+  on('turn.complete', async ($, e, next) => {
+    const result = await next(e)
+    if (e.agentId) await logRun($, e.agentId, e.durationMs).catch(timingError($))
+    return result
   })
 
   on('command.run', { command: 'nonstop-pane' }, async $ => {

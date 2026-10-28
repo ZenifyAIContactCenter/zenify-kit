@@ -46,6 +46,11 @@ type World = {
   // mtime of estimates.md next to the ledger; absent = the file does not exist.
   estimatesMtime?: number
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
+  // The ids `agent.spawn` answers, in order.
+  agentIds?: string[]
+  // durations.log next to the ledger; absent = the file does not exist.
+  durations?: string
+  writeError?: string
 }
 
 type Calls = {
@@ -59,6 +64,7 @@ type Calls = {
   toast: string[]
   merges: string[][]
   graphql: string[][]
+  write: { path: string; text: string }[]
 }
 
 const threadsOf = (open: number, total: number) => () => ({
@@ -89,13 +95,21 @@ const zenifyRuns = (calls: Calls) => calls.run.filter(a => a[0] === 'zenify')
 
 // Every hook here stands for the engine beneath the plugin.
 function engine(on: any, world: World): Calls {
-  const calls: Calls = { open: [], close: [], stat: [], read: [], run: [], copy: [], status: [], toast: [], merges: [], graphql: [] }
+  const calls: Calls = { open: [], close: [], stat: [], read: [], run: [], copy: [], status: [], toast: [], merges: [], graphql: [], write: [] }
   const panes: { id: string }[] = (world.openPanes ?? []).map(id => ({ id }))
   on('command.register', () => ({ value: { command: 'nonstop-pane' } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: CWD }))
   on('prompt.submit', (_: unknown, e: { text: string }) => ({ text: e.text }))
   on('tool.call', () => ({ result: {} }))
+  on('agent.spawn', () => ({ model: 'sonnet', agentId: world.agentIds?.shift() }))
+  on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
+  on('fs.write', (_: unknown, e: { path: string; text: string }) => {
+    if (world.writeError) return { deny: world.writeError }
+    calls.write.push({ path: e.path, text: e.text })
+    world.durations = e.text
+    return { value: undefined }
+  })
   on('ui.open', (_: unknown, e: { id: string }) => {
     calls.open.push(e)
     if (!panes.some(p => p.id === e.id)) panes.push({ id: e.id })
@@ -135,6 +149,10 @@ function engine(on: any, world: World): Calls {
   })
   on('fs.read', (_: unknown, e: { path: string }) => {
     calls.read.push(e.path)
+    if (e.path.endsWith('/durations.log')) {
+      if (world.durations === undefined) return { deny: `ENOENT: no such file, open '${e.path}'` }
+      return { value: world.durations }
+    }
     if (world.readError) return { deny: world.readError }
     if (!world.file) return { deny: `ENOENT: no such file, open '${e.path}'` }
     return { value: world.file.text }
@@ -1282,4 +1300,76 @@ test('FR-3.10: a plain session makes no zenify call', async ($, on) => {
   await clock.settle()
   await clock.advance(4000)
   expect(zenifyRuns(calls)).toHaveLength(0)
+})
+
+const LOG = `${CWD}/.zenify/nonstop/durations.log`
+const WORKER_PROMPT = [
+  'Task:       t14 — fix login redirect, source issue, size S',
+  'Repo:       /w/repos/app · worktree slug: fix-login (git fetch origin; wt new fix-login --type fix --base main)',
+].join('\n')
+const REVIEW_PROMPT = 'Review the diff. WT=/w/repos/app/.worktrees/fix-login'
+const ended = (agentId: string, durationMs: number) =>
+  ({ answer: 'ok', durationMs, isAborted: false, turnId: `turn-${agentId}-${durationMs}`, agentId, reason: 'answer' }) as any
+const logLines = (world: World) => (world.durations ?? '').split('\n').filter(Boolean)
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z · /
+
+test('FR-6.1: a worker run logs work, its reviewer run logs review, a resumed run logs again', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, agentIds: ['a-work', 'a-review', 'a-work'] }
+  engine(on, world)
+  mock.clock(on)
+  await $.agent.spawn({ prompt: WORKER_PROMPT })
+  await $.turn.complete(ended('a-work', 245000))
+  await $.agent.spawn({ prompt: REVIEW_PROMPT })
+  await $.turn.complete(ended('a-review', 60000))
+  // A resume re-spawns the same agent with the resuming message, which names the worktree.
+  await $.agent.spawn({ prompt: 'Fix the findings in /w/repos/app/.worktrees/fix-login', resume: { agentId: 'a-work' } } as any)
+  await $.turn.complete(ended('a-work', 30000))
+  const lines = logLines(world)
+  expect(lines).toHaveLength(3)
+  expect(lines.every(l => ISO.test(l))).toBe(true)
+  expect(lines.map(l => l.replace(ISO, ''))).toEqual(['t14 · work · 245000', 't14 · review · 60000', 't14 · work · 30000'])
+})
+
+test('FR-6.1: lines are appended to an existing durations.log next to the ledger', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, agentIds: ['a1'], durations: 'old line\n' }
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.agent.spawn({ prompt: WORKER_PROMPT })
+  await $.turn.complete(ended('a1', 245000))
+  expect(calls.write.map(w => w.path)).toEqual([LOG])
+  expect(logLines(world)[0]).toBe('old line')
+  expect(logLines(world)[1]).toMatch(/ · t14 · work · 245000$/)
+})
+
+test('FR-6.1: a reviewer of an unknown worktree logs unknown; a plain prompt and the main loop log nothing', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, agentIds: ['a-rev', 'a-other'] }
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.agent.spawn({ prompt: 'Review WT=/w/repos/app/.worktrees/other-slug' })
+  await $.turn.complete(ended('a-rev', 1000))
+  await $.agent.spawn({ prompt: 'Find where login is handled' })
+  await $.turn.complete(ended('a-other', 2000))
+  await $.turn.complete({ ...ended('x', 3000), agentId: undefined })
+  expect(calls.write).toHaveLength(1)
+  expect(logLines(world).map(l => l.replace(ISO, ''))).toEqual(['unknown · review · 1000'])
+})
+
+test('FR-6.1: a failed write is toasted, not swallowed', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, agentIds: ['a1'], writeError: 'EACCES: permission denied' }
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.agent.spawn({ prompt: WORKER_PROMPT })
+  await $.turn.complete(ended('a1', 245000))
+  expect(calls.toast).toHaveLength(1)
+  expect(calls.toast[0].startsWith('lỗi đo thời gian: ') && calls.toast[0].includes('EACCES: permission denied')).toBe(true)
+})
+
+test('FR-6.1: a plain session with no ledger writes nothing', async ($, on) => {
+  const world: World = { file: null, agentIds: ['a1'] }
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.agent.spawn({ prompt: WORKER_PROMPT })
+  await $.turn.complete(ended('a1', 245000))
+  expect(calls.write).toHaveLength(0)
+  expect(calls.toast).toHaveLength(0)
 })

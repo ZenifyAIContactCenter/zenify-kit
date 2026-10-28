@@ -56,6 +56,10 @@ declare module 'claude-code' {
       frame: Shaped<number>
       // ids of the expanded task lines
       expanded: Shaped<string[]>
+      // subagent id -> the nonstop task its runs are logged under (durations.log)
+      runTags: Shaped<Record<string, { id: string; kind: 'work' | 'review' }>>
+      // worktree slug -> nonstop task id, from the worker briefs
+      slugTasks: Shaped<Record<string, string>>
     }
   }
 }
