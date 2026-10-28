@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
@@ -20,9 +19,6 @@ import (
 // convention (M6a). The store is found via resolveDocsStore (Task 1). Override with the
 // --out-dir flag for a different workspace (keeps the kit project-agnostic).
 const defaultOutSub = "releases"
-
-// releaseTagRe validates the tag argument: a release tag is vYYMMDD.n.
-var releaseTagRe = regexp.MustCompile(`^v\d{6}\.\d+$`)
 
 // runReleaseReport is the testable core. FAIL-OPEN: always returns nil; every error becomes
 // a note printed to stderr. tag "" = each repo's newest vYYMMDD.n tag.
@@ -45,7 +41,9 @@ func runReleaseReport(workspaceDir string, tag string, noFetch bool, outDir stri
 	// the whole fetch in a repo without that branch.
 	if !noFetch {
 		for _, rp := range disc {
-			_ = release.Fetch(r, rp.Path, "--tags")
+			if err := release.Fetch(r, rp.Path, "--tags"); err != nil {
+				fmt.Fprintf(stderr, "release-report: không fetch được tag của %s: %v (dùng tag local)\n", rp.Name, err) //znf:allow-lang
+			}
 		}
 	}
 	repos, err := release.Resolve(r, workspaceDir, os.ReadFile, disc)
@@ -115,7 +113,7 @@ func newReleaseReportCmd() *cobra.Command {
 			tag := ""
 			if len(args) == 1 {
 				tag = args[0]
-				if !releaseTagRe.MatchString(tag) {
+				if !release.IsReleaseTag(tag) {
 					return fmt.Errorf("invalid release tag %q: want vYYMMDD.n", tag)
 				}
 			}

@@ -19,6 +19,9 @@ const logFormat = "--format=%h" + sep + "%s" + sep + "%an" + sep + "%b" + recSep
 // (v261028.0-rc) and legacy release<N> names are not release tags.
 var relTagRe = regexp.MustCompile(`^v(\d{6})\.(\d+)$`)
 
+// IsReleaseTag reports whether tag is a release tag vYYMMDD.n.
+func IsReleaseTag(tag string) bool { return relTagRe.MatchString(tag) }
+
 // tagKey returns (date, n) for a release tag; ok=false when tag is not vYYMMDD.n.
 func tagKey(tag string) (date, n int, ok bool) {
 	m := relTagRe.FindStringSubmatch(tag)

@@ -74,3 +74,14 @@ func TestBuildResolveMiss(t *testing.T) {
 		t.Errorf("expected resolve-miss fail-open note, got %+v", rep.Repos)
 	}
 }
+
+func TestIsReleaseTag(t *testing.T) {
+	for tag, want := range map[string]bool{
+		"v261104.0": true, "v261104.12": true,
+		"v0.52.0": false, "release84": false, "v261104.0-rc": false, "-v261104.0": false,
+	} {
+		if got := IsReleaseTag(tag); got != want {
+			t.Errorf("IsReleaseTag(%q) = %v, want %v", tag, got, want)
+		}
+	}
+}

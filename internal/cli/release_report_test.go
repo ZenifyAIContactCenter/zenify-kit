@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -207,5 +208,31 @@ func TestRunReleaseReportFetchesTagsOnly(t *testing.T) {
 	}
 	if len(fetches) != 1 || strings.Join(fetches[0], " ") != "fetch origin --tags" {
 		t.Fatalf("fetch calls = %v, want exactly [fetch origin --tags]", fetches)
+	}
+}
+
+// failFetchRunner fails every fetch and returns empty output for the rest.
+type failFetchRunner struct{}
+
+func (failFetchRunner) Run(dir string, args ...string) ([]byte, error) {
+	if len(args) > 0 && args[0] == "fetch" {
+		return nil, errors.New("no network")
+	}
+	return nil, nil
+}
+
+// A failed tag fetch must be visible on stderr (naming the repo) while the report keeps going.
+func TestRunReleaseReportWarnsOnFetchFailure(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(ws, "kit", ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if err := runReleaseReport(ws, "", false, "", false, failFetchRunner{}, &out, &errb); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errb.String(), "không fetch được tag của kit") { //znf:allow-lang
+		t.Fatalf("stderr = %q, want fetch warning naming kit", errb.String())
 	}
 }
