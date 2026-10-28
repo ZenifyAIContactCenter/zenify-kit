@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
@@ -20,11 +21,14 @@ import (
 // --out-dir flag for a different workspace (keeps the kit project-agnostic).
 const defaultOutSub = "releases"
 
+// releaseTagRe validates the tag argument: a release tag is vYYMMDD.n.
+var releaseTagRe = regexp.MustCompile(`^v\d{6}\.\d+$`)
+
 // runReleaseReport is the testable core. FAIL-OPEN: always returns nil; every error becomes
-// a note printed to stderr.
+// a note printed to stderr. tag "" = each repo's newest vYYMMDD.n tag.
 // outDir empty → defaults to the repo's docs/releases (the repo path is auto-discovered per
 // layout, flat or repos/<repo> after `zenify migrate`).
-func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, verbose bool, r gitx.Runner, stdout, stderr io.Writer) error {
+func runReleaseReport(workspaceDir string, tag string, noFetch bool, outDir string, verbose bool, r gitx.Runner, stdout, stderr io.Writer) error {
 	loadPatterns := func(dir string) []string {
 		c, err := wt.Load(dir)
 		if err != nil {
@@ -36,17 +40,16 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 	resolve := func(name string) (string, bool) {
 		return workspace.Resolve(workspaceDir, name, workspace.DefaultMaxDepth, os.ReadDir)
 	}
-	repos, err := release.Resolve(r, workspaceDir, n, os.ReadFile, disc)
+	// fetch tags first: auto-detect and the default tag read local tags.
+	if !noFetch {
+		for _, rp := range disc {
+			_ = release.Fetch(r, rp.Path, "--tags", "staging")
+		}
+	}
+	repos, err := release.Resolve(r, workspaceDir, os.ReadFile, disc)
 	if err != nil {
 		fmt.Fprintf(stderr, "release-report: không phân giải repo: %v (fail-open)\n", err) //znf:allow-lang
 		return nil
-	}
-	if !noFetch {
-		for _, name := range repos {
-			if dir, ok := resolve(name); ok {
-				_ = release.Fetch(r, dir, fmt.Sprintf("release%d", n), "staging")
-			}
-		}
 	}
 	// loadSpecs reads specs/<repo>/*-design.md from the docs-store, parses the Brief. Fail-open: error → nil.
 	storeSpecs := filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), "specs")
@@ -69,7 +72,14 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 		}
 		return out
 	}
-	rep := release.Build(r, resolve, repos, n, loadPatterns, loadSpecs)
+	rep := release.Build(r, resolve, repos, tag, loadPatterns, loadSpecs)
+	if rep.Tag == "" {
+		fmt.Fprintln(stderr, "release-report: chưa có tag vYYMMDD.n trong repo nào (fail-open)") //znf:allow-lang
+		for _, rr := range rep.Repos {
+			fmt.Fprintf(stderr, "  %s: %s\n", rr.Name, rr.Err)
+		}
+		return nil
+	}
 	out := release.Render(rep, verbose)
 	if outDir == "" {
 		outDir = filepath.Join(resolveDocsStore(workspaceDir, os.Getenv, os.UserHomeDir, os.Stat, os.ReadDir), defaultOutSub)
@@ -78,7 +88,7 @@ func runReleaseReport(workspaceDir string, n int, noFetch bool, outDir string, v
 		fmt.Fprintf(stderr, "release-report: không tạo được thư mục out: %v (fail-open)\n", err) //znf:allow-lang
 		return nil
 	}
-	path := filepath.Join(outDir, fmt.Sprintf("R%d.md", n))
+	path := filepath.Join(outDir, rep.Tag+".md")
 	if err := os.WriteFile(path, []byte(out), 0o600); err != nil {
 		fmt.Fprintf(stderr, "release-report: không ghi được report: %v (fail-open)\n", err) //znf:allow-lang
 		return nil
@@ -93,35 +103,21 @@ func newReleaseReportCmd() *cobra.Command {
 	var outDir string
 	var verbose bool
 	cmd := &cobra.Command{
-		Use:   "release-report [N]",
-		Short: "sinh report rủi ro cho một release (chỉ-đọc, ghi docs/releases/R<N>.md)", //znf:allow-lang
+		Use:   "release-report [tag]",
+		Short: "sinh report rủi ro cho một release tag vYYMMDD.n (chỉ-đọc, ghi docs/releases/<tag>.md)", //znf:allow-lang
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			r := gitx.ExecRunner()
 			if workspaceDir == "" {
 				workspaceDir, _ = os.Getwd()
 			}
-			n := 0
+			tag := ""
 			if len(args) == 1 {
-				if _, err := fmt.Sscanf(args[0], "%d", &n); err != nil {
-					return fmt.Errorf("invalid release number %q: %w", args[0], err)
-				}
-			} else {
-				for _, rp := range workspace.Discover(workspaceDir, workspace.DefaultMaxDepth, os.ReadDir) {
-					if nums, err := release.ReleaseNums(r, rp.Path); err == nil {
-						for _, x := range nums {
-							if x > n {
-								n = x
-							}
-						}
-					}
+				tag = args[0]
+				if !releaseTagRe.MatchString(tag) {
+					return fmt.Errorf("invalid release tag %q: want vYYMMDD.n", tag)
 				}
 			}
-			if n <= 0 {
-				fmt.Fprintln(cmd.ErrOrStderr(), "release-report: không xác định được release N (fail-open)") //znf:allow-lang
-				return nil
-			}
-			return runReleaseReport(workspaceDir, n, noFetch, outDir, verbose, r, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runReleaseReport(workspaceDir, tag, noFetch, outDir, verbose, gitx.ExecRunner(), cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&workspaceDir, "workspace", "", "thư mục workspace (mặc định cwd)")                             //znf:allow-lang

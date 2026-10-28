@@ -1,7 +1,6 @@
 package release
 
 import (
-	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -16,34 +15,58 @@ const recSep = "\x1e" // record separator between commits (body can span multipl
 // %b MUST come last (multi-line body); %an is inserted between subject and body.
 const logFormat = "--format=%h" + sep + "%s" + sep + "%an" + sep + "%b" + recSep
 
-// The trailing anchor is whitespace/EOL so it does NOT match variants like origin/release84-hotfix or release84.1.
-var relNumRe = regexp.MustCompile(`(?m)origin/release(\d+)(?:\s|$)`)
+// relTagRe matches a release tag vYYMMDD.n exactly: semver tags (v0.52.0), suffixed tags
+// (v261028.0-rc) and legacy release<N> names are not release tags.
+var relTagRe = regexp.MustCompile(`^v(\d{6})\.(\d+)$`)
 
-// ReleaseNums lists the release numbers from `git branch -r` (origin/release<N> only), ascending.
-func ReleaseNums(r gitx.Runner, dir string) ([]int, error) {
-	out, err := r.Run(dir, "branch", "-r")
+// tagKey returns (date, n) for a release tag; ok=false when tag is not vYYMMDD.n.
+func tagKey(tag string) (date, n int, ok bool) {
+	m := relTagRe.FindStringSubmatch(tag)
+	if m == nil {
+		return 0, 0, false
+	}
+	date, _ = strconv.Atoi(m[1])
+	n, _ = strconv.Atoi(m[2])
+	return date, n, true
+}
+
+// tagLess orders two release tags by date, then by number (v261028.10 after v261028.2).
+func tagLess(a, b string) bool {
+	da, na, _ := tagKey(a)
+	db, nb, _ := tagKey(b)
+	if da != db {
+		return da < db
+	}
+	return na < nb
+}
+
+// ReleaseTags lists the repo's release tags vYYMMDD.n (weekly and hotfix), oldest first.
+func ReleaseTags(dir string) ([]string, error) {
+	return releaseTags(gitx.ExecRunner(), dir)
+}
+
+func releaseTags(r gitx.Runner, dir string) ([]string, error) {
+	out, err := r.Run(dir, "tag", "--list")
 	if err != nil {
 		return nil, err
 	}
-	seen := map[int]bool{}
-	for _, m := range relNumRe.FindAllStringSubmatch(string(out), -1) {
-		n, _ := strconv.Atoi(m[1])
-		seen[n] = true
+	var tags []string
+	for _, l := range strings.Split(string(out), "\n") {
+		if t := strings.TrimSpace(l); relTagRe.MatchString(t) {
+			tags = append(tags, t)
+		}
 	}
-	var nums []int
-	for n := range seen {
-		nums = append(nums, n)
-	}
-	sort.Ints(nums)
-	return nums, nil
+	sort.Slice(tags, func(i, j int) bool { return tagLess(tags[i], tags[j]) })
+	return tags, nil
 }
 
-// PrevRelease returns the highest release number < n in nums.
-func PrevRelease(nums []int, n int) (int, bool) {
-	prev, ok := 0, false
-	for _, x := range nums {
-		if x < n && x > prev {
-			prev, ok = x, true
+// PrevTag returns the newest tag in tags that sorts before tag — the lower bound of tag's range,
+// hotfix tags included.
+func PrevTag(tags []string, tag string) (string, bool) {
+	prev, ok := "", false
+	for _, t := range tags {
+		if tagLess(t, tag) && (!ok || tagLess(prev, t)) {
+			prev, ok = t, true
 		}
 	}
 	return prev, ok
@@ -158,23 +181,4 @@ func NotInStaging(r gitx.Runner, dir, from, to, staging string) ([]Commit, error
 		return nil, err
 	}
 	return parseCommits(out), nil
-}
-
-// CutDate returns the date (YYYY-MM-DD) of the merge-base between release<n> and origin/staging.
-func CutDate(r gitx.Runner, dir string, n int) (string, error) {
-	rel := fmt.Sprintf("origin/release%d", n)
-	base, err := r.Run(dir, "merge-base", rel, "origin/staging")
-	if err != nil {
-		return "", err
-	}
-	sha := strings.TrimSpace(string(base))
-	out, err := r.Run(dir, "log", "-1", "--format=%ci", sha)
-	if err != nil {
-		return "", err
-	}
-	d := strings.TrimSpace(string(out))
-	if len(d) >= 10 {
-		d = d[:10]
-	}
-	return d, nil
 }

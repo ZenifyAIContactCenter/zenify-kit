@@ -10,9 +10,9 @@ import (
 
 // Resolve returns the list of release-tracked repos. If <workspace>/.zenify/release-repos.txt (legacy
 // fallback: .znf/release-repos.txt) can be read → use its non-empty lines. Otherwise auto-detect over `discovered` (the result of
-// workspace.Discover) — any repo that has origin/release<n>. readFile is injected for testing
+// workspace.Discover) — any repo that carries a release tag vYYMMDD.n. readFile is injected for testing
 // (the CLI passes os.ReadFile).
-func Resolve(r gitx.Runner, workspace string, n int,
+func Resolve(r gitx.Runner, workspace string,
 	readFile func(string) ([]byte, error), discovered []wspkg.Repo) ([]string, error) {
 
 	if pin, ok := pinList(workspace, readFile); ok {
@@ -20,15 +20,8 @@ func Resolve(r gitx.Runner, workspace string, n int,
 	}
 	var repos []string
 	for _, rp := range discovered {
-		nums, err := ReleaseNums(r, rp.Path)
-		if err != nil {
-			continue
-		}
-		for _, x := range nums {
-			if x == n {
-				repos = append(repos, rp.Name)
-				break
-			}
+		if tags, err := releaseTags(r, rp.Path); err == nil && len(tags) > 0 {
+			repos = append(repos, rp.Name)
 		}
 	}
 	return repos, nil

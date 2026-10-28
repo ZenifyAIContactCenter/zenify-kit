@@ -1,23 +1,28 @@
 package release
 
 import (
-	"fmt"
+	"slices"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
-// Build assembles the report for release n from a list of repos. Fail-open per repo: one repo's
-// error does not break the whole report. loadPatterns is injected so tests don't depend on a real
+// noTagNote is the per-repo line for a repo that carries no release tag at all.
+const noTagNote = "chưa có tag vYYMMDD.n" //znf:allow-lang
+
+// Build assembles the report for release tag `tag` (vYYMMDD.n) from a list of repos; tag "" means
+// each repo's newest tag, and the report takes the newest of those. Each repo's range runs from
+// the tag just before to the tag, hotfix tags included. Fail-open per repo: one repo's error does
+// not break the whole report. loadPatterns is injected so tests don't depend on a real
 // worktree.json. resolve locates each repo's real dir (via workspace.Resolve) — it does not assume
 // a repo is a direct child of the workspace, so it is nesting-safe.
-func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
-	return buildReport(r, resolve, repos, n, loadPatterns, loadSpecs)
+func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []string, tag string, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
+	return buildReport(r, resolve, repos, tag, loadPatterns, loadSpecs)
 }
 
-func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
+func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos []string, tag string, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
 	rep := Report{
-		N:               n,
+		Tag:             tag,
 		GeneratedAt:     time.Now().Format("2006-01-02 15:04"),
 		SharedCrossRepo: map[string][]string{},
 	}
@@ -27,31 +32,32 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not locate repo in workspace"})
 			continue
 		}
-		nums, err := ReleaseNums(r, dir)
+		tags, err := releaseTags(r, dir)
 		if err != nil {
-			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not read release branches: " + err.Error()})
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not read release tags: " + err.Error()})
 			continue
 		}
-		// finalize R<n>: a repo participates in release n iff it has a release<n> branch.
-		has := false
-		for _, x := range nums {
-			if x == n {
-				has = true
+		if len(tags) == 0 {
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: noTagNote})
+			continue
+		}
+		target := tag
+		if target == "" {
+			target = tags[len(tags)-1]
+			if rep.Tag == "" || tagLess(rep.Tag, target) {
+				rep.Tag = target
 			}
-		}
-		if !has {
-			rep.NotShipped = append(rep.NotShipped, name)
+		} else if !slices.Contains(tags, target) {
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "chưa có tag " + target}) //znf:allow-lang
 			continue
 		}
-		prev, ok := PrevRelease(nums, n)
+		prev, ok := PrevTag(tags, target)
 		if !ok {
-			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not find the previous release"})
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not find the tag before " + target})
 			continue
 		}
-		relPrev := fmt.Sprintf("origin/release%d", prev)
-		relN := fmt.Sprintf("origin/release%d", n)
-		rr := RepoReport{Name: name, PrevRelease: prev, TypeCounts: map[string]int{}}
-		rr.CutDate, _ = CutDate(r, dir, n)
+		relPrev, relN := prev, target
+		rr := RepoReport{Name: name, Tag: target, PrevTag: prev, TypeCounts: map[string]int{}}
 		var notes []Commit
 		if cs, err := RangeCommits(r, dir, relPrev, relN); err == nil {
 			var feats []Commit

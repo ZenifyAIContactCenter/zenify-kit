@@ -27,32 +27,6 @@ func (f fakeRunner) Run(dir string, args ...string) ([]byte, error) {
 	return []byte(f.out[key]), nil
 }
 
-func TestReleaseNumsAndPrev(t *testing.T) {
-	f := fakeRunner{out: map[string]string{
-		"branch -r": "  origin/release83\n  origin/release84\n  origin/staging\n  origin/main\n",
-	}}
-	nums, err := ReleaseNums(f, "/x")
-	if err != nil || len(nums) != 2 || nums[0] != 83 || nums[1] != 84 {
-		t.Fatalf("nums=%v err=%v", nums, err)
-	}
-	if p, ok := PrevRelease(nums, 84); !ok || p != 83 {
-		t.Fatalf("prev=%d ok=%v", p, ok)
-	}
-	if _, ok := PrevRelease([]int{84}, 84); ok {
-		t.Fatal("no prev expected")
-	}
-}
-
-func TestReleaseNumsIgnoresVariantRefs(t *testing.T) {
-	f := fakeRunner{out: map[string]string{
-		"branch -r": "  origin/release84-hotfix\n  origin/release83.1\n  origin/release82\n  origin/staging\n",
-	}}
-	nums, err := ReleaseNums(f, "/x")
-	if err != nil || len(nums) != 1 || nums[0] != 82 {
-		t.Fatalf("variants release84-hotfix/release83.1 must be dropped: nums=%v err=%v", nums, err)
-	}
-}
-
 func TestRangeCommits(t *testing.T) {
 	f := fakeRunner{out: map[string]string{
 		"log --format=%h\x1f%s\x1f%an\x1f%b\x1e origin/release83..origin/release84": "5ed5aa1\x1ffix: a\x1fnamph\x1fbody line1\nbody line2\x1e" +
@@ -93,17 +67,6 @@ func TestChangedFiles(t *testing.T) {
 	fs, err := ChangedFiles(f, "/x", "origin/release83", "origin/release84")
 	if err != nil || len(fs) != 2 || fs[0] != "db/migrations/1.js" {
 		t.Fatalf("fs=%v err=%v", fs, err)
-	}
-}
-
-func TestCutDate(t *testing.T) {
-	f := fakeRunner{out: map[string]string{
-		"merge-base origin/release84 origin/staging": "base1\n",
-		"log -1 --format=%ci base1":                  "2026-08-26 17:55:55 +0700\n",
-	}}
-	d, err := CutDate(f, "/x", 84)
-	if err != nil || d != "2026-08-26" {
-		t.Fatalf("d=%q err=%v", d, err)
 	}
 }
 

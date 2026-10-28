@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.52.0
+
+*2026-10-29*
+
+- **Mã ticket trong tiêu đề PR:** branch có `zen-<n>` ở ranh giới slug (ví dụ `<user>/fix/zen-123-session-timeout`) thì `/znf:ship` đặt `ZEN-<n>` ngay sau dấu hai chấm của tiêu đề: `fix(session): ZEN-123 <mô tả>`. Branch không có mã thì tiêu đề giữ nguyên. Với stacked PR, thân PR của mọi lớp trừ lớp trên cùng có dòng `Part of ZEN-<n>`. Xem [Mã ticket trong tiêu đề PR](/workflows/ship#mã-ticket-trong-tiêu-đề-pr).
+- **Slug mang mã ticket:** `zenify wt new zen-123-session-timeout --type fix` tạo branch `<user>/fix/zen-123-session-timeout`, đúng chỗ ship đọc mã. Xem [Worktree theo slug](/concepts/worktree-per-slug).
+- **`zenify release-report` chạy theo tag:** team đã bỏ nhánh `release<N>`, nên lệnh giờ nhận tag `vYYMMDD.n` (`zenify release-report v261104.0`) và ghi `<tag>.md`. Mỗi repo được tính từ tag liền trước tới tag đó, kể cả tag hotfix, nên tuần có hotfix ra nhiều báo cáo. Không truyền tag thì mỗi repo dùng tag mới nhất của nó. Repo không có tag có dòng "chưa có tag" thay vì lệnh thoát mà không báo gì. Bỏ ngày cắt nhánh và dòng "Không ship" khỏi báo cáo. Xem [Release và báo cáo](/guides/release).
+
 ## v0.51.1
 
 *2026-10-29*

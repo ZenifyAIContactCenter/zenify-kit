@@ -82,7 +82,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify pm](./zenify_pm) | Chọn đúng package manager JS của project (pnpm, yarn, npm, bun) rồi chạy nó, để không sinh thêm lockfile thứ hai. |
 | [zenify redis-read](./zenify_redis-read) | Chạy một lệnh Redis chỉ đọc qua credential broker. |
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
-| [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release từ lịch sử git của mọi repo trong workspace. |
+| [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release tag từ lịch sử git của mọi repo trong workspace. |
 | [zenify reviewer](./zenify_reviewer) | In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent. |
 | [zenify route-log](./zenify_route-log) | Xem các record routing model do skill ghi (số liệu plan từ znf:analyze), đếm theo site, model và gate. |
 | [zenify rules](./zenify_rules) | Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc. |
