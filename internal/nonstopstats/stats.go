@@ -44,11 +44,16 @@ type Line struct {
 	Tier      string
 }
 
-// Durations holds the per-id minutes summed from durations.log.
-type Durations struct {
-	Work   map[string]int
-	Review map[string]int
+// DurEntry is one run of durations.log; Date is the local date of its time.
+type DurEntry struct {
+	Date string
+	ID   string
+	Kind string
+	Ms   int
 }
+
+// Durations is the parsed durations.log, in file order.
+type Durations []DurEntry
 
 // Tiers counts the reviews of the week by tier.
 type Tiers struct {
@@ -154,10 +159,10 @@ func parseLine(raw string) (Line, bool) {
 	return l, true
 }
 
-// ParseDurations sums durations.log (`<ISO time> · <id> · work|review · <ms>`)
-// into minutes per id, rounded up. Any other non-blank line is malformed.
+// ParseDurations reads durations.log (`<ISO time> · <id> · work|review · <ms>`).
+// Any other non-blank line is malformed.
 func ParseDurations(text string) (Durations, int) {
-	ms := map[string]map[string]int{"work": {}, "review": {}}
+	var d Durations
 	malformed := 0
 	for _, raw := range strings.Split(text, "\n") {
 		raw = strings.TrimSpace(raw)
@@ -165,37 +170,52 @@ func ParseDurations(text string) (Durations, int) {
 			continue
 		}
 		f := strings.Split(raw, fieldSep)
-		n, err := 0, error(nil)
-		if len(f) == 4 {
-			_, err = time.Parse(time.RFC3339, f[0])
-			if err == nil {
-				n, err = strconv.Atoi(f[3])
-			}
-		}
-		if len(f) != 4 || err != nil || n <= 0 || ms[f[2]] == nil {
+		if len(f) != 4 || (f[2] != "work" && f[2] != "review") {
 			malformed++
 			continue
 		}
-		ms[f[2]][f[1]] += n
-	}
-	d := Durations{Work: map[string]int{}, Review: map[string]int{}}
-	for id, v := range ms["work"] {
-		d.Work[id] = (v + 59999) / 60000
-	}
-	for id, v := range ms["review"] {
-		d.Review[id] = (v + 59999) / 60000
+		at, err := time.Parse(time.RFC3339, f[0])
+		n, err2 := strconv.Atoi(f[3])
+		if err != nil || err2 != nil || n <= 0 {
+			malformed++
+			continue
+		}
+		d = append(d, DurEntry{Date: at.In(time.Local).Format(dateLayout), ID: f[1], Kind: f[2], Ms: n})
 	}
 	return d, malformed
 }
 
-// ApplyDurations makes the log win over the ledger columns, per id and kind.
+// ApplyDurations makes the log win over the ledger columns. A line (date d,
+// id x) takes the runs of x dated in (previous line of x, d], so an id reused
+// on another day does not collect the old runs; summed ms round up to minutes.
 func ApplyDurations(lines []Line, d Durations) {
-	for i := range lines {
-		if m, ok := d.Work[lines[i].ID]; ok {
-			lines[i].Minutes = m
-		}
-		if m, ok := d.Review[lines[i].ID]; ok {
-			lines[i].ReviewMin = m
+	byID := map[string][]int{}
+	for i, l := range lines {
+		byID[l.ID] = append(byID[l.ID], i)
+	}
+	for id, idx := range byID {
+		sort.SliceStable(idx, func(a, b int) bool { return lines[idx[a]].Date < lines[idx[b]].Date })
+		prev := ""
+		for _, i := range idx {
+			var work, review int
+			var hasWork, hasReview bool
+			for _, e := range d {
+				if e.ID != id || e.Date > lines[i].Date || e.Date <= prev {
+					continue
+				}
+				if e.Kind == "work" {
+					work, hasWork = work+e.Ms, true
+				} else {
+					review, hasReview = review+e.Ms, true
+				}
+			}
+			if hasWork {
+				lines[i].Minutes = (work + 59999) / 60000
+			}
+			if hasReview {
+				lines[i].ReviewMin = (review + 59999) / 60000
+			}
+			prev = lines[i].Date
 		}
 	}
 }
@@ -314,19 +334,26 @@ func Compute(lines []Line, malformed int, today string) Result {
 		inWeek := weekStart != "" && l.Date >= weekStart && l.Date <= today
 		if l.Date == today {
 			res.Today.IDs = append(res.Today.IDs, l.ID)
+		}
+		if inWeek {
+			weekDays[l.Date] = true
+		}
+		if act == "" {
+			continue // cancelled: excluded from every statistic
+		}
+		if l.Date == today {
 			res.Today.ReviewMinutes += l.ReviewMin
 		}
-		if l.Date <= today {
+		if l.Date <= today && l.Tier != "-" {
 			tg := tierGroups[l.Repo+" "+l.Kind]
 			if tg == nil {
-				tg = &tierGroup{tier: l.Tier, same: l.Tier != "-"}
+				tg = &tierGroup{tier: l.Tier, same: true}
 				tierGroups[l.Repo+" "+l.Kind] = tg
 			}
 			tg.n++
 			tg.same = tg.same && l.Tier == tg.tier
 		}
 		if inWeek {
-			weekDays[l.Date] = true
 			weekWork += l.Minutes
 			weekReview += l.ReviewMin
 			switch l.Tier {
@@ -337,9 +364,6 @@ func Compute(lines []Line, malformed int, today string) Result {
 			case "T3":
 				res.Tiers.T3++
 			}
-		}
-		if act == "" {
-			continue
 		}
 		g := groups[l.Repo+" "+l.Kind]
 		if g == nil {

@@ -201,37 +201,84 @@ func TestParseV2(t *testing.T) {
 
 func TestParseDurations(t *testing.T) {
 	text := strings.Join([]string{
-		"2026-10-28T09:00:00.000Z · t1 · work · 90000",
-		"2026-10-28T09:05:00.000Z · t1 · work · 60001",
-		"2026-10-28T09:06:00.000Z · t1 · review · 30000",
-		"2026-10-28T09:07:00.000Z · t2 · review · 120000",
+		"2026-10-28T12:00:00.000Z · t1 · work · 90000",
+		"2026-10-28T12:05:00.000Z · t1 · review · 30000",
 		"",
 		"garbage",
-		"2026-10-28T09:08:00.000Z · t3 · other · 5",
-		"2026-10-28T09:09:00.000Z · t3 · work · -5",
+		"2026-10-28T12:08:00.000Z · t3 · other · 5",
+		"2026-10-28T12:09:00.000Z · t3 · work · -5",
 		"not-a-time · t3 · work · 5",
 	}, "\n")
 	d, malformed := ParseDurations(text)
-	if malformed != 4 {
-		t.Errorf("malformed = %d, want 4", malformed)
+	if malformed != 4 || len(d) != 2 {
+		t.Fatalf("malformed=%d entries=%d, want 4 and 2", malformed, len(d))
 	}
-	// t1 work 150001 ms = 2.5 min -> 3; review 30000 ms -> 1; t2 review 2
-	if d.Work["t1"] != 3 || d.Review["t1"] != 1 || d.Review["t2"] != 2 || len(d.Work) != 1 {
-		t.Errorf("durations = %+v", d)
+	if d[0].ID != "t1" || d[0].Kind != "work" || d[0].Ms != 90000 || d[1].Kind != "review" {
+		t.Errorf("entries = %+v", d)
 	}
 }
 
 func TestApplyDurations(t *testing.T) {
-	lines := []Line{
-		{ID: "a", Minutes: 9, ReviewMin: 9},
-		{ID: "b", Minutes: 7, ReviewMin: 4},
+	at := func(day, id, kind string, ms int) string {
+		return fmt.Sprintf("%sT12:00:00.000Z · %s · %s · %d", day, id, kind, ms)
 	}
-	ApplyDurations(lines, Durations{Work: map[string]int{"a": 3}, Review: map[string]int{"a": 1}})
-	if lines[0].Minutes != 3 || lines[0].ReviewMin != 1 {
-		t.Errorf("log must win: %+v", lines[0])
+	dur := func(rows ...string) Durations {
+		d, mal := ParseDurations(strings.Join(rows, "\n"))
+		if mal != 0 {
+			t.Fatalf("malformed %d", mal)
+		}
+		return d
 	}
-	if lines[1].Minutes != 7 || lines[1].ReviewMin != 4 {
-		t.Errorf("no log keeps the columns: %+v", lines[1])
+	// the log wins; no log keeps the ledger columns; sums round up (150001 ms -> 3)
+	lines := []Line{{Date: "2026-10-28", ID: "a", Minutes: 9, ReviewMin: 9}, {Date: "2026-10-28", ID: "b", Minutes: 7, ReviewMin: 4}}
+	ApplyDurations(lines, dur(at("2026-10-28", "a", "work", 90000), at("2026-10-28", "a", "work", 60001), at("2026-10-28", "a", "review", 30000)))
+	if lines[0].Minutes != 3 || lines[0].ReviewMin != 1 || lines[1].Minutes != 7 || lines[1].ReviewMin != 4 {
+		t.Errorf("log/columns: %+v", lines)
+	}
+	// an id reused on two days: each line gets only its own window
+	lines = []Line{{Date: "2026-10-27", ID: "q1"}, {Date: "2026-10-28", ID: "q1"}}
+	ApplyDurations(lines, dur(at("2026-10-27", "q1", "work", 120000), at("2026-10-28", "q1", "work", 300000)))
+	if lines[0].Minutes != 2 || lines[1].Minutes != 5 {
+		t.Errorf("reused id: %+v", lines)
+	}
+	// a task whose runs span two days, line on the second: both days summed
+	lines = []Line{{Date: "2026-10-28", ID: "q2"}}
+	ApplyDurations(lines, dur(at("2026-10-27", "q2", "work", 120000), at("2026-10-28", "q2", "work", 180000)))
+	if lines[0].Minutes != 5 {
+		t.Errorf("spanning task: %+v", lines)
+	}
+	// runs after the line's date belong to no window
+	lines = []Line{{Date: "2026-10-27", ID: "q3", Minutes: 6}}
+	ApplyDurations(lines, dur(at("2026-10-28", "q3", "work", 120000)))
+	if lines[0].Minutes != 6 {
+		t.Errorf("later run must not apply: %+v", lines)
+	}
+}
+
+func TestComputeExcludesCancelled(t *testing.T) {
+	text := strings.Join([]string{
+		ln13("2026-10-28", "a", "r", "fix", "S", "S", "~2m", "~2m", "-", "T1"),
+		ln13("2026-10-28", "x", "r", "fix", "S", "-", "~8m", "~6m", "-", "T3"),
+	}, "\n")
+	lines, mal := Parse(text)
+	r := Compute(lines, mal, "2026-10-28")
+	if r.Today.ReviewMinutes != 2 || r.Tiers != (Tiers{T1: 1}) || r.Week.ReviewShare == nil || *r.Week.ReviewShare != 0.5 {
+		t.Errorf("cancelled must be excluded: %+v %+v", r.Today, r.Tiers)
+	}
+}
+
+func TestTierRuleSkipsUnrecordedTier(t *testing.T) {
+	rows := []string{
+		ln13("2026-10-20", "x0", "hub", "fix", "S", "S", "~1m", "-", "-", "T1"),
+		ln13("2026-10-20", "x1", "hub", "fix", "S", "S", "~1m", "-", "-", "T1"),
+		ln13("2026-10-20", "x2", "hub", "fix", "S", "S", "~1m", "-", "-", "T1"),
+		ln("2026-10-20", "v1", "hub", "fix", "S", "S", "~1m", 1),
+		ln13("2026-10-20", "c", "hub", "fix", "S", "-", "~1m", "-", "-", "T2"),
+	}
+	lines, mal := Parse(strings.Join(rows, "\n"))
+	got := Compute(lines, mal, "2026-10-28").Rules
+	if !reflect.DeepEqual(got, []string{"hub fix: " + RuleTier + " T1"}) {
+		t.Errorf("rules = %v", got)
 	}
 }
 
