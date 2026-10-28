@@ -12,8 +12,8 @@ function today(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-const row = (id: string, status: string, evidence = '-') =>
-  `${id} · kit · issue · #${id} · S · znf:fix · w-${id} · ${status} · ${evidence}`
+const row = (id: string, status: string, evidence = '-', issue = `#${id}`) =>
+  `${id} · kit · issue · ${issue} · S · znf:fix · w-${id} · ${status} · ${evidence}`
 
 function ledgerText(rows: string[], date = today()): string {
   return [`## 2026-01-01`, row('old', 'running'), '', `## ${date}`, ...rows].join('\n')
@@ -28,6 +28,8 @@ type World = {
   gitDir?: string
   // The ledger sits at the cwd's own path even inside a git checkout.
   isLocal?: boolean
+  // A pane id the engine keeps open when asked to close it (a tab that outlives the others).
+  keepOpen?: string
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
 }
 
@@ -58,7 +60,7 @@ function engine(on: any, world: World): Calls {
   })
   on('ui.close', (_: unknown, e: { id: string }) => {
     calls.close.push(e)
-    panes.splice(panes.findIndex(p => p.id === e.id), 1)
+    if (e.id !== world.keepOpen) panes.splice(panes.findIndex(p => p.id === e.id), 1)
     return { value: undefined }
   })
   on('ui.panes', () => ({
@@ -104,11 +106,20 @@ function engine(on: any, world: World): Calls {
   return calls
 }
 
-const pane = (bodyColumns = 44) =>
+const HUMAN = 'nonstop-human'
+const PROGRESS = 'nonstop-progress'
+const DONE = 'nonstop-done'
+const THREE = [
+  { id: HUMAN, title: 'Need Human', columns: 44 },
+  { id: PROGRESS, title: 'In Progress', columns: 44 },
+  { id: DONE, title: 'Done', columns: 44 },
+]
+
+const pane = (requestId: string, bodyColumns = 44) =>
   ({
     plugin: 'znf',
     component: 'Pane',
-    requestId: 'nonstop',
+    requestId,
     surface: 'terminal',
     props: {
       title: 'Nonstop',
@@ -120,8 +131,12 @@ const pane = (bodyColumns = 44) =>
     },
   }) as const
 
-const texts = async (ui: { findAll: (q: { type: string }) => Promise<{ text?: string }[]> }) =>
-  (await ui.findAll({ type: 'Text' })).map(t => t.text ?? '')
+// Text and Link cells in document order: a PR row is a Link (the ref) then a Text (the status).
+const texts = async (ui: { findAll: (q: { type?: string }) => Promise<{ type: string; text?: string }[]> }) =>
+  (await ui.findAll({})).filter(e => e.type === 'Text' || e.type === 'Link').map(e => e.text ?? '')
+
+const links = async (ui: { findAll: (q: { type: string }) => Promise<{ props: Record<string, unknown> }[]> }) =>
+  (await ui.findAll({ type: 'Link' })).map(e => e.props.href)
 
 const ghRuns = (calls: Calls) => calls.run.filter(a => a[0] === 'gh')
 
@@ -134,12 +149,12 @@ test('SC-7: only a nonstop prompt or Skill call opens the pane', async ($, on) =
 
   await $.prompt.submit({ text: '/znf:nonstop continue', command: { name: 'znf:nonstop', args: 'continue' } })
   await clock.settle()
-  expect(calls.open).toEqual([{ id: 'nonstop', title: 'Nonstop', columns: 44 }])
+  expect(calls.open).toEqual(THREE)
 
   await $.tool.call({ tool: 'Skill', skill: 'znf:nonstop' })
   await clock.settle()
-  expect(calls.open).toHaveLength(2)
-  expect(calls.open[1]).toMatchObject({ id: 'nonstop' })
+  expect(calls.open).toHaveLength(6)
+  expect(calls.open[3]).toMatchObject({ id: HUMAN })
 })
 
 test('SC-5: a ledger edit shows after the 2s tick; an unchanged mtime is not re-read', async ($, on) => {
@@ -149,7 +164,7 @@ test('SC-5: a ledger edit shows after the 2s tick; an unchanged mtime is not re-
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
 
-  const ui = await $.ui.mount(pane())
+  const ui = await $.ui.mount(pane(PROGRESS))
   expect((await ui.find({ type: 'Text', text: /t2/ }))?.text).toContain('t2')
   expect(await ui.find({ type: 'Text', text: /t5/ })).toBeUndefined()
 
@@ -178,8 +193,9 @@ test('SC-6: the 60s tick runs gh pr view per URL; [c] copies the merge command',
     [URL_A, URL_B].map(u => ['gh', 'pr', 'view', u, '--json', GH_FIELDS]).sort(),
   )
 
-  const ui = await $.ui.mount(pane())
-  expect((await ui.find({ type: 'Text', text: /Z\/kit#238/ }))?.text).toContain('CLEAN')
+  const ui = await $.ui.mount(pane(HUMAN))
+  expect(await texts(ui)).toEqual(expect.arrayContaining(['Z/kit#238', ' CLEAN']))
+  expect(await links(ui)).toContain(URL_A)
   await ui.press({ key: URL_A })
   expect(calls.copy).toEqual(['gh pr merge -R Z/kit 238 --merge'])
   expect(calls.toast).toEqual(['đã copy lệnh merge'])
@@ -199,7 +215,7 @@ test('FR-1.1: no ledger on either path shows the empty state and clears the stat
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
-  const ui = await $.ui.mount(pane())
+  const ui = await $.ui.mount(pane(PROGRESS))
   expect(await texts(ui)).toEqual(['chưa có ledger nonstop'])
   expect(calls.status.at(-1)).toBeUndefined()
   expect(calls.status.length).toBeGreaterThan(0)
@@ -211,7 +227,7 @@ test('FR-1.2: a read error other than missing is shown, not swallowed', async ($
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
-  const ui = await $.ui.mount(pane())
+  const ui = await $.ui.mount(pane(PROGRESS))
   expect((await ui.find({ type: 'Text', text: /EACCES/ }))?.text).toContain('EACCES')
   await ui.unmount()
 })
@@ -224,7 +240,7 @@ test('FR-1.1: from a worktree the ledger is found in the main checkout', async (
   expect(calls.stat[0]).toBe(LOCAL)
   expect(calls.stat).toContain('/w/repo/.znf/nonstop/progress.md')
   expect(calls.run.find(a => a[0] === 'git')).toEqual(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'])
-  const ui = await $.ui.mount(pane())
+  const ui = await $.ui.mount(pane(PROGRESS))
   expect((await ui.find({ type: 'Text', text: /t2/ }))?.text).toContain('t2')
   await ui.unmount()
 })
@@ -264,9 +280,15 @@ test('FR-3.2/FR-3.4: sections in order, every line cut to bodyColumns', async ($
   const long = 'x'.repeat(80)
   const world: World = {
     file: {
-      text: ledgerText([...BASE, row('t6', 'done', URL_A), `Needs you: t9 — ${long}`, 'this line is not a task']),
+      text: ledgerText([
+        ...BASE,
+        row('t6', 'running', URL_B),
+        `Needs you: t9 — ${long}`,
+        'this line is not a task',
+      ]),
       mtimeMs: 1,
     },
+    gh: async () => ({ exitCode: 0, stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'BLOCKED', statusCheckRollup: [] }), stderr: '' }),
   }
   engine(on, world)
   const clock = mock.clock(on)
@@ -274,17 +296,23 @@ test('FR-3.2/FR-3.4: sections in order, every line cut to bodyColumns', async ($
   await clock.settle()
   await clock.advance(60000)
 
-  const ui = await $.ui.mount(pane(20))
+  const ui = await $.ui.mount(pane(PROGRESS, 20))
   const all = await texts(ui)
-  const heads = ['RUNNING', 'CẦN ANH', 'PR', 'done 2 · queued 1 · blocked 1'.slice(0, 19) + '…']
+  const heads = ['RUNNING', 'QUEUED', 'PR', 'done 1 · queued 1 · blocked 1'.slice(0, 19) + '…']
   const at = heads.map(h => all.indexOf(h))
   expect(at.every(i => i >= 0)).toBe(true)
   expect([...at].sort((a, b) => a - b)).toEqual(at)
   expect(all.every(t => t.length <= 20)).toBe(true)
-  expect(all.some(t => t.startsWith('t9') && t.endsWith('…'))).toBe(true)
   expect(all.some(t => t.startsWith('⚠ 1'))).toBe(true)
   expect(all.some(t => t.startsWith('this line'))).toBe(true)
   await ui.unmount()
+
+  const human = await $.ui.mount(pane(HUMAN, 20))
+  const needs = await texts(human)
+  expect(needs[0]).toBe('CẦN ANH')
+  expect(needs.some(t => t.startsWith('t9') && t.endsWith('…'))).toBe(true)
+  expect(needs.every(t => t.length <= 20)).toBe(true)
+  await human.unmount()
 })
 
 test('FR-3.2: an empty section is hidden', async ($, on) => {
@@ -292,13 +320,83 @@ test('FR-3.2: an empty section is hidden', async ($, on) => {
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
-  const ui = await $.ui.mount(pane())
+  const ui = await $.ui.mount(pane(PROGRESS))
   const all = await texts(ui)
   expect(all).not.toContain('RUNNING')
-  expect(all).not.toContain('CẦN ANH')
   expect(all).not.toContain('PR')
+  expect(all).toContain('QUEUED')
   expect(all).toContain('done 1 · queued 1 · blocked 0')
   await ui.unmount()
+})
+
+test('FR-3.2: each tab shows only its own content', async ($, on) => {
+  const URL_C = 'https://github.com/Z/web/pull/7'
+  const view = (state: string, merge = 'UNKNOWN', checks: unknown[] = []) => ({
+    exitCode: 0,
+    stdout: JSON.stringify({ state, mergeStateStatus: merge, statusCheckRollup: checks }),
+    stderr: '',
+  })
+  const world: World = {
+    file: {
+      text: ledgerText([
+        row('t1', 'running', URL_B, 'Z/be#12'),
+        row('t2', 'queued', URL_C),
+        row('t3', 'blocked', 'chọn A/B?'),
+        row('t4', 'done', URL_A),
+        'Needs you: t9 — duyệt spec?',
+      ]),
+      mtimeMs: 1,
+    },
+    gh: async url =>
+      url === URL_A
+        ? view('MERGED')
+        : url === URL_C
+          ? view('OPEN', 'BLOCKED', [{ name: 'lint', conclusion: 'FAILURE', status: 'COMPLETED' }])
+          : view('OPEN', 'CLEAN'),
+  }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+
+  const has = (all: string[], re: RegExp) => all.some(t => re.test(t))
+  const human = await $.ui.mount(pane(HUMAN))
+  const h = await texts(human)
+  expect(has(h, /t9 duyệt spec\?/)).toBe(true)
+  expect(has(h, /t3 chọn A\/B\?/)).toBe(true)
+  expect(h).toEqual(expect.arrayContaining(['Z/hub#9', ' CLEAN']))
+  expect(await links(human)).toEqual([URL_B])
+  expect(has(h, /^t1/)).toBe(false)
+  await human.unmount()
+
+  const progress = await $.ui.mount(pane(PROGRESS))
+  const p = await texts(progress)
+  expect(has(p, /^t1/)).toBe(true)
+  expect(p).toContain('Z/be#12')
+  expect(await links(progress)).toEqual(expect.arrayContaining(['https://github.com/Z/be/issues/12', URL_C]))
+  expect(has(p, /^t2/)).toBe(true)
+  expect(has(p, /CI đỏ \(lint\)/)).toBe(true)
+  expect(p).toContain('done 1 · queued 1 · blocked 1')
+  expect(has(p, /Z\/hub#9/)).toBe(false)
+  await progress.unmount()
+
+  const done = await $.ui.mount(pane(DONE))
+  const d = await texts(done)
+  expect(has(d, /^t4/)).toBe(true)
+  expect(d).toEqual(expect.arrayContaining(['Z/kit#238', ' MERGED']))
+  await done.unmount()
+})
+
+test('FR-3.2: an empty tab shows trống', async ($, on) => {
+  engine(on, { file: { text: ledgerText([row('t1', 'running')]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  for (const id of [HUMAN, DONE]) {
+    const ui = await $.ui.mount(pane(id))
+    expect(await texts(ui)).toEqual(['trống'])
+    await ui.unmount()
+  }
 })
 
 test('FR-1.2: a normal session polls nothing', async ($, on) => {
@@ -317,7 +415,7 @@ test('FR-3.1: session.start reopens the pane on a live day', async ($, on) => {
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
   await clock.settle()
-  expect(calls.open).toEqual([{ id: 'nonstop', title: 'Nonstop', columns: 44 }])
+  expect(calls.open).toEqual(THREE)
 })
 
 test('FR-3.1: session.start stays closed when today has no running task', async ($, on) => {
@@ -335,7 +433,7 @@ test('FR-1.2: the nonstop-pane command toggles; closing stops the timers', async
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
   await clock.settle()
   await $.command.run({ command: 'nonstop-pane', args: '' })
-  expect(calls.close).toHaveLength(1)
+  expect(calls.close.map(c => (c as { id: string }).id)).toEqual(THREE.map(p => p.id))
 
   const reads = calls.read.length
   const gh = ghRuns(calls).length
@@ -346,7 +444,22 @@ test('FR-1.2: the nonstop-pane command toggles; closing stops the timers', async
 
   await $.command.run({ command: 'nonstop-pane', args: '' })
   await clock.settle()
-  expect(calls.open).toHaveLength(2)
+  expect(calls.open).toHaveLength(6)
+})
+
+test('FR-1.2: a tab still open keeps the timers running', async ($, on) => {
+  const world: World = { file: { text: ledgerText([row('t1', 'running')]), mtimeMs: 1 }, keepOpen: DONE }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await $.command.run({ command: 'nonstop-pane', args: '' })
+  expect(calls.close).toHaveLength(3)
+
+  world.file = { text: ledgerText([row('t1', 'running'), row('t2', 'running')]), mtimeMs: 2 }
+  const reads = calls.read.length
+  await clock.advance(2000)
+  expect(calls.read.length).toBeGreaterThan(reads)
 })
 
 test('FR-2.2: opening the pane polls its PRs at once', async ($, on) => {
@@ -355,8 +468,8 @@ test('FR-2.2: opening the pane polls its PRs at once', async ($, on) => {
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
   expect(ghRuns(calls)).toEqual([['gh', 'pr', 'view', URL_A, '--json', GH_FIELDS]])
-  const ui = await $.ui.mount(pane())
-  expect((await ui.find({ type: 'Text', text: /Z\/kit#238/ }))?.text).toContain('CLEAN')
+  const ui = await $.ui.mount(pane(HUMAN))
+  expect(await texts(ui)).toEqual(expect.arrayContaining(['Z/kit#238', ' CLEAN']))
   await ui.unmount()
 })
 
@@ -372,12 +485,12 @@ test('FR-1.1: a local ledger created after session start is found', async ($, on
   world.isLocal = true
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
-  const ui = await $.ui.mount(pane())
+  const ui = await $.ui.mount(pane(PROGRESS))
   expect((await ui.find({ type: 'Text', text: /t2/ }))?.text).toContain('t2')
   await ui.unmount()
 })
 
-test('a merged or closed PR leaves the PR section, is counted, and is not polled again', async ($, on) => {
+test('a settled PR appears only in Done and is not polled again', async ($, on) => {
   const URL_C = 'https://github.com/Z/web/pull/7'
   const view = (state: string, merge = 'UNKNOWN') => ({
     exitCode: 0,
@@ -386,7 +499,7 @@ test('a merged or closed PR leaves the PR section, is counted, and is not polled
   })
   const world: World = {
     file: { text: ledgerText([row('t1', 'done', URL_A), row('t2', 'running', URL_B), row('t3', 'done', URL_C)]), mtimeMs: 1 },
-    gh: async url => (url === URL_A ? view('MERGED') : url === URL_C ? view('CLOSED') : view('OPEN', 'CLEAN')),
+    gh: async url => (url === URL_A ? view('MERGED') : url === URL_C ? view('CLOSED') : view('OPEN', 'BLOCKED')),
   }
   const calls = engine(on, world)
   const clock = mock.clock(on)
@@ -394,13 +507,18 @@ test('a merged or closed PR leaves the PR section, is counted, and is not polled
   await clock.settle()
   expect(ghRuns(calls)).toHaveLength(3)
 
-  const ui = await $.ui.mount(pane())
-  const shown = await texts(ui)
-  expect(shown.some(t => t.includes('Z/kit#238'))).toBe(false)
-  expect(shown.some(t => t.includes('Z/web#7'))).toBe(false)
-  expect(shown.some(t => t.includes('Z/hub#9') && t.includes('CLEAN'))).toBe(true)
-  expect(shown).toContain('✓ 1 PR đã merge')
-  await ui.unmount()
+  const progress = await $.ui.mount(pane(PROGRESS))
+  const p = await texts(progress)
+  expect(p.some(t => t.includes('Z/kit#238') || t.includes('Z/web#7'))).toBe(false)
+  expect(p).toEqual(expect.arrayContaining(['Z/hub#9', ' BLOCKED']))
+  await progress.unmount()
+
+  const done = await $.ui.mount(pane(DONE))
+  const d = await texts(done)
+  expect(d).toEqual(expect.arrayContaining(['Z/kit#238', ' MERGED', 'Z/web#7', ' CLOSED']))
+  expect(await links(done)).toEqual([URL_A, URL_C])
+  expect(d.some(t => t.includes('Z/hub#9'))).toBe(false)
+  await done.unmount()
 
   await clock.advance(60000)
   expect(ghRuns(calls).slice(3).map(a => a[3])).toEqual([URL_B])

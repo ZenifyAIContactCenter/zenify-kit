@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { LedgerTask } from './ledger'
-import { isMergeable, mergeCommand, prLabel, prRef, prUrls } from './pr'
+import { isMergeable, issueUrl, mergeCommand, prLabel, prRef, prUrls } from './pr'
 
 const view = (o: object) => ({ exitCode: 0, stdout: JSON.stringify(o), stderr: '' })
 const run = (name: string, conclusion: string, status = 'COMPLETED') => ({
@@ -43,4 +43,10 @@ test('prUrls dedupes and keeps order', async () => {
     t('https://github.com/Z/kit/pull/238'),
     t('hub#1075 and https://github.com/Z/be/pull/7'),
   ])).toEqual(['https://github.com/Z/kit/pull/238', 'https://github.com/Z/be/pull/7'])
+})
+
+test('issueUrl turns owner/repo#N into an issue URL and rejects the rest', () => {
+  expect(issueUrl('Z/be#12')).toBe('https://github.com/Z/be/issues/12')
+  expect(issueUrl('-')).toBeUndefined()
+  expect(issueUrl('#12')).toBeUndefined()
 })

@@ -62,3 +62,9 @@ export function prRef(url: string): string {
   const { repo, n } = parseUrl(url)
   return `${repo}#${n}`
 }
+
+// `owner/repo#N` (the ledger's issue field) -> its GitHub issue URL; anything else has none.
+export function issueUrl(issue: string): string | undefined {
+  const m = /^([^/\s#]+\/[^/\s#]+)#(\d+)$/.exec(issue)
+  return m ? `https://github.com/${m[1]}/issues/${m[2]}` : undefined
+}
