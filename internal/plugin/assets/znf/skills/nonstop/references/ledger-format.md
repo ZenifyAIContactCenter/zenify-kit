@@ -11,6 +11,8 @@ Exactly nine fields separated by ` · `, one task per line:
 - No tables, no `###` sub-headings inside a day section.
 - A PR is always the full URL (`https://github.com/<org>/<repo>/pull/<n>`), never `#n`.
 - Use `-` for an empty field.
+- Keep all 9 fields on one line; a wrapped line is malformed.
+- Never write ` · ` inside a field (a 10th field makes the line malformed); use `;` or `,`.
 
 ## Questions for the user
 
