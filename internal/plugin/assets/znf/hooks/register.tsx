@@ -192,7 +192,7 @@ async function pressMerge($: $, url: string): Promise<void> {
     // `until` may be stale: a merge that finished meanwhile cleared the arming. Confirm it
     // still stands, then clear it, before gh runs.
     const still = (await read($, confirming))[url]
-    if (still !== until || now >= until) return
+    if (still !== until || (await $.clock.now()) >= until) return
     await update($, confirming, map => omit(map, url))
     await update($, merging, urls => [...urls, url])
     const out = await $.process.run(mergeArgv(url), { timeoutMs: MERGE_TIMEOUT_MS })
@@ -281,9 +281,9 @@ export const register: Register = on => {
     stopTimers()
     ledgerFile = undefined
     lastMtime = undefined
-    // A reload keeps shaped state but drops timers and the in-flight set: start the merge UI clean.
-    mergeInFlight.clear()
-    await update($, merging, () => [])
+    // A reload keeps shaped state but not the in-flight set; a plain session start (resume,
+    // /clear, compact) keeps both, so `merging` is reset to what is really running.
+    await update($, merging, () => [...mergeInFlight])
     await update($, confirming, () => ({}))
     await $.command.register({
       name: 'nonstop-pane',

@@ -936,22 +936,30 @@ test('FR-2.7: a press that read the arming before another merge finished does no
   await ui.unmount()
 })
 
-test('FR-2.7: a session start clears a merging state left by an earlier load', async ($, on) => {
+test('FR-2.7: a session start while a merge runs keeps the lock and the merging label', async ($, on) => {
   let release: () => void = () => {}
   const holdMerge = new Promise<void>(r => (release = r))
-  await mergeWorld(on, { holdMerge })
+  const { calls } = await mergeWorld(on, { holdMerge })
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
   const ui = await $.ui.mount(pane(HUMAN))
   await ui.press({ key: `merge:${URL_A}` })
-  void ui.press({ key: `merge:${URL_A}` })
+  const merge = ui.press({ key: `merge:${URL_A}` })
   await clock.settle()
   expect((await mergeButton(ui))?.props.label).toBe('đang merge…')
+
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
   await clock.settle()
-  expect((await mergeButton(ui))?.props.label).toBe('merge')
-  release()
+  expect((await mergeButton(ui))?.props.label).toBe('đang merge…')
+  await ui.press({ key: `merge:${URL_A}` })
+  await ui.press({ key: `merge:${URL_A}` })
   await clock.settle()
+  expect(calls.merges).toEqual([MERGE_ARGV])
+
+  release()
+  await merge
+  await clock.settle()
+  expect(calls.merges).toEqual([MERGE_ARGV])
   await ui.unmount()
 })
