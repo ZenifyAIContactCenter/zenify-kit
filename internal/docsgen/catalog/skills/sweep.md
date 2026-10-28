@@ -8,7 +8,7 @@ Khi công việc đã merge xong và bạn muốn workspace trở lại sạch s
 ## Cách hoạt động
 
 1. Skill tìm mọi worktree cùng một slug của task, trên mọi repo mà task đó đã chạm tới, không chỉ repo hiện tại.
-2. Với mỗi repo, skill kiểm xem đã đến lúc dọn hay chưa: nhánh chưa push thì cần `/znf:ship` trước, đã push nhưng PR chưa merge thì việc merge là của bạn nên skill chỉ báo cáo rồi dừng, còn nếu là một hotfix mới merge vào nhánh release mà chưa đồng bộ ngược về nhánh phát triển chung, skill dừng lại vì dọn lúc này sẽ mất luôn bản sửa đó.
+2. Với mỗi repo, skill kiểm xem đã đến lúc dọn hay chưa: nhánh chưa push thì cần `/znf:ship` trước, đã push nhưng PR chưa merge thì việc merge là của bạn nên skill chỉ báo cáo rồi dừng, còn nếu là một hotfix đã merge vào base hotfix mà commit của nó chưa có trong nhánh phát triển chung, skill dừng lại vì dọn lúc này sẽ mất luôn bản sửa đó.
 3. Chỉ khi đã đến lúc, skill mới dọn: dừng dev server của worktree đó, đóng workspace terminal nếu có, và xoá worktree cùng branch đã merge.
 4. Báo cáo cuối liệt kê rõ những gì đã dọn và những gì còn giữ lại kèm lý do — phần "còn giữ lại" mới là phần cần bạn để ý.
 

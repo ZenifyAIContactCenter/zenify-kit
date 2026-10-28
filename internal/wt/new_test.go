@@ -275,3 +275,32 @@ func TestTakenPorts_SkipsStaleEntries(t *testing.T) {
 		t.Fatalf("taken = %v, want 3201+3203 only", got)
 	}
 }
+
+func TestRunNew_HotfixRejectsRetiredReleaseLatest(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	writeWorktreeJSON(t, root, `{"abbrev":"ccbe","user":"namph","portRange":[3200,3249],"deps":"install","hotfix":{"baseStrategy":"release-latest"}}`)
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	o := baseOpts(root, g)
+	o.Type = "hotfix"
+	if err := RunNew(o); err == nil || !strings.Contains(err.Error(), "release-latest") {
+		t.Fatalf("hotfix with release-latest must fail instead of branching from baseRef, got %v", err)
+	}
+}
+
+// A hotfix with no hotfixBaseRef falls back to baseRef and says so on stderr,
+// so the user sees which ref production is being patched from.
+func TestRunNew_HotfixWithoutRefWarns(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	writeWorktreeJSON(t, root, `{"abbrev":"ccbe","user":"namph","baseRef":"origin/staging","portRange":[3200,3249],"deps":"install","hotfix":{"baseStrategy":"staging"}}`)
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	var errb bytes.Buffer
+	o := baseOpts(root, g)
+	o.Type = "hotfix"
+	o.Stderr = &errb
+	_ = RunNew(o)
+	if !strings.Contains(errb.String(), "no hotfixBaseRef declared — branching this hotfix from origin/staging") {
+		t.Fatalf("expected fallback warning on stderr, got %q", errb.String())
+	}
+}

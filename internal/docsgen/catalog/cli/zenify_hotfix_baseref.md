@@ -3,19 +3,19 @@ summary: In base ref mà hotfix của một repo sẽ xuất phát, theo chiến
 ---
 ## Khi nào dùng
 
-Trước khi mở worktree hotfix, để xác nhận release đích. Workflow `/znf:hotfix` chạy lệnh này sau khi fetch.
+Trước khi mở worktree hotfix, để xác nhận base mà production đang chạy. Workflow `/znf:hotfix` chạy lệnh này sau khi fetch.
 
 ## Kết quả
 
-Lệnh đọc mục `hotfix.baseStrategy` trong `.claude/worktree.json` của repo và in một ref:
+Lệnh đọc `.claude/worktree.json` của repo và in một ref. `zenify wt new --type hotfix` dùng đúng hàm resolve này, nên hai lệnh luôn ra cùng một kết quả.
 
-| Chiến lược | Ref in ra |
+| Chiến lược (`hotfix.baseStrategy`) | Ref in ra |
 |---|---|
-| `release-latest` | `origin/release<N>` với N lớn nhất trong các branch remote |
-| `custom` | Giá trị `hotfixBaseRef` trong file |
-| `staging`, `standalone` hoặc không khai | `origin/staging` |
+| `custom` | Giá trị `hotfixBaseRef` |
+| `staging`, `standalone` hoặc không khai | `hotfixBaseRef` nếu có, không thì `baseRef` của repo |
+| `release-latest` | Báo lỗi: chiến lược này đã bỏ, khai `custom` kèm `hotfixBaseRef` |
 
-Với `custom` mà thiếu `hotfixBaseRef`, hoặc `release-latest` mà repo không có branch `release*`, lệnh báo lỗi và không in ref.
+Với `custom` mà thiếu `hotfixBaseRef`, `release-latest`, hoặc một chiến lược lạ, lệnh báo lỗi và không in ref. `release-latest` bị bỏ vì nó đoán nhánh `release<N>` lớn nhất: khi team thôi cắt nhánh release, nhánh lớn nhất vẫn còn trên remote và trông như bản mới nhất dù đã cũ nhiều tuần.
 
 ## Ví dụ
 
@@ -26,4 +26,4 @@ zenify hotfix baseref repos/contact-center-be
 
 ## Lưu ý
 
-Fetch trước khi chạy. Danh sách branch remote cũ có thể trả về release đã bị thay. Xem thêm [Base ref và port](/concepts/base-ref-and-ports).
+Fetch trước khi chạy, để ref in ra khớp với remote. Xem thêm [Base ref và port](/concepts/base-ref-and-ports).
