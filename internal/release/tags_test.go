@@ -88,17 +88,24 @@ func TestBuildByTagRealRepos(t *testing.T) {
 	git("tag", "v261104.0")
 	bare, git2 := gitRepo(t)
 	git2("commit", "-q", "--allow-empty", "-m", "init")
+	// old: its newest tag is older than the workspace's newest → omitted from the default report.
+	old, git3 := gitRepo(t)
+	git3("commit", "-q", "--allow-empty", "-m", "feat(o): old weekly")
+	git3("tag", "v261028.0")
+	git3("commit", "-q", "--allow-empty", "-m", "fix(o): old hotfix")
+	git3("tag", "v261028.2")
 
-	dirs := map[string]string{"be": be, "bare": bare}
+	dirs := map[string]string{"be": be, "bare": bare, "old": old}
 	resolve := func(n string) (string, bool) { d, ok := dirs[n]; return d, ok }
 	none := func(string) []string { return nil }
 	noSpecs := func(string) []SpecMeta { return nil }
 
-	rep := Build(gitx.ExecRunner(), resolve, []string{"be", "bare"}, "", none, noSpecs)
+	rep := Build(gitx.ExecRunner(), resolve, []string{"be", "old", "bare"}, "", none, noSpecs)
 	if rep.Tag != "v261104.0" {
 		t.Fatalf("report tag = %q, want v261104.0", rep.Tag)
 	}
-	if len(rep.Repos) != 2 {
+	// default = newest workspace tag; "old" does not carry it → omitted (no row), "bare" keeps its note.
+	if len(rep.Repos) != 2 || rep.Repos[0].Name != "be" || rep.Repos[1].Name != "bare" {
 		t.Fatalf("repos = %+v", rep.Repos)
 	}
 	r0 := rep.Repos[0]
@@ -116,6 +123,12 @@ func TestBuildByTagRealRepos(t *testing.T) {
 	rep = Build(gitx.ExecRunner(), resolve, []string{"be"}, "v261028.2", none, noSpecs)
 	if rep.Tag != "v261028.2" || len(rep.Repos[0].Commits) != 1 || rep.Repos[0].Commits[0].Subject != "fix(b): hotfix midweek" {
 		t.Fatalf("hotfix report = %+v", rep.Repos[0])
+	}
+
+	// Explicit tag: a repo that does not carry it keeps its note.
+	rep = Build(gitx.ExecRunner(), resolve, []string{"old"}, "v261104.0", none, noSpecs)
+	if len(rep.Repos) != 1 || rep.Repos[0].Err != "chưa có tag v261104.0" { //znf:allow-lang
+		t.Fatalf("explicit mode must keep the missing-tag row: %+v", rep.Repos)
 	}
 
 	// Explicit tag a repo does not carry → note, not a silent skip.

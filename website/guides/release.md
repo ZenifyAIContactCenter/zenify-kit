@@ -59,7 +59,7 @@ Thiếu `--slug` thì lệnh bỏ qua và không chặn ship. Commit lỗi cũng
 zenify release-report v261104.0
 ```
 
-Mỗi repo được tính trên khoảng từ tag liền trước tới tag bạn truyền, kể cả tag hotfix: nếu giữa tuần có `v261028.2` thì báo cáo `v261104.0` bắt đầu từ `v261028.2`, nên một tuần có hotfix ra nhiều file báo cáo. Không truyền tag, mỗi repo dùng tag mới nhất của nó và file mang tên tag mới nhất trong số đó. Repo không có tag, hoặc không có tag bạn truyền, có dòng "chưa có tag" trong báo cáo thay vì bị bỏ qua. Không repo nào có tag thì lệnh báo ra stderr, không ghi file và kết thúc bình thường.
+Mỗi repo được tính trên khoảng từ tag liền trước tới tag bạn truyền, kể cả tag hotfix: nếu giữa tuần có `v261028.2` thì báo cáo `v261104.0` bắt đầu từ `v261028.2`, nên một tuần có hotfix ra nhiều file báo cáo. Không truyền tag, lệnh lấy tag mới nhất trong cả workspace và chỉ báo cáo các repo mang tag đó: nếu hotfix chỉ tag `be` thành `v261104.1` thì báo cáo `v261104.1.md` chỉ có `be`. Truyền tag thì repo không mang tag đó có dòng "chưa có tag" trong báo cáo. Repo không có tag release nào luôn có dòng "chưa có tag" thay vì bị bỏ qua. Không repo nào có tag thì lệnh báo ra stderr, không ghi file và kết thúc bình thường.
 
 ## Kết quả
 

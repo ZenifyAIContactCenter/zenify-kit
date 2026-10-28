@@ -20,7 +20,7 @@ Sau khi đánh tag release `vYYMMDD.n` trên `main` (bản tuần hoặc hotfix)
 
 ## Kết quả
 
-Lệnh chỉ đọc git và ghi một file markdown `<tag>.md` (ví dụ `v261104.0.md`) vào thư mục releases của knowledge store, rồi in đường dẫn file. Mỗi repo được tính trên khoảng từ tag liền trước tới tag đó, kể cả tag hotfix: báo cáo `v261104.0` bắt đầu từ `v261028.2` nếu giữa tuần có hotfix, nên một tuần có hotfix ra nhiều file. Không truyền tag thì mỗi repo dùng tag mới nhất của nó, và file mang tên tag mới nhất trong số đó. Repo không có tag nào, hoặc không có tag được truyền, có dòng "chưa có tag" trong báo cáo. Không repo nào có tag thì lệnh báo ra stderr, không ghi file và kết thúc bình thường. Tag sai dạng `vYYMMDD.n` thì lệnh báo lỗi.
+Lệnh chỉ đọc git và ghi một file markdown `<tag>.md` (ví dụ `v261104.0.md`) vào thư mục releases của knowledge store, rồi in đường dẫn file. Mỗi repo được tính trên khoảng từ tag liền trước tới tag đó, kể cả tag hotfix: báo cáo `v261104.0` bắt đầu từ `v261028.2` nếu giữa tuần có hotfix, nên một tuần có hotfix ra nhiều file. Không truyền tag thì lệnh lấy tag mới nhất trong cả workspace và chỉ báo cáo các repo mang tag đó; repo không mang tag đó bị bỏ khỏi báo cáo. Truyền tag thì repo không mang tag đó có dòng "chưa có tag" trong báo cáo. Repo không có tag release nào luôn có dòng "chưa có tag". Không repo nào có tag thì lệnh báo ra stderr, không ghi file và kết thúc bình thường. Tag sai dạng `vYYMMDD.n` thì lệnh báo lỗi.
 
 Mỗi dòng trong báo cáo lấy metadata từ commit ghi chú của `zenify release-note`. Thay đổi có trong release nhưng chưa có trên `staging` được đánh dấu là regression.
 

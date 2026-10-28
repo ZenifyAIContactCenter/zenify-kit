@@ -71,8 +71,8 @@ func TestChangedFiles(t *testing.T) {
 }
 
 func TestFetchPropagatesError(t *testing.T) {
-	f := fakeRunner{err: map[string]string{"fetch origin release84 staging": "network down"}}
-	if err := Fetch(f, "/x", "release84", "staging"); err == nil {
+	f := fakeRunner{err: map[string]string{"fetch origin --tags": "network down"}}
+	if err := Fetch(f, "/x", "--tags"); err == nil {
 		t.Fatal("expected fetch error")
 	}
 }

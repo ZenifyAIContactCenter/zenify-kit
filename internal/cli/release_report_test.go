@@ -133,10 +133,14 @@ func TestRunReleaseReportByTag(t *testing.T) { //znf:allow-lang
 		{"feat(c): next week", "v261104.0"},
 	})
 	initTaggedRepo(t, filepath.Join(ws, "bare"), [][2]string{{"chore: init", ""}})
+	initTaggedRepo(t, filepath.Join(ws, "old"), [][2]string{
+		{"feat(o): old weekly", "v261028.0"},
+		{"fix(o): old hotfix", "v261028.2"},
+	})
 	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(ws, ".zenify", "release-repos.txt"), []byte("be\nbare\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "release-repos.txt"), []byte("be\nold\nbare\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer
@@ -153,9 +157,9 @@ func TestRunReleaseReportByTag(t *testing.T) { //znf:allow-lang
 			t.Errorf("report missing %q:\n%s", want, rep)
 		}
 	}
-	for _, notWant := range []string{"weekly one", "hotfix midweek"} {
+	for _, notWant := range []string{"weekly one", "hotfix midweek", "## old", "old hotfix"} {
 		if strings.Contains(rep, notWant) {
-			t.Errorf("commit %q is before v261028.2 and must not be in the report:\n%s", notWant, rep)
+			t.Errorf("commit %q is outside v261028.2..v261104.0 and must not be in the report:\n%s", notWant, rep)
 		}
 	}
 }
@@ -173,5 +177,35 @@ func TestRunReleaseReportNoTagAnywhere(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "chưa có tag") { //znf:allow-lang
 		t.Errorf("stderr must say no tag: %q", errb.String())
+	}
+}
+
+// recordRunner records every git call and returns empty output.
+type recordRunner struct{ calls *[][]string }
+
+func (r recordRunner) Run(dir string, args ...string) ([]byte, error) {
+	*r.calls = append(*r.calls, args)
+	return nil, nil
+}
+
+// The fetch must ask for tags only: naming a branch (staging) aborts the whole fetch in a repo
+// that lacks it, and the tags never arrive.
+func TestRunReleaseReportFetchesTagsOnly(t *testing.T) {
+	ws := t.TempDir()
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(ws, "kit", ".git"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	var calls [][]string
+	var out, errb bytes.Buffer
+	_ = runReleaseReport(ws, "", false, "", false, recordRunner{&calls}, &out, &errb)
+	var fetches [][]string
+	for _, c := range calls {
+		if len(c) > 0 && c[0] == "fetch" {
+			fetches = append(fetches, c)
+		}
+	}
+	if len(fetches) != 1 || strings.Join(fetches[0], " ") != "fetch origin --tags" {
+		t.Fatalf("fetch calls = %v, want exactly [fetch origin --tags]", fetches)
 	}
 }
