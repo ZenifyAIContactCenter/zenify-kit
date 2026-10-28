@@ -13,8 +13,14 @@ Read when: sizing the morning plan, recording a finished task, or writing the en
 
 The scale is agent time: a worker's `duration_ms`, not a person's hours.
 
+The Time column holds the defaults; once enough tasks are measured the learned scale replaces it (see Learned scale).
+
 The size is the higher of the two criteria (time, files). An XL estimate is marked "should split"
 in the plan before it is dispatched.
+
+## Learned scale
+
+Run `zenify nonstop stats --json` (in the workspace) at the morning plan and at end of day; use its `scale` to size tasks and its `today`/`week`/`rules` for the stats and the Calibration line — never compute them by hand. Fewer than 20 measured tasks → the defaults.
 
 ## Measuring a finished task
 

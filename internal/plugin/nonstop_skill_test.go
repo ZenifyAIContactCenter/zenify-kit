@@ -26,7 +26,7 @@ func TestNonstopSkill(t *testing.T) {
 	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"no tables", "has a table or `###` → rewrite it first"})
 	assertContainsAll(t, "ledger-format.md", ref["ledger-format.md"], []string{"Needs you: <id> — <question>", "rewrite", "inside a field", "on one line"})
 	// FR-4.3: sizes are agent time, and the old human-scale lines are recomputed.
-	assertContainsAll(t, "estimation.md", ref["estimation.md"], []string{"< 5 min", "agent time", "before 2026-10-29", "pane flags a done task"})
+	assertContainsAll(t, "estimation.md", ref["estimation.md"], []string{"< 5 min", "agent time", "before 2026-10-29", "pane flags a done task", "zenify nonstop stats --json", "Learned scale"})
 	assertContainsAll(t, "ledger-format.md", ref["ledger-format.md"], []string{"P0", "id · priority · repo"})
 	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"id · priority · repo"})
 	// The orchestrator owns ci-watch, routes the day (heartbeat = continue) and runs znf:review on the worker tree.
