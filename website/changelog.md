@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.51.1
+
+*2026-10-29*
+
+- **Base hotfix lấy từ một chỗ duy nhất:** `zenify wt new --type hotfix` và `zenify hotfix baseref` giờ luôn ra cùng một ref. Có `hotfixBaseRef` trong `.claude/worktree.json` thì dùng nó, không có thì dùng `baseRef` của repo kèm một dòng cảnh báo. Trước đây hai lệnh có thể ra hai nhánh khác nhau. Xem [Base ref, hotfix base, port block](/concepts/base-ref-and-ports).
+- **Bỏ chiến lược `release-latest`:** chiến lược này đoán nhánh `release<N>` lớn nhất, nên khi team thôi cắt nhánh release thì hotfix có thể tách từ một bản đã cũ nhiều tuần. Giờ lệnh báo lỗi và hướng dẫn khai `"hotfix": {"baseStrategy": "custom"}` cùng `"hotfixBaseRef"`, ví dụ `origin/main`. Các repo zenify đã khai sẵn `origin/main`.
+
 ## v0.51.0
 
 *2026-10-27*

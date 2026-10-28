@@ -70,7 +70,7 @@ flowchart TD
 
 | Mục | Nội dung |
 |---|---|
-| Base ref xác nhận | Ref do `zenify hotfix baseref` in ra từ `worktree.json` của repo, ví dụ `origin/main`. Lệnh báo lỗi thì sửa `worktree.json`, không đoán tên nhánh |
+| Base ref xác nhận | Ref do `zenify hotfix baseref` in ra từ `worktree.json` của repo, ví dụ `origin/main`. Repo chưa khai `hotfixBaseRef` thì lệnh dùng `baseRef` và in cảnh báo; config sai (`release-latest`, `custom` thiếu ref) thì lệnh báo lỗi. Cả hai trường hợp đều sửa `worktree.json`, không đoán tên nhánh |
 | Nguyên nhân xác nhận | Kèm bằng chứng thật |
 | Cách xử lý đã chọn | Revert, disable hoặc fix forward, kèm lý do |
 | Branch (nếu fix forward) | `<user>/hotfix/<slug>` |
