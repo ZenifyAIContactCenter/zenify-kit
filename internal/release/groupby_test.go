@@ -27,7 +27,7 @@ func TestGroupByPR_NoteEnrichesVisibleFeatureRow(t *testing.T) {
 			rec("c2", "fix(y): fix y", "namph", "") +
 			rec("c3", "chore(release): note", "bot", "_Release-Slug: foo\n_Blast-radius: Z\n_DB: N/A\n_Rollback: revert PR"),
 	}}
-	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84")
+	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84", "origin/staging")
 	if err != nil {
 		t.Fatalf("RangeCommitsGrouped err=%v", err)
 	}
@@ -67,7 +67,7 @@ func TestGroupByPR_NoNoteStillOneVisibleChange(t *testing.T) {
 		expandKey("m00"): rec("c1", "feat(x): add x", "namph", "") +
 			rec("c2", "fix(y): fix y", "namph", ""),
 	}}
-	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84")
+	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84", "origin/staging")
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -93,7 +93,7 @@ func TestGroupByPR_BranchTypeFloorLiftsChoreOnlyPR(t *testing.T) {
 		mergeKey("origin/release83", "origin/release84"): rec("m00", "Merge pull request #7 from org/feat/foo", "admin", ""),
 		expandKey("m00"): rec("c1", "chore(deps): bump", "namph", ""),
 	}}
-	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84")
+	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84", "origin/staging")
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -111,7 +111,7 @@ func TestGroupByPR_DirectPushCommitBucketsByScope(t *testing.T) {
 			rec("d1", "feat(z): z", "namph", ""),
 		expandKey("m00"): rec("c1", "feat(x): add x", "namph", ""),
 	}}
-	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84")
+	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84", "origin/staging")
 	if err != nil {
 		t.Fatalf("err=%v", err)
 	}
@@ -133,7 +133,7 @@ func TestRangeCommitsGrouped_NoMergeDegradesToFlat(t *testing.T) {
 	f := fakeRunner{out: map[string]string{
 		mergeKey("origin/release83", "origin/release84"): rec("1", "fix: a", "namph", ""),
 	}}
-	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84")
+	gcs, err := RangeCommitsGrouped(f, "/x", "origin/release83", "origin/release84", "origin/staging")
 	if err != nil || len(gcs) != 1 || gcs[0].PRBranch != "" {
 		t.Fatalf("degrade: gcs=%+v err=%v", gcs, err)
 	}

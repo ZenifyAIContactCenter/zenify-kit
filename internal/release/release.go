@@ -10,6 +10,10 @@ import (
 // noTagNote is the per-repo line for a repo that carries no release tag at all.
 const noTagNote = "chưa có tag vYYMMDD.n" //znf:allow-lang
 
+// stagingRef is the integration branch: regression is "not on staging", and a PR merged from it
+// into main is the weekly release whose inner PRs are the report's changes.
+const stagingRef = "origin/staging"
+
 // Build assembles the report for release tag `tag` (vYYMMDD.n) from a list of repos. tag "" means
 // the newest tag name across all repos; in that default mode a repo that does not carry it is
 // omitted, while an explicit tag keeps a "chưa có tag" row for it. Each repo's range runs from //znf:allow-lang
@@ -97,7 +101,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 				rep.SharedCrossRepo[p] = append(rep.SharedCrossRepo[p], name)
 			}
 		}
-		if cs, err := NotInStaging(r, dir, prev, tag, "origin/staging"); err == nil {
+		if cs, err := NotInStaging(r, dir, prev, tag, stagingRef); err == nil {
 			rr.Regression = cs
 		} else {
 			rr.RegressionUncomputed = true
@@ -108,7 +112,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 			notStaging[c.SHA] = true
 		}
 		aggIn := rr.Commits // flat fallback (degrade-safe)
-		if gcs, err := RangeCommitsGrouped(r, dir, prev, tag); err == nil {
+		if gcs, err := RangeCommitsGrouped(r, dir, prev, tag, stagingRef); err == nil {
 			var gfeats []Commit
 			for _, c := range gcs {
 				if !IsReleaseNote(c) { // a note-commit does NOT go into a bucket (keeping option B)

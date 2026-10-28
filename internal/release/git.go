@@ -136,25 +136,28 @@ func ReachableCommits(r gitx.Runner, dir, ref string) ([]Commit, error) {
 // PRBranch=branch on each expanded commit. A mainline commit that is not a PR (a direct push)
 // keeps PRBranch=""; a non-PR merge (a back-merge) is dropped and its expanded commits stay
 // plain, and an inner merge with nothing left after the outer exclusion is dropped. A release
-// merge (staging→main) whose side walked with --first-parent holds "Merge pull request" commits
-// is not a change of its own: its side is grouped the same way, so each inner PR keeps its own
-// branch. Used for group-by-PR aggregation; counts/regression still use the flat RangeCommits.
-func RangeCommitsGrouped(r gitx.Runner, dir, from, to string) ([]Commit, error) {
+// merge (a PR from the integration branch, e.g. staging→main) whose side walked with
+// --first-parent holds "Merge pull request" commits is not a change of its own: its side is
+// grouped the same way, so each inner PR keeps its own branch. Any other PR merge (a hotfix that
+// merged a child PR) keeps its own identity. integration is the staging ref ("origin/staging"),
+// compared by last path segment. Used for group-by-PR aggregation; counts/regression still use
+// the flat RangeCommits.
+func RangeCommitsGrouped(r gitx.Runner, dir, from, to, integration string) ([]Commit, error) {
 	out, err := r.Run(dir, "log", "--first-parent", logFormat, from+".."+to)
 	if err != nil {
 		return nil, err
 	}
-	return groupMainline(r, dir, parseCommits(out), nil), nil
+	return groupMainline(r, dir, parseCommits(out), NormalizeKey(integration), nil), nil
 }
 
-// maxReleaseDepth bounds nested release merges (a release branch merged into staging, then
-// staging into main); deeper merges group as an ordinary PR.
+// maxReleaseDepth bounds the recursion: only a merge from the integration branch expands, so
+// real history nests one level; deeper merges group as an ordinary PR.
 const maxReleaseDepth = 3
 
 // groupMainline labels one first-parent walk. not holds ^<outer>^1 of each enclosing release
 // merge: an inner side must not reach what the outer mainline already shipped (a main→staging
 // sync would otherwise drag last week's hotfix back in).
-func groupMainline(r gitx.Runner, dir string, mainline []Commit, not []string) []Commit {
+func groupMainline(r gitx.Runner, dir string, mainline []Commit, integration string, not []string) []Commit {
 	var cs []Commit
 	for _, m := range mainline {
 		if !m.Merge || m.Branch == "" {
@@ -162,10 +165,10 @@ func groupMainline(r gitx.Runner, dir string, mainline []Commit, not []string) [
 			continue
 		}
 		side := append([]string{logFormat, m.SHA + "^1.." + m.SHA + "^2"}, not...)
-		if len(not) < maxReleaseDepth {
+		if len(not) < maxReleaseDepth && NormalizeKey(m.Branch) == integration {
 			fout, err := r.Run(dir, append([]string{"log", "--first-parent"}, side...)...)
 			if inner := parseCommits(fout); err == nil && hasPRMerge(inner) {
-				cs = append(cs, groupMainline(r, dir, inner, append(not[:len(not):len(not)], "^"+m.SHA+"^1"))...)
+				cs = append(cs, groupMainline(r, dir, inner, integration, append(not[:len(not):len(not)], "^"+m.SHA+"^1"))...)
 				continue
 			}
 		}

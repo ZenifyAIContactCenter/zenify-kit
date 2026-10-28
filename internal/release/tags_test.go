@@ -141,7 +141,7 @@ func TestBuildByTagRealRepos(t *testing.T) {
 // Team flow since 2026-10-28: feature PRs merge into staging, the weekly release is a PR
 // staging→main tagged vYYMMDD.n, a hotfix is a PR straight into main then synced main→staging.
 // The release merge must expand into its inner PRs (no "staging" row), the hotfix keeps its own
-// branch, and the main→staging sync (a PR or a plain back-merge) must not drag a shipped hotfix
+// branch and hotfix flag even when it merged a child PR, and the main→staging sync (a PR or a plain back-merge) must not drag a shipped hotfix
 // into the next week nor become a "main" row of its own.
 func TestRangeCommitsGroupedExpandsReleaseMerge(t *testing.T) {
 	dir, git := gitRepo(t)
@@ -159,7 +159,11 @@ func TestRangeCommitsGroupedExpandsReleaseMerge(t *testing.T) {
 	git("checkout", "-q", "main")
 	git("merge", "-q", "--no-ff", "-m", "Merge pull request #100 from Org/staging", "staging")
 	git("tag", "v261104.0")
-	pr("main", "u/hotfix/baz", "13", "fix(baz): hotfix baz")
+	git("checkout", "-q", "-b", "u/hotfix/baz", "main") // the hotfix PR itself merged a child PR
+	git("commit", "-q", "--allow-empty", "-m", "fix(baz): hotfix baz")
+	pr("u/hotfix/baz", "u/fix/baz-part", "17", "fix(baz): part")
+	git("checkout", "-q", "main")
+	git("merge", "-q", "--no-ff", "-m", "Merge pull request #13 from Org/u/hotfix/baz", "u/hotfix/baz")
 	git("tag", "v261104.1")
 	git("checkout", "-q", "staging")
 	git("merge", "-q", "--no-ff", "-m", "Merge pull request #14 from Org/main", "main")
@@ -173,7 +177,7 @@ func TestRangeCommitsGroupedExpandsReleaseMerge(t *testing.T) {
 
 	branches := func(from, to string) map[string]int {
 		t.Helper()
-		cs, err := RangeCommitsGrouped(gitx.ExecRunner(), dir, from, to)
+		cs, err := RangeCommitsGrouped(gitx.ExecRunner(), dir, from, to, "origin/staging")
 		if err != nil {
 			t.Fatalf("RangeCommitsGrouped(%s..%s) err = %v", from, to, err)
 		}
@@ -183,13 +187,16 @@ func TestRangeCommitsGroupedExpandsReleaseMerge(t *testing.T) {
 		}
 		for _, ch := range Aggregate(cs, nil) {
 			got["row:"+ch.Slug]++
+			if ch.IsHotfix {
+				got["hotfix:"+ch.Slug]++
+			}
 		}
 		return got
 	}
 	if got, want := branches("v261028.0", "v261104.0"), map[string]int{"u/feat/foo": 2, "u/fix/bar": 2, "row:foo": 1, "row:bar": 1}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("weekly release PRBranch counts = %v, want %v", got, want)
 	}
-	if got, want := branches("v261104.0", "v261104.1"), map[string]int{"u/hotfix/baz": 2, "row:baz": 1}; !reflect.DeepEqual(got, want) {
+	if got, want := branches("v261104.0", "v261104.1"), map[string]int{"u/hotfix/baz": 4, "row:baz": 1, "hotfix:baz": 1}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("hotfix PRBranch counts = %v, want %v", got, want)
 	}
 	if got := branches("v261104.1", "v261111.0"); got["u/hotfix/baz"] != 0 || got["staging"] != 0 || got["main"] != 0 || got["row:main"] != 0 || got["u/feat/qux"] != 2 || got["u/hotfix/zed"] != 2 {
