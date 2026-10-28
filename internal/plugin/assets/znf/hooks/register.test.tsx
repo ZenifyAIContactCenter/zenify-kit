@@ -1118,18 +1118,32 @@ test('FR-2.8: the PR is not ready while a poll waits for its threads, and stays 
   await human.unmount()
 })
 
-test('FR-2.8: the press after a poll that found an open thread never merges', async ($, on) => {
+test('FR-2.8: the merge button is gone once a poll finds an open thread, and nothing merged', async ($, on) => {
   let open = 0
   const { calls } = await mergeWorld(on, { gh: async () => viewWith(READY_CHECKS), threads: n => threadsOf(open, 1)(n) })
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
   const human = await $.ui.mount(pane(HUMAN))
-  await human.press({ key: `merge:${URL_A}` })
+  expect(await mergeButton(human)).toBeDefined()
   open = 1
   await clock.advance(60000)
-  // The button is gone once the poll lands; a press by key must not merge either way.
-  await human.press({ key: `merge:${URL_A}` }).catch(() => {})
+  expect(await mergeButton(human)).toBeUndefined()
+  expect(calls.merges).toEqual([])
+  await human.unmount()
+})
+
+test('FR-2.8: the merge button is gone once Zenie stops passing, and nothing merged', async ($, on) => {
+  let checks: unknown[] = READY_CHECKS
+  const { calls } = await mergeWorld(on, { gh: async () => viewWith(checks) })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const human = await $.ui.mount(pane(HUMAN))
+  expect(await mergeButton(human)).toBeDefined()
+  checks = [{ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'FAILURE' }]
+  await clock.advance(60000)
+  expect(await mergeButton(human)).toBeUndefined()
   expect(calls.merges).toEqual([])
   await human.unmount()
 })
