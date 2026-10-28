@@ -35,6 +35,8 @@ type World = {
   mergeRejects?: string
   // Holds `gh pr merge` until this resolves.
   holdMerge?: Promise<void>
+  // The answer to the review-threads graphql call, by PR number; defaults to no threads.
+  threads?: (n: string) => { exitCode: number; stdout: string; stderr: string }
   // Panes already open before the plugin acts (the legacy single pane).
   openPanes?: string[]
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
@@ -50,11 +52,26 @@ type Calls = {
   status: (string | undefined)[]
   toast: string[]
   merges: string[][]
+  graphql: string[][]
 }
+
+const threadsOf = (open: number, total: number) => () => ({
+  exitCode: 0,
+  stdout: JSON.stringify({
+    data: {
+      repository: {
+        pullRequest: {
+          reviewThreads: { nodes: Array.from({ length: total }, (_, i) => ({ isResolved: i >= open })) },
+        },
+      },
+    },
+  }),
+  stderr: '',
+})
 
 // Every hook here stands for the engine beneath the plugin.
 function engine(on: any, world: World): Calls {
-  const calls: Calls = { open: [], close: [], stat: [], read: [], run: [], copy: [], status: [], toast: [], merges: [] }
+  const calls: Calls = { open: [], close: [], stat: [], read: [], run: [], copy: [], status: [], toast: [], merges: [], graphql: [] }
   const panes: { id: string }[] = (world.openPanes ?? []).map(id => ({ id }))
   on('command.register', () => ({ value: { command: 'nonstop-pane' } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
@@ -111,6 +128,10 @@ function engine(on: any, world: World): Calls {
       if (world.holdMerge) await world.holdMerge
       if (world.mergeRejects) return { deny: world.mergeRejects }
       return { value: world.merge ?? { exitCode: 0, stdout: '', stderr: '' } }
+    }
+    if (e.argv[0] === 'gh' && e.argv[1] === 'api') {
+      calls.graphql.push([...e.argv])
+      return { value: (world.threads ?? threadsOf(0, 0))(/number:(\d+)/.exec(e.argv[4])?.[1] ?? '') }
     }
     const view = world.gh
       ? await world.gh(e.argv[3])
@@ -316,7 +337,7 @@ test('FR-3.2/FR-3.4: sections in order, every line cut to bodyColumns', async ($
 
   const ui = await $.ui.mount(pane(PROGRESS, 20))
   const all = await texts(ui)
-  const heads = ['RUNNING', 'QUEUED', 'PR', 'done 1 · queued 1 · blocked 1'.slice(0, 19) + '…']
+  const heads = ['RUNNING', 'QUEUED', 'ĐANG WATCH', 'done 1 · queued 1 · blocked 1'.slice(0, 19) + '…']
   const at = heads.map(h => all.indexOf(h))
   expect(at.every(i => i >= 0)).toBe(true)
   expect([...at].sort((a, b) => a - b)).toEqual(at)
@@ -342,7 +363,7 @@ test('FR-3.2: an empty section is hidden', async ($, on) => {
   const ui = await $.ui.mount(pane(PROGRESS))
   const all = await texts(ui)
   expect(all).not.toContain('RUNNING')
-  expect(all).not.toContain('PR')
+  expect(all).not.toContain('ĐANG WATCH')
   expect(all).toContain('QUEUED')
   expect(all).toContain('done 1 · queued 1 · blocked 0')
   await ui.unmount()
@@ -398,7 +419,7 @@ test('FR-3.2: each tab shows only its own content', async ($, on) => {
   expect(has(pr, /^(⠋ )?t2/)).toBe(true)
   expect(has(p, /CI đỏ \(lint\)/)).toBe(true)
   expect(p).toContain('done 1 · queued 1 · blocked 1')
-  expect(has(p, /Z\/hub#9/)).toBe(false)
+  expect(has(p, /Z\/hub#9 CLEAN/)).toBe(false)
   await progress.unmount()
 
   const done = await $.ui.mount(pane(DONE))
@@ -531,7 +552,7 @@ test('a settled PR appears only in Done and is not polled again', async ($, on) 
   const progress = await $.ui.mount(pane(PROGRESS))
   const p = await texts(progress)
   expect(p.some(t => t.includes('Z/kit#238') || t.includes('Z/web#7'))).toBe(false)
-  expect(p).toEqual(expect.arrayContaining(['Z/hub#9', ' BLOCKED']))
+  expect(p).toEqual(expect.arrayContaining(['Z/hub#9', ' BLOCKED · Zenie — · thread 0/0']))
   await progress.unmount()
 
   const done = await $.ui.mount(pane(DONE))
@@ -962,4 +983,98 @@ test('FR-2.7: a session start while a merge runs keeps the lock and the merging 
   await clock.settle()
   expect(calls.merges).toEqual([MERGE_ARGV])
   await ui.unmount()
+})
+
+const watchOf = async (ui: Parameters<typeof rows>[0]) => (await rows(ui)).filter(t => t.startsWith('Z/kit#238'))
+
+const READY_CHECKS = [{ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'SUCCESS' }]
+const viewWith = (checks: unknown[], base = 'main') => ({
+  exitCode: 0,
+  stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: checks, baseRefName: base }),
+  stderr: '',
+})
+
+test('FR-2.8: CLEAN, Zenie pass and no open thread is ready, with a merge button', async ($, on) => {
+  await mergeWorld(on, { gh: async () => viewWith(READY_CHECKS), threads: threadsOf(0, 5) })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const human = await $.ui.mount(pane(HUMAN))
+  expect(await texts(human)).toContain('CHỜ MERGE')
+  expect(await mergeButton(human)).toBeDefined()
+  await human.unmount()
+  const progress = await $.ui.mount(pane(PROGRESS))
+  expect(await texts(progress)).toContain('ĐANG WATCH')
+  expect(await watchOf(progress)).toEqual(['Z/kit#238 CLEAN · Zenie pass · thread 0/5'])
+  await progress.unmount()
+})
+
+test('FR-2.8: open threads keep a CLEAN PR out of CHỜ MERGE and show thread 2/5', async ($, on) => {
+  await mergeWorld(on, { gh: async () => viewWith(READY_CHECKS), threads: threadsOf(2, 5) })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const human = await $.ui.mount(pane(HUMAN))
+  expect(await texts(human)).not.toContain('CHỜ MERGE')
+  expect(await mergeButton(human)).toBeUndefined()
+  await human.unmount()
+  const progress = await $.ui.mount(pane(PROGRESS))
+  expect((await watchOf(progress))[0]).toContain('thread 2/5')
+  await progress.unmount()
+})
+
+test('FR-2.8: a Zenie check still running is not ready', async ($, on) => {
+  await mergeWorld(on, {
+    gh: async () => viewWith([{ name: 'Zenie Review', status: 'IN_PROGRESS', conclusion: '' }]),
+    threads: threadsOf(0, 0),
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const human = await $.ui.mount(pane(HUMAN))
+  expect(await mergeButton(human)).toBeUndefined()
+  await human.unmount()
+})
+
+test('FR-2.8: a graphql error shows thread ? and keeps the PR out of CHỜ MERGE', async ($, on) => {
+  await mergeWorld(on, {
+    gh: async () => viewWith(READY_CHECKS),
+    threads: () => ({ exitCode: 1, stdout: '', stderr: 'boom' }),
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const human = await $.ui.mount(pane(HUMAN))
+  expect(await mergeButton(human)).toBeUndefined()
+  await human.unmount()
+  const progress = await $.ui.mount(pane(PROGRESS))
+  expect((await watchOf(progress))[0]).toContain('thread ?')
+  await progress.unmount()
+})
+
+test('FR-2.8: each poll runs gh pr view and the threads query per open PR, none for a settled one', async ($, on) => {
+  const URL_C = 'https://github.com/Z/web/pull/7'
+  let aState = 'OPEN'
+  const calls = engine(on, {
+    file: { text: ledgerText([row('t1', 'running', URL_A), row('t2', 'running', URL_C)]), mtimeMs: 1 },
+    gh: async url => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ state: url === URL_A ? aState : 'OPEN', mergeStateStatus: 'BLOCKED', statusCheckRollup: [] }),
+      stderr: '',
+    }),
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  expect(ghRuns(calls)).toHaveLength(2)
+  expect(calls.graphql).toHaveLength(2)
+
+  aState = 'MERGED'
+  await clock.advance(60000)
+  expect(ghRuns(calls)).toHaveLength(4)
+  expect(calls.graphql).toHaveLength(3)
+
+  await clock.advance(60000)
+  expect(ghRuns(calls)).toHaveLength(5)
+  expect(calls.graphql).toHaveLength(4)
 })

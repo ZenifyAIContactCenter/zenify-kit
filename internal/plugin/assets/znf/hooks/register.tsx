@@ -3,7 +3,21 @@ import type { EngineInterface as $, Register, Timer } from 'claude-code'
 
 import { parseLedger } from './ledger'
 import type { Ledger } from './ledger'
-import { isMergeable, isSettled, issueUrl, mergeArgv, mergeCommand, prBase, prLabel, prRef, prUrls } from './pr'
+import {
+  isReadyToMerge,
+  isSettled,
+  issueUrl,
+  mergeArgv,
+  mergeCommand,
+  prBase,
+  prLabel,
+  prRef,
+  prUrls,
+  threadCount,
+  threadsArgv,
+  zenieState,
+} from './pr'
+import type { Threads } from './pr'
 
 const PANES = [
   { id: 'nonstop-human', title: 'Need Human', columns: 44 },
@@ -27,6 +41,9 @@ const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision,baseR
 const ledger = atom({ plugin: 'znf', key: 'ledger' } as const, null, { shape: 'nonstop-2' })
 const ledgerError = atom({ plugin: 'znf', key: 'ledgerError' } as const, null, { shape: 'nonstop-1' })
 const prs = atom({ plugin: 'znf', key: 'prs' } as const, {}, { shape: 'nonstop-1' })
+const zenie = atom({ plugin: 'znf', key: 'zenie' } as const, {}, { shape: 'nonstop-1' })
+// null: the review-threads query failed; absent: not asked yet.
+const threads = atom({ plugin: 'znf', key: 'threads' } as const, {}, { shape: 'nonstop-1' })
 const bases = atom({ plugin: 'znf', key: 'bases' } as const, {}, { shape: 'nonstop-1' })
 // url -> epoch ms until which its merge button is armed. An expiry, not a flag: a reload
 // cancels the disarm timer but keeps this state, so the time itself must end the arming.
@@ -128,19 +145,33 @@ async function refresh($: $, force = false): Promise<void> {
   }
 }
 
-async function viewPr($: $, url: string): Promise<{ label: string; base?: string }> {
+async function viewPr($: $, url: string): Promise<{ label: string; base?: string; zenie: string }> {
   try {
     const view = await $.process.run(['gh', 'pr', 'view', url, '--json', GH_FIELDS], { timeoutMs: GH_TIMEOUT_MS })
-    return { label: prLabel(view), base: prBase(view) }
+    return { label: prLabel(view), base: prBase(view), zenie: zenieState(view) }
   } catch (err) {
-    return { label: `gh lỗi: ${message(err).split('\n')[0]}` }
+    return { label: `gh lỗi: ${message(err).split('\n')[0]}`, zenie: '—' }
+  }
+}
+
+// FR-2.8: the open and total review threads of one PR; null when the query fails.
+async function viewThreads($: $, url: string): Promise<Threads | null> {
+  try {
+    const out = await $.process.run(threadsArgv(url), { timeoutMs: GH_TIMEOUT_MS })
+    return threadCount(out) ?? null
+  } catch {
+    return null
   }
 }
 
 async function pollPr($: $, url: string): Promise<void> {
-  const { label, base } = await viewPr($, url)
+  const { label, base, zenie: z } = await viewPr($, url)
   await update($, prs, map => ({ ...map, [url]: label }))
+  await update($, zenie, map => ({ ...map, [url]: z }))
   if (base) await update($, bases, map => ({ ...map, [url]: base }))
+  if (isSettled(label)) return
+  const counted = await viewThreads($, url)
+  await update($, threads, map => ({ ...map, [url]: counted }))
 }
 
 // FR-2.2: every PR of the last section, at most GH_PARALLEL gh calls at once.
@@ -194,6 +225,12 @@ async function pressMerge($: $, url: string): Promise<void> {
     const still = (await read($, confirming))[url]
     if (still !== until || (await $.clock.now()) >= until) return
     await update($, confirming, map => omit(map, url))
+    // The arming may predate a poll that found an open thread or a failing Zenie.
+    const [labels, zenies, counts] = [await read($, prs), await read($, zenie), await read($, threads)]
+    if (!isReadyToMerge(labels[url] ?? '', zenies[url] ?? '—', counts[url] ?? undefined)) {
+      $.ui.toast('chưa merge được: còn thread mở / Zenie chưa pass')
+      return
+    }
     await update($, merging, urls => [...urls, url])
     const out = await $.process.run(mergeArgv(url), { timeoutMs: MERGE_TIMEOUT_MS })
     if (out.exitCode !== 0) {
@@ -379,14 +416,18 @@ export const register: Register = on => {
       const inMerge = await read($, merging)
       const now = await $.clock.now()
       const baseOf = await read($, bases)
+      const zenies = await read($, zenie)
+      const counts = await read($, threads)
 
       if (error) return <Box flexDirection="column">{line(`lỗi ledger: ${error}`, { color: 'red' })}</Box>
       if (!l) return <Box flexDirection="column">{line('chưa có ledger nonstop', { dimColor: true })}</Box>
 
       const label = (u: string) => labels[u] ?? ''
       const urls = prUrls(l.tasks)
-      const mergeable = urls.filter(u => isMergeable(label(u)))
-      const active = urls.filter(u => !isSettled(label(u)) && !isMergeable(label(u)))
+      const mergeable = urls.filter(u => isReadyToMerge(label(u), zenies[u] ?? '—', counts[u] ?? undefined))
+      const watching = urls.filter(u => !isSettled(label(u)))
+      const threadText = (u: string) => (counts[u] === undefined ? '…' : counts[u] === null ? '?' : `${counts[u].open}/${counts[u].total}`)
+      const watchText = (u: string) => `${label(u)} · Zenie ${zenies[u] ?? '—'} · thread ${threadText(u)}`
       const settled = urls.filter(u => isSettled(label(u)))
       const by = (s: string) => byPriority(l.tasks.filter(t => t.status === s))
       const isArmed = (url: string) => now < (armedUntil[url] ?? 0)
@@ -478,7 +519,7 @@ export const register: Register = on => {
       const running = by('running')
       const queued = by('queued')
       const spin = SPINNER[await read($, frame)]
-      const isIdle = !running.length && !queued.length && !active.length && !l.malformed.length
+      const isIdle = !running.length && !queued.length && !watching.length && !l.malformed.length
       return (
         <Box flexDirection="column">
           {running.length > 0 ? (
@@ -491,8 +532,8 @@ export const register: Register = on => {
           {running.map(t => taskLine(t, `${t.skill} ${t.worker}`, `${spin} `))}
           {queued.length > 0 && line('QUEUED', { bold: true })}
           {queued.map(t => taskLine(t, `${t.skill} ${t.worker}`))}
-          {active.length > 0 && line('PR', { bold: true })}
-          {active.map(url => prRow(url, label(url)))}
+          {watching.length > 0 && line('ĐANG WATCH', { bold: true })}
+          {watching.map(url => prRow(url, watchText(url)))}
           {line(`done ${by('done').length} · queued ${queued.length} · blocked ${by('blocked').length}`, { dimColor: true })}
           {l.malformed.length > 0 && line(`⚠ ${l.malformed.length} dòng không đúng format`, { color: 'yellow' })}
           {l.malformed.slice(0, 3).map(m => line(m, { dimColor: true }))}

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { LedgerTask } from './ledger'
-import { isMergeable, issueUrl, mergeArgv, mergeCommand, prBase, prLabel, prRef, prUrls } from './pr'
+import { isMergeable, isReadyToMerge, issueUrl, mergeArgv, mergeCommand, prBase, threadCount, threadsArgv, zenieState, prLabel, prRef, prUrls } from './pr'
 
 const view = (o: object) => ({ exitCode: 0, stdout: JSON.stringify(o), stderr: '' })
 const run = (name: string, conclusion: string, status = 'COMPLETED') => ({
@@ -59,4 +59,47 @@ test('prBase reads baseRefName and is undefined on a failure or bad JSON', () =>
   expect(prBase(view({ state: 'OPEN', baseRefName: 'staging' }))).toBe('staging')
   expect(prBase({ exitCode: 1, stdout: '', stderr: 'x' })).toBeUndefined()
   expect(prBase({ exitCode: 0, stdout: 'nope', stderr: '' })).toBeUndefined()
+})
+
+const zenie = (check: object | null) =>
+  view({ statusCheckRollup: check ? [{ name: 'lint', conclusion: 'SUCCESS', status: 'COMPLETED' }, check] : [] })
+
+test('zenieState reads the Zenie Review check run', () => {
+  expect(zenieState(zenie({ name: 'Zenie Review', status: 'IN_PROGRESS', conclusion: '' }))).toBe('đang chạy')
+  expect(zenieState(zenie({ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'SUCCESS' }))).toBe('pass')
+  expect(zenieState(zenie({ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'FAILURE' }))).toBe('fail')
+  expect(zenieState(zenie(null))).toBe('—')
+  expect(zenieState({ exitCode: 1, stdout: '', stderr: 'x' })).toBe('—')
+  expect(zenieState({ exitCode: 0, stdout: 'nope', stderr: '' })).toBe('—')
+})
+
+const graphql = (nodes: unknown) =>
+  view({ data: { repository: { pullRequest: { reviewThreads: { nodes } } } } })
+
+test('threadCount counts open and total review threads', () => {
+  expect(threadCount(graphql([{ isResolved: true }, { isResolved: false }, { isResolved: false }]))).toEqual({ open: 2, total: 3 })
+  expect(threadCount(graphql([]))).toEqual({ open: 0, total: 0 })
+  expect(threadCount({ exitCode: 1, stdout: '', stderr: 'x' })).toBeUndefined()
+  expect(threadCount({ exitCode: 0, stdout: 'nope', stderr: '' })).toBeUndefined()
+  expect(threadCount(view({ data: {} }))).toBeUndefined()
+})
+
+test('threadsArgv queries the review threads of the PR', () => {
+  expect(threadsArgv('https://github.com/Z/kit/pull/238')).toEqual([
+    'gh',
+    'api',
+    'graphql',
+    '-f',
+    'query=query{repository(owner:"Z",name:"kit"){pullRequest(number:238){reviewThreads(first:100){nodes{isResolved}}}}}',
+  ])
+})
+
+test('isReadyToMerge needs a mergeable label, Zenie pass or none, and no open thread', () => {
+  expect(isReadyToMerge('CLEAN', 'pass', { open: 0, total: 3 })).toBe(true)
+  expect(isReadyToMerge('UNSTABLE', '—', { open: 0, total: 0 })).toBe(true)
+  expect(isReadyToMerge('CLEAN', 'pass', { open: 1, total: 3 })).toBe(false)
+  expect(isReadyToMerge('CLEAN', 'đang chạy', { open: 0, total: 0 })).toBe(false)
+  expect(isReadyToMerge('CLEAN', 'fail', { open: 0, total: 0 })).toBe(false)
+  expect(isReadyToMerge('CLEAN', 'pass', undefined)).toBe(false)
+  expect(isReadyToMerge('BLOCKED', 'pass', { open: 0, total: 0 })).toBe(false)
 })

@@ -83,3 +83,45 @@ export function prBase(view: PrView): string | undefined {
     return undefined
   }
 }
+
+export type Zenie = 'đang chạy' | 'pass' | 'fail' | '—'
+
+// The `Zenie Review` check run in statusCheckRollup.
+export function zenieState(view: PrView): Zenie {
+  if (view.exitCode !== 0) return '—'
+  let data: { statusCheckRollup?: Check[] }
+  try {
+    data = JSON.parse(view.stdout)
+  } catch {
+    return '—'
+  }
+  const check = (data.statusCheckRollup ?? []).find(c => (c.name ?? c.context) === 'Zenie Review')
+  if (!check) return '—'
+  if (check.status !== 'COMPLETED') return 'đang chạy'
+  return check.conclusion === 'SUCCESS' ? 'pass' : 'fail'
+}
+
+export type Threads = { open: number; total: number }
+
+export function threadsArgv(url: string): string[] {
+  const { repo, n } = parseUrl(url)
+  const [owner, name] = repo.split('/')
+  const query = `query{repository(owner:"${owner}",name:"${name}"){pullRequest(number:${n}){reviewThreads(first:100){nodes{isResolved}}}}}`
+  return ['gh', 'api', 'graphql', '-f', `query=${query}`]
+}
+
+// Open and total review threads from the threadsArgv answer; undefined when unreadable.
+export function threadCount(result: PrView): Threads | undefined {
+  if (result.exitCode !== 0) return undefined
+  try {
+    const nodes = JSON.parse(result.stdout)?.data?.repository?.pullRequest?.reviewThreads?.nodes
+    if (!Array.isArray(nodes)) return undefined
+    return { open: nodes.filter((t: { isResolved?: boolean }) => !t.isResolved).length, total: nodes.length }
+  } catch {
+    return undefined
+  }
+}
+
+export function isReadyToMerge(label: string, zenie: string, threads: Threads | undefined): boolean {
+  return isMergeable(label) && (zenie === 'pass' || zenie === '—') && threads !== undefined && threads.open === 0
+}
