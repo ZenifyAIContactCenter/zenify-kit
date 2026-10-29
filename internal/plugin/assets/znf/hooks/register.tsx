@@ -4,7 +4,7 @@ import type { EngineInterface as $, Register, Timer } from 'claude-code'
 import { logLine, slugFromPrompt, taskFromPrompt } from './durations'
 import { parseLedger } from './ledger'
 import type { Ledger } from './ledger'
-import { parseStats, statsLines } from './stats'
+import { footerLines, parseStats } from './stats'
 import type { NonstopStats } from './stats'
 import {
   isFinal,
@@ -25,14 +25,17 @@ import {
 } from './pr'
 import type { Threads } from './pr'
 
-const PANES = [
-  { id: 'nonstop-human', title: 'Need Human', columns: 44 },
-  { id: 'nonstop-progress', title: 'In Progress', columns: 44 },
-  { id: 'nonstop-pending', title: 'Pending', columns: 44 },
-  { id: 'nonstop-done', title: 'Done', columns: 44 },
+// FR-3.12: one pane; the four tabs are drawn inside it.
+const PANE = { id: 'nonstop', title: 'Nonstop', columns: 44 } as const
+const isTab = (id: string) => id === PANE.id
+// The four panes of the earlier version; opening closes any that survived.
+const LEGACY_PANE_IDS = ['nonstop-human', 'nonstop-progress', 'nonstop-pending', 'nonstop-done']
+const TABS = [
+  { id: 'human', label: 'Need Human' },
+  { id: 'progress', label: 'In Progress' },
+  { id: 'pending', label: 'Pending' },
+  { id: 'done', label: 'Done' },
 ] as const
-const isTab = (id: string) => PANES.some(p => p.id === id)
-const LEGACY_PANE_ID = 'nonstop'
 const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 const SPIN_TICK_MS = 250
 const LEDGER_TICK_MS = 2000
@@ -61,6 +64,8 @@ const confirming = atom({ plugin: 'znf', key: 'confirming' } as const, {}, { sha
 const merging = atom({ plugin: 'znf', key: 'merging' } as const, [], { shape: 'nonstop-1' })
 // The last `zenify nonstop stats --json` answer, or why it failed.
 const stats = atom({ plugin: 'znf', key: 'stats' } as const, null, { shape: 'nonstop-1' })
+// The selected tab of the one pane.
+const tab = atom({ plugin: 'znf', key: 'tab' } as const, 'human', { shape: 'nonstop-1' })
 const frame = atom({ plugin: 'znf', key: 'frame' } as const, 0, { shape: 'nonstop-1' })
 // Ids of the task lines the user expanded; shared by the tabs.
 const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
@@ -126,15 +131,48 @@ async function apply($: $, loaded: Loaded): Promise<void> {
   await syncSpin($)
 }
 
+// FR-3.3: the status line; an item that is 0 or unknown is hidden, except In Progress.
+async function updateStatus($: $): Promise<void> {
+  const l = await read($, ledger)
+  if (!l) {
+    $.ui.status(undefined)
+    return
+  }
+  const infos = await read($, prInfo)
+  const st = await read($, stats)
+  const count = (s: string) => l.tasks.filter(t => t.status === s).length
+  const r = count('running')
+  const urls = prUrls(l.tasks)
+  const label = (u: string) => infos[u]?.label ?? ''
+  const ready = urls.filter(u => mergeArgv(u) && isReadyToMerge(label(u), infos[u]?.zenie ?? '—', infos[u]?.threads ?? undefined)).length
+  const red = urls.filter(u => label(u).startsWith('CI đỏ')).length
+  const threads = urls.reduce((n, u) => (isFinal(label(u)) ? n : n + (infos[u]?.threads?.open ?? 0)), 0)
+  const done = count('done')
+  // Deferred and carried-over tasks are not part of today's work, so not of its ratio.
+  const pending = count('deferred') + count('carry-over')
+  const today = st?.data && !st.data.missing ? st.data.today : undefined
+  const items = [
+    `nonstop ${r > 0 ? '▶' : '⏸'}`,
+    `In Progress: ${r}/${r + count('queued')}`,
+    l.needs.length > 0 && `Need Human: ${l.needs.length}`,
+    pending > 0 && `Pending: ${pending}`,
+    done > 0 && `Done: ${done}/${l.tasks.length - pending}`,
+    ready > 0 && `Ready: ${ready}`,
+    red > 0 && `CI ✗: ${red}`,
+    threads > 0 && `Threads: ${threads}`,
+    !!today?.points && `${today.points} pts`,
+    !!today?.total && `hit ${Math.round((100 * today.hit) / today.total)}%`,
+  ]
+  $.ui.status(items.filter(Boolean).join(' · '))
+}
+
 async function applyLoaded($: $, loaded: Loaded): Promise<void> {
   if ('ledger' in loaded) {
     lastMtime = loaded.mtimeMs
     const tasks = loaded.ledger.tasks
-    const count = (s: string) => tasks.filter(t => t.status === s).length
-    const r = count('running')
     await update($, ledger, () => loaded.ledger)
     await update($, ledgerError, () => null)
-    $.ui.status(`nonstop ${r}/${r + count('queued')} ▶ · ${count('blocked')} cần anh`)
+    await updateStatus($)
     return
   }
   lastMtime = undefined
@@ -189,6 +227,7 @@ async function refreshStats($: $, force = false): Promise<void> {
       if (out.exitCode !== 0) throw new Error(out.stderr.split('\n')[0] || `exit ${out.exitCode}`)
       const data: NonstopStats = parseStats(out.stdout)
       await update($, stats, () => ({ data }))
+      await updateStatus($)
       lastStatsKey = key
     } catch (err) {
       await update($, stats, () => ({ error: message(err).split('\n')[0] }))
@@ -229,6 +268,7 @@ async function pollPr($: $, url: string): Promise<Polled> {
   const { label, base, head, zenie: z } = await viewPr($, url)
   const counted = isSettled(label) ? null : await viewThreads($, url)
   await update($, prInfo, map => ({ ...map, [url]: { label, zenie: z, base: base ?? map[url]?.base, threads: counted } }))
+  await updateStatus($)
   return { label, zenie: z, base, head, threads: counted }
 }
 
@@ -410,9 +450,10 @@ async function syncSpin($: $): Promise<void> {
 
 // FR-1.2: the timers start with the first open and stop when the pane closes.
 async function openPane($: $): Promise<void> {
-  // FR-3.9: the one-pane version used the id `nonstop`.
-  if ((await $.ui.panes()).some(p => p.id === LEGACY_PANE_ID)) await $.ui.close({ id: LEGACY_PANE_ID })
-  for (const p of PANES) await $.ui.open({ ...p })
+  // FR-3.12: the four-pane version used the ids `nonstop-*`.
+  const listed = await $.ui.panes()
+  for (const id of LEGACY_PANE_IDS) if (listed.some(p => p.id === id)) await $.ui.close({ id })
+  await $.ui.open({ ...PANE })
   await syncSpin($)
   await refreshStats($, true).catch(err => report($, err))
   armTimers($)
@@ -501,7 +542,7 @@ export const register: Register = on => {
   on('command.run', { command: 'nonstop-pane' }, async $ => {
     const isUp = (await $.ui.panes()).some(p => isTab(p.id))
     if (isUp) {
-      for (const p of PANES) await $.ui.close({ id: p.id })
+      await $.ui.close({ id: PANE.id })
       return { text: 'đã đóng pane nonstop' }
     }
     await show($)
@@ -515,216 +556,232 @@ export const register: Register = on => {
     return result
   })
 
-  for (const { id } of PANES) {
-    on('ui.render', { component: 'Pane', requestId: id }, async ($, e) => {
-      const { Box, Button, Link, Text } = $.ui.resolve(e)
-      const cols = Math.max(1, e.props.bodyColumns)
-      const line = (s: string, props: Record<string, unknown> = {}) => <Text {...props}>{cut(s, cols)}</Text>
-      // A row of plain text and links; the text pieces are cut so the row fits the width.
-      type Part = string | { href: string; label: string } | { taskId: string }
-      const row = (parts: Part[], extra: unknown = null) => {
-        let left = cols
-        const cells = parts.map(p => {
-          if (typeof p !== 'string' && 'taskId' in p) {
-            left -= p.taskId.length
-            return (
-              <Button
-                key={`task:${id}:${p.taskId}`}
-                label={p.taskId}
-                plain
-                onPress={async () => {
-                  await update($, expanded, ids =>
-                    ids.includes(p.taskId) ? ids.filter(x => x !== p.taskId) : [...ids, p.taskId],
-                  )
-                }}
-              />
-            )
-          }
-          if (typeof p !== 'string') {
-            left -= p.label.length
-            return <Link href={p.href} label={p.label} />
-          }
-          const text = cut(p, Math.max(0, left))
-          left -= text.length
-          return <Text>{text}</Text>
-        })
-        return (
+  on('ui.render', { component: 'Pane', requestId: PANE.id }, async ($, e) => {
+    const { Box, Button, Link, Text } = $.ui.resolve(e)
+    const cols = Math.max(1, e.props.bodyColumns)
+    const id = await read($, tab)
+    // One drawn element and the rows it takes, so the body can be cut to the room it has.
+    type Item = { node: unknown; h: number }
+    const it = (node: unknown, h = 1): Item => ({ node, h })
+    const line = (s: string, props: Record<string, unknown> = {}) => <Text {...props}>{cut(s, cols)}</Text>
+    const lineItem = (s: string, props: Record<string, unknown> = {}) => it(line(s, props))
+    // A row of plain text and links; the text pieces are cut so the row fits the width.
+    type Part = string | { href: string; label: string } | { taskId: string }
+    const row = (parts: Part[], extra: unknown = null) => {
+      let left = cols
+      const cells = parts.map(p => {
+        if (typeof p !== 'string' && 'taskId' in p) {
+          left -= p.taskId.length
+          return (
+            <Button
+              key={`task:${id}:${p.taskId}`}
+              label={p.taskId}
+              plain
+              onPress={async () => {
+                await update($, expanded, ids =>
+                  ids.includes(p.taskId) ? ids.filter(x => x !== p.taskId) : [...ids, p.taskId],
+                )
+              }}
+            />
+          )
+        }
+        if (typeof p !== 'string') {
+          left -= p.label.length
+          return <Link href={p.href} label={p.label} />
+        }
+        const text = cut(p, Math.max(0, left))
+        left -= text.length
+        return <Text>{text}</Text>
+      })
+      return (
+        <Box flexDirection="row">
+          {cells}
+          {extra}
+        </Box>
+      )
+    }
+    const prRow = (url: string, status: string, extra: unknown = null) =>
+      it(row([{ href: url, label: prRef(url) }, status ? ` ${status}` : ''], extra))
+    const error = await read($, ledgerError)
+    const l = await read($, ledger)
+    const infos = await read($, prInfo)
+    const open = await read($, expanded)
+    const armings: Record<string, Arming> = await read($, confirming)
+    const inMerge = await read($, merging)
+    const now = await $.clock.now()
+    const st = await read($, stats)
+
+    if (error) return <Box flexDirection="column">{line(`lỗi ledger: ${error}`, { color: 'red' })}</Box>
+    if (!l) return <Box flexDirection="column">{line('chưa có ledger nonstop', { dimColor: true })}</Box>
+
+    const label = (u: string) => infos[u]?.label ?? ''
+    const zenieOf = (u: string) => infos[u]?.zenie ?? '—'
+    const countOf = (u: string) => infos[u]?.threads
+    const baseOf = (u: string) => infos[u]?.base
+    const urls = prUrls(l.tasks)
+    const mergeable = urls.filter(u => mergeArgv(u) && isReadyToMerge(label(u), zenieOf(u), countOf(u) ?? undefined))
+    const watching = urls.filter(u => !isSettled(label(u)))
+    const threadText = (u: string) => {
+      const c = countOf(u)
+      return c === undefined ? '…' : c === null ? '?' : `${c.open}/${c.total}`
+    }
+    const watchText = (u: string) => `${label(u)} · Zenie ${zenieOf(u)} · thread ${threadText(u)}`
+    const settled = urls.filter(u => isSettled(label(u)))
+    const by = (s: string) => byPriority(l.tasks.filter(t => t.status === s))
+    const isArmed = (url: string) => now < (armings[url]?.until ?? 0)
+    const mergeLabel = (url: string) =>
+      inMerge.includes(url) ? 'đang merge…' : isArmed(url) ? `xác nhận → ${armings[url].base}?` : 'merge'
+    // FR-3.7: the expanded lines are indented and wrapped, never cut.
+    const detailRows = (lines: string[]) =>
+      lines.reduce((n, s) => n + Math.max(1, Math.ceil((s.length + 2) / cols)), 0)
+    const detail = (lines: string[]) =>
+      lines.map(s => (
+        <Text wrap="wrap" dimColor>
+          {`  ${s}`}
+        </Text>
+      ))
+    const fields = (t: (typeof l.tasks)[number]) =>
+      [t.repo, t.source, t.issue, t.size, t.skill, t.worker, t.status].join(' · ')
+    const prefix = (priority: string): string => withPriority(priority, '')
+    const taskLine = (t: (typeof l.tasks)[number], tail: string, lead = ''): Item => {
+      const href = issueUrl(t.issue)
+      const issue: Part[] = href ? [' ', { href, label: t.issue }] : []
+      const extra = open.includes(t.id) ? [fields(t), t.evidence] : []
+      return it(
+        <Box flexDirection="column">
+          {row([lead + prefix(t.priority), { taskId: t.id }, ` ${t.repo}`, ...issue, ` ${tail}`])}
+          {extra.length > 0 && detail(extra)}
+        </Box>,
+        1 + detailRows(extra),
+      )
+    }
+    const needLine = (n: { id: string; question: string; priority: string }): Item => {
+      if (!n.id) return lineItem(n.question)
+      const task = l.tasks.find(t => t.id === n.id)
+      const extra = open.includes(n.id) ? (task ? [fields(task), n.question] : [n.question]) : []
+      return it(
+        <Box flexDirection="column">
+          {row([prefix(n.priority), { taskId: n.id }, ` ${n.question}`])}
+          {extra.length > 0 && detail(extra)}
+        </Box>,
+        1 + detailRows(extra),
+      )
+    }
+
+    const priorityOf = (taskId: string) => l.tasks.find(t => t.id === taskId)?.priority ?? '-'
+    const needs = byPriority(l.needs.map(n => ({ ...n, priority: priorityOf(n.id) })))
+
+    const humanItems = (): Item[] => [
+      ...(needs.length > 0 ? [lineItem('CẦN ANH', { bold: true, color: 'yellow' })] : []),
+      ...needs.map(needLine),
+      ...(mergeable.length > 0 ? [lineItem('CHỜ MERGE', { bold: true })] : []),
+      ...mergeable.map(url =>
+        prRow(
+          url,
+          label(url),
           <Box flexDirection="row">
-            {cells}
-            {extra}
-          </Box>
-        )
-      }
-      const prRow = (url: string, status: string, extra: unknown = null) =>
-        row([{ href: url, label: prRef(url) }, status ? ` ${status}` : ''], extra)
-      const empty = () => <Box flexDirection="column">{line('trống', { dimColor: true })}</Box>
-      const error = await read($, ledgerError)
-      const l = await read($, ledger)
-      const infos = await read($, prInfo)
-      const open = await read($, expanded)
-      const armings: Record<string, Arming> = await read($, confirming)
-      const inMerge = await read($, merging)
-      const now = await $.clock.now()
-      const st = await read($, stats)
-
-      if (error) return <Box flexDirection="column">{line(`lỗi ledger: ${error}`, { color: 'red' })}</Box>
-      if (!l) return <Box flexDirection="column">{line('chưa có ledger nonstop', { dimColor: true })}</Box>
-
-      const label = (u: string) => infos[u]?.label ?? ''
-      const zenieOf = (u: string) => infos[u]?.zenie ?? '—'
-      const countOf = (u: string) => infos[u]?.threads
-      const baseOf = (u: string) => infos[u]?.base
-      const urls = prUrls(l.tasks)
-      const mergeable = urls.filter(u => mergeArgv(u) && isReadyToMerge(label(u), zenieOf(u), countOf(u) ?? undefined))
-      const watching = urls.filter(u => !isSettled(label(u)))
-      const threadText = (u: string) => {
-        const c = countOf(u)
-        return c === undefined ? '…' : c === null ? '?' : `${c.open}/${c.total}`
-      }
-      const watchText = (u: string) => `${label(u)} · Zenie ${zenieOf(u)} · thread ${threadText(u)}`
-      const settled = urls.filter(u => isSettled(label(u)))
-      const by = (s: string) => byPriority(l.tasks.filter(t => t.status === s))
-      const isArmed = (url: string) => now < (armings[url]?.until ?? 0)
-      const mergeLabel = (url: string) =>
-        inMerge.includes(url) ? 'đang merge…' : isArmed(url) ? `xác nhận → ${armings[url].base}?` : 'merge'
-      // FR-3.7: the expanded lines are indented and wrapped, never cut.
-      const detail = (lines: string[]) =>
-        lines.map(s => (
-          <Text wrap="wrap" dimColor>
-            {`  ${s}`}
-          </Text>
-        ))
-      const fields = (t: (typeof l.tasks)[number]) =>
-        [t.repo, t.source, t.issue, t.size, t.skill, t.worker, t.status].join(' · ')
-      const prefix = (priority: string): string => withPriority(priority, '')
-      const taskLine = (t: (typeof l.tasks)[number], tail: string, lead = '') => {
-        const href = issueUrl(t.issue)
-        const issue: Part[] = href ? [' ', { href, label: t.issue }] : []
-        return (
-          <Box flexDirection="column">
-            {row([lead + prefix(t.priority), { taskId: t.id }, ` ${t.repo}`, ...issue, ` ${tail}`])}
-            {open.includes(t.id) && detail([fields(t), t.evidence])}
-          </Box>
-        )
-      }
-      const needLine = (n: { id: string; question: string; priority: string }) => {
-        if (!n.id) return line(n.question)
-        const task = l.tasks.find(t => t.id === n.id)
-        return (
-          <Box flexDirection="column">
-            {row([prefix(n.priority), { taskId: n.id }, ` ${n.question}`])}
-            {open.includes(n.id) && detail(task ? [fields(task), n.question] : [n.question])}
-          </Box>
-        )
-      }
-
-      const priorityOf = (taskId: string) => l.tasks.find(t => t.id === taskId)?.priority ?? '-'
-      const needs = byPriority(l.needs.map(n => ({ ...n, priority: priorityOf(n.id) })))
-
-      if (id === 'nonstop-human') {
-        if (!needs.length && !mergeable.length) return empty()
-        return (
-          <Box flexDirection="column">
-            {needs.length > 0 && line('CẦN ANH', { bold: true, color: 'yellow' })}
-            {needs.map(needLine)}
-            {mergeable.length > 0 && line('CHỜ MERGE', { bold: true })}
-            {mergeable.map(url => (
-              prRow(
-                url,
-                label(url),
-                <Box flexDirection="row">
-                <Button
-                  key={url}
-                  label="c"
-                  hotkey={url === mergeable[0] ? 'c' : undefined}
-                  onPress={async press => {
-                    await $.ui.copy({ text: mergeCommand(url) ?? '', surface: press.surface })
-                    $.ui.toast('đã copy lệnh merge')
-                  }}
-                />
-                {baseOf(url) && (
-                  <Button
-                    key={`merge:${url}`}
-                    label={mergeLabel(url)}
-                    variant={isArmed(url) ? 'primary' : undefined}
-                    onPress={() => pressMerge($, url).catch(err => $.ui.toast(`lỗi pane: ${message(err)}`))}
-                  />
-                )}
-                </Box>,
-              )
-            ))}
-          </Box>
-        )
-      }
-
-      if (id === 'nonstop-pending') {
-        const deferred = [...by('deferred')].sort((a, b) => (a.until ?? '').localeCompare(b.until ?? ''))
-        const carried = by('carry-over')
-        if (!deferred.length && !carried.length) return empty()
-        return (
-          <Box flexDirection="column">
-            {deferred.length > 0 && line('HOÃN', { bold: true })}
-            {deferred.map(t => taskLine(t, `tới ${t.until ?? '?'}`))}
-            {carried.length > 0 && line('CARRY-OVER', { bold: true })}
-            {carried.map(t => taskLine(t, ''))}
-          </Box>
-        )
-      }
-
-      if (id === 'nonstop-done') {
-        const done = by('done')
-        if (!done.length && !settled.length && (!st || st.data?.missing)) return empty()
-        // Ledger tasks done today; empty when the ledger is another day's, so stale days never warn.
-        const doneToday = st?.data && l.date === st.data.today.date ? done.map(t => t.id) : []
-        return (
-          <Box flexDirection="column">
-            {done.length > 0 && line('DONE', { bold: true })}
-            {done.map(t => taskLine(t, t.evidence))}
-            {settled.length > 0 && line('PR', { bold: true })}
-            {settled.map(url => prRow(url, label(url)))}
-            {st && line('THỐNG KÊ', { bold: true })}
-            {st?.error && (
-              <Text wrap="wrap" color="red">
-                {`lỗi thống kê: ${st.error}`}
-              </Text>
+            <Button
+              key={url}
+              label="c"
+              hotkey={url === mergeable[0] ? 'c' : undefined}
+              onPress={async press => {
+                await $.ui.copy({ text: mergeCommand(url) ?? '', surface: press.surface })
+                $.ui.toast('đã copy lệnh merge')
+              }}
+            />
+            {baseOf(url) && (
+              <Button
+                key={`merge:${url}`}
+                label={mergeLabel(url)}
+                variant={isArmed(url) ? 'primary' : undefined}
+                onPress={() => pressMerge($, url).catch(err => $.ui.toast(`lỗi pane: ${message(err)}`))}
+              />
             )}
-            {st?.data &&
-              statsLines(st.data, doneToday).map(s =>
-                s.cut ? (
-                  line(s.text, s.warn ? { color: 'yellow' } : {})
-                ) : (
-                  <Text wrap="wrap" {...(s.warn ? { color: 'yellow' } : {})}>
-                    {s.text}
-                  </Text>
-                ),
-              )}
-          </Box>
-        )
-      }
+          </Box>,
+        ),
+      ),
+    ]
 
+    const pendingItems = (): Item[] => {
+      const deferred = [...by('deferred')].sort((a, b) => (a.until ?? '').localeCompare(b.until ?? ''))
+      const carried = by('carry-over')
+      return [
+        ...(deferred.length > 0 ? [lineItem('HOÃN', { bold: true })] : []),
+        ...deferred.map(t => taskLine(t, `tới ${t.until ?? '?'}`)),
+        ...(carried.length > 0 ? [lineItem('CARRY-OVER', { bold: true })] : []),
+        ...carried.map(t => taskLine(t, '')),
+      ]
+    }
+
+    const done = by('done')
+    const doneItems = (): Item[] => [
+      ...(done.length > 0 ? [lineItem('DONE', { bold: true })] : []),
+      ...done.map(t => taskLine(t, t.evidence)),
+      ...(settled.length > 0 ? [lineItem('PR', { bold: true })] : []),
+      ...settled.map(url => prRow(url, label(url))),
+    ]
+
+    const progressItems = async (): Promise<Item[]> => {
       const running = by('running')
       const queued = by('queued')
       const spin = SPINNER[await read($, frame)]
       const isIdle = !running.length && !queued.length && !watching.length && !l.malformed.length
-      return (
-        <Box flexDirection="column">
-          {running.length > 0 ? (
-            <Text>{`▶ ${spin} đang chạy ${running.length} worker`}</Text>
-          ) : (
-            <Text dimColor>⏸ tạm dừng</Text>
-          )}
-          {isIdle && line('trống', { dimColor: true })}
-          {running.length > 0 && line('RUNNING', { bold: true })}
-          {running.map(t => taskLine(t, `${t.skill} ${t.worker}`, `${spin} `))}
-          {queued.length > 0 && line('QUEUED', { bold: true })}
-          {queued.map(t => taskLine(t, `${t.skill} ${t.worker}`))}
-          {watching.length > 0 && line('ĐANG WATCH', { bold: true })}
-          {watching.map(url => prRow(url, watchText(url)))}
-          {line(`done ${by('done').length} · queued ${queued.length} · blocked ${by('blocked').length}`, { dimColor: true })}
-          {l.malformed.length > 0 && line(`⚠ ${l.malformed.length} dòng không đúng format`, { color: 'yellow' })}
-          {l.malformed.slice(0, 3).map(m => line(m, { dimColor: true }))}
+      return [
+        running.length > 0 ? lineItem(`▶ ${spin} đang chạy ${running.length} worker`) : lineItem('⏸ tạm dừng', { dimColor: true }),
+        ...(isIdle ? [lineItem('trống', { dimColor: true })] : []),
+        ...(running.length > 0 ? [lineItem('RUNNING', { bold: true })] : []),
+        ...running.map(t => taskLine(t, `${t.skill} ${t.worker}`, `${spin} `)),
+        ...(queued.length > 0 ? [lineItem('QUEUED', { bold: true })] : []),
+        ...queued.map(t => taskLine(t, `${t.skill} ${t.worker}`)),
+        ...(watching.length > 0 ? [lineItem('ĐANG WATCH', { bold: true })] : []),
+        ...watching.map(url => prRow(url, watchText(url))),
+        lineItem(`done ${done.length} · queued ${queued.length} · blocked ${by('blocked').length}`, { dimColor: true }),
+        ...(l.malformed.length > 0 ? [lineItem(`⚠ ${l.malformed.length} dòng không đúng format`, { color: 'yellow' })] : []),
+        ...l.malformed.slice(0, 3).map(m => lineItem(m, { dimColor: true })),
+      ]
+    }
+
+    const items = id === 'human' ? humanItems() : id === 'pending' ? pendingItems() : id === 'done' ? doneItems() : await progressItems()
+    if (!items.length) items.push(lineItem('trống', { dimColor: true }))
+
+    // FR-3.12: the fixed footer; its lines come before the body so the body knows its room.
+    // Today's ledger tasks done, empty when the ledger is another day's, so stale days never warn.
+    const doneToday = st?.data && l.date === st.data.today.date ? done.map(t => t.id) : []
+    const footer = st?.error
+      ? [{ text: `⚠ lỗi thống kê: ${st.error}`, color: 'red' }]
+      : st?.data
+        ? footerLines(st.data, doneToday).map(f => ({ text: f.text, ...(f.warn ? { color: 'yellow' } : {}) }))
+        : []
+    const rowsTotal = e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 30
+    const room = Math.max(2, rowsTotal - 1 - 1 - footer.length)
+    const total = items.reduce((n, i) => n + i.h, 0)
+    let shown = items
+    let hidden = 0
+    if (total > room) {
+      let used = 0
+      shown = items.filter(i => (used + i.h <= room - 1 ? ((used += i.h), true) : ((used = room), false)))
+      hidden = total - shown.reduce((n, i) => n + i.h, 0)
+    }
+
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="row">
+          {TABS.map((t, i) => (
+            <Button
+              key={`tab:${t.id}`}
+              label={t.label}
+              plain
+              hotkey={String(i + 1)}
+              variant={t.id === id ? 'primary' : undefined}
+              onPress={() => update($, tab, () => t.id).then(() => undefined)}
+            />
+          ))}
         </Box>
-      )
-    })
-  }
+        {shown.map(i => i.node)}
+        {hidden > 0 && line(`+${hidden} dòng`, { dimColor: true })}
+        {line('─ Thống kê '.padEnd(cols, '─'), { dimColor: true })}
+        {footer.map(f => line(f.text, f.color ? { color: f.color } : {}))}
+      </Box>
+    )
+  })
 }

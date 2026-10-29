@@ -55,6 +55,8 @@ declare module 'claude-code' {
       confirming: Shaped<Record<string, { until: number; base: string }>>
       // urls whose merge is running
       merging: Shaped<string[]>
+      // the selected tab of the one nonstop pane
+      tab: Shaped<'human' | 'progress' | 'pending' | 'done'>
       // spinner frame index
       frame: Shaped<number>
       // ids of the expanded task lines
