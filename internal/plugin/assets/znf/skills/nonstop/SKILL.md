@@ -26,8 +26,9 @@ commands they run (`git merge-base`, `gh api graphql` included).
 - `estimates.md` lives next to `progress.md`. Never the harness task list (`znf:discipline` §5).
 
 One section per day, `## YYYY-MM-DD`; one line per task:
-`id · repo · source · issue · size · skill · worker · status · PR/evidence`
+`id · priority · repo · source · issue · size · skill · worker · status · PR/evidence`
 (status: `queued | running | blocked | done | failed | carry-over | deferred until <YYYY-MM-DD>`).
+Lines only in the 10-field format above — no tables; the nonstop pane reads them (references/ledger-format.md).
 
 ## The date
 
@@ -44,6 +45,8 @@ Read the ledger first on every call, then route:
 
 Re-entry: `running` lines whose worker has no report are re-asked by name; `done` lines are never
 re-dispatched; go to the Loop, writing to the last section.
+Before any dispatch, a last section that has a table or `###` → rewrite it first per
+references/ledger-format.md.
 
 ## Phase 1 — Morning plan
 
@@ -123,3 +126,4 @@ unfinished line marked for tomorrow's plan
 - `references/daily-plan.md` — sources, priority, filters, plan layout, approval gate, issues, progress block, end of day.
 - `references/estimation.md` — T-shirt sizes, measuring, `estimates.md`, calibration, batch budget.
 - `references/worker-brief.md` — the brief every dispatch carries and the routing table.
+- references/ledger-format.md — line format the pane parses; rewriting a table section.

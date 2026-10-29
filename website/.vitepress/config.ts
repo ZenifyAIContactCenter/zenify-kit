@@ -100,6 +100,7 @@ export default withMermaid({
         { text: 'Chế độ không người', link: '/guides/autonomous' },
         { text: 'Review và gate', link: '/guides/review-and-gates' },
         { text: 'Zenie review trên PR', link: '/guides/zenie-review' },
+        { text: 'Pane nonstop', link: '/guides/nonstop-pane' },
         { text: 'Spec, plan và kiểm tra', link: '/guides/spec-and-plan' },
         { text: 'Release và báo cáo', link: '/guides/release' },
         { text: 'Changelog', link: '/changelog' },
