@@ -8,6 +8,8 @@ export type LedgerTask = {
   skill: string
   worker: string
   status: string
+  // The date of a `deferred until YYYY-MM-DD` status.
+  until?: string
   evidence: string
 }
 

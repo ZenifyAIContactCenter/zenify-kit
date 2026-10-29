@@ -26,6 +26,7 @@ import type { Threads } from './pr'
 const PANES = [
   { id: 'nonstop-human', title: 'Need Human', columns: 44 },
   { id: 'nonstop-progress', title: 'In Progress', columns: 44 },
+  { id: 'nonstop-pending', title: 'Pending', columns: 44 },
   { id: 'nonstop-done', title: 'Done', columns: 44 },
 ] as const
 const isTab = (id: string) => PANES.some(p => p.id === id)
@@ -43,7 +44,7 @@ const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision,baseR
 
 // Change the shape tag when Ledger or the PR map changes: it declines what an
 // earlier version stored, which outlives a reload.
-const ledger = atom({ plugin: 'znf', key: 'ledger' } as const, null, { shape: 'nonstop-2' })
+const ledger = atom({ plugin: 'znf', key: 'ledger' } as const, null, { shape: 'nonstop-3' })
 const ledgerError = atom({ plugin: 'znf', key: 'ledgerError' } as const, null, { shape: 'nonstop-1' })
 // One entry per PR, written whole so label, Zenie, base and threads always describe one poll.
 // `threads`: undefined = being fetched; null = the query failed or was refused.
@@ -57,7 +58,7 @@ const merging = atom({ plugin: 'znf', key: 'merging' } as const, [], { shape: 'n
 // The last `zenify nonstop stats --json` answer, or why it failed.
 const stats = atom({ plugin: 'znf', key: 'stats' } as const, null, { shape: 'nonstop-1' })
 const frame = atom({ plugin: 'znf', key: 'frame' } as const, 0, { shape: 'nonstop-1' })
-// Ids of the task lines the user expanded; shared by the three tabs.
+// Ids of the task lines the user expanded; shared by the tabs.
 const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
 // FR-6.1: subagent id -> the task its runs are logged under, and worktree slug -> task id.
 // State, not module variables: a worker outlives a reload of this module.
@@ -637,6 +638,20 @@ export const register: Register = on => {
                 </Box>,
               )
             ))}
+          </Box>
+        )
+      }
+
+      if (id === 'nonstop-pending') {
+        const deferred = [...by('deferred')].sort((a, b) => (a.until ?? '').localeCompare(b.until ?? ''))
+        const carried = by('carry-over')
+        if (!deferred.length && !carried.length) return empty()
+        return (
+          <Box flexDirection="column">
+            {deferred.length > 0 && line('HOÃN', { bold: true })}
+            {deferred.map(t => taskLine(t, `tới ${t.until ?? '?'}`))}
+            {carried.length > 0 && line('CARRY-OVER', { bold: true })}
+            {carried.map(t => taskLine(t, ''))}
           </Box>
         )
       }

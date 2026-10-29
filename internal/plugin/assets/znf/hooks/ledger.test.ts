@@ -27,6 +27,14 @@ test('parseLedger reads only the last dated section', async () => {
   expect(l.malformed.length).toBe(2)
 })
 
+test('parseLedger keeps the deferred date as until', async () => {
+  const l = parseLedger(['## 2026-10-28', 'a · P1 · kit · issue · #1 · S · znf:fix · - · deferred until 2026-10-30 · -', 'b · P1 · kit · issue · #2 · S · znf:fix · - · carry-over · -'].join('\n'))
+  expect(l.tasks[0].status).toBe('deferred')
+  expect(l.tasks[0].until).toBe('2026-10-30')
+  expect(l.tasks[1].status).toBe('carry-over')
+  expect(l.tasks[1].until).toBeUndefined()
+})
+
 test('parseLedger on empty text', async () => {
   expect(parseLedger('')).toEqual({ date: null, tasks: [], needs: [], malformed: [] })
 })

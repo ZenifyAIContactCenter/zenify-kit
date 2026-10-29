@@ -3,6 +3,7 @@ import type { Ledger, LedgerTask } from '../types'
 export type { Ledger, LedgerTask }
 
 const DATE_HEADING = /^## (\d{4}-\d{2}-\d{2})\s*$/
+const DEFERRED = /^deferred until (\d{4}-\d{2}-\d{2})/
 const NEEDS = /^Needs you:\s*(.*)$/
 const KNOWN_LABEL = /^[A-Z][A-Za-z ]*:|^Batch \d/
 
@@ -11,6 +12,7 @@ function parseTask(line: string): LedgerTask | null {
   // 10 fields carry a priority after the id; the legacy 9-field line has none.
   if (f.length !== 9 && f.length !== 10) return null
   if (f.length === 9) f.splice(1, 0, '-')
+  const until = DEFERRED.exec(f[8])?.[1]
   return {
     id: f[0],
     priority: f[1],
@@ -21,6 +23,7 @@ function parseTask(line: string): LedgerTask | null {
     skill: f[6],
     worker: f[7],
     status: f[8].split(/\s+/)[0],
+    ...(until && { until }),
     evidence: f[9],
   }
 }

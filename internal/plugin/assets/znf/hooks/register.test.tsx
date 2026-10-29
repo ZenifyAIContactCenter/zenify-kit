@@ -186,10 +186,12 @@ function engine(on: any, world: World): Calls {
 
 const HUMAN = 'nonstop-human'
 const PROGRESS = 'nonstop-progress'
+const PENDING = 'nonstop-pending'
 const DONE = 'nonstop-done'
-const THREE = [
+const FOUR = [
   { id: HUMAN, title: 'Need Human', columns: 44 },
   { id: PROGRESS, title: 'In Progress', columns: 44 },
+  { id: PENDING, title: 'Pending', columns: 44 },
   { id: DONE, title: 'Done', columns: 44 },
 ]
 
@@ -231,12 +233,12 @@ test('SC-7: only a nonstop prompt or Skill call opens the pane', async ($, on) =
 
   await $.prompt.submit({ text: '/znf:nonstop continue', command: { name: 'znf:nonstop', args: 'continue' } })
   await clock.settle()
-  expect(calls.open).toEqual(THREE)
+  expect(calls.open).toEqual(FOUR)
 
   await $.tool.call({ tool: 'Skill', skill: 'znf:nonstop' })
   await clock.settle()
-  expect(calls.open).toHaveLength(6)
-  expect(calls.open[3]).toMatchObject({ id: HUMAN })
+  expect(calls.open).toHaveLength(8)
+  expect(calls.open[4]).toMatchObject({ id: HUMAN })
 })
 
 test('SC-5: a ledger edit shows after the 2s tick; an unchanged mtime is not re-read', async ($, on) => {
@@ -500,7 +502,7 @@ test('FR-3.1: session.start reopens the pane on a live day', async ($, on) => {
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
   await clock.settle()
-  expect(calls.open).toEqual(THREE)
+  expect(calls.open).toEqual(FOUR)
 })
 
 test('FR-3.1: session.start stays closed when today has no running task', async ($, on) => {
@@ -518,7 +520,7 @@ test('FR-1.2: the nonstop-pane command toggles; closing stops the timers', async
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
   await clock.settle()
   await $.command.run({ command: 'nonstop-pane', args: '' })
-  expect(calls.close.map(c => (c as { id: string }).id)).toEqual(THREE.map(p => p.id))
+  expect(calls.close.map(c => (c as { id: string }).id)).toEqual(FOUR.map(p => p.id))
 
   const reads = calls.read.length
   const gh = ghRuns(calls).length
@@ -529,7 +531,7 @@ test('FR-1.2: the nonstop-pane command toggles; closing stops the timers', async
 
   await $.command.run({ command: 'nonstop-pane', args: '' })
   await clock.settle()
-  expect(calls.open).toHaveLength(6)
+  expect(calls.open).toHaveLength(8)
 })
 
 test('FR-1.2: a tab still open keeps the timers running', async ($, on) => {
@@ -539,7 +541,7 @@ test('FR-1.2: a tab still open keeps the timers running', async ($, on) => {
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
   await clock.settle()
   await $.command.run({ command: 'nonstop-pane', args: '' })
-  expect(calls.close).toHaveLength(3)
+  expect(calls.close).toHaveLength(4)
 
   world.file = { text: ledgerText([row('t1', 'running'), row('t2', 'running')]), mtimeMs: 2 }
   const reads = calls.read.length
@@ -1404,4 +1406,59 @@ test('FR-2.7: a PR url with an unsafe repo name shows no merge or copy button', 
   expect(await mergeButton(human)).toBeUndefined()
   expect(await texts(human)).not.toContain('CHỜ MERGE')
   await human.unmount()
+})
+
+const defer = (id: string, until: string, priority = '-') => row(id, `deferred until ${until}`, '-', `#${id}`, priority)
+
+test('FR-3.11: Pending lists deferred by date then carry-over by priority', async ($, on) => {
+  engine(on, {
+    file: {
+      text: ledgerText([
+        defer('d2', '2026-11-02', 'P0'),
+        defer('d1', '2026-10-30', 'P2'),
+        row('c2', 'carry-over', '-', '#c2', 'P2'),
+        row('c0', 'carry-over', '-', '#c0', 'P0'),
+        row('t1', 'running'),
+      ]),
+      mtimeMs: 1,
+    },
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(PENDING))
+  const r = await rows(ui)
+  const t = await texts(ui)
+  expect(t).toContain('HOÃN')
+  expect(t).toContain('CARRY-OVER')
+  const at = (s: string) => r.findIndex(x => x.includes(s))
+  expect(r[at('d1')]).toContain('tới 2026-10-30')
+  expect(r[at('d2')]).toContain('tới 2026-11-02')
+  expect(at('d1')).toBeLessThan(at('d2'))
+  expect(r[at('c0')]).not.toContain('tới')
+  expect(at('c0')).toBeLessThan(at('c2'))
+  expect(r.some(x => x.includes('t1'))).toBe(false)
+  await ui.unmount()
+})
+
+test('FR-3.11: Pending shows only the sections that have tasks', async ($, on) => {
+  engine(on, { file: { text: ledgerText([row('c1', 'carry-over'), row('t1', 'running')]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(PENDING))
+  const t = await texts(ui)
+  expect(t).toContain('CARRY-OVER')
+  expect(t).not.toContain('HOÃN')
+  await ui.unmount()
+})
+
+test('FR-3.11: Pending with nothing deferred or carried over says trống', async ($, on) => {
+  engine(on, { file: { text: ledgerText([row('t1', 'running')]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(PENDING))
+  expect(await texts(ui)).toEqual(['trống'])
+  await ui.unmount()
 })

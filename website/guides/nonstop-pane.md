@@ -4,23 +4,24 @@ title: "Pane nonstop: điều phối cả ngày trong một terminal"
 
 # Pane nonstop
 
-Khi chạy [`/znf:nonstop`](/reference/skills/nonstop), chat chính chỉ còn là nơi điều phối và trả lời quyết định. Trạng thái task, PR và thống kê nằm ở ba tab bên cạnh chat, tự cập nhật, không tốn lượt chat nào.
+Khi chạy [`/znf:nonstop`](/reference/skills/nonstop), chat chính chỉ còn là nơi điều phối và trả lời quyết định. Trạng thái task, PR và thống kê nằm ở bốn tab bên cạnh chat, tự cập nhật, không tốn lượt chat nào.
 
 ## Bật pane
 
 Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Không cần cài thêm.
 
-- Gõ `/znf:nonstop` (hoặc `/znf:nonstop continue`): ba tab mở ra cạnh chat.
-- `/nonstop-pane`: mở hoặc đóng cả ba tab bằng tay.
+- Gõ `/znf:nonstop` (hoặc `/znf:nonstop continue`): bốn tab mở ra cạnh chat.
+- `/nonstop-pane`: mở hoặc đóng cả bốn tab bằng tay.
 - Pane chỉ dock cạnh chat khi Claude Code chạy fullscreen (`"tui": "fullscreen"` trong `~/.claude/settings.json`). Không fullscreen thì pane nằm phía trên ô prompt.
 - Session thường không mở pane và không poll gì. Khi Claude Code khởi động lại giữa một ngày nonstop còn task `running`, pane tự mở lại.
 
-## Ba tab
+## Bốn tab
 
 | Tab | Nội dung |
 |---|---|
 | **Need Human** | Câu hỏi chờ bạn (task `blocked`, dòng `Needs you:`) và PR sẵn sàng merge |
 | **In Progress** | Dòng `▶ đang chạy N worker` (spinner) hoặc `⏸ tạm dừng`; task `RUNNING`, `QUEUED`; khu `ĐANG WATCH` liệt kê mọi PR còn mở với `CI · Zenie · thread mở/tổng`; dòng đếm và cảnh báo ⚠ dòng ledger sai format |
+| **Pending** | Task `deferred` (khu `HOÃN`, kèm `tới <ngày>`, sắp theo ngày rồi priority) và task `carry-over` (khu `CARRY-OVER`, sắp theo priority); khu rỗng thì ẩn |
 | **Done** | Task `done`, PR đã merge hoặc đóng, khu `THỐNG KÊ` |
 
 Trên mọi tab:
