@@ -51,7 +51,7 @@ git -C <repo> log --oneline <branch>..origin/<base> | wc -l    # base ahead
 | branch not pushed | `/ship` first — nothing to merge yet |
 | pushed, no PR / PR open | **the merge is the user's** (rule #7). Report the branch and stop |
 | merged | proceed |
-| **hotfix, merged into `release<N>` only** | **stop.** The sync back to `staging` comes first, or next week's release silently loses the fix. `/hotfix` step 9 owns this |
+| **hotfix, merged into its hotfix base but not yet in `origin/<baseRef>`** | **stop.** The sync back to the feature base comes first, or the next release silently loses the fix. `/hotfix` step 10 owns this |
 
 That last row is the one worth stopping for: removing the worktree and branch of an un-synced hotfix
 destroys the only local copy of a fix that is about to be lost, and it looks like a successful cleanup.
@@ -90,6 +90,6 @@ pane is yours to close. No workspace manager → this part is skipped silently.
 |---|---|
 | "`0 removed` means everything is clean" | It usually means nothing has merged yet. Check, then say which. |
 | "I'll `--force` past the refusal" | The refusals are the entire safety gate. Report them instead. |
-| "The hotfix is merged to release, so it's done" | Not until it is synced back to `staging`. Sweeping now loses the fix. |
+| "The hotfix is merged, so it's done" | Not until its commit is in `origin/<baseRef>`. Sweeping now loses the fix. |
 | "One repo swept, task done" | The slug exists in every repo it touched. Loop them. |
 | "I should reimplement this in the skill for speed" | `wt sweep` is tested (16 assertions). Prose reimplementing it is not. |

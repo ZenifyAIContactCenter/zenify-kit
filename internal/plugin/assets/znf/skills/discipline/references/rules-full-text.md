@@ -30,7 +30,7 @@ always                      verify with real output before saying it works
 | nothing unknown, but it's broken in production now | `znf:hotfix` (+ `znf:fix` steps 0-2 to diagnose) |
 | **nothing unknown** — the user stated both the what and the why | no skill; spine only |
 
-`znf:hotfix` is on a different axis from the other two: it is about where the change lands (a release base ref, not the mainline integration branch), so it *composes* with `znf:fix` rather than replacing it.
+`znf:hotfix` is on a different axis from the other two: it is about where the change lands (the repo's declared hotfix base — what production is cut from — not the integration branch), so it *composes* with `znf:fix` rather than replacing it.
 
 **Skip the skill only when all four hold:** one repo · no shared resource touched · the user stated both what and why · not broken in production. Otherwise a skill applies. Note dial A still applies — "no skill" never means "no branch" and never means "no gate".
 

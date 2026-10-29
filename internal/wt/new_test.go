@@ -47,6 +47,23 @@ func TestRunNew_RejectsBadSlug(t *testing.T) {
 	}
 }
 
+func TestRunNew_ZenKeySlug(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	seedCfg(t, root)
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	// A slug carrying a tracker key is valid: it reaches the branch-exists check
+	// with the branch name namph/fix/zen-123-x.
+	g.out[root+"|show-ref --verify --quiet refs/heads/namph/fix/zen-123-x"] = ""
+	o := baseOpts(root, g)
+	o.Slug = "zen-123-x"
+	o.Type = "fix"
+	err := RunNew(o)
+	if err == nil || !strings.Contains(err.Error(), "namph/fix/zen-123-x") || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("zen-123-x must be accepted and map to branch namph/fix/zen-123-x, got %v", err)
+	}
+}
+
 func TestRunNew_RejectsBadType(t *testing.T) {
 	t.Setenv("WT_SESSION", "")
 	root := t.TempDir()
@@ -273,5 +290,34 @@ func TestTakenPorts_SkipsStaleEntries(t *testing.T) {
 	got := takenPorts(st)
 	if !got[3201] || got[3202] || !got[3203] {
 		t.Fatalf("taken = %v, want 3201+3203 only", got)
+	}
+}
+
+func TestRunNew_HotfixRejectsRetiredReleaseLatest(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	writeWorktreeJSON(t, root, `{"abbrev":"ccbe","user":"namph","portRange":[3200,3249],"deps":"install","hotfix":{"baseStrategy":"release-latest"}}`)
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	o := baseOpts(root, g)
+	o.Type = "hotfix"
+	if err := RunNew(o); err == nil || !strings.Contains(err.Error(), "release-latest") {
+		t.Fatalf("hotfix with release-latest must fail instead of branching from baseRef, got %v", err)
+	}
+}
+
+// A hotfix with no hotfixBaseRef falls back to baseRef and says so on stderr,
+// so the user sees which ref production is being patched from.
+func TestRunNew_HotfixWithoutRefWarns(t *testing.T) {
+	t.Setenv("WT_SESSION", "")
+	root := t.TempDir()
+	writeWorktreeJSON(t, root, `{"abbrev":"ccbe","user":"namph","baseRef":"origin/staging","portRange":[3200,3249],"deps":"install","hotfix":{"baseStrategy":"staging"}}`)
+	g := &gitStub{out: map[string]string{}, err: map[string]error{}}
+	var errb bytes.Buffer
+	o := baseOpts(root, g)
+	o.Type = "hotfix"
+	o.Stderr = &errb
+	_ = RunNew(o)
+	if !strings.Contains(errb.String(), "no hotfixBaseRef declared — branching this hotfix from origin/staging") {
+		t.Fatalf("expected fallback warning on stderr, got %q", errb.String())
 	}
 }

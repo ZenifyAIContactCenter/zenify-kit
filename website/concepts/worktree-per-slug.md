@@ -34,6 +34,8 @@ zenify wt new <slug> --type feat --base origin/<base>
 
 Slug đặt tên cho toàn bộ vòng đời này. Nó trở thành tên branch `<user>/<type>/<slug>` và tên thư mục worktree. `<user>` là `git config user.name` của bạn (ký tự không hợp lệ trong tên branch đổi thành `-`); chưa đặt `user.name` thì lấy phần trước `@` trong `git config user.email`. Repo khai `user` trong `worktree.json` thì dùng giá trị đó.
 
+Slug có thể bắt đầu bằng mã ticket, ví dụ `zen-123-session-timeout` (branch `<user>/fix/zen-123-session-timeout`). `/znf:ship` đọc mã `zen-<n>` trong tên branch để đặt `ZEN-<n>` vào tiêu đề PR; stack nhiều lớp dùng branch `<lớp-1>-<N>` nên mã vẫn nằm trong mọi branch.
+
 Một plan chia thành nhiều SDD task (Task 1, Task 2, ...). Tất cả task đó dùng chung một worktree. Cấp thêm worktree cho từng task vi phạm quy tắc "một repo, một worktree" mà slug tồn tại để giữ. Gọi `zenify wt new` lần nữa với cùng slug trong cùng phiên sẽ bị từ chối, kèm dòng `cd` tới worktree đã mở.
 
 ## Liên quan
@@ -45,7 +47,7 @@ Một plan chia thành nhiều SDD task (Task 1, Task 2, ...). Tất cả task �
 ## Lưu ý
 
 - `--another` mở worktree thứ hai trong cùng repo. Dùng cho một yêu cầu thật sự tách biệt, không dùng khi chỉ thấy "việc này hơi khác". Lạm dụng cờ này là cách một slug thành nhiều branch trong một ngày.
-- Hotfix được miễn quy tắc trên. Base ref của hotfix là release mới nhất, không phải branch tích hợp, vì production có thể cần sửa ngay giữa lúc bạn đang làm tính năng.
+- Hotfix được miễn quy tắc trên. Base ref của hotfix là base hotfix repo khai (`zenify hotfix baseref`, ví dụ `origin/main`), không phải branch tích hợp, vì production có thể cần sửa ngay giữa lúc bạn đang làm tính năng.
 - `zenify wt rm <slug>` từ chối xóa worktree chưa có dấu vết merge, trừ khi thêm `--force`. Bạn có thể gọi thử mà không mất công việc chưa land.
 - `.worktrees/` phải nằm trong `.gitignore` đã commit, không nằm trong `.git/info/exclude`. Khai báo cục bộ không đi theo repo, nên đồng nghiệp clone lần đầu sẽ thấy checkout bị bẩn ngay khi chạy `zenify wt new`.
 

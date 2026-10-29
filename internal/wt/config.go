@@ -163,3 +163,27 @@ func parsePortRange(raw json.RawMessage) ([2]int, error) {
 	}
 	return [2]int{}, fmt.Errorf("must be [lo,hi] or \"lo hi\"")
 }
+
+// HotfixBase resolves the ref a hotfix branches from. It is the single resolver
+// behind both `wt new --type hotfix` and `zenify hotfix baseref`, so the two
+// can never disagree. A declared hotfixBaseRef wins; "staging"/"standalone"
+// (the default) follow baseRef. "release-latest" is retired: guessing the
+// newest release<N> branch picks a stale one once a team stops cutting them.
+func HotfixBase(c *Config) (string, error) {
+	switch c.HotfixBaseStrategy {
+	case "custom":
+		if c.HotfixBaseRef == "" {
+			return "", fmt.Errorf("hotfix.baseStrategy=custom but hotfixBaseRef is missing in .claude/worktree.json")
+		}
+		return c.HotfixBaseRef, nil
+	case "release-latest":
+		return "", fmt.Errorf(`hotfix.baseStrategy "release-latest" is retired: declare "hotfix": {"baseStrategy": "custom"} and "hotfixBaseRef": "<ref>" (e.g. "origin/main") in .claude/worktree.json`)
+	case "staging", "standalone":
+		if c.HotfixBaseRef != "" {
+			return c.HotfixBaseRef, nil
+		}
+		return c.BaseRef, nil
+	default:
+		return "", fmt.Errorf("unknown hotfix.baseStrategy %q (want custom, staging or standalone)", c.HotfixBaseStrategy)
+	}
+}

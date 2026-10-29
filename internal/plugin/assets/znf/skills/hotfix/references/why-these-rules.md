@@ -34,16 +34,18 @@ feature base.
 
 ## Why the base ref is fetched before it is resolved
 
-For a hotfix the base overrides the declared integration base to the latest release ref, so
-resolving it against a stale local ref branches from the wrong release entirely. The tool's own
+For a hotfix the base overrides the declared integration base to the repo's declared hotfix base
+(the ref production is cut from), so resolving it against a stale local ref branches from code
+production is not running. The tool's own
 fetch is too late, because the ref is resolved before the tool runs. Full reasoning lives in
 `znf:discipline` §8's base-ref rule.
 
-`zenify hotfix baseref` reads that repo's own `.claude/worktree.json` (its `hotfix.baseStrategy`)
-and resolves the concrete ref: a standalone/staging-strategy repo returns `staging`, a
-`custom`-strategy repo returns its configured `hotfixBaseRef`, and a `release-latest`-strategy
-repo scans `origin/release<N>` branches and returns the highest one. Which strategy each repo uses
-is a project fact, not something to infer.
+`zenify hotfix baseref` reads that repo's own `.claude/worktree.json` and resolves the concrete
+ref through the same resolver `wt new --type hotfix` uses, so the two cannot disagree: a declared
+`hotfixBaseRef` wins (`custom` requires one), and a standalone/staging-strategy repo returns its
+`baseRef`. The old `release-latest` strategy now errors: it guessed the highest `origin/release<N>`
+branch, and once a team stops cutting release branches the highest one is weeks stale while
+looking current. Which ref each repo uses is a project fact, declared, never inferred.
 
 The ref is needed even when you never branch from it: the scout step and the gate step both depend
 on knowing which code is actually running.

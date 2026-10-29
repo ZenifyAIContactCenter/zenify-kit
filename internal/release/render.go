@@ -13,16 +13,13 @@ func Render(rep Report, verbose bool) string {
 	var b strings.Builder
 
 	// Header.
-	fmt.Fprintf(&b, "# Release %d\n", rep.N)
+	fmt.Fprintf(&b, "# Release %s\n", rep.Tag)
 	fmt.Fprintf(&b, "Sinh %s\n\n", rep.GeneratedAt)
 
 	// Headline — quick decision.
 	b.WriteString("## Quyết định nhanh\n") //znf:allow-lang
 	if len(rep.ShippingRepos) > 0 {
 		fmt.Fprintf(&b, "- Ship: %s\n", strings.Join(rep.ShippingRepos, ", "))
-	}
-	if len(rep.NotShipped) > 0 {
-		fmt.Fprintf(&b, "- Không ship: %s\n", strings.Join(rep.NotShipped, ", ")) //znf:allow-lang
 	}
 	fmt.Fprintf(&b, "- Tổng: %d feature · %d fix · %d hotfix\n", rep.TotalFeat, rep.TotalFix, rep.TotalHotfix) //znf:allow-lang
 	// text/template's map range auto-sorts keys; here we sort manually for stable output.
@@ -48,8 +45,8 @@ func Render(rep Report, verbose bool) string {
 			fmt.Fprintf(&b, "- ⚠ %s\n", rr.Err)
 			continue
 		}
-		fmt.Fprintf(&b, "## %s (rel%d..%d, cắt %s)\n", rr.Name, rr.PrevRelease, rep.N, cutOr(rr.CutDate)) //znf:allow-lang
-		fmt.Fprintf(&b, "- Migration %s · Test %s · %d commit → %d thay đổi\n",                           //znf:allow-lang
+		fmt.Fprintf(&b, "## %s (%s..%s)\n", rr.Name, rr.PrevTag, rr.Tag)
+		fmt.Fprintf(&b, "- Migration %s · Test %s · %d commit → %d thay đổi\n", //znf:allow-lang
 			yesNo(rr.HasMigration, "CÓ", "không"),   //znf:allow-lang
 			yesNo(rr.HasTestTouch, "đụng", "không"), //znf:allow-lang
 			len(rr.Commits), len(rr.Changes))
@@ -241,13 +238,6 @@ func yesNo(b bool, yes, no string) string {
 		return yes
 	}
 	return no
-}
-
-func cutOr(cut string) string {
-	if cut == "" {
-		return "chưa xác định" //znf:allow-lang
-	}
-	return cut
 }
 
 // sortedKeys returns the map's keys sorted (replacing text/template's old auto-sort).

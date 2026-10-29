@@ -15,8 +15,8 @@ type Commit struct {
 // RepoReport is the report section for one repo in one release.
 type RepoReport struct {
 	Name                 string
-	PrevRelease          int
-	CutDate              string
+	Tag                  string // the release tag this section reports (vYYMMDD.n)
+	PrevTag              string // the tag just before Tag; the range is PrevTag..Tag
 	Commits              []Commit
 	TypeCounts           map[string]int
 	HasMigration         bool
@@ -75,16 +75,15 @@ const (
 	TierNote                      // release note-commit linked by slug
 )
 
-// Report is the whole report for one release.
+// Report is the whole report for one release tag.
 type Report struct {
-	N               int
+	Tag             string // release tag vYYMMDD.n; "" when no repo carries one
 	GeneratedAt     string
 	Repos           []RepoReport        // repos included
-	NotShipped      []string            // tracked repos with no release<N>
 	SharedCrossRepo map[string][]string // pattern -> repos (>=2)
 	DeployOrderNote bool
 
-	ShippingRepos     []string // repos with release<N>
+	ShippingRepos     []string // repos with a section for the tag
 	TotalFeat         int
 	TotalFix          int
 	TotalHotfix       int

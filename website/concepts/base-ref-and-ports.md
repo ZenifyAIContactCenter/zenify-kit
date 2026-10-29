@@ -33,16 +33,18 @@ Ví dụ thật, `.claude/worktree.json` của chính repo `zenify-kit`:
 | `portEnv` | tên biến môi trường worktree đọc port từ đó |
 | `deps` | `none` ở đây vì kit không có `node_modules` để seed |
 
-Hotfix có hai cơ chế resolve base.
+Hotfix có một hàm resolve base, dùng chung cho `zenify wt new --type hotfix` và `zenify hotfix baseref <repoPath>`, nên hai lệnh luôn ra cùng một ref.
 
-`zenify wt new --type hotfix` ưu tiên `hotfixBaseRef`. Nếu không có, lệnh dùng `baseRef` và cảnh báo `wt: no hotfixBaseRef declared — branching this hotfix from <base>`. Cờ `--base` luôn thắng cả hai.
-
-`zenify hotfix baseref <repoPath>` resolve theo `hotfix.baseStrategy`. Mặc định trả `origin/staging`. `release-latest` tìm branch `release<N>` mới nhất. `custom` bắt buộc có `hotfixBaseRef`, thiếu thì lỗi.
+- Có `hotfixBaseRef` thì dùng nó. `custom` bắt buộc có, thiếu thì lỗi.
+- `staging`, `standalone` hoặc không khai mà không có `hotfixBaseRef` thì dùng `baseRef`. `wt new` cảnh báo `wt: no hotfixBaseRef declared — branching this hotfix from <base>`.
+- `release-latest` báo lỗi. Chiến lược này đoán nhánh `release<N>` lớn nhất, và khi team thôi cắt nhánh release thì nhánh đó trông như mới nhất dù đã cũ.
+- Cờ `--base` của `wt new` luôn thắng.
 
 ```mermaid
 flowchart LR
   A["zenify wt new --type hotfix"] -->|có --base| B["Dùng --base"]
   A -->|có hotfixBaseRef| C["Dùng hotfixBaseRef"]
+  A -->|release-latest| E["Báo lỗi"]
   A -->|không có gì| D["Dùng baseRef, kèm cảnh báo"]
   class A action
 ```
@@ -80,7 +82,7 @@ Các skill `ship` và `subagent-driven-development` tính merge-base bằng lệ
 
 ## Lưu ý
 
-- Fetch trước, resolve sau. Thứ tự này không đảo được. Resolve release mới nhất trước khi fetch có thể bỏ lỡ release vừa cắt sáng nay, và branch hotfix từ bản cũ. Lỗi này chỉ lộ khi merge. `zenify wt new` bản hiện tại tự fetch trước khi resolve, nhưng bản cũ có thể chưa, nên bạn vẫn fetch tay trước khi gọi.
+- Fetch trước, resolve sau. Thứ tự này không đảo được. Resolve base hotfix trước khi fetch thì ref local có thể đứng sau remote, và hotfix tách từ bản cũ. Lỗi này chỉ lộ khi merge. `zenify wt new` bản hiện tại tự fetch trước khi resolve, nhưng bản cũ có thể chưa, nên bạn vẫn fetch tay trước khi gọi.
 - Hai repo trùng port block làm hai worktree ở hai repo tranh nhau một port khi chạy song song. Khi thêm repo mới, đọc `portRange` của các repo lân cận trước khi chọn khối tiếp theo.
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):

@@ -1,23 +1,37 @@
 package release
 
 import (
-	"fmt"
+	"slices"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
-// Build assembles the report for release n from a list of repos. Fail-open per repo: one repo's
-// error does not break the whole report. loadPatterns is injected so tests don't depend on a real
+// noTagNote is the per-repo line for a repo that carries no release tag at all.
+const noTagNote = "chưa có tag vYYMMDD.n" //znf:allow-lang
+
+// stagingRef is the integration branch: regression is "not on staging", and a PR merged from it
+// into main is the weekly release whose inner PRs are the report's changes.
+const stagingRef = "origin/staging"
+
+// Build assembles the report for release tag `tag` (vYYMMDD.n) from a list of repos. tag "" means
+// the newest tag name across all repos; in that default mode a repo that does not carry it is
+// omitted, while an explicit tag keeps a "chưa có tag" row for it. Each repo's range runs from //znf:allow-lang
+// the tag just before to the tag, hotfix tags included. Fail-open per repo: one repo's error does
+// not break the whole report. loadPatterns is injected so tests don't depend on a real
 // worktree.json. resolve locates each repo's real dir (via workspace.Resolve) — it does not assume
 // a repo is a direct child of the workspace, so it is nesting-safe.
-func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
-	return buildReport(r, resolve, repos, n, loadPatterns, loadSpecs)
+func Build(r gitx.Runner, resolve func(name string) (string, bool), repos []string, tag string, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
+	return buildReport(r, resolve, repos, tag, loadPatterns, loadSpecs)
 }
 
-func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos []string, n int, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
+func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos []string, tag string, loadPatterns func(dir string) []string, loadSpecs func(repo string) []SpecMeta) Report {
+	defaultMode := tag == ""
+	if defaultMode {
+		tag = newestTag(r, resolve, repos)
+	}
 	rep := Report{
-		N:               n,
+		Tag:             tag,
 		GeneratedAt:     time.Now().Format("2006-01-02 15:04"),
 		SharedCrossRepo: map[string][]string{},
 	}
@@ -27,33 +41,29 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not locate repo in workspace"})
 			continue
 		}
-		nums, err := ReleaseNums(r, dir)
+		tags, err := releaseTags(r, dir)
 		if err != nil {
-			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not read release branches: " + err.Error()})
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không đọc được tag release: " + err.Error()}) //znf:allow-lang
 			continue
 		}
-		// finalize R<n>: a repo participates in release n iff it has a release<n> branch.
-		has := false
-		for _, x := range nums {
-			if x == n {
-				has = true
+		if len(tags) == 0 {
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: noTagNote})
+			continue
+		}
+		if !slices.Contains(tags, tag) {
+			if !defaultMode {
+				rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "chưa có tag " + tag}) //znf:allow-lang
 			}
-		}
-		if !has {
-			rep.NotShipped = append(rep.NotShipped, name)
 			continue
 		}
-		prev, ok := PrevRelease(nums, n)
+		prev, ok := PrevTag(tags, tag)
 		if !ok {
-			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "could not find the previous release"})
+			rep.Repos = append(rep.Repos, RepoReport{Name: name, Err: "không tìm thấy tag liền trước " + tag}) //znf:allow-lang
 			continue
 		}
-		relPrev := fmt.Sprintf("origin/release%d", prev)
-		relN := fmt.Sprintf("origin/release%d", n)
-		rr := RepoReport{Name: name, PrevRelease: prev, TypeCounts: map[string]int{}}
-		rr.CutDate, _ = CutDate(r, dir, n)
+		rr := RepoReport{Name: name, Tag: tag, PrevTag: prev, TypeCounts: map[string]int{}}
 		var notes []Commit
-		if cs, err := RangeCommits(r, dir, relPrev, relN); err == nil {
+		if cs, err := RangeCommits(r, dir, prev, tag); err == nil {
 			var feats []Commit
 			for _, c := range cs {
 				if IsReleaseNote(c) {
@@ -72,7 +82,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 		} else {
 			rr.Err = "log error: " + err.Error()
 		}
-		if fs, err := ChangedFiles(r, dir, relPrev, relN); err == nil {
+		if fs, err := ChangedFiles(r, dir, prev, tag); err == nil {
 			pats := loadPatterns(dir)
 			hits := map[string]bool{}
 			for _, f := range fs {
@@ -91,7 +101,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 				rep.SharedCrossRepo[p] = append(rep.SharedCrossRepo[p], name)
 			}
 		}
-		if cs, err := NotInStaging(r, dir, relPrev, relN, "origin/staging"); err == nil {
+		if cs, err := NotInStaging(r, dir, prev, tag, stagingRef); err == nil {
 			rr.Regression = cs
 		} else {
 			rr.RegressionUncomputed = true
@@ -102,7 +112,7 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 			notStaging[c.SHA] = true
 		}
 		aggIn := rr.Commits // flat fallback (degrade-safe)
-		if gcs, err := RangeCommitsGrouped(r, dir, relPrev, relN); err == nil {
+		if gcs, err := RangeCommitsGrouped(r, dir, prev, tag, stagingRef); err == nil {
 			var gfeats []Commit
 			for _, c := range gcs {
 				if !IsReleaseNote(c) { // a note-commit does NOT go into a bucket (keeping option B)
@@ -159,4 +169,24 @@ func buildReport(r gitx.Runner, resolve func(name string) (string, bool), repos 
 		}
 	}
 	return rep
+}
+
+// newestTag returns the newest release tag name across repos (by tagLess); "" when none carries one.
+// Unresolvable or unreadable repos are skipped here — buildReport reports them in its own pass.
+func newestTag(r gitx.Runner, resolve func(name string) (string, bool), repos []string) string {
+	newest := ""
+	for _, name := range repos {
+		dir, ok := resolve(name)
+		if !ok {
+			continue
+		}
+		tags, err := releaseTags(r, dir)
+		if err != nil || len(tags) == 0 {
+			continue
+		}
+		if t := tags[len(tags)-1]; newest == "" || tagLess(newest, t) {
+			newest = t
+		}
+	}
+	return newest
 }

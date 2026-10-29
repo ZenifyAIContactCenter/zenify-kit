@@ -50,7 +50,7 @@ func BranchMerged(r gitx.Runner, repoRoot, branch, base string) bool {
 
 // WorktreeMerged reports whether the worktree's branch landed in base or in the
 // base it was cut from (wt.base, recorded by wt new — a hotfix lands on its
-// release branch, never on baseRef). checked names the ref(s) tried, for the
+// hotfix base, which may differ from baseRef). checked names the ref(s) tried, for the
 // refusal message.
 func WorktreeMerged(r gitx.Runner, repoRoot, worktreePath, branch, base string) (ok bool, checked string) {
 	if BranchMerged(r, repoRoot, branch, base) {

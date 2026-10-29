@@ -4,21 +4,21 @@ title: Release và báo cáo
 
 # Release và báo cáo
 
-`zenify release-note` ghi metadata rủi ro cho từng thay đổi khi ship. `zenify release-report` gom các ghi chú đó thành một báo cáo rủi ro cho cả release, đọc thẳng từ git.
+`zenify release-note` ghi metadata rủi ro cho từng thay đổi khi ship. `zenify release-report` gom các ghi chú đó thành một báo cáo rủi ro cho một release tag, đọc thẳng từ git.
 
 ## Khi nào dùng
 
 Bạn hiếm khi gõ `zenify release-note` tay. `/znf:ship` gọi lệnh này ở bước cuối, trước khi push branch, lấy giá trị từ ba tag rủi ro trong Brief của spec. Bạn chỉ chạy tay khi ship không có spec để lấy giá trị, hoặc khi đi đường không dùng workflow.
 
-Chạy `zenify release-report` trước khi deploy một release, sau khi đã cắt nhánh `release<N>`.
+Chạy `zenify release-report` sau khi đánh tag release `vYYMMDD.n` trên `main` và trước khi deploy tag đó. Bản tuần là một tag, mỗi hotfix là một PR vào `main` rồi thêm một tag nữa, ví dụ `v261028.0` rồi `v261028.2`.
 
 ## Các bước
 
 ```mermaid
 flowchart TD
   A["ship note lại rủi ro"] --> B["Commit chore(release: note ...)"]
-  B --> C["zenify release-report N"]
-  C --> D["Đọc R N .md trong knowledge store"]
+  B --> C["zenify release-report tag"]
+  C --> D["Đọc tag .md trong knowledge store"]
   class A,B,C action
   class D user
 ```
@@ -56,17 +56,17 @@ Thiếu `--slug` thì lệnh bỏ qua và không chặn ship. Commit lỗi cũng
 | `--verbose` | Hiện cả commit chore và chi tiết từng commit. |
 
 ```bash
-zenify release-report 42
+zenify release-report v261104.0
 ```
 
-Không truyền số release, lệnh tự lấy số lớn nhất tìm thấy trong các repo. Không tìm được số nào, lệnh báo và kết thúc bình thường, không lỗi.
+Mỗi repo được tính trên khoảng từ tag liền trước tới tag bạn truyền, kể cả tag hotfix: nếu giữa tuần có `v261028.2` thì báo cáo `v261104.0` bắt đầu từ `v261028.2`, nên một tuần có hotfix ra nhiều file báo cáo. Không truyền tag, lệnh lấy tag mới nhất trong cả workspace và chỉ báo cáo các repo mang tag đó: nếu hotfix chỉ tag `be` thành `v261104.1` thì báo cáo `v261104.1.md` chỉ có `be`. Truyền tag thì repo không mang tag đó có dòng "chưa có tag" trong báo cáo. Repo không có tag release nào chỉ có dòng "chưa có tag" khi được ghim trong `.zenify/release-repos.txt`; ở chế độ tự dò, repo đó bị bỏ khỏi báo cáo. Không repo nào có tag thì lệnh báo ra stderr, không ghi file và kết thúc bình thường.
 
 ## Kết quả
 
 | Artifact | Nội dung |
 |---|---|
 | Commit `chore(release): note <slug>` | Trailer gồm slug, mô tả, blast radius, DB, cách rollback, đường dẫn spec nếu có |
-| `R<N>.md` | Báo cáo release, ghi vào thư mục releases của knowledge store |
+| `<tag>.md` | Báo cáo cho một tag, ví dụ `v261104.0.md`, ghi vào thư mục releases của knowledge store |
 
 Mỗi dòng trong báo cáo lấy metadata từ commit ghi chú của `zenify release-note`. Thay đổi có trong release nhưng chưa có trên `staging` được đánh dấu là regression, để bạn biết một hotfix chưa sync ngược.
 
