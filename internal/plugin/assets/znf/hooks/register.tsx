@@ -766,16 +766,18 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         <Box flexDirection="row">
-          {TABS.map((t, i) => (
+          {TABS.map((t, i) => [
+            i > 0 && <Text dimColor> │ </Text>,
+            // A plain Button draws the same whatever its variant, so the selected tab is marked
+            // by `▸` and the others are dim.
             <Button
               key={`tab:${t.id}`}
-              label={t.label}
+              label={t.id === id ? `▸${t.label}` : t.label}
               plain
-              hotkey={String(i + 1)}
-              variant={t.id === id ? 'primary' : undefined}
+              dimColor={t.id !== id}
               onPress={() => update($, tab, () => t.id).then(() => undefined)}
-            />
-          ))}
+            />,
+          ])}
         </Box>
         {shown.map(i => i.node)}
         {hidden > 0 && line(`+${hidden} dòng`, { dimColor: true })}

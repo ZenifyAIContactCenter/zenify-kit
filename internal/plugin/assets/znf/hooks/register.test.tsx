@@ -224,13 +224,13 @@ const pane = (bodyColumns = 44, bodyRows = 40) =>
 // Mounts the one pane and selects `tab` (the state is shared, so every mount shows it).
 async function mountTab($: any, tab: string, bodyColumns = 44, bodyRows = 40) {
   const ui = await $.ui.mount(pane(bodyColumns, bodyRows))
-  if (await ui.find({ type: 'Button', key: `tab:${tab}` })) await ui.press({ key: `tab:${tab}` })
+  await ui.press({ key: `tab:${tab}` })
   return ui
 }
 
 // Text and Link cells in document order: a PR row is a Link (the ref) then a Text (the status).
 const allTexts = async (ui: { findAll: (q: { type?: string }) => Promise<{ type: string; text?: string }[]> }) =>
-  (await ui.findAll({})).filter(e => e.type === 'Text' || e.type === 'Link').map(e => e.text ?? '')
+  (await ui.findAll({})).filter(e => (e.type === 'Text' || e.type === 'Link') && e.text !== ' │ ').map(e => e.text ?? '')
 
 // The body only: everything above the footer's separator line.
 const texts = async (ui: Parameters<typeof allTexts>[0]) => {
@@ -370,7 +370,7 @@ test('FR-1.1: no ledger on either path shows the empty state and clears the stat
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
-  const ui = await mountTab($, PROGRESS)
+  const ui = await $.ui.mount(pane())
   expect(await texts(ui)).toEqual(['chưa có ledger nonstop'])
   expect(calls.status.at(-1)).toBeUndefined()
   expect(calls.status.length).toBeGreaterThan(0)
@@ -382,7 +382,7 @@ test('FR-1.2: a read error other than missing is shown, not swallowed', async ($
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
-  const ui = await mountTab($, PROGRESS)
+  const ui = await $.ui.mount(pane())
   expect((await ui.find({ type: 'Text', text: /EACCES/ }))?.text).toContain('EACCES')
   await ui.unmount()
 })
@@ -1655,26 +1655,43 @@ test('FR-3.11: Pending with nothing deferred or carried over says trống', asyn
   await ui.unmount()
 })
 
-test('FR-3.12: the header has four tab Buttons, Need Human primary; pressing a tab switches body and primary', async ($, on) => {
+test('FR-3.12: the tab row marks the selected tab with ▸, dims the others, and pressing a tab switches body', async ($, on) => {
   engine(on, { file: { text: ledgerText([row('t1', 'queued'), row('t2', 'deferred until 2099-01-01'), 'Needs you: x — hỏi']), mtimeMs: 1 } })
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
   const ui = await $.ui.mount(pane())
-  const buttons = (await ui.findAll({ type: 'Button' })).filter(b => String(b.props.key).startsWith('tab:'))
-  expect(buttons.map(b => [b.props.key, b.props.label, b.props.variant])).toEqual([
-    ['tab:human', 'Need Human', 'primary'],
-    ['tab:progress', 'In Progress', undefined],
-    ['tab:pending', 'Pending', undefined],
-    ['tab:done', 'Done', undefined],
+  const header = async () => (await ui.findAll({ type: 'Box' })).filter(b => b.props.flexDirection === 'row')[0].text
+  const tabs = async () => (await ui.findAll({ type: 'Button' })).filter(b => String(b.props.key).startsWith('tab:'))
+  expect(await header()).toBe('▸Need Human │ In Progress │ Pending │ Done')
+  expect((await tabs()).map(b => [b.props.key, !!b.props.dimColor])).toEqual([
+    ['tab:human', false],
+    ['tab:progress', true],
+    ['tab:pending', true],
+    ['tab:done', true],
   ])
+  expect((await tabs()).every(b => b.props.plain && b.props.hotkey === undefined && b.props.variant === undefined)).toBe(true)
   expect(await texts(ui)).toContain('CẦN ANH')
   await ui.press({ key: 'tab:pending' })
+  expect(await header()).toBe('Need Human │ In Progress │ ▸Pending │ Done')
+  expect((await tabs()).filter(b => !b.props.dimColor).map(b => b.props.key)).toEqual(['tab:pending'])
   expect(await texts(ui)).toContain('HOÃN')
   expect(await texts(ui)).not.toContain('CẦN ANH')
-  const after = (await ui.findAll({ type: 'Button' })).filter(b => b.props.variant === 'primary')
-  expect(after.map(b => b.props.label)).toEqual(['Pending'])
   await ui.unmount()
+})
+
+test('FR-3.12: a failing stats run shows the ⚠ lỗi thống kê line in the footer under every tab', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 1, stdout: '', stderr: 'boom: no\nmore' } }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  for (const tab of [HUMAN, DONE]) {
+    const ui = await mountTab($, tab)
+    const all = await allTexts(ui)
+    expect(all.slice(all.findIndex(t => t.startsWith('─ Thống kê ')) + 1)).toEqual(['⚠ lỗi thống kê: boom: no'])
+    await ui.unmount()
+  }
 })
 
 test('FR-3.12: the Thống kê footer sits under every tab with the scale line', async ($, on) => {
