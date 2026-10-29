@@ -13,7 +13,7 @@ Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Khôn
 - Gõ `/znf:nonstop` (hoặc `/znf:nonstop continue`): bốn tab mở ra cạnh chat.
 - `/nonstop-pane`: mở hoặc đóng cả bốn tab bằng tay.
 - Pane chỉ dock cạnh chat khi Claude Code chạy fullscreen (`"tui": "fullscreen"` trong `~/.claude/settings.json`). Không fullscreen thì pane nằm phía trên ô prompt.
-- Session thường không mở pane và không poll gì. Khi Claude Code khởi động lại giữa một ngày nonstop còn task `running`, pane tự mở lại.
+- Session thường không mở pane và không poll gì. Pane không tự mở khi session bắt đầu; sau khi khởi động lại Claude Code, gõ `/znf:nonstop continue` để mở lại.
 
 ## Bốn tab
 

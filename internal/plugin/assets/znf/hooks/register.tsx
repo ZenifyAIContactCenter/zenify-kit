@@ -81,12 +81,6 @@ type Loaded = { ledger: Ledger; mtimeMs: number } | { missing: true } | { error:
 const isMissing = (err: unknown) => /ENOENT/.test(String(err))
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
-function today(): string {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
-
 // FR-1.1: the cwd's own ledger, else the main checkout's (right from a worktree too).
 async function ledgerPath($: $): Promise<string | undefined> {
   if (ledgerFile) return ledgerFile
@@ -440,15 +434,8 @@ export const register: Register = on => {
       name: 'nonstop-pane',
       description: 'Toggle the nonstop orchestrator pane',
     })
-    // FR-3.1: reopen only a nonstop day that is still running (re-entry after a restart).
-    const loaded = await load($)
-    if (loaded !== 'unchanged' && 'ledger' in loaded) {
-      const l = loaded.ledger
-      if (l.date === today() && l.tasks.some(t => t.status === 'running')) {
-        await apply($, loaded)
-        await openPane($)
-      }
-    }
+    // FR-3.1: never open the pane here; session.start cannot tell a nonstop restart from an
+    // unrelated session. Opening is the skill, the prompt or the command.
     // A nonstop tab that survived the restart must not stay frozen; a plain session arms nothing.
     if (!timers.length && (await $.ui.panes()).some(p => isTab(p.id))) {
       await refresh($, true)

@@ -497,20 +497,19 @@ test('FR-1.2: a normal session polls nothing', async ($, on) => {
   expect(calls.read.length).toBeLessThanOrEqual(1)
 })
 
-test('FR-3.1: session.start reopens the pane on a live day', async ($, on) => {
+test('FR-3.1: session.start never opens the pane, even on a live day; re-entry does', async ($, on) => {
   const calls = engine(on, { file: { text: ledgerText(BASE), mtimeMs: 1 } })
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
   await clock.settle()
-  expect(calls.open).toEqual(FOUR)
-})
-
-test('FR-3.1: session.start stays closed when today has no running task', async ($, on) => {
-  const calls = engine(on, { file: { text: ledgerText([row('t1', 'done'), row('t2', 'carry-over')]), mtimeMs: 1 } })
-  const clock = mock.clock(on)
-  await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
-  await clock.settle()
+  const reads = calls.read.length
+  await clock.advance(60000)
   expect(calls.open).toHaveLength(0)
+  expect(ghRuns(calls)).toHaveLength(0)
+  expect(calls.read).toHaveLength(reads)
+  await $.prompt.submit({ text: '/znf:nonstop continue' })
+  await clock.settle()
+  expect(calls.open).toEqual(FOUR)
 })
 
 test('FR-1.2: the nonstop-pane command toggles; closing stops the timers', async ($, on) => {
@@ -518,6 +517,7 @@ test('FR-1.2: the nonstop-pane command toggles; closing stops the timers', async
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
   await $.command.run({ command: 'nonstop-pane', args: '' })
   expect(calls.close.map(c => (c as { id: string }).id)).toEqual(FOUR.map(p => p.id))
@@ -539,6 +539,7 @@ test('FR-1.2: a tab still open keeps the timers running', async ($, on) => {
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
   await $.command.run({ command: 'nonstop-pane', args: '' })
   expect(calls.close).toHaveLength(4)
@@ -564,10 +565,8 @@ test('FR-1.1: a local ledger created after session start is found', async ($, on
   const world: World = { file: null, gitDir: '/w/repo/.git' }
   const calls = engine(on, world)
   const clock = mock.clock(on)
-  // Neither path has a ledger yet: session.start falls back to the main checkout's.
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
   await clock.settle()
-  expect(calls.stat).toContain('/w/repo/.znf/nonstop/progress.md')
   world.file = { text: ledgerText(BASE), mtimeMs: 5 }
   world.isLocal = true
   await $.prompt.submit({ text: '/znf:nonstop' })
