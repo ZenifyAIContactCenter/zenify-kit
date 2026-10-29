@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.53.1
+
+*2026-10-29*
+
+- **Pane nonstop gọn hơn:** tab Need Human bỏ dòng tiêu đề `CẦN ANH` lặp lại tên tab; câu hỏi chờ bạn hiện ngay dưới hàng tab, mục `CHỜ MERGE` giữ nguyên.
+
 ## v0.53.0
 
 *2026-10-29*
