@@ -119,7 +119,6 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	def(&c.Grafana.Addr, "127.0.0.1:8000")
 	def(&c.Mongo.MainDB, "3csoft")
 	def(&c.Mongo.AuditDB, "audit_logs")
-	def(&c.Mongo.MsghubDB, "msghub")
 	if c.Grafana.Args == nil {
 		c.Grafana.Args = append([]string(nil), DefaultGrafanaArgs...)
 	}
@@ -173,6 +172,9 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	s.ElasticStg, s.ElasticPrd = getenv("ELASTIC_URL_STG"), getenv("ELASTIC_URL_PRD")
 	if c.Catalog != nil {
 		s.CatalogGitHubToken = get("CATALOG_GITHUB_TOKEN")
+	}
+	if (s.MsghubMongoStg != "" || s.MsghubMongoPrd != "") && c.Mongo.MsghubDB == "" {
+		errs = append(errs, fmt.Errorf("config %s: missing mongo.msghub_db (required when MSGHUB_MONGO_URL_* is set)", path))
 	}
 	if len(noEnv) > 0 {
 		errs = append(errs, fmt.Errorf("missing required env: %s", strings.Join(sorted(noEnv), ", ")))

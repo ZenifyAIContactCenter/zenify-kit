@@ -90,7 +90,7 @@ func TestLoad_OK(t *testing.T) {
 	if c.Org != "TestOrg" || c.Listen != ":9090" || c.Grafana.URL != "https://grafana.example.test" {
 		t.Errorf("yaml fields not loaded: %+v", c)
 	}
-	if c.Mongo.MainDB != "3csoft" || c.Mongo.AuditDB != "audit_logs" || c.Mongo.MsghubDB != "msghub" {
+	if c.Mongo.MainDB != "3csoft" || c.Mongo.AuditDB != "audit_logs" || c.Mongo.MsghubDB != "" {
 		t.Errorf("mongo defaults: %+v", c.Mongo)
 	}
 	if c.Grafana.Bin != "mcp-grafana" || c.Grafana.Addr != "127.0.0.1:8000" {
@@ -173,7 +173,7 @@ func TestLoad_OptionalSecretsRead(t *testing.T) {
 	env["QDRANT_URL_STG"] = "b"
 	env["LUMI_MYSQL_URL_PRD"] = "c"
 	env["MSGHUB_MONGO_URL_PRD"] = "d"
-	c, err := Load(writeCfg(t, sampleYAML), envOf(env))
+	c, err := Load(writeCfg(t, sampleYAML+"mongo:\n  msghub_db: x\n"), envOf(env))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,5 +297,14 @@ func TestLoad_E2EWorkflows(t *testing.T) {
 	}
 	if len(c.E2EWorkflows) != 1 || c.E2EWorkflows[0] != wf {
 		t.Errorf("E2EWorkflows = %v, want [%s]", c.E2EWorkflows, wf)
+	}
+}
+
+func TestLoad_MsghubURLNeedsDB(t *testing.T) {
+	env := fullEnv()
+	env["MSGHUB_MONGO_URL_STG"] = "d"
+	_, err := Load(writeCfg(t, sampleYAML), envOf(env))
+	if err == nil || !strings.Contains(err.Error(), "mongo.msghub_db") {
+		t.Fatalf("want missing mongo.msghub_db error, got %v", err)
 	}
 }
