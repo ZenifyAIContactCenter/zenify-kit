@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.53.1
+
+*2026-10-29*
+
+- **Pane nonstop gọn hơn:** tab Need Human bỏ dòng tiêu đề `CẦN ANH` lặp lại tên tab; câu hỏi chờ bạn hiện ngay dưới hàng tab, mục `CHỜ MERGE` giữ nguyên.
+- **Chat nonstop yên hơn:** khi chạy tương tác (có pane), worker báo xong thì orchestrator chỉ cập nhật ledger và pane, không in lại khối tiến độ. Chat chỉ có một dòng khi cần bạn: câu hỏi mới, PR sẵn sàng merge kèm lệnh, hoặc lỗi cần quyết. Lúc bạn đang trao đổi về một task, báo cáo của worker khác chờ tới khi xong mới hiện. Hỏi trạng thái, hoặc chạy headless, thì vẫn có khối tiến độ đầy đủ.
+
 ## v0.53.0
 
 *2026-10-29*

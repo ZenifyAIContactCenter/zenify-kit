@@ -72,6 +72,7 @@ on start and on EVERY wake-up (worker finished, watcher exited, user replied):
              the user approves; a follow-up of an approved task (its CI fix, its threads) → `queued`
   refill   → while running < SLOTS and an actionable task exists: dispatch the top one
   report   → one progress block (layout in references/daily-plan.md)
+             interactive with the pane → Quiet loop (references/daily-plan.md) instead
   end turn → only while ≥ 1 worker or watcher is still running
 ```
 
