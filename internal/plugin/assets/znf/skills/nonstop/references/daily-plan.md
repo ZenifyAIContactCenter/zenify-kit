@@ -90,9 +90,26 @@ Only when the session has a line starting `features: github.issues on`:
 Toggle off → the issue column is `-`, the brief carries `Features: github.issues off` and no issue
 command runs.
 
+## Quiet loop
+
+An interactive session opens the nonstop pane with `/znf:nonstop`, and the pane already shows every
+task, PR and stat. There the chat is for the user's decisions, so a Loop wake-up stays quiet:
+
+- A worker report, a watcher exit or a refill → update the ledger and act; no progress block. The
+  pane shows the change.
+- Write to the chat only when the user must act, and then one line per item:
+  - a new question → `⏸ <id> needs you — Need Human tab`;
+  - a PR ready to merge → `✓ <id> <PR URL> — ! gh pr merge -R <owner/repo> <n> --merge`;
+  - a failure that needs a decision → `✗ <id> — <reason>`.
+- While the user is talking about a task (their last message names its id or answers its
+  question), the reply is about the task the user is talking about. Reports from other workers
+  arriving meanwhile go to the ledger only; their one-line items wait until that exchange ends.
+- The user asks for status, or the session is headless (`claude -p`, `ZNF_AUTONOMOUS=1`) → the
+  progress block below.
+
 ## Progress block
 
-Printed on every Loop wake-up:
+Printed on a Loop wake-up only outside the Quiet loop (headless, or the user asked for status):
 
 ```
 Tick N — running: A/SLOTS | done: X | blocked: Z | queued: R | points: P

@@ -23,7 +23,7 @@ func TestNonstopSkill(t *testing.T) {
 		ref[r] = body
 		all += "\n" + body
 	}
-	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"no tables", "has a table or `###` → rewrite it first"})
+	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"no tables", "has a table or `###` → rewrite it first", "Quiet loop"})
 	assertContainsAll(t, "ledger-format.md", ref["ledger-format.md"], []string{"Needs you: <id> — <question>", "rewrite", "inside a field", "on one line"})
 	// FR-4.3: sizes are agent time, and the old human-scale lines are recomputed.
 	assertContainsAll(t, "estimation.md", ref["estimation.md"], []string{"< 5 min", "agent time", "before 2026-10-29", "pane flags a done task", "zenify nonstop stats --json", "Learned scale"})
@@ -63,7 +63,7 @@ func TestNonstopSkill(t *testing.T) {
 	// The orchestrator's ci-watch only reports; it never hands a worker's PR to znf:fix.
 	assertContainsAll(t, "nonstop/SKILL.md", skill, []string{"report-only"})
 	// The morning plan carries every open line of the last section.
-	assertContainsAll(t, "nonstop/references/daily-plan.md", ref["daily-plan.md"], []string{"non-done"})
+	assertContainsAll(t, "nonstop/references/daily-plan.md", ref["daily-plan.md"], []string{"non-done", "## Quiet loop", "no progress block", "one line", "the task the user is talking about"})
 	assertContainsAll(t, "nonstop skill + references", all, []string{
 		"progress.md",
 		"## YYYY-MM-DD",

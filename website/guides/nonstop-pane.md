@@ -15,6 +15,9 @@ Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Khôn
 - Pane chỉ dock cạnh chat khi Claude Code chạy fullscreen (`"tui": "fullscreen"` trong `~/.claude/settings.json`). Không fullscreen thì pane nằm phía trên ô prompt.
 - Session thường không mở pane và không poll gì. Pane không tự mở khi session bắt đầu; sau khi khởi động lại Claude Code, gõ `/znf:nonstop continue` để mở lại.
 
+
+Khi pane mở, chat chỉ dành cho quyết định của bạn: worker báo xong thì orchestrator cập nhật ledger và pane mà không in khối tiến độ. Chat chỉ có một dòng khi cần bạn (câu hỏi mới, PR sẵn sàng merge, lỗi cần quyết), và không chen vào lúc bạn đang trao đổi về một task. Muốn xem tổng quan trong chat thì hỏi trạng thái.
+
 ## Bốn tab trong một pane
 
 Hàng tab `Need Human | In Progress | Pending | Done` do pane tự vẽ: bấm vào tab; tab đang chọn có dấu `▸` trước tên và được tô màu nổi bật, các tab còn lại mờ (mặc định Need Human). Nội dung tab dài hơn khoảng trống thì cắt và ghi `+N dòng` (dim).
