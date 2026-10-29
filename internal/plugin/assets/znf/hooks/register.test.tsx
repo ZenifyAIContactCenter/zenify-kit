@@ -759,6 +759,41 @@ test('FR-3.7: pressing a task id expands its full line, pressing again collapses
   await ui.unmount()
 })
 
+const HINT = '▾ chi tiết dài, cần pane cao hơn'
+
+test('an expanded task taller than the room stays reachable in collapsed form', async ($, on) => {
+  const evidence = `ev-${'e'.repeat(397)}`
+  engine(on, { file: { text: ledgerText([row('t1', 'done', evidence)]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+
+  const ui = await mountTab($, DONE, 44, 14)
+  const hint = async () => (await ui.find({ type: 'Text', text: HINT })) !== undefined
+  await ui.press({ key: 'task:done:t1' })
+  expect(await ui.find({ type: 'Button', key: 'task:done:t1' })).toBeDefined()
+  expect(await hint()).toBe(true)
+
+  await ui.press({ key: 'task:done:t1' })
+  expect(await hint()).toBe(false)
+  expect(await ui.find({ type: 'Button', key: 'task:done:t1' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('an expanded task shows in full when the room is tall enough', async ($, on) => {
+  const evidence = `ev-${'e'.repeat(397)}`
+  engine(on, { file: { text: ledgerText([row('t1', 'done', evidence)]), mtimeMs: 1 } })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+
+  const ui = await mountTab($, DONE, 44, 60)
+  await ui.press({ key: 'task:done:t1' })
+  expect(await ui.find({ type: 'Text', text: new RegExp(evidence) })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: HINT })).toBeUndefined()
+  await ui.unmount()
+})
+
 test('FR-3.7: a Needs you line without a task expands to its full question', async ($, on) => {
   const question = `q-${'q'.repeat(100)}`
   engine(on, { file: { text: ledgerText([row('t1', 'running'), `Needs you: t9 — ${question}`]), mtimeMs: 1 } })

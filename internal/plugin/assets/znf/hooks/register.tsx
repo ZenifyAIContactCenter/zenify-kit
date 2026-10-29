@@ -561,7 +561,7 @@ export const register: Register = on => {
     const cols = Math.max(1, e.props.bodyColumns)
     const id = await read($, tab)
     // One drawn element and the rows it takes, so the body can be cut to the room it has.
-    type Item = { node: unknown; h: number }
+    type Item = { node: unknown; h: number; collapsed?: Item }
     const it = (node: unknown, h = 1): Item => ({ node, h })
     const line = (s: string, props: Record<string, unknown> = {}) => <Text {...props}>{cut(s, cols)}</Text>
     const lineItem = (s: string, props: Record<string, unknown> = {}) => it(line(s, props))
@@ -643,28 +643,51 @@ export const register: Register = on => {
     const fields = (t: (typeof l.tasks)[number]) =>
       [t.repo, t.source, t.issue, t.size, t.skill, t.worker, t.status].join(' · ')
     const prefix = (priority: string): string => withPriority(priority, '')
+    // An expanded item that outgrows the room is drawn as its head row plus this hint, so its id
+    // button stays on screen and the user can still collapse it.
+    const withCollapsed = (full: Item, head: unknown): Item =>
+      full.h === 1
+        ? full
+        : {
+            ...full,
+            collapsed: it(
+              <Box flexDirection="column">
+                {head}
+                {line('▾ chi tiết dài, cần pane cao hơn', { dimColor: true })}
+              </Box>,
+              2,
+            ),
+          }
     const taskLine = (t: (typeof l.tasks)[number], tail: string, lead = ''): Item => {
       const href = issueUrl(t.issue)
       const issue: Part[] = href ? [' ', { href, label: t.issue }] : []
       const extra = open.includes(t.id) ? [fields(t), t.evidence] : []
-      return it(
-        <Box flexDirection="column">
-          {row([lead + prefix(t.priority), { taskId: t.id }, ` ${t.repo}`, ...issue, ` ${tail}`])}
-          {extra.length > 0 && detail(extra)}
-        </Box>,
-        1 + detailRows(extra),
+      const head = row([lead + prefix(t.priority), { taskId: t.id }, ` ${t.repo}`, ...issue, ` ${tail}`])
+      return withCollapsed(
+        it(
+          <Box flexDirection="column">
+            {head}
+            {extra.length > 0 && detail(extra)}
+          </Box>,
+          1 + detailRows(extra),
+        ),
+        head,
       )
     }
     const needLine = (n: { id: string; question: string; priority: string }): Item => {
       if (!n.id) return lineItem(n.question)
       const task = l.tasks.find(t => t.id === n.id)
       const extra = open.includes(n.id) ? (task ? [fields(task), n.question] : [n.question]) : []
-      return it(
-        <Box flexDirection="column">
-          {row([prefix(n.priority), { taskId: n.id }, ` ${n.question}`])}
-          {extra.length > 0 && detail(extra)}
-        </Box>,
-        1 + detailRows(extra),
+      const head = row([prefix(n.priority), { taskId: n.id }, ` ${n.question}`])
+      return withCollapsed(
+        it(
+          <Box flexDirection="column">
+            {head}
+            {extra.length > 0 && detail(extra)}
+          </Box>,
+          1 + detailRows(extra),
+        ),
+        head,
       )
     }
 
@@ -758,8 +781,16 @@ export const register: Register = on => {
     let shown = items
     let hidden = 0
     if (total > room) {
+      // Walk in order: an item that fits is shown, else its collapsed form if that fits, else stop.
+      // The first item is always shown so the body is never empty.
       let used = 0
-      shown = items.filter(i => (used + i.h <= room - 1 ? ((used += i.h), true) : ((used = room), false)))
+      shown = []
+      for (const [n, i] of items.entries()) {
+        const pick = used + i.h <= room - 1 ? i : i.collapsed && used + i.collapsed.h <= room - 1 ? i.collapsed : n === 0 ? (i.collapsed ?? i) : undefined
+        if (!pick) break
+        shown.push(pick)
+        used += pick.h
+      }
       hidden = total - shown.reduce((n, i) => n + i.h, 0)
     }
 
