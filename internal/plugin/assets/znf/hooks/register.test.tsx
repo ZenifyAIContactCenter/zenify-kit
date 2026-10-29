@@ -1760,13 +1760,13 @@ test('FR-3.12: a body taller than its room is cut to room - 1 rows and ends with
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
-  // 14 rows: header 1 + separator 1 + 4 footer lines = room 8; the body is 1 + 1 + 12 + 1 = 15 rows
+  // 14 rows: header 1 + separator 1 + 4 footer lines + 1 link line = room 7; the body is 1 + 1 + 12 + 1 = 15 rows
   const ui = await mountTab($, PROGRESS, 44, 14)
   const body = await texts(ui)
   const taskRows = (await rows(ui)).filter(t => t.startsWith('q'))
-  // 7 shown rows: the running line, QUEUED and 5 tasks
-  expect(taskRows).toHaveLength(5)
-  expect(body.at(-1)).toBe(`+${15 - 7} dòng`)
+  // 6 shown rows: the running line, QUEUED and 4 tasks
+  expect(taskRows).toHaveLength(4)
+  expect(body.at(-1)).toBe(`+${15 - 6} dòng`)
   await ui.unmount()
 })
 
