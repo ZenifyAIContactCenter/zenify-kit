@@ -475,7 +475,8 @@ test('FR-3.2/FR-3.4: sections in order, every line cut to bodyColumns', async ($
   await ui.unmount()
 
   const human = await mountTab($, HUMAN, 20)
-  expect((await texts(human))[0]).toBe('CẦN ANH')
+  // The tab is already named Need Human: no repeated CẦN ANH header above its questions.
+  expect(await texts(human)).not.toContain('CẦN ANH')
   const needs = await rows(human)
   expect(needs.some(t => t.startsWith('t9') && t.endsWith('…'))).toBe(true)
   expect(needs.every(t => t.length <= 20)).toBe(true)
@@ -1718,7 +1719,7 @@ test('FR-3.12: the tab row marks the selected tab with ▸, dims the others, and
   ])
   expect((await selected()).map(t => [t.text, !!t.props.bold])).toEqual([['▸Need Human', true]])
   expect((await tabs()).every(b => b.props.plain && b.props.hotkey === undefined && b.props.variant === undefined)).toBe(true)
-  expect(await texts(ui)).toContain('CẦN ANH')
+  expect(await texts(ui)).not.toContain('CẦN ANH')
   await ui.press({ key: 'tab:pending' })
   expect(await header()).toBe('Need Human │ In Progress │ ▸Pending │ Done')
   expect((await tabs()).map(b => b.props.key)).toEqual(['tab:human', 'tab:progress', 'tab:done'])

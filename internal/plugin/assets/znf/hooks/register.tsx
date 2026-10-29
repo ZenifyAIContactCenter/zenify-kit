@@ -723,7 +723,6 @@ export const register: Register = on => {
     const needs = byPriority(l.needs.map(n => ({ ...n, priority: priorityOf(n.id) })))
 
     const humanItems = (): Item[] => [
-      ...(needs.length > 0 ? [lineItem('CẦN ANH', { bold: true, color: 'yellow' })] : []),
       ...needs.map(needLine),
       ...(mergeable.length > 0 ? [lineItem('CHỜ MERGE', { bold: true })] : []),
       ...mergeable.map(url =>
