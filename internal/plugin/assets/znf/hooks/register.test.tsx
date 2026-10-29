@@ -54,6 +54,8 @@ type World = {
   // durations.log next to the ledger; absent = the file does not exist.
   durations?: string
   writeError?: string
+  // false = the workspace's nonstop-metrics.md does not exist; the default is that it does.
+  metrics?: boolean
 }
 
 type Calls = {
@@ -148,6 +150,10 @@ function engine(on: any, world: World): Calls {
   on('fs.stat', (_: unknown, e: { path: string }) => {
     calls.stat.push(e.path)
     if (world.statError) return { deny: world.statError }
+    if (e.path.endsWith('/docs/reference/zenify-kit/nonstop-metrics.md')) {
+      if (world.metrics === false) return { deny: `ENOENT: no such file, stat '${e.path}'` }
+      return { value: { kind: 'file', size: 1, mtimeMs: 1, isLink: false } }
+    }
     if (e.path.endsWith('/estimates.md')) {
       if (world.estimatesMtime === undefined) return { deny: `ENOENT: no such file, stat '${e.path}'` }
       return { value: { kind: 'file', size: 1, mtimeMs: world.estimatesMtime, isLink: false } }
@@ -1774,13 +1780,15 @@ test('FR-3.12: a body taller than its room is cut to room - 1 rows and ends with
   await ui.unmount()
 })
 
-test('FR-3.13: the last pane line is a Xem thêm thông tin link to the metrics definitions; the separator is plain', async ($, on) => {
+const METRICS = '/w/app/docs/reference/zenify-kit/nonstop-metrics.md'
+
+test('FR-3.13: the last pane line is a Xem thêm thông tin link to the workspace metrics file; the separator is plain', async ($, on) => {
   const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 0, stdout: statsJson(), stderr: '' }, estimatesMtime: 5 }
   engine(on, world)
   const clock = mock.clock(on)
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
-  const url = 'https://github.com/ZenifyAIContactCenter/zenify-knowledge/blob/main/reference/zenify-kit/nonstop-metrics.md'
+  const url = `file://${METRICS}`
   for (const id of [PROGRESS, HUMAN, DONE]) {
     const ui = await mountTab($, id, 44)
     const all = await allTexts(ui)
@@ -1790,4 +1798,30 @@ test('FR-3.13: the last pane line is a Xem thêm thông tin link to the metrics 
     expect(all.find(t => t.startsWith('─ Thống kê '))).toHaveLength(44)
     await ui.unmount()
   }
+})
+
+test('FR-3.13: no metrics file in the workspace means no link and one more body row', async ($, on) => {
+  const many = Array.from({ length: 12 }, (_, i) => row(`q${i}`, 'queued'))
+  const world: World = { file: { text: ledgerText(many), mtimeMs: 1 }, stats: { exitCode: 0, stdout: statsJson(), stderr: '' }, estimatesMtime: 5, metrics: false }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await mountTab($, PROGRESS, 44, 14)
+  expect(await ui.findAll({ type: 'Link' })).toHaveLength(0)
+  // the link line is not drawn, so its row goes to the body: 5 task rows instead of 4
+  expect((await rows(ui)).filter(t => t.startsWith('q'))).toHaveLength(5)
+  await ui.unmount()
+})
+
+test('FR-3.13: a ledger outside a workspace .zenify/nonstop gets no metrics link', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 0, stdout: statsJson(), stderr: '' }, estimatesMtime: 5, gitDir: '/w/repo/.git' }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await mountTab($, PROGRESS, 44)
+  expect(await ui.findAll({ type: 'Link' })).toHaveLength(0)
+  expect(calls.stat.some(p => p.endsWith('nonstop-metrics.md'))).toBe(false)
+  await ui.unmount()
 })

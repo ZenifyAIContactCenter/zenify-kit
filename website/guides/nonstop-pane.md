@@ -26,7 +26,7 @@ Hàng tab `Need Human | In Progress | Pending | Done` do pane tự vẽ: bấm v
 | **Pending** | Task `deferred` (khu `HOÃN`, kèm `tới <ngày>`, sắp theo ngày rồi priority) và task `carry-over` (khu `CARRY-OVER`, sắp theo priority); khu rỗng thì ẩn |
 | **Done** | Task `done`, PR đã merge hoặc đóng. PR đóng vẫn được poll: mở lại thì nó quay về `ĐANG WATCH` |
 
-Dưới mọi tab là khu `Thống kê` cố định, ngăn bởi một dòng kẻ, tối đa 5 dòng: thang size, hôm nay, 7 ngày, review kèm tier, và một dòng ⚠ (task done chưa ghi estimate, hoặc dòng estimates sai format, hoặc lỗi thống kê). Chưa có `estimates.md` thì hiện `chưa có estimates.md`. Dòng cuối pane `Xem thêm thông tin` mở định nghĩa các chỉ số (trang nằm trong knowledge store, repo private của team).
+Dưới mọi tab là khu `Thống kê` cố định, ngăn bởi một dòng kẻ, tối đa 5 dòng: thang size, hôm nay, 7 ngày, review kèm tier, và một dòng ⚠ (task done chưa ghi estimate, hoặc dòng estimates sai format, hoặc lỗi thống kê). Chưa có `estimates.md` thì hiện `chưa có estimates.md`. Dòng cuối pane `Xem thêm thông tin` mở file định nghĩa các chỉ số `docs/reference/zenify-kit/nonstop-metrics.md` trong knowledge view của workspace (ledger nằm ở `<workspace>/.zenify/nonstop`). Không có file đó, hoặc ledger nằm ngoài workspace, thì dòng này không hiện.
 
 Trên mọi tab:
 

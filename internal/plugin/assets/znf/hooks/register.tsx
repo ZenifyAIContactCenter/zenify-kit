@@ -26,7 +26,6 @@ import {
 import type { Threads } from './pr'
 
 // FR-3.12: one pane; the four tabs are drawn inside it.
-const METRICS_URL = 'https://github.com/ZenifyAIContactCenter/zenify-knowledge/blob/main/reference/zenify-kit/nonstop-metrics.md'
 const PANE = { id: 'nonstop', title: 'Nonstop', columns: 44 } as const
 const isTab = (id: string) => id === PANE.id
 // The four panes of the earlier version; opening closes any that survived.
@@ -377,6 +376,32 @@ async function ledgerDir($: $): Promise<string | undefined> {
     throw err
   }
   return file.slice(0, file.lastIndexOf('/'))
+}
+
+// FR-3.13: the metrics definitions file of the workspace whose `.zenify/nonstop` holds the
+// ledger. Read at runtime, never named in the plugin: undefined when the ledger is elsewhere or
+// the file is absent. Cached per ledger dir so the render does not stat on every tick.
+const WS_LEDGER_SUFFIX = '/.zenify/nonstop'
+let metricsCache: { dir: string; path: string | undefined } | undefined
+async function metricsPath($: $): Promise<string | undefined> {
+  let dir: string | undefined
+  try {
+    dir = await ledgerDir($)
+  } catch {
+    return undefined
+  }
+  if (!dir || !dir.endsWith(WS_LEDGER_SUFFIX)) return undefined
+  if (metricsCache?.dir === dir) return metricsCache.path
+  const candidate = `${dir.slice(0, -WS_LEDGER_SUFFIX.length)}/docs/reference/zenify-kit/nonstop-metrics.md`
+  let path: string | undefined
+  try {
+    const st = await $.fs.stat(candidate)
+    path = st.kind === 'file' ? candidate : undefined
+  } catch {
+    path = undefined
+  }
+  metricsCache = { dir, path }
+  return path
 }
 
 // FR-6.1: a worker brief tags its agent `work` and maps its slug to the task; a prompt naming a
@@ -776,8 +801,9 @@ export const register: Register = on => {
       : st?.data
         ? footerLines(st.data, doneToday).map(f => ({ text: f.text, ...(f.warn ? { color: 'yellow' } : {}) }))
         : []
+    const metrics = footer.length > 0 ? await metricsPath($) : undefined
     const rowsTotal = e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 30
-    const room = Math.max(2, rowsTotal - 1 - 1 - footer.length - (footer.length > 0 ? 1 : 0))
+    const room = Math.max(2, rowsTotal - 1 - 1 - footer.length - (metrics ? 1 : 0))
     const total = items.reduce((n, i) => n + i.h, 0)
     let shown = items
     let hidden = 0
@@ -818,7 +844,7 @@ export const register: Register = on => {
         {hidden > 0 && line(`+${hidden} dòng`, { dimColor: true })}
         {line('─ Thống kê '.padEnd(cols, '─'), { dimColor: true })}
         {footer.map(f => line(f.text, f.color ? { color: f.color } : {}))}
-        {footer.length > 0 && <Link href={METRICS_URL} label="Xem thêm thông tin" />}
+        {metrics && <Link href={`file://${metrics}`} label="Xem thêm thông tin" />}
       </Box>
     )
   })
