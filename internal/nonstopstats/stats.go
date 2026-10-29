@@ -15,6 +15,7 @@ const (
 	minLearn   = 20 // measured tasks needed before the scale is learned
 	maxLearn   = 60 // most recent measured tasks used to learn it
 	minRuleRow = 3  // lines with an actual needed before a calibration rule fires
+	ruleWindow = 30 // most recent estimates lines the calibration rules read
 	fieldSep   = " · "
 	dateLayout = "2006-01-02"
 	// Calibration rules are output data consumed by the orchestrator and the pane.
@@ -185,8 +186,9 @@ func ParseDurations(text string) (Durations, int) {
 	return d, malformed
 }
 
-// ApplyDurations makes the log win over the ledger columns. A line (date d,
-// id x) takes the runs of x dated in (previous line of x, d], so an id reused
+// ApplyDurations makes the log win over the ledger columns. The runs of id x
+// dated in (previous date of x, d] go to one line of (d, x): the last one with
+// an actual (a cancel then a redo the same day), else the last one. An id reused
 // on another day does not collect the old runs; summed ms round up to minutes.
 func ApplyDurations(lines []Line, d Durations) {
 	byID := map[string][]int{}
@@ -195,12 +197,25 @@ func ApplyDurations(lines []Line, d Durations) {
 	}
 	for id, idx := range byID {
 		sort.SliceStable(idx, func(a, b int) bool { return lines[idx[a]].Date < lines[idx[b]].Date })
-		prev := ""
+		var dates []string
+		target := map[string]int{}
 		for _, i := range idx {
+			date := lines[i].Date
+			t, seen := target[date]
+			if !seen {
+				dates = append(dates, date)
+			}
+			if !seen || lines[i].Actual != "" || lines[t].Actual == "" {
+				target[date] = i
+			}
+		}
+		prev := ""
+		for _, date := range dates {
+			i := target[date]
 			var work, review int
 			var hasWork, hasReview bool
 			for _, e := range d {
-				if e.ID != id || e.Date > lines[i].Date || e.Date <= prev {
+				if e.ID != id || e.Date > date || e.Date <= prev {
 					continue
 				}
 				if e.Kind == "work" {
@@ -215,7 +230,7 @@ func ApplyDurations(lines []Line, d Durations) {
 			if hasReview {
 				lines[i].ReviewMin = (review + 59999) / 60000
 			}
-			prev = lines[i].Date
+			prev = date
 		}
 	}
 }
@@ -329,13 +344,14 @@ func Compute(lines []Line, malformed int, today string) Result {
 	tierGroups := map[string]*tierGroup{}
 	weekDays := map[string]bool{}
 
-	for _, l := range lines {
+	for i, l := range lines {
 		act := effectiveActual(l, scale)
+		inRuleWindow := i >= len(lines)-ruleWindow
 		inWeek := weekStart != "" && l.Date >= weekStart && l.Date <= today
 		if l.Date == today {
 			res.Today.IDs = append(res.Today.IDs, l.ID)
 		}
-		if inWeek {
+		if inWeek && act != "" {
 			weekDays[l.Date] = true
 		}
 		if act == "" {
@@ -344,7 +360,7 @@ func Compute(lines []Line, malformed int, today string) Result {
 		if l.Date == today {
 			res.Today.ReviewMinutes += l.ReviewMin
 		}
-		if l.Date <= today && l.Tier != "-" {
+		if inRuleWindow && l.Date <= today && l.Tier != "-" {
 			tg := tierGroups[l.Repo+" "+l.Kind]
 			if tg == nil {
 				tg = &tierGroup{tier: l.Tier, same: true}
@@ -365,17 +381,19 @@ func Compute(lines []Line, malformed int, today string) Result {
 				res.Tiers.T3++
 			}
 		}
-		g := groups[l.Repo+" "+l.Kind]
-		if g == nil {
-			g = &group{}
-			groups[l.Repo+" "+l.Kind] = g
-		}
-		g.n++
-		switch {
-		case sizeRank[l.Est] < sizeRank[act]:
-			g.up++
-		case sizeRank[l.Est] > sizeRank[act]:
-			g.down++
+		if inRuleWindow {
+			g := groups[l.Repo+" "+l.Kind]
+			if g == nil {
+				g = &group{}
+				groups[l.Repo+" "+l.Kind] = g
+			}
+			g.n++
+			switch {
+			case sizeRank[l.Est] < sizeRank[act]:
+				g.up++
+			case sizeRank[l.Est] > sizeRank[act]:
+				g.down++
+			}
 		}
 		if l.Date == today {
 			res.Today.Total++

@@ -332,3 +332,66 @@ func TestComputeTierRule(t *testing.T) {
 		t.Errorf("no tier: %v", got)
 	}
 }
+
+func TestApplyDurationsCancelThenRedoSameDay(t *testing.T) {
+	d, mal := ParseDurations(strings.Join([]string{
+		"2026-10-28T09:00:00.000Z · t1 · work · 120000",
+		"2026-10-28T10:00:00.000Z · t1 · work · 180000",
+		"2026-10-28T10:30:00.000Z · t1 · review · 60000",
+	}, "\n"))
+	if mal != 0 {
+		t.Fatalf("malformed %d", mal)
+	}
+	// the cancelled line, the redone line, then a later cancelled restart: the runs go to the
+	// last line of that day that has an actual
+	lines := []Line{
+		{Date: "2026-10-28", ID: "t1", Actual: ""},
+		{Date: "2026-10-28", ID: "t1", Actual: "S"},
+		{Date: "2026-10-28", ID: "t1", Actual: ""},
+	}
+	ApplyDurations(lines, d)
+	if lines[0].Minutes != 0 || lines[1].Minutes != 5 || lines[1].ReviewMin != 1 || lines[2].Minutes != 0 {
+		t.Errorf("same-day redo: %+v", lines)
+	}
+}
+
+func TestComputeWeekIgnoresCancelledOnlyDays(t *testing.T) {
+	text := strings.Join([]string{
+		ln("2026-10-27", "a", "r", "fix", "S", "S", "~1m", 1),
+		ln("2026-10-28", "x", "r", "fix", "S", "-", "~1m", 1),
+	}, "\n")
+	lines, mal := Parse(text)
+	r := Compute(lines, mal, "2026-10-28")
+	if r.Week.PointsPerDay == nil || *r.Week.PointsPerDay != 1 {
+		t.Errorf("pointsPerDay = %v, want 1", r.Week.PointsPerDay)
+	}
+	only, mal := Parse(ln("2026-10-28", "x", "r", "fix", "S", "-", "~1m", 1))
+	if r := Compute(only, mal, "2026-10-28"); r.Week.PointsPerDay != nil {
+		t.Errorf("cancelled only: pointsPerDay = %v, want nil", *r.Week.PointsPerDay)
+	}
+}
+
+func TestComputeRulesUseRecentWindow(t *testing.T) {
+	// the oldest line is dated today: outside the rule window, still in the day stats
+	rows := []string{ln("2026-10-28", "old", "hub", "fix", "S", "S", "-", 1)}
+	for i := 0; i < 30; i++ {
+		rows = append(rows, ln("2026-10-20", fmt.Sprintf("u%d", i), "hub", "fix", "S", "M", "-", 1))
+	}
+	lines, mal := Parse(strings.Join(rows, "\n"))
+	r := Compute(lines, mal, "2026-10-28")
+	if !reflect.DeepEqual(r.Rules, []string{"hub fix: " + RuleUp}) {
+		t.Errorf("rules = %v, want the up rule from the last 30 lines", r.Rules)
+	}
+	if r.Today.Total != 1 || r.Today.Hit != 1 {
+		t.Errorf("today must count the line outside the window: %+v", r.Today)
+	}
+	// tier rule: an old differing tier outside the window does not block it
+	trows := []string{ln13("2026-10-01", "old", "web", "fix", "S", "S", "-", "-", "-", "T3")}
+	for i := 0; i < 30; i++ {
+		trows = append(trows, ln13("2026-10-20", fmt.Sprintf("w%d", i), "web", "fix", "S", "S", "-", "-", "-", "T1"))
+	}
+	lines, mal = Parse(strings.Join(trows, "\n"))
+	if got := Compute(lines, mal, "2026-10-28").Rules; !reflect.DeepEqual(got, []string{"web fix: " + RuleTier + " T1"}) {
+		t.Errorf("tier rules = %v", got)
+	}
+}
