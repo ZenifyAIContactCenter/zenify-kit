@@ -397,7 +397,9 @@ async function metricsPath($: $): Promise<string | undefined> {
   try {
     const st = await $.fs.stat(candidate)
     path = st.kind === 'file' ? candidate : undefined
-  } catch {
+  } catch (err) {
+    // ENOENT means the workspace has no metrics file; anything else is shown once (the cache below).
+    if (!isMissing(err)) $.ui.toast(`lỗi pane: ${message(err)}`)
     path = undefined
   }
   metricsCache = { dir, path }

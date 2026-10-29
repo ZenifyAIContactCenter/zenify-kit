@@ -56,6 +56,8 @@ type World = {
   writeError?: string
   // false = the workspace's nonstop-metrics.md does not exist; the default is that it does.
   metrics?: boolean
+  // A non-ENOENT stat failure on the metrics file.
+  metricsError?: string
 }
 
 type Calls = {
@@ -151,6 +153,7 @@ function engine(on: any, world: World): Calls {
     calls.stat.push(e.path)
     if (world.statError) return { deny: world.statError }
     if (e.path.endsWith('/docs/reference/zenify-kit/nonstop-metrics.md')) {
+      if (world.metricsError) return { deny: world.metricsError }
       if (world.metrics === false) return { deny: `ENOENT: no such file, stat '${e.path}'` }
       return { value: { kind: 'file', size: 1, mtimeMs: 1, isLink: false } }
     }
@@ -1824,4 +1827,19 @@ test('FR-3.13: a ledger outside a workspace .zenify/nonstop gets no metrics link
   expect(await ui.findAll({ type: 'Link' })).toHaveLength(0)
   expect(calls.stat.some(p => p.endsWith('nonstop-metrics.md'))).toBe(false)
   await ui.unmount()
+})
+
+test('FR-3.13: a metrics stat failure other than ENOENT shows no link and toasts once', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 0, stdout: statsJson(), stderr: '' }, estimatesMtime: 5, metricsError: `EACCES: permission denied, stat '${METRICS}'` }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  for (const _ of [1, 2]) {
+    const ui = await mountTab($, PROGRESS, 44)
+    expect(await ui.findAll({ type: 'Link' })).toHaveLength(0)
+    await ui.unmount()
+  }
+  expect(calls.toast.filter(t => t.includes('EACCES'))).toHaveLength(1)
+  expect(calls.toast.find(t => t.includes('EACCES'))).toContain('lỗi pane:')
 })
