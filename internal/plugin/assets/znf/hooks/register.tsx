@@ -800,15 +800,18 @@ export const register: Register = on => {
         <Box flexDirection="row">
           {TABS.map((t, i) => [
             i > 0 && <Text dimColor> │ </Text>,
-            // A plain Button draws the same whatever its variant, so the selected tab is marked
-            // by `▸` and the others are dim.
-            <Button
-              key={`tab:${t.id}`}
-              label={t.id === id ? `▸${t.label}` : t.label}
-              plain
-              dimColor={t.id !== id}
-              onPress={() => update($, tab, () => t.id).then(() => undefined)}
-            />,
+            // A Button has no color prop, so the selected tab is a colored bold Text, not a Button.
+            t.id === id ? (
+              <Text color="claude" bold>{`▸${t.label}`}</Text>
+            ) : (
+              <Button
+                key={`tab:${t.id}`}
+                label={t.label}
+                plain
+                dimColor
+                onPress={() => update($, tab, () => t.id).then(() => undefined)}
+              />
+            ),
           ])}
         </Box>
         {shown.map(i => i.node)}

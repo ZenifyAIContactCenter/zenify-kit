@@ -17,7 +17,7 @@ Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Khôn
 
 ## Bốn tab trong một pane
 
-Hàng tab `Need Human | In Progress | Pending | Done` do pane tự vẽ: bấm vào tab; tab đang chọn có dấu `▸` trước tên, các tab còn lại mờ (mặc định Need Human). Nội dung tab dài hơn khoảng trống thì cắt và ghi `+N dòng` (dim).
+Hàng tab `Need Human | In Progress | Pending | Done` do pane tự vẽ: bấm vào tab; tab đang chọn có dấu `▸` trước tên và được tô màu nổi bật, các tab còn lại mờ (mặc định Need Human). Nội dung tab dài hơn khoảng trống thì cắt và ghi `+N dòng` (dim).
 
 | Tab | Nội dung |
 |---|---|

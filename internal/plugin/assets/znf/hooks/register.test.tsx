@@ -224,7 +224,8 @@ const pane = (bodyColumns = 44, bodyRows = 40) =>
 // Mounts the one pane and selects `tab` (the state is shared, so every mount shows it).
 async function mountTab($: any, tab: string, bodyColumns = 44, bodyRows = 40) {
   const ui = await $.ui.mount(pane(bodyColumns, bodyRows))
-  await ui.press({ key: `tab:${tab}` })
+  // The selected tab is a Text, not a Button: press only to switch.
+  if ((await ui.findAll({ type: 'Button' })).some(b => b.props.key === `tab:${tab}`)) await ui.press({ key: `tab:${tab}` })
   return ui
 }
 
@@ -232,9 +233,10 @@ async function mountTab($: any, tab: string, bodyColumns = 44, bodyRows = 40) {
 const allTexts = async (ui: { findAll: (q: { type?: string }) => Promise<{ type: string; text?: string }[]> }) =>
   (await ui.findAll({})).filter(e => (e.type === 'Text' || e.type === 'Link') && e.text !== ' │ ').map(e => e.text ?? '')
 
-// The body only: everything above the footer's separator line.
+// The body only: below the tab row (its selected tab is the first Text) and above the footer's separator line.
 const texts = async (ui: Parameters<typeof allTexts>[0]) => {
-  const all = await allTexts(ui)
+  const raw = await allTexts(ui)
+  const all = raw[0]?.startsWith('▸') ? raw.slice(1) : raw
   const sep = all.findIndex(t => t.startsWith('─ Thống kê'))
   return sep < 0 ? all : all.slice(0, sep)
 }
@@ -1699,17 +1701,19 @@ test('FR-3.12: the tab row marks the selected tab with ▸, dims the others, and
   const header = async () => (await ui.findAll({ type: 'Box' })).filter(b => b.props.flexDirection === 'row')[0].text
   const tabs = async () => (await ui.findAll({ type: 'Button' })).filter(b => String(b.props.key).startsWith('tab:'))
   expect(await header()).toBe('▸Need Human │ In Progress │ Pending │ Done')
+  const selected = async () => (await ui.findAll({ type: 'Text' })).filter(t => t.props.color === 'claude')
   expect((await tabs()).map(b => [b.props.key, !!b.props.dimColor])).toEqual([
-    ['tab:human', false],
     ['tab:progress', true],
     ['tab:pending', true],
     ['tab:done', true],
   ])
+  expect((await selected()).map(t => [t.text, !!t.props.bold])).toEqual([['▸Need Human', true]])
   expect((await tabs()).every(b => b.props.plain && b.props.hotkey === undefined && b.props.variant === undefined)).toBe(true)
   expect(await texts(ui)).toContain('CẦN ANH')
   await ui.press({ key: 'tab:pending' })
   expect(await header()).toBe('Need Human │ In Progress │ ▸Pending │ Done')
-  expect((await tabs()).filter(b => !b.props.dimColor).map(b => b.props.key)).toEqual(['tab:pending'])
+  expect((await tabs()).map(b => b.props.key)).toEqual(['tab:human', 'tab:progress', 'tab:done'])
+  expect((await selected()).map(t => [t.text, !!t.props.bold])).toEqual([['▸Pending', true]])
   expect(await texts(ui)).toContain('HOÃN')
   expect(await texts(ui)).not.toContain('CẦN ANH')
   await ui.unmount()
