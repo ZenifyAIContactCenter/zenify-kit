@@ -8,6 +8,17 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.53.0
+
+*2026-10-29*
+
+- **Pane nonstop cạnh chat:** gõ `/znf:nonstop` (hoặc `/nonstop-pane`) mở một pane `Nonstop` bên phải chat, tự cập nhật, không tốn lượt chat. Hàng tab `Need Human │ In Progress │ Pending │ Done` (tab đang chọn tô màu), khu `Thống kê` cố định ở đáy và dòng `Xem thêm thông tin` mở trang định nghĩa chỉ số trong knowledge view của workspace. Task và câu hỏi có priority `P0`–`P3`, bấm id để mở rộng, PR và issue là link. Session thường không tự mở pane. Pane chỉ dock cạnh chat khi Claude Code chạy fullscreen. Xem [Pane nonstop](/guides/nonstop-pane).
+- **Theo dõi PR và merge từ pane:** khu `ĐANG WATCH` hiện CI, `Zenie Review` và số review thread mở của mọi PR còn mở. PR chỉ vào `CHỜ MERGE` khi CLEAN hoặc UNSTABLE, Zenie pass và 0 thread mở. Nút `[merge]` cần bấm hai lần trong 5 giây; ngay trước khi merge pane đọc lại PR và chạy `gh pr merge --merge --match-head-commit <sha>`, nên head hay base đổi thì không merge. `[c]` copy lệnh merge.
+- **Status line nonstop:** `nonstop ▶ · In Progress: 1/2 · Need Human: 5 · Pending: 2 · Done: 5/8 · Ready: 2 · CI ✗: 1 · Threads: 3 · 11 pts · hit 71%`; mục bằng 0 thì ẩn.
+- **Lệnh mới `zenify nonstop stats`:** nguồn duy nhất cho thang size và thống kê của nonstop (`--json` cho pane và orchestrator, `--dir` chọn thư mục ledger). Thang S/M/L tự học từ thời gian làm thật (phân vị 25/50/90 của 60 task gần nhất, cần ít nhất 20 task; trước đó dùng 5/20/60 phút), kèm hit rate, điểm/ngày, tỉ lệ thời gian review, tier T1/T2/T3 và gợi ý calibration theo repo và loại task. Xem [`zenify nonstop stats`](/reference/cli/zenify_nonstop_stats).
+- **Tự đo thời gian:** pane ghi `durations.log` cạnh ledger cho mỗi lượt worker và reviewer chạy xong, tách `work` với `review`; thời gian chờ người không bị tính. Dòng `estimates.md` lên v2 13 trường (thêm `work`, `review`, `path` của brainstorming, `tier` của review); dòng v1 vẫn đọc được.
+- **Skill nonstop:** ledger chỉ ghi dòng 10 trường có `priority` (không bảng, không `###`), re-entry gặp section dạng bảng thì viết lại trước khi dispatch; orchestrator không còn ghi thời gian bằng tay mà lấy thang và thống kê từ `zenify nonstop stats --json --dir <ledger>`.
+
 ## v0.52.0
 
 *2026-10-29*
