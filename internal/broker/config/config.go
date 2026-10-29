@@ -52,6 +52,8 @@ type Config struct {
 	Mongo struct {
 		MainDB  string `yaml:"main_db"`
 		AuditDB string `yaml:"audit_db"`
+		// MsghubDB is the database read by db-read --target msghub.
+		MsghubDB string `yaml:"msghub_db"`
 	} `yaml:"mongo"`
 	Lumi struct {
 		AppURLStg string `yaml:"app_url_stg"`
@@ -79,6 +81,7 @@ type Secrets struct {
 	// Optional: empty when the env var is unset; never an error.
 	MongoWriteStg, MongoWritePrd, MySQLWriteStg, MySQLWritePrd string
 	RedisWriteStg, RedisWritePrd, LumiMySQLStg, LumiMySQLPrd   string
+	MsghubMongoStg, MsghubMongoPrd                             string
 	QdrantStg, QdrantPrd                                       string
 	ElasticStg, ElasticPrd                                     string
 	// Required only when Config.Catalog is set.
@@ -164,10 +167,14 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	s.MySQLWriteStg, s.MySQLWritePrd = getenv("MYSQL_WRITE_URL_STG"), getenv("MYSQL_WRITE_URL_PRD")
 	s.RedisWriteStg, s.RedisWritePrd = getenv("REDIS_WRITE_URL_STG"), getenv("REDIS_WRITE_URL_PRD")
 	s.LumiMySQLStg, s.LumiMySQLPrd = getenv("LUMI_MYSQL_URL_STG"), getenv("LUMI_MYSQL_URL_PRD")
+	s.MsghubMongoStg, s.MsghubMongoPrd = getenv("MSGHUB_MONGO_URL_STG"), getenv("MSGHUB_MONGO_URL_PRD")
 	s.QdrantStg, s.QdrantPrd = getenv("QDRANT_URL_STG"), getenv("QDRANT_URL_PRD")
 	s.ElasticStg, s.ElasticPrd = getenv("ELASTIC_URL_STG"), getenv("ELASTIC_URL_PRD")
 	if c.Catalog != nil {
 		s.CatalogGitHubToken = get("CATALOG_GITHUB_TOKEN")
+	}
+	if (s.MsghubMongoStg != "" || s.MsghubMongoPrd != "") && c.Mongo.MsghubDB == "" {
+		errs = append(errs, fmt.Errorf("config %s: missing mongo.msghub_db (required when MSGHUB_MONGO_URL_* is set)", path))
 	}
 	if len(noEnv) > 0 {
 		errs = append(errs, fmt.Errorf("missing required env: %s", strings.Join(sorted(noEnv), ", ")))

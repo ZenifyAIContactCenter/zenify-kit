@@ -41,6 +41,9 @@ type Creds struct {
 	MongoStg, MongoPrd, MySQLStg, MySQLPrd, AuditMongoPrd, MainDB, AuditDB string
 	// LumiMySQLStg/Prd are optional: empty means target=lumi answers 500.
 	LumiMySQLStg, LumiMySQLPrd string
+	// MsghubMongoStg/Prd are optional: empty means target=msghub answers 500.
+	// MsghubDB is the message-hub database.
+	MsghubMongoStg, MsghubMongoPrd, MsghubDB string
 }
 
 // Handler is the POST /query handler. It must sit behind auth.Require.
@@ -185,7 +188,7 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 	}
 	c, prd := h.Creds, req.Env == "prd"
 	db := c.MainDB
-	mongoPrd := c.MongoPrd
+	mongoStg, mongoPrd := c.MongoStg, c.MongoPrd
 	switch req.Target {
 	case "", "main":
 	case "audit":
@@ -197,10 +200,15 @@ func (h *Handler) options(req api.QueryRequest) (o *dbread.Options, code, msg st
 		if req.Engine != "mysql" {
 			return nil, api.CodeInvalidTarget, "target=lumi needs engine=mysql"
 		}
+	case "msghub":
+		if req.Engine != "mongo" {
+			return nil, api.CodeInvalidTarget, "target=msghub needs engine=mongo"
+		}
+		db, mongoStg, mongoPrd = c.MsghubDB, c.MsghubMongoStg, c.MsghubMongoPrd
 	default:
-		return nil, api.CodeInvalidTarget, "target must be main, audit or lumi"
+		return nil, api.CodeInvalidTarget, "target must be main, audit, lumi or msghub"
 	}
-	env := map[string]string{"MONGO_URL": c.MongoStg, "MYSQL_URL": c.MySQLStg, "MONGO_URL_PRD": mongoPrd, "MYSQL_URL_PRD": c.MySQLPrd}
+	env := map[string]string{"MONGO_URL": mongoStg, "MYSQL_URL": c.MySQLStg, "MONGO_URL_PRD": mongoPrd, "MYSQL_URL_PRD": c.MySQLPrd}
 	if req.Target == "lumi" {
 		env["MYSQL_URL"], env["MYSQL_URL_PRD"] = mysqlScheme(c.LumiMySQLStg), mysqlScheme(c.LumiMySQLPrd)
 	}
@@ -235,7 +243,7 @@ func mysqlScheme(u string) string {
 func (h *Handler) secrets() []string {
 	var out []string
 	for _, v := range []string{h.Creds.MongoStg, h.Creds.MongoPrd, h.Creds.MySQLStg, h.Creds.MySQLPrd, h.Creds.AuditMongoPrd,
-		h.Creds.LumiMySQLStg, h.Creds.LumiMySQLPrd} {
+		h.Creds.LumiMySQLStg, h.Creds.LumiMySQLPrd, h.Creds.MsghubMongoStg, h.Creds.MsghubMongoPrd} {
 		if v == "" {
 			continue
 		}
