@@ -1379,3 +1379,29 @@ test('FR-6.1: a plain session with no ledger writes nothing', async ($, on) => {
   expect(calls.write).toHaveLength(0)
   expect(calls.toast).toHaveLength(0)
 })
+
+test('FR-1.2: a nonstop tab left open across session.start keeps refreshing', async ($, on) => {
+  const world: World = { file: { text: ledgerText([row('t1', 'done')]), mtimeMs: 1 }, openPanes: [PROGRESS] }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  world.file = { text: ledgerText([row('t1', 'done'), row('t9', 'running')]), mtimeMs: 2 }
+  await clock.advance(2000)
+  const ui = await $.ui.mount(pane(PROGRESS))
+  expect((await ui.find({ type: 'Text', text: /t9/ }))?.text).toContain('t9')
+  await ui.unmount()
+})
+
+test('FR-2.7: a PR url with an unsafe repo name shows no merge or copy button', async ($, on) => {
+  const BAD = 'https://github.com/Z/ki"t/pull/5'
+  const world: World = { file: { text: ledgerText([row('t1', 'running', BAD)]), mtimeMs: 1 }, gh: async () => viewWith(READY_CHECKS), threads: threadsOf(0, 5) }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const human = await $.ui.mount(pane(HUMAN))
+  expect(await mergeButton(human)).toBeUndefined()
+  expect(await texts(human)).not.toContain('CHỜ MERGE')
+  await human.unmount()
+})

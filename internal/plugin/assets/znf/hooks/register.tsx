@@ -277,7 +277,12 @@ async function pressMerge($: $, url: string): Promise<void> {
       return
     }
     await update($, merging, urls => [...urls, url])
-    const out = await $.process.run(mergeArgv(url), { timeoutMs: MERGE_TIMEOUT_MS })
+    const argv = mergeArgv(url)
+    if (!argv) {
+      $.ui.toast('merge lỗi: URL PR không hợp lệ')
+      return
+    }
+    const out = await $.process.run(argv, { timeoutMs: MERGE_TIMEOUT_MS })
     if (out.exitCode !== 0) {
       $.ui.toast(`merge lỗi: ${out.stderr.split('\n')[0] || `exit ${out.exitCode}`}`)
       return
@@ -387,6 +392,10 @@ async function openPane($: $): Promise<void> {
   for (const p of PANES) await $.ui.open({ ...p })
   await syncSpin($)
   await refreshStats($, true).catch(err => report($, err))
+  armTimers($)
+}
+
+function armTimers($: $): void {
   if (timers.length) return
   timers = [
     $.clock.every(
@@ -438,6 +447,12 @@ export const register: Register = on => {
         await apply($, loaded)
         await openPane($)
       }
+    }
+    // A nonstop tab that survived the restart must not stay frozen; a plain session arms nothing.
+    if (!timers.length && (await $.ui.panes()).some(p => isTab(p.id))) {
+      await refresh($, true)
+      await syncSpin($)
+      armTimers($)
     }
     return next(e)
   })
@@ -544,7 +559,7 @@ export const register: Register = on => {
       const countOf = (u: string) => infos[u]?.threads
       const baseOf = (u: string) => infos[u]?.base
       const urls = prUrls(l.tasks)
-      const mergeable = urls.filter(u => isReadyToMerge(label(u), zenieOf(u), countOf(u) ?? undefined))
+      const mergeable = urls.filter(u => mergeArgv(u) && isReadyToMerge(label(u), zenieOf(u), countOf(u) ?? undefined))
       const watching = urls.filter(u => !isSettled(label(u)))
       const threadText = (u: string) => {
         const c = countOf(u)
@@ -607,7 +622,7 @@ export const register: Register = on => {
                   label="c"
                   hotkey={url === mergeable[0] ? 'c' : undefined}
                   onPress={async press => {
-                    await $.ui.copy({ text: mergeCommand(url), surface: press.surface })
+                    await $.ui.copy({ text: mergeCommand(url) ?? '', surface: press.surface })
                     $.ui.toast('đã copy lệnh merge')
                   }}
                 />

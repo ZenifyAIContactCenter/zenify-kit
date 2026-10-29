@@ -53,9 +53,11 @@ function parseUrl(url: string): { repo: string; n: string } {
   return { repo: m ? m[1] : '', n: m ? m[2] : '' }
 }
 
-export function mergeCommand(url: string): string {
-  const { repo, n } = parseUrl(url)
-  return `gh pr merge -R ${repo} ${n} --merge`
+const SAFE_NAME = /^[A-Za-z0-9_.-]+$/
+
+export function mergeCommand(url: string): string | undefined {
+  const argv = mergeArgv(url)
+  return argv && `gh pr merge -R ${argv[4]} ${argv[5]} --merge`
 }
 
 export function prRef(url: string): string {
@@ -69,8 +71,11 @@ export function issueUrl(issue: string): string | undefined {
   return m ? `https://github.com/${m[1]}/issues/${m[2]}` : undefined
 }
 
-export function mergeArgv(url: string): string[] {
+// undefined when owner or repo holds a character outside SAFE_NAME or the number is not digits.
+export function mergeArgv(url: string): string[] | undefined {
   const { repo, n } = parseUrl(url)
+  const [owner, name] = repo.split('/')
+  if (!SAFE_NAME.test(owner ?? '') || !SAFE_NAME.test(name ?? '') || !/^\d+$/.test(n)) return undefined
   return ['gh', 'pr', 'merge', '-R', repo, n, '--merge']
 }
 
@@ -102,8 +107,6 @@ export function zenieState(view: PrView): Zenie {
 }
 
 export type Threads = { open: number; total: number }
-
-const SAFE_NAME = /^[A-Za-z0-9_.-]+$/
 
 // undefined when owner or repo holds a character that could break out of the query.
 export function threadsArgv(url: string): string[] | undefined {

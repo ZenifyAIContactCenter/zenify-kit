@@ -20,7 +20,7 @@ in the plan before it is dispatched.
 
 ## Learned scale
 
-Run `zenify nonstop stats --json` (in the workspace) at the morning plan and at end of day; use its `scale` to size tasks and its `today`/`week`/`rules` for the stats and the Calibration line — never compute them by hand. Fewer than 20 measured tasks → the defaults.
+Run `zenify nonstop stats --json --dir <the ledger directory>` (the directory holding progress.md) at the morning plan and at end of day; use its `scale` to size tasks and its `today`/`week`/`rules` for the stats and the Calibration line — never compute them by hand. Fewer than 20 measured tasks → the defaults.
 
 ## Measuring a finished task
 
@@ -60,11 +60,11 @@ Lines dated before 2026-10-29 were sized on the old human scale (S < 30 min …)
 - **Bias** = how many were over-estimated (est > actual) and how many under-estimated.
 - **Throughput** = the sum of actual points of the tasks done today.
 - Hit rate of this week lower than last week's → one warning line.
-- Take the numbers from `zenify nonstop stats --json` (`today`, `week`, `tiers`), never by hand.
+- Take the numbers from `zenify nonstop stats --json --dir <the ledger directory>` (`today`, `week`, `tiers`), never by hand.
 
 ## Morning calibration and batch budget
 
-Take the numbers from `zenify nonstop stats --json` (`scale`, `rules`, `week`) and write its `scale` line
+Take the numbers from `zenify nonstop stats --json --dir <the ledger directory>` (`scale`, `rules`, `week`) and write its `scale` line
 into the plan's Calibration line (FR-5.7).
 
 - Read the last ~30 lines of `estimates.md`. For each planned task, filter the same repo + kind;

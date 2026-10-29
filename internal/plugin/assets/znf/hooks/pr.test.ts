@@ -125,3 +125,11 @@ test('notReadyReason names the first failing condition', () => {
   expect(notReadyReason('CLEAN', 'pass', { open: 2, total: 5 })).toBe('còn 2 thread mở')
   expect(notReadyReason('CLEAN', 'pass', undefined)).toBe('thread ?')
 })
+
+test('mergeArgv and mergeCommand refuse an unsafe owner, repo or number', () => {
+  expect(mergeArgv('https://github.com/Z/ki"t/pull/5')).toBeUndefined()
+  expect(mergeArgv('https://github.com/Z}/kit/pull/5')).toBeUndefined()
+  expect(mergeArgv('https://github.com/Z/kit/issues/5')).toBeUndefined()
+  expect(mergeCommand('https://github.com/Z/ki;t/pull/5')).toBeUndefined()
+  expect(mergeArgv('https://github.com/my-org/my.repo_1/pull/5')).toBeDefined()
+})

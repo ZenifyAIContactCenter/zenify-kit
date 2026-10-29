@@ -20,9 +20,9 @@ Khi lập kế hoạch buổi sáng và khi đóng ngày trong `znf:nonstop`: d�
 
 ## Kết quả
 
-Đọc `<dir>/estimates.md`, mặc định `<workspace>/.zenify/nonstop`. Thang thời gian học từ tối đa 60 task gần nhất có số phút, lấy phân vị 25/50/75 (nearest-rank); dưới 20 task thì dùng mặc định 5/20/60 phút. Size thực tế của một dòng là size lớn hơn giữa thời gian theo thang và số file (≤3 S, ≤10 M, ≤30 L, còn lại XL). Dòng sai format được đếm vào `malformed`.
+Đọc `<dir>/estimates.md` và `<dir>/durations.log` (thời gian worker/reviewer đo được), mặc định `<workspace>/.zenify/nonstop`. Thang thời gian học từ tối đa 60 task gần nhất có số phút, lấy phân vị 25/50/90 (S/M/L, cận L là p90) (nearest-rank); dưới 20 task thì dùng mặc định 5/20/60 phút. Size thực tế của một dòng là size lớn hơn giữa thời gian theo thang và số file (≤3 S, ≤10 M, ≤30 L, còn lại XL). Dòng sai format được đếm vào `malformed`.
 
-`--json` in một object gồm `missing`, `scale`, `today`, `week`, `rules`, `malformed`. Thiếu `estimates.md` không phải lỗi: `missing` là `true` và lệnh thoát mã 0. Lỗi đọc file khác thì thoát mã khác 0. Không có `--json` thì in bảng chữ ngắn.
+`--json` in một object gồm `missing`, `scale` (`source`, `n`, `S`, `M`, `L`), `today` (`date`, `hit`, `total`, `over`, `under`, `points`, `reviewMinutes`, `ids`), `week` (`hitRate`, `pointsPerDay`, `reviewShare`), `tiers` (`T1`, `T2`, `T3`), `rules`, `malformed`, `durationsMalformed` (số dòng sai format trong `durations.log`). Thiếu `estimates.md` không phải lỗi: `missing` là `true` và lệnh thoát mã 0. Lỗi đọc file khác thì thoát mã khác 0. Không có `--json` thì in bảng chữ ngắn.
 
 ## Cờ
 
