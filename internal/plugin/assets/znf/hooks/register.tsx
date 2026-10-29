@@ -26,6 +26,7 @@ import {
 import type { Threads } from './pr'
 
 // FR-3.12: one pane; the four tabs are drawn inside it.
+const METRICS_URL = 'https://github.com/ZenifyAIContactCenter/zenify-knowledge/blob/main/reference/zenify-kit/nonstop-metrics.md'
 const PANE = { id: 'nonstop', title: 'Nonstop', columns: 44 } as const
 const isTab = (id: string) => id === PANE.id
 // The four panes of the earlier version; opening closes any that survived.
@@ -812,7 +813,7 @@ export const register: Register = on => {
         </Box>
         {shown.map(i => i.node)}
         {hidden > 0 && line(`+${hidden} dòng`, { dimColor: true })}
-        {line('─ Thống kê '.padEnd(cols, '─'), { dimColor: true })}
+        {row(['─ Thống kê ', { href: METRICS_URL, label: 'ⓘ' }, '─'.repeat(Math.max(0, cols - 12))])}
         {footer.map(f => line(f.text, f.color ? { color: f.color } : {}))}
       </Box>
     )
