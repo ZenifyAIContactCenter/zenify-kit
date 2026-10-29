@@ -777,7 +777,7 @@ export const register: Register = on => {
         ? footerLines(st.data, doneToday).map(f => ({ text: f.text, ...(f.warn ? { color: 'yellow' } : {}) }))
         : []
     const rowsTotal = e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 30
-    const room = Math.max(2, rowsTotal - 1 - 1 - footer.length)
+    const room = Math.max(2, rowsTotal - 1 - 1 - footer.length - (footer.length > 0 ? 1 : 0))
     const total = items.reduce((n, i) => n + i.h, 0)
     let shown = items
     let hidden = 0
@@ -813,8 +813,9 @@ export const register: Register = on => {
         </Box>
         {shown.map(i => i.node)}
         {hidden > 0 && line(`+${hidden} dòng`, { dimColor: true })}
-        {row(['─ Thống kê ', { href: METRICS_URL, label: 'ⓘ' }, '─'.repeat(Math.max(0, cols - 12))])}
+        {line('─ Thống kê '.padEnd(cols, '─'), { dimColor: true })}
         {footer.map(f => line(f.text, f.color ? { color: f.color } : {}))}
+        {footer.length > 0 && <Link href={METRICS_URL} label="Xem thêm thông tin" />}
       </Box>
     )
   })

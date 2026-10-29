@@ -244,7 +244,7 @@ const rows = async (ui: { findAll: (q: { type: string }) => Promise<{ text: stri
   (await ui.findAll({ type: 'Box' })).filter(b => b.props.flexDirection === 'row').map(b => b.text).slice(1)
 
 const links = async (ui: { findAll: (q: { type: string }) => Promise<{ props: Record<string, unknown> }[]> }) =>
-  (await ui.findAll({ type: 'Link' })).filter(e => e.props.label !== 'ⓘ').map(e => e.props.href)
+  (await ui.findAll({ type: 'Link' })).filter(e => e.props.label !== 'Xem thêm thông tin').map(e => e.props.href)
 
 const ghRuns = (calls: Calls) => calls.run.filter(a => a[0] === 'gh' && a[2] === 'view')
 
@@ -1724,7 +1724,7 @@ test('FR-3.12: a failing stats run shows the ⚠ lỗi thống kê line in the f
   for (const tab of [HUMAN, DONE]) {
     const ui = await mountTab($, tab)
     const all = await allTexts(ui)
-    expect(all.slice(all.findIndex(t => t.startsWith('─ Thống kê ')) + 3)).toEqual(['⚠ lỗi thống kê: boom: no'])
+    expect(all.slice(all.findIndex(t => t.startsWith('─ Thống kê ')) + 1)).toEqual(['⚠ lỗi thống kê: boom: no', 'Xem thêm thông tin'])
     await ui.unmount()
   }
 })
@@ -1740,13 +1740,14 @@ test('FR-3.12: the Thống kê footer sits under every tab with the scale line',
     const all = await allTexts(ui)
     const sep = all.findIndex(t => t.startsWith('─ Thống kê '))
     expect(sep).toBeGreaterThanOrEqual(0)
-    expect(all.slice(sep, sep + 3).join('')).toHaveLength(44)
-    expect(all.slice(sep + 3)).toEqual([
+    expect(all[sep]).toHaveLength(44)
+    expect(all.slice(sep + 1)).toEqual([
       'thang (mặc định 7/20): S<5m · M<20m · L<60m',
       'hôm nay: đúng 0/0 · 0 cao · 0 thấp · 0 điểm',
       '7 ngày: đúng — · — điểm/ngày',
       'review 0 phút · T1 0 T2 0 T3 0',
       '⚠ 1 task done chưa ghi estimate: t1',
+      'Xem thêm thông tin',
     ])
     await ui.unmount()
   }
@@ -1769,7 +1770,7 @@ test('FR-3.12: a body taller than its room is cut to room - 1 rows and ends with
   await ui.unmount()
 })
 
-test('FR-3.13: the stats footer separator carries an ⓘ link to the metrics definitions, within the width', async ($, on) => {
+test('FR-3.13: the last pane line is a Xem thêm thông tin link to the metrics definitions; the separator is plain', async ($, on) => {
   const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, stats: { exitCode: 0, stdout: statsJson(), stderr: '' }, estimatesMtime: 5 }
   engine(on, world)
   const clock = mock.clock(on)
@@ -1778,11 +1779,11 @@ test('FR-3.13: the stats footer separator carries an ⓘ link to the metrics def
   const url = 'https://github.com/ZenifyAIContactCenter/zenify-knowledge/blob/main/reference/zenify-kit/nonstop-metrics.md'
   for (const id of [PROGRESS, HUMAN, DONE]) {
     const ui = await mountTab($, id, 44)
-    const info = (await ui.findAll({ type: 'Link' })).filter(l => l.props.label === 'ⓘ')
-    expect(info.map(l => l.props.href)).toEqual([url])
-    const sep = (await rows(ui)).find(t => t.startsWith('─ Thống kê'))
-    expect(sep).toBeDefined()
-    expect(sep!.length).toBeLessThanOrEqual(44)
+    const all = await allTexts(ui)
+    expect(all.at(-1)).toBe('Xem thêm thông tin')
+    const ls = (await ui.findAll({ type: 'Link' })).filter(l => l.props.href === url)
+    expect(ls.map(l => l.props.label)).toEqual(['Xem thêm thông tin'])
+    expect(all.find(t => t.startsWith('─ Thống kê '))).toHaveLength(44)
     await ui.unmount()
   }
 })
