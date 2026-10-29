@@ -563,7 +563,7 @@ test('FR-2.2: opening the pane polls its PRs at once', async ($, on) => {
 
 test('FR-1.1: a local ledger created after session start is found', async ($, on) => {
   const world: World = { file: null, gitDir: '/w/repo/.git' }
-  const calls = engine(on, world)
+  engine(on, world)
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, surface: 'terminal', isInteractive: true })
   await clock.settle()
