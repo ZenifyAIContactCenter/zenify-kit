@@ -2,7 +2,8 @@ import { expect, mock, test } from 'claude-code/testing'
 
 const CWD = '/w/app'
 const LOCAL = `${CWD}/.zenify/nonstop/progress.md`
-const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision,baseRefName'
+const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision,baseRefName,headRefOid'
+const HEAD = 'abc123'
 const URL_A = 'https://github.com/Z/kit/pull/238'
 const URL_B = 'https://github.com/Z/hub/pull/9'
 
@@ -45,6 +46,8 @@ type World = {
   stats?: { exitCode: number; stdout: string; stderr: string }
   // mtime of estimates.md next to the ledger; absent = the file does not exist.
   estimatesMtime?: number
+  // mtime of durations.log next to the ledger; absent = the file does not exist.
+  durationsMtime?: number
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
   // The ids `agent.spawn` answers, in order.
   agentIds?: string[]
@@ -67,17 +70,23 @@ type Calls = {
   write: { path: string; text: string }[]
 }
 
+// One slurped page, as `gh api graphql --paginate --slurp` answers.
 const threadsOf = (open: number, total: number) => () => ({
   exitCode: 0,
-  stdout: JSON.stringify({
-    data: {
-      repository: {
-        pullRequest: {
-          reviewThreads: { nodes: Array.from({ length: total }, (_, i) => ({ isResolved: i >= open })) },
+  stdout: JSON.stringify([
+    {
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: Array.from({ length: total }, (_, i) => ({ isResolved: i >= open })),
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
         },
       },
     },
-  }),
+  ]),
   stderr: '',
 })
 
@@ -143,6 +152,10 @@ function engine(on: any, world: World): Calls {
       if (world.estimatesMtime === undefined) return { deny: `ENOENT: no such file, stat '${e.path}'` }
       return { value: { kind: 'file', size: 1, mtimeMs: world.estimatesMtime, isLink: false } }
     }
+    if (e.path.endsWith('/durations.log')) {
+      if (world.durationsMtime === undefined) return { deny: `ENOENT: no such file, stat '${e.path}'` }
+      return { value: { kind: 'file', size: 1, mtimeMs: world.durationsMtime, isLink: false } }
+    }
     // With gitDir set the cwd is a worktree: the ledger lives only in the main checkout.
     const isLedger = world.gitDir && !world.isLocal ? e.path.endsWith('/.znf/nonstop/progress.md') : e.path === LOCAL
     if (!world.file || !isLedger) return { deny: `ENOENT: no such file, stat '${e.path}'` }
@@ -174,11 +187,12 @@ function engine(on: any, world: World): Calls {
     if (e.argv[0] === 'gh' && e.argv[1] === 'api') {
       calls.graphql.push([...e.argv])
       if (world.holdThreads) await world.holdThreads
-      return { value: (world.threads ?? threadsOf(0, 0))(/number:(\d+)/.exec(e.argv[4])?.[1] ?? '') }
+      const query = e.argv.find(a => a.startsWith('query=')) ?? ''
+      return { value: (world.threads ?? threadsOf(0, 0))(/number:(\d+)/.exec(query)?.[1] ?? '') }
     }
     const view = world.gh
       ? await world.gh(e.argv[3])
-      : { exitCode: 0, stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: [{ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'SUCCESS' }], baseRefName: 'main' }), stderr: '' }
+      : { exitCode: 0, stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: [{ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'SUCCESS' }], baseRefName: 'main', headRefOid: HEAD }), stderr: '' }
     return { value: view }
   })
   return calls
@@ -607,7 +621,35 @@ test('a settled PR appears only in Done and is not polled again', async ($, on) 
   await done.unmount()
 
   await clock.advance(60000)
-  expect(ghRuns(calls).slice(3).map(a => a[3])).toEqual([URL_B])
+  expect(ghRuns(calls).slice(3).map(a => a[3])).toEqual([URL_B, URL_C])
+})
+
+test('a closed PR reopened before the next poll leaves Done and is watched again', async ($, on) => {
+  let state = 'CLOSED'
+  const world: World = {
+    file: { text: ledgerText([row('t1', 'running', URL_A)]), mtimeMs: 1 },
+    gh: async () => ({
+      exitCode: 0,
+      stdout: JSON.stringify({ state, mergeStateStatus: 'BLOCKED', statusCheckRollup: [], baseRefName: 'main', headRefOid: HEAD }),
+      stderr: '',
+    }),
+  }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const done = await $.ui.mount(pane(DONE))
+  expect(await texts(done)).toEqual(expect.arrayContaining(['Z/kit#238', ' CLOSED']))
+  await done.unmount()
+
+  state = 'OPEN'
+  await clock.advance(60000)
+  const after = await $.ui.mount(pane(DONE))
+  expect((await texts(after)).some(t => t.includes('Z/kit#238'))).toBe(false)
+  await after.unmount()
+  const progress = await $.ui.mount(pane(PROGRESS))
+  expect(await texts(progress)).toEqual(expect.arrayContaining(['Z/kit#238', ' BLOCKED · Zenie — · thread 0/0']))
+  await progress.unmount()
 })
 
 test('FR-3.6: each section sorts by priority and prefixes it; a legacy 9-field line has none', async ($, on) => {
@@ -774,7 +816,7 @@ test('FR-3.8: the spinner stops when the ledger goes missing', async ($, on) => 
   await ui.unmount()
 })
 
-const MERGE_ARGV = ['gh', 'pr', 'merge', '-R', 'Z/kit', '238', '--merge']
+const MERGE_ARGV = ['gh', 'pr', 'merge', '-R', 'Z/kit', '238', '--merge', '--match-head-commit', HEAD]
 const mergeButton = (ui: Parameters<typeof texts>[0] & { find: (q: { type: string; key: string }) => Promise<{ props: Record<string, unknown> } | undefined> }) =>
   ui.find({ type: 'Button', key: `merge:${URL_A}` })
 
@@ -811,15 +853,15 @@ test('FR-2.7: an armed button disarms after 5 s without merging', async ($, on) 
 })
 
 test('FR-2.7: the second press runs gh pr merge once, toasts and re-polls into Done', async ($, on) => {
-  let state = 'OPEN'
   const { calls } = await mergeWorld(on, {
     gh: async () => ({
       exitCode: 0,
       stdout: JSON.stringify({
-        state,
+        state: calls.merges.length ? 'MERGED' : 'OPEN',
         mergeStateStatus: 'CLEAN',
         statusCheckRollup: [{ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'SUCCESS' }],
         baseRefName: 'main',
+        headRefOid: HEAD,
       }),
       stderr: '',
     }),
@@ -829,7 +871,6 @@ test('FR-2.7: the second press runs gh pr merge once, toasts and re-polls into D
   await clock.settle()
   const ui = await $.ui.mount(pane(HUMAN))
   await ui.press({ key: `merge:${URL_A}` })
-  state = 'MERGED'
   await ui.press({ key: `merge:${URL_A}` })
   await clock.settle()
   expect(calls.merges).toEqual([MERGE_ARGV])
@@ -840,6 +881,58 @@ test('FR-2.7: the second press runs gh pr merge once, toasts and re-polls into D
   const done = await $.ui.mount(pane(DONE))
   expect(await texts(done)).toEqual(expect.arrayContaining(['Z/kit#238', ' MERGED']))
   await done.unmount()
+})
+
+test('FR-2.7: a thread opened after the last poll is seen at the second press and nothing merges', async ($, on) => {
+  let open = 0
+  const { calls } = await mergeWorld(on, { gh: async () => viewWith(READY_CHECKS), threads: n => threadsOf(open, 1)(n) })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  open = 1
+  await ui.press({ key: `merge:${URL_A}` })
+  await clock.settle()
+  expect(calls.merges).toEqual([])
+  expect(calls.toast).toContain('chưa merge được: còn 1 thread mở')
+  expect(await mergeButton(ui)).toBeUndefined()
+  await ui.unmount()
+})
+
+test('FR-2.7: a base branch changed after the arming is seen at the second press and nothing merges', async ($, on) => {
+  let base = 'main'
+  const { calls } = await mergeWorld(on, { gh: async () => viewWith(READY_CHECKS, base) })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  expect((await mergeButton(ui))?.props.label).toBe('xác nhận → main?')
+  base = 'staging'
+  await ui.press({ key: `merge:${URL_A}` })
+  await clock.settle()
+  expect(calls.merges).toEqual([])
+  expect(calls.toast).toContain('chưa merge được: base đổi main → staging')
+  await ui.unmount()
+})
+
+test('FR-2.7: a failed fresh read at the second press merges nothing and is toasted', async ($, on) => {
+  let fail = false
+  const { calls } = await mergeWorld(on, {
+    gh: async () => (fail ? { exitCode: 1, stdout: '', stderr: 'HTTP 502\nmore' } : viewWith(READY_CHECKS)),
+  })
+  const clock = mock.clock(on)
+  await $.prompt.submit({ text: '/znf:nonstop' })
+  await clock.settle()
+  const ui = await $.ui.mount(pane(HUMAN))
+  await ui.press({ key: `merge:${URL_A}` })
+  fail = true
+  await ui.press({ key: `merge:${URL_A}` })
+  await clock.settle()
+  expect(calls.merges).toEqual([])
+  expect(calls.toast).toContain('chưa merge được: gh lỗi: HTTP 502')
+  await ui.unmount()
 })
 
 test('FR-2.7: a failed merge toasts the first stderr line and the PR stays in Need Human', async ($, on) => {
@@ -1039,7 +1132,7 @@ const watchOf = async (ui: Parameters<typeof rows>[0]) => (await rows(ui)).filte
 const READY_CHECKS = [{ name: 'Zenie Review', status: 'COMPLETED', conclusion: 'SUCCESS' }]
 const viewWith = (checks: unknown[], base = 'main') => ({
   exitCode: 0,
-  stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: checks, baseRefName: base }),
+  stdout: JSON.stringify({ state: 'OPEN', mergeStateStatus: 'CLEAN', statusCheckRollup: checks, baseRefName: base, headRefOid: HEAD }),
   stderr: '',
 })
 
@@ -1206,9 +1299,9 @@ test('FR-2.8: before the first threads answer the row shows thread … and the P
   await clock.settle()
 })
 
-const openDone = async ($: any, on: any, world: World) => {
+const openDone = async ($: any, on: any, world: World, now?: number) => {
   const calls = engine(on, world)
-  const clock = mock.clock(on)
+  const clock = mock.clock(on, now === undefined ? {} : { now })
   await $.prompt.submit({ text: '/znf:nonstop' })
   await clock.settle()
   return { calls, clock }
@@ -1294,6 +1387,50 @@ test('FR-3.10: stats re-run on a 2s tick only when estimates.md mtime changed', 
   await clock.advance(2000)
   expect(zenifyRuns(calls)).toHaveLength(1)
   world.estimatesMtime = 20
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(2)
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(2)
+})
+
+test('FR-3.10: stats re-run when durations.log mtime changes', async ($, on) => {
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, estimatesMtime: 10 }
+  const { calls, clock } = await openDone($, on, world)
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(1)
+  world.durationsMtime = 30
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(2)
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(2)
+  world.durationsMtime = 40
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(3)
+})
+
+test('FR-3.10: stats re-run when the local date changes', async ($, on) => {
+  const midnight = new Date()
+  midnight.setHours(24, 0, 0, 0)
+  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, estimatesMtime: 10 }
+  // Opened 3 s before local midnight: the second tick is the next day.
+  const { calls, clock } = await openDone($, on, world, midnight.getTime() - 3000)
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(1)
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(2)
+  await clock.advance(2000)
+  expect(zenifyRuns(calls)).toHaveLength(2)
+})
+
+test('FR-3.10: a failed stats run is retried on the next tick', async ($, on) => {
+  const world: World = {
+    file: { text: ledgerText(BASE), mtimeMs: 1 },
+    estimatesMtime: 10,
+    stats: { exitCode: 1, stdout: '', stderr: 'boom' },
+  }
+  const { calls, clock } = await openDone($, on, world)
+  expect(zenifyRuns(calls)).toHaveLength(1)
+  world.stats = { exitCode: 0, stdout: statsJson(), stderr: '' }
   await clock.advance(2000)
   expect(zenifyRuns(calls)).toHaveLength(2)
   await clock.advance(2000)

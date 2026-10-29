@@ -22,7 +22,7 @@ Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Khôn
 | **Need Human** | Câu hỏi chờ bạn (task `blocked`, dòng `Needs you:`) và PR sẵn sàng merge |
 | **In Progress** | Dòng `▶ đang chạy N worker` (spinner) hoặc `⏸ tạm dừng`; task `RUNNING`, `QUEUED`; khu `ĐANG WATCH` liệt kê mọi PR còn mở với `CI · Zenie · thread mở/tổng`; dòng đếm và cảnh báo ⚠ dòng ledger sai format |
 | **Pending** | Task `deferred` (khu `HOÃN`, kèm `tới <ngày>`, sắp theo ngày rồi priority) và task `carry-over` (khu `CARRY-OVER`, sắp theo priority); khu rỗng thì ẩn |
-| **Done** | Task `done`, PR đã merge hoặc đóng, khu `THỐNG KÊ` |
+| **Done** | Task `done`, PR đã merge hoặc đóng, khu `THỐNG KÊ`. PR đóng vẫn được poll: mở lại thì nó quay về `ĐANG WATCH` |
 
 Trên mọi tab:
 
@@ -35,7 +35,7 @@ Trên mọi tab:
 Một PR chỉ hiện ở mục `CHỜ MERGE` của tab Need Human khi đủ cả ba điều kiện: `mergeStateStatus` là CLEAN hoặc UNSTABLE, check `Zenie Review` đã pass, và không còn review thread nào mở. PR không có check Zenie thì không có nút merge.
 
 - `[c]` copy lệnh `gh pr merge -R <owner/repo> <n> --merge`.
-- `[merge]` merge bằng `gh`, cần bấm hai lần: lần đầu nút đổi thành `xác nhận → <base>?`, lần hai trong 5 giây mới chạy. Trong lúc merge, nút hiện `đang merge…` và bấm thêm không có tác dụng. Lỗi của `gh` hiện thành toast `merge lỗi: …`.
+- `[merge]` merge bằng `gh`, cần bấm hai lần: lần đầu nút đổi thành `xác nhận → <base>?`, lần hai trong 5 giây mới chạy. Lần hai đọc lại PR ngay lúc bấm: chưa sẵn sàng (vd có thread mới mở) hoặc base đã đổi khác base trong nút thì không merge và hiện toast `chưa merge được: …`; sẵn sàng thì merge kèm `--match-head-commit <SHA vừa đọc>`, nên commit mới đẩy lên sau lần đọc đó sẽ chặn merge. Trong lúc merge, nút hiện `đang merge…` và bấm thêm không có tác dụng. Lỗi của `gh` hiện thành toast `merge lỗi: …`.
 
 Chỉ người bấm mới merge. Agent không gọi đường này. PR vào `staging` hay `releaseNN` thì merge là deploy, nên đọc kỹ base trong nút xác nhận.
 
@@ -53,7 +53,7 @@ Dòng bảng hoặc heading `###` bị đếm là sai format. Khi re-entry gặp
 
 Mod tự ghi `durations.log` cạnh ledger: mỗi lượt worker hoặc reviewer chạy xong, một dòng `<thời điểm> · <task id> · work|review · <ms>`. Thời gian chờ bạn trả lời không tính, vì nó nằm giữa hai lượt chạy.
 
-`zenify nonstop stats` là nguồn duy nhất cho thang size và thống kê. Orchestrator chạy nó khi lập plan sáng và khi đóng ngày; tab Done chạy nó để hiện `THỐNG KÊ`:
+`zenify nonstop stats` là nguồn duy nhất cho thang size và thống kê. Orchestrator chạy nó khi lập plan sáng và khi đóng ngày; tab Done chạy lại nó khi `estimates.md`, `durations.log` hoặc ngày đổi (lần chạy lỗi thì thử lại ở tick sau) để hiện `THỐNG KÊ`:
 
 ```text
 $ zenify nonstop stats
@@ -66,6 +66,7 @@ tiers 7d: T1 0 · T2 0 · T3 0
 
 - Thang size học từ thời gian `work` thật: có từ 20 task đo được thì ngưỡng S/M/L là phân vị 25/50/90 của 60 task gần nhất; ít hơn thì dùng mặc định 5/20/60 phút.
 - Thời gian review đứng riêng, không ảnh hưởng thang.
+- Luật hiệu chỉnh (`est lên/xuống 1 size`, tier thường gặp) chỉ đọc 30 dòng gần nhất của `estimates.md`; thống kê ngày và tuần dùng toàn bộ.
 - Độ phức tạp dùng lại hai phân loại có sẵn: path của [`znf:brainstorming`](/reference/skills/brainstorming) (spike, bounded, architectural) và tier T1/T2/T3 của [`znf:review`](/reference/skills/review).
 - `--json` cho pane và script; `--dir` trỏ tới thư mục ledger khác.
 

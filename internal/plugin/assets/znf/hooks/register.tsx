@@ -7,6 +7,7 @@ import type { Ledger } from './ledger'
 import { parseStats, statsLines } from './stats'
 import type { NonstopStats } from './stats'
 import {
+  isFinal,
   isReadyToMerge,
   notReadyReason,
   isSettled,
@@ -14,6 +15,7 @@ import {
   mergeArgv,
   mergeCommand,
   prBase,
+  prHead,
   prLabel,
   prRef,
   prUrls,
@@ -40,7 +42,7 @@ const STATS_TIMEOUT_MS = 20000
 const MERGE_TIMEOUT_MS = 60000
 const CONFIRM_MS = 5000
 const GH_PARALLEL = 4
-const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision,baseRefName'
+const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision,baseRefName,headRefOid'
 
 // Change the shape tag when Ledger or the PR map changes: it declines what an
 // earlier version stored, which outlives a reload.
@@ -50,9 +52,11 @@ const ledgerError = atom({ plugin: 'znf', key: 'ledgerError' } as const, null, {
 // `threads`: undefined = being fetched; null = the query failed or was refused.
 type PrInfo = { label: string; zenie: string; base?: string; threads?: Threads | null }
 const prInfo = atom({ plugin: 'znf', key: 'prInfo' } as const, {} as Record<string, PrInfo>, { shape: 'nonstop-1' })
-// url -> epoch ms until which its merge button is armed. An expiry, not a flag: a reload
-// cancels the disarm timer but keeps this state, so the time itself must end the arming.
-const confirming = atom({ plugin: 'znf', key: 'confirming' } as const, {}, { shape: 'nonstop-2' })
+// url -> epoch ms until which its merge button is armed, and the base branch it was armed for.
+// An expiry, not a flag: a reload cancels the disarm timer but keeps this state, so the time
+// itself must end the arming.
+type Arming = { until: number; base: string }
+const confirming = atom({ plugin: 'znf', key: 'confirming' } as const, {}, { shape: 'nonstop-3' })
 // Urls whose merge runs now; mirrors `mergeInFlight` so the pane redraws.
 const merging = atom({ plugin: 'znf', key: 'merging' } as const, [], { shape: 'nonstop-1' })
 // The last `zenify nonstop stats --json` answer, or why it failed.
@@ -70,8 +74,9 @@ let timers: Timer[] = []
 let spinTimer: Timer | undefined
 let ledgerFile: string | undefined
 let lastMtime: number | undefined
-// mtime of estimates.md at the last stats run; 'missing' when it was absent; undefined = never ran.
-let lastStatsKey: number | 'missing' | undefined
+// What the last successful stats run read: ledger dir, estimates.md and durations.log mtimes
+// ('none' when absent) and the local date. undefined = none succeeded since the session start.
+let lastStatsKey: string | undefined
 let isStatting = false
 let isRefreshing = false
 let isPolling = false
@@ -153,8 +158,15 @@ async function refresh($: $, force = false): Promise<void> {
   }
 }
 
-// FR-3.10: the numbers come from the CLI, never from parsing estimates.md here. Runs when the
-// file's mtime changed since the last run (or on `force`); an absent file still runs once.
+const localDate = (ms: number) => {
+  const d = new Date(ms)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+// FR-3.10: the numbers come from the CLI, never from parsing estimates.md here. Runs when
+// estimates.md, durations.log or the local date changed since the last successful run (or on
+// `force`); an absent file still runs once, and a failed run is retried on the next tick.
 async function refreshStats($: $, force = false): Promise<void> {
   if (isStatting) return
   isStatting = true
@@ -162,20 +174,22 @@ async function refreshStats($: $, force = false): Promise<void> {
     const file = await ledgerPath($)
     if (!file) return
     const dir = file.slice(0, file.lastIndexOf('/'))
-    let key: number | 'missing'
-    try {
-      key = (await $.fs.stat(`${dir}/estimates.md`)).mtimeMs
-    } catch (err) {
-      if (!isMissing(err)) throw err
-      key = 'missing'
+    const mtime = async (name: string): Promise<string> => {
+      try {
+        return String((await $.fs.stat(`${dir}/${name}`)).mtimeMs)
+      } catch (err) {
+        if (!isMissing(err)) throw err
+        return 'none'
+      }
     }
+    const key = [dir, await mtime('estimates.md'), await mtime('durations.log'), localDate(await $.clock.now())].join('|')
     if (!force && key === lastStatsKey) return
-    lastStatsKey = key
     try {
       const out = await $.process.run(['zenify', 'nonstop', 'stats', '--json', '--dir', dir], { timeoutMs: STATS_TIMEOUT_MS })
       if (out.exitCode !== 0) throw new Error(out.stderr.split('\n')[0] || `exit ${out.exitCode}`)
       const data: NonstopStats = parseStats(out.stdout)
       await update($, stats, () => ({ data }))
+      lastStatsKey = key
     } catch (err) {
       await update($, stats, () => ({ error: message(err).split('\n')[0] }))
     }
@@ -184,10 +198,10 @@ async function refreshStats($: $, force = false): Promise<void> {
   }
 }
 
-async function viewPr($: $, url: string): Promise<{ label: string; base?: string; zenie: string }> {
+async function viewPr($: $, url: string): Promise<{ label: string; base?: string; head?: string; zenie: string }> {
   try {
     const view = await $.process.run(['gh', 'pr', 'view', url, '--json', GH_FIELDS], { timeoutMs: GH_TIMEOUT_MS })
-    return { label: prLabel(view), base: prBase(view), zenie: zenieState(view) }
+    return { label: prLabel(view), base: prBase(view), head: prHead(view), zenie: zenieState(view) }
   } catch (err) {
     return { label: `gh lỗi: ${message(err).split('\n')[0]}`, zenie: '—' }
   }
@@ -205,12 +219,17 @@ async function viewThreads($: $, url: string): Promise<Threads | null> {
   }
 }
 
-async function pollPr($: $, url: string): Promise<void> {
+// One poll of a PR, stored and returned with what this very poll read (base and head
+// undefined when the view failed).
+type Polled = { label: string; zenie: string; base?: string; head?: string; threads: Threads | null }
+
+async function pollPr($: $, url: string): Promise<Polled> {
   // Until both answers are in, the PR is not ready: the old threads belong to an older moment.
   await update($, prInfo, map => (map[url] ? { ...map, [url]: { ...map[url], threads: undefined } } : map))
-  const { label, base, zenie: z } = await viewPr($, url)
+  const { label, base, head, zenie: z } = await viewPr($, url)
   const counted = isSettled(label) ? null : await viewThreads($, url)
   await update($, prInfo, map => ({ ...map, [url]: { label, zenie: z, base: base ?? map[url]?.base, threads: counted } }))
+  return { label, zenie: z, base, head, threads: counted }
 }
 
 // FR-2.2: every PR of the last section, at most GH_PARALLEL gh calls at once.
@@ -220,7 +239,8 @@ async function pollPrs($: $): Promise<void> {
   try {
     const current = await read($, ledger)
     const known = await read($, prInfo)
-    const queue = current ? prUrls(current.tasks).filter(url => !isSettled(known[url]?.label ?? '')) : []
+    // A closed PR stays polled: it may be reopened.
+    const queue = current ? prUrls(current.tasks).filter(url => !isFinal(known[url]?.label ?? '')) : []
     const worker = async () => {
       for (let url = queue.shift(); url; url = queue.shift()) {
         await pollPr($, url)
@@ -233,24 +253,29 @@ async function pollPrs($: $): Promise<void> {
 }
 
 const without = (urls: string[], url: string) => urls.filter(u => u !== url)
-const omit = (map: Record<string, number>, url: string) => Object.fromEntries(Object.entries(map).filter(([u]) => u !== url))
+const omit = <T,>(map: Record<string, T>, url: string): Record<string, T> =>
+  Object.fromEntries(Object.entries(map).filter(([u]) => u !== url))
 
 // Checked and added with no await between, so two presses never both merge.
 const mergeInFlight = new Set<string>()
 
-// FR-2.7: the first press arms the button for CONFIRM_MS, the second press merges.
+// FR-2.7: the first press arms the button for CONFIRM_MS, the second press re-reads the PR and
+// merges only if that fresh read is still ready, on the armed base, at the head it just read.
 async function pressMerge($: $, url: string): Promise<void> {
   if (mergeInFlight.has(url)) return
-  const until = (await read($, confirming))[url]
+  const until = (await read($, confirming))[url]?.until
   const now = await $.clock.now()
   if (until === undefined || now >= until) {
+    const base = (await read($, prInfo))[url]?.base
+    // The button is drawn only once the base is known.
+    if (!base) return
     const expiry = now + CONFIRM_MS
-    await update($, confirming, map => ({ ...map, [url]: expiry }))
+    await update($, confirming, map => ({ ...map, [url]: { until: expiry, base } }))
     // Clears only the arming it was made for, not a later one.
     $.clock.after(
       CONFIRM_MS,
       () =>
-        void update($, confirming, map => (map[url] === expiry ? omit(map, url) : map)).catch(err =>
+        void update($, confirming, map => (map[url]?.until === expiry ? omit(map, url) : map)).catch(err =>
           $.ui.toast(`lỗi pane: ${message(err)}`),
         ),
     )
@@ -262,22 +287,25 @@ async function pressMerge($: $, url: string): Promise<void> {
     // `until` may be stale: a merge that finished meanwhile cleared the arming. Confirm it
     // still stands, then clear it, before gh runs.
     const still = (await read($, confirming))[url]
-    if (still !== until || (await $.clock.now()) >= until) return
+    if (still?.until !== until || (await $.clock.now()) >= until) return
     await update($, confirming, map => omit(map, url))
-    // The arming may predate a poll that found an open thread or a failing Zenie.
-    const info = (await read($, prInfo))[url]
-    const reason = notReadyReason(info?.label ?? '', info?.zenie ?? '—', info?.threads ?? undefined)
-    if (reason) {
-      $.ui.toast(`chưa merge được: ${reason}`)
-      return
-    }
     await update($, merging, urls => [...urls, url])
     const argv = mergeArgv(url)
     if (!argv) {
       $.ui.toast('merge lỗi: URL PR không hợp lệ')
       return
     }
-    const out = await $.process.run(argv, { timeoutMs: MERGE_TIMEOUT_MS })
+    // The cache may be a minute old: a thread opened or the base changed since the last poll.
+    const fresh = await pollPr($, url)
+    const reason =
+      notReadyReason(fresh.label, fresh.zenie, fresh.threads ?? undefined) ??
+      (fresh.base !== still.base ? `base đổi ${still.base} → ${fresh.base ?? '?'}` : undefined) ??
+      (fresh.head ? undefined : 'không đọc được head commit')
+    if (reason) {
+      $.ui.toast(`chưa merge được: ${reason}`)
+      return
+    }
+    const out = await $.process.run([...argv, '--match-head-commit', fresh.head as string], { timeoutMs: MERGE_TIMEOUT_MS })
     if (out.exitCode !== 0) {
       $.ui.toast(`merge lỗi: ${out.stderr.split('\n')[0] || `exit ${out.exitCode}`}`)
       return
@@ -534,7 +562,7 @@ export const register: Register = on => {
       const l = await read($, ledger)
       const infos = await read($, prInfo)
       const open = await read($, expanded)
-      const armedUntil = await read($, confirming)
+      const armings: Record<string, Arming> = await read($, confirming)
       const inMerge = await read($, merging)
       const now = await $.clock.now()
       const st = await read($, stats)
@@ -556,9 +584,9 @@ export const register: Register = on => {
       const watchText = (u: string) => `${label(u)} · Zenie ${zenieOf(u)} · thread ${threadText(u)}`
       const settled = urls.filter(u => isSettled(label(u)))
       const by = (s: string) => byPriority(l.tasks.filter(t => t.status === s))
-      const isArmed = (url: string) => now < (armedUntil[url] ?? 0)
+      const isArmed = (url: string) => now < (armings[url]?.until ?? 0)
       const mergeLabel = (url: string) =>
-        inMerge.includes(url) ? 'đang merge…' : isArmed(url) ? `xác nhận → ${baseOf(url)}?` : 'merge'
+        inMerge.includes(url) ? 'đang merge…' : isArmed(url) ? `xác nhận → ${armings[url].base}?` : 'merge'
       // FR-3.7: the expanded lines are indented and wrapped, never cut.
       const detail = (lines: string[]) =>
         lines.map(s => (

@@ -51,8 +51,8 @@ declare module 'claude-code' {
           }
         >
       >
-      // url -> epoch ms until which its merge button is armed
-      confirming: Shaped<Record<string, number>>
+      // url -> epoch ms until which its merge button is armed, and the base it was armed for
+      confirming: Shaped<Record<string, { until: number; base: string }>>
       // urls whose merge is running
       merging: Shaped<string[]>
       // spinner frame index

@@ -25,6 +25,12 @@ test('slugFromPrompt reads the .worktrees path segment of a reviewer prompt', ()
   expect(slugFromPrompt('Review the diff in /w/repos/app')).toBeUndefined()
 })
 
+test('slugFromPrompt stops at a quote or backtick around the path', () => {
+  expect(slugFromPrompt('WT="/w/repos/app/.worktrees/fix-login"\nReview.')).toBe('fix-login')
+  expect(slugFromPrompt("WT='/w/repos/app/.worktrees/fix-login'")).toBe('fix-login')
+  expect(slugFromPrompt('Read `/w/repos/app/.worktrees/fix-login`.')).toBe('fix-login')
+})
+
 test('logLine joins time, task id, kind and ms with middle dots', () => {
   expect(logLine('2026-10-28T09:00:00.000Z', 't14', 'work', 245000)).toBe('2026-10-28T09:00:00.000Z · t14 · work · 245000')
 })

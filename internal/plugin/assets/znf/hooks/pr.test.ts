@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { LedgerTask } from './ledger'
-import { isMergeable, isReadyToMerge, issueUrl, notReadyReason, mergeArgv, mergeCommand, prBase, threadCount, threadsArgv, zenieState, prLabel, prRef, prUrls } from './pr'
+import { isFinal, isMergeable, isReadyToMerge, issueUrl, notReadyReason, mergeArgv, mergeCommand, prBase, prHead, threadCount, threadsArgv, zenieState, prLabel, prRef, prUrls } from './pr'
 
 const view = (o: object) => ({ exitCode: 0, stdout: JSON.stringify(o), stderr: '' })
 const run = (name: string, conclusion: string, status = 'COMPLETED') => ({
@@ -61,6 +61,13 @@ test('prBase reads baseRefName and is undefined on a failure or bad JSON', () =>
   expect(prBase({ exitCode: 0, stdout: 'nope', stderr: '' })).toBeUndefined()
 })
 
+test('prHead reads headRefOid and is undefined on a failure, bad JSON or no SHA', () => {
+  expect(prHead(view({ state: 'OPEN', headRefOid: 'abc123' }))).toBe('abc123')
+  expect(prHead(view({ state: 'OPEN' }))).toBeUndefined()
+  expect(prHead({ exitCode: 1, stdout: '', stderr: 'x' })).toBeUndefined()
+  expect(prHead({ exitCode: 0, stdout: 'nope', stderr: '' })).toBeUndefined()
+})
+
 const zenie = (check: object | null) =>
   view({ statusCheckRollup: check ? [{ name: 'lint', conclusion: 'SUCCESS', status: 'COMPLETED' }, check] : [] })
 
@@ -73,8 +80,11 @@ test('zenieState reads the Zenie Review check run', () => {
   expect(zenieState({ exitCode: 0, stdout: 'nope', stderr: '' })).toBe('—')
 })
 
-const graphql = (nodes: unknown) =>
-  view({ data: { repository: { pullRequest: { reviewThreads: { nodes } } } } })
+const page = (nodes: unknown, hasNextPage = false) => ({
+  data: { repository: { pullRequest: { reviewThreads: { nodes, pageInfo: { hasNextPage, endCursor: 'c' } } } } },
+})
+const slurped = (...pages: unknown[]) => ({ exitCode: 0, stdout: JSON.stringify(pages), stderr: '' })
+const graphql = (nodes: unknown) => slurped(page(nodes))
 
 test('threadCount counts open and total review threads', () => {
   expect(threadCount(graphql([{ isResolved: true }, { isResolved: false }, { isResolved: false }]))).toEqual({ open: 2, total: 3 })
@@ -84,13 +94,15 @@ test('threadCount counts open and total review threads', () => {
   expect(threadCount(view({ data: {} }))).toBeUndefined()
 })
 
-test('threadsArgv queries the review threads of the PR', () => {
+test('threadsArgv queries every page of the review threads of the PR', () => {
   expect(threadsArgv('https://github.com/Z/kit/pull/238')).toEqual([
     'gh',
     'api',
     'graphql',
+    '--paginate',
+    '--slurp',
     '-f',
-    'query=query{repository(owner:"Z",name:"kit"){pullRequest(number:238){reviewThreads(first:100){pageInfo{hasNextPage}nodes{isResolved}}}}}',
+    'query=query($endCursor:String){repository(owner:"Z",name:"kit"){pullRequest(number:238){reviewThreads(first:100,after:$endCursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}',
   ])
 })
 
@@ -111,11 +123,23 @@ test('threadsArgv refuses an owner or repo outside [A-Za-z0-9_.-]', () => {
   expect(threadsArgv('https://github.com/my-org/my.repo_1/pull/5')).toBeDefined()
 })
 
-test('threadCount is undefined when more than one page of threads exists', () => {
-  const paged = view({
-    data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: true }, nodes: [{ isResolved: true }] } } } },
-  })
-  expect(threadCount(paged)).toBeUndefined()
+test('threadCount sums open and total over every slurped page', () => {
+  const resolved = Array.from({ length: 100 }, () => ({ isResolved: true }))
+  expect(threadCount(slurped(page(resolved, true), page([{ isResolved: true }])))).toEqual({ open: 0, total: 101 })
+  expect(threadCount(slurped(page(resolved, true), page([{ isResolved: false }])))).toEqual({ open: 1, total: 101 })
+})
+
+test('threadCount is undefined for a malformed or unfinished page list', () => {
+  expect(threadCount(slurped(page([{ isResolved: true }], true)))).toBeUndefined()
+  expect(threadCount(slurped(page([]), { data: {} }))).toBeUndefined()
+  expect(threadCount(slurped())).toBeUndefined()
+  expect(threadCount({ exitCode: 0, stdout: '{}', stderr: '' })).toBeUndefined()
+})
+
+test('only a merged PR is final; a closed one is settled but may reopen', () => {
+  expect(isFinal('MERGED')).toBe(true)
+  expect(isFinal('CLOSED')).toBe(false)
+  expect(isFinal('CLEAN')).toBe(false)
 })
 
 test('notReadyReason names the first failing condition', () => {

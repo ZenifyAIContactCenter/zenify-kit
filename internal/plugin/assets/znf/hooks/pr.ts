@@ -43,9 +43,14 @@ export function isMergeable(label: string): boolean {
   return label === 'CLEAN' || label === 'UNSTABLE'
 }
 
-// A merged or closed PR is final: the pane stops showing and polling it.
+// A merged or closed PR leaves the watch list for Done.
 export function isSettled(label: string): boolean {
   return label === 'MERGED' || label === 'CLOSED'
+}
+
+// Only a merged PR is final and no longer polled: a closed one may be reopened.
+export function isFinal(label: string): boolean {
+  return label === 'MERGED'
 }
 
 function parseUrl(url: string): { repo: string; n: string } {
@@ -89,6 +94,16 @@ export function prBase(view: PrView): string | undefined {
   }
 }
 
+// The head commit SHA, from `gh pr view --json headRefOid`.
+export function prHead(view: PrView): string | undefined {
+  if (view.exitCode !== 0) return undefined
+  try {
+    return (JSON.parse(view.stdout) as { headRefOid?: string }).headRefOid || undefined
+  } catch {
+    return undefined
+  }
+}
+
 export type Zenie = 'đang chạy' | 'pass' | 'fail' | '—'
 
 // The `Zenie Review` check run in statusCheckRollup.
@@ -109,22 +124,32 @@ export function zenieState(view: PrView): Zenie {
 export type Threads = { open: number; total: number }
 
 // undefined when owner or repo holds a character that could break out of the query.
+// `--paginate` walks `$endCursor` through every page; `--slurp` answers one JSON array of pages.
 export function threadsArgv(url: string): string[] | undefined {
   const { repo, n } = parseUrl(url)
   const [owner, name] = repo.split('/')
   if (!SAFE_NAME.test(owner ?? '') || !SAFE_NAME.test(name ?? '') || !/^\d+$/.test(n)) return undefined
-  const query = `query{repository(owner:"${owner}",name:"${name}"){pullRequest(number:${n}){reviewThreads(first:100){pageInfo{hasNextPage}nodes{isResolved}}}}}`
-  return ['gh', 'api', 'graphql', '-f', `query=${query}`]
+  const query = `query($endCursor:String){repository(owner:"${owner}",name:"${name}"){pullRequest(number:${n}){reviewThreads(first:100,after:$endCursor){nodes{isResolved}pageInfo{hasNextPage endCursor}}}}}`
+  return ['gh', 'api', 'graphql', '--paginate', '--slurp', '-f', `query=${query}`]
 }
 
-// Open and total review threads from the threadsArgv answer; undefined when unreadable
-// or when there is a second page (the count would be partial).
+// Open and total review threads summed over the threadsArgv pages; undefined when unreadable
+// or when the last page says another follows (the count would be partial).
 export function threadCount(result: PrView): Threads | undefined {
   if (result.exitCode !== 0) return undefined
   try {
-    const list = JSON.parse(result.stdout)?.data?.repository?.pullRequest?.reviewThreads
-    if (!Array.isArray(list?.nodes) || list.pageInfo?.hasNextPage) return undefined
-    return { open: list.nodes.filter((t: { isResolved?: boolean }) => !t.isResolved).length, total: list.nodes.length }
+    const pages = JSON.parse(result.stdout)
+    if (!Array.isArray(pages) || !pages.length) return undefined
+    let open = 0
+    let total = 0
+    for (const p of pages) {
+      const list = p?.data?.repository?.pullRequest?.reviewThreads
+      if (!Array.isArray(list?.nodes)) return undefined
+      open += list.nodes.filter((t: { isResolved?: boolean }) => !t.isResolved).length
+      total += list.nodes.length
+    }
+    if (pages[pages.length - 1].data.repository.pullRequest.reviewThreads.pageInfo?.hasNextPage) return undefined
+    return { open, total }
   } catch {
     return undefined
   }

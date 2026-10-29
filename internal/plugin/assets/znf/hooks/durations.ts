@@ -8,9 +8,9 @@ export function taskFromPrompt(prompt: string): { id?: string; slug?: string } {
   return slug ? { id, slug } : { id }
 }
 
-// A reviewer prompt names the worktree path: `.../.worktrees/<slug>`.
+// A reviewer prompt names the worktree path: `.../.worktrees/<slug>`, maybe quoted.
 export function slugFromPrompt(prompt: string): string | undefined {
-  return /\.worktrees\/([^/\s]+)/.exec(prompt)?.[1]
+  return /\.worktrees\/([^/\s"'`]+)/.exec(prompt)?.[1]
 }
 
 export function logLine(iso: string, id: string, kind: 'work' | 'review', ms: number): string {
