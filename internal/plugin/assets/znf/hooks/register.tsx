@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as $, Register, Timer } from 'claude-code'
 
-import { logLine, slugFromPrompt, taskFromPrompt } from './durations'
+import { bindLine, cwdLine, isEndCommand, isStartCommand, kindOf, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
+import type { Kind, Usage, WaitKind } from './track'
 import { parseLedger } from './ledger'
 import type { Ledger } from './ledger'
 import { footerLines, parseStats } from './stats'
@@ -69,10 +70,16 @@ const tab = atom({ plugin: 'znf', key: 'tab' } as const, 'human', { shape: 'nons
 const frame = atom({ plugin: 'znf', key: 'frame' } as const, 0, { shape: 'nonstop-1' })
 // Ids of the task lines the user expanded; shared by the tabs.
 const expanded = atom({ plugin: 'znf', key: 'expanded' } as const, [], { shape: 'nonstop-1' })
-// FR-6.1: subagent id -> the task its runs are logged under, and worktree slug -> task id.
-// State, not module variables: a worker outlives a reload of this module.
-const runTags = atom({ plugin: 'znf', key: 'runTags' } as const, {}, { shape: 'nonstop-1' })
-const slugTasks = atom({ plugin: 'znf', key: 'slugTasks' } as const, {}, { shape: 'nonstop-1' })
+// FR-4.1: the id this session's turns are recorded under; `ending` once its `zenify track end`
+// ran, so the turn that ran it is written before the unbind (SC-22).
+type Bound = { id: string; kind: Kind; ending: boolean }
+const bound = atom({ plugin: 'znf', key: 'bound' } as const, null as Bound | null, { shape: 'track-1' })
+// FR-2.3: false writes nothing. Set from `zenify track stats --json` -> `enabled` (setTrackEnabled).
+const enabled = atom({ plugin: 'znf', key: 'enabled' } as const, false, { shape: 'track-1' })
+// FR-4.6: when the last main-loop turn ended (epoch ms), until the next prompt reads it.
+const lastMainEnd = atom({ plugin: 'znf', key: 'lastMainEnd' } as const, null as number | null, { shape: 'track-1' })
+// FR-4.5: main-loop tool_use_ids a person was asked to allow.
+const personAsks = atom({ plugin: 'znf', key: 'personAsks' } as const, [] as string[], { shape: 'track-1' })
 
 // Module state: lost on a reload, which also drops the timers; the next open re-arms them.
 let timers: Timer[] = []
@@ -406,43 +413,101 @@ async function metricsPath($: $): Promise<string | undefined> {
   return path
 }
 
-// FR-6.1: a worker brief tags its agent `work` and maps its slug to the task; a prompt naming a
-// worktree tags its agent `review` of that slug's task. Any other agent is not tracked.
-async function tagRun($: $, agentId: string, prompt: string): Promise<void> {
-  const { id, slug } = taskFromPrompt(prompt)
-  const reviewed = id ? undefined : slugFromPrompt(prompt)
-  if (!id && !reviewed) return
-  if (!(await ledgerDir($))) return
-  if (id) {
-    await update($, runTags, tags => ({ ...tags, [agentId]: { id, kind: 'work' } }))
-    if (slug) await update($, slugTasks, map => ({ ...map, [slug]: id }))
-    return
+// The workspace holding `.zenify/manifest.json` at or above the cwd, as the CLI resolves it
+// (internal/cli/workspaceresolve.go, the marker rule); cached per cwd.
+let workspaceCache: { cwd: string; dir: string } | undefined
+async function workspaceDir($: $): Promise<string> {
+  const cwd: string = await $.session.cwd()
+  if (workspaceCache?.cwd === cwd) return workspaceCache.dir
+  for (let dir = cwd.replace(/\/+$/, ''); ; dir = dir.slice(0, dir.lastIndexOf('/'))) {
+    try {
+      await $.fs.stat(`${dir}/.zenify/manifest.json`)
+      workspaceCache = { cwd, dir }
+      return dir
+    } catch (err) {
+      if (!isMissing(err)) throw err
+    }
+    if (!dir) throw new Error(`no workspace (.zenify/manifest.json) at or above ${cwd}`)
   }
-  const task = (await read($, slugTasks))[reviewed as string] ?? 'unknown'
-  await update($, runTags, tags => ({ ...tags, [agentId]: { id: task, kind: 'review' } }))
 }
 
 // Runs one append at a time: there is no fs append, so each is a read and a whole write.
 let appending: Promise<void> = Promise.resolve()
 
-async function logRun($: $, agentId: string, ms: number): Promise<void> {
-  const tag = (await read($, runTags))[agentId]
-  if (!tag) return
-  const dir = await ledgerDir($)
-  if (!dir) return
-  const line = logLine(new Date(await $.clock.now()).toISOString(), tag.id, tag.kind, ms)
+const iso = (ms: number) => new Date(ms).toISOString()
+
+// FR-4.2/FR-7.3: appends to this session's own file; a new file starts with the cwd line.
+export async function appendSession($: $, line: string): Promise<void> {
+  const file = `${await workspaceDir($)}/.zenify/track/sessions/${await $.session.id()}.log`
   const write = appending.then(async () => {
-    const file = `${dir}/durations.log`
-    let text = ''
+    let text: string
     try {
       text = String(await $.fs.read(file))
     } catch (err) {
       if (!isMissing(err)) throw err
+      text = `${cwdLine(iso(await $.clock.now()), await $.session.cwd())}\n`
     }
     await $.fs.write(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}${line}\n`)
   })
+  // Keeps the chain alive after a failure; the caller still gets the error from `write`.
   appending = write.catch(() => undefined)
   await write
+}
+
+// Task 6 calls this with `stats.enabled` from `zenify track stats --json`.
+export async function setTrackEnabled($: $, on: boolean): Promise<void> {
+  await update($, enabled, () => on)
+}
+
+// FR-2.3: whether track records; a failed read is toasted and counts as off.
+const isEnabled = ($: $): Promise<boolean> => read($, enabled).catch(err => (timingError($)(err), false))
+
+// FR-8.2: a Skill marker of the bound id's kind starts its phase.
+async function recordPhase($: $, skill: string): Promise<void> {
+  const b = await read($, bound)
+  const phase = b && phaseFor(b.kind, skill)
+  if (b && phase) await appendSession($, phaseLine(iso(await $.clock.now()), b.id, phase))
+}
+
+// FR-4.1/4.4/4.5: after a call — bind from a start's stdout, else a main-loop wait.
+async function recordCall($: $, tool: string, command: string, isMain: boolean, useId: string | undefined, started: number, answer: unknown): Promise<void> {
+  const now = await $.clock.now()
+  if (tool === 'Bash' && isStartCommand(command)) {
+    const id = parseStartId(stdoutOf(answer))
+    if (id) {
+      await update($, bound, () => ({ id, kind: kindOf(id), ending: false }))
+      await appendSession($, bindLine(iso(now), id))
+      return
+    }
+  }
+  const b = await read($, bound)
+  const asked = !!useId && (await read($, personAsks)).includes(useId)
+  const kind: WaitKind | undefined = asked ? 'permission' : tool === 'AskUserQuestion' ? 'ask' : undefined
+  if (b && isMain && kind) await appendSession($, waitLine(iso(now), b.id, now - started, kind))
+}
+
+// FR-4.2/4.8, SC-22: the turn line first, then the unbind of an id whose end ran this turn.
+async function recordTurn($: $, e: { durationMs: number; agentId?: string; usage?: Usage }): Promise<void> {
+  const now = await $.clock.now()
+  const b = await read($, bound)
+  if (b) {
+    await appendSession($, turnLine(iso(now), b.id, e.durationMs, e.agentId ? 'sub' : 'main', e.usage))
+    if (!e.agentId && b.ending) {
+      await appendSession($, unbindLine(iso(now), b.id))
+      await update($, bound, () => null)
+    }
+  }
+  if (!e.agentId) await update($, lastMainEnd, () => now)
+}
+
+// FR-4.6: the time from the last main-loop turn end to this prompt, once per turn end.
+async function recordIdle($: $): Promise<void> {
+  const last = await read($, lastMainEnd)
+  if (last === null) return
+  await update($, lastMainEnd, () => null)
+  const b = await read($, bound)
+  const now = await $.clock.now()
+  if (b) await appendSession($, waitLine(iso(now), b.id, now - last, 'idle'))
 }
 
 const timingError = ($: $) => (err: unknown) => $.ui.toast(`lỗi đo thời gian: ${message(err)}`)
@@ -543,6 +608,7 @@ export const register: Register = on => {
   })
 
   on('prompt.submit', async ($, e, next) => {
+    if (await isEnabled($)) await recordIdle($).catch(timingError($))
     if (isNonstopPrompt(e)) await show($)
     return next(e)
   })
@@ -552,18 +618,47 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // FR-6.1: tagged on spawn, not on the Agent tool call: a foreground agent's turn ends before
-  // its tool call answers. A resume keeps the tag its first spawn got.
-  on('agent.spawn', async ($, e, next) => {
-    const result = await next(e)
-    if (!e.resume && result.agentId) await tagRun($, result.agentId, e.prompt).catch(timingError($))
-    return result
+  // zenify track (FR-4, FR-8.2): every tool call of a session, timed around `next(e)`; the
+  // permission check runs inside it (tool.check below), so a person's ask is within the span.
+  on('tool.call', async ($, e, next) => {
+    if (!(await isEnabled($))) return next(e)
+    const tool = String(e.tool)
+    const command = tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
+    const useId = e.tool_use_id
+    const isMain = !e.agentId
+    let started = 0
+    try {
+      if (tool === 'Skill') await recordPhase($, String((e as { skill?: unknown }).skill ?? ''))
+      const endId = command ? isEndCommand(command) : undefined
+      if (endId) await update($, bound, b => (b?.id === endId ? { ...b, ending: true } : b))
+      started = await $.clock.now()
+    } catch (err) {
+      timingError($)(err)
+    }
+    try {
+      const answer = await next(e)
+      await recordCall($, tool, command, isMain, useId, started, answer).catch(timingError($))
+      return answer
+    } finally {
+      if (useId) await update($, personAsks, ids => ids.filter(x => x !== useId)).catch(timingError($))
+    }
   })
 
-  // Each run of a subagent's loop is one turn; its durationMs is that run's wall time.
+  // FR-4.5: a main-loop ask that a person answers (not the host, not a classifier).
+  on('tool.check', async ($, e, next) => {
+    const verdict = await next(e)
+    const useId = e.tool_use_id
+    if (useId && !e.agentId && verdict.decision === 'ask' && e.approver === 'person') {
+      await (async () => {
+        if ((await read($, enabled)) && (await read($, bound))) await update($, personAsks, ids => [...ids, useId])
+      })().catch(timingError($))
+    }
+    return verdict
+  })
+
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    if (e.agentId) await logRun($, e.agentId, e.durationMs).catch(timingError($))
+    if (await isEnabled($)) await recordTurn($, e).catch(timingError($))
     return result
   })
 

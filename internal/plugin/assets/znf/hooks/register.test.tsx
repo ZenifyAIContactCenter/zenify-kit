@@ -1,6 +1,10 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 const CWD = '/w/app'
+// The workspace marker sits one level above the cwd; session logs go under it.
+const WS_MARKER = '/w/.zenify/manifest.json'
+const SESSION = 'sess-1'
+const SESSION_LOG = `/w/.zenify/track/sessions/${SESSION}.log`
 const LOCAL = `${CWD}/.zenify/nonstop/progress.md`
 const GH_FIELDS = 'state,mergeStateStatus,statusCheckRollup,reviewDecision,baseRefName,headRefOid'
 const HEAD = 'abc123'
@@ -49,10 +53,14 @@ type World = {
   // mtime of durations.log next to the ledger; absent = the file does not exist.
   durationsMtime?: number
   gh?: (url: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>
-  // The ids `agent.spawn` answers, in order.
-  agentIds?: string[]
-  // durations.log next to the ledger; absent = the file does not exist.
-  durations?: string
+  // Files the plugin wrote, by path (session logs live here).
+  files?: Record<string, string>
+  // Answers the test's tool.call beneath the plugin; defaults to an empty result.
+  toolCall?: (e: any) => unknown
+  // The verdict beneath the plugin's tool.check; defaults to allow.
+  verdict?: 'allow' | 'ask' | 'deny'
+  // The plugin's `enabled` atom as Task 6 would set it; undefined = never written (false).
+  trackEnabled?: boolean
   writeError?: string
   // false = the workspace's nonstop-metrics.md does not exist; the default is that it does.
   metrics?: boolean
@@ -115,13 +123,20 @@ function engine(on: any, world: World): Calls {
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: CWD }))
   on('prompt.submit', (_: unknown, e: { text: string }) => ({ text: e.text }))
-  on('tool.call', () => ({ result: {} }))
-  on('agent.spawn', () => ({ model: 'sonnet', agentId: world.agentIds?.shift() }))
+  on('session.id', () => ({ value: SESSION }))
+  on('tool.call', async (_: unknown, e: any) => (world.toolCall ? await world.toolCall(e) : { result: {} }))
+  on('tool.check', () => ({ decision: world.verdict ?? 'allow' }))
+  // A test's $ has no state noun: answer the `enabled` atom's read as the kit stores a shaped atom.
+  on('state.get', (_: unknown, e: { plugin: string; key: string }, next: any) =>
+    e.plugin === 'znf' && e.key === 'enabled' && world.trackEnabled !== undefined
+      ? { value: { value: { shape: 'track-1', value: world.trackEnabled }, version: 1 } }
+      : next(e),
+  )
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
   on('fs.write', (_: unknown, e: { path: string; text: string }) => {
     if (world.writeError) return { deny: world.writeError }
     calls.write.push({ path: e.path, text: e.text })
-    world.durations = e.text
+    world.files = { ...world.files, [e.path]: e.text }
     return { value: undefined }
   })
   on('ui.open', (_: unknown, e: { id: string }) => {
@@ -152,6 +167,7 @@ function engine(on: any, world: World): Calls {
   on('fs.stat', (_: unknown, e: { path: string }) => {
     calls.stat.push(e.path)
     if (world.statError) return { deny: world.statError }
+    if (e.path === WS_MARKER) return { value: { kind: 'file', size: 1, mtimeMs: 1, isLink: false } }
     if (e.path.endsWith('/docs/reference/zenify-kit/nonstop-metrics.md')) {
       if (world.metricsError) return { deny: world.metricsError }
       if (world.metrics === false) return { deny: `ENOENT: no such file, stat '${e.path}'` }
@@ -172,9 +188,10 @@ function engine(on: any, world: World): Calls {
   })
   on('fs.read', (_: unknown, e: { path: string }) => {
     calls.read.push(e.path)
-    if (e.path.endsWith('/durations.log')) {
-      if (world.durations === undefined) return { deny: `ENOENT: no such file, open '${e.path}'` }
-      return { value: world.durations }
+    if (e.path.includes('/.zenify/track/')) {
+      const text = world.files?.[e.path]
+      if (text === undefined) return { deny: `ENOENT: no such file, open '${e.path}'` }
+      return { value: text }
     }
     if (world.readError) return { deny: world.readError }
     if (!world.file) return { deny: `ENOENT: no such file, open '${e.path}'` }
@@ -1549,78 +1566,6 @@ test('FR-3.10: a plain session makes no zenify call', async ($, on) => {
   expect(zenifyRuns(calls)).toHaveLength(0)
 })
 
-const LOG = `${CWD}/.zenify/nonstop/durations.log`
-const WORKER_PROMPT = [
-  'Task:       t14 — fix login redirect, source issue, size S',
-  'Repo:       /w/repos/app · worktree slug: fix-login (git fetch origin; wt new fix-login --type fix --base main)',
-].join('\n')
-const REVIEW_PROMPT = 'Review the diff. WT=/w/repos/app/.worktrees/fix-login'
-const ended = (agentId: string, durationMs: number) =>
-  ({ answer: 'ok', durationMs, isAborted: false, turnId: `turn-${agentId}-${durationMs}`, agentId, reason: 'answer' }) as any
-const logLines = (world: World) => (world.durations ?? '').split('\n').filter(Boolean)
-const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z · /
-
-test('FR-6.1: a worker run logs work, its reviewer run logs review, a resumed run logs again', async ($, on) => {
-  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, agentIds: ['a-work', 'a-review', 'a-work'] }
-  engine(on, world)
-  mock.clock(on)
-  await $.agent.spawn({ prompt: WORKER_PROMPT })
-  await $.turn.complete(ended('a-work', 245000))
-  await $.agent.spawn({ prompt: REVIEW_PROMPT })
-  await $.turn.complete(ended('a-review', 60000))
-  // A resume re-spawns the same agent with the resuming message, which names the worktree.
-  await $.agent.spawn({ prompt: 'Fix the findings in /w/repos/app/.worktrees/fix-login', resume: { agentId: 'a-work' } } as any)
-  await $.turn.complete(ended('a-work', 30000))
-  const lines = logLines(world)
-  expect(lines).toHaveLength(3)
-  expect(lines.every(l => ISO.test(l))).toBe(true)
-  expect(lines.map(l => l.replace(ISO, ''))).toEqual(['t14 · work · 245000', 't14 · review · 60000', 't14 · work · 30000'])
-})
-
-test('FR-6.1: lines are appended to an existing durations.log next to the ledger', async ($, on) => {
-  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, agentIds: ['a1'], durations: 'old line\n' }
-  const calls = engine(on, world)
-  mock.clock(on)
-  await $.agent.spawn({ prompt: WORKER_PROMPT })
-  await $.turn.complete(ended('a1', 245000))
-  expect(calls.write.map(w => w.path)).toEqual([LOG])
-  expect(logLines(world)[0]).toBe('old line')
-  expect(logLines(world)[1]).toMatch(/ · t14 · work · 245000$/)
-})
-
-test('FR-6.1: a reviewer of an unknown worktree logs unknown; a plain prompt and the main loop log nothing', async ($, on) => {
-  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, agentIds: ['a-rev', 'a-other'] }
-  const calls = engine(on, world)
-  mock.clock(on)
-  await $.agent.spawn({ prompt: 'Review WT=/w/repos/app/.worktrees/other-slug' })
-  await $.turn.complete(ended('a-rev', 1000))
-  await $.agent.spawn({ prompt: 'Find where login is handled' })
-  await $.turn.complete(ended('a-other', 2000))
-  await $.turn.complete({ ...ended('x', 3000), agentId: undefined })
-  expect(calls.write).toHaveLength(1)
-  expect(logLines(world).map(l => l.replace(ISO, ''))).toEqual(['unknown · review · 1000'])
-})
-
-test('FR-6.1: a failed write is toasted, not swallowed', async ($, on) => {
-  const world: World = { file: { text: ledgerText(BASE), mtimeMs: 1 }, agentIds: ['a1'], writeError: 'EACCES: permission denied' }
-  const calls = engine(on, world)
-  mock.clock(on)
-  await $.agent.spawn({ prompt: WORKER_PROMPT })
-  await $.turn.complete(ended('a1', 245000))
-  expect(calls.toast).toHaveLength(1)
-  expect(calls.toast[0].startsWith('lỗi đo thời gian: ') && calls.toast[0].includes('EACCES: permission denied')).toBe(true)
-})
-
-test('FR-6.1: a plain session with no ledger writes nothing', async ($, on) => {
-  const world: World = { file: null, agentIds: ['a1'] }
-  const calls = engine(on, world)
-  mock.clock(on)
-  await $.agent.spawn({ prompt: WORKER_PROMPT })
-  await $.turn.complete(ended('a1', 245000))
-  expect(calls.write).toHaveLength(0)
-  expect(calls.toast).toHaveLength(0)
-})
-
 test('FR-1.2: a nonstop tab left open across session.start keeps refreshing', async ($, on) => {
   const world: World = { file: { text: ledgerText([row('t1', 'done')]), mtimeMs: 1 }, openPanes: ['nonstop'] }
   engine(on, world)
@@ -1843,4 +1788,217 @@ test('FR-3.13: a metrics stat failure other than ENOENT shows no link and toasts
   }
   expect(calls.toast.filter(t => t.includes('EACCES'))).toHaveLength(1)
   expect(calls.toast.find(t => t.includes('EACCES'))).toContain('lỗi pane:')
+})
+
+// ---- zenify track: the session log (FR-2.3, FR-4, FR-7.3, FR-8.2) ----
+
+const FIX_ID = 'fix-261030-a1b2'
+const COOK_ID = 'cook-261030-c0de'
+const START_FIX = 'zenify track start --kind fix --repo kit --est -'
+const START_COOK = 'zenify track start --kind cook --repo kit --est -'
+const ISO_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z · /
+const sessionLines = (world: World) => (world.files?.[SESSION_LOG] ?? '').split('\n').filter(Boolean)
+const fields = (world: World) => sessionLines(world).map(l => l.replace(ISO_AT, ''))
+const turnEnd = (durationMs: number, agentId?: string, usage?: unknown) =>
+  ({ answer: 'ok', durationMs, isAborted: false, turnId: `turn-${durationMs}`, reason: 'answer', ...(agentId ? { agentId } : {}), ...(usage ? { usage } : {}) }) as any
+// The Bash answer of `zenify track start`, as core gives it ({ stdout }) or as text only.
+const stdoutAnswer = (stdout: string) => ({ result: { stdout, stderr: '' }, text: stdout })
+const textAnswer = (text: string) => ({ ref: 'r1', result: undefined, text })
+
+function trackWorld(over: Partial<World> = {}): World {
+  return { file: null, trackEnabled: true, ...over }
+}
+
+// Runs `zenify track start` in the main loop and answers its stdout.
+async function bindTo($: any, world: World, id: string, command = START_FIX) {
+  world.toolCall = () => stdoutAnswer(`track: ${id}\n`)
+  await $.tool.call({ tool: 'Bash', command })
+  world.toolCall = undefined
+}
+
+test('FR-2.3: with track disabled nothing is written, not even a bind', async ($, on) => {
+  const world = trackWorld({ trackEnabled: false })
+  const calls = engine(on, world)
+  mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  await $.turn.complete(turnEnd(30000))
+  await $.prompt.submit({ text: 'next' })
+  expect(calls.write).toHaveLength(0)
+})
+
+test('SC-14: a Bash stdout of track: off binds nothing', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  world.toolCall = () => stdoutAnswer('track: off\n')
+  await $.tool.call({ tool: 'Bash', command: START_FIX })
+  world.toolCall = undefined
+  await $.turn.complete(turnEnd(30000))
+  expect(calls.write).toHaveLength(0)
+})
+
+test('FR-4.1/FR-7.3: a start stdout binds the id into this session file, the cwd first', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG])
+  expect(sessionLines(world).every(l => ISO_AT.test(l))).toBe(true)
+  expect(fields(world)).toEqual([`cwd · ${CWD}`, `bind · ${FIX_ID}`])
+})
+
+test('FR-4.1: a start answer with only text binds too', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on)
+  world.toolCall = () => textAnswer(`track: ${COOK_ID}`)
+  await $.tool.call({ tool: 'Bash', command: START_COOK })
+  world.toolCall = undefined
+  expect(fields(world)).toEqual([`cwd · ${CWD}`, `bind · ${COOK_ID}`])
+})
+
+test('SC-22: the turn that ran track end is written before the unbind', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on)
+  await bindTo($, world, COOK_ID, START_COOK)
+  await $.tool.call({ tool: 'Bash', command: `zenify track end ${COOK_ID} --pr https://github.com/Z/kit/pull/1 --rounds 1` })
+  // A subagent turn inside the ending turn still counts for the id.
+  await $.turn.complete(turnEnd(5000, 'a-1'))
+  await $.turn.complete(turnEnd(30000))
+  await $.turn.complete(turnEnd(9000))
+  expect(fields(world)).toEqual([
+    `cwd · ${CWD}`,
+    `bind · ${COOK_ID}`,
+    `turn · ${COOK_ID} · 5000 · sub · - · - · - · - · -`,
+    `turn · ${COOK_ID} · 30000 · main · - · - · - · - · -`,
+    `unbind · ${COOK_ID}`,
+  ])
+})
+
+test('FR-4.8: a turn with usage carries model and the four token counts', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  const usage = { model: 'claude-opus-5-5', input_tokens: 12, output_tokens: 34, cache_read_input_tokens: 5600, cache_creation_input_tokens: 78 }
+  await $.turn.complete(turnEnd(20000, undefined, usage))
+  expect(fields(world).at(-1)).toBe(`turn · ${FIX_ID} · 20000 · main · claude-opus-5-5 · 12 · 34 · 5600 · 78`)
+})
+
+test('SC-19: an ask a person answers counts the whole tool call as a permission wait', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'tu-1', approver: 'person' } as any)
+  world.verdict = undefined
+  world.toolCall = async () => {
+    await clock.sleep(40000)
+    return { result: { stdout: '', stderr: '' } }
+  }
+  const call = $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'tu-1' } as any)
+  await clock.advance(40000)
+  await call
+  expect(fields(world).at(-1)).toBe(`wait · ${FIX_ID} · 40000 · permission`)
+})
+
+test('SC-24: an ask the host answers is no wait', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'tu-2', approver: 'host' } as any)
+  world.verdict = undefined
+  world.toolCall = async () => {
+    await clock.sleep(40000)
+    return { result: { stdout: '', stderr: '' } }
+  }
+  const call = $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'tu-2' } as any)
+  await clock.advance(40000)
+  await call
+  expect(fields(world).some(l => l.startsWith('wait'))).toBe(false)
+})
+
+test('FR-4.4: AskUserQuestion in the main loop is an ask wait; in a subagent it is none', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  world.toolCall = async () => {
+    await clock.sleep(7000)
+    return { result: { answers: {} } }
+  }
+  const ask = { tool: 'AskUserQuestion', questions: [{ question: 'Which?', header: 'Pick', multiSelect: false, options: [{ label: 'a', description: 'a' }, { label: 'b', description: 'b' }] }] }
+  let call = $.tool.call(ask as any)
+  await clock.advance(7000)
+  await call
+  call = $.tool.call({ ...ask, agentId: 'a-1' } as any)
+  await clock.advance(7000)
+  await call
+  expect(fields(world).filter(l => l.startsWith('wait'))).toEqual([`wait · ${FIX_ID} · 7000 · ask`])
+})
+
+test('FR-4.6: a prompt after a main turn is an idle wait from that turn end', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  // No main turn has ended yet: no idle.
+  await $.prompt.submit({ text: 'first' })
+  await $.turn.complete(turnEnd(1000))
+  await clock.advance(90000)
+  await $.prompt.submit({ text: 'go on' })
+  // A second prompt before any new turn end adds nothing.
+  await $.prompt.submit({ text: 'and this' })
+  expect(fields(world).filter(l => l.startsWith('wait'))).toEqual([`wait · ${FIX_ID} · 90000 · idle`])
+})
+
+test('FR-8.2: Skill(scout) and Skill(znf:scout) under a fix id mark the fix phase; other skills none', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  await $.tool.call({ tool: 'Skill', skill: 'scout' } as any)
+  await $.tool.call({ tool: 'Skill', skill: 'znf:scout' } as any)
+  await $.tool.call({ tool: 'Skill', skill: 'znf:writing-plans' } as any)
+  await $.tool.call({ tool: 'Skill', skill: 'znf:ship' } as any)
+  expect(fields(world).filter(l => l.startsWith('phase'))).toEqual([
+    `phase · ${FIX_ID} · fix`,
+    `phase · ${FIX_ID} · fix`,
+    `phase · ${FIX_ID} · ship`,
+  ])
+})
+
+test('FR-8.2: cook markers map to scout, plan, implement and ship', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on)
+  await bindTo($, world, COOK_ID, START_COOK)
+  for (const skill of ['znf:scout', 'znf:writing-plans', 'znf:subagent-driven-development', 'znf:review', 'znf:ship']) {
+    await $.tool.call({ tool: 'Skill', skill } as any)
+  }
+  expect(fields(world).filter(l => l.startsWith('phase'))).toEqual(
+    ['scout', 'plan', 'implement', 'ship'].map(p => `phase · ${COOK_ID} · ${p}`),
+  )
+})
+
+test('FR-4.2: with no bound id a turn writes nothing', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.turn.complete(turnEnd(30000))
+  await $.tool.call({ tool: 'Skill', skill: 'znf:scout' } as any)
+  expect(calls.write).toHaveLength(0)
+})
+
+test('a failed session write is toasted, not swallowed', async ($, on) => {
+  const world = trackWorld({ writeError: 'EACCES: permission denied' })
+  const calls = engine(on, world)
+  mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  expect(calls.toast).toHaveLength(1)
+  expect(calls.toast[0].startsWith('lỗi đo thời gian: ') && calls.toast[0].includes('EACCES: permission denied')).toBe(true)
 })

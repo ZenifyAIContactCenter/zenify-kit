@@ -61,10 +61,15 @@ declare module 'claude-code' {
       frame: Shaped<number>
       // ids of the expanded task lines
       expanded: Shaped<string[]>
-      // subagent id -> the nonstop task its runs are logged under (durations.log)
-      runTags: Shaped<Record<string, { id: string; kind: 'work' | 'review' }>>
-      // worktree slug -> nonstop task id, from the worker briefs
-      slugTasks: Shaped<Record<string, string>>
+      // zenify track: the id this session's turns are recorded under; `ending` once its
+      // `zenify track end` ran, unbound at that turn's main-loop end
+      bound: Shaped<{ id: string; kind: 'cook' | 'fix' | 'hotfix'; ending: boolean } | null>
+      // zenify track: `enabled` of `zenify track stats --json`; false writes nothing
+      enabled: Shaped<boolean>
+      // zenify track: epoch ms the last main-loop turn ended, until the next prompt reads it
+      lastMainEnd: Shaped<number | null>
+      // zenify track: main-loop tool_use_ids a person was asked to allow
+      personAsks: Shaped<string[]>
     }
   }
 }
