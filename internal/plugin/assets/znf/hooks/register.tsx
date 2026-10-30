@@ -36,6 +36,8 @@ let timers: Timer[] = []
 // The watched mtimes and local date of the last stats run; undefined = none since session start.
 let lastKey: string | undefined
 let isStatting = false
+// A forced run asked for while one was in flight; it runs when that one ends.
+let isRerunWanted = false
 
 const isMissing = (err: unknown) => /ENOENT/.test(String(err))
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -111,6 +113,8 @@ async function recordCall($: $, tool: string, command: string, isMain: boolean, 
     if (id) {
       await update($, bound, () => ({ id, kind: kindOf(id), ending: false }))
       await appendSession($, bindLine(iso(now), id))
+      // The stats may have run before this bind; this session's open id shows now, not at a tick.
+      void refreshStats($, true).catch(statsError($))
       return
     }
   }
@@ -129,6 +133,7 @@ async function recordTurn($: $, e: { durationMs: number; agentId?: string; usage
     if (!e.agentId && b.ending) {
       await appendSession($, unbindLine(iso(now), b.id))
       await update($, bound, () => null)
+      void refreshStats($, true).catch(statsError($))
     }
   }
   if (!e.agentId) await update($, lastMainEnd, () => now)
@@ -174,21 +179,29 @@ async function updateStatus($: $): Promise<void> {
   $.ui.status(statusText(st.data, await $.session.id(), (await read($, bound))?.id))
 }
 
-// FR-6.3/FR-11.5: runs `zenify track stats --json` when log.md, sessions/, the overlay or the
-// local date changed since the last run, or on `force`. A failure is stored and shown (⚠), and is
-// retried when a watched mtime changes or on the next forced run.
+// FR-6.3/FR-11.5: runs `zenify track stats --json` when log.md, sessions/, this session's own log
+// (an append does not touch the directory's mtime), the overlay or the local date changed since the
+// last run, or on `force`. A failure is stored and shown (⚠), and is retried when a watched mtime
+// changes or on the next forced run. Outside a workspace the pane says so; the status line stays unset.
 async function refreshStats($: $, force = false): Promise<void> {
-  if (isStatting) return
+  if (isStatting) {
+    if (force) isRerunWanted = true
+    return
+  }
   isStatting = true
   try {
     let data: TrackStats
     try {
       const ws = await findWorkspace($)
-      if (!ws) return
+      if (!ws) {
+        await update($, stats, () => ({ error: COPY.noWorkspace }))
+        return
+      }
       const track = `${ws}/.zenify/track`
       const key = [
         await mtimeOf($, `${track}/log.md`),
         await mtimeOf($, `${track}/sessions`),
+        await mtimeOf($, `${track}/sessions/${await $.session.id()}.log`),
         await mtimeOf($, `${ws}/.zenify-overlay.yaml`),
         localDate(await $.clock.now()),
       ].join('|')
@@ -207,6 +220,10 @@ async function refreshStats($: $, force = false): Promise<void> {
     await updateStatus($)
   } finally {
     isStatting = false
+  }
+  if (isRerunWanted) {
+    isRerunWanted = false
+    await refreshStats($, true)
   }
 }
 

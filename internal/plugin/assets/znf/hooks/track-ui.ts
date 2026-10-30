@@ -13,6 +13,7 @@ export const COPY = {
   closed: 'đã đóng pane track',
   loading: 'đang đọc số liệu…',
   toast: 'lỗi track: ',
+  noWorkspace: 'không ở trong workspace zenify',
 } as const
 const STATUS_HEAD = 'znf: track'
 const ERROR_HEAD = '⚠ znf: track lỗi: '

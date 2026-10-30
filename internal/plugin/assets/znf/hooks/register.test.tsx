@@ -219,6 +219,45 @@ test('SC-21: this session bound to a cook id in plan, agent 12m est M: status ha
   expect(line).toContain('12m/M')
 })
 
+test('SC-21/FR-11.5: a bind after the stats run shows ▶ with the id at once, no tick needed', async ($, on) => {
+  const world: World = {}
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(lastStatus(calls)).toBe('znf: track ⏸ · Hôm nay: 0/0')
+  // The CLI wrote log.md and the watcher already ran; only the bind is left.
+  world.stats = ok(statsJson({ running: [item()] }))
+  world.toolCall = () => ({ result: { stdout: 'track: cook-261030-c0de\n', stderr: '' }, text: '' })
+  await $.tool.call({ tool: 'Bash', command: 'zenify track start --kind cook --repo kit --est M' })
+  await clock.settle()
+  expect(statsRuns(calls)).toHaveLength(2)
+  expect((lastStatus(calls) ?? '').startsWith('znf: track ▶ · cook-261030-c0de')).toBe(true)
+})
+
+test('FR-6.3: an append to this session own log re-runs stats at the next tick', async ($, on) => {
+  const world: World = { mtimes: { [SESSIONS_DIR]: 1, [SESSION_LOG]: 1 } }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toHaveLength(1)
+  world.mtimes = { [SESSIONS_DIR]: 1, [SESSION_LOG]: 2 }
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toHaveLength(2)
+})
+
+test('FR-6.4: outside a workspace track-pane says so instead of loading forever; no status line', async ($, on) => {
+  const calls = engine(on, { noWorkspace: true })
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const ui = await mountTab($)
+  expect(await allTexts(ui)).toContain('⚠ znf: track lỗi: không ở trong workspace zenify')
+  expect(statsRuns(calls)).toHaveLength(0)
+  expect(calls.status.filter(Boolean)).toHaveLength(0)
+})
+
 test('FR-11.3: an open id of another session leaves this one at ⏸', async ($, on) => {
   const calls = engine(on, { stats: ok(statsJson({ running: [item({ session: OTHER })] })) })
   const clock = mock.clock(on)
