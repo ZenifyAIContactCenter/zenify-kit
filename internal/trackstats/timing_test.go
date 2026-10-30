@@ -78,3 +78,37 @@ func TestTokensByModel(t *testing.T) {
 		t.Fatalf("tokens = %+v", got)
 	}
 }
+
+func sec(endSec, durSec int, role string) Event {
+	return Event{At: t0.Add(time.Duration(endSec) * time.Second), Type: "turn", ID: tid,
+		F: []string{fmt.Sprint(durSec * 1000), role, "-", "-", "-", "-", "-"}}
+}
+
+func phaseAt(sec int, name string) Event {
+	return Event{At: t0.Add(time.Duration(sec) * time.Second), Type: "phase", ID: tid, F: []string{name}}
+}
+
+func TestPhaseRoundsOncePerPhase(t *testing.T) {
+	// fix [0,40) and [100,140); other phases in between: 80 s of fix -> 2 min.
+	ev := []Event{sec(40, 40, "main"), sec(140, 40, "main"),
+		phaseAt(40, "plan"), phaseAt(100, "fix")}
+	got := ComputeTiming(tid, "fix", t0, append([]Event{phaseAt(0, "fix")}, ev...))
+	if got.Phases["fix"].AgentMin != 2 {
+		t.Fatalf("fix agentMin = %d, want 2", got.Phases["fix"].AgentMin)
+	}
+	// two 20 s windows of fix -> 1 min, not 2
+	ev = []Event{sec(20, 20, "main"), sec(120, 20, "main"), phaseAt(20, "plan"), phaseAt(100, "fix")}
+	got = ComputeTiming(tid, "fix", t0, append([]Event{phaseAt(0, "fix")}, ev...))
+	if got.Phases["fix"].AgentMin != 1 {
+		t.Fatalf("fix agentMin = %d, want 1", got.Phases["fix"].AgentMin)
+	}
+}
+
+func TestBadTimingEventsCounted(t *testing.T) {
+	bad := Event{At: at(5), Type: "turn", ID: tid, F: []string{"abc", "main", "-", "-", "-", "-", "-"}}
+	shortWait := Event{At: at(5), Type: "wait", ID: tid, F: []string{"1000"}}
+	got := ComputeTiming(tid, "cook", t0, []Event{bad, shortWait, turn(10, 10, "main", "-", "-", "-")})
+	if got.Malformed != 2 || got.AgentMin != 10 {
+		t.Fatalf("malformed=%d agent=%d, want 2 and 10", got.Malformed, got.AgentMin)
+	}
+}

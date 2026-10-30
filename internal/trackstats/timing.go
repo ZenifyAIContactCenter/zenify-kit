@@ -35,6 +35,8 @@ type Timing struct {
 	Phases   map[string]PhaseMin
 	Tokens   map[string]Tokens
 	Phase    string
+	// Malformed counts events skipped because their fields were unusable.
+	Malformed int
 }
 
 // span is a half-open interval in unix milliseconds.
@@ -131,6 +133,7 @@ func ComputeTiming(id, kind string, _ time.Time, ev []Event) Timing {
 	}
 	var switches []sw
 	var totalIdleMs int64
+	malformed := 0
 
 	for _, e := range ev {
 		if e.ID != id {
@@ -139,10 +142,11 @@ func ComputeTiming(id, kind string, _ time.Time, ev []Event) Timing {
 		at := e.At.UnixMilli()
 		switch e.Type {
 		case "turn":
-			if len(e.F) != 7 {
+			ms, ok := parseMs(e.F, 7)
+			if !ok {
+				malformed++
 				continue
 			}
-			ms, _ := strconv.ParseInt(e.F[0], 10, 64)
 			sp := span{at - ms, at}
 			if e.F[1] == "sub" {
 				subT = append(subT, sp)
@@ -151,17 +155,22 @@ func ComputeTiming(id, kind string, _ time.Time, ev []Event) Timing {
 			}
 			if e.F[2] != "-" {
 				t := toks[e.F[2]]
-				t.In += atoiDash(e.F[3])
-				t.Out += atoiDash(e.F[4])
-				t.CacheRead += atoiDash(e.F[5])
-				t.CacheCreation += atoiDash(e.F[6])
+				var bad bool
+				t.In, bad = addTok(t.In, e.F[3], bad)
+				t.Out, bad = addTok(t.Out, e.F[4], bad)
+				t.CacheRead, bad = addTok(t.CacheRead, e.F[5], bad)
+				t.CacheCreation, bad = addTok(t.CacheCreation, e.F[6], bad)
+				if bad {
+					malformed++
+				}
 				toks[e.F[2]] = t
 			}
 		case "wait":
-			if len(e.F) != 2 {
+			ms, ok := parseMs(e.F, 2)
+			if !ok {
+				malformed++
 				continue
 			}
-			ms, _ := strconv.ParseInt(e.F[0], 10, 64)
 			sp := span{at - ms, at}
 			allWait = append(allWait, sp)
 			switch e.F[1] {
@@ -175,9 +184,11 @@ func ComputeTiming(id, kind string, _ time.Time, ev []Event) Timing {
 				totalIdleMs += ms
 			}
 		case "phase":
-			if len(e.F) == 1 {
-				switches = append(switches, sw{at, e.F[0]})
+			if len(e.F) != 1 {
+				malformed++
+				continue
 			}
+			switches = append(switches, sw{at, e.F[0]})
 		}
 	}
 
@@ -192,6 +203,7 @@ func ComputeTiming(id, kind string, _ time.Time, ev []Event) Timing {
 		Phases: map[string]PhaseMin{},
 		Tokens: toks,
 	}
+	t.Malformed = malformed
 	t.Wait.Total = t.Wait.Ask + t.Wait.Permission + t.Wait.Idle
 
 	sort.SliceStable(switches, func(i, j int) bool { return switches[i].at < switches[j].at })
@@ -202,17 +214,38 @@ func ComputeTiming(id, kind string, _ time.Time, ev []Event) Timing {
 		wins = append(wins, phaseWin{s.name, s.at, maxT})
 	}
 	t.Phase = wins[len(wins)-1].name
+	// Milliseconds accumulate per phase name and are rounded up once, so a
+	// per-phase figure may differ from AgentMin by rounding.
+	agentMs := map[string]int64{}
+	waitMs := map[string]int64{}
 	waits := merge(allWait)
 	for _, w := range wins {
-		p := t.Phases[w.name]
-		p.AgentMin += ceilMin(length(clip(agent, w.a, w.b)))
-		p.WaitMin += ceilMin(length(clip(waits, w.a, w.b)))
-		t.Phases[w.name] = p
+		agentMs[w.name] += length(clip(agent, w.a, w.b))
+		waitMs[w.name] += length(clip(waits, w.a, w.b))
+	}
+	for name, ms := range agentMs {
+		t.Phases[name] = PhaseMin{AgentMin: ceilMin(ms), WaitMin: ceilMin(waitMs[name])}
 	}
 	return t
 }
 
-func atoiDash(v string) int {
-	n, _ := strconv.Atoi(v)
-	return n
+// parseMs reads the ms field of a turn (n=7 fields) or wait (n=2) event.
+func parseMs(f []string, n int) (int64, bool) {
+	if len(f) != n {
+		return 0, false
+	}
+	ms, err := strconv.ParseInt(f[0], 10, 64)
+	return ms, err == nil && ms > 0
+}
+
+// addTok adds a token field ("-" counts as 0); a non-integer sets bad.
+func addTok(sum int, v string, bad bool) (int, bool) {
+	if v == "-" {
+		return sum, bad
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return sum, true
+	}
+	return sum + n, bad
 }
