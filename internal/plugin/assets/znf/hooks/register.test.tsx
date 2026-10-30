@@ -35,6 +35,8 @@ type World = {
   // Forces the plugin's `enabled` atom read; undefined = the atom as the plugin wrote it.
   trackEnabled?: boolean
   writeError?: string
+  // Holds the stat of log.md until this resolves (a stats run in flight).
+  holdLogStat?: Promise<void>
 }
 
 type Calls = {
@@ -127,7 +129,8 @@ function engine(on: any, world: World): Calls {
     calls.toast.push(e.text)
     return { value: undefined }
   })
-  on('fs.stat', (_: unknown, e: { path: string }) => {
+  on('fs.stat', async (_: unknown, e: { path: string }) => {
+    if (e.path === LOG_MD && world.holdLogStat) await world.holdLogStat
     if (e.path === WS_MARKER && !world.noWorkspace) return { value: { kind: 'file', size: 1, mtimeMs: 1, isLink: false } }
     const m = world.mtimes?.[e.path]
     if (m === undefined) return { deny: `ENOENT: no such file, stat '${e.path}'` }
@@ -232,6 +235,44 @@ test('SC-21/FR-11.5: a bind after the stats run shows ▶ with the id at once, n
   await clock.settle()
   expect(statsRuns(calls)).toHaveLength(2)
   expect((lastStatus(calls) ?? '').startsWith('znf: track ▶ · cook-261030-c0de')).toBe(true)
+})
+
+test('a bind while a tick run is in flight is not lost when that run ends on an unchanged key', async ($, on) => {
+  const world: World = {}
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(statsRuns(calls)).toHaveLength(1)
+  let release = () => {}
+  world.holdLogStat = new Promise<void>(r => (release = r))
+  await clock.advance(2000)
+  // The tick's run is held on its stat; the bind asks for a forced run meanwhile.
+  world.stats = ok(statsJson({ running: [item()] }))
+  world.toolCall = () => ({ result: { stdout: 'track: cook-261030-c0de\n', stderr: '' }, text: '' })
+  await $.tool.call({ tool: 'Bash', command: 'zenify track start --kind cook --repo kit --est M' })
+  world.toolCall = undefined
+  expect(statsRuns(calls)).toHaveLength(1)
+  world.holdLogStat = undefined
+  release()
+  await clock.settle()
+  expect(statsRuns(calls)).toHaveLength(2)
+  expect((lastStatus(calls) ?? '').startsWith('znf: track ▶ · cook-261030-c0de')).toBe(true)
+})
+
+test('FR-11.5: an unbind re-runs stats at once', async ($, on) => {
+  const world: World = {}
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  world.toolCall = () => ({ result: { stdout: 'track: cook-261030-c0de\n', stderr: '' }, text: '' })
+  await $.tool.call({ tool: 'Bash', command: 'zenify track start --kind cook --repo kit --est M' })
+  world.toolCall = undefined
+  await $.tool.call({ tool: 'Bash', command: 'zenify track end cook-261030-c0de --pr https://github.com/Z/kit/pull/1 --rounds 1' })
+  await clock.settle()
+  const before = statsRuns(calls).length
+  await $.turn.complete({ answer: 'ok', durationMs: 1000, isAborted: false, turnId: 't-1', reason: 'answer' } as any)
+  await clock.settle()
+  expect(statsRuns(calls)).toHaveLength(before + 1)
 })
 
 test('FR-6.3: an append to this session own log re-runs stats at the next tick', async ($, on) => {

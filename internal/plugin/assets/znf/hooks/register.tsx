@@ -220,10 +220,12 @@ async function refreshStats($: $, force = false): Promise<void> {
     await updateStatus($)
   } finally {
     isStatting = false
-  }
-  if (isRerunWanted) {
-    isRerunWanted = false
-    await refreshStats($, true)
+    // Every exit path, early returns included, runs the queued forced run; the flag is cleared
+    // first, so it recurses at most once per queued request.
+    if (isRerunWanted) {
+      isRerunWanted = false
+      await refreshStats($, true)
+    }
   }
 }
 
