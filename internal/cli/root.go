@@ -53,6 +53,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newObserveCmd())
 	root.AddCommand(newCostCmd())
 	root.AddCommand(newNonstopCmd())
+	root.AddCommand(newTrackCmd())
 	root.AddCommand(newReviewVerifyCmd())
 	root.AddCommand(newReviewBundleCmd())
 	root.AddCommand(newReviewerCmd())
