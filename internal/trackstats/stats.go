@@ -243,7 +243,8 @@ func Compute(in Input) (Result, map[string]string) {
 		w := works[e.ID]
 		if e.Type == "start" {
 			if w != nil {
-				continue // a repeated start keeps the first
+				res.Malformed++ // a repeated start keeps the first
+				continue
 			}
 			w = &work{start: e.At, item: Item{
 				ID: e.ID, Kind: e.F[0], Repo: e.F[1], Est: e.F[2], Session: "-", Phase: "-",
@@ -261,6 +262,10 @@ func Compute(in Input) (Result, map[string]string) {
 		case "est":
 			w.item.Est = e.F[0]
 		case "end":
+			if !validOutcome(e.F[0]) {
+				res.Malformed++ // unknown outcome: the item keeps the status of its other rows
+				continue
+			}
 			if w.end == nil {
 				w.end = &logEv[i]
 			}
@@ -344,6 +349,9 @@ func Compute(in Input) (Result, map[string]string) {
 
 	byKindEnded := map[string][]Item{}
 	for _, it := range ended {
+		if it.AgentMin == 0 {
+			continue // unmeasured (no session turns): not an estimate sample
+		}
 		byKindEnded[it.Kind] = append(byKindEnded[it.Kind], it)
 	}
 	for _, k := range kinds {
@@ -367,6 +375,18 @@ func tail(s []Item, n int) []Item {
 		return s[len(s)-n:]
 	}
 	return s
+}
+
+func validOutcome(out string) bool {
+	if out == "cancelled" || out == "rollback" || strings.HasPrefix(out, "branch:") {
+		return true
+	}
+	for _, p := range strings.Split(out, ",") {
+		if !strings.HasPrefix(p, "http") {
+			return false
+		}
+	}
+	return true
 }
 
 func atoiDash(v string) int {

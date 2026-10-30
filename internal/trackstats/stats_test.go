@@ -176,6 +176,7 @@ func TestEstEventAndEstimateInclusion(t *testing.T) { // SC-17
 		row(now.Add(-5*time.Hour), "start", b, "cook", "r", "-"),
 		row(now.Add(-3*time.Hour), "end", b, "https://x/pr/2", "1", "0"),
 	))
+	in.Sessions = map[string]string{"s": lines(agentTurn(now.Add(-3*time.Hour), a, 2), agentTurn(now.Add(-3*time.Hour), b, 2))}
 	r, _ := Compute(in)
 	est := map[string]string{}
 	for _, it := range r.Today.Items {
@@ -223,6 +224,7 @@ func TestHotfixPushedEnters(t *testing.T) { // SC-23
 		row(now.Add(-3*time.Hour), "start", id, "hotfix", "r", "S"),
 		row(now.Add(-1*time.Hour), "end", id, "branch:hotfix/x", "1", "0"),
 	))
+	in.Sessions = map[string]string{"s": lines(agentTurn(now.Add(-1*time.Hour), id, 3))}
 	r, _ := Compute(in)
 	if len(r.Running) != 0 {
 		t.Fatalf("running = %+v", r.Running)
@@ -243,6 +245,7 @@ func TestRollbackAndCancelled(t *testing.T) {
 		row(now.Add(-3*time.Hour), "start", b, "fix", "r", "S"),
 		row(now.Add(-2*time.Hour), "end", b, "cancelled", "-", "-"),
 	))
+	in.Sessions = map[string]string{"s": lines(agentTurn(now.Add(-2*time.Hour), a, 3), agentTurn(now.Add(-2*time.Hour), b, 3))}
 	r, _ := Compute(in)
 	st := map[string]string{}
 	for _, it := range r.Today.Items {
@@ -406,6 +409,67 @@ func TestJSONShape(t *testing.T) {
 		if !strings.Contains(string(b), want) {
 			t.Fatalf("want %s in %s", want, b)
 		}
+	}
+}
+
+func TestUnmeasuredNotSampled(t *testing.T) {
+	var lg, ss []string
+	endedWithAgent("hotfix", 1, "S", 10, &lg, &ss)
+	id := cid("hotfix", 2) // ended, no session turns
+	lg = append(lg, row(now.Add(-50*time.Minute), "start", id, "hotfix", "r", "S"), row(now.Add(-40*time.Minute), "end", id, "branch:x", "1", "0"))
+	for i := 3; i <= 5; i++ { // unmeasured cooks with est L would fire "est down"
+		c := cid("cook", i)
+		lg = append(lg, row(now.Add(-50*time.Minute), "start", c, "cook", "r", "L"), row(now.Add(-40*time.Minute), "end", c, "branch:x", "1", "0"))
+	}
+	in := base(lines(lg...))
+	in.Sessions = map[string]string{"s1": lines(ss...)}
+	r, _ := Compute(in)
+	h := r.Estimate.Hotfix
+	if h.N != 1 || h.MedianMin == nil || *h.MedianMin != 10 {
+		t.Fatalf("hotfix = %+v", h)
+	}
+	if _, ok := r.Estimate.ByKind["cook"]; ok {
+		t.Fatalf("unmeasured cook in estimate: %+v", r.Estimate.ByKind["cook"])
+	}
+	if len(r.Rules) != 0 {
+		t.Fatalf("rules = %v", r.Rules)
+	}
+}
+
+func TestRepeatedStartCounted(t *testing.T) {
+	id := cid("cook", 1)
+	r, _ := Compute(base(lines(
+		row(now.Add(-2*time.Hour), "start", id, "cook", "first", "M"),
+		row(now.Add(-1*time.Hour), "start", id, "cook", "second", "L"),
+	)))
+	if r.Malformed != 1 || r.Running[0].Repo != "first" {
+		t.Fatalf("malformed %d repo %q", r.Malformed, r.Running[0].Repo)
+	}
+}
+
+func TestUnknownEndOutcomeCounted(t *testing.T) {
+	id := cid("cook", 1)
+	r, _ := Compute(base(lines(
+		row(now.Add(-2*time.Hour), "start", id, "cook", "r", "M"),
+		row(now.Add(-1*time.Hour), "end", id, "weird", "1", "0"),
+	)))
+	if r.Malformed != 1 || len(r.Running) != 1 || r.Running[0].Status != "running" {
+		t.Fatalf("malformed %d running %+v", r.Malformed, r.Running)
+	}
+}
+
+func TestRunGhTimeout(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "gh")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexec sleep 5\n"), 0o755); err != nil { //nolint:gosec // test fixture must be executable
+		t.Fatal(err)
+	}
+	start := time.Now()
+	_, err := runGh(bin, 200*time.Millisecond, "https://x/pr/1")
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("err = %v", err)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("took %s", time.Since(start))
 	}
 }
 

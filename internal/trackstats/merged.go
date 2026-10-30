@@ -1,22 +1,34 @@
 package trackstats
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // MergedFunc returns the merge time (RFC 3339) of the pull request at url, or
 // "" when it is not merged yet.
 type MergedFunc func(url string) (mergedAt string, err error)
 
+const ghTimeout = 10 * time.Second
+
 // GhMerged asks the gh CLI for the merge time of a pull request.
-func GhMerged(url string) (string, error) {
-	cmd := exec.Command("gh", "pr", "view", url, "--json", "mergedAt") //nolint:gosec // G204 -- fixed binary, url is a log value passed as one argument
+func GhMerged(url string) (string, error) { return runGh("gh", ghTimeout, url) }
+
+func runGh(bin string, timeout time.Duration, url string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "pr", "view", url, "--json", "mergedAt") //nolint:gosec // G204 -- bin is fixed by GhMerged, url is a log value passed as one argument
+	cmd.WaitDelay = time.Second
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("gh pr view %s: timed out after %s", url, timeout)
+	}
 	if err != nil {
 		return "", fmt.Errorf("gh pr view %s: %w: %s", url, err, strings.TrimSpace(stderr.String()))
 	}
