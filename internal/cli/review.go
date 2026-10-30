@@ -129,7 +129,7 @@ func newReviewBundleCmd() *cobra.Command {
 
 // untrackedNumstat renders the untracked new files under dir ("" = cwd) as numstat lines
 // ("<lines>\t0\t<path>"). git diff never lists them, so without these lines a worker's
-// uncommitted tree (znf:nonstop) would bundle without its new files and leave them unreviewed.
+// uncommitted worktree would bundle without its new files and leave them unreviewed.
 // -z keeps non-ASCII paths unquoted.
 func untrackedNumstat(dir string) ([]byte, error) {
 	cmd := exec.Command("git", "ls-files", "-z", "--others", "--exclude-standard")

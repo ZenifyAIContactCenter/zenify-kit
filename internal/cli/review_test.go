@@ -169,7 +169,7 @@ func TestReviewVerify_KeepsIntentDimension(t *testing.T) {
 	}
 }
 
-// znf:nonstop reviews an uncommitted tree: untracked new files must reach the bundler as numstat
+// a review of an uncommitted worktree (WT=): untracked new files must reach the bundler as numstat
 // lines, or a large diff bundles without them and they are never reviewed.
 func TestUntrackedNumstat_ListsNewFiles(t *testing.T) {
 	dir := t.TempDir()

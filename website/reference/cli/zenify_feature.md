@@ -16,7 +16,7 @@ zenify feature [<key> on|off] [flags]
 
 ## Khi nào dùng
 
-Khi bạn muốn bật một tính năng kit không chạy mặc định, ví dụ `github.issues` để `znf:ship` gắn issue GitHub (`Closes #N`) trước khi mở PR và `znf:nonstop` lên kế hoạch từ issue được giao.
+Khi bạn muốn bật một tính năng kit không chạy mặc định, ví dụ `github.issues` để `znf:ship` gắn issue GitHub (`Closes #N`) trước khi mở PR.
 
 ## Kết quả
 

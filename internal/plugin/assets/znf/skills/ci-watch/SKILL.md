@@ -19,7 +19,7 @@ In the repo the task is working in (a worktree when there is one):
 - The user named a branch, PR or sha → watch that commit instead (`gh pr view <n> --json
   headRefOid,headRefName`). Record its branch; a bare sha has none. Only a target whose branch is
   the current worktree's branch may be handed to fix in Step 3 — any other target is report-only.
-- Invoked with `report-only` (e.g. by `znf:nonstop`) → the target is report-only: never hand it
+- Invoked with `report-only` (e.g. by a caller that watches someone else's PR) → the target is report-only: never hand it
   to `znf:fix`.
 - The repo has no `.github/workflows/*.yml` or `*.yaml` → there is no CI to watch; say so. The
   branch has an open PR (`gh pr view <branch> -R "$REPO" --json number,state`, state `OPEN`) →

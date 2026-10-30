@@ -103,7 +103,7 @@ func TestGate_ConflictMarkerBlocks(t *testing.T) {
 	}
 }
 
-// znf:nonstop reviews an uncommitted tree: a conflict marker in an untracked new file still blocks.
+// a review of an uncommitted worktree: a conflict marker in an untracked new file still blocks.
 func TestGate_ConflictMarkerInUntrackedFileBlocks(t *testing.T) {
 	dir, base := gitInit(t)
 	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("<<<<<<< HEAD\nb\n"), 0o600); err != nil {

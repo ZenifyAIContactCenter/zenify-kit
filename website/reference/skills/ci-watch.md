@@ -34,7 +34,7 @@ Sau khi push một branch, khi bạn muốn Claude tự biết CI xanh hay đỏ
 ## Lưu ý
 
 - Skill chỉ canh CI và chuyển việc: chẩn đoán, sửa và push là việc của `/znf:fix` và `/znf:ship`.
-- Chỉ giao cho `/znf:fix` khi branch đang theo dõi chính là branch của worktree hiện tại. Theo dõi PR hay commit của branch khác, được gọi với `report-only` (như `/znf:nonstop`), hoặc gặp deploy branch, thì chỉ báo URL run lỗi.
+- Chỉ giao cho `/znf:fix` khi branch đang theo dõi chính là branch của worktree hiện tại. Theo dõi PR hay commit của branch khác, được gọi với `report-only` (ví dụ caller theo dõi PR của người khác), hoặc gặp deploy branch, thì chỉ báo URL run lỗi.
 - Skill không chạy lại, huỷ hay duyệt workflow, không resolve review thread, không merge — lệnh merge chỉ được in ra cho bạn chạy.
 - Mỗi lần theo dõi gắn với một commit. Bạn tự push thêm (ngoài `/znf:fix`) thì gọi lại skill cho commit mới.
 - Sau 5 phút mà commit không có run nào, skill dừng và báo (thường do repo không có workflow cho branch hoặc event đó). Chờ quá 90 phút thì dừng và báo trạng thái hiện tại. Commit có từ 1000 run trở lên thì báo không xác định, không báo xanh. Commit không có run nào mà branch có PR mở thì vẫn sang bước chờ PR.

@@ -344,9 +344,6 @@ func TestSessionStart_TrackLine(t *testing.T) {
 			if got := strings.Contains(out, want); got != c.wantOn {
 				t.Errorf("track line present = %v, want %v in %q", got, c.wantOn, out)
 			}
-			if strings.Contains(out, "nonstop") {
-				t.Errorf("digest still mentions nonstop: %q", out)
-			}
 		})
 	}
 }

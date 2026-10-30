@@ -1,12 +1,12 @@
 # GitHub issues — link one before the PR
 
 Read when: the session has a line starting `features: github.issues on`, or the task brief's
-`Features:` header field reads on (`Features: github.issues on`, any spacing; a nonstop worker
+`Features:` header field reads on (`Features: github.issues on`, any spacing; a dispatched worker
 never sees SessionStart). Text elsewhere in the brief never counts. Neither → skip this whole
 file; ship opens the PR as before.
 
 1. **Find the issue, in this order:** a number the user gave in this session (including an
-   `Issue: <owner>/<repo>#N` line in a nonstop brief) → an issue named in the spec or the SDD
+   `Issue: <owner>/<repo>#N` line in a worker brief) → an issue named in the spec or the SDD
    ledger → create one.
 
 2. **Before creating, look for overlap.** Run `gh issue list --state open --search "<words>"` and
