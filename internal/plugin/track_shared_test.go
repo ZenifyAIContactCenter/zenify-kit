@@ -12,8 +12,8 @@ func TestTrackSharedDoc(t *testing.T) {
 	assertContainsAll(t, "track.md", s, []string{
 		"zenify track start", "zenify track est", "zenify track ship", "zenify track fix",
 		"zenify track ci", "zenify track end", "--watch", "--rollback", "--branch", "track: off",
-		"--blocked-step", "znf:ci-watch", "step 4", "track id:", "do not run the fix section's `start` or `est`",
-		"zenify ui-verify check", "must NOT invoke `Skill(znf:ci-watch)`", "one `--branch`",
+		"--blocked-step", "znf:ci-watch", "step 4 \"Decide the response\"", "track id:", "do not run the fix section's `start` or `est`",
+		"zenify ui-verify check", "forward that line verbatim to `znf:ship`", "do NOT invoke `Skill(znf:ci-watch)`", "original `track id:`", "one `--branch`",
 	})
 }
 

@@ -22,6 +22,7 @@ Read this when the session digest says `features: track on`. Every command below
 - Step 7 Report: `zenify track fix <id> --round <n> --path narrow|wide --regression test|no-seam|-` (`n` = the ROUND counter, `no-seam` = no regression test was possible).
 - Step 8: `znf:ship` records the outcome and the PR.
 - A `znf:fix` started by `znf:ci-watch` opens its own new `fix` id; it never reuses the id of the run that was being watched.
+- When your args carry a `CI round <n>/2 for <branch>` line, forward that line verbatim to `znf:ship`.
 
 ## hotfix
 
@@ -39,10 +40,10 @@ Read this when the session digest says `features: track on`. Every command below
 - `--findings` = CRITICAL,HIGH,MEDIUM,LOW counts from Step 5 review (`-` when review did not run); `--rounds` = fix-loop rounds taken.
 - After `gh pr create` for every repo (not when called from hotfix): `zenify track end <id> --pr <url> [--pr <url>…] [--ledger <SDD progress.md if one exists>] --rounds <n>`.
 - When ship opens PRs and the feature is on, treat it as `--watch`: invoke `Skill(znf:ci-watch)` once per repo, with a line `track id: <id>` in the args.
-- Exception: a ship called by a `znf:fix` that ci-watch started must NOT invoke `Skill(znf:ci-watch)`; ci-watch re-watches the new commit itself (its Step 3).
+- When your args carry a `CI round` line, do NOT invoke `Skill(znf:ci-watch)`: ci-watch re-watches the new commit itself (its Step 3).
 
 ## ci-watch
 
-- The id comes from a `track id: <id>` line in the Skill args. At its Step 3, when the watched run finishes: `zenify track ci <id> --result green|red`, once per watched commit, before the fix handoff.
+- The id comes from a `track id: <id>` line in the Skill args. At its Step 3, when the watched run finishes: `zenify track ci <id> --result green|red`, once per watched commit, before the fix handoff. Keep the original `track id:` for every round: `track ci <original id>` for each watched commit, including commits pushed by the fix it handed off to (that fix still opens its own `fix` id).
 - `report-only` targets are recorded the same way; ci-watch still never fixes them.
 - No `track id:` line given → call nothing.
