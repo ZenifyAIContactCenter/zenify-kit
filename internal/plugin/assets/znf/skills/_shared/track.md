@@ -17,8 +17,8 @@ Read this when the session digest says `features: track on`. Every command below
 
 ## fix
 
-- Step 0: `zenify track start --kind fix --repo <repo> --est -`.
-- After Step 2 (cause verified): `zenify track est <id> <S|M|L>`.
+- Step 0: `zenify track start --kind fix --repo <repo> --est -`; not when run as part of `znf:hotfix` (see hotfix).
+- After Step 2 (cause verified): `zenify track est <id> <S|M|L>`; not when run as part of `znf:hotfix`.
 - Step 7 Report: `zenify track fix <id> --round <n> --path narrow|wide --regression test|no-seam|-` (`n` = the ROUND counter, `no-seam` = no regression test was possible).
 - Step 8: `znf:ship` records the outcome and the PR.
 - A `znf:fix` started by `znf:ci-watch` opens its own new `fix` id; it never reuses the id of the run that was being watched.
@@ -26,21 +26,23 @@ Read this when the session digest says `features: track on`. Every command below
 ## hotfix
 
 - Step 1: `zenify track start --kind hotfix --repo <repo> --est <S|M|L>`.
+- Hotfix step 3 borrows `/fix` steps 0-2: do not run the fix section's `start` or `est` there. The hotfix id from step 1 (started with its est) is the only id.
 - `znf:ship` called from hotfix records `track ship` but never calls `end`.
-- Code-fix path, step 10: `zenify track fix <id> --round <n> --path narrow|wide --regression test|no-seam|-`, then after the push `zenify track end <id> --branch <hotfix branch> --rounds <n>`.
-- Revert/disable path (step 3 rollback decision): no `track fix`; close with `zenify track end <id> --rollback --rounds 0`.
+- Code-fix path, step 10: `zenify track fix <id> --round <n> --path narrow|wide --regression test|no-seam|-`, then after the push `zenify track end <id> --branch <hotfix branch> --rounds <n>`. A multi-repo hotfix passes one `--branch` (wt gives every repo the same branch name).
+- Revert/disable path (step 4 "Decide the response": revert or disable → skip to step 10): no `track fix`; close with `zenify track end <id> --rollback --rounds 0`.
 - The hotfix id is closed only at step 10 (or on the rollback path).
 
 ## ship
 
 - At the end of each run (shipped or stopped): `zenify track ship <id> --outcome shipped|blocked [--blocked-step lint|build|contract|behaviour|review] --findings C,H,M,L|- --rounds <n>`.
-- `--blocked-step` is the first ❌ board line: `lint`, `build`, `contract gate` → `contract`, `behaviour`, `review`. Omit it when shipped.
+- `--blocked-step` is the first ❌ board line: `lint`, `build`, `contract gate` → `contract`, `behaviour`, `review`. A ship blocked by `zenify ui-verify check` is `--blocked-step behaviour`. Omit it when shipped.
 - `--findings` = CRITICAL,HIGH,MEDIUM,LOW counts from Step 5 review (`-` when review did not run); `--rounds` = fix-loop rounds taken.
 - After `gh pr create` for every repo (not when called from hotfix): `zenify track end <id> --pr <url> [--pr <url>…] [--ledger <SDD progress.md if one exists>] --rounds <n>`.
-- When ship opens PRs and the feature is on, treat it as `--watch`: invoke `Skill(znf:ci-watch)` once per repo and pass the track id along.
+- When ship opens PRs and the feature is on, treat it as `--watch`: invoke `Skill(znf:ci-watch)` once per repo, with a line `track id: <id>` in the args.
+- Exception: a ship called by a `znf:fix` that ci-watch started must NOT invoke `Skill(znf:ci-watch)`; ci-watch re-watches the new commit itself (its Step 3).
 
 ## ci-watch
 
-- When the watched run finishes: `zenify track ci <id> --result green|red`, once per watched commit, before the fix handoff.
+- The id comes from a `track id: <id>` line in the Skill args. At its Step 3, when the watched run finishes: `zenify track ci <id> --result green|red`, once per watched commit, before the fix handoff.
 - `report-only` targets are recorded the same way; ci-watch still never fixes them.
-- Without an id (not started under track) → call nothing.
+- No `track id:` line given → call nothing.
