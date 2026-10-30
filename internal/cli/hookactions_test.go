@@ -279,7 +279,7 @@ func TestSessionStart_FeaturesLine(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", "")
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	t.Setenv("ZNF_AUTONOMOUS", "")
-	want := "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR; znf:nonstop plans from assigned issues\n"
+	want := "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR\n"
 	cases := []struct {
 		name    string
 		overlay *string
@@ -309,6 +309,43 @@ func TestSessionStart_FeaturesLine(t *testing.T) {
 			}
 			if !c.wantOn && strings.Contains(out, "features:") {
 				t.Errorf("unexpected features line in %q", out)
+			}
+		})
+	}
+}
+
+// SC-26: the track digest line appears only when the overlay turns track on.
+func TestSessionStart_TrackLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	want := "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch)\n"
+	cases := []struct {
+		name    string
+		overlay string
+		wantOn  bool
+	}{
+		{"on", "features:\n  track: true\n", true},
+		{"off", "features:\n  track: false\n", false},
+		{"github only", "features:\n  github.issues: true\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			ws := mkWorkspace(t)
+			if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte(c.overlay), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			if rc := runSessionStart(ws, &buf); rc != 0 {
+				t.Fatalf("rc = %d", rc)
+			}
+			out := buf.String()
+			if got := strings.Contains(out, want); got != c.wantOn {
+				t.Errorf("track line present = %v, want %v in %q", got, c.wantOn, out)
+			}
+			if strings.Contains(out, "nonstop") {
+				t.Errorf("digest still mentions nonstop: %q", out)
 			}
 		})
 	}
