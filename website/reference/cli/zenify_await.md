@@ -39,6 +39,7 @@ zenify await data-write --summary "Backfill field y" --command 'cd /abs/repo && 
 |---|---|
 | `--command` | lệnh người cần chạy (data-write) |
 | `--file` | file người cần xem (lặp được) |
+| `--questions` | file JSON các câu hỏi: [{text, options, audience}] (question) |
 | `--summary` | tóm tắt điều cần người quyết định |
 
 ## Lệnh liên quan

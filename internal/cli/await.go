@@ -17,7 +17,7 @@ import (
 )
 
 // awaitKinds are the only human gates an unattended run may stop at.
-var awaitKinds = []string{"spec", "plan", "data-write", "irreversible", "needs-human"}
+var awaitKinds = []string{"spec", "plan", "data-write", "irreversible", "needs-human", "question"}
 
 // awaitRecord is what the worker host picks up from $ZENIFY_HOME/await/.
 type awaitRecord struct {
@@ -31,6 +31,57 @@ type awaitRecord struct {
 	Branch    string    `json:"branch"`
 	Cwd       string    `json:"cwd"`
 	CreatedAt time.Time `json:"created_at"`
+	// Questions is set only for kind "question"; zenie reads it.
+	Questions []awaitQuestion `json:"questions,omitempty"`
+}
+
+// awaitQuestion is one structured question put to people. Options is empty for
+// a free-text answer; Audience is "business" or "technical".
+type awaitQuestion struct {
+	Text     string   `json:"text"`
+	Options  []string `json:"options"`
+	Audience string   `json:"audience"`
+}
+
+const (
+	maxAwaitQuestions = 5
+	maxAwaitOptions   = 4
+)
+
+// loadAwaitQuestions reads and validates the --questions file.
+func loadAwaitQuestions(path string) ([]awaitQuestion, error) {
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is the caller's own --questions flag
+	if err != nil {
+		return nil, fmt.Errorf("--questions %s: %w", path, err)
+	}
+	var qs []awaitQuestion
+	if err := json.Unmarshal(b, &qs); err != nil {
+		return nil, fmt.Errorf("--questions %s: want a JSON array of {text, options, audience}: %w", path, err)
+	}
+	if len(qs) < 1 || len(qs) > maxAwaitQuestions {
+		return nil, fmt.Errorf("--questions: want 1-%d questions, got %d", maxAwaitQuestions, len(qs))
+	}
+	for i := range qs {
+		q := &qs[i]
+		if strings.TrimSpace(q.Text) == "" {
+			return nil, fmt.Errorf("--questions: question %d has empty text", i+1)
+		}
+		if len(q.Options) > maxAwaitOptions {
+			return nil, fmt.Errorf("--questions: question %d has %d options, want at most %d", i+1, len(q.Options), maxAwaitOptions)
+		}
+		for _, o := range q.Options {
+			if strings.TrimSpace(o) == "" {
+				return nil, fmt.Errorf("--questions: question %d has an empty option", i+1)
+			}
+		}
+		if q.Options == nil {
+			q.Options = []string{}
+		}
+		if q.Audience != "business" && q.Audience != "technical" {
+			return nil, fmt.Errorf("--questions: question %d audience %q, want business or technical", i+1, q.Audience)
+		}
+	}
+	return qs, nil
 }
 
 func awaitDir() string {
@@ -38,7 +89,7 @@ func awaitDir() string {
 }
 
 func newAwaitCmd() *cobra.Command {
-	var summary, command string
+	var summary, command, questions string
 	var files []string
 	cmd := &cobra.Command{
 		Use:   "await <kind>",
@@ -46,7 +97,7 @@ func newAwaitCmd() *cobra.Command {
 		Long:  "Các kind hợp lệ: " + strings.Join(awaitKinds, ", "),            //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := awaitNow(args[0], summary, command, files)
+			id, err := awaitNow(args[0], summary, command, questions, files)
 			if err != nil {
 				return err
 			}
@@ -54,9 +105,10 @@ func newAwaitCmd() *cobra.Command {
 			return exitcode.New(exitcode.Awaiting, fmt.Errorf("awaiting human: %s (%s)", args[0], id))
 		},
 	}
-	cmd.Flags().StringVar(&summary, "summary", "", "tóm tắt điều cần người quyết định") //znf:allow-lang
-	cmd.Flags().StringArrayVar(&files, "file", nil, "file người cần xem (lặp được)")    //znf:allow-lang
-	cmd.Flags().StringVar(&command, "command", "", "lệnh người cần chạy (data-write)")  //znf:allow-lang
+	cmd.Flags().StringVar(&summary, "summary", "", "tóm tắt điều cần người quyết định")                                 //znf:allow-lang
+	cmd.Flags().StringArrayVar(&files, "file", nil, "file người cần xem (lặp được)")                                    //znf:allow-lang
+	cmd.Flags().StringVar(&command, "command", "", "lệnh người cần chạy (data-write)")                                  //znf:allow-lang
+	cmd.Flags().StringVar(&questions, "questions", "", "file JSON các câu hỏi: [{text, options, audience}] (question)") //znf:allow-lang
 	cmd.AddCommand(newAwaitShowCmd())
 	return cmd
 }
@@ -83,8 +135,8 @@ func newAwaitShowCmd() *cobra.Command {
 
 // awaitNow builds and writes one await record and returns its id. An invalid
 // request (not autonomous, unknown kind, empty summary, …) is BadArgs.
-func awaitNow(kind, summary, command string, files []string) (string, error) {
-	rec, err := buildAwaitRecord(kind, summary, command, files)
+func awaitNow(kind, summary, command, questionsPath string, files []string) (string, error) {
+	rec, err := buildAwaitRecord(kind, summary, command, questionsPath, files)
 	if err != nil {
 		return "", exitcode.New(exitcode.BadArgs, err)
 	}
@@ -94,7 +146,7 @@ func awaitNow(kind, summary, command string, files []string) (string, error) {
 	return rec.ID, nil
 }
 
-func buildAwaitRecord(kind, summary, command string, files []string) (awaitRecord, error) {
+func buildAwaitRecord(kind, summary, command, questionsPath string, files []string) (awaitRecord, error) {
 	if os.Getenv("ZNF_AUTONOMOUS") != "1" {
 		return awaitRecord{}, fmt.Errorf("zenify await only works in autonomous mode (ZNF_AUTONOMOUS=1)")
 	}
@@ -110,6 +162,20 @@ func buildAwaitRecord(kind, summary, command string, files []string) (awaitRecor
 	}
 	if kind == "data-write" && !strings.Contains(command, "zenify data run --prd --write") {
 		return awaitRecord{}, fmt.Errorf("data-write needs --command with the `zenify data run --prd --write` command a lead runs")
+	}
+	var questions []awaitQuestion
+	switch {
+	case kind == "question":
+		if questionsPath == "" {
+			return awaitRecord{}, fmt.Errorf("question needs --questions <file> with a JSON array of {text, options, audience}")
+		}
+		qs, err := loadAwaitQuestions(questionsPath)
+		if err != nil {
+			return awaitRecord{}, err
+		}
+		questions = qs
+	case questionsPath != "":
+		return awaitRecord{}, fmt.Errorf("--questions is only for kind question")
 	}
 	abs := make([]string, 0, len(files))
 	for _, f := range files {
@@ -139,6 +205,7 @@ func buildAwaitRecord(kind, summary, command string, files []string) (awaitRecor
 		Command:   command,
 		Cwd:       cwd,
 		CreatedAt: now,
+		Questions: questions,
 	}
 	if task, ok := brokerclient.TaskHeader(); ok {
 		rec.Task = task
