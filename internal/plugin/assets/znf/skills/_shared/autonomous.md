@@ -56,6 +56,8 @@ zenify await question --summary "<what is unclear>" --questions <abs path to JSO
 
 Pass every file the person must read as an absolute `--file`. Exit 8 is the expected stop, not a failure: after the command prints its id, end the session at once, with no further step and no retry.
 
+When ZNF_AWAIT=end-turn, zenify await exits 0 and prints "await recorded: end your turn now and do nothing else". End your turn at once: no further tool call, no summary. The answer arrives as your next prompt, in the same resume format below.
+
 `data-write`: dry-run first (`zenify data run --prd -- …`); never run `--prd --write` yourself. `--command` is the chain a lead runs on their own machine, since a dry-run record is keyed by cwd and argv: `cd <abs cwd> && <the dry-run you ran> && zenify data run --prd --write -- <same argv without --dry-run>`. A `--prd --write` run under role agent refuses and prints exactly that `zenify await data-write` line. This is the worker's end point: approval means a lead runs that command; never resume to write. When the dry-run itself is refused with `prd needs role lead` (credentials the broker gives a lead only), skip your dry-run and run `zenify await data-write` at once, with `--command 'cd <abs cwd> && zenify data run --prd <flags> -- <argv> --dry-run && zenify data run --prd --write <flags> -- <argv>'`. A `--stg --write` script does not stop: it runs right after its dry-run as `_shared/data-scripts.md` says.
 
 ## Resuming

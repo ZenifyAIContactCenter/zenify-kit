@@ -95,6 +95,10 @@ func awaitDir() string {
 	return filepath.Join(zenifyHome(os.Getenv, os.UserHomeDir), "await")
 }
 
+// awaitEndTurnLine is printed instead of exiting 8 when ZNF_AWAIT=end-turn: a
+// session that cannot exit (self-hosted) ends its turn on seeing it.
+const awaitEndTurnLine = "await recorded: end your turn now and do nothing else"
+
 func newAwaitCmd() *cobra.Command {
 	var summary, command, questions string
 	var files []string
@@ -109,6 +113,10 @@ func newAwaitCmd() *cobra.Command {
 				return err
 			}
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), id)
+			if os.Getenv("ZNF_AWAIT") == "end-turn" {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), awaitEndTurnLine)
+				return nil
+			}
 			return exitcode.New(exitcode.Awaiting, fmt.Errorf("awaiting human: %s (%s)", args[0], id))
 		},
 	}
