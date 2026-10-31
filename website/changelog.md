@@ -15,6 +15,15 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 - **Research kiểm tra first-party trước:** `/znf:research` có Bước 0 bắt buộc — trước khi tách câu hỏi con, một worker fetch docs index (`llms.txt` / sitemap) và changelog 6 tháng của mỗi tool thiết kế dựa vào (Claude Code, GitHub…), tìm theo từ khoá năng lực, và báo cáo mở đầu bằng mục **First-party** (không thấy thì ghi từ khoá đã tìm). Kết quả first-party được verify ngay; chỉ phần vendor đã phủ có claim đã verify mới bị loại khỏi phạm vi research, trang sót vì hết cap có worker bù đọc riêng. Xem [Research có kiểm chứng](/concepts/research#bước-0-kiểm-tra-first-party).
 - **Brainstorming:** checklist research thêm mục "thiết kế dựng hạ tầng quanh tool bên thứ ba", luôn đúng với loại thiết kế đó. Trường Approach của spec có thêm dòng `First-party:`; `/znf:analyze` gắn MEDIUM khi thiếu.
 
+## v0.54.0
+
+*2026-10-31*
+
+- **Worker hỏi người có cấu trúc:** lệnh `zenify await` có thêm kind `question`, kèm `--questions <file.json>`: mảng 1 đến 5 câu `{text, options, audience}`, mỗi câu tối đa 4 lựa chọn (không có lựa chọn là trả lời tự do), `audience` là `business` hoặc `technical`. Lệnh vẫn thoát mã 8; kind khác mà truyền `--questions`, hoặc `question` thiếu file hay sai dạng, thì thoát mã 2. Xem [`zenify await`](/reference/cli/zenify_await) và [Hỏi người](/guides/autonomous#questions).
+- **Chế độ không người chỉ hỏi khi đáng hỏi:** agent chỉ hỏi khi đáp án đổi hành vi, tiêu chí nghiệm thu, phạm vi hoặc dẫn tới việc khó hoàn tác; còn lại tự quyết và ghi `Ruling`. Tối đa 2 lượt hỏi trước spec (clarify-lite chỉ tính là một lượt khi nó thật sự hỏi, không thì là `Ruling`), vẫn chưa rõ thì `needs-human`. Agent ghi `.zenify/dialogue.md` trước mỗi câu hỏi để resume không hỏi lại; câu hỏi `business` viết bằng ngôn ngữ nghiệp vụ. Câu hỏi giữa lúc làm: commit phần dở và ghi ledger rồi mới await; nếu spec đổi thì gửi lại `zenify await spec` với summary `Spec changed`. Xem [Chế độ không người](/guides/autonomous).
+- **Cổng duyệt plan có điều kiện:** bước 5b của `cook` ở chế độ không người chỉ chờ người duyệt plan khi plan đụng từ 2 repo trở lên, đụng chính `.github/risk-paths.json`, đụng file khớp `.github/risk-paths.json` (đọc từ base ref, không đọc bản trong worktree), hoặc `znf:analyze` báo CRITICAL/HIGH; trường hợp khác agent ghi `Ruling` và chạy tiếp.
+- **`zenify ensure` tạo marker workspace:** `zenify ensure --workspace <dir>` tạo `<dir>/.zenify/manifest.json` khi chưa có, không ghi đè file đã có và không tạo marker lồng bên trong một workspace khác (chạy không có `--workspace` từ một repo thì nhắm workspace chứa repo đó), nên container worker không có `zenify up` vẫn được `zenify wt` nhận là workspace. Xem [`zenify ensure`](/reference/cli/zenify_ensure).
+
 ## v0.53.1
 
 *2026-10-29*

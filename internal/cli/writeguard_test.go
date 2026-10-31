@@ -30,6 +30,7 @@ func TestWriteGuard_Table(t *testing.T) { // SC-12 + Review Focus 1
 		{"docs-dot", `{"tool_name":"Write","tool_input":{"file_path":"/w/docs/.claude/x"}}`, 0},
 		{"repos", `{"tool_name":"Write","tool_input":{"file_path":"/w/repos/r/anything/deep.js"}}`, 0},
 		{"claude-md", `{"tool_name":"Edit","tool_input":{"file_path":"/w/CLAUDE.md"}}`, 0},
+		{"dialogue", `{"tool_name":"Write","tool_input":{"file_path":"/w/.zenify/dialogue.md"}}`, 0},
 		{"memory", `{"tool_name":"Write","tool_input":{"file_path":"/w/.claude/memory/x.md"}}`, 0},
 		{"outside", `{"tool_name":"Write","tool_input":{"file_path":"/tmp/claude/scratch/x"}}`, 0},
 		{"no-path", `{"tool_name":"Write","tool_input":{}}`, 0},
