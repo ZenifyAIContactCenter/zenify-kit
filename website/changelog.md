@@ -8,6 +8,10 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## Unreleased
+
+- **`zenify await` kết thúc lượt trong session self-hosted:** khi có cả `ZNF_AUTONOMOUS=1` và `ZNF_AWAIT=end-turn`, `zenify await` ghi bản ghi, in `id` rồi in dòng `await recorded: end your turn now and do nothing else` và thoát mã 0 thay vì mã 8; agent kết thúc lượt ngay. Thiếu một trong hai biến thì hành vi cũ. Xem [Chế độ không người](/guides/autonomous).
+
 ## v0.54.0
 
 *2026-10-31*

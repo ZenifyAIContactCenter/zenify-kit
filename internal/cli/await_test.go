@@ -328,3 +328,45 @@ func TestAwaitShow(t *testing.T) {
 		t.Errorf("path-ish id code = %d, want BadArgs", exitcode.Code(err))
 	}
 }
+
+func TestAwaitEndTurn(t *testing.T) {
+	const wantLine = "await recorded: end your turn now and do nothing else"
+	cases := []struct {
+		name       string
+		autonomous string
+		await      string
+		wantErr    string // substring of the error; "" with wantCode 0 = no error
+		wantCode   int
+		wantRecs   int
+	}{
+		{"not autonomous", "", "end-turn", "only works in autonomous mode", exitcode.BadArgs, 0},
+		{"autonomous without ZNF_AWAIT", "1", "", "", exitcode.Awaiting, 1},
+		{"autonomous end-turn", "1", "end-turn", "", 0, 1},
+		{"autonomous other value", "1", "other", "", exitcode.Awaiting, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home := awaitEnv(t)
+			t.Setenv("ZNF_AUTONOMOUS", tc.autonomous)
+			t.Setenv("ZNF_AWAIT", tc.await)
+			chdir(t, t.TempDir())
+			out, err := runAwait(t, "await", "needs-human", "--summary", "s")
+			if got := exitcode.Code(err); got != tc.wantCode {
+				t.Fatalf("code = %d (%v), want %d", got, err, tc.wantCode)
+			}
+			if tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("err = %v, want containing %q", err, tc.wantErr)
+			}
+			ents, _ := os.ReadDir(filepath.Join(home, "await"))
+			if len(ents) != tc.wantRecs {
+				t.Fatalf("records = %d, want %d", len(ents), tc.wantRecs)
+			}
+			if tc.name == "autonomous end-turn" {
+				lines := strings.Split(strings.TrimSpace(out), "\n")
+				if len(lines) != 2 || lines[1] != wantLine {
+					t.Fatalf("stdout lines = %q, want id then %q", lines, wantLine)
+				}
+			}
+		})
+	}
+}

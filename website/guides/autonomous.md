@@ -60,6 +60,8 @@ zenify await <spec|plan|data-write|irreversible|needs-human|question> --summary 
 
 Lệnh ghi một bản ghi JSON vào `$ZENIFY_HOME/await/<id>.json` (mặc định `~/.zenify/await/`), in `id` ra stdout rồi thoát với **mã 8**. Mã 8 là điểm dừng đúng kế hoạch, không phải lỗi: agent kết thúc session ngay, không thử lại. Host của worker nhặt bản ghi trong thư mục đó. Bản ghi được ghi qua file tạm `.<id>.json.tmp` rồi đổi tên, nên host không đọc phải bản ghi dở. `--summary` bắt buộc, không được trống. `--file` lặp được, mỗi file phải tồn tại và được lưu thành đường dẫn tuyệt đối. `--command` bắt buộc với `data-write` và phải chứa `zenify data run --prd --write`. Kind `question` bắt buộc có `--questions`: file JSON là mảng 1 đến 5 câu `{"text": "...", "options": ["..."], "audience": "business|technical"}`, `text` không trống, tối đa 4 `options` (mỗi option không trống; mảng rỗng là câu trả lời tự do), `audience` là `business` hoặc `technical`; bản ghi có thêm trường `questions`. Kind khác mà có `--questions` cũng bị từ chối. Ví dụ file câu hỏi: `[{"text": "Khách đã huỷ đơn có được đặt lại không?", "options": ["Có", "Không"], "audience": "business"}]`. Sai một trong các điều này thì lệnh thoát mã 2, không ghi bản ghi.
 
+When ZNF_AWAIT=end-turn, zenify await exits 0 and prints "await recorded: end your turn now and do nothing else". End your turn at once: no further tool call, no summary. The answer arrives as your next prompt, in the same resume format below.
+
 Ví dụ thật (chạy với `ZENIFY_HOME` tạm):
 
 ```text
