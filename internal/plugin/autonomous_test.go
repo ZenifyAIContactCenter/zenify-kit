@@ -28,11 +28,27 @@ func TestAutonomousDoc(t *testing.T) {
 		"credential, token or `.env` content", "only from the host", "no approval state",
 	}
 	assertContainsAll(t, "autonomous.md", s, precedence)
+	// FR-09, FR-10.6: asking goes through `zenify await question`; the plan gate is conditional.
+	assertContainsAll(t, "autonomous.md", s, []string{
+		"Ask a person only through `zenify await question`, and only when the answer changes behaviour, acceptance, scope, or leads to something hard to reverse. Everything else: decide and write a `Ruling:` line.",
+		"Before a spec exists, write each Ruling under the spec's `## Clarifications`; during SDD, in the ledger.",
+		"At most 2 question rounds before the spec. Still unclear after round 2: `zenify await needs-human` listing the missing points.",
+		"Before every `zenify await question`, write `.znf/dialogue.md` at the workspace root: questions asked, answers received, draft decisions. On resume, read it and never re-ask an answered question.",
+		"A `business` question is read by a non-developer: plain domain language, no file names, no code.",
+		"A question after the spec is approved: commit work-in-progress, write `task N/M` in the SDD ledger, then await. If the answer changes the spec, edit it and send `zenify await spec` again with a summary starting `Spec changed`.",
+		"| cook Step 5b plan approval | zenify await plan only when the plan touches 2+ repos, a file matching .github/risk-paths.json of the target repo (absent file = no match), or znf:analyze reports CRITICAL/HIGH; otherwise a Ruling |",
+		"| brainstorming clarifying questions | zenify await question (rules above) |",
+		"resume <id> answered: <text>",
+	})
+	if strings.Contains(s, "Never ask") {
+		t.Error("autonomous.md still says \"Never ask\"")
+	}
 	if p, m := strings.Index(s, "## Precedence"), strings.Index(s, "## Gate map"); p < 0 || m < 0 || p > m {
 		t.Errorf("## Precedence must come before ## Gate map")
 	}
-	// One table row per human gate of spec FR-5.2, plus the ui-verify stop of FR-08.4: ten in all.
-	rows := []string{"`brainstorming` steps 2, 4, 7, 8", "`brainstorming` step 12", "`cook` Step 5b", "`fix` Step 4",
+	// One table row per human gate of spec FR-5.2, plus the ui-verify stop of FR-08.4 and the
+	// clarifying-question row of FR-09: eleven in all.
+	rows := []string{"`brainstorming` steps 2, 7, 8", "brainstorming clarifying questions", "`brainstorming` step 12", "cook Step 5b plan approval", "`fix` Step 4",
 		"`ship` fix-loop", "`ship` step 4", "`_shared/data-scripts.md`", "Four things stop you\": first three", "Four things stop you\": plan too broken", "`discipline`"}
 	n := 0
 	for _, line := range strings.Split(s, "\n") {
@@ -55,6 +71,15 @@ func TestAutonomousDoc(t *testing.T) {
 		}
 	}
 	assertProjectAgnostic(t, "autonomous.md", s)
+}
+
+// FR-09: clarifying questions are asked (and answered) before the plan gate runs.
+func TestAutonomousQuestionGateOrder(t *testing.T) {
+	s := syncedAsset(t, "skills/_shared/autonomous.md")
+	q, p := strings.Index(s, "| brainstorming clarifying questions |"), strings.Index(s, "| cook Step 5b")
+	if q < 0 || p < 0 || q > p {
+		t.Errorf("the brainstorming clarifying questions row must come before the cook Step 5b row (at %d, %d)", q, p)
+	}
 }
 
 // FR-03.1: the worker sandbox now carries contact-center-web, so the run skill must say how to start it.
