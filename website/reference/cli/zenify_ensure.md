@@ -32,7 +32,7 @@ zenify ensure --workspace /work
 
 | Cờ | Ý nghĩa |
 |---|---|
-| `--workspace` | thư mục workspace nhận model pin (mặc định: thư mục hiện tại) |
+| `--workspace` | thư mục workspace nhận model pin (mặc định: workspace chứa thư mục hiện tại, không có thì thư mục hiện tại) |
 
 ## Lệnh liên quan
 

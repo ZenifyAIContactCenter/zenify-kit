@@ -19,7 +19,7 @@ Khi biến này bật, dòng đầu session có thêm một dòng nhắc agent �
 
 ## Agent tự quyết, chỉ hỏi khi đáng hỏi
 
-Chỉ khi câu trả lời đổi hành vi, tiêu chí nghiệm thu, phạm vi, hoặc dẫn tới việc khó hoàn tác thì agent mới hỏi, và chỉ qua `zenify await question`. Mọi chỗ khác skill định hỏi hay chờ người, agent tự quyết và ghi một dòng `Ruling: <quyết định> — <lý do> — <cái giá nếu sai>`, trừ các cổng ở mục [Thứ tự ưu tiên](#precedence) bên dưới. Nơi ghi `Ruling`: trước khi có spec (trong `brainstorming` hoặc `cook`) là `.znf/dialogue.md`, rồi chép sang mục `## Clarifications` của spec khi viết spec; từ spec sang SDD (như bước 5b của `cook`) thêm vào `## Clarifications` của spec; trong lúc chạy SDD là ledger (`progress.md`); ngoài hai skill đó (ví dụ `fix`) là mục `## Intent` của ship pack. Riêng pull request: agent không bao giờ merge, kể cả PR do chính nó mở.
+Chỉ khi câu trả lời đổi hành vi, tiêu chí nghiệm thu, phạm vi, hoặc dẫn tới việc khó hoàn tác thì agent mới hỏi, và chỉ qua `zenify await question`. Mọi chỗ khác skill định hỏi hay chờ người, agent tự quyết và ghi một dòng `Ruling: <quyết định> — <lý do> — <cái giá nếu sai>`, trừ các cổng ở mục [Thứ tự ưu tiên](#precedence) bên dưới. Nơi ghi `Ruling`: trước khi có spec (trong `brainstorming` hoặc `cook`) là `.zenify/dialogue.md`, rồi chép sang mục `## Clarifications` của spec khi viết spec; từ spec sang SDD (như bước 5b của `cook`) thêm vào `## Clarifications` của spec; trong lúc chạy SDD là ledger (`progress.md`); ngoài hai skill đó (ví dụ `fix`) là mục `## Intent` của ship pack. Riêng pull request: agent không bao giờ merge, kể cả PR do chính nó mở.
 
 ## Thứ tự ưu tiên {#precedence}
 
@@ -47,7 +47,7 @@ Chỉ khi câu trả lời đổi hành vi, tiêu chí nghiệm thu, phạm vi, 
 ## Hỏi người {#questions}
 
 - Tối đa 2 lượt hỏi trước khi có spec; nếu bước làm rõ nhanh (clarify-lite, bước 8 của `brainstorming`) gặp điểm đáng hỏi theo luật trên thì hỏi bằng `zenify await question` và lượt đó tính vào cùng giới hạn; không thì clarify-lite là một `Ruling`. Sau lượt 2 vẫn chưa rõ thì `zenify await needs-human`, liệt kê các điểm còn thiếu.
-- Trước mỗi `zenify await question`, agent ghi `.znf/dialogue.md` ở gốc workspace: câu đã hỏi, câu trả lời đã nhận, các quyết định nháp. Khi resume, agent đọc file này và không hỏi lại câu đã được trả lời.
+- Trước mỗi `zenify await question`, agent ghi `.zenify/dialogue.md` ở gốc workspace: câu đã hỏi, câu trả lời đã nhận, các quyết định nháp. Khi resume, agent đọc file này và không hỏi lại câu đã được trả lời.
 - Câu hỏi `business` do người không phải dev đọc, nên viết bằng ngôn ngữ nghiệp vụ đơn giản, không tên file, không code.
 - Câu hỏi nảy ra sau khi spec đã duyệt: agent commit phần việc đang dở, ghi `task N/M` vào ledger SDD rồi mới await. Nếu câu trả lời làm đổi spec, agent sửa spec và gửi lại `zenify await spec` với summary bắt đầu bằng `Spec changed`.
 - Khi định tuyến repo bằng auto-locate mà không ra kết quả thì hỏi bằng `question` (tính vào cùng giới hạn 2 lượt); ra repo rồi thì chỉ là `Ruling`.

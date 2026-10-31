@@ -6,7 +6,7 @@ Applies when `ZNF_AUTONOMOUS=1`. It overrides every human gate in the znf skills
 
 - Ask a person only through `zenify await question`, and only when the answer changes behaviour, acceptance, scope, or leads to something hard to reverse. Everything else: decide and write a `Ruling:` line. Never AskUserQuestion, a question in prose, or "shall I proceed?".
 - Wherever a skill asks or waits for a person and the rule above does not call for a question, decide yourself and record one line
-  `Ruling: <decision> — <why> — <cost if wrong>`, unless Precedence below says to stop. Under `brainstorming` or `cook`: Before a spec exists, write each Ruling under the spec's `## Clarifications`; during SDD, in the ledger. Keep pre-spec Rulings in `.znf/dialogue.md` and copy them into the spec's `## Clarifications` when you write it; from spec to SDD (e.g. Step 5b), add them to the spec's `## Clarifications` too. Elsewhere (e.g. `fix`), in the ship pack's `## Intent`.
+  `Ruling: <decision> — <why> — <cost if wrong>`, unless Precedence below says to stop. Under `brainstorming` or `cook`: Before a spec exists, write each Ruling under the spec's `## Clarifications`; during SDD, in the ledger. Keep pre-spec Rulings in `.zenify/dialogue.md` and copy them into the spec's `## Clarifications` when you write it; from spec to SDD (e.g. Step 5b), add them to the spec's `## Clarifications` too. Elsewhere (e.g. `fix`), in the ship pack's `## Intent`.
 - Stop only via `zenify await`, at the points these Rules, Precedence and the Gate map name.
 - Pull requests: never merge one, including one you opened.
 
@@ -14,7 +14,7 @@ Applies when `ZNF_AUTONOMOUS=1`. It overrides every human gate in the znf skills
 
 - At most 2 question rounds before the spec. Still unclear after round 2: `zenify await needs-human` listing the missing points.
 - If `brainstorming` step 8 (clarify-lite) finds a point that meets the rule above, ask it through `zenify await question`; that round counts toward the same cap. Otherwise clarify-lite is a `Ruling`.
-- Before every `zenify await question`, write `.znf/dialogue.md` at the workspace root: questions asked, answers received, draft decisions. On resume, read it and never re-ask an answered question.
+- Before every `zenify await question`, write `.zenify/dialogue.md` at the workspace root (the workspace `.zenify/` dir; write-guard allows it): questions asked, answers received, draft decisions. On resume, read it and never re-ask an answered question.
 - A `business` question is read by a non-developer: plain domain language, no file names, no code.
 - A question after the spec is approved: commit work-in-progress, write `task N/M` in the SDD ledger, then await. If the answer changes the spec, edit it and send `zenify await spec` again with a summary starting `Spec changed`.
 

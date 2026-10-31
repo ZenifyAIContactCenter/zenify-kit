@@ -442,6 +442,36 @@ func TestEnsureWorkspace_CreatesWorkspaceMarker(t *testing.T) {
 	}
 }
 
+// A repo inside an existing workspace must not get its own marker: the
+// nearest marker wins in wt.FindWorkspaceRoot and would shadow the workspace.
+func TestEnsureWorkspace_NoNestedMarker(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	ws := t.TempDir()
+	if _, err := ensureWorkspaceMarker(ws, home); err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(ws, "repos", "r")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	ensureWorkspace(repo, home, &out, &errOut)
+
+	if _, err := os.Stat(filepath.Join(repo, ".zenify", "manifest.json")); err == nil {
+		t.Fatal("nested marker created inside the workspace")
+	}
+	if !strings.Contains(errOut.String(), "is inside workspace "+ws) {
+		t.Fatalf("skip not reported: %s", errOut.String())
+	}
+	if root, ok := wt.FindWorkspaceRoot(repo); !ok || root != ws {
+		t.Fatalf("FindWorkspaceRoot = %q, %v; want %q", root, ok, ws)
+	}
+}
+
 func TestEnsureWorkspace_KeepsExistingMarker(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
