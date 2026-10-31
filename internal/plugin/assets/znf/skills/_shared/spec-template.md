@@ -17,7 +17,9 @@ like the plan's `_Requirements:` tag.
 
 1. **Problem.** What is wrong or missing today, and the consequence. (floor)
 2. **Approach.** How you will fix it — and a necessity check: *which existing path already
-   covers this, and why it is not enough* (constitution P6). (floor)
+   covers this, and why it is not enough* (constitution P6). (floor) When the design builds
+   on a third-party tool, add one line:
+   `First-party: <what the vendor's own feature covers, or none found (keywords searched)>`.
 3. **Timing.** Sequencing, dependencies, resumability.
 4. **Phase.** Where this sits in the milestone breakdown.
 5. **Service / blast-radius.** Which services or repos this touches; what breaks if the shape

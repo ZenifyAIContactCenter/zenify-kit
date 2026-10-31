@@ -93,6 +93,10 @@ func TestResearchSkill_Shipped(t *testing.T) {
 		"references/output-contract.md",
 		"references/scale-and-cost.md",
 		"\n## References",
+		"## Step 0: First-party check",
+		"llms.txt",
+		"worker-0.md",
+		"**First-party** — first section, never blank",
 	})
 	if strings.Contains(s, "AskUserQuestion") {
 		t.Error("research/SKILL.md runs forked: it must not reach for AskUserQuestion")
@@ -129,7 +133,7 @@ func TestBrainstormingResearchCheck(t *testing.T) {
 		t.Errorf("brainstorming/SKILL.md is %d bytes; budget %d", len(s), maxSkillBytes)
 	}
 	c := syncedAsset(t, "skills/brainstorming/references/research-checklist.md")
-	assertContainsAll(t, "research-checklist.md", c, []string{"1.", "2.", "3.", "4.", "5.", "znf:ground", "znf:scout", "docs/reference"})
+	assertContainsAll(t, "research-checklist.md", c, []string{"1.", "2.", "3.", "4.", "5.", "6.", "third-party tool", "znf:ground", "znf:scout", "docs/reference"})
 	if strings.Contains(c, "references/") {
 		t.Error("research-checklist.md must not link into references/ (one-level rule)")
 	}
