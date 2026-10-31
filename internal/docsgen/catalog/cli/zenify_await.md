@@ -13,7 +13,7 @@ Lệnh ghi `$ZENIFY_HOME/await/<id>.json` (thư mục mode 0700, file mode 0600)
 
 Kind `question` hỏi người một lượt câu hỏi có cấu trúc và bắt buộc có `--questions <file.json>`: mảng 1 đến 5 câu `{"text", "options", "audience"}`, mỗi câu tối đa 4 `options` (mảng rỗng là câu trả lời tự do), `audience` là `business` hoặc `technical`. Bản ghi của kind này có thêm trường `questions`; kind khác mà có `--questions` bị từ chối với mã 2.
 
-Bản ghi gồm `id`, `kind`, `summary`, `files` (đường dẫn tuyệt đối), `command`, `task` (lấy từ `ZNF_TASK_ID` khi khớp `^[A-Za-z0-9._-]{1,64}$`, không thì để rỗng), `repo`, `branch`, `cwd`, `created_at`. Ngoài git repo thì `repo` và `branch` để rỗng.
+Bản ghi gồm `id`, `kind`, `summary`, `files` (đường dẫn tuyệt đối), `command`, `task` (lấy từ `ZNF_TASK_ID` khi khớp `^[A-Za-z0-9._-]{1,64}$`, không thì để rỗng), `repo`, `branch`, `cwd`, `created_at`, và `questions` (chỉ có ở kind `question`, kind khác không có trường này). Ngoài git repo thì `repo` và `branch` để rỗng.
 
 ## Ví dụ
 

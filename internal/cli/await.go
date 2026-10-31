@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,8 +57,13 @@ func loadAwaitQuestions(path string) ([]awaitQuestion, error) {
 		return nil, fmt.Errorf("--questions %s: %w", path, err)
 	}
 	var qs []awaitQuestion
-	if err := json.Unmarshal(b, &qs); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&qs); err != nil {
 		return nil, fmt.Errorf("--questions %s: want a JSON array of {text, options, audience}: %w", path, err)
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, fmt.Errorf("--questions %s: unexpected data after the JSON array", path)
 	}
 	if len(qs) < 1 || len(qs) > maxAwaitQuestions {
 		return nil, fmt.Errorf("--questions: want 1-%d questions, got %d", maxAwaitQuestions, len(qs))

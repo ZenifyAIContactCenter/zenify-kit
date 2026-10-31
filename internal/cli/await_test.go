@@ -230,6 +230,25 @@ func TestAwaitQuestionRecord(t *testing.T) {
 	}
 }
 
+func TestAwaitQuestionAcceptBoundary(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	q := `{"text":"q","options":["a","b","c","d"],"audience":"technical"}`
+	in := `[` + strings.Repeat(q+",", 4) + q + `]`
+	qf := filepath.Join(t.TempDir(), "q.json")
+	if err := os.WriteFile(qf, []byte(in), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runAwait(t, "await", "question", "--summary", "s", "--questions", qf)
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("code = %d (%v), want 8", exitcode.Code(err), err)
+	}
+	r, _ := readRecord(t, home, strings.TrimSpace(out))
+	if len(r.Questions) != 5 || len(r.Questions[4].Options) != 4 {
+		t.Fatalf("record = %+v", r)
+	}
+}
+
 func TestAwaitRefusals(t *testing.T) {
 	cases := []struct {
 		name string
@@ -253,6 +272,8 @@ func TestAwaitRefusals(t *testing.T) {
 		{"blank option", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"q","options":["a",""],"audience":"business"}]`},
 		{"bad audience", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"q","options":[],"audience":"manager"}]`},
 		{"not json", "1", []string{"await", "question", "--summary", "s"}, `{`},
+		{"unknown key option", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"q","option":["a"],"options":[],"audience":"business"}]`},
+		{"trailing data", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"q","options":[],"audience":"business"}] {}`},
 		{"--questions on spec", "1", []string{"await", "spec", "--summary", "s"}, `[{"text":"q","options":[],"audience":"business"}]`},
 	}
 	for _, tc := range cases {
