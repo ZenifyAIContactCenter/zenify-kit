@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.55.0
+
+*chưa phát hành*
+
+- **Research kiểm tra first-party trước:** `/znf:research` có Bước 0 bắt buộc — trước khi tách câu hỏi con, một worker fetch docs index (`llms.txt` / sitemap) và changelog 6 tháng của mỗi tool thiết kế dựa vào (Claude Code, GitHub…), tìm theo từ khoá năng lực, và báo cáo mở đầu bằng mục **First-party** (không thấy thì ghi từ khoá đã tìm). Kết quả first-party được verify ngay; chỉ phần vendor đã phủ có claim đã verify mới bị loại khỏi phạm vi research, trang sót vì hết cap có worker bù đọc riêng. Xem [Research có kiểm chứng](/concepts/research#bước-0-kiểm-tra-first-party).
+- **Brainstorming:** checklist research thêm mục "thiết kế dựng hạ tầng quanh tool bên thứ ba", luôn đúng với loại thiết kế đó. Trường Approach của spec có thêm dòng `First-party:`; `/znf:analyze` gắn MEDIUM khi thiếu.
 ## v0.54.0
 
 *2026-10-31*
