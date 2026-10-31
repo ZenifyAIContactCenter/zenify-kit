@@ -6,13 +6,14 @@ Applies when `ZNF_AUTONOMOUS=1`. It overrides every human gate in the znf skills
 
 - Ask a person only through `zenify await question`, and only when the answer changes behaviour, acceptance, scope, or leads to something hard to reverse. Everything else: decide and write a `Ruling:` line. Never AskUserQuestion, a question in prose, or "shall I proceed?".
 - Wherever a skill asks or waits for a person and the rule above does not call for a question, decide yourself and record one line
-  `Ruling: <decision> — <why> — <cost if wrong>`, unless Precedence below says to stop. Under `brainstorming` or `cook`: Before a spec exists, write each Ruling under the spec's `## Clarifications`; during SDD, in the ledger. Elsewhere (e.g. `fix`), in the ship pack's `## Intent`.
+  `Ruling: <decision> — <why> — <cost if wrong>`, unless Precedence below says to stop. Under `brainstorming` or `cook`: Before a spec exists, write each Ruling under the spec's `## Clarifications`; during SDD, in the ledger. Keep pre-spec Rulings in `.znf/dialogue.md` and copy them into the spec's `## Clarifications` when you write it; from spec to SDD (e.g. Step 5b), add them to the spec's `## Clarifications` too. Elsewhere (e.g. `fix`), in the ship pack's `## Intent`.
 - Stop only via `zenify await`, at the points these Rules, Precedence and the Gate map name.
 - Pull requests: never merge one, including one you opened.
 
 ## Questions
 
 - At most 2 question rounds before the spec. Still unclear after round 2: `zenify await needs-human` listing the missing points.
+- `brainstorming` step 8 (clarify-lite) is a clarifying question round too: it goes through `zenify await question` and counts toward the same cap.
 - Before every `zenify await question`, write `.znf/dialogue.md` at the workspace root: questions asked, answers received, draft decisions. On resume, read it and never re-ask an answered question.
 - A `business` question is read by a non-developer: plain domain language, no file names, no code.
 - A question after the spec is approved: commit work-in-progress, write `task N/M` in the SDD ledger, then await. If the answer changes the spec, edit it and send `zenify await spec` again with a summary starting `Spec changed`.
@@ -32,7 +33,7 @@ A `Ruling` or a question never replaces these; they win over the catch-all above
 
 | Human gate in a skill | Autonomous replacement |
 |---|---|
-| `brainstorming` steps 2, 7, 8 (shared understanding, per-section design approval, clarify-lite) | `Ruling` |
+| `brainstorming` steps 2, 7 (shared understanding, per-section design approval) | `Ruling` |
 | brainstorming clarifying questions | zenify await question (rules above) |
 | `brainstorming` step 12 and the User Review Gate, plus `cook`'s design gate | `zenify await spec` (the design gate folds into the spec gate) |
 | cook Step 5b plan approval | zenify await plan only when the plan touches 2+ repos, a file matching .github/risk-paths.json of the target repo (absent file = no match), or znf:analyze reports CRITICAL/HIGH; otherwise a Ruling |
@@ -42,7 +43,7 @@ A `Ruling` or a question never replaces these; they win over the catch-all above
 | `_shared/data-scripts.md` prd gate before `--write` | `zenify await data-write` |
 | SDD "Four things stop you": first three (irreversible/destructive, security-sensitive, side effect outside the worktree) | `zenify await irreversible` |
 | SDD "Four things stop you": plan too broken to act on | `zenify await needs-human` |
-| `discipline`: ask the user when routing a repo; `/cook` only suggested | `Ruling`; run `/cook` yourself when a task was assigned |
+| `discipline`: ask the user when routing a repo; `/cook` only suggested | `Ruling` once auto-locate names the repo (inconclusive → `zenify await question`); run `/cook` yourself when a task was assigned |
 
 ## Stopping
 

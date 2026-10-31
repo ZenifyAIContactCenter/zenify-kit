@@ -39,6 +39,9 @@ func TestAutonomousDoc(t *testing.T) {
 		"| cook Step 5b plan approval | zenify await plan only when the plan touches 2+ repos, a file matching .github/risk-paths.json of the target repo (absent file = no match), or znf:analyze reports CRITICAL/HIGH; otherwise a Ruling |",
 		"| brainstorming clarifying questions | zenify await question (rules above) |",
 		"resume <id> answered: <text>",
+		"Keep pre-spec Rulings in `.znf/dialogue.md` and copy them into the spec's `## Clarifications` when you write it; from spec to SDD (e.g. Step 5b), add them to the spec's `## Clarifications` too.",
+		"`brainstorming` step 8 (clarify-lite) is a clarifying question round too",
+		"inconclusive → `zenify await question`",
 	})
 	if strings.Contains(s, "Never ask") {
 		t.Error("autonomous.md still says \"Never ask\"")
@@ -48,7 +51,7 @@ func TestAutonomousDoc(t *testing.T) {
 	}
 	// One table row per human gate of spec FR-5.2, plus the ui-verify stop of FR-08.4 and the
 	// clarifying-question row of FR-09: eleven in all.
-	rows := []string{"`brainstorming` steps 2, 7, 8", "brainstorming clarifying questions", "`brainstorming` step 12", "cook Step 5b plan approval", "`fix` Step 4",
+	rows := []string{"`brainstorming` steps 2, 7 (", "brainstorming clarifying questions", "`brainstorming` step 12", "cook Step 5b plan approval", "`fix` Step 4",
 		"`ship` fix-loop", "`ship` step 4", "`_shared/data-scripts.md`", "Four things stop you\": first three", "Four things stop you\": plan too broken", "`discipline`"}
 	n := 0
 	for _, line := range strings.Split(s, "\n") {
