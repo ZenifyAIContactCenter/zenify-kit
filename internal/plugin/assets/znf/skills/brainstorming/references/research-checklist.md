@@ -1,6 +1,6 @@
 # Research check — run once, before the design is locked
 
-Answer the five items after the clarifying questions and before proposing approaches. **One item
+Answer the six items after the clarifying questions and before proposing approaches. **One item
 true → invoke `Skill(znf:research)`** with the scoped question (`<question> repo: <feature-repo>`)
 and wait for its return. **None true → skip**, and do not write a prior-art section for show.
 
@@ -12,7 +12,11 @@ and wait for its return. **None true → skip**, and do not write a prior-art se
    release note, anything datable after the model's knowledge cutoff.
 4. Two or more genuinely different approaches are on the table and choosing wrong costs more than
    one research run (about 5 USD).
-5. Reverse check: the unknown is a file, contract, field, symbol, collection or config key inside
+5. The design builds infrastructure around a third-party tool or platform (a runner, queue,
+   session or seat layer on top of an agent CLI, a code host, a tracker) → **always true** for
+   such designs: the vendor may already ship it, and `znf:research` Step 0 checks its docs index
+   and changelog first. Carry the result into the spec's Approach `First-party:` line.
+6. Reverse check: the unknown is a file, contract, field, symbol, collection or config key inside
    the repository or its database → that is `/znf:scout` or `/znf:ground`, **not** research; treat
    this item as false.
 
