@@ -25,9 +25,9 @@ Số liệu đằng sau: 9 trong 88 spec của một team cần research, toàn 
 
 ## Bước 0: kiểm tra first-party
 
-Trước khi tách câu hỏi con, lead dispatch một worker riêng (`worker-0.md`) hỏi đúng một câu: vendor của tool mình đang dựng lên trên đã ship tính năng này chưa? Với mỗi tool/platform thiết kế dựa vào (Claude Code, GitHub, tracker…), worker fetch docs index (`llms.txt`, không có thì sitemap) và changelog 6 tháng gần nhất, tìm theo từ khoá năng lực (runner, self-hosted, background, queue, session…). Trang nào index liệt kê là liên quan thì phải fetch, không được để `NOT-FETCHED`.
+Trước khi tách câu hỏi con, lead dispatch một worker riêng (`worker-0.md`) hỏi đúng một câu: vendor của tool mình đang dựng lên trên đã ship tính năng này chưa? Với mỗi tool/platform thiết kế dựa vào (Claude Code, GitHub, tracker…), worker fetch docs index (`llms.txt`, không có thì sitemap) và changelog 6 tháng gần nhất, tìm theo từ khoá năng lực (runner, self-hosted, background, queue, session…). Trang nào index liệt kê là liên quan thì phải fetch; trang bị bỏ sót vì hết cap được một worker bù (`worker-0b`) đọc riêng. Kết quả first-party được verify ngay (`verify-0.md`) trước khi tách câu hỏi con.
 
-Phần vendor đã phủ bị loại khỏi các câu hỏi con; các worker sau chỉ hỏi về phần còn thiếu. Báo cáo mở đầu bằng mục **First-party**, không bao giờ trống: vendor phủ gì (kèm trạng thái verify), hoặc `none found` kèm danh sách từ khoá đã tìm. Câu hỏi không dựa trên tool bên thứ ba nào thì ghi `First-party: N/A — <lý do>`. Spec mang kết quả này vào dòng `First-party:` trong trường Approach; `/znf:analyze` gắn MEDIUM khi thiết kế dựng trên tool bên thứ ba mà thiếu dòng đó.
+Chỉ phần vendor đã phủ **có claim `VERIFIED`** bị loại khỏi các câu hỏi con; claim bị gắn cờ thì năng lực đó vẫn được research; các worker sau chỉ hỏi về phần còn thiếu. Báo cáo mở đầu bằng mục **First-party**, không bao giờ trống: vendor phủ gì (kèm trạng thái verify), hoặc `none found` kèm danh sách từ khoá đã tìm. Câu hỏi không dựa trên tool bên thứ ba nào thì ghi `First-party: N/A — <lý do>`. Spec mang kết quả này vào dòng `First-party:` trong trường Approach; `/znf:analyze` gắn MEDIUM khi thiết kế dựng trên tool bên thứ ba mà thiếu dòng đó.
 
 Vì sao: một thiết kế (2026-10) tự dựng lớp chạy worker (deadline, refresh, cancel, giới hạn seat) trong khi tính năng self-hosted environments của Claude Code đã phủ phần lớn. Research có chạy, nhưng câu hỏi con chỉ hỏi "chọn sandbox provider nào", không ai hỏi "vendor đã có chưa", và trang tài liệu đúng bị bỏ ở trạng thái `NOT-FETCHED`.
 
@@ -37,7 +37,8 @@ Vì sao: một thiết kế (2026-10) tự dựng lớp chạy worker (deadline,
 flowchart TD
     A[/znf:research hoặc brainstorming checklist bật/] --> B[Lead chạy fork, sonnet]
     B --> B0[Bước 0: worker first-party, docs index + changelog vendor]
-    B0 --> C[Scope: câu hỏi con theo ranh giới nguồn, trừ phần vendor đã phủ, cỡ 1 / 2-4 / 5+, cap tool-call]
+    B0 --> B1[Verify first-party ngay, haiku]
+    B1 --> C[Scope: câu hỏi con theo ranh giới nguồn, trừ phần vendor đã phủ, cỡ 1 / 2-4 / 5+, cap tool-call]
     C --> D[N worker znf:researcher sonnet, một tin nhắn, mỗi worker ghi file tạm]
     D --> E[Verifier znf:researcher haiku: fetch lại mọi URL, so quote]
     E --> F[Lead viết docs/research/repo/YYYY-MM-DD-slug.md]
@@ -56,7 +57,7 @@ Brief gửi worker và verifier viết **tiếng Anh**, dù bạn gõ câu hỏi
 
 ## Chi phí
 
-Một worker sonnet khoảng 1,6 USD; verifier haiku dưới 1 USD. Research so sánh điển hình (3 worker + verifier) khoảng 5–6 USD, cộng thêm một worker sonnet cho bước 0 first-party. Bảng cỡ giữ số worker theo độ phức tạp, không mặc định 5. Đo lại bằng `zenify cost --by-skill` khi cần số chính xác.
+Một worker sonnet khoảng 1,6 USD; verifier haiku dưới 1 USD. Research so sánh điển hình (3 worker + verifier) khoảng 5–6 USD, cộng thêm một worker sonnet và một lượt verify haiku cho bước 0 first-party (thêm một worker bù nếu worker-0 hết cap). Bảng cỡ giữ số worker theo độ phức tạp, không mặc định 5. Đo lại bằng `zenify cost --by-skill` khi cần số chính xác.
 
 ## Không làm
 

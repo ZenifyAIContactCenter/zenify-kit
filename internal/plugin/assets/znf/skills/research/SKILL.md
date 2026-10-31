@@ -33,22 +33,20 @@ question:
    the agent runtime) and 4–8 **capability keywords** for what the design would build (e.g.
    runner, self-hosted, background, queue, session, schedule, cancel, limit).
 3. Dispatch **one** `Agent(znf:researcher)`, `model: sonnet`, with the Step 2 template and
-   `Output file: …/worker-0.md`, `Tool-call cap: 8 per vendor`, this sub-question and these
-   extra lines:
-
-```
-For each vendor: fetch its docs index (`<docs-root>/llms.txt`, else the sitemap) and its
-changelog / release notes for the last 6 months. Search both for each keyword. Every page the
-index lists as relevant to a keyword must be fetched — never left unfetched.
-Vendors: <list> · Keywords: <list>
-Per vendor, record what its own feature covers (with quote) or "none found — keywords: <list>".
-Cap reached → one `not found` line per relevant page left unfetched, naming its URL.
-```
-
-4. Read `worker-0.md`. What the vendor already covers is **out of scope** for the build
+   `Output file: …/worker-0.md`, `Tool-call cap: 8 per vendor` and the extra lines in
+   `references/output-contract.md` § First-party worker: each vendor's docs index (`llms.txt`,
+   else sitemap) and 6-month changelog, every relevant index page fetched.
+4. Read `worker-0.md`. Worker-0 silent → re-dispatch once, then write
+   `First-party: not checked — worker-0 returned nothing` and go to Step 1 with the full scope.
+   Any `unfetched:` line → **one** follow-up `Agent(znf:researcher)` (sonnet, same template,
+   `Output file: …/worker-0b.md`, cap = URL count + 2) fetching exactly those URLs; still
+   unfetched → open gap in the First-party section.
+5. Verify the first-party files **now**, before Step 1: one `Agent(znf:researcher)`, `model:
+   haiku`, the Step 3 template with `Files: worker-0.md` (and `worker-0b.md`) and output
+   `verify-0.md`.
+6. Only coverage claims marked `VERIFIED` in `verify-0.md` are **out of scope** for the build
    sub-questions in Step 1 — they ask about the remaining gap only, and the scope block says so.
-   `worker-0.md` goes to the Step 3 verifier like every other worker file. Worker-0 silent →
-   re-dispatch once, then write `First-party: not checked — worker-0 returned nothing`.
+   A flagged or unverified claim leaves its capability **in scope**.
 
 Not building on any third-party tool (a pure question about prior art or a fact) → write
 `First-party: N/A — <why>` in the scope block and go to Step 1.
@@ -104,18 +102,16 @@ Do not edit worker files. Return at most 40 lines: totals per status, every non-
 ```
 
 Run it even for a single worker. A miss here is cheap: the flag stays visible in the table.
-`worker-0` rows marked `NOT-FETCHED` → one more `mode: verify` haiku call on those rows only,
-writing `verify-0.md` (never overwrite `verify.md`);
-still `NOT-FETCHED` → they enter the First-party section with the flag, as an open gap.
+The first-party files were verified in Step 0 (`verify-0.md`); do not list them here.
 
 ## Step 4: Synthesize
 
-Read every `worker-<n>.md`, `verify.md` and `verify-0.md` if present (use `offset` + `limit` above 200 KB). Write
+Read every `worker-<n>.md`, `worker-0b.md`, `verify.md` and `verify-0.md` if present (use `offset` + `limit` above 200 KB). Write
 `docs/research/<repo>/YYYY-MM-DD-<slug>.md` (`date +%F`) in the project's prose language,
 following `znf:_shared/artifact-style` — header as `**Label:** value` lines, then:
 
 0. **First-party** — first section, never blank: per vendor, what its own feature covers (rows
-   from `worker-0.md` with their verify status), or `none found — keywords: <list>`; or the
+   from `worker-0.md` / `worker-0b.md` with their `verify-0.md` status; flagged rows stay with the flag), or `none found — keywords: <list>`; or the
    `N/A` or `not checked` line from Step 0.
 1. **Question** — the sentence, the done-criterion, the scope block.
 2. **Method** — workers, caps, verifier tier.

@@ -28,7 +28,7 @@ synthesis never run on that tier.
 
 Measured in this kit's cost baseline (2026-09-18, `zenify cost`): a sonnet research worker
 averages about 1.6 USD per run; a haiku verifier well under 1 USD. Typical comparison research
-(3 workers + verifier) lands near 5–6 USD; the Step 0 first-party worker adds one sonnet run. Re-measure with `zenify cost --by-skill` when the
+(3 workers + verifier) lands near 5–6 USD; Step 0 adds one sonnet run and one haiku verify (plus one sonnet follow-up when worker-0 hits its cap). Re-measure with `zenify cost --by-skill` when the
 numbers matter; they drift with page sizes and model pricing.
 
 ## When not to run
