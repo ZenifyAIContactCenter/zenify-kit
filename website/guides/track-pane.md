@@ -13,9 +13,9 @@ zenify feature track on
 zenify feature track off
 ```
 
-Lệnh áp dụng cho cả workspace. Khi bật, digest đầu session chỉ cho agent đọc `_shared/track.md`; agent gọi các lệnh [`zenify track`](/reference/cli/zenify_track) để ghi số liệu, bạn không cần gõ gì. Tắt thì mọi lệnh `zenify track` in `track: off` và không ghi.
+Lệnh áp dụng cho cả workspace. Khi bật, digest đầu session chỉ cho agent đọc `_shared/track.md`; agent gọi các lệnh [`zenify track`](/reference/cli/zenify_track) để ghi số liệu, bạn không cần gõ gì. Tắt thì mọi lệnh ghi của `zenify track` in `track: off` và không ghi.
 
-Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `/track-pane` để mở hoặc đóng pane. Pane chỉ dock cạnh chat khi Claude Code chạy fullscreen (`"tui": "fullscreen"` trong `~/.claude/settings.json`).
+Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `/track-pane` để mở hoặc đóng pane. Pane cũng tự mở khi prompt của bạn là `cook`, `fix`, `hotfix` hoặc `ship` (có hoặc không có tiền tố `znf:`).
 
 ## Status line
 
@@ -27,7 +27,7 @@ Status line luôn hiện, kể cả khi pane đóng.
 
 Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Hôm nay` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ znf: track lỗi: <nguyên nhân>`.
 
-## Bốn tab
+## Năm tab
 
 | Tab | Nội dung |
 |---|---|
@@ -35,8 +35,9 @@ Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Hôm nay` luôn hiệ
 | **Tổng** | Hôm nay của cả workspace: xong/bắt đầu, số task, số vòng, PR đã mở và đã merge, plan theo repo; danh sách việc đang chạy gom theo session, tab hiện tại ghi `(tab này)`; dòng `stale` cho việc bị bỏ dở |
 | **Estimate** | Với mỗi loại (cook, fix, hotfix): est đúng/thấp/cao so với thực tế; hotfix hiện số việc, trung vị và p90; tỉ lệ agent theo giai đoạn |
 | **Chất lượng** | Với mỗi loại: tỉ lệ ship bị chặn và bước chặn nhiều nhất, finding C/H/M/L trung bình, số vòng fix loop, tỉ lệ CI đỏ lần đầu, tỉ lệ thời gian chờ, token trung bình theo model; với fix/hotfix thêm ROUND trung bình, tỉ lệ sửa diện rộng và tỉ lệ có regression test |
+| **Backlog** | Việc chưa làm, nhóm theo nguồn: `manual`, `github`, `sdd`, `stale`. Mỗi dòng `repo · est · title · <số ngày>d`. Backlog rỗng hiện `Backlog trống`; lấy issue GitHub lỗi thì có dòng `⚠ github: <nguyên nhân>` |
 
-Dưới mọi tab là thang S/M/L hiện hành (lấy từ lịch sử của workspace) và các quy tắc hiệu chỉnh, ví dụ gợi ý tăng hoặc giảm est một size.
+Dưới mọi tab là thang S/M/L hiện hành (lấy từ lịch sử của workspace; nguồn thang `learned`, `history` hoặc `default` hiện cạnh số việc) và các quy tắc hiệu chỉnh, ví dụ gợi ý tăng hoặc giảm est một size.
 
 ## Thời gian agent và thời gian chờ
 
@@ -58,3 +59,41 @@ File nằm trong workspace:
 ## Est do ai ghi
 
 Est (S, M hoặc L) do `znf:cook`, `znf:fix` và `znf:hotfix` ghi theo hướng dẫn trong `_shared/track.md`: cook ghi sau khi design được duyệt, fix ghi sau khi nguyên nhân được xác nhận, hotfix ghi ngay lúc bắt đầu. Ghi est muộn hơn thì dòng `est` sau cùng thắng.
+
+## Backlog
+
+Tab `Backlog` gom việc chưa làm từ bốn nguồn:
+
+- `manual`: việc bạn hoặc agent thêm bằng `zenify track backlog add`.
+- `github`: issue đang mở trên GitHub mà bạn được giao hoặc do bạn tạo.
+- `sdd`: mục `minor (deferred)` và `parked` trong `progress.md` của các plan.
+- `stale`: việc đã bắt đầu nhưng bị bỏ dở.
+
+Mở tab `Backlog` thì pane chạy lại số liệu và bỏ qua cache backlog 5 phút (`zenify track stats --json --force`), nên issue GitHub mới hiện ngay. Các lần chạy khác dùng cache. Lấy GitHub lỗi (ví dụ chưa `gh auth login`) thì tab báo `⚠ github: ...`, ba nguồn còn lại vẫn hiện.
+
+```bash
+zenify track backlog add "sửa lỗi export" --repo contact-center-hub --est S --ref https://github.com/org/repo/issues/12
+zenify track backlog drop b-261030-ab12
+zenify track start --kind fix --repo kit --est S --from b-261030-ab12
+```
+
+- `backlog add "<title>" --repo <r> [--est S|M|L] [--ref <url|memory:<name>>]` thêm việc và in id `b-YYMMDD-xxxx`.
+- `backlog drop <bid|sdd id>` bỏ việc khỏi backlog; id `sdd` có dạng `repos/<...>/progress.md:<dòng>`.
+- `track start --from <id|issue URL>` ghi việc lấy từ backlog, nên nó biến khỏi tab khi đã bắt đầu.
+
+## Onboard
+
+Workspace mới chưa có lịch sử nên thang S/M/L dùng mặc định. Hai lệnh nạp dữ liệu ban đầu:
+
+```bash
+zenify track onboard memory
+zenify track onboard history            # xem trước, chỉ đọc
+zenify track onboard history --write --since 2026-09-01
+```
+
+- `onboard memory` đánh dấu workspace đã onboard từ memory của agent.
+- `onboard history` quét transcript Claude Code (`~/.claude/projects`), gom theo repo và worktree rồi in bảng xem trước. Thêm `--write` mới ghi dòng `history` vào sổ; chạy lại không tạo dòng trùng. `--since YYYY-MM-DD` giới hạn từ ngày đó.
+
+Khi có đủ việc (thật cộng `history`), thang S/M/L chuyển nguồn sang `history`, rồi `learned` khi có từ 20 việc thật đã đo. Dòng `history` chỉ góp vào thang và token trung bình, không vào Estimate, luật hiệu chỉnh hay số hôm nay.
+
+Xem [`zenify track`](/reference/cli/zenify_track), trong đó `stats --force` bỏ qua cache backlog.

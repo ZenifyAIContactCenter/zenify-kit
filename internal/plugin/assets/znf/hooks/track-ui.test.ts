@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import type { TrackItem, TrackStats } from '../types'
+import type { BacklogItem, TrackItem, TrackStats } from '../types'
 import { STATUS_OFF, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, ruleText, statusText, tabLines } from './track-ui'
 
 const A = 'aaaaaaaa-1111-2222-3333-444444444444'
@@ -35,6 +35,19 @@ const stats = (over: Partial<TrackStats> = {}): TrackStats => ({
   running: [],
   estimate: { byKind: {}, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: {} },
   quality: { byKind: {}, fix: { n: 0, roundAvg: null, wideRate: null, regressionRate: null } },
+  backlog: { items: [], ghError: '' },
+  onboarded: true,
+  ...over,
+})
+
+const bl = (source: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
+  source,
+  id: `${source}-1`,
+  repo: 'kit',
+  est: 'M',
+  ref: '-',
+  title: `${source} title`,
+  ageDays: 3,
   ...over,
 })
 
@@ -180,4 +193,47 @@ test('FR-6.1: cook/fix/hotfix/ship prompts and skills, with or without znf:, ope
   expect(isTrackSkill('znf:hotfix')).toBe(true)
   expect(isTrackSkill('ship')).toBe(true)
   expect(isTrackSkill('znf:scout')).toBe(false)
+})
+
+test('FR-13.7: Backlog groups by source in manual, github, sdd, stale order, one repo · est · title · age line each', () => {
+  const s = stats({
+    backlog: {
+      ghError: '',
+      items: [
+        bl('stale', { repo: 'hub', est: 'L', title: 'cook hub (c1)', ageDays: 9 }),
+        bl('sdd', { est: '-', title: 'spec A', ageDays: 1 }),
+        bl('github', { repo: 'web', est: '-', title: 'issue B', ageDays: 0 }),
+        bl('manual', { est: 'S', title: 'task C', ageDays: 5 }),
+        bl('manual', { est: 'M', title: 'task D', ageDays: 2 }),
+      ],
+    },
+  })
+  expect(texts(tabLines('backlog', s, A, X)).slice(0, 9)).toEqual([
+    'manual',
+    'kit · S · task C · 5d',
+    'kit · M · task D · 2d',
+    'github',
+    'web · - · issue B · 0d',
+    'sdd',
+    'kit · - · spec A · 1d',
+    'stale',
+    'hub · L · cook hub (c1) · 9d',
+  ])
+})
+
+test('FR-13.7: an empty backlog says Backlog trống; a ghError adds a ⚠ github line', () => {
+  expect(texts(tabLines('backlog', stats(), A, X))[0]).toBe('Backlog trống')
+  const t = tabLines('backlog', stats({ backlog: { items: [bl('manual')], ghError: 'gh: not logged in' } }), A, X)
+  expect(t.some(l => l.text === '⚠ github: gh: not logged in' && l.tone === 'warn')).toBe(true)
+  expect(texts(t)).toContain('kit · M · manual title · 3d')
+})
+
+test('FR-14.5: the footer names the history scale source and its sample size', () => {
+  const s = stats({ scale: { source: 'history', n: 25, S: 20, M: 60, L: 150 } })
+  expect(texts(tabLines('backlog', s, A, X))).toContain('thang (history, 25 việc): S<20m M<60m L<150m')
+})
+
+test('parseTrackStats fills a missing backlog so the tab never reads undefined', () => {
+  const raw = { ...stats(), backlog: { items: null, ghError: '' } }
+  expect(parseTrackStats(JSON.stringify(raw)).backlog.items).toEqual([])
 })

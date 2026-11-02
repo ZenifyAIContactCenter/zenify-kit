@@ -23,7 +23,10 @@ export const TABS: { id: Tab; label: string }[] = [
   { id: 'total', label: 'Tổng' },
   { id: 'estimate', label: 'Estimate' },
   { id: 'quality', label: 'Chất lượng' },
+  { id: 'backlog', label: 'Backlog' },
 ]
+// FR-13.7: the order the Backlog tab groups its sources in.
+const BACKLOG_SOURCES = ['manual', 'github', 'sdd', 'stale']
 
 // The English rule suffixes of internal/trackstats (RuleUp, RuleDown) and their display copy.
 const RULES: Record<string, string> = { 'est up 1 size': 'tăng est 1 size', 'est down 1 size': 'giảm est 1 size' }
@@ -38,7 +41,8 @@ export function parseTrackStats(stdout: string): TrackStats {
   if (!data || typeof data !== 'object' || typeof data.enabled !== 'boolean') {
     throw new Error('stats output is not track stats JSON')
   }
-  return { ...data, rules: data.rules ?? [], running: data.running ?? [] } as TrackStats
+  const backlog = { ghError: '', ...data.backlog, items: data.backlog?.items ?? [] }
+  return { ...data, rules: data.rules ?? [], running: data.running ?? [], backlog } as TrackStats
 }
 
 // The id this session has open: the bound id, running under this session.
@@ -180,6 +184,21 @@ function qualityLines(s: TrackStats): Line[] {
   return lines
 }
 
+// FR-13.7: items grouped by source, each row `repo · est · title · <age>d`.
+function backlogLines(s: TrackStats): Line[] {
+  const items = s.backlog?.items ?? []
+  const lines: Line[] = []
+  if (items.length === 0) lines.push(dim('Backlog trống'))
+  for (const src of BACKLOG_SOURCES) {
+    const group = items.filter(i => i.source === src)
+    if (group.length === 0) continue
+    lines.push(head(src))
+    for (const i of group) lines.push(plain([i.repo, i.est, i.title, `${i.ageDays}d`].join(SEP)))
+  }
+  if (s.backlog?.ghError) lines.push(warn(`⚠ github: ${s.backlog.ghError}`))
+  return lines
+}
+
 // FR-6.2: the footer under every tab — the S/M/L scale and the calibration rules.
 function footerLines(s: TrackStats): Line[] {
   const sc = s.scale
@@ -192,7 +211,11 @@ function footerLines(s: TrackStats): Line[] {
 // FR-6.2: the body of one tab, then the footer.
 export function tabLines(tab: Tab, s: TrackStats, session: string, boundId: string | undefined): Line[] {
   const body =
-    tab === 'this' ? thisLines(s, session, boundId) : tab === 'total' ? totalLines(s, session) : tab === 'estimate' ? estimateLines(s) : qualityLines(s)
+    tab === 'this' ? thisLines(s, session, boundId) : tab === 'total' ? totalLines(s, session) : tab === 'estimate'
+          ? estimateLines(s)
+          : tab === 'backlog'
+            ? backlogLines(s)
+            : qualityLines(s)
   return [...body, ...footerLines(s)]
 }
 

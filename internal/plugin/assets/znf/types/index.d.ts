@@ -20,6 +20,17 @@ export type TrackItem = {
   tokens: Record<string, { in: number; out: number; cacheRead: number; cacheCreation: number }> | null
 }
 
+// One Backlog row; source is manual|github|sdd|stale (Go `trackstats.BacklogItem`).
+export type BacklogItem = {
+  source: string
+  id: string
+  repo: string
+  est: string
+  ref: string
+  title: string
+  ageDays: number
+}
+
 export type TrackStats = {
   enabled: boolean
   malformed: number
@@ -59,9 +70,11 @@ export type TrackStats = {
     > | null
     fix: { n: number; roundAvg: number | null; wideRate: number | null; regressionRate: number | null }
   }
+  backlog: { items: BacklogItem[] | null; ghError: string }
+  onboarded: boolean
 }
 
-export type TrackTab = 'this' | 'total' | 'estimate' | 'quality'
+export type TrackTab = 'this' | 'total' | 'estimate' | 'quality' | 'backlog'
 
 declare module 'claude-code' {
   interface PluginState {

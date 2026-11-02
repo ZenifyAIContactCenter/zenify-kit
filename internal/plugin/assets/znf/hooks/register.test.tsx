@@ -77,6 +77,8 @@ const statsJson = (over: Record<string, unknown> = {}) =>
     running: [],
     estimate: { byKind: {}, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: {} },
     quality: { byKind: {}, fix: { n: 0, roundAvg: null, wideRate: null, regressionRate: null } },
+    backlog: { items: [], ghError: '' },
+    onboarded: true,
     ...over,
   })
 const ok = (stdout: string): Run => ({ exitCode: 0, stdout, stderr: '' })
@@ -455,14 +457,14 @@ test('SC-11: in session A, Tab này has x only; Tổng has x and y, A tagged (ta
   expect(all).toContain('bbbbbbbb hub')
 })
 
-test('FR-6.2: the tab row has the four tabs; Estimate and Chất lượng switch the body', async ($, on) => {
+test('FR-6.2: the tab row has the five tabs; Estimate and Chất lượng switch the body', async ($, on) => {
   engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
   await $.command.run({ command: 'track-pane', args: '' } as any)
   const ui = await mountTab($)
   const buttons = (await ui.findAll({ type: 'Button' })).map((b: any) => b.props.label)
-  expect(buttons).toEqual(['Tổng', 'Estimate', 'Chất lượng'])
+  expect(buttons).toEqual(['Tổng', 'Estimate', 'Chất lượng', 'Backlog'])
   await ui.press({ key: 'tab:estimate' })
   expect(await allTexts(ui)).toContain('▸Estimate')
   await ui.press({ key: 'tab:quality' })
@@ -701,4 +703,29 @@ test('a failed session write is toasted, not swallowed', async ($, on) => {
   await bindTo($, world, FIX_ID)
   expect(calls.toast).toHaveLength(1)
   expect(calls.toast[0].startsWith('lỗi đo thời gian: ') && calls.toast[0].includes('EACCES: permission denied')).toBe(true)
+})
+
+const FORCE_ARGV = [...STATS_ARGV, '--force']
+
+test('FR-13.7: opening the Backlog tab reruns stats with --force; other runs and tabs do not', async ($, on) => {
+  const backlog = { items: [{ source: 'manual', id: 'b1', repo: 'kit', est: 'S', ref: '-', title: 'fix the thing', ageDays: 4 }], ghError: 'gh: rate limited' }
+  const calls = engine(on, { stats: ok(statsJson({ backlog })) })
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  expect(statsRuns(calls).every(a => !a.includes('--force'))).toBe(true)
+  const before = statsRuns(calls).length
+  const ui = await mountTab($)
+  expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.props.label)).toEqual(['Tổng', 'Estimate', 'Chất lượng', 'Backlog'])
+  await ui.press({ key: 'tab:estimate' })
+  await clock.settle()
+  expect(statsRuns(calls)).toHaveLength(before)
+  await ui.press({ key: 'tab:backlog' })
+  await clock.settle()
+  expect(statsRuns(calls).slice(before)).toEqual([FORCE_ARGV])
+  const t = await allTexts(ui)
+  expect(t).toContain('▸Backlog')
+  expect(t).toContain('kit · S · fix the thing · 4d')
+  expect(t).toContain('⚠ github: gh: rate limited')
 })

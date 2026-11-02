@@ -7,7 +7,7 @@ import type { Kind, Usage, WaitKind } from './track'
 import { COPY, STATUS_OFF, TABS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
 import type { Line, Tab } from './track-ui'
 
-// FR-6.1: one pane; the four tabs are drawn inside it.
+// FR-6.1: one pane; the five tabs are drawn inside it.
 const PANE = { id: 'track', title: 'Track', columns: 44 } as const
 const isPane = (id: string) => id === PANE.id
 // FR-6.3/FR-11.5: how often the watched mtimes are compared, and the forced re-run for merged PRs.
@@ -36,8 +36,10 @@ let timers: Timer[] = []
 // The watched mtimes and local date of the last stats run; undefined = none since session start.
 let lastKey: string | undefined
 let isStatting = false
-// A forced run asked for while one was in flight; it runs when that one ends.
+// A forced run asked for while one was in flight; it runs when that one ends. A run that
+// bypasses the backlog cache (`--force`) stays that way when queued.
 let isRerunWanted = false
+let isFreshWanted = false
 
 const isMissing = (err: unknown) => /ENOENT/.test(String(err))
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -183,9 +185,11 @@ async function updateStatus($: $): Promise<void> {
 // (an append does not touch the directory's mtime), the overlay or the local date changed since the
 // last run, or on `force`. A failure is stored and shown (⚠), and is retried when a watched mtime
 // changes or on the next forced run. Outside a workspace the pane says so; the status line stays unset.
-async function refreshStats($: $, force = false): Promise<void> {
+// `fresh` (FR-13.7, opening the Backlog tab) also passes `--force`, bypassing the 5-minute backlog cache.
+async function refreshStats($: $, force = false, fresh = false): Promise<void> {
   if (isStatting) {
     if (force) isRerunWanted = true
+    if (fresh) isFreshWanted = true
     return
   }
   isStatting = true
@@ -207,7 +211,8 @@ async function refreshStats($: $, force = false): Promise<void> {
       ].join('|')
       if (!force && key === lastKey) return
       lastKey = key
-      const out = await $.process.run(['zenify', 'track', 'stats', '--json', '--workspace', ws], { timeoutMs: STATS_TIMEOUT_MS })
+      const argv = ['zenify', 'track', 'stats', '--json', '--workspace', ws, ...(fresh ? ['--force'] : [])]
+      const out = await $.process.run(argv, { timeoutMs: STATS_TIMEOUT_MS })
       if (out.exitCode !== 0) throw new Error(firstLine(out.stderr) || `zenify track stats: exit ${out.exitCode}`)
       data = parseTrackStats(out.stdout)
     } catch (err) {
@@ -223,8 +228,10 @@ async function refreshStats($: $, force = false): Promise<void> {
     // Every exit path, early returns included, runs the queued forced run; the flag is cleared
     // first, so it recurses at most once per queued request.
     if (isRerunWanted) {
+      const again = isFreshWanted
       isRerunWanted = false
-      await refreshStats($, true)
+      isFreshWanted = false
+      await refreshStats($, true, again)
     }
   }
 }
@@ -250,6 +257,12 @@ function armTimers($: $): void {
 async function show($: $): Promise<void> {
   await $.ui.open({ ...PANE })
   void refreshStats($, true).catch(statsError($))
+}
+
+// FR-13.7: opening the Backlog tab reruns stats past the backlog cache; the run is not awaited.
+async function selectTab($: $, id: Tab): Promise<void> {
+  await update($, tab, () => id)
+  if (id === 'backlog') void refreshStats($, true, true).catch(statsError($))
 }
 
 const isOpen = async ($: $) => (await $.ui.panes()).some(p => isPane(p.id))
@@ -368,7 +381,7 @@ export const register: Register = on => {
             t.id === selected ? (
               <Text color="claude" bold>{`▸${t.label}`}</Text>
             ) : (
-              <Button key={`tab:${t.id}`} label={t.label} plain dimColor onPress={() => update($, tab, () => t.id).then(() => undefined)} />
+              <Button key={`tab:${t.id}`} label={t.label} plain dimColor onPress={() => selectTab($, t.id)} />
             ),
           ])}
         </Box>
