@@ -38,7 +38,7 @@ Read this when the session digest says `features: track on`. Every command below
 - At the end of each run (shipped or stopped): `zenify track ship <id> --outcome shipped|blocked [--blocked-step lint|build|contract|behaviour|review] --findings C,H,M,L|- --rounds <n>`.
 - `--blocked-step` is the first ❌ board line: `lint`, `build`, `contract gate` → `contract`, `behaviour`, `review`. A ship blocked by `zenify ui-verify check` is `--blocked-step behaviour`. Omit it when shipped.
 - `--findings` = CRITICAL,HIGH,MEDIUM,LOW counts from Step 5 review (`-` when review did not run); `--rounds` = fix-loop rounds taken.
-- After `gh pr create` for every repo (not when called from hotfix): `zenify track end <id> --pr <url> [--pr <url>…] [--ledger <SDD progress.md if one exists>] --rounds <n>`.
+- After `gh pr create` for every repo, or after `gh stack submit` in a stacked ship (every layer's PR as a `--pr`) (not when called from hotfix): `zenify track end <id> --pr <url> [--pr <url>…] [--ledger <SDD progress.md if one exists>] --rounds <n>`.
 - When ship opens PRs and the feature is on, treat it as `--watch`: invoke `Skill(znf:ci-watch)` once per repo, with a line `track id: <id>` in the args.
 - When your args carry a `CI round` line, do NOT invoke `Skill(znf:ci-watch)`: ci-watch re-watches the new commit itself (its Step 3).
 
