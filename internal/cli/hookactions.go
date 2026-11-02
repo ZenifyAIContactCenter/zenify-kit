@@ -3,6 +3,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
@@ -130,8 +132,32 @@ func featuresLine(wsRoot string, w io.Writer) {
 		return
 	}
 	if feats["github.issues"] {
-		fmt.Fprintln(w, "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR; znf:nonstop plans from assigned issues")
+		fmt.Fprintln(w, "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR")
 	}
+	if feats["track"] {
+		fmt.Fprintln(w, "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch)")
+		trackOnboardLine(wsRoot, w)
+	}
+}
+
+// trackOnboardLine reminds the dev to onboard when log.md has no `onboard` row. A missing log.md means not onboarded; any other read error goes to stderr
+// and prints nothing on w.
+func trackOnboardLine(wsRoot string, w io.Writer) {
+	raw, err := os.ReadFile(filepath.Join(wsRoot, ".zenify", "track", "log.md")) //nolint:gosec // G304 -- path under the workspace root, not user input
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		ui.New(os.Stderr).Note(fmt.Sprintf("znf track onboard check: %v", err))
+		return
+	}
+	ev, malformed := trackstats.ParseLog(string(raw))
+	if malformed > 0 {
+		ui.New(os.Stderr).Note(fmt.Sprintf("track: log.md has %d malformed lines", malformed))
+	}
+	for _, e := range ev {
+		if e.Type == "onboard" {
+			return
+		}
+	}
+	fmt.Fprintln(w, "track: not onboarded — run the Onboard section of ~/.claude/skills/znf/skills/_shared/track.md")
 }
 
 func sentinelPresent() bool {

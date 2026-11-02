@@ -101,7 +101,7 @@ if [ "$run_static" = "1" ]; then
 fi
 
 # Scan anti-patterns on the diff's ADDED lines (minus the +++ header), plus every line of untracked
-# new files: an uncommitted tree (znf:nonstop) keeps new files out of git diff.
+# new files: an uncommitted worktree keeps new files out of git diff.
 added=$({ git diff "$BASE" 2>/dev/null | grep '^+' | grep -v '^+++'
   git ls-files --others --exclude-standard -z 2>/dev/null | xargs -0 -r cat | sed 's/^/+/'; } || true)
 

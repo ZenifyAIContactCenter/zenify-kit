@@ -72,8 +72,6 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify hotfix](./zenify_hotfix) | Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve. |
 | [zenify hotfix baseref](./zenify_hotfix_baseref) | In base ref mà hotfix của một repo sẽ xuất phát, theo chiến lược khai trong `worktree.json`. |
 | [zenify migrate](./zenify_migrate) | Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team. |
-| [zenify nonstop](./zenify_nonstop) | Nhóm lệnh phụ trợ cho orchestrator ngày znf:nonstop. |
-| [zenify nonstop stats](./zenify_nonstop_stats) | Tính thang size S/M/L đã học và thống kê hôm nay, 7 ngày, luật calibration từ estimates.md của nonstop. |
 | [zenify npm](./zenify_npm) | Nhóm lệnh cấu hình npm cho package private trên GitHub Packages. |
 | [zenify npm login](./zenify_npm_login) | Đặt NPM_TOKEN từ gh vào shell profile và cấp scope read:packages để npm install được package private. |
 | [zenify obs](./zenify_obs) | Tóm tắt sức khỏe một route hoặc một trace qua broker, đã che PII và giới hạn kích thước. |
@@ -86,6 +84,8 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
 | [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release tag từ lịch sử git của mọi repo trong workspace. |
 | [zenify reviewer](./zenify_reviewer) | In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent. |
+| [zenify reviewer get](./zenify_reviewer_get) | In engine review đã lưu trong `env.ZNF_REVIEWER` của `~/.claude/settings.json`, agent hoặc codex. |
+| [zenify reviewer set](./zenify_reviewer_set) | Đặt engine review của kit, agent hoặc codex, vào `env.ZNF_REVIEWER` của `~/.claude/settings.json`. |
 | [zenify route-log](./zenify_route-log) | Xem các record routing model do skill ghi (số liệu plan từ znf:analyze), đếm theo site, model và gate. |
 | [zenify rules](./zenify_rules) | Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc. |
 | [zenify rules lint](./zenify_rules_lint) | Kiểm file mà agent đọc (skill, rule, mã nguồn kit): chặn tiếng Việt, và bắt frontmatter khai sai key `globs:` thay cho `paths:`. |
@@ -97,6 +97,20 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify spec contracts](./zenify_spec_contracts) | Liệt kê repo và collection mà từng spec khai qua hai tag `_Blast-radius:` và `_DB:`. |
 | [zenify spec status](./zenify_spec_status) | Liệt kê trạng thái vòng đời của từng spec trong knowledge store. |
 | [zenify standards](./zenify_standards) | Kiểm tra mỗi FR trong spec có một test thật trên đĩa mà plan đã khai. |
+| [zenify track](./zenify_track) | Ghi và báo cáo các lượt cook/fix/hotfix cho pane dev track. |
+| [zenify track backlog](./zenify_track_backlog) | Quản lý backlog thủ công của pane (thêm, bỏ). |
+| [zenify track backlog add](./zenify_track_backlog_add) | Thêm một việc thủ công vào backlog và in `track: <bid>`. |
+| [zenify track backlog drop](./zenify_track_backlog_drop) | Bỏ một việc khỏi backlog (bid hoặc id sdd). |
+| [zenify track ci](./zenify_track_ci) | Ghi kết quả CI green hoặc red của commit đang được watch. |
+| [zenify track end](./zenify_track_end) | Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD. |
+| [zenify track est](./zenify_track_est) | Đặt size ước lượng cho id đã start; dòng est sau cùng thắng. |
+| [zenify track fix](./zenify_track_fix) | Ghi một vòng fix của lượt fix/hotfix: đường chẩn đoán narrow hoặc wide và có regression test hay không. |
+| [zenify track onboard](./zenify_track_onboard) | Nạp dữ liệu ban đầu cho track. |
+| [zenify track onboard history](./zenify_track_onboard_history) | Xem trước hoặc ghi lịch sử làm việc lấy từ transcript Claude Code. |
+| [zenify track onboard memory](./zenify_track_onboard_memory) | Đánh dấu đã onboard từ memory (dòng `onboard · memory`). |
+| [zenify track ship](./zenify_track_ship) | Ghi kết quả một lần chạy znf:ship: shipped hay blocked, bước bị chặn, số finding và số vòng fix. |
+| [zenify track start](./zenify_track_start) | Mở một lượt theo dõi và in id `track: <id>`. |
+| [zenify track stats](./zenify_track_stats) | In số liệu hôm nay, độ chính xác estimate và chất lượng từ log.md và sessions/*.log. |
 | [zenify ui-verify](./zenify_ui-verify) | Nhóm lệnh ghi/kiểm tra bằng chứng UI-verify cho gate cơ học của /znf:ship. |
 | [zenify ui-verify check](./zenify_ui-verify_check) | Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint hiện tại. |
 | [zenify ui-verify record](./zenify_ui-verify_record) | Ghi lại artifact UI-verify (screenshot + 3 số đo) cho fingerprint hiện tại. |

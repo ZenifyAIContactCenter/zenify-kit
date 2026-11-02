@@ -279,7 +279,7 @@ func TestSessionStart_FeaturesLine(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", "")
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	t.Setenv("ZNF_AUTONOMOUS", "")
-	want := "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR; znf:nonstop plans from assigned issues\n"
+	want := "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR\n"
 	cases := []struct {
 		name    string
 		overlay *string
@@ -309,6 +309,145 @@ func TestSessionStart_FeaturesLine(t *testing.T) {
 			}
 			if !c.wantOn && strings.Contains(out, "features:") {
 				t.Errorf("unexpected features line in %q", out)
+			}
+		})
+	}
+}
+
+// SC-26: the track digest line appears only when the overlay turns track on.
+func TestSessionStart_TrackLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	want := "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch)\n"
+	cases := []struct {
+		name    string
+		overlay string
+		wantOn  bool
+	}{
+		{"on", "features:\n  track: true\n", true},
+		{"off", "features:\n  track: false\n", false},
+		{"github only", "features:\n  github.issues: true\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			ws := mkWorkspace(t)
+			if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte(c.overlay), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			if rc := runSessionStart(ws, &buf); rc != 0 {
+				t.Fatalf("rc = %d", rc)
+			}
+			out := buf.String()
+			if got := strings.Contains(out, want); got != c.wantOn {
+				t.Errorf("track line present = %v, want %v in %q", got, c.wantOn, out)
+			}
+		})
+	}
+}
+
+// SC-35: the onboard reminder shows only with track on and no `onboard · memory` row.
+func TestSessionStart_TrackOnboardLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	want := "track: not onboarded — run the Onboard section of ~/.claude/skills/znf/skills/_shared/track.md\n"
+	cases := []struct {
+		name    string
+		overlay string
+		log     *string
+		wantOn  bool
+	}{
+		{"on, no log", "features:\n  track: true\n", nil, true},
+		{"on, log without onboard", "features:\n  track: true\n", ptr("2026-11-02T10:00:00Z · backlog · b1a2c3 · repo · - · - · t\n"), true},
+		{"on, onboarded", "features:\n  track: true\n", ptr("2026-11-02T10:00:00Z · onboard · memory\n"), false},
+		{"off, no log", "features:\n  track: false\n", nil, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			ws := mkWorkspace(t)
+			if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte(c.overlay), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if c.log != nil {
+				dir := filepath.Join(ws, ".zenify", "track")
+				if err := os.MkdirAll(dir, 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(*c.log), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var buf bytes.Buffer
+			if rc := runSessionStart(ws, &buf); rc != 0 {
+				t.Fatalf("rc = %d", rc)
+			}
+			if got := strings.Contains(buf.String(), want); got != c.wantOn {
+				t.Errorf("onboard line present = %v, want %v in %q", got, c.wantOn, buf.String())
+			}
+		})
+	}
+}
+
+// The onboard check never swallows a bad log: malformed rows and non-ENOENT read
+// errors are noted on stderr; stdout carries no onboard line for a read error.
+func TestSessionStart_TrackOnboardLogProblems(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	cases := []struct {
+		name       string
+		setup      func(t *testing.T, logPath string)
+		wantStderr string
+		wantLine   bool
+	}{
+		{"malformed line", func(t *testing.T, p string) {
+			if err := os.WriteFile(p, []byte("garbage line\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, "1 malformed", true},
+		{"log.md is a directory", func(t *testing.T, p string) {
+			if err := os.Mkdir(p, 0o750); err != nil {
+				t.Fatal(err)
+			}
+		}, "znf track onboard check", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			ws := mkWorkspace(t)
+			if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte("features:\n  track: true\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join(ws, ".zenify", "track")
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				t.Fatal(err)
+			}
+			c.setup(t, filepath.Join(dir, "log.md"))
+			errFile, err := os.CreateTemp(t.TempDir(), "stderr")
+			if err != nil {
+				t.Fatal(err)
+			}
+			old := os.Stderr
+			os.Stderr = errFile
+			var buf bytes.Buffer
+			rc := runSessionStart(ws, &buf)
+			os.Stderr = old
+			if rc != 0 {
+				t.Fatalf("rc = %d", rc)
+			}
+			raw, err := os.ReadFile(errFile.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(raw), c.wantStderr) {
+				t.Errorf("stderr %q lacks %q", raw, c.wantStderr)
+			}
+			if got := strings.Contains(buf.String(), "track: not onboarded"); got != c.wantLine {
+				t.Errorf("onboard line present = %v, want %v", got, c.wantLine)
 			}
 		})
 	}

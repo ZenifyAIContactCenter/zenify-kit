@@ -13,7 +13,7 @@ Four gates: PRE, BUNDLE, REVIEW, VERIFY — one step each below (`references/lif
 
 ## Step 1 — compute tier input (mechanical)
 
-`WT=<worktree>` (znf:nonstop reviews a worker's uncommitted tree from its own checkout) → run every
+`WT=<worktree>` (review an uncommitted worktree from its own checkout) → run every
 command block of this skill inside `cd "$WT" && …`, and give every reviewer `$WT` as the tree to
 read. Untracked new files count: add their lines to `ADDED` and list them to every reviewer.
 

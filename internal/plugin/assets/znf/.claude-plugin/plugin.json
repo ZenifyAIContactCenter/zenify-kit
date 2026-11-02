@@ -2,5 +2,39 @@
   "name": "znf",
   "description": "Zenify workspace skill kit — cook/fix/ground/scout/ship + forked engine",
   "version": "0.0.0",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "track": {
+      "type": "boolean",
+      "title": "Dev track",
+      "description": "Record time, tokens and ship quality of cook/fix/hotfix/ship runs in this workspace. Runs zenify feature track on|off.",
+      "default": false
+    },
+    "githubIssues": {
+      "type": "boolean",
+      "title": "GitHub issues",
+      "description": "Opt-in GitHub issues feature of this workspace. Runs zenify feature github.issues on|off.",
+      "default": false
+    },
+    "trackPane": {
+      "type": "string",
+      "title": "Track pane",
+      "description": "auto opens the track pane on a cook/fix/hotfix/ship prompt or skill; command opens it only with /track-pane; off never opens it and does not register /track-pane.",
+      "default": "auto",
+      "options": ["auto", "command", "off"]
+    },
+    "tips": {
+      "type": "boolean",
+      "title": "Status line tips",
+      "description": "Show contextual tips (backlog, estimate, over est, PRs waiting) at the end of the status line. The onboard tip and the track off line always show.",
+      "default": true
+    },
+    "reviewer": {
+      "type": "string",
+      "title": "Reviewer",
+      "description": "The engine znf:review uses. Runs zenify reviewer set agent|codex; applies to new sessions.",
+      "default": "agent",
+      "options": ["agent", "codex"]
+    }
+  }
 }

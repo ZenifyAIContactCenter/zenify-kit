@@ -1,70 +1,98 @@
-export type LedgerTask = {
+// The JSON of `zenify track stats --json` (Go `trackstats.Result`); names match the JSON exactly.
+// Go emits `null` for an empty slice or map it never filled, so those fields are nullable here.
+export type TrackKind = 'cook' | 'fix' | 'hotfix'
+
+export type TrackItem = {
   id: string
-  priority: string
+  kind: TrackKind
   repo: string
+  est: string
+  session: string
+  cwd: string
+  phase: string
+  status: 'running' | 'stale' | 'done' | 'cancelled' | 'rollback' | 'pushed'
+  startedAt: string
+  endedAt: string
+  prs: string[] | null
+  agentMin: number
+  wait: { ask: number; permission: number; idle: number; total: number }
+  phases: Record<string, { agentMin: number; waitMin: number }> | null
+  tokens: Record<string, { in: number; out: number; cacheRead: number; cacheCreation: number }> | null
+}
+
+// One Backlog row; source is manual|github|sdd|stale (Go `trackstats.BacklogItem`).
+export type BacklogItem = {
   source: string
-  issue: string
-  size: string
-  skill: string
-  worker: string
-  status: string
-  // The date of a `deferred until YYYY-MM-DD` status.
-  until?: string
-  evidence: string
+  id: string
+  repo: string
+  est: string
+  ref: string
+  title: string
+  ageDays: number
 }
 
-export type Ledger = {
-  date: string | null
-  tasks: LedgerTask[]
-  needs: { id: string; question: string }[]
-  malformed: string[]
-}
-
-// The JSON of `zenify nonstop stats --json`.
-export type NonstopStats = {
-  missing: boolean
-  scale: { source: 'learned' | 'default'; n: number; S: number; M: number; L: number }
-  today: { date: string; hit: number; total: number; over: number; under: number; points: number; reviewMinutes: number; ids: string[] }
-  week: { hitRate: number | null; pointsPerDay: number | null; reviewShare: number | null }
-  tiers: { T1: number; T2: number; T3: number }
-  rules: string[]
+export type TrackStats = {
+  enabled: boolean
   malformed: number
+  scale: { source: string; n: number; S: number; M: number; L: number }
+  rules: string[] | null
+  today: {
+    date: string
+    plans: Record<string, number> | null
+    started: Record<string, number> | null
+    ended: Record<string, number> | null
+    tasks: number
+    rounds: number
+    prsOpened: number
+    merged: number
+    prsWaiting: number
+    mergedError: string
+    items: TrackItem[] | null
+  }
+  running: TrackItem[] | null
+  estimate: {
+    byKind: Record<string, { n: number; hit: number; low: number; high: number }> | null
+    hotfix: { n: number; medianMin: number | null; p90Min: number | null }
+    phaseShare: Record<string, Record<string, number>> | null
+  }
+  quality: {
+    byKind: Record<
+      string,
+      {
+        n: number
+        shipBlockedRate: number | null
+        topBlockedStep: string | null
+        findingsAvg: { C: number; H: number; M: number; L: number } | null
+        fixLoopAvg: number | null
+        ciRedFirstRate: number | null
+        waitShare: number | null
+        tokensAvg: Record<string, { in: number; out: number }> | null
+      }
+    > | null
+    fix: { n: number; roundAvg: number | null; wideRate: number | null; regressionRate: number | null }
+  }
+  backlog: { items: BacklogItem[] | null; ghError: string }
+  onboarded: boolean
 }
+
+export type TrackTab = 'this' | 'total' | 'estimate' | 'quality' | 'backlog'
 
 declare module 'claude-code' {
   interface PluginState {
     znf: {
-      ledger: Shaped<Ledger | null>
-      ledgerError: Shaped<string | null>
-      // the last `zenify nonstop stats` answer, or why it failed
-      stats: Shaped<{ data?: NonstopStats; error?: string } | null>
-      // PR url -> one poll's label, Zenie state, base branch and review threads (undefined: being
-      // fetched; null: the query failed)
-      prInfo: Shaped<
-        Record<
-          string,
-          {
-            label: string
-            zenie: string
-            base?: string
-            threads?: { open: number; total: number } | null
-          }
-        >
-      >
-      // url -> epoch ms until which its merge button is armed, and the base it was armed for
-      confirming: Shaped<Record<string, { until: number; base: string }>>
-      // urls whose merge is running
-      merging: Shaped<string[]>
-      // the selected tab of the one nonstop pane
-      tab: Shaped<'human' | 'progress' | 'pending' | 'done'>
-      // spinner frame index
-      frame: Shaped<number>
-      // ids of the expanded task lines
-      expanded: Shaped<string[]>
-      // subagent id -> the nonstop task its runs are logged under (durations.log)
-      runTags: Shaped<Record<string, { id: string; kind: 'work' | 'review' }>>
-      // worktree slug -> nonstop task id, from the worker briefs
-      slugTasks: Shaped<Record<string, string>>
+      // the last `zenify track stats --json` answer, or why it failed
+      stats: Shaped<{ data?: TrackStats; error?: string } | null>
+      // the selected tab of the track pane
+      tab: Shaped<TrackTab>
+      // zenify track: the id this session's turns are recorded under; `ending` once its
+      // `zenify track end` ran, unbound at that turn's main-loop end
+      bound: Shaped<{ id: string; kind: 'cook' | 'fix' | 'hotfix'; ending: boolean } | null>
+      // zenify track: `enabled` of `zenify track stats --json`; false writes nothing
+      enabled: Shaped<boolean>
+      // zenify track: epoch ms the last main-loop turn ended, until the next prompt reads it
+      lastMainEnd: Shaped<number | null>
+      // zenify track: main-loop tool_use_ids a person was asked to allow
+      personAsks: Shaped<string[]>
     }
   }
 }

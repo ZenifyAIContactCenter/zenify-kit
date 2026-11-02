@@ -11,7 +11,7 @@ import (
 )
 
 // KnownFeatures lists the feature keys the personal overlay's `features:` map accepts.
-var KnownFeatures = []string{"github.issues"}
+var KnownFeatures = []string{"github.issues", "track"}
 
 // ReadFeatures returns the known feature toggles set in the overlay. A missing
 // file yields an empty map; keys outside KnownFeatures are ignored.

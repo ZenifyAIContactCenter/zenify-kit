@@ -23,7 +23,7 @@ func TestReviewSkill_Materialized_HasKeyParts(t *testing.T) {
 		"T1", "T2", "T3", // 3 tiers
 		"PRE", "BUNDLE", "REVIEW", "VERIFY", // 4 seams
 		"finding-schema.md",                    // references the shared schema
-		"WT=<worktree>",                        // nonstop reviews a worker tree from its own checkout
+		"WT=<worktree>",                        // review of an uncommitted worktree from its own checkout
 		"ls-files --others --exclude-standard", // untracked files count toward ADDED
 		"core.quotePath=false",                 // Unicode file names must reach cat unescaped
 	} {

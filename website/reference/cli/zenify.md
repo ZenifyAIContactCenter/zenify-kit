@@ -49,7 +49,6 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify guard](./zenify_guard): Nhóm lệnh cho git-guard, hook chặn commit, push và merge vào branch deploy.
 - [zenify hotfix](./zenify_hotfix): Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve.
 - [zenify migrate](./zenify_migrate): Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team.
-- [zenify nonstop](./zenify_nonstop): Nhóm lệnh phụ trợ cho orchestrator ngày znf:nonstop.
 - [zenify npm](./zenify_npm): Nhóm lệnh cấu hình npm cho package private trên GitHub Packages.
 - [zenify obs](./zenify_obs): Tóm tắt sức khỏe một route hoặc một trace qua broker, đã che PII và giới hạn kích thước.
 - [zenify observe](./zenify_observe): Nhóm lệnh theo dõi phiên Claude Code: số lần dispatch subagent và lượng tool output.
@@ -64,6 +63,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify skills](./zenify_skills): Nhóm lệnh quản lý plugin skill znf và bộ coding skill theo repo.
 - [zenify spec](./zenify_spec): Nhóm lệnh soi vòng đời spec và registry contract, đọc từ knowledge store.
 - [zenify standards](./zenify_standards): Kiểm tra mỗi FR trong spec có một test thật trên đĩa mà plan đã khai.
+- [zenify track](./zenify_track): Ghi và báo cáo các lượt cook/fix/hotfix cho pane dev track.
 - [zenify ui-verify](./zenify_ui-verify): Nhóm lệnh ghi/kiểm tra bằng chứng UI-verify cho gate cơ học của /znf:ship.
 - [zenify up](./zenify_up): Onboard máy vào workspace: clone repo, ghi cấu hình, gắn hook và skill, chuẩn bị knowledge store.
 - [zenify update](./zenify_update): Nâng cấp binary ZenifyKit lên bản mới nhất bằng đúng kênh đã cài, hoặc chỉ kiểm tra có bản mới.

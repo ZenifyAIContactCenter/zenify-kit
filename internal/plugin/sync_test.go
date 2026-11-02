@@ -347,7 +347,7 @@ func TestSync_PruneRemovesEmptyParentDirs(t *testing.T) {
 	}
 }
 
-// Guard: the hooks module (the nonstop pane) ships with the plugin.
+// Guard: the hooks module (the track pane and status line) ships with the plugin.
 func TestSync_ShipsHooksModule(t *testing.T) {
 	dest := t.TempDir()
 	if _, err := Sync(dest, filepath.Join(dest, ".manifest.json")); err != nil {

@@ -178,3 +178,21 @@ func TestSetFeature_WritesThroughSymlink(t *testing.T) {
 		t.Fatalf("target not updated: %v %v", got, err)
 	}
 }
+
+func TestReadFeatures_Track(t *testing.T) {
+	p := writeTmp(t, "ov.yaml", "features:\n  track: true\n")
+	got, err := ReadFeatures(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"track": true}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v", got)
+	}
+	if err := SetFeature(p, "track", false); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(p)
+	if !strings.Contains(string(b), "track: false") {
+		t.Fatalf("overlay = %q", b)
+	}
+}

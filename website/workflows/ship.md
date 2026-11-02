@@ -61,7 +61,7 @@ flowchart TD
 
 ### Gắn issue GitHub (tuỳ chọn)
 
-Mặc định ship mở PR như trên. Khi bạn bật tính năng `github.issues`, phiên có dòng `features: github.issues on` (worker của `znf:nonstop` nhận dòng `Features: github.issues on` trong brief) và ship gắn một issue GitHub trước khi mở PR. Bật bằng:
+Mặc định ship mở PR như trên. Khi bạn bật tính năng `github.issues`, phiên có dòng `features: github.issues on` (worker được giao việc nhận dòng `Features: github.issues on` trong brief) và ship gắn một issue GitHub trước khi mở PR. Bật bằng:
 
 ```bash
 zenify feature github.issues on
@@ -69,7 +69,7 @@ zenify feature github.issues on
 
 Tắt bằng `zenify feature github.issues off`; `zenify feature` không đối số liệt kê trạng thái từng tính năng. Trạng thái nằm ở khóa `features:` trong `.zenify-overlay.yaml`.
 
-Khi tính năng bật, ship tìm issue theo thứ tự: số issue bạn đưa trong phiên (kể cả dòng `Issue: <owner>/<repo>#N` trong brief của `znf:nonstop`), rồi issue nêu trong spec hoặc ledger SDD, rồi mới tạo mới. Trước khi tạo, ship kiểm trùng bằng `gh issue list --search` và `gh pr list --search` theo slug của branch; chỉ hai lệnh này quyết định, có hit thì ship dừng và hỏi bạn, kèm URL đầy đủ của từng hit. Issue mới được assign cho bạn (`--assignee @me`), tiêu đề lấy từ phần mô tả của tiêu đề PR, body lấy từ Problem trong Brief của spec, không gắn label; body được ghi ra file tạm rồi truyền qua `--body-file`, không bao giờ nhét văn bản tự do vào tham số shell trong ngoặc kép. Body PR có dòng `Closes #N` khi PR cùng repo với issue, `Closes <owner>/<repo>#N` khi PR ở repo khác (không dùng `Refs #N`). Nếu bạn nói không cần issue thì ship bỏ qua bước này và ghi lý do trong body PR.
+Khi tính năng bật, ship tìm issue theo thứ tự: số issue bạn đưa trong phiên (kể cả dòng `Issue: <owner>/<repo>#N` trong brief giao worker), rồi issue nêu trong spec hoặc ledger SDD, rồi mới tạo mới. Trước khi tạo, ship kiểm trùng bằng `gh issue list --search` và `gh pr list --search` theo slug của branch; chỉ hai lệnh này quyết định, có hit thì ship dừng và hỏi bạn, kèm URL đầy đủ của từng hit. Issue mới được assign cho bạn (`--assignee @me`), tiêu đề lấy từ phần mô tả của tiêu đề PR, body lấy từ Problem trong Brief của spec, không gắn label; body được ghi ra file tạm rồi truyền qua `--body-file`, không bao giờ nhét văn bản tự do vào tham số shell trong ngoặc kép. Body PR có dòng `Closes #N` khi PR cùng repo với issue, `Closes <owner>/<repo>#N` khi PR ở repo khác (không dùng `Refs #N`). Nếu bạn nói không cần issue thì ship bỏ qua bước này và ghi lý do trong body PR.
 
 - Base không phải default branch: issue chỉ tự đóng khi commit tới default branch, ship nói rõ điều này trong báo cáo.
 - Stacked PR: một issue cho cả stack, `Closes #N` chỉ nằm trong body của PR lớp trên cùng.
@@ -99,7 +99,7 @@ Bạn merge stack từ dưới lên; merge PR N thì mọi PR chưa merge bên d
 
 ## Sau khi mở PR: `--watch`
 
-`/znf:ship --watch` gọi `znf:ci-watch` sau khi mở PR. Ngoài chờ CI xanh, ci-watch còn chờ PR ở trạng thái CLEAN (CI xanh chưa đủ: review bắt buộc, review thread và check của app khác vẫn có thể chặn merge). Khi CLEAN, nó in URL PR đầy đủ và lệnh để bạn tự chạy: `! gh pr merge -R <owner/repo> <n> --merge`. Bị chặn thì nó liệt kê review thread chưa resolve (hoặc check bắt buộc đang đỏ) rồi dừng; ci-watch không resolve thread và không merge. Xem [`ci-watch`](/reference/skills/ci-watch).
+`/znf:ship --watch` gọi `znf:ci-watch` sau khi mở PR. Khi feature `track` bật (`zenify feature track on`), ship coi như luôn có `--watch` và truyền id track cho ci-watch để ghi kết quả CI vào sổ (`zenify track ci`). Ngoài chờ CI xanh, ci-watch còn chờ PR ở trạng thái CLEAN (CI xanh chưa đủ: review bắt buộc, review thread và check của app khác vẫn có thể chặn merge). Khi CLEAN, nó in URL PR đầy đủ và lệnh để bạn tự chạy: `! gh pr merge -R <owner/repo> <n> --merge`. Bị chặn thì nó liệt kê review thread chưa resolve (hoặc check bắt buộc đang đỏ) rồi dừng; ci-watch không resolve thread và không merge. Xem [`ci-watch`](/reference/skills/ci-watch).
 
 ## Quyết định thuộc về bạn
 
