@@ -52,6 +52,7 @@ Read this when the session digest says `features: track on`. Every command below
 
 - Work that comes from the backlog: use `start --from <bid|issue url>`, i.e. `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <bid|issue url>`; the item leaves the backlog. An unknown or dropped `bid` exits non-zero and writes nothing.
 - Work that surfaces during a task and is not done now, including a minor issue you do not fix in the current task: `zenify track backlog add "<title>" --repo <repo> [--est S|M|L] [--ref <issue url|memory:<name>>]`; it prints the `bid`.
+- When the user asks to take the next work item, run `zenify track stats --json`, show the `backlog.items`, let the user pick one, then `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <id>`.
 - Drop an item that is no longer wanted: `zenify track backlog drop <bid>`.
 
 ## Onboard

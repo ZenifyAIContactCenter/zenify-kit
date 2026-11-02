@@ -53,6 +53,32 @@ const bl = (source: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
 
 const texts = (lines: { text: string }[]) => lines.map(l => l.text)
 
+test('SC-44: contextual tips by priority, one at most', () => {
+  const tail = (s: TrackStats, id?: string) => statusText(s, A, id)
+  const backlog = { items: [bl('manual'), bl('github')], ghError: '' }
+  const prs = { ...stats().today, prsOpened: 3, merged: 1 }
+  // (2) no open id, backlog N > 0
+  expect(tail(stats({ backlog }))).toBe('track ⏸ · Hôm nay: 0/0 · Tip: còn 2 việc trong Backlog — gõ "hey claude lấy việc tiếp"')
+  // (3) open id, est not a size, agentMin >= 5
+  const noEst = stats({ running: [item({ est: '-', agentMin: 5 })] })
+  expect(tail(noEst, X).endsWith(' · Tip: chưa có estimate — gõ "hey claude est việc này"')).toBe(true)
+  // agentMin 4 and no est: no tip (3)
+  expect(tail(stats({ running: [item({ est: '-', agentMin: 4 })] }), X)).not.toContain('Tip:')
+  // (4) over est: M threshold is scale.M = 90
+  const over = stats({ running: [item({ est: 'M', agentMin: 95 })] })
+  expect(tail(over, X).endsWith(' · Tip: đã vượt est M (95m/90m) — cân nhắc tách việc hoặc est lại')).toBe(true)
+  expect(tail(stats({ running: [item({ est: 'M', agentMin: 89 })] }), X)).not.toContain('Tip:')
+  // (5) PRs waiting
+  expect(tail(stats({ today: prs }))).toBe('track ⏸ · Hôm nay: 0/0 · PR 3 (1 merged) · Tip: 2 PR chờ merge — gõ "hey claude check PR"')
+  // (2) beats (5)
+  expect(tail(stats({ backlog, today: prs }))).toContain('Tip: còn 2 việc trong Backlog')
+  expect(tail(stats({ backlog, today: prs }))).not.toContain('chờ merge')
+  // (4) beats (5) with an open id
+  expect(tail(stats({ today: prs, running: [item({ est: 'S', agentMin: 30 })] }), X)).toContain('đã vượt est S (30m/30m)')
+  // none
+  expect(tail(stats())).not.toContain('Tip:')
+})
+
 test('FR-11.2/SC-20: enabled false is the off line, verbatim', () => {
   expect(STATUS_OFF).toBe('⏸ track off · bật: /config → znf')
   expect(statusText(stats({ enabled: false }), A, X)).toBe(STATUS_OFF)
@@ -70,12 +96,12 @@ test('FR-11.3: wait shows as chờ <n>m; today shows ended/started, PR, merged a
     today: { ...stats().today, started: { cook: 2, fix: 1 }, ended: { fix: 1 }, prsOpened: 2, merged: 1 },
     estimate: { ...stats().estimate, byKind: { cook: { n: 3, hit: 2, low: 1, high: 0 }, fix: { n: 1, hit: 1, low: 0, high: 0 } } },
   })
-  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · plan · 12m/M · chờ 7m · Hôm nay: 1/3 · PR 2 (1 merged) · hit 75%`)
+  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · plan · 12m/M · chờ 7m · Hôm nay: 1/3 · PR 2 (1 merged) · hit 75% · Tip: 1 PR chờ merge — gõ "hey claude check PR"`)
 })
 
 test('FR-11.3: zero or unknown items are hidden, except Hôm nay', () => {
   const s = stats({ running: [item({ phase: '', agentMin: 0 })], today: { ...stats().today, prsOpened: 1 } })
-  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · Hôm nay: 0/0 · PR 1`)
+  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · Hôm nay: 0/0 · PR 1 · Tip: 1 PR chờ merge — gõ "hey claude check PR"`)
 })
 
 test('FR-11.3: an id of another session, or none bound, is ⏸', () => {

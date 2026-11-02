@@ -15,6 +15,11 @@ export const COPY = {
   toast: 'lỗi track: ',
   // FR-11.6: the status line's next step for a workspace that is not onboarded yet.
   onboard: 'Tip: Bạn có thể onboard cho agent lấy công việc bằng cách gõ "hey claude onboard track"',
+  // FR-11.7: contextual tips; {N}, {est}, {min}, {max} are filled by tipFor.
+  tipBacklog: 'Tip: còn {N} việc trong Backlog — gõ "hey claude lấy việc tiếp"',
+  tipNoEst: 'Tip: chưa có estimate — gõ "hey claude est việc này"',
+  tipOver: 'Tip: đã vượt est {est} ({min}m/{max}m) — cân nhắc tách việc hoặc est lại',
+  tipPr: 'Tip: {N} PR chờ merge — gõ "hey claude check PR"',
   noWorkspace: 'không ở trong workspace zenify',
   // FR-17.3: a /config row that could not be read back from its source.
   configToast: '⚠ lỗi đồng bộ /config: ',
@@ -68,6 +73,22 @@ function hitRate(s: TrackStats): number | undefined {
   return n > 0 ? byKind.reduce((a, k) => a + k.hit, 0) / n : undefined
 }
 
+// FR-11.7 (2)-(5): the one tip for this context, by priority; (1) onboard is handled in statusText.
+function tipFor(s: TrackStats, mine: TrackItem | undefined): string | undefined {
+  const n = s.backlog?.items?.length ?? 0
+  if (!mine && n > 0) return COPY.tipBacklog.replace('{N}', String(n))
+  if (mine && !isSize(mine.est) && mine.agentMin >= 5) return COPY.tipNoEst
+  if (mine && isSize(mine.est)) {
+    const max = s.scale[mine.est as 'S' | 'M' | 'L']
+    if (mine.agentMin >= max) {
+      return COPY.tipOver.replace('{est}', mine.est).replace('{min}', String(mine.agentMin)).replace('{max}', String(max))
+    }
+  }
+  const open = s.today.prsOpened - s.today.merged
+  if (open > 0) return COPY.tipPr.replace('{N}', String(open))
+  return undefined
+}
+
 // FR-11.2/11.3: an item that is 0 or unknown is hidden, except `Hôm nay`.
 export function statusText(s: TrackStats, session: string, boundId: string | undefined): string {
   if (!s.enabled) return STATUS_OFF
@@ -84,6 +105,7 @@ export function statusText(s: TrackStats, session: string, boundId: string | und
     `Hôm nay: ${sum(t.ended)}/${sum(t.started)}`,
     t.prsOpened > 0 && `PR ${t.prsOpened}${t.merged > 0 ? ` (${t.merged} merged)` : ''}`,
     hit !== undefined && `hit ${Math.round(hit * 100)}%`,
+    tipFor(s, mine) ?? false,
   ]
   return parts.filter(Boolean).join(SEP)
 }

@@ -25,6 +25,11 @@ Status line luôn hiện, kể cả khi pane đóng.
 - Khi bật và tab này đang có việc mở: `track ▶ <id> · <giai đoạn> · <phút agent>/<est> · chờ <phút> · Hôm nay: xong/bắt đầu · PR n (m merged) · hit n%`
 - Khi bật và tab này chưa có việc: `track ⏸ · Hôm nay: xong/bắt đầu · ...`
 - Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸ · Tip: Bạn có thể onboard cho agent lấy công việc bằng cách gõ "hey claude onboard track"`
+- Tip theo ngữ cảnh: mỗi lúc tối đa một tip, nối cuối dòng bằng ` · `, chọn theo thứ tự ưu tiên (onboard ở trên trước):
+  - tab này không có id mở và Backlog còn việc: `Tip: còn N việc trong Backlog — gõ "hey claude lấy việc tiếp"`
+  - có id mở, chưa có estimate và agent chạy từ 5 phút: `Tip: chưa có estimate — gõ "hey claude est việc này"`
+  - có id mở, đã vượt ngưỡng của size est: `Tip: đã vượt est M (95m/90m) — cân nhắc tách việc hoặc est lại`
+  - có PR mở chưa merge hôm nay: `Tip: N PR chờ merge — gõ "hey claude check PR"`
 
 Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Hôm nay` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track lỗi: <nguyên nhân>`.
 
