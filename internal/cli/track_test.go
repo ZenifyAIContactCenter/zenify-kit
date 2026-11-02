@@ -391,3 +391,52 @@ func TestTrack_EndPrintsEndedLine(t *testing.T) {
 		t.Fatalf("end: out %q err %v", out, err)
 	}
 }
+
+// runTrackErr is runTrack that also returns what the command wrote to stderr.
+func runTrackErr(t *testing.T, ws string, args ...string) (string, error) {
+	t.Helper()
+	root := NewRootCmd()
+	var errBuf bytes.Buffer
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&errBuf)
+	root.SetArgs(append(append([]string{"track"}, args...), "--workspace", ws))
+	err := root.Execute()
+	return errBuf.String(), err
+}
+
+func endWithLedger(t *testing.T, body string) (last, stderr string) {
+	t.Helper()
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "cook")
+	ledger := filepath.Join(t.TempDir(), "progress.md")
+	if err := os.WriteFile(ledger, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := runTrackErr(t, ws, "end", id, "--cancelled", "--ledger", ledger, "--rounds", "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSuffix(trackLog(t, ws), "\n"), "\n")
+	return lines[len(lines)-1], stderr
+}
+
+func TestTrackEndLedgerPlan(t *testing.T) {
+	last, stderr := endWithLedger(t, "# SDD ledger — plan: /ws/docs/plans/zenify-kit/2026-11-02-x.md\nTask 1: complete\nTask 2: complete\n")
+	if !strings.HasSuffix(last, " · 2 · 0 · /ws/docs/plans/zenify-kit/2026-11-02-x.md") || stderr != "" {
+		t.Fatalf("row=%q stderr=%q", last, stderr)
+	}
+}
+
+func TestTrackEndLedgerNoPlan(t *testing.T) {
+	last, stderr := endWithLedger(t, "# progress\n")
+	if !strings.HasSuffix(last, " · cancelled · 0 · 0") || !strings.Contains(stderr, `has no "# SDD ledger — plan:" first line`) {
+		t.Fatalf("row=%q stderr=%q", last, stderr)
+	}
+}
+
+func TestTrackEndLedgerPlanWithSeparator(t *testing.T) {
+	last, stderr := endWithLedger(t, "# SDD ledger — plan: /a · b.md\n")
+	if !strings.HasSuffix(last, " · cancelled · 0 · 0") || !strings.Contains(stderr, "plan path") {
+		t.Fatalf("row=%q stderr=%q", last, stderr)
+	}
+}

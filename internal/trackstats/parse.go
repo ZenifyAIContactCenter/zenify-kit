@@ -108,7 +108,7 @@ func parseLogLine(raw string) (Event, bool) {
 	case "ci":
 		ok = len(f) == 1 && oneOf(f[0], "green", "red")
 	case "end":
-		ok = len(f) == 3 && f[0] != "" && intOrDash(f[1]) && intOrDash(f[2])
+		ok = (len(f) == 3 || (len(f) == 4 && f[3] != "")) && f[0] != "" && intOrDash(f[1]) && intOrDash(f[2])
 	}
 	if !ok {
 		return Event{}, false

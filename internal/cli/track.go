@@ -442,16 +442,27 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 				if rounds < 0 {
 					return "", nil, false, badTrack("--rounds must be >= 0")
 				}
-				tasks := 0
+				tasks, plan := 0, ""
 				if ledger != "" {
-					n, err := countLedgerTasks(ledger)
+					n, p, err := readLedger(ledger)
 					if err != nil {
 						return "", nil, false, badTrack("read --ledger: %v", err)
 					}
-					tasks = n
+					tasks, plan = n, p
+					switch {
+					case plan == "":
+						fmt.Fprintf(cmd.ErrOrStderr(), "track: ledger %s has no \"# SDD ledger — plan:\" first line; end row written without the plan\n", ledger)
+					case strings.Contains(plan, trackSep) || strings.ContainsAny(plan, "\r\n"):
+						fmt.Fprintf(cmd.ErrOrStderr(), "track: plan path %q holds the field separator; end row written without the plan\n", plan)
+						plan = ""
+					}
 				}
 				// "end" is the row kind; checkTrackID also rejects a second end.
-				return "end", []string{a[0], outcome, strconv.Itoa(tasks), strconv.Itoa(rounds)}, true, nil
+				fields := []string{a[0], outcome, strconv.Itoa(tasks), strconv.Itoa(rounds)}
+				if plan != "" {
+					fields = append(fields, plan)
+				}
+				return "end", fields, true, nil
 			})
 		},
 	}
@@ -459,23 +470,30 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 	c.Flags().StringVar(&branch, "branch", "", "pushed branch name (hotfix; the human opens the PR)")
 	c.Flags().BoolVar(&rollback, "rollback", false, "the run ended in a rollback")
 	c.Flags().BoolVar(&cancelled, "cancelled", false, "the run was cancelled")
-	c.Flags().StringVar(&ledger, "ledger", "", "SDD ledger file; its `Task <N>: complete` lines are counted")
+	c.Flags().StringVar(&ledger, "ledger", "", "SDD ledger file; its `Task <N>: complete` lines are counted and its first-line plan path is kept")
 	c.Flags().IntVar(&rounds, "rounds", 0, "fix rounds of the review in znf:ship")
 	return c
 }
 
-func countLedgerTasks(path string) (int, error) {
+const ledgerPlanPrefix = "# SDD ledger — plan: "
+
+// readLedger counts the completed tasks and returns the plan path from the
+// first line; plan is "" when that line does not have the SDD ledger shape.
+func readLedger(path string) (tasks int, plan string, err error) {
 	b, err := os.ReadFile(path) //nolint:gosec // G304 -- a CLI flag naming a local ledger
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
-	n := 0
-	for _, l := range strings.Split(string(b), "\n") {
-		if trackTasksRe.MatchString(strings.TrimSpace(l)) {
-			n++
+	for i, l := range strings.Split(string(b), "\n") {
+		l = strings.TrimSpace(l)
+		if i == 0 && strings.HasPrefix(l, ledgerPlanPrefix) {
+			plan = strings.TrimSpace(strings.TrimPrefix(l, ledgerPlanPrefix))
+		}
+		if trackTasksRe.MatchString(l) {
+			tasks++
 		}
 	}
-	return n, nil
+	return tasks, plan, nil
 }
 
 func newTrackStatsCmd(ws *string) *cobra.Command {

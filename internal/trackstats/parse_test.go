@@ -37,3 +37,14 @@ func TestParseSession(t *testing.T) {
 		t.Fatalf("cwd=%q bad=%d ev=%+v", cwd, bad, ev)
 	}
 }
+
+func TestParseLogEndPlanField(t *testing.T) {
+	log := "2026-11-02T01:00:00Z · start · cook-261102-aaaa · cook · zenify-kit · M\n" +
+		"2026-11-02T02:00:00Z · end · cook-261102-aaaa · https://github.com/o/r/pull/1 · 3 · 1 · /ws/docs/plans/zenify-kit/p.md\n" +
+		"2026-11-02T03:00:00Z · end · cook-261102-aaaa · cancelled · 0 · 0 · a · b\n"
+	ev, bad := ParseLog(log)
+	// the 4-field end parses with F[3] = path; a 5-field end is malformed
+	if bad != 1 || len(ev) != 2 || len(ev[1].F) != 4 || ev[1].F[3] != "/ws/docs/plans/zenify-kit/p.md" {
+		t.Fatalf("bad=%d ev=%+v", bad, ev)
+	}
+}

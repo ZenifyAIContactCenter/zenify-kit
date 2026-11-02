@@ -35,7 +35,7 @@ zenify track stats --json
 - [zenify](./zenify): Binary dòng lệnh của ZenifyKit, chứa mọi lệnh workspace và plugin skill đi kèm.
 - [zenify track backlog](./zenify_track_backlog): Quản lý backlog thủ công của pane (thêm, bỏ).
 - [zenify track ci](./zenify_track_ci): Ghi kết quả CI green hoặc red của commit đang được watch.
-- [zenify track end](./zenify_track_end): Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD.
+- [zenify track end](./zenify_track_end): Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD và lưu đường dẫn plan từ dòng đầu.
 - [zenify track est](./zenify_track_est): Đặt size ước lượng cho id đã start; dòng est sau cùng thắng.
 - [zenify track fix](./zenify_track_fix): Ghi một vòng fix của lượt fix/hotfix: đường chẩn đoán narrow hoặc wide và có regression test hay không.
 - [zenify track onboard](./zenify_track_onboard): Nạp dữ liệu ban đầu cho track.
