@@ -459,15 +459,6 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 					case strings.Contains(plan, trackSep) || strings.ContainsAny(plan, "\r\n"):
 						fmt.Fprintf(cmd.ErrOrStderr(), "track: plan path %q holds the field separator; end row written without the plan\n", plan)
 						plan = ""
-					case !filepath.IsAbs(plan):
-						// Stats resolve a relative plan against the workspace, not the cwd it was written from.
-						abs, aerr := filepath.Abs(plan)
-						if aerr != nil {
-							fmt.Fprintf(cmd.ErrOrStderr(), "track: plan path %q: %v; end row written without the plan\n", plan, aerr)
-							plan = ""
-						} else {
-							plan = abs
-						}
 					}
 				}
 				// "end" is the row kind; checkTrackID also rejects a second end.
@@ -706,6 +697,17 @@ func readPlanTitle(wsDir, p string) (string, error) {
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(wsDir, p)
 	}
+	// Stat before Open: opening a FIFO blocks. Only a regular file is read.
+	fi, err := os.Stat(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !fi.Mode().IsRegular() {
+		return "", nil
+	}
 	f, err := os.Open(p) //nolint:gosec // G304 -- path comes from this workspace's own track log
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
@@ -714,15 +716,11 @@ func readPlanTitle(wsDir, p string) (string, error) {
 		return "", err
 	}
 	defer func() { _ = f.Close() }()
-	// Only a regular file: a FIFO or /dev/zero would hang or bloat the stats run.
-	fi, err := f.Stat()
-	if err != nil {
-		return "", err
-	}
-	if !fi.Mode().IsRegular() {
+	first, err := bufio.NewReader(io.LimitReader(f, 4096)).ReadString('\n')
+	if errors.Is(err, io.EOF) && len(first) >= 4096 {
+		// The line is cut by the read limit: no title rather than a truncated prefix.
 		return "", nil
 	}
-	first, err := bufio.NewReader(io.LimitReader(f, 4096)).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}

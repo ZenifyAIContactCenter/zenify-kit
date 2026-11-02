@@ -129,6 +129,20 @@ async function syncLive($: $): Promise<void> {
   await write
 }
 
+// FR-2.1: a live file left in ask or permission by an earlier run of this session becomes busy.
+async function resetStaleLive($: $): Promise<void> {
+  if (!(await isEnabled($))) return
+  let text: string
+  try {
+    text = String(await $.fs.read(`${await workspaceDir($)}/.zenify/track/live/${await $.session.id()}.json`))
+  } catch (err) {
+    if (isMissing(err)) return
+    throw err
+  }
+  const state = (JSON.parse(text) as { state?: string }).state
+  if (state === 'ask' || state === 'permission') await syncLive($)
+}
+
 // FR-2.2: forgets a finished call; true when it was one a person waited on.
 const settle = (useId: string) => [pendingAsk.delete(useId), pendingPermission.delete(useId)].some(Boolean)
 
@@ -364,8 +378,9 @@ export const register: Register = (on, options: PluginOptions) => {
     // Not awaited: the stats run may ask gh for merged PRs and must not hold the session start.
     void refreshStats($, true).catch(statsError($))
     armTimers($)
-    // FR-2.1: a resumed session may find a stale ask/permission live file; the beat keeps it alive.
-    if (await isEnabled($)) await syncLive($).catch(timingError($))
+    // FR-2.1: a resumed session may find a stale ask/permission live file, and the beat keeps it
+    // alive. Not awaited; it writes only when the file is there and stale.
+    void resetStaleLive($).catch(timingError($))
     return next(e)
   })
 

@@ -949,6 +949,14 @@ test('FR-2.1: session start overwrites a stale ask live file with busy and touch
   expect(liveWrites(calls)).toHaveLength(1)
 })
 
+test('FR-2.1: session start with no live file writes no live file, beat or pulse', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(calls.write.filter(w => w.path === LIVE || w.path === PULSE)).toEqual([])
+})
+
 test('FR-2.4: the first ask writes .beat before pulse', async ($, on) => {
   const world = trackWorld()
   const calls = engine(on, world)
@@ -991,6 +999,7 @@ test('SC-1: a session log append writes pulse; a pulse mtime change alone re-run
   await bindTo($, world, FIX_ID)
   await clock.settle()
   const logAt = calls.write.findIndex(w => w.path === SESSION_LOG)
+  expect(logAt).toBeGreaterThanOrEqual(0)
   expect(calls.write.findIndex((w, i) => i > logAt && w.path === PULSE)).toBeGreaterThan(logAt)
   const before = statsRuns(calls).length
   await clock.advance(2000)

@@ -607,14 +607,20 @@ func TestTrackEndMissingLedgerWritesThreeFieldRow(t *testing.T) {
 	}
 }
 
-func TestTrackEndRelativePlanBecomesAbsolute(t *testing.T) {
+func TestTrackEndRelativePlanStoredVerbatim(t *testing.T) {
 	last, _ := endWithLedger(t, "# SDD ledger — plan: docs/plans/r/p.md\nTask 1: complete\n")
-	want, err := filepath.Abs("docs/plans/r/p.md")
-	if err != nil {
+	if !strings.HasSuffix(last, " · 1 · 0 · docs/plans/r/p.md") {
+		t.Fatalf("row = %q", last)
+	}
+}
+
+func TestReadPlanTitleLongFirstLineGivesNoTitle(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "p.md")
+	if err := os.WriteFile(p, []byte("# "+strings.Repeat("a", 5000)+"\nbody\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(last, " · 1 · 0 · "+want) {
-		t.Fatalf("row = %q, want plan %q", last, want)
+	if got, err := readPlanTitle("", p); err != nil || got != "" {
+		t.Fatalf("got %d bytes, err %v", len(got), err)
 	}
 }
 
