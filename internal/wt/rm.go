@@ -200,7 +200,7 @@ func deleteEmptyRemote(o RmOptions, branch, recorded, startSHA, cfgBase, recBase
 		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: not a wt task branch\n", branch)
 		return
 	}
-	out, e := rr.Run(o.RepoRoot, "ls-remote", "--heads", "origin", branch)
+	out, e := rr.Run(o.RepoRoot, "ls-remote", "--heads", "origin", "refs/heads/"+branch)
 	if e != nil {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not look up origin/%s: %s\n", branch, gitErrLine(e))
 		return

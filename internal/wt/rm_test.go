@@ -631,6 +631,64 @@ func TestRunRm_LegacyStateWithoutStartSHAKeepsRemoteBranch(t *testing.T) {
 	}
 }
 
+// postPushCommitter commits in the worktree right after wt new's push returns.
+type postPushCommitter struct {
+	recRunner
+	t *testing.T
+}
+
+func (p *postPushCommitter) Run(dir string, args ...string) ([]byte, error) {
+	out, err := p.recRunner.Run(dir, args...)
+	if len(args) > 0 && args[0] == "push" && err == nil {
+		gitT(p.t, dir, "commit", "-q", "--allow-empty", "-m", "late work")
+	}
+	return out, err
+}
+
+// A commit made in the worktree right after the push must not become the start
+// commit: StartSHA is captured before the push, so rm sees tip != StartSHA.
+func TestRunRm_KeepsBranchWithCommitMadeRightAfterPush(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	o.Runner = &postPushCommitter{recRunner: recRunner{inner: gitx.ExecRunner()}, t: t}
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	wtp := filepath.Join(root, ".worktrees", "my-task")
+	gitT(t, wtp, "push", "-q", "origin", "namph/feat/my-task") // the work reaches origin
+	var rb bytes.Buffer
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Force: true, Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if rec.deleted() || !bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("branch with later work must stay; calls %v", rec.calls)
+	}
+}
+
+// ls-remote matches by ref suffix; an unrelated origin branch ending in our
+// name must not look like ours. Origin has prefix/<branch>, wt new creates
+// <branch>: the empty branch is wt's and rm deletes it.
+func TestRunRm_SuffixMatchingRemoteBranchDoesNotBlockCleanup(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	gitT(t, root, "push", "-q", "origin", "main:refs/heads/prefix/namph/feat/my-task")
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	st, _ := ReadState(root)
+	if w, _ := st.Find("my-task"); w.StartSHA == "" {
+		t.Fatal("StartSHA must be recorded: origin had no branch of that exact name")
+	}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: gitx.ExecRunner(), Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if bareHas(t, bare, "namph/feat/my-task") || !bareHas(t, bare, "prefix/namph/feat/my-task") {
+		t.Fatalf("only the exact branch should be deleted; stderr %q", rb.String())
+	}
+}
+
 // seedOriginBranch puts namph/feat/my-task on origin (optionally with a commit)
 // and leaves no local branch, like work someone else already pushed.
 func seedOriginBranch(t *testing.T, root string, withCommit bool) {

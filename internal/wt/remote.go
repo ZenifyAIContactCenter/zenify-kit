@@ -61,9 +61,15 @@ var baselineDeploy = map[string]bool{"main": true, "master": true, "staging": tr
 // remoteBranchExists is true when origin lists refs/heads/<branch>, and also when
 // the lookup fails: not knowing counts as "already there", the safe answer.
 func remoteBranchExists(rr gitx.Runner, repoRoot, branch string) bool {
-	out, err := rr.Run(repoRoot, "ls-remote", "--heads", "origin", branch)
+	out, err := rr.Run(repoRoot, "ls-remote", "--heads", "origin", "refs/heads/"+branch)
 	if err != nil {
 		return true
 	}
-	return strings.TrimSpace(string(out)) != ""
+	// ls-remote patterns match by suffix; accept only the exact ref name.
+	for _, line := range strings.Split(string(out), "\n") {
+		if f := strings.Fields(line); len(f) == 2 && f[1] == "refs/heads/"+branch {
+			return true
+		}
+	}
+	return false
 }

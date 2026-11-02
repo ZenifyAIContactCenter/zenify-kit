@@ -283,12 +283,18 @@ func RunNew(o NewOptions) error {
 				// Only a branch wt new itself puts on origin may later be deleted
 				// from it: if origin already had it (or we cannot tell), no StartSHA.
 				existed := remoteBranchExists(rr, o.RepoRoot, branch)
+				// Captured BEFORE the push and never re-read: a commit made after
+				// the push must not become the "start" commit.
+				startSHA := ""
+				if sha, e := r.Run(path, "rev-parse", "HEAD"); e == nil {
+					startSHA = strings.TrimSpace(string(sha))
+				}
 				if _, e := rr.Run(path, "push", "-u", "origin", branch); e != nil {
 					_, _ = fmt.Fprintf(o.Stderr, "wt: could not push %s to origin (%s); push it yourself when online\n", branch, pushRejectedHint(gitErrLine(e)))
 				} else {
 					pushed = true
-					if sha, e := r.Run(path, "rev-parse", "HEAD"); e == nil && !existed {
-						wtRec.StartSHA = strings.TrimSpace(string(sha))
+					if !existed && startSHA != "" {
+						wtRec.StartSHA = startSHA
 						// Re-save: the record was written before the push (abort
 						// semantics above stay untouched); this only adds StartSHA.
 						if e := SaveWorktree(o.RepoRoot, wtRec, o.Pid, o.Host, o.Now); e != nil {
