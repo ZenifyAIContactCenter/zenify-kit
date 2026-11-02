@@ -1,7 +1,7 @@
 // FR-17: the kit's settings as /config rows (manifest userConfig). The rows mirror the real
 // sources: features in .zenify-overlay.yaml (`zenify feature`), the reviewer in env.ZNF_REVIEWER
 // (`zenify reviewer`). A change runs the writing command; session start pulls the sources back.
-import type { EngineInterface as $, On, PluginOptions } from 'claude-code'
+import type { EngineInterface as $, ConfigSetInput, On, PluginOptions } from 'claude-code'
 
 import { COPY } from './track-ui'
 
@@ -34,29 +34,40 @@ function writeArgv(field: string, value: unknown): string[] | undefined {
   return undefined
 }
 
+// The keys align is setting: they copy a source's value, so the config.set hook writes nothing
+// back. A session skips this plugin's own hooks for its $.config.set; `claude plugin test` runs
+// them and stamps no `origin`, so the key marks align's set. A change to the same key that names
+// another origin (a person in /config, the bridge, another plugin) is still written.
+const aligning = new Set<string>()
+// The znf keys changed by anyone but align since the running sync began its reads: align leaves
+// them, so a stale read never overwrites a newer change.
+const changed = new Set<string>()
+
+const isAlign = (e: ConfigSetInput) =>
+  aligning.has(e.key) && (!e.origin || (e.origin.kind === 'plugin' && e.origin.name === 'znf'))
+
 // FR-17.2: a znf row change runs its command first; a failure denies it, the row keeps its value.
 export function registerConfig(on: On): void {
   on('config.set', async ($, e, next) => {
-    const argv = e.key.startsWith('znf.') && !aligning.has(e.key) ? writeArgv(e.key.slice(4), e.value) : undefined
-    if (!argv) return next(e)
-    try {
-      await run($, argv)
-    } catch (err) {
-      return { deny: message(err) }
+    if (!e.key.startsWith('znf.') || isAlign(e)) return next(e)
+    const argv = writeArgv(e.key.slice(4), e.value)
+    if (argv) {
+      try {
+        await run($, argv)
+      } catch (err) {
+        return { deny: message(err) }
+      }
     }
-    return next(e)
+    const res = await next(e)
+    if (res.deny === undefined) changed.add(e.key)
+    return res
   })
 }
 
-// The keys align is setting: they copy a source's value, so the config.set hook writes nothing
-// back. A session skips this plugin's own hooks for its $.config.set; `claude plugin test` runs
-// them and stamps no `origin`, so the hook cannot tell by the event alone.
-const aligning = new Set<string>()
-
 // Sets one row to its source's value when they differ; a refused set is an error.
 async function align($: $, options: PluginOptions, field: string, value: boolean | string): Promise<void> {
-  if (options[field] === value) return
   const key = `znf.${field}`
+  if (options[field] === value || changed.has(key)) return
   aligning.add(key)
   try {
     const res = await $.config.set({ key, value })
@@ -70,6 +81,7 @@ async function align($: $, options: PluginOptions, field: string, value: boolean
 // belong to a workspace. Each failure is a ⚠ toast and leaves its row alone.
 export async function syncConfig($: $, options: PluginOptions, inWorkspace: boolean): Promise<void> {
   const toast = (err: unknown) => $.ui.toast(`${COPY.configToast}${message(err)}`)
+  changed.clear()
   if (inWorkspace) {
     await (async () => {
       const on = new Map<string, boolean>()

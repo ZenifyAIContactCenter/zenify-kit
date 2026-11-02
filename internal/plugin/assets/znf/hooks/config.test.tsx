@@ -35,6 +35,10 @@ const STATS = JSON.stringify({
 type World = {
   // Answers by the joined argv; a missing entry exits 127.
   runs: Record<string, Run>
+  // Holds the answer to this joined argv until the promise resolves (a read in flight).
+  holdRun?: Record<string, Promise<void>>
+  // Holds the writer for the first set of this key until the promise resolves (an align in flight).
+  holdSet?: Record<string, Promise<void>>
   // Joined argv that cannot start (the call rejects with this reason).
   rejects?: Record<string, string>
 }
@@ -58,14 +62,20 @@ function engine(on: any, world: World): Calls {
   )
   on('fs.read', (_: unknown, e: { path: string }) => ({ deny: `ENOENT: no such file, open '${e.path}'` }))
   // The writer beneath every config.set hook: the row takes the value.
-  on('config.set', (_: unknown, e: { key: string; value: unknown }) => {
+  on('config.set', async (_: unknown, e: { key: string; value: unknown }) => {
     calls.set.push({ key: e.key, value: e.value })
+    const hold = world.holdSet?.[e.key]
+    if (hold) {
+      delete world.holdSet![e.key]
+      await hold
+    }
     return { value: e.value }
   })
-  on('process.run', (_: unknown, e: { argv: string[] }) => {
+  on('process.run', async (_: unknown, e: { argv: string[] }) => {
     if (e.argv[1] === 'track') return { value: ok(STATS) }
     const key = e.argv.join(' ')
     calls.run.push(key)
+    if (world.holdRun?.[key]) await world.holdRun[key]
     if (world.rejects?.[key]) return { deny: world.rejects[key] }
     return { value: world.runs[key] ?? { exitCode: 127, stdout: '', stderr: `unexpected ${key}` } }
   })
@@ -164,4 +174,46 @@ test('FR-17.3: a failing read is a ⚠ toast and no row changes', async ($, on) 
   await start($, clock)
   expect(calls.toast.some(t => t.startsWith('⚠') && t.includes('overlay: bad yaml'))).toBe(true)
   expect(calls.set).toEqual([{ key: 'znf.reviewer', value: 'codex' }])
+})
+
+const deferred = () => {
+  let release!: () => void
+  const promise = new Promise<void>(r => (release = r))
+  return { promise, release }
+}
+// A person's change in the /config menu.
+const COMPOSER = { kind: 'composer' } as const
+
+test('a person setting a row while the startup sync sets the same row still runs its command', async ($, on) => {
+  const gate = deferred()
+  const calls = engine(on, {
+    runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\n'), 'zenify feature track off': ok('track off\n') },
+    holdSet: { 'znf.track': gate.promise },
+  })
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: CWD, source: 'startup' } as any)
+  // The sync's set of znf.track=true is held in the writer; the person turns it off meanwhile.
+  while (!calls.set.length) await clock.settle()
+  const res = await $.config.set({ key: 'znf.track', value: false, origin: COMPOSER } as any)
+  gate.release()
+  await clock.settle()
+  expect(res).toEqual({ value: false })
+  expect(calls.run).toContain('zenify feature track off')
+})
+
+test('the startup sync does not overwrite a row a person changed after its read', async ($, on) => {
+  const gate = deferred()
+  const calls = engine(on, {
+    runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\n'), 'zenify feature track off': ok('track off\n') },
+    holdRun: { 'zenify feature': gate.promise },
+  })
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: CWD, source: 'startup' } as any)
+  while (!calls.run.includes('zenify feature')) await clock.settle()
+  // The read saw `track on`; before it returns the person turns the row off.
+  await $.config.set({ key: 'znf.track', value: false, origin: COMPOSER } as any)
+  gate.release()
+  await clock.settle()
+  expect(calls.set).toEqual([{ key: 'znf.track', value: false }])
+  expect(calls.toast).toEqual([])
 })
