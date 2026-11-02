@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface as $, Register, Timer } from 'claude-code'
 
 import type { TrackStats } from '../types'
-import { bindLine, cwdLine, isEndCommand, isStartCommand, kindOf, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
+import { bindLine, cwdLine, isStartCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
 import { COPY, STATUS_OFF, TABS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
 import type { Line, Tab } from './track-ui'
@@ -111,6 +111,8 @@ async function recordCall($: $, tool: string, command: string, isMain: boolean, 
   if (tool === 'Bash' && isStartCommand(command)) {
     const id = parseStartId(stdoutOf(answer))
     if (id) {
+      // A printed id proves the feature is on, even before the first stats run sets `enabled`.
+      if (!(await read($, enabled))) await update($, enabled, () => true)
       await update($, bound, () => ({ id, kind: kindOf(id), ending: false }))
       await appendSession($, bindLine(iso(now), id))
       // The stats may have run before this bind; this session's open id shows now, not at a tick.
@@ -118,6 +120,8 @@ async function recordCall($: $, tool: string, command: string, isMain: boolean, 
       return
     }
   }
+  const endedId = tool === 'Bash' ? parseEndedId(stdoutOf(answer)) : undefined
+  if (endedId) await update($, bound, b => (b?.id === endedId ? { ...b, ending: true } : b))
   const b = await read($, bound)
   const asked = !!useId && (await read($, personAsks)).includes(useId)
   const kind: WaitKind | undefined = asked ? 'permission' : tool === 'AskUserQuestion' ? 'ask' : undefined
@@ -292,16 +296,15 @@ export const register: Register = on => {
   // zenify track (FR-4, FR-8.2): every tool call of a session, timed around `next(e)`; the
   // permission check runs inside it (tool.check below), so a person's ask is within the span.
   on('tool.call', async ($, e, next) => {
-    if (!(await isEnabled($))) return next(e)
     const tool = String(e.tool)
     const command = tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
+    // A start runs through even while `enabled` is still false, so its id is bound (FR-4.1).
+    if (!isStartCommand(command) && !(await isEnabled($))) return next(e)
     const useId = e.tool_use_id
     const isMain = !e.agentId
     let started = 0
     try {
       if (tool === 'Skill') await recordPhase($, String((e as { skill?: unknown }).skill ?? ''))
-      const endId = command ? isEndCommand(command) : undefined
-      if (endId) await update($, bound, b => (b?.id === endId ? { ...b, ending: true } : b))
       started = await $.clock.now()
     } catch (err) {
       timingError($)(err)
