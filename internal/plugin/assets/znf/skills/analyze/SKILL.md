@@ -55,6 +55,7 @@ Read the spec+plan by eye and use judgment; each finding is severity **MEDIUM**:
    shall" sentence that can actually be checked? An SC that's prose-only and not checkable → MEDIUM.
 2. **Necessity (P6).** Does the Brief's "approach" field justify *which existing path can't already
    handle this* (necessity ladder)? Missing that justification when something new is being built → MEDIUM.
+   A design that builds on a third-party tool with no `First-party:` line in Approach → MEDIUM.
 3. **db-3 + comprehension floor (P7).** Is the DB-guarantees block real (states query-plan / tenant-scope /
    keyset, or a justified N/A) or hand-waved? Does the spec describe the real flow + blast-radius before
    proposing any cut? Missing → MEDIUM.
