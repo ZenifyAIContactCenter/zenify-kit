@@ -90,3 +90,40 @@ func TestReviewerSetWritesSettingsEnv(t *testing.T) {
 		t.Fatalf("settings after set codex: %s", raw)
 	}
 }
+
+// FR-17.3: `reviewer get` prints the stored env.ZNF_REVIEWER (what `reviewer set` writes),
+// not the engine the running session picked; absent → agent; any other value → error.
+func TestReviewerGetPrintsStoredValue(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ZNF_REVIEWER", "agent")
+	t.Setenv("PATH", t.TempDir()) // no codex on PATH: `reviewer` alone would say agent
+	path := filepath.Join(home, ".claude", "settings.json")
+	get := func() (string, error) {
+		root := NewRootCmd()
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&bytes.Buffer{})
+		root.SetArgs([]string{"reviewer", "get"})
+		err := root.Execute()
+		return out.String(), err
+	}
+	if out, err := get(); err != nil || out != "agent\n" {
+		t.Fatalf("no settings file: %q %v, want agent", out, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"env":{"ZNF_REVIEWER":"codex"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := get(); err != nil || out != "codex\n" {
+		t.Fatalf("stored codex: %q %v, want codex", out, err)
+	}
+	if err := os.WriteFile(path, []byte(`{"env":{"ZNF_REVIEWER":"foo"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := get(); err == nil {
+		t.Fatal("stored foo: want an error")
+	}
+}

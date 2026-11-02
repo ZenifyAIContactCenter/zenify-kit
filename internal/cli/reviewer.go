@@ -42,7 +42,7 @@ func newReviewerCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(newReviewerSetCmd())
+	cmd.AddCommand(newReviewerSetCmd(), newReviewerGetCmd())
 	return cmd
 }
 
@@ -63,6 +63,28 @@ func newReviewerSetCmd() *cobra.Command {
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", apply.ReviewerEnv, args[0])
 			return nil
+		},
+	}
+}
+
+// newReviewerGetCmd prints the stored env.ZNF_REVIEWER of ~/.claude/settings.json — the
+// value `reviewer set` writes — which the /config row follows (FR-17.3).
+func newReviewerGetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "get",
+		Short: "In engine review đã lưu trong env của ~/.claude/settings.json (agent hoặc codex)", //znf:allow-lang
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return err
+			}
+			v, err := apply.ReviewerEnvValue(home)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), v)
+			return err
 		},
 	}
 }

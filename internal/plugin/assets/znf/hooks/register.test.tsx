@@ -153,7 +153,7 @@ function engine(on: any, world: World): Calls {
     calls.run.push([...e.argv])
     // FR-17.3: the sources the /config rows are synced from, in step with the defaults.
     if (e.argv.join(' ') === 'zenify feature') return { value: ok('github.issues off\ntrack off\n') }
-    if (e.argv.join(' ') === 'zenify reviewer') return { value: ok('agent (ZNF_REVIEWER=agent)\n') }
+    if (e.argv.join(' ') === 'zenify reviewer get') return { value: ok('agent\n') }
     if (e.argv[0] === 'zenify') {
       if (world.statsRejects) return { deny: world.statsRejects }
       return { value: world.stats ?? ok(statsJson()) }

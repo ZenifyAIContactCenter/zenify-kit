@@ -84,6 +84,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
 | [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release tag từ lịch sử git của mọi repo trong workspace. |
 | [zenify reviewer](./zenify_reviewer) | In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent. |
+| [zenify reviewer get](./zenify_reviewer_get) | In engine review đã lưu trong `env.ZNF_REVIEWER` của `~/.claude/settings.json`, agent hoặc codex. |
 | [zenify reviewer set](./zenify_reviewer_set) | Đặt engine review của kit, agent hoặc codex, vào `env.ZNF_REVIEWER` của `~/.claude/settings.json`. |
 | [zenify route-log](./zenify_route-log) | Xem các record routing model do skill ghi (số liệu plan từ znf:analyze), đếm theo site, model và gate. |
 | [zenify rules](./zenify_rules) | Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc. |

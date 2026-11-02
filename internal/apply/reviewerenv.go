@@ -60,6 +60,28 @@ func SetReviewerEnv(home, value string, dryRun bool) error {
 	return writeEnv(path, root, env, mode)
 }
 
+// ReviewerEnvValue returns the stored env.ZNF_REVIEWER of <home>/.claude/settings.json:
+// ReviewerDefault when the file or the key is absent, an error for any other value.
+func ReviewerEnvValue(home string) (string, error) {
+	root, _, err := readSettingsRoot(filepath.Join(home, ".claude", "settings.json"))
+	if err != nil {
+		return "", err
+	}
+	env, err := envOf(root)
+	if err != nil {
+		return "", err
+	}
+	raw, ok := env[ReviewerEnv]
+	if !ok {
+		return ReviewerDefault, nil
+	}
+	var v string
+	if err := json.Unmarshal(raw, &v); err != nil || (v != "agent" && v != "codex") {
+		return "", fmt.Errorf("settings.json env.%s = %s: want agent or codex", ReviewerEnv, raw)
+	}
+	return v, nil
+}
+
 // RemoveReviewerEnv removes the key only while it still holds the kit
 // default, so a value the user changed stays.
 func RemoveReviewerEnv(home string, dryRun bool) (bool, error) {

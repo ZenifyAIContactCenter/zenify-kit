@@ -10,7 +10,7 @@ const ALLOWED = [
   'zenify feature track off',
   'zenify feature github.issues on',
   'zenify feature github.issues off',
-  'zenify reviewer',
+  'zenify reviewer get',
   'zenify reviewer set agent',
   'zenify reviewer set codex',
 ]
@@ -88,7 +88,7 @@ function engine(on: any, world: World): Calls {
 }
 
 // The rows as the defaults hold them, matching the sources below unless a test says otherwise.
-const SYNCED = { 'zenify feature': ok('github.issues off\ntrack off\n'), 'zenify reviewer': ok('agent (ZNF_REVIEWER=agent)\n') }
+const SYNCED = { 'zenify feature': ok('github.issues off\ntrack off\n'), 'zenify reviewer get': ok('agent\n') }
 
 async function start($: any, clock: { settle: () => Promise<void> }) {
   await $.session.start({ cwd: CWD, source: 'startup' } as any)
@@ -162,28 +162,28 @@ test('SC-41: `zenify feature` says track on while the option is false: session s
   await start($, clock)
   expect(calls.toast).toEqual([])
   expect(calls.set).toEqual([{ key: 'znf.track', value: true }])
-  expect(calls.run).toEqual(['zenify feature', 'zenify reviewer'])
+  expect(calls.run).toEqual(['zenify feature', 'zenify reviewer get'])
   for (const argv of calls.run) expect(ALLOWED).toContain(argv)
 })
 
 test('FR-17.3: rows in step with their sources are left alone', { options: { track: true, githubIssues: true, reviewer: 'codex' } }, async ($, on) => {
-  const calls = engine(on, { runs: { 'zenify feature': ok('github.issues on\ntrack on\n'), 'zenify reviewer': ok('codex\n') } })
+  const calls = engine(on, { runs: { 'zenify feature': ok('github.issues on\ntrack on\n'), 'zenify reviewer get': ok('codex\n') } })
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, source: 'startup' } as any)
   await clock.settle()
-  expect(calls.run).toEqual(['zenify feature', 'zenify reviewer'])
+  expect(calls.run).toEqual(['zenify feature', 'zenify reviewer get'])
   expect(calls.set).toEqual([])
 })
 
 test('FR-17.3: a reviewer source of codex sets znf.reviewer codex', { options: { reviewer: 'agent' } }, async ($, on) => {
-  const calls = engine(on, { runs: { ...SYNCED, 'zenify reviewer': ok('codex\n') } })
+  const calls = engine(on, { runs: { ...SYNCED, 'zenify reviewer get': ok('codex\n') } })
   const clock = mock.clock(on)
   await start($, clock)
   expect(calls.set).toEqual([{ key: 'znf.reviewer', value: 'codex' }])
 })
 
 test('FR-17.3: a failing read is a ⚠ toast and no row changes', async ($, on) => {
-  const calls = engine(on, { runs: { 'zenify feature': fail('overlay: bad yaml\n'), 'zenify reviewer': ok('codex\n') } })
+  const calls = engine(on, { runs: { 'zenify feature': fail('overlay: bad yaml\n'), 'zenify reviewer get': ok('codex\n') } })
   const clock = mock.clock(on)
   await start($, clock)
   expect(calls.toast.some(t => t.startsWith('⚠') && t.includes('overlay: bad yaml'))).toBe(true)

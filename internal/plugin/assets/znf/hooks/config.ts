@@ -1,6 +1,6 @@
 // FR-17: the kit's settings as /config rows (manifest userConfig). The rows mirror the real
 // sources: features in .zenify-overlay.yaml (`zenify feature`), the reviewer in env.ZNF_REVIEWER
-// (`zenify reviewer`). A change runs the writing command; session start pulls the sources back.
+// (`zenify reviewer get`). A change runs the writing command; session start pulls the sources back.
 import type { EngineInterface as $, ConfigSetInput, ConfigValue, On, PluginOptions } from 'claude-code'
 
 import { COPY } from './track-ui'
@@ -117,8 +117,8 @@ export async function syncConfig($: $, options: PluginOptions): Promise<void> {
     }
   })().catch(toast)
   await (async () => {
-    const engine = (await run($, ['zenify', 'reviewer'])).trim().split(/\s/)[0]
-    if (!REVIEWERS.includes(engine)) throw new Error(`zenify reviewer: unexpected output ${JSON.stringify(engine)}`)
+    const engine = (await run($, ['zenify', 'reviewer', 'get'])).trim()
+    if (!REVIEWERS.includes(engine)) throw new Error(`zenify reviewer get: unexpected output ${JSON.stringify(engine)}`)
     await align($, options, 'reviewer', engine)
   })().catch(toast)
 }

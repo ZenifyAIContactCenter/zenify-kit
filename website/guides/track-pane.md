@@ -106,7 +106,7 @@ Xem [`zenify track`](/reference/cli/zenify_track), trong đó `stats --force` b�
 
 ## Settings
 
-Các thiết lập của kit là các dòng của plugin `znf` trong `/config` của Claude Code (key `znf.<field>`). Đổi một dòng thì mod chạy đúng một lệnh `zenify`, không tốn lượt chat nào; lệnh lỗi thì `/config` từ chối thay đổi, hiện stderr của lệnh và dòng giữ giá trị cũ. Nguồn sự thật vẫn là overlay của workspace và `env.ZNF_REVIEWER`: mỗi lần mở session, mod đọc [`zenify feature`](/reference/cli/zenify_feature) và [`zenify reviewer`](/reference/cli/zenify_reviewer) rồi kéo dòng nào lệch về đúng nguồn; đọc lỗi thì hiện toast `⚠` và không sửa dòng.
+Các thiết lập của kit là các dòng của plugin `znf` trong `/config` của Claude Code (key `znf.<field>`). Đổi một dòng thì mod chạy đúng một lệnh `zenify`, không tốn lượt chat nào; lệnh lỗi thì `/config` từ chối thay đổi, hiện stderr của lệnh và dòng giữ giá trị cũ. Nguồn sự thật vẫn là overlay của workspace và `env.ZNF_REVIEWER`: mỗi lần mở session, mod đọc [`zenify feature`](/reference/cli/zenify_feature) và [`zenify reviewer get`](/reference/cli/zenify_reviewer_get) rồi kéo dòng nào lệch về đúng nguồn; đọc lỗi thì hiện toast `⚠` và không sửa dòng.
 
 | Dòng | Giá trị | Tác dụng |
 |---|---|---|
