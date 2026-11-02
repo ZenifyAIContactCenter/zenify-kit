@@ -549,3 +549,26 @@ func TestPRsWaiting(t *testing.T) {
 		t.Fatalf("prsWaiting = %d, want 0 (both closed)", r.Today.PRsWaiting)
 	}
 }
+
+// A CI-fix run that ends the next day on the same PR does not count it as opened again.
+func TestPRsOpenedOnFirstEndDayOnly(t *testing.T) {
+	in := base(lines(
+		row(now.Add(-30*time.Hour), "start", cid("fix", 1), "fix", "r", "S"),
+		row(now.Add(-26*time.Hour), "end", cid("fix", 1), "https://x/pr/A", "1", "0"),
+		row(now.Add(-2*time.Hour), "start", cid("fix", 2), "fix", "r", "S"),
+		row(now.Add(-1*time.Hour), "end", cid("fix", 2), "https://x/pr/A", "1", "0"),
+	))
+	if r, _ := Compute(in); r.Today.PRsOpened != 0 {
+		t.Fatalf("prsOpened = %d, want 0 (A was first ended yesterday)", r.Today.PRsOpened)
+	}
+}
+
+// A gh timeout stops the merged loop like a missing gh: N slow PRs never add up.
+func TestMergedTimeoutStopsTheLoop(t *testing.T) {
+	asked := 0
+	in := base(prLog())
+	in.Merged = func(string) (string, error) { asked++; return "", fmt.Errorf("gh pr view: %w", ErrGhTimeout) }
+	if r, _ := Compute(in); asked != 1 || r.Today.MergedError == "" {
+		t.Fatalf("asked %d err %q, want one ask and an error", asked, r.Today.MergedError)
+	}
+}

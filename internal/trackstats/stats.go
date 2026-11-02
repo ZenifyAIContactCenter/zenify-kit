@@ -301,7 +301,7 @@ func Compute(in Input) (Result, map[string]string) {
 	}
 	var items []Item
 	endedPRs := map[string]bool{}
-	todayPRs := map[string]bool{}
+	firstEnd := map[string]time.Time{} // a PR counts as opened on the day of its first end
 	var prOrder []string
 	for _, id := range order {
 		w := works[id]
@@ -346,11 +346,10 @@ func Compute(in Input) (Result, map[string]string) {
 				res.Today.Ended[it.Kind]++
 				res.Today.Tasks += atoiDash(w.end.F[1])
 				res.Today.Rounds += atoiDash(w.end.F[2])
-				for _, p := range it.PRs {
-					if !todayPRs[p] {
-						todayPRs[p] = true
-						res.Today.PRsOpened++
-					}
+			}
+			for _, p := range it.PRs {
+				if at, seen := firstEnd[p]; !seen || w.end.At.Before(at) {
+					firstEnd[p] = w.end.At
 				}
 			}
 		}
@@ -366,6 +365,11 @@ func Compute(in Input) (Result, map[string]string) {
 		items = append(items, it)
 	}
 
+	for _, at := range firstEnd {
+		if day(at) == in.Today {
+			res.Today.PRsOpened++
+		}
+	}
 	res.Today.Plans = countPlans(in, &res)
 	newCache := mergedToday(in, prOrder, &res)
 
@@ -500,7 +504,9 @@ func mergedToday(in Input, urls []string, res *Result) map[string]string {
 				if res.Today.MergedError == "" {
 					res.Today.MergedError = fmt.Sprintf("%s: %v", u, err)
 				}
-				if errors.Is(err, exec.ErrNotFound) {
+				// A missing gh fails every PR and a timeout means gh or GitHub is hanging:
+				// both stop the loop, so N slow PRs never outlast the caller's deadline.
+				if errors.Is(err, exec.ErrNotFound) || errors.Is(err, ErrGhTimeout) {
 					break
 				}
 				continue
