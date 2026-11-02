@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -482,5 +483,51 @@ func TestParseMergedAt(t *testing.T) {
 	}
 	if _, err := parseMergedAt([]byte(`nope`)); err == nil {
 		t.Fatal("want error on bad json")
+	}
+}
+
+// One PR's gh error must not hide the PRs after it; a missing gh stops the loop.
+func TestMergedErrorDoesNotStarveLaterPRs(t *testing.T) {
+	in := base(prLog())
+	in.Merged = func(u string) (string, error) {
+		if u == "https://x/pr/A" {
+			return "", errors.New("gh: no access")
+		}
+		return "2026-10-30T08:00:00Z", nil
+	}
+	r, cache := Compute(in)
+	if r.Today.Merged != 1 || !strings.Contains(r.Today.MergedError, "no access") || cache["https://x/pr/B"] == "" {
+		t.Fatalf("merged %d err %q cache %v, want B merged and A's error kept", r.Today.Merged, r.Today.MergedError, cache)
+	}
+	asked := 0
+	in.Merged = func(string) (string, error) { asked++; return "", exec.ErrNotFound }
+	if r, _ := Compute(in); asked != 1 || r.Today.MergedError == "" {
+		t.Fatalf("missing gh: asked %d err %q, want one ask and an error", asked, r.Today.MergedError)
+	}
+}
+
+// A PR closed without a merge is cached and never counted as merged.
+func TestMergedClosedUnmergedCached(t *testing.T) {
+	in := base(prLog())
+	in.Merged = func(string) (string, error) { return ClosedUnmerged, nil }
+	r, cache := Compute(in)
+	if r.Today.Merged != 0 || r.Malformed != 0 || cache["https://x/pr/A"] != ClosedUnmerged {
+		t.Fatalf("merged %d malformed %d cache %v", r.Today.Merged, r.Malformed, cache)
+	}
+	if got, err := parseMergedAt([]byte(`{"mergedAt":null,"state":"CLOSED"}`)); err != nil || got != ClosedUnmerged {
+		t.Fatalf("closed: got %q %v", got, err)
+	}
+}
+
+// Two ends naming the same PR (a CI fix pushes to the open PR) count it once.
+func TestPRsOpenedCountsAPROnce(t *testing.T) {
+	in := base(lines(
+		row(now.Add(-4*time.Hour), "start", cid("fix", 1), "fix", "r", "S"),
+		row(now.Add(-3*time.Hour), "end", cid("fix", 1), "https://x/pr/A", "1", "0"),
+		row(now.Add(-2*time.Hour), "start", cid("fix", 2), "fix", "r", "S"),
+		row(now.Add(-1*time.Hour), "end", cid("fix", 2), "https://x/pr/A", "1", "0"),
+	))
+	if r, _ := Compute(in); r.Today.PRsOpened != 1 {
+		t.Fatalf("prsOpened = %d, want 1", r.Today.PRsOpened)
 	}
 }
