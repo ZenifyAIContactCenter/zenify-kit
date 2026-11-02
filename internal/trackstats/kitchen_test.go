@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 )
@@ -50,6 +49,7 @@ func TestKitchenCookedOrderAndStatus(t *testing.T) {
 	}
 }
 
+// The Vietnamese text is written with \u escapes to keep the langgate test clean.
 func TestKitchenBriefPlan(t *testing.T) { // SC-5
 	a := kid("cook", 1)
 	log := lines(
@@ -141,14 +141,14 @@ func TestKitchenTitleError(t *testing.T) {
 	if br[a] != "cook zenify-kit" || br[b] != "fix r" {
 		t.Fatalf("briefs = %v", br)
 	}
-	// plan b is newer (09:01) so cooked order is b, a; the first error seen is kept
-	if !strings.Contains(r.Kitchen.TitleError, "https://x/pr/1") && !strings.Contains(r.Kitchen.TitleError, "p.md") {
-		t.Fatalf("titleError = %q", r.Kitchen.TitleError)
+	// errors arise in log order (a's PR, then b's plan); the first one is kept
+	if want := "pr title https://x/pr/1: boom"; r.Kitchen.TitleError != want {
+		t.Fatalf("titleError = %q, want %q", r.Kitchen.TitleError, want)
 	}
-	in.PlanTitle = nil
+	in.PRTitle = nil // only the plan lookup fails now
 	r, _ = Compute(in)
-	if !strings.Contains(r.Kitchen.TitleError, "https://x/pr/1") || !strings.Contains(r.Kitchen.TitleError, "boom") {
-		t.Fatalf("titleError = %q", r.Kitchen.TitleError)
+	if want := "plan title p.md: denied"; r.Kitchen.TitleError != want {
+		t.Fatalf("plan-only titleError = %q, want %q", r.Kitchen.TitleError, want)
 	}
 }
 

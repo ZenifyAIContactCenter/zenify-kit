@@ -164,6 +164,7 @@ type Input struct {
 	// PRTitle returns the title of the pull request at url; nil skips gh this run.
 	PRTitle func(url string) (string, error)
 	// PRTitles caches PR titles by url; Compute adds the titles it fetches.
+	// Pass a non-nil map to keep titles across runs.
 	PRTitles map[string]string
 	// SDD lists the deferred and parked ledger findings; nil skips the source.
 	SDD []SDDItem
