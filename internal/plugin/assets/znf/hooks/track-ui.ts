@@ -13,6 +13,8 @@ export const COPY = {
   closed: 'đã đóng pane track',
   loading: 'đang đọc số liệu…',
   toast: 'lỗi track: ',
+  // FR-11.6: the status line's next step for a workspace that is not onboarded yet.
+  onboard: 'chưa onboard — gõ "onboard track"',
   noWorkspace: 'không ở trong workspace zenify',
   // FR-17.3: a /config row that could not be read back from its source.
   configToast: '⚠ lỗi đồng bộ /config: ',
@@ -71,6 +73,7 @@ export function statusText(s: TrackStats, session: string, boundId: string | und
   if (!s.enabled) return STATUS_OFF
   const mine = openItem(s, session, boundId)
   const t = s.today
+  if (!mine && !s.onboarded) return `${STATUS_HEAD} ⏸${SEP}${COPY.onboard}`
   const hit = hitRate(s)
   const parts: (string | false)[] = [
     `${STATUS_HEAD} ${mine ? '▶' : '⏸'}`,
