@@ -1,9 +1,11 @@
 package wt
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -269,6 +271,24 @@ func RunNew(o NewOptions) error {
 		_ = os.WriteFile(ptr, []byte(o.Slug+"\n"), 0o600)
 	}
 
+	// Publish the empty branch so the work shows as started. Fail-open like the
+	// fetch above; skipped for hotfix (no ticket) and when there is no origin.
+	pushed := false
+	if o.Type != "hotfix" {
+		if _, e := r.Run(o.RepoRoot, "remote", "get-url", "origin"); e == nil {
+			if _, e := r.Run(path, "push", "-u", "origin", branch); e != nil {
+				var ee *exec.ExitError
+				detail := e.Error()
+				if errors.As(e, &ee) && strings.TrimSpace(string(ee.Stderr)) != "" {
+					detail = strings.TrimSpace(string(ee.Stderr))
+				}
+				_, _ = fmt.Fprintf(o.Stderr, "wt: could not push %s to origin (%s); push it yourself when online\n", branch, detail)
+			} else {
+				pushed = true
+			}
+		}
+	}
+
 	// Wire this worktree at its peers (FR-7.1), then bring peers' same-slug
 	// worktrees that point at this repo up to date (FR-7.2). Both fail-open.
 	if len(cfg.Peers) > 0 {
@@ -283,7 +303,11 @@ func RunNew(o NewOptions) error {
 	}
 
 	_, _ = fmt.Fprintf(o.Stderr, "wt: %s → %s\n", o.Slug, path)
-	_, _ = fmt.Fprintf(o.Stderr, "wt: branch %s, %s=%d, deps=%s\n", branch, cfg.PortEnv, port, deps)
+	tail := ""
+	if pushed {
+		tail = ", pushed to origin"
+	}
+	_, _ = fmt.Fprintf(o.Stderr, "wt: branch %s, %s=%d, deps=%s%s\n", branch, cfg.PortEnv, port, deps, tail)
 	return nil
 }
 
