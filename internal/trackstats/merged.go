@@ -3,6 +3,7 @@ package trackstats
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -14,6 +15,9 @@ import (
 type MergedFunc func(url string) (mergedAt string, err error)
 
 const ghTimeout = 10 * time.Second
+
+// ErrGhTimeout wraps a gh call that did not answer within its timeout.
+var ErrGhTimeout = errors.New("timed out")
 
 // ClosedUnmerged is cached for a PR closed without a merge, so gh is never asked about it again.
 const ClosedUnmerged = "closed"
@@ -30,7 +34,7 @@ func runGh(bin string, timeout time.Duration, url string) (string, error) {
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if ctx.Err() != nil {
-		return "", fmt.Errorf("gh pr view %s: timed out after %s", url, timeout)
+		return "", fmt.Errorf("gh pr view %s: %w after %s", url, ErrGhTimeout, timeout)
 	}
 	if err != nil {
 		return "", fmt.Errorf("gh pr view %s: %w: %s", url, err, strings.TrimSpace(stderr.String()))
