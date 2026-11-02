@@ -181,3 +181,15 @@ test('FR-6.1: cook/fix/hotfix/ship prompts and skills, with or without znf:, ope
   expect(isTrackSkill('ship')).toBe(true)
   expect(isTrackSkill('znf:scout')).toBe(false)
 })
+
+test('FR-11.2: a PR merged today shows on the status line even when none was opened today', () => {
+  const s = stats({ today: { ...stats().today, prsOpened: 0, merged: 1 } })
+  expect(statusText(s, A, undefined)).toContain('PR 0 (1 merged)')
+})
+
+test('FR-6.2: Tab này lists the PRs of the ids this session finished today', () => {
+  const done = item({ status: 'done', endedAt: '2026-10-30T03:00:00Z', prs: ['https://github.com/Z/kit/pull/7'] })
+  const s = stats({ today: { ...stats().today, items: [done] } })
+  const text = tabLines('this', s, A, undefined).map(l => l.text).join('\n')
+  expect(text).toContain('PR https://github.com/Z/kit/pull/7')
+})

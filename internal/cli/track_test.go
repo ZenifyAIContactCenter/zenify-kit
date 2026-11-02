@@ -167,7 +167,8 @@ func TestTrack_RowsAndStats(t *testing.T) {
 }
 
 // The pane runs stats on almost every turn: gh is asked about an unmerged PR at most once
-// per mergedRecheck, and a failed check is asked again on the next run.
+// per mergedRecheck; a failed check is stamped too and its error stays reported until the
+// next check.
 func TestTrackStats_MergedCheckThrottled(t *testing.T) {
 	ws := trackWS(t, true)
 	id := startTrack(t, ws, "fix")
@@ -185,31 +186,57 @@ func TestTrackStats_MergedCheckThrottled(t *testing.T) {
 		return "", nil
 	}
 	t.Cleanup(func() { trackMerged = old })
-	stats := func() {
+	stats := func() string {
 		t.Helper()
-		if _, err := runTrack(t, ws, "stats", "--json"); err != nil {
+		out, err := runTrack(t, ws, "stats", "--json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var r struct {
+			Today struct {
+				MergedError string `json:"mergedError"`
+			} `json:"today"`
+		}
+		if err := json.Unmarshal([]byte(out), &r); err != nil {
+			t.Fatal(err)
+		}
+		return r.Today.MergedError
+	}
+	stamp := filepath.Join(ws, ".zenify", "track", "merged.checked")
+	age := func() {
+		t.Helper()
+		old := time.Now().Add(-mergedRecheck - time.Minute)
+		if err := os.Chtimes(stamp, old, old); err != nil {
 			t.Fatal(err)
 		}
 	}
-	stats()
-	stats()
-	if asked != 2 {
-		t.Fatalf("a failed check must be asked again: asked %d, want 2", asked)
+	if e := stats(); asked != 1 || !strings.Contains(e, "gh down") {
+		t.Fatalf("first run: asked %d err %q, want 1 and gh down", asked, e)
+	}
+	if e := stats(); asked != 1 || !strings.Contains(e, "gh down") {
+		t.Fatalf("within %s: asked %d err %q, want no new ask and the error kept", mergedRecheck, asked, e)
 	}
 	fail = false
-	stats()
-	stats()
-	if asked != 3 {
-		t.Fatalf("an unmerged PR must not be asked again within %s: asked %d, want 3", mergedRecheck, asked)
-	}
-	stamp := filepath.Join(ws, ".zenify", "track", "merged.checked")
-	old6 := time.Now().Add(-mergedRecheck - time.Minute)
-	if err := os.Chtimes(stamp, old6, old6); err != nil {
-		t.Fatal(err)
+	age()
+	if e := stats(); asked != 2 || e != "" {
+		t.Fatalf("stale stamp: asked %d err %q, want a new ask and no error", asked, e)
 	}
 	stats()
-	if asked != 4 {
-		t.Fatalf("a stale check must ask again: asked %d, want 4", asked)
+	if asked != 2 {
+		t.Fatalf("an unmerged PR must not be asked again within %s: asked %d", mergedRecheck, asked)
+	}
+}
+
+// FR-7.2: a start never reuses an id that already has a start row.
+func TestTrack_StartSkipsUsedID(t *testing.T) {
+	ws := trackWS(t, true)
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	first := startTrack(t, ws, "fix")
+	if used, err := trackIDStarted(logPath, first); err != nil || !used {
+		t.Fatalf("trackIDStarted(%s) = %v %v, want true", first, used, err)
+	}
+	if used, err := trackIDStarted(logPath, "fix-000101-0000"); err != nil || used {
+		t.Fatalf("trackIDStarted(unknown) = %v %v, want false", used, err)
 	}
 }
 
@@ -350,5 +377,17 @@ func TestTrack_ShipBlockedStepRules(t *testing.T) {
 	lines := strings.Split(strings.TrimSuffix(trackLog(t, ws), "\n"), "\n")
 	if got := lines[len(lines)-1]; !strings.HasSuffix(got, " · ship · "+id+" · blocked · lint · - · 0") {
 		t.Fatalf("ship row = %q", got)
+	}
+}
+
+// A successful end prints `track: ended <id>` (the hook unbinds on it); a rejected end prints nothing.
+func TestTrack_EndPrintsEndedLine(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "fix")
+	if out, err := runTrack(t, ws, "end", id, "--rounds", "0"); err == nil || out != "" {
+		t.Fatalf("end without an outcome: out %q err %v, want an error and no output", out, err)
+	}
+	if out, err := runTrack(t, ws, "end", "--cancelled", id, "--rounds", "0"); err != nil || out != "track: ended "+id+"\n" {
+		t.Fatalf("end: out %q err %v", out, err)
 	}
 }
