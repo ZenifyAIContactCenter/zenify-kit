@@ -77,7 +77,7 @@ export function statusText(s: TrackStats, session: string, boundId: string | und
     !!mine?.agentMin && agentText(mine),
     !!mine?.wait.total && `chờ ${mine.wait.total}m`,
     `Hôm nay: ${sum(t.ended)}/${sum(t.started)}`,
-    t.prsOpened > 0 && `PR ${t.prsOpened}${t.merged > 0 ? ` (${t.merged} merged)` : ''}`,
+    (t.prsOpened > 0 || t.merged > 0) && `PR ${t.prsOpened}${t.merged > 0 ? ` (${t.merged} merged)` : ''}`,
     hit !== undefined && `hit ${Math.round(hit * 100)}%`,
   ]
   return parts.filter(Boolean).join(SEP)
@@ -115,7 +115,10 @@ function thisLines(s: TrackStats, session: string, boundId: string | undefined):
   const done = (s.today.items ?? []).filter(i => i.session === session && i.status !== 'running' && i.status !== 'stale')
   if (done.length > 0) {
     lines.push(head('Xong hôm nay'))
-    for (const i of done) lines.push(plain(`${i.id}${SEP}${i.status}${SEP}${agentText(i)}`))
+    for (const i of done) {
+      lines.push(plain(`${i.id}${SEP}${i.status}${SEP}${agentText(i)}`))
+      for (const pr of i.prs ?? []) lines.push(plain(`  PR ${pr}`))
+    }
   }
   return lines
 }

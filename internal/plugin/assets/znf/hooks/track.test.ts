@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import {
   bindLine,
   cwdLine,
-  isEndCommand,
+  parseEndedId,
   isStartCommand,
   kindOf,
   parseStartId,
@@ -40,14 +40,15 @@ test('FR-4.1: stdoutOf reads result.stdout when it is a string, else text', () =
   expect(stdoutOf(undefined)).toBe('')
 })
 
-test('isStartCommand and isEndCommand recognise the track commands', () => {
+test('isStartCommand recognises the start command; parseEndedId reads only the end confirmation line', () => {
   expect(isStartCommand('zenify track start --kind cook --repo kit --est -')).toBe(true)
   expect(isStartCommand('cd /w && zenify track start --kind fix --repo be --est S')).toBe(true)
   expect(isStartCommand('zenify track est cook-261030-a1b2 S')).toBe(false)
-  expect(isEndCommand('zenify track end cook-261030-a1b2 --pr https://github.com/Z/k/pull/1 --rounds 1')).toBe('cook-261030-a1b2')
-  expect(isEndCommand('cd /w && zenify track end "fix-261030-00aa" --rollback --rounds 0')).toBe('fix-261030-00aa')
-  expect(isEndCommand('zenify track end $ID --rounds 1')).toBeUndefined()
-  expect(isEndCommand('zenify track ship cook-261030-a1b2 --outcome shipped --findings - --rounds 1')).toBeUndefined()
+  expect(parseEndedId('track: ended cook-261030-a1b2\n')).toBe('cook-261030-a1b2')
+  expect(parseEndedId('noise\r\ntrack: ended fix-261030-00aa\r\n')).toBe('fix-261030-00aa')
+  expect(parseEndedId('')).toBeUndefined()
+  expect(parseEndedId('echo zenify track end cook-261030-a1b2 --cancelled')).toBeUndefined()
+  expect(parseEndedId('track: ended $ID')).toBeUndefined()
 })
 
 test('kindOf reads the kind from the id', () => {
