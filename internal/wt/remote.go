@@ -57,3 +57,13 @@ func pushRejectedHint(detail string) string {
 
 // baselineDeploy are never deleted from origin, whatever deploy-branches says.
 var baselineDeploy = map[string]bool{"main": true, "master": true, "staging": true, "develop": true, "production": true}
+
+// remoteBranchExists is true when origin lists refs/heads/<branch>, and also when
+// the lookup fails: not knowing counts as "already there", the safe answer.
+func remoteBranchExists(rr gitx.Runner, repoRoot, branch string) bool {
+	out, err := rr.Run(repoRoot, "ls-remote", "--heads", "origin", branch)
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(string(out)) != ""
+}

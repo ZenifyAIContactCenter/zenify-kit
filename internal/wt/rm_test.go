@@ -630,3 +630,70 @@ func TestRunRm_LegacyStateWithoutStartSHAKeepsRemoteBranch(t *testing.T) {
 		t.Fatalf("legacy entry must keep the branch with a reason, got %q", rb.String())
 	}
 }
+
+// seedOriginBranch puts namph/feat/my-task on origin (optionally with a commit)
+// and leaves no local branch, like work someone else already pushed.
+func seedOriginBranch(t *testing.T, root string, withCommit bool) {
+	t.Helper()
+	gitT(t, root, "checkout", "-q", "-b", "namph/feat/my-task")
+	if withCommit {
+		gitT(t, root, "commit", "-q", "--allow-empty", "-m", "existing work")
+	}
+	gitT(t, root, "push", "-q", "origin", "namph/feat/my-task")
+	gitT(t, root, "checkout", "-q", "main")
+	gitT(t, root, "branch", "-q", "-D", "namph/feat/my-task")
+	gitT(t, root, "fetch", "-q", "origin")
+}
+
+// wt new --base <an existing remote task branch>: origin already had the branch,
+// so wt did not create it there and rm must keep it, even though the merge gate
+// passes (the branch equals its own base).
+func TestRunRm_KeepsPreexistingRemoteBranchUsedAsBase(t *testing.T) {
+	for _, withCommit := range []bool{true, false} {
+		root, bare := pushRepo(t, true)
+		seedOriginBranch(t, root, withCommit)
+		o, errb := realOpts(root)
+		o.BaseOverride = "origin/namph/feat/my-task"
+		if err := RunNew(o); err != nil {
+			t.Fatalf("RunNew: %v\n%s", err, errb)
+		}
+		var rb bytes.Buffer
+		rec := &recRunner{inner: gitx.ExecRunner()}
+		if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+			t.Fatalf("RunRm: %v\n%s", err, rb.String())
+		}
+		if rec.deleted() || !bareHas(t, bare, "namph/feat/my-task") {
+			t.Fatalf("withCommit=%v: pre-existing remote branch must stay; calls %v", withCommit, rec.calls)
+		}
+	}
+}
+
+// Defence in depth: even a state record that claims a StartSHA (older record,
+// hand edit) cannot delete the worktree's own base branch.
+func TestRunRm_NeverDeletesRecordedBaseBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	seedOriginBranch(t, root, true)
+	o, errb := realOpts(root)
+	o.BaseOverride = "origin/namph/feat/my-task"
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	st, _ := ReadState(root)
+	w, _ := st.Find("my-task")
+	if w.Base != "origin/namph/feat/my-task" {
+		t.Fatalf("state must record the base, got %q", w.Base)
+	}
+	w.StartSHA = strings.TrimSpace(gitT(t, bare, "rev-parse", "namph/feat/my-task"))
+	if err := SaveWorktree(root, w, 1, "h", 2); err != nil {
+		t.Fatal(err)
+	}
+	var rb bytes.Buffer
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if rec.deleted() || !bareHas(t, bare, "namph/feat/my-task") ||
+		!strings.Contains(rb.String(), "not a wt task branch") {
+		t.Fatalf("base branch must be protected; calls %v out %q", rec.calls, rb.String())
+	}
+}

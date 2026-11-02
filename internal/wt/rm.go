@@ -111,10 +111,10 @@ func RunRm(o RmOptions) error {
 	// What wt recorded for this slug, read BEFORE the worktree and state go away:
 	// the remote branch is only ever deleted if it is the very branch wt created
 	// and its tip is still the commit wt created it at.
-	recBranch, startSHA := "", ""
+	recBranch, startSHA, recBase := "", "", ""
 	if st, e := ReadState(o.RepoRoot); e == nil {
 		if w, ok := st.Find(o.Slug); ok {
-			recBranch, startSHA = w.Branch, w.StartSHA
+			recBranch, startSHA, recBase = w.Branch, w.StartSHA, w.Base
 		}
 	}
 
@@ -156,7 +156,7 @@ func RunRm(o RmOptions) error {
 	} else if _, e := r.Run(o.RepoRoot, "branch", "-D", branch); e != nil {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete branch %s, delete it by hand: %v\n", branch, e)
 	} else if !o.KeepRemote {
-		deleteEmptyRemote(o, branch, recBranch, startSHA, cfg.BaseRef)
+		deleteEmptyRemote(o, branch, recBranch, startSHA, cfg.BaseRef, recBase)
 	}
 
 	// Clear the rebuildable caches. Best-effort: a cache-write failure must not
@@ -185,18 +185,18 @@ func RunRm(o RmOptions) error {
 
 // deleteEmptyRemote removes origin/<branch> only when (1) branch is the one wt
 // recorded for this slug — a worktree switched to main must never take main off
-// origin — (2) it is not a base or deploy branch, and (3) the remote tip is
+// origin — (2) it is not a base (config or the worktree's own) or deploy branch, and (3) the remote tip is
 // still exactly the commit wt started the branch at (startSHA), i.e. nobody ever
 // committed to it. The delete carries a lease on that SHA. Anything else, and a
 // legacy state entry with no startSHA, keeps the branch. Failures only warn; no
 // origin remote means nothing to do.
-func deleteEmptyRemote(o RmOptions, branch, recorded, startSHA, cfgBase string) {
+func deleteEmptyRemote(o RmOptions, branch, recorded, startSHA, cfgBase, recBase string) {
 	r := o.Runner
 	rr := remoteOr(o.RemoteRunner, r)
 	if _, e := r.Run(o.RepoRoot, "remote", "get-url", "origin"); e != nil {
 		return
 	}
-	if branch != recorded || isProtectedBranch(o.RepoRoot, branch, cfgBase) {
+	if branch != recorded || isProtectedBranch(o.RepoRoot, branch, cfgBase, recBase) {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: not a wt task branch\n", branch)
 		return
 	}
@@ -215,7 +215,7 @@ func deleteEmptyRemote(o RmOptions, branch, recorded, startSHA, cfgBase string) 
 		return
 	}
 	if startSHA == "" {
-		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: no start commit recorded (created by an older wt)\n", branch)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: no start commit recorded (it existed before wt new, or wt new could not tell)\n", branch)
 		return
 	}
 	if tip != startSHA {

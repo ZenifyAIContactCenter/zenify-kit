@@ -257,12 +257,9 @@ func RunNew(o NewOptions) error {
 	}
 
 	// Persist to the rebuildable state cache.
-	wtRec := Worktree{Slug: o.Slug, Type: o.Type, Branch: branch, Path: path, Ports: ports}
+	wtRec := Worktree{Slug: o.Slug, Type: o.Type, Branch: branch, Path: path, Ports: ports, Base: base}
 	if len(ports) > 1 {
 		wtRec.PortBase = port
-	}
-	if sha, e := r.Run(path, "rev-parse", "HEAD"); e == nil {
-		wtRec.StartSHA = strings.TrimSpace(string(sha))
 	}
 	if err := SaveWorktree(o.RepoRoot, wtRec, o.Pid, o.Host, o.Now); err != nil {
 		return abort(err)
@@ -281,10 +278,24 @@ func RunNew(o NewOptions) error {
 			if !fetched {
 				// Offline: the fetch just failed, so a push would only hang or fail.
 				_, _ = fmt.Fprintf(o.Stderr, "wt: did not push %s to origin (fetch failed); push it yourself when online\n", branch)
-			} else if _, e := remoteOr(o.RemoteRunner, r).Run(path, "push", "-u", "origin", branch); e != nil {
-				_, _ = fmt.Fprintf(o.Stderr, "wt: could not push %s to origin (%s); push it yourself when online\n", branch, pushRejectedHint(gitErrLine(e)))
 			} else {
-				pushed = true
+				rr := remoteOr(o.RemoteRunner, r)
+				// Only a branch wt new itself puts on origin may later be deleted
+				// from it: if origin already had it (or we cannot tell), no StartSHA.
+				existed := remoteBranchExists(rr, o.RepoRoot, branch)
+				if _, e := rr.Run(path, "push", "-u", "origin", branch); e != nil {
+					_, _ = fmt.Fprintf(o.Stderr, "wt: could not push %s to origin (%s); push it yourself when online\n", branch, pushRejectedHint(gitErrLine(e)))
+				} else {
+					pushed = true
+					if sha, e := r.Run(path, "rev-parse", "HEAD"); e == nil && !existed {
+						wtRec.StartSHA = strings.TrimSpace(string(sha))
+						// Re-save: the record was written before the push (abort
+						// semantics above stay untouched); this only adds StartSHA.
+						if e := SaveWorktree(o.RepoRoot, wtRec, o.Pid, o.Host, o.Now); e != nil {
+							_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not record the start commit: %v\n", e)
+						}
+					}
+				}
 			}
 		}
 	}
