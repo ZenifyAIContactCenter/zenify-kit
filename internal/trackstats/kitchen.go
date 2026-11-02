@@ -2,7 +2,9 @@ package trackstats
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -60,7 +62,7 @@ type liveDoc struct {
 // computeKitchen lists the items ended today (newest first) and the live tabs
 // in state ask or permission (longest waiting first). It reads files and gh
 // only through the Input funcs; the first title error is kept in TitleError.
-func computeKitchen(in Input, logEv []Event, works map[string]*work, order []string, items []Item, issues []Issue, res *Result) Kitchen {
+func computeKitchen(in Input, logEv []Event, works map[string]*work, order []string, items []Item, issues []Issue, ghDown bool, res *Result) Kitchen {
 	k := Kitchen{Cooked: []CookedItem{}, RollingBoil: []BoilItem{}}
 	backlogTitle := map[string]string{}
 	for _, e := range logEv {
@@ -107,14 +109,23 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		}
 		if b == "" && len(it.PRs) > 0 {
 			u := it.PRs[0]
-			b = prTitles[u]
-			if b == "" && askPR && in.PRTitle != nil && fetched < maxTitleFetch {
+			t, known := prTitles[u]
+			b = t
+			if !known && askPR && in.PRTitle != nil && !ghDown && fetched < maxTitleFetch {
 				fetched++
 				title, err := in.PRTitle(u)
-				if err != nil {
-					fail(fmt.Errorf("pr title %s: %w", u, err))
-				} else if title != "" {
+				switch {
+				case err == nil:
 					b, prTitles[u] = title, title
+				case errors.Is(err, ErrGhTimeout) || errors.Is(err, exec.ErrNotFound):
+					// gh is hanging or missing: stop asking this run and do not cache the URL.
+					ghDown = true
+					fail(fmt.Errorf("pr title %s: %w", u, err))
+				default:
+					// A PR that cannot be read (no access, deleted) is cached as empty, so it
+					// stops using up the fetch cap of the PRs behind it.
+					prTitles[u] = ""
+					fail(fmt.Errorf("pr title %s: %w", u, err))
 				}
 			}
 		}

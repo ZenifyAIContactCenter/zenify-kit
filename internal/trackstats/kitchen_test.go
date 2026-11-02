@@ -279,3 +279,67 @@ func TestKitchenEmptyJSON(t *testing.T) {
 		t.Fatalf("kitchen = %s", b)
 	}
 }
+
+func prItems(n int) Input {
+	var l []string
+	for i := 1; i <= n; i++ {
+		id := kid("cook", i)
+		l = append(l, row(kAt(8, 0), "start", id, "cook", "r", "M"),
+			row(kAt(9, i), "end", id, fmt.Sprintf("https://x/pr/%d", i), "1", "0"))
+	}
+	in := kInput(lines(l...))
+	in.PRTitles = map[string]string{}
+	return in
+}
+
+func TestKitchenNoTitleCallsWhenMergedLookupTimedOut(t *testing.T) {
+	in := prItems(3)
+	in.Merged = func(string) (string, error) { return "", ErrGhTimeout }
+	calls := 0
+	in.PRTitle = func(string) (string, error) { calls++; return "P", nil }
+	Compute(in)
+	if calls != 0 {
+		t.Fatalf("calls = %d, want 0", calls)
+	}
+}
+
+func TestKitchenTitleTimeoutStopsFetchesAndIsNotCached(t *testing.T) {
+	in := prItems(3)
+	calls := 0
+	in.PRTitle = func(string) (string, error) { calls++; return "", ErrGhTimeout }
+	Compute(in)
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+	if len(in.PRTitles) != 0 {
+		t.Fatalf("timeout was cached: %v", in.PRTitles)
+	}
+}
+
+func TestKitchenFailedTitleIsCachedNegative(t *testing.T) {
+	in := prItems(4)
+	calls := 0
+	in.PRTitle = func(u string) (string, error) {
+		calls++
+		if u == "https://x/pr/4" {
+			return "T4", nil
+		}
+		return "", errors.New("no access")
+	}
+	Compute(in)
+	if calls != 3 {
+		t.Fatalf("first run calls = %d, want 3", calls)
+	}
+	r, _ := Compute(in)
+	if calls != 4 {
+		t.Fatalf("second run calls = %d, want 4", calls)
+	}
+	for _, it := range r.Kitchen.Cooked {
+		if it.ID == kid("cook", 4) && it.Brief != "T4" {
+			t.Fatalf("brief = %q", it.Brief)
+		}
+		if it.ID == kid("cook", 1) && it.Brief != "cook r" {
+			t.Fatalf("brief 1 = %q", it.Brief)
+		}
+	}
+}

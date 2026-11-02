@@ -385,7 +385,7 @@ func Compute(in Input) (Result, map[string]string) {
 		}
 	}
 	res.Today.Plans = countPlans(in, &res)
-	newCache := mergedToday(in, prOrder, &res)
+	newCache, ghDown := mergedToday(in, prOrder, &res)
 
 	// Scale: agent minutes of the ended items, oldest end first.
 	ended := byEnd(items)
@@ -420,7 +420,7 @@ func Compute(in Input) (Result, map[string]string) {
 	computeQuality(byStart, works, hist, &res)
 	var issues []Issue
 	res.Backlog, issues = computeBacklog(in, logEv, from, items)
-	res.Kitchen = computeKitchen(in, logEv, works, order, items, issues, &res)
+	res.Kitchen = computeKitchen(in, logEv, works, order, items, issues, ghDown, &res)
 	return res, newCache
 }
 
@@ -503,8 +503,8 @@ func countPlans(in Input, res *Result) map[string]int {
 
 // mergedToday asks Merged about every ended PR not yet known as merged,
 // counts the ones merged today and returns the new cache.
-func mergedToday(in Input, urls []string, res *Result) map[string]string {
-	cache := map[string]string{}
+func mergedToday(in Input, urls []string, res *Result) (cache map[string]string, ghDown bool) {
+	cache = map[string]string{}
 	for k, v := range in.Cache {
 		cache[k] = v
 	}
@@ -523,6 +523,7 @@ func mergedToday(in Input, urls []string, res *Result) map[string]string {
 				// A missing gh fails every PR and a timeout means gh or GitHub is hanging:
 				// both stop the loop, so N slow PRs never outlast the caller's deadline.
 				if errors.Is(err, exec.ErrNotFound) || errors.Is(err, ErrGhTimeout) {
+					ghDown = true
 					break
 				}
 				continue
@@ -549,7 +550,7 @@ func mergedToday(in Input, urls []string, res *Result) map[string]string {
 			res.Today.Merged++
 		}
 	}
-	return cache
+	return cache, ghDown
 }
 
 func computeEstimate(kind string, win []Item, scale Scale, res *Result) {
