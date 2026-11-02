@@ -134,17 +134,18 @@ func cfgStatusDirty(r gitx.Runner, worktreePath string) bool {
 // report, not a value-returning command); side effects go through the real
 // stopServer/closeWorkspace below.
 type SweepOptions struct {
-	RepoRoot   string
-	Host       string
-	DryRun     bool
-	Fetch      bool
-	Quiet      bool // print nothing when no item is removable (wt new's auto-sweep)
-	KeepRemote bool // never delete origin branches (wt new's auto-sweep; see RmOptions.KeepRemote)
-	Pid        int
-	Now        int64
-	Runner     gitx.Runner
-	Stdout     io.Writer
-	Stderr     io.Writer
+	RepoRoot     string
+	Host         string
+	DryRun       bool
+	Fetch        bool
+	Quiet        bool        // print nothing when no item is removable (wt new's auto-sweep)
+	RemoteRunner gitx.Runner // bounded runner for network calls; nil = Runner
+	KeepRemote   bool        // never delete origin branches (wt new's auto-sweep; see RmOptions.KeepRemote)
+	Pid          int
+	Now          int64
+	Runner       gitx.Runner
+	Stdout       io.Writer
+	Stderr       io.Writer
 }
 
 // RunSweep tears down every finished task in the repo: for each removable
@@ -217,7 +218,7 @@ func RunSweep(o SweepOptions) error {
 		_, _ = fmt.Fprintf(o.Stdout, "wt: sweeping %s (%s)\n", it.Slug, it.Branch)
 		stopServer(it.Path, o.Stdout)
 		closeWorkspace(it.Path, o.Stdout)
-		if e := RunRm(RmOptions{RepoRoot: o.RepoRoot, Slug: it.Slug, Host: o.Host, Pid: o.Pid, Now: o.Now, Runner: r, Stderr: o.Stderr, KeepRemote: o.KeepRemote}); e != nil {
+		if e := RunRm(RmOptions{RepoRoot: o.RepoRoot, Slug: it.Slug, Host: o.Host, Pid: o.Pid, Now: o.Now, Runner: r, Stderr: o.Stderr, KeepRemote: o.KeepRemote, RemoteRunner: o.RemoteRunner}); e != nil {
 			_, _ = fmt.Fprintf(o.Stderr, "wt:   could not remove %s: %v\n", it.Slug, e)
 			kept++
 			continue
@@ -247,7 +248,7 @@ func mergedWord(merged bool) string {
 func sweepStale(o SweepOptions, r gitx.Runner, it SweepItem) error {
 	if it.BranchMerged {
 		_, _ = fmt.Fprintf(o.Stdout, "wt: dropping stale entry %s (port %s, branch %s merged)\n", it.Slug, orDash(it.Port), it.Branch)
-		return RunRm(RmOptions{RepoRoot: o.RepoRoot, Slug: it.Slug, Host: o.Host, Force: true, Pid: o.Pid, Now: o.Now, Runner: r, Stderr: o.Stderr, KeepRemote: o.KeepRemote})
+		return RunRm(RmOptions{RepoRoot: o.RepoRoot, Slug: it.Slug, Host: o.Host, Force: true, Pid: o.Pid, Now: o.Now, Runner: r, Stderr: o.Stderr, KeepRemote: o.KeepRemote, RemoteRunner: o.RemoteRunner})
 	}
 	if _, e := RemoveWorktree(o.RepoRoot, it.Slug, o.Pid, o.Host, o.Now); e != nil {
 		return e

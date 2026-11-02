@@ -1,11 +1,9 @@
 package wt
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -26,6 +24,7 @@ type NewOptions struct {
 	Pid          int
 	Now          int64
 	Runner       gitx.Runner
+	RemoteRunner gitx.Runner // bounded runner for the push; nil = Runner
 	Stderr       io.Writer
 }
 
@@ -276,13 +275,11 @@ func RunNew(o NewOptions) error {
 	pushed := false
 	if o.Type != "hotfix" {
 		if _, e := r.Run(o.RepoRoot, "remote", "get-url", "origin"); e == nil {
-			if _, e := r.Run(path, "push", "-u", "origin", branch); e != nil {
-				var ee *exec.ExitError
-				detail := e.Error()
-				if errors.As(e, &ee) && strings.TrimSpace(string(ee.Stderr)) != "" {
-					detail = strings.TrimSpace(string(ee.Stderr))
-				}
-				_, _ = fmt.Fprintf(o.Stderr, "wt: could not push %s to origin (%s); push it yourself when online\n", branch, detail)
+			if !fetched {
+				// Offline: the fetch just failed, so a push would only hang or fail.
+				_, _ = fmt.Fprintf(o.Stderr, "wt: did not push %s to origin (fetch failed); push it yourself when online\n", branch)
+			} else if _, e := remoteOr(o.RemoteRunner, r).Run(path, "push", "-u", "origin", branch); e != nil {
+				_, _ = fmt.Fprintf(o.Stderr, "wt: could not push %s to origin (%s); push it yourself when online\n", branch, pushRejectedHint(gitErrLine(e)))
 			} else {
 				pushed = true
 			}

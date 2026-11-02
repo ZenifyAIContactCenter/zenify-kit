@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -480,4 +481,72 @@ func (r *racePusher) Run(dir string, args ...string) ([]byte, error) {
 		gitT(r.t, clone, "push", "-q", "origin", "namph/feat/my-task")
 	}
 	return r.recRunner.Run(dir, args...)
+}
+
+// A worktree switched to another branch (even one whose tip equals base) must
+// never take that branch off origin: only the branch wt recorded is deletable.
+func TestRunRm_NeverDeletesUnrecordedOrDeployBranch(t *testing.T) {
+	for _, other := range []string{"staging", "main-copy"} {
+		root, bare := pushRepo(t, true)
+		o, errb := realOpts(root)
+		if err := RunNew(o); err != nil {
+			t.Fatalf("RunNew: %v\n%s", err, errb)
+		}
+		wtp := filepath.Join(root, ".worktrees", "my-task")
+		gitT(t, wtp, "checkout", "-q", "-b", other)
+		gitT(t, wtp, "push", "-q", "origin", other)
+		var rb bytes.Buffer
+		rec := &recRunner{inner: gitx.ExecRunner()}
+		if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+			t.Fatalf("RunRm: %v\n%s", err, rb.String())
+		}
+		if rec.deleted() || !bareHas(t, bare, other) {
+			t.Fatalf("%s must stay on origin; calls %v", other, rec.calls)
+		}
+		if !strings.Contains(rb.String(), "kept origin/"+other+": not a wt task branch") {
+			t.Fatalf("expected not-a-task-branch message, got %q", rb.String())
+		}
+	}
+}
+
+// The remote count uses the base the worktree was cut from (wt.base), the same
+// one the merge gate honours, not only cfg.BaseRef.
+func TestRunRm_CountsAgainstRecordedBase(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	gitT(t, root, "checkout", "-q", "-b", "rel")
+	gitT(t, root, "commit", "-q", "--allow-empty", "-m", "release work")
+	gitT(t, root, "push", "-q", "origin", "rel")
+	gitT(t, root, "checkout", "-q", "main")
+	o, errb := realOpts(root)
+	o.BaseOverride = "origin/rel"
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: gitx.ExecRunner(), Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("empty branch cut from origin/rel should be deleted; stderr %q", rb.String())
+	}
+}
+
+func TestGitErrLine_RedactsAndTruncates(t *testing.T) {
+	e := &exec.ExitError{Stderr: []byte("\nfatal: unable to access 'https://user:s3cret@host.example/r.git/': denied\nsecond line\n")}
+	got := gitErrLine(e)
+	if strings.Contains(got, "s3cret") || strings.Contains(got, "second") || !strings.Contains(got, "https://***@host.example/r.git") {
+		t.Fatalf("got %q", got)
+	}
+	if got := gitErrLine(errors.New("fetch https://tok123@h/x failed")); got != "fetch https://***@h/x failed" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestPushRejectedHint(t *testing.T) {
+	if got := pushRejectedHint("! [rejected] b -> b (non-fast-forward)"); !strings.Contains(got, "already has this branch") {
+		t.Fatalf("got %q", got)
+	}
+	if got := pushRejectedHint("could not resolve host"); strings.Contains(got, "already has") {
+		t.Fatalf("got %q", got)
+	}
 }

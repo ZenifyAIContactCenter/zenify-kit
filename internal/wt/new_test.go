@@ -456,3 +456,39 @@ func TestRunNew_AutoSweepKeepsRemoteBranch(t *testing.T) {
 		t.Fatal("remote branch of A must survive auto-sweep")
 	}
 }
+
+// Offline (the fetch failed): no push call, the "push it yourself" hint instead.
+func TestRunNew_FetchFailureSkipsPush(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	fr := &failRunner{recRunner: recRunner{inner: gitx.ExecRunner()}, failOn: "fetch origin --quiet"}
+	o.Runner = fr
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	for _, c := range fr.calls {
+		if strings.HasPrefix(c, "push") {
+			t.Fatalf("must not push after a failed fetch, calls %v", fr.calls)
+		}
+	}
+	if !strings.Contains(errb.String(), "push it yourself when online") || bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("expected hint and no remote branch, got %q", errb.String())
+	}
+}
+
+// Origin already holds the branch with other commits: the warning says so.
+func TestRunNew_PushRejectedSaysBranchExists(t *testing.T) {
+	root, _ := pushRepo(t, true)
+	gitT(t, root, "checkout", "-q", "-b", "namph/feat/my-task")
+	gitT(t, root, "commit", "-q", "--allow-empty", "-m", "someone else")
+	gitT(t, root, "push", "-q", "origin", "namph/feat/my-task")
+	gitT(t, root, "checkout", "-q", "main")
+	gitT(t, root, "branch", "-q", "-D", "namph/feat/my-task")
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if !strings.Contains(errb.String(), "already has this branch with other commits") {
+		t.Fatalf("expected exists hint, got %q", errb.String())
+	}
+}

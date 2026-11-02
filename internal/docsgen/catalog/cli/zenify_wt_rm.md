@@ -7,7 +7,7 @@ Khi một task đã merge và bạn muốn dọn worktree cùng branch của nó
 
 ## Kết quả
 
-Lệnh gỡ worktree khỏi git, xóa branch cục bộ, xóa branch cùng tên trên `origin` và cập nhật state của repo. Branch remote chỉ bị xóa khi nó không có commit nào ngoài base. Nếu có commit, lệnh giữ nguyên và in `kept origin/<branch>: it has commits`. Lỗi khi xóa remote chỉ in cảnh báo. Trước đó nó kiểm tra và từ chối trong ba trường hợp, mỗi trường hợp một thông điệp riêng:
+Lệnh gỡ worktree khỏi git, xóa branch cục bộ, xóa branch cùng tên trên `origin` và cập nhật state của repo. Branch remote chỉ bị xóa khi nó đúng là branch `wt new` đã ghi cho slug này, không phải branch base hay branch deploy (`.claude/deploy-branches`, cùng `main`, `master`, `staging`, `develop`, `production`), và không có commit nào ngoài base mà worktree được tách ra. Worktree đã bị chuyển sang branch khác thì lệnh giữ branch đó và in `kept origin/<branch>: not a wt task branch`. Các lệnh gọi mạng bị giới hạn 20 giây. Nếu có commit, lệnh giữ nguyên và in `kept origin/<branch>: it has commits`. Lỗi khi xóa remote chỉ in cảnh báo. Trước đó nó kiểm tra và từ chối trong ba trường hợp, mỗi trường hợp một thông điệp riêng:
 
 - còn thay đổi chưa commit,
 - đang ở detached HEAD,

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitguard"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
@@ -25,7 +26,10 @@ type RmOptions struct {
 	Pid        int
 	Now        int64
 	Runner     gitx.Runner
-	Stderr     io.Writer
+	// RemoteRunner runs the network calls (ls-remote/fetch/push); the CLI passes a
+	// TimeoutRunner. Nil falls back to Runner.
+	RemoteRunner gitx.Runner
+	Stderr       io.Writer
 }
 
 // RunRm tears down the worktree for o.Slug. Without --force it refuses a dirty
@@ -104,6 +108,22 @@ func RunRm(o RmOptions) error {
 		}
 	}
 
+	// What wt recorded for this slug, read BEFORE the worktree and state go away:
+	// the remote branch is only ever deleted if it is the very branch wt created,
+	// counted against the base that worktree was cut from.
+	recBranch := ""
+	if st, e := ReadState(o.RepoRoot); e == nil {
+		if w, ok := st.Find(o.Slug); ok {
+			recBranch = w.Branch
+		}
+	}
+	remoteBase := base
+	if !gone {
+		if b := cfgGet(r, path, "wt.base"); b != "" {
+			remoteBase = b
+		}
+	}
+
 	// Remove the worktree (git-level --force: our gate already vouched for it).
 	if gone {
 		if _, e := r.Run(o.RepoRoot, "worktree", "prune"); e != nil {
@@ -142,7 +162,7 @@ func RunRm(o RmOptions) error {
 	} else if _, e := r.Run(o.RepoRoot, "branch", "-D", branch); e != nil {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete branch %s, delete it by hand: %v\n", branch, e)
 	} else if !o.KeepRemote {
-		deleteEmptyRemote(o, branch, base)
+		deleteEmptyRemote(o, branch, recBranch, remoteBase, cfg.BaseRef)
 	}
 
 	// Clear the rebuildable caches. Best-effort: a cache-write failure must not
@@ -169,17 +189,24 @@ func RunRm(o RmOptions) error {
 	return nil
 }
 
-// deleteEmptyRemote removes origin/<branch> only when its tip has no commit
+// deleteEmptyRemote removes origin/<branch> only when (1) branch is the one wt
+// recorded for this slug — a worktree switched to main must never take main off
+// origin — (2) it is not a base or deploy branch, and (3) its tip has no commit
 // beyond base (the empty branch wt new pushed). A branch with commits is kept.
 // Every failure only warns; no origin remote means nothing to do.
-func deleteEmptyRemote(o RmOptions, branch, base string) {
+func deleteEmptyRemote(o RmOptions, branch, recorded, base, cfgBase string) {
 	r := o.Runner
+	rr := remoteOr(o.RemoteRunner, r)
 	if _, e := r.Run(o.RepoRoot, "remote", "get-url", "origin"); e != nil {
 		return
 	}
-	out, e := r.Run(o.RepoRoot, "ls-remote", "--heads", "origin", branch)
+	if branch != recorded || isProtectedBranch(o.RepoRoot, branch, base, cfgBase) {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: not a wt task branch\n", branch)
+		return
+	}
+	out, e := rr.Run(o.RepoRoot, "ls-remote", "--heads", "origin", branch)
 	if e != nil {
-		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not look up origin/%s: %v\n", branch, e)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not look up origin/%s: %s\n", branch, gitErrLine(e))
 		return
 	}
 	tip := ""
@@ -191,13 +218,13 @@ func deleteEmptyRemote(o RmOptions, branch, base string) {
 	if tip == "" {
 		return
 	}
-	if _, e := r.Run(o.RepoRoot, "fetch", "origin", "--quiet", "refs/heads/"+branch); e != nil {
-		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not fetch origin/%s, keeping it: %v\n", branch, e)
+	if _, e := rr.Run(o.RepoRoot, "fetch", "origin", "--quiet", "refs/heads/"+branch); e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not fetch origin/%s, keeping it: %s\n", branch, gitErrLine(e))
 		return
 	}
 	cnt, e := r.Run(o.RepoRoot, "rev-list", "--count", base+".."+tip)
 	if e != nil {
-		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not count commits on origin/%s, keeping it: %v\n", branch, e)
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not count commits on origin/%s, keeping it: %s\n", branch, gitErrLine(e))
 		return
 	}
 	if strings.TrimSpace(string(cnt)) != "0" {
@@ -206,11 +233,23 @@ func deleteEmptyRemote(o RmOptions, branch, base string) {
 	}
 	// Lease on the tip we counted: a commit pushed since makes git refuse, so we
 	// can never delete work that arrived after the check.
-	if _, e := r.Run(o.RepoRoot, "push", "--force-with-lease=refs/heads/"+branch+":"+tip, "origin", "--delete", branch); e != nil {
-		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete origin/%s, keeping it: %v\n", branch, e)
+	if _, e := rr.Run(o.RepoRoot, "push", "--force-with-lease=refs/heads/"+branch+":"+tip, "origin", "--delete", branch); e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete origin/%s, keeping it: %s\n", branch, gitErrLine(e))
 		return
 	}
 	_, _ = fmt.Fprintf(o.Stderr, "wt: deleted empty origin/%s\n", branch)
+}
+
+// isProtectedBranch is true for a base branch (either the base the worktree was
+// cut from or the configured one, short name), the baseline deploy names, and
+// anything the repo's .claude/deploy-branches lists.
+func isProtectedBranch(repoRoot, branch string, bases ...string) bool {
+	for _, b := range bases {
+		if branch == strings.TrimPrefix(b, "origin/") {
+			return true
+		}
+	}
+	return baselineDeploy[branch] || gitguard.IsDeployBranch(repoRoot, branch)
 }
 
 // worktreeListHasPath reports whether git's porcelain worktree listing registers
