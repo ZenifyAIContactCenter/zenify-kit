@@ -138,6 +138,7 @@ type Result struct {
 	Estimate  Estimate `json:"estimate"`
 	Quality   Quality  `json:"quality"`
 	Backlog   Backlog  `json:"backlog"`
+	Kitchen   Kitchen  `json:"kitchen"`
 	Onboarded bool     `json:"onboarded"`
 }
 
@@ -154,6 +155,16 @@ type Input struct {
 	// GitHub lists open issues; nil skips the source. On a partial failure it
 	// returns the items it got together with the error.
 	GitHub func() ([]Issue, error)
+	// Workspace is the workspace root, used to label a live tab by its cwd.
+	Workspace string
+	// Live holds the live/<session>.json files with the mtime of their .beat.
+	Live []LiveFile
+	// PlanTitle returns the title of the plan at path, "" and nil when the file is gone.
+	PlanTitle func(path string) (string, error)
+	// PRTitle returns the title of the pull request at url; nil skips gh this run.
+	PRTitle func(url string) (string, error)
+	// PRTitles caches PR titles by url; Compute adds the titles it fetches.
+	PRTitles map[string]string
 	// SDD lists the deferred and parked ledger findings; nil skips the source.
 	SDD []SDDItem
 }
@@ -211,12 +222,13 @@ type work struct {
 	events []Event
 	end    *Event
 	start  time.Time
+	from   string // the `start --from` ref, "" when none
 }
 
 // Compute builds the stats and returns the new merged cache. Bad data is
 // counted in Malformed; a Merged error is reported in Today.MergedError.
 func Compute(in Input) (Result, map[string]string) {
-	res := Result{Rules: []string{}, Running: []Item{}, Backlog: Backlog{Items: []BacklogItem{}}}
+	res := Result{Rules: []string{}, Running: []Item{}, Backlog: Backlog{Items: []BacklogItem{}}, Kitchen: Kitchen{Cooked: []CookedItem{}, RollingBoil: []BoilItem{}}}
 	res.Today = Today{Date: in.Today, Plans: map[string]int{}, Started: map[string]int{}, Ended: map[string]int{}, Items: []Item{}}
 	res.Estimate = Estimate{ByKind: map[string]KindEstimate{}, PhaseShare: map[string]map[string]float64{}}
 	res.Quality = Quality{ByKind: map[string]KindQuality{}}
@@ -273,6 +285,7 @@ func Compute(in Input) (Result, map[string]string) {
 			order = append(order, e.ID)
 			if len(e.F) == 4 && e.F[3] != "-" {
 				from[e.F[3]] = true
+				w.from = e.F[3]
 			}
 			continue
 		}
@@ -404,7 +417,9 @@ func Compute(in Input) (Result, map[string]string) {
 		}
 	}
 	computeQuality(byStart, works, hist, &res)
-	res.Backlog = computeBacklog(in, logEv, from, items)
+	var issues []Issue
+	res.Backlog, issues = computeBacklog(in, logEv, from, items)
+	res.Kitchen = computeKitchen(in, logEv, works, order, items, issues, &res)
 	return res, newCache
 }
 

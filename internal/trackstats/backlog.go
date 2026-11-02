@@ -47,8 +47,9 @@ func ageDays(now, t time.Time) int {
 }
 
 // computeBacklog gathers manual, github, sdd and stale items. from holds the
-// ids and URLs already taken by a `start --from`, dropped the `drop` rows.
-func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item) Backlog {
+// ids and URLs already taken by a `start --from`, dropped the `drop` rows. It
+// also returns the issues GitHub gave, so the source is asked once.
+func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item) (Backlog, []Issue) {
 	b := Backlog{Items: []BacklogItem{}}
 	dropped := map[string]bool{}
 	for _, e := range logEv {
@@ -62,8 +63,10 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		}
 		b.Items = append(b.Items, BacklogItem{Source: "manual", ID: e.ID, Repo: e.F[0], Est: e.F[1], Ref: e.F[2], Title: e.F[3], AgeDays: ageDays(in.Now, e.At)})
 	}
+	var issues []Issue
 	if in.GitHub != nil {
-		issues, err := in.GitHub()
+		var err error
+		issues, err = in.GitHub()
 		if err != nil {
 			b.GhError = err.Error()
 		}
@@ -89,7 +92,7 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		started, _ := time.Parse(time.RFC3339, it.StartedAt) // written by Compute from a parsed time
 		b.Items = append(b.Items, BacklogItem{Source: "stale", ID: it.ID, Repo: it.Repo, Est: it.Est, Ref: "-", Title: it.Kind + " " + it.Repo + " (" + it.ID + ")", AgeDays: ageDays(in.Now, started)})
 	}
-	return b
+	return b, issues
 }
 
 // historyRows are the `history` log rows, oldest first.

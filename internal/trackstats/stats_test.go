@@ -394,13 +394,16 @@ func TestJSONShape(t *testing.T) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
-	for _, k := range []string{"enabled", "malformed", "scale", "rules", "today", "running", "estimate", "quality"} {
+	for _, k := range []string{"enabled", "malformed", "scale", "rules", "today", "running", "estimate", "quality", "kitchen"} {
 		if _, ok := m[k]; !ok {
 			t.Fatalf("missing key %q in %s", k, b)
 		}
 	}
 	if !strings.Contains(string(m["running"]), "[]") || !strings.Contains(string(m["rules"]), "[]") {
 		t.Fatalf("running/rules must be [] not null: %s", b)
+	}
+	if !strings.Contains(string(m["kitchen"]), `"cooked":[]`) || !strings.Contains(string(m["kitchen"]), `"rollingBoil":[]`) {
+		t.Fatalf("kitchen lists must be [] not null: %s", m["kitchen"])
 	}
 	// a kind with no ship lines marshals its ratios as null
 	id := cid("fix", 1)
