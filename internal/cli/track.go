@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -27,6 +28,9 @@ const trackSep = " · "
 
 // trackMerged asks whether a PR is merged; a test replaces it at the gh boundary.
 var trackMerged trackstats.MergedFunc = trackstats.GhMerged
+
+// trackPRTitle fetches a PR title; a test replaces it at the gh boundary.
+var trackPRTitle = trackstats.GhPRTitle
 
 // mergedRecheck is how long a gh merged check stays fresh before stats asks again.
 const mergedRecheck = 5 * time.Minute
@@ -552,12 +556,19 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 }
 
 func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (trackstats.Result, error) {
+	var err error
 	in := trackstats.Input{
 		PlansRoot: filepath.Join(wsDir, "docs", "plans"),
 		Today:     today,
 		Now:       now,
 		Merged:    trackMerged,
 		Sessions:  map[string]string{},
+		Workspace: wsDir,
+		PlanTitle: func(p string) (string, error) { return readPlanTitle(wsDir, p) },
+	}
+	in.Live, err = readLiveFiles(dir)
+	if err != nil {
+		return trackstats.Result{}, err
 	}
 	in.GitHub, in.SDD = backlogSources(dir, wsDir, force, now)
 	b, err := os.ReadFile(filepath.Join(dir, "log.md")) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
@@ -588,6 +599,18 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		return trackstats.Result{}, err
 	}
 	in.Cache = cache
+	titlesPath := filepath.Join(dir, "pr-titles.json")
+	titles := map[string]string{}
+	tb, err := os.ReadFile(titlesPath) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
+	switch {
+	case err == nil:
+		if err := json.Unmarshal(tb, &titles); err != nil {
+			return trackstats.Result{}, fmt.Errorf("parse %s: %w", titlesPath, err)
+		}
+	case !errors.Is(err, os.ErrNotExist):
+		return trackstats.Result{}, err
+	}
+	in.PRTitles = maps.Clone(titles)
 	// gh is asked about unmerged PRs at most once per mergedRecheck: the pane runs stats on
 	// almost every turn, and every unmerged PR costs one sequential gh call. The stamp holds
 	// the last check's error, which stays reported until the next check.
@@ -602,6 +625,10 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		}
 	case !errors.Is(err, os.ErrNotExist):
 		return trackstats.Result{}, err
+	}
+	// A PR title costs a gh call too: ask only in the same window the merged check is allowed.
+	if in.Merged != nil {
+		in.PRTitle = trackPRTitle
 	}
 	res, newCache := trackstats.Compute(in)
 	if in.Merged == nil {
@@ -620,7 +647,63 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 			return trackstats.Result{}, err
 		}
 	}
+	if !reflect.DeepEqual(in.PRTitles, titles) {
+		out, err := json.Marshal(in.PRTitles)
+		if err != nil {
+			return trackstats.Result{}, err
+		}
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return trackstats.Result{}, err
+		}
+		if err := writeFileAtomic(titlesPath, out, 0o644); err != nil {
+			return trackstats.Result{}, err
+		}
+	}
 	return res, nil
+}
+
+// readLiveFiles lists live/*.json with the mtime of each .beat (zero when it is absent).
+func readLiveFiles(dir string) ([]trackstats.LiveFile, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "live", "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	var live []trackstats.LiveFile
+	for _, f := range files {
+		b, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
+		if err != nil {
+			return nil, err
+		}
+		lf := trackstats.LiveFile{Session: strings.TrimSuffix(filepath.Base(f), ".json"), JSON: string(b)}
+		switch fi, err := os.Stat(strings.TrimSuffix(f, ".json") + ".beat"); {
+		case err == nil:
+			lf.BeatAt = fi.ModTime()
+		case !errors.Is(err, os.ErrNotExist):
+			return nil, err
+		}
+		live = append(live, lf)
+	}
+	return live, nil
+}
+
+// readPlanTitle returns the "# " heading on the first line of a plan, resolving a relative
+// path against the workspace; a missing file gives "" and no error.
+func readPlanTitle(wsDir, p string) (string, error) {
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(wsDir, p)
+	}
+	b, err := os.ReadFile(p) //nolint:gosec // G304 -- path comes from this workspace's own track log
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	first, _, _ := strings.Cut(string(b), "\n")
+	if t, ok := strings.CutPrefix(first, "# "); ok {
+		return strings.TrimSpace(t), nil
+	}
+	return "", nil
 }
 
 func renderTrackStats(w io.Writer, r trackstats.Result) {

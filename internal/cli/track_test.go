@@ -138,6 +138,9 @@ func TestTrack_RowsAndStats(t *testing.T) {
 	old := trackMerged
 	trackMerged = func(u string) (string, error) { asked = append(asked, u); return "2026-10-30T01:00:00Z", nil }
 	t.Cleanup(func() { trackMerged = old })
+	oldTitle := trackPRTitle
+	trackPRTitle = func(string) (string, error) { return "", nil }
+	t.Cleanup(func() { trackPRTitle = oldTitle })
 	out, err := runTrack(t, ws, "stats", "--json", "--today", "2000-01-01")
 	if err != nil {
 		t.Fatal(err)
@@ -186,6 +189,9 @@ func TestTrackStats_MergedCheckThrottled(t *testing.T) {
 		return "", nil
 	}
 	t.Cleanup(func() { trackMerged = old })
+	oldTitle := trackPRTitle
+	trackPRTitle = func(string) (string, error) { return "", nil }
+	t.Cleanup(func() { trackPRTitle = oldTitle })
 	stats := func() string {
 		t.Helper()
 		out, err := runTrack(t, ws, "stats", "--json")
@@ -438,5 +444,150 @@ func TestTrackEndLedgerPlanWithSeparator(t *testing.T) {
 	last, stderr := endWithLedger(t, "# SDD ledger — plan: /a · b.md\n")
 	if !strings.HasSuffix(last, " · cancelled · 0 · 0") || !strings.Contains(stderr, "plan path") {
 		t.Fatalf("row=%q stderr=%q", last, stderr)
+	}
+}
+
+const kitchenPR = "https://github.com/o/r/pull/7"
+
+// kitchenLog writes a log whose item ended just now, with an optional plan field.
+func kitchenLog(t *testing.T, ws, endTarget, plan string) {
+	t.Helper()
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Add(-time.Minute).Format("2006-01-02T15:04:05Z")
+	id := "cook-" + time.Now().Format("060102") + "-abcd"
+	end := at + " · end · " + id + " · " + endTarget + " · 1 · 0"
+	if plan != "" {
+		end += " · " + plan
+	}
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(at+" · start · "+id+" · cook · r · M\n"+end+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type kitchenOut struct {
+	Kitchen struct {
+		Cooked []struct {
+			Brief string `json:"brief"`
+		} `json:"cooked"`
+		RollingBoil []struct {
+			Session, Brief, State string
+		} `json:"rollingBoil"`
+		TitleError string `json:"titleError"`
+	} `json:"kitchen"`
+}
+
+func kitchenStats(t *testing.T, ws string) kitchenOut {
+	t.Helper()
+	out, err := runTrack(t, ws, "stats", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r kitchenOut
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	return r
+}
+
+func stubMergedAndTitle(t *testing.T, title string) *int {
+	t.Helper()
+	oldM, oldT := trackMerged, trackPRTitle
+	calls := 0
+	trackMerged = func(string) (string, error) { return "", nil }
+	trackPRTitle = func(string) (string, error) { calls++; return title, nil }
+	t.Cleanup(func() { trackMerged, trackPRTitle = oldM, oldT })
+	return &calls
+}
+
+func TestTrackStatsPRTitleCachedOnce(t *testing.T) {
+	ws := trackWS(t, true)
+	kitchenLog(t, ws, kitchenPR, "")
+	calls := stubMergedAndTitle(t, "P")
+	dir := filepath.Join(ws, ".zenify", "track")
+	for i := 0; i < 2; i++ {
+		_ = os.Remove(filepath.Join(dir, "merged.checked"))
+		r := kitchenStats(t, ws)
+		if len(r.Kitchen.Cooked) != 1 || r.Kitchen.Cooked[0].Brief != "P" {
+			t.Fatalf("run %d: cooked %+v", i, r.Kitchen.Cooked)
+		}
+	}
+	if *calls != 1 {
+		t.Fatalf("pr title asked %d times, want 1", *calls)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "pr-titles.json"))
+	if err != nil || string(b) != `{"`+kitchenPR+`":"P"}` {
+		t.Fatalf("pr-titles.json = %q err %v", b, err)
+	}
+}
+
+func TestTrackStatsPRTitleThrottled(t *testing.T) {
+	ws := trackWS(t, true)
+	kitchenLog(t, ws, kitchenPR, "")
+	calls := stubMergedAndTitle(t, "P")
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.WriteFile(filepath.Join(dir, "merged.checked"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := kitchenStats(t, ws)
+	if *calls != 0 {
+		t.Fatalf("pr title asked %d times while throttled", *calls)
+	}
+	if len(r.Kitchen.Cooked) != 1 || r.Kitchen.Cooked[0].Brief != "cook r" {
+		t.Fatalf("cooked %+v", r.Kitchen.Cooked)
+	}
+}
+
+func TestTrackStatsLiveFiles(t *testing.T) {
+	ws := trackWS(t, true)
+	live := filepath.Join(ws, ".zenify", "track", "live")
+	if err := os.MkdirAll(live, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	since := time.Now().Add(-60 * time.Second).UTC().Format(time.RFC3339)
+	doc := `{"state":"ask","since":"` + since + `","cwd":"` + filepath.Join(ws, "repos", "r") + `","id":""}`
+	for _, s := range []string{"S", "T"} {
+		if err := os.WriteFile(filepath.Join(live, s+".json"), []byte(doc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(live, "S.beat"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := kitchenStats(t, ws)
+	if len(r.Kitchen.RollingBoil) != 1 {
+		t.Fatalf("rollingBoil %+v", r.Kitchen.RollingBoil)
+	}
+	if b := r.Kitchen.RollingBoil[0]; b.Session != "S" || b.Brief != "r" || b.State != "ask" {
+		t.Fatalf("rollingBoil[0] = %+v", b)
+	}
+}
+
+func TestTrackStatsPlanTitle(t *testing.T) {
+	ws := trackWS(t, true)
+	stubMergedAndTitle(t, "")
+	if err := os.MkdirAll(filepath.Join(ws, "docs", "plans", "r"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	plan := "# Foo — Implementation Plan\n\nbody\n"
+	if err := os.WriteFile(filepath.Join(ws, "docs", "plans", "r", "p.md"), []byte(plan), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	abs := filepath.Join(t.TempDir(), "abs.md")
+	if err := os.WriteFile(abs, []byte("# Bar — Implementation Plan\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ plan, want string }{
+		{abs, "Bar"},
+		{"docs/plans/r/p.md", "Foo"},
+		{"docs/plans/r/gone.md", "cook r"},
+	} {
+		kitchenLog(t, ws, "branch:x", c.plan)
+		r := kitchenStats(t, ws)
+		if len(r.Kitchen.Cooked) != 1 || r.Kitchen.Cooked[0].Brief != c.want || r.Kitchen.TitleError != "" {
+			t.Fatalf("plan %q: cooked %+v titleError %q, want brief %q", c.plan, r.Kitchen.Cooked, r.Kitchen.TitleError, c.want)
+		}
 	}
 }
