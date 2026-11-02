@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -123,8 +124,12 @@ func writeHistory(w io.Writer, logPath string, groups []*histGroup) error {
 	if err != nil {
 		return err
 	}
+	// Oldest work first: the rows share one write time, and the scale takes the last rows
+	// of the log as the most recent history (FR-14.5).
+	byLast := slices.Clone(groups)
+	sort.SliceStable(byLast, func(i, j int) bool { return byLast[i].lastAt().Before(byLast[j].lastAt()) })
 	n := 0
-	for _, g := range groups {
+	for _, g := range byLast {
 		id := histID(g.repo, g.slug)
 		if rowsHave(rows, "history", id) {
 			continue
@@ -166,6 +171,17 @@ func (g *histGroup) kind() string {
 		return g.branchKind
 	}
 	return "-"
+}
+
+// lastAt is the end of the group's latest span.
+func (g *histGroup) lastAt() time.Time {
+	var last time.Time
+	for _, s := range g.spans {
+		if s.to.After(last) {
+			last = s.to
+		}
+	}
+	return last
 }
 
 // minutes is the union of the prompt spans minus the waits, rounded up.

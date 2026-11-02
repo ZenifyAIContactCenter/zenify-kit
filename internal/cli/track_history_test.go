@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,5 +194,30 @@ func TestTrackOnboardHistory_PromptAtRootAttributedToWorktree(t *testing.T) {
 	}
 	if !strings.Contains(out, "kit  x  -  3m  opus:100/10\n") {
 		t.Fatalf("preview = %q", out)
+	}
+}
+
+// FR-14.5: rows are written oldest work first, so the last rows of the log are the most recent
+// history whatever the repo/slug names sort to.
+func TestWriteHistory_OldestWorkFirst(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "log.md")
+	at := func(h int) []histSpan {
+		t0 := time.Date(2026, 10, 1, h, 0, 0, 0, time.UTC)
+		return []histSpan{{from: t0, to: t0.Add(time.Hour)}}
+	}
+	groups := []*histGroup{
+		{repo: "a", slug: "newest", spans: at(9)},
+		{repo: "z", slug: "oldest", spans: at(1)},
+	}
+	if err := writeHistory(io.Discard, logPath, groups); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	if len(lines) != 2 || !strings.Contains(lines[0], " · z · ") || !strings.Contains(lines[1], " · a · ") {
+		t.Fatalf("want the oldest group first:\n%s", b)
 	}
 }
