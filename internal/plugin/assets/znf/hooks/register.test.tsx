@@ -12,7 +12,7 @@ const SESSIONS_DIR = '/w/.zenify/track/sessions'
 const OVERLAY = '/w/.zenify-overlay.yaml'
 const STATS_ARGV = ['zenify', 'track', 'stats', '--json', '--workspace', WS]
 const PANE = { id: 'track', title: 'Track', columns: 44 }
-const OFF = '⏸ track off · bật: /znf-settings'
+const OFF = '⏸ track off · bật: /config → znf'
 const MIN = 60000
 
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -40,6 +40,7 @@ type World = {
 }
 
 type Calls = {
+  registered: string[]
   open: unknown[]
   close: unknown[]
   run: string[][]
@@ -82,14 +83,17 @@ const statsJson = (over: Record<string, unknown> = {}) =>
     ...over,
   })
 const ok = (stdout: string): Run => ({ exitCode: 0, stdout, stderr: '' })
-const statsRuns = (calls: Calls) => calls.run.filter(a => a[0] === 'zenify')
+const statsRuns = (calls: Calls) => calls.run.filter(a => a[0] === 'zenify' && a[1] === 'track')
 const lastStatus = (calls: Calls) => calls.status.at(-1)
 
 // Every hook here stands for the engine beneath the plugin.
 function engine(on: any, world: World): Calls {
-  const calls: Calls = { open: [], close: [], run: [], status: [], toast: [], write: [] }
+  const calls: Calls = { registered: [], open: [], close: [], run: [], status: [], toast: [], write: [] }
   const panes: { id: string }[] = []
-  on('command.register', () => ({ value: { command: 'track-pane' } }))
+  on('command.register', (_: unknown, e: { name: string }) => {
+    calls.registered.push(e.name)
+    return { value: { command: e.name } }
+  })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: CWD }))
   on('prompt.submit', (_: unknown, e: { text: string }) => ({ text: e.text }))
@@ -103,8 +107,8 @@ function engine(on: any, world: World): Calls {
       : next(e),
   )
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
-  // The plugin's $.store: nothing stored, so trackAutoOpen reads as unset (on).
-  on('store.get', () => ({ value: undefined }))
+  // FR-17.3: the writer beneath the session-start sync of the /config rows.
+  on('config.set', (_: unknown, e: { value: unknown }) => ({ value: e.value }))
   on('fs.write', (_: unknown, e: { path: string; text: string }) => {
     if (world.writeError) return { deny: world.writeError }
     calls.write.push({ path: e.path, text: e.text })
@@ -147,6 +151,9 @@ function engine(on: any, world: World): Calls {
   })
   on('process.run', async (_: unknown, e: { argv: string[] }) => {
     calls.run.push([...e.argv])
+    // FR-17.3: the sources the /config rows are synced from, in step with the defaults.
+    if (e.argv.join(' ') === 'zenify feature') return { value: ok('github.issues off\ntrack off\n') }
+    if (e.argv.join(' ') === 'zenify reviewer') return { value: ok('agent (ZNF_REVIEWER=agent)\n') }
     if (e.argv[0] === 'zenify') {
       if (world.statsRejects) return { deny: world.statsRejects }
       return { value: world.stats ?? ok(statsJson()) }
@@ -420,6 +427,37 @@ test('FR-6.1: a Skill call of cook, hotfix or ship, with or without znf:, opens 
   await $.tool.call({ tool: 'Skill', skill: 'hotfix' } as any)
   await clock.settle()
   expect(calls.open).toEqual([PANE])
+})
+
+test('SC-41: trackPane off: a /znf:fix prompt opens no pane and /track-pane is not registered', { options: { trackPane: 'off' } }, async ($, on) => {
+  const calls = engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.prompt.submit({ text: '/znf:fix x', command: { name: 'znf:fix', args: 'x' } } as any)
+  await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)
+  await clock.settle()
+  expect(calls.open).toHaveLength(0)
+  expect(calls.registered).not.toContain('track-pane')
+})
+
+test('SC-41: trackPane command: a /znf:fix prompt opens no pane; /track-pane opens it', { options: { trackPane: 'command' } }, async ($, on) => {
+  const calls = engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.prompt.submit({ text: '/znf:fix x', command: { name: 'znf:fix', args: 'x' } } as any)
+  await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)
+  await clock.settle()
+  expect(calls.open).toHaveLength(0)
+  expect(calls.registered).toContain('track-pane')
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  expect(calls.open).toEqual([PANE])
+})
+
+test('FR-17.5: track-pane is the only command registered', async ($, on) => {
+  const calls = engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(calls.registered).toEqual(['track-pane'])
 })
 
 test('FR-6.1: the track-pane command toggles the pane', async ($, on) => {

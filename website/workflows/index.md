@@ -75,7 +75,7 @@ Ba workflow trên tự gọi các skill sau khi cần. Bạn cũng có thể g�
 | `/znf:research` | Research có kiểm chứng: worker fetch nguồn, verifier fetch lại từng URL, báo cáo ghi vào `docs/reference/` | Thiết kế phụ thuộc thư viện, API ngoài hoặc cách người khác làm; brainstorming tự gọi khi checklist năm mục bật. Xem [Research có kiểm chứng](/concepts/research) |
 | agent `spec-reviewer` | Soát spec bằng context mới trước khi bạn duyệt, chỉ báo thiếu sót và mâu thuẫn | Brainstorming tự dispatch ở tier architectural, không gọi tay. Xem [`spec-reviewer`](/reference/agents/spec-reviewer) |
 
-Muốn xem thời gian agent, thời gian chờ, token và chất lượng ship của các lượt cook, fix, hotfix: bật `zenify feature track on` (hoặc bấm nút trong pane `/znf-settings`) và xem [Pane track](/guides/track-pane). Pane `/znf-settings` gom các thiết lập của kit: feature, tự mở pane track, reviewer và danh sách env; xem [Pane settings](/guides/track-pane#pane-settings).
+Muốn xem thời gian agent, thời gian chờ, token và chất lượng ship của các lượt cook, fix, hotfix: bật `zenify feature track on` (hoặc dòng `Dev track` trong `/config` của Claude Code) và xem [Pane track](/guides/track-pane). Các thiết lập của kit (feature, cách mở pane track, reviewer) là các dòng của plugin `znf` trong `/config`; xem [Settings trong /config](/guides/track-pane#settings).
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - `internal/plugin/assets/znf/skills/discipline/SKILL.md`, mục 0: hai tiêu chí chọn và bốn điều kiện bỏ workflow

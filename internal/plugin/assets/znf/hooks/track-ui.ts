@@ -6,7 +6,7 @@ import type { TrackItem, TrackStats, TrackTab } from '../types'
 export type Tab = TrackTab
 export type Line = { text: string; tone?: 'dim' | 'bold' | 'warn' | 'error' }
 
-export const STATUS_OFF = '⏸ track off · bật: /znf-settings'
+export const STATUS_OFF = '⏸ track off · bật: /config → znf'
 // The pane's own messages: command replies, the loading line and the toast prefix.
 export const COPY = {
   opened: 'đã mở pane track',
@@ -14,6 +14,8 @@ export const COPY = {
   loading: 'đang đọc số liệu…',
   toast: 'lỗi track: ',
   noWorkspace: 'không ở trong workspace zenify',
+  // FR-17.3: a /config row that could not be read back from its source.
+  configToast: '⚠ lỗi đồng bộ /config: ',
 } as const
 const STATUS_HEAD = 'track'
 const ERROR_HEAD = '⚠ track lỗi: '

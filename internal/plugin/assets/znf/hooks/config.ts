@@ -1,0 +1,91 @@
+// FR-17: the kit's settings as /config rows (manifest userConfig). The rows mirror the real
+// sources: features in .zenify-overlay.yaml (`zenify feature`), the reviewer in env.ZNF_REVIEWER
+// (`zenify reviewer`). A change runs the writing command; session start pulls the sources back.
+import type { EngineInterface as $, On, PluginOptions } from 'claude-code'
+
+import { COPY } from './track-ui'
+
+const RUN_TIMEOUT_MS = 20000
+// Row field -> `zenify feature` key (FR-17.1).
+const FEATURES: Record<string, string> = { track: 'track', githubIssues: 'github.issues' }
+const REVIEWERS = ['agent', 'codex']
+const FEATURE_LINE = /^(\S+) (on|off)$/
+
+export type TrackPane = 'auto' | 'command' | 'off'
+
+// FR-17.4: a value outside the options reads as unset, so the default `auto`.
+export const trackPaneOf = (options: PluginOptions): TrackPane =>
+  options.trackPane === 'command' || options.trackPane === 'off' ? options.trackPane : 'auto'
+
+const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
+
+// Runs one argv; a non-zero exit or a call that cannot start throws with the stderr.
+async function run($: $, argv: string[]): Promise<string> {
+  const out = await $.process.run(argv, { timeoutMs: RUN_TIMEOUT_MS })
+  if (out.exitCode !== 0) throw new Error(out.stderr.trim() || `${argv.join(' ')}: exit ${out.exitCode}`)
+  return out.stdout
+}
+
+// The command a row change runs, or undefined for a row with no outside source (trackPane).
+function writeArgv(field: string, value: unknown): string[] | undefined {
+  const feature = FEATURES[field]
+  if (feature) return ['zenify', 'feature', feature, value ? 'on' : 'off']
+  if (field === 'reviewer') return ['zenify', 'reviewer', 'set', String(value)]
+  return undefined
+}
+
+// FR-17.2: a znf row change runs its command first; a failure denies it, the row keeps its value.
+export function registerConfig(on: On): void {
+  on('config.set', async ($, e, next) => {
+    const argv = e.key.startsWith('znf.') && !aligning.has(e.key) ? writeArgv(e.key.slice(4), e.value) : undefined
+    if (!argv) return next(e)
+    try {
+      await run($, argv)
+    } catch (err) {
+      return { deny: message(err) }
+    }
+    return next(e)
+  })
+}
+
+// The keys align is setting: they copy a source's value, so the config.set hook writes nothing
+// back. A session skips this plugin's own hooks for its $.config.set; `claude plugin test` runs
+// them and stamps no `origin`, so the hook cannot tell by the event alone.
+const aligning = new Set<string>()
+
+// Sets one row to its source's value when they differ; a refused set is an error.
+async function align($: $, options: PluginOptions, field: string, value: boolean | string): Promise<void> {
+  if (options[field] === value) return
+  const key = `znf.${field}`
+  aligning.add(key)
+  try {
+    const res = await $.config.set({ key, value })
+    if (res.deny !== undefined) throw new Error(res.deny)
+  } finally {
+    aligning.delete(key)
+  }
+}
+
+// FR-17.3: pulls each row back to its source. `inWorkspace` false skips the features, which
+// belong to a workspace. Each failure is a ⚠ toast and leaves its row alone.
+export async function syncConfig($: $, options: PluginOptions, inWorkspace: boolean): Promise<void> {
+  const toast = (err: unknown) => $.ui.toast(`${COPY.configToast}${message(err)}`)
+  if (inWorkspace) {
+    await (async () => {
+      const on = new Map<string, boolean>()
+      for (const l of (await run($, ['zenify', 'feature'])).split('\n')) {
+        const m = FEATURE_LINE.exec(l.trim())
+        if (m) on.set(m[1], m[2] === 'on')
+      }
+      for (const [field, key] of Object.entries(FEATURES)) {
+        if (!on.has(key)) throw new Error(`zenify feature: no ${key} line`)
+        await align($, options, field, on.get(key)!)
+      }
+    })().catch(toast)
+  }
+  await (async () => {
+    const engine = (await run($, ['zenify', 'reviewer'])).trim().split(/\s/)[0]
+    if (!REVIEWERS.includes(engine)) throw new Error(`zenify reviewer: unexpected output ${JSON.stringify(engine)}`)
+    await align($, options, 'reviewer', engine)
+  })().catch(toast)
+}

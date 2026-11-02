@@ -3,7 +3,7 @@ summary: Đặt engine review của kit, agent hoặc codex, vào `env.ZNF_REVIE
 ---
 ## Khi nào dùng
 
-Khi muốn đổi `znf:review` sang `codex review` hoặc về reviewer subagent của Claude mà không chạy lại `zenify up`. Pane `/znf-settings` (tab `Reviewer`) gọi lệnh này qua hai nút `agent` / `codex`.
+Khi muốn đổi `znf:review` sang `codex review` hoặc về reviewer subagent của Claude mà không chạy lại `zenify up`. Dòng `Reviewer` của plugin `znf` trong `/config` của Claude Code gọi lệnh này khi bạn chọn `agent` / `codex`.
 
 ## Kết quả
 
