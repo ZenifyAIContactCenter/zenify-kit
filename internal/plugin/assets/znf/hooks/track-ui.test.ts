@@ -31,7 +31,7 @@ const stats = (over: Partial<TrackStats> = {}): TrackStats => ({
   malformed: 0,
   scale: { source: 'default', n: 0, S: 30, M: 90, L: 240 },
   rules: [],
-  today: { date: '2026-10-30', plans: {}, started: {}, ended: {}, tasks: 0, rounds: 0, prsOpened: 0, merged: 0, mergedError: '', items: [] },
+  today: { date: '2026-10-30', plans: {}, started: {}, ended: {}, tasks: 0, rounds: 0, prsOpened: 0, merged: 0, prsWaiting: 0, mergedError: '', items: [] },
   running: [],
   estimate: { byKind: {}, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: {} },
   quality: { byKind: {}, fix: { n: 0, roundAvg: null, wideRate: null, regressionRate: null } },
@@ -56,7 +56,7 @@ const texts = (lines: { text: string }[]) => lines.map(l => l.text)
 test('SC-44: contextual tips by priority, one at most', () => {
   const tail = (s: TrackStats, id?: string) => statusText(s, A, id)
   const backlog = { items: [bl('manual'), bl('github')], ghError: '' }
-  const prs = { ...stats().today, prsOpened: 3, merged: 1 }
+  const prs = { ...stats().today, prsOpened: 3, merged: 1, prsWaiting: 2 }
   // (2) no open id, backlog N > 0
   expect(tail(stats({ backlog }))).toBe('track ⏸ · Hôm nay: 0/0 · Tip: còn 2 việc trong Backlog — gõ "hey claude lấy việc tiếp"')
   // (3) open id, est not a size, agentMin >= 5
@@ -81,7 +81,7 @@ test('SC-44: contextual tips by priority, one at most', () => {
 
 test('SC-45: tips false hides tips (2)-(5), keeps onboard and the off line', () => {
   const backlog = { items: [bl('manual')], ghError: '' }
-  const prs = { ...stats().today, prsOpened: 3, merged: 1 }
+  const prs = { ...stats().today, prsOpened: 3, merged: 1, prsWaiting: 2 }
   const noTips = (s: TrackStats, id?: string) => statusText(s, A, id, false)
   expect(noTips(stats({ backlog }))).toBe('track ⏸ · Hôm nay: 0/0')
   expect(noTips(stats({ today: prs }))).toBe('track ⏸ · Hôm nay: 0/0 · PR 3 (1 merged)')
@@ -107,14 +107,14 @@ test('SC-21: the open id of this session shows ▶, id, phase and 12m/M', () => 
 test('FR-11.3: wait shows as chờ <n>m; today shows ended/started, PR, merged and hit', () => {
   const s = stats({
     running: [item({ wait: { ask: 2, permission: 1, idle: 4, total: 7 } })],
-    today: { ...stats().today, started: { cook: 2, fix: 1 }, ended: { fix: 1 }, prsOpened: 2, merged: 1 },
+    today: { ...stats().today, started: { cook: 2, fix: 1 }, ended: { fix: 1 }, prsOpened: 2, merged: 1, prsWaiting: 1 },
     estimate: { ...stats().estimate, byKind: { cook: { n: 3, hit: 2, low: 1, high: 0 }, fix: { n: 1, hit: 1, low: 0, high: 0 } } },
   })
   expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · plan · 12m/M · chờ 7m · Hôm nay: 1/3 · PR 2 (1 merged) · hit 75% · Tip: 1 PR chờ merge — gõ "hey claude check PR"`)
 })
 
 test('FR-11.3: zero or unknown items are hidden, except Hôm nay', () => {
-  const s = stats({ running: [item({ phase: '', agentMin: 0 })], today: { ...stats().today, prsOpened: 1 } })
+  const s = stats({ running: [item({ phase: '', agentMin: 0 })], today: { ...stats().today, prsOpened: 1, prsWaiting: 1 } })
   expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · Hôm nay: 0/0 · PR 1 · Tip: 1 PR chờ merge — gõ "hey claude check PR"`)
 })
 
@@ -306,4 +306,10 @@ test('FR-6.2: Tab này lists the PRs of the ids this session finished today', ()
   const s = stats({ today: { ...stats().today, items: [done] } })
   const text = tabLines('this', s, A, undefined).map(l => l.text).join('\n')
   expect(text).toContain('PR https://github.com/Z/kit/pull/7')
+})
+
+test('FR-11.7 (5): the PR tip counts tracked PRs still waiting, not opened minus merged', () => {
+  // One PR opened today still waits; one from yesterday merged today: the tip stays.
+  const s = stats({ today: { ...stats().today, prsOpened: 1, merged: 1, prsWaiting: 1 } })
+  expect(statusText(s, A, X)).toContain('Tip: 1 PR chờ merge')
 })

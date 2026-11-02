@@ -84,7 +84,7 @@ function tipFor(s: TrackStats, mine: TrackItem | undefined): string | undefined 
       return COPY.tipOver.replace('{est}', mine.est).replace('{min}', String(mine.agentMin)).replace('{max}', String(max))
     }
   }
-  const open = s.today.prsOpened - s.today.merged
+  const open = s.today.prsWaiting ?? 0
   if (open > 0) return COPY.tipPr.replace('{N}', String(open))
   return undefined
 }

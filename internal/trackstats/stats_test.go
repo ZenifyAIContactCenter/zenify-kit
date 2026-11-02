@@ -531,3 +531,21 @@ func TestPRsOpenedCountsAPROnce(t *testing.T) {
 		t.Fatalf("prsOpened = %d, want 1", r.Today.PRsOpened)
 	}
 }
+
+// FR-11.7 (5): prsWaiting counts tracked PRs not known as merged or closed.
+func TestPRsWaiting(t *testing.T) {
+	in := base(prLog())
+	in.Merged = func(u string) (string, error) {
+		if u == "https://x/pr/A" {
+			return "2026-10-30T08:00:00Z", nil
+		}
+		return "", nil
+	}
+	if r, _ := Compute(in); r.Today.PRsWaiting != 1 {
+		t.Fatalf("prsWaiting = %d, want 1 (B still open)", r.Today.PRsWaiting)
+	}
+	in.Merged = func(string) (string, error) { return ClosedUnmerged, nil }
+	if r, _ := Compute(in); r.Today.PRsWaiting != 0 {
+		t.Fatalf("prsWaiting = %d, want 0 (both closed)", r.Today.PRsWaiting)
+	}
+}

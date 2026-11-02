@@ -56,16 +56,18 @@ type Item struct {
 }
 
 type Today struct {
-	Date        string         `json:"date"`
-	Plans       map[string]int `json:"plans"`
-	Started     map[string]int `json:"started"`
-	Ended       map[string]int `json:"ended"`
-	Tasks       int            `json:"tasks"`
-	Rounds      int            `json:"rounds"`
-	PRsOpened   int            `json:"prsOpened"`
-	Merged      int            `json:"merged"`
-	MergedError string         `json:"mergedError"`
-	Items       []Item         `json:"items"`
+	Date      string         `json:"date"`
+	Plans     map[string]int `json:"plans"`
+	Started   map[string]int `json:"started"`
+	Ended     map[string]int `json:"ended"`
+	Tasks     int            `json:"tasks"`
+	Rounds    int            `json:"rounds"`
+	PRsOpened int            `json:"prsOpened"`
+	Merged    int            `json:"merged"`
+	// PRsWaiting counts tracked PRs (any day) not known as merged or closed (FR-11.7 (5)).
+	PRsWaiting  int    `json:"prsWaiting"`
+	MergedError string `json:"mergedError"`
+	Items       []Item `json:"items"`
 }
 
 type KindEstimate struct {
@@ -510,6 +512,9 @@ func mergedToday(in Input, urls []string, res *Result) map[string]string {
 	}
 	for _, u := range urls {
 		at, ok := cache[u]
+		if !ok {
+			res.Today.PRsWaiting++
+		}
 		if !ok || at == ClosedUnmerged {
 			continue
 		}

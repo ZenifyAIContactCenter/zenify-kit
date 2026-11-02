@@ -45,6 +45,7 @@ export type TrackStats = {
     rounds: number
     prsOpened: number
     merged: number
+    prsWaiting: number
     mergedError: string
     items: TrackItem[] | null
   }

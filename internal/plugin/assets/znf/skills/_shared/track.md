@@ -52,7 +52,7 @@ Read this when the session digest says `features: track on`. Every command below
 
 - Work that comes from the backlog: use `start --from <bid|issue url>`, i.e. `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <bid|issue url>`; the item leaves the backlog. An unknown or dropped `bid` exits non-zero and writes nothing.
 - Work that surfaces during a task and is not done now, including a minor issue you do not fix in the current task: `zenify track backlog add "<title>" --repo <repo> [--est S|M|L] [--ref <issue url|memory:<name>>]`; it prints the `bid`.
-- When the user asks to take the next work item, run `zenify track stats --json`, show the `backlog.items`, let the user pick one, then start it by its `source`: `manual` or `github` → `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <id>`; `sdd` (a ledger line) → the same command without `--from`; `stale` (a tracked item still open) → no new start: resume that id, or close it with `zenify track end <id> --cancelled --rounds 0` when the user drops it.
+- When the user asks to take the next work item, run `zenify track stats --json`, show the `backlog.items`, let the user pick one, then start it by its `source`: `manual` or `github` → `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <id>`; `sdd` (a ledger line) → the same command without `--from`; `stale` (a tracked item left open in an old session) → close it with `zenify track end <id> --cancelled --rounds 0`, then, if the user still wants the work, start a new id without `--from` (only a start binds the session, so a resumed old id would go unmeasured).
 - Drop an item that is no longer wanted: `zenify track backlog drop <bid>`.
 
 ## Onboard
