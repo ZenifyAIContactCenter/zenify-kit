@@ -344,6 +344,10 @@ func pushRepo(t *testing.T, withOrigin bool) (root, bare string) {
 	root = t.TempDir()
 	gitT(t, root, "init", "-q")
 	writeWorktreeJSON(t, root, `{"abbrev":"ccbe","user":"namph","portRange":[3200,3249],"deps":"none"}`)
+	// wt new writes .env into the worktree; ignored, so a fresh worktree is clean.
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".env\n.worktrees/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	gitT(t, root, "add", "-A")
 	gitT(t, root, "commit", "-q", "-m", "init")
 	gitT(t, root, "branch", "-M", "main")
@@ -424,5 +428,31 @@ func TestRunNew_HotfixDoesNotPush(t *testing.T) {
 	}
 	if got := strings.TrimSpace(gitT(t, bare, "branch", "--list", "namph/hotfix/my-task")); got != "" {
 		t.Fatalf("hotfix must not be pushed, bare has %q", got)
+	}
+}
+
+// Review Focus 5 (FR-B7.3): RunNew auto-sweeps the untouched worktree of task A
+// (an empty branch reads as merged) but must NOT delete A's remote branch.
+func TestRunNew_AutoSweepKeepsRemoteBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	a, errb := realOpts(root)
+	a.Slug = "task-a"
+	if err := RunNew(a); err != nil {
+		t.Fatalf("RunNew A: %v\n%s", err, errb)
+	}
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	b, errb := realOpts(root)
+	b.Slug, b.Runner, b.Another = "task-b", rec, true
+	if err := RunNew(b); err != nil {
+		t.Fatalf("RunNew B: %v\n%s", err, errb)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".worktrees", "task-a")); err == nil {
+		t.Fatal("precondition: auto-sweep should have removed worktree A")
+	}
+	if rec.deleted() {
+		t.Fatalf("auto-sweep must not delete a remote branch; calls %v", rec.calls)
+	}
+	if !bareHas(t, bare, "namph/feat/task-a") {
+		t.Fatal("remote branch of A must survive auto-sweep")
 	}
 }

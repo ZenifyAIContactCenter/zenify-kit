@@ -18,10 +18,14 @@ type RmOptions struct {
 	Host     string
 	Force    bool
 	Fetch    bool // refresh origin before the merge check (the CLI sets it; sweep has fetched already)
-	Pid      int
-	Now      int64
-	Runner   gitx.Runner
-	Stderr   io.Writer
+	// KeepRemote leaves origin/<branch> alone. wt new's auto-sweep sets it: an empty
+	// branch counts as merged (guard.go BranchMerged), so an untouched worktree of
+	// another task would otherwise lose the remote branch that marks it started.
+	KeepRemote bool
+	Pid        int
+	Now        int64
+	Runner     gitx.Runner
+	Stderr     io.Writer
 }
 
 // RunRm tears down the worktree for o.Slug. Without --force it refuses a dirty
@@ -137,6 +141,8 @@ func RunRm(o RmOptions) error {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: %q was on a detached HEAD — no branch to delete\n", o.Slug)
 	} else if _, e := r.Run(o.RepoRoot, "branch", "-D", branch); e != nil {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete branch %s, delete it by hand: %v\n", branch, e)
+	} else if !o.KeepRemote {
+		deleteEmptyRemote(o, branch, base)
 	}
 
 	// Clear the rebuildable caches. Best-effort: a cache-write failure must not
@@ -161,6 +167,48 @@ func RunRm(o RmOptions) error {
 		RewirePeers(ws, filepath.Base(o.RepoRoot), o.Slug, r, o.Stderr, o.Stderr)
 	}
 	return nil
+}
+
+// deleteEmptyRemote removes origin/<branch> only when its tip has no commit
+// beyond base (the empty branch wt new pushed). A branch with commits is kept.
+// Every failure only warns; no origin remote means nothing to do.
+func deleteEmptyRemote(o RmOptions, branch, base string) {
+	r := o.Runner
+	if _, e := r.Run(o.RepoRoot, "remote", "get-url", "origin"); e != nil {
+		return
+	}
+	out, e := r.Run(o.RepoRoot, "ls-remote", "--heads", "origin", branch)
+	if e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not look up origin/%s: %v\n", branch, e)
+		return
+	}
+	tip := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		if f := strings.Fields(line); len(f) == 2 && f[1] == "refs/heads/"+branch {
+			tip = f[0]
+		}
+	}
+	if tip == "" {
+		return
+	}
+	if _, e := r.Run(o.RepoRoot, "fetch", "origin", "--quiet", "refs/heads/"+branch); e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not fetch origin/%s, keeping it: %v\n", branch, e)
+		return
+	}
+	cnt, e := r.Run(o.RepoRoot, "rev-list", "--count", base+".."+tip)
+	if e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not count commits on origin/%s, keeping it: %v\n", branch, e)
+		return
+	}
+	if strings.TrimSpace(string(cnt)) != "0" {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: it has commits\n", branch)
+		return
+	}
+	if _, e := r.Run(o.RepoRoot, "push", "origin", "--delete", branch); e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete origin/%s: %v\n", branch, e)
+		return
+	}
+	_, _ = fmt.Fprintf(o.Stderr, "wt: deleted empty origin/%s\n", branch)
 }
 
 // worktreeListHasPath reports whether git's porcelain worktree listing registers

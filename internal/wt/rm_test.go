@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
 // rmStub keys on "dir|args"; records worktree/branch removals for assertions.
@@ -291,5 +293,108 @@ func TestRunRm_RefusalNamesRecordedBase(t *testing.T) {
 	err := RunRm(RmOptions{RepoRoot: root, Slug: "hf", Runner: s, Stderr: io.Discard, Pid: 1, Now: 2, Host: "h"})
 	if err == nil || !strings.Contains(err.Error(), "origin/main or origin/release91") {
 		t.Fatalf("want refusal naming both refs, got %v", err)
+	}
+}
+
+// recRunner wraps real git and records every call, so a test can assert a
+// remote deletion was (not) issued without any real remote.
+type recRunner struct {
+	inner interface {
+		Run(dir string, args ...string) ([]byte, error)
+	}
+	calls []string
+}
+
+func (c *recRunner) Run(dir string, args ...string) ([]byte, error) {
+	c.calls = append(c.calls, strings.Join(args, " "))
+	return c.inner.Run(dir, args...)
+}
+
+func (c *recRunner) deleted() bool {
+	for _, x := range c.calls {
+		if strings.HasPrefix(x, "push origin --delete") {
+			return true
+		}
+	}
+	return false
+}
+
+func bareHas(t *testing.T, bare, branch string) bool {
+	t.Helper()
+	return strings.TrimSpace(gitT(t, bare, "branch", "--list", branch)) != ""
+}
+
+// FR-B7.3: rm deletes the remote branch when its tip equals base.
+func TestRunRm_DeletesEmptyRemoteBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if !bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatal("precondition: branch should be on origin")
+	}
+	var rb bytes.Buffer
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("empty remote branch should be deleted; stderr %q", rb.String())
+	}
+}
+
+// FR-B7.3: a remote branch carrying a commit is kept and the reason printed.
+func TestRunRm_KeepsRemoteBranchWithCommits(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	wtp := filepath.Join(root, ".worktrees", "my-task")
+	gitT(t, wtp, "commit", "-q", "--allow-empty", "-m", "work")
+	gitT(t, wtp, "push", "-q", "origin", "namph/feat/my-task")
+	var rb bytes.Buffer
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Force: true, Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if rec.deleted() || !bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("branch with commits must stay on origin; calls %v", rec.calls)
+	}
+	if !strings.Contains(rb.String(), "kept origin/namph/feat/my-task: it has commits") {
+		t.Fatalf("expected kept message, got %q", rb.String())
+	}
+}
+
+// FR-B7.3: no origin remote means no remote work and no warning.
+func TestRunRm_NoOriginNoRemoteWork(t *testing.T) {
+	root, _ := pushRepo(t, false)
+	o, errb := realOpts(root)
+	o.BaseOverride = "main"
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Force: true, Runner: gitx.ExecRunner(), Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if strings.Contains(rb.String(), "origin/") {
+		t.Fatalf("no origin: expected no remote messages, got %q", rb.String())
+	}
+}
+
+// FR-B7.3: wt sweep (KeepRemote false) deletes the empty remote branch too.
+func TestRunSweep_DeletesEmptyRemoteBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if err := RunSweep(SweepOptions{RepoRoot: root, Host: "h", Pid: 1, Now: 2, Runner: gitx.ExecRunner(), Stdout: io.Discard, Stderr: io.Discard}); err != nil {
+		t.Fatal(err)
+	}
+	if bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatal("wt sweep should delete the empty remote branch")
 	}
 }

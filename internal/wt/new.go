@@ -119,7 +119,7 @@ func RunNew(o NewOptions) error {
 	// block the new task. Quiet: no output when nothing is removable.
 	if fetched {
 		if e := RunSweep(SweepOptions{RepoRoot: o.RepoRoot, Host: o.Host, Pid: o.Pid, Now: o.Now, Runner: r,
-			Quiet: true, Stdout: o.Stderr, Stderr: o.Stderr}); e != nil {
+			Quiet: true, KeepRemote: true, Stdout: o.Stderr, Stderr: o.Stderr}); e != nil {
 			_, _ = fmt.Fprintf(o.Stderr, "wt: sweep skipped (%v)\n", e)
 		}
 	}
