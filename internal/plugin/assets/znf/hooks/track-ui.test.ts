@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { BacklogItem, TrackItem, TrackStats } from '../types'
-import { STATUS_OFF, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, ruleText, statusText, tabLines } from './track-ui'
+import { STATUS_OFF, TABS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, ruleText, statusText, tabLines } from './track-ui'
 
 const A = 'aaaaaaaa-1111-2222-3333-444444444444'
 const B = 'bbbbbbbb-5555-6666-7777-888888888888'
@@ -37,6 +37,7 @@ const stats = (over: Partial<TrackStats> = {}): TrackStats => ({
   quality: { byKind: {}, fix: { n: 0, roundAvg: null, wideRate: null, regressionRate: null } },
   backlog: { items: [], ghError: '' },
   onboarded: true,
+  kitchen: { cooked: [], rollingBoil: [], titleError: '' },
   ...over,
 })
 
@@ -142,33 +143,81 @@ test('parseTrackStats takes the stats JSON and fills Go nulls; anything else thr
   expect(() => parseTrackStats('{"x":1}')).toThrow('stats output is not track stats JSON')
 })
 
-test('SC-11: Tab này shows this session open id; Tổng shows both, grouped by session, mine tagged', () => {
+test('SC-11: Tổng shows both sessions grouped, mine tagged', () => {
   const s = stats({ running: [item({}), item({ id: Y, kind: 'fix', session: B, cwd: '/w/repos/hub', phase: 'fix' })] })
-  const mine = texts(tabLines('this', s, A, X)).join('\n')
-  expect(mine).toContain(X)
-  expect(mine.includes(Y)).toBe(false)
-  const all = texts(tabLines('total', s, A, X))
+  const all = texts(tabLines('total', s, A, X, NOW))
   expect(all.some(t => t.includes(X))).toBe(true)
   expect(all.some(t => t.includes(Y))).toBe(true)
   expect(all).toContain('aaaaaaaa kit (tab này)')
   expect(all).toContain('bbbbbbbb hub')
 })
 
-test('FR-6.2: Tab này lists kind/repo/est, phases, tokens, PRs and the ids done today in this session', () => {
-  const done = item({ id: 'fix-261030-0c0c', kind: 'fix', status: 'done', agentMin: 20, est: 'S', prs: ['https://github.com/Z/kit/pull/7'] })
-  const s = stats({ running: [item({ prs: ['https://github.com/Z/kit/pull/9'] })], today: { ...stats().today, items: [item({}), done] } })
-  const t = texts(tabLines('this', s, A, X))
-  expect(t).toContain(`${X} · cook · kit · est M`)
-  expect(t).toContain('giai đoạn: plan')
-  expect(t).toContain('agent 12m / M (S<30m M<90m L<240m)')
-  expect(t).toContain('  plan: agent 12m · chờ 0m')
-  expect(t).toContain('  claude-opus-5-5: in 100 · out 200')
-  expect(t).toContain('PR https://github.com/Z/kit/pull/9')
-  expect(t).toContain('fix-261030-0c0c · done · 20m/S')
+test('FR-4.1: the first tab is Kitchen', () => {
+  expect(TABS[0]).toEqual({ id: 'kitchen', label: 'Kitchen' })
 })
 
-test('FR-6.2: Tab này with no open id says so', () => {
-  expect(texts(tabLines('this', stats(), A, undefined))).toContain('chưa có id đang mở')
+// 03:05 local, built from parts so the expectation does not use the code's own formatter.
+const COOKED_AT = new Date(2026, 10, 2, 3, 5)
+const NOW = Date.UTC(2026, 10, 2, 9, 0, 0)
+const kitchenStats = (over: Partial<TrackStats['kitchen']> = {}) =>
+  stats({
+    kitchen: {
+      cooked: [
+        { id: X, brief: 'Kitchen pane', status: 'done', endedAt: COOKED_AT.toISOString(), prs: ['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2'] },
+      ],
+      rollingBoil: [{ session: B, brief: 'zenify-kit/x', state: 'permission', since: new Date(NOW - 125_000).toISOString() }],
+      titleError: '',
+      ...over,
+    },
+  })
+
+test('SC-8: Kitchen lists Cooked then Rolling boil, identical for any session', () => {
+  const s = kitchenStats()
+  const mine = tabLines('kitchen', s, A, undefined, NOW)
+  expect(tabLines('kitchen', s, B, 'cook-261030-0b0b', NOW)).toEqual(mine)
+  expect(mine.slice(0, 7)).toEqual([
+    { text: 'Cooked', tone: 'bold' },
+    { text: '- Kitchen pane · done · 03:05' },
+    { text: '  ---- https://github.com/o/r/pull/1' },
+    { text: '  ---- https://github.com/o/r/pull/2' },
+    { text: '' },
+    { text: 'Rolling boil', tone: 'bold' },
+    { text: '- zenify-kit/x · chờ quyền · 2m' },
+  ])
+  expect(mine[7]?.text.startsWith('thang (')).toBe(true)
+})
+
+test('FR-4.3: empty Kitchen sections say so; ask reads đang hỏi', () => {
+  const empty = tabLines('kitchen', stats(), A, undefined, NOW)
+  expect(empty.slice(0, 5)).toEqual([
+    { text: 'Cooked', tone: 'bold' },
+    { text: 'chưa có việc xong hôm nay', tone: 'dim' },
+    { text: '' },
+    { text: 'Rolling boil', tone: 'bold' },
+    { text: 'không tab nào đang chờ', tone: 'dim' },
+  ])
+  const ask = kitchenStats({ rollingBoil: [{ session: B, brief: 'b', state: 'ask', since: new Date(NOW - 45_000).toISOString() }] })
+  expect(texts(tabLines('kitchen', ask, A, undefined, NOW))).toContain('- b · đang hỏi · 45s')
+})
+
+test('FR-5.1: waiting time rounds down to s, m or h', () => {
+  const wait = (ms: number) =>
+    texts(tabLines('kitchen', kitchenStats({ rollingBoil: [{ session: B, brief: 'b', state: 'ask', since: new Date(NOW - ms).toISOString() }] }), A, undefined, NOW))
+  expect(wait(59_000)).toContain('- b · đang hỏi · 59s')
+  expect(wait(60_000)).toContain('- b · đang hỏi · 1m')
+  expect(wait(125 * 60_000)).toContain('- b · đang hỏi · 2h')
+})
+
+test('FR-4.2: a title error is a warn line', () => {
+  const t = tabLines('kitchen', kitchenStats({ titleError: 'gh: boom' }), A, undefined, NOW)
+  expect(t).toContainEqual({ text: '⚠ title lỗi: gh: boom', tone: 'warn' })
+})
+
+test('parseTrackStats fills a missing or null kitchen', () => {
+  const empty = { cooked: [], rollingBoil: [], titleError: '' }
+  const { kitchen: _drop, ...rest } = stats()
+  expect(parseTrackStats(JSON.stringify(rest)).kitchen).toEqual(empty)
+  expect(parseTrackStats(JSON.stringify({ ...rest, kitchen: { cooked: null, rollingBoil: null, titleError: '' } })).kitchen).toEqual(empty)
 })
 
 test('FR-6.2: Estimate shows hit per kind, hotfix time and the agent share by phase', () => {
@@ -179,7 +228,7 @@ test('FR-6.2: Estimate shows hit per kind, hotfix time and the agent share by ph
       phaseShare: { cook: { plan: 0.25, implement: 0.75 } },
     },
   })
-  const t = texts(tabLines('estimate', s, A, X))
+  const t = texts(tabLines('estimate', s, A, X, NOW))
   expect(t).toContain('cook: hit 3/4 · thấp 1 · cao 0')
   expect(t).toContain('hotfix: 2 việc · trung vị 15m · p90 40m')
   expect(t).toContain('cook: plan 25% · implement 75%')
@@ -203,7 +252,7 @@ test('FR-6.2: Chất lượng shows blocked rate, findings, fix loop, wait share
       fix: { n: 3, roundAvg: 1.5, wideRate: 0.5, regressionRate: null },
     },
   })
-  const t = texts(tabLines('quality', s, A, X))
+  const t = texts(tabLines('quality', s, A, X, NOW))
   expect(t).toContain('cook (5 việc): ship blocked 40% · chặn nhiều nhất: review')
   expect(t).toContain('  finding C/H/M/L: 0/1.5/2/0.3 · fix loop 1.2')
   expect(t).toContain('  CI đỏ lần đầu — · chờ 10%')
@@ -213,8 +262,8 @@ test('FR-6.2: Chất lượng shows blocked rate, findings, fix loop, wait share
 
 test('FR-6.2: every tab ends with the scale footer and the rules in Vietnamese', () => {
   const s = stats({ rules: ['cook: est up 1 size', 'fix: est down 1 size'] })
-  for (const tab of ['this', 'total', 'estimate', 'quality'] as const) {
-    const t = texts(tabLines(tab, s, A, X))
+  for (const tab of ['kitchen', 'total', 'estimate', 'quality'] as const) {
+    const t = texts(tabLines(tab, s, A, X, NOW))
     expect(t).toContain('thang (default, 0 việc): S<30m M<90m L<240m')
     expect(t).toContain('cook: tăng est 1 size')
     expect(t).toContain('fix: giảm est 1 size')
@@ -224,7 +273,7 @@ test('FR-6.2: every tab ends with the scale footer and the rules in Vietnamese',
 
 test('FR-6.2: Tổng warns on a merged lookup error and on malformed lines', () => {
   const s = stats({ malformed: 2, today: { ...stats().today, mergedError: 'gh: not logged in' } })
-  const t = tabLines('total', s, A, X)
+  const t = tabLines('total', s, A, X, NOW)
   expect(t.some(l => l.text === '⚠ merged lỗi: gh: not logged in' && l.tone === 'warn')).toBe(true)
   expect(t.some(l => l.text === '⚠ 2 dòng log sai format' && l.tone === 'warn')).toBe(true)
 })
@@ -254,7 +303,7 @@ test('FR-13.7: Backlog groups by source in manual, github, sdd, stale order, one
       ],
     },
   })
-  expect(texts(tabLines('backlog', s, A, X)).slice(0, 9)).toEqual([
+  expect(texts(tabLines('backlog', s, A, X, NOW)).slice(0, 9)).toEqual([
     'manual',
     'kit · S · task C · 5d',
     'kit · M · task D · 2d',
@@ -268,15 +317,15 @@ test('FR-13.7: Backlog groups by source in manual, github, sdd, stale order, one
 })
 
 test('FR-13.7: an empty backlog says Backlog trống; a ghError adds a ⚠ github line', () => {
-  expect(texts(tabLines('backlog', stats(), A, X))[0]).toBe('Backlog trống')
-  const t = tabLines('backlog', stats({ backlog: { items: [bl('manual')], ghError: 'gh: not logged in' } }), A, X)
+  expect(texts(tabLines('backlog', stats(), A, X, NOW))[0]).toBe('Backlog trống')
+  const t = tabLines('backlog', stats({ backlog: { items: [bl('manual')], ghError: 'gh: not logged in' } }), A, X, NOW)
   expect(t.some(l => l.text === '⚠ github: gh: not logged in' && l.tone === 'warn')).toBe(true)
   expect(texts(t)).toContain('kit · M · manual title · 3d')
 })
 
 test('FR-14.5: the footer names the history scale source and its sample size', () => {
   const s = stats({ scale: { source: 'history', n: 25, S: 20, M: 60, L: 150 } })
-  expect(texts(tabLines('backlog', s, A, X))).toContain('thang (history, 25 việc): S<20m M<60m L<150m')
+  expect(texts(tabLines('backlog', s, A, X, NOW))).toContain('thang (history, 25 việc): S<20m M<60m L<150m')
 })
 
 test('parseTrackStats fills a missing backlog so the tab never reads undefined', () => {
@@ -299,13 +348,6 @@ test('SC-20: no status string carries a znf: prefix (Claude Code adds its own)',
 test('FR-11.2: a PR merged today shows on the status line even when none was opened today', () => {
   const s = stats({ today: { ...stats().today, prsOpened: 0, merged: 1 } })
   expect(statusText(s, A, undefined)).toContain('PR 0 (1 merged)')
-})
-
-test('FR-6.2: Tab này lists the PRs of the ids this session finished today', () => {
-  const done = item({ status: 'done', endedAt: '2026-10-30T03:00:00Z', prs: ['https://github.com/Z/kit/pull/7'] })
-  const s = stats({ today: { ...stats().today, items: [done] } })
-  const text = tabLines('this', s, A, undefined).map(l => l.text).join('\n')
-  expect(text).toContain('PR https://github.com/Z/kit/pull/7')
 })
 
 test('FR-11.7 (5): the PR tip counts tracked PRs still waiting, not opened minus merged', () => {

@@ -521,7 +521,7 @@ test('FR-6.1: the track-pane command toggles the pane', async ($, on) => {
   expect(calls.close.map((c: any) => c.id)).toEqual(['track'])
 })
 
-test('SC-11: in session A, Tab này has x only; Tổng has x and y, A tagged (tab này)', async ($, on) => {
+test('SC-11: Kitchen is the default tab; Tổng has x and y, A tagged (tab này)', async ($, on) => {
   const x = item()
   const y = item({ id: 'fix-261030-0b0b', kind: 'fix', session: OTHER, cwd: '/w/repos/hub', phase: 'fix' })
   const world: World = {}
@@ -535,10 +535,7 @@ test('SC-11: in session A, Tab này has x only; Tổng has x and y, A tagged (ta
   await $.command.run({ command: 'track-pane', args: '' } as any)
   await clock.settle()
   const ui = await mountTab($)
-  const mine = (await allTexts(ui)).join('\n')
-  expect(mine).toContain('▸Tab này')
-  expect(mine).toContain(x.id)
-  expect(mine.includes(y.id)).toBe(false)
+  expect(await allTexts(ui)).toContain('▸Kitchen')
   await ui.press({ key: 'tab:total' })
   const all = await allTexts(ui)
   expect(all).toContain('▸Tổng')
@@ -1025,4 +1022,21 @@ test('a failed live write is toasted and the tool still answers', async ($, on) 
   expect(answer.result).toEqual({ answers: { q: 'a' } })
   expect(calls.toast.length).toBeGreaterThan(0)
   expect(calls.toast.every(t => t.startsWith('lỗi đo thời gian: ') && t.includes('EACCES: permission denied'))).toBe(true)
+})
+
+test('SC-9: every pane content Text truncates at the pane width', async ($, on) => {
+  const world: World = { stats: ok(statsJson({ running: [item()], kitchen: { cooked: [{ id: 'c1', brief: 'x'.repeat(300), status: 'done', endedAt: '2026-11-02T03:05:00Z', prs: null }], rollingBoil: [], titleError: '' } })) }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const ui = await mountTab($)
+  for (const tabId of ['kitchen', 'total', 'estimate', 'quality', 'backlog']) {
+    if (tabId !== 'kitchen') await ui.press({ key: `tab:${tabId}` })
+    // The tab row is the only header: the separators and the `▸` selected label.
+    const body = ((await ui.findAll({ type: 'Text' })) as any[]).filter(t => t.text !== ' │ ' && !String(t.text).startsWith('▸'))
+    expect(body.length).toBeGreaterThan(0)
+    for (const t of body) expect(t.props.wrap).toBe('truncate-end')
+  }
 })

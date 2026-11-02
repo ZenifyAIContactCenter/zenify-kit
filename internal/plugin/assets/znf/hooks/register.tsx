@@ -32,8 +32,8 @@ const personAsks = atom({ plugin: 'znf', key: 'personAsks' } as const, [] as str
 // FR-6.4/FR-11.4: the last `zenify track stats --json` answer, or why it failed. The shape tag
 // declines what an earlier pane version stored under the same key.
 const stats = atom({ plugin: 'znf', key: 'stats' } as const, null as { data?: TrackStats; error?: string } | null, { shape: 'track-1' })
-// FR-6.2: the selected tab; `Tab này` by default.
-const tab = atom({ plugin: 'znf', key: 'tab' } as const, 'this' as Tab, { shape: 'track-1' })
+// FR-6.2: the selected tab; `Kitchen` by default. track-2 declines a stored `this`.
+const tab = atom({ plugin: 'znf', key: 'tab' } as const, 'kitchen' as Tab, { shape: 'track-2' })
 
 // Module state: lost on a reload, whose session.start re-arms the timers.
 let timers: Timer[] = []
@@ -457,7 +457,7 @@ export const register: Register = (on, options: PluginOptions) => {
     const selected = await read($, tab)
     const st = await read($, stats)
     const line = (l: Line) => (
-      <Text wrap="wrap" {...(l.tone ? TONES[l.tone] : {})}>
+      <Text wrap="truncate-end" {...(l.tone ? TONES[l.tone] : {})}>
         {l.text}
       </Text>
     )
@@ -468,7 +468,7 @@ export const register: Register = (on, options: PluginOptions) => {
         ? [{ text: errorStatus(st.error ?? 'no stats'), tone: 'error' }]
         : !st.data.enabled
           ? [{ text: STATUS_OFF, tone: 'dim' }]
-          : tabLines(selected, st.data, await $.session.id(), (await read($, bound))?.id)
+          : tabLines(selected, st.data, await $.session.id(), (await read($, bound))?.id, await $.clock.now())
     return (
       <Box flexDirection="column">
         <Box flexDirection="row">

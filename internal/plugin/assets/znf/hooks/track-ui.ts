@@ -28,7 +28,7 @@ const STATUS_HEAD = 'track'
 const ERROR_HEAD = '⚠ track lỗi: '
 
 export const TABS: { id: Tab; label: string }[] = [
-  { id: 'this', label: 'Tab này' },
+  { id: 'kitchen', label: 'Kitchen' },
   { id: 'total', label: 'Tổng' },
   { id: 'estimate', label: 'Estimate' },
   { id: 'quality', label: 'Chất lượng' },
@@ -51,7 +51,13 @@ export function parseTrackStats(stdout: string): TrackStats {
     throw new Error('stats output is not track stats JSON')
   }
   const backlog = { ghError: '', ...data.backlog, items: data.backlog?.items ?? [] }
-  return { ...data, rules: data.rules ?? [], running: data.running ?? [], backlog } as TrackStats
+  const kitchen = {
+    titleError: '',
+    ...data.kitchen,
+    cooked: data.kitchen?.cooked ?? [],
+    rollingBoil: data.kitchen?.rollingBoil ?? [],
+  }
+  return { ...data, rules: data.rules ?? [], running: data.running ?? [], backlog, kitchen } as TrackStats
 }
 
 // The id this session has open: the bound id, running under this session.
@@ -125,29 +131,34 @@ const dim = (text: string): Line => ({ text, tone: 'dim' })
 const warn = (text: string): Line => ({ text, tone: 'warn' })
 const plain = (text: string): Line => ({ text })
 
-function thisLines(s: TrackStats, session: string, boundId: string | undefined): Line[] {
-  const mine = openItem(s, session, boundId)
-  const sc = s.scale
-  const lines: Line[] = []
-  if (!mine) lines.push(dim('chưa có id đang mở'))
-  else {
-    lines.push(head(`${mine.id}${SEP}${mine.kind}${SEP}${mine.repo}${SEP}est ${mine.est}`))
-    lines.push(plain(`giai đoạn: ${mine.phase || '—'}`))
-    lines.push(plain(`agent ${mine.agentMin}m / ${mine.est} (S<${sc.S}m M<${sc.M}m L<${sc.L}m)`))
-    const w = mine.wait
-    lines.push(plain(`chờ ${w.total}m (hỏi ${w.ask}m${SEP}quyền ${w.permission}m${SEP}rảnh ${w.idle}m)`))
-    for (const [phase, p] of Object.entries(mine.phases ?? {})) lines.push(plain(`  ${phase}: agent ${p.agentMin}m${SEP}chờ ${p.waitMin}m`))
-    for (const [model, t] of Object.entries(mine.tokens ?? {})) lines.push(plain(`  ${model}: in ${t.in}${SEP}out ${t.out}`))
-    for (const pr of mine.prs ?? []) lines.push(plain(`PR ${pr}`))
+const pad2 = (n: number) => String(n).padStart(2, '0')
+const clock = (iso: string) => {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '—' : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+}
+// How long a tab has waited, rounded down: Ns under a minute, Nm under an hour, else Nh.
+function waited(sinceIso: string, now: number): string {
+  const sec = Math.max(0, Math.floor((now - Date.parse(sinceIso)) / 1000))
+  if (Number.isNaN(sec)) return '—'
+  return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h`
+}
+const BOIL_STATE = { ask: 'đang hỏi', permission: 'chờ quyền' } as const
+
+// FR-4: the Kitchen tab — the same for every session: what was cooked today, what waits on a person.
+function kitchenLines(s: TrackStats, now: number): Line[] {
+  const k = s.kitchen
+  const cooked = k?.cooked ?? []
+  const boil = k?.rollingBoil ?? []
+  const lines: Line[] = [head('Cooked')]
+  if (cooked.length === 0) lines.push(dim('chưa có việc xong hôm nay'))
+  for (const c of cooked) {
+    lines.push(plain(`- ${[c.brief, c.status, clock(c.endedAt)].join(SEP)}`))
+    for (const pr of c.prs ?? []) lines.push(plain(`  ---- ${pr}`))
   }
-  const done = (s.today.items ?? []).filter(i => i.session === session && i.status !== 'running' && i.status !== 'stale')
-  if (done.length > 0) {
-    lines.push(head('Xong hôm nay'))
-    for (const i of done) {
-      lines.push(plain(`${i.id}${SEP}${i.status}${SEP}${agentText(i)}`))
-      for (const pr of i.prs ?? []) lines.push(plain(`  PR ${pr}`))
-    }
-  }
+  lines.push(plain(''), head('Rolling boil'))
+  if (boil.length === 0) lines.push(dim('không tab nào đang chờ'))
+  for (const b of boil) lines.push(plain(`- ${[b.brief, BOIL_STATE[b.state], waited(b.since, now)].join(SEP)}`))
+  if (k?.titleError) lines.push(warn(`⚠ title lỗi: ${k.titleError}`))
   return lines
 }
 
@@ -240,9 +251,9 @@ function footerLines(s: TrackStats): Line[] {
 }
 
 // FR-6.2: the body of one tab, then the footer.
-export function tabLines(tab: Tab, s: TrackStats, session: string, boundId: string | undefined): Line[] {
+export function tabLines(tab: Tab, s: TrackStats, session: string, boundId: string | undefined, now: number): Line[] {
   const body =
-    tab === 'this' ? thisLines(s, session, boundId) : tab === 'total' ? totalLines(s, session) : tab === 'estimate'
+    tab === 'kitchen' ? kitchenLines(s, now) : tab === 'total' ? totalLines(s, session) : tab === 'estimate'
           ? estimateLines(s)
           : tab === 'backlog'
             ? backlogLines(s)

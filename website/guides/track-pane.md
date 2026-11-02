@@ -37,13 +37,23 @@ Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Hôm nay` luôn hiệ
 
 | Tab | Nội dung |
 |---|---|
-| **Tab này** | Việc đang mở của đúng tab Claude Code này: id, loại, repo, est, giai đoạn hiện tại, thời gian agent so với thang S/M/L, thời gian chờ (hỏi, quyền, rảnh), thời gian agent và chờ theo từng giai đoạn, token theo model, PR đã mở; và các id đã xong hôm nay của tab này |
+| **Kitchen** | Tab mặc định, giống nhau ở mọi session. `Cooked`: các việc đã xong hôm nay, mỗi dòng `- <brief> · <status> · <HH:MM>` (giờ máy) kèm các PR của việc; chưa có thì hiện `chưa có việc xong hôm nay`. `Rolling boil`: các tab Claude Code đang chờ bạn, mỗi dòng `- <brief> · <đang hỏi hoặc chờ quyền> · <thời gian chờ>` (`45s`, `2m`, `2h`, làm tròn xuống); không có thì hiện `không tab nào đang chờ`. Lấy tiêu đề lỗi thì có dòng `⚠ title lỗi: <nguyên nhân>` |
 | **Tổng** | Hôm nay của cả workspace: xong/bắt đầu, số task, số vòng, PR đã mở và đã merge, plan theo repo; danh sách việc đang chạy gom theo session, tab hiện tại ghi `(tab này)`; dòng `stale` cho việc bị bỏ dở |
 | **Estimate** | Với mỗi loại (cook, fix, hotfix): est đúng/thấp/cao so với thực tế; hotfix hiện số việc, trung vị và p90; tỉ lệ agent theo giai đoạn |
 | **Chất lượng** | Với mỗi loại: tỉ lệ ship bị chặn và bước chặn nhiều nhất, finding C/H/M/L trung bình, số vòng fix loop, tỉ lệ CI đỏ lần đầu, tỉ lệ thời gian chờ, token trung bình theo model; với fix/hotfix thêm ROUND trung bình, tỉ lệ sửa diện rộng và tỉ lệ có regression test |
 | **Backlog** | Việc chưa làm, nhóm theo nguồn: `manual`, `github`, `sdd`, `stale`. Mỗi dòng `repo · est · title · <số ngày>d`. Backlog rỗng hiện `Backlog trống`; lấy issue GitHub lỗi thì có dòng `⚠ github: <nguyên nhân>` |
 
 Dưới mọi tab là thang S/M/L hiện hành (lấy từ lịch sử của workspace; nguồn thang `learned`, `history` hoặc `default` hiện cạnh số việc) và các quy tắc hiệu chỉnh, ví dụ gợi ý tăng hoặc giảm est một size.
+
+## Kitchen đồng bộ thế nào
+
+Tab `Kitchen` đọc cùng số liệu `zenify track stats --json` như các tab khác, thêm hai phần lấy từ trạng thái sống của từng tab Claude Code.
+
+- Mỗi session có file `<workspace>/.zenify/track/live/<session>.json`, ghi trạng thái `ask`, `permission` hoặc `busy`, cùng file `.beat` cạnh nó. Plugin ghi lại `.beat` mỗi 10 giây suốt session khi track bật; `.beat` quá 30 giây thì file bị coi là hết hạn và tab đó rời `Rolling boil`.
+- Mỗi lần trạng thái đổi, plugin chạm file `<workspace>/.zenify/track/pulse`. Pane theo dõi `pulse` (cùng với sổ và log session) nên cập nhật ngay, và khi còn tab trong `Rolling boil` thì chạy lại số liệu mỗi 10 giây để thời gian chờ chạy.
+- `Rolling boil` chỉ gồm hai trường hợp: tab đang hỏi bạn bằng `AskUserQuestion` và tab đang chờ bạn cấp quyền. Lời gọi tool bình thường không ghi `live/` và không chạm `pulse`.
+- `<brief>` chọn theo thứ tự: tiêu đề plan, tiêu đề mục backlog, tiêu đề PR, cuối cùng là `<kind> <repo>`.
+- `zenify track end --ledger <ledger file>` đếm các dòng `Task <N>: complete` và lưu đường dẫn plan ở dòng đầu của ledger (`# SDD ledger — plan: <path>`) vào dòng `end` (bốn trường) để `Kitchen` lấy được tiêu đề plan. Đường dẫn plan chứa ` · ` hoặc xuống dòng thì dòng `end` giữ ba trường và lệnh cảnh báo trên stderr.
 
 ## Thời gian agent và thời gian chờ
 
@@ -55,7 +65,7 @@ Mỗi lần `znf:ship` kết thúc, kit ghi kết quả (shipped hoặc blocked,
 
 ## Sổ chung giữa các tab Claude Code
 
-Mọi tab Claude Code trong cùng workspace ghi vào một sổ chung, nên tab `Tổng` thấy việc của tất cả các tab, còn tab `Tab này` chỉ lọc ra phần của session hiện tại. Mỗi session có file riêng để ghi thời gian và token, nên hai tab chạy song song không đè lên nhau.
+Mọi tab Claude Code trong cùng workspace ghi vào một sổ chung, nên tab `Tổng` thấy việc của tất cả các tab, còn tab `Kitchen` cho thấy các việc đã xong hôm nay và các tab đang chờ bạn. Mỗi session có file riêng để ghi thời gian và token, nên hai tab chạy song song không đè lên nhau.
 
 File nằm trong workspace:
 

@@ -78,10 +78,10 @@ export type TrackStats = {
   }
   backlog: { items: BacklogItem[] | null; ghError: string }
   onboarded: boolean
-  kitchen?: { cooked: KitchenCooked[] | null; rollingBoil: KitchenBoil[] | null; titleError: string }
+  kitchen: { cooked: KitchenCooked[] | null; rollingBoil: KitchenBoil[] | null; titleError: string }
 }
 
-export type TrackTab = 'this' | 'total' | 'estimate' | 'quality' | 'backlog'
+export type TrackTab = 'kitchen' | 'total' | 'estimate' | 'quality' | 'backlog'
 
 declare module 'claude-code' {
   interface PluginState {
