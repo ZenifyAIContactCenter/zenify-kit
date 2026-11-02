@@ -47,3 +47,18 @@ Read this when the session digest says `features: track on`. Every command below
 - The id comes from a `track id: <id>` line in the Skill args. At its Step 3, when the watched run finishes: `zenify track ci <id> --result green|red`, once per watched commit, before the fix handoff. Keep the original `track id:` for every round: `track ci <original id>` for each watched commit, including commits pushed by the fix it handed off to (that fix still opens its own `fix` id).
 - `report-only` targets are recorded the same way; ci-watch still never fixes them.
 - No `track id:` line given → call nothing.
+
+## Backlog
+
+- Work that comes from the backlog: use `start --from <bid|issue url>`, i.e. `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <bid|issue url>`; the item leaves the backlog. An unknown or dropped `bid` exits non-zero and writes nothing.
+- Work that surfaces during a task and is not done now, including a minor issue you do not fix in the current task: `zenify track backlog add "<title>" --repo <repo> [--est S|M|L] [--ref <issue url|memory:<name>>]`; it prints the `bid`.
+- Drop an item that is no longer wanted: `zenify track backlog drop <bid>`.
+
+## Onboard
+
+Run this when the digest says `track: not onboarded`.
+
+1. Read the project's `MEMORY.md` at `~/.claude/projects/<workspace path with '/' replaced by '-'>/memory/MEMORY.md`, then every memory it links with `type: project`.
+2. List the still-open work to the user. Add items to the backlog only after the user approves, and only the approved ones: `zenify track backlog add "<title>" --repo <repo> --ref memory:<name>`. Never write the backlog before approval.
+3. Offer past-session history: preview with `zenify track onboard history`, and run `zenify track onboard history --write` only when the user agrees.
+4. Last, `zenify track onboard memory`; it marks the workspace onboarded.

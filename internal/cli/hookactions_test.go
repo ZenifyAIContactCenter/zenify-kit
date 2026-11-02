@@ -348,4 +348,48 @@ func TestSessionStart_TrackLine(t *testing.T) {
 	}
 }
 
+// SC-35: the onboard reminder shows only with track on and no `onboard · memory` row.
+func TestSessionStart_TrackOnboardLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	want := "track: not onboarded — run the Onboard section of ~/.claude/skills/znf/skills/_shared/track.md\n"
+	cases := []struct {
+		name    string
+		overlay string
+		log     *string
+		wantOn  bool
+	}{
+		{"on, no log", "features:\n  track: true\n", nil, true},
+		{"on, log without onboard", "features:\n  track: true\n", ptr("2026-11-02T10:00:00Z · backlog · b1a2c3 · repo · - · - · t\n"), true},
+		{"on, onboarded", "features:\n  track: true\n", ptr("2026-11-02T10:00:00Z · onboard · memory\n"), false},
+		{"off, no log", "features:\n  track: false\n", nil, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			ws := mkWorkspace(t)
+			if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte(c.overlay), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if c.log != nil {
+				dir := filepath.Join(ws, ".zenify", "track")
+				if err := os.MkdirAll(dir, 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(*c.log), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var buf bytes.Buffer
+			if rc := runSessionStart(ws, &buf); rc != 0 {
+				t.Fatalf("rc = %d", rc)
+			}
+			if got := strings.Contains(buf.String(), want); got != c.wantOn {
+				t.Errorf("onboard line present = %v, want %v in %q", got, c.wantOn, buf.String())
+			}
+		})
+	}
+}
+
 func ptr(s string) *string { return &s }

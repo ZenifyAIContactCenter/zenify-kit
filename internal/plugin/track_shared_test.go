@@ -14,6 +14,8 @@ func TestTrackSharedDoc(t *testing.T) {
 		"zenify track ci", "zenify track end", "--watch", "--rollback", "--branch", "track: off",
 		"--blocked-step", "znf:ci-watch", "step 4 \"Decide the response\"", "track id:", "do not run the fix section's `start` or `est`",
 		"zenify ui-verify check", "forward that line verbatim to `znf:ship`", "do NOT invoke `Skill(znf:ci-watch)`", "original `track id:`", "one `--branch`",
+		"## Onboard", "## Backlog", "--ref memory:", "onboard history --write", "start --from", "only after the user approves",
+		"backlog add", "zenify track onboard memory",
 	})
 }
 
