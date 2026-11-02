@@ -11,6 +11,7 @@ import (
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
 
 // storeFixture builds $ZENIFY_HOME/knowledge/.config with one rule so
@@ -417,5 +418,82 @@ func TestEnsureCmd_PinsWorkspaceWithoutManifest(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "pinned workspace model") {
 		t.Fatalf("stdout: %s", out.String())
+	}
+}
+
+// A bare directory (the zenie worker's /work) has no .zenify/manifest.json, so
+// wt.FindWorkspaceRoot finds no workspace; ensure writes the marker.
+func TestEnsureWorkspace_CreatesWorkspaceMarker(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	ws := t.TempDir()
+
+	var out, errOut bytes.Buffer
+	ensureWorkspace(ws, home, &out, &errOut)
+
+	fi, err := os.Stat(filepath.Join(ws, ".zenify", "manifest.json"))
+	if err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("marker missing: %v (stderr=%s)", err, errOut.String())
+	}
+	if root, ok := wt.FindWorkspaceRoot(ws); !ok || root != ws {
+		t.Fatalf("FindWorkspaceRoot = %q, %v; want %q", root, ok, ws)
+	}
+}
+
+// A repo inside an existing workspace must not get its own marker: the
+// nearest marker wins in wt.FindWorkspaceRoot and would shadow the workspace.
+func TestEnsureWorkspace_NoNestedMarker(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	ws := t.TempDir()
+	if _, err := ensureWorkspaceMarker(ws, home); err != nil {
+		t.Fatal(err)
+	}
+	repo := filepath.Join(ws, "repos", "r")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	ensureWorkspace(repo, home, &out, &errOut)
+
+	if _, err := os.Stat(filepath.Join(repo, ".zenify", "manifest.json")); err == nil {
+		t.Fatal("nested marker created inside the workspace")
+	}
+	if !strings.Contains(errOut.String(), "is inside workspace "+ws) {
+		t.Fatalf("skip not reported: %s", errOut.String())
+	}
+	if root, ok := wt.FindWorkspaceRoot(repo); !ok || root != ws {
+		t.Fatalf("FindWorkspaceRoot = %q, %v; want %q", root, ok, ws)
+	}
+}
+
+func TestEnsureWorkspace_KeepsExistingMarker(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	ws := t.TempDir()
+	dir := filepath.Join(ws, ".zenify")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(dir, "manifest.json")
+	want := []byte("{\"entries\":{\"x\":{\"path\":\"x\",\"sha256\":\"abc\"}}}")
+	if err := os.WriteFile(marker, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 2; i++ {
+		var out, errOut bytes.Buffer
+		ensureWorkspace(ws, home, &out, &errOut)
+		got, _ := os.ReadFile(marker)
+		if !bytes.Equal(got, want) {
+			t.Fatalf("run %d changed the marker: %s", i+1, got)
+		}
 	}
 }

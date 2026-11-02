@@ -9,6 +9,7 @@ Skill chạy tách khỏi phiên chính (`context: fork`): phiên chính chỉ n
 
 ## Cách hoạt động
 
+0. **First-party.** Trước khi tách câu hỏi con, một worker riêng fetch docs index (`llms.txt`, không có thì sitemap) và changelog 6 tháng của mỗi tool/platform thiết kế dựa vào, tìm theo từ khoá năng lực. Trang sót vì hết cap có một worker bù đọc riêng; kết quả được verify ngay, và chỉ phần vendor đã phủ có claim `VERIFIED` mới bị loại khỏi câu hỏi con; báo cáo mở đầu bằng mục First-party, không bao giờ trống (không thấy thì ghi từ khoá đã tìm).
 1. **Scope.** Viết lại câu hỏi và tiêu chí "trả lời xong là gì"; tách câu hỏi con theo ranh giới nguồn (một họ tài liệu, một hệ thống cho mỗi worker); chọn cỡ 1 / 2–4 / 5+ worker và cap số lần gọi tool. Khối scope này mở đầu báo cáo và phần trả về, thay cho bước duyệt kế hoạch — skill chạy fork nên không hỏi được.
 2. **Dispatch.** Mỗi câu hỏi con một agent `znf:researcher` (sonnet), gửi trong một tin nhắn. Worker ghi toàn bộ vào file tạm và chỉ trả về vài dòng đếm. Worker im lặng được dispatch lại một lần, rồi ghi là khoảng trống.
 3. **Verify.** Một `znf:researcher` mode `verify` (haiku) fetch lại mọi URL, so quote với trang, gắn cờ `VERIFIED` / `QUOTE-MISMATCH` / `DEAD-URL` / `NOT-FETCHED`.
@@ -17,7 +18,7 @@ Skill chạy tách khỏi phiên chính (`context: fork`): phiên chính chỉ n
 
 ## Được gọi từ đâu
 
-Gọi tay `/znf:research <câu hỏi> repo: <repo>`, hoặc tự động từ `/znf:brainstorming` khi checklist năm mục ở bước Research check có một mục đúng. Khi vào từ brainstorming, spec trỏ tới file kết quả ở trường Approach và không đưa claim bị gắn cờ vào spec.
+Gọi tay `/znf:research <câu hỏi> repo: <repo>`, hoặc tự động từ `/znf:brainstorming` khi checklist sáu mục ở bước Research check có một mục đúng. Khi vào từ brainstorming, spec trỏ tới file kết quả ở trường Approach, ghi dòng `First-party:` và không đưa claim bị gắn cờ vào spec.
 
 ## Lưu ý
 

@@ -12,6 +12,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
 
 // ensureReport carries what the Codex steps of ensureWorkspace found, for the
@@ -29,7 +30,8 @@ type ensureReport struct {
 //     running binary (the former selfHeal);
 //  2. wire/migrate znf hooks in <home>/.claude/settings.json;
 //  3. pin the workspace default model in <workspace>/.claude/settings.json;
-//  4. distribute the knowledge store's .config into the workspace
+//  4. create the workspace marker .zenify/manifest.json when missing;
+//  5. distribute the knowledge store's .config into the workspace
 //     (`zenify config --apply`).
 //
 // Every step is fail-open: an error is one "znf ensure:" line on stderr and
@@ -130,6 +132,14 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 		fmt.Fprintf(stdout, "added %d kit ask rules (prd data writes prompt) in ~/.claude/settings.json\n", n)
 	}
 
+	// The workspace marker: wt.FindWorkspaceRoot looks for .zenify/manifest.json,
+	// so a bare directory (the zenie worker's /work) is no workspace without it.
+	if inside, err := ensureWorkspaceMarker(workspace, home); err != nil {
+		fmt.Fprintln(stderr, "znf ensure: workspace marker:", err)
+	} else if inside != "" {
+		fmt.Fprintf(stderr, "znf ensure: workspace marker: %s is inside workspace %s, no marker created\n", workspace, inside)
+	}
+
 	// runConfig prints its whole plan to stdout; ensure only wants the count
 	// plus the CREATE/UPDATE lines (so the overwrite is visible in the
 	// session's additional context — see final-review.md Important #2), and
@@ -166,6 +176,29 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 		}
 	}
 	return rep
+}
+
+// ensureWorkspaceMarker writes an empty .zenify/manifest.json when none exists
+// and leaves an existing one untouched. It never creates one inside another
+// workspace: wt.FindWorkspaceRoot picks the nearest marker, so a nested one
+// would shadow the real workspace for every later command. It returns that
+// enclosing workspace when it skips; $HOME (~/.zenify) is never one.
+func ensureWorkspaceMarker(workspace, home string) (string, error) {
+	marker := filepath.Join(workspace, ".zenify", "manifest.json")
+	if _, err := os.Stat(marker); err == nil {
+		return "", nil
+	}
+	if root, ok := wt.FindWorkspaceRoot(filepath.Dir(workspace)); ok && root != home {
+		return root, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil { //nolint:gosec // G301 -- same dir mode as the workspace's other kit dirs
+		return "", err
+	}
+	m, err := managed.Load(marker)
+	if err != nil {
+		return "", err
+	}
+	return "", m.Save(marker)
 }
 
 // resyncPluginIfStale is the former selfHeal body: when the plugin manifest's
