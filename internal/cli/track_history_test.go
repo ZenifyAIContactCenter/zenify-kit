@@ -167,7 +167,7 @@ func TestTrackOnboardHistory_SubagentFileAndKindFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "3m") || !strings.Contains(out, " - ") {
+	if !strings.Contains(out, "3m") || !strings.Contains(out, "kit  z  -  3m  opus:100/10\n") {
 		t.Fatalf("preview = %q", out)
 	}
 }
@@ -176,5 +176,22 @@ func TestTrackOnboardHistory_NoTranscripts(t *testing.T) {
 	ws, _ := histEnv(t)
 	if out, err := runTrack(t, ws, "onboard", "history"); err != nil || !strings.Contains(out, "skipped 0") {
 		t.Fatalf("%q %v", out, err)
+	}
+}
+
+// A prompt typed at the workspace root still counts for the worktree that works on it.
+func TestTrackOnboardHistory_PromptAtRootAttributedToWorktree(t *testing.T) {
+	ws, proj := histEnv(t)
+	w := filepath.Join(ws, "repos", "kit", ".worktrees", "x")
+	writeJSONL(t, filepath.Join(proj, "s3.jsonl"), []rec{
+		prompt(ws, "main", 0, "start"),
+		assistant(w, "HEAD", 180, "r1", nil, true),
+	})
+	out, err := runTrack(t, ws, "onboard", "history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "kit  x  -  3m  opus:100/10\n") {
+		t.Fatalf("preview = %q", out)
 	}
 }

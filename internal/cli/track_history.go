@@ -401,20 +401,25 @@ func (s *histScan) scanFile(path string, subagent bool) error {
 	}
 	defer f.Close() //nolint:errcheck // read-only
 	var (
-		cur     *histGroup
 		curFrom time.Time
 		inPrmpt bool
-		lastA   time.Time
+		lastA   = map[*histGroup]time.Time{} // last assistant record per group since the prompt
 		pending = map[string]struct {
 			t time.Time
 			g *histGroup
 		}{}
 	)
+	// closeCur credits [prompt, last assistant record of g] to every group g that
+	// answered the prompt, whichever group the prompt itself was typed in.
 	closeCur := func() {
-		if inPrmpt && cur != nil && lastA.After(curFrom) {
-			cur.spans = append(cur.spans, histSpan{curFrom, lastA})
+		if inPrmpt {
+			for g, t := range lastA {
+				if t.After(curFrom) {
+					g.spans = append(g.spans, histSpan{curFrom, t})
+				}
+			}
 		}
-		inPrmpt, cur, lastA = false, nil, time.Time{}
+		inPrmpt, lastA = false, map[*histGroup]time.Time{}
 	}
 	rd := bufio.NewReaderSize(f, 1<<20)
 	for line := 0; ; line++ {
@@ -435,7 +440,7 @@ func (s *histScan) scanFile(path string, subagent bool) error {
 					forced := subagent && line == 0
 					if forced || r.isHumanPrompt(bs) {
 						closeCur()
-						inPrmpt, cur, curFrom = true, g, t
+						inPrmpt, curFrom = true, t
 					}
 					if g != nil {
 						if _, ok := histSkills[r.AttributionSkill]; ok {
@@ -444,8 +449,8 @@ func (s *histScan) scanFile(path string, subagent bool) error {
 					}
 					switch r.Type {
 					case "assistant":
-						if inPrmpt {
-							lastA = t
+						if inPrmpt && g != nil {
+							lastA[g] = t
 						}
 						for _, b := range bs {
 							if b.Type == "tool_use" && b.Name == "AskUserQuestion" && g != nil {

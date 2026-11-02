@@ -405,6 +405,9 @@ func repoOwners(wsDir string) ([]string, []string) {
 			continue
 		}
 		o, err := originOwner(filepath.Join(wsDir, "repos", e.Name()))
+		if errors.Is(err, errNoOrigin) {
+			continue // a local-only repo has no owner to search
+		}
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("owner of repos/%s: %v", e.Name(), err))
 			continue
@@ -418,6 +421,8 @@ func repoOwners(wsDir string) ([]string, []string) {
 	return owners, errs
 }
 
+var errNoOrigin = errors.New("no origin remote")
+
 func originOwner(repoDir string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), trackGhTimeout)
 	defer cancel()
@@ -428,6 +433,10 @@ func originOwner(repoDir string) (string, error) {
 	out, err := cmd.Output()
 	if ctx.Err() != nil {
 		return "", fmt.Errorf("git remote get-url timed out after %s", trackGhTimeout)
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 2 && strings.Contains(stderr.String(), "No such remote") {
+		return "", errNoOrigin
 	}
 	if err != nil {
 		return "", fmt.Errorf("git remote get-url origin: %w: %s", err, strings.TrimSpace(stderr.String()))

@@ -379,7 +379,7 @@ func TestTrackStats_SDDScan(t *testing.T) {
 	if _, err := runTrack(t, ws, "backlog", "drop", "repos/hub/.znf/sdd/q/progress.md:2"); err != nil {
 		t.Fatal(err)
 	}
-	// SDD items live in the cache (one TTL), so force a fresh scan view of the drop.
+	// The SDD items now come from the cache; the drop row still hides the item.
 	if s := trackBacklogStats(t, ws); len(s.Backlog.Items) != 2 {
 		t.Fatalf("drop must hide the sdd item: %+v", s.Backlog.Items)
 	}
@@ -395,5 +395,46 @@ func TestTrackStats_OffSkipsGhAndScan(t *testing.T) {
 	out, err := runTrack(t, ws, "stats", "--json")
 	if err != nil || !strings.Contains(out, `"enabled": false`) {
 		t.Fatalf("%q %v", out, err)
+	}
+}
+
+func TestTrackStats_RepoWithoutOriginIsSkippedSilently(t *testing.T) {
+	ws := trackWS(t, true)
+	gitRepoWithOrigin(t, ws, "a", "git@github.com:Z/a.git")
+	noOrigin := filepath.Join(ws, "repos", "local-only")
+	if out, err := exec.Command("git", "init", "-q", noOrigin).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	var mu sync.Mutex
+	var owners []string
+	fakeGh(t, func(owner, role string) ([]trackstats.Issue, error) {
+		mu.Lock()
+		owners = append(owners, owner)
+		mu.Unlock()
+		return nil, nil
+	})
+	s := trackBacklogStats(t, ws)
+	if s.Backlog.GhError != "" {
+		t.Fatalf("ghError = %q", s.Backlog.GhError)
+	}
+	for _, o := range owners {
+		if o != "Z" {
+			t.Fatalf("owners asked = %v", owners)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(ws, ".zenify", "track", "backlog-gh.json")); err != nil {
+		t.Fatalf("cache not written: %v", err)
+	}
+}
+
+// A directory that is not a git repository is a real failure and must surface.
+func TestTrackStats_NonGitRepoDirStillSurfaces(t *testing.T) {
+	ws := trackWS(t, true)
+	if err := os.MkdirAll(filepath.Join(ws, "repos", "plain"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	noGh(t)
+	if s := trackBacklogStats(t, ws); !strings.Contains(s.Backlog.GhError, "repos/plain") {
+		t.Fatalf("ghError = %q", s.Backlog.GhError)
 	}
 }
