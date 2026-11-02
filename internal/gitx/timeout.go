@@ -25,7 +25,11 @@ func TimeoutRunner(d time.Duration) Runner { return timeoutRunner{d: d} }
 func (t timeoutRunner) Run(dir string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), t.d)
 	defer cancel()
-	out, err := execGit(ctx, dir, args...).Output()
+	cmd := execGit(ctx, dir, args...)
+	// A child (hook, ssh) that outlives git and holds the pipes would keep Output()
+	// blocked past the deadline; WaitDelay force-closes them shortly after it.
+	cmd.WaitDelay = 2 * time.Second
+	out, err := cmd.Output()
 	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return out, context.DeadlineExceeded
 	}

@@ -261,6 +261,9 @@ func RunNew(o NewOptions) error {
 	if len(ports) > 1 {
 		wtRec.PortBase = port
 	}
+	if sha, e := r.Run(path, "rev-parse", "HEAD"); e == nil {
+		wtRec.StartSHA = strings.TrimSpace(string(sha))
+	}
 	if err := SaveWorktree(o.RepoRoot, wtRec, o.Pid, o.Host, o.Now); err != nil {
 		return abort(err)
 	}

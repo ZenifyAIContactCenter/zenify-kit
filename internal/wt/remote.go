@@ -10,8 +10,10 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
-// RemoteTimeout bounds every network git call wt makes (ls-remote, fetch of one
-// branch, push), so an unreachable origin cannot hang wt new / rm / sweep.
+// RemoteTimeout bounds the network git calls routed through RemoteRunner
+// (ls-remote and push for a remote branch; the push in wt new), so an
+// unreachable origin cannot hang them. The full-repo `fetch origin` in wt new,
+// rm and sweep is NOT bounded by it.
 const RemoteTimeout = 20 * time.Second
 
 // remoteOr returns rr when set, else the ordinary runner.
