@@ -104,7 +104,14 @@ func runTrackWrite(w io.Writer, flag string, nargs int, args []string, build tra
 			return err
 		}
 	}
-	return appendTrackRow(logPath, kind, fields)
+	if err := appendTrackRow(logPath, kind, fields); err != nil {
+		return err
+	}
+	if kind == "end" {
+		// The hook unbinds the session only on this line, so a failed end keeps the binding.
+		_, err = fmt.Fprintf(w, "track: ended %s\n", args[0])
+	}
+	return err
 }
 
 func appendTrackRow(logPath, kind string, fields []string) error {

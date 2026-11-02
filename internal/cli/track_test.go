@@ -379,3 +379,15 @@ func TestTrack_ShipBlockedStepRules(t *testing.T) {
 		t.Fatalf("ship row = %q", got)
 	}
 }
+
+// A successful end prints `track: ended <id>` (the hook unbinds on it); a rejected end prints nothing.
+func TestTrack_EndPrintsEndedLine(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "fix")
+	if out, err := runTrack(t, ws, "end", id, "--rounds", "0"); err == nil || out != "" {
+		t.Fatalf("end without an outcome: out %q err %v, want an error and no output", out, err)
+	}
+	if out, err := runTrack(t, ws, "end", "--cancelled", id, "--rounds", "0"); err != nil || out != "track: ended "+id+"\n" {
+		t.Fatalf("end: out %q err %v", out, err)
+	}
+}
