@@ -448,6 +448,20 @@ test('FR-6.1: a Skill call of cook, hotfix or ship, with or without znf:, opens 
   expect(calls.open).toEqual([PANE])
 })
 
+test('SC-45: options tips false: the status line carries no contextual tip', { options: { tips: false } }, async ($, on) => {
+  const calls = engine(on, { stats: ok(statsJson({ today: { ...JSON.parse(statsJson()).today, prsOpened: 2, merged: 0 } })) })
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0 · PR 2')
+})
+
+test('SC-45: tips default: the status line carries the tip', async ($, on) => {
+  const calls = engine(on, { stats: ok(statsJson({ today: { ...JSON.parse(statsJson()).today, prsOpened: 2, merged: 0 } })) })
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(lastStatus(calls)).toContain('Tip: 2 PR chờ merge')
+})
+
 test('SC-41: trackPane off: a /znf:fix prompt opens no pane and /track-pane is not registered', { options: { trackPane: 'off' } }, async ($, on) => {
   const calls = engine(on, {})
   const clock = mock.clock(on)

@@ -23,6 +23,12 @@
       "default": "auto",
       "options": ["auto", "command", "off"]
     },
+    "tips": {
+      "type": "boolean",
+      "title": "Status line tips",
+      "description": "Show contextual tips (backlog, estimate, over est, PRs waiting) at the end of the status line. The onboard tip and the track off line always show.",
+      "default": true
+    },
     "reviewer": {
       "type": "string",
       "title": "Reviewer",

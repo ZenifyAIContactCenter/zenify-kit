@@ -172,6 +172,9 @@ async function mtimeOf($: $, path: string): Promise<string> {
 }
 
 // FR-11.2–11.4: the status line from the last stats answer and this session's bound id.
+// FR-11.8: the `tips` option, read once in register (a /config change reloads the module).
+let showTips = true
+
 async function updateStatus($: $): Promise<void> {
   const st = await read($, stats)
   if (!st) return
@@ -179,7 +182,7 @@ async function updateStatus($: $): Promise<void> {
     $.ui.status(errorStatus(st.error ?? 'no stats'))
     return
   }
-  $.ui.status(statusText(st.data, await $.session.id(), (await read($, bound))?.id))
+  $.ui.status(statusText(st.data, await $.session.id(), (await read($, bound))?.id, showTips))
 }
 
 // FR-6.3/FR-11.5: runs `zenify track stats --json` when log.md, sessions/, this session's own log
@@ -279,6 +282,7 @@ export const register: Register = (on, options: PluginOptions) => {
   // FR-17.4: auto opens the pane on a tracked prompt or skill; command only by /track-pane;
   // off neither, and /track-pane is not registered.
   const trackPane = trackPaneOf(options)
+  showTips = options.tips !== false
   // FR-17.2: the /config rows' writes.
   registerConfig(on)
   // FR-11.1: every session in a workspace runs stats and sets the status line; never opens the pane.

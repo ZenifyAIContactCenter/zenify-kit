@@ -147,6 +147,15 @@ test('FR-17.4: znf.trackPane runs no command', async ($, on) => {
   expect(calls.run).toEqual([])
 })
 
+test('FR-11.8: znf.tips runs no command', async ($, on) => {
+  const calls = engine(on, { runs: SYNCED })
+  const clock = mock.clock(on)
+  await start($, clock)
+  calls.run.length = 0
+  expect(await $.config.set({ key: 'znf.tips', value: false })).toEqual({ value: false })
+  expect(calls.run).toEqual([])
+})
+
 test('SC-41: `zenify feature` says track on while the option is false: session start sets znf.track true', async ($, on) => {
   const calls = engine(on, { runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\n') } })
   const clock = mock.clock(on)
@@ -242,7 +251,7 @@ test('a person change landing while the sync set of that row is in flight is the
 })
 
 const ROW = (key: string) => ({ key, label: key, isHidden: false, provider: { kind: 'plugin', name: 'znf' } }) as any
-const KEYS = ['znf.track', 'znf.githubIssues', 'znf.trackPane', 'znf.reviewer']
+const KEYS = ['znf.track', 'znf.githubIssues', 'znf.trackPane', 'znf.tips', 'znf.reviewer']
 
 test('SC-42: outside a workspace the znf rows are hidden, others stay, nothing runs and sets are denied', async ($, on) => {
   const calls = engine(on, { runs: SYNCED, noWorkspace: true })

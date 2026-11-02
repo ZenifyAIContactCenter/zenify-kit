@@ -90,7 +90,8 @@ function tipFor(s: TrackStats, mine: TrackItem | undefined): string | undefined 
 }
 
 // FR-11.2/11.3: an item that is 0 or unknown is hidden, except `Hôm nay`.
-export function statusText(s: TrackStats, session: string, boundId: string | undefined): string {
+// FR-11.8: tips=false drops only the FR-11.7 (2)-(5) tips; onboard and the off line stay.
+export function statusText(s: TrackStats, session: string, boundId: string | undefined, tips = true): string {
   if (!s.enabled) return STATUS_OFF
   const mine = openItem(s, session, boundId)
   const t = s.today
@@ -105,7 +106,7 @@ export function statusText(s: TrackStats, session: string, boundId: string | und
     `Hôm nay: ${sum(t.ended)}/${sum(t.started)}`,
     t.prsOpened > 0 && `PR ${t.prsOpened}${t.merged > 0 ? ` (${t.merged} merged)` : ''}`,
     hit !== undefined && `hit ${Math.round(hit * 100)}%`,
-    tipFor(s, mine) ?? false,
+    (tips && tipFor(s, mine)) || false,
   ]
   return parts.filter(Boolean).join(SEP)
 }

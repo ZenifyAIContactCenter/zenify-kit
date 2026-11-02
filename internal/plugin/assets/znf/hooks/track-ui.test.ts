@@ -79,6 +79,20 @@ test('SC-44: contextual tips by priority, one at most', () => {
   expect(tail(stats())).not.toContain('Tip:')
 })
 
+test('SC-45: tips false hides tips (2)-(5), keeps onboard and the off line', () => {
+  const backlog = { items: [bl('manual')], ghError: '' }
+  const prs = { ...stats().today, prsOpened: 3, merged: 1 }
+  const noTips = (s: TrackStats, id?: string) => statusText(s, A, id, false)
+  expect(noTips(stats({ backlog }))).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(noTips(stats({ today: prs }))).toBe('track ⏸ · Hôm nay: 0/0 · PR 3 (1 merged)')
+  expect(noTips(stats({ running: [item({ est: '-', agentMin: 5 })] }), X)).not.toContain('Tip:')
+  expect(noTips(stats({ running: [item({ est: 'M', agentMin: 95 })] }), X)).not.toContain('Tip:')
+  expect(noTips({ ...stats(), onboarded: false })).toContain('Tip: Bạn có thể onboard')
+  expect(noTips(stats({ enabled: false }))).toBe(STATUS_OFF)
+  // default is tips on
+  expect(statusText(stats({ backlog }), A, undefined)).toContain('Tip: còn 1 việc')
+})
+
 test('FR-11.2/SC-20: enabled false is the off line, verbatim', () => {
   expect(STATUS_OFF).toBe('⏸ track off · bật: /config → znf')
   expect(statusText(stats({ enabled: false }), A, X)).toBe(STATUS_OFF)
