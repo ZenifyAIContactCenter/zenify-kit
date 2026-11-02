@@ -8,6 +8,17 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.55.0
+
+*2026-11-02*
+
+- **Pane track thay pane nonstop:** feature mới `track` (`zenify feature track on`) ghi sổ chung cho cả workspace ở `.zenify/track/`. `cook`, `fix`, `hotfix`, `ship` và `ci-watch` tự ghi bắt đầu, ước lượng S/M/L, vòng fix, kết quả ship, CI và PR qua [`zenify track`](/reference/cli/zenify_track); khi `track` bật, `/znf:ship` luôn chạy `ci-watch` sau khi mở PR (như `--watch`) để ghi kết quả CI. Pane mở khi chạy `/znf:cook`, `/znf:fix`, `/znf:hotfix`, `/znf:ship` (hoặc lệnh `/track-pane`), có năm tab: `Tab này`, `Tổng`, `Estimate`, `Chất lượng`, `Backlog`. Hook đo thời gian agent, thời gian chờ (hỏi người, chờ quyền, rảnh), giai đoạn và token theo model cho việc đang mở. Xem [Pane track](/guides/track-pane).
+- **Status line luôn hiện trong workspace:** dòng `track` cho biết việc đang mở, giai đoạn, phút agent so với est, số việc hôm nay, PR và tỉ lệ đoán đúng est. Status line kèm tối đa một tip theo ngữ cảnh: nhắc onboard, còn việc trong backlog, chưa có est, vượt est, PR chờ merge.
+- **Backlog và onboard:** [`zenify track backlog`](/reference/cli/zenify_track_backlog) gộp việc thêm tay, issue GitHub đang mở của bạn, dòng `minor (deferred)` / `parked` trong ledger SDD và việc bị bỏ dở. Bắt đầu từ backlog bằng `zenify track start --from <bid|issue url>`. `zenify track onboard history` dựng thang S/M/L từ lịch sử transcript (không lưu nội dung chat); lần đầu, gõ "hey claude onboard track" để agent làm cả bước này.
+- **Setting của kit trong `/config`:** plugin `znf` có các dòng Dev track, GitHub issues, Track pane, Status line tips và Reviewer trong `/config` của Claude Code. Các dòng này chỉ hiện trong workspace zenify. Đổi một dòng thì chạy đúng lệnh `zenify` tương ứng. Lệnh mới [`zenify reviewer set`](/reference/cli/zenify_reviewer_set) và [`zenify reviewer get`](/reference/cli/zenify_reviewer_get).
+- **Gỡ nonstop (thay đổi phá vỡ):** skill `/znf:nonstop`, lệnh `zenify nonstop stats` và trang hướng dẫn pane nonstop đã bị gỡ; dùng pane track thay thế. Binary và plugin của bản này phải cài cùng nhau: plugin mới gọi `zenify track` và `zenify reviewer get`.
+- **Self-hosted await:** `zenify await` kết thúc lượt (thoát 0, in `await recorded: end your turn now and do nothing else`) thay vì thoát mã 8 khi có `ZNF_AWAIT=end-turn` cùng `ZNF_AUTONOMOUS=1`, dùng cho worker chạy trong session self-hosted. Xem [Chế độ không người](/guides/autonomous).
+
 ## v0.54.0
 
 *2026-10-31*
