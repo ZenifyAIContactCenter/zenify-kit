@@ -96,10 +96,16 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify spec status](./zenify_spec_status) | Liệt kê trạng thái vòng đời của từng spec trong knowledge store. |
 | [zenify standards](./zenify_standards) | Kiểm tra mỗi FR trong spec có một test thật trên đĩa mà plan đã khai. |
 | [zenify track](./zenify_track) | Ghi và báo cáo các lượt cook/fix/hotfix cho pane dev track. |
+| [zenify track backlog](./zenify_track_backlog) | Quản lý backlog thủ công của pane (thêm, bỏ). |
+| [zenify track backlog add](./zenify_track_backlog_add) | Thêm một việc thủ công vào backlog và in `track: <bid>`. |
+| [zenify track backlog drop](./zenify_track_backlog_drop) | Bỏ một việc khỏi backlog (bid hoặc id sdd). |
 | [zenify track ci](./zenify_track_ci) | Ghi kết quả CI green hoặc red của commit đang được watch. |
 | [zenify track end](./zenify_track_end) | Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD. |
 | [zenify track est](./zenify_track_est) | Đặt size ước lượng cho id đã start; dòng est sau cùng thắng. |
 | [zenify track fix](./zenify_track_fix) | Ghi một vòng fix của lượt fix/hotfix: đường chẩn đoán narrow hoặc wide và có regression test hay không. |
+| [zenify track onboard](./zenify_track_onboard) | Nạp dữ liệu ban đầu cho track. |
+| [zenify track onboard history](./zenify_track_onboard_history) | Xem trước hoặc ghi lịch sử làm việc lấy từ transcript Claude Code. |
+| [zenify track onboard memory](./zenify_track_onboard_memory) | Đánh dấu đã onboard từ memory (dòng `onboard · memory`). |
 | [zenify track ship](./zenify_track_ship) | Ghi kết quả một lần chạy znf:ship: shipped hay blocked, bước bị chặn, số finding và số vòng fix. |
 | [zenify track start](./zenify_track_start) | Mở một lượt theo dõi và in id `track: <id>`. |
 | [zenify track stats](./zenify_track_stats) | In số liệu hôm nay, độ chính xác estimate và chất lượng từ log.md và sessions/*.log. |

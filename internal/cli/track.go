@@ -49,6 +49,7 @@ func newTrackCmd() *cobra.Command {
 	c.AddCommand(
 		newTrackStartCmd(&ws), newTrackEstCmd(&ws), newTrackShipCmd(&ws),
 		newTrackFixCmd(&ws), newTrackCICmd(&ws), newTrackEndCmd(&ws), newTrackStatsCmd(&ws),
+		newTrackBacklogCmd(&ws), newTrackOnboardCmd(&ws),
 	)
 	return c
 }
@@ -189,9 +190,9 @@ func newTrackID(kind string, now time.Time) (string, error) {
 }
 
 func newTrackStartCmd(ws *string) *cobra.Command {
-	var kind, repo, est string
+	var kind, repo, est, from string
 	c := &cobra.Command{
-		Use:   "start --kind cook|fix|hotfix --repo <repo> --est S|M|L|-",
+		Use:   "start --kind cook|fix|hotfix --repo <repo> --est S|M|L|- [--from <bid|issue url>]",
 		Short: "Mở một lượt theo dõi và in id của nó", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -213,11 +214,19 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 			if err := validTrackText("--repo", repo); err != nil {
 				return err
 			}
+			fields := []string{"", kind, repo, est}
+			if from != "" {
+				if err := checkStartFrom(trackLogPath(wsDir), from); err != nil {
+					return err
+				}
+				fields = append(fields, from)
+			}
 			id, err := newTrackID(kind, time.Now().UTC())
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
-			if err := appendTrackRow(filepath.Join(wsDir, ".zenify", "track", "log.md"), "start", []string{id, kind, repo, est}); err != nil {
+			fields[0] = id
+			if err := appendTrackRow(trackLogPath(wsDir), "start", fields); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(w, "track: %s\n", id)
@@ -227,6 +236,7 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 	c.Flags().StringVar(&kind, "kind", "", "cook|fix|hotfix")
 	c.Flags().StringVar(&repo, "repo", "", "target repo name")
 	c.Flags().StringVar(&est, "est", "-", "size estimate S|M|L, or - when not known yet")
+	c.Flags().StringVar(&from, "from", "", "backlog id or issue URL this run takes from the backlog")
 	return c
 }
 
@@ -432,6 +442,7 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 	var (
 		dir    string
 		asJSON bool
+		force  bool
 		today  string
 	)
 	c := &cobra.Command{
@@ -457,7 +468,7 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 				if dir == "" {
 					dir = filepath.Join(wsDir, ".zenify", "track")
 				}
-				res, err = computeTrackStats(dir, wsDir, today, now.UTC())
+				res, err = computeTrackStats(dir, wsDir, today, now.UTC(), force)
 				if err != nil {
 					return exitcode.New(exitcode.Fail, err)
 				}
@@ -477,11 +488,12 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 	}
 	c.Flags().StringVar(&dir, "dir", "", "directory holding log.md (default: <workspace>/.zenify/track)")
 	c.Flags().BoolVar(&asJSON, "json", false, "output JSON instead of a short summary")
+	c.Flags().BoolVar(&force, "force", false, "ignore the 5-minute backlog cache (gh issues and SDD scan)")
 	c.Flags().StringVar(&today, "today", "", "the day to report, YYYY-MM-DD (default: local today)")
 	return c
 }
 
-func computeTrackStats(dir, wsDir, today string, now time.Time) (trackstats.Result, error) {
+func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (trackstats.Result, error) {
 	in := trackstats.Input{
 		PlansRoot: filepath.Join(wsDir, "docs", "plans"),
 		Today:     today,
@@ -489,6 +501,7 @@ func computeTrackStats(dir, wsDir, today string, now time.Time) (trackstats.Resu
 		Merged:    trackMerged,
 		Sessions:  map[string]string{},
 	}
+	in.GitHub, in.SDD = backlogSources(dir, wsDir, force, now)
 	b, err := os.ReadFile(filepath.Join(dir, "log.md")) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return trackstats.Result{}, err

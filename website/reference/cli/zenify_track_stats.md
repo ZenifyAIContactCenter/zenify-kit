@@ -29,6 +29,7 @@ zenify track stats --json
 | Cờ | Ý nghĩa |
 |---|---|
 | `--dir` | directory holding log.md (default: \<workspace\>/.zenify/track) |
+| `--force` | ignore the 5-minute backlog cache (gh issues and SDD scan) |
 | `--json` | output JSON instead of a short summary |
 | `--today` | the day to report, YYYY-MM-DD (default: local today) |
 
