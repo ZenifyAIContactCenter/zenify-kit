@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func trackWS(t *testing.T, on bool) string {
@@ -161,6 +163,53 @@ func TestTrack_RowsAndStats(t *testing.T) {
 	}
 	if out, err := runTrack(t, ws, "stats"); err != nil || !strings.Contains(out, "scale (") {
 		t.Fatalf("human stats: %q %v", out, err)
+	}
+}
+
+// The pane runs stats on almost every turn: gh is asked about an unmerged PR at most once
+// per mergedRecheck, and a failed check is asked again on the next run.
+func TestTrackStats_MergedCheckThrottled(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "fix")
+	if _, err := runTrack(t, ws, "end", id, "--pr", "https://github.com/o/r/pull/9", "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	asked := 0
+	fail := true
+	old := trackMerged
+	trackMerged = func(string) (string, error) {
+		asked++
+		if fail {
+			return "", errors.New("gh down")
+		}
+		return "", nil
+	}
+	t.Cleanup(func() { trackMerged = old })
+	stats := func() {
+		t.Helper()
+		if _, err := runTrack(t, ws, "stats", "--json"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stats()
+	stats()
+	if asked != 2 {
+		t.Fatalf("a failed check must be asked again: asked %d, want 2", asked)
+	}
+	fail = false
+	stats()
+	stats()
+	if asked != 3 {
+		t.Fatalf("an unmerged PR must not be asked again within %s: asked %d, want 3", mergedRecheck, asked)
+	}
+	stamp := filepath.Join(ws, ".zenify", "track", "merged.checked")
+	old6 := time.Now().Add(-mergedRecheck - time.Minute)
+	if err := os.Chtimes(stamp, old6, old6); err != nil {
+		t.Fatal(err)
+	}
+	stats()
+	if asked != 4 {
+		t.Fatalf("a stale check must ask again: asked %d, want 4", asked)
 	}
 }
 

@@ -28,6 +28,9 @@ const trackSep = " · "
 // trackMerged asks whether a PR is merged; a test replaces it at the gh boundary.
 var trackMerged trackstats.MergedFunc = trackstats.GhMerged
 
+// mergedRecheck is how long a gh merged check stays fresh before stats asks again.
+const mergedRecheck = 5 * time.Minute
+
 var (
 	trackIDRe     = regexp.MustCompile(`^(cook|fix|hotfix)-\d{6}-[0-9a-f]{4}$`)
 	trackKinds    = []string{"cook", "fix", "hotfix"}
@@ -530,7 +533,28 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		return trackstats.Result{}, err
 	}
 	in.Cache = cache
+	// gh is asked about unmerged PRs at most once per mergedRecheck: the pane runs stats on
+	// almost every turn, and every unmerged PR costs one sequential gh call.
+	checkedPath := filepath.Join(dir, "merged.checked")
+	fi, err := os.Stat(checkedPath)
+	switch {
+	case err == nil:
+		if now.Sub(fi.ModTime()) < mergedRecheck {
+			in.Merged = nil
+		}
+	case !errors.Is(err, os.ErrNotExist):
+		return trackstats.Result{}, err
+	}
 	res, newCache := trackstats.Compute(in)
+	// A failed check is not stamped, so the next run asks again and still reports the error.
+	if in.Merged != nil && res.Today.MergedError == "" {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return trackstats.Result{}, err
+		}
+		if err := os.WriteFile(checkedPath, nil, 0o644); err != nil { //nolint:gosec // G306 -- plain stamp file
+			return trackstats.Result{}, fmt.Errorf("write %s: %w", checkedPath, err)
+		}
+	}
 	if len(newCache) > 0 && !reflect.DeepEqual(newCache, cache) {
 		out, err := json.Marshal(newCache)
 		if err != nil {
