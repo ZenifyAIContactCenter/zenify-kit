@@ -22,6 +22,8 @@ Trước lần sửa code đầu tiên của một task. Mọi thay đổi code 
 
 Lệnh tạo worktree trong `.worktrees/<slug>`, checkout branch `<user>/<type>/<slug>` từ base ref đã khai trong `.claude/worktree.json`, cấp một port trong dải của repo, copy các file khai ở `copy` và cài deps theo `deps`. Lệnh in đường dẫn worktree và port.
 
+Sau khi tạo xong, `wt new` đẩy branch lên `origin` (`push -u`) để việc hiện là đã bắt đầu. Lệnh bỏ qua bước này với `--type hotfix` hoặc khi repo không có `origin`. Push lỗi chỉ in cảnh báo, worktree vẫn được tạo. Khi `wt new` tự dọn một worktree đã xong, nó giữ nguyên branch remote của worktree đó.
+
 `<user>` lấy theo thứ tự: trường `user` trong `worktree.json` nếu repo có khai, rồi `git config user.name` (`Nguyen An` thành `Nguyen-An`), rồi phần trước `@` của `git config user.email` (`an.nguyen@example.com` thành `an.nguyen`), rồi biến môi trường `$USER` (Windows: `$USERNAME`). Ký tự git không cho phép trong tên branch được thay bằng `-`.
 
 ## Cờ

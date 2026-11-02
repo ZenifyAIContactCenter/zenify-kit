@@ -38,6 +38,8 @@ Slug có thể bắt đầu bằng mã ticket, ví dụ `zen-123-session-timeout
 
 Một plan chia thành nhiều SDD task (Task 1, Task 2, ...). Tất cả task đó dùng chung một worktree. Cấp thêm worktree cho từng task vi phạm quy tắc "một repo, một worktree" mà slug tồn tại để giữ. Gọi `zenify wt new` lần nữa với cùng slug trong cùng phiên sẽ bị từ chối, kèm dòng `cd` tới worktree đã mở.
 
+`wt new` cũng đẩy branch lên `origin` (trừ hotfix) để việc hiện là đã bắt đầu. `wt rm`, `wt sweep` và `wt sweep --all` xóa branch remote đó chỉ khi nó không có commit nào ngoài base, nên task chưa làm gì mất luôn branch remote khi bạn dọn tường minh. Phần tự dọn bên trong `wt new` giữ nguyên branch remote.
+
 ## Liên quan
 
 - [Base ref, hotfix base, port block](/concepts/base-ref-and-ports): `--base` lấy từ đâu và vì sao hotfix khác.

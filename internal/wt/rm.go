@@ -204,8 +204,10 @@ func deleteEmptyRemote(o RmOptions, branch, base string) {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: it has commits\n", branch)
 		return
 	}
-	if _, e := r.Run(o.RepoRoot, "push", "origin", "--delete", branch); e != nil {
-		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete origin/%s: %v\n", branch, e)
+	// Lease on the tip we counted: a commit pushed since makes git refuse, so we
+	// can never delete work that arrived after the check.
+	if _, e := r.Run(o.RepoRoot, "push", "--force-with-lease=refs/heads/"+branch+":"+tip, "origin", "--delete", branch); e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete origin/%s, keeping it: %v\n", branch, e)
 		return
 	}
 	_, _ = fmt.Fprintf(o.Stderr, "wt: deleted empty origin/%s\n", branch)

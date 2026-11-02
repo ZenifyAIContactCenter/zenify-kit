@@ -312,7 +312,7 @@ func (c *recRunner) Run(dir string, args ...string) ([]byte, error) {
 
 func (c *recRunner) deleted() bool {
 	for _, x := range c.calls {
-		if strings.HasPrefix(x, "push origin --delete") {
+		if strings.Contains(x, "origin --delete") {
 			return true
 		}
 	}
@@ -397,4 +397,87 @@ func TestRunSweep_DeletesEmptyRemoteBranch(t *testing.T) {
 	if bareHas(t, bare, "namph/feat/my-task") {
 		t.Fatal("wt sweep should delete the empty remote branch")
 	}
+}
+
+// failRunner fails any git call whose args start with one of the given prefixes.
+type failRunner struct {
+	recRunner
+	failOn string
+}
+
+func (f *failRunner) Run(dir string, args ...string) ([]byte, error) {
+	if strings.HasPrefix(strings.Join(args, " "), f.failOn) {
+		f.calls = append(f.calls, strings.Join(args, " "))
+		return nil, errors.New("boom")
+	}
+	return f.recRunner.Run(dir, args...)
+}
+
+// A fetch or rev-list failure keeps the remote branch and only warns.
+func TestRunRm_RemoteCheckFailureKeepsBranch(t *testing.T) {
+	for _, failOn := range []string{"fetch origin --quiet refs/heads/", "rev-list --count"} {
+		root, bare := pushRepo(t, true)
+		o, errb := realOpts(root)
+		if err := RunNew(o); err != nil {
+			t.Fatalf("RunNew: %v\n%s", err, errb)
+		}
+		var rb bytes.Buffer
+		fr := &failRunner{recRunner: recRunner{inner: gitx.ExecRunner()}, failOn: failOn}
+		if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: fr, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+			t.Fatalf("RunRm: %v", err)
+		}
+		if fr.deleted() || !bareHas(t, bare, "namph/feat/my-task") {
+			t.Fatalf("%s failure must keep the branch; calls %v", failOn, fr.calls)
+		}
+		if !strings.Contains(rb.String(), "warning") || !strings.Contains(rb.String(), "keeping it") {
+			t.Fatalf("%s failure must warn, got %q", failOn, rb.String())
+		}
+	}
+}
+
+// A commit pushed to origin between the count and the delete is protected by
+// the lease: the delete is refused and the branch kept.
+func TestRunRm_DeleteLeaseProtectsNewCommit(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	wtp := filepath.Join(root, ".worktrees", "my-task")
+	// Race: right before the push --delete, a teammate pushes a commit.
+	hook := &racePusher{recRunner: recRunner{inner: gitx.ExecRunner()}, t: t, wtp: wtp}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: hook, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v", err)
+	}
+	if !hook.fired {
+		t.Fatal("race hook never fired")
+	}
+	if !bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("branch with a late commit must survive; stderr %q", rb.String())
+	}
+	if !strings.Contains(rb.String(), "keeping it") {
+		t.Fatalf("expected warning, got %q", rb.String())
+	}
+}
+
+type racePusher struct {
+	recRunner
+	t     *testing.T
+	wtp   string
+	fired bool
+}
+
+func (r *racePusher) Run(dir string, args ...string) ([]byte, error) {
+	if !r.fired && strings.Contains(strings.Join(args, " "), "origin --delete") {
+		r.fired = true
+		// the worktree is already removed; push the late commit from a clone
+		clone := r.t.TempDir()
+		url := strings.TrimSpace(gitT(r.t, dir, "remote", "get-url", "origin"))
+		gitT(r.t, clone, "clone", "-q", url, ".")
+		gitT(r.t, clone, "checkout", "-q", "namph/feat/my-task")
+		gitT(r.t, clone, "commit", "-q", "--allow-empty", "-m", "late")
+		gitT(r.t, clone, "push", "-q", "origin", "namph/feat/my-task")
+	}
+	return r.recRunner.Run(dir, args...)
 }
