@@ -1,7 +1,7 @@
 // FR-17: the kit's settings as /config rows (manifest userConfig). The rows mirror the real
 // sources: features in .zenify-overlay.yaml (`zenify feature`), the reviewer in env.ZNF_REVIEWER
 // (`zenify reviewer`). A change runs the writing command; session start pulls the sources back.
-import type { EngineInterface as $, ConfigSetInput, On, PluginOptions } from 'claude-code'
+import type { EngineInterface as $, ConfigSetInput, ConfigValue, On, PluginOptions } from 'claude-code'
 
 import { COPY } from './track-ui'
 
@@ -39,9 +39,10 @@ function writeArgv(field: string, value: unknown): string[] | undefined {
 // them and stamps no `origin`, so the key marks align's set. A change to the same key that names
 // another origin (a person in /config, the bridge, another plugin) is still written.
 const aligning = new Set<string>()
-// The znf keys changed by anyone but align since the running sync began its reads: align leaves
-// them, so a stale read never overwrites a newer change.
-const changed = new Set<string>()
+// The latest value of each znf key changed by anyone but align since the running sync began its
+// reads: align leaves those keys, and puts the value back if its own set landed after it, so a
+// stale read never overwrites a newer change.
+const changed = new Map<string, ConfigValue>()
 
 const isAlign = (e: ConfigSetInput) =>
   aligning.has(e.key) && (!e.origin || (e.origin.kind === 'plugin' && e.origin.name === 'znf'))
@@ -59,7 +60,7 @@ export function registerConfig(on: On): void {
       }
     }
     const res = await next(e)
-    if (res.deny === undefined) changed.add(e.key)
+    if (res.deny === undefined) changed.set(e.key, e.value)
     return res
   })
 }
@@ -72,6 +73,12 @@ async function align($: $, options: PluginOptions, field: string, value: boolean
   try {
     const res = await $.config.set({ key, value })
     if (res.deny !== undefined) throw new Error(res.deny)
+    // A change made while this set was in flight: its value wins. Still under `aligning`, so its
+    // command, already run by that change, is not run again.
+    if (changed.has(key)) {
+      const again = await $.config.set({ key, value: changed.get(key)! })
+      if (again.deny !== undefined) throw new Error(again.deny)
+    }
   } finally {
     aligning.delete(key)
   }

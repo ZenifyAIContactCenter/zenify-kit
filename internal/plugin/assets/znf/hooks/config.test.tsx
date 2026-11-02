@@ -43,11 +43,12 @@ type World = {
   rejects?: Record<string, string>
 }
 
-type Calls = { run: string[]; set: { key: string; value: unknown }[]; toast: string[] }
+// `rows`: each row's value as the writer last stored it.
+type Calls = { run: string[]; set: { key: string; value: unknown }[]; toast: string[]; rows: Record<string, unknown> }
 
 // Every hook here stands for the engine beneath the plugin.
 function engine(on: any, world: World): Calls {
-  const calls: Calls = { run: [], set: [], toast: [] }
+  const calls: Calls = { run: [], set: [], toast: [], rows: {} }
   on('command.register', (_: unknown, e: { name: string }) => ({ value: { command: e.name } }))
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: CWD }))
@@ -69,6 +70,7 @@ function engine(on: any, world: World): Calls {
       delete world.holdSet![e.key]
       await hold
     }
+    calls.rows[e.key] = e.value
     return { value: e.value }
   })
   on('process.run', async (_: unknown, e: { argv: string[] }) => {
@@ -215,5 +217,23 @@ test('the startup sync does not overwrite a row a person changed after its read'
   gate.release()
   await clock.settle()
   expect(calls.set).toEqual([{ key: 'znf.track', value: false }])
+  expect(calls.toast).toEqual([])
+})
+
+test('a person change landing while the sync set of that row is in flight is the final value', async ($, on) => {
+  const gate = deferred()
+  const calls = engine(on, {
+    runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\n'), 'zenify feature track off': ok('track off\n') },
+    holdSet: { 'znf.track': gate.promise },
+  })
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: CWD, source: 'startup' } as any)
+  // The sync's znf.track=true is held in the writer and stored after the person's false.
+  while (!calls.set.length) await clock.settle()
+  await $.config.set({ key: 'znf.track', value: false, origin: COMPOSER } as any)
+  gate.release()
+  await clock.settle()
+  expect(calls.rows['znf.track']).toBe(false)
+  expect(calls.run.filter(r => r.startsWith('zenify feature track'))).toEqual(['zenify feature track off'])
   expect(calls.toast).toEqual([])
 })
