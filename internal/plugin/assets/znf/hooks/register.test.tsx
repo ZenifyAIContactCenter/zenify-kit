@@ -10,6 +10,9 @@ const SESSION_LOG = `/w/.zenify/track/sessions/${SESSION}.log`
 const LOG_MD = '/w/.zenify/track/log.md'
 const SESSIONS_DIR = '/w/.zenify/track/sessions'
 const OVERLAY = '/w/.zenify-overlay.yaml'
+const PULSE = '/w/.zenify/track/pulse'
+const LIVE = `/w/.zenify/track/live/${SESSION}.json`
+const BEAT = `/w/.zenify/track/live/${SESSION}.beat`
 const STATS_ARGV = ['zenify', 'track', 'stats', '--json', '--workspace', WS]
 const PANE = { id: 'track', title: 'Track', columns: 44 }
 const OFF = '⏸ track off · bật: /config → znf'
@@ -405,7 +408,7 @@ test('FR-2.3: the enabled flag comes from the stats run: on records, off does no
   await start($, clock)
   world.toolCall = () => ({ result: { stdout: 'track: fix-261030-a1b2\n', stderr: '' }, text: '' })
   await $.tool.call({ tool: 'Bash', command: 'zenify track start --kind fix --repo kit --est -' })
-  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG])
+  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG, PULSE])
 })
 
 test('FR-4.1: a start that printed an id binds even while enabled is still false (feature turned on in the same command)', async ($, on) => {
@@ -636,7 +639,7 @@ test('FR-4.1/FR-7.3: a start stdout binds the id into this session file, the cwd
   const calls = engine(on, world)
   mock.clock(on)
   await bindTo($, world, FIX_ID)
-  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG])
+  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG, PULSE])
   expect(sessionLines(world).every(l => ISO_AT.test(l))).toBe(true)
   expect(fields(world)).toEqual([`cwd · ${CWD}`, `bind · ${FIX_ID}`])
 })
@@ -822,4 +825,204 @@ test('FR-13.7: opening the Backlog tab reruns stats with --force; other runs and
   expect(t).toContain('▸Backlog')
   expect(t).toContain('kit · S · fix the thing · 4d')
   expect(t).toContain('⚠ github: gh: rate limited')
+})
+
+// FR-1/FR-2: live tab state, heartbeat and pulse.
+const T0 = Date.UTC(2026, 10, 2, 3, 0, 0)
+const T0_ISO = '2026-11-02T03:00:00.000Z'
+const ASK = { tool: 'AskUserQuestion', questions: [{ question: 'Which?', header: 'Pick', multiSelect: false, options: [{ label: 'a', description: 'a' }, { label: 'b', description: 'b' }] }] }
+const liveDoc = (world: World) => JSON.parse(world.files?.[LIVE] ?? 'null')
+const liveWrites = (calls: Calls) => calls.write.filter(w => w.path === LIVE)
+const trackWrites = (calls: Calls) => calls.write.filter(w => w.path.startsWith('/w/.zenify/track/live/') || w.path === PULSE)
+
+test('SC-2: AskUserQuestion writes ask then busy, with pulse; a throw still ends busy', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  let during: { live: unknown; pulse: string | undefined } | undefined
+  world.toolCall = () => {
+    during = { live: liveDoc(world), pulse: world.files?.[PULSE] }
+    return { result: { answers: {} } }
+  }
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(during).toEqual({ live: { state: 'ask', since: T0_ISO, cwd: CWD, id: '' }, pulse: T0_ISO })
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: '' })
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy'])
+  // A hook beneath that throws is skipped, so `next(e)` rejects (as an interrupt does); the
+  // rejection reaches the caller and the tab still goes back to busy.
+  world.toolCall = () => {
+    throw new Error('interrupted')
+  }
+  let thrown = ''
+  try {
+    await $.tool.call({ ...ASK, tool_use_id: 'u3' } as any)
+  } catch (err) {
+    thrown = String(err)
+  }
+  expect(thrown).toContain('no implementation for tool.call')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy', 'ask', 'busy'])
+})
+
+test('SC-2 / Review Focus 2: a plain tool call, even the first of the session, writes no live file or pulse', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.tool.call({ tool: 'Read', file_path: '/w/app/a.ts', tool_use_id: 'r1' } as any)
+  await $.tool.call({ tool: 'Bash', command: 'ls', tool_use_id: 'r2' } as any)
+  expect(trackWrites(calls)).toEqual([])
+})
+
+test('SC-3: a main-loop ask a person answers is permission until its call ends; unbound id is empty', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'p1', approver: 'person' } as any)
+  world.verdict = undefined
+  expect(liveDoc(world)).toEqual({ state: 'permission', since: T0_ISO, cwd: CWD, id: '' })
+  expect(world.files?.[PULSE]).toBe(T0_ISO)
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'p1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['permission', 'busy'])
+})
+
+test('SC-12: a subagent ask a person answers is permission too, with the bound id', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await bindTo($, world, FIX_ID)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'p2', agentId: 'a-1', approver: 'person' } as any)
+  world.verdict = undefined
+  expect(liveDoc(world)).toEqual({ state: 'permission', since: T0_ISO, cwd: CWD, id: FIX_ID })
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'p2', agentId: 'a-1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['permission', 'busy'])
+})
+
+test('SC-3: an ask the host answers writes no live state', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'h1', approver: 'host' } as any)
+  world.verdict = undefined
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'h1' } as any)
+  expect(trackWrites(calls)).toEqual([])
+})
+
+test('Review Focus 4: an ask and a subagent permission overlap; busy only once both end', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  const seen: string[] = []
+  world.toolCall = async (e: any) => {
+    if (e.tool_use_id === 'u1') {
+      world.verdict = 'ask'
+      await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u2', agentId: 'a-1', approver: 'person' } as any)
+      world.verdict = undefined
+      seen.push(liveDoc(world).state)
+    }
+    return { result: {} }
+  }
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  seen.push(liveDoc(world).state)
+  await $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'u2', agentId: 'a-1' } as any)
+  seen.push(liveDoc(world).state)
+  expect(seen).toEqual(['ask', 'permission', 'busy'])
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'permission', 'busy'])
+})
+
+test('SC-13: track off, AskUserQuestion writes no live file or pulse', async ($, on) => {
+  const world = trackWorld({ trackEnabled: false })
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'p1', approver: 'person' } as any)
+  await $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'p1' } as any)
+  expect(trackWrites(calls)).toEqual([])
+})
+
+test('FR-2.4: every 10s the heartbeat rewrites live/<session>.beat, never pulse', async ($, on) => {
+  const world: World = {}
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  await clock.advance(9000)
+  expect(calls.write.filter(w => w.path === BEAT)).toEqual([])
+  await clock.advance(1000)
+  expect(calls.write.filter(w => w.path === BEAT)).toEqual([{ path: BEAT, text: '2026-11-02T03:00:10.000Z' }])
+  await clock.advance(10000)
+  expect(calls.write.filter(w => w.path === BEAT)).toHaveLength(2)
+  expect(calls.write.filter(w => w.path === PULSE)).toEqual([])
+})
+
+test('FR-2.4: track off, no heartbeat', async ($, on) => {
+  const world: World = { stats: ok(statsJson({ enabled: false })) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await clock.advance(30000)
+  expect(trackWrites(calls)).toEqual([])
+})
+
+test('SC-1: a session log append writes pulse; a pulse mtime change alone re-runs stats at the next tick', async ($, on) => {
+  const world: World = { trackEnabled: true, mtimes: { [LOG_MD]: 1, [SESSIONS_DIR]: 1, [PULSE]: 1 } }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  await bindTo($, world, FIX_ID)
+  await clock.settle()
+  const pulseAt = calls.write.findIndex(w => w.path === PULSE)
+  expect(pulseAt).toBeGreaterThan(calls.write.findIndex(w => w.path === SESSION_LOG))
+  const before = statsRuns(calls).length
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toHaveLength(before)
+  world.mtimes = { [LOG_MD]: 1, [SESSIONS_DIR]: 1, [PULSE]: 2 }
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toHaveLength(before + 1)
+  expect(statsRuns(calls).at(-1)).toEqual(STATS_ARGV)
+})
+
+test('SC-11: with a Rolling boil entry stats re-run every 10s on an unchanged key; with none they do not', async ($, on) => {
+  const boil = { cooked: [], rollingBoil: [{ session: OTHER, brief: 'x', state: 'ask', since: T0_ISO }], titleError: '' }
+  const world: World = { stats: ok(statsJson({ kitchen: boil })) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(statsRuns(calls)).toHaveLength(1)
+  await clock.advance(8000)
+  expect(statsRuns(calls)).toHaveLength(1)
+  world.stats = ok(statsJson({ kitchen: { ...boil, rollingBoil: [] } }))
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toEqual([STATS_ARGV, STATS_ARGV])
+  await clock.advance(20000)
+  expect(statsRuns(calls)).toHaveLength(2)
+})
+
+test('stuck state: a person ask whose call never ran is cleared to busy at the main turn end', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u3', approver: 'person' } as any)
+  world.verdict = undefined
+  expect(liveDoc(world).state).toBe('permission')
+  await $.turn.complete(turnEnd(5000, 'a-1'))
+  expect(liveDoc(world).state).toBe('permission')
+  await $.turn.complete(turnEnd(9000))
+  expect(liveDoc(world).state).toBe('busy')
+  // A later main turn end with nothing pending writes nothing more.
+  await $.turn.complete(turnEnd(1000))
+  expect(liveWrites(calls)).toHaveLength(2)
+})
+
+test('a failed live write is toasted and the tool still answers', async ($, on) => {
+  const world = trackWorld({ writeError: 'EACCES: permission denied' })
+  const calls = engine(on, world)
+  mock.clock(on)
+  world.toolCall = () => ({ result: { answers: { q: 'a' } } })
+  const answer: any = await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(answer.result).toEqual({ answers: { q: 'a' } })
+  expect(calls.toast.length).toBeGreaterThan(0)
+  expect(calls.toast.every(t => t.startsWith('lỗi đo thời gian: ') && t.includes('EACCES: permission denied'))).toBe(true)
 })

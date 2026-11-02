@@ -31,6 +31,11 @@ export type BacklogItem = {
   ageDays: number
 }
 
+// One item that ended today, workspace-wide (Go `trackstats.CookedItem`).
+export type KitchenCooked = { id: string; brief: string; status: TrackItem['status']; endedAt: string; prs: string[] | null }
+// One live tab waiting for a person (Go `trackstats.BoilItem`).
+export type KitchenBoil = { session: string; brief: string; state: 'ask' | 'permission'; since: string }
+
 export type TrackStats = {
   enabled: boolean
   malformed: number
@@ -73,6 +78,7 @@ export type TrackStats = {
   }
   backlog: { items: BacklogItem[] | null; ghError: string }
   onboarded: boolean
+  kitchen?: { cooked: KitchenCooked[] | null; rollingBoil: KitchenBoil[] | null; titleError: string }
 }
 
 export type TrackTab = 'this' | 'total' | 'estimate' | 'quality' | 'backlog'
