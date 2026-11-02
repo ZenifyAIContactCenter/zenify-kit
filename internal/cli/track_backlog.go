@@ -424,7 +424,12 @@ func repoOwners(wsDir string) ([]string, []string) {
 		if !e.IsDir() {
 			continue
 		}
-		o, err := originOwner(filepath.Join(wsDir, "repos", e.Name()))
+		// A hidden directory (e.g. repos/.claude, Claude Code's agent memory) is never a repo.
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		dir := filepath.Join(wsDir, "repos", e.Name())
+		o, err := originOwner(dir)
 		if errors.Is(err, errNoOrigin) {
 			continue // a local-only repo has no owner to search
 		}
