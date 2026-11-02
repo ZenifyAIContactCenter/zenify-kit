@@ -71,7 +71,7 @@ Est (S, M hoặc L) do `znf:cook`, `znf:fix` và `znf:hotfix` ghi theo hướng 
 Tab `Backlog` gom việc chưa làm từ bốn nguồn:
 
 - `manual`: việc bạn hoặc agent thêm bằng `zenify track backlog add`.
-- `github`: issue đang mở trên GitHub mà bạn được giao hoặc do bạn tạo.
+- `github`: issue đang mở trên GitHub mà bạn được giao hoặc do bạn tạo. Kit tìm theo owner (org) lấy từ remote `origin` của từng repo trong `repos/`. Repo không có `origin` và thư mục ẩn (ví dụ `repos/.claude`) được bỏ qua; thư mục khác không phải repo git thì tab báo `⚠ github: ...`.
 - `sdd`: mục `minor (deferred)` và `parked` trong `progress.md` của các plan.
 - `stale`: việc đã bắt đầu nhưng bị bỏ dở.
 

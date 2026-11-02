@@ -280,13 +280,19 @@ func Install(o Options) error {
 		note("playwright: %s already installed", CLIPackage)
 	}
 	rev := chromiumRevision[CLIVersion]
-	if rev != "" && chromiumInstalled(browsersDir(o.Getenv, o.GOOS), rev) {
-		note("playwright: chromium %s already installed for %s", rev, CLIPackage)
-		return nil
+	dir := browsersDir(o.Getenv, o.GOOS)
+	what := "its chromium revision is unknown"
+	if rev != "" {
+		missing := missingChromium(dir, rev)
+		if len(missing) == 0 {
+			note("playwright: chromium %s already installed for %s", rev, CLIPackage)
+			return nil
+		}
+		what = "missing " + strings.Join(missing, ", ") + " in " + dir
 	}
-	note("playwright: ensuring chromium for %s (downloads a few hundred MB when its revision is missing)", CLIPackage)
+	note("playwright: %s; downloading chromium for %s (a few hundred MB)", what, CLIPackage)
 	if err := o.Runner("node", []string{CLIScript(o.Home), "install-browser", "chromium"}); err != nil {
-		return fmt.Errorf("install chromium: %w", err)
+		return fmt.Errorf("install chromium (%s): %w", what, err)
 	}
 	return nil
 }
@@ -312,13 +318,21 @@ func Deregister(o Options) (RegState, error) {
 // chromiumInstalled reports whether both browsers `playwright install
 // chromium` lays down for rev finished installing under dir.
 func chromiumInstalled(dir, rev string) bool {
-	if !filepath.IsAbs(dir) {
-		return false
-	}
+	return filepath.IsAbs(dir) && len(missingChromium(dir, rev)) == 0
+}
+
+// missingChromium lists the browser directories of rev under dir that lack their
+// INSTALLATION_COMPLETE marker; a relative dir counts every one as missing.
+func missingChromium(dir, rev string) []string {
+	var missing []string
 	for _, name := range []string{"chromium-" + rev, "chromium_headless_shell-" + rev} {
+		if !filepath.IsAbs(dir) {
+			missing = append(missing, name)
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(dir, name, "INSTALLATION_COMPLETE")); err != nil {
-			return false
+			missing = append(missing, name)
 		}
 	}
-	return true
+	return missing
 }

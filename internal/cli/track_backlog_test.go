@@ -406,6 +406,10 @@ func TestTrackStats_RepoWithoutOriginIsSkippedSilently(t *testing.T) {
 	if out, err := exec.Command("git", "init", "-q", noOrigin).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
+	// A hidden directory under repos/ (e.g. repos/.claude) is not a repo: skipped, not an error.
+	if err := os.MkdirAll(filepath.Join(ws, "repos", ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	var mu sync.Mutex
 	var owners []string
 	fakeGh(t, func(owner, role string) ([]trackstats.Issue, error) {

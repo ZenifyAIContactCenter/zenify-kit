@@ -153,7 +153,7 @@ docker run -d --name zenify-broker --restart unless-stopped \
 
 `<tag>` là `main-<sha>` khi dựng trước release, `<version>` (ví dụ `0.39.0`) sau release. Nếu package trên ghcr ở chế độ private, chạy `docker login ghcr.io` trên host bằng một token có quyền `read:packages` trước.
 
-Image mở cổng 8080 và chạy `zenify-broker --config /etc/zenify-broker/broker.yaml`. Nếu `mcp-grafana` thoát, broker cũng thoát (khác 0) để orchestrator khởi động lại cả hai.
+Image mở cổng 8080 và chạy `zenify-broker --config /etc/zenify-broker/broker.yaml`. Nếu `mcp-grafana` thoát, broker cũng thoát (khác 0) để orchestrator khởi động lại cả hai. Mỗi lần khởi động, broker sinh một token ngẫu nhiên, truyền cho `mcp-grafana` qua `MCP_GRAFANA_SERVER_TOKEN` và gắn `Authorization: Bearer` vào mọi request đi qua `/mcp/grafana`. Vì vậy một tiến trình trong cùng container gọi thẳng `grafana.addr` sẽ nhận 401, không đi vòng được audit log của broker. Token không nằm trong config hay env của host, nên không có gì phải cấu hình thêm.
 
 ### Tunnel MySQL lumi staging {#lumi-stg-tunnel}
 

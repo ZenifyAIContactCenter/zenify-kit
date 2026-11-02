@@ -130,7 +130,11 @@ func run(cfgPath string) error {
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
 	go watchSignals(sigs, cancel, os.Exit)
 
-	if _, err := mcpproxy.StartGrafana(ctx, cancel, cfg.Grafana.Bin, cfg.Grafana.URL, s.GrafanaToken, cfg.Grafana.Addr, cfg.Grafana.Args); err != nil {
+	grafanaCaller, err := mcpproxy.NewCallerToken()
+	if err != nil {
+		return err
+	}
+	if _, err := mcpproxy.StartGrafana(ctx, cancel, cfg.Grafana.Bin, cfg.Grafana.URL, s.GrafanaToken, grafanaCaller, cfg.Grafana.Addr, cfg.Grafana.Args); err != nil {
 		return err
 	}
 
@@ -154,7 +158,7 @@ func run(cfgPath string) error {
 		ObsRoute:     obsRouteH,
 		ObsTrace:     obsTraceH,
 		MCP: map[string]http.Handler{
-			"grafana": mcpproxy.New("grafana", grafanaUp, nil, log),
+			"grafana": mcpproxy.New("grafana", grafanaUp, mcpproxy.BearerHeader(grafanaCaller), log),
 			"posthog": mcpproxy.New("posthog", posthogUp, mcpproxy.PostHogHeaders(s.POSTHOGAPIKey, cfg.PostHog.ProjectID), log),
 		},
 	})

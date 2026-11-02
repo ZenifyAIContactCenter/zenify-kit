@@ -338,3 +338,24 @@ func TestChromiumRevisionPinnedForCLIVersion(t *testing.T) {
 		t.Fatalf("chromiumRevision[%s] = %q", CLIVersion, chromiumRevision[CLIVersion])
 	}
 }
+
+// A partial cache (headless shell missing, as after an interrupted download) names the
+// missing directory before downloading, and a failed download says what was missing.
+func TestInstallNamesMissingChromiumDirs(t *testing.T) {
+	home, dir := t.TempDir(), t.TempDir()
+	writeCLIPackage(t, home, "0.1.22")
+	markChromium(t, dir, "chromium-1247")
+	var buf strings.Builder
+	o := Options{Runner: recorder(&[]string{}), Home: home, Getenv: envFor(dir), GOOS: "linux", Stdout: &buf}
+	if err := Install(o); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "missing chromium_headless_shell-1247 in "+dir) || strings.Contains(buf.String(), "missing chromium-1247") {
+		t.Fatalf("stdout %q", buf.String())
+	}
+	o.Runner = func(string, []string) error { return errors.New("exit status 1") }
+	err := Install(o)
+	if err == nil || !strings.Contains(err.Error(), "chromium_headless_shell-1247") || !strings.Contains(err.Error(), "exit status 1") {
+		t.Fatalf("err %v", err)
+	}
+}
