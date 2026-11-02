@@ -133,6 +133,8 @@ type Result struct {
 	Running   []Item   `json:"running"`
 	Estimate  Estimate `json:"estimate"`
 	Quality   Quality  `json:"quality"`
+	Backlog   Backlog  `json:"backlog"`
+	Onboarded bool     `json:"onboarded"`
 }
 
 // Input is everything Compute reads. Sessions maps a session id to the text of
@@ -145,6 +147,11 @@ type Input struct {
 	Now       time.Time
 	Merged    MergedFunc
 	Cache     map[string]string
+	// GitHub lists open issues; nil skips the source. On a partial failure it
+	// returns the items it got together with the error.
+	GitHub func() ([]Issue, error)
+	// SDD lists the deferred and parked ledger findings; nil skips the source.
+	SDD []SDDItem
 }
 
 // LearnScale derives the S/M/L bounds from the 60 most recent measured
@@ -205,7 +212,7 @@ type work struct {
 // Compute builds the stats and returns the new merged cache. Bad data is
 // counted in Malformed; a Merged error is reported in Today.MergedError.
 func Compute(in Input) (Result, map[string]string) {
-	res := Result{Rules: []string{}, Running: []Item{}}
+	res := Result{Rules: []string{}, Running: []Item{}, Backlog: Backlog{Items: []BacklogItem{}}}
 	res.Today = Today{Date: in.Today, Plans: map[string]int{}, Started: map[string]int{}, Ended: map[string]int{}, Items: []Item{}}
 	res.Estimate = Estimate{ByKind: map[string]KindEstimate{}, PhaseShare: map[string]map[string]float64{}}
 	res.Quality = Quality{ByKind: map[string]KindQuality{}}
@@ -238,8 +245,16 @@ func Compute(in Input) (Result, map[string]string) {
 
 	works := map[string]*work{}
 	var order []string
+	from := map[string]bool{}
 	for i := range logEv {
 		e := logEv[i]
+		switch e.Type {
+		case "onboard":
+			res.Onboarded = true
+			continue
+		case "backlog", "drop", "history":
+			continue // read by computeBacklog and the scale
+		}
 		w := works[e.ID]
 		if e.Type == "start" {
 			if w != nil {
@@ -252,6 +267,9 @@ func Compute(in Input) (Result, map[string]string) {
 			}}
 			works[e.ID] = w
 			order = append(order, e.ID)
+			if len(e.F) == 4 && e.F[3] != "-" {
+				from[e.F[3]] = true
+			}
 			continue
 		}
 		if w == nil {
@@ -345,7 +363,8 @@ func Compute(in Input) (Result, map[string]string) {
 			mins = append(mins, it.AgentMin)
 		}
 	}
-	res.Scale = LearnScale(mins)
+	hist := historyRows(logEv)
+	res.Scale = learnScaleSeeded(mins, hist)
 
 	byKindEnded := map[string][]Item{}
 	for _, it := range ended {
@@ -366,8 +385,31 @@ func Compute(in Input) (Result, map[string]string) {
 			byStart[it.Kind] = append(byStart[it.Kind], it)
 		}
 	}
-	computeQuality(byStart, works, &res)
+	computeQuality(byStart, works, hist, &res)
+	res.Backlog = computeBacklog(in, logEv, from, items)
 	return res, newCache
+}
+
+// learnScaleSeeded learns the scale from the measured real minutes topped up
+// with the newest history rows to maxLearn (FR-14.5).
+func learnScaleSeeded(real []int, hist []Event) Scale {
+	if len(real) > maxLearn {
+		real = real[len(real)-maxLearn:]
+	}
+	var seed []int
+	for i := len(hist) - 1; i >= 0 && len(real)+len(seed) < maxLearn; i-- {
+		if m := atoiDash(hist[i].F[2]); m > 0 {
+			seed = append(seed, m)
+		}
+	}
+	sc := LearnScale(append(seed, real...))
+	switch {
+	case len(real) >= minLearn:
+		sc.Source = "learned"
+	case sc.N >= minLearn:
+		sc.Source = "history"
+	}
+	return sc
 }
 
 func tail(s []Item, n int) []Item {
@@ -550,11 +592,17 @@ func ratio(n, d int) *float64 {
 	return &v
 }
 
-func computeQuality(byStart map[string][]Item, works map[string]*work, res *Result) {
+func computeQuality(byStart map[string][]Item, works map[string]*work, hist []Event, res *Result) {
 	var fixRows, wide, test, fixIDs, roundSum int
 	for _, k := range kinds {
 		win := tail(byStart[k], ruleWindow)
-		if len(win) == 0 {
+		var hk []Event
+		for _, h := range hist {
+			if h.F[0] == k {
+				hk = append(hk, h)
+			}
+		}
+		if len(win) == 0 && len(hk) == 0 {
 			continue
 		}
 		q := KindQuality{N: len(win), TokensAvg: map[string]TokensAvg{}}
@@ -627,6 +675,19 @@ func computeQuality(byStart map[string][]Item, works map[string]*work, res *Resu
 			if maxRound > 0 {
 				fixIDs++
 				roundSum += maxRound
+			}
+		}
+		for _, h := range hk {
+			if h.F[3] == "-" {
+				continue
+			}
+			for _, pair := range strings.Split(h.F[3], ",") {
+				m, in, out, _ := splitPair(pair) // validated by the parser
+				s := tokSum[m]
+				s.In += float64(in)
+				s.Out += float64(out)
+				tokSum[m] = s
+				tokN[m]++
 			}
 		}
 		q.ShipBlockedRate = ratio(blocked, ships)

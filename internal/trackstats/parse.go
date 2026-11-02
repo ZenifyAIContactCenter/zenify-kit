@@ -20,7 +20,13 @@ type Event struct {
 	F    []string
 }
 
-var idRe = regexp.MustCompile(`^(cook|fix|hotfix)-\d{6}-[0-9a-f]{4}$`)
+var (
+	idRe    = regexp.MustCompile(`^(cook|fix|hotfix)-\d{6}-[0-9a-f]{4}$`)
+	bidRe   = regexp.MustCompile(`^b-\d{6}-[0-9a-f]{4}$`)
+	sddRe   = regexp.MustCompile(`^repos/.+/progress\.md:\d+$`)
+	hidRe   = regexp.MustCompile(`^[0-9a-f]{8}$`)
+	noIDRow = map[string]bool{"backlog": true, "drop": true, "onboard": true, "history": true}
+)
 
 func oneOf(v string, set ...string) bool {
 	for _, s := range set {
@@ -77,14 +83,21 @@ func parseLogLine(raw string) (Event, bool) {
 		return Event{}, false
 	}
 	at, err := time.Parse(time.RFC3339, p[0])
-	if err != nil || !idRe.MatchString(p[2]) {
+	if err != nil {
+		return Event{}, false
+	}
+	if noIDRow[p[1]] {
+		return parseListRow(at, p)
+	}
+	if !idRe.MatchString(p[2]) {
 		return Event{}, false
 	}
 	f := p[3:]
 	ok := false
 	switch p[1] {
 	case "start":
-		ok = len(f) == 3 && oneOf(f[0], "cook", "fix", "hotfix") && f[1] != "" && oneOf(f[2], "S", "M", "L", "-")
+		// The optional last field is the backlog id or issue URL the item came from.
+		ok = (len(f) == 3 || (len(f) == 4 && validFrom(f[3]))) && oneOf(f[0], "cook", "fix", "hotfix") && f[1] != "" && oneOf(f[2], "S", "M", "L", "-")
 	case "est":
 		ok = len(f) == 1 && oneOf(f[0], "S", "M", "L")
 	case "ship":
@@ -101,6 +114,66 @@ func parseLogLine(raw string) (Event, bool) {
 		return Event{}, false
 	}
 	return Event{At: at, Type: p[1], ID: p[2], F: f}, true
+}
+
+func validFrom(v string) bool {
+	return v == "-" || bidRe.MatchString(v) || strings.HasPrefix(v, "http")
+}
+
+// parseListRow parses the rows whose third field is not a track id: backlog,
+// drop, onboard and history. Event.ID is the bid, hid, dropped id or "memory".
+func parseListRow(at time.Time, p []string) (Event, bool) {
+	f := p[3:]
+	ok := false
+	switch p[1] {
+	case "backlog":
+		// The title is the rest of the line, so it may contain the field separator.
+		if len(p) >= 7 {
+			f = append(append([]string(nil), p[3:6]...), strings.Join(p[6:], fieldSep))
+			ok = bidRe.MatchString(p[2]) && f[0] != "" && oneOf(f[1], "S", "M", "L", "-") && f[2] != "" && f[3] != ""
+		}
+	case "drop":
+		ok = len(f) == 0 && (bidRe.MatchString(p[2]) || sddRe.MatchString(p[2]))
+	case "onboard":
+		ok = len(f) == 0 && p[2] == "memory"
+	case "history":
+		ok = len(f) == 4 && hidRe.MatchString(p[2]) && oneOf(f[0], "cook", "fix", "hotfix", "-") && f[1] != "" &&
+			intOrDash(f[2]) && f[2] != "-" && validPairs(f[3])
+	}
+	if !ok {
+		return Event{}, false
+	}
+	return Event{At: at, Type: p[1], ID: p[2], F: f}, true
+}
+
+func validPairs(v string) bool {
+	if v == "-" {
+		return true
+	}
+	for _, pair := range strings.Split(v, ",") {
+		if _, _, _, ok := splitPair(pair); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// splitPair splits "<model>:<in>/<out>" at the last ':' (a model id may hold ':').
+func splitPair(pair string) (model string, in, out int, ok bool) {
+	i := strings.LastIndex(pair, ":")
+	if i <= 0 {
+		return "", 0, 0, false
+	}
+	nums := strings.Split(pair[i+1:], "/")
+	if len(nums) != 2 {
+		return "", 0, 0, false
+	}
+	in, err1 := strconv.Atoi(nums[0])
+	out, err2 := strconv.Atoi(nums[1])
+	if err1 != nil || err2 != nil || in < 0 || out < 0 {
+		return "", 0, 0, false
+	}
+	return pair[:i], in, out, true
 }
 
 // ParseSession reads sessions/<id>.log. cwd is the path of the first valid cwd
