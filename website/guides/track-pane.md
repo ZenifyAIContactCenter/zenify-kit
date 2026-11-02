@@ -50,7 +50,7 @@ Dưới mọi tab là thang S/M/L hiện hành (lấy từ lịch sử của wor
 Tab `Kitchen` đọc cùng số liệu `zenify track stats --json` như các tab khác, thêm hai phần lấy từ trạng thái sống của từng tab Claude Code.
 
 - Mỗi session có file `<workspace>/.zenify/track/live/<session>.json`, ghi trạng thái `ask`, `permission` hoặc `busy`, cùng file `.beat` cạnh nó. Plugin ghi lại `.beat` mỗi 10 giây suốt session khi track bật; `.beat` quá 30 giây thì file bị coi là hết hạn và tab đó rời `Rolling boil`.
-- Mỗi lần trạng thái đổi, plugin chạm file `<workspace>/.zenify/track/pulse`. Pane theo dõi `pulse` (cùng với sổ và log session) nên cập nhật ngay, và khi còn tab trong `Rolling boil` thì chạy lại số liệu mỗi 10 giây để thời gian chờ chạy.
+- Plugin chạm file `<workspace>/.zenify/track/pulse` mỗi khi trạng thái sống của một tab đổi và mỗi khi nó ghi một dòng vào session log của mình. Pane theo dõi `pulse` (cùng với sổ và log session) nên cập nhật ngay, và khi còn tab trong `Rolling boil` thì chạy lại số liệu mỗi 10 giây để thời gian chờ chạy.
 - `Rolling boil` chỉ gồm hai trường hợp: tab đang hỏi bạn bằng `AskUserQuestion` và tab đang chờ bạn cấp quyền. Lời gọi tool bình thường không ghi `live/` và không chạm `pulse`.
 - `<brief>` chọn theo thứ tự: tiêu đề plan, tiêu đề mục backlog, tiêu đề PR, cuối cùng là `<kind> <repo>`.
 - `zenify track end --ledger <ledger file>` đếm các dòng `Task <N>: complete` và lưu đường dẫn plan ở dòng đầu của ledger (`# SDD ledger — plan: <path>`) vào dòng `end` (bốn trường) để `Kitchen` lấy được tiêu đề plan. Đường dẫn plan chứa ` · ` hoặc xuống dòng thì dòng `end` giữ ba trường và lệnh cảnh báo trên stderr.

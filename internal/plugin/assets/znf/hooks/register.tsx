@@ -117,7 +117,10 @@ async function syncLive($: $): Promise<void> {
     const track = `${await workspaceDir($)}/.zenify/track`
     const since = iso(await $.clock.now())
     const doc = { state, since, cwd: await $.session.cwd(), id: (await read($, bound))?.id ?? '' }
-    await $.fs.write(`${track}/live/${await $.session.id()}.json`, JSON.stringify(doc))
+    const id = await $.session.id()
+    await $.fs.write(`${track}/live/${id}.json`, JSON.stringify(doc))
+    // The first beat comes now, not at the 10s timer: stats skip a live file with no beat.
+    await $.fs.write(`${track}/live/${id}.beat`, since)
     await $.fs.write(`${track}/pulse`, since)
     liveState = state
   })
@@ -361,6 +364,8 @@ export const register: Register = (on, options: PluginOptions) => {
     // Not awaited: the stats run may ask gh for merged PRs and must not hold the session start.
     void refreshStats($, true).catch(statsError($))
     armTimers($)
+    // FR-2.1: a resumed session may find a stale ask/permission live file; the beat keeps it alive.
+    if (await isEnabled($)) await syncLive($).catch(timingError($))
     return next(e)
   })
 

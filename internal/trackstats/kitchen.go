@@ -12,6 +12,13 @@ import (
 // liveTTL is how long a live file stays alive after the mtime of its .beat.
 const liveTTL = 30 * time.Second
 
+// LiveTTL is liveTTL for callers that skip reading an expired live file.
+const LiveTTL = liveTTL
+
+// maxTitleFetch caps the gh PR-title calls of one Compute run; the items left over show
+// "<kind> <repo>" this run and are fetched in a later window.
+const maxTitleFetch = 3
+
 const planSuffix = " — Implementation Plan"
 
 // LiveFile is one live/<session>.json with the mtime of its .beat; a zero
@@ -80,6 +87,7 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		itemOf[it.ID] = it
 	}
 	briefs := map[string]string{}
+	fetched := 0
 	// brief follows plan, backlog, PR, then "<kind> <repo>"; askPR lets it call gh.
 	brief := func(it Item, askPR bool) string {
 		if b, ok := briefs[it.ID]; ok {
@@ -100,7 +108,8 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		if b == "" && len(it.PRs) > 0 {
 			u := it.PRs[0]
 			b = prTitles[u]
-			if b == "" && askPR && in.PRTitle != nil {
+			if b == "" && askPR && in.PRTitle != nil && fetched < maxTitleFetch {
+				fetched++
 				title, err := in.PRTitle(u)
 				if err != nil {
 					fail(fmt.Errorf("pr title %s: %w", u, err))

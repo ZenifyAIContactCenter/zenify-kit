@@ -119,6 +119,41 @@ func TestKitchenBriefOrder(t *testing.T) { // SC-6
 	}
 }
 
+func TestKitchenPRTitleFetchCap(t *testing.T) {
+	var logLines []string
+	for i := 1; i <= 5; i++ {
+		id := kid("cook", i)
+		logLines = append(logLines,
+			row(kAt(8, 0), "start", id, "cook", "r", "M"),
+			row(kAt(9, i), "end", id, fmt.Sprintf("https://x/pr/%d", i), "1", "0"))
+	}
+	in := kInput(lines(logLines...))
+	in.PRTitles = map[string]string{}
+	calls := 0
+	in.PRTitle = func(string) (string, error) { calls++; return "P", nil }
+	r, _ := Compute(in)
+	if calls != maxTitleFetch || maxTitleFetch != 3 {
+		t.Fatalf("calls = %d, want 3", calls)
+	}
+	titled := 0
+	for _, it := range r.Kitchen.Cooked {
+		switch it.Brief {
+		case "P":
+			titled++
+		case "cook r":
+		default:
+			t.Fatalf("brief = %q", it.Brief)
+		}
+	}
+	if titled != maxTitleFetch {
+		t.Fatalf("titled = %d, want %d", titled, maxTitleFetch)
+	}
+	Compute(in)
+	if calls != 5 {
+		t.Fatalf("second run calls = %d, want 5 (the 2 left over)", calls)
+	}
+}
+
 func TestKitchenTitleError(t *testing.T) {
 	a, b := kid("cook", 1), kid("cook", 2)
 	log := lines(

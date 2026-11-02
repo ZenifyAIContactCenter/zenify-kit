@@ -449,16 +449,25 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 				tasks, plan := 0, ""
 				if ledger != "" {
 					n, p, err := readLedger(ledger)
-					if err != nil {
-						return "", nil, false, badTrack("read --ledger: %v", err)
-					}
 					tasks, plan = n, p
 					switch {
+					case err != nil:
+						fmt.Fprintf(cmd.ErrOrStderr(), "track: read --ledger %s: %v; end row written without tasks or plan\n", ledger, err)
+						tasks, plan = 0, ""
 					case plan == "":
 						fmt.Fprintf(cmd.ErrOrStderr(), "track: ledger %s has no \"# SDD ledger — plan:\" first line; end row written without the plan\n", ledger)
 					case strings.Contains(plan, trackSep) || strings.ContainsAny(plan, "\r\n"):
 						fmt.Fprintf(cmd.ErrOrStderr(), "track: plan path %q holds the field separator; end row written without the plan\n", plan)
 						plan = ""
+					case !filepath.IsAbs(plan):
+						// Stats resolve a relative plan against the workspace, not the cwd it was written from.
+						abs, aerr := filepath.Abs(plan)
+						if aerr != nil {
+							fmt.Fprintf(cmd.ErrOrStderr(), "track: plan path %q: %v; end row written without the plan\n", plan, aerr)
+							plan = ""
+						} else {
+							plan = abs
+						}
 					}
 				}
 				// "end" is the row kind; checkTrackID also rejects a second end.
@@ -566,7 +575,7 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		Workspace: wsDir,
 		PlanTitle: func(p string) (string, error) { return readPlanTitle(wsDir, p) },
 	}
-	in.Live, err = readLiveFiles(dir)
+	in.Live, err = readLiveFiles(dir, now)
 	if err != nil {
 		return trackstats.Result{}, err
 	}
@@ -663,24 +672,29 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 }
 
 // readLiveFiles lists live/*.json with the mtime of each .beat (zero when it is absent).
-func readLiveFiles(dir string) ([]trackstats.LiveFile, error) {
+// A file whose beat is missing or older than LiveTTL is listed without its JSON: stats ignore it.
+func readLiveFiles(dir string, now time.Time) ([]trackstats.LiveFile, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "live", "*.json"))
 	if err != nil {
 		return nil, err
 	}
 	var live []trackstats.LiveFile
 	for _, f := range files {
-		b, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
-		if err != nil {
-			return nil, err
-		}
-		lf := trackstats.LiveFile{Session: strings.TrimSuffix(filepath.Base(f), ".json"), JSON: string(b)}
+		lf := trackstats.LiveFile{Session: strings.TrimSuffix(filepath.Base(f), ".json")}
 		switch fi, err := os.Stat(strings.TrimSuffix(f, ".json") + ".beat"); {
 		case err == nil:
 			lf.BeatAt = fi.ModTime()
 		case !errors.Is(err, os.ErrNotExist):
 			return nil, err
 		}
+		if lf.BeatAt.IsZero() || now.Sub(lf.BeatAt) > trackstats.LiveTTL {
+			continue
+		}
+		b, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
+		if err != nil {
+			return nil, err
+		}
+		lf.JSON = string(b)
 		live = append(live, lf)
 	}
 	return live, nil
@@ -692,14 +706,27 @@ func readPlanTitle(wsDir, p string) (string, error) {
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(wsDir, p)
 	}
-	b, err := os.ReadFile(p) //nolint:gosec // G304 -- path comes from this workspace's own track log
+	f, err := os.Open(p) //nolint:gosec // G304 -- path comes from this workspace's own track log
 	if errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
 	if err != nil {
 		return "", err
 	}
-	first, _, _ := strings.Cut(string(b), "\n")
+	defer func() { _ = f.Close() }()
+	// Only a regular file: a FIFO or /dev/zero would hang or bloat the stats run.
+	fi, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !fi.Mode().IsRegular() {
+		return "", nil
+	}
+	first, err := bufio.NewReader(io.LimitReader(f, 4096)).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	first = strings.TrimSuffix(first, "\n")
 	if t, ok := strings.CutPrefix(first, "# "); ok {
 		return strings.TrimSpace(t), nil
 	}

@@ -939,6 +939,27 @@ test('SC-13: track off, AskUserQuestion writes no live file or pulse', async ($,
   expect(trackWrites(calls)).toEqual([])
 })
 
+test('FR-2.1: session start overwrites a stale ask live file with busy and touches pulse', async ($, on) => {
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'ask', since: 'x', cwd: CWD, id: '' }) } })
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: '' })
+  expect(world.files?.[PULSE]).toBe(T0_ISO)
+  expect(liveWrites(calls)).toHaveLength(1)
+})
+
+test('FR-2.4: the first ask writes .beat before pulse', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  const paths = calls.write.map(w => w.path)
+  expect(paths.indexOf(BEAT)).toBeGreaterThanOrEqual(0)
+  expect(paths.indexOf(BEAT)).toBeLessThan(paths.indexOf(PULSE))
+  expect(world.files?.[BEAT]).toBe(T0_ISO)
+})
+
 test('FR-2.4: every 10s the heartbeat rewrites live/<session>.beat, never pulse', async ($, on) => {
   const world: World = {}
   const calls = engine(on, world)
@@ -969,8 +990,8 @@ test('SC-1: a session log append writes pulse; a pulse mtime change alone re-run
   await start($, clock)
   await bindTo($, world, FIX_ID)
   await clock.settle()
-  const pulseAt = calls.write.findIndex(w => w.path === PULSE)
-  expect(pulseAt).toBeGreaterThan(calls.write.findIndex(w => w.path === SESSION_LOG))
+  const logAt = calls.write.findIndex(w => w.path === SESSION_LOG)
+  expect(calls.write.findIndex((w, i) => i > logAt && w.path === PULSE)).toBeGreaterThan(logAt)
   const before = statsRuns(calls).length
   await clock.advance(2000)
   expect(statsRuns(calls)).toHaveLength(before)

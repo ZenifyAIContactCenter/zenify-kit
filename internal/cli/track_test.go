@@ -265,7 +265,6 @@ func TestTrack_RejectsBadInputWithoutWriting(t *testing.T) {
 		{"end", id, "--rounds", "0"},
 		{"end", id, "--cancelled", "--rollback", "--rounds", "0"},
 		{"end", id, "--pr", "ftp://x", "--rounds", "0"},
-		{"end", id, "--ledger", filepath.Join(ws, "missing.md"), "--cancelled", "--rounds", "0"},
 		{"ship", id, "--outcome", "maybe", "--findings", "-", "--rounds", "0"},
 		{"ship", id, "--outcome", "blocked", "--findings", "-", "--rounds", "0"},
 		{"ship", id, "--outcome", "blocked", "--blocked-step", "foo", "--findings", "-", "--rounds", "0"},
@@ -589,5 +588,75 @@ func TestTrackStatsPlanTitle(t *testing.T) {
 		if len(r.Kitchen.Cooked) != 1 || r.Kitchen.Cooked[0].Brief != c.want || r.Kitchen.TitleError != "" {
 			t.Fatalf("plan %q: cooked %+v titleError %q, want brief %q", c.plan, r.Kitchen.Cooked, r.Kitchen.TitleError, c.want)
 		}
+	}
+}
+
+func TestTrackEndMissingLedgerWritesThreeFieldRow(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "cook")
+	stderr, err := runTrackErr(t, ws, "end", id, "--cancelled", "--ledger", filepath.Join(ws, "missing.md"), "--rounds", "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSuffix(trackLog(t, ws), "\n"), "\n")
+	if last := lines[len(lines)-1]; !strings.HasSuffix(last, " · cancelled · 0 · 2") {
+		t.Fatalf("row = %q", last)
+	}
+	if !strings.Contains(stderr, "track: read --ledger ") || !strings.Contains(stderr, "end row written without tasks or plan") {
+		t.Fatalf("stderr = %q", stderr)
+	}
+}
+
+func TestTrackEndRelativePlanBecomesAbsolute(t *testing.T) {
+	last, _ := endWithLedger(t, "# SDD ledger — plan: docs/plans/r/p.md\nTask 1: complete\n")
+	want, err := filepath.Abs("docs/plans/r/p.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(last, " · 1 · 0 · "+want) {
+		t.Fatalf("row = %q, want plan %q", last, want)
+	}
+}
+
+func TestReadPlanTitleNotRegularFile(t *testing.T) {
+	got, err := readPlanTitle(t.TempDir(), t.TempDir())
+	if err != nil || got != "" {
+		t.Fatalf("dir: got %q err %v", got, err)
+	}
+	p := filepath.Join(t.TempDir(), "p.md")
+	if err := os.WriteFile(p, []byte("# T\nbody"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readPlanTitle("", p); err != nil || got != "T" {
+		t.Fatalf("file: got %q err %v", got, err)
+	}
+}
+
+func TestTrackStatsSkipsReadingExpiredLiveJSON(t *testing.T) {
+	ws := trackWS(t, true)
+	stubMergedAndTitle(t, "")
+	live := filepath.Join(ws, ".zenify", "track", "live")
+	if err := os.MkdirAll(live, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	j := filepath.Join(live, "S.json")
+	if err := os.WriteFile(j, []byte("{corrupt"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	b := filepath.Join(live, "S.beat")
+	if err := os.WriteFile(b, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	if err := os.Chtimes(b, old, old); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runTrack(t, ws, "stats", "--json")
+	if err != nil {
+		t.Fatalf("expired live json was read: %v", err)
+	}
+	var r struct{ Malformed int }
+	if err := json.Unmarshal([]byte(out), &r); err != nil || r.Malformed != 0 {
+		t.Fatalf("malformed = %d err %v", r.Malformed, err)
 	}
 }
