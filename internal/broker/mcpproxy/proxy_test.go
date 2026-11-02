@@ -324,7 +324,8 @@ func TestStartGrafana_Args(t *testing.T) {
 	bin := filepath.Join(dir, "fake-mcp-grafana")
 	script := "#!/bin/sh\nfor a in \"$@\"; do echo \"arg:$a\"; done > " + outFile + "\n" +
 		"[ -n \"$BROKER_SECRET\" ] && echo leaked >> " + outFile + "\n" +
-		"echo \"url:$GRAFANA_URL\" >> " + outFile + "\necho \"tok:$GRAFANA_SERVICE_ACCOUNT_TOKEN\" >> " + outFile + "\nexit 3\n"
+		"echo \"url:$GRAFANA_URL\" >> " + outFile + "\necho \"tok:$GRAFANA_SERVICE_ACCOUNT_TOKEN\" >> " + outFile + "\n" +
+		"echo \"caller:$MCP_GRAFANA_SERVER_TOKEN\" >> " + outFile + "\nexit 3\n"
 	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +333,7 @@ func TestStartGrafana_Args(t *testing.T) {
 
 	ctx, cancel := context.WithCancelCause(context.Background())
 	defer cancel(nil)
-	c, err := mcpproxy.StartGrafana(ctx, cancel, bin, "http://grafana.test", "test-key", "127.0.0.1:8001",
+	c, err := mcpproxy.StartGrafana(ctx, cancel, bin, "http://grafana.test", "test-key", "caller-key", "127.0.0.1:8001",
 		[]string{"--loki-guardrail-mode=enforce", "--usage-stats=disabled"})
 	if err != nil {
 		t.Fatal(err)
@@ -357,14 +358,14 @@ func TestStartGrafana_Args(t *testing.T) {
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)
-	if !slices.Equal(keys, []string{"GRAFANA_SERVICE_ACCOUNT_TOKEN", "GRAFANA_URL", "HOME", "PATH"}) {
+	if !slices.Equal(keys, []string{"GRAFANA_SERVICE_ACCOUNT_TOKEN", "GRAFANA_URL", "HOME", "MCP_GRAFANA_SERVER_TOKEN", "PATH"}) {
 		t.Errorf("env keys = %v", keys)
 	}
 	b, err := os.ReadFile(outFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "arg:-t\narg:streamable-http\narg:--address\narg:127.0.0.1:8001\narg:--disable-write\narg:--loki-guardrail-mode=enforce\narg:--usage-stats=disabled\nurl:http://grafana.test\ntok:test-key\n"
+	want := "arg:-t\narg:streamable-http\narg:--address\narg:127.0.0.1:8001\narg:--disable-write\narg:--loki-guardrail-mode=enforce\narg:--usage-stats=disabled\nurl:http://grafana.test\ntok:test-key\ncaller:caller-key\n"
 	if string(b) != want {
 		t.Errorf("child saw:\n%s\nwant:\n%s", b, want)
 	}
@@ -517,7 +518,7 @@ func TestNew_NilAuditLogger(t *testing.T) {
 func TestStartGrafana_RefusesNonLoopbackAddr(t *testing.T) {
 	for _, addr := range []string{"0.0.0.0:8000", ":8000", "10.1.2.3:8000", "[::]:8000", "grafana.internal:8000", "127.0.0.1"} {
 		ctx, cancel := context.WithCancelCause(context.Background())
-		_, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", addr, nil)
+		_, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", "caller-key", addr, nil)
 		cancel(nil)
 		if err == nil || !strings.Contains(err.Error(), "loopback") || strings.Contains(err.Error(), "test-key") {
 			t.Errorf("%q: err = %v", addr, err)
@@ -525,7 +526,7 @@ func TestStartGrafana_RefusesNonLoopbackAddr(t *testing.T) {
 	}
 	for _, addr := range []string{"127.0.0.1:8000", "[::1]:8000", "localhost:8000"} {
 		ctx, cancel := context.WithCancelCause(context.Background())
-		_, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", addr, nil)
+		_, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", "caller-key", addr, nil)
 		cancel(nil)
 		if err == nil || strings.Contains(err.Error(), "loopback") {
 			t.Errorf("%q: want only the start failure, got %v", addr, err)
@@ -537,7 +538,7 @@ func TestStartGrafana_RefusesFixedFlagsInExtraArgs(t *testing.T) {
 	for _, a := range []string{"--disable-write=false", "-disable-write", "--address=0.0.0.0:9", "-address",
 		"-t", "--t=sse", "--transport", "-transport=sse", "--endpoint-path=/x", "-endpoint-path"} {
 		ctx, cancel := context.WithCancelCause(context.Background())
-		_, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", "127.0.0.1:8000",
+		_, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", "caller-key", "127.0.0.1:8000",
 			[]string{"--usage-stats=disabled", a})
 		cancel(nil)
 		name, _, _ := strings.Cut(a, "=")
@@ -652,5 +653,23 @@ func TestProxy_StripsTaskHeader(t *testing.T) {
 	srv.Close() // wait for the handler (and its deferred audit) to finish
 	if !strings.Contains(out.String(), `"task":"ZEN-12"`) {
 		t.Errorf("audit = %s", out.String())
+	}
+}
+
+// The broker must never start mcp-grafana without a caller token: with it, a process
+// in the broker's netns that bypasses the proxy (and its audit log) gets a 401.
+func TestStartGrafana_RefusesEmptyCallerToken(t *testing.T) {
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	if _, err := mcpproxy.StartGrafana(ctx, cancel, "/nonexistent/mcp-grafana", "http://grafana.test", "test-key", "", "127.0.0.1:8000", nil); err == nil {
+		t.Fatal("want an error for an empty caller token")
+	}
+}
+
+func TestBearerHeader(t *testing.T) {
+	h := http.Header{}
+	mcpproxy.BearerHeader("caller-key")(h)
+	if got := h.Get("Authorization"); got != "Bearer caller-key" {
+		t.Fatalf("Authorization = %q", got)
 	}
 }
