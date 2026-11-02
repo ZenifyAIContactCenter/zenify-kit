@@ -12,7 +12,7 @@ const SESSIONS_DIR = '/w/.zenify/track/sessions'
 const OVERLAY = '/w/.zenify-overlay.yaml'
 const STATS_ARGV = ['zenify', 'track', 'stats', '--json', '--workspace', WS]
 const PANE = { id: 'track', title: 'Track', columns: 44 }
-const OFF = '⏸ track off · bật: /znf:features track on'
+const OFF = '⏸ track off · bật: /znf-settings'
 const MIN = 60000
 
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -103,6 +103,8 @@ function engine(on: any, world: World): Calls {
       : next(e),
   )
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
+  // The plugin's $.store: nothing stored, so trackAutoOpen reads as unset (on).
+  on('store.get', () => ({ value: undefined }))
   on('fs.write', (_: unknown, e: { path: string; text: string }) => {
     if (world.writeError) return { deny: world.writeError }
     calls.write.push({ path: e.path, text: e.text })

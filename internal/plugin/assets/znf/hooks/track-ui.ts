@@ -6,7 +6,7 @@ import type { TrackItem, TrackStats, TrackTab } from '../types'
 export type Tab = TrackTab
 export type Line = { text: string; tone?: 'dim' | 'bold' | 'warn' | 'error' }
 
-export const STATUS_OFF = '⏸ track off · bật: /znf:features track on'
+export const STATUS_OFF = '⏸ track off · bật: /znf-settings'
 // The pane's own messages: command replies, the loading line and the toast prefix.
 export const COPY = {
   opened: 'đã mở pane track',

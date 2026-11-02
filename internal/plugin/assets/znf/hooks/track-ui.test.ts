@@ -54,7 +54,7 @@ const bl = (source: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
 const texts = (lines: { text: string }[]) => lines.map(l => l.text)
 
 test('FR-11.2/SC-20: enabled false is the off line, verbatim', () => {
-  expect(STATUS_OFF).toBe('⏸ track off · bật: /znf:features track on')
+  expect(STATUS_OFF).toBe('⏸ track off · bật: /znf-settings')
   expect(statusText(stats({ enabled: false }), A, X)).toBe(STATUS_OFF)
 })
 

@@ -13,15 +13,15 @@ zenify feature track on
 zenify feature track off
 ```
 
-Ngay trong Claude Code, gõ `/znf:features track on` (hoặc `off`) để làm tương tự; status line tự cập nhật trong vài giây. Lệnh áp dụng cho cả workspace. Khi bật, digest đầu session chỉ cho agent đọc `_shared/track.md`; agent gọi các lệnh [`zenify track`](/reference/cli/zenify_track) để ghi số liệu, bạn không cần gõ gì. Tắt thì mọi lệnh ghi của `zenify track` in `track: off` và không ghi.
+Ngay trong Claude Code, gõ `/znf-settings` rồi bấm nút cạnh dòng `track` ở tab `Features` để làm tương tự (xem [Pane settings](#pane-settings)); status line tự cập nhật trong vài giây. Lệnh áp dụng cho cả workspace. Khi bật, digest đầu session chỉ cho agent đọc `_shared/track.md`; agent gọi các lệnh [`zenify track`](/reference/cli/zenify_track) để ghi số liệu, bạn không cần gõ gì. Tắt thì mọi lệnh ghi của `zenify track` in `track: off` và không ghi.
 
-Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `/track-pane` để mở hoặc đóng pane. Pane cũng tự mở khi prompt của bạn là `cook`, `fix`, `hotfix` hoặc `ship` (có hoặc không có tiền tố `znf:`).
+Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `/track-pane` để mở hoặc đóng pane. Pane cũng tự mở khi prompt của bạn là `cook`, `fix`, `hotfix` hoặc `ship` (có hoặc không có tiền tố `znf:`), trừ khi bạn tắt việc tự mở ở tab `Track` của `/znf-settings`.
 
 ## Status line
 
 Status line luôn hiện, kể cả khi pane đóng.
 
-- Khi tắt: `⏸ track off · bật: /znf:features track on`
+- Khi tắt: `⏸ track off · bật: /znf-settings`
 - Khi bật và tab này đang có việc mở: `track ▶ <id> · <giai đoạn> · <phút agent>/<est> · chờ <phút> · Hôm nay: xong/bắt đầu · PR n (m merged) · hit n%`
 - Khi bật và tab này chưa có việc: `track ⏸ · Hôm nay: xong/bắt đầu · ...`
 
@@ -97,3 +97,14 @@ zenify track onboard history --write --since 2026-09-01
 Khi có đủ việc (thật cộng `history`), thang S/M/L chuyển nguồn sang `history`, rồi `learned` khi có từ 20 việc thật đã đo. Dòng `history` chỉ góp vào thang và token trung bình, không vào Estimate, luật hiệu chỉnh hay số hôm nay.
 
 Xem [`zenify track`](/reference/cli/zenify_track), trong đó `stats --force` bỏ qua cache backlog.
+
+## Pane settings
+
+Gõ `/znf-settings` để mở hoặc đóng pane `znf settings`. Mỗi nút chạy đúng một lệnh `zenify` rồi đọc lại kết quả, không tốn lượt chat nào. Lệnh lỗi thì pane hiện dòng `⚠ <nguyên nhân>`.
+
+| Tab | Nội dung |
+|---|---|
+| **Features** | Mỗi dòng của [`zenify feature`](/reference/cli/zenify_feature) (`<key> on\|off`) kèm nút đổi sang giá trị kia; bấm nút chạy `zenify feature <key> <on\|off>` cho cả workspace |
+| **Track** | `Tự mở pane track khi cook/fix/hotfix/ship: on\|off` kèm nút đổi. Lưu theo user, giữ qua các session; mặc định `on`. `off` chỉ chặn việc tự mở, `/track-pane` và status line vẫn như cũ |
+| **Reviewer** | Output của [`zenify reviewer`](/reference/cli/zenify_reviewer) và hai nút `agent` / `codex`, chạy [`zenify reviewer set`](/reference/cli/zenify_reviewer_set). Giá trị mới có hiệu lực ở session mới |
+| **Env** | Output nguyên văn của [`zenify env list`](/reference/cli/zenify_env_list) (không bao giờ in giá trị secret). Pane không sửa env và không đọc `.zenify/.env`; muốn sửa, gõ `! zenify env set KEY` để nhập ẩn trong terminal |

@@ -76,6 +76,11 @@ export type TrackStats = {
 
 export type TrackTab = 'this' | 'total' | 'estimate' | 'quality' | 'backlog'
 
+export type SettingsTab = 'features' | 'track' | 'reviewer' | 'env'
+// One `zenify` run of the settings pane: its stdout, and why it failed (a ⚠ line).
+export type SettingsRun = { text?: string; error?: string }
+export type SettingsRuns = Partial<Record<Exclude<SettingsTab, 'track'>, SettingsRun>>
+
 declare module 'claude-code' {
   interface PluginState {
     znf: {
@@ -92,6 +97,12 @@ declare module 'claude-code' {
       lastMainEnd: Shaped<number | null>
       // zenify track: main-loop tool_use_ids a person was asked to allow
       personAsks: Shaped<string[]>
+      // the selected tab of the settings pane
+      settingsTab: Shaped<SettingsTab>
+      // the last run of each output tab of the settings pane
+      settingsRuns: Shaped<SettingsRuns>
+      // the stored trackAutoOpen as the settings pane draws it
+      settingsAutoOpen: Shaped<boolean>
     }
   }
 }

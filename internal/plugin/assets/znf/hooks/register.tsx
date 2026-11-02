@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface as $, Register, Timer } from 'claude-code'
 
 import type { TrackStats } from '../types'
+import { isAutoOpen, registerSettings, registerSettingsCommand } from './settings'
 import { bindLine, cwdLine, isEndCommand, isStartCommand, kindOf, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
 import { COPY, STATUS_OFF, TABS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
@@ -265,6 +266,11 @@ async function selectTab($: $, id: Tab): Promise<void> {
   if (id === 'backlog') void refreshStats($, true, true).catch(statsError($))
 }
 
+// FR-16.3: an auto-open (a tracked prompt or skill) respects trackAutoOpen; /track-pane does not.
+async function autoShow($: $): Promise<void> {
+  if (await isAutoOpen($)) await show($)
+}
+
 const isOpen = async ($: $) => (await $.ui.panes()).some(p => isPane(p.id))
 
 const TONES: Record<NonNullable<Line['tone']>, Record<string, unknown>> = {
@@ -274,12 +280,15 @@ const TONES: Record<NonNullable<Line['tone']>, Record<string, unknown>> = {
   error: { color: 'red' },
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  // FR-16: the settings pane is its own module; hooks.json names one module, so it registers here.
+  registerSettings(on, options)
   // FR-11.1: every session in a workspace runs stats and sets the status line; never opens the pane.
   on('session.start', async ($, e, next) => {
     stopTimers()
     lastKey = undefined
     await $.command.register({ name: 'track-pane', description: 'Toggle the zenify track pane' })
+    await registerSettingsCommand($)
     if (await findWorkspace($)) {
       // Not awaited: the stats run may ask gh for merged PRs and must not hold the session start.
       void refreshStats($, true).catch(statsError($))
@@ -288,17 +297,18 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // FR-6.1: the feature on, a cook/fix/hotfix/ship prompt opens the pane.
+  // FR-6.1: the feature on, a cook/fix/hotfix/ship prompt opens the pane, unless the settings
+  // pane turned trackAutoOpen off (FR-16.3).
   on('prompt.submit', async ($, e, next) => {
     if (await isEnabled($)) {
       await recordIdle($).catch(timingError($))
-      if (isTrackPrompt(e)) await show($).catch(statsError($))
+      if (isTrackPrompt(e)) await autoShow($).catch(statsError($))
     }
     return next(e)
   })
 
   on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
-    if (isTrackSkill(String((e as { skill?: unknown }).skill ?? '')) && (await isEnabled($))) await show($).catch(statsError($))
+    if (isTrackSkill(String((e as { skill?: unknown }).skill ?? '')) && (await isEnabled($))) await autoShow($).catch(statsError($))
     return next(e)
   })
 
