@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +23,11 @@ func newEnsureCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if workspace == "" {
 				workspace, _ = os.Getwd()
+				// Run from a repo inside a workspace: target that workspace,
+				// never the repo, or a nested marker would shadow it.
+				if root, ok := wt.FindWorkspaceRoot(workspace); ok {
+					workspace = root
+				}
 			}
 			ws, err := filepath.Abs(workspace)
 			if err != nil {
@@ -35,6 +41,6 @@ func newEnsureCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", "thư mục workspace nhận model pin (mặc định: thư mục hiện tại)") //znf:allow-lang
+	cmd.Flags().StringVar(&workspace, "workspace", "", "thư mục workspace nhận model pin (mặc định: workspace chứa thư mục hiện tại, không có thì thư mục hiện tại)") //znf:allow-lang
 	return cmd
 }
