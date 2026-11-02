@@ -105,7 +105,14 @@ func runTrackWrite(w io.Writer, flag string, nargs int, args []string, build tra
 			return err
 		}
 	}
-	return appendTrackRow(logPath, kind, fields)
+	if err := appendTrackRow(logPath, kind, fields); err != nil {
+		return err
+	}
+	if kind == "end" {
+		// The hook unbinds the session only on this line, so a failed end keeps the binding.
+		_, err = fmt.Fprintf(w, "track: ended %s\n", args[0])
+	}
+	return err
 }
 
 func appendTrackRow(logPath, kind string, fields []string) error {
@@ -192,6 +199,36 @@ func newTrackID(kind string, now time.Time) (string, error) {
 	return kind + "-" + now.Format("060102") + "-" + hex.EncodeToString(b[:]), nil
 }
 
+// unusedTrackID draws ids until one has no start row in the log (FR-7.2: ids never repeat).
+func unusedTrackID(logPath, kind string, now time.Time) (string, error) {
+	for range 16 {
+		id, err := newTrackID(kind, now)
+		if err != nil {
+			return "", err
+		}
+		used, err := trackIDStarted(logPath, id)
+		if err != nil {
+			return "", err
+		}
+		if !used {
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("no unused %s id left for %s after 16 draws", kind, now.Format("060102"))
+}
+
+// trackIDStarted reports whether log.md already has a start row for id.
+func trackIDStarted(logPath, id string) (bool, error) {
+	b, err := os.ReadFile(logPath) //nolint:gosec // G304 -- computed from the resolved workspace
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return strings.Contains(string(b), trackSep+"start"+trackSep+id+trackSep), nil
+}
+
 func newTrackStartCmd(ws *string) *cobra.Command {
 	var kind, repo, est, from string
 	c := &cobra.Command{
@@ -224,7 +261,7 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 				}
 				fields = append(fields, from)
 			}
-			id, err := newTrackID(kind, time.Now().UTC())
+			id, err := unusedTrackID(trackLogPath(wsDir), kind, time.Now().UTC())
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
@@ -471,7 +508,7 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 				if dir == "" {
 					dir = filepath.Join(wsDir, ".zenify", "track")
 				}
-				res, err = computeTrackStats(dir, wsDir, today, now.UTC(), force)
+				res, err = computeTrackStats(dir, wsDir, today, now, force)
 				if err != nil {
 					return exitcode.New(exitcode.Fail, err)
 				}
@@ -534,37 +571,35 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 	}
 	in.Cache = cache
 	// gh is asked about unmerged PRs at most once per mergedRecheck: the pane runs stats on
-	// almost every turn, and every unmerged PR costs one sequential gh call.
+	// almost every turn, and every unmerged PR costs one sequential gh call. The stamp holds
+	// the last check's error, which stays reported until the next check.
 	checkedPath := filepath.Join(dir, "merged.checked")
-	fi, err := os.Stat(checkedPath)
+	lastErr, err := os.ReadFile(checkedPath) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
 	switch {
 	case err == nil:
-		if now.Sub(fi.ModTime()) < mergedRecheck {
+		if fi, err := os.Stat(checkedPath); err != nil {
+			return trackstats.Result{}, err
+		} else if now.Sub(fi.ModTime()) < mergedRecheck {
 			in.Merged = nil
 		}
 	case !errors.Is(err, os.ErrNotExist):
 		return trackstats.Result{}, err
 	}
 	res, newCache := trackstats.Compute(in)
-	// A failed check is not stamped, so the next run asks again and still reports the error.
-	if in.Merged != nil && res.Today.MergedError == "" {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			return trackstats.Result{}, err
-		}
-		if err := os.WriteFile(checkedPath, nil, 0o644); err != nil { //nolint:gosec // G306 -- plain stamp file
-			return trackstats.Result{}, fmt.Errorf("write %s: %w", checkedPath, err)
-		}
+	if in.Merged == nil {
+		res.Today.MergedError = string(lastErr)
+	} else if err := os.MkdirAll(dir, 0o750); err != nil {
+		return trackstats.Result{}, err
+	} else if err := writeFileAtomic(checkedPath, []byte(res.Today.MergedError), 0o644); err != nil {
+		return trackstats.Result{}, err
 	}
 	if len(newCache) > 0 && !reflect.DeepEqual(newCache, cache) {
 		out, err := json.Marshal(newCache)
 		if err != nil {
 			return trackstats.Result{}, err
 		}
-		if err := os.MkdirAll(dir, 0o750); err != nil {
+		if err := writeFileAtomic(cachePath, out, 0o644); err != nil {
 			return trackstats.Result{}, err
-		}
-		if err := os.WriteFile(cachePath, out, 0o644); err != nil { //nolint:gosec // G306 -- plain cache file
-			return trackstats.Result{}, fmt.Errorf("write %s: %w", cachePath, err)
 		}
 	}
 	return res, nil

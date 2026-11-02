@@ -1,7 +1,9 @@
 package trackstats
 
 import (
+	"errors"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -291,8 +293,13 @@ func Compute(in Input) (Result, map[string]string) {
 		w.events = append(w.events, e)
 	}
 
+	evByID := map[string][]Event{}
+	for _, e := range sessEv {
+		evByID[e.ID] = append(evByID[e.ID], e)
+	}
 	var items []Item
 	endedPRs := map[string]bool{}
+	todayPRs := map[string]bool{}
 	var prOrder []string
 	for _, id := range order {
 		w := works[id]
@@ -300,7 +307,7 @@ func Compute(in Input) (Result, map[string]string) {
 		if s, ok := sessOf[id]; ok {
 			it.Session, it.Cwd = s, cwdOf[id]
 		}
-		tm := ComputeTiming(id, it.Kind, in.Now, sessEv)
+		tm := ComputeTiming(id, it.Kind, in.Now, evByID[id])
 		res.Malformed += tm.Malformed
 		it.AgentMin, it.Wait, it.Phases, it.Tokens = tm.AgentMin, tm.Wait, tm.Phases, tm.Tokens
 		if tm.Phase != "" {
@@ -337,7 +344,12 @@ func Compute(in Input) (Result, map[string]string) {
 				res.Today.Ended[it.Kind]++
 				res.Today.Tasks += atoiDash(w.end.F[1])
 				res.Today.Rounds += atoiDash(w.end.F[2])
-				res.Today.PRsOpened += len(it.PRs)
+				for _, p := range it.PRs {
+					if !todayPRs[p] {
+						todayPRs[p] = true
+						res.Today.PRsOpened++
+					}
+				}
 			}
 		}
 		if day(w.start) == in.Today {
@@ -481,8 +493,15 @@ func mergedToday(in Input, urls []string, res *Result) map[string]string {
 			}
 			at, err := in.Merged(u)
 			if err != nil {
-				res.Today.MergedError = fmt.Sprintf("%s: %v", u, err)
-				break // a missing or unauthenticated gh would fail every PR
+				// One PR's error (no access, deleted repo) must not hide the PRs after it;
+				// only a missing gh fails every PR, so that one stops the loop.
+				if res.Today.MergedError == "" {
+					res.Today.MergedError = fmt.Sprintf("%s: %v", u, err)
+				}
+				if errors.Is(err, exec.ErrNotFound) {
+					break
+				}
+				continue
 			}
 			if at != "" {
 				cache[u] = at
@@ -491,7 +510,7 @@ func mergedToday(in Input, urls []string, res *Result) map[string]string {
 	}
 	for _, u := range urls {
 		at, ok := cache[u]
-		if !ok {
+		if !ok || at == ClosedUnmerged {
 			continue
 		}
 		t, err := time.Parse(time.RFC3339, at)

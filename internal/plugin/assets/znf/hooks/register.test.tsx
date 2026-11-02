@@ -296,8 +296,9 @@ test('FR-11.5: an unbind re-runs stats at once', async ($, on) => {
   await start($, clock)
   world.toolCall = () => ({ result: { stdout: 'track: cook-261030-c0de\n', stderr: '' }, text: '' })
   await $.tool.call({ tool: 'Bash', command: 'zenify track start --kind cook --repo kit --est M' })
-  world.toolCall = undefined
+  world.toolCall = () => ({ result: { stdout: 'track: ended cook-261030-c0de\n', stderr: '' }, text: '' })
   await $.tool.call({ tool: 'Bash', command: 'zenify track end cook-261030-c0de --pr https://github.com/Z/kit/pull/1 --rounds 1' })
+  world.toolCall = undefined
   await clock.settle()
   const before = statsRuns(calls).length
   await $.turn.complete({ answer: 'ok', durationMs: 1000, isAborted: false, turnId: 't-1', reason: 'answer' } as any)
@@ -407,14 +408,28 @@ test('FR-2.3: the enabled flag comes from the stats run: on records, off does no
   expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG])
 })
 
-test('FR-2.3: feature off writes no bind', async ($, on) => {
+test('FR-4.1: a start that printed an id binds even while enabled is still false (feature turned on in the same command)', async ($, on) => {
   const world: World = { stats: ok(statsJson({ enabled: false })) }
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await start($, clock)
   world.toolCall = () => ({ result: { stdout: 'track: fix-261030-a1b2\n', stderr: '' }, text: '' })
-  await $.tool.call({ tool: 'Bash', command: 'zenify track start --kind fix --repo kit --est -' })
-  expect(calls.write).toHaveLength(0)
+  await $.tool.call({ tool: 'Bash', command: 'zenify feature track on && zenify track start --kind fix --repo kit --est -' })
+  expect(calls.write.some(w => w.text.includes('bind · fix-261030-a1b2'))).toBe(true)
+})
+
+test('FR-4.1: a rejected track end (no confirmation line) keeps the binding', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on)
+  await bindTo($, world, COOK_ID, START_COOK)
+  world.toolCall = () => ({ result: { stdout: '', stderr: 'error: pass exactly one of --pr, --branch, --rollback, --cancelled' }, text: '' })
+  await $.tool.call({ tool: 'Bash', command: `zenify track end ${COOK_ID} --rounds 1` })
+  world.toolCall = undefined
+  await $.turn.complete(turnEnd(30000))
+  await $.turn.complete(turnEnd(9000))
+  expect(fields(world).filter(f => f.startsWith('unbind'))).toEqual([])
+  expect(fields(world).filter(f => f.startsWith('turn'))).toHaveLength(2)
 })
 
 test('SC-8: feature on, a /znf:fix prompt opens the track pane', async ($, on) => {
@@ -637,7 +652,9 @@ test('SC-22: the turn that ran track end is written before the unbind', async ($
   engine(on, world)
   mock.clock(on)
   await bindTo($, world, COOK_ID, START_COOK)
+  world.toolCall = () => stdoutAnswer(`track: ended ${COOK_ID}\n`)
   await $.tool.call({ tool: 'Bash', command: `zenify track end ${COOK_ID} --pr https://github.com/Z/kit/pull/1 --rounds 1` })
+  world.toolCall = undefined
   // A subagent turn inside the ending turn still counts for the id.
   await $.turn.complete(turnEnd(5000, 'a-1'))
   await $.turn.complete(turnEnd(30000))

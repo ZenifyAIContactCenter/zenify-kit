@@ -37,10 +37,11 @@ const (
 var trackGhSearch = ghSearch
 
 var (
-	trackBidRe  = regexp.MustCompile(`^b-\d{6}-[0-9a-f]{4}$`)
-	trackSDDRe  = regexp.MustCompile(`^repos/.+/progress\.md:\d+$`)
-	sddMinorRe  = regexp.MustCompile(`^Task \d+: minor \(deferred\): (.+)$`)
-	sddParkedRe = regexp.MustCompile(`^Task \d+: parked — (.+)$`)
+	trackBidRe = regexp.MustCompile(`^b-\d{6}-[0-9a-f]{4}$`)
+	trackSDDRe = regexp.MustCompile(`^repos/.+/progress\.md:\d+$`)
+	// A multi-repo plan prefixes each ledger line with its repo, e.g. `[be] Task 3: …`.
+	sddMinorRe  = regexp.MustCompile(`^(?:\[[^\]]+\] )?Task \d+: minor \(deferred\): (.+)$`)
+	sddParkedRe = regexp.MustCompile(`^(?:\[[^\]]+\] )?Task \d+: parked — (.+)$`)
 	ownerRe     = regexp.MustCompile(`[:/]([^/:]+)/[^/]+?(?:\.git)?/?$`)
 )
 
@@ -86,7 +87,7 @@ func newTrackBacklogAddCmd(ws *string) *cobra.Command {
 					return err
 				}
 			}
-			bid, err := newBacklogID(time.Now().UTC())
+			bid, err := unusedBacklogID(trackLogPath(wsDir), time.Now().UTC())
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
@@ -166,6 +167,25 @@ func newBacklogID(now time.Time) (string, error) {
 		return "", err
 	}
 	return "b-" + now.Format("060102") + "-" + hex.EncodeToString(b[:]), nil
+}
+
+// unusedBacklogID draws bids until one has no backlog row in the log, so a drop or a
+// start --from never hides a second item with the same bid.
+func unusedBacklogID(logPath string, now time.Time) (string, error) {
+	rows, err := readTrackRows(logPath)
+	if err != nil {
+		return "", err
+	}
+	for range 16 {
+		bid, err := newBacklogID(now)
+		if err != nil {
+			return "", err
+		}
+		if !rowsHave(rows, "backlog", bid) {
+			return bid, nil
+		}
+	}
+	return "", fmt.Errorf("no unused backlog id left for %s after 16 draws", now.Format("060102"))
 }
 
 // readTrackRows returns the log lines split into fields; a missing log is empty.

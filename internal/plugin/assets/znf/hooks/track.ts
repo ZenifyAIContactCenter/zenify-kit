@@ -14,8 +14,7 @@ export type Usage = {
 
 const ID = '(?:cook|fix|hotfix)-\\d{6}-[0-9a-f]{4}'
 const START_LINE = new RegExp(`^track: (${ID})$`)
-const END_COMMAND = /\bzenify\s+track\s+end\s+(\S+)/
-const IS_ID = new RegExp(`^${ID}$`)
+const ENDED_LINE = new RegExp(`^track: ended (${ID})$`)
 
 // FR-4.1: only a line that is exactly `track: <id>` binds; `track: off` never does.
 export function parseStartId(stdout: string): string | undefined {
@@ -37,11 +36,14 @@ export function stdoutOf(answer: unknown): string {
 
 export const isStartCommand = (command: string): boolean => /\bzenify\s+track\s+start\b/.test(command)
 
-// The id a `zenify track end <id>` command closes; a shell variable or anything else is none.
-export function isEndCommand(command: string): string | undefined {
-  const raw = END_COMMAND.exec(command)?.[1]
-  const id = raw?.replace(/^["']|["']$/g, '')
-  return id && IS_ID.test(id) ? id : undefined
+// The id a successful `zenify track end` closed: only its `track: ended <id>` stdout line
+// counts, so a rejected end, or a script that merely contains the command, unbinds nothing.
+export function parseEndedId(stdout: string): string | undefined {
+  for (const line of stdout.split('\n')) {
+    const m = ENDED_LINE.exec(line.replace(/\r$/, ''))
+    if (m) return m[1]
+  }
+  return undefined
 }
 
 export const kindOf = (id: string): Kind => id.slice(0, id.indexOf('-')) as Kind
