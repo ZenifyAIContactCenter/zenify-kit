@@ -13,7 +13,7 @@ zenify feature track on
 zenify feature track off
 ```
 
-Lệnh áp dụng cho cả workspace. Khi bật, digest đầu session chỉ cho agent đọc `_shared/track.md`; agent gọi các lệnh [`zenify track`](/reference/cli/zenify_track) để ghi số liệu, bạn không cần gõ gì. Tắt thì mọi lệnh ghi của `zenify track` in `track: off` và không ghi.
+Ngay trong Claude Code, gõ `/znf:features track on` (hoặc `off`) để làm tương tự; status line tự cập nhật trong vài giây. Lệnh áp dụng cho cả workspace. Khi bật, digest đầu session chỉ cho agent đọc `_shared/track.md`; agent gọi các lệnh [`zenify track`](/reference/cli/zenify_track) để ghi số liệu, bạn không cần gõ gì. Tắt thì mọi lệnh ghi của `zenify track` in `track: off` và không ghi.
 
 Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `/track-pane` để mở hoặc đóng pane. Pane cũng tự mở khi prompt của bạn là `cook`, `fix`, `hotfix` hoặc `ship` (có hoặc không có tiền tố `znf:`).
 
@@ -21,11 +21,11 @@ Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `
 
 Status line luôn hiện, kể cả khi pane đóng.
 
-- Khi tắt: `⏸ znf: track off · bật: zenify feature track on`
-- Khi bật và tab này đang có việc mở: `znf: track ▶ <id> · <giai đoạn> · <phút agent>/<est> · chờ <phút> · Hôm nay: xong/bắt đầu · PR n (m merged) · hit n%`
-- Khi bật và tab này chưa có việc: `znf: track ⏸ · Hôm nay: xong/bắt đầu · ...`
+- Khi tắt: `⏸ track off · bật: /znf:features track on`
+- Khi bật và tab này đang có việc mở: `track ▶ <id> · <giai đoạn> · <phút agent>/<est> · chờ <phút> · Hôm nay: xong/bắt đầu · PR n (m merged) · hit n%`
+- Khi bật và tab này chưa có việc: `track ⏸ · Hôm nay: xong/bắt đầu · ...`
 
-Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Hôm nay` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ znf: track lỗi: <nguyên nhân>`.
+Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Hôm nay` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track lỗi: <nguyên nhân>`.
 
 ## Năm tab
 

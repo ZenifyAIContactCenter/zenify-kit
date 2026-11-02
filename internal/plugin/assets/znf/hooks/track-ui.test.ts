@@ -54,14 +54,14 @@ const bl = (source: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
 const texts = (lines: { text: string }[]) => lines.map(l => l.text)
 
 test('FR-11.2/SC-20: enabled false is the off line, verbatim', () => {
-  expect(STATUS_OFF).toBe('⏸ znf: track off · bật: zenify feature track on')
+  expect(STATUS_OFF).toBe('⏸ track off · bật: /znf:features track on')
   expect(statusText(stats({ enabled: false }), A, X)).toBe(STATUS_OFF)
 })
 
 test('SC-21: the open id of this session shows ▶, id, phase and 12m/M', () => {
   const s = stats({ running: [item({})] })
   const line = statusText(s, A, X)
-  expect(line).toBe(`znf: track ▶ · ${X} · plan · 12m/M · Hôm nay: 0/0`)
+  expect(line).toBe(`track ▶ · ${X} · plan · 12m/M · Hôm nay: 0/0`)
 })
 
 test('FR-11.3: wait shows as chờ <n>m; today shows ended/started, PR, merged and hit', () => {
@@ -70,22 +70,22 @@ test('FR-11.3: wait shows as chờ <n>m; today shows ended/started, PR, merged a
     today: { ...stats().today, started: { cook: 2, fix: 1 }, ended: { fix: 1 }, prsOpened: 2, merged: 1 },
     estimate: { ...stats().estimate, byKind: { cook: { n: 3, hit: 2, low: 1, high: 0 }, fix: { n: 1, hit: 1, low: 0, high: 0 } } },
   })
-  expect(statusText(s, A, X)).toBe(`znf: track ▶ · ${X} · plan · 12m/M · chờ 7m · Hôm nay: 1/3 · PR 2 (1 merged) · hit 75%`)
+  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · plan · 12m/M · chờ 7m · Hôm nay: 1/3 · PR 2 (1 merged) · hit 75%`)
 })
 
 test('FR-11.3: zero or unknown items are hidden, except Hôm nay', () => {
   const s = stats({ running: [item({ phase: '', agentMin: 0 })], today: { ...stats().today, prsOpened: 1 } })
-  expect(statusText(s, A, X)).toBe(`znf: track ▶ · ${X} · Hôm nay: 0/0 · PR 1`)
+  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · Hôm nay: 0/0 · PR 1`)
 })
 
 test('FR-11.3: an id of another session, or none bound, is ⏸', () => {
   const s = stats({ running: [item({ session: B })] })
-  expect(statusText(s, A, X)).toBe('znf: track ⏸ · Hôm nay: 0/0')
-  expect(statusText(stats({ running: [item({})] }), A, undefined)).toBe('znf: track ⏸ · Hôm nay: 0/0')
+  expect(statusText(s, A, X)).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(statusText(stats({ running: [item({})] }), A, undefined)).toBe('track ⏸ · Hôm nay: 0/0')
 })
 
 test('FR-11.4: an error is the ⚠ line with its message', () => {
-  expect(errorStatus('exit 2')).toBe('⚠ znf: track lỗi: exit 2')
+  expect(errorStatus('exit 2')).toBe('⚠ track lỗi: exit 2')
 })
 
 test('parseTrackStats takes the stats JSON and fills Go nulls; anything else throws', () => {
@@ -236,4 +236,16 @@ test('FR-14.5: the footer names the history scale source and its sample size', (
 test('parseTrackStats fills a missing backlog so the tab never reads undefined', () => {
   const raw = { ...stats(), backlog: { items: null, ghError: '' } }
   expect(parseTrackStats(JSON.stringify(raw)).backlog.items).toEqual([])
+})
+
+test('SC-20: no status string carries a znf: prefix (Claude Code adds its own)', () => {
+  const lines = [
+    STATUS_OFF,
+    errorStatus('x'),
+    statusText(stats({ running: [item({})] }), A, X),
+    statusText(stats({}), A, undefined),
+  ]
+  for (const l of lines) expect(l).not.toContain('znf: ')
+  expect(errorStatus('x')).toBe('⚠ track lỗi: x')
+  expect(statusText(stats({}), A, undefined).startsWith('track ⏸')).toBe(true)
 })

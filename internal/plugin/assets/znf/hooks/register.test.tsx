@@ -12,7 +12,7 @@ const SESSIONS_DIR = '/w/.zenify/track/sessions'
 const OVERLAY = '/w/.zenify-overlay.yaml'
 const STATS_ARGV = ['zenify', 'track', 'stats', '--json', '--workspace', WS]
 const PANE = { id: 'track', title: 'Track', columns: 44 }
-const OFF = '⏸ znf: track off · bật: zenify feature track on'
+const OFF = '⏸ track off · bật: /znf:features track on'
 const MIN = 60000
 
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -194,7 +194,7 @@ test('FR-11.1: feature on, session start still opens no pane and shows the ⏸ l
   const calls = engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('znf: track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
   expect(calls.open).toHaveLength(0)
 })
 
@@ -218,7 +218,7 @@ test('SC-21: this session bound to a cook id in plan, agent 12m est M: status ha
   world.mtimes = { [SESSIONS_DIR]: 2 }
   await clock.advance(2000)
   const line = lastStatus(calls) ?? ''
-  expect(line.startsWith('znf: track ▶')).toBe(true)
+  expect(line.startsWith('track ▶')).toBe(true)
   expect(line).toContain('cook-261030-c0de')
   expect(line).toContain('plan')
   expect(line).toContain('12m/M')
@@ -229,14 +229,14 @@ test('SC-21/FR-11.5: a bind after the stats run shows ▶ with the id at once, n
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('znf: track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
   // The CLI wrote log.md and the watcher already ran; only the bind is left.
   world.stats = ok(statsJson({ running: [item()] }))
   world.toolCall = () => ({ result: { stdout: 'track: cook-261030-c0de\n', stderr: '' }, text: '' })
   await $.tool.call({ tool: 'Bash', command: 'zenify track start --kind cook --repo kit --est M' })
   await clock.settle()
   expect(statsRuns(calls)).toHaveLength(2)
-  expect((lastStatus(calls) ?? '').startsWith('znf: track ▶ · cook-261030-c0de')).toBe(true)
+  expect((lastStatus(calls) ?? '').startsWith('track ▶ · cook-261030-c0de')).toBe(true)
 })
 
 test('a bind while a tick run is in flight is not lost when that run ends on an unchanged key', async ($, on) => {
@@ -258,7 +258,7 @@ test('a bind while a tick run is in flight is not lost when that run ends on an 
   release()
   await clock.settle()
   expect(statsRuns(calls)).toHaveLength(2)
-  expect((lastStatus(calls) ?? '').startsWith('znf: track ▶ · cook-261030-c0de')).toBe(true)
+  expect((lastStatus(calls) ?? '').startsWith('track ▶ · cook-261030-c0de')).toBe(true)
 })
 
 test('FR-11.5: an unbind re-runs stats at once', async ($, on) => {
@@ -296,7 +296,7 @@ test('FR-6.4: outside a workspace track-pane says so instead of loading forever;
   await $.command.run({ command: 'track-pane', args: '' } as any)
   await clock.settle()
   const ui = await mountTab($)
-  expect(await allTexts(ui)).toContain('⚠ znf: track lỗi: không ở trong workspace zenify')
+  expect(await allTexts(ui)).toContain('⚠ track lỗi: không ở trong workspace zenify')
   expect(statsRuns(calls)).toHaveLength(0)
   expect(calls.status.filter(Boolean)).toHaveLength(0)
 })
@@ -305,28 +305,28 @@ test('FR-11.3: an open id of another session leaves this one at ⏸', async ($, 
   const calls = engine(on, { stats: ok(statsJson({ running: [item({ session: OTHER })] })) })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('znf: track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
 })
 
 test('FR-11.4: a failing stats run is the ⚠ status line with its first stderr line', async ($, on) => {
   const calls = engine(on, { stats: { exitCode: 1, stdout: '', stderr: 'parse log.md: boom\nmore' } })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('⚠ znf: track lỗi: parse log.md: boom')
+  expect(lastStatus(calls)).toBe('⚠ track lỗi: parse log.md: boom')
 })
 
 test('FR-11.4: stats output that is not JSON is the ⚠ line, not swallowed', async ($, on) => {
   const calls = engine(on, { stats: ok('track: off') })
   const clock = mock.clock(on)
   await start($, clock)
-  expect((lastStatus(calls) ?? '').startsWith('⚠ znf: track lỗi: ')).toBe(true)
+  expect((lastStatus(calls) ?? '').startsWith('⚠ track lỗi: ')).toBe(true)
 })
 
 test('FR-11.4: a stats command that cannot start is the ⚠ line', async ($, on) => {
   const calls = engine(on, { statsRejects: 'ENOENT: zenify not found' })
   const clock = mock.clock(on)
   await start($, clock)
-  expect((lastStatus(calls) ?? '').startsWith('⚠ znf: track lỗi: ')).toBe(true)
+  expect((lastStatus(calls) ?? '').startsWith('⚠ track lỗi: ')).toBe(true)
   expect(lastStatus(calls)).toContain('zenify not found')
 })
 
@@ -341,7 +341,7 @@ test('FR-11.5: an overlay mtime change re-runs stats, so feature on shows at onc
   world.mtimes = { [OVERLAY]: 2 }
   await clock.advance(2000)
   expect(statsRuns(calls)).toHaveLength(2)
-  expect(lastStatus(calls)).toBe('znf: track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
 })
 
 test('FR-6.3: log.md or sessions/ mtime changes re-run stats with the pane closed', async ($, on) => {
@@ -482,7 +482,7 @@ test('FR-6.4: a failing stats run shows its message in the pane, not an empty pa
   world.mtimes = { [LOG_MD]: 9 }
   await clock.advance(2000)
   const ui = await mountTab($)
-  expect(await allTexts(ui)).toContain('⚠ znf: track lỗi: read sessions: EACCES')
+  expect(await allTexts(ui)).toContain('⚠ track lỗi: read sessions: EACCES')
 })
 
 test('FR-6.1: the pane opened by command with the feature off says how to turn it on', async ($, on) => {
