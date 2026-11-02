@@ -2,8 +2,8 @@
 package cli
 
 import (
-	"errors"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -140,8 +140,7 @@ func featuresLine(wsRoot string, w io.Writer) {
 	}
 }
 
-// trackOnboardLine reminds the dev to onboard when log.md has no `onboard · memory`
-// row. A missing log.md means not onboarded; any other read error goes to stderr
+// trackOnboardLine reminds the dev to onboard when log.md has no `onboard` row. A missing log.md means not onboarded; any other read error goes to stderr
 // and prints nothing on w.
 func trackOnboardLine(wsRoot string, w io.Writer) {
 	raw, err := os.ReadFile(filepath.Join(wsRoot, ".zenify", "track", "log.md")) //nolint:gosec // G304 -- path under the workspace root, not user input
@@ -149,7 +148,10 @@ func trackOnboardLine(wsRoot string, w io.Writer) {
 		ui.New(os.Stderr).Note(fmt.Sprintf("znf track onboard check: %v", err))
 		return
 	}
-	ev, _ := trackstats.ParseLog(string(raw))
+	ev, malformed := trackstats.ParseLog(string(raw))
+	if malformed > 0 {
+		ui.New(os.Stderr).Note(fmt.Sprintf("track: log.md has %d malformed lines", malformed))
+	}
 	for _, e := range ev {
 		if e.Type == "onboard" {
 			return

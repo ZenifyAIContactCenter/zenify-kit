@@ -392,4 +392,65 @@ func TestSessionStart_TrackOnboardLine(t *testing.T) {
 	}
 }
 
+// The onboard check never swallows a bad log: malformed rows and non-ENOENT read
+// errors are noted on stderr; stdout carries no onboard line for a read error.
+func TestSessionStart_TrackOnboardLogProblems(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	cases := []struct {
+		name       string
+		setup      func(t *testing.T, logPath string)
+		wantStderr string
+		wantLine   bool
+	}{
+		{"malformed line", func(t *testing.T, p string) {
+			if err := os.WriteFile(p, []byte("garbage line\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, "1 malformed", true},
+		{"log.md is a directory", func(t *testing.T, p string) {
+			if err := os.Mkdir(p, 0o750); err != nil {
+				t.Fatal(err)
+			}
+		}, "znf track onboard check", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			ws := mkWorkspace(t)
+			if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte("features:\n  track: true\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join(ws, ".zenify", "track")
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				t.Fatal(err)
+			}
+			c.setup(t, filepath.Join(dir, "log.md"))
+			errFile, err := os.CreateTemp(t.TempDir(), "stderr")
+			if err != nil {
+				t.Fatal(err)
+			}
+			old := os.Stderr
+			os.Stderr = errFile
+			var buf bytes.Buffer
+			rc := runSessionStart(ws, &buf)
+			os.Stderr = old
+			if rc != 0 {
+				t.Fatalf("rc = %d", rc)
+			}
+			raw, err := os.ReadFile(errFile.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(raw), c.wantStderr) {
+				t.Errorf("stderr %q lacks %q", raw, c.wantStderr)
+			}
+			if got := strings.Contains(buf.String(), "track: not onboarded"); got != c.wantLine {
+				t.Errorf("onboard line present = %v, want %v", got, c.wantLine)
+			}
+		})
+	}
+}
+
 func ptr(s string) *string { return &s }
