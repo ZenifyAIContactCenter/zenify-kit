@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface as $, PluginOptions, Register, Timer } from 'claude-code'
 
 import type { TrackStats } from '../types'
-import { registerConfig, syncConfig, trackPaneOf } from './config'
+import { isInWorkspace, registerConfig, setInWorkspace, syncConfig, trackPaneOf } from './config'
 import { bindLine, cwdLine, isEndCommand, isStartCommand, kindOf, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
 import { COPY, STATUS_OFF, TABS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
@@ -285,15 +285,21 @@ export const register: Register = (on, options: PluginOptions) => {
   on('session.start', async ($, e, next) => {
     stopTimers()
     lastKey = undefined
-    if (trackPane !== 'off') await $.command.register({ name: 'track-pane', description: 'Toggle the zenify track pane' })
-    const inWorkspace = !!(await findWorkspace($))
-    // FR-17.3: not awaited, like the stats run: the reads must not hold the session start.
-    void syncConfig($, options, inWorkspace).catch(statsError($))
-    if (inWorkspace) {
-      // Not awaited: the stats run may ask gh for merged PRs and must not hold the session start.
-      void refreshStats($, true).catch(statsError($))
-      armTimers($)
+    // FR-18: a failed workspace lookup is a ⚠ toast and counts as outside.
+    const inWorkspace = !!(await findWorkspace($).catch(err => (statsError($)(err), undefined)))
+    setInWorkspace(inWorkspace)
+    $.ui.invalidate('config.describe')
+    if (!inWorkspace) {
+      // FR-18.3: outside a workspace znf shows nothing: no command, no sync, no stats, no status.
+      $.ui.status(undefined)
+      return next(e)
     }
+    if (trackPane !== 'off') await $.command.register({ name: 'track-pane', description: 'Toggle the zenify track pane' })
+    // FR-17.3: not awaited, like the stats run: the reads must not hold the session start.
+    void syncConfig($, options).catch(statsError($))
+    // Not awaited: the stats run may ask gh for merged PRs and must not hold the session start.
+    void refreshStats($, true).catch(statsError($))
+    armTimers($)
     return next(e)
   })
 
@@ -301,13 +307,13 @@ export const register: Register = (on, options: PluginOptions) => {
   on('prompt.submit', async ($, e, next) => {
     if (await isEnabled($)) {
       await recordIdle($).catch(timingError($))
-      if (trackPane === 'auto' && isTrackPrompt(e)) await show($).catch(statsError($))
+      if (isInWorkspace() && trackPane === 'auto' && isTrackPrompt(e)) await show($).catch(statsError($))
     }
     return next(e)
   })
 
   on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
-    if (trackPane === 'auto' && isTrackSkill(String((e as { skill?: unknown }).skill ?? '')) && (await isEnabled($))) await show($).catch(statsError($))
+    if (isInWorkspace() && trackPane === 'auto' && isTrackSkill(String((e as { skill?: unknown }).skill ?? '')) && (await isEnabled($))) await show($).catch(statsError($))
     return next(e)
   })
 

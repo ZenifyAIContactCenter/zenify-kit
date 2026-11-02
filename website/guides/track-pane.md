@@ -15,7 +15,7 @@ zenify feature track off
 
 Ngay trong Claude Code, gõ `/config` rồi bật dòng `Dev track` của plugin `znf` để làm tương tự (xem [Settings](#settings)); status line tự cập nhật trong vài giây. Lệnh áp dụng cho cả workspace. Khi bật, digest đầu session chỉ cho agent đọc `_shared/track.md`; agent gọi các lệnh [`zenify track`](/reference/cli/zenify_track) để ghi số liệu, bạn không cần gõ gì. Tắt thì mọi lệnh ghi của `zenify track` in `track: off` và không ghi.
 
-Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `/track-pane` để mở hoặc đóng pane. Pane cũng tự mở khi prompt của bạn là `cook`, `fix`, `hotfix` hoặc `ship` (có hoặc không có tiền tố `znf:`), nếu dòng `Track pane` trong `/config` là `auto` (mặc định).
+Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `/track-pane` để mở hoặc đóng pane. Pane cũng tự mở khi prompt của bạn là `cook`, `fix`, `hotfix` hoặc `ship` (có hoặc không có tiền tố `znf:`), nếu dòng `Track pane` trong `/config` là `auto` (mặc định). Pane, lệnh, các dòng `znf` trong `/config` và status line chỉ có khi Claude Code mở trong một zenify workspace (có `.zenify/manifest.json` ở thư mục hiện tại hoặc thư mục cha); ngoài workspace chúng ẩn hết.
 
 ## Status line
 

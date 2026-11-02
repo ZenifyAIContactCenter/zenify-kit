@@ -213,6 +213,25 @@ test('FR-11.1: outside a zenify workspace nothing runs and no status is set', as
   await start($, clock)
   expect(statsRuns(calls)).toHaveLength(0)
   expect(calls.status.filter(Boolean)).toHaveLength(0)
+  // FR-18.3: no /track-pane, no row sync (no process at all), the status line cleared.
+  expect(calls.registered).toEqual([])
+  expect(calls.run).toEqual([])
+  expect(calls.status).toEqual([undefined])
+})
+
+test('FR-18.3: outside a workspace a cook prompt does not open the pane', async ($, on) => {
+  const calls = engine(on, { noWorkspace: true, trackEnabled: true })
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.prompt.submit({ text: 'cook add a thing' } as any)
+  expect(calls.open).toHaveLength(0)
+})
+
+test('FR-18.3: inside a workspace /track-pane is registered', async ($, on) => {
+  const calls = engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(calls.registered).toEqual(['track-pane'])
 })
 
 test('SC-21: this session bound to a cook id in plan, agent 12m est M: status has ▶, id, plan, 12m/M', async ($, on) => {

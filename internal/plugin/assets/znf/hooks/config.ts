@@ -47,10 +47,26 @@ const changed = new Map<string, ConfigValue>()
 const isAlign = (e: ConfigSetInput) =>
   aligning.has(e.key) && (!e.origin || (e.origin.kind === 'plugin' && e.origin.name === 'znf'))
 
-// FR-17.2: a znf row change runs its command first; a failure denies it, the row keeps its value.
+// FR-18: whether the session started inside a zenify workspace; false until session.start says so.
+let inWorkspace = false
+export const setInWorkspace = (v: boolean) => {
+  inWorkspace = v
+}
+export const isInWorkspace = () => inWorkspace
+
+const OUTSIDE = 'znf settings are only available inside a zenify workspace'
+
+// FR-17.2/FR-18: a znf row change runs its command first; a failure denies it, the row keeps its
+// value. Outside a workspace the rows are hidden and a set is denied (a hidden row still takes one).
 export function registerConfig(on: On): void {
+  on('config.describe', async (_$, e, next) => {
+    const row = await next(e)
+    return e.key.startsWith('znf.') && !inWorkspace ? { ...row, isHidden: true } : row
+  })
   on('config.set', async ($, e, next) => {
-    if (!e.key.startsWith('znf.') || isAlign(e)) return next(e)
+    if (!e.key.startsWith('znf.')) return next(e)
+    if (!inWorkspace) return { deny: OUTSIDE }
+    if (isAlign(e)) return next(e)
     const argv = writeArgv(e.key.slice(4), e.value)
     if (argv) {
       try {
@@ -84,24 +100,22 @@ async function align($: $, options: PluginOptions, field: string, value: boolean
   }
 }
 
-// FR-17.3: pulls each row back to its source. `inWorkspace` false skips the features, which
-// belong to a workspace. Each failure is a ⚠ toast and leaves its row alone.
-export async function syncConfig($: $, options: PluginOptions, inWorkspace: boolean): Promise<void> {
+// FR-17.3: pulls each row back to its source; called inside a workspace only (FR-18.3). Each
+// failure is a ⚠ toast and leaves its row alone.
+export async function syncConfig($: $, options: PluginOptions): Promise<void> {
   const toast = (err: unknown) => $.ui.toast(`${COPY.configToast}${message(err)}`)
   changed.clear()
-  if (inWorkspace) {
-    await (async () => {
-      const on = new Map<string, boolean>()
-      for (const l of (await run($, ['zenify', 'feature'])).split('\n')) {
-        const m = FEATURE_LINE.exec(l.trim())
-        if (m) on.set(m[1], m[2] === 'on')
-      }
-      for (const [field, key] of Object.entries(FEATURES)) {
-        if (!on.has(key)) throw new Error(`zenify feature: no ${key} line`)
-        await align($, options, field, on.get(key)!)
-      }
-    })().catch(toast)
-  }
+  await (async () => {
+    const on = new Map<string, boolean>()
+    for (const l of (await run($, ['zenify', 'feature'])).split('\n')) {
+      const m = FEATURE_LINE.exec(l.trim())
+      if (m) on.set(m[1], m[2] === 'on')
+    }
+    for (const [field, key] of Object.entries(FEATURES)) {
+      if (!on.has(key)) throw new Error(`zenify feature: no ${key} line`)
+      await align($, options, field, on.get(key)!)
+    }
+  })().catch(toast)
   await (async () => {
     const engine = (await run($, ['zenify', 'reviewer'])).trim().split(/\s/)[0]
     if (!REVIEWERS.includes(engine)) throw new Error(`zenify reviewer: unexpected output ${JSON.stringify(engine)}`)

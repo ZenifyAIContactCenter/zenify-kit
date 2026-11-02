@@ -41,6 +41,8 @@ type World = {
   holdSet?: Record<string, Promise<void>>
   // Joined argv that cannot start (the call rejects with this reason).
   rejects?: Record<string, string>
+  // No `.zenify/manifest.json` at or above the cwd.
+  noWorkspace?: boolean
 }
 
 // `rows`: each row's value as the writer last stored it.
@@ -59,7 +61,7 @@ function engine(on: any, world: World): Calls {
     return { value: undefined }
   })
   on('fs.stat', (_: unknown, e: { path: string }) =>
-    e.path === WS_MARKER ? { value: { kind: 'file', size: 1, mtimeMs: 1, isLink: false } } : { deny: `ENOENT: no such file, stat '${e.path}'` },
+    e.path === WS_MARKER && !world.noWorkspace ? { value: { kind: 'file', size: 1, mtimeMs: 1, isLink: false } } : { deny: `ENOENT: no such file, stat '${e.path}'` },
   )
   on('fs.read', (_: unknown, e: { path: string }) => ({ deny: `ENOENT: no such file, open '${e.path}'` }))
   // The writer beneath every config.set hook: the row takes the value.
@@ -73,6 +75,7 @@ function engine(on: any, world: World): Calls {
     calls.rows[e.key] = e.value
     return { value: e.value }
   })
+  on('config.describe', (_: unknown, e: { label: string; isHidden: boolean }) => ({ label: e.label, isHidden: e.isHidden }))
   on('process.run', async (_: unknown, e: { argv: string[] }) => {
     if (e.argv[1] === 'track') return { value: ok(STATS) }
     const key = e.argv.join(' ')
@@ -236,4 +239,28 @@ test('a person change landing while the sync set of that row is in flight is the
   expect(calls.rows['znf.track']).toBe(false)
   expect(calls.run.filter(r => r.startsWith('zenify feature track'))).toEqual(['zenify feature track off'])
   expect(calls.toast).toEqual([])
+})
+
+const ROW = (key: string) => ({ key, label: key, isHidden: false, provider: { kind: 'plugin', name: 'znf' } }) as any
+const KEYS = ['znf.track', 'znf.githubIssues', 'znf.trackPane', 'znf.reviewer']
+
+test('SC-42: outside a workspace the znf rows are hidden, others stay, nothing runs and sets are denied', async ($, on) => {
+  const calls = engine(on, { runs: SYNCED, noWorkspace: true })
+  const clock = mock.clock(on)
+  await start($, clock)
+  for (const key of KEYS) expect((await $.config.describe(ROW(key))).isHidden).toBe(true)
+  expect((await $.config.describe(ROW('theme'))).isHidden).toBe(false)
+  expect(calls.run).toEqual([])
+  const res = await $.config.set({ key: 'znf.track', value: true })
+  expect(res).toEqual({ deny: 'znf settings are only available inside a zenify workspace' })
+  expect(calls.run).toEqual([])
+  expect(calls.set).toEqual([])
+  expect(calls.toast).toEqual([])
+})
+
+test('SC-42: inside a workspace the znf rows show', async ($, on) => {
+  engine(on, { runs: SYNCED })
+  const clock = mock.clock(on)
+  await start($, clock)
+  for (const key of KEYS) expect((await $.config.describe(ROW(key))).isHidden).toBe(false)
 })
