@@ -14,7 +14,7 @@ export const COPY = {
   loading: 'đang đọc số liệu…',
   toast: 'lỗi track: ',
   // FR-11.6: the status line's next step for a workspace that is not onboarded yet.
-  onboard: 'chưa onboard — gõ "onboard track"',
+  onboard: 'Tip: Bạn có thể onboard cho agent lấy công việc bằng cách gõ "hey claude onboard track"',
   noWorkspace: 'không ở trong workspace zenify',
   // FR-17.3: a /config row that could not be read back from its source.
   configToast: '⚠ lỗi đồng bộ /config: ',

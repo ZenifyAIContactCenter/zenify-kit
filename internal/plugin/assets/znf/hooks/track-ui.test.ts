@@ -86,7 +86,7 @@ test('FR-11.3: an id of another session, or none bound, is ⏸', () => {
 
 test('SC-43: not onboarded and no open id asks to onboard; an open id keeps the normal line', () => {
   const s = stats({ onboarded: false })
-  expect(statusText(s, A, undefined)).toBe('track ⏸ · chưa onboard — gõ "onboard track"')
+  expect(statusText(s, A, undefined)).toBe('track ⏸ · Tip: Bạn có thể onboard cho agent lấy công việc bằng cách gõ "hey claude onboard track"')
   expect(statusText({ ...s, running: [item({})] }, A, X)).toBe(`track ▶ · ${X} · plan · 12m/M · Hôm nay: 0/0`)
 })
 

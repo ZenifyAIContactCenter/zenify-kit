@@ -24,7 +24,7 @@ Status line luôn hiện, kể cả khi pane đóng.
 - Khi tắt: `⏸ track off · bật: /config → znf`
 - Khi bật và tab này đang có việc mở: `track ▶ <id> · <giai đoạn> · <phút agent>/<est> · chờ <phút> · Hôm nay: xong/bắt đầu · PR n (m merged) · hit n%`
 - Khi bật và tab này chưa có việc: `track ⏸ · Hôm nay: xong/bắt đầu · ...`
-- Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸ · chưa onboard — gõ "onboard track"`
+- Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸ · Tip: Bạn có thể onboard cho agent lấy công việc bằng cách gõ "hey claude onboard track"`
 
 Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Hôm nay` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track lỗi: <nguyên nhân>`.
 
