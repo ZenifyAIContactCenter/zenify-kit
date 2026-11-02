@@ -382,7 +382,7 @@ func TestRunNew_PushesBranchToOrigin(t *testing.T) {
 func TestRunNew_PushFailureWarnsAndSucceeds(t *testing.T) {
 	root, bare := pushRepo(t, true)
 	hook := filepath.Join(bare, "hooks", "pre-receive")
-	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil { //nolint:gosec // test hook must be executable
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\necho hook-says-no >&2\nexit 1\n"), 0o700); err != nil { //nolint:gosec // test hook must be executable
 		t.Fatal(err)
 	}
 	o, errb := realOpts(root)
@@ -393,24 +393,24 @@ func TestRunNew_PushFailureWarnsAndSucceeds(t *testing.T) {
 		!strings.Contains(errb.String(), "push it yourself when online") {
 		t.Fatalf("expected push warning, got %q", errb.String())
 	}
+	if !strings.Contains(errb.String(), "hook-says-no") {
+		t.Fatalf("warning must carry git stderr detail, got %q", errb.String())
+	}
 	if strings.Contains(errb.String(), "pushed to origin") {
 		t.Fatalf("must not claim pushed, got %q", errb.String())
 	}
 }
 
-// FR-B7.1: no origin remote means no push attempt.
+// FR-B7.1: no origin remote means no push attempt and no warning.
 func TestRunNew_NoOriginNoPush(t *testing.T) {
 	root, _ := pushRepo(t, false)
-	g := &gitStub{out: map[string]string{}, err: map[string]error{
-		root + "|show-ref --verify --quiet refs/heads/namph/feat/my-task": errors.New("absent"),
-		root + "|remote get-url origin":                                   errors.New("no origin"),
-	}}
-	o := baseOpts(root, g)
-	_ = RunNew(o) // stub gives no real worktree; may abort later, push check happens only past that
-	for _, c := range g.seen {
-		if strings.HasPrefix(c, "push ") {
-			t.Fatalf("must not push without origin, saw %q", c)
-		}
+	o, errb := realOpts(root)
+	o.BaseOverride = "main" // origin/main cannot resolve without an origin
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if strings.Contains(errb.String(), "could not push") || strings.Contains(errb.String(), "pushed to origin") {
+		t.Fatalf("must not attempt a push without origin, got %q", errb.String())
 	}
 }
 
