@@ -610,10 +610,14 @@ test('FR-2.3: with track disabled nothing is written, not even a bind', async ($
   const world = trackWorld({ trackEnabled: false })
   const calls = engine(on, world)
   mock.clock(on)
-  await bindTo($, world, FIX_ID)
+  // With the feature off the CLI answers `track: off`, never an id.
+  world.toolCall = () => stdoutAnswer('track: off\n')
+  await $.tool.call({ tool: 'Bash', command: START_FIX })
+  world.toolCall = undefined
   await $.turn.complete(turnEnd(30000))
   await $.prompt.submit({ text: 'next' })
   expect(calls.write).toHaveLength(0)
+  expect(calls.toast).toEqual([])
 })
 
 test('SC-14: a Bash stdout of track: off binds nothing', async ($, on) => {
