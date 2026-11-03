@@ -1,0 +1,48 @@
+name: prune-releases
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: true
+        description: List what would be deleted without deleting anything
+permissions:
+  contents: write
+concurrency:
+  group: prune-releases
+  cancel-in-progress: false
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    env:
+      KEEP: '10'
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      # The tag that just released: brew/scoop manifests point at it, so it is never pruned.
+      CURRENT: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - name: delete releases and tags beyond the newest KEEP
+        run: |
+          set -euo pipefail
+          # Source is the releases only: a tag without a release may still be releasing, so it is never touched.
+          releases=$(gh release list --limit 1000 --json tagName --jq '.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+"))' | sort -rV)
+          others=$(echo "$releases" | { grep -vxF -- "${CURRENT:-}" || [ $? -eq 1 ]; })
+          # CURRENT takes one of the KEEP slots, so the total never exceeds KEEP.
+          if [ -n "${CURRENT:-}" ] && grep -qxF -- "$CURRENT" <<< "$releases"; then
+            keep=$(printf '%s\n%s\n' "$CURRENT" "$others" | head -n "$KEEP")
+          else
+            keep=$(echo "$others" | head -n "$KEEP")
+          fi
+          echo "Keeping:"; echo "$keep"
+          prune=$(echo "$releases" | { grep -vxF -f <(echo "$keep") || [ $? -eq 1 ]; })
+          if [ -z "$prune" ]; then echo "Nothing to prune"; exit 0; fi
+          echo "Pruning $(echo "$prune" | wc -l) release(s):"
+          while IFS= read -r tag; do
+            if [ "$DRY_RUN" = "true" ]; then echo "[dry-run] would delete $tag"
+            else echo "Deleting $tag"; gh release delete "$tag" --cleanup-tag --yes; fi
+          done <<< "$prune"
