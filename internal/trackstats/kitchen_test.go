@@ -275,7 +275,7 @@ func TestKitchenDeadLiveNotMalformed(t *testing.T) {
 func TestKitchenEmptyJSON(t *testing.T) {
 	r, _ := Compute(kInput(""))
 	b, _ := json.Marshal(r.Kitchen)
-	if string(b) != `{"cooked":[],"rollingBoil":[],"titleError":""}` {
+	if string(b) != `{"carried":[],"lastDay":null,"cooked":[],"rollingBoil":[],"titleError":""}` {
 		t.Fatalf("kitchen = %s", b)
 	}
 }
@@ -416,5 +416,90 @@ func TestKitchenBoilEmptyIDDoesNotMatchAnItem(t *testing.T) {
 	r, _ := Compute(in)
 	if len(r.Kitchen.RollingBoil) != 1 || r.Kitchen.RollingBoil[0].Brief != "x" {
 		t.Fatalf("rb = %+v", r.Kitchen.RollingBoil)
+	}
+}
+
+var mondayNow = time.Date(2026, 11, 3, 9, 0, 0, 0, time.FixedZone("ICT", 7*3600))
+
+func mInput(log string) Input {
+	return Input{Log: log, Today: "2026-11-03", Now: mondayNow, Sessions: map[string]string{}, Workspace: "/ws"}
+}
+
+func mAt(day, h, m int) time.Time {
+	return time.Date(2026, 11, day, h, m, 0, 0, mondayNow.Location())
+}
+
+func TestKitchenCarried(t *testing.T) { // SC-16
+	old, today, stale := kid("cook", 1), kid("cook", 2), kid("fix", 3)
+	log := lines(
+		row(mAt(2, 15, 0), "start", old, "cook", "zenify-kit", "M"),
+		row(mAt(3, 8, 0), "start", today, "cook", "zenify-kit", "M"),
+		row(time.Date(2026, 10, 20, 9, 0, 0, 0, mondayNow.Location()), "start", stale, "fix", "r", "S"),
+	)
+	in := mInput(log)
+	in.Sessions = map[string]string{
+		"S": lines(row(mAt(2, 15, 0), "cwd", "/ws/repos/zenify-kit/.worktrees/track-kitchen"), row(mAt(2, 15, 0), "bind", old)),
+	}
+	in.TabTitle = func(s string) (string, error) {
+		if s == "S" {
+			return "Dev track pane ship", nil
+		}
+		return "", nil
+	}
+	r, _ := Compute(in)
+	got := r.Kitchen.Carried
+	if len(got) != 2 {
+		t.Fatalf("carried = %+v", got)
+	}
+	if got[0].ID != stale || !got[0].Stale || got[0].Worktree != "" {
+		t.Fatalf("carried[0] = %+v", got[0])
+	}
+	c := got[1]
+	if c.ID != old || c.Stale || c.Worktree != "zenify-kit/track-kitchen" || c.Tab != "Dev track pane ship" || c.Session != "S" || c.Brief != "cook zenify-kit" || c.WallMin != 1080 {
+		t.Fatalf("carried[1] = %+v", c)
+	}
+}
+
+func TestKitchenLastDayIsLastWorkingDay(t *testing.T) { // SC-17
+	a, b, c := kid("cook", 1), kid("cook", 2), kid("cook", 3)
+	fri := func(h int) time.Time { return time.Date(2026, 10, 31, h, 0, 0, 0, mondayNow.Location()) }
+	log := lines(
+		row(fri(8), "start", a, "cook", "r", "M"),
+		row(fri(9), "end", a, "https://x/pr/1", "1", "0"),
+		row(fri(10), "start", b, "cook", "r", "M"),
+		row(fri(11), "end", b, "branch:x", "1", "0"),
+		row(fri(12), "start", c, "cook", "r", "M"),
+	)
+	r, _ := Compute(mInput(log))
+	want := LastDay{Date: "2026-10-31", Done: 2, PRsOpened: 1, LeftOpen: 1}
+	if r.Kitchen.LastDay == nil || *r.Kitchen.LastDay != want {
+		t.Fatalf("lastDay = %+v, want %+v", r.Kitchen.LastDay, want)
+	}
+}
+
+func TestKitchenNoCarryNoLastDay(t *testing.T) { // SC-18
+	a := kid("cook", 1)
+	log := lines(
+		row(mAt(3, 8, 0), "start", a, "cook", "r", "M"),
+		row(mAt(3, 8, 30), "end", a, "branch:x", "1", "0"),
+	)
+	r, _ := Compute(mInput(log))
+	if r.Kitchen.Carried == nil || len(r.Kitchen.Carried) != 0 || r.Kitchen.LastDay != nil {
+		t.Fatalf("carried = %#v lastDay = %+v", r.Kitchen.Carried, r.Kitchen.LastDay)
+	}
+}
+
+func TestRunningItemHasTab(t *testing.T) { // SC-15
+	a, b := kid("cook", 1), kid("cook", 2)
+	log := lines(
+		row(mAt(3, 8, 0), "start", a, "cook", "r", "M"),
+		row(mAt(3, 8, 0), "start", b, "cook", "r", "M"),
+	)
+	in := mInput(log)
+	in.Sessions = map[string]string{"S": lines(row(mAt(3, 8, 0), "bind", a))}
+	in.TabTitle = func(string) (string, error) { return "Dev track pane ship", nil }
+	r, _ := Compute(in)
+	if len(r.Running) != 2 || r.Running[0].Tab != "Dev track pane ship" || r.Running[1].Tab != "" {
+		t.Fatalf("running = %+v", r.Running)
 	}
 }

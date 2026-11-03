@@ -47,6 +47,7 @@ type Item struct {
 	Est       string              `json:"est"`
 	Session   string              `json:"session"`
 	Cwd       string              `json:"cwd"`
+	Tab       string              `json:"tab"`
 	Phase     string              `json:"phase"`
 	Status    string              `json:"status"`
 	StartedAt string              `json:"startedAt"`
@@ -245,7 +246,7 @@ type work struct {
 // Compute builds the stats and returns the new merged cache. Bad data is
 // counted in Malformed; a Merged error is reported in Today.MergedError.
 func Compute(in Input) (Result, map[string]string) {
-	res := Result{Rules: []string{}, Running: []Item{}, Backlog: Backlog{Items: []BacklogItem{}}, Kitchen: Kitchen{Cooked: []CookedItem{}, RollingBoil: []BoilItem{}}}
+	res := Result{Rules: []string{}, Running: []Item{}, Backlog: Backlog{Items: []BacklogItem{}}, Kitchen: Kitchen{Carried: []CarriedItem{}, Cooked: []CookedItem{}, RollingBoil: []BoilItem{}}}
 	res.Today = Today{Date: in.Today, Plans: map[string]int{}, Started: map[string]int{}, Ended: map[string]int{}, Done: map[string]int{}, Cancelled: map[string]int{}, RolledBack: map[string]int{}, Items: []Item{}}
 	res.Estimate = Estimate{ByKind: map[string]KindEstimate{}, PhaseShare: map[string]map[string]float64{}}
 	res.Quality = Quality{ByKind: map[string]KindQuality{}}

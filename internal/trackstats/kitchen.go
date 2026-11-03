@@ -53,11 +53,38 @@ type BoilItem struct {
 	Since   string `json:"since"`
 }
 
+// CarriedItem is an item started before today that has no end yet.
+type CarriedItem struct {
+	ID        string `json:"id"`
+	Brief     string `json:"brief"`
+	Kind      string `json:"kind"`
+	Repo      string `json:"repo"`
+	Phase     string `json:"phase"`
+	StartedAt string `json:"startedAt"`
+	WallMin   int    `json:"wallMin"`
+	Stale     bool   `json:"stale"`
+	Worktree  string `json:"worktree"`
+	Tab       string `json:"tab"`
+	Session   string `json:"session"`
+}
+
+// LastDay summarises the latest working day before today.
+type LastDay struct {
+	Date       string `json:"date"`
+	Done       int    `json:"done"`
+	Cancelled  int    `json:"cancelled"`
+	RolledBack int    `json:"rolledBack"`
+	PRsOpened  int    `json:"prsOpened"`
+	LeftOpen   int    `json:"leftOpen"`
+}
+
 // Kitchen is what was cooked today and which tabs wait for a person.
 type Kitchen struct {
-	Cooked      []CookedItem `json:"cooked"`
-	RollingBoil []BoilItem   `json:"rollingBoil"`
-	TitleError  string       `json:"titleError"`
+	Carried     []CarriedItem `json:"carried"`
+	LastDay     *LastDay      `json:"lastDay"`
+	Cooked      []CookedItem  `json:"cooked"`
+	RollingBoil []BoilItem    `json:"rollingBoil"`
+	TitleError  string        `json:"titleError"`
 }
 
 type liveDoc struct {
@@ -71,7 +98,7 @@ type liveDoc struct {
 // in state ask or permission (longest waiting first). It reads files and gh
 // only through the Input funcs; the first title error is kept in TitleError.
 func computeKitchen(in Input, logEv []Event, works map[string]*work, order []string, items []Item, issues []Issue, ghDown bool, res *Result) Kitchen {
-	k := Kitchen{Cooked: []CookedItem{}, RollingBoil: []BoilItem{}}
+	k := Kitchen{Carried: []CarriedItem{}, Cooked: []CookedItem{}, RollingBoil: []BoilItem{}}
 	backlogTitle := map[string]string{}
 	for _, e := range logEv {
 		if e.Type == "backlog" {
@@ -91,6 +118,24 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		if k.TitleError == "" {
 			k.TitleError = err.Error()
 		}
+	}
+	tabs := map[string]string{}
+	tabOf := func(session string) string {
+		if in.TabTitle == nil || session == "-" {
+			return ""
+		}
+		if t, ok := tabs[session]; ok {
+			return t
+		}
+		t, err := in.TabTitle(session)
+		if err != nil {
+			fail(fmt.Errorf("tab title %s: %w", session, err))
+		}
+		tabs[session] = t
+		return t
+	}
+	for i := range res.Running {
+		res.Running[i].Tab = tabOf(res.Running[i].Session)
 	}
 	itemOf := map[string]Item{}
 	for _, it := range items {
@@ -199,32 +244,124 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		} else {
 			b = cwdLabel(in.Workspace, d.Cwd)
 		}
-		var tab string
-		if in.TabTitle != nil {
-			var terr error
-			if tab, terr = in.TabTitle(lf.Session); terr != nil {
-				fail(fmt.Errorf("tab title %s: %w", lf.Session, terr))
-			}
-		}
-		waiting = append(waiting, boil{since, BoilItem{Session: lf.Session, Tab: tab, Brief: b, State: d.State, Since: d.Since}})
+		waiting = append(waiting, boil{since, BoilItem{Session: lf.Session, Tab: tabOf(lf.Session), Brief: b, State: d.State, Since: d.Since}})
 	}
 	sort.SliceStable(waiting, func(i, j int) bool { return waiting[i].at.Before(waiting[j].at) })
 	for _, w := range waiting {
 		k.RollingBoil = append(k.RollingBoil, w.item)
 	}
+	k.Carried = carriedItems(in, works, order, itemOf, brief, tabOf)
+	k.LastDay = lastDay(in, works, order, itemOf)
 	return k
+}
+
+// carriedItems lists the items started before today with no end, oldest start first.
+func carriedItems(in Input, works map[string]*work, order []string, itemOf map[string]Item, brief func(Item, bool) string, tabOf func(string) string) []CarriedItem {
+	type carried struct {
+		at   time.Time
+		item CarriedItem
+	}
+	var found []carried
+	for _, id := range order {
+		w := works[id]
+		if w.end != nil || w.start.In(in.Now.Location()).Format(dateLayout) >= in.Today {
+			continue
+		}
+		it := itemOf[id]
+		found = append(found, carried{w.start, CarriedItem{
+			ID: id, Brief: brief(it, false), Kind: it.Kind, Repo: it.Repo, Phase: it.Phase,
+			StartedAt: it.StartedAt, WallMin: it.WallMin, Stale: it.Status == "stale",
+			Worktree: worktreeLabel(in.Workspace, it.Cwd), Tab: tabOf(it.Session), Session: it.Session,
+		}})
+	}
+	sort.SliceStable(found, func(i, j int) bool { return found[i].at.Before(found[j].at) })
+	out := make([]CarriedItem, 0, len(found))
+	for _, c := range found {
+		out = append(out, c.item)
+	}
+	return out
+}
+
+// lastDay summarises the latest local day before today with a start or end row, nil when none.
+func lastDay(in Input, works map[string]*work, order []string, itemOf map[string]Item) *LastDay {
+	day := func(t time.Time) string { return t.In(in.Now.Location()).Format(dateLayout) }
+	date := ""
+	for _, id := range order {
+		w := works[id]
+		days := []string{day(w.start)}
+		if w.end != nil {
+			days = append(days, day(w.end.At))
+		}
+		for _, d := range days {
+			if d < in.Today && d > date {
+				date = d
+			}
+		}
+	}
+	if date == "" {
+		return nil
+	}
+	ld := &LastDay{Date: date}
+	firstEnd := map[string]time.Time{}
+	for _, id := range order {
+		w := works[id]
+		if w.end == nil || day(w.end.At) > date {
+			if day(w.start) <= date {
+				ld.LeftOpen++
+			}
+			continue
+		}
+		it := itemOf[id]
+		for _, p := range it.PRs {
+			if at, seen := firstEnd[p]; !seen || w.end.At.Before(at) {
+				firstEnd[p] = w.end.At
+			}
+		}
+		if day(w.end.At) != date {
+			continue
+		}
+		switch it.Status {
+		case "cancelled":
+			ld.Cancelled++
+		case "rollback":
+			ld.RolledBack++
+		default:
+			ld.Done++
+		}
+	}
+	for _, at := range firstEnd {
+		if day(at) == date {
+			ld.PRsOpened++
+		}
+	}
+	return ld
+}
+
+// worktreeLabel is "<repo>/<slug>" for a cwd under <ws>/repos/<repo>/.worktrees/<slug>, otherwise "".
+func worktreeLabel(ws, cwd string) string {
+	if ws == "" || cwd == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(filepath.Join(ws, "repos"), cwd)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return ""
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) >= 3 && parts[1] == ".worktrees" {
+		return parts[0] + "/" + parts[2]
+	}
+	return ""
 }
 
 // cwdLabel is "<repo>/<slug>" under <ws>/repos/<repo>/.worktrees/<slug>,
 // "<repo>" under <ws>/repos/<repo>, otherwise the last directory name.
 func cwdLabel(ws, cwd string) string {
+	if wt := worktreeLabel(ws, cwd); wt != "" {
+		return wt
+	}
 	if ws != "" {
 		if rel, err := filepath.Rel(filepath.Join(ws, "repos"), cwd); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-			parts := strings.Split(filepath.ToSlash(rel), "/")
-			if len(parts) >= 3 && parts[1] == ".worktrees" {
-				return parts[0] + "/" + parts[2]
-			}
-			return parts[0]
+			return strings.Split(filepath.ToSlash(rel), "/")[0]
 		}
 	}
 	return filepath.Base(cwd)
