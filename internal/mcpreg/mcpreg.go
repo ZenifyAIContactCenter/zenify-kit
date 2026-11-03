@@ -97,3 +97,77 @@ func parseGet(out string) (url, scope string) {
 	}
 	return url, scope
 }
+
+// StdioSpec names one kit-managed stdio MCP server (a local command).
+type StdioSpec struct {
+	Name, Command string
+	Args          []string
+}
+
+// BootstrapStdio registers a stdio server with Claude when absent. Ownership is
+// decided only by the `Type:`, `Command:` and `Args:` lines of `claude mcp get`:
+// the command also health-checks the server and may print `Status:`/`Issue:`
+// lines while still exiting 0, so neither those lines nor a 0 exit mean anything.
+// A user-scope stdio entry with the same Command but other Args is the kit's own
+// stale one and is replaced (RegLegacyDefault); anything else under the name is
+// the user's (RegCustom). The registration never carries an `env` key: the
+// server reads its credential itself.
+func BootstrapStdio(spec StdioSpec, run func(string, ...string) ([]byte, error)) (playwright.RegState, error) {
+	out, err := run("claude", "mcp", "get", spec.Name)
+	state := playwright.RegAbsent
+	switch {
+	case err == nil:
+		g := parseStdioGet(string(out))
+		switch {
+		case g.typ == "stdio" && g.command == spec.Command && g.args == strings.Join(spec.Args, " "):
+			return playwright.RegDesired, nil
+		case strings.HasPrefix(g.scope, "User config") && g.typ == "stdio" && g.command == spec.Command:
+			if _, err := run("claude", "mcp", "remove", spec.Name, "-s", "user"); err != nil {
+				return playwright.RegLegacyDefault, fmt.Errorf("remove stale %s MCP: %w", spec.Name, err)
+			}
+			state = playwright.RegLegacyDefault
+		default:
+			return playwright.RegCustom, nil
+		}
+	case !isNotFound(string(out)):
+		return playwright.RegAbsent, fmt.Errorf("claude mcp get %s: %w: %s", spec.Name, err, strings.TrimSpace(string(out)))
+	}
+	args := spec.Args
+	if args == nil {
+		args = []string{}
+	}
+	cfg, err := json.Marshal(struct {
+		Type    string   `json:"type"`
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
+	}{"stdio", spec.Command, args})
+	if err != nil {
+		return state, err
+	}
+	if _, err := run("claude", "mcp", "add-json", spec.Name, string(cfg), "-s", "user"); err != nil {
+		return state, fmt.Errorf("register %s MCP: %w", spec.Name, err)
+	}
+	return state, nil
+}
+
+type stdioGet struct{ scope, typ, command, args string }
+
+// parseStdioGet reads the `Scope:`, `Type:`, `Command:` and `Args:` lines;
+// every other line (Status, Issue, Environment, ...) is ignored.
+func parseStdioGet(out string) stdioGet {
+	var g stdioGet
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Scope:"):
+			g.scope = strings.TrimSpace(strings.TrimPrefix(line, "Scope:"))
+		case strings.HasPrefix(line, "Type:"):
+			g.typ = strings.TrimSpace(strings.TrimPrefix(line, "Type:"))
+		case strings.HasPrefix(line, "Command:"):
+			g.command = strings.TrimSpace(strings.TrimPrefix(line, "Command:"))
+		case strings.HasPrefix(line, "Args:"):
+			g.args = strings.TrimSpace(strings.TrimPrefix(line, "Args:"))
+		}
+	}
+	return g
+}

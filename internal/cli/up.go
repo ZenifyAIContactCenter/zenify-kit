@@ -328,6 +328,8 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	// same way, so the MCP URL and its token always name one broker.
 	bm, _ := brokerManifest("", "")
 	registerBrokerMCP(w, errW, bm, runClaudeBounded)
+	// Per-developer Plane MCP (stdio, the dev's own PAT, not via the broker). NON-FATAL.
+	registerPlaneMCP(w, errW, bm, func() bool { return planePATSet(os.Getenv, workspace) }, runClaudeBounded)
 
 	// gh-stack extension for stacked PRs (FR-6.1). NON-FATAL.
 	ensureGHStack(gh, w, errW)
@@ -899,6 +901,38 @@ func registerBrokerMCP(w, errW io.Writer, m *manifest.Manifest, run func(string,
 		case st == playwright.RegCustom:
 			_, _ = fmt.Fprintf(w, "zenify-%s: custom MCP registration kept\n", name)
 		}
+	}
+}
+
+// registerPlaneMCP registers the stdio `zenify-plane` MCP with Claude when the
+// manifest declares Plane, claude and uvx are on PATH and the developer has a
+// PAT. A missing PAT or uv only prints a hint; nothing here fails `zenify up`.
+func registerPlaneMCP(w, errW io.Writer, m *manifest.Manifest, patSet func() bool, run func(string, ...string) ([]byte, error)) {
+	if m == nil || m.Plane == nil {
+		return
+	}
+	if _, err := lookPath("claude"); err != nil {
+		return
+	}
+	if !patSet() {
+		_, _ = fmt.Fprintf(w, "zenify-plane: chưa có PLANE_API_KEY, chưa đăng ký. Tạo PAT ở %s → Profile Settings → Personal Access Tokens, chạy zenify env set PLANE_API_KEY trong terminal, rồi zenify up --apply\n", m.Plane.URL) //znf:allow-lang
+		return
+	}
+	if _, err := lookPath("uvx"); err != nil {
+		_, _ = fmt.Fprintln(w, "zenify-plane: cần uv (brew install uv), cài xong chạy zenify up --apply") //znf:allow-lang
+		return
+	}
+	st, err := mcpreg.BootstrapStdio(mcpreg.StdioSpec{Name: "zenify-plane", Command: "zenify", Args: []string{"plane-mcp"}}, run)
+	switch {
+	case err != nil:
+		_, _ = fmt.Fprintf(errW, "warning: zenify-plane MCP: %v (onboarding otherwise succeeded)\n", err)
+	case st == playwright.RegAbsent:
+		_, _ = fmt.Fprintln(w, "zenify-plane: registered MCP server (user scope)")
+		_, _ = fmt.Fprintln(w, "zenify-plane: lần đầu uvx tải Python, nếu /mcp báo lỗi kết nối thì mở lại Claude Code") //znf:allow-lang
+	case st == playwright.RegLegacyDefault:
+		_, _ = fmt.Fprintln(w, "zenify-plane: updated MCP server command (user scope)")
+	case st == playwright.RegCustom:
+		_, _ = fmt.Fprintln(w, "zenify-plane: custom MCP registration kept")
 	}
 }
 

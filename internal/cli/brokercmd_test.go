@@ -851,3 +851,55 @@ func TestBrokerHeaders_IncludesTaskID(t *testing.T) {
 		t.Fatalf("got=%v", got)
 	}
 }
+
+func TestRegisterPlaneMCP(t *testing.T) {
+	m := &manifest.Manifest{Plane: &manifest.Plane{URL: "https://plane.example", Workspace: "ws"}}
+	savedLook := lookPath
+	t.Cleanup(func() { lookPath = savedLook })
+	have := map[string]bool{"claude": true, "uvx": true}
+	lookPath = func(n string) (string, error) {
+		if have[n] {
+			return "/fake/" + n, nil
+		}
+		return "", errors.New("not found")
+	}
+	var adds []string
+	run := func(_ string, args ...string) ([]byte, error) {
+		if args[1] == "get" {
+			return []byte("No MCP server named " + args[2]), errors.New("exit status 1")
+		}
+		adds = append(adds, args[2]+" "+args[3])
+		return nil, nil
+	}
+	yes, no := func() bool { return true }, func() bool { return false }
+
+	var out, errOut bytes.Buffer
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 1 || !strings.HasPrefix(adds[0], "zenify-plane ") || errOut.Len() != 0 {
+		t.Fatalf("adds=%v err=%q", adds, errOut.String())
+	}
+
+	adds = nil
+	out.Reset()
+	registerPlaneMCP(&out, &errOut, m, no, run)
+	if len(adds) != 0 || !strings.Contains(out.String(), "zenify env set PLANE_API_KEY") || !strings.Contains(out.String(), "https://plane.example") || errOut.Len() != 0 {
+		t.Fatalf("no PAT: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+
+	out.Reset()
+	have["uvx"] = false
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 0 || !strings.Contains(out.String(), "brew install uv") || errOut.Len() != 0 {
+		t.Fatalf("no uvx: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+
+	out.Reset()
+	have["uvx"] = true
+	registerPlaneMCP(&out, &errOut, &manifest.Manifest{}, yes, run)
+	registerPlaneMCP(&out, &errOut, nil, yes, run)
+	have["claude"] = false
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 0 || out.Len() != 0 || errOut.Len() != 0 {
+		t.Fatalf("must be silent: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+}

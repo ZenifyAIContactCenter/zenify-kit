@@ -129,6 +129,21 @@ Khi manifest nhúng sẵn trong binary có `broker:` và lệnh `claude` có tr�
 
 Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn vào phiên.
 
+## Plane cho agent
+
+`zenify-plane` là MCP server kiểu stdio: Claude Code chạy `zenify plane-mcp` bằng PAT Plane của chính bạn, không đi qua broker. Agent đọc work item, cycle, module trực tiếp; mọi thao tác ghi luôn hỏi bạn trước (hook `plane-guard`).
+
+Cách bật:
+
+1. `brew install uv`.
+2. Tạo PAT ở https://plane.zenify.vn → Profile Settings → Personal Access Tokens → Add personal access token.
+3. Chạy `zenify env set PLANE_API_KEY` trong terminal của bạn (cần TTY, dán PAT khi được hỏi).
+4. Chạy `zenify up --apply`, rồi mở lại Claude Code. `/mcp` sẽ hiện `zenify-plane`.
+
+Lần đầu `uvx` tải Python nên chậm; nếu `/mcp` báo lỗi kết nối thì mở lại Claude Code. Thiếu PAT hoặc `uv`, `zenify up` chỉ in gợi ý và không đăng ký.
+
+Tên `zenify-plane` dành riêng cho kit, chỉ với `Type: stdio` và `Command: zenify`; server cùng tên kiểu khác thì kit giữ nguyên. Muốn gỡ: `claude mcp remove zenify-plane -s user`.
+
 ## Sandbox của Claude Code
 
 Khi sandbox Bash của Claude Code bật, lệnh chạy trong sandbox chỉ ra mạng qua proxy lọc của Claude Code, nên script nối thẳng tới MongoDB, MySQL hay Redis không kết nối được. Vì vậy `zenify up` thêm `zenify db-read *`, `zenify redis-read *` và `zenify data run *` vào cả `sandbox.excludedCommands` và `permissions.allow`. Lệnh gọi trần (một lệnh, không pipe, không redirect, không `cd`, không `$(…)`) chạy ngoài sandbox, có mạng thẳng và không hỏi quyền. Lệnh ghép, ví dụ có redirect ra file, `cd` hay `$(…)`, vẫn nằm trong sandbox và không nối được, nên hãy chạy lại dạng trần, với script ghi bằng đường dẫn tuyệt đối.
