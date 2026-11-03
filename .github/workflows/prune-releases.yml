@@ -23,16 +23,24 @@ jobs:
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
+      # The tag that just released: brew/scoop manifests point at it, so it is never pruned.
+      CURRENT: ${{ github.event.workflow_run.head_branch }}
     steps:
       - name: delete releases and tags beyond the newest KEEP
         run: |
           set -euo pipefail
-          tags=$(gh release list --limit 1000 --json tagName --jq '.[].tagName' | sort -rV)
+          # Source is the git tags, not the releases: a tag whose release run failed has no release.
+          releases=$(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+          tags=$(gh api --paginate "repos/$GH_REPO/tags" --jq '.[].name | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+"))' | sort -rV)
           echo "Keeping:"; echo "$tags" | head -n "$KEEP"
-          prune=$(echo "$tags" | tail -n +"$((KEEP + 1))")
+          prune=$(echo "$tags" | tail -n +"$((KEEP + 1))" | { grep -vxF -- "${CURRENT:-}" || [ $? -eq 1 ]; })
           if [ -z "$prune" ]; then echo "Nothing to prune"; exit 0; fi
-          echo "Pruning $(echo "$prune" | wc -l) release(s):"
+          echo "Pruning $(echo "$prune" | wc -l) tag(s):"
           while IFS= read -r tag; do
             if [ "$DRY_RUN" = "true" ]; then echo "[dry-run] would delete $tag"
-            else echo "Deleting $tag"; gh release delete "$tag" --cleanup-tag --yes; fi
+            elif grep -qxF -- "$tag" <<< "$releases"; then
+              echo "Deleting release + tag $tag"; gh release delete "$tag" --cleanup-tag --yes
+            else
+              echo "Deleting tag $tag (no release)"; gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$tag"
+            fi
           done <<< "$prune"
