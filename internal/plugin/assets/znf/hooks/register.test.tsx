@@ -955,6 +955,45 @@ test('FR-2.3: track turned off while an ask is open writes nothing when the tool
   expect(calls.write.filter(w => w.path === PULSE)).toHaveLength(1)
 })
 
+const withMtimes = (pulse: number) => ({ [LOG_MD]: 1, [SESSIONS_DIR]: 1, [PULSE]: pulse })
+
+test('FR-2.3: track turned off during an ask and back on rewrites the stale ask as busy', async ($, on) => {
+  const world: World = { mtimes: withMtimes(1) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  world.toolCall = async () => {
+    // The stats run reports track off while the ask is open.
+    world.stats = ok(statsJson({ enabled: false }))
+    world.mtimes = withMtimes(2)
+    await clock.advance(2000)
+    return { result: {} }
+  }
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(liveDoc(world).state).toBe('ask')
+  world.stats = undefined
+  world.mtimes = withMtimes(3)
+  await clock.advance(2000)
+  await clock.settle()
+  expect(liveDoc(world).state).toBe('busy')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy'])
+})
+
+test('FR-2.3: turning track back on writes nothing for a tab that never wrote a live file', async ($, on) => {
+  const world: World = { mtimes: withMtimes(1) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  world.stats = ok(statsJson({ enabled: false }))
+  world.mtimes = withMtimes(2)
+  await clock.advance(2000)
+  world.stats = undefined
+  world.mtimes = withMtimes(3)
+  await clock.advance(2000)
+  await clock.settle()
+  expect(liveWrites(calls)).toEqual([])
+})
+
 test('SC-13: track off, AskUserQuestion writes no live file or pulse', async ($, on) => {
   const world = trackWorld({ trackEnabled: false })
   const calls = engine(on, world)

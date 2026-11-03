@@ -156,7 +156,11 @@ async function beat($: $): Promise<void> {
 
 // Called with `enabled` of every successful `zenify track stats --json` run.
 export async function setTrackEnabled($: $, on: boolean): Promise<void> {
+  const wasOn = await read($, enabled)
   await update($, enabled, () => on)
+  // Turned back on: a state skipped while off (an ask answered then) is stale in live/<session>.json.
+  // Only a tab that has written one is rewritten; a tab that never asked gets no file.
+  if (on && !wasOn && liveState !== undefined) void syncLive($).catch(timingError($))
 }
 
 // FR-2.3: whether track records; a failed read is toasted and counts as off.
