@@ -440,6 +440,7 @@ func TestKitchenCarried(t *testing.T) { // SC-16
 	in.Sessions = map[string]string{
 		"S": lines(row(mAt(2, 15, 0), "cwd", "/ws/repos/zenify-kit/.worktrees/track-kitchen"), row(mAt(2, 15, 0), "bind", old)),
 	}
+	in.Beats = map[string]time.Time{"S": mondayNow.Add(-5 * time.Second)}
 	in.TabTitle = func(s string) (string, error) {
 		if s == "S" {
 			return "Dev track pane ship", nil
@@ -451,7 +452,8 @@ func TestKitchenCarried(t *testing.T) { // SC-16
 	if len(got) != 2 {
 		t.Fatalf("carried = %+v", got)
 	}
-	if got[0].ID != stale || !got[0].Stale || got[0].Worktree != "" {
+	// An unbound item's session is "-" in the log and "" in the JSON.
+	if got[0].ID != stale || !got[0].Stale || got[0].Worktree != "" || got[0].Session != "" {
 		t.Fatalf("carried[0] = %+v", got[0])
 	}
 	c := got[1]
@@ -499,17 +501,21 @@ func TestKitchenNoCarryNoLastDay(t *testing.T) { // SC-18
 }
 
 func TestRunningItemHasTab(t *testing.T) { // SC-15
-	a, b, c := kid("cook", 1), kid("cook", 2), kid("fix", 3)
+	a, b, c, d := kid("cook", 1), kid("cook", 2), kid("fix", 3), kid("cook", 4)
 	log := lines(
 		row(mAt(3, 8, 0), "start", a, "cook", "r", "M"),
 		row(mAt(3, 8, 0), "start", b, "cook", "r", "M"),
 		row(time.Date(2026, 10, 20, 9, 0, 0, 0, mondayNow.Location()), "start", c, "fix", "r", "S"),
+		row(mAt(3, 8, 0), "start", d, "cook", "r", "M"),
 	)
 	in := mInput(log)
 	in.Sessions = map[string]string{
 		"S": lines(row(mAt(3, 8, 0), "bind", a)),
 		"T": lines(row(mAt(3, 8, 0), "bind", c)),
+		"U": lines(row(mAt(3, 8, 0), "bind", d)),
 	}
+	// U's beat is past the live TTL: its tab is closed, so its transcript is not read.
+	in.Beats = map[string]time.Time{"S": mondayNow.Add(-5 * time.Second), "T": mondayNow.Add(-5 * time.Second), "U": mondayNow.Add(-time.Minute)}
 	in.TabTitle = func(s string) (string, error) { return "tab " + s, nil }
 	r, _ := Compute(in)
 	tabs := map[string]string{}
@@ -517,7 +523,7 @@ func TestRunningItemHasTab(t *testing.T) { // SC-15
 	for _, it := range r.Running {
 		tabs[it.ID], status[it.ID] = it.Tab, it.Status
 	}
-	if len(r.Running) != 3 || tabs[a] != "tab S" || tabs[b] != "" || tabs[c] != "tab T" || status[c] != "stale" {
+	if len(r.Running) != 4 || tabs[a] != "tab S" || tabs[b] != "" || tabs[c] != "tab T" || status[c] != "stale" || tabs[d] != "" {
 		t.Fatalf("running = %+v", r.Running)
 	}
 }

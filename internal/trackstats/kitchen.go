@@ -148,8 +148,16 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		tabs[session] = t
 		return t
 	}
+	// An item's tab is read only while its session still beats: a closed tab has no name to show,
+	// and each lookup reads up to 1 MiB of transcript.
+	liveTab := func(session string) string {
+		if b, ok := in.Beats[session]; !ok || in.Now.Sub(b) > liveTTL {
+			return ""
+		}
+		return tabOf(session)
+	}
 	for i := range res.Running {
-		res.Running[i].Tab = tabOf(res.Running[i].Session)
+		res.Running[i].Tab = liveTab(res.Running[i].Session)
 	}
 	itemOf := map[string]Item{}
 	for _, it := range items {
@@ -265,7 +273,7 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 			b = cwdLabel(in.Workspace, d.Cwd)
 		}
 		if d.State == "busy" {
-			cooking = append(cooking, cook{since, CookingItem{Session: lf.Session, Tab: tabOf(lf.Session), Brief: b, ID: it.ID, Kind: it.Kind, Phase: it.Phase, Since: d.Since}})
+			cooking = append(cooking, cook{since, CookingItem{Session: lf.Session, Tab: tabOf(lf.Session), Brief: b, ID: it.ID, Kind: it.Kind, Phase: none(it.Phase), Since: d.Since}})
 			continue
 		}
 		waiting = append(waiting, boil{since, BoilItem{Session: lf.Session, Tab: tabOf(lf.Session), Brief: b, State: d.State, Since: d.Since}})
@@ -278,9 +286,17 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 	for _, c := range cooking {
 		k.Cooking = append(k.Cooking, c.item)
 	}
-	k.Carried = carriedItems(in, works, order, itemOf, brief, tabOf)
+	k.Carried = carriedItems(in, works, order, itemOf, brief, liveTab)
 	k.LastDay = lastDay(in, works, order, itemOf)
 	return k
+}
+
+// none turns the log's "-" (no phase yet, no bound session) into "", the JSON's one "absent" value.
+func none(v string) string {
+	if v == "-" {
+		return ""
+	}
+	return v
 }
 
 // carriedItems lists the items started before today with no end, oldest start first.
@@ -297,9 +313,9 @@ func carriedItems(in Input, works map[string]*work, order []string, itemOf map[s
 		}
 		it := itemOf[id]
 		found = append(found, carried{w.start, CarriedItem{
-			ID: id, Brief: brief(it, false), Kind: it.Kind, Repo: it.Repo, Phase: it.Phase,
+			ID: id, Brief: brief(it, false), Kind: it.Kind, Repo: it.Repo, Phase: none(it.Phase),
 			StartedAt: it.StartedAt, WallMin: it.WallMin, Stale: it.Status == "stale",
-			Worktree: worktreeLabel(in.Workspace, it.Cwd), Tab: tabOf(it.Session), Session: it.Session,
+			Worktree: worktreeLabel(in.Workspace, it.Cwd), Tab: tabOf(it.Session), Session: none(it.Session),
 		}})
 	}
 	sort.SliceStable(found, func(i, j int) bool { return found[i].at.Before(found[j].at) })

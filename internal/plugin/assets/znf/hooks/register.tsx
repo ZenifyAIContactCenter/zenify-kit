@@ -308,9 +308,10 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
       ].join('|')
       if (!force && key === lastKey) {
         const k = (await read($, stats))?.data?.kitchen
-        // A live file can expire with no pulse: re-run while any tab waits or cooks.
-        const isLive = (k?.rollingBoil?.length ?? 0) + (k?.cooking?.length ?? 0) > 0
-        if (!isLive || now - lastRunAt < ROLLING_RERUN_MS) return
+        // A live file can expire with no pulse: re-run every 10s while a tab waits on a person, and
+        // every live TTL (30s) while tabs only cook, since a cooking beat expires no sooner.
+        const every = (k?.rollingBoil?.length ?? 0) > 0 ? ROLLING_RERUN_MS : (k?.cooking?.length ?? 0) > 0 ? LIVE_TTL_MS : 0
+        if (every === 0 || now - lastRunAt < every) return
       }
       lastKey = key
       lastRunAt = now
@@ -343,7 +344,8 @@ const statsError = ($: $) => (err: unknown) => $.ui.toast(`${COPY.toast}${messag
 
 // FR-12.3: the Cooking spinner turns with the tick, so the pane is drawn again while a tab cooks.
 async function spinCooking($: $): Promise<void> {
-  if (((await read($, stats))?.data?.kitchen?.cooking?.length ?? 0) > 0 && (await isOpen($))) $.ui.invalidate('ui.render')
+  // Only the Kitchen tab shows a spinner.
+  if (((await read($, stats))?.data?.kitchen?.cooking?.length ?? 0) > 0 && (await read($, tab)) === 'kitchen' && (await isOpen($))) $.ui.invalidate('ui.render')
 }
 
 function stopTimers(): void {

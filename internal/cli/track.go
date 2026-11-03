@@ -236,7 +236,7 @@ func trackIDStarted(logPath, id string) (bool, error) {
 func newTrackStartCmd(ws *string) *cobra.Command {
 	var kind, repo, est, from string
 	c := &cobra.Command{
-		Use:   "start --kind cook|fix|hotfix --repo <repo> --est S|M|L|- [--from <bid|issue url>]",
+		Use:   "start --kind cook|fix|hotfix --repo <repo> --est S|M|L|- [--from <bid|issue url|sdd id>]",
 		Short: "Mở một lượt theo dõi và in id của nó", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

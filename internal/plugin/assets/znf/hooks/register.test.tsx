@@ -1267,7 +1267,7 @@ test('SC-21: the open pane redraws on every watch tick while a tab is cooking, s
   expect(first[0]?.[2]).not.toBe(first[1]?.[2])
 })
 
-test('a cooking tab whose beat expired drops out on the 10s re-run with no pulse change', async ($, on) => {
+test('a cooking tab whose beat expired drops out on the 30s re-run with no pulse change', async ($, on) => {
   const cooking = [{ session: OTHER, tab: 'T', brief: 'x', id: '', kind: '', phase: '', since: T0_ISO }]
   const kitchen = { carried: [], lastDay: null, cooked: [], rollingBoil: [], cooking, titleError: '' }
   const world: World = { stats: ok(statsJson({ kitchen })) }
@@ -1275,12 +1275,13 @@ test('a cooking tab whose beat expired drops out on the 10s re-run with no pulse
   const clock = mock.clock(on, { now: T0 })
   await start($, clock)
   expect(statsRuns(calls)).toHaveLength(1)
-  await clock.advance(8000)
+  // Only cooking, no tab waiting: a beat expires after the 30s live TTL, so no 10s re-run.
+  await clock.advance(28000)
   expect(statsRuns(calls)).toHaveLength(1)
   world.stats = ok(statsJson({ kitchen: { ...kitchen, cooking: [] } }))
   await clock.advance(2000)
   expect(statsRuns(calls)).toHaveLength(2)
-  await clock.advance(20000)
+  await clock.advance(60000)
   expect(statsRuns(calls)).toHaveLength(2)
 })
 

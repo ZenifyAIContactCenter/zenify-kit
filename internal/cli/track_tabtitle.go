@@ -95,6 +95,9 @@ func findTranscript(projects, session string) (string, error) {
 		}
 		return "", err
 	}
+	// One unreadable project dir must not hide the transcript in another: the first error is
+	// returned only when no dir holds it.
+	var first error
 	for _, d := range dirs {
 		if !d.IsDir() && d.Type()&os.ModeSymlink == 0 {
 			continue
@@ -102,11 +105,11 @@ func findTranscript(projects, session string) (string, error) {
 		p := filepath.Join(projects, d.Name(), session+".jsonl")
 		if _, err := os.Stat(p); err == nil {
 			return p, nil
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return "", err
+		} else if !errors.Is(err, os.ErrNotExist) && first == nil {
+			first = err
 		}
 	}
-	return "", nil
+	return "", first
 }
 
 // cleanTitle drops control characters and trims the spaces.

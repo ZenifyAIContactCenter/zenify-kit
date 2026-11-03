@@ -71,6 +71,27 @@ func TestReadTabTitleUnreadableProject(t *testing.T) {
 	}
 }
 
+func TestReadTabTitleSkipsUnreadableOtherProject(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 0 does not block reads here")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// "-a" sorts before "-w-app", so the unreadable dir is visited first.
+	bad := filepath.Join(home, ".claude", "projects", "-a")
+	if err := os.MkdirAll(bad, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	writeTranscript(t, home, "S1", ai("found"))
+	if err := os.Chmod(bad, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(bad, 0o750) })
+	if got, err := readTabTitle("S1"); err != nil || got != "found" {
+		t.Fatalf("got %q err %v", got, err)
+	}
+}
+
 func TestReadTabTitleMissingFile(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	if got, err := readTabTitle("nope"); err != nil || got != "" {

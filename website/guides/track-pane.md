@@ -31,8 +31,8 @@ Status line luôn hiện, kể cả khi pane đóng. Toàn bộ chữ trên pane
   - tab này không có id mở và còn việc làm dở từ các ngày trước: `Tip: N items carried over — type "hey claude continue"`
   - tab này không có id mở và Backlog còn việc: `Tip: N items in Backlog — type "hey claude next task"`
   - có id mở, chưa có estimate và đã chạy từ 5 phút: `Tip: no estimate yet — type "hey claude estimate this"`
-  - có id mở, đã vượt ngưỡng của size est: `Tip: over est M (95m/90m) — split the work or re-estimate`
-  - có PR mở chưa merge hôm nay: `Tip: N PRs waiting to merge — type "hey claude check PR"`
+  - có id mở, đã vượt ngưỡng của size est: `Tip: over est M (50m/45m) — split the work or re-estimate`
+  - còn PR đã mở (bất kỳ ngày nào) chưa merge: `Tip: N PRs waiting to merge — type "hey claude check PR"`
 
 Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track error: <nguyên nhân>`.
 
@@ -63,16 +63,16 @@ Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall ti
 Tab `Kitchen` đọc cùng số liệu `zenify track stats --json` như các tab khác, thêm hai phần lấy từ trạng thái sống của từng tab Claude Code.
 
 - Mỗi session có file `<workspace>/.zenify/track/live/<session>.json`, ghi trạng thái `ask`, `permission`, `busy` hoặc `idle`, cùng file `.beat` cạnh nó. Plugin ghi lại `.beat` mỗi 10 giây suốt session khi track bật; `.beat` quá 30 giây thì file bị coi là hết hạn và tab đó rời `Rolling boil` và `Cooking`.
-- Plugin chạm file `<workspace>/.zenify/track/pulse` mỗi khi trạng thái sống của một tab đổi và mỗi khi nó ghi một dòng vào session log của mình. Pane theo dõi `pulse` (cùng với sổ và log session) nên cập nhật ngay, và khi còn tab trong `Rolling boil` hoặc `Cooking` thì chạy lại số liệu mỗi 10 giây để thời gian chờ chạy và tab đã tắt rời khỏi hai phần đó.
+- Plugin chạm file `<workspace>/.zenify/track/pulse` mỗi khi trạng thái sống của một tab đổi và mỗi khi nó ghi một dòng vào session log của mình. Pane theo dõi `pulse` (cùng với sổ và log session) nên cập nhật ngay, và chạy lại số liệu mỗi 10 giây khi còn tab trong `Rolling boil`, mỗi 30 giây khi chỉ còn tab trong `Cooking`, để thời gian chờ chạy và tab đã tắt rời khỏi hai phần đó.
 - `Rolling boil` chỉ gồm hai trường hợp: tab đang hỏi bạn bằng `AskUserQuestion` và tab đang chờ bạn cấp quyền. Lời gọi tool bình thường không ghi `live/` và không chạm `pulse`; chỉ prompt (`busy`) và lúc main loop kết thúc một lượt (`idle`) mới đổi trạng thái.
-- `🥘 Cooking` nằm giữa `📌 Carried over` và `🍳 Cooked`: các tab đang làm việc ngay lúc này (state `busy`, `.beat` còn sống), tab làm lâu nhất lên đầu. Mỗi tab hai dòng: `- <spinner> <Nm|Nh> <tab hoặc brief>[ · <kind> · <phase>]` rồi dòng mờ `<8 ký tự session>[ · <id>]`. Spinner quay theo tick 2 giây, mỗi dòng lệch một khung. Tab ngồi chờ prompt (`idle`) không hiện; không có tab nào thì hiện `no tab is cooking`. Plugin cũ chưa ghi `idle` thì tab chờ prompt vẫn hiện là Cooking cho tới khi plugin của tab đó được cập nhật.
+- `🥘 Cooking` nằm giữa `📌 Carried over` và `🍳 Cooked`: các tab đang làm việc ngay lúc này (state `busy`, `.beat` còn sống), tab làm lâu nhất lên đầu. Mỗi tab hai dòng: `- <spinner> <Ns|Nm|Nh> <tab hoặc brief>[ · <kind> · <phase>]` rồi dòng mờ `<8 ký tự session>[ · <id>]`. Spinner quay theo tick 2 giây, mỗi dòng lệch một khung. Tab ngồi chờ prompt (`idle`) không hiện; không có tab nào thì hiện `no tab is cooking`. Plugin cũ chưa ghi `idle` thì tab chờ prompt vẫn hiện là Cooking cho tới khi plugin của tab đó được cập nhật.
 - Mỗi mục trong `Rolling boil` có hai dòng: dòng đầu là icon (❓ đang hỏi, 🔐 chờ quyền), thời gian chờ rồi tên tab Claude Code của session đó (đúng chữ hiện trên tab terminal, lấy từ tiêu đề trong transcript; không có thì dùng `<brief>`); dòng dưới (mờ) là trạng thái (đang hỏi hoặc chờ quyền), `<brief>` và 8 ký tự đầu của session id.
 - `<brief>` chọn theo thứ tự: tiêu đề plan, tiêu đề mục backlog, tiêu đề PR, cuối cùng là `<kind> <repo>`.
 - `zenify track end --ledger <ledger file>` đếm các dòng `Task <N>: complete` và lưu đường dẫn plan ở dòng đầu của ledger (`# SDD ledger — plan: <path>`) vào dòng `end` (bốn trường) để `Kitchen` lấy được tiêu đề plan. Đường dẫn plan chứa ` · ` hoặc xuống dòng thì dòng `end` giữ ba trường và lệnh cảnh báo trên stderr. File ledger không đọc được thì lệnh cảnh báo trên stderr và vẫn ghi dòng `end` ba trường với 0 task. Đường dẫn plan được lưu nguyên văn; đường dẫn tương đối được đọc tương đối với workspace.
 
 ## Thời gian wall và thời gian agent
 
-Thời gian wall là đồng hồ thật từ lúc việc bắt đầu; status line hiện nó đầu tiên (`<wall>m/<est>`). Thời gian agent (`agent <n>m`) là phần Claude thực sự làm. Phần còn lại là thời gian chờ: chờ trả lời câu hỏi (`hỏi`), chờ cấp quyền (`quyền`) hoặc phiên để rảnh (`rảnh`), hiện ở status line là `wait <n>m`. Est được so với thời gian wall, cùng thang S/M/L. Thời gian agent được tách theo giai đoạn của task (tab Estimate); token vẫn được ghi trong JSON nhưng pane không hiện.
+Thời gian wall là đồng hồ thật từ lúc việc bắt đầu; status line hiện nó đầu tiên (`<wall>m/<est>`). Thời gian agent (`agent <n>m`) là phần Claude thực sự làm. Phần còn lại là thời gian chờ: chờ trả lời câu hỏi (`ask`), chờ cấp quyền (`permission`) hoặc phiên để rảnh (`idle`), hiện ở status line là `wait <n>m`. Est được so với thời gian wall, cùng thang S/M/L. Thời gian agent được tách theo giai đoạn của task (tab Estimate); token vẫn được ghi trong JSON nhưng pane không hiện.
 
 ## Chất lượng ship, fix và CI
 

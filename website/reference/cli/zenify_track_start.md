@@ -11,7 +11,7 @@ Mở một lượt theo dõi và in id `track: <id>`.
 ## Cú pháp
 
 ```text
-zenify track start --kind cook|fix|hotfix --repo <repo> --est S|M|L|- [--from <bid|issue url>] [flags]
+zenify track start --kind cook|fix|hotfix --repo <repo> --est S|M|L|- [--from <bid|issue url|sdd id>] [flags]
 ```
 
 ## Khi nào dùng
