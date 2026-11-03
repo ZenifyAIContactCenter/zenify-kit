@@ -164,3 +164,77 @@ func TestBacklogMalformedAndOnboard(t *testing.T) {
 		t.Fatalf("onboarded=%v malformed=%d", r.Onboarded, r.Malformed)
 	}
 }
+
+// SC-7
+func TestBacklogSDDHiddenByFrom(t *testing.T) {
+	id := cid("cook", 1)
+	in := base(lines(row(now, "start", id, "cook", "kit", "M", sddID)))
+	in.SDD = []SDDItem{
+		{ID: sddID, Repo: "kit", Title: "a", ModTime: now},
+		{ID: "repos/kit/.znf/sdd/p/progress.md:7", Repo: "kit", Title: "b", ModTime: now},
+	}
+	r, _ := Compute(in)
+	if r.Malformed != 0 || len(r.Backlog.Items) != 1 || r.Backlog.Items[0].Title != "b" {
+		t.Fatalf("malformed=%d items=%+v", r.Malformed, r.Backlog.Items)
+	}
+}
+
+// SC-8
+func TestBacklogStaleHiddenWhileSessionAlive(t *testing.T) {
+	id := cid("cook", 1)
+	const sess = "sess-1"
+	log := lines(row(now.Add(-8*24*time.Hour), "start", id, "cook", "kit", "L"))
+	mk := func(beats map[string]time.Time) Input {
+		in := base(log)
+		in.Sessions = map[string]string{sess: row(now.Add(-8*24*time.Hour), "bind", id) + "\n"}
+		in.Beats = beats
+		return in
+	}
+	for _, tc := range []struct {
+		name  string
+		beats map[string]time.Time
+		want  int
+	}{
+		{"fresh beat", map[string]time.Time{sess: now.Add(-10 * time.Second)}, 0},
+		{"old beat", map[string]time.Time{sess: now.Add(-60 * time.Second)}, 1},
+		{"no beat", nil, 1},
+	} {
+		r, _ := Compute(mk(tc.beats))
+		if got := sources(r)["stale"]; got != tc.want {
+			t.Errorf("%s: stale items = %d, want %d (%+v)", tc.name, got, tc.want, r.Backlog.Items)
+		}
+	}
+}
+
+// SC-9
+func TestBacklogSortAndDedupe(t *testing.T) {
+	mk := func(n int, est string, age int) string {
+		return row(now.Add(-time.Duration(age)*24*time.Hour), "backlog", "b-261030-"+string(rune('a'+n))+"aaa", "kit", est, "-", "t"+string(rune('a'+n)))
+	}
+	in := base(lines(
+		mk(0, "-", 9),
+		mk(1, "L", 1),
+		mk(2, "S", 2),
+		mk(3, "M", 3),
+		mk(4, "S", 5),
+	))
+	r, _ := Compute(in)
+	var got []string
+	for _, it := range r.Backlog.Items {
+		got = append(got, it.Title)
+	}
+	// S (older first), M, L, then "-".
+	want := []string{"te", "tc", "td", "tb", "ta"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("order = %v, want %v", got, want)
+	}
+
+	in = base(lines(backlogRow(now, bidA, "Fix login")))
+	in.GitHub = func() ([]Issue, error) {
+		return []Issue{{URL: issue1, Repo: "r", Title: "fix  Login", CreatedAt: now}}, nil
+	}
+	r, _ = Compute(in)
+	if len(r.Backlog.Items) != 1 || r.Backlog.Items[0].Source != "github" {
+		t.Fatalf("items = %+v", r.Backlog.Items)
+	}
+}

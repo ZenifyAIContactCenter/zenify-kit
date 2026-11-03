@@ -181,6 +181,148 @@ func TestTrackStart_FromRules(t *testing.T) {
 	}
 }
 
+func startFrom(t *testing.T, ws, from string) (string, error) {
+	t.Helper()
+	return runTrack(t, ws, "start", "--kind", "cook", "--repo", "kit", "--from", from)
+}
+
+// FR-4.1, FR-4.4: a source item is taken once; an ended item does not come back.
+func TestTrackStart_FromTaken(t *testing.T) {
+	const from = "b-261103-0001"
+	ws := trackWS(t, true)
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The backlog row for from must exist: a start only accepts a known bid.
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte("2026-11-03T01:00:00Z · backlog · "+from+" · kit · M · - · item\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := startFrom(t, ws, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := trackOutRe.FindStringSubmatch(out)[1]
+	if err := os.WriteFile(filepath.Join(dir, "sessions", "abcdef0123456789.log"), []byte("2026-11-03T01:01:00Z · bind · "+a+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	before := trackLog(t, ws)
+	_, err = startFrom(t, ws, from)
+	if err == nil || !strings.Contains(err.Error(), "track: "+from+" is taken by "+a+" (session abcdef01)") {
+		t.Fatalf("running: err = %v", err)
+	}
+	if trackLog(t, ws) != before {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+
+	if _, err := runTrack(t, ws, "end", a, "--cancelled", "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	before = trackLog(t, ws)
+	_, err = startFrom(t, ws, from)
+	if err == nil || !strings.Contains(err.Error(), "track: "+from+" was taken by "+a+" (ended)") {
+		t.Fatalf("ended: err = %v", err)
+	}
+	if trackLog(t, ws) != before {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+}
+
+// FR-4.1: no bind in any session log prints "session -".
+func TestTrackStart_FromTakenNoSession(t *testing.T) {
+	ws := trackWS(t, true)
+	const from = "https://github.com/o/r/issues/9"
+	out, err := startFrom(t, ws, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := trackOutRe.FindStringSubmatch(out)[1]
+	_, err = startFrom(t, ws, from)
+	if err == nil || !strings.Contains(err.Error(), from+" is taken by "+a+" (session -)") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// FR-4.2: an SDD id is a valid --from and needs no backlog row.
+func TestTrackStart_FromSDD(t *testing.T) {
+	ws := trackWS(t, true)
+	if _, err := startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:12"); err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`(?m) · start · cook-\d{6}-[0-9a-f]{4} · cook · kit · - · repos/r/\.znf/sdd/p/progress\.md:12\n`).MatchString(trackLog(t, ws)) {
+		t.Fatalf("log = %q", trackLog(t, ws))
+	}
+	before := trackLog(t, ws)
+	if _, err := startFrom(t, ws, "repos/../x"); err == nil {
+		t.Fatal("repos/../x must fail")
+	}
+	if trackLog(t, ws) != before {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+}
+
+// FR-4.1: eight concurrent starts on one --from, exactly one wins.
+func TestTrackStart_FromConcurrent(t *testing.T) {
+	ws := trackWS(t, true)
+	const from = "repos/r/.znf/sdd/p/progress.md:2"
+	var wg sync.WaitGroup
+	var ok, taken atomic.Int32
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Called below the cobra layer: NewRootCmd sets a package global per run.
+			_, err := runTrackStart(filepath.Join(ws, ".zenify", "track", "log.md"), "cook", "kit", "-", from)
+			switch {
+			case err == nil:
+				ok.Add(1)
+			case strings.Contains(err.Error(), "is taken by"):
+				taken.Add(1)
+			default:
+				t.Errorf("unexpected error: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if ok.Load() != 1 || taken.Load() != 7 {
+		t.Fatalf("ok=%d taken=%d", ok.Load(), taken.Load())
+	}
+	if n := strings.Count(trackLog(t, ws), " · start · "); n != 1 {
+		t.Fatalf("start rows = %d in %q", n, trackLog(t, ws))
+	}
+}
+
+// Task 2 review focus 5: a beat without a live json still hides a stale item.
+func TestTrackStats_StaleHiddenByBeatOnly(t *testing.T) {
+	noGh(t)
+	ws := trackWS(t, true)
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "live"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().UTC().Add(-8 * 24 * time.Hour).Format(time.RFC3339)
+	const id = "cook-261020-0001"
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(old+" · start · "+id+" · cook · kit · M\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sessions", "sess1.log"), []byte(old+" · bind · "+id+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if s := trackBacklogStats(t, ws); len(s.Backlog.Items) != 1 {
+		t.Fatalf("no beat: items = %+v", s.Backlog.Items)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "live", "sess1.beat"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if s := trackBacklogStats(t, ws); len(s.Backlog.Items) != 0 {
+		t.Fatalf("fresh beat: items = %+v", s.Backlog.Items)
+	}
+}
+
 func TestTrackOnboardMemory(t *testing.T) {
 	ws := trackWS(t, true)
 	if _, err := runTrack(t, ws, "onboard", "memory"); err != nil {

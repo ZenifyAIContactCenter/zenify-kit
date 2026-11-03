@@ -29,7 +29,7 @@ zenify track start --kind fix --repo contact-center-be --est -
 | Cờ | Ý nghĩa |
 |---|---|
 | `--est` | size estimate S\|M\|L, or - when not known yet (mặc định `-`) |
-| `--from` | backlog id or issue URL this run takes from the backlog |
+| `--from` | backlog id, issue URL or SDD id (repos/\<...\>/progress.md:\<line\>) this run takes; fails when another item already took it |
 | `--kind` | cook\|fix\|hotfix |
 | `--repo` | target repo name |
 

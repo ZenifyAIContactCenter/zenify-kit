@@ -170,6 +170,9 @@ type Input struct {
 	Workspace string
 	// Live holds the live/<session>.json files with the mtime of their .beat.
 	Live []LiveFile
+	// Beats maps a session id to the mtime of its live/<session>.beat, for every
+	// beat file on disk (a live session may never have written a .json).
+	Beats map[string]time.Time
 	// PlanTitle returns the title of the plan at path, "" and nil when the file is gone.
 	PlanTitle func(path string) (string, error)
 	// TabTitle returns the Claude Code tab name of a session, "" and nil when it has none.

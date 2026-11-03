@@ -117,7 +117,7 @@ func parseLogLine(raw string) (Event, bool) {
 }
 
 func validFrom(v string) bool {
-	return v == "-" || bidRe.MatchString(v) || strings.HasPrefix(v, "http")
+	return v == "-" || bidRe.MatchString(v) || strings.HasPrefix(v, "http") || sddRe.MatchString(v)
 }
 
 // parseListRow parses the rows whose third field is not a track id: backlog,

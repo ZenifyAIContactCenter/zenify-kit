@@ -258,19 +258,8 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 			if err := validTrackText("--repo", repo); err != nil {
 				return err
 			}
-			fields := []string{"", kind, repo, est}
-			if from != "" {
-				if err := checkStartFrom(trackLogPath(wsDir), from); err != nil {
-					return err
-				}
-				fields = append(fields, from)
-			}
-			id, err := unusedTrackID(trackLogPath(wsDir), kind, time.Now().UTC())
+			id, err := runTrackStart(trackLogPath(wsDir), kind, repo, est, from)
 			if err != nil {
-				return exitcode.New(exitcode.Fail, err)
-			}
-			fields[0] = id
-			if err := appendTrackRow(trackLogPath(wsDir), "start", fields); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(w, "track: %s\n", id)
@@ -280,8 +269,61 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 	c.Flags().StringVar(&kind, "kind", "", "cook|fix|hotfix")
 	c.Flags().StringVar(&repo, "repo", "", "target repo name")
 	c.Flags().StringVar(&est, "est", "-", "size estimate S|M|L, or - when not known yet")
-	c.Flags().StringVar(&from, "from", "", "backlog id or issue URL this run takes from the backlog")
+	c.Flags().StringVar(&from, "from", "", "backlog id, issue URL or SDD id (repos/<...>/progress.md:<line>) this run takes; fails when another item already took it")
 	return c
+}
+
+// runTrackStart validates --from, picks an id and appends the start row. With
+// --from, the taken check and the append run under one log lock.
+func runTrackStart(logPath, kind, repo, est, from string) (string, error) {
+	if from != "" {
+		unlock, err := lockTrackLog(logPath)
+		if err != nil {
+			return "", err
+		}
+		defer unlock()
+		if err := checkStartFrom(logPath, from); err != nil {
+			return "", err
+		}
+	}
+	id, err := unusedTrackID(logPath, kind, time.Now().UTC())
+	if err != nil {
+		return "", exitcode.New(exitcode.Fail, err)
+	}
+	fields := []string{id, kind, repo, est}
+	if from != "" {
+		fields = append(fields, from)
+	}
+	if err := appendTrackRow(logPath, "start", fields); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// lockTrackLog takes <track dir>/log.lock (O_EXCL, so it also works on windows),
+// retrying every 50ms for up to 2s. The returned func releases it.
+func lockTrackLog(logPath string) (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o750); err != nil {
+		return nil, exitcode.New(exitcode.Fail, err)
+	}
+	lock := filepath.Join(filepath.Dir(logPath), "log.lock")
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		f, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- computed from the resolved workspace
+		if err == nil {
+			if err := f.Close(); err != nil {
+				return nil, exitcode.New(exitcode.Fail, err)
+			}
+			return func() { _ = os.Remove(lock) }, nil //nolint:errcheck // best effort: a leftover lock only delays the next start by the 2s timeout
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, exitcode.New(exitcode.Fail, err)
+		}
+		if time.Now().After(deadline) {
+			return nil, exitcode.New(exitcode.Fail, errors.New("track: log is locked (another track command is running)"))
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func newTrackEstCmd(ws *string) *cobra.Command {
@@ -576,6 +618,10 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 	if err != nil {
 		return trackstats.Result{}, err
 	}
+	in.Beats, err = readBeats(dir)
+	if err != nil {
+		return trackstats.Result{}, err
+	}
 	in.GitHub, in.SDD = backlogSources(dir, wsDir, force, now)
 	b, err := os.ReadFile(filepath.Join(dir, "log.md")) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -666,6 +712,26 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		}
 	}
 	return res, nil
+}
+
+// readBeats maps every live/<session>.beat to its mtime; a live session may never have written a .json.
+func readBeats(dir string) (map[string]time.Time, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "live", "*.beat"))
+	if err != nil {
+		return nil, err
+	}
+	beats := map[string]time.Time{}
+	for _, f := range files {
+		fi, err := os.Stat(f)
+		if errors.Is(err, os.ErrNotExist) {
+			continue // removed between the glob and the stat
+		}
+		if err != nil {
+			return nil, err
+		}
+		beats[strings.TrimSuffix(filepath.Base(f), ".beat")] = fi.ModTime()
+	}
+	return beats, nil
 }
 
 // readLiveFiles lists live/*.json with the mtime of each .beat (zero when it is absent).

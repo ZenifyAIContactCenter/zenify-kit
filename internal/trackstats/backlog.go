@@ -1,6 +1,8 @@
 package trackstats
 
 import (
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -79,7 +81,7 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		}
 	}
 	for _, s := range in.SDD {
-		if dropped[s.ID] {
+		if dropped[s.ID] || from[s.ID] {
 			continue
 		}
 		b.Items = append(b.Items, BacklogItem{Source: "sdd", ID: s.ID, Repo: s.Repo, Est: "-", Ref: "-", Title: s.Title, AgeDays: ageDays(in.Now, s.ModTime)})
@@ -88,8 +90,55 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		if it.Status != "stale" {
 			continue
 		}
+		if beat, ok := in.Beats[it.Session]; ok && in.Now.Sub(beat) <= LiveTTL {
+			continue // a live session still holds this item
+		}
 		started, _ := time.Parse(time.RFC3339, it.StartedAt) // written by Compute from a parsed time
 		b.Items = append(b.Items, BacklogItem{Source: "stale", ID: it.ID, Repo: it.Repo, Est: it.Est, Ref: "-", Title: it.Kind + " " + it.Repo + " (" + it.ID + ")", AgeDays: ageDays(in.Now, started)})
 	}
+	b.Items = dedupeAndSort(b.Items)
 	return b, issues
+}
+
+// normTitle folds case and whitespace so "Fix login" matches "fix  Login".
+func normTitle(t string) string {
+	return strings.Join(strings.Fields(strings.ToLower(t)), " ")
+}
+
+// dedupeAndSort drops the manual items a github issue already covers, then
+// orders each source (kept in its gathering order) by est S, M, L, "-" and, within
+// one est, by age, oldest first.
+func dedupeAndSort(items []BacklogItem) []BacklogItem {
+	gh := map[string]bool{}
+	for _, it := range items {
+		if it.Source == "github" {
+			gh[normTitle(it.Title)] = true
+		}
+	}
+	out := items[:0]
+	for _, it := range items {
+		if it.Source == "manual" && gh[normTitle(it.Title)] {
+			continue
+		}
+		out = append(out, it)
+	}
+	srcRank := map[string]int{"manual": 0, "github": 1, "sdd": 2, "stale": 3}
+	estRank := map[string]int{"S": 0, "M": 1, "L": 2}
+	rank := func(e string) int {
+		if r, ok := estRank[e]; ok {
+			return r
+		}
+		return len(estRank)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Source != b.Source {
+			return srcRank[a.Source] < srcRank[b.Source]
+		}
+		if rank(a.Est) != rank(b.Est) {
+			return rank(a.Est) < rank(b.Est)
+		}
+		return a.AgeDays > b.AgeDays
+	})
+	return out
 }
