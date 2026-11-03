@@ -226,3 +226,25 @@ func commit(g func(...string), file, body, msg string) {
 	g("add", file)
 	g("commit", "-q", "-m", msg)
 }
+
+func TestNoManualHotfixRecipeOutsideHotfix(t *testing.T) {
+	for _, rel := range []string{
+		"skills/discipline/SKILL.md",
+		"skills/discipline/references/worktree-rationale.md",
+		"skills/discipline/references/rules-full-text.md",
+	} {
+		s := syncedAsset(t, rel)
+		for _, bad := range []string{"--type hotfix --base", "BASE=$(zenify hotfix baseref", "overrides it to `zenify hotfix baseref`"} {
+			if strings.Contains(s, bad) {
+				t.Errorf("%s still carries the manual hotfix recipe %q", rel, bad)
+			}
+		}
+		if rel != "skills/discipline/references/worktree-rationale.md" && !strings.Contains(s, "Step 2b") {
+			t.Errorf("%s routing row must say /fix hands prd bugs over at Step 2b", rel)
+		}
+	}
+	ti := syncedAsset(t, "skills/top-issues/SKILL.md")
+	if strings.Contains(ti, "user-only") {
+		t.Error("top-issues still calls /hotfix user-only")
+	}
+}
