@@ -40,6 +40,23 @@ func TestHotfixSkill_AutoRoute(t *testing.T) {
 	assertContainsAll(t, "hotfix why-these-rules", w, []string{"rename", "-v:refname", "Clean checks", "How much diagnosis"})
 }
 
+// FR-1, FR-8, SC-4: /fix hands a production bug to /hotfix after Step 2.
+func TestFixSkill_RoutesProdToHotfix(t *testing.T) {
+	s := syncedAsset(t, "skills/fix/SKILL.md")
+	assertContainsAll(t, "fix/SKILL.md", s, []string{
+		"## Step 2b", "Skill(znf:hotfix)", "zenify hotfix baseref", "git show", "do not re-diagnose",
+		"references/prd-routing.md",
+	})
+	if len(s) > 8192 || strings.Count(s, "\n") > 200 {
+		t.Fatalf("fix over cap: %d bytes", len(s))
+	}
+	r := syncedAsset(t, "skills/fix/references/prd-routing.md")
+	assertContainsAll(t, "prd-routing.md", r, []string{
+		"cannot be pinned", "Skill(znf:hotfix)", "not on the hotfix base", "prd does not run this code yet",
+		"track id:", "staging", "standalone", "path is missing",
+	})
+}
+
 // SC-7: the skill's own tag commands pick fix-forward vs ask correctly.
 func TestHotfixTagCommands(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {

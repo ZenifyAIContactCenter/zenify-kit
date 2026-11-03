@@ -78,6 +78,10 @@ per-task review, none of which exist in this skill. Continuing here means writin
 behavioural change inline with no independent review of the implementation.
 
 ### From § Step 6: this step vs /ship step 4
+<!-- Moved from fix/SKILL.md (byte cap) -->
+Step 6 is not `/ship` step 4: it asks only whether the bug went away. If the bug is visual, look
+in the browser here; the layout measurement and the screenshot audit wait for step 4.
+
 Here the question is narrow: *did the bug go away*. `/ship` step 4 is the authoritative pass at the
 final fingerprint, after any review fix, and it is the only place a UI verifier agent is dispatched.
 What you do **not** do here is the objective layout measurement or the screenshot audit — that is
