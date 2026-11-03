@@ -24,6 +24,7 @@ type NewOptions struct {
 	Pid          int
 	Now          int64
 	Runner       gitx.Runner
+	RemoteRunner gitx.Runner // bounded runner for the push; nil = Runner
 	Stderr       io.Writer
 }
 
@@ -117,7 +118,7 @@ func RunNew(o NewOptions) error {
 	// block the new task. Quiet: no output when nothing is removable.
 	if fetched {
 		if e := RunSweep(SweepOptions{RepoRoot: o.RepoRoot, Host: o.Host, Pid: o.Pid, Now: o.Now, Runner: r,
-			Quiet: true, Stdout: o.Stderr, Stderr: o.Stderr}); e != nil {
+			Quiet: true, KeepRemote: true, Stdout: o.Stderr, Stderr: o.Stderr}); e != nil {
 			_, _ = fmt.Fprintf(o.Stderr, "wt: sweep skipped (%v)\n", e)
 		}
 	}
@@ -256,7 +257,7 @@ func RunNew(o NewOptions) error {
 	}
 
 	// Persist to the rebuildable state cache.
-	wtRec := Worktree{Slug: o.Slug, Type: o.Type, Branch: branch, Path: path, Ports: ports}
+	wtRec := Worktree{Slug: o.Slug, Type: o.Type, Branch: branch, Path: path, Ports: ports, Base: base}
 	if len(ports) > 1 {
 		wtRec.PortBase = port
 	}
@@ -267,6 +268,42 @@ func RunNew(o NewOptions) error {
 	// Only past every abort: record the session pointer (a failed run leaves none).
 	if active {
 		_ = os.WriteFile(ptr, []byte(o.Slug+"\n"), 0o600)
+	}
+
+	// Publish the empty branch so the work shows as started. Fail-open like the
+	// fetch above; skipped for hotfix (no ticket) and when there is no origin.
+	pushed := false
+	if o.Type != "hotfix" {
+		if _, e := r.Run(o.RepoRoot, "remote", "get-url", "origin"); e == nil {
+			if !fetched {
+				// Offline: the fetch just failed, so a push would only hang or fail.
+				_, _ = fmt.Fprintf(o.Stderr, "wt: did not push %s to origin (fetch failed); push it yourself when online\n", branch)
+			} else {
+				rr := remoteOr(o.RemoteRunner, r)
+				// Only a branch wt new itself puts on origin may later be deleted
+				// from it: if origin already had it (or we cannot tell), no StartSHA.
+				existed := remoteBranchExists(rr, o.RepoRoot, branch)
+				// Captured BEFORE the push and never re-read: a commit made after
+				// the push must not become the "start" commit.
+				startSHA := ""
+				if sha, e := r.Run(path, "rev-parse", "HEAD"); e == nil {
+					startSHA = strings.TrimSpace(string(sha))
+				}
+				if _, e := rr.Run(path, "push", "-u", "origin", branch); e != nil {
+					_, _ = fmt.Fprintf(o.Stderr, "wt: could not push %s to origin (%s); push it yourself when online\n", branch, pushRejectedHint(gitErrLine(e)))
+				} else {
+					pushed = true
+					if !existed && startSHA != "" {
+						wtRec.StartSHA = startSHA
+						// Re-save: the record was written before the push (abort
+						// semantics above stay untouched); this only adds StartSHA.
+						if e := SaveWorktree(o.RepoRoot, wtRec, o.Pid, o.Host, o.Now); e != nil {
+							_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not record the start commit: %v\n", e)
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// Wire this worktree at its peers (FR-7.1), then bring peers' same-slug
@@ -283,7 +320,11 @@ func RunNew(o NewOptions) error {
 	}
 
 	_, _ = fmt.Fprintf(o.Stderr, "wt: %s → %s\n", o.Slug, path)
-	_, _ = fmt.Fprintf(o.Stderr, "wt: branch %s, %s=%d, deps=%s\n", branch, cfg.PortEnv, port, deps)
+	tail := ""
+	if pushed {
+		tail = ", pushed to origin"
+	}
+	_, _ = fmt.Fprintf(o.Stderr, "wt: branch %s, %s=%d, deps=%s%s\n", branch, cfg.PortEnv, port, deps, tail)
 	return nil
 }
 

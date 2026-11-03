@@ -155,6 +155,7 @@ func newWtNewCmd() *cobra.Command {
 				Pid:          os.Getpid(),
 				Now:          time.Now().Unix(),
 				Runner:       gitx.ExecRunner(),
+				RemoteRunner: gitx.TimeoutRunner(wt.RemoteTimeout),
 				Stderr:       cmd.ErrOrStderr(),
 			})
 		},
@@ -315,15 +316,16 @@ func newWtRmCmd() *cobra.Command {
 			}
 			host, _ := os.Hostname()
 			return wt.RunRm(wt.RmOptions{
-				RepoRoot: root,
-				Slug:     args[0],
-				Force:    force,
-				Fetch:    true,
-				Host:     host,
-				Pid:      os.Getpid(),
-				Now:      time.Now().Unix(),
-				Runner:   gitx.ExecRunner(),
-				Stderr:   cmd.ErrOrStderr(),
+				RepoRoot:     root,
+				Slug:         args[0],
+				Force:        force,
+				Fetch:        true,
+				Host:         host,
+				Pid:          os.Getpid(),
+				Now:          time.Now().Unix(),
+				Runner:       gitx.ExecRunner(),
+				RemoteRunner: gitx.TimeoutRunner(wt.RemoteTimeout),
+				Stderr:       cmd.ErrOrStderr(),
 			})
 		},
 		SilenceUsage:  true,
@@ -378,7 +380,7 @@ func newWtSweepCmd() *cobra.Command {
 				host, _ := os.Hostname()
 				err := wt.RunSweepAll(wt.SweepAllOptions{
 					WorkspaceRoot: ws, Host: host, DryRun: dry, Pid: os.Getpid(), Now: time.Now().Unix(),
-					Runner: gitx.ExecRunner(), FetchRunner: gitx.TimeoutRunner(5 * time.Second),
+					Runner: gitx.ExecRunner(), FetchRunner: gitx.TimeoutRunner(5 * time.Second), RemoteRunner: gitx.TimeoutRunner(wt.RemoteTimeout),
 					Stdout: cmd.OutOrStdout(), Stderr: cmd.ErrOrStderr(),
 				})
 				if err == nil {
@@ -396,7 +398,7 @@ func newWtSweepCmd() *cobra.Command {
 			err = wt.RunSweep(wt.SweepOptions{
 				RepoRoot: root, Host: host, DryRun: dry, Fetch: fetch,
 				Pid: os.Getpid(), Now: time.Now().Unix(),
-				Runner: gitx.ExecRunner(), Stdout: cmd.OutOrStdout(), Stderr: cmd.ErrOrStderr(),
+				Runner: gitx.ExecRunner(), RemoteRunner: gitx.TimeoutRunner(wt.RemoteTimeout), Stdout: cmd.OutOrStdout(), Stderr: cmd.ErrOrStderr(),
 			})
 			if err == nil {
 				if ws, ok := wt.FindWorkspaceRoot(root); ok {

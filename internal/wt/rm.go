@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitguard"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
@@ -18,10 +19,17 @@ type RmOptions struct {
 	Host     string
 	Force    bool
 	Fetch    bool // refresh origin before the merge check (the CLI sets it; sweep has fetched already)
-	Pid      int
-	Now      int64
-	Runner   gitx.Runner
-	Stderr   io.Writer
+	// KeepRemote leaves origin/<branch> alone. wt new's auto-sweep sets it: an empty
+	// branch counts as merged (guard.go BranchMerged), so an untouched worktree of
+	// another task would otherwise lose the remote branch that marks it started.
+	KeepRemote bool
+	Pid        int
+	Now        int64
+	Runner     gitx.Runner
+	// RemoteRunner runs the network calls (ls-remote/fetch/push); the CLI passes a
+	// TimeoutRunner. Nil falls back to Runner.
+	RemoteRunner gitx.Runner
+	Stderr       io.Writer
 }
 
 // RunRm tears down the worktree for o.Slug. Without --force it refuses a dirty
@@ -100,6 +108,16 @@ func RunRm(o RmOptions) error {
 		}
 	}
 
+	// What wt recorded for this slug, read BEFORE the worktree and state go away:
+	// the remote branch is only ever deleted if it is the very branch wt created
+	// and its tip is still the commit wt created it at.
+	recBranch, startSHA, recBase := "", "", ""
+	if st, e := ReadState(o.RepoRoot); e == nil {
+		if w, ok := st.Find(o.Slug); ok {
+			recBranch, startSHA, recBase = w.Branch, w.StartSHA, w.Base
+		}
+	}
+
 	// Remove the worktree (git-level --force: our gate already vouched for it).
 	if gone {
 		if _, e := r.Run(o.RepoRoot, "worktree", "prune"); e != nil {
@@ -137,6 +155,8 @@ func RunRm(o RmOptions) error {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: %q was on a detached HEAD — no branch to delete\n", o.Slug)
 	} else if _, e := r.Run(o.RepoRoot, "branch", "-D", branch); e != nil {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete branch %s, delete it by hand: %v\n", branch, e)
+	} else if !o.KeepRemote {
+		deleteEmptyRemote(o, branch, recBranch, startSHA, cfg.BaseRef, recBase)
 	}
 
 	// Clear the rebuildable caches. Best-effort: a cache-write failure must not
@@ -161,6 +181,64 @@ func RunRm(o RmOptions) error {
 		RewirePeers(ws, filepath.Base(o.RepoRoot), o.Slug, r, o.Stderr, o.Stderr)
 	}
 	return nil
+}
+
+// deleteEmptyRemote removes origin/<branch> only when (1) branch is the one wt
+// recorded for this slug — a worktree switched to main must never take main off
+// origin — (2) it is not a base (config or the worktree's own) or deploy branch, and (3) the remote tip is
+// still exactly the commit wt started the branch at (startSHA), i.e. nobody ever
+// committed to it. The delete carries a lease on that SHA. Anything else, and a
+// legacy state entry with no startSHA, keeps the branch. Failures only warn; no
+// origin remote means nothing to do.
+func deleteEmptyRemote(o RmOptions, branch, recorded, startSHA, cfgBase, recBase string) {
+	r := o.Runner
+	rr := remoteOr(o.RemoteRunner, r)
+	if _, e := r.Run(o.RepoRoot, "remote", "get-url", "origin"); e != nil {
+		return
+	}
+	if branch != recorded || isProtectedBranch(o.RepoRoot, branch, cfgBase, recBase) {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: not a wt task branch\n", branch)
+		return
+	}
+	out, e := rr.Run(o.RepoRoot, "ls-remote", "--heads", "origin", "refs/heads/"+branch)
+	if e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not look up origin/%s: %s\n", branch, gitErrLine(e))
+		return
+	}
+	tip := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		if f := strings.Fields(line); len(f) == 2 && f[1] == "refs/heads/"+branch {
+			tip = f[0]
+		}
+	}
+	if tip == "" {
+		return
+	}
+	if startSHA == "" {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: no start commit recorded (it existed before wt new, or wt new could not tell)\n", branch)
+		return
+	}
+	if tip != startSHA {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: kept origin/%s: it has commits\n", branch)
+		return
+	}
+	if _, e := rr.Run(o.RepoRoot, "push", "--force-with-lease=refs/heads/"+branch+":"+startSHA, "origin", "--delete", branch); e != nil {
+		_, _ = fmt.Fprintf(o.Stderr, "wt: warning — could not delete origin/%s, keeping it: %s\n", branch, gitErrLine(e))
+		return
+	}
+	_, _ = fmt.Fprintf(o.Stderr, "wt: deleted empty origin/%s\n", branch)
+}
+
+// isProtectedBranch is true for a base branch (either the base the worktree was
+// cut from or the configured one, short name), the baseline deploy names, and
+// anything the repo's .claude/deploy-branches lists.
+func isProtectedBranch(repoRoot, branch string, bases ...string) bool {
+	for _, b := range bases {
+		if branch == strings.TrimPrefix(b, "origin/") {
+			return true
+		}
+	}
+	return baselineDeploy[branch] || gitguard.IsDeployBranch(repoRoot, branch)
 }
 
 // worktreeListHasPath reports whether git's porcelain worktree listing registers

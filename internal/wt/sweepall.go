@@ -21,6 +21,7 @@ type SweepAllOptions struct {
 	Now           int64
 	Runner        gitx.Runner
 	FetchRunner   gitx.Runner
+	RemoteRunner  gitx.Runner // bounded runner for remote branch deletion
 	Repos         []string
 	Stdout        io.Writer
 	Stderr        io.Writer
@@ -73,7 +74,7 @@ func RunSweepAll(o SweepAllOptions) error {
 		_, _ = fmt.Fprintf(o.Stdout, "== %s ==\n", filepath.Base(repo))
 		var buf countingWriter
 		err := RunSweep(SweepOptions{RepoRoot: repo, Host: o.Host, DryRun: o.DryRun, Pid: o.Pid, Now: o.Now,
-			Runner: o.Runner, Stdout: io.MultiWriter(o.Stdout, &buf), Stderr: o.Stderr})
+			Runner: o.Runner, RemoteRunner: o.RemoteRunner, Stdout: io.MultiWriter(o.Stdout, &buf), Stderr: o.Stderr})
 		if err != nil {
 			_, _ = fmt.Fprintf(o.Stderr, "wt: %s: skipped (%v)\n", filepath.Base(repo), err)
 			continue

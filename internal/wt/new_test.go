@@ -5,9 +5,12 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
 // gitStub records commands and returns canned results keyed by "dir|args".
@@ -319,5 +322,173 @@ func TestRunNew_HotfixWithoutRefWarns(t *testing.T) {
 	_ = RunNew(o)
 	if !strings.Contains(errb.String(), "no hotfixBaseRef declared — branching this hotfix from origin/staging") {
 		t.Fatalf("expected fallback warning on stderr, got %q", errb.String())
+	}
+}
+
+// gitT runs real git in dir and fails the test on error.
+func gitT(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	full := append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main"}, args...)
+	out, err := exec.Command("git", full...).CombinedOutput() //nolint:gosec // test helper
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return string(out)
+}
+
+// pushRepo builds a repo with one commit on main. With withOrigin it also has a
+// local bare repo as origin, so tests never touch a real remote.
+func pushRepo(t *testing.T, withOrigin bool) (root, bare string) {
+	t.Helper()
+	t.Setenv("WT_SESSION", "")
+	root = t.TempDir()
+	gitT(t, root, "init", "-q")
+	writeWorktreeJSON(t, root, `{"abbrev":"ccbe","user":"namph","portRange":[3200,3249],"deps":"none"}`)
+	// wt new writes .env into the worktree; ignored, so a fresh worktree is clean.
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".env\n.worktrees/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, root, "add", "-A")
+	gitT(t, root, "commit", "-q", "-m", "init")
+	gitT(t, root, "branch", "-M", "main")
+	if withOrigin {
+		bare = t.TempDir()
+		gitT(t, bare, "init", "-q", "--bare")
+		gitT(t, root, "remote", "add", "origin", bare)
+		gitT(t, root, "push", "-q", "origin", "main")
+		gitT(t, root, "fetch", "-q", "origin")
+	}
+	return root, bare
+}
+
+func realOpts(root string) (NewOptions, *bytes.Buffer) {
+	var errb bytes.Buffer
+	return NewOptions{RepoRoot: root, Slug: "my-task", Type: "feat", Host: "h", Pid: 1, Now: 1,
+		Runner: gitx.ExecRunner(), Stderr: &errb, BaseOverride: "origin/main"}, &errb
+}
+
+// FR-B7.1: the fresh branch lands on origin and the tail line says so.
+func TestRunNew_PushesBranchToOrigin(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if got := gitT(t, bare, "branch", "--list", "namph/feat/my-task"); !strings.Contains(got, "namph/feat/my-task") {
+		t.Fatalf("branch not on origin, bare has %q", got)
+	}
+	if !strings.Contains(errb.String(), ", pushed to origin") {
+		t.Fatalf("expected 'pushed to origin' in %q", errb.String())
+	}
+}
+
+// FR-B7.1: a failing push warns but RunNew still succeeds (fail-open).
+func TestRunNew_PushFailureWarnsAndSucceeds(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	hook := filepath.Join(bare, "hooks", "pre-receive")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\necho hook-says-no >&2\nexit 1\n"), 0o700); err != nil { //nolint:gosec // test hook must be executable
+		t.Fatal(err)
+	}
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("push failure must not abort: %v", err)
+	}
+	if !strings.Contains(errb.String(), "wt: could not push namph/feat/my-task to origin (") ||
+		!strings.Contains(errb.String(), "push it yourself when online") {
+		t.Fatalf("expected push warning, got %q", errb.String())
+	}
+	if !strings.Contains(errb.String(), "hook-says-no") {
+		t.Fatalf("warning must carry git stderr detail, got %q", errb.String())
+	}
+	if strings.Contains(errb.String(), "pushed to origin") {
+		t.Fatalf("must not claim pushed, got %q", errb.String())
+	}
+}
+
+// FR-B7.1: no origin remote means no push attempt and no warning.
+func TestRunNew_NoOriginNoPush(t *testing.T) {
+	root, _ := pushRepo(t, false)
+	o, errb := realOpts(root)
+	o.BaseOverride = "main" // origin/main cannot resolve without an origin
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if strings.Contains(errb.String(), "could not push") || strings.Contains(errb.String(), "pushed to origin") {
+		t.Fatalf("must not attempt a push without origin, got %q", errb.String())
+	}
+}
+
+// FR-B7.3: hotfix is never pushed (no ticket attached).
+func TestRunNew_HotfixDoesNotPush(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	o.Type = "hotfix"
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if got := strings.TrimSpace(gitT(t, bare, "branch", "--list", "namph/hotfix/my-task")); got != "" {
+		t.Fatalf("hotfix must not be pushed, bare has %q", got)
+	}
+}
+
+// Review Focus 5 (FR-B7.3): RunNew auto-sweeps the untouched worktree of task A
+// (an empty branch reads as merged) but must NOT delete A's remote branch.
+func TestRunNew_AutoSweepKeepsRemoteBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	a, errb := realOpts(root)
+	a.Slug = "task-a"
+	if err := RunNew(a); err != nil {
+		t.Fatalf("RunNew A: %v\n%s", err, errb)
+	}
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	b, errb := realOpts(root)
+	b.Slug, b.Runner, b.Another = "task-b", rec, true
+	if err := RunNew(b); err != nil {
+		t.Fatalf("RunNew B: %v\n%s", err, errb)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".worktrees", "task-a")); err == nil {
+		t.Fatal("precondition: auto-sweep should have removed worktree A")
+	}
+	if rec.deleted() {
+		t.Fatalf("auto-sweep must not delete a remote branch; calls %v", rec.calls)
+	}
+	if !bareHas(t, bare, "namph/feat/task-a") {
+		t.Fatal("remote branch of A must survive auto-sweep")
+	}
+}
+
+// Offline (the fetch failed): no push call, the "push it yourself" hint instead.
+func TestRunNew_FetchFailureSkipsPush(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	fr := &failRunner{recRunner: recRunner{inner: gitx.ExecRunner()}, failOn: "fetch origin --quiet"}
+	o.Runner = fr
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	for _, c := range fr.calls {
+		if strings.HasPrefix(c, "push") {
+			t.Fatalf("must not push after a failed fetch, calls %v", fr.calls)
+		}
+	}
+	if !strings.Contains(errb.String(), "push it yourself when online") || bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("expected hint and no remote branch, got %q", errb.String())
+	}
+}
+
+// Origin already holds the branch with other commits: the warning says so.
+func TestRunNew_PushRejectedSaysBranchExists(t *testing.T) {
+	root, _ := pushRepo(t, true)
+	gitT(t, root, "checkout", "-q", "-b", "namph/feat/my-task")
+	gitT(t, root, "commit", "-q", "--allow-empty", "-m", "someone else")
+	gitT(t, root, "push", "-q", "origin", "namph/feat/my-task")
+	gitT(t, root, "checkout", "-q", "main")
+	gitT(t, root, "branch", "-q", "-D", "namph/feat/my-task")
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if !strings.Contains(errb.String(), "already has this branch with other commits") {
+		t.Fatalf("expected exists hint, got %q", errb.String())
 	}
 }

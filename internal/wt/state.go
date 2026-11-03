@@ -17,6 +17,12 @@ type Worktree struct {
 	CreatedAt string `json:"createdAt"`
 	Ports     []int  `json:"ports"`
 	PortBase  int    `json:"portBase"`
+	// StartSHA is the commit of a branch wt new itself created on origin (set only
+	// when origin had no such branch and the push succeeded). wt rm deletes the
+	// remote branch only while its tip is still this; empty means never delete.
+	StartSHA string `json:"startSha,omitempty"`
+	// Base is the ref the worktree was cut from; rm never deletes its short name.
+	Base string `json:"base,omitempty"`
 }
 
 // StateFile is the per-repo .wt/state.json. git is the source of truth for a

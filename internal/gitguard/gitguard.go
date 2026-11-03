@@ -247,3 +247,9 @@ func readLines(path string) ([]string, bool) {
 	}
 	return out, true
 }
+
+// IsDeployBranch reports whether branch matches the repo's deploy-branches
+// (.claude/deploy-branches unioned up the tree; baseline when none declared).
+func IsDeployBranch(root, branch string) bool {
+	return matchDeny(branch, loadDeny(root))
+}
