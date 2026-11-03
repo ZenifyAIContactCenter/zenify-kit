@@ -418,7 +418,8 @@ test('FR-2.3: the enabled flag comes from the stats run: on records, off does no
   await start($, clock)
   world.toolCall = () => ({ result: { stdout: 'track: fix-261030-a1b2\n', stderr: '' }, text: '' })
   await $.tool.call({ tool: 'Bash', command: 'zenify track start --kind fix --repo kit --est -' })
-  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG, PULSE])
+  // The bind line, then the live file with the bound id (FR-12.1: a bind runs inside a working turn).
+  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG, PULSE, LIVE, BEAT, PULSE])
 })
 
 test('FR-4.1: a start that printed an id binds even while enabled is still false (feature turned on in the same command)', async ($, on) => {
@@ -657,7 +658,7 @@ test('FR-4.1/FR-7.3: a start stdout binds the id into this session file, the cwd
   const calls = engine(on, world)
   mock.clock(on)
   await bindTo($, world, FIX_ID)
-  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG, PULSE])
+  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG, PULSE, LIVE, BEAT, PULSE])
   expect(sessionLines(world).every(l => ISO_AT.test(l))).toBe(true)
   expect(fields(world)).toEqual([`cwd · ${CWD}`, `bind · ${FIX_ID}`])
 })
@@ -919,7 +920,8 @@ test('SC-12: a subagent ask a person answers is permission too, with the bound i
   world.verdict = undefined
   expect(liveDoc(world)).toEqual({ state: 'permission', since: T0_ISO, cwd: CWD, id: FIX_ID })
   await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'p2', agentId: 'a-1' } as any)
-  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['permission', 'busy'])
+  // busy first: the bind wrote the live file with the id before the ask.
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'permission', 'busy'])
 })
 
 test('SC-3: an ask the host answers writes no live state', async ($, on) => {
@@ -1339,6 +1341,19 @@ test('start binds an id: the live file gets the id, state stays busy and since d
   await clock.settle()
   expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: FIX_ID })
   expect(liveWrites(calls)).toHaveLength(2)
+})
+
+test('a bind after a mid-turn session.start still writes the id to the live file', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  // An auto-compact fires session.start inside the turn: no new prompt follows.
+  await $.session.start({ cwd: CWD, source: 'compact' } as any)
+  await clock.settle()
+  await bindTo($, world, FIX_ID)
+  await clock.settle()
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: FIX_ID })
 })
 
 test('a stale busy file with a beat older than 30s still becomes idle', async ($, on) => {

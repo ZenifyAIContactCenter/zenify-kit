@@ -204,8 +204,9 @@ async function recordCall($: $, tool: string, command: string, isMain: boolean, 
       if (!(await read($, enabled))) await update($, enabled, () => true)
       await update($, bound, () => ({ id, kind: kindOf(id), ending: false }))
       await appendSession($, bindLine(iso(now), id))
-      // Only a tab that already has a live file: a tab that never waited gets none.
-      if (liveState !== undefined) await syncLive($)
+      // A bind runs inside a working turn: write busy with the new id, even after a mid-turn
+      // session.start cleared liveState.
+      await syncLive($)
       // The stats may have run before this bind; this session's open id shows now, not at a tick.
       void refreshStats($, true).catch(statsError($))
       return
@@ -228,7 +229,6 @@ async function recordTurn($: $, e: { durationMs: number; agentId?: string; usage
     if (!e.agentId && b.ending) {
       await appendSession($, unbindLine(iso(now), b.id))
       await update($, bound, () => null)
-      if (liveState !== undefined) await syncLive($)
       void refreshStats($, true).catch(statsError($))
     }
   }
