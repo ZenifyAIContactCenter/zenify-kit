@@ -522,7 +522,8 @@ export const register: Register = (on, options: PluginOptions) => {
     // A link line is a real OSC 8 hyperlink: the label is short, so truncation never cuts the href.
     const line = (l: Line) => (
       <Text wrap="truncate-end" {...(l.tone ? TONES[l.tone] : {})}>
-        {l.text}
+        {/* An empty Text renders zero rows, so a section gap holds a space. */}
+        {l.text || (l.href ? '' : ' ')}
         {l.href && <Link href={l.href} label={l.label} />}
       </Text>
     )
@@ -535,8 +536,8 @@ export const register: Register = (on, options: PluginOptions) => {
           ? [{ text: STATUS_OFF, tone: 'dim' }]
           : tabLines(selected, st.data, await $.session.id(), (await read($, bound))?.id, await $.clock.now())
     return (
-      <Box flexDirection="column">
-        <Box flexDirection="row">
+      <Box flexDirection="column" paddingX={1}>
+        <Box flexDirection="row" marginBottom={1}>
           {TABS.map((t, i) => [
             i > 0 && <Text dimColor> │ </Text>,
             // A Button has no color prop, so the selected tab is a colored bold Text.

@@ -1158,6 +1158,23 @@ test('FR-4.2: a PR line is a Link with the full href and the short label', async
   expect(links[0].props.label).toBe('r#1')
 })
 
+test('pane spacing: blank section lines keep their height, the body is padded and set off from the tabs', async ($, on) => {
+  const world: World = { stats: ok(statsJson({ kitchen: { cooked: [], rollingBoil: [], titleError: '' } })) }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const ui = await mountTab($)
+  const texts = (await ui.findAll({ type: 'Text' })) as any[]
+  // An empty Text renders zero rows in the terminal, so a section gap must hold a space.
+  expect(texts.some(t => t.text === '')).toBe(false)
+  expect(texts.filter(t => t.text === ' ').length).toBeGreaterThan(0)
+  const boxes = (await ui.findAll({ type: 'Box' })) as any[]
+  expect(boxes[0].props.paddingX).toBe(1)
+  expect(boxes[1].props.marginBottom).toBe(1)
+})
+
 test('SC-9: every pane content Text truncates at the pane width', async ($, on) => {
   const world: World = { stats: ok(statsJson({ running: [item()], kitchen: { cooked: [{ id: 'c1', brief: 'x'.repeat(300), status: 'done', endedAt: '2026-11-02T03:05:00Z', prs: null }], rollingBoil: [], titleError: '' } })) }
   engine(on, world)
