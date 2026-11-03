@@ -505,3 +505,13 @@ func TestRemoveRetiredKitPermissionsNoRecord(t *testing.T) {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
 }
+
+// Plane MCP tools mix reads and writes behind one `action` parameter, so a
+// server-wide allow rule would auto-approve writes; plane-guard decides instead.
+func TestKitAllowRules_NoPlaneWildcard(t *testing.T) {
+	for _, r := range KitAllowRules {
+		if strings.HasPrefix(r, "mcp__zenify-plane") {
+			t.Errorf("KitAllowRules must not allow %q", r)
+		}
+	}
+}

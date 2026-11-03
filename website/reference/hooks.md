@@ -20,6 +20,7 @@ Các hook ZenifyKit nối vào Claude Code để tự động đồng bộ, báo
 | PreToolUse | `Task\|Agent` | `zenify hooks-run observe-count` | Đếm số lần dispatch subagent, cảnh báo khi vượt soft-cap | Claude, Codex |
 | PostToolUse | `Task\|Agent\|Bash\|WebFetch\|WebSearch\|Read` | `zenify hooks-run observe-meter` | Ghi nhận việc dùng tool để đo usage | Claude, Codex |
 | PreToolUse | `Read` | `zenify hooks-run read-guard` | Chặn Read file quá lớn (text \> 200 KB không có offset+limit, PDF không có pages, ảnh \> 300 KB) trước khi kết quả vào context | Claude |
+| PreToolUse | `mcp__zenify-plane__.*` | `zenify hooks-run plane-guard` | Plane MCP: action đọc chạy thẳng, action ghi luôn hỏi người dùng (kể cả chế độ bypass) | Claude |
 | PreToolUse | `Write\|Edit\|NotebookEdit` | `zenify hooks-run write-guard` | Chặn Write/Edit ra ngoài quy ước thư mục workspace (root ngoài allowlist, file ngay dưới docs/, docs/\<tên lạ\>) và chỉ chỗ đúng | Claude |
 | PreToolUse | `Bash` | `zenify git-guard` (cài bằng `zenify guard install`) | Chặn commit/push/merge vào nhánh deploy | Claude, Codex |
 

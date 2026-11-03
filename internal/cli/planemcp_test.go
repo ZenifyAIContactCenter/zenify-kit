@@ -304,10 +304,16 @@ func TestPlaneMCP_BinaryStderr(t *testing.T) {
 
 func TestPlaneMCP_PATNeverPrinted(t *testing.T) {
 	cases := map[string]func(*planeMCPDeps){
-		"no-uvx":     func(d *planeMCPDeps) { d.lookPath = func(string) (string, error) { return "", exec.ErrNotFound } },
-		"no-plane":   func(d *planeMCPDeps) { d.manifest = func() (*manifest.Manifest, error) { return manifest.Parse([]byte(noBrokerYAML), "t") } },
-		"child-exit": func(d *planeMCPDeps) { d.run = func(string, []string, []string) error { return exec.Command("sh", "-c", "exit 4").Run() } },
-		"run-error":  func(d *planeMCPDeps) { d.run = func(string, []string, []string) error { return errors.New("spawn failed") } },
+		"no-uvx": func(d *planeMCPDeps) { d.lookPath = func(string) (string, error) { return "", exec.ErrNotFound } },
+		"no-plane": func(d *planeMCPDeps) {
+			d.manifest = func() (*manifest.Manifest, error) { return manifest.Parse([]byte(noBrokerYAML), "t") }
+		},
+		"child-exit": func(d *planeMCPDeps) {
+			d.run = func(string, []string, []string) error { return exec.Command("sh", "-c", "exit 4").Run() }
+		},
+		"run-error": func(d *planeMCPDeps) {
+			d.run = func(string, []string, []string) error { return errors.New("spawn failed") }
+		},
 	}
 	for name, mut := range cases {
 		t.Run(name, func(t *testing.T) {
