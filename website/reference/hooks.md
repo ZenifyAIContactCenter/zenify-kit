@@ -15,6 +15,7 @@ Các hook ZenifyKit nối vào Claude Code để tự động đồng bộ, báo
 | SessionStart | — | `zenify hooks-run session-start` | Đồng bộ knowledge store, ghi lại rules/workspace mới nhất, nhắc update, in digest bootstrap nếu máy chưa có sentinel discipline | Claude, Codex |
 | SessionStart | — | `zenify hooks-run git-state` | In báo cáo trạng thái git của workspace vào context đầu phiên | Claude, Codex |
 | SessionStart | — | `zenify hooks-run wt-report` | In một dòng liệt kê worktree đã merge/rác mà `wt sweep --all` sẽ dọn | Claude, Codex |
+| SessionStart | — | `zenify hooks-run tmp-check` | Cảnh báo khi thư mục tạm của user bị rò rỉ tới ≥ 50.000 mục (macOS có thể treo khi khởi động) hoặc máy chạy liên tục ≥ 7 ngày | Claude, Codex |
 | Stop | — | `zenify hooks-run docs-sync` | Đồng bộ knowledge store qua git (status → pull --rebase → push), fail-open | Claude, Codex |
 | Stop | — | `zenify hooks-run git-state-stop` | Báo trạng thái git dạng cảnh báo đứng (systemMessage) khi phiên dừng | Claude, Codex |
 | PreToolUse | `Task\|Agent` | `zenify hooks-run observe-count` | Đếm số lần dispatch subagent, cảnh báo khi vượt soft-cap | Claude, Codex |

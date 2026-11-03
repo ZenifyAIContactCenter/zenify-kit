@@ -48,6 +48,8 @@ func dispatchHook(id, wsRoot string, w io.Writer) int {
 		return runGitStateHook(wsRoot, gitstate.Stop, w)
 	case "wt-report":
 		return runWtReportHook(wsRoot, w)
+	case "tmp-check":
+		return runTmpCheckHook(w)
 	case "read-guard":
 		return runReadGuard(os.Stdin, os.Stderr, os.Stat, observe.Record)
 	default:

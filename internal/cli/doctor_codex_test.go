@@ -10,13 +10,13 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 )
 
-func TestCodexHooksCheck_Wired8(t *testing.T) {
+func TestCodexHooksCheck_Wired9(t *testing.T) {
 	home := t.TempDir()
 	if _, err := apply.EnsureCodexHooks(home, false); err != nil {
 		t.Fatal(err)
 	}
 	ok, d := codexHooksCheck(home, true).Run()
-	if !ok || !strings.Contains(d, "wired 8/8") || strings.HasPrefix(d, "cảnh báo:") { //znf:allow-lang
+	if !ok || !strings.Contains(d, "wired 9/9") || strings.HasPrefix(d, "cảnh báo:") { //znf:allow-lang
 		t.Fatalf("ok=%v %q", ok, d)
 	}
 	if !strings.Contains(d, "trust: không kiểm tra được, xem /hooks") { //znf:allow-lang
@@ -35,14 +35,14 @@ func TestCodexHooksCheck_FiveWarns(t *testing.T) {
 		t.Fatal(err)
 	}
 	ok, d := codexHooksCheck(home, true).Run()
-	if !ok || !strings.HasPrefix(d, "cảnh báo:") || !strings.Contains(d, "wired 5/8") { //znf:allow-lang
+	if !ok || !strings.HasPrefix(d, "cảnh báo:") || !strings.Contains(d, "wired 5/9") { //znf:allow-lang
 		t.Fatalf("ok=%v %q", ok, d)
 	}
 }
 
 func TestCodexHooksCheck_NoFile(t *testing.T) {
 	_, d := codexHooksCheck(t.TempDir(), true).Run()
-	if !strings.Contains(d, "wired 0/8") {
+	if !strings.Contains(d, "wired 0/9") {
 		t.Fatal(d)
 	}
 }
