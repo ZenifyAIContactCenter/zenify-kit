@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -134,7 +135,11 @@ func runTmpCheckHook(w io.Writer) int {
 	var wrote bool
 	defer failOpen(io.Discard, &wrote)
 	var lines []string
-	for _, d := range []struct{ label, dir string }{{"user temp dir", userTempDir()}, {"/tmp", "/tmp"}} {
+	user := userTempDir()
+	for _, d := range []struct{ label, dir string }{{"user temp dir", user}, {"/tmp", "/tmp"}} {
+		if d.label == "/tmp" && filepath.Clean(user) == "/tmp" {
+			continue // Linux: the user temp dir is /tmp; count it once
+		}
 		if s := tmpFloodWarning(d.label, d.dir, tmpFloodLimit, tmpSizePrefilter, tmpReadTimeout); s != "" {
 			lines = append(lines, s)
 		}
