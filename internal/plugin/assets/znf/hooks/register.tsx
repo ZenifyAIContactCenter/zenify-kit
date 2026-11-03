@@ -542,19 +542,29 @@ export const register: Register = (on, options: PluginOptions) => {
         : !st.data.enabled
           ? [{ text: STATUS_OFF, tone: 'dim' }]
           : tabLines(selected, st.data, await $.session.id(), (await read($, bound))?.id, await $.clock.now())
+    // The main screen reports no clicks, so an unfocused pane there says how to reach the tabs by keys.
+    const showTabKeys = e.surface === 'terminal' && e.viewport?.isFullscreen === false && !e.props.isFocused
     return (
       <Box flexDirection="column" paddingX={1}>
-        <Box flexDirection="row" marginBottom={1}>
+        <Box flexDirection="row" marginBottom={showTabKeys ? 0 : 1}>
           {TABS.map((t, i) => [
             i > 0 && <Text dimColor> │ </Text>,
             // A Button has no color prop, so the selected tab is a colored bold Text.
             t.id === selected ? (
               <Text color="claude" bold>{`▸${t.label}`}</Text>
             ) : (
-              <Button key={`tab:${t.id}`} label={t.label} plain dimColor onPress={() => selectTab($, t.id)} />
+              // The hotkey (its 1-based place) presses it while the pane holds the keyboard.
+              <Button key={`tab:${t.id}`} label={t.label} hotkey={String(i + 1)} plain dimColor onPress={() => selectTab($, t.id)} />
             ),
           ])}
         </Box>
+        {showTabKeys && (
+          <Box marginBottom={1}>
+            <Text dimColor wrap="truncate-end">
+              {COPY.tabKeys}
+            </Text>
+          </Box>
+        )}
         {body.map(line)}
       </Box>
     )

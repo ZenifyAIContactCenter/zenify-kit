@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { TABS } from './track-ui'
+import { COPY, TABS } from './track-ui'
 
 const CWD = '/w/app'
 const WS = '/w'
@@ -579,6 +579,39 @@ test('FR-6.2: the tab row has the five tabs; Estimate and Quality switch the bod
   await ui.press({ key: 'tab:quality' })
   expect(await allTexts(ui)).toContain('▸Quality')
   expect(await allTexts(ui)).toContain('no work yet')
+})
+
+test('tab keys: each tab Button carries its 1-based place as hotkey', async ($, on) => {
+  engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  const ui = await mountTab($)
+  const keys = async () => (await ui.findAll({ type: 'Button' })).map((b: any) => [b.props.label, b.props.hotkey])
+  expect(await keys()).toEqual([['Today', '2'], ['Estimate', '3'], ['Quality', '4'], ['Backlog', '5']])
+  await ui.press({ key: 'tab:quality' })
+  expect(await keys()).toEqual([['Kitchen', '1'], ['Today', '2'], ['Estimate', '3'], ['Backlog', '5']])
+})
+
+test('tab keys: the key hint shows on the main screen while the pane is unfocused, never in fullscreen or focused', async ($, on) => {
+  engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  const at = (isFullscreen: boolean | undefined, isFocused: boolean) => {
+    const base = pane()
+    return { ...base, ...(isFullscreen === undefined ? {} : { viewport: { columns: 200, rows: 50, isFullscreen } }), props: { ...base.props, isFocused, placement: 'inline' } }
+  }
+  const hint = async (isFullscreen: boolean | undefined, isFocused: boolean) => {
+    const ui = await $.ui.mount(at(isFullscreen, isFocused))
+    const shown = (await allTexts(ui)).includes(COPY.tabKeys)
+    await ui.unmount()
+    return shown
+  }
+  expect(await hint(false, false)).toBe(true)
+  expect(await hint(false, true)).toBe(false)
+  expect(await hint(true, false)).toBe(false)
+  expect(await hint(undefined, false)).toBe(false)
 })
 
 test('FR-6.4: a failing stats run shows its message in the pane, not an empty pane', async ($, on) => {

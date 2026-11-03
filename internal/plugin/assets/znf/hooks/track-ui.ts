@@ -23,6 +23,8 @@ export const COPY = {
   // FR-11.4 (track-metrics): unfinished work from earlier days.
   tipCarried: 'Tip: {N} items carried over — type "hey claude continue"',
   noWorkspace: 'not in a zenify workspace',
+  // The main screen reports no clicks: the tabs are reached by keys once the pane holds the keyboard.
+  tabKeys: 'ctrl+x tab, then 1–5 to switch tabs',
   // FR-17.3: a /config row that could not be read back from its source.
   configToast: '⚠ /config sync error: ',
 } as const
