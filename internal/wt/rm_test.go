@@ -5,9 +5,12 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
 // rmStub keys on "dir|args"; records worktree/branch removals for assertions.
@@ -291,5 +294,464 @@ func TestRunRm_RefusalNamesRecordedBase(t *testing.T) {
 	err := RunRm(RmOptions{RepoRoot: root, Slug: "hf", Runner: s, Stderr: io.Discard, Pid: 1, Now: 2, Host: "h"})
 	if err == nil || !strings.Contains(err.Error(), "origin/main or origin/release91") {
 		t.Fatalf("want refusal naming both refs, got %v", err)
+	}
+}
+
+// recRunner wraps real git and records every call, so a test can assert a
+// remote deletion was (not) issued without any real remote.
+type recRunner struct {
+	inner interface {
+		Run(dir string, args ...string) ([]byte, error)
+	}
+	calls []string
+}
+
+func (c *recRunner) Run(dir string, args ...string) ([]byte, error) {
+	c.calls = append(c.calls, strings.Join(args, " "))
+	return c.inner.Run(dir, args...)
+}
+
+func (c *recRunner) deleted() bool {
+	for _, x := range c.calls {
+		if strings.Contains(x, "origin --delete") {
+			return true
+		}
+	}
+	return false
+}
+
+func bareHas(t *testing.T, bare, branch string) bool {
+	t.Helper()
+	return strings.TrimSpace(gitT(t, bare, "branch", "--list", branch)) != ""
+}
+
+// FR-B7.3: rm deletes the remote branch when its tip equals base.
+func TestRunRm_DeletesEmptyRemoteBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if !bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatal("precondition: branch should be on origin")
+	}
+	var rb bytes.Buffer
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("empty remote branch should be deleted; stderr %q", rb.String())
+	}
+}
+
+// FR-B7.3: a remote branch carrying a commit is kept and the reason printed.
+func TestRunRm_KeepsRemoteBranchWithCommits(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	wtp := filepath.Join(root, ".worktrees", "my-task")
+	gitT(t, wtp, "commit", "-q", "--allow-empty", "-m", "work")
+	gitT(t, wtp, "push", "-q", "origin", "namph/feat/my-task")
+	var rb bytes.Buffer
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Force: true, Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if rec.deleted() || !bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("branch with commits must stay on origin; calls %v", rec.calls)
+	}
+	if !strings.Contains(rb.String(), "kept origin/namph/feat/my-task: it has commits") {
+		t.Fatalf("expected kept message, got %q", rb.String())
+	}
+}
+
+// FR-B7.3: no origin remote means no remote work and no warning.
+func TestRunRm_NoOriginNoRemoteWork(t *testing.T) {
+	root, _ := pushRepo(t, false)
+	o, errb := realOpts(root)
+	o.BaseOverride = "main"
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Force: true, Runner: gitx.ExecRunner(), Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if strings.Contains(rb.String(), "origin/") {
+		t.Fatalf("no origin: expected no remote messages, got %q", rb.String())
+	}
+}
+
+// FR-B7.3: wt sweep (KeepRemote false) deletes the empty remote branch too.
+func TestRunSweep_DeletesEmptyRemoteBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if err := RunSweep(SweepOptions{RepoRoot: root, Host: "h", Pid: 1, Now: 2, Runner: gitx.ExecRunner(), Stdout: io.Discard, Stderr: io.Discard}); err != nil {
+		t.Fatal(err)
+	}
+	if bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatal("wt sweep should delete the empty remote branch")
+	}
+}
+
+// failRunner fails any git call whose args start with one of the given prefixes.
+type failRunner struct {
+	recRunner
+	failOn string
+}
+
+func (f *failRunner) Run(dir string, args ...string) ([]byte, error) {
+	if strings.HasPrefix(strings.Join(args, " "), f.failOn) {
+		f.calls = append(f.calls, strings.Join(args, " "))
+		return nil, errors.New("boom")
+	}
+	return f.recRunner.Run(dir, args...)
+}
+
+// An ls-remote or push failure keeps the remote branch and only warns.
+func TestRunRm_RemoteCallFailureKeepsBranch(t *testing.T) {
+	for _, failOn := range []string{"ls-remote", "push --force-with-lease"} {
+		root, bare := pushRepo(t, true)
+		o, errb := realOpts(root)
+		if err := RunNew(o); err != nil {
+			t.Fatalf("RunNew: %v\n%s", err, errb)
+		}
+		var rb bytes.Buffer
+		fr := &failRunner{recRunner: recRunner{inner: gitx.ExecRunner()}, failOn: failOn}
+		if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: fr, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+			t.Fatalf("RunRm: %v", err)
+		}
+		if (failOn != "push --force-with-lease" && fr.deleted()) || !bareHas(t, bare, "namph/feat/my-task") {
+			t.Fatalf("%s failure must keep the branch; calls %v", failOn, fr.calls)
+		}
+		if !strings.Contains(rb.String(), "warning") {
+			t.Fatalf("%s failure must warn, got %q", failOn, rb.String())
+		}
+	}
+}
+
+// A commit pushed to origin between the count and the delete is protected by
+// the lease: the delete is refused and the branch kept.
+func TestRunRm_DeleteLeaseProtectsNewCommit(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	wtp := filepath.Join(root, ".worktrees", "my-task")
+	// Race: right before the push --delete, a teammate pushes a commit.
+	hook := &racePusher{recRunner: recRunner{inner: gitx.ExecRunner()}, t: t, wtp: wtp}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: hook, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v", err)
+	}
+	if !hook.fired {
+		t.Fatal("race hook never fired")
+	}
+	if !bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("branch with a late commit must survive; stderr %q", rb.String())
+	}
+	if !strings.Contains(rb.String(), "keeping it") {
+		t.Fatalf("expected warning, got %q", rb.String())
+	}
+}
+
+type racePusher struct {
+	recRunner
+	t     *testing.T
+	wtp   string
+	fired bool
+}
+
+func (r *racePusher) Run(dir string, args ...string) ([]byte, error) {
+	if !r.fired && strings.Contains(strings.Join(args, " "), "origin --delete") {
+		r.fired = true
+		// the worktree is already removed; push the late commit from a clone
+		clone := r.t.TempDir()
+		url := strings.TrimSpace(gitT(r.t, dir, "remote", "get-url", "origin"))
+		gitT(r.t, clone, "clone", "-q", url, ".")
+		gitT(r.t, clone, "checkout", "-q", "namph/feat/my-task")
+		gitT(r.t, clone, "commit", "-q", "--allow-empty", "-m", "late")
+		gitT(r.t, clone, "push", "-q", "origin", "namph/feat/my-task")
+	}
+	return r.recRunner.Run(dir, args...)
+}
+
+// A worktree switched to another branch (even one whose tip equals base) must
+// never take that branch off origin: only the branch wt recorded is deletable.
+func TestRunRm_NeverDeletesUnrecordedOrDeployBranch(t *testing.T) {
+	for _, other := range []string{"staging", "main-copy"} {
+		root, bare := pushRepo(t, true)
+		o, errb := realOpts(root)
+		if err := RunNew(o); err != nil {
+			t.Fatalf("RunNew: %v\n%s", err, errb)
+		}
+		wtp := filepath.Join(root, ".worktrees", "my-task")
+		gitT(t, wtp, "checkout", "-q", "-b", other)
+		gitT(t, wtp, "push", "-q", "origin", other)
+		var rb bytes.Buffer
+		rec := &recRunner{inner: gitx.ExecRunner()}
+		if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+			t.Fatalf("RunRm: %v\n%s", err, rb.String())
+		}
+		if rec.deleted() || !bareHas(t, bare, other) {
+			t.Fatalf("%s must stay on origin; calls %v", other, rec.calls)
+		}
+		if !strings.Contains(rb.String(), "kept origin/"+other+": not a wt task branch") {
+			t.Fatalf("expected not-a-task-branch message, got %q", rb.String())
+		}
+	}
+}
+
+// An untouched branch cut from a non-default base is still deleted: the rule is
+// "tip == the commit wt started it at", not a count against cfg.BaseRef.
+func TestRunRm_DeletesEmptyBranchCutFromOtherBase(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	gitT(t, root, "checkout", "-q", "-b", "rel")
+	gitT(t, root, "commit", "-q", "--allow-empty", "-m", "release work")
+	gitT(t, root, "push", "-q", "origin", "rel")
+	gitT(t, root, "checkout", "-q", "main")
+	o, errb := realOpts(root)
+	o.BaseOverride = "origin/rel"
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: gitx.ExecRunner(), Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("empty branch cut from origin/rel should be deleted; stderr %q", rb.String())
+	}
+}
+
+func TestGitErrLine_RedactsAndTruncates(t *testing.T) {
+	e := &exec.ExitError{Stderr: []byte("\nfatal: unable to access 'https://user:s3cret@host.example/r.git/': denied\nsecond line\n")}
+	got := gitErrLine(e)
+	if strings.Contains(got, "s3cret") || strings.Contains(got, "second") || !strings.Contains(got, "https://***@host.example/r.git") {
+		t.Fatalf("got %q", got)
+	}
+	if got := gitErrLine(errors.New("fetch https://tok123@h/x failed")); got != "fetch https://***@h/x failed" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestPushRejectedHint(t *testing.T) {
+	if got := pushRejectedHint("! [rejected] b -> b (non-fast-forward)"); !strings.Contains(got, "already has this branch") {
+		t.Fatalf("got %q", got)
+	}
+	if got := pushRejectedHint("could not resolve host"); strings.Contains(got, "already has") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// A commit pushed and then merged into base must not make the branch look empty:
+// the remote tip moved off the start commit, so it is kept.
+func TestRunRm_KeepsRemoteBranchWhoseCommitWasMerged(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	wtp := filepath.Join(root, ".worktrees", "my-task")
+	gitT(t, wtp, "commit", "-q", "--allow-empty", "-m", "work")
+	gitT(t, wtp, "push", "-q", "origin", "namph/feat/my-task")
+	gitT(t, root, "merge", "-q", "--no-edit", "namph/feat/my-task")
+	gitT(t, root, "push", "-q", "origin", "main")
+	var rb bytes.Buffer
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Fetch: true, Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if rec.deleted() || !bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("branch with a merged commit must stay on origin; calls %v", rec.calls)
+	}
+	if !strings.Contains(rb.String(), "kept origin/namph/feat/my-task: it has commits") {
+		t.Fatalf("got %q", rb.String())
+	}
+}
+
+// The checkout was deleted by hand and the base was not the default: the start
+// commit in state still proves the remote branch is untouched, so it goes.
+func TestRunRm_GoneDirNonDefaultBaseDeletesEmptyBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	gitT(t, root, "checkout", "-q", "-b", "rel")
+	gitT(t, root, "commit", "-q", "--allow-empty", "-m", "release work")
+	gitT(t, root, "push", "-q", "origin", "rel")
+	gitT(t, root, "checkout", "-q", "main")
+	o, errb := realOpts(root)
+	o.BaseOverride = "origin/rel"
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if err := os.RemoveAll(filepath.Join(root, ".worktrees", "my-task")); err != nil {
+		t.Fatal(err)
+	}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Force: true, Runner: gitx.ExecRunner(), Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("empty remote branch should be deleted; stderr %q", rb.String())
+	}
+}
+
+// State written by an older wt has no StartSHA: nothing proves the branch is
+// untouched, so it is kept and the line says why.
+func TestRunRm_LegacyStateWithoutStartSHAKeepsRemoteBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	st, err := ReadState(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, ok := st.Find("my-task")
+	if !ok || w.StartSHA == "" {
+		t.Fatalf("precondition: wt new must record StartSHA, got %+v", w)
+	}
+	w.StartSHA = ""
+	if err := SaveWorktree(root, w, 1, "h", 2); err != nil {
+		t.Fatal(err)
+	}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: gitx.ExecRunner(), Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if !bareHas(t, bare, "namph/feat/my-task") || !strings.Contains(rb.String(), "no start commit recorded") {
+		t.Fatalf("legacy entry must keep the branch with a reason, got %q", rb.String())
+	}
+}
+
+// postPushCommitter commits in the worktree right after wt new's push returns.
+type postPushCommitter struct {
+	recRunner
+	t *testing.T
+}
+
+func (p *postPushCommitter) Run(dir string, args ...string) ([]byte, error) {
+	out, err := p.recRunner.Run(dir, args...)
+	if len(args) > 0 && args[0] == "push" && err == nil {
+		gitT(p.t, dir, "commit", "-q", "--allow-empty", "-m", "late work")
+	}
+	return out, err
+}
+
+// A commit made in the worktree right after the push must not become the start
+// commit: StartSHA is captured before the push, so rm sees tip != StartSHA.
+func TestRunRm_KeepsBranchWithCommitMadeRightAfterPush(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	o, errb := realOpts(root)
+	o.Runner = &postPushCommitter{recRunner: recRunner{inner: gitx.ExecRunner()}, t: t}
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	wtp := filepath.Join(root, ".worktrees", "my-task")
+	gitT(t, wtp, "push", "-q", "origin", "namph/feat/my-task") // the work reaches origin
+	var rb bytes.Buffer
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Force: true, Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if rec.deleted() || !bareHas(t, bare, "namph/feat/my-task") {
+		t.Fatalf("branch with later work must stay; calls %v", rec.calls)
+	}
+}
+
+// ls-remote matches by ref suffix; an unrelated origin branch ending in our
+// name must not look like ours. Origin has prefix/<branch>, wt new creates
+// <branch>: the empty branch is wt's and rm deletes it.
+func TestRunRm_SuffixMatchingRemoteBranchDoesNotBlockCleanup(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	gitT(t, root, "push", "-q", "origin", "main:refs/heads/prefix/namph/feat/my-task")
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	st, _ := ReadState(root)
+	if w, _ := st.Find("my-task"); w.StartSHA == "" {
+		t.Fatal("StartSHA must be recorded: origin had no branch of that exact name")
+	}
+	var rb bytes.Buffer
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: gitx.ExecRunner(), Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if bareHas(t, bare, "namph/feat/my-task") || !bareHas(t, bare, "prefix/namph/feat/my-task") {
+		t.Fatalf("only the exact branch should be deleted; stderr %q", rb.String())
+	}
+}
+
+// seedOriginBranch puts namph/feat/my-task on origin (optionally with a commit)
+// and leaves no local branch, like work someone else already pushed.
+func seedOriginBranch(t *testing.T, root string, withCommit bool) {
+	t.Helper()
+	gitT(t, root, "checkout", "-q", "-b", "namph/feat/my-task")
+	if withCommit {
+		gitT(t, root, "commit", "-q", "--allow-empty", "-m", "existing work")
+	}
+	gitT(t, root, "push", "-q", "origin", "namph/feat/my-task")
+	gitT(t, root, "checkout", "-q", "main")
+	gitT(t, root, "branch", "-q", "-D", "namph/feat/my-task")
+	gitT(t, root, "fetch", "-q", "origin")
+}
+
+// wt new --base <an existing remote task branch>: origin already had the branch,
+// so wt did not create it there and rm must keep it, even though the merge gate
+// passes (the branch equals its own base).
+func TestRunRm_KeepsPreexistingRemoteBranchUsedAsBase(t *testing.T) {
+	for _, withCommit := range []bool{true, false} {
+		root, bare := pushRepo(t, true)
+		seedOriginBranch(t, root, withCommit)
+		o, errb := realOpts(root)
+		o.BaseOverride = "origin/namph/feat/my-task"
+		if err := RunNew(o); err != nil {
+			t.Fatalf("RunNew: %v\n%s", err, errb)
+		}
+		var rb bytes.Buffer
+		rec := &recRunner{inner: gitx.ExecRunner()}
+		if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+			t.Fatalf("RunRm: %v\n%s", err, rb.String())
+		}
+		if rec.deleted() || !bareHas(t, bare, "namph/feat/my-task") {
+			t.Fatalf("withCommit=%v: pre-existing remote branch must stay; calls %v", withCommit, rec.calls)
+		}
+	}
+}
+
+// Defence in depth: even a state record that claims a StartSHA (older record,
+// hand edit) cannot delete the worktree's own base branch.
+func TestRunRm_NeverDeletesRecordedBaseBranch(t *testing.T) {
+	root, bare := pushRepo(t, true)
+	seedOriginBranch(t, root, true)
+	o, errb := realOpts(root)
+	o.BaseOverride = "origin/namph/feat/my-task"
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	st, _ := ReadState(root)
+	w, _ := st.Find("my-task")
+	if w.Base != "origin/namph/feat/my-task" {
+		t.Fatalf("state must record the base, got %q", w.Base)
+	}
+	w.StartSHA = strings.TrimSpace(gitT(t, bare, "rev-parse", "namph/feat/my-task"))
+	if err := SaveWorktree(root, w, 1, "h", 2); err != nil {
+		t.Fatal(err)
+	}
+	var rb bytes.Buffer
+	rec := &recRunner{inner: gitx.ExecRunner()}
+	if err := RunRm(RmOptions{RepoRoot: root, Slug: "my-task", Runner: rec, Stderr: &rb, Pid: 1, Now: 2, Host: "h"}); err != nil {
+		t.Fatalf("RunRm: %v\n%s", err, rb.String())
+	}
+	if rec.deleted() || !bareHas(t, bare, "namph/feat/my-task") ||
+		!strings.Contains(rb.String(), "not a wt task branch") {
+		t.Fatalf("base branch must be protected; calls %v out %q", rec.calls, rb.String())
 	}
 }

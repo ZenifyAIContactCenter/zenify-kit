@@ -37,3 +37,24 @@ func TestTimeoutRunner_PassesThroughOnSuccess(t *testing.T) {
 		t.Fatalf("git --version via TimeoutRunner: %v %q", err, out)
 	}
 }
+
+// A grandchild that keeps the pipes open after git is killed must not hold Run
+// past the deadline (WaitDelay closes the pipes).
+func TestTimeoutRunner_ReturnsWhenChildHoldsPipes(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available")
+	}
+	old := execGit
+	execGit = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", "sleep 8 & sleep 8")
+	}
+	t.Cleanup(func() { execGit = old })
+	start := time.Now()
+	_, err := TimeoutRunner(200*time.Millisecond).Run("/", "fetch")
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("want DeadlineExceeded, got %v", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("took %v; a child holding the pipes blocked Run", d)
+	}
+}
