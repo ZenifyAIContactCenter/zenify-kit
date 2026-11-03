@@ -2,7 +2,7 @@
 name: fix
 description: Debug and fix a bug. Use when something is broken — auto-fetches logs/stacktrace to ground the diagnosis in real data. Pass a description, a GitHub Actions URL, or nothing (auto-detect recent logs).
 argument-hint: "[description | github-actions-url | empty for auto-log]"
-allowed-tools: Read Grep Glob Bash Agent WebFetch
+allowed-tools: Read Grep Glob Bash Agent WebFetch Write
 ---
 
 **Rigid on diagnosis-first.** Never guess the fix before seeing the real error. Tool names:
@@ -15,25 +15,12 @@ Never skips Step 2 — state the confirmed cause, with evidence, before writing 
 parallel hypotheses) — criteria in `references/why-diagnosis-first.md`. State which path and why
 (one line); if the narrow hypothesis does not survive Step 2 you were on the wide path — run it.
 
-**Isolation (house rule #8): a worktree, always, created before the loop writes its first file or starts a server, at the latest before Step 5 — `references/isolation.md`** (fetch → `wt new <slug> --type fix --base <baseRef>`; read-only rungs need none; a bug found mid-task is not a new task).
+**Isolation (rule #8):** a worktree before the first write or server, at the latest before Step 5 — `references/isolation.md`.
 
 ## Step 0: Ground in real error data
 
-**No argument:**
-```bash
-ls -t *.log 2>/dev/null | head -3
-tail -100 <latest-log-file> 2>/dev/null
-```
-Also run the project's test suite with `pm` (`pm test`, `pm run build`), never an assumed `npm`; a
-verify command in the repo's CLAUDE.md wins.
-
-**A description:** a symptom to search for; still fetch logs.
-
-**A GitHub Actions URL (`.../actions/runs/...`):**
-```bash
-gh run view <run-id> --log 2>&1 | grep -A 20 "Error\|FAIL\|error:" | head -100
-# Or: gh run view --log-failed
-```
+**Input:** no argument (latest `*.log` + `pm test`), a description, or a GitHub Actions URL
+(`gh run view --log-failed`) — `references/feedback-loop.md` § Inputs.
 
 **Prod/staging symptom (any input):** pull evidence in order: Loki, Tempo,
 `zenify db-read`/`redis-read`, PostHog — recipes: `references/feedback-loop.md`.
@@ -42,6 +29,7 @@ gh run view <run-id> --log 2>&1 | grep -A 20 "Error\|FAIL\|error:" | head -100
 output), red on the symptom the user described. Ladder and redaction:
 `references/feedback-loop.md`; secrets in logs → `<REDACTED>`. No loop → stop and ask for (a) a
 reproducing environment, (b) a redacted artifact, (c) leave to add temporary logs; no Step 1.
+Prd evidence with no read-only loop → confirm from logs instead, no stop (`/hotfix` step 3).
 
 ## Step 1: Root cause analysis
 
@@ -68,6 +56,15 @@ one that found nothing (`CLAUDE.md §3`, `references/why-diagnosis-first.md`).
 Run the Step 0 command: red on the user's symptom, not a neighbouring error? Shrink it to the
 smallest scenario still red. Does the evidence match the hypothesis? If you cannot confirm the
 cause, say so — never guess-fix.
+
+## Step 2b: Production? Hand off to /hotfix
+
+Prd evidence = prd-env PostHog/Loki/Tempo trace/`zenify obs --prd`, or a customer report on a prd tenant. None → Step 3. With it,
+look for the faulty line on the hotfix base (`zenify hotfix baseref`, `git show`; commands in
+`references/prd-routing.md`). There, or cannot be pinned (a missing path counts) →
+**`Skill(znf:hotfix)`** with the handoff (slug, cause, red command, `track id:`), and /fix ends:
+hotfix owns steps 3-10. No exact match counts as cannot be pinned.
+Tell it: do not re-diagnose.
 
 ## Step 3: `/scout` — what depends on the code you will change
 
@@ -113,14 +110,10 @@ Re-run whatever was failing with the project's verify command (not assumed `npm`
 passes and run related tests. Re-run the Step 0 command on the original (unshrunk) scenario: green. Remove every `[DEBUG-xxxx]` log — `rg '\[DEBUG-'` on changed files and
 `git diff <base> | rg '\[DEBUG-'` both return nothing.
 
-**Not `/ship` step 4:** only *did the bug go away*. If visual, **look in the browser here**; layout
-measurement and the screenshot audit wait for step 4 (`references/why-diagnosis-first.md`).
+Visual? Look in the browser here; the audit is `/ship` step 4.
 
 With **no tests**, "it compiles" is not verification — **`Skill(znf:run)`** to launch the app,
 observe the real code path and show that output; it reads the port `wt` allocated for this worktree.
-
-**A clean check is not yet evidence.** A *negative* result — "no match", "0 results", "OK" —
-counts once a second mechanism agrees (`references/clean-check-confirmations.md`).
 
 ## Step 7: Report
 
@@ -152,4 +145,5 @@ Read one when its trigger fires.
 - `references/why-diagnosis-first.md` — read when tempted to skip a step, or wondering why `/fix` insists on scout and ship.
 - `references/feedback-loop.md` — read when building the Step 0 loop, redacting logs, or tagging debug output.
 - `references/clean-check-confirmations.md` — read when a negative result is letting you proceed.
+- `references/prd-routing.md` — read at Step 2b.
 - `references/red-flags.md` — read when a symptom keeps repeating (attempt #3, "probably X", 4 files).

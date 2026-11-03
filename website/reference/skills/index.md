@@ -25,7 +25,7 @@ Mọi skill của kit, kể cả bộ skill coding theo stack (Express, NestJS, 
 | [/znf:fix](./fix) | Chẩn đoán trước, sửa sau. |
 | [/znf:gate](./gate) | Cổng kiểm hợp đồng chung giữa các repo trong một polyrepo, chạy ngay sau khi sửa thứ gì đó dùng chung. |
 | [/znf:ground](./ground) | Xác minh hình dạng và giá trị thật trước khi viết code chạm vào dữ liệu, API, hoặc code có sẵn. |
-| [/znf:hotfix](./hotfix) | Xử lý một lỗi đang xảy ra trên production trong một polyrepo, từ chẩn đoán tới PR, không bao giờ tự chạy. |
+| [/znf:hotfix](./hotfix) | Xử lý một lỗi đang xảy ra trên production, từ chẩn đoán tới PR; `/znf:fix` tự chuyển sang khi có bằng chứng prd. |
 | [/znf:mongo-data-safety](./mongo-data-safety) | Đọc/ghi MongoDB an toàn trong một codebase đa tenant không có schema cứng. |
 | [/znf:mongoose-modeling](./mongoose-modeling) | Thiết kế schema Mongoose an toàn — index, lean/populate, discriminator, thứ tự thêm field mới. |
 | [/znf:nestjs-patterns](./nestjs-patterns) | Quy ước viết backend NestJS — module, DTO, guard, truy cập model qua DI, envelope lỗi thống nhất. |

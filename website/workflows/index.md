@@ -14,7 +14,7 @@ Tiêu chí chọn là mức độ bạn đã hiểu về công việc, không ph
 |---|---|
 | Chưa có thiết kế, hoặc chưa rõ cần làm gì | `/znf:cook` |
 | Có lỗi, chưa biết nguyên nhân | `/znf:fix` |
-| Đã biết nguyên nhân, lỗi đang xảy ra trên production | `/znf:hotfix` |
+| Lỗi đang xảy ra trên production | `/znf:hotfix`. `/znf:fix` tự chuyển sang đây khi có bằng chứng production, và bạn vẫn gõ trực tiếp được |
 | Đã rõ yêu cầu và cách làm, trong một repo, không chạm tài nguyên chung | Không dùng workflow. Mở worktree, sửa, verify, chạy `/znf:ship` |
 
 ```mermaid
@@ -24,6 +24,7 @@ flowchart TD
   Q1 -->|Rồi| Q2["Đang hỏng?"]
   Q2 -->|Chưa rõ vì sao| FIX["/znf:fix"]
   Q2 -->|Hỏng trên production| HOT["/znf:hotfix"]
+  FIX -->|Bằng chứng production| HOT
   Q2 -->|Không hỏng| Q3["Đụng tài nguyên chung?"]
   Q3 -->|Không| PLAIN["Không dùng workflow"]
   Q3 -->|Có| GATE["Contract gate, rồi vào workflow"]
@@ -44,7 +45,7 @@ Tài nguyên chung là thứ nhiều service cùng dùng: collection trong DB, e
 
 `/znf:cook` và `/znf:fix` phân biệt theo mức hiểu về công việc. `/znf:hotfix` phân biệt theo nơi code sẽ được merge.
 
-Hotfix tạo branch từ base hotfix mà repo khai trong `worktree.json` (ví dụ `origin/main`), không từ nhánh tích hợp hằng ngày. Phần chẩn đoán dùng lại các bước của `/znf:fix`. Xem chi tiết ở [hotfix](/workflows/hotfix).
+Bạn không cần tự chọn giữa fix và hotfix khi chưa chắc: `/znf:fix` tự chuyển sang `/znf:hotfix` khi có bằng chứng production, và bạn vẫn gõ `/znf:hotfix` trực tiếp được. Hotfix tạo branch từ base hotfix mà repo khai trong `worktree.json` (ví dụ `origin/main`), không từ nhánh tích hợp hằng ngày. Phần chẩn đoán dùng lại các bước của `/znf:fix`. Xem chi tiết ở [hotfix](/workflows/hotfix).
 
 ## Bước cuối: ship
 

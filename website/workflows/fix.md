@@ -15,7 +15,7 @@ Dùng `/znf:fix` khi:
 
 Không dùng `/znf:fix` khi:
 
-- Đang hỏng trên production. Dùng [`/znf:hotfix`](/workflows/hotfix). Hotfix dùng lại bước chẩn đoán của fix.
+- Đang hỏng trên production và bạn đã biết cần xử lý ngay. Gõ [`/znf:hotfix`](/workflows/hotfix) trực tiếp. Nếu bạn vẫn gõ `/znf:fix`, bước 2b tự chuyển sang `/znf:hotfix` khi có bằng chứng production (xem bên dưới).
 - Đã biết nguyên nhân và cách sửa chỉ một dòng. Đi đường không dùng workflow, xem [Chọn workflow](/workflows/).
 
 ## Cách gọi
@@ -26,7 +26,7 @@ Không dùng `/znf:fix` khi:
 /znf:fix
 ```
 
-Không truyền gì thì fix tự lấy log gần nhất. Agent tự route vào `/znf:fix` khi nhận bug report. Điểm này khác với hotfix.
+Không truyền gì thì fix tự lấy log gần nhất. Agent tự route vào `/znf:fix` khi nhận bug report. Khi có bằng chứng production (PostHog, Loki, trace Tempo hoặc `zenify obs --prd` của môi trường prd, hoặc báo cáo của khách hàng trên tenant prd), `/znf:fix` tự chuyển sang `/znf:hotfix` ở bước 2b nếu dòng lỗi có trên base hotfix hoặc không chỉ ra được dòng lỗi, và chuyển kèm nguyên nhân đã xác nhận để hotfix không chẩn đoán lại.
 
 ## Viết yêu cầu
 
@@ -46,7 +46,9 @@ flowchart TD
   B -->|Không dựng được| X["Dừng, hỏi bạn"]
   B -->|Lệnh đỏ đúng triệu chứng| C["1. Giả thuyết"]
   C --> D["2. Chạy vòng, thu nhỏ repro"]
-  D --> E["3. Scout"]
+  D --> D2["2b. Có bằng chứng production?"]
+  D2 -->|Dòng lỗi có trên base hotfix, hoặc không chỉ ra được| HF["/znf:hotfix"]
+  D2 -->|Không| E["3. Scout"]
   E --> F["4. Chọn cách sửa"]
   F --> G["5. Regression test đỏ, rồi sửa"]
   G --> H["6. Chạy lại vòng, grep DEBUG"]
@@ -55,6 +57,7 @@ flowchart TD
   class A,B,C,D,E,G,H,I,J action
   class F user
   class X stop
+  class D2,HF action
 ```
 
 *Các bước của một lần chạy fix*
@@ -64,6 +67,7 @@ flowchart TD
 | 0 | Lấy log hoặc lỗi thật, rồi dựng vòng phản hồi: đúng một lệnh có tên, đã chạy, đỏ đúng triệu chứng bạn mô tả (thang các cách dựng nằm trong `references/feedback-loop.md`). Với triệu chứng trên staging hoặc production, nguồn bằng chứng được tra theo thứ tự log, trace, `db-read`/`redis-read`, PostHog, theo tài liệu tham chiếu chung `_shared/evidence-sources` (xem [Quan sát và an toàn](/guides/observe-and-safety#nguon-bang-chung-cho-agent)). Secret, dữ liệu cá nhân của khách hàng và id tenant/account được lọc thành `<REDACTED>` ngay trong lệnh | Xác nhận đúng log. Nếu không dựng được vòng, kit dừng và xin môi trường tái hiện, artifact đã che secret, hoặc quyền thêm log tạm. Bậc cuối của thang (bạn làm theo các bước thủ công rồi dán dòng `KEY=value`) chỉ dành cho bước trên UI hoặc thiết bị; đọc DB hay chạy script dữ liệu thì agent tự chạy `zenify db-read`, `redis-read` hoặc `zenify data run` |
 | 1 | Phân tích nguyên nhân. Hẹp thì một giả thuyết, rộng thì nhiều agent chạy song song, mỗi agent nhận lệnh đỏ cùng giả thuyết của nó | Đọc kết luận |
 | 2 | Chạy lệnh đỏ, xác nhận lỗi đúng triệu chứng rồi thu repro về kịch bản nhỏ nhất vẫn đỏ. Kiểm chứng nguyên nhân trước khi sửa bất cứ gì | Không sửa gì nếu chưa kiểm chứng được |
+| 2b | Nếu có bằng chứng production: `fetch --tags`, resolve base hotfix rồi kiểm dòng lỗi trên đó. Có dòng lỗi, hoặc không chỉ ra được, thì gọi `/znf:hotfix` với slug, nguyên nhân, lệnh đỏ, `track id:`, và `/znf:fix` dừng ở đó; hotfix làm tiếp từ bước 4. Không khớp nguyên văn trên base hotfix cũng tính là không chỉ ra được | Không cần làm gì. Không có bằng chứng production thì bước này bỏ qua |
 | 3 | Chạy `/znf:scout` tìm nơi gọi, đọc, ghi code sắp đổi | Đọc báo cáo scout |
 | 4 | Nếu có trade-off thật giữa hai cách sửa, trình bày cho bạn | Chọn cách sửa |
 | 4 (leo thang) | Nếu fix lan 4+ file hoặc cần quyết định thiết kế, dừng | Chuyển sang `/znf:cook` thay vì ép sửa trong fix |

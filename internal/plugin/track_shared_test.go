@@ -17,13 +17,13 @@ func TestTrackSharedDoc(t *testing.T) {
 		"## Onboard", "## Backlog", "--ref memory:", "onboard history --write", "start --from", "only after the user approves",
 		"backlog add", "zenify track onboard memory",
 		"zenify track stats --json", "let the user pick", "take the next work item",
-		"before any investigation", "end with `--pr <url>`", "--from <ledger id>", "is taken by",
+		"before any investigation", "end with `--pr <url>`", "--from <ledger id>", "is taken by", "`track id:` from `/fix`",
 	})
 }
 
 // FR-12.2: the four skills already at the byte cap are not touched.
 func TestTrackLeavesCappedSkillsAlone(t *testing.T) {
-	sizes := map[string]int64{"cook": 8187, "fix": 8191, "hotfix": 8171, "ship": 8182}
+	sizes := map[string]int64{"cook": 8187, "fix": 8095, "hotfix": 8190, "ship": 8182}
 	for name, want := range sizes {
 		fi, err := os.Stat(filepath.Join("assets", "znf", "skills", name, "SKILL.md"))
 		if err != nil {
