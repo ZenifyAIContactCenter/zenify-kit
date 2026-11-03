@@ -29,18 +29,20 @@ jobs:
       - name: delete releases and tags beyond the newest KEEP
         run: |
           set -euo pipefail
-          # Source is the git tags, not the releases: a tag whose release run failed has no release.
-          releases=$(gh release list --limit 1000 --json tagName --jq '.[].tagName')
-          tags=$(gh api --paginate "repos/$GH_REPO/tags" --jq '.[].name | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+"))' | sort -rV)
-          echo "Keeping:"; echo "$tags" | head -n "$KEEP"
-          prune=$(echo "$tags" | tail -n +"$((KEEP + 1))" | { grep -vxF -- "${CURRENT:-}" || [ $? -eq 1 ]; })
+          # Source is the releases only: a tag without a release may still be releasing, so it is never touched.
+          releases=$(gh release list --limit 1000 --json tagName --jq '.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+"))' | sort -rV)
+          others=$(echo "$releases" | { grep -vxF -- "${CURRENT:-}" || [ $? -eq 1 ]; })
+          # CURRENT takes one of the KEEP slots, so the total never exceeds KEEP.
+          if [ -n "${CURRENT:-}" ] && grep -qxF -- "$CURRENT" <<< "$releases"; then
+            keep=$(printf '%s\n%s\n' "$CURRENT" "$others" | head -n "$KEEP")
+          else
+            keep=$(echo "$others" | head -n "$KEEP")
+          fi
+          echo "Keeping:"; echo "$keep"
+          prune=$(echo "$releases" | { grep -vxF -f <(echo "$keep") || [ $? -eq 1 ]; })
           if [ -z "$prune" ]; then echo "Nothing to prune"; exit 0; fi
-          echo "Pruning $(echo "$prune" | wc -l) tag(s):"
+          echo "Pruning $(echo "$prune" | wc -l) release(s):"
           while IFS= read -r tag; do
             if [ "$DRY_RUN" = "true" ]; then echo "[dry-run] would delete $tag"
-            elif grep -qxF -- "$tag" <<< "$releases"; then
-              echo "Deleting release + tag $tag"; gh release delete "$tag" --cleanup-tag --yes
-            else
-              echo "Deleting tag $tag (no release)"; gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$tag"
-            fi
+            else echo "Deleting $tag"; gh release delete "$tag" --cleanup-tag --yes; fi
           done <<< "$prune"
