@@ -176,13 +176,13 @@ test('SC-8: Kitchen lists Cooked then Rolling boil, identical for any session', 
   const mine = tabLines('kitchen', s, A, undefined, NOW)
   expect(tabLines('kitchen', s, B, 'cook-261030-0b0b', NOW)).toEqual(mine)
   expect(mine.slice(0, 8)).toEqual([
-    { text: 'Cooked', tone: 'bold' },
-    { text: '- Kitchen pane · done · 03:05' },
-    { text: '  ---- https://github.com/o/r/pull/1' },
-    { text: '  ---- https://github.com/o/r/pull/2' },
+    { text: '🍽 Cooked', tone: 'bold' },
+    { text: '- ✅ Kitchen pane · done · 03:05' },
+    { text: '  🔗 https://github.com/o/r/pull/1' },
+    { text: '  🔗 https://github.com/o/r/pull/2' },
     { text: '' },
-    { text: 'Rolling boil', tone: 'bold' },
-    { text: '- Dev track pane ship · chờ quyền · 2m' },
+    { text: '🔥 Rolling boil', tone: 'bold' },
+    { text: '- 🔐 Dev track pane ship · chờ quyền · 2m' },
     { text: `    zenify-kit/x · session ${B.slice(0, 8)}`, tone: 'dim' },
   ])
   expect(mine[8]?.text.startsWith('thang (')).toBe(true)
@@ -191,31 +191,38 @@ test('SC-8: Kitchen lists Cooked then Rolling boil, identical for any session', 
 test('FR-4.2: an empty tab falls back to the brief, and parseTrackStats defaults tab to empty', () => {
   const s = kitchenStats({ rollingBoil: [{ session: B, tab: '', brief: 'b', state: 'ask', since: new Date(NOW - 45_000).toISOString() }] })
   const lines = tabLines('kitchen', s, A, undefined, NOW)
-  expect(texts(lines)).toContain('- b · đang hỏi · 45s')
+  expect(texts(lines)).toContain('- ❓ b · đang hỏi · 45s')
   expect(lines.find(l => l.text.startsWith('    b'))).toEqual({ text: `    b · session ${B.slice(0, 8)}`, tone: 'dim' })
   const raw = { ...stats(), kitchen: { cooked: [], rollingBoil: [{ session: B, brief: 'b', state: 'ask', since: 'x' }], titleError: '' } }
   expect(parseTrackStats(JSON.stringify(raw)).kitchen.rollingBoil?.[0]?.tab).toBe('')
 })
 
+test('FR-4.2: every cooked status has its icon', () => {
+  const at = COOKED_AT.toISOString()
+  const cooked = (['done', 'pushed', 'cancelled', 'rollback'] as const).map(status => ({ id: X, brief: 'b', status, endedAt: at, prs: null }))
+  const lines = texts(tabLines('kitchen', kitchenStats({ cooked }), A, undefined, NOW))
+  expect(lines.filter(l => l.startsWith('- ')).slice(0, 4).map(l => l.split(' ')[1])).toEqual(['✅', '🚀', '⛔', '↩️'])
+})
+
 test('FR-4.3: empty Kitchen sections say so; ask reads đang hỏi', () => {
   const empty = tabLines('kitchen', stats(), A, undefined, NOW)
   expect(empty.slice(0, 5)).toEqual([
-    { text: 'Cooked', tone: 'bold' },
+    { text: '🍽 Cooked', tone: 'bold' },
     { text: 'chưa có việc xong hôm nay', tone: 'dim' },
     { text: '' },
-    { text: 'Rolling boil', tone: 'bold' },
+    { text: '🔥 Rolling boil', tone: 'bold' },
     { text: 'không tab nào đang chờ', tone: 'dim' },
   ])
   const ask = kitchenStats({ rollingBoil: [{ session: B, tab: '', brief: 'b', state: 'ask', since: new Date(NOW - 45_000).toISOString() }] })
-  expect(texts(tabLines('kitchen', ask, A, undefined, NOW))).toContain('- b · đang hỏi · 45s')
+  expect(texts(tabLines('kitchen', ask, A, undefined, NOW))).toContain('- ❓ b · đang hỏi · 45s')
 })
 
 test('FR-5.1: waiting time rounds down to s, m or h', () => {
   const wait = (ms: number) =>
     texts(tabLines('kitchen', kitchenStats({ rollingBoil: [{ session: B, tab: '', brief: 'b', state: 'ask', since: new Date(NOW - ms).toISOString() }] }), A, undefined, NOW))
-  expect(wait(59_000)).toContain('- b · đang hỏi · 59s')
-  expect(wait(60_000)).toContain('- b · đang hỏi · 1m')
-  expect(wait(125 * 60_000)).toContain('- b · đang hỏi · 2h')
+  expect(wait(59_000)).toContain('- ❓ b · đang hỏi · 59s')
+  expect(wait(60_000)).toContain('- ❓ b · đang hỏi · 1m')
+  expect(wait(125 * 60_000)).toContain('- ❓ b · đang hỏi · 2h')
 })
 
 test('FR-4.2: a title error is a warn line', () => {

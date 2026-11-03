@@ -143,6 +143,14 @@ function waited(sinceIso: string, now: number): string {
   const sec = Math.max(0, Math.floor(raw))
   return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h`
 }
+// The Kitchen tab's icons in one place, so the later English/copy switch touches one spot.
+const KITCHEN_ICON = {
+  cooked: '🍽',
+  boil: '🔥',
+  pr: '🔗',
+  status: { done: '✅', pushed: '🚀', cancelled: '⛔', rollback: '↩️' } as Partial<Record<TrackItem['status'], string>>,
+  state: { ask: '❓', permission: '🔐' },
+} as const
 const BOIL_STATE = { ask: 'đang hỏi', permission: 'chờ quyền' } as const
 
 // FR-4: the Kitchen tab — the same for every session: what was cooked today, what waits on a person.
@@ -150,16 +158,17 @@ function kitchenLines(s: TrackStats, now: number): Line[] {
   const k = s.kitchen
   const cooked = k?.cooked ?? []
   const boil = k?.rollingBoil ?? []
-  const lines: Line[] = [head('Cooked')]
+  const lines: Line[] = [head(`${KITCHEN_ICON.cooked} Cooked`)]
   if (cooked.length === 0) lines.push(dim('chưa có việc xong hôm nay'))
   for (const c of cooked) {
-    lines.push(plain(`- ${[c.brief, c.status, clock(c.endedAt)].join(SEP)}`))
-    for (const pr of c.prs ?? []) lines.push(plain(`  ---- ${pr}`))
+    const icon = KITCHEN_ICON.status[c.status]
+    lines.push(plain(`- ${icon ? `${icon} ` : ''}${[c.brief, c.status, clock(c.endedAt)].join(SEP)}`))
+    for (const pr of c.prs ?? []) lines.push(plain(`  ${KITCHEN_ICON.pr} ${pr}`))
   }
-  lines.push(plain(''), head('Rolling boil'))
+  lines.push(plain(''), head(`${KITCHEN_ICON.boil} Rolling boil`))
   if (boil.length === 0) lines.push(dim('không tab nào đang chờ'))
   for (const b of boil) {
-    lines.push(plain(`- ${[b.tab || b.brief, BOIL_STATE[b.state], waited(b.since, now)].join(SEP)}`))
+    lines.push(plain(`- ${KITCHEN_ICON.state[b.state]} ${[b.tab || b.brief, BOIL_STATE[b.state], waited(b.since, now)].join(SEP)}`))
     lines.push(dim(`    ${b.brief}${SEP}session ${b.session.slice(0, 8)}`))
   }
   if (k?.titleError) lines.push(warn(`⚠ title lỗi: ${k.titleError}`))
