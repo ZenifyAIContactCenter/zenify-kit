@@ -141,6 +141,7 @@ Hook và skill gọi các lệnh này; bạn không cần gõ tay nên chúng kh
 | `zenify hooks-run` | Bộ điều phối nội bộ cho hook znf (chỉ chạy trong workspace, fail-open) |
 | `zenify observe count` | PreToolUse hook: đếm dispatch Task + soft-cap warn (không chặn) |
 | `zenify observe meter` | PostToolUse hook: đo tool-output per-session; nhắc khi một result \> 50KB hoặc phiên \> 2MB (không sửa output) |
+| `zenify plane-mcp` | Plane MCP server (stdio) bằng PAT của chính dev; Claude Code tự chạy, không gõ tay |
 | `zenify review-bundle` | Cơ học chia diff lớn thành bundle cụm-file cho znf:review (seam BUNDLE) |
 | `zenify review-codex` | Chạy codex review rồi in findings JSON của kit (adapter, seam review engine) |
 | `zenify review-verify` | Cơ học verify findings của znf:review vs file thật (findings JSON qua stdin, seam VERIFY) |
