@@ -716,3 +716,16 @@ func TestTrackStatsSkipsReadingExpiredLiveJSON(t *testing.T) {
 		t.Fatalf("malformed = %d err %v", r.Malformed, err)
 	}
 }
+
+func TestTrackStatsTextCountsDone(t *testing.T) {
+	ws := trackWS(t, true)
+	kitchenLog(t, ws, "branch:x", "")
+	stubMergedAndTitle(t, "P")
+	out, err := runTrack(t, ws, "stats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "1 started, 1 done, ") {
+		t.Fatalf("stats text = %q", out)
+	}
+}

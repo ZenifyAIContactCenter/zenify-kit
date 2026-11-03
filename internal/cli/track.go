@@ -747,15 +747,15 @@ func renderTrackStats(w io.Writer, r trackstats.Result) {
 		return
 	}
 	t := r.Today
-	started, ended := 0, 0
+	started, done := 0, 0
 	for _, n := range t.Started {
 		started += n
 	}
 	for _, n := range t.Done {
-		ended += n
+		done += n
 	}
 	_, _ = fmt.Fprintf(w, "scale (%s, %d items): S<%dm M<%dm L<%dm\n", r.Scale.Source, r.Scale.N, r.Scale.S, r.Scale.M, r.Scale.L)
-	_, _ = fmt.Fprintf(w, "today %s: %d started, %d done, %d tasks, %d PRs opened, %d merged\n", t.Date, started, ended, t.Tasks, t.PRsOpened, t.Merged)
+	_, _ = fmt.Fprintf(w, "today %s: %d started, %d done, %d tasks, %d PRs opened, %d merged\n", t.Date, started, done, t.Tasks, t.PRsOpened, t.Merged)
 	_, _ = fmt.Fprintf(w, "running: %d\n", len(r.Running))
 	if t.MergedError != "" {
 		_, _ = fmt.Fprintf(w, "merged check failed: %s\n", t.MergedError)

@@ -416,7 +416,7 @@ func TestJSONShape(t *testing.T) {
 	}
 }
 
-func TestUnmeasuredNotSampled(t *testing.T) {
+func TestZeroWallNotSampled(t *testing.T) {
 	var lg, ss []string
 	endedWithAgent("hotfix", 1, "S", 10, &lg, &ss)
 	id := cid("hotfix", 2) // ended in the same instant: zero wall time
@@ -595,7 +595,7 @@ func TestWallMin(t *testing.T) { // SC-1
 }
 
 func TestTodayDoneExcludesCancelled(t *testing.T) { // SC-2
-	a, b, c := cid("fix", 1), cid("hotfix", 2), cid("fix", 3)
+	a, b, c, d := cid("fix", 1), cid("hotfix", 2), cid("fix", 3), cid("fix", 4)
 	s := now.Add(-3 * time.Hour)
 	in := base(lines(
 		row(s, "start", a, "fix", "r", "S"),
@@ -604,20 +604,29 @@ func TestTodayDoneExcludesCancelled(t *testing.T) { // SC-2
 		row(s.Add(10*time.Minute), "end", b, "branch:hotfix/x", "1", "0"),
 		row(s, "start", c, "fix", "r", "S"),
 		row(s.Add(5*time.Minute), "end", c, "cancelled", "-", "-"),
+		row(s, "start", d, "fix", "r", "S"),
+		row(s.Add(40*time.Minute), "end", d, "rollback", "1", "0"),
 	))
+	in.Sessions = map[string]string{"s": lines(
+		row(s, "bind", a), agentTurn(s.Add(20*time.Minute), a, 6),
+		row(s, "bind", d), agentTurn(s.Add(40*time.Minute), d, 9),
+	)}
 	r, _ := Compute(in)
 	td := r.Today
 	if len(td.Done) != 2 || td.Done["fix"] != 1 || td.Done["hotfix"] != 1 {
 		t.Fatalf("done = %v", td.Done)
 	}
-	if len(td.Cancelled) != 1 || td.Cancelled["fix"] != 1 || len(td.RolledBack) != 0 {
+	if len(td.Cancelled) != 1 || td.Cancelled["fix"] != 1 || len(td.RolledBack) != 1 || td.RolledBack["fix"] != 1 {
 		t.Fatalf("cancelled = %v rolledBack = %v", td.Cancelled, td.RolledBack)
 	}
-	if td.Ended["fix"]+td.Ended["hotfix"] != 3 {
-		t.Fatalf("ended = %v, want sum 3", td.Ended)
+	if td.Ended["fix"] != 3 || td.Ended["hotfix"] != 1 {
+		t.Fatalf("ended = %v, want fix 3 (done, cancelled, rollback) and hotfix 1", td.Ended)
 	}
 	if td.WallMin != 30 {
-		t.Fatalf("today wallMin = %d, want 30 (20+10, cancelled excluded)", td.WallMin)
+		t.Fatalf("today wallMin = %d, want 30 (20+10; cancelled 5 and rollback 40 excluded)", td.WallMin)
+	}
+	if td.AgentMin != 6 {
+		t.Fatalf("today agentMin = %d, want 6 (done item only; rollback 9 excluded)", td.AgentMin)
 	}
 }
 
@@ -689,5 +698,63 @@ func TestQualityIgnoresHistory(t *testing.T) {
 	}
 	if got := q.TokensAvg["opus"]; got.In != 10 || got.Out != 20 {
 		t.Fatalf("opus avg = %+v, want the real item only (10/20)", got)
+	}
+}
+
+// wallItem logs a fix item that ends wall minutes after it starts with the given outcome.
+func wallItem(n int, est string, wall int, outcome string, lg *[]string) {
+	id := cid("fix", n)
+	st := now.Add(-time.Duration(1000-n) * time.Minute)
+	*lg = append(*lg, row(st, "start", id, "fix", "r", est), row(st.Add(time.Duration(wall)*time.Minute), "end", id, outcome, "1", "0"))
+}
+
+func TestScaleFromWallNotAgent(t *testing.T) { // review: wall must differ from agent
+	var lg, ss []string
+	for i := 1; i <= 20; i++ {
+		id := cid("fix", i)
+		st := now.Add(-time.Duration(1000-i) * time.Minute)
+		en := st.Add(time.Duration(i) * time.Minute)
+		lg = append(lg, row(st, "start", id, "fix", "r", "S"), row(en, "end", id, "https://x/pr/"+id, "1", "0"))
+		ss = append(ss, row(st, "bind", id), agentTurn(en, id, 1))
+	}
+	in := base(lines(lg...))
+	in.Sessions = map[string]string{"s": lines(ss...)}
+	r, _ := Compute(in)
+	if r.Scale != (Scale{Source: "learned", N: 20, S: 5, M: 10, L: 18}) {
+		t.Fatalf("scale = %+v, want wall-based 5/10/18 (agent is 1 min each)", r.Scale)
+	}
+}
+
+func TestScaleSampleFilter(t *testing.T) {
+	var lg []string
+	for i := 1; i <= 20; i++ { // valid: wall 1..20, odd ones pushed, even ones done
+		out := "https://x/pr/" + cid("fix", i)
+		if i%2 == 1 {
+			out = "branch:x"
+		}
+		wallItem(i, "S", i, out, &lg)
+	}
+	wallItem(21, "XL", 500, "https://x/pr/xl", &lg)   // XL est
+	wallItem(22, "S", 500, "rollback", &lg)           // rolled back
+	wallItem(23, "S", 500, "cancelled", &lg)          // cancelled
+	wallItem(24, "S", 0, "https://x/pr/zero", &lg)    // zero wall
+	wallItem(25, "-", 500, "https://x/pr/noest", &lg) // no est
+	r, _ := Compute(base(lines(lg...)))
+	if r.Scale != (Scale{Source: "learned", N: 20, S: 5, M: 10, L: 18}) {
+		t.Fatalf("scale = %+v, want N 20 and 5/10/18 from the valid items only", r.Scale)
+	}
+}
+
+func TestScaleCapsAtNewest60(t *testing.T) {
+	var lg, ss []string
+	for i := 1; i <= 61; i++ { // wall = i, oldest end first
+		endedWithAgent("fix", i, "S", i, &lg, &ss)
+	}
+	in := base(lines(lg...))
+	in.Sessions = map[string]string{"s": lines(ss...)}
+	r, _ := Compute(in)
+	// newest 60 are walls 2..61 (nearest rank: index 14, 29, 53)
+	if r.Scale != (Scale{Source: "learned", N: 60, S: 16, M: 31, L: 55}) {
+		t.Fatalf("scale = %+v", r.Scale)
 	}
 }
