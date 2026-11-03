@@ -102,5 +102,5 @@ Bản production cắt từ `main` gặp lỗi, xác nhận qua log thật. `zen
 [`/reference/skills/hotfix`](/reference/skills/hotfix), [Base ref, hotfix base, port block](/concepts/base-ref-and-ports), [Chọn workflow](/workflows/)
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
-- internal/plugin/assets/znf/skills/hotfix/SKILL.md @ fb7f8d6
+- internal/plugin/assets/znf/skills/hotfix/SKILL.md @ 57df384
 -->

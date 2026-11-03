@@ -21,6 +21,6 @@ Khi bạn muốn biết hệ thống đang có vấn đề gì nặng nhất tr�
 - Skill chỉ đọc: không sửa code, config hay data, chỉ gọi các tool MCP đọc của Grafana, và không chuyển việc cho ai khi bạn chưa chọn.
 - Số tenant bị ảnh hưởng được tính trên 2h gần nhất, không phải cả cửa sổ khảo sát. Số tenant thường là "không xác định" khi span lỗi không mang thuộc tính tenant.
 - Không có alert rule thì skill vẫn chạy: tín hiệu alert được ghi là không có alert rule do Grafana quản lý (skill vẫn đọc thêm rule do datasource quản lý) và các tín hiệu còn lại tiếp tục.
-- Hotfix chỉ được gợi ý: với issue P0 trên prd, skill nhắc bạn tự gõ `/znf:hotfix`, skill không tự gọi.
+- Skill chỉ chuyển issue bạn chọn cho `/znf:fix`. Với issue P0 trên prd, skill báo rõ điều đó và `/znf:fix` tự chuyển sang `/znf:hotfix` ở bước 2b.
 - Mỗi lần chạy tối đa 40 lượt gọi MCP; chạm trần thì skill dừng thu thập và liệt kê phần chưa đọc ở đầu báo cáo. `zenify obs` là lệnh CLI nên không tính vào trần.
 - Báo cáo được ghi vào `docs/exports/_cross/YYYY-MM-DD-top-issues-<env>.md`; chạy lại trong cùng ngày thì ghi đè file của ngày đó. Nội dung tin nhắn, số điện thoại, email, tên khách và token được thay bằng `<REDACTED>`; tenant id được phép in (tối đa 3).
