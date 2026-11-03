@@ -1,8 +1,10 @@
 package mcpreg
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -216,4 +218,25 @@ func TestBootstrapStdio_GetFailureIsError(t *testing.T) {
 	if _, err := BootstrapStdio(planeSpec, fakeRun("boom", errors.New("timeout"), &calls)); err == nil || len(calls) != 1 {
 		t.Fatalf("err=%v calls=%v", err, calls)
 	}
+}
+
+// A get killed mid health check still printed the registration: when it
+// already matches, nothing is touched and no error surfaces.
+func TestBootstrapStdio_DesiredDespiteGetError(t *testing.T) {
+	var calls []call
+	st, err := BootstrapStdio(planeSpec, fakeRun(stdioBlock("", "plane-mcp"), errors.New("signal: killed"), &calls))
+	if err != nil || st != playwright.RegDesired {
+		t.Fatalf("st=%v err=%v", st, err)
+	}
+	noMutation(t, calls)
+}
+
+// A get that timed out with no output is an error, never an add/remove.
+func TestBootstrapStdio_TimeoutNoMutation(t *testing.T) {
+	var calls []call
+	_, err := BootstrapStdio(planeSpec, fakeRun("", fmt.Errorf("%w: signal: killed", context.DeadlineExceeded), &calls))
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err=%v", err)
+	}
+	noMutation(t, calls)
 }

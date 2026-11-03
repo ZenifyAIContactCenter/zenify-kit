@@ -126,6 +126,33 @@ func TestRunOnboard_RunsSecretStepAfterApply(t *testing.T) {
 	}
 }
 
+// AfterSecretsFn runs once secretStep has saved, so a key typed there (the
+// Plane PAT) is visible to the post-secrets step.
+func TestRunOnboard_AfterSecretsFnSeesSavedKeys(t *testing.T) {
+	ws := t.TempDir()
+	seen := "unset"
+	cfg := OnboardConfig{
+		Workspace:   ws,
+		AutoConfirm: true,
+		SecretKeys:  []manifest.SecretKey{{Name: "PLANE_API_KEY", Secret: true}},
+		SecretPromptFn: func([]string) (map[string]string, error) {
+			return map[string]string{"PLANE_API_KEY": "pat"}, nil
+		},
+		PlanFn:         func() ([]reconcile.RepoPlan, error) { return []reconcile.RepoPlan{{Name: "r1"}}, nil },
+		ApplyFn:        func([]string) error { return nil },
+		AfterSecretsFn: func() { seen = readEnvFile(t, ws)["PLANE_API_KEY"] },
+		WelcomeNoteFn:  func(bool) error { return nil },
+		DetectGHFn:     func() error { return nil },
+		AuthStatusFn:   func() (string, authState) { return "acct", authLoggedIn },
+	}
+	if _, err := RunOnboard(cfg); err != nil {
+		t.Fatalf("RunOnboard: %v", err)
+	}
+	if seen != "pat" {
+		t.Fatalf("AfterSecretsFn saw %q, want the saved PAT", seen)
+	}
+}
+
 func TestWelcomeNote_SkippedWhenAccessible(t *testing.T) {
 	if err := welcomeNote(true); err != nil {
 		t.Fatalf("welcomeNote(accessible) must be a no-op, got %v", err)

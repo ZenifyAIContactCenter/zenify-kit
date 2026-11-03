@@ -924,6 +924,8 @@ func registerPlaneMCP(w, errW io.Writer, m *manifest.Manifest, patSet func() boo
 	}
 	st, err := mcpreg.BootstrapStdio(mcpreg.StdioSpec{Name: "zenify-plane", Command: "zenify", Args: []string{"plane-mcp"}}, run)
 	switch {
+	case errors.Is(err, context.DeadlineExceeded): // `claude mcp get` health-checks the server; a cold uvx outlasts claudeMCPTimeout
+		_, _ = fmt.Fprintln(w, "zenify-plane: kiểm tra quá thời gian (có thể uvx đang tải lần đầu), chưa đổi gì; chạy lại zenify up --apply sau") //znf:allow-lang
 	case err != nil:
 		_, _ = fmt.Fprintf(errW, "warning: zenify-plane MCP: %v (onboarding otherwise succeeded)\n", err)
 	case st == playwright.RegAbsent:
@@ -946,5 +948,9 @@ func runClaudeBounded(n string, args ...string) ([]byte, error) {
 	defer cancel()
 	c := exec.CommandContext(ctx, n, args...) //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
 	c.WaitDelay = 2 * time.Second
-	return c.CombinedOutput()
+	out, err := c.CombinedOutput()
+	if err != nil && ctx.Err() != nil { // the kill surfaces as "signal: killed"; keep the deadline detectable
+		err = fmt.Errorf("%w: %w", ctx.Err(), err)
+	}
+	return out, err
 }

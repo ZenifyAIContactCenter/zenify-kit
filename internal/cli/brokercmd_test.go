@@ -664,8 +664,8 @@ func TestRunClaudeBounded_TimesOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if _, err := runClaudeBounded(bin); err == nil {
-		t.Fatal("want an error from the killed child")
+	if _, err := runClaudeBounded(bin); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("want a deadline error from the killed child, got %v", err)
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("took %v, want the bound to stop it", d)
@@ -901,5 +901,28 @@ func TestRegisterPlaneMCP(t *testing.T) {
 	registerPlaneMCP(&out, &errOut, m, yes, run)
 	if len(adds) != 0 || out.Len() != 0 || errOut.Len() != 0 {
 		t.Fatalf("must be silent: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+
+	// A get killed by claudeMCPTimeout (uvx warming its cache) changes nothing
+	// and prints one hint, never a warning.
+	have["claude"] = true
+	timedOut := func(_ string, args ...string) ([]byte, error) {
+		if args[1] == "get" {
+			return nil, fmt.Errorf("%w: signal: killed", context.DeadlineExceeded)
+		}
+		adds = append(adds, args[2])
+		return nil, nil
+	}
+	registerPlaneMCP(&out, &errOut, m, yes, timedOut)
+	if len(adds) != 0 || !strings.Contains(out.String(), "uvx") || errOut.Len() != 0 {
+		t.Fatalf("timeout: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+
+	// Any other get failure still warns.
+	out.Reset()
+	failed := func(string, ...string) ([]byte, error) { return []byte("boom"), errors.New("exit status 2") }
+	registerPlaneMCP(&out, &errOut, m, yes, failed)
+	if !strings.Contains(errOut.String(), "warning: zenify-plane MCP") {
+		t.Fatalf("real failure must warn: out=%q err=%q", out.String(), errOut.String())
 	}
 }

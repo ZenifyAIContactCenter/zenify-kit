@@ -140,9 +140,14 @@ Cách bật:
 3. Chạy `zenify env set PLANE_API_KEY` trong terminal của bạn (cần TTY, dán PAT khi được hỏi).
 4. Chạy `zenify up --apply`, rồi mở lại Claude Code. `/mcp` sẽ hiện `zenify-plane`.
 
-Lần đầu `uvx` tải Python nên chậm; nếu `/mcp` báo lỗi kết nối thì mở lại Claude Code. Thiếu PAT hoặc `uv`, `zenify up` chỉ in gợi ý và không đăng ký.
+Chạy `zenify up` dạng tương tác thì bước nhập secret cuối wizard có thể hỏi `PLANE_API_KEY`; dán PAT ở đó thì kit đăng ký `zenify-plane` ngay sau bước đó, không cần chạy lại `zenify up --apply`.
 
-Tên `zenify-plane` dành riêng cho kit, chỉ với `Type: stdio` và `Command: zenify`; server cùng tên kiểu khác thì kit giữ nguyên. Muốn gỡ: `claude mcp remove zenify-plane -s user`.
+Lần đầu `uvx` tải Python nên chậm; nếu `/mcp` báo lỗi kết nối thì mở lại Claude Code. Nếu bước kiểm tra `zenify-plane` quá thời gian, `zenify up` in một dòng gợi ý, không đổi gì; chạy lại `zenify up --apply` sau. Thiếu PAT hoặc `uv`, `zenify up` chỉ in gợi ý và không đăng ký.
+
+Tên `zenify-plane` dành riêng cho kit, chỉ với `Type: stdio` và `Command: zenify`; server cùng tên kiểu khác thì kit giữ nguyên. Còn `PLANE_API_KEY` thì lần `zenify up --apply` sau sẽ đăng ký lại, nên muốn gỡ hẳn:
+
+1. Xóa dòng `PLANE_API_KEY` bằng `zenify env edit` (`zenify env set` không nhận giá trị trống), và bỏ `PLANE_API_KEY` khỏi biến môi trường shell nếu bạn có export.
+2. Chạy `claude mcp remove zenify-plane -s user`.
 
 ## Sandbox của Claude Code
 

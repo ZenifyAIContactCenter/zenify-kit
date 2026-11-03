@@ -114,13 +114,14 @@ type StdioSpec struct {
 // server reads its credential itself.
 func BootstrapStdio(spec StdioSpec, run func(string, ...string) ([]byte, error)) (playwright.RegState, error) {
 	out, err := run("claude", "mcp", "get", spec.Name)
+	g := parseStdioGet(string(out))
+	if g.typ == "stdio" && g.command == spec.Command && g.args == strings.Join(spec.Args, " ") {
+		return playwright.RegDesired, nil // even when get then failed (its health check timed out)
+	}
 	state := playwright.RegAbsent
 	switch {
 	case err == nil:
-		g := parseStdioGet(string(out))
 		switch {
-		case g.typ == "stdio" && g.command == spec.Command && g.args == strings.Join(spec.Args, " "):
-			return playwright.RegDesired, nil
 		case strings.HasPrefix(g.scope, "User config") && g.typ == "stdio" && g.command == spec.Command:
 			if _, err := run("claude", "mcp", "remove", spec.Name, "-s", "user"); err != nil {
 				return playwright.RegLegacyDefault, fmt.Errorf("remove stale %s MCP: %w", spec.Name, err)

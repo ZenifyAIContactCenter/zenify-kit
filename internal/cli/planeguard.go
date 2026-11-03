@@ -39,17 +39,25 @@ func planeGuardDecision(tool, action string, hasAction bool) string {
 }
 
 type planeGuardPayload struct {
-	ToolName  string                     `json:"tool_name"`
-	ToolInput map[string]json.RawMessage `json:"tool_input"`
+	ToolName  string          `json:"tool_name"`
+	ToolInput json.RawMessage `json:"tool_input"`
 }
 
+// planeAskOut is the ask decision printed when a Plane tool's input cannot be read.
+const planeAskOut = `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Plane: không đọc được tham số, hỏi bạn trước"}}` + "\n" //znf:allow-lang
+
 // runPlaneGuard is the plane-guard PreToolUse hook. It always returns 0: a
-// decision is printed as hookSpecificOutput JSON; a non-Plane tool, bad JSON
-// or a panic prints nothing, so the harness falls back to its normal prompt
-// (never an allow on input it could not read).
+// decision is printed as hookSpecificOutput JSON. Input whose tool_name cannot
+// be read, or a non-Plane tool, prints nothing (the harness's normal prompt).
+// Once the tool is known to be Plane, every later failure (undecodable
+// tool_input, a panic) prints ask, so bypassPermissions never runs it unprompted.
 func runPlaneGuard(stdin io.Reader, stdout io.Writer) (code int) {
+	isPlane := false
 	defer func() {
 		if r := recover(); r != nil {
+			if isPlane {
+				_, _ = io.WriteString(stdout, planeAskOut)
+			}
 			code = 0
 		}
 	}()
@@ -61,8 +69,14 @@ func runPlaneGuard(stdin io.Reader, stdout io.Writer) (code int) {
 	if json.Unmarshal(raw, &p) != nil || !strings.HasPrefix(p.ToolName, planeToolPrefix) {
 		return 0
 	}
+	isPlane = true
+	var input map[string]json.RawMessage
+	if len(p.ToolInput) > 0 && json.Unmarshal(p.ToolInput, &input) != nil {
+		_, _ = io.WriteString(stdout, planeAskOut)
+		return 0
+	}
 	var action string
-	rawAction, hasAction := p.ToolInput["action"]
+	rawAction, hasAction := input["action"]
 	if hasAction && json.Unmarshal(rawAction, &action) != nil {
 		action, hasAction = "", true // non-string action: unknown, asks
 	}
@@ -77,6 +91,7 @@ func runPlaneGuard(stdin io.Reader, stdout io.Writer) (code int) {
 		"permissionDecisionReason": reason,
 	}})
 	if err != nil {
+		_, _ = io.WriteString(stdout, planeAskOut)
 		return 0
 	}
 	_, _ = stdout.Write(append(out, '\n'))

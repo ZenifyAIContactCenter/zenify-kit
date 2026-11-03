@@ -83,6 +83,37 @@ func TestRunPlaneGuard_Output(t *testing.T) {
 	}
 }
 
+// A Plane tool whose tool_input cannot be decoded (or whose action is not a
+// readable string) must ask; input whose tool_name cannot be read stays silent.
+func TestRunPlaneGuard_UndecodableInput(t *testing.T) {
+	const tool = `"tool_name":"mcp__zenify-plane__workitem"`
+	for in, want := range map[string]string{
+		`{` + tool + `,"tool_input":[1]}`:                      "ask",
+		`{` + tool + `,"tool_input":"x"}`:                      "ask",
+		`{` + tool + `,"tool_input":{"action":1}}`:             "ask",
+		`{` + tool + `,"tool_input":{"action":null}}`:          "ask",
+		`{"tool_name":"mcp__zenify-plane__get_pql_reference"}`: "allow",
+		`{"tool_name":"Bash","tool_input":[1]}`:                "",
+		`{"tool_name":1,"tool_input":{}}`:                      "",
+		`garbage`:                                              "",
+	} {
+		var out bytes.Buffer
+		if code := runPlaneGuard(strings.NewReader(in), &out); code != 0 {
+			t.Fatalf("%s: exit = %d", in, code)
+		}
+		if want == "" {
+			if out.Len() != 0 {
+				t.Errorf("%s: stdout must be empty, got %q", in, out.String())
+			}
+			continue
+		}
+		var got planeGuardOut
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil || got.HookSpecificOutput.PermissionDecision != want {
+			t.Errorf("%s: want %s, got %q", in, want, out.String())
+		}
+	}
+}
+
 func TestDispatchHook_PlaneGuardOutsideWorkspace(t *testing.T) {
 	old := planeGuardRun
 	planeGuardRun = func(w io.Writer) int {
