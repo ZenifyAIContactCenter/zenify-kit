@@ -29,6 +29,7 @@ parallel hypotheses) — criteria in `references/why-diagnosis-first.md`. State 
 output), red on the symptom the user described. Ladder and redaction:
 `references/feedback-loop.md`; secrets in logs → `<REDACTED>`. No loop → stop and ask for (a) a
 reproducing environment, (b) a redacted artifact, (c) leave to add temporary logs; no Step 1.
+Prd evidence with no read-only loop → confirm from logs instead, no stop (`/hotfix` step 3).
 
 ## Step 1: Root cause analysis
 
@@ -58,11 +59,12 @@ cause, say so — never guess-fix.
 
 ## Step 2b: Production? Hand off to /hotfix
 
-Prd evidence = prd-env PostHog/Loki, or a customer report on a prd tenant. None → Step 3. With it:
-`git -C <repo> fetch origin --tags`, `REF=$(zenify hotfix baseref <repo>)`,
-`git -C <repo> show "$REF":<file>`. Faulty line there, or cannot be pinned (`git show` path missing too) →
-**`Skill(znf:hotfix)`**; line only on the normal base → stay; report prd does not run it yet. Hand
-over slug, root cause, red command, `track id:` — do not re-diagnose (`references/prd-routing.md`).
+Prd evidence = prd-env PostHog/Loki, or a customer report on a prd tenant. None → Step 3. With it,
+look for the faulty line on the hotfix base (`zenify hotfix baseref`, `git show`; commands in
+`references/prd-routing.md`). There, or cannot be pinned (a missing path counts) →
+**`Skill(znf:hotfix)`** with the handoff (slug, cause, red command, `track id:`), and /fix ends:
+hotfix owns steps 3-10. Only on the normal base → stay; report prd does not run it yet.
+Tell it: do not re-diagnose.
 
 ## Step 3: `/scout` — what depends on the code you will change
 

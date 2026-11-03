@@ -8,15 +8,20 @@ import (
 	"testing"
 )
 
-// The tag commands exactly as hotfix/SKILL.md writes them (steps 2 and 4).
-// TestHotfixSkill_AutoRoute pins that the skill carries each one verbatim;
-// TestHotfixTagCommands runs them against a scratch repo (SC-7).
+// The shell lines exactly as the skills write them: hotfix steps 2, 4 and 9,
+// and fix/references/prd-routing.md. The Auto/Routes tests pin that each skill
+// carries them verbatim; TestHotfixTagCommands, TestHotfixSizeCount and
+// TestPrdRoutingCommands run them against scratch repos (SC-7).
 const (
 	cmdCur      = `CUR=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | head -1)`
 	cmdLatest   = `LATEST=$(git -C <repo> tag --list 'v[0-9]*' --sort=-v:refname | head -1)`
 	cmdPrev     = `PREV=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | sed -n 2p)`
-	cmdIntro    = `C=$(git -C <repo> log -S'<faulty line>' --format=%H --reverse "$REF" -- <file> | head -1)`
+	cmdLineNo   = `N=$(git -C <repo> show "$REF:<file>" | grep -nF -f <needle> | cut -d: -f1)`
+	cmdBlame    = `C=$(git -C <repo> blame -L"$N,$N" --porcelain "$REF" -- <file> | head -1 | cut -d' ' -f1)`
 	cmdAncestor = `git -C <repo> merge-base --is-ancestor "$C" "$PREV"`
+	cmdSize     = `{ git -C <worktree> diff --name-only "$(git -C <worktree> merge-base "$REF" HEAD)"; git -C <worktree> ls-files --others --exclude-standard; } | sort -u | wc -l`
+	cmdOnBase   = `git -C <repo> cat-file -e "$REF:<file>" || echo PATH_MISSING`
+	cmdGrepBase = `git -C <repo> show "$REF:<file>" | grep -nF -f <needle>`
 )
 
 // FR-2, FR-3.1, FR-4.1-4.3, FR-5.1, FR-7.2, SC-2, SC-5.
@@ -26,18 +31,19 @@ func TestHotfixSkill_AutoRoute(t *testing.T) {
 		t.Error("hotfix must be model-invocable (FR-2)")
 	}
 	assertContainsAll(t, "hotfix/SKILL.md", s, []string{
-		cmdCur, cmdLatest, cmdPrev, cmdIntro, cmdAncestor,
-		`git diff --name-only "$REF"...HEAD`, "> 3",
-		"git -C <repo> fetch origin --tags", "git -C <repo> tag --contains", "main → staging",
-		"handed off from `/fix`",
+		cmdCur, cmdLatest, cmdPrev, cmdLineNo, cmdBlame, cmdAncestor, cmdSize, "Over 3",
+		"git -C <repo> fetch origin --tags", "git -C <repo> tag --contains", "the repo's `baseRef`",
+		"handed off from `/fix`", "first word after the skill name",
 		"Decide the response",
-		"cannot pin the faulty line",
+		"cannot pin the faulty line", "never paste source", "reuse the printed values",
 	})
-	if strings.Contains(s, "create the PR against the resolved") || strings.Contains(s, "creatordate") {
-		t.Error("stale step 10 / creatordate sort left in hotfix")
+	for _, stale := range []string{"create the PR against the resolved", "creatordate", "log -S'", "main → staging", `"$REF"...HEAD`} {
+		if strings.Contains(s, stale) {
+			t.Errorf("stale text %q left in hotfix", stale)
+		}
 	}
 	w := syncedAsset(t, "skills/hotfix/references/why-these-rules.md")
-	assertContainsAll(t, "hotfix why-these-rules", w, []string{"rename", "-v:refname", "Clean checks", "How much diagnosis"})
+	assertContainsAll(t, "hotfix why-these-rules", w, []string{"rename", "-v:refname", "Clean checks", "How much diagnosis", "git blame", "cannot see"})
 }
 
 // FR-1, FR-8, SC-4: /fix hands a production bug to /hotfix after Step 2.
@@ -45,7 +51,7 @@ func TestFixSkill_RoutesProdToHotfix(t *testing.T) {
 	s := syncedAsset(t, "skills/fix/SKILL.md")
 	assertContainsAll(t, "fix/SKILL.md", s, []string{
 		"## Step 2b", "Skill(znf:hotfix)", "zenify hotfix baseref", "git show", "do not re-diagnose",
-		"references/prd-routing.md",
+		"references/prd-routing.md", "`track id:`", "/fix ends", "no stop (`/hotfix` step 3)",
 	})
 	if len(s) > 8192 || strings.Count(s, "\n") > 200 {
 		t.Fatalf("fix over cap: %d bytes", len(s))
@@ -53,18 +59,79 @@ func TestFixSkill_RoutesProdToHotfix(t *testing.T) {
 	r := syncedAsset(t, "skills/fix/references/prd-routing.md")
 	assertContainsAll(t, "prd-routing.md", r, []string{
 		"cannot be pinned", "Skill(znf:hotfix)", "not on the hotfix base", "prd does not run this code yet",
-		"track id:", "staging", "standalone", "path is missing",
+		"track id: <the id Step 0 opened>", "<slug>-hf", "/fix` ends after the call", "staging", "standalone", "path is missing",
+		cmdOnBase, cmdGrepBase,
 	})
 }
 
-// SC-7: the skill's own tag commands pick fix-forward vs ask correctly.
+// gitRepo returns a scratch repo and a git helper isolated from the
+// developer's git config (hooks, templates, signing).
+func gitRepo(t *testing.T) (string, func(...string)) {
+	t.Helper()
+	dir := t.TempDir()
+	g := func(args ...string) {
+		t.Helper()
+		if args[0] == "__write" {
+			p := filepath.Join(dir, args[1])
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(args[2]), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null"}, args...)...)
+		cmd.Dir = dir
+		cmd.Env = isolatedGitEnv(filepath.Dir(dir))
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	g("init", "-q", "-b", "main")
+	return dir, g
+}
+
+func isolatedGitEnv(ceiling string) []string {
+	return append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_CEILING_DIRECTORIES="+ceiling)
+}
+
+// runSkillScript runs script from a non-git directory, as the skill does from
+// the workspace root, and returns its KEY=value lines.
+func runSkillScript(t *testing.T, script string) (map[string]string, string) {
+	t.Helper()
+	cwd := t.TempDir()
+	if out, err := exec.Command("git", "-C", cwd, "rev-parse", "--git-dir").CombinedOutput(); err == nil {
+		t.Fatalf("cwd %s must not be a git repo: %s", cwd, out)
+	}
+	cmd := exec.Command("bash", "-c", script)
+	cmd.Dir = cwd
+	cmd.Env = isolatedGitEnv(filepath.Dir(cwd))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("script: %v\n%s", err, out)
+	}
+	kv := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok {
+			kv[k] = v
+		}
+	}
+	return kv, string(out)
+}
+
+func needAuto(t *testing.T) {
+	t.Helper()
+	for _, bin := range []string{"git", "bash"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skip(bin + " not on PATH")
+		}
+	}
+}
+
+// SC-7: the skill's own tag and blame commands pick fix-forward vs ask correctly.
 func TestHotfixTagCommands(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not on PATH")
-	}
-	if _, err := exec.LookPath("bash"); err != nil {
-		t.Skip("bash not on PATH")
-	}
+	needAuto(t)
 
 	type result struct {
 		cur, latest, prev, c string
@@ -78,11 +145,14 @@ func TestHotfixTagCommands(t *testing.T) {
 		}
 		return "fix forward"
 	}
+	const bugline = "BUGLINE"
 
 	cases := []struct {
 		name         string
+		file, needle string // defaults bug.txt, BUGLINE + "\n"
 		build        func(g func(...string))
 		want         result
+		wantCEmpty   bool
 		wantDecision string
 	}{
 		{
@@ -147,76 +217,149 @@ func TestHotfixTagCommands(t *testing.T) {
 			want:         result{cur: "v260101.0", latest: "v260101.0"},
 			wantDecision: "ask",
 		},
+		{
+			// A second copy of an old line lands in the last deploy: log -S
+			// would return the old commit; the needle matches twice → ask.
+			name: "duplicate-added-after-prev",
+			build: func(g func(...string)) {
+				commit(g, "bug.txt", "x\nBUGLINE\n", "old copy")
+				g("tag", "v260101.0")
+				commit(g, "b.txt", "2\n", "b")
+				g("tag", "v260201.0")
+				commit(g, "bug.txt", "x\nBUGLINE\ny\nBUGLINE\n", "new copy")
+				g("tag", "v260301.0")
+			},
+			want:         result{cur: "v260301.0", latest: "v260301.0", prev: "v260201.0"},
+			wantCEmpty:   true,
+			wantDecision: "ask",
+		},
+		{
+			// Blame follows the rename back to the original commit.
+			name: "old-bug-renamed-after-prev",
+			build: func(g func(...string)) {
+				commit(g, "old.txt", "a\nBUGLINE\n", "bug")
+				g("tag", "v260101.0")
+				commit(g, "b.txt", "2\n", "b")
+				g("tag", "v260201.0")
+				g("mv", "old.txt", "bug.txt")
+				g("commit", "-q", "-m", "rename")
+				g("tag", "v260301.0")
+			},
+			want:         result{cur: "v260301.0", latest: "v260301.0", prev: "v260201.0", ancestorOK: true},
+			wantDecision: "fix forward",
+		},
+		{
+			// A JS line with quotes and brackets: grep -F still finds it.
+			name:   "quote-and-bracket-line",
+			file:   "src/a.js",
+			needle: "if (a['k'][0].*) return null;\n",
+			build: func(g func(...string)) {
+				commit(g, "src/a.js", "const a = {};\n  if (a['k'][0].*) return null;\n", "bug")
+				g("tag", "v260101.0")
+				commit(g, "b.txt", "2\n", "b")
+				g("tag", "v260201.0")
+				commit(g, "c.txt", "3\n", "c")
+				g("tag", "v260301.0")
+			},
+			want:         result{cur: "v260301.0", latest: "v260301.0", prev: "v260201.0", ancestorOK: true},
+			wantDecision: "fix forward",
+		},
+		{
+			name: "faulty-file-absent",
+			file: "gone.txt",
+			build: func(g func(...string)) {
+				commit(g, "a.txt", "1\n", "a")
+				g("tag", "v260101.0")
+				commit(g, "b.txt", "2\n", "b")
+				g("tag", "v260201.0")
+			},
+			want:         result{cur: "v260201.0", latest: "v260201.0", prev: "v260101.0"},
+			wantCEmpty:   true,
+			wantDecision: "ask",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			// The skill runs from the workspace root, which is not a git repo:
-			// run the commands from a non-git sibling and reach the repo via -C.
-			cwd := t.TempDir()
-			sub := strings.NewReplacer("<repo>", dir, "<faulty line>", "BUGLINE", "<file>", "bug.txt").Replace
-			script := "REF=main\n" + sub(cmdCur) + "\n" + sub(cmdLatest) + "\n" + sub(cmdPrev) + "\n" + sub(cmdIntro) + "\n" +
+			t.Parallel()
+			file, needle := tc.file, tc.needle
+			if file == "" {
+				file = "bug.txt"
+			}
+			if needle == "" {
+				needle = bugline + "\n"
+			}
+			dir, g := gitRepo(t)
+			tc.build(g)
+			needleFile := filepath.Join(t.TempDir(), "needle")
+			if err := os.WriteFile(needleFile, []byte(needle), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			sub := strings.NewReplacer("<repo>", dir, "<needle>", needleFile, "<file>", file).Replace
+			script := "REF=main\n" + sub(cmdCur) + "\n" + sub(cmdLatest) + "\n" + sub(cmdPrev) + "\n" +
+				sub(cmdLineNo) + "\n" + sub(cmdBlame) + " 2>/dev/null\n" +
 				`printf 'CUR=%s\nLATEST=%s\nPREV=%s\nC=%s\n' "$CUR" "$LATEST" "$PREV" "$C"` + "\n" +
 				sub(cmdAncestor) + " 2>/dev/null && echo ANCESTOR=ok || echo ANCESTOR=fail\n"
-			g := func(args ...string) {
-				t.Helper()
-				cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"}, args...)...)
-				cmd.Dir = dir
-				if out, err := cmd.CombinedOutput(); err != nil {
-					t.Fatalf("git %v: %v\n%s", args, err, out)
-				}
-			}
-			g("init", "-q", "-b", "main")
-			tc.build(func(a ...string) {
-				if a[0] == "__write" {
-					if err := os.WriteFile(filepath.Join(dir, a[1]), []byte(a[2]), 0o644); err != nil {
-						t.Fatal(err)
-					}
-					return
-				}
-				g(a...)
-			})
-
-			cmd := exec.Command("bash", "-c", script)
-			cmd.Dir = cwd
-			cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_CEILING_DIRECTORIES="+filepath.Dir(cwd))
-			if out, err := exec.Command("git", "-C", cwd, "rev-parse", "--git-dir").CombinedOutput(); err == nil {
-				t.Fatalf("cwd %s must not be a git repo: %s", cwd, out)
-			}
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				t.Fatalf("script: %v\n%s", err, out)
-			}
-			got := result{}
-			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-				k, v, _ := strings.Cut(line, "=")
-				switch k {
-				case "CUR":
-					got.cur = v
-				case "LATEST":
-					got.latest = v
-				case "PREV":
-					got.prev = v
-				case "C":
-					got.c = v
-				case "ANCESTOR":
-					got.ancestorOK = v == "ok"
-				}
-			}
+			kv, out := runSkillScript(t, script)
+			got := result{cur: kv["CUR"], latest: kv["LATEST"], prev: kv["PREV"], c: kv["C"], ancestorOK: kv["ANCESTOR"] == "ok"}
 			if got.cur != tc.want.cur || got.latest != tc.want.latest || got.prev != tc.want.prev {
 				t.Errorf("tags = CUR %q LATEST %q PREV %q, want %q %q %q\n%s", got.cur, got.latest, got.prev, tc.want.cur, tc.want.latest, tc.want.prev, out)
 			}
-			if got.c == "" {
-				t.Errorf("C empty, want the BUGLINE commit\n%s", out)
+			if (got.c == "") != tc.wantCEmpty {
+				t.Errorf("C = %q, want empty=%v\n%s", got.c, tc.wantCEmpty, out)
 			}
-			if tc.want.prev != "" && got.ancestorOK != tc.want.ancestorOK {
+			if tc.want.prev != "" && !tc.wantCEmpty && got.ancestorOK != tc.want.ancestorOK {
 				t.Errorf("ancestor = %v, want %v\n%s", got.ancestorOK, tc.want.ancestorOK, out)
 			}
 			if d := decide(got); d != tc.wantDecision {
 				t.Errorf("decision = %q, want %q\n%s", d, tc.wantDecision, out)
 			}
 		})
+	}
+}
+
+// FR-5.1: step 9 counts committed, modified and untracked files before
+// /ship commits, and ignores upstream commits fetched after branching.
+func TestHotfixSizeCount(t *testing.T) {
+	needAuto(t)
+	dir, g := gitRepo(t)
+	for _, f := range []string{"a.txt", "b.txt", "c.txt", "d.txt"} {
+		commit(g, f, "0\n", f)
+	}
+	g("checkout", "-q", "-b", "hf")
+	commit(g, "a.txt", "1\n", "committed fix")
+	g("checkout", "-q", "main")
+	commit(g, "d.txt", "upstream\n", "upstream after branching")
+	g("checkout", "-q", "hf")
+	g("__write", "b.txt", "1\n")
+	g("__write", "c.txt", "1\n")
+	g("__write", "new_test.txt", "1\n")
+	script := "REF=main\nprintf 'COUNT=%s\n' \"$(" + strings.ReplaceAll(cmdSize, "<worktree>", dir) + ")\"\n"
+	kv, out := runSkillScript(t, script)
+	if strings.TrimSpace(kv["COUNT"]) != "4" {
+		t.Fatalf("count = %q, want 4 (a committed, b+c modified, new_test untracked; d is upstream)\n%s", kv["COUNT"], out)
+	}
+}
+
+// FR-1.1: prd-routing's base lookup finds a quoted line and reports a missing path.
+func TestPrdRoutingCommands(t *testing.T) {
+	needAuto(t)
+	dir, g := gitRepo(t)
+	commit(g, "src/a.js", "x\n  if (a['k'][0]) return null;\n", "bug")
+	needle := filepath.Join(t.TempDir(), "needle")
+	if err := os.WriteFile(needle, []byte("if (a['k'][0]) return null;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ file, want string }{
+		{"src/a.js", "2:"},
+		{"src/moved.js", "PATH_MISSING"},
+	} {
+		sub := strings.NewReplacer("<repo>", dir, "<needle>", needle, "<file>", tc.file).Replace
+		script := "REF=main\n" + sub(cmdOnBase) + "\n" + sub(cmdGrepBase) + " 2>/dev/null || true\n"
+		_, out := runSkillScript(t, script)
+		if !strings.Contains(out, tc.want) {
+			t.Errorf("%s: want %q in\n%s", tc.file, tc.want, out)
+		}
 	}
 }
 

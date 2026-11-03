@@ -46,22 +46,34 @@ step 4 takes it without asking.
 
 If the forward fix turns out to need feature-sized work, that is itself the signal to revert
 instead and do it properly on the normal feature base. "Feature-sized" has one definition, the
-step 9 threshold: more than 3 changed files, or a shared resource reported by `/gate`.
+step 9 threshold: more than 3 changed files, or a shared resource reported by `/gate`. The count
+runs before `/ship`, which is where the commit happens, so it diffs the working tree against the
+merge-base with `$REF` and adds untracked files; `$REF...HEAD` would count nothing at that point.
 
 ## Why tags decide step 2 and step 4
 
 Release tags (`vYYMMDD.n`, cut on the hotfix base) are the only machine-readable record of what
-was released. Step 2 asks only when the newest tag is not on `$REF`; step 4 decides on its own
+was released. Shell variables do not survive between the agent's Bash calls, so each block prints
+its values and later steps reuse the printed text; an empty `$REF` would otherwise turn
+`git show "$REF:<file>"` into a read of the index. Step 2 asks only when the newest tag is not on `$REF`; step 4 decides on its own
 only when the faulty commit is an ancestor of the tag before it.
 
 - **Sort by `-v:refname`, never by `creatordate`.** Release tags are lightweight (`git
   for-each-ref` reports `commit`), so `creatordate` is the commit date, and a tag placed on an
   older commit sorts in the wrong place. Version sort reads the name, which is the release order.
-- **A rename makes `C` too late.** `git log -S` stops at the commit that created the path. Measured
-  on a real renamed file: `C` came out as the rename commit `9c0834242` (2026-03-30) instead of
-  the original `927b43789` (2025-03-24), and `--follow` did not find the original either. The
-  error only goes one way — `C` is later than the truth — so it can only turn a silent fix
-  forward into a question, never the reverse. The skill accepts that rather than trying to fix it.
+- **`C` comes from `git blame` on the one faulty line, not from `git log -S`.** `log -S
+  --reverse | head -1` returns the oldest commit that changed how often the text appears in the
+  file: a common line (`return null;`) or one removed and re-added in the last deploy resolves to
+  an old commit and fix-forwards silently. It also stopped at the rename commit `9c0834242`
+  instead of the original `927b43789` on a real renamed file. Blame returns the last commit that
+  touched that exact line, follows whole-file renames, and needs no source text in a shell
+  literal: the line number `N` comes from `$REF`'s copy via `grep -nF -f <needle>`. More than one
+  match, or none, means the line cannot be pinned → ask. Blame errors only make `C` later (a
+  reformat counts as a touch), so they only add a question.
+- **What this check cannot see.** An old line that a newer commit elsewhere made reachable keeps
+  an old `C`, so step 4 fix-forwards although reverting the last deploy would also end the
+  incident. A fix forward is still a valid response there, only slower; the skill accepts it
+  rather than guessing which other files are on the failing path.
 - **Step 2 checks "the tag is on `$REF`", not "this is the build production runs".** The newest
   tag may not be deployed yet; checking the running version from telemetry is deferred.
 

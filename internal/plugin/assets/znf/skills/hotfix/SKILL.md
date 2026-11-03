@@ -1,13 +1,13 @@
 ---
 name: hotfix
-description: Handle a live production bug: confirm the hotfix base from release tags, decide revert, disable or fix forward (asks only when the last deploy may be the cause), then branch the fix from that base. `/fix` hands production bugs here.
+description: Handle a live production bug: confirm the hotfix base from release tags, choose revert, disable or fix forward, branch the fix from that base. Asks only when tags cannot confirm the base, the last deploy may be the cause, or the fix is big. Run from `/fix` Step 2b or when the user asks.
 argument-hint: "[short-kebab-desc]"
-allowed-tools: Bash(git *) Bash(wt *) Bash(zenify *) Read Grep Bash(rg *) Bash(cat *) Agent
+allowed-tools: Bash(git *) Bash(wt *) Bash(zenify *) Read Grep Bash(rg *) Bash(cat *) Bash(head *) Bash(sed *) Bash(cut *) Bash(grep *) Bash(sort *) Bash(wc *) Bash(printf *) Write Agent
 ---
 
 Hotfix: **<slug>**
 
-`<slug>` is the text after the skill name.
+`<slug>` is the first word after the skill name; any lines after it are a `/fix` handoff (step 3).
 
 Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
 
@@ -27,19 +27,17 @@ never skips it. State the path and why in one line (rationale: references).
    REF=$(zenify hotfix baseref <repo>)
    CUR=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | head -1)
    LATEST=$(git -C <repo> tag --list 'v[0-9]*' --sort=-v:refname | head -1)
+   printf 'REF=%s CUR=%s LATEST=%s\n' "$REF" "$CUR" "$LATEST"
    ```
    `CUR` empty or `CUR ≠ LATEST` → ask the user to confirm `$REF` and wait. Otherwise print
-   `Base ref confirmed: $REF (contains $CUR = latest tag)` and go on. **Fetch BEFORE resolving the
-   base ref** — the tool's own fetch is too late. An error means a stale `worktree.json`: fix it,
-   never guess a branch name. See references. You need this ref even without branching from it:
-   steps 6 and 9 depend on it.
+   `Base ref confirmed: $REF (contains $CUR = latest tag)` and go on. Variables do not survive
+   between Bash calls: later steps reuse the printed values. An error means a stale
+   `worktree.json`: fix it, never guess a branch name. Steps 6 and 9 need this ref too.
 
 3. **Diagnose — before touching anything.** If handed off from `/fix`, its Step 0–2 evidence and
    confirmed cause carry over — do not re-diagnose; continue from step 4. Otherwise run **`/fix`
-   steps 0-2**: ground in the real error output first (logs, traces, metrics:
-   `znf:_shared/evidence-sources`), then hypotheses, then confirm the root cause. If you cannot
-   confirm it, say so — **do not guess-fix production.** This comes before the worktree on
-   purpose (see references). On production run read-only rungs directly, redact output
+   steps 0-2**, grounded in real error output (`znf:_shared/evidence-sources`). If you cannot
+   confirm the cause, say so — **do not guess-fix production.** On production run read-only rungs directly, redact output
    (`<REDACTED>`); a side-effect rung goes via `zenify data run` (dry-run; user's "ok" before
    `--prd --write`); with no read-only loop, confirm the cause from logs — the no-loop
    stop and temporary logging do not apply.
@@ -57,14 +55,16 @@ never skips it. State the path and why in one line (rationale: references).
    Check whether the bug predates the previous release tag:
    ```bash
    PREV=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | sed -n 2p)
-   C=$(git -C <repo> log -S'<faulty line>' --format=%H --reverse "$REF" -- <file> | head -1)
+   N=$(git -C <repo> show "$REF:<file>" | grep -nF -f <needle> | cut -d: -f1)
+   C=$(git -C <repo> blame -L"$N,$N" --porcelain "$REF" -- <file> | head -1 | cut -d' ' -f1)
    git -C <repo> merge-base --is-ancestor "$C" "$PREV"   # success = bug predates PREV
    ```
-   Success → fix forward without asking; record
+   `<needle>`: a file holding the faulty line, trimmed, written with Write — never paste source
+   into shell quotes. Success → fix forward without asking; record
    `Response chosen: fix forward — bug predates <PREV> (introduced in <C>)`. Ask (the three with a
    recommendation, then **wait**) when there is no `PREV`, you cannot pin the faulty line (data
-   or config bug), `C` is empty, or the ancestor check fails. A renamed file makes `C` the rename
-   commit — later than the truth — so it only adds a question (references).
+   or config bug, `N` not exactly one line), `C` is empty, or the ancestor check fails. Limits of
+   this check: references.
 
    **If the answer is revert or disable: stop here.** Do it, verify the incident is over, and
    skip to step 10 — no worktree, no scout, no fix. Plan the real fix calmly afterwards on the
@@ -76,44 +76,42 @@ never skips it. State the path and why in one line (rationale: references).
    ```bash
    cd <repo> && wt new <slug> --type hotfix --base "$REF"
    ```
-   One worktree per affected repo. Do not re-derive `$REF` — use step 2's value. `--type hotfix`
-   is deliberately **exempt** from the one-task-per-repo-per-session guard. Work inside the
-   worktree path, not the main checkout.
+   One per affected repo, `$REF` from step 2; `--type hotfix` is **exempt** from the one-task
+   guard (references). `<worktree>` below is its path; work there, not in the main checkout.
 
 6. **`Skill(scout)` — and scout the RESOLVED ref, not the default feature base.** Invoke it as a
    call — `Skill(scout)` leaves a named line.
-   Find consumers, the tests that cover it, anything written in the same operation, and why those
-   lines exist (`git blame -L`, `git log -S`).
+   Brief it as `/fix` Step 3 does.
 
    **Getting the ref wrong fails silently.** State which ref you scouted.
 
 7. **Fix.** Red command and regression test first, then the smallest diff — `/fix` Step 5;
    refactor nothing else.
 
-   **Call `Skill(ground)` on anything unverified this session** — not just "does the field exist"
-   but **which values it holds** (distinct-values query) and **which filter every query must
-   carry** (tenant/scope).
+   **`Skill(ground)` anything unverified this session**, including the values a field holds and
+   the filter every query must carry.
 
 8. **Verify**: re-run the red command and clear `[DEBUG-` tags — `/fix` Step 6. Don't claim
    fixed without evidence (or `/run` the app and observe it).
 
-   Narrow question here: *did the bug go away*. The authoritative pass, and the only dispatch of
-   `znf:ui-verifier`, is `/ship` step 4. If the bug was visual, the look is checked there, not by
-   you. A clean (negative) check needs a second mechanism to agree (references § Clean checks).
+   Only *did the bug go away*: the look and the only `znf:ui-verifier` dispatch are `/ship`
+   step 4. A clean (negative) check needs a second mechanism (references § Clean checks).
 
 9. **`/gate`, then `/ship` — both, always.** `/gate` is cheap, read-only, and tells you which
-   repos the change reaches. Before `/ship`: if `git diff --name-only "$REF"...HEAD | wc -l` is
-   > 3, or `/gate` reports a shared collection, inter-service HTTP, pub/sub or queue → ask,
+   repos the change reaches. Before `/ship` (nothing is committed yet), count the changed files:
+   ```bash
+   { git -C <worktree> diff --name-only "$(git -C <worktree> merge-base "$REF" HEAD)"; git -C <worktree> ls-files --others --exclude-standard; } | sort -u | wc -l
+   ```
+   Over 3, or `/gate` reports a shared collection, inter-service HTTP, pub/sub or queue → ask,
    recommending revert, and wait; never run `/cook` on a hotfix base. **Then `/ship`,
-   unconditionally** — not only on cross-repo impact, and not skipped because the incident is
-   urgent (see references).
+   unconditionally** — urgency is no exemption (references).
 
-   If `/ship` is all green it commits, pushes the hotfix branch and opens the PR into `$REF`
-   (house rule #7 — a `hotfix/*` branch is not a deploy branch). If verification failed, do not
-   commit; fix first.
+   All green → `/ship` commits, pushes the hotfix branch and opens the PR into `$REF`. Verification
+   failed → no commit; fix first.
 
-10. **After `/ship`:** the user merges the PR (= deploy), then syncs `main → staging` so the next
-    release keeps the fix. Once `git -C <repo> tag --contains <merge-sha> --list 'v[0-9]*'` prints
+10. **After `/ship`:** the user merges the PR (= deploy), then syncs `$REF` → the repo's `baseRef`
+    (skip when they are the same ref) so the next release keeps the fix. Once
+    `git -C <repo> fetch origin --tags` then `git -C <repo> tag --contains <merge-sha> --list 'v[0-9]*'` print
     a tag, check the area the fix touched — the checks that fit, not all of them:
     `references/post-deploy-check.md`. Add the numbers to the hotfix report. Tear down with
     `wt sweep`.
@@ -137,7 +135,7 @@ Pushed: <username>/hotfix/<desc> → origin.
     Not "/ship: ✅ all green". -->
 ---
 
-PR opened: <url> → <base ref>. Next (yours): merge (= deploy) → sync main → staging.
+PR opened: <url> → <base ref>. Next (yours): merge (= deploy) → sync <base ref> → baseRef.
 ```
 
 ## References
