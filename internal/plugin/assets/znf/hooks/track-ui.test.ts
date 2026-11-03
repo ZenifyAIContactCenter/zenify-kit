@@ -344,6 +344,24 @@ test('FR-13.7: Backlog groups by source in manual, github, sdd, stale order, one
   ])
 })
 
+test('FR-5.2: a backlog item whose ref or id is an http URL is a Link line, others stay plain', () => {
+  const url = 'https://github.com/o/r/issues/1'
+  const s = stats({
+    backlog: {
+      ghError: '',
+      items: [
+        bl('github', { repo: 'r', est: 'S', title: 'issue one', ageDays: 4, ref: url }),
+        bl('github', { repo: 'r', est: 'M', title: 'issue two', ageDays: 1, id: 'https://github.com/o/r/issues/2' }),
+        bl('manual', { title: 'plain', ref: 'memory:x' }),
+      ],
+    },
+  })
+  const lines = tabLines('backlog', s, A, X, NOW)
+  expect(lines).toContainEqual({ text: '', href: url, label: 'r · S · issue one · 4d' })
+  expect(lines).toContainEqual({ text: '', href: 'https://github.com/o/r/issues/2', label: 'r · M · issue two · 1d' })
+  expect(lines).toContainEqual({ text: 'kit · M · plain · 3d' })
+})
+
 test('FR-13.7: an empty backlog says Backlog is empty; a ghError adds a ⚠ github line', () => {
   expect(texts(tabLines('backlog', stats(), A, X, NOW))[0]).toBe('Backlog is empty')
   const t = tabLines('backlog', stats({ backlog: { items: [bl('manual')], ghError: 'gh: not logged in' } }), A, X, NOW)

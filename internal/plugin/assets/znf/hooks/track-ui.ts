@@ -372,7 +372,12 @@ function backlogLines(s: TrackStats): Line[] {
     const group = items.filter(i => i.source === src)
     if (group.length === 0) continue
     lines.push(head(`${ICON.source[src] ?? ''} ${src}`.trim()))
-    for (const i of group) lines.push(plain([i.repo, i.est, i.title, `${i.ageDays}d`].join(SEP)))
+    for (const i of group) {
+      const row = [i.repo, i.est, i.title, `${i.ageDays}d`].join(SEP)
+      // FR-5.2: a URL item is a link, so a truncated line stays clickable.
+      const url = [i.ref, i.id].find(v => /^https?:\/\//.test(v ?? ''))
+      lines.push(url ? { text: '', href: url, label: row } : plain(row))
+    }
   }
   if (s.backlog?.ghError) lines.push(warn(`⚠ github: ${s.backlog.ghError}`))
   return lines

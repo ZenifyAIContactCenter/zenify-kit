@@ -19,31 +19,44 @@ Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `
 
 ## Status line
 
-Status line luôn hiện, kể cả khi pane đóng.
+Status line luôn hiện, kể cả khi pane đóng. Toàn bộ chữ trên pane và status line là tiếng Anh.
 
-- Khi tắt: `⏸ track off · bật: /config → znf`
-- Khi bật và tab này đang có việc mở: `track ▶ <id> · <giai đoạn> · <phút agent>/<est> · chờ <phút> · Hôm nay: xong/bắt đầu · PR n (m merged) · hit n%`
-- Khi bật và tab này chưa có việc: `track ⏸ · Hôm nay: xong/bắt đầu · ...`
-- Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸ · Tip: Bạn có thể onboard cho agent lấy công việc bằng cách gõ "hey claude onboard track"`
+- Khi tắt: `⏸ track off · enable: /config → znf`
+- Khi bật và tab này đang có việc mở: `track ▶ <id> · <phase> · <wall>m/<est> (agent <n>m) · wait <n>m · Today: done/started · PR n (m merged) · hit n%`
+- Khi bật và tab này chưa có việc: `track ⏸ · Today: done/started · ...`
+- Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸ · Tip: onboard the agent to pick work — type "hey claude onboard track"`
+- Số đầu tiên là wall time (đồng hồ thật từ lúc bắt đầu), kèm `<est>` nếu việc có size; `(agent <n>m)` là thời gian agent thật sự làm, chỉ hiện khi lớn hơn 0. Chi tiết ở [Thời gian wall và thời gian agent](#thời-gian-wall-và-thời-gian-agent).
+- `hit n%` chỉ hiện khi đã có ít nhất 5 việc có est.
 - Tip theo ngữ cảnh: mỗi lúc tối đa một tip, nối cuối dòng bằng ` · `, chọn theo thứ tự ưu tiên (onboard ở trên trước):
-  - tab này không có id mở và Backlog còn việc: `Tip: còn N việc trong Backlog — gõ "hey claude lấy việc tiếp"`
-  - có id mở, chưa có estimate và agent chạy từ 5 phút: `Tip: chưa có estimate — gõ "hey claude est việc này"`
-  - có id mở, đã vượt ngưỡng của size est: `Tip: đã vượt est M (95m/90m) — cân nhắc tách việc hoặc est lại`
-  - có PR mở chưa merge hôm nay: `Tip: N PR chờ merge — gõ "hey claude check PR"`
+  - tab này không có id mở và còn việc làm dở từ các ngày trước: `Tip: N items carried over — type "hey claude continue"`
+  - tab này không có id mở và Backlog còn việc: `Tip: N items in Backlog — type "hey claude next task"`
+  - có id mở, chưa có estimate và đã chạy từ 5 phút: `Tip: no estimate yet — type "hey claude estimate this"`
+  - có id mở, đã vượt ngưỡng của size est: `Tip: over est M (95m/90m) — split the work or re-estimate`
+  - có PR mở chưa merge hôm nay: `Tip: N PRs waiting to merge — type "hey claude check PR"`
 
-Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Hôm nay` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track lỗi: <nguyên nhân>`.
+Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track error: <nguyên nhân>`.
 
 ## Năm tab
 
 | Tab | Nội dung |
 |---|---|
-| **Kitchen** | Tab mặc định, giống nhau ở mọi session. `🍳 Cooked`: các việc đã xong hôm nay, mỗi dòng `- <icon> <HH:MM> <brief>` (giờ máy; icon cho biết kết quả: ✅ done, 🚀 pushed, ⛔ cancelled, ↩️ rollback), mỗi PR một dòng `  🔗 <repo>#<n>` là link bấm được tới PR; chưa có thì hiện `chưa có việc xong hôm nay`. `🔥 Rolling boil`: các tab Claude Code đang chờ bạn, mỗi dòng `- <❓ hoặc 🔐> <thời gian chờ> <tab>` (`45s`, `2m`, `2h`, làm tròn xuống); không có thì hiện `không tab nào đang chờ`. Lấy tiêu đề lỗi thì có dòng `⚠ title lỗi: <nguyên nhân>` |
-| **Tổng** | Hôm nay của cả workspace: xong/bắt đầu, số task, số vòng, PR đã mở và đã merge, plan theo repo; danh sách việc đang chạy gom theo session, tab hiện tại ghi `(tab này)`; dòng `stale` cho việc bị bỏ dở |
-| **Estimate** | Với mỗi loại (cook, fix, hotfix): est đúng/thấp/cao so với thực tế; hotfix hiện số việc, trung vị và p90; tỉ lệ agent theo giai đoạn |
-| **Chất lượng** | Với mỗi loại: tỉ lệ ship bị chặn và bước chặn nhiều nhất, finding C/H/M/L trung bình, số vòng fix loop, tỉ lệ CI đỏ lần đầu, tỉ lệ thời gian chờ, token trung bình theo model; với fix/hotfix thêm ROUND trung bình, tỉ lệ sửa diện rộng và tỉ lệ có regression test |
-| **Backlog** | Việc chưa làm, nhóm theo nguồn: `manual`, `github`, `sdd`, `stale`. Mỗi dòng `repo · est · title · <số ngày>d`. Backlog rỗng hiện `Backlog trống`; lấy issue GitHub lỗi thì có dòng `⚠ github: <nguyên nhân>` |
+| **Kitchen** | Tab mặc định, giống nhau ở mọi session. Phần đầu `📌 Carried over` (xem [Việc làm dở và ngày làm việc cuối](#việc-làm-dở-và-ngày-làm-việc-cuối)). `🍳 Cooked`: các việc đã xong hôm nay, mỗi dòng `- <icon> <HH:MM> <brief>` (giờ máy; icon cho biết kết quả: ✅ done, 🚀 pushed, ⛔ cancelled, ↩️ rollback), mỗi PR một dòng `  🔗 <repo>#<n>` là link bấm được tới PR; chưa có thì hiện `nothing finished today`. `🔥 Rolling boil`: các tab Claude Code đang chờ bạn, mỗi dòng `- <❓ hoặc 🔐> <thời gian chờ> <tab>` (`45s`, `2m`, `2h`, làm tròn xuống); không có thì hiện `no tab is waiting`. Lấy tiêu đề lỗi thì có dòng `⚠ title error: <nguyên nhân>` |
+| **Today** | Hôm nay của cả workspace: `Done`, `started`, `Cancelled`, `Rollback` (mục bằng 0 thì ẩn), `Time <wall>m · agent <n>m`, `SDD tasks` (chỉ khi hôm nay có cook xong), `Rounds`, `PR n (m merged)`, `Plans written today` theo repo; danh sách `Running` gom theo session, tab hiện tại ghi `(this tab)`; việc bị bỏ dở ghi `stale` |
+| **Estimate** | Với mỗi loại (cook, fix, hotfix): est đúng/thấp/cao so với thực tế (`hit`, `under`, `over`); hotfix hiện số việc, trung vị và p90; `agent time by phase` là tỉ lệ thời gian agent theo giai đoạn |
+| **Quality** | Với mỗi loại: tỉ lệ ship bị chặn và bước chặn nhiều nhất, finding C/H/M/L trung bình, số vòng fix loop, tỉ lệ CI đỏ lần đầu, tỉ lệ thời gian chờ; với fix/hotfix thêm ROUND trung bình, tỉ lệ sửa diện rộng và tỉ lệ có regression test. Pane không hiện token (JSON của `zenify track stats --json` vẫn giữ) |
+| **Backlog** | Việc chưa làm, nhóm theo nguồn: `manual`, `github`, `sdd`, `stale`. Mỗi dòng `repo · est · title · <số ngày>d`; mục có URL là link bấm được (xem [Backlog](#backlog)). Backlog rỗng hiện `Backlog is empty`; lấy issue GitHub lỗi thì có dòng `⚠ github: <nguyên nhân>` |
 
-Dưới mọi tab là thang S/M/L hiện hành (đo bằng wall time; nguồn thang `learned` hoặc `default` hiện cạnh số việc) và các quy tắc hiệu chỉnh, ví dụ gợi ý tăng hoặc giảm est một size.
+Số trên Estimate và Quality chỉ hiện khi đủ mẫu: mỗi loại cần ít nhất 5 việc thật. Chưa đủ thì dòng đó hiện mờ `need 5 samples (have N)`. Tỉ lệ thời gian theo giai đoạn cũng chỉ hiện khi loại đó đủ 5 mẫu. Số từ 10000 trở lên viết gọn `12.3k`, `1.2M`.
+
+Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall time; nguồn thang `learned` hoặc `default` hiện cạnh số việc, dạng `scale (default, 0 items): S<15m M<45m L<120m`) và các quy tắc hiệu chỉnh, ví dụ gợi ý `raise est 1 size` hoặc `lower est 1 size`. Các tab khác không có chân trang.
+
+## Việc làm dở và ngày làm việc cuối
+
+Đầu tab `Kitchen` có phần `📌 Carried over`, để hôm qua dừng ở đâu thì hôm nay làm tiếp từ đó:
+
+- Dòng `📆 Fri 10/31: 3 done · 1 cancelled · 2 PRs · 2 left open` tóm tắt ngày làm việc cuối trước hôm nay (ngày làm việc, nên sáng thứ Hai là tóm tắt thứ Sáu). Mục bằng 0 thì ẩn.
+- Mỗi việc đã bắt đầu từ trước hôm nay mà chưa kết thúc (đang chạy hoặc `stale`) có hai dòng: `- ⏳ 2d <worktree hoặc brief> · <kind> · <phase>` (việc stale dùng `🕸`; tuổi là `Nm`, `Nh` hoặc `Nd` theo wall time), rồi dòng mờ `<tên tab hoặc 8 ký tự session> · <id>`.
+- Không có việc dở và không có ngày làm việc cuối thì không có phần này. Khi có việc dở và tab không có việc mở, status line nhắc bằng tip `N items carried over`.
 
 ## Kitchen đồng bộ thế nào
 
@@ -56,17 +69,17 @@ Tab `Kitchen` đọc cùng số liệu `zenify track stats --json` như các tab
 - `<brief>` chọn theo thứ tự: tiêu đề plan, tiêu đề mục backlog, tiêu đề PR, cuối cùng là `<kind> <repo>`.
 - `zenify track end --ledger <ledger file>` đếm các dòng `Task <N>: complete` và lưu đường dẫn plan ở dòng đầu của ledger (`# SDD ledger — plan: <path>`) vào dòng `end` (bốn trường) để `Kitchen` lấy được tiêu đề plan. Đường dẫn plan chứa ` · ` hoặc xuống dòng thì dòng `end` giữ ba trường và lệnh cảnh báo trên stderr. File ledger không đọc được thì lệnh cảnh báo trên stderr và vẫn ghi dòng `end` ba trường với 0 task. Đường dẫn plan được lưu nguyên văn; đường dẫn tương đối được đọc tương đối với workspace.
 
-## Thời gian agent và thời gian chờ
+## Thời gian wall và thời gian agent
 
-Thời gian được chia hai loại. Thời gian agent là lúc Claude đang làm việc. Thời gian chờ là lúc phiên đứng chờ bạn: chờ trả lời câu hỏi (`hỏi`), chờ cấp quyền (`quyền`) hoặc phiên để rảnh (`rảnh`). Estimate so với thời gian agent, không tính thời gian chờ, nên một task nằm đợi bạn cả buổi không bị tính là lâu. Thời gian cũng được tách theo giai đoạn của task, và token tách theo model.
+Thời gian wall là đồng hồ thật từ lúc việc bắt đầu; status line hiện nó đầu tiên (`<wall>m/<est>`). Thời gian agent (`agent <n>m`) là phần Claude thực sự làm. Phần còn lại là thời gian chờ: chờ trả lời câu hỏi (`hỏi`), chờ cấp quyền (`quyền`) hoặc phiên để rảnh (`rảnh`), hiện ở status line là `wait <n>m`. Est được so với thời gian wall, cùng thang S/M/L. Thời gian agent được tách theo giai đoạn của task (tab Estimate); token vẫn được ghi trong JSON nhưng pane không hiện.
 
 ## Chất lượng ship, fix và CI
 
-Mỗi lần `znf:ship` kết thúc, kit ghi kết quả (shipped hoặc blocked, bước bị chặn đầu tiên: lint, build, contract, behaviour, review), số finding theo mức và số vòng fix. `znf:fix` ghi số ROUND, đường sửa hẹp hay rộng và có regression test hay không. Khi tính năng bật, ship mở PR xong sẽ tự gọi `znf:ci-watch` cho từng repo, và kết quả CI (green hoặc red) của mỗi commit được ghi lại, nên tab Chất lượng có tỉ lệ CI đỏ ngay lần đầu.
+Mỗi lần `znf:ship` kết thúc, kit ghi kết quả (shipped hoặc blocked, bước bị chặn đầu tiên: lint, build, contract, behaviour, review), số finding theo mức và số vòng fix. `znf:fix` ghi số ROUND, đường sửa hẹp hay rộng và có regression test hay không. Khi tính năng bật, ship mở PR xong sẽ tự gọi `znf:ci-watch` cho từng repo, và kết quả CI (green hoặc red) của mỗi commit được ghi lại, nên tab Quality có tỉ lệ CI đỏ ngay lần đầu.
 
 ## Sổ chung giữa các tab Claude Code
 
-Mọi tab Claude Code trong cùng workspace ghi vào một sổ chung, nên tab `Tổng` thấy việc của tất cả các tab, còn tab `Kitchen` cho thấy các việc đã xong hôm nay và các tab đang chờ bạn. Mỗi session có file riêng để ghi thời gian và token, nên hai tab chạy song song không đè lên nhau.
+Mọi tab Claude Code trong cùng workspace ghi vào một sổ chung, nên tab `Today` thấy việc của tất cả các tab, còn tab `Kitchen` cho thấy các việc đã xong hôm nay và các tab đang chờ bạn. Mỗi session có file riêng để ghi thời gian và token, nên hai tab chạy song song không đè lên nhau.
 
 File nằm trong workspace:
 
@@ -85,6 +98,8 @@ Tab `Backlog` gom việc chưa làm từ bốn nguồn:
 - `github`: issue đang mở trên GitHub mà bạn được giao hoặc do bạn tạo. Kit tìm theo owner (org) lấy từ remote `origin` của từng repo trong `repos/`. Repo không có `origin` và thư mục ẩn (ví dụ `repos/.claude`) được bỏ qua; thư mục khác không phải repo git thì tab báo `⚠ github: ...`.
 - `sdd`: mục `minor (deferred)` và `parked` trong `progress.md` của các plan.
 - `stale`: việc đã bắt đầu nhưng bị bỏ dở.
+
+Mục có `ref` hoặc `id` là URL `http…` hiện thành dòng link: chữ bấm được là `repo · est · title · <số ngày>d`, trỏ tới URL đó. Dòng là link thì dù bị cắt vẫn bấm được.
 
 Mở tab `Backlog` thì pane chạy lại số liệu và bỏ qua cache backlog 5 phút (`zenify track stats --json --force`), nên issue GitHub mới hiện ngay. Các lần chạy khác dùng cache. Lấy GitHub lỗi (ví dụ chưa `gh auth login`) thì tab báo `⚠ github: ...`, ba nguồn còn lại vẫn hiện.
 
