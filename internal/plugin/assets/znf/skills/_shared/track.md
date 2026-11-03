@@ -27,8 +27,8 @@ Read this when the session digest says `features: track on`. Every command below
 
 ## hotfix
 
-- Step 1: `zenify track start --kind hotfix --repo <repo> --est <S|M|L>`.
-- Hotfix step 3 borrows `/fix` steps 0-2: do not run the fix section's `start` or `est` there. The hotfix id from step 1 (started with its est) is the only id.
+- Step 1: `zenify track start --kind hotfix --repo <repo> --est <S|M|L>`; when handed a `track id:` from `/fix`, keep that id and run only `zenify track est <id> <S|M|L>` — no second `start`.
+- Hotfix step 3 borrows `/fix` steps 0-2: do not run the fix section's `start` or `est` there. The hotfix id (started at step 1 with its est, or kept from `/fix`) is the only id.
 - `znf:ship` called from hotfix records `track ship` but never calls `end`.
 - Code-fix path, step 10: `zenify track fix <id> --round <n> --path narrow|wide --regression test|no-seam|-`, then after the push close the id: when a PR was opened (by you or by `znf:ship`), end with `--pr <url>` (`zenify track end <id> --pr <url> [--pr <url>…] --rounds <n>`); use `--branch` only when a person opens the PR (`zenify track end <id> --branch <hotfix branch> --rounds <n>`). A multi-repo hotfix passes one `--branch` (wt gives every repo the same branch name).
 - Revert/disable path (step 4 "Decide the response": revert or disable → skip to step 10): no `track fix`; close with `zenify track end <id> --rollback --rounds 0`.
