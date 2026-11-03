@@ -645,7 +645,8 @@ test('SC-14: a Bash stdout of track: off binds nothing', async ($, on) => {
   await $.tool.call({ tool: 'Bash', command: START_FIX })
   world.toolCall = undefined
   await $.turn.complete(turnEnd(30000))
-  expect(calls.write).toHaveLength(0)
+  // No session log line; the main turn end only marks the live file idle (FR-12.1).
+  expect(calls.write.filter(w => w.path === SESSION_LOG)).toHaveLength(0)
 })
 
 test('FR-4.1/FR-7.3: a start stdout binds the id into this session file, the cwd first', async ($, on) => {
@@ -804,7 +805,8 @@ test('FR-4.2: with no bound id a turn writes nothing', async ($, on) => {
   mock.clock(on)
   await $.turn.complete(turnEnd(30000))
   await $.tool.call({ tool: 'Skill', skill: 'znf:scout' } as any)
-  expect(calls.write).toHaveLength(0)
+  // The main turn end still tells the live file the tab is idle (FR-12.1); no session log line.
+  expect(calls.write.filter(w => !w.path.startsWith('/w/.zenify/track/live/') && w.path !== PULSE)).toHaveLength(0)
 })
 
 test('a failed session write is toasted, not swallowed', async ($, on) => {
@@ -1108,7 +1110,7 @@ test('SC-11: with a Rolling boil entry stats re-run every 10s on an unchanged ke
   expect(statsRuns(calls)).toHaveLength(2)
 })
 
-test('stuck state: a person ask whose call never ran is cleared to busy at the main turn end', async ($, on) => {
+test('stuck state: a person ask whose call never ran is cleared to idle at the main turn end', async ($, on) => {
   const world = trackWorld()
   const calls = engine(on, world)
   mock.clock(on)
@@ -1119,7 +1121,7 @@ test('stuck state: a person ask whose call never ran is cleared to busy at the m
   await $.turn.complete(turnEnd(5000, 'a-1'))
   expect(liveDoc(world).state).toBe('permission')
   await $.turn.complete(turnEnd(9000))
-  expect(liveDoc(world).state).toBe('busy')
+  expect(liveDoc(world).state).toBe('idle')
   // A later main turn end with nothing pending writes nothing more.
   await $.turn.complete(turnEnd(1000))
   expect(liveWrites(calls)).toHaveLength(2)
@@ -1169,4 +1171,63 @@ test('SC-9: every pane content Text truncates at the pane width', async ($, on) 
     expect(body.length).toBeGreaterThan(0)
     for (const t of body) expect(t.props.wrap).toBe('truncate-end')
   }
+})
+
+test('SC-20: a main turn end writes idle, the next prompt writes busy; a subagent turn end changes nothing', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: '' })
+  await clock.advance(1000)
+  await $.turn.complete(turnEnd(5000, 'a-1'))
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy'])
+  await $.turn.complete(turnEnd(9000))
+  expect(liveDoc(world).state).toBe('idle')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'idle'])
+  // A subagent turn end after the main one does not flip idle back.
+  await $.turn.complete(turnEnd(2000, 'a-2'))
+  await $.prompt.submit({ text: 'next' })
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'idle', 'busy'])
+})
+
+test('SC-20: ask and permission win over idle until they are answered or the turn ends', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  world.toolCall = () => ({ result: { answers: {} } })
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'ask', 'busy'])
+  // Idle waits for the ask to be answered: ask has priority over idle.
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u2', approver: 'person' } as any)
+  world.verdict = undefined
+  await $.turn.complete(turnEnd(9000))
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'ask', 'busy', 'permission', 'idle'])
+})
+
+test('SC-21: the open pane redraws on every watch tick while a tab is cooking, so the spinner turns', async ($, on) => {
+  const since = new Date(T0 - 12 * MIN).toISOString()
+  const cooking = [
+    { session: OTHER, tab: 'Tab one', brief: 'x', id: '', kind: '', phase: '', since },
+    { session: SESSION, tab: 'Tab two', brief: 'y', id: '', kind: '', phase: '', since },
+  ]
+  const world: World = { stats: ok(statsJson({ kitchen: { carried: [], lastDay: null, cooked: [], rollingBoil: [], cooking, titleError: '' } })) }
+  engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const ui = await mountTab($)
+  const spin = async () => (await allTexts(ui)).filter(t => /^- [⠋-⠿] 12m/.test(t))
+  const first = await spin()
+  expect(first).toHaveLength(2)
+  await clock.advance(2000)
+  const second = await spin()
+  expect(second).toHaveLength(2)
+  expect(second[0]?.[2]).not.toBe(first[0]?.[2])
+  expect(second[1]?.[2]).not.toBe(first[1]?.[2])
+  expect(second[0]?.[2]).not.toBe(second[1]?.[2])
+  expect(first[0]?.[2]).not.toBe(first[1]?.[2])
 })

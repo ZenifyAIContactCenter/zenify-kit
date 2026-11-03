@@ -39,6 +39,9 @@ export type KitchenCooked = { id: string; brief: string; status: TrackItem['stat
 // One live tab waiting for a person (Go `trackstats.BoilItem`).
 export type KitchenBoil = { session: string; tab: string; brief: string; state: 'ask' | 'permission'; since: string }
 
+// One live tab that is working right now (Go `trackstats.CookingItem`).
+export type KitchenCooking = { session: string; tab: string; brief: string; id: string; kind: string; phase: string; since: string }
+
 // One item started before today and not ended (Go `trackstats.CarriedItem`).
 export type KitchenCarried = {
   id: string
@@ -108,6 +111,7 @@ export type TrackStats = {
     lastDay: KitchenLastDay | null
     cooked: KitchenCooked[] | null
     rollingBoil: KitchenBoil[] | null
+    cooking: KitchenCooking[] | null
     titleError: string
   }
 }

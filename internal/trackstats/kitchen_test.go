@@ -275,7 +275,7 @@ func TestKitchenDeadLiveNotMalformed(t *testing.T) {
 func TestKitchenEmptyJSON(t *testing.T) {
 	r, _ := Compute(kInput(""))
 	b, _ := json.Marshal(r.Kitchen)
-	if string(b) != `{"carried":[],"lastDay":null,"cooked":[],"rollingBoil":[],"titleError":""}` {
+	if string(b) != `{"carried":[],"lastDay":null,"cooked":[],"rollingBoil":[],"cooking":[],"titleError":""}` {
 		t.Fatalf("kitchen = %s", b)
 	}
 }
@@ -519,5 +519,50 @@ func TestRunningItemHasTab(t *testing.T) { // SC-15
 	}
 	if len(r.Running) != 3 || tabs[a] != "tab S" || tabs[b] != "" || tabs[c] != "tab T" || status[c] != "stale" {
 		t.Fatalf("running = %+v", r.Running)
+	}
+}
+
+func TestKitchenCooking(t *testing.T) { // SC-19
+	a := kid("cook", 1)
+	log := lines(row(kAt(8, 0), "start", a, "cook", "zenify-kit", "M"))
+	in := kInput(log)
+	s1, s2 := kAt(9, 40).Format(time.RFC3339), kAt(9, 55).Format(time.RFC3339)
+	in.TabTitle = func(sess string) (string, error) { return "Tab " + sess, nil }
+	in.Live = []LiveFile{
+		lf("new", liveJSON("busy", s2, "/ws/repos/x", ""), kNow.Add(-5*time.Second)),
+		lf("old", liveJSON("busy", s1, "/ws/repos/y", a), kNow.Add(-5*time.Second)),
+		lf("idle", liveJSON("idle", s1, "/ws/repos/z", ""), kNow),
+		lf("ask", liveJSON("ask", s1, "/ws/repos/w", ""), kNow),
+		lf("stale", liveJSON("busy", s1, "/ws/repos/v", ""), kNow.Add(-60*time.Second)),
+		lf("nobeat", liveJSON("busy", s1, "/ws/repos/u", ""), time.Time{}),
+	}
+	r, _ := Compute(in)
+	c := r.Kitchen.Cooking
+	if len(c) != 2 || c[0].Session != "old" || c[1].Session != "new" {
+		t.Fatalf("cooking = %+v", c)
+	}
+	want := CookingItem{Session: "old", Tab: "Tab old", Brief: "cook zenify-kit", ID: a, Kind: "cook", Phase: r.Running[0].Phase, Since: s1}
+	if c[0] != want || c[0].Phase == "" {
+		t.Fatalf("cooking[0] = %+v, want %+v", c[0], want)
+	}
+	if c[1].Brief != "x" || c[1].ID != "" || c[1].Kind != "" || c[1].Phase != "" {
+		t.Fatalf("cooking[1] = %+v", c[1])
+	}
+	for _, b := range r.Kitchen.RollingBoil {
+		if b.Session != "ask" {
+			t.Fatalf("rolling boil holds %+v", b)
+		}
+	}
+	if r.Malformed != 0 {
+		t.Fatalf("malformed = %d: idle is a valid state", r.Malformed)
+	}
+}
+
+func TestKitchenIdleOnlyIsNotMalformed(t *testing.T) { // SC-19
+	in := kInput("")
+	in.Live = []LiveFile{lf("a", liveJSON("idle", kAt(9, 58).Format(time.RFC3339), "/tmp", ""), kNow)}
+	r, _ := Compute(in)
+	if r.Malformed != 0 || len(r.Kitchen.Cooking) != 0 || len(r.Kitchen.RollingBoil) != 0 {
+		t.Fatalf("malformed = %d kitchen = %+v", r.Malformed, r.Kitchen)
 	}
 }

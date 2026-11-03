@@ -39,7 +39,7 @@ const stats = (over: Partial<TrackStats> = {}): TrackStats => ({
   quality: { byKind: {}, fix: { n: 0, roundAvg: null, wideRate: null, regressionRate: null } },
   backlog: { items: [], ghError: '' },
   onboarded: true,
-  kitchen: { carried: [], lastDay: null, cooked: [], rollingBoil: [], titleError: '' },
+  kitchen: { carried: [], lastDay: null, cooked: [], rollingBoil: [], cooking: [], titleError: '' },
   ...over,
 })
 
@@ -170,6 +170,7 @@ const kitchenStats = (over: Partial<TrackStats['kitchen']> = {}) =>
       rollingBoil: [{ session: B, tab: 'Dev track pane ship', brief: 'zenify-kit/x', state: 'permission', since: new Date(NOW - 125_000).toISOString() }],
       titleError: '',
       carried: [],
+      cooking: [],
       lastDay: null,
       ...over,
     },
@@ -179,7 +180,7 @@ test('SC-8: Kitchen lists Cooked then Rolling boil, identical for any session', 
   const s = kitchenStats()
   const mine = tabLines('kitchen', s, A, undefined, NOW)
   expect(tabLines('kitchen', s, B, 'cook-261030-0b0b', NOW)).toEqual(mine)
-  expect(mine.slice(0, 8)).toEqual([
+  expect(mine.slice(3, 11)).toEqual([
     { text: '🍳 Cooked', tone: 'bold' },
     { text: '- ✅ 03:05 Kitchen pane' },
     { text: '  🔗 ', href: 'https://github.com/o/r/pull/1', label: 'r#1' },
@@ -189,7 +190,7 @@ test('SC-8: Kitchen lists Cooked then Rolling boil, identical for any session', 
     { text: '- 🔐 2m Dev track pane ship' },
     { text: `    needs permission · zenify-kit/x · session ${B.slice(0, 8)}`, tone: 'dim' },
   ])
-  expect(mine).toHaveLength(8)
+  expect(mine).toHaveLength(11)
 })
 
 test('FR-4.2: an empty tab falls back to the brief, and parseTrackStats defaults tab to empty', () => {
@@ -199,6 +200,49 @@ test('FR-4.2: an empty tab falls back to the brief, and parseTrackStats defaults
   expect(lines.find(l => l.text.startsWith('    asking · b'))).toEqual({ text: `    asking · b · session ${B.slice(0, 8)}`, tone: 'dim' })
   const raw = { ...stats(), kitchen: { carried: [], lastDay: null, cooked: [], rollingBoil: [{ session: B, brief: 'b', state: 'ask', since: 'x' }], titleError: '' } }
   expect(parseTrackStats(JSON.stringify(raw)).kitchen.rollingBoil?.[0]?.tab).toBe('')
+})
+
+const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+const cookItem = (over: Partial<TrackStats['kitchen']['cooking'][number]> = {}) => ({
+  session: B, tab: '', brief: 'zenify-kit/x', id: '', kind: '', phase: '', since: new Date(NOW - 12 * 60_000).toISOString(), ...over,
+})
+// The frame of line i at a given time: (floor(now / 2000) + i) % 10, spelled out here by hand.
+const frameAt = (now: number, i: number) => SPIN[(Math.floor(now / 2000) + i) % 10]
+
+test('SC-21: Cooking spinner frames advance per tick and differ per line', () => {
+  const k = kitchenStats({ cooking: [cookItem({ tab: 'Tab one' }), cookItem({ session: A, tab: 'Tab two' })] })
+  const at = (now: number) => texts(tabLines('kitchen', k, A, undefined, now)).filter(t => t.startsWith('- ') && /^- [⠋-⠿]/.test(t))
+  const first = at(NOW)
+  const second = at(NOW + 2000)
+  expect(first).toEqual([`- ${frameAt(NOW, 0)} 12m Tab one`, `- ${frameAt(NOW, 1)} 12m Tab two`])
+  expect(second).toEqual([`- ${frameAt(NOW + 2000, 0)} 12m Tab one`, `- ${frameAt(NOW + 2000, 1)} 12m Tab two`])
+  expect(first[0]?.[2]).not.toBe(second[0]?.[2])
+  expect(first[0]?.[2]).not.toBe(first[1]?.[2])
+  // The ten frames wrap around.
+  expect(at(NOW + 20_000)).toEqual(first)
+})
+
+test('FR-12.3: Cooking lines carry the time, tab or brief, kind and phase, then session and id', () => {
+  const k = kitchenStats({
+    cooking: [
+      cookItem({ tab: 'Dev track pane ship', id: 'cook-261103-8d5d', kind: 'cook', phase: 'implement', since: new Date(NOW - 3 * 3600_000).toISOString() }),
+      cookItem({ session: A }),
+    ],
+  })
+  const lines = tabLines('kitchen', k, A, undefined, NOW)
+  expect(lines[0]).toEqual({ text: '🔥 Cooking', tone: 'bold' })
+  expect(lines[1]?.text).toBe(`- ${frameAt(NOW, 0)} 3h Dev track pane ship · cook · implement`)
+  expect(lines[2]).toEqual({ text: `    ${B.slice(0, 8)} · cook-261103-8d5d`, tone: 'dim' })
+  expect(lines[3]?.text).toBe(`- ${frameAt(NOW, 1)} 12m zenify-kit/x`)
+  expect(lines[4]).toEqual({ text: `    ${A.slice(0, 8)}`, tone: 'dim' })
+  expect(lines[5]).toEqual({ text: '' })
+  expect(lines[6]).toEqual({ text: '🍳 Cooked', tone: 'bold' })
+})
+
+test('parseTrackStats defaults cooking to an empty list', () => {
+  const { kitchen: _drop, ...rest } = stats()
+  expect(parseTrackStats(JSON.stringify({ ...rest, kitchen: { cooked: [] } })).kitchen.cooking).toEqual([])
+  expect(parseTrackStats(JSON.stringify({ ...rest, kitchen: { cooking: null } })).kitchen.cooking).toEqual([])
 })
 
 test('FR-4.2: every cooked status has its icon', () => {
@@ -215,7 +259,10 @@ test('FR-4.2: prLabel is <repo>#<n>, or the URL when it does not parse', () => {
 
 test('FR-4.3: empty Kitchen sections say so; ask reads asking', () => {
   const empty = tabLines('kitchen', stats(), A, undefined, NOW)
-  expect(empty.slice(0, 5)).toEqual([
+  expect(empty.slice(0, 8)).toEqual([
+    { text: '🔥 Cooking', tone: 'bold' },
+    { text: 'no tab is cooking', tone: 'dim' },
+    { text: '' },
     { text: '🍳 Cooked', tone: 'bold' },
     { text: 'nothing finished today', tone: 'dim' },
     { text: '' },
@@ -240,7 +287,7 @@ test('FR-4.2: a title error is a warn line', () => {
 })
 
 test('parseTrackStats fills a missing or null kitchen', () => {
-  const empty = { carried: [], lastDay: null, cooked: [], rollingBoil: [], titleError: '' }
+  const empty = { carried: [], lastDay: null, cooked: [], rollingBoil: [], cooking: [], titleError: '' }
   const { kitchen: _drop, ...rest } = stats()
   expect(parseTrackStats(JSON.stringify(rest)).kitchen).toEqual(empty)
   expect(parseTrackStats(JSON.stringify({ ...rest, kitchen: { carried: null, lastDay: null, cooked: null, rollingBoil: null, titleError: '' } })).kitchen).toEqual(empty)
@@ -425,7 +472,7 @@ test('SC-10: no Vietnamese in any tab, the status line or COPY', () => {
     backlog: { items: [bl('manual'), bl('github'), bl('sdd'), bl('stale')], ghError: 'x' },
     today: { ...stats().today, done: { cook: 1 }, cancelled: { fix: 1 }, tasks: 5, plans: { kit: 1 }, mergedError: 'e' },
     estimate: { byKind: { cook: { n: 6, hit: 3, low: 1, high: 2 } }, hotfix: { n: 5, medianMin: 1, p90Min: 2 }, phaseShare: { cook: { plan: 1 } } },
-    kitchen: { ...kitchenStats().kitchen, titleError: 't', carried: [carried({})], lastDay: { date: '2026-10-30', done: 3, cancelled: 1, rolledBack: 0, prsOpened: 2, leftOpen: 2 } },
+    kitchen: { ...kitchenStats({ cooking: [cookItem({ id: X, kind: 'cook', phase: 'plan' })] }).kitchen, titleError: 't', carried: [carried({})], lastDay: { date: '2026-10-30', done: 3, cancelled: 1, rolledBack: 0, prsOpened: 2, leftOpen: 2 } },
   })
   for (const t of TABS) for (const l of tabLines(t.id, s, A, X, NOW)) expect(l.text).not.toMatch(VI)
   for (const st of [s, { ...s, onboarded: true }, { ...s, enabled: false }]) {
@@ -510,7 +557,7 @@ test('FR-11.3: Kitchen opens with Carried over: the last day, then each unfinish
     kitchen: { ...stats().kitchen, carried: [carried({}), carried({ id: Y, stale: true, worktree: '', brief: 'b', tab: '', phase: '' })], lastDay: { date: '2026-10-30', done: 3, cancelled: 1, rolledBack: 0, prsOpened: 2, leftOpen: 2 } },
   })
   const t = texts(tabLines('kitchen', s, A, undefined, NOW))
-  expect(t.slice(0, 8)).toEqual([
+  expect(t.slice(0, 9)).toEqual([
     '📌 Carried over',
     '📆 Fri 10/30: 3 done · 1 cancelled · 2 PRs · 2 left open',
     '- ⏳ 2d zenify-kit/track-kitchen · cook · implement',
@@ -518,13 +565,16 @@ test('FR-11.3: Kitchen opens with Carried over: the last day, then each unfinish
     '- 🕸 2d b · cook',
     `    aaaaaaaa · ${Y}`,
     '',
-    '🍳 Cooked',
+    '🔥 Cooking',
+    'no tab is cooking',
   ])
+  expect(t.indexOf('🍳 Cooked')).toBe(10)
 })
 
 test('FR-11.3: nothing carried and no last day means no section and no blank line', () => {
   const t = texts(tabLines('kitchen', stats(), A, undefined, NOW))
-  expect(t[0]).toBe('🍳 Cooked')
+  expect(t[0]).toBe('🔥 Cooking')
+  expect(t[3]).toBe('🍳 Cooked')
 })
 
 test('FR-7.3: null CI rate and null wait share still say no CI runs recorded; all-zero hides', () => {

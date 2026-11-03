@@ -71,6 +71,7 @@ export function parseTrackStats(stdout: string): TrackStats {
     carried: data.kitchen?.carried ?? [],
     lastDay: data.kitchen?.lastDay ?? null,
     rollingBoil: (data.kitchen?.rollingBoil ?? []).map(b => ({ ...b, tab: b.tab ?? '' })),
+    cooking: (data.kitchen?.cooking ?? []).map(c => ({ ...c, tab: c.tab ?? '' })),
   }
   return { ...data, rules: data.rules ?? [], running: (data.running ?? []).map(item), today, backlog, kitchen } as TrackStats
 }
@@ -170,6 +171,7 @@ function waited(sinceIso: string, now: number): string {
 const ICON = {
   cooked: '🍳',
   boil: '🔥',
+  cooking: '🔥',
   carried: '📌',
   lastDay: '📆',
   pr: '🔗',
@@ -187,6 +189,9 @@ export const prLabel = (url: string): string => {
   const m = /^https:\/\/github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/.exec(url)
   return m ? `${m[1]}#${m[2]}` : url
 }
+// FR-12.3: the braille frames of the Cooking spinner; WATCH_TICK_MS of register.tsx is one frame.
+const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+const SPIN_TICK_MS = 2000
 const BOIL_STATE = { ask: 'asking', permission: 'needs permission' } as const
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -232,12 +237,27 @@ function carriedLines(s: TrackStats, now: number): Line[] {
 }
 
 
+// FR-12.3: the tabs working right now, one frame apart so they do not turn in step.
+function cookingLines(s: TrackStats, now: number): Line[] {
+  const cooking = s.kitchen?.cooking ?? []
+  const lines: Line[] = [head(`${ICON.cooking} Cooking`)]
+  if (cooking.length === 0) lines.push(dim('no tab is cooking'))
+  cooking.forEach((c, i) => {
+    const frame = SPINNER[(Math.floor(now / SPIN_TICK_MS) + i) % SPINNER.length]
+    const more = [c.kind, c.phase].filter(Boolean)
+    lines.push(plain(`- ${frame} ${waited(c.since, now)} ${c.tab || c.brief}${more.map(m => SEP + m).join('')}`))
+    lines.push(dim(`    ${c.session.slice(0, 8)}${c.id ? SEP + c.id : ''}`))
+  })
+  lines.push(plain(''))
+  return lines
+}
+
 // FR-4: the Kitchen tab — the same for every session: what was cooked today, what waits on a person.
 function kitchenLines(s: TrackStats, now: number): Line[] {
   const k = s.kitchen
   const cooked = k?.cooked ?? []
   const boil = k?.rollingBoil ?? []
-  const lines: Line[] = [...carriedLines(s, now), head(`${ICON.cooked} Cooked`)]
+  const lines: Line[] = [...carriedLines(s, now), ...cookingLines(s, now), head(`${ICON.cooked} Cooked`)]
   if (cooked.length === 0) lines.push(dim('nothing finished today'))
   for (const c of cooked) {
     const icon = ICON.status[c.status]

@@ -50,8 +50,10 @@ let lastRunAt = 0
 const pendingAsk = new Set<string>()
 const pendingPermission = new Set<string>()
 // FR-2.1: the state last written to live/<session>.json; undefined = none this session.
-type LiveState = 'ask' | 'permission' | 'busy'
+type LiveState = 'ask' | 'permission' | 'busy' | 'idle'
 let liveState: LiveState | undefined
+// FR-12.1: true from a main-loop turn end until the next prompt; a wait (ask, permission) still wins.
+let isMainIdle = false
 
 const isMissing = (err: unknown) => /ENOENT/.test(String(err))
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -114,7 +116,7 @@ async function syncLive($: $): Promise<void> {
   const write = syncing.then(async () => {
     // Track may have been turned off while the call was open: write nothing, keep liveState.
     if (!(await isEnabled($))) return
-    const state: LiveState = pendingAsk.size ? 'ask' : pendingPermission.size ? 'permission' : 'busy'
+    const state: LiveState = pendingAsk.size ? 'ask' : pendingPermission.size ? 'permission' : isMainIdle ? 'idle' : 'busy'
     if (state === liveState) return
     const track = `${await workspaceDir($)}/.zenify/track`
     const since = iso(await $.clock.now())
@@ -131,7 +133,7 @@ async function syncLive($: $): Promise<void> {
   await write
 }
 
-// FR-2.1: a live file left in ask or permission by an earlier run of this session becomes busy.
+// FR-2.1: a live file left in ask or permission by an earlier run of this session becomes busy or idle.
 async function resetStaleLive($: $): Promise<void> {
   if (!(await isEnabled($))) return
   let text: string
@@ -319,6 +321,11 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
 
 const statsError = ($: $) => (err: unknown) => $.ui.toast(`${COPY.toast}${message(err)}`)
 
+// FR-12.3: the Cooking spinner turns with the tick, so the pane is drawn again while a tab cooks.
+async function spinCooking($: $): Promise<void> {
+  if (((await read($, stats))?.data?.kitchen?.cooking?.length ?? 0) > 0) $.ui.invalidate('ui.render')
+}
+
 function stopTimers(): void {
   for (const t of timers) t.cancel()
   timers = []
@@ -329,7 +336,7 @@ function stopTimers(): void {
 function armTimers($: $): void {
   if (timers.length) return
   timers = [
-    $.clock.every(WATCH_TICK_MS, () => void refreshStats($).catch(statsError($))),
+    $.clock.every(WATCH_TICK_MS, () => void refreshStats($).catch(statsError($)).then(() => spinCooking($)).catch(timingError($))),
     $.clock.every(MERGED_TICK_MS, () => void refreshStats($, true).catch(statsError($))),
     $.clock.every(BEAT_MS, () => void beat($).catch(timingError($))),
   ]
@@ -370,6 +377,7 @@ export const register: Register = (on, options: PluginOptions) => {
     pendingAsk.clear()
     pendingPermission.clear()
     liveState = undefined
+    isMainIdle = false
     // FR-18: a failed workspace lookup is a ⚠ toast and counts as outside.
     const inWorkspace = !!(await findWorkspace($).catch(err => (statsError($)(err), undefined)))
     setInWorkspace(inWorkspace)
@@ -395,6 +403,9 @@ export const register: Register = (on, options: PluginOptions) => {
   on('prompt.submit', async ($, e, next) => {
     if (await isEnabled($)) {
       await recordIdle($).catch(timingError($))
+      // FR-12.1: a prompt starts work again.
+      isMainIdle = false
+      await syncLive($).catch(timingError($))
       if (isInWorkspace() && trackPane === 'auto' && isTrackPrompt(e)) await show($).catch(statsError($))
     }
     return next(e)
@@ -462,10 +473,12 @@ export const register: Register = (on, options: PluginOptions) => {
     const result = await next(e)
     if (await isEnabled($)) {
       await recordTurn($, e).catch(timingError($))
-      // Safety net: a wait whose tool.call never ran must not leave the tab waiting past the turn.
-      if (!e.agentId && pendingAsk.size + pendingPermission.size > 0) {
+      if (!e.agentId) {
+        // Safety net: a wait whose tool.call never ran must not leave the tab waiting past the turn.
         pendingAsk.clear()
         pendingPermission.clear()
+        // FR-12.1: the main loop is done; a tab waiting for the next prompt is not cooking.
+        isMainIdle = true
         await syncLive($).catch(timingError($))
       }
     }

@@ -53,6 +53,17 @@ type BoilItem struct {
 	Since   string `json:"since"`
 }
 
+// CookingItem is a live tab that is working right now (state busy).
+type CookingItem struct {
+	Session string `json:"session"`
+	Tab     string `json:"tab"`
+	Brief   string `json:"brief"`
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
+	Phase   string `json:"phase"`
+	Since   string `json:"since"`
+}
+
 // CarriedItem is an item started before today that has no end yet.
 type CarriedItem struct {
 	ID        string `json:"id"`
@@ -84,6 +95,7 @@ type Kitchen struct {
 	LastDay     *LastDay      `json:"lastDay"`
 	Cooked      []CookedItem  `json:"cooked"`
 	RollingBoil []BoilItem    `json:"rollingBoil"`
+	Cooking     []CookingItem `json:"cooking"`
 	TitleError  string        `json:"titleError"`
 }
 
@@ -94,12 +106,13 @@ type liveDoc struct {
 	ID    string `json:"id"`
 }
 
-// computeKitchen lists the items ended today (newest first) and the live tabs
-// in state ask or permission (longest waiting first). It reads files and gh
+// computeKitchen lists the items ended today (newest first), the live tabs
+// in state ask or permission (longest waiting first) and those in state busy
+// (longest working first). It reads files and gh
 // only through the Input funcs; the first title error is kept in TitleError.
 // It also fills res.Running[i].Tab, besides building Carried and LastDay.
 func computeKitchen(in Input, logEv []Event, works map[string]*work, order []string, items []Item, issues []Issue, ghDown bool, res *Result) Kitchen {
-	k := Kitchen{Carried: []CarriedItem{}, Cooked: []CookedItem{}, RollingBoil: []BoilItem{}}
+	k := Kitchen{Carried: []CarriedItem{}, Cooked: []CookedItem{}, RollingBoil: []BoilItem{}, Cooking: []CookingItem{}}
 	backlogTitle := map[string]string{}
 	for _, e := range logEv {
 		if e.Type == "backlog" {
@@ -221,7 +234,12 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		at   time.Time
 		item BoilItem
 	}
+	type cook struct {
+		at   time.Time
+		item CookingItem
+	}
 	var waiting []boil
+	var cooking []cook
 	for _, lf := range in.Live {
 		if lf.BeatAt.IsZero() || in.Now.Sub(lf.BeatAt) > liveTTL {
 			continue
@@ -232,24 +250,33 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 			continue
 		}
 		since, perr := time.Parse(time.RFC3339, d.Since)
-		if perr != nil || (d.State != "ask" && d.State != "permission" && d.State != "busy") {
+		if perr != nil || (d.State != "ask" && d.State != "permission" && d.State != "busy" && d.State != "idle") {
 			res.Malformed++
 			continue
 		}
-		if d.State == "busy" {
+		if d.State == "idle" {
 			continue
 		}
 		var b string
-		if it, ok := itemOf[d.ID]; ok {
+		it, bound := itemOf[d.ID]
+		if bound {
 			b = brief(it, false)
 		} else {
 			b = cwdLabel(in.Workspace, d.Cwd)
+		}
+		if d.State == "busy" {
+			cooking = append(cooking, cook{since, CookingItem{Session: lf.Session, Tab: tabOf(lf.Session), Brief: b, ID: it.ID, Kind: it.Kind, Phase: it.Phase, Since: d.Since}})
+			continue
 		}
 		waiting = append(waiting, boil{since, BoilItem{Session: lf.Session, Tab: tabOf(lf.Session), Brief: b, State: d.State, Since: d.Since}})
 	}
 	sort.SliceStable(waiting, func(i, j int) bool { return waiting[i].at.Before(waiting[j].at) })
 	for _, w := range waiting {
 		k.RollingBoil = append(k.RollingBoil, w.item)
+	}
+	sort.SliceStable(cooking, func(i, j int) bool { return cooking[i].at.Before(cooking[j].at) })
+	for _, c := range cooking {
+		k.Cooking = append(k.Cooking, c.item)
 	}
 	k.Carried = carriedItems(in, works, order, itemOf, brief, tabOf)
 	k.LastDay = lastDay(in, works, order, itemOf)
