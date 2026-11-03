@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -27,6 +28,9 @@ const trackSep = " · "
 
 // trackMerged asks whether a PR is merged; a test replaces it at the gh boundary.
 var trackMerged trackstats.MergedFunc = trackstats.GhMerged
+
+// trackPRTitle fetches a PR title; a test replaces it at the gh boundary.
+var trackPRTitle = trackstats.GhPRTitle
 
 // mergedRecheck is how long a gh merged check stays fresh before stats asks again.
 const mergedRecheck = 5 * time.Minute
@@ -232,7 +236,7 @@ func trackIDStarted(logPath, id string) (bool, error) {
 func newTrackStartCmd(ws *string) *cobra.Command {
 	var kind, repo, est, from string
 	c := &cobra.Command{
-		Use:   "start --kind cook|fix|hotfix --repo <repo> --est S|M|L|- [--from <bid|issue url>]",
+		Use:   "start --kind cook|fix|hotfix --repo <repo> --est S|M|L|- [--from <bid|issue url|sdd id>]",
 		Short: "Mở một lượt theo dõi và in id của nó", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -254,19 +258,8 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 			if err := validTrackText("--repo", repo); err != nil {
 				return err
 			}
-			fields := []string{"", kind, repo, est}
-			if from != "" {
-				if err := checkStartFrom(trackLogPath(wsDir), from); err != nil {
-					return err
-				}
-				fields = append(fields, from)
-			}
-			id, err := unusedTrackID(trackLogPath(wsDir), kind, time.Now().UTC())
+			id, err := runTrackStart(cmd.ErrOrStderr(), trackLogPath(wsDir), kind, repo, est, from)
 			if err != nil {
-				return exitcode.New(exitcode.Fail, err)
-			}
-			fields[0] = id
-			if err := appendTrackRow(trackLogPath(wsDir), "start", fields); err != nil {
 				return err
 			}
 			_, err = fmt.Fprintf(w, "track: %s\n", id)
@@ -276,8 +269,82 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 	c.Flags().StringVar(&kind, "kind", "", "cook|fix|hotfix")
 	c.Flags().StringVar(&repo, "repo", "", "target repo name")
 	c.Flags().StringVar(&est, "est", "-", "size estimate S|M|L, or - when not known yet")
-	c.Flags().StringVar(&from, "from", "", "backlog id or issue URL this run takes from the backlog")
+	c.Flags().StringVar(&from, "from", "", "backlog id, issue URL or SDD id (repos/<...>/progress.md:<line>) this run takes; fails when another item already took it")
 	return c
+}
+
+// runTrackStart validates --from, picks an id and appends the start row. With
+// --from, the taken check and the append run under one log lock.
+func runTrackStart(errW io.Writer, logPath, kind, repo, est, from string) (string, error) {
+	if from != "" {
+		unlock, err := lockTrackLog(logPath)
+		if err != nil {
+			return "", err
+		}
+		defer releaseTrackLock(errW, logPath, unlock)
+		if err := checkStartFrom(logPath, from); err != nil {
+			return "", err
+		}
+	}
+	id, err := unusedTrackID(logPath, kind, time.Now().UTC())
+	if err != nil {
+		return "", exitcode.New(exitcode.Fail, err)
+	}
+	fields := []string{id, kind, repo, est}
+	if from != "" {
+		fields = append(fields, from)
+	}
+	if err := appendTrackRow(logPath, "start", fields); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// errLockHeld means another open file description holds the log lock.
+var errLockHeld = errors.New("lock held")
+
+// releaseTrackLock releases the log lock and warns on stderr when it cannot.
+func releaseTrackLock(errW io.Writer, logPath string, unlock func() error) {
+	if err := unlock(); err != nil {
+		fmt.Fprintf(errW, "track: unlock %s: %v\n", filepath.Join(filepath.Dir(logPath), "log.lock"), err)
+	}
+}
+
+// Package vars so tests can shrink them; production values are the defaults.
+var (
+	trackLockTimeout = 2 * time.Second
+	trackLockPoll    = 50 * time.Millisecond
+)
+
+// lockTrackLog takes an OS advisory lock on <track dir>/log.lock, retrying every
+// trackLockPoll for up to trackLockTimeout. The OS frees the lock when its holder
+// dies, so there is no stale case. The returned func unlocks and closes the file;
+// it keeps the file on disk.
+func lockTrackLog(logPath string) (func() error, error) {
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o750); err != nil {
+		return nil, exitcode.New(exitcode.Fail, err)
+	}
+	lock := filepath.Join(filepath.Dir(logPath), "log.lock")
+	f, err := os.OpenFile(lock, os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // G304 -- computed from the resolved workspace
+	if err != nil {
+		return nil, exitcode.New(exitcode.Fail, err)
+	}
+	deadline := time.Now().Add(trackLockTimeout)
+	for {
+		err := tryLockFile(f)
+		if err == nil {
+			return func() error {
+				return errors.Join(unlockFile(f), f.Close())
+			}, nil
+		}
+		if !errors.Is(err, errLockHeld) {
+			return nil, exitcode.New(exitcode.Fail, errors.Join(err, f.Close()))
+		}
+		if time.Now().After(deadline) {
+			return nil, exitcode.New(exitcode.Fail, errors.Join(errors.New("track: log is locked (another track command is running)"), f.Close()))
+		}
+		time.Sleep(trackLockPoll)
+	}
 }
 
 func newTrackEstCmd(ws *string) *cobra.Command {
@@ -442,16 +509,29 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 				if rounds < 0 {
 					return "", nil, false, badTrack("--rounds must be >= 0")
 				}
-				tasks := 0
+				tasks, plan := 0, ""
 				if ledger != "" {
-					n, err := countLedgerTasks(ledger)
-					if err != nil {
-						return "", nil, false, badTrack("read --ledger: %v", err)
+					n, p, hasPlanPrefix, err := readLedger(ledger)
+					tasks, plan = n, p
+					switch {
+					case err != nil:
+						fmt.Fprintf(cmd.ErrOrStderr(), "track: read --ledger %s: %v; end row written without tasks or plan\n", ledger, err)
+						tasks, plan = 0, ""
+					case plan == "" && hasPlanPrefix:
+						fmt.Fprintf(cmd.ErrOrStderr(), "track: ledger %s has an empty plan path; end row written without the plan\n", ledger)
+					case plan == "":
+						fmt.Fprintf(cmd.ErrOrStderr(), "track: ledger %s has no \"# SDD ledger — plan:\" first line; end row written without the plan\n", ledger)
+					case strings.Contains(plan, trackSep) || strings.ContainsAny(plan, "\r\n"):
+						fmt.Fprintf(cmd.ErrOrStderr(), "track: plan path %q holds the field separator; end row written without the plan\n", plan)
+						plan = ""
 					}
-					tasks = n
 				}
 				// "end" is the row kind; checkTrackID also rejects a second end.
-				return "end", []string{a[0], outcome, strconv.Itoa(tasks), strconv.Itoa(rounds)}, true, nil
+				fields := []string{a[0], outcome, strconv.Itoa(tasks), strconv.Itoa(rounds)}
+				if plan != "" {
+					fields = append(fields, plan)
+				}
+				return "end", fields, true, nil
 			})
 		},
 	}
@@ -459,23 +539,33 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 	c.Flags().StringVar(&branch, "branch", "", "pushed branch name (hotfix; the human opens the PR)")
 	c.Flags().BoolVar(&rollback, "rollback", false, "the run ended in a rollback")
 	c.Flags().BoolVar(&cancelled, "cancelled", false, "the run was cancelled")
-	c.Flags().StringVar(&ledger, "ledger", "", "SDD ledger file; its `Task <N>: complete` lines are counted")
+	c.Flags().StringVar(&ledger, "ledger", "", "SDD ledger file; its `Task <N>: complete` lines are counted and its first-line plan path is kept")
 	c.Flags().IntVar(&rounds, "rounds", 0, "fix rounds of the review in znf:ship")
 	return c
 }
 
-func countLedgerTasks(path string) (int, error) {
+const ledgerPlanPrefix = "# SDD ledger — plan: "
+
+// readLedger counts the completed tasks and returns the plan path from the
+// first line; plan is "" when that line does not have the SDD ledger shape.
+// hasPlanPrefix tells a first line with the prefix and an empty path from no such line.
+func readLedger(path string) (tasks int, plan string, hasPlanPrefix bool, err error) {
 	b, err := os.ReadFile(path) //nolint:gosec // G304 -- a CLI flag naming a local ledger
 	if err != nil {
-		return 0, err
+		return 0, "", false, err
 	}
-	n := 0
-	for _, l := range strings.Split(string(b), "\n") {
-		if trackTasksRe.MatchString(strings.TrimSpace(l)) {
-			n++
+	for i, l := range strings.Split(string(b), "\n") {
+		l = strings.TrimSpace(l)
+		// The line is trimmed, so an empty path leaves the prefix without its trailing space.
+		if i == 0 && (l == strings.TrimSpace(ledgerPlanPrefix) || strings.HasPrefix(l, ledgerPlanPrefix)) {
+			hasPlanPrefix = true
+			plan = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(l, strings.TrimSpace(ledgerPlanPrefix)), " "))
+		}
+		if trackTasksRe.MatchString(l) {
+			tasks++
 		}
 	}
-	return n, nil
+	return tasks, plan, hasPlanPrefix, nil
 }
 
 func newTrackStatsCmd(ws *string) *cobra.Command {
@@ -534,12 +624,24 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 }
 
 func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (trackstats.Result, error) {
+	var err error
 	in := trackstats.Input{
 		PlansRoot: filepath.Join(wsDir, "docs", "plans"),
 		Today:     today,
 		Now:       now,
 		Merged:    trackMerged,
 		Sessions:  map[string]string{},
+		Workspace: wsDir,
+		PlanTitle: func(p string) (string, error) { return readPlanTitle(wsDir, p) },
+		TabTitle:  readTabTitle,
+	}
+	in.Live, err = readLiveFiles(dir, now)
+	if err != nil {
+		return trackstats.Result{}, err
+	}
+	in.Beats, err = readBeats(dir)
+	if err != nil {
+		return trackstats.Result{}, err
 	}
 	in.GitHub, in.SDD = backlogSources(dir, wsDir, force, now)
 	b, err := os.ReadFile(filepath.Join(dir, "log.md")) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
@@ -570,6 +672,18 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		return trackstats.Result{}, err
 	}
 	in.Cache = cache
+	titlesPath := filepath.Join(dir, "pr-titles.json")
+	titles := map[string]string{}
+	tb, err := os.ReadFile(titlesPath) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
+	switch {
+	case err == nil:
+		if err := json.Unmarshal(tb, &titles); err != nil {
+			return trackstats.Result{}, fmt.Errorf("parse %s: %w", titlesPath, err)
+		}
+	case !errors.Is(err, os.ErrNotExist):
+		return trackstats.Result{}, err
+	}
+	in.PRTitles = maps.Clone(titles)
 	// gh is asked about unmerged PRs at most once per mergedRecheck: the pane runs stats on
 	// almost every turn, and every unmerged PR costs one sequential gh call. The stamp holds
 	// the last check's error, which stays reported until the next check.
@@ -584,6 +698,10 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		}
 	case !errors.Is(err, os.ErrNotExist):
 		return trackstats.Result{}, err
+	}
+	// A PR title costs a gh call too: ask only in the same window the merged check is allowed.
+	if in.Merged != nil {
+		in.PRTitle = trackPRTitle
 	}
 	res, newCache := trackstats.Compute(in)
 	if in.Merged == nil {
@@ -602,7 +720,112 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 			return trackstats.Result{}, err
 		}
 	}
+	if !reflect.DeepEqual(in.PRTitles, titles) {
+		out, err := json.Marshal(in.PRTitles)
+		if err != nil {
+			return trackstats.Result{}, err
+		}
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return trackstats.Result{}, err
+		}
+		if err := writeFileAtomic(titlesPath, out, 0o644); err != nil {
+			return trackstats.Result{}, err
+		}
+	}
 	return res, nil
+}
+
+// readBeats maps every live/<session>.beat to its mtime; a live session may never have written a .json.
+func readBeats(dir string) (map[string]time.Time, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "live", "*.beat"))
+	if err != nil {
+		return nil, err
+	}
+	beats := map[string]time.Time{}
+	for _, f := range files {
+		fi, err := os.Stat(f)
+		if errors.Is(err, os.ErrNotExist) {
+			continue // removed between the glob and the stat
+		}
+		if err != nil {
+			return nil, err
+		}
+		beats[strings.TrimSuffix(filepath.Base(f), ".beat")] = fi.ModTime()
+	}
+	return beats, nil
+}
+
+// readLiveFiles lists live/*.json with the mtime of each .beat (zero when it is absent).
+// A file whose beat is missing or older than LiveTTL is listed without its JSON: stats ignore it.
+func readLiveFiles(dir string, now time.Time) ([]trackstats.LiveFile, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "live", "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	var live []trackstats.LiveFile
+	for _, f := range files {
+		lf := trackstats.LiveFile{Session: strings.TrimSuffix(filepath.Base(f), ".json")}
+		switch fi, err := os.Stat(strings.TrimSuffix(f, ".json") + ".beat"); {
+		case err == nil:
+			lf.BeatAt = fi.ModTime()
+		case !errors.Is(err, os.ErrNotExist):
+			return nil, err
+		}
+		if lf.BeatAt.IsZero() || now.Sub(lf.BeatAt) > trackstats.LiveTTL {
+			continue
+		}
+		b, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
+		if errors.Is(err, os.ErrNotExist) {
+			// The file vanished between the glob and the read.
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		lf.JSON = string(b)
+		live = append(live, lf)
+	}
+	return live, nil
+}
+
+// readPlanTitle returns the "# " heading on the first line of a plan, resolving a relative
+// path against the workspace; a missing file gives "" and no error.
+func readPlanTitle(wsDir, p string) (string, error) {
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(wsDir, p)
+	}
+	// Stat before Open: opening a FIFO blocks. Only a regular file is read.
+	fi, err := os.Stat(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !fi.Mode().IsRegular() {
+		return "", nil
+	}
+	f, err := os.Open(p) //nolint:gosec // G304 -- path comes from this workspace's own track log
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	first, err := bufio.NewReader(io.LimitReader(f, 4096)).ReadString('\n')
+	if errors.Is(err, io.EOF) && len(first) >= 4096 {
+		// The line is cut by the read limit: no title rather than a truncated prefix.
+		return "", nil
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	first = strings.TrimSuffix(first, "\n")
+	if t, ok := strings.CutPrefix(first, "# "); ok {
+		return strings.TrimSpace(t), nil
+	}
+	return "", nil
 }
 
 func renderTrackStats(w io.Writer, r trackstats.Result) {
@@ -611,15 +834,15 @@ func renderTrackStats(w io.Writer, r trackstats.Result) {
 		return
 	}
 	t := r.Today
-	started, ended := 0, 0
+	started, done := 0, 0
 	for _, n := range t.Started {
 		started += n
 	}
-	for _, n := range t.Ended {
-		ended += n
+	for _, n := range t.Done {
+		done += n
 	}
 	_, _ = fmt.Fprintf(w, "scale (%s, %d items): S<%dm M<%dm L<%dm\n", r.Scale.Source, r.Scale.N, r.Scale.S, r.Scale.M, r.Scale.L)
-	_, _ = fmt.Fprintf(w, "today %s: %d started, %d ended, %d tasks, %d PRs opened, %d merged\n", t.Date, started, ended, t.Tasks, t.PRsOpened, t.Merged)
+	_, _ = fmt.Fprintf(w, "today %s: %d started, %d done, %d tasks, %d PRs opened, %d merged\n", t.Date, started, done, t.Tasks, t.PRsOpened, t.Merged)
 	_, _ = fmt.Fprintf(w, "running: %d\n", len(r.Running))
 	if t.MergedError != "" {
 		_, _ = fmt.Fprintf(w, "merged check failed: %s\n", t.MergedError)

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -178,6 +180,150 @@ func TestTrackStart_FromRules(t *testing.T) {
 	}
 	if _, err := runTrack(t, ws, "start", "--kind", "cook", "--repo", "kit", "--from", "https://github.com/o/r/issues/1"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func startFrom(t *testing.T, ws, from string) (string, error) {
+	t.Helper()
+	return runTrack(t, ws, "start", "--kind", "cook", "--repo", "kit", "--from", from)
+}
+
+// FR-4.1, FR-4.4: a source item is taken once; an ended item does not come back.
+func TestTrackStart_FromTaken(t *testing.T) {
+	const from = "b-261103-0001"
+	ws := trackWS(t, true)
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The backlog row for from must exist: a start only accepts a known bid.
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte("2026-11-03T01:00:00Z · backlog · "+from+" · kit · M · - · item\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := startFrom(t, ws, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := trackOutRe.FindStringSubmatch(out)[1]
+	if err := os.WriteFile(filepath.Join(dir, "sessions", "abcdef0123456789.log"), []byte("2026-11-03T01:01:00Z · bind · "+a+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	before := trackLog(t, ws)
+	_, err = startFrom(t, ws, from)
+	if err == nil || !strings.Contains(err.Error(), "track: "+from+" is taken by "+a+" (session abcdef01)") {
+		t.Fatalf("running: err = %v", err)
+	}
+	if trackLog(t, ws) != before {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+
+	if _, err := runTrack(t, ws, "end", a, "--cancelled", "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	before = trackLog(t, ws)
+	_, err = startFrom(t, ws, from)
+	if err == nil || !strings.Contains(err.Error(), "track: "+from+" was taken by "+a+" (ended)") {
+		t.Fatalf("ended: err = %v", err)
+	}
+	if trackLog(t, ws) != before {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+}
+
+// FR-4.1: no bind in any session log prints "session -".
+func TestTrackStart_FromTakenNoSession(t *testing.T) {
+	ws := trackWS(t, true)
+	const from = "https://github.com/o/r/issues/9"
+	out, err := startFrom(t, ws, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := trackOutRe.FindStringSubmatch(out)[1]
+	_, err = startFrom(t, ws, from)
+	if err == nil || !strings.Contains(err.Error(), from+" is taken by "+a+" (session -)") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// FR-4.2: an SDD id is a valid --from and needs no backlog row.
+func TestTrackStart_FromSDD(t *testing.T) {
+	ws := trackWS(t, true)
+	if _, err := startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:12"); err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`(?m) · start · cook-\d{6}-[0-9a-f]{4} · cook · kit · - · repos/r/\.znf/sdd/p/progress\.md:12\n`).MatchString(trackLog(t, ws)) {
+		t.Fatalf("log = %q", trackLog(t, ws))
+	}
+	before := trackLog(t, ws)
+	if _, err := startFrom(t, ws, "repos/../x"); err == nil {
+		t.Fatal("repos/../x must fail")
+	}
+	if trackLog(t, ws) != before {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+}
+
+// FR-4.1: eight concurrent starts on one --from, exactly one wins.
+func TestTrackStart_FromConcurrent(t *testing.T) {
+	ws := trackWS(t, true)
+	const from = "repos/r/.znf/sdd/p/progress.md:2"
+	// Each holder keeps the lock for milliseconds; a 30s timeout cannot expire under -race.
+	shrinkLock(t, 30*time.Second)
+	var wg sync.WaitGroup
+	var ok, taken atomic.Int32
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// Called below the cobra layer: NewRootCmd sets a package global per run.
+			_, err := runTrackStart(io.Discard, filepath.Join(ws, ".zenify", "track", "log.md"), "cook", "kit", "-", from)
+			switch {
+			case err == nil:
+				ok.Add(1)
+			case strings.Contains(err.Error(), "is taken by"):
+				taken.Add(1)
+			default:
+				t.Errorf("unexpected error: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if ok.Load() != 1 || taken.Load() != 7 {
+		t.Fatalf("ok=%d taken=%d", ok.Load(), taken.Load())
+	}
+	if n := strings.Count(trackLog(t, ws), " · start · "); n != 1 {
+		t.Fatalf("start rows = %d in %q", n, trackLog(t, ws))
+	}
+}
+
+// Task 2 review focus 5: a beat without a live json still hides a stale item.
+func TestTrackStats_StaleHiddenByBeatOnly(t *testing.T) {
+	noGh(t)
+	ws := trackWS(t, true)
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "live"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().UTC().Add(-8 * 24 * time.Hour).Format(time.RFC3339)
+	const id = "cook-261020-0001"
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(old+" · start · "+id+" · cook · kit · M\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sessions", "sess1.log"), []byte(old+" · bind · "+id+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if s := trackBacklogStats(t, ws); len(s.Backlog.Items) != 1 {
+		t.Fatalf("no beat: items = %+v", s.Backlog.Items)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "live", "sess1.beat"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if s := trackBacklogStats(t, ws); len(s.Backlog.Items) != 0 {
+		t.Fatalf("fresh beat: items = %+v", s.Backlog.Items)
 	}
 }
 
@@ -441,5 +587,126 @@ func TestTrackStats_NonGitRepoDirStillSurfaces(t *testing.T) {
 	noGh(t)
 	if s := trackBacklogStats(t, ws); !strings.Contains(s.Backlog.GhError, "repos/plain") {
 		t.Fatalf("ghError = %q", s.Backlog.GhError)
+	}
+}
+
+func shrinkLock(t *testing.T, timeout time.Duration) {
+	t.Helper()
+	to, po := trackLockTimeout, trackLockPoll
+	trackLockTimeout, trackLockPoll = timeout, 5*time.Millisecond
+	t.Cleanup(func() { trackLockTimeout, trackLockPoll = to, po })
+}
+
+// Two lockers in one process exclude each other (flock is per open file description); release frees the lock.
+func TestTrackLock_Excludes(t *testing.T) {
+	shrinkLock(t, 100*time.Millisecond)
+	ws := trackWS(t, true)
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = lockTrackLog(logPath)
+	if err == nil || !strings.Contains(err.Error(), "track: log is locked (another track command is running)") {
+		t.Fatalf("second locker: err = %v", err)
+	}
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(logPath), "log.lock")); err != nil {
+		t.Fatalf("release must keep the lock file: %v", err)
+	}
+	unlock2, err := lockTrackLog(logPath)
+	if err != nil {
+		t.Fatalf("lock after release: %v", err)
+	}
+	if err := unlock2(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A lock held by a closed fd (what a crashed holder leaves) is free, even though the file exists.
+func TestTrackLock_ClosedHolderIsFree(t *testing.T) {
+	shrinkLock(t, 100*time.Millisecond)
+	ws := trackWS(t, true)
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(filepath.Join(filepath.Dir(logPath), "log.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tryLockFile(f); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		t.Fatalf("closed holder must not block: %v", err)
+	}
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// With --from, a held lock blocks start and the log stays untouched.
+func TestTrackStart_LockedFails(t *testing.T) {
+	shrinkLock(t, 100*time.Millisecond)
+	ws := trackWS(t, true)
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := unlock(); err != nil {
+			t.Error(err)
+		}
+	}()
+	before := trackLog(t, ws)
+	_, err = startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:4")
+	if err == nil || !strings.Contains(err.Error(), "log is locked") {
+		t.Fatalf("err = %v", err)
+	}
+	if trackLog(t, ws) != before {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+}
+
+// A failed lock release is reported on the command's err writer, not swallowed.
+func TestTrackStart_ReleaseErrorWarns(t *testing.T) {
+	var errW strings.Builder
+	releaseTrackLock(&errW, "/w/.zenify/track/log.md", func() error { return errors.New("boom") })
+	if want := "track: unlock " + filepath.Join("/w/.zenify/track", "log.lock") + ": boom"; !strings.HasPrefix(errW.String(), want) {
+		t.Fatalf("warning = %q", errW.String())
+	}
+}
+
+// An SDD id carrying the field separator or a newline would corrupt the log.
+func TestTrackStart_FromSDDRejectsSeparators(t *testing.T) {
+	ws := trackWS(t, true)
+	for _, from := range []string{"repos/r/a · b/progress.md:1", "repos/r/a\nb/progress.md:1"} {
+		if _, err := startFrom(t, ws, from); err == nil {
+			t.Errorf("--from %q must fail", from)
+		}
+	}
+	if trackLog(t, ws) != "" {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+	// A mid-path CR passes trackSDDRe (.+ matches it), so the separator check reports it.
+	_, err := startFrom(t, ws, "repos/r/a\rb/progress.md:1")
+	if err == nil || !strings.Contains(err.Error(), "invalid --from") {
+		t.Fatalf("mid-path CR: err = %v", err)
+	}
+	if trackLog(t, ws) != "" {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+	// A trailing CR fails trackSDDRe ($ matches only at the very end), so the grammar error comes out.
+	_, err = startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:12\r")
+	if err == nil || !strings.Contains(err.Error(), "--from must be a backlog id, an SDD id or an http URL") {
+		t.Fatalf("CR: err = %v", err)
 	}
 }

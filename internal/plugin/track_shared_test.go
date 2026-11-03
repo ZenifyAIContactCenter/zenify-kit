@@ -17,6 +17,7 @@ func TestTrackSharedDoc(t *testing.T) {
 		"## Onboard", "## Backlog", "--ref memory:", "onboard history --write", "start --from", "only after the user approves",
 		"backlog add", "zenify track onboard memory",
 		"zenify track stats --json", "let the user pick", "take the next work item",
+		"before any investigation", "end with `--pr <url>`", "--from <ledger id>", "is taken by",
 	})
 }
 

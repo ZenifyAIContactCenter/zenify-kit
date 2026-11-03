@@ -5,16 +5,18 @@ import type { TrackStats } from '../types'
 import { isInWorkspace, registerConfig, setInWorkspace, syncConfig, trackPaneOf } from './config'
 import { bindLine, cwdLine, isStartCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
-import { COPY, STATUS_OFF, TABS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
+import { COPY, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
 import type { Line, Tab } from './track-ui'
 
 // FR-6.1: one pane; the five tabs are drawn inside it.
 const PANE = { id: 'track', title: 'Track', columns: 44 } as const
 const isPane = (id: string) => id === PANE.id
 // FR-6.3/FR-11.5: how often the watched mtimes are compared, and the forced re-run for merged PRs.
-const WATCH_TICK_MS = 2000
 const MERGED_TICK_MS = 5 * 60000
 const STATS_TIMEOUT_MS = 20000
+// FR-2.4: how often live/<session>.beat is rewritten. FR-1.4: how often stats re-run while a tab waits.
+const BEAT_MS = 10000
+const ROLLING_RERUN_MS = 10000
 
 // FR-4.1: the id this session's turns are recorded under; `ending` once its `zenify track end`
 // ran, so the turn that ran it is written before the unbind (SC-22).
@@ -29,8 +31,8 @@ const personAsks = atom({ plugin: 'znf', key: 'personAsks' } as const, [] as str
 // FR-6.4/FR-11.4: the last `zenify track stats --json` answer, or why it failed. The shape tag
 // declines what an earlier pane version stored under the same key.
 const stats = atom({ plugin: 'znf', key: 'stats' } as const, null as { data?: TrackStats; error?: string } | null, { shape: 'track-1' })
-// FR-6.2: the selected tab; `Tab này` by default.
-const tab = atom({ plugin: 'znf', key: 'tab' } as const, 'this' as Tab, { shape: 'track-1' })
+// FR-6.2: the selected tab; `Kitchen` by default. track-3 declines a stored `total` or `this`.
+const tab = atom({ plugin: 'znf', key: 'tab' } as const, 'kitchen' as Tab, { shape: 'track-3' })
 
 // Module state: lost on a reload, whose session.start re-arms the timers.
 let timers: Timer[] = []
@@ -41,6 +43,25 @@ let isStatting = false
 // bypasses the backlog cache (`--force`) stays that way when queued.
 let isRerunWanted = false
 let isFreshWanted = false
+// FR-1.4: when the last stats run started (epoch ms).
+let lastRunAt = 0
+// FR-2.2: tool_use_ids of an AskUserQuestion, or of a call a person was asked to allow, still running.
+const pendingAsk = new Set<string>()
+const pendingPermission = new Set<string>()
+// FR-2.1: the state last written to live/<session>.json; undefined = none this session.
+type LiveState = 'ask' | 'permission' | 'busy' | 'idle'
+let liveState: LiveState | undefined
+// The id and `since` last written to the live file: a changed id rewrites it, `since` stays.
+let liveId: string | undefined
+let liveSince = ''
+// This process's run id, written as `run` in the live file. The engine has no crypto, so random plus the clock.
+const RUN_ID = `${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`
+// FR-12.1: true from a main-loop turn end until the next prompt; a wait (ask, permission) still wins.
+let isMainIdle = false
+// FR-12.1: a prompt was submitted in this process; kept across session.start (a reload is a new run, a compact is not).
+let promptSeen = false
+// FR-2.4: the stats' live TTL (30s): the cooking re-run interval.
+const LIVE_TTL_MS = 30000
 
 const isMissing = (err: unknown) => /ENOENT/.test(String(err))
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -87,15 +108,80 @@ export async function appendSession($: $, line: string): Promise<void> {
       text = `${cwdLine(iso(await $.clock.now()), await $.session.cwd())}\n`
     }
     await $.fs.write(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}${line}\n`)
+    // FR-1.1: other tabs see the new line at their next tick.
+    await $.fs.write(`${await workspaceDir($)}/.zenify/track/pulse`, iso(await $.clock.now()))
   })
   // Keeps the chain alive after a failure; the caller still gets the error from `write`.
   appending = write.catch(() => undefined)
   await write
 }
 
+// Runs one live-state write at a time, so a slower write never lands after a newer state.
+let syncing: Promise<void> = Promise.resolve()
+
+// FR-2.1–2.3: writes live/<session>.json, then pulse, only when the state or the bound id changed.
+async function syncLive($: $): Promise<void> {
+  const write = syncing.then(async () => {
+    // Track may have been turned off while the call was open: write nothing, keep liveState.
+    if (!(await isEnabled($))) return
+    const state: LiveState = pendingAsk.size ? 'ask' : pendingPermission.size ? 'permission' : isMainIdle ? 'idle' : 'busy'
+    const boundId = (await read($, bound))?.id ?? ''
+    if (state === liveState && boundId === liveId) return
+    const track = `${await workspaceDir($)}/.zenify/track`
+    const now = iso(await $.clock.now())
+    // A new id under the same state is the same stretch of work: keep `since`.
+    const since = state === liveState ? liveSince : now
+    const doc = { state, since, cwd: await $.session.cwd(), id: boundId, run: RUN_ID }
+    const id = await $.session.id()
+    await $.fs.write(`${track}/live/${id}.json`, JSON.stringify(doc))
+    // The first beat comes now, not at the 10s timer: stats skip a live file with no beat.
+    await $.fs.write(`${track}/live/${id}.beat`, now)
+    await $.fs.write(`${track}/pulse`, now)
+    liveState = state
+    liveId = boundId
+    liveSince = since
+  })
+  // Keeps the chain alive after a failure; the caller still gets the error from `write`.
+  syncing = write.catch(() => undefined)
+  await write
+}
+
+// FR-2.1/FR-12.1: a live file left in ask, permission or busy by another run of this session becomes idle.
+async function resetStaleLive($: $): Promise<void> {
+  if (!(await isEnabled($))) return
+  let text: string
+  try {
+    text = String(await $.fs.read(`${await workspaceDir($)}/.zenify/track/live/${await $.session.id()}.json`))
+  } catch (err) {
+    if (isMissing(err)) return
+    throw err
+  }
+  const doc = JSON.parse(text) as { state?: string; run?: string }
+  // This process wrote the file (a compact or a re-fired session.start), or a prompt means this run owns it. No await below this check.
+  if (promptSeen || doc.run === RUN_ID) return
+  // FR-12.1: a file left by an earlier run is not working now; idle, so a resumed tab is no ghost in Cooking.
+  if (doc.state === 'ask' || doc.state === 'permission' || doc.state === 'busy') {
+    isMainIdle = true
+    await syncLive($)
+  }
+}
+
+// FR-2.2: forgets a finished call; true when it was one a person waited on.
+const settle = (useId: string) => [pendingAsk.delete(useId), pendingPermission.delete(useId)].some(Boolean)
+
+// FR-2.4: the heartbeat; stats ignore a live file whose .beat is older than 30s.
+async function beat($: $): Promise<void> {
+  if (!(await isEnabled($))) return
+  await $.fs.write(`${await workspaceDir($)}/.zenify/track/live/${await $.session.id()}.beat`, iso(await $.clock.now()))
+}
+
 // Called with `enabled` of every successful `zenify track stats --json` run.
 export async function setTrackEnabled($: $, on: boolean): Promise<void> {
+  const wasOn = await read($, enabled)
   await update($, enabled, () => on)
+  // Turned back on: a state skipped while off (an ask answered then) is stale in live/<session>.json.
+  // Only a tab that has written one is rewritten; a tab that never asked gets no file.
+  if (on && !wasOn && liveState !== undefined) void syncLive($).catch(timingError($))
 }
 
 // FR-2.3: whether track records; a failed read is toasted and counts as off.
@@ -118,6 +204,9 @@ async function recordCall($: $, tool: string, command: string, isMain: boolean, 
       if (!(await read($, enabled))) await update($, enabled, () => true)
       await update($, bound, () => ({ id, kind: kindOf(id), ending: false }))
       await appendSession($, bindLine(iso(now), id))
+      // A bind runs inside a working turn: write busy with the new id, even after a mid-turn
+      // session.start cleared liveState.
+      await syncLive($)
       // The stats may have run before this bind; this session's open id shows now, not at a tick.
       void refreshStats($, true).catch(statsError($))
       return
@@ -156,7 +245,7 @@ async function recordIdle($: $): Promise<void> {
   if (b) await appendSession($, waitLine(iso(now), b.id, now - last, 'idle'))
 }
 
-const timingError = ($: $) => (err: unknown) => $.ui.toast(`lỗi đo thời gian: ${message(err)}`)
+const timingError = ($: $) => (err: unknown) => $.ui.toast(`timing error: ${message(err)}`)
 
 const firstLine = (s: string) => s.trim().split('\n')[0]
 
@@ -189,10 +278,12 @@ async function updateStatus($: $): Promise<void> {
   $.ui.status(statusText(st.data, await $.session.id(), (await read($, bound))?.id, showTips))
 }
 
-// FR-6.3/FR-11.5: runs `zenify track stats --json` when log.md, sessions/, this session's own log
-// (an append does not touch the directory's mtime), the overlay or the local date changed since the
-// last run, or on `force`. A failure is stored and shown (⚠), and is retried when a watched mtime
-// changes or on the next forced run. Outside a workspace the pane says so; the status line stays unset.
+// FR-6.3/FR-11.5/FR-1.2: runs `zenify track stats --json` when log.md, sessions/, this session's own
+// log (an append does not touch the directory's mtime), pulse (another tab's state or log line), the
+// overlay or the local date changed since the last run, or on `force`. FR-1.4: while the last answer
+// has a Rolling boil entry it also re-runs every 10s on an unchanged key. A failure is stored and
+// shown (⚠), and is retried when a watched mtime changes or on the next forced run. Outside a
+// workspace the pane says so; the status line stays unset.
 // `fresh` (FR-13.7, opening the Backlog tab) also passes `--force`, bypassing the 5-minute backlog cache.
 async function refreshStats($: $, force = false, fresh = false): Promise<void> {
   if (isStatting) {
@@ -210,15 +301,24 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
         return
       }
       const track = `${ws}/.zenify/track`
+      const now = await $.clock.now()
       const key = [
         await mtimeOf($, `${track}/log.md`),
         await mtimeOf($, `${track}/sessions`),
         await mtimeOf($, `${track}/sessions/${await $.session.id()}.log`),
+        await mtimeOf($, `${track}/pulse`),
         await mtimeOf($, `${ws}/.zenify-overlay.yaml`),
-        localDate(await $.clock.now()),
+        localDate(now),
       ].join('|')
-      if (!force && key === lastKey) return
+      if (!force && key === lastKey) {
+        const k = (await read($, stats))?.data?.kitchen
+        // A live file can expire with no pulse: re-run every 10s while a tab waits on a person, and
+        // every live TTL (30s) while tabs only cook, since a cooking beat expires no sooner.
+        const every = (k?.rollingBoil?.length ?? 0) > 0 ? ROLLING_RERUN_MS : (k?.cooking?.length ?? 0) > 0 ? LIVE_TTL_MS : 0
+        if (every === 0 || now - lastRunAt < every) return
+      }
       lastKey = key
+      lastRunAt = now
       const argv = ['zenify', 'track', 'stats', '--json', '--workspace', ws, ...(fresh ? ['--force'] : [])]
       const out = await $.process.run(argv, { timeoutMs: STATS_TIMEOUT_MS })
       if (out.exitCode !== 0) throw new Error(firstLine(out.stderr) || `zenify track stats: exit ${out.exitCode}`)
@@ -246,6 +346,12 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
 
 const statsError = ($: $) => (err: unknown) => $.ui.toast(`${COPY.toast}${message(err)}`)
 
+// FR-12.3: the Cooking spinner turns with the tick, so the pane is drawn again while a tab cooks.
+async function spinCooking($: $): Promise<void> {
+  // Only the Kitchen tab shows a spinner.
+  if (((await read($, stats))?.data?.kitchen?.cooking?.length ?? 0) > 0 && (await read($, tab)) === 'kitchen' && (await isOpen($))) $.ui.invalidate('ui.render')
+}
+
 function stopTimers(): void {
   for (const t of timers) t.cancel()
   timers = []
@@ -256,8 +362,9 @@ function stopTimers(): void {
 function armTimers($: $): void {
   if (timers.length) return
   timers = [
-    $.clock.every(WATCH_TICK_MS, () => void refreshStats($).catch(statsError($))),
+    $.clock.every(WATCH_TICK_MS, () => void refreshStats($).catch(statsError($)).then(() => spinCooking($)).catch(timingError($))),
     $.clock.every(MERGED_TICK_MS, () => void refreshStats($, true).catch(statsError($))),
+    $.clock.every(BEAT_MS, () => void beat($).catch(timingError($))),
   ]
 }
 
@@ -293,6 +400,11 @@ export const register: Register = (on, options: PluginOptions) => {
   on('session.start', async ($, e, next) => {
     stopTimers()
     lastKey = undefined
+    pendingAsk.clear()
+    pendingPermission.clear()
+    liveState = undefined
+    liveId = undefined
+    isMainIdle = false
     // FR-18: a failed workspace lookup is a ⚠ toast and counts as outside.
     const inWorkspace = !!(await findWorkspace($).catch(err => (statsError($)(err), undefined)))
     setInWorkspace(inWorkspace)
@@ -308,13 +420,20 @@ export const register: Register = (on, options: PluginOptions) => {
     // Not awaited: the stats run may ask gh for merged PRs and must not hold the session start.
     void refreshStats($, true).catch(statsError($))
     armTimers($)
+    // FR-2.1: a resumed session may find a stale ask/permission live file, and the beat keeps it
+    // alive. Not awaited; it writes only when the file is there and stale.
+    void resetStaleLive($).catch(timingError($))
     return next(e)
   })
 
   // FR-6.1/FR-17.4: the feature on, a cook/fix/hotfix/ship prompt opens the pane when trackPane is auto.
   on('prompt.submit', async ($, e, next) => {
+    promptSeen = true
     if (await isEnabled($)) {
       await recordIdle($).catch(timingError($))
+      // FR-12.1: a prompt starts work again.
+      isMainIdle = false
+      await syncLive($).catch(timingError($))
       if (isInWorkspace() && trackPane === 'auto' && isTrackPrompt(e)) await show($).catch(statsError($))
     }
     return next(e)
@@ -341,12 +460,21 @@ export const register: Register = (on, options: PluginOptions) => {
     } catch (err) {
       timingError($)(err)
     }
+    // FR-2.2: an AskUserQuestion waits for a person until its call ends.
+    if (tool === 'AskUserQuestion' && useId) {
+      pendingAsk.add(useId)
+      await syncLive($).catch(timingError($))
+    }
     try {
       const answer = await next(e)
       await recordCall($, tool, command, isMain, useId, started, answer).catch(timingError($))
       return answer
     } finally {
-      if (useId) await update($, personAsks, ids => ids.filter(x => x !== useId)).catch(timingError($))
+      if (useId) {
+        await update($, personAsks, ids => ids.filter(x => x !== useId)).catch(timingError($))
+        // Answered, allowed, denied or interrupted: back to busy unless another wait is open.
+        if (settle(useId)) await syncLive($).catch(timingError($))
+      }
     }
   })
 
@@ -354,17 +482,34 @@ export const register: Register = (on, options: PluginOptions) => {
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
     const useId = e.tool_use_id
-    if (useId && !e.agentId && verdict.decision === 'ask' && e.approver === 'person') {
+    const isPersonAsk = !!useId && verdict.decision === 'ask' && e.approver === 'person'
+    if (!isPersonAsk || !(await isEnabled($))) return verdict
+    if (!e.agentId) {
       await (async () => {
-        if ((await read($, enabled)) && (await read($, bound))) await update($, personAsks, ids => [...ids, useId])
+        if (await read($, bound)) await update($, personAsks, ids => [...ids, useId])
       })().catch(timingError($))
+    }
+    // FR-2.2: any person's ask, main loop or subagent, bound or not, marks the tab as waiting.
+    if (e.tool !== 'AskUserQuestion') {
+      pendingPermission.add(useId)
+      await syncLive($).catch(timingError($))
     }
     return verdict
   })
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    if (await isEnabled($)) await recordTurn($, e).catch(timingError($))
+    if (await isEnabled($)) {
+      await recordTurn($, e).catch(timingError($))
+      if (!e.agentId) {
+        // Safety net: a wait whose tool.call never ran must not leave the tab waiting past the turn.
+        pendingAsk.clear()
+        pendingPermission.clear()
+        // FR-12.1: the main loop is done; a tab waiting for the next prompt is not cooking.
+        isMainIdle = true
+        await syncLive($).catch(timingError($))
+      }
+    }
     return result
   })
 
@@ -378,12 +523,15 @@ export const register: Register = (on, options: PluginOptions) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE.id }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = $.ui.resolve(e)
     const selected = await read($, tab)
     const st = await read($, stats)
+    // A link line is a real OSC 8 hyperlink: the label is short, so truncation never cuts the href.
     const line = (l: Line) => (
-      <Text wrap="wrap" {...(l.tone ? TONES[l.tone] : {})}>
-        {l.text}
+      <Text wrap="truncate-end" {...(l.tone ? TONES[l.tone] : {})}>
+        {/* An empty Text renders zero rows, so a section gap holds a space. */}
+        {l.text || (l.href ? '' : ' ')}
+        {l.href && <Link href={l.href} label={l.label} />}
       </Text>
     )
     // FR-6.4: an error or the feature off is said in the pane, never an empty body.
@@ -393,10 +541,10 @@ export const register: Register = (on, options: PluginOptions) => {
         ? [{ text: errorStatus(st.error ?? 'no stats'), tone: 'error' }]
         : !st.data.enabled
           ? [{ text: STATUS_OFF, tone: 'dim' }]
-          : tabLines(selected, st.data, await $.session.id(), (await read($, bound))?.id)
+          : tabLines(selected, st.data, await $.session.id(), (await read($, bound))?.id, await $.clock.now())
     return (
-      <Box flexDirection="column">
-        <Box flexDirection="row">
+      <Box flexDirection="column" paddingX={1}>
+        <Box flexDirection="row" marginBottom={1}>
           {TABS.map((t, i) => [
             i > 0 && <Text dimColor> │ </Text>,
             // A Button has no color prop, so the selected tab is a colored bold Text.

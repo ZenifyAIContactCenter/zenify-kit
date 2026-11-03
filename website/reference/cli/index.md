@@ -102,7 +102,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify track backlog add](./zenify_track_backlog_add) | Thêm một việc thủ công vào backlog và in `track: <bid>`. |
 | [zenify track backlog drop](./zenify_track_backlog_drop) | Bỏ một việc khỏi backlog (bid hoặc id sdd). |
 | [zenify track ci](./zenify_track_ci) | Ghi kết quả CI green hoặc red của commit đang được watch. |
-| [zenify track end](./zenify_track_end) | Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD. |
+| [zenify track end](./zenify_track_end) | Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD và lưu đường dẫn plan từ dòng đầu. |
 | [zenify track est](./zenify_track_est) | Đặt size ước lượng cho id đã start; dòng est sau cùng thắng. |
 | [zenify track fix](./zenify_track_fix) | Ghi một vòng fix của lượt fix/hotfix: đường chẩn đoán narrow hoặc wide và có regression test hay không. |
 | [zenify track onboard](./zenify_track_onboard) | Nạp dữ liệu ban đầu cho track. |

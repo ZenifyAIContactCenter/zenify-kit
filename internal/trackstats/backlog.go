@@ -2,6 +2,7 @@ package trackstats
 
 import (
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -47,8 +48,9 @@ func ageDays(now, t time.Time) int {
 }
 
 // computeBacklog gathers manual, github, sdd and stale items. from holds the
-// ids and URLs already taken by a `start --from`, dropped the `drop` rows.
-func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item) Backlog {
+// ids and URLs already taken by a `start --from`, dropped the `drop` rows. It
+// also returns the issues GitHub gave, so the source is asked once.
+func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item) (Backlog, []Issue) {
 	b := Backlog{Items: []BacklogItem{}}
 	dropped := map[string]bool{}
 	for _, e := range logEv {
@@ -62,8 +64,10 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		}
 		b.Items = append(b.Items, BacklogItem{Source: "manual", ID: e.ID, Repo: e.F[0], Est: e.F[1], Ref: e.F[2], Title: e.F[3], AgeDays: ageDays(in.Now, e.At)})
 	}
+	var issues []Issue
 	if in.GitHub != nil {
-		issues, err := in.GitHub()
+		var err error
+		issues, err = in.GitHub()
 		if err != nil {
 			b.GhError = err.Error()
 		}
@@ -77,7 +81,7 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		}
 	}
 	for _, s := range in.SDD {
-		if dropped[s.ID] {
+		if dropped[s.ID] || from[s.ID] {
 			continue
 		}
 		b.Items = append(b.Items, BacklogItem{Source: "sdd", ID: s.ID, Repo: s.Repo, Est: "-", Ref: "-", Title: s.Title, AgeDays: ageDays(in.Now, s.ModTime)})
@@ -86,20 +90,55 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		if it.Status != "stale" {
 			continue
 		}
+		if beat, ok := in.Beats[it.Session]; ok && in.Now.Sub(beat) <= LiveTTL {
+			continue // a live session still holds this item
+		}
 		started, _ := time.Parse(time.RFC3339, it.StartedAt) // written by Compute from a parsed time
 		b.Items = append(b.Items, BacklogItem{Source: "stale", ID: it.ID, Repo: it.Repo, Est: it.Est, Ref: "-", Title: it.Kind + " " + it.Repo + " (" + it.ID + ")", AgeDays: ageDays(in.Now, started)})
 	}
-	return b
+	b.Items = dedupeAndSort(b.Items)
+	return b, issues
 }
 
-// historyRows are the `history` log rows, oldest first.
-func historyRows(logEv []Event) []Event {
-	var out []Event
-	for _, e := range logEv {
-		if e.Type == "history" {
-			out = append(out, e)
+// normTitle folds case and whitespace so "Fix login" matches "fix  Login".
+func normTitle(t string) string {
+	return strings.Join(strings.Fields(strings.ToLower(t)), " ")
+}
+
+// dedupeAndSort drops the manual items a github issue already covers, then
+// orders each source (kept in its gathering order) by est S, M, L, "-" and, within
+// one est, by age, oldest first.
+func dedupeAndSort(items []BacklogItem) []BacklogItem {
+	gh := map[string]bool{}
+	for _, it := range items {
+		if it.Source == "github" {
+			gh[normTitle(it.Title)] = true
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
+	out := items[:0]
+	for _, it := range items {
+		if it.Source == "manual" && gh[normTitle(it.Title)] {
+			continue
+		}
+		out = append(out, it)
+	}
+	srcRank := map[string]int{"manual": 0, "github": 1, "sdd": 2, "stale": 3}
+	estRank := map[string]int{"S": 0, "M": 1, "L": 2}
+	rank := func(e string) int {
+		if r, ok := estRank[e]; ok {
+			return r
+		}
+		return len(estRank)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Source != b.Source {
+			return srcRank[a.Source] < srcRank[b.Source]
+		}
+		if rank(a.Est) != rank(b.Est) {
+			return rank(a.Est) < rank(b.Est)
+		}
+		return a.AgeDays > b.AgeDays
+	})
 	return out
 }

@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import { TABS } from './track-ui'
 
 const CWD = '/w/app'
 const WS = '/w'
@@ -10,9 +11,12 @@ const SESSION_LOG = `/w/.zenify/track/sessions/${SESSION}.log`
 const LOG_MD = '/w/.zenify/track/log.md'
 const SESSIONS_DIR = '/w/.zenify/track/sessions'
 const OVERLAY = '/w/.zenify-overlay.yaml'
+const PULSE = '/w/.zenify/track/pulse'
+const LIVE = `/w/.zenify/track/live/${SESSION}.json`
+const BEAT = `/w/.zenify/track/live/${SESSION}.beat`
 const STATS_ARGV = ['zenify', 'track', 'stats', '--json', '--workspace', WS]
 const PANE = { id: 'track', title: 'Track', columns: 44 }
-const OFF = '⏸ track off · bật: /config → znf'
+const OFF = '⏸ track off · enable: /config → znf'
 const MIN = 60000
 
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -22,6 +26,8 @@ type World = {
   stats?: Run
   // `zenify track stats` cannot start.
   statsRejects?: string
+  // A stored `tab` atom value as the kit keeps a shaped atom: {shape, value}.
+  storedTab?: { shape: string; value: string }
   // mtimeMs by path for the watched files; absent = ENOENT.
   mtimes?: Record<string, number>
   // No `.zenify/manifest.json` at or above the cwd.
@@ -37,6 +43,8 @@ type World = {
   writeError?: string
   // Holds the stat of log.md until this resolves (a stats run in flight).
   holdLogStat?: Promise<void>
+  // Holds the answer of a read of this session's live json after its content is taken (a read in flight).
+  holdLiveRead?: Promise<void>
 }
 
 type Calls = {
@@ -62,6 +70,8 @@ const item = (over: Record<string, unknown> = {}) => ({
   endedAt: '',
   prs: null,
   agentMin: 12,
+  wallMin: 12,
+  tab: '',
   wait: { ask: 0, permission: 0, idle: 0, total: 0 },
   phases: { plan: { agentMin: 12, waitMin: 0 } },
   tokens: {},
@@ -104,7 +114,9 @@ function engine(on: any, world: World): Calls {
   on('state.get', (_: unknown, e: { plugin: string; key: string }, next: any) =>
     e.plugin === 'znf' && e.key === 'enabled' && world.trackEnabled !== undefined
       ? { value: { value: { shape: 'track-1', value: world.trackEnabled }, version: 1 } }
-      : next(e),
+      : e.plugin === 'znf' && e.key === 'tab' && world.storedTab !== undefined
+        ? { value: { value: world.storedTab, version: 1 } }
+        : next(e),
   )
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
   // FR-17.3: the writer beneath the session-start sync of the /config rows.
@@ -144,8 +156,9 @@ function engine(on: any, world: World): Calls {
     if (m === undefined) return { deny: `ENOENT: no such file, stat '${e.path}'` }
     return { value: { kind: e.path === SESSIONS_DIR ? 'directory' : 'file', size: 1, mtimeMs: m, isLink: false } }
   })
-  on('fs.read', (_: unknown, e: { path: string }) => {
+  on('fs.read', async (_: unknown, e: { path: string }) => {
     const text = world.files?.[e.path]
+    if (e.path === LIVE && world.holdLiveRead) await world.holdLiveRead
     if (text === undefined) return { deny: `ENOENT: no such file, open '${e.path}'` }
     return { value: text }
   })
@@ -203,7 +216,7 @@ test('FR-11.1: feature on, session start still opens no pane and shows the ⏸ l
   const calls = engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
   expect(calls.open).toHaveLength(0)
 })
 
@@ -257,7 +270,7 @@ test('SC-21/FR-11.5: a bind after the stats run shows ▶ with the id at once, n
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
   // The CLI wrote log.md and the watcher already ran; only the bind is left.
   world.stats = ok(statsJson({ running: [item()] }))
   world.toolCall = () => ({ result: { stdout: 'track: cook-261030-c0de\n', stderr: '' }, text: '' })
@@ -325,7 +338,7 @@ test('FR-6.4: outside a workspace track-pane says so instead of loading forever;
   await $.command.run({ command: 'track-pane', args: '' } as any)
   await clock.settle()
   const ui = await mountTab($)
-  expect(await allTexts(ui)).toContain('⚠ track lỗi: không ở trong workspace zenify')
+  expect(await allTexts(ui)).toContain('⚠ track error: not in a zenify workspace')
   expect(statsRuns(calls)).toHaveLength(0)
   expect(calls.status.filter(Boolean)).toHaveLength(0)
 })
@@ -334,28 +347,28 @@ test('FR-11.3: an open id of another session leaves this one at ⏸', async ($, 
   const calls = engine(on, { stats: ok(statsJson({ running: [item({ session: OTHER })] })) })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
 })
 
 test('FR-11.4: a failing stats run is the ⚠ status line with its first stderr line', async ($, on) => {
   const calls = engine(on, { stats: { exitCode: 1, stdout: '', stderr: 'parse log.md: boom\nmore' } })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('⚠ track lỗi: parse log.md: boom')
+  expect(lastStatus(calls)).toBe('⚠ track error: parse log.md: boom')
 })
 
 test('FR-11.4: stats output that is not JSON is the ⚠ line, not swallowed', async ($, on) => {
   const calls = engine(on, { stats: ok('track: off') })
   const clock = mock.clock(on)
   await start($, clock)
-  expect((lastStatus(calls) ?? '').startsWith('⚠ track lỗi: ')).toBe(true)
+  expect((lastStatus(calls) ?? '').startsWith('⚠ track error: ')).toBe(true)
 })
 
 test('FR-11.4: a stats command that cannot start is the ⚠ line', async ($, on) => {
   const calls = engine(on, { statsRejects: 'ENOENT: zenify not found' })
   const clock = mock.clock(on)
   await start($, clock)
-  expect((lastStatus(calls) ?? '').startsWith('⚠ track lỗi: ')).toBe(true)
+  expect((lastStatus(calls) ?? '').startsWith('⚠ track error: ')).toBe(true)
   expect(lastStatus(calls)).toContain('zenify not found')
 })
 
@@ -370,7 +383,7 @@ test('FR-11.5: an overlay mtime change re-runs stats, so feature on shows at onc
   world.mtimes = { [OVERLAY]: 2 }
   await clock.advance(2000)
   expect(statsRuns(calls)).toHaveLength(2)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
 })
 
 test('FR-6.3: log.md or sessions/ mtime changes re-run stats with the pane closed', async ($, on) => {
@@ -405,7 +418,8 @@ test('FR-2.3: the enabled flag comes from the stats run: on records, off does no
   await start($, clock)
   world.toolCall = () => ({ result: { stdout: 'track: fix-261030-a1b2\n', stderr: '' }, text: '' })
   await $.tool.call({ tool: 'Bash', command: 'zenify track start --kind fix --repo kit --est -' })
-  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG])
+  // The bind line, then the live file with the bound id (FR-12.1: a bind runs inside a working turn).
+  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG, PULSE, LIVE, BEAT, PULSE])
 })
 
 test('FR-4.1: a start that printed an id binds even while enabled is still false (feature turned on in the same command)', async ($, on) => {
@@ -467,14 +481,14 @@ test('SC-45: options tips false: the status line carries no contextual tip', { o
   const calls = engine(on, { stats: ok(statsJson({ today: { ...JSON.parse(statsJson()).today, prsOpened: 2, merged: 0, prsWaiting: 2 } })) })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0 · PR 2')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0 · PR 2')
 })
 
 test('SC-45: tips default: the status line carries the tip', async ($, on) => {
   const calls = engine(on, { stats: ok(statsJson({ today: { ...JSON.parse(statsJson()).today, prsOpened: 2, merged: 0, prsWaiting: 2 } })) })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toContain('Tip: 2 PR chờ merge')
+  expect(lastStatus(calls)).toContain('Tip: 2 PRs waiting to merge')
 })
 
 test('SC-41: trackPane off: a /znf:fix prompt opens no pane and /track-pane is not registered', { options: { trackPane: 'off' } }, async ($, on) => {
@@ -518,7 +532,7 @@ test('FR-6.1: the track-pane command toggles the pane', async ($, on) => {
   expect(calls.close.map((c: any) => c.id)).toEqual(['track'])
 })
 
-test('SC-11: in session A, Tab này has x only; Tổng has x and y, A tagged (tab này)', async ($, on) => {
+test('SC-11: Kitchen is the default tab; Today has x and y, A tagged (this tab)', async ($, on) => {
   const x = item()
   const y = item({ id: 'fix-261030-0b0b', kind: 'fix', session: OTHER, cwd: '/w/repos/hub', phase: 'fix' })
   const world: World = {}
@@ -532,32 +546,39 @@ test('SC-11: in session A, Tab này has x only; Tổng has x and y, A tagged (ta
   await $.command.run({ command: 'track-pane', args: '' } as any)
   await clock.settle()
   const ui = await mountTab($)
-  const mine = (await allTexts(ui)).join('\n')
-  expect(mine).toContain('▸Tab này')
-  expect(mine).toContain(x.id)
-  expect(mine.includes(y.id)).toBe(false)
-  await ui.press({ key: 'tab:total' })
+  expect(await allTexts(ui)).toContain('▸Kitchen')
+  await ui.press({ key: 'tab:today' })
   const all = await allTexts(ui)
-  expect(all).toContain('▸Tổng')
+  expect(all).toContain('▸Today')
   expect(all.some(t => t.includes(x.id))).toBe(true)
   expect(all.some(t => t.includes(y.id))).toBe(true)
-  expect(all).toContain('aaaaaaaa app (tab này)')
+  expect(all).toContain('aaaaaaaa app (this tab)')
   expect(all).toContain('bbbbbbbb hub')
 })
 
-test('FR-6.2: the tab row has the five tabs; Estimate and Chất lượng switch the body', async ($, on) => {
+test('FR-10.8: a tab stored by the old shape (total) opens as Kitchen', async ($, on) => {
+  const world: World = { storedTab: { shape: 'track-2', value: 'total' } }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  const ui = await mountTab($)
+  expect(await allTexts(ui)).toContain('▸Kitchen')
+})
+
+test('FR-6.2: the tab row has the five tabs; Estimate and Quality switch the body', async ($, on) => {
   engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
   await $.command.run({ command: 'track-pane', args: '' } as any)
   const ui = await mountTab($)
   const buttons = (await ui.findAll({ type: 'Button' })).map((b: any) => b.props.label)
-  expect(buttons).toEqual(['Tổng', 'Estimate', 'Chất lượng', 'Backlog'])
+  expect(buttons).toEqual(['Today', 'Estimate', 'Quality', 'Backlog'])
   await ui.press({ key: 'tab:estimate' })
   expect(await allTexts(ui)).toContain('▸Estimate')
   await ui.press({ key: 'tab:quality' })
-  expect(await allTexts(ui)).toContain('▸Chất lượng')
-  expect(await allTexts(ui)).toContain('chưa có việc nào')
+  expect(await allTexts(ui)).toContain('▸Quality')
+  expect(await allTexts(ui)).toContain('no work yet')
 })
 
 test('FR-6.4: a failing stats run shows its message in the pane, not an empty pane', async ($, on) => {
@@ -570,7 +591,7 @@ test('FR-6.4: a failing stats run shows its message in the pane, not an empty pa
   world.mtimes = { [LOG_MD]: 9 }
   await clock.advance(2000)
   const ui = await mountTab($)
-  expect(await allTexts(ui)).toContain('⚠ track lỗi: read sessions: EACCES')
+  expect(await allTexts(ui)).toContain('⚠ track error: read sessions: EACCES')
 })
 
 test('FR-6.1: the pane opened by command with the feature off says how to turn it on', async ($, on) => {
@@ -628,7 +649,8 @@ test('SC-14: a Bash stdout of track: off binds nothing', async ($, on) => {
   await $.tool.call({ tool: 'Bash', command: START_FIX })
   world.toolCall = undefined
   await $.turn.complete(turnEnd(30000))
-  expect(calls.write).toHaveLength(0)
+  // No session log line; the main turn end only marks the live file idle (FR-12.1).
+  expect(calls.write.map(w => w.path)).toEqual([LIVE, BEAT, PULSE])
 })
 
 test('FR-4.1/FR-7.3: a start stdout binds the id into this session file, the cwd first', async ($, on) => {
@@ -636,7 +658,7 @@ test('FR-4.1/FR-7.3: a start stdout binds the id into this session file, the cwd
   const calls = engine(on, world)
   mock.clock(on)
   await bindTo($, world, FIX_ID)
-  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG])
+  expect(calls.write.map(w => w.path)).toEqual([SESSION_LOG, PULSE, LIVE, BEAT, PULSE])
   expect(sessionLines(world).every(l => ISO_AT.test(l))).toBe(true)
   expect(fields(world)).toEqual([`cwd · ${CWD}`, `bind · ${FIX_ID}`])
 })
@@ -787,7 +809,8 @@ test('FR-4.2: with no bound id a turn writes nothing', async ($, on) => {
   mock.clock(on)
   await $.turn.complete(turnEnd(30000))
   await $.tool.call({ tool: 'Skill', skill: 'znf:scout' } as any)
-  expect(calls.write).toHaveLength(0)
+  // The main turn end still tells the live file the tab is idle (FR-12.1); no session log line.
+  expect(calls.write.filter(w => !w.path.startsWith('/w/.zenify/track/live/') && w.path !== PULSE)).toHaveLength(0)
 })
 
 test('a failed session write is toasted, not swallowed', async ($, on) => {
@@ -796,7 +819,7 @@ test('a failed session write is toasted, not swallowed', async ($, on) => {
   mock.clock(on)
   await bindTo($, world, FIX_ID)
   expect(calls.toast).toHaveLength(1)
-  expect(calls.toast[0].startsWith('lỗi đo thời gian: ') && calls.toast[0].includes('EACCES: permission denied')).toBe(true)
+  expect(calls.toast[0].startsWith('timing error: ') && calls.toast[0].includes('EACCES: permission denied')).toBe(true)
 })
 
 const FORCE_ARGV = [...STATS_ARGV, '--force']
@@ -811,7 +834,7 @@ test('FR-13.7: opening the Backlog tab reruns stats with --force; other runs and
   expect(statsRuns(calls).every(a => !a.includes('--force'))).toBe(true)
   const before = statsRuns(calls).length
   const ui = await mountTab($)
-  expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.props.label)).toEqual(['Tổng', 'Estimate', 'Chất lượng', 'Backlog'])
+  expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.props.label)).toEqual(['Today', 'Estimate', 'Quality', 'Backlog'])
   await ui.press({ key: 'tab:estimate' })
   await clock.settle()
   expect(statsRuns(calls)).toHaveLength(before)
@@ -822,4 +845,521 @@ test('FR-13.7: opening the Backlog tab reruns stats with --force; other runs and
   expect(t).toContain('▸Backlog')
   expect(t).toContain('kit · S · fix the thing · 4d')
   expect(t).toContain('⚠ github: gh: rate limited')
+})
+
+// FR-1/FR-2: live tab state, heartbeat and pulse.
+const T0 = Date.UTC(2026, 10, 2, 3, 0, 0)
+const T0_ISO = '2026-11-02T03:00:00.000Z'
+const ASK = { tool: 'AskUserQuestion', questions: [{ question: 'Which?', header: 'Pick', multiSelect: false, options: [{ label: 'a', description: 'a' }, { label: 'b', description: 'b' }] }] }
+// The live json without `run`, which is random per process; liveRun reads it.
+const liveDoc = (world: World) => {
+  const { run: _run, ...doc } = JSON.parse(world.files?.[LIVE] ?? 'null')
+  return doc
+}
+const liveRun = (world: World): string => JSON.parse(world.files?.[LIVE] ?? 'null').run
+const liveWrites = (calls: Calls) => calls.write.filter(w => w.path === LIVE)
+const trackWrites = (calls: Calls) => calls.write.filter(w => w.path.startsWith('/w/.zenify/track/live/') || w.path === PULSE)
+
+test('SC-2: AskUserQuestion writes ask then busy, with pulse; a throw still ends busy', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  let during: { live: unknown; pulse: string | undefined } | undefined
+  world.toolCall = () => {
+    during = { live: liveDoc(world), pulse: world.files?.[PULSE] }
+    return { result: { answers: {} } }
+  }
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(during).toEqual({ live: { state: 'ask', since: T0_ISO, cwd: CWD, id: '' }, pulse: T0_ISO })
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: '' })
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy'])
+  // A hook beneath that throws is skipped, so `next(e)` rejects (as an interrupt does); the
+  // rejection reaches the caller and the tab still goes back to busy.
+  world.toolCall = () => {
+    throw new Error('interrupted')
+  }
+  let thrown = ''
+  try {
+    await $.tool.call({ ...ASK, tool_use_id: 'u3' } as any)
+  } catch (err) {
+    thrown = String(err)
+  }
+  expect(thrown).toContain('no implementation for tool.call')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy', 'ask', 'busy'])
+})
+
+test('SC-2 / Review Focus 2: a plain tool call, even the first of the session, writes no live file or pulse', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.tool.call({ tool: 'Read', file_path: '/w/app/a.ts', tool_use_id: 'r1' } as any)
+  await $.tool.call({ tool: 'Bash', command: 'ls', tool_use_id: 'r2' } as any)
+  expect(trackWrites(calls)).toEqual([])
+})
+
+test('SC-3: a main-loop ask a person answers is permission until its call ends; unbound id is empty', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'p1', approver: 'person' } as any)
+  world.verdict = undefined
+  expect(liveDoc(world)).toEqual({ state: 'permission', since: T0_ISO, cwd: CWD, id: '' })
+  expect(world.files?.[PULSE]).toBe(T0_ISO)
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'p1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['permission', 'busy'])
+})
+
+test('SC-12: a subagent ask a person answers is permission too, with the bound id', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await bindTo($, world, FIX_ID)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'p2', agentId: 'a-1', approver: 'person' } as any)
+  world.verdict = undefined
+  expect(liveDoc(world)).toEqual({ state: 'permission', since: T0_ISO, cwd: CWD, id: FIX_ID })
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'p2', agentId: 'a-1' } as any)
+  // busy first: the bind wrote the live file with the id before the ask.
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'permission', 'busy'])
+})
+
+test('SC-3: an ask the host answers writes no live state', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'h1', approver: 'host' } as any)
+  world.verdict = undefined
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'h1' } as any)
+  expect(trackWrites(calls)).toEqual([])
+})
+
+test('Review Focus 4: an ask and a subagent permission overlap; busy only once both end', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  const seen: string[] = []
+  let checked!: () => void
+  const checkedP = new Promise<void>(r => (checked = r))
+  let release!: () => void
+  const gate = new Promise<void>(r => (release = r))
+  let u2Call: Promise<unknown> | undefined
+  // As in real use, u2's permission check runs inside u2's own tool.call; u2 is still waiting
+  // when u1 (the ask) ends.
+  world.toolCall = async (e: any) => {
+    if (e.tool_use_id === 'u1') {
+      u2Call = $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'u2', agentId: 'a-1' } as any)
+      await checkedP
+      return { result: {} }
+    }
+    world.verdict = 'ask'
+    await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u2', agentId: 'a-1', approver: 'person' } as any)
+    world.verdict = undefined
+    seen.push(liveDoc(world).state)
+    checked()
+    await gate
+    return { result: {} }
+  }
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  seen.push(liveDoc(world).state)
+  release()
+  await u2Call
+  seen.push(liveDoc(world).state)
+  expect(seen).toEqual(['ask', 'permission', 'busy'])
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'permission', 'busy'])
+})
+
+test('FR-2.3: track turned off while an ask is open writes nothing when the tool ends', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  world.toolCall = () => {
+    world.trackEnabled = false
+    return { result: {} }
+  }
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask'])
+  expect(calls.write.filter(w => w.path === PULSE)).toHaveLength(1)
+})
+
+const withMtimes = (pulse: number) => ({ [LOG_MD]: 1, [SESSIONS_DIR]: 1, [PULSE]: pulse })
+
+test('FR-2.3: track turned off during an ask and back on rewrites the stale ask as busy', async ($, on) => {
+  const world: World = { mtimes: withMtimes(1) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  world.toolCall = async () => {
+    // The stats run reports track off while the ask is open.
+    world.stats = ok(statsJson({ enabled: false }))
+    world.mtimes = withMtimes(2)
+    await clock.advance(2000)
+    return { result: {} }
+  }
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(liveDoc(world).state).toBe('ask')
+  world.stats = undefined
+  world.mtimes = withMtimes(3)
+  await clock.advance(2000)
+  await clock.settle()
+  expect(liveDoc(world).state).toBe('busy')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy'])
+})
+
+test('FR-2.3: turning track back on writes nothing for a tab that never wrote a live file', async ($, on) => {
+  const world: World = { mtimes: withMtimes(1) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  world.stats = ok(statsJson({ enabled: false }))
+  world.mtimes = withMtimes(2)
+  await clock.advance(2000)
+  world.stats = undefined
+  world.mtimes = withMtimes(3)
+  await clock.advance(2000)
+  await clock.settle()
+  expect(liveWrites(calls)).toEqual([])
+})
+
+test('SC-13: track off, AskUserQuestion writes no live file or pulse', async ($, on) => {
+  const world = trackWorld({ trackEnabled: false })
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'p1', approver: 'person' } as any)
+  await $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'p1' } as any)
+  expect(trackWrites(calls)).toEqual([])
+})
+
+for (const state of ['ask', 'permission', 'busy'])
+test(`FR-2.1/FR-12.1: session start overwrites a stale ${state} live file with idle and touches pulse`, async ($, on) => {
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state, since: 'x', cwd: CWD, id: '' }) } })
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(liveDoc(world)).toEqual({ state: 'idle', since: T0_ISO, cwd: CWD, id: '' })
+  expect(world.files?.[PULSE]).toBe(T0_ISO)
+  expect(liveWrites(calls)).toHaveLength(1)
+})
+
+test('FR-2.1: session start with no live file writes no live file, beat or pulse', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(calls.write.filter(w => w.path === LIVE || w.path === PULSE)).toEqual([])
+})
+
+test('FR-2.4: the first ask writes .beat before pulse', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  const paths = calls.write.map(w => w.path)
+  expect(paths.indexOf(BEAT)).toBeGreaterThanOrEqual(0)
+  expect(paths.indexOf(BEAT)).toBeLessThan(paths.indexOf(PULSE))
+  expect(world.files?.[BEAT]).toBe(T0_ISO)
+})
+
+test('FR-2.4: every 10s the heartbeat rewrites live/<session>.beat, never pulse', async ($, on) => {
+  const world: World = {}
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  await clock.advance(9000)
+  expect(calls.write.filter(w => w.path === BEAT)).toEqual([])
+  await clock.advance(1000)
+  expect(calls.write.filter(w => w.path === BEAT)).toEqual([{ path: BEAT, text: '2026-11-02T03:00:10.000Z' }])
+  await clock.advance(10000)
+  expect(calls.write.filter(w => w.path === BEAT)).toHaveLength(2)
+  expect(calls.write.filter(w => w.path === PULSE)).toEqual([])
+})
+
+test('FR-2.4: track off, no heartbeat', async ($, on) => {
+  const world: World = { stats: ok(statsJson({ enabled: false })) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await clock.advance(30000)
+  expect(trackWrites(calls)).toEqual([])
+})
+
+test('SC-1: a session log append writes pulse; a pulse mtime change alone re-runs stats at the next tick', async ($, on) => {
+  const world: World = { trackEnabled: true, mtimes: { [LOG_MD]: 1, [SESSIONS_DIR]: 1, [PULSE]: 1 } }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  await bindTo($, world, FIX_ID)
+  await clock.settle()
+  const logAt = calls.write.findIndex(w => w.path === SESSION_LOG)
+  expect(logAt).toBeGreaterThanOrEqual(0)
+  expect(calls.write.findIndex((w, i) => i > logAt && w.path === PULSE)).toBeGreaterThan(logAt)
+  const before = statsRuns(calls).length
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toHaveLength(before)
+  world.mtimes = { [LOG_MD]: 1, [SESSIONS_DIR]: 1, [PULSE]: 2 }
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toHaveLength(before + 1)
+  expect(statsRuns(calls).at(-1)).toEqual(STATS_ARGV)
+})
+
+test('SC-11: with a Rolling boil entry stats re-run every 10s on an unchanged key; with none they do not', async ($, on) => {
+  const boil = { cooked: [], rollingBoil: [{ session: OTHER, brief: 'x', state: 'ask', since: T0_ISO }], titleError: '' }
+  const world: World = { stats: ok(statsJson({ kitchen: boil })) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(statsRuns(calls)).toHaveLength(1)
+  await clock.advance(8000)
+  expect(statsRuns(calls)).toHaveLength(1)
+  world.stats = ok(statsJson({ kitchen: { ...boil, rollingBoil: [] } }))
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toEqual([STATS_ARGV, STATS_ARGV])
+  await clock.advance(20000)
+  expect(statsRuns(calls)).toHaveLength(2)
+})
+
+test('stuck state: a person ask whose call never ran is cleared to idle at the main turn end', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u3', approver: 'person' } as any)
+  world.verdict = undefined
+  expect(liveDoc(world).state).toBe('permission')
+  await $.turn.complete(turnEnd(5000, 'a-1'))
+  expect(liveDoc(world).state).toBe('permission')
+  await $.turn.complete(turnEnd(9000))
+  expect(liveDoc(world).state).toBe('idle')
+  // A later main turn end with nothing pending writes nothing more.
+  await $.turn.complete(turnEnd(1000))
+  expect(liveWrites(calls)).toHaveLength(2)
+})
+
+test('a failed live write is toasted and the tool still answers', async ($, on) => {
+  const world = trackWorld({ writeError: 'EACCES: permission denied' })
+  const calls = engine(on, world)
+  mock.clock(on)
+  world.toolCall = () => ({ result: { answers: { q: 'a' } } })
+  const answer: any = await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(answer.result).toEqual({ answers: { q: 'a' } })
+  // Two toasts: the ask write fails when the call starts, and the busy write fails when it ends.
+  expect(calls.toast).toHaveLength(2)
+  expect(calls.toast.every(t => t.startsWith('timing error: ') && t.includes('EACCES: permission denied'))).toBe(true)
+})
+
+test('FR-4.2: a PR line is a Link with the full href and the short label', async ($, on) => {
+  const url = 'https://github.com/o/r/pull/1'
+  const world: World = { stats: ok(statsJson({ kitchen: { cooked: [{ id: 'c1', brief: 'b', status: 'done', endedAt: '2026-11-02T03:05:00Z', prs: [url] }], rollingBoil: [], titleError: '' } })) }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const ui = await mountTab($)
+  const links = (await ui.findAll({ type: 'Link' })) as any[]
+  expect(links).toHaveLength(1)
+  expect(links[0].props.href).toBe(url)
+  expect(links[0].props.label).toBe('r#1')
+})
+
+test('pane spacing: blank section lines keep their height, the body is padded and set off from the tabs', async ($, on) => {
+  const world: World = { stats: ok(statsJson({ kitchen: { cooked: [], rollingBoil: [], titleError: '' } })) }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const ui = await mountTab($)
+  const texts = (await ui.findAll({ type: 'Text' })) as any[]
+  // An empty Text renders zero rows in the terminal, so a section gap must hold a space.
+  expect(texts.some(t => t.text === '')).toBe(false)
+  expect(texts.filter(t => t.text === ' ').length).toBeGreaterThan(0)
+  const boxes = (await ui.findAll({ type: 'Box' })) as any[]
+  expect(boxes[0].props.paddingX).toBe(1)
+  expect(boxes[1].props.marginBottom).toBe(1)
+})
+
+test('SC-9: every pane content Text truncates at the pane width', async ($, on) => {
+  const world: World = { stats: ok(statsJson({ running: [item()], kitchen: { cooked: [{ id: 'c1', brief: 'x'.repeat(300), status: 'done', endedAt: '2026-11-02T03:05:00Z', prs: null }], rollingBoil: [], titleError: '' } })) }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const ui = await mountTab($)
+  for (const tabId of ['kitchen', 'today', 'estimate', 'quality', 'backlog']) {
+    if (tabId !== 'kitchen') await ui.press({ key: `tab:${tabId}` })
+    // The tab row holds the separators and the selected label, `▸` plus a TABS label; a content line
+    // that merely starts with ▸ is not one of them and is still checked.
+    const tabLabels = TABS.map(t => `▸${t.label}`)
+    const body = ((await ui.findAll({ type: 'Text' })) as any[]).filter(t => t.text !== ' │ ' && !tabLabels.includes(String(t.text)))
+    expect(body.length).toBeGreaterThan(0)
+    for (const t of body) expect(t.props.wrap).toBe('truncate-end')
+  }
+})
+
+test('SC-20: a main turn end writes idle, the next prompt writes busy; a subagent turn end changes nothing', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: '' })
+  await clock.advance(1000)
+  await $.turn.complete(turnEnd(5000, 'a-1'))
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy'])
+  await $.turn.complete(turnEnd(9000))
+  expect(liveDoc(world).state).toBe('idle')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'idle'])
+  // A subagent turn end after the main one does not flip idle back.
+  await $.turn.complete(turnEnd(2000, 'a-2'))
+  await $.prompt.submit({ text: 'next' })
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'idle', 'busy'])
+})
+
+test('SC-20: a permission ask while idle wins over idle, and idle returns once it is answered', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  await $.turn.complete(turnEnd(9000))
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u9', approver: 'person' } as any)
+  world.verdict = undefined
+  expect(liveDoc(world).state).toBe('permission')
+  await $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'u9' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'idle', 'permission', 'idle'])
+})
+
+test('SC-20: ask and permission win over idle until they are answered or the turn ends', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  world.toolCall = () => ({ result: { answers: {} } })
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'ask', 'busy'])
+  // Idle waits for the ask to be answered: ask has priority over idle.
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u2', approver: 'person' } as any)
+  world.verdict = undefined
+  await $.turn.complete(turnEnd(9000))
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'ask', 'busy', 'permission', 'idle'])
+})
+
+test('SC-21: the open pane redraws on every watch tick while a tab is cooking, so the spinner turns', async ($, on) => {
+  const since = new Date(T0 - 12 * MIN).toISOString()
+  const cooking = [
+    { session: OTHER, tab: 'Tab one', brief: 'x', id: '', kind: '', phase: '', since },
+    { session: SESSION, tab: 'Tab two', brief: 'y', id: '', kind: '', phase: '', since },
+  ]
+  const world: World = { stats: ok(statsJson({ kitchen: { carried: [], lastDay: null, cooked: [], rollingBoil: [], cooking, titleError: '' } })) }
+  engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const ui = await mountTab($)
+  const spin = async () => (await allTexts(ui)).filter(t => /^- [⠋-⠿] 12m/.test(t))
+  const first = await spin()
+  expect(first).toHaveLength(2)
+  await clock.advance(2000)
+  const second = await spin()
+  expect(second).toHaveLength(2)
+  expect(second[0]?.[2]).not.toBe(first[0]?.[2])
+  expect(second[1]?.[2]).not.toBe(first[1]?.[2])
+  expect(second[0]?.[2]).not.toBe(second[1]?.[2])
+  expect(first[0]?.[2]).not.toBe(first[1]?.[2])
+})
+
+test('a cooking tab whose beat expired drops out on the 30s re-run with no pulse change', async ($, on) => {
+  const cooking = [{ session: OTHER, tab: 'T', brief: 'x', id: '', kind: '', phase: '', since: T0_ISO }]
+  const kitchen = { carried: [], lastDay: null, cooked: [], rollingBoil: [], cooking, titleError: '' }
+  const world: World = { stats: ok(statsJson({ kitchen })) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(statsRuns(calls)).toHaveLength(1)
+  // Only cooking, no tab waiting: a beat expires after the 30s live TTL, so no 10s re-run.
+  await clock.advance(28000)
+  expect(statsRuns(calls)).toHaveLength(1)
+  world.stats = ok(statsJson({ kitchen: { ...kitchen, cooking: [] } }))
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toHaveLength(2)
+  await clock.advance(60000)
+  expect(statsRuns(calls)).toHaveLength(2)
+})
+
+test('a prompt that lands while the stale-file reset is reading keeps busy; the reset never writes idle over it', async ($, on) => {
+  let release = () => {}
+  const hold = new Promise<void>(r => (release = r))
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'ask', since: 'x', cwd: CWD, id: '' }) }, holdLiveRead: hold })
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.session.start({ cwd: CWD, source: 'resume' } as any)
+  await $.prompt.submit({ text: 'go' })
+  expect(liveDoc(world).state).toBe('busy')
+  release()
+  await clock.settle()
+  expect(liveDoc(world).state).toBe('busy')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state).at(-1)).toBe('busy')
+})
+
+test('a stale busy file of another run with a 5s beat becomes idle', async ($, on) => {
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'busy', since: 'x', cwd: CWD, id: '', run: 'old-run' }) }, mtimes: { [BEAT]: T0 - 5000 } })
+  engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(liveDoc(world).state).toBe('idle')
+})
+
+test('a live file with this run id is untouched by a second session start (compact)', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  const run = liveRun(world)
+  expect(run).toMatch(/\S/)
+  world.toolCall = undefined
+  await $.session.start({ cwd: CWD, source: 'compact' } as any)
+  await clock.settle()
+  expect(liveRun(world)).toBe(run)
+  expect(liveDoc(world).state).toBe('busy')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy'])
+})
+
+test('start binds an id: the live file gets the id, state stays busy and since does not move', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: '' })
+  await clock.advance(5000)
+  await bindTo($, world, FIX_ID)
+  await clock.settle()
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: FIX_ID })
+  expect(liveWrites(calls)).toHaveLength(2)
+})
+
+test('a bind after a mid-turn session.start still writes the id to the live file', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  // An auto-compact fires session.start inside the turn: no new prompt follows.
+  await $.session.start({ cwd: CWD, source: 'compact' } as any)
+  await clock.settle()
+  await bindTo($, world, FIX_ID)
+  await clock.settle()
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: FIX_ID })
+})
+
+test('a stale busy file with a beat older than 30s still becomes idle', async ($, on) => {
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'busy', since: 'x', cwd: CWD, id: '' }) }, mtimes: { [BEAT]: T0 - 31000 } })
+  engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(liveDoc(world).state).toBe('idle')
 })

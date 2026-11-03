@@ -1,5 +1,5 @@
 ---
-summary: Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD.
+summary: Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD và lưu đường dẫn plan từ dòng đầu.
 ---
 ## Khi nào dùng
 

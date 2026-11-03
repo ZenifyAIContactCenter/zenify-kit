@@ -24,10 +24,13 @@ const (
 	RuleDown = "est down 1 size"
 )
 
+// Default scale bounds in minutes of wall time, used until minLearn real items exist.
+const defaultS, defaultM, defaultL = 15, 45, 120
+
 var kinds = []string{"cook", "fix", "hotfix"}
 var sizeRank = map[string]int{"S": 1, "M": 2, "L": 3, "XL": 4}
 
-// Scale holds the exclusive upper agent-time bounds, in minutes, of S, M and L.
+// Scale holds the exclusive upper wall-time bounds, in minutes, of S, M and L.
 type Scale struct {
 	Source string `json:"source"`
 	N      int    `json:"n"`
@@ -44,26 +47,35 @@ type Item struct {
 	Est       string              `json:"est"`
 	Session   string              `json:"session"`
 	Cwd       string              `json:"cwd"`
+	Tab       string              `json:"tab"`
 	Phase     string              `json:"phase"`
 	Status    string              `json:"status"`
 	StartedAt string              `json:"startedAt"`
 	EndedAt   string              `json:"endedAt"`
 	PRs       []string            `json:"prs"`
 	AgentMin  int                 `json:"agentMin"`
+	WallMin   int                 `json:"wallMin"`
 	Wait      WaitMin             `json:"wait"`
 	Phases    map[string]PhaseMin `json:"phases"`
 	Tokens    map[string]Tokens   `json:"tokens"`
 }
 
 type Today struct {
-	Date      string         `json:"date"`
-	Plans     map[string]int `json:"plans"`
-	Started   map[string]int `json:"started"`
-	Ended     map[string]int `json:"ended"`
-	Tasks     int            `json:"tasks"`
-	Rounds    int            `json:"rounds"`
-	PRsOpened int            `json:"prsOpened"`
-	Merged    int            `json:"merged"`
+	Date    string         `json:"date"`
+	Plans   map[string]int `json:"plans"`
+	Started map[string]int `json:"started"`
+	// Ended is the sum of Done, Cancelled and RolledBack. Done holds the done and pushed items.
+	Ended      map[string]int `json:"ended"`
+	Done       map[string]int `json:"done"`
+	Cancelled  map[string]int `json:"cancelled"`
+	RolledBack map[string]int `json:"rolledBack"`
+	// WallMin and AgentMin total the items counted in Done.
+	WallMin   int `json:"wallMin"`
+	AgentMin  int `json:"agentMin"`
+	Tasks     int `json:"tasks"`
+	Rounds    int `json:"rounds"`
+	PRsOpened int `json:"prsOpened"`
+	Merged    int `json:"merged"`
 	// PRsWaiting counts tracked PRs (any day) not known as merged or closed (FR-11.7 (5)).
 	PRsWaiting  int    `json:"prsWaiting"`
 	MergedError string `json:"mergedError"`
@@ -138,6 +150,7 @@ type Result struct {
 	Estimate  Estimate `json:"estimate"`
 	Quality   Quality  `json:"quality"`
 	Backlog   Backlog  `json:"backlog"`
+	Kitchen   Kitchen  `json:"kitchen"`
 	Onboarded bool     `json:"onboarded"`
 }
 
@@ -154,12 +167,28 @@ type Input struct {
 	// GitHub lists open issues; nil skips the source. On a partial failure it
 	// returns the items it got together with the error.
 	GitHub func() ([]Issue, error)
+	// Workspace is the workspace root, used to label a live tab by its cwd.
+	Workspace string
+	// Live holds the live/<session>.json files with the mtime of their .beat.
+	Live []LiveFile
+	// Beats maps a session id to the mtime of its live/<session>.beat, for every
+	// beat file on disk (a live session may never have written a .json).
+	Beats map[string]time.Time
+	// PlanTitle returns the title of the plan at path, "" and nil when the file is gone.
+	PlanTitle func(path string) (string, error)
+	// TabTitle returns the Claude Code tab name of a session, "" and nil when it has none.
+	TabTitle func(session string) (string, error)
+	// PRTitle returns the title of the pull request at url; nil skips gh this run.
+	PRTitle func(url string) (string, error)
+	// PRTitles caches PR titles by url; Compute adds the titles it fetches.
+	// Pass a non-nil map to keep titles across runs.
+	PRTitles map[string]string
 	// SDD lists the deferred and parked ledger findings; nil skips the source.
 	SDD []SDDItem
 }
 
-// LearnScale derives the S/M/L bounds from the 60 most recent measured
-// minutes (oldest first).
+// LearnScale derives the S/M/L bounds from the 60 most recent real wall
+// minutes (oldest first); below minLearn samples it returns the default scale.
 func LearnScale(mins []int) Scale {
 	mins = append([]int(nil), mins...)
 	if len(mins) > maxLearn {
@@ -167,7 +196,7 @@ func LearnScale(mins []int) Scale {
 	}
 	n := len(mins)
 	if n < minLearn {
-		return Scale{Source: "default", N: n, S: 5, M: 20, L: 60}
+		return Scale{Source: "default", N: n, S: defaultS, M: defaultM, L: defaultL}
 	}
 	sort.Ints(mins)
 	s := Scale{Source: "learned", N: n, S: nearestRank(mins, 25), M: nearestRank(mins, 50), L: nearestRank(mins, 90)}
@@ -211,13 +240,14 @@ type work struct {
 	events []Event
 	end    *Event
 	start  time.Time
+	from   string // the `start --from` ref, "" when none
 }
 
 // Compute builds the stats and returns the new merged cache. Bad data is
 // counted in Malformed; a Merged error is reported in Today.MergedError.
 func Compute(in Input) (Result, map[string]string) {
-	res := Result{Rules: []string{}, Running: []Item{}, Backlog: Backlog{Items: []BacklogItem{}}}
-	res.Today = Today{Date: in.Today, Plans: map[string]int{}, Started: map[string]int{}, Ended: map[string]int{}, Items: []Item{}}
+	res := Result{Rules: []string{}, Running: []Item{}, Backlog: Backlog{Items: []BacklogItem{}}, Kitchen: Kitchen{Carried: []CarriedItem{}, Cooked: []CookedItem{}, RollingBoil: []BoilItem{}}}
+	res.Today = Today{Date: in.Today, Plans: map[string]int{}, Started: map[string]int{}, Ended: map[string]int{}, Done: map[string]int{}, Cancelled: map[string]int{}, RolledBack: map[string]int{}, Items: []Item{}}
 	res.Estimate = Estimate{ByKind: map[string]KindEstimate{}, PhaseShare: map[string]map[string]float64{}}
 	res.Quality = Quality{ByKind: map[string]KindQuality{}}
 
@@ -257,7 +287,7 @@ func Compute(in Input) (Result, map[string]string) {
 			res.Onboarded = true
 			continue
 		case "backlog", "drop", "history":
-			continue // read by computeBacklog and the scale
+			continue // backlog and drop are read by computeBacklog; history feeds no stat
 		}
 		w := works[e.ID]
 		if e.Type == "start" {
@@ -273,6 +303,7 @@ func Compute(in Input) (Result, map[string]string) {
 			order = append(order, e.ID)
 			if len(e.F) == 4 && e.F[3] != "-" {
 				from[e.F[3]] = true
+				w.from = e.F[3]
 			}
 			continue
 		}
@@ -315,6 +346,11 @@ func Compute(in Input) (Result, map[string]string) {
 		if tm.Phase != "" {
 			it.Phase = tm.Phase
 		}
+		if w.end != nil {
+			it.WallMin = wallMin(w.start, w.end.At)
+		} else {
+			it.WallMin = wallMin(w.start, in.Now)
+		}
 		switch {
 		case w.end == nil && in.Now.Sub(w.start) > staleDays*24*time.Hour:
 			it.Status = "stale"
@@ -344,6 +380,16 @@ func Compute(in Input) (Result, map[string]string) {
 			}
 			if day(w.end.At) == in.Today {
 				res.Today.Ended[it.Kind]++
+				switch it.Status {
+				case "cancelled":
+					res.Today.Cancelled[it.Kind]++
+				case "rollback":
+					res.Today.RolledBack[it.Kind]++
+				default:
+					res.Today.Done[it.Kind]++
+					res.Today.WallMin += it.WallMin
+					res.Today.AgentMin += it.AgentMin
+				}
 				res.Today.Tasks += atoiDash(w.end.F[1])
 				res.Today.Rounds += atoiDash(w.end.F[2])
 			}
@@ -371,23 +417,22 @@ func Compute(in Input) (Result, map[string]string) {
 		}
 	}
 	res.Today.Plans = countPlans(in, &res)
-	newCache := mergedToday(in, prOrder, &res)
+	newCache, ghDown := mergedToday(in, prOrder, &res)
 
-	// Scale: agent minutes of the ended items, oldest end first.
+	// Scale: wall minutes of the done and pushed items with a real estimate, oldest end first.
 	ended := byEnd(items)
 	var mins []int
 	for _, it := range ended {
-		if it.AgentMin > 0 {
-			mins = append(mins, it.AgentMin)
+		if (it.Status == "done" || it.Status == "pushed") && sizeRank[it.Est] > 0 && sizeRank[it.Est] < 4 && it.WallMin > 0 {
+			mins = append(mins, it.WallMin)
 		}
 	}
-	hist := historyRows(logEv)
-	res.Scale = learnScaleSeeded(mins, hist)
+	res.Scale = LearnScale(mins)
 
 	byKindEnded := map[string][]Item{}
 	for _, it := range ended {
-		if it.AgentMin == 0 {
-			continue // unmeasured (no session turns): not an estimate sample
+		if it.WallMin == 0 {
+			continue // zero wall time: not an estimate sample
 		}
 		byKindEnded[it.Kind] = append(byKindEnded[it.Kind], it)
 	}
@@ -403,31 +448,20 @@ func Compute(in Input) (Result, map[string]string) {
 			byStart[it.Kind] = append(byStart[it.Kind], it)
 		}
 	}
-	computeQuality(byStart, works, hist, &res)
-	res.Backlog = computeBacklog(in, logEv, from, items)
+	computeQuality(byStart, works, &res)
+	var issues []Issue
+	res.Backlog, issues = computeBacklog(in, logEv, from, items)
+	res.Kitchen = computeKitchen(in, logEv, works, order, items, issues, ghDown, &res)
 	return res, newCache
 }
 
-// learnScaleSeeded learns the scale from the measured real minutes topped up
-// with the newest history rows to maxLearn (FR-14.5).
-func learnScaleSeeded(real []int, hist []Event) Scale {
-	if len(real) > maxLearn {
-		real = real[len(real)-maxLearn:]
+// wallMin is the whole minutes from start to end, rounded up; never negative.
+func wallMin(start, end time.Time) int {
+	d := end.Sub(start)
+	if d <= 0 {
+		return 0
 	}
-	var seed []int
-	for i := len(hist) - 1; i >= 0 && len(real)+len(seed) < maxLearn; i-- {
-		if m := atoiDash(hist[i].F[2]); m > 0 {
-			seed = append(seed, m)
-		}
-	}
-	sc := LearnScale(append(seed, real...))
-	switch {
-	case len(real) >= minLearn:
-		sc.Source = "learned"
-	case sc.N >= minLearn:
-		sc.Source = "history"
-	}
-	return sc
+	return int((d + time.Minute - 1) / time.Minute)
 }
 
 func tail(s []Item, n int) []Item {
@@ -487,8 +521,8 @@ func countPlans(in Input, res *Result) map[string]int {
 
 // mergedToday asks Merged about every ended PR not yet known as merged,
 // counts the ones merged today and returns the new cache.
-func mergedToday(in Input, urls []string, res *Result) map[string]string {
-	cache := map[string]string{}
+func mergedToday(in Input, urls []string, res *Result) (cache map[string]string, ghDown bool) {
+	cache = map[string]string{}
 	for k, v := range in.Cache {
 		cache[k] = v
 	}
@@ -507,6 +541,7 @@ func mergedToday(in Input, urls []string, res *Result) map[string]string {
 				// A missing gh fails every PR and a timeout means gh or GitHub is hanging:
 				// both stop the loop, so N slow PRs never outlast the caller's deadline.
 				if errors.Is(err, exec.ErrNotFound) || errors.Is(err, ErrGhTimeout) {
+					ghDown = true
 					break
 				}
 				continue
@@ -533,7 +568,7 @@ func mergedToday(in Input, urls []string, res *Result) map[string]string {
 			res.Today.Merged++
 		}
 	}
-	return cache
+	return cache, ghDown
 }
 
 func computeEstimate(kind string, win []Item, scale Scale, res *Result) {
@@ -563,7 +598,7 @@ func computeEstimate(kind string, win []Item, scale Scale, res *Result) {
 			continue
 		}
 		ke.N++
-		actual := sizeRank[sizeOf(it.AgentMin, scale)]
+		actual := sizeRank[sizeOf(it.WallMin, scale)]
 		switch est := sizeRank[it.Est]; {
 		case est == actual:
 			ke.Hit++
@@ -602,7 +637,7 @@ func computeHotfix(in Input, hotfixes []Item, res *Result) {
 			continue
 		}
 		if d := et.In(in.Now.Location()).Format(dateLayout); d >= from && d <= in.Today {
-			mins = append(mins, it.AgentMin)
+			mins = append(mins, it.WallMin)
 		}
 	}
 	h := HotfixEstimate{N: len(mins)}
@@ -622,17 +657,11 @@ func ratio(n, d int) *float64 {
 	return &v
 }
 
-func computeQuality(byStart map[string][]Item, works map[string]*work, hist []Event, res *Result) {
+func computeQuality(byStart map[string][]Item, works map[string]*work, res *Result) {
 	var fixRows, wide, test, fixIDs, roundSum int
 	for _, k := range kinds {
 		win := tail(byStart[k], ruleWindow)
-		var hk []Event
-		for _, h := range hist {
-			if h.F[0] == k {
-				hk = append(hk, h)
-			}
-		}
-		if len(win) == 0 && len(hk) == 0 {
+		if len(win) == 0 {
 			continue
 		}
 		q := KindQuality{N: len(win), TokensAvg: map[string]TokensAvg{}}
@@ -705,19 +734,6 @@ func computeQuality(byStart map[string][]Item, works map[string]*work, hist []Ev
 			if maxRound > 0 {
 				fixIDs++
 				roundSum += maxRound
-			}
-		}
-		for _, h := range hk {
-			if h.F[3] == "-" {
-				continue
-			}
-			for _, pair := range strings.Split(h.F[3], ",") {
-				m, in, out, _ := splitPair(pair) // validated by the parser
-				s := tokSum[m]
-				s.In += float64(in)
-				s.Out += float64(out)
-				tokSum[m] = s
-				tokN[m]++
 			}
 		}
 		q.ShipBlockedRate = ratio(blocked, ships)

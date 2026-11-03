@@ -108,7 +108,7 @@ func parseLogLine(raw string) (Event, bool) {
 	case "ci":
 		ok = len(f) == 1 && oneOf(f[0], "green", "red")
 	case "end":
-		ok = len(f) == 3 && f[0] != "" && intOrDash(f[1]) && intOrDash(f[2])
+		ok = (len(f) == 3 || (len(f) == 4 && f[3] != "")) && f[0] != "" && intOrDash(f[1]) && intOrDash(f[2])
 	}
 	if !ok {
 		return Event{}, false
@@ -117,7 +117,7 @@ func parseLogLine(raw string) (Event, bool) {
 }
 
 func validFrom(v string) bool {
-	return v == "-" || bidRe.MatchString(v) || strings.HasPrefix(v, "http")
+	return v == "-" || bidRe.MatchString(v) || strings.HasPrefix(v, "http") || sddRe.MatchString(v)
 }
 
 // parseListRow parses the rows whose third field is not a track id: backlog,

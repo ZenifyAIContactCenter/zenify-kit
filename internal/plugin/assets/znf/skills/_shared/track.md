@@ -4,6 +4,7 @@ Read this when the session digest says `features: track on`. Every command below
 
 ## Rules
 
+- Run `zenify track start` before any investigation of the task (logs, code, DB reads): the measured time starts there.
 - `zenify track start` prints `track: <id>`. Keep that id for the whole task and pass it to every later call.
 - Stdout `track: off` (from any track command) → skip every later track call this task.
 - A track command that exits non-zero: report it in the final message; never retry blindly, never block the task on it.
@@ -29,7 +30,7 @@ Read this when the session digest says `features: track on`. Every command below
 - Step 1: `zenify track start --kind hotfix --repo <repo> --est <S|M|L>`.
 - Hotfix step 3 borrows `/fix` steps 0-2: do not run the fix section's `start` or `est` there. The hotfix id from step 1 (started with its est) is the only id.
 - `znf:ship` called from hotfix records `track ship` but never calls `end`.
-- Code-fix path, step 10: `zenify track fix <id> --round <n> --path narrow|wide --regression test|no-seam|-`, then after the push `zenify track end <id> --branch <hotfix branch> --rounds <n>`. A multi-repo hotfix passes one `--branch` (wt gives every repo the same branch name).
+- Code-fix path, step 10: `zenify track fix <id> --round <n> --path narrow|wide --regression test|no-seam|-`, then after the push close the id: when a PR was opened (by you or by `znf:ship`), end with `--pr <url>` (`zenify track end <id> --pr <url> [--pr <url>…] --rounds <n>`); use `--branch` only when a person opens the PR (`zenify track end <id> --branch <hotfix branch> --rounds <n>`). A multi-repo hotfix passes one `--branch` (wt gives every repo the same branch name).
 - Revert/disable path (step 4 "Decide the response": revert or disable → skip to step 10): no `track fix`; close with `zenify track end <id> --rollback --rounds 0`.
 - The hotfix id is closed only at step 10 (or on the rollback path).
 
@@ -52,7 +53,9 @@ Read this when the session digest says `features: track on`. Every command below
 
 - Work that comes from the backlog: use `start --from <bid|issue url>`, i.e. `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <bid|issue url>`; the item leaves the backlog. An unknown or dropped `bid` exits non-zero and writes nothing.
 - Work that surfaces during a task and is not done now, including a minor issue you do not fix in the current task: `zenify track backlog add "<title>" --repo <repo> [--est S|M|L] [--ref <issue url|memory:<name>>]`; it prints the `bid`.
-- When the user asks to take the next work item, run `zenify track stats --json`, show the `backlog.items`, let the user pick one, then start it by its `source`: `manual` or `github` → `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <id>`; `sdd` (a ledger line) → the same command without `--from`; `stale` (a tracked item left open in an old session) → close it with `zenify track end <id> --cancelled --rounds 0`, then, if the user still wants the work, start a new id without `--from` (only a start binds the session, so a resumed old id would go unmeasured).
+- When the user asks to take the next work item, run `zenify track stats --json`, show the `backlog.items`, let the user pick one, then start it by its `source`: `manual` or `github` → `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <id>`; `sdd` (a ledger line) → the same command with `--from <ledger id>`; `stale` (a tracked item left open in an old session) → close it with `zenify track end <id> --cancelled --rounds 0`, then, if the user still wants the work, start a new id without `--from` (only a start binds the session, so a resumed old id would go unmeasured).
+- A start that prints `track: <x> is taken by <id> …` (or `was taken by`) means another tab owns that item: pick another item; never retry the same one.
+- A start that fails with `log is locked` means another track command holds the log: wait a few seconds and retry the same start once.
 - Drop an item that is no longer wanted: `zenify track backlog drop <bid>`.
 
 ## Onboard

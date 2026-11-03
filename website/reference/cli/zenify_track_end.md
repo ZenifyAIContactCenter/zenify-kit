@@ -6,7 +6,7 @@ title: zenify track end
 
 # `zenify track end`
 
-Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD.
+Đóng một lượt theo dõi với PR, branch, rollback hoặc cancelled; đếm số task từ ledger SDD và lưu đường dẫn plan từ dòng đầu.
 
 ## Cú pháp
 
@@ -34,7 +34,7 @@ zenify track end fix-261030-ab12 --pr https://github.com/org/repo/pull/1 --ledge
 |---|---|
 | `--branch` | pushed branch name (hotfix; the human opens the PR) |
 | `--cancelled` | the run was cancelled |
-| `--ledger` | SDD ledger file; its `Task \<N\>: complete` lines are counted |
+| `--ledger` | SDD ledger file; its `Task \<N\>: complete` lines are counted and its first-line plan path is kept |
 | `--pr` | pull request URL (repeatable) |
 | `--rollback` | the run ended in a rollback |
 | `--rounds` | fix rounds of the review in znf:ship |

@@ -219,28 +219,73 @@ func rowsHave(rows [][]string, kind, id string) bool {
 	return false
 }
 
-// checkStartFrom validates a `start --from` value against the log.
+// checkStartFrom validates a `start --from` value against the log and fails
+// when another item already took it. The caller holds the log lock.
 func checkStartFrom(logPath, from string) error {
-	if strings.HasPrefix(from, "http") {
+	switch {
+	case strings.HasPrefix(from, "http"):
 		if strings.ContainsAny(from, " \r\n") || strings.Contains(from, trackSep) {
 			return badTrack("invalid --from %q", from)
 		}
-		return nil
-	}
-	if !trackBidRe.MatchString(from) {
-		return badTrack("--from must be a backlog id or an http URL, got %q", from)
+	case trackSDDRe.MatchString(from):
+		// The regex's .+ allows " · " and a mid-path CR; it rejects only LF and a trailing CR.
+		if strings.ContainsAny(from, "\r\n") || strings.Contains(from, trackSep) {
+			return badTrack("invalid --from %q", from)
+		}
+	case trackBidRe.MatchString(from):
+	default:
+		return badTrack("--from must be a backlog id, an SDD id or an http URL, got %q", from)
 	}
 	rows, err := readTrackRows(logPath)
 	if err != nil {
 		return err
 	}
-	if !rowsHave(rows, "backlog", from) {
-		return badTrack("unknown backlog id %s", from)
+	if trackBidRe.MatchString(from) {
+		if !rowsHave(rows, "backlog", from) {
+			return badTrack("unknown backlog id %s", from)
+		}
+		if rowsHave(rows, "drop", from) {
+			return badTrack("backlog id %s was dropped", from)
+		}
 	}
-	if rowsHave(rows, "drop", from) {
-		return badTrack("backlog id %s was dropped", from)
+	for _, p := range rows {
+		if len(p) != 7 || p[1] != "start" || p[6] != from {
+			continue
+		}
+		id := p[2]
+		if rowsHave(rows, "end", id) {
+			return badTrack("track: %s was taken by %s (ended)", from, id)
+		}
+		sess, err := bindSession(filepath.Join(filepath.Dir(logPath), "sessions"), id)
+		if err != nil {
+			return err
+		}
+		return badTrack("track: %s is taken by %s (session %s)", from, id, sess)
 	}
 	return nil
+}
+
+// bindSession returns the first 8 characters of the session whose log binds id, or "-".
+func bindSession(sessionsDir, id string) (string, error) {
+	files, err := filepath.Glob(filepath.Join(sessionsDir, "*.log"))
+	if err != nil {
+		return "", exitcode.New(exitcode.Fail, err)
+	}
+	sort.Strings(files)
+	for _, f := range files {
+		rows, err := readTrackRows(f)
+		if err != nil {
+			return "", err
+		}
+		if rowsHave(rows, "bind", id) {
+			sess := strings.TrimSuffix(filepath.Base(f), ".log")
+			if len(sess) > 8 {
+				sess = sess[:8]
+			}
+			return sess, nil
+		}
+	}
+	return "-", nil
 }
 
 // ghSearch runs `gh search issues` for one owner and role.

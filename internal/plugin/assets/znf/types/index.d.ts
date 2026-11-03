@@ -9,12 +9,15 @@ export type TrackItem = {
   est: string
   session: string
   cwd: string
+  // the tab's title; empty when unknown
+  tab: string
   phase: string
   status: 'running' | 'stale' | 'done' | 'cancelled' | 'rollback' | 'pushed'
   startedAt: string
   endedAt: string
   prs: string[] | null
   agentMin: number
+  wallMin: number
   wait: { ask: number; permission: number; idle: number; total: number }
   phases: Record<string, { agentMin: number; waitMin: number }> | null
   tokens: Record<string, { in: number; out: number; cacheRead: number; cacheCreation: number }> | null
@@ -31,6 +34,31 @@ export type BacklogItem = {
   ageDays: number
 }
 
+// One item that ended today, workspace-wide (Go `trackstats.CookedItem`).
+export type KitchenCooked = { id: string; brief: string; status: TrackItem['status']; endedAt: string; prs: string[] | null }
+// One live tab waiting for a person (Go `trackstats.BoilItem`).
+export type KitchenBoil = { session: string; tab: string; brief: string; state: 'ask' | 'permission'; since: string }
+
+// One live tab that is working right now (Go `trackstats.CookingItem`).
+export type KitchenCooking = { session: string; tab: string; brief: string; id: string; kind: string; phase: string; since: string }
+
+// One item started before today and not ended (Go `trackstats.CarriedItem`).
+export type KitchenCarried = {
+  id: string
+  brief: string
+  kind: string
+  repo: string
+  phase: string
+  startedAt: string
+  wallMin: number
+  stale: boolean
+  worktree: string
+  tab: string
+  session: string
+}
+// The last working day before today (Go `trackstats.LastDay`).
+export type KitchenLastDay = { date: string; done: number; cancelled: number; rolledBack: number; prsOpened: number; leftOpen: number }
+
 export type TrackStats = {
   enabled: boolean
   malformed: number
@@ -41,6 +69,11 @@ export type TrackStats = {
     plans: Record<string, number> | null
     started: Record<string, number> | null
     ended: Record<string, number> | null
+    done: Record<string, number> | null
+    cancelled: Record<string, number> | null
+    rolledBack: Record<string, number> | null
+    wallMin: number
+    agentMin: number
     tasks: number
     rounds: number
     prsOpened: number
@@ -73,9 +106,17 @@ export type TrackStats = {
   }
   backlog: { items: BacklogItem[] | null; ghError: string }
   onboarded: boolean
+  kitchen: {
+    carried: KitchenCarried[] | null
+    lastDay: KitchenLastDay | null
+    cooked: KitchenCooked[] | null
+    rollingBoil: KitchenBoil[] | null
+    cooking: KitchenCooking[] | null
+    titleError: string
+  }
 }
 
-export type TrackTab = 'this' | 'total' | 'estimate' | 'quality' | 'backlog'
+export type TrackTab = 'kitchen' | 'today' | 'estimate' | 'quality' | 'backlog'
 
 declare module 'claude-code' {
   interface PluginState {
