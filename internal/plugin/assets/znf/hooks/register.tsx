@@ -51,11 +51,16 @@ const pendingPermission = new Set<string>()
 // FR-2.1: the state last written to live/<session>.json; undefined = none this session.
 type LiveState = 'ask' | 'permission' | 'busy' | 'idle'
 let liveState: LiveState | undefined
+// The id and `since` last written to the live file: a changed id rewrites it, `since` stays.
+let liveId: string | undefined
+let liveSince = ''
+// This process's run id, written as `run` in the live file. The engine has no crypto, so random plus the clock.
+const RUN_ID = `${Math.random().toString(16).slice(2)}${Date.now().toString(16)}`
 // FR-12.1: true from a main-loop turn end until the next prompt; a wait (ask, permission) still wins.
 let isMainIdle = false
 // FR-12.1: a prompt was submitted in this process; kept across session.start (a reload is a new run, a compact is not).
 let promptSeen = false
-// FR-2.4: a live file whose .beat is younger than this belongs to a live run (30s, as the stats' live TTL).
+// FR-2.4: the stats' live TTL (30s): the cooking re-run interval.
 const LIVE_TTL_MS = 30000
 
 const isMissing = (err: unknown) => /ENOENT/.test(String(err))
@@ -114,29 +119,34 @@ export async function appendSession($: $, line: string): Promise<void> {
 // Runs one live-state write at a time, so a slower write never lands after a newer state.
 let syncing: Promise<void> = Promise.resolve()
 
-// FR-2.1–2.3: writes live/<session>.json, then pulse, only when the state changed.
+// FR-2.1–2.3: writes live/<session>.json, then pulse, only when the state or the bound id changed.
 async function syncLive($: $): Promise<void> {
   const write = syncing.then(async () => {
     // Track may have been turned off while the call was open: write nothing, keep liveState.
     if (!(await isEnabled($))) return
     const state: LiveState = pendingAsk.size ? 'ask' : pendingPermission.size ? 'permission' : isMainIdle ? 'idle' : 'busy'
-    if (state === liveState) return
+    const boundId = (await read($, bound))?.id ?? ''
+    if (state === liveState && boundId === liveId) return
     const track = `${await workspaceDir($)}/.zenify/track`
-    const since = iso(await $.clock.now())
-    const doc = { state, since, cwd: await $.session.cwd(), id: (await read($, bound))?.id ?? '' }
+    const now = iso(await $.clock.now())
+    // A new id under the same state is the same stretch of work: keep `since`.
+    const since = state === liveState ? liveSince : now
+    const doc = { state, since, cwd: await $.session.cwd(), id: boundId, run: RUN_ID }
     const id = await $.session.id()
     await $.fs.write(`${track}/live/${id}.json`, JSON.stringify(doc))
     // The first beat comes now, not at the 10s timer: stats skip a live file with no beat.
-    await $.fs.write(`${track}/live/${id}.beat`, since)
-    await $.fs.write(`${track}/pulse`, since)
+    await $.fs.write(`${track}/live/${id}.beat`, now)
+    await $.fs.write(`${track}/pulse`, now)
     liveState = state
+    liveId = boundId
+    liveSince = since
   })
   // Keeps the chain alive after a failure; the caller still gets the error from `write`.
   syncing = write.catch(() => undefined)
   await write
 }
 
-// FR-2.1/FR-12.1: a live file left in ask, permission or busy by an earlier run of this session becomes idle.
+// FR-2.1/FR-12.1: a live file left in ask, permission or busy by another run of this session becomes idle.
 async function resetStaleLive($: $): Promise<void> {
   if (!(await isEnabled($))) return
   let text: string
@@ -146,20 +156,11 @@ async function resetStaleLive($: $): Promise<void> {
     if (isMissing(err)) return
     throw err
   }
-  const state = (JSON.parse(text) as { state?: string }).state
-  const live = `${await workspaceDir($)}/.zenify/track/live/${await $.session.id()}`
-  let beatAt: number | undefined
-  try {
-    beatAt = (await $.fs.stat(`${live}.beat`)).mtimeMs
-  } catch (err) {
-    // No beat: the file is stale, go on.
-    if (!isMissing(err)) throw err
-  }
-  const now = await $.clock.now()
-  // A fresh beat means a live run owns the file; a prompt means this run does. No await below this check.
-  if (promptSeen || (beatAt !== undefined && now - beatAt <= LIVE_TTL_MS)) return
+  const doc = JSON.parse(text) as { state?: string; run?: string }
+  // This process wrote the file (a compact or a re-fired session.start), or a prompt means this run owns it. No await below this check.
+  if (promptSeen || doc.run === RUN_ID) return
   // FR-12.1: a file left by an earlier run is not working now; idle, so a resumed tab is no ghost in Cooking.
-  if (state === 'ask' || state === 'permission' || state === 'busy') {
+  if (doc.state === 'ask' || doc.state === 'permission' || doc.state === 'busy') {
     isMainIdle = true
     await syncLive($)
   }
@@ -203,6 +204,8 @@ async function recordCall($: $, tool: string, command: string, isMain: boolean, 
       if (!(await read($, enabled))) await update($, enabled, () => true)
       await update($, bound, () => ({ id, kind: kindOf(id), ending: false }))
       await appendSession($, bindLine(iso(now), id))
+      // Only a tab that already has a live file: a tab that never waited gets none.
+      if (liveState !== undefined) await syncLive($)
       // The stats may have run before this bind; this session's open id shows now, not at a tick.
       void refreshStats($, true).catch(statsError($))
       return
@@ -225,6 +228,7 @@ async function recordTurn($: $, e: { durationMs: number; agentId?: string; usage
     if (!e.agentId && b.ending) {
       await appendSession($, unbindLine(iso(now), b.id))
       await update($, bound, () => null)
+      if (liveState !== undefined) await syncLive($)
       void refreshStats($, true).catch(statsError($))
     }
   }
@@ -399,6 +403,7 @@ export const register: Register = (on, options: PluginOptions) => {
     pendingAsk.clear()
     pendingPermission.clear()
     liveState = undefined
+    liveId = undefined
     isMainIdle = false
     // FR-18: a failed workspace lookup is a ⚠ toast and counts as outside.
     const inWorkspace = !!(await findWorkspace($).catch(err => (statsError($)(err), undefined)))

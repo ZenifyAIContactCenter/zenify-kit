@@ -850,7 +850,12 @@ test('FR-13.7: opening the Backlog tab reruns stats with --force; other runs and
 const T0 = Date.UTC(2026, 10, 2, 3, 0, 0)
 const T0_ISO = '2026-11-02T03:00:00.000Z'
 const ASK = { tool: 'AskUserQuestion', questions: [{ question: 'Which?', header: 'Pick', multiSelect: false, options: [{ label: 'a', description: 'a' }, { label: 'b', description: 'b' }] }] }
-const liveDoc = (world: World) => JSON.parse(world.files?.[LIVE] ?? 'null')
+// The live json without `run`, which is random per process; liveRun reads it.
+const liveDoc = (world: World) => {
+  const { run: _run, ...doc } = JSON.parse(world.files?.[LIVE] ?? 'null')
+  return doc
+}
+const liveRun = (world: World): string => JSON.parse(world.files?.[LIVE] ?? 'null').run
 const liveWrites = (calls: Calls) => calls.write.filter(w => w.path === LIVE)
 const trackWrites = (calls: Calls) => calls.write.filter(w => w.path.startsWith('/w/.zenify/track/live/') || w.path === PULSE)
 
@@ -1300,13 +1305,40 @@ test('a prompt that lands while the stale-file reset is reading keeps busy; the 
   expect(liveWrites(calls).map(w => JSON.parse(w.text).state).at(-1)).toBe('busy')
 })
 
-test('a stale busy file with a fresh beat belongs to a live run and is not touched', async ($, on) => {
-  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'busy', since: 'x', cwd: CWD, id: '' }) }, mtimes: { [BEAT]: T0 - 5000 } })
-  const calls = engine(on, world)
+test('a stale busy file of another run with a 5s beat becomes idle', async ($, on) => {
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'busy', since: 'x', cwd: CWD, id: '', run: 'old-run' }) }, mtimes: { [BEAT]: T0 - 5000 } })
+  engine(on, world)
   const clock = mock.clock(on, { now: T0 })
   await start($, clock)
-  expect(liveWrites(calls)).toHaveLength(0)
+  expect(liveDoc(world).state).toBe('idle')
+})
+
+test('a live file with this run id is untouched by a second session start (compact)', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  const run = liveRun(world)
+  expect(run).toMatch(/\S/)
+  world.toolCall = undefined
+  await $.session.start({ cwd: CWD, source: 'compact' } as any)
+  await clock.settle()
+  expect(liveRun(world)).toBe(run)
   expect(liveDoc(world).state).toBe('busy')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy'])
+})
+
+test('start binds an id: the live file gets the id, state stays busy and since does not move', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: '' })
+  await clock.advance(5000)
+  await bindTo($, world, FIX_ID)
+  await clock.settle()
+  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: FIX_ID })
+  expect(liveWrites(calls)).toHaveLength(2)
 })
 
 test('a stale busy file with a beat older than 30s still becomes idle', async ($, on) => {

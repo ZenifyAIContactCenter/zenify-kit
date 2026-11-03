@@ -300,89 +300,48 @@ func runTrackStart(errW io.Writer, logPath, kind, repo, est, from string) (strin
 	return id, nil
 }
 
-// trackLockWrite writes the holder token into a new lock; a test replaces it to fail the write.
-var trackLockWrite = func(f *os.File, token string) error {
-	_, err := f.WriteString(token)
-	return err
-}
+// errLockHeld means another open file description holds the log lock.
+var errLockHeld = errors.New("lock held")
 
 // releaseTrackLock releases the log lock and warns on stderr when it cannot.
 func releaseTrackLock(errW io.Writer, logPath string, unlock func() error) {
 	if err := unlock(); err != nil {
-		fmt.Fprintf(errW, "track: remove %s: %v\n", filepath.Join(filepath.Dir(logPath), "log.lock"), err)
+		fmt.Fprintf(errW, "track: unlock %s: %v\n", filepath.Join(filepath.Dir(logPath), "log.lock"), err)
 	}
 }
 
 // Package vars so tests can shrink them; production values are the defaults.
 var (
 	trackLockTimeout = 2 * time.Second
-	trackLockStale   = 10 * time.Second
 	trackLockPoll    = 50 * time.Millisecond
 )
 
-// lockTrackLog takes <track dir>/log.lock (O_EXCL, so it also works on windows),
-// retrying every trackLockPoll for up to trackLockTimeout. A lock older than
-// trackLockStale is left by a crashed command and is removed. The returned func
-// releases the lock and reports a removal failure.
+// lockTrackLog takes an OS advisory lock on <track dir>/log.lock, retrying every
+// trackLockPoll for up to trackLockTimeout. The OS frees the lock when its holder
+// dies, so there is no stale case. The returned func unlocks and closes the file;
+// it keeps the file on disk.
 func lockTrackLog(logPath string) (func() error, error) {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o750); err != nil {
 		return nil, exitcode.New(exitcode.Fail, err)
 	}
 	lock := filepath.Join(filepath.Dir(logPath), "log.lock")
-	tok := make([]byte, 16)
-	if _, err := rand.Read(tok); err != nil {
+	f, err := os.OpenFile(lock, os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // G304 -- computed from the resolved workspace
+	if err != nil {
 		return nil, exitcode.New(exitcode.Fail, err)
 	}
-	token := hex.EncodeToString(tok)
 	deadline := time.Now().Add(trackLockTimeout)
 	for {
-		f, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- computed from the resolved workspace
+		err := tryLockFile(f)
 		if err == nil {
-			werr := trackLockWrite(f, token)
-			if cerr := f.Close(); werr == nil {
-				werr = cerr
-			}
-			if werr != nil {
-				// An empty lock would block every later command until it is reaped.
-				if rerr := os.Remove(lock); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
-					werr = errors.Join(werr, rerr)
-				}
-				return nil, exitcode.New(exitcode.Fail, werr)
-			}
 			return func() error {
-				got, err := os.ReadFile(lock) //nolint:gosec // G304 -- computed from the resolved workspace
-				if errors.Is(err, os.ErrNotExist) {
-					return nil
-				}
-				if err != nil {
-					return err
-				}
-				if string(got) != token {
-					return nil // reaped as stale and taken by another holder: not ours to remove
-				}
-				if err := os.Remove(lock); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return err
-				}
-				return nil
+				return errors.Join(unlockFile(f), f.Close())
 			}, nil
 		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, exitcode.New(exitcode.Fail, err)
-		}
-		switch fi, err := os.Stat(lock); {
-		case errors.Is(err, os.ErrNotExist):
-			continue // released meanwhile
-		case err != nil:
-			return nil, exitcode.New(exitcode.Fail, err)
-		case time.Since(fi.ModTime()) > trackLockStale:
-			// Accepted race: another reaper may replace the lock between Stat and Remove (milliseconds; worst case a duplicate take).
-			if err := os.Remove(lock); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return nil, exitcode.New(exitcode.Fail, err)
-			}
-			continue
+		if !errors.Is(err, errLockHeld) {
+			return nil, exitcode.New(exitcode.Fail, errors.Join(err, f.Close()))
 		}
 		if time.Now().After(deadline) {
-			return nil, exitcode.New(exitcode.Fail, errors.New("track: log is locked (another track command is running)"))
+			return nil, exitcode.New(exitcode.Fail, errors.Join(errors.New("track: log is locked (another track command is running)"), f.Close()))
 		}
 		time.Sleep(trackLockPoll)
 	}

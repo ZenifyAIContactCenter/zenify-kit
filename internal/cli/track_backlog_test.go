@@ -269,7 +269,7 @@ func TestTrackStart_FromConcurrent(t *testing.T) {
 	ws := trackWS(t, true)
 	const from = "repos/r/.znf/sdd/p/progress.md:2"
 	// Each holder keeps the lock for milliseconds; a 30s timeout cannot expire under -race.
-	shrinkLock(t, 30*time.Second, 10*time.Second)
+	shrinkLock(t, 30*time.Second)
 	var wg sync.WaitGroup
 	var ok, taken atomic.Int32
 	for i := 0; i < 8; i++ {
@@ -590,44 +590,86 @@ func TestTrackStats_NonGitRepoDirStillSurfaces(t *testing.T) {
 	}
 }
 
-func shrinkLock(t *testing.T, timeout, stale time.Duration) {
+func shrinkLock(t *testing.T, timeout time.Duration) {
 	t.Helper()
-	to, st, po := trackLockTimeout, trackLockStale, trackLockPoll
-	trackLockTimeout, trackLockStale, trackLockPoll = timeout, stale, 5*time.Millisecond
-	t.Cleanup(func() { trackLockTimeout, trackLockStale, trackLockPoll = to, st, po })
+	to, po := trackLockTimeout, trackLockPoll
+	trackLockTimeout, trackLockPoll = timeout, 5*time.Millisecond
+	t.Cleanup(func() { trackLockTimeout, trackLockPoll = to, po })
 }
 
-// A lock a crashed command left behind is reaped; a fresh one still blocks.
-func TestTrackStart_StaleLock(t *testing.T) {
-	shrinkLock(t, 200*time.Millisecond, 10*time.Second)
+// Two lockers in one process exclude each other (flock is per open file description); release frees the lock.
+func TestTrackLock_Excludes(t *testing.T) {
+	shrinkLock(t, 100*time.Millisecond)
 	ws := trackWS(t, true)
-	dir := filepath.Join(ws, ".zenify", "track")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
 		t.Fatal(err)
 	}
-	lock := filepath.Join(dir, "log.lock")
-	if err := os.WriteFile(lock, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().Add(-time.Minute)
-	if err := os.Chtimes(lock, old, old); err != nil {
-		t.Fatal(err)
-	}
-	const from = "repos/r/.znf/sdd/p/progress.md:3"
-	if _, err := startFrom(t, ws, from); err != nil {
-		t.Fatalf("stale lock must be reaped: %v", err)
-	}
-	if _, err := os.Stat(lock); !os.IsNotExist(err) {
-		t.Fatalf("lock left behind: %v", err)
-	}
-
-	if err := os.WriteFile(lock, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	before := trackLog(t, ws)
-	_, err := startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:4")
+	_, err = lockTrackLog(logPath)
 	if err == nil || !strings.Contains(err.Error(), "track: log is locked (another track command is running)") {
-		t.Fatalf("fresh lock: err = %v", err)
+		t.Fatalf("second locker: err = %v", err)
+	}
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(logPath), "log.lock")); err != nil {
+		t.Fatalf("release must keep the lock file: %v", err)
+	}
+	unlock2, err := lockTrackLog(logPath)
+	if err != nil {
+		t.Fatalf("lock after release: %v", err)
+	}
+	if err := unlock2(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A lock held by a closed fd (what a crashed holder leaves) is free, even though the file exists.
+func TestTrackLock_ClosedHolderIsFree(t *testing.T) {
+	shrinkLock(t, 100*time.Millisecond)
+	ws := trackWS(t, true)
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(filepath.Join(filepath.Dir(logPath), "log.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tryLockFile(f); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		t.Fatalf("closed holder must not block: %v", err)
+	}
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// With --from, a held lock blocks start and the log stays untouched.
+func TestTrackStart_LockedFails(t *testing.T) {
+	shrinkLock(t, 100*time.Millisecond)
+	ws := trackWS(t, true)
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := unlock(); err != nil {
+			t.Error(err)
+		}
+	}()
+	before := trackLog(t, ws)
+	_, err = startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:4")
+	if err == nil || !strings.Contains(err.Error(), "log is locked") {
+		t.Fatalf("err = %v", err)
 	}
 	if trackLog(t, ws) != before {
 		t.Fatalf("log changed: %q", trackLog(t, ws))
@@ -636,46 +678,10 @@ func TestTrackStart_StaleLock(t *testing.T) {
 
 // A failed lock release is reported on the command's err writer, not swallowed.
 func TestTrackStart_ReleaseErrorWarns(t *testing.T) {
-	ws := trackWS(t, true)
-	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
-	lock := filepath.Join(filepath.Dir(logPath), "log.lock")
-	unlock, err := lockTrackLog(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Replace the lock file with a directory so the release fails with a non-ENOENT error.
-	if err := os.Remove(lock); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(lock, "x"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	var errW strings.Builder
-	releaseTrackLock(&errW, logPath, unlock)
-	if !strings.HasPrefix(errW.String(), "track: remove "+lock+":") {
+	releaseTrackLock(&errW, "/w/.zenify/track/log.md", func() error { return errors.New("boom") })
+	if want := "track: unlock " + filepath.Join("/w/.zenify/track", "log.lock") + ": boom"; !strings.HasPrefix(errW.String(), want) {
 		t.Fatalf("warning = %q", errW.String())
-	}
-}
-
-// A holder reaped as stale must not delete the lock the next holder took.
-func TestTrackLock_ReleaseKeepsForeignLock(t *testing.T) {
-	ws := trackWS(t, true)
-	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
-	lock := filepath.Join(filepath.Dir(logPath), "log.lock")
-	unlock, err := lockTrackLog(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(lock, []byte("another-holder"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var errW strings.Builder
-	releaseTrackLock(&errW, logPath, unlock)
-	if errW.Len() != 0 {
-		t.Fatalf("unexpected warning %q", errW.String())
-	}
-	if b, err := os.ReadFile(lock); err != nil || string(b) != "another-holder" {
-		t.Fatalf("foreign lock lost: %q %v", b, err)
 	}
 }
 
@@ -702,20 +708,5 @@ func TestTrackStart_FromSDDRejectsSeparators(t *testing.T) {
 	_, err = startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:12\r")
 	if err == nil || !strings.Contains(err.Error(), "--from must be a backlog id, an SDD id or an http URL") {
 		t.Fatalf("CR: err = %v", err)
-	}
-}
-
-// A failed token write must not leave an empty lock that blocks later commands.
-func TestTrackLock_WriteFailureDropsLock(t *testing.T) {
-	old := trackLockWrite
-	trackLockWrite = func(*os.File, string) error { return errors.New("disk full") }
-	t.Cleanup(func() { trackLockWrite = old })
-	ws := trackWS(t, true)
-	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
-	if _, err := lockTrackLog(logPath); err == nil || !strings.Contains(err.Error(), "disk full") {
-		t.Fatalf("err = %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(logPath), "log.lock")); !os.IsNotExist(err) {
-		t.Fatalf("half-written lock left behind: %v", err)
 	}
 }
