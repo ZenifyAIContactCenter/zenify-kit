@@ -8,6 +8,39 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.56.0
+
+*2026-11-03*
+
+- **Pane track có tab Kitchen, đồng bộ giữa các tab:** tab đầu đổi thành `Kitchen`, giống nhau ở mọi tab Claude Code trong workspace và cập nhật trong khoảng 2 giây qua file `pulse`. Từ trên xuống, Kitchen có:
+  - `📌 Carried over`: việc còn dở từ các ngày trước, kèm tóm tắt ngày làm việc gần nhất (bỏ qua cuối tuần).
+  - `🥘 Cooking`: các tab đang làm ngay lúc này, có spinner.
+  - `🔥 Rolling boil`: các tab đang hỏi bạn hoặc chờ bạn cấp quyền, kèm tên tab Claude Code và session.
+  - `🍳 Cooked`: việc xong hôm nay, mỗi PR là một link `repo#n` bấm được.
+
+  Xem [Pane track](/guides/track-pane).
+- **Số liệu tính theo thời gian thật:**
+  - Estimate và status line so với thời gian wall (`<wall>m/<est> (agent Nm)`).
+  - Thang S/M/L mặc định là 15/45/120 phút cho tới khi có 20 việc thật, sau đó học từ chính các việc đó. History onboard không còn được tính vào số liệu.
+  - Số nào có dưới 5 mẫu thì ẩn và ghi `need 5 samples (have N)`.
+  - Bỏ dòng token.
+  - Pane và status line chuyển sang tiếng Anh. Tab `Tổng` đổi thành `Today`.
+- **Khóa việc trong Backlog:**
+  - `zenify track start --from` từ chối mục đã có tab khác nhận (`track: <x> is taken by <id>`).
+  - `--from` nhận thêm id SDD (`repos/<repo>/.znf/sdd/<plan>/progress.md:<dòng>`).
+  - Backlog sắp theo est rồi theo tuổi, gộp trùng giữa mục thêm tay và issue GitHub, và mục có URL là link bấm được.
+  - Skill giờ chạy `track start` trước khi điều tra. Hotfix kết thúc bằng `--pr`.
+- **`wt new` đẩy branch lên `origin`:** việc hiện là đã bắt đầu ngay khi tạo worktree (trừ hotfix và repo không có `origin`). `wt rm` và `wt sweep` xóa branch remote đó, nhưng chỉ khi chưa ai commit lên nó. Xem [Worktree theo slug](/concepts/worktree-per-slug).
+- **Broker khóa `mcp-grafana` bằng token theo tiến trình:** một tiến trình trong cùng container không còn gọi thẳng `mcp-grafana` để đi vòng audit log. Không cần cấu hình thêm. Xem [Dựng host credential broker](/guides/broker-host).
+- **Playwright báo rõ thư mục chromium còn thiếu,** cả trước khi tải lẫn trong lỗi cài đặt.
+- **Binary và plugin phải cài cùng nhau (thay đổi phá vỡ):** binary cũ không đọc được dữ liệu track mà bản này ghi:
+  - Dòng `end` có bốn trường bị tính là lỗi.
+  - State `idle` bị đếm là dòng malformed.
+  - Lượt chạy bắt đầu bằng `--from <id sdd>` bị bỏ qua hoàn toàn, và mục SDD đó hiện lại trong Backlog.
+  - Khóa "mỗi mục chỉ lấy một lần" chỉ đúng khi mọi tab chạy binary mới.
+
+  Cập nhật bằng `brew upgrade --cask zenify && zenify up --apply` (hoặc `zenify update`).
+
 ## v0.55.0
 
 *2026-11-02*
