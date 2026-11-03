@@ -8,6 +8,20 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.57.0
+
+*2026-11-03*
+
+- **`/znf:hotfix` tự chạy được, và `/znf:fix` tự chuyển sang khi lỗi ở production:** không cần gõ `/hotfix` cố định nữa.
+  - Sau bước 2 (đã xác nhận nguyên nhân), nếu có bằng chứng production (PostHog, Loki, trace Tempo, `zenify obs --prd`, hoặc báo cáo khách hàng trên tenant prd), `/znf:fix` gọi `/znf:hotfix`. Hotfix nhận lại nguyên nhân đã xác nhận và `track id`, không chẩn đoán lại.
+  - Hotfix chỉ hỏi bạn ở bốn chỗ: base hotfix không xác nhận được bằng tag release (kể cả khi base hotfix trùng `baseRef` của repo); lỗi có thể đến từ lần deploy gần nhất hoặc không chứng minh được là lỗi cũ hơn; diff quá 3 file hoặc đụng tài nguyên dùng chung (đếm lại sau mỗi vòng sửa của `/znf:ship`); và merge.
+  - Lỗi có từ trước tag release liền trước (xác định bằng `git blame` trên đúng dòng lỗi) thì hotfix tự sửa xuôi và ghi lý do.
+  - Sau merge: đồng bộ base hotfix sang `baseRef` của repo; kiểm tra sau deploy chạy khi production đã có bản sửa (tag hoặc kiểm build).
+  - Bỏ công thức hotfix tay (`zenify hotfix baseref` + `wt new --type hotfix`) khỏi discipline: `/znf:hotfix` là đường duy nhất.
+
+  Xem [hotfix](/workflows/hotfix) và [fix](/workflows/fix).
+- **Release chỉ giữ 10 bản mới nhất:** sau mỗi lần release thành công, GitHub Release và tag cũ hơn 10 bản gần nhất được tự dọn.
+
 ## v0.56.0
 
 *2026-11-03*
