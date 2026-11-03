@@ -228,6 +228,9 @@ func checkStartFrom(logPath, from string) error {
 			return badTrack("invalid --from %q", from)
 		}
 	case trackSDDRe.MatchString(from):
+		if strings.ContainsAny(from, "\r\n") || strings.Contains(from, trackSep) {
+			return badTrack("invalid --from %q", from)
+		}
 	case trackBidRe.MatchString(from):
 	default:
 		return badTrack("--from must be a backlog id, an SDD id or an http URL, got %q", from)

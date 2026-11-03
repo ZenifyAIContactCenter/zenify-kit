@@ -258,7 +258,7 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 			if err := validTrackText("--repo", repo); err != nil {
 				return err
 			}
-			id, err := runTrackStart(trackLogPath(wsDir), kind, repo, est, from)
+			id, err := runTrackStart(cmd.ErrOrStderr(), trackLogPath(wsDir), kind, repo, est, from)
 			if err != nil {
 				return err
 			}
@@ -275,13 +275,17 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 
 // runTrackStart validates --from, picks an id and appends the start row. With
 // --from, the taken check and the append run under one log lock.
-func runTrackStart(logPath, kind, repo, est, from string) (string, error) {
+func runTrackStart(errW io.Writer, logPath, kind, repo, est, from string) (string, error) {
 	if from != "" {
 		unlock, err := lockTrackLog(logPath)
 		if err != nil {
 			return "", err
 		}
-		defer unlock()
+		defer func() {
+			if err := unlock(); err != nil {
+				fmt.Fprintf(errW, "track: remove %s: %v\n", filepath.Join(filepath.Dir(logPath), "log.lock"), err)
+			}
+		}()
 		if err := checkStartFrom(logPath, from); err != nil {
 			return "", err
 		}
@@ -300,29 +304,54 @@ func runTrackStart(logPath, kind, repo, est, from string) (string, error) {
 	return id, nil
 }
 
+// Package vars so tests can shrink them; production values are the defaults.
+var (
+	trackLockTimeout = 2 * time.Second
+	trackLockStale   = 10 * time.Second
+	trackLockPoll    = 50 * time.Millisecond
+)
+
 // lockTrackLog takes <track dir>/log.lock (O_EXCL, so it also works on windows),
-// retrying every 50ms for up to 2s. The returned func releases it.
-func lockTrackLog(logPath string) (func(), error) {
+// retrying every trackLockPoll for up to trackLockTimeout. A lock older than
+// trackLockStale is left by a crashed command and is removed. The returned func
+// releases the lock and reports a removal failure.
+func lockTrackLog(logPath string) (func() error, error) {
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o750); err != nil {
 		return nil, exitcode.New(exitcode.Fail, err)
 	}
 	lock := filepath.Join(filepath.Dir(logPath), "log.lock")
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(trackLockTimeout)
 	for {
 		f, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- computed from the resolved workspace
 		if err == nil {
 			if err := f.Close(); err != nil {
 				return nil, exitcode.New(exitcode.Fail, err)
 			}
-			return func() { _ = os.Remove(lock) }, nil //nolint:errcheck // best effort: a leftover lock only delays the next start by the 2s timeout
+			return func() error {
+				if err := os.Remove(lock); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
+				return nil
+			}, nil
 		}
 		if !errors.Is(err, os.ErrExist) {
 			return nil, exitcode.New(exitcode.Fail, err)
 		}
+		switch fi, err := os.Stat(lock); {
+		case errors.Is(err, os.ErrNotExist):
+			continue // released meanwhile
+		case err != nil:
+			return nil, exitcode.New(exitcode.Fail, err)
+		case time.Since(fi.ModTime()) > trackLockStale:
+			if err := os.Remove(lock); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, exitcode.New(exitcode.Fail, err)
+			}
+			continue
+		}
 		if time.Now().After(deadline) {
 			return nil, exitcode.New(exitcode.Fail, errors.New("track: log is locked (another track command is running)"))
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(trackLockPoll)
 	}
 }
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -266,6 +267,8 @@ func TestTrackStart_FromSDD(t *testing.T) {
 func TestTrackStart_FromConcurrent(t *testing.T) {
 	ws := trackWS(t, true)
 	const from = "repos/r/.znf/sdd/p/progress.md:2"
+	// Each holder keeps the lock for milliseconds; a 30s timeout cannot expire under -race.
+	shrinkLock(t, 30*time.Second, 10*time.Second)
 	var wg sync.WaitGroup
 	var ok, taken atomic.Int32
 	for i := 0; i < 8; i++ {
@@ -273,7 +276,7 @@ func TestTrackStart_FromConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			// Called below the cobra layer: NewRootCmd sets a package global per run.
-			_, err := runTrackStart(filepath.Join(ws, ".zenify", "track", "log.md"), "cook", "kit", "-", from)
+			_, err := runTrackStart(io.Discard, filepath.Join(ws, ".zenify", "track", "log.md"), "cook", "kit", "-", from)
 			switch {
 			case err == nil:
 				ok.Add(1)
@@ -583,5 +586,83 @@ func TestTrackStats_NonGitRepoDirStillSurfaces(t *testing.T) {
 	noGh(t)
 	if s := trackBacklogStats(t, ws); !strings.Contains(s.Backlog.GhError, "repos/plain") {
 		t.Fatalf("ghError = %q", s.Backlog.GhError)
+	}
+}
+
+func shrinkLock(t *testing.T, timeout, stale time.Duration) {
+	t.Helper()
+	to, st, po := trackLockTimeout, trackLockStale, trackLockPoll
+	trackLockTimeout, trackLockStale, trackLockPoll = timeout, stale, 5*time.Millisecond
+	t.Cleanup(func() { trackLockTimeout, trackLockStale, trackLockPoll = to, st, po })
+}
+
+// A lock a crashed command left behind is reaped; a fresh one still blocks.
+func TestTrackStart_StaleLock(t *testing.T) {
+	shrinkLock(t, 200*time.Millisecond, 10*time.Second)
+	ws := trackWS(t, true)
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(dir, "log.lock")
+	if err := os.WriteFile(lock, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	if err := os.Chtimes(lock, old, old); err != nil {
+		t.Fatal(err)
+	}
+	const from = "repos/r/.znf/sdd/p/progress.md:3"
+	if _, err := startFrom(t, ws, from); err != nil {
+		t.Fatalf("stale lock must be reaped: %v", err)
+	}
+	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+		t.Fatalf("lock left behind: %v", err)
+	}
+
+	if err := os.WriteFile(lock, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := trackLog(t, ws)
+	_, err := startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:4")
+	if err == nil || !strings.Contains(err.Error(), "track: log is locked (another track command is running)") {
+		t.Fatalf("fresh lock: err = %v", err)
+	}
+	if trackLog(t, ws) != before {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+}
+
+// A failed lock release is reported, not swallowed.
+func TestTrackStart_ReleaseErrorWarns(t *testing.T) {
+	ws := trackWS(t, true)
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	lock := filepath.Join(filepath.Dir(logPath), "log.lock")
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Replace the lock file with a non-empty directory so Remove fails with a non-ENOENT error.
+	if err := os.Remove(lock); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(lock, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := unlock(); err == nil {
+		t.Fatal("release must report a removal failure")
+	}
+}
+
+// An SDD id carrying the field separator or a newline would corrupt the log.
+func TestTrackStart_FromSDDRejectsSeparators(t *testing.T) {
+	ws := trackWS(t, true)
+	for _, from := range []string{"repos/r/a · b/progress.md:1", "repos/r/a\nb/progress.md:1"} {
+		if _, err := startFrom(t, ws, from); err == nil {
+			t.Errorf("--from %q must fail", from)
+		}
+	}
+	if trackLog(t, ws) != "" {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
 	}
 }
