@@ -646,7 +646,7 @@ test('SC-14: a Bash stdout of track: off binds nothing', async ($, on) => {
   world.toolCall = undefined
   await $.turn.complete(turnEnd(30000))
   // No session log line; the main turn end only marks the live file idle (FR-12.1).
-  expect(calls.write.filter(w => w.path === SESSION_LOG)).toHaveLength(0)
+  expect(calls.write.map(w => w.path)).toEqual([LIVE, BEAT, PULSE])
 })
 
 test('FR-4.1/FR-7.3: a start stdout binds the id into this session file, the cwd first', async ($, on) => {
@@ -1023,12 +1023,13 @@ test('SC-13: track off, AskUserQuestion writes no live file or pulse', async ($,
   expect(trackWrites(calls)).toEqual([])
 })
 
-test('FR-2.1: session start overwrites a stale ask live file with busy and touches pulse', async ($, on) => {
-  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'ask', since: 'x', cwd: CWD, id: '' }) } })
+for (const state of ['ask', 'permission', 'busy'])
+test(`FR-2.1/FR-12.1: session start overwrites a stale ${state} live file with idle and touches pulse`, async ($, on) => {
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state, since: 'x', cwd: CWD, id: '' }) } })
   const calls = engine(on, world)
   const clock = mock.clock(on, { now: T0 })
   await start($, clock)
-  expect(liveDoc(world)).toEqual({ state: 'busy', since: T0_ISO, cwd: CWD, id: '' })
+  expect(liveDoc(world)).toEqual({ state: 'idle', since: T0_ISO, cwd: CWD, id: '' })
   expect(world.files?.[PULSE]).toBe(T0_ISO)
   expect(liveWrites(calls)).toHaveLength(1)
 })
@@ -1191,6 +1192,20 @@ test('SC-20: a main turn end writes idle, the next prompt writes busy; a subagen
   expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'idle', 'busy'])
 })
 
+test('SC-20: a permission ask while idle wins over idle, and idle returns once it is answered', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  await $.turn.complete(turnEnd(9000))
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u9', approver: 'person' } as any)
+  world.verdict = undefined
+  expect(liveDoc(world).state).toBe('permission')
+  await $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'u9' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'idle', 'permission', 'idle'])
+})
+
 test('SC-20: ask and permission win over idle until they are answered or the turn ends', async ($, on) => {
   const world = trackWorld()
   const calls = engine(on, world)
@@ -1230,4 +1245,21 @@ test('SC-21: the open pane redraws on every watch tick while a tab is cooking, s
   expect(second[1]?.[2]).not.toBe(first[1]?.[2])
   expect(second[0]?.[2]).not.toBe(second[1]?.[2])
   expect(first[0]?.[2]).not.toBe(first[1]?.[2])
+})
+
+test('a cooking tab whose beat expired drops out on the 10s re-run with no pulse change', async ($, on) => {
+  const cooking = [{ session: OTHER, tab: 'T', brief: 'x', id: '', kind: '', phase: '', since: T0_ISO }]
+  const kitchen = { carried: [], lastDay: null, cooked: [], rollingBoil: [], cooking, titleError: '' }
+  const world: World = { stats: ok(statsJson({ kitchen })) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(statsRuns(calls)).toHaveLength(1)
+  await clock.advance(8000)
+  expect(statsRuns(calls)).toHaveLength(1)
+  world.stats = ok(statsJson({ kitchen: { ...kitchen, cooking: [] } }))
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toHaveLength(2)
+  await clock.advance(20000)
+  expect(statsRuns(calls)).toHaveLength(2)
 })

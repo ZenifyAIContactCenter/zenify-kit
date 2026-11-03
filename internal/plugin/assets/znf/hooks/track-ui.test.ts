@@ -230,7 +230,7 @@ test('FR-12.3: Cooking lines carry the time, tab or brief, kind and phase, then 
     ],
   })
   const lines = tabLines('kitchen', k, A, undefined, NOW)
-  expect(lines[0]).toEqual({ text: '🔥 Cooking', tone: 'bold' })
+  expect(lines[0]).toEqual({ text: '🥘 Cooking', tone: 'bold' })
   expect(lines[1]?.text).toBe(`- ${frameAt(NOW, 0)} 3h Dev track pane ship · cook · implement`)
   expect(lines[2]).toEqual({ text: `    ${B.slice(0, 8)} · cook-261103-8d5d`, tone: 'dim' })
   expect(lines[3]?.text).toBe(`- ${frameAt(NOW, 1)} 12m zenify-kit/x`)
@@ -260,7 +260,7 @@ test('FR-4.2: prLabel is <repo>#<n>, or the URL when it does not parse', () => {
 test('FR-4.3: empty Kitchen sections say so; ask reads asking', () => {
   const empty = tabLines('kitchen', stats(), A, undefined, NOW)
   expect(empty.slice(0, 8)).toEqual([
-    { text: '🔥 Cooking', tone: 'bold' },
+    { text: '🥘 Cooking', tone: 'bold' },
     { text: 'no tab is cooking', tone: 'dim' },
     { text: '' },
     { text: '🍳 Cooked', tone: 'bold' },
@@ -565,7 +565,7 @@ test('FR-11.3: Kitchen opens with Carried over: the last day, then each unfinish
     '- 🕸 2d b · cook',
     `    aaaaaaaa · ${Y}`,
     '',
-    '🔥 Cooking',
+    '🥘 Cooking',
     'no tab is cooking',
   ])
   expect(t.indexOf('🍳 Cooked')).toBe(10)
@@ -573,7 +573,7 @@ test('FR-11.3: Kitchen opens with Carried over: the last day, then each unfinish
 
 test('FR-11.3: nothing carried and no last day means no section and no blank line', () => {
   const t = texts(tabLines('kitchen', stats(), A, undefined, NOW))
-  expect(t[0]).toBe('🔥 Cooking')
+  expect(t[0]).toBe('🥘 Cooking')
   expect(t[3]).toBe('🍳 Cooked')
 })
 

@@ -5,14 +5,13 @@ import type { TrackStats } from '../types'
 import { isInWorkspace, registerConfig, setInWorkspace, syncConfig, trackPaneOf } from './config'
 import { bindLine, cwdLine, isStartCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
-import { COPY, STATUS_OFF, TABS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
+import { COPY, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
 import type { Line, Tab } from './track-ui'
 
 // FR-6.1: one pane; the five tabs are drawn inside it.
 const PANE = { id: 'track', title: 'Track', columns: 44 } as const
 const isPane = (id: string) => id === PANE.id
 // FR-6.3/FR-11.5: how often the watched mtimes are compared, and the forced re-run for merged PRs.
-const WATCH_TICK_MS = 2000
 const MERGED_TICK_MS = 5 * 60000
 const STATS_TIMEOUT_MS = 20000
 // FR-2.4: how often live/<session>.beat is rewritten. FR-1.4: how often stats re-run while a tab waits.
@@ -133,7 +132,7 @@ async function syncLive($: $): Promise<void> {
   await write
 }
 
-// FR-2.1: a live file left in ask or permission by an earlier run of this session becomes busy or idle.
+// FR-2.1/FR-12.1: a live file left in ask, permission or busy by an earlier run of this session becomes idle.
 async function resetStaleLive($: $): Promise<void> {
   if (!(await isEnabled($))) return
   let text: string
@@ -144,7 +143,11 @@ async function resetStaleLive($: $): Promise<void> {
     throw err
   }
   const state = (JSON.parse(text) as { state?: string }).state
-  if (state === 'ask' || state === 'permission') await syncLive($)
+  // FR-12.1: a file left by an earlier run is not working now; idle, so a resumed tab is no ghost in Cooking.
+  if (state === 'ask' || state === 'permission' || state === 'busy') {
+    isMainIdle = true
+    await syncLive($)
+  }
 }
 
 // FR-2.2: forgets a finished call; true when it was one a person waited on.
@@ -289,8 +292,10 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
         localDate(now),
       ].join('|')
       if (!force && key === lastKey) {
-        const boiling = ((await read($, stats))?.data?.kitchen?.rollingBoil?.length ?? 0) > 0
-        if (!boiling || now - lastRunAt < ROLLING_RERUN_MS) return
+        const k = (await read($, stats))?.data?.kitchen
+        // A live file can expire with no pulse: re-run while any tab waits or cooks.
+        const isLive = (k?.rollingBoil?.length ?? 0) + (k?.cooking?.length ?? 0) > 0
+        if (!isLive || now - lastRunAt < ROLLING_RERUN_MS) return
       }
       lastKey = key
       lastRunAt = now
@@ -323,7 +328,7 @@ const statsError = ($: $) => (err: unknown) => $.ui.toast(`${COPY.toast}${messag
 
 // FR-12.3: the Cooking spinner turns with the tick, so the pane is drawn again while a tab cooks.
 async function spinCooking($: $): Promise<void> {
-  if (((await read($, stats))?.data?.kitchen?.cooking?.length ?? 0) > 0) $.ui.invalidate('ui.render')
+  if (((await read($, stats))?.data?.kitchen?.cooking?.length ?? 0) > 0 && (await isOpen($))) $.ui.invalidate('ui.render')
 }
 
 function stopTimers(): void {

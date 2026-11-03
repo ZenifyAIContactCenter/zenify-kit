@@ -541,8 +541,8 @@ func TestKitchenCooking(t *testing.T) { // SC-19
 	if len(c) != 2 || c[0].Session != "old" || c[1].Session != "new" {
 		t.Fatalf("cooking = %+v", c)
 	}
-	want := CookingItem{Session: "old", Tab: "Tab old", Brief: "cook zenify-kit", ID: a, Kind: "cook", Phase: r.Running[0].Phase, Since: s1}
-	if c[0] != want || c[0].Phase == "" {
+	want := CookingItem{Session: "old", Tab: "Tab old", Brief: "cook zenify-kit", ID: a, Kind: "cook", Phase: "design", Since: s1}
+	if c[0] != want {
 		t.Fatalf("cooking[0] = %+v, want %+v", c[0], want)
 	}
 	if c[1].Brief != "x" || c[1].ID != "" || c[1].Kind != "" || c[1].Phase != "" {
