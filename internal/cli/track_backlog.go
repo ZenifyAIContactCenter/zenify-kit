@@ -228,7 +228,7 @@ func checkStartFrom(logPath, from string) error {
 			return badTrack("invalid --from %q", from)
 		}
 	case trackSDDRe.MatchString(from):
-		// This guards " · " (the regex's .+ allows it); CR and LF never reach here, trackSDDRe rejects them.
+		// The regex's .+ allows " · " and a mid-path CR; it rejects only LF and a trailing CR.
 		if strings.ContainsAny(from, "\r\n") || strings.Contains(from, trackSep) {
 			return badTrack("invalid --from %q", from)
 		}

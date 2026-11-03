@@ -300,6 +300,12 @@ func runTrackStart(errW io.Writer, logPath, kind, repo, est, from string) (strin
 	return id, nil
 }
 
+// trackLockWrite writes the holder token into a new lock; a test replaces it to fail the write.
+var trackLockWrite = func(f *os.File, token string) error {
+	_, err := f.WriteString(token)
+	return err
+}
+
 // releaseTrackLock releases the log lock and warns on stderr when it cannot.
 func releaseTrackLock(errW io.Writer, logPath string, unlock func() error) {
 	if err := unlock(); err != nil {
@@ -332,12 +338,16 @@ func lockTrackLog(logPath string) (func() error, error) {
 	for {
 		f, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- computed from the resolved workspace
 		if err == nil {
-			if _, err := f.WriteString(token); err != nil {
-				_ = f.Close()
-				return nil, exitcode.New(exitcode.Fail, err)
+			werr := trackLockWrite(f, token)
+			if cerr := f.Close(); werr == nil {
+				werr = cerr
 			}
-			if err := f.Close(); err != nil {
-				return nil, exitcode.New(exitcode.Fail, err)
+			if werr != nil {
+				// An empty lock would block every later command until it is reaped.
+				if rerr := os.Remove(lock); rerr != nil && !errors.Is(rerr, os.ErrNotExist) {
+					werr = errors.Join(werr, rerr)
+				}
+				return nil, exitcode.New(exitcode.Fail, werr)
 			}
 			return func() error {
 				got, err := os.ReadFile(lock) //nolint:gosec // G304 -- computed from the resolved workspace

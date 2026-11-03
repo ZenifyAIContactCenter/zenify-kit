@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -689,9 +690,32 @@ func TestTrackStart_FromSDDRejectsSeparators(t *testing.T) {
 	if trackLog(t, ws) != "" {
 		t.Fatalf("log changed: %q", trackLog(t, ws))
 	}
+	// A mid-path CR passes trackSDDRe (.+ matches it), so the separator check reports it.
+	_, err := startFrom(t, ws, "repos/r/a\rb/progress.md:1")
+	if err == nil || !strings.Contains(err.Error(), "invalid --from") {
+		t.Fatalf("mid-path CR: err = %v", err)
+	}
+	if trackLog(t, ws) != "" {
+		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
 	// A trailing CR fails trackSDDRe ($ matches only at the very end), so the grammar error comes out.
-	_, err := startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:12\r")
+	_, err = startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:12\r")
 	if err == nil || !strings.Contains(err.Error(), "--from must be a backlog id, an SDD id or an http URL") {
 		t.Fatalf("CR: err = %v", err)
+	}
+}
+
+// A failed token write must not leave an empty lock that blocks later commands.
+func TestTrackLock_WriteFailureDropsLock(t *testing.T) {
+	old := trackLockWrite
+	trackLockWrite = func(*os.File, string) error { return errors.New("disk full") }
+	t.Cleanup(func() { trackLockWrite = old })
+	ws := trackWS(t, true)
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	if _, err := lockTrackLog(logPath); err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(logPath), "log.lock")); !os.IsNotExist(err) {
+		t.Fatalf("half-written lock left behind: %v", err)
 	}
 }
