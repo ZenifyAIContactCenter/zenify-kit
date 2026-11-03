@@ -1,7 +1,6 @@
 package trackstats
 
 import (
-	"sort"
 	"time"
 )
 
@@ -93,16 +92,4 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		b.Items = append(b.Items, BacklogItem{Source: "stale", ID: it.ID, Repo: it.Repo, Est: it.Est, Ref: "-", Title: it.Kind + " " + it.Repo + " (" + it.ID + ")", AgeDays: ageDays(in.Now, started)})
 	}
 	return b, issues
-}
-
-// historyRows are the `history` log rows, oldest first.
-func historyRows(logEv []Event) []Event {
-	var out []Event
-	for _, e := range logEv {
-		if e.Type == "history" {
-			out = append(out, e)
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
-	return out
 }

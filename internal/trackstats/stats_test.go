@@ -304,13 +304,13 @@ func endedWithAgent(kind string, n int, est string, min int, log *[]string, sess
 
 func TestEstimateAccuracyAndRules(t *testing.T) {
 	var lg, ss []string
-	// default scale S<5 M<20 L<60: 10 min => M, 2 min => S, 30 min => L
-	endedWithAgent("cook", 1, "M", 10, &lg, &ss) // hit
-	endedWithAgent("cook", 2, "S", 10, &lg, &ss) // low
-	endedWithAgent("cook", 3, "L", 2, &lg, &ss)  // high
-	endedWithAgent("fix", 4, "S", 10, &lg, &ss)
-	endedWithAgent("fix", 5, "S", 10, &lg, &ss)
-	endedWithAgent("fix", 6, "S", 10, &lg, &ss)
+	// default scale S<15 M<45 L<120: 5 min => S, 30 min => M, 60 min => L
+	endedWithAgent("cook", 1, "M", 30, &lg, &ss) // hit
+	endedWithAgent("cook", 2, "S", 30, &lg, &ss) // low
+	endedWithAgent("cook", 3, "L", 5, &lg, &ss)  // high
+	endedWithAgent("fix", 4, "S", 30, &lg, &ss)
+	endedWithAgent("fix", 5, "S", 30, &lg, &ss)
+	endedWithAgent("fix", 6, "S", 60, &lg, &ss)
 	in := base(lines(lg...))
 	in.Sessions = map[string]string{"s1": lines(ss...)}
 	r, _ := Compute(in)
@@ -318,7 +318,7 @@ func TestEstimateAccuracyAndRules(t *testing.T) {
 	if c.N != 3 || c.Hit != 1 || c.Low != 1 || c.High != 1 {
 		t.Fatalf("cook = %+v", c)
 	}
-	if r.Scale.Source != "default" || r.Scale.S != 5 || r.Scale.M != 20 || r.Scale.L != 60 {
+	if r.Scale.Source != "default" || r.Scale.S != 15 || r.Scale.M != 45 || r.Scale.L != 120 {
 		t.Fatalf("scale = %+v", r.Scale)
 	}
 	if len(r.Rules) != 1 || r.Rules[0] != "fix: est up 1 size" {
@@ -419,11 +419,11 @@ func TestJSONShape(t *testing.T) {
 func TestUnmeasuredNotSampled(t *testing.T) {
 	var lg, ss []string
 	endedWithAgent("hotfix", 1, "S", 10, &lg, &ss)
-	id := cid("hotfix", 2) // ended, no session turns
-	lg = append(lg, row(now.Add(-50*time.Minute), "start", id, "hotfix", "r", "S"), row(now.Add(-40*time.Minute), "end", id, "branch:x", "1", "0"))
-	for i := 3; i <= 5; i++ { // unmeasured cooks with est L would fire "est down"
+	id := cid("hotfix", 2) // ended in the same instant: zero wall time
+	lg = append(lg, row(now.Add(-50*time.Minute), "start", id, "hotfix", "r", "S"), row(now.Add(-50*time.Minute), "end", id, "branch:x", "1", "0"))
+	for i := 3; i <= 5; i++ { // zero-wall cooks with est L would fire "est down"
 		c := cid("cook", i)
-		lg = append(lg, row(now.Add(-50*time.Minute), "start", c, "cook", "r", "L"), row(now.Add(-40*time.Minute), "end", c, "branch:x", "1", "0"))
+		lg = append(lg, row(now.Add(-50*time.Minute), "start", c, "cook", "r", "L"), row(now.Add(-50*time.Minute), "end", c, "branch:x", "1", "0"))
 	}
 	in := base(lines(lg...))
 	in.Sessions = map[string]string{"s1": lines(ss...)}
@@ -573,5 +573,121 @@ func TestMergedTimeoutStopsTheLoop(t *testing.T) {
 	in.Merged = func(string) (string, error) { asked++; return "", fmt.Errorf("gh pr view: %w", ErrGhTimeout) }
 	if r, _ := Compute(in); asked != 1 || r.Today.MergedError == "" {
 		t.Fatalf("asked %d err %q, want one ask and an error", asked, r.Today.MergedError)
+	}
+}
+
+func TestWallMin(t *testing.T) { // SC-1
+	a, b := cid("fix", 1), cid("fix", 2)
+	s := time.Date(2026, 10, 30, 7, 0, 0, 0, time.UTC)
+	in := base(lines(
+		row(s, "start", a, "fix", "r", "S"),
+		row(s.Add(31*time.Minute), "end", a, "https://x/pr/1", "1", "0"),
+		row(now.Add(-12*time.Minute-time.Second), "start", b, "fix", "r", "S"),
+	))
+	r, _ := Compute(in)
+	got := map[string]int{}
+	for _, it := range r.Today.Items {
+		got[it.ID] = it.WallMin
+	}
+	if got[a] != 31 || got[b] != 13 {
+		t.Fatalf("wallMin = %v, want 31 and 13 (ceil)", got)
+	}
+}
+
+func TestTodayDoneExcludesCancelled(t *testing.T) { // SC-2
+	a, b, c := cid("fix", 1), cid("hotfix", 2), cid("fix", 3)
+	s := now.Add(-3 * time.Hour)
+	in := base(lines(
+		row(s, "start", a, "fix", "r", "S"),
+		row(s.Add(20*time.Minute), "end", a, "https://x/pr/1", "1", "0"),
+		row(s, "start", b, "hotfix", "r", "S"),
+		row(s.Add(10*time.Minute), "end", b, "branch:hotfix/x", "1", "0"),
+		row(s, "start", c, "fix", "r", "S"),
+		row(s.Add(5*time.Minute), "end", c, "cancelled", "-", "-"),
+	))
+	r, _ := Compute(in)
+	td := r.Today
+	if len(td.Done) != 2 || td.Done["fix"] != 1 || td.Done["hotfix"] != 1 {
+		t.Fatalf("done = %v", td.Done)
+	}
+	if len(td.Cancelled) != 1 || td.Cancelled["fix"] != 1 || len(td.RolledBack) != 0 {
+		t.Fatalf("cancelled = %v rolledBack = %v", td.Cancelled, td.RolledBack)
+	}
+	if td.Ended["fix"]+td.Ended["hotfix"] != 3 {
+		t.Fatalf("ended = %v, want sum 3", td.Ended)
+	}
+	if td.WallMin != 30 {
+		t.Fatalf("today wallMin = %d, want 30 (20+10, cancelled excluded)", td.WallMin)
+	}
+}
+
+// realItems logs n done fix items with est S whose wall times are 1..n minutes.
+func realItems(n int) []string {
+	var lg, ss []string
+	for i := 1; i <= n; i++ {
+		endedWithAgent("fix", i, "S", i, &lg, &ss)
+	}
+	return lg
+}
+
+func TestScaleDefaultUntil20Real(t *testing.T) { // SC-3
+	r, _ := Compute(base(lines(realItems(19)...)))
+	if r.Scale != (Scale{Source: "default", N: 19, S: 15, M: 45, L: 120}) {
+		t.Fatalf("19 items: scale = %+v", r.Scale)
+	}
+	r, _ = Compute(base(lines(realItems(20)...)))
+	if r.Scale != (Scale{Source: "learned", N: 20, S: 5, M: 10, L: 18}) {
+		t.Fatalf("20 items: scale = %+v", r.Scale)
+	}
+	r, _ = Compute(base(lines(histLines(300, "fix")...)))
+	if r.Scale != (Scale{Source: "default", N: 0, S: 15, M: 45, L: 120}) {
+		t.Fatalf("history only: scale = %+v", r.Scale)
+	}
+}
+
+func TestEstimateOnWall(t *testing.T) { // SC-4
+	var lg, ss []string
+	id := cid("cook", 1)
+	s := now.Add(-2 * time.Hour)
+	lg = append(lg, row(s, "start", id, "cook", "r", "M"), row(s.Add(50*time.Minute), "end", id, "https://x/pr/1", "1", "0"))
+	ss = append(ss, row(s, "bind", id), agentTurn(s.Add(50*time.Minute), id, 8))
+	in := base(lines(lg...))
+	in.Sessions = map[string]string{"s": lines(ss...)}
+	r, _ := Compute(in)
+	// wall 50 on the default scale is L (45..120), agent 8 would be S: est M is under.
+	if ke := r.Estimate.ByKind["cook"]; ke.N != 1 || ke.Low != 1 || ke.Hit != 0 || ke.High != 0 {
+		t.Fatalf("cook = %+v", ke)
+	}
+}
+
+func TestHotfixMedianOnWall(t *testing.T) {
+	var lg, ss []string
+	for i, w := range []int{10, 20, 30, 40, 50} {
+		id := cid("hotfix", i+1)
+		s := now.Add(-time.Duration(200-i) * time.Minute)
+		lg = append(lg, row(s, "start", id, "hotfix", "r", "S"), row(s.Add(time.Duration(w)*time.Minute), "end", id, "branch:x", "1", "0"))
+		ss = append(ss, row(s, "bind", id), agentTurn(s.Add(time.Minute), id, 1))
+	}
+	in := base(lines(lg...))
+	in.Sessions = map[string]string{"s": lines(ss...)}
+	r, _ := Compute(in)
+	if h := r.Estimate.Hotfix; h.N != 5 || h.MedianMin == nil || *h.MedianMin != 30 {
+		t.Fatalf("hotfix = %+v", h)
+	}
+}
+
+func TestQualityIgnoresHistory(t *testing.T) {
+	var lg, ss []string
+	endedWithAgent("fix", 1, "S", 5, &lg, &ss)
+	lg = append(lg, histRow(1, "fix", 3, "opus:100/10"), histRow(2, "fix", 4, "opus:300/30"))
+	in := base(lines(lg...))
+	in.Sessions = map[string]string{"s": lines(ss...)}
+	r, _ := Compute(in)
+	q := r.Quality.ByKind["fix"]
+	if q.N != 1 || len(r.Quality.ByKind) != 1 {
+		t.Fatalf("quality = %+v", r.Quality.ByKind)
+	}
+	if got := q.TokensAvg["opus"]; got.In != 10 || got.Out != 20 {
+		t.Fatalf("opus avg = %+v, want the real item only (10/20)", got)
 	}
 }

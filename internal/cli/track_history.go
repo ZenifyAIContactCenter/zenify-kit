@@ -124,8 +124,8 @@ func writeHistory(w io.Writer, logPath string, groups []*histGroup) error {
 	if err != nil {
 		return err
 	}
-	// Oldest work first: the rows share one write time, and the scale takes the last rows
-	// of the log as the most recent history (FR-14.5).
+	// Oldest work first: the rows share one write time, so the log keeps the order of the work.
+	// History feeds no stat: the scale and quality read real items only.
 	byLast := slices.Clone(groups)
 	sort.SliceStable(byLast, func(i, j int) bool { return byLast[i].lastAt().Before(byLast[j].lastAt()) })
 	n := 0
