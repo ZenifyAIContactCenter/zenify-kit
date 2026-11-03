@@ -32,8 +32,8 @@ const personAsks = atom({ plugin: 'znf', key: 'personAsks' } as const, [] as str
 // FR-6.4/FR-11.4: the last `zenify track stats --json` answer, or why it failed. The shape tag
 // declines what an earlier pane version stored under the same key.
 const stats = atom({ plugin: 'znf', key: 'stats' } as const, null as { data?: TrackStats; error?: string } | null, { shape: 'track-1' })
-// FR-6.2: the selected tab; `Kitchen` by default. track-2 declines a stored `this`.
-const tab = atom({ plugin: 'znf', key: 'tab' } as const, 'kitchen' as Tab, { shape: 'track-2' })
+// FR-6.2: the selected tab; `Kitchen` by default. track-3 declines a stored `total` or `this`.
+const tab = atom({ plugin: 'znf', key: 'tab' } as const, 'kitchen' as Tab, { shape: 'track-3' })
 
 // Module state: lost on a reload, whose session.start re-arms the timers.
 let timers: Timer[] = []
@@ -221,7 +221,7 @@ async function recordIdle($: $): Promise<void> {
   if (b) await appendSession($, waitLine(iso(now), b.id, now - last, 'idle'))
 }
 
-const timingError = ($: $) => (err: unknown) => $.ui.toast(`lỗi đo thời gian: ${message(err)}`)
+const timingError = ($: $) => (err: unknown) => $.ui.toast(`timing error: ${message(err)}`)
 
 const firstLine = (s: string) => s.trim().split('\n')[0]
 

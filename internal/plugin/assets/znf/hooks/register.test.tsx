@@ -16,7 +16,7 @@ const LIVE = `/w/.zenify/track/live/${SESSION}.json`
 const BEAT = `/w/.zenify/track/live/${SESSION}.beat`
 const STATS_ARGV = ['zenify', 'track', 'stats', '--json', '--workspace', WS]
 const PANE = { id: 'track', title: 'Track', columns: 44 }
-const OFF = '⏸ track off · bật: /config → znf'
+const OFF = '⏸ track off · enable: /config → znf'
 const MIN = 60000
 
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -26,6 +26,8 @@ type World = {
   stats?: Run
   // `zenify track stats` cannot start.
   statsRejects?: string
+  // A stored `tab` atom value as the kit keeps a shaped atom: {shape, value}.
+  storedTab?: { shape: string; value: string }
   // mtimeMs by path for the watched files; absent = ENOENT.
   mtimes?: Record<string, number>
   // No `.zenify/manifest.json` at or above the cwd.
@@ -66,6 +68,8 @@ const item = (over: Record<string, unknown> = {}) => ({
   endedAt: '',
   prs: null,
   agentMin: 12,
+  wallMin: 12,
+  tab: '',
   wait: { ask: 0, permission: 0, idle: 0, total: 0 },
   phases: { plan: { agentMin: 12, waitMin: 0 } },
   tokens: {},
@@ -108,7 +112,9 @@ function engine(on: any, world: World): Calls {
   on('state.get', (_: unknown, e: { plugin: string; key: string }, next: any) =>
     e.plugin === 'znf' && e.key === 'enabled' && world.trackEnabled !== undefined
       ? { value: { value: { shape: 'track-1', value: world.trackEnabled }, version: 1 } }
-      : next(e),
+      : e.plugin === 'znf' && e.key === 'tab' && world.storedTab !== undefined
+        ? { value: { value: world.storedTab, version: 1 } }
+        : next(e),
   )
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
   // FR-17.3: the writer beneath the session-start sync of the /config rows.
@@ -207,7 +213,7 @@ test('FR-11.1: feature on, session start still opens no pane and shows the ⏸ l
   const calls = engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
   expect(calls.open).toHaveLength(0)
 })
 
@@ -261,7 +267,7 @@ test('SC-21/FR-11.5: a bind after the stats run shows ▶ with the id at once, n
   const calls = engine(on, world)
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
   // The CLI wrote log.md and the watcher already ran; only the bind is left.
   world.stats = ok(statsJson({ running: [item()] }))
   world.toolCall = () => ({ result: { stdout: 'track: cook-261030-c0de\n', stderr: '' }, text: '' })
@@ -329,7 +335,7 @@ test('FR-6.4: outside a workspace track-pane says so instead of loading forever;
   await $.command.run({ command: 'track-pane', args: '' } as any)
   await clock.settle()
   const ui = await mountTab($)
-  expect(await allTexts(ui)).toContain('⚠ track lỗi: không ở trong workspace zenify')
+  expect(await allTexts(ui)).toContain('⚠ track error: not in a zenify workspace')
   expect(statsRuns(calls)).toHaveLength(0)
   expect(calls.status.filter(Boolean)).toHaveLength(0)
 })
@@ -338,28 +344,28 @@ test('FR-11.3: an open id of another session leaves this one at ⏸', async ($, 
   const calls = engine(on, { stats: ok(statsJson({ running: [item({ session: OTHER })] })) })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
 })
 
 test('FR-11.4: a failing stats run is the ⚠ status line with its first stderr line', async ($, on) => {
   const calls = engine(on, { stats: { exitCode: 1, stdout: '', stderr: 'parse log.md: boom\nmore' } })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('⚠ track lỗi: parse log.md: boom')
+  expect(lastStatus(calls)).toBe('⚠ track error: parse log.md: boom')
 })
 
 test('FR-11.4: stats output that is not JSON is the ⚠ line, not swallowed', async ($, on) => {
   const calls = engine(on, { stats: ok('track: off') })
   const clock = mock.clock(on)
   await start($, clock)
-  expect((lastStatus(calls) ?? '').startsWith('⚠ track lỗi: ')).toBe(true)
+  expect((lastStatus(calls) ?? '').startsWith('⚠ track error: ')).toBe(true)
 })
 
 test('FR-11.4: a stats command that cannot start is the ⚠ line', async ($, on) => {
   const calls = engine(on, { statsRejects: 'ENOENT: zenify not found' })
   const clock = mock.clock(on)
   await start($, clock)
-  expect((lastStatus(calls) ?? '').startsWith('⚠ track lỗi: ')).toBe(true)
+  expect((lastStatus(calls) ?? '').startsWith('⚠ track error: ')).toBe(true)
   expect(lastStatus(calls)).toContain('zenify not found')
 })
 
@@ -374,7 +380,7 @@ test('FR-11.5: an overlay mtime change re-runs stats, so feature on shows at onc
   world.mtimes = { [OVERLAY]: 2 }
   await clock.advance(2000)
   expect(statsRuns(calls)).toHaveLength(2)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
 })
 
 test('FR-6.3: log.md or sessions/ mtime changes re-run stats with the pane closed', async ($, on) => {
@@ -471,14 +477,14 @@ test('SC-45: options tips false: the status line carries no contextual tip', { o
   const calls = engine(on, { stats: ok(statsJson({ today: { ...JSON.parse(statsJson()).today, prsOpened: 2, merged: 0, prsWaiting: 2 } })) })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toBe('track ⏸ · Hôm nay: 0/0 · PR 2')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0 · PR 2')
 })
 
 test('SC-45: tips default: the status line carries the tip', async ($, on) => {
   const calls = engine(on, { stats: ok(statsJson({ today: { ...JSON.parse(statsJson()).today, prsOpened: 2, merged: 0, prsWaiting: 2 } })) })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toContain('Tip: 2 PR chờ merge')
+  expect(lastStatus(calls)).toContain('Tip: 2 PRs waiting to merge')
 })
 
 test('SC-41: trackPane off: a /znf:fix prompt opens no pane and /track-pane is not registered', { options: { trackPane: 'off' } }, async ($, on) => {
@@ -522,7 +528,7 @@ test('FR-6.1: the track-pane command toggles the pane', async ($, on) => {
   expect(calls.close.map((c: any) => c.id)).toEqual(['track'])
 })
 
-test('SC-11: Kitchen is the default tab; Tổng has x and y, A tagged (tab này)', async ($, on) => {
+test('SC-11: Kitchen is the default tab; Today has x and y, A tagged (this tab)', async ($, on) => {
   const x = item()
   const y = item({ id: 'fix-261030-0b0b', kind: 'fix', session: OTHER, cwd: '/w/repos/hub', phase: 'fix' })
   const world: World = {}
@@ -537,28 +543,38 @@ test('SC-11: Kitchen is the default tab; Tổng has x and y, A tagged (tab này)
   await clock.settle()
   const ui = await mountTab($)
   expect(await allTexts(ui)).toContain('▸Kitchen')
-  await ui.press({ key: 'tab:total' })
+  await ui.press({ key: 'tab:today' })
   const all = await allTexts(ui)
-  expect(all).toContain('▸Tổng')
+  expect(all).toContain('▸Today')
   expect(all.some(t => t.includes(x.id))).toBe(true)
   expect(all.some(t => t.includes(y.id))).toBe(true)
-  expect(all).toContain('aaaaaaaa app (tab này)')
+  expect(all).toContain('aaaaaaaa app (this tab)')
   expect(all).toContain('bbbbbbbb hub')
 })
 
-test('FR-6.2: the tab row has the five tabs; Estimate and Chất lượng switch the body', async ($, on) => {
+test('FR-10.8: a tab stored by the old shape (total) opens as Kitchen', async ($, on) => {
+  const world: World = { storedTab: { shape: 'track-2', value: 'total' } }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  const ui = await mountTab($)
+  expect(await allTexts(ui)).toContain('▸Kitchen')
+})
+
+test('FR-6.2: the tab row has the five tabs; Estimate and Quality switch the body', async ($, on) => {
   engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
   await $.command.run({ command: 'track-pane', args: '' } as any)
   const ui = await mountTab($)
   const buttons = (await ui.findAll({ type: 'Button' })).map((b: any) => b.props.label)
-  expect(buttons).toEqual(['Tổng', 'Estimate', 'Chất lượng', 'Backlog'])
+  expect(buttons).toEqual(['Today', 'Estimate', 'Quality', 'Backlog'])
   await ui.press({ key: 'tab:estimate' })
   expect(await allTexts(ui)).toContain('▸Estimate')
   await ui.press({ key: 'tab:quality' })
-  expect(await allTexts(ui)).toContain('▸Chất lượng')
-  expect(await allTexts(ui)).toContain('chưa có việc nào')
+  expect(await allTexts(ui)).toContain('▸Quality')
+  expect(await allTexts(ui)).toContain('no work yet')
 })
 
 test('FR-6.4: a failing stats run shows its message in the pane, not an empty pane', async ($, on) => {
@@ -571,7 +587,7 @@ test('FR-6.4: a failing stats run shows its message in the pane, not an empty pa
   world.mtimes = { [LOG_MD]: 9 }
   await clock.advance(2000)
   const ui = await mountTab($)
-  expect(await allTexts(ui)).toContain('⚠ track lỗi: read sessions: EACCES')
+  expect(await allTexts(ui)).toContain('⚠ track error: read sessions: EACCES')
 })
 
 test('FR-6.1: the pane opened by command with the feature off says how to turn it on', async ($, on) => {
@@ -797,7 +813,7 @@ test('a failed session write is toasted, not swallowed', async ($, on) => {
   mock.clock(on)
   await bindTo($, world, FIX_ID)
   expect(calls.toast).toHaveLength(1)
-  expect(calls.toast[0].startsWith('lỗi đo thời gian: ') && calls.toast[0].includes('EACCES: permission denied')).toBe(true)
+  expect(calls.toast[0].startsWith('timing error: ') && calls.toast[0].includes('EACCES: permission denied')).toBe(true)
 })
 
 const FORCE_ARGV = [...STATS_ARGV, '--force']
@@ -812,7 +828,7 @@ test('FR-13.7: opening the Backlog tab reruns stats with --force; other runs and
   expect(statsRuns(calls).every(a => !a.includes('--force'))).toBe(true)
   const before = statsRuns(calls).length
   const ui = await mountTab($)
-  expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.props.label)).toEqual(['Tổng', 'Estimate', 'Chất lượng', 'Backlog'])
+  expect((await ui.findAll({ type: 'Button' })).map((b: any) => b.props.label)).toEqual(['Today', 'Estimate', 'Quality', 'Backlog'])
   await ui.press({ key: 'tab:estimate' })
   await clock.settle()
   expect(statsRuns(calls)).toHaveLength(before)
@@ -1118,7 +1134,7 @@ test('a failed live write is toasted and the tool still answers', async ($, on) 
   expect(answer.result).toEqual({ answers: { q: 'a' } })
   // Two toasts: the ask write fails when the call starts, and the busy write fails when it ends.
   expect(calls.toast).toHaveLength(2)
-  expect(calls.toast.every(t => t.startsWith('lỗi đo thời gian: ') && t.includes('EACCES: permission denied'))).toBe(true)
+  expect(calls.toast.every(t => t.startsWith('timing error: ') && t.includes('EACCES: permission denied'))).toBe(true)
 })
 
 test('FR-4.2: a PR line is a Link with the full href and the short label', async ($, on) => {
@@ -1144,7 +1160,7 @@ test('SC-9: every pane content Text truncates at the pane width', async ($, on) 
   await $.command.run({ command: 'track-pane', args: '' } as any)
   await clock.settle()
   const ui = await mountTab($)
-  for (const tabId of ['kitchen', 'total', 'estimate', 'quality', 'backlog']) {
+  for (const tabId of ['kitchen', 'today', 'estimate', 'quality', 'backlog']) {
     if (tabId !== 'kitchen') await ui.press({ key: `tab:${tabId}` })
     // The tab row holds the separators and the selected label, `▸` plus a TABS label; a content line
     // that merely starts with ▸ is not one of them and is still checked.
