@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import { TABS } from './track-ui'
 
 const CWD = '/w/app'
 const WS = '/w'
@@ -911,21 +912,47 @@ test('Review Focus 4: an ask and a subagent permission overlap; busy only once b
   const calls = engine(on, world)
   mock.clock(on)
   const seen: string[] = []
+  let checked!: () => void
+  const checkedP = new Promise<void>(r => (checked = r))
+  let release!: () => void
+  const gate = new Promise<void>(r => (release = r))
+  let u2Call: Promise<unknown> | undefined
+  // As in real use, u2's permission check runs inside u2's own tool.call; u2 is still waiting
+  // when u1 (the ask) ends.
   world.toolCall = async (e: any) => {
     if (e.tool_use_id === 'u1') {
-      world.verdict = 'ask'
-      await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u2', agentId: 'a-1', approver: 'person' } as any)
-      world.verdict = undefined
-      seen.push(liveDoc(world).state)
+      u2Call = $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'u2', agentId: 'a-1' } as any)
+      await checkedP
+      return { result: {} }
     }
+    world.verdict = 'ask'
+    await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u2', agentId: 'a-1', approver: 'person' } as any)
+    world.verdict = undefined
+    seen.push(liveDoc(world).state)
+    checked()
+    await gate
     return { result: {} }
   }
   await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
   seen.push(liveDoc(world).state)
-  await $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'u2', agentId: 'a-1' } as any)
+  release()
+  await u2Call
   seen.push(liveDoc(world).state)
   expect(seen).toEqual(['ask', 'permission', 'busy'])
   expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'permission', 'busy'])
+})
+
+test('FR-2.3: track turned off while an ask is open writes nothing when the tool ends', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  world.toolCall = () => {
+    world.trackEnabled = false
+    return { result: {} }
+  }
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask'])
+  expect(calls.write.filter(w => w.path === PULSE)).toHaveLength(1)
 })
 
 test('SC-13: track off, AskUserQuestion writes no live file or pulse', async ($, on) => {
@@ -1050,7 +1077,8 @@ test('a failed live write is toasted and the tool still answers', async ($, on) 
   world.toolCall = () => ({ result: { answers: { q: 'a' } } })
   const answer: any = await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
   expect(answer.result).toEqual({ answers: { q: 'a' } })
-  expect(calls.toast.length).toBeGreaterThan(0)
+  // Two toasts: the ask write fails when the call starts, and the busy write fails when it ends.
+  expect(calls.toast).toHaveLength(2)
   expect(calls.toast.every(t => t.startsWith('lỗi đo thời gian: ') && t.includes('EACCES: permission denied'))).toBe(true)
 })
 
@@ -1064,8 +1092,10 @@ test('SC-9: every pane content Text truncates at the pane width', async ($, on) 
   const ui = await mountTab($)
   for (const tabId of ['kitchen', 'total', 'estimate', 'quality', 'backlog']) {
     if (tabId !== 'kitchen') await ui.press({ key: `tab:${tabId}` })
-    // The tab row is the only header: the separators and the `▸` selected label.
-    const body = ((await ui.findAll({ type: 'Text' })) as any[]).filter(t => t.text !== ' │ ' && !String(t.text).startsWith('▸'))
+    // The tab row holds the separators and the selected label, `▸` plus a TABS label; a content line
+    // that merely starts with ▸ is not one of them and is still checked.
+    const tabLabels = TABS.map(t => `▸${t.label}`)
+    const body = ((await ui.findAll({ type: 'Text' })) as any[]).filter(t => t.text !== ' │ ' && !tabLabels.includes(String(t.text)))
     expect(body.length).toBeGreaterThan(0)
     for (const t of body) expect(t.props.wrap).toBe('truncate-end')
   }

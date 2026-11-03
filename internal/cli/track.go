@@ -448,12 +448,14 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 				}
 				tasks, plan := 0, ""
 				if ledger != "" {
-					n, p, err := readLedger(ledger)
+					n, p, hasPlanPrefix, err := readLedger(ledger)
 					tasks, plan = n, p
 					switch {
 					case err != nil:
 						fmt.Fprintf(cmd.ErrOrStderr(), "track: read --ledger %s: %v; end row written without tasks or plan\n", ledger, err)
 						tasks, plan = 0, ""
+					case plan == "" && hasPlanPrefix:
+						fmt.Fprintf(cmd.ErrOrStderr(), "track: ledger %s has an empty plan path; end row written without the plan\n", ledger)
 					case plan == "":
 						fmt.Fprintf(cmd.ErrOrStderr(), "track: ledger %s has no \"# SDD ledger — plan:\" first line; end row written without the plan\n", ledger)
 					case strings.Contains(plan, trackSep) || strings.ContainsAny(plan, "\r\n"):
@@ -483,21 +485,24 @@ const ledgerPlanPrefix = "# SDD ledger — plan: "
 
 // readLedger counts the completed tasks and returns the plan path from the
 // first line; plan is "" when that line does not have the SDD ledger shape.
-func readLedger(path string) (tasks int, plan string, err error) {
+// hasPlanPrefix tells a first line with the prefix and an empty path from no such line.
+func readLedger(path string) (tasks int, plan string, hasPlanPrefix bool, err error) {
 	b, err := os.ReadFile(path) //nolint:gosec // G304 -- a CLI flag naming a local ledger
 	if err != nil {
-		return 0, "", err
+		return 0, "", false, err
 	}
 	for i, l := range strings.Split(string(b), "\n") {
 		l = strings.TrimSpace(l)
-		if i == 0 && strings.HasPrefix(l, ledgerPlanPrefix) {
-			plan = strings.TrimSpace(strings.TrimPrefix(l, ledgerPlanPrefix))
+		// The line is trimmed, so an empty path leaves the prefix without its trailing space.
+		if i == 0 && (l == strings.TrimSpace(ledgerPlanPrefix) || strings.HasPrefix(l, ledgerPlanPrefix)) {
+			hasPlanPrefix = true
+			plan = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(l, strings.TrimSpace(ledgerPlanPrefix)), " "))
 		}
 		if trackTasksRe.MatchString(l) {
 			tasks++
 		}
 	}
-	return tasks, plan, nil
+	return tasks, plan, hasPlanPrefix, nil
 }
 
 func newTrackStatsCmd(ws *string) *cobra.Command {
@@ -682,6 +687,10 @@ func readLiveFiles(dir string, now time.Time) ([]trackstats.LiveFile, error) {
 			continue
 		}
 		b, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
+		if errors.Is(err, os.ErrNotExist) {
+			// The file vanished between the glob and the read.
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}

@@ -112,6 +112,8 @@ let syncing: Promise<void> = Promise.resolve()
 // FR-2.1–2.3: writes live/<session>.json, then pulse, only when the state changed.
 async function syncLive($: $): Promise<void> {
   const write = syncing.then(async () => {
+    // Track may have been turned off while the call was open: write nothing, keep liveState.
+    if (!(await isEnabled($))) return
     const state: LiveState = pendingAsk.size ? 'ask' : pendingPermission.size ? 'permission' : 'busy'
     if (state === liveState) return
     const track = `${await workspaceDir($)}/.zenify/track`
@@ -252,7 +254,8 @@ async function updateStatus($: $): Promise<void> {
 // log (an append does not touch the directory's mtime), pulse (another tab's state or log line), the
 // overlay or the local date changed since the last run, or on `force`. FR-1.4: while the last answer
 // has a Rolling boil entry it also re-runs every 10s on an unchanged key. A failure is stored and
-// shown (⚠), and is retried when a watched mtime changes or on the next forced run. Outside a workspace the pane says so; the status line stays unset.
+// shown (⚠), and is retried when a watched mtime changes or on the next forced run. Outside a
+// workspace the pane says so; the status line stays unset.
 // `fresh` (FR-13.7, opening the Backlog tab) also passes `--force`, bypassing the 5-minute backlog cache.
 async function refreshStats($: $, force = false, fresh = false): Promise<void> {
   if (isStatting) {
@@ -270,15 +273,15 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
         return
       }
       const track = `${ws}/.zenify/track`
+      const now = await $.clock.now()
       const key = [
         await mtimeOf($, `${track}/log.md`),
         await mtimeOf($, `${track}/sessions`),
         await mtimeOf($, `${track}/sessions/${await $.session.id()}.log`),
         await mtimeOf($, `${track}/pulse`),
         await mtimeOf($, `${ws}/.zenify-overlay.yaml`),
-        localDate(await $.clock.now()),
+        localDate(now),
       ].join('|')
-      const now = await $.clock.now()
       if (!force && key === lastKey) {
         const boiling = ((await read($, stats))?.data?.kitchen?.rollingBoil?.length ?? 0) > 0
         if (!boiling || now - lastRunAt < ROLLING_RERUN_MS) return
@@ -436,13 +439,15 @@ export const register: Register = (on, options: PluginOptions) => {
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
     const useId = e.tool_use_id
-    if (useId && !e.agentId && verdict.decision === 'ask' && e.approver === 'person') {
+    const isPersonAsk = !!useId && verdict.decision === 'ask' && e.approver === 'person'
+    if (!isPersonAsk || !(await isEnabled($))) return verdict
+    if (!e.agentId) {
       await (async () => {
-        if ((await read($, enabled)) && (await read($, bound))) await update($, personAsks, ids => [...ids, useId])
+        if (await read($, bound)) await update($, personAsks, ids => [...ids, useId])
       })().catch(timingError($))
     }
     // FR-2.2: any person's ask, main loop or subagent, bound or not, marks the tab as waiting.
-    if (useId && verdict.decision === 'ask' && e.approver === 'person' && e.tool !== 'AskUserQuestion' && (await isEnabled($))) {
+    if (e.tool !== 'AskUserQuestion') {
       pendingPermission.add(useId)
       await syncLive($).catch(timingError($))
     }

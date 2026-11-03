@@ -370,3 +370,31 @@ func TestKitchenFailedTitleRetriedAfterAnHour(t *testing.T) {
 		t.Fatalf("brief = %q", r.Kitchen.Cooked[0].Brief)
 	}
 }
+
+func TestKitchenCookedSkipsStaleAndBeforeMidnight(t *testing.T) {
+	a, b, c := kid("cook", 1), kid("cook", 2), kid("cook", 3)
+	now := time.Date(2026, 11, 2, 0, 5, 0, 0, kNow.Location())
+	prev := time.Date(2026, 11, 1, 23, 55, 0, 0, kNow.Location())
+	log := lines(
+		row(prev.Add(-time.Hour), "start", a, "cook", "r", "M"),
+		row(prev, "end", a, "branch:x", "1", "0"),
+		row(now.Add(-4*time.Minute), "start", b, "cook", "r", "M"),
+		row(now.Add(-time.Minute), "end", b, "branch:y", "1", "0"),
+		row(now.Add(-20*time.Hour), "start", c, "cook", "r", "M"),
+	)
+	in := kInput(log)
+	in.Now = now
+	r, _ := Compute(in)
+	if len(r.Kitchen.Cooked) != 1 || r.Kitchen.Cooked[0].ID != b {
+		t.Fatalf("cooked = %+v", r.Kitchen.Cooked)
+	}
+}
+
+func TestKitchenBoilEmptyIDDoesNotMatchAnItem(t *testing.T) {
+	in := kInput("")
+	in.Live = []LiveFile{lf("1", liveJSON("ask", kAt(9, 58).Format(time.RFC3339), "/ws/repos/x", ""), kNow)}
+	r, _ := Compute(in)
+	if len(r.Kitchen.RollingBoil) != 1 || r.Kitchen.RollingBoil[0].Brief != "x" {
+		t.Fatalf("rb = %+v", r.Kitchen.RollingBoil)
+	}
+}

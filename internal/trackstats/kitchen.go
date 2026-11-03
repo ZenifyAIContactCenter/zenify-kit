@@ -193,7 +193,7 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 			continue
 		}
 		var b string
-		if it, ok := itemOf[d.ID]; ok && d.ID != "" {
+		if it, ok := itemOf[d.ID]; ok {
 			b = brief(it, false)
 		} else {
 			b = cwdLabel(in.Workspace, d.Cwd)

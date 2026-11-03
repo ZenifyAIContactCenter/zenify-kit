@@ -439,6 +439,41 @@ func TestTrackEndLedgerNoPlan(t *testing.T) {
 	}
 }
 
+func TestTrackEndLedgerPlanWithBareCR(t *testing.T) {
+	last, stderr := endWithLedger(t, "# SDD ledger — plan: /a\rb.md\nTask 1: complete\n")
+	if !strings.HasSuffix(last, " · cancelled · 1 · 0") || !strings.Contains(stderr, "plan path") {
+		t.Fatalf("row=%q stderr=%q", last, stderr)
+	}
+}
+
+func TestTrackEndLedgerEmptyPlanPath(t *testing.T) {
+	for _, body := range []string{"# SDD ledger — plan: \n", "# SDD ledger — plan:\n"} {
+		last, stderr := endWithLedger(t, body)
+		if !strings.HasSuffix(last, " · cancelled · 0 · 0") || !strings.Contains(stderr, "has an empty plan path; end row written without the plan") {
+			t.Fatalf("%q: row=%q stderr=%q", body, last, stderr)
+		}
+	}
+}
+
+func TestReadLiveFilesSkipsVanishedJSON(t *testing.T) {
+	dir := t.TempDir()
+	live := filepath.Join(dir, "live")
+	if err := os.MkdirAll(live, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	// A dangling symlink is listed by the glob but its read fails with ErrNotExist.
+	if err := os.Symlink(filepath.Join(live, "nowhere"), filepath.Join(live, "S.json")); err != nil {
+		t.Skip("symlink:", err)
+	}
+	if err := os.WriteFile(filepath.Join(live, "S.beat"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readLiveFiles(dir, time.Now())
+	if err != nil || len(got) != 0 {
+		t.Fatalf("got %+v err %v", got, err)
+	}
+}
+
 func TestTrackEndLedgerPlanWithSeparator(t *testing.T) {
 	last, stderr := endWithLedger(t, "# SDD ledger — plan: /a · b.md\n")
 	if !strings.HasSuffix(last, " · cancelled · 0 · 0") || !strings.Contains(stderr, "plan path") {
@@ -537,6 +572,17 @@ func TestTrackStatsPRTitleThrottled(t *testing.T) {
 	if len(r.Kitchen.Cooked) != 1 || r.Kitchen.Cooked[0].Brief != "cook r" {
 		t.Fatalf("cooked %+v", r.Kitchen.Cooked)
 	}
+	// Once the stamp is gone the same run asks gh again, exactly once.
+	if err := os.Remove(filepath.Join(dir, "merged.checked")); err != nil {
+		t.Fatal(err)
+	}
+	r = kitchenStats(t, ws)
+	if *calls != 1 {
+		t.Fatalf("pr title asked %d times after the stamp was removed, want 1", *calls)
+	}
+	if len(r.Kitchen.Cooked) != 1 || r.Kitchen.Cooked[0].Brief != "P" {
+		t.Fatalf("cooked %+v", r.Kitchen.Cooked)
+	}
 }
 
 func TestTrackStatsLiveFiles(t *testing.T) {
@@ -574,6 +620,9 @@ func TestTrackStatsPlanTitle(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "docs", "plans", "r", "p.md"), []byte(plan), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(ws, "docs", "plans", "r", "nohead.md"), []byte("no heading here\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	abs := filepath.Join(t.TempDir(), "abs.md")
 	if err := os.WriteFile(abs, []byte("# Bar — Implementation Plan\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -582,6 +631,7 @@ func TestTrackStatsPlanTitle(t *testing.T) {
 		{abs, "Bar"},
 		{"docs/plans/r/p.md", "Foo"},
 		{"docs/plans/r/gone.md", "cook r"},
+		{"docs/plans/r/nohead.md", "cook r"},
 	} {
 		kitchenLog(t, ws, "branch:x", c.plan)
 		r := kitchenStats(t, ws)

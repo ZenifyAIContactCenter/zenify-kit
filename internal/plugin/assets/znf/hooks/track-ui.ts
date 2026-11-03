@@ -138,8 +138,9 @@ const clock = (iso: string) => {
 }
 // How long a tab has waited, rounded down: Ns under a minute, Nm under an hour, else Nh.
 function waited(sinceIso: string, now: number): string {
-  const sec = Math.max(0, Math.floor((now - Date.parse(sinceIso)) / 1000))
-  if (Number.isNaN(sec)) return '—'
+  const raw = (now - Date.parse(sinceIso)) / 1000
+  if (Number.isNaN(raw)) return '—'
+  const sec = Math.max(0, Math.floor(raw))
   return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h`
 }
 const BOIL_STATE = { ask: 'đang hỏi', permission: 'chờ quyền' } as const
