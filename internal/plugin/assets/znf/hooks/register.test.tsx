@@ -43,6 +43,8 @@ type World = {
   writeError?: string
   // Holds the stat of log.md until this resolves (a stats run in flight).
   holdLogStat?: Promise<void>
+  // Holds the answer of a read of this session's live json after its content is taken (a read in flight).
+  holdLiveRead?: Promise<void>
 }
 
 type Calls = {
@@ -154,8 +156,9 @@ function engine(on: any, world: World): Calls {
     if (m === undefined) return { deny: `ENOENT: no such file, stat '${e.path}'` }
     return { value: { kind: e.path === SESSIONS_DIR ? 'directory' : 'file', size: 1, mtimeMs: m, isLink: false } }
   })
-  on('fs.read', (_: unknown, e: { path: string }) => {
+  on('fs.read', async (_: unknown, e: { path: string }) => {
     const text = world.files?.[e.path]
+    if (e.path === LIVE && world.holdLiveRead) await world.holdLiveRead
     if (text === undefined) return { deny: `ENOENT: no such file, open '${e.path}'` }
     return { value: text }
   })
@@ -1262,4 +1265,36 @@ test('a cooking tab whose beat expired drops out on the 10s re-run with no pulse
   expect(statsRuns(calls)).toHaveLength(2)
   await clock.advance(20000)
   expect(statsRuns(calls)).toHaveLength(2)
+})
+
+test('a prompt that lands while the stale-file reset is reading keeps busy; the reset never writes idle over it', async ($, on) => {
+  let release = () => {}
+  const hold = new Promise<void>(r => (release = r))
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'ask', since: 'x', cwd: CWD, id: '' }) }, holdLiveRead: hold })
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.session.start({ cwd: CWD, source: 'resume' } as any)
+  await $.prompt.submit({ text: 'go' })
+  expect(liveDoc(world).state).toBe('busy')
+  release()
+  await clock.settle()
+  expect(liveDoc(world).state).toBe('busy')
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state).at(-1)).toBe('busy')
+})
+
+test('a stale busy file with a fresh beat belongs to a live run and is not touched', async ($, on) => {
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'busy', since: 'x', cwd: CWD, id: '' }) }, mtimes: { [BEAT]: T0 - 5000 } })
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(liveWrites(calls)).toHaveLength(0)
+  expect(liveDoc(world).state).toBe('busy')
+})
+
+test('a stale busy file with a beat older than 30s still becomes idle', async ($, on) => {
+  const world = trackWorld({ files: { [LIVE]: JSON.stringify({ state: 'busy', since: 'x', cwd: CWD, id: '' }) }, mtimes: { [BEAT]: T0 - 31000 } })
+  engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  expect(liveDoc(world).state).toBe('idle')
 })

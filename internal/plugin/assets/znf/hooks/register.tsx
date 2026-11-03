@@ -53,6 +53,10 @@ type LiveState = 'ask' | 'permission' | 'busy' | 'idle'
 let liveState: LiveState | undefined
 // FR-12.1: true from a main-loop turn end until the next prompt; a wait (ask, permission) still wins.
 let isMainIdle = false
+// FR-12.1: a prompt was submitted in this process; kept across session.start (a reload is a new run, a compact is not).
+let promptSeen = false
+// FR-2.4: a live file whose .beat is younger than this belongs to a live run (30s, as the stats' live TTL).
+const LIVE_TTL_MS = 30000
 
 const isMissing = (err: unknown) => /ENOENT/.test(String(err))
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -143,6 +147,17 @@ async function resetStaleLive($: $): Promise<void> {
     throw err
   }
   const state = (JSON.parse(text) as { state?: string }).state
+  const live = `${await workspaceDir($)}/.zenify/track/live/${await $.session.id()}`
+  let beatAt: number | undefined
+  try {
+    beatAt = (await $.fs.stat(`${live}.beat`)).mtimeMs
+  } catch (err) {
+    // No beat: the file is stale, go on.
+    if (!isMissing(err)) throw err
+  }
+  const now = await $.clock.now()
+  // A fresh beat means a live run owns the file; a prompt means this run does. No await below this check.
+  if (promptSeen || (beatAt !== undefined && now - beatAt <= LIVE_TTL_MS)) return
   // FR-12.1: a file left by an earlier run is not working now; idle, so a resumed tab is no ghost in Cooking.
   if (state === 'ask' || state === 'permission' || state === 'busy') {
     isMainIdle = true
@@ -406,6 +421,7 @@ export const register: Register = (on, options: PluginOptions) => {
 
   // FR-6.1/FR-17.4: the feature on, a cook/fix/hotfix/ship prompt opens the pane when trackPane is auto.
   on('prompt.submit', async ($, e, next) => {
+    promptSeen = true
     if (await isEnabled($)) {
       await recordIdle($).catch(timingError($))
       // FR-12.1: a prompt starts work again.
