@@ -2,7 +2,7 @@
 name: fix
 description: Debug and fix a bug. Use when something is broken — auto-fetches logs/stacktrace to ground the diagnosis in real data. Pass a description, a GitHub Actions URL, or nothing (auto-detect recent logs).
 argument-hint: "[description | github-actions-url | empty for auto-log]"
-allowed-tools: Read Grep Glob Bash Agent WebFetch
+allowed-tools: Read Grep Glob Bash Agent WebFetch Write
 ---
 
 **Rigid on diagnosis-first.** Never guess the fix before seeing the real error. Tool names:

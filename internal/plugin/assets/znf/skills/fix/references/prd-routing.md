@@ -16,7 +16,7 @@ a local repro, or a failing CI run is not production evidence.
 ## The rule
 
 Resolve the hotfix base after fetching, then look for the faulty line on it. Write the faulty
-line, trimmed, to a needle file with the Write tool first: source text pasted into shell quotes
+line, trimmed, to a needle file in `$TMPDIR` with the Write tool first: source text pasted into shell quotes
 breaks on its own `'` and is read as a regex by a plain `grep`.
 
 ```bash

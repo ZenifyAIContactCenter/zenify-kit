@@ -68,7 +68,10 @@ only when the faulty commit is an ancestor of the tag before it.
   instead of the original `927b43789` on a real renamed file. Blame returns the last commit that
   touched that exact line, follows whole-file renames, and needs no source text in a shell
   literal: the line number `N` comes from `$REF`'s copy via `grep -nF -f <needle>`. More than one
-  match, or none, means the line cannot be pinned → ask. Blame errors only make `C` later (a
+  match, or none, means the line cannot be pinned → ask; the `case` guard keeps an empty `N`
+  from reaching `blame -L","`, which git reads as the whole file and answers with line 1's
+  commit. Step 9 prints no number when `merge-base` fails (an empty or wrong ref), and no
+  number means ask, never "3 or fewer". Blame errors only make `C` later (a
   reformat counts as a touch), so they only add a question.
 - **What this check cannot see.** An old line that a newer commit elsewhere made reachable keeps
   an old `C`, so step 4 fix-forwards although reverting the last deploy would also end the

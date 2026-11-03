@@ -23,7 +23,7 @@ never skips it. State the path and why in one line (rationale: references).
 
 2. **Fetch first, then resolve and confirm the hotfix base ref** for each affected repo:
    ```bash
-   git -C <repo> fetch origin --tags       # BEFORE resolving the base ref — see below
+   git -C <repo> fetch origin --tags
    REF=$(zenify hotfix baseref <repo>)
    CUR=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | head -1)
    LATEST=$(git -C <repo> tag --list 'v[0-9]*' --sort=-v:refname | head -1)
@@ -56,7 +56,8 @@ never skips it. State the path and why in one line (rationale: references).
    ```bash
    PREV=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | sed -n 2p)
    N=$(git -C <repo> show "$REF:<file>" | grep -nF -f <needle> | cut -d: -f1)
-   C=$(git -C <repo> blame -L"$N,$N" --porcelain "$REF" -- <file> | head -1 | cut -d' ' -f1)
+   C=$(case "$N" in (''|*[!0-9]*) ;; (*) git -C <repo> blame -L"$N,$N" --porcelain "$REF" -- <file> | head -1 | cut -d' ' -f1 ;; esac)
+   printf 'PREV=%s N=%s C=%s\n' "$PREV" "$N" "$C"
    git -C <repo> merge-base --is-ancestor "$C" "$PREV"   # success = bug predates PREV
    ```
    `<needle>`: a file holding the faulty line, trimmed, written with Write — never paste source
@@ -100,9 +101,9 @@ never skips it. State the path and why in one line (rationale: references).
 9. **`/gate`, then `/ship` — both, always.** `/gate` is cheap, read-only, and tells you which
    repos the change reaches. Before `/ship` (nothing is committed yet), count the changed files:
    ```bash
-   { git -C <worktree> diff --name-only "$(git -C <worktree> merge-base "$REF" HEAD)"; git -C <worktree> ls-files --others --exclude-standard; } | sort -u | wc -l
+   B=$(git -C <worktree> merge-base <ref> HEAD) && { git -C <worktree> diff --name-only "$B"; git -C <worktree> ls-files --others --exclude-standard; } | sort -u | wc -l
    ```
-   Over 3, or `/gate` reports a shared collection, inter-service HTTP, pub/sub or queue → ask,
+   `<ref>` = step 2's printed ref. No number printed, over 3, or `/gate` reports a shared collection, inter-service HTTP, pub/sub or queue → ask,
    recommending revert, and wait; never run `/cook` on a hotfix base. **Then `/ship`,
    unconditionally** — urgency is no exemption (references).
 

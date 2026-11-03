@@ -17,9 +17,10 @@ const (
 	cmdLatest   = `LATEST=$(git -C <repo> tag --list 'v[0-9]*' --sort=-v:refname | head -1)`
 	cmdPrev     = `PREV=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | sed -n 2p)`
 	cmdLineNo   = `N=$(git -C <repo> show "$REF:<file>" | grep -nF -f <needle> | cut -d: -f1)`
-	cmdBlame    = `C=$(git -C <repo> blame -L"$N,$N" --porcelain "$REF" -- <file> | head -1 | cut -d' ' -f1)`
+	cmdBlame    = `C=$(case "$N" in (''|*[!0-9]*) ;; (*) git -C <repo> blame -L"$N,$N" --porcelain "$REF" -- <file> | head -1 | cut -d' ' -f1 ;; esac)`
+	cmdPrint4   = `printf 'PREV=%s N=%s C=%s\n' "$PREV" "$N" "$C"`
 	cmdAncestor = `git -C <repo> merge-base --is-ancestor "$C" "$PREV"`
-	cmdSize     = `{ git -C <worktree> diff --name-only "$(git -C <worktree> merge-base "$REF" HEAD)"; git -C <worktree> ls-files --others --exclude-standard; } | sort -u | wc -l`
+	cmdSize     = `B=$(git -C <worktree> merge-base <ref> HEAD) && { git -C <worktree> diff --name-only "$B"; git -C <worktree> ls-files --others --exclude-standard; } | sort -u | wc -l`
 	cmdOnBase   = `git -C <repo> cat-file -e "$REF:<file>" || echo PATH_MISSING`
 	cmdGrepBase = `git -C <repo> show "$REF:<file>" | grep -nF -f <needle>`
 )
@@ -31,7 +32,7 @@ func TestHotfixSkill_AutoRoute(t *testing.T) {
 		t.Error("hotfix must be model-invocable (FR-2)")
 	}
 	assertContainsAll(t, "hotfix/SKILL.md", s, []string{
-		cmdCur, cmdLatest, cmdPrev, cmdLineNo, cmdBlame, cmdAncestor, cmdSize, "Over 3",
+		cmdCur, cmdLatest, cmdPrev, cmdLineNo, cmdBlame, cmdPrint4, cmdAncestor, cmdSize, "No number printed, over 3",
 		"git -C <repo> fetch origin --tags", "git -C <repo> tag --contains", "the repo's `baseRef`",
 		"handed off from `/fix`", "first word after the skill name",
 		"Decide the response",
@@ -113,8 +114,10 @@ func runSkillScript(t *testing.T, script string) (map[string]string, string) {
 	}
 	kv := map[string]string{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok {
-			kv[k] = v
+		for _, f := range strings.Fields(line) {
+			if k, v, ok := strings.Cut(f, "="); ok {
+				kv[k] = v
+			}
 		}
 	}
 	return kv, string(out)
@@ -265,6 +268,21 @@ func TestHotfixTagCommands(t *testing.T) {
 			wantDecision: "fix forward",
 		},
 		{
+			// The file is on $REF but the needle matches nothing: N is empty and
+			// must not reach blame -L"," (git reads that as the whole file).
+			name:   "needle-no-match",
+			needle: "NOT IN FILE\n",
+			build: func(g func(...string)) {
+				commit(g, "bug.txt", "BUGLINE\n", "bug")
+				g("tag", "v260101.0")
+				commit(g, "b.txt", "2\n", "b")
+				g("tag", "v260201.0")
+			},
+			want:         result{cur: "v260201.0", latest: "v260201.0", prev: "v260101.0"},
+			wantCEmpty:   true,
+			wantDecision: "ask",
+		},
+		{
 			name: "faulty-file-absent",
 			file: "gone.txt",
 			build: func(g func(...string)) {
@@ -297,8 +315,8 @@ func TestHotfixTagCommands(t *testing.T) {
 			}
 			sub := strings.NewReplacer("<repo>", dir, "<needle>", needleFile, "<file>", file).Replace
 			script := "REF=main\n" + sub(cmdCur) + "\n" + sub(cmdLatest) + "\n" + sub(cmdPrev) + "\n" +
-				sub(cmdLineNo) + "\n" + sub(cmdBlame) + " 2>/dev/null\n" +
-				`printf 'CUR=%s\nLATEST=%s\nPREV=%s\nC=%s\n' "$CUR" "$LATEST" "$PREV" "$C"` + "\n" +
+				sub(cmdLineNo) + " 2>/dev/null\n" + sub(cmdBlame) + " 2>/dev/null\n" +
+				`printf 'CUR=%s\nLATEST=%s\n' "$CUR" "$LATEST"` + "\n" + sub(cmdPrint4) + "\n" +
 				sub(cmdAncestor) + " 2>/dev/null && echo ANCESTOR=ok || echo ANCESTOR=fail\n"
 			kv, out := runSkillScript(t, script)
 			got := result{cur: kv["CUR"], latest: kv["LATEST"], prev: kv["PREV"], c: kv["C"], ancestorOK: kv["ANCESTOR"] == "ok"}
@@ -334,10 +352,16 @@ func TestHotfixSizeCount(t *testing.T) {
 	g("__write", "b.txt", "1\n")
 	g("__write", "c.txt", "1\n")
 	g("__write", "new_test.txt", "1\n")
-	script := "REF=main\nprintf 'COUNT=%s\n' \"$(" + strings.ReplaceAll(cmdSize, "<worktree>", dir) + ")\"\n"
-	kv, out := runSkillScript(t, script)
-	if strings.TrimSpace(kv["COUNT"]) != "4" {
-		t.Fatalf("count = %q, want 4 (a committed, b+c modified, new_test untracked; d is upstream)\n%s", kv["COUNT"], out)
+	for _, tc := range []struct{ ref, want string }{
+		{"main", "4"}, // a committed, b+c modified, new_test untracked; d is upstream
+		{"", ""},      // empty ref: merge-base fails, no number printed -> the skill asks
+		{"nope", ""},
+	} {
+		cmd := strings.NewReplacer("<worktree>", dir, "<ref>", "'"+tc.ref+"'").Replace(cmdSize)
+		_, out := runSkillScript(t, "{ "+cmd+"; } 2>/dev/null || true\n")
+		if got := strings.TrimSpace(out); got != tc.want {
+			t.Errorf("ref %q: count = %q, want %q", tc.ref, got, tc.want)
+		}
 	}
 }
 
