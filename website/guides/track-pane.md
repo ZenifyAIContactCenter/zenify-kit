@@ -43,7 +43,7 @@ Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Hôm nay` luôn hiệ
 | **Chất lượng** | Với mỗi loại: tỉ lệ ship bị chặn và bước chặn nhiều nhất, finding C/H/M/L trung bình, số vòng fix loop, tỉ lệ CI đỏ lần đầu, tỉ lệ thời gian chờ, token trung bình theo model; với fix/hotfix thêm ROUND trung bình, tỉ lệ sửa diện rộng và tỉ lệ có regression test |
 | **Backlog** | Việc chưa làm, nhóm theo nguồn: `manual`, `github`, `sdd`, `stale`. Mỗi dòng `repo · est · title · <số ngày>d`. Backlog rỗng hiện `Backlog trống`; lấy issue GitHub lỗi thì có dòng `⚠ github: <nguyên nhân>` |
 
-Dưới mọi tab là thang S/M/L hiện hành (lấy từ lịch sử của workspace; nguồn thang `learned`, `history` hoặc `default` hiện cạnh số việc) và các quy tắc hiệu chỉnh, ví dụ gợi ý tăng hoặc giảm est một size.
+Dưới mọi tab là thang S/M/L hiện hành (đo bằng wall time; nguồn thang `learned` hoặc `default` hiện cạnh số việc) và các quy tắc hiệu chỉnh, ví dụ gợi ý tăng hoặc giảm est một size.
 
 ## Kitchen đồng bộ thế nào
 
@@ -111,7 +111,7 @@ zenify track onboard history --write --since 2026-09-01
 - `onboard memory` đánh dấu workspace đã onboard từ memory của agent.
 - `onboard history` quét transcript Claude Code (`~/.claude/projects`), gom theo repo và worktree rồi in bảng xem trước. Thêm `--write` mới ghi dòng `history` vào sổ; chạy lại không tạo dòng trùng. `--since YYYY-MM-DD` giới hạn từ ngày đó.
 
-Khi có đủ việc (thật cộng `history`), thang S/M/L chuyển nguồn sang `history`, rồi `learned` khi có từ 20 việc thật đã đo. Dòng `history` chỉ góp vào thang và token trung bình, không vào Estimate, luật hiệu chỉnh hay số hôm nay.
+Thang mặc định là S<15m, M<45m, L<120m. Từ 20 việc thật đã xong có est, thang chuyển sang `learned` theo wall time. Dòng `history` không góp vào thang, Estimate, chất lượng hay số hôm nay.
 
 Xem [`zenify track`](/reference/cli/zenify_track), trong đó `stats --force` bỏ qua cache backlog.
 
