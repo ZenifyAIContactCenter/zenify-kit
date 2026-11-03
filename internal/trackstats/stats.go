@@ -161,6 +161,8 @@ type Input struct {
 	Live []LiveFile
 	// PlanTitle returns the title of the plan at path, "" and nil when the file is gone.
 	PlanTitle func(path string) (string, error)
+	// TabTitle returns the Claude Code tab name of a session, "" and nil when it has none.
+	TabTitle func(session string) (string, error)
 	// PRTitle returns the title of the pull request at url; nil skips gh this run.
 	PRTitle func(url string) (string, error)
 	// PRTitles caches PR titles by url; Compute adds the titles it fetches.

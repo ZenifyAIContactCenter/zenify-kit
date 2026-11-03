@@ -390,6 +390,26 @@ func TestKitchenCookedSkipsStaleAndBeforeMidnight(t *testing.T) {
 	}
 }
 
+func TestKitchenBoilTab(t *testing.T) {
+	in := kInput("")
+	s := kAt(9, 58).Format(time.RFC3339)
+	in.Live = []LiveFile{lf("A", liveJSON("ask", s, "/ws/repos/x", ""), kNow), lf("B", liveJSON("ask", s, "/ws/repos/y", ""), kNow)}
+	in.TabTitle = func(sess string) (string, error) {
+		if sess == "B" {
+			return "", errors.New("boom")
+		}
+		return "Tab " + sess, nil
+	}
+	r, _ := Compute(in)
+	got := map[string]string{}
+	for _, b := range r.Kitchen.RollingBoil {
+		got[b.Session] = b.Tab
+	}
+	if got["A"] != "Tab A" || got["B"] != "" || r.Kitchen.TitleError != "tab title B: boom" {
+		t.Fatalf("tabs = %v titleError = %q", got, r.Kitchen.TitleError)
+	}
+}
+
 func TestKitchenBoilEmptyIDDoesNotMatchAnItem(t *testing.T) {
 	in := kInput("")
 	in.Live = []LiveFile{lf("1", liveJSON("ask", kAt(9, 58).Format(time.RFC3339), "/ws/repos/x", ""), kNow)}

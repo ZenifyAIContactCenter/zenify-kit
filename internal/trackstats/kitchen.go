@@ -47,6 +47,7 @@ type CookedItem struct {
 
 type BoilItem struct {
 	Session string `json:"session"`
+	Tab     string `json:"tab"`
 	Brief   string `json:"brief"`
 	State   string `json:"state"`
 	Since   string `json:"since"`
@@ -198,7 +199,14 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		} else {
 			b = cwdLabel(in.Workspace, d.Cwd)
 		}
-		waiting = append(waiting, boil{since, BoilItem{Session: lf.Session, Brief: b, State: d.State, Since: d.Since}})
+		var tab string
+		if in.TabTitle != nil {
+			var terr error
+			if tab, terr = in.TabTitle(lf.Session); terr != nil {
+				fail(fmt.Errorf("tab title %s: %w", lf.Session, terr))
+			}
+		}
+		waiting = append(waiting, boil{since, BoilItem{Session: lf.Session, Tab: tab, Brief: b, State: d.State, Since: d.Since}})
 	}
 	sort.SliceStable(waiting, func(i, j int) bool { return waiting[i].at.Before(waiting[j].at) })
 	for _, w := range waiting {

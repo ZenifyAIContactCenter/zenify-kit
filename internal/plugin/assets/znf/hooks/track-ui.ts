@@ -55,7 +55,7 @@ export function parseTrackStats(stdout: string): TrackStats {
     titleError: '',
     ...data.kitchen,
     cooked: data.kitchen?.cooked ?? [],
-    rollingBoil: data.kitchen?.rollingBoil ?? [],
+    rollingBoil: (data.kitchen?.rollingBoil ?? []).map(b => ({ ...b, tab: b.tab ?? '' })),
   }
   return { ...data, rules: data.rules ?? [], running: data.running ?? [], backlog, kitchen } as TrackStats
 }
@@ -158,7 +158,10 @@ function kitchenLines(s: TrackStats, now: number): Line[] {
   }
   lines.push(plain(''), head('Rolling boil'))
   if (boil.length === 0) lines.push(dim('không tab nào đang chờ'))
-  for (const b of boil) lines.push(plain(`- ${[b.brief, BOIL_STATE[b.state], waited(b.since, now)].join(SEP)}`))
+  for (const b of boil) {
+    lines.push(plain(`- ${[b.tab || b.brief, BOIL_STATE[b.state], waited(b.since, now)].join(SEP)}`))
+    lines.push(dim(`    ${b.brief}${SEP}session ${b.session.slice(0, 8)}`))
+  }
   if (k?.titleError) lines.push(warn(`⚠ title lỗi: ${k.titleError}`))
   return lines
 }

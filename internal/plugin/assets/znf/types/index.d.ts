@@ -34,7 +34,7 @@ export type BacklogItem = {
 // One item that ended today, workspace-wide (Go `trackstats.CookedItem`).
 export type KitchenCooked = { id: string; brief: string; status: TrackItem['status']; endedAt: string; prs: string[] | null }
 // One live tab waiting for a person (Go `trackstats.BoilItem`).
-export type KitchenBoil = { session: string; brief: string; state: 'ask' | 'permission'; since: string }
+export type KitchenBoil = { session: string; tab: string; brief: string; state: 'ask' | 'permission'; since: string }
 
 export type TrackStats = {
   enabled: boolean

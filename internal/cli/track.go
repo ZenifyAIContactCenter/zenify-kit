@@ -570,6 +570,7 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		Sessions:  map[string]string{},
 		Workspace: wsDir,
 		PlanTitle: func(p string) (string, error) { return readPlanTitle(wsDir, p) },
+		TabTitle:  readTabTitle,
 	}
 	in.Live, err = readLiveFiles(dir, now)
 	if err != nil {
