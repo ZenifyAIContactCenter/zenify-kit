@@ -281,11 +281,7 @@ func runTrackStart(errW io.Writer, logPath, kind, repo, est, from string) (strin
 		if err != nil {
 			return "", err
 		}
-		defer func() {
-			if err := unlock(); err != nil {
-				fmt.Fprintf(errW, "track: remove %s: %v\n", filepath.Join(filepath.Dir(logPath), "log.lock"), err)
-			}
-		}()
+		defer releaseTrackLock(errW, logPath, unlock)
 		if err := checkStartFrom(logPath, from); err != nil {
 			return "", err
 		}
@@ -304,6 +300,13 @@ func runTrackStart(errW io.Writer, logPath, kind, repo, est, from string) (strin
 	return id, nil
 }
 
+// releaseTrackLock releases the log lock and warns on stderr when it cannot.
+func releaseTrackLock(errW io.Writer, logPath string, unlock func() error) {
+	if err := unlock(); err != nil {
+		fmt.Fprintf(errW, "track: remove %s: %v\n", filepath.Join(filepath.Dir(logPath), "log.lock"), err)
+	}
+}
+
 // Package vars so tests can shrink them; production values are the defaults.
 var (
 	trackLockTimeout = 2 * time.Second
@@ -320,14 +323,33 @@ func lockTrackLog(logPath string) (func() error, error) {
 		return nil, exitcode.New(exitcode.Fail, err)
 	}
 	lock := filepath.Join(filepath.Dir(logPath), "log.lock")
+	tok := make([]byte, 16)
+	if _, err := rand.Read(tok); err != nil {
+		return nil, exitcode.New(exitcode.Fail, err)
+	}
+	token := hex.EncodeToString(tok)
 	deadline := time.Now().Add(trackLockTimeout)
 	for {
 		f, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- computed from the resolved workspace
 		if err == nil {
+			if _, err := f.WriteString(token); err != nil {
+				_ = f.Close()
+				return nil, exitcode.New(exitcode.Fail, err)
+			}
 			if err := f.Close(); err != nil {
 				return nil, exitcode.New(exitcode.Fail, err)
 			}
 			return func() error {
+				got, err := os.ReadFile(lock) //nolint:gosec // G304 -- computed from the resolved workspace
+				if errors.Is(err, os.ErrNotExist) {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+				if string(got) != token {
+					return nil // reaped as stale and taken by another holder: not ours to remove
+				}
 				if err := os.Remove(lock); err != nil && !errors.Is(err, os.ErrNotExist) {
 					return err
 				}
@@ -343,6 +365,7 @@ func lockTrackLog(logPath string) (func() error, error) {
 		case err != nil:
 			return nil, exitcode.New(exitcode.Fail, err)
 		case time.Since(fi.ModTime()) > trackLockStale:
+			// Accepted race: another reaper may replace the lock between Stat and Remove (milliseconds; worst case a duplicate take).
 			if err := os.Remove(lock); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return nil, exitcode.New(exitcode.Fail, err)
 			}

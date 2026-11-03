@@ -633,7 +633,7 @@ func TestTrackStart_StaleLock(t *testing.T) {
 	}
 }
 
-// A failed lock release is reported, not swallowed.
+// A failed lock release is reported on the command's err writer, not swallowed.
 func TestTrackStart_ReleaseErrorWarns(t *testing.T) {
 	ws := trackWS(t, true)
 	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
@@ -642,15 +642,39 @@ func TestTrackStart_ReleaseErrorWarns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Replace the lock file with a non-empty directory so Remove fails with a non-ENOENT error.
+	// Replace the lock file with a directory so the release fails with a non-ENOENT error.
 	if err := os.Remove(lock); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(lock, "x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := unlock(); err == nil {
-		t.Fatal("release must report a removal failure")
+	var errW strings.Builder
+	releaseTrackLock(&errW, logPath, unlock)
+	if !strings.HasPrefix(errW.String(), "track: remove "+lock+":") {
+		t.Fatalf("warning = %q", errW.String())
+	}
+}
+
+// A holder reaped as stale must not delete the lock the next holder took.
+func TestTrackLock_ReleaseKeepsForeignLock(t *testing.T) {
+	ws := trackWS(t, true)
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	lock := filepath.Join(filepath.Dir(logPath), "log.lock")
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lock, []byte("another-holder"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var errW strings.Builder
+	releaseTrackLock(&errW, logPath, unlock)
+	if errW.Len() != 0 {
+		t.Fatalf("unexpected warning %q", errW.String())
+	}
+	if b, err := os.ReadFile(lock); err != nil || string(b) != "another-holder" {
+		t.Fatalf("foreign lock lost: %q %v", b, err)
 	}
 }
 
@@ -664,5 +688,10 @@ func TestTrackStart_FromSDDRejectsSeparators(t *testing.T) {
 	}
 	if trackLog(t, ws) != "" {
 		t.Fatalf("log changed: %q", trackLog(t, ws))
+	}
+	// A trailing CR fails trackSDDRe ($ matches only at the very end), so the grammar error comes out.
+	_, err := startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:12\r")
+	if err == nil || !strings.Contains(err.Error(), "--from must be a backlog id, an SDD id or an http URL") {
+		t.Fatalf("CR: err = %v", err)
 	}
 }
