@@ -176,19 +176,19 @@ const kitchenStats = (over: Partial<TrackStats['kitchen']> = {}) =>
     },
   })
 
-test('SC-8: Kitchen lists Cooked then Rolling boil, identical for any session', () => {
+test('SC-8: Kitchen lists Rolling boil then Cooked, identical for any session', () => {
   const s = kitchenStats()
   const mine = tabLines('kitchen', s, A, undefined, NOW)
   expect(tabLines('kitchen', s, B, 'cook-261030-0b0b', NOW)).toEqual(mine)
   expect(mine.slice(3, 11)).toEqual([
+    { text: '🔥 Rolling boil', tone: 'bold' },
+    { text: '- 🔐 2m Dev track pane ship' },
+    { text: `    needs permission · zenify-kit/x · session ${B.slice(0, 8)}`, tone: 'dim' },
+    { text: '' },
     { text: '🍳 Cooked', tone: 'bold' },
     { text: '- ✅ 03:05 Kitchen pane' },
     { text: '  🔗 ', href: 'https://github.com/o/r/pull/1', label: 'r#1' },
     { text: '  🔗 ', href: 'https://github.com/o/r/pull/2', label: 'r#2' },
-    { text: '' },
-    { text: '🔥 Rolling boil', tone: 'bold' },
-    { text: '- 🔐 2m Dev track pane ship' },
-    { text: `    needs permission · zenify-kit/x · session ${B.slice(0, 8)}`, tone: 'dim' },
   ])
   expect(mine).toHaveLength(11)
 })
@@ -236,7 +236,7 @@ test('FR-12.3: Cooking lines carry the time, tab or brief, kind and phase, then 
   expect(lines[3]?.text).toBe(`- ${frameAt(NOW, 1)} 12m zenify-kit/x`)
   expect(lines[4]).toEqual({ text: `    ${A.slice(0, 8)}`, tone: 'dim' })
   expect(lines[5]).toEqual({ text: '' })
-  expect(lines[6]).toEqual({ text: '🍳 Cooked', tone: 'bold' })
+  expect(lines[6]).toEqual({ text: '🔥 Rolling boil', tone: 'bold' })
 })
 
 test('parseTrackStats defaults cooking to an empty list', () => {
@@ -249,7 +249,8 @@ test('FR-4.2: every cooked status has its icon', () => {
   const at = COOKED_AT.toISOString()
   const cooked = (['done', 'pushed', 'cancelled', 'rollback'] as const).map(status => ({ id: X, brief: 'b', status, endedAt: at, prs: null }))
   const lines = texts(tabLines('kitchen', kitchenStats({ cooked }), A, undefined, NOW))
-  expect(lines.filter(l => l.startsWith('- ')).slice(0, 4).map(l => l.split(' ')[1])).toEqual(['✅', '🚀', '⛔', '↩️'])
+  const cookedLines = lines.slice(lines.indexOf('🍳 Cooked'))
+  expect(cookedLines.filter(l => l.startsWith('- ')).slice(0, 4).map(l => l.split(' ')[1])).toEqual(['✅', '🚀', '⛔', '↩️'])
 })
 
 test('FR-4.2: prLabel is <repo>#<n>, or the URL when it does not parse', () => {
@@ -263,11 +264,11 @@ test('FR-4.3: empty Kitchen sections say so; ask reads asking', () => {
     { text: '🥘 Cooking', tone: 'bold' },
     { text: 'no tab is cooking', tone: 'dim' },
     { text: '' },
-    { text: '🍳 Cooked', tone: 'bold' },
-    { text: 'nothing finished today', tone: 'dim' },
-    { text: '' },
     { text: '🔥 Rolling boil', tone: 'bold' },
     { text: 'no tab is waiting', tone: 'dim' },
+    { text: '' },
+    { text: '🍳 Cooked', tone: 'bold' },
+    { text: 'nothing finished today', tone: 'dim' },
   ])
   const ask = kitchenStats({ rollingBoil: [{ session: B, tab: '', brief: 'b', state: 'ask', since: new Date(NOW - 45_000).toISOString() }] })
   expect(texts(tabLines('kitchen', ask, A, undefined, NOW))).toContain('- ❓ 45s b')
@@ -568,13 +569,14 @@ test('FR-11.3: Kitchen opens with Carried over: the last day, then each unfinish
     '🥘 Cooking',
     'no tab is cooking',
   ])
-  expect(t.indexOf('🍳 Cooked')).toBe(10)
+  expect(t.indexOf('🔥 Rolling boil')).toBe(10)
+  expect(t.indexOf('🍳 Cooked')).toBeGreaterThan(t.indexOf('🔥 Rolling boil'))
 })
 
 test('FR-11.3: nothing carried and no last day means no section and no blank line', () => {
   const t = texts(tabLines('kitchen', stats(), A, undefined, NOW))
   expect(t[0]).toBe('🥘 Cooking')
-  expect(t[3]).toBe('🍳 Cooked')
+  expect(t[3]).toBe('🔥 Rolling boil')
 })
 
 test('FR-7.3: null CI rate and null wait share still say no CI runs recorded; all-zero hides', () => {

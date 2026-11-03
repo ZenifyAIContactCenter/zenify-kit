@@ -258,19 +258,20 @@ function kitchenLines(s: TrackStats, now: number): Line[] {
   const k = s.kitchen
   const cooked = k?.cooked ?? []
   const boil = k?.rollingBoil ?? []
-  const lines: Line[] = [...carriedLines(s, now), ...cookingLines(s, now), head(`${ICON.cooked} Cooked`)]
+  // Order: what is left, what runs, what waits on you, then what is done.
+  const lines: Line[] = [...carriedLines(s, now), ...cookingLines(s, now), head(`${ICON.boil} Rolling boil`)]
+  if (boil.length === 0) lines.push(dim('no tab is waiting'))
+  for (const b of boil) {
+    lines.push(plain(`- ${ICON.state[b.state]} ${waited(b.since, now)} ${b.tab || b.brief}`))
+    lines.push(dim(`    ${BOIL_STATE[b.state]}${SEP}${b.brief}${SEP}session ${b.session.slice(0, 8)}`))
+  }
+  lines.push(plain(''), head(`${ICON.cooked} Cooked`))
   if (cooked.length === 0) lines.push(dim('nothing finished today'))
   for (const c of cooked) {
     const icon = ICON.status[c.status]
     // The icon shows the status and the time comes first, so a long brief is cut at its end only.
     lines.push(plain(`- ${icon ? `${icon} ` : ''}${clock(c.endedAt)} ${c.brief}`))
     for (const pr of c.prs ?? []) lines.push({ text: `  ${ICON.pr} `, href: pr, label: prLabel(pr) })
-  }
-  lines.push(plain(''), head(`${ICON.boil} Rolling boil`))
-  if (boil.length === 0) lines.push(dim('no tab is waiting'))
-  for (const b of boil) {
-    lines.push(plain(`- ${ICON.state[b.state]} ${waited(b.since, now)} ${b.tab || b.brief}`))
-    lines.push(dim(`    ${BOIL_STATE[b.state]}${SEP}${b.brief}${SEP}session ${b.session.slice(0, 8)}`))
   }
   if (k?.titleError) lines.push(warn(`⚠ title error: ${k.titleError}`))
   return lines
