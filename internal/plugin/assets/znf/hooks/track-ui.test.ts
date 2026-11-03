@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { BacklogItem, TrackItem, TrackStats } from '../types'
-import { STATUS_OFF, TABS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, ruleText, statusText, tabLines } from './track-ui'
+import { STATUS_OFF, TABS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, prLabel, ruleText, statusText, tabLines } from './track-ui'
 
 const A = 'aaaaaaaa-1111-2222-3333-444444444444'
 const B = 'bbbbbbbb-5555-6666-7777-888888888888'
@@ -176,14 +176,14 @@ test('SC-8: Kitchen lists Cooked then Rolling boil, identical for any session', 
   const mine = tabLines('kitchen', s, A, undefined, NOW)
   expect(tabLines('kitchen', s, B, 'cook-261030-0b0b', NOW)).toEqual(mine)
   expect(mine.slice(0, 8)).toEqual([
-    { text: '🍽 Cooked', tone: 'bold' },
-    { text: '- ✅ Kitchen pane · done · 03:05' },
-    { text: '  🔗 https://github.com/o/r/pull/1' },
-    { text: '  🔗 https://github.com/o/r/pull/2' },
+    { text: '🍳 Cooked', tone: 'bold' },
+    { text: '- ✅ 03:05 Kitchen pane' },
+    { text: '  🔗 ', href: 'https://github.com/o/r/pull/1', label: 'r#1' },
+    { text: '  🔗 ', href: 'https://github.com/o/r/pull/2', label: 'r#2' },
     { text: '' },
     { text: '🔥 Rolling boil', tone: 'bold' },
-    { text: '- 🔐 Dev track pane ship · chờ quyền · 2m' },
-    { text: `    zenify-kit/x · session ${B.slice(0, 8)}`, tone: 'dim' },
+    { text: '- 🔐 2m Dev track pane ship' },
+    { text: `    chờ quyền · zenify-kit/x · session ${B.slice(0, 8)}`, tone: 'dim' },
   ])
   expect(mine[8]?.text.startsWith('thang (')).toBe(true)
 })
@@ -191,8 +191,8 @@ test('SC-8: Kitchen lists Cooked then Rolling boil, identical for any session', 
 test('FR-4.2: an empty tab falls back to the brief, and parseTrackStats defaults tab to empty', () => {
   const s = kitchenStats({ rollingBoil: [{ session: B, tab: '', brief: 'b', state: 'ask', since: new Date(NOW - 45_000).toISOString() }] })
   const lines = tabLines('kitchen', s, A, undefined, NOW)
-  expect(texts(lines)).toContain('- ❓ b · đang hỏi · 45s')
-  expect(lines.find(l => l.text.startsWith('    b'))).toEqual({ text: `    b · session ${B.slice(0, 8)}`, tone: 'dim' })
+  expect(texts(lines)).toContain('- ❓ 45s b')
+  expect(lines.find(l => l.text.startsWith('    đang hỏi · b'))).toEqual({ text: `    đang hỏi · b · session ${B.slice(0, 8)}`, tone: 'dim' })
   const raw = { ...stats(), kitchen: { cooked: [], rollingBoil: [{ session: B, brief: 'b', state: 'ask', since: 'x' }], titleError: '' } }
   expect(parseTrackStats(JSON.stringify(raw)).kitchen.rollingBoil?.[0]?.tab).toBe('')
 })
@@ -204,25 +204,30 @@ test('FR-4.2: every cooked status has its icon', () => {
   expect(lines.filter(l => l.startsWith('- ')).slice(0, 4).map(l => l.split(' ')[1])).toEqual(['✅', '🚀', '⛔', '↩️'])
 })
 
+test('FR-4.2: prLabel is <repo>#<n>, or the URL when it does not parse', () => {
+  expect(prLabel('https://github.com/ZenifyAIContactCenter/contact-center-hub/pull/1123')).toBe('contact-center-hub#1123')
+  expect(prLabel('https://example.com/x')).toBe('https://example.com/x')
+})
+
 test('FR-4.3: empty Kitchen sections say so; ask reads đang hỏi', () => {
   const empty = tabLines('kitchen', stats(), A, undefined, NOW)
   expect(empty.slice(0, 5)).toEqual([
-    { text: '🍽 Cooked', tone: 'bold' },
+    { text: '🍳 Cooked', tone: 'bold' },
     { text: 'chưa có việc xong hôm nay', tone: 'dim' },
     { text: '' },
     { text: '🔥 Rolling boil', tone: 'bold' },
     { text: 'không tab nào đang chờ', tone: 'dim' },
   ])
   const ask = kitchenStats({ rollingBoil: [{ session: B, tab: '', brief: 'b', state: 'ask', since: new Date(NOW - 45_000).toISOString() }] })
-  expect(texts(tabLines('kitchen', ask, A, undefined, NOW))).toContain('- ❓ b · đang hỏi · 45s')
+  expect(texts(tabLines('kitchen', ask, A, undefined, NOW))).toContain('- ❓ 45s b')
 })
 
 test('FR-5.1: waiting time rounds down to s, m or h', () => {
   const wait = (ms: number) =>
     texts(tabLines('kitchen', kitchenStats({ rollingBoil: [{ session: B, tab: '', brief: 'b', state: 'ask', since: new Date(NOW - ms).toISOString() }] }), A, undefined, NOW))
-  expect(wait(59_000)).toContain('- ❓ b · đang hỏi · 59s')
-  expect(wait(60_000)).toContain('- ❓ b · đang hỏi · 1m')
-  expect(wait(125 * 60_000)).toContain('- ❓ b · đang hỏi · 2h')
+  expect(wait(59_000)).toContain('- ❓ 59s b')
+  expect(wait(60_000)).toContain('- ❓ 1m b')
+  expect(wait(125 * 60_000)).toContain('- ❓ 2h b')
 })
 
 test('FR-4.2: a title error is a warn line', () => {

@@ -1121,6 +1121,21 @@ test('a failed live write is toasted and the tool still answers', async ($, on) 
   expect(calls.toast.every(t => t.startsWith('lỗi đo thời gian: ') && t.includes('EACCES: permission denied'))).toBe(true)
 })
 
+test('FR-4.2: a PR line is a Link with the full href and the short label', async ($, on) => {
+  const url = 'https://github.com/ZenifyAIContactCenter/contact-center-hub/pull/1123'
+  const world: World = { stats: ok(statsJson({ kitchen: { cooked: [{ id: 'c1', brief: 'b', status: 'done', endedAt: '2026-11-02T03:05:00Z', prs: [url] }], rollingBoil: [], titleError: '' } })) }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const ui = await mountTab($)
+  const links = (await ui.findAll({ type: 'Link' })) as any[]
+  expect(links).toHaveLength(1)
+  expect(links[0].props.href).toBe(url)
+  expect(links[0].props.label).toBe('contact-center-hub#1123')
+})
+
 test('SC-9: every pane content Text truncates at the pane width', async ($, on) => {
   const world: World = { stats: ok(statsJson({ running: [item()], kitchen: { cooked: [{ id: 'c1', brief: 'x'.repeat(300), status: 'done', endedAt: '2026-11-02T03:05:00Z', prs: null }], rollingBoil: [], titleError: '' } })) }
   engine(on, world)

@@ -482,12 +482,14 @@ export const register: Register = (on, options: PluginOptions) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE.id }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Link, Text } = $.ui.resolve(e)
     const selected = await read($, tab)
     const st = await read($, stats)
+    // A link line is a real OSC 8 hyperlink: the label is short, so truncation never cuts the href.
     const line = (l: Line) => (
       <Text wrap="truncate-end" {...(l.tone ? TONES[l.tone] : {})}>
         {l.text}
+        {l.href && <Link href={l.href} label={l.label} />}
       </Text>
     )
     // FR-6.4: an error or the feature off is said in the pane, never an empty body.

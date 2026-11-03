@@ -4,7 +4,8 @@
 import type { TrackItem, TrackStats, TrackTab } from '../types'
 
 export type Tab = TrackTab
-export type Line = { text: string; tone?: 'dim' | 'bold' | 'warn' | 'error' }
+// A line with `href` is a link: `text` is what stands before it, `label` the clickable text.
+export type Line = { text: string; tone?: 'dim' | 'bold' | 'warn' | 'error'; href?: string; label?: string }
 
 export const STATUS_OFF = '⏸ track off · bật: /config → znf'
 // The pane's own messages: command replies, the loading line and the toast prefix.
@@ -145,12 +146,17 @@ function waited(sinceIso: string, now: number): string {
 }
 // The Kitchen tab's icons in one place, so the later English/copy switch touches one spot.
 const KITCHEN_ICON = {
-  cooked: '🍽',
+  cooked: '🍳',
   boil: '🔥',
   pr: '🔗',
   status: { done: '✅', pushed: '🚀', cancelled: '⛔', rollback: '↩️' } as Partial<Record<TrackItem['status'], string>>,
   state: { ask: '❓', permission: '🔐' },
 } as const
+// `<repo>#<n>` of https://github.com/<owner>/<repo>/pull/<n>; the URL itself when it does not parse.
+export const prLabel = (url: string): string => {
+  const m = /^https:\/\/github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/.exec(url)
+  return m ? `${m[1]}#${m[2]}` : url
+}
 const BOIL_STATE = { ask: 'đang hỏi', permission: 'chờ quyền' } as const
 
 // FR-4: the Kitchen tab — the same for every session: what was cooked today, what waits on a person.
@@ -162,14 +168,15 @@ function kitchenLines(s: TrackStats, now: number): Line[] {
   if (cooked.length === 0) lines.push(dim('chưa có việc xong hôm nay'))
   for (const c of cooked) {
     const icon = KITCHEN_ICON.status[c.status]
-    lines.push(plain(`- ${icon ? `${icon} ` : ''}${[c.brief, c.status, clock(c.endedAt)].join(SEP)}`))
-    for (const pr of c.prs ?? []) lines.push(plain(`  ${KITCHEN_ICON.pr} ${pr}`))
+    // The icon shows the status and the time comes first, so a long brief is cut at its end only.
+    lines.push(plain(`- ${icon ? `${icon} ` : ''}${clock(c.endedAt)} ${c.brief}`))
+    for (const pr of c.prs ?? []) lines.push({ text: `  ${KITCHEN_ICON.pr} `, href: pr, label: prLabel(pr) })
   }
   lines.push(plain(''), head(`${KITCHEN_ICON.boil} Rolling boil`))
   if (boil.length === 0) lines.push(dim('không tab nào đang chờ'))
   for (const b of boil) {
-    lines.push(plain(`- ${KITCHEN_ICON.state[b.state]} ${[b.tab || b.brief, BOIL_STATE[b.state], waited(b.since, now)].join(SEP)}`))
-    lines.push(dim(`    ${b.brief}${SEP}session ${b.session.slice(0, 8)}`))
+    lines.push(plain(`- ${KITCHEN_ICON.state[b.state]} ${waited(b.since, now)} ${b.tab || b.brief}`))
+    lines.push(dim(`    ${BOIL_STATE[b.state]}${SEP}${b.brief}${SEP}session ${b.session.slice(0, 8)}`))
   }
   if (k?.titleError) lines.push(warn(`⚠ title lỗi: ${k.titleError}`))
   return lines
