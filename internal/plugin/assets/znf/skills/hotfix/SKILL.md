@@ -23,16 +23,16 @@ never skips it. State the path and why in one line (rationale: references).
 
 2. **Fetch first, then resolve and confirm the hotfix base ref** for each affected repo:
    ```bash
-   git -C <repo> fetch origin              # BEFORE resolving the base ref — see below
+   git -C <repo> fetch origin --tags       # BEFORE resolving the base ref — see below
    REF=$(zenify hotfix baseref <repo>)
-   CUR=$(git tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | head -1)
-   LATEST=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)
+   CUR=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | head -1)
+   LATEST=$(git -C <repo> tag --list 'v[0-9]*' --sort=-v:refname | head -1)
    ```
    `CUR` empty or `CUR ≠ LATEST` → ask the user to confirm `$REF` and wait. Otherwise print
    `Base ref confirmed: $REF (contains $CUR = latest tag)` and go on. **Fetch BEFORE resolving the
    base ref** — the tool's own fetch is too late. An error means a stale `worktree.json`: fix it,
-   never guess a branch name. See references. You need this ref even if you never branch from it:
-   steps 6 and 9 depend on knowing which code is actually running.
+   never guess a branch name. See references. You need this ref even without branching from it:
+   steps 6 and 9 depend on it.
 
 3. **Diagnose — before touching anything.** If handed off from `/fix`, its Step 0–2 evidence and
    confirmed cause carry over — do not re-diagnose; continue from step 4. Otherwise run **`/fix`
@@ -56,9 +56,9 @@ never skips it. State the path and why in one line (rationale: references).
 
    Check whether the bug predates the previous release tag:
    ```bash
-   PREV=$(git tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | sed -n 2p)
-   C=$(git log -S'<faulty line>' --format=%H --reverse "$REF" -- <file> | head -1)
-   git merge-base --is-ancestor "$C" "$PREV"   # success = bug predates PREV
+   PREV=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | sed -n 2p)
+   C=$(git -C <repo> log -S'<faulty line>' --format=%H --reverse "$REF" -- <file> | head -1)
+   git -C <repo> merge-base --is-ancestor "$C" "$PREV"   # success = bug predates PREV
    ```
    Success → fix forward without asking; record
    `Response chosen: fix forward — bug predates <PREV> (introduced in <C>)`. Ask (the three with a
@@ -113,8 +113,8 @@ never skips it. State the path and why in one line (rationale: references).
    commit; fix first.
 
 10. **After `/ship`:** the user merges the PR (= deploy), then syncs `main → staging` so the next
-    release keeps the fix. Once `git tag --contains <merge-sha> --list 'v[0-9]*'` prints a tag,
-    check the result for the area the fix touched — the checks that fit, not all of them:
+    release keeps the fix. Once `git -C <repo> tag --contains <merge-sha> --list 'v[0-9]*'` prints
+    a tag, check the area the fix touched — the checks that fit, not all of them:
     `references/post-deploy-check.md`. Add the numbers to the hotfix report. Tear down with
     `wt sweep`.
 

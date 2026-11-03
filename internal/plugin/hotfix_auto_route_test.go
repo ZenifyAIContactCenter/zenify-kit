@@ -12,11 +12,11 @@ import (
 // TestHotfixSkill_AutoRoute pins that the skill carries each one verbatim;
 // TestHotfixTagCommands runs them against a scratch repo (SC-7).
 const (
-	cmdCur      = `CUR=$(git tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | head -1)`
-	cmdLatest   = `LATEST=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)`
-	cmdPrev     = `PREV=$(git tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | sed -n 2p)`
-	cmdIntro    = `C=$(git log -S'<faulty line>' --format=%H --reverse "$REF" -- <file> | head -1)`
-	cmdAncestor = `git merge-base --is-ancestor "$C" "$PREV"`
+	cmdCur      = `CUR=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | head -1)`
+	cmdLatest   = `LATEST=$(git -C <repo> tag --list 'v[0-9]*' --sort=-v:refname | head -1)`
+	cmdPrev     = `PREV=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | sed -n 2p)`
+	cmdIntro    = `C=$(git -C <repo> log -S'<faulty line>' --format=%H --reverse "$REF" -- <file> | head -1)`
+	cmdAncestor = `git -C <repo> merge-base --is-ancestor "$C" "$PREV"`
 )
 
 // FR-2, FR-3.1, FR-4.1-4.3, FR-5.1, FR-7.2, SC-2, SC-5.
@@ -28,7 +28,7 @@ func TestHotfixSkill_AutoRoute(t *testing.T) {
 	assertContainsAll(t, "hotfix/SKILL.md", s, []string{
 		cmdCur, cmdLatest, cmdPrev, cmdIntro, cmdAncestor,
 		`git diff --name-only "$REF"...HEAD`, "> 3",
-		"git tag --contains", "main → staging",
+		"git -C <repo> fetch origin --tags", "git -C <repo> tag --contains", "main → staging",
 		"handed off from `/fix`",
 		"Decide the response",
 		"cannot pin the faulty line",
@@ -63,12 +63,10 @@ func TestHotfixTagCommands(t *testing.T) {
 	}
 
 	cases := []struct {
-		name  string
-		build func(g func(...string))
-		want  result
-		// wantC: true when a faulty commit must be found.
-		wantC bool
-		want2 string
+		name         string
+		build        func(g func(...string))
+		want         result
+		wantDecision string
 	}{
 		{
 			name: "old-bug",
@@ -81,8 +79,8 @@ func TestHotfixTagCommands(t *testing.T) {
 				commit(g, "c.txt", "3\n", "c")
 				g("tag", "v260301.0")
 			},
-			want:  result{cur: "v260301.0", latest: "v260301.0", prev: "v260201.0", ancestorOK: true},
-			wantC: true, want2: "fix forward",
+			want:         result{cur: "v260301.0", latest: "v260301.0", prev: "v260201.0", ancestorOK: true},
+			wantDecision: "fix forward",
 		},
 		{
 			name: "new-bug",
@@ -94,8 +92,8 @@ func TestHotfixTagCommands(t *testing.T) {
 				commit(g, "bug.txt", "BUGLINE\n", "bug")
 				g("tag", "v260301.0")
 			},
-			want:  result{cur: "v260301.0", latest: "v260301.0", prev: "v260201.0", ancestorOK: false},
-			wantC: true, want2: "ask",
+			want:         result{cur: "v260301.0", latest: "v260301.0", prev: "v260201.0", ancestorOK: false},
+			wantDecision: "ask",
 		},
 		{
 			name: "no-tags",
@@ -103,8 +101,8 @@ func TestHotfixTagCommands(t *testing.T) {
 				commit(g, "bug.txt", "BUGLINE\n", "bug")
 				commit(g, "a.txt", "1\n", "a")
 			},
-			want:  result{},
-			wantC: true, want2: "ask",
+			want:         result{},
+			wantDecision: "ask",
 		},
 		{
 			name: "latest-not-merged",
@@ -120,8 +118,8 @@ func TestHotfixTagCommands(t *testing.T) {
 				g("tag", "v260401.0")
 				g("checkout", "-q", "main")
 			},
-			want:  result{cur: "v260301.0", latest: "v260401.0", prev: "v260201.0", ancestorOK: true},
-			wantC: true, want2: "ask",
+			want:         result{cur: "v260301.0", latest: "v260401.0", prev: "v260201.0", ancestorOK: true},
+			wantDecision: "ask",
 		},
 		{
 			name: "one-tag",
@@ -129,19 +127,21 @@ func TestHotfixTagCommands(t *testing.T) {
 				commit(g, "bug.txt", "BUGLINE\n", "bug")
 				g("tag", "v260101.0")
 			},
-			want:  result{cur: "v260101.0", latest: "v260101.0"},
-			wantC: true, want2: "ask",
+			want:         result{cur: "v260101.0", latest: "v260101.0"},
+			wantDecision: "ask",
 		},
 	}
-
-	intro := strings.NewReplacer("<faulty line>", "BUGLINE", "<file>", "bug.txt").Replace(cmdIntro)
-	script := "REF=main\n" + cmdCur + "\n" + cmdLatest + "\n" + cmdPrev + "\n" + intro + "\n" +
-		`printf 'CUR=%s\nLATEST=%s\nPREV=%s\nC=%s\n' "$CUR" "$LATEST" "$PREV" "$C"` + "\n" +
-		cmdAncestor + " 2>/dev/null && echo ANCESTOR=ok || echo ANCESTOR=fail\n"
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
+			// The skill runs from the workspace root, which is not a git repo:
+			// run the commands from a non-git sibling and reach the repo via -C.
+			cwd := t.TempDir()
+			sub := strings.NewReplacer("<repo>", dir, "<faulty line>", "BUGLINE", "<file>", "bug.txt").Replace
+			script := "REF=main\n" + sub(cmdCur) + "\n" + sub(cmdLatest) + "\n" + sub(cmdPrev) + "\n" + sub(cmdIntro) + "\n" +
+				`printf 'CUR=%s\nLATEST=%s\nPREV=%s\nC=%s\n' "$CUR" "$LATEST" "$PREV" "$C"` + "\n" +
+				sub(cmdAncestor) + " 2>/dev/null && echo ANCESTOR=ok || echo ANCESTOR=fail\n"
 			g := func(args ...string) {
 				t.Helper()
 				cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"}, args...)...)
@@ -162,8 +162,11 @@ func TestHotfixTagCommands(t *testing.T) {
 			})
 
 			cmd := exec.Command("bash", "-c", script)
-			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+			cmd.Dir = cwd
+			cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_CEILING_DIRECTORIES="+filepath.Dir(cwd))
+			if out, err := exec.Command("git", "-C", cwd, "rev-parse", "--git-dir").CombinedOutput(); err == nil {
+				t.Fatalf("cwd %s must not be a git repo: %s", cwd, out)
+			}
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("script: %v\n%s", err, out)
@@ -187,14 +190,14 @@ func TestHotfixTagCommands(t *testing.T) {
 			if got.cur != tc.want.cur || got.latest != tc.want.latest || got.prev != tc.want.prev {
 				t.Errorf("tags = CUR %q LATEST %q PREV %q, want %q %q %q\n%s", got.cur, got.latest, got.prev, tc.want.cur, tc.want.latest, tc.want.prev, out)
 			}
-			if tc.wantC && got.c == "" {
+			if got.c == "" {
 				t.Errorf("C empty, want the BUGLINE commit\n%s", out)
 			}
 			if tc.want.prev != "" && got.ancestorOK != tc.want.ancestorOK {
 				t.Errorf("ancestor = %v, want %v\n%s", got.ancestorOK, tc.want.ancestorOK, out)
 			}
-			if d := decide(got); d != tc.want2 {
-				t.Errorf("decision = %q, want %q\n%s", d, tc.want2, out)
+			if d := decide(got); d != tc.wantDecision {
+				t.Errorf("decision = %q, want %q\n%s", d, tc.wantDecision, out)
 			}
 		})
 	}
