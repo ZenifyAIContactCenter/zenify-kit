@@ -508,3 +508,43 @@ test('FR-11.3: nothing carried and no last day means no section and no blank lin
   const t = texts(tabLines('kitchen', stats(), A, undefined, NOW))
   expect(t[0]).toBe('🍳 Cooked')
 })
+
+test('FR-7.3: null CI rate and null wait share still say no CI runs recorded; all-zero hides', () => {
+  const q = (ci: number | null, wait: number | null) => ({ n: 6, shipBlockedRate: 0.2, topBlockedStep: null, findingsAvg: null, fixLoopAvg: 1, ciRedFirstRate: ci, waitShare: wait, tokensAvg: null })
+  const lines = (ci: number | null, wait: number | null) =>
+    texts(tabLines('quality', stats({ quality: { byKind: { cook: q(ci, wait) }, fix: noFix } }), A, X, NOW))
+  expect(lines(null, null).some(l => l.includes('no CI runs recorded'))).toBe(true)
+  expect(lines(null, 0).some(l => l.includes('no CI runs recorded'))).toBe(true)
+  expect(lines(0, 0).some(l => l.includes('CI red first'))).toBe(false)
+  expect(lines(0, null).some(l => l.includes('CI red first'))).toBe(false)
+})
+
+test('fmtNum rolls 999999 over to M', () => {
+  expect(fmtNum(999_999)).toBe('1.0M')
+  expect(fmtNum(999_949)).toBe('999.9k')
+})
+
+test('parseTrackStats defaults the fields an older binary lacks', () => {
+  const old = {
+    enabled: true, malformed: 0, scale: { source: 'default', n: 0, S: 15, M: 45, L: 120 }, rules: null,
+    today: { date: '2026-10-30', plans: null, started: null, ended: null, tasks: 0, rounds: 0, prsOpened: 0, merged: 0, prsWaiting: 0, mergedError: '', items: null },
+    running: [{ id: X, kind: 'cook', repo: 'kit', est: 'S', session: A, cwd: '/w', phase: 'plan', status: 'running', startedAt: '', endedAt: '', prs: null, agentMin: 3, wait: { ask: 0, permission: 0, idle: 0, total: 0 }, phases: null, tokens: null }],
+    estimate: { byKind: null, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: null },
+    quality: { byKind: null, fix: noFix }, backlog: { items: null, ghError: '' }, onboarded: true,
+    kitchen: { cooked: null, rollingBoil: null, titleError: '' },
+  }
+  const s = parseTrackStats(JSON.stringify(old))
+  expect(s.running?.[0]).toMatchObject({ wallMin: 0, tab: '' })
+  expect(s.today).toMatchObject({ done: {}, cancelled: {}, rolledBack: {}, wallMin: 0, agentMin: 0 })
+  expect(s.kitchen).toMatchObject({ carried: [], lastDay: null })
+  expect(statusText(s, A, X)).not.toContain('undefined')
+})
+
+test('rollback reads the same on Today and Carried over', () => {
+  const s = stats({
+    today: { ...stats().today, rolledBack: { fix: 2 } },
+    kitchen: { ...stats().kitchen, lastDay: { date: '2026-10-30', done: 0, cancelled: 0, rolledBack: 2, prsOpened: 0, leftOpen: 0 } },
+  })
+  expect(texts(tabLines('today', s, A, X, NOW))).toContain('Done 0 · started 0 · Rollback 2')
+  expect(texts(tabLines('kitchen', s, A, undefined, NOW))).toContain('📆 Fri 10/30: 2 rollback')
+})

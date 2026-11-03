@@ -54,6 +54,15 @@ export function parseTrackStats(stdout: string): TrackStats {
   if (!data || typeof data !== 'object' || typeof data.enabled !== 'boolean') {
     throw new Error('stats output is not track stats JSON')
   }
+  const today = {
+    ...data.today,
+    done: data.today?.done ?? {},
+    cancelled: data.today?.cancelled ?? {},
+    rolledBack: data.today?.rolledBack ?? {},
+    wallMin: data.today?.wallMin ?? 0,
+    agentMin: data.today?.agentMin ?? 0,
+  }
+  const item = (i: TrackItem): TrackItem => ({ ...i, wallMin: i.wallMin ?? 0, tab: i.tab ?? '' })
   const backlog = { ghError: '', ...data.backlog, items: data.backlog?.items ?? [] }
   const kitchen = {
     titleError: '',
@@ -63,7 +72,7 @@ export function parseTrackStats(stdout: string): TrackStats {
     lastDay: data.kitchen?.lastDay ?? null,
     rollingBoil: (data.kitchen?.rollingBoil ?? []).map(b => ({ ...b, tab: b.tab ?? '' })),
   }
-  return { ...data, rules: data.rules ?? [], running: data.running ?? [], backlog, kitchen } as TrackStats
+  return { ...data, rules: data.rules ?? [], running: (data.running ?? []).map(item), today, backlog, kitchen } as TrackStats
 }
 
 // The id this session has open: the bound id, running under this session.
@@ -74,7 +83,11 @@ const sum = (m: Record<string, number> | null | undefined) => Object.values(m ??
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`)
 const num = (v: number | null | undefined) => (v === null || v === undefined ? '—' : String(Math.round(v * 10) / 10))
 // FR-7.1: 12.3k and 1.2M from 10000 up.
-export const fmtNum = (n: number): string => (n < 10000 ? String(n) : n < 1e6 ? `${(n / 1e3).toFixed(1)}k` : `${(n / 1e6).toFixed(1)}M`)
+export const fmtNum = (n: number): string => {
+  if (n < 10000) return String(n)
+  const k = (n / 1e3).toFixed(1)
+  return n < 1e6 && Number(k) < 1000 ? `${k}k` : `${(n / 1e6).toFixed(1)}M`
+}
 const min = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v}m`)
 const isSize = (est: string) => SIZES.includes(est)
 const wallText = (i: TrackItem) => (isSize(i.est) ? `${i.wallMin}m/${i.est}` : `${i.wallMin}m`)
@@ -253,7 +266,7 @@ function todayLines(s: TrackStats, session: string): Line[] {
         `Done ${sum(t.done)}`,
         `started ${sum(t.started)}`,
         cancelled > 0 && `Cancelled ${cancelled}`,
-        rolledBack > 0 && `Rolled back ${rolledBack}`,
+        rolledBack > 0 && `Rollback ${rolledBack}`,
       ]
         .filter(Boolean)
         .join(SEP),
@@ -332,7 +345,7 @@ function qualityLines(s: TrackStats): Line[] {
     if (f && !(zero(f.C) && zero(f.H) && zero(f.M) && zero(f.L)) || !zero(q.fixLoopAvg)) {
       lines.push(plain(`  finding C/H/M/L: ${f ? [f.C, f.H, f.M, f.L].map(num).join('/') : '—'}${SEP}fix loop ${num(q.fixLoopAvg)}`))
     }
-    if (!zero(q.ciRedFirstRate) || !zero(q.waitShare)) {
+    if (q.ciRedFirstRate === null || !zero(q.ciRedFirstRate) || !zero(q.waitShare)) {
       const ci = q.ciRedFirstRate === null ? 'no CI runs recorded' : pct(q.ciRedFirstRate)
       lines.push(plain(`  CI red first: ${ci}${SEP}wait ${pct(q.waitShare)}`))
     }
