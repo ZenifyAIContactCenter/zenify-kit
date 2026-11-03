@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ func TestReadTabTitle(t *testing.T) {
 		{"no title", filler, ""},
 		{"title past the 1 MiB window is not seen", ai("far") + strings.Repeat(filler, tabTitleWindow/len(filler)+10), ""},
 		{"title inside the window after a partial first line", strings.Repeat(filler, tabTitleWindow/len(filler)+10) + ai("near"), "near"},
+		{"complete title line exactly at the window start", filler + ai("edge") + pad(tabTitleWindow-len(ai("edge"))), "edge"},
 	}
 	for _, c := range cases {
 		home := t.TempDir()
@@ -43,6 +45,29 @@ func TestReadTabTitle(t *testing.T) {
 		if err != nil || got != c.want {
 			t.Errorf("%s: got %q err %v, want %q", c.name, got, err, c.want)
 		}
+	}
+}
+
+// pad is one non-title line of exactly n bytes.
+func pad(n int) string {
+	head, tail := `{"type":"user","message":"`, `"}`+"\n"
+	return head + strings.Repeat("x", n-len(head)-len(tail)) + tail
+}
+
+func TestReadTabTitleUnreadableProject(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 0 does not block reads here")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeTranscript(t, home, "S1", ai("x"))
+	dir := filepath.Join(home, ".claude", "projects", "-w-app")
+	if err := os.Chmod(dir, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o750) })
+	if got, err := readTabTitle("S1"); err == nil {
+		t.Fatalf("got %q, want a permission error", got)
 	}
 }
 

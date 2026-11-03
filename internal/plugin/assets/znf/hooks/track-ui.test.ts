@@ -205,7 +205,7 @@ test('FR-4.2: every cooked status has its icon', () => {
 })
 
 test('FR-4.2: prLabel is <repo>#<n>, or the URL when it does not parse', () => {
-  expect(prLabel('https://github.com/ZenifyAIContactCenter/contact-center-hub/pull/1123')).toBe('contact-center-hub#1123')
+  expect(prLabel('https://github.com/o/r/pull/1')).toBe('r#1')
   expect(prLabel('https://example.com/x')).toBe('https://example.com/x')
 })
 

@@ -1122,7 +1122,7 @@ test('a failed live write is toasted and the tool still answers', async ($, on) 
 })
 
 test('FR-4.2: a PR line is a Link with the full href and the short label', async ($, on) => {
-  const url = 'https://github.com/ZenifyAIContactCenter/contact-center-hub/pull/1123'
+  const url = 'https://github.com/o/r/pull/1'
   const world: World = { stats: ok(statsJson({ kitchen: { cooked: [{ id: 'c1', brief: 'b', status: 'done', endedAt: '2026-11-02T03:05:00Z', prs: [url] }], rollingBoil: [], titleError: '' } })) }
   engine(on, world)
   const clock = mock.clock(on)
@@ -1133,7 +1133,7 @@ test('FR-4.2: a PR line is a Link with the full href and the short label', async
   const links = (await ui.findAll({ type: 'Link' })) as any[]
   expect(links).toHaveLength(1)
   expect(links[0].props.href).toBe(url)
-  expect(links[0].props.label).toBe('contact-center-hub#1123')
+  expect(links[0].props.label).toBe('r#1')
 })
 
 test('SC-9: every pane content Text truncates at the pane width', async ($, on) => {

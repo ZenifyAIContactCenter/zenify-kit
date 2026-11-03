@@ -26,11 +26,11 @@ func readTabTitle(session string) (string, error) {
 	if session == "" || strings.ContainsAny(session, "/\\*?[") {
 		return "", nil
 	}
-	matches, err := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", session+".jsonl"))
-	if err != nil || len(matches) == 0 {
+	path, err := findTranscript(filepath.Join(home, ".claude", "projects"), session)
+	if err != nil || path == "" {
 		return "", err
 	}
-	f, err := os.Open(matches[0]) //nolint:gosec // G304 -- listed by glob under ~/.claude/projects
+	f, err := os.Open(path) //nolint:gosec // G304 -- listed under ~/.claude/projects
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil
@@ -54,7 +54,7 @@ func readTabTitle(session string) (string, error) {
 		return "", err
 	}
 	lines := bytes.Split(buf, []byte("\n"))
-	if start > 0 {
+	if start > 0 && !json.Valid(lines[0]) {
 		lines = lines[1:] // the window starts mid-line
 	}
 	ai := ""
@@ -83,6 +83,30 @@ func readTabTitle(session string) (string, error) {
 		}
 	}
 	return ai, nil
+}
+
+// findTranscript returns <projects>/*/<session>.jsonl, or "" when none exists. Unlike filepath.Glob
+// it surfaces read errors, so an unreadable project dir is reported rather than read as "no title".
+func findTranscript(projects, session string) (string, error) {
+	dirs, err := os.ReadDir(projects)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", nil
+		}
+		return "", err
+	}
+	for _, d := range dirs {
+		if !d.IsDir() && d.Type()&os.ModeSymlink == 0 {
+			continue
+		}
+		p := filepath.Join(projects, d.Name(), session+".jsonl")
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+	}
+	return "", nil
 }
 
 // cleanTitle drops control characters and trims the spaces.
