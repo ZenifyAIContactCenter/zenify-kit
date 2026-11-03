@@ -18,8 +18,7 @@ never skips it. State the path and why in one line (rationale: references).
 
 ## Steps
 
-1. **Affected repo(s):** decide which repo(s) the live bug is in (route per the workspace's own
-   CLAUDE.md). If unclear, locate it first — don't guess.
+1. **Affected repo(s):** route per the workspace's CLAUDE.md; unclear → locate it, never guess.
 
 2. **Fetch first, then resolve and confirm the hotfix base ref** for each affected repo:
    ```bash
@@ -27,9 +26,11 @@ never skips it. State the path and why in one line (rationale: references).
    REF=$(zenify hotfix baseref <repo>)
    CUR=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | head -1)
    LATEST=$(git -C <repo> tag --list 'v[0-9]*' --sort=-v:refname | head -1)
-   printf 'REF=%s CUR=%s LATEST=%s\n' "$REF" "$CUR" "$LATEST"
+   BASE=$(cd <repo> && zenify wt base)
+   printf 'REF=%s CUR=%s LATEST=%s BASE=%s\n' "$REF" "$CUR" "$LATEST" "$BASE"
    ```
-   `CUR` empty or `CUR ≠ LATEST` → ask the user to confirm `$REF` and wait. Otherwise print
+   `CUR` empty, `CUR ≠ LATEST`, or `REF` = `BASE` (no own hotfix base: tags cannot tell an
+   integration branch from production) → ask the user to confirm `$REF` and wait. Otherwise print
    `Base ref confirmed: $REF (contains $CUR = latest tag)` and go on. Variables do not survive
    between Bash calls: later steps reuse the printed values. An error means a stale
    `worktree.json`: fix it, never guess a branch name. Steps 6 and 9 need this ref too.
@@ -54,6 +55,7 @@ never skips it. State the path and why in one line (rationale: references).
 
    Check whether the bug predates the previous release tag:
    ```bash
+   REF=<ref>   # step 2's printed ref
    PREV=$(git -C <repo> tag --merged "$REF" --list 'v[0-9]*' --sort=-v:refname | sed -n 2p)
    N=$(git -C <repo> show "$REF:<file>" | grep -nF -f <needle> | cut -d: -f1)
    C=$(case "$N" in (''|*[!0-9]*) ;; (*) git -C <repo> blame -L"$N,$N" --porcelain "$REF" -- <file> | head -1 | cut -d' ' -f1 ;; esac)
@@ -71,18 +73,16 @@ never skips it. State the path and why in one line (rationale: references).
    skip to step 10 — no worktree, no scout, no fix. Plan the real fix calmly afterwards on the
    repo's normal feature base.
 
-5. **Create the hotfix worktree** — forward fix only, and always a worktree (house rule #8). Use
-   the `$REF` you resolved **after fetching** in step 2; same slug across repos so the branch name
-   matches:
+5. **Create the hotfix worktree** — forward fix only, always (house rule #8), one per affected
+   repo, same slug:
    ```bash
-   cd <repo> && wt new <slug> --type hotfix --base "$REF"
+   cd <repo> && wt new <slug> --type hotfix --base <ref>
    ```
-   One per affected repo, `$REF` from step 2; `--type hotfix` is **exempt** from the one-task
+   `<ref>` = step 2's printed ref, never empty; `--type hotfix` is **exempt** from the one-task
    guard (references). `<worktree>` below is its path; work there, not in the main checkout.
 
-6. **`Skill(scout)` — and scout the RESOLVED ref, not the default feature base.** Invoke it as a
-   call — `Skill(scout)` leaves a named line.
-   Brief it as `/fix` Step 3 does.
+6. **`Skill(scout)` the RESOLVED ref, not the default feature base** — as a call, briefed as
+   `/fix` Step 3 does.
 
    **Getting the ref wrong fails silently.** State which ref you scouted.
 
@@ -92,8 +92,7 @@ never skips it. State the path and why in one line (rationale: references).
    **`Skill(ground)` anything unverified this session**, including the values a field holds and
    the filter every query must carry.
 
-8. **Verify**: re-run the red command and clear `[DEBUG-` tags — `/fix` Step 6. Don't claim
-   fixed without evidence (or `/run` the app and observe it).
+8. **Verify**: re-run the red command and clear `[DEBUG-` tags — `/fix` Step 6 (or `/run` the app).
 
    Only *did the bug go away*: the look and the only `znf:ui-verifier` dispatch are `/ship`
    step 4. A clean (negative) check needs a second mechanism (references § Clean checks).
@@ -104,16 +103,17 @@ never skips it. State the path and why in one line (rationale: references).
    B=$(git -C <worktree> merge-base <ref> HEAD) && { git -C <worktree> diff --name-only "$B"; git -C <worktree> ls-files --others --exclude-standard; } | sort -u | wc -l
    ```
    `<ref>` = step 2's printed ref. No number printed, over 3, or `/gate` reports a shared collection, inter-service HTTP, pub/sub or queue → ask,
-   recommending revert, and wait; never run `/cook` on a hotfix base. **Then `/ship`,
+   recommending revert, and wait; never run `/cook` on a hotfix base. Tell `/ship` it ships a
+   hotfix: after each fix wave, before committing, re-run this count and `/gate`, same asks. **Then `/ship`,
    unconditionally** — urgency is no exemption (references).
 
    All green → `/ship` commits, pushes the hotfix branch and opens the PR into `$REF`. Verification
    failed → no commit; fix first.
 
 10. **After `/ship`:** the user merges the PR (= deploy), then syncs `$REF` → the repo's `baseRef`
-    (skip when they are the same ref) so the next release keeps the fix. Once
-    `git -C <repo> fetch origin --tags` then `git -C <repo> tag --contains <merge-sha> --list 'v[0-9]*'` print
-    a tag, check the area the fix touched — the checks that fit, not all of them:
+    (skip when they are the same ref) so the next release keeps the fix. Once production runs it
+    (`git -C <repo> fetch origin --tags` then `git -C <repo> tag --contains <merge-sha> --list 'v[0-9]*'`
+    print a tag, or the build check in `references/post-deploy-check.md` finds it), check the area the fix touched — the checks that fit, not all of them:
     `references/post-deploy-check.md`. Add the numbers to the hotfix report. Tear down with
     `wt sweep`.
 
@@ -131,9 +131,7 @@ Fix verified: ✅/❌ (how — and at which fingerprint)
 /gate: <N repos impacted, or clean>
 Pushed: <username>/hotfix/<desc> → origin.
 
-<-- cat ${TMPDIR:-/tmp}/ship-board-<fp10>.md  — the gate's board, read out of the
-    file it wrote. Every line, including ❌ ones, skipped ones, and Gate log.
-    Not "/ship: ✅ all green". -->
+<-- cat ${TMPDIR:-/tmp}/ship-board-<fp10>.md — every line, never retyped -->
 ---
 
 PR opened: <url> → <base ref>. Next (yours): merge (= deploy) → sync <base ref> → baseRef.

@@ -37,8 +37,10 @@ func TestHotfixSkill_AutoRoute(t *testing.T) {
 		"handed off from `/fix`", "first word after the skill name",
 		"Decide the response",
 		"cannot pin the faulty line", "never paste source", "reuse the printed values",
+		"BASE=$(cd <repo> && zenify wt base)", "`REF` = `BASE`", "REF=<ref>   # step 2's printed ref",
+		"--base <ref>", "re-run this count and `/gate`", "build check in `references/post-deploy-check.md`",
 	})
-	for _, stale := range []string{"create the PR against the resolved", "creatordate", "log -S'", "main → staging", `"$REF"...HEAD`} {
+	for _, stale := range []string{"create the PR against the resolved", "creatordate", "log -S'", "main → staging", `"$REF"...HEAD`, `--base "$REF"`} {
 		if strings.Contains(s, stale) {
 			t.Errorf("stale text %q left in hotfix", stale)
 		}
@@ -59,7 +61,7 @@ func TestFixSkill_RoutesProdToHotfix(t *testing.T) {
 	}
 	r := syncedAsset(t, "skills/fix/references/prd-routing.md")
 	assertContainsAll(t, "prd-routing.md", r, []string{
-		"cannot be pinned", "Skill(znf:hotfix)", "not on the hotfix base", "prd does not run this code yet",
+		"cannot be pinned", "Skill(znf:hotfix)", "No exact match on the hotfix base", "a failed match", "Tempo trace",
 		"track id: <the id Step 0 opened>", "<slug>-hf", "/fix` ends after the call", "staging", "standalone", "path is missing",
 		cmdOnBase, cmdGrepBase,
 	})

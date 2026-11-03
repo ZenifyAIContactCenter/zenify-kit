@@ -10,7 +10,7 @@ on the wrong base.
 ## Production evidence
 
 Count it as production evidence only when the Step 0 source itself says production: a PostHog
-event or Loki line from the prd environment, or a customer report on a prd tenant. A staging hit,
+event, Loki line, Tempo trace or `zenify obs --prd` result from the prd environment, or a customer report on a prd tenant. A staging hit,
 a local repro, or a failing CI run is not production evidence.
 
 ## The rule
@@ -33,9 +33,9 @@ Shell variables do not survive between Bash calls: reuse the printed `REF` liter
 |---|---|
 | No production evidence | Stay in `/fix`, go on to Step 3. |
 | The faulty line is on the hotfix base | `Skill(znf:hotfix)`. |
-| The faulty line is not on the hotfix base (only on the normal base) | Stay in `/fix`, and say in the report: prd does not run this code yet. |
+| No exact match on the hotfix base | Treat it as cannot be pinned → `Skill(znf:hotfix)`. A line reformatted on the normal base (`return  null;` → `return null;`) does not match verbatim, yet prd runs the same fault; production evidence already says the fault is live. |
 | The fault cannot be pinned to a line (data or config bug, several candidates) | `Skill(znf:hotfix)`; its step 4 asks the user which response to take. |
-| `PATH_MISSING` — the path is missing on `$REF` (the file was renamed between the two bases) | Treat it as cannot be pinned → `Skill(znf:hotfix)`. Never conclude "prd does not run this code yet" from a missing path. |
+| `PATH_MISSING` — the path is missing on `$REF` (the file was renamed between the two bases) | Treat it as cannot be pinned → `Skill(znf:hotfix)`. Never conclude "prd does not run this code yet" from a missing path or a failed match. |
 
 ## The handoff package
 

@@ -79,6 +79,15 @@ only when the faulty commit is an ancestor of the tag before it.
   rather than guessing which other files are on the failing path.
 - **Step 2 checks "the tag is on `$REF`", not "this is the build production runs".** The newest
   tag may not be deployed yet; checking the running version from telemetry is deferred.
+- **`REF` = `BASE` always asks.** A repo that declares no `hotfixBaseRef` resolves the hotfix base
+  to its `baseRef` (`internal/wt/config.go` `HotfixBase`). Once `main → staging` is synced, an
+  integration branch contains the newest tag too, so `CUR = LATEST` would confirm a branch that
+  still holds unreleased work. Only a separately declared hotfix base lets tags decide.
+- **Step 9 counts again after every `/ship` fix wave.** A reviewer may ask for a fourth file (a
+  regression test) or the fix may start touching a shared resource; the count before `/ship` no
+  longer describes what ships.
+- **Post-deploy waits for production, not for a tag.** A repo that deploys on merge runs the fix
+  before any tag exists, so the build check in `post-deploy-check.md` starts the check too.
 
 ## Why the base ref is fetched before it is resolved
 

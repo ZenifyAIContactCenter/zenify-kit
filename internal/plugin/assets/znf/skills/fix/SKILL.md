@@ -59,11 +59,11 @@ cause, say so — never guess-fix.
 
 ## Step 2b: Production? Hand off to /hotfix
 
-Prd evidence = prd-env PostHog/Loki, or a customer report on a prd tenant. None → Step 3. With it,
+Prd evidence = prd-env PostHog/Loki/Tempo trace/`zenify obs --prd`, or a customer report on a prd tenant. None → Step 3. With it,
 look for the faulty line on the hotfix base (`zenify hotfix baseref`, `git show`; commands in
 `references/prd-routing.md`). There, or cannot be pinned (a missing path counts) →
 **`Skill(znf:hotfix)`** with the handoff (slug, cause, red command, `track id:`), and /fix ends:
-hotfix owns steps 3-10. Only on the normal base → stay; report prd does not run it yet.
+hotfix owns steps 3-10. No exact match counts as cannot be pinned.
 Tell it: do not re-diagnose.
 
 ## Step 3: `/scout` — what depends on the code you will change
