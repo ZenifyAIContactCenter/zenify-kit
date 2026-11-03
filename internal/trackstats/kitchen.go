@@ -21,6 +21,13 @@ const LiveTTL = liveTTL
 // "<kind> <repo>" this run and are fetched in a later window.
 const maxTitleFetch = 3
 
+// A failed title fetch is cached as titleFailedPrefix + the RFC3339 time of the failure and is
+// retried once it is titleRetry old. It is never shown as a brief.
+const (
+	titleFailedPrefix = "!failed "
+	titleRetry        = time.Hour
+)
+
 const planSuffix = " — Implementation Plan"
 
 // LiveFile is one live/<session>.json with the mtime of its .beat; a zero
@@ -110,6 +117,13 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		if b == "" && len(it.PRs) > 0 {
 			u := it.PRs[0]
 			t, known := prTitles[u]
+			if failed, ok := strings.CutPrefix(t, titleFailedPrefix); ok {
+				at, perr := time.Parse(time.RFC3339, failed)
+				if perr != nil || in.Now.Sub(at) >= titleRetry {
+					known = false
+				}
+				t = ""
+			}
 			b = t
 			if !known && askPR && in.PRTitle != nil && !ghDown && fetched < maxTitleFetch {
 				fetched++
@@ -122,9 +136,9 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 					ghDown = true
 					fail(fmt.Errorf("pr title %s: %w", u, err))
 				default:
-					// A PR that cannot be read (no access, deleted) is cached as empty, so it
-					// stops using up the fetch cap of the PRs behind it.
-					prTitles[u] = ""
+					// A PR that cannot be read (no access, deleted, a gh blip) is cached as failed, so
+					// it stops using up the fetch cap of the PRs behind it until titleRetry passes.
+					prTitles[u] = titleFailedPrefix + in.Now.UTC().Format(time.RFC3339)
 					fail(fmt.Errorf("pr title %s: %w", u, err))
 				}
 			}

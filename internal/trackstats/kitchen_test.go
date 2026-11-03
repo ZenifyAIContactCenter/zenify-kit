@@ -330,6 +330,9 @@ func TestKitchenFailedTitleIsCachedNegative(t *testing.T) {
 	if calls != 3 {
 		t.Fatalf("first run calls = %d, want 3", calls)
 	}
+	if want := titleFailedPrefix + kNow.UTC().Format(time.RFC3339); in.PRTitles["https://x/pr/1"] != want {
+		t.Fatalf("cached = %q, want %q", in.PRTitles["https://x/pr/1"], want)
+	}
 	r, _ := Compute(in)
 	if calls != 4 {
 		t.Fatalf("second run calls = %d, want 4", calls)
@@ -341,5 +344,29 @@ func TestKitchenFailedTitleIsCachedNegative(t *testing.T) {
 		if it.ID == kid("cook", 1) && it.Brief != "cook r" {
 			t.Fatalf("brief 1 = %q", it.Brief)
 		}
+	}
+}
+
+func TestKitchenFailedTitleRetriedAfterAnHour(t *testing.T) {
+	for _, c := range []struct {
+		age   time.Duration
+		calls int
+		brief string
+	}{{30 * time.Minute, 0, "cook r"}, {61 * time.Minute, 1, "New"}} {
+		in := prItems(1)
+		in.PRTitles["https://x/pr/1"] = titleFailedPrefix + kNow.Add(-c.age).UTC().Format(time.RFC3339)
+		calls := 0
+		in.PRTitle = func(string) (string, error) { calls++; return "New", nil }
+		r, _ := Compute(in)
+		if calls != c.calls || r.Kitchen.Cooked[0].Brief != c.brief {
+			t.Fatalf("age %v: calls = %d brief = %q, want %d %q", c.age, calls, r.Kitchen.Cooked[0].Brief, c.calls, c.brief)
+		}
+	}
+	// A failed entry that cannot be parsed is retried too, and never shown.
+	in := prItems(1)
+	in.PRTitles["https://x/pr/1"] = titleFailedPrefix + "garbage"
+	in.PRTitle = nil
+	if r, _ := Compute(in); r.Kitchen.Cooked[0].Brief != "cook r" {
+		t.Fatalf("brief = %q", r.Kitchen.Cooked[0].Brief)
 	}
 }
