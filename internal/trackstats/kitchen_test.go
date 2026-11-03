@@ -461,17 +461,26 @@ func TestKitchenCarried(t *testing.T) { // SC-16
 }
 
 func TestKitchenLastDayIsLastWorkingDay(t *testing.T) { // SC-17
-	a, b, c := kid("cook", 1), kid("cook", 2), kid("cook", 3)
+	a, b, c, d, e, f, g := kid("cook", 1), kid("cook", 2), kid("cook", 3), kid("fix", 4), kid("fix", 5), kid("cook", 6), kid("cook", 7)
 	fri := func(h int) time.Time { return time.Date(2026, 10, 31, h, 0, 0, 0, mondayNow.Location()) }
+	// 2026-11-02T18:00Z is 2026-11-03 01:00 in ICT: today, so it must not make today the last day.
+	todayEarly := time.Date(2026, 11, 2, 18, 0, 0, 0, time.UTC)
 	log := lines(
 		row(fri(8), "start", a, "cook", "r", "M"),
 		row(fri(9), "end", a, "https://x/pr/1", "1", "0"),
 		row(fri(10), "start", b, "cook", "r", "M"),
 		row(fri(11), "end", b, "branch:x", "1", "0"),
 		row(fri(12), "start", c, "cook", "r", "M"),
+		row(fri(13), "start", d, "fix", "r", "S"),
+		row(fri(14), "end", d, "cancelled", "-", "-"),
+		row(fri(15), "start", e, "fix", "r", "S"),
+		row(fri(16), "end", e, "rollback", "-", "-"),
+		row(fri(17), "start", f, "cook", "r", "M"),
+		row(mAt(3, 8, 0), "end", f, "branch:y", "1", "0"),
+		row(todayEarly, "start", g, "cook", "r", "M"),
 	)
 	r, _ := Compute(mInput(log))
-	want := LastDay{Date: "2026-10-31", Done: 2, PRsOpened: 1, LeftOpen: 1}
+	want := LastDay{Date: "2026-10-31", Done: 2, Cancelled: 1, RolledBack: 1, PRsOpened: 1, LeftOpen: 2}
 	if r.Kitchen.LastDay == nil || *r.Kitchen.LastDay != want {
 		t.Fatalf("lastDay = %+v, want %+v", r.Kitchen.LastDay, want)
 	}
@@ -490,16 +499,25 @@ func TestKitchenNoCarryNoLastDay(t *testing.T) { // SC-18
 }
 
 func TestRunningItemHasTab(t *testing.T) { // SC-15
-	a, b := kid("cook", 1), kid("cook", 2)
+	a, b, c := kid("cook", 1), kid("cook", 2), kid("fix", 3)
 	log := lines(
 		row(mAt(3, 8, 0), "start", a, "cook", "r", "M"),
 		row(mAt(3, 8, 0), "start", b, "cook", "r", "M"),
+		row(time.Date(2026, 10, 20, 9, 0, 0, 0, mondayNow.Location()), "start", c, "fix", "r", "S"),
 	)
 	in := mInput(log)
-	in.Sessions = map[string]string{"S": lines(row(mAt(3, 8, 0), "bind", a))}
-	in.TabTitle = func(string) (string, error) { return "Dev track pane ship", nil }
+	in.Sessions = map[string]string{
+		"S": lines(row(mAt(3, 8, 0), "bind", a)),
+		"T": lines(row(mAt(3, 8, 0), "bind", c)),
+	}
+	in.TabTitle = func(s string) (string, error) { return "tab " + s, nil }
 	r, _ := Compute(in)
-	if len(r.Running) != 2 || r.Running[0].Tab != "Dev track pane ship" || r.Running[1].Tab != "" {
+	tabs := map[string]string{}
+	status := map[string]string{}
+	for _, it := range r.Running {
+		tabs[it.ID], status[it.ID] = it.Tab, it.Status
+	}
+	if len(r.Running) != 3 || tabs[a] != "tab S" || tabs[b] != "" || tabs[c] != "tab T" || status[c] != "stale" {
 		t.Fatalf("running = %+v", r.Running)
 	}
 }

@@ -97,6 +97,7 @@ type liveDoc struct {
 // computeKitchen lists the items ended today (newest first) and the live tabs
 // in state ask or permission (longest waiting first). It reads files and gh
 // only through the Input funcs; the first title error is kept in TitleError.
+// It also fills res.Running[i].Tab, besides building Carried and LastDay.
 func computeKitchen(in Input, logEv []Event, works map[string]*work, order []string, items []Item, issues []Issue, ghDown bool, res *Result) Kitchen {
 	k := Kitchen{Carried: []CarriedItem{}, Cooked: []CookedItem{}, RollingBoil: []BoilItem{}}
 	backlogTitle := map[string]string{}
