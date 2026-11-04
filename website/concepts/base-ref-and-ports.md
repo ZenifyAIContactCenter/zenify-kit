@@ -51,7 +51,7 @@ flowchart LR
 
 *Thứ tự ưu tiên khi resolve base cho hotfix*
 
-Repo không khai báo gì vẫn nhận branch tích hợp làm base mà không báo lỗi. Vì vậy xác nhận `--base` bằng tay là bước bảo vệ production thật sự. `zenify wt url <slug>` in port đã cấp cho worktree.
+Repo không khai báo gì vẫn nhận branch tích hợp làm base mà không báo lỗi. Vì vậy `/znf:hotfix` đối chiếu base với tag release: base không chứa tag release mới nhất thì skill hỏi bạn trước khi tạo worktree. `zenify wt url <slug>` in port đã cấp cho worktree.
 
 ## Base thật của worktree: `zenify wt base` {#wt-base}
 

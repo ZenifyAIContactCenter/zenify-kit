@@ -123,7 +123,7 @@ Ask the user to choose between options: issue #1–#5, or "none".
 
 - A pick → invoke `Skill(znf:fix)` with structured fields only: catalog id, repo, route, window,
   trace id, counts and the scrubbed message template of that issue.
-- A P0 affecting prd → also suggest `/znf:hotfix` for the user to type; that skill is user-only.
+- A P0 affecting prd → say so; `/znf:fix` hands it to `/znf:hotfix` on its own.
 - "none" or no answer → stop.
 
 ## References

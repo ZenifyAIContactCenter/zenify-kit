@@ -19,16 +19,23 @@ var findWorkspaceRoot = wt.FindWorkspaceRoot
 // writeGuardRun is the write-guard entry point; a var so tests can stub it.
 var writeGuardRun = func() int { return runWriteGuard(os.Stdin, os.Stderr, wt.FindWorkspaceRoot) }
 
+// planeGuardRun is the plane-guard entry point; a var so tests can inject stdin.
+var planeGuardRun = func(w io.Writer) int { return runPlaneGuard(os.Stdin, w) }
+
 // dispatchHook runs the action for id within workspace wsRoot. Every id
 // returns 0 (fail-open) except read-guard and write-guard, which return 2 to
 // deny a Read/Write the harness would otherwise let through; a hook must never
 // make CC report an error for any other reason. wsRoot == "" means "outside a
 // workspace" => no-op, except for write-guard, which runs first because it
-// derives the workspace from the target file path, not from the hook's cwd.
+// derives the workspace from the target file path, not from the hook's cwd,
+// and plane-guard, which needs no workspace (the Plane MCP is global).
 func dispatchHook(id, wsRoot string, w io.Writer) int {
 	noop := func() int { fmt.Fprintln(w, "{}"); return 0 }
 	if id == "write-guard" {
 		return writeGuardRun()
+	}
+	if id == "plane-guard" {
+		return planeGuardRun(w)
 	}
 	if wsRoot == "" {
 		return noop()
@@ -48,6 +55,8 @@ func dispatchHook(id, wsRoot string, w io.Writer) int {
 		return runGitStateHook(wsRoot, gitstate.Stop, w)
 	case "wt-report":
 		return runWtReportHook(wsRoot, w)
+	case "tmp-check":
+		return runTmpCheckHook(w)
 	case "read-guard":
 		return runReadGuard(os.Stdin, os.Stderr, os.Stat, observe.Record)
 	default:

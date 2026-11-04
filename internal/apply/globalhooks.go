@@ -31,11 +31,13 @@ func znfHookSpecs() []hookSpec {
 		{Event: "SessionStart", Matcher: "", ID: "session-start", Purpose: "Đồng bộ knowledge store, ghi lại rules/workspace mới nhất, nhắc update, in digest bootstrap nếu máy chưa có sentinel discipline"},                   //znf:allow-lang
 		{Event: "SessionStart", Matcher: "", ID: "git-state", Purpose: "In báo cáo trạng thái git của workspace vào context đầu phiên"},                                                                                         //znf:allow-lang
 		{Event: "SessionStart", Matcher: "", ID: "wt-report", Purpose: "In một dòng liệt kê worktree đã merge/rác mà `wt sweep --all` sẽ dọn"},                                                                                  //znf:allow-lang
+		{Event: "SessionStart", Matcher: "", ID: "tmp-check", Purpose: "Cảnh báo khi thư mục tạm của user bị rò rỉ tới ≥ 50.000 mục (macOS có thể treo khi khởi động) hoặc máy chạy liên tục ≥ 7 ngày"},                         //znf:allow-lang
 		{Event: "Stop", Matcher: "", ID: "docs-sync", Purpose: "Đồng bộ knowledge store qua git (status → pull --rebase → push), fail-open"},                                                                                    //znf:allow-lang
 		{Event: "Stop", Matcher: "", ID: "git-state-stop", Purpose: "Báo trạng thái git dạng cảnh báo đứng (systemMessage) khi phiên dừng"},                                                                                     //znf:allow-lang
 		{Event: "PreToolUse", Matcher: "Task|Agent", ID: "observe-count", Purpose: "Đếm số lần dispatch subagent, cảnh báo khi vượt soft-cap"},                                                                                  //znf:allow-lang
 		{Event: "PostToolUse", Matcher: "Task|Agent|Bash|WebFetch|WebSearch|Read", ID: "observe-meter", Purpose: "Ghi nhận việc dùng tool để đo usage"},                                                                         //znf:allow-lang
 		{Event: "PreToolUse", Matcher: "Read", ID: "read-guard", Purpose: "Chặn Read file quá lớn (text > 200 KB không có offset+limit, PDF không có pages, ảnh > 300 KB) trước khi kết quả vào context"},                       //znf:allow-lang
+		{Event: "PreToolUse", Matcher: "mcp__zenify-plane__.*", ID: "plane-guard", Purpose: "Plane MCP: action đọc chạy thẳng, action ghi luôn hỏi người dùng (kể cả chế độ bypass)"},                                           //znf:allow-lang
 		{Event: "PreToolUse", Matcher: "Write|Edit|NotebookEdit", ID: "write-guard", Purpose: "Chặn Write/Edit ra ngoài quy ước thư mục workspace (root ngoài allowlist, file ngay dưới docs/, docs/<tên lạ>) và chỉ chỗ đúng"}, //znf:allow-lang
 	}
 }
@@ -54,14 +56,16 @@ func HookSpecs() []HookSpec { return znfHookSpecs() }
 const codexSubagentTool = "collaborationspawn_agent"
 
 // codexEntries derives the Codex hook specs from the Claude ones: read-guard and
-// write-guard are dropped (Codex has no matching Read/Write/Edit tools) and
+// write-guard are dropped (Codex has no matching Read/Write/Edit tools),
+// plane-guard is dropped (the zenify-plane MCP is registered for Claude Code
+// only), and
 // Claude subagent tool names in matchers are replaced by codexSubagentTool.
 // ID and Purpose are kept.
 func codexEntries(specs []hookSpec) []hookSpec {
 	out := make([]hookSpec, 0, len(specs))
 	for _, s := range specs {
 		switch {
-		case s.ID == "read-guard" || s.ID == "write-guard":
+		case s.ID == "read-guard" || s.ID == "write-guard" || s.ID == "plane-guard":
 			continue
 		case s.Matcher == "Task|Agent":
 			s.Matcher = codexSubagentTool

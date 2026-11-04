@@ -129,6 +129,26 @@ Khi manifest nhúng sẵn trong binary có `broker:` và lệnh `claude` có tr�
 
 Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn vào phiên.
 
+## Plane cho agent
+
+`zenify-plane` là MCP server kiểu stdio: Claude Code chạy `zenify plane-mcp` bằng PAT Plane của chính bạn, không đi qua broker. Agent đọc work item, cycle, module trực tiếp; mọi thao tác ghi luôn hỏi bạn trước (hook `plane-guard`).
+
+Cách bật:
+
+1. `brew install uv`.
+2. Tạo PAT ở https://plane.zenify.vn → Profile Settings → Personal Access Tokens → Add personal access token.
+3. Chạy `zenify env set PLANE_API_KEY` trong terminal của bạn (cần TTY, dán PAT khi được hỏi).
+4. Chạy `zenify up --apply`, rồi mở lại Claude Code. `/mcp` sẽ hiện `zenify-plane`.
+
+Chạy `zenify up` dạng tương tác thì bước nhập secret cuối wizard có thể hỏi `PLANE_API_KEY`; dán PAT ở đó thì kit đăng ký `zenify-plane` ngay sau bước đó, không cần chạy lại `zenify up --apply`.
+
+Lần đầu `uvx` tải Python nên chậm; nếu `/mcp` báo lỗi kết nối thì mở lại Claude Code. Nếu bước kiểm tra `zenify-plane` quá thời gian, `zenify up` in một dòng gợi ý, không đổi gì; chạy lại `zenify up --apply` sau. Thiếu PAT hoặc `uv`, `zenify up` chỉ in gợi ý và không đăng ký. Khi `CLAUDE_CONFIG_DIR` trỏ tới profile khác `~/.claude`, kit cũng không đăng ký vì hook `plane-guard` chỉ cài trong `~/.claude/settings.json`.
+
+Tên `zenify-plane` dành riêng cho kit, chỉ với `Type: stdio` và `Command: zenify`; server cùng tên kiểu khác thì kit giữ nguyên. Còn `PLANE_API_KEY` thì lần `zenify up --apply` sau sẽ đăng ký lại, nên muốn gỡ hẳn:
+
+1. Xóa dòng `PLANE_API_KEY` bằng `zenify env edit` (`zenify env set` không nhận giá trị trống), và bỏ `PLANE_API_KEY` khỏi biến môi trường shell nếu bạn có export.
+2. Chạy `claude mcp remove zenify-plane -s user`.
+
 ## Sandbox của Claude Code
 
 Khi sandbox Bash của Claude Code bật, lệnh chạy trong sandbox chỉ ra mạng qua proxy lọc của Claude Code, nên script nối thẳng tới MongoDB, MySQL hay Redis không kết nối được. Vì vậy `zenify up` thêm `zenify db-read *`, `zenify redis-read *` và `zenify data run *` vào cả `sandbox.excludedCommands` và `permissions.allow`. Lệnh gọi trần (một lệnh, không pipe, không redirect, không `cd`, không `$(…)`) chạy ngoài sandbox, có mạng thẳng và không hỏi quyền. Lệnh ghép, ví dụ có redirect ra file, `cd` hay `$(…)`, vẫn nằm trong sandbox và không nối được, nên hãy chạy lại dạng trần, với script ghi bằng đường dẫn tuyệt đối.

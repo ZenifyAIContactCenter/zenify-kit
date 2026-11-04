@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -121,7 +122,16 @@ type Manifest struct {
 	Repos      []Repo      `yaml:"repos"`
 	SecretKeys []SecretKey `yaml:"secretKeys"` // env keys kept in <workspace>/.zenify/.env; names only, values never distributed
 	Broker     *Broker     `yaml:"broker"`     // credential broker; nil = every command keeps its pre-broker behaviour
+	Plane      *Plane      `yaml:"plane"`      // self-hosted Plane for the per-dev Plane MCP; nil = the kit does not touch Plane
 }
+
+// Plane locates the self-hosted Plane instance. The per-dev token is never here.
+type Plane struct {
+	URL       string `yaml:"url"`       // must be https://
+	Workspace string `yaml:"workspace"` // workspace slug
+}
+
+var planeWorkspaceRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 // Broker locates the credential broker.
 type Broker struct {
@@ -158,6 +168,15 @@ func Parse(b []byte, label string) (*Manifest, error) {
 		u, err := url.Parse(m.Broker.URL)
 		if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
 			return nil, fmt.Errorf("manifest %s: broker.url phải là https://host, không query/fragment", label) //znf:allow-lang
+		}
+	}
+	if m.Plane != nil {
+		u, err := url.Parse(m.Plane.URL)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
+			return nil, fmt.Errorf("manifest %s: plane.url phải là https://host, không query/fragment", label) //znf:allow-lang
+		}
+		if !planeWorkspaceRe.MatchString(m.Plane.Workspace) {
+			return nil, fmt.Errorf("manifest %s: plane.workspace không hợp lệ", label) //znf:allow-lang
 		}
 	}
 	return &m, nil

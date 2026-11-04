@@ -6,6 +6,25 @@ Step 0 ends with **one named command, already run**, whose output is red on exac
 user described. Every later step re-runs it: Step 2 confirms the cause with it, Step 5 turns it into
 a regression test, Step 6 watches it go green.
 
+## Inputs
+<!-- Moved from fix/SKILL.md § Step 0 (byte cap) -->
+
+**No argument:**
+```bash
+ls -t *.log 2>/dev/null | head -3
+tail -100 <latest-log-file> 2>/dev/null
+```
+Also run the project's test suite with `pm` (`pm test`, `pm run build`), never an assumed `npm`; a
+verify command in the repo's CLAUDE.md wins.
+
+**A description:** a symptom to search for; still fetch logs.
+
+**A GitHub Actions URL (`.../actions/runs/...`):**
+```bash
+gh run view <run-id> --log 2>&1 | grep -A 20 "Error\|FAIL\|error:" | head -100
+# Or: gh run view --log-failed
+```
+
 ## Redact first
 
 Scrub inside the command, so raw output never enters the conversation: pipe it through a filter,

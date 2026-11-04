@@ -3,6 +3,19 @@
 Rationale behind the steps in `SKILL.md`. Read when a step looks like overhead under time
 pressure — every one of these was written because the shortcut cost more.
 
+## How much diagnosis
+
+This scales step 3; it never skips it. Confirming the root cause against real error output is
+required on both paths.
+
+- **Narrow** — one clear error, one obvious cause → one hypothesis, checked against the real
+  error output, then confirm.
+- **Wide** — cause unclear, multi-service, or hard to reproduce → `EnterPlanMode` (Opus) to run
+  parallel hypotheses first, `ExitPlanMode` before deciding the response.
+
+State which path and why (one line). If the narrow path's single hypothesis does not survive
+confirmation, you were on the wide path all along.
+
 ## Why diagnosis comes before the worktree
 
 Creating a workspace before knowing the cause commits you to a forward fix before anyone has
@@ -22,15 +35,59 @@ customer PII and tenant/account ids become `<REDACTED>`. `zenify data run` does 
 you — it masks credential values and hosts only (as `***`) — so a prod data script prints
 record ids and counts only, never PII fields.
 
-## Why the response is the user's call
+## Why the response is the user's call when the last deploy may be the cause
 
 Deciding between revert, disable and fix forward is the highest-leverage decision in an incident.
 Writing new code under pressure is when code is worst, while a revert adds no new risk. It is
-also an action on production, which makes it the user's decision rather than the agent's.
+also an action on production, which makes it the user's decision rather than the agent's —
+whenever a revert is a real option. When the faulty commit predates the previous release tag,
+reverting the last deploy would not remove the bug, so fix forward is the only response left and
+step 4 takes it without asking.
 
-If the forward fix turns out to need feature-sized work — several files, a contract change, a
-design decision — that is itself the signal to revert instead and do it properly on the normal
-feature base.
+If the forward fix turns out to need feature-sized work, that is itself the signal to revert
+instead and do it properly on the normal feature base. "Feature-sized" has one definition, the
+step 9 threshold: more than 3 changed files, or a shared resource reported by `/gate`. The count
+runs before `/ship`, which is where the commit happens, so it diffs the working tree against the
+merge-base with `$REF` and adds untracked files; `$REF...HEAD` would count nothing at that point.
+
+## Why tags decide step 2 and step 4
+
+Release tags (`vYYMMDD.n`, cut on the hotfix base) are the only machine-readable record of what
+was released. Shell variables do not survive between the agent's Bash calls, so each block prints
+its values and later steps reuse the printed text; an empty `$REF` would otherwise turn
+`git show "$REF:<file>"` into a read of the index. Step 2 asks only when the newest tag is not on `$REF`; step 4 decides on its own
+only when the faulty commit is an ancestor of the tag before it.
+
+- **Sort by `-v:refname`, never by `creatordate`.** Release tags are lightweight (`git
+  for-each-ref` reports `commit`), so `creatordate` is the commit date, and a tag placed on an
+  older commit sorts in the wrong place. Version sort reads the name, which is the release order.
+- **`C` comes from `git blame` on the one faulty line, not from `git log -S`.** `log -S
+  --reverse | head -1` returns the oldest commit that changed how often the text appears in the
+  file: a common line (`return null;`) or one removed and re-added in the last deploy resolves to
+  an old commit and fix-forwards silently. It also stopped at the rename commit `9c0834242`
+  instead of the original `927b43789` on a real renamed file. Blame returns the last commit that
+  touched that exact line, follows whole-file renames, and needs no source text in a shell
+  literal: the line number `N` comes from `$REF`'s copy via `grep -nF -f <needle>`. More than one
+  match, or none, means the line cannot be pinned → ask; the `case` guard keeps an empty `N`
+  from reaching `blame -L","`, which git reads as the whole file and answers with line 1's
+  commit. Step 9 prints no number when `merge-base` fails (an empty or wrong ref), and no
+  number means ask, never "3 or fewer". Blame errors only make `C` later (a
+  reformat counts as a touch), so they only add a question.
+- **What this check cannot see.** An old line that a newer commit elsewhere made reachable keeps
+  an old `C`, so step 4 fix-forwards although reverting the last deploy would also end the
+  incident. A fix forward is still a valid response there, only slower; the skill accepts it
+  rather than guessing which other files are on the failing path.
+- **Step 2 checks "the tag is on `$REF`", not "this is the build production runs".** The newest
+  tag may not be deployed yet; checking the running version from telemetry is deferred.
+- **`REF` = `BASE` always asks.** A repo that declares no `hotfixBaseRef` resolves the hotfix base
+  to its `baseRef` (`internal/wt/config.go` `HotfixBase`). Once `main → staging` is synced, an
+  integration branch contains the newest tag too, so `CUR = LATEST` would confirm a branch that
+  still holds unreleased work. Only a separately declared hotfix base lets tags decide.
+- **Step 9 counts again after every `/ship` fix wave.** A reviewer may ask for a fourth file (a
+  regression test) or the fix may start touching a shared resource; the count before `/ship` no
+  longer describes what ships.
+- **Post-deploy waits for production, not for a tag.** A repo that deploys on merge runs the fix
+  before any tag exists, so the build check in `post-deploy-check.md` starts the check too.
 
 ## Why the base ref is fetched before it is resolved
 
@@ -73,11 +130,13 @@ every query must carry**. A missing tenant/scope filter returns correct-looking 
 development, because dev data has one tenant, and most stores have no row-level security to catch
 it.
 
-## Why a clean check is not yet evidence
+## Clean checks
 
-A positive result carries its own content; a *negative* one — "no match", "0 results", "OK",
-"nothing found" — that lets you proceed does not, until a second independent mechanism agrees.
-Five times in one session a tool reported clean and the clean was wrong.
+A clean check is not yet evidence. A positive result carries its own content; a *negative* one —
+"no match", "0 results", "OK", "nothing found" — that lets you proceed does not, until a second
+independent mechanism agrees. Five times in one session a tool reported clean and the clean was
+wrong. Sweep with `rg`, not `grep -R`; confirm a wrapper tool's "not found" against the
+underlying tool; on a connection failure run `nc -z <host> <port>` first.
 
 ## Why `/ship` runs unconditionally, even in a hurry
 

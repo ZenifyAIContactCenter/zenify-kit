@@ -236,8 +236,13 @@ func TestEmbeddedManifest_EveryKeyDescribed(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys := m.AllKeys()
-	if len(keys) != 0 {
-		t.Fatalf("want no keys (DB/E2E/PostHog/lumi credentials all come from the broker), got %v", KeyNames(keys))
+	if got := strings.Join(KeyNames(keys), ","); got != "PLANE_API_KEY" {
+		t.Fatalf("want only PLANE_API_KEY (DB/E2E/PostHog/lumi credentials all come from the broker), got %q", got)
+	}
+	for _, k := range keys {
+		if k.Description == "" || k.HowTo == "" {
+			t.Errorf("%s: description and howTo are required", k.Name)
+		}
 	}
 }
 
@@ -344,5 +349,39 @@ func TestEmbeddedManifest_HasBrokerNoDBKeys(t *testing.T) {
 		if have[n] {
 			t.Errorf("%s must no longer be a manifest key", n)
 		}
+	}
+}
+
+func TestManifest_PlaneURLMustBeHTTPS(t *testing.T) {
+	base := "org: o\nrepos:\n  - name: r\n    url: u\n"
+	for _, tc := range []struct{ name, extra string }{
+		{"http url", "plane:\n  url: http://plane.example\n  workspace: w\n"},
+		{"query", "plane:\n  url: https://plane.example?x=1\n  workspace: w\n"},
+		{"no host", "plane:\n  url: https://\n  workspace: w\n"},
+	} {
+		_, err := Parse([]byte(base+tc.extra), "t")
+		if err == nil || !strings.Contains(err.Error(), "plane.url") {
+			t.Errorf("%s: want plane.url error, got %v", tc.name, err)
+		}
+	}
+}
+
+func TestManifest_PlaneWorkspaceRequired(t *testing.T) {
+	base := "org: o\nrepos:\n  - name: r\n    url: u\n"
+	for _, ws := range []string{`""`, "Bad", "-x"} {
+		_, err := Parse([]byte(base+"plane:\n  url: https://plane.example\n  workspace: "+ws+"\n"), "t")
+		if err == nil || !strings.Contains(err.Error(), "plane.workspace") {
+			t.Errorf("workspace %s: want plane.workspace error, got %v", ws, err)
+		}
+	}
+}
+
+func TestManifest_NoPlaneNil(t *testing.T) {
+	m, err := Parse([]byte("org: o\nrepos:\n  - name: r\n    url: u\n"), "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Plane != nil {
+		t.Fatalf("Plane = %+v, want nil", m.Plane)
 	}
 }

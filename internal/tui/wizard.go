@@ -68,6 +68,10 @@ type OnboardConfig struct {
 	// which no-ops when Accessible) must stub this out to stay hermetic. Nil uses
 	// the real welcomeNote.
 	WelcomeNoteFn func(accessible bool) error
+	// AfterSecretsFn runs once after secretStep, so a step that needs a key the
+	// dev just typed (the Plane MCP needs PLANE_API_KEY) runs after apply did not
+	// find it. Nil → nothing.
+	AfterSecretsFn func()
 }
 
 // OnboardResult carries the plan, the selected repos, and whether apply ran
@@ -174,6 +178,9 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	if err := secretStep(cfg); err != nil {
 		// fail-open: apply already finished, don't fail onboarding over a secret-write error.
 		fmt.Fprintln(os.Stderr, "secrets: bỏ qua vì lỗi:", err) //znf:allow-lang
+	}
+	if cfg.AfterSecretsFn != nil {
+		cfg.AfterSecretsFn()
 	}
 	printDone(os.Stdout)
 	return res, nil
