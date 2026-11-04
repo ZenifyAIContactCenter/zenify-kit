@@ -43,6 +43,8 @@ type CookedItem struct {
 	Status  string   `json:"status"`
 	EndedAt string   `json:"endedAt"`
 	PRs     []string `json:"prs"`
+	// Merged: the item has PRs and every one of them is merged (closed unmerged or unknown is not).
+	Merged bool `json:"merged"`
 }
 
 type BoilItem struct {
@@ -111,7 +113,7 @@ type liveDoc struct {
 // (longest working first). It reads files and gh
 // only through the Input funcs; the first title error is kept in TitleError.
 // It also fills res.Running[i].Tab, besides building Carried and LastDay.
-func computeKitchen(in Input, logEv []Event, works map[string]*work, order []string, items []Item, issues []Issue, ghDown bool, res *Result) Kitchen {
+func computeKitchen(in Input, logEv []Event, works map[string]*work, order []string, items []Item, issues []Issue, ghDown bool, mergedAt map[string]string, res *Result) Kitchen {
 	k := Kitchen{Carried: []CarriedItem{}, Cooked: []CookedItem{}, RollingBoil: []BoilItem{}, Cooking: []CookingItem{}}
 	backlogTitle := map[string]string{}
 	for _, e := range logEv {
@@ -231,7 +233,7 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		if w.end == nil || it.Status == "running" || it.Status == "stale" || w.end.At.In(in.Now.Location()).Format(dateLayout) != in.Today {
 			continue
 		}
-		done = append(done, cooked{w.end.At, CookedItem{ID: id, Brief: brief(it, true), Status: it.Status, EndedAt: it.EndedAt, PRs: it.PRs}})
+		done = append(done, cooked{w.end.At, CookedItem{ID: id, Brief: brief(it, true), Status: it.Status, EndedAt: it.EndedAt, PRs: it.PRs, Merged: allMerged(it.PRs, mergedAt)}})
 	}
 	sort.SliceStable(done, func(i, j int) bool { return done[i].at.After(done[j].at) })
 	for _, c := range done {
@@ -409,4 +411,17 @@ func cwdLabel(ws, cwd string) string {
 		}
 	}
 	return filepath.Base(cwd)
+}
+
+// allMerged reports whether prs is non-empty and every PR has a merge time in mergedAt.
+func allMerged(prs []string, mergedAt map[string]string) bool {
+	if len(prs) == 0 {
+		return false
+	}
+	for _, u := range prs {
+		if at, ok := mergedAt[u]; !ok || at == ClosedUnmerged {
+			return false
+		}
+	}
+	return true
 }

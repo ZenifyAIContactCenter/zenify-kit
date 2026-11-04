@@ -572,3 +572,29 @@ func TestKitchenIdleOnlyIsNotMalformed(t *testing.T) { // SC-19
 		t.Fatalf("malformed = %d kitchen = %+v", r.Malformed, r.Kitchen)
 	}
 }
+
+func TestKitchenCookedMergedOnlyWhenEveryPRMerged(t *testing.T) {
+	a, b, c := kid("cook", 1), kid("fix", 2), kid("fix", 3)
+	log := lines(
+		row(kAt(8, 0), "start", a, "cook", "r", "M"),
+		row(kAt(9, 0), "end", a, "https://x/pr/1,https://x/pr/2", "3", "1"),
+		row(kAt(8, 0), "start", b, "fix", "r", "S"),
+		row(kAt(9, 10), "end", b, "https://x/pr/3", "1", "0"),
+		row(kAt(8, 0), "start", c, "fix", "r", "S"),
+		row(kAt(9, 20), "end", c, "https://x/pr/4", "1", "0"),
+	)
+	in := kInput(log)
+	in.Cache = map[string]string{
+		"https://x/pr/1": "2026-11-02T02:30:00Z",
+		"https://x/pr/3": "2026-11-02T02:40:00Z",
+		"https://x/pr/4": ClosedUnmerged,
+	}
+	r, _ := Compute(in)
+	merged := map[string]bool{}
+	for _, it := range r.Kitchen.Cooked {
+		merged[it.ID] = it.Merged
+	}
+	if merged[a] || !merged[b] || merged[c] {
+		t.Fatalf("merged = %+v (want %s false: one PR open, %s true, %s false: closed unmerged)", merged, a, b, c)
+	}
+}
