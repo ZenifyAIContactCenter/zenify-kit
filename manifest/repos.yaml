@@ -7,6 +7,17 @@ org: ZenifyAIContactCenter
 # DB, E2E and PostHog keys no longer live in .zenify/.env. Only the URL is versioned.
 broker:
   url: https://broker.zenify.vn
+# Self-hosted Plane for the per-developer Plane MCP (`zenify plane-mcp`). Only the URL and slug are versioned; each dev's PAT lives in .zenify/.env.
+plane:
+  url: https://plane.zenify.vn
+  workspace: zenify
+secretKeys:
+  - name: PLANE_API_KEY
+    description: Plane personal access token of this developer, used by the zenify-plane MCP
+    howTo: plane.zenify.vn → Profile Settings → Personal Access Tokens → Add personal access token; then run `zenify env set PLANE_API_KEY` and `zenify up --apply`
+    scope: personal
+    secret: true
+    group: tooling
 repos:
   - name: contact-center-be
     url: git@github.com:ZenifyAIContactCenter/contact-center-be.git

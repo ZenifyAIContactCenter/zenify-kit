@@ -25,6 +25,7 @@ func wizardSecretKeys(m *manifest.Manifest) []manifest.SecretKey { return m.Secr
 // whether the user was already logged in when that plan was built.
 func runWizard(w io.Writer, m *manifest.Manifest, src, workspace string, sources map[string]reconcile.Source, prebuilt []reconcile.RepoPlan, preAuthed bool) error {
 	gh, git := ghRunner, gitx.ExecRunner()
+	hadPAT := planePATSet(os.Getenv, workspace)
 	res, err := tui.RunOnboard(tui.OnboardConfig{
 		Workspace:  workspace,
 		Accessible: false,
@@ -49,6 +50,13 @@ func runWizard(w io.Writer, m *manifest.Manifest, src, workspace string, sources
 			return plans, perr
 		},
 		ApplyFn: func(sel []string) error { return runApplySelected(w, m, src, workspace, sel, gh, git, sources) },
+		AfterSecretsFn: func() {
+			patSet := func() bool { return planePATSet(os.Getenv, workspace) }
+			if !hadPAT && patSet() { // apply skipped Plane for want of the PAT the secrets step just saved
+				bm, _ := brokerManifest("", "") // same manifest runApply registers Plane from
+				registerPlaneMCP(w, w, bm, patSet, runClaudeBounded)
+			}
+		},
 	})
 	_ = res
 	return err

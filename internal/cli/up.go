@@ -328,6 +328,8 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	// same way, so the MCP URL and its token always name one broker.
 	bm, _ := brokerManifest("", "")
 	registerBrokerMCP(w, errW, bm, runClaudeBounded)
+	// Per-developer Plane MCP (stdio, the dev's own PAT, not via the broker). NON-FATAL.
+	registerPlaneMCP(w, errW, bm, func() bool { return planePATSet(os.Getenv, workspace) }, runClaudeBounded)
 
 	// gh-stack extension for stacked PRs (FR-6.1). NON-FATAL.
 	ensureGHStack(gh, w, errW)
@@ -902,6 +904,48 @@ func registerBrokerMCP(w, errW io.Writer, m *manifest.Manifest, run func(string,
 	}
 }
 
+// registerPlaneMCP registers the stdio `zenify-plane` MCP with Claude when the
+// manifest declares Plane, claude and uvx are on PATH and the developer has a
+// PAT. A missing PAT or uv only prints a hint; nothing here fails `zenify up`.
+func registerPlaneMCP(w, errW io.Writer, m *manifest.Manifest, patSet func() bool, run func(string, ...string) ([]byte, error)) {
+	if m == nil || m.Plane == nil {
+		return
+	}
+	if _, err := lookPath("claude"); err != nil {
+		return
+	}
+	// plane-guard is installed only in ~/.claude/settings.json; a profile picked by
+	// CLAUDE_CONFIG_DIR would get Plane writes without the ask gate.
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		if home, err := os.UserHomeDir(); err != nil || filepath.Clean(dir) != filepath.Join(home, ".claude") {
+			_, _ = fmt.Fprintln(w, "zenify-plane: CLAUDE_CONFIG_DIR trỏ tới profile khác ~/.claude, nơi chưa có plane-guard nên chưa đăng ký; bỏ biến này rồi chạy zenify up --apply") //znf:allow-lang
+			return
+		}
+	}
+	if !patSet() {
+		_, _ = fmt.Fprintf(w, "zenify-plane: chưa có PLANE_API_KEY, chưa đăng ký. Tạo PAT ở %s → Profile Settings → Personal Access Tokens, chạy zenify env set PLANE_API_KEY trong terminal, rồi zenify up --apply\n", m.Plane.URL) //znf:allow-lang
+		return
+	}
+	if _, err := lookPath("uvx"); err != nil {
+		_, _ = fmt.Fprintln(w, "zenify-plane: cần uv (brew install uv), cài xong chạy zenify up --apply") //znf:allow-lang
+		return
+	}
+	st, err := mcpreg.BootstrapStdio(mcpreg.StdioSpec{Name: "zenify-plane", Command: "zenify", Args: []string{"plane-mcp"}}, run)
+	switch {
+	case errors.Is(err, context.DeadlineExceeded): // `claude mcp get` health-checks the server; a cold uvx outlasts claudeMCPTimeout
+		_, _ = fmt.Fprintln(w, "zenify-plane: kiểm tra quá thời gian (có thể uvx đang tải lần đầu), chưa đổi gì; chạy lại zenify up --apply sau") //znf:allow-lang
+	case err != nil:
+		_, _ = fmt.Fprintf(errW, "warning: zenify-plane MCP: %v (onboarding otherwise succeeded)\n", err)
+	case st == playwright.RegAbsent:
+		_, _ = fmt.Fprintln(w, "zenify-plane: registered MCP server (user scope)")
+		_, _ = fmt.Fprintln(w, "zenify-plane: lần đầu uvx tải Python, nếu /mcp báo lỗi kết nối thì mở lại Claude Code") //znf:allow-lang
+	case st == playwright.RegLegacyDefault:
+		_, _ = fmt.Fprintln(w, "zenify-plane: updated MCP server command (user scope)")
+	case st == playwright.RegCustom:
+		_, _ = fmt.Fprintln(w, "zenify-plane: custom MCP registration kept")
+	}
+}
+
 // claudeMCPTimeout bounds each `claude mcp` call registerBrokerMCP makes.
 var claudeMCPTimeout = 20 * time.Second
 
@@ -912,5 +956,9 @@ func runClaudeBounded(n string, args ...string) ([]byte, error) {
 	defer cancel()
 	c := exec.CommandContext(ctx, n, args...) //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
 	c.WaitDelay = 2 * time.Second
-	return c.CombinedOutput()
+	out, err := c.CombinedOutput()
+	if err != nil && ctx.Err() != nil { // the kill surfaces as "signal: killed"; keep the deadline detectable
+		err = fmt.Errorf("%w: %w", ctx.Err(), err)
+	}
+	return out, err
 }

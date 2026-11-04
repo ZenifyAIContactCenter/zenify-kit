@@ -670,8 +670,8 @@ func TestRunClaudeBounded_TimesOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if _, err := runClaudeBounded(bin); err == nil {
-		t.Fatal("want an error from the killed child")
+	if _, err := runClaudeBounded(bin); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("want a deadline error from the killed child, got %v", err)
 	}
 	if d := time.Since(start); d > 5*time.Second {
 		t.Fatalf("took %v, want the bound to stop it", d)
@@ -855,5 +855,99 @@ func TestBrokerHeaders_IncludesTaskID(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, map[string]string{"Authorization": "Bearer test-jwt", "X-Zenify-Task": "ZEN-12"}) {
 		t.Fatalf("got=%v", got)
+	}
+}
+
+func TestRegisterPlaneMCP(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	m := &manifest.Manifest{Plane: &manifest.Plane{URL: "https://plane.example", Workspace: "ws"}}
+	savedLook := lookPath
+	t.Cleanup(func() { lookPath = savedLook })
+	have := map[string]bool{"claude": true, "uvx": true}
+	lookPath = func(n string) (string, error) {
+		if have[n] {
+			return "/fake/" + n, nil
+		}
+		return "", errors.New("not found")
+	}
+	var adds []string
+	run := func(_ string, args ...string) ([]byte, error) {
+		if args[1] == "get" {
+			return []byte("No MCP server named " + args[2]), errors.New("exit status 1")
+		}
+		adds = append(adds, args[2]+" "+args[3])
+		return nil, nil
+	}
+	yes, no := func() bool { return true }, func() bool { return false }
+
+	var out, errOut bytes.Buffer
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 1 || !strings.HasPrefix(adds[0], "zenify-plane ") || errOut.Len() != 0 {
+		t.Fatalf("adds=%v err=%q", adds, errOut.String())
+	}
+
+	adds = nil
+	out.Reset()
+	registerPlaneMCP(&out, &errOut, m, no, run)
+	if len(adds) != 0 || !strings.Contains(out.String(), "zenify env set PLANE_API_KEY") || !strings.Contains(out.String(), "https://plane.example") || errOut.Len() != 0 {
+		t.Fatalf("no PAT: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+
+	out.Reset()
+	have["uvx"] = false
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 0 || !strings.Contains(out.String(), "brew install uv") || errOut.Len() != 0 {
+		t.Fatalf("no uvx: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+
+	out.Reset()
+	have["uvx"] = true
+	registerPlaneMCP(&out, &errOut, &manifest.Manifest{}, yes, run)
+	registerPlaneMCP(&out, &errOut, nil, yes, run)
+	have["claude"] = false
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 0 || out.Len() != 0 || errOut.Len() != 0 {
+		t.Fatalf("must be silent: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+
+	// A get killed by claudeMCPTimeout (uvx warming its cache) changes nothing
+	// and prints one hint, never a warning.
+	have["claude"] = true
+	timedOut := func(_ string, args ...string) ([]byte, error) {
+		if args[1] == "get" {
+			return nil, fmt.Errorf("%w: signal: killed", context.DeadlineExceeded)
+		}
+		adds = append(adds, args[2])
+		return nil, nil
+	}
+	registerPlaneMCP(&out, &errOut, m, yes, timedOut)
+	if len(adds) != 0 || !strings.Contains(out.String(), "uvx") || errOut.Len() != 0 {
+		t.Fatalf("timeout: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+
+	// Any other get failure still warns.
+	out.Reset()
+	failed := func(string, ...string) ([]byte, error) { return []byte("boom"), errors.New("exit status 2") }
+	registerPlaneMCP(&out, &errOut, m, yes, failed)
+	if !strings.Contains(errOut.String(), "warning: zenify-plane MCP") {
+		t.Fatalf("real failure must warn: out=%q err=%q", out.String(), errOut.String())
+	}
+
+	// plane-guard lives only in ~/.claude/settings.json, so a profile picked by
+	// CLAUDE_CONFIG_DIR would get Plane writes without the ask gate: skip + hint.
+	home, _ := os.UserHomeDir()
+	adds = nil
+	out.Reset()
+	errOut.Reset()
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 0 || !strings.Contains(out.String(), "CLAUDE_CONFIG_DIR") || errOut.Len() != 0 {
+		t.Fatalf("custom profile: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+	out.Reset()
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude")+"/")
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 1 || errOut.Len() != 0 {
+		t.Fatalf("default profile spelled out: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
 	}
 }
