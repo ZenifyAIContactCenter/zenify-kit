@@ -480,3 +480,18 @@ func TestCodexEntries_DropsWriteGuard(t *testing.T) {
 		t.Fatalf("codexEntries len = %d, want 8", len(got))
 	}
 }
+
+func TestZnfHookSpecs_PlaneGuard(t *testing.T) {
+	var got []hookSpec
+	for _, s := range znfHookSpecs() {
+		if s.ID == "plane-guard" {
+			got = append(got, s)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("want exactly one plane-guard spec, got %+v", got)
+	}
+	if got[0].Event != "PreToolUse" || got[0].Matcher != "mcp__zenify-plane__.*" {
+		t.Fatalf("plane-guard spec = %+v", got[0])
+	}
+}
