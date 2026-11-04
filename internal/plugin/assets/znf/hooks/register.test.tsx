@@ -1503,3 +1503,19 @@ test('FR-2.2: a long call auto mode settled does not swallow a later real dialog
   await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'real-1' } as any)
   expect(liveDoc(world).state).toBe('busy')
 })
+
+test('FR-2.2: same arguments in a subagent and the main loop: the main dialog marks the main ask', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on, { now: T0 })
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'sleep 600' }, tool_use_id: 'sub-s', agentId: 'a-1', approver: 'person' } as any)
+  world.verdict = undefined
+  await dialogAsk($, world, { tool: 'Bash', input: { command: 'sleep 600' }, tool_use_id: 'main-s' })
+  expect(liveDoc(world).state).toBe('permission')
+  // The subagent call ending does not settle the main dialog.
+  await $.tool.call({ tool: 'Bash', command: 'sleep 600', tool_use_id: 'sub-s', agentId: 'a-1' } as any)
+  expect(liveDoc(world).state).toBe('permission')
+  await $.tool.call({ tool: 'Bash', command: 'sleep 600', tool_use_id: 'main-s' } as any)
+  expect(liveDoc(world).state).toBe('busy')
+})

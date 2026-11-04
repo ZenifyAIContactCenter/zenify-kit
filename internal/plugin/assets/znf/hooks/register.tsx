@@ -182,20 +182,19 @@ async function markPersonAsk($: $, useId: string, isMain: boolean): Promise<void
   })().catch(timingError($))
 }
 
-// The person ask whose dialog just opened: the same tool and arguments first (a call auto mode
-// settled stays a candidate while it runs), then the oldest one on the same tool and loop, then
-// any loop (the classic agent_id and the tool.check agentId are not proven equal).
+// The person ask whose dialog just opened, the oldest of the best rank: the same arguments and
+// loop, then the same arguments (a call auto mode settled stays a candidate while it runs), then
+// the same loop, then any loop (the classic agent_id and the tool.check agentId are not proven equal).
 function dialogCandidateOf(tool: string, input: unknown, agentId: string | undefined): string | undefined {
   const args = JSON.stringify(input ?? null)
-  let sameLoop: string | undefined
-  let anyLoop: string | undefined
+  const best: (string | undefined)[] = []
   for (const [useId, c] of dialogCandidates) {
     if (c.tool !== tool) continue
-    if (c.input === args) return useId
-    if ((c.agentId ?? '') === (agentId ?? '')) sameLoop ??= useId
-    anyLoop ??= useId
+    const sameLoop = (c.agentId ?? '') === (agentId ?? '')
+    const rank = c.input === args ? (sameLoop ? 0 : 1) : sameLoop ? 2 : 3
+    best[rank] ??= useId
   }
-  return sameLoop ?? anyLoop
+  return best.find(Boolean)
 }
 
 // FR-2.4: the heartbeat; stats ignore a live file whose .beat is older than 30s.
