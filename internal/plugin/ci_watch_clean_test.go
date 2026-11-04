@@ -1,6 +1,9 @@
 package plugin
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // FR-4.1..FR-4.5, SC-9: after green CI, ci-watch waits for the PR to be mergeable and prints the merge command.
 func TestCiWatchWaitsForClean(t *testing.T) {
@@ -20,4 +23,20 @@ func TestCiWatchWaitsForClean(t *testing.T) {
 		"--paginate",        // every page of review threads
 		"pageInfo",
 	})
+}
+
+// The harness Bash tool wraps `grep` in a ugrep shell function whose `-qv` exit code differs from
+// GNU grep, which made the wait loop exit 0 while runs were still in_progress.
+func TestCiWatchLoopBypassesGrepWrapper(t *testing.T) {
+	body := syncedAsset(t, "skills/ci-watch/SKILL.md")
+	assertContainsAll(t, "ci-watch/SKILL.md", body, []string{
+		"| command grep -c .",
+		"| command grep -qvx completed",
+		"| command grep -qvxE 'success|skipped|neutral'",
+	})
+	for _, bare := range []string{"| grep -c .", "| grep -qvx"} {
+		if strings.Contains(body, bare) {
+			t.Errorf("ci-watch/SKILL.md: bare %q goes through the harness grep wrapper; use `command grep`", bare)
+		}
+	}
 }
