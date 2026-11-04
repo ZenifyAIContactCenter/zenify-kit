@@ -113,11 +113,17 @@ func runHermetic(m *testing.M) int {
 		panic("test hermeticity: a cli test built a broker client without brokerFixture")
 	}
 
-	root, err := os.MkdirTemp("", "zenify-cli-test-*")
+	// Helper-process tests (TestTrackHelperProcess, TestPmHelperProcess) re-exec this
+	// binary and os.Exit inside the test, so a child's deferred RemoveAll never runs. A
+	// child therefore nests its root inside the parent's, which the parent removes.
+	root, err := os.MkdirTemp(os.Getenv("ZENIFY_CLI_TEST_PARENT_ROOT"), "zenify-cli-test-*")
 	if err != nil {
 		panic(err)
 	}
 	defer func() { _ = os.RemoveAll(root) }()
+	if os.Getenv("ZENIFY_CLI_TEST_PARENT_ROOT") == "" {
+		_ = os.Setenv("ZENIFY_CLI_TEST_PARENT_ROOT", root)
+	}
 	if home, err := os.UserHomeDir(); err == nil {
 		gopath := os.Getenv("GOPATH")
 		if gopath == "" {

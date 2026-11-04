@@ -11,8 +11,8 @@ import (
 
 func TestCodexEntriesDropsReadGuardAndMapsMatchers(t *testing.T) {
 	got := codexEntries(znfHookSpecs())
-	if len(got) != 7 {
-		t.Fatalf("want 7 entries, got %d", len(got))
+	if len(got) != 8 {
+		t.Fatalf("want 8 entries, got %d", len(got))
 	}
 	for _, s := range got {
 		if s.ID == "read-guard" {
@@ -44,7 +44,7 @@ func TestHookSpecRuntimes(t *testing.T) {
 	if got := (hookSpec{ID: "docs-sync"}).Runtimes(); got != "Claude, Codex" {
 		t.Fatalf("docs-sync runtimes = %q", got)
 	}
-	if n := len(CodexHookSpecs()); n != 7 {
+	if n := len(CodexHookSpecs()); n != 8 {
 		t.Fatalf("CodexHookSpecs len = %d", n)
 	}
 }
@@ -66,8 +66,8 @@ func TestEnsureCodexHooksCreatesThenNoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ch.Added != 8 {
-		t.Fatalf("Added = %d, want 8", ch.Added)
+	if ch.Added != 9 {
+		t.Fatalf("Added = %d, want 9", ch.Added)
 	}
 	first, err := os.ReadFile(codexHooksPath(dir))
 	if err != nil {
@@ -77,7 +77,7 @@ func TestEnsureCodexHooksCreatesThenNoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ch.Added != 0 || ch.Updated != 0 || ch.Unchanged != 8 {
+	if ch.Added != 0 || ch.Updated != 0 || ch.Unchanged != 9 {
 		t.Fatalf("second run = %+v, want only Unchanged=8", ch)
 	}
 	second, _ := os.ReadFile(codexHooksPath(dir))
@@ -175,8 +175,8 @@ func TestEnsureCodexHooksDryRunWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ch.Added != 8 {
-		t.Fatalf("Added = %d, want 8", ch.Added)
+	if ch.Added != 9 {
+		t.Fatalf("Added = %d, want 9", ch.Added)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("dry-run created %s (err=%v)", dir, err)
@@ -193,8 +193,8 @@ func TestRemoveCodexHooksKeepsForeign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Removed != 8 {
-		t.Fatalf("Removed = %d, want 8", r.Removed)
+	if r.Removed != 9 {
+		t.Fatalf("Removed = %d, want 9", r.Removed)
 	}
 	b, _ := os.ReadFile(codexHooksPath(dir))
 	var root map[string]json.RawMessage

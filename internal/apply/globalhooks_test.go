@@ -476,7 +476,7 @@ func TestCodexEntries_DropsWriteGuard(t *testing.T) {
 			t.Fatalf("codexEntries must drop write-guard: %+v", got)
 		}
 	}
-	if len(got) != 7 {
-		t.Fatalf("codexEntries len = %d, want 7", len(got))
+	if len(got) != 8 {
+		t.Fatalf("codexEntries len = %d, want 8", len(got))
 	}
 }
