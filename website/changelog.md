@@ -8,6 +8,18 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.58.0
+
+*2026-11-04*
+
+- **Plane MCP `zenify-plane` cho Claude Code:** agent đọc và ghi Plane bằng PAT của chính bạn, không qua token của Zenie.
+  - Lệnh đọc (work item, cycle, module, Intake) chạy thẳng; mọi lệnh ghi luôn hỏi bạn trước, kể cả khi bật bypass (hook `plane-guard`).
+  - Cách bật: `brew install uv`, tạo PAT trên Plane, `zenify env set PLANE_API_KEY`, rồi `zenify up --apply` và mở lại Claude Code.
+  - Chưa có PAT hoặc chưa có `uv` thì `zenify up` bỏ qua bước này, không báo lỗi. Profile riêng (`CLAUDE_CONFIG_DIR` khác mặc định) không được đăng ký.
+
+  Xem [Plane cho agent](/guides/broker-client#plane-cho-agent).
+- **Hook `tmp-check` cảnh báo khi thư mục tạm bị ngập:** đầu phiên, nếu thư mục tạm của user hoặc `/tmp` có từ 50.000 mục trở lên (hoặc đọc không xong trong 3 giây), Claude Code hiện khối `<tmp-check>`. Thư mục tạm quá đầy có thể làm macOS treo khi khởi động. Xem [Quan sát và an toàn](/guides/observe-and-safety).
+
 ## v0.57.0
 
 *2026-11-03*

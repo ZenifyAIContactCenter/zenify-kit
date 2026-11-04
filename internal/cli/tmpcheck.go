@@ -31,12 +31,12 @@ const (
 func tmpCountCapped(dir string, limit int, timeout time.Duration) int {
 	done := make(chan int, 1)
 	go func() {
-		f, err := os.Open(dir)
+		f, err := os.Open(dir) //nolint:gosec // G304 -- dir is the user temp dir or /tmp, chosen by the hook
 		if err != nil {
 			done <- 0
 			return
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		n := 0
 		for n < limit {
 			names, err := f.Readdirnames(1024)
