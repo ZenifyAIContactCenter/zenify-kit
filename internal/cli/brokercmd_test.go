@@ -853,6 +853,7 @@ func TestBrokerHeaders_IncludesTaskID(t *testing.T) {
 }
 
 func TestRegisterPlaneMCP(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	m := &manifest.Manifest{Plane: &manifest.Plane{URL: "https://plane.example", Workspace: "ws"}}
 	savedLook := lookPath
 	t.Cleanup(func() { lookPath = savedLook })
@@ -924,5 +925,23 @@ func TestRegisterPlaneMCP(t *testing.T) {
 	registerPlaneMCP(&out, &errOut, m, yes, failed)
 	if !strings.Contains(errOut.String(), "warning: zenify-plane MCP") {
 		t.Fatalf("real failure must warn: out=%q err=%q", out.String(), errOut.String())
+	}
+
+	// plane-guard lives only in ~/.claude/settings.json, so a profile picked by
+	// CLAUDE_CONFIG_DIR would get Plane writes without the ask gate: skip + hint.
+	home, _ := os.UserHomeDir()
+	adds = nil
+	out.Reset()
+	errOut.Reset()
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 0 || !strings.Contains(out.String(), "CLAUDE_CONFIG_DIR") || errOut.Len() != 0 {
+		t.Fatalf("custom profile: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	}
+	out.Reset()
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude")+"/")
+	registerPlaneMCP(&out, &errOut, m, yes, run)
+	if len(adds) != 1 || errOut.Len() != 0 {
+		t.Fatalf("default profile spelled out: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
 	}
 }

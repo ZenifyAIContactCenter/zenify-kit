@@ -914,6 +914,14 @@ func registerPlaneMCP(w, errW io.Writer, m *manifest.Manifest, patSet func() boo
 	if _, err := lookPath("claude"); err != nil {
 		return
 	}
+	// plane-guard is installed only in ~/.claude/settings.json; a profile picked by
+	// CLAUDE_CONFIG_DIR would get Plane writes without the ask gate.
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		if home, err := os.UserHomeDir(); err != nil || filepath.Clean(dir) != filepath.Join(home, ".claude") {
+			_, _ = fmt.Fprintln(w, "zenify-plane: CLAUDE_CONFIG_DIR trỏ tới profile khác ~/.claude, nơi chưa có plane-guard nên chưa đăng ký; bỏ biến này rồi chạy zenify up --apply") //znf:allow-lang
+			return
+		}
+	}
 	if !patSet() {
 		_, _ = fmt.Fprintf(w, "zenify-plane: chưa có PLANE_API_KEY, chưa đăng ký. Tạo PAT ở %s → Profile Settings → Personal Access Tokens, chạy zenify env set PLANE_API_KEY trong terminal, rồi zenify up --apply\n", m.Plane.URL) //znf:allow-lang
 		return
