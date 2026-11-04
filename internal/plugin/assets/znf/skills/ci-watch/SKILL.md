@@ -39,12 +39,12 @@ while :; do
   if runs=$(gh run list -R "$REPO" --commit "$SHA" -L 1000 --json databaseId,workflowName,status,conclusion,url \
       --jq '.[] | [.databaseId, .status, (.conclusion // "-"), .workflowName, .url] | @tsv'); then errs=0
   else errs=$((errs+1)); [ "$errs" -lt 3 ] || { echo "ci-watch: gh run list failed 3 times in a row"; exit 2; }; sleep 20; continue; fi
-  n=$(printf '%s' "$runs" | grep -c .)
+  n=$(printf '%s' "$runs" | command grep -c .)
   [ "$n" -lt 1000 ] || { echo "ci-watch: 1000+ runs for $SHA, result unknown"; exit 5; }
   if [ "$n" -eq 0 ]; then
     [ "$SECONDS" -lt "$appear" ] || { echo "ci-watch: no workflow run for $SHA after 5 min"; exit 3; }
-  elif ! printf '%s\n' "$runs" | cut -f2 | grep -qvx completed; then
-    printf '%s\n' "$runs" | cut -f3 | grep -qvxE 'success|skipped|neutral' && { printf '%s\n' "$runs"; exit 1; }
+  elif ! printf '%s\n' "$runs" | cut -f2 | command grep -qvx completed; then
+    printf '%s\n' "$runs" | cut -f3 | command grep -qvxE 'success|skipped|neutral' && { printf '%s\n' "$runs"; exit 1; }
     # Green only once the run set has held still for 60s: a pull_request run can appear after a push run finished.
     [ "$n" = "$last" ] && [ "$SECONDS" -ge "$settle" ] && { printf '%s\n' "$runs"; exit 0; }
     [ "$n" = "$last" ] || { last=$n; settle=$((SECONDS+60)); }
