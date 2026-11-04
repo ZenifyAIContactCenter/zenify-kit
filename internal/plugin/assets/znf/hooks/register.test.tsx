@@ -119,6 +119,9 @@ function engine(on: any, world: World): Calls {
         : next(e),
   )
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
+  on('classic.PermissionRequest', () => ({}))
+  on('classic.SubagentStart', () => ({}))
+  on('classic.SubagentStop', () => ({}))
   // FR-17.3: the writer beneath the session-start sync of the /config rows.
   on('config.set', (_: unknown, e: { value: unknown }) => ({ value: e.value }))
   on('fs.write', (_: unknown, e: { path: string; text: string }) => {
@@ -711,6 +714,7 @@ test('SC-19: an ask a person answers counts the whole tool call as a permission 
   await bindTo($, world, FIX_ID)
   world.verdict = 'ask'
   await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'tu-1', approver: 'person' } as any)
+  await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm -rf build' } } as any)
   world.verdict = undefined
   world.toolCall = async () => {
     await clock.sleep(40000)
@@ -903,6 +907,7 @@ test('SC-3: a main-loop ask a person answers is permission until its call ends; 
   mock.clock(on, { now: T0 })
   world.verdict = 'ask'
   await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'p1', approver: 'person' } as any)
+  await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm -rf build' } } as any)
   world.verdict = undefined
   expect(liveDoc(world)).toEqual({ state: 'permission', since: T0_ISO, cwd: CWD, id: '' })
   expect(world.files?.[PULSE]).toBe(T0_ISO)
@@ -917,6 +922,7 @@ test('SC-12: a subagent ask a person answers is permission too, with the bound i
   await bindTo($, world, FIX_ID)
   world.verdict = 'ask'
   await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'p2', agentId: 'a-1', approver: 'person' } as any)
+  await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm -rf build' }, agent_id: 'a-1' } as any)
   world.verdict = undefined
   expect(liveDoc(world)).toEqual({ state: 'permission', since: T0_ISO, cwd: CWD, id: FIX_ID })
   await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'p2', agentId: 'a-1' } as any)
@@ -955,6 +961,7 @@ test('Review Focus 4: an ask and a subagent permission overlap; busy only once b
     }
     world.verdict = 'ask'
     await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u2', agentId: 'a-1', approver: 'person' } as any)
+    await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm x' }, agent_id: 'a-1' } as any)
     world.verdict = undefined
     seen.push(liveDoc(world).state)
     checked()
@@ -1029,6 +1036,8 @@ test('SC-13: track off, AskUserQuestion writes no live file or pulse', async ($,
   await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
   world.verdict = 'ask'
   await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'p1', approver: 'person' } as any)
+  await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm x' } } as any)
+  await $.classic.SubagentStart({ agent_id: 'a-1', agent_type: 'Explore' } as any)
   await $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'p1' } as any)
   expect(trackWrites(calls)).toEqual([])
 })
@@ -1127,6 +1136,7 @@ test('stuck state: a person ask whose call never ran is cleared to idle at the m
   mock.clock(on)
   world.verdict = 'ask'
   await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u3', approver: 'person' } as any)
+  await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm x' } } as any)
   world.verdict = undefined
   expect(liveDoc(world).state).toBe('permission')
   await $.turn.complete(turnEnd(5000, 'a-1'))
@@ -1227,6 +1237,7 @@ test('SC-20: a permission ask while idle wins over idle, and idle returns once i
   await $.turn.complete(turnEnd(9000))
   world.verdict = 'ask'
   await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u9', approver: 'person' } as any)
+  await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm x' } } as any)
   world.verdict = undefined
   expect(liveDoc(world).state).toBe('permission')
   await $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'u9' } as any)
@@ -1244,6 +1255,7 @@ test('SC-20: ask and permission win over idle until they are answered or the tur
   // Idle waits for the ask to be answered: ask has priority over idle.
   world.verdict = 'ask'
   await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'u2', approver: 'person' } as any)
+  await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm x' } } as any)
   world.verdict = undefined
   await $.turn.complete(turnEnd(9000))
   expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'ask', 'busy', 'permission', 'idle'])
@@ -1362,4 +1374,132 @@ test('a stale busy file with a beat older than 30s still becomes idle', async ($
   const clock = mock.clock(on, { now: T0 })
   await start($, clock)
   expect(liveDoc(world).state).toBe('idle')
+})
+
+// A person's ask whose dialog opens: core's check asks a person, then the engine raises
+// PermissionRequest as it is about to show the dialog.
+async function dialogAsk($: any, world: World, check: Record<string, unknown>) {
+  world.verdict = 'ask'
+  await $.tool.check({ approver: 'person', ...check } as any)
+  world.verdict = undefined
+  const { tool, input, agentId } = check as { tool: string; input: unknown; agentId?: string }
+  await $.classic.PermissionRequest({ tool_name: tool, tool_input: input, ...(agentId ? { agent_id: agentId } : {}) } as any)
+}
+
+test('FR-2.2: a person ask that auto mode settles (no dialog, no PermissionRequest) is no wait and no permission state', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await bindTo($, world, FIX_ID)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'au-1', approver: 'person' } as any)
+  world.verdict = undefined
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'au-1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy'])
+  expect(fields(world).some(l => l.startsWith('wait'))).toBe(false)
+})
+
+test('FR-2.2: the permission dialog opening (PermissionRequest) is the permission state, until its call ends', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await dialogAsk($, world, { tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'dl-1' })
+  expect(liveDoc(world)).toEqual({ state: 'permission', since: T0_ISO, cwd: CWD, id: '' })
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'dl-1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['permission', 'busy'])
+})
+
+test('FR-12.1: a main turn end while a subagent runs stays busy; the last subagent stop writes idle', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  await $.classic.SubagentStart({ agent_id: 'bg-1', agent_type: 'general-purpose' } as any)
+  await $.classic.SubagentStart({ agent_id: 'bg-2', agent_type: 'Explore' } as any)
+  await $.turn.complete(turnEnd(9000))
+  expect(liveDoc(world).state).toBe('busy')
+  await $.classic.SubagentStop({ agent_id: 'bg-1', agent_type: 'general-purpose', agent_transcript_path: '/t', stop_hook_active: false } as any)
+  expect(liveDoc(world).state).toBe('busy')
+  await $.classic.SubagentStop({ agent_id: 'bg-2', agent_type: 'Explore', agent_transcript_path: '/t', stop_hook_active: false } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'idle'])
+})
+
+test('FR-4.5: two same-tool asks: the first dialog marks the oldest, so its whole call is the permission wait', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on)
+  await bindTo($, world, FIX_ID)
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm a' }, tool_use_id: 'two-a', approver: 'person' } as any)
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm b' }, tool_use_id: 'two-b', approver: 'person' } as any)
+  world.verdict = undefined
+  await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm a' } } as any)
+  world.toolCall = async () => {
+    await clock.sleep(30000)
+    return { result: { stdout: '', stderr: '' } }
+  }
+  const call = $.tool.call({ tool: 'Bash', command: 'rm a', tool_use_id: 'two-a' } as any)
+  await clock.advance(30000)
+  await call
+  expect(fields(world).at(-1)).toBe(`wait · ${FIX_ID} · 30000 · permission`)
+})
+
+test('FR-2.2: a main ask that never ran is swept at the main turn end, so a later dialog marks the live call', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm old' }, tool_use_id: 'stale-1', approver: 'person' } as any)
+  world.verdict = undefined
+  await $.turn.complete(turnEnd(9000))
+  await $.prompt.submit({ text: 'again' })
+  await dialogAsk($, world, { tool: 'Bash', input: { command: 'rm new' }, tool_use_id: 'live-1' })
+  expect(liveDoc(world).state).toBe('permission')
+  await $.tool.call({ tool: 'Bash', command: 'rm new', tool_use_id: 'live-1' } as any)
+  // live-1 was the marked id: its call end settles the wait.
+  expect(liveDoc(world).state).toBe('busy')
+})
+
+test('FR-2.2: a subagent dialog whose agent_id differs from the check still marks that ask', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on, { now: T0 })
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'rm x' }, tool_use_id: 'sub-1', agentId: 'loop-7', approver: 'person' } as any)
+  world.verdict = undefined
+  await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm x' }, agent_id: 'agent-7' } as any)
+  expect(liveDoc(world).state).toBe('permission')
+  await $.tool.call({ tool: 'Bash', command: 'rm x', tool_use_id: 'sub-1', agentId: 'loop-7' } as any)
+  expect(liveDoc(world).state).toBe('busy')
+})
+
+test('FR-12.1: a compact (session.start in the same process) keeps a running background subagent cooking', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await $.prompt.submit({ text: 'go' })
+  await $.classic.SubagentStart({ agent_id: 'bg-9', agent_type: 'general-purpose' } as any)
+  await start($, clock)
+  await $.turn.complete(turnEnd(9000))
+  expect(liveDoc(world).state).toBe('busy')
+  await $.classic.SubagentStop({ agent_id: 'bg-9', agent_type: 'general-purpose', agent_transcript_path: '/t', stop_hook_active: false } as any)
+  expect(liveDoc(world).state).toBe('idle')
+})
+
+test('FR-2.2: a long call auto mode settled does not swallow a later real dialog on the same tool', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  mock.clock(on, { now: T0 })
+  // long-1: a person ask the classifier settled; its call is still running (its candidate lingers).
+  world.verdict = 'ask'
+  await $.tool.check({ tool: 'Bash', input: { command: 'sleep 600' }, tool_use_id: 'long-1', approver: 'person' } as any)
+  world.verdict = undefined
+  await dialogAsk($, world, { tool: 'Bash', input: { command: 'rm -rf build' }, tool_use_id: 'real-1' })
+  expect(liveDoc(world).state).toBe('permission')
+  await $.tool.call({ tool: 'Bash', command: 'sleep 600', tool_use_id: 'long-1' } as any)
+  // The settled call ending leaves the open dialog waiting.
+  expect(liveDoc(world).state).toBe('permission')
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf build', tool_use_id: 'real-1' } as any)
+  expect(liveDoc(world).state).toBe('busy')
 })
