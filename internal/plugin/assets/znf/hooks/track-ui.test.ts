@@ -165,7 +165,7 @@ const kitchenStats = (over: Partial<TrackStats['kitchen']> = {}) =>
   stats({
     kitchen: {
       cooked: [
-        { id: X, brief: 'Kitchen pane', status: 'done', endedAt: COOKED_AT.toISOString(), prs: ['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2'] },
+        { id: X, brief: 'Kitchen pane', status: 'done', endedAt: COOKED_AT.toISOString(), prs: ['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2'], merged: true },
       ],
       rollingBoil: [{ session: B, tab: 'Dev track pane ship', brief: 'zenify-kit/x', state: 'permission', since: new Date(NOW - 125_000).toISOString() }],
       titleError: '',
@@ -247,10 +247,23 @@ test('parseTrackStats defaults cooking to an empty list', () => {
 
 test('FR-4.2: every cooked status has its icon', () => {
   const at = COOKED_AT.toISOString()
-  const cooked = (['done', 'pushed', 'cancelled', 'rollback'] as const).map(status => ({ id: X, brief: 'b', status, endedAt: at, prs: null }))
+  const cooked = (['done', 'pushed', 'cancelled', 'rollback'] as const).map(status => ({ id: X, brief: 'b', status, endedAt: at, prs: null, merged: true }))
   const lines = texts(tabLines('kitchen', kitchenStats({ cooked }), A, undefined, NOW))
   const cookedLines = lines.slice(lines.indexOf('🍳 Cooked'))
   expect(cookedLines.filter(l => l.startsWith('- ')).slice(0, 4).map(l => l.split(' ')[1])).toEqual(['✅', '🚀', '⛔', '↩️'])
+})
+
+test('FR-4.2: a done item shows ✅ only once its PRs are merged; until then ⏳', () => {
+  const at = COOKED_AT.toISOString()
+  const pr = ['https://github.com/o/r/pull/7']
+  const cooked = [
+    { id: X, brief: 'open', status: 'done' as const, endedAt: at, prs: pr, merged: false },
+    { id: X, brief: 'old', status: 'done' as const, endedAt: at, prs: pr },
+    { id: X, brief: 'in', status: 'done' as const, endedAt: at, prs: pr, merged: true },
+  ]
+  const lines = texts(tabLines('kitchen', kitchenStats({ cooked }), A, undefined, NOW))
+  const cookedLines = lines.slice(lines.indexOf('🍳 Cooked')).filter(l => l.startsWith('- '))
+  expect(cookedLines.map(l => l.split(' ')[1])).toEqual(['⏳', '⏳', '✅'])
 })
 
 test('FR-4.2: prLabel is <repo>#<n>, or the URL when it does not parse', () => {
