@@ -182,6 +182,8 @@ const ICON = {
   status: { done: '✅', pushed: '🚀', cancelled: '⛔', rollback: '↩️' } as Partial<Record<TrackItem['status'], string>>,
   state: { ask: '❓', permission: '🔐' },
   carry: { open: '⏳', stale: '🕸' },
+  // A done item whose PRs are not all merged yet; ✅ waits for the merge.
+  unmerged: '⏳',
   source: { manual: '📝', github: '🐙', sdd: '📒', stale: '🕸' } as Record<string, string>,
 } as const
 // `<repo>#<n>` of https://github.com/<owner>/<repo>/pull/<n>; the URL itself when it does not parse.
@@ -268,7 +270,7 @@ function kitchenLines(s: TrackStats, now: number): Line[] {
   lines.push(plain(''), head(`${ICON.cooked} Cooked`))
   if (cooked.length === 0) lines.push(dim('nothing finished today'))
   for (const c of cooked) {
-    const icon = ICON.status[c.status]
+    const icon = c.status === 'done' && !c.merged ? ICON.unmerged : ICON.status[c.status]
     // The icon shows the status and the time comes first, so a long brief is cut at its end only.
     lines.push(plain(`- ${icon ? `${icon} ` : ''}${clock(c.endedAt)} ${c.brief}`))
     for (const pr of c.prs ?? []) lines.push({ text: `  ${ICON.pr} `, href: pr, label: prLabel(pr) })

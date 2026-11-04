@@ -35,7 +35,8 @@ export type BacklogItem = {
 }
 
 // One item that ended today, workspace-wide (Go `trackstats.CookedItem`).
-export type KitchenCooked = { id: string; brief: string; status: TrackItem['status']; endedAt: string; prs: string[] | null }
+// `merged`: every PR of the item is merged (absent from an older binary: read as not merged).
+export type KitchenCooked = { id: string; brief: string; status: TrackItem['status']; endedAt: string; prs: string[] | null; merged?: boolean }
 // One live tab waiting for a person (Go `trackstats.BoilItem`).
 export type KitchenBoil = { session: string; tab: string; brief: string; state: 'ask' | 'permission'; since: string }
 

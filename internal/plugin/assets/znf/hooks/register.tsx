@@ -48,6 +48,11 @@ let lastRunAt = 0
 // FR-2.2: tool_use_ids of an AskUserQuestion, or of a call a person was asked to allow, still running.
 const pendingAsk = new Set<string>()
 const pendingPermission = new Set<string>()
+// FR-2.2: person asks not yet shown as a dialog, by tool_use_id. Auto mode's classifier settles most
+// of them with nobody asked; one waits for a person only once classic.PermissionRequest fires.
+const dialogCandidates = new Map<string, { tool: string; input: string; agentId?: string }>()
+// FR-12.1: subagents between classic.SubagentStart and SubagentStop; a tab running one is cooking.
+const runningAgents = new Set<string>()
 // FR-2.1: the state last written to live/<session>.json; undefined = none this session.
 type LiveState = 'ask' | 'permission' | 'busy' | 'idle'
 let liveState: LiveState | undefined
@@ -124,7 +129,7 @@ async function syncLive($: $): Promise<void> {
   const write = syncing.then(async () => {
     // Track may have been turned off while the call was open: write nothing, keep liveState.
     if (!(await isEnabled($))) return
-    const state: LiveState = pendingAsk.size ? 'ask' : pendingPermission.size ? 'permission' : isMainIdle ? 'idle' : 'busy'
+    const state: LiveState = pendingAsk.size ? 'ask' : pendingPermission.size ? 'permission' : isMainIdle && !runningAgents.size ? 'idle' : 'busy'
     const boundId = (await read($, bound))?.id ?? ''
     if (state === liveState && boundId === liveId) return
     const track = `${await workspaceDir($)}/.zenify/track`
@@ -168,6 +173,29 @@ async function resetStaleLive($: $): Promise<void> {
 
 // FR-2.2: forgets a finished call; true when it was one a person waited on.
 const settle = (useId: string) => [pendingAsk.delete(useId), pendingPermission.delete(useId)].some(Boolean)
+
+// FR-4.5: a main-loop ask a person answers, while bound, is timed as a permission wait at its call end.
+async function markPersonAsk($: $, useId: string, isMain: boolean): Promise<void> {
+  if (!isMain) return
+  await (async () => {
+    if (await read($, bound)) await update($, personAsks, ids => [...ids, useId])
+  })().catch(timingError($))
+}
+
+// The person ask whose dialog just opened, the oldest of the best rank: the same arguments and
+// loop, then the same arguments (a call auto mode settled stays a candidate while it runs), then
+// the same loop, then any loop (the classic agent_id and the tool.check agentId are not proven equal).
+function dialogCandidateOf(tool: string, input: unknown, agentId: string | undefined): string | undefined {
+  const args = JSON.stringify(input ?? null)
+  const best: (string | undefined)[] = []
+  for (const [useId, c] of dialogCandidates) {
+    if (c.tool !== tool) continue
+    const sameLoop = (c.agentId ?? '') === (agentId ?? '')
+    const rank = c.input === args ? (sameLoop ? 0 : 1) : sameLoop ? 2 : 3
+    best[rank] ??= useId
+  }
+  return best.find(Boolean)
+}
 
 // FR-2.4: the heartbeat; stats ignore a live file whose .beat is older than 30s.
 async function beat($: $): Promise<void> {
@@ -402,6 +430,9 @@ export const register: Register = (on, options: PluginOptions) => {
     lastKey = undefined
     pendingAsk.clear()
     pendingPermission.clear()
+    dialogCandidates.clear()
+    // runningAgents is kept: a session.start in this process is a compact or a clear, which a
+    // background subagent outlives; a new process starts with an empty set.
     liveState = undefined
     liveId = undefined
     isMainIdle = false
@@ -472,6 +503,7 @@ export const register: Register = (on, options: PluginOptions) => {
     } finally {
       if (useId) {
         await update($, personAsks, ids => ids.filter(x => x !== useId)).catch(timingError($))
+        dialogCandidates.delete(useId)
         // Answered, allowed, denied or interrupted: back to busy unless another wait is open.
         if (settle(useId)) await syncLive($).catch(timingError($))
       }
@@ -484,17 +516,36 @@ export const register: Register = (on, options: PluginOptions) => {
     const useId = e.tool_use_id
     const isPersonAsk = !!useId && verdict.decision === 'ask' && e.approver === 'person'
     if (!isPersonAsk || !(await isEnabled($))) return verdict
-    if (!e.agentId) {
-      await (async () => {
-        if (await read($, bound)) await update($, personAsks, ids => [...ids, useId])
-      })().catch(timingError($))
-    }
-    // FR-2.2: any person's ask, main loop or subagent, bound or not, marks the tab as waiting.
-    if (e.tool !== 'AskUserQuestion') {
+    // AskUserQuestion always reaches the person; any other ask waits for its dialog (PermissionRequest).
+    if (e.tool === 'AskUserQuestion') await markPersonAsk($, useId, !e.agentId)
+    else dialogCandidates.set(useId, { tool: e.tool, input: JSON.stringify(e.input ?? null), agentId: e.agentId })
+    return verdict
+  })
+
+  // FR-2.2: Claude Code raises PermissionRequest only when it is about to ask the person, so an ask
+  // that auto mode's classifier settles never marks the tab as waiting. Any person's dialog, main
+  // loop or subagent, bound or not, marks it.
+  on('classic.PermissionRequest', async ($, e, next) => {
+    const useId = dialogCandidateOf(e.tool_name, e.tool_input, e.agent_id)
+    if (useId && (await isEnabled($))) {
+      const isMain = !dialogCandidates.get(useId)?.agentId
+      dialogCandidates.delete(useId)
+      await markPersonAsk($, useId, isMain)
       pendingPermission.add(useId)
       await syncLive($).catch(timingError($))
     }
-    return verdict
+    return next(e)
+  })
+
+  // FR-12.1: a subagent still running (a background one outlives the main turn) keeps the tab cooking.
+  on('classic.SubagentStart', async ($, e, next) => {
+    runningAgents.add(e.agent_id)
+    await syncLive($).catch(timingError($))
+    return next(e)
+  })
+  on('classic.SubagentStop', async ($, e, next) => {
+    if (runningAgents.delete(e.agent_id)) await syncLive($).catch(timingError($))
+    return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -505,6 +556,8 @@ export const register: Register = (on, options: PluginOptions) => {
         // Safety net: a wait whose tool.call never ran must not leave the tab waiting past the turn.
         pendingAsk.clear()
         pendingPermission.clear()
+        // A main-loop ask denied or interrupted before its call ran; a subagent's may still open.
+        for (const [useId, c] of dialogCandidates) if (!c.agentId) dialogCandidates.delete(useId)
         // FR-12.1: the main loop is done; a tab waiting for the next prompt is not cooking.
         isMainIdle = true
         await syncLive($).catch(timingError($))

@@ -451,7 +451,7 @@ func Compute(in Input) (Result, map[string]string) {
 	computeQuality(byStart, works, &res)
 	var issues []Issue
 	res.Backlog, issues = computeBacklog(in, logEv, from, items)
-	res.Kitchen = computeKitchen(in, logEv, works, order, items, issues, ghDown, &res)
+	res.Kitchen = computeKitchen(in, logEv, works, order, items, issues, ghDown, newCache, &res)
 	return res, newCache
 }
 
