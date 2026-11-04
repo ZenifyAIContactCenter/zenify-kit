@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.58.1
+
+*2026-11-04*
+
+- **Đổi tab của pane track bằng phím:** trên màn hình thường (không fullscreen), terminal không báo click về cho pane nên trước đây không bấm được tab. Giờ bấm `ctrl+x tab` để pane nhận bàn phím, rồi `1`–`5` (Kitchen, Today, Estimate, Quality, Backlog); `Esc` quay lại prompt. Pane chưa nhận bàn phím thì dưới hàng tab có dòng mờ nhắc cách bấm. Fullscreen vẫn click được như cũ. Xem [Pane track](/guides/track-pane#năm-tab).
+- **`/znf:ci-watch` không còn báo xanh nhầm:** vòng chờ CI gọi `command grep`, nên wrapper `grep` (ugrep) của harness không làm run đang chạy hoặc run đỏ bị đọc thành xanh nữa. Xem [ci-watch](/reference/skills/ci-watch).
+
 ## v0.58.0
 
 *2026-11-04*
