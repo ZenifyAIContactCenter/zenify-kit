@@ -25,7 +25,9 @@ func TestSyncMarketplace(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	_ = json.Unmarshal([]byte(`{"name":"zenify-kit","owner":{"name":"zenify"},"plugins":[{"name":"znf","source":"./plugins/znf"}]}`), &want)
+	if err := json.Unmarshal([]byte(`{"name":"zenify-kit","owner":{"name":"zenify"},"plugins":[{"name":"znf","source":"./plugins/znf"}]}`), &want); err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("marketplace.json = %s", raw)
 	}
@@ -55,5 +57,42 @@ func TestSyncMarketplace(t *testing.T) {
 	}
 	if len(res.Written) != 0 {
 		t.Fatalf("second sync wrote %v", res.Written)
+	}
+}
+
+func TestSyncMarketplaceRestoresStalePluginJSON(t *testing.T) {
+	zh := t.TempDir()
+	pj := filepath.Join(PluginDir(zh), ".claude-plugin", "plugin.json")
+	if err := os.MkdirAll(filepath.Dir(pj), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pj, []byte(`{"name":"znf","version":"0.0.1","userConfig":{"old":{}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := SyncMarketplace(zh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range res.Kept {
+		if k == pj {
+			t.Fatalf("plugin.json reported as Kept: %v", res.Kept)
+		}
+	}
+	raw, err := os.ReadFile(pj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["userConfig"]; !ok || string(got["userConfig"]) == `{"old":{}}` {
+		t.Fatalf("userConfig not restored from embed: %s", raw)
+	}
+	if string(got["version"]) != `"`+version.Current()+`"` {
+		t.Fatalf("version = %s", got["version"])
+	}
+	if res2, err := SyncMarketplace(zh); err != nil || len(res2.Written) != 0 {
+		t.Fatalf("not idempotent: %v %v", res2.Written, err)
 	}
 }

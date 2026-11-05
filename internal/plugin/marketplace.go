@@ -41,7 +41,10 @@ func SyncMarketplace(zenifyHome string) (Result, error) {
 		return res, err
 	}
 	pj := filepath.Join(PluginDir(zenifyHome), ".claude-plugin", "plugin.json")
-	raw, err := os.ReadFile(pj) //nolint:gosec // G304 -- path computed from zenifyHome internally
+	// plugin.json is kit-owned: always rebuilt from the embedded copy (never the installed one) with
+	// version stamped, so kit upgrades reach it. Its patched fingerprint is deliberately not recorded
+	// in the manifest; Sync reports it as Kept, which is not a user edit.
+	raw, err := assets.ReadFile(embedRoot + "/.claude-plugin/plugin.json")
 	if err != nil {
 		return res, err
 	}
@@ -53,16 +56,21 @@ func SyncMarketplace(zenifyHome string) (Result, error) {
 	if err != nil {
 		return res, err
 	}
-	if !bytes.Equal(m["version"], v) {
-		m["version"] = v
-		out, err := json.MarshalIndent(m, "", "  ")
-		if err != nil {
-			return res, err
-		}
-		if err := writeIfChanged(pj, append(out, '\n')); err != nil {
-			return res, err
+	m["version"] = v
+	out, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return res, err
+	}
+	if err := writeIfChanged(pj, append(out, '\n')); err != nil {
+		return res, err
+	}
+	kept := res.Kept[:0]
+	for _, k := range res.Kept {
+		if k != pj {
+			kept = append(kept, k)
 		}
 	}
+	res.Kept = kept
 	mp := filepath.Join(MarketplaceDir(zenifyHome), ".claude-plugin", "marketplace.json")
 	return res, writeIfChanged(mp, []byte(marketplaceJSON))
 }
