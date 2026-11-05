@@ -1,13 +1,17 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/mcpreg"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
@@ -45,96 +49,113 @@ func newDownCmd() *cobra.Command {
 			}
 			u.Header(fmt.Sprintf("zenify down — %s", mode))
 
-			// 1. Global hooks.
-			if home, herr := os.UserHomeDir(); herr == nil && home != "" {
-				res, rerr := apply.RemoveGlobalHooks(apply.UserSettings(home), dryRun)
-				switch {
-				case rerr != nil:
-					u.Step(ui.StatusWarn, "hooks", fmt.Sprintf("bỏ qua (%v)", rerr)) //znf:allow-lang
-				case res.Removed > 0:
-					u.Step(ui.StatusOK, "hooks", fmt.Sprintf("gỡ %d znf hook khỏi ~/.claude/settings.json", res.Removed)) //znf:allow-lang
-				default:
-					u.Step(ui.StatusInfo, "hooks", "không có znf hook nào để gỡ") //znf:allow-lang
-				}
-				codexRes, cerr := apply.RemoveCodexHooks(codexHomeDir(home, os.Getenv), dryRun)
-				switch {
-				case cerr != nil:
-					u.Step(ui.StatusWarn, "codex-hooks", fmt.Sprintf("bỏ qua (%v)", cerr)) //znf:allow-lang
-				case codexRes.Removed > 0:
-					u.Step(ui.StatusOK, "codex-hooks", fmt.Sprintf("gỡ %d hook khỏi hooks.json của Codex", codexRes.Removed)) //znf:allow-lang
-				default:
-					u.Step(ui.StatusInfo, "codex-hooks", "không có hook Codex nào để gỡ") //znf:allow-lang
-				}
-				agentNames, aerr := plugin.RemoveCodexAgents(codexHomeDir(home, os.Getenv), dryRun)
-				switch {
-				case aerr != nil:
-					u.Step(ui.StatusWarn, "codex-agents", fmt.Sprintf("bỏ qua (%v)", aerr)) //znf:allow-lang
-				case len(agentNames) > 0:
-					u.Step(ui.StatusOK, "codex-agents", fmt.Sprintf("gỡ %d agent khỏi thư mục agents của Codex", len(agentNames))) //znf:allow-lang
-				default:
-					u.Step(ui.StatusInfo, "codex-agents", "không có agent Codex nào để gỡ") //znf:allow-lang
-				}
-				linkRemoved, lerr := apply.RemoveCodexSkillsLink(filepath.Join(home, ".agents", "skills", "znf"), dryRun)
-				switch {
-				case lerr != nil:
-					u.Step(ui.StatusWarn, "codex-skills", fmt.Sprintf("bỏ qua (%v)", lerr)) //znf:allow-lang
-				case linkRemoved:
-					u.Step(ui.StatusOK, "codex-skills", "gỡ symlink ~/.agents/skills/znf") //znf:allow-lang
-				default:
-					u.Step(ui.StatusInfo, "codex-skills", "không có symlink skill Codex nào để gỡ") //znf:allow-lang
-				}
-				// git-guard is not in the znf hook set RemoveGlobalHooks knows,
-				// but up/SessionStart install it, so offboarding removes it too.
-				gRemoved, gerr := removeGuard(guardSettingsPath(home), dryRun)
-				switch {
-				case gerr != nil:
-					u.Step(ui.StatusWarn, "git-guard", fmt.Sprintf("skipped (%v)", gerr))
-				case gRemoved:
-					u.Step(ui.StatusOK, "git-guard", "removed git-guard hook from ~/.claude/settings.json")
-				default:
-					u.Step(ui.StatusInfo, "git-guard", "no git-guard hook to remove")
-				}
-				removed, eerr := apply.RemoveSubagentModelEnv(apply.UserSettings(home), dryRun)
+			// 1. Workspace-local install: plugin, MCP servers, hooks, env, permissions.
+			home, herr := os.UserHomeDir()
+			if herr != nil || home == "" {
+				home = ""
+			}
+			if !dryRun {
+				removeLocalClaude(u, workspace, pluginRunner(workspace))
+			} else {
+				u.Step(ui.StatusInfo, "plugin", "sẽ gỡ znf@zenify-kit (local) và marketplace zenify-kit") //znf:allow-lang
+				u.Step(ui.StatusInfo, "mcp", "sẽ gỡ 3 MCP server zenify-* (local)")                       //znf:allow-lang
+			}
+			local := apply.WorkspaceLocalSettings(workspace)
+			res, rerr := apply.RemoveGlobalHooks(local, dryRun)
+			switch {
+			case rerr != nil:
+				u.Step(ui.StatusWarn, "hooks", fmt.Sprintf("bỏ qua (%v)", rerr)) //znf:allow-lang
+			case res.Removed > 0:
+				u.Step(ui.StatusOK, "hooks", fmt.Sprintf("gỡ %d znf hook khỏi .claude/settings.local.json", res.Removed)) //znf:allow-lang
+			default:
+				u.Step(ui.StatusInfo, "hooks", "không có znf hook nào để gỡ") //znf:allow-lang
+			}
+			gRemoved, gerr := removeGuard(local, dryRun)
+			switch {
+			case gerr != nil:
+				u.Step(ui.StatusWarn, "git-guard", fmt.Sprintf("skipped (%v)", gerr))
+			case gRemoved:
+				u.Step(ui.StatusOK, "git-guard", "removed git-guard hook from .claude/settings.local.json")
+			default:
+				u.Step(ui.StatusInfo, "git-guard", "no git-guard hook to remove")
+			}
+			wsCodex := filepath.Join(workspace, ".codex")
+			codexRes, cerr := apply.RemoveCodexHooks(wsCodex, dryRun)
+			switch {
+			case cerr != nil:
+				u.Step(ui.StatusWarn, "codex-hooks", fmt.Sprintf("bỏ qua (%v)", cerr)) //znf:allow-lang
+			case codexRes.Removed > 0:
+				u.Step(ui.StatusOK, "codex-hooks", fmt.Sprintf("gỡ %d hook khỏi hooks.json của Codex", codexRes.Removed)) //znf:allow-lang
+			default:
+				u.Step(ui.StatusInfo, "codex-hooks", "không có hook Codex nào để gỡ") //znf:allow-lang
+			}
+			agentNames, aerr := plugin.RemoveCodexAgents(wsCodex, dryRun)
+			switch {
+			case aerr != nil:
+				u.Step(ui.StatusWarn, "codex-agents", fmt.Sprintf("bỏ qua (%v)", aerr)) //znf:allow-lang
+			case len(agentNames) > 0:
+				u.Step(ui.StatusOK, "codex-agents", fmt.Sprintf("gỡ %d agent khỏi thư mục agents của Codex", len(agentNames))) //znf:allow-lang
+			default:
+				u.Step(ui.StatusInfo, "codex-agents", "không có agent Codex nào để gỡ") //znf:allow-lang
+			}
+			linkRemoved, lerr := apply.RemoveCodexSkillsLink(filepath.Join(workspace, ".agents", "skills", "znf"), dryRun)
+			switch {
+			case lerr != nil:
+				u.Step(ui.StatusWarn, "codex-skills", fmt.Sprintf("bỏ qua (%v)", lerr)) //znf:allow-lang
+			case linkRemoved:
+				u.Step(ui.StatusOK, "codex-skills", "gỡ symlink .agents/skills/znf") //znf:allow-lang
+			default:
+				u.Step(ui.StatusInfo, "codex-skills", "không có symlink skill Codex nào để gỡ") //znf:allow-lang
+			}
+			for _, e := range []struct {
+				key string
+				fn  func(string, bool) (bool, error)
+			}{{apply.SubagentModelEnv, apply.RemoveSubagentModelEnv}, {apply.ReviewerEnv, apply.RemoveReviewerEnv}} {
+				ok, eerr := e.fn(local, dryRun)
 				switch {
 				case eerr != nil:
 					u.Step(ui.StatusWarn, "env", fmt.Sprintf("bỏ qua (%v)", eerr)) //znf:allow-lang
-				case removed:
-					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.SubagentModelEnv)) //znf:allow-lang
+				case ok:
+					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi .claude/settings.local.json", e.key)) //znf:allow-lang
 				}
-				removedStrong, serr := apply.RemoveStrongModelEnv(apply.UserSettings(home), dryRun)
-				switch {
-				case serr != nil:
+			}
+			if home != "" {
+				if _, terr := apply.RemoveCodexTrust(codexHomeDir(home, os.Getenv), workspace, dryRun); terr != nil {
+					u.Step(ui.StatusWarn, "codex-trust", fmt.Sprintf("bỏ qua (%v)", terr)) //znf:allow-lang
+				}
+				kt := apply.WorkspaceKitTarget(home, workspace)
+				for _, l := range []struct {
+					what string
+					fn   func(apply.KitTarget, bool) (int, error)
+				}{{"permissions", apply.RemoveKitPermissions}, {"sandbox", apply.RemoveKitSandbox}, {"ask", apply.RemoveKitAsk}} {
+					n, lerr := l.fn(kt, dryRun)
+					switch {
+					case errors.Is(lerr, fs.ErrNotExist):
+					case lerr != nil:
+						u.Step(ui.StatusWarn, l.what, fmt.Sprintf("bỏ qua (%v)", lerr)) //znf:allow-lang
+					case n > 0:
+						u.Step(ui.StatusOK, l.what, fmt.Sprintf("gỡ %d rule của kit khỏi .claude/settings.local.json", n)) //znf:allow-lang
+					}
+				}
+			}
+
+			// 2. User-level leftovers of older kits (machines not yet migrated).
+			if home != "" {
+				var run func(string, ...string) ([]byte, error)
+				if !dryRun {
+					run = pluginRunner(workspace)
+				}
+				removed, merr := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), run, dryRun)
+				if len(removed) > 0 {
+					u.Step(ui.StatusOK, "user-level", fmt.Sprintf("gỡ %d mục cài ở cấp user", len(removed))) //znf:allow-lang
+				}
+				if merr != nil {
+					u.Step(ui.StatusWarn, "user-level", fmt.Sprintf("bỏ qua (%v)", merr)) //znf:allow-lang
+				}
+				if removedStrong, serr := apply.RemoveStrongModelEnv(apply.UserSettings(home), dryRun); serr != nil {
 					u.Step(ui.StatusWarn, "env", fmt.Sprintf("bỏ qua (%v)", serr)) //znf:allow-lang
-				case removedStrong:
+				} else if removedStrong {
 					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.StrongModelEnv)) //znf:allow-lang
-				}
-				removedRev, rverr := apply.RemoveReviewerEnv(apply.UserSettings(home), dryRun)
-				switch {
-				case rverr != nil:
-					u.Step(ui.StatusWarn, "env", fmt.Sprintf("bỏ qua (%v)", rverr)) //znf:allow-lang
-				case removedRev:
-					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.ReviewerEnv)) //znf:allow-lang
-				}
-				removedPerms, perr := apply.RemoveKitPermissions(apply.UserKitTarget(home), dryRun)
-				switch {
-				case perr != nil:
-					u.Step(ui.StatusWarn, "permissions", fmt.Sprintf("bỏ qua (%v)", perr)) //znf:allow-lang
-				case removedPerms > 0:
-					u.Step(ui.StatusOK, "permissions", fmt.Sprintf("gỡ %d rule allow của kit khỏi ~/.claude/settings.json", removedPerms)) //znf:allow-lang
-				}
-				removedSbx, sberr := apply.RemoveKitSandbox(apply.UserKitTarget(home), dryRun)
-				switch {
-				case sberr != nil:
-					u.Step(ui.StatusWarn, "sandbox", fmt.Sprintf("bỏ qua (%v)", sberr)) //znf:allow-lang
-				case removedSbx > 0:
-					u.Step(ui.StatusOK, "sandbox", fmt.Sprintf("gỡ %d lệnh kit khỏi sandbox.excludedCommands", removedSbx)) //znf:allow-lang
-				}
-				removedAsk, aerr := apply.RemoveKitAsk(apply.UserKitTarget(home), dryRun)
-				switch {
-				case aerr != nil:
-					u.Step(ui.StatusWarn, "ask", fmt.Sprintf("bỏ qua (%v)", aerr)) //znf:allow-lang
-				case removedAsk > 0:
-					u.Step(ui.StatusOK, "ask", fmt.Sprintf("gỡ %d rule ask của kit khỏi ~/.claude/settings.json", removedAsk)) //znf:allow-lang
 				}
 				// This workspace's .zenify/.env deny rule (other workspaces' stay).
 				removedDeny, derr := apply.RemoveKitDeny(home, workspace, dryRun)
@@ -153,7 +174,7 @@ func newDownCmd() *cobra.Command {
 				}
 			}
 
-			// 2 + 3. Each repo: exclude line + owned settings skeleton.
+			// 3. Each repo: exclude line + owned settings skeleton.
 			for _, r := range m.Repos {
 				repoDir := filepath.Join(workspace, r.Path)
 				if removed, eerr := apply.RemoveExclude(repoDir, dryRun); eerr != nil {
@@ -179,4 +200,38 @@ func newDownCmd() *cobra.Command {
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default: manifest/repos.yaml under cwd when present, else the copy embedded in the binary)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay")
 	return cmd
+}
+
+// removeLocalClaude removes the workspace's local-scope plugin, marketplace and
+// MCP registrations through claude. "Not installed / not found" answers (measured
+// on 2.1.318) count as already clean, so down is idempotent; any other failure is
+// a warning. The plugin stamp goes once the plugin is gone.
+func removeLocalClaude(u *ui.Writer, workspace string, run func(string, ...string) ([]byte, error)) {
+	pluginGone := false
+	if out, err := run("claude", "plugin", "uninstall", plugin.PluginID, "--scope", "local"); err != nil && !strings.Contains(string(out), "is not installed in") {
+		u.Step(ui.StatusWarn, "plugin", fmt.Sprintf("bỏ qua (%v: %s)", err, strings.TrimSpace(string(out)))) //znf:allow-lang
+	} else {
+		pluginGone = true
+		u.Step(ui.StatusOK, "plugin", "gỡ znf@zenify-kit (local)") //znf:allow-lang
+	}
+	if out, err := run("claude", "plugin", "marketplace", "remove", plugin.MarketplaceName); err != nil && !marketplaceNotFound(string(out)) {
+		u.Step(ui.StatusWarn, "marketplace", fmt.Sprintf("bỏ qua (%v: %s)", err, strings.TrimSpace(string(out)))) //znf:allow-lang
+	}
+	if pluginGone {
+		if err := os.Remove(pluginStampPath(workspace)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			u.Step(ui.StatusWarn, "plugin", fmt.Sprintf("không xoá được stamp (%v)", err)) //znf:allow-lang
+		}
+	}
+	for _, name := range userKitMCPs {
+		if _, err := mcpreg.RemoveScoped(name, "local", run); err != nil {
+			u.Step(ui.StatusWarn, "mcp", fmt.Sprintf("bỏ qua (%v)", err)) //znf:allow-lang
+		}
+	}
+}
+
+// marketplaceNotFound matches `Marketplace '<name>' not found`, scoped so a
+// missing claude binary ("command not found") is not swallowed.
+func marketplaceNotFound(out string) bool {
+	i := strings.Index(out, "Marketplace '")
+	return i >= 0 && strings.Contains(out[i:], "' not found")
 }

@@ -85,7 +85,13 @@ func Bootstrap(o Options) (playwright.RegState, error) {
 // RemoveUserScoped removes the user-scope registration of name (the one older
 // kits wrote). It reports false when there was none ("not found").
 func RemoveUserScoped(name string, run func(string, ...string) ([]byte, error)) (bool, error) {
-	out, err := run("claude", "mcp", "remove", name, "-s", "user")
+	return RemoveScoped(name, "user", run)
+}
+
+// RemoveScoped removes the registration of name at scope ("user" or "local").
+// It reports false when there was none ("not found").
+func RemoveScoped(name, scope string, run func(string, ...string) ([]byte, error)) (bool, error) {
+	out, err := run("claude", "mcp", "remove", name, "-s", scope)
 	if err == nil {
 		return true, nil
 	}
@@ -93,7 +99,7 @@ func RemoveUserScoped(name string, run func(string, ...string) ([]byte, error)) 
 	if isNotFound(string(out)) {
 		return false, nil
 	}
-	return false, fmt.Errorf("remove user-scope %s MCP: %w: %s", name, err, strings.TrimSpace(string(out)))
+	return false, fmt.Errorf("remove %s-scope %s MCP: %w: %s", scope, name, err, strings.TrimSpace(string(out)))
 }
 
 // samePath reports whether got is an http(s) URL with the same path as want.

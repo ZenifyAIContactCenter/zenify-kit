@@ -94,11 +94,12 @@ func agentsMdCheck(workspace string, repos []string) Check {
 // and codex home resolve lazily at Run time.
 func registerCodexChecks() {
 	RegisterCheck(Check{Name: "codex-hooks", Run: func() (bool, string) {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false, "cannot resolve HOME"
+		cwd, _ := os.Getwd()
+		ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
+		if !ok {
+			return false, "no workspace found — run inside a zenify workspace"
 		}
-		return codexHooksCheck(codexHomeDir(home, os.Getenv), codexOnPath()).Run()
+		return codexHooksCheck(filepath.Join(ws, ".codex"), codexOnPath()).Run()
 	}})
 	RegisterCheck(Check{Name: "reviewer", Run: func() (bool, string) {
 		return reviewerCheck(os.Getenv, codexOnPath()).Run()

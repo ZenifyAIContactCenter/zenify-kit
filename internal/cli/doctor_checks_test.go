@@ -20,6 +20,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 )
 
 func noManifest() *manifest.Manifest { return nil }
@@ -265,14 +266,37 @@ func TestPlaywrightCheckWith_KitMCPStillRegisteredFails(t *testing.T) {
 	}
 }
 
-func TestPluginCheckReportsMissing(t *testing.T) {
-	c := pluginCheckAt(t.TempDir()) // empty dest → not synced
-	ok, msg := c.Run()
-	if ok {
-		t.Fatal("plugin not synced but reports ok")
+func pluginCheckFixture(t *testing.T, settings string, withDir bool) Check {
+	t.Helper()
+	ws, zh := t.TempDir(), t.TempDir()
+	if settings != "" {
+		writeF(t, apply.WorkspaceLocalSettings(ws), settings)
 	}
-	if !strings.Contains(msg, "chưa cài") { //znf:allow-lang
-		t.Fatalf("msg should state the status: %q", msg)
+	dir := plugin.PluginDir(zh)
+	if withDir {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return pluginCheckAt(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil }, dir)
+}
+
+func TestPluginCheck_EnabledLocal(t *testing.T) {
+	c := pluginCheckFixture(t, `{"enabledPlugins":{"znf@zenify-kit":true}}`, true)
+	if ok, d := c.Run(); !ok {
+		t.Fatalf("enabled + dir present should be ok: %q", d)
+	}
+}
+
+func TestPluginCheck_Missing(t *testing.T) {
+	for name, c := range map[string]Check{
+		"no settings":   pluginCheckFixture(t, "", true),
+		"disabled":      pluginCheckFixture(t, `{"enabledPlugins":{"znf@zenify-kit":false}}`, true),
+		"no plugin dir": pluginCheckFixture(t, `{"enabledPlugins":{"znf@zenify-kit":true}}`, false),
+	} {
+		if ok, d := c.Run(); ok || d == "" {
+			t.Errorf("%s: ok=%v %q", name, ok, d)
+		}
 	}
 }
 
@@ -330,8 +354,8 @@ func TestGitIdentityCheck_Present(t *testing.T) {
 }
 
 func TestKitPermissionsCheck_MissingThenFixed(t *testing.T) {
-	home := t.TempDir()
-	c := kitPermissionsCheck(func() (string, error) { return home, nil })
+	home, ws := t.TempDir(), t.TempDir()
+	c := kitPermissionsCheck(func() (string, error) { return home, nil }, func() (string, error) { return ws, nil })
 	if ok, detail := c.Run(); ok || !strings.Contains(detail, "missing") {
 		t.Fatalf("empty HOME should report missing, got ok=%v detail=%q", ok, detail)
 	}
@@ -340,6 +364,12 @@ func TestKitPermissionsCheck_MissingThenFixed(t *testing.T) {
 	}
 	if ok, detail := c.Run(); !ok {
 		t.Fatalf("after Fix the check should pass, detail=%q", detail)
+	}
+	if _, err := os.Stat(apply.WorkspaceLocalSettings(ws)); err != nil {
+		t.Fatalf("Fix must write the workspace settings.local.json: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); err == nil {
+		t.Fatal("Fix must not touch ~/.claude/settings.json")
 	}
 }
 
