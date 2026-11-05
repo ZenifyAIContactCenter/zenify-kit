@@ -3,6 +3,7 @@ package cli
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -153,5 +154,26 @@ func TestAskPlanePAT_UnreachableStopsWithoutRetry(t *testing.T) {
 	})
 	if ok || asks != 1 || !strings.Contains(out.String(), "zenify up --apply") {
 		t.Fatalf("ok=%v asks=%d out=%s", ok, asks, out.String())
+	}
+}
+
+// Ctrl-C at the masked prompt restores the terminal before exiting, so echo
+// does not stay off after zenify ends.
+func TestRestoreOnSignal(t *testing.T) {
+	sig := make(chan os.Signal, 1)
+	restored, code := make(chan bool, 1), make(chan int, 1)
+	stop := restoreOnSignal(sig, func() { restored <- true }, func(c int) { code <- c })
+	sig <- os.Interrupt
+	if !<-restored || <-code != 130 {
+		t.Fatal("terminal not restored before exit")
+	}
+	stop()
+
+	sig2 := make(chan os.Signal, 1)
+	called := false
+	stop = restoreOnSignal(sig2, func() { called = true }, func(int) { called = true })
+	stop()
+	if called {
+		t.Error("restore ran without a signal")
 	}
 }

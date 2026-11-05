@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/term"
@@ -27,8 +29,16 @@ type planeTokenDeps struct {
 func defaultPlaneTokenDeps() planeTokenDeps {
 	return planeTokenDeps{
 		ask: func(prompt string) (string, error) {
+			fd := int(os.Stdin.Fd())
+			if st, err := term.GetState(fd); err == nil {
+				// ReadPassword turns echo off; Ctrl-C would exit with it still off.
+				sig := make(chan os.Signal, 1)
+				signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+				stop := restoreOnSignal(sig, func() { _ = term.Restore(fd, st); _, _ = fmt.Fprintln(os.Stdout) }, os.Exit)
+				defer func() { signal.Stop(sig); stop() }()
+			}
 			_, _ = fmt.Fprint(os.Stdout, prompt)
-			b, err := term.ReadPassword(int(os.Stdin.Fd()))
+			b, err := term.ReadPassword(fd)
 			_, _ = fmt.Fprintln(os.Stdout)
 			return string(b), err
 		},
@@ -41,6 +51,21 @@ func defaultPlaneTokenDeps() planeTokenDeps {
 		},
 		check: checkPlanePAT,
 	}
+}
+
+// restoreOnSignal runs restore then exit(130) when sig fires before stop is
+// called.
+func restoreOnSignal(sig <-chan os.Signal, restore func(), exit func(int)) (stop func()) {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-sig:
+			restore()
+			exit(130)
+		case <-done:
+		}
+	}()
+	return func() { close(done) }
 }
 
 // planeTokenURL is the Plane CE page that creates a personal access token
