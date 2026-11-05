@@ -650,18 +650,18 @@ func TestRegisterBrokerMCP(t *testing.T) {
 		return nil, nil
 	}
 	var out, errOut bytes.Buffer
-	registerBrokerMCP(&out, &errOut, m, run)
+	registerBrokerMCP(&out, &errOut, "/ws", m, run)
 	if len(adds) != 2 || !strings.HasPrefix(adds[0], "zenify-grafana ") || !strings.Contains(adds[0], "https://broker.example/mcp/grafana") || !strings.HasPrefix(adds[1], "zenify-posthog ") || !strings.Contains(adds[1], "https://broker.example/mcp/posthog") {
 		t.Fatalf("adds=%v", adds)
 	}
 	adds = nil
-	registerBrokerMCP(&out, &errOut, &manifest.Manifest{}, run)
-	registerBrokerMCP(&out, &errOut, nil, run)
+	registerBrokerMCP(&out, &errOut, "/ws", &manifest.Manifest{}, run)
+	registerBrokerMCP(&out, &errOut, "/ws", nil, run)
 	if len(adds) != 0 || errOut.Len() != 0 {
 		t.Fatalf("no-broker must be a no-op: adds=%v err=%q", adds, errOut.String())
 	}
 	lookPath = func(string) (string, error) { return "", errors.New("not found") }
-	registerBrokerMCP(&out, &errOut, m, run)
+	registerBrokerMCP(&out, &errOut, "/ws", m, run)
 	if len(adds) != 0 || errOut.Len() != 0 {
 		t.Fatalf("without claude it must be a no-op: adds=%v err=%q", adds, errOut.String())
 	}
@@ -866,7 +866,6 @@ func TestBrokerHeaders_IncludesTaskID(t *testing.T) {
 }
 
 func TestRegisterPlaneMCP(t *testing.T) {
-	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	m := &manifest.Manifest{Plane: &manifest.Plane{URL: "https://plane.example", Workspace: "ws"}}
 	savedLook := lookPath
 	t.Cleanup(func() { lookPath = savedLook })
@@ -888,31 +887,31 @@ func TestRegisterPlaneMCP(t *testing.T) {
 	yes, no := func() bool { return true }, func() bool { return false }
 
 	var out, errOut bytes.Buffer
-	registerPlaneMCP(&out, &errOut, m, yes, run)
+	registerPlaneMCP(&out, &errOut, "/ws", m, yes, run)
 	if len(adds) != 1 || !strings.HasPrefix(adds[0], "zenify-plane ") || errOut.Len() != 0 {
 		t.Fatalf("adds=%v err=%q", adds, errOut.String())
 	}
 
 	adds = nil
 	out.Reset()
-	registerPlaneMCP(&out, &errOut, m, no, run)
+	registerPlaneMCP(&out, &errOut, "/ws", m, no, run)
 	if len(adds) != 0 || !strings.Contains(out.String(), "zenify env set PLANE_API_KEY") || !strings.Contains(out.String(), "https://plane.example") || errOut.Len() != 0 {
 		t.Fatalf("no PAT: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
 	}
 
 	out.Reset()
 	have["uvx"] = false
-	registerPlaneMCP(&out, &errOut, m, yes, run)
+	registerPlaneMCP(&out, &errOut, "/ws", m, yes, run)
 	if len(adds) != 0 || !strings.Contains(out.String(), "brew install uv") || errOut.Len() != 0 {
 		t.Fatalf("no uvx: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
 	}
 
 	out.Reset()
 	have["uvx"] = true
-	registerPlaneMCP(&out, &errOut, &manifest.Manifest{}, yes, run)
-	registerPlaneMCP(&out, &errOut, nil, yes, run)
+	registerPlaneMCP(&out, &errOut, "/ws", &manifest.Manifest{}, yes, run)
+	registerPlaneMCP(&out, &errOut, "/ws", nil, yes, run)
 	have["claude"] = false
-	registerPlaneMCP(&out, &errOut, m, yes, run)
+	registerPlaneMCP(&out, &errOut, "/ws", m, yes, run)
 	if len(adds) != 0 || out.Len() != 0 || errOut.Len() != 0 {
 		t.Fatalf("must be silent: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
 	}
@@ -927,7 +926,7 @@ func TestRegisterPlaneMCP(t *testing.T) {
 		adds = append(adds, args[2])
 		return nil, nil
 	}
-	registerPlaneMCP(&out, &errOut, m, yes, timedOut)
+	registerPlaneMCP(&out, &errOut, "/ws", m, yes, timedOut)
 	if len(adds) != 0 || !strings.Contains(out.String(), "uvx") || errOut.Len() != 0 {
 		t.Fatalf("timeout: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
 	}
@@ -935,26 +934,37 @@ func TestRegisterPlaneMCP(t *testing.T) {
 	// Any other get failure still warns.
 	out.Reset()
 	failed := func(string, ...string) ([]byte, error) { return []byte("boom"), errors.New("exit status 2") }
-	registerPlaneMCP(&out, &errOut, m, yes, failed)
+	registerPlaneMCP(&out, &errOut, "/ws", m, yes, failed)
 	if !strings.Contains(errOut.String(), "warning: zenify-plane MCP") {
 		t.Fatalf("real failure must warn: out=%q err=%q", out.String(), errOut.String())
 	}
+}
 
-	// plane-guard lives only in ~/.claude/settings.json, so a profile picked by
-	// CLAUDE_CONFIG_DIR would get Plane writes without the ask gate: skip + hint.
-	home, _ := os.UserHomeDir()
-	adds = nil
-	out.Reset()
-	errOut.Reset()
-	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	registerPlaneMCP(&out, &errOut, m, yes, run)
-	if len(adds) != 0 || !strings.Contains(out.String(), "CLAUDE_CONFIG_DIR") || errOut.Len() != 0 {
-		t.Fatalf("custom profile: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+// Kit MCP servers are registered at local scope, and a failed registration is
+// returned so the user-scope cleanup can be held back.
+func TestRegisterBrokerMCP_LocalScopeAndError(t *testing.T) {
+	m := &manifest.Manifest{Broker: &manifest.Broker{URL: "https://broker.example/"}}
+	savedLook := lookPath
+	t.Cleanup(func() { lookPath = savedLook })
+	lookPath = func(string) (string, error) { return "/fake/claude", nil }
+	var scopes []string
+	fail := false
+	run := func(_ string, args ...string) ([]byte, error) {
+		if args[1] == "get" {
+			return []byte("No MCP server named " + args[2]), errors.New("exit status 1")
+		}
+		scopes = append(scopes, strings.Join(args[len(args)-2:], " "))
+		if fail {
+			return nil, errors.New("boom")
+		}
+		return nil, nil
 	}
-	out.Reset()
-	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude")+"/")
-	registerPlaneMCP(&out, &errOut, m, yes, run)
-	if len(adds) != 1 || errOut.Len() != 0 {
-		t.Fatalf("default profile spelled out: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
+	var out, errOut bytes.Buffer
+	if err := registerBrokerMCP(&out, &errOut, "/ws", m, run); err != nil || !reflect.DeepEqual(scopes, []string{"-s local", "-s local"}) {
+		t.Fatalf("err=%v scopes=%v", err, scopes)
+	}
+	fail = true
+	if err := registerBrokerMCP(&out, &errOut, "/ws", m, run); err == nil {
+		t.Fatal("failed registration must be returned")
 	}
 }

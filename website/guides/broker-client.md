@@ -125,7 +125,7 @@ Broker cấp một tài khoản E2E riêng cho bạn theo role, trên tenant tes
 
 ## Grafana và PostHog cho agent
 
-Khi manifest nhúng sẵn trong binary có `broker:` và lệnh `claude` có trên PATH, `zenify up --apply` đăng ký hai MCP server trong Claude Code: `zenify-grafana` (Loki, Prometheus, Tempo) và `zenify-posthog`. `--manifest` và file manifest ở thư mục hiện tại không bật bước này. Tên `zenify-grafana` và `zenify-posthog` dành riêng cho kit: entry user scope kiểu http dưới tên đó có đường dẫn `/mcp/grafana` hoặc `/mcp/posthog` bị ghi đè bằng URL broker hiện tại (đây là cách kit cập nhật khi URL broker đổi). Server cùng tên với đường dẫn khác, kiểu stdio, hoặc ở project scope thì kit giữ nguyên. Cả hai dùng `type: http` tới broker, và Claude Code lấy header đăng nhập bằng `zenify broker headers` mỗi lần kết nối, nên bạn không điền token nào. Skill `/znf:fix` dùng chúng ở Step 0 để lấy log, trace và latency khi gặp lỗi trên staging hay production.
+Khi manifest nhúng sẵn trong binary có `broker:` và lệnh `claude` có trên PATH, `zenify up --apply` đăng ký hai MCP server trong Claude Code ở local scope (chạy từ thư mục gốc workspace, chỉ có hiệu lực trong workspace đó): `zenify-grafana` (Loki, Prometheus, Tempo) và `zenify-posthog`. `--manifest` và file manifest ở thư mục hiện tại không bật bước này. Tên `zenify-grafana` và `zenify-posthog` dành riêng cho kit: entry local scope kiểu http dưới tên đó có đường dẫn `/mcp/grafana` hoặc `/mcp/posthog` bị ghi đè bằng URL broker hiện tại (đây là cách kit cập nhật khi URL broker đổi). Server cùng tên với đường dẫn khác, kiểu stdio, hoặc ở project scope thì kit giữ nguyên. Cả hai dùng `type: http` tới broker, và Claude Code lấy header đăng nhập bằng `zenify broker headers` mỗi lần kết nối, nên bạn không điền token nào. Skill `/znf:fix` dùng chúng ở Step 0 để lấy log, trace và latency khi gặp lỗi trên staging hay production.
 
 Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn vào phiên.
 
@@ -142,12 +142,12 @@ Cách bật:
 
 Chạy `zenify up` dạng tương tác thì bước nhập secret cuối wizard có thể hỏi `PLANE_API_KEY`; dán PAT ở đó thì kit đăng ký `zenify-plane` ngay sau bước đó, không cần chạy lại `zenify up --apply`.
 
-Lần đầu `uvx` tải Python nên chậm; nếu `/mcp` báo lỗi kết nối thì mở lại Claude Code. Nếu bước kiểm tra `zenify-plane` quá thời gian, `zenify up` in một dòng gợi ý, không đổi gì; chạy lại `zenify up --apply` sau. Thiếu PAT hoặc `uv`, `zenify up` chỉ in gợi ý và không đăng ký. Khi `CLAUDE_CONFIG_DIR` trỏ tới profile khác `~/.claude`, kit cũng không đăng ký vì hook `plane-guard` chỉ cài trong `~/.claude/settings.json`.
+Lần đầu `uvx` tải Python nên chậm; nếu `/mcp` báo lỗi kết nối thì mở lại Claude Code. Nếu bước kiểm tra `zenify-plane` quá thời gian, `zenify up` in một dòng gợi ý, không đổi gì; chạy lại `zenify up --apply` sau. Thiếu PAT hoặc `uv`, `zenify up` chỉ in gợi ý và không đăng ký. Plane MCP cũng đăng ký ở local scope; hook `plane-guard` nằm trong `.claude/settings.local.json` của workspace nên nạp bất kể `CLAUDE_CONFIG_DIR`.
 
 Tên `zenify-plane` dành riêng cho kit, chỉ với `Type: stdio` và `Command: zenify`; server cùng tên kiểu khác thì kit giữ nguyên. Còn `PLANE_API_KEY` thì lần `zenify up --apply` sau sẽ đăng ký lại, nên muốn gỡ hẳn:
 
 1. Xóa dòng `PLANE_API_KEY` bằng `zenify env edit` (`zenify env set` không nhận giá trị trống), và bỏ `PLANE_API_KEY` khỏi biến môi trường shell nếu bạn có export.
-2. Chạy `claude mcp remove zenify-plane -s user`.
+2. Chạy `claude mcp remove zenify-plane -s local` trong thư mục gốc workspace (bản cũ ở user scope: `-s user`).
 
 ## Sandbox của Claude Code
 
