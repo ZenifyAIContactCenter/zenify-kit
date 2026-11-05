@@ -89,19 +89,8 @@ func migrateUserInstalls(home, codexHome string, mcps []string, keep userKeep, r
 		}
 	}
 
-	hooks, err := apply.RemoveGlobalHooks(settings, dryRun)
-	if err != nil {
-		return removed, err
-	}
-	if hooks.Removed > 0 {
-		removed = append(removed, fmt.Sprintf("%d znf hooks in %s", hooks.Removed, settings))
-	}
-	if ok, err := removeGuard(settings, dryRun); err != nil {
-		return removed, err
-	} else if ok {
-		removed = append(removed, "git-guard hook in "+settings)
-	}
-
+	// The MCP servers go before the hooks: a user zenify-plane that could not
+	// be removed keeps its plane-guard.
 	for _, name := range mcps {
 		// Only the kit's own registration goes; a server the user configured
 		// under the same name stays, even when a local one now shadows it.
@@ -121,6 +110,19 @@ func migrateUserInstalls(home, codexHome string, mcps []string, keep userKeep, r
 		if ok {
 			removed = append(removed, "MCP "+name+" (-s user)")
 		}
+	}
+
+	hooks, err := apply.RemoveGlobalHooks(settings, dryRun)
+	if err != nil {
+		return removed, err
+	}
+	if hooks.Removed > 0 {
+		removed = append(removed, fmt.Sprintf("%d znf hooks in %s", hooks.Removed, settings))
+	}
+	if ok, err := removeGuard(settings, dryRun); err != nil {
+		return removed, err
+	} else if ok {
+		removed = append(removed, "git-guard hook in "+settings)
 	}
 
 	link := filepath.Join(home, ".agents", "skills", "znf")

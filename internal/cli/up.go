@@ -382,7 +382,8 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		// The kit's user zenify-plane stays when no local one was registered,
 		// and it runs on the dev's PAT: its plane-guard is a user hook, so the
 		// user install stays whole until the local Plane is registered.
-		if len(plane) == 0 && bm != nil && bm.Plane != nil && herr == nil && home != "" {
+		// A registration error is already a local error with its own cause.
+		if len(plane) == 0 && err == nil && bm != nil && bm.Plane != nil && herr == nil && home != "" {
 			if owned, err := mcpreg.KitOwned(filepath.Join(home, ".claude.json"), "", "zenify-plane"); err == nil && owned {
 				localErrs = append(localErrs, "plane MCP: chưa đăng ký được zenify-plane local nên giữ bản cấp user cùng plane-guard; đặt PLANE_API_KEY (zenify env set PLANE_API_KEY), cài uv, rồi chạy lại zenify up --apply") //znf:allow-lang
 			}

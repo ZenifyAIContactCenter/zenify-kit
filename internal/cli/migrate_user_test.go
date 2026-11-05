@@ -426,9 +426,8 @@ func TestUp_TwiceNoChange(t *testing.T) {
 	}
 }
 
-// N1: the migration fails after removing the user Claude hooks but before the
-// user Codex hooks; the workspace Codex hooks must go so Codex runs each kit
-// hook once, while the workspace Claude hooks stay (the user ones are gone).
+// N1: the migration fails at the user MCP removal, before any user hook goes;
+// the workspace hooks must go so each runtime runs each kit hook once.
 func TestUp_MigrationFailureKeepsHooksSingle(t *testing.T) {
 	home, ws, m, plans := upFixture(t)
 	useLocalMCPs(t, true)
@@ -444,11 +443,11 @@ func TestUp_MigrationFailureKeepsHooksSingle(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(ws, ".codex", "hooks.json")); strings.Contains(string(b), "zenify hooks-run") {
 		t.Errorf("workspace codex hooks left beside the user ones: %s", b)
 	}
-	if b, _ := os.ReadFile(apply.UserSettings(home)); strings.Contains(string(b), "zenify hooks-run") {
-		t.Fatalf("precondition: user claude hooks should be gone: %s", b)
+	if b, _ := os.ReadFile(apply.UserSettings(home)); !strings.Contains(string(b), "zenify hooks-run") || !strings.Contains(string(b), "mcp__zenify-plane__") {
+		t.Fatalf("precondition: user claude hooks should remain after the failed migration: %s", b)
 	}
-	if b, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws)); !strings.Contains(string(b), "zenify hooks-run") || !strings.Contains(string(b), "zenify git-guard") {
-		t.Errorf("workspace claude hooks removed although the user ones are gone: %s", b)
+	if b, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws)); strings.Contains(string(b), "zenify hooks-run") || strings.Contains(string(b), "zenify git-guard") {
+		t.Errorf("workspace claude hooks left beside the user ones: %s", b)
 	}
 }
 
@@ -706,5 +705,37 @@ func TestMigrateUserInstalls_KeepsCustomUserMCP(t *testing.T) {
 	}
 	if got := f.userRemoves(); len(got) > 0 {
 		t.Errorf("custom user MCP removed: %v", got)
+	}
+}
+
+// A user zenify-plane that could not be removed keeps its plane-guard: the
+// MCP servers go before the hooks.
+func TestMigrateUserInstalls_MCPRemoveFailureKeepsHooks(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	seedUserInstall(t, home, ws)
+	f := newFakeClaude(ws)
+	f.failRemove = true
+	if _, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, userKeep{}, f.run, false); err == nil {
+		t.Fatal("want the MCP remove error")
+	}
+	raw, _ := os.ReadFile(apply.UserSettings(home))
+	if !strings.Contains(string(raw), "mcp__zenify-plane__") {
+		t.Errorf("plane-guard removed while zenify-plane is still registered:\n%s", raw)
+	}
+}
+
+// An unreadable ~/.claude.json cannot show whether the user zenify-plane is
+// the kit's: up keeps the user install (and its plane-guard) rather than guess.
+func TestUp_UnreadableClaudeJSONKeepsPlaneGuard(t *testing.T) {
+	home, ws, m, plans := upFixture(t)
+	useLocalMCPs(t, false)
+	mkfile(t, filepath.Join(home, ".claude.json"), "{")
+	f := newFakeClaude(ws)
+	useFakeClaude(t, f)
+	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err == nil {
+		t.Fatal("up must fail when it cannot tell whether the user zenify-plane is the kit's")
+	}
+	if ok, _ := apply.HasUserKitHooks(apply.UserSettings(home)); !ok {
+		t.Error("user hooks (plane-guard) removed")
 	}
 }
