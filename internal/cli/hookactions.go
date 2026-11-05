@@ -135,7 +135,7 @@ func featuresLine(wsRoot string, w io.Writer) {
 		fmt.Fprintln(w, "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR")
 	}
 	if feats["track"] {
-		fmt.Fprintln(w, "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch)")
+		fmt.Fprintln(w, "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog / plan today → zenify track stats --json first (track.md#Backlog)")
 		trackOnboardLine(wsRoot, w)
 	}
 }

@@ -18,6 +18,7 @@ func TestTrackSharedDoc(t *testing.T) {
 		"backlog add", "zenify track onboard memory",
 		"zenify track stats --json", "let the user pick", "take the next work item",
 		"before any investigation", "end with `--pr <url>`", "--from <ledger id>", "is taken by", "`track id:` from `/fix`",
+		"## Daily plan", "360", "zenify track plan set", "gh search prs --review-requested @me",
 	})
 }
 
