@@ -11,7 +11,7 @@ description: Use when creating new skills, editing existing skills, or verifying
 
 **Writing skills IS Test-Driven Development applied to process documentation.**
 
-**Personal skills live in your runtime's skills directory** (`~/.claude/skills/` on Claude Code); the znf kit materializes its skills under `~/.claude/skills/znf/` via `zenify skills sync`.
+**Personal skills live in your runtime's skills directory** (`~/.claude/skills/` on Claude Code); the znf kit materializes its skills under `~/.zenify/plugin-marketplace/plugins/znf/` via `zenify skills sync` and installs them as a workspace-local plugin.
 
 You write test cases (pressure scenarios with subagents), watch them fail (baseline behavior), write the skill (documentation), watch tests pass (agents comply), and refactor (close loopholes).
 
@@ -493,7 +493,7 @@ Deploying untested skills = deploying untested code. It's a violation of quality
 
 ## References
 
-Materialized at `~/.claude/skills/znf/skills/writing-skills/references/`. Read a file only when its trigger fires.
+Materialized at `~/.zenify/plugin-marketplace/plugins/znf/skills/writing-skills/references/`. Read a file only when its trigger fires.
 
 - `references/testing-skill-types.md` — read when the skill you are writing is a reference or pattern skill and you are deciding how to test it.
 - `references/sdo-evidence.md` — read when you doubt the description field matters.

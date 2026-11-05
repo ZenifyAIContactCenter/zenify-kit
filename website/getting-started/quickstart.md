@@ -93,7 +93,7 @@ Mở Claude Code trong workspace vừa onboard và gõ:
 /znf:cook
 ```
 
-Nếu skill hiện ra trong danh sách gợi ý, plugin `znf:*` đã được cài đúng ở bước 2. Bạn chưa cần chạy `/znf:cook` thật ở bước này.
+Nếu skill hiện ra trong danh sách gợi ý, plugin `znf:*` đã được cài đúng ở bước 2. Plugin được cài ở phạm vi local của workspace, nên chỉ hiện khi bạn mở Claude Code ở gốc workspace; mở ở thư mục con hoặc thư mục ngoài workspace thì kit không bật. Bạn chưa cần chạy `/znf:cook` thật ở bước này.
 
 ## Bước 5: tạo worktree đầu tiên
 

@@ -19,7 +19,7 @@ ZenifyKit gồm ba phần: binary `zenify`, plugin skill `znf:*` cho Claude Code
 | Lớp | Vị trí trên máy | Cập nhật bằng |
 |---|---|---|
 | Binary `zenify` | trong `PATH` | `zenify update` |
-| Plugin skill `znf:*` | `~/.claude/skills/znf` | `zenify skills sync` (chạy tự động trong `zenify up`) |
+| Plugin skill `znf:*` | `~/.zenify/plugin-marketplace/plugins/znf` (chỉ bật ở gốc workspace) | `zenify skills sync` (chạy tự động trong `zenify up`) |
 | Knowledge store | `~/.zenify/knowledge` | `zenify docs sync` (chạy tự động ở hook `Stop` và `SessionStart`) |
 
 ```mermaid
