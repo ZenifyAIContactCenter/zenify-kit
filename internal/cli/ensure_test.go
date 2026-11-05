@@ -744,3 +744,21 @@ func TestEnsureWorkspace_PanicIsLocalErr(t *testing.T) {
 		t.Fatalf("recovered panic not in LocalErrs; stderr: %s", e.String())
 	}
 }
+
+// CODEX_HOME pointed at <ws>/.codex makes the workspace hooks look like the
+// user copy; they must neither gate ensure nor be migrated away.
+func TestEnsureWorkspace_CodexHomeIsWorkspace(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	fakeLookPath(t, true)
+	t.Setenv("CODEX_HOME", filepath.Join(ws, ".codex"))
+	var o1, e1 bytes.Buffer
+	ensureWorkspace(ws, home, &o1, &e1, ensureOpts{ForceLocal: true})
+	var o2, e2 bytes.Buffer
+	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{})
+	if strings.Contains(o2.String(), "zenify up --apply") {
+		t.Fatalf("workspace Codex hooks gated ensure: %q", o2.String())
+	}
+	if !userCodexIsWorkspace(filepath.Join(ws, ".codex"), ws) {
+		t.Fatal("userCodexIsWorkspace false for <ws>/.codex")
+	}
+}

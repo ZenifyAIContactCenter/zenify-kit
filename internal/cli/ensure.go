@@ -102,7 +102,7 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 		}
 		// Without codex on PATH nothing Codex is written and user Codex hooks
 		// `up` kept are inert, so they neither gate nor nudge.
-		if codexOnPath() {
+		if codexOnPath() && !userCodexIsWorkspace(codexHome, workspace) {
 			if ch, err := apply.RemoveCodexHooks(codexHome, true); err == nil {
 				wireCodex = ch.Removed == 0
 			}
@@ -284,4 +284,11 @@ func ensureWorkspaceMarker(workspace, home string) (string, error) {
 		return "", err
 	}
 	return "", m.Save(marker)
+}
+
+// userCodexIsWorkspace reports whether CODEX_HOME is <workspace>/.codex: the
+// Codex files there are the workspace install, not a user copy to gate on or
+// migrate away.
+func userCodexIsWorkspace(codexHome, workspace string) bool {
+	return samePath(codexHome, filepath.Join(workspace, ".codex"))
 }

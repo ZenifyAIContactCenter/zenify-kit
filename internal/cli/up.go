@@ -343,7 +343,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		renderCodexSummary(rep, w)
 		localErrs = rep.LocalErrs
 		// A user Codex copy goes only when the workspace got its own.
-		keep.CodexHooks = !rep.CodexInstalled
+		keep.CodexHooks = !rep.CodexInstalled || userCodexIsWorkspace(codexHomeDir(home, os.Getenv), workspace)
 		fi, lerr := os.Lstat(rep.CodexLinkPath)
 		keep.SkillsLink = lerr != nil || fi.Mode()&os.ModeSymlink == 0
 	}
