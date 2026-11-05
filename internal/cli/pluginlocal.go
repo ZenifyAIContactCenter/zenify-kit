@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -62,7 +63,10 @@ func installPluginLocal(workspace, zh string, run func(string, ...string) ([]byt
 		if json.Unmarshal(out, &list) == nil {
 			for _, p := range list {
 				if p.ID == plugin.PluginID && p.Scope == "local" && p.Enabled && samePath(p.ProjectPath, workspace) {
-					return writePluginStamp(workspace)
+					if exists, current := pluginStampState(workspace); exists && current {
+						return nil
+					}
+					return updatePluginLocal(workspace, run)
 				}
 			}
 		}
@@ -103,36 +107,55 @@ func writePluginStamp(workspace string) error {
 	return os.Rename(tmp.Name(), p)
 }
 
-// resyncPluginLocal re-materializes the marketplace and updates the local
-// plugin when the workspace's stamp (<workspace>/.zenify/plugin-version) differs
-// from the binary. The stamp is written only when both claude commands succeed,
-// so a transient failure is retried next time. Fail-open: each failure is a
-// stderr line, and the returned error (nil when current or brought current)
-// lets ensureWorkspace record the step in LocalErrs.
-func resyncPluginLocal(workspace, zh string, run func(string, ...string) ([]byte, error), stderr io.Writer) error {
-	if b, err := os.ReadFile(pluginStampPath(workspace)); err == nil && strings.TrimSpace(string(b)) == version.Current() { //nolint:gosec // G304 -- internal path
-		return nil
+// pluginStampState reports whether <workspace>/.zenify/plugin-version exists
+// and whether it names the running binary.
+func pluginStampState(workspace string) (exists, current bool) {
+	b, err := os.ReadFile(pluginStampPath(workspace)) //nolint:gosec // G304 -- internal path
+	if err != nil {
+		return false, false
 	}
-	if _, err := plugin.SyncMarketplace(zh); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: plugin sync:", err)
-		return fmt.Errorf("plugin sync: %w", err)
-	}
+	return true, strings.TrimSpace(string(b)) == version.Current()
+}
+
+// updatePluginLocal updates the marketplace and the local znf plugin, then
+// writes the stamp; the stamp is written only when both commands succeed, so a
+// failure is retried next time.
+func updatePluginLocal(workspace string, run func(string, ...string) ([]byte, error)) error {
 	var failed []string
 	for _, args := range [][]string{
 		{"plugin", "marketplace", "update", plugin.MarketplaceName},
 		{"plugin", "update", plugin.PluginID, "-s", "local"},
 	} {
 		if out, err := run("claude", args...); err != nil {
-			failed = append(failed, "claude "+strings.Join(args[:2], " "))
-			fmt.Fprintf(stderr, "znf ensure: claude %s: %v: %s\n", strings.Join(args[:2], " "), err, strings.TrimSpace(string(out)))
+			failed = append(failed, fmt.Sprintf("claude %s: %v: %s", strings.Join(args[:2], " "), err, strings.TrimSpace(string(out))))
 		}
 	}
 	if len(failed) > 0 {
-		return fmt.Errorf("%s failed", strings.Join(failed, ", "))
+		return errors.New(strings.Join(failed, "; "))
 	}
 	if err := writePluginStamp(workspace); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: plugin stamp:", err)
 		return fmt.Errorf("plugin stamp: %w", err)
+	}
+	return nil
+}
+
+// resyncPluginLocal re-materializes the marketplace and updates the local
+// plugin when the workspace's stamp (<workspace>/.zenify/plugin-version) is
+// stale. No stamp means the plugin was never installed locally here (`zenify
+// up` installs it), so there is nothing to update and it returns nil. Fail-open:
+// a failure is one stderr line, and the returned error lets ensureWorkspace
+// record the step in LocalErrs.
+func resyncPluginLocal(workspace, zh string, run func(string, ...string) ([]byte, error), stderr io.Writer) error {
+	if exists, current := pluginStampState(workspace); !exists || current {
+		return nil
+	}
+	if _, err := plugin.SyncMarketplace(zh); err != nil {
+		fmt.Fprintln(stderr, "znf ensure: plugin sync:", err)
+		return fmt.Errorf("plugin sync: %w", err)
+	}
+	if err := updatePluginLocal(workspace, run); err != nil {
+		fmt.Fprintln(stderr, "znf ensure: plugin:", err)
+		return err
 	}
 	return nil
 }

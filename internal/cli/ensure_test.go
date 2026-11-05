@@ -584,7 +584,6 @@ func TestEnsureWorkspace_Idempotent(t *testing.T) {
 		filepath.Join(ws, ".codex", "hooks.json"),
 		filepath.Join(ws, ".agents", "skills", "znf"),
 		filepath.Join(home, ".codex", "config.toml"),
-		filepath.Join(ws, ".zenify", "plugin-version"),
 	}
 	agents, _ := filepath.Glob(filepath.Join(ws, ".codex", "agents", "*.toml"))
 	if len(agents) == 0 {

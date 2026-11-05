@@ -343,27 +343,17 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	if err := installPluginLocal(workspace, zenifyHome(os.Getenv, os.UserHomeDir), run); err != nil {
 		_, _ = fmt.Fprintln(errW, "warning: znf plugin:", err)
 		localErrs = append(localErrs, "plugin install: "+err.Error())
-	} else {
-		// The local plugin is now enabled, so ensure's resync error (on a
-		// machine with no local plugin yet, `plugin update` exits 1) is moot.
-		kept := localErrs[:0]
-		for _, e := range localErrs {
-			if !strings.HasPrefix(e, "plugin: ") {
-				kept = append(kept, e)
-			}
-		}
-		localErrs = kept
 	}
 	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). The broker
 	// comes from the trusted (embedded) manifest, never --manifest or cwd: the
 	// registered headersHelper `zenify broker headers` resolves it the same
 	// way, so the MCP URL and its token always name one broker.
 	bm, _ := brokerManifest("", "")
-	if err := registerBrokerMCP(w, errW, workspace, bm, runClaudeIn(workspace)); err != nil {
+	if err := registerBrokerMCP(w, errW, workspace, bm, run); err != nil {
 		localErrs = append(localErrs, "broker MCP: "+err.Error())
 	}
 	// Per-developer Plane MCP (stdio, the dev's own PAT, not via the broker).
-	if err := registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, runClaudeIn(workspace)); err != nil {
+	if err := registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, run); err != nil {
 		localErrs = append(localErrs, "plane MCP: "+err.Error())
 	}
 	// FR-5.5: the user-level install goes only once every local step succeeded.
@@ -803,15 +793,8 @@ func newUpCmd() *cobra.Command {
 			if err := dryRunApplyConflict(applyFlag, cmd.Flags().Changed("dry-run"), dryRun); err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
-			if reviewer != "" {
-				if reviewer != "agent" && reviewer != "codex" {
-					return exitcode.New(exitcode.BadArgs, fmt.Errorf("--reviewer %q: want agent or codex", reviewer))
-				}
-				if home, herr := os.UserHomeDir(); herr == nil && home != "" {
-					if err := apply.SetReviewerEnv(apply.UserSettings(home), reviewer, !applyFlag); err != nil {
-						fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
-					}
-				}
+			if reviewer != "" && reviewer != "agent" && reviewer != "codex" {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("--reviewer %q: want agent or codex", reviewer))
 			}
 			cwd, _ := os.Getwd()
 			isTTY := term.IsTerminal(int(os.Stdout.Fd()))
@@ -849,6 +832,11 @@ func newUpCmd() *cobra.Command {
 				sourcesDir = res.SourcesDir
 			}
 			workspace = ws
+			if reviewer != "" {
+				if err := apply.SetReviewerEnv(apply.WorkspaceLocalSettings(workspace), reviewer, !applyFlag); err != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
+				}
+			}
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
 			}
@@ -929,7 +917,7 @@ func newUpCmd() *cobra.Command {
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace root (default: the workspace found from cwd or ~/.zenify/workspace; the wizard asks when there is none)")
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default: manifest/repos.yaml under cwd when present, else the copy embedded in the binary)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
-	cmd.Flags().StringVar(&reviewer, "reviewer", "", "review engine written to ZNF_REVIEWER in ~/.claude/settings.json: agent or codex (written only with --apply)")
+	cmd.Flags().StringVar(&reviewer, "reviewer", "", "review engine written to ZNF_REVIEWER in <workspace>/.claude/settings.local.json: agent or codex (written only with --apply)")
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "apply changes without the interactive wizard (required for non-interactive/CI runs)")
 	return cmd
 }

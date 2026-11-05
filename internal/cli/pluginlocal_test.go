@@ -39,15 +39,60 @@ func TestInstallPluginLocal_FreshInstall(t *testing.T) {
 	}
 }
 
+func enabledList(ws string) map[string]string {
+	return map[string]string{"claude plugin list --json": fmt.Sprintf(
+		`[{"id":"znf@zenify-kit","scope":"local","projectPath":%q,"enabled":true}]`, ws)}
+}
+
+func writeStamp(t *testing.T, ws, v string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "plugin-version"), []byte(v), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const updateCalls = "claude plugin marketplace update zenify-kit|claude plugin update znf@zenify-kit -s local"
+
 func TestInstallPluginLocal_AlreadyEnabled(t *testing.T) {
 	zh, ws := t.TempDir(), t.TempDir()
-	f := &fakeRun{out: map[string]string{"claude plugin list --json": fmt.Sprintf(
-		`[{"id":"znf@zenify-kit","scope":"local","projectPath":%q,"enabled":true}]`, ws)}}
+	writeStamp(t, ws, version.Current())
+	f := &fakeRun{out: enabledList(ws)}
 	if err := installPluginLocal(ws, zh, f.run); err != nil {
 		t.Fatal(err)
 	}
 	if len(f.calls) != 1 {
 		t.Fatalf("calls = %v, want only list", f.calls)
+	}
+}
+
+// Enabled with no stamp: update first, then stamp.
+func TestInstallPluginLocal_AlreadyEnabledNoStampUpdates(t *testing.T) {
+	zh, ws := t.TempDir(), t.TempDir()
+	f := &fakeRun{out: enabledList(ws)}
+	if err := installPluginLocal(ws, zh, f.run); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(f.calls[1:], "|"); got != updateCalls {
+		t.Fatalf("calls = %v", f.calls)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, ".zenify", "plugin-version")); string(b) != version.Current() {
+		t.Fatalf("stamp = %q", b)
+	}
+}
+
+// Enabled with a stale stamp and a failing update: error, stamp stays stale.
+func TestInstallPluginLocal_AlreadyEnabledStaleUpdateFails(t *testing.T) {
+	zh, ws := t.TempDir(), t.TempDir()
+	writeStamp(t, ws, "v0.0.1")
+	f := &fakeRun{out: enabledList(ws), errs: map[string]error{"claude plugin update znf@zenify-kit -s local": fmt.Errorf("boom")}}
+	if err := installPluginLocal(ws, zh, f.run); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("err = %v, want the update failure", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, ".zenify", "plugin-version")); string(b) != "v0.0.1" {
+		t.Fatalf("stamp = %q, want stale", b)
 	}
 }
 
@@ -85,8 +130,8 @@ func TestInstallPluginLocal_SymlinkedProjectPathIsSame(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, pair := range [][2]string{{real, link}, {link, real}} {
-		f := &fakeRun{out: map[string]string{"claude plugin list --json": fmt.Sprintf(
-			`[{"id":"znf@zenify-kit","scope":"local","projectPath":%q,"enabled":true}]`, pair[0])}}
+		writeStamp(t, real, version.Current())
+		f := &fakeRun{out: enabledList(pair[0])}
 		if err := installPluginLocal(pair[1], zh, f.run); err != nil {
 			t.Fatal(err)
 		}
@@ -170,11 +215,12 @@ func TestResyncPluginLocal_StaleRunsUpdateAndStamps(t *testing.T) {
 
 func TestResyncPluginLocal_FailureKeepsStaleAndRetries(t *testing.T) {
 	zh, ws := t.TempDir(), t.TempDir()
+	writeStamp(t, ws, "v0.0.1")
 	f := &fakeRun{errs: map[string]error{"claude plugin update znf@zenify-kit -s local": fmt.Errorf("boom")}}
 	var e bytes.Buffer
 	resyncPluginLocal(ws, zh, f.run, &e)
-	if _, err := os.Stat(filepath.Join(ws, ".zenify", "plugin-version")); err == nil {
-		t.Fatal("stamp written despite failure")
+	if b, _ := os.ReadFile(filepath.Join(ws, ".zenify", "plugin-version")); string(b) != "v0.0.1" {
+		t.Fatalf("stamp = %q despite failure", b)
 	}
 	if !strings.Contains(e.String(), "boom") {
 		t.Fatalf("stderr = %q", e.String())
@@ -183,5 +229,15 @@ func TestResyncPluginLocal_FailureKeepsStaleAndRetries(t *testing.T) {
 	resyncPluginLocal(ws, zh, f.run, &e)
 	if len(f.calls) != 2 {
 		t.Fatalf("no retry: %v", f.calls)
+	}
+}
+
+// No stamp: the plugin was never installed locally here, so resync does nothing.
+func TestResyncPluginLocal_NoStampIsNoop(t *testing.T) {
+	zh, ws := t.TempDir(), t.TempDir()
+	f := &fakeRun{}
+	var e bytes.Buffer
+	if err := resyncPluginLocal(ws, zh, f.run, &e); err != nil || len(f.calls) != 0 || e.Len() != 0 {
+		t.Fatalf("err=%v calls=%v stderr=%q", err, f.calls, e.String())
 	}
 }

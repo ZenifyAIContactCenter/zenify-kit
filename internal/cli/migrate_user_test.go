@@ -24,6 +24,8 @@ type fakeClaude struct {
 	failInstall bool
 	installed   bool
 	mktAdded    bool
+	failUpdate  bool // `plugin update` fails even when installed
+	failAddJSON bool // `mcp add-json` fails
 	userMCP     map[string]bool
 	calls       []string
 }
@@ -35,6 +37,12 @@ func newFakeClaude(ws string) *fakeClaude {
 func (f *fakeClaude) run(_ string, args ...string) ([]byte, error) {
 	f.calls = append(f.calls, strings.Join(args, " "))
 	switch {
+	case len(args) >= 3 && args[0] == "mcp" && args[1] == "get":
+		return []byte(fmt.Sprintf("No MCP server named %q found", args[2])), fmt.Errorf("exit status 1")
+	case len(args) >= 2 && args[0] == "mcp" && args[1] == "add-json":
+		if f.failAddJSON {
+			return []byte("boom"), fmt.Errorf("exit status 1")
+		}
 	case len(args) >= 3 && args[0] == "mcp" && args[1] == "remove":
 		if f.userMCP[args[2]] {
 			delete(f.userMCP, args[2])
@@ -55,7 +63,7 @@ func (f *fakeClaude) run(_ string, args ...string) ([]byte, error) {
 	case len(args) >= 3 && args[0] == "plugin" && args[1] == "marketplace" && args[2] == "add":
 		f.mktAdded = true
 	case len(args) >= 2 && args[0] == "plugin" && args[1] == "update":
-		if !f.installed {
+		if !f.installed || f.failUpdate {
 			return []byte("Plugin not found"), fmt.Errorf("exit status 1")
 		}
 	case len(args) >= 2 && args[0] == "plugin" && args[1] == "install":
@@ -149,6 +157,26 @@ func seedUserInstall(t *testing.T, home, ws string) {
 	hooks := m["hooks"].(map[string]any)
 	hooks["Stop"] = append(asSlice(hooks["Stop"]), map[string]any{"hooks": []any{map[string]any{"type": "command", "command": "~/bin/my-own.sh"}}})
 	writeSettingsJSON(t, settings, m)
+
+	// Codex: the kit skills link, kit hooks next to a personal one, kit agents.
+	if err := os.MkdirAll(filepath.Join(home, ".agents", "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(home, ".claude", "skills", "znf"), filepath.Join(home, ".agents", "skills", "znf")); err != nil {
+		t.Fatal(err)
+	}
+	codexHome := filepath.Join(home, ".codex")
+	if _, err := apply.EnsureCodexHooks(codexHome, false); err != nil {
+		t.Fatal(err)
+	}
+	hp := filepath.Join(codexHome, "hooks.json")
+	h := readJSON(t, hp)
+	ch := h["hooks"].(map[string]any)
+	ch["Stop"] = append(asSlice(ch["Stop"]), map[string]any{"hooks": []any{map[string]any{"type": "command", "command": "~/bin/my-codex.sh"}}})
+	writeSettingsJSON(t, hp, h)
+	if ar, err := plugin.SyncCodexAgents(codexHome, false); err != nil || len(ar.Written) == 0 {
+		t.Fatalf("seed codex agents: %v %+v", err, ar)
+	}
 }
 
 func asSlice(v any) []any { s, _ := v.([]any); return s }
@@ -184,6 +212,16 @@ func TestMigrateUserInstalls_RemovesKitOnly(t *testing.T) {
 		if !strings.Contains(s, kept) {
 			t.Errorf("settings.json lost %q:\n%s", kept, s)
 		}
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".agents", "skills", "znf")); !os.IsNotExist(err) {
+		t.Errorf("~/.agents/skills/znf still there: %v", err)
+	}
+	hooks, _ := os.ReadFile(filepath.Join(codexHome, "hooks.json"))
+	if strings.Contains(string(hooks), "zenify hooks-run") || !strings.Contains(string(hooks), "my-codex.sh") {
+		t.Errorf("codex hooks.json after migrate:\n%s", hooks)
+	}
+	if agents, _ := filepath.Glob(filepath.Join(codexHome, "agents", "*.toml")); len(agents) > 0 {
+		t.Errorf("kit codex agents left: %v", agents)
 	}
 	got := f.userRemoves()
 	sort.Strings(got)
@@ -339,10 +377,81 @@ func TestUp_FreshMachineSucceeds(t *testing.T) {
 	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}}
 	f := newFakeClaude(ws)
 	useFakeClaude(t, f)
-	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
+	var errOut strings.Builder
+	if err := runApply(io.Discard, &errOut, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
 		t.Fatalf("runApply on a fresh machine: %v", err)
 	}
 	if !f.installed {
 		t.Error("local plugin not installed")
+	}
+	if strings.Contains(errOut.String(), "znf ensure: plugin") || strings.Contains(errOut.String(), "claude plugin") {
+		t.Errorf("fresh machine printed plugin failures: %q", errOut.String())
+	}
+}
+
+// FR-5.5: plugin enabled, stamp stale, `plugin update` failing → up fails,
+// nothing removed, the stamp stays stale (so the next up retries).
+func TestUp_StaleUpdateFailureKeepsUserInstalls(t *testing.T) {
+	home, ws, m, plans := upFixture(t)
+	writeStamp(t, ws, "v0.0.1")
+	f := newFakeClaude(ws)
+	f.installed, f.mktAdded, f.failUpdate = true, true, true
+	useFakeClaude(t, f)
+	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err == nil {
+		t.Fatal("runApply succeeded although plugin update failed")
+	}
+	if got := f.userRemoves(); len(got) > 0 {
+		t.Errorf("user MCP removed: %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "znf")); err != nil {
+		t.Errorf("skills/znf removed: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, ".zenify", "plugin-version")); string(b) != "v0.0.1" {
+		t.Errorf("stamp = %q, want stale", b)
+	}
+}
+
+// FR-5.5 (spec testing line): a failed broker MCP registration keeps the user install.
+func TestUp_BrokerMCPFailureKeepsUserInstalls(t *testing.T) {
+	home, ws, m, plans := upFixture(t)
+	p := filepath.Join(t.TempDir(), "repos.yaml")
+	if err := os.WriteFile(p, []byte(noBrokerYAML+"broker:\n  url: https://broker.example\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	useTrustedManifest(t, p)
+	f := newFakeClaude(ws)
+	f.failAddJSON = true
+	useFakeClaude(t, f)
+	var errOut strings.Builder
+	if err := runApply(io.Discard, &errOut, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err == nil {
+		t.Fatal("runApply succeeded although mcp add-json failed")
+	}
+	if !strings.Contains(errOut.String(), "broker MCP") {
+		t.Errorf("stderr = %q", errOut.String())
+	}
+	if got := f.userRemoves(); len(got) > 0 {
+		t.Errorf("user MCP removed: %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "znf")); err != nil {
+		t.Errorf("skills/znf removed: %v", err)
+	}
+}
+
+// FR-8.2: `up --reviewer codex` writes the workspace settings.local.json, never ~/.claude/settings.json.
+func TestUp_ReviewerWritesWorkspaceLocal(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	root := NewRootCmd()
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	// The missing manifest stops up right after the reviewer write.
+	root.SetArgs([]string{"up", "--apply", "--workspace", ws, "--manifest", filepath.Join(ws, "missing.yaml"), "--reviewer", "codex"})
+	_ = root.Execute()
+	v, err := apply.ReviewerEnvValue(apply.WorkspaceLocalSettings(ws))
+	if err != nil || v != "codex" {
+		t.Fatalf("settings.local.json ZNF_REVIEWER = %q, %v", v, err)
+	}
+	if _, err := os.Stat(apply.UserSettings(home)); !os.IsNotExist(err) {
+		t.Fatalf("~/.claude/settings.json written: %v", err)
 	}
 }
