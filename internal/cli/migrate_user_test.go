@@ -473,24 +473,29 @@ func useLocalMCPs(t *testing.T, pat bool) {
 	}
 }
 
-// A kit MCP whose local registration was skipped (here: no Plane PAT) keeps
-// its user-scope copy; the ones registered locally lose theirs.
-func TestUp_SkippedLocalMCPKeepsUserMCP(t *testing.T) {
-	_, ws, m, plans := upFixture(t)
+// zenify-plane could not be registered locally (no PAT here) while the kit's
+// user-scope copy remains: removing the user hooks would leave that copy
+// without plane-guard, so up keeps the whole user install and fails.
+func TestUp_SkippedLocalPlaneKeepsUserInstall(t *testing.T) {
+	home, ws, m, plans := upFixture(t)
 	useLocalMCPs(t, false)
 	f := newFakeClaude(ws)
 	useFakeClaude(t, f)
-	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
-		t.Fatalf("runApply: %v", err)
+	var errOut strings.Builder
+	if err := runApply(io.Discard, &errOut, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err == nil {
+		t.Fatal("up must fail while the user zenify-plane would lose plane-guard")
 	}
-	got := f.userRemoves()
-	sort.Strings(got)
-	want := []string{"mcp remove zenify-grafana -s user", "mcp remove zenify-posthog -s user"}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("user MCP removes = %v, want %v", got, want)
+	if got := f.userRemoves(); len(got) > 0 {
+		t.Errorf("user MCPs removed: %v", got)
 	}
 	if !f.userMCP["zenify-plane"] {
 		t.Error("user zenify-plane removed although no local one was registered")
+	}
+	if ok, _ := apply.HasUserKitHooks(apply.UserSettings(home)); !ok {
+		t.Error("user hooks (plane-guard) removed")
+	}
+	if !strings.Contains(errOut.String(), "PLANE_API_KEY") {
+		t.Errorf("no hint to set PLANE_API_KEY: %s", errOut.String())
 	}
 }
 
