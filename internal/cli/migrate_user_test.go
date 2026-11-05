@@ -804,3 +804,5 @@ func TestUp_UnreadableClaudeJSONKeepsPlaneGuard(t *testing.T) {
 		t.Error("user hooks (plane-guard) removed")
 	}
 }
+
+// znf:ui-verify-ok: no frontend in this diff; review/SKILL.md matches the unanchored views?/ regex (uiverify.go:25)
