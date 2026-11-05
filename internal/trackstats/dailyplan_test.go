@@ -117,3 +117,38 @@ func TestValidPlanID(t *testing.T) {
 		}
 	}
 }
+
+func TestDailyPlanTrackTitle(t *testing.T) {
+	a, b := cid("cook", 1), cid("cook", 2)
+	bid := "b-261030-aaaa"
+	in := base(lines(
+		row(now.Add(-4*time.Hour), "start", a, "cook", "kit", "M"),
+		row(now.Add(-3*time.Hour), "end", a, "branch:x", "1", "0", "docs/plans/kit/p.md"),
+		row(now.Add(-2*time.Hour), "backlog", bid, "kit", "S", "-", "from backlog"),
+		row(now.Add(-time.Hour), "start", b, "cook", "kit", "S", bid),
+		planRow(now.Add(-time.Minute), planDay, a, b, a),
+	))
+	in.PlanTitle = func(string) (string, error) { return "Plan A" + planSuffix, nil }
+	r, _ := Compute(in)
+	p := r.Today.DailyPlan
+	if p == nil || len(p.Items) != 2 {
+		t.Fatalf("duplicate id kept: %+v", p)
+	}
+	if p.Items[0].Title != "Plan A" || p.Items[1].Title != "from backlog" {
+		t.Fatalf("titles = %q, %q", p.Items[0].Title, p.Items[1].Title)
+	}
+	if p.EstMin != 45+15 {
+		t.Fatalf("estMin = %d, want 60", p.EstMin)
+	}
+}
+
+func TestPlanStatusMapping(t *testing.T) {
+	for in, want := range map[string]string{
+		"running": "running", "stale": "running", "done": "done", "pushed": "done",
+		"cancelled": "cancelled", "rollback": "cancelled",
+	} {
+		if got := planStatus(in); got != want {
+			t.Fatalf("planStatus(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

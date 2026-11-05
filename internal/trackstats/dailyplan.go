@@ -64,13 +64,15 @@ func planStatus(trackStatus string) string {
 		return "running"
 	case "done", "pushed":
 		return "done"
+	case "cancelled", "rollback":
+		return "cancelled"
 	}
-	return "cancelled"
+	return "todo"
 }
 
 // computeDailyPlan builds today's plan from the latest plan row, or returns nil. items are the
-// computed track items; fromOf maps an item id to its `start --from` ref.
-func computeDailyPlan(in Input, logEv []Event, items []Item, fromOf map[string]string, backlog []BacklogItem, mergedCache map[string]string, scale Scale) *DailyPlan {
+// computed track items; brief is the kitchen title of a track item.
+func computeDailyPlan(in Input, logEv []Event, items []Item, works map[string]*work, backlog []BacklogItem, mergedCache map[string]string, scale Scale, brief func(Item, bool) string) *DailyPlan {
 	ids := todayPlanIDs(logEv, in.Today)
 	if ids == nil {
 		return nil
@@ -79,7 +81,7 @@ func computeDailyPlan(in Input, logEv []Event, items []Item, fromOf map[string]s
 	from := map[string]Item{} // the first item started from a ref wins
 	for _, it := range items {
 		itemOf[it.ID] = it
-		if f := fromOf[it.ID]; f != "" {
+		if f := works[it.ID].from; f != "" {
 			if _, ok := from[f]; !ok {
 				from[f] = it
 			}
@@ -102,7 +104,12 @@ func computeDailyPlan(in Input, logEv []Event, items []Item, fromOf map[string]s
 	bound := map[string]int{"S": scale.S, "M": scale.M, "L": scale.L}
 	plan := &DailyPlan{Items: []DailyPlanItem{}}
 	counted := map[string]bool{}
+	seen := map[string]bool{}
 	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		pi := DailyPlanItem{ID: id, Repo: "-", Est: "-", Title: id, Status: "todo"}
 		if strings.HasPrefix(id, "http") {
 			pi.URL = id
@@ -118,9 +125,7 @@ func computeDailyPlan(in Input, logEv []Event, items []Item, fromOf map[string]s
 		}
 		if tracked {
 			pi.Repo, pi.Est, pi.Status = tr.Repo, tr.Est, planStatus(tr.Status)
-			if r, ok := rows[fromOf[tr.ID]]; ok {
-				pi.Title = r.title
-			}
+			pi.Title = brief(tr, false)
 			if !counted[tr.ID] {
 				counted[tr.ID] = true
 				plan.WallMin += tr.WallMin

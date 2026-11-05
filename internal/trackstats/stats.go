@@ -418,10 +418,6 @@ func Compute(in Input) (Result, map[string]string) {
 			res.Today.PRsOpened++
 		}
 	}
-	fromOf := map[string]string{}
-	for id, w := range works {
-		fromOf[id] = w.from
-	}
 	res.Today.Plans = countPlans(in, &res)
 	newCache, ghDown := mergedToday(in, prOrder, planPRIDs(logEv, in.Today), &res)
 
@@ -458,7 +454,6 @@ func Compute(in Input) (Result, map[string]string) {
 	var issues []Issue
 	res.Backlog, issues = computeBacklog(in, logEv, from, items)
 	res.Kitchen = computeKitchen(in, logEv, works, order, items, issues, ghDown, newCache, &res)
-	res.Today.DailyPlan = computeDailyPlan(in, logEv, items, fromOf, res.Backlog.Items, newCache, res.Scale)
 	return res, newCache
 }
 

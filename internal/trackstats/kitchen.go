@@ -237,6 +237,7 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		}
 		done = append(done, cooked{w.end.At, CookedItem{ID: id, Brief: brief(it, true), Status: it.Status, EndedAt: it.EndedAt, PRs: it.PRs, Merged: allMerged(it.PRs, mergedAt), Est: it.Est, WallMin: it.WallMin}})
 	}
+	res.Today.DailyPlan = computeDailyPlan(in, logEv, items, works, res.Backlog.Items, mergedAt, res.Scale, brief)
 	sort.SliceStable(done, func(i, j int) bool { return done[i].at.After(done[j].at) })
 	for _, c := range done {
 		k.Cooked = append(k.Cooked, c.item)
