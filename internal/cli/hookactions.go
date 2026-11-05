@@ -202,13 +202,18 @@ func trackSummaryLine(wsRoot string, w io.Writer, now time.Time) {
 		parts = append(parts, fmt.Sprintf("%d carried", n))
 	}
 	if p := res.Today.DailyPlan; p != nil {
-		done := 0
+		done, total := 0, 0
 		for _, it := range p.Items {
-			if it.Status == "done" {
+			switch it.Status {
+			case "done":
 				done++
+				total++
+			case "cancelled":
+			default:
+				total++
 			}
 		}
-		parts = append(parts, fmt.Sprintf("plan %d/%d done", done, len(p.Items)))
+		parts = append(parts, fmt.Sprintf("plan %d/%d done", done, total))
 	}
 	if n := res.Today.PRsWaiting; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d PR waiting", n))

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -502,7 +503,7 @@ func TestSessionStart_TrackSummaryLine(t *testing.T) {
 			}
 			out := buf.String()
 			if c.want == "" {
-				if strings.Contains(out, "track: ") && strings.Contains(out, "carried") {
+				if regexp.MustCompile(`(?m)^track: \d`).MatchString(out) {
 					t.Errorf("unexpected summary line in %q", out)
 				}
 				return
