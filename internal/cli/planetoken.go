@@ -49,7 +49,16 @@ func planeTokenURL(base string) string {
 	return strings.TrimRight(base, "/") + "/settings/profile/api-tokens/"
 }
 
-var planeHTTP = &http.Client{Timeout: 10 * time.Second}
+// planeHTTP never follows a redirect: Go keeps X-API-Key on a redirect to
+// another host, so a 3xx is reported instead.
+var planeHTTP = &http.Client{
+	Timeout:       10 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+}
+
+// errPlaneRejected is Plane refusing the token itself; any other check error
+// (network, 5xx, odd answer) is not the token's fault.
+var errPlaneRejected = errors.New("plane từ chối token này") //znf:allow-lang
 
 // checkPlanePAT asks Plane whose token this is. Plane CE reads the PAT from
 // X-API-Key and answers 403 for a bad one (measured on 1.4.2).
@@ -66,7 +75,7 @@ func checkPlanePAT(base, token string) (string, error) {
 	defer func() { _ = resp.Body.Close() }()
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return "", errors.New("plane từ chối token này") //znf:allow-lang
+		return "", errPlaneRejected
 	case resp.StatusCode != http.StatusOK:
 		return "", fmt.Errorf("plane trả %s", resp.Status) //znf:allow-lang
 	}
@@ -77,11 +86,15 @@ func checkPlanePAT(base, token string) (string, error) {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&me); err != nil {
 		return "", fmt.Errorf("plane trả dữ liệu lạ: %w", err) //znf:allow-lang
 	}
+	if strings.TrimSpace(me.Email) == "" {
+		return "", errors.New("plane trả dữ liệu lạ: thiếu email") //znf:allow-lang
+	}
 	return strings.TrimSpace(me.DisplayName + " <" + me.Email + ">"), nil
 }
 
 // askPlanePAT opens the token page, takes the pasted token (two tries), checks
-// it with Plane and saves it to <ws>/.zenify/.env. An empty answer skips.
+// it with Plane and saves it to <ws>/.zenify/.env. An empty answer skips; only
+// a token Plane rejects is asked again, any other check error stops asking.
 func askPlanePAT(w io.Writer, ws, base string, d planeTokenDeps) bool {
 	link := planeTokenURL(base)
 	_, _ = fmt.Fprintf(w, "zenify-plane: cần Plane token của bạn. Mở %s → Add personal access token, copy rồi dán vào đây (Enter để bỏ qua)\n", link) //znf:allow-lang
@@ -93,9 +106,13 @@ func askPlanePAT(w io.Writer, ws, base string, d planeTokenDeps) bool {
 			return false
 		}
 		owner, err := d.check(base, tok)
-		if err != nil {
+		if errors.Is(err, errPlaneRejected) {
 			_, _ = fmt.Fprintf(w, "zenify-plane: %v\n", err)
 			continue
+		}
+		if err != nil {
+			_, _ = fmt.Fprintf(w, "zenify-plane: %v; chạy lại zenify up --apply sau\n", err) //znf:allow-lang
+			return false
 		}
 		path := devenv.Path(ws)
 		f, err := devenv.Load(path)

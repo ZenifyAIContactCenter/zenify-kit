@@ -14,7 +14,7 @@ plane:
 secretKeys:
   - name: PLANE_API_KEY
     description: Plane personal access token of this developer, used by the zenify-plane MCP
-    howTo: run `zenify up --apply` in a terminal; it opens https://plane.zenify.vn/settings/profile/api-tokens/ → Add personal access token, then paste the token when asked
+    howTo: create one at https://plane.zenify.vn/settings/profile/api-tokens/ → Add personal access token
     scope: personal
     secret: true
     group: tooling

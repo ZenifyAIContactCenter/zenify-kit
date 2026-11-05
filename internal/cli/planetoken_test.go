@@ -111,3 +111,47 @@ func TestPlanePATSetFor_NoTerminalNeverAsks(t *testing.T) {
 		t.Fatal("interactive run did not ask")
 	}
 }
+
+// A redirect is not followed: X-API-Key would go to the other host.
+func TestCheckPlanePAT_DoesNotFollowRedirect(t *testing.T) {
+	leaked := false
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = r.Header.Get("X-API-Key") != ""
+		_, _ = w.Write([]byte(`{"display_name":"x","email":"x@y"}`))
+	}))
+	t.Cleanup(other.Close)
+	srv := httptest.NewServer(http.RedirectHandler(other.URL+"/api/v1/users/me/", http.StatusFound))
+	t.Cleanup(srv.Close)
+	if _, err := checkPlanePAT(srv.URL, "tok"); err == nil || leaked {
+		t.Fatalf("err=%v leaked=%v", err, leaked)
+	}
+}
+
+// A 200 without the user's email is not a token Plane vouched for.
+func TestCheckPlanePAT_RejectsAnswerWithoutEmail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+	if owner, err := checkPlanePAT(srv.URL, "tok"); err == nil {
+		t.Fatalf("accepted, owner=%q", owner)
+	}
+}
+
+// Plane unreachable is not the token's fault: up stops asking instead of
+// spending the second try, and says to run it again.
+func TestAskPlanePAT_UnreachableStopsWithoutRetry(t *testing.T) {
+	ws := t.TempDir()
+	srv := httptest.NewServer(http.NotFoundHandler())
+	base := srv.URL
+	srv.Close()
+	asks := 0
+	var out strings.Builder
+	ok := askPlanePAT(&out, ws, base, planeTokenDeps{
+		ask:  func(string) (string, error) { asks++; return "tok", nil },
+		open: func(string) error { return nil }, check: checkPlanePAT,
+	})
+	if ok || asks != 1 || !strings.Contains(out.String(), "zenify up --apply") {
+		t.Fatalf("ok=%v asks=%d out=%s", ok, asks, out.String())
+	}
+}

@@ -322,7 +322,7 @@ func newGuardCmd() *cobra.Command {
 				if user, gerr := removeGuard(guardSettingsPath(home), true); gerr != nil {
 					return gerr
 				} else if user {
-					u.Step(ui.StatusOK, "guard install: git-guard is still wired at user level; run `zenify up --apply` to move it to the workspace.", "")
+					u.Step(ui.StatusWarn, "guard install: git-guard is still wired at user level; run `zenify up --apply` to move it to the workspace.", "")
 					return nil
 				}
 			}
