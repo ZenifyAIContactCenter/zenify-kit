@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -141,17 +143,17 @@ func TestLogin_FailureKeepsOldState(t *testing.T) {
 	}
 }
 
-func TestLogin_StaleLockIsBroken(t *testing.T) {
+// A lock file left by a killed run (or an older binary) is just a file: only a live
+// OS lock blocks, so the next run proceeds at once.
+func TestLogin_LeftoverLockFileIsNotALock(t *testing.T) {
 	home := t.TempDir()
 	_ = os.MkdirAll(pwDir(home), 0o755)
 	lock := filepath.Join(pwDir(home), "harness.lock")
-	_ = os.WriteFile(lock, nil, 0o600)
-	old := time.Now().Add(-11 * time.Minute)
-	_ = os.Chtimes(lock, old, old)
+	_ = os.WriteFile(lock, []byte("12345"), 0o600)
 	if _, err := Login(opts(home, &fakeRun{content: "x"}, &bytes.Buffer{})); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(lock); !os.IsNotExist(err) {
+	if isLocked(t, lock) {
 		t.Fatal("lock must be released")
 	}
 }
@@ -159,9 +161,13 @@ func TestLogin_StaleLockIsBroken(t *testing.T) {
 func TestLogin_FreshLockTimesOut(t *testing.T) {
 	home := t.TempDir()
 	_ = os.MkdirAll(pwDir(home), 0o755)
-	_ = os.WriteFile(filepath.Join(pwDir(home), "harness.lock"), nil, 0o600)
+	unlock, err := lockHarness(pwDir(home), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
 	f := &fakeRun{}
-	_, err := Login(opts(home, f, &bytes.Buffer{}))
+	_, err = Login(opts(home, f, &bytes.Buffer{}))
 	if err == nil || !strings.Contains(err.Error(), "harness locked") {
 		t.Fatalf("got %v", err)
 	}
@@ -174,7 +180,7 @@ func TestLogin_SkipsNpmInstallWhenPinned(t *testing.T) {
 	home := t.TempDir()
 	pkg := filepath.Join(pwDir(home), "harness", "node_modules", "@playwright", "test")
 	_ = os.MkdirAll(pkg, 0o755)
-	_ = os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"name":"@playwright/test", "version": "1.55.0"}`), 0o644)
+	_ = os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"name":"@playwright/test", "version": "1.64.1"}`), 0o644)
 	f := &fakeRun{content: "x"}
 	if _, err := Login(opts(home, f, &bytes.Buffer{})); err != nil {
 		t.Fatal(err)
@@ -260,8 +266,7 @@ func TestLogin_HoldsLockDuringSetup(t *testing.T) {
 		inner := o.Run
 		o.Run = func(dir, name string, args, extraEnv []string) error {
 			if len(args) >= 2 && args[1] == "test" {
-				_, serr := os.Stat(lock)
-				held = serr == nil
+				held = isLocked(t, lock)
 			}
 			return inner(dir, name, args, extraEnv)
 		}
@@ -271,8 +276,167 @@ func TestLogin_HoldsLockDuringSetup(t *testing.T) {
 		if !held {
 			t.Errorf("fail=%v: harness.lock not held while the setup project ran", fail)
 		}
-		if _, serr := os.Stat(lock); !os.IsNotExist(serr) {
-			t.Errorf("fail=%v: lock left behind: %v", fail, serr)
+		if isLocked(t, lock) {
+			t.Errorf("fail=%v: lock left held", fail)
 		}
+	}
+}
+
+func TestLogin_LockRecordsHolderPID(t *testing.T) {
+	home := t.TempDir()
+	lock := filepath.Join(pwDir(home), "harness.lock")
+	var got string
+	o := opts(home, &fakeRun{content: "x"}, &bytes.Buffer{})
+	o.Run = func(dir, name string, args []string, extraEnv []string) error {
+		b, _ := os.ReadFile(lock)
+		got = string(b)
+		return (&fakeRun{content: "x"}).run(dir, name, args, extraEnv)
+	}
+	if _, err := Login(o); err != nil {
+		t.Fatal(err)
+	}
+	if got != strconv.Itoa(os.Getpid()) {
+		t.Fatalf("lock must name the holder's PID (for humans), got %q", got)
+	}
+}
+
+// zenify killed mid-run (no unlock) while npm/playwright keeps going: the child that
+// inherited the lock still holds it, so a new run waits; once the child is gone the
+// OS releases it.
+func TestLock_HeldByChildAfterHolderDies(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows children cannot inherit the lock handle")
+	}
+	root := t.TempDir()
+	lock := filepath.Join(root, "harness.lock")
+	if _, err := lockHarness(root, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	child := exec.Command("sleep", "30")
+	InheritLock(child)
+	if err := child.Start(); err != nil {
+		t.Skipf("cannot start sleep: %v", err)
+	}
+	defer func() { _ = child.Process.Kill(); _, _ = child.Process.Wait() }()
+	dieWithoutUnlock() // the zenify process "is killed": its fd closes, no unlock
+	if !isLocked(t, lock) {
+		t.Fatal("the child inherited the lock: it must still be held")
+	}
+	_ = child.Process.Kill()
+	_, _ = child.Process.Wait()
+	if isLocked(t, lock) {
+		t.Fatal("all holders gone: the OS must have released the lock")
+	}
+}
+
+func TestInheritLock_NothingHeld(t *testing.T) {
+	c := exec.Command("true")
+	InheritLock(c)
+	if len(c.ExtraFiles) != 0 {
+		t.Fatalf("no lock held: ExtraFiles = %v", c.ExtraFiles)
+	}
+}
+
+// isLocked reports whether some open file holds the OS lock on path.
+func isLocked(t *testing.T, path string) bool {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	busy, err := tryLockFile(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !busy {
+		_ = unlockFile(f)
+	}
+	return busy
+}
+
+// dieWithoutUnlock closes this process's lock fds the way process death does: no
+// explicit unlock, so a child sharing the open file keeps the lock.
+func dieWithoutUnlock() {
+	heldMu.Lock()
+	defer heldMu.Unlock()
+	for _, f := range heldLocks {
+		_ = f.Close()
+	}
+	heldLocks = nil
+}
+
+// An older zenify holds the harness with an empty O_EXCL file and no OS lock: a new
+// binary must wait for it like the old ones do, not take the harness alongside it.
+func TestLogin_LegacyHolderLockWaits(t *testing.T) {
+	home := t.TempDir()
+	_ = os.MkdirAll(pwDir(home), 0o755)
+	_ = os.WriteFile(filepath.Join(pwDir(home), "harness.lock"), nil, 0o600)
+	f := &fakeRun{}
+	_, err := Login(opts(home, f, &bytes.Buffer{}))
+	if err == nil || !strings.Contains(err.Error(), "harness locked") {
+		t.Fatalf("an older binary's fresh lock must be waited for, got %v", err)
+	}
+	if len(f.calls) != 0 {
+		t.Fatal("Run must not be called")
+	}
+}
+
+// The old rule for an abandoned empty lock still applies: past staleLockAge it is free.
+func TestLogin_LegacyLeftoverPastStaleAgeIsFree(t *testing.T) {
+	home := t.TempDir()
+	_ = os.MkdirAll(pwDir(home), 0o755)
+	lock := filepath.Join(pwDir(home), "harness.lock")
+	_ = os.WriteFile(lock, nil, 0o600)
+	old := time.Now().Add(-staleLockAge - time.Minute)
+	_ = os.Chtimes(lock, old, old)
+	if _, err := Login(opts(home, &fakeRun{content: "x"}, &bytes.Buffer{})); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Unlock removes the file like older binaries expect (they wait while it exists).
+func TestLockHarness_UnlockRemovesFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows keeps the file: a deleted open file blocks re-creating it")
+	}
+	root := t.TempDir()
+	unlock, err := lockHarness(root, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+	if _, err := os.Stat(filepath.Join(root, "harness.lock")); !os.IsNotExist(err) {
+		t.Fatalf("lock file must be removed on unlock: %v", err)
+	}
+}
+
+// Removing the file on unlock must not let two holders in. B opens the file; before B
+// locks it, holder A unlocks (unlinking it) and C locks a new file at the path. B's
+// lock on the unlinked file must not count: B waits while C holds the path.
+func TestLockHarness_UnlinkedFileIsNotTheLock(t *testing.T) {
+	if !removeOnUnlock {
+		t.Skip("the lock file is never unlinked here")
+	}
+	root := t.TempDir()
+	unlockA, err := lockHarness(root, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var unlockC func()
+	afterLockFileOpen = func() {
+		afterLockFileOpen = nil
+		unlockA()
+		if unlockC, err = lockHarness(root, time.Second); err != nil {
+			t.Error(err)
+		}
+	}
+	t.Cleanup(func() { afterLockFileOpen = nil })
+	_, berr := lockHarness(root, time.Second)
+	if unlockC != nil {
+		defer unlockC()
+	}
+	if berr == nil || !strings.Contains(berr.Error(), "harness locked") {
+		t.Fatalf("B must not hold the harness while C does, got %v", berr)
 	}
 }

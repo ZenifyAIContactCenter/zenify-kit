@@ -85,7 +85,7 @@ func TestRunLocalSkipsInstall(t *testing.T) {
 	if err := os.MkdirAll(pkg, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"1.55.0"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"1.64.1"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var calls []string
@@ -176,7 +176,7 @@ func prepareWithCache(t *testing.T, have, want string, writeJSON, complete bool,
 	if err := os.MkdirAll(pkg, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"1.55.0"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"1.64.1"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var calls []string
@@ -240,8 +240,7 @@ func TestRunLocalHoldsLockDuringRun(t *testing.T) {
 		err := RunLocal(LocalOptions{RepoDir: repo, BaseURL: "http://localhost:4100", Home: home, LockWait: time.Second,
 			Run: func(_, name string, args, _ []string) error {
 				if name+" "+strings.Join(args, " ") == "npx playwright test" {
-					_, serr := os.Stat(lock)
-					held = serr == nil
+					held = isLocked(t, lock)
 					if fail {
 						return errors.New("red")
 					}
@@ -254,8 +253,8 @@ func TestRunLocalHoldsLockDuringRun(t *testing.T) {
 		if !held {
 			t.Errorf("fail=%v: harness.lock not held while playwright ran", fail)
 		}
-		if _, serr := os.Stat(lock); !os.IsNotExist(serr) {
-			t.Errorf("fail=%v: lock left behind: %v", fail, serr)
+		if isLocked(t, lock) {
+			t.Errorf("fail=%v: lock left held", fail)
 		}
 	}
 }

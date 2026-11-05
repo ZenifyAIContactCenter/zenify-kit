@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -747,5 +748,59 @@ func TestE2eRun_DockerIgnoresAccountsFile(t *testing.T) {
 	}
 	if (*docker)["E2E_EMAIL"] != "sale@test.example" {
 		t.Errorf("docker E2E_EMAIL = %q, want sale@test.example", (*docker)["E2E_EMAIL"])
+	}
+}
+
+// Every login child (npm install, playwright install, the setup run) inherits the
+// harness lock, so killing zenify mid-run does not free the harness under them.
+func TestE2eLogin_ChildrenInheritHarnessLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows children cannot inherit the lock handle")
+	}
+	var role string
+	mp, _ := brokerFixture(t, e2eAccountHandler(t, &role))
+	hermeticE2E(t, mp)
+	orig := execChild
+	t.Cleanup(func() { execChild = orig })
+	children, without := 0, 0
+	execChild = func(c *exec.Cmd) error {
+		children++
+		if len(c.ExtraFiles) == 0 {
+			without++
+		}
+		if e := envMap(c); e["STORAGE_STATE"] != "" {
+			return os.WriteFile(e["STORAGE_STATE"], []byte("{}"), 0o600)
+		}
+		return nil
+	}
+	if _, err := runLogin(t); err != nil {
+		t.Fatal(err)
+	}
+	if children == 0 || without != 0 {
+		t.Fatalf("%d of %d login children ran without the harness lock", without, children)
+	}
+}
+
+// `e2e run --local` children (install steps and the journey run) inherit the lock too.
+func TestE2eRunLocal_ChildrenInheritHarnessLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows children cannot inherit the lock handle")
+	}
+	hermeticE2E(t, "")
+	e2eRunRepo(t)
+	t.Setenv("PLAYWRIGHT_BROWSERS_PATH", t.TempDir())
+	children, without := 0, 0
+	execChild = func(c *exec.Cmd) error { // e2eRunRepo restores the original
+		children++
+		if len(c.ExtraFiles) == 0 {
+			without++
+		}
+		return nil
+	}
+	if _, _, err := execCmd(newE2eCmd(), "run", "--local", "--port", "4100"); err != nil {
+		t.Fatalf("--local: %v", err)
+	}
+	if children == 0 || without != 0 {
+		t.Fatalf("%d of %d --local children ran without the harness lock", without, children)
 	}
 }

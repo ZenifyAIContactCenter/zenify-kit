@@ -256,6 +256,7 @@ func localRunner(lookup func(string) string) func(dir, name string, args, extraE
 		cc.Dir = dir
 		cc.Stdout = os.Stderr
 		cc.Stderr = os.Stderr
+		e2e.InheritLock(cc) // a killed zenify leaves the harness locked while this child runs
 		return execChild(cc)
 	}
 }
@@ -333,6 +334,7 @@ func newE2eLoginCmd() *cobra.Command {
 				cc.Dir = dir
 				cc.Stdout = os.Stderr
 				cc.Stderr = os.Stderr
+				e2e.InheritLock(cc)
 				return execChild(cc)
 			}
 			_, err = e2e.Login(e2e.LoginOptions{Home: home, BaseURL: url, Role: role, Getenv: lookup,

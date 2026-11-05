@@ -14,7 +14,7 @@ import (
 
 // PlaywrightVersion locks step between the Docker image and @playwright/test in
 // harness/package.json. Bump both at the same time.
-const PlaywrightVersion = "v1.55.0"
+const PlaywrightVersion = "v1.64.1"
 
 // Image returns the pinned Playwright image tag (-noble = Ubuntu 24.04).
 func Image() string { return "mcr.microsoft.com/playwright:" + PlaywrightVersion + "-noble" }

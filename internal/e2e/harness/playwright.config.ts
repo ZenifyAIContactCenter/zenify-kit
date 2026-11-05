@@ -12,7 +12,8 @@ export default defineConfig({
   },
   outputDir: '.znf/e2e/__output__',
   projects: [
-    { name: 'setup', testDir: '.', testMatch: /auth\.setup\.ts/ },
+    // No trace for login: it records fill() text, i.e. the password.
+    { name: 'setup', testDir: '.', testMatch: /auth\.setup\.ts/, use: { trace: 'off' } },
     {
       name: 'chromium',
       testDir: '.znf/e2e',
