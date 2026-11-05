@@ -960,6 +960,7 @@ func registerBrokerMCP(w, errW io.Writer, workspace string, m *manifest.Manifest
 			_, _ = fmt.Fprintf(w, "zenify-%s: updated MCP server (local scope)\n", name)
 		case st == playwright.RegCustom:
 			_, _ = fmt.Fprintf(w, "zenify-%s: custom MCP registration kept\n", name)
+			continue // may be the user's own at user scope: never counted as the kit's local copy
 		}
 		registered = append(registered, "zenify-"+name)
 	}
@@ -1000,6 +1001,7 @@ func registerPlaneMCP(w, errW io.Writer, workspace string, m *manifest.Manifest,
 		_, _ = fmt.Fprintln(w, "zenify-plane: updated MCP server (local scope)")
 	case st == playwright.RegCustom:
 		_, _ = fmt.Fprintln(w, "zenify-plane: custom MCP registration kept")
+		return nil, nil // may be the user's own at user scope: never counted as the kit's local copy
 	}
 	if err != nil {
 		return nil, err

@@ -968,3 +968,26 @@ func TestRegisterBrokerMCP_LocalScopeAndError(t *testing.T) {
 		t.Fatal("failed registration must be returned")
 	}
 }
+
+// A custom registration under a kit name is not the kit's local copy, so it
+// must not count as registered (the user-scope cleanup would remove it).
+func TestRegisterMCP_CustomNotRegistered(t *testing.T) {
+	savedLook := lookPath
+	t.Cleanup(func() { lookPath = savedLook })
+	lookPath = func(n string) (string, error) { return "/fake/" + n, nil }
+	run := func(_ string, args ...string) ([]byte, error) {
+		if args[1] == "get" {
+			return []byte(args[2] + ":\n  Scope: User config (available in all your projects)\n  Type: stdio\n  Command: my-own\n  URL: https://mine.example/x\n"), nil
+		}
+		t.Fatalf("unexpected claude call %v", args)
+		return nil, nil
+	}
+	var out, errOut bytes.Buffer
+	m := &manifest.Manifest{Broker: &manifest.Broker{URL: "https://broker.example"}, Plane: &manifest.Plane{URL: "https://plane.example", Workspace: "ws"}}
+	if reg, err := registerBrokerMCP(&out, &errOut, "/ws", m, run); err != nil || len(reg) != 0 {
+		t.Fatalf("broker: reg=%v err=%v", reg, err)
+	}
+	if reg, err := registerPlaneMCP(&out, &errOut, "/ws", m, func() bool { return true }, run); err != nil || len(reg) != 0 {
+		t.Fatalf("plane: reg=%v err=%v", reg, err)
+	}
+}
