@@ -23,6 +23,7 @@ type fakeClaude struct {
 	ws          string
 	failInstall bool
 	installed   bool
+	mktAdded    bool
 	userMCP     map[string]bool
 	calls       []string
 }
@@ -46,6 +47,17 @@ func (f *fakeClaude) run(_ string, args ...string) ([]byte, error) {
 		}
 		b, _ := json.Marshal([]map[string]any{{"id": plugin.PluginID, "scope": "local", "enabled": true, "projectPath": f.ws}})
 		return b, nil
+	// Measured on 2.1.318: both updates exit 1 before the add / install.
+	case len(args) >= 3 && args[0] == "plugin" && args[1] == "marketplace" && args[2] == "update":
+		if !f.mktAdded {
+			return []byte("Marketplace not found"), fmt.Errorf("exit status 1")
+		}
+	case len(args) >= 3 && args[0] == "plugin" && args[1] == "marketplace" && args[2] == "add":
+		f.mktAdded = true
+	case len(args) >= 2 && args[0] == "plugin" && args[1] == "update":
+		if !f.installed {
+			return []byte("Plugin not found"), fmt.Errorf("exit status 1")
+		}
 	case len(args) >= 2 && args[0] == "plugin" && args[1] == "install":
 		if f.failInstall {
 			return []byte("boom"), fmt.Errorf("exit status 1")
@@ -310,5 +322,27 @@ func TestUp_TwiceNoChange(t *testing.T) {
 	}
 	if removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), f.run, false); err != nil || len(removed) > 0 {
 		t.Errorf("third migrate removed %v, err %v", removed, err)
+	}
+}
+
+// A machine with no stamp and no prior install: the pre-install resync fails
+// as on the real CLI, the local install succeeds, and up succeeds.
+func TestUp_FreshMachineSucceeds(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	home, ws := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	if err := os.MkdirAll(filepath.Join(ws, "svc", ".git", "info"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	m := &manifest.Manifest{Org: "MyOrg", Repos: []manifest.Repo{{Name: "svc", Path: "svc"}}}
+	plans := []reconcile.RepoPlan{{Name: "svc", State: reconcile.Wire, Path: "svc"}}
+	f := newFakeClaude(ws)
+	useFakeClaude(t, f)
+	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("runApply on a fresh machine: %v", err)
+	}
+	if !f.installed {
+		t.Error("local plugin not installed")
 	}
 }

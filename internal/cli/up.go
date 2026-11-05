@@ -343,6 +343,16 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	if err := installPluginLocal(workspace, zenifyHome(os.Getenv, os.UserHomeDir), run); err != nil {
 		_, _ = fmt.Fprintln(errW, "warning: znf plugin:", err)
 		localErrs = append(localErrs, "plugin install: "+err.Error())
+	} else {
+		// The local plugin is now enabled, so ensure's resync error (on a
+		// machine with no local plugin yet, `plugin update` exits 1) is moot.
+		kept := localErrs[:0]
+		for _, e := range localErrs {
+			if !strings.HasPrefix(e, "plugin: ") {
+				kept = append(kept, e)
+			}
+		}
+		localErrs = kept
 	}
 	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). The broker
 	// comes from the trusted (embedded) manifest, never --manifest or cwd: the
