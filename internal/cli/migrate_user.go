@@ -17,11 +17,12 @@ import (
 // userKitMCPs are the MCP servers older kits registered at user scope.
 var userKitMCPs = []string{"zenify-grafana", "zenify-posthog", "zenify-plane"}
 
-// userKeep names user-level Codex installs `up` must keep because the
-// workspace got no replacement: CodexHooks (with the agents) when codex is not
-// on PATH, SkillsLink when <ws>/.agents/skills/znf is not the kit's link. The
-// zero value (down) removes everything.
-type userKeep struct{ CodexHooks, SkillsLink bool }
+// userKeep names what `up` keeps at user level: CodexHooks (with the agents)
+// when codex is not on PATH, SkillsLink when <ws>/.agents/skills/znf is not the
+// kit's link (the workspace got no replacement), and Removals, a record of the
+// kit rules the user removed, for workspaces set up later. The zero value
+// (down) removes everything.
+type userKeep struct{ CodexHooks, SkillsLink, Removals bool }
 
 // skillsEdited reports whether the kit skills tree at dir holds a file its
 // .manifest.json does not record, or one changed since the kit wrote it.
@@ -161,20 +162,27 @@ func migrateUserInstalls(home, codexHome string, mcps []string, keep userKeep, r
 	}
 
 	kt := apply.UserKitTarget(home)
-	for _, l := range []struct {
-		what string
-		fn   func(apply.KitTarget, bool) (int, error)
-	}{{"permissions.allow", apply.RemoveKitPermissions}, {"sandbox.excludedCommands", apply.RemoveKitSandbox}, {"permissions.ask", apply.RemoveKitAsk}} {
-		n, err := l.fn(kt, dryRun)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue // no record: the kit never added to this list
+	lists := func() error {
+		for _, l := range []struct {
+			what string
+			fn   func(apply.KitTarget, bool) (int, error)
+		}{{"permissions.allow", apply.RemoveKitPermissions}, {"sandbox.excludedCommands", apply.RemoveKitSandbox}, {"permissions.ask", apply.RemoveKitAsk}} {
+			n, err := l.fn(kt, dryRun)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue // no record: the kit never added to this list
+			}
+			if err != nil {
+				return err
+			}
+			if n > 0 {
+				removed = append(removed, fmt.Sprintf("%d kit rules in %s of %s", n, l.what, settings))
+			}
 		}
-		if err != nil {
-			return removed, err
-		}
-		if n > 0 {
-			removed = append(removed, fmt.Sprintf("%d kit rules in %s of %s", n, l.what, settings))
-		}
+		return nil
 	}
-	return removed, nil
+	if keep.Removals && !dryRun {
+		// Other workspaces set up later still learn what the user removed.
+		return removed, apply.KeepUserKitRemovals(home, lists)
+	}
+	return removed, lists()
 }

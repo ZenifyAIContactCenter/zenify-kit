@@ -69,36 +69,27 @@ func (t KitTarget) allow() kitList   { return t.list(allowList, t.permissionsRec
 func (t KitTarget) sandbox() kitList { return t.list(sandboxList, t.sandboxRecord) }
 func (t KitTarget) ask() kitList     { return t.list(askList, t.askRecord) }
 
-// SeedWorkspaceRecords starts the workspace records of a workspace that has
-// none with the kit rules the user removed at user level (recorded there but
-// absent from ~/.claude/settings.json), so the first workspace ensure treats
-// them as user-removed and does not add them back. A list with no user record,
-// or a workspace record already present, is left alone.
-func SeedWorkspaceRecords(home, ws string) error {
-	user, local := UserKitTarget(home), WorkspaceKitTarget(home, ws)
-	for _, p := range [][2]kitList{
-		{user.allow(), local.allow()},
-		{user.sandbox(), local.sandbox()},
-		{user.ask(), local.ask()},
-	} {
-		from, to := p[0], p[1]
-		if _, err := os.Stat(to.record(home)); !os.IsNotExist(err) {
-			continue
-		}
-		rec, err := from.readRecord(home)
+// userRemovals returns, keyed by the user-level record path, the kit rules
+// the user removed at user level: recorded there but absent from
+// ~/.claude/settings.json. A list with no user record is left out.
+func userRemovals(home string) (map[string][]string, error) {
+	out := map[string][]string{}
+	user := UserKitTarget(home)
+	for _, l := range []kitList{user.allow(), user.sandbox(), user.ask()} {
+		rec, err := l.readRecord(home)
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
-		root, _, err := readSettingsRoot(from.settings(home))
+		root, _, err := readSettingsRoot(l.settings(home))
 		if err != nil {
-			return err
+			return nil, err
 		}
-		_, list, err := from.listOf(root)
+		_, list, err := l.listOf(root)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		have := map[string]bool{}
 		for _, a := range list {
@@ -110,10 +101,65 @@ func SeedWorkspaceRecords(home, ws string) error {
 				removed = append(removed, r)
 			}
 		}
-		if len(removed) == 0 {
+		if len(removed) > 0 {
+			out[l.record(home)] = removed
+		}
+	}
+	return out, nil
+}
+
+// KeepUserKitRemovals runs remove (the migration of the user-level kit lists,
+// which deletes their records) and then writes back a user record holding only
+// the rules the user had removed, so SeedWorkspaceRecords still finds them for
+// a workspace set up later. A record remove left in place is not touched.
+func KeepUserKitRemovals(home string, remove func() error) error {
+	rm, err := userRemovals(home)
+	if err != nil {
+		return err
+	}
+	if err := remove(); err != nil {
+		return err
+	}
+	for record, rules := range rm {
+		if _, err := os.Stat(record); !os.IsNotExist(err) {
 			continue
 		}
-		b, err := json.Marshal(removed)
+		b, err := json.Marshal(rules)
+		if err != nil {
+			return err
+		}
+		if err := writeAtomic(record, b, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SeedWorkspaceRecords starts the workspace records of a workspace that has
+// none with the kit rules the user removed at user level (recorded there but
+// absent from ~/.claude/settings.json), so the first workspace ensure treats
+// them as user-removed and does not add them back. A list with no user
+// removals, or a workspace record already present, is left alone.
+func SeedWorkspaceRecords(home, ws string) error {
+	rm, err := userRemovals(home)
+	if err != nil {
+		return err
+	}
+	user, local := UserKitTarget(home), WorkspaceKitTarget(home, ws)
+	for _, p := range [][2]kitList{
+		{user.allow(), local.allow()},
+		{user.sandbox(), local.sandbox()},
+		{user.ask(), local.ask()},
+	} {
+		rules, ok := rm[p[0].record(home)]
+		to := p[1]
+		if !ok {
+			continue
+		}
+		if _, err := os.Stat(to.record(home)); !os.IsNotExist(err) {
+			continue
+		}
+		b, err := json.Marshal(rules)
 		if err != nil {
 			return err
 		}

@@ -171,3 +171,39 @@ func TestSeedWorkspaceRecordsKeepsUserRemovals(t *testing.T) {
 		t.Fatalf("remove n=%d err=%v", n, err)
 	}
 }
+
+// The migration removes the user-level kit rules and their record; what the
+// user removed must still reach a workspace set up after it.
+func TestKeepUserKitRemovalsAcrossMigration(t *testing.T) {
+	home, wsB := t.TempDir(), t.TempDir()
+	user := UserKitTarget(home)
+	if _, err := EnsureKitPermissions(user, false); err != nil {
+		t.Fatal(err)
+	}
+	gone := KitAllowRules[0]
+	b, _ := os.ReadFile(user.Settings)
+	if err := os.WriteFile(user.Settings, []byte(strings.Replace(string(b), `"`+gone+`",`, "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := KeepUserKitRemovals(home, func() error {
+		_, err := RemoveKitPermissions(user, false)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := os.ReadFile(user.Settings); strings.Contains(string(after), KitAllowRules[1]) {
+		t.Fatalf("kit rules left at user level: %s", after)
+	}
+	if err := SeedWorkspaceRecords(home, wsB); err != nil {
+		t.Fatal(err)
+	}
+	wt := WorkspaceKitTarget(home, wsB)
+	if _, err := EnsureKitPermissions(wt, false); err != nil {
+		t.Fatal(err)
+	}
+	local, _ := os.ReadFile(wt.Settings)
+	if strings.Contains(string(local), `"`+gone+`"`) || !strings.Contains(string(local), KitAllowRules[1]) {
+		t.Fatalf("workspace B after migration: %s", local)
+	}
+}

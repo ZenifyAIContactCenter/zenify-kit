@@ -338,7 +338,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	// Hooks + model pin + store config distribution, all fail-open (W0 FR-01.4);
 	// never affects `failed`.
 	var localErrs []string
-	var keep userKeep
+	keep := userKeep{Removals: true}
 	home, herr := os.UserHomeDir()
 	if herr == nil && home != "" {
 		rep := ensureWorkspace(workspace, home, w, errW, ensureOpts{ForceLocal: true})
@@ -927,7 +927,7 @@ func newUpCmd() *cobra.Command {
 				uiOut(cmd).Header("zenify up")
 				renderPlanTable(w, plans, auth)
 				if home, herr := os.UserHomeDir(); herr == nil && home != "" {
-					removed, _ := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userKitMCPs, userKeep{}, nil, true)
+					removed, _ := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userKitMCPs, userKeep{CodexHooks: !codexOnPath()}, nil, true)
 					for _, r := range removed {
 						_, _ = fmt.Fprintln(w, "sẽ gỡ bản cài cấp user (khi các bước local thành công):", r) //znf:allow-lang
 					}
@@ -1056,7 +1056,7 @@ func unwireLocalHooks(home, codexHome, workspace string, errW io.Writer) {
 			_, _ = fmt.Fprintln(errW, "warning: local hooks:", err)
 		}
 	}
-	if ok, err := guardInstalled(user); err == nil && ok {
+	if ok, err := removeGuard(user, true); err == nil && ok { // legacy script too, as ensure's gate
 		if _, err := removeGuard(local, false); err != nil {
 			_, _ = fmt.Fprintln(errW, "warning: local git-guard:", err)
 		}
