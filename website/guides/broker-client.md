@@ -136,11 +136,12 @@ Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn v�
 Cách bật:
 
 1. `brew install uv`.
-2. Tạo PAT ở https://plane.zenify.vn → Profile Settings → Personal Access Tokens → Add personal access token.
-3. Chạy `zenify env set PLANE_API_KEY` trong terminal của bạn (cần TTY, dán PAT khi được hỏi).
-4. Chạy `zenify up --apply`, rồi mở lại Claude Code. `/mcp` sẽ hiện `zenify-plane`.
+2. Chạy `zenify up --apply` trong terminal của bạn. Khi chưa có `PLANE_API_KEY`, lệnh mở https://plane.zenify.vn/settings/profile/api-tokens/ trên trình duyệt (và in link đó): bấm **Add personal access token**, copy token rồi dán vào ô nhập ẩn trong terminal. Lệnh kiểm token với Plane, in tên chủ token, lưu vào `<workspace>/.zenify/.env` rồi đăng ký `zenify-plane` luôn. Token bị Plane từ chối thì được dán lại một lần; không gọi được Plane thì lệnh dừng hỏi và nhắc chạy lại sau; Enter bỏ trống để bỏ qua. Lệnh chỉ hỏi khi các bước cài local trước đó đã thành công.
+3. Mở lại Claude Code. `/mcp` sẽ hiện `zenify-plane`.
 
-Chạy `zenify up` dạng tương tác thì bước nhập secret cuối wizard có thể hỏi `PLANE_API_KEY`; dán PAT ở đó thì kit đăng ký `zenify-plane` ngay sau bước đó, không cần chạy lại `zenify up --apply`.
+Không có terminal (SessionStart, `--non-interactive`) thì lệnh không hỏi, chỉ in gợi ý kèm link. Vẫn có thể đặt token bằng `zenify env set PLANE_API_KEY`.
+
+Chạy `zenify up` dạng tương tác thì bước nhập secret cuối wizard có thể hỏi `PLANE_API_KEY`; dán PAT ở đó thì kit đăng ký `zenify-plane` ngay sau bước đó, không cần chạy lại `zenify up --apply`. Ô này không kiểm token với Plane; token sai chỉ lộ ra khi `/mcp` báo lỗi, lúc đó xoá `PLANE_API_KEY` trong `<workspace>/.zenify/.env` rồi chạy lại `zenify up --apply` để dán token mới.
 
 Lần đầu `uvx` tải Python nên chậm; nếu `/mcp` báo lỗi kết nối thì mở lại Claude Code. Nếu bước kiểm tra `zenify-plane` quá thời gian, `zenify up` in một dòng gợi ý, không đổi gì; chạy lại `zenify up --apply` sau. Thiếu PAT hoặc `uv`, `zenify up` chỉ in gợi ý và không đăng ký. Plane MCP cũng đăng ký ở local scope (như `zenify-grafana` và `zenify-posthog`, chỉ có khi mở session ở gốc workspace); hook `plane-guard` nằm trong `.claude/settings.local.json` của workspace nên nạp bất kể `CLAUDE_CONFIG_DIR`.
 

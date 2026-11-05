@@ -109,7 +109,7 @@ func newPlaneMCPCmdWith(d planeMCPDeps) *cobra.Command {
 				return fmt.Errorf("zenify plane-mcp: %w", err)
 			}
 			if pat == "" {
-				return fmt.Errorf("zenify plane-mcp: chưa có PLANE_API_KEY. Tạo PAT ở %s → Profile Settings → Personal Access Tokens, rồi chạy trong terminal: zenify env set PLANE_API_KEY", m.Plane.URL) //znf:allow-lang
+				return fmt.Errorf("zenify plane-mcp: chưa có PLANE_API_KEY. Chạy zenify up --apply trong terminal để dán token (tạo ở %s)", planeTokenURL(m.Plane.URL)) //znf:allow-lang
 			}
 			if _, err := d.lookPath("uvx"); err != nil {
 				return errors.New("zenify plane-mcp: cần uv (brew install uv, hoặc curl -LsSf https://astral.sh/uv/install.sh | sh)") //znf:allow-lang

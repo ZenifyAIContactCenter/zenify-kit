@@ -895,7 +895,7 @@ func TestRegisterPlaneMCP(t *testing.T) {
 	adds = nil
 	out.Reset()
 	registerPlaneMCP(&out, &errOut, "/ws", m, no, run)
-	if len(adds) != 0 || !strings.Contains(out.String(), "zenify env set PLANE_API_KEY") || !strings.Contains(out.String(), "https://plane.example") || errOut.Len() != 0 {
+	if len(adds) != 0 || !strings.Contains(out.String(), "zenify up --apply trong terminal") || !strings.Contains(out.String(), "https://plane.example") || errOut.Len() != 0 {
 		t.Fatalf("no PAT: adds=%v out=%q err=%q", adds, out.String(), errOut.String())
 	}
 

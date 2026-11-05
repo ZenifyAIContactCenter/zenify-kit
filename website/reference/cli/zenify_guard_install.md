@@ -20,7 +20,7 @@ Thường bạn không cần chạy tay: `zenify up` và hook `SessionStart` t�
 
 ## Kết quả
 
-Lệnh đăng ký hook `PreToolUse` với matcher `Bash` trỏ tới `zenify git-guard`, và gỡ mục cũ của phiên bản script nếu còn. Chạy lại khi đã có cấu hình, lệnh chỉ báo đã sẵn và không ghi gì.
+Lệnh đăng ký hook `PreToolUse` với matcher `Bash` trỏ tới `zenify git-guard`, và gỡ mục cũ của phiên bản script nếu còn. Chạy lại khi đã có cấu hình, lệnh chỉ báo đã sẵn và không ghi gì. Khi git-guard vẫn gắn ở `~/.claude/settings.json` (máy chưa chạy `zenify up --apply` bản cài theo workspace), lệnh không ghi gì vào workspace để hook không chạy hai lần, và nhắc chạy `zenify up --apply`.
 
 ## Ví dụ
 

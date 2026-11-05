@@ -195,25 +195,27 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 				apply.ReviewerEnv, apply.ReviewerDefault)
 		}
 
-		// Rules the user removed at user level stay removed here.
+		// Rules the user removed at user level stay removed here; when that is
+		// unknown, no kit rule is added rather than re-grant a removed one.
 		if err := apply.SeedWorkspaceRecords(home, workspace); err != nil {
 			localErr("kit records", err)
-		}
-		kt := apply.WorkspaceKitTarget(home, workspace)
-		if n, err := apply.EnsureKitPermissions(kt, false); err != nil {
-			localErr("permissions", err)
-		} else if n > 0 {
-			fmt.Fprintf(stdout, "allowed %d kit tool rules in .claude/settings.local.json\n", n)
-		}
-		if n, err := apply.EnsureKitSandbox(kt, false); err != nil {
-			localErr("sandbox", err)
-		} else if n > 0 {
-			fmt.Fprintf(stdout, "excluded %d kit commands from the Bash sandbox in .claude/settings.local.json\n", n)
-		}
-		if n, err := apply.EnsureKitAsk(kt, false); err != nil {
-			localErr("ask", err)
-		} else if n > 0 {
-			fmt.Fprintf(stdout, "added %d kit ask rules (prd data writes prompt) in .claude/settings.local.json\n", n)
+		} else {
+			kt := apply.WorkspaceKitTarget(home, workspace)
+			if n, err := apply.EnsureKitPermissions(kt, false); err != nil {
+				localErr("permissions", err)
+			} else if n > 0 {
+				fmt.Fprintf(stdout, "allowed %d kit tool rules in .claude/settings.local.json\n", n)
+			}
+			if n, err := apply.EnsureKitSandbox(kt, false); err != nil {
+				localErr("sandbox", err)
+			} else if n > 0 {
+				fmt.Fprintf(stdout, "excluded %d kit commands from the Bash sandbox in .claude/settings.local.json\n", n)
+			}
+			if n, err := apply.EnsureKitAsk(kt, false); err != nil {
+				localErr("ask", err)
+			} else if n > 0 {
+				fmt.Fprintf(stdout, "added %d kit ask rules (prd data writes prompt) in .claude/settings.local.json\n", n)
+			}
 		}
 	}
 

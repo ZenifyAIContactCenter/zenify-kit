@@ -2,8 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -760,5 +763,51 @@ func TestEnsureWorkspace_CodexHomeIsWorkspace(t *testing.T) {
 	}
 	if !userCodexIsWorkspace(filepath.Join(ws, ".codex"), ws) {
 		t.Fatal("userCodexIsWorkspace false for <ws>/.codex")
+	}
+}
+
+// A user record ensure cannot read hides which kit rules the user removed:
+// ensure then adds no kit rule to the workspace, rather than re-grant one.
+func TestEnsureWorkspace_SeedErrorGrantsNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	storeFixture(t)
+	ws := t.TempDir()
+	writeF(t, filepath.Join(home, ".zenify", "playwright", "kit-sandbox.json"), "{")
+	var o, e bytes.Buffer
+	rep := ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	if len(rep.LocalErrs) == 0 {
+		t.Fatalf("seed error not reported: %s", e.String())
+	}
+	b, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws))
+	if strings.Contains(string(b), apply.KitAllowRules[0]) {
+		t.Errorf("kit rules granted although the user's removals are unknown:\n%s", b)
+	}
+}
+
+// ensure --workspace through a symlink keys the kit records by the real path.
+func TestEnsureCmd_SymlinkUsesRealPathRecords(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	storeFixture(t)
+	ws := canonicalPath(t.TempDir())
+	link := filepath.Join(t.TempDir(), "ws-link")
+	if err := os.Symlink(ws, link); err != nil {
+		t.Fatal(err)
+	}
+	cmd := newEnsureCmd()
+	cmd.SetArgs([]string{"--workspace", link})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(ws))
+	want := hex.EncodeToString(sum[:8]) // WorkspaceKitTarget's key for the real path
+	got, _ := os.ReadDir(filepath.Join(home, ".zenify", "kit-local"))
+	if len(got) != 1 || got[0].Name() != want {
+		t.Errorf("kit records keyed %v, want only %s (the real path)", got, want)
 	}
 }

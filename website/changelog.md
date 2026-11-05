@@ -8,6 +8,16 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.60.0
+
+*2026-11-06*
+
+- **Kit cài theo workspace, không còn cài cấp user:** `zenify up --apply` cài plugin `znf`, hook, luật `permissions` và ba MCP server (`zenify-grafana`, `zenify-posthog`, `zenify-plane`) vào gốc workspace (`--scope local`, `<workspace>/.claude/settings.local.json`). Kit chỉ bật khi bạn mở Claude Code ở gốc workspace; mở ở thư mục con hay ngoài workspace thì không có `znf:*`, hook hay MCP của kit. Xem [Bắt đầu nhanh](/getting-started/quickstart#bước-4-kiểm-tra-skill-trong-claude-code) và [Ba lớp](/concepts/three-layers).
+- **Tự dọn bản cài cũ ở `~/.claude`:** khi mọi bước cài vào workspace thành công, `zenify up` gỡ skill, hook, luật và MCP `-s user` mà kit bản cũ đã cài. Skill kit bạn đã sửa được chuyển sang `~/.zenify/backup/skills-znf-<thời điểm>` thay vì xoá; skill, hook và MCP bạn tự cấu hình giữ nguyên; luật kit bạn đã tự xoá không bị thêm lại. Một bước cài lỗi thì lệnh không gỡ gì và giữ bản cài cấp user. Xem [zenify up](/reference/cli/zenify_up).
+- **Codex cũng cài theo workspace:** khi có `codex` trên PATH, hook, agent và link skill nằm trong `<workspace>/.codex` và `<workspace>/.agents`; duyệt hook mới qua `/hooks` trong Codex. Xem [Codex](/guides/codex).
+- **Không phải tự thêm Plane token nữa:** chạy `zenify up --apply` trong terminal mà chưa có `PLANE_API_KEY`, lệnh mở trang tạo token của Plane, bạn chỉ cần dán token vào ô nhập ẩn. Lệnh kiểm token với Plane, in tên chủ token, lưu vào `<workspace>/.zenify/.env` rồi đăng ký `zenify-plane`. Không cần `zenify env set` như v0.58.0. Xem [Plane cho agent](/guides/broker-client#plane-cho-agent).
+- **`zenify doctor` và `zenify down` theo bản cài workspace:** doctor kiểm plugin, hook và MCP trong workspace; `down` gỡ đúng những gì `up` đã ghi.
+
 ## v0.59.0
 
 *2026-11-04*
