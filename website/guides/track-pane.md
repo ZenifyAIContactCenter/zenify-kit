@@ -38,6 +38,8 @@ Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. 
 
 ## Năm tab
 
+Đổi tab bằng chuột chỉ được khi Claude Code chạy fullscreen. Trên màn hình thường (pane nằm trên ô prompt), terminal không báo click về cho pane: bấm `ctrl+x tab` để pane nhận bàn phím, rồi bấm số `1`–`5` (Kitchen, Today, Estimate, Quality, Backlog), hoặc `Tab` và `Enter`; `Esc` quay lại prompt. Khi pane chưa nhận bàn phím, dưới hàng tab có dòng mờ `ctrl+x tab, then 1–5 to switch tabs`.
+
 | Tab | Nội dung |
 |---|---|
 | **Kitchen** | Tab mặc định, giống nhau ở mọi session. Thứ tự từ trên xuống: `📌 Carried over` (xem [Việc làm dở và ngày làm việc cuối](#việc-làm-dở-và-ngày-làm-việc-cuối)), `🥘 Cooking`, `🔥 Rolling boil`, `🍳 Cooked`. `🔥 Rolling boil`: các tab Claude Code đang chờ bạn, mỗi dòng `- <❓ hoặc 🔐> <thời gian chờ> <tab>` (`45s`, `2m`, `2h`, làm tròn xuống); không có thì hiện `no tab is waiting`. `🍳 Cooked`: các việc đã xong hôm nay, mỗi dòng `- <icon> <HH:MM> <brief>` (giờ máy; icon cho biết kết quả: ✅ done và mọi PR đã merge, ⏳ done nhưng còn PR chưa merge, 🚀 pushed, ⛔ cancelled, ↩️ rollback), mỗi PR một dòng `  🔗 <repo>#<n>` là link bấm được tới PR; chưa có thì hiện `nothing finished today`. Lấy tiêu đề lỗi thì có dòng `⚠ title error: <nguyên nhân>` |
