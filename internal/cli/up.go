@@ -1041,8 +1041,10 @@ func registerPlaneMCP(w, errW io.Writer, workspace string, m *manifest.Manifest,
 	return []string{"zenify-plane"}, nil
 }
 
-// claudeMCPTimeout bounds each `claude mcp` call registerBrokerMCP makes.
-var claudeMCPTimeout = 20 * time.Second
+// claudeMCPTimeout bounds every `claude` call the kit makes (`mcp get`/`add-json`/`remove`,
+// `plugin` commands). It is 60s because `claude mcp get` health-checks the server: measured
+// at 26-27s for zenify-grafana on 2026-11-05.
+var claudeMCPTimeout = 60 * time.Second
 
 // runClaudeBounded runs one command with claudeMCPTimeout in the current
 // directory (see runClaudeIn).
