@@ -366,7 +366,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		migrateErr = fmt.Errorf("giữ nguyên bản cài cấp user vì bước local lỗi: %s", strings.Join(localErrs, "; ")) //znf:allow-lang
 		_, _ = fmt.Fprintln(errW, migrateErr)
 		if herr == nil && home != "" {
-			unwireLocalHooks(home, workspace, errW)
+			unwireLocalHooks(home, codexHomeDir(home, os.Getenv), workspace, errW)
 		}
 	case herr == nil && home != "":
 		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), localMCPs, run, false)
@@ -376,6 +376,8 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		if err != nil {
 			migrateErr = fmt.Errorf("gỡ bản cài cấp user: %w", err) //znf:allow-lang
 			_, _ = fmt.Fprintln(errW, migrateErr)
+			// A migration that stopped part-way leaves some user hooks behind.
+			unwireLocalHooks(home, codexHomeDir(home, os.Getenv), workspace, errW)
 		}
 	}
 
@@ -1020,20 +1022,25 @@ func runClaudeBounded(n string, args ...string) ([]byte, error) {
 
 // unwireLocalHooks takes the kit hooks, git-guard and Codex hooks back out of
 // the workspace when up kept the user-level install after a failed local step:
-// ForceLocal already wrote them, and with the user hooks still present every
-// kit hook would run twice. A machine with no user-level hooks keeps them.
-func unwireLocalHooks(home, workspace string, errW io.Writer) {
-	if userHooks, err := apply.HasUserKitHooks(apply.UserSettings(home)); err != nil || !userHooks {
-		return
+// ForceLocal already wrote them, and with the user copy still present that
+// hook would run twice. Each of the three is checked on its own, because a
+// migration that stopped part-way removes some user copies and not others; a
+// workspace copy whose user copy is gone stays.
+func unwireLocalHooks(home, codexHome, workspace string, errW io.Writer) {
+	user, local := apply.UserSettings(home), apply.WorkspaceLocalSettings(workspace)
+	if ok, err := apply.HasUserKitHooks(user); err == nil && ok {
+		if _, err := apply.RemoveGlobalHooks(local, false); err != nil {
+			_, _ = fmt.Fprintln(errW, "warning: local hooks:", err)
+		}
 	}
-	local := apply.WorkspaceLocalSettings(workspace)
-	if _, err := apply.RemoveGlobalHooks(local, false); err != nil {
-		_, _ = fmt.Fprintln(errW, "warning: local hooks:", err)
+	if ok, err := guardInstalled(user); err == nil && ok {
+		if _, err := removeGuard(local, false); err != nil {
+			_, _ = fmt.Fprintln(errW, "warning: local git-guard:", err)
+		}
 	}
-	if _, err := removeGuard(local, false); err != nil {
-		_, _ = fmt.Fprintln(errW, "warning: local git-guard:", err)
-	}
-	if _, err := apply.RemoveCodexHooks(filepath.Join(workspace, ".codex"), false); err != nil {
-		_, _ = fmt.Fprintln(errW, "warning: local codex hooks:", err)
+	if ch, err := apply.RemoveCodexHooks(codexHome, true); err == nil && ch.Removed > 0 {
+		if _, err := apply.RemoveCodexHooks(filepath.Join(workspace, ".codex"), false); err != nil {
+			_, _ = fmt.Fprintln(errW, "warning: local codex hooks:", err)
+		}
 	}
 }

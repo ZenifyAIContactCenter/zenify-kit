@@ -26,6 +26,7 @@ type fakeClaude struct {
 	mktAdded    bool
 	failUpdate  bool // `plugin update` fails even when installed
 	failAddJSON bool // `mcp add-json` fails
+	failRemove  bool // `mcp remove` fails with a real error
 	userMCP     map[string]bool
 	calls       []string
 }
@@ -44,6 +45,9 @@ func (f *fakeClaude) run(_ string, args ...string) ([]byte, error) {
 			return []byte("boom"), fmt.Errorf("exit status 1")
 		}
 	case len(args) >= 3 && args[0] == "mcp" && args[1] == "remove":
+		if f.failRemove {
+			return []byte("boom"), fmt.Errorf("exit status 1")
+		}
 		if f.userMCP[args[2]] {
 			delete(f.userMCP, args[2])
 			return nil, nil
@@ -389,6 +393,32 @@ func TestUp_TwiceNoChange(t *testing.T) {
 	}
 	if removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, f.run, false); err != nil || len(removed) > 0 {
 		t.Errorf("third migrate removed %v, err %v", removed, err)
+	}
+}
+
+// N1: the migration fails after removing the user Claude hooks but before the
+// user Codex hooks; the workspace Codex hooks must go so Codex runs each kit
+// hook once, while the workspace Claude hooks stay (the user ones are gone).
+func TestUp_MigrationFailureKeepsHooksSingle(t *testing.T) {
+	home, ws, m, plans := upFixture(t)
+	useLocalMCPs(t, true)
+	f := newFakeClaude(ws)
+	f.failRemove = true
+	useFakeClaude(t, f)
+	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err == nil {
+		t.Fatal("runApply succeeded although mcp remove failed")
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, ".codex", "hooks.json")); !strings.Contains(string(b), "zenify hooks-run") {
+		t.Fatalf("precondition: user codex hooks should remain after the failed migration: %s", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, ".codex", "hooks.json")); strings.Contains(string(b), "zenify hooks-run") {
+		t.Errorf("workspace codex hooks left beside the user ones: %s", b)
+	}
+	if b, _ := os.ReadFile(apply.UserSettings(home)); strings.Contains(string(b), "zenify hooks-run") {
+		t.Fatalf("precondition: user claude hooks should be gone: %s", b)
+	}
+	if b, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws)); !strings.Contains(string(b), "zenify hooks-run") || !strings.Contains(string(b), "zenify git-guard") {
+		t.Errorf("workspace claude hooks removed although the user ones are gone: %s", b)
 	}
 }
 
