@@ -495,3 +495,14 @@ func TestZnfHookSpecs_PlaneGuard(t *testing.T) {
 		t.Fatalf("plane-guard spec = %+v", got[0])
 	}
 }
+
+// A hooks.json holding JSON null is reported, never a panic.
+func TestEnsureCodexHooksNullFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hooks.json"), []byte("null"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureCodexHooks(dir, false); err == nil {
+		t.Fatal("want an error for a null hooks.json")
+	}
+}

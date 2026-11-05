@@ -60,6 +60,8 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintln(stderr, "znf ensure: recovered:", r)
+			// The steps after the panic never ran: up keeps the user install.
+			rep.LocalErrs = append(rep.LocalErrs, fmt.Sprintf("panic: %v", r))
 		}
 	}()
 	localErr := func(step string, err error) {

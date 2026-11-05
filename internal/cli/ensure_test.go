@@ -720,3 +720,27 @@ func TestEnsureWorkspace_CodexAbsentUserHooksNoNudge(t *testing.T) {
 		t.Fatalf("second run printed: %q", o2.String())
 	}
 }
+
+// A step that panics leaves the workspace half-installed; up must see it as a
+// local failure and keep the user-level install.
+func TestEnsureWorkspace_PanicIsLocalErr(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	fakeLookPath(t, false)
+	old := pluginRunner
+	t.Cleanup(func() { pluginRunner = old })
+	pluginRunner = func(string) func(string, ...string) ([]byte, error) {
+		return func(string, ...string) ([]byte, error) { panic("boom") }
+	}
+	// A stale stamp makes ensure resync the installed plugin through the runner.
+	if err := os.MkdirAll(filepath.Dir(pluginStampPath(ws)), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginStampPath(ws), []byte("0.0.0-stale\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	rep := ensureWorkspace(ws, home, &o, &e, ensureOpts{ForceLocal: true})
+	if len(rep.LocalErrs) == 0 {
+		t.Fatalf("recovered panic not in LocalErrs; stderr: %s", e.String())
+	}
+}

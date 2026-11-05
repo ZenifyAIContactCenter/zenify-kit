@@ -89,6 +89,9 @@ func readSettingsRoot(path string) (map[string]json.RawMessage, os.FileMode, err
 	if err := json.Unmarshal(existing, &root); err != nil {
 		return nil, mode, fmt.Errorf("settings.json malformed, skipping env: %w", err)
 	}
+	if root == nil {
+		return nil, mode, fmt.Errorf("settings.json is null, skipping env")
+	}
 	if fi, statErr := os.Stat(path); statErr == nil {
 		mode = fi.Mode().Perm()
 	}

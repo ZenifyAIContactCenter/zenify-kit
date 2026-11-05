@@ -413,6 +413,9 @@ func EnsureCodexHooks(codexHome string, dryRun bool) (HookChanges, error) {
 		if err := json.Unmarshal(existing, &root); err != nil {
 			return HookChanges{Skipped: true}, fmt.Errorf("hooks.json malformed, skipping hook wiring: %w", err)
 		}
+		if root == nil {
+			return HookChanges{Skipped: true}, fmt.Errorf("hooks.json is null, skipping hook wiring")
+		}
 		if fi, statErr := os.Stat(path); statErr == nil {
 			mode = fi.Mode().Perm()
 		}
