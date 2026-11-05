@@ -23,7 +23,7 @@ const bootstrapMarker = "BOOTSTRAP-DIGEST-MARKER"
 // exercise emission/suppression instead of passing because the file is absent.
 func seedBootstrap(t *testing.T, home string) {
 	t.Helper()
-	dir := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-zenify-kit")
+	dir := filepath.Join(home, ".zenify", "plugin-marketplace", "plugins", "znf", "skills", "using-zenify-kit")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -34,6 +34,7 @@ func seedBootstrap(t *testing.T, home string) {
 
 // FR-6.3: sentinel present in ~/.claude/CLAUDE.md => no digest emitted.
 func TestSessionStart_SentinelSuppressesDigest(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	seedBootstrap(t, home)
@@ -58,6 +59,7 @@ func TestSessionStart_SentinelSuppressesDigest(t *testing.T) {
 
 // FR-6.3: no sentinel => digest emitted raw (matching the shell hook's `cat`).
 func TestSessionStart_EmitsDigestWithoutSentinel(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	seedBootstrap(t, home)
@@ -248,13 +250,14 @@ func TestSessionStart_BrokerRoleLine(t *testing.T) {
 // FR-5.3: ZNF_AUTONOMOUS=1 (exactly "1") makes SessionStart point at the autonomous doc,
 // even when the bootstrap digest is printed.
 func TestSessionStart_AutonomousLine(t *testing.T) {
-	t.Setenv("ZENIFY_HOME", "")
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
-	want := "autonomous: ZNF_AUTONOMOUS=1 — read ~/.claude/skills/znf/skills/_shared/autonomous.md first; it overrides every human gate in znf skills\n"
+	want := "autonomous: ZNF_AUTONOMOUS=1 — read " + filepath.Join(zh, "plugin-marketplace", "plugins", "znf", "skills", "_shared", "autonomous.md") + " first; it overrides every human gate in znf skills\n"
 	for _, v := range []string{"1", "0", ""} {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
-		digest := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-zenify-kit")
+		digest := filepath.Join(zh, "plugin-marketplace", "plugins", "znf", "skills", "using-zenify-kit")
 		if err := os.MkdirAll(digest, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -318,10 +321,11 @@ func TestSessionStart_FeaturesLine(t *testing.T) {
 
 // SC-26: the track digest line appears only when the overlay turns track on.
 func TestSessionStart_TrackLine(t *testing.T) {
-	t.Setenv("ZENIFY_HOME", "")
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	t.Setenv("ZNF_AUTONOMOUS", "")
-	want := "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --brief first (track.md#Backlog); plan today → track.md#Daily plan\n"
+	want := "features: track on — read " + filepath.Join(zh, "plugin-marketplace", "plugins", "znf", "skills", "_shared", "track.md") + " first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --brief first (track.md#Backlog); plan today → track.md#Daily plan\n"
 	cases := []struct {
 		name    string
 		overlay string
@@ -352,10 +356,11 @@ func TestSessionStart_TrackLine(t *testing.T) {
 
 // SC-35: the onboard reminder shows only with track on and no `onboard · memory` row.
 func TestSessionStart_TrackOnboardLine(t *testing.T) {
-	t.Setenv("ZENIFY_HOME", "")
+	zh := t.TempDir()
+	t.Setenv("ZENIFY_HOME", zh)
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	t.Setenv("ZNF_AUTONOMOUS", "")
-	want := "track: not onboarded — run the Onboard section of ~/.claude/skills/znf/skills/_shared/track.md\n"
+	want := "track: not onboarded — run the Onboard section of " + filepath.Join(zh, "plugin-marketplace", "plugins", "znf", "skills", "_shared", "track.md") + "\n"
 	cases := []struct {
 		name    string
 		overlay string

@@ -162,7 +162,7 @@ Stop a server only when asked or at `/sweep`, never as end-of-task cleanup:
 
 ## References
 
-Materialized at `~/.claude/skills/znf/skills/run/references/`. Read one when its trigger fires.
+At `~/.zenify/plugin-marketplace/plugins/znf/skills/run/references/`. Read one when its trigger fires.
 
 - `references/why-this-skill-exists.md` — read when wondering why `/run` is a skill, not a bash line.
 - `references/port-wiring-rationale.md` — read when the allocated port is not the one the app listens on, or peers still point at main-checkout ports.
