@@ -136,9 +136,10 @@ Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn v�
 Cách bật:
 
 1. `brew install uv`.
-2. Tạo PAT ở https://plane.zenify.vn → Profile Settings → Personal Access Tokens → Add personal access token.
-3. Chạy `zenify env set PLANE_API_KEY` trong terminal của bạn (cần TTY, dán PAT khi được hỏi).
-4. Chạy `zenify up --apply`, rồi mở lại Claude Code. `/mcp` sẽ hiện `zenify-plane`.
+2. Chạy `zenify up --apply` trong terminal của bạn. Khi chưa có `PLANE_API_KEY`, lệnh mở https://plane.zenify.vn/settings/profile/api-tokens/ trên trình duyệt (và in link đó): bấm **Add personal access token**, copy token rồi dán vào ô nhập ẩn trong terminal. Lệnh kiểm token với Plane, in tên chủ token, lưu vào `<workspace>/.zenify/.env` rồi đăng ký `zenify-plane` luôn. Token bị Plane từ chối thì được dán lại một lần; Enter bỏ trống để bỏ qua.
+3. Mở lại Claude Code. `/mcp` sẽ hiện `zenify-plane`.
+
+Không có terminal (SessionStart, `--non-interactive`) thì lệnh không hỏi, chỉ in gợi ý kèm link. Vẫn có thể đặt token bằng `zenify env set PLANE_API_KEY`.
 
 Chạy `zenify up` dạng tương tác thì bước nhập secret cuối wizard có thể hỏi `PLANE_API_KEY`; dán PAT ở đó thì kit đăng ký `zenify-plane` ngay sau bước đó, không cần chạy lại `zenify up --apply`.
 

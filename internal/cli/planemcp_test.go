@@ -143,7 +143,7 @@ func TestPlaneMCP_NoPAT(t *testing.T) {
 	if stdout != "" || stderr != "" {
 		t.Fatalf("stdout = %q, stderr = %q, want both empty (main prints the error to stderr)", stdout, stderr)
 	}
-	want := "zenify plane-mcp: chưa có PLANE_API_KEY. Tạo PAT ở https://plane.zenify.vn → Profile Settings → Personal Access Tokens, rồi chạy trong terminal: zenify env set PLANE_API_KEY" //znf:allow-lang
+	want := "zenify plane-mcp: chưa có PLANE_API_KEY. Chạy zenify up --apply trong terminal để dán token (tạo ở https://plane.zenify.vn/settings/profile/api-tokens/)" //znf:allow-lang
 	if err.Error() != want {
 		t.Fatalf("err = %q\nwant  %q", err, want)
 	}
@@ -261,7 +261,7 @@ func TestPlaneMCP_RootStdoutClean(t *testing.T) {
 	root.SetErr(&errb)
 	root.SetArgs([]string{"plane-mcp"})
 	err := root.Execute()
-	if err == nil || !strings.Contains(err.Error(), "zenify env set PLANE_API_KEY") {
+	if err == nil || !strings.Contains(err.Error(), "zenify up --apply trong terminal") {
 		t.Fatalf("err = %v, want the no-PAT branch", err)
 	}
 	if out.String() != "" {
@@ -297,7 +297,7 @@ func TestPlaneMCP_BinaryStderr(t *testing.T) {
 	if out.String() != "" {
 		t.Fatalf("stdout = %q", out.String())
 	}
-	if !strings.Contains(errb.String(), "zenify env set PLANE_API_KEY") || !strings.Contains(errb.String(), "https://plane.zenify.vn") {
+	if !strings.Contains(errb.String(), "zenify up --apply trong terminal") || !strings.Contains(errb.String(), "https://plane.zenify.vn") {
 		t.Fatalf("stderr = %q", errb.String())
 	}
 }

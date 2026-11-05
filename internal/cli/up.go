@@ -381,7 +381,12 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	// Its plane-guard hook is a workspace hook: after a failed local step those
 	// are unwired below, so Plane waits for the next up rather than run unguarded.
 	if len(localErrs) == 0 {
-		plane, err := registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, run)
+		patSet := func() bool { return planePATSet(os.Getenv, workspace) }
+		if bm != nil && bm.Plane != nil {
+			patSet = planePATSetFor(w, workspace, bm.Plane.URL,
+				npmTokenInteractive(nonInteractive, term.IsTerminal(int(os.Stdin.Fd())), term.IsTerminal(int(os.Stdout.Fd()))), defaultPlaneTokenDeps())
+		}
+		plane, err := registerPlaneMCP(w, errW, workspace, bm, patSet, run)
 		if err != nil {
 			localErrs = append(localErrs, "plane MCP: "+err.Error())
 		}
@@ -392,7 +397,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		// A registration error is already a local error with its own cause.
 		if len(plane) == 0 && err == nil && bm != nil && bm.Plane != nil && herr == nil && home != "" {
 			if owned, err := mcpreg.KitOwned(filepath.Join(home, ".claude.json"), "", "zenify-plane"); err == nil && owned {
-				localErrs = append(localErrs, "plane MCP: chưa đăng ký được zenify-plane local nên giữ bản cấp user cùng plane-guard; đặt PLANE_API_KEY (zenify env set PLANE_API_KEY), cài uv, rồi chạy lại zenify up --apply") //znf:allow-lang
+				localErrs = append(localErrs, "plane MCP: chưa đăng ký được zenify-plane local nên giữ bản cấp user cùng plane-guard; thiếu PLANE_API_KEY thì chạy lại zenify up --apply trong terminal để dán Plane token, thiếu uv thì cài uv") //znf:allow-lang
 			}
 		}
 	}
@@ -1025,7 +1030,7 @@ func registerPlaneMCP(w, errW io.Writer, workspace string, m *manifest.Manifest,
 		return nil, nil
 	}
 	if !patSet() {
-		_, _ = fmt.Fprintf(w, "zenify-plane: chưa có PLANE_API_KEY, chưa đăng ký. Tạo PAT ở %s → Profile Settings → Personal Access Tokens, chạy zenify env set PLANE_API_KEY trong terminal, rồi zenify up --apply\n", m.Plane.URL) //znf:allow-lang
+		_, _ = fmt.Fprintf(w, "zenify-plane: chưa có PLANE_API_KEY, chưa đăng ký. Chạy zenify up --apply trong terminal để dán token (tạo ở %s)\n", planeTokenURL(m.Plane.URL)) //znf:allow-lang
 		return nil, nil
 	}
 	if _, err := lookPath("uvx"); err != nil {
