@@ -468,10 +468,23 @@ func dockerCheckWith(lookPath func(string) (string, error), info func() error) C
 // gitGuardCheck reports whether the git-guard PreToolUse hook is wired in the
 // workspace's .claude/settings.local.json (settings resolves that path). Fix
 // installs it (the same idempotent edit as `zenify guard install`).
-func gitGuardCheck(settings func() (string, error)) Check {
+func gitGuardCheck(settings, user func() (string, error)) Check {
+	// Before `up` migrates, git-guard runs from ~/.claude/settings.json (legacy
+	// script included); ensure does not add a workspace copy then, nor does doctor.
+	atUser := func() bool {
+		u, err := user()
+		if err != nil {
+			return false
+		}
+		ok, err := removeGuard(u, true)
+		return err == nil && ok
+	}
 	return Check{
 		Name: "git-guard",
 		Run: func() (bool, string) {
+			if atUser() {
+				return true, "hook=installed at user level; run `zenify up --apply` to move it into the workspace"
+			}
 			p, err := settings()
 			if err != nil {
 				return false, err.Error()
@@ -486,6 +499,9 @@ func gitGuardCheck(settings func() (string, error)) Check {
 			return true, "hook=installed"
 		},
 		Fix: func() (bool, string) {
+			if atUser() {
+				return true, "git-guard still runs at user level; run `zenify up --apply`"
+			}
 			p, err := settings()
 			if err != nil {
 				return false, err.Error()
@@ -513,9 +529,23 @@ func kitPermissionsCheck(home, workspace func() (string, error)) Check {
 		}
 		return apply.WorkspaceKitTarget(h, ws), ""
 	}
+	// Before `up` migrates, the kit permissions live at user level; ensure
+	// does not write a workspace copy then, nor does doctor.
+	atUser := func() bool {
+		h, err := home()
+		if err != nil {
+			return false
+		}
+		ok, err := apply.HasUserKitHooks(apply.UserSettings(h))
+		return err == nil && ok
+	}
+	const atUserMsg = "kit still installed at user level; run `zenify up --apply` to move it into the workspace"
 	return Check{
 		Name: "kit-permissions",
 		Run: func() (bool, string) {
+			if atUser() {
+				return true, atUserMsg
+			}
 			kt, msg := target()
 			if msg != "" {
 				return false, msg
@@ -538,9 +568,18 @@ func kitPermissionsCheck(home, workspace func() (string, error)) Check {
 			return true, "allow rules, sandbox exclusions and ask rules present"
 		},
 		Fix: func() (bool, string) {
+			if atUser() {
+				return true, atUserMsg
+			}
 			kt, msg := target()
 			if msg != "" {
 				return false, msg
+			}
+			// Rules the user removed at user level stay removed (as ensure does).
+			h, _ := home()
+			ws, _ := workspace()
+			if err := apply.SeedWorkspaceRecords(h, ws); err != nil {
+				return false, err.Error()
 			}
 			n, err := apply.EnsureKitPermissions(kt, false)
 			if err != nil {
@@ -607,7 +646,13 @@ func registerDefaultChecks() {
 		return ws, nil
 	}))
 	RegisterCheck(dockerCheck())
-	RegisterCheck(gitGuardCheck(workspaceLocalSettingsPath))
+	RegisterCheck(gitGuardCheck(workspaceLocalSettingsPath, func() (string, error) {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return apply.UserSettings(h), nil
+	}))
 	RegisterCheck(gitIdentityCheck())
 	RegisterCheck(shimsCheck(exec.LookPath))
 	npmInteractive := func() bool {

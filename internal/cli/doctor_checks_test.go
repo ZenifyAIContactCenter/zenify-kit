@@ -326,7 +326,9 @@ func TestDockerCheck_Missing(t *testing.T) {
 // and the check must then pass — the path `doctor --fix` takes.
 func TestGitGuardCheck_MissingThenFixed(t *testing.T) {
 	ws := t.TempDir()
-	c := gitGuardCheck(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil })
+	home := t.TempDir()
+	c := gitGuardCheck(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil },
+		func() (string, error) { return apply.UserSettings(home), nil })
 	if ok, detail := c.Run(); ok || !strings.Contains(detail, "hook=missing") {
 		t.Fatalf("fresh workspace should report hook=missing, got ok=%v detail=%q", ok, detail)
 	}
@@ -955,5 +957,61 @@ func TestShimsCheck(t *testing.T) {
 	}
 	if ok, _ := shimsCheck(look("")).Run(); !ok {
 		t.Error("both present should be ok")
+	}
+}
+
+// Before up migrates, git-guard runs from ~/.claude/settings.json; doctor
+// must not add a second copy to the workspace (ensure's per-runtime gate).
+func TestGitGuardCheck_UserGuardNotDuplicated(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	if _, err := installGuard(apply.UserSettings(home)); err != nil {
+		t.Fatal(err)
+	}
+	c := gitGuardCheck(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil },
+		func() (string, error) { return apply.UserSettings(home), nil })
+	if ok, detail := c.Run(); !ok || !strings.Contains(detail, "up --apply") {
+		t.Fatalf("user guard: want ok naming up --apply, got ok=%v detail=%q", ok, detail)
+	}
+	c.Fix()
+	if ok, _ := guardInstalled(apply.WorkspaceLocalSettings(ws)); ok {
+		t.Fatal("Fix wired a second git-guard into the workspace")
+	}
+}
+
+// Before up migrates, the kit permissions live at user level: Fix writes nothing.
+func TestKitPermissionsCheck_UserInstallLeftAlone(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	if _, err := apply.EnsureGlobalHooks(apply.UserSettings(home), false); err != nil {
+		t.Fatal(err)
+	}
+	c := kitPermissionsCheck(func() (string, error) { return home, nil }, func() (string, error) { return ws, nil })
+	if ok, detail := c.Run(); !ok || !strings.Contains(detail, "up --apply") {
+		t.Fatalf("user install: want ok naming up --apply, got ok=%v detail=%q", ok, detail)
+	}
+	c.Fix()
+	if _, err := os.Stat(apply.WorkspaceLocalSettings(ws)); err == nil {
+		t.Fatal("Fix wrote workspace permissions while the user install is active")
+	}
+}
+
+// A rule the user removed at user level stays removed when doctor --fix
+// installs the workspace permissions.
+func TestKitPermissionsCheck_FixKeepsUserRemovals(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	user := apply.UserKitTarget(home)
+	if _, err := apply.EnsureKitPermissions(user, false); err != nil {
+		t.Fatal(err)
+	}
+	gone := apply.KitAllowRules[0]
+	b, _ := os.ReadFile(user.Settings)
+	if err := os.WriteFile(user.Settings, []byte(strings.Replace(string(b), `"`+gone+`",`, "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := kitPermissionsCheck(func() (string, error) { return home, nil }, func() (string, error) { return ws, nil })
+	if ok, detail := c.Fix(); !ok {
+		t.Fatalf("Fix failed: %s", detail)
+	}
+	if local, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws)); strings.Contains(string(local), `"`+gone+`"`) {
+		t.Fatalf("doctor --fix re-added a user-removed rule: %s", local)
 	}
 }
