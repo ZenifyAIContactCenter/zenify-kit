@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 )
@@ -18,8 +18,9 @@ import (
 // pluginRunner builds the claude runner ensureWorkspace uses; tests swap it.
 var pluginRunner = runClaudeIn
 
-// runClaudeIn is runClaudeBounded with the child's working directory set to
-// dir, so `--scope local` resolves to that workspace.
+// runClaudeIn runs one command with claudeMCPTimeout, returning its combined
+// output; WaitDelay stops a child that keeps the pipes open. dir is the child's
+// working directory ("" = current), so `--scope local` resolves to that workspace.
 func runClaudeIn(dir string) func(string, ...string) ([]byte, error) {
 	return func(n string, args ...string) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), claudeMCPTimeout)
@@ -61,42 +62,77 @@ func installPluginLocal(workspace, zh string, run func(string, ...string) ([]byt
 		if json.Unmarshal(out, &list) == nil {
 			for _, p := range list {
 				if p.ID == plugin.PluginID && p.Scope == "local" && p.Enabled && samePath(p.ProjectPath, workspace) {
-					return nil
+					return writePluginStamp(workspace)
 				}
 			}
 		}
 	}
 	if out, err := run("claude", "plugin", "marketplace", "add", plugin.MarketplaceDir(zh), "--scope", "local"); err != nil &&
-		!strings.Contains(strings.ToLower(string(out)+err.Error()), "already") {
+		!alreadyAdded(string(out)+err.Error()) {
 		return fmt.Errorf("claude plugin marketplace add: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	if out, err := run("claude", "plugin", "install", plugin.PluginID, "--scope", "local"); err != nil {
 		return fmt.Errorf("claude plugin install: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	return nil
+	return writePluginStamp(workspace)
+}
+
+func pluginStampPath(workspace string) string {
+	return filepath.Join(workspace, ".zenify", "plugin-version")
+}
+
+// writePluginStamp records the kit version this workspace's plugin was last
+// brought to (atomic: temp file + rename).
+func writePluginStamp(workspace string) error {
+	p := pluginStampPath(workspace)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil { //nolint:gosec // G301 -- same dir mode as the workspace's other kit dirs
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(p), ".tmp-plugin-version-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name()) //nolint:errcheck // best effort; gone after rename
+	if _, err := tmp.WriteString(version.Current()); err != nil {
+		tmp.Close() //nolint:errcheck,gosec
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), p)
 }
 
 // resyncPluginLocal re-materializes the marketplace and updates the local
-// plugin when the stamped version differs from the binary. Fail-open.
+// plugin when the workspace's stamp (<workspace>/.zenify/plugin-version) differs
+// from the binary. The stamp is written only when both claude commands succeed,
+// so a transient failure is retried next time. Fail-open.
 func resyncPluginLocal(workspace, zh string, run func(string, ...string) ([]byte, error), stderr io.Writer) {
-	_ = workspace // the runner already carries the workspace as its cwd
-	stamp := ""
-	if m, err := managed.Load(plugin.PluginManifest(zh)); err == nil {
-		stamp = m.Version
-	}
-	if stamp == version.Current() {
+	if b, err := os.ReadFile(pluginStampPath(workspace)); err == nil && strings.TrimSpace(string(b)) == version.Current() { //nolint:gosec // G304 -- internal path
 		return
 	}
 	if _, err := plugin.SyncMarketplace(zh); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: plugin sync:", err)
 		return
 	}
+	ok := true
 	for _, args := range [][]string{
 		{"plugin", "marketplace", "update", plugin.MarketplaceName},
 		{"plugin", "update", plugin.PluginID, "-s", "local"},
 	} {
 		if out, err := run("claude", args...); err != nil {
+			ok = false
 			fmt.Fprintf(stderr, "znf ensure: claude %s: %v: %s\n", strings.Join(args[:2], " "), err, strings.TrimSpace(string(out)))
 		}
 	}
+	if ok {
+		if err := writePluginStamp(workspace); err != nil {
+			fmt.Fprintln(stderr, "znf ensure: plugin stamp:", err)
+		}
+	}
+}
+
+func alreadyAdded(s string) bool {
+	s = strings.ToLower(s)
+	return strings.Contains(s, "already exists") || strings.Contains(s, "already added")
 }

@@ -949,16 +949,8 @@ func registerPlaneMCP(w, errW io.Writer, m *manifest.Manifest, patSet func() boo
 // claudeMCPTimeout bounds each `claude mcp` call registerBrokerMCP makes.
 var claudeMCPTimeout = 20 * time.Second
 
-// runClaudeBounded runs one command with claudeMCPTimeout, returning its
-// combined output; WaitDelay stops a child that keeps the pipes open.
+// runClaudeBounded runs one command with claudeMCPTimeout in the current
+// directory (see runClaudeIn).
 func runClaudeBounded(n string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), claudeMCPTimeout)
-	defer cancel()
-	c := exec.CommandContext(ctx, n, args...) //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
-	c.WaitDelay = 2 * time.Second
-	out, err := c.CombinedOutput()
-	if err != nil && ctx.Err() != nil { // the kill surfaces as "signal: killed"; keep the deadline detectable
-		err = fmt.Errorf("%w: %w", ctx.Err(), err)
-	}
-	return out, err
+	return runClaudeIn("")(n, args...)
 }
