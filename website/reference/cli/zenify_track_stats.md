@@ -28,6 +28,7 @@ zenify track stats --json
 
 | Cờ | Ý nghĩa |
 |---|---|
+| `--brief` | output compact JSON for agents: carried, daily plan, open PRs, backlog (no timing, tokens or quality) |
 | `--dir` | directory holding log.md (default: \<workspace\>/.zenify/track) |
 | `--force` | ignore the 5-minute backlog cache (gh issues and SDD scan) |
 | `--json` | output JSON instead of a short summary |

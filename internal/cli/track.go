@@ -575,6 +575,7 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 	var (
 		dir    string
 		asJSON bool
+		brief  bool
 		force  bool
 		today  string
 	)
@@ -607,6 +608,14 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 				}
 			}
 			res.Enabled = on
+			if brief {
+				out, err := json.Marshal(trackstats.Brief(res))
+				if err != nil {
+					return exitcode.New(exitcode.Fail, err)
+				}
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s\n", out)
+				return err
+			}
 			if asJSON {
 				out, err := json.MarshalIndent(res, "", "  ")
 				if err != nil {
@@ -621,6 +630,8 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 	}
 	c.Flags().StringVar(&dir, "dir", "", "directory holding log.md (default: <workspace>/.zenify/track)")
 	c.Flags().BoolVar(&asJSON, "json", false, "output JSON instead of a short summary")
+	c.Flags().BoolVar(&brief, "brief", false, "output compact JSON for agents: carried, daily plan, open PRs, backlog (no timing, tokens or quality)")
+	c.MarkFlagsMutuallyExclusive("json", "brief")
 	c.Flags().BoolVar(&force, "force", false, "ignore the 5-minute backlog cache (gh issues and SDD scan)")
 	c.Flags().StringVar(&today, "today", "", "the day to report, YYYY-MM-DD (default: local today)")
 	return c

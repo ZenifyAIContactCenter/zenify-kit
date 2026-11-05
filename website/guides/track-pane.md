@@ -85,8 +85,8 @@ Mỗi lần `znf:ship` kết thúc, kit ghi kết quả (shipped hoặc blocked,
 
 Plan là danh sách việc bạn chốt cho hôm nay. Nói "hey claude plan today" (hoặc "plan hôm nay", "daily plan"); agent làm theo `_shared/track.md`:
 
-1. Chạy `zenify track stats --json --force`.
-2. Gom ứng viên theo thứ tự: việc `kitchen.carried`, PR đang mở chưa sẵn sàng merge (`ready == false`), rồi `backlog.items` (S, M, L, `-`).
+1. Chạy `zenify track stats --brief --force`.
+2. Gom ứng viên theo thứ tự: việc `carried`, PR `prOpen` chưa sẵn sàng merge (`ready == false`), rồi `backlog` (S, M, L, `-`), ước lượng theo `scale`.
 3. Lấy lần lượt và dừng ở mục đầu tiên làm tổng est vượt 360 phút (mục đó không lấy, trừ khi danh sách còn rỗng).
 4. Đưa danh sách cho bạn duyệt. Chỉ sau khi bạn đồng ý agent mới chạy `zenify track plan set`.
 
@@ -126,7 +126,7 @@ Tab `Backlog` gom việc chưa làm từ bốn nguồn:
 - `sdd`: mục `minor (deferred)` và `parked` trong `progress.md` của các plan.
 - `stale`: việc đã bắt đầu nhưng bị bỏ dở.
 
-Thứ tự nguồn khi agent lấy việc tiếp theo: `backlog.items` trước. Chỉ khi nó rỗng hoặc `zenify track stats --json` báo `backlog.ghError`, agent mới chạy `gh search issues --assignee @me --state open` và `gh search prs --review-requested @me --state open`, đưa kết quả cho bạn chọn rồi start bằng `--from <url>`. Digest đầu session nhắc agent chạy `zenify track stats --json` trước khi chọn việc.
+Thứ tự nguồn khi agent lấy việc tiếp theo: danh sách `backlog` trước. Chỉ khi nó rỗng hoặc `zenify track stats --brief` báo `ghError`, agent mới chạy `gh search issues --assignee @me --state open` và `gh search prs --review-requested @me --state open`, đưa kết quả cho bạn chọn rồi start bằng `--from <url>`. Digest đầu session nhắc agent chạy `zenify track stats --brief` trước khi chọn việc. `--brief` là JSON gọn cho agent (việc dở, plan, PR mở, backlog với tiêu đề cắt 80 ký tự, thang S/M/L), không có thời gian, token hay số liệu chất lượng; trên workspace thật nó nhỏ hơn `--json` khoảng 3 lần (7 KB so với 22 KB với 31 mục backlog). Pane vẫn dùng `--json`.
 
 Mục có `ref` hoặc `id` là URL `http…` hiện thành dòng link: chữ bấm được là `repo · est · title · <số ngày>d`, trỏ tới URL đó. Dòng là link thì dù bị cắt vẫn bấm được.
 
