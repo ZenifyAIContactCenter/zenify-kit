@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { BacklogItem, TrackItem, TrackStats } from '../types'
-import { COPY, STATUS_OFF, TABS, errorStatus, fmtNum, isTrackPrompt, isTrackSkill, parseTrackStats, prLabel, ruleText, statusText, tabLines } from './track-ui'
+import { COPY, STATUS_OFF, TABS, errorStatus, fmtDur, fmtNum, isTrackPrompt, isTrackSkill, parseTrackStats, prLabel, ruleText, statusText, tabLines } from './track-ui'
 
 const A = 'aaaaaaaa-1111-2222-3333-444444444444'
 const B = 'bbbbbbbb-5555-6666-7777-888888888888'
@@ -33,7 +33,7 @@ const stats = (over: Partial<TrackStats> = {}): TrackStats => ({
   malformed: 0,
   scale: { source: 'default', n: 0, S: 15, M: 45, L: 120 },
   rules: [],
-  today: { date: '2026-10-30', plans: {}, started: {}, ended: {}, done: {}, cancelled: {}, rolledBack: {}, wallMin: 0, agentMin: 0, tasks: 0, rounds: 0, prsOpened: 0, merged: 0, prsWaiting: 0, mergedError: '', items: [] },
+  today: { date: '2026-10-30', plans: {}, started: {}, ended: {}, done: {}, cancelled: {}, rolledBack: {}, wallMin: 0, agentMin: 0, tasks: 0, rounds: 0, prsOpened: 0, merged: 0, prsWaiting: 0, mergedError: '', items: [], dailyPlan: { items: [], estMin: 0, wallMin: 0 }, prOpen: [], prStatusError: '' },
   running: [],
   estimate: { byKind: {}, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: {} },
   quality: { byKind: {}, fix: { n: 0, roundAvg: null, wideRate: null, regressionRate: null } },
@@ -630,4 +630,78 @@ test('rollback reads the same on Today and Carried over', () => {
   })
   expect(texts(tabLines('today', s, A, X, NOW))).toContain('Done 0 · started 0 · Rollback 2')
   expect(texts(tabLines('kitchen', s, A, undefined, NOW))).toContain('📆 Fri 10/30: 2 rollback')
+})
+
+const noPlanStats = (over: Partial<TrackStats> = {}) => stats({ today: { ...stats().today, dailyPlan: null }, ...over } as Partial<TrackStats>)
+const planItem = (status: string, est: string, title: string) => ({ id: `i-${title}`, repo: 'kit', est, title, status, url: '' })
+const withPlan = (items: ReturnType<typeof planItem>[], estMin: number, wallMin: number) =>
+  stats({ today: { ...stats().today, dailyPlan: { items, estMin, wallMin } } } as Partial<TrackStats>)
+
+test('FR-3.1: fmtDur renders minutes under an hour, else hours and minutes', () => {
+  expect(fmtDur(50)).toBe('50m')
+  expect(fmtDur(180)).toBe('3h')
+  expect(fmtDur(270)).toBe('4h30m')
+})
+
+test('FR-3.1: Kitchen leads with the Plan block before Carried over; null plan hides it', () => {
+  const s = withPlan([planItem('todo', 'S', 'a'), planItem('running', 'M', 'b'), planItem('done', 'L', 'c')], 180, 50)
+  const t = texts(tabLines('kitchen', { ...s, kitchen: { ...s.kitchen, carried: [carried({})] } }, A, undefined, NOW))
+  expect(t.slice(0, 5)).toEqual(['🗓 Plan', '- ☐ kit · S · a', '- ▶ kit · M · b', '- ✅ kit · L · c', 'est 3h · used 50m'])
+  expect(t.indexOf('🗓 Plan')).toBeLessThan(t.indexOf('📌 Carried over'))
+  expect(texts(tabLines('kitchen', noPlanStats(), A, undefined, NOW))).not.toContain('🗓 Plan')
+})
+
+test('SC-6: cooked est to wall shows, with a warning at or past the scale bound', () => {
+  const line = (est: string, wallMin: number) => {
+    const s = kitchenStats()
+    const cooked = [{ ...s.kitchen.cooked[0], est, wallMin }]
+    return texts(tabLines('kitchen', { ...s, kitchen: { ...s.kitchen, cooked } }, A, undefined, NOW)).find(l => l.includes('Kitchen pane')) as string
+  }
+  expect(line('M', 52)).toContain('M→52m ⚠')
+  expect(line('M', 45)).toContain('⚠')
+  expect(line('M', 30)).toContain('M→30m')
+  expect(line('M', 30)).not.toContain('⚠')
+  expect(line('-', 30)).not.toContain('→')
+})
+
+test('SC-7: Today lists open PRs with CI, review and threads; ready PRs say so', () => {
+  const prOpen = [
+    { url: 'https://github.com/o/r/pull/1', repo: 'r', number: 1, createdAt: new Date(NOW - 3 * 3600_000).toISOString(), ci: 'success', review: 'approved', threads: 0, ready: true },
+    { url: 'https://github.com/o/r/pull/2', repo: 'r', number: 2, createdAt: new Date(NOW - 3 * 3600_000).toISOString(), ci: 'failure', review: 'changes_requested', threads: 2, ready: false },
+  ]
+  const s = stats({ today: { ...stats().today, prsOpened: 3, merged: 1, prOpen } } as Partial<TrackStats>)
+  const lines = tabLines('today', s, A, undefined, NOW)
+  expect(texts(lines)).toContain('PR 3 opened · 1 merged')
+  const row = (n: number) => lines.find(l => l.href?.endsWith(`/pull/${n}`))
+  expect(`${row(1)?.text}${row(1)?.label}`).toBe('🔗 r#1 · 3h · ready to merge')
+  expect(`${row(2)?.text}${row(2)?.label}`).toContain('CI ❌ · changes requested · 2 threads')
+})
+
+test('SC-8: a PR status error is a warning line', () => {
+  const s = stats({ today: { ...stats().today, prStatusError: 'x' } } as Partial<TrackStats>)
+  expect(texts(tabLines('today', s, A, undefined, NOW))).toContain('⚠ pr status: x')
+})
+
+test('SC-9: no-plan tip sits after carried and before backlog; tips=false hides it', () => {
+  const noPlan = 'Tip: no plan today — type "hey claude plan today"'
+  expect(COPY.tipNoPlan).toBe(noPlan)
+  expect(statusText(noPlanStats(), A, undefined).endsWith(` · ${noPlan}`)).toBe(true)
+  expect(statusText(noPlanStats(), A, undefined, false)).not.toContain('Tip:')
+  expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined)).toContain('carried over')
+  expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined)).not.toContain('no plan')
+  expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '' } }), A, undefined)).toContain('no plan today')
+  expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '' } }), A, undefined)).not.toContain('in Backlog')
+  expect(statusText(withPlan([], 0, 0), A, undefined)).not.toContain('no plan')
+  expect(statusText(stats({ running: [item({})] }), A, X)).not.toContain('no plan')
+})
+
+test('an old binary without dailyPlan, prOpen or est does not break the pane', () => {
+  const old = JSON.parse(JSON.stringify(stats()))
+  delete old.today.dailyPlan
+  delete old.today.prOpen
+  delete old.today.prStatusError
+  const s = parseTrackStats(JSON.stringify(old))
+  expect(s.today).toMatchObject({ dailyPlan: null, prOpen: [], prStatusError: '' })
+  for (const t of TABS) tabLines(t.id, s, A, undefined, NOW)
+  expect(texts(tabLines('kitchen', s, A, undefined, NOW))).not.toContain('🗓 Plan')
 })
