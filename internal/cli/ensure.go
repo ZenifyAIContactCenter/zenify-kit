@@ -39,9 +39,12 @@ type ensureOpts struct{ ForceLocal bool }
 //  3. wire znf hooks, git-guard, the kit env keys and permission lists in
 //     <ws>/.claude/settings.local.json — skipped, unless opts.ForceLocal, while
 //     ~/.claude/settings.json still has the kit hooks (a machine `up` has not
-//     migrated yet), so no hook runs twice;
-//  4. with codex on PATH: <ws>/.codex hooks and agents, plus the workspace
-//     trust entry in <codexHome>/config.toml;
+//     migrated yet), so no kit hook runs twice; the same gate covers the Codex
+//     hooks in step 4, since the old `up` wrote both user files. The skills
+//     link and the local plugin still install then, which only duplicates
+//     listings, not hook runs;
+//  4. with codex on PATH: <ws>/.codex hooks (gated as above) and agents, plus
+//     the workspace trust entry in <codexHome>/config.toml;
 //  5. pin the workspace default model in <workspace>/.claude/settings.json;
 //  6. create the workspace marker .zenify/manifest.json when missing;
 //  7. distribute the knowledge store's .config into the workspace
@@ -110,10 +113,12 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 	if codexOnPath() {
 		rep.CodexInstalled = true
 		wsCodex := filepath.Join(workspace, ".codex")
-		if ch, err := apply.EnsureCodexHooks(wsCodex, false); err != nil {
-			localErr("codex-hooks", err)
-		} else if rep.CodexHooks = ch; ch.Added+ch.Updated > 0 {
-			fmt.Fprintln(stdout, "Codex hook chưa chạy cho tới khi bạn trust một lần: mở codex, gõ /hooks, chọn trust.") //znf:allow-lang
+		if wireLocal {
+			if ch, err := apply.EnsureCodexHooks(wsCodex, false); err != nil {
+				localErr("codex-hooks", err)
+			} else if rep.CodexHooks = ch; ch.Added+ch.Updated > 0 {
+				fmt.Fprintln(stdout, "Codex hook chưa chạy cho tới khi bạn trust một lần: mở codex, gõ /hooks, chọn trust.") //znf:allow-lang
+			}
 		}
 		if ar, err := plugin.SyncCodexAgents(wsCodex, false); err != nil {
 			localErr("codex-agents", err)

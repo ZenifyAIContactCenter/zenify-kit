@@ -633,6 +633,12 @@ func TestEnsureWorkspace_SessionStartSkipsWhileUserHooksPresent(t *testing.T) {
 	if !strings.Contains(o.String(), "kit vẫn cài ở cấp user; chạy zenify up --apply để chuyển sang workspace") { //znf:allow-lang
 		t.Fatalf("stdout missing the migrate nudge: %s", o.String())
 	}
+	if _, err := os.Stat(filepath.Join(ws, ".codex", "hooks.json")); !os.IsNotExist(err) {
+		t.Fatalf("<ws>/.codex/hooks.json must not exist while user hooks remain: %v", err)
+	}
+	if strings.Contains(o.String(), "/hooks") {
+		t.Fatalf("trust reminder printed while codex hooks were skipped: %s", o.String())
+	}
 
 	var o2, e2 bytes.Buffer
 	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{ForceLocal: true})
