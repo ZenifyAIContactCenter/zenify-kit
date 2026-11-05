@@ -180,6 +180,11 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	if err := version.GuardMutation(version.Current(), minVersionFloor); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
+	// Codex trust and the kit records are keyed by the absolute workspace; the
+	// wizard and --workspace pass what the user typed.
+	if abs, err := filepath.Abs(workspace); err == nil {
+		workspace = abs
+	}
 
 	zenifyDir := filepath.Join(workspace, ".zenify")
 	if err := os.MkdirAll(zenifyDir, 0o750); err != nil {
@@ -348,6 +353,15 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	if err := installPluginLocal(workspace, zenifyHome(os.Getenv, os.UserHomeDir), run); err != nil {
 		_, _ = fmt.Fprintln(errW, "warning: znf plugin:", err)
 		localErrs = append(localErrs, "plugin install: "+err.Error())
+	} else {
+		// The plugin is current now, so ensure's earlier resync failure is moot.
+		kept := localErrs[:0]
+		for _, e := range localErrs {
+			if !strings.HasPrefix(e, "plugin: ") {
+				kept = append(kept, e)
+			}
+		}
+		localErrs = kept
 	}
 	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). The broker
 	// comes from the trusted (embedded) manifest, never --manifest or cwd: the
@@ -359,11 +373,15 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		localErrs = append(localErrs, "broker MCP: "+err.Error())
 	}
 	// Per-developer Plane MCP (stdio, the dev's own PAT, not via the broker).
-	plane, err := registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, run)
-	if err != nil {
-		localErrs = append(localErrs, "plane MCP: "+err.Error())
+	// Its plane-guard hook is a workspace hook: after a failed local step those
+	// are unwired below, so Plane waits for the next up rather than run unguarded.
+	if len(localErrs) == 0 {
+		plane, err := registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, run)
+		if err != nil {
+			localErrs = append(localErrs, "plane MCP: "+err.Error())
+		}
+		localMCPs = append(localMCPs, plane...)
 	}
-	localMCPs = append(localMCPs, plane...)
 	// FR-5.5: the user-level install goes only once every local step succeeded.
 	var migrateErr error
 	switch {

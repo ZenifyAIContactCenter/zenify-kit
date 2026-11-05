@@ -26,6 +26,7 @@ type fakeClaude struct {
 	installed   bool
 	mktAdded    bool
 	failUpdate  bool // `plugin update` fails even when installed
+	failUpdates int  // the next failUpdates `plugin update` calls fail
 	failAddJSON bool // `mcp add-json` fails
 	failRemove  bool // `mcp remove` fails with a real error
 	userMCP     map[string]bool
@@ -70,6 +71,10 @@ func (f *fakeClaude) run(_ string, args ...string) ([]byte, error) {
 	case len(args) >= 2 && args[0] == "plugin" && args[1] == "update":
 		if !f.installed || f.failUpdate {
 			return []byte("Plugin not found"), fmt.Errorf("exit status 1")
+		}
+		if f.failUpdates > 0 {
+			f.failUpdates--
+			return []byte("network down"), fmt.Errorf("exit status 1")
 		}
 	case len(args) >= 2 && args[0] == "plugin" && args[1] == "install":
 		if f.failInstall {
@@ -626,5 +631,54 @@ func TestMigrateUserInstalls_KeepsCodexWithoutLocalCopy(t *testing.T) {
 	}
 	if ok, _ := apply.HasUserKitHooks(apply.UserSettings(home)); ok {
 		t.Error("Claude user hooks must still be migrated")
+	}
+}
+
+// A relative workspace (the wizard returns what the user typed) is keyed by
+// its absolute path, as Codex and Claude see the directory.
+func TestUp_RelativeWorkspaceTrustsAbsolutePath(t *testing.T) {
+	home, ws, m, plans := upFixture(t)
+	fakeLookPath(t, true)
+	useFakeClaude(t, newFakeClaude(ws))
+	t.Chdir(filepath.Dir(ws))
+	_ = runApply(io.Discard, io.Discard, plans, m, "embedded", filepath.Base(ws), &fakeGH{}, &fakeGit{})
+	b, _ := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if !strings.Contains(string(b), `[projects."`+ws+`"]`) {
+		t.Fatalf("codex trust not keyed by %s:\n%s", ws, b)
+	}
+}
+
+// The stale-plugin resync in ensure failed but the install step right after
+// it brought the plugin current: that earlier failure no longer blocks the
+// migration.
+func TestUp_PluginRetrySucceededMigrates(t *testing.T) {
+	home, ws, m, plans := upFixture(t)
+	writeStamp(t, ws, "v0.0.1")
+	f := newFakeClaude(ws)
+	f.installed, f.mktAdded, f.failUpdates = true, true, 1
+	useFakeClaude(t, f)
+	var errOut strings.Builder
+	_ = runApply(io.Discard, &errOut, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{})
+	if strings.Contains(errOut.String(), "giữ nguyên bản cài cấp user") { //znf:allow-lang
+		t.Fatalf("migration blocked by a failure the retry fixed: %s", errOut.String())
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "znf")); !os.IsNotExist(err) {
+		t.Errorf("skills/znf still there: %v", err)
+	}
+}
+
+// plane-guard lives in the workspace hooks: while a local step failed (and
+// those hooks are unwired), the Plane MCP must not be registered without it.
+func TestUp_LocalFailureSkipsPlaneMCP(t *testing.T) {
+	_, ws, m, plans := upFixture(t)
+	useLocalMCPs(t, true)
+	f := newFakeClaude(ws)
+	f.failInstall = true
+	useFakeClaude(t, f)
+	_ = runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{})
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, "mcp add-json zenify-plane") {
+			t.Fatalf("Plane MCP registered while local hooks failed: %q", c)
+		}
 	}
 }
