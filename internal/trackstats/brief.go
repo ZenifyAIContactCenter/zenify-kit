@@ -15,6 +15,7 @@ type BriefResult struct {
 	DailyPlan     *DailyPlan     `json:"dailyPlan"`
 	PROpen        []BriefPR      `json:"prOpen"`
 	PRStatusError string         `json:"prStatusError"`
+	MergedError   string         `json:"mergedError"`
 	Backlog       []BriefBacklog `json:"backlog"`
 	GhError       string         `json:"ghError"`
 }
@@ -31,6 +32,7 @@ type BriefCarried struct {
 	Brief string `json:"brief"`
 	Kind  string `json:"kind"`
 	Repo  string `json:"repo"`
+	Est   string `json:"est"`
 	Phase string `json:"phase"`
 }
 
@@ -62,13 +64,23 @@ func Brief(r Result) BriefResult {
 		Scale:         BriefScale{S: r.Scale.S, M: r.Scale.M, L: r.Scale.L},
 		DailyPlan:     r.Today.DailyPlan,
 		PRStatusError: r.Today.PRStatusError,
+		MergedError:   r.Today.MergedError,
 		GhError:       r.Backlog.GhError,
 		Carried:       []BriefCarried{},
 		PROpen:        []BriefPR{},
 		Backlog:       []BriefBacklog{},
 	}
+	// Carried items are open (running or stale), so Running holds their estimate.
+	est := map[string]string{}
+	for _, it := range r.Running {
+		est[it.ID] = it.Est
+	}
 	for _, c := range r.Kitchen.Carried {
-		b.Carried = append(b.Carried, BriefCarried{ID: c.ID, Brief: c.Brief, Kind: c.Kind, Repo: c.Repo, Phase: c.Phase})
+		e := est[c.ID]
+		if e == "" {
+			e = "-"
+		}
+		b.Carried = append(b.Carried, BriefCarried{ID: c.ID, Brief: c.Brief, Kind: c.Kind, Repo: c.Repo, Est: e, Phase: c.Phase})
 	}
 	for _, p := range r.Today.PROpen {
 		b.PROpen = append(b.PROpen, BriefPR{URL: p.URL, Repo: p.Repo, Number: p.Number, CI: p.CI, Review: p.Review, Threads: p.Threads, Ready: p.Ready})
