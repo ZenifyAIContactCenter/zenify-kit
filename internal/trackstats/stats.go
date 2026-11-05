@@ -79,7 +79,12 @@ type Today struct {
 	// PRsWaiting counts tracked PRs (any day) not known as merged or closed (FR-11.7 (5)).
 	PRsWaiting  int    `json:"prsWaiting"`
 	MergedError string `json:"mergedError"`
-	Items       []Item `json:"items"`
+	// PROpen is the review state of up to ten open PRs; PRStatusError is the first gh error of the run.
+	PROpen        []PRStatus `json:"prOpen"`
+	PRStatusError string     `json:"prStatusError"`
+	Items         []Item     `json:"items"`
+	// DailyPlan is today's latest `plan` row with its progress; nil when none was set today.
+	DailyPlan *DailyPlan `json:"dailyPlan"`
 }
 
 type KindEstimate struct {
@@ -164,6 +169,9 @@ type Input struct {
 	Now       time.Time
 	Merged    MergedFunc
 	Cache     map[string]string
+	// PRStatus asks gh for an open PR's review state; nil reads PRStatusCache instead.
+	PRStatus      PRStatusFunc
+	PRStatusCache map[string]PRStatus
 	// GitHub lists open issues; nil skips the source. On a partial failure it
 	// returns the items it got together with the error.
 	GitHub func() ([]Issue, error)
@@ -286,7 +294,7 @@ func Compute(in Input) (Result, map[string]string) {
 		case "onboard":
 			res.Onboarded = true
 			continue
-		case "backlog", "drop", "history":
+		case "backlog", "drop", "history", "plan":
 			continue // backlog and drop are read by computeBacklog; history feeds no stat
 		}
 		w := works[e.ID]
@@ -417,7 +425,9 @@ func Compute(in Input) (Result, map[string]string) {
 		}
 	}
 	res.Today.Plans = countPlans(in, &res)
-	newCache, ghDown := mergedToday(in, prOrder, &res)
+	planURLs := planPRIDs(logEv, in.Today)
+	newCache, ghDown := mergedToday(in, prOrder, planURLs, &res)
+	res.Today.PROpen, ghDown = openPRStatus(in, prOrder, firstEnd, planURLs, newCache, ghDown, &res)
 
 	// Scale: wall minutes of the done and pushed items with a real estimate, oldest end first.
 	ended := byEnd(items)
@@ -520,17 +530,20 @@ func countPlans(in Input, res *Result) map[string]int {
 }
 
 // mergedToday asks Merged about every ended PR not yet known as merged,
-// counts the ones merged today and returns the new cache.
-func mergedToday(in Input, urls []string, res *Result) (cache map[string]string, ghDown bool) {
+// counts the ones merged today and returns the new cache. extra holds the plan PR URLs: they are
+// asked about too, but only urls feed PRsWaiting and Merged.
+func mergedToday(in Input, urls, extra []string, res *Result) (cache map[string]string, ghDown bool) {
 	cache = map[string]string{}
 	for k, v := range in.Cache {
 		cache[k] = v
 	}
 	if in.Merged != nil {
-		for _, u := range urls {
-			if _, known := cache[u]; known {
+		asked := map[string]bool{}
+		for _, u := range append(append([]string(nil), urls...), extra...) {
+			if _, known := cache[u]; known || asked[u] {
 				continue
 			}
+			asked[u] = true
 			at, err := in.Merged(u)
 			if err != nil {
 				// One PR's error (no access, deleted repo) must not hide the PRs after it;
@@ -783,4 +796,9 @@ func parseFindings(v string) ([4]int, bool) {
 		out[i] = n
 	}
 	return out, true
+}
+
+// sortNewestFirst orders PR urls by their first end, newest first; equal ends keep their order.
+func sortNewestFirst(urls []string, at map[string]time.Time) {
+	sort.SliceStable(urls, func(i, j int) bool { return at[urls[i]].After(at[urls[j]]) })
 }

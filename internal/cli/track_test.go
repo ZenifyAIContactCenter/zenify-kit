@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 )
 
 func trackWS(t *testing.T, on bool) string {
@@ -727,5 +729,52 @@ func TestTrackStatsTextCountsDone(t *testing.T) {
 	}
 	if !strings.Contains(out, "1 started, 1 done, ") {
 		t.Fatalf("stats text = %q", out)
+	}
+}
+
+// pr-status.json: gh is asked inside the mergedRecheck window only; outside it prOpen comes
+// from the file and the last error from pr-status.checked.
+func TestTrackStatsPROpenThrottled(t *testing.T) {
+	ws := trackWS(t, true)
+	kitchenLog(t, ws, kitchenPR, "")
+	stubMergedAndTitle(t, "P")
+	asked := 0
+	old := trackPRStatus
+	trackPRStatus = func(u string) (trackstats.PRStatus, error) {
+		asked++
+		return trackstats.PRStatus{URL: u, Repo: "r", Number: 7, CI: "success", Review: "-", Ready: true}, nil
+	}
+	t.Cleanup(func() { trackPRStatus = old })
+	dir := filepath.Join(ws, ".zenify", "track")
+	prOpen := func() ([]trackstats.PRStatus, string) {
+		t.Helper()
+		out, err := runTrack(t, ws, "stats", "--json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var r struct {
+			Today struct {
+				PROpen        []trackstats.PRStatus `json:"prOpen"`
+				PRStatusError string                `json:"prStatusError"`
+			} `json:"today"`
+		}
+		if err := json.Unmarshal([]byte(out), &r); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		return r.Today.PROpen, r.Today.PRStatusError
+	}
+	if got, _ := prOpen(); asked != 1 || len(got) != 1 || got[0].URL != kitchenPR || !got[0].Ready {
+		t.Fatalf("in window: asked %d got %+v", asked, got)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "pr-status.json"))
+	if err != nil || !strings.Contains(string(b), `"`+kitchenPR+`"`) {
+		t.Fatalf("pr-status.json = %q err %v", b, err)
+	}
+	// The stamp is fresh now: no gh call, the list and the stamped error come from disk.
+	if err := os.WriteFile(filepath.Join(dir, "pr-status.checked"), []byte("stamped"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, e := prOpen(); asked != 1 || len(got) != 1 || got[0].URL != kitchenPR || e != "stamped" {
+		t.Fatalf("outside window: asked %d got %+v err %q", asked, got, e)
 	}
 }

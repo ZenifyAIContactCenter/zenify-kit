@@ -3,10 +3,12 @@
 package trackstats
 
 import (
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const fieldSep = " · "
@@ -25,7 +27,7 @@ var (
 	bidRe   = regexp.MustCompile(`^b-\d{6}-[0-9a-f]{4}$`)
 	sddRe   = regexp.MustCompile(`^repos/.+/progress\.md:\d+$`)
 	hidRe   = regexp.MustCompile(`^[0-9a-f]{8}$`)
-	noIDRow = map[string]bool{"backlog": true, "drop": true, "onboard": true, "history": true}
+	noIDRow = map[string]bool{"backlog": true, "drop": true, "onboard": true, "history": true, "plan": true}
 )
 
 func oneOf(v string, set ...string) bool {
@@ -116,6 +118,28 @@ func parseLogLine(raw string) (Event, bool) {
 	return Event{At: at, Type: p[1], ID: p[2], F: f}, true
 }
 
+// ValidPlanID reports whether id may appear in a `plan` row: a backlog id, an issue or PR
+// URL, an SDD id or a track id.
+func ValidPlanID(id string) bool {
+	if strings.IndexFunc(id, unicode.IsSpace) >= 0 {
+		return false
+	}
+	if strings.HasPrefix(id, "http") {
+		return validHTTPURL(id)
+	}
+	return bidRe.MatchString(id) || sddRe.MatchString(id) || idRe.MatchString(id)
+}
+
+func validHTTPURL(id string) bool {
+	for _, r := range id {
+		if r < 0x20 || r == 0x7f || r == ' ' {
+			return false
+		}
+	}
+	u, err := url.Parse(id)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
 func validFrom(v string) bool {
 	return v == "-" || bidRe.MatchString(v) || strings.HasPrefix(v, "http") || sddRe.MatchString(v)
 }
@@ -136,6 +160,13 @@ func parseListRow(at time.Time, p []string) (Event, bool) {
 		ok = len(f) == 0 && (bidRe.MatchString(p[2]) || sddRe.MatchString(p[2]))
 	case "onboard":
 		ok = len(f) == 0 && p[2] == "memory"
+	case "plan":
+		// The id field is the plan date; the fields are the planned ids.
+		_, err := time.Parse(dateLayout, p[2])
+		ok = err == nil && len(f) >= 1
+		for _, id := range f {
+			ok = ok && ValidPlanID(id)
+		}
 	case "history":
 		ok = len(f) == 4 && hidRe.MatchString(p[2]) && oneOf(f[0], "cook", "fix", "hotfix", "-") && f[1] != "" &&
 			intOrDash(f[2]) && f[2] != "-" && validPairs(f[3])

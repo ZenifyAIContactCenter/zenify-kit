@@ -6,9 +6,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
@@ -319,7 +321,7 @@ func TestSessionStart_TrackLine(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", "")
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	t.Setenv("ZNF_AUTONOMOUS", "")
-	want := "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch)\n"
+	want := "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --brief first (track.md#Backlog); plan today → track.md#Daily plan\n"
 	cases := []struct {
 		name    string
 		overlay string
@@ -454,3 +456,101 @@ func TestSessionStart_TrackOnboardLogProblems(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// The session-start digest carries a one-line track summary read from local files only.
+func TestSessionStart_TrackSummaryLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	yesterday := now.Add(-24 * time.Hour).UTC().Format(time.RFC3339)
+	yesterdayEnd := now.Add(-23 * time.Hour).UTC().Format(time.RFC3339)
+	stamp := now.Add(-time.Minute).UTC().Format(time.RFC3339)
+	full := strings.Join([]string{
+		stamp + " · onboard · memory",
+		yesterday + " · start · cook-261104-aaaa · cook · kit · M",
+		yesterday + " · start · fix-261104-bbbb · fix · kit · S",
+		yesterdayEnd + " · end · fix-261104-bbbb · https://github.com/o/r/pull/7 · - · 0",
+		stamp + " · backlog · b-261105-ab12 · kit · S · - · rename helper",
+		stamp + " · plan · " + today + " · b-261105-ab12",
+	}, "\n") + "\n"
+	cases := []struct {
+		name string
+		log  string
+		want string
+	}{
+		{"all parts", full, "track: 1 carried · plan 0/1 done · 1 PR waiting · 1 backlog\n"},
+		{"nothing open", stamp + " · onboard · memory\n", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			ws := mkWorkspace(t)
+			if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte("features:\n  track: true\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join(ws, ".zenify", "track")
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(c.log), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			if rc := runSessionStart(ws, &buf); rc != 0 {
+				t.Fatalf("rc = %d", rc)
+			}
+			out := buf.String()
+			if c.want == "" {
+				if regexp.MustCompile(`(?m)^track: \d`).MatchString(out) {
+					t.Errorf("unexpected summary line in %q", out)
+				}
+				return
+			}
+			if !strings.Contains(out, c.want) {
+				t.Errorf("want %q in %q", c.want, out)
+			}
+		})
+	}
+}
+
+// A stale item (started over 7 days ago) whose session still beats is held, not backlog:
+// the summary loads sessions and beats like stats does.
+func TestSessionStart_TrackSummaryHeldStale(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	t.Setenv("HOME", t.TempDir())
+	now := time.Now()
+	old := now.Add(-8 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	stamp := now.Add(-time.Minute).UTC().Format(time.RFC3339)
+	ws := mkWorkspace(t)
+	if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte("features:\n  track: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(ws, ".zenify", "track")
+	for _, d := range []string{filepath.Join(dir, "sessions"), filepath.Join(dir, "live")} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log := stamp + " · onboard · memory\n" + old + " · start · cook-261028-aaaa · cook · kit · M\n"
+	files := map[string]string{
+		filepath.Join(dir, "log.md"):              log,
+		filepath.Join(dir, "sessions", "s1.log"): old + " · bind · cook-261028-aaaa\n",
+		filepath.Join(dir, "live", "s1.beat"):    "",
+	}
+	for p, body := range files {
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var buf bytes.Buffer
+	if rc := runSessionStart(ws, &buf); rc != 0 {
+		t.Fatalf("rc = %d", rc)
+	}
+	if out := buf.String(); !strings.Contains(out, "track: 1 carried\n") {
+		t.Fatalf("want only the carried item, got %q", out)
+	}
+}

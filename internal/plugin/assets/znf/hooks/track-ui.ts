@@ -1,6 +1,6 @@
 // FR-6.2, FR-11.2–11.4: the pure half of the track pane and status line — what each tab and the
 // status line say for one `zenify track stats --json` answer. All UI copy is English (FR-8.1).
-import type { KitchenCarried, TrackItem, TrackStats, TrackTab } from '../types'
+import type { KitchenCarried, PRStatus, TrackItem, TrackStats, TrackTab } from '../types'
 
 export type Tab = TrackTab
 // A line with `href` is a link: `text` is what stands before it, `label` the clickable text.
@@ -21,6 +21,7 @@ export const COPY = {
   tipOver: 'Tip: over est {est} ({min}m/{max}m) — split the work or re-estimate',
   tipPr: 'Tip: {N} PRs waiting to merge — type "hey claude check PR"',
   // FR-11.4 (track-metrics): unfinished work from earlier days.
+  tipNoPlan: 'Tip: no plan today — type "hey claude plan today"',
   tipCarried: 'Tip: {N} items carried over — type "hey claude continue"',
   noWorkspace: 'not in a zenify workspace',
   // The main screen reports no clicks: the tabs are reached by keys once the pane holds the keyboard.
@@ -63,6 +64,9 @@ export function parseTrackStats(stdout: string): TrackStats {
     rolledBack: data.today?.rolledBack ?? {},
     wallMin: data.today?.wallMin ?? 0,
     agentMin: data.today?.agentMin ?? 0,
+    dailyPlan: data.today?.dailyPlan ?? null,
+    prOpen: data.today?.prOpen ?? [],
+    prStatusError: data.today?.prStatusError ?? '',
   }
   const item = (i: TrackItem): TrackItem => ({ ...i, wallMin: i.wallMin ?? 0, tab: i.tab ?? '' })
   const backlog = { ghError: '', ...data.backlog, items: data.backlog?.items ?? [] }
@@ -91,6 +95,8 @@ export const fmtNum = (n: number): string => {
   const k = (n / 1e3).toFixed(1)
   return n < 1e6 && Number(k) < 1000 ? `${k}k` : `${(n / 1e6).toFixed(1)}M`
 }
+// 50 -> 50m, 180 -> 3h, 270 -> 4h30m.
+export const fmtDur = (m: number): string => (m < 60 ? `${m}m` : m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}m`)
 const min = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v}m`)
 const isSize = (est: string) => SIZES.includes(est)
 const wallText = (i: TrackItem) => (isSize(i.est) ? `${i.wallMin}m/${i.est}` : `${i.wallMin}m`)
@@ -107,6 +113,7 @@ function hitRate(s: TrackStats): number | undefined {
 function tipFor(s: TrackStats, mine: TrackItem | undefined): string | undefined {
   const carried = s.kitchen?.carried?.length ?? 0
   if (!mine && carried > 0) return COPY.tipCarried.replace('{N}', String(carried))
+  if (!mine && s.onboarded && !s.today?.dailyPlan) return COPY.tipNoPlan
   const n = s.backlog?.items?.length ?? 0
   if (!mine && n > 0) return COPY.tipBacklog.replace('{N}', String(n))
   if (mine && !isSize(mine.est) && mine.wallMin >= 5) return COPY.tipNoEst
@@ -178,6 +185,8 @@ const ICON = {
   lastDay: '📆',
   pr: '🔗',
   today: '📅',
+  plan: '🗓',
+  item: { todo: '☐', running: '▶', done: '✅', cancelled: '⛔' } as Record<string, string>,
   running: '🏃',
   estimate: '🎯',
   quality: '🛡',
@@ -193,10 +202,13 @@ export const prLabel = (url: string): string => {
   const m = /^https:\/\/github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/.exec(url)
   return m ? `${m[1]}#${m[2]}` : url
 }
-// FR-12.3: the braille frames of the Cooking spinner; WATCH_TICK_MS is one frame.
+// FR-12.3: the braille frames of the Cooking spinner; SPIN_TICK_MS is one frame.
 const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-// FR-6.3/FR-11.5: how often the watched mtimes are compared; also the length of one spinner frame.
+// FR-6.3/FR-11.5: how often the watched mtimes are compared (and stats re-run when one changed).
 export const WATCH_TICK_MS = 2000
+// FR-12.3: how often the Kitchen tab is redrawn while a tab cooks or waits, so the spinner and the
+// seconds advance evenly. A redraw runs no command; stats still follow WATCH_TICK_MS.
+export const SPIN_TICK_MS = 1000
 const BOIL_STATE = { ask: 'asking', permission: 'needs permission' } as const
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -248,7 +260,7 @@ function cookingLines(s: TrackStats, now: number): Line[] {
   const lines: Line[] = [head(`${ICON.cooking} Cooking`)]
   if (cooking.length === 0) lines.push(dim('no tab is cooking'))
   cooking.forEach((c, i) => {
-    const frame = SPINNER[(Math.floor(now / WATCH_TICK_MS) + i) % SPINNER.length]
+    const frame = SPINNER[(Math.floor(now / SPIN_TICK_MS) + i) % SPINNER.length]
     const more = [c.kind, c.phase].filter(Boolean)
     lines.push(plain(`- ${frame} ${waited(c.since, now)} ${c.tab || c.brief}${more.map(m => SEP + m).join('')}`))
     lines.push(dim(`    ${c.session.slice(0, 8)}${c.id ? SEP + c.id : ''}`))
@@ -257,13 +269,33 @@ function cookingLines(s: TrackStats, now: number): Line[] {
   return lines
 }
 
+// FR-3.1: today's plan above Carried over; nothing without a plan or with an empty one.
+function planLines(s: TrackStats): Line[] {
+  const p = s.today?.dailyPlan
+  if (!p || p.items.length === 0) return []
+  const lines: Line[] = [head(`${ICON.plan} Plan`)]
+  for (const i of p.items) {
+    const row = `- ${ICON.item[i.status] ?? ''} ${[i.repo, i.est, i.title].join(SEP)}`
+    lines.push(i.url ? { text: '', href: i.url, label: row } : plain(row))
+  }
+  lines.push(dim(`est ${fmtDur(p.estMin)}${SEP}used ${fmtDur(p.wallMin)}`), plain(''))
+  return lines
+}
+
+// FR-3.2: ` · M→52m`, with ⚠ once the wall time reached the size's bound (the rule of the over-est tip).
+function cookedEst(s: TrackStats, c: { est?: string; wallMin?: number }): string {
+  if (!c.est || !isSize(c.est)) return ''
+  const wall = c.wallMin ?? 0
+  return `${SEP}${c.est}→${wall}m${wall >= s.scale[c.est as 'S' | 'M' | 'L'] ? ' ⚠' : ''}`
+}
+
 // FR-4: the Kitchen tab — the same for every session: what was cooked today, what waits on a person.
 function kitchenLines(s: TrackStats, now: number): Line[] {
   const k = s.kitchen
   const cooked = k?.cooked ?? []
   const boil = k?.rollingBoil ?? []
   // Order: what is left, what runs, what waits on you, then what is done.
-  const lines: Line[] = [...carriedLines(s, now), ...cookingLines(s, now), head(`${ICON.boil} Rolling boil`)]
+  const lines: Line[] = [...planLines(s), ...carriedLines(s, now), ...cookingLines(s, now), head(`${ICON.boil} Rolling boil`)]
   if (boil.length === 0) lines.push(dim('no tab is waiting'))
   for (const b of boil) {
     lines.push(plain(`- ${ICON.state[b.state]} ${waited(b.since, now)} ${b.tab || b.brief}`))
@@ -274,14 +306,25 @@ function kitchenLines(s: TrackStats, now: number): Line[] {
   for (const c of cooked) {
     const icon = c.status === 'done' && !c.merged ? ICON.unmerged : ICON.status[c.status]
     // The icon shows the status and the time comes first, so a long brief is cut at its end only.
-    lines.push(plain(`- ${icon ? `${icon} ` : ''}${clock(c.endedAt)} ${c.brief}`))
+    lines.push(plain(`- ${icon ? `${icon} ` : ''}${clock(c.endedAt)} ${c.brief}${cookedEst(s, c)}`))
     for (const pr of c.prs ?? []) lines.push({ text: `  ${ICON.pr} `, href: pr, label: prLabel(pr) })
   }
   if (k?.titleError) lines.push(warn(`⚠ title error: ${k.titleError}`))
   return lines
 }
 
-function todayLines(s: TrackStats, session: string): Line[] {
+const CI_ICON: Record<string, string> = { success: '✅', failure: '❌', pending: '⏳' }
+const REVIEW_COPY: Record<string, string> = { approved: 'approved', changes_requested: 'changes requested' }
+// FR-3.3: one open PR as a link line; a ready PR says so instead of its CI and review.
+function prLine(pr: PRStatus, now: number): Line {
+  const who = `${pr.repo}#${pr.number}${SEP}${age(pr.createdAt, now)}`
+  const state = pr.ready
+    ? 'ready to merge'
+    : [`CI ${CI_ICON[pr.ci] ?? '-'}`, REVIEW_COPY[pr.review] ?? 'waiting', pr.threads > 0 && plural(pr.threads, 'thread', 'threads')].filter(Boolean).join(SEP)
+  return { text: `${ICON.pr} `, href: pr.url, label: `${who}${SEP}${state}` }
+}
+
+function todayLines(s: TrackStats, session: string, now: number): Line[] {
   const t = s.today
   const cancelled = sum(t.cancelled)
   const rolledBack = sum(t.rolledBack)
@@ -302,7 +345,9 @@ function todayLines(s: TrackStats, session: string): Line[] {
   // FR-1.4: SDD tasks and rounds belong to cook work, so they show only after a cook is done today.
   if ((t.done?.cook ?? 0) > 0) lines.push(plain(`SDD tasks ${fmtNum(t.tasks)}`))
   if (t.rounds > 0) lines.push(plain(`Rounds ${fmtNum(t.rounds)}`))
-  if (t.prsOpened > 0 || t.merged > 0) lines.push(plain(`PR ${t.prsOpened} (${t.merged} merged)`))
+  if (t.prsOpened > 0 || t.merged > 0) lines.push(plain(`PR ${t.prsOpened} opened${SEP}${t.merged} merged`))
+  for (const pr of t.prOpen ?? []) lines.push(prLine(pr, now))
+  if (t.prStatusError) lines.push(warn(`⚠ pr status: ${t.prStatusError}`))
   const plans = Object.entries(t.plans ?? {})
   if (plans.length > 0) lines.push(plain(`Plans written today: ${plans.map(([repo, n]) => `${repo} ${n}`).join(SEP)}`))
   if (t.mergedError) lines.push(warn(`⚠ merged check error: ${t.mergedError}`))
@@ -423,7 +468,7 @@ export function tabLines(tab: Tab, s: TrackStats, session: string, _boundId: str
   return tab === 'kitchen'
     ? kitchenLines(s, now)
     : tab === 'today'
-      ? todayLines(s, session)
+      ? todayLines(s, session, now)
       : tab === 'estimate'
         ? estimateLines(s)
         : tab === 'backlog'

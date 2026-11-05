@@ -24,7 +24,7 @@ const STATS = JSON.stringify({
   malformed: 0,
   scale: { source: 'default', n: 0, S: 30, M: 90, L: 240 },
   rules: [],
-  today: { date: '2026-11-02', plans: {}, started: {}, ended: {}, tasks: 0, rounds: 0, prsOpened: 0, merged: 0, mergedError: '', items: [] },
+  today: { date: '2026-11-02', plans: {}, started: {}, ended: {}, tasks: 0, rounds: 0, prsOpened: 0, merged: 0, mergedError: '', items: [], dailyPlan: null, prOpen: [], prStatusError: '' },
   running: [],
   estimate: { byKind: {}, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: {} },
   quality: { byKind: {}, fix: { n: 0, roundAvg: null, wideRate: null, regressionRate: null } },

@@ -39,6 +39,7 @@ zenify track stats --json
 - [zenify track est](./zenify_track_est): Đặt size ước lượng cho id đã start; dòng est sau cùng thắng.
 - [zenify track fix](./zenify_track_fix): Ghi một vòng fix của lượt fix/hotfix: đường chẩn đoán narrow hoặc wide và có regression test hay không.
 - [zenify track onboard](./zenify_track_onboard): Nạp dữ liệu ban đầu cho track.
+- [zenify track plan](./zenify_track_plan): Quản lý kế hoạch trong ngày của pane (đặt danh sách việc).
 - [zenify track ship](./zenify_track_ship): Ghi kết quả một lần chạy znf:ship: shipped hay blocked, bước bị chặn, số finding và số vòng fix.
 - [zenify track start](./zenify_track_start): Mở một lượt theo dõi và in id `track: <id>`.
 - [zenify track stats](./zenify_track_stats): In số liệu hôm nay, độ chính xác estimate và chất lượng từ log.md và sessions/*.log.
