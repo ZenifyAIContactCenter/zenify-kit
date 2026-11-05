@@ -7,7 +7,7 @@ Khi cần biết giá trị mà `zenify reviewer set` đã ghi, không phụ thu
 
 ## Kết quả
 
-In `agent` hoặc `codex`. File hoặc key chưa có thì in `agent` (mặc định). Giá trị khác `agent` và `codex` thì lệnh báo lỗi và exit khác 0. Chạy ngoài workspace lệnh cũng báo lỗi, vì không có file nào để đọc.
+In `agent` hoặc `codex`. File hoặc key chưa có thì in `agent` (mặc định). Giá trị khác `agent` và `codex` thì lệnh báo lỗi và exit khác 0. Lệnh đọc file của workspace chứa thư mục hiện tại; ngoài workspace thì lệnh dùng workspace ghi trong `~/.zenify/workspace` (lần `zenify up` gần nhất), và chỉ báo lỗi khi không xác định được workspace nào.
 
 ## Ví dụ
 

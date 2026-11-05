@@ -32,7 +32,7 @@ Gọi skill bằng `$znf:` cộng tên skill, ví dụ `$znf:fix` hoặc `$znf:s
 zenify up --reviewer codex
 ```
 
-Lệnh này đặt `ZNF_REVIEWER=codex` trong `<workspace>/.claude/settings.local.json` (mặc định là `agent`); `zenify reviewer set|get` đọc ghi cùng file và báo lỗi khi chạy ngoài workspace. Chạy `zenify reviewer` để xem lựa chọn hiện tại.
+Lệnh này đặt `ZNF_REVIEWER=codex` trong `<workspace>/.claude/settings.local.json` (mặc định là `agent`); `zenify reviewer set|get` đọc ghi cùng file; ngoài workspace hai lệnh dùng workspace của lần `zenify up` gần nhất (`~/.zenify/workspace`) và chỉ báo lỗi khi không có workspace nào. Chạy `zenify reviewer` để xem lựa chọn hiện tại.
 
 ## Codex còn thiếu gì
 
