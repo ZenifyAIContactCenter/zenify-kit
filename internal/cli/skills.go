@@ -16,24 +16,22 @@ func newSkillsCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "skills", Short: "quản lý plugin skill znf"} //znf:allow-lang
 	sync := &cobra.Command{
 		Use:   "sync",
-		Short: "materialize plugin znf vào ~/.claude/skills/znf", //znf:allow-lang
+		Short: "materialize plugin znf vào <zenifyHome>/plugin-marketplace", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dest, err := plugin.DefaultDest()
-			if err != nil {
-				return exitcode.New(exitcode.Fail, err)
+			zh := zenifyHome(os.Getenv, os.UserHomeDir)
+			// resync first: it only updates the claude plugin while the stamp is stale,
+			// and SyncMarketplace below re-stamps it.
+			if ws, _, ok := resolveWorkspace(".", "", os.Getenv, os.UserHomeDir); ok {
+				resyncPluginLocal(ws, zh, runClaudeIn(ws), cmd.ErrOrStderr())
 			}
-			man, err := plugin.DefaultManifest()
-			if err != nil {
-				return exitcode.New(exitcode.Fail, err)
-			}
-			res, err := plugin.Sync(dest, man)
+			res, err := plugin.SyncMarketplace(zh)
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
 			u := uiOut(cmd)
 			u.Step(ui.StatusOK, "znf sync", //znf:allow-lang
 				fmt.Sprintf("%d ghi, %d giữ (user sửa), %d không đổi, %d gỡ → %s", //znf:allow-lang
-					len(res.Written), len(res.Kept), len(res.Skipped), len(res.Removed), dest))
+					len(res.Written), len(res.Kept), len(res.Skipped), len(res.Removed), plugin.PluginDir(zh)))
 
 			home, _ := os.UserHomeDir()
 			if home != "" {

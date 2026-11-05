@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
@@ -49,12 +50,12 @@ func storeFixtureWithSkip(t *testing.T) (zenifyHome string) {
 
 func stampManifest(t *testing.T, home, ver string) {
 	t.Helper()
-	znf := filepath.Join(home, ".claude", "skills", "znf")
-	if err := os.MkdirAll(znf, 0o755); err != nil {
+	mp := plugin.PluginManifest(zenifyHome(os.Getenv, func() (string, error) { return home, nil }))
+	if err := os.MkdirAll(filepath.Dir(mp), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`{"entries":{},"version":%q}`, ver)
-	if err := os.WriteFile(filepath.Join(znf, ".manifest.json"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(mp, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -254,44 +255,6 @@ func TestEnsureWorkspace_AnnouncesConfigWrites(t *testing.T) {
 	}
 	if !strings.Contains(o.String(), filepath.Join(".claude", "rules", "00-constitution.md")) {
 		t.Fatalf("stdout missing the written dest path: %s", o.String())
-	}
-}
-
-// Ported from selfheal_test: a stale stamp re-materializes the plugin and
-// rewrites the stamp to the running version.
-func TestEnsureWorkspace_StaleStampResyncsPlugin(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	stampManifest(t, home, "v0.0.1")
-	storeFixture(t)
-
-	var o, e bytes.Buffer
-	ensureWorkspace(t.TempDir(), home, &o, &e)
-
-	raw, _ := os.ReadFile(filepath.Join(home, ".claude", "skills", "znf", ".manifest.json"))
-	var m struct {
-		Version string `json:"version"`
-	}
-	_ = json.Unmarshal(raw, &m)
-	if m.Version != version.Current() {
-		t.Fatalf("stamp = %q, want %q (resync did not run)", m.Version, version.Current())
-	}
-}
-
-// Ported from selfheal_test: an up-to-date stamp must NOT resync (the skills
-// dir stays empty apart from the manifest we planted).
-func TestEnsureWorkspace_UpToDateStampNoResync(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	stampManifest(t, home, version.Current())
-	storeFixture(t)
-
-	var o, e bytes.Buffer
-	ensureWorkspace(t.TempDir(), home, &o, &e)
-
-	ents, _ := os.ReadDir(filepath.Join(home, ".claude", "skills", "znf"))
-	if len(ents) != 1 {
-		t.Fatalf("resync ran despite up-to-date stamp: %d entries", len(ents))
 	}
 }
 

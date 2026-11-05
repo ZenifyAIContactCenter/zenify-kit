@@ -11,7 +11,6 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
 
@@ -44,7 +43,7 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 		}
 	}()
 
-	resyncPluginIfStale(home, stderr)
+	resyncPluginLocal(workspace, zenifyHome(os.Getenv, func() (string, error) { return home, nil }), pluginRunner(workspace), stderr)
 
 	// Codex discovers skills under ~/.agents/skills, so this runs whether or
 	// not codex is installed (FR-2.1).
@@ -199,24 +198,4 @@ func ensureWorkspaceMarker(workspace, home string) (string, error) {
 		return "", err
 	}
 	return "", m.Save(marker)
-}
-
-// resyncPluginIfStale is the former selfHeal body: when the plugin manifest's
-// version stamp differs from the binary, re-run plugin.Sync. Fail-open.
-// dest/manifestPath are derived from home so this stays in step with the
-// sibling ensureWorkspace steps, which all key off the same home parameter
-// (plugin.DefaultDest/DefaultManifest independently call os.UserHomeDir).
-func resyncPluginIfStale(home string, stderr io.Writer) {
-	dest := filepath.Join(home, ".claude", "skills", "znf")
-	manifestPath := filepath.Join(dest, ".manifest.json")
-	stamp := ""
-	if m, err := managed.Load(manifestPath); err == nil {
-		stamp = m.Version
-	}
-	if stamp == version.Current() {
-		return
-	}
-	if _, err := plugin.Sync(dest, manifestPath); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: plugin sync:", err)
-	}
 }

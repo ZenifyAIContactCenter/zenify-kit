@@ -112,6 +112,9 @@ func runHermetic(m *testing.M) int {
 	npmRefresh = func(io.Writer) func() error {
 		return func() error { return fmt.Errorf("test hermeticity: a cli test ran gh auth refresh") }
 	}
+	pluginRunner = func(string) func(string, ...string) ([]byte, error) {
+		return func(string, ...string) ([]byte, error) { return nil, fmt.Errorf("test hermeticity: no real claude") }
+	}
 	trustedBrokerManifest = func() ([]byte, string) { return []byte(noBrokerYAML), "test-no-broker" }
 	tuneBrokerClient = func(*brokerclient.Client) {
 		panic("test hermeticity: a cli test built a broker client without brokerFixture")
