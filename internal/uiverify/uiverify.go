@@ -24,6 +24,10 @@ import (
 // screens/components. FR-2.1 — keep this exact pattern in sync with the brief.
 var renderRe = regexp.MustCompile(`\.(tsx|jsx|vue|svelte|css|scss|less)$|components?/|pages?/|views?/`)
 
+// testFileRe matches a test file: it renders nothing a person sees, so it never
+// requires a UI verdict even when it sits under a UI directory or ends in .tsx.
+var testFileRe = regexp.MustCompile(`(^|/)__tests__/|\.(test|spec)\.[cm]?[jt]sx?$`)
+
 // unsafeFileRe matches what may not appear in a screenshot file name: a
 // route-shaped screen ("chat/room") would otherwise become a missing subdir.
 var unsafeFileRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -148,15 +152,17 @@ func parsePorcelainPath(line string) string {
 	return strings.Trim(path, `"`)
 }
 
-// RenderSet is the union of files changed since base and files dirty in the
+// RenderSet is the union of files changed on this branch (since its merge-base
+// with base, so later commits on base are not counted) and files dirty in the
 // working tree (including untracked), filtered to those that render UI.
+// core.quotePath=false keeps non-ASCII names unquoted so the patterns match.
 // FR-2.1.
 func RenderSet(d Deps, repo, base string) ([]string, error) {
-	diffOut, err := d.RunGit(repo, "diff", "--name-only", base+"..HEAD")
+	diffOut, err := d.RunGit(repo, "-c", "core.quotePath=false", "diff", "--name-only", base+"...HEAD")
 	if err != nil {
-		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("git diff --name-only %s..HEAD: %w", base, err))
+		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("git diff --name-only %s...HEAD: %w", base, err))
 	}
-	statusOut, err := d.RunGit(repo, "status", "--porcelain", "-uall")
+	statusOut, err := d.RunGit(repo, "-c", "core.quotePath=false", "status", "--porcelain", "-uall")
 	if err != nil {
 		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("git status --porcelain -uall: %w", err))
 	}
@@ -177,7 +183,7 @@ func RenderSet(d Deps, repo, base string) ([]string, error) {
 
 	var out []string
 	for p := range set {
-		if renderRe.MatchString(p) {
+		if renderRe.MatchString(p) && !testFileRe.MatchString(p) {
 			out = append(out, p)
 		}
 	}

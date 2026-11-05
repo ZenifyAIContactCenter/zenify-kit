@@ -115,6 +115,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify track stats](./zenify_track_stats) | In số liệu hôm nay, độ chính xác estimate và chất lượng từ log.md và sessions/*.log. |
 | [zenify ui-verify](./zenify_ui-verify) | Nhóm lệnh ghi/kiểm tra bằng chứng UI-verify cho gate cơ học của /znf:ship. |
 | [zenify ui-verify check](./zenify_ui-verify_check) | Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint hiện tại. |
+| [zenify ui-verify files](./zenify_ui-verify_files) | In các file render UI đã đổi so với base, mỗi dòng một file; file test không tính. |
 | [zenify ui-verify record](./zenify_ui-verify_record) | Ghi lại artifact UI-verify (screenshot + 3 số đo) cho fingerprint hiện tại. |
 | [zenify up](./zenify_up) | Onboard máy vào workspace: clone repo, ghi cấu hình, gắn hook và skill, chuẩn bị knowledge store. |
 | [zenify update](./zenify_update) | Nâng cấp binary ZenifyKit lên bản mới nhất bằng đúng kênh đã cài, hoặc chỉ kiểm tra có bản mới. |

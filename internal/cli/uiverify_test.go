@@ -211,3 +211,109 @@ func TestUIVerifyCheckInteractiveUnchanged(t *testing.T) {
 		t.Errorf("await dir created outside autonomous mode (stat err=%v)", serr)
 	}
 }
+
+// `ui-verify files` prints the rendering files one per line, the list ship counts to decide on a verifier.
+func TestUIVerifyFiles_ListsRenderingFilesOnly(t *testing.T) {
+	repo := initUIVerifyRepo(t)
+	compDir := filepath.Join(repo, "src", "components")
+	if err := os.MkdirAll(compDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"Foo.tsx": "export {}\n", "Foo.test.tsx": "test()\n"} {
+		if err := os.WriteFile(filepath.Join(compDir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var buf bytes.Buffer
+	c := newUIVerifyCmd()
+	c.SetOut(&buf)
+	c.SetArgs([]string{"files", "--repo", repo, "--base", "HEAD"})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != "src/components/Foo.tsx\n" {
+		t.Fatalf("files output = %q", got)
+	}
+}
+
+func gitIn(t *testing.T, repo string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", repo}, args...)...) //nolint:gosec // G204 -- test fixture, fixed argv
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func runUIVerifyFiles(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	var buf bytes.Buffer
+	c := newUIVerifyCmd()
+	c.SetOut(&buf)
+	c.SetArgs(append([]string{"files"}, args...))
+	err := c.Execute()
+	return buf.String(), err
+}
+
+// A committed test file with a non-ASCII name is still a test file: git must not quote it.
+func TestUIVerifyFiles_NonASCIITestFileSkipped(t *testing.T) {
+	repo := initUIVerifyRepo(t)
+	base := strings.TrimSpace(uiGitOut(t, repo, "rev-parse", "HEAD"))
+	dir := filepath.Join(repo, "src", "components")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Gr\u00f6\u00dfe.test.tsx"), []byte("test()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-m", "test only")
+	out, err := runUIVerifyFiles(t, "--repo", repo, "--base", base, "--count")
+	if err != nil || out != "0\n" {
+		t.Fatalf("count = %q, err = %v", out, err)
+	}
+}
+
+// UI commits that land on the base after the branch point are not this branch's change.
+func TestUIVerifyFiles_CountsFromMergeBase(t *testing.T) {
+	repo := initUIVerifyRepo(t)
+	gitIn(t, repo, "branch", "-M", "main")
+	gitIn(t, repo, "checkout", "-b", "feat")
+	if err := os.WriteFile(filepath.Join(repo, "api.go"), []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-m", "backend")
+	gitIn(t, repo, "checkout", "main")
+	if err := os.WriteFile(filepath.Join(repo, "App.tsx"), []byte("export {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, repo, "add", "-A")
+	gitIn(t, repo, "commit", "-m", "ui on main")
+	gitIn(t, repo, "checkout", "feat")
+	out, err := runUIVerifyFiles(t, "--repo", repo, "--base", "main", "--count")
+	if err != nil || out != "0\n" {
+		t.Fatalf("count = %q, err = %v", out, err)
+	}
+}
+
+// --count fails closed: a bad base is an error, never a printed 0.
+func TestUIVerifyFiles_CountErrorPrintsNothing(t *testing.T) {
+	repo := initUIVerifyRepo(t)
+	out, err := runUIVerifyFiles(t, "--repo", repo, "--base", "no-such-ref", "--count")
+	if err == nil || out != "" {
+		t.Fatalf("out = %q, err = %v; want an error and no output", out, err)
+	}
+}
+
+
+func uiGitOut(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).Output() //nolint:gosec // G204 -- test fixture, fixed argv
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return string(out)
+}

@@ -16,7 +16,7 @@ Cả ba lớp đều chạy trên dev server của worktree, không chạy trên
 
 ## Khi nào chạy
 
-`/znf:ship` quyết định ở bước verify. Nếu diff chạm file `.tsx`, `.jsx`, `.vue`, `.svelte`, file style, hoặc thư mục `components`, `pages`, `views`, ship coi thay đổi có render và bật kiểm thử UI. Diff không chạm các file đó thì ship ghi "nothing renders in this diff" và bỏ qua.
+`/znf:ship` quyết định ở bước verify. Nếu diff chạm file `.tsx`, `.jsx`, `.vue`, `.svelte`, file style, hoặc thư mục `components`, `pages`, `views`, ship coi thay đổi có render và bật kiểm thử UI. File test (`*.test.*`, `*.spec.*`, thư mục `__tests__/`) không tính, kể cả khi đuôi `.tsx` hoặc nằm trong `components/`. Danh sách lấy từ [`zenify ui-verify files`](/reference/cli/zenify_ui-verify_files), cùng tập file mà `zenify ui-verify check` chặn. Diff không chạm các file đó thì ship ghi "nothing renders in this diff" và bỏ qua.
 
 Khi bật, thứ tự cố định:
 

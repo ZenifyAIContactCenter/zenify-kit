@@ -57,6 +57,46 @@ func newUIVerifyCmd() *cobra.Command {
 	}
 	c.AddCommand(newUIVerifyRecordCmd())
 	c.AddCommand(newUIVerifyCheckCmd())
+	c.AddCommand(newUIVerifyFilesCmd())
+	return c
+}
+
+// newUIVerifyFilesCmd prints the files that require a UI verdict, one per line: the same
+// set `check` gates on, so ship counts it instead of keeping its own copy of the pattern.
+func newUIVerifyFilesCmd() *cobra.Command {
+	var repo, base string
+	var count bool
+	c := &cobra.Command{
+		// An error prints nothing on stdout, so a caller never reads usage text or a 0 as a count.
+		SilenceUsage: true,
+		Use:   "files",
+		Short: "In các file render UI đổi so với base (ship đếm để quyết định có cần ui-verifier)", //znf:allow-lang
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if repo == "" {
+				repo, _ = os.Getwd()
+			}
+			if base == "" {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need --base <base ref>"))
+			}
+			files, err := uiverify.RenderSet(defaultUIVerifyDeps(), repo, base)
+			if err != nil {
+				return exitcode.New(exitcode.Fail, err)
+			}
+			if count {
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), len(files))
+				return err
+			}
+			for _, f := range files {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), f); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang
+	c.Flags().StringVar(&base, "base", "", "base ref để so sánh (bắt buộc)") //znf:allow-lang
+	c.Flags().BoolVar(&count, "count", false, "print only the number of files (fails with no output on error)")
 	return c
 }
 
