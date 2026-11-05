@@ -142,16 +142,21 @@ func updatePluginLocal(workspace string, run func(string, ...string) ([]byte, er
 // resyncPluginLocal re-materializes the marketplace and updates the local
 // plugin when the workspace's stamp (<workspace>/.zenify/plugin-version) is
 // stale. No stamp means the plugin was never installed locally here (`zenify
-// up` installs it), so there is nothing to update and it returns nil. Fail-open:
+// up` installs it): it only re-materializes the marketplace, which the Codex
+// skills link and hooks point into, and runs no claude command. Fail-open:
 // a failure is one stderr line, and the returned error lets ensureWorkspace
 // record the step in LocalErrs.
 func resyncPluginLocal(workspace, zh string, run func(string, ...string) ([]byte, error), stderr io.Writer) error {
-	if exists, current := pluginStampState(workspace); !exists || current {
+	exists, current := pluginStampState(workspace)
+	if current {
 		return nil
 	}
 	if _, err := plugin.SyncMarketplace(zh); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: plugin sync:", err)
 		return fmt.Errorf("plugin sync: %w", err)
+	}
+	if !exists {
+		return nil
 	}
 	if err := updatePluginLocal(workspace, run); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: plugin:", err)

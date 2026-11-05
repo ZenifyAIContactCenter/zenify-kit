@@ -131,8 +131,10 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 				fmt.Fprintf(stdout, "removed retired Codex agent %s.toml\n", n)
 			}
 		}
-		if _, err := apply.EnsureCodexTrust(codexHomeDir(home, os.Getenv), workspace, false); err != nil {
-			localErr("codex-trust", err)
+		if wireLocal { // trust runs the workspace hooks, so it waits for them
+			if _, err := apply.EnsureCodexTrust(codexHomeDir(home, os.Getenv), workspace, false); err != nil {
+				localErr("codex-trust", err)
+			}
 		}
 	}
 

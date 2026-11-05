@@ -638,10 +638,17 @@ func TestEnsureWorkspace_SessionStartSkipsWhileUserHooksPresent(t *testing.T) {
 	if strings.Contains(o.String(), "/hooks") {
 		t.Fatalf("trust reminder printed while codex hooks were skipped: %s", o.String())
 	}
+	cfg := filepath.Join(home, ".codex", "config.toml")
+	if b, _ := os.ReadFile(cfg); strings.Contains(string(b), `[projects."`+ws+`"]`) {
+		t.Fatalf("codex trust written while user hooks remain: %s", b)
+	}
 
 	var o2, e2 bytes.Buffer
 	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{ForceLocal: true})
 	if b, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws)); !strings.Contains(string(b), "zenify hooks-run") {
 		t.Fatalf("ForceLocal must wire local hooks: %s", b)
+	}
+	if b, _ := os.ReadFile(cfg); !strings.Contains(string(b), `[projects."`+ws+`"]`) {
+		t.Fatalf("ForceLocal must trust the workspace for codex: %s", b)
 	}
 }

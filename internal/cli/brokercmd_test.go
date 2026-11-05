@@ -960,11 +960,11 @@ func TestRegisterBrokerMCP_LocalScopeAndError(t *testing.T) {
 		return nil, nil
 	}
 	var out, errOut bytes.Buffer
-	if err := registerBrokerMCP(&out, &errOut, "/ws", m, run); err != nil || !reflect.DeepEqual(scopes, []string{"-s local", "-s local"}) {
+	if _, err := registerBrokerMCP(&out, &errOut, "/ws", m, run); err != nil || !reflect.DeepEqual(scopes, []string{"-s local", "-s local"}) {
 		t.Fatalf("err=%v scopes=%v", err, scopes)
 	}
 	fail = true
-	if err := registerBrokerMCP(&out, &errOut, "/ws", m, run); err == nil {
+	if _, err := registerBrokerMCP(&out, &errOut, "/ws", m, run); err == nil {
 		t.Fatal("failed registration must be returned")
 	}
 }

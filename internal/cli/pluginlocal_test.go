@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 )
 
@@ -232,12 +233,17 @@ func TestResyncPluginLocal_FailureKeepsStaleAndRetries(t *testing.T) {
 	}
 }
 
-// No stamp: the plugin was never installed locally here, so resync does nothing.
-func TestResyncPluginLocal_NoStampIsNoop(t *testing.T) {
+// No stamp: the plugin was never installed locally here, so resync runs no
+// claude command, but it still refreshes the marketplace the Codex skills link
+// and hooks point into.
+func TestResyncPluginLocal_NoStampSyncsMarketplaceOnly(t *testing.T) {
 	zh, ws := t.TempDir(), t.TempDir()
 	f := &fakeRun{}
 	var e bytes.Buffer
 	if err := resyncPluginLocal(ws, zh, f.run, &e); err != nil || len(f.calls) != 0 || e.Len() != 0 {
 		t.Fatalf("err=%v calls=%v stderr=%q", err, f.calls, e.String())
+	}
+	if _, err := os.Stat(filepath.Join(plugin.PluginDir(zh), ".claude-plugin", "plugin.json")); err != nil {
+		t.Fatalf("marketplace not materialized: %v", err)
 	}
 }

@@ -54,7 +54,7 @@ func runWizard(w io.Writer, m *manifest.Manifest, src, workspace string, sources
 			patSet := func() bool { return planePATSet(os.Getenv, workspace) }
 			if !hadPAT && patSet() { // apply skipped Plane for want of the PAT the secrets step just saved
 				bm, _ := brokerManifest("", "") // same manifest runApply registers Plane from
-				_ = registerPlaneMCP(w, w, workspace, bm, patSet, runClaudeIn(workspace))
+				_, _ = registerPlaneMCP(w, w, workspace, bm, patSet, runClaudeIn(workspace))
 			}
 		},
 	})

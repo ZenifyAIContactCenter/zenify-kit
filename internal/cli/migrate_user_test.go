@@ -188,7 +188,7 @@ func TestMigrateUserInstalls_RemovesKitOnly(t *testing.T) {
 	deny, _ := apply.KitDenyRule(ws)
 	f := newFakeClaude(ws)
 
-	removed, err := migrateUserInstalls(home, codexHome, f.run, false)
+	removed, err := migrateUserInstalls(home, codexHome, userKitMCPs, f.run, false)
 	if err != nil {
 		t.Fatalf("migrateUserInstalls: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestMigrateUserInstalls_SkipsDirWithoutManifest(t *testing.T) {
 	home := t.TempDir()
 	mkfile(t, filepath.Join(home, ".claude", "skills", "znf", "SKILL.md"), "mine")
 	f := newFakeClaude(t.TempDir())
-	if _, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), f.run, false); err != nil {
+	if _, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, f.run, false); err != nil {
 		t.Fatalf("migrateUserInstalls: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "znf", "SKILL.md")); err != nil {
@@ -248,7 +248,7 @@ func TestMigrateUserInstalls_DryRunRemovesNothing(t *testing.T) {
 	home, ws := t.TempDir(), t.TempDir()
 	seedUserInstall(t, home, ws)
 	before, _ := os.ReadFile(apply.UserSettings(home))
-	removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), nil, true)
+	removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, nil, true)
 	if err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
@@ -359,6 +359,7 @@ func snapshotTree(t *testing.T, roots ...string) map[string]string {
 // SC-5: the second up changes no file and leaves no user-level install.
 func TestUp_TwiceNoChange(t *testing.T) {
 	home, ws, m, plans := upFixture(t)
+	useLocalMCPs(t, true)
 	f := newFakeClaude(ws)
 	useFakeClaude(t, f)
 	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
@@ -386,8 +387,50 @@ func TestUp_TwiceNoChange(t *testing.T) {
 	if len(f.userMCP) > 0 {
 		t.Errorf("user MCP left: %v", f.userMCP)
 	}
-	if removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), f.run, false); err != nil || len(removed) > 0 {
+	if removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, f.run, false); err != nil || len(removed) > 0 {
 		t.Errorf("third migrate removed %v, err %v", removed, err)
+	}
+}
+
+// useLocalMCPs makes up register all three kit MCPs at local scope: a trusted
+// manifest with a broker and Plane, claude and uvx on PATH, and a Plane PAT
+// unless pat is false.
+func useLocalMCPs(t *testing.T, pat bool) {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "repos.yaml")
+	y := noBrokerYAML + "broker:\n  url: https://broker.example\nplane:\n  url: https://plane.example\n  workspace: ws\n"
+	if err := os.WriteFile(p, []byte(y), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	useTrustedManifest(t, p)
+	saved := lookPath
+	t.Cleanup(func() { lookPath = saved })
+	lookPath = func(n string) (string, error) { return "/fake/" + n, nil }
+	if pat {
+		t.Setenv(planePATKey, "pat")
+	} else {
+		t.Setenv(planePATKey, "")
+	}
+}
+
+// A kit MCP whose local registration was skipped (here: no Plane PAT) keeps
+// its user-scope copy; the ones registered locally lose theirs.
+func TestUp_SkippedLocalMCPKeepsUserMCP(t *testing.T) {
+	_, ws, m, plans := upFixture(t)
+	useLocalMCPs(t, false)
+	f := newFakeClaude(ws)
+	useFakeClaude(t, f)
+	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("runApply: %v", err)
+	}
+	got := f.userRemoves()
+	sort.Strings(got)
+	want := []string{"mcp remove zenify-grafana -s user", "mcp remove zenify-posthog -s user"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("user MCP removes = %v, want %v", got, want)
+	}
+	if !f.userMCP["zenify-plane"] {
+		t.Error("user zenify-plane removed although no local one was registered")
 	}
 }
 

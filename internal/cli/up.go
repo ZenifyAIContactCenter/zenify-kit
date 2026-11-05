@@ -349,13 +349,16 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	// registered headersHelper `zenify broker headers` resolves it the same
 	// way, so the MCP URL and its token always name one broker.
 	bm, _ := brokerManifest("", "")
-	if err := registerBrokerMCP(w, errW, workspace, bm, run); err != nil {
+	localMCPs, err := registerBrokerMCP(w, errW, workspace, bm, run)
+	if err != nil {
 		localErrs = append(localErrs, "broker MCP: "+err.Error())
 	}
 	// Per-developer Plane MCP (stdio, the dev's own PAT, not via the broker).
-	if err := registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, run); err != nil {
+	plane, err := registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, run)
+	if err != nil {
 		localErrs = append(localErrs, "plane MCP: "+err.Error())
 	}
+	localMCPs = append(localMCPs, plane...)
 	// FR-5.5: the user-level install goes only once every local step succeeded.
 	var migrateErr error
 	switch {
@@ -366,7 +369,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 			unwireLocalHooks(home, workspace, errW)
 		}
 	case herr == nil && home != "":
-		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), run, false)
+		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), localMCPs, run, false)
 		for _, r := range removed {
 			_, _ = fmt.Fprintln(w, "đã gỡ bản cài cấp user:", r) //znf:allow-lang
 		}
@@ -899,7 +902,7 @@ func newUpCmd() *cobra.Command {
 				uiOut(cmd).Header("zenify up")
 				renderPlanTable(w, plans, auth)
 				if home, herr := os.UserHomeDir(); herr == nil && home != "" {
-					removed, _ := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), nil, true)
+					removed, _ := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userKitMCPs, nil, true)
 					for _, r := range removed {
 						_, _ = fmt.Fprintln(w, "sẽ gỡ bản cài cấp user (khi các bước local thành công):", r) //znf:allow-lang
 					}
@@ -930,15 +933,15 @@ func newUpCmd() *cobra.Command {
 // PATH; otherwise it does nothing, so `zenify up` keeps its pre-broker
 // behaviour. run must execute claude with the workspace root as cwd (callers
 // pass runClaudeIn(workspace)). Failures only warn, but the first one is
-// returned so a caller can hold back the user-scope cleanup.
-func registerBrokerMCP(w, errW io.Writer, workspace string, m *manifest.Manifest, run func(string, ...string) ([]byte, error)) error {
+// returned so a caller can hold back the user-scope cleanup. registered names
+// each server now present at local scope, so the cleanup removes only those.
+func registerBrokerMCP(w, errW io.Writer, workspace string, m *manifest.Manifest, run func(string, ...string) ([]byte, error)) (registered []string, first error) {
 	if m == nil || m.Broker == nil {
-		return nil
+		return nil, nil
 	}
 	if _, err := lookPath("claude"); err != nil {
-		return nil
+		return nil, nil
 	}
-	var first error
 	for _, name := range []string{"grafana", "posthog"} {
 		st, err := mcpreg.Bootstrap(mcpreg.Options{
 			Spec: mcpreg.Spec{Name: "zenify-" + name, URL: strings.TrimRight(m.Broker.URL, "/") + "/mcp/" + name},
@@ -950,6 +953,7 @@ func registerBrokerMCP(w, errW io.Writer, workspace string, m *manifest.Manifest
 			if first == nil {
 				first = err
 			}
+			continue
 		case st == playwright.RegAbsent:
 			_, _ = fmt.Fprintf(w, "zenify-%s: registered MCP server (local scope)\n", name)
 		case st == playwright.RegLegacyDefault:
@@ -957,8 +961,9 @@ func registerBrokerMCP(w, errW io.Writer, workspace string, m *manifest.Manifest
 		case st == playwright.RegCustom:
 			_, _ = fmt.Fprintf(w, "zenify-%s: custom MCP registration kept\n", name)
 		}
+		registered = append(registered, "zenify-"+name)
 	}
-	return first
+	return registered, first
 }
 
 // registerPlaneMCP registers the stdio `zenify-plane` MCP with Claude at local
@@ -966,20 +971,21 @@ func registerBrokerMCP(w, errW io.Writer, workspace string, m *manifest.Manifest
 // developer has a PAT. A missing PAT or uv only prints a hint; nothing here
 // fails `zenify up`. run must execute claude with the workspace root as cwd
 // (callers pass runClaudeIn(workspace)); a registration failure is returned.
-func registerPlaneMCP(w, errW io.Writer, workspace string, m *manifest.Manifest, patSet func() bool, run func(string, ...string) ([]byte, error)) error {
+// registered is ["zenify-plane"] only when the server is now at local scope.
+func registerPlaneMCP(w, errW io.Writer, workspace string, m *manifest.Manifest, patSet func() bool, run func(string, ...string) ([]byte, error)) (registered []string, err error) {
 	if m == nil || m.Plane == nil {
-		return nil
+		return nil, nil
 	}
 	if _, err := lookPath("claude"); err != nil {
-		return nil
+		return nil, nil
 	}
 	if !patSet() {
 		_, _ = fmt.Fprintf(w, "zenify-plane: chưa có PLANE_API_KEY, chưa đăng ký. Tạo PAT ở %s → Profile Settings → Personal Access Tokens, chạy zenify env set PLANE_API_KEY trong terminal, rồi zenify up --apply\n", m.Plane.URL) //znf:allow-lang
-		return nil
+		return nil, nil
 	}
 	if _, err := lookPath("uvx"); err != nil {
 		_, _ = fmt.Fprintln(w, "zenify-plane: cần uv (brew install uv), cài xong chạy zenify up --apply") //znf:allow-lang
-		return nil
+		return nil, nil
 	}
 	st, err := mcpreg.BootstrapStdio(mcpreg.StdioSpec{Name: "zenify-plane", Command: "zenify", Args: []string{"plane-mcp"}}, run)
 	switch {
@@ -995,7 +1001,10 @@ func registerPlaneMCP(w, errW io.Writer, workspace string, m *manifest.Manifest,
 	case st == playwright.RegCustom:
 		_, _ = fmt.Fprintln(w, "zenify-plane: custom MCP registration kept")
 	}
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return []string{"zenify-plane"}, nil
 }
 
 // claudeMCPTimeout bounds each `claude mcp` call registerBrokerMCP makes.
