@@ -13,6 +13,14 @@ setup('authenticate', async ({ page }) => {
   await page.fill('input[name="password"]', process.env.E2E_PASSWORD!);
   await page.press('input[name="password"]', 'Enter');
   await page.waitForLoadState('networkidle');
+  // A failed login's error-context.md is an aria snapshot of every input value, taken
+  // when expect fails: empty the password now. fill() fires an input event, so React's
+  // state is emptied too and a re-render cannot put the value back. The form was
+  // already submitted; after a successful login the field is gone (count() is 0).
+  const password = page.locator('input[name="password"]');
+  if (await password.count().catch(() => 0)) {
+    await password.fill('', { timeout: 2000 }).catch(() => {});
+  }
   await expect(page).not.toHaveURL(/\/login(\?|$)/);
   await page.context().storageState({ path: STORAGE });
 });

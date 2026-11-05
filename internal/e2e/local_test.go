@@ -85,7 +85,7 @@ func TestRunLocalSkipsInstall(t *testing.T) {
 	if err := os.MkdirAll(pkg, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"1.55.0"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"1.64.1"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var calls []string
@@ -176,7 +176,7 @@ func prepareWithCache(t *testing.T, have, want string, writeJSON, complete bool,
 	if err := os.MkdirAll(pkg, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"1.55.0"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"version":"1.64.1"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var calls []string

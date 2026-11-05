@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,8 +19,9 @@ import (
 )
 
 const (
-	pinnedPlaywrightVersion = "1.55.0"
+	pinnedPlaywrightVersion = "1.64.1"
 	staleLockAge            = 10 * time.Minute
+	liveLockMaxAge          = 6 * time.Hour // backstop for a reused PID
 	defaultLockWait         = 120 * time.Second
 	lockPoll                = 500 * time.Millisecond
 )
@@ -51,19 +53,25 @@ func StatePathRole(home, role string) string {
 	return filepath.Join(playwrightDir(home), name)
 }
 
-// acquireLock takes an O_EXCL lock file, breaking locks older than staleLockAge.
+// acquireLock takes an O_EXCL lock file holding our PID, breaking a lock whose holder
+// is gone (a killed login never removes it) or, with no PID to probe, that is older
+// than staleLockAge.
 func acquireLock(path string, wait time.Duration) error {
 	deadline := time.Now().Add(wait)
 	for {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- path built from home
 		if err == nil {
-			return f.Close()
+			_, werr := f.WriteString(strconv.Itoa(os.Getpid()))
+			if werr = errors.Join(werr, f.Close()); werr != nil {
+				_ = os.Remove(path) // a lock without our PID would only ever age out
+			}
+			return werr
 		}
 		if !errors.Is(err, os.ErrExist) {
 			return err
 		}
-		if st, serr := os.Stat(path); serr == nil && time.Since(st.ModTime()) > staleLockAge {
-			_ = os.Remove(path)
+		if lockIsStale(path) {
+			breakStaleLock(path)
 			continue
 		}
 		if time.Now().After(deadline) {
@@ -71,6 +79,46 @@ func acquireLock(path string, wait time.Duration) error {
 		}
 		time.Sleep(lockPoll)
 	}
+}
+
+// lockIsStale: its PID no longer runs (or, a reused PID, it is older than
+// liveLockMaxAge); with no PID (locks of older binaries) or no liveness probe
+// (windows), older than staleLockAge.
+func lockIsStale(path string) bool {
+	st, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	if pid, ok := lockPID(path); ok {
+		if alive, known := processAlive(pid); known {
+			return !alive || time.Since(st.ModTime()) > liveLockMaxAge
+		}
+	}
+	return time.Since(st.ModTime()) > staleLockAge
+}
+
+// lockPID reads the holder PID recorded in a lock file.
+func lockPID(path string) (int, bool) {
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path built from home
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	return pid, err == nil && pid > 0
+}
+
+// breakStaleLock moves the lock aside and re-checks it there, so a waiter whose stale
+// verdict is out of date (another waiter already broke it and took a fresh lock) puts
+// that fresh lock back instead of deleting it.
+func breakStaleLock(path string) {
+	aside := fmt.Sprintf("%s.%d.breaking", path, os.Getpid())
+	if os.Rename(path, aside) != nil {
+		return
+	}
+	if !lockIsStale(aside) {
+		_ = os.Link(aside, path) // never clobbers a lock created meanwhile
+	}
+	_ = os.Remove(aside)
 }
 
 // PrepareHarness writes the harness and installs deps + chromium, under the lock.
@@ -94,7 +142,12 @@ func lockHarness(root string, wait time.Duration) (func(), error) {
 	if err := acquireLock(lock, wait); err != nil {
 		return nil, err
 	}
-	return func() { _ = os.Remove(lock) }, nil
+	return func() {
+		// Only our own lock: if it was broken and retaken meanwhile, it is not ours.
+		if pid, ok := lockPID(lock); ok && pid == os.Getpid() {
+			_ = os.Remove(lock)
+		}
+	}, nil
 }
 
 // prepareHarness is PrepareHarness without the lock; the caller holds it.

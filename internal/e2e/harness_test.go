@@ -33,3 +33,23 @@ func TestHarness_AuthSetupAssertsLeftLogin(t *testing.T) {
 		t.Fatal("auth.setup.ts must assert it left /login")
 	}
 }
+
+// A failed login leaves error-context.md (an aria snapshot that prints input values)
+// and, with tracing on, a trace that records fill() text: neither may carry the password.
+func TestHarness_LoginFailureLeaksNoPassword(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteHarness(dir); err != nil {
+		t.Fatal(err)
+	}
+	setup, _ := os.ReadFile(filepath.Join(dir, "auth.setup.ts"))
+	src := string(setup)
+	// The snapshot is taken when expect fails, so the field is emptied before it.
+	clear, assert := strings.Index(src, "password.fill('', "), strings.Index(src, "not.toHaveURL")
+	if clear < 0 || clear > assert {
+		t.Error("auth.setup.ts must empty the password field before asserting it left /login")
+	}
+	cfg, _ := os.ReadFile(filepath.Join(dir, "playwright.config.ts"))
+	if !strings.Contains(string(cfg), `name: 'setup', testDir: '.', testMatch: /auth\.setup\.ts/, use: { trace: 'off' }`) {
+		t.Error("the setup project must run with trace off")
+	}
+}

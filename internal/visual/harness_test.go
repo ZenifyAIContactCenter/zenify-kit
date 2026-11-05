@@ -42,7 +42,7 @@ func TestHarness_VersionLockstep(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg := readFile(t, filepath.Join(dir, "package.json"))
-	// PlaywrightVersion is "v1.55.0"; package.json uses the form without "v".
+	// PlaywrightVersion is "v1.64.1"; package.json uses the form without "v".
 	want := strings.TrimPrefix(PlaywrightVersion, "v")
 	if !strings.Contains(pkg, want) {
 		t.Errorf("package.json must pin @playwright/test %s (lockstep image), got:\n%s", want, pkg)
@@ -65,5 +65,19 @@ func TestHarness_AuthSetupAssertsLeftLogin(t *testing.T) {
 	}
 	if !strings.Contains(readFile(t, filepath.Join(dir, "auth.setup.ts")), "not.toHaveURL") {
 		t.Fatal("auth.setup.ts must assert it left /login")
+	}
+}
+
+// error-context.md of a failed login is an aria snapshot that prints input values.
+func TestHarness_LoginFailureLeaksNoPassword(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteHarness(dir); err != nil {
+		t.Fatal(err)
+	}
+	src := readFile(t, filepath.Join(dir, "auth.setup.ts"))
+	// The snapshot is taken when expect fails, so the field is emptied before it.
+	clear, assert := strings.Index(src, "password.fill('', "), strings.Index(src, "not.toHaveURL")
+	if clear < 0 || clear > assert {
+		t.Error("auth.setup.ts must empty the password field before asserting it left /login")
 	}
 }

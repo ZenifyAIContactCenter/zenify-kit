@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -174,7 +176,7 @@ func TestLogin_SkipsNpmInstallWhenPinned(t *testing.T) {
 	home := t.TempDir()
 	pkg := filepath.Join(pwDir(home), "harness", "node_modules", "@playwright", "test")
 	_ = os.MkdirAll(pkg, 0o755)
-	_ = os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"name":"@playwright/test", "version": "1.55.0"}`), 0o644)
+	_ = os.WriteFile(filepath.Join(pkg, "package.json"), []byte(`{"name":"@playwright/test", "version": "1.64.1"}`), 0o644)
 	f := &fakeRun{content: "x"}
 	if _, err := Login(opts(home, f, &bytes.Buffer{})); err != nil {
 		t.Fatal(err)
@@ -274,5 +276,120 @@ func TestLogin_HoldsLockDuringSetup(t *testing.T) {
 		if _, serr := os.Stat(lock); !os.IsNotExist(serr) {
 			t.Errorf("fail=%v: lock left behind: %v", fail, serr)
 		}
+	}
+}
+
+// A killed login (SIGTERM from `timeout`) never removes harness.lock; the next run must
+// not wait out staleLockAge when the PID in the lock is gone.
+func TestLogin_DeadHolderLockIsBroken(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("liveness probe is unix-only; windows falls back to staleLockAge")
+	}
+	home := t.TempDir()
+	_ = os.MkdirAll(pwDir(home), 0o755)
+	lock := filepath.Join(pwDir(home), "harness.lock")
+	_ = os.WriteFile(lock, []byte(strconv.Itoa(deadPID(t))), 0o600)
+	if _, err := Login(opts(home, &fakeRun{content: "x"}, &bytes.Buffer{})); err != nil {
+		t.Fatalf("lock of a dead holder must be broken: %v", err)
+	}
+}
+
+func TestLogin_LiveHolderLockTimesOut(t *testing.T) {
+	home := t.TempDir()
+	_ = os.MkdirAll(pwDir(home), 0o755)
+	_ = os.WriteFile(filepath.Join(pwDir(home), "harness.lock"), []byte(strconv.Itoa(os.Getpid())), 0o600)
+	_, err := Login(opts(home, &fakeRun{}, &bytes.Buffer{}))
+	if err == nil || !strings.Contains(err.Error(), "harness locked") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestLogin_LockRecordsHolderPID(t *testing.T) {
+	home := t.TempDir()
+	lock := filepath.Join(pwDir(home), "harness.lock")
+	var got string
+	o := opts(home, &fakeRun{content: "x"}, &bytes.Buffer{})
+	o.Run = func(dir, name string, args []string, extraEnv []string) error {
+		b, _ := os.ReadFile(lock)
+		got = string(b)
+		return (&fakeRun{content: "x"}).run(dir, name, args, extraEnv)
+	}
+	if _, err := Login(o); err != nil {
+		t.Fatal(err)
+	}
+	if got != strconv.Itoa(os.Getpid()) {
+		t.Fatalf("lock must hold the holder's PID, got %q", got)
+	}
+}
+
+// deadPID returns the PID of a child that has already exited and been reaped.
+func deadPID(t *testing.T) int {
+	t.Helper()
+	c := exec.Command("true")
+	if err := c.Run(); err != nil {
+		t.Skipf("cannot spawn true: %v", err)
+	}
+	return c.Process.Pid
+}
+
+// A live holder keeps its lock however long it runs (a long `e2e run --local`).
+func TestLogin_LiveHolderOldLockTimesOut(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows has no liveness probe; age decides there")
+	}
+	home := t.TempDir()
+	_ = os.MkdirAll(pwDir(home), 0o755)
+	lock := filepath.Join(pwDir(home), "harness.lock")
+	_ = os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o600)
+	old := time.Now().Add(-11 * time.Minute)
+	_ = os.Chtimes(lock, old, old)
+	_, err := Login(opts(home, &fakeRun{}, &bytes.Buffer{}))
+	if err == nil || !strings.Contains(err.Error(), "harness locked") {
+		t.Fatalf("live holder's lock must survive staleLockAge, got %v", err)
+	}
+}
+
+// Breaking a lock re-checks it after taking it aside: a waiter whose stale verdict is
+// out of date must not delete the lock another waiter just created.
+func TestBreakStaleLock_KeepsLiveLock(t *testing.T) {
+	lock := filepath.Join(t.TempDir(), "harness.lock")
+	live := strconv.Itoa(os.Getpid())
+	_ = os.WriteFile(lock, []byte(live), 0o600)
+	breakStaleLock(lock)
+	b, err := os.ReadFile(lock)
+	if err != nil || string(b) != live {
+		t.Fatalf("live lock must be put back, got %q %v", b, err)
+	}
+	if m, _ := filepath.Glob(lock + ".*"); len(m) != 0 {
+		t.Fatalf("side files left: %v", m)
+	}
+}
+
+// unlock removes only the lock this process holds.
+func TestLockHarness_UnlockLeavesForeignLock(t *testing.T) {
+	root := t.TempDir()
+	unlock, err := lockHarness(root, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock := filepath.Join(root, "harness.lock")
+	_ = os.WriteFile(lock, []byte("999999999"), 0o600) // another holder took over
+	unlock()
+	if _, err := os.Stat(lock); err != nil {
+		t.Fatalf("foreign lock must survive our unlock: %v", err)
+	}
+}
+
+// A PID reused by an unrelated process (reboot, a fresh container) must not pin a dead
+// holder's lock forever: past liveLockMaxAge even a live PID loses it.
+func TestLogin_LivePIDLockBrokenPastMaxAge(t *testing.T) {
+	home := t.TempDir()
+	_ = os.MkdirAll(pwDir(home), 0o755)
+	lock := filepath.Join(pwDir(home), "harness.lock")
+	_ = os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o600)
+	old := time.Now().Add(-liveLockMaxAge - time.Minute)
+	_ = os.Chtimes(lock, old, old)
+	if _, err := Login(opts(home, &fakeRun{content: "x"}, &bytes.Buffer{})); err != nil {
+		t.Fatalf("lock past liveLockMaxAge must be broken: %v", err)
 	}
 }
