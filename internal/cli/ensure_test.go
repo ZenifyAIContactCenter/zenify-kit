@@ -624,6 +624,9 @@ func TestEnsureWorkspace_SessionStartSkipsWhileUserHooksPresent(t *testing.T) {
 	if _, err := apply.EnsureGlobalHooks(apply.UserSettings(home), false); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := apply.EnsureCodexHooks(filepath.Join(home, ".codex"), false); err != nil { // the old `up` wrote both
+		t.Fatal(err)
+	}
 	var o, e bytes.Buffer
 	ensureWorkspace(ws, home, &o, &e, ensureOpts{ForceLocal: false})
 	if b, err := os.ReadFile(apply.WorkspaceLocalSettings(ws)); err == nil && strings.Contains(string(b), "zenify hooks-run") {
@@ -650,5 +653,53 @@ func TestEnsureWorkspace_SessionStartSkipsWhileUserHooksPresent(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(cfg); !strings.Contains(string(b), `[projects."`+ws+`"]`) {
 		t.Fatalf("ForceLocal must trust the workspace for codex: %s", b)
+	}
+}
+
+// Each runtime is gated on its own user copy: Claude hooks gone from the user
+// file but Codex hooks or git-guard still there (a migration that failed part
+// way) must not get a second workspace copy of those.
+func TestEnsureWorkspace_PerRuntimeGate(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	userCodex := filepath.Join(home, ".codex")
+	if _, err := apply.EnsureCodexHooks(userCodex, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installGuard(apply.UserSettings(home)); err != nil {
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	local, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws))
+	if !strings.Contains(string(local), "zenify hooks-run") {
+		t.Fatalf("Claude hooks must be wired (no user copy): %s", local)
+	}
+	if ok, _ := guardInstalled(apply.WorkspaceLocalSettings(ws)); ok {
+		t.Fatalf("git-guard wired while the user copy remains: %s", local)
+	}
+	if b, err := os.ReadFile(filepath.Join(ws, ".codex", "hooks.json")); err == nil && strings.Contains(string(b), "zenify") {
+		t.Fatalf("<ws>/.codex hooks wired while user Codex hooks remain: %s", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(userCodex, "config.toml")); strings.Contains(string(b), `[projects."`+ws+`"]`) {
+		t.Fatalf("codex trust written while user Codex hooks remain: %s", b)
+	}
+	if b, err := os.ReadFile(filepath.Join(userCodex, "hooks.json")); err != nil || !strings.Contains(string(b), "zenify") {
+		t.Fatalf("ensure must not touch the user Codex hooks: %s (err=%v)", b, err)
+	}
+}
+
+// A value the user set at user level is carried into the workspace file
+// instead of being shadowed by the kit default there.
+func TestEnsureWorkspace_CarriesUserEnv(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	writeF(t, apply.UserSettings(home), `{"env":{"ZNF_REVIEWER":"codex","CLAUDE_CODE_SUBAGENT_MODEL":"opus"}}`)
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{ForceLocal: true})
+	local := apply.WorkspaceLocalSettings(ws)
+	if v, err := apply.ReviewerEnvValue(local); err != nil || v != "codex" {
+		t.Fatalf("reviewer = %q err=%v", v, err)
+	}
+	if b, _ := os.ReadFile(local); !strings.Contains(string(b), `"CLAUDE_CODE_SUBAGENT_MODEL":"opus"`) && !strings.Contains(string(b), `"CLAUDE_CODE_SUBAGENT_MODEL": "opus"`) {
+		t.Fatalf("subagent model not carried: %s", b)
 	}
 }

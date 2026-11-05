@@ -36,15 +36,17 @@ type ensureOpts struct{ ForceLocal bool }
 //  1. re-materialize the marketplace and update the local znf plugin when the
 //     workspace's stamp is behind the running binary;
 //  2. link <ws>/.agents/skills/znf to the plugin skills for Codex;
-//  3. wire znf hooks, git-guard, the kit env keys and permission lists in
-//     <ws>/.claude/settings.local.json — skipped, unless opts.ForceLocal, while
-//     ~/.claude/settings.json still has the kit hooks (a machine `up` has not
-//     migrated yet), so no kit hook runs twice; the same gate covers the Codex
-//     hooks in step 4, since the old `up` wrote both user files. The skills
-//     link and the local plugin still install then, which only duplicates
-//     listings, not hook runs;
-//  4. with codex on PATH: <ws>/.codex hooks (gated as above) and agents, plus
-//     the workspace trust entry in <codexHome>/config.toml;
+//  3. wire znf hooks, git-guard, the kit env keys (carrying a value the user
+//     set at user level) and permission lists in <ws>/.claude/settings.local.json.
+//     Unless opts.ForceLocal, each runtime is skipped while its own user copy
+//     remains (a machine `up` has not migrated, or a migration that failed part
+//     way), so no kit hook runs twice: znf hooks, env and permissions on the
+//     kit hooks in ~/.claude/settings.json, git-guard on the user git-guard
+//     (legacy script included). The skills link and the local plugin still
+//     install then, which only duplicates listings, not hook runs;
+//  4. with codex on PATH: <ws>/.codex hooks and the workspace trust entry in
+//     <codexHome>/config.toml (skipped while <codexHome>/hooks.json still has
+//     kit hooks), and the agents;
 //  5. pin the workspace default model in <workspace>/.claude/settings.json;
 //  6. create the workspace marker .zenify/manifest.json when missing;
 //  7. distribute the knowledge store's .config into the workspace
@@ -81,14 +83,25 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 	}
 
 	local := apply.WorkspaceLocalSettings(workspace)
-	wireLocal := true
+	codexHome := codexHomeDir(home, os.Getenv)
+	// Each runtime is gated on its own user copy, so a migration that removed
+	// some user copies and failed on others never leaves one running twice.
+	// A probe that errors loads nothing at user level, so it does not gate.
+	wireLocal, wireGuard, wireCodex := true, true, true
 	if !opts.ForceLocal {
-		userHooks, err := apply.HasUserKitHooks(apply.UserSettings(home))
-		if err != nil {
-			// A malformed user file loads no hooks, so there is no double run to avoid.
+		user := apply.UserSettings(home)
+		if userHooks, err := apply.HasUserKitHooks(user); err != nil {
 			fmt.Fprintln(stderr, "znf ensure: user-hooks:", err)
-		} else if userHooks {
-			wireLocal = false
+		} else {
+			wireLocal = !userHooks
+		}
+		if userGuard, err := removeGuard(user, true); err == nil {
+			wireGuard = !userGuard
+		}
+		if ch, err := apply.RemoveCodexHooks(codexHome, true); err == nil {
+			wireCodex = ch.Removed == 0
+		}
+		if !wireLocal || !wireGuard || !wireCodex {
 			fmt.Fprintln(stdout, "kit vẫn cài ở cấp user; chạy zenify up --apply để chuyển sang workspace") //znf:allow-lang
 		}
 	}
@@ -100,9 +113,11 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 			fmt.Fprintf(stdout, "wired %d znf hooks\n", n)
 		}
 
-		// git-guard is a separate hook from the znf set above (it predates it and
-		// `guard install` owns it), so it is wired here too — otherwise `up`
-		// never installs it and deploy branches are unguarded on every machine.
+	}
+	// git-guard is a separate hook from the znf set above (it predates it and
+	// `guard install` owns it), so it is wired here too — otherwise `up`
+	// never installs it and deploy branches are unguarded on every machine.
+	if wireGuard {
 		if changed, err := installGuard(local); err != nil {
 			localErr("git-guard", err)
 		} else if changed {
@@ -113,7 +128,7 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 	if codexOnPath() {
 		rep.CodexInstalled = true
 		wsCodex := filepath.Join(workspace, ".codex")
-		if wireLocal {
+		if wireCodex {
 			if ch, err := apply.EnsureCodexHooks(wsCodex, false); err != nil {
 				localErr("codex-hooks", err)
 			} else if rep.CodexHooks = ch; ch.Added+ch.Updated > 0 {
@@ -131,8 +146,8 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 				fmt.Fprintf(stdout, "removed retired Codex agent %s.toml\n", n)
 			}
 		}
-		if wireLocal { // trust runs the workspace hooks, so it waits for them
-			if _, err := apply.EnsureCodexTrust(codexHomeDir(home, os.Getenv), workspace, false); err != nil {
+		if wireCodex { // trust runs the workspace hooks, so it waits for them
+			if _, err := apply.EnsureCodexTrust(codexHome, workspace, false); err != nil {
 				localErr("codex-trust", err)
 			}
 		}
@@ -145,6 +160,13 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 	}
 
 	if wireLocal {
+		// A value the user chose at user level moves with them: the local file
+		// wins over the user one, so seeding the default there would shadow it.
+		for _, k := range []string{apply.SubagentModelEnv, apply.ReviewerEnv} {
+			if _, err := apply.CarryEnv(local, apply.UserSettings(home), k, false); err != nil {
+				localErr("env "+k, err)
+			}
+		}
 		if changed, err := apply.EnsureSubagentModelEnv(local, false); err != nil {
 			localErr("subagent model", err)
 		} else if changed {

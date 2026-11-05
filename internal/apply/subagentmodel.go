@@ -128,3 +128,38 @@ func writeEnv(path string, root map[string]json.RawMessage, env map[string]json.
 	}
 	return writeAtomic(path, out, mode)
 }
+
+// CarryEnv copies env.<key> from the settings file at from into the one at
+// settingsPath when settingsPath lacks the key and from has it, so a value the
+// user chose at user level survives the move to workspace-local settings
+// (which win over user settings). Returns whether it wrote.
+func CarryEnv(settingsPath, from, key string, dryRun bool) (bool, error) {
+	src, _, err := readSettingsRoot(from)
+	if err != nil || src == nil {
+		return false, err
+	}
+	srcEnv, err := envOf(src)
+	if err != nil {
+		return false, err
+	}
+	val, ok := srcEnv[key]
+	if !ok {
+		return false, nil
+	}
+	root, mode, err := readSettingsRoot(settingsPath)
+	if err != nil {
+		return false, err
+	}
+	env, err := envOf(root)
+	if err != nil {
+		return false, err
+	}
+	if _, ok := env[key]; ok {
+		return false, nil
+	}
+	if dryRun {
+		return true, nil
+	}
+	env[key] = val
+	return true, writeEnv(settingsPath, root, env, mode)
+}

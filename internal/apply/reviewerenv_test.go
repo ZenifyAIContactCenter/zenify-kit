@@ -1,6 +1,9 @@
 package apply
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestEnsureReviewerEnv_CreatesThenNoop(t *testing.T) {
 	home := t.TempDir()
@@ -76,5 +79,32 @@ func TestSetReviewerEnvRejectsUnknown(t *testing.T) {
 	}
 	if v, _ := readEnvKey(t, home, ReviewerEnv); v != "codex" {
 		t.Fatalf("env = %q", v)
+	}
+}
+
+func TestCarryEnv_CopiesUserValueOnlyWhenTargetLacksKey(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	writeSettings(t, home, `{"env":{"ZNF_REVIEWER":"codex","CLAUDE_CODE_SUBAGENT_MODEL":"opus"}}`)
+	local := WorkspaceLocalSettings(ws)
+	if changed, err := CarryEnv(local, UserSettings(home), ReviewerEnv, false); err != nil || !changed {
+		t.Fatalf("carry: changed=%v err=%v", changed, err)
+	}
+	if v, err := ReviewerEnvValue(local); err != nil || v != "codex" {
+		t.Fatalf("local reviewer = %q err=%v", v, err)
+	}
+	// the seed after the carry keeps the carried value
+	if changed, err := EnsureReviewerEnv(local, false); err != nil || changed {
+		t.Fatalf("seed overwrote carried value: changed=%v err=%v", changed, err)
+	}
+	// a key the target already has is never overwritten
+	if err := SetReviewerEnv(local, "agent", false); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := CarryEnv(local, UserSettings(home), ReviewerEnv, false); err != nil || changed {
+		t.Fatalf("carry over existing: changed=%v err=%v", changed, err)
+	}
+	// nothing to carry: user file lacks the key, or is absent
+	if changed, err := CarryEnv(local, filepath.Join(home, "none.json"), SubagentModelEnv, false); err != nil || changed {
+		t.Fatalf("absent source: changed=%v err=%v", changed, err)
 	}
 }
