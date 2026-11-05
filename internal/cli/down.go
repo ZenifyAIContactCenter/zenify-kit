@@ -150,7 +150,7 @@ func newDownCmd() *cobra.Command {
 				if !dryRun {
 					run = pluginRunner(workspace)
 				}
-				removed, merr := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userKitMCPs, run, dryRun)
+				removed, merr := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userKitMCPs, userKeep{}, run, dryRun)
 				if len(removed) > 0 {
 					u.Step(ui.StatusOK, "user-level", fmt.Sprintf("gỡ %d mục cài ở cấp user", len(removed))) //znf:allow-lang
 				}

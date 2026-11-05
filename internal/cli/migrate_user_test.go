@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/reconcile"
@@ -131,12 +132,30 @@ func mkfile(t *testing.T, p, body string) {
 	}
 }
 
+// seedKitSkills writes ~/.claude/skills/znf as an older kit did: every file
+// recorded in its .manifest.json with the fingerprint it was written with.
+func seedKitSkills(t *testing.T, home string) {
+	t.Helper()
+	dir := filepath.Join(home, ".claude", "skills", "znf")
+	f := filepath.Join(dir, "cook", "SKILL.md")
+	mkfile(t, f, "kit")
+	m, err := managed.Load(filepath.Join(dir, ".manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Record(f); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Save(filepath.Join(dir, ".manifest.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // seedUserInstall builds the user-level install an older kit left behind,
 // through the kit's own writers, plus personal entries that must survive.
 func seedUserInstall(t *testing.T, home, ws string) {
 	t.Helper()
-	mkfile(t, filepath.Join(home, ".claude", "skills", "znf", ".manifest.json"), "{}")
-	mkfile(t, filepath.Join(home, ".claude", "skills", "znf", "cook", "SKILL.md"), "kit")
+	seedKitSkills(t, home)
 	mkfile(t, filepath.Join(home, ".claude", "skills", "cook", "SKILL.md"), "mine")
 	settings := apply.UserSettings(home)
 	if _, err := apply.EnsureGlobalHooks(settings, false); err != nil {
@@ -192,7 +211,7 @@ func TestMigrateUserInstalls_RemovesKitOnly(t *testing.T) {
 	deny, _ := apply.KitDenyRule(ws)
 	f := newFakeClaude(ws)
 
-	removed, err := migrateUserInstalls(home, codexHome, userKitMCPs, f.run, false)
+	removed, err := migrateUserInstalls(home, codexHome, userKitMCPs, userKeep{}, f.run, false)
 	if err != nil {
 		t.Fatalf("migrateUserInstalls: %v", err)
 	}
@@ -239,7 +258,7 @@ func TestMigrateUserInstalls_SkipsDirWithoutManifest(t *testing.T) {
 	home := t.TempDir()
 	mkfile(t, filepath.Join(home, ".claude", "skills", "znf", "SKILL.md"), "mine")
 	f := newFakeClaude(t.TempDir())
-	if _, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, f.run, false); err != nil {
+	if _, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, userKeep{}, f.run, false); err != nil {
 		t.Fatalf("migrateUserInstalls: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "znf", "SKILL.md")); err != nil {
@@ -252,7 +271,7 @@ func TestMigrateUserInstalls_DryRunRemovesNothing(t *testing.T) {
 	home, ws := t.TempDir(), t.TempDir()
 	seedUserInstall(t, home, ws)
 	before, _ := os.ReadFile(apply.UserSettings(home))
-	removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, nil, true)
+	removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, userKeep{}, nil, true)
 	if err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
@@ -391,7 +410,7 @@ func TestUp_TwiceNoChange(t *testing.T) {
 	if len(f.userMCP) > 0 {
 		t.Errorf("user MCP left: %v", f.userMCP)
 	}
-	if removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, f.run, false); err != nil || len(removed) > 0 {
+	if removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, userKeep{}, f.run, false); err != nil || len(removed) > 0 {
 		t.Errorf("third migrate removed %v, err %v", removed, err)
 	}
 }
@@ -554,5 +573,58 @@ func TestUp_ReviewerWritesWorkspaceLocal(t *testing.T) {
 	}
 	if _, err := os.Stat(apply.UserSettings(home)); !os.IsNotExist(err) {
 		t.Fatalf("~/.claude/settings.json written: %v", err)
+	}
+}
+
+// A kit skills tree the user edited or added to is moved to a backup, not deleted.
+func TestMigrateUserInstalls_BacksUpEditedSkills(t *testing.T) {
+	home := t.TempDir()
+	seedKitSkills(t, home)
+	dir := filepath.Join(home, ".claude", "skills", "znf")
+	mkfile(t, filepath.Join(dir, "cook", "SKILL.md"), "edited")
+	mkfile(t, filepath.Join(dir, "mine", "SKILL.md"), "added")
+	t.Setenv("ZENIFY_HOME", "")
+	removed, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), nil, userKeep{}, newFakeClaude(t.TempDir()).run, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("skills/znf still there: %v", err)
+	}
+	backups, _ := filepath.Glob(filepath.Join(home, ".zenify", "backup", "skills-znf-*"))
+	if len(backups) != 1 {
+		t.Fatalf("backups = %v", backups)
+	}
+	for f, want := range map[string]string{"cook/SKILL.md": "edited", "mine/SKILL.md": "added"} {
+		if b, _ := os.ReadFile(filepath.Join(backups[0], f)); string(b) != want {
+			t.Errorf("backup %s = %q, want %q", f, b, want)
+		}
+	}
+	if !strings.Contains(strings.Join(removed, "\n"), backups[0]) {
+		t.Errorf("removed does not name the backup: %v", removed)
+	}
+}
+
+// up keeps the user Codex hooks, agents and skills link when the workspace
+// has no replacement for them (codex not on PATH, or a real dir at the link).
+func TestMigrateUserInstalls_KeepsCodexWithoutLocalCopy(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	codexHome := filepath.Join(home, ".codex")
+	seedUserInstall(t, home, ws)
+	f := newFakeClaude(ws)
+	if _, err := migrateUserInstalls(home, codexHome, userKitMCPs, userKeep{CodexHooks: true, SkillsLink: true}, f.run, false); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(codexHome, "hooks.json")); !strings.Contains(string(b), "zenify") {
+		t.Errorf("user Codex hooks removed: %s", b)
+	}
+	if m, _ := filepath.Glob(filepath.Join(codexHome, "agents", "*.toml")); len(m) == 0 {
+		t.Error("user Codex agents removed")
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".agents", "skills", "znf")); err != nil {
+		t.Errorf("user skills link removed: %v", err)
+	}
+	if ok, _ := apply.HasUserKitHooks(apply.UserSettings(home)); ok {
+		t.Error("Claude user hooks must still be migrated")
 	}
 }

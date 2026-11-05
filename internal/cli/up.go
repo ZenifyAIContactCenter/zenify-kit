@@ -333,11 +333,16 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	// Hooks + model pin + store config distribution, all fail-open (W0 FR-01.4);
 	// never affects `failed`.
 	var localErrs []string
+	var keep userKeep
 	home, herr := os.UserHomeDir()
 	if herr == nil && home != "" {
 		rep := ensureWorkspace(workspace, home, w, errW, ensureOpts{ForceLocal: true})
 		renderCodexSummary(rep, w)
 		localErrs = rep.LocalErrs
+		// A user Codex copy goes only when the workspace got its own.
+		keep.CodexHooks = !rep.CodexInstalled
+		fi, lerr := os.Lstat(rep.CodexLinkPath)
+		keep.SkillsLink = lerr != nil || fi.Mode()&os.ModeSymlink == 0
 	}
 	run := pluginRunner(workspace) // runClaudeIn(workspace) outside tests
 	if err := installPluginLocal(workspace, zenifyHome(os.Getenv, os.UserHomeDir), run); err != nil {
@@ -369,7 +374,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 			unwireLocalHooks(home, codexHomeDir(home, os.Getenv), workspace, errW)
 		}
 	case herr == nil && home != "":
-		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), localMCPs, run, false)
+		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), localMCPs, keep, run, false)
 		for _, r := range removed {
 			_, _ = fmt.Fprintln(w, "đã gỡ bản cài cấp user:", r) //znf:allow-lang
 		}
@@ -904,7 +909,7 @@ func newUpCmd() *cobra.Command {
 				uiOut(cmd).Header("zenify up")
 				renderPlanTable(w, plans, auth)
 				if home, herr := os.UserHomeDir(); herr == nil && home != "" {
-					removed, _ := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userKitMCPs, nil, true)
+					removed, _ := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userKitMCPs, userKeep{}, nil, true)
 					for _, r := range removed {
 						_, _ = fmt.Fprintln(w, "sẽ gỡ bản cài cấp user (khi các bước local thành công):", r) //znf:allow-lang
 					}
