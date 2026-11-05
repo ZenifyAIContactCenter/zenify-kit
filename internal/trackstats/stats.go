@@ -79,7 +79,10 @@ type Today struct {
 	// PRsWaiting counts tracked PRs (any day) not known as merged or closed (FR-11.7 (5)).
 	PRsWaiting  int    `json:"prsWaiting"`
 	MergedError string `json:"mergedError"`
-	Items       []Item `json:"items"`
+	// PROpen is the review state of up to ten open PRs; PRStatusError is the first gh error of the run.
+	PROpen        []PRStatus `json:"prOpen"`
+	PRStatusError string     `json:"prStatusError"`
+	Items         []Item     `json:"items"`
 	// DailyPlan is today's latest `plan` row with its progress; nil when none was set today.
 	DailyPlan *DailyPlan `json:"dailyPlan"`
 }
@@ -166,6 +169,9 @@ type Input struct {
 	Now       time.Time
 	Merged    MergedFunc
 	Cache     map[string]string
+	// PRStatus asks gh for an open PR's review state; nil reads PRStatusCache instead.
+	PRStatus      PRStatusFunc
+	PRStatusCache map[string]PRStatus
 	// GitHub lists open issues; nil skips the source. On a partial failure it
 	// returns the items it got together with the error.
 	GitHub func() ([]Issue, error)
@@ -419,7 +425,9 @@ func Compute(in Input) (Result, map[string]string) {
 		}
 	}
 	res.Today.Plans = countPlans(in, &res)
-	newCache, ghDown := mergedToday(in, prOrder, planPRIDs(logEv, in.Today), &res)
+	planURLs := planPRIDs(logEv, in.Today)
+	newCache, ghDown := mergedToday(in, prOrder, planURLs, &res)
+	res.Today.PROpen = openPRStatus(in, prOrder, firstEnd, planURLs, newCache, &res)
 
 	// Scale: wall minutes of the done and pushed items with a real estimate, oldest end first.
 	ended := byEnd(items)
@@ -786,4 +794,9 @@ func parseFindings(v string) ([4]int, bool) {
 		out[i] = n
 	}
 	return out, true
+}
+
+// sortNewestFirst orders PR urls by their first end, newest first; equal ends keep their order.
+func sortNewestFirst(urls []string, at map[string]time.Time) {
+	sort.SliceStable(urls, func(i, j int) bool { return at[urls[i]].After(at[urls[j]]) })
 }

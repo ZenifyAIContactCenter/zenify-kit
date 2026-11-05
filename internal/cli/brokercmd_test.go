@@ -24,6 +24,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 	"github.com/spf13/cobra"
 )
 
@@ -105,6 +106,9 @@ func runHermetic(m *testing.M) int {
 		return "", fmt.Errorf("test hermeticity: a cli test reached the real gh token source; use brokerFixture")
 	}
 	ghRunner = panicRunner{}
+	trackPRStatus = func(u string) (trackstats.PRStatus, error) {
+		return trackstats.PRStatus{URL: u, CI: "-", Review: "-"}, nil
+	}
 	npmRefresh = func(io.Writer) func() error {
 		return func() error { return fmt.Errorf("test hermeticity: a cli test ran gh auth refresh") }
 	}

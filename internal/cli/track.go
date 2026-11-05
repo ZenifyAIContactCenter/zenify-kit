@@ -29,6 +29,9 @@ const trackSep = " · "
 // trackMerged asks whether a PR is merged; a test replaces it at the gh boundary.
 var trackMerged trackstats.MergedFunc = trackstats.GhMerged
 
+// trackPRStatus fetches an open PR's review state; a test replaces it at the gh boundary.
+var trackPRStatus trackstats.PRStatusFunc = trackstats.GhPRStatus
+
 // trackPRTitle fetches a PR title; a test replaces it at the gh boundary.
 var trackPRTitle = trackstats.GhPRTitle
 
@@ -684,6 +687,18 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		return trackstats.Result{}, err
 	}
 	in.PRTitles = maps.Clone(titles)
+	statusPath := filepath.Join(dir, "pr-status.json")
+	statusCache := map[string]trackstats.PRStatus{}
+	sb, err := os.ReadFile(statusPath) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
+	switch {
+	case err == nil:
+		if err := json.Unmarshal(sb, &statusCache); err != nil {
+			return trackstats.Result{}, fmt.Errorf("parse %s: %w", statusPath, err)
+		}
+	case !errors.Is(err, os.ErrNotExist):
+		return trackstats.Result{}, err
+	}
+	in.PRStatusCache = statusCache
 	// gh is asked about unmerged PRs at most once per mergedRecheck: the pane runs stats on
 	// almost every turn, and every unmerged PR costs one sequential gh call. The stamp holds
 	// the last check's error, which stays reported until the next check.
@@ -702,13 +717,24 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 	// A PR title costs a gh call too: ask only in the same window the merged check is allowed.
 	if in.Merged != nil {
 		in.PRTitle = trackPRTitle
+		in.PRStatus = trackPRStatus
+	}
+	statusChecked := filepath.Join(dir, "pr-status.checked")
+	lastStatusErr, err := os.ReadFile(statusChecked) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return trackstats.Result{}, err
 	}
 	res, newCache := trackstats.Compute(in)
 	if in.Merged == nil {
 		res.Today.MergedError = string(lastErr)
+		res.Today.PRStatusError = string(lastStatusErr)
 	} else if err := os.MkdirAll(dir, 0o750); err != nil {
 		return trackstats.Result{}, err
 	} else if err := writeFileAtomic(checkedPath, []byte(res.Today.MergedError), 0o644); err != nil {
+		return trackstats.Result{}, err
+	} else if err := writeFileAtomic(statusChecked, []byte(res.Today.PRStatusError), 0o644); err != nil {
+		return trackstats.Result{}, err
+	} else if err := writeStatusCache(statusPath, statusCache, res.Today.PROpen); err != nil {
 		return trackstats.Result{}, err
 	}
 	if len(newCache) > 0 && !reflect.DeepEqual(newCache, cache) {
@@ -733,6 +759,22 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 		}
 	}
 	return res, nil
+}
+
+// writeStatusCache stores the open PR statuses by url, so a run outside the recheck window can show them.
+func writeStatusCache(path string, old map[string]trackstats.PRStatus, open []trackstats.PRStatus) error {
+	cur := make(map[string]trackstats.PRStatus, len(open))
+	for _, p := range open {
+		cur[p.URL] = p
+	}
+	if reflect.DeepEqual(cur, old) {
+		return nil
+	}
+	out, err := json.Marshal(cur)
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(path, out, 0o644)
 }
 
 // readBeats maps every live/<session>.beat to its mtime; a live session may never have written a .json.
