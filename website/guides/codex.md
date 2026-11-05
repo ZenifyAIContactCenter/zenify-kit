@@ -14,7 +14,7 @@ Cài Codex theo hướng dẫn của OpenAI, rồi chạy `zenify up` như thư�
 - **Hooks:** nằm ở `<workspace>/.codex/hooks.json`, sinh từ cùng bảng hook với Claude (xem [Hook](/reference/hooks), cột Runtime).
 - **Agents:** sinh từ các file agent của kit vào `<workspace>/.codex/agents`. File `.toml` mang marker của kit mà agent đã bị gỡ khỏi kit (ví dụ `architect.toml`) được `up` xoá và in một dòng `removed retired Codex agent …`.
 
-- **Trust:** `up` thêm một mục trust của workspace vào `~/.codex/config.toml` (các mục khác và comment giữ nguyên), vì Codex chỉ nạp lớp `.codex/` của project khi đã trust. `zenify down` gỡ mục này. Khi máy còn kit ở cấp user (chưa chạy `up --apply` bản này), SessionStart không ghi hook vào workspace nên cũng không thêm mục trust.
+- **Trust:** `up` thêm một mục trust của workspace vào `~/.codex/config.toml` (các mục khác và comment giữ nguyên), vì Codex chỉ nạp lớp `.codex/` của project khi đã trust. `zenify down` gỡ mục này. Khi `~/.codex/hooks.json` còn hook của kit (chưa chạy `up --apply` bản này, hoặc lần gỡ bản cấp user dừng giữa chừng), SessionStart không ghi hook Codex vào workspace nên cũng không thêm mục trust. `up` chỉ gỡ hook, agent và link skill Codex ở `~/` khi workspace đã có bản thay.
 
 `zenify doctor` có các mục `codex-hooks`, `reviewer` và `agents-md` để kiểm tra phần Codex.
 

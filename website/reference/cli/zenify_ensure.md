@@ -20,7 +20,7 @@ Trên máy không chạy `zenify up` và không có manifest workspace, ví dụ
 
 ## Kết quả
 
-Trên máy chưa chuyển sang cài ở workspace (`~/.claude/settings.json` còn hook của kit), SessionStart và `zenify ensure` không ghi hook, git-guard, env, permissions hay hook Codex vào workspace, để hook không chạy hai lần. Lệnh in `kit vẫn cài ở cấp user; chạy zenify up --apply để chuyển sang workspace`. Chạy `zenify up --apply` để chuyển.
+Trên máy chưa chuyển sang cài ở workspace, SessionStart và `zenify ensure` xét từng phần theo bản cấp user của chính nó, để hook không chạy hai lần: `~/.claude/settings.json` còn hook của kit thì không ghi hook, env hay permissions; còn `git-guard` cấp user thì không ghi `git-guard`; `~/.codex/hooks.json` còn hook của kit thì không ghi hook Codex và mục trust. Lệnh in `kit vẫn cài ở cấp user; chạy zenify up --apply để chuyển sang workspace`. Chạy `zenify up --apply` để chuyển.
 
 Chỉ in một dòng cho mỗi thứ vừa thay đổi; lần chạy lại không in gì. Bước nào lỗi thì in một dòng `znf ensure:` ra stderr rồi chạy bước tiếp theo.
 
