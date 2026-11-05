@@ -166,7 +166,7 @@ const kitMCPEntries = `"zenify-grafana":{"type":"http","url":"https://broker.exa
 func seedUserInstall(t *testing.T, home, ws string) {
 	t.Helper()
 	seedKitSkills(t, home)
-	mkfile(t, filepath.Join(home, ".claude.json"), `{"mcpServers":{`+kitMCPEntries+`}}`)
+	mkfile(t, filepath.Join(home, ".claude.json"), `{"numStartups": 1, "projects": {}, "mcpServers":{`+kitMCPEntries+`}}`)
 	mkfile(t, filepath.Join(home, ".claude", "skills", "cook", "SKILL.md"), "mine")
 	settings := apply.UserSettings(home)
 	if _, err := apply.EnsureGlobalHooks(settings, false); err != nil {
