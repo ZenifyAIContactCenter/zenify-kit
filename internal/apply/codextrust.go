@@ -40,7 +40,7 @@ func isTrustKey(l string) bool {
 
 func readCodexConfig(codexHome string) (string, string, error) {
 	path := filepath.Join(codexHome, "config.toml")
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- the user's own Codex config under CODEX_HOME
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return path, "", err
 	}
