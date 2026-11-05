@@ -17,6 +17,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 - **Codex cũng cài theo workspace:** khi có `codex` trên PATH, hook, agent và link skill nằm trong `<workspace>/.codex` và `<workspace>/.agents`; duyệt hook mới qua `/hooks` trong Codex. Xem [Codex](/guides/codex).
 - **Không phải tự thêm Plane token nữa:** chạy `zenify up --apply` trong terminal mà chưa có `PLANE_API_KEY`, lệnh mở trang tạo token của Plane, bạn chỉ cần dán token vào ô nhập ẩn. Lệnh kiểm token với Plane, in tên chủ token, lưu vào `<workspace>/.zenify/.env` rồi đăng ký `zenify-plane`. Không cần `zenify env set` như v0.58.0. Xem [Plane cho agent](/guides/broker-client#plane-cho-agent).
 - **`zenify doctor` và `zenify down` theo bản cài workspace:** doctor kiểm plugin, hook và MCP trong workspace; `down` gỡ đúng những gì `up` đã ghi.
+- **`/znf:ship` đếm file giao diện chính xác hơn:** lệnh mới `zenify ui-verify files` liệt kê file render trong diff, tính từ merge-base với nhánh gốc và bỏ qua file test. Lệnh này lỗi thì ship báo BLOCKED, không còn coi là "không có file giao diện". Xem [zenify ui-verify files](/reference/cli/zenify_ui-verify_files).
 
 ## v0.59.0
 
