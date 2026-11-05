@@ -65,7 +65,10 @@ func newUIVerifyCmd() *cobra.Command {
 // set `check` gates on, so ship counts it instead of keeping its own copy of the pattern.
 func newUIVerifyFilesCmd() *cobra.Command {
 	var repo, base string
+	var count bool
 	c := &cobra.Command{
+		// An error prints nothing on stdout, so a caller never reads usage text or a 0 as a count.
+		SilenceUsage: true,
 		Use:   "files",
 		Short: "In các file render UI đổi so với base (ship đếm để quyết định có cần ui-verifier)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -79,6 +82,10 @@ func newUIVerifyFilesCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
+			if count {
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), len(files))
+				return err
+			}
 			for _, f := range files {
 				if _, err := fmt.Fprintln(cmd.OutOrStdout(), f); err != nil {
 					return err
@@ -89,6 +96,7 @@ func newUIVerifyFilesCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang
 	c.Flags().StringVar(&base, "base", "", "base ref để so sánh (bắt buộc)") //znf:allow-lang
+	c.Flags().BoolVar(&count, "count", false, "print only the number of files (fails with no output on error)")
 	return c
 }
 

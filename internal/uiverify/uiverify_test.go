@@ -55,8 +55,8 @@ func TestRenderSet_PathTable(t *testing.T) {
 		diffNames = append(diffNames, c.path)
 	}
 	runGit := fakeRunGit(t, map[string]string{
-		"diff --name-only origin/staging..HEAD": strings.Join(diffNames, "\n"),
-		"status --porcelain -uall":              "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": strings.Join(diffNames, "\n"),
+		"-c core.quotePath=false status --porcelain -uall":              "",
 	})
 	got, err := RenderSet(Deps{RunGit: runGit}, "/repo", "origin/staging")
 	if err != nil {
@@ -75,8 +75,8 @@ func TestRenderSet_PathTable(t *testing.T) {
 
 func TestRenderSet_UnionsWorkingTree(t *testing.T) {
 	runGit := fakeRunGit(t, map[string]string{
-		"diff --name-only origin/staging..HEAD": "main.go",
-		"status --porcelain -uall":              "?? src/pages/new.tsx\n M src/components/Old.jsx\n",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "main.go",
+		"-c core.quotePath=false status --porcelain -uall":              "?? src/pages/new.tsx\n M src/components/Old.jsx\n",
 	})
 	got, err := RenderSet(Deps{RunGit: runGit}, "/repo", "origin/staging")
 	if err != nil {
@@ -334,8 +334,8 @@ func checkDeps(t *testing.T, table map[string]string, fp string) Deps {
 func TestCheck_SC1_NotRequired(t *testing.T) {
 	repo := t.TempDir()
 	d := checkDeps(t, map[string]string{
-		"diff --name-only origin/staging..HEAD": "main.go\nREADME.md",
-		"status --porcelain -uall":              "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "main.go\nREADME.md",
+		"-c core.quotePath=false status --porcelain -uall":              "",
 	}, "fp000")
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "not_required" || err != nil {
@@ -346,8 +346,8 @@ func TestCheck_SC1_NotRequired(t *testing.T) {
 func TestCheck_SC2_Waived(t *testing.T) {
 	repo := t.TempDir()
 	d := checkDeps(t, map[string]string{
-		"diff --name-only origin/staging..HEAD": "src/App.tsx",
-		"status --porcelain -uall":              "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":              "",
 		"diff origin/staging..HEAD":             "znf:ui-verify-ok: reviewed manually",
 		"diff HEAD":                             "",
 	}, "fp000")
@@ -373,8 +373,8 @@ func TestCheck_SC3_Verified(t *testing.T) {
 	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Screenshot: "shot.png"}}})
 
 	d := checkDeps(t, map[string]string{
-		"diff --name-only origin/staging..HEAD": "src/App.tsx",
-		"status --porcelain -uall":              "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":              "",
 		"diff origin/staging..HEAD":             "",
 		"diff HEAD":                             "",
 	}, fp)
@@ -387,8 +387,8 @@ func TestCheck_SC3_Verified(t *testing.T) {
 func TestCheck_SC4_RequiredMissingArtifact(t *testing.T) {
 	repo := t.TempDir()
 	d := checkDeps(t, map[string]string{
-		"diff --name-only origin/staging..HEAD": "src/App.tsx",
-		"status --porcelain -uall":              "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":              "",
 		"diff origin/staging..HEAD":             "",
 		"diff HEAD":                             "",
 	}, "fpmissing")
@@ -407,8 +407,8 @@ func TestCheck_SC5_RequiredInvalidArtifact(t *testing.T) {
 	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Screenshot: "missing.png"}}})
 
 	d := checkDeps(t, map[string]string{
-		"diff --name-only origin/staging..HEAD": "src/App.tsx",
-		"status --porcelain -uall":              "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":              "",
 		"diff origin/staging..HEAD":             "",
 		"diff HEAD":                             "",
 	}, fp)
@@ -434,8 +434,8 @@ func TestCheck_SC6_FPMismatchIsRequired(t *testing.T) {
 
 	newFP := "fpnew000002"
 	d := checkDeps(t, map[string]string{
-		"diff --name-only origin/staging..HEAD": "src/App.tsx",
-		"status --porcelain -uall":              "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":              "",
 		"diff origin/staging..HEAD":             "",
 		"diff HEAD":                             "",
 	}, newFP)

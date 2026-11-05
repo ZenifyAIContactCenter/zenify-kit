@@ -152,15 +152,17 @@ func parsePorcelainPath(line string) string {
 	return strings.Trim(path, `"`)
 }
 
-// RenderSet is the union of files changed since base and files dirty in the
+// RenderSet is the union of files changed on this branch (since its merge-base
+// with base, so later commits on base are not counted) and files dirty in the
 // working tree (including untracked), filtered to those that render UI.
+// core.quotePath=false keeps non-ASCII names unquoted so the patterns match.
 // FR-2.1.
 func RenderSet(d Deps, repo, base string) ([]string, error) {
-	diffOut, err := d.RunGit(repo, "diff", "--name-only", base+"..HEAD")
+	diffOut, err := d.RunGit(repo, "-c", "core.quotePath=false", "diff", "--name-only", base+"...HEAD")
 	if err != nil {
-		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("git diff --name-only %s..HEAD: %w", base, err))
+		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("git diff --name-only %s...HEAD: %w", base, err))
 	}
-	statusOut, err := d.RunGit(repo, "status", "--porcelain", "-uall")
+	statusOut, err := d.RunGit(repo, "-c", "core.quotePath=false", "status", "--porcelain", "-uall")
 	if err != nil {
 		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("git status --porcelain -uall: %w", err))
 	}

@@ -16,12 +16,12 @@ zenify ui-verify files [flags]
 
 ## Khi nào dùng
 
-Bước 4 của `/znf:ship` đếm số dòng để quyết định có cần `znf:ui-verifier`. Cùng tập file mà `zenify ui-verify check` chặn, nên hai nơi không lệch nhau.
+Bước 4 của `/znf:ship` chạy với `--count` để quyết định có cần `znf:ui-verifier`. Cùng tập file mà `zenify ui-verify check` chặn, nên hai nơi không lệch nhau.
 
 ## Ví dụ
 
 ```bash
-zenify ui-verify files --base "$(zenify wt base)" | wc -l
+zenify ui-verify files --base "$(zenify wt base)" --count
 ```
 
 ## Cờ
@@ -29,6 +29,7 @@ zenify ui-verify files --base "$(zenify wt base)" | wc -l
 | Cờ | Ý nghĩa |
 |---|---|
 | `--base` | base ref để so sánh (bắt buộc) |
+| `--count` | print only the number of files (fails with no output on error) |
 | `--repo` | repo path (mặc định cwd) |
 
 ## Lệnh liên quan
