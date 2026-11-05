@@ -24,6 +24,10 @@ import (
 // screens/components. FR-2.1 — keep this exact pattern in sync with the brief.
 var renderRe = regexp.MustCompile(`\.(tsx|jsx|vue|svelte|css|scss|less)$|components?/|pages?/|views?/`)
 
+// testFileRe matches a test file: it renders nothing a person sees, so it never
+// requires a UI verdict even when it sits under a UI directory or ends in .tsx.
+var testFileRe = regexp.MustCompile(`(^|/)__tests__/|\.(test|spec)\.[cm]?[jt]sx?$`)
+
 // unsafeFileRe matches what may not appear in a screenshot file name: a
 // route-shaped screen ("chat/room") would otherwise become a missing subdir.
 var unsafeFileRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -177,7 +181,7 @@ func RenderSet(d Deps, repo, base string) ([]string, error) {
 
 	var out []string
 	for p := range set {
-		if renderRe.MatchString(p) {
+		if renderRe.MatchString(p) && !testFileRe.MatchString(p) {
 			out = append(out, p)
 		}
 	}

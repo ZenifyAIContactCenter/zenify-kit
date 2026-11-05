@@ -211,3 +211,27 @@ func TestUIVerifyCheckInteractiveUnchanged(t *testing.T) {
 		t.Errorf("await dir created outside autonomous mode (stat err=%v)", serr)
 	}
 }
+
+// `ui-verify files` prints the rendering files one per line, the list ship counts to decide on a verifier.
+func TestUIVerifyFiles_ListsRenderingFilesOnly(t *testing.T) {
+	repo := initUIVerifyRepo(t)
+	compDir := filepath.Join(repo, "src", "components")
+	if err := os.MkdirAll(compDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"Foo.tsx": "export {}\n", "Foo.test.tsx": "test()\n"} {
+		if err := os.WriteFile(filepath.Join(compDir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var buf bytes.Buffer
+	c := newUIVerifyCmd()
+	c.SetOut(&buf)
+	c.SetArgs([]string{"files", "--repo", repo, "--base", "HEAD"})
+	if err := c.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != "src/components/Foo.tsx\n" {
+		t.Fatalf("files output = %q", got)
+	}
+}

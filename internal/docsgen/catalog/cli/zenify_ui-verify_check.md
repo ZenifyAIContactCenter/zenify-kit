@@ -3,7 +3,7 @@ summary: Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint 
 ---
 ## Khi nào dùng
 
-`/znf:ship` bước 7 chạy lệnh này trước khi kết luận Shippable, sau khi trigger cơ học (đếm `rg` trên diff) xác định diff có render gì đó.
+`/znf:ship` bước 7 chạy lệnh này trước khi kết luận Shippable, sau khi trigger cơ học (`zenify ui-verify files` đếm ra khác 0) xác định diff có render gì đó.
 
 ## Kết quả
 

@@ -30,7 +30,7 @@ Stamp each check with its `fp`; step 7 needs all current.
 4. **Behavioural verification**: tests if any exist, else **`Skill(znf:run)`**, which reports the URL `znf:ui-verifier` needs — "it builds" is not "it works". **A suite that ran nothing is not a pass**: report the count.
 
    ```bash
-   git diff --name-only HEAD | rg -c '\.(tsx|jsx|vue|svelte|css|scss|less)$|components?/|pages?/|views?/'
+   zenify ui-verify files --base "$(zenify wt base)" | wc -l
    ```
 
    Non-zero → dispatch **`znf:ui-verifier`**; **do not drive the browser yourself**. Zero (literally, never a judgement) → "nothing renders in this diff". **A non-zero with no verdict = BLOCKED (❌, Shippable NO).** Setup (flag ON, seed, FE+BE up) is work you perform, never a skip; cannot → BLOCKED, naming what is missing. `ZNF_AUTONOMOUS=1`: `references/autonomous-ui.md`.

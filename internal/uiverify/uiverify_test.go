@@ -43,6 +43,12 @@ func TestRenderSet_PathTable(t *testing.T) {
 		{"x.css", true},
 		{"internal/uiverify/uiverify.go", false},
 		{"src/components/Button.jsx", true},
+		// Test files render nothing a person sees, even under a UI directory.
+		{"hooks/config.test.tsx", false},
+		{"src/components/Button.test.jsx", false},
+		{"src/pages/list.spec.tsx", false},
+		{"src/components/__tests__/Button.jsx", false},
+		{"src/components/testing/Grid.tsx", true},
 	}
 	var diffNames []string
 	for _, c := range cases {
