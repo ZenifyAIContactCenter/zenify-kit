@@ -58,7 +58,10 @@ func newDownCmd() *cobra.Command {
 				home = ""
 			}
 			if !dryRun {
-				removeLocalClaude(u, workspace, pluginRunner(workspace))
+				if !removeLocalClaude(u, workspace, pluginRunner(workspace)) {
+					// Its plane-guard hook must outlive a zenify-plane that is still registered.
+					return exitcode.New(exitcode.Fail, errors.New("zenify-plane (local) chưa gỡ được nên giữ nguyên hook; sửa lỗi trên rồi chạy lại zenify down --apply")) //znf:allow-lang
+				}
 			} else {
 				u.Step(ui.StatusInfo, "plugin", "sẽ gỡ znf@zenify-kit (local) và marketplace zenify-kit") //znf:allow-lang
 				u.Step(ui.StatusInfo, "mcp", "sẽ gỡ 3 MCP server zenify-* (local)")                       //znf:allow-lang
@@ -209,7 +212,9 @@ func newDownCmd() *cobra.Command {
 // MCP registrations through claude. "Not installed / not found" answers (measured
 // on 2.1.318) count as already clean, so down is idempotent; any other failure is
 // a warning. The plugin stamp goes once the plugin is gone.
-func removeLocalClaude(u *ui.Writer, workspace string, run func(string, ...string) ([]byte, error)) {
+// It reports false when zenify-plane may still be registered locally.
+func removeLocalClaude(u *ui.Writer, workspace string, run func(string, ...string) ([]byte, error)) (planeGone bool) {
+	planeGone = true
 	pluginGone := false
 	if out, err := run("claude", "plugin", "uninstall", plugin.PluginID, "--scope", "local"); err != nil && !strings.Contains(string(out), "is not installed in") {
 		u.Step(ui.StatusWarn, "plugin", fmt.Sprintf("bỏ qua (%v: %s)", err, strings.TrimSpace(string(out)))) //znf:allow-lang
@@ -229,14 +234,17 @@ func removeLocalClaude(u *ui.Writer, workspace string, run func(string, ...strin
 	for _, name := range userKitMCPs {
 		if owned, err := mcpreg.KitOwned(filepath.Join(home, ".claude.json"), workspace, name); err != nil {
 			u.Step(ui.StatusWarn, "mcp", fmt.Sprintf("bỏ qua (%v)", err)) //znf:allow-lang
+			planeGone = planeGone && name != "zenify-plane"
 			continue
 		} else if !owned {
 			continue
 		}
 		if _, err := mcpreg.RemoveScoped(name, "local", run); err != nil {
 			u.Step(ui.StatusWarn, "mcp", fmt.Sprintf("bỏ qua (%v)", err)) //znf:allow-lang
+			planeGone = planeGone && name != "zenify-plane"
 		}
 	}
+	return planeGone
 }
 
 // marketplaceNotFound matches `Marketplace '<name>' not found`, scoped so a

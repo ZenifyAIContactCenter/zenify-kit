@@ -178,6 +178,7 @@ func downFakeClaude(t *testing.T, calls *[]string, fail func(args string) (strin
 func downWorkspace(t *testing.T) (ws, home, repos string) {
 	t.Helper()
 	ws, home = t.TempDir(), t.TempDir()
+	ws = canonicalPath(ws) // down keys ~/.claude.json projects by the real path
 	t.Setenv("HOME", home)
 	t.Setenv("ZENIFY_HOME", filepath.Join(home, ".zenify"))
 	repos = filepath.Join(ws, "manifest", "repos.yaml")
@@ -317,5 +318,30 @@ func TestDown_KeepsCustomLocalMCP(t *testing.T) {
 	runDown(t, ws, repos, "--apply")
 	if slices.Contains(calls, "mcp remove zenify-posthog -s local") {
 		t.Errorf("custom zenify-posthog removed: %v", calls)
+	}
+}
+
+// zenify-plane still registered means its plane-guard must stay: down stops
+// before the hooks and exits non-zero.
+func TestDown_PlaneRemoveFailsKeepsHooks(t *testing.T) {
+	ws, home, repos := downWorkspace(t)
+	writeF(t, filepath.Join(home, ".claude.json"), `{"projects":{"`+ws+`":{"mcpServers":{`+kitMCPEntries+`}}}}`)
+	local := apply.WorkspaceLocalSettings(ws)
+	if _, err := apply.EnsureGlobalHooks(local, false); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	downFakeClaude(t, &calls, func(a string) (string, bool) {
+		return "boom", a == "mcp remove zenify-plane -s local"
+	})
+	cmd := newDownCmd()
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--workspace", ws, "--manifest", repos, "--apply"})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("down must fail while zenify-plane is still registered")
+	}
+	b, _ := os.ReadFile(local) //nolint:gosec // G304 -- test temp path
+	if !strings.Contains(string(b), "plane-guard") {
+		t.Fatalf("plane-guard removed while zenify-plane remains: %s", b)
 	}
 }
