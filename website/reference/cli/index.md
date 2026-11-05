@@ -108,6 +108,8 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify track onboard](./zenify_track_onboard) | Nạp dữ liệu ban đầu cho track. |
 | [zenify track onboard history](./zenify_track_onboard_history) | Xem trước hoặc ghi lịch sử làm việc lấy từ transcript Claude Code. |
 | [zenify track onboard memory](./zenify_track_onboard_memory) | Đánh dấu đã onboard từ memory (dòng `onboard · memory`). |
+| [zenify track plan](./zenify_track_plan) | Quản lý kế hoạch trong ngày của pane (đặt danh sách việc). |
+| [zenify track plan set](./zenify_track_plan_set) | Ghi kế hoạch hôm nay từ các id đã cho và in `track: plan <n> items`. |
 | [zenify track ship](./zenify_track_ship) | Ghi kết quả một lần chạy znf:ship: shipped hay blocked, bước bị chặn, số finding và số vòng fix. |
 | [zenify track start](./zenify_track_start) | Mở một lượt theo dõi và in id `track: <id>`. |
 | [zenify track stats](./zenify_track_stats) | In số liệu hôm nay, độ chính xác estimate và chất lượng từ log.md và sessions/*.log. |

@@ -48,7 +48,7 @@ func newTrackCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "track",
 		Short: "Ghi và báo cáo các lượt cook/fix/hotfix cho pane dev track", //znf:allow-lang
-		Long: "Ghi các dòng start/est/ship/fix/ci/end vào <workspace>/.zenify/track/log.md và in số liệu\n" + //znf:allow-lang
+		Long: "Ghi các dòng start/est/ship/fix/ci/end/plan vào <workspace>/.zenify/track/log.md và in số liệu\n" + //znf:allow-lang
 			"cho pane. Bật bằng `zenify feature track on`; khi tắt, mọi lệnh ghi in `track: off` và\n" + //znf:allow-lang
 			"không ghi gì.", //znf:allow-lang
 	}
@@ -56,7 +56,7 @@ func newTrackCmd() *cobra.Command {
 	c.AddCommand(
 		newTrackStartCmd(&ws), newTrackEstCmd(&ws), newTrackShipCmd(&ws),
 		newTrackFixCmd(&ws), newTrackCICmd(&ws), newTrackEndCmd(&ws), newTrackStatsCmd(&ws),
-		newTrackBacklogCmd(&ws), newTrackOnboardCmd(&ws),
+		newTrackBacklogCmd(&ws), newTrackOnboardCmd(&ws), newTrackPlanCmd(&ws),
 	)
 	return c
 }
