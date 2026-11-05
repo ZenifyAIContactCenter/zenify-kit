@@ -123,3 +123,51 @@ func TestWorkspaceKitTargetRecordsPerWorkspace(t *testing.T) {
 		t.Fatalf("relative ws record %q != %q", rel.permissionsRecord, a.permissionsRecord)
 	}
 }
+
+// A kit rule the user removed at user level stays removed in the workspace:
+// the first workspace ensure must not add it back.
+func TestSeedWorkspaceRecordsKeepsUserRemovals(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	user := UserKitTarget(home)
+	if _, err := EnsureKitPermissions(user, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureKitSandbox(user, false); err != nil {
+		t.Fatal(err)
+	}
+	gone, goneSandbox := KitAllowRules[0], KitSandboxExcluded[0]
+	b, _ := os.ReadFile(user.Settings)
+	s := strings.Replace(string(b), `"`+gone+`",`, "", 1)
+	s = strings.Replace(s, `"`+goneSandbox+`",`, "", 1)
+	if s == string(b) {
+		t.Fatalf("fixture: could not remove %q from %s", gone, b)
+	}
+	if err := os.WriteFile(user.Settings, []byte(s), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SeedWorkspaceRecords(home, ws); err != nil {
+		t.Fatal(err)
+	}
+	wt := WorkspaceKitTarget(home, ws)
+	if _, err := EnsureKitPermissions(wt, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureKitSandbox(wt, false); err != nil {
+		t.Fatal(err)
+	}
+	local, _ := os.ReadFile(wt.Settings)
+	if strings.Contains(string(local), `"`+gone+`"`) || strings.Contains(string(local), `"`+goneSandbox+`"`) {
+		t.Fatalf("user-removed rule re-added in the workspace: %s", local)
+	}
+	if !strings.Contains(string(local), `"`+KitAllowRules[1]+`"`) {
+		t.Fatalf("other kit rules missing: %s", local)
+	}
+	// a workspace that already has its record is left alone
+	if err := SeedWorkspaceRecords(home, ws); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := RemoveKitPermissions(wt, false); err != nil || n != len(KitAllowRules)-1 {
+		t.Fatalf("remove n=%d err=%v", n, err)
+	}
+}

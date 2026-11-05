@@ -189,6 +189,10 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 				apply.ReviewerEnv, apply.ReviewerDefault)
 		}
 
+		// Rules the user removed at user level stay removed here.
+		if err := apply.SeedWorkspaceRecords(home, workspace); err != nil {
+			localErr("kit records", err)
+		}
 		kt := apply.WorkspaceKitTarget(home, workspace)
 		if n, err := apply.EnsureKitPermissions(kt, false); err != nil {
 			localErr("permissions", err)
