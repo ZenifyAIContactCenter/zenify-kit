@@ -93,3 +93,33 @@ func TestUserKitTargetRecordPathsUnchanged(t *testing.T) {
 		}
 	}
 }
+
+// Two workspaces on one machine keep separate kit records: rules recorded for
+// one never read as "removed by the user" in the other, and removing them from
+// one leaves the other's record alone.
+func TestWorkspaceKitTargetRecordsPerWorkspace(t *testing.T) {
+	home, wsA, wsB := t.TempDir(), t.TempDir(), t.TempDir()
+	a, b := WorkspaceKitTarget(home, wsA), WorkspaceKitTarget(home, wsB)
+	if a.permissionsRecord == b.permissionsRecord {
+		t.Fatalf("shared record %q", a.permissionsRecord)
+	}
+	nA, err := EnsureKitPermissions(a, false)
+	if err != nil || nA == 0 {
+		t.Fatalf("A: n=%d err=%v", nA, err)
+	}
+	nB, err := EnsureKitPermissions(b, false)
+	if err != nil || nB != nA {
+		t.Fatalf("B: n=%d err=%v, want %d", nB, err, nA)
+	}
+	if _, err := RemoveKitPermissions(a, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(b.permissionsRecord); err != nil {
+		t.Fatalf("B record gone after removing A: %v", err)
+	}
+	// A relative path names the same workspace as its absolute form.
+	t.Chdir(wsA)
+	if rel := WorkspaceKitTarget(home, "."); rel.permissionsRecord != a.permissionsRecord {
+		t.Fatalf("relative ws record %q != %q", rel.permissionsRecord, a.permissionsRecord)
+	}
+}

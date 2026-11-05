@@ -1,7 +1,11 @@
 // internal/apply/settingspath.go
 package apply
 
-import "path/filepath"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"path/filepath"
+)
 
 // UserSettings is the user-scope Claude Code settings file.
 func UserSettings(home string) string {
@@ -36,9 +40,14 @@ func UserKitTarget(home string) KitTarget {
 }
 
 // WorkspaceKitTarget targets <ws>/.claude/settings.local.json, with records
-// under <home>/.zenify/kit-local.
+// under <home>/.zenify/kit-local/<hash of the absolute ws path>, so each
+// workspace on a machine keeps its own record of what the kit added.
 func WorkspaceKitTarget(home, ws string) KitTarget {
-	dir := filepath.Join(home, ".zenify", "kit-local")
+	if abs, err := filepath.Abs(ws); err == nil {
+		ws = abs
+	}
+	sum := sha256.Sum256([]byte(filepath.Clean(ws)))
+	dir := filepath.Join(home, ".zenify", "kit-local", hex.EncodeToString(sum[:8]))
 	return KitTarget{
 		Settings:          WorkspaceLocalSettings(ws),
 		permissionsRecord: filepath.Join(dir, "permissions.json"),
