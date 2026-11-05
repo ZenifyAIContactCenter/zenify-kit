@@ -153,6 +153,7 @@ func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 // sink (bytes.Buffer, same as io.Discard's non-styled path) must produce
 // plain Step lines and never start the bubbletea Program — no ANSI escapes.
 func TestRunApply_NonTTY_PlainStepLinesNoEscapes(t *testing.T) {
+	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -178,6 +179,7 @@ func TestRunApply_NonTTY_PlainStepLinesNoEscapes(t *testing.T) {
 }
 
 func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
+	useFakeClaude(t, newFakeClaude(""))  // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir()) // isolate the Task 5 docs-store step from the real machine
 	home := t.TempDir()
 	t.Setenv("HOME", home) // isolate the Task 7 global-hooks step from the real ~/.claude
@@ -540,6 +542,7 @@ func TestRenderCodexSummary(t *testing.T) {
 // blocks for .zenify/.env, the output names keys only, the deny rule lands in
 // ~/.claude/settings.json, and a second run changes nothing.
 func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
+	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -612,6 +615,7 @@ func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
 // FR-9 covers a worktree's copy of the repo settings.local.json: same key, same
 // value as the repo copy → moved once, gone from both.
 func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
+	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	ws := t.TempDir()
@@ -646,6 +650,7 @@ func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
 // A worktree copy that does not load is skipped and named; the repo copy still
 // migrates.
 func TestRunApply_SkipsMalformedWorktreeSettings(t *testing.T) {
+	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	ws := t.TempDir()

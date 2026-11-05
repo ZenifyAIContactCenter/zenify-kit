@@ -265,6 +265,7 @@ func TestBumpEnvKeysVersion(t *testing.T) {
 // Fix A through `up --apply`: the manifest source reaches renderEnvStep, so a
 // non-embedded manifest never deletes a recorded key and keeps tracking it.
 func TestRunApply_NonEmbeddedManifestKeepsRecordedKey(t *testing.T) {
+	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	ws := t.TempDir()

@@ -322,15 +322,6 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		})
 	}
 
-	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). NON-FATAL.
-	// The broker comes from the trusted (embedded) manifest, never --manifest or
-	// cwd: the registered headersHelper `zenify broker headers` resolves it the
-	// same way, so the MCP URL and its token always name one broker.
-	bm, _ := brokerManifest("", "")
-	_ = registerBrokerMCP(w, errW, workspace, bm, runClaudeIn(workspace))
-	// Per-developer Plane MCP (stdio, the dev's own PAT, not via the broker). NON-FATAL.
-	_ = registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, runClaudeIn(workspace))
-
 	// gh-stack extension for stacked PRs (FR-6.1). NON-FATAL.
 	ensureGHStack(gh, w, errW)
 
@@ -341,9 +332,45 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 
 	// Hooks + model pin + store config distribution, all fail-open (W0 FR-01.4);
 	// never affects `failed`.
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
+	var localErrs []string
+	home, herr := os.UserHomeDir()
+	if herr == nil && home != "" {
 		rep := ensureWorkspace(workspace, home, w, errW, ensureOpts{ForceLocal: true})
 		renderCodexSummary(rep, w)
+		localErrs = rep.LocalErrs
+	}
+	run := pluginRunner(workspace) // runClaudeIn(workspace) outside tests
+	if err := installPluginLocal(workspace, zenifyHome(os.Getenv, os.UserHomeDir), run); err != nil {
+		_, _ = fmt.Fprintln(errW, "warning: znf plugin:", err)
+		localErrs = append(localErrs, "plugin install: "+err.Error())
+	}
+	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). The broker
+	// comes from the trusted (embedded) manifest, never --manifest or cwd: the
+	// registered headersHelper `zenify broker headers` resolves it the same
+	// way, so the MCP URL and its token always name one broker.
+	bm, _ := brokerManifest("", "")
+	if err := registerBrokerMCP(w, errW, workspace, bm, runClaudeIn(workspace)); err != nil {
+		localErrs = append(localErrs, "broker MCP: "+err.Error())
+	}
+	// Per-developer Plane MCP (stdio, the dev's own PAT, not via the broker).
+	if err := registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, runClaudeIn(workspace)); err != nil {
+		localErrs = append(localErrs, "plane MCP: "+err.Error())
+	}
+	// FR-5.5: the user-level install goes only once every local step succeeded.
+	var migrateErr error
+	switch {
+	case len(localErrs) > 0:
+		migrateErr = fmt.Errorf("giữ nguyên bản cài cấp user vì bước local lỗi: %s", strings.Join(localErrs, "; ")) //znf:allow-lang
+		_, _ = fmt.Fprintln(errW, migrateErr)
+	case herr == nil && home != "":
+		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), run, false)
+		for _, r := range removed {
+			_, _ = fmt.Fprintln(w, "đã gỡ bản cài cấp user:", r) //znf:allow-lang
+		}
+		if err != nil {
+			migrateErr = fmt.Errorf("gỡ bản cài cấp user: %w", err) //znf:allow-lang
+			_, _ = fmt.Fprintln(errW, migrateErr)
+		}
 	}
 
 	// NPM_TOKEN for repos installing from GitHub Packages (FR-6). FAIL-OPEN.
@@ -375,6 +402,9 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 
 	if failed > 0 {
 		return exitcode.New(exitcode.Fail, fmt.Errorf("apply: %d repo(s) failed", failed))
+	}
+	if migrateErr != nil {
+		return exitcode.New(exitcode.Fail, migrateErr)
 	}
 	return nil
 }
@@ -867,6 +897,12 @@ func newUpCmd() *cobra.Command {
 				}
 				uiOut(cmd).Header("zenify up")
 				renderPlanTable(w, plans, auth)
+				if home, herr := os.UserHomeDir(); herr == nil && home != "" {
+					removed, _ := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), nil, true)
+					for _, r := range removed {
+						_, _ = fmt.Fprintln(w, "sẽ gỡ bản cài cấp user (khi các bước local thành công):", r) //znf:allow-lang
+					}
+				}
 				if owned, lerr := managed.Load(filepath.Join(workspace, ".zenify", "manifest.json")); lerr == nil {
 					if rerr := renderEnvStep(w, m, mSrc, devenv.Path(workspace), owned, true); rerr != nil {
 						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "env: không xem trước được .zenify/.env (%v)\n", rerr) //znf:allow-lang

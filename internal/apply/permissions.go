@@ -364,7 +364,7 @@ func (l kitList) removeRules(home string, only []string, dryRun bool) (int, erro
 	rec, err := l.readRecord(home)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, fmt.Errorf("no %s record", strings.TrimSuffix(filepath.Base(l.record(home)), ".json"))
+			return 0, fmt.Errorf("no %s record: %w", strings.TrimSuffix(filepath.Base(l.record(home)), ".json"), err)
 		}
 		return 0, err
 	}
