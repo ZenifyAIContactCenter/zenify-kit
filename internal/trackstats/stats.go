@@ -80,6 +80,8 @@ type Today struct {
 	PRsWaiting  int    `json:"prsWaiting"`
 	MergedError string `json:"mergedError"`
 	Items       []Item `json:"items"`
+	// DailyPlan is today's latest `plan` row with its progress; nil when none was set today.
+	DailyPlan *DailyPlan `json:"dailyPlan"`
 }
 
 type KindEstimate struct {
@@ -286,7 +288,7 @@ func Compute(in Input) (Result, map[string]string) {
 		case "onboard":
 			res.Onboarded = true
 			continue
-		case "backlog", "drop", "history":
+		case "backlog", "drop", "history", "plan":
 			continue // backlog and drop are read by computeBacklog; history feeds no stat
 		}
 		w := works[e.ID]
@@ -416,8 +418,12 @@ func Compute(in Input) (Result, map[string]string) {
 			res.Today.PRsOpened++
 		}
 	}
+	fromOf := map[string]string{}
+	for id, w := range works {
+		fromOf[id] = w.from
+	}
 	res.Today.Plans = countPlans(in, &res)
-	newCache, ghDown := mergedToday(in, prOrder, &res)
+	newCache, ghDown := mergedToday(in, prOrder, planPRIDs(logEv, in.Today), &res)
 
 	// Scale: wall minutes of the done and pushed items with a real estimate, oldest end first.
 	ended := byEnd(items)
@@ -452,6 +458,7 @@ func Compute(in Input) (Result, map[string]string) {
 	var issues []Issue
 	res.Backlog, issues = computeBacklog(in, logEv, from, items)
 	res.Kitchen = computeKitchen(in, logEv, works, order, items, issues, ghDown, newCache, &res)
+	res.Today.DailyPlan = computeDailyPlan(in, logEv, items, fromOf, res.Backlog.Items, newCache, res.Scale)
 	return res, newCache
 }
 
@@ -520,14 +527,15 @@ func countPlans(in Input, res *Result) map[string]int {
 }
 
 // mergedToday asks Merged about every ended PR not yet known as merged,
-// counts the ones merged today and returns the new cache.
-func mergedToday(in Input, urls []string, res *Result) (cache map[string]string, ghDown bool) {
+// counts the ones merged today and returns the new cache. extra holds the plan PR URLs: they are
+// asked about too, but only urls feed PRsWaiting and Merged.
+func mergedToday(in Input, urls, extra []string, res *Result) (cache map[string]string, ghDown bool) {
 	cache = map[string]string{}
 	for k, v := range in.Cache {
 		cache[k] = v
 	}
 	if in.Merged != nil {
-		for _, u := range urls {
+		for _, u := range append(append([]string(nil), urls...), extra...) {
 			if _, known := cache[u]; known {
 				continue
 			}

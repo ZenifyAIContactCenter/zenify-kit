@@ -44,7 +44,9 @@ type CookedItem struct {
 	EndedAt string   `json:"endedAt"`
 	PRs     []string `json:"prs"`
 	// Merged: the item has PRs and every one of them is merged (closed unmerged or unknown is not).
-	Merged bool `json:"merged"`
+	Merged  bool   `json:"merged"`
+	Est     string `json:"est"`
+	WallMin int    `json:"wallMin"`
 }
 
 type BoilItem struct {
@@ -233,7 +235,7 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 		if w.end == nil || it.Status == "running" || it.Status == "stale" || w.end.At.In(in.Now.Location()).Format(dateLayout) != in.Today {
 			continue
 		}
-		done = append(done, cooked{w.end.At, CookedItem{ID: id, Brief: brief(it, true), Status: it.Status, EndedAt: it.EndedAt, PRs: it.PRs, Merged: allMerged(it.PRs, mergedAt)}})
+		done = append(done, cooked{w.end.At, CookedItem{ID: id, Brief: brief(it, true), Status: it.Status, EndedAt: it.EndedAt, PRs: it.PRs, Merged: allMerged(it.PRs, mergedAt), Est: it.Est, WallMin: it.WallMin}})
 	}
 	sort.SliceStable(done, func(i, j int) bool { return done[i].at.After(done[j].at) })
 	for _, c := range done {

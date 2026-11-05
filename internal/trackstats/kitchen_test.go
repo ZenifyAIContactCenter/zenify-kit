@@ -598,3 +598,14 @@ func TestKitchenCookedMergedOnlyWhenEveryPRMerged(t *testing.T) {
 		t.Fatalf("merged = %+v (want %s false: one PR open, %s true, %s false: closed unmerged)", merged, a, b, c)
 	}
 }
+
+func TestKitchenCookedEstWall(t *testing.T) {
+	id := kid("cook", 1)
+	r, _ := Compute(kInput(lines(
+		row(kAt(8, 0), "start", id, "cook", "r", "M"),
+		row(kAt(8, 52), "end", id, "branch:x", "1", "0"),
+	)))
+	if len(r.Kitchen.Cooked) != 1 || r.Kitchen.Cooked[0].Est != "M" || r.Kitchen.Cooked[0].WallMin != 52 {
+		t.Fatalf("cooked = %+v", r.Kitchen.Cooked)
+	}
+}
