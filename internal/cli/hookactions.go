@@ -135,7 +135,7 @@ func featuresLine(wsRoot string, w io.Writer) {
 		fmt.Fprintln(w, "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR")
 	}
 	if feats["track"] {
-		fmt.Fprintln(w, "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --json first (track.md#Backlog); plan today → track.md#Daily plan")
+		fmt.Fprintln(w, "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --brief first (track.md#Backlog); plan today → track.md#Daily plan")
 		trackOnboardLine(wsRoot, w)
 		trackSummaryLine(wsRoot, w, time.Now())
 	}
@@ -176,7 +176,25 @@ func trackSummaryLine(wsRoot string, w io.Writer, now time.Time) {
 		note(err)
 		return
 	}
-	in := trackstats.Input{Log: string(raw), Today: now.Format("2006-01-02"), Now: now, Workspace: wsRoot, Cache: map[string]string{}}
+	in := trackstats.Input{Log: string(raw), Today: now.Format("2006-01-02"), Now: now, Workspace: wsRoot, Cache: map[string]string{}, Sessions: map[string]string{}}
+	// Sessions and beats tell a stale item a live tab still holds from one left behind (backlog).
+	if in.Beats, err = readBeats(dir); err != nil {
+		note(err)
+		return
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "sessions", "*.log"))
+	if err != nil {
+		note(err)
+		return
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
+		if err != nil {
+			note(err)
+			return
+		}
+		in.Sessions[strings.TrimSuffix(filepath.Base(f), ".log")] = string(b)
+	}
 	if b, err := os.ReadFile(filepath.Join(dir, "merged.json")); err == nil { //nolint:gosec // G304 -- path under the workspace root
 		if err := json.Unmarshal(b, &in.Cache); err != nil {
 			note(fmt.Errorf("parse merged.json: %w", err))

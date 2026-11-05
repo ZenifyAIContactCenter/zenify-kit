@@ -321,7 +321,7 @@ func TestSessionStart_TrackLine(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", "")
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	t.Setenv("ZNF_AUTONOMOUS", "")
-	want := "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --json first (track.md#Backlog); plan today → track.md#Daily plan\n"
+	want := "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --brief first (track.md#Backlog); plan today → track.md#Daily plan\n"
 	cases := []struct {
 		name    string
 		overlay string
@@ -512,5 +512,45 @@ func TestSessionStart_TrackSummaryLine(t *testing.T) {
 				t.Errorf("want %q in %q", c.want, out)
 			}
 		})
+	}
+}
+
+// A stale item (started over 7 days ago) whose session still beats is held, not backlog:
+// the summary loads sessions and beats like stats does.
+func TestSessionStart_TrackSummaryHeldStale(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	t.Setenv("HOME", t.TempDir())
+	now := time.Now()
+	old := now.Add(-8 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	stamp := now.Add(-time.Minute).UTC().Format(time.RFC3339)
+	ws := mkWorkspace(t)
+	if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte("features:\n  track: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(ws, ".zenify", "track")
+	for _, d := range []string{filepath.Join(dir, "sessions"), filepath.Join(dir, "live")} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log := stamp + " · onboard · memory\n" + old + " · start · cook-261028-aaaa · cook · kit · M\n"
+	files := map[string]string{
+		filepath.Join(dir, "log.md"):              log,
+		filepath.Join(dir, "sessions", "s1.log"): old + " · bind · cook-261028-aaaa\n",
+		filepath.Join(dir, "live", "s1.beat"):    "",
+	}
+	for p, body := range files {
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var buf bytes.Buffer
+	if rc := runSessionStart(ws, &buf); rc != 0 {
+		t.Fatalf("rc = %d", rc)
+	}
+	if out := buf.String(); !strings.Contains(out, "track: 1 carried\n") {
+		t.Fatalf("want only the carried item, got %q", out)
 	}
 }
