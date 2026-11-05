@@ -183,3 +183,16 @@ func TestWorkspaceRootCheck_OverlayRepoRootNotFlagged(t *testing.T) {
 		t.Fatalf("ok=%v %q", ok, d)
 	}
 }
+
+// FR-6.4: the .agents and .codex dirs that up creates at the root are allowed.
+func TestWorkspaceRootCheck_CodexDirsAllowed(t *testing.T) {
+	ws := t.TempDir()
+	for _, d := range []string{"repos", ".claude", ".agents/skills", ".codex"} {
+		if err := os.MkdirAll(filepath.Join(ws, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if ok, d := workspaceRootCheck(ws).Run(); !ok {
+		t.Fatalf("ok=false %q", d)
+	}
+}

@@ -10,7 +10,7 @@ import (
 )
 
 // rootAllowlist is the set of workspace-root entries an agent may write to.
-var rootAllowlist = map[string]bool{"docs": true, "CLAUDE.md": true, "AGENTS.md": true, ".claude": true, ".zenify": true, ".zenify-overlay.yaml": true, ".git": true, ".idea": true, ".vscode": true, ".DS_Store": true}
+var rootAllowlist = map[string]bool{"docs": true, "CLAUDE.md": true, "AGENTS.md": true, ".claude": true, ".zenify": true, ".zenify-overlay.yaml": true, ".git": true, ".idea": true, ".vscode": true, ".DS_Store": true, ".agents": true, ".codex": true}
 
 // writeGuardPayload is the PreToolUse stdin shape for Write|Edit|NotebookEdit.
 type writeGuardPayload struct {

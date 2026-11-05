@@ -107,7 +107,7 @@ the right form, then **retire it from memory (MOVE, not a COPY)** so the rule ha
 
 ## Where files go
 
-The workspace root holds only `repos/ docs/ CLAUDE.md AGENTS.md .claude/ .zenify/ .zenify-overlay.yaml` (plus `.git .idea .vscode .DS_Store`). `docs/` holds exactly ten names: five store dirs (synced) `specs plans reference handoff releases`, five local dirs (never synced) `research notes scripts exports external`. Nothing sits directly under `docs/`. The `write-guard` hook denies anything else and names the right place.
+The workspace root holds only `repos/ docs/ CLAUDE.md AGENTS.md .claude/ .zenify/ .zenify-overlay.yaml` (plus `.agents/ .codex/`, which `zenify up` creates for Codex, and `.git .idea .vscode .DS_Store`). `docs/` holds exactly ten names: five store dirs (synced) `specs plans reference handoff releases`, five local dirs (never synced) `research notes scripts exports external`. Nothing sits directly under `docs/`. The `write-guard` hook denies anything else and names the right place.
 
 - temp, probes, intermediate output → the session scratchpad (`$TMPDIR`)
 - spec → `docs/specs/<repo>/`; plan → `docs/plans/<repo>/`; release report → `docs/releases/`

@@ -8,7 +8,7 @@ title: Quy ước thư mục workspace
 
 Mọi máy đã `zenify up` dùng chung một quy ước: root workspace chỉ có một bộ entry cố định, `docs/` chỉ có mười tên, và hook `write-guard` từ chối ghi ra ngoài quy ước. Mục đích là rác không được sinh ra ngay từ đầu, thay vì phải dọn sau.
 
-**Root workspace chỉ chứa:** `repos/`, `docs/`, `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.zenify/`, `.zenify-overlay.yaml`, và của editor/hệ thống `.git/`, `.idea/`, `.vscode/`, `.DS_Store`. Mọi entry khác là vi phạm.
+**Root workspace chỉ chứa:** `repos/`, `docs/`, `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.zenify/`, `.zenify-overlay.yaml`, `.agents/` và `.codex/` (do `zenify up` tạo cho Codex), và của editor/hệ thống `.git/`, `.idea/`, `.vscode/`, `.DS_Store`. Mọi entry khác là vi phạm.
 
 **`docs/` chỉ chứa mười tên.** Năm của store (symlink, sync): `specs`, `plans`, `reference`, `handoff`, `releases`. Năm local (thư mục thật, không git): `research`, `notes`, `scripts`, `exports`, `external`. Không file nào nằm ngay dưới `docs/`. (`docs/.claude/` do harness tạo, bỏ qua như mọi dot-entry.)
 
