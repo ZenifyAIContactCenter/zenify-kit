@@ -171,7 +171,30 @@ func SeedWorkspaceRecords(home, ws string) error {
 		if _, err := os.Stat(to.record(home)); !os.IsNotExist(err) {
 			continue
 		}
-		b, err := json.Marshal(rules)
+		// A rule already in the workspace list is the user's own: seeding it
+		// would mark it kit-owned and down would remove it.
+		root, _, err := readSettingsRoot(to.settings(home))
+		if err != nil {
+			return err
+		}
+		_, list, err := to.listOf(root)
+		if err != nil {
+			return err
+		}
+		have := map[string]bool{}
+		for _, a := range list {
+			have[a] = true
+		}
+		var seed []string
+		for _, r := range rules {
+			if !have[r] {
+				seed = append(seed, r)
+			}
+		}
+		if len(seed) == 0 {
+			continue
+		}
+		b, err := json.Marshal(seed)
 		if err != nil {
 			return err
 		}

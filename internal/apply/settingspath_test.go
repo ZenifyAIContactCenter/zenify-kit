@@ -274,3 +274,37 @@ func TestKeepUserKitRemovalsSurvivesFailedRemove(t *testing.T) {
 		t.Fatalf("workspace B re-added a user-removed rule: %s", local)
 	}
 }
+
+// A rule the user removed at user level but keeps by hand in the workspace is
+// the user's, so the seeded record must not let down remove it.
+func TestSeedWorkspaceRecordsSkipsRulesAlreadyLocal(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	user := UserKitTarget(home)
+	if _, err := EnsureKitPermissions(user, false); err != nil {
+		t.Fatal(err)
+	}
+	gone := KitAllowRules[0]
+	b, _ := os.ReadFile(user.Settings)
+	if err := os.WriteFile(user.Settings, []byte(strings.Replace(string(b), `"`+gone+`",`, "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wt := WorkspaceKitTarget(home, ws)
+	if err := os.MkdirAll(filepath.Dir(wt.Settings), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(wt.Settings, []byte(`{"permissions":{"allow":["`+gone+`"]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := SeedWorkspaceRecords(home, ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureKitPermissions(wt, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RemoveKitPermissions(wt, false); err != nil {
+		t.Fatal(err)
+	}
+	if local, _ := os.ReadFile(wt.Settings); !strings.Contains(string(local), `"`+gone+`"`) {
+		t.Fatalf("down removed the user's own workspace rule: %s", local)
+	}
+}
