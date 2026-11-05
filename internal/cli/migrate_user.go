@@ -182,7 +182,13 @@ func migrateUserInstalls(home, codexHome string, mcps []string, keep userKeep, r
 	}
 	if keep.Removals && !dryRun {
 		// Other workspaces set up later still learn what the user removed.
-		return removed, apply.KeepUserKitRemovals(home, lists)
+		if err := apply.KeepUserKitRemovals(home, lists); err != nil {
+			return removed, err
+		}
+		return removed, nil
 	}
-	return removed, lists()
+	if err := lists(); err != nil {
+		return removed, err
+	}
+	return removed, nil
 }

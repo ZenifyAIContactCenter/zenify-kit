@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -69,70 +70,81 @@ func (t KitTarget) allow() kitList   { return t.list(allowList, t.permissionsRec
 func (t KitTarget) sandbox() kitList { return t.list(sandboxList, t.sandboxRecord) }
 func (t KitTarget) ask() kitList     { return t.list(askList, t.askRecord) }
 
+// removedRecord is where KeepUserKitRemovals keeps the rules the user removed
+// at user level once the migration has deleted that list's record. It is a
+// separate file because the record itself means "the kit owns these rules":
+// written back there, a rule the user later adds by hand would be removed.
+func removedRecord(record string) string { return record + ".removed" }
+
 // userRemovals returns, keyed by the user-level record path, the kit rules
 // the user removed at user level: recorded there but absent from
-// ~/.claude/settings.json. A list with no user record is left out.
+// ~/.claude/settings.json, plus those kept by an earlier migration.
 func userRemovals(home string) (map[string][]string, error) {
 	out := map[string][]string{}
 	user := UserKitTarget(home)
 	for _, l := range []kitList{user.allow(), user.sandbox(), user.ask()} {
-		rec, err := l.readRecord(home)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		root, _, err := readSettingsRoot(l.settings(home))
-		if err != nil {
-			return nil, err
-		}
-		_, list, err := l.listOf(root)
-		if err != nil {
-			return nil, err
-		}
-		have := map[string]bool{}
-		for _, a := range list {
-			have[a] = true
-		}
+		record := l.record(home)
 		var removed []string
-		for _, r := range rec {
-			if !have[r] {
-				removed = append(removed, r)
+		if b, err := os.ReadFile(removedRecord(record)); err == nil {
+			if err := json.Unmarshal(b, &removed); err != nil {
+				return nil, fmt.Errorf("%s: %w", removedRecord(record), err)
+			}
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+		rec, err := l.readRecord(home)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		if len(rec) > 0 {
+			root, _, err := readSettingsRoot(l.settings(home))
+			if err != nil {
+				return nil, err
+			}
+			_, list, err := l.listOf(root)
+			if err != nil {
+				return nil, err
+			}
+			have := map[string]bool{}
+			for _, a := range list {
+				have[a] = true
+			}
+			seen := map[string]bool{}
+			for _, r := range removed {
+				seen[r] = true
+			}
+			for _, r := range rec {
+				if !have[r] && !seen[r] {
+					removed = append(removed, r)
+				}
 			}
 		}
 		if len(removed) > 0 {
-			out[l.record(home)] = removed
+			out[record] = removed
 		}
 	}
 	return out, nil
 }
 
-// KeepUserKitRemovals runs remove (the migration of the user-level kit lists,
-// which deletes their records) and then writes back a user record holding only
-// the rules the user had removed, so SeedWorkspaceRecords still finds them for
-// a workspace set up later. A record remove left in place is not touched.
+// KeepUserKitRemovals saves the rules the user removed at user level beside
+// their records, then runs remove (the migration of the user-level kit lists,
+// which deletes the records), so SeedWorkspaceRecords still finds them for a
+// workspace set up later, even when remove fails part-way.
 func KeepUserKitRemovals(home string, remove func() error) error {
 	rm, err := userRemovals(home)
 	if err != nil {
 		return err
 	}
-	if err := remove(); err != nil {
-		return err
-	}
 	for record, rules := range rm {
-		if _, err := os.Stat(record); !os.IsNotExist(err) {
-			continue
-		}
 		b, err := json.Marshal(rules)
 		if err != nil {
 			return err
 		}
-		if err := writeAtomic(record, b, 0o644); err != nil {
+		if err := writeAtomic(removedRecord(record), b, 0o644); err != nil {
 			return err
 		}
 	}
-	return nil
+	return remove()
 }
 
 // SeedWorkspaceRecords starts the workspace records of a workspace that has

@@ -2,6 +2,8 @@ package apply
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,5 +207,70 @@ func TestKeepUserKitRemovalsAcrossMigration(t *testing.T) {
 	local, _ := os.ReadFile(wt.Settings)
 	if strings.Contains(string(local), `"`+gone+`"`) || !strings.Contains(string(local), KitAllowRules[1]) {
 		t.Fatalf("workspace B after migration: %s", local)
+	}
+	// The user adds the rule back by hand: a later migration must leave it.
+	var root map[string]any
+	b, _ = os.ReadFile(user.Settings)
+	if err := json.Unmarshal(b, &root); err != nil {
+		t.Fatal(err)
+	}
+	perms, _ := root["permissions"].(map[string]any)
+	if perms == nil {
+		perms = map[string]any{}
+		root["permissions"] = perms
+	}
+	allow, _ := perms["allow"].([]any)
+	perms["allow"] = append(allow, gone)
+	b, _ = json.Marshal(root)
+	if err := os.WriteFile(user.Settings, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ = os.ReadFile(user.Settings); !strings.Contains(string(b), `"`+gone+`"`) {
+		t.Fatalf("fixture did not re-add the rule: %s", b)
+	}
+	err = KeepUserKitRemovals(home, func() error {
+		if _, err := RemoveKitPermissions(user, false); !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := os.ReadFile(user.Settings); !strings.Contains(string(after), `"`+gone+`"`) {
+		t.Fatalf("the rule the user added back was removed: %s", after)
+	}
+}
+
+// A removal that fails part-way must not lose what the user removed.
+func TestKeepUserKitRemovalsSurvivesFailedRemove(t *testing.T) {
+	home, wsB := t.TempDir(), t.TempDir()
+	user := UserKitTarget(home)
+	if _, err := EnsureKitPermissions(user, false); err != nil {
+		t.Fatal(err)
+	}
+	gone := KitAllowRules[0]
+	b, _ := os.ReadFile(user.Settings)
+	if err := os.WriteFile(user.Settings, []byte(strings.Replace(string(b), `"`+gone+`",`, "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := KeepUserKitRemovals(home, func() error {
+		if _, err := RemoveKitPermissions(user, false); err != nil {
+			return err
+		}
+		return os.ErrPermission
+	})
+	if err == nil {
+		t.Fatal("want the remove error back")
+	}
+	if err := SeedWorkspaceRecords(home, wsB); err != nil {
+		t.Fatal(err)
+	}
+	wt := WorkspaceKitTarget(home, wsB)
+	if _, err := EnsureKitPermissions(wt, false); err != nil {
+		t.Fatal(err)
+	}
+	if local, _ := os.ReadFile(wt.Settings); strings.Contains(string(local), `"`+gone+`"`) {
+		t.Fatalf("workspace B re-added a user-removed rule: %s", local)
 	}
 }
