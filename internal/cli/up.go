@@ -362,6 +362,9 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	case len(localErrs) > 0:
 		migrateErr = fmt.Errorf("giữ nguyên bản cài cấp user vì bước local lỗi: %s", strings.Join(localErrs, "; ")) //znf:allow-lang
 		_, _ = fmt.Fprintln(errW, migrateErr)
+		if herr == nil && home != "" {
+			unwireLocalHooks(home, workspace, errW)
+		}
 	case herr == nil && home != "":
 		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), run, false)
 		for _, r := range removed {
@@ -1002,4 +1005,24 @@ var claudeMCPTimeout = 20 * time.Second
 // directory (see runClaudeIn).
 func runClaudeBounded(n string, args ...string) ([]byte, error) {
 	return runClaudeIn("")(n, args...)
+}
+
+// unwireLocalHooks takes the kit hooks, git-guard and Codex hooks back out of
+// the workspace when up kept the user-level install after a failed local step:
+// ForceLocal already wrote them, and with the user hooks still present every
+// kit hook would run twice. A machine with no user-level hooks keeps them.
+func unwireLocalHooks(home, workspace string, errW io.Writer) {
+	if userHooks, err := apply.HasUserKitHooks(apply.UserSettings(home)); err != nil || !userHooks {
+		return
+	}
+	local := apply.WorkspaceLocalSettings(workspace)
+	if _, err := apply.RemoveGlobalHooks(local, false); err != nil {
+		_, _ = fmt.Fprintln(errW, "warning: local hooks:", err)
+	}
+	if _, err := removeGuard(local, false); err != nil {
+		_, _ = fmt.Fprintln(errW, "warning: local git-guard:", err)
+	}
+	if _, err := apply.RemoveCodexHooks(filepath.Join(workspace, ".codex"), false); err != nil {
+		_, _ = fmt.Fprintln(errW, "warning: local codex hooks:", err)
+	}
 }

@@ -304,6 +304,34 @@ func TestUp_LocalFailureKeepsUserInstalls(t *testing.T) {
 	if b, _ := os.ReadFile(apply.UserSettings(home)); !strings.Contains(string(b), "zenify hooks-run") {
 		t.Error("user hooks removed despite the failure")
 	}
+	// The user hooks stay, so the local copies must go or every hook runs twice.
+	if b, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws)); strings.Contains(string(b), "zenify hooks-run") || strings.Contains(string(b), "zenify git-guard") {
+		t.Errorf("local hooks left beside the user hooks: %s", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, ".codex", "hooks.json")); strings.Contains(string(b), "zenify hooks-run") {
+		t.Errorf("local codex hooks left beside the user hooks: %s", b)
+	}
+}
+
+// A machine already migrated has only the local hooks: a later failing up must keep them.
+func TestUp_LocalFailureAfterMigrationKeepsLocalHooks(t *testing.T) {
+	_, ws, m, plans := upFixture(t)
+	f := newFakeClaude(ws)
+	useFakeClaude(t, f)
+	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
+		t.Fatalf("first runApply: %v", err)
+	}
+	if err := os.Remove(pluginStampPath(ws)); err != nil {
+		t.Fatal(err)
+	}
+	f.failUpdate = true
+	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err == nil {
+		t.Fatal("second runApply succeeded although plugin update failed")
+	}
+	b, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws))
+	if !strings.Contains(string(b), "zenify hooks-run") || !strings.Contains(string(b), "zenify git-guard") {
+		t.Errorf("local hooks removed on a migrated machine: %s", b)
+	}
 }
 
 // snapshotTree maps every regular file and symlink under roots to its content.
