@@ -285,3 +285,24 @@ func TestMarketplaceNotFound(t *testing.T) {
 		t.Error("a missing claude binary must not match")
 	}
 }
+
+// down's --workspace defaults to ".", but up keyed the Codex trust entry by the
+// absolute path: down must resolve it, or the entry is never found.
+func TestDown_RelativeWorkspaceRemovesCodexTrust(t *testing.T) {
+	ws, home, repos := downWorkspace(t)
+	t.Setenv("CODEX_HOME", "")
+	codexHome := filepath.Join(home, ".codex")
+	if _, err := apply.EnsureCodexTrust(codexHome, ws, false); err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	downFakeClaude(t, &calls, nil)
+	t.Chdir(ws)
+
+	runDown(t, ".", repos, "--apply")
+
+	b, _ := os.ReadFile(filepath.Join(codexHome, "config.toml")) //nolint:gosec // G304 -- test temp path
+	if strings.Contains(string(b), ws) {
+		t.Errorf("codex trust for %s left after down: %s", ws, b)
+	}
+}
