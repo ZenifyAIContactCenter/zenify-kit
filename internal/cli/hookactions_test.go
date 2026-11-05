@@ -319,7 +319,7 @@ func TestSessionStart_TrackLine(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", "")
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	t.Setenv("ZNF_AUTONOMOUS", "")
-	want := "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog / plan today → zenify track stats --json first (track.md#Backlog)\n"
+	want := "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --json first (track.md#Backlog); plan today → track.md#Daily plan\n"
 	cases := []struct {
 		name    string
 		overlay string

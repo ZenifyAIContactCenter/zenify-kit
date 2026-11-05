@@ -64,7 +64,7 @@ Read this when the session digest says `features: track on`. Every command below
 Run this when the user says "plan today", "daily plan" or the Vietnamese equivalent.
 
 1. Run `zenify track stats --json --force`.
-2. Candidates in this order: `kitchen.carried`, then each `today.prOpen` entry with `ready == false`, then `backlog.items` (already ordered S, M, L, `-`).
+2. Candidates in this order: `kitchen.carried` (pass its `id`), then each `today.prOpen` entry with `ready == false` (pass its `url`), then `backlog.items` (pass its `id`; already ordered S, M, L, `-`). Pass these fields to `zenify track plan set`.
 3. Take them one by one and stop at the first item that would push the total est over 360 minutes (S, M, L count as the current `scale` bounds). That item is not taken, unless the list is still empty.
 4. Show the list to the user for approval.
 5. Run `zenify track plan set <id> [<id>…]` only after the user approves. Re-plan = run `plan set` again with the whole list; it replaces the earlier plan of the day.

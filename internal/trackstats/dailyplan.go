@@ -124,16 +124,22 @@ func computeDailyPlan(in Input, logEv []Event, items []Item, works map[string]*w
 			pi.Title = t
 		}
 		if tracked {
-			pi.Repo, pi.Est, pi.Status = tr.Repo, tr.Est, planStatus(tr.Status)
+			pi.Repo, pi.Status = tr.Repo, planStatus(tr.Status)
+			if _, real := bound[tr.Est]; real {
+				pi.Est = tr.Est
+			}
 			pi.Title = brief(tr, false)
 			if !counted[tr.ID] {
 				counted[tr.ID] = true
 				plan.WallMin += tr.WallMin
+				plan.EstMin += bound[pi.Est]
 			}
-		} else if at, ok := mergedCache[id]; ok && isPRURL(id) && at != ClosedUnmerged {
-			pi.Status = "done"
+		} else {
+			if at, ok := mergedCache[id]; ok && isPRURL(id) && at != ClosedUnmerged {
+				pi.Status = "done"
+			}
+			plan.EstMin += bound[pi.Est]
 		}
-		plan.EstMin += bound[pi.Est]
 		plan.Items = append(plan.Items, pi)
 	}
 	return plan

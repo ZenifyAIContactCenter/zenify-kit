@@ -111,6 +111,7 @@ func TestValidPlanID(t *testing.T) {
 	for id, want := range map[string]bool{
 		"b-261105-ab12": true, "https://x/pull/1": true, "repos/k/progress.md:3": true, "cook-261105-ab12": true,
 		"foo": false, "http://x y": false, "b-261105-AB12": false, "": false,
+		"https://github.com/o/r/pull/3": true, "httpfoo:x": false, "https://x/\x1b]8;;": false, "http://": false,
 	} {
 		if ValidPlanID(id) != want {
 			t.Fatalf("ValidPlanID(%q) != %v", id, want)
@@ -150,5 +151,49 @@ func TestPlanStatusMapping(t *testing.T) {
 		if got := planStatus(in); got != want {
 			t.Fatalf("planStatus(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestDailyPlanEstFallback(t *testing.T) {
+	a := "b-261030-aaaa"
+	ia := cid("cook", 1)
+	r, _ := Compute(base(lines(
+		row(now.Add(-5*time.Hour), "backlog", a, "kit", "S", "-", "task a"),
+		row(now.Add(-10*time.Minute), "start", ia, "cook", "kit", "-", a),
+		planRow(now.Add(-time.Minute), planDay, a),
+	)))
+	p := r.Today.DailyPlan
+	if p == nil || len(p.Items) != 1 || p.Items[0].Est != "S" || p.EstMin != 15 {
+		t.Fatalf("plan = %+v", p)
+	}
+}
+
+func TestDailyPlanEstCountedOnce(t *testing.T) {
+	a := "b-261030-aaaa"
+	ia := cid("cook", 1)
+	r, _ := Compute(base(lines(
+		row(now.Add(-5*time.Hour), "backlog", a, "kit", "S", "-", "task a"),
+		row(now.Add(-10*time.Minute), "start", ia, "cook", "kit", "S", a),
+		planRow(now.Add(-time.Minute), planDay, ia, a),
+	)))
+	p := r.Today.DailyPlan
+	if p == nil || p.EstMin != 15 {
+		t.Fatalf("plan = %+v", p)
+	}
+}
+
+func TestMergedAskedOnce(t *testing.T) {
+	u := "https://github.com/o/r/pull/9"
+	id := cid("cook", 1)
+	in := base(lines(
+		row(now.Add(-3*time.Hour), "start", id, "cook", "kit", "S"),
+		row(now.Add(-2*time.Hour), "end", id, u, "1", "0"),
+		planRow(now.Add(-time.Minute), planDay, u),
+	))
+	asked := 0
+	in.Merged = func(string) (string, error) { asked++; return "", nil }
+	Compute(in)
+	if asked != 1 {
+		t.Fatalf("asked = %d", asked)
 	}
 }

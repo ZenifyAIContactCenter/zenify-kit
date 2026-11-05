@@ -538,10 +538,12 @@ func mergedToday(in Input, urls, extra []string, res *Result) (cache map[string]
 		cache[k] = v
 	}
 	if in.Merged != nil {
+		asked := map[string]bool{}
 		for _, u := range append(append([]string(nil), urls...), extra...) {
-			if _, known := cache[u]; known {
+			if _, known := cache[u]; known || asked[u] {
 				continue
 			}
+			asked[u] = true
 			at, err := in.Merged(u)
 			if err != nil {
 				// One PR's error (no access, deleted repo) must not hide the PRs after it;

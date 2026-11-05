@@ -102,7 +102,7 @@ zenify track plan set b-261105-ab12 https://github.com/org/repo/pull/3 cook-2611
 
 ## PR cần hành động
 
-Tab `Today` liệt kê mỗi PR đã mở hôm nay hoặc nằm trong plan, chưa merge và chưa đóng (tối đa 10, mới nhất trước) một dòng link `🔗 <repo>#<n> · <tuổi> · CI ✅|❌|⏳|- · waiting|changes requested|approved · N threads`. PR sạch (mergeable và không còn thread chưa resolve) hiện `🔗 <repo>#<n> · <tuổi> · ready to merge`. Trạng thái lấy bằng `gh api graphql`, một lần mỗi PR, cùng nhịp 5 phút với việc tra PR đã merge; lỗi thì có dòng `⚠ pr status: <nguyên nhân>`.
+Tab `Today` liệt kê mỗi PR đã ghi vào track (bất kỳ ngày nào) hoặc nằm trong plan hôm nay, chưa merge và chưa đóng (tối đa 10, mới nhất trước) một dòng link `🔗 <repo>#<n> · <tuổi> · CI ✅|❌|⏳|- · waiting|changes requested|approved · N threads`. PR sạch (mergeable và không còn thread chưa resolve) hiện `🔗 <repo>#<n> · <tuổi> · ready to merge`. Trạng thái lấy bằng `gh api graphql`, một lần mỗi PR, cùng nhịp 5 phút với việc tra PR đã merge; lỗi thì có dòng `⚠ pr status: <nguyên nhân>`.
 
 ## Sổ chung giữa các tab Claude Code
 

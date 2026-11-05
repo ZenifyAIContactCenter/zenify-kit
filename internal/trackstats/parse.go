@@ -3,6 +3,7 @@
 package trackstats
 
 import (
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -120,9 +121,19 @@ func parseLogLine(raw string) (Event, bool) {
 // URL, an SDD id or a track id.
 func ValidPlanID(id string) bool {
 	if strings.HasPrefix(id, "http") {
-		return !strings.ContainsAny(id, " \t\r\n")
+		return validHTTPURL(id)
 	}
 	return bidRe.MatchString(id) || sddRe.MatchString(id) || idRe.MatchString(id)
+}
+
+func validHTTPURL(id string) bool {
+	for _, r := range id {
+		if r < 0x20 || r == 0x7f || r == ' ' {
+			return false
+		}
+	}
+	u, err := url.Parse(id)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 func validFrom(v string) bool {
