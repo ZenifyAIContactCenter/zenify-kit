@@ -46,18 +46,29 @@ func zenifyHome(getenv func(string) string, userHome func() (string, error)) str
 // ok=false means "no workspace" — the caller decides (wizard asks, headless errors).
 func resolveWorkspace(cwd, flag string, getenv func(string) string, userHome func() (string, error)) (string, wsSource, bool) {
 	if flag != "" && flag != "." {
-		if abs, err := filepath.Abs(flag); err == nil {
-			return abs, wsFromFlag, true
-		}
-		return flag, wsFromFlag, true
+		return canonicalPath(flag), wsFromFlag, true
 	}
 	if root, ok := findWorkspaceRoot(cwd); ok {
-		return root, wsFromMarker, true
+		return canonicalPath(root), wsFromMarker, true
 	}
 	if p, ok := readWorkspacePointer(getenv, userHome); ok {
-		return p, wsFromPointer, true
+		return canonicalPath(p), wsFromPointer, true
 	}
 	return "", "", false
+}
+
+// canonicalPath is p made absolute with symlinks resolved (each step only
+// when it succeeds). Claude Code keys ~/.claude.json projects by its process
+// cwd, which the OS reports with symlinks resolved, so the trust entry, the
+// local MCP lookup, the kit records and down all use this one form.
+func canonicalPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		p = r
+	}
+	return p
 }
 
 // readWorkspacePointer returns the pointer's path when the file exists, holds
@@ -80,10 +91,7 @@ func readWorkspacePointer(getenv func(string) string, userHome func() (string, e
 // writeWorkspacePointer records ws as the current workspace (FR-2.2): mkdir
 // zenifyHome, then an atomic one-line write. Mode 0600 comes from WriteFileAtomic.
 func writeWorkspacePointer(getenv func(string) string, userHome func() (string, error), ws string) error {
-	abs, err := filepath.Abs(ws)
-	if err != nil {
-		return err
-	}
+	abs := canonicalPath(ws)
 	dir := zenifyHome(getenv, userHome)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err

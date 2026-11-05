@@ -28,11 +28,9 @@ func newDownCmd() *cobra.Command {
 		Use:   "down",
 		Short: "Offboard: gỡ znf global hooks + git-guard hook + env subagent model, .worktrees/ + .wt/ excludes, và owned settings skeletons (preview mặc định; --apply để thực thi)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// up keys path-based entries (Codex trust, kit records) by the
-			// absolute workspace; the "." default must resolve the same way.
-			if abs, err := filepath.Abs(workspace); err == nil {
-				workspace = abs
-			}
+			// up keys path-based entries (trust, local MCP, kit records) by the
+			// canonical workspace; the "." default must resolve the same way.
+			workspace = canonicalPath(workspace)
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
 			}

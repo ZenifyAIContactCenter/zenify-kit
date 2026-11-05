@@ -180,11 +180,9 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	if err := version.GuardMutation(version.Current(), minVersionFloor); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
-	// Codex trust and the kit records are keyed by the absolute workspace; the
-	// wizard and --workspace pass what the user typed.
-	if abs, err := filepath.Abs(workspace); err == nil {
-		workspace = abs
-	}
+	// Claude/Codex trust, local MCP lookups and the kit records are keyed by
+	// the canonical workspace; the wizard and --workspace pass what the user typed.
+	workspace = canonicalPath(workspace)
 
 	zenifyDir := filepath.Join(workspace, ".zenify")
 	if err := os.MkdirAll(zenifyDir, 0o750); err != nil {
