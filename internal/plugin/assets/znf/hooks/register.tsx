@@ -5,7 +5,7 @@ import type { TrackStats } from '../types'
 import { isInWorkspace, registerConfig, setInWorkspace, syncConfig, trackPaneOf } from './config'
 import { bindLine, cwdLine, isStartCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
-import { COPY, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
+import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
 import type { Line, Tab } from './track-ui'
 
 // FR-6.1: one pane; the five tabs are drawn inside it.
@@ -374,10 +374,12 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
 
 const statsError = ($: $) => (err: unknown) => $.ui.toast(`${COPY.toast}${message(err)}`)
 
-// FR-12.3: the Cooking spinner turns with the tick, so the pane is drawn again while a tab cooks.
+// FR-12.3: the Cooking spinner turns every SPIN_TICK_MS, so the pane is drawn again while a tab cooks or waits.
 async function spinCooking($: $): Promise<void> {
-  // Only the Kitchen tab shows a spinner.
-  if (((await read($, stats))?.data?.kitchen?.cooking?.length ?? 0) > 0 && (await read($, tab)) === 'kitchen' && (await isOpen($))) $.ui.invalidate('ui.render')
+  // Only the Kitchen tab shows a spinner and the waiting seconds.
+  const k = (await read($, stats))?.data?.kitchen
+  const live = (k?.cooking?.length ?? 0) + (k?.rollingBoil?.length ?? 0)
+  if (live > 0 && (await read($, tab)) === 'kitchen' && (await isOpen($))) $.ui.invalidate('ui.render')
 }
 
 function stopTimers(): void {
@@ -390,7 +392,8 @@ function stopTimers(): void {
 function armTimers($: $): void {
   if (timers.length) return
   timers = [
-    $.clock.every(WATCH_TICK_MS, () => void refreshStats($).catch(statsError($)).then(() => spinCooking($)).catch(timingError($))),
+    $.clock.every(WATCH_TICK_MS, () => void refreshStats($).catch(statsError($))),
+    $.clock.every(SPIN_TICK_MS, () => void spinCooking($).catch(timingError($))),
     $.clock.every(MERGED_TICK_MS, () => void refreshStats($, true).catch(statsError($))),
     $.clock.every(BEAT_MS, () => void beat($).catch(timingError($))),
   ]

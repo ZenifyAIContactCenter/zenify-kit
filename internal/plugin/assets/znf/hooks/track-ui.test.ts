@@ -206,20 +206,20 @@ const SPIN = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 const cookItem = (over: Partial<TrackStats['kitchen']['cooking'][number]> = {}) => ({
   session: B, tab: '', brief: 'zenify-kit/x', id: '', kind: '', phase: '', since: new Date(NOW - 12 * 60_000).toISOString(), ...over,
 })
-// The frame of line i at a given time: (floor(now / 2000) + i) % 10, spelled out here by hand.
-const frameAt = (now: number, i: number) => SPIN[(Math.floor(now / 2000) + i) % 10]
+// The frame of line i at a given time: (floor(now / 1000) + i) % 10, spelled out here by hand.
+const frameAt = (now: number, i: number) => SPIN[(Math.floor(now / 1000) + i) % 10]
 
 test('SC-21: Cooking spinner frames advance per tick and differ per line', () => {
   const k = kitchenStats({ cooking: [cookItem({ tab: 'Tab one' }), cookItem({ session: A, tab: 'Tab two' })] })
   const at = (now: number) => texts(tabLines('kitchen', k, A, undefined, now)).filter(t => t.startsWith('- ') && /^- [⠋-⠿]/.test(t))
   const first = at(NOW)
-  const second = at(NOW + 2000)
+  const second = at(NOW + 1000)
   expect(first).toEqual([`- ${frameAt(NOW, 0)} 12m Tab one`, `- ${frameAt(NOW, 1)} 12m Tab two`])
-  expect(second).toEqual([`- ${frameAt(NOW + 2000, 0)} 12m Tab one`, `- ${frameAt(NOW + 2000, 1)} 12m Tab two`])
+  expect(second).toEqual([`- ${frameAt(NOW + 1000, 0)} 12m Tab one`, `- ${frameAt(NOW + 1000, 1)} 12m Tab two`])
   expect(first[0]?.[2]).not.toBe(second[0]?.[2])
   expect(first[0]?.[2]).not.toBe(first[1]?.[2])
   // The ten frames wrap around.
-  expect(at(NOW + 20_000)).toEqual(first)
+  expect(at(NOW + 10_000)).toEqual(first)
 })
 
 test('FR-12.3: Cooking lines carry the time, tab or brief, kind and phase, then session and id', () => {

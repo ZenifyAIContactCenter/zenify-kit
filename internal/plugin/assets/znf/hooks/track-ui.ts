@@ -202,10 +202,13 @@ export const prLabel = (url: string): string => {
   const m = /^https:\/\/github\.com\/[^/]+\/([^/]+)\/pull\/(\d+)/.exec(url)
   return m ? `${m[1]}#${m[2]}` : url
 }
-// FR-12.3: the braille frames of the Cooking spinner; WATCH_TICK_MS is one frame.
+// FR-12.3: the braille frames of the Cooking spinner; SPIN_TICK_MS is one frame.
 const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-// FR-6.3/FR-11.5: how often the watched mtimes are compared; also the length of one spinner frame.
+// FR-6.3/FR-11.5: how often the watched mtimes are compared (and stats re-run when one changed).
 export const WATCH_TICK_MS = 2000
+// FR-12.3: how often the Kitchen tab is redrawn while a tab cooks or waits, so the spinner and the
+// seconds advance evenly. A redraw runs no command; stats still follow WATCH_TICK_MS.
+export const SPIN_TICK_MS = 1000
 const BOIL_STATE = { ask: 'asking', permission: 'needs permission' } as const
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -257,7 +260,7 @@ function cookingLines(s: TrackStats, now: number): Line[] {
   const lines: Line[] = [head(`${ICON.cooking} Cooking`)]
   if (cooking.length === 0) lines.push(dim('no tab is cooking'))
   cooking.forEach((c, i) => {
-    const frame = SPINNER[(Math.floor(now / WATCH_TICK_MS) + i) % SPINNER.length]
+    const frame = SPINNER[(Math.floor(now / SPIN_TICK_MS) + i) % SPINNER.length]
     const more = [c.kind, c.phase].filter(Boolean)
     lines.push(plain(`- ${frame} ${waited(c.since, now)} ${c.tab || c.brief}${more.map(m => SEP + m).join('')}`))
     lines.push(dim(`    ${c.session.slice(0, 8)}${c.id ? SEP + c.id : ''}`))

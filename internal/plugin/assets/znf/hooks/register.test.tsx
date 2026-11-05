@@ -1294,7 +1294,7 @@ test('SC-20: ask and permission win over idle until they are answered or the tur
   expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['busy', 'ask', 'busy', 'permission', 'idle'])
 })
 
-test('SC-21: the open pane redraws on every watch tick while a tab is cooking, so the spinner turns', async ($, on) => {
+test('SC-21: the open pane redraws every second while a tab is cooking, so the spinner turns', async ($, on) => {
   const since = new Date(T0 - 12 * MIN).toISOString()
   const cooking = [
     { session: OTHER, tab: 'Tab one', brief: 'x', id: '', kind: '', phase: '', since },
@@ -1310,7 +1310,7 @@ test('SC-21: the open pane redraws on every watch tick while a tab is cooking, s
   const spin = async () => (await allTexts(ui)).filter(t => /^- [⠋-⠿] 12m/.test(t))
   const first = await spin()
   expect(first).toHaveLength(2)
-  await clock.advance(2000)
+  await clock.advance(1000)
   const second = await spin()
   expect(second).toHaveLength(2)
   expect(second[0]?.[2]).not.toBe(first[0]?.[2])
