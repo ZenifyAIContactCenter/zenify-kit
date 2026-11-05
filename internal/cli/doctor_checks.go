@@ -432,8 +432,15 @@ func pluginCheckAt(settings func() (string, error), pluginDir string) Check {
 			if !root.EnabledPlugins[plugin.PluginID] {
 				return false, "znf chưa bật ở workspace (chạy `zenify up --apply`)" //znf:allow-lang
 			}
-			if _, err := os.Stat(pluginDir); err != nil {
-				return false, "znf đã bật nhưng thiếu thư mục plugin (chạy `zenify up --apply`)" //znf:allow-lang
+			b, err := os.ReadFile(filepath.Join(pluginDir, ".claude-plugin", "plugin.json")) //nolint:gosec // G304 -- the kit's own plugin dir
+			if err != nil {
+				return false, "znf đã bật nhưng thiếu plugin (chạy `zenify up --apply`)" //znf:allow-lang
+			}
+			var meta struct {
+				Name string `json:"name"`
+			}
+			if json.Unmarshal(b, &meta) != nil || meta.Name != "znf" {
+				return false, "plugin.json của znf không hợp lệ (chạy `zenify up --apply`)" //znf:allow-lang
 			}
 			return true, "ok — znf@zenify-kit bật ở workspace" //znf:allow-lang
 		},

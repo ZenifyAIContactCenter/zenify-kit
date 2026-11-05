@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"os"
-	"path/filepath"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
@@ -29,10 +28,8 @@ func newEnsureCmd() *cobra.Command {
 					workspace = root
 				}
 			}
-			ws, err := filepath.Abs(workspace)
-			if err != nil {
-				return exitcode.New(exitcode.BadArgs, err)
-			}
+			// The real path, as up keys the workspace (records, trust).
+			ws := canonicalPath(workspace)
 			home, err := os.UserHomeDir()
 			if err != nil || home == "" {
 				return exitcode.New(exitcode.Fail, errors.New("không xác định được thư mục home")) //znf:allow-lang

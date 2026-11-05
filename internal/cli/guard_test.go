@@ -410,3 +410,28 @@ func TestInstallGuardOnLocalSettingsKeepsForeignKeys(t *testing.T) {
 		}
 	}
 }
+
+// A git-guard still wired at user level (before `up --apply` migrates it)
+// already runs here: guard install leaves the workspace alone and says so.
+func TestGuardInstallLeavesUserGuard(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := installGuard(filepath.Join(home, ".claude", "settings.json")); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := guardWorkspace(t)
+	cmd := newGuardCmd()
+	cmd.SetArgs([]string{"install"})
+	var out strings.Builder
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if ok, _ := guardInstalled(settingsPath); ok {
+		t.Error("workspace guard added beside the user-level one")
+	}
+	if !strings.Contains(out.String(), "up --apply") {
+		t.Errorf("no hint to migrate: %s", out.String())
+	}
+}

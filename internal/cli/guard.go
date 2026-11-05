@@ -316,11 +316,20 @@ func newGuardCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("guard install: no workspace found (run inside a zenify workspace)")
 			}
+			u := uiOut(cmd)
+			// A user-level guard (not yet migrated) already runs here, as in ensureWorkspace.
+			if home, herr := os.UserHomeDir(); herr == nil && home != "" {
+				if user, gerr := removeGuard(guardSettingsPath(home), true); gerr != nil {
+					return gerr
+				} else if user {
+					u.Step(ui.StatusOK, "guard install: git-guard is still wired at user level; run `zenify up --apply` to move it to the workspace.", "")
+					return nil
+				}
+			}
 			changed, err := installGuard(apply.WorkspaceLocalSettings(ws))
 			if err != nil {
 				return err
 			}
-			u := uiOut(cmd)
 			if !changed {
 				u.Step(ui.StatusOK, "guard install: already configured (idempotent).", "")
 				return nil

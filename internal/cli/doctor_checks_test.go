@@ -274,9 +274,7 @@ func pluginCheckFixture(t *testing.T, settings string, withDir bool) Check {
 	}
 	dir := plugin.PluginDir(zh)
 	if withDir {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
+		writeF(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), `{"name":"znf"}`)
 	}
 	return pluginCheckAt(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil }, dir)
 }
@@ -285,6 +283,25 @@ func TestPluginCheck_EnabledLocal(t *testing.T) {
 	c := pluginCheckFixture(t, `{"enabledPlugins":{"znf@zenify-kit":true}}`, true)
 	if ok, d := c.Run(); !ok {
 		t.Fatalf("enabled + dir present should be ok: %q", d)
+	}
+}
+
+// An interrupted write can leave the plugin dir without a valid plugin.json.
+func TestPluginCheck_BrokenPluginJSON(t *testing.T) {
+	for name, pj := range map[string]string{"missing": "", "bad json": "{", "wrong name": `{"name":"other"}`} {
+		ws, zh := t.TempDir(), t.TempDir()
+		writeF(t, apply.WorkspaceLocalSettings(ws), `{"enabledPlugins":{"znf@zenify-kit":true}}`)
+		dir := plugin.PluginDir(zh)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if pj != "" {
+			writeF(t, filepath.Join(dir, ".claude-plugin", "plugin.json"), pj)
+		}
+		c := pluginCheckAt(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil }, dir)
+		if ok, d := c.Run(); ok {
+			t.Errorf("%s: ok with plugin.json %q: %s", name, pj, d)
+		}
 	}
 }
 
