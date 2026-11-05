@@ -240,8 +240,7 @@ func TestRunLocalHoldsLockDuringRun(t *testing.T) {
 		err := RunLocal(LocalOptions{RepoDir: repo, BaseURL: "http://localhost:4100", Home: home, LockWait: time.Second,
 			Run: func(_, name string, args, _ []string) error {
 				if name+" "+strings.Join(args, " ") == "npx playwright test" {
-					_, serr := os.Stat(lock)
-					held = serr == nil
+					held = isLocked(t, lock)
 					if fail {
 						return errors.New("red")
 					}
@@ -254,8 +253,8 @@ func TestRunLocalHoldsLockDuringRun(t *testing.T) {
 		if !held {
 			t.Errorf("fail=%v: harness.lock not held while playwright ran", fail)
 		}
-		if _, serr := os.Stat(lock); !os.IsNotExist(serr) {
-			t.Errorf("fail=%v: lock left behind: %v", fail, serr)
+		if isLocked(t, lock) {
+			t.Errorf("fail=%v: lock left held", fail)
 		}
 	}
 }

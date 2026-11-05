@@ -75,9 +75,18 @@ func TestHarness_LoginFailureLeaksNoPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := readFile(t, filepath.Join(dir, "auth.setup.ts"))
-	// The snapshot is taken when expect fails, so the field is emptied before it.
-	clear, assert := strings.Index(src, "password.fill('', "), strings.Index(src, "not.toHaveURL")
-	if clear < 0 || clear > assert {
-		t.Error("auth.setup.ts must empty the password field before asserting it left /login")
+	// The snapshot is taken when the browser context closes, also after a timeout:
+	// the page fixture's teardown (after use) empties the field before that close.
+	use, clear, body := strings.Index(src, "await use(page);"), strings.Index(src, "set.call(el, '')"), strings.Index(src, "setup('authenticate'")
+	if !strings.Contains(src, "base.extend(") || use < 0 || clear < use || clear > body {
+		t.Error("auth.setup.ts must empty the password in the page fixture teardown")
+	}
+	// A failed fill() prints the value it was filling (measured on 1.64.1).
+	if !strings.Contains(src, "(value withheld)") {
+		t.Error("auth.setup.ts must rethrow a failed password fill without its value")
+	}
+	// process.env set in a test file reaches the journey workers too (measured on 1.64.1).
+	if strings.Contains(src, "PLAYWRIGHT_NO_COPY_PROMPT") {
+		t.Error("auth.setup.ts must not turn snapshots off by env: it leaks into journeys")
 	}
 }

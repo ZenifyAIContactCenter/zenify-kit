@@ -1,26 +1,43 @@
 // internal/e2e/harness/auth.setup.ts
-import { test as setup, expect } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 
 const STORAGE = process.env.STORAGE_STATE || '/tmp/znf-e2e-storage.json';
 
 // Login một lần → storageState (regenerate mỗi run, không commit token). Form login zenify:
 // 3 field theo name (domain/email/password), email type=text (KHÔNG dùng input[type=email]),
 // nút submit custom KHÔNG có type=submit và nhãn theo i18n → submit bằng Enter trên password.
+// A failed or timed-out login leaves error-context.md, an aria snapshot of every input
+// value taken when the browser context closes. This page teardown runs before that
+// close, also after a test timeout, and empties the password first: the native value
+// setter plus an input event (React's state follows), in page script so a disabled or
+// readonly field is emptied too and nothing waits. Scoped to this file: journeys keep
+// their full snapshot.
+const setup = base.extend({
+  page: async ({ page }, use) => {
+    await use(page);
+    await page
+      .locator('input[name="password"]')
+      .evaluateAll((els) => {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+        for (const el of els as HTMLInputElement[]) {
+          set.call(el, '');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      })
+      .catch(() => {});
+  },
+});
+
 setup('authenticate', async ({ page }) => {
   await page.goto(`${process.env.BASE_URL}/login`);
   await page.fill('input[name="domain"]', process.env.E2E_DOMAIN!);
   await page.fill('input[name="email"]', process.env.E2E_EMAIL!);
-  await page.fill('input[name="password"]', process.env.E2E_PASSWORD!);
+  // A failed fill() prints its value in the error: rethrow without it.
+  await page.fill('input[name="password"]', process.env.E2E_PASSWORD!).catch(() => {
+    throw new Error('could not fill input[name="password"] (value withheld)');
+  });
   await page.press('input[name="password"]', 'Enter');
   await page.waitForLoadState('networkidle');
-  // A failed login's error-context.md is an aria snapshot of every input value, taken
-  // when expect fails: empty the password now. fill() fires an input event, so React's
-  // state is emptied too and a re-render cannot put the value back. The form was
-  // already submitted; after a successful login the field is gone (count() is 0).
-  const password = page.locator('input[name="password"]');
-  if (await password.count().catch(() => 0)) {
-    await password.fill('', { timeout: 2000 }).catch(() => {});
-  }
   await expect(page).not.toHaveURL(/\/login(\?|$)/);
   await page.context().storageState({ path: STORAGE });
 });

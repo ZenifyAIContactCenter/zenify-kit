@@ -20,7 +20,7 @@ Trước khi `znf:ui-verifier` kiểm tra UI trên một web app đang chạy lo
 
 Lệnh cần Node (`npm`, `npx` có trên PATH). Lần chạy đầu tải `@playwright/test` 1.64.1 và chromium vào `~/.zenify/playwright/harness`, nên chậm và cần mạng; các lần sau dùng lại.
 
-Login lỗi (vẫn ở `/login`) để lại `error-context.md` trong `~/.zenify/playwright/harness/.znf/e2e/__output__/`; harness xóa ô mật khẩu trước khi báo lỗi và không ghi trace cho bước login, nên file đó không chứa mật khẩu. Web app local trỏ auth vào hub local (`VITE_AUTH_URL`) thì hub đó phải đang chạy, nếu không login luôn quay về `/login`.
+Login lỗi (vẫn ở `/login`) để lại `error-context.md` trong `~/.zenify/playwright/harness/.znf/e2e/__output__/`; bước login không ghi trace, và harness xóa ô mật khẩu trước khi Playwright chụp snapshot trang (kể cả khi timeout giữa chừng), nên file đó không chứa mật khẩu. Web app local trỏ auth vào hub local (`VITE_AUTH_URL`) thì hub đó phải đang chạy, nếu không login luôn quay về `/login`.
 
 ## Kết quả
 

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
@@ -20,8 +21,6 @@ import (
 
 const (
 	pinnedPlaywrightVersion = "1.64.1"
-	staleLockAge            = 10 * time.Minute
-	liveLockMaxAge          = 6 * time.Hour // backstop for a reused PID
 	defaultLockWait         = 120 * time.Second
 	lockPoll                = 500 * time.Millisecond
 )
@@ -53,72 +52,40 @@ func StatePathRole(home, role string) string {
 	return filepath.Join(playwrightDir(home), name)
 }
 
-// acquireLock takes an O_EXCL lock file holding our PID, breaking a lock whose holder
-// is gone (a killed login never removes it) or, with no PID to probe, that is older
-// than staleLockAge.
-func acquireLock(path string, wait time.Duration) error {
+// Locks this process holds, for InheritLock.
+var (
+	heldMu    sync.Mutex
+	heldLocks []*os.File
+)
+
+// acquireLock takes an OS lock (flock; LockFileEx on windows) on path and returns the
+// open file holding it. The OS releases it when every process sharing that open file
+// is gone, so a killed run never leaves a lock behind and there is nothing to break.
+// The PID written into the file is for humans only.
+func acquireLock(path string, wait time.Duration) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // G304 -- path built from home
+	if err != nil {
+		return nil, err
+	}
 	deadline := time.Now().Add(wait)
 	for {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- path built from home
-		if err == nil {
-			_, werr := f.WriteString(strconv.Itoa(os.Getpid()))
-			if werr = errors.Join(werr, f.Close()); werr != nil {
-				_ = os.Remove(path) // a lock without our PID would only ever age out
+		busy, err := tryLockFile(f)
+		if err != nil {
+			_ = f.Close()
+			return nil, err
+		}
+		if !busy {
+			if err := f.Truncate(0); err == nil {
+				_, _ = f.WriteAt([]byte(strconv.Itoa(os.Getpid())), 0)
 			}
-			return werr
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return err
-		}
-		if lockIsStale(path) {
-			breakStaleLock(path)
-			continue
+			return f, nil
 		}
 		if time.Now().After(deadline) {
-			return errors.New("harness locked by another e2e login or run")
+			_ = f.Close()
+			return nil, errors.New("harness locked by another e2e login or run")
 		}
 		time.Sleep(lockPoll)
 	}
-}
-
-// lockIsStale: its PID no longer runs (or, a reused PID, it is older than
-// liveLockMaxAge); with no PID (locks of older binaries) or no liveness probe
-// (windows), older than staleLockAge.
-func lockIsStale(path string) bool {
-	st, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	if pid, ok := lockPID(path); ok {
-		if alive, known := processAlive(pid); known {
-			return !alive || time.Since(st.ModTime()) > liveLockMaxAge
-		}
-	}
-	return time.Since(st.ModTime()) > staleLockAge
-}
-
-// lockPID reads the holder PID recorded in a lock file.
-func lockPID(path string) (int, bool) {
-	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path built from home
-	if err != nil {
-		return 0, false
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-	return pid, err == nil && pid > 0
-}
-
-// breakStaleLock moves the lock aside and re-checks it there, so a waiter whose stale
-// verdict is out of date (another waiter already broke it and took a fresh lock) puts
-// that fresh lock back instead of deleting it.
-func breakStaleLock(path string) {
-	aside := fmt.Sprintf("%s.%d.breaking", path, os.Getpid())
-	if os.Rename(path, aside) != nil {
-		return
-	}
-	if !lockIsStale(aside) {
-		_ = os.Link(aside, path) // never clobbers a lock created meanwhile
-	}
-	_ = os.Remove(aside)
 }
 
 // PrepareHarness writes the harness and installs deps + chromium, under the lock.
@@ -138,15 +105,19 @@ func lockHarness(root string, wait time.Duration) (func(), error) {
 	if wait == 0 {
 		wait = defaultLockWait
 	}
-	lock := filepath.Join(root, "harness.lock")
-	if err := acquireLock(lock, wait); err != nil {
+	f, err := acquireLock(filepath.Join(root, "harness.lock"), wait)
+	if err != nil {
 		return nil, err
 	}
+	heldMu.Lock()
+	heldLocks = append(heldLocks, f)
+	heldMu.Unlock()
 	return func() {
-		// Only our own lock: if it was broken and retaken meanwhile, it is not ours.
-		if pid, ok := lockPID(lock); ok && pid == os.Getpid() {
-			_ = os.Remove(lock)
-		}
+		heldMu.Lock()
+		heldLocks = slices.DeleteFunc(heldLocks, func(h *os.File) bool { return h == f })
+		heldMu.Unlock()
+		_ = unlockFile(f)
+		_ = f.Close()
 	}, nil
 }
 
