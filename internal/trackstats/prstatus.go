@@ -33,30 +33,30 @@ type PRStatusFunc func(url string) (PRStatus, error)
 
 const prStatusQuery = `query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){createdAt reviewDecision mergeStateStatus commits(last:1){nodes{commit{statusCheckRollup{state}}}} reviewThreads(first:100){nodes{isResolved}}}}}`
 
-var prURLRe = regexp.MustCompile(`^https?://[^/]+/([^/]+)/([^/]+)/pull/(\d+)`)
+var prURLRe = regexp.MustCompile(`^https?://([^/]+)/([^/]+)/([^/]+)/pull/(\d+)`)
 
-func prStatusURL(url string) (owner, name string, number int, err error) {
+func prStatusURL(url string) (host, owner, name string, number int, err error) {
 	m := prURLRe.FindStringSubmatch(url)
 	if m == nil {
-		return "", "", 0, fmt.Errorf("not a pull request url: %s", url)
+		return "", "", "", 0, fmt.Errorf("not a pull request url: %s", url)
 	}
-	number, err = strconv.Atoi(m[3])
+	number, err = strconv.Atoi(m[4])
 	if err != nil {
-		return "", "", 0, fmt.Errorf("pull request number in %s: %w", url, err)
+		return "", "", "", 0, fmt.Errorf("pull request number in %s: %w", url, err)
 	}
-	return m[1], m[2], number, nil
+	return m[1], m[2], m[3], number, nil
 }
 
 // GhPRStatus asks GitHub (through gh api graphql) for the review state of a pull request.
 func GhPRStatus(url string) (PRStatus, error) {
-	owner, name, number, err := prStatusURL(url)
+	host, owner, name, number, err := prStatusURL(url)
 	if err != nil {
 		return PRStatus{}, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
 	defer cancel()
 	// owner and name use -f (always a string): -F would turn an all-digit name into an Int.
-	cmd := exec.CommandContext(ctx, "gh", "api", "graphql", "-f", "query="+prStatusQuery, "-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(number)) //nolint:gosec // G204 -- fixed binary, url parts passed as single arguments
+	cmd := exec.CommandContext(ctx, "gh", "api", "--hostname", host, "graphql", "-f", "query="+prStatusQuery, "-f", "owner="+owner, "-f", "name="+name, "-F", "number="+strconv.Itoa(number)) //nolint:gosec // G204 -- fixed binary, url parts passed as single arguments
 	cmd.WaitDelay = time.Second
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -103,7 +103,7 @@ func parsePRStatus(url string, out []byte) (PRStatus, error) {
 	if pr == nil {
 		return PRStatus{}, fmt.Errorf("pull request not found: %s", url)
 	}
-	_, name, number, err := prStatusURL(url)
+	_, _, name, number, err := prStatusURL(url)
 	if err != nil {
 		return PRStatus{}, err
 	}
@@ -140,7 +140,9 @@ func parsePRStatus(url string, out []byte) (PRStatus, error) {
 // openPRStatus lists the status of up to maxPROpen open PRs: tracked PRs not in the merged cache,
 // newest first end first, then plan-only PRs. It asks in.PRStatus when set, and reads
 // in.PRStatusCache otherwise (or when gh fails for a PR); the first gh error lands in res.
-func openPRStatus(in Input, tracked []string, firstEnd map[string]time.Time, plan []string, merged map[string]string, res *Result) []PRStatus {
+// ghDown (gh missing or hanging in this run) skips gh entirely, and a missing or hanging gh here
+// is returned so later gh calls in the same run are skipped too: the pane gives stats 20s.
+func openPRStatus(in Input, tracked []string, firstEnd map[string]time.Time, plan []string, merged map[string]string, ghDown bool, res *Result) ([]PRStatus, bool) {
 	open := []PRStatus{}
 	ordered := append([]string(nil), tracked...)
 	sortNewestFirst(ordered, firstEnd)
@@ -156,7 +158,7 @@ func openPRStatus(in Input, tracked []string, firstEnd map[string]time.Time, pla
 	if len(cands) > maxPROpen {
 		cands = cands[:maxPROpen]
 	}
-	down := false
+	down := ghDown
 	for _, u := range cands {
 		if in.PRStatus != nil && !down {
 			st, err := in.PRStatus(u)
@@ -175,5 +177,5 @@ func openPRStatus(in Input, tracked []string, firstEnd map[string]time.Time, pla
 			open = append(open, st)
 		}
 	}
-	return open
+	return open, down
 }

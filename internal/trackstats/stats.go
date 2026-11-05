@@ -427,7 +427,7 @@ func Compute(in Input) (Result, map[string]string) {
 	res.Today.Plans = countPlans(in, &res)
 	planURLs := planPRIDs(logEv, in.Today)
 	newCache, ghDown := mergedToday(in, prOrder, planURLs, &res)
-	res.Today.PROpen = openPRStatus(in, prOrder, firstEnd, planURLs, newCache, &res)
+	res.Today.PROpen, ghDown = openPRStatus(in, prOrder, firstEnd, planURLs, newCache, ghDown, &res)
 
 	// Scale: wall minutes of the done and pushed items with a real estimate, oldest end first.
 	ended := byEnd(items)

@@ -87,17 +87,23 @@ func computeDailyPlan(in Input, logEv []Event, items []Item, works map[string]*w
 			}
 		}
 	}
-	type brow struct{ repo, est, title string }
+	type brow struct{ repo, est, title, url string }
+	refURL := func(ref string) string {
+		if strings.HasPrefix(ref, "http") {
+			return ref
+		}
+		return ""
+	}
 	rows := map[string]brow{}
 	for _, e := range logEv {
 		if e.Type == "backlog" {
-			rows[e.ID] = brow{e.F[0], e.F[1], e.F[3]}
+			rows[e.ID] = brow{e.F[0], e.F[1], e.F[3], refURL(e.F[2])}
 		}
 	}
 	for _, b := range backlog {
 		for _, k := range []string{b.ID, b.Ref} {
 			if _, ok := rows[k]; !ok && k != "" && k != "-" {
-				rows[k] = brow{b.Repo, b.Est, b.Title}
+				rows[k] = brow{b.Repo, b.Est, b.Title, refURL(b.Ref)}
 			}
 		}
 	}
@@ -120,6 +126,9 @@ func computeDailyPlan(in Input, logEv []Event, items []Item, works map[string]*w
 		}
 		if r, ok := rows[id]; ok {
 			pi.Repo, pi.Est, pi.Title = r.repo, r.est, r.title
+			if pi.URL == "" {
+				pi.URL = r.url
+			}
 		} else if t := in.PRTitles[id]; t != "" && !strings.HasPrefix(t, titleFailedPrefix) {
 			pi.Title = t
 		}

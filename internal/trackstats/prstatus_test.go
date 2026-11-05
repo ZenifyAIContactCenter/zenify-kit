@@ -40,11 +40,14 @@ func TestParsePRStatus(t *testing.T) {
 }
 
 func TestPRStatusURL(t *testing.T) {
-	o, n, num, err := prStatusURL("https://github.com/o/r/pull/12")
-	if err != nil || o != "o" || n != "r" || num != 12 {
-		t.Fatalf("got %q %q %d %v", o, n, num, err)
+	h, o, n, num, err := prStatusURL("https://github.com/o/r/pull/12")
+	if err != nil || h != "github.com" || o != "o" || n != "r" || num != 12 {
+		t.Fatalf("got %q %q %q %d %v", h, o, n, num, err)
 	}
-	if _, _, _, err := prStatusURL("https://github.com/o/r/issues/12"); err == nil {
+	if h, _, _, _, _ := prStatusURL("https://ghe.example.com/o/r/pull/3"); h != "ghe.example.com" {
+		t.Fatalf("host = %q, want ghe.example.com", h)
+	}
+	if _, _, _, _, err := prStatusURL("https://github.com/o/r/issues/12"); err == nil {
 		t.Fatal("a URL without /pull/<n> must be an error")
 	}
 }
@@ -159,5 +162,35 @@ func TestPRStatusFromCacheWithoutFunc(t *testing.T) {
 	r, _ := Compute(in)
 	if len(r.Today.PROpen) != 1 || r.Today.PROpen[0].URL != urls[1] {
 		t.Fatalf("cache not used: %+v", r.Today.PROpen)
+	}
+}
+
+// A merged check that timed out marks gh down: PR status and PR titles are not asked in the same run,
+// so the run stays under the pane's 20s stats timeout.
+func TestGhDownSkipsPRStatus(t *testing.T) {
+	log, _ := prOpenLog(2)
+	in := base(log)
+	in.Merged = func(string) (string, error) { return "", ErrGhTimeout }
+	var asked []string
+	in.PRStatus = fakePRStatus("", nil, &asked)
+	Compute(in)
+	if len(asked) != 0 {
+		t.Fatalf("PRStatus asked %v after gh timed out", asked)
+	}
+}
+
+// A PR status that timed out marks gh down for the PR title lookups that follow.
+func TestPRStatusTimeoutSkipsTitles(t *testing.T) {
+	log, urls := prOpenLog(2)
+	in := base(log)
+	in.Merged = func(string) (string, error) { return "", nil }
+	var asked []string
+	in.PRStatus = fakePRStatus("", map[string]error{urls[0]: ErrGhTimeout, urls[1]: ErrGhTimeout}, &asked)
+	titles := 0
+	in.PRTitle = func(string) (string, error) { titles++; return "t", nil }
+	in.PRTitles = map[string]string{}
+	Compute(in)
+	if titles != 0 {
+		t.Fatalf("PRTitle asked %d times after PR status timed out", titles)
 	}
 }

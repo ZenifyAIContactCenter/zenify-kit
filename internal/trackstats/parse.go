@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const fieldSep = " · "
@@ -120,6 +121,9 @@ func parseLogLine(raw string) (Event, bool) {
 // ValidPlanID reports whether id may appear in a `plan` row: a backlog id, an issue or PR
 // URL, an SDD id or a track id.
 func ValidPlanID(id string) bool {
+	if strings.IndexFunc(id, unicode.IsSpace) >= 0 {
+		return false
+	}
 	if strings.HasPrefix(id, "http") {
 		return validHTTPURL(id)
 	}

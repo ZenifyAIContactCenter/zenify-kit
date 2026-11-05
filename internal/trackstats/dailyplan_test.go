@@ -112,6 +112,7 @@ func TestValidPlanID(t *testing.T) {
 		"b-261105-ab12": true, "https://x/pull/1": true, "repos/k/progress.md:3": true, "cook-261105-ab12": true,
 		"foo": false, "http://x y": false, "b-261105-AB12": false, "": false,
 		"https://github.com/o/r/pull/3": true, "httpfoo:x": false, "https://x/\x1b]8;;": false, "http://": false,
+		"repos/a b/progress.md:1": false, "repos/a\tb/progress.md:1": false,
 	} {
 		if ValidPlanID(id) != want {
 			t.Fatalf("ValidPlanID(%q) != %v", id, want)
@@ -195,5 +196,18 @@ func TestMergedAskedOnce(t *testing.T) {
 	Compute(in)
 	if asked != 1 {
 		t.Fatalf("asked = %d", asked)
+	}
+}
+
+// A backlog row added with --ref <url> gives its plan item that url, so the pane renders a link.
+func TestDailyPlanBacklogRefURL(t *testing.T) {
+	a := "b-261030-aaaa"
+	r, _ := Compute(base(lines(
+		row(now.Add(-5*time.Hour), "backlog", a, "kit", "S", "https://github.com/o/r/issues/3", "task a"),
+		planRow(now.Add(-time.Minute), planDay, a),
+	)))
+	p := r.Today.DailyPlan
+	if p == nil || len(p.Items) != 1 || p.Items[0].URL != "https://github.com/o/r/issues/3" {
+		t.Fatalf("plan = %+v", p)
 	}
 }
