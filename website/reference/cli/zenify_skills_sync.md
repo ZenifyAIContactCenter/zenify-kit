@@ -6,7 +6,7 @@ title: zenify skills sync
 
 # `zenify skills sync`
 
-Ghi bộ skill znf từ binary vào ~/.claude/skills/znf và gắn hook znf vào settings.
+Ghi bộ skill znf từ binary vào marketplace ~/.zenify/plugin-marketplace và gắn hook znf vào settings của workspace.
 
 ## Cú pháp
 
@@ -20,7 +20,7 @@ Sau mỗi lần `zenify update`, để skill trên máy khớp với binary. Cũ
 
 ## Kết quả
 
-Lệnh ghi cây `znf/` theo một manifest theo dõi từng file, rồi in số file đã ghi, giữ, không đổi và gỡ. File bạn đã sửa tay được giữ nguyên và không nhận bản vá tiếp theo. Sau đó lệnh gắn hook `znf` vào `~/.claude/settings.json`.
+Lệnh ghi cây plugin `znf` vào `~/.zenify/plugin-marketplace/plugins/znf` (hoặc `$ZENIFY_HOME/plugin-marketplace`) theo một manifest theo dõi từng file, rồi in số file đã ghi, giữ, không đổi và gỡ. File bạn đã sửa tay được giữ nguyên và không nhận bản vá tiếp theo. Khi chạy trong workspace, lệnh cập nhật plugin local nếu bản đã cài cũ hơn binary rồi gắn hook `znf` vào `<workspace>/.claude/settings.local.json`.
 
 ## Ví dụ
 

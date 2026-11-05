@@ -1,5 +1,5 @@
 ---
-summary: In engine review đã lưu trong `env.ZNF_REVIEWER` của `~/.claude/settings.json`, agent hoặc codex.
+summary: In engine review đã lưu trong `env.ZNF_REVIEWER` của `<workspace>/.claude/settings.local.json`, agent hoặc codex.
 ---
 ## Khi nào dùng
 
@@ -7,7 +7,7 @@ Khi cần biết giá trị mà `zenify reviewer set` đã ghi, không phụ thu
 
 ## Kết quả
 
-In `agent` hoặc `codex`. File hoặc key chưa có thì in `agent` (mặc định). Giá trị khác `agent` và `codex` thì lệnh báo lỗi và exit khác 0.
+In `agent` hoặc `codex`. File hoặc key chưa có thì in `agent` (mặc định). Giá trị khác `agent` và `codex` thì lệnh báo lỗi và exit khác 0. Chạy ngoài workspace lệnh cũng báo lỗi, vì không có file nào để đọc.
 
 ## Ví dụ
 

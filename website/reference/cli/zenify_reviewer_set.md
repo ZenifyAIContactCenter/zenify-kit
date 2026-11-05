@@ -6,7 +6,7 @@ title: zenify reviewer set
 
 # `zenify reviewer set`
 
-Đặt engine review của kit, agent hoặc codex, vào `env.ZNF_REVIEWER` của `~/.claude/settings.json`.
+Đặt engine review của kit, agent hoặc codex, vào `env.ZNF_REVIEWER` của `<workspace>/.claude/settings.local.json`.
 
 ## Cú pháp
 
@@ -20,7 +20,7 @@ Khi muốn đổi `znf:review` sang `codex review` hoặc về reviewer subagent
 
 ## Kết quả
 
-Ghi `env.ZNF_REVIEWER` trong `~/.claude/settings.json`, giữ nguyên mọi key khác, rồi in `ZNF_REVIEWER=<giá trị>`. Giá trị khác `agent` và `codex` thì lệnh báo lỗi, exit khác 0 và không đổi file.
+Ghi `env.ZNF_REVIEWER` trong `<workspace>/.claude/settings.local.json` của workspace tìm được từ thư mục hiện tại, giữ nguyên mọi key khác, rồi in `ZNF_REVIEWER=<giá trị>`. Giá trị khác `agent` và `codex` thì lệnh báo lỗi, exit khác 0 và không đổi file. Chạy ngoài workspace lệnh cũng báo lỗi.
 
 ## Ví dụ
 

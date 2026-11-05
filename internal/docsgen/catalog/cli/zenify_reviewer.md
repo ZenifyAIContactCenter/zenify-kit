@@ -18,4 +18,4 @@ zenify up --reviewer codex --apply
 
 ## Lưu ý
 
-`ZNF_REVIEWER` nằm trong `env` của `~/.claude/settings.json`; `zenify up` seed giá trị `agent` khi chưa có và không đè giá trị bạn đã đặt. `zenify up --reviewer <agent|codex>` ghi đè giá trị đó khi chạy kèm `--apply`; [`zenify reviewer set`](/reference/cli/zenify_reviewer_set) ghi đè ngay.
+`ZNF_REVIEWER` nằm trong `env` của `<workspace>/.claude/settings.local.json`; `zenify up` seed giá trị `agent` khi chưa có và không đè giá trị bạn đã đặt. `zenify up --reviewer <agent|codex>` ghi đè giá trị đó khi chạy kèm `--apply`; [`zenify reviewer set`](/reference/cli/zenify_reviewer_set) ghi đè ngay.

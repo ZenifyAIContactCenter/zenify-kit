@@ -22,7 +22,7 @@ Lần đầu cài ZenifyKit trên một máy, hoặc khi team thêm repo mới v
 
 Chạy trong terminal, lệnh mở wizard tương tác: chọn thư mục workspace, chọn repo trong danh sách bạn có quyền truy cập, rồi nhập các secret cần cho verify UI và đọc DB. Chạy ngoài terminal, lệnh chỉ in kế hoạch dạng bảng `REPO STATE REASON` và dừng.
 
-Khi apply, lệnh clone repo còn thiếu, ghi các file cấu hình do kit sở hữu, gắn hook `znf` và hook `git-guard` (chặn agent commit/push vào branch deploy), đặt `env.CLAUDE_CODE_SUBAGENT_MODEL=sonnet` (chỉ khi chưa có) vào `~/.claude/settings.json`, đồng bộ plugin skill, chuẩn bị Playwright nếu workspace có repo frontend, clone knowledge store và ghi con trỏ workspace vào `~/.zenify/workspace`.
+Khi apply, lệnh clone repo còn thiếu, ghi các file cấu hình do kit sở hữu và cài kit vào gốc workspace, không vào cấp user: plugin `znf@zenify-kit` từ marketplace thư mục `zenify-kit` tại `~/.zenify/plugin-marketplace` (hoặc `$ZENIFY_HOME/plugin-marketplace`) cài `--scope local`; hook `znf`, hook `git-guard` (chặn agent commit/push vào branch deploy), `env.CLAUDE_CODE_SUBAGENT_MODEL=sonnet` (chỉ khi chưa có), `env.ZNF_REVIEWER` và luật `permissions` của kit ghi vào `<workspace>/.claude/settings.local.json`; ba MCP server `zenify-grafana`, `zenify-posthog`, `zenify-plane` đăng ký `-s local`. Khi có `codex` trên PATH, Codex nhận `<workspace>/.codex/hooks.json`, `<workspace>/.codex/agents`, link `<workspace>/.agents/skills/znf` và một mục trust trong `~/.codex/config.toml`; bạn cần duyệt hook mới qua `/hooks` trong Codex. Luật deny đọc `.zenify/.env` vẫn ở `~/.claude/settings.json`. Vì vậy kit chỉ hoạt động khi session mở ở gốc workspace; ngoài workspace và trong thư mục con của nó, kit không bật. Sau khi mọi bước cài local thành công, lệnh gỡ bản cài cấp user của kit bản cũ (`~/.claude/skills/znf`, hook và luật kit trong `~/.claude/settings.json`, MCP `-s user`, file Codex ở `~/`); skill và hook cá nhân trong `~/.claude` giữ nguyên. Bước gỡ là tất cả hoặc không gì: nếu một bước local lỗi, kể cả máy không có `claude` trên PATH, lệnh không gỡ gì, giữ bản cài cấp user, in lỗi và thoát khác 0; lần `up` sau thử lại. Preview (`--dry-run`) liệt kê những mục sẽ gỡ. Lệnh cũng chuẩn bị Playwright nếu workspace có repo frontend, clone knowledge store và ghi con trỏ workspace vào `~/.zenify/workspace`.
 
 Lệnh cần `gh` đã đăng nhập với scope `read:org` và `repo`. Chưa đăng nhập, lệnh dừng và nhắc chạy `gh auth login`.
 
@@ -36,7 +36,7 @@ Lệnh cần `gh` đã đăng nhập với scope `read:org` và `repo`. Chưa đ
 | `--manifest` | Đường dẫn manifest workspace, khi không dùng bản mặc định trong `.zenify/`. |
 | `--non-interactive` | Không mở wizard kể cả khi đang ở terminal. Dùng trong script. |
 | `--overlay` | File overlay cho máy này, mặc định `.zenify-overlay.yaml` trong workspace. |
-| `--reviewer` | Đặt engine review `agent` hoặc `codex` vào `ZNF_REVIEWER` trong `~/.claude/settings.json`. Chỉ ghi khi có `--apply`. |
+| `--reviewer` | Đặt engine review `agent` hoặc `codex` vào `ZNF_REVIEWER` trong `<workspace>/.claude/settings.local.json`. Chỉ ghi khi có `--apply`. |
 | `--workspace` | Thư mục workspace. Không có, wizard hỏi hoặc lệnh dùng thư mục hiện tại. |
 
 ## Ví dụ
