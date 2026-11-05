@@ -137,6 +137,7 @@ func featuresLine(wsRoot string, w io.Writer) {
 	if feats["track"] {
 		fmt.Fprintln(w, "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --json first (track.md#Backlog); plan today → track.md#Daily plan")
 		trackOnboardLine(wsRoot, w)
+		trackSummaryLine(wsRoot, w, time.Now())
 	}
 }
 
@@ -158,6 +159,66 @@ func trackOnboardLine(wsRoot string, w io.Writer) {
 		}
 	}
 	fmt.Fprintln(w, "track: not onboarded — run the Onboard section of ~/.claude/skills/znf/skills/_shared/track.md")
+}
+
+// trackSummaryLine prints one line of open work so the agent starts the session knowing it.
+// It reads local files only (log.md, merged.json, backlog-gh.json) and never calls gh, so a
+// session start stays fast; PR counts are as fresh as the last stats run. Read errors go to
+// stderr and print nothing on w; a line with nothing open is not printed.
+func trackSummaryLine(wsRoot string, w io.Writer, now time.Time) {
+	dir := filepath.Join(wsRoot, ".zenify", "track")
+	note := func(err error) { ui.New(os.Stderr).Note(fmt.Sprintf("znf track summary: %v", err)) }
+	raw, err := os.ReadFile(filepath.Join(dir, "log.md")) //nolint:gosec // G304 -- path under the workspace root, not user input
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		note(err)
+		return
+	}
+	in := trackstats.Input{Log: string(raw), Today: now.Format("2006-01-02"), Now: now, Workspace: wsRoot, Cache: map[string]string{}}
+	if b, err := os.ReadFile(filepath.Join(dir, "merged.json")); err == nil { //nolint:gosec // G304 -- path under the workspace root
+		if err := json.Unmarshal(b, &in.Cache); err != nil {
+			note(fmt.Errorf("parse merged.json: %w", err))
+			return
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		note(err)
+		return
+	}
+	c, err := readBacklogCache(filepath.Join(dir, backlogCache))
+	if err != nil {
+		note(err)
+		return
+	}
+	if c != nil {
+		issues := c.Issues
+		in.GitHub = func() ([]trackstats.Issue, error) { return issues, nil }
+		in.SDD = c.SDD
+	}
+	res, _ := trackstats.Compute(in)
+	var parts []string
+	if n := len(res.Kitchen.Carried); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d carried", n))
+	}
+	if p := res.Today.DailyPlan; p != nil {
+		done := 0
+		for _, it := range p.Items {
+			if it.Status == "done" {
+				done++
+			}
+		}
+		parts = append(parts, fmt.Sprintf("plan %d/%d done", done, len(p.Items)))
+	}
+	if n := res.Today.PRsWaiting; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d PR waiting", n))
+	}
+	if n := len(res.Backlog.Items); n > 0 {
+		parts = append(parts, fmt.Sprintf("%d backlog", n))
+	}
+	if len(parts) > 0 {
+		fmt.Fprintln(w, "track: "+strings.Join(parts, " · "))
+	}
 }
 
 func sentinelPresent() bool {

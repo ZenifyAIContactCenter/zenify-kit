@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
@@ -454,3 +455,61 @@ func TestSessionStart_TrackOnboardLogProblems(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// The session-start digest carries a one-line track summary read from local files only.
+func TestSessionStart_TrackSummaryLine(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	now := time.Now()
+	today := now.Format("2006-01-02")
+	yesterday := now.Add(-24 * time.Hour).UTC().Format(time.RFC3339)
+	yesterdayEnd := now.Add(-23 * time.Hour).UTC().Format(time.RFC3339)
+	stamp := now.Add(-time.Minute).UTC().Format(time.RFC3339)
+	full := strings.Join([]string{
+		stamp + " · onboard · memory",
+		yesterday + " · start · cook-261104-aaaa · cook · kit · M",
+		yesterday + " · start · fix-261104-bbbb · fix · kit · S",
+		yesterdayEnd + " · end · fix-261104-bbbb · https://github.com/o/r/pull/7 · - · 0",
+		stamp + " · backlog · b-261105-ab12 · kit · S · - · rename helper",
+		stamp + " · plan · " + today + " · b-261105-ab12",
+	}, "\n") + "\n"
+	cases := []struct {
+		name string
+		log  string
+		want string
+	}{
+		{"all parts", full, "track: 1 carried · plan 0/1 done · 1 PR waiting · 1 backlog\n"},
+		{"nothing open", stamp + " · onboard · memory\n", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			ws := mkWorkspace(t)
+			if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte("features:\n  track: true\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join(ws, ".zenify", "track")
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(c.log), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			if rc := runSessionStart(ws, &buf); rc != 0 {
+				t.Fatalf("rc = %d", rc)
+			}
+			out := buf.String()
+			if c.want == "" {
+				if strings.Contains(out, "track: ") && strings.Contains(out, "carried") {
+					t.Errorf("unexpected summary line in %q", out)
+				}
+				return
+			}
+			if !strings.Contains(out, c.want) {
+				t.Errorf("want %q in %q", c.want, out)
+			}
+		})
+	}
+}
