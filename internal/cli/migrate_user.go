@@ -102,6 +102,13 @@ func migrateUserInstalls(home, codexHome string, mcps []string, keep userKeep, r
 	}
 
 	for _, name := range mcps {
+		// Only the kit's own registration goes; a server the user configured
+		// under the same name stays, even when a local one now shadows it.
+		if owned, err := mcpreg.KitOwned(filepath.Join(home, ".claude.json"), "", name); err != nil {
+			return removed, err
+		} else if !owned {
+			continue
+		}
 		if dryRun {
 			removed = append(removed, "MCP "+name+" (-s user, if registered)")
 			continue

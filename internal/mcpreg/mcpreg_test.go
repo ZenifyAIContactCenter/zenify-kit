@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -311,5 +313,37 @@ func TestRemoveUserScoped_NotFound(t *testing.T) {
 		if err == nil || ok {
 			t.Fatalf("%q must error: ok=%v err=%v", out, ok, err)
 		}
+	}
+}
+
+func TestKitOwned(t *testing.T) {
+	p := filepath.Join(t.TempDir(), ".claude.json")
+	body := `{"mcpServers":{
+	  "zenify-grafana":{"type":"http","url":"https://old-broker.example/mcp/grafana","headers":{"x":"secret"}},
+	  "zenify-posthog":{"type":"http","url":"https://mine.example/posthog"},
+	  "zenify-plane":{"type":"stdio","command":"uvx","args":["plane-mcp-server"]}},
+	 "projects":{"/ws":{"mcpServers":{
+	  "zenify-plane":{"type":"stdio","command":"zenify","args":["plane-mcp"]}}}}}`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		project, name string
+		want          bool
+	}{
+		{"", "zenify-grafana", true},  // kit path, stale host
+		{"", "zenify-posthog", false}, // the user's own server
+		{"", "zenify-plane", false},   // the user's own stdio command
+		{"/ws", "zenify-plane", true},
+		{"/ws", "zenify-grafana", false}, // absent at that scope
+		{"/other", "zenify-plane", false},
+	} {
+		got, err := KitOwned(p, c.project, c.name)
+		if err != nil || got != c.want {
+			t.Errorf("KitOwned(%q, %q) = %v, %v; want %v", c.project, c.name, got, err, c.want)
+		}
+	}
+	if got, err := KitOwned(filepath.Join(t.TempDir(), "none.json"), "", "zenify-grafana"); err != nil || got {
+		t.Errorf("missing file: %v %v", got, err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	neturl "net/url"
+	"os"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
@@ -100,6 +101,50 @@ func RemoveScoped(name, scope string, run func(string, ...string) ([]byte, error
 		return false, nil
 	}
 	return false, fmt.Errorf("remove %s-scope %s MCP: %w: %s", scope, name, err, strings.TrimSpace(string(out)))
+}
+
+// KitOwned reports whether the registration of name in claudeJSON (Claude
+// Code's ~/.claude.json) is the kit's own: at user scope when project is "",
+// else at local scope under projects[project]. The marks are the ones
+// Bootstrap and BootstrapStdio use: an http server whose URL path is
+// /mcp/<name without "zenify-">, or a stdio server whose command is zenify.
+// A missing file or entry is not owned. Errors never carry the file content.
+func KitOwned(claudeJSON, project, name string) (bool, error) {
+	b, err := os.ReadFile(claudeJSON) //nolint:gosec // G304 -- the user's own Claude state file
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	type server struct {
+		Type    string `json:"type"`
+		URL     string `json:"url"`
+		Command string `json:"command"`
+	}
+	var root struct {
+		MCPServers map[string]server `json:"mcpServers"`
+		Projects   map[string]struct {
+			MCPServers map[string]server `json:"mcpServers"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal(b, &root); err != nil {
+		return false, fmt.Errorf("%s: not a valid Claude state file", claudeJSON)
+	}
+	servers := root.MCPServers
+	if project != "" {
+		servers = root.Projects[project].MCPServers
+	}
+	s, ok := servers[name]
+	switch {
+	case !ok:
+		return false, nil
+	case s.Type == "http":
+		return samePath(s.URL, "https://x/mcp/"+strings.TrimPrefix(name, "zenify-")), nil
+	case s.Type == "stdio" || s.Type == "":
+		return s.Command == "zenify", nil
+	}
+	return false, nil
 }
 
 // samePath reports whether got is an http(s) URL with the same path as want.

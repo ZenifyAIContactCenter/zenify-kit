@@ -198,7 +198,8 @@ func runDown(t *testing.T, ws, repos string, extra ...string) string {
 }
 
 func TestDown_KeepsLocalSettingsFile(t *testing.T) {
-	ws, _, repos := downWorkspace(t)
+	ws, home, repos := downWorkspace(t)
+	writeF(t, filepath.Join(home, ".claude.json"), `{"projects":{"`+ws+`":{"mcpServers":{`+kitMCPEntries+`}}}}`)
 	local := apply.WorkspaceLocalSettings(ws)
 	writeF(t, local, `{"autoMemoryDirectory":"/m","hooks":{"Stop":[{"hooks":[{"type":"command","command":"zenify hooks-run docs-sync"}]}]}}`)
 	writeF(t, pluginStampPath(ws), "v1")
@@ -304,5 +305,17 @@ func TestDown_RelativeWorkspaceRemovesCodexTrust(t *testing.T) {
 	b, _ := os.ReadFile(filepath.Join(codexHome, "config.toml")) //nolint:gosec // G304 -- test temp path
 	if strings.Contains(string(b), ws) {
 		t.Errorf("codex trust for %s left after down: %s", ws, b)
+	}
+}
+
+// A server the user configured under a kit name stays through down.
+func TestDown_KeepsCustomLocalMCP(t *testing.T) {
+	ws, home, repos := downWorkspace(t)
+	writeF(t, filepath.Join(home, ".claude.json"), `{"projects":{"`+ws+`":{"mcpServers":{"zenify-posthog":{"type":"http","url":"https://mine.example/ph"}}}}}`)
+	var calls []string
+	downFakeClaude(t, &calls, nil)
+	runDown(t, ws, repos, "--apply")
+	if slices.Contains(calls, "mcp remove zenify-posthog -s local") {
+		t.Errorf("custom zenify-posthog removed: %v", calls)
 	}
 }

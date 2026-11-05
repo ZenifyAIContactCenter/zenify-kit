@@ -156,11 +156,17 @@ func seedKitSkills(t *testing.T, home string) {
 	}
 }
 
+// kitMCPEntries are the three kit MCP registrations as ~/.claude.json holds them.
+const kitMCPEntries = `"zenify-grafana":{"type":"http","url":"https://broker.example/mcp/grafana"},` +
+	`"zenify-posthog":{"type":"http","url":"https://broker.example/mcp/posthog"},` +
+	`"zenify-plane":{"type":"stdio","command":"zenify","args":["plane-mcp"]}`
+
 // seedUserInstall builds the user-level install an older kit left behind,
 // through the kit's own writers, plus personal entries that must survive.
 func seedUserInstall(t *testing.T, home, ws string) {
 	t.Helper()
 	seedKitSkills(t, home)
+	mkfile(t, filepath.Join(home, ".claude.json"), `{"mcpServers":{`+kitMCPEntries+`}}`)
 	mkfile(t, filepath.Join(home, ".claude", "skills", "cook", "SKILL.md"), "mine")
 	settings := apply.UserSettings(home)
 	if _, err := apply.EnsureGlobalHooks(settings, false); err != nil {
@@ -680,5 +686,20 @@ func TestUp_LocalFailureSkipsPlaneMCP(t *testing.T) {
 		if strings.HasPrefix(c, "mcp add-json zenify-plane") {
 			t.Fatalf("Plane MCP registered while local hooks failed: %q", c)
 		}
+	}
+}
+
+// A user-scope server the user configured under a kit name is never removed,
+// even when the workspace now has the kit's local copy.
+func TestMigrateUserInstalls_KeepsCustomUserMCP(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	seedUserInstall(t, home, ws)
+	mkfile(t, filepath.Join(home, ".claude.json"), `{"mcpServers":{"zenify-grafana":{"type":"http","url":"https://mine.example/g"}}}`)
+	f := newFakeClaude(ws)
+	if _, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userKitMCPs, userKeep{}, f.run, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.userRemoves(); len(got) > 0 {
+		t.Errorf("custom user MCP removed: %v", got)
 	}
 }

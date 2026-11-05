@@ -227,7 +227,14 @@ func removeLocalClaude(u *ui.Writer, workspace string, run func(string, ...strin
 			u.Step(ui.StatusWarn, "plugin", fmt.Sprintf("không xoá được stamp (%v)", err)) //znf:allow-lang
 		}
 	}
+	home, _ := os.UserHomeDir()
 	for _, name := range userKitMCPs {
+		if owned, err := mcpreg.KitOwned(filepath.Join(home, ".claude.json"), workspace, name); err != nil {
+			u.Step(ui.StatusWarn, "mcp", fmt.Sprintf("bỏ qua (%v)", err)) //znf:allow-lang
+			continue
+		} else if !owned {
+			continue
+		}
 		if _, err := mcpreg.RemoveScoped(name, "local", run); err != nil {
 			u.Step(ui.StatusWarn, "mcp", fmt.Sprintf("bỏ qua (%v)", err)) //znf:allow-lang
 		}
