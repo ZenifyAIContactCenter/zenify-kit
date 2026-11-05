@@ -201,13 +201,25 @@ func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(ws, ".zenify", "manifest.json")); err != nil {
 		t.Errorf("ownership manifest not saved: %v", err)
 	}
-	// znf hooks wired into the (isolated) global settings.json.
-	globalSettings, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	// znf hooks wired into the workspace settings.local.json (up forces local).
+	localSettings, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
 	if err != nil {
-		t.Fatalf("global settings.json not written: %v", err)
+		t.Fatalf("workspace settings.local.json not written: %v", err)
 	}
-	if !strings.Contains(string(globalSettings), "zenify hooks-run") {
-		t.Errorf("global settings.json missing znf hooks, got %q", globalSettings)
+	if !strings.Contains(string(localSettings), "zenify hooks-run") {
+		t.Errorf("workspace settings.local.json missing znf hooks, got %q", localSettings)
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, ".claude", "settings.json")); strings.Contains(string(b), "zenify hooks-run") {
+		t.Errorf("~/.claude/settings.json must not get znf hooks, got %q", b)
+	}
+}
+
+// FR-8.2: the two env keys the kit writes into settings.local.json stay there;
+// migrateEnv never moves them to .zenify/.env even if a manifest names them.
+func TestEnvMigrationKeys_DropsKitSettingsEnv(t *testing.T) {
+	got := envMigrationKeys([]string{"MONGO_URL", apply.SubagentModelEnv, apply.ReviewerEnv, "GH_TOKEN"})
+	if strings.Join(got, ",") != "MONGO_URL,GH_TOKEN" {
+		t.Fatalf("envMigrationKeys = %v", got)
 	}
 }
 

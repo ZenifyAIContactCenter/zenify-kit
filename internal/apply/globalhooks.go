@@ -172,6 +172,39 @@ func EnsureGlobalHooks(settingsPath string, dryRun bool) (HookChanges, error) {
 	return ch, nil
 }
 
+// HasUserKitHooks reports whether the settings file at settingsPath has at
+// least one hook command carrying the `zenify hooks-run ` marker. A missing
+// file is false; a malformed one is an error.
+func HasUserKitHooks(settingsPath string) (bool, error) {
+	raw, err := os.ReadFile(settingsPath) //nolint:gosec // G304 -- settings path computed by the caller
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var s struct {
+		Hooks map[string]any `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return false, fmt.Errorf("%s malformed: %w", settingsPath, err)
+	}
+	for _, ev := range s.Hooks {
+		groups, _ := ev.([]any)
+		for _, g := range groups {
+			gm, _ := g.(map[string]any)
+			inner, _ := gm["hooks"].([]any)
+			for _, h := range inner {
+				hm, _ := h.(map[string]any)
+				if cmd, _ := hm["command"].(string); isZnfMarked(cmd) {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
 // mergeOneHook ensures spec's command sits in the group whose matcher equals
 // spec.Matcher. Before that, any znf entry with the same ID living under a
 // DIFFERENT matcher of the same event is removed (matcher migration, W0

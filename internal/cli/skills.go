@@ -21,8 +21,9 @@ func newSkillsCmd() *cobra.Command {
 			zh := zenifyHome(os.Getenv, os.UserHomeDir)
 			// resync first: it only updates the claude plugin while the stamp is stale,
 			// and SyncMarketplace below re-stamps it.
-			if ws, _, ok := resolveWorkspace(".", "", os.Getenv, os.UserHomeDir); ok {
-				resyncPluginLocal(ws, zh, runClaudeIn(ws), cmd.ErrOrStderr())
+			ws, _, wsOK := resolveWorkspace(".", "", os.Getenv, os.UserHomeDir)
+			if wsOK {
+				_ = resyncPluginLocal(ws, zh, pluginRunner(ws), cmd.ErrOrStderr()) // fail-open; already on stderr
 			}
 			res, err := plugin.SyncMarketplace(zh)
 			if err != nil {
@@ -33,16 +34,15 @@ func newSkillsCmd() *cobra.Command {
 				fmt.Sprintf("%d ghi, %d giữ (user sửa), %d không đổi, %d gỡ → %s", //znf:allow-lang
 					len(res.Written), len(res.Kept), len(res.Skipped), len(res.Removed), plugin.PluginDir(zh)))
 
-			home, _ := os.UserHomeDir()
-			if home != "" {
-				ch, err := apply.EnsureGlobalHooks(apply.UserSettings(home), false)
+			if wsOK {
+				ch, err := apply.EnsureGlobalHooks(apply.WorkspaceLocalSettings(ws), false)
 				if err != nil {
 					uiErr(cmd).Step(ui.StatusWarn, "could not wire znf hooks", err.Error())
 				} else if n := ch.Added + ch.Updated; n > 0 {
 					// Only announce when something actually changed — an
 					// already-wired session would otherwise print a "wired N"
 					// line on every run (all Unchanged), which reads as noise.
-					u.Step(ui.StatusOK, fmt.Sprintf("wired %d znf hooks into ~/.claude/settings.json", n), "")
+					u.Step(ui.StatusOK, fmt.Sprintf("wired %d znf hooks into .claude/settings.local.json", n), "")
 				}
 			}
 			return nil

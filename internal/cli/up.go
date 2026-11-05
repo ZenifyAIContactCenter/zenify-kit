@@ -342,7 +342,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	// Hooks + model pin + store config distribution, all fail-open (W0 FR-01.4);
 	// never affects `failed`.
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		rep := ensureWorkspace(workspace, home, w, errW)
+		rep := ensureWorkspace(workspace, home, w, errW, ensureOpts{ForceLocal: true})
 		renderCodexSummary(rep, w)
 	}
 
@@ -400,6 +400,18 @@ func settingsEnvPaths(workspace string, repoPaths []string) (paths, skipped []st
 	return paths, skipped
 }
 
+// envMigrationKeys drops the env keys the kit itself writes into
+// settings.local.json (FR-8.2): those must stay there, never move to .zenify/.env.
+func envMigrationKeys(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if n != apply.SubagentModelEnv && n != apply.ReviewerEnv {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // migrateEnv moves manifest keys out of the workspace, repo and repo worktree
 // settings.local.json env blocks into <workspace>/.zenify/.env (FR-9), then
 // denies agent reads of that file in ~/.claude/settings.json (FR-10). It runs under the apply lock and
@@ -414,7 +426,7 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 	for _, p := range skipped {
 		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — file settings của worktree không đọc được, xử lý tay\n", p) //znf:allow-lang
 	}
-	if !migrateSettingsAndMerge(w, errW, paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned) {
+	if !migrateSettingsAndMerge(w, errW, paths, envMigrationKeys(manifest.KeyNames(m.AllKeys())), devenv.Path(workspace), owned) {
 		_, _ = fmt.Fprintln(errW, "env: bỏ qua dựng lại .zenify/.env do bước chuyển key lỗi") //znf:allow-lang
 	} else if err := renderEnvStep(w, m, src, devenv.Path(workspace), owned, false); err != nil {
 		_, _ = fmt.Fprintf(errW, "env: không dựng được .zenify/.env (%v)\n", err) //znf:allow-lang

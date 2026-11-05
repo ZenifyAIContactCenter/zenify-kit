@@ -15,11 +15,11 @@ import (
 )
 
 // hooksRowState reports the HOOKS plan row's state via a dry-run
-// EnsureGlobalHooks call — never writes (SC-10). A malformed/non-object
-// settings.json is reported as a skip rather than an error, matching
-// EnsureGlobalHooks' own fail-open contract.
-func hooksRowState(home string) string {
-	ch, err := apply.EnsureGlobalHooks(apply.UserSettings(home), true) // dryRun
+// EnsureGlobalHooks call on <workspace>/.claude/settings.local.json — never
+// writes (SC-10). A malformed/non-object file is reported as a skip rather
+// than an error, matching EnsureGlobalHooks' own fail-open contract.
+func hooksRowState(workspace string) string {
+	ch, err := apply.EnsureGlobalHooks(apply.WorkspaceLocalSettings(workspace), true) // dryRun
 	if err != nil || ch.Skipped {
 		return "skip: settings.json malformed"
 	}
@@ -56,13 +56,8 @@ func modelRowState(workspace string) string {
 
 // planFooterRows renders the synthetic HOOKS/DOCS-STORE/MODEL rows appended to
 // every plan render (headless dry-run text and the TUI plan render alike).
-// Home-dir resolution failure (practically never) degrades to the same
-// "malformed" skip state rather than erroring the whole row out.
 func planFooterRows(workspace string) []string {
-	hooks := "skip: settings.json malformed"
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		hooks = hooksRowState(home)
-	}
+	hooks := hooksRowState(workspace)
 	return []string{
 		fmt.Sprintf("%-12s %s", "HOOKS", hooks),
 		fmt.Sprintf("%-12s %s", "DOCS-STORE", docsRowState(workspace)),

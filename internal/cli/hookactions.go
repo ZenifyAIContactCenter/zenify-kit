@@ -69,7 +69,7 @@ func runSessionStart(wsRoot string, w io.Writer) int {
 		ui.New(os.Stderr).Note(fmt.Sprintf("znf docs-sync: %v", err))
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		_ = ensureWorkspace(wsRoot, home, w, os.Stderr)
+		_ = ensureWorkspace(wsRoot, home, w, os.Stderr, ensureOpts{})
 	}
 	// One line, only when a newer release exists; before the digest so the
 	// digest's early return cannot swallow it.

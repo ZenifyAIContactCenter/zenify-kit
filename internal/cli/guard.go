@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -307,14 +308,15 @@ func newGuardCmd() *cobra.Command {
 	c := &cobra.Command{Use: "guard", Short: "Quản lý git-guard hook"} //znf:allow-lang
 	install := &cobra.Command{
 		Use:   "install",
-		Short: "Đăng ký PreToolUse hook trỏ `zenify git-guard` trong ~/.claude/settings.json", //znf:allow-lang
+		Short: "Đăng ký PreToolUse hook trỏ `zenify git-guard` trong .claude/settings.local.json của workspace", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return fmt.Errorf("guard install: could not determine HOME: %w", err)
+			cwd, _ := os.Getwd()
+			ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
+			if !ok {
+				return fmt.Errorf("guard install: no workspace found (run inside a zenify workspace)")
 			}
-			changed, err := installGuard(guardSettingsPath(home))
+			changed, err := installGuard(apply.WorkspaceLocalSettings(ws))
 			if err != nil {
 				return err
 			}

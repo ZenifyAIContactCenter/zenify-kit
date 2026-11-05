@@ -106,30 +106,35 @@ func writePluginStamp(workspace string) error {
 // resyncPluginLocal re-materializes the marketplace and updates the local
 // plugin when the workspace's stamp (<workspace>/.zenify/plugin-version) differs
 // from the binary. The stamp is written only when both claude commands succeed,
-// so a transient failure is retried next time. Fail-open.
-func resyncPluginLocal(workspace, zh string, run func(string, ...string) ([]byte, error), stderr io.Writer) {
+// so a transient failure is retried next time. Fail-open: each failure is a
+// stderr line, and the returned error (nil when current or brought current)
+// lets ensureWorkspace record the step in LocalErrs.
+func resyncPluginLocal(workspace, zh string, run func(string, ...string) ([]byte, error), stderr io.Writer) error {
 	if b, err := os.ReadFile(pluginStampPath(workspace)); err == nil && strings.TrimSpace(string(b)) == version.Current() { //nolint:gosec // G304 -- internal path
-		return
+		return nil
 	}
 	if _, err := plugin.SyncMarketplace(zh); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: plugin sync:", err)
-		return
+		return fmt.Errorf("plugin sync: %w", err)
 	}
-	ok := true
+	var failed []string
 	for _, args := range [][]string{
 		{"plugin", "marketplace", "update", plugin.MarketplaceName},
 		{"plugin", "update", plugin.PluginID, "-s", "local"},
 	} {
 		if out, err := run("claude", args...); err != nil {
-			ok = false
+			failed = append(failed, "claude "+strings.Join(args[:2], " "))
 			fmt.Fprintf(stderr, "znf ensure: claude %s: %v: %s\n", strings.Join(args[:2], " "), err, strings.TrimSpace(string(out)))
 		}
 	}
-	if ok {
-		if err := writePluginStamp(workspace); err != nil {
-			fmt.Fprintln(stderr, "znf ensure: plugin stamp:", err)
-		}
+	if len(failed) > 0 {
+		return fmt.Errorf("%s failed", strings.Join(failed, ", "))
 	}
+	if err := writePluginStamp(workspace); err != nil {
+		fmt.Fprintln(stderr, "znf ensure: plugin stamp:", err)
+		return fmt.Errorf("plugin stamp: %w", err)
+	}
+	return nil
 }
 
 func alreadyAdded(s string) bool {

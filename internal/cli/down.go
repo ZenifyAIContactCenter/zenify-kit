@@ -74,7 +74,7 @@ func newDownCmd() *cobra.Command {
 				default:
 					u.Step(ui.StatusInfo, "codex-agents", "không có agent Codex nào để gỡ") //znf:allow-lang
 				}
-				linkRemoved, lerr := apply.RemoveCodexSkillsLink(home, dryRun)
+				linkRemoved, lerr := apply.RemoveCodexSkillsLink(filepath.Join(home, ".agents", "skills", "znf"), dryRun)
 				switch {
 				case lerr != nil:
 					u.Step(ui.StatusWarn, "codex-skills", fmt.Sprintf("bỏ qua (%v)", lerr)) //znf:allow-lang

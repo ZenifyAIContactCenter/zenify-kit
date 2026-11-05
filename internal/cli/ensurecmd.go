@@ -37,7 +37,7 @@ func newEnsureCmd() *cobra.Command {
 			if err != nil || home == "" {
 				return exitcode.New(exitcode.Fail, errors.New("không xác định được thư mục home")) //znf:allow-lang
 			}
-			ensureWorkspace(ws, home, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			ensureWorkspace(ws, home, cmd.OutOrStdout(), cmd.ErrOrStderr(), ensureOpts{})
 			return nil
 		},
 	}

@@ -294,6 +294,17 @@ func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manife
 	}
 }
 
+// workspaceLocalSettingsPath is <ws>/.claude/settings.local.json for the
+// workspace resolved from cwd.
+func workspaceLocalSettingsPath() (string, error) {
+	cwd, _ := os.Getwd()
+	ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
+	if !ok {
+		return "", errors.New("no workspace found — run inside a zenify workspace")
+	}
+	return apply.WorkspaceLocalSettings(ws), nil
+}
+
 // workspaceManifest loads the kit manifest for the workspace resolved from cwd;
 // nil when there is no workspace or the manifest cannot be loaded.
 func workspaceManifest() *manifest.Manifest {
@@ -489,18 +500,18 @@ func dockerCheckWith(lookPath func(string) (string, error), info func() error) C
 	}
 }
 
-// gitGuardCheck reports whether the git-guard PreToolUse hook is wired in
-// ~/.claude/settings.json. Fix installs it (the same idempotent edit as
-// `zenify guard install`).
-func gitGuardCheck(home func() (string, error)) Check {
+// gitGuardCheck reports whether the git-guard PreToolUse hook is wired in the
+// workspace's .claude/settings.local.json (settings resolves that path). Fix
+// installs it (the same idempotent edit as `zenify guard install`).
+func gitGuardCheck(settings func() (string, error)) Check {
 	return Check{
 		Name: "git-guard",
 		Run: func() (bool, string) {
-			h, err := home()
+			p, err := settings()
 			if err != nil {
-				return false, "cannot resolve HOME"
+				return false, err.Error()
 			}
-			ok, err := guardInstalled(guardSettingsPath(h))
+			ok, err := guardInstalled(p)
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
@@ -510,11 +521,11 @@ func gitGuardCheck(home func() (string, error)) Check {
 			return true, "hook=installed"
 		},
 		Fix: func() (bool, string) {
-			h, err := home()
+			p, err := settings()
 			if err != nil {
-				return false, "cannot resolve HOME"
+				return false, err.Error()
 			}
-			if _, err := installGuard(guardSettingsPath(h)); err != nil {
+			if _, err := installGuard(p); err != nil {
 				return false, err.Error()
 			}
 			return true, "wired PreToolUse → zenify git-guard"
@@ -613,7 +624,7 @@ func registerDefaultChecks() {
 	RegisterCheck(playwrightCheck())
 	RegisterCheck(kitPermissionsCheck(os.UserHomeDir))
 	RegisterCheck(dockerCheck())
-	RegisterCheck(gitGuardCheck(os.UserHomeDir))
+	RegisterCheck(gitGuardCheck(workspaceLocalSettingsPath))
 	RegisterCheck(gitIdentityCheck())
 	RegisterCheck(shimsCheck(exec.LookPath))
 	npmInteractive := func() bool {

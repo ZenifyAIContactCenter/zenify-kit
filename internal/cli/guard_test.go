@@ -215,14 +215,8 @@ func TestGuardInstallPreservesExistingFileMode(t *testing.T) {
 	// A pre-existing settings.json with a restrictive mode (0o600) must keep
 	// that mode after install — install must never silently widen it to the
 	// 0o644 default used for a brand-new file.
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-
-	claudeDir := filepath.Join(tmpHome, ".claude")
-	if err := os.MkdirAll(claudeDir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	settingsPath := filepath.Join(claudeDir, "settings.json")
+	t.Setenv("HOME", t.TempDir())
+	settingsPath := guardWorkspace(t)
 	if err := os.WriteFile(settingsPath, []byte(`{"hooks":{"PreToolUse":[]}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -245,17 +239,29 @@ func TestGuardInstallPreservesExistingFileMode(t *testing.T) {
 	}
 }
 
-func TestGuardInstallUsesTempHOME(t *testing.T) {
-	// Never touches the real ~/.claude/settings.json — HOME is redirected to
-	// a throwaway TempDir for the duration of this test.
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-
-	claudeDir := filepath.Join(tmpHome, ".claude")
-	if err := os.MkdirAll(claudeDir, 0o750); err != nil {
+// guardWorkspace makes a temp workspace (marker included), chdirs into it so
+// `guard install` resolves it, and returns its settings.local.json path.
+func guardWorkspace(t *testing.T) string {
+	t.Helper()
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	settingsPath := filepath.Join(claudeDir, "settings.json")
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "manifest.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(ws, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(ws)
+	return filepath.Join(ws, ".claude", "settings.local.json")
+}
+
+func TestGuardInstallUsesTempHOME(t *testing.T) {
+	// guard install writes the resolved workspace's settings.local.json, never
+	// the real ~/.claude/settings.json (HOME is a throwaway TempDir too).
+	t.Setenv("HOME", t.TempDir())
+	settingsPath := guardWorkspace(t)
 	if err := os.WriteFile(settingsPath, []byte(`{"hooks":{"PreToolUse":[]}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +280,7 @@ func TestGuardInstallUsesTempHOME(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(got), "zenify git-guard") {
-		t.Error("settings.json must contain the zenify git-guard command after install")
+		t.Error("settings.local.json must contain the zenify git-guard command after install")
 	}
 
 	// Second run: idempotent, should report "already present".

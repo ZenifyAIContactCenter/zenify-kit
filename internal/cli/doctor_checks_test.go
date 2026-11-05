@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
@@ -300,10 +301,10 @@ func TestDockerCheck_Missing(t *testing.T) {
 // The git-guard check must fail on a fresh HOME, its Fix must wire the hook,
 // and the check must then pass — the path `doctor --fix` takes.
 func TestGitGuardCheck_MissingThenFixed(t *testing.T) {
-	home := t.TempDir()
-	c := gitGuardCheck(func() (string, error) { return home, nil })
+	ws := t.TempDir()
+	c := gitGuardCheck(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil })
 	if ok, detail := c.Run(); ok || !strings.Contains(detail, "hook=missing") {
-		t.Fatalf("fresh HOME should report hook=missing, got ok=%v detail=%q", ok, detail)
+		t.Fatalf("fresh workspace should report hook=missing, got ok=%v detail=%q", ok, detail)
 	}
 	if ok, detail := c.Fix(); !ok {
 		t.Fatalf("Fix failed: %s", detail)
