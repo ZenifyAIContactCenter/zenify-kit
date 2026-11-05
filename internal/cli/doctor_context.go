@@ -17,7 +17,6 @@ const (
 	memoryIndexWarnLines = 180
 	memoryIndexWarnBytes = 22528
 	shadowDetailSuffix   = " — xoá hoặc đổi tên bản cá nhân" //znf:allow-lang
-	personalKitDirName   = "znf"
 	frontmatterDelim     = "---"
 	frontmatterPathsKey  = "paths:"
 )
@@ -61,26 +60,15 @@ func dirNames(dir string, wantDir bool) []string {
 
 func exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
-// shadowCheck lists personal skills/agents/rules that shadow a kit or workspace one.
+// shadowCheck lists personal rules that shadow a workspace one.
 func shadowCheck(home, workspace string) Check {
 	return Check{
 		Name: "shadow",
 		Run: func() (bool, string) {
 			claude := filepath.Join(home, ".claude")
-			kit := filepath.Join(claude, "skills", personalKitDirName)
 			var lines []string
 			add := func(kind, name string) {
 				lines = append(lines, "shadow: "+kind+" "+name+shadowDetailSuffix)
-			}
-			for _, n := range dirNames(filepath.Join(claude, "skills"), true) {
-				if n != personalKitDirName && exists(filepath.Join(kit, "skills", n)) {
-					add("skill", n)
-				}
-			}
-			for _, f := range dirNames(filepath.Join(claude, "agents"), false) {
-				if strings.HasSuffix(f, ".md") && exists(filepath.Join(kit, "agents", f)) {
-					add("agent", strings.TrimSuffix(f, ".md"))
-				}
 			}
 			if workspace != "" {
 				for _, f := range dirNames(filepath.Join(claude, "rules"), false) {

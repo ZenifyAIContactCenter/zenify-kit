@@ -153,9 +153,11 @@ func TestBuildPlan_NotLoggedIn_ReturnsNilPlans(t *testing.T) {
 // sink (bytes.Buffer, same as io.Discard's non-styled path) must produce
 // plain Step lines and never start the bubbletea Program — no ANSI escapes.
 func TestRunApply_NonTTY_PlainStepLinesNoEscapes(t *testing.T) {
+	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -178,9 +180,11 @@ func TestRunApply_NonTTY_PlainStepLinesNoEscapes(t *testing.T) {
 }
 
 func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
+	useFakeClaude(t, newFakeClaude(""))  // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir()) // isolate the Task 5 docs-store step from the real machine
 	home := t.TempDir()
 	t.Setenv("HOME", home) // isolate the Task 7 global-hooks step from the real ~/.claude
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -201,13 +205,25 @@ func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(ws, ".zenify", "manifest.json")); err != nil {
 		t.Errorf("ownership manifest not saved: %v", err)
 	}
-	// znf hooks wired into the (isolated) global settings.json.
-	globalSettings, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	// znf hooks wired into the workspace settings.local.json (up forces local).
+	localSettings, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.local.json"))
 	if err != nil {
-		t.Fatalf("global settings.json not written: %v", err)
+		t.Fatalf("workspace settings.local.json not written: %v", err)
 	}
-	if !strings.Contains(string(globalSettings), "zenify hooks-run") {
-		t.Errorf("global settings.json missing znf hooks, got %q", globalSettings)
+	if !strings.Contains(string(localSettings), "zenify hooks-run") {
+		t.Errorf("workspace settings.local.json missing znf hooks, got %q", localSettings)
+	}
+	if b, _ := os.ReadFile(filepath.Join(home, ".claude", "settings.json")); strings.Contains(string(b), "zenify hooks-run") {
+		t.Errorf("~/.claude/settings.json must not get znf hooks, got %q", b)
+	}
+}
+
+// FR-8.2: the two env keys the kit writes into settings.local.json stay there;
+// migrateEnv never moves them to .zenify/.env even if a manifest names them.
+func TestEnvMigrationKeys_DropsKitSettingsEnv(t *testing.T) {
+	got := envMigrationKeys([]string{"MONGO_URL", apply.SubagentModelEnv, apply.ReviewerEnv, "GH_TOKEN"})
+	if strings.Join(got, ",") != "MONGO_URL,GH_TOKEN" {
+		t.Fatalf("envMigrationKeys = %v", got)
 	}
 }
 
@@ -528,9 +544,11 @@ func TestRenderCodexSummary(t *testing.T) {
 // blocks for .zenify/.env, the output names keys only, the deny rule lands in
 // ~/.claude/settings.json, and a second run changes nothing.
 func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
+	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -600,8 +618,11 @@ func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
 // FR-9 covers a worktree's copy of the repo settings.local.json: same key, same
 // value as the repo copy → moved once, gone from both.
 func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
+	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -634,8 +655,11 @@ func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
 // A worktree copy that does not load is skipped and named; the repo copy still
 // migrates.
 func TestRunApply_SkipsMalformedWorktreeSettings(t *testing.T) {
+	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {

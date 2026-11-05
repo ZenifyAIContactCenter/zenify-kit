@@ -6,7 +6,7 @@ title: zenify guard install
 
 # `zenify guard install`
 
-Gắn hook git-guard vào ~/.claude/settings.json để chặn thao tác git vào branch deploy.
+Gắn hook git-guard vào .claude/settings.local.json của workspace để chặn thao tác git vào branch deploy.
 
 ## Cú pháp
 
@@ -16,7 +16,7 @@ zenify guard install
 
 ## Khi nào dùng
 
-Thường bạn không cần chạy tay: `zenify up` và hook `SessionStart` tự gắn git-guard khi thiếu. Chạy lệnh này khi `zenify doctor` báo mục `git-guard` hỏng (hoặc dùng `zenify doctor --fix`), hay sau khi bạn sửa tay `~/.claude/settings.json`.
+Thường bạn không cần chạy tay: `zenify up` và hook `SessionStart` tự gắn git-guard khi thiếu. Chạy lệnh này khi `zenify doctor` báo mục `git-guard` hỏng (hoặc dùng `zenify doctor --fix`), hay sau khi bạn sửa tay `<workspace>/.claude/settings.local.json`.
 
 ## Kết quả
 

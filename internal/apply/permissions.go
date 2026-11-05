@@ -206,31 +206,31 @@ func (l kitList) readRecord(home string) ([]string, error) {
 // EnsureKitPermissions unions KitAllowRules into permissions.allow, keeping
 // existing entries and order, and records the rules it added. Returns the
 // number added; nothing is written when it is 0 or dryRun.
-func EnsureKitPermissions(home string, dryRun bool) (int, error) {
-	return allowList.ensure(home, dryRun)
+func EnsureKitPermissions(t KitTarget, dryRun bool) (int, error) {
+	return t.allow().ensure("", dryRun)
 }
 
 // EnsureKitSandbox unions KitSandboxExcluded into sandbox.excludedCommands,
 // with the same record and user-removal rules as EnsureKitPermissions.
-func EnsureKitSandbox(home string, dryRun bool) (int, error) {
-	return sandboxList.ensure(home, dryRun)
+func EnsureKitSandbox(t KitTarget, dryRun bool) (int, error) {
+	return t.sandbox().ensure("", dryRun)
 }
 
 // EnsureKitAsk unions KitAskRules into permissions.ask, with the same record
 // and user-removal rules as EnsureKitPermissions.
-func EnsureKitAsk(home string, dryRun bool) (int, error) {
-	return askList.ensure(home, dryRun)
+func EnsureKitAsk(t KitTarget, dryRun bool) (int, error) {
+	return t.ask().ensure("", dryRun)
 }
 
 // RemoveKitAsk removes only the ask rules the kit recorded adding.
-func RemoveKitAsk(home string, dryRun bool) (int, error) {
-	return askList.remove(home, dryRun)
+func RemoveKitAsk(t KitTarget, dryRun bool) (int, error) {
+	return t.ask().remove("", dryRun)
 }
 
 // RemoveKitPermissions removes only the rules the kit recorded adding.
 // Without a record it removes nothing and returns an error.
-func RemoveKitPermissions(home string, dryRun bool) (int, error) {
-	return allowList.remove(home, dryRun)
+func RemoveKitPermissions(t KitTarget, dryRun bool) (int, error) {
+	return t.allow().remove("", dryRun)
 }
 
 // RetiredKitAllowRules are the Playwright MCP rules earlier kits added; they
@@ -249,16 +249,16 @@ var RetiredKitAllowRules = []string{
 
 // RemoveRetiredKitPermissions removes only RetiredKitAllowRules the kit
 // recorded adding. A machine with no record has nothing to remove: (0, nil).
-func RemoveRetiredKitPermissions(home string, dryRun bool) (int, error) {
-	if _, err := os.Stat(kitPermissionsRecord(home)); os.IsNotExist(err) {
+func RemoveRetiredKitPermissions(t KitTarget, dryRun bool) (int, error) {
+	if _, err := os.Stat(t.permissionsRecord); os.IsNotExist(err) {
 		return 0, nil
 	}
-	return allowList.removeRules(home, RetiredKitAllowRules, dryRun)
+	return t.allow().removeRules("", RetiredKitAllowRules, dryRun)
 }
 
 // RemoveKitSandbox removes only the excluded commands the kit recorded adding.
-func RemoveKitSandbox(home string, dryRun bool) (int, error) {
-	return sandboxList.remove(home, dryRun)
+func RemoveKitSandbox(t KitTarget, dryRun bool) (int, error) {
+	return t.sandbox().remove("", dryRun)
 }
 
 // EnsureKitDeny unions KitDenyRule(workspace) into permissions.deny of
@@ -364,7 +364,7 @@ func (l kitList) removeRules(home string, only []string, dryRun bool) (int, erro
 	rec, err := l.readRecord(home)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, fmt.Errorf("no %s record", strings.TrimSuffix(filepath.Base(l.record(home)), ".json"))
+			return 0, fmt.Errorf("no %s record: %w", strings.TrimSuffix(filepath.Base(l.record(home)), ".json"), err)
 		}
 		return 0, err
 	}

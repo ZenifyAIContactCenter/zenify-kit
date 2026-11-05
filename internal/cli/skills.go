@@ -16,35 +16,39 @@ func newSkillsCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "skills", Short: "quản lý plugin skill znf"} //znf:allow-lang
 	sync := &cobra.Command{
 		Use:   "sync",
-		Short: "materialize plugin znf vào ~/.claude/skills/znf", //znf:allow-lang
+		Short: "materialize plugin znf vào <zenifyHome>/plugin-marketplace", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dest, err := plugin.DefaultDest()
-			if err != nil {
-				return exitcode.New(exitcode.Fail, err)
+			zh := zenifyHome(os.Getenv, os.UserHomeDir)
+			// resync first: it only updates the claude plugin while the stamp is stale,
+			// and SyncMarketplace below re-stamps it.
+			ws, _, wsOK := resolveWorkspace(".", "", os.Getenv, os.UserHomeDir)
+			if wsOK {
+				_ = resyncPluginLocal(ws, zh, pluginRunner(ws), cmd.ErrOrStderr()) // fail-open; already on stderr
 			}
-			man, err := plugin.DefaultManifest()
-			if err != nil {
-				return exitcode.New(exitcode.Fail, err)
-			}
-			res, err := plugin.Sync(dest, man)
+			res, err := plugin.SyncMarketplace(zh)
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}
 			u := uiOut(cmd)
 			u.Step(ui.StatusOK, "znf sync", //znf:allow-lang
 				fmt.Sprintf("%d ghi, %d giữ (user sửa), %d không đổi, %d gỡ → %s", //znf:allow-lang
-					len(res.Written), len(res.Kept), len(res.Skipped), len(res.Removed), dest))
+					len(res.Written), len(res.Kept), len(res.Skipped), len(res.Removed), plugin.PluginDir(zh)))
 
-			home, _ := os.UserHomeDir()
-			if home != "" {
-				ch, err := apply.EnsureGlobalHooks(home, false)
+			// Same gate as ensureWorkspace: while the kit hooks still live in
+			// ~/.claude/settings.json, local copies would make every hook run twice.
+			if wsOK && userKitHooksPresent() {
+				u.Step(ui.StatusInfo, "kit vẫn cài ở cấp user; chạy zenify up --apply để chuyển sang workspace", "") //znf:allow-lang
+				wsOK = false
+			}
+			if wsOK {
+				ch, err := apply.EnsureGlobalHooks(apply.WorkspaceLocalSettings(ws), false)
 				if err != nil {
 					uiErr(cmd).Step(ui.StatusWarn, "could not wire znf hooks", err.Error())
 				} else if n := ch.Added + ch.Updated; n > 0 {
 					// Only announce when something actually changed — an
 					// already-wired session would otherwise print a "wired N"
 					// line on every run (all Unchanged), which reads as noise.
-					u.Step(ui.StatusOK, fmt.Sprintf("wired %d znf hooks into ~/.claude/settings.json", n), "")
+					u.Step(ui.StatusOK, fmt.Sprintf("wired %d znf hooks into .claude/settings.local.json", n), "")
 				}
 			}
 			return nil
@@ -93,4 +97,15 @@ func newSkillsCmd() *cobra.Command {
 	cmd.AddCommand(install)
 
 	return cmd
+}
+
+// userKitHooksPresent reports whether ~/.claude/settings.json still holds kit
+// hooks (a machine `zenify up --apply` has not migrated yet).
+func userKitHooksPresent() bool {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	ok, err := apply.HasUserKitHooks(apply.UserSettings(home))
+	return err == nil && ok
 }

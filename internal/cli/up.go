@@ -180,6 +180,9 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	if err := version.GuardMutation(version.Current(), minVersionFloor); err != nil {
 		return exitcode.New(exitcode.Fail, err)
 	}
+	// Claude/Codex trust, local MCP lookups and the kit records are keyed by
+	// the canonical workspace; the wizard and --workspace pass what the user typed.
+	workspace = canonicalPath(workspace)
 
 	zenifyDir := filepath.Join(workspace, ".zenify")
 	if err := os.MkdirAll(zenifyDir, 0o750); err != nil {
@@ -322,15 +325,6 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		})
 	}
 
-	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). NON-FATAL.
-	// The broker comes from the trusted (embedded) manifest, never --manifest or
-	// cwd: the registered headersHelper `zenify broker headers` resolves it the
-	// same way, so the MCP URL and its token always name one broker.
-	bm, _ := brokerManifest("", "")
-	registerBrokerMCP(w, errW, bm, runClaudeBounded)
-	// Per-developer Plane MCP (stdio, the dev's own PAT, not via the broker). NON-FATAL.
-	registerPlaneMCP(w, errW, bm, func() bool { return planePATSet(os.Getenv, workspace) }, runClaudeBounded)
-
 	// gh-stack extension for stacked PRs (FR-6.1). NON-FATAL.
 	ensureGHStack(gh, w, errW)
 
@@ -341,9 +335,87 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 
 	// Hooks + model pin + store config distribution, all fail-open (W0 FR-01.4);
 	// never affects `failed`.
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		rep := ensureWorkspace(workspace, home, w, errW)
+	var localErrs []string
+	keep := userKeep{Removals: true}
+	home, herr := os.UserHomeDir()
+	if herr == nil && home != "" {
+		rep := ensureWorkspace(workspace, home, w, errW, ensureOpts{ForceLocal: true})
 		renderCodexSummary(rep, w)
+		localErrs = rep.LocalErrs
+		// A user Codex copy goes only when the workspace got its own.
+		keep.CodexHooks = !rep.CodexInstalled || userCodexIsWorkspace(codexHomeDir(home, os.Getenv), workspace)
+		fi, lerr := os.Lstat(rep.CodexLinkPath)
+		keep.SkillsLink = lerr != nil || fi.Mode()&os.ModeSymlink == 0
+	}
+	run := pluginRunner(workspace) // runClaudeIn(workspace) outside tests
+	if err := installPluginLocal(workspace, zenifyHome(os.Getenv, os.UserHomeDir), run); err != nil {
+		_, _ = fmt.Fprintln(errW, "warning: znf plugin:", err)
+		localErrs = append(localErrs, "plugin install: "+err.Error())
+	} else {
+		// The plugin is current now, so ensure's earlier resync failure is moot.
+		kept := localErrs[:0]
+		for _, e := range localErrs {
+			if !strings.HasPrefix(e, "plugin: ") {
+				kept = append(kept, e)
+			}
+		}
+		localErrs = kept
+	}
+	// FR-2.4: local MCP headersHelper runs only in a trusted workspace.
+	if herr == nil && home != "" {
+		if _, err := apply.EnsureClaudeTrust(apply.ClaudeJSON(home), workspace, false); err != nil {
+			_, _ = fmt.Fprintln(errW, "warning: claude trust:", err)
+			localErrs = append(localErrs, "claude trust: "+err.Error())
+		}
+	}
+	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). The broker
+	// comes from the trusted (embedded) manifest, never --manifest or cwd: the
+	// registered headersHelper `zenify broker headers` resolves it the same
+	// way, so the MCP URL and its token always name one broker.
+	bm, _ := brokerManifest("", "")
+	localMCPs, err := registerBrokerMCP(w, errW, workspace, bm, run)
+	if err != nil {
+		localErrs = append(localErrs, "broker MCP: "+err.Error())
+	}
+	// Per-developer Plane MCP (stdio, the dev's own PAT, not via the broker).
+	// Its plane-guard hook is a workspace hook: after a failed local step those
+	// are unwired below, so Plane waits for the next up rather than run unguarded.
+	if len(localErrs) == 0 {
+		plane, err := registerPlaneMCP(w, errW, workspace, bm, func() bool { return planePATSet(os.Getenv, workspace) }, run)
+		if err != nil {
+			localErrs = append(localErrs, "plane MCP: "+err.Error())
+		}
+		localMCPs = append(localMCPs, plane...)
+		// The kit's user zenify-plane stays when no local one was registered,
+		// and it runs on the dev's PAT: its plane-guard is a user hook, so the
+		// user install stays whole until the local Plane is registered.
+		// A registration error is already a local error with its own cause.
+		if len(plane) == 0 && err == nil && bm != nil && bm.Plane != nil && herr == nil && home != "" {
+			if owned, err := mcpreg.KitOwned(filepath.Join(home, ".claude.json"), "", "zenify-plane"); err == nil && owned {
+				localErrs = append(localErrs, "plane MCP: chưa đăng ký được zenify-plane local nên giữ bản cấp user cùng plane-guard; đặt PLANE_API_KEY (zenify env set PLANE_API_KEY), cài uv, rồi chạy lại zenify up --apply") //znf:allow-lang
+			}
+		}
+	}
+	// FR-5.5: the user-level install goes only once every local step succeeded.
+	var migrateErr error
+	switch {
+	case len(localErrs) > 0:
+		migrateErr = fmt.Errorf("giữ nguyên bản cài cấp user vì bước local lỗi: %s", strings.Join(localErrs, "; ")) //znf:allow-lang
+		_, _ = fmt.Fprintln(errW, migrateErr)
+		if herr == nil && home != "" {
+			unwireLocalHooks(home, codexHomeDir(home, os.Getenv), workspace, errW)
+		}
+	case herr == nil && home != "":
+		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), localMCPs, keep, run, false)
+		for _, r := range removed {
+			_, _ = fmt.Fprintln(w, "đã gỡ bản cài cấp user:", r) //znf:allow-lang
+		}
+		if err != nil {
+			migrateErr = fmt.Errorf("gỡ bản cài cấp user: %w", err) //znf:allow-lang
+			_, _ = fmt.Fprintln(errW, migrateErr)
+			// A migration that stopped part-way leaves some user hooks behind.
+			unwireLocalHooks(home, codexHomeDir(home, os.Getenv), workspace, errW)
+		}
 	}
 
 	// NPM_TOKEN for repos installing from GitHub Packages (FR-6). FAIL-OPEN.
@@ -376,6 +448,9 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 	if failed > 0 {
 		return exitcode.New(exitcode.Fail, fmt.Errorf("apply: %d repo(s) failed", failed))
 	}
+	if migrateErr != nil {
+		return exitcode.New(exitcode.Fail, migrateErr)
+	}
 	return nil
 }
 
@@ -400,6 +475,18 @@ func settingsEnvPaths(workspace string, repoPaths []string) (paths, skipped []st
 	return paths, skipped
 }
 
+// envMigrationKeys drops the env keys the kit itself writes into
+// settings.local.json (FR-8.2): those must stay there, never move to .zenify/.env.
+func envMigrationKeys(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if n != apply.SubagentModelEnv && n != apply.ReviewerEnv {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // migrateEnv moves manifest keys out of the workspace, repo and repo worktree
 // settings.local.json env blocks into <workspace>/.zenify/.env (FR-9), then
 // denies agent reads of that file in ~/.claude/settings.json (FR-10). It runs under the apply lock and
@@ -414,7 +501,7 @@ func migrateEnv(w, errW io.Writer, plans []reconcile.RepoPlan, m *manifest.Manif
 	for _, p := range skipped {
 		_, _ = fmt.Fprintf(w, "env: bỏ qua %s — file settings của worktree không đọc được, xử lý tay\n", p) //znf:allow-lang
 	}
-	if !migrateSettingsAndMerge(w, errW, paths, manifest.KeyNames(m.AllKeys()), devenv.Path(workspace), owned) {
+	if !migrateSettingsAndMerge(w, errW, paths, envMigrationKeys(manifest.KeyNames(m.AllKeys())), devenv.Path(workspace), owned) {
 		_, _ = fmt.Fprintln(errW, "env: bỏ qua dựng lại .zenify/.env do bước chuyển key lỗi") //znf:allow-lang
 	} else if err := renderEnvStep(w, m, src, devenv.Path(workspace), owned, false); err != nil {
 		_, _ = fmt.Fprintf(errW, "env: không dựng được .zenify/.env (%v)\n", err) //znf:allow-lang
@@ -652,7 +739,7 @@ func provisionPlaywright(w, errW io.Writer, frontend, codex bool, po playwright.
 			_, _ = fmt.Fprintf(w, "playwright: đã gỡ MCP \"playwright\" của kit (%s)\n", t) //znf:allow-lang
 		}
 	}
-	if _, err := apply.RemoveRetiredKitPermissions(po.Home, false); err != nil {
+	if _, err := apply.RemoveRetiredKitPermissions(apply.UserKitTarget(po.Home), false); err != nil {
 		_, _ = fmt.Fprintf(errW, "warning: playwright permissions: %v\n", err)
 	}
 }
@@ -751,15 +838,8 @@ func newUpCmd() *cobra.Command {
 			if err := dryRunApplyConflict(applyFlag, cmd.Flags().Changed("dry-run"), dryRun); err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
-			if reviewer != "" {
-				if reviewer != "agent" && reviewer != "codex" {
-					return exitcode.New(exitcode.BadArgs, fmt.Errorf("--reviewer %q: want agent or codex", reviewer))
-				}
-				if home, herr := os.UserHomeDir(); herr == nil && home != "" {
-					if err := apply.SetReviewerEnv(home, reviewer, !applyFlag); err != nil {
-						fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
-					}
-				}
+			if reviewer != "" && reviewer != "agent" && reviewer != "codex" {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("--reviewer %q: want agent or codex", reviewer))
 			}
 			cwd, _ := os.Getwd()
 			isTTY := term.IsTerminal(int(os.Stdout.Fd()))
@@ -797,6 +877,11 @@ func newUpCmd() *cobra.Command {
 				sourcesDir = res.SourcesDir
 			}
 			workspace = ws
+			if reviewer != "" {
+				if err := apply.SetReviewerEnv(apply.WorkspaceLocalSettings(workspace), reviewer, !applyFlag); err != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
+				}
+			}
 			if overlayPath == "" {
 				overlayPath = filepath.Join(workspace, ".zenify-overlay.yaml")
 			}
@@ -855,6 +940,17 @@ func newUpCmd() *cobra.Command {
 				}
 				uiOut(cmd).Header("zenify up")
 				renderPlanTable(w, plans, auth)
+				if home, herr := os.UserHomeDir(); herr == nil && home != "" {
+					removed, _ := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userKitMCPs, userKeep{CodexHooks: !codexOnPath()}, nil, true)
+					for _, r := range removed {
+						_, _ = fmt.Fprintln(w, "sẽ gỡ bản cài cấp user (khi các bước local thành công):", r) //znf:allow-lang
+					}
+					if would, terr := apply.EnsureClaudeTrust(apply.ClaudeJSON(home), workspace, true); terr != nil {
+						_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: claude trust:", terr)
+					} else if would {
+						_, _ = fmt.Fprintf(w, "sẽ đặt projects[%q].hasTrustDialogAccepted = true trong %s\n", workspace, apply.ClaudeJSON(home)) //znf:allow-lang
+					}
+				}
 				if owned, lerr := managed.Load(filepath.Join(workspace, ".zenify", "manifest.json")); lerr == nil {
 					if rerr := renderEnvStep(w, m, mSrc, devenv.Path(workspace), owned, true); rerr != nil {
 						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "env: không xem trước được .zenify/.env (%v)\n", rerr) //znf:allow-lang
@@ -871,20 +967,24 @@ func newUpCmd() *cobra.Command {
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace root (default: the workspace found from cwd or ~/.zenify/workspace; the wizard asks when there is none)")
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default: manifest/repos.yaml under cwd when present, else the copy embedded in the binary)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
-	cmd.Flags().StringVar(&reviewer, "reviewer", "", "review engine written to ZNF_REVIEWER in ~/.claude/settings.json: agent or codex (written only with --apply)")
+	cmd.Flags().StringVar(&reviewer, "reviewer", "", "review engine written to ZNF_REVIEWER in <workspace>/.claude/settings.local.json: agent or codex (written only with --apply)")
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "apply changes without the interactive wizard (required for non-interactive/CI runs)")
 	return cmd
 }
 
 // registerBrokerMCP registers the kit's Grafana/PostHog HTTP MCP servers with
-// Claude when the manifest declares a broker and claude is on PATH; otherwise
-// it does nothing, so `zenify up` keeps its pre-broker behaviour. Failures only warn.
-func registerBrokerMCP(w, errW io.Writer, m *manifest.Manifest, run func(string, ...string) ([]byte, error)) {
+// Claude at local scope when the manifest declares a broker and claude is on
+// PATH; otherwise it does nothing, so `zenify up` keeps its pre-broker
+// behaviour. run must execute claude with the workspace root as cwd (callers
+// pass runClaudeIn(workspace)). Failures only warn, but the first one is
+// returned so a caller can hold back the user-scope cleanup. registered names
+// each server now present at local scope, so the cleanup removes only those.
+func registerBrokerMCP(w, errW io.Writer, workspace string, m *manifest.Manifest, run func(string, ...string) ([]byte, error)) (registered []string, first error) {
 	if m == nil || m.Broker == nil {
-		return
+		return nil, nil
 	}
 	if _, err := lookPath("claude"); err != nil {
-		return
+		return nil, nil
 	}
 	for _, name := range []string{"grafana", "posthog"} {
 		st, err := mcpreg.Bootstrap(mcpreg.Options{
@@ -894,71 +994,97 @@ func registerBrokerMCP(w, errW io.Writer, m *manifest.Manifest, run func(string,
 		switch {
 		case err != nil:
 			_, _ = fmt.Fprintf(errW, "warning: zenify-%s MCP: %v (onboarding otherwise succeeded)\n", name, err)
+			if first == nil {
+				first = err
+			}
+			continue
 		case st == playwright.RegAbsent:
-			_, _ = fmt.Fprintf(w, "zenify-%s: registered MCP server (user scope)\n", name)
+			_, _ = fmt.Fprintf(w, "zenify-%s: registered MCP server (local scope)\n", name)
 		case st == playwright.RegLegacyDefault:
-			_, _ = fmt.Fprintf(w, "zenify-%s: updated MCP server URL (user scope)\n", name)
+			_, _ = fmt.Fprintf(w, "zenify-%s: updated MCP server (local scope)\n", name)
 		case st == playwright.RegCustom:
 			_, _ = fmt.Fprintf(w, "zenify-%s: custom MCP registration kept\n", name)
+			continue // may be the user's own at user scope: never counted as the kit's local copy
 		}
+		registered = append(registered, "zenify-"+name)
 	}
+	return registered, first
 }
 
-// registerPlaneMCP registers the stdio `zenify-plane` MCP with Claude when the
-// manifest declares Plane, claude and uvx are on PATH and the developer has a
-// PAT. A missing PAT or uv only prints a hint; nothing here fails `zenify up`.
-func registerPlaneMCP(w, errW io.Writer, m *manifest.Manifest, patSet func() bool, run func(string, ...string) ([]byte, error)) {
+// registerPlaneMCP registers the stdio `zenify-plane` MCP with Claude at local
+// scope when the manifest declares Plane, claude and uvx are on PATH and the
+// developer has a PAT. A missing PAT or uv only prints a hint; nothing here
+// fails `zenify up`. run must execute claude with the workspace root as cwd
+// (callers pass runClaudeIn(workspace)); a registration failure is returned.
+// registered is ["zenify-plane"] only when the server is now at local scope.
+func registerPlaneMCP(w, errW io.Writer, workspace string, m *manifest.Manifest, patSet func() bool, run func(string, ...string) ([]byte, error)) (registered []string, err error) {
 	if m == nil || m.Plane == nil {
-		return
+		return nil, nil
 	}
 	if _, err := lookPath("claude"); err != nil {
-		return
-	}
-	// plane-guard is installed only in ~/.claude/settings.json; a profile picked by
-	// CLAUDE_CONFIG_DIR would get Plane writes without the ask gate.
-	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
-		if home, err := os.UserHomeDir(); err != nil || filepath.Clean(dir) != filepath.Join(home, ".claude") {
-			_, _ = fmt.Fprintln(w, "zenify-plane: CLAUDE_CONFIG_DIR trỏ tới profile khác ~/.claude, nơi chưa có plane-guard nên chưa đăng ký; bỏ biến này rồi chạy zenify up --apply") //znf:allow-lang
-			return
-		}
+		return nil, nil
 	}
 	if !patSet() {
 		_, _ = fmt.Fprintf(w, "zenify-plane: chưa có PLANE_API_KEY, chưa đăng ký. Tạo PAT ở %s → Profile Settings → Personal Access Tokens, chạy zenify env set PLANE_API_KEY trong terminal, rồi zenify up --apply\n", m.Plane.URL) //znf:allow-lang
-		return
+		return nil, nil
 	}
 	if _, err := lookPath("uvx"); err != nil {
 		_, _ = fmt.Fprintln(w, "zenify-plane: cần uv (brew install uv), cài xong chạy zenify up --apply") //znf:allow-lang
-		return
+		return nil, nil
 	}
 	st, err := mcpreg.BootstrapStdio(mcpreg.StdioSpec{Name: "zenify-plane", Command: "zenify", Args: []string{"plane-mcp"}}, run)
 	switch {
-	case errors.Is(err, context.DeadlineExceeded): // `claude mcp get` health-checks the server; a cold uvx outlasts claudeMCPTimeout
+	case errors.Is(err, context.DeadlineExceeded): // err is returned on purpose: up keeps the user-level install (all-or-nothing). `claude mcp get` health-checks the server; a cold uvx outlasts claudeMCPTimeout
 		_, _ = fmt.Fprintln(w, "zenify-plane: kiểm tra quá thời gian (có thể uvx đang tải lần đầu), chưa đổi gì; chạy lại zenify up --apply sau") //znf:allow-lang
 	case err != nil:
 		_, _ = fmt.Fprintf(errW, "warning: zenify-plane MCP: %v (onboarding otherwise succeeded)\n", err)
 	case st == playwright.RegAbsent:
-		_, _ = fmt.Fprintln(w, "zenify-plane: registered MCP server (user scope)")
+		_, _ = fmt.Fprintln(w, "zenify-plane: registered MCP server (local scope)")
 		_, _ = fmt.Fprintln(w, "zenify-plane: lần đầu uvx tải Python, nếu /mcp báo lỗi kết nối thì mở lại Claude Code") //znf:allow-lang
 	case st == playwright.RegLegacyDefault:
-		_, _ = fmt.Fprintln(w, "zenify-plane: updated MCP server command (user scope)")
+		_, _ = fmt.Fprintln(w, "zenify-plane: updated MCP server (local scope)")
 	case st == playwright.RegCustom:
 		_, _ = fmt.Fprintln(w, "zenify-plane: custom MCP registration kept")
+		return nil, nil // may be the user's own at user scope: never counted as the kit's local copy
 	}
+	if err != nil {
+		return nil, err
+	}
+	return []string{"zenify-plane"}, nil
 }
 
-// claudeMCPTimeout bounds each `claude mcp` call registerBrokerMCP makes.
-var claudeMCPTimeout = 20 * time.Second
+// claudeMCPTimeout bounds every `claude` call the kit makes (`mcp get`/`add-json`/`remove`,
+// `plugin` commands). It is 60s because `claude mcp get` health-checks the server: measured
+// at 26-27s for zenify-grafana on 2026-11-05.
+var claudeMCPTimeout = 60 * time.Second
 
-// runClaudeBounded runs one command with claudeMCPTimeout, returning its
-// combined output; WaitDelay stops a child that keeps the pipes open.
+// runClaudeBounded runs one command with claudeMCPTimeout in the current
+// directory (see runClaudeIn).
 func runClaudeBounded(n string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), claudeMCPTimeout)
-	defer cancel()
-	c := exec.CommandContext(ctx, n, args...) //nolint:gosec // G204 -- fixed trusted binary, internally-computed args
-	c.WaitDelay = 2 * time.Second
-	out, err := c.CombinedOutput()
-	if err != nil && ctx.Err() != nil { // the kill surfaces as "signal: killed"; keep the deadline detectable
-		err = fmt.Errorf("%w: %w", ctx.Err(), err)
+	return runClaudeIn("")(n, args...)
+}
+
+// unwireLocalHooks takes the kit hooks, git-guard and Codex hooks back out of
+// the workspace when up kept the user-level install after a failed local step:
+// ForceLocal already wrote them, and with the user copy still present that
+// hook would run twice. Each of the three is checked on its own, because a
+// migration that stopped part-way removes some user copies and not others; a
+// workspace copy whose user copy is gone stays.
+func unwireLocalHooks(home, codexHome, workspace string, errW io.Writer) {
+	user, local := apply.UserSettings(home), apply.WorkspaceLocalSettings(workspace)
+	if ok, err := apply.HasUserKitHooks(user); err == nil && ok {
+		if _, err := apply.RemoveGlobalHooks(local, false); err != nil {
+			_, _ = fmt.Fprintln(errW, "warning: local hooks:", err)
+		}
 	}
-	return out, err
+	if ok, err := removeGuard(user, true); err == nil && ok { // legacy script too, as ensure's gate
+		if _, err := removeGuard(local, false); err != nil {
+			_, _ = fmt.Fprintln(errW, "warning: local git-guard:", err)
+		}
+	}
+	if ch, err := apply.RemoveCodexHooks(codexHome, true); err == nil && ch.Removed > 0 {
+		if _, err := apply.RemoveCodexHooks(filepath.Join(workspace, ".codex"), false); err != nil {
+			_, _ = fmt.Fprintln(errW, "warning: local codex hooks:", err)
+		}
+	}
 }

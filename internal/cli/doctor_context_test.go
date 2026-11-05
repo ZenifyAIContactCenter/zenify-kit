@@ -17,26 +17,21 @@ func writeF(t *testing.T, p, body string) {
 	}
 }
 
-func TestShadowCheck_ThreeKinds(t *testing.T) {
+func TestShadowCheck_IgnoresSkills(t *testing.T) {
 	home, ws := t.TempDir(), t.TempDir()
 	writeF(t, filepath.Join(home, ".claude/skills/cook/SKILL.md"), "x")
-	writeF(t, filepath.Join(home, ".claude/skills/znf/skills/cook/SKILL.md"), "x")
-	writeF(t, filepath.Join(home, ".claude/skills/mine/SKILL.md"), "x")
 	writeF(t, filepath.Join(home, ".claude/agents/scout.md"), "x")
-	writeF(t, filepath.Join(home, ".claude/skills/znf/agents/scout.md"), "x")
 	writeF(t, filepath.Join(home, ".claude/rules/r.md"), "x")
 	writeF(t, filepath.Join(ws, ".claude/rules/r.md"), "x")
 	ok, d := shadowCheck(home, ws).Run()
 	if !ok || !strings.HasPrefix(d, "cảnh báo:") { //znf:allow-lang
 		t.Fatalf("ok=%v %q", ok, d)
 	}
-	for _, w := range []string{"shadow: skill cook — xoá hoặc đổi tên bản cá nhân", "shadow: agent scout — xoá hoặc đổi tên bản cá nhân", "shadow: rule r — xoá hoặc đổi tên bản cá nhân"} { //znf:allow-lang
-		if !strings.Contains(d, w) {
-			t.Fatalf("missing %q in %q", w, d)
-		}
+	if !strings.Contains(d, "shadow: rule r — xoá hoặc đổi tên bản cá nhân") { //znf:allow-lang
+		t.Fatalf("rule shadow missing: %q", d)
 	}
-	if n := strings.Count(d, "shadow: "); n != 3 {
-		t.Fatalf("want 3 lines, got %d: %q", n, d)
+	if n := strings.Count(d, "shadow: "); n != 1 {
+		t.Fatalf("want only the rule line, got %d: %q", n, d)
 	}
 }
 
@@ -186,5 +181,18 @@ func TestWorkspaceRootCheck_OverlayRepoRootNotFlagged(t *testing.T) {
 	ok, d := workspaceRootCheck(ws).Run()
 	if ok || strings.Contains(d, "elsewhere") || !strings.Contains(d, "stray") {
 		t.Fatalf("ok=%v %q", ok, d)
+	}
+}
+
+// FR-6.4: the .agents and .codex dirs that up creates at the root are allowed.
+func TestWorkspaceRootCheck_CodexDirsAllowed(t *testing.T) {
+	ws := t.TempDir()
+	for _, d := range []string{"repos", ".claude", ".agents/skills", ".codex"} {
+		if err := os.MkdirAll(filepath.Join(ws, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if ok, d := workspaceRootCheck(ws).Run(); !ok {
+		t.Fatalf("ok=false %q", d)
 	}
 }

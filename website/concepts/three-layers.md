@@ -8,14 +8,14 @@ title: Ba lớp của kit
 
 ZenifyKit gồm ba phần tách biệt. Mỗi phần nằm ở một vị trí khác trên máy, cập nhật bằng lệnh khác và do một bên khác chịu trách nhiệm sửa.
 
-Bạn cần phân biệt ba lớp này để sửa đúng chỗ. Ví dụ: nếu bạn sửa tay một skill trong `~/.claude/skills/znf`, bản sửa sẽ không nhận bản vá tiếp theo của kit. Trang này mô tả ba lớp, ai chịu trách nhiệm từng lớp và ranh giới giữa chúng.
+Bạn cần phân biệt ba lớp này để sửa đúng chỗ. Ví dụ: nếu bạn sửa tay một skill trong `~/.zenify/plugin-marketplace/plugins/znf`, bản sửa sẽ không nhận bản vá tiếp theo của kit. Trang này mô tả ba lớp, ai chịu trách nhiệm từng lớp và ranh giới giữa chúng.
 
 ## Cách hoạt động
 
 | Lớp | Vị trí trên máy | Cập nhật bằng | Ai sửa |
 |---|---|---|---|
 | Binary `zenify` | trong `PATH` | `zenify update` | release của kit (tag + goreleaser) |
-| Plugin skill `znf:*` | `~/.claude/skills/znf` | `zenify skills sync` (tự chạy trong `zenify up`) | PR vào repo kit. Nội dung skill đi kèm trong binary, không tải riêng |
+| Plugin skill `znf:*` | `~/.zenify/plugin-marketplace/plugins/znf` (marketplace thư mục `zenify-kit`, plugin cài `--scope local` ở gốc workspace) | `zenify skills sync` (tự chạy trong `zenify up`) | PR vào repo kit. Nội dung skill đi kèm trong binary, không tải riêng |
 | Knowledge store | `~/.zenify/knowledge` | hook `Stop`/`SessionStart` gọi `zenify docs sync` | agent, khi viết spec/plan/handoff/release trong phiên làm việc |
 
 ```mermaid

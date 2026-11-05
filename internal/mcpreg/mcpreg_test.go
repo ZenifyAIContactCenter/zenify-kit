@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -39,7 +41,7 @@ func TestBootstrap_AddsHTTPServer(t *testing.T) {
 		t.Fatalf("calls=%v", calls)
 	}
 	a := calls[1]
-	if a.name != "claude" || !reflect.DeepEqual([]string{a.args[0], a.args[1], a.args[2]}, []string{"mcp", "add-json", "zenify-grafana"}) || !reflect.DeepEqual(a.args[4:], []string{"-s", "user"}) {
+	if a.name != "claude" || !reflect.DeepEqual([]string{a.args[0], a.args[1], a.args[2]}, []string{"mcp", "add-json", "zenify-grafana"}) || !reflect.DeepEqual(a.args[4:], []string{"-s", "local"}) {
 		t.Fatalf("add argv=%v", a)
 	}
 	var got map[string]string
@@ -54,7 +56,7 @@ func TestBootstrap_AddsHTTPServer(t *testing.T) {
 
 func TestBootstrap_MatchingNoop(t *testing.T) {
 	var calls []call
-	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun("zenify-grafana:\n  Scope: User config\n  Type: http\n  URL: "+grafanaURL+"\n", nil, &calls)})
+	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun("zenify-grafana:\n  Scope: Local config (private to you in this project)\n  Type: http\n  URL: "+grafanaURL+"\n", nil, &calls)})
 	if err != nil || st != playwright.RegDesired {
 		t.Fatalf("st=%v err=%v", st, err)
 	}
@@ -86,12 +88,12 @@ func TestBootstrap_KeepsCustom(t *testing.T) {
 // real `claude mcp get` output (2.1.300), which has no headersHelper line.
 func TestBootstrap_StaleKitEntryUpdated(t *testing.T) {
 	var calls []call
-	out := "zenify-grafana:\n  Scope: User config (available in all your projects)\n  Status: ✓ Connected\n  Type: http\n  URL: https://old-broker.example/mcp/grafana\n\nTo remove this server, run: claude mcp remove zenify-grafana -s user\n"
+	out := "zenify-grafana:\n  Scope: Local config (private to you in this project)\n  Status: ✓ Connected\n  Type: http\n  URL: https://old-broker.example/mcp/grafana\n\nTo remove this server, run: claude mcp remove zenify-grafana -s user\n"
 	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun(out, nil, &calls)})
 	if err != nil || st != playwright.RegLegacyDefault {
 		t.Fatalf("st=%v err=%v", st, err)
 	}
-	if len(calls) != 3 || !reflect.DeepEqual(calls[1].args, []string{"mcp", "remove", "zenify-grafana", "-s", "user"}) || calls[2].args[1] != "add-json" || !strings.Contains(calls[2].args[3], grafanaURL) {
+	if len(calls) != 3 || !reflect.DeepEqual(calls[1].args, []string{"mcp", "remove", "zenify-grafana", "-s", "local"}) || calls[2].args[1] != "add-json" || !strings.Contains(calls[2].args[3], grafanaURL) {
 		t.Fatalf("calls=%v", calls)
 	}
 }
@@ -130,7 +132,7 @@ func TestBootstrap_RealNotFoundWordingAdds(t *testing.T) {
 var planeSpec = StdioSpec{Name: "zenify-plane", Command: "zenify", Args: []string{"plane-mcp"}}
 
 func stdioBlock(extra, args string) string {
-	return "zenify-plane:\n  Scope: User config (available in all your projects)\n" + extra + "  Type: stdio\n  Command: zenify\n  Args: " + args + "\n  Environment:\n"
+	return "zenify-plane:\n  Scope: Local config (private to you in this project)\n" + extra + "  Type: stdio\n  Command: zenify\n  Args: " + args + "\n  Environment:\n"
 }
 
 func TestBootstrapStdio_AddsWithoutEnv(t *testing.T) {
@@ -143,7 +145,7 @@ func TestBootstrapStdio_AddsWithoutEnv(t *testing.T) {
 		t.Fatalf("calls=%v", calls)
 	}
 	a := calls[1]
-	if a.name != "claude" || !reflect.DeepEqual(a.args[:3], []string{"mcp", "add-json", "zenify-plane"}) || !reflect.DeepEqual(a.args[4:], []string{"-s", "user"}) {
+	if a.name != "claude" || !reflect.DeepEqual(a.args[:3], []string{"mcp", "add-json", "zenify-plane"}) || !reflect.DeepEqual(a.args[4:], []string{"-s", "local"}) {
 		t.Fatalf("add argv=%v", a)
 	}
 	var got map[string]any
@@ -239,4 +241,109 @@ func TestBootstrapStdio_TimeoutNoMutation(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 	noMutation(t, calls)
+}
+
+const userScope = "Scope: User config (available in all your projects)"
+const localScope = "Scope: Local config (private to you in this project)"
+
+func TestBootstrap_UserScopedSameURLAddsLocal(t *testing.T) {
+	var calls []call
+	out := "zenify-grafana:\n  " + userScope + "\n  Type: http\n  URL: " + grafanaURL + "\n"
+	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun(out, nil, &calls)})
+	if err != nil || st != playwright.RegLegacyDefault {
+		t.Fatalf("st=%v err=%v", st, err)
+	}
+	if len(calls) != 2 || calls[1].args[1] != "add-json" || !reflect.DeepEqual(calls[1].args[4:], []string{"-s", "local"}) {
+		t.Fatalf("calls=%v", calls)
+	}
+	for _, c := range calls {
+		if c.args[1] == "remove" {
+			t.Fatalf("user entry must not be removed here: %v", c)
+		}
+	}
+}
+
+func TestBootstrap_UserScopedStaleHostAddsLocal(t *testing.T) {
+	var calls []call
+	out := "zenify-grafana:\n  " + userScope + "\n  Type: http\n  URL: https://old.example/mcp/grafana\n"
+	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun(out, nil, &calls)})
+	if err != nil || st != playwright.RegLegacyDefault || len(calls) != 2 || calls[1].args[1] != "add-json" {
+		t.Fatalf("st=%v err=%v calls=%v", st, err, calls)
+	}
+}
+
+func TestBootstrap_LocalDesired(t *testing.T) {
+	var calls []call
+	out := "zenify-grafana:\n  " + localScope + "\n  Type: http\n  URL: " + grafanaURL + "\n"
+	st, err := Bootstrap(Options{Spec: Spec{Name: "zenify-grafana", URL: grafanaURL}, Run: fakeRun(out, nil, &calls)})
+	if err != nil || st != playwright.RegDesired || len(calls) != 1 {
+		t.Fatalf("st=%v err=%v calls=%v", st, err, calls)
+	}
+}
+
+func TestBootstrapStdio_UserScopedAddsLocal(t *testing.T) {
+	var calls []call
+	out := "zenify-plane:\n  " + userScope + "\n  Type: stdio\n  Command: zenify\n  Args: plane-mcp\n"
+	st, err := BootstrapStdio(planeSpec, fakeRun(out, nil, &calls))
+	if err != nil || st != playwright.RegLegacyDefault || len(calls) != 2 || calls[1].args[1] != "add-json" || !reflect.DeepEqual(calls[1].args[4:], []string{"-s", "local"}) {
+		t.Fatalf("st=%v err=%v calls=%v", st, err, calls)
+	}
+}
+
+func TestRemoveUserScoped(t *testing.T) {
+	var got []string
+	ok, err := RemoveUserScoped("zenify-grafana", func(n string, a ...string) ([]byte, error) {
+		got = append([]string{n}, a...)
+		return nil, nil
+	})
+	if err != nil || !ok || !reflect.DeepEqual(got, []string{"claude", "mcp", "remove", "zenify-grafana", "-s", "user"}) {
+		t.Fatalf("ok=%v err=%v got=%v", ok, err, got)
+	}
+}
+
+func TestRemoveUserScoped_NotFound(t *testing.T) {
+	ok, err := RemoveUserScoped("zenify-grafana", func(string, ...string) ([]byte, error) {
+		return []byte(`No MCP server named "zenify-grafana" in user scope`), errors.New("exit status 1")
+	})
+	if err != nil || ok {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+	for _, out := range []string{"boom", "zsh: claude: command not found"} {
+		ok, err = RemoveUserScoped("x", func(string, ...string) ([]byte, error) { return []byte(out), errors.New("exit status 127") })
+		if err == nil || ok {
+			t.Fatalf("%q must error: ok=%v err=%v", out, ok, err)
+		}
+	}
+}
+
+func TestKitOwned(t *testing.T) {
+	p := filepath.Join(t.TempDir(), ".claude.json")
+	body := `{"mcpServers":{
+	  "zenify-grafana":{"type":"http","url":"https://old-broker.example/mcp/grafana","headers":{"x":"secret"}},
+	  "zenify-posthog":{"type":"http","url":"https://mine.example/posthog"},
+	  "zenify-plane":{"type":"stdio","command":"uvx","args":["plane-mcp-server"]}},
+	 "projects":{"/ws":{"mcpServers":{
+	  "zenify-plane":{"type":"stdio","command":"zenify","args":["plane-mcp"]}}}}}`
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		project, name string
+		want          bool
+	}{
+		{"", "zenify-grafana", true},  // kit path, stale host
+		{"", "zenify-posthog", false}, // the user's own server
+		{"", "zenify-plane", false},   // the user's own stdio command
+		{"/ws", "zenify-plane", true},
+		{"/ws", "zenify-grafana", false}, // absent at that scope
+		{"/other", "zenify-plane", false},
+	} {
+		got, err := KitOwned(p, c.project, c.name)
+		if err != nil || got != c.want {
+			t.Errorf("KitOwned(%q, %q) = %v, %v; want %v", c.project, c.name, got, err, c.want)
+		}
+	}
+	if got, err := KitOwned(filepath.Join(t.TempDir(), "none.json"), "", "zenify-grafana"); err != nil || got {
+		t.Errorf("missing file: %v %v", got, err)
+	}
 }

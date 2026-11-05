@@ -45,10 +45,25 @@ func TestReviewerCmdPrints(t *testing.T) {
 
 // SC-40: `reviewer set codex` writes env.ZNF_REVIEWER and keeps every other key;
 // `reviewer set foo` exits non-zero and leaves the file byte-identical.
+// reviewerWorkspace makes cwd a fresh workspace and returns its
+// settings.local.json, where `reviewer set|get` keep ZNF_REVIEWER (FR-8.2).
+func reviewerWorkspace(t *testing.T) string {
+	t.Helper()
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "manifest.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(ws)
+	return filepath.Join(ws, ".claude", "settings.local.json")
+}
+
 func TestReviewerSetWritesSettingsEnv(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	path := filepath.Join(home, ".claude", "settings.json")
+	path := reviewerWorkspace(t)
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -89,6 +104,9 @@ func TestReviewerSetWritesSettingsEnv(t *testing.T) {
 	if got.Env["ZNF_REVIEWER"] != "codex" || got.Env["OTHER"] != "1" || got.Model != "opus" {
 		t.Fatalf("settings after set codex: %s", raw)
 	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {
+		t.Fatalf("reviewer set wrote ~/.claude/settings.json: %v", err)
+	}
 }
 
 // FR-17.3: `reviewer get` prints the stored env.ZNF_REVIEWER (what `reviewer set` writes),
@@ -98,7 +116,7 @@ func TestReviewerGetPrintsStoredValue(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("ZNF_REVIEWER", "agent")
 	t.Setenv("PATH", t.TempDir()) // no codex on PATH: `reviewer` alone would say agent
-	path := filepath.Join(home, ".claude", "settings.json")
+	path := reviewerWorkspace(t)
 	get := func() (string, error) {
 		root := NewRootCmd()
 		var out bytes.Buffer

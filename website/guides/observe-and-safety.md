@@ -12,7 +12,7 @@ Xem `zenify observe report` khi bạn muốn biết một phiên đã fan-out ba
 
 Chạy `zenify secret-scan` trước khi push một branch có file cấu hình hoặc script mới. CI của mọi repo public đã chạy lệnh này cho bạn.
 
-`zenify up` và hook `SessionStart` tự gắn git-guard khi thiếu. Chạy `zenify guard install` (hoặc `zenify doctor --fix`) khi `zenify doctor` báo mục `git-guard` hỏng, hoặc sau khi bạn sửa tay `~/.claude/settings.json`.
+`zenify up` và hook `SessionStart` tự gắn git-guard khi thiếu. Chạy `zenify guard install` (hoặc `zenify doctor --fix`) khi `zenify doctor` báo mục `git-guard` hỏng, hoặc sau khi bạn sửa tay `<workspace>/.claude/settings.local.json`. git-guard nằm ở file này nên chỉ chạy khi session mở ở gốc workspace.
 
 ## Các bước
 

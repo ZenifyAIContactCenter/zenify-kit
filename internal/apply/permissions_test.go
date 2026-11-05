@@ -32,11 +32,11 @@ func readAllow(t *testing.T, home string) []string {
 func TestEnsureKitPermissions_UnionKeepsOrderAndDeny(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"permissions":{"allow":["Bash(git status)"],"deny":["Bash(rm *)"]},"model":"opus"}`)
-	added, err := EnsureKitPermissions(home, false)
+	added, err := EnsureKitPermissions(UserKitTarget(home), false)
 	if err != nil || added != len(KitAllowRules) {
 		t.Fatalf("first run: added=%d err=%v", added, err)
 	}
-	added, err = EnsureKitPermissions(home, false)
+	added, err = EnsureKitPermissions(UserKitTarget(home), false)
 	if err != nil || added != 0 {
 		t.Fatalf("second run: added=%d err=%v", added, err)
 	}
@@ -70,7 +70,7 @@ func TestEnsureKitPermissions_UnionKeepsOrderAndDeny(t *testing.T) {
 
 func TestEnsureKitPermissions_NoFileCreates(t *testing.T) {
 	home := t.TempDir()
-	if _, err := EnsureKitPermissions(home, false); err != nil {
+	if _, err := EnsureKitPermissions(UserKitTarget(home), false); err != nil {
 		t.Fatal(err)
 	}
 	if got := readAllow(t, home); !reflect.DeepEqual(got, KitAllowRules) {
@@ -82,7 +82,7 @@ func TestEnsureKitPermissions_NonObjectPermissionsSkips(t *testing.T) {
 	for _, body := range []string{`{"permissions":[]}`, `{"permissions":{"allow":"x"}}`} {
 		home := t.TempDir()
 		writeSettings(t, home, body)
-		if _, err := EnsureKitPermissions(home, false); err == nil {
+		if _, err := EnsureKitPermissions(UserKitTarget(home), false); err == nil {
 			t.Fatalf("%s: expected error", body)
 		}
 		raw, _ := os.ReadFile(settingsPath(home))
@@ -96,7 +96,7 @@ func TestEnsureKitPermissions_DryRunNoWrite(t *testing.T) {
 	home := t.TempDir()
 	body := `{"model":"opus"}`
 	writeSettings(t, home, body)
-	added, err := EnsureKitPermissions(home, true)
+	added, err := EnsureKitPermissions(UserKitTarget(home), true)
 	if err != nil || added == 0 {
 		t.Fatalf("added=%d err=%v", added, err)
 	}
@@ -117,10 +117,10 @@ func TestEnsureKitPermissions_NoServerWideRule(t *testing.T) {
 func TestRemoveKitPermissions_KeepsPreexisting(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"permissions":{"allow":["Bash(zenify visual *)","Bash(git status)"]}}`)
-	if _, err := EnsureKitPermissions(home, false); err != nil {
+	if _, err := EnsureKitPermissions(UserKitTarget(home), false); err != nil {
 		t.Fatal(err)
 	}
-	removed, err := RemoveKitPermissions(home, false)
+	removed, err := RemoveKitPermissions(UserKitTarget(home), false)
 	if err != nil || removed != len(KitAllowRules)-1 {
 		t.Fatalf("removed=%d err=%v", removed, err)
 	}
@@ -133,7 +133,7 @@ func TestRemoveKitPermissions_KeepsPreexisting(t *testing.T) {
 func TestRemoveKitPermissions_NoRecord(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"permissions":{"allow":["Bash(zenify visual *)"]}}`)
-	removed, err := RemoveKitPermissions(home, false)
+	removed, err := RemoveKitPermissions(UserKitTarget(home), false)
 	if removed != 0 || err == nil || !strings.Contains(err.Error(), "no kit-permissions record") {
 		t.Fatalf("removed=%d err=%v", removed, err)
 	}
@@ -150,7 +150,7 @@ func TestEnsureKitPermissions_MalformedRecordErrorsUntouched(t *testing.T) {
 	if err := os.WriteFile(rec, []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := EnsureKitPermissions(home, false); err == nil {
+	if _, err := EnsureKitPermissions(UserKitTarget(home), false); err == nil {
 		t.Fatal("expected error for malformed record")
 	}
 	if raw, _ := os.ReadFile(settingsPath(home)); string(raw) != body {
@@ -164,7 +164,7 @@ func TestEnsureKitPermissions_MalformedRecordErrorsUntouched(t *testing.T) {
 func TestEnsureKitPermissions_RespectsUserRemoval(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{}`)
-	if _, err := EnsureKitPermissions(home, false); err != nil {
+	if _, err := EnsureKitPermissions(UserKitTarget(home), false); err != nil {
 		t.Fatal(err)
 	}
 	const removed = "Bash(zenify visual *)"
@@ -176,7 +176,7 @@ func TestEnsureKitPermissions_RespectsUserRemoval(t *testing.T) {
 	}
 	body, _ := json.Marshal(map[string]any{"permissions": map[string]any{"allow": kept}})
 	writeSettings(t, home, string(body))
-	added, err := EnsureKitPermissions(home, false)
+	added, err := EnsureKitPermissions(UserKitTarget(home), false)
 	if err != nil || added != 0 {
 		t.Fatalf("added=%d err=%v, want 0", added, err)
 	}
@@ -221,7 +221,7 @@ func TestEnsureKitPermissions_SettingsWriteFailureRestoresRecord(t *testing.T) {
 		if err := os.Chmod(dir, 0o500); err != nil {
 			t.Fatal(err)
 		}
-		_, err := EnsureKitPermissions(home, false)
+		_, err := EnsureKitPermissions(UserKitTarget(home), false)
 		_ = os.Chmod(dir, 0o755)
 		if err == nil {
 			t.Fatalf("withPrev=%v: want settings write error", withPrev)
@@ -240,7 +240,7 @@ func TestEnsureKitPermissions_SettingsWriteFailureRestoresRecord(t *testing.T) {
 func TestKitSandbox_UnionKeepsSandboxThenRemovesOnlyKit(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"sandbox":{"enabled":true,"excludedCommands":["git *"]}}`)
-	added, err := EnsureKitSandbox(home, false)
+	added, err := EnsureKitSandbox(UserKitTarget(home), false)
 	if err != nil || added != len(KitSandboxExcluded) {
 		t.Fatalf("added=%d err=%v", added, err)
 	}
@@ -261,7 +261,7 @@ func TestKitSandbox_UnionKeepsSandboxThenRemovesOnlyKit(t *testing.T) {
 	if _, err := os.Stat(kitPermissionsRecord(home)); !os.IsNotExist(err) {
 		t.Fatalf("sandbox ensure must not touch the allow record: %v", err)
 	}
-	removed, err := RemoveKitSandbox(home, false)
+	removed, err := RemoveKitSandbox(UserKitTarget(home), false)
 	if err != nil || removed != len(KitSandboxExcluded) {
 		t.Fatalf("removed=%d err=%v", removed, err)
 	}
@@ -278,7 +278,7 @@ func TestKitSandbox_NonObjectSandboxSkips(t *testing.T) {
 	home := t.TempDir()
 	body := `{"sandbox":true}`
 	writeSettings(t, home, body)
-	if _, err := EnsureKitSandbox(home, false); err == nil {
+	if _, err := EnsureKitSandbox(UserKitTarget(home), false); err == nil {
 		t.Fatal("expected error for non-object sandbox")
 	}
 	if raw, _ := os.ReadFile(settingsPath(home)); string(raw) != body {
@@ -339,7 +339,7 @@ func TestKitBrokerEntries(t *testing.T) {
 func TestKitAsk_UnionThenRemovesOnlyKit(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"permissions":{"allow":["Bash(ls *)"],"ask":["Bash(rm *)"]}}`)
-	added, err := EnsureKitAsk(home, false)
+	added, err := EnsureKitAsk(UserKitTarget(home), false)
 	if err != nil || added != len(KitAskRules) {
 		t.Fatalf("added=%d err=%v", added, err)
 	}
@@ -359,7 +359,7 @@ func TestKitAsk_UnionThenRemovesOnlyKit(t *testing.T) {
 	if want := []string{"Bash(ls *)"}; !reflect.DeepEqual(doc.Permissions.Allow, want) {
 		t.Fatalf("ask ensure changed allow: %v", doc.Permissions.Allow)
 	}
-	removed, err := RemoveKitAsk(home, false)
+	removed, err := RemoveKitAsk(UserKitTarget(home), false)
 	if err != nil || removed != len(KitAskRules) {
 		t.Fatalf("removed=%d err=%v", removed, err)
 	}
@@ -464,7 +464,7 @@ func seedRetired(t *testing.T, home string) {
 func TestRemoveRetiredKitPermissions(t *testing.T) {
 	home := t.TempDir()
 	seedRetired(t, home)
-	n, err := RemoveRetiredKitPermissions(home, false)
+	n, err := RemoveRetiredKitPermissions(UserKitTarget(home), false)
 	if err != nil || n != 9 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
@@ -485,7 +485,7 @@ func TestRemoveRetiredKitPermissions(t *testing.T) {
 func TestRemoveKitPermissionsStillRemovesAll(t *testing.T) {
 	home := t.TempDir()
 	seedRetired(t, home)
-	n, err := RemoveKitPermissions(home, false)
+	n, err := RemoveKitPermissions(UserKitTarget(home), false)
 	if err != nil || n != 10 {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
@@ -500,7 +500,7 @@ func TestRemoveKitPermissionsStillRemovesAll(t *testing.T) {
 func TestRemoveRetiredKitPermissionsNoRecord(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"permissions":{"allow":["Bash(ls *)"]}}`)
-	n, err := RemoveRetiredKitPermissions(home, false)
+	n, err := RemoveRetiredKitPermissions(UserKitTarget(home), false)
 	if n != 0 || err != nil {
 		t.Fatalf("n=%d err=%v", n, err)
 	}

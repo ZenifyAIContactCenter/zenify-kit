@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
@@ -49,12 +50,12 @@ func storeFixtureWithSkip(t *testing.T) (zenifyHome string) {
 
 func stampManifest(t *testing.T, home, ver string) {
 	t.Helper()
-	znf := filepath.Join(home, ".claude", "skills", "znf")
-	if err := os.MkdirAll(znf, 0o755); err != nil {
+	mp := plugin.PluginManifest(zenifyHome(os.Getenv, func() (string, error) { return home, nil }))
+	if err := os.MkdirAll(filepath.Dir(mp), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`{"entries":{},"version":%q}`, ver)
-	if err := os.WriteFile(filepath.Join(znf, ".manifest.json"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(mp, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -69,7 +70,7 @@ func TestEnsureWorkspace_WritesOnceThenSilent(t *testing.T) {
 	ws := t.TempDir()
 
 	var o1, e1 bytes.Buffer
-	ensureWorkspace(ws, home, &o1, &e1)
+	ensureWorkspace(ws, home, &o1, &e1, ensureOpts{})
 	if _, err := os.Stat(filepath.Join(ws, ".claude", "rules", "00-constitution.md")); err != nil {
 		t.Fatalf("rule not distributed: %v (stderr=%s)", err, e1.String())
 	}
@@ -82,10 +83,10 @@ func TestEnsureWorkspace_WritesOnceThenSilent(t *testing.T) {
 	if s["model"] != apply.DefaultModel {
 		t.Fatalf("model pin missing: %v", s["model"])
 	}
-	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); err != nil {
-		t.Fatalf("global hooks not wired: %v", err)
+	if _, err := os.Stat(apply.WorkspaceLocalSettings(ws)); err != nil {
+		t.Fatalf("local hooks not wired: %v", err)
 	}
-	if ok, err := guardInstalled(home); err != nil || !ok {
+	if ok, err := guardInstalled(apply.WorkspaceLocalSettings(ws)); err != nil || !ok {
 		t.Fatalf("git-guard hook not wired by ensureWorkspace: ok=%v err=%v", ok, err)
 	}
 	for _, want := range []string{"wired ", "wired git-guard hook", "pinned workspace model", "znf config: đã ghi 1 file"} { //znf:allow-lang
@@ -95,7 +96,7 @@ func TestEnsureWorkspace_WritesOnceThenSilent(t *testing.T) {
 	}
 
 	var o2, e2 bytes.Buffer
-	ensureWorkspace(ws, home, &o2, &e2)
+	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{})
 	if o2.Len() != 0 {
 		t.Fatalf("second run must be silent on stdout, got: %s", o2.String())
 	}
@@ -118,7 +119,7 @@ func TestEnsureWorkspace_RemovesStrongModelKey(t *testing.T) {
 	}
 
 	var o1, e1 bytes.Buffer
-	ensureWorkspace(ws, home, &o1, &e1)
+	ensureWorkspace(ws, home, &o1, &e1, ensureOpts{})
 	want := "removed ZNF_STRONG_MODEL from ~/.claude/settings.json (select-route is gone)"
 	if !strings.Contains(o1.String(), want) {
 		t.Fatalf("stdout missing %q: %s", want, o1.String())
@@ -129,7 +130,7 @@ func TestEnsureWorkspace_RemovesStrongModelKey(t *testing.T) {
 	}
 
 	var o2, e2 bytes.Buffer
-	ensureWorkspace(ws, home, &o2, &e2)
+	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{})
 	if strings.Contains(o2.String(), "ZNF_STRONG_MODEL") {
 		t.Fatalf("second run must not mention the key: %s", o2.String())
 	}
@@ -146,8 +147,8 @@ func TestEnsureWorkspace_LastStepFailureLeavesEarlierWritesIntact(t *testing.T) 
 	ws := t.TempDir()
 
 	var o, e bytes.Buffer
-	ensureWorkspace(ws, home, &o, &e)
-	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); err != nil {
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	if _, err := os.Stat(apply.WorkspaceLocalSettings(ws)); err != nil {
 		t.Fatalf("hooks must still be wired: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(ws, ".claude", "settings.json")); err != nil {
@@ -170,29 +171,28 @@ func TestEnsureWorkspace_EarlyStepFailureDoesNotBlockLaterSteps(t *testing.T) {
 	storeFixture(t)
 	ws := t.TempDir()
 
-	// Malform ~/.claude/settings.json so apply.EnsureGlobalHooks errors and
-	// leaves it untouched (internal/apply/globalhooks.go:69-71) — the first
-	// step in ensureWorkspace.
-	cdir := filepath.Join(home, ".claude")
+	// Malform <ws>/.claude/settings.local.json so apply.EnsureGlobalHooks
+	// errors and leaves it untouched — the first settings step in ensureWorkspace.
+	cdir := filepath.Join(ws, ".claude")
 	if err := os.MkdirAll(cdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	const malformed = "{not valid json"
-	if err := os.WriteFile(filepath.Join(cdir, "settings.json"), []byte(malformed), 0o644); err != nil {
+	if err := os.WriteFile(apply.WorkspaceLocalSettings(ws), []byte(malformed), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	var o, e bytes.Buffer
-	ensureWorkspace(ws, home, &o, &e)
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
 
 	if !strings.Contains(e.String(), "znf ensure: hooks:") {
 		t.Fatalf("expected a 'znf ensure: hooks:' stderr line, got: %q", e.String())
 	}
 	// Proves the hooks step really failed (rather than silently succeeding):
 	// EnsureGlobalHooks never touches a malformed settings.json.
-	stillRaw, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	stillRaw, err := os.ReadFile(apply.WorkspaceLocalSettings(ws))
 	if err != nil || string(stillRaw) != malformed {
-		t.Fatalf("malformed home settings.json should be left untouched, got %q (err=%v)", stillRaw, err)
+		t.Fatalf("malformed settings.local.json should be left untouched, got %q (err=%v)", stillRaw, err)
 	}
 
 	raw, err := os.ReadFile(filepath.Join(ws, ".claude", "settings.json"))
@@ -223,7 +223,7 @@ func TestEnsureWorkspace_WriteAndSkipBothReported(t *testing.T) {
 	ws := t.TempDir()
 
 	var o, e bytes.Buffer
-	ensureWorkspace(ws, home, &o, &e)
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
 
 	if _, err := os.Stat(filepath.Join(ws, ".claude", "rules", "00-constitution.md")); err != nil {
 		t.Fatalf("the real pair should still be written: %v", err)
@@ -247,51 +247,13 @@ func TestEnsureWorkspace_AnnouncesConfigWrites(t *testing.T) {
 	ws := t.TempDir()
 
 	var o, e bytes.Buffer
-	ensureWorkspace(ws, home, &o, &e)
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
 
 	if !strings.Contains(o.String(), "CREATE") {
 		t.Fatalf("stdout missing the CREATE plan line for the written file: %s", o.String())
 	}
 	if !strings.Contains(o.String(), filepath.Join(".claude", "rules", "00-constitution.md")) {
 		t.Fatalf("stdout missing the written dest path: %s", o.String())
-	}
-}
-
-// Ported from selfheal_test: a stale stamp re-materializes the plugin and
-// rewrites the stamp to the running version.
-func TestEnsureWorkspace_StaleStampResyncsPlugin(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	stampManifest(t, home, "v0.0.1")
-	storeFixture(t)
-
-	var o, e bytes.Buffer
-	ensureWorkspace(t.TempDir(), home, &o, &e)
-
-	raw, _ := os.ReadFile(filepath.Join(home, ".claude", "skills", "znf", ".manifest.json"))
-	var m struct {
-		Version string `json:"version"`
-	}
-	_ = json.Unmarshal(raw, &m)
-	if m.Version != version.Current() {
-		t.Fatalf("stamp = %q, want %q (resync did not run)", m.Version, version.Current())
-	}
-}
-
-// Ported from selfheal_test: an up-to-date stamp must NOT resync (the skills
-// dir stays empty apart from the manifest we planted).
-func TestEnsureWorkspace_UpToDateStampNoResync(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	stampManifest(t, home, version.Current())
-	storeFixture(t)
-
-	var o, e bytes.Buffer
-	ensureWorkspace(t.TempDir(), home, &o, &e)
-
-	ents, _ := os.ReadDir(filepath.Join(home, ".claude", "skills", "znf"))
-	if len(ents) != 1 {
-		t.Fatalf("resync ran despite up-to-date stamp: %d entries", len(ents))
 	}
 }
 
@@ -315,7 +277,7 @@ func TestEnsureWorkspace_FailedConfigWriteIsReported(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(rules, 0o755) })
 
 	var o, e bytes.Buffer
-	ensureWorkspace(ws, home, &o, &e)
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
 
 	if strings.Contains(o.String(), "znf config: đã ghi") { //znf:allow-lang
 		t.Fatalf("nothing was written, stdout must not claim a write: %s", o.String())
@@ -345,12 +307,16 @@ func TestEnsureWorkspace_CodexAbsent_NoCodexHomeButSkillsLink(t *testing.T) {
 	stampManifest(t, home, version.Current())
 	storeFixture(t)
 
+	ws := t.TempDir()
 	var o, e bytes.Buffer
-	ensureWorkspace(t.TempDir(), home, &o, &e)
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
 	if _, err := os.Stat(filepath.Join(home, ".codex")); !os.IsNotExist(err) {
 		t.Fatalf("~/.codex must not exist when codex absent: %v", err)
 	}
-	if _, err := os.Readlink(filepath.Join(home, ".agents", "skills", "znf")); err != nil {
+	if _, err := os.Stat(filepath.Join(ws, ".codex")); !os.IsNotExist(err) {
+		t.Fatalf("<ws>/.codex must not exist when codex absent: %v", err)
+	}
+	if _, err := os.Readlink(filepath.Join(ws, ".agents", "skills", "znf")); err != nil {
 		t.Fatalf("skills link must be made regardless of codex: %v", err)
 	}
 }
@@ -366,22 +332,22 @@ func TestEnsureWorkspace_CodexPresent_WritesHooksAndTrustOnce(t *testing.T) {
 	const trust = "Codex hook chưa chạy cho tới khi bạn trust một lần: mở codex, gõ /hooks, chọn trust." //znf:allow-lang
 
 	var o1, e1 bytes.Buffer
-	ensureWorkspace(ws, home, &o1, &e1)
-	if _, err := os.Stat(filepath.Join(home, ".codex", "hooks.json")); err != nil {
+	ensureWorkspace(ws, home, &o1, &e1, ensureOpts{})
+	if _, err := os.Stat(filepath.Join(ws, ".codex", "hooks.json")); err != nil {
 		t.Fatalf("hooks.json missing: %v (stderr=%s)", err, e1.String())
 	}
 	if !strings.Contains(o1.String(), trust) {
 		t.Fatalf("stdout missing trust line: %s", o1.String())
 	}
 	var o2, e2 bytes.Buffer
-	ensureWorkspace(ws, home, &o2, &e2)
+	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{})
 	if strings.Contains(o2.String(), trust) {
 		t.Fatalf("trust line printed twice: %s", o2.String())
 	}
 }
 
 // `zenify ensure --workspace` runs the same step without `zenify up` or a manifest:
-// the workspace gets the model pin, ~/.claude/settings.json the hooks and subagent env.
+// the workspace gets the model pin, <ws>/.claude/settings.local.json the hooks and subagent env.
 func TestEnsureCmd_PinsWorkspaceWithoutManifest(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -408,7 +374,7 @@ func TestEnsureCmd_PinsWorkspaceWithoutManifest(t *testing.T) {
 		Env   map[string]string `json:"env"`
 		Hooks map[string]any    `json:"hooks"`
 	}
-	raw, _ = os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	raw, _ = os.ReadFile(apply.WorkspaceLocalSettings(ws))
 	_ = json.Unmarshal(raw, &global)
 	if global.Env[apply.SubagentModelEnv] != apply.SubagentModelDefault {
 		t.Fatalf("subagent model env missing: %v", global.Env)
@@ -431,7 +397,7 @@ func TestEnsureWorkspace_CreatesWorkspaceMarker(t *testing.T) {
 	ws := t.TempDir()
 
 	var out, errOut bytes.Buffer
-	ensureWorkspace(ws, home, &out, &errOut)
+	ensureWorkspace(ws, home, &out, &errOut, ensureOpts{})
 
 	fi, err := os.Stat(filepath.Join(ws, ".zenify", "manifest.json"))
 	if err != nil || !fi.Mode().IsRegular() {
@@ -459,7 +425,7 @@ func TestEnsureWorkspace_NoNestedMarker(t *testing.T) {
 	}
 
 	var out, errOut bytes.Buffer
-	ensureWorkspace(repo, home, &out, &errOut)
+	ensureWorkspace(repo, home, &out, &errOut, ensureOpts{})
 
 	if _, err := os.Stat(filepath.Join(repo, ".zenify", "manifest.json")); err == nil {
 		t.Fatal("nested marker created inside the workspace")
@@ -490,10 +456,309 @@ func TestEnsureWorkspace_KeepsExistingMarker(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		var out, errOut bytes.Buffer
-		ensureWorkspace(ws, home, &out, &errOut)
+		ensureWorkspace(ws, home, &out, &errOut, ensureOpts{})
 		got, _ := os.ReadFile(marker)
 		if !bytes.Equal(got, want) {
 			t.Fatalf("run %d changed the marker: %s", i+1, got)
 		}
+	}
+}
+
+// fakePluginOK swaps pluginRunner for one where every claude command succeeds,
+// so the plugin step records no LocalErrs entry.
+func fakePluginOK(t *testing.T) {
+	t.Helper()
+	old := pluginRunner
+	t.Cleanup(func() { pluginRunner = old })
+	pluginRunner = func(string) func(string, ...string) ([]byte, error) {
+		return func(string, ...string) ([]byte, error) { return []byte("[]"), nil }
+	}
+}
+
+// localFixture is a fresh home + workspace with codex faked on PATH and the
+// plugin runner succeeding.
+func localFixture(t *testing.T) (home, ws, zh string) {
+	t.Helper()
+	fakeLookPath(t, true)
+	fakePluginOK(t)
+	home = t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
+	zh = storeFixture(t)
+	return home, t.TempDir(), zh
+}
+
+// FR-1.6 / FR-3 / FR-4 / FR-8: every kit write lands in the workspace, none in ~/.
+func TestEnsureWorkspace_WritesLocalOnly(t *testing.T) {
+	home, ws, zh := localFixture(t)
+
+	var o, e bytes.Buffer
+	rep := ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+
+	if b, err := os.ReadFile(apply.UserSettings(home)); err == nil {
+		for _, bad := range []string{"zenify hooks-run", "zenify git-guard", apply.ReviewerEnv, apply.SubagentModelEnv} {
+			if strings.Contains(string(b), bad) {
+				t.Errorf("~/.claude/settings.json carries %q: %s", bad, b)
+			}
+		}
+	}
+	for _, p := range []string{
+		filepath.Join(home, ".claude", "skills", "znf"),
+		filepath.Join(home, ".agents", "skills", "znf"),
+		filepath.Join(home, ".codex", "hooks.json"),
+	} {
+		if _, err := os.Lstat(p); !os.IsNotExist(err) {
+			t.Errorf("%s must not exist: %v", p, err)
+		}
+	}
+	local, err := os.ReadFile(apply.WorkspaceLocalSettings(ws))
+	if err != nil {
+		t.Fatalf("settings.local.json: %v", err)
+	}
+	for _, s := range apply.HookSpecs() {
+		if !strings.Contains(string(local), "zenify hooks-run "+s.ID) {
+			t.Errorf("settings.local.json missing hook %s", s.ID)
+		}
+	}
+	if len(apply.HookSpecs()) != 11 {
+		t.Errorf("HookSpecs = %d, want 11", len(apply.HookSpecs()))
+	}
+	if ok, err := guardInstalled(apply.WorkspaceLocalSettings(ws)); err != nil || !ok {
+		t.Errorf("git-guard not in settings.local.json: ok=%v err=%v", ok, err)
+	}
+	for _, k := range []string{apply.ReviewerEnv, apply.SubagentModelEnv} {
+		if !strings.Contains(string(local), k) {
+			t.Errorf("settings.local.json missing env %s", k)
+		}
+	}
+	link := filepath.Join(ws, ".agents", "skills", "znf")
+	if got, err := os.Readlink(link); err != nil || got != filepath.Join(plugin.PluginDir(zh), "skills") {
+		t.Errorf("skills link = %q (err=%v), want %q", got, err, filepath.Join(plugin.PluginDir(zh), "skills"))
+	}
+	if _, err := os.Stat(filepath.Join(ws, ".codex", "hooks.json")); err != nil {
+		t.Errorf("<ws>/.codex/hooks.json: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml")); err != nil || !strings.Contains(string(b), `[projects."`+ws+`"]`) {
+		t.Errorf("codex trust missing: %s (err=%v)", b, err)
+	}
+	if rep.CodexLinkPath != link {
+		t.Errorf("CodexLinkPath = %q, want %q", rep.CodexLinkPath, link)
+	}
+	if len(rep.LocalErrs) != 0 {
+		t.Errorf("LocalErrs = %v (stderr=%s)", rep.LocalErrs, e.String())
+	}
+	if strings.Contains(o.String(), "~/.claude/settings.json") {
+		t.Errorf("stdout still names the user file: %s", o.String())
+	}
+}
+
+func TestEnsureWorkspace_LocalErrRecorded(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	if err := os.MkdirAll(filepath.Join(ws, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(apply.WorkspaceLocalSettings(ws), []byte("{broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	rep := ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	found := false
+	for _, s := range rep.LocalErrs {
+		if strings.HasPrefix(s, "hooks: ") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("LocalErrs has no hooks entry: %v", rep.LocalErrs)
+	}
+}
+
+func TestEnsureWorkspace_Idempotent(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	var o1, e1 bytes.Buffer
+	ensureWorkspace(ws, home, &o1, &e1, ensureOpts{})
+
+	files := []string{
+		apply.WorkspaceLocalSettings(ws),
+		filepath.Join(ws, ".claude", "settings.json"),
+		filepath.Join(ws, ".codex", "hooks.json"),
+		filepath.Join(ws, ".agents", "skills", "znf"),
+		filepath.Join(home, ".codex", "config.toml"),
+	}
+	agents, _ := filepath.Glob(filepath.Join(ws, ".codex", "agents", "*.toml"))
+	if len(agents) == 0 {
+		t.Fatal("no codex agents written")
+	}
+	files = append(files, agents...)
+	records, _ := filepath.Glob(filepath.Join(home, ".zenify", "kit-local", "*.json"))
+	files = append(files, records...)
+	before := map[string]int64{}
+	for _, f := range files {
+		fi, err := os.Lstat(f)
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		before[f] = fi.ModTime().UnixNano()
+	}
+
+	var o2, e2 bytes.Buffer
+	rep := ensureWorkspace(ws, home, &o2, &e2, ensureOpts{})
+	for _, f := range files {
+		fi, _ := os.Lstat(f)
+		if fi.ModTime().UnixNano() != before[f] {
+			t.Errorf("%s rewritten on second run", f)
+		}
+	}
+	if o2.Len() != 0 {
+		t.Errorf("second run must be silent on stdout: %s", o2.String())
+	}
+	if len(rep.LocalErrs) != 0 {
+		t.Errorf("LocalErrs = %v", rep.LocalErrs)
+	}
+}
+
+// While ~/.claude/settings.json still holds the kit hooks (machine not
+// migrated), SessionStart must not wire a second copy into the workspace.
+func TestEnsureWorkspace_SessionStartSkipsWhileUserHooksPresent(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	if _, err := apply.EnsureGlobalHooks(apply.UserSettings(home), false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apply.EnsureCodexHooks(filepath.Join(home, ".codex"), false); err != nil { // the old `up` wrote both
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{ForceLocal: false})
+	if b, err := os.ReadFile(apply.WorkspaceLocalSettings(ws)); err == nil && strings.Contains(string(b), "zenify hooks-run") {
+		t.Fatalf("settings.local.json got kit hooks while user hooks remain: %s", b)
+	}
+	if !strings.Contains(o.String(), "kit vẫn cài ở cấp user; chạy zenify up --apply để chuyển sang workspace") { //znf:allow-lang
+		t.Fatalf("stdout missing the migrate nudge: %s", o.String())
+	}
+	if _, err := os.Stat(filepath.Join(ws, ".codex", "hooks.json")); !os.IsNotExist(err) {
+		t.Fatalf("<ws>/.codex/hooks.json must not exist while user hooks remain: %v", err)
+	}
+	if strings.Contains(o.String(), "/hooks") {
+		t.Fatalf("trust reminder printed while codex hooks were skipped: %s", o.String())
+	}
+	cfg := filepath.Join(home, ".codex", "config.toml")
+	if b, _ := os.ReadFile(cfg); strings.Contains(string(b), `[projects."`+ws+`"]`) {
+		t.Fatalf("codex trust written while user hooks remain: %s", b)
+	}
+
+	var o2, e2 bytes.Buffer
+	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{ForceLocal: true})
+	if b, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws)); !strings.Contains(string(b), "zenify hooks-run") {
+		t.Fatalf("ForceLocal must wire local hooks: %s", b)
+	}
+	if b, _ := os.ReadFile(cfg); !strings.Contains(string(b), `[projects."`+ws+`"]`) {
+		t.Fatalf("ForceLocal must trust the workspace for codex: %s", b)
+	}
+}
+
+// Each runtime is gated on its own user copy: Claude hooks gone from the user
+// file but Codex hooks or git-guard still there (a migration that failed part
+// way) must not get a second workspace copy of those.
+func TestEnsureWorkspace_PerRuntimeGate(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	userCodex := filepath.Join(home, ".codex")
+	if _, err := apply.EnsureCodexHooks(userCodex, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installGuard(apply.UserSettings(home)); err != nil {
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	local, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws))
+	if !strings.Contains(string(local), "zenify hooks-run") {
+		t.Fatalf("Claude hooks must be wired (no user copy): %s", local)
+	}
+	if ok, _ := guardInstalled(apply.WorkspaceLocalSettings(ws)); ok {
+		t.Fatalf("git-guard wired while the user copy remains: %s", local)
+	}
+	if b, err := os.ReadFile(filepath.Join(ws, ".codex", "hooks.json")); err == nil && strings.Contains(string(b), "zenify") {
+		t.Fatalf("<ws>/.codex hooks wired while user Codex hooks remain: %s", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(userCodex, "config.toml")); strings.Contains(string(b), `[projects."`+ws+`"]`) {
+		t.Fatalf("codex trust written while user Codex hooks remain: %s", b)
+	}
+	if b, err := os.ReadFile(filepath.Join(userCodex, "hooks.json")); err != nil || !strings.Contains(string(b), "zenify") {
+		t.Fatalf("ensure must not touch the user Codex hooks: %s (err=%v)", b, err)
+	}
+}
+
+// A value the user set at user level is carried into the workspace file
+// instead of being shadowed by the kit default there.
+func TestEnsureWorkspace_CarriesUserEnv(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	writeF(t, apply.UserSettings(home), `{"env":{"ZNF_REVIEWER":"codex","CLAUDE_CODE_SUBAGENT_MODEL":"opus"}}`)
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{ForceLocal: true})
+	local := apply.WorkspaceLocalSettings(ws)
+	if v, err := apply.ReviewerEnvValue(local); err != nil || v != "codex" {
+		t.Fatalf("reviewer = %q err=%v", v, err)
+	}
+	if b, _ := os.ReadFile(local); !strings.Contains(string(b), `"CLAUDE_CODE_SUBAGENT_MODEL":"opus"`) && !strings.Contains(string(b), `"CLAUDE_CODE_SUBAGENT_MODEL": "opus"`) {
+		t.Fatalf("subagent model not carried: %s", b)
+	}
+}
+
+// With codex gone from PATH, user Codex hooks `up` kept are inert: they gate
+// nothing and never nudge, so a rerun stays silent.
+func TestEnsureWorkspace_CodexAbsentUserHooksNoNudge(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	fakeLookPath(t, false)
+	if _, err := apply.EnsureCodexHooks(filepath.Join(home, ".codex"), false); err != nil {
+		t.Fatal(err)
+	}
+	var o1, e1 bytes.Buffer
+	ensureWorkspace(ws, home, &o1, &e1, ensureOpts{})
+	var o2, e2 bytes.Buffer
+	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{})
+	if o2.Len() != 0 {
+		t.Fatalf("second run printed: %q", o2.String())
+	}
+}
+
+// A step that panics leaves the workspace half-installed; up must see it as a
+// local failure and keep the user-level install.
+func TestEnsureWorkspace_PanicIsLocalErr(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	fakeLookPath(t, false)
+	old := pluginRunner
+	t.Cleanup(func() { pluginRunner = old })
+	pluginRunner = func(string) func(string, ...string) ([]byte, error) {
+		return func(string, ...string) ([]byte, error) { panic("boom") }
+	}
+	// A stale stamp makes ensure resync the installed plugin through the runner.
+	if err := os.MkdirAll(filepath.Dir(pluginStampPath(ws)), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginStampPath(ws), []byte("0.0.0-stale\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	rep := ensureWorkspace(ws, home, &o, &e, ensureOpts{ForceLocal: true})
+	if len(rep.LocalErrs) == 0 {
+		t.Fatalf("recovered panic not in LocalErrs; stderr: %s", e.String())
+	}
+}
+
+// CODEX_HOME pointed at <ws>/.codex makes the workspace hooks look like the
+// user copy; they must neither gate ensure nor be migrated away.
+func TestEnsureWorkspace_CodexHomeIsWorkspace(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	fakeLookPath(t, true)
+	t.Setenv("CODEX_HOME", filepath.Join(ws, ".codex"))
+	var o1, e1 bytes.Buffer
+	ensureWorkspace(ws, home, &o1, &e1, ensureOpts{ForceLocal: true})
+	var o2, e2 bytes.Buffer
+	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{})
+	if strings.Contains(o2.String(), "zenify up --apply") {
+		t.Fatalf("workspace Codex hooks gated ensure: %q", o2.String())
+	}
+	if !userCodexIsWorkspace(filepath.Join(ws, ".codex"), ws) {
+		t.Fatal("userCodexIsWorkspace false for <ws>/.codex")
 	}
 }

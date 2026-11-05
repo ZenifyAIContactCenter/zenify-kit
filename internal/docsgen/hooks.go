@@ -20,7 +20,7 @@ func GenHooks(specs []apply.HookSpec) Files {
 			b.WriteString(frag.Body + "\n\n")
 		}
 	} else {
-		b.WriteString("`zenify up` ghi các hook sau vào `~/.claude/settings.json`; mỗi hook là một lệnh `zenify hooks-run <id>` (fail-open, chỉ chạy trong workspace).\n\n") //znf:allow-lang
+		b.WriteString("`zenify up` ghi các hook sau vào `<workspace>/.claude/settings.local.json`; mỗi hook là một lệnh `zenify hooks-run <id>` (fail-open, chỉ chạy trong workspace).\n\n") //znf:allow-lang
 	}
 	b.WriteString("## Bảng hook\n\n")                                                         //znf:allow-lang
 	b.WriteString("| Event | Matcher | Lệnh | Mục đích | Runtime |\n|---|---|---|---|---|\n") //znf:allow-lang

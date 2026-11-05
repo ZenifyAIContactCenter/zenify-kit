@@ -33,7 +33,7 @@ func readEnvKey(t *testing.T, home, key string) (string, bool) {
 
 func TestEnsureSubagentModelEnv_CreatesWhenFileAbsent(t *testing.T) {
 	home := t.TempDir()
-	changed, err := EnsureSubagentModelEnv(home, false)
+	changed, err := EnsureSubagentModelEnv(UserSettings(home), false)
 	if err != nil || !changed {
 		t.Fatalf("changed=%v err=%v", changed, err)
 	}
@@ -41,7 +41,7 @@ func TestEnsureSubagentModelEnv_CreatesWhenFileAbsent(t *testing.T) {
 		t.Fatalf("env = %q ok=%v", v, ok)
 	}
 	// second run is a no-op
-	if changed, err := EnsureSubagentModelEnv(home, false); err != nil || changed {
+	if changed, err := EnsureSubagentModelEnv(UserSettings(home), false); err != nil || changed {
 		t.Fatalf("second run changed=%v err=%v", changed, err)
 	}
 }
@@ -49,7 +49,7 @@ func TestEnsureSubagentModelEnv_CreatesWhenFileAbsent(t *testing.T) {
 func TestEnsureSubagentModelEnv_RespectsExistingKeyAndPreservesForeign(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"permissions":{"allow":["Bash(ls)"]},"env":{"FOO":"bar","CLAUDE_CODE_SUBAGENT_MODEL":"opus"}}`)
-	changed, err := EnsureSubagentModelEnv(home, false)
+	changed, err := EnsureSubagentModelEnv(UserSettings(home), false)
 	if err != nil || changed {
 		t.Fatalf("must not override a user value: changed=%v err=%v", changed, err)
 	}
@@ -60,7 +60,7 @@ func TestEnsureSubagentModelEnv_RespectsExistingKeyAndPreservesForeign(t *testin
 	// key absent, foreign env + permissions kept (the file is re-indented, so
 	// compare decoded values, not bytes)
 	writeSettings(t, home, `{"permissions":{"allow":["Bash(ls)"]},"env":{"FOO":"bar"}}`)
-	if changed, err := EnsureSubagentModelEnv(home, false); err != nil || !changed {
+	if changed, err := EnsureSubagentModelEnv(UserSettings(home), false); err != nil || !changed {
 		t.Fatalf("changed=%v err=%v", changed, err)
 	}
 	if v, _ := readEnvKey(t, home, "FOO"); v != "bar" {
@@ -78,15 +78,15 @@ func TestEnsureSubagentModelEnv_RespectsExistingKeyAndPreservesForeign(t *testin
 func TestEnsureSubagentModelEnv_FailOpen(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{not json`)
-	if _, err := EnsureSubagentModelEnv(home, false); err == nil {
+	if _, err := EnsureSubagentModelEnv(UserSettings(home), false); err == nil {
 		t.Fatal("malformed file must error, not be overwritten")
 	}
 	writeSettings(t, home, `{"env":"oops"}`)
-	if _, err := EnsureSubagentModelEnv(home, false); err == nil {
+	if _, err := EnsureSubagentModelEnv(UserSettings(home), false); err == nil {
 		t.Fatal("non-object env must error")
 	}
 	writeSettings(t, home, `{}`)
-	if changed, err := EnsureSubagentModelEnv(home, true); err != nil || !changed {
+	if changed, err := EnsureSubagentModelEnv(UserSettings(home), true); err != nil || !changed {
 		t.Fatalf("dry run changed=%v err=%v", changed, err)
 	}
 	if raw, _ := os.ReadFile(settingsPath(home)); string(raw) != `{}` {
@@ -96,11 +96,11 @@ func TestEnsureSubagentModelEnv_FailOpen(t *testing.T) {
 
 func TestRemoveSubagentModelEnv_RemovesOnlyKitValue(t *testing.T) {
 	home := t.TempDir()
-	if removed, err := RemoveSubagentModelEnv(home, false); err != nil || removed {
+	if removed, err := RemoveSubagentModelEnv(UserSettings(home), false); err != nil || removed {
 		t.Fatalf("no file: removed=%v err=%v", removed, err)
 	}
 	writeSettings(t, home, `{"env":{"CLAUDE_CODE_SUBAGENT_MODEL":"sonnet"},"hooks":{}}`)
-	removed, err := RemoveSubagentModelEnv(home, false)
+	removed, err := RemoveSubagentModelEnv(UserSettings(home), false)
 	if err != nil || !removed {
 		t.Fatalf("removed=%v err=%v", removed, err)
 	}
@@ -110,7 +110,7 @@ func TestRemoveSubagentModelEnv_RemovesOnlyKitValue(t *testing.T) {
 	}
 
 	writeSettings(t, home, `{"env":{"CLAUDE_CODE_SUBAGENT_MODEL":"opus","X":"1"}}`)
-	if removed, err := RemoveSubagentModelEnv(home, false); err != nil || removed {
+	if removed, err := RemoveSubagentModelEnv(UserSettings(home), false); err != nil || removed {
 		t.Fatalf("user value must stay: removed=%v err=%v", removed, err)
 	}
 }

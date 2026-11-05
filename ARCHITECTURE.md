@@ -37,7 +37,7 @@ between the two is deliberate:
   and never assumes one exists. A subcommand that would only make sense inside
   a particular harness belongs in the adapter layer below, not in the binary.
 - **Hooks and skill frontmatter are the only adapter layer.** Hooks live in
-  `~/.claude/settings.json` and `~/.codex/hooks.json`, both generated from the
+  `<ws>/.claude/settings.local.json` and `<ws>/.codex/hooks.json`, both generated from the
   single `znfHookSpecs()` table (Codex gets the subset it can run, with its own
   subagent tool name) and forwarding to `zenify hooks-run <id>` or
   `zenify git-guard`. Skill frontmatter (`allowed-tools`, `context`,
@@ -45,8 +45,10 @@ between the two is deliberate:
   skill. Everything that must know a tool's *name* lives in one of these two
   places.
 - **One skill tree, one agent source.** Skills exist once, under
-  `~/.claude/skills/znf`; Codex reaches them through a symlink at
-  `~/.agents/skills/znf`. Codex agents are generated from `agents/*.md`.
+  `~/.zenify/plugin-marketplace/plugins/znf` (plugin `znf@zenify-kit`, installed
+  `--scope local` at the workspace root); Codex reaches them through a symlink at
+  `<ws>/.agents/skills/znf`. Codex agents are generated from `agents/*.md` into
+  `<ws>/.codex/agents`. The kit is inactive outside the workspace root.
 - **Skills describe actions, not tools.** A skill body says "dispatch a
   subagent" or "open the task ledger"; the binding from action to tool name is
   the single table `skills/_shared/harness-tools.md`. Checkable named lines

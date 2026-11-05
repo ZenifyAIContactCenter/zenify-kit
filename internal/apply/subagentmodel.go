@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 // SubagentModelEnv is the Claude Code env var that sets the default model for
@@ -20,13 +19,12 @@ const SubagentModelEnv = "CLAUDE_CODE_SUBAGENT_MODEL"
 const SubagentModelDefault = "sonnet"
 
 // EnsureSubagentModelEnv sets env.CLAUDE_CODE_SUBAGENT_MODEL in
-// <home>/.claude/settings.json — only when the key is absent, so a teammate's
+// the settings file at settingsPath — only when the key is absent, so a teammate's
 // own choice is never overwritten. Every other key, inside "env" and at the
 // top level, is preserved as raw JSON (same contract as EnsureGlobalHooks).
 // Atomic write; fail-open on malformed input. Returns whether it wrote.
-func EnsureSubagentModelEnv(home string, dryRun bool) (bool, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
-	root, mode, err := readSettingsRoot(path)
+func EnsureSubagentModelEnv(settingsPath string, dryRun bool) (bool, error) {
+	root, mode, err := readSettingsRoot(settingsPath)
 	if err != nil {
 		return false, err
 	}
@@ -42,15 +40,14 @@ func EnsureSubagentModelEnv(home string, dryRun bool) (bool, error) {
 	}
 	val, _ := json.Marshal(SubagentModelDefault)
 	env[SubagentModelEnv] = json.RawMessage(val)
-	return true, writeEnv(path, root, env, mode)
+	return true, writeEnv(settingsPath, root, env, mode)
 }
 
 // RemoveSubagentModelEnv reverses EnsureSubagentModelEnv: it removes the key
 // only when its value is still the kit default, so a value the user changed
 // stays. An "env" object left empty is dropped. Returns whether it removed.
-func RemoveSubagentModelEnv(home string, dryRun bool) (bool, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
-	root, mode, err := readSettingsRoot(path)
+func RemoveSubagentModelEnv(settingsPath string, dryRun bool) (bool, error) {
+	root, mode, err := readSettingsRoot(settingsPath)
 	if err != nil {
 		return false, err
 	}
@@ -73,7 +70,7 @@ func RemoveSubagentModelEnv(home string, dryRun bool) (bool, error) {
 		return true, nil
 	}
 	delete(env, SubagentModelEnv)
-	return true, writeEnv(path, root, env, mode)
+	return true, writeEnv(settingsPath, root, env, mode)
 }
 
 // readSettingsRoot decodes the top level of a settings file into raw messages.
@@ -91,6 +88,9 @@ func readSettingsRoot(path string) (map[string]json.RawMessage, os.FileMode, err
 	root := map[string]json.RawMessage{}
 	if err := json.Unmarshal(existing, &root); err != nil {
 		return nil, mode, fmt.Errorf("settings.json malformed, skipping env: %w", err)
+	}
+	if root == nil {
+		return nil, mode, fmt.Errorf("settings.json is null, skipping env")
 	}
 	if fi, statErr := os.Stat(path); statErr == nil {
 		mode = fi.Mode().Perm()
@@ -130,4 +130,39 @@ func writeEnv(path string, root map[string]json.RawMessage, env map[string]json.
 		return err
 	}
 	return writeAtomic(path, out, mode)
+}
+
+// CarryEnv copies env.<key> from the settings file at from into the one at
+// settingsPath when settingsPath lacks the key and from has it, so a value the
+// user chose at user level survives the move to workspace-local settings
+// (which win over user settings). Returns whether it wrote.
+func CarryEnv(settingsPath, from, key string, dryRun bool) (bool, error) {
+	src, _, err := readSettingsRoot(from)
+	if err != nil || src == nil {
+		return false, err
+	}
+	srcEnv, err := envOf(src)
+	if err != nil {
+		return false, err
+	}
+	val, ok := srcEnv[key]
+	if !ok {
+		return false, nil
+	}
+	root, mode, err := readSettingsRoot(settingsPath)
+	if err != nil {
+		return false, err
+	}
+	env, err := envOf(root)
+	if err != nil {
+		return false, err
+	}
+	if _, ok := env[key]; ok {
+		return false, nil
+	}
+	if dryRun {
+		return true, nil
+	}
+	env[key] = val
+	return true, writeEnv(settingsPath, root, env, mode)
 }

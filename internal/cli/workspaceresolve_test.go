@@ -237,3 +237,32 @@ func TestValidateWorkspaceDir(t *testing.T) {
 		t.Fatalf("non-empty must name the offender: %v", err)
 	}
 }
+
+// Claude keys ~/.claude.json projects by its cwd with symlinks resolved, so a
+// workspace reached through a symlink must resolve to the real directory.
+func TestResolveWorkspaceResolvesSymlinks(t *testing.T) {
+	base := t.TempDir()
+	real := filepath.Join(base, "real")
+	if err := os.MkdirAll(filepath.Join(real, ".zenify"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, ".zenify", "manifest.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(base, "alias")
+	if err := os.Symlink(real, alias); err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(real)
+	if err != nil {
+		t.Fatal(err)
+	}
+	none := func() (string, error) { return t.TempDir(), nil }
+	noenv := func(string) string { return "" }
+	if got, _, _ := resolveWorkspace(alias, "", noenv, none); got != want {
+		t.Errorf("marker via alias = %q, want %q", got, want)
+	}
+	if got, _, _ := resolveWorkspace(base, alias, noenv, none); got != want {
+		t.Errorf("flag alias = %q, want %q", got, want)
+	}
+}

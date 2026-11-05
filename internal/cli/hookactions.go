@@ -17,6 +17,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/observe"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
@@ -68,7 +69,7 @@ func runSessionStart(wsRoot string, w io.Writer) int {
 		ui.New(os.Stderr).Note(fmt.Sprintf("znf docs-sync: %v", err))
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		_ = ensureWorkspace(wsRoot, home, w, os.Stderr)
+		_ = ensureWorkspace(wsRoot, home, w, os.Stderr, ensureOpts{})
 	}
 	// One line, only when a newer release exists; before the digest so the
 	// digest's early return cannot swallow it.
@@ -117,7 +118,7 @@ func autonomousLine(w io.Writer) {
 	if os.Getenv("ZNF_AUTONOMOUS") != "1" {
 		return
 	}
-	fmt.Fprintln(w, "autonomous: ZNF_AUTONOMOUS=1 — read ~/.claude/skills/znf/skills/_shared/autonomous.md first; it overrides every human gate in znf skills")
+	fmt.Fprintf(w, "autonomous: ZNF_AUTONOMOUS=1 — read %s first; it overrides every human gate in znf skills\n", znfSkillFile("_shared", "autonomous.md"))
 }
 
 // featuresLine announces enabled overlay feature toggles. A read error goes to
@@ -135,7 +136,7 @@ func featuresLine(wsRoot string, w io.Writer) {
 		fmt.Fprintln(w, "features: github.issues on — znf:ship links a GitHub issue (Closes #N) before opening a PR")
 	}
 	if feats["track"] {
-		fmt.Fprintln(w, "features: track on — read ~/.claude/skills/znf/skills/_shared/track.md first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --brief first (track.md#Backlog); plan today → track.md#Daily plan")
+		fmt.Fprintf(w, "features: track on — read %s first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --brief first (track.md#Backlog); plan today → track.md#Daily plan\n", znfSkillFile("_shared", "track.md"))
 		trackOnboardLine(wsRoot, w)
 		trackSummaryLine(wsRoot, w, time.Now())
 	}
@@ -158,7 +159,7 @@ func trackOnboardLine(wsRoot string, w io.Writer) {
 			return
 		}
 	}
-	fmt.Fprintln(w, "track: not onboarded — run the Onboard section of ~/.claude/skills/znf/skills/_shared/track.md")
+	fmt.Fprintf(w, "track: not onboarded — run the Onboard section of %s\n", znfSkillFile("_shared", "track.md"))
 }
 
 // trackSummaryLine prints one line of open work so the agent starts the session knowing it.
@@ -256,13 +257,15 @@ func sentinelPresent() bool {
 	return strings.Contains(string(raw), znfDisciplineSentinel)
 }
 
+// znfSkillFile is the absolute path of a file under the kit plugin's skills/
+// dir in the marketplace (<zenifyHome>/plugin-marketplace/plugins/znf).
+func znfSkillFile(rel ...string) string {
+	return filepath.Join(append([]string{plugin.PluginDir(zenifyHome(os.Getenv, os.UserHomeDir)), "skills"}, rel...)...)
+}
+
 func readBootstrapDigest() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	p := filepath.Join(home, ".claude", "skills", "znf", "skills", "using-zenify-kit", "BOOTSTRAP.txt")
-	raw, err := os.ReadFile(p) //nolint:gosec // G304 -- p is a fixed path under ~/.claude, computed from home, not user input
+	p := znfSkillFile("using-zenify-kit", "BOOTSTRAP.txt")
+	raw, err := os.ReadFile(p) //nolint:gosec // G304 -- p is a fixed path under the zenify home, not user input
 	if err != nil {
 		return ""
 	}

@@ -182,7 +182,7 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 	if cfg.AfterSecretsFn != nil {
 		cfg.AfterSecretsFn()
 	}
-	printDone(os.Stdout)
+	printDone(os.Stdout, cfg.Workspace)
 	return res, nil
 }
 
@@ -190,11 +190,11 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 // count and a nudge toward the next isolated-worktree step. It re-reads the
 // hook count via a dry-run EnsureGlobalHooks call rather than parsing
 // runApply's stdout text, so it never triggers a second real write.
-func printDone(w *os.File) {
+func printDone(w *os.File, workspace string) {
 	fmt.Fprintln(w, "onboarding complete")
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		if ch, err := apply.EnsureGlobalHooks(home, true); err == nil {
-			fmt.Fprintf(w, "wired %d znf hooks into ~/.claude/settings.json\n", ch.Total())
+	if workspace != "" {
+		if ch, err := apply.EnsureGlobalHooks(apply.WorkspaceLocalSettings(workspace), true); err == nil {
+			fmt.Fprintf(w, "wired %d znf hooks into .claude/settings.local.json\n", ch.Total())
 		}
 	}
 	fmt.Fprintln(w, "next: run `wt new <task>` to start your first isolated feature branch")

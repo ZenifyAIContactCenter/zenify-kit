@@ -68,7 +68,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify gate](./zenify_gate) | Nhóm lệnh hỗ trợ contract gate, bước quét cross-repo khi bạn chạm tài nguyên chung. |
 | [zenify gate participants](./zenify_gate_participants) | Liệt kê các repo tham gia contract gate cùng cách mỗi repo truy cập DB chung. |
 | [zenify guard](./zenify_guard) | Nhóm lệnh cho git-guard, hook chặn commit, push và merge vào branch deploy. |
-| [zenify guard install](./zenify_guard_install) | Gắn hook git-guard vào ~/.claude/settings.json để chặn thao tác git vào branch deploy. |
+| [zenify guard install](./zenify_guard_install) | Gắn hook git-guard vào .claude/settings.local.json của workspace để chặn thao tác git vào branch deploy. |
 | [zenify hotfix](./zenify_hotfix) | Nhóm lệnh hỗ trợ hotfix, hiện có một lệnh con in base ref đã resolve. |
 | [zenify hotfix baseref](./zenify_hotfix_baseref) | In base ref mà hotfix của một repo sẽ xuất phát, theo chiến lược khai trong `worktree.json`. |
 | [zenify migrate](./zenify_migrate) | Gom các repo đang nằm rải ở gốc workspace vào một thư mục con theo layout chuẩn của team. |
@@ -84,15 +84,15 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
 | [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release tag từ lịch sử git của mọi repo trong workspace. |
 | [zenify reviewer](./zenify_reviewer) | In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent. |
-| [zenify reviewer get](./zenify_reviewer_get) | In engine review đã lưu trong `env.ZNF_REVIEWER` của `~/.claude/settings.json`, agent hoặc codex. |
-| [zenify reviewer set](./zenify_reviewer_set) | Đặt engine review của kit, agent hoặc codex, vào `env.ZNF_REVIEWER` của `~/.claude/settings.json`. |
+| [zenify reviewer get](./zenify_reviewer_get) | In engine review đã lưu trong `env.ZNF_REVIEWER` của `<workspace>/.claude/settings.local.json`, agent hoặc codex. |
+| [zenify reviewer set](./zenify_reviewer_set) | Đặt engine review của kit, agent hoặc codex, vào `env.ZNF_REVIEWER` của `<workspace>/.claude/settings.local.json`. |
 | [zenify route-log](./zenify_route-log) | Xem các record routing model do skill ghi (số liệu plan từ znf:analyze), đếm theo site, model và gate. |
 | [zenify rules](./zenify_rules) | Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc. |
 | [zenify rules lint](./zenify_rules_lint) | Kiểm file mà agent đọc (skill, rule, mã nguồn kit): chặn tiếng Việt, và bắt frontmatter khai sai key `globs:` thay cho `paths:`. |
 | [zenify secret-scan](./zenify_secret-scan) | Quét một cây thư mục để tìm secret bị lộ, dùng trong CI và kiểm tra tay trước khi push. |
 | [zenify skills](./zenify_skills) | Nhóm lệnh quản lý plugin skill znf và bộ coding skill theo repo. |
 | [zenify skills install](./zenify_skills_install) | Gỡ bản coding skill cũ khỏi .claude/skills của repo — chúng đã nằm trong plugin znf. |
-| [zenify skills sync](./zenify_skills_sync) | Ghi bộ skill znf từ binary vào ~/.claude/skills/znf và gắn hook znf vào settings. |
+| [zenify skills sync](./zenify_skills_sync) | Ghi bộ skill znf từ binary vào marketplace ~/.zenify/plugin-marketplace và gắn hook znf vào settings của workspace. |
 | [zenify spec](./zenify_spec) | Nhóm lệnh soi vòng đời spec và registry contract, đọc từ knowledge store. |
 | [zenify spec contracts](./zenify_spec_contracts) | Liệt kê repo và collection mà từng spec khai qua hai tag `_Blast-radius:` và `_DB:`. |
 | [zenify spec status](./zenify_spec_status) | Liệt kê trạng thái vòng đời của từng spec trong knowledge store. |

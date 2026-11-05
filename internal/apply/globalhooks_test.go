@@ -33,7 +33,7 @@ func TestEnsureGlobalHooks_PreservesForeignHooks(t *testing.T) {
     ]
   }
 }`)
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
@@ -52,11 +52,11 @@ func TestEnsureGlobalHooks_PreservesForeignHooks(t *testing.T) {
 // SC-4: second run with nothing changed => 0 changes, byte-identical.
 func TestEnsureGlobalHooks_Idempotent(t *testing.T) {
 	home := t.TempDir()
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatal(err)
 	}
 	first, _ := os.ReadFile(settingsPath(home))
-	ch, err := EnsureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(UserSettings(home), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestEnsureGlobalHooks_Idempotent(t *testing.T) {
 func TestEnsureGlobalHooks_MalformedSkips(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{ this is not json `)
-	ch, err := EnsureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(UserSettings(home), false)
 	if err == nil {
 		t.Fatal("expected error on malformed settings")
 	}
@@ -96,7 +96,7 @@ func TestEnsureGlobalHooks_ReplacesStaleMarker(t *testing.T) {
     ]
   }
 }`)
-	ch, err := EnsureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(UserSettings(home), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestEnsureGlobalHooks_ReplacesStaleMarker(t *testing.T) {
 // FR-4.4: byte-write must not HTML-escape matcher special chars.
 func TestEnsureGlobalHooks_NoHTMLEscape(t *testing.T) {
 	home := t.TempDir()
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
@@ -132,7 +132,7 @@ func TestEnsureGlobalHooks_NoHTMLEscape(t *testing.T) {
 // FR-4.3 (part): dryRun does not write.
 func TestEnsureGlobalHooks_DryRunNoWrite(t *testing.T) {
 	home := t.TempDir()
-	ch, err := EnsureGlobalHooks(home, true)
+	ch, err := EnsureGlobalHooks(UserSettings(home), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestEnsureGlobalHooks_PreservesForeignValueContentAndKeyOrder(t *testing.T)
     "mango": [3, 1, 4]
   }
 }`)
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
@@ -213,7 +213,7 @@ func TestEnsureGlobalHooks_PreservesFileMode(t *testing.T) {
 	if err := os.Chmod(settingsPath(home), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
 	fi, err := os.Stat(settingsPath(home))
@@ -236,7 +236,7 @@ func TestEnsureGlobalHooks_MigratesMatcher(t *testing.T) {
 	    {"type":"command","command":"echo foreign"}
 	  ]}
 	]}}`)
-	ch, err := EnsureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(UserSettings(home), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestEnsureGlobalHooks_MigratesMatcher(t *testing.T) {
 		t.Fatalf("new group must hold observe-count, got %v", got)
 	}
 
-	ch2, err := EnsureGlobalHooks(home, false)
+	ch2, err := EnsureGlobalHooks(UserSettings(home), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestEnsureGlobalHooks_MigrationDropsEmptiedGroup(t *testing.T) {
 	writeSettings(t, home, `{"hooks":{"PreToolUse":[
 	  {"matcher":"Task","hooks":[{"type":"command","command":"zenify hooks-run observe-count"}]}
 	]}}`)
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
@@ -299,7 +299,7 @@ func TestEnsureGlobalHooks_MigrationDropsEmptiedGroup(t *testing.T) {
 func TestEnsureGlobalHooks_NonObjectHooksSkips(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"hooks": "not-an-object"}`)
-	ch, err := EnsureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(UserSettings(home), false)
 	if err == nil {
 		t.Fatal("expected error on non-object \"hooks\"")
 	}
@@ -346,7 +346,7 @@ func TestEnsureGlobalHooks_AddsGitStateKeepsPersonalScript(t *testing.T) {
     ]
   }
 }`)
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatalf("ensure: %v", err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
@@ -367,14 +367,14 @@ func TestEnsureGlobalHooks_AddsGitStateKeepsPersonalScript(t *testing.T) {
 // SessionStart entries, and a second run is a no-op.
 func TestEnsureGlobalHooks_AddsWtReportOnce(t *testing.T) {
 	home := t.TempDir()
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(settingsPath(home))
 	if n := strings.Count(string(raw), "zenify hooks-run wt-report"); n != 1 {
 		t.Fatalf("wt-report entries = %d, want 1\n%s", n, raw)
 	}
-	ch, err := EnsureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(UserSettings(home), false)
 	if err != nil || ch.Added != 0 || ch.Updated != 0 {
 		t.Fatalf("second run must be a no-op: %+v %v", ch, err)
 	}
@@ -384,7 +384,7 @@ func TestEnsureGlobalHooks_AddsWtReportOnce(t *testing.T) {
 // the read-guard command, and a second run adds nothing.
 func TestEnsureGlobalHooks_ReadGuardWired(t *testing.T) {
 	home := t.TempDir()
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
@@ -414,7 +414,7 @@ func TestEnsureGlobalHooks_ReadGuardWired(t *testing.T) {
 	if len(cmds) != 1 || cmds[0] != "zenify hooks-run read-guard" {
 		t.Fatalf("Read group = %v, want exactly [zenify hooks-run read-guard]", cmds)
 	}
-	ch, err := EnsureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(UserSettings(home), false)
 	if err != nil || ch.Added != 0 || ch.Updated != 0 {
 		t.Fatalf("second run must be idempotent: %+v %v", ch, err)
 	}
@@ -425,7 +425,7 @@ func TestEnsureGlobalHooks_ReadGuardWired(t *testing.T) {
 // adds nothing.
 func TestEnsureGlobalHooks_WriteGuardWired(t *testing.T) {
 	home := t.TempDir()
-	if _, err := EnsureGlobalHooks(home, false); err != nil {
+	if _, err := EnsureGlobalHooks(UserSettings(home), false); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
@@ -455,7 +455,7 @@ func TestEnsureGlobalHooks_WriteGuardWired(t *testing.T) {
 	if len(cmds) != 1 || cmds[0] != "zenify hooks-run write-guard" {
 		t.Fatalf("Write|Edit|NotebookEdit group = %v, want exactly [zenify hooks-run write-guard]", cmds)
 	}
-	ch, err := EnsureGlobalHooks(home, false)
+	ch, err := EnsureGlobalHooks(UserSettings(home), false)
 	if err != nil || ch.Added != 0 || ch.Updated != 0 {
 		t.Fatalf("second run must be idempotent: %+v %v", ch, err)
 	}
@@ -493,5 +493,16 @@ func TestZnfHookSpecs_PlaneGuard(t *testing.T) {
 	}
 	if got[0].Event != "PreToolUse" || got[0].Matcher != "mcp__zenify-plane__.*" {
 		t.Fatalf("plane-guard spec = %+v", got[0])
+	}
+}
+
+// A hooks.json holding JSON null is reported, never a panic.
+func TestEnsureCodexHooksNullFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hooks.json"), []byte("null"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureCodexHooks(dir, false); err == nil {
+		t.Fatal("want an error for a null hooks.json")
 	}
 }

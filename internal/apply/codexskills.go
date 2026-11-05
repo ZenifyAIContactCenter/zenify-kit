@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // LinkState is the outcome of EnsureCodexSkillsLink.
@@ -16,14 +17,9 @@ const (
 	LinkRealDir                    // a real file/dir sits at the link path; left alone
 )
 
-func codexSkillsPaths(home string) (link, target string) {
-	return filepath.Join(home, ".agents", "skills", "znf"), filepath.Join(home, ".claude", "skills", "znf")
-}
-
-// EnsureCodexSkillsLink makes <home>/.agents/skills/znf an absolute symlink to
-// <home>/.claude/skills/znf so Codex discovers the kit plugin's skills.
-func EnsureCodexSkillsLink(home string, dryRun bool) (LinkState, error) {
-	link, target := codexSkillsPaths(home)
+// EnsureCodexSkillsLink makes link an absolute symlink to target (the kit
+// plugin's skills dir) so Codex discovers the kit skills.
+func EnsureCodexSkillsLink(link, target string, dryRun bool) (LinkState, error) {
 	state := LinkCreated
 	fi, err := os.Lstat(link)
 	switch {
@@ -58,10 +54,25 @@ func EnsureCodexSkillsLink(home string, dryRun bool) (LinkState, error) {
 	return state, nil
 }
 
-// RemoveCodexSkillsLink removes the link only when it is a symlink pointing at
-// the kit plugin; anything else is left alone and reported as false.
-func RemoveCodexSkillsLink(home string, dryRun bool) (bool, error) {
-	link, target := codexSkillsPaths(home)
+// kitSkillsTargets are the path endings of every target the kit has linked:
+// <home>/.claude/skills/znf (earlier kits) and the marketplace plugin's skills.
+var kitSkillsTargets = []string{
+	filepath.Join(".claude", "skills", "znf"),
+	filepath.Join("plugin-marketplace", "plugins", "znf", "skills"),
+}
+
+func isKitSkillsTarget(p string) bool {
+	for _, end := range kitSkillsTargets {
+		if strings.HasSuffix(filepath.Clean(p), string(filepath.Separator)+end) {
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveCodexSkillsLink removes link only when it is a symlink pointing at a
+// kit skills dir; anything else is left alone and reported as false.
+func RemoveCodexSkillsLink(link string, dryRun bool) (bool, error) {
 	fi, err := os.Lstat(link)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -72,7 +83,7 @@ func RemoveCodexSkillsLink(home string, dryRun bool) (bool, error) {
 	if fi.Mode()&os.ModeSymlink == 0 {
 		return false, nil
 	}
-	if cur, err := os.Readlink(link); err != nil || cur != target {
+	if cur, err := os.Readlink(link); err != nil || !isKitSkillsTarget(cur) {
 		return false, nil
 	}
 	if dryRun {

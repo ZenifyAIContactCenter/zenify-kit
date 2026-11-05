@@ -15,10 +15,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 )
 
 func noManifest() *manifest.Manifest { return nil }
@@ -264,14 +266,37 @@ func TestPlaywrightCheckWith_KitMCPStillRegisteredFails(t *testing.T) {
 	}
 }
 
-func TestPluginCheckReportsMissing(t *testing.T) {
-	c := pluginCheckAt(t.TempDir()) // empty dest → not synced
-	ok, msg := c.Run()
-	if ok {
-		t.Fatal("plugin not synced but reports ok")
+func pluginCheckFixture(t *testing.T, settings string, withDir bool) Check {
+	t.Helper()
+	ws, zh := t.TempDir(), t.TempDir()
+	if settings != "" {
+		writeF(t, apply.WorkspaceLocalSettings(ws), settings)
 	}
-	if !strings.Contains(msg, "chưa cài") { //znf:allow-lang
-		t.Fatalf("msg should state the status: %q", msg)
+	dir := plugin.PluginDir(zh)
+	if withDir {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return pluginCheckAt(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil }, dir)
+}
+
+func TestPluginCheck_EnabledLocal(t *testing.T) {
+	c := pluginCheckFixture(t, `{"enabledPlugins":{"znf@zenify-kit":true}}`, true)
+	if ok, d := c.Run(); !ok {
+		t.Fatalf("enabled + dir present should be ok: %q", d)
+	}
+}
+
+func TestPluginCheck_Missing(t *testing.T) {
+	for name, c := range map[string]Check{
+		"no settings":   pluginCheckFixture(t, "", true),
+		"disabled":      pluginCheckFixture(t, `{"enabledPlugins":{"znf@zenify-kit":false}}`, true),
+		"no plugin dir": pluginCheckFixture(t, `{"enabledPlugins":{"znf@zenify-kit":true}}`, false),
+	} {
+		if ok, d := c.Run(); ok || d == "" {
+			t.Errorf("%s: ok=%v %q", name, ok, d)
+		}
 	}
 }
 
@@ -300,10 +325,12 @@ func TestDockerCheck_Missing(t *testing.T) {
 // The git-guard check must fail on a fresh HOME, its Fix must wire the hook,
 // and the check must then pass — the path `doctor --fix` takes.
 func TestGitGuardCheck_MissingThenFixed(t *testing.T) {
+	ws := t.TempDir()
 	home := t.TempDir()
-	c := gitGuardCheck(func() (string, error) { return home, nil })
+	c := gitGuardCheck(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil },
+		func() (string, error) { return apply.UserSettings(home), nil })
 	if ok, detail := c.Run(); ok || !strings.Contains(detail, "hook=missing") {
-		t.Fatalf("fresh HOME should report hook=missing, got ok=%v detail=%q", ok, detail)
+		t.Fatalf("fresh workspace should report hook=missing, got ok=%v detail=%q", ok, detail)
 	}
 	if ok, detail := c.Fix(); !ok {
 		t.Fatalf("Fix failed: %s", detail)
@@ -329,8 +356,8 @@ func TestGitIdentityCheck_Present(t *testing.T) {
 }
 
 func TestKitPermissionsCheck_MissingThenFixed(t *testing.T) {
-	home := t.TempDir()
-	c := kitPermissionsCheck(func() (string, error) { return home, nil })
+	home, ws := t.TempDir(), t.TempDir()
+	c := kitPermissionsCheck(func() (string, error) { return home, nil }, func() (string, error) { return ws, nil })
 	if ok, detail := c.Run(); ok || !strings.Contains(detail, "missing") {
 		t.Fatalf("empty HOME should report missing, got ok=%v detail=%q", ok, detail)
 	}
@@ -339,6 +366,12 @@ func TestKitPermissionsCheck_MissingThenFixed(t *testing.T) {
 	}
 	if ok, detail := c.Run(); !ok {
 		t.Fatalf("after Fix the check should pass, detail=%q", detail)
+	}
+	if _, err := os.Stat(apply.WorkspaceLocalSettings(ws)); err != nil {
+		t.Fatalf("Fix must write the workspace settings.local.json: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); err == nil {
+		t.Fatal("Fix must not touch ~/.claude/settings.json")
 	}
 }
 
@@ -924,5 +957,88 @@ func TestShimsCheck(t *testing.T) {
 	}
 	if ok, _ := shimsCheck(look("")).Run(); !ok {
 		t.Error("both present should be ok")
+	}
+}
+
+// Before up migrates, git-guard runs from ~/.claude/settings.json; doctor
+// must not add a second copy to the workspace (ensure's per-runtime gate).
+func TestGitGuardCheck_UserGuardNotDuplicated(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	if _, err := installGuard(apply.UserSettings(home)); err != nil {
+		t.Fatal(err)
+	}
+	c := gitGuardCheck(func() (string, error) { return apply.WorkspaceLocalSettings(ws), nil },
+		func() (string, error) { return apply.UserSettings(home), nil })
+	if ok, detail := c.Run(); !ok || !strings.Contains(detail, "up --apply") {
+		t.Fatalf("user guard: want ok naming up --apply, got ok=%v detail=%q", ok, detail)
+	}
+	c.Fix()
+	if ok, _ := guardInstalled(apply.WorkspaceLocalSettings(ws)); ok {
+		t.Fatal("Fix wired a second git-guard into the workspace")
+	}
+}
+
+// Before up migrates, the kit permissions live at user level: Fix writes nothing.
+func TestKitPermissionsCheck_UserInstallLeftAlone(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	if _, err := apply.EnsureGlobalHooks(apply.UserSettings(home), false); err != nil {
+		t.Fatal(err)
+	}
+	c := kitPermissionsCheck(func() (string, error) { return home, nil }, func() (string, error) { return ws, nil })
+	if ok, detail := c.Run(); !ok || !strings.Contains(detail, "up --apply") {
+		t.Fatalf("user install: want ok naming up --apply, got ok=%v detail=%q", ok, detail)
+	}
+	c.Fix()
+	if _, err := os.Stat(apply.WorkspaceLocalSettings(ws)); err == nil {
+		t.Fatal("Fix wrote workspace permissions while the user install is active")
+	}
+}
+
+// A rule the user removed at user level stays removed when doctor --fix
+// installs the workspace permissions.
+func TestKitPermissionsCheck_FixKeepsUserRemovals(t *testing.T) {
+	home, ws := t.TempDir(), t.TempDir()
+	user := apply.UserKitTarget(home)
+	if _, err := apply.EnsureKitPermissions(user, false); err != nil {
+		t.Fatal(err)
+	}
+	gone := apply.KitAllowRules[0]
+	b, _ := os.ReadFile(user.Settings)
+	if err := os.WriteFile(user.Settings, []byte(strings.Replace(string(b), `"`+gone+`",`, "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := kitPermissionsCheck(func() (string, error) { return home, nil }, func() (string, error) { return ws, nil })
+	if ok, detail := c.Fix(); !ok {
+		t.Fatalf("Fix failed: %s", detail)
+	}
+	if local, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws)); strings.Contains(string(local), `"`+gone+`"`) {
+		t.Fatalf("doctor --fix re-added a user-removed rule: %s", local)
+	}
+}
+
+// FR-2.4: claude-trust fails until projects["<ws>"].hasTrustDialogAccepted is
+// true, names `zenify up --apply`, and never writes the file.
+func TestClaudeTrustCheck(t *testing.T) {
+	dir := t.TempDir()
+	p, ws := filepath.Join(dir, ".claude.json"), "/w/zenify"
+	if ok, d := claudeTrustCheck(p)(ws).Run(); ok || !strings.Contains(d, "zenify up --apply") {
+		t.Fatalf("missing file: ok=%v %q", ok, d)
+	}
+	for _, body := range []string{`{"projects": {}}`, `{"projects": {"/w/zenify": {"hasTrustDialogAccepted": false}}}`, `{"projects": `} {
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if ok, d := claudeTrustCheck(p)(ws).Run(); ok || !strings.Contains(d, "zenify up --apply") {
+			t.Errorf("%s: ok=%v %q", body, ok, d)
+		}
+		if b, _ := os.ReadFile(p); string(b) != body {
+			t.Errorf("%s: check wrote the file", body)
+		}
+	}
+	if err := os.WriteFile(p, []byte(`{"projects": {"/w/zenify": {"hasTrustDialogAccepted": true}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if ok, d := claudeTrustCheck(p)(ws).Run(); !ok {
+		t.Fatalf("trusted: %q", d)
 	}
 }

@@ -100,7 +100,7 @@ type HookChanges struct {
 
 func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 
-// EnsureGlobalHooks merges the znf hook entries into <home>/.claude/settings.json.
+// EnsureGlobalHooks merges the znf hook entries into the settings file at settingsPath.
 // Idempotent by marker; atomic write; fail-open on malformed input.
 //
 // Only the "hooks" subtree is decoded and normalized — every other top-level
@@ -114,19 +114,17 @@ func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 // package (see writeEnv in subagentmodel.go, which reformats the whole file
 // by design) — so this is foreign-value content-and-order preservation, not
 // byte-for-byte identity or top-level key-order preservation.
-func EnsureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
-
+func EnsureGlobalHooks(settingsPath string, dryRun bool) (HookChanges, error) {
 	root := map[string]json.RawMessage{}
 	mode := os.FileMode(0o644)
-	existing, readErr := os.ReadFile(path) //nolint:gosec // G304 -- path is ~/.claude/settings.json, computed from the caller's home dir, not user input
+	existing, readErr := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is ~/.claude/settings.json, computed by the caller, not user input
 	switch {
 	case readErr == nil:
 		if err := json.Unmarshal(existing, &root); err != nil {
 			// Malformed: do NOT touch. Caller fail-opens.
 			return HookChanges{Skipped: true}, fmt.Errorf("settings.json malformed, skipping hook wiring: %w", err)
 		}
-		if fi, statErr := os.Stat(path); statErr == nil {
+		if fi, statErr := os.Stat(settingsPath); statErr == nil {
 			mode = fi.Mode().Perm()
 		}
 	case !os.IsNotExist(readErr):
@@ -168,10 +166,43 @@ func EnsureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
 	if err != nil {
 		return ch, err
 	}
-	if err := writeAtomic(path, out, mode); err != nil {
+	if err := writeAtomic(settingsPath, out, mode); err != nil {
 		return ch, err
 	}
 	return ch, nil
+}
+
+// HasUserKitHooks reports whether the settings file at settingsPath has at
+// least one hook command carrying the `zenify hooks-run ` marker. A missing
+// file is false; a malformed one is an error.
+func HasUserKitHooks(settingsPath string) (bool, error) {
+	raw, err := os.ReadFile(settingsPath) //nolint:gosec // G304 -- settings path computed by the caller
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var s struct {
+		Hooks map[string]any `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return false, fmt.Errorf("%s malformed: %w", settingsPath, err)
+	}
+	for _, ev := range s.Hooks {
+		groups, _ := ev.([]any)
+		for _, g := range groups {
+			gm, _ := g.(map[string]any)
+			inner, _ := gm["hooks"].([]any)
+			for _, h := range inner {
+				hm, _ := h.(map[string]any)
+				if cmd, _ := hm["command"].(string); isZnfMarked(cmd) {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
 }
 
 // mergeOneHook ensures spec's command sits in the group whose matcher equals
@@ -381,6 +412,9 @@ func EnsureCodexHooks(codexHome string, dryRun bool) (HookChanges, error) {
 	case readErr == nil:
 		if err := json.Unmarshal(existing, &root); err != nil {
 			return HookChanges{Skipped: true}, fmt.Errorf("hooks.json malformed, skipping hook wiring: %w", err)
+		}
+		if root == nil {
+			return HookChanges{Skipped: true}, fmt.Errorf("hooks.json is null, skipping hook wiring")
 		}
 		if fi, statErr := os.Stat(path); statErr == nil {
 			mode = fi.Mode().Perm()

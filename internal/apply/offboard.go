@@ -19,13 +19,12 @@ type HookRemoval struct {
 }
 
 // RemoveGlobalHooks removes every hook entry zenify wired (command starting with
-// hookMarker) from <home>/.claude/settings.json. Reverses EnsureGlobalHooks:
+// hookMarker) from the settings file at settingsPath. Reverses EnsureGlobalHooks:
 // keeps every foreign hook and every other top-level key intact; a group/event
 // left empty after removal is dropped. Atomic write; fail-open (malformed →
 // Skipped, no edit). In dryRun it only counts.
-func RemoveGlobalHooks(home string, dryRun bool) (HookRemoval, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
-	existing, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed ~/.claude path, not externally-tainted
+func RemoveGlobalHooks(settingsPath string, dryRun bool) (HookRemoval, error) {
+	existing, err := os.ReadFile(settingsPath) //nolint:gosec // G304 -- fixed ~/.claude path, not externally-tainted
 	if err != nil {
 		if os.IsNotExist(err) {
 			return HookRemoval{}, nil // nothing to remove
@@ -33,7 +32,7 @@ func RemoveGlobalHooks(home string, dryRun bool) (HookRemoval, error) {
 		return HookRemoval{Skipped: true}, fmt.Errorf("read settings.json: %w", err)
 	}
 	var mode os.FileMode = 0o644
-	if fi, statErr := os.Stat(path); statErr == nil {
+	if fi, statErr := os.Stat(settingsPath); statErr == nil {
 		mode = fi.Mode().Perm()
 	}
 
@@ -101,7 +100,7 @@ func RemoveGlobalHooks(home string, dryRun bool) (HookRemoval, error) {
 	if err != nil {
 		return HookRemoval{Removed: removed}, err
 	}
-	if err := writeAtomic(path, out, mode); err != nil {
+	if err := writeAtomic(settingsPath, out, mode); err != nil {
 		return HookRemoval{Removed: removed}, err
 	}
 	return HookRemoval{Removed: removed}, nil

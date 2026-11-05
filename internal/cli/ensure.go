@@ -11,74 +11,138 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 )
 
 // ensureReport carries what the Codex steps of ensureWorkspace found, for the
-// `zenify up` summary block (FR-7.2).
+// `zenify up` summary block (FR-7.2), and every local install step that failed.
 type ensureReport struct {
 	CodexInstalled bool
 	CodexLinkPath  string
 	CodexHooks     apply.HookChanges
 	CodexAgents    int
+	// LocalErrs has one "<step>: <err>" entry per local install step that failed.
+	LocalErrs []string
 }
 
-// ensureWorkspace brings a workspace to the state the kit expects (W0 FR-01):
+// ensureOpts tunes ensureWorkspace. ForceLocal (set by `up`) writes the local
+// hooks, git-guard, env and permissions even while ~/.claude/settings.json
+// still holds the kit hooks; SessionStart and `zenify ensure` leave it false.
+type ensureOpts struct{ ForceLocal bool }
+
+// ensureWorkspace brings a workspace to the state the kit expects (W0 FR-01).
+// Every kit write lands in the workspace (FR-1.6):
 //
-//  1. re-materialize the znf plugin when the installed stamp is behind the
-//     running binary (the former selfHeal);
-//  2. wire/migrate znf hooks in <home>/.claude/settings.json;
-//  3. pin the workspace default model in <workspace>/.claude/settings.json;
-//  4. create the workspace marker .zenify/manifest.json when missing;
-//  5. distribute the knowledge store's .config into the workspace
+//  1. re-materialize the marketplace and update the local znf plugin when the
+//     workspace's stamp is behind the running binary;
+//  2. link <ws>/.agents/skills/znf to the plugin skills for Codex;
+//  3. wire znf hooks, git-guard, the kit env keys (carrying a value the user
+//     set at user level) and permission lists in <ws>/.claude/settings.local.json.
+//     Unless opts.ForceLocal, each runtime is skipped while its own user copy
+//     remains (a machine `up` has not migrated, or a migration that failed part
+//     way), so no kit hook runs twice: znf hooks, env and permissions on the
+//     kit hooks in ~/.claude/settings.json, git-guard on the user git-guard
+//     (legacy script included). The skills link and the local plugin still
+//     install then, which only duplicates listings, not hook runs;
+//  4. with codex on PATH: <ws>/.codex hooks and the workspace trust entry in
+//     <codexHome>/config.toml (skipped while <codexHome>/hooks.json still has
+//     kit hooks), and the agents;
+//  5. pin the workspace default model in <workspace>/.claude/settings.json;
+//  6. create the workspace marker .zenify/manifest.json when missing;
+//  7. distribute the knowledge store's .config into the workspace
 //     (`zenify config --apply`).
 //
 // Every step is fail-open: an error is one "znf ensure:" line on stderr and
-// the next step still runs. stdout only gets a line when something changed,
-// so a SessionStart on an up-to-date workspace prints nothing.
-func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensureReport) {
+// the next step still runs; a failed local install step is also recorded in
+// rep.LocalErrs. stdout only gets a line when something changed, so a
+// SessionStart on an up-to-date workspace prints nothing.
+func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensureOpts) (rep ensureReport) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintln(stderr, "znf ensure: recovered:", r)
+			// The steps after the panic never ran: up keeps the user install.
+			rep.LocalErrs = append(rep.LocalErrs, fmt.Sprintf("panic: %v", r))
 		}
 	}()
+	localErr := func(step string, err error) {
+		fmt.Fprintf(stderr, "znf ensure: %s: %v\n", step, err)
+		rep.LocalErrs = append(rep.LocalErrs, step+": "+err.Error())
+	}
 
-	resyncPluginIfStale(home, stderr)
+	zh := zenifyHome(os.Getenv, func() (string, error) { return home, nil })
+	// pluginRunner is runClaudeIn outside tests (TestMain swaps it).
+	if err := resyncPluginLocal(workspace, zh, pluginRunner(workspace), stderr); err != nil {
+		rep.LocalErrs = append(rep.LocalErrs, "plugin: "+err.Error()) // already on stderr
+	}
 
-	// Codex discovers skills under ~/.agents/skills, so this runs whether or
-	// not codex is installed (FR-2.1).
-	rep.CodexLinkPath = filepath.Join(home, ".agents", "skills", "znf")
-	if st, err := apply.EnsureCodexSkillsLink(home, false); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: codex-skills:", err)
+	// Codex discovers skills under <ws>/.agents/skills, so this runs whether or
+	// not codex is installed (FR-4.1).
+	rep.CodexLinkPath = filepath.Join(workspace, ".agents", "skills", "znf")
+	if st, err := apply.EnsureCodexSkillsLink(rep.CodexLinkPath, filepath.Join(plugin.PluginDir(zh), "skills"), false); err != nil {
+		localErr("codex-skills", err)
 	} else if st == apply.LinkRealDir {
-		fmt.Fprintf(stderr, "znf ensure: codex-skills: %s là thư mục thật, bỏ qua\n", filepath.Join(home, ".agents", "skills", "znf")) //znf:allow-lang
+		fmt.Fprintf(stderr, "znf ensure: codex-skills: %s là thư mục thật, bỏ qua\n", rep.CodexLinkPath) //znf:allow-lang
 	}
 
-	if ch, err := apply.EnsureGlobalHooks(home, false); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: hooks:", err)
-	} else if n := ch.Added + ch.Updated; n > 0 {
-		fmt.Fprintf(stdout, "wired %d znf hooks\n", n)
+	local := apply.WorkspaceLocalSettings(workspace)
+	codexHome := codexHomeDir(home, os.Getenv)
+	// Each runtime is gated on its own user copy, so a migration that removed
+	// some user copies and failed on others never leaves one running twice.
+	// A probe that errors loads nothing at user level, so it does not gate.
+	wireLocal, wireGuard, wireCodex := true, true, true
+	if !opts.ForceLocal {
+		user := apply.UserSettings(home)
+		if userHooks, err := apply.HasUserKitHooks(user); err != nil {
+			fmt.Fprintln(stderr, "znf ensure: user-hooks:", err)
+		} else {
+			wireLocal = !userHooks
+		}
+		if userGuard, err := removeGuard(user, true); err == nil {
+			wireGuard = !userGuard
+		}
+		// Without codex on PATH nothing Codex is written and user Codex hooks
+		// `up` kept are inert, so they neither gate nor nudge.
+		if codexOnPath() && !userCodexIsWorkspace(codexHome, workspace) {
+			if ch, err := apply.RemoveCodexHooks(codexHome, true); err == nil {
+				wireCodex = ch.Removed == 0
+			}
+		}
+		if !wireLocal || !wireGuard || !wireCodex {
+			fmt.Fprintln(stdout, "kit vẫn cài ở cấp user; chạy zenify up --apply để chuyển sang workspace") //znf:allow-lang
+		}
 	}
 
+	if wireLocal {
+		if ch, err := apply.EnsureGlobalHooks(local, false); err != nil {
+			localErr("hooks", err)
+		} else if n := ch.Added + ch.Updated; n > 0 {
+			fmt.Fprintf(stdout, "wired %d znf hooks\n", n)
+		}
+
+	}
 	// git-guard is a separate hook from the znf set above (it predates it and
 	// `guard install` owns it), so it is wired here too — otherwise `up`
 	// never installs it and deploy branches are unguarded on every machine.
-	if changed, err := installGuard(home); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: git-guard:", err)
-	} else if changed {
-		fmt.Fprintln(stdout, "wired git-guard hook (blocks commit/push on deploy branches)")
+	if wireGuard {
+		if changed, err := installGuard(local); err != nil {
+			localErr("git-guard", err)
+		} else if changed {
+			fmt.Fprintln(stdout, "wired git-guard hook (blocks commit/push on deploy branches)")
+		}
 	}
 
 	if codexOnPath() {
 		rep.CodexInstalled = true
-		if ch, err := apply.EnsureCodexHooks(codexHomeDir(home, os.Getenv), false); err != nil {
-			fmt.Fprintln(stderr, "znf ensure: codex-hooks:", err)
-		} else if rep.CodexHooks = ch; ch.Added+ch.Updated > 0 {
-			fmt.Fprintln(stdout, "Codex hook chưa chạy cho tới khi bạn trust một lần: mở codex, gõ /hooks, chọn trust.") //znf:allow-lang
+		wsCodex := filepath.Join(workspace, ".codex")
+		if wireCodex {
+			if ch, err := apply.EnsureCodexHooks(wsCodex, false); err != nil {
+				localErr("codex-hooks", err)
+			} else if rep.CodexHooks = ch; ch.Added+ch.Updated > 0 {
+				fmt.Fprintln(stdout, "Codex hook chưa chạy cho tới khi bạn trust một lần: mở codex, gõ /hooks, chọn trust.") //znf:allow-lang
+			}
 		}
-		if ar, err := plugin.SyncCodexAgents(codexHomeDir(home, os.Getenv), false); err != nil {
-			fmt.Fprintln(stderr, "znf ensure: codex-agents:", err)
+		if ar, err := plugin.SyncCodexAgents(wsCodex, false); err != nil {
+			localErr("codex-agents", err)
 		} else {
 			rep.CodexAgents = len(ar.Written) + len(ar.Unchanged)
 			for _, n := range ar.Skipped {
@@ -86,6 +150,11 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 			}
 			for _, n := range ar.Removed {
 				fmt.Fprintf(stdout, "removed retired Codex agent %s.toml\n", n)
+			}
+		}
+		if wireCodex { // trust runs the workspace hooks, so it waits for them
+			if _, err := apply.EnsureCodexTrust(codexHome, workspace, false); err != nil {
+				localErr("codex-trust", err)
 			}
 		}
 	}
@@ -96,40 +165,56 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 		fmt.Fprintf(stdout, "pinned workspace model → %s\n", apply.DefaultModel)
 	}
 
-	if changed, err := apply.EnsureSubagentModelEnv(home, false); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: subagent model:", err)
-	} else if changed {
-		fmt.Fprintf(stdout, "set %s=%s in ~/.claude/settings.json (subagents that omit model now run there)\n",
-			apply.SubagentModelEnv, apply.SubagentModelDefault)
+	if wireLocal {
+		// A value the user chose at user level moves with them: the local file
+		// wins over the user one, so seeding the default there would shadow it.
+		for _, k := range []string{apply.SubagentModelEnv, apply.ReviewerEnv} {
+			if _, err := apply.CarryEnv(local, apply.UserSettings(home), k, false); err != nil {
+				localErr("env "+k, err)
+			}
+		}
+		if changed, err := apply.EnsureSubagentModelEnv(local, false); err != nil {
+			localErr("subagent model", err)
+		} else if changed {
+			fmt.Fprintf(stdout, "set %s=%s in .claude/settings.local.json (subagents that omit model now run there)\n",
+				apply.SubagentModelEnv, apply.SubagentModelDefault)
+		}
 	}
 
-	if changed, err := apply.RemoveStrongModelEnv(home, false); err != nil {
+	if changed, err := apply.RemoveStrongModelEnv(apply.UserSettings(home), false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: strong model:", err)
 	} else if changed {
 		fmt.Fprintf(stdout, "removed %s from ~/.claude/settings.json (select-route is gone)\n", apply.StrongModelEnv)
 	}
 
-	if changed, err := apply.EnsureReviewerEnv(home, false); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: reviewer:", err)
-	} else if changed {
-		fmt.Fprintf(stdout, "set %s=%s in ~/.claude/settings.json (zenify reviewer picks the review engine from it)\n",
-			apply.ReviewerEnv, apply.ReviewerDefault)
-	}
+	if wireLocal {
+		if changed, err := apply.EnsureReviewerEnv(local, false); err != nil {
+			localErr("reviewer", err)
+		} else if changed {
+			fmt.Fprintf(stdout, "set %s=%s in .claude/settings.local.json (zenify reviewer picks the review engine from it)\n",
+				apply.ReviewerEnv, apply.ReviewerDefault)
+		}
 
-	if n, err := apply.EnsureKitPermissions(home, false); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: permissions:", err)
-	} else if n > 0 {
-		fmt.Fprintf(stdout, "allowed %d kit tool rules in ~/.claude/settings.json\n", n)
-	}
-	if n, err := apply.EnsureKitSandbox(home, false); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: sandbox:", err)
-	} else if n > 0 {
-		fmt.Fprintf(stdout, "excluded %d kit commands from the Bash sandbox in ~/.claude/settings.json\n", n)
-	}
-	if n, err := apply.EnsureKitAsk(home, false); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: ask:", err)
-	} else if n > 0 {
-		fmt.Fprintf(stdout, "added %d kit ask rules (prd data writes prompt) in ~/.claude/settings.json\n", n)
+		// Rules the user removed at user level stay removed here.
+		if err := apply.SeedWorkspaceRecords(home, workspace); err != nil {
+			localErr("kit records", err)
+		}
+		kt := apply.WorkspaceKitTarget(home, workspace)
+		if n, err := apply.EnsureKitPermissions(kt, false); err != nil {
+			localErr("permissions", err)
+		} else if n > 0 {
+			fmt.Fprintf(stdout, "allowed %d kit tool rules in .claude/settings.local.json\n", n)
+		}
+		if n, err := apply.EnsureKitSandbox(kt, false); err != nil {
+			localErr("sandbox", err)
+		} else if n > 0 {
+			fmt.Fprintf(stdout, "excluded %d kit commands from the Bash sandbox in .claude/settings.local.json\n", n)
+		}
+		if n, err := apply.EnsureKitAsk(kt, false); err != nil {
+			localErr("ask", err)
+		} else if n > 0 {
+			fmt.Fprintf(stdout, "added %d kit ask rules (prd data writes prompt) in .claude/settings.local.json\n", n)
+		}
 	}
 
 	// The workspace marker: wt.FindWorkspaceRoot looks for .zenify/manifest.json,
@@ -201,22 +286,9 @@ func ensureWorkspaceMarker(workspace, home string) (string, error) {
 	return "", m.Save(marker)
 }
 
-// resyncPluginIfStale is the former selfHeal body: when the plugin manifest's
-// version stamp differs from the binary, re-run plugin.Sync. Fail-open.
-// dest/manifestPath are derived from home so this stays in step with the
-// sibling ensureWorkspace steps, which all key off the same home parameter
-// (plugin.DefaultDest/DefaultManifest independently call os.UserHomeDir).
-func resyncPluginIfStale(home string, stderr io.Writer) {
-	dest := filepath.Join(home, ".claude", "skills", "znf")
-	manifestPath := filepath.Join(dest, ".manifest.json")
-	stamp := ""
-	if m, err := managed.Load(manifestPath); err == nil {
-		stamp = m.Version
-	}
-	if stamp == version.Current() {
-		return
-	}
-	if _, err := plugin.Sync(dest, manifestPath); err != nil {
-		fmt.Fprintln(stderr, "znf ensure: plugin sync:", err)
-	}
+// userCodexIsWorkspace reports whether CODEX_HOME is <workspace>/.codex: the
+// Codex files there are the workspace install, not a user copy to gate on or
+// migrate away.
+func userCodexIsWorkspace(codexHome, workspace string) bool {
+	return samePath(codexHome, filepath.Join(workspace, ".codex"))
 }

@@ -22,7 +22,6 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/dbread"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/devenv"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ghx"
-	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
@@ -294,6 +293,17 @@ func settingsEnvCheck(envPath func() string, kitManifest func() *manifest.Manife
 	}
 }
 
+// workspaceLocalSettingsPath is <ws>/.claude/settings.local.json for the
+// workspace resolved from cwd.
+func workspaceLocalSettingsPath() (string, error) {
+	cwd, _ := os.Getwd()
+	ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
+	if !ok {
+		return "", errors.New("no workspace found — run inside a zenify workspace")
+	}
+	return apply.WorkspaceLocalSettings(ws), nil
+}
+
 // workspaceManifest loads the kit manifest for the workspace resolved from cwd;
 // nil when there is no workspace or the manifest cannot be loaded.
 func workspaceManifest() *manifest.Manifest {
@@ -396,72 +406,56 @@ func playwrightCheckWith(o playwright.Options, codex bool) (bool, string) {
 	return ok, detail
 }
 
-// pluginCheck reports whether the znf plugin has materialized: plugin.json exists
-// + is valid, the number of skills/agents shipped, and the number of files managed.
+// pluginCheck reports whether the znf plugin is enabled at local scope for the
+// workspace (enabledPlugins in .claude/settings.local.json) and its files exist
+// under the plugin marketplace. It does not call claude.
 func pluginCheck() Check {
-	dest, _ := plugin.DefaultDest()
-	return pluginCheckAt(dest)
+	return pluginCheckAt(workspaceLocalSettingsPath, plugin.PluginDir(zenifyHome(os.Getenv, os.UserHomeDir)))
 }
 
-func pluginCheckAt(dest string) Check {
+func pluginCheckAt(settings func() (string, error), pluginDir string) Check {
 	return Check{
 		Name: "znf-plugin",
 		Run: func() (bool, string) {
-			manifestPath := filepath.Join(dest, ".manifest.json")
-			pj := filepath.Join(dest, ".claude-plugin", "plugin.json")
-			b, err := os.ReadFile(pj) //nolint:gosec // G304 -- internal dest
+			p, err := settings()
 			if err != nil {
-				return false, "znf chưa cài (chạy `zenify skills sync`)" //znf:allow-lang
+				return false, err.Error()
 			}
-			var meta struct {
-				Name string `json:"name"`
+			var root struct {
+				EnabledPlugins map[string]bool `json:"enabledPlugins"`
 			}
-			if json.Unmarshal(b, &meta) != nil || meta.Name != "znf" {
-				return false, "plugin.json không hợp lệ" //znf:allow-lang
+			if b, rerr := os.ReadFile(p); rerr == nil { //nolint:gosec // G304 -- workspace settings path
+				if json.Unmarshal(b, &root) != nil {
+					return false, "settings.local.json không đọc được" //znf:allow-lang
+				}
 			}
-			m, err := managed.Load(manifestPath)
-			if err != nil {
-				return true, "ok — plugin.json hợp lệ (manifest không đọc được)" //znf:allow-lang
+			if !root.EnabledPlugins[plugin.PluginID] {
+				return false, "znf chưa bật ở workspace (chạy `zenify up --apply`)" //znf:allow-lang
 			}
-			skills := countDirs(filepath.Join(dest, "skills"))
-			agents := countFiles(filepath.Join(dest, "agents"))
-			return true, fmt.Sprintf("ok — %d skill, %d agent, %d file managed", skills, agents, len(m.Entries))
+			if _, err := os.Stat(pluginDir); err != nil {
+				return false, "znf đã bật nhưng thiếu thư mục plugin (chạy `zenify up --apply`)" //znf:allow-lang
+			}
+			return true, "ok — znf@zenify-kit bật ở workspace" //znf:allow-lang
 		},
 	}
 }
 
-// countDirs counts child directories that HAVE a SKILL.md (real skills); auxiliary
-// dirs like _shared are skipped; error → 0.
-func countDirs(dir string) int {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return 0
+// claudeTrustCheck fails unless projects["<ws>"].hasTrustDialogAccepted is true
+// in claudeJSON (FR-2.4): without it local MCP headersHelper never runs.
+// Read-only: it asks EnsureClaudeTrust for a dry run.
+func claudeTrustCheck(claudeJSON string) func(ws string) Check {
+	return func(ws string) Check {
+		return Check{Name: "claude-trust", Run: func() (bool, string) {
+			would, err := apply.EnsureClaudeTrust(claudeJSON, ws, true)
+			switch {
+			case err != nil:
+				return false, fmt.Sprintf("không đọc được %s: %v (chạy `zenify up --apply`)", claudeJSON, err) //znf:allow-lang
+			case would:
+				return false, "workspace chưa được trust trong ~/.claude.json, MCP grafana/posthog không có header (chạy `zenify up --apply`)" //znf:allow-lang
+			}
+			return true, "ok — workspace đã trust" //znf:allow-lang
+		}}
 	}
-	n := 0
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(dir, e.Name(), "SKILL.md")); err == nil {
-			n++
-		}
-	}
-	return n
-}
-
-// countFiles counts direct regular files; error → 0.
-func countFiles(dir string) int {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return 0
-	}
-	n := 0
-	for _, e := range entries {
-		if !e.IsDir() {
-			n++
-		}
-	}
-	return n
 }
 
 // dockerCheck reports whether Docker is available for `zenify visual`: docker on
@@ -489,18 +483,31 @@ func dockerCheckWith(lookPath func(string) (string, error), info func() error) C
 	}
 }
 
-// gitGuardCheck reports whether the git-guard PreToolUse hook is wired in
-// ~/.claude/settings.json. Fix installs it (the same idempotent edit as
-// `zenify guard install`).
-func gitGuardCheck(home func() (string, error)) Check {
+// gitGuardCheck reports whether the git-guard PreToolUse hook is wired in the
+// workspace's .claude/settings.local.json (settings resolves that path). Fix
+// installs it (the same idempotent edit as `zenify guard install`).
+func gitGuardCheck(settings, user func() (string, error)) Check {
+	// Before `up` migrates, git-guard runs from ~/.claude/settings.json (legacy
+	// script included); ensure does not add a workspace copy then, nor does doctor.
+	atUser := func() bool {
+		u, err := user()
+		if err != nil {
+			return false
+		}
+		ok, err := removeGuard(u, true)
+		return err == nil && ok
+	}
 	return Check{
 		Name: "git-guard",
 		Run: func() (bool, string) {
-			h, err := home()
-			if err != nil {
-				return false, "cannot resolve HOME"
+			if atUser() {
+				return true, "hook=installed at user level; run `zenify up --apply` to move it into the workspace"
 			}
-			ok, err := guardInstalled(h)
+			p, err := settings()
+			if err != nil {
+				return false, err.Error()
+			}
+			ok, err := guardInstalled(p)
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
@@ -510,11 +517,14 @@ func gitGuardCheck(home func() (string, error)) Check {
 			return true, "hook=installed"
 		},
 		Fix: func() (bool, string) {
-			h, err := home()
-			if err != nil {
-				return false, "cannot resolve HOME"
+			if atUser() {
+				return true, "git-guard still runs at user level; run `zenify up --apply`"
 			}
-			if _, err := installGuard(h); err != nil {
+			p, err := settings()
+			if err != nil {
+				return false, err.Error()
+			}
+			if _, err := installGuard(p); err != nil {
 				return false, err.Error()
 			}
 			return true, "wired PreToolUse → zenify git-guard"
@@ -523,25 +533,50 @@ func gitGuardCheck(home func() (string, error)) Check {
 }
 
 // kitPermissionsCheck reports whether the kit's Playwright/e2e allow rules and
-// sandbox exclusions are in ~/.claude/settings.json. Fix adds the missing ones
-// (same union as `up`).
-func kitPermissionsCheck(home func() (string, error)) Check {
+// sandbox exclusions are in the workspace's .claude/settings.local.json. Fix
+// adds the missing ones (same union as `up`).
+func kitPermissionsCheck(home, workspace func() (string, error)) Check {
+	target := func() (apply.KitTarget, string) {
+		h, err := home()
+		if err != nil {
+			return apply.KitTarget{}, "cannot resolve HOME"
+		}
+		ws, err := workspace()
+		if err != nil {
+			return apply.KitTarget{}, err.Error()
+		}
+		return apply.WorkspaceKitTarget(h, ws), ""
+	}
+	// Before `up` migrates, the kit permissions live at user level; ensure
+	// does not write a workspace copy then, nor does doctor.
+	atUser := func() bool {
+		h, err := home()
+		if err != nil {
+			return false
+		}
+		ok, err := apply.HasUserKitHooks(apply.UserSettings(h))
+		return err == nil && ok
+	}
+	const atUserMsg = "kit still installed at user level; run `zenify up --apply` to move it into the workspace"
 	return Check{
 		Name: "kit-permissions",
 		Run: func() (bool, string) {
-			h, err := home()
-			if err != nil {
-				return false, "cannot resolve HOME"
+			if atUser() {
+				return true, atUserMsg
 			}
-			n, err := apply.EnsureKitPermissions(h, true)
+			kt, msg := target()
+			if msg != "" {
+				return false, msg
+			}
+			n, err := apply.EnsureKitPermissions(kt, true)
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
-			s, err := apply.EnsureKitSandbox(h, true)
+			s, err := apply.EnsureKitSandbox(kt, true)
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
-			a, err := apply.EnsureKitAsk(h, true)
+			a, err := apply.EnsureKitAsk(kt, true)
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
@@ -551,19 +586,28 @@ func kitPermissionsCheck(home func() (string, error)) Check {
 			return true, "allow rules, sandbox exclusions and ask rules present"
 		},
 		Fix: func() (bool, string) {
-			h, err := home()
-			if err != nil {
-				return false, "cannot resolve HOME"
+			if atUser() {
+				return true, atUserMsg
 			}
-			n, err := apply.EnsureKitPermissions(h, false)
+			kt, msg := target()
+			if msg != "" {
+				return false, msg
+			}
+			// Rules the user removed at user level stay removed (as ensure does).
+			h, _ := home()
+			ws, _ := workspace()
+			if err := apply.SeedWorkspaceRecords(h, ws); err != nil {
+				return false, err.Error()
+			}
+			n, err := apply.EnsureKitPermissions(kt, false)
 			if err != nil {
 				return false, err.Error()
 			}
-			s, err := apply.EnsureKitSandbox(h, false)
+			s, err := apply.EnsureKitSandbox(kt, false)
 			if err != nil {
 				return false, err.Error()
 			}
-			a, err := apply.EnsureKitAsk(h, false)
+			a, err := apply.EnsureKitAsk(kt, false)
 			if err != nil {
 				return false, err.Error()
 			}
@@ -611,9 +655,22 @@ func registerDefaultChecks() {
 	RegisterCheck(brokerCredsCheck())
 	RegisterCheck(dbToolsCheck())
 	RegisterCheck(playwrightCheck())
-	RegisterCheck(kitPermissionsCheck(os.UserHomeDir))
+	RegisterCheck(kitPermissionsCheck(os.UserHomeDir, func() (string, error) {
+		cwd, _ := os.Getwd()
+		ws, _, ok := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
+		if !ok {
+			return "", errors.New("no workspace found — run inside a zenify workspace")
+		}
+		return ws, nil
+	}))
 	RegisterCheck(dockerCheck())
-	RegisterCheck(gitGuardCheck(os.UserHomeDir))
+	RegisterCheck(gitGuardCheck(workspaceLocalSettingsPath, func() (string, error) {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return apply.UserSettings(h), nil
+	}))
 	RegisterCheck(gitIdentityCheck())
 	RegisterCheck(shimsCheck(exec.LookPath))
 	npmInteractive := func() bool {
@@ -622,6 +679,9 @@ func registerDefaultChecks() {
 	RegisterCheck(npmTokenCheck(workspaceRepoDirs, currentGH{}, currentShellProfile,
 		npmTokenFix(currentGH{}, currentShellProfile, npmInteractive, npmRefresh(os.Stderr))))
 	RegisterCheck(pluginCheck())
+	if home, err := os.UserHomeDir(); err == nil {
+		RegisterCheck(wsCheck("claude-trust", claudeTrustCheck(apply.ClaudeJSON(home))))
+	}
 	registerCodexChecks()
 	registerContextChecks()
 }
