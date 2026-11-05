@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/managed"
 )
 
@@ -106,5 +107,38 @@ func TestSkillsSync_WiresHooks(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "zenify hooks-run docs-sync") {
 		t.Fatal("skills sync did not wire znf hooks")
+	}
+}
+
+// Before up migrates, the kit hooks still live in ~/.claude/settings.json:
+// skills sync must not add local copies, or every hook runs twice.
+func TestSkillsSync_SkipsHooksWhileUserHooksPresent(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	if _, err := apply.EnsureGlobalHooks(apply.UserSettings(home), false); err != nil {
+		t.Fatal(err)
+	}
+	ws := t.TempDir()
+	if err := writePluginStamp(ws); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "manifest.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(ws)
+
+	cmd := newSkillsCmd()
+	cmd.SetArgs([]string{"sync"})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("skills sync: %v", err)
+	}
+	if b, _ := os.ReadFile(apply.WorkspaceLocalSettings(ws)); strings.Contains(string(b), "zenify hooks-run") {
+		t.Fatalf("local hooks wired beside the user hooks: %s", b)
+	}
+	if !strings.Contains(out.String(), "zenify up --apply") {
+		t.Errorf("no migrate nudge: %q", out.String())
 	}
 }

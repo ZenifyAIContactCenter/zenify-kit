@@ -34,6 +34,12 @@ func newSkillsCmd() *cobra.Command {
 				fmt.Sprintf("%d ghi, %d giữ (user sửa), %d không đổi, %d gỡ → %s", //znf:allow-lang
 					len(res.Written), len(res.Kept), len(res.Skipped), len(res.Removed), plugin.PluginDir(zh)))
 
+			// Same gate as ensureWorkspace: while the kit hooks still live in
+			// ~/.claude/settings.json, local copies would make every hook run twice.
+			if wsOK && userKitHooksPresent() {
+				u.Step(ui.StatusInfo, "kit vẫn cài ở cấp user; chạy zenify up --apply để chuyển sang workspace", "") //znf:allow-lang
+				wsOK = false
+			}
 			if wsOK {
 				ch, err := apply.EnsureGlobalHooks(apply.WorkspaceLocalSettings(ws), false)
 				if err != nil {
@@ -91,4 +97,15 @@ func newSkillsCmd() *cobra.Command {
 	cmd.AddCommand(install)
 
 	return cmd
+}
+
+// userKitHooksPresent reports whether ~/.claude/settings.json still holds kit
+// hooks (a machine `zenify up --apply` has not migrated yet).
+func userKitHooksPresent() bool {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	ok, err := apply.HasUserKitHooks(apply.UserSettings(home))
+	return err == nil && ok
 }
