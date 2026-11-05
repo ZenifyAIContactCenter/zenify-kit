@@ -10,6 +10,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// removeOnUnlock: unlink the lock file on release (older binaries wait while it exists).
+const removeOnUnlock = true
+
 // tryLockFile takes an exclusive flock without blocking; busy = another holder has it.
 func tryLockFile(f *os.File) (busy bool, err error) {
 	err = unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB) //nolint:gosec // G115 -- fd fits int

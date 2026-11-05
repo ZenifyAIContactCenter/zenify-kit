@@ -10,6 +10,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// removeOnUnlock is false: a deleted file that another process still holds open blocks
+// re-creating its name until every handle closes.
+const removeOnUnlock = false
+
 // lockRange is the locked byte, at 4 GiB: far past the PID, so the PID stays readable
 // (LockFileEx ranges are mandatory) and locking past EOF is allowed.
 func lockRange() *windows.Overlapped { return &windows.Overlapped{OffsetHigh: 1} }

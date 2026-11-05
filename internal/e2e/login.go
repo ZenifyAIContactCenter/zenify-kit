@@ -23,6 +23,9 @@ const (
 	pinnedPlaywrightVersion = "1.64.1"
 	defaultLockWait         = 120 * time.Second
 	lockPoll                = 500 * time.Millisecond
+	// staleLockAge is how long an empty lock file — the O_EXCL lock of older zenify
+	// binaries, which hold no OS lock — counts as held; older ones are abandoned.
+	staleLockAge = 10 * time.Minute
 )
 
 // LoginOptions configures Login. Credentials are read only through Getenv by the
@@ -60,32 +63,80 @@ var (
 
 // acquireLock takes an OS lock (flock; LockFileEx on windows) on path and returns the
 // open file holding it. The OS releases it when every process sharing that open file
-// is gone, so a killed run never leaves a lock behind and there is nothing to break.
-// The PID written into the file is for humans only.
+// is gone, so a killed run never leaves a held lock behind. The file holds our PID.
+// Older binaries lock by an empty O_EXCL file: an existing empty file younger than
+// staleLockAge is theirs, so we wait as they would.
 func acquireLock(path string, wait time.Duration) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // G304 -- path built from home
-	if err != nil {
-		return nil, err
-	}
 	deadline := time.Now().Add(wait)
 	for {
-		busy, err := tryLockFile(f)
-		if err != nil {
-			_ = f.Close()
-			return nil, err
-		}
-		if !busy {
-			if err := f.Truncate(0); err == nil {
-				_, _ = f.WriteAt([]byte(strconv.Itoa(os.Getpid())), 0)
-			}
-			return f, nil
+		f, err := takeLockFile(path)
+		if err != nil || f != nil {
+			return f, err
 		}
 		if time.Now().After(deadline) {
-			_ = f.Close()
 			return nil, errors.New("harness locked by another e2e login or run")
 		}
 		time.Sleep(lockPoll)
 	}
+}
+
+// afterLockFileOpen is a test seam (nil in production): it runs between opening the
+// lock file and locking it, where an unlink by the previous holder can land.
+var afterLockFileOpen func()
+
+// takeLockFile makes one attempt: (file, nil) holding the lock, (nil, nil) busy.
+func takeLockFile(path string) (*os.File, error) {
+	created := true
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o600) //nolint:gosec // G304 -- path built from home
+	if errors.Is(err, os.ErrExist) {
+		created = false
+		f, err = os.OpenFile(path, os.O_RDWR, 0o600) //nolint:gosec // G304 -- path built from home
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil // removed between the two opens: retry
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	if afterLockFileOpen != nil {
+		afterLockFileOpen()
+	}
+	if created {
+		// Never leave our own file empty: an empty file reads as an older binary's lock.
+		_, _ = f.WriteAt([]byte(strconv.Itoa(os.Getpid())), 0)
+	}
+	busy, err := tryLockFile(f)
+	if err != nil || busy {
+		_ = f.Close()
+		return nil, err
+	}
+	if !created && legacyHeld(f) || !samePath(f, path) {
+		// An older binary holds it, or the file we locked was unlinked by the
+		// holder before us (unlock removes it): retry on the path's current file.
+		_ = unlockFile(f)
+		_ = f.Close()
+		return nil, nil
+	}
+	if err := f.Truncate(0); err == nil {
+		_, _ = f.WriteAt([]byte(strconv.Itoa(os.Getpid())), 0)
+	}
+	return f, nil
+}
+
+// legacyHeld: an empty lock file younger than staleLockAge (older binaries' lock).
+func legacyHeld(f *os.File) bool {
+	st, err := f.Stat()
+	return err == nil && st.Size() == 0 && time.Since(st.ModTime()) < staleLockAge
+}
+
+// samePath reports whether path still names the open file f.
+func samePath(f *os.File, path string) bool {
+	fs, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	ps, err := os.Stat(path)
+	return err == nil && os.SameFile(fs, ps)
 }
 
 // PrepareHarness writes the harness and installs deps + chromium, under the lock.
@@ -105,7 +156,8 @@ func lockHarness(root string, wait time.Duration) (func(), error) {
 	if wait == 0 {
 		wait = defaultLockWait
 	}
-	f, err := acquireLock(filepath.Join(root, "harness.lock"), wait)
+	path := filepath.Join(root, "harness.lock")
+	f, err := acquireLock(path, wait)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +168,11 @@ func lockHarness(root string, wait time.Duration) (func(), error) {
 		heldMu.Lock()
 		heldLocks = slices.DeleteFunc(heldLocks, func(h *os.File) bool { return h == f })
 		heldMu.Unlock()
+		// Remove first, then unlock: a waiter that gets the old file sees it unlinked
+		// and retries. Older binaries wait while the file exists.
+		if removeOnUnlock && samePath(f, path) {
+			_ = os.Remove(path)
+		}
 		_ = unlockFile(f)
 		_ = f.Close()
 	}, nil
