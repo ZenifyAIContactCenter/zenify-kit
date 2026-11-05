@@ -58,7 +58,7 @@ func newReviewerSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := apply.SetReviewerEnv(home, args[0], false); err != nil {
+			if err := apply.SetReviewerEnv(apply.UserSettings(home), args[0], false); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", apply.ReviewerEnv, args[0])
@@ -79,7 +79,7 @@ func newReviewerGetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			v, err := apply.ReviewerEnvValue(home)
+			v, err := apply.ReviewerEnvValue(apply.UserSettings(home))
 			if err != nil {
 				return err
 			}

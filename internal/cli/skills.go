@@ -37,7 +37,7 @@ func newSkillsCmd() *cobra.Command {
 
 			home, _ := os.UserHomeDir()
 			if home != "" {
-				ch, err := apply.EnsureGlobalHooks(home, false)
+				ch, err := apply.EnsureGlobalHooks(apply.UserSettings(home), false)
 				if err != nil {
 					uiErr(cmd).Step(ui.StatusWarn, "could not wire znf hooks", err.Error())
 				} else if n := ch.Added + ch.Updated; n > 0 {

@@ -1,19 +1,14 @@
 // internal/apply/strongmodel.go
 package apply
 
-import (
-	"path/filepath"
-)
-
 // StrongModelEnv is the retired env var the kit used to seed for its own model
 // routing. The kit no longer sets it; RemoveStrongModelEnv cleans it up.
 const StrongModelEnv = "ZNF_STRONG_MODEL"
 
 // RemoveStrongModelEnv removes the retired key at any value (the kit no longer
 // reads it, so a hand-set value is dead too).
-func RemoveStrongModelEnv(home string, dryRun bool) (bool, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
-	root, mode, err := readSettingsRoot(path)
+func RemoveStrongModelEnv(settingsPath string, dryRun bool) (bool, error) {
+	root, mode, err := readSettingsRoot(settingsPath)
 	if err != nil {
 		return false, err
 	}
@@ -32,5 +27,5 @@ func RemoveStrongModelEnv(home string, dryRun bool) (bool, error) {
 		return true, nil
 	}
 	delete(env, StrongModelEnv)
-	return true, writeEnv(path, root, env, mode)
+	return true, writeEnv(settingsPath, root, env, mode)
 }

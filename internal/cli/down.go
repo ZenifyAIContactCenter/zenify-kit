@@ -47,7 +47,7 @@ func newDownCmd() *cobra.Command {
 
 			// 1. Global hooks.
 			if home, herr := os.UserHomeDir(); herr == nil && home != "" {
-				res, rerr := apply.RemoveGlobalHooks(home, dryRun)
+				res, rerr := apply.RemoveGlobalHooks(apply.UserSettings(home), dryRun)
 				switch {
 				case rerr != nil:
 					u.Step(ui.StatusWarn, "hooks", fmt.Sprintf("bỏ qua (%v)", rerr)) //znf:allow-lang
@@ -85,7 +85,7 @@ func newDownCmd() *cobra.Command {
 				}
 				// git-guard is not in the znf hook set RemoveGlobalHooks knows,
 				// but up/SessionStart install it, so offboarding removes it too.
-				gRemoved, gerr := removeGuard(home, dryRun)
+				gRemoved, gerr := removeGuard(guardSettingsPath(home), dryRun)
 				switch {
 				case gerr != nil:
 					u.Step(ui.StatusWarn, "git-guard", fmt.Sprintf("skipped (%v)", gerr))
@@ -94,42 +94,42 @@ func newDownCmd() *cobra.Command {
 				default:
 					u.Step(ui.StatusInfo, "git-guard", "no git-guard hook to remove")
 				}
-				removed, eerr := apply.RemoveSubagentModelEnv(home, dryRun)
+				removed, eerr := apply.RemoveSubagentModelEnv(apply.UserSettings(home), dryRun)
 				switch {
 				case eerr != nil:
 					u.Step(ui.StatusWarn, "env", fmt.Sprintf("bỏ qua (%v)", eerr)) //znf:allow-lang
 				case removed:
 					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.SubagentModelEnv)) //znf:allow-lang
 				}
-				removedStrong, serr := apply.RemoveStrongModelEnv(home, dryRun)
+				removedStrong, serr := apply.RemoveStrongModelEnv(apply.UserSettings(home), dryRun)
 				switch {
 				case serr != nil:
 					u.Step(ui.StatusWarn, "env", fmt.Sprintf("bỏ qua (%v)", serr)) //znf:allow-lang
 				case removedStrong:
 					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.StrongModelEnv)) //znf:allow-lang
 				}
-				removedRev, rverr := apply.RemoveReviewerEnv(home, dryRun)
+				removedRev, rverr := apply.RemoveReviewerEnv(apply.UserSettings(home), dryRun)
 				switch {
 				case rverr != nil:
 					u.Step(ui.StatusWarn, "env", fmt.Sprintf("bỏ qua (%v)", rverr)) //znf:allow-lang
 				case removedRev:
 					u.Step(ui.StatusOK, "env", fmt.Sprintf("gỡ %s khỏi ~/.claude/settings.json", apply.ReviewerEnv)) //znf:allow-lang
 				}
-				removedPerms, perr := apply.RemoveKitPermissions(home, dryRun)
+				removedPerms, perr := apply.RemoveKitPermissions(apply.UserKitTarget(home), dryRun)
 				switch {
 				case perr != nil:
 					u.Step(ui.StatusWarn, "permissions", fmt.Sprintf("bỏ qua (%v)", perr)) //znf:allow-lang
 				case removedPerms > 0:
 					u.Step(ui.StatusOK, "permissions", fmt.Sprintf("gỡ %d rule allow của kit khỏi ~/.claude/settings.json", removedPerms)) //znf:allow-lang
 				}
-				removedSbx, sberr := apply.RemoveKitSandbox(home, dryRun)
+				removedSbx, sberr := apply.RemoveKitSandbox(apply.UserKitTarget(home), dryRun)
 				switch {
 				case sberr != nil:
 					u.Step(ui.StatusWarn, "sandbox", fmt.Sprintf("bỏ qua (%v)", sberr)) //znf:allow-lang
 				case removedSbx > 0:
 					u.Step(ui.StatusOK, "sandbox", fmt.Sprintf("gỡ %d lệnh kit khỏi sandbox.excludedCommands", removedSbx)) //znf:allow-lang
 				}
-				removedAsk, aerr := apply.RemoveKitAsk(home, dryRun)
+				removedAsk, aerr := apply.RemoveKitAsk(apply.UserKitTarget(home), dryRun)
 				switch {
 				case aerr != nil:
 					u.Step(ui.StatusWarn, "ask", fmt.Sprintf("bỏ qua (%v)", aerr)) //znf:allow-lang

@@ -19,7 +19,7 @@ import (
 // settings.json is reported as a skip rather than an error, matching
 // EnsureGlobalHooks' own fail-open contract.
 func hooksRowState(home string) string {
-	ch, err := apply.EnsureGlobalHooks(home, true) // dryRun
+	ch, err := apply.EnsureGlobalHooks(apply.UserSettings(home), true) // dryRun
 	if err != nil || ch.Skipped {
 		return "skip: settings.json malformed"
 	}

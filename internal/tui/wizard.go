@@ -193,7 +193,7 @@ func RunOnboard(cfg OnboardConfig) (OnboardResult, error) {
 func printDone(w *os.File) {
 	fmt.Fprintln(w, "onboarding complete")
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		if ch, err := apply.EnsureGlobalHooks(home, true); err == nil {
+		if ch, err := apply.EnsureGlobalHooks(apply.UserSettings(home), true); err == nil {
 			fmt.Fprintf(w, "wired %d znf hooks into ~/.claude/settings.json\n", ch.Total())
 		}
 	}

@@ -106,7 +106,7 @@ func TestDown_DryRun_NoWritesAndNonGoalsUntouched(t *testing.T) {
 	if err := applyCmd.Execute(); err != nil {
 		t.Fatalf("down --apply: %v", err)
 	}
-	if ok, err := guardInstalled(home); err != nil || ok {
+	if ok, err := guardInstalled(guardSettingsPath(home)); err != nil || ok {
 		t.Errorf("down --apply must remove git-guard, installed=%v err=%v", ok, err)
 	}
 }

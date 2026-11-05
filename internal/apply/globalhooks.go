@@ -100,7 +100,7 @@ type HookChanges struct {
 
 func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 
-// EnsureGlobalHooks merges the znf hook entries into <home>/.claude/settings.json.
+// EnsureGlobalHooks merges the znf hook entries into the settings file at settingsPath.
 // Idempotent by marker; atomic write; fail-open on malformed input.
 //
 // Only the "hooks" subtree is decoded and normalized — every other top-level
@@ -114,19 +114,17 @@ func (c HookChanges) Total() int { return c.Added + c.Updated + c.Unchanged }
 // package (see writeEnv in subagentmodel.go, which reformats the whole file
 // by design) — so this is foreign-value content-and-order preservation, not
 // byte-for-byte identity or top-level key-order preservation.
-func EnsureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
-
+func EnsureGlobalHooks(settingsPath string, dryRun bool) (HookChanges, error) {
 	root := map[string]json.RawMessage{}
 	mode := os.FileMode(0o644)
-	existing, readErr := os.ReadFile(path) //nolint:gosec // G304 -- path is ~/.claude/settings.json, computed from the caller's home dir, not user input
+	existing, readErr := os.ReadFile(settingsPath) //nolint:gosec // G304 -- path is ~/.claude/settings.json, computed by the caller, not user input
 	switch {
 	case readErr == nil:
 		if err := json.Unmarshal(existing, &root); err != nil {
 			// Malformed: do NOT touch. Caller fail-opens.
 			return HookChanges{Skipped: true}, fmt.Errorf("settings.json malformed, skipping hook wiring: %w", err)
 		}
-		if fi, statErr := os.Stat(path); statErr == nil {
+		if fi, statErr := os.Stat(settingsPath); statErr == nil {
 			mode = fi.Mode().Perm()
 		}
 	case !os.IsNotExist(readErr):
@@ -168,7 +166,7 @@ func EnsureGlobalHooks(home string, dryRun bool) (HookChanges, error) {
 	if err != nil {
 		return ch, err
 	}
-	if err := writeAtomic(path, out, mode); err != nil {
+	if err := writeAtomic(settingsPath, out, mode); err != nil {
 		return ch, err
 	}
 	return ch, nil

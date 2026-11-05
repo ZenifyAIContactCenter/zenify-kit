@@ -652,7 +652,7 @@ func provisionPlaywright(w, errW io.Writer, frontend, codex bool, po playwright.
 			_, _ = fmt.Fprintf(w, "playwright: đã gỡ MCP \"playwright\" của kit (%s)\n", t) //znf:allow-lang
 		}
 	}
-	if _, err := apply.RemoveRetiredKitPermissions(po.Home, false); err != nil {
+	if _, err := apply.RemoveRetiredKitPermissions(apply.UserKitTarget(po.Home), false); err != nil {
 		_, _ = fmt.Fprintf(errW, "warning: playwright permissions: %v\n", err)
 	}
 }
@@ -756,7 +756,7 @@ func newUpCmd() *cobra.Command {
 					return exitcode.New(exitcode.BadArgs, fmt.Errorf("--reviewer %q: want agent or codex", reviewer))
 				}
 				if home, herr := os.UserHomeDir(); herr == nil && home != "" {
-					if err := apply.SetReviewerEnv(home, reviewer, !applyFlag); err != nil {
+					if err := apply.SetReviewerEnv(apply.UserSettings(home), reviewer, !applyFlag); err != nil {
 						fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
 					}
 				}

@@ -500,7 +500,7 @@ func gitGuardCheck(home func() (string, error)) Check {
 			if err != nil {
 				return false, "cannot resolve HOME"
 			}
-			ok, err := guardInstalled(h)
+			ok, err := guardInstalled(guardSettingsPath(h))
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
@@ -514,7 +514,7 @@ func gitGuardCheck(home func() (string, error)) Check {
 			if err != nil {
 				return false, "cannot resolve HOME"
 			}
-			if _, err := installGuard(h); err != nil {
+			if _, err := installGuard(guardSettingsPath(h)); err != nil {
 				return false, err.Error()
 			}
 			return true, "wired PreToolUse → zenify git-guard"
@@ -533,15 +533,15 @@ func kitPermissionsCheck(home func() (string, error)) Check {
 			if err != nil {
 				return false, "cannot resolve HOME"
 			}
-			n, err := apply.EnsureKitPermissions(h, true)
+			n, err := apply.EnsureKitPermissions(apply.UserKitTarget(h), true)
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
-			s, err := apply.EnsureKitSandbox(h, true)
+			s, err := apply.EnsureKitSandbox(apply.UserKitTarget(h), true)
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
-			a, err := apply.EnsureKitAsk(h, true)
+			a, err := apply.EnsureKitAsk(apply.UserKitTarget(h), true)
 			if err != nil {
 				return false, fmt.Sprintf("settings.json unreadable: %v", err)
 			}
@@ -555,15 +555,15 @@ func kitPermissionsCheck(home func() (string, error)) Check {
 			if err != nil {
 				return false, "cannot resolve HOME"
 			}
-			n, err := apply.EnsureKitPermissions(h, false)
+			n, err := apply.EnsureKitPermissions(apply.UserKitTarget(h), false)
 			if err != nil {
 				return false, err.Error()
 			}
-			s, err := apply.EnsureKitSandbox(h, false)
+			s, err := apply.EnsureKitSandbox(apply.UserKitTarget(h), false)
 			if err != nil {
 				return false, err.Error()
 			}
-			a, err := apply.EnsureKitAsk(h, false)
+			a, err := apply.EnsureKitAsk(apply.UserKitTarget(h), false)
 			if err != nil {
 				return false, err.Error()
 			}

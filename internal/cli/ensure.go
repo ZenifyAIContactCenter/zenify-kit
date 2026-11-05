@@ -55,7 +55,7 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 		fmt.Fprintf(stderr, "znf ensure: codex-skills: %s là thư mục thật, bỏ qua\n", filepath.Join(home, ".agents", "skills", "znf")) //znf:allow-lang
 	}
 
-	if ch, err := apply.EnsureGlobalHooks(home, false); err != nil {
+	if ch, err := apply.EnsureGlobalHooks(apply.UserSettings(home), false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: hooks:", err)
 	} else if n := ch.Added + ch.Updated; n > 0 {
 		fmt.Fprintf(stdout, "wired %d znf hooks\n", n)
@@ -64,7 +64,7 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 	// git-guard is a separate hook from the znf set above (it predates it and
 	// `guard install` owns it), so it is wired here too — otherwise `up`
 	// never installs it and deploy branches are unguarded on every machine.
-	if changed, err := installGuard(home); err != nil {
+	if changed, err := installGuard(guardSettingsPath(home)); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: git-guard:", err)
 	} else if changed {
 		fmt.Fprintln(stdout, "wired git-guard hook (blocks commit/push on deploy branches)")
@@ -96,37 +96,37 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer) (rep ensu
 		fmt.Fprintf(stdout, "pinned workspace model → %s\n", apply.DefaultModel)
 	}
 
-	if changed, err := apply.EnsureSubagentModelEnv(home, false); err != nil {
+	if changed, err := apply.EnsureSubagentModelEnv(apply.UserSettings(home), false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: subagent model:", err)
 	} else if changed {
 		fmt.Fprintf(stdout, "set %s=%s in ~/.claude/settings.json (subagents that omit model now run there)\n",
 			apply.SubagentModelEnv, apply.SubagentModelDefault)
 	}
 
-	if changed, err := apply.RemoveStrongModelEnv(home, false); err != nil {
+	if changed, err := apply.RemoveStrongModelEnv(apply.UserSettings(home), false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: strong model:", err)
 	} else if changed {
 		fmt.Fprintf(stdout, "removed %s from ~/.claude/settings.json (select-route is gone)\n", apply.StrongModelEnv)
 	}
 
-	if changed, err := apply.EnsureReviewerEnv(home, false); err != nil {
+	if changed, err := apply.EnsureReviewerEnv(apply.UserSettings(home), false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: reviewer:", err)
 	} else if changed {
 		fmt.Fprintf(stdout, "set %s=%s in ~/.claude/settings.json (zenify reviewer picks the review engine from it)\n",
 			apply.ReviewerEnv, apply.ReviewerDefault)
 	}
 
-	if n, err := apply.EnsureKitPermissions(home, false); err != nil {
+	if n, err := apply.EnsureKitPermissions(apply.UserKitTarget(home), false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: permissions:", err)
 	} else if n > 0 {
 		fmt.Fprintf(stdout, "allowed %d kit tool rules in ~/.claude/settings.json\n", n)
 	}
-	if n, err := apply.EnsureKitSandbox(home, false); err != nil {
+	if n, err := apply.EnsureKitSandbox(apply.UserKitTarget(home), false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: sandbox:", err)
 	} else if n > 0 {
 		fmt.Fprintf(stdout, "excluded %d kit commands from the Bash sandbox in ~/.claude/settings.json\n", n)
 	}
-	if n, err := apply.EnsureKitAsk(home, false); err != nil {
+	if n, err := apply.EnsureKitAsk(apply.UserKitTarget(home), false); err != nil {
 		fmt.Fprintln(stderr, "znf ensure: ask:", err)
 	} else if n > 0 {
 		fmt.Fprintf(stdout, "added %d kit ask rules (prd data writes prompt) in ~/.claude/settings.json\n", n)

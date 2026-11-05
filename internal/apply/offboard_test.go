@@ -37,7 +37,7 @@ func TestRemoveGlobalHooks_RemovesZnfKeepsForeign(t *testing.T) {
 		},
 	})
 
-	res, err := RemoveGlobalHooks(home, false)
+	res, err := RemoveGlobalHooks(UserSettings(home), false)
 	if err != nil {
 		t.Fatalf("RemoveGlobalHooks: %v", err)
 	}

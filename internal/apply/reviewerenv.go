@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 )
 
 // ReviewerEnv is the env var `zenify reviewer` reads to pick the review
@@ -15,11 +14,10 @@ const ReviewerEnv = "ZNF_REVIEWER"
 // ReviewerDefault is what the kit seeds: agent.
 const ReviewerDefault = "agent"
 
-// EnsureReviewerEnv sets env.ZNF_REVIEWER in <home>/.claude/settings.json
+// EnsureReviewerEnv sets env.ZNF_REVIEWER in the settings file at settingsPath
 // only when the key is absent (same contract as EnsureSubagentModelEnv).
-func EnsureReviewerEnv(home string, dryRun bool) (bool, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
-	root, mode, err := readSettingsRoot(path)
+func EnsureReviewerEnv(settingsPath string, dryRun bool) (bool, error) {
+	root, mode, err := readSettingsRoot(settingsPath)
 	if err != nil {
 		return false, err
 	}
@@ -35,16 +33,15 @@ func EnsureReviewerEnv(home string, dryRun bool) (bool, error) {
 	}
 	val, _ := json.Marshal(ReviewerDefault)
 	env[ReviewerEnv] = json.RawMessage(val)
-	return true, writeEnv(path, root, env, mode)
+	return true, writeEnv(settingsPath, root, env, mode)
 }
 
 // SetReviewerEnv overwrites env.ZNF_REVIEWER with value (agent or codex).
-func SetReviewerEnv(home, value string, dryRun bool) error {
+func SetReviewerEnv(settingsPath, value string, dryRun bool) error {
 	if value != "agent" && value != "codex" {
 		return fmt.Errorf("reviewer %q: want agent or codex", value)
 	}
-	path := filepath.Join(home, ".claude", "settings.json")
-	root, mode, err := readSettingsRoot(path)
+	root, mode, err := readSettingsRoot(settingsPath)
 	if err != nil {
 		return err
 	}
@@ -57,13 +54,13 @@ func SetReviewerEnv(home, value string, dryRun bool) error {
 	}
 	val, _ := json.Marshal(value)
 	env[ReviewerEnv] = json.RawMessage(val)
-	return writeEnv(path, root, env, mode)
+	return writeEnv(settingsPath, root, env, mode)
 }
 
-// ReviewerEnvValue returns the stored env.ZNF_REVIEWER of <home>/.claude/settings.json:
+// ReviewerEnvValue returns the stored env.ZNF_REVIEWER of the settings file at settingsPath:
 // ReviewerDefault when the file or the key is absent, an error for any other value.
-func ReviewerEnvValue(home string) (string, error) {
-	root, _, err := readSettingsRoot(filepath.Join(home, ".claude", "settings.json"))
+func ReviewerEnvValue(settingsPath string) (string, error) {
+	root, _, err := readSettingsRoot(settingsPath)
 	if err != nil {
 		return "", err
 	}
@@ -84,9 +81,8 @@ func ReviewerEnvValue(home string) (string, error) {
 
 // RemoveReviewerEnv removes the key only while it still holds the kit
 // default, so a value the user changed stays.
-func RemoveReviewerEnv(home string, dryRun bool) (bool, error) {
-	path := filepath.Join(home, ".claude", "settings.json")
-	root, mode, err := readSettingsRoot(path)
+func RemoveReviewerEnv(settingsPath string, dryRun bool) (bool, error) {
+	root, mode, err := readSettingsRoot(settingsPath)
 	if err != nil {
 		return false, err
 	}
@@ -109,5 +105,5 @@ func RemoveReviewerEnv(home string, dryRun bool) (bool, error) {
 		return true, nil
 	}
 	delete(env, ReviewerEnv)
-	return true, writeEnv(path, root, env, mode)
+	return true, writeEnv(settingsPath, root, env, mode)
 }

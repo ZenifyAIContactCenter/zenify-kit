@@ -157,11 +157,11 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
-// installGuard wires the git-guard hook into <home>/.claude/settings.json.
+// installGuard wires the git-guard hook into the settings file at settingsPath.
 // Shared by `guard install`, ensureWorkspace (up + SessionStart) and the
 // doctor git-guard Fix. changed=false when the hook is already present.
-func installGuard(home string) (bool, error) {
-	path := guardSettingsPath(home)
+func installGuard(settingsPath string) (bool, error) {
+	path := settingsPath
 	raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
 	if err != nil && !os.IsNotExist(err) {
 		return false, fmt.Errorf("guard install: reading %s: %w", path, err)
@@ -186,8 +186,8 @@ func installGuard(home string) (bool, error) {
 // guardInstalled reports whether settings.json runs `zenify git-guard` as a
 // PreToolUse hook. Read-only; for the doctor check. A leftover legacy guard
 // beside it does not count as missing.
-func guardInstalled(home string) (bool, error) {
-	raw, err := os.ReadFile(guardSettingsPath(home)) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
+func guardInstalled(settingsPath string) (bool, error) {
+	raw, err := os.ReadFile(settingsPath) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
 	if os.IsNotExist(err) {
 		return false, nil
 	}
@@ -217,11 +217,11 @@ func guardInstalled(home string) (bool, error) {
 }
 
 // removeGuard unwires the git-guard hook (and any legacy guard script) from
-// <home>/.claude/settings.json — the inverse of installGuard, used by
+// the settings file at settingsPath — the inverse of installGuard, used by
 // `zenify down`. Same preservation rules as ensureGuardHook. With dryRun it
 // only reports whether there is something to remove.
-func removeGuard(home string, dryRun bool) (bool, error) {
-	path := guardSettingsPath(home)
+func removeGuard(settingsPath string, dryRun bool) (bool, error) {
+	path := settingsPath
 	raw, err := os.ReadFile(path) //nolint:gosec // G304 -- fixed config location under the user's own HOME, not attacker-controlled
 	if os.IsNotExist(err) {
 		return false, nil
@@ -314,7 +314,7 @@ func newGuardCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("guard install: could not determine HOME: %w", err)
 			}
-			changed, err := installGuard(home)
+			changed, err := installGuard(guardSettingsPath(home))
 			if err != nil {
 				return err
 			}
