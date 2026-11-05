@@ -267,7 +267,9 @@ func TestBumpEnvKeysVersion(t *testing.T) {
 func TestRunApply_NonEmbeddedManifestKeepsRecordedKey(t *testing.T) {
 	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	envPath := filepath.Join(ws, ".zenify", ".env")
 	if err := os.MkdirAll(filepath.Dir(envPath), 0o700); err != nil {

@@ -440,6 +440,24 @@ func pluginCheckAt(settings func() (string, error), pluginDir string) Check {
 	}
 }
 
+// claudeTrustCheck fails unless projects["<ws>"].hasTrustDialogAccepted is true
+// in claudeJSON (FR-2.4): without it local MCP headersHelper never runs.
+// Read-only: it asks EnsureClaudeTrust for a dry run.
+func claudeTrustCheck(claudeJSON string) func(ws string) Check {
+	return func(ws string) Check {
+		return Check{Name: "claude-trust", Run: func() (bool, string) {
+			would, err := apply.EnsureClaudeTrust(claudeJSON, ws, true)
+			switch {
+			case err != nil:
+				return false, fmt.Sprintf("không đọc được %s: %v (chạy `zenify up --apply`)", claudeJSON, err) //znf:allow-lang
+			case would:
+				return false, "workspace chưa được trust trong ~/.claude.json, MCP grafana/posthog không có header (chạy `zenify up --apply`)" //znf:allow-lang
+			}
+			return true, "ok — workspace đã trust" //znf:allow-lang
+		}}
+	}
+}
+
 // dockerCheck reports whether Docker is available for `zenify visual`: docker on
 // PATH + daemon running (`docker info`). Docker is a prerequisite of visual-regression;
 // it is NOT auto-installed (system daemon, needs admin/reboot/license per-OS) — this
@@ -661,6 +679,9 @@ func registerDefaultChecks() {
 	RegisterCheck(npmTokenCheck(workspaceRepoDirs, currentGH{}, currentShellProfile,
 		npmTokenFix(currentGH{}, currentShellProfile, npmInteractive, npmRefresh(os.Stderr))))
 	RegisterCheck(pluginCheck())
+	if home, err := os.UserHomeDir(); err == nil {
+		RegisterCheck(wsCheck("claude-trust", claudeTrustCheck(apply.ClaudeJSON(home))))
+	}
 	registerCodexChecks()
 	registerContextChecks()
 }

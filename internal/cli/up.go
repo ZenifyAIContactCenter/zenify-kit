@@ -361,6 +361,13 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 		}
 		localErrs = kept
 	}
+	// FR-2.4: local MCP headersHelper runs only in a trusted workspace.
+	if herr == nil && home != "" {
+		if _, err := apply.EnsureClaudeTrust(apply.ClaudeJSON(home), workspace, false); err != nil {
+			_, _ = fmt.Fprintln(errW, "warning: claude trust:", err)
+			localErrs = append(localErrs, "claude trust: "+err.Error())
+		}
+	}
 	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). The broker
 	// comes from the trusted (embedded) manifest, never --manifest or cwd: the
 	// registered headersHelper `zenify broker headers` resolves it the same
@@ -937,6 +944,11 @@ func newUpCmd() *cobra.Command {
 					removed, _ := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userKitMCPs, userKeep{CodexHooks: !codexOnPath()}, nil, true)
 					for _, r := range removed {
 						_, _ = fmt.Fprintln(w, "sẽ gỡ bản cài cấp user (khi các bước local thành công):", r) //znf:allow-lang
+					}
+					if would, terr := apply.EnsureClaudeTrust(apply.ClaudeJSON(home), workspace, true); terr != nil {
+						_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "warning: claude trust:", terr)
+					} else if would {
+						_, _ = fmt.Fprintf(w, "sẽ đặt projects[%q].hasTrustDialogAccepted = true trong %s\n", workspace, apply.ClaudeJSON(home)) //znf:allow-lang
 					}
 				}
 				if owned, lerr := managed.Load(filepath.Join(workspace, ".zenify", "manifest.json")); lerr == nil {

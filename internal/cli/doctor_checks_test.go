@@ -1015,3 +1015,30 @@ func TestKitPermissionsCheck_FixKeepsUserRemovals(t *testing.T) {
 		t.Fatalf("doctor --fix re-added a user-removed rule: %s", local)
 	}
 }
+
+// FR-2.4: claude-trust fails until projects["<ws>"].hasTrustDialogAccepted is
+// true, names `zenify up --apply`, and never writes the file.
+func TestClaudeTrustCheck(t *testing.T) {
+	dir := t.TempDir()
+	p, ws := filepath.Join(dir, ".claude.json"), "/w/zenify"
+	if ok, d := claudeTrustCheck(p)(ws).Run(); ok || !strings.Contains(d, "zenify up --apply") {
+		t.Fatalf("missing file: ok=%v %q", ok, d)
+	}
+	for _, body := range []string{`{"projects": {}}`, `{"projects": {"/w/zenify": {"hasTrustDialogAccepted": false}}}`, `{"projects": `} {
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if ok, d := claudeTrustCheck(p)(ws).Run(); ok || !strings.Contains(d, "zenify up --apply") {
+			t.Errorf("%s: ok=%v %q", body, ok, d)
+		}
+		if b, _ := os.ReadFile(p); string(b) != body {
+			t.Errorf("%s: check wrote the file", body)
+		}
+	}
+	if err := os.WriteFile(p, []byte(`{"projects": {"/w/zenify": {"hasTrustDialogAccepted": true}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if ok, d := claudeTrustCheck(p)(ws).Run(); !ok {
+		t.Fatalf("trusted: %q", d)
+	}
+}

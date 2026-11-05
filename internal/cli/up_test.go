@@ -157,6 +157,7 @@ func TestRunApply_NonTTY_PlainStepLinesNoEscapes(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -183,6 +184,7 @@ func TestRunApply_WiresRepoAndWritesManifest(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", t.TempDir()) // isolate the Task 5 docs-store step from the real machine
 	home := t.TempDir()
 	t.Setenv("HOME", home) // isolate the Task 7 global-hooks step from the real ~/.claude
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -546,6 +548,7 @@ func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -617,7 +620,9 @@ func TestRunApply_MigratesSettingsEnvAndDenies(t *testing.T) {
 func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
 	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {
@@ -652,7 +657,9 @@ func TestRunApply_MigratesWorktreeSettingsEnv(t *testing.T) {
 func TestRunApply_SkipsMalformedWorktreeSettings(t *testing.T) {
 	useFakeClaude(t, newFakeClaude("")) // up now installs the local plugin
 	t.Setenv("ZENIFY_HOME", t.TempDir())
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	ws := t.TempDir()
 	repo := filepath.Join(ws, "svc")
 	if err := os.MkdirAll(filepath.Join(repo, ".git", "info"), 0o750); err != nil {

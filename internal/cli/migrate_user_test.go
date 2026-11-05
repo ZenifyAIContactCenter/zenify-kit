@@ -298,6 +298,13 @@ func TestMigrateUserInstalls_DryRunRemovesNothing(t *testing.T) {
 	}
 }
 
+// seedClaudeJSON writes the <home>/.claude.json Claude creates on first run;
+// up fails its trust step (FR-2.4) without one.
+func seedClaudeJSON(t *testing.T, home string) {
+	t.Helper()
+	mkfile(t, apply.ClaudeJSON(home), `{"numStartups": 1, "projects": {}}`)
+}
+
 // upFixture isolates HOME, ZENIFY_HOME and CODEX_HOME, seeds the old user
 // install and returns what runApply needs.
 func upFixture(t *testing.T) (home, ws string, m *manifest.Manifest, plans []reconcile.RepoPlan) {
@@ -305,6 +312,7 @@ func upFixture(t *testing.T) (home, ws string, m *manifest.Manifest, plans []rec
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	home, ws = t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	if err := os.MkdirAll(filepath.Join(ws, "svc", ".git", "info"), 0o750); err != nil {
 		t.Fatal(err)
@@ -368,6 +376,62 @@ func TestUp_LocalFailureAfterMigrationKeepsLocalHooks(t *testing.T) {
 	}
 }
 
+// FR-2.4: up marks the workspace trusted; an unreadable or unwritable
+// .claude.json is a failed local step, so the user install stays (FR-5.5).
+func TestUp_ClaudeTrust(t *testing.T) {
+	t.Run("sets the flag", func(t *testing.T) {
+		home, ws, m, plans := upFixture(t)
+		useFakeClaude(t, newFakeClaude(ws))
+		if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
+			t.Fatalf("runApply: %v", err)
+		}
+		got := readJSON(t, apply.ClaudeJSON(home))
+		if got["projects"].(map[string]any)[ws].(map[string]any)["hasTrustDialogAccepted"] != true || got["numStartups"] != float64(1) {
+			t.Fatalf(".claude.json = %v", got)
+		}
+	})
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, home string)
+	}{
+		{"malformed", func(t *testing.T, home string) { mkfile(t, apply.ClaudeJSON(home), `{"projects": `) }},
+		{"unwritable", func(t *testing.T, home string) {
+			if err := os.Chmod(home, 0o500); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(home, 0o750) })
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home, ws, m, plans := upFixture(t)
+			f := newFakeClaude(ws)
+			useFakeClaude(t, f)
+			tc.setup(t, home)
+			before, _ := os.ReadFile(apply.ClaudeJSON(home))
+			var errOut strings.Builder
+			if err := runApply(io.Discard, &errOut, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err == nil {
+				t.Fatal("runApply succeeded although the trust step failed")
+			}
+			_ = os.Chmod(home, 0o750)
+			if !strings.Contains(errOut.String(), "giữ nguyên bản cài cấp user vì bước local lỗi: ") || !strings.Contains(errOut.String(), "claude trust") { //znf:allow-lang
+				t.Errorf("stderr lacks the keep message: %q", errOut.String())
+			}
+			if after, _ := os.ReadFile(apply.ClaudeJSON(home)); string(after) != string(before) {
+				t.Error(".claude.json changed")
+			}
+			if got := f.userRemoves(); len(got) > 0 {
+				t.Errorf("user MCP removed despite the failure: %v", got)
+			}
+			if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "znf")); err != nil {
+				t.Errorf("skills/znf removed despite the failure: %v", err)
+			}
+			if b, _ := os.ReadFile(apply.UserSettings(home)); !strings.Contains(string(b), "zenify hooks-run") {
+				t.Error("user hooks removed despite the failure")
+			}
+		})
+	}
+}
+
 // snapshotTree maps every regular file and symlink under roots to its content.
 func snapshotTree(t *testing.T, roots ...string) map[string]string {
 	t.Helper()
@@ -399,7 +463,7 @@ func TestUp_TwiceNoChange(t *testing.T) {
 	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
 		t.Fatalf("first runApply: %v", err)
 	}
-	roots := []string{filepath.Join(home, ".claude"), filepath.Join(home, ".agents"), filepath.Join(home, ".codex"), filepath.Join(ws, ".claude"), filepath.Join(ws, ".codex")}
+	roots := []string{filepath.Join(home, ".claude"), filepath.Join(home, ".agents"), filepath.Join(home, ".codex"), filepath.Join(ws, ".claude"), filepath.Join(ws, ".codex"), apply.ClaudeJSON(home)}
 	before := snapshotTree(t, roots...)
 	if err := runApply(io.Discard, io.Discard, plans, m, "embedded", ws, &fakeGH{}, &fakeGit{}); err != nil {
 		t.Fatalf("second runApply: %v", err)
@@ -504,6 +568,7 @@ func TestUp_FreshMachineSucceeds(t *testing.T) {
 	t.Setenv("ZENIFY_HOME", t.TempDir())
 	home, ws := t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
+	seedClaudeJSON(t, home)
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	if err := os.MkdirAll(filepath.Join(ws, "svc", ".git", "info"), 0o750); err != nil {
 		t.Fatal(err)
