@@ -301,13 +301,15 @@ func TestRemoveUserScoped(t *testing.T) {
 
 func TestRemoveUserScoped_NotFound(t *testing.T) {
 	ok, err := RemoveUserScoped("zenify-grafana", func(string, ...string) ([]byte, error) {
-		return []byte(`No user-scoped MCP server found with name: zenify-grafana`), errors.New("exit status 1")
+		return []byte(`No MCP server named "zenify-grafana" in user scope`), errors.New("exit status 1")
 	})
 	if err != nil || ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
-	ok, err = RemoveUserScoped("x", func(string, ...string) ([]byte, error) { return []byte("boom"), errors.New("exit status 2") })
-	if err == nil || ok {
-		t.Fatalf("real failure must error: ok=%v err=%v", ok, err)
+	for _, out := range []string{"boom", "zsh: claude: command not found"} {
+		ok, err = RemoveUserScoped("x", func(string, ...string) ([]byte, error) { return []byte(out), errors.New("exit status 127") })
+		if err == nil || ok {
+			t.Fatalf("%q must error: ok=%v err=%v", out, ok, err)
+		}
 	}
 }

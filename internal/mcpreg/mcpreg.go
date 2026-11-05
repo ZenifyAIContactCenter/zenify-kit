@@ -89,7 +89,8 @@ func RemoveUserScoped(name string, run func(string, ...string) ([]byte, error)) 
 	if err == nil {
 		return true, nil
 	}
-	if o := strings.ToLower(string(out)); isNotFound(o) || strings.Contains(o, "not found") || strings.Contains(o, "mcp server found with name") {
+	// Measured on 2.1.318: `No MCP server named "<name>" in user scope`, exit 1.
+	if isNotFound(string(out)) {
 		return false, nil
 	}
 	return false, fmt.Errorf("remove user-scope %s MCP: %w: %s", name, err, strings.TrimSpace(string(out)))

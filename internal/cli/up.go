@@ -934,7 +934,7 @@ func registerPlaneMCP(w, errW io.Writer, workspace string, m *manifest.Manifest,
 	}
 	st, err := mcpreg.BootstrapStdio(mcpreg.StdioSpec{Name: "zenify-plane", Command: "zenify", Args: []string{"plane-mcp"}}, run)
 	switch {
-	case errors.Is(err, context.DeadlineExceeded): // `claude mcp get` health-checks the server; a cold uvx outlasts claudeMCPTimeout
+	case errors.Is(err, context.DeadlineExceeded): // err is returned on purpose: up keeps the user-level install (all-or-nothing). `claude mcp get` health-checks the server; a cold uvx outlasts claudeMCPTimeout
 		_, _ = fmt.Fprintln(w, "zenify-plane: kiểm tra quá thời gian (có thể uvx đang tải lần đầu), chưa đổi gì; chạy lại zenify up --apply sau") //znf:allow-lang
 	case err != nil:
 		_, _ = fmt.Fprintf(errW, "warning: zenify-plane MCP: %v (onboarding otherwise succeeded)\n", err)
