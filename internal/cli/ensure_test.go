@@ -703,3 +703,20 @@ func TestEnsureWorkspace_CarriesUserEnv(t *testing.T) {
 		t.Fatalf("subagent model not carried: %s", b)
 	}
 }
+
+// With codex gone from PATH, user Codex hooks `up` kept are inert: they gate
+// nothing and never nudge, so a rerun stays silent.
+func TestEnsureWorkspace_CodexAbsentUserHooksNoNudge(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	fakeLookPath(t, false)
+	if _, err := apply.EnsureCodexHooks(filepath.Join(home, ".codex"), false); err != nil {
+		t.Fatal(err)
+	}
+	var o1, e1 bytes.Buffer
+	ensureWorkspace(ws, home, &o1, &e1, ensureOpts{})
+	var o2, e2 bytes.Buffer
+	ensureWorkspace(ws, home, &o2, &e2, ensureOpts{})
+	if o2.Len() != 0 {
+		t.Fatalf("second run printed: %q", o2.String())
+	}
+}

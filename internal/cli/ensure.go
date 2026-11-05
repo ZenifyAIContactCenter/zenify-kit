@@ -98,8 +98,12 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 		if userGuard, err := removeGuard(user, true); err == nil {
 			wireGuard = !userGuard
 		}
-		if ch, err := apply.RemoveCodexHooks(codexHome, true); err == nil {
-			wireCodex = ch.Removed == 0
+		// Without codex on PATH nothing Codex is written and user Codex hooks
+		// `up` kept are inert, so they neither gate nor nudge.
+		if codexOnPath() {
+			if ch, err := apply.RemoveCodexHooks(codexHome, true); err == nil {
+				wireCodex = ch.Removed == 0
+			}
 		}
 		if !wireLocal || !wireGuard || !wireCodex {
 			fmt.Fprintln(stdout, "kit vẫn cài ở cấp user; chạy zenify up --apply để chuyển sang workspace") //znf:allow-lang
