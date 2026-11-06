@@ -128,3 +128,30 @@ func TestEnsureClaudeTrust_MissingAndMalformed(t *testing.T) {
 		t.Error("malformed file was rewritten")
 	}
 }
+
+// A symlinked ~/.claude.json stays a symlink (the target is written), and a
+// trailing slash on the workspace does not create a second project key.
+func TestEnsureClaudeTrust_SymlinkAndCleanKey(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real.json")
+	link := filepath.Join(dir, ".claude.json")
+	if err := os.WriteFile(target, []byte(`{"projects":{"`+trustWS+`":{"x":1}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := EnsureClaudeTrust(link, trustWS+"/", false); err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("symlink replaced: %v %v", fi, err)
+	}
+	projects := decodeAny(t, target)["projects"].(map[string]any)
+	if len(projects) != 1 {
+		t.Fatalf("projects = %v", projects)
+	}
+	if e := projects[trustWS].(map[string]any); e[claudeTrustKey] != true || e["x"] != float64(1) {
+		t.Fatalf("entry = %v", e)
+	}
+}

@@ -20,7 +20,15 @@ func ClaudeJSON(home string) string { return filepath.Join(home, ".claude.json")
 // A missing file is an error (Claude was never run there) and is never created.
 // Errors never carry the file's content. Reports whether the file changed (or
 // would, dryRun).
+//
+// workspace is keyed by its cleaned path (no trailing slash), as Claude keys
+// projects by cwd. A symlinked claudeJSON (dotfiles repo) is written through
+// to its target, so the link survives.
 func EnsureClaudeTrust(claudeJSON, workspace string, dryRun bool) (bool, error) {
+	workspace = filepath.Clean(workspace)
+	if target, err := filepath.EvalSymlinks(claudeJSON); err == nil {
+		claudeJSON = target
+	}
 	fi, err := os.Stat(claudeJSON)
 	if err != nil {
 		return false, err

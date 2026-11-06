@@ -42,8 +42,8 @@ type ensureOpts struct{ ForceLocal bool }
 //     remains (a machine `up` has not migrated, or a migration that failed part
 //     way), so no kit hook runs twice: znf hooks, env and permissions on the
 //     kit hooks in ~/.claude/settings.json, git-guard on the user git-guard
-//     (legacy script included). The skills link and the local plugin still
-//     install then, which only duplicates listings, not hook runs;
+//     (legacy script included). The Codex skills link is skipped likewise
+//     while ~/.agents/skills/znf remains, so Codex never lists znf twice;
 //  4. with codex on PATH: <ws>/.codex hooks and the workspace trust entry in
 //     <codexHome>/config.toml (skipped while <codexHome>/hooks.json still has
 //     kit hooks), and the agents;
@@ -77,8 +77,12 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 
 	// Codex discovers skills under <ws>/.agents/skills, so this runs whether or
 	// not codex is installed (FR-4.1).
+	// Skipped (unless ForceLocal) while the user-level link remains, or Codex
+	// lists every znf skill twice until `up` migrates.
 	rep.CodexLinkPath = filepath.Join(workspace, ".agents", "skills", "znf")
-	if st, err := apply.EnsureCodexSkillsLink(rep.CodexLinkPath, filepath.Join(plugin.PluginDir(zh), "skills"), false); err != nil {
+	if fi, err := os.Stat(filepath.Join(home, ".agents", "skills", "znf")); err == nil && fi.IsDir() && !opts.ForceLocal { // only a live skills dir counts
+		// user copy still serves Codex
+	} else if st, err := apply.EnsureCodexSkillsLink(rep.CodexLinkPath, filepath.Join(plugin.PluginDir(zh), "skills"), false); err != nil {
 		localErr("codex-skills", err)
 	} else if st == apply.LinkRealDir {
 		fmt.Fprintf(stderr, "znf ensure: codex-skills: %s là thư mục thật, bỏ qua\n", rep.CodexLinkPath) //znf:allow-lang

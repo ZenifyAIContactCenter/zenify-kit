@@ -811,3 +811,62 @@ func TestEnsureCmd_SymlinkUsesRealPathRecords(t *testing.T) {
 		t.Errorf("kit records keyed %v, want only %s (the real path)", got, want)
 	}
 }
+
+// A user-level ~/.agents/skills/znf (machine not migrated) keeps SessionStart
+// from adding the workspace link, so Codex never lists znf twice; `up`
+// (ForceLocal) still creates it.
+func TestEnsureWorkspace_CodexLinkSkippedWhileUserLinkRemains(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	userLink := filepath.Join(home, ".agents", "skills", "znf")
+	if err := os.MkdirAll(filepath.Dir(userLink), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), userLink); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(ws, ".agents", "skills", "znf")
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("workspace link created while the user link remains: %v", err)
+	}
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{ForceLocal: true})
+	if _, err := os.Readlink(link); err != nil {
+		t.Fatalf("ForceLocal must create the workspace link: %v", err)
+	}
+}
+
+// A dangling user link serves nothing, so the workspace link is created.
+func TestEnsureWorkspace_DanglingUserLinkDoesNotBlock(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	userLink := filepath.Join(home, ".agents", "skills", "znf")
+	if err := os.MkdirAll(filepath.Dir(userLink), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(home, "gone"), userLink); err != nil {
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	if _, err := os.Readlink(filepath.Join(ws, ".agents", "skills", "znf")); err != nil {
+		t.Fatalf("workspace link missing with a dangling user link: %v", err)
+	}
+}
+
+// A regular file at ~/.agents/skills/znf serves no skills, so it does not
+// block the workspace link.
+func TestEnsureWorkspace_UserSkillsFileDoesNotBlock(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	p := filepath.Join(home, ".agents", "skills", "znf")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	if _, err := os.Readlink(filepath.Join(ws, ".agents", "skills", "znf")); err != nil {
+		t.Fatalf("workspace link missing with a regular user file: %v", err)
+	}
+}

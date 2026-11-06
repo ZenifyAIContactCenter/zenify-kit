@@ -265,14 +265,15 @@ func TestDown_OtherClaudeErrorsSurface(t *testing.T) {
 		switch {
 		case strings.HasPrefix(a, "plugin uninstall"):
 			return "boom", true
-		case strings.HasPrefix(a, "plugin marketplace remove"):
-			return "zsh: command not found: claude", true // must not match the marketplace matcher
 		}
 		return "", false
 	})
 	out := runDown(t, ws, repos, "--apply")
-	if !strings.Contains(out, "boom") || !strings.Contains(out, "command not found") {
+	if !strings.Contains(out, "boom") {
 		t.Errorf("other errors must surface: %s", out)
+	}
+	if slices.Contains(calls, "plugin marketplace remove zenify-kit") {
+		t.Errorf("marketplace removed although the plugin failed to uninstall: %v", calls)
 	}
 	if _, err := os.Stat(pluginStampPath(ws)); err != nil {
 		t.Errorf("stamp must stay when uninstall failed: %v", err)
