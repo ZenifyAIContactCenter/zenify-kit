@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -138,7 +139,8 @@ func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
 // ApplyDeps sets up the dependency dir (e.g. node_modules) in the worktree per
 // mode: "symlink" links to the main checkout's dir; "clone" CoW-copies it then
 // runs install, unless cloneIsCurrent says the copy already matches the
-// worktree's package-lock.json; "install" just runs install. symlink/clone require the source
+// worktree's package-lock.json (then only the root lifecycle scripts run);
+// "install" just runs install. symlink/clone require the source
 // dir to exist in repoRoot. installCmd empty → install step is skipped.
 //
 // When ZENIFY_DEPS_CACHE is set and holds <repo>/<depsDirName>, symlink/clone
@@ -164,8 +166,13 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		if err := copyTree(src, dst); err != nil {
 			return fmt.Errorf("wt: clone %s: %w", depsDirName, err)
 		}
-		if strings.TrimSpace(installCmd) != "" && cloneIsCurrent(src, dst) {
-			fmt.Fprintf(os.Stderr, "wt: package-lock.json unchanged and %s is current; skipping %q\n", src, installCmd)
+		if scripts, ok := cloneIsCurrent(src, dst, installCmd); ok {
+			fmt.Fprintf(os.Stderr, "wt: package-lock.json unchanged and %s matches it; skipping %q\n", src, installCmd)
+			for _, sc := range scripts {
+				if err := runInstall(worktreePath, "npm run "+sc); err != nil {
+					return fmt.Errorf("wt: npm run %s: %w", sc, err)
+				}
+			}
 			return nil
 		}
 		return runInstall(worktreePath, installCmd)
@@ -206,41 +213,68 @@ func depsSource(repoRoot, worktreePath, depsDirName string, getenv func(string) 
 	return cached, true
 }
 
-// cloneIsCurrent reports whether the cloned deps dir already matches the
-// worktree, so the install step can be skipped. The worktree's package-lock.json
-// (beside dst) must be byte-equal to the one beside src, and npm's hidden
-// lockfile src/.package-lock.json — what npm actually installed — must agree
-// with that lock: every installed package is in the lock at the same version,
-// and every lock package not installed is optional (another platform's binary).
+// cloneIsCurrent reports whether the cloned deps dir (src copied to dst)
+// already is what installCmd would produce, so the dependency install can be
+// skipped. It returns the root lifecycle scripts npm would still run (in
+// order), which the caller runs instead: e.g. "prepare": "husky" sets up git
+// hooks in the worktree. Every condition must hold, else ok=false:
+//   - installCmd is plain "npm ci" / "npm install" / "npm i" (a custom command
+//     may do more than install) and package.json has no "install" script;
+//   - no npm-shrinkwrap.json (npm would prefer it over package-lock.json);
+//   - the worktree's package-lock.json is byte-equal to the one beside src, and
+//     its root entry lists the same dependencies as the worktree's package.json
+//     (npm ci would reject a lock out of sync with package.json);
+//   - npm's hidden lockfile src/.package-lock.json (what was actually installed)
+//     agrees with the lock: every installed package is in the lock with the
+//     same version, resolved and integrity, and is present on disk; every lock
+//     package not installed is optional and excluded on this platform by its
+//     os/cpu/libc; no linked (workspace) package.
+//
 // Content, not mtime, so a cache filled by copy is judged the same way.
-// Anything missing, unparsable, or a linked (workspace) package → false, so
-// yarn/pnpm repos and repos without a package-lock.json always install.
-func cloneIsCurrent(src, dst string) bool {
-	srcLock := filepath.Join(filepath.Dir(src), "package-lock.json")
-	a, errA := os.ReadFile(srcLock)                                               //nolint:gosec // G304 -- path built from the repo root or operator-set cache dir
-	b, errB := os.ReadFile(filepath.Join(filepath.Dir(dst), "package-lock.json")) //nolint:gosec // G304 -- path is the worktree this tool created
-	if errA != nil || errB != nil || !bytes.Equal(a, b) {
-		return false
+func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
+	switch strings.Join(strings.Fields(installCmd), " ") {
+	case "npm ci", "npm install", "npm i":
+	default:
+		return nil, false
 	}
-	h, err := os.ReadFile(filepath.Join(src, ".package-lock.json")) //nolint:gosec // G304 -- path built from the repo root or operator-set cache dir
-	if err != nil {
-		return false
+	srcRoot, wtRoot := filepath.Dir(src), filepath.Dir(dst)
+	if _, err := os.Stat(filepath.Join(wtRoot, "npm-shrinkwrap.json")); err == nil {
+		return nil, false
 	}
-	type pkg struct {
-		Version  string `json:"version"`
-		Optional bool   `json:"optional"`
-		Link     bool   `json:"link"`
+	a, errA := os.ReadFile(filepath.Join(srcRoot, "package-lock.json")) //nolint:gosec // G304 -- path built from the repo root or operator-set cache dir
+	b, errB := os.ReadFile(filepath.Join(wtRoot, "package-lock.json"))  //nolint:gosec // G304 -- path is the worktree this tool created
+	pj, errP := os.ReadFile(filepath.Join(wtRoot, "package.json"))      //nolint:gosec // G304 -- path is the worktree this tool created
+	h, errH := os.ReadFile(filepath.Join(src, ".package-lock.json"))    //nolint:gosec // G304 -- path built from the repo root or operator-set cache dir
+	if errA != nil || errB != nil || errP != nil || errH != nil || !bytes.Equal(a, b) {
+		return nil, false
+	}
+	var manifest struct {
+		Scripts map[string]string `json:"scripts"`
+		depFields
 	}
 	var lock, hidden struct {
-		Packages map[string]pkg `json:"packages"`
+		Packages map[string]lockPkg `json:"packages"`
 	}
-	if json.Unmarshal(a, &lock) != nil || json.Unmarshal(h, &hidden) != nil || len(lock.Packages) == 0 {
-		return false
+	if json.Unmarshal(pj, &manifest) != nil || json.Unmarshal(a, &lock) != nil || json.Unmarshal(h, &hidden) != nil {
+		return nil, false
+	}
+	root, hasRoot := lock.Packages[""]
+	if !hasRoot || !manifest.depFields.equal(root.depFields) {
+		return nil, false
+	}
+	if _, has := manifest.Scripts["install"]; has {
+		return nil, false
 	}
 	for k, hp := range hidden.Packages {
-		lp, ok := lock.Packages[k]
-		if hp.Link || !ok || lp.Version != hp.Version {
-			return false
+		lp, inLock := lock.Packages[k]
+		if k == "" {
+			continue
+		}
+		if hp.Link || !inLock || lp.Version != hp.Version || lp.Resolved != hp.Resolved || lp.Integrity != hp.Integrity {
+			return nil, false
+		}
+		if _, err := os.Stat(filepath.Join(srcRoot, filepath.FromSlash(k))); err != nil {
+			return nil, false
 		}
 	}
 	for k, lp := range lock.Packages {
@@ -248,13 +282,102 @@ func cloneIsCurrent(src, dst string) bool {
 			continue
 		}
 		if lp.Link {
-			return false
+			return nil, false
 		}
-		if _, ok := hidden.Packages[k]; !ok && !lp.Optional {
-			return false
+		if _, installed := hidden.Packages[k]; !installed && (!lp.Optional || platformAllows(lp)) {
+			return nil, false
 		}
 	}
-	return true
+	for _, sc := range []string{"preinstall", "postinstall", "prepare"} {
+		if _, has := manifest.Scripts[sc]; has {
+			scripts = append(scripts, sc)
+		}
+	}
+	return scripts, true
+}
+
+// depFields are the package.json dependency maps npm copies into the lock's
+// root entry; npm ci refuses to install when they disagree.
+type depFields struct {
+	Dependencies         map[string]string `json:"dependencies"`
+	DevDependencies      map[string]string `json:"devDependencies"`
+	OptionalDependencies map[string]string `json:"optionalDependencies"`
+	PeerDependencies     map[string]string `json:"peerDependencies"`
+}
+
+func (d depFields) equal(o depFields) bool {
+	eq := func(x, y map[string]string) bool {
+		if len(x) != len(y) {
+			return false
+		}
+		for k, v := range x {
+			if w, ok := y[k]; !ok || w != v {
+				return false
+			}
+		}
+		return true
+	}
+	return eq(d.Dependencies, o.Dependencies) && eq(d.DevDependencies, o.DevDependencies) &&
+		eq(d.OptionalDependencies, o.OptionalDependencies) && eq(d.PeerDependencies, o.PeerDependencies)
+}
+
+// lockPkg is one entry of a package-lock.json / hidden lockfile "packages" map.
+type lockPkg struct {
+	Version   string   `json:"version"`
+	Resolved  string   `json:"resolved"`
+	Integrity string   `json:"integrity"`
+	Optional  bool     `json:"optional"`
+	Link      bool     `json:"link"`
+	OS        []string `json:"os"`
+	CPU       []string `json:"cpu"`
+	Libc      []string `json:"libc"`
+	depFields
+}
+
+// platformAllows reports whether npm would install p on this machine, judged by
+// its os/cpu/libc lists (npm names: darwin/linux/win32, x64/arm64/ia32). A
+// package with none of them is allowed everywhere.
+func platformAllows(p lockPkg) bool {
+	goos := runtime.GOOS
+	if goos == "windows" {
+		goos = "win32"
+	}
+	arch := map[string]string{"amd64": "x64", "386": "ia32"}[runtime.GOARCH]
+	if arch == "" {
+		arch = runtime.GOARCH
+	}
+	libc := ""
+	if runtime.GOOS == "linux" {
+		libc = "glibc"
+		if m, _ := filepath.Glob("/lib/ld-musl-*"); len(m) > 0 {
+			libc = "musl"
+		}
+	}
+	return npmListAllows(p.OS, goos) && npmListAllows(p.CPU, arch) && (libc == "" || npmListAllows(p.Libc, libc))
+}
+
+// npmListAllows applies npm's os/cpu/libc list rule: "!x" excludes x; any
+// positive entry means v must be listed; an empty list allows everything.
+func npmListAllows(list []string, v string) bool {
+	positive := false
+	for _, e := range list {
+		if strings.HasPrefix(e, "!") {
+			if e[1:] == v {
+				return false
+			}
+			continue
+		}
+		positive = true
+	}
+	if !positive {
+		return true
+	}
+	for _, e := range list {
+		if e == v {
+			return true
+		}
+	}
+	return false
 }
 
 // runInstall runs installCmd inside dir via the shell. An empty command is a
