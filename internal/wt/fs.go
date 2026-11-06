@@ -167,13 +167,7 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 			return fmt.Errorf("wt: clone %s: %w", depsDirName, err)
 		}
 		if scripts, ok := cloneIsCurrent(src, dst, installCmd); ok {
-			fmt.Fprintf(os.Stderr, "wt: package-lock.json unchanged and %s matches it; skipping %q\n", src, installCmd)
-			for _, sc := range scripts {
-				if err := runInstall(worktreePath, "npm run "+sc); err != nil {
-					return fmt.Errorf("wt: npm run %s: %w", sc, err)
-				}
-			}
-			return nil
+			return runLifecycleOnly(worktreePath, src, installCmd, scripts)
 		}
 		return runInstall(worktreePath, installCmd)
 	case "install":
@@ -259,11 +253,13 @@ func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
 		return nil, false
 	}
 	root, hasRoot := lock.Packages[""]
-	if !hasRoot || !manifest.depFields.equal(root.depFields) {
+	if !hasRoot || !manifest.equal(root.depFields) {
 		return nil, false
 	}
-	if _, has := manifest.Scripts["install"]; has {
-		return nil, false
+	for _, sc := range []string{"install", "prepublish"} { // run by npm ci; not replayed here
+		if _, has := manifest.Scripts[sc]; has {
+			return nil, false
+		}
 	}
 	for k, hp := range hidden.Packages {
 		lp, inLock := lock.Packages[k]
@@ -288,12 +284,45 @@ func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
 			return nil, false
 		}
 	}
-	for _, sc := range []string{"preinstall", "postinstall", "prepare"} {
+	for _, sc := range lifecycleScripts {
 		if _, has := manifest.Scripts[sc]; has {
 			scripts = append(scripts, sc)
 		}
 	}
 	return scripts, true
+}
+
+// lifecycleScripts are the root scripts npm ci runs after installing, in its
+// order; each is called on its own, the way npm ci calls them.
+var lifecycleScripts = []string{"preinstall", "postinstall", "preprepare", "prepare", "postprepare"}
+
+// runLifecycleOnly replaces installCmd for a clone cloneIsCurrent accepted: it
+// runs only the root lifecycle scripts npm ci would have run. Each goes through
+// `npm run --ignore-scripts <name>`, which runs that script without npm run's
+// own pre/post hooks. When npm's effective ignore-scripts (env or .npmrc) is
+// true, npm ci would run none, so none run here; if npm cannot report it, the
+// full installCmd runs instead.
+func runLifecycleOnly(worktreePath, src, installCmd string, scripts []string) error {
+	fmt.Fprintf(os.Stderr, "wt: package-lock.json unchanged and %s matches it; skipping %q\n", src, installCmd)
+	if len(scripts) == 0 {
+		return nil
+	}
+	cmd := exec.Command("npm", "config", "get", "ignore-scripts")
+	cmd.Dir = worktreePath
+	out, err := cmd.Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "wt: npm config get ignore-scripts failed (%v); running %q\n", err, installCmd)
+		return runInstall(worktreePath, installCmd)
+	}
+	if strings.TrimSpace(string(out)) == "true" {
+		return nil
+	}
+	for _, sc := range scripts {
+		if err := runInstall(worktreePath, "npm run --ignore-scripts "+sc); err != nil {
+			return fmt.Errorf("wt: npm run %s: %w", sc, err)
+		}
+	}
+	return nil
 }
 
 // depFields are the package.json dependency maps npm copies into the lock's

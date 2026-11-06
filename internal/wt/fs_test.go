@@ -331,14 +331,14 @@ func TestCloneIsCurrent(t *testing.T) {
 		return filepath.Join(repo, "node_modules"), filepath.Join(wtp, "node_modules")
 	}
 	t.Run("current", func(t *testing.T) {
-		repo, wtp := cloneFixture(t, cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.0.0"},"scripts":{"prepare":"husky","postinstall":"echo"}}`})
+		repo, wtp := cloneFixture(t, cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.0.0"},"scripts":{"prepare":"husky","postinstall":"echo","preprepare":"echo"}}`})
 		src, dst := nm(repo, wtp)
 		scripts, ok := cloneIsCurrent(src, dst, " npm  ci ")
 		if !ok {
 			t.Fatal("want current")
 		}
-		if strings.Join(scripts, ",") != "postinstall,prepare" {
-			t.Fatalf("lifecycle scripts = %v, want [postinstall prepare]", scripts)
+		if strings.Join(scripts, ",") != "postinstall,preprepare,prepare" {
+			t.Fatalf("lifecycle scripts = %v, want [postinstall preprepare prepare]", scripts)
 		}
 	})
 	notCurrent := map[string]struct {
@@ -355,6 +355,7 @@ func TestCloneIsCurrent(t *testing.T) {
 		"installed package deleted":  {cloneCase{dropX: true}, "npm ci"},
 		"package.json out of sync":   {cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.1.0"}}`}, "npm ci"},
 		"install script":             {cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.0.0"},"scripts":{"install":"node-gyp rebuild"}}`}, "npm ci"},
+		"prepublish script":          {cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.0.0"},"scripts":{"prepublish":"tsc"}}`}, "npm ci"},
 		"npm-shrinkwrap.json":        {cloneCase{extra: map[string]string{"npm-shrinkwrap.json": lockJSON}}, "npm ci"},
 		"hidden lockfile garbage":    {cloneCase{hidden: "not json"}, "npm ci"},
 		"optional for this platform not installed": {cloneCase{
