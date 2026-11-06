@@ -2,6 +2,7 @@ package wt
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -163,7 +164,7 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		if err := copyTree(src, dst); err != nil {
 			return fmt.Errorf("wt: clone %s: %w", depsDirName, err)
 		}
-		if strings.TrimSpace(installCmd) != "" && cloneIsCurrent(src, worktreePath) {
+		if strings.TrimSpace(installCmd) != "" && cloneIsCurrent(src, dst) {
 			fmt.Fprintf(os.Stderr, "wt: package-lock.json unchanged and %s is current; skipping %q\n", src, installCmd)
 			return nil
 		}
@@ -206,27 +207,54 @@ func depsSource(repoRoot, worktreePath, depsDirName string, getenv func(string) 
 }
 
 // cloneIsCurrent reports whether the cloned deps dir already matches the
-// worktree, so the install step can be skipped: the worktree's package-lock.json
-// is byte-equal to the one beside src, and npm's hidden lockfile
-// src/.package-lock.json exists and is not older than that lock (an install ran
-// after the lock last changed). Anything missing or unreadable → false, so
+// worktree, so the install step can be skipped. The worktree's package-lock.json
+// (beside dst) must be byte-equal to the one beside src, and npm's hidden
+// lockfile src/.package-lock.json — what npm actually installed — must agree
+// with that lock: every installed package is in the lock at the same version,
+// and every lock package not installed is optional (another platform's binary).
+// Content, not mtime, so a cache filled by copy is judged the same way.
+// Anything missing, unparsable, or a linked (workspace) package → false, so
 // yarn/pnpm repos and repos without a package-lock.json always install.
-func cloneIsCurrent(src, worktreePath string) bool {
+func cloneIsCurrent(src, dst string) bool {
 	srcLock := filepath.Join(filepath.Dir(src), "package-lock.json")
-	a, errA := os.ReadFile(srcLock)                                          //nolint:gosec // G304 -- path built from the repo root or operator-set cache dir
-	b, errB := os.ReadFile(filepath.Join(worktreePath, "package-lock.json")) //nolint:gosec // G304 -- path is the worktree this tool created
+	a, errA := os.ReadFile(srcLock)                                               //nolint:gosec // G304 -- path built from the repo root or operator-set cache dir
+	b, errB := os.ReadFile(filepath.Join(filepath.Dir(dst), "package-lock.json")) //nolint:gosec // G304 -- path is the worktree this tool created
 	if errA != nil || errB != nil || !bytes.Equal(a, b) {
 		return false
 	}
-	lockInfo, err := os.Stat(srcLock)
+	h, err := os.ReadFile(filepath.Join(src, ".package-lock.json")) //nolint:gosec // G304 -- path built from the repo root or operator-set cache dir
 	if err != nil {
 		return false
 	}
-	hidden, err := os.Stat(filepath.Join(src, ".package-lock.json"))
-	if err != nil {
+	type pkg struct {
+		Version  string `json:"version"`
+		Optional bool   `json:"optional"`
+		Link     bool   `json:"link"`
+	}
+	var lock, hidden struct {
+		Packages map[string]pkg `json:"packages"`
+	}
+	if json.Unmarshal(a, &lock) != nil || json.Unmarshal(h, &hidden) != nil || len(lock.Packages) == 0 {
 		return false
 	}
-	return !hidden.ModTime().Before(lockInfo.ModTime())
+	for k, hp := range hidden.Packages {
+		lp, ok := lock.Packages[k]
+		if hp.Link || !ok || lp.Version != hp.Version {
+			return false
+		}
+	}
+	for k, lp := range lock.Packages {
+		if k == "" {
+			continue
+		}
+		if lp.Link {
+			return false
+		}
+		if _, ok := hidden.Packages[k]; !ok && !lp.Optional {
+			return false
+		}
+	}
+	return true
 }
 
 // runInstall runs installCmd inside dir via the shell. An empty command is a
