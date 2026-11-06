@@ -268,3 +268,177 @@ func TestApplyDepsNoCacheEnvUnchanged(t *testing.T) {
 		t.Fatalf("readlink = %q, %v; want repo's node_modules", got, err)
 	}
 }
+
+// lockJSON is a package-lock.json with one regular package and one optional
+// binary for a platform no test runs on (aix); hiddenJSON is npm's hidden
+// lockfile after installing it; pkgJSON is the matching package.json.
+const (
+	lockJSON   = `{"packages":{"":{"name":"p","dependencies":{"x":"^1.0.0"}},"node_modules/x":{"version":"1.0.0","resolved":"https://r/x-1.0.0.tgz","integrity":"sha512-x"},"node_modules/@esbuild/aix-ppc64":{"version":"0.1.0","optional":true,"os":["aix"],"cpu":["ppc64"]}}}`
+	hiddenJSON = `{"packages":{"node_modules/x":{"version":"1.0.0","resolved":"https://r/x-1.0.0.tgz","integrity":"sha512-x"}}}`
+	pkgJSON    = `{"name":"p","dependencies":{"x":"^1.0.0"}}`
+)
+
+type cloneCase struct {
+	lock, wtLock, hidden, pkg string            // lock: both sides; wtLock: worktree only
+	extra                     map[string]string // worktree-relative path → content
+	dropX                     bool              // remove repo/node_modules/x after the hidden lockfile names it
+}
+
+// cloneFixture builds repo/{package-lock.json, node_modules/{x,.package-lock.json}}
+// and a worktree with package-lock.json + package.json per c. Empty fields take
+// the matching defaults above; hidden "-" means no hidden lockfile.
+func cloneFixture(t *testing.T, c cloneCase) (repo, wtp string) {
+	t.Helper()
+	t.Setenv("ZENIFY_DEPS_CACHE", "")
+	def := func(v, d string) string {
+		if v == "" {
+			return d
+		}
+		return v
+	}
+	tmp := t.TempDir()
+	repo = filepath.Join(tmp, "repo")
+	wtp = filepath.Join(tmp, "wt")
+	for _, d := range []string{filepath.Join(repo, "node_modules"), wtp} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := map[string]string{
+		filepath.Join(repo, "package-lock.json"): def(c.lock, lockJSON),
+		filepath.Join(wtp, "package-lock.json"):  def(c.wtLock, def(c.lock, lockJSON)),
+		filepath.Join(wtp, "package.json"):       def(c.pkg, pkgJSON),
+	}
+	if !c.dropX {
+		files[filepath.Join(repo, "node_modules", "x")] = "x"
+	}
+	if h := def(c.hidden, hiddenJSON); h != "-" {
+		files[filepath.Join(repo, "node_modules", ".package-lock.json")] = h
+	}
+	for p, v := range c.extra {
+		files[filepath.Join(wtp, p)] = v
+	}
+	for p, v := range files {
+		if err := os.WriteFile(p, []byte(v), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return repo, wtp
+}
+
+func TestCloneIsCurrent(t *testing.T) {
+	nm := func(repo, wtp string) (string, string) {
+		return filepath.Join(repo, "node_modules"), filepath.Join(wtp, "node_modules")
+	}
+	t.Run("current", func(t *testing.T) {
+		repo, wtp := cloneFixture(t, cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.0.0"},"scripts":{"prepare":"husky","postinstall":"echo","preprepare":"echo"}}`})
+		src, dst := nm(repo, wtp)
+		scripts, ok := cloneIsCurrent(src, dst, " npm  ci ")
+		if !ok {
+			t.Fatal("want current")
+		}
+		if strings.Join(scripts, ",") != "postinstall,prepare" {
+			t.Fatalf("lifecycle scripts = %v, want [postinstall prepare]", scripts)
+		}
+	})
+	notCurrent := map[string]struct {
+		c   cloneCase
+		cmd string
+	}{
+		"custom install command":     {cloneCase{}, "npm ci && npm run build"},
+		"worktree lock differs":      {cloneCase{wtLock: strings.Replace(lockJSON, `"p"`, `"q"`, 1)}, "npm ci"},
+		"no hidden lockfile":         {cloneCase{hidden: "-"}, "npm ci"},
+		"installed version stale":    {cloneCase{hidden: strings.Replace(hiddenJSON, `"version":"1.0.0"`, `"version":"0.9.0"`, 1)}, "npm ci"},
+		"same version other source":  {cloneCase{hidden: strings.Replace(hiddenJSON, "sha512-x", "sha512-old", 1)}, "npm ci"},
+		"non-optional not installed": {cloneCase{hidden: `{"packages":{}}`}, "npm ci"},
+		"extraneous installed":       {cloneCase{hidden: strings.Replace(hiddenJSON, `}}}`, `},"node_modules/y":{"version":"1.0.0"}}}`, 1)}, "npm ci"},
+		"installed package deleted":  {cloneCase{dropX: true}, "npm ci"},
+		"package.json out of sync":   {cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.1.0"}}`}, "npm ci"},
+		"install script":             {cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.0.0"},"scripts":{"install":"node-gyp rebuild"}}`}, "npm ci"},
+		"prepublish script":          {cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.0.0"},"scripts":{"prepublish":"tsc"}}`}, "npm ci"},
+		"hook npm ci never runs":     {cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.0.0"},"scripts":{"postinstall":"echo","prepostinstall":"exit 1"}}`}, "npm ci"},
+		"preprepare without prepare": {cloneCase{pkg: `{"name":"p","dependencies":{"x":"^1.0.0"},"scripts":{"preprepare":"echo"}}`}, "npm ci"},
+		"npm-shrinkwrap.json":        {cloneCase{extra: map[string]string{"npm-shrinkwrap.json": lockJSON}}, "npm ci"},
+		"hidden lockfile garbage":    {cloneCase{hidden: "not json"}, "npm ci"},
+		"optional for this platform not installed": {cloneCase{
+			lock: strings.Replace(lockJSON, `"os":["aix"],"cpu":["ppc64"]`, `"os":[]`, 1),
+		}, "npm ci"},
+	}
+	for name, tc := range notCurrent {
+		t.Run(name, func(t *testing.T) {
+			repo, wtp := cloneFixture(t, tc.c)
+			src, dst := nm(repo, wtp)
+			if _, ok := cloneIsCurrent(src, dst, tc.cmd); ok {
+				t.Fatal("cloneIsCurrent = true, want false")
+			}
+		})
+	}
+}
+
+func TestNpmListAllows(t *testing.T) {
+	for _, c := range []struct {
+		list []string
+		v    string
+		want bool
+	}{
+		{nil, "linux", true},
+		{[]string{"linux"}, "linux", true},
+		{[]string{"darwin"}, "linux", false},
+		{[]string{"!win32"}, "linux", true},
+		{[]string{"!linux"}, "linux", false},
+	} {
+		if got := npmListAllows(c.list, c.v); got != c.want {
+			t.Errorf("npmListAllows(%v, %q) = %v, want %v", c.list, c.v, got, c.want)
+		}
+	}
+}
+
+// installMarker is an install command that leaves a file behind, so a test can
+// tell whether ApplyDeps ran it.
+const installMarker = "touch installed"
+
+func installed(t *testing.T, wtp string) bool {
+	t.Helper()
+	_, err := os.Stat(filepath.Join(wtp, "installed"))
+	return err == nil
+}
+
+// With "npm ci" and a current clone, ApplyDeps returns without invoking npm
+// (no lifecycle scripts in pkgJSON), so this passes on a machine without npm.
+func TestApplyDepsCloneSkipsNpmCiWhenCurrent(t *testing.T) {
+	repo, wtp := cloneFixture(t, cloneCase{})
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "x")); err != nil {
+		t.Fatalf("clone missing: %v", err)
+	}
+}
+
+func TestApplyDepsCloneCustomInstallAlwaysRuns(t *testing.T) {
+	repo, wtp := cloneFixture(t, cloneCase{})
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+		t.Fatal(err)
+	}
+	if !installed(t, wtp) {
+		t.Fatal("custom install command skipped")
+	}
+}
+
+func TestApplyDepsCloneFromCacheSkipsWhenCurrent(t *testing.T) {
+	repo, wtp, cache := cacheFixture(t, lockJSON, lockJSON)
+	for p, v := range map[string]string{
+		filepath.Join(cache, "repo", "node_modules", ".package-lock.json"): hiddenJSON,
+		filepath.Join(wtp, "package.json"):                                 pkgJSON,
+	} {
+		if err := os.WriteFile(p, []byte(v), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok := cloneIsCurrent(filepath.Join(cache, "repo", "node_modules"), filepath.Join(wtp, "node_modules"), "npm ci"); !ok {
+		t.Fatal("cache entry matching the lock should count as current")
+	}
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+}
