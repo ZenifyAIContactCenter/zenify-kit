@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.60.3
+
+*2026-11-06*
+
+- **`zenify wt new` nhanh hơn và gần như không tốn thêm disk với `deps: clone`:** khi `package-lock.json` của worktree giống checkout chính và `node_modules` ở checkout chính khớp lock, lệnh không chạy lại `npm ci` mà giữ bản copy copy-on-write. Các script `preinstall`, `postinstall`, `prepare` (ví dụ `husky`) vẫn chạy như `npm ci`. Lock khác, `node_modules` của checkout chính cũ (chưa cài lại sau khi pull), lệnh `install` tuỳ biến, hoặc repo yarn/pnpm thì vẫn cài đầy đủ như cũ; cần cài lại thì dùng `--install`. Để được lợi, chạy `npm ci` một lần ở checkout chính sau mỗi lần lock đổi. Xem [zenify wt new](/reference/cli/zenify_wt_new).
+
 ## v0.60.2
 
 *2026-11-06*
