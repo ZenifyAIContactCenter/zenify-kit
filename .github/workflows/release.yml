@@ -9,6 +9,8 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    # The App key lives only in this environment, which deploys from v* tags only.
+    environment: release
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -27,9 +29,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # The org forbids GITHUB_TOKEN from opening PRs; the tap PR uses an App
+      # token scoped to this repo (the default) and to contents + pull-requests.
+      - uses: actions/create-github-app-token@v3
+        id: tap-token
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: '~> v2'
           args: release --clean --release-notes ${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
+      - name: auto-merge the cask/scoop PR once Zenie Review passes
+        run: gh pr merge "chore/tap-${GITHUB_REF_NAME}" --auto --squash --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ steps.tap-token.outputs.token }}

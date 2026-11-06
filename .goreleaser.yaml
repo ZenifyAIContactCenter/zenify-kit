@@ -48,14 +48,18 @@ dockers_v2:
 # GoReleaser commits Casks/zenify.rb and the Scoop manifest here on each release,
 # and the release assets are public, so brew/scoop download them with no auth.
 # The org ruleset blocks direct pushes to main, so both manifests land on one
-# chore/tap-v<version> branch and reach main through a PR that a person merges.
+# chore/tap-v<version> branch and reach main through a PR. The org forbids
+# GITHUB_TOKEN from opening PRs, so the branch push and the PR use TAP_TOKEN, a
+# GitHub App token minted in release.yml; release.yml then sets auto-merge on it.
 homebrew_casks:
   - repository:
       owner: ZenifyAIContactCenter
       name: zenify-kit
       branch: "chore/tap-v{{ .Version }}"
+      token: "{{ .Env.TAP_TOKEN }}"
       pull_request:
         enabled: true
+        token: "{{ .Env.TAP_TOKEN }}"
         base:
           owner: ZenifyAIContactCenter
           name: zenify-kit
@@ -86,8 +90,10 @@ scoops:
       owner: ZenifyAIContactCenter
       name: zenify-kit
       branch: "chore/tap-v{{ .Version }}"
+      token: "{{ .Env.TAP_TOKEN }}"
       pull_request:
         enabled: true
+        token: "{{ .Env.TAP_TOKEN }}"
         base:
           owner: ZenifyAIContactCenter
           name: zenify-kit
