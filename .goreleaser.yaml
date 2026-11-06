@@ -47,10 +47,19 @@ dockers_v2:
 # The public zenify-kit repo doubles as its own Homebrew tap and Scoop bucket:
 # GoReleaser commits Casks/zenify.rb and the Scoop manifest here on each release,
 # and the release assets are public, so brew/scoop download them with no auth.
+# The org ruleset blocks direct pushes to main, so both manifests land on one
+# chore/tap-v<version> branch and reach main through a PR that a person merges.
 homebrew_casks:
   - repository:
       owner: ZenifyAIContactCenter
       name: zenify-kit
+      branch: "chore/tap-v{{ .Version }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: ZenifyAIContactCenter
+          name: zenify-kit
+          branch: main
     name: zenify
     ids: [zenify]
     homepage: https://github.com/ZenifyAIContactCenter/zenify-kit
@@ -76,6 +85,13 @@ scoops:
   - repository:
       owner: ZenifyAIContactCenter
       name: zenify-kit
+      branch: "chore/tap-v{{ .Version }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: ZenifyAIContactCenter
+          name: zenify-kit
+          branch: main
     name: zenify
     ids: [zenify]
     skip_upload: auto

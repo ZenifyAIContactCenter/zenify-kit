@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.60.1
+
+*2026-11-06*
+
+- **Release cập nhật brew/scoop qua PR:** ruleset của org chặn push thẳng lên `main`, nên sau mỗi tag GoReleaser đẩy cask Homebrew và manifest Scoop lên nhánh `chore/tap-vX.Y.Z` rồi mở PR vào `main`. `brew upgrade --cask zenify` và `scoop update zenify` chỉ ra bản mới sau khi PR đó được merge; cài qua `install.sh` thì có ngay. Xem [Cắt release cho zenify-kit](/guides/release#cắt-release-cho-zenify-kit).
+
 ## v0.60.0
 
 *2026-11-06*
