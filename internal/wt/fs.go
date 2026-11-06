@@ -256,8 +256,12 @@ func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
 	if !hasRoot || !manifest.equal(root.depFields) {
 		return nil, false
 	}
-	for _, sc := range []string{"install", "prepublish"} { // run by npm ci; not replayed here
-		if _, has := manifest.Scripts[sc]; has {
+	// install/prepublish are run by npm ci but not replayed here; the other
+	// four are hooks `npm run` would add that npm ci never calls. preprepare/
+	// postprepare without prepare cannot be reached through `npm run prepare`.
+	_, hasPrepare := manifest.Scripts["prepare"]
+	for _, sc := range []string{"install", "prepublish", "prepreinstall", "postpreinstall", "prepostinstall", "postpostinstall", "preprepare", "postprepare"} {
+		if _, has := manifest.Scripts[sc]; has && (!strings.HasSuffix(sc, "prepare") || !hasPrepare) {
 			return nil, false
 		}
 	}
@@ -293,15 +297,15 @@ func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
 }
 
 // lifecycleScripts are the root scripts npm ci runs after installing, in its
-// order; each is called on its own, the way npm ci calls them.
-var lifecycleScripts = []string{"preinstall", "postinstall", "preprepare", "prepare", "postprepare"}
+// order. `npm run prepare` also runs preprepare/postprepare, as npm ci does.
+var lifecycleScripts = []string{"preinstall", "postinstall", "prepare"}
 
 // runLifecycleOnly replaces installCmd for a clone cloneIsCurrent accepted: it
-// runs only the root lifecycle scripts npm ci would have run. Each goes through
-// `npm run --ignore-scripts <name>`, which runs that script without npm run's
-// own pre/post hooks. When npm's effective ignore-scripts (env or .npmrc) is
-// true, npm ci would run none, so none run here; if npm cannot report it, the
-// full installCmd runs instead.
+// runs only the root lifecycle scripts npm ci would have run, each through a
+// plain `npm run <name>` so npm commands nested inside a script keep the user's
+// npm config (cloneIsCurrent already refused hooks npm ci would not run). When
+// npm's effective ignore-scripts (env or .npmrc) is true, npm ci would run none,
+// so none run here; if npm cannot report it, the full installCmd runs instead.
 func runLifecycleOnly(worktreePath, src, installCmd string, scripts []string) error {
 	fmt.Fprintf(os.Stderr, "wt: package-lock.json unchanged and %s matches it; skipping %q\n", src, installCmd)
 	if len(scripts) == 0 {
@@ -318,7 +322,7 @@ func runLifecycleOnly(worktreePath, src, installCmd string, scripts []string) er
 		return nil
 	}
 	for _, sc := range scripts {
-		if err := runInstall(worktreePath, "npm run --ignore-scripts "+sc); err != nil {
+		if err := runInstall(worktreePath, "npm run "+sc); err != nil {
 			return fmt.Errorf("wt: npm run %s: %w", sc, err)
 		}
 	}
