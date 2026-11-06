@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWritePortEnv_ReplaceAndAppend(t *testing.T) {
@@ -266,5 +267,126 @@ func TestApplyDepsNoCacheEnvUnchanged(t *testing.T) {
 	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
 	if err != nil || got != filepath.Join(repo, "node_modules") {
 		t.Fatalf("readlink = %q, %v; want repo's node_modules", got, err)
+	}
+}
+
+// cloneFixture builds repo/{package-lock.json, node_modules/x} and a worktree
+// whose package-lock.json is wtLock. hidden controls whether
+// node_modules/.package-lock.json exists.
+func cloneFixture(t *testing.T, repoLock, wtLock string, hidden bool) (repo, wtp string) {
+	t.Helper()
+	t.Setenv("ZENIFY_DEPS_CACHE", "")
+	tmp := t.TempDir()
+	repo = filepath.Join(tmp, "repo")
+	wtp = filepath.Join(tmp, "wt")
+	for _, d := range []string{filepath.Join(repo, "node_modules"), wtp} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := map[string]string{
+		filepath.Join(repo, "package-lock.json"): repoLock,
+		filepath.Join(repo, "node_modules", "x"): "x",
+		filepath.Join(wtp, "package-lock.json"):  wtLock,
+	}
+	for p, c := range files {
+		if err := os.WriteFile(p, []byte(c), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Written last, as npm does: its mtime must not precede the lock's.
+	if hidden {
+		if err := os.WriteFile(filepath.Join(repo, "node_modules", ".package-lock.json"), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return repo, wtp
+}
+
+// installMarker is an install command that leaves a file behind, so a test can
+// tell whether ApplyDeps ran it.
+const installMarker = "touch installed"
+
+func installed(t *testing.T, wtp string) bool {
+	t.Helper()
+	_, err := os.Stat(filepath.Join(wtp, "installed"))
+	return err == nil
+}
+
+func TestApplyDepsCloneSkipsInstallWhenLockMatches(t *testing.T) {
+	repo, wtp := cloneFixture(t, `{"a":1}`, `{"a":1}`, true)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+		t.Fatal(err)
+	}
+	if installed(t, wtp) {
+		t.Fatal("install ran although the lock matches and node_modules is current")
+	}
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "x")); err != nil {
+		t.Fatalf("clone missing: %v", err)
+	}
+}
+
+func TestApplyDepsCloneInstallsWhenLockDiffers(t *testing.T) {
+	repo, wtp := cloneFixture(t, `{"a":1}`, `{"a":2}`, true)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+		t.Fatal(err)
+	}
+	if !installed(t, wtp) {
+		t.Fatal("install skipped although the worktree lock differs")
+	}
+}
+
+func TestApplyDepsCloneInstallsWithoutHiddenLockfile(t *testing.T) {
+	repo, wtp := cloneFixture(t, `{"a":1}`, `{"a":1}`, false)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+		t.Fatal(err)
+	}
+	if !installed(t, wtp) {
+		t.Fatal("install skipped although node_modules has no .package-lock.json")
+	}
+}
+
+func TestApplyDepsCloneInstallsWhenHiddenLockfileStale(t *testing.T) {
+	repo, wtp := cloneFixture(t, `{"a":1}`, `{"a":1}`, true)
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(filepath.Join(repo, "node_modules", ".package-lock.json"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+		t.Fatal(err)
+	}
+	if !installed(t, wtp) {
+		t.Fatal("install skipped although package-lock.json changed after the last install")
+	}
+}
+
+func TestApplyDepsCloneInstallsWithoutPackageLock(t *testing.T) {
+	repo, wtp := cloneFixture(t, `{"a":1}`, `{"a":1}`, true)
+	for _, p := range []string{filepath.Join(repo, "package-lock.json"), filepath.Join(wtp, "package-lock.json")} {
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+		t.Fatal(err)
+	}
+	if !installed(t, wtp) {
+		t.Fatal("install skipped in a repo with no package-lock.json (yarn/pnpm)")
+	}
+}
+
+func TestApplyDepsCloneFromCacheSkipsInstallWhenCurrent(t *testing.T) {
+	repo, wtp, cache := cacheFixture(t, `{"a":1}`, `{"a":1}`)
+	if err := os.WriteFile(filepath.Join(cache, "repo", "node_modules", ".package-lock.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+		t.Fatal(err)
+	}
+	if installed(t, wtp) {
+		t.Fatal("install ran although the cache entry's lock matches and its node_modules is current")
+	}
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "x")); err != nil {
+		t.Fatalf("clone from cache missing: %v", err)
 	}
 }
