@@ -8,6 +8,17 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.60.2
+
+*2026-11-06*
+
+- **Release tự cập nhật brew/scoop:** PR `chore/tap-vX.Y.Z` giờ do một GitHub App mở và tự merge khi Zenie Review xanh, nên `brew upgrade --cask zenify` và `scoop update zenify` ra bản mới mà không cần ai merge tay. Xem [Cắt release cho zenify-kit](/guides/release#cắt-release-cho-zenify-kit).
+- **`zenify down` không còn để plugin mất nguồn:** marketplace `zenify-kit` chỉ bị gỡ khi đã gỡ được plugin `znf`. Xem [zenify down](/reference/cli/zenify_down).
+- **Codex không liệt kê skill znf hai lần:** khi máy còn link cấp user `~/.agents/skills/znf` (chưa chạy `up --apply` bản mới), SessionStart không tạo thêm link trong workspace. Máy đã có cả hai link thì chạy `zenify up --apply` một lần. Xem [Codex](/guides/codex).
+- **Plugin bị gỡ tay được cài lại:** nếu bạn đã gỡ `znf` ở workspace bằng tay, SessionStart cài lại thay vì báo lỗi mỗi lần. Plugin bạn tự tắt thì vẫn tắt, chỉ được cập nhật.
+- **Ghi trust an toàn hơn:** `~/.claude.json` dạng symlink (ví dụ trong repo dotfiles) vẫn giữ là symlink; mục trust trong `~/.codex/config.toml` không còn ghi nhầm sang project khác khi file có comment chứa dấu ngoặc, và `zenify down` giữ lại mức trust bạn tự đặt.
+- **`codex exec` ở gốc workspace** cần thêm `--skip-git-repo-check`, vì gốc workspace không phải git repo. Xem [Codex](/guides/codex).
+
 ## v0.60.1
 
 *2026-11-06*
