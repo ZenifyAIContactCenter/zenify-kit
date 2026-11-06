@@ -81,12 +81,11 @@ flowchart TD
   B -->|không| D["docs gen --check + docs:build xanh trên main"]
   C --> D
   D --> E["git tag vX.Y.Z origin/main; git push origin vX.Y.Z"]
-  E --> R["người thứ hai duyệt deployment release"]
-  R --> F["gh run watch → gh release view: 7 asset"]
+  E --> F["gh run watch → gh release view: 7 asset"]
   F --> M["PR chore/tap-vX.Y.Z tự merge khi Zenie Review xanh"]
   M --> G["brew upgrade --cask zenify && zenify up --apply"]
   class A,C,D,F,M action
-  class B,E,R,G user
+  class B,E,G user
 ```
 
 *Từ main tới binary trên máy teammate*
@@ -95,7 +94,7 @@ flowchart TD
 2. **Đóng khoảng trống trước khi tag:** thiếu trang thì mở PR docs, merge, rồi mới tiếp. Trong PR đó viết mục `## vX.Y.Z` cho bản sắp cắt vào [Changelog](/changelog): gạch đầu dòng tiếng Việt cho người dùng kit, không dán commit. Rule `kit-release-docs` trong knowledge store nhắc agent điều này mỗi khi sửa kit; hành vi bị bỏ (một bước, một cờ, một gate) phải xoá câu tương ứng trên site trong cùng PR.
 3. **Kiểm `main`:** `zenify docs gen --check` khớp, `npm run docs:build` build xong, CI `main` xanh.
 4. **Đánh số:** có `feat` → tăng minor (`v0.23.0` → `v0.24.0`); chỉ `fix` → tăng patch.
-5. **Tag và đẩy:** `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`. Theo dõi `gh run list --workflow release`; `gh release view vX.Y.Z` phải có `checksums.txt` cùng 6 archive (3 OS × 2 arch), và PR `chore/tap-vX.Y.Z` đã mở với auto-merge bật; PR tự merge khi Zenie Review xanh, trước đó `brew upgrade`/`scoop update` vẫn ra bản cũ. PR do một GitHub App mở, vì org không cho `GITHUB_TOKEN` của Actions mở PR. Key của App là hai secret `RELEASE_APP_CLIENT_ID` và `RELEASE_APP_KEY` trong environment `release`: job chỉ chạy từ tag `v*` và chờ một reviewer của environment, khác người đẩy tag, bấm Approve trong tab Actions. Workflow chạy là bản ở commit mà tag trỏ tới, nên bước duyệt này là chốt chặn để key không lộ (admin cũng không bỏ qua được); xem diff của `.github/` trước khi duyệt. Chốt chặn này không giữ được trước một admin tự sửa cấu hình environment, việc đó chỉ để lại audit log. Thiếu secret thì run đỏ ngay đầu, trước khi GoReleaser publish gì. Bước mở PR hoặc bật auto-merge lỗi thì run đỏ dù GitHub Release và binary đã ra: khi đó mở tay `gh pr create --head chore/tap-vX.Y.Z --base main` rồi merge. PR mở rồi mà quá 15 phút chưa merge thì xem check Zenie Review trên PR đó, rồi merge tay. Chạy lại run của cùng một tag thì xoá nhánh `chore/tap-vX.Y.Z` trước. Workflow release từ chối tag không có mục `## vX.Y.Z` trong `website/changelog.md`, và dùng mục đó làm nội dung GitHub Release.
+5. **Tag và đẩy:** `git tag vX.Y.Z origin/main && git push origin vX.Y.Z`. Theo dõi `gh run list --workflow release`; `gh release view vX.Y.Z` phải có `checksums.txt` cùng 6 archive (3 OS × 2 arch), và PR `chore/tap-vX.Y.Z` đã mở với auto-merge bật; PR tự merge khi Zenie Review xanh, trước đó `brew upgrade`/`scoop update` vẫn ra bản cũ. PR do một GitHub App mở, vì org không cho `GITHUB_TOKEN` của Actions mở PR. Key của App là hai secret `RELEASE_APP_CLIENT_ID` và `RELEASE_APP_KEY` trong environment `release`: job chỉ đọc được hai secret này khi chạy từ tag `v*`, và chỉ role admin hoặc maintain đẩy được tag `v*`. Workflow chạy là bản ở commit mà tag trỏ tới, nên đừng gắn tag `v*` vào commit ngoài `main`: workflow ở commit đó đọc được key của App, mà App này cài trên mọi repo của org. Thiếu secret thì run đỏ ngay đầu, trước khi GoReleaser publish gì. Bước mở PR hoặc bật auto-merge lỗi thì run đỏ dù GitHub Release và binary đã ra: khi đó mở tay `gh pr create --head chore/tap-vX.Y.Z --base main` rồi merge. PR mở rồi mà quá 15 phút chưa merge thì xem check Zenie Review trên PR đó, rồi merge tay. Chạy lại run của cùng một tag thì xoá nhánh `chore/tap-vX.Y.Z` trước. Workflow release từ chối tag không có mục `## vX.Y.Z` trong `website/changelog.md`, và dùng mục đó làm nội dung GitHub Release.
 6. **Phân phối:** teammate chạy `brew upgrade --cask zenify && zenify up --apply` (hoặc `zenify update`). Skill mới tới máy qua `zenify skills sync`, hook mới qua `zenify up`.
 
 ::: warning Không tag khi còn khoảng trống docs
