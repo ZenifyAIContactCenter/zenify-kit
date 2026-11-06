@@ -80,7 +80,7 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 	// Skipped (unless ForceLocal) while the user-level link remains, or Codex
 	// lists every znf skill twice until `up` migrates.
 	rep.CodexLinkPath = filepath.Join(workspace, ".agents", "skills", "znf")
-	if _, err := os.Stat(filepath.Join(home, ".agents", "skills", "znf")); err == nil && !opts.ForceLocal { // a dangling user link does not count
+	if fi, err := os.Stat(filepath.Join(home, ".agents", "skills", "znf")); err == nil && fi.IsDir() && !opts.ForceLocal { // only a live skills dir counts
 		// user copy still serves Codex
 	} else if st, err := apply.EnsureCodexSkillsLink(rep.CodexLinkPath, filepath.Join(plugin.PluginDir(zh), "skills"), false); err != nil {
 		localErr("codex-skills", err)

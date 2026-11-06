@@ -18,16 +18,44 @@ func codexTableHeader(workspace string) string {
 
 // isTableHeader reports whether l is a TOML table header (`[a]`, `[[a]]`,
 // optionally followed by a comment) starting in column 0, as Codex writes
-// them. An indented array element (`  [1, 2]`) or one with a trailing comma
-// (`[1, 2],`) is not.
+// them. The closing bracket is found outside quoted keys, so a `]` inside a
+// key or a trailing comment does not count. An array element (`[1, 2]`,
+// `  [1, 2],`) is not a header: a bare `,` or `[` cannot appear in a key.
 func isTableHeader(l string) bool {
 	t := strings.TrimRight(l, " \t\r")
 	if !strings.HasPrefix(t, "[") {
 		return false
 	}
-	if i := strings.LastIndex(t, "]"); i >= 0 {
-		rest := strings.TrimSpace(t[i+1:])
-		return rest == "" || strings.HasPrefix(rest, "#")
+	double := strings.HasPrefix(t, "[[")
+	i := 1
+	if double {
+		i = 2
+	}
+	var quote byte
+	for ; i < len(t); i++ {
+		c := t[i]
+		switch {
+		case quote == '"' && c == '\\':
+			i++ // skip the escaped character
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == ',' || c == '[' || c == '#':
+			return false
+		case c == ']':
+			end := i + 1
+			if double {
+				if end >= len(t) || t[end] != ']' {
+					return false
+				}
+				end++
+			}
+			rest := strings.TrimSpace(t[end:])
+			return rest == "" || strings.HasPrefix(rest, "#")
+		}
 	}
 	return false
 }

@@ -196,3 +196,41 @@ func TestEnsureCodexTrust_IndentedArrayElementNotHeader(t *testing.T) {
 		t.Fatalf("got %q", b)
 	}
 }
+
+func TestIsTableHeader(t *testing.T) {
+	for l, want := range map[string]bool{
+		`[a]`:                             true,
+		`[[a.b]]`:                         true,
+		`[projects."/x"] # [manual] keep`: true,
+		`[projects."/a]b"]`:               true,
+		`[projects.'C:\x']`:               true,
+		`[1, 2]`:                          false,
+		`[1, 2],`:                         false,
+		`  [1, 2]`:                        false,
+		`[[1, 2], [3]]`:                   false,
+		`["a"]`:                           true, // a quoted key is a valid header
+		`[a] x`:                           false,
+		`# [a]`:                           false,
+	} {
+		if got := isTableHeader(l); got != want {
+			t.Errorf("isTableHeader(%q) = %v, want %v", l, got, want)
+		}
+	}
+}
+
+// A `]` in the next table's trailing comment must not hide that header:
+// trust goes to the workspace table, the next project is untouched.
+func TestEnsureCodexTrust_NextHeaderWithBracketComment(t *testing.T) {
+	home := t.TempDir()
+	cfg := filepath.Join(home, "config.toml")
+	in := "[projects.\"/ws\"]\n\n[projects.\"/other\"] # [manual] keep untrusted\ntrust_level = \"untrusted\"\n"
+	_ = os.WriteFile(cfg, []byte(in), 0o600)
+	if _, err := EnsureCodexTrust(home, "/ws", false); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(cfg)
+	want := "[projects.\"/ws\"]\n" + codexTrustLine + "\n\n[projects.\"/other\"] # [manual] keep untrusted\ntrust_level = \"untrusted\"\n"
+	if string(b) != want {
+		t.Fatalf("got %q", b)
+	}
+}

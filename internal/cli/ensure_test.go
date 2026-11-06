@@ -852,3 +852,21 @@ func TestEnsureWorkspace_DanglingUserLinkDoesNotBlock(t *testing.T) {
 		t.Fatalf("workspace link missing with a dangling user link: %v", err)
 	}
 }
+
+// A regular file at ~/.agents/skills/znf serves no skills, so it does not
+// block the workspace link.
+func TestEnsureWorkspace_UserSkillsFileDoesNotBlock(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	p := filepath.Join(home, ".agents", "skills", "znf")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	if _, err := os.Readlink(filepath.Join(ws, ".agents", "skills", "znf")); err != nil {
+		t.Fatalf("workspace link missing with a regular user file: %v", err)
+	}
+}
