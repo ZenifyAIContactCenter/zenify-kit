@@ -196,10 +196,10 @@ func TestResyncPluginLocal_StaleRunsUpdateAndStamps(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, ".zenify", "plugin-version"), []byte("v0.0.1"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeRun{}
+	f := &fakeRun{out: enabledList(ws)}
 	var e bytes.Buffer
 	resyncPluginLocal(ws, zh, f.run, &e)
-	want := "claude plugin marketplace update zenify-kit|claude plugin update znf@zenify-kit -s local"
+	want := "claude plugin list --json|" + updateCalls
 	if strings.Join(f.calls, "|") != want {
 		t.Fatalf("calls = %v", f.calls)
 	}
@@ -217,7 +217,7 @@ func TestResyncPluginLocal_StaleRunsUpdateAndStamps(t *testing.T) {
 func TestResyncPluginLocal_FailureKeepsStaleAndRetries(t *testing.T) {
 	zh, ws := t.TempDir(), t.TempDir()
 	writeStamp(t, ws, "v0.0.1")
-	f := &fakeRun{errs: map[string]error{"claude plugin update znf@zenify-kit -s local": fmt.Errorf("boom")}}
+	f := &fakeRun{out: enabledList(ws), errs: map[string]error{"claude plugin update znf@zenify-kit -s local": fmt.Errorf("boom")}}
 	var e bytes.Buffer
 	resyncPluginLocal(ws, zh, f.run, &e)
 	if b, _ := os.ReadFile(filepath.Join(ws, ".zenify", "plugin-version")); string(b) != "v0.0.1" {
@@ -228,7 +228,7 @@ func TestResyncPluginLocal_FailureKeepsStaleAndRetries(t *testing.T) {
 	}
 	f.calls = nil
 	resyncPluginLocal(ws, zh, f.run, &e)
-	if len(f.calls) != 2 {
+	if len(f.calls) != 3 {
 		t.Fatalf("no retry: %v", f.calls)
 	}
 }
@@ -245,5 +245,42 @@ func TestResyncPluginLocal_NoStampSyncsMarketplaceOnly(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(plugin.PluginDir(zh), ".claude-plugin", "plugin.json")); err != nil {
 		t.Fatalf("marketplace not materialized: %v", err)
+	}
+}
+
+// A stamp but the plugin removed by hand: resync reinstalls instead of
+// running an update that cannot succeed.
+func TestResyncPluginLocal_StampButPluginGoneReinstalls(t *testing.T) {
+	zh, ws := t.TempDir(), t.TempDir()
+	writeStamp(t, ws, "v0.0.1")
+	f := &fakeRun{out: map[string]string{"claude plugin list --json": "[]"}}
+	var e bytes.Buffer
+	if err := resyncPluginLocal(ws, zh, f.run, &e); err != nil {
+		t.Fatalf("err = %v, stderr = %s", err, e.String())
+	}
+	if !strings.Contains(strings.Join(f.calls, "|"), "claude plugin install znf@zenify-kit --scope local") {
+		t.Fatalf("calls = %v, want a reinstall", f.calls)
+	}
+	if strings.Contains(strings.Join(f.calls, "|"), "plugin update") {
+		t.Fatalf("calls = %v, update must not run", f.calls)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, ".zenify", "plugin-version")); string(b) != version.Current() {
+		t.Fatalf("stamp = %q", b)
+	}
+}
+
+// A plugin the user disabled is still installed: resync updates it and never
+// reinstalls (which could re-enable it or fail every session).
+func TestResyncPluginLocal_DisabledPluginIsUpdatedNotReinstalled(t *testing.T) {
+	zh, ws := t.TempDir(), t.TempDir()
+	writeStamp(t, ws, "v0.0.1")
+	f := &fakeRun{out: map[string]string{"claude plugin list --json": fmt.Sprintf(
+		`[{"id":"znf@zenify-kit","scope":"local","projectPath":%q,"enabled":false}]`, ws)}}
+	var e bytes.Buffer
+	if err := resyncPluginLocal(ws, zh, f.run, &e); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if got := strings.Join(f.calls, "|"); got != "claude plugin list --json|"+updateCalls {
+		t.Fatalf("calls = %v", f.calls)
 	}
 }

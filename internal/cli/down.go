@@ -211,7 +211,7 @@ func newDownCmd() *cobra.Command {
 // removeLocalClaude removes the workspace's local-scope plugin, marketplace and
 // MCP registrations through claude. "Not installed / not found" answers (measured
 // on 2.1.318) count as already clean, so down is idempotent; any other failure is
-// a warning. The plugin stamp goes once the plugin is gone.
+// a warning. The marketplace and the plugin stamp go only once the plugin is gone.
 // It reports false when zenify-plane may still be registered locally.
 func removeLocalClaude(u *ui.Writer, workspace string, run func(string, ...string) ([]byte, error)) (planeGone bool) {
 	planeGone = true
@@ -222,10 +222,12 @@ func removeLocalClaude(u *ui.Writer, workspace string, run func(string, ...strin
 		pluginGone = true
 		u.Step(ui.StatusOK, "plugin", "gỡ znf@zenify-kit (local)") //znf:allow-lang
 	}
-	if out, err := run("claude", "plugin", "marketplace", "remove", plugin.MarketplaceName); err != nil && !marketplaceNotFound(string(out)) {
-		u.Step(ui.StatusWarn, "marketplace", fmt.Sprintf("bỏ qua (%v: %s)", err, strings.TrimSpace(string(out)))) //znf:allow-lang
-	}
 	if pluginGone {
+		// The marketplace goes only with the plugin: removing it under a plugin
+		// that failed to uninstall leaves an enabled plugin with no source.
+		if out, err := run("claude", "plugin", "marketplace", "remove", plugin.MarketplaceName); err != nil && !marketplaceNotFound(string(out)) {
+			u.Step(ui.StatusWarn, "marketplace", fmt.Sprintf("bỏ qua (%v: %s)", err, strings.TrimSpace(string(out)))) //znf:allow-lang
+		}
 		if err := os.Remove(pluginStampPath(workspace)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			u.Step(ui.StatusWarn, "plugin", fmt.Sprintf("không xoá được stamp (%v)", err)) //znf:allow-lang
 		}

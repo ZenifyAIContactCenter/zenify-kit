@@ -47,29 +47,42 @@ func samePath(a, b string) bool {
 	return norm(a) == norm(b)
 }
 
+// localPluginState asks claude whether znf is installed at local scope for
+// workspace, and whether it is enabled. known is false when the list could not
+// be read.
+func localPluginState(workspace string, run func(string, ...string) ([]byte, error)) (installed, enabled, known bool) {
+	out, err := run("claude", "plugin", "list", "--json")
+	if err != nil {
+		return false, false, false
+	}
+	var list []struct {
+		ID          string `json:"id"`
+		Scope       string `json:"scope"`
+		ProjectPath string `json:"projectPath"`
+		Enabled     bool   `json:"enabled"`
+	}
+	if json.Unmarshal(out, &list) != nil {
+		return false, false, false
+	}
+	for _, p := range list {
+		if p.ID == plugin.PluginID && p.Scope == "local" && samePath(p.ProjectPath, workspace) {
+			return true, p.Enabled, true
+		}
+	}
+	return false, false, true
+}
+
 // installPluginLocal materializes the marketplace under zh and installs the
 // znf plugin at local scope for workspace, skipping what is already enabled.
 func installPluginLocal(workspace, zh string, run func(string, ...string) ([]byte, error)) error {
 	if _, err := plugin.SyncMarketplace(zh); err != nil {
 		return fmt.Errorf("plugin marketplace sync: %w", err)
 	}
-	if out, err := run("claude", "plugin", "list", "--json"); err == nil {
-		var list []struct {
-			ID          string `json:"id"`
-			Scope       string `json:"scope"`
-			ProjectPath string `json:"projectPath"`
-			Enabled     bool   `json:"enabled"`
+	if _, enabled, _ := localPluginState(workspace, run); enabled {
+		if exists, current := pluginStampState(workspace); exists && current {
+			return nil
 		}
-		if json.Unmarshal(out, &list) == nil {
-			for _, p := range list {
-				if p.ID == plugin.PluginID && p.Scope == "local" && p.Enabled && samePath(p.ProjectPath, workspace) {
-					if exists, current := pluginStampState(workspace); exists && current {
-						return nil
-					}
-					return updatePluginLocal(workspace, run)
-				}
-			}
-		}
+		return updatePluginLocal(workspace, run)
 	}
 	if out, err := run("claude", "plugin", "marketplace", "add", plugin.MarketplaceDir(zh), "--scope", "local"); err != nil &&
 		!alreadyAdded(string(out)+err.Error()) {
@@ -156,6 +169,16 @@ func resyncPluginLocal(workspace, zh string, run func(string, ...string) ([]byte
 		return fmt.Errorf("plugin sync: %w", err)
 	}
 	if !exists {
+		return nil
+	}
+	// A stamp but no local plugin at all (removed by hand): reinstall, or every
+	// update fails and `up` keeps the user install. One the user disabled is
+	// still installed and only gets the update.
+	if installed, _, known := localPluginState(workspace, run); known && !installed {
+		if err := installPluginLocal(workspace, zh, run); err != nil {
+			fmt.Fprintln(stderr, "znf ensure: plugin:", err)
+			return err
+		}
 		return nil
 	}
 	if err := updatePluginLocal(workspace, run); err != nil {

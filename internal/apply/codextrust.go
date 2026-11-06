@@ -9,10 +9,35 @@ import (
 
 const codexTrustLine = `trust_level = "trusted"`
 
+// codexTableHeader is the `[projects."<ws>"]` header line, the form Codex
+// itself writes, with the path as a TOML basic string.
+func codexTableHeader(workspace string) string {
+	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return `[projects."` + r.Replace(workspace) + `"]`
+}
+
+// isTableHeader reports whether l is a TOML table header (`[a]`, `[[a]]`,
+// optionally followed by a comment) starting in column 0, as Codex writes
+// them. An indented array element (`  [1, 2]`) or one with a trailing comma
+// (`[1, 2],`) is not.
+func isTableHeader(l string) bool {
+	t := strings.TrimRight(l, " \t\r")
+	if !strings.HasPrefix(t, "[") {
+		return false
+	}
+	if i := strings.LastIndex(t, "]"); i >= 0 {
+		rest := strings.TrimSpace(t[i+1:])
+		return rest == "" || strings.HasPrefix(rest, "#")
+	}
+	return false
+}
+
 // codexTable locates the `[projects."<ws>"]` table in lines: header index and
 // the index of the next table header (or len(lines)). header is -1 if absent.
+// The dotted (`[projects]` + `"<ws>".trust_level`) and inline forms are not
+// recognised; Codex writes the header form.
 func codexTable(lines []string, workspace string) (header, end int) {
-	want := `[projects."` + workspace + `"]`
+	want := codexTableHeader(workspace)
 	header = -1
 	for i, l := range lines {
 		if strings.TrimSpace(l) == want {
@@ -25,7 +50,7 @@ func codexTable(lines []string, workspace string) (header, end int) {
 	}
 	end = len(lines)
 	for i := header + 1; i < len(lines); i++ {
-		if strings.HasPrefix(lines[i], "[") {
+		if isTableHeader(lines[i]) {
 			end = i
 			break
 		}
@@ -66,7 +91,7 @@ func EnsureCodexTrust(codexHome, workspace string, dryRun bool) (bool, error) {
 			}
 			out += "\n"
 		}
-		out += `[projects."` + workspace + `"]` + "\n" + codexTrustLine + "\n"
+		out += codexTableHeader(workspace) + "\n" + codexTrustLine + "\n"
 	} else {
 		idx := -1
 		for i := header + 1; i < end; i++ {
@@ -92,8 +117,9 @@ func EnsureCodexTrust(codexHome, workspace string, dryRun bool) (bool, error) {
 }
 
 // RemoveCodexTrust removes the workspace table only when it holds nothing but
-// trust_level (what EnsureCodexTrust creates), plus the blank line Ensure put
-// before it. A table with other keys is left alone.
+// `trust_level = "trusted"` (what EnsureCodexTrust creates), plus the blank
+// line Ensure put before it. A table with other keys, or one the user set to
+// another trust level, is left alone.
 func RemoveCodexTrust(codexHome, workspace string, dryRun bool) (bool, error) {
 	path, text, err := readCodexConfig(codexHome)
 	if err != nil {
@@ -105,7 +131,8 @@ func RemoveCodexTrust(codexHome, workspace string, dryRun bool) (bool, error) {
 		return false, nil
 	}
 	for i := header + 1; i < end; i++ {
-		if t := strings.TrimSpace(lines[i]); t != "" && !isTrustKey(lines[i]) {
+		t := strings.TrimSpace(lines[i])
+		if t != "" && (!isTrustKey(lines[i]) || t != codexTrustLine) {
 			return false, nil
 		}
 	}
@@ -113,8 +140,11 @@ func RemoveCodexTrust(codexHome, workspace string, dryRun bool) (bool, error) {
 	if start > 0 && strings.TrimSpace(lines[start-1]) == "" {
 		start--
 	}
-	if end == len(lines) && lines[end-1] == "" {
+	switch {
+	case end == len(lines) && lines[end-1] == "":
 		end-- // keep the file's final newline
+	case end < len(lines) && start < header && end-1 > header && strings.TrimSpace(lines[end-1]) == "":
+		end-- // mid-file: drop one blank separator, keep the one before the next table
 	}
 	lines = append(lines[:start], lines[end:]...)
 	if dryRun {

@@ -104,3 +104,95 @@ func TestRemoveCodexTrust_KeepsForeignTable(t *testing.T) {
 		t.Fatalf("got %q", b)
 	}
 }
+
+func TestRemoveCodexTrust_KeepsUserUntrusted(t *testing.T) {
+	home := t.TempDir()
+	cfg := filepath.Join(home, "config.toml")
+	in := "[projects.\"/ws\"]\ntrust_level = \"untrusted\"\n"
+	_ = os.WriteFile(cfg, []byte(in), 0o600)
+	if changed, err := RemoveCodexTrust(home, "/ws", false); err != nil || changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	if b, _ := os.ReadFile(cfg); string(b) != in {
+		t.Fatalf("got %q", b)
+	}
+}
+
+// Removing a table in the middle keeps exactly one blank line between its
+// neighbours.
+func TestRemoveCodexTrust_MidFileKeepsOneSeparator(t *testing.T) {
+	home := t.TempDir()
+	cfg := filepath.Join(home, "config.toml")
+	in := "[a]\nx = 1\n\n[projects.\"/ws\"]\ntrust_level = \"trusted\"\n\n[b]\ny = 2\n"
+	_ = os.WriteFile(cfg, []byte(in), 0o600)
+	if changed, err := RemoveCodexTrust(home, "/ws", false); err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	if b, _ := os.ReadFile(cfg); string(b) != "[a]\nx = 1\n\n[b]\ny = 2\n" {
+		t.Fatalf("got %q", b)
+	}
+}
+
+// A multi-line array line starting with "[" is not the next table header.
+func TestEnsureCodexTrust_MultiLineArrayInTable(t *testing.T) {
+	home := t.TempDir()
+	cfg := filepath.Join(home, "config.toml")
+	in := "[projects.\"/ws\"]\nextra = [\n  [1, 2],\n]\n"
+	_ = os.WriteFile(cfg, []byte(in), 0o600)
+	if _, err := EnsureCodexTrust(home, "/ws", false); err != nil {
+		t.Fatal(err)
+	}
+	if changed, _ := RemoveCodexTrust(home, "/ws", false); changed {
+		t.Fatal("table with another key must stay")
+	}
+	b, _ := os.ReadFile(cfg)
+	if strings.Count(string(b), "[projects.") != 1 || !strings.Contains(string(b), codexTrustLine) {
+		t.Fatalf("got %q", b)
+	}
+}
+
+func TestEnsureCodexTrust_EscapesPath(t *testing.T) {
+	home := t.TempDir()
+	ws := `C:\Users\a"b`
+	if _, err := EnsureCodexTrust(home, ws, false); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(home, "config.toml"))
+	if !strings.Contains(string(b), `[projects."C:\\Users\\a\"b"]`) {
+		t.Fatalf("got %q", b)
+	}
+	if changed, err := RemoveCodexTrust(home, ws, false); err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+}
+
+func TestRemoveCodexTrust_DryRunWritesNothing(t *testing.T) {
+	home := t.TempDir()
+	if _, err := EnsureCodexTrust(home, "/ws", false); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(home, "config.toml")
+	before, _ := os.ReadFile(cfg)
+	if changed, err := RemoveCodexTrust(home, "/ws", true); err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	if after, _ := os.ReadFile(cfg); string(after) != string(before) {
+		t.Fatal("dry run wrote")
+	}
+}
+
+// An indented last array element without a comma is not a table header, so
+// the existing trust_level after it is found and flipped, not duplicated.
+func TestEnsureCodexTrust_IndentedArrayElementNotHeader(t *testing.T) {
+	home := t.TempDir()
+	cfg := filepath.Join(home, "config.toml")
+	in := "[projects.\"/ws\"]\nextra = [\n  [1, 2]\n]\ntrust_level = \"untrusted\"\n"
+	_ = os.WriteFile(cfg, []byte(in), 0o600)
+	if _, err := EnsureCodexTrust(home, "/ws", false); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(cfg)
+	if strings.Count(string(b), "trust_level") != 1 || !strings.Contains(string(b), codexTrustLine) {
+		t.Fatalf("got %q", b)
+	}
+}
