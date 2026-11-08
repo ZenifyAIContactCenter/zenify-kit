@@ -600,6 +600,15 @@ func TestPopulateFreshSlot(t *testing.T) { // SC-2
 	if err != nil || string(got) != lockJSON {
 		t.Fatalf("slot lock = %q, %v; want worktree lock", got, err)
 	}
+	ents, err := os.ReadDir(filepath.Join(cache, "repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), ".tmp-") {
+			t.Fatalf("temp dir left behind: %s", e.Name())
+		}
+	}
 }
 
 func TestPopulateIdempotent(t *testing.T) { // SC-3
@@ -682,15 +691,14 @@ func TestPopulateOff(t *testing.T) { // SC-4
 func TestPopulateNoLock(t *testing.T) { // SC-6
 	repo, wtp := cloneFixture(t, cloneCase{})
 	cache := t.TempDir()
-	t.Setenv("ZENIFY_DEPS_CACHE", cache)
 	if err := os.Remove(filepath.Join(wtp, "package-lock.json")); err != nil {
 		t.Fatal(err)
 	}
-	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+	if err := os.MkdirAll(filepath.Join(wtp, "node_modules"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if !installed(t, wtp) {
-		t.Fatal("install path did not run")
+	if err := populateCache(cache, repo, wtp, "node_modules"); err != nil {
+		t.Fatalf("no lock must be skipped silently, got %v", err)
 	}
 	if ents, _ := os.ReadDir(cache); len(ents) != 0 {
 		t.Fatalf("cache written without a lock file: %v", ents)
