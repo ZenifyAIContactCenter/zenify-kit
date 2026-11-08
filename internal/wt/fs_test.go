@@ -3,6 +3,7 @@ package wt
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -232,15 +233,34 @@ func cacheFixture(t *testing.T, cacheLock, wtLock string) (repo, wtp, cache, has
 	return repo, wtp, cache, hash
 }
 
+// cacheEntries lists the entry names under dir; a missing dir yields none.
+func cacheEntries(t *testing.T, dir string) []string {
+	t.Helper()
+	es, err := os.ReadDir(dir)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(es))
+	for _, e := range es {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
 // SC-10: symlink mode never reads the cache, even when a matching slot exists.
 func TestApplyDepsSymlinkIgnoresMatchingCache(t *testing.T) {
-	repo, wtp, _, _ := cacheFixture(t, `{"lockfileVersion":3}`, `{"lockfileVersion":3}`)
+	repo, wtp, cache, _ := cacheFixture(t, `{"lockfileVersion":3}`, `{"lockfileVersion":3}`)
 	own := filepath.Join(repo, "node_modules")
 	if err := os.MkdirAll(own, 0o750); err != nil {
 		t.Fatal(err)
 	}
+	parent := filepath.Join(cache, filepath.Base(repo))
+	before := cacheEntries(t, parent)
 	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
 		t.Fatal(err)
+	}
+	if after := cacheEntries(t, parent); !reflect.DeepEqual(before, after) {
+		t.Fatalf("symlink mode changed the cache: before %v, after %v", before, after)
 	}
 	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
 	if err != nil {
@@ -252,13 +272,18 @@ func TestApplyDepsSymlinkIgnoresMatchingCache(t *testing.T) {
 }
 
 func TestApplyDepsSymlinkIgnoresMismatchedCache(t *testing.T) {
-	repo, wtp, _, _ := cacheFixture(t, `{"a":1}`, `{"a":2}`)
+	repo, wtp, cache, _ := cacheFixture(t, `{"a":1}`, `{"a":2}`)
 	own := filepath.Join(repo, "node_modules")
 	if err := os.MkdirAll(own, 0o750); err != nil {
 		t.Fatal(err)
 	}
+	parent := filepath.Join(cache, filepath.Base(repo))
+	before := cacheEntries(t, parent)
 	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
 		t.Fatal(err)
+	}
+	if after := cacheEntries(t, parent); !reflect.DeepEqual(before, after) {
+		t.Fatalf("symlink mode changed the cache: before %v, after %v", before, after)
 	}
 	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
 	if err != nil {
@@ -512,10 +537,26 @@ func TestApplyDepsCloneFromCacheSkipsWhenCurrent(t *testing.T) {
 	if _, ok := cloneIsCurrent(slotNM, filepath.Join(wtp, "node_modules"), "npm ci"); !ok {
 		t.Fatal("cache entry matching the lock should count as current")
 	}
+	// the repo has its OWN node_modules and a DIFFERENT lock: a regression that
+	// cloned from the main checkout would carry repo_only_marker over.
+	repoNM := filepath.Join(repo, "node_modules")
+	if err := os.MkdirAll(repoNM, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for p, v := range map[string]string{
+		filepath.Join(repoNM, "repo_only_marker"): "repo",
+		filepath.Join(repo, "package-lock.json"):  `{"lockfileVersion":3,"repo":"different"}`,
+	} {
+		if err := os.WriteFile(p, []byte(v), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
 		t.Fatal(err)
 	}
-	// repo has no node_modules, so the clone can only have come from the slot
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "repo_only_marker")); !os.IsNotExist(err) {
+		t.Fatalf("worktree seeded from the repo's own node_modules, not the cache slot (stat err: %v)", err)
+	}
 	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "x")); err != nil {
 		t.Fatalf("clone not seeded from cache slot: %v", err)
 	}
