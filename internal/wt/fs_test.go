@@ -442,3 +442,57 @@ func TestApplyDepsCloneFromCacheSkipsWhenCurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestResolveCacheDir(t *testing.T) {
+	cases := []struct {
+		name    string
+		env     map[string]string
+		wantDir string
+		wantOn  bool
+	}{
+		{"unset, XDG set", map[string]string{"XDG_CACHE_HOME": "/x", "HOME": "/h"}, "/x/zenify/wt-deps", true},
+		{"unset, XDG unset, HOME set", map[string]string{"HOME": "/h"}, "/h/.cache/zenify/wt-deps", true},
+		{"empty disables", map[string]string{"ZENIFY_DEPS_CACHE": "", "HOME": "/h"}, "", false},
+		{"off disables", map[string]string{"ZENIFY_DEPS_CACHE": "off", "HOME": "/h"}, "", false},
+		{"OFF disables", map[string]string{"ZENIFY_DEPS_CACHE": "OFF", "HOME": "/h"}, "", false},
+		{"custom path", map[string]string{"ZENIFY_DEPS_CACHE": "/custom", "HOME": "/h"}, "/custom", true},
+		{"unset, no XDG, no HOME", map[string]string{}, "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			lookup := func(k string) (string, bool) { v, ok := c.env[k]; return v, ok }
+			dir, on := resolveCacheDir(lookup)
+			if dir != c.wantDir || on != c.wantOn {
+				t.Fatalf("got (%q, %v), want (%q, %v)", dir, on, c.wantDir, c.wantOn)
+			}
+		})
+	}
+}
+
+func TestLockHash(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	a := write("a.json", `{"lockfileVersion":3}`)
+	a2 := write("a2.json", `{"lockfileVersion":3}`)
+	b := write("b.json", `{"lockfileVersion":2}`)
+
+	// expected values from `printf ... | shasum -a 256 | cut -c1-16`
+	for p, want := range map[string]string{a: "2086223f909ecaf4", a2: "2086223f909ecaf4", b: "54c1633a5f724756"} {
+		got, err := lockHash(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("lockHash(%s) = %q, want %q", p, got, want)
+		}
+	}
+	if _, err := lockHash(filepath.Join(dir, "missing.json")); err == nil {
+		t.Fatal("missing file: want error")
+	}
+}

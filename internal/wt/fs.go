@@ -2,6 +2,8 @@ package wt
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -179,6 +181,39 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 	default:
 		return fmt.Errorf("wt: unknown deps mode: %s", mode)
 	}
+}
+
+// cacheSlotCap is the number of lock-hash slots kept per repo in the deps cache.
+const cacheSlotCap = 5
+
+// resolveCacheDir applies the ZENIFY_DEPS_CACHE policy. Unset: the cache is on at
+// $XDG_CACHE_HOME/zenify/wt-deps, else $HOME/.cache/zenify/wt-deps (no HOME: off).
+// Set to "" or "off" (case-insensitive): off. Any other value is the cache dir.
+// lookupEnv is injected so callers/tests need not touch the real environment.
+func resolveCacheDir(lookupEnv func(string) (string, bool)) (dir string, enabled bool) {
+	if v, ok := lookupEnv("ZENIFY_DEPS_CACHE"); ok {
+		if v == "" || strings.EqualFold(strings.TrimSpace(v), "off") {
+			return "", false
+		}
+		return v, true
+	}
+	if xdg, ok := lookupEnv("XDG_CACHE_HOME"); ok && xdg != "" {
+		return filepath.Join(xdg, "zenify", "wt-deps"), true
+	}
+	if home, ok := lookupEnv("HOME"); ok && home != "" {
+		return filepath.Join(home, ".cache", "zenify", "wt-deps"), true
+	}
+	return "", false
+}
+
+// lockHash returns the first 16 hex chars of the sha256 of the lock file's bytes.
+func lockHash(lockPath string) (string, error) {
+	b, err := os.ReadFile(lockPath) //nolint:gosec // G304 -- path is a lock file inside a worktree/cache dir this tool manages
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])[:16], nil
 }
 
 // depsSource picks where symlink/clone read the deps dir from. With
