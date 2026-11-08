@@ -196,10 +196,30 @@ func TestUpsertEnvVar_ReplacesExisting(t *testing.T) {
 	}
 }
 
+// testEnvTag is the fixed build-env fingerprint the probe overrides return, so
+// slot hashes are deterministic and never depend on node being installed.
+const testEnvTag = "testabi"
+
+// stubProbes pins probeEnvTag → ("testabi", true) and probeIgnoreScripts →
+// (false, true) for the test, restoring both afterwards. Call it in every test
+// that drives ApplyDeps in clone mode: without it the real probes shell out to
+// node/npm, and with stubNpm on PATH the ignore-scripts probe silently runs the
+// stub (which prints nothing → parses as "not ignored, ok"), so a forgotten
+// override looks green.
+func stubProbes(t *testing.T) {
+	t.Helper()
+	origTag, origIgnore := probeEnvTag, probeIgnoreScripts
+	probeEnvTag = func() (string, bool) { return testEnvTag, true }
+	probeIgnoreScripts = func(string) (bool, bool) { return false, true }
+	t.Cleanup(func() { probeEnvTag, probeIgnoreScripts = origTag, origIgnore })
+}
+
 // cacheFixture builds the hash-keyed cache slot
-// <tmp>/cache/repo/<lockHash(cacheLock)>/{node_modules/x,package-lock.json} and a
-// worktree whose package-lock.json is wtLock. Returns repoRoot (named "repo",
-// without node_modules), the worktree path, the cache dir and the slot's hash.
+// <tmp>/cache/repo/<lockHash(cacheLock, testEnvTag)>/{node_modules/x,package-lock.json}
+// and a worktree whose package-lock.json is wtLock. Returns repoRoot (named
+// "repo", without node_modules), the worktree path, the cache dir and the slot's
+// hash. The slot hash uses testEnvTag so it matches what a stubProbes'd ApplyDeps
+// computes.
 func cacheFixture(t *testing.T, cacheLock, wtLock string) (repo, wtp, cache, hash string) {
 	t.Helper()
 	tmp := t.TempDir()
@@ -210,7 +230,7 @@ func cacheFixture(t *testing.T, cacheLock, wtLock string) (repo, wtp, cache, has
 	if err := os.WriteFile(lockSrc, []byte(cacheLock), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	hash, err := lockHash(lockSrc)
+	hash, err := lockHash(lockSrc, testEnvTag)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +331,7 @@ func TestDepsSourceHashLookup(t *testing.T) {
 		if err := os.Chtimes(slot, old, old); err != nil {
 			t.Fatal(err)
 		}
-		got, from := depsSource(repo, wtp, "node_modules", env(cache))
+		got, from := depsSource(repo, wtp, "node_modules", testEnvTag, env(cache))
 		if want := filepath.Join(slot, "node_modules"); got != want || !from {
 			t.Fatalf("got (%q, %v), want (%q, true)", got, from, want)
 		}
@@ -325,7 +345,7 @@ func TestDepsSourceHashLookup(t *testing.T) {
 	})
 	t.Run("miss", func(t *testing.T) {
 		repo, wtp, cache, _ := cacheFixture(t, lock, `{"other":true}`)
-		got, from := depsSource(repo, wtp, "node_modules", env(cache))
+		got, from := depsSource(repo, wtp, "node_modules", testEnvTag, env(cache))
 		if want := filepath.Join(repo, "node_modules"); got != want || from {
 			t.Fatalf("got (%q, %v), want (%q, false)", got, from, want)
 		}
@@ -336,7 +356,7 @@ func TestDepsSourceHashLookup(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(cache, "repo", hash, "package-lock.json"), []byte(`{"collided":1}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		got, from := depsSource(repo, wtp, "node_modules", env(cache))
+		got, from := depsSource(repo, wtp, "node_modules", testEnvTag, env(cache))
 		if want := filepath.Join(repo, "node_modules"); got != want || from {
 			t.Fatalf("got (%q, %v), want (%q, false)", got, from, want)
 		}
@@ -344,7 +364,7 @@ func TestDepsSourceHashLookup(t *testing.T) {
 	t.Run("disabled", func(t *testing.T) {
 		repo, wtp, cache, _ := cacheFixture(t, lock, lock)
 		_ = cache
-		got, from := depsSource(repo, wtp, "node_modules", env("off"))
+		got, from := depsSource(repo, wtp, "node_modules", testEnvTag, env("off"))
 		if want := filepath.Join(repo, "node_modules"); got != want || from {
 			t.Fatalf("got (%q, %v), want (%q, false)", got, from, want)
 		}
@@ -504,6 +524,7 @@ func installed(t *testing.T, wtp string) bool {
 // With "npm ci" and a current clone, ApplyDeps returns without invoking npm
 // (no lifecycle scripts in pkgJSON), so this passes on a machine without npm.
 func TestApplyDepsCloneSkipsNpmCiWhenCurrent(t *testing.T) {
+	stubProbes(t)
 	repo, wtp := cloneFixture(t, cloneCase{})
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
 		t.Fatal(err)
@@ -514,6 +535,7 @@ func TestApplyDepsCloneSkipsNpmCiWhenCurrent(t *testing.T) {
 }
 
 func TestApplyDepsCloneCustomInstallAlwaysRuns(t *testing.T) {
+	stubProbes(t)
 	repo, wtp := cloneFixture(t, cloneCase{})
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
 		t.Fatal(err)
@@ -524,6 +546,7 @@ func TestApplyDepsCloneCustomInstallAlwaysRuns(t *testing.T) {
 }
 
 func TestApplyDepsCloneFromCacheSkipsWhenCurrent(t *testing.T) {
+	stubProbes(t)
 	repo, wtp, cache, hash := cacheFixture(t, lockJSON, lockJSON)
 	slotNM := filepath.Join(cache, "repo", hash, "node_modules")
 	for p, v := range map[string]string{
@@ -601,9 +624,11 @@ func TestLockHash(t *testing.T) {
 	a2 := write("a2.json", `{"lockfileVersion":3}`)
 	b := write("b.json", `{"lockfileVersion":2}`)
 
-	// expected values from `printf ... | shasum -a 256 | cut -c1-16`
-	for p, want := range map[string]string{a: "2086223f909ecaf4", a2: "2086223f909ecaf4", b: "54c1633a5f724756"} {
-		got, err := lockHash(p)
+	// hash = sha256(lock ‖ 0x00 ‖ tag)[:16]. Goldens from
+	//   printf '{"lockfileVersion":3}\000testabi' | shasum -a 256 | cut -c1-16
+	//   printf '{"lockfileVersion":2}\000testabi' | shasum -a 256 | cut -c1-16
+	for p, want := range map[string]string{a: "439a58b15fcf9104", a2: "439a58b15fcf9104", b: "033ed51c43753ff8"} {
+		got, err := lockHash(p, testEnvTag)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -611,27 +636,42 @@ func TestLockHash(t *testing.T) {
 			t.Fatalf("lockHash(%s) = %q, want %q", p, got, want)
 		}
 	}
-	if _, err := lockHash(filepath.Join(dir, "missing.json")); err == nil {
+	// the env tag changes the slot key: same lock, different tag → different hash.
+	hA, err := lockHash(a, "tagA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hB, err := lockHash(a, "tagB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hA == hB {
+		t.Fatalf("different env tags must yield different hashes, both %q", hA)
+	}
+	if _, err := lockHash(filepath.Join(dir, "missing.json"), testEnvTag); err == nil {
 		t.Fatal("missing file: want error")
 	}
 }
 
-// wtLockHash is the lockHash of the worktree's package-lock.json.
+// wtLockHash is the lockHash of the worktree's package-lock.json under testEnvTag.
 func wtLockHash(t *testing.T, wtp string) string {
 	t.Helper()
-	h, err := lockHash(filepath.Join(wtp, "package-lock.json"))
+	h, err := lockHash(filepath.Join(wtp, "package-lock.json"), testEnvTag)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return h
 }
 
-func TestPopulateFreshSlot(t *testing.T) { // SC-2
-	repo, wtp := cloneFixture(t, cloneCase{})
-	cache := t.TempDir()
-	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+func TestPopulateFreshSlot(t *testing.T) { // SC-2 — branch (b): real install seeds the slot
+	stubProbes(t)
+	repo, wtp, cache := realInstallFixture(t)
+	marker := stubNpm(t, hiddenJSON)
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
 	}
 	slot := filepath.Join(cache, "repo", wtLockHash(t, wtp))
 	if _, err := os.Stat(filepath.Join(slot, "node_modules", "x")); err != nil {
@@ -652,10 +692,10 @@ func TestPopulateFreshSlot(t *testing.T) { // SC-2
 	}
 }
 
-func TestPopulateIdempotent(t *testing.T) { // SC-3
-	repo, wtp := cloneFixture(t, cloneCase{})
-	cache := t.TempDir()
-	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+func TestPopulateIdempotent(t *testing.T) { // SC-3 — branch (b): existing slot left alone
+	stubProbes(t)
+	repo, wtp, cache := realInstallFixture(t)
+	marker := stubNpm(t, hiddenJSON)
 	slot := filepath.Join(cache, "repo", wtLockHash(t, wtp))
 	if err := os.MkdirAll(filepath.Join(slot, "node_modules"), 0o750); err != nil {
 		t.Fatal(err)
@@ -666,6 +706,9 @@ func TestPopulateIdempotent(t *testing.T) { // SC-3
 	}
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
 	}
 	if b, err := os.ReadFile(sentinel); err != nil || string(b) != "keep" {
 		t.Fatalf("existing slot was replaced: %q, %v", b, err)
@@ -690,7 +733,7 @@ func TestPopulateLoseRace(t *testing.T) { // SC-7
 	if err := os.WriteFile(filepath.Join(slot, "occupied"), []byte("1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := populateCache(cache, filepath.Join(t.TempDir(), "repo"), wtp, "node_modules"); err != nil {
+	if err := populateCache(cache, filepath.Join(t.TempDir(), "repo"), wtp, "node_modules", testEnvTag); err != nil {
 		t.Fatalf("lost race must not be an error: %v", err)
 	}
 	ents, err := os.ReadDir(parent)
@@ -704,25 +747,35 @@ func TestPopulateLoseRace(t *testing.T) { // SC-7
 	}
 }
 
-func TestPopulateCustomPath(t *testing.T) { // SC-8
-	repo, wtp := cloneFixture(t, cloneCase{})
+func TestPopulateCustomPath(t *testing.T) { // SC-8 — branch (b) writes under the custom dir
+	stubProbes(t)
+	repo, wtp := cloneFixture(t, cloneCase{hidden: "-"})
+	marker := stubNpm(t, hiddenJSON)
 	custom := filepath.Join(t.TempDir(), "mine")
 	t.Setenv("ZENIFY_DEPS_CACHE", custom)
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(custom, "repo", wtLockHash(t, wtp), "node_modules", "x")); err != nil {
 		t.Fatalf("slot not under custom dir: %v", err)
 	}
 }
 
-func TestPopulateOff(t *testing.T) { // SC-4
-	repo, wtp := cloneFixture(t, cloneCase{})
+func TestPopulateOff(t *testing.T) { // SC-4 — branch (b) reaches the populate gate, cache off blocks it
+	stubProbes(t)
+	repo, wtp := cloneFixture(t, cloneCase{hidden: "-"})
+	marker := stubNpm(t, hiddenJSON)
 	cache := filepath.Join(t.TempDir(), "never")
 	t.Setenv("ZENIFY_DEPS_CACHE", "off")
 	t.Setenv("XDG_CACHE_HOME", cache)
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
 	}
 	if _, err := os.Stat(cache); err == nil {
 		t.Fatal("cache dir created while cache is off")
@@ -738,7 +791,7 @@ func TestPopulateNoLock(t *testing.T) { // SC-6
 	if err := os.MkdirAll(filepath.Join(wtp, "node_modules"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := populateCache(cache, repo, wtp, "node_modules"); err != nil {
+	if err := populateCache(cache, repo, wtp, "node_modules", testEnvTag); err != nil {
 		t.Fatalf("no lock must be skipped silently, got %v", err)
 	}
 	if ents, _ := os.ReadDir(cache); len(ents) != 0 {
@@ -747,6 +800,7 @@ func TestPopulateNoLock(t *testing.T) { // SC-6
 }
 
 func TestPopulateEmptyInstallNoPoison(t *testing.T) { // SC-9, FR-2.1
+	stubProbes(t)
 	repo, wtp := cloneFixture(t, cloneCase{hidden: "-"})
 	cache := t.TempDir()
 	t.Setenv("ZENIFY_DEPS_CACHE", cache)
@@ -759,6 +813,7 @@ func TestPopulateEmptyInstallNoPoison(t *testing.T) { // SC-9, FR-2.1
 }
 
 func TestPopulateCustomInstallNoPoison(t *testing.T) { // SC-9, FR-2.1
+	stubProbes(t)
 	repo, wtp := cloneFixture(t, cloneCase{hidden: "-"})
 	cache := t.TempDir()
 	t.Setenv("ZENIFY_DEPS_CACHE", cache)
@@ -869,8 +924,10 @@ func TestPruneCacheMissingParent(t *testing.T) {
 	}
 }
 
-func TestApplyDepsPopulatePrunes(t *testing.T) { // SC-5 wiring: populate + prune fire from ApplyDeps
-	repo, wtp := cloneFixture(t, cloneCase{})
+func TestApplyDepsPopulatePrunes(t *testing.T) { // SC-5 wiring: populate + prune fire from ApplyDeps (branch (b))
+	stubProbes(t)
+	repo, wtp := cloneFixture(t, cloneCase{hidden: "-"})
+	marker := stubNpm(t, hiddenJSON)
 	cache := t.TempDir()
 	t.Setenv("ZENIFY_DEPS_CACHE", cache)
 	parent := filepath.Join(cache, "repo")
@@ -888,6 +945,9 @@ func TestApplyDepsPopulatePrunes(t *testing.T) { // SC-5 wiring: populate + prun
 	}
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
 	}
 	fresh := wtLockHash(t, wtp)
 	if _, err := os.Stat(filepath.Join(parent, fresh, "node_modules", "x")); err != nil {
@@ -939,6 +999,7 @@ func realInstallFixture(t *testing.T) (repo, wtp, cache string) {
 
 // After a real npm ci whose installed tree matches the lock, the tree is cached.
 func TestApplyDepsPopulateAfterRealInstall(t *testing.T) {
+	stubProbes(t)
 	repo, wtp, cache := realInstallFixture(t)
 	marker := stubNpm(t, hiddenJSON)
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
@@ -947,7 +1008,7 @@ func TestApplyDepsPopulateAfterRealInstall(t *testing.T) {
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
 	}
-	hash, err := lockHash(filepath.Join(wtp, "package-lock.json"))
+	hash, err := lockHash(filepath.Join(wtp, "package-lock.json"), testEnvTag)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -959,6 +1020,7 @@ func TestApplyDepsPopulateAfterRealInstall(t *testing.T) {
 // npm ci can exit 0 with a partial tree (omit=dev, NODE_ENV=production): the
 // populate gate checks installed content, so nothing is cached.
 func TestApplyDepsNoPopulateWhenInstallIncomplete(t *testing.T) {
+	stubProbes(t)
 	repo, wtp, cache := realInstallFixture(t)
 	marker := stubNpm(t, `{"packages":{}}`) // lock's non-optional node_modules/x missing
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
@@ -969,5 +1031,125 @@ func TestApplyDepsNoPopulateWhenInstallIncomplete(t *testing.T) {
 	}
 	if got := cacheEntries(t, filepath.Join(cache, "repo")); len(got) != 0 {
 		t.Fatalf("incomplete install was cached: %v", got)
+	}
+}
+
+// A slot written under one env tag is not reused under another: switching Node
+// ABI produces a cache miss, not a wrong-ABI tree (zenie #1).
+func TestDepsCacheTagSeparatesSlots(t *testing.T) {
+	repo, wtp := cloneFixture(t, cloneCase{})
+	if err := os.MkdirAll(filepath.Join(wtp, "node_modules"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	cache := t.TempDir()
+	if err := populateCache(cache, repo, wtp, "node_modules", "tagA"); err != nil {
+		t.Fatal(err)
+	}
+	env := func(k string) (string, bool) {
+		if k == "ZENIFY_DEPS_CACHE" {
+			return cache, true
+		}
+		return "", false
+	}
+	if got, from := depsSource(repo, wtp, "node_modules", "tagB", env); from {
+		t.Fatalf("tag B must miss the tag-A slot, got (%q, %v)", got, from)
+	}
+	if _, from := depsSource(repo, wtp, "node_modules", "tagA", env); !from {
+		t.Fatal("tag A must hit the slot it wrote")
+	}
+}
+
+// A tree installed with ignore-scripts=true has unbuilt deps yet passes
+// cloneIsCurrent; it must never seed the cache (zenie #2). Serving a full tree TO
+// such a worktree stays allowed, so only the write is blocked.
+func TestApplyDepsNoPopulateWhenIgnoreScripts(t *testing.T) {
+	origTag, origIgnore := probeEnvTag, probeIgnoreScripts
+	probeEnvTag = func() (string, bool) { return testEnvTag, true }
+	probeIgnoreScripts = func(string) (bool, bool) { return true, true }
+	t.Cleanup(func() { probeEnvTag, probeIgnoreScripts = origTag, origIgnore })
+
+	repo, wtp, cache := realInstallFixture(t)
+	marker := stubNpm(t, hiddenJSON)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
+	}
+	if got := cacheEntries(t, filepath.Join(cache, "repo")); len(got) != 0 {
+		t.Fatalf("ignore-scripts tree was cached: %v", got)
+	}
+}
+
+// When the env probe fails (no node), the cache is disabled for the run: the
+// source is the main checkout, no slot is read, and no slot is written — never
+// collapsed onto an empty tag (zenie #1).
+func TestApplyDepsProbeEnvFailDisablesCache(t *testing.T) {
+	origTag, origIgnore := probeEnvTag, probeIgnoreScripts
+	probeEnvTag = func() (string, bool) { return "", false }
+	probeIgnoreScripts = func(string) (bool, bool) { return false, true }
+	t.Cleanup(func() { probeEnvTag, probeIgnoreScripts = origTag, origIgnore })
+
+	repo, wtp, cache := realInstallFixture(t)
+	marker := stubNpm(t, hiddenJSON)
+	// main checkout carries a marker, so a clone from it is recognisable.
+	if err := os.WriteFile(filepath.Join(repo, "node_modules", "main_marker"), []byte("main"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// a slot a buggy run WOULD read if it collapsed onto an empty tag.
+	wtLock, err := os.ReadFile(filepath.Join(wtp, "package-lock.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	emptyTagHash, err := lockHash(filepath.Join(wtp, "package-lock.json"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plantedNM := filepath.Join(cache, "repo", emptyTagHash, "node_modules")
+	if err := os.MkdirAll(plantedNM, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for p, v := range map[string][]byte{
+		filepath.Join(plantedNM, "cache_marker"):                        []byte("cache"),
+		filepath.Join(cache, "repo", emptyTagHash, "package-lock.json"): wtLock,
+	} {
+		if err := os.WriteFile(p, v, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := cacheEntries(t, filepath.Join(cache, "repo"))
+
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
+	}
+	// source was the main checkout, not the planted slot.
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "main_marker")); err != nil {
+		t.Fatalf("worktree not seeded from the main checkout: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "cache_marker")); !os.IsNotExist(err) {
+		t.Fatalf("cache was read despite a failed env probe (stat err: %v)", err)
+	}
+	// no new slot written.
+	if after := cacheEntries(t, filepath.Join(cache, "repo")); !reflect.DeepEqual(before, after) {
+		t.Fatalf("cache was written despite a failed env probe: before %v, after %v", before, after)
+	}
+}
+
+// A clone that is already current was copied from the main checkout (or an
+// existing slot), whose build env is unknown, so branch (a) must never seed a
+// slot (zenie #3 regression).
+func TestApplyDepsCurrentCloneFromMainNoPopulate(t *testing.T) {
+	stubProbes(t)
+	repo, wtp := cloneFixture(t, cloneCase{})
+	cache := t.TempDir()
+	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if got := cacheEntries(t, filepath.Join(cache, "repo")); len(got) != 0 {
+		t.Fatalf("branch (a) seeded the cache: %v", got)
 	}
 }

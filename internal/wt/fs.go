@@ -148,10 +148,15 @@ func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
 // source dir to exist in repoRoot (or a cache slot, for clone). installCmd empty
 // → install step is skipped.
 //
-// Clone mode only: the source is the default-on, hash-keyed deps cache
+// Clone mode only: the source is the default-on deps cache
 // (<cache>/<repo>/<hash>/) when a slot matches the worktree's package-lock.json
-// (see depsSource). After a clone that is provably current, the result is
-// written to the cache and the repo's slots are pruned LRU to cacheSlotCap.
+// AND the current build env (slots are keyed by lock bytes + Node ABI/platform/
+// arch — see depsSource and probeEnvTag). The env tag is probed once here; if it
+// cannot be read (no node) the cache is disabled for this run (neither read nor
+// written), never collapsed onto an empty tag. A slot is written only after a
+// real npm-ci install whose tree is provably current (branch (b)) — never from
+// branch (a), whose source env is unknown — and only when npm's ignore-scripts
+// is provably off. On a write the repo's slots are pruned LRU to cacheSlotCap.
 func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) error {
 	dst := filepath.Join(worktreePath, depsDirName)
 	src := filepath.Join(repoRoot, depsDirName)
@@ -162,21 +167,30 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		}
 		return os.Symlink(src, dst)
 	case "clone":
-		src, _ = depsSource(repoRoot, worktreePath, depsDirName, os.LookupEnv)
+		// The env tag joins the slot key; probe it once. Without it (no node) the
+		// cache is disabled for this run — src stays the main checkout, nothing is
+		// read or written — rather than collapsing every env onto an empty tag.
+		tag, tagOK := probeEnvTag()
+		if tagOK {
+			src, _ = depsSource(repoRoot, worktreePath, depsDirName, tag, os.LookupEnv)
+		}
 		if _, err := os.Stat(src); err != nil {
 			return fmt.Errorf("wt: deps=clone but %s does not exist — install in the main checkout first", src)
 		}
 		if err := copyTree(src, dst); err != nil {
 			return fmt.Errorf("wt: clone %s: %w", depsDirName, err)
 		}
-		// current: the clone provably equals what a plain install of the
-		// worktree's lock yields. Only then may it seed the cache (FR-2.1).
+		// current: the just-installed worktree tree is provably what a plain
+		// install of its lock yields. Only such a tree, built in THIS env, may
+		// seed the cache (FR-2.1). A clone that was already current (branch (a))
+		// was copied from the main checkout or an existing slot, whose build env
+		// is unknown, so it must never seed a slot (zenie #1/#3).
 		current := false
 		if scripts, ok := cloneIsCurrent(src, dst, installCmd); ok {
 			if err := runLifecycleOnly(worktreePath, src, installCmd, scripts); err != nil {
 				return err
 			}
-			current = true
+			// branch (a): do NOT populate — src env unknown.
 		} else {
 			if err := runInstall(worktreePath, installCmd); err != nil {
 				return err
@@ -185,12 +199,18 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 			// judge the installed tree's content, not the command name.
 			_, current = cloneIsCurrent(dst, dst, installCmd)
 		}
-		if current {
-			if dir, enabled := resolveCacheDir(os.LookupEnv); enabled {
-				if err := populateCache(dir, repoRoot, worktreePath, depsDirName); err != nil {
-					fmt.Fprintf(os.Stderr, "wt: deps cache populate skipped: %v\n", err)
-				} else if err := pruneCache(dir, repoRoot, cacheSlotCap); err != nil {
-					fmt.Fprintf(os.Stderr, "wt: deps cache prune skipped: %v\n", err)
+		// Populate only from branch (b), only when the env tag is known, and only
+		// when npm's ignore-scripts is provably off (an ignore-scripts tree has
+		// unbuilt deps yet passes cloneIsCurrent — zenie #2). Serving a full tree
+		// TO an ignore-scripts worktree is harmless, so only the WRITE is guarded.
+		if current && tagOK {
+			if ignored, ok := probeIgnoreScripts(worktreePath); ok && !ignored {
+				if dir, enabled := resolveCacheDir(os.LookupEnv); enabled {
+					if err := populateCache(dir, repoRoot, worktreePath, depsDirName, tag); err != nil {
+						fmt.Fprintf(os.Stderr, "wt: deps cache populate skipped: %v\n", err)
+					} else if err := pruneCache(dir, repoRoot, cacheSlotCap); err != nil {
+						fmt.Fprintf(os.Stderr, "wt: deps cache prune skipped: %v\n", err)
+					}
 				}
 			}
 		}
@@ -208,6 +228,34 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 
 // cacheSlotCap is the number of lock-hash slots kept per repo in the deps cache.
 const cacheSlotCap = 5
+
+// probeEnvTag fingerprints the build env: node ABI + platform + arch. A cached
+// tree built under one Node ABI is wrong for another (native modules compiled
+// against a different ABI crash), so the tag joins the slot key. A package-level
+// var so tests can override it. ok=false when node cannot be run — the caller
+// then disables the cache for that run rather than keying everything under one
+// tag.
+var probeEnvTag = func() (string, bool) {
+	out, err := exec.Command("node", "-p", "process.versions.modules+'-'+process.platform+'-'+process.arch").Output() //nolint:gosec // G204 -- fixed trusted binary, no external input
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(out)), true
+}
+
+// probeIgnoreScripts reports npm's effective ignore-scripts (env or .npmrc) for
+// the worktree. A tree installed with ignore-scripts=true has unbuilt deps yet
+// passes cloneIsCurrent, so it must never seed the cache; ok=false when npm
+// cannot report it. A package-level var so tests can override it.
+var probeIgnoreScripts = func(worktreePath string) (ignored bool, ok bool) {
+	cmd := exec.Command("npm", "config", "get", "ignore-scripts") //nolint:gosec // G204 -- fixed trusted binary, no external input
+	cmd.Dir = worktreePath
+	out, err := cmd.Output()
+	if err != nil {
+		return false, false
+	}
+	return strings.TrimSpace(string(out)) == "true", true
+}
 
 // resolveCacheDir applies the ZENIFY_DEPS_CACHE policy. Unset: the cache is on at
 // $XDG_CACHE_HOME/zenify/wt-deps, else $HOME/.cache/zenify/wt-deps (no HOME: off).
@@ -229,14 +277,21 @@ func resolveCacheDir(lookupEnv func(string) (string, bool)) (dir string, enabled
 	return "", false
 }
 
-// lockHash returns the first 16 hex chars of the sha256 of the lock file's bytes.
-func lockHash(lockPath string) (string, error) {
+// lockHash returns the first 16 hex chars of the sha256 of the lock file's bytes
+// joined (0x00 separator) with the env tag, so a tree built under one Node
+// ABI/platform/arch keys a different slot than one built under another (see
+// probeEnvTag). The 16-hex shape is unchanged, so isSlotName and prune still
+// apply.
+func lockHash(lockPath, tag string) (string, error) {
 	b, err := os.ReadFile(lockPath) //nolint:gosec // G304 -- path is a lock file inside a worktree/cache dir this tool manages
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])[:16], nil
+	h := sha256.New()
+	h.Write(b)
+	h.Write([]byte{0})
+	h.Write([]byte(tag))
+	return hex.EncodeToString(h.Sum(nil))[:16], nil
 }
 
 // isPlainNpmInstall reports whether installCmd is exactly "npm ci" / "npm install"
@@ -250,15 +305,17 @@ func isPlainNpmInstall(installCmd string) bool {
 }
 
 // populateCache copies the worktree's deps dir and package-lock.json into the
-// slot <cacheDir>/<repo>/<lockHash>. It is idempotent (an existing slot is left
-// alone), atomic (copy into a temp dir, then rename, so a reader never sees a
-// partial slot) and loses a populate race silently. A worktree with no readable
-// lock cannot be keyed and is skipped. Callers gate it on a content check
-// of the worktree's own tree (cloneIsCurrent(dst, dst, ...)) on both branches,
-// so neither a stale nor a partial tree ever enters.
-func populateCache(cacheDir, repoRoot, worktreePath, depsDirName string) error {
+// slot <cacheDir>/<repo>/<lockHash(lock, tag)> (tag = the build-env fingerprint,
+// so a tree keys a slot distinct from one built under another Node ABI). It is
+// idempotent (an existing slot is left alone), atomic (copy into a temp dir, then
+// rename, so a reader never sees a partial slot) and loses a populate race
+// silently. A worktree with no readable lock cannot be keyed and is skipped. The
+// sole caller gates it on a content check of the just-installed worktree tree
+// (cloneIsCurrent(dst, dst, ...)) on branch (b) only, with ignore-scripts off,
+// so neither a stale, a partial, nor an unbuilt tree ever enters.
+func populateCache(cacheDir, repoRoot, worktreePath, depsDirName, tag string) error {
 	wtLock := filepath.Join(worktreePath, "package-lock.json")
-	hash, err := lockHash(wtLock)
+	hash, err := lockHash(wtLock, tag)
 	if err != nil {
 		return nil
 	}
@@ -280,7 +337,7 @@ func populateCache(cacheDir, repoRoot, worktreePath, depsDirName string) error {
 	}
 	lock, err := os.ReadFile(wtLock) //nolint:gosec // G304 -- path is the worktree this tool created
 	if err == nil {
-		err = os.WriteFile(filepath.Join(temp, "package-lock.json"), lock, 0o600)
+		err = os.WriteFile(filepath.Join(temp, "package-lock.json"), lock, 0o600) //nolint:gosec // G703 -- temp is a MkdirTemp dir inside the cache dir this tool manages, path computed internally, not externally-tainted
 	}
 	if err != nil {
 		_ = os.RemoveAll(temp)
@@ -349,19 +406,21 @@ func pruneCache(cacheDir, repoRoot string, max int) error {
 // depsSource picks where clone reads the deps dir from (symlink never uses the
 // cache). The cache is on by default at $XDG_CACHE_HOME/zenify/wt-deps (else
 // ~/.cache/zenify/wt-deps); ZENIFY_DEPS_CACHE=<path> moves it, =off or empty
-// disables it. With the cache off, or no hash-keyed slot
-// <cache>/<repo>/<lockHash(worktree package-lock.json)>/<depsDirName>, or a slot
-// whose package-lock.json is not byte-equal to the worktree's (hash collision),
-// it is the repo root's dir (fromCache=false) — silently, a miss is normal. On a
-// hit it touches the slot's mtime (LRU) and returns the slot's dir (fromCache=true).
-func depsSource(repoRoot, worktreePath, depsDirName string, lookupEnv func(string) (string, bool)) (src string, fromCache bool) {
+// disables it. The slot key is lockHash(worktree package-lock.json, tag) — the
+// lock bytes AND the build-env fingerprint tag, so a slot built under one Node
+// ABI never matches a lookup under another. With the cache off, no such slot
+// <cache>/<repo>/<hash>/<depsDirName>, or a slot whose package-lock.json is not
+// byte-equal to the worktree's (hash collision), it is the repo root's dir
+// (fromCache=false) — silently, a miss is normal. On a hit it touches the slot's
+// mtime (LRU) and returns the slot's dir (fromCache=true).
+func depsSource(repoRoot, worktreePath, depsDirName, tag string, lookupEnv func(string) (string, bool)) (src string, fromCache bool) {
 	own := filepath.Join(repoRoot, depsDirName)
 	dir, enabled := resolveCacheDir(lookupEnv)
 	if !enabled {
 		return own, false
 	}
 	wtLock := filepath.Join(worktreePath, "package-lock.json")
-	hash, err := lockHash(wtLock)
+	hash, err := lockHash(wtLock, tag)
 	if err != nil {
 		return own, false
 	}
