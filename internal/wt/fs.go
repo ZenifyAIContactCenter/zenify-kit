@@ -166,10 +166,28 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		if err := copyTree(src, dst); err != nil {
 			return fmt.Errorf("wt: clone %s: %w", depsDirName, err)
 		}
+		// current: the clone provably equals what a plain install of the
+		// worktree's lock yields. Only then may it seed the cache (FR-2.1).
+		current := false
 		if scripts, ok := cloneIsCurrent(src, dst, installCmd); ok {
-			return runLifecycleOnly(worktreePath, src, installCmd, scripts)
+			if err := runLifecycleOnly(worktreePath, src, installCmd, scripts); err != nil {
+				return err
+			}
+			current = true
+		} else {
+			if err := runInstall(worktreePath, installCmd); err != nil {
+				return err
+			}
+			current = isPlainNpmInstall(installCmd)
 		}
-		return runInstall(worktreePath, installCmd)
+		if current {
+			if dir, enabled := resolveCacheDir(os.LookupEnv); enabled {
+				if err := populateCache(dir, repoRoot, worktreePath, depsDirName); err != nil {
+					fmt.Fprintf(os.Stderr, "wt: deps cache populate skipped: %v\n", err)
+				}
+			}
+		}
+		return nil
 	case "install":
 		return runInstall(worktreePath, installCmd)
 	case "none":
@@ -212,6 +230,59 @@ func lockHash(lockPath string) (string, error) {
 	}
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])[:16], nil
+}
+
+// isPlainNpmInstall reports whether installCmd is exactly "npm ci" / "npm install"
+// / "npm i" (whitespace-normalised): a custom command may do more than install.
+func isPlainNpmInstall(installCmd string) bool {
+	switch strings.Join(strings.Fields(installCmd), " ") {
+	case "npm ci", "npm install", "npm i":
+		return true
+	}
+	return false
+}
+
+// populateCache copies the worktree's deps dir and package-lock.json into the
+// slot <cacheDir>/<repo>/<lockHash>. It is idempotent (an existing slot is left
+// alone), atomic (copy into a temp dir, then rename, so a reader never sees a
+// partial slot) and loses a populate race silently. A worktree with no readable
+// lock cannot be keyed and is skipped. Callers gate it on a verified-current
+// install (isPlainNpmInstall / cloneIsCurrent) so a stale tree never enters.
+func populateCache(cacheDir, repoRoot, worktreePath, depsDirName string) error {
+	wtLock := filepath.Join(worktreePath, "package-lock.json")
+	hash, err := lockHash(wtLock)
+	if err != nil {
+		return nil
+	}
+	parent := filepath.Join(cacheDir, filepath.Base(repoRoot))
+	slot := filepath.Join(parent, hash)
+	if fi, err := os.Stat(filepath.Join(slot, depsDirName)); err == nil && fi.IsDir() {
+		return nil
+	}
+	if err := os.MkdirAll(parent, 0o750); err != nil {
+		return err
+	}
+	temp, err := os.MkdirTemp(parent, ".tmp-")
+	if err != nil {
+		return err
+	}
+	if err := copyTree(filepath.Join(worktreePath, depsDirName), filepath.Join(temp, depsDirName)); err != nil {
+		_ = os.RemoveAll(temp)
+		return err
+	}
+	lock, err := os.ReadFile(wtLock) //nolint:gosec // G304 -- path is the worktree this tool created
+	if err == nil {
+		err = os.WriteFile(filepath.Join(temp, "package-lock.json"), lock, 0o600)
+	}
+	if err != nil {
+		_ = os.RemoveAll(temp)
+		return err
+	}
+	if err := os.Rename(temp, slot); err != nil {
+		// the slot appeared meanwhile: another wt won the race, which is fine
+		_ = os.RemoveAll(temp)
+	}
+	return nil
 }
 
 // depsSource picks where clone reads the deps dir from (symlink never uses the
@@ -265,9 +336,7 @@ func depsSource(repoRoot, worktreePath, depsDirName string, lookupEnv func(strin
 //
 // Content, not mtime, so a cache filled by copy is judged the same way.
 func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
-	switch strings.Join(strings.Fields(installCmd), " ") {
-	case "npm ci", "npm install", "npm i":
-	default:
+	if !isPlainNpmInstall(installCmd) {
 		return nil, false
 	}
 	srcRoot, wtRoot := filepath.Dir(src), filepath.Dir(dst)

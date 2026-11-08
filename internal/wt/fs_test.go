@@ -574,3 +574,163 @@ func TestLockHash(t *testing.T) {
 		t.Fatal("missing file: want error")
 	}
 }
+
+// wtLockHash is the lockHash of the worktree's package-lock.json.
+func wtLockHash(t *testing.T, wtp string) string {
+	t.Helper()
+	h, err := lockHash(filepath.Join(wtp, "package-lock.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+func TestPopulateFreshSlot(t *testing.T) { // SC-2
+	repo, wtp := cloneFixture(t, cloneCase{})
+	cache := t.TempDir()
+	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	slot := filepath.Join(cache, "repo", wtLockHash(t, wtp))
+	if _, err := os.Stat(filepath.Join(slot, "node_modules", "x")); err != nil {
+		t.Fatalf("slot node_modules missing: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(slot, "package-lock.json"))
+	if err != nil || string(got) != lockJSON {
+		t.Fatalf("slot lock = %q, %v; want worktree lock", got, err)
+	}
+}
+
+func TestPopulateIdempotent(t *testing.T) { // SC-3
+	repo, wtp := cloneFixture(t, cloneCase{})
+	cache := t.TempDir()
+	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+	slot := filepath.Join(cache, "repo", wtLockHash(t, wtp))
+	if err := os.MkdirAll(filepath.Join(slot, "node_modules"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(slot, "node_modules", "sentinel")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(sentinel); err != nil || string(b) != "keep" {
+		t.Fatalf("existing slot was replaced: %q, %v", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(slot, "node_modules", "x")); err == nil {
+		t.Fatal("existing slot was overwritten with new content")
+	}
+}
+
+func TestPopulateLoseRace(t *testing.T) { // SC-7
+	_, wtp := cloneFixture(t, cloneCase{})
+	if err := os.MkdirAll(filepath.Join(wtp, "node_modules"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	cache := t.TempDir()
+	parent := filepath.Join(cache, "repo")
+	// target slot exists without a deps dir, so populate proceeds to rename and loses
+	slot := filepath.Join(parent, wtLockHash(t, wtp))
+	if err := os.MkdirAll(slot, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(slot, "occupied"), []byte("1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := populateCache(cache, filepath.Join(t.TempDir(), "repo"), wtp, "node_modules"); err != nil {
+		t.Fatalf("lost race must not be an error: %v", err)
+	}
+	ents, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), ".tmp-") {
+			t.Fatalf("temp dir left behind: %s", e.Name())
+		}
+	}
+}
+
+func TestPopulateCustomPath(t *testing.T) { // SC-8
+	repo, wtp := cloneFixture(t, cloneCase{})
+	custom := filepath.Join(t.TempDir(), "mine")
+	t.Setenv("ZENIFY_DEPS_CACHE", custom)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(custom, "repo", wtLockHash(t, wtp), "node_modules", "x")); err != nil {
+		t.Fatalf("slot not under custom dir: %v", err)
+	}
+}
+
+func TestPopulateOff(t *testing.T) { // SC-4
+	repo, wtp := cloneFixture(t, cloneCase{})
+	cache := filepath.Join(t.TempDir(), "never")
+	t.Setenv("ZENIFY_DEPS_CACHE", "off")
+	t.Setenv("XDG_CACHE_HOME", cache)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(cache); err == nil {
+		t.Fatal("cache dir created while cache is off")
+	}
+}
+
+func TestPopulateNoLock(t *testing.T) { // SC-6
+	repo, wtp := cloneFixture(t, cloneCase{})
+	cache := t.TempDir()
+	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+	if err := os.Remove(filepath.Join(wtp, "package-lock.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+		t.Fatal(err)
+	}
+	if !installed(t, wtp) {
+		t.Fatal("install path did not run")
+	}
+	if ents, _ := os.ReadDir(cache); len(ents) != 0 {
+		t.Fatalf("cache written without a lock file: %v", ents)
+	}
+}
+
+func TestPopulateEmptyInstallNoPoison(t *testing.T) { // SC-9, FR-2.1
+	repo, wtp := cloneFixture(t, cloneCase{hidden: "-"})
+	cache := t.TempDir()
+	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", ""); err != nil {
+		t.Fatal(err)
+	}
+	if ents, _ := os.ReadDir(cache); len(ents) != 0 {
+		t.Fatalf("stale clone poisoned the cache: %v", ents)
+	}
+}
+
+func TestPopulateCustomInstallNoPoison(t *testing.T) { // SC-9, FR-2.1
+	repo, wtp := cloneFixture(t, cloneCase{hidden: "-"})
+	cache := t.TempDir()
+	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", installMarker); err != nil {
+		t.Fatal(err)
+	}
+	if !installed(t, wtp) {
+		t.Fatal("custom install did not run")
+	}
+	if ents, _ := os.ReadDir(cache); len(ents) != 0 {
+		t.Fatalf("custom install poisoned the cache: %v", ents)
+	}
+}
+
+func TestIsPlainNpmInstall(t *testing.T) {
+	for cmd, want := range map[string]bool{
+		"npm ci": true, " npm  install ": true, "npm i": true,
+		"pnpm i": false, "": false, "npm ci && npm run build": false,
+	} {
+		if got := isPlainNpmInstall(cmd); got != want {
+			t.Errorf("isPlainNpmInstall(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}
