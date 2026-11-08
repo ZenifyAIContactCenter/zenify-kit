@@ -8,6 +8,16 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.61.0
+
+*2026-11-09*
+
+- **`zenify wt new` với `deps: clone` bỏ được `npm ci` kể cả khi checkout chính đang ở nhánh khác:** trước đây chỉ bỏ `npm ci` khi `node_modules` ở checkout chính đã khớp lock của worktree (thường là cùng nhánh). Giờ sau mỗi lần cài thật, `wt new` tự lưu `node_modules` đó vào một cache dùng chung; lần tạo worktree sau có cùng lock sẽ copy từ cache thay vì chạy lại `npm ci`. Nhờ vậy trường hợp hay gặp trên devbox — checkout chính ở `main`, worktree base từ `staging` — không còn phải cài lại. Xem [zenify wt new](/reference/cli/zenify_wt_new) và [Chuẩn bị workspace](/guides/onboard-workspace).
+- **Bật sẵn, tắt bằng `ZENIFY_DEPS_CACHE=off`:** cache mặc định bật, nằm ở `$XDG_CACHE_HOME/zenify/wt-deps` (hoặc `~/.cache/zenify/wt-deps`). Đặt `ZENIFY_DEPS_CACHE=off` để tắt, hoặc đặt bằng một đường dẫn để đổi chỗ lưu.
+- **Khóa theo lock + môi trường Node:** mỗi slot cache khóa theo `package-lock.json` cộng Node ABI/platform/arch. Đổi phiên bản Node (hay OS/kiến trúc) thì tự động không trúng cache và cài lại — không cần xoá cache tay, và không bao giờ phục vụ `node_modules` build dưới ABI khác (tránh lỗi native module).
+- **Chỉ lưu cây cài đầy đủ:** cache chỉ được ghi sau một lần cài thật cho ra `node_modules` khớp lock; cây cài với `ignore-scripts` (thiếu bước build native) không bao giờ được lưu. Mỗi repo giữ tối đa 5 slot, cũ nhất bị loại trước (LRU).
+- **`deps: symlink` không còn đọc `ZENIFY_DEPS_CACHE`:** chế độ symlink luôn link thẳng `node_modules` của checkout chính; cache chỉ áp dụng cho `deps: clone`. Cache cũ dạng layout phẳng (do tay bạn tạo trước đây) không còn được đọc.
+
 ## v0.60.3
 
 *2026-11-06*
