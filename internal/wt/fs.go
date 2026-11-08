@@ -170,7 +170,7 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		// The env tag joins the slot key; probe it once. Without it (no node) the
 		// cache is disabled for this run — src stays the main checkout, nothing is
 		// read or written — rather than collapsing every env onto an empty tag.
-		tag, tagOK := probeEnvTag()
+		tag, tagOK := probeEnvTag(worktreePath)
 		if tagOK {
 			src, _ = depsSource(repoRoot, worktreePath, depsDirName, tag, os.LookupEnv)
 		}
@@ -234,9 +234,13 @@ const cacheSlotCap = 5
 // against a different ABI crash), so the tag joins the slot key. A package-level
 // var so tests can override it. ok=false when node cannot be run — the caller
 // then disables the cache for that run rather than keying everything under one
-// tag.
-var probeEnvTag = func() (string, bool) {
-	out, err := exec.Command("node", "-p", "process.versions.modules+'-'+process.platform+'-'+process.arch").Output() //nolint:gosec // G204 -- fixed trusted binary, no external input
+// tag. cmd.Dir is the worktree so a directory-scoped Node manager (nvm/asdf/fnm)
+// reports the worktree's Node, matching where runInstall runs — probing in the
+// main checkout could key read and write under a different ABI (zenie r2 #1).
+var probeEnvTag = func(worktreePath string) (string, bool) {
+	cmd := exec.Command("node", "-p", "process.versions.modules+'-'+process.platform+'-'+process.arch") //nolint:gosec // G204 -- fixed trusted binary, no external input
+	cmd.Dir = worktreePath
+	out, err := cmd.Output()
 	if err != nil {
 		return "", false
 	}

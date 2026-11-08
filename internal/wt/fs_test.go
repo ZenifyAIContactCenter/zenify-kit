@@ -209,7 +209,7 @@ const testEnvTag = "testabi"
 func stubProbes(t *testing.T) {
 	t.Helper()
 	origTag, origIgnore := probeEnvTag, probeIgnoreScripts
-	probeEnvTag = func() (string, bool) { return testEnvTag, true }
+	probeEnvTag = func(string) (string, bool) { return testEnvTag, true }
 	probeIgnoreScripts = func(string) (bool, bool) { return false, true }
 	t.Cleanup(func() { probeEnvTag, probeIgnoreScripts = origTag, origIgnore })
 }
@@ -1064,7 +1064,7 @@ func TestDepsCacheTagSeparatesSlots(t *testing.T) {
 // such a worktree stays allowed, so only the write is blocked.
 func TestApplyDepsNoPopulateWhenIgnoreScripts(t *testing.T) {
 	origTag, origIgnore := probeEnvTag, probeIgnoreScripts
-	probeEnvTag = func() (string, bool) { return testEnvTag, true }
+	probeEnvTag = func(string) (string, bool) { return testEnvTag, true }
 	probeIgnoreScripts = func(string) (bool, bool) { return true, true }
 	t.Cleanup(func() { probeEnvTag, probeIgnoreScripts = origTag, origIgnore })
 
@@ -1086,7 +1086,7 @@ func TestApplyDepsNoPopulateWhenIgnoreScripts(t *testing.T) {
 // collapsed onto an empty tag (zenie #1).
 func TestApplyDepsProbeEnvFailDisablesCache(t *testing.T) {
 	origTag, origIgnore := probeEnvTag, probeIgnoreScripts
-	probeEnvTag = func() (string, bool) { return "", false }
+	probeEnvTag = func(string) (string, bool) { return "", false }
 	probeIgnoreScripts = func(string) (bool, bool) { return false, true }
 	t.Cleanup(func() { probeEnvTag, probeIgnoreScripts = origTag, origIgnore })
 
