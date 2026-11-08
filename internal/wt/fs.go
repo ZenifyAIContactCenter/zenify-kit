@@ -141,15 +141,17 @@ func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
 }
 
 // ApplyDeps sets up the dependency dir (e.g. node_modules) in the worktree per
-// mode: "symlink" links to the main checkout's dir; "clone" CoW-copies it then
-// runs install, unless cloneIsCurrent says the copy already matches the
-// worktree's package-lock.json (then only the root lifecycle scripts run);
-// "install" just runs install. symlink/clone require the source
-// dir to exist in repoRoot. installCmd empty → install step is skipped.
+// mode: "symlink" links to the main checkout's dir (never touches the deps
+// cache); "clone" CoW-copies it then runs install, unless cloneIsCurrent says
+// the copy already matches the worktree's package-lock.json (then only the root
+// lifecycle scripts run); "install" just runs install. symlink/clone require the
+// source dir to exist in repoRoot (or a cache slot, for clone). installCmd empty
+// → install step is skipped.
 //
-// Clone mode seeds from the hash-keyed deps cache when a slot matches the
-// worktree's package-lock.json (see depsSource); symlink always uses the repo
-// root's dir.
+// Clone mode only: the source is the default-on, hash-keyed deps cache
+// (<cache>/<repo>/<hash>/) when a slot matches the worktree's package-lock.json
+// (see depsSource). After a clone that is provably current, the result is
+// written to the cache and the repo's slots are pruned LRU to cacheSlotCap.
 func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) error {
 	dst := filepath.Join(worktreePath, depsDirName)
 	src := filepath.Join(repoRoot, depsDirName)
@@ -342,7 +344,9 @@ func pruneCache(cacheDir, repoRoot string, max int) error {
 }
 
 // depsSource picks where clone reads the deps dir from (symlink never uses the
-// cache). With the cache off, or no hash-keyed slot
+// cache). The cache is on by default at $XDG_CACHE_HOME/zenify/wt-deps (else
+// ~/.cache/zenify/wt-deps); ZENIFY_DEPS_CACHE=<path> moves it, =off or empty
+// disables it. With the cache off, or no hash-keyed slot
 // <cache>/<repo>/<lockHash(worktree package-lock.json)>/<depsDirName>, or a slot
 // whose package-lock.json is not byte-equal to the worktree's (hash collision),
 // it is the repo root's dir (fromCache=false) — silently, a miss is normal. On a
