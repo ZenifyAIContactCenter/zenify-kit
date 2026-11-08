@@ -742,3 +742,88 @@ func TestIsPlainNpmInstall(t *testing.T) {
 		}
 	}
 }
+
+func TestIsSlotName(t *testing.T) {
+	cases := map[string]bool{
+		"0123456789abcdef":  true,
+		"ffffffffffffffff":  true,
+		"0123456789abcde":   false, // 15
+		"0123456789abcdef0": false, // 17
+		"0123456789ABCDEF":  false, // uppercase
+		"0123456789abcdeg":  false, // non-hex
+		"node_modules":      false,
+		".tmp-x":            false,
+		"":                  false,
+	}
+	for name, want := range cases {
+		if got := isSlotName(name); got != want {
+			t.Errorf("isSlotName(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestPruneCacheCapLRU(t *testing.T) { // SC-5
+	cache := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "myrepo")
+	parent := filepath.Join(cache, "myrepo")
+	names := []string{"0000000000000001", "0000000000000002", "0000000000000003", "0000000000000004", "0000000000000005", "0000000000000006"}
+	base := time.Now().Add(-time.Hour)
+	for i, n := range names {
+		p := filepath.Join(parent, n)
+		if err := os.MkdirAll(p, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		mt := base.Add(time.Duration(i) * time.Minute)
+		if err := os.Chtimes(p, mt, mt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := pruneCache(cache, repo, 5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(parent, names[0])); !os.IsNotExist(err) {
+		t.Errorf("oldest slot should be removed, stat err=%v", err)
+	}
+	for _, n := range names[1:] {
+		if _, err := os.Stat(filepath.Join(parent, n)); err != nil {
+			t.Errorf("slot %s should remain: %v", n, err)
+		}
+	}
+}
+
+func TestPruneSkipsNonSlotDirs(t *testing.T) {
+	cache := t.TempDir()
+	repo := filepath.Join(t.TempDir(), "myrepo")
+	parent := filepath.Join(cache, "myrepo")
+	for _, n := range []string{"node_modules", ".tmp-abc", "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"} {
+		if err := os.MkdirAll(filepath.Join(parent, n), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	for _, n := range []string{"node_modules", ".tmp-abc", "aaaaaaaaaaaaaaaa"} {
+		if err := os.Chtimes(filepath.Join(parent, n), old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := pruneCache(cache, repo, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []string{"node_modules", ".tmp-abc"} {
+		if _, err := os.Stat(filepath.Join(parent, n)); err != nil {
+			t.Errorf("%s must survive: %v", n, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(parent, "aaaaaaaaaaaaaaaa")); !os.IsNotExist(err) {
+		t.Errorf("older slot should be pruned, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(parent, "bbbbbbbbbbbbbbbb")); err != nil {
+		t.Errorf("newer slot should remain: %v", err)
+	}
+}
+
+func TestPruneCacheMissingParent(t *testing.T) {
+	if err := pruneCache(t.TempDir(), "/x/nope", 5); err != nil {
+		t.Fatalf("want nil, got %v", err)
+	}
+}

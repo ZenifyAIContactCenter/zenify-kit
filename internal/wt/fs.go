@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -281,6 +282,59 @@ func populateCache(cacheDir, repoRoot, worktreePath, depsDirName string) error {
 	if err := os.Rename(temp, slot); err != nil {
 		// the slot appeared meanwhile: another wt won the race, which is fine
 		_ = os.RemoveAll(temp)
+	}
+	return nil
+}
+
+// isSlotName reports whether name is a cache slot: exactly 16 lowercase hex chars
+// (a lockHash). It rejects the legacy flat "node_modules", ".tmp-*" and uppercase.
+func isSlotName(name string) bool {
+	if len(name) != 16 {
+		return false
+	}
+	for _, c := range name {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// pruneCache keeps at most max slots under <cacheDir>/<repo>, removing the
+// least recently used (oldest mtime) first. Only genuine slot dirs are touched;
+// an entry whose Info() fails is skipped (conservative: never deleted).
+func pruneCache(cacheDir, repoRoot string, max int) error {
+	parent := filepath.Join(cacheDir, filepath.Base(repoRoot))
+	entries, err := os.ReadDir(parent)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	type slot struct {
+		name string
+		mod  time.Time
+	}
+	var slots []slot
+	for _, e := range entries {
+		if !e.IsDir() || !isSlotName(e.Name()) {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		slots = append(slots, slot{e.Name(), fi.ModTime()})
+	}
+	if len(slots) <= max {
+		return nil
+	}
+	sort.Slice(slots, func(i, j int) bool { return slots[i].mod.Before(slots[j].mod) })
+	for _, s := range slots[:len(slots)-max] {
+		if err := os.RemoveAll(filepath.Join(parent, s.name)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
