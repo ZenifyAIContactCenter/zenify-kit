@@ -181,7 +181,9 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 			if err := runInstall(worktreePath, installCmd); err != nil {
 				return err
 			}
-			current = isPlainNpmInstall(installCmd)
+			// npm ci can exit 0 with a partial tree (omit=dev, NODE_ENV=production):
+			// judge the installed tree's content, not the command name.
+			_, current = cloneIsCurrent(dst, dst, installCmd)
 		}
 		if current {
 			if dir, enabled := resolveCacheDir(os.LookupEnv); enabled {
@@ -251,8 +253,9 @@ func isPlainNpmInstall(installCmd string) bool {
 // slot <cacheDir>/<repo>/<lockHash>. It is idempotent (an existing slot is left
 // alone), atomic (copy into a temp dir, then rename, so a reader never sees a
 // partial slot) and loses a populate race silently. A worktree with no readable
-// lock cannot be keyed and is skipped. Callers gate it on a verified-current
-// install (isPlainNpmInstall / cloneIsCurrent) so a stale tree never enters.
+// lock cannot be keyed and is skipped. Callers gate it on a content check
+// of the worktree's own tree (cloneIsCurrent(dst, dst, ...)) on both branches,
+// so neither a stale nor a partial tree ever enters.
 func populateCache(cacheDir, repoRoot, worktreePath, depsDirName string) error {
 	wtLock := filepath.Join(worktreePath, "package-lock.json")
 	hash, err := lockHash(wtLock)

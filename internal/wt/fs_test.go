@@ -907,3 +907,67 @@ func TestApplyDepsPopulatePrunes(t *testing.T) { // SC-5 wiring: populate + prun
 		t.Fatalf("want %d slots, got %d", cacheSlotCap, n)
 	}
 }
+
+// stubNpm puts a fake `npm` first on PATH. When run it touches a marker (so a
+// test can prove the real-install branch ran, not the skip branch) and writes
+// hidden as <cwd>/node_modules/.package-lock.json, like npm ci would.
+func stubNpm(t *testing.T, hidden string) (marker string) {
+	t.Helper()
+	dir := t.TempDir()
+	marker = filepath.Join(dir, "ran")
+	hiddenSrc := filepath.Join(dir, "hidden.json")
+	if err := os.WriteFile(hiddenSrc, []byte(hidden), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\ntouch '" + marker + "'\nmkdir -p node_modules\ncp '" + hiddenSrc + "' node_modules/.package-lock.json\n"
+	if err := os.WriteFile(filepath.Join(dir, "npm"), []byte(script), 0o755); err != nil { //nolint:gosec // G306 -- test stub must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return marker
+}
+
+// realInstallFixture is a clone fixture that is NOT current (no hidden lockfile
+// in the source), so ApplyDeps runs the install and takes the populate branch.
+func realInstallFixture(t *testing.T) (repo, wtp, cache string) {
+	t.Helper()
+	repo, wtp = cloneFixture(t, cloneCase{hidden: "-"})
+	cache = filepath.Join(t.TempDir(), "cache")
+	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+	return repo, wtp, cache
+}
+
+// After a real npm ci whose installed tree matches the lock, the tree is cached.
+func TestApplyDepsPopulateAfterRealInstall(t *testing.T) {
+	repo, wtp, cache := realInstallFixture(t)
+	marker := stubNpm(t, hiddenJSON)
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
+	}
+	hash, err := lockHash(filepath.Join(wtp, "package-lock.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(cache, "repo", hash, "node_modules")); err != nil {
+		t.Fatalf("complete install not cached: %v", err)
+	}
+}
+
+// npm ci can exit 0 with a partial tree (omit=dev, NODE_ENV=production): the
+// populate gate checks installed content, so nothing is cached.
+func TestApplyDepsNoPopulateWhenInstallIncomplete(t *testing.T) {
+	repo, wtp, cache := realInstallFixture(t)
+	marker := stubNpm(t, `{"packages":{}}`) // lock's non-optional node_modules/x missing
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stub npm did not run (fixture took the skip branch): %v", err)
+	}
+	if got := cacheEntries(t, filepath.Join(cache, "repo")); len(got) != 0 {
+		t.Fatalf("incomplete install was cached: %v", got)
+	}
+}
