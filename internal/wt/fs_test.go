@@ -827,3 +827,42 @@ func TestPruneCacheMissingParent(t *testing.T) {
 		t.Fatalf("want nil, got %v", err)
 	}
 }
+
+func TestApplyDepsPopulatePrunes(t *testing.T) { // SC-5 wiring: populate + prune fire from ApplyDeps
+	repo, wtp := cloneFixture(t, cloneCase{})
+	cache := t.TempDir()
+	t.Setenv("ZENIFY_DEPS_CACHE", cache)
+	parent := filepath.Join(cache, "repo")
+	seeded := []string{"0000000000000001", "0000000000000002", "0000000000000003", "0000000000000004", "0000000000000005"}
+	base := time.Now().Add(-2 * time.Hour)
+	for i, n := range seeded {
+		p := filepath.Join(parent, n)
+		if err := os.MkdirAll(p, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		mt := base.Add(time.Duration(i) * time.Minute)
+		if err := os.Chtimes(p, mt, mt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	fresh := wtLockHash(t, wtp)
+	if _, err := os.Stat(filepath.Join(parent, fresh, "node_modules", "x")); err != nil {
+		t.Fatalf("new slot missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(parent, seeded[0])); !os.IsNotExist(err) {
+		t.Errorf("oldest seeded slot should be pruned, err=%v", err)
+	}
+	n := 0
+	ents, _ := os.ReadDir(parent)
+	for _, e := range ents {
+		if isSlotName(e.Name()) {
+			n++
+		}
+	}
+	if n != cacheSlotCap {
+		t.Fatalf("want %d slots, got %d", cacheSlotCap, n)
+	}
+}

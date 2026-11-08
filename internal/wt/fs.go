@@ -185,6 +185,8 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 			if dir, enabled := resolveCacheDir(os.LookupEnv); enabled {
 				if err := populateCache(dir, repoRoot, worktreePath, depsDirName); err != nil {
 					fmt.Fprintf(os.Stderr, "wt: deps cache populate skipped: %v\n", err)
+				} else if err := pruneCache(dir, repoRoot, cacheSlotCap); err != nil {
+					fmt.Fprintf(os.Stderr, "wt: deps cache prune skipped: %v\n", err)
 				}
 			}
 		}
