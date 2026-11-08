@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWritePortEnv_ReplaceAndAppend(t *testing.T) {
@@ -194,49 +195,46 @@ func TestUpsertEnvVar_ReplacesExisting(t *testing.T) {
 	}
 }
 
-// cacheFixture builds <tmp>/cache/repo/{node_modules/x,package-lock.json} and a
+// cacheFixture builds the hash-keyed cache slot
+// <tmp>/cache/repo/<lockHash(cacheLock)>/{node_modules/x,package-lock.json} and a
 // worktree whose package-lock.json is wtLock. Returns repoRoot (named "repo",
-// without node_modules) and the worktree path.
-func cacheFixture(t *testing.T, cacheLock, wtLock string) (repo, wtp, cache string) {
+// without node_modules), the worktree path, the cache dir and the slot's hash.
+func cacheFixture(t *testing.T, cacheLock, wtLock string) (repo, wtp, cache, hash string) {
 	t.Helper()
 	tmp := t.TempDir()
 	cache = filepath.Join(tmp, "cache")
 	repo = filepath.Join(tmp, "repo")
 	wtp = filepath.Join(tmp, "wt")
-	for _, d := range []string{filepath.Join(cache, "repo", "node_modules"), repo, wtp} {
+	lockSrc := filepath.Join(tmp, "cache-lock-src.json")
+	if err := os.WriteFile(lockSrc, []byte(cacheLock), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := lockHash(lockSrc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slot := filepath.Join(cache, "repo", hash)
+	for _, d := range []string{filepath.Join(slot, "node_modules"), repo, wtp} {
 		if err := os.MkdirAll(d, 0o750); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(cache, "repo", "node_modules", "x"), []byte("x"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(slot, "node_modules", "x"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cache, "repo", "package-lock.json"), []byte(cacheLock), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(slot, "package-lock.json"), []byte(cacheLock), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(wtp, "package-lock.json"), []byte(wtLock), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("ZENIFY_DEPS_CACHE", cache)
-	return repo, wtp, cache
+	return repo, wtp, cache, hash
 }
 
-func TestApplyDepsUsesCacheWhenLockMatches(t *testing.T) {
-	repo, wtp, cache := cacheFixture(t, `{"lockfileVersion":3}`, `{"lockfileVersion":3}`)
-	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
-		t.Fatal(err)
-	}
-	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
-	if err != nil {
-		t.Fatalf("node_modules not a symlink: %v", err)
-	}
-	if want := filepath.Join(cache, "repo", "node_modules"); got != want {
-		t.Fatalf("symlink target = %q, want %q", got, want)
-	}
-}
-
-func TestApplyDepsCacheLockMismatchFallsBackToOwn(t *testing.T) {
-	repo, wtp, _ := cacheFixture(t, `{"a":1}`, `{"a":2}`)
+// SC-10: symlink mode never reads the cache, even when a matching slot exists.
+func TestApplyDepsSymlinkIgnoresMatchingCache(t *testing.T) {
+	repo, wtp, _, _ := cacheFixture(t, `{"lockfileVersion":3}`, `{"lockfileVersion":3}`)
 	own := filepath.Join(repo, "node_modules")
 	if err := os.MkdirAll(own, 0o750); err != nil {
 		t.Fatal(err)
@@ -251,6 +249,81 @@ func TestApplyDepsCacheLockMismatchFallsBackToOwn(t *testing.T) {
 	if got != own {
 		t.Fatalf("symlink target = %q, want own %q", got, own)
 	}
+}
+
+func TestApplyDepsSymlinkIgnoresMismatchedCache(t *testing.T) {
+	repo, wtp, _, _ := cacheFixture(t, `{"a":1}`, `{"a":2}`)
+	own := filepath.Join(repo, "node_modules")
+	if err := os.MkdirAll(own, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
+	if err != nil {
+		t.Fatalf("node_modules not a symlink: %v", err)
+	}
+	if got != own {
+		t.Fatalf("symlink target = %q, want own %q", got, own)
+	}
+}
+
+func TestDepsSourceHashLookup(t *testing.T) {
+	const lock = `{"lockfileVersion":3}`
+	env := func(cache string) func(string) (string, bool) {
+		return func(k string) (string, bool) {
+			if k == "ZENIFY_DEPS_CACHE" {
+				return cache, true
+			}
+			return "", false
+		}
+	}
+	t.Run("hit", func(t *testing.T) {
+		repo, wtp, cache, hash := cacheFixture(t, lock, lock)
+		slot := filepath.Join(cache, "repo", hash)
+		old := time.Now().Add(-48 * time.Hour)
+		if err := os.Chtimes(slot, old, old); err != nil {
+			t.Fatal(err)
+		}
+		got, from := depsSource(repo, wtp, "node_modules", env(cache))
+		if want := filepath.Join(slot, "node_modules"); got != want || !from {
+			t.Fatalf("got (%q, %v), want (%q, true)", got, from, want)
+		}
+		fi, err := os.Stat(slot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Since(fi.ModTime()) > time.Hour {
+			t.Fatalf("slot mtime not touched on hit: %v", fi.ModTime())
+		}
+	})
+	t.Run("miss", func(t *testing.T) {
+		repo, wtp, cache, _ := cacheFixture(t, lock, `{"other":true}`)
+		got, from := depsSource(repo, wtp, "node_modules", env(cache))
+		if want := filepath.Join(repo, "node_modules"); got != want || from {
+			t.Fatalf("got (%q, %v), want (%q, false)", got, from, want)
+		}
+	})
+	t.Run("collision", func(t *testing.T) {
+		repo, wtp, cache, hash := cacheFixture(t, lock, lock)
+		// slot exists at the worktree's hash but holds a different lock's bytes
+		if err := os.WriteFile(filepath.Join(cache, "repo", hash, "package-lock.json"), []byte(`{"collided":1}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, from := depsSource(repo, wtp, "node_modules", env(cache))
+		if want := filepath.Join(repo, "node_modules"); got != want || from {
+			t.Fatalf("got (%q, %v), want (%q, false)", got, from, want)
+		}
+	})
+	t.Run("disabled", func(t *testing.T) {
+		repo, wtp, cache, _ := cacheFixture(t, lock, lock)
+		_ = cache
+		got, from := depsSource(repo, wtp, "node_modules", env("off"))
+		if want := filepath.Join(repo, "node_modules"); got != want || from {
+			t.Fatalf("got (%q, %v), want (%q, false)", got, from, want)
+		}
+	})
 }
 
 func TestApplyDepsNoCacheEnvUnchanged(t *testing.T) {
@@ -426,20 +499,25 @@ func TestApplyDepsCloneCustomInstallAlwaysRuns(t *testing.T) {
 }
 
 func TestApplyDepsCloneFromCacheSkipsWhenCurrent(t *testing.T) {
-	repo, wtp, cache := cacheFixture(t, lockJSON, lockJSON)
+	repo, wtp, cache, hash := cacheFixture(t, lockJSON, lockJSON)
+	slotNM := filepath.Join(cache, "repo", hash, "node_modules")
 	for p, v := range map[string]string{
-		filepath.Join(cache, "repo", "node_modules", ".package-lock.json"): hiddenJSON,
-		filepath.Join(wtp, "package.json"):                                 pkgJSON,
+		filepath.Join(slotNM, ".package-lock.json"): hiddenJSON,
+		filepath.Join(wtp, "package.json"):          pkgJSON,
 	} {
 		if err := os.WriteFile(p, []byte(v), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, ok := cloneIsCurrent(filepath.Join(cache, "repo", "node_modules"), filepath.Join(wtp, "node_modules"), "npm ci"); !ok {
+	if _, ok := cloneIsCurrent(slotNM, filepath.Join(wtp, "node_modules"), "npm ci"); !ok {
 		t.Fatal("cache entry matching the lock should count as current")
 	}
 	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
 		t.Fatal(err)
+	}
+	// repo has no node_modules, so the clone can only have come from the slot
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "x")); err != nil {
+		t.Fatalf("clone not seeded from cache slot: %v", err)
 	}
 }
 

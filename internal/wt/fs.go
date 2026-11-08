@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // SeedCopyFiles copies each still-present copy-array target from repoRoot into
@@ -145,16 +146,12 @@ func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
 // "install" just runs install. symlink/clone require the source
 // dir to exist in repoRoot. installCmd empty → install step is skipped.
 //
-// When ZENIFY_DEPS_CACHE is set and holds <repo>/<depsDirName>, symlink/clone
-// seed from that cache if its package-lock.json matches the worktree's; on a
-// lock mismatch the cache is skipped (with a warning) and the repo root's dir
-// is used, as without a cache.
+// Clone mode seeds from the hash-keyed deps cache when a slot matches the
+// worktree's package-lock.json (see depsSource); symlink always uses the repo
+// root's dir.
 func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) error {
 	dst := filepath.Join(worktreePath, depsDirName)
 	src := filepath.Join(repoRoot, depsDirName)
-	if mode == "symlink" || mode == "clone" {
-		src, _ = depsSource(repoRoot, worktreePath, depsDirName, os.Getenv)
-	}
 	switch mode {
 	case "symlink":
 		if _, err := os.Stat(src); err != nil {
@@ -162,6 +159,7 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		}
 		return os.Symlink(src, dst)
 	case "clone":
+		src, _ = depsSource(repoRoot, worktreePath, depsDirName, os.LookupEnv)
 		if _, err := os.Stat(src); err != nil {
 			return fmt.Errorf("wt: deps=clone but %s does not exist — install in the main checkout first", src)
 		}
@@ -216,29 +214,35 @@ func lockHash(lockPath string) (string, error) {
 	return hex.EncodeToString(sum[:])[:16], nil
 }
 
-// depsSource picks where symlink/clone read the deps dir from. With
-// ZENIFY_DEPS_CACHE unset, or no <cache>/<repo>/<depsDirName> in it, it is the
-// repo root's dir (fromCache=false). If the cache entry exists and its
-// package-lock.json is byte-equal to the worktree's, it is the cache dir
-// (fromCache=true). If the entry exists but the lock differs (or is unreadable)
-// it warns on stderr and returns own (fromCache=false) — only the cache is skipped.
-func depsSource(repoRoot, worktreePath, depsDirName string, getenv func(string) string) (src string, fromCache bool) {
+// depsSource picks where clone reads the deps dir from (symlink never uses the
+// cache). With the cache off, or no hash-keyed slot
+// <cache>/<repo>/<lockHash(worktree package-lock.json)>/<depsDirName>, or a slot
+// whose package-lock.json is not byte-equal to the worktree's (hash collision),
+// it is the repo root's dir (fromCache=false) — silently, a miss is normal. On a
+// hit it touches the slot's mtime (LRU) and returns the slot's dir (fromCache=true).
+func depsSource(repoRoot, worktreePath, depsDirName string, lookupEnv func(string) (string, bool)) (src string, fromCache bool) {
 	own := filepath.Join(repoRoot, depsDirName)
-	cache := getenv("ZENIFY_DEPS_CACHE")
-	if cache == "" {
+	dir, enabled := resolveCacheDir(lookupEnv)
+	if !enabled {
 		return own, false
 	}
-	entry := filepath.Join(cache, filepath.Base(repoRoot))
-	cached := filepath.Join(entry, depsDirName)
+	wtLock := filepath.Join(worktreePath, "package-lock.json")
+	hash, err := lockHash(wtLock)
+	if err != nil {
+		return own, false
+	}
+	slot := filepath.Join(dir, filepath.Base(repoRoot), hash)
+	cached := filepath.Join(slot, depsDirName)
 	if fi, err := os.Stat(cached); err != nil || !fi.IsDir() {
 		return own, false
 	}
-	a, errA := os.ReadFile(filepath.Join(entry, "package-lock.json"))        //nolint:gosec // G304 -- path built from operator-set cache dir and repo basename
-	b, errB := os.ReadFile(filepath.Join(worktreePath, "package-lock.json")) //nolint:gosec // G304 -- path is the worktree this tool created
+	a, errA := os.ReadFile(filepath.Join(slot, "package-lock.json")) //nolint:gosec // G304 -- path built from operator-set cache dir and repo basename
+	b, errB := os.ReadFile(wtLock)                                   //nolint:gosec // G304 -- path is the worktree this tool created
 	if errA != nil || errB != nil || !bytes.Equal(a, b) {
-		fmt.Fprintf(os.Stderr, "wt: deps cache %s skipped (package-lock.json differs or unreadable); using %s\n", entry, own)
 		return own, false
 	}
+	now := time.Now()
+	_ = os.Chtimes(slot, now, now)
 	return cached, true
 }
 
