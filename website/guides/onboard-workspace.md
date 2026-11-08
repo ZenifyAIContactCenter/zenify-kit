@@ -119,9 +119,11 @@ Mỗi repo tham gia workspace khai báo một file `.claude/worktree.json`, ví 
 | `worktreeDir` | thư mục chứa các worktree, thường `.worktrees/` |
 | `copy` | các file được seed từ checkout chính vào worktree mới, ví dụ `.claude/settings.local.json` và `CLAUDE.md`. Nhờ seed `.claude/settings.local.json`, worktree dùng chung secret và bộ nhớ với checkout chính, xem [Secret và settings.local.json](/guides/read-real-data#secret-va-settings-local-json) |
 | `deps` | cách seed dependency: `symlink`, `clone`, hoặc `none` cho repo không phải Node |
-| `install` | lệnh cài dependency khi `deps` cần cài riêng. Với `clone`, lệnh này được bỏ qua khi `package-lock.json` của worktree giống bản ở checkout chính và `node_modules` ở đó khớp lock, xem [`zenify wt new`](/reference/cli/zenify_wt_new) |
+| `install` | lệnh cài dependency khi `deps` cần cài riêng. Với `clone`, lệnh này được bỏ qua khi `package-lock.json` của worktree giống bản ở checkout chính và `node_modules` ở đó khớp lock, xem [`zenify wt new`](/reference/cli/zenify_wt_new). Chế độ `clone` còn dùng một cache deps bật sẵn, khoá theo hash của `package-lock.json` cộng với dấu vân tay môi trường build (Node ABI/platform/arch), nên `wt new` lặp lại vẫn nhanh dù checkout chính đang ở branch nào; tắt bằng `ZENIFY_DEPS_CACHE=off` |
 | `portEnv` | tên biến môi trường worktree đọc port từ đó |
 | `portRange` | khối port riêng của repo, không trùng repo khác trong workspace |
+
+Lưu ý về cache deps: cache khoá theo hash của `package-lock.json` cộng với Node ABI/platform/arch, nên khi đổi Node (ví dụ qua nvm) `wt new` tự dùng một slot khác — đây là cache miss tự động, không phải việc xoá tay, và không còn nguy cơ dùng lại native module build cho ABI cũ. Cây `node_modules` cài với `ignore-scripts=true` (deps chưa build) không được ghi vào cache. `ZENIFY_DEPS_CACHE=off` và `--install` chỉ bỏ qua việc đọc cache, không xoá slot cũ.
 
 Chi tiết cách chọn `baseRef`, `hotfixBaseRef` và dải port cho repo mới: [Base ref và port block](/concepts/base-ref-and-ports).
 
