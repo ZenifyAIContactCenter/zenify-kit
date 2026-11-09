@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/grafanaproxy"
 )
@@ -61,6 +62,51 @@ func TestGet_NotFound(t *testing.T) {
 
 	err := grafanaproxy.New(srv.URL, "tok").Get(context.Background(), "u", "/x", nil, 1<<10, nil)
 	if !errors.Is(err, grafanaproxy.ErrNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A deadline hit while Grafana is still answering is a timeout, not an
+// unreachable Grafana: obs's 45 s budget surfaced as "grafana unreachable".
+func TestGet_DeadlineIsTimeoutNotUnreachable(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	err := grafanaproxy.New(srv.URL, "tok").Get(ctx, "u", "/x", nil, 1<<10, nil)
+	if !errors.Is(err, grafanaproxy.ErrTimeout) || err.Error() != "grafana timed out" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A caller that cancels (it went away) is not a timeout.
+func TestGet_CanceledIsNotTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := grafanaproxy.New(srv.URL, "tok").Get(ctx, "u", "/x", nil, 1<<10, nil)
+	if err == nil || errors.Is(err, grafanaproxy.ErrTimeout) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestGet_ConnectionRefusedIsUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	u := srv.URL
+	srv.Close()
+
+	err := grafanaproxy.New(u, "tok").Get(context.Background(), "u", "/x", nil, 1<<10, nil)
+	if err == nil || err.Error() != "grafana unreachable" || errors.Is(err, grafanaproxy.ErrTimeout) {
 		t.Fatalf("err = %v", err)
 	}
 }
