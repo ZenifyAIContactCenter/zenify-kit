@@ -5,7 +5,7 @@ import type { TrackStats } from '../types'
 import { isInWorkspace, registerConfig, setInWorkspace, syncConfig, trackPaneOf } from './config'
 import { bindLine, cwdLine, isStartCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
-import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, parseTrackStats, statusText, tabLines } from './track-ui'
+import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, parseTrackStats, promptSkillOf, trackContext, trackSectionOf, statusText, tabLines } from './track-ui'
 import type { Line, Tab } from './track-ui'
 
 // FR-6.1: one pane; the five tabs are drawn inside it.
@@ -279,6 +279,18 @@ async function recordIdle($: $): Promise<void> {
 }
 
 const timingError = ($: $) => (err: unknown) => $.ui.toast(`timing error: ${message(err)}`)
+const trackContextError = ($: $) => (err: unknown) => (void $.ui.toast(`track context error: ${message(err)}`), undefined)
+
+// The track steps of a cook/fix/hotfix/ship/ci-watch skill, from skills/_shared/track.md, only in a
+// workspace with track on; the digest's pointer to track.md alone was skipped by agents.
+async function trackContextFor($: $, skill: string): Promise<string | undefined> {
+  const section = trackSectionOf(skill)
+  if (!section || !isInWorkspace() || !(await isEnabled($))) return undefined
+  const md = String(await $.fs.read(`${$.plugin.root}/skills/_shared/track.md`))
+  const text = trackContext(md, section)
+  if (!text) throw new Error(`skills/_shared/track.md has no "## Rules" or "## ${section}" section`)
+  return text
+}
 
 const firstLine = (s: string) => s.trim().split('\n')[0]
 
@@ -488,7 +500,16 @@ export const register: Register = (on, options: PluginOptions) => {
       await syncLive($).catch(timingError($))
       if (isInWorkspace() && trackPane === 'auto' && isTrackPrompt(e)) await autoShow($).catch(statsError($))
     }
-    return next(e)
+    const ctx = await trackContextFor($, promptSkillOf(e)).catch(trackContextError($))
+    return next(ctx ? { ...e, context: [...(e.context ?? []), ctx] } : e)
+  })
+
+  // A skill the agent loads itself carries its track steps, read by the model after the skill.
+  on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
+    const ctx = await trackContextFor($, String((e as { skill?: unknown }).skill ?? '')).catch(trackContextError($))
+    const r = await next(e)
+    if (!ctx || r.deny !== undefined || r.isError) return r
+    return { ...r, context: [...(r.context ?? []), ctx] }
   })
 
   // zenify track (FR-4, FR-8.2): every tool call of a session, timed around `next(e)`; the

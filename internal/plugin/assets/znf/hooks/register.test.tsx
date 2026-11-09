@@ -34,6 +34,10 @@ type World = {
   noWorkspace?: boolean
   // The session cwd; defaults to CWD. A test moves it mid-session.
   cwd?: string
+  // The plugin's skills/_shared/track.md; absent = ENOENT.
+  trackMd?: string
+  // The last prompt.submit event that reached the engine.
+  prompt?: { text: string; context?: string[] }
   // Files the plugin wrote, by path (session logs live here).
   files?: Record<string, string>
   // Answers the test's tool.call beneath the plugin; defaults to an empty result.
@@ -108,7 +112,7 @@ function engine(on: any, world: World): Calls {
   })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
   on('session.cwd', () => ({ value: world.cwd ?? CWD }))
-  on('prompt.submit', (_: unknown, e: { text: string }) => ({ text: e.text }))
+  on('prompt.submit', (_: unknown, e: { text: string; context?: string[] }) => ((world.prompt = e), { text: e.text }))
   on('session.id', () => ({ value: SESSION }))
   on('tool.call', async (_: unknown, e: any) => (world.toolCall ? await world.toolCall(e) : { result: {} }))
   on('tool.check', () => ({ decision: world.verdict ?? 'allow' }))
@@ -162,6 +166,10 @@ function engine(on: any, world: World): Calls {
     return { value: { kind: e.path === SESSIONS_DIR ? 'directory' : 'file', size: 1, mtimeMs: m, isLink: false } }
   })
   on('fs.read', async (_: unknown, e: { path: string }) => {
+    if (e.path.endsWith('/skills/_shared/track.md')) {
+      if (world.trackMd === undefined) return { deny: `ENOENT: no such file, open '${e.path}'` }
+      return { value: world.trackMd }
+    }
     const text = world.files?.[e.path]
     if (e.path === LIVE && world.holdLiveRead) await world.holdLiveRead
     if (text === undefined) return { deny: `ENOENT: no such file, open '${e.path}'` }
@@ -538,6 +546,57 @@ test('FR-6.1: a new session start forgets the close; the next cook prompt opens 
   await $.prompt.submit(fix as any)
   await clock.settle()
   expect(calls.open).toEqual([PANE, PANE])
+})
+
+const TRACK_MD = ['# Track', '', '## Rules', '', '- rule one', '', '## fix', '', '- fix step', '', '## ship', '', '- ship step', '', '## ci-watch', '', '- watch step', ''].join('\n')
+
+test('a Skill call of fix the agent makes carries the Rules and fix sections of track.md as context', async ($, on) => {
+  engine(on, trackWorld({ trackMd: TRACK_MD }))
+  const clock = mock.clock(on)
+  await start($, clock)
+  const r: any = await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)
+  expect(r.context).toHaveLength(1)
+  expect(r.context[0]).toContain('## Rules\n\n- rule one')
+  expect(r.context[0]).toContain('## fix\n\n- fix step')
+  expect(r.context[0]).not.toContain('## ship')
+  const w: any = await $.tool.call({ tool: 'Skill', skill: 'ci-watch' } as any)
+  expect(w.context[0]).toContain('## ci-watch\n\n- watch step')
+})
+
+test('track off, outside a workspace, or another skill: a Skill call carries no track context', async ($, on) => {
+  const world = trackWorld({ trackMd: TRACK_MD, trackEnabled: false })
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)) as any).context).toBeUndefined()
+  world.trackEnabled = true
+  expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:scout' } as any)) as any).context).toBeUndefined()
+})
+
+test('outside a workspace a Skill call carries no track context', async ($, on) => {
+  engine(on, { noWorkspace: true, trackEnabled: true, trackMd: TRACK_MD })
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)) as any).context).toBeUndefined()
+})
+
+test('a /znf:ship prompt the person types carries the ship section as prompt context', async ($, on) => {
+  const world = trackWorld({ trackMd: TRACK_MD })
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.prompt.submit({ text: '/znf:ship x', command: { name: 'znf:ship', args: 'x' } } as any)
+  expect(world.prompt?.context).toHaveLength(1)
+  expect(world.prompt?.context?.[0]).toContain('## ship\n\n- ship step')
+})
+
+test('a missing track.md is a toast; the skill still loads', async ($, on) => {
+  const calls = engine(on, trackWorld())
+  const clock = mock.clock(on)
+  await start($, clock)
+  const r: any = await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)
+  expect(r.context).toBeUndefined()
+  expect(calls.toast).toEqual([expect.stringMatching(/^track context error: .*ENOENT/)])
 })
 
 test('SC-45: options tips false: the status line carries no contextual tip', { options: { tips: false } }, async ($, on) => {

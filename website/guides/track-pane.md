@@ -6,6 +6,8 @@ title: "Pane track: đo thời gian, token và chất lượng của từng lư�
 
 `track` ghi lại mỗi lượt `znf:cook`, `znf:fix`, `znf:hotfix` và `znf:ship` để bạn thấy việc tốn bao lâu, tốn bao nhiêu token và ship có suôn sẻ không. Số liệu hiện trong một pane bên cạnh chat và một status line ở đáy, tự cập nhật, không tốn lượt chat nào. Tính năng mặc định tắt.
 
+Khi tính năng bật, mỗi lần một trong các skill đó (hoặc `znf:ci-watch`) được nạp, dù do agent tự gọi hay do bạn gõ `/znf:…`, plugin gắn kèm đúng các bước `zenify track` của skill ấy (lấy từ `skills/_shared/track.md`) vào ngữ cảnh của agent. Nhờ vậy agent ghi track mà không cần tự nhớ đọc `track.md`.
+
 ## Bật và tắt
 
 ```bash

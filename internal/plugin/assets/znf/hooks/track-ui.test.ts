@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { BacklogItem, TrackItem, TrackStats } from '../types'
-import { COPY, STATUS_OFF, TABS, errorStatus, fmtDur, fmtNum, isTrackPrompt, isTrackSkill, parseTrackStats, prLabel, ruleText, statusText, tabLines } from './track-ui'
+import { COPY, STATUS_OFF, TABS, errorStatus, fmtDur, fmtNum, isTrackPrompt, isTrackSkill, parseTrackStats, prLabel, promptSkillOf, ruleText, statusText, tabLines, trackContext, trackSectionOf } from './track-ui'
 
 const A = 'aaaaaaaa-1111-2222-3333-444444444444'
 const B = 'bbbbbbbb-5555-6666-7777-888888888888'
@@ -704,4 +704,16 @@ test('an old binary without dailyPlan, prOpen or est does not break the pane', (
   expect(s.today).toMatchObject({ dailyPlan: null, prOpen: [], prStatusError: '' })
   for (const t of TABS) tabLines(t.id, s, A, undefined, NOW)
   expect(texts(tabLines('kitchen', s, A, undefined, NOW))).not.toContain('🗓 Plan')
+})
+
+test('trackSectionOf names the track.md section of a tracked skill; promptSkillOf reads the prompt skill', () => {
+  expect(trackSectionOf('znf:ci-watch')).toBe('ci-watch')
+  expect(trackSectionOf('hotfix')).toBe('hotfix')
+  expect(trackSectionOf('znf:scout')).toBeUndefined()
+  expect(promptSkillOf({ text: '/znf:fix x' })).toBe('znf:fix')
+  expect(promptSkillOf({ text: 'fix this', command: { name: 'ship' } })).toBe('ship')
+  expect(promptSkillOf({ text: 'fix this' })).toBe('')
+  const md = '## Rules\n\n- r\n\n## fix\n\n- f\n'
+  expect(trackContext(md, 'fix')).toContain('## Rules\n\n- r\n\n## fix\n\n- f')
+  expect(trackContext(md, 'ship')).toBeUndefined()
 })

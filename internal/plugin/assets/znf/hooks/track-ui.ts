@@ -481,3 +481,21 @@ const TRACKED = /^(?:znf:)?(?:cook|fix|hotfix|ship)$/
 export const isTrackSkill = (name: string): boolean => TRACKED.test(name)
 export const isTrackPrompt = (e: { text: string; command?: { name: string } }): boolean =>
   e.command ? isTrackSkill(e.command.name) : /^\/(?:znf:)?(?:cook|fix|hotfix|ship)(?:\s|$)/.test(e.text)
+
+// The track.md section a skill records under: `cook|fix|hotfix|ship|ci-watch`, with or without `znf:`.
+export const trackSectionOf = (name: string): string | undefined => /^(?:znf:)?(cook|fix|hotfix|ship|ci-watch)$/.exec(name)?.[1]
+// The skill a prompt runs: its slash command, else a leading `/name`.
+export const promptSkillOf = (e: { text: string; command?: { name: string } }): string =>
+  e.command ? e.command.name : (/^\/(\S+)/.exec(e.text)?.[1] ?? '')
+
+// The `## Rules` and `## <section>` blocks of track.md, each up to the next `## ` heading.
+export function trackContext(md: string, section: string): string | undefined {
+  const block = (name: string) => {
+    const m = new RegExp(`^## ${name}\\n[\\s\\S]*?(?=^## |(?![\\s\\S]))`, 'm').exec(md)
+    return m?.[0].trimEnd()
+  }
+  const rules = block('Rules')
+  const own = block(section)
+  if (!rules || !own) return undefined
+  return `track is on: record this run to \`zenify track\` as below (from skills/_shared/track.md).\n\n${rules}\n\n${own}`
+}
