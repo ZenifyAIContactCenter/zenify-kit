@@ -2,14 +2,20 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
+
+// planeHookTimeoutVar bounds the whole hook, all requests together.
+var planeHookTimeoutVar = 8 * time.Second
 
 // zenSlugRe picks the ZEN work item number out of a `wt new` slug.
 var zenSlugRe = regexp.MustCompile(`^zen-(\d+)`)
@@ -32,7 +38,9 @@ func planeStartHook(getenv func(string) string, ws string, client *http.Client) 
 		if err != nil || man.Plane == nil {
 			return fmt.Sprintf("plane: no Plane in the manifest, %s not moved", key)
 		}
-		p := planeAPI{client: client, base: strings.TrimRight(man.Plane.URL, "/") + "/api/v1", pat: pat}
+		ctx, cancel := context.WithTimeout(context.Background(), planeHookTimeoutVar)
+		defer cancel()
+		p := planeAPI{ctx: ctx, client: client, base: strings.TrimRight(man.Plane.URL, "/") + "/api/v1", pat: pat}
 		w, err := startZenItem(p, man.Plane.Workspace, key)
 		if err != nil {
 			return fmt.Sprintf("plane: %s not moved to In Progress: %v", key, err)
@@ -58,6 +66,9 @@ func startZenItem(p planeAPI, slug, key string) (string, error) {
 	if err := p.do(http.MethodGet, "/users/me/", nil, &me); err != nil {
 		return "", err
 	}
+	if me.ID == "" {
+		return fmt.Sprintf("plane: cannot tell who you are, %s not moved", key), nil
+	}
 	var item struct {
 		ID        string   `json:"id"`
 		Project   string   `json:"project"`
@@ -70,7 +81,7 @@ func startZenItem(p planeAPI, slug, key string) (string, error) {
 	var states struct {
 		Results []planeState `json:"results"`
 	}
-	proj := "/workspaces/" + slug + "/projects/" + item.Project
+	proj := "/workspaces/" + slug + "/projects/" + url.PathEscape(item.Project)
 	if err := p.do(http.MethodGet, proj+"/states/", nil, &states); err != nil {
 		return "", err
 	}
@@ -84,8 +95,11 @@ func startZenItem(p planeAPI, slug, key string) (string, error) {
 			target = s
 		}
 	}
-	// Intake items sit in Plane's triage state, which the list leaves out.
-	if cur == nil || cur.Triage {
+	if cur == nil {
+		return fmt.Sprintf("plane: %s current state not found, not moved", key), nil
+	}
+	// A triage state is Intake.
+	if cur.Triage {
 		return fmt.Sprintf("plane: %s is in Intake, not moved", key), nil
 	}
 	dev := slices.Contains(item.Assignees, me.ID)
@@ -96,7 +110,10 @@ func startZenItem(p planeAPI, slug, key string) (string, error) {
 	case "completed", "cancelled":
 		return fmt.Sprintf("plane: %s is %s, not moved", key, cur.Name), nil
 	case "unstarted":
-		if !dev {
+		// No assignee = nobody holds it, same as Backlog.
+		if len(item.Assignees) == 0 {
+			body["assignees"] = []string{me.ID}
+		} else if !dev {
 			return fmt.Sprintf("plane: %s is held by someone else (%s), not moved", key, cur.Name), nil
 		}
 	case "backlog":
@@ -110,13 +127,14 @@ func startZenItem(p planeAPI, slug, key string) (string, error) {
 		return fmt.Sprintf("plane: project has no In Progress state, %s not moved", key), nil
 	}
 	body["state"] = target.ID
-	if err := p.do(http.MethodPatch, proj+"/work-items/"+item.ID+"/", body, nil); err != nil {
+	if err := p.do(http.MethodPatch, proj+"/work-items/"+url.PathEscape(item.ID)+"/", body, nil); err != nil {
 		return "", err
 	}
 	return "", nil
 }
 
 type planeAPI struct {
+	ctx    context.Context
 	client *http.Client
 	base   string
 	pat    string
@@ -133,7 +151,7 @@ func (p planeAPI) do(method, path string, in, out any) error {
 		}
 		rd = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, p.base+path, rd)
+	req, err := http.NewRequestWithContext(p.ctx, method, p.base+path, rd)
 	if err != nil {
 		return err
 	}

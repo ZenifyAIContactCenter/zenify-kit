@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // The ZEN project's states as Plane returns them (shape and names measured on
@@ -45,11 +46,12 @@ type fakeWtPlane struct {
 	state    string
 	assign   []string
 	fail     bool
+	meID     string // /users/me/ id, default u-dev
 }
 
 func newFakePlane(t *testing.T, state string, assignees ...string) *fakeWtPlane {
 	t.Helper()
-	f := &fakeWtPlane{state: state, assign: assignees}
+	f := &fakeWtPlane{state: state, assign: assignees, meID: "u-dev"}
 	f.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
@@ -62,7 +64,7 @@ func newFakePlane(t *testing.T, state string, assignees ...string) *fakeWtPlane 
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/users/me/":
-			_, _ = io.WriteString(w, `{"id":"u-dev","display_name":"dev","email":"dev@x"}`)
+			_, _ = io.WriteString(w, `{"id":"`+f.meID+`","display_name":"dev","email":"dev@x"}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/workspaces/zenify/work-items/ZEN-7/":
 			b, _ := json.Marshal(map[string]any{"id": "wi-7", "project": "p-zen", "sequence_id": 7, "state": f.state, "assignees": f.assign})
 			_, _ = w.Write(b)
@@ -239,5 +241,69 @@ func TestWtPlane_NonZenSlug_NoRequest(t *testing.T) {
 	}
 	if len(f.requests) != 0 {
 		t.Fatalf("requests %v, want none", f.requests)
+	}
+}
+
+// Todo with no assignee is unheld: moved, dev assigned.
+func TestWtPlane_TodoUnheld_MovesAndAssigns(t *testing.T) {
+	f := newFakePlane(t, stTodo)
+	if w := runHook(t, f, "zen-7", patEnv); w != "" {
+		t.Fatalf("warning %q, want none", w)
+	}
+	body := f.onlyPatch(t)
+	if body["state"] != stInProgress {
+		t.Fatalf("state = %v", body["state"])
+	}
+	if got := assigneesOf(t, body); !slices.Equal(got, []string{"u-dev"}) {
+		t.Fatalf("assignees = %v, want [u-dev]", got)
+	}
+}
+
+// A state id missing from the list is not Intake: its own warning.
+func TestWtPlane_StateNotInList_OwnWarning(t *testing.T) {
+	f := newFakePlane(t, "st-unknown")
+	w := runHook(t, f, "zen-7", patEnv)
+	if !strings.Contains(w, "state not found") || strings.Contains(w, "Intake") {
+		t.Fatalf("warning %q, want 'state not found' without Intake", w)
+	}
+	if len(f.patches) != 0 {
+		t.Fatalf("patched %v", f.patches)
+	}
+}
+
+// An empty /users/me/ id warns and never PATCHes.
+func TestWtPlane_EmptyUserID_WarnsNoPatch(t *testing.T) {
+	f := newFakePlane(t, stBacklog)
+	f.meID = ""
+	w := runHook(t, f, "zen-7", patEnv)
+	if w == "" || strings.Contains(w, "pat-secret") {
+		t.Fatalf("warning %q", w)
+	}
+	if len(f.patches) != 0 {
+		t.Fatalf("patched %v", f.patches)
+	}
+}
+
+// A hung Plane is cut by the one overall deadline; the hook fails open.
+func TestWtPlane_Deadline_FailsOpen(t *testing.T) {
+	f := newFakePlane(t, stBacklog)
+	hang := make(chan struct{})
+	t.Cleanup(func() { close(hang) })
+	f.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-hang:
+		case <-r.Context().Done():
+		}
+	})
+	saved := planeHookTimeoutVar
+	planeHookTimeoutVar = 200 * time.Millisecond
+	t.Cleanup(func() { planeHookTimeoutVar = saved })
+	start := time.Now()
+	w := runHook(t, f, "zen-7", patEnv)
+	if w == "" || strings.Contains(w, "pat-secret") {
+		t.Fatalf("warning %q", w)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("hook took %v", time.Since(start))
 	}
 }
