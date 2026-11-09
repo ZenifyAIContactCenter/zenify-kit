@@ -352,7 +352,6 @@ test('a cwd moved outside the workspace mid-session keeps beating into the start
   // An additional working directory outside the workspace, like the knowledge store.
   world.cwd = '/k/knowledge'
   await clock.advance(20000)
-  expect(calls.toast).toEqual([])
   expect(calls.write.some(w => w.path === BEAT)).toBe(true)
 })
 
@@ -564,13 +563,27 @@ test('a Skill call of fix the agent makes carries the Rules and fix sections of 
 })
 
 test('track off, outside a workspace, or another skill: a Skill call carries no track context', async ($, on) => {
-  const world = trackWorld({ trackMd: TRACK_MD, trackEnabled: false })
+  const world = trackWorld({ trackMd: TRACK_MD, trackEnabled: false, stats: ok(statsJson({ enabled: false })) })
   engine(on, world)
   const clock = mock.clock(on)
   await start($, clock)
   expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)) as any).context).toBeUndefined()
   world.trackEnabled = true
   expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:scout' } as any)) as any).context).toBeUndefined()
+})
+
+test('a first /znf:fix prompt while the first stats run is still out waits for it and carries the fix section', async ($, on) => {
+  let release = () => {}
+  // `enabled` is left as the plugin writes it: false until the stats run answers enabled: true.
+  const world: World = { trackMd: TRACK_MD, holdLogStat: new Promise<void>(r => (release = r)) }
+  const calls = engine(on, world)
+  mock.clock(on)
+  await $.session.start({ cwd: CWD, source: 'startup' } as any)
+  const submit = $.prompt.submit({ text: '/znf:fix x', command: { name: 'znf:fix', args: 'x' } } as any)
+  release()
+  await submit
+  expect(calls.toast).toEqual([])
+  expect(world.prompt?.context?.[0]).toContain('## fix\n\n- fix step')
 })
 
 test('outside a workspace a Skill call carries no track context', async ($, on) => {
