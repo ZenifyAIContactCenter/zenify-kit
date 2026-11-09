@@ -74,6 +74,8 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
 // The workspace holding `.zenify/manifest.json` at or above the cwd, as the CLI resolves it
 // (internal/cli/workspaceresolve.go, the marker rule); cached per cwd.
 // undefined when there is none: a session outside a zenify workspace.
+// A cwd moved outside mid-session (an additional working directory such as the knowledge store)
+// keeps the workspace found earlier in this process.
 let workspaceCache: { cwd: string; dir: string } | undefined
 async function findWorkspace($: $): Promise<string | undefined> {
   const cwd: string = await $.session.cwd()
@@ -86,8 +88,11 @@ async function findWorkspace($: $): Promise<string | undefined> {
     } catch (err) {
       if (!isMissing(err)) throw err
     }
-    if (!dir) return undefined
+    if (!dir) break
   }
+  if (!workspaceCache) return undefined
+  workspaceCache = { cwd, dir: workspaceCache.dir }
+  return workspaceCache.dir
 }
 
 async function workspaceDir($: $): Promise<string> {
@@ -430,6 +435,8 @@ export const register: Register = (on, options: PluginOptions) => {
   // FR-11.1: every session in a workspace runs stats and sets the status line; never opens the pane.
   on('session.start', async ($, e, next) => {
     stopTimers()
+    // FR-18: a start decides from its own cwd; only mid-session callers fall back to this workspace.
+    workspaceCache = undefined
     lastKey = undefined
     pendingAsk.clear()
     pendingPermission.clear()
