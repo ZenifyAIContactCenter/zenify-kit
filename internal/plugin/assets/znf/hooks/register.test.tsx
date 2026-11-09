@@ -599,6 +599,19 @@ test('track turned off mid-session: a later Skill call carries no track context'
   expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)) as any).context).toBeUndefined()
 })
 
+test('track off at start, then a track start succeeds: the next Skill call carries the track steps at once', async ($, on) => {
+  const world: World = { trackMd: TRACK_MD, stats: ok(statsJson({ enabled: false })) }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)) as any).context).toBeUndefined()
+  // The stats run the bind starts stays out: the start's printed id alone proves track is on.
+  world.holdLogStat = new Promise<void>(() => {})
+  world.mtimes = { ...world.mtimes, [LOG_MD]: 3 }
+  await bindTo($, world, FIX_ID)
+  expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:ship' } as any)) as any).context?.[0]).toContain('## ship')
+})
+
 test('outside a workspace a Skill call carries no track context', async ($, on) => {
   engine(on, { noWorkspace: true, trackEnabled: true, trackMd: TRACK_MD })
   const clock = mock.clock(on)

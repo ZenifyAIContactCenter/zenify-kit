@@ -235,6 +235,7 @@ async function recordCall($: $, tool: string, command: string, isMain: boolean, 
     if (id) {
       // A printed id proves the feature is on, even before the first stats run sets `enabled`.
       if (!(await read($, enabled))) await update($, enabled, () => true)
+      lastKnownEnabled = true
       await update($, bound, () => ({ id, kind: kindOf(id), ending: false }))
       await appendSession($, bindLine(iso(now), id))
       // A bind runs inside a working turn: write busy with the new id, even after a mid-turn
@@ -283,9 +284,10 @@ const timingError = ($: $) => (err: unknown) => $.ui.toast(`timing error: ${mess
 // run already out may return early); trackContextFor waits on it until then.
 let firstStats: Promise<boolean> = Promise.resolve(false)
 let statsAnswered: (on: boolean) => void = () => {}
-// True once a stats run ended in this session; lastStatsEnabled is then the current answer.
+// True once a stats run ended in this session.
 let isStatsSettled = true
-let lastStatsEnabled = false
+// `enabled` as last learnt: a stats answer, or a track start's printed id (proof the feature is on).
+let lastKnownEnabled = false
 const trackContextError = ($: $) => (err: unknown) => (void $.ui.toast(`track context error: ${message(err)}`), undefined)
 
 // The track steps of a cook/fix/hotfix/ship/ci-watch skill, from skills/_shared/track.md, only in a
@@ -293,10 +295,10 @@ const trackContextError = ($: $) => (err: unknown) => (void $.ui.toast(`track co
 async function trackContextFor($: $, skill: string): Promise<string | undefined> {
   const section = trackSectionOf(skill)
   if (!section || !isInWorkspace()) return undefined
-  // `enabled` of the last stats answer, kept in this module: a handler reads the atom as of its own
-  // start. Before the session's first answer (bounded by STATS_TIMEOUT_MS) wait for it rather than
-  // drop the first skill's track steps.
-  if (!(isStatsSettled ? lastStatsEnabled : await firstStats)) return undefined
+  // `enabled` as last learnt, kept in this module: a handler reads the atom as of its own start.
+  // Not known on yet before the session's first stats answer (bounded by STATS_TIMEOUT_MS): wait for
+  // it rather than drop the first skill's track steps.
+  if (!lastKnownEnabled && (isStatsSettled || !(await firstStats))) return undefined
   const md = String(await $.fs.read(`${$.plugin.root}/skills/_shared/track.md`))
   const text = trackContext(md, section)
   if (!text) throw new Error(`skills/_shared/track.md has no "## Rules" or "## ${section}" section`)
@@ -385,13 +387,13 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
       return
     }
     await update($, stats, () => ({ data }))
-    lastStatsEnabled = data.enabled
+    lastKnownEnabled = data.enabled
     if ((await read($, enabled)) !== data.enabled) await setTrackEnabled($, data.enabled)
     await updateStatus($)
   } finally {
     isStatting = false
     isStatsSettled = true
-    statsAnswered(lastStatsEnabled)
+    statsAnswered(lastKnownEnabled)
     // Every exit path, early returns included, runs the queued forced run; the flag is cleared
     // first, so it recurses at most once per queued request.
     if (isRerunWanted) {
