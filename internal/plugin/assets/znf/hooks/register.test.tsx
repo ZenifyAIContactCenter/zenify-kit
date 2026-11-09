@@ -500,15 +500,44 @@ test('SC-8: feature off, a /znf:fix prompt opens nothing', async ($, on) => {
   expect(calls.open).toHaveLength(0)
 })
 
-test('FR-6.1: a Skill call of cook, hotfix or ship, with or without znf:, opens the pane; scout does not', async ($, on) => {
+test('FR-6.1: a Skill call the agent makes opens no pane; only the person prompt does', async ($, on) => {
   const calls = engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
-  await $.tool.call({ tool: 'Skill', skill: 'znf:scout' } as any)
-  expect(calls.open).toHaveLength(0)
   await $.tool.call({ tool: 'Skill', skill: 'hotfix' } as any)
+  await $.tool.call({ tool: 'Skill', skill: 'znf:ship' } as any)
+  await clock.settle()
+  expect(calls.open).toHaveLength(0)
+})
+
+test('FR-6.1: a pane the person closed stays closed on the next cook prompt; /track-pane still opens it', async ($, on) => {
+  const calls = engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  const fix = { text: '/znf:fix x', command: { name: 'znf:fix', args: 'x' } }
+  await $.prompt.submit(fix as any)
   await clock.settle()
   expect(calls.open).toEqual([PANE])
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await $.prompt.submit(fix as any)
+  await clock.settle()
+  expect(calls.open).toEqual([PANE])
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  expect(calls.open).toEqual([PANE, PANE])
+})
+
+test('FR-6.1: a new session start forgets the close; the next cook prompt opens the pane again', async ($, on) => {
+  const calls = engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  const fix = { text: '/znf:fix x', command: { name: 'znf:fix', args: 'x' } }
+  await $.prompt.submit(fix as any)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await $.session.start({ cwd: CWD, source: 'clear' } as any)
+  await clock.settle()
+  await $.prompt.submit(fix as any)
+  await clock.settle()
+  expect(calls.open).toEqual([PANE, PANE])
 })
 
 test('SC-45: options tips false: the status line carries no contextual tip', { options: { tips: false } }, async ($, on) => {
