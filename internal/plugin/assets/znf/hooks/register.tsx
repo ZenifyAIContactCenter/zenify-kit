@@ -5,7 +5,7 @@ import type { TrackStats } from '../types'
 import { isInWorkspace, registerConfig, setInWorkspace, syncConfig, trackPaneOf } from './config'
 import { bindLine, cwdLine, isStartCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
-import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, isTrackSkill, parseTrackStats, statusText, tabLines } from './track-ui'
+import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, parseTrackStats, statusText, tabLines } from './track-ui'
 import type { Line, Tab } from './track-ui'
 
 // FR-6.1: one pane; the five tabs are drawn inside it.
@@ -407,7 +407,16 @@ function armTimers($: $): void {
 // Opens the pane with fresh numbers; the stats run is not awaited so the prompt is not held.
 async function show($: $): Promise<void> {
   await $.ui.open({ ...PANE })
+  wasShown = true
   void refreshStats($, true).catch(statsError($))
+}
+
+// FR-6.1: shown once in this process and closed now means the person closed it (by /track-pane or
+// the pane's own close); auto-open leaves it closed, only /track-pane opens it again.
+let wasShown = false
+async function autoShow($: $): Promise<void> {
+  if (wasShown && !(await isOpen($))) return
+  await show($)
 }
 
 // FR-13.7: opening the Backlog tab reruns stats past the backlog cache; the run is not awaited.
@@ -426,7 +435,7 @@ const TONES: Record<NonNullable<Line['tone']>, Record<string, unknown>> = {
 }
 
 export const register: Register = (on, options: PluginOptions) => {
-  // FR-17.4: auto opens the pane on a tracked prompt or skill; command only by /track-pane;
+  // FR-17.4: auto opens the pane on a tracked prompt, unless the person closed it; command only by /track-pane;
   // off neither, and /track-pane is not registered.
   const trackPane = trackPaneOf(options)
   showTips = options.tips !== false
@@ -435,6 +444,8 @@ export const register: Register = (on, options: PluginOptions) => {
   // FR-11.1: every session in a workspace runs stats and sets the status line; never opens the pane.
   on('session.start', async ($, e, next) => {
     stopTimers()
+    // FR-6.1: a person's close holds for one session; a new one (/clear included) auto-opens again.
+    wasShown = false
     // FR-18: a start decides from its own cwd; only mid-session callers fall back to this workspace.
     workspaceCache = undefined
     lastKey = undefined
@@ -475,13 +486,8 @@ export const register: Register = (on, options: PluginOptions) => {
       // FR-12.1: a prompt starts work again.
       isMainIdle = false
       await syncLive($).catch(timingError($))
-      if (isInWorkspace() && trackPane === 'auto' && isTrackPrompt(e)) await show($).catch(statsError($))
+      if (isInWorkspace() && trackPane === 'auto' && isTrackPrompt(e)) await autoShow($).catch(statsError($))
     }
-    return next(e)
-  })
-
-  on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
-    if (isInWorkspace() && trackPane === 'auto' && isTrackSkill(String((e as { skill?: unknown }).skill ?? '')) && (await isEnabled($))) await show($).catch(statsError($))
     return next(e)
   })
 
