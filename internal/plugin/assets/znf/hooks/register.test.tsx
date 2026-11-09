@@ -32,6 +32,8 @@ type World = {
   mtimes?: Record<string, number>
   // No `.zenify/manifest.json` at or above the cwd.
   noWorkspace?: boolean
+  // The session cwd; defaults to CWD. A test moves it mid-session.
+  cwd?: string
   // Files the plugin wrote, by path (session logs live here).
   files?: Record<string, string>
   // Answers the test's tool.call beneath the plugin; defaults to an empty result.
@@ -105,7 +107,7 @@ function engine(on: any, world: World): Calls {
     return { value: { command: e.name } }
   })
   on('session.start', (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
-  on('session.cwd', () => ({ value: CWD }))
+  on('session.cwd', () => ({ value: world.cwd ?? CWD }))
   on('prompt.submit', (_: unknown, e: { text: string }) => ({ text: e.text }))
   on('session.id', () => ({ value: SESSION }))
   on('tool.call', async (_: unknown, e: any) => (world.toolCall ? await world.toolCall(e) : { result: {} }))
@@ -332,6 +334,35 @@ test('FR-6.3: an append to this session own log re-runs stats at the next tick',
   world.mtimes = { [SESSIONS_DIR]: 1, [SESSION_LOG]: 2 }
   await clock.advance(2000)
   expect(statsRuns(calls)).toHaveLength(2)
+})
+
+test('a cwd moved outside the workspace mid-session keeps beating into the start workspace, no toast', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  // An additional working directory outside the workspace, like the knowledge store.
+  world.cwd = '/k/knowledge'
+  await clock.advance(20000)
+  expect(calls.toast).toEqual([])
+  expect(calls.write.some(w => w.path === BEAT)).toBe(true)
+})
+
+test('FR-18.3: a session start after the cwd moved outside the workspace runs nothing', async ($, on) => {
+  const world = trackWorld()
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  world.cwd = '/k/knowledge'
+  const runs = calls.run.length
+  const registered = calls.registered.length
+  await $.session.start({ cwd: world.cwd, source: 'clear' } as any)
+  await clock.settle()
+  await clock.advance(20000)
+  expect(calls.run.length).toBe(runs)
+  expect(calls.registered.length).toBe(registered)
+  expect(lastStatus(calls)).toBeUndefined()
+  expect(calls.toast).toEqual([])
 })
 
 test('FR-6.4: outside a workspace track-pane says so instead of loading forever; no status line', async ($, on) => {
