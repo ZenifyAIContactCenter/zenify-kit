@@ -612,6 +612,25 @@ test('track off at start, then a track start succeeds: the next Skill call carri
   expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:ship' } as any)) as any).context?.[0]).toContain('## ship')
 })
 
+test('track turned off then /clear while the new stats run is out: a /znf:fix prompt carries no track steps', async ($, on) => {
+  const world: World = { trackMd: TRACK_MD }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  world.stats = ok(statsJson({ enabled: false }))
+  let release = () => {}
+  world.holdLogStat = new Promise<void>(r => (release = r))
+  await $.session.start({ cwd: CWD, source: 'clear' } as any)
+  const submit = $.prompt.submit({ text: '/znf:fix x', command: { name: 'znf:fix', args: 'x' } } as any)
+  // While the new stats run is held, the prompt waits for it instead of trusting the old session's answer.
+  for (let i = 0; i < 500; i++) await Promise.resolve()
+  expect(world.prompt).toBeUndefined()
+  release()
+  await submit
+  expect(calls.toast).toEqual([])
+  expect(world.prompt?.context).toBeUndefined()
+})
+
 test('outside a workspace a Skill call carries no track context', async ($, on) => {
   engine(on, { noWorkspace: true, trackEnabled: true, trackMd: TRACK_MD })
   const clock = mock.clock(on)

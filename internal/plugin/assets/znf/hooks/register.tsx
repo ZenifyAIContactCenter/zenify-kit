@@ -498,6 +498,7 @@ export const register: Register = (on, options: PluginOptions) => {
     // FR-17.3: not awaited, like the stats run: the reads must not hold the session start.
     void syncConfig($, options).catch(statsError($))
     isStatsSettled = false
+    lastKnownEnabled = false
     firstStats = new Promise<boolean>(r => (statsAnswered = r))
     // Not awaited: the stats run may ask gh for merged PRs and must not hold the session start.
     void refreshStats($, true).catch(statsError($))
