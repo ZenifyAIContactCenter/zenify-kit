@@ -14,6 +14,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 
 - **Hết toast `timing error: no workspace` khi session rời workspace:** session mở trong workspace mà sau đó cwd chuyển sang thư mục ngoài (ví dụ knowledge store `~/.zenify/knowledge`) trước đây báo lỗi ở mỗi nhịp và mất dòng track. Giờ session vẫn ghi track vào workspace ban đầu; riêng `/clear` hay compact khi cwd đang ở ngoài thì tính là ngoài workspace. Xem [Track pane](/guides/track-pane).
 - **Track pane không tự bật lại sau khi bạn đã đóng:** với `Track pane` = `auto`, pane chỉ tự mở theo prompt bạn gõ (`cook`, `fix`, `hotfix`, `ship`), không mở khi agent tự gọi skill giữa chừng (ví dụ `znf:fix` gọi tiếp `znf:ship`). Đã đóng pane thì nó không tự mở lại cho tới lần `/clear` hoặc compact kế tiếp; gõ `/track-pane` để mở lại ngay. Xem [Track pane](/guides/track-pane).
+- **Track ghi lại cả khi agent tự gọi skill:** mỗi lần `znf:cook`, `znf:fix`, `znf:hotfix`, `znf:ship` hoặc `znf:ci-watch` được nạp, dù do agent tự gọi hay do bạn gõ `/znf:…`, plugin gắn kèm đúng các bước `zenify track` của skill đó (lấy từ `skills/_shared/track.md`) vào ngữ cảnh của agent. Trước đây chỉ có một dòng nhắc ở đầu session, agent hay bỏ qua nên nhiều lượt làm việc không được ghi. Xem [Track pane](/guides/track-pane).
 
 ## v0.61.0
 
