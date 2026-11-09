@@ -514,7 +514,9 @@ func TestRoute_BudgetCutsHungWindows(t *testing.T) {
 	if took > budget+200*time.Millisecond {
 		t.Errorf("took %v, want about the %v budget", took, budget)
 	}
-	for _, n := range []string{"2 of 12 metric windows failed", "slow sample search failed"} {
+	// The budget cut is a timeout: "grafana unreachable" sent readers after a
+	// Grafana outage that never happened.
+	for _, n := range []string{"2 of 12 metric windows failed", "slow sample search failed: grafana timed out"} {
 		if !contains(resp.Notes, n) {
 			t.Errorf("notes = %v, want %q", resp.Notes, n)
 		}

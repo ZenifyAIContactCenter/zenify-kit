@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -22,6 +23,10 @@ var (
 	ErrNotFound = errors.New("grafana returned 404")
 	// ErrTooLarge is returned when the response body exceeds maxBytes.
 	ErrTooLarge = errors.New("grafana response too large")
+	// ErrTimeout is returned when the caller's deadline or the client timeout
+	// ends the call before Grafana answers: it did not complete in time, which
+	// is not the same as Grafana being down.
+	ErrTimeout = errors.New("grafana timed out")
 )
 
 // Client calls the datasource proxy of one Grafana instance.
@@ -48,6 +53,10 @@ func (c *Client) Get(ctx context.Context, uid, path string, q url.Values, maxByt
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	resp, err := c.client.Do(req)
 	if err != nil {
+		var ne net.Error
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
+			return ErrTimeout
+		}
 		return errors.New("grafana unreachable")
 	}
 	defer func() {
