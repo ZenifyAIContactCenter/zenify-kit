@@ -95,8 +95,9 @@ func startZenItem(p planeAPI, slug, key string) (string, error) {
 			target = s
 		}
 	}
+	// Plane does not list the triage (Intake) state, so an unlisted state is usually Intake.
 	if cur == nil {
-		return fmt.Sprintf("plane: %s current state not found, not moved", key), nil
+		return fmt.Sprintf("plane: %s is in Intake or an unlisted state, not moved", key), nil
 	}
 	// A triage state is Intake.
 	if cur.Triage {

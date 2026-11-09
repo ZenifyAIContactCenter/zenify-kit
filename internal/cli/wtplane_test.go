@@ -259,12 +259,12 @@ func TestWtPlane_TodoUnheld_MovesAndAssigns(t *testing.T) {
 	}
 }
 
-// A state id missing from the list is not Intake: its own warning.
+// Plane does not list the triage state: an unlisted state id warns as Intake-or-unlisted.
 func TestWtPlane_StateNotInList_OwnWarning(t *testing.T) {
 	f := newFakePlane(t, "st-unknown")
 	w := runHook(t, f, "zen-7", patEnv)
-	if !strings.Contains(w, "state not found") || strings.Contains(w, "Intake") {
-		t.Fatalf("warning %q, want 'state not found' without Intake", w)
+	if !strings.Contains(w, "Intake or an unlisted state") {
+		t.Fatalf("warning %q, want 'Intake or an unlisted state'", w)
 	}
 	if len(f.patches) != 0 {
 		t.Fatalf("patched %v", f.patches)
