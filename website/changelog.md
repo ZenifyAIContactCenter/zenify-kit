@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.61.1
+
+*2026-11-09*
+
+- **Hết toast `timing error: no workspace` khi session rời workspace:** session mở trong workspace mà sau đó cwd chuyển sang thư mục ngoài (ví dụ knowledge store `~/.zenify/knowledge`) trước đây báo lỗi ở mỗi nhịp và mất dòng track. Giờ session vẫn ghi track vào workspace ban đầu; riêng `/clear` hay compact khi cwd đang ở ngoài thì tính là ngoài workspace. Xem [Track pane](/guides/track-pane).
+- **Track pane không tự bật lại sau khi bạn đã đóng:** với `Track pane` = `auto`, pane chỉ tự mở theo prompt bạn gõ (`cook`, `fix`, `hotfix`, `ship`), không mở khi agent tự gọi skill giữa chừng (ví dụ `znf:fix` gọi tiếp `znf:ship`). Đã đóng pane thì nó không tự mở lại cho tới lần `/clear` hoặc compact kế tiếp; gõ `/track-pane` để mở lại ngay. Xem [Track pane](/guides/track-pane).
+
 ## v0.61.0
 
 *2026-11-09*
