@@ -280,10 +280,11 @@ async function recordIdle($: $): Promise<void> {
 
 const timingError = ($: $) => (err: unknown) => $.ui.toast(`timing error: ${message(err)}`)
 // Settles with `enabled` of the last stats answer when a stats run ends after the session start (a
-// run already out may return early). trackContextFor waits on it before taking track as off: a
-// handler reads the `enabled` atom as of its own start, so a value written meanwhile is not seen.
+// run already out may return early); trackContextFor waits on it until then.
 let firstStats: Promise<boolean> = Promise.resolve(false)
 let statsAnswered: (on: boolean) => void = () => {}
+// True once a stats run ended in this session; lastStatsEnabled is then the current answer.
+let isStatsSettled = true
 let lastStatsEnabled = false
 const trackContextError = ($: $) => (err: unknown) => (void $.ui.toast(`track context error: ${message(err)}`), undefined)
 
@@ -292,9 +293,10 @@ const trackContextError = ($: $) => (err: unknown) => (void $.ui.toast(`track co
 async function trackContextFor($: $, skill: string): Promise<string | undefined> {
   const section = trackSectionOf(skill)
   if (!section || !isInWorkspace()) return undefined
-  // A new process reads `enabled` false until the session's first stats run answers (bounded by
-  // STATS_TIMEOUT_MS): wait for that answer rather than drop the first skill's track steps.
-  if (!(await isEnabled($)) && !(await firstStats)) return undefined
+  // `enabled` of the last stats answer, kept in this module: a handler reads the atom as of its own
+  // start. Before the session's first answer (bounded by STATS_TIMEOUT_MS) wait for it rather than
+  // drop the first skill's track steps.
+  if (!(isStatsSettled ? lastStatsEnabled : await firstStats)) return undefined
   const md = String(await $.fs.read(`${$.plugin.root}/skills/_shared/track.md`))
   const text = trackContext(md, section)
   if (!text) throw new Error(`skills/_shared/track.md has no "## Rules" or "## ${section}" section`)
@@ -388,6 +390,7 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
     await updateStatus($)
   } finally {
     isStatting = false
+    isStatsSettled = true
     statsAnswered(lastStatsEnabled)
     // Every exit path, early returns included, runs the queued forced run; the flag is cleared
     // first, so it recurses at most once per queued request.
@@ -492,6 +495,7 @@ export const register: Register = (on, options: PluginOptions) => {
     if (trackPane !== 'off') await $.command.register({ name: 'track-pane', description: 'Toggle the zenify track pane' })
     // FR-17.3: not awaited, like the stats run: the reads must not hold the session start.
     void syncConfig($, options).catch(statsError($))
+    isStatsSettled = false
     firstStats = new Promise<boolean>(r => (statsAnswered = r))
     // Not awaited: the stats run may ask gh for merged PRs and must not hold the session start.
     void refreshStats($, true).catch(statsError($))

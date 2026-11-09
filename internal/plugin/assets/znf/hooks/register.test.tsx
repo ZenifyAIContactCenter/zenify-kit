@@ -586,6 +586,19 @@ test('a first /znf:fix prompt while the first stats run is still out waits for i
   expect(world.prompt?.context?.[0]).toContain('## fix\n\n- fix step')
 })
 
+test('track turned off mid-session: a later Skill call carries no track context', async ($, on) => {
+  const world: World = { trackMd: TRACK_MD }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)) as any).context).toHaveLength(1)
+  world.stats = ok(statsJson({ enabled: false }))
+  world.mtimes = { ...world.mtimes, [LOG_MD]: 2 }
+  await clock.advance(2000)
+  expect(statsRuns(calls)).toHaveLength(2)
+  expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:fix' } as any)) as any).context).toBeUndefined()
+})
+
 test('outside a workspace a Skill call carries no track context', async ($, on) => {
   engine(on, { noWorkspace: true, trackEnabled: true, trackMd: TRACK_MD })
   const clock = mock.clock(on)
