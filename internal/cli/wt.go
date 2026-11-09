@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,6 +145,10 @@ func newWtNewCmd() *cobra.Command {
 				return err
 			}
 			host, _ := os.Hostname()
+			cwd, _ := os.Getwd()
+			ws, _, _ := resolveWorkspace(cwd, "", os.Getenv, os.UserHomeDir)
+			// Same redirect rule as planeHTTP: Go would carry X-API-Key to another host.
+			planeClient := &http.Client{Timeout: 5 * time.Second, CheckRedirect: planeHTTP.CheckRedirect}
 			return wt.RunNew(wt.NewOptions{
 				RepoRoot:     root,
 				Slug:         args[0],
@@ -157,6 +162,7 @@ func newWtNewCmd() *cobra.Command {
 				Runner:       gitx.ExecRunner(),
 				RemoteRunner: gitx.TimeoutRunner(wt.RemoteTimeout),
 				Stderr:       cmd.ErrOrStderr(),
+				OnStart:      planeStartHook(os.Getenv, ws, planeClient),
 			})
 		},
 		SilenceUsage:  true,

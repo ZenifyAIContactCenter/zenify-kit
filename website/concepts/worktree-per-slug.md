@@ -40,6 +40,8 @@ Một plan chia thành nhiều SDD task (Task 1, Task 2, ...). Tất cả task �
 
 `wt new` cũng đẩy branch lên `origin` (trừ hotfix) để việc hiện là đã bắt đầu. `wt rm`, `wt sweep` và `wt sweep --all` xóa branch remote đó chỉ khi đầu branch remote vẫn là commit mà `wt new` tạo branch ra (chưa ai commit lên đó), nên task chưa làm gì mất luôn branch remote khi bạn dọn tường minh. Phần tự dọn bên trong `wt new` giữ nguyên branch remote.
 
+Slug bắt đầu bằng `zen-<n>` (ví dụ `zen-123-login`) thì `wt new` báo cho Plane bằng PAT của bạn (`PLANE_API_KEY`). Việc ZEN-<n> đang ở Backlog thì chuyển sang In Progress và thêm bạn vào assignee. Việc ở Todo mà bạn là assignee thì chỉ chuyển state. Việc ở Todo do người khác giữ, hoặc ở Intake, Done, Cancelled thì chỉ in cảnh báo. Việc đã In Progress trở đi thì không làm gì. Plane lỗi hay thiếu PAT cũng chỉ in cảnh báo: worktree vẫn được tạo.
+
 ## Liên quan
 
 - [Base ref, hotfix base, port block](/concepts/base-ref-and-ports): `--base` lấy từ đâu và vì sao hotfix khác.
