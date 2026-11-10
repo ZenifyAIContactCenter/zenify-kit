@@ -86,7 +86,7 @@ func LoadConfig(repo string) (cfg Config, declared bool, err error) {
 		}
 		seen[v] = true
 	}
-	return Config{RenderPaths: u.RenderPaths, Viewports: u.Viewports}, true, nil
+	return Config(u), true, nil
 }
 
 // checkRenderPath accepts only a literal, clean, relative prefix: underAny
