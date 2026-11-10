@@ -281,15 +281,15 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 	return c
 }
 
-// runTrackStart validates --from, picks an id and appends the start row. With
-// --from, the taken check and the append run under one log lock.
+// runTrackStart validates --from, picks an id and appends the start row, all
+// under one log lock.
 func runTrackStart(errW io.Writer, logPath, kind, repo, est, from string) (string, error) {
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		return "", err
+	}
+	defer releaseTrackLock(errW, logPath, unlock)
 	if from != "" {
-		unlock, err := lockTrackLog(logPath)
-		if err != nil {
-			return "", err
-		}
-		defer releaseTrackLock(errW, logPath, unlock)
 		if err := checkStartFrom(logPath, from); err != nil {
 			return "", err
 		}

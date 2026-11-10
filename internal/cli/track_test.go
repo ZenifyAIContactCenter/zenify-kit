@@ -788,15 +788,39 @@ func TestTrackEndWaitsForLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	endRow := "end" + trackSep + id
+	done := make(chan error, 1)
 	go func() {
-		time.Sleep(200 * time.Millisecond)
-		_ = unlock()
+		_, err := runTrack(t, ws, "end", id, "--cancelled", "--rounds", "0")
+		done <- err
 	}()
-	if _, err := runTrack(t, ws, "end", id, "--cancelled", "--rounds", "0"); err != nil {
+	time.Sleep(200 * time.Millisecond)
+	if strings.Contains(trackLog(t, ws), endRow) {
+		t.Fatal("end row written while the lock was held")
+	}
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
 		t.Fatalf("end: %v", err)
 	}
-	if !strings.Contains(trackLog(t, ws), "end"+trackSep+id) {
+	if !strings.Contains(trackLog(t, ws), endRow) {
 		t.Fatalf("log has no end row for %s:\n%s", id, trackLog(t, ws))
+	}
+}
+
+// SC-6
+func TestTrackStartFailsWhenLockHeld(t *testing.T) {
+	shrinkLock(t, 100*time.Millisecond)
+	ws := trackWS(t, true)
+	unlock, err := lockTrackLog(filepath.Join(ws, ".zenify", "track", "log.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = unlock() }()
+	_, err = runTrack(t, ws, "start", "--kind", "cook", "--repo", "hub", "--est", "-")
+	if err == nil || !strings.Contains(err.Error(), "log is locked") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
