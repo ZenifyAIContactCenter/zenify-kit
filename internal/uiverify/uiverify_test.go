@@ -218,7 +218,7 @@ func TestRecord_ComputesVerdict(t *testing.T) {
 	}{
 		{name: "no overflow", childRight: "90", verdict: "pass"},
 		{name: "right overflow 5", childRight: "101", verdict: "fail", overflows: []Overflow{{"right", 5}}},
-		{name: "fail reason only", childRight: "90", reason: "label bị cắt", verdict: "fail"}, //znf:allow-lang
+		{name: "fail reason only", childRight: "90", reason: "label clipped", verdict: "fail"}, //znf:allow-lang
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -368,11 +368,11 @@ func TestValidate_Ok(t *testing.T) {
 	}
 	writeArtifact(t, repo, "fp1", Artifact{
 		FP:      "fp1",
-		Screens: []Screen{{Screen: "home", Screenshot: "shot.png"}},
+		Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Verdict: "pass"}},
 	})
-	n, ok := Validate(repo, "fp1")
-	if !ok || n != 1 {
-		t.Errorf("n=%d ok=%v, want 1 true", n, ok)
+	n, problems := Validate(repo, "fp1", nil)
+	if len(problems) != 0 || n != 1 {
+		t.Errorf("n=%d problems=%v, want 1 none", n, problems)
 	}
 }
 
@@ -380,19 +380,19 @@ func TestValidate_MissingScreenshot(t *testing.T) {
 	repo := t.TempDir()
 	writeArtifact(t, repo, "fp1", Artifact{
 		FP:      "fp1",
-		Screens: []Screen{{Screen: "home", Screenshot: "missing.png"}},
+		Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "missing.png", Verdict: "pass"}},
 	})
-	_, ok := Validate(repo, "fp1")
-	if ok {
-		t.Error("expected !ok when screenshot file is missing")
+	_, problems := Validate(repo, "fp1", nil)
+	if len(problems) != 1 || problems[0] != "home@1440: screenshot missing" {
+		t.Errorf("problems=%v", problems)
 	}
 }
 
 func TestValidate_MissingJSON(t *testing.T) {
 	repo := t.TempDir()
-	n, ok := Validate(repo, "nope")
-	if ok || n != 0 {
-		t.Errorf("n=%d ok=%v, want 0 false", n, ok)
+	n, problems := Validate(repo, "nope", nil)
+	if n != 0 || len(problems) != 1 || problems[0] != "no artifact for fp=nope" {
+		t.Errorf("n=%d problems=%v", n, problems)
 	}
 }
 
@@ -453,7 +453,7 @@ func TestCheck_SC3_Verified(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Screenshot: "shot.png"}}})
+	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Verdict: "pass"}}})
 
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
@@ -487,7 +487,7 @@ func TestCheck_SC4_RequiredMissingArtifact(t *testing.T) {
 func TestCheck_SC5_RequiredInvalidArtifact(t *testing.T) {
 	repo := t.TempDir()
 	fp := "fpinvalid1"
-	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Screenshot: "missing.png"}}})
+	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "missing.png", Verdict: "pass"}}})
 
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
@@ -513,7 +513,7 @@ func TestCheck_SC6_FPMismatchIsRequired(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeArtifact(t, repo, oldFP, Artifact{FP: oldFP, Screens: []Screen{{Screen: "home", Screenshot: "shot.png"}}})
+	writeArtifact(t, repo, oldFP, Artifact{FP: oldFP, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Verdict: "pass"}}})
 
 	newFP := "fpnew000002"
 	d := checkDeps(t, map[string]string{
@@ -647,5 +647,140 @@ func TestRenderSet_NoConfigKeepsRegex(t *testing.T) {
 	got := renderSetWithConfig(t, "", []string{"src/constants/menu.js", "src/App.tsx"})
 	if got["src/constants/menu.js"] || !got["src/App.tsx"] {
 		t.Errorf("legacy regex not kept: %v", got)
+	}
+}
+
+// gateRepo writes worktree.json (cfg, "" = none) and a shot.png, and returns
+// the repo plus Deps whose fingerprint is fp and whose diff has one .tsx file.
+func gateRepo(t *testing.T, cfg, fp string) (string, Deps) {
+	t.Helper()
+	repo := t.TempDir()
+	if cfg != "" {
+		if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, ".claude", "worktree.json"), []byte(cfg), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir := filepath.Join(repo, ".znf", "ui-verify")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return repo, checkDeps(t, map[string]string{
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
+	}, fp)
+}
+
+func shotScreen(name string, vp int, verdict string) Screen {
+	return Screen{Screen: name, Viewport: vp, Screenshot: "shot.png", Verdict: verdict}
+}
+
+const threeViewports = `{"uiVerify":{"viewports":[1920,1366,1280]}}`
+
+func TestCheck_MissingViewport(t *testing.T) {
+	repo, d := gateRepo(t, threeViewports, "fpmissvp01")
+	writeArtifact(t, repo, "fpmissvp01", Artifact{FP: "fpmissvp01", Screens: []Screen{
+		shotScreen("ticket-detail", 1920, "pass"), shotScreen("ticket-detail", 1366, "pass"),
+	}})
+	state, msg, err := Check(d, repo, "origin/staging")
+	if state != "required" || exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("state=%q err=%v", state, err)
+	}
+	if !strings.Contains(msg, "ticket-detail: missing viewport 1280") {
+		t.Errorf("msg=%q", msg)
+	}
+	if !strings.HasPrefix(msg, "ui-verify required — ") || !strings.HasSuffix(msg, "(rendering files: src/App.tsx)") {
+		t.Errorf("msg shape=%q", msg)
+	}
+}
+
+func TestCheck_AllViewportsPass(t *testing.T) {
+	repo, d := gateRepo(t, threeViewports, "fpallvp001")
+	var screens []Screen
+	for _, name := range []string{"home", "ticket-detail"} {
+		for _, vp := range []int{1920, 1366, 1280} {
+			screens = append(screens, shotScreen(name, vp, "pass"))
+		}
+	}
+	writeArtifact(t, repo, "fpallvp001", Artifact{FP: "fpallvp001", Screens: screens})
+	state, msg, err := Check(d, repo, "origin/staging")
+	if state != "verified" || err != nil {
+		t.Errorf("state=%q msg=%q err=%v", state, msg, err)
+	}
+}
+
+func TestCheck_FailEntryNoConfig(t *testing.T) {
+	repo, d := gateRepo(t, "", "fpfailnocf")
+	writeArtifact(t, repo, "fpfailnocf", Artifact{FP: "fpfailnocf", Screens: []Screen{
+		{Screen: "home", Viewport: 1366, Screenshot: "shot.png", Verdict: "fail",
+			Overflows: []Overflow{{Edge: "right", Px: 5}}},
+	}})
+	state, msg, err := Check(d, repo, "origin/staging")
+	if state != "required" || exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("state=%q err=%v", state, err)
+	}
+	if !strings.Contains(msg, "home@1366: fail (right 5px)") {
+		t.Errorf("msg=%q", msg)
+	}
+}
+
+func TestCheck_FailReasonOnly(t *testing.T) {
+	repo, d := gateRepo(t, "", "fpfailrsn1")
+	writeArtifact(t, repo, "fpfailrsn1", Artifact{FP: "fpfailrsn1", Screens: []Screen{
+		{Screen: "home", Viewport: 1920, Screenshot: "shot.png", Verdict: "fail", FailReason: "label clipped"},
+	}})
+	_, msg, _ := Check(d, repo, "origin/staging")
+	if !strings.Contains(msg, "home@1920: fail (label clipped)") {
+		t.Errorf("msg=%q", msg)
+	}
+}
+
+func TestCheck_NoConfigAnyViewportPasses(t *testing.T) {
+	repo, d := gateRepo(t, "", "fpnocfgok1")
+	writeArtifact(t, repo, "fpnocfgok1", Artifact{FP: "fpnocfgok1", Screens: []Screen{shotScreen("home", 1440, "pass")}})
+	state, _, err := Check(d, repo, "origin/staging")
+	if state != "verified" || err != nil {
+		t.Errorf("state=%q err=%v", state, err)
+	}
+}
+
+func TestCheck_InvalidConfigIsBadArgs(t *testing.T) {
+	repo, d := gateRepo(t, `{"uiVerify":{"viewports":[100]}}`, "fpbadcfg01")
+	_, _, err := Check(d, repo, "origin/staging")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Errorf("code=%d, want BadArgs", exitcode.Code(err))
+	}
+}
+
+func TestValidate_InvalidEntries(t *testing.T) {
+	repo, _ := gateRepo(t, "", "x")
+	writeArtifact(t, repo, "fpinv00001", Artifact{FP: "fpinv00001", Screens: []Screen{
+		{Screen: "a", Viewport: 0, Screenshot: "shot.png", Verdict: "pass"},
+		{Screen: "b", Viewport: 1440, Screenshot: "shot.png", Verdict: ""},
+	}})
+	_, problems := Validate(repo, "fpinv00001", nil)
+	if len(problems) != 2 || problems[0] != "a: invalid entry" || problems[1] != "b: invalid entry" {
+		t.Errorf("problems=%v", problems)
+	}
+}
+
+func TestValidate_LegacyArtifactIsInvalid(t *testing.T) {
+	repo, _ := gateRepo(t, "", "x")
+	legacy := `{"fp":"fpleg00001","recorded_at":"x","screens":[{"screen":"home","screenshot":"shot.png","measurement":{"child_right":10}}]}`
+	if err := os.WriteFile(filepath.Join(repo, ".znf", "ui-verify", "fpleg00001.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, problems := Validate(repo, "fpleg00001", []int{1920}); len(problems) == 0 {
+		t.Error("legacy artifact must be invalid")
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".znf", "ui-verify", "fpbad00001.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, problems := Validate(repo, "fpbad00001", nil); len(problems) == 0 {
+		t.Error("unparsable artifact must be invalid")
 	}
 }

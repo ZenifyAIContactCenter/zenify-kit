@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -280,7 +281,8 @@ func badArg(format string, a ...any) error {
 // Record validates the screenshot and measurement, computes the verdict (fail
 // on any overflow or a non-empty FailReason), copies the screenshot into
 // .znf/ui-verify/ and upserts the screen, keyed by (Screen, Viewport), into
-// <fp>.json. Every error before the write is BadArgs and touches no disk.
+// <fp>.json. Validation errors are BadArgs and touch no disk; I/O errors after
+// validation are Fail.
 func Record(d Deps, repo string, in RecordInput) (Screen, error) {
 	info, err := os.Stat(in.ScreenshotSrc)
 	if err != nil {
@@ -358,39 +360,74 @@ func Record(d Deps, repo string, in RecordInput) (Screen, error) {
 	return s, nil
 }
 
-// Validate reports whether <fp>.json exists, has at least one screen, and
-// every screen's screenshot file exists and is non-zero bytes. The three
-// measurement floats are always present because the CLI (Task 2) makes those
-// flags required, so Validate does not need to distinguish a 0.0 measurement
-// from "absent". FR-2.4.
-func Validate(repo, fp string) (int, bool) {
+// Validate lists why <fp>.json cannot satisfy the gate; no problems means it
+// does. Every entry must have a viewport, a pass verdict and a non-empty
+// screenshot file, and when viewports is non-empty every screen must have an
+// entry at each of them. A legacy or unparsable artifact is a problem, never a
+// panic. FR-3.1, FR-3.3, FR-3.4.
+func Validate(repo, fp string, viewports []int) (screens int, problems []string) {
 	dir := artifactDir(repo)
-	artifactPath := filepath.Join(dir, fp+".json")
-	b, err := os.ReadFile(artifactPath) //nolint:gosec // G304 -- path built from fp, not user input
+	b, err := os.ReadFile(filepath.Join(dir, fp+".json")) //nolint:gosec // G304 -- path built from fp, not user input
 	if err != nil {
-		return 0, false
+		return 0, []string{"no artifact for fp=" + fp}
 	}
 	var art Artifact
 	if err := json.Unmarshal(b, &art); err != nil {
-		return 0, false
+		return 0, []string{"unreadable artifact for fp=" + fp}
 	}
 	if len(art.Screens) == 0 {
-		return 0, false
+		return 0, []string{"no screens in artifact for fp=" + fp}
 	}
+
+	var names []string
+	have := map[string]map[int]bool{}
 	for _, s := range art.Screens {
+		if s.Viewport == 0 || (s.Verdict != "pass" && s.Verdict != "fail") {
+			problems = append(problems, s.Screen+": invalid entry")
+			continue
+		}
+		if have[s.Screen] == nil {
+			have[s.Screen] = map[int]bool{}
+			names = append(names, s.Screen)
+		}
+		have[s.Screen][s.Viewport] = true
+		label := fmt.Sprintf("%s@%d", s.Screen, s.Viewport)
+		if s.Verdict == "fail" {
+			problems = append(problems, fmt.Sprintf("%s: fail (%s)", label, failDetail(s)))
+			continue
+		}
 		info, err := os.Stat(filepath.Join(dir, s.Screenshot))
 		if err != nil || info.Size() == 0 {
-			return len(art.Screens), false
+			problems = append(problems, label+": screenshot missing")
 		}
 	}
-	return len(art.Screens), true
+	for _, name := range names {
+		for _, vp := range viewports {
+			if !have[name][vp] {
+				problems = append(problems, fmt.Sprintf("%s: missing viewport %d", name, vp))
+			}
+		}
+	}
+	return len(art.Screens), problems
+}
+
+// failDetail renders a failing entry's overflows ("right 5px, bottom 3px"),
+// falling back to the recorded reason when there is no overflow.
+func failDetail(s Screen) string {
+	if len(s.Overflows) == 0 {
+		return s.FailReason
+	}
+	parts := make([]string, len(s.Overflows))
+	for i, o := range s.Overflows {
+		parts[i] = o.Edge + " " + strconv.FormatFloat(o.Px, 'g', -1, 64) + "px"
+	}
+	return strings.Join(parts, ", ")
 }
 
 // Check orchestrates the gate: no rendering files changed → not_required;
-// a waiver marker present → waived; a valid artifact for the current
-// fingerprint → verified; otherwise → required (fail-closed).
-// FR-2.2..2.5, FR-3.1 (a stale fp means Validate reads a <fp>.json that
-// doesn't exist, which falls straight through to required).
+// a waiver marker present → waived; an artifact for the current fingerprint
+// with every declared viewport recorded and passing → verified; otherwise →
+// required (fail-closed). FR-2.2..2.5, FR-3.1.
 func Check(d Deps, repo, base string) (state string, msg string, err error) {
 	rs, err := RenderSet(d, repo, base)
 	if err != nil {
@@ -405,17 +442,21 @@ func Check(d Deps, repo, base string) (state string, msg string, err error) {
 		return state, state, nil
 	}
 
+	cfg, _, err := LoadConfig(repo)
+	if err != nil {
+		return "", "", err
+	}
 	fp, err := Fingerprint(d, repo)
 	if err != nil {
 		return "", "", err
 	}
-	n, ok := Validate(repo, fp)
-	if ok {
+	n, problems := Validate(repo, fp, cfg.Viewports)
+	if len(problems) == 0 {
 		msg = fmt.Sprintf("verified (%d screen(s), fp=%s)", n, fp)
 		return "verified", msg, nil
 	}
 
-	msg = fmt.Sprintf("ui-verify required — no valid artifact for fp=%s (rendering files: %s)",
-		fp, strings.Join(rs, ", "))
+	msg = fmt.Sprintf("ui-verify required — %s (rendering files: %s)",
+		strings.Join(problems, "; "), strings.Join(rs, ", "))
 	return "required", msg, exitcode.New(exitcode.Fail, fmt.Errorf("%s", msg))
 }
