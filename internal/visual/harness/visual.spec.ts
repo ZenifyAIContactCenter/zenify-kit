@@ -4,7 +4,7 @@ import { readFileSync } from 'fs';
 // mask = selector các vùng động (badge notification, đồng hồ, call-status dot…) — Playwright
 // tô đè khối màu đặc lên chúng trước khi so, nên nội dung thay đổi run-to-run không làm
 // baseline flaky. App-shell dùng chung thường có 1-2 vùng như vậy ở header.
-type Route = { name: string; path: string; waitFor?: string; mask?: string[] };
+type Route = { name: string; path: string; waitFor?: string; mask?: string[]; aria?: string };
 
 // Đọc danh mục route commit trong target repo (mount vào /harness/.znf/visual).
 const routes: Route[] = JSON.parse(
@@ -16,7 +16,10 @@ for (const r of routes) {
     await page.goto(r.path);
     await page.evaluate(() => document.fonts.ready);
     if (r.waitFor) await page.waitForSelector(r.waitFor);
-    await expect(page).toHaveScreenshot(`${r.name}.png`, {
+    if (r.aria) {
+      await expect.soft(page.locator(r.aria)).toMatchAriaSnapshot({ name: `${r.name}.aria.yml` });
+    }
+    await expect.soft(page).toHaveScreenshot(`${r.name}.png`, {
       fullPage: true,
       animations: 'disabled',
       caret: 'hide',

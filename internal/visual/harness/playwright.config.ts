@@ -13,6 +13,12 @@ export default defineConfig({
     deviceScaleFactor: 1,
   },
   snapshotPathTemplate: '.znf/visual/__snapshots__/{arg}-{projectName}-{platform}{ext}',
+  expect: {
+    toMatchAriaSnapshot: {
+      children: 'deep-equal',
+      pathTemplate: '.znf/visual/__snapshots__/{arg}{ext}',
+    },
+  },
   outputDir: '.znf/visual/__diff__',
   projects: [
     { name: 'setup', testMatch: /auth\.setup\.ts/ },

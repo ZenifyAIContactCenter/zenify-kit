@@ -19,6 +19,25 @@ func TestWriteHarness_MaterializesFiles(t *testing.T) {
 	}
 }
 
+func TestHarness_AriaMarkers(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteHarness(dir); err != nil {
+		t.Fatal(err)
+	}
+	spec := readFile(t, filepath.Join(dir, "visual.spec.ts"))
+	for _, m := range []string{"aria?: string", "if (r.aria)", "toMatchAriaSnapshot", ".aria.yml", "expect.soft"} {
+		if !strings.Contains(spec, m) {
+			t.Errorf("visual.spec.ts missing aria marker %q", m)
+		}
+	}
+	cfg := readFile(t, filepath.Join(dir, "playwright.config.ts"))
+	for _, m := range []string{"toMatchAriaSnapshot", "children: 'deep-equal'", "pathTemplate: '.znf/visual/__snapshots__/{arg}{ext}'"} {
+		if !strings.Contains(cfg, m) {
+			t.Errorf("playwright.config.ts missing aria marker %q", m)
+		}
+	}
+}
+
 func TestHarness_DeterminismMarkers(t *testing.T) {
 	dir := t.TempDir()
 	if err := WriteHarness(dir); err != nil {
