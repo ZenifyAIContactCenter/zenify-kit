@@ -208,41 +208,49 @@ func underAny(p string, prefixes []string) bool {
 	return false
 }
 
-// findWaiver scans diff text for an added line carrying waiverMarker with a
-// non-empty reason. Context, removed and "+++" header lines never waive.
-func findWaiver(text string) (string, bool) {
-	for _, line := range strings.Split(text, "\n") {
-		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
-			continue
-		}
-		if idx := strings.Index(line, waiverMarker); idx >= 0 {
-			if reason := strings.TrimSpace(line[idx+len(waiverMarker):]); reason != "" {
-				return reason, true
+// findWaiver scans a unified diff for a line added inside a hunk of a file in
+// files that carries waiverMarker with a non-empty reason. The file is taken
+// from the "+++ b/<path>" header, so a rename counts under its new path.
+func findWaiver(diff string, files []string) (string, bool) {
+	inFiles := make(map[string]bool, len(files))
+	for _, f := range files {
+		inFiles[f] = true
+	}
+	cur, inHunk := "", false
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
+			cur, inHunk = "", false
+		case !inHunk && strings.HasPrefix(line, "+++ "):
+			// git appends a tab after a header path that contains a space.
+			cur = strings.TrimPrefix(strings.TrimRight(line[len("+++ "):], "\t"), "b/")
+		case strings.HasPrefix(line, "@@"):
+			inHunk = true
+		case inHunk && inFiles[cur] && strings.HasPrefix(line, "+"):
+			if idx := strings.Index(line, waiverMarker); idx >= 0 {
+				if reason := strings.TrimSpace(line[idx+len(waiverMarker):]); reason != "" {
+					return reason, true
+				}
 			}
 		}
 	}
 	return "", false
 }
 
-// Waiver looks for waiverMarker on a line added to one of files, in the
-// committed diff since base or the working tree. Any git error means no
-// waiver (fail-closed). FR-3.2, FR-4.1..4.3.
+// Waiver looks for waiverMarker on a line added to one of files in the
+// working tree since the merge-base with base. One diff without a pathspec
+// lets git pair renames, so a moved file's old marker is not an addition.
+// Any git error means no waiver (fail-closed). FR-3.2, FR-4.1..4.3.
 func Waiver(d Deps, repo, base string, files []string) (string, bool) {
-	diffArgs := func(rev string) []string {
-		return append([]string{"-c", "core.quotePath=false", "diff", rev, "--"}, files...)
+	mb, err := d.RunGit(repo, "merge-base", base, "HEAD")
+	if mb = strings.TrimSpace(mb); err != nil || mb == "" {
+		return "", false
 	}
-	committed, err := d.RunGit(repo, diffArgs(base+"...HEAD")...)
+	diff, err := d.RunGit(repo, "-c", "core.quotePath=false", "diff", "-M", mb)
 	if err != nil {
 		return "", false
 	}
-	working, err := d.RunGit(repo, diffArgs("HEAD")...)
-	if err != nil {
-		return "", false
-	}
-	if reason, ok := findWaiver(committed); ok {
-		return reason, true
-	}
-	return findWaiver(working)
+	return findWaiver(diff, files)
 }
 
 // copyFile copies src to dst, creating/truncating dst.
