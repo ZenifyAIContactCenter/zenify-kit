@@ -25,9 +25,13 @@ type visualOpts struct {
 // runVisualCheck writes the harness to tmp, builds a RunConfig, calls visual.Check, maps the error.
 func runVisualCheck(o visualOpts) error {
 	snap := filepath.Join(o.repo, ".znf", "visual")
-	if _, err := os.Stat(filepath.Join(snap, "routes.json")); err != nil {
-		return exitcode.New(exitcode.BadArgs,
-			fmt.Errorf("%s not found — repo has no visual config", filepath.Join(snap, "routes.json")))
+	routes, err := visual.LoadRoutes(o.repo)
+	if err != nil {
+		return err
+	}
+	if len(routes) == 0 {
+		_, _ = fmt.Fprintln(o.out, "0 routes")
+		return nil
 	}
 	harnessDir, err := os.MkdirTemp("", "znf-visual-*")
 	if err != nil {

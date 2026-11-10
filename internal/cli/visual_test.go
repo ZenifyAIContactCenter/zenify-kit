@@ -31,7 +31,7 @@ func TestVisualCheck_MismatchIsFail(t *testing.T) {
 	if err := os.MkdirAll(snap, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(snap, "routes.json"), []byte("[]"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(snap, "routes.json"), []byte(`[{"name":"a","path":"/a"}]`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	runner := func(string, []string) error { return errors.New("exit status 1") }
@@ -64,5 +64,41 @@ func TestDockerPreflight(t *testing.T) {
 	// all ok → nil
 	if err := dockerPreflight(okLook, func() error { return nil }); err != nil {
 		t.Errorf("docker ready → nil, got %v", err)
+	}
+}
+
+func writeVisualRoutes(t *testing.T, body string) string {
+	t.Helper()
+	repo := t.TempDir()
+	snap := filepath.Join(repo, ".znf", "visual")
+	if err := os.MkdirAll(snap, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(snap, "routes.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+func TestRunVisualCheck_EmptyRoutes(t *testing.T) {
+	repo := writeVisualRoutes(t, "[]")
+	var out bytes.Buffer
+	called := false
+	runner := func(string, []string) error { called = true; return nil }
+	if err := runVisualCheck(visualOpts{runner: runner, goos: "darwin", repo: repo, port: 1, out: &out}); err != nil {
+		t.Fatal(err)
+	}
+	if called || !strings.Contains(out.String(), "0 routes") {
+		t.Errorf("runner called=%v out=%q", called, out.String())
+	}
+}
+
+func TestRunVisualCheck_InvalidRoutesIsBadArgs(t *testing.T) {
+	repo := writeVisualRoutes(t, `[{"name":"a","path":"/a","area":"x"}]`)
+	called := false
+	runner := func(string, []string) error { called = true; return nil }
+	err := runVisualCheck(visualOpts{runner: runner, goos: "darwin", repo: repo, port: 1, out: &bytes.Buffer{}})
+	if exitcode.Code(err) != exitcode.BadArgs || called {
+		t.Errorf("code=%d called=%v err=%v", exitcode.Code(err), called, err)
 	}
 }
