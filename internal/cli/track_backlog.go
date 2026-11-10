@@ -87,6 +87,11 @@ func newTrackBacklogAddCmd(ws *string) *cobra.Command {
 					return err
 				}
 			}
+			unlock, err := lockTrackLog(trackLogPath(wsDir))
+			if err != nil {
+				return err
+			}
+			defer releaseTrackLock(cmd.ErrOrStderr(), trackLogPath(wsDir), unlock)
 			bid, err := unusedBacklogID(trackLogPath(wsDir), time.Now().UTC())
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
@@ -124,6 +129,11 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 			}
 			id := args[0]
 			logPath := trackLogPath(wsDir)
+			unlock, err := lockTrackLog(logPath)
+			if err != nil {
+				return err
+			}
+			defer releaseTrackLock(cmd.ErrOrStderr(), logPath, unlock)
 			rows, err := readTrackRows(logPath)
 			if err != nil {
 				return err

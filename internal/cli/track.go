@@ -107,6 +107,11 @@ func runTrackWrite(w io.Writer, flag string, nargs int, args []string, build tra
 		return err
 	}
 	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		return err
+	}
+	defer releaseTrackLock(os.Stderr, logPath, unlock)
 	if needStarted {
 		if err := checkTrackID(logPath, args[0], kind == "end"); err != nil {
 			return err

@@ -53,6 +53,11 @@ func newTrackOnboardMemoryCmd(ws *string) *cobra.Command {
 				_, err = fmt.Fprintln(w, "track: off")
 				return err
 			}
+			unlock, err := lockTrackLog(trackLogPath(wsDir))
+			if err != nil {
+				return err
+			}
+			defer releaseTrackLock(cmd.ErrOrStderr(), trackLogPath(wsDir), unlock)
 			if err := appendTrackRow(trackLogPath(wsDir), "onboard", []string{"memory"}); err != nil {
 				return err
 			}
@@ -120,6 +125,11 @@ func histID(repo, slug string) string {
 }
 
 func writeHistory(w io.Writer, logPath string, groups []*histGroup) error {
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		return err
+	}
+	defer releaseTrackLock(os.Stderr, logPath, unlock)
 	rows, err := readTrackRows(logPath)
 	if err != nil {
 		return err
