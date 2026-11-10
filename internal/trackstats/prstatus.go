@@ -16,7 +16,8 @@ import (
 const maxPROpen = 10
 
 // PRStatus is the review state of one open pull request. CI is success, failure, pending or -;
-// Review is approved, changes_requested, review_required or -.
+// Review is approved, changes_requested, review_required or -. An empty CreatedAt marks a PR
+// whose status is unknown: gh was not asked (or failed) and nothing was cached.
 type PRStatus struct {
 	URL       string `json:"url"`
 	Repo      string `json:"repo"`
@@ -139,7 +140,8 @@ func parsePRStatus(url string, out []byte) (PRStatus, error) {
 
 // openPRStatus lists the status of up to maxPROpen open PRs: tracked PRs not in the merged cache,
 // newest first end first, then plan-only PRs. It asks in.PRStatus when set, and reads
-// in.PRStatusCache otherwise (or when gh fails for a PR); the first gh error lands in res.
+// in.PRStatusCache otherwise (or when gh fails for a PR), and lists a PR in neither with its
+// status unknown; the first gh error lands in res.
 // ghDown (gh missing or hanging in this run) skips gh entirely, and a missing or hanging gh here
 // is returned so later gh calls in the same run are skipped too: the pane gives stats 20s.
 func openPRStatus(in Input, tracked []string, firstEnd map[string]time.Time, plan []string, merged map[string]string, ghDown bool, res *Result) ([]PRStatus, bool) {
@@ -175,6 +177,9 @@ func openPRStatus(in Input, tracked []string, firstEnd map[string]time.Time, pla
 		}
 		if st, ok := in.PRStatusCache[u]; ok {
 			open = append(open, st)
+		} else if _, _, name, number, err := prStatusURL(u); err == nil {
+			// Neither asked nor cached: still listed, its status unknown (no CreatedAt).
+			open = append(open, PRStatus{URL: u, Repo: name, Number: number, CI: "-", Review: "-"})
 		}
 	}
 	return open, down

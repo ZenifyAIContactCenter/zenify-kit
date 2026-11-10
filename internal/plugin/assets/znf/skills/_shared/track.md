@@ -69,6 +69,10 @@ Run this when the user says "plan today", "daily plan" or the Vietnamese equival
 4. Show the list to the user for approval.
 5. Run `zenify track plan set <id> [<id>…]` only after the user approves. Re-plan = run `plan set` again with the whole list; it replaces the earlier plan of the day.
 
+## Day close
+
+When SessionStart output has `# Track day close:`, summarize it for the user in your first reply: done, merged PRs, carried-over work, waiting PRs with the next step. Then offer `## Daily plan`; run `plan set` only after the user approves. `zenify track close-day` can be run by hand; older log lines live in `.zenify/track/archive/`.
+
 ## Onboard
 
 Run this when the digest says `track: not onboarded`.

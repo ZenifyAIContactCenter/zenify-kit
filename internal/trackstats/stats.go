@@ -157,6 +157,8 @@ type Result struct {
 	Backlog   Backlog  `json:"backlog"`
 	Kitchen   Kitchen  `json:"kitchen"`
 	Onboarded bool     `json:"onboarded"`
+	// windowIDs holds the ids read by the Scale, Estimate and Quality windows; Compact keeps them.
+	windowIDs map[string]bool `json:"-"`
 }
 
 // Input is everything Compute reads. Sessions maps a session id to the text of
@@ -432,12 +434,21 @@ func Compute(in Input) (Result, map[string]string) {
 	// Scale: wall minutes of the done and pushed items with a real estimate, oldest end first.
 	ended := byEnd(items)
 	var mins []int
+	var measured []Item
 	for _, it := range ended {
 		if (it.Status == "done" || it.Status == "pushed") && sizeRank[it.Est] > 0 && sizeRank[it.Est] < 4 && it.WallMin > 0 {
 			mins = append(mins, it.WallMin)
+			measured = append(measured, it)
 		}
 	}
 	res.Scale = LearnScale(mins)
+	res.windowIDs = map[string]bool{}
+	addWindow := func(win []Item) {
+		for _, it := range win {
+			res.windowIDs[it.ID] = true
+		}
+	}
+	addWindow(tail(measured, maxLearn))
 
 	byKindEnded := map[string][]Item{}
 	for _, it := range ended {
@@ -448,6 +459,7 @@ func Compute(in Input) (Result, map[string]string) {
 	}
 	for _, k := range kinds {
 		win := tail(byKindEnded[k], ruleWindow)
+		addWindow(win)
 		computeEstimate(k, win, res.Scale, &res)
 	}
 	computeHotfix(in, byKindEnded["hotfix"], &res)
@@ -457,6 +469,9 @@ func Compute(in Input) (Result, map[string]string) {
 		if it.Status != "cancelled" {
 			byStart[it.Kind] = append(byStart[it.Kind], it)
 		}
+	}
+	for _, k := range kinds {
+		addWindow(tail(byStart[k], ruleWindow))
 	}
 	computeQuality(byStart, works, &res)
 	var issues []Issue

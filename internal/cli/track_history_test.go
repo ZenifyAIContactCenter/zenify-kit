@@ -221,3 +221,33 @@ func TestWriteHistory_OldestWorkFirst(t *testing.T) {
 		t.Fatalf("want the oldest group first:\n%s", b)
 	}
 }
+
+// SC-5
+func TestOnboardHistorySkipsArchived(t *testing.T) {
+	ws, proj := histEnv(t)
+	writeJSONL(t, filepath.Join(proj, "s1.jsonl"), scFixture(ws))
+	if _, err := runTrack(t, ws, "onboard", "history", "--write"); err != nil {
+		t.Fatal(err)
+	}
+	logPath := trackLogPath(ws)
+	moved, err := os.ReadFile(logPath)
+	if err != nil || !strings.Contains(string(moved), " · history · ") {
+		t.Fatalf("first write produced no history row: %q %v", moved, err)
+	}
+	arch := filepath.Join(filepath.Dir(logPath), "archive")
+	if err := os.MkdirAll(arch, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(arch, "2026-11.md"), moved, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runTrack(t, ws, "onboard", "history", "--write"); err != nil {
+		t.Fatal(err)
+	}
+	if got := trackLog(t, ws); strings.Contains(got, " · history · ") {
+		t.Fatalf("archived history row was re-appended: %q", got)
+	}
+}

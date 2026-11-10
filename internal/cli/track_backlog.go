@@ -87,6 +87,11 @@ func newTrackBacklogAddCmd(ws *string) *cobra.Command {
 					return err
 				}
 			}
+			unlock, err := lockTrackLog(trackLogPath(wsDir))
+			if err != nil {
+				return err
+			}
+			defer releaseTrackLock(cmd.ErrOrStderr(), trackLogPath(wsDir), unlock)
 			bid, err := unusedBacklogID(trackLogPath(wsDir), time.Now().UTC())
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
@@ -124,6 +129,11 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 			}
 			id := args[0]
 			logPath := trackLogPath(wsDir)
+			unlock, err := lockTrackLog(logPath)
+			if err != nil {
+				return err
+			}
+			defer releaseTrackLock(cmd.ErrOrStderr(), logPath, unlock)
 			rows, err := readTrackRows(logPath)
 			if err != nil {
 				return err
@@ -206,6 +216,30 @@ func readTrackRows(logPath string) ([][]string, error) {
 	}
 	if err := sc.Err(); err != nil {
 		return nil, exitcode.New(exitcode.Fail, err)
+	}
+	return rows, nil
+}
+
+// readArchiveRows reads every <trackDir>/archive/*.md file (not subdirectories) with the
+// same row split as readTrackRows. A missing archive directory yields no rows.
+func readArchiveRows(trackDir string) ([][]string, error) {
+	entries, err := os.ReadDir(filepath.Join(trackDir, "archive"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, exitcode.New(exitcode.Fail, err)
+	}
+	var rows [][]string
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".md" {
+			continue
+		}
+		r, err := readTrackRows(filepath.Join(trackDir, "archive", e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, r...)
 	}
 	return rows, nil
 }

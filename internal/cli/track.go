@@ -60,6 +60,7 @@ func newTrackCmd() *cobra.Command {
 		newTrackStartCmd(&ws), newTrackEstCmd(&ws), newTrackShipCmd(&ws),
 		newTrackFixCmd(&ws), newTrackCICmd(&ws), newTrackEndCmd(&ws), newTrackStatsCmd(&ws),
 		newTrackBacklogCmd(&ws), newTrackOnboardCmd(&ws), newTrackPlanCmd(&ws),
+		newTrackCloseDayCmd(&ws),
 	)
 	return c
 }
@@ -107,6 +108,11 @@ func runTrackWrite(w io.Writer, flag string, nargs int, args []string, build tra
 		return err
 	}
 	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		return err
+	}
+	defer releaseTrackLock(os.Stderr, logPath, unlock)
 	if needStarted {
 		if err := checkTrackID(logPath, args[0], kind == "end"); err != nil {
 			return err
@@ -276,15 +282,15 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 	return c
 }
 
-// runTrackStart validates --from, picks an id and appends the start row. With
-// --from, the taken check and the append run under one log lock.
+// runTrackStart validates --from, picks an id and appends the start row, all
+// under one log lock.
 func runTrackStart(errW io.Writer, logPath, kind, repo, est, from string) (string, error) {
+	unlock, err := lockTrackLog(logPath)
+	if err != nil {
+		return "", err
+	}
+	defer releaseTrackLock(errW, logPath, unlock)
 	if from != "" {
-		unlock, err := lockTrackLog(logPath)
-		if err != nil {
-			return "", err
-		}
-		defer releaseTrackLock(errW, logPath, unlock)
 		if err := checkStartFrom(logPath, from); err != nil {
 			return "", err
 		}
@@ -638,6 +644,13 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 }
 
 func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (trackstats.Result, error) {
+	res, _, err := computeTrackStatsInput(dir, wsDir, today, now, force)
+	return res, err
+}
+
+// computeTrackStatsInput is computeTrackStats that also returns the Input it ran, its Cache
+// replaced by the merged cache the run wrote, so a caller can rerun Compute without a file or gh pass.
+func computeTrackStatsInput(dir, wsDir, today string, now time.Time, force bool) (trackstats.Result, trackstats.Input, error) {
 	var err error
 	in := trackstats.Input{
 		PlansRoot: filepath.Join(wsDir, "docs", "plans"),
@@ -651,26 +664,26 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 	}
 	in.Live, err = readLiveFiles(dir, now)
 	if err != nil {
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	in.Beats, err = readBeats(dir)
 	if err != nil {
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	in.GitHub, in.SDD = backlogSources(dir, wsDir, force, now)
 	b, err := os.ReadFile(filepath.Join(dir, "log.md")) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	in.Log = string(b)
 	files, err := filepath.Glob(filepath.Join(dir, "sessions", "*.log"))
 	if err != nil {
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	for _, f := range files {
 		sb, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
 		if err != nil {
-			return trackstats.Result{}, err
+			return trackstats.Result{}, trackstats.Input{}, err
 		}
 		in.Sessions[strings.TrimSuffix(filepath.Base(f), ".log")] = string(sb)
 	}
@@ -680,10 +693,10 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 	switch {
 	case err == nil:
 		if err := json.Unmarshal(cb, &cache); err != nil {
-			return trackstats.Result{}, fmt.Errorf("parse %s: %w", cachePath, err)
+			return trackstats.Result{}, trackstats.Input{}, fmt.Errorf("parse %s: %w", cachePath, err)
 		}
 	case !errors.Is(err, os.ErrNotExist):
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	in.Cache = cache
 	titlesPath := filepath.Join(dir, "pr-titles.json")
@@ -692,10 +705,10 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 	switch {
 	case err == nil:
 		if err := json.Unmarshal(tb, &titles); err != nil {
-			return trackstats.Result{}, fmt.Errorf("parse %s: %w", titlesPath, err)
+			return trackstats.Result{}, trackstats.Input{}, fmt.Errorf("parse %s: %w", titlesPath, err)
 		}
 	case !errors.Is(err, os.ErrNotExist):
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	in.PRTitles = maps.Clone(titles)
 	statusPath := filepath.Join(dir, "pr-status.json")
@@ -704,10 +717,10 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 	switch {
 	case err == nil:
 		if err := json.Unmarshal(sb, &statusCache); err != nil {
-			return trackstats.Result{}, fmt.Errorf("parse %s: %w", statusPath, err)
+			return trackstats.Result{}, trackstats.Input{}, fmt.Errorf("parse %s: %w", statusPath, err)
 		}
 	case !errors.Is(err, os.ErrNotExist):
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	in.PRStatusCache = statusCache
 	// gh is asked about unmerged PRs at most once per mergedRecheck: the pane runs stats on
@@ -718,12 +731,12 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 	switch {
 	case err == nil:
 		if fi, err := os.Stat(checkedPath); err != nil {
-			return trackstats.Result{}, err
+			return trackstats.Result{}, trackstats.Input{}, err
 		} else if now.Sub(fi.ModTime()) < mergedRecheck {
 			in.Merged = nil
 		}
 	case !errors.Is(err, os.ErrNotExist):
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	// A PR title costs a gh call too: ask only in the same window the merged check is allowed.
 	if in.Merged != nil {
@@ -733,43 +746,46 @@ func computeTrackStats(dir, wsDir, today string, now time.Time, force bool) (tra
 	statusChecked := filepath.Join(dir, "pr-status.checked")
 	lastStatusErr, err := os.ReadFile(statusChecked) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	res, newCache := trackstats.Compute(in)
 	if in.Merged == nil {
 		res.Today.MergedError = string(lastErr)
 		res.Today.PRStatusError = string(lastStatusErr)
 	} else if err := os.MkdirAll(dir, 0o750); err != nil {
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	} else if err := writeFileAtomic(checkedPath, []byte(res.Today.MergedError), 0o644); err != nil {
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	} else if err := writeFileAtomic(statusChecked, []byte(res.Today.PRStatusError), 0o644); err != nil {
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	} else if err := writeStatusCache(statusPath, statusCache, res.Today.PROpen); err != nil {
-		return trackstats.Result{}, err
+		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	if len(newCache) > 0 && !reflect.DeepEqual(newCache, cache) {
 		out, err := json.Marshal(newCache)
 		if err != nil {
-			return trackstats.Result{}, err
+			return trackstats.Result{}, trackstats.Input{}, err
 		}
 		if err := writeFileAtomic(cachePath, out, 0o644); err != nil {
-			return trackstats.Result{}, err
+			return trackstats.Result{}, trackstats.Input{}, err
 		}
 	}
 	if !reflect.DeepEqual(in.PRTitles, titles) {
 		out, err := json.Marshal(in.PRTitles)
 		if err != nil {
-			return trackstats.Result{}, err
+			return trackstats.Result{}, trackstats.Input{}, err
 		}
 		if err := os.MkdirAll(dir, 0o750); err != nil {
-			return trackstats.Result{}, err
+			return trackstats.Result{}, trackstats.Input{}, err
 		}
 		if err := writeFileAtomic(titlesPath, out, 0o644); err != nil {
-			return trackstats.Result{}, err
+			return trackstats.Result{}, trackstats.Input{}, err
 		}
 	}
-	return res, nil
+	if newCache != nil {
+		in.Cache = newCache
+	}
+	return res, in, nil
 }
 
 // writeStatusCache stores the open PR statuses by url, so a run outside the recheck window can show them.

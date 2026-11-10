@@ -19,6 +19,13 @@ export const COPY = {
   tipBacklog: 'Tip: {N} items in Backlog — type "hey claude next task"',
   tipNoEst: 'Tip: no estimate yet — type "hey claude estimate this"',
   tipOver: 'Tip: over est {est} ({min}m/{max}m) — split the work or re-estimate',
+  // FR-5.1/FR-5.2: what needs action first; {num}, {N}, {id}, {D} are filled by tipFor.
+  tipPrRed: 'Tip: PR #{num} CI red — type "hey claude fix CI"',
+  tipPrThreads: 'Tip: PR #{num} has {N} unresolved threads — type "hey claude check PR"',
+  tipPrChanges: 'Tip: PR #{num} has changes requested — type "hey claude check PR"',
+  tipPrReadyOne: 'Tip: PR #{num} ready to merge — type "hey claude check PR"',
+  tipPrReady: 'Tip: {N} PRs ready to merge — type "hey claude check PR"',
+  tipStaleSoon: 'Tip: {id} open {D} days — continue or cancel it',
   tipPr: 'Tip: {N} PRs waiting to merge — type "hey claude check PR"',
   // FR-11.4 (track-metrics): unfinished work from earlier days.
   tipNoPlan: 'Tip: no plan today — type "hey claude plan today"',
@@ -110,8 +117,26 @@ function hitRate(s: TrackStats): number | undefined {
 }
 
 // FR-11.7 (2)-(5): the one tip for this context, by priority; (1) onboard is handled in statusText.
-function tipFor(s: TrackStats, mine: TrackItem | undefined): string | undefined {
+function tipFor(s: TrackStats, mine: TrackItem | undefined, now: number): string | undefined {
   const carried = s.kitchen?.carried?.length ?? 0
+  if (!mine) {
+    const prs = s.today?.prOpen ?? []
+    const red = prs.find((p) => p.ci === 'failure')
+    if (red) return COPY.tipPrRed.replace('{num}', String(red.number))
+    const thr = prs.find((p) => p.threads > 0)
+    if (thr) return COPY.tipPrThreads.replace('{num}', String(thr.number)).replace('{N}', String(thr.threads))
+    const chg = prs.find((p) => p.review === 'changes_requested')
+    if (chg) return COPY.tipPrChanges.replace('{num}', String(chg.number))
+    const ready = prs.filter((p) => p.ready)
+    if (ready.length === 1) return COPY.tipPrReadyOne.replace('{num}', String(ready[0].number))
+    if (ready.length > 1) return COPY.tipPrReady.replace('{N}', String(ready.length))
+    const DAY = 86_400_000
+    const age = (c: { startedAt: string }) => (now - Date.parse(c.startedAt)) / DAY
+    const old = (s.kitchen?.carried ?? [])
+      .filter((c) => c.stale || age(c) >= 5)
+      .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))[0]
+    if (old) return COPY.tipStaleSoon.replace('{id}', old.id).replace('{D}', String(Math.max(0, Math.floor(age(old)))))
+  }
   if (!mine && carried > 0) return COPY.tipCarried.replace('{N}', String(carried))
   if (!mine && s.onboarded && !s.today?.dailyPlan) return COPY.tipNoPlan
   const n = s.backlog?.items?.length ?? 0
@@ -130,7 +155,7 @@ function tipFor(s: TrackStats, mine: TrackItem | undefined): string | undefined 
 
 // FR-11.2/11.3: an item that is 0 or unknown is hidden, except `Today`.
 // FR-11.8: tips=false drops only the FR-11.7 (2)-(5) tips; onboard and the off line stay.
-export function statusText(s: TrackStats, session: string, boundId: string | undefined, tips = true): string {
+export function statusText(s: TrackStats, session: string, boundId: string | undefined, tips = true, now = Date.now()): string {
   if (!s.enabled) return STATUS_OFF
   const mine = openItem(s, session, boundId)
   const t = s.today
@@ -145,7 +170,7 @@ export function statusText(s: TrackStats, session: string, boundId: string | und
     `Today: ${sum(t.done)}/${sum(t.started)}`,
     (t.prsOpened > 0 || t.merged > 0) && `PR ${t.prsOpened}${t.merged > 0 ? ` (${t.merged} merged)` : ''}`,
     hit !== undefined && `hit ${Math.round(hit * 100)}%`,
-    (tips && tipFor(s, mine)) || false,
+    (tips && tipFor(s, mine, now)) || false,
   ]
   return parts.filter(Boolean).join(SEP)
 }
