@@ -8,6 +8,15 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.63.0
+
+*2026-11-10*
+
+- **`zenify wt new zen-<n>` xử lý Backlog như Todo:** trên Plane, Backlog và Todo giờ chỉ cho biết việc nằm ngoài hay trong cycle, không cho biết ai giữ. Việc ở Backlog hoặc Todo mà chưa ai được giao thì `wt new` chuyển sang In Progress và thêm bạn vào assignee; chỉ có bạn trong assignee thì chỉ chuyển state; có người khác trong assignee (watcher hoặc người giữ khác) thì chỉ in cảnh báo, zenie chuyển khi thấy branch được push. Xem [Worktree theo slug](/concepts/worktree-per-slug).
+- **Chốt sổ track hằng ngày:** session đầu tiên của ngày tự chạy `zenify track close-day` (chỉ khi workspace đã onboard), in báo cáo ngày làm việc trước (việc xong, PR đã merge, việc dở, PR đang chờ kèm bước tiếp theo) và lưu vào `.zenify/track/days/`. Sổ `log.md` chỉ giữ 14 ngày, dòng cũ chuyển sang `.zenify/track/archive/`; việc đang mở, việc có PR merge gần đây và dòng stats cần vẫn được giữ. Lệnh cũng chạy tay được. Xem [Track pane](/guides/track-pane#chốt-sổ-hằng-ngày).
+- **Tip track chỉ việc cần xử lý trước:** khi tab chưa có việc mở, tip ưu tiên PR có CI đỏ, rồi PR còn thread chưa resolve, PR bị yêu cầu sửa, PR sẵn sàng merge (nêu tên PR khi chỉ có một), rồi việc carried over đã mở từ 5 ngày hoặc bị stale. Xem [Track pane](/guides/track-pane).
+- **Sổ track an toàn khi nhiều session ghi cùng lúc:** mọi lệnh ghi `log.md` đều lấy `log.lock` (chờ tối đa 2 giây), nên các tab chạy song song không ghi đè dòng của nhau.
+
 ## v0.62.0
 
 *2026-11-10*
