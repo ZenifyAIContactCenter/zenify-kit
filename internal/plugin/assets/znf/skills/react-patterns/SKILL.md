@@ -175,6 +175,11 @@ lever, not a live switch. Any UI surface guarding on this same flag (menu entry,
 route, button) has to read it consistently, or a user can reach a route the menu
 hid.
 
+## References
+
+- `references/ui-building.md` — before writing a component: reuse the repo's primitives,
+  theme colors not hex/palette, i18n strings, `ui-verify style` before done.
+
 ## Cross-refs
 
 - Pair this skill with Vercel's community skill for React composition and

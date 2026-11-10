@@ -83,6 +83,8 @@ a deterministic, fail-closed gate with four outcomes. The render-trigger set com
 - **required** (exit non-zero) — render-trigger fired, a screen/viewport is missing or failed (e.g. `ticket-detail: missing viewport 1280`, `home@1366: fail (right 5px)`): `look:` reads
   `❌ BLOCKED`, `Shippable: NO`.
 
+Before the waiver and artifact steps, `check` also runs the style lint (`zenify ui-verify style`) when `uiVerify.style` declares rules (`hex`, `palette`, `arbitrary`; none declared = no change). It examines only lines this branch added in `.tsx`/`.jsx`/`.vue`/`.svelte` render files, and every line of a new untracked render file counts as added. A violation prints state `style` with a message starting `ui-verify style —` and exits 1; `znf:ui-verify-ok` does not waive it, only `znf:ui-style-ok: <reason>` on that line or the line above does. Under `ZNF_AUTONOMOUS=1` it still exits 1 and opens no needs-human await: the agent fixes the line itself, since only a missing verdict needs a person.
+
 The fingerprint is what ties `record` to `check`: any working-tree change after `record` shifts `fp`,
 so a stale artifact from before a review-loop fix cannot pass `check` — the gate re-requires a fresh
 look, the same honesty mechanism as step 7's `fp` stamps elsewhere in this skill.
