@@ -35,6 +35,8 @@ func TestOverflows(t *testing.T) {
 		{"left clip", lay(Box{2, 10, 90, 90}, "clip", "visible"), []Overflow{{"left", 2}}},
 		{"bottom, x scroll does not exempt y", lay(Box{10, 10, 90, 105}, "auto", "visible"), []Overflow{{"bottom", 9}}},
 		{"bottom y auto exempt", lay(Box{10, 10, 90, 105}, "visible", "auto"), nil},
+		{"top visible", lay(Box{10, 1, 90, 90}, "visible", "visible"), []Overflow{{"top", 3}}},
+		{"right exactly at tolerance", lay(Box{10, 10, 97, 90}, "visible", "visible"), nil},
 		{"two edges ordered", lay(Box{2, 10, 90, 105}, "visible", "visible"), []Overflow{{"left", 2}, {"bottom", 9}}},
 	}
 	for _, tc := range tests {
@@ -65,6 +67,12 @@ func TestParseLayout(t *testing.T) {
 		{"unknown field", strings.Replace(validLayout, `"innerWidth":100,`, `"innerWidth":100,"foo":1,`, 1), "foo"},
 		{"negative padding", strings.Replace(validLayout, `"left":4`, `"left":-1`, 1), "padding.left"},
 		{"empty overflowX", strings.Replace(validLayout, `"overflowX":"visible"`, `"overflowX":""`, 1), "overflowX"},
+		{"null leaf", strings.Replace(validLayout, `"left":10`, `"left":null`, 1), "child.left"},
+		{"null object", strings.Replace(validLayout, `"padding":{"left":4,"top":4,"right":4,"bottom":4}`, `"padding":null`, 1), "padding"},
+		{"null innerWidth", strings.Replace(validLayout, `"innerWidth":100`, `"innerWidth":null`, 1), "innerWidth"},
+		{"string innerWidth", strings.Replace(validLayout, `"innerWidth":100`, `"innerWidth":"x"`, 1), "innerWidth"},
+		{"unknown nested key", strings.Replace(validLayout, `"left":10,`, `"left":10,"foo":1,`, 1), "foo"},
+		{"two negative paddings", strings.Replace(strings.Replace(validLayout, `"left":4`, `"left":-1`, 1), `"right":4`, `"right":-2`, 1), "padding.left"},
 		{"not json", "nope", "layout"},
 	}
 	for _, tc := range tests {

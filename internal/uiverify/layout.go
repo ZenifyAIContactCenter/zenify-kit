@@ -49,12 +49,15 @@ func ParseLayout(raw string) (Layout, error) {
 	if err := requireFields(raw); err != nil {
 		return Layout{}, err
 	}
-	for name, v := range map[string]float64{
-		"padding.left": l.Padding.Left, "padding.top": l.Padding.Top,
-		"padding.right": l.Padding.Right, "padding.bottom": l.Padding.Bottom,
+	for _, p := range []struct {
+		name string
+		v    float64
+	}{
+		{"padding.left", l.Padding.Left}, {"padding.top", l.Padding.Top},
+		{"padding.right", l.Padding.Right}, {"padding.bottom", l.Padding.Bottom},
 	} {
-		if v < 0 {
-			return Layout{}, badLayout("layout measurement: %s must be >= 0, got %v", name, v)
+		if p.v < 0 {
+			return Layout{}, badLayout("layout measurement: %s must be >= 0, got %v", p.name, p.v)
 		}
 	}
 	if l.OverflowX == "" {
@@ -66,29 +69,40 @@ func ParseLayout(raw string) (Layout, error) {
 	return l, nil
 }
 
-// requireFields names the first absent field; json.Decode leaves it zero.
+// requireFields names the first absent or null field; json.Decode would
+// silently turn both into 0 (JSON.stringify emits null for NaN).
 func requireFields(raw string) error {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(raw), &top); err != nil {
 		return badLayout("layout measurement: %v", err)
 	}
+	present := func(m map[string]json.RawMessage, key, path string) (json.RawMessage, error) {
+		v, ok := m[key]
+		if !ok {
+			return nil, badLayout("layout measurement: missing field %s", path)
+		}
+		if bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+			return nil, badLayout("layout measurement: field %s is null", path)
+		}
+		return v, nil
+	}
 	for _, k := range []string{"innerWidth", "overflowX", "overflowY"} {
-		if _, ok := top[k]; !ok {
-			return badLayout("layout measurement: missing field %s", k)
+		if _, err := present(top, k, k); err != nil {
+			return err
 		}
 	}
 	for _, k := range []string{"child", "container", "padding"} {
-		sub, ok := top[k]
-		if !ok {
-			return badLayout("layout measurement: missing field %s", k)
+		sub, err := present(top, k, k)
+		if err != nil {
+			return err
 		}
 		var m map[string]json.RawMessage
 		if err := json.Unmarshal(sub, &m); err != nil {
 			return badLayout("layout measurement: %s: %v", k, err)
 		}
 		for _, e := range []string{"left", "top", "right", "bottom"} {
-			if _, ok := m[e]; !ok {
-				return badLayout("layout measurement: missing field %s.%s", k, e)
+			if _, err := present(m, e, k+"."+e); err != nil {
+				return err
 			}
 		}
 	}
