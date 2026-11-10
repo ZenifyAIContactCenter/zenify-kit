@@ -176,3 +176,22 @@ func Style(d Deps, repo, base string) (violations []Violation, checked int, decl
 	violations, checked = scanAdded(diff, files, cfg.Style)
 	return violations, checked, true, nil
 }
+
+const maxStyleLines = 10
+
+// styleMessage is Check's failure text: the first maxStyleLines violations
+// and the total.
+func styleMessage(vs []Violation) string {
+	parts := make([]string, 0, maxStyleLines)
+	for i, v := range vs {
+		if i == maxStyleLines {
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s:%d %s %s", v.File, v.Line, v.Rule, v.Match))
+	}
+	more := ""
+	if len(vs) > maxStyleLines {
+		more = fmt.Sprintf("; +%d more", len(vs)-maxStyleLines)
+	}
+	return fmt.Sprintf("ui-verify style — %d violation(s): %s%s", len(vs), strings.Join(parts, "; "), more)
+}

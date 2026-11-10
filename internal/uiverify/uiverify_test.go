@@ -926,3 +926,50 @@ func TestValidate_RejectsIncompleteLayout(t *testing.T) {
 		})
 	}
 }
+
+const styleCfg = `{"uiVerify":{"style":["hex"]}}`
+
+// styleCheckDeps is gateRepo plus a branch diff that adds one hex line to
+// src/App.tsx, with a valid artifact so only style can fail the gate.
+func styleCheckDeps(t *testing.T, addedLine string) (string, Deps) {
+	t.Helper()
+	repo, base := gateRepo(t, styleCfg, "fpstyle001")
+	writeArtifact(t, repo, "fpstyle001", Artifact{FP: "fpstyle001", Screens: []Screen{shotScreen("home", 1440, "pass")}})
+	diff := fileDiff("src/App.tsx", " ctx\n+"+addedLine+"\n")
+	return repo, Deps{RunGit: func(dir string, args ...string) (string, error) {
+		switch strings.Join(args, " ") {
+		case waiverMergeBaseKey:
+			return "mb0001\n", nil
+		case waiverDiffKey:
+			return diff, nil
+		}
+		return base.RunGit(dir, args...)
+	}}
+}
+
+func TestCheck_StyleBlocks(t *testing.T) {
+	repo, d := styleCheckDeps(t, "const c = '#ff0000'")
+	state, msg, err := Check(d, repo, "origin/staging")
+	if state != "required" || exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("state=%q err=%v", state, err)
+	}
+	if !strings.HasPrefix(msg, "ui-verify style —") || !strings.Contains(msg, "src/App.tsx:2 hex #ff0000") {
+		t.Errorf("msg=%q", msg)
+	}
+}
+
+func TestCheck_StyleBlocksEvenWhenWaived(t *testing.T) {
+	repo, d := styleCheckDeps(t, "const c = '#ff0000' // znf:ui-verify-ok: copy only")
+	state, msg, err := Check(d, repo, "origin/staging")
+	if state != "required" || err == nil || !strings.HasPrefix(msg, "ui-verify style —") {
+		t.Fatalf("state=%q msg=%q err=%v", state, msg, err)
+	}
+}
+
+func TestCheck_StyleCleanFallsThrough(t *testing.T) {
+	repo, d := styleCheckDeps(t, "const c = 'ok'")
+	state, msg, err := Check(d, repo, "origin/staging")
+	if state != "verified" || err != nil {
+		t.Fatalf("state=%q msg=%q err=%v", state, msg, err)
+	}
+}

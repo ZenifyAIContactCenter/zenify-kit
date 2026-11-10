@@ -61,6 +61,7 @@ func newUIVerifyCmd() *cobra.Command {
 	c.AddCommand(newUIVerifyCheckCmd())
 	c.AddCommand(newUIVerifyFilesCmd())
 	c.AddCommand(newUIVerifyViewportsCmd())
+	c.AddCommand(newUIVerifyStyleCmd())
 	return c
 }
 
@@ -72,8 +73,8 @@ func newUIVerifyFilesCmd() *cobra.Command {
 	c := &cobra.Command{
 		// An error prints nothing on stdout, so a caller never reads usage text or a 0 as a count.
 		SilenceUsage: true,
-		Use:   "files",
-		Short: "In các file render UI đổi so với base (ship đếm để quyết định có cần ui-verifier)", //znf:allow-lang
+		Use:          "files",
+		Short:        "In các file render UI đổi so với base (ship đếm để quyết định có cần ui-verifier)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if repo == "" {
 				repo, _ = os.Getwd()
@@ -179,6 +180,46 @@ func newUIVerifyCheckCmd() *cobra.Command {
 				return exitcode.New(exitcode.Awaiting, fmt.Errorf("awaiting human: needs-human (%s)", id))
 			}
 			return err
+		},
+	}
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang
+	c.Flags().StringVar(&base, "base", "", "base ref để so sánh (bắt buộc)") //znf:allow-lang
+	return c
+}
+
+// newUIVerifyStyleCmd lints the lines this branch added against uiVerify.style.
+func newUIVerifyStyleCmd() *cobra.Command {
+	var repo, base string
+	c := &cobra.Command{
+		SilenceUsage: true,
+		Use:          "style",
+		Short:        "Lint màu/giá trị viết cứng trên các dòng mới thêm theo uiVerify.style", //znf:allow-lang
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if repo == "" {
+				repo, _ = os.Getwd()
+			}
+			if base == "" {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need --base <base ref>"))
+			}
+			vs, checked, declared, err := uiverify.Style(defaultUIVerifyDeps(), repo, base)
+			if err != nil {
+				return err
+			}
+			w := cmd.OutOrStdout()
+			switch {
+			case !declared:
+				_, _ = fmt.Fprintln(w, "no style rules declared")
+			case len(vs) == 0:
+				_, _ = fmt.Fprintf(w, "style: clean (%d added lines checked)\n", checked)
+			default:
+				for _, v := range vs {
+					_, _ = fmt.Fprintf(w, "%s:%d %s %s\n", v.File, v.Line, v.Rule, v.Match)
+				}
+				summary := fmt.Sprintf("style: %d violation(s)", len(vs))
+				_, _ = fmt.Fprintln(w, summary)
+				return exitcode.New(exitcode.Fail, errors.New(summary))
+			}
+			return nil
 		},
 	}
 	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang

@@ -417,3 +417,63 @@ func TestUIVerifyRecordCmd_PrintsVerdict(t *testing.T) {
 		}
 	}
 }
+
+func runUIVerifyStyle(t *testing.T, repo string) (string, error) {
+	t.Helper()
+	var buf bytes.Buffer
+	c := newUIVerifyCmd()
+	c.SetOut(&buf)
+	c.SetArgs([]string{"style", "--repo", repo, "--base", "main"})
+	err := c.Execute()
+	return buf.String(), err
+}
+
+func TestUIVerifyStyleCmd(t *testing.T) {
+	setup := func(t *testing.T, cfg, body string) string {
+		repo := initUIVerifyRepo(t)
+		gitIn(t, repo, "branch", "-M", "main")
+		gitIn(t, repo, "checkout", "-b", "feat")
+		if cfg != "" {
+			if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(repo, ".claude", "worktree.json"), []byte(cfg), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		comp := filepath.Join(repo, "src", "components")
+		if err := os.MkdirAll(comp, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(comp, "A.tsx"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, repo, "add", "src") // an untracked file is not part of `git diff <merge-base>`
+		return repo
+	}
+	const cfg = `{"uiVerify":{"style":["hex","palette"]}}`
+
+	t.Run("not declared", func(t *testing.T) {
+		out, err := runUIVerifyStyle(t, setup(t, "", "x #fff\n"))
+		if err != nil || !strings.Contains(out, "no style rules declared") {
+			t.Fatalf("out=%q err=%v", out, err)
+		}
+	})
+	t.Run("clean", func(t *testing.T) {
+		out, err := runUIVerifyStyle(t, setup(t, cfg, "a\nb\n"))
+		if err != nil || !strings.Contains(out, "style: clean (2 added lines checked)") {
+			t.Fatalf("out=%q err=%v", out, err)
+		}
+	})
+	t.Run("violations", func(t *testing.T) {
+		out, err := runUIVerifyStyle(t, setup(t, cfg, "a\nx #fff bg-red-500\n"))
+		if exitcode.Code(err) != exitcode.Fail {
+			t.Fatalf("code=%d err=%v", exitcode.Code(err), err)
+		}
+		for _, want := range []string{"src/components/A.tsx:2 hex #fff", "src/components/A.tsx:2 palette bg-red-500", "style: 2 violation(s)"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("out %q lacks %q", out, want)
+			}
+		}
+	})
+}
