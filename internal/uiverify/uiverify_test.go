@@ -2,6 +2,7 @@ package uiverify
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -95,36 +96,71 @@ func TestRenderSet_UnionsWorkingTree(t *testing.T) {
 	}
 }
 
-func TestWaiver(t *testing.T) {
-	runGit := fakeRunGit(t, map[string]string{
-		"diff origin/staging..HEAD": "some diff\nznf:ui-verify-ok: layout unchanged, only copy\n",
-		"diff HEAD":                 "",
-	})
-	reason, ok := Waiver(Deps{RunGit: runGit}, "/repo", "origin/staging")
-	if !ok {
-		t.Fatal("expected waiver found")
-	}
-	if reason != "layout unchanged, only copy" {
-		t.Errorf("reason = %q", reason)
-	}
+const (
+	waiverCommittedKey = "-c core.quotePath=false diff origin/staging...HEAD -- src/App.tsx src/b.css"
+	waiverWorkingKey   = "-c core.quotePath=false diff HEAD -- src/App.tsx src/b.css"
+)
 
-	runGitNone := fakeRunGit(t, map[string]string{
-		"diff origin/staging..HEAD": "some diff\nno marker here\n",
-		"diff HEAD":                 "still nothing\n",
+var waiverFiles = []string{"src/App.tsx", "src/b.css"}
+
+func TestWaiver(t *testing.T) {
+	cases := []struct {
+		name       string
+		committed  string
+		working    string
+		wantOK     bool
+		wantReason string
+	}{
+		{"added line waives", "+// znf:ui-verify-ok: copy only\n", "", true, "copy only"},
+		{"removed line does not", "-// znf:ui-verify-ok: legacy\n", "", false, ""},
+		{"empty reason does not", "+// znf:ui-verify-ok:\n", "", false, ""},
+		{"blank reason does not", "+// znf:ui-verify-ok:   \n", "", false, ""},
+		{"empty reason then valid later line", "+// znf:ui-verify-ok:\n+// znf:ui-verify-ok: later\n", "", true, "later"},
+		{"context line does not", " context znf:ui-verify-ok: x\n", "", false, ""},
+		{"working tree added line waives", "no marker\n", "+// znf:ui-verify-ok: wip\n", true, "wip"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			runGit := fakeRunGit(t, map[string]string{waiverCommittedKey: c.committed, waiverWorkingKey: c.working})
+			reason, ok := Waiver(Deps{RunGit: runGit}, "/repo", "origin/staging", waiverFiles)
+			if ok != c.wantOK || reason != c.wantReason {
+				t.Errorf("got (%q, %v), want (%q, %v)", reason, ok, c.wantReason, c.wantOK)
+			}
+		})
+	}
+}
+
+func TestWaiver_IgnoresPlusPlusHeader(t *testing.T) {
+	runGit := fakeRunGit(t, map[string]string{
+		waiverCommittedKey: "+++ b/znf:ui-verify-ok: x.tsx\n",
+		waiverWorkingKey:   "",
 	})
-	if _, ok := Waiver(Deps{RunGit: runGitNone}, "/repo", "origin/staging"); ok {
+	if _, ok := Waiver(Deps{RunGit: runGit}, "/repo", "origin/staging", waiverFiles); ok {
+		t.Fatal("a +++ file header must not waive")
+	}
+}
+
+// fakeRunGit fails the test on any key other than the exact pathspec, so a
+// marker in docs/notes.md can never be seen: it is not in files.
+func TestWaiver_OnlyRenderFiles(t *testing.T) {
+	runGit := fakeRunGit(t, map[string]string{
+		waiverCommittedKey: "no marker\n",
+		waiverWorkingKey:   "",
+	})
+	if _, ok := Waiver(Deps{RunGit: runGit}, "/repo", "origin/staging", waiverFiles); ok {
 		t.Fatal("expected no waiver")
 	}
 }
 
-func TestWaiver_FoundInWorkingTree(t *testing.T) {
-	runGit := fakeRunGit(t, map[string]string{
-		"diff origin/staging..HEAD": "committed diff, no marker\n",
-		"diff HEAD":                 "uncommitted\nznf:ui-verify-ok: wip\n",
-	})
-	reason, ok := Waiver(Deps{RunGit: runGit}, "/repo", "origin/staging")
-	if !ok || reason != "wip" {
-		t.Errorf("got reason=%q ok=%v", reason, ok)
+func TestWaiver_GitErrorIsNoWaiver(t *testing.T) {
+	runGit := func(_ string, args ...string) (string, error) {
+		if strings.Contains(strings.Join(args, " "), "diff HEAD") {
+			return "+// znf:ui-verify-ok: wip\n", nil
+		}
+		return "", errors.New("boom")
+	}
+	if reason, ok := Waiver(Deps{RunGit: runGit}, "/repo", "origin/staging", waiverFiles); ok || reason != "" {
+		t.Fatalf("got (%q, %v), want no waiver on git error", reason, ok)
 	}
 }
 
@@ -429,10 +465,10 @@ func TestCheck_SC1_NotRequired(t *testing.T) {
 func TestCheck_SC2_Waived(t *testing.T) {
 	repo := t.TempDir()
 	d := checkDeps(t, map[string]string{
-		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "znf:ui-verify-ok: reviewed manually",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD":    "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":                  "",
+		"-c core.quotePath=false diff origin/staging...HEAD -- src/App.tsx": "+// znf:ui-verify-ok: reviewed manually",
+		"-c core.quotePath=false diff HEAD -- src/App.tsx":                  "",
 	}, "fp000")
 	state, msg, err := Check(d, repo, "origin/staging")
 	if err != nil {
@@ -456,10 +492,10 @@ func TestCheck_SC3_Verified(t *testing.T) {
 	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Verdict: "pass"}}})
 
 	d := checkDeps(t, map[string]string{
-		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD":    "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":                  "",
+		"-c core.quotePath=false diff origin/staging...HEAD -- src/App.tsx": "",
+		"-c core.quotePath=false diff HEAD -- src/App.tsx":                  "",
 	}, fp)
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "verified" || err != nil {
@@ -470,10 +506,10 @@ func TestCheck_SC3_Verified(t *testing.T) {
 func TestCheck_SC4_RequiredMissingArtifact(t *testing.T) {
 	repo := t.TempDir()
 	d := checkDeps(t, map[string]string{
-		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD":    "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":                  "",
+		"-c core.quotePath=false diff origin/staging...HEAD -- src/App.tsx": "",
+		"-c core.quotePath=false diff HEAD -- src/App.tsx":                  "",
 	}, "fpmissing")
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "required" {
@@ -490,10 +526,10 @@ func TestCheck_SC5_RequiredInvalidArtifact(t *testing.T) {
 	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "missing.png", Verdict: "pass"}}})
 
 	d := checkDeps(t, map[string]string{
-		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD":    "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":                  "",
+		"-c core.quotePath=false diff origin/staging...HEAD -- src/App.tsx": "",
+		"-c core.quotePath=false diff HEAD -- src/App.tsx":                  "",
 	}, fp)
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "required" || exitcode.Code(err) != exitcode.Fail {
@@ -517,10 +553,10 @@ func TestCheck_SC6_FPMismatchIsRequired(t *testing.T) {
 
 	newFP := "fpnew000002"
 	d := checkDeps(t, map[string]string{
-		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD":    "src/App.tsx",
+		"-c core.quotePath=false status --porcelain -uall":                  "",
+		"-c core.quotePath=false diff origin/staging...HEAD -- src/App.tsx": "",
+		"-c core.quotePath=false diff HEAD -- src/App.tsx":                  "",
 	}, newFP)
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "required" || exitcode.Code(err) != exitcode.Fail {

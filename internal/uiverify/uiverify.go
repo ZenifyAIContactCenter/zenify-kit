@@ -44,8 +44,8 @@ func screenFileName(fp, screen string, viewport int) string {
 	return fmt.Sprintf("%s-%s-%d.png", fp, safe, viewport)
 }
 
-// waiverMarker: a line containing this in a diff or the working tree waives
-// the gate; the reason is whatever follows the ':'. FR-2.3.
+// waiverMarker: an added line containing this in a render file waives the
+// gate; the reason is whatever follows the ':' and must be non-empty.
 const waiverMarker = "znf:ui-verify-ok:"
 
 // Screen is one verified screen/route at one viewport within an Artifact.
@@ -208,26 +208,40 @@ func underAny(p string, prefixes []string) bool {
 	return false
 }
 
-// findWaiver scans text line by line for waiverMarker and returns the
-// trimmed reason after the ':'.
+// findWaiver scans diff text for an added line carrying waiverMarker with a
+// non-empty reason. Context, removed and "+++" header lines never waive.
 func findWaiver(text string) (string, bool) {
 	for _, line := range strings.Split(text, "\n") {
+		if !strings.HasPrefix(line, "+") || strings.HasPrefix(line, "+++") {
+			continue
+		}
 		if idx := strings.Index(line, waiverMarker); idx >= 0 {
-			reason := strings.TrimSpace(line[idx+len(waiverMarker):])
-			return reason, true
+			if reason := strings.TrimSpace(line[idx+len(waiverMarker):]); reason != "" {
+				return reason, true
+			}
 		}
 	}
 	return "", false
 }
 
-// Waiver checks both the committed diff since base and the current working
-// tree for waiverMarker. FR-2.3.
-func Waiver(d Deps, repo, base string) (string, bool) {
-	committed, _ := d.RunGit(repo, "diff", base+"..HEAD")
+// Waiver looks for waiverMarker on a line added to one of files, in the
+// committed diff since base or the working tree. Any git error means no
+// waiver (fail-closed). FR-3.2, FR-4.1..4.3.
+func Waiver(d Deps, repo, base string, files []string) (string, bool) {
+	diffArgs := func(rev string) []string {
+		return append([]string{"-c", "core.quotePath=false", "diff", rev, "--"}, files...)
+	}
+	committed, err := d.RunGit(repo, diffArgs(base+"...HEAD")...)
+	if err != nil {
+		return "", false
+	}
+	working, err := d.RunGit(repo, diffArgs("HEAD")...)
+	if err != nil {
+		return "", false
+	}
 	if reason, ok := findWaiver(committed); ok {
 		return reason, true
 	}
-	working, _ := d.RunGit(repo, "diff", "HEAD")
 	return findWaiver(working)
 }
 
@@ -437,7 +451,7 @@ func Check(d Deps, repo, base string) (state string, msg string, err error) {
 		return "not_required", "no rendering files changed", nil
 	}
 
-	if reason, ok := Waiver(d, repo, base); ok {
+	if reason, ok := Waiver(d, repo, base, rs); ok {
 		state = fmt.Sprintf("waived: %s", reason)
 		return state, state, nil
 	}
