@@ -9,8 +9,8 @@ summary: Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint 
 
 Bốn trạng thái:
 - Render-set rỗng → "not required" (exit 0).
-- Diff mang marker `// znf:ui-verify-ok: <lý do>` → "waived: <lý do>" (exit 0).
-- Có artifact hợp lệ khớp fingerprint hiện tại → "verified" (exit 0).
+- Một dòng THÊM trong diff của nhánh (working tree so với merge-base với `--base`, gồm cả thay đổi chưa commit) nằm trong file render và mang marker `znf:ui-verify-ok: <lý do>` với lý do không rỗng → "waived: <lý do>" (exit 0). File chỉ đổi tên không tính là dòng thêm, nên marker cũ trong file bị đổi tên không miễn được.
+- Artifact khớp fingerprint hiện tại có entry cho mọi viewport khai trong `uiVerify.viewports` (không khai thì một viewport bất kỳ mỗi màn hình), và mọi entry đều pass khi kit tính lại từ số đo layout và `failReason` đã ghi (bỏ qua `verdict` lưu trong file) → "verified" (exit 0).
 - Còn lại → exit khác 0, `/znf:ship` đọc là "ui-verify required" và đánh dòng `look:` thành `❌ BLOCKED`, `Shippable: NO`.
 
 ## Cờ
