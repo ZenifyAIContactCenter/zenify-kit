@@ -38,6 +38,29 @@ func TestHarness_AriaMarkers(t *testing.T) {
 	}
 }
 
+func TestHarness_A11yMarkers(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteHarness(dir); err != nil {
+		t.Fatal(err)
+	}
+	if pkg := readFile(t, filepath.Join(dir, "package.json")); !strings.Contains(pkg, `"@axe-core/playwright": "4.14.0"`) {
+		t.Errorf("package.json must pin @axe-core/playwright 4.14.0:\n%s", pkg)
+	}
+	spec := readFile(t, filepath.Join(dir, "visual.spec.ts"))
+	for _, m := range []string{"await import('@axe-core/playwright')", "__a11y__", "skipped ("} {
+		if !strings.Contains(spec, m) {
+			t.Errorf("visual.spec.ts missing a11y marker %q", m)
+		}
+	}
+	shot, ax := strings.Index(spec, "toHaveScreenshot"), strings.Index(spec, "await import('@axe-core/playwright')")
+	if shot < 0 || ax < shot {
+		t.Fatal("a11y block must come after toHaveScreenshot")
+	}
+	if !strings.Contains(spec[shot:ax], "try {") || strings.Contains(spec[ax:], "expect") {
+		t.Error("a11y import must sit inside try and the block must not use expect")
+	}
+}
+
 func TestHarness_DeterminismMarkers(t *testing.T) {
 	dir := t.TempDir()
 	if err := WriteHarness(dir); err != nil {

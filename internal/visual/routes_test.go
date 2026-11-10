@@ -218,6 +218,11 @@ func TestBaselineFiles(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 	got = BaselineFiles(Route{Name: "a", Path: "/a", Aria: "#c"})
+	for _, f := range got {
+		if strings.Contains(f, "__a11y__") {
+			t.Errorf("a11y report is advisory, not a baseline: %s", f)
+		}
+	}
 	want := []string{".znf/visual/__snapshots__/a-chromium-linux.png", ".znf/visual/__snapshots__/a.aria.yml"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v", got)
