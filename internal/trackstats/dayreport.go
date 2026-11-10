@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // DayReport renders the close-of-day markdown for day.Today.Date. day is Compute run
@@ -90,11 +91,10 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 		if age >= 0 {
 			line += fmt.Sprintf(" age %dd", age)
 		}
-		if age >= 5 {
-			line += " (stale soon)"
-		}
 		if c.Stale {
 			line += " (stale)"
+		} else if age >= 5 {
+			line += " (stale soon)"
 		}
 		open = append(open, "carried: "+line)
 	}
@@ -116,7 +116,7 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 	if day.Today.DailyPlan != nil {
 		for _, p := range day.Today.DailyPlan.Items {
 			if p.Status != "done" {
-				open = append(open, fmt.Sprintf("plan: %s %s (%s)", p.ID, p.Title, p.Status))
+				open = append(open, fmt.Sprintf("plan: %s %s (%s)", p.ID, oneLine(p.Title), p.Status))
 			}
 		}
 	}
@@ -127,9 +127,22 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 		b.WriteString("- " + l + "\n")
 	}
 	if prNote != "" {
-		b.WriteString("\nnote: " + prNote + "\n")
+		b.WriteString("\nnote: " + oneLine(prNote) + "\n")
 	}
 	return b.String()
+}
+
+// maxReportText caps a title or note the report prints into the session context.
+const maxReportText = 120
+
+// oneLine folds runs of whitespace and control characters into one space and caps the
+// result at maxReportText runes, so a title or note can neither break nor flood the report.
+func oneLine(s string) string {
+	r := []rune(strings.Join(strings.FieldsFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }), " "))
+	if len(r) > maxReportText {
+		r = r[:maxReportText]
+	}
+	return string(r)
 }
 
 func orNone(s string) string {

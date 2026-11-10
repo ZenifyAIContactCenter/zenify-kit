@@ -664,3 +664,32 @@ func stubTrackGh(t *testing.T) {
 	trackPRTitle = func(string) (string, error) { return "Title", nil }
 	t.Cleanup(func() { trackMerged, trackPRStatus, trackPRTitle = oldM, oldS, oldT })
 }
+
+// SessionStart close-day makes no gh call: PR state comes from pr-status.json.
+func TestSessionStart_TrackCloseDayNoGh(t *testing.T) {
+	now := time.Now()
+	ws := closeDaySessionWS(t, now)
+	dir := filepath.Join(ws, ".zenify", "track")
+	st := `{"` + closeDayYPR + `":{"url":"` + closeDayYPR + `","repo":"o/r","number":501,"ci":"success","review":"-","ready":true}}`
+	if err := os.WriteFile(filepath.Join(dir, "pr-status.json"), []byte(st), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	oldM, oldS, oldT, oldG := trackMerged, trackPRStatus, trackPRTitle, trackGhSearch
+	trackMerged = func(string) (string, error) { calls.Add(1); return "", nil }
+	trackPRStatus = func(string) (trackstats.PRStatus, error) { calls.Add(1); return trackstats.PRStatus{}, nil }
+	trackPRTitle = func(string) (string, error) { calls.Add(1); return "", nil }
+	trackGhSearch = func(string, string) ([]trackstats.Issue, error) { calls.Add(1); return nil, nil }
+	t.Cleanup(func() { trackMerged, trackPRStatus, trackPRTitle, trackGhSearch = oldM, oldS, oldT, oldG })
+	var buf bytes.Buffer
+	if rc := runSessionStart(ws, &buf); rc != 0 {
+		t.Fatalf("rc = %d", rc)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "# Track day close:") || !strings.Contains(out, closeDayYPR+" ready to merge") || !strings.Contains(out, "note: PR status from cache") {
+		t.Fatalf("want the report with the cached PR state, got %q", out)
+	}
+	if n := calls.Load(); n != 0 {
+		t.Fatalf("SessionStart made %d gh calls", n)
+	}
+}

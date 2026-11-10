@@ -35,68 +35,111 @@ func newTrackCloseDayCmd(ws *string) *cobra.Command {
 				_, err = fmt.Fprintln(cmd.OutOrStdout(), "track: off")
 				return err
 			}
-			return runCloseDay(cmd.OutOrStdout(), cmd.ErrOrStderr(), wsDir, time.Now())
+			return runCloseDay(cmd.OutOrStdout(), cmd.ErrOrStderr(), wsDir, time.Now(), true)
 		},
 	}
 }
 
 // runCloseDay closes the previous working day once per calendar day: report, archive, mark.
-func runCloseDay(w, errW io.Writer, wsDir string, now time.Time) error {
+// refresh asks gh for fresh PR state (the manual command); without it the report reads the
+// cached PR state from local files only, so SessionStart makes no gh call.
+func runCloseDay(w, errW io.Writer, wsDir string, now time.Time, refresh bool) error {
 	dir := filepath.Join(wsDir, ".zenify", "track")
 	today := now.Format("2006-01-02")
 	closedPath := filepath.Join(dir, "day.closed")
-	if b, err := os.ReadFile(closedPath); err == nil && strings.TrimSpace(string(b)) == today { //nolint:gosec // G304 -- computed from the resolved workspace
-		return nil
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if closed, err := dayClosed(closedPath, today); err != nil || closed {
 		return err
 	}
 
-	// Force a fresh gh check; no lock is held here because stats may call gh.
-	if err := os.Remove(filepath.Join(dir, "merged.checked")); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	nowRes, err := computeTrackStats(dir, wsDir, today, now, false)
-	if err != nil {
-		return err
-	}
-	report := ""
-	if nowRes.Kitchen.LastDay != nil {
-		d := nowRes.Kitchen.LastDay.Date
-		dayRes, err := computeTrackStats(dir, wsDir, d, now, false)
-		if err != nil {
+	var (
+		in     trackstats.Input
+		nowRes trackstats.Result
+		prNote string
+		err    error
+	)
+	if refresh {
+		// Force a fresh gh check; no lock is held here because stats may call gh.
+		if err := os.Remove(filepath.Join(dir, "merged.checked")); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		prNote := ""
-		if e := firstNonEmpty(dayRes.Today.MergedError, dayRes.Today.PRStatusError); e != "" {
+		if nowRes, in, err = computeTrackStatsInput(dir, wsDir, today, now, false); err != nil {
+			return err
+		}
+		if e := firstNonEmpty(nowRes.Today.MergedError, nowRes.Today.PRStatusError); e != "" {
 			prNote = "PR status may be stale: " + e
 		}
-		cache, err := readMergedCache(dir)
+	} else {
+		in, err = localTrackInput(dir, wsDir, now)
+		if errors.Is(err, errNoTrackLog) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
-		report = trackstats.DayReport(dayRes, nowRes, cache, prNote)
+		nowRes, _ = trackstats.Compute(in)
+		if nowRes.Today.PRsWaiting > 0 || len(nowRes.Today.PROpen) > 0 {
+			prNote = "PR status from cache"
+		}
+	}
+	report, ownDay := "", ""
+	if nowRes.Kitchen.LastDay != nil {
+		ownDay = nowRes.Kitchen.LastDay.Date
+		// The day's figures rerun Compute on the same Input: no second file read, no gh.
+		dayIn := in
+		dayIn.Today = ownDay
+		dayIn.Merged, dayIn.PRStatus, dayIn.PRTitle, dayIn.GitHub, dayIn.SDD = nil, nil, nil, nil, nil
+		dayRes, _ := trackstats.Compute(dayIn)
+		report = trackstats.DayReport(dayRes, nowRes, in.Cache, prNote)
 		if err := os.MkdirAll(filepath.Join(dir, "days"), 0o750); err != nil {
 			return err
 		}
-		if err := writeFileAtomic(filepath.Join(dir, "days", d+".md"), []byte(report), 0o644); err != nil {
+		if err := writeFileAtomic(filepath.Join(dir, "days", ownDay+".md"), []byte(report), 0o644); err != nil {
 			return err
 		}
 	}
 
-	keep, movedIDs, err := compactTrackLog(errW, dir, now, today)
+	logPath := filepath.Join(dir, "log.md")
+	unlock, err := lockTrackLog(logPath)
 	if err != nil {
 		return err
 	}
-	if err := moveOldFiles(dir, now, keep, movedIDs); err != nil {
-		return err
-	}
-	if err := writeFileAtomic(closedPath, []byte(today+"\n"), 0o644); err != nil {
+	err = closeDayLocked(dir, closedPath, now, today, ownDay)
+	releaseTrackLock(errW, logPath, unlock)
+	if err != nil {
 		return err
 	}
 	if report != "" {
 		_, err = io.WriteString(w, report)
 	}
 	return err
+}
+
+// dayClosed reports whether day.closed already holds today.
+func dayClosed(closedPath, today string) (bool, error) {
+	b, err := os.ReadFile(closedPath) //nolint:gosec // G304 -- computed from the resolved workspace
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(b)) == today, nil
+}
+
+// closeDayLocked compacts log.md, moves old files and marks the day; the caller holds the log
+// lock. A run that finds the day already closed by a parallel run does nothing.
+func closeDayLocked(dir, closedPath string, now time.Time, today, ownDay string) error {
+	if closed, err := dayClosed(closedPath, today); err != nil || closed {
+		return err
+	}
+	keep, movedIDs, err := compactTrackLog(dir, now, today)
+	if err != nil {
+		return err
+	}
+	if err := moveOldFiles(dir, now, keep, movedIDs, ownDay); err != nil {
+		return err
+	}
+	return writeFileAtomic(closedPath, []byte(today+"\n"), 0o644)
 }
 
 func firstNonEmpty(a, b string) string {
@@ -137,15 +180,10 @@ func readSessionLogs(dir string) (map[string]string, error) {
 	return out, nil
 }
 
-// compactTrackLog archives the old rows under the log lock: archive first, then the log
-// rewrite, so a failure between them leaves duplicates in archive, never a lost row.
-func compactTrackLog(errW io.Writer, dir string, now time.Time, today string) (string, map[string]bool, error) {
+// compactTrackLog archives the old rows; the caller holds the log lock. Archive first, then the
+// log rewrite, so a failure between them leaves duplicates in archive, never a lost row.
+func compactTrackLog(dir string, now time.Time, today string) (string, map[string]bool, error) {
 	logPath := filepath.Join(dir, "log.md")
-	unlock, err := lockTrackLog(logPath)
-	if err != nil {
-		return "", nil, err
-	}
-	defer releaseTrackLock(errW, logPath, unlock)
 	b, err := os.ReadFile(logPath) //nolint:gosec // G304 -- computed from the resolved workspace
 	if errors.Is(err, os.ErrNotExist) {
 		return "", map[string]bool{}, nil
@@ -196,8 +234,9 @@ func compactTrackLog(errW io.Writer, dir string, now time.Time, today string) (s
 }
 
 // moveOldFiles moves session logs and day reports past the keep window into archive/.
-// A session log moves when it is old and none of its bound ids is still in the log.
-func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bool) error {
+// A session log moves when it is old and none of its bound ids is still in the log; ownDay's
+// report, written by this run, always stays. A file already gone was moved by another run.
+func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bool, ownDay string) error {
 	cut := now.Add(-closeDayKeepDays * 24 * time.Hour)
 	files, err := filepath.Glob(filepath.Join(dir, "sessions", "*.log"))
 	if err != nil {
@@ -205,6 +244,9 @@ func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bo
 	}
 	for _, f := range files {
 		fi, err := os.Stat(f)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -212,6 +254,9 @@ func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bo
 			continue
 		}
 		b, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -235,7 +280,7 @@ func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bo
 	}
 	cutDay := cut.Format("2006-01-02")
 	for _, f := range days {
-		if strings.TrimSuffix(filepath.Base(f), ".md") < cutDay {
+		if d := strings.TrimSuffix(filepath.Base(f), ".md"); d < cutDay && d != ownDay {
 			if err := moveInto(f, filepath.Join(dir, "archive", "days")); err != nil {
 				return err
 			}
@@ -245,7 +290,7 @@ func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bo
 }
 
 // moveInto renames src into destDir; an existing file of that name is never overwritten,
-// the new one gets a numeric suffix instead.
+// the new one gets a numeric suffix instead. A src already gone counts as moved.
 func moveInto(src, destDir string) error {
 	if err := os.MkdirAll(destDir, 0o750); err != nil {
 		return err
@@ -261,5 +306,8 @@ func moveInto(src, destDir string) error {
 		}
 		dst = filepath.Join(destDir, fmt.Sprintf("%s.%d", filepath.Base(src), i))
 	}
-	return os.Rename(src, dst)
+	if err := os.Rename(src, dst); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }

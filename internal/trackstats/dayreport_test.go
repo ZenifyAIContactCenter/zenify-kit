@@ -72,3 +72,36 @@ func TestDayReportEmpty(t *testing.T) {
 		t.Errorf("empty report:\n%s", got)
 	}
 }
+
+func TestDayReportStaleCarried(t *testing.T) {
+	start := time.Now().AddDate(0, 0, -7).Format(time.RFC3339)
+	now := Result{Today: Today{Date: time.Now().Format(dateLayout)}}
+	now.Kitchen.Carried = []CarriedItem{{ID: "old", Kind: "cook", Repo: "kit", Phase: "impl", StartedAt: start, Stale: true}}
+	got := DayReport(Result{Today: Today{Date: "2026-11-09"}}, now, nil, "")
+	if !strings.Contains(got, " (stale)\n") || strings.Contains(got, "stale soon") {
+		t.Errorf("want only (stale):\n%s", got)
+	}
+}
+
+// Titles and the note reach the session context: one line each, no control characters, capped.
+func TestDayReportSanitizes(t *testing.T) {
+	day := Result{Today: Today{Date: "2026-11-09", DailyPlan: &DailyPlan{Items: []DailyPlanItem{
+		{ID: "p1", Status: "todo", Title: "a\r\nb\x1b[31m"},
+		{ID: "p2", Status: "todo", Title: strings.Repeat("x", 200)},
+	}}}}
+	got := DayReport(day, Result{}, nil, "gh\nfailed\x07"+strings.Repeat("y", 200))
+	if strings.ContainsAny(got, "\r\x1b\x07") {
+		t.Errorf("control characters left:\n%q", got)
+	}
+	for _, w := range []string{"plan: p1 a b [31m (todo)", "note: gh failed"} {
+		if !strings.Contains(got, w) {
+			t.Errorf("missing %q in:\n%q", w, got)
+		}
+	}
+	if !strings.Contains(got, "plan: p2 "+strings.Repeat("x", 120)+" (todo)") {
+		t.Errorf("title not capped at 120 runes:\n%q", got)
+	}
+	if !strings.Contains(got, "note: gh failed "+strings.Repeat("y", 110)+"\n") {
+		t.Errorf("note not capped at 120 runes:\n%q", got)
+	}
+}

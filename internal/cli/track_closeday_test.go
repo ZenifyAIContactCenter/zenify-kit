@@ -84,7 +84,7 @@ func TestCloseDayReportsAndArchives(t *testing.T) {
 	ws, oldID := closeDayWS(t, now)
 	dir := filepath.Join(ws, ".zenify", "track")
 	var out, errb bytes.Buffer
-	if err := runCloseDay(&out, &errb, ws, now); err != nil {
+	if err := runCloseDay(&out, &errb, ws, now, true); err != nil {
 		t.Fatalf("%v\n%s", err, errb.String())
 	}
 	if !strings.Contains(out.String(), closeDayYPR) {
@@ -122,12 +122,12 @@ func TestCloseDayOncePerDay(t *testing.T) {
 	now := time.Now()
 	ws, _ := closeDayWS(t, now)
 	var out bytes.Buffer
-	if err := runCloseDay(&out, &bytes.Buffer{}, ws, now); err != nil {
+	if err := runCloseDay(&out, &bytes.Buffer{}, ws, now, true); err != nil {
 		t.Fatal(err)
 	}
 	before := trackLog(t, ws)
 	out.Reset()
-	if err := runCloseDay(&out, &bytes.Buffer{}, ws, now); err != nil {
+	if err := runCloseDay(&out, &bytes.Buffer{}, ws, now, true); err != nil {
 		t.Fatal(err)
 	}
 	if out.Len() != 0 || trackLog(t, ws) != before {
@@ -160,7 +160,7 @@ func TestCloseDayMovesOldSessions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now); err != nil {
+	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "archive", "sessions", "s-old.log")); err != nil {
@@ -184,7 +184,7 @@ func TestCloseDayNoMarkOnError(t *testing.T) {
 	oldT := trackLockTimeout
 	trackLockTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { trackLockTimeout = oldT })
-	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now); err == nil {
+	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now, true); err == nil {
 		t.Fatal("expected a lock error")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "day.closed")); !os.IsNotExist(err) {
@@ -211,12 +211,112 @@ func TestCloseDayKeepsExistingArchivedDay(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "days", d+".md"), []byte("second"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now); err != nil {
+	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now, true); err != nil {
 		t.Fatal(err)
 	}
 	a, _ := os.ReadFile(filepath.Join(dir, "archive", "days", d+".md"))
 	b, _ := os.ReadFile(filepath.Join(dir, "archive", "days", d+".md.1"))
 	if string(a) != "first" || string(b) != "second" {
 		t.Fatalf("got %q / %q", a, b)
+	}
+}
+
+// A source another close-day run already moved counts as moved.
+func TestMoveIntoMissingSource(t *testing.T) {
+	d := t.TempDir()
+	if err := moveInto(filepath.Join(d, "gone.log"), filepath.Join(d, "archive")); err != nil {
+		t.Fatalf("missing source must be skipped, got %v", err)
+	}
+}
+
+// Parallel first sessions (tmux restore) all close the day without an error.
+func TestCloseDayParallelRuns(t *testing.T) {
+	now := time.Now()
+	ws, _ := closeDayWS(t, now)
+	sdir := filepath.Join(ws, ".zenify", "track", "sessions")
+	if err := os.MkdirAll(sdir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	old := now.AddDate(0, 0, -20)
+	for i := 0; i < 20; i++ {
+		f := filepath.Join(sdir, fmt.Sprintf("s-%d.log", i))
+		if err := os.WriteFile(f, []byte(cdRow(old, "bind", fmt.Sprintf("cook-x-%d", i))+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(f, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	errs := make(chan error, 4)
+	for i := 0; i < 4; i++ {
+		go func() { errs <- runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now, false) }()
+	}
+	for i := 0; i < 4; i++ {
+		if err := <-errs; err != nil {
+			t.Errorf("run %d: %v", i, err)
+		}
+	}
+}
+
+// A run that reaches the log lock after another run closed the day skips compaction.
+func TestCloseDayRechecksUnderLock(t *testing.T) {
+	now := time.Now()
+	ws, _ := closeDayWS(t, now)
+	dir := filepath.Join(ws, ".zenify", "track")
+	before := trackLog(t, ws)
+	unlock, err := lockTrackLog(filepath.Join(dir, "log.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now, false) }()
+	report := filepath.Join(dir, "days", now.AddDate(0, 0, -1).Format("2006-01-02")+".md")
+	for i := 0; ; i++ {
+		if _, err := os.Stat(report); err == nil {
+			break
+		}
+		if i > 200 {
+			t.Fatal("report never written")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "day.closed"), []byte(now.Format("2006-01-02")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := unlock(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if trackLog(t, ws) != before {
+		t.Fatal("log.md compacted although the day was already closed")
+	}
+}
+
+// After a break longer than the keep window, the report written by this run stays in days/.
+func TestCloseDayKeepsOwnReportAfterLongBreak(t *testing.T) {
+	now := time.Now()
+	ws := trackWS(t, true)
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	at := now.AddDate(0, 0, -20)
+	id := "cook-" + at.Format("060102") + "-cccc"
+	log := cdRow(at, "start", id, "cook", "repo", "S") + "\n" + cdRow(at.Add(time.Minute), "end", id, closeDayOldPR, "1", "0") + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(log), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stubTrackGh(t)
+	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now, true); err != nil {
+		t.Fatal(err)
+	}
+	d := at.Format("2006-01-02")
+	if _, err := os.Stat(filepath.Join(dir, "days", d+".md")); err != nil {
+		t.Errorf("own report moved: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "archive", "days", d+".md")); !os.IsNotExist(err) {
+		t.Errorf("own report must not be archived: %v", err)
 	}
 }

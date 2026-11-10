@@ -139,7 +139,7 @@ func featuresLine(wsRoot string, w io.Writer) {
 		fmt.Fprintf(w, "features: track on — read %s first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --brief first (track.md#Backlog); plan today → track.md#Daily plan\n", znfSkillFile("_shared", "track.md"))
 		now := time.Now()
 		if trackOnboardLine(wsRoot, w) {
-			if err := runCloseDay(w, os.Stderr, wsRoot, now); err != nil {
+			if err := runCloseDay(w, os.Stderr, wsRoot, now, false); err != nil {
 				ui.New(os.Stderr).Note("track close-day: " + err.Error())
 			}
 		}
@@ -169,57 +169,19 @@ func trackOnboardLine(wsRoot string, w io.Writer) bool {
 }
 
 // trackSummaryLine prints one line of open work so the agent starts the session knowing it.
-// It reads local files only (log.md, merged.json, backlog-gh.json) and never calls gh, so a
+// It reads local files only (localTrackInput) and never calls gh, so a
 // session start stays fast; PR counts are as fresh as the last stats run. Read errors go to
 // stderr and print nothing on w; a line with nothing open is not printed.
 func trackSummaryLine(wsRoot string, w io.Writer, now time.Time) {
 	dir := filepath.Join(wsRoot, ".zenify", "track")
 	note := func(err error) { ui.New(os.Stderr).Note(fmt.Sprintf("znf track summary: %v", err)) }
-	raw, err := os.ReadFile(filepath.Join(dir, "log.md")) //nolint:gosec // G304 -- path under the workspace root, not user input
-	if errors.Is(err, os.ErrNotExist) {
+	in, err := localTrackInput(dir, wsRoot, now)
+	if errors.Is(err, errNoTrackLog) {
 		return
 	}
 	if err != nil {
 		note(err)
 		return
-	}
-	in := trackstats.Input{Log: string(raw), Today: now.Format("2006-01-02"), Now: now, Workspace: wsRoot, Cache: map[string]string{}, Sessions: map[string]string{}}
-	// Sessions and beats tell a stale item a live tab still holds from one left behind (backlog).
-	if in.Beats, err = readBeats(dir); err != nil {
-		note(err)
-		return
-	}
-	files, err := filepath.Glob(filepath.Join(dir, "sessions", "*.log"))
-	if err != nil {
-		note(err)
-		return
-	}
-	for _, f := range files {
-		b, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
-		if err != nil {
-			note(err)
-			return
-		}
-		in.Sessions[strings.TrimSuffix(filepath.Base(f), ".log")] = string(b)
-	}
-	if b, err := os.ReadFile(filepath.Join(dir, "merged.json")); err == nil { //nolint:gosec // G304 -- path under the workspace root
-		if err := json.Unmarshal(b, &in.Cache); err != nil {
-			note(fmt.Errorf("parse merged.json: %w", err))
-			return
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		note(err)
-		return
-	}
-	c, err := readBacklogCache(filepath.Join(dir, backlogCache))
-	if err != nil {
-		note(err)
-		return
-	}
-	if c != nil {
-		issues := c.Issues
-		in.GitHub = func() ([]trackstats.Issue, error) { return issues, nil }
-		in.SDD = c.SDD
 	}
 	res, _ := trackstats.Compute(in)
 	var parts []string
@@ -249,6 +211,51 @@ func trackSummaryLine(wsRoot string, w io.Writer, now time.Time) {
 	if len(parts) > 0 {
 		fmt.Fprintln(w, "track: "+strings.Join(parts, " · "))
 	}
+}
+
+// errNoTrackLog reports a workspace whose ledger has no log.md yet.
+var errNoTrackLog = errors.New("no track log.md")
+
+// localTrackInput builds a stats Input from the track files alone: log.md, sessions/*.log,
+// live beats, merged.json, pr-status.json and the backlog cache. It never calls gh. A missing
+// log.md returns errNoTrackLog.
+func localTrackInput(dir, wsRoot string, now time.Time) (trackstats.Input, error) {
+	raw, err := os.ReadFile(filepath.Join(dir, "log.md")) //nolint:gosec // G304 -- path under the workspace root, not user input
+	if errors.Is(err, os.ErrNotExist) {
+		return trackstats.Input{}, errNoTrackLog
+	}
+	if err != nil {
+		return trackstats.Input{}, err
+	}
+	in := trackstats.Input{Log: string(raw), Today: now.Format("2006-01-02"), Now: now, Workspace: wsRoot}
+	// Sessions and beats tell a stale item a live tab still holds from one left behind (backlog).
+	if in.Beats, err = readBeats(dir); err != nil {
+		return trackstats.Input{}, err
+	}
+	if in.Sessions, err = readSessionLogs(dir); err != nil {
+		return trackstats.Input{}, err
+	}
+	if in.Cache, err = readMergedCache(dir); err != nil {
+		return trackstats.Input{}, err
+	}
+	in.PRStatusCache = map[string]trackstats.PRStatus{}
+	if b, err := os.ReadFile(filepath.Join(dir, "pr-status.json")); err == nil { //nolint:gosec // G304 -- path under the workspace root
+		if err := json.Unmarshal(b, &in.PRStatusCache); err != nil {
+			return trackstats.Input{}, fmt.Errorf("parse pr-status.json: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return trackstats.Input{}, err
+	}
+	c, err := readBacklogCache(filepath.Join(dir, backlogCache))
+	if err != nil {
+		return trackstats.Input{}, err
+	}
+	if c != nil {
+		issues := c.Issues
+		in.GitHub = func() ([]trackstats.Issue, error) { return issues, nil }
+		in.SDD = c.SDD
+	}
+	return in, nil
 }
 
 func sentinelPresent() bool {
