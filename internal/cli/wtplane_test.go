@@ -155,8 +155,20 @@ func TestWtPlane_SlugSuffix(t *testing.T) {
 }
 
 // Todo, the dev holds it → state only.
+// Todo listing the dev and someone else: the dev may be only a watcher of another holder's item → warn, no PATCH.
+func TestWtPlane_TodoDevAmongOthers_WarnsNoMove(t *testing.T) {
+	f := newFakePlane(t, stTodo, "u-other", "u-dev")
+	w := runHook(t, f, "zen-7", patEnv)
+	if !strings.Contains(w, "holder unknown") {
+		t.Fatalf("warning %q, want 'holder unknown'", w)
+	}
+	if len(f.patches) != 0 {
+		t.Fatalf("patched %v", f.patches)
+	}
+}
+
 func TestWtPlane_TodoHeldByDev_MovesState(t *testing.T) {
-	f := newFakePlane(t, stTodo, "u-dev", "u-ba")
+	f := newFakePlane(t, stTodo, "u-dev")
 	if w := runHook(t, f, "zen-7", patEnv); w != "" {
 		t.Fatalf("warning %q, want none", w)
 	}

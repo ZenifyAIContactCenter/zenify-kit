@@ -116,6 +116,10 @@ func startZenItem(p planeAPI, slug, key string) (string, error) {
 			body["assignees"] = []string{me.ID}
 		} else if !dev {
 			return fmt.Sprintf("plane: %s is held by someone else (%s), not moved", key, cur.Name), nil
+		} else if len(item.Assignees) > 1 {
+			// Watchers (requester, BA, QC) share the list with the holder, and only zenie knows which one holds it:
+			// a listed dev may be a watcher of someone else's item. zenie moves it when it sees the pushed branch.
+			return fmt.Sprintf("plane: %s is in %s with other assignees, holder unknown here, not moved (zenie moves it when it sees your branch)", key, cur.Name), nil
 		}
 	case "backlog":
 		if !dev {
