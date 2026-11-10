@@ -134,6 +134,11 @@ func writeHistory(w io.Writer, logPath string, groups []*histGroup) error {
 	if err != nil {
 		return err
 	}
+	archived, err := readArchiveRows(filepath.Dir(logPath))
+	if err != nil {
+		return err
+	}
+	rows = append(rows, archived...)
 	// Oldest work first: the rows share one write time, so the log keeps the order of the work.
 	// History feeds no stat: the scale and quality read real items only.
 	byLast := slices.Clone(groups)

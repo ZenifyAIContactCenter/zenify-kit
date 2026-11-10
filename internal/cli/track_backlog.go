@@ -220,6 +220,30 @@ func readTrackRows(logPath string) ([][]string, error) {
 	return rows, nil
 }
 
+// readArchiveRows reads every <trackDir>/archive/*.md file (not subdirectories) with the
+// same row split as readTrackRows. A missing archive directory yields no rows.
+func readArchiveRows(trackDir string) ([][]string, error) {
+	entries, err := os.ReadDir(filepath.Join(trackDir, "archive"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, exitcode.New(exitcode.Fail, err)
+	}
+	var rows [][]string
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".md" {
+			continue
+		}
+		r, err := readTrackRows(filepath.Join(trackDir, "archive", e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, r...)
+	}
+	return rows, nil
+}
+
 func rowsHave(rows [][]string, kind, id string) bool {
 	for _, p := range rows {
 		if len(p) >= 3 && p[1] == kind && p[2] == id {
