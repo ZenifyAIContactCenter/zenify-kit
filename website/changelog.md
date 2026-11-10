@@ -8,6 +8,15 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.63.0
+
+*2026-11-10*
+
+- **Chốt sổ track hằng ngày:** session đầu tiên của ngày mới (track bật, đã onboard) tự chốt sổ ngày làm việc trước và đưa báo cáo vào context: lượt xong / huỷ / rollback theo loại, số vòng fix, PR đã mở, danh sách PR đã merge kèm link, ước lượng khớp hay lệch; cùng việc còn dở (lượt carried, gắn cờ sắp stale từ 5 ngày), PR chưa merge kèm bước tiếp (CI đỏ, còn thread, bị yêu cầu sửa, sẵn sàng merge) và mục plan chưa xong. Agent tóm tắt lại rồi đề nghị lập Daily plan. Báo cáo lưu ở `.zenify/track/days/<ngày>.md`. Trong SessionStart chỉ đọc cache, không gọi gh; chạy tay `zenify track close-day` để chốt ngay và lấy trạng thái PR mới nhất. Xem [Track pane](/guides/track-pane).
+- **Ledger track chỉ giữ 14 ngày:** khi chốt sổ, dòng cũ hơn 14 ngày của `.zenify/track/log.md` được dời (không xoá) sang `.zenify/track/archive/<YYYY-MM>.md`; mọi dòng `history` cũng được dời. Lượt đang mở, backlog còn mở, lượt PR vừa merge hay plan còn nhắc tới, và các lượt mà thống kê S/M/L, ước lượng, chất lượng cần đều được giữ, nên số liệu trên pane không đổi.
+- **Lệnh ghi track không còn mất dòng:** mọi lệnh ghi `log.md` (`start`, `est`, `ship`, `fix`, `ci`, `end`, backlog, onboard) chờ `log.lock` tối đa 2 giây, để không chen vào lúc ledger đang được dọn.
+- **Tip trên status line chỉ việc cần xử lý trước:** khi tab không có việc đang chạy, tip ưu tiên PR CI đỏ → PR còn thread chưa resolve → PR bị yêu cầu sửa → PR sẵn sàng merge → việc treo từ 5 ngày, rồi mới tới các tip cũ.
+
 ## v0.62.0
 
 *2026-11-10*
