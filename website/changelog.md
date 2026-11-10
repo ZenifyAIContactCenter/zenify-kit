@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.62.0
+
+*2026-11-10*
+
+- **`zenify wt new zen-<n>` báo cho Plane là bạn bắt đầu làm:** slug bắt đầu bằng `zen-<n>` thì `wt new` dùng PAT Plane của bạn để chuyển việc `ZEN-<n>` sang In Progress. Việc ở Backlog, hoặc ở Todo mà chưa ai được giao, thì chuyển và thêm bạn vào assignee; Todo chỉ có bạn trong assignee thì chỉ chuyển state. Todo có người khác cùng trong assignee, việc ở Intake, Done hay Cancelled thì chỉ in cảnh báo; việc đã In Progress trở đi thì không làm gì. Plane lỗi, thiếu PAT hay quá 8 giây không phản hồi cũng chỉ in cảnh báo, worktree vẫn được tạo. Xem [Worktree theo slug](/concepts/worktree-per-slug).
+- **`zenify db-read --target msghub` đọc Mongo của message-hub qua broker:** nhận mọi lệnh Mongo, không nhận `sql`/`tables`; production chỉ dành cho lead, staging mở cho dev. Xem [Đọc dữ liệu thật](/guides/read-real-data).
+
 ## v0.61.1
 
 *2026-11-10*
