@@ -62,3 +62,24 @@ func TestHarness_LoginFailureLeaksNoPassword(t *testing.T) {
 		t.Error("the setup project must run with trace off")
 	}
 }
+
+// A cold dev server compiles /login and the post-login route on first hit; the
+// default 30s test timeout and 5s URL wait fail there (seen on a Vite app).
+func TestHarness_LoginSurvivesColdDevServer(t *testing.T) {
+	for _, p := range []string{"harness/auth.setup.ts", "../visual/harness/auth.setup.ts"} {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := string(b)
+		for _, want := range []string{
+			"setup.setTimeout(180_000)",
+			"not.toHaveURL(/\\/login(\\?|$)/, { timeout: 90_000 })",
+			"login rejected: HTTP",
+		} {
+			if !strings.Contains(s, want) {
+				t.Errorf("%s lacks %q", p, want)
+			}
+		}
+	}
+}
