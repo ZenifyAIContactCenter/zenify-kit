@@ -9,7 +9,9 @@ Khi diff đổi giao diện và repo có `.znf/visual/routes.json`. Bước veri
 
 Lệnh đăng nhập một lần bằng tài khoản E2E lấy từ broker khi manifest khai báo `broker:`, hoặc bằng các key `E2E_DOMAIN`, `E2E_EMAIL`, `E2E_PASSWORD` trong `.zenify/.env` khi không có broker, mở từng route trong `routes.json`, chờ font tải xong, che các vùng khai trong `mask`, rồi so ảnh toàn trang với baseline trong `.znf/visual/__snapshots__`. Lệch thì lệnh báo "visual mismatch" và trỏ tới ảnh diff trong `.znf/visual/__diff__`.
 
-Mỗi route khai `name`, `path`, tùy chọn `waitFor` là selector cần chờ và `mask` là danh sách selector vùng động như badge thông báo hay đồng hồ.
+Trước khi chạy Docker, lệnh validate `routes.json`: key lạ, `name` không khớp `[A-Za-z0-9_-]+`, `path` không bắt đầu bằng `/` hoặc trùng nhau đều làm lệnh thoát mã 2 và nêu route sai. Danh sách rỗng thì lệnh in `0 routes` và không chạy Docker.
+
+Mỗi route khai `name`, `path`, tùy chọn `waitFor` là selector cần chờ và `mask` là danh sách selector vùng động như badge thông báo hay đồng hồ. Route có thêm `aria` (selector gốc) thì lệnh còn so cây aria của vùng đó với `.znf/visual/__snapshots__/<name>.aria.yml` theo kiểu `deep-equal`, nên thêm phần tử cũng bị bắt như mất phần tử. Route không có `aria` chỉ so ảnh.
 
 ## Cờ
 

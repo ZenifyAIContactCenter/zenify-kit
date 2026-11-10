@@ -72,6 +72,12 @@ Bạn khai danh sách route trong `.znf/visual/routes.json` của repo. Mỗi ro
 ]
 ```
 
+Route có thêm field `aria` (selector gốc của vùng nội dung) thì lệnh còn so cây aria của vùng đó với `.znf/visual/__snapshots__/<tên>.aria.yml`. Phép so là `deep-equal`, nên thêm một nút cũng bị bắt, không chỉ mất nút. Chỉ khai `aria` cho vùng không chứa dữ liệu tải từ backend; route không có `aria` chỉ so ảnh.
+
+```json
+{ "name": "settings", "path": "/settings", "waitFor": "main", "aria": "main" }
+```
+
 Lệnh mở từng route trong Docker bằng phiên bản Playwright đã ghim, tắt animation, chụp ảnh toàn trang và so với ảnh baseline trong `.znf/visual/__snapshots__`. Lệch thì lệnh in đường dẫn ảnh diff.
 
 ```bash
@@ -79,6 +85,16 @@ zenify visual check --repo repos/contact-center-web --port 3312
 ```
 
 Khi giao diện đổi có chủ ý, chạy lại với `--update` và commit ảnh baseline mới cùng PR. Người review nhìn ảnh baseline đổi là biết màn nào đổi.
+
+Lệnh `visual check` validate `routes.json` trước khi chạy Docker (key lạ, `name` hoặc `path` trùng hay sai định dạng đều thoát mã 2) và từ chối chạy khi `routes.json` hoặc baseline trên đĩa chưa được git track. Baseline nằm trong thư mục bị `.gitignore`, nên cần `git add -f`.
+
+### Danh mục tự lớn dần
+
+Bạn không phải nhớ thêm route cho màn mới. Khi `ui-verifier` đo một màn đạt ở mọi width và màn đó tới được bằng một đường dẫn tĩnh chưa có trong danh mục, agent in một dòng `route-proposal:` kèm `mask` và `aria` gợi ý. Agent không ghi file nào. Ở bước 4 của `/znf:ship`, phiên chính áp từng đề xuất bằng `zenify visual add-route`, chạy `zenify visual check --update` để chụp baseline, rồi chạy `zenify visual check` lần nữa không update. Lần chạy sau cùng đạt thì phiên chính `git add -f` các file lệnh `add-route` đã in. Lần đó lệch, hoặc `add-route` thoát mã 2, thì route bị hoàn tác kèm lý do, và ship vẫn tiếp tục. Bảng ship có thêm dòng `routes:` ghi số route đã thêm và số route bị từ chối.
+
+```bash
+zenify visual add-route --repo repos/contact-center-web --name settings --path /settings --aria main
+```
 
 ## Journey E2E
 
@@ -128,7 +144,7 @@ Task chỉ ghi "test màn tạo ticket" không đủ. Skill sẽ hỏi lại th�
 
 - Sửa layout theo verdict FAIL, hay chấp nhận vì lệch có sẵn ở phần tử anh em.
 - Cập nhật baseline ảnh khi giao diện đổi có chủ ý.
-- Thêm route mới vào `routes.json` khi bạn tạo màn mới.
+- Duyệt `routes.json` và baseline mới mà ship thêm trong PR, rồi giữ hoặc bỏ từng route.
 - Quyết định task nào cần journey, lúc lập plan.
 
 ## Lỗi thường gặp
@@ -141,6 +157,7 @@ Task chỉ ghi "test màn tạo ticket" không đủ. Skill sẽ hỏi lại th�
 | `docker daemon not running` | Docker Desktop chưa bật | Bật Docker rồi chạy lại. `zenify doctor` kiểm tra môi trường |
 | ui-verifier trả BLOCKED | `zenify e2e login` thất bại (không tới được broker, hoặc thiếu `E2E_*` khi không có broker), hoặc dev server chưa chạy | Chạy `zenify doctor` xem mục `broker` (bật WARP nếu không tới được). Không có broker thì kiểm tra ba key `E2E_*` bằng `zenify env list`. Kiểm tra dev server bằng `/znf:run` |
 | Lint báo thiếu `@domain-assert` | Journey chỉ assert trên màn hình | Thêm re-fetch qua API và expect trên field thật |
+| `baseline not tracked by git` | `routes.json` hoặc baseline mới chưa được git track | Chạy đúng lệnh `git add -f …` mà lỗi in ra |
 | Lệch ảnh ở badge hoặc đồng hồ | Vùng động chưa che | Thêm selector vào `mask` của route |
 
 ## Xem thêm

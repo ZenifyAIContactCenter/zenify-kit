@@ -96,3 +96,14 @@ missing thing.
 Also moved here: require the measurement next to an *unchanged sibling*, so an overflow that was
 already there is not reported as yours. A multi-screen
 change is one verifier covering every screen; if you do split it, each verifier gets its own `zenify browser` session.
+
+### Applying route proposals
+Only at ship step 4, never in `/cook`'s per-task verify: a baseline must capture the state that will merge. For each `route-proposal:` line the verifier returned, run in order:
+
+1. `zenify visual add-route --repo <path> --name … --path … [--wait-for …] [--mask …] [--aria …]`
+2. `zenify visual check --repo <path> --port <P> --update`
+3. `zenify visual check --repo <path> --port <P>` (no update)
+
+If step 3 passes, run exactly the `git add -f` command that `add-route` printed. If it fails, or `add-route` exits 2, undo that route: `git checkout -- .znf/visual/routes.json` (delete the file if you just created it), delete the baseline files just generated, and record the reason. A declined proposal never turns Shippable to NO. Adding a route changes the fingerprint, so any check stamped with the old `fp` must re-run.
+
+The optional route field `aria` is a root selector whose accessibility tree is compared against `.znf/visual/__snapshots__/<name>.aria.yml` with `deep-equal`, so an added element fails as well as a missing one. `visual check` refuses to run when `routes.json` or an on-disk baseline is untracked: `baseline not tracked by git — run: git add -f …`.

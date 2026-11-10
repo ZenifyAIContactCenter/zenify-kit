@@ -40,6 +40,16 @@ Run `zenify browser -s=<session> screenshot`. It writes under `~/.zenify/playwri
 
 Leave the screenshots where they are; do not delete them. **Always `close` your own session at the end** (`zenify browser -s=<session> close`), also when you report BLOCKED or FAIL.
 
+## Route proposal
+When a screen passes at every viewport you measured, you may propose it for the visual-regression catalog. Propose only if ALL hold: the screen is reachable by one static path (no id in the URL, no click or typing needed to reach the verified state); `<repo>/.znf/visual/` exists; and the path is not already in `<repo>/.znf/visual/routes.json` (read it with `Read`).
+
+Print exactly one line per proposal, a single-line JSON object; omit unused fields entirely:
+`route-proposal: {"name":"<kebab-case>","path":"</path>","waitFor":"<selector>","mask":["<selector>"],"aria":"<selector>"}`
+- `mask`: regions you saw change between two loads of the page (badge, clock, avatar, counter).
+- `aria`: only when the content region holds no backend-loaded data (tables, lists, figures); otherwise leave it out.
+
+Never write a file and never run `zenify visual`. Do not propose when the screen is FAIL/PARTIAL or the path has parameters.
+
 ## Output (return ONLY this — it's your tool result, not a human message)
 - VERDICT: PASS / FAIL / BLOCKED / PARTIAL for each thing checked, plus the `verdict:`/`overflow:` lines `record` printed for every (screen, viewport).
 - Functional evidence: what you drove and what it did.

@@ -91,6 +91,7 @@ Verified at fingerprint = <fp10>
       look: <verdict + overflow numbers · "nothing renders" ONLY if files --count = 0 · or "❌ BLOCKED: <missing thing>" → Shippable NO>
             before concluding: `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` — non-zero →
             append "❌ BLOCKED" here and Shippable NO; a waiver appends "waived: <reason>"
+      routes: +<N> added (<names>), <M> declined (<name>: <reason>) · or "none proposed"
       data checks: <which of the project-specific ones ran; which the diff could not trigger>
 ✅/❌ Independent review   (<fp10>)  round <R>: <N CRITICAL/HIGH → addressed> · diff <N> LOC
       not blocking: <MEDIUM/LOW findings, plus any out-of-scope observations>
