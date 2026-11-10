@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/broker/api"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 )
 
@@ -464,6 +465,7 @@ func ptr(s string) *string { return &s }
 
 // The session-start digest carries a one-line track summary read from local files only.
 func TestSessionStart_TrackSummaryLine(t *testing.T) {
+	stubTrackGh(t)
 	t.Setenv("ZENIFY_HOME", "")
 	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
 	t.Setenv("ZNF_AUTONOMOUS", "")
@@ -542,7 +544,7 @@ func TestSessionStart_TrackSummaryHeldStale(t *testing.T) {
 	}
 	log := stamp + " · onboard · memory\n" + old + " · start · cook-261028-aaaa · cook · kit · M\n"
 	files := map[string]string{
-		filepath.Join(dir, "log.md"):              log,
+		filepath.Join(dir, "log.md"):             log,
 		filepath.Join(dir, "sessions", "s1.log"): old + " · bind · cook-261028-aaaa\n",
 		filepath.Join(dir, "live", "s1.beat"):    "",
 	}
@@ -558,4 +560,107 @@ func TestSessionStart_TrackSummaryHeldStale(t *testing.T) {
 	if out := buf.String(); !strings.Contains(out, "track: 1 carried\n") {
 		t.Fatalf("want only the carried item, got %q", out)
 	}
+}
+
+// closeDaySessionWS turns a closeDayWS workspace into one SessionStart accepts and onboards its ledger.
+func closeDaySessionWS(t *testing.T, now time.Time) string {
+	t.Helper()
+	t.Setenv("ZENIFY_HOME", "")
+	t.Setenv("ZENIFY_NO_UPDATE_CHECK", "1")
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	t.Setenv("HOME", t.TempDir())
+	ws, _ := closeDayWS(t, now)
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "manifest.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(ws, ".zenify", "track", "log.md")
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := now.Add(-time.Minute).UTC().Format(time.RFC3339) + " · onboard · memory\n"
+	if err := os.WriteFile(logPath, []byte(row+string(b)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return ws
+}
+
+// captureStderr runs f with os.Stderr redirected to a file and returns what was written.
+func captureStderr(t *testing.T, f func()) string {
+	t.Helper()
+	fh, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = fh
+	defer func() { os.Stderr = old }()
+	f()
+	if err := fh.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(fh.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// FR-2.4: the first session of a new day prints the previous day's report before the track line.
+func TestSessionStart_TrackCloseDay(t *testing.T) {
+	now := time.Now()
+	ws := closeDaySessionWS(t, now)
+	var buf bytes.Buffer
+	if rc := runSessionStart(ws, &buf); rc != 0 {
+		t.Fatalf("rc = %d", rc)
+	}
+	out := buf.String()
+	i := strings.Index(out, "# Track day close:")
+	f := strings.Index(out, "features: track on")
+	if i < 0 || f < 0 || i < f {
+		t.Fatalf("want the report after the features line, got %q", out)
+	}
+	if j := strings.Index(out, "\ntrack: "); j >= 0 && j < i {
+		t.Errorf("summary line printed before the report in %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(ws, ".zenify", "track", "day.closed")); err != nil {
+		t.Errorf("day.closed missing: %v", err)
+	}
+}
+
+// SC-7: a held log lock never fails SessionStart; the error is a note and the day stays open.
+func TestSessionStart_TrackCloseDayLockHeld(t *testing.T) {
+	now := time.Now()
+	ws := closeDaySessionWS(t, now)
+	dir := filepath.Join(ws, ".zenify", "track")
+	unlock, err := lockTrackLog(filepath.Join(dir, "log.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = unlock() }()
+	oldT := trackLockTimeout
+	trackLockTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { trackLockTimeout = oldT })
+	var buf bytes.Buffer
+	rc := -1
+	stderr := captureStderr(t, func() { rc = runSessionStart(ws, &buf) })
+	if rc != 0 {
+		t.Fatalf("rc = %d", rc)
+	}
+	if !strings.Contains(stderr, "track close-day:") {
+		t.Errorf("want a close-day note in stderr, got %q", stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "day.closed")); !os.IsNotExist(err) {
+		t.Errorf("day.closed must be absent: %v", err)
+	}
+}
+
+// stubTrackGh keeps close-day off the real gh during a SessionStart test.
+func stubTrackGh(t *testing.T) {
+	t.Helper()
+	oldM, oldS, oldT := trackMerged, trackPRStatus, trackPRTitle
+	trackMerged = func(string) (string, error) { return "", nil }
+	trackPRStatus = func(string) (trackstats.PRStatus, error) { return trackstats.PRStatus{}, nil }
+	trackPRTitle = func(string) (string, error) { return "Title", nil }
+	t.Cleanup(func() { trackMerged, trackPRStatus, trackPRTitle = oldM, oldS, oldT })
 }

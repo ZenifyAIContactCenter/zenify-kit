@@ -137,18 +137,23 @@ func featuresLine(wsRoot string, w io.Writer) {
 	}
 	if feats["track"] {
 		fmt.Fprintf(w, "features: track on — read %s first: cook/fix/hotfix/ship/ci-watch record to zenify track, and znf:ship watches CI after opening a PR (as --watch); next task / backlog → zenify track stats --brief first (track.md#Backlog); plan today → track.md#Daily plan\n", znfSkillFile("_shared", "track.md"))
-		trackOnboardLine(wsRoot, w)
-		trackSummaryLine(wsRoot, w, time.Now())
+		now := time.Now()
+		if trackOnboardLine(wsRoot, w) {
+			if err := runCloseDay(w, os.Stderr, wsRoot, now); err != nil {
+				ui.New(os.Stderr).Note("track close-day: " + err.Error())
+			}
+		}
+		trackSummaryLine(wsRoot, w, now)
 	}
 }
 
 // trackOnboardLine reminds the dev to onboard when log.md has no `onboard` row. A missing log.md means not onboarded; any other read error goes to stderr
-// and prints nothing on w.
-func trackOnboardLine(wsRoot string, w io.Writer) {
+// and prints nothing on w. It reports whether the ledger is onboarded.
+func trackOnboardLine(wsRoot string, w io.Writer) bool {
 	raw, err := os.ReadFile(filepath.Join(wsRoot, ".zenify", "track", "log.md")) //nolint:gosec // G304 -- path under the workspace root, not user input
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		ui.New(os.Stderr).Note(fmt.Sprintf("znf track onboard check: %v", err))
-		return
+		return false
 	}
 	ev, malformed := trackstats.ParseLog(string(raw))
 	if malformed > 0 {
@@ -156,10 +161,11 @@ func trackOnboardLine(wsRoot string, w io.Writer) {
 	}
 	for _, e := range ev {
 		if e.Type == "onboard" {
-			return
+			return true
 		}
 	}
 	fmt.Fprintf(w, "track: not onboarded — run the Onboard section of %s\n", znfSkillFile("_shared", "track.md"))
+	return false
 }
 
 // trackSummaryLine prints one line of open work so the agent starts the session knowing it.
