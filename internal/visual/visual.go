@@ -44,7 +44,12 @@ func BuildArgs(o Options, cfg RunConfig) []string {
 	// before running — the version is locked by package.json, browsers come from the image.
 	cmd := "npm install --no-audit --no-fund --no-save --silent && npx playwright test"
 	if cfg.Update {
-		cmd += " --update-snapshots"
+		// Playwright 1.64.1's default mode (changed) does not write an aria
+		// snapshot that has no baseline yet, and still passes. A quiet
+		// missing-only pass creates it; its mismatch failures are expected.
+		cmd = "npm install --no-audit --no-fund --no-save --silent && " +
+			"{ npx playwright test --update-snapshots=missing >/dev/null 2>&1; " +
+			"npx playwright test --update-snapshots=changed; }"
 	}
 	args = append(args, pwdocker.Image(), "sh", "-c", cmd)
 	return args

@@ -252,3 +252,23 @@ func TestRunVisualCheck_NotGitWarnsAndRuns(t *testing.T) {
 		t.Errorf("called=%v out=%q", called, out.String())
 	}
 }
+
+// Docker reads a relative -v source as a volume name and refuses it.
+func TestRunVisualCheck_RelativeRepoMountsAbsolute(t *testing.T) {
+	repo := trackFixture(t)
+	t.Chdir(repo)
+	var got []string
+	runner := func(_ string, args []string) error { got = args; return nil }
+	if err := runVisualCheck(visualOpts{runner: runner, goos: "darwin", repo: ".", port: 1, update: true, out: &bytes.Buffer{}}); err != nil {
+		t.Fatal(err)
+	}
+	for i, a := range got {
+		if a == "-v" && strings.HasSuffix(got[i+1], ":/harness/.znf/visual") {
+			if !filepath.IsAbs(strings.TrimSuffix(got[i+1], ":/harness/.znf/visual")) {
+				t.Errorf("snapshots mount %q is not absolute", got[i+1])
+			}
+			return
+		}
+	}
+	t.Fatalf("no snapshots mount in %v", got)
+}

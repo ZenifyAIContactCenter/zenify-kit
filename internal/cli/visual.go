@@ -27,7 +27,11 @@ type visualOpts struct {
 
 // runVisualCheck writes the harness to tmp, builds a RunConfig, calls visual.Check, maps the error.
 func runVisualCheck(o visualOpts) error {
-	snap := filepath.Join(o.repo, ".znf", "visual")
+	// docker reads a relative -v source as a volume name.
+	snap, err := filepath.Abs(filepath.Join(o.repo, ".znf", "visual"))
+	if err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
 	routes, err := visual.LoadRoutes(o.repo)
 	if err != nil {
 		return err
