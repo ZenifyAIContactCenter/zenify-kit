@@ -60,6 +60,7 @@ func newTrackCmd() *cobra.Command {
 		newTrackStartCmd(&ws), newTrackEstCmd(&ws), newTrackShipCmd(&ws),
 		newTrackFixCmd(&ws), newTrackCICmd(&ws), newTrackEndCmd(&ws), newTrackStatsCmd(&ws),
 		newTrackBacklogCmd(&ws), newTrackOnboardCmd(&ws), newTrackPlanCmd(&ws),
+		newTrackCloseDayCmd(&ws),
 	)
 	return c
 }
