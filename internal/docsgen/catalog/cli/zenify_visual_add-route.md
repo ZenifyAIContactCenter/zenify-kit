@@ -7,7 +7,7 @@ Khi `ui-verifier` đề xuất một route mới cho danh mục và phiên chín
 
 ## Kết quả
 
-Lệnh validate danh sách sau khi thêm. `name` hoặc `path` đã tồn tại thì lệnh thoát mã 2 và file không đổi. Chưa có `routes.json` thì lệnh tạo file với đúng một route. Sau khi thêm, lệnh in ba dòng: số route hiện có, lệnh `zenify visual check ... --update` để chụp baseline, và lệnh `git add -f` cho `routes.json` cùng các file baseline của route.
+Lệnh validate danh sách sau khi thêm. `name` hoặc `path` đã tồn tại thì lệnh thoát mã 2 và file không đổi. Chưa có `routes.json` thì lệnh tạo file với đúng một route. Sau khi thêm, lệnh in ba dòng: số route hiện có, lệnh `zenify visual check ... --update` để chụp baseline, và lệnh `git -C <repo> add -f` cho `routes.json` cùng các file baseline của route.
 
 ## Cờ
 
@@ -28,4 +28,4 @@ zenify visual add-route --repo repos/contact-center-web --name ticket-list --pat
 
 ## Lưu ý
 
-Lệnh chỉ sửa `routes.json`. Baseline chỉ có sau khi bạn chạy `zenify visual check --update`, và phải `git add -f` cả `routes.json` lẫn baseline thì `visual check` mới chấp nhận.
+Lệnh chỉ sửa `routes.json`, ghi qua file tạm rồi đổi tên nên không để lại file dở. Baseline chỉ có sau khi bạn chạy `zenify visual check --update`, và phải `git add -f` cả `routes.json` lẫn baseline thì `visual check` mới chấp nhận.

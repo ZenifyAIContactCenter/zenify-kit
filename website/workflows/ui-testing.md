@@ -86,11 +86,11 @@ zenify visual check --repo repos/contact-center-web --port 3312
 
 Khi giao diện đổi có chủ ý, chạy lại với `--update` và commit ảnh baseline mới cùng PR. Người review nhìn ảnh baseline đổi là biết màn nào đổi.
 
-Lệnh `visual check` validate `routes.json` trước khi chạy Docker (key lạ, `name` hoặc `path` trùng hay sai định dạng đều thoát mã 2) và từ chối chạy khi `routes.json` hoặc baseline trên đĩa chưa được git track. Baseline nằm trong thư mục bị `.gitignore`, nên cần `git add -f`.
+Lệnh `visual check` validate `routes.json` trước khi chạy Docker (key lạ, `name` hoặc `path` trùng hay sai định dạng đều thoát mã 2) và từ chối chạy khi `routes.json` hoặc baseline trên đĩa chưa được git track. Baseline nằm dưới `.znf/`, thư mục mà repo thường ignore (kit không tự thêm dòng này vào `.git/info/exclude`, chỉ thêm `.worktrees/` và `.wt/`), nên baseline mới cần `git add -f`.
 
 ### Danh mục tự lớn dần
 
-Bạn không phải nhớ thêm route cho màn mới. Khi `ui-verifier` đo một màn đạt ở mọi width và màn đó tới được bằng một đường dẫn tĩnh chưa có trong danh mục, agent in một dòng `route-proposal:` kèm `mask` và `aria` gợi ý. Agent không ghi file nào. Ở bước 4 của `/znf:ship`, phiên chính áp từng đề xuất bằng `zenify visual add-route`, chạy `zenify visual check --update` để chụp baseline, rồi chạy `zenify visual check` lần nữa không update. Lần chạy sau cùng đạt thì phiên chính `git add -f` các file lệnh `add-route` đã in. Lần đó lệch, hoặc `add-route` thoát mã 2, thì route bị hoàn tác kèm lý do, và ship vẫn tiếp tục. Bảng ship có thêm dòng `routes:` ghi số route đã thêm và số route bị từ chối.
+Bạn không phải nhớ thêm route cho màn mới. Khi `ui-verifier` đo một màn đạt ở mọi width và màn đó tới được bằng một đường dẫn tĩnh chưa có trong danh mục, agent in một dòng `route-proposal:` kèm `mask` và `aria` gợi ý. Agent không ghi file nào. Ở bước 4 của `/znf:ship`, phiên chính áp từng đề xuất bằng `zenify visual add-route`, chạy `zenify visual check --update` để chụp baseline, `git -C <repo> add -f` các file lệnh `add-route` đã in, rồi chạy `zenify visual check` lần nữa không update. Lần chạy sau cùng lệch, hoặc `add-route` thoát mã 2, thì phiên chính bỏ stage (`git -C <repo> reset -q -- <file>`), khôi phục `routes.json` (hoặc xoá nếu vừa tạo), xoá baseline vừa sinh, ghi lý do, và ship vẫn tiếp tục. Bảng ship có thêm dòng `routes:` ghi số route đã thêm và số route bị từ chối.
 
 ```bash
 zenify visual add-route --repo repos/contact-center-web --name settings --path /settings --aria main

@@ -46,7 +46,7 @@ zenify visual check --repo repos/contact-center-web --port 3312 --update
 
 Cần Docker đang chạy. Thiếu Docker hoặc daemon chưa bật, lệnh báo rõ thay cho báo lệch ảnh.
 
-Khi so (không có `--update`), lệnh từ chối chạy nếu `routes.json` hoặc baseline đang có trên đĩa chưa được git track, và in lệnh `git add -f` cần chạy (mã 1). Thư mục không phải repo git thì lệnh chỉ cảnh báo rồi vẫn chạy.
+Khi so (không có `--update`), lệnh từ chối chạy nếu `routes.json` hoặc baseline đang có trên đĩa chưa được git track, và in lệnh `git -C <repo> add -f` cần chạy (mã 1). Thư mục không phải repo git thì lệnh chỉ cảnh báo rồi vẫn chạy.
 
 ## Lệnh liên quan
 
