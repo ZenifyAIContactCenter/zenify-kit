@@ -27,10 +27,10 @@ type Violation struct {
 // trailing boundary is checked in code (see classMatches / hexMatches).
 var (
 	hexRe     = regexp.MustCompile(`#[0-9a-fA-F]+[A-Za-z0-9_-]?`)
-	paletteRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])((?:bg|text|border|ring|fill|stroke|from|via|to|outline|divide|decoration|shadow|accent|caret|placeholder)-` +
+	paletteRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])((?:bg|text|border(?:-[trblxyse])?|ring(?:-offset)?|fill|stroke|from|via|to|outline|divide(?:-[xy])?|decoration|shadow|accent|caret|placeholder)-` +
 		`(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-` +
 		`(?:950|900|800|700|600|500|400|300|200|100|50)(?:/[0-9]+)?)`)
-	arbitraryRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])(-?[a-z][a-z0-9-]*-\[[0-9]+(?:\.[0-9]+)?(?:px|rem|em)\])`)
+	arbitraryRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])(-?[a-z][a-z0-9-]*-\[-?[0-9]+(?:\.[0-9]+)?(?i:px|rem|em)\])`)
 )
 
 func isWordByte(b byte) bool {
@@ -95,8 +95,8 @@ func isStyleFile(p string) bool {
 }
 
 func hasStyleWaiver(line string) bool {
-	idx := strings.Index(line, styleWaiverMarker)
-	return idx >= 0 && strings.TrimSpace(line[idx+len(styleWaiverMarker):]) != ""
+	_, ok := markerReason(line, styleWaiverMarker)
+	return ok
 }
 
 // hunkNewStart parses the +c of "@@ -a,b +c,d @@".
@@ -128,7 +128,7 @@ func scanAdded(diff string, files, rules []string) (violations []Violation, chec
 		case strings.HasPrefix(line, "diff --git "):
 			cur, inHunk = "", false
 		case !inHunk && strings.HasPrefix(line, "+++ "):
-			cur = strings.TrimPrefix(strings.TrimRight(line[len("+++ "):], "\t"), "b/")
+			cur = diffHeaderPath(line)
 		case strings.HasPrefix(line, "@@"):
 			inHunk, newLine, waivedNext = true, hunkNewStart(line), false
 		case !inHunk || line == "" || line[0] == '\\':

@@ -69,14 +69,16 @@ Repo khai luật trong `.claude/worktree.json`, ví dụ `"uiVerify": {"renderPa
 | Luật | Bắt | Ví dụ bị báo | Ví dụ bỏ qua |
 |---|---|---|---|
 | `hex` | màu hex 3, 4, 6 hoặc 8 chữ số | `#fff`, `#ff0000aa`, `text-[#ff0000]` | `#content`, `href="#section"` |
-| `palette` | class màu Tailwind thô | `bg-red-500`, `hover:text-slate-900/50` | `text-primary`, `bg-background` |
-| `arbitrary` | cỡ tuyệt đối tuỳ ý | `w-[437px]`, `mt-[1.5rem]` | `w-[50%]`, `grid-cols-[1fr_auto]` |
+| `palette` | class màu Tailwind thô | `bg-red-500`, `border-t-red-500`, `hover:text-slate-900/50` | `text-primary`, `bg-background` |
+| `arbitrary` | cỡ tuyệt đối tuỳ ý | `w-[437px]`, `mt-[1.5rem]`, `top-[-13px]` | `w-[50%]`, `grid-cols-[1fr_auto]`, `h-[calc(100%-13px)]` |
+
+Luật `hex` không phân biệt được màu với anchor chỉ gồm chữ a–f: `href="#add"` hay `#fade` cũng bị báo. Gặp trường hợp đó, dùng marker miễn bên dưới.
 
 Lint chỉ xét dòng nhánh này thêm vào file `.tsx`, `.jsx`, `.vue`, `.svelte` thuộc tập render, nên nợ cũ không bị tính. File mới chưa `git add` cũng được xét, và mọi dòng của nó coi là dòng thêm. Đổi tên file không thêm dòng nào. Chạy riêng bằng [`zenify ui-verify style`](/reference/cli/zenify_ui-verify_style): sạch thì in `style: clean (<n> added lines checked)`, có vi phạm thì in từng dòng `<file>:<dòng> <luật> <chuỗi khớp>` rồi `style: <k> violation(s)` và thoát mã 1.
 
 `zenify ui-verify check` chạy lint này trước khi xét waiver và artifact: có vi phạm thì state là `style`, thông điệp bắt đầu bằng `ui-verify style —` (tối đa 10 vi phạm kèm tổng số), thoát mã 1. Ở chế độ tự động (`ZNF_AUTONOMOUS=1`) kết quả vẫn là mã 1 và không mở await `needs-human`, vì agent tự sửa được dòng đó.
 
-Miễn cho một ngoại lệ thật: thêm `znf:ui-style-ok: <lý do>` vào comment trên chính dòng đó hoặc dòng thêm ngay trước nó. Lý do không được rỗng. Marker `znf:ui-verify-ok` không miễn được lint style.
+Miễn cho một ngoại lệ thật: thêm `znf:ui-style-ok: <lý do>` vào comment trên chính dòng đó hoặc dòng thêm ngay trước nó. Lý do phải có chữ hoặc số: `{/* znf:ui-style-ok: */}` không miễn được gì. Marker `znf:ui-verify-ok` không miễn được lint style.
 
 Để agent viết UI đúng luật từ đầu, skill `react-patterns` có hướng dẫn tìm và dùng lại primitive của repo, dùng màu từ theme và chuỗi qua i18n.
 

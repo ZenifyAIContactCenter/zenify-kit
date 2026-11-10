@@ -129,7 +129,7 @@ func TestWaiver(t *testing.T) {
 		{"context line does not", fileDiff("src/App.tsx", " context znf:ui-verify-ok: x\n"), false, ""},
 		{"+++ content line inside a hunk is added", fileDiff("src/b.css", "+++ znf:ui-verify-ok: css\n"), true, "css"},
 		{"second file section is tracked",
-			fileDiff("docs/notes.md", " x\n") + fileDiff("src/b.css", "+/* znf:ui-verify-ok: style */\n"), true, "style */"},
+			fileDiff("docs/notes.md", " x\n") + fileDiff("src/b.css", "+/* znf:ui-verify-ok: style */\n"), true, "style"},
 		{"non-render file does not", fileDiff("docs/notes.md", "+znf:ui-verify-ok: docs\n"), false, ""},
 		{"marker in a file after a render file does not",
 			fileDiff("src/App.tsx", " x\n") + fileDiff("docs/notes.md", "+znf:ui-verify-ok: docs\n"), false, ""},
@@ -971,5 +971,21 @@ func TestCheck_StyleCleanFallsThrough(t *testing.T) {
 	state, msg, err := Check(d, repo, "origin/staging")
 	if state != "verified" || err != nil {
 		t.Fatalf("state=%q msg=%q err=%v", state, msg, err)
+	}
+}
+
+func TestParsePorcelainPath_Quoted(t *testing.T) {
+	if got := parsePorcelainPath(`?? "src/q\"t.tsx"`); got != `src/q"t.tsx` {
+		t.Errorf("got %q", got)
+	}
+	if got := parsePorcelainPath(`R  "a b.tsx" -> "src/c\td.tsx"`); got != "src/c\td.tsx" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestFindWaiver_CommentCloserIsNotAReason(t *testing.T) {
+	diff := "diff --git a/src/A.tsx b/src/A.tsx\n--- a/src/A.tsx\n+++ b/src/A.tsx\n@@ -1,0 +1 @@\n+{/* znf:ui-verify-ok: */}\n"
+	if _, ok := findWaiver(diff, []string{"src/A.tsx"}); ok {
+		t.Error("a bare comment closer waived the gate")
 	}
 }

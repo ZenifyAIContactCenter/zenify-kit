@@ -123,3 +123,53 @@ func TestNewFileDiff_AllLinesAdded(t *testing.T) {
 		t.Fatal("empty file must yield no diff")
 	}
 }
+
+// A comment closer is not a reason: "{/* znf:ui-style-ok: */}" must not waive.
+func TestScanAdded_WaiverNeedsRealReason(t *testing.T) {
+	for _, tc := range []struct {
+		marker string
+		want   int
+	}{
+		{"{/* znf:ui-style-ok: */}", 1},
+		{"<!-- znf:ui-style-ok: -->", 1},
+		{"// znf:ui-style-ok: ...", 1},
+		{"{/* znf:ui-style-ok: partner brand */}", 0},
+	} {
+		diff := "diff --git a/src/A.tsx b/src/A.tsx\n--- a/src/A.tsx\n+++ b/src/A.tsx\n@@ -1,0 +1,2 @@\n+" +
+			tc.marker + "\n+<b className=\"text-[#fff]\" />\n"
+		got, _ := scanAdded(diff, []string{"src/A.tsx"}, []string{StyleHex})
+		if len(got) != tc.want {
+			t.Errorf("%q: violations=%v, want %d", tc.marker, got, tc.want)
+		}
+	}
+}
+
+// git quotes a path holding a quote, backslash or tab even with
+// core.quotePath=false; the header must still map to the render-set name.
+func TestScanAdded_QuotedPath(t *testing.T) {
+	diff := "diff --git \"a/src/q\\\"t.tsx\" \"b/src/q\\\"t.tsx\"\n--- /dev/null\n+++ \"b/src/q\\\"t.tsx\"\n@@ -0,0 +1 @@\n+c #123456\n"
+	got, _ := scanAdded(diff, []string{`src/q"t.tsx`}, []string{StyleHex})
+	if len(got) != 1 || got[0].File != `src/q"t.tsx` {
+		t.Fatalf("violations=%v, want 1 in src/q\"t.tsx", got)
+	}
+}
+
+func TestRules_Widened(t *testing.T) {
+	for _, tc := range []struct {
+		line, rule string
+		want       int
+	}{
+		{"border-t-red-500", StylePalette, 1},
+		{"border-x-blue-500", StylePalette, 1},
+		{"ring-offset-red-500", StylePalette, 1},
+		{"divide-y-slate-200", StylePalette, 1},
+		{"border-t-2", StylePalette, 0},
+		{"top-[-13px]", StyleArbitrary, 1},
+		{"w-[13PX]", StyleArbitrary, 1},
+		{"h-[calc(100%-13px)]", StyleArbitrary, 0},
+	} {
+		if got := matchRules(tc.line, []string{tc.rule}); len(got) != tc.want {
+			t.Errorf("%q: %v, want %d", tc.line, got, tc.want)
+		}
+	}
+}

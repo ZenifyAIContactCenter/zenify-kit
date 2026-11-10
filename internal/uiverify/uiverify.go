@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
@@ -145,7 +146,41 @@ func parsePorcelainPath(line string) string {
 	if idx := strings.Index(path, " -> "); idx >= 0 {
 		path = path[idx+len(" -> "):]
 	}
-	return strings.Trim(path, `"`)
+	return unquoteGitPath(path)
+}
+
+// unquoteGitPath undoes git's C-style quoting, used for a path holding a
+// quote, backslash or control character even with core.quotePath=false.
+func unquoteGitPath(p string) string {
+	if strings.HasPrefix(p, `"`) {
+		if u, err := strconv.Unquote(p); err == nil {
+			return u
+		}
+	}
+	return p
+}
+
+// diffHeaderPath is the new-file path of a "+++ " diff header line.
+func diffHeaderPath(line string) string {
+	// git appends a tab after a header path that contains a space.
+	return strings.TrimPrefix(unquoteGitPath(strings.TrimRight(line[len("+++ "):], "\t")), "b/")
+}
+
+// markerReason returns the text after marker, minus trailing comment closers;
+// it must hold a letter or digit, so "{/* marker: */}" carries no reason.
+func markerReason(line, marker string) (string, bool) {
+	idx := strings.Index(line, marker)
+	if idx < 0 {
+		return "", false
+	}
+	reason := strings.TrimSpace(line[idx+len(marker):])
+	for _, closer := range []string{"}", "*/", "-->"} {
+		reason = strings.TrimSpace(strings.TrimSuffix(reason, closer))
+	}
+	if strings.IndexFunc(reason, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) < 0 {
+		return "", false
+	}
+	return reason, true
 }
 
 // RenderSet is the union of files changed on this branch (since its merge-base
@@ -222,15 +257,12 @@ func findWaiver(diff string, files []string) (string, bool) {
 		case strings.HasPrefix(line, "diff --git "):
 			cur, inHunk = "", false
 		case !inHunk && strings.HasPrefix(line, "+++ "):
-			// git appends a tab after a header path that contains a space.
-			cur = strings.TrimPrefix(strings.TrimRight(line[len("+++ "):], "\t"), "b/")
+			cur = diffHeaderPath(line)
 		case strings.HasPrefix(line, "@@"):
 			inHunk = true
 		case inHunk && inFiles[cur] && strings.HasPrefix(line, "+"):
-			if idx := strings.Index(line, waiverMarker); idx >= 0 {
-				if reason := strings.TrimSpace(line[idx+len(waiverMarker):]); reason != "" {
-					return reason, true
-				}
+			if reason, ok := markerReason(line, waiverMarker); ok {
+				return reason, true
 			}
 		}
 	}
