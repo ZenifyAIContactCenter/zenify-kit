@@ -49,6 +49,11 @@ func TestRenderSet_PathTable(t *testing.T) {
 		{"src/pages/list.spec.tsx", false},
 		{"src/components/__tests__/Button.jsx", false},
 		{"src/components/testing/Grid.tsx", true},
+		// Segment names only count as a whole path segment.
+		{"internal/plugin/assets/znf/skills/review/SKILL.md", false},
+		{"src/views/Home.js", true},
+		{"views/a.js", true},
+		{"previews/a.js", false},
 	}
 	var diffNames []string
 	for _, c := range cases {
@@ -506,5 +511,63 @@ func TestRecord_ScreenNameWithSlash(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(repo, ".znf", "ui-verify", sc.Screenshot)); err != nil {
 			t.Fatalf("screenshot not written flat: %v", err)
 		}
+	}
+}
+
+func renderSetWithConfig(t *testing.T, cfg string, paths []string) map[string]bool {
+	t.Helper()
+	repo := t.TempDir()
+	if cfg != "" {
+		if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, ".claude", "worktree.json"), []byte(cfg), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGit := fakeRunGit(t, map[string]string{
+		"-c core.quotePath=false diff --name-only origin/staging...HEAD": strings.Join(paths, "\n"),
+		"-c core.quotePath=false status --porcelain -uall":              "",
+	})
+	got, err := RenderSet(Deps{RunGit: runGit}, repo, "origin/staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := map[string]bool{}
+	for _, p := range got {
+		set[p] = true
+	}
+	return set
+}
+
+func TestRenderSet_RenderPaths(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"src/constants/menu.js", true},
+		{"src/components/Button.test.jsx", false},
+		{"lib/a.js", true},
+		{"lib", true},
+		{"libx/a.js", false},
+		{"README.md", false},
+		{"docs/x.tsx", false},
+	}
+	var paths []string
+	for _, c := range cases {
+		paths = append(paths, c.path)
+	}
+	got := renderSetWithConfig(t, `{"uiVerify":{"renderPaths":["src/","lib"]}}`, paths)
+	for _, c := range cases {
+		if got[c.path] != c.want {
+			t.Errorf("path %q: got %v, want %v", c.path, got[c.path], c.want)
+		}
+	}
+}
+
+func TestRenderSet_NoConfigKeepsRegex(t *testing.T) {
+	got := renderSetWithConfig(t, "", []string{"src/constants/menu.js", "src/App.tsx"})
+	if got["src/constants/menu.js"] || !got["src/App.tsx"] {
+		t.Errorf("legacy regex not kept: %v", got)
 	}
 }

@@ -22,7 +22,7 @@ import (
 // renderRe matches a path that renders UI: an extension known to be a
 // component/style file, or a directory segment that conventionally holds
 // screens/components. FR-2.1 — keep this exact pattern in sync with the brief.
-var renderRe = regexp.MustCompile(`\.(tsx|jsx|vue|svelte|css|scss|less)$|components?/|pages?/|views?/`)
+var renderRe = regexp.MustCompile(`\.(tsx|jsx|vue|svelte|css|scss|less)$|(^|/)(components?|pages?|views?)/`)
 
 // testFileRe matches a test file: it renders nothing a person sees, so it never
 // requires a UI verdict even when it sits under a UI directory or ends in .tsx.
@@ -158,6 +158,10 @@ func parsePorcelainPath(line string) string {
 // core.quotePath=false keeps non-ASCII names unquoted so the patterns match.
 // FR-2.1.
 func RenderSet(d Deps, repo, base string) ([]string, error) {
+	cfg, declared, err := LoadConfig(repo)
+	if err != nil {
+		return nil, err
+	}
 	diffOut, err := d.RunGit(repo, "-c", "core.quotePath=false", "diff", "--name-only", base+"...HEAD")
 	if err != nil {
 		return nil, exitcode.New(exitcode.BadArgs, fmt.Errorf("git diff --name-only %s...HEAD: %w", base, err))
@@ -181,14 +185,31 @@ func RenderSet(d Deps, repo, base string) ([]string, error) {
 		}
 	}
 
+	renders := renderRe.MatchString
+	if declared && len(cfg.RenderPaths) > 0 {
+		renders = func(p string) bool { return underAny(p, cfg.RenderPaths) }
+	}
+
 	var out []string
 	for p := range set {
-		if renderRe.MatchString(p) && !testFileRe.MatchString(p) {
+		if renders(p) && !testFileRe.MatchString(p) {
 			out = append(out, p)
 		}
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// underAny reports whether p is one of prefixes or sits under one, matching
+// whole path segments ("lib" must not match "libx/a.js").
+func underAny(p string, prefixes []string) bool {
+	for _, pre := range prefixes {
+		pre = strings.TrimSuffix(pre, "/")
+		if p == pre || strings.HasPrefix(p, pre+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // findWaiver scans text line by line for waiverMarker and returns the
