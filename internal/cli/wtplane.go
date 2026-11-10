@@ -57,8 +57,9 @@ type planeState struct {
 }
 
 // startZenItem applies the §2G rules to one work item. The holder comes from
-// the state, not the assignees (they carry watchers): Backlog = nobody holds
-// it, Todo = held, by the dev iff the dev is an assignee.
+// the assignees, which also carry watchers. Backlog and Todo are cycle columns
+// (outside / inside a cycle) and say nothing about who holds the item, so both
+// are judged by the assignees: none = free, only the dev = the dev's.
 func startZenItem(p planeAPI, slug, key string) (string, error) {
 	var me struct {
 		ID string `json:"id"`
@@ -110,8 +111,8 @@ func startZenItem(p planeAPI, slug, key string) (string, error) {
 		return "", nil
 	case "completed", "cancelled":
 		return fmt.Sprintf("plane: %s is %s, not moved", key, cur.Name), nil
-	case "unstarted":
-		// No assignee = nobody holds it, same as Backlog.
+	case "unstarted", "backlog":
+		// No assignee = nobody holds it.
 		if len(item.Assignees) == 0 {
 			body["assignees"] = []string{me.ID}
 		} else if !dev {
@@ -120,10 +121,6 @@ func startZenItem(p planeAPI, slug, key string) (string, error) {
 			// Watchers (requester, BA, QC) share the list with the holder, and only zenie knows which one holds it:
 			// a listed dev may be a watcher of someone else's item. zenie moves it when it sees the pushed branch.
 			return fmt.Sprintf("plane: %s is in %s with other assignees, holder unknown here, not moved (zenie moves it when it sees your branch)", key, cur.Name), nil
-		}
-	case "backlog":
-		if !dev {
-			body["assignees"] = append(slices.Clone(item.Assignees), me.ID)
 		}
 	default:
 		return fmt.Sprintf("plane: %s has unknown state group %q, not moved", key, cur.Group), nil

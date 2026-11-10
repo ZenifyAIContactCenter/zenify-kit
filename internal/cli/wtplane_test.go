@@ -122,10 +122,9 @@ func assigneesOf(t *testing.T, body map[string]any) []string {
 	return out
 }
 
-// Backlog, nobody holds it (a watcher on assignees is not a holder) → In
-// Progress, dev added, the watcher kept.
+// Backlog, no assignee → In Progress, dev added.
 func TestWtPlane_BacklogUnheld_MovesAndAssigns(t *testing.T) {
-	f := newFakePlane(t, stBacklog, "u-watcher")
+	f := newFakePlane(t, stBacklog)
 	if w := runHook(t, f, "zen-7", patEnv); w != "" {
 		t.Fatalf("warning %q, want none", w)
 	}
@@ -133,13 +132,50 @@ func TestWtPlane_BacklogUnheld_MovesAndAssigns(t *testing.T) {
 	if body["state"] != stInProgress {
 		t.Fatalf("state = %v, want %s", body["state"], stInProgress)
 	}
-	if got := assigneesOf(t, body); !slices.Equal(got, []string{"u-dev", "u-watcher"}) {
-		t.Fatalf("assignees = %v, want [u-dev u-watcher]", got)
+	if got := assigneesOf(t, body); !slices.Equal(got, []string{"u-dev"}) {
+		t.Fatalf("assignees = %v, want [u-dev]", got)
 	}
 	for _, k := range f.keys {
 		if k != "pat-secret" {
 			t.Fatalf("X-API-Key = %q, want the PAT", k)
 		}
+	}
+}
+
+// Backlog is a cycle column now, so an assignee may hold it: same rules as Todo.
+func TestStartZenItem_BacklogOtherAssignee_Warns(t *testing.T) {
+	f := newFakePlane(t, stBacklog, "u-other")
+	w := runHook(t, f, "zen-7", patEnv)
+	if !strings.Contains(w, "held by someone else") {
+		t.Fatalf("warning %q, want 'held by someone else'", w)
+	}
+	if len(f.patches) != 0 {
+		t.Fatalf("patched %v", f.patches)
+	}
+}
+
+func TestStartZenItem_BacklogDevAndOthers_Warns(t *testing.T) {
+	f := newFakePlane(t, stBacklog, "u-dev", "u-other")
+	w := runHook(t, f, "zen-7", patEnv)
+	if !strings.Contains(w, "holder unknown") {
+		t.Fatalf("warning %q, want 'holder unknown'", w)
+	}
+	if len(f.patches) != 0 {
+		t.Fatalf("patched %v", f.patches)
+	}
+}
+
+func TestStartZenItem_BacklogOnlyDev_Moves(t *testing.T) {
+	f := newFakePlane(t, stBacklog, "u-dev")
+	if w := runHook(t, f, "zen-7", patEnv); w != "" {
+		t.Fatalf("warning %q, want none", w)
+	}
+	body := f.onlyPatch(t)
+	if body["state"] != stInProgress {
+		t.Fatalf("state = %v, want %s", body["state"], stInProgress)
+	}
+	if _, ok := body["assignees"]; ok {
+		t.Fatalf("body %v has assignees, want state only", body)
 	}
 }
 
