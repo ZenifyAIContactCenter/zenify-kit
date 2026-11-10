@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -150,27 +152,22 @@ func stubDeps(fp string) Deps {
 	}
 }
 
-func TestRecord_Success(t *testing.T) {
-	repo := t.TempDir()
-	src := writeTempScreenshot(t, t.TempDir(), "shot.png", 128)
-	d := stubDeps("abc1234567")
+// measureJSON builds a measurement: container right 100 with padding-right 4
+// (content right 96), child right as given.
+func measureJSON(innerWidth, childRight string) string {
+	return `{"innerWidth":` + innerWidth + `,"child":{"left":0,"top":0,"right":` + childRight +
+		`,"bottom":10},"container":{"left":0,"top":0,"right":100,"bottom":50},` +
+		`"padding":{"left":0,"top":0,"right":4,"bottom":0},"overflowX":"visible","overflowY":"visible"}`
+}
 
-	s := Screen{Screen: "home", Verdict: "pass", Measurement: Measurement{ChildRight: 1, ContainerRight: 2, PaddingRight: 3}}
-	if err := Record(d, repo, s, src); err != nil {
-		t.Fatal(err)
-	}
+func recIn(screen string, vp int, src string) RecordInput {
+	return RecordInput{Screen: screen, Viewport: vp, ScreenshotSrc: src,
+		MeasurementJSON: measureJSON(strconv.Itoa(vp), "90")}
+}
 
-	destPath := filepath.Join(repo, ".znf", "ui-verify", "abc1234567-home.png")
-	if info, err := os.Stat(destPath); err != nil || info.Size() != 128 {
-		t.Fatalf("screenshot not copied to %s: %v", destPath, err)
-	}
-	giPath := filepath.Join(repo, ".znf", "ui-verify", ".gitignore")
-	if b, err := os.ReadFile(giPath); err != nil || string(b) != "*\n" {
-		t.Fatalf(".gitignore = %q, err=%v", b, err)
-	}
-
-	artPath := filepath.Join(repo, ".znf", "ui-verify", "abc1234567.json")
-	b, err := os.ReadFile(artPath)
+func readArtifactT(t *testing.T, repo, fp string) Artifact {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(repo, ".znf", "ui-verify", fp+".json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,25 +175,131 @@ func TestRecord_Success(t *testing.T) {
 	if err := json.Unmarshal(b, &art); err != nil {
 		t.Fatal(err)
 	}
+	return art
+}
+
+func TestRecord_Success(t *testing.T) {
+	repo := t.TempDir()
+	src := writeTempScreenshot(t, t.TempDir(), "shot.png", 128)
+	d := stubDeps("abc1234567")
+
+	s, err := Record(d, repo, recIn("home", 1920, src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Verdict != "pass" || s.Viewport != 1920 {
+		t.Fatalf("screen = %+v", s)
+	}
+
+	destPath := filepath.Join(repo, ".znf", "ui-verify", "abc1234567-home-1920.png")
+	if info, err := os.Stat(destPath); err != nil || info.Size() != 128 {
+		t.Fatalf("screenshot not copied to %s: %v", destPath, err)
+	}
+	giPath := filepath.Join(repo, ".znf", "ui-verify", ".gitignore")
+	if b, err := os.ReadFile(giPath); err != nil || string(b) != "*\n" {
+		t.Fatalf(".gitignore = %q, err=%v", b, err)
+	}
+	art := readArtifactT(t, repo, "abc1234567")
 	if len(art.Screens) != 1 || art.Screens[0].Screen != "home" {
 		t.Fatalf("artifact = %+v", art)
 	}
-	if art.Screens[0].Screenshot != "abc1234567-home.png" {
+	if art.Screens[0].Screenshot != "abc1234567-home-1920.png" {
 		t.Errorf("screenshot field = %q", art.Screens[0].Screenshot)
+	}
+}
+
+func TestRecord_ComputesVerdict(t *testing.T) {
+	cases := []struct {
+		name       string
+		childRight string
+		reason     string
+		verdict    string
+		overflows  []Overflow
+	}{
+		{name: "no overflow", childRight: "90", verdict: "pass"},
+		{name: "right overflow 5", childRight: "101", verdict: "fail", overflows: []Overflow{{"right", 5}}},
+		{name: "fail reason only", childRight: "90", reason: "label bị cắt", verdict: "fail"}, //znf:allow-lang
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			src := writeTempScreenshot(t, t.TempDir(), "s.png", 8)
+			in := recIn("home", 1920, src)
+			in.MeasurementJSON = measureJSON("1920", tc.childRight)
+			in.FailReason = tc.reason
+			s, err := Record(stubDeps("abc1234567"), repo, in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.Verdict != tc.verdict || s.FailReason != tc.reason || !reflect.DeepEqual(s.Overflows, tc.overflows) {
+				t.Fatalf("got %+v", s)
+			}
+			stored := readArtifactT(t, repo, "abc1234567").Screens[0]
+			if stored.Verdict != tc.verdict || stored.FailReason != tc.reason {
+				t.Fatalf("stored %+v", stored)
+			}
+		})
+	}
+}
+
+func TestRecord_ViewportMismatch(t *testing.T) {
+	cases := []struct {
+		name, innerWidth string
+		viewport         int
+		ok               bool
+	}{
+		{"mismatch", "1920", 1366, false},
+		{"float form equal", "1366.0", 1366, true},
+		{"below range", "100", 100, false},
+		{"above range", "4000", 4000, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			src := writeTempScreenshot(t, t.TempDir(), "s.png", 8)
+			in := recIn("home", tc.viewport, src)
+			in.MeasurementJSON = measureJSON(tc.innerWidth, "90")
+			_, err := Record(stubDeps("abc1234567"), repo, in)
+			_, statErr := os.Stat(filepath.Join(repo, ".znf", "ui-verify", "abc1234567.json"))
+			if tc.ok {
+				if err != nil || statErr != nil {
+					t.Fatalf("err=%v statErr=%v", err, statErr)
+				}
+				return
+			}
+			if exitcode.Code(err) != exitcode.BadArgs {
+				t.Fatalf("code = %d, err = %v", exitcode.Code(err), err)
+			}
+			if !os.IsNotExist(statErr) {
+				t.Fatalf("artifact must not be written, statErr=%v", statErr)
+			}
+		})
+	}
+}
+
+func TestRecord_BadMeasurementWritesNothing(t *testing.T) {
+	repo := t.TempDir()
+	src := writeTempScreenshot(t, t.TempDir(), "s.png", 8)
+	in := recIn("home", 1920, src)
+	in.MeasurementJSON = `{"innerWidth":1920}`
+	_, err := Record(stubDeps("abc1234567"), repo, in)
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("code = %d, err = %v", exitcode.Code(err), err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".znf", "ui-verify", "abc1234567.json")); !os.IsNotExist(err) {
+		t.Fatalf("artifact json must not exist, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".znf", "ui-verify")); !os.IsNotExist(err) {
+		t.Fatalf("ui-verify dir must not exist, err=%v", err)
 	}
 }
 
 func TestRecord_Reject0Byte(t *testing.T) {
 	repo := t.TempDir()
 	src := writeTempScreenshot(t, t.TempDir(), "empty.png", 0)
-	d := stubDeps("abc1234567")
-
-	err := Record(d, repo, Screen{Screen: "home"}, src)
-	if err == nil {
-		t.Fatal("expected error for 0-byte screenshot")
-	}
+	_, err := Record(stubDeps("abc1234567"), repo, recIn("home", 1920, src))
 	if exitcode.Code(err) != exitcode.BadArgs {
-		t.Errorf("code = %d, want BadArgs", exitcode.Code(err))
+		t.Fatalf("code = %d, want BadArgs (err=%v)", exitcode.Code(err), err)
 	}
 	artPath := filepath.Join(repo, ".znf", "ui-verify", "abc1234567.json")
 	if _, err := os.Stat(artPath); !os.IsNotExist(err) {
@@ -205,62 +308,37 @@ func TestRecord_Reject0Byte(t *testing.T) {
 }
 
 func TestRecord_RejectMissingSrc(t *testing.T) {
-	repo := t.TempDir()
-	d := stubDeps("abc1234567")
-	err := Record(d, repo, Screen{Screen: "home"}, filepath.Join(t.TempDir(), "nope.png"))
+	_, err := Record(stubDeps("abc1234567"), t.TempDir(),
+		recIn("home", 1920, filepath.Join(t.TempDir(), "nope.png")))
 	if exitcode.Code(err) != exitcode.BadArgs {
 		t.Errorf("code = %d, want BadArgs", exitcode.Code(err))
 	}
 }
 
-func TestRecord_Upsert(t *testing.T) {
+func TestRecord_UpsertByScreenAndViewport(t *testing.T) {
 	repo := t.TempDir()
 	srcDir := t.TempDir()
 	d := stubDeps("abc1234567")
-
-	src1 := writeTempScreenshot(t, srcDir, "s1.png", 64)
-	if err := Record(d, repo, Screen{Screen: "home", Verdict: "pass"}, src1); err != nil {
-		t.Fatal(err)
-	}
-	src2 := writeTempScreenshot(t, srcDir, "s2.png", 64)
-	if err := Record(d, repo, Screen{Screen: "detail", Verdict: "pass"}, src2); err != nil {
-		t.Fatal(err)
-	}
-
-	artPath := filepath.Join(repo, ".znf", "ui-verify", "abc1234567.json")
-	readArt := func() Artifact {
-		b, err := os.ReadFile(artPath)
-		if err != nil {
+	for _, step := range []struct {
+		vp   int
+		size int
+	}{{1920, 10}, {1366, 20}, {1920, 30}} {
+		src := writeTempScreenshot(t, srcDir, "s.png", step.size)
+		if _, err := Record(d, repo, recIn("home", step.vp, src)); err != nil {
 			t.Fatal(err)
 		}
-		var art Artifact
-		if err := json.Unmarshal(b, &art); err != nil {
-			t.Fatal(err)
-		}
-		return art
 	}
-	art := readArt()
+	art := readArtifactT(t, repo, "abc1234567")
 	if len(art.Screens) != 2 {
-		t.Fatalf("expected 2 screens, got %d: %+v", len(art.Screens), art.Screens)
+		t.Fatalf("want 2 entries, got %+v", art.Screens)
 	}
-
-	// Re-record "home" with a different verdict — still 2 entries, updated.
-	src3 := writeTempScreenshot(t, srcDir, "s3.png", 64)
-	if err := Record(d, repo, Screen{Screen: "home", Verdict: "fail"}, src3); err != nil {
-		t.Fatal(err)
+	if art.Screens[0].Screenshot == art.Screens[1].Screenshot {
+		t.Fatalf("viewports share a screenshot file: %+v", art.Screens)
 	}
-	art = readArt()
-	if len(art.Screens) != 2 {
-		t.Fatalf("expected still 2 screens after upsert, got %d: %+v", len(art.Screens), art.Screens)
-	}
-	var homeVerdict string
-	for _, s := range art.Screens {
-		if s.Screen == "home" {
-			homeVerdict = s.Verdict
-		}
-	}
-	if homeVerdict != "fail" {
-		t.Errorf("home verdict = %q, want fail (upsert should replace)", homeVerdict)
+	// The re-recorded 1920 replaced the file in place.
+	info, err := os.Stat(filepath.Join(repo, ".znf", "ui-verify", art.Screens[0].Screenshot))
+	if err != nil || art.Screens[0].Viewport != 1920 || info.Size() != 30 {
+		t.Fatalf("1920 entry = %+v size=%v err=%v", art.Screens[0], info, err)
 	}
 }
 
@@ -487,10 +565,10 @@ func TestRecord_ScreenNameWithSlash(t *testing.T) {
 	src := writeTempScreenshot(t, t.TempDir(), "shot.png", 16)
 	d := stubDeps("abc1234567")
 
-	if err := Record(d, repo, Screen{Screen: "chat/room", Verdict: "pass"}, src); err != nil {
+	if _, err := Record(d, repo, recIn("chat/room", 1920, src)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Record(d, repo, Screen{Screen: "chat-room", Verdict: "pass"}, src); err != nil {
+	if _, err := Record(d, repo, recIn("chat-room", 1920, src)); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(repo, ".znf", "ui-verify", "abc1234567.json"))

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -102,39 +103,46 @@ func newUIVerifyFilesCmd() *cobra.Command {
 }
 
 func newUIVerifyRecordCmd() *cobra.Command {
-	var repo, screen, screenshot, verdict string
-	var childRight, containerRight, paddingRight float64
+	var repo, screen, screenshot, measurement, failReason string
+	var viewport int
 	c := &cobra.Command{
 		Use:   "record",
-		Short: "Ghi lại artifact UI-verify cho fingerprint hiện tại", //znf:allow-lang
+		Short: "Ghi lại artifact UI-verify cho fingerprint hiện tại (kit tự tính verdict)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if repo == "" {
 				repo, _ = os.Getwd()
 			}
-			s := uiverify.Screen{
-				Screen: screen,
-				Measurement: uiverify.Measurement{
-					ChildRight:     childRight,
-					ContainerRight: containerRight,
-					PaddingRight:   paddingRight,
-				},
-				Verdict: verdict,
+			s, err := uiverify.Record(defaultUIVerifyDeps(), repo, uiverify.RecordInput{
+				Screen:          screen,
+				Viewport:        viewport,
+				ScreenshotSrc:   screenshot,
+				MeasurementJSON: measurement,
+				FailReason:      failReason,
+			})
+			if err != nil {
+				return err
 			}
-			return uiverify.Record(defaultUIVerifyDeps(), repo, s, screenshot)
+			w := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(w, "verdict: %s\n", s.Verdict)
+			for _, o := range s.Overflows {
+				_, _ = fmt.Fprintf(w, "overflow: %s %spx\n", o.Edge, strconv.FormatFloat(o.Px, 'g', -1, 64))
+			}
+			if s.FailReason != "" {
+				_, _ = fmt.Fprintf(w, "failReason: %s\n", s.FailReason)
+			}
+			return nil
 		},
 	}
-	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                                    //znf:allow-lang
-	c.Flags().StringVar(&screen, "screen", "", "tên screen/route (bắt buộc)")                             //znf:allow-lang
-	c.Flags().StringVar(&screenshot, "screenshot", "", "đường dẫn ảnh chụp màn hình (bắt buộc)")          //znf:allow-lang
-	c.Flags().Float64Var(&childRight, "child-right", 0, "child.right của element đã đổi (bắt buộc)")      //znf:allow-lang
-	c.Flags().Float64Var(&containerRight, "container-right", 0, "right của container chứa nó (bắt buộc)") //znf:allow-lang
-	c.Flags().Float64Var(&paddingRight, "padding-right", 0, "padding-right của container (bắt buộc)")     //znf:allow-lang
-	c.Flags().StringVar(&verdict, "verdict", "pass", "pass|fail")                                         //znf:allow-lang
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                                               //znf:allow-lang
+	c.Flags().StringVar(&screen, "screen", "", "tên screen/route (bắt buộc)")                                        //znf:allow-lang
+	c.Flags().StringVar(&screenshot, "screenshot", "", "đường dẫn ảnh chụp màn hình (bắt buộc)")                     //znf:allow-lang
+	c.Flags().IntVar(&viewport, "viewport", 0, "viewport width của lần chụp, 320..3840 (bắt buộc)")                  //znf:allow-lang
+	c.Flags().StringVar(&measurement, "measurement", "", "JSON đo layout trong trang (bắt buộc)")                    //znf:allow-lang
+	c.Flags().StringVar(&failReason, "fail-reason", "", "lỗi nhìn thấy mà số đo không bắt được; có giá trị là fail") //znf:allow-lang
 	_ = c.MarkFlagRequired("screen")
 	_ = c.MarkFlagRequired("screenshot")
-	_ = c.MarkFlagRequired("child-right")
-	_ = c.MarkFlagRequired("container-right")
-	_ = c.MarkFlagRequired("padding-right")
+	_ = c.MarkFlagRequired("viewport")
+	_ = c.MarkFlagRequired("measurement")
 	return c
 }
 

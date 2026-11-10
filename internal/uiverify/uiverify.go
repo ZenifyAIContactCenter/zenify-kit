@@ -35,32 +35,27 @@ var unsafeFileRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 // screenFileName is the screenshot file name for a screen. A name that had to
 // be rewritten carries a short hash of the raw name, so "chat/room" and
 // "chat-room" never overwrite each other's screenshot.
-func screenFileName(fp, screen string) string {
+func screenFileName(fp, screen string, viewport int) string {
 	safe := unsafeFileRe.ReplaceAllString(screen, "-")
 	if safe != screen {
 		safe = fmt.Sprintf("%s-%x", safe, sha256.Sum256([]byte(screen)))[:len(safe)+9]
 	}
-	return fmt.Sprintf("%s-%s.png", fp, safe)
+	return fmt.Sprintf("%s-%s-%d.png", fp, safe, viewport)
 }
 
 // waiverMarker: a line containing this in a diff or the working tree waives
 // the gate; the reason is whatever follows the ':'. FR-2.3.
 const waiverMarker = "znf:ui-verify-ok:"
 
-// Measurement is the objective layout measurement captured for one screen
-// (changed element vs its own container box).
-type Measurement struct {
-	ChildRight     float64 `json:"child_right"`
-	ContainerRight float64 `json:"container_right"`
-	PaddingRight   float64 `json:"padding_right"`
-}
-
-// Screen is one verified screen/route within an Artifact.
+// Screen is one verified screen/route at one viewport within an Artifact.
 type Screen struct {
-	Screen      string      `json:"screen"`
-	Screenshot  string      `json:"screenshot"` // basename under .znf/ui-verify/
-	Measurement Measurement `json:"measurement"`
-	Verdict     string      `json:"verdict"` // "pass" | "fail"
+	Screen     string     `json:"screen"`
+	Viewport   int        `json:"viewport"`
+	Screenshot string     `json:"screenshot"` // basename under .znf/ui-verify/
+	Layout     Layout     `json:"layout"`
+	Overflows  []Overflow `json:"overflows,omitempty"`
+	FailReason string     `json:"failReason,omitempty"`
+	Verdict    string     `json:"verdict"` // "pass" | "fail", computed by Record
 }
 
 // Artifact is the recorded UI-verify result for one working-tree fingerprint.
@@ -268,32 +263,68 @@ func ensureArtifactDir(dir string) error {
 	return nil
 }
 
-// Record validates the screenshot, computes the current fingerprint, copies
-// the screenshot into .znf/ui-verify/, and upserts s into <fp>.json (an
-// existing entry for the same Screen name is replaced). FR-1.1..1.3.
-func Record(d Deps, repo string, s Screen, screenshotSrc string) error {
-	info, err := os.Stat(screenshotSrc)
+// RecordInput is what a caller supplies to Record; the verdict is computed
+// from MeasurementJSON and FailReason, never passed in.
+type RecordInput struct {
+	Screen          string
+	Viewport        int
+	ScreenshotSrc   string
+	MeasurementJSON string
+	FailReason      string
+}
+
+func badArg(format string, a ...any) error {
+	return exitcode.New(exitcode.BadArgs, fmt.Errorf(format, a...))
+}
+
+// Record validates the screenshot and measurement, computes the verdict (fail
+// on any overflow or a non-empty FailReason), copies the screenshot into
+// .znf/ui-verify/ and upserts the screen, keyed by (Screen, Viewport), into
+// <fp>.json. Every error before the write is BadArgs and touches no disk.
+func Record(d Deps, repo string, in RecordInput) (Screen, error) {
+	info, err := os.Stat(in.ScreenshotSrc)
 	if err != nil {
-		return exitcode.New(exitcode.BadArgs, fmt.Errorf("screenshot not found: %s: %w", screenshotSrc, err))
+		return Screen{}, badArg("screenshot not found: %s: %w", in.ScreenshotSrc, err)
 	}
 	if info.Size() == 0 {
-		return exitcode.New(exitcode.BadArgs, fmt.Errorf("screenshot is 0 bytes: %s", screenshotSrc))
+		return Screen{}, badArg("screenshot is 0 bytes: %s", in.ScreenshotSrc)
+	}
+	layout, err := ParseLayout(in.MeasurementJSON)
+	if err != nil {
+		return Screen{}, err
+	}
+	if in.Viewport < minViewport || in.Viewport > maxViewport {
+		return Screen{}, badArg("viewport %d out of range [%d,%d]", in.Viewport, minViewport, maxViewport)
+	}
+	if layout.InnerWidth != float64(in.Viewport) {
+		return Screen{}, badArg("measurement innerWidth %v does not match viewport %d", layout.InnerWidth, in.Viewport)
+	}
+
+	s := Screen{
+		Screen:     in.Screen,
+		Viewport:   in.Viewport,
+		Layout:     layout,
+		Overflows:  Overflows(layout),
+		FailReason: strings.TrimSpace(in.FailReason),
+		Verdict:    "pass",
+	}
+	if len(s.Overflows) > 0 || s.FailReason != "" {
+		s.Verdict = "fail"
 	}
 
 	fp, err := Fingerprint(d, repo)
 	if err != nil {
-		return err
+		return Screen{}, err
 	}
 
 	dir := artifactDir(repo)
 	if err := ensureArtifactDir(dir); err != nil {
-		return exitcode.New(exitcode.Fail, err)
+		return Screen{}, exitcode.New(exitcode.Fail, err)
 	}
 
-	destName := screenFileName(fp, s.Screen)
-	dest := filepath.Join(dir, destName)
-	if err := copyFile(screenshotSrc, dest); err != nil {
-		return exitcode.New(exitcode.Fail, fmt.Errorf("copy screenshot: %w", err))
+	destName := screenFileName(fp, s.Screen, s.Viewport)
+	if err := copyFile(in.ScreenshotSrc, filepath.Join(dir, destName)); err != nil {
+		return Screen{}, exitcode.New(exitcode.Fail, fmt.Errorf("copy screenshot: %w", err))
 	}
 	s.Screenshot = destName
 
@@ -307,7 +338,7 @@ func Record(d Deps, repo string, s Screen, screenshotSrc string) error {
 
 	upserted := false
 	for i, sc := range art.Screens {
-		if sc.Screen == s.Screen {
+		if sc.Screen == s.Screen && sc.Viewport == s.Viewport {
 			art.Screens[i] = s
 			upserted = true
 			break
@@ -319,12 +350,12 @@ func Record(d Deps, repo string, s Screen, screenshotSrc string) error {
 
 	b, err := json.MarshalIndent(art, "", "  ")
 	if err != nil {
-		return exitcode.New(exitcode.Fail, err)
+		return Screen{}, exitcode.New(exitcode.Fail, err)
 	}
 	if err := os.WriteFile(artifactPath, b, 0o600); err != nil {
-		return exitcode.New(exitcode.Fail, err)
+		return Screen{}, exitcode.New(exitcode.Fail, err)
 	}
-	return nil
+	return s, nil
 }
 
 // Validate reports whether <fp>.json exists, has at least one screen, and

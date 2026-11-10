@@ -362,3 +362,43 @@ func TestUIVerifyViewportsCmd(t *testing.T) {
 		})
 	}
 }
+
+func runUIVerifyRecord(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	root := NewRootCmd()
+	root.SetOut(&out)
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs(append([]string{"ui-verify", "record"}, args...))
+	err := root.Execute()
+	return out.String(), err
+}
+
+func TestUIVerifyRecordCmd_OldFlagsRejected(t *testing.T) {
+	_, err := runUIVerifyRecord(t, "--repo", t.TempDir(), "--screen", "home", "--screenshot", "x.png",
+		"--child-right", "1", "--container-right", "2", "--padding-right", "0")
+	if err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("want unknown flag error, got %v", err)
+	}
+}
+
+func TestUIVerifyRecordCmd_PrintsVerdict(t *testing.T) {
+	repo := initUIVerifyRepo(t)
+	shot := filepath.Join(t.TempDir(), "s.png")
+	if err := os.WriteFile(shot, []byte("png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := `{"innerWidth":1920,"child":{"left":0,"top":0,"right":101,"bottom":10},` +
+		`"container":{"left":0,"top":0,"right":100,"bottom":50},` +
+		`"padding":{"left":0,"top":0,"right":4,"bottom":0},"overflowX":"visible","overflowY":"visible"}`
+	out, err := runUIVerifyRecord(t, "--repo", repo, "--screen", "home", "--screenshot", shot,
+		"--viewport", "1920", "--measurement", m)
+	if err != nil {
+		t.Fatalf("err=%v out=%s", err, out)
+	}
+	for _, want := range []string{"verdict: fail", "overflow: right 5px"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout %q missing %q", out, want)
+		}
+	}
+}
