@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -21,6 +22,7 @@ type visualOpts struct {
 	getenv func(string) string // credential lookup; nil → os.Getenv
 	update bool
 	out    io.Writer
+	git    visual.GitRunner // nil → skip the tracked-baseline check
 }
 
 // runVisualCheck writes the harness to tmp, builds a RunConfig, calls visual.Check, maps the error.
@@ -33,6 +35,15 @@ func runVisualCheck(o visualOpts) error {
 	if len(routes) == 0 {
 		_, _ = fmt.Fprintln(o.out, "0 routes")
 		return nil
+	}
+	if !o.update && o.git != nil {
+		untracked, checked := visual.UntrackedBaselines(o.git, o.repo, routes)
+		if !checked {
+			_, _ = fmt.Fprintln(o.out, "warning: cannot check that baselines are tracked (not a git repo?)")
+		} else if len(untracked) > 0 {
+			return exitcode.New(exitcode.Fail,
+				fmt.Errorf("baseline not tracked by git — run: git add -f %s", strings.Join(untracked, " ")))
+		}
 	}
 	harnessDir, err := os.MkdirTemp("", "znf-visual-*")
 	if err != nil {
@@ -114,7 +125,7 @@ func newVisualCmd() *cobra.Command {
 			}
 			return runVisualCheck(visualOpts{
 				runner: runner, getenv: lookup, goos: runtime.GOOS, repo: repo, port: port, update: update,
-				out: out,
+				out: out, git: gitOutput,
 			})
 		},
 	}
@@ -124,6 +135,11 @@ func newVisualCmd() *cobra.Command {
 	check.Flags().StringVar(&role, "role", "", "role tài khoản E2E lấy từ broker (cần broker)") //znf:allow-lang
 	c.AddCommand(check, newVisualAddRouteCmd())
 	return c
+}
+
+func gitOutput(dir string, args ...string) (string, error) {
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output() //nolint:gosec // G204 -- fixed binary; args built by UntrackedBaselines
+	return string(out), err
 }
 
 func newVisualAddRouteCmd() *cobra.Command {

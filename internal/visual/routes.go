@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
@@ -152,4 +153,40 @@ func BaselineFiles(r Route) []string {
 		files = append(files, ".znf/visual/__snapshots__/"+r.Name+".aria.yml")
 	}
 	return files
+}
+
+// GitRunner runs git in dir and returns stdout.
+type GitRunner func(dir string, args ...string) (string, error)
+
+// UntrackedBaselines returns on-disk routes.json/baseline files git does not track. Files not on
+// disk are skipped: a route without a baseline yet is Playwright's to report. checked=false
+// means git could not answer (e.g. not a repo).
+func UntrackedBaselines(git GitRunner, repo string, rs []Route) (untracked []string, checked bool) {
+	var cands []string
+	all := []string{".znf/visual/routes.json"}
+	for _, r := range rs {
+		all = append(all, BaselineFiles(r)...)
+	}
+	for _, rel := range all {
+		if _, err := os.Stat(filepath.Join(repo, rel)); err == nil {
+			cands = append(cands, rel)
+		}
+	}
+	if len(cands) == 0 {
+		return nil, true
+	}
+	out, err := git(repo, append([]string{"-c", "core.quotePath=false", "ls-files", "--"}, cands...)...)
+	if err != nil {
+		return nil, false
+	}
+	tracked := map[string]bool{}
+	for _, l := range strings.Split(out, "\n") {
+		tracked[strings.TrimSpace(l)] = true
+	}
+	for _, c := range cands {
+		if !tracked[c] {
+			untracked = append(untracked, c)
+		}
+	}
+	return untracked, true
 }

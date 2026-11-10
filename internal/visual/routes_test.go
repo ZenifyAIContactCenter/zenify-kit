@@ -1,6 +1,7 @@
 package visual
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -152,4 +153,73 @@ func TestBaselineFiles(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v", got)
 	}
+}
+
+func touch(t *testing.T, repo string, rels ...string) {
+	t.Helper()
+	for _, rel := range rels {
+		p := filepath.Join(repo, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestUntrackedBaselines(t *testing.T) {
+	const rj = ".znf/visual/routes.json"
+	const png = ".znf/visual/__snapshots__/a-chromium-linux.png"
+	const aria = ".znf/visual/__snapshots__/a.aria.yml"
+	listing := func(out string, err error) GitRunner {
+		return func(string, ...string) (string, error) { return out, err }
+	}
+	t.Run("image not listed", func(t *testing.T) {
+		repo := t.TempDir()
+		touch(t, repo, rj, png)
+		got, checked := UntrackedBaselines(listing(rj+"\n", nil), repo, []Route{{Name: "a", Path: "/a"}})
+		if !checked || !reflect.DeepEqual(got, []string{png}) {
+			t.Errorf("got %v %v", got, checked)
+		}
+	})
+	t.Run("aria not listed", func(t *testing.T) {
+		repo := t.TempDir()
+		touch(t, repo, rj, png, aria)
+		got, _ := UntrackedBaselines(listing(rj+"\n"+png+"\n", nil), repo, []Route{{Name: "a", Path: "/a", Aria: "#c"}})
+		if !reflect.DeepEqual(got, []string{aria}) {
+			t.Errorf("got %v", got)
+		}
+	})
+	t.Run("route without baseline on disk", func(t *testing.T) {
+		repo := t.TempDir()
+		touch(t, repo, rj)
+		got, checked := UntrackedBaselines(listing(rj+"\n", nil), repo, []Route{{Name: "a", Path: "/a"}})
+		if !checked || len(got) != 0 {
+			t.Errorf("got %v %v", got, checked)
+		}
+	})
+	t.Run("routes.json untracked", func(t *testing.T) {
+		repo := t.TempDir()
+		touch(t, repo, rj, png)
+		got, _ := UntrackedBaselines(listing(png+"\n", nil), repo, []Route{{Name: "a", Path: "/a"}})
+		if !reflect.DeepEqual(got, []string{rj}) {
+			t.Errorf("got %v", got)
+		}
+	})
+	t.Run("git error", func(t *testing.T) {
+		repo := t.TempDir()
+		touch(t, repo, rj)
+		got, checked := UntrackedBaselines(listing("", errors.New("not a git repo")), repo, nil)
+		if checked || got != nil {
+			t.Errorf("got %v %v", got, checked)
+		}
+	})
+	t.Run("no candidates skips git", func(t *testing.T) {
+		git := func(string, ...string) (string, error) { t.Fatal("git called"); return "", nil }
+		got, checked := UntrackedBaselines(git, t.TempDir(), nil)
+		if !checked || got != nil {
+			t.Errorf("got %v %v", got, checked)
+		}
+	})
 }

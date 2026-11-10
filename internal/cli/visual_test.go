@@ -137,3 +137,59 @@ func TestVisualAddRouteCmd(t *testing.T) {
 		t.Error("missing --path must fail")
 	}
 }
+
+func trackFixture(t *testing.T) string {
+	t.Helper()
+	repo := writeVisualRoutes(t, `[{"name":"a","path":"/a"}]`)
+	snaps := filepath.Join(repo, ".znf", "visual", "__snapshots__")
+	if err := os.MkdirAll(snaps, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(snaps, "a-chromium-linux.png"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return repo
+}
+
+func TestRunVisualCheck_UntrackedIsFail(t *testing.T) {
+	repo := trackFixture(t)
+	called := false
+	runner := func(string, []string) error { called = true; return nil }
+	git := func(string, ...string) (string, error) { return ".znf/visual/routes.json\n", nil }
+	err := runVisualCheck(visualOpts{runner: runner, git: git, goos: "darwin", repo: repo, port: 1, out: &bytes.Buffer{}})
+	if exitcode.Code(err) != exitcode.Fail || called {
+		t.Fatalf("code=%d called=%v err=%v", exitcode.Code(err), called, err)
+	}
+	for _, want := range []string{"git add -f", "a-chromium-linux.png"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error missing %q: %v", want, err)
+		}
+	}
+}
+
+func TestRunVisualCheck_UpdateSkipsTrackCheck(t *testing.T) {
+	repo := trackFixture(t)
+	called := false
+	runner := func(string, []string) error { called = true; return nil }
+	git := func(string, ...string) (string, error) { t.Error("git must not run with --update"); return "", nil }
+	if err := runVisualCheck(visualOpts{runner: runner, git: git, goos: "darwin", repo: repo, port: 1, update: true, out: &bytes.Buffer{}}); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Error("runner not called")
+	}
+}
+
+func TestRunVisualCheck_NotGitWarnsAndRuns(t *testing.T) {
+	repo := trackFixture(t)
+	var out bytes.Buffer
+	called := false
+	runner := func(string, []string) error { called = true; return nil }
+	git := func(string, ...string) (string, error) { return "", errors.New("not a git repository") }
+	if err := runVisualCheck(visualOpts{runner: runner, git: git, goos: "darwin", repo: repo, port: 1, out: &out}); err != nil {
+		t.Fatal(err)
+	}
+	if !called || !strings.Contains(out.String(), "warning:") {
+		t.Errorf("called=%v out=%q", called, out.String())
+	}
+}
