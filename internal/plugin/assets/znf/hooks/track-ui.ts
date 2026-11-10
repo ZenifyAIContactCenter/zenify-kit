@@ -23,6 +23,7 @@ export const COPY = {
   tipPrRed: 'Tip: PR #{num} CI red — type "hey claude fix CI"',
   tipPrThreads: 'Tip: PR #{num} has {N} unresolved threads — type "hey claude check PR"',
   tipPrChanges: 'Tip: PR #{num} has changes requested — type "hey claude check PR"',
+  tipPrReadyOne: 'Tip: PR #{num} ready to merge — type "hey claude check PR"',
   tipPrReady: 'Tip: {N} PRs ready to merge — type "hey claude check PR"',
   tipStaleSoon: 'Tip: {id} open {D} days — continue or cancel it',
   tipPr: 'Tip: {N} PRs waiting to merge — type "hey claude check PR"',
@@ -126,8 +127,9 @@ function tipFor(s: TrackStats, mine: TrackItem | undefined, now: number): string
     if (thr) return COPY.tipPrThreads.replace('{num}', String(thr.number)).replace('{N}', String(thr.threads))
     const chg = prs.find((p) => p.review === 'changes_requested')
     if (chg) return COPY.tipPrChanges.replace('{num}', String(chg.number))
-    const ready = prs.filter((p) => p.ready).length
-    if (ready > 0) return COPY.tipPrReady.replace('{N}', String(ready))
+    const ready = prs.filter((p) => p.ready)
+    if (ready.length === 1) return COPY.tipPrReadyOne.replace('{num}', String(ready[0].number))
+    if (ready.length > 1) return COPY.tipPrReady.replace('{N}', String(ready.length))
     const DAY = 86_400_000
     const age = (c: { startedAt: string }) => (now - Date.parse(c.startedAt)) / DAY
     const old = (s.kitchen?.carried ?? [])

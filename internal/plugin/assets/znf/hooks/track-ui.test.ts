@@ -735,6 +735,9 @@ test('SC-8: two ready PRs beat carried items', () => {
   const s = withPrs([pr({ ready: true }), pr({ number: 13, ready: true })])
   expect(statusText(s, A, undefined, true, NOW)).toContain('Tip: 2 PRs ready to merge')
 })
+test('FR-5.2: one ready PR is named', () => {
+  expect(statusText(withPrs([pr({ ready: true })]), A, undefined, true, NOW)).toContain('Tip: PR #12 ready to merge — type "hey claude check PR"')
+})
 test('SC-8: a carried item open 6 days is flagged', () => {
   const s = stats({ kitchen: { ...stats().kitchen, carried: [carried({ startedAt: new Date(NOW - 6 * 86_400_000).toISOString() })] } })
   expect(statusText(s, A, undefined, true, NOW)).toContain(`Tip: ${X} open 6 days — continue or cancel it`)
