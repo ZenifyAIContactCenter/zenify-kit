@@ -351,6 +351,15 @@ func Record(d Deps, repo string, in RecordInput) (Screen, error) {
 	}
 	art.FP = fp
 	art.RecordedAt = d.now().UTC().Format(time.RFC3339)
+	// Entries from the previous kit have no viewport, so the (Screen,
+	// Viewport) upsert below could never replace them.
+	kept := art.Screens[:0]
+	for _, sc := range art.Screens {
+		if sc.Viewport != 0 {
+			kept = append(kept, sc)
+		}
+	}
+	art.Screens = kept
 
 	upserted := false
 	for i, sc := range art.Screens {
@@ -375,9 +384,9 @@ func Record(d Deps, repo string, in RecordInput) (Screen, error) {
 }
 
 // Validate lists why <fp>.json cannot satisfy the gate; no problems means it
-// does. Every entry must have a viewport, a pass verdict and a non-empty
-// screenshot file, and when viewports is non-empty every screen must have an
-// entry at each of them. A legacy or unparsable artifact is a problem, never a
+// does. Every entry must be valid (validEntry), pass when its verdict is
+// recomputed from its layout and failReason, and have a non-empty screenshot
+// file; when viewports is non-empty every screen needs an entry at each. A legacy or unparsable artifact is a problem, never a
 // panic. FR-3.1, FR-3.3, FR-3.4.
 func Validate(repo, fp string, viewports []int) (screens int, problems []string) {
 	dir := artifactDir(repo)
@@ -396,8 +405,9 @@ func Validate(repo, fp string, viewports []int) (screens int, problems []string)
 	var names []string
 	have := map[string]map[int]bool{}
 	for _, s := range art.Screens {
-		if s.Viewport == 0 || (s.Verdict != "pass" && s.Verdict != "fail") {
-			problems = append(problems, s.Screen+": invalid entry")
+		label := fmt.Sprintf("%s@%d", s.Screen, s.Viewport)
+		if !validEntry(s) {
+			problems = append(problems, label+": invalid entry")
 			continue
 		}
 		if have[s.Screen] == nil {
@@ -405,9 +415,10 @@ func Validate(repo, fp string, viewports []int) (screens int, problems []string)
 			names = append(names, s.Screen)
 		}
 		have[s.Screen][s.Viewport] = true
-		label := fmt.Sprintf("%s@%d", s.Screen, s.Viewport)
-		if s.Verdict == "fail" {
-			problems = append(problems, fmt.Sprintf("%s: fail (%s)", label, failDetail(s)))
+		// The stored verdict/overflows are for humans; the gate recomputes.
+		overflows := Overflows(s.Layout)
+		if reason := strings.TrimSpace(s.FailReason); len(overflows) > 0 || reason != "" {
+			problems = append(problems, fmt.Sprintf("%s: fail (%s)", label, failDetail(overflows, reason)))
 			continue
 		}
 		info, err := os.Stat(filepath.Join(dir, s.Screenshot))
@@ -425,14 +436,24 @@ func Validate(repo, fp string, viewports []int) (screens int, problems []string)
 	return len(art.Screens), problems
 }
 
-// failDetail renders a failing entry's overflows ("right 5px, bottom 3px"),
-// falling back to the recorded reason when there is no overflow.
-func failDetail(s Screen) string {
-	if len(s.Overflows) == 0 {
-		return s.FailReason
+// validEntry: a viewport in range, a measurement taken at that width, and a
+// screenshot that is a plain file name inside the artifact dir.
+func validEntry(s Screen) bool {
+	if s.Viewport < minViewport || s.Viewport > maxViewport || s.Layout.InnerWidth != float64(s.Viewport) {
+		return false
 	}
-	parts := make([]string, len(s.Overflows))
-	for i, o := range s.Overflows {
+	return s.Screenshot != "" && s.Screenshot != "." && s.Screenshot != ".." &&
+		!strings.ContainsAny(s.Screenshot, `/\`)
+}
+
+// failDetail renders overflows ("right 5px, bottom 3px"), falling back to the
+// reason when there is no overflow.
+func failDetail(overflows []Overflow, reason string) string {
+	if len(overflows) == 0 {
+		return reason
+	}
+	parts := make([]string, len(overflows))
+	for i, o := range overflows {
 		parts[i] = o.Edge + " " + strconv.FormatFloat(o.Px, 'g', -1, 64) + "px"
 	}
 	return strings.Join(parts, ", ")

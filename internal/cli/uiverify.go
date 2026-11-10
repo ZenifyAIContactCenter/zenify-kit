@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -81,6 +82,10 @@ func newUIVerifyFilesCmd() *cobra.Command {
 				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need --base <base ref>"))
 			}
 			files, err := uiverify.RenderSet(defaultUIVerifyDeps(), repo, base)
+			var coded *exitcode.Error
+			if errors.As(err, &coded) {
+				return err
+			}
 			if err != nil {
 				return exitcode.New(exitcode.Fail, err)
 			}

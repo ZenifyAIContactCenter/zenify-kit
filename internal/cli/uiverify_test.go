@@ -308,6 +308,21 @@ func TestUIVerifyFiles_CountErrorPrintsNothing(t *testing.T) {
 	}
 }
 
+// An invalid uiVerify config is a usage error (exit 2), not a failed gate.
+func TestUIVerifyFiles_InvalidConfigIsBadArgs(t *testing.T) {
+	repo := initUIVerifyRepo(t)
+	p := filepath.Join(repo, ".claude", "worktree.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`{"uiVerify":{"viewports":[10]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runUIVerifyFiles(t, "--repo", repo, "--base", "HEAD", "--count")
+	if exitcode.Code(err) != exitcode.BadArgs || out != "" {
+		t.Fatalf("code = %d, out = %q, err = %v; want BadArgs and no output", exitcode.Code(err), out, err)
+	}
+}
 
 func uiGitOut(t *testing.T, repo string, args ...string) string {
 	t.Helper()

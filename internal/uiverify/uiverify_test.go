@@ -404,7 +404,7 @@ func TestValidate_Ok(t *testing.T) {
 	}
 	writeArtifact(t, repo, "fp1", Artifact{
 		FP:      "fp1",
-		Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Verdict: "pass"}},
+		Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Layout: fitLayout(1440, 90), Verdict: "pass"}},
 	})
 	n, problems := Validate(repo, "fp1", nil)
 	if len(problems) != 0 || n != 1 {
@@ -416,7 +416,7 @@ func TestValidate_MissingScreenshot(t *testing.T) {
 	repo := t.TempDir()
 	writeArtifact(t, repo, "fp1", Artifact{
 		FP:      "fp1",
-		Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "missing.png", Verdict: "pass"}},
+		Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "missing.png", Layout: fitLayout(1440, 90), Verdict: "pass"}},
 	})
 	_, problems := Validate(repo, "fp1", nil)
 	if len(problems) != 1 || problems[0] != "home@1440: screenshot missing" {
@@ -489,7 +489,7 @@ func TestCheck_SC3_Verified(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Verdict: "pass"}}})
+	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Layout: fitLayout(1440, 90), Verdict: "pass"}}})
 
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD":    "src/App.tsx",
@@ -523,7 +523,7 @@ func TestCheck_SC4_RequiredMissingArtifact(t *testing.T) {
 func TestCheck_SC5_RequiredInvalidArtifact(t *testing.T) {
 	repo := t.TempDir()
 	fp := "fpinvalid1"
-	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "missing.png", Verdict: "pass"}}})
+	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "missing.png", Layout: fitLayout(1440, 90), Verdict: "pass"}}})
 
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD":    "src/App.tsx",
@@ -549,7 +549,7 @@ func TestCheck_SC6_FPMismatchIsRequired(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeArtifact(t, repo, oldFP, Artifact{FP: oldFP, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Verdict: "pass"}}})
+	writeArtifact(t, repo, oldFP, Artifact{FP: oldFP, Screens: []Screen{{Screen: "home", Viewport: 1440, Screenshot: "shot.png", Layout: fitLayout(1440, 90), Verdict: "pass"}}})
 
 	newFP := "fpnew000002"
 	d := checkDeps(t, map[string]string{
@@ -712,7 +712,15 @@ func gateRepo(t *testing.T, cfg, fp string) (string, Deps) {
 }
 
 func shotScreen(name string, vp int, verdict string) Screen {
-	return Screen{Screen: name, Viewport: vp, Screenshot: "shot.png", Verdict: verdict}
+	return Screen{Screen: name, Viewport: vp, Screenshot: "shot.png", Layout: fitLayout(vp, 90), Verdict: verdict}
+}
+
+// fitLayout is measureJSON as a Layout: content right 96, so childRight 101
+// overflows right by 5px and 90 fits.
+func fitLayout(vp int, childRight float64) Layout {
+	return Layout{InnerWidth: float64(vp), Child: Box{Right: childRight, Bottom: 10},
+		Container: Box{Right: 100, Bottom: 50}, Padding: Box{Right: 4},
+		OverflowX: "visible", OverflowY: "visible"}
 }
 
 const threeViewports = `{"uiVerify":{"viewports":[1920,1366,1280]}}`
@@ -752,7 +760,7 @@ func TestCheck_AllViewportsPass(t *testing.T) {
 func TestCheck_FailEntryNoConfig(t *testing.T) {
 	repo, d := gateRepo(t, "", "fpfailnocf")
 	writeArtifact(t, repo, "fpfailnocf", Artifact{FP: "fpfailnocf", Screens: []Screen{
-		{Screen: "home", Viewport: 1366, Screenshot: "shot.png", Verdict: "fail",
+		{Screen: "home", Viewport: 1366, Screenshot: "shot.png", Layout: fitLayout(1366, 101), Verdict: "fail",
 			Overflows: []Overflow{{Edge: "right", Px: 5}}},
 	}})
 	state, msg, err := Check(d, repo, "origin/staging")
@@ -767,7 +775,7 @@ func TestCheck_FailEntryNoConfig(t *testing.T) {
 func TestCheck_FailReasonOnly(t *testing.T) {
 	repo, d := gateRepo(t, "", "fpfailrsn1")
 	writeArtifact(t, repo, "fpfailrsn1", Artifact{FP: "fpfailrsn1", Screens: []Screen{
-		{Screen: "home", Viewport: 1920, Screenshot: "shot.png", Verdict: "fail", FailReason: "label clipped"},
+		{Screen: "home", Viewport: 1920, Screenshot: "shot.png", Layout: fitLayout(1920, 90), Verdict: "fail", FailReason: "label clipped"},
 	}})
 	_, msg, _ := Check(d, repo, "origin/staging")
 	if !strings.Contains(msg, "home@1920: fail (label clipped)") {
@@ -796,10 +804,68 @@ func TestValidate_InvalidEntries(t *testing.T) {
 	repo, _ := gateRepo(t, "", "x")
 	writeArtifact(t, repo, "fpinv00001", Artifact{FP: "fpinv00001", Screens: []Screen{
 		{Screen: "a", Viewport: 0, Screenshot: "shot.png", Verdict: "pass"},
-		{Screen: "b", Viewport: 1440, Screenshot: "shot.png", Verdict: ""},
+		{Screen: "b", Viewport: 1440, Screenshot: "shot.png", Layout: fitLayout(1280, 90), Verdict: "pass"},
+		{Screen: "c", Viewport: 1440, Screenshot: "../../README.md", Layout: fitLayout(1440, 90), Verdict: "pass"},
+		{Screen: "d", Viewport: 1440, Screenshot: "sub/shot.png", Layout: fitLayout(1440, 90), Verdict: "pass"},
+		{Screen: "e", Viewport: 1440, Screenshot: "..", Layout: fitLayout(1440, 90), Verdict: "pass"},
 	}})
 	_, problems := Validate(repo, "fpinv00001", nil)
-	if len(problems) != 2 || problems[0] != "a: invalid entry" || problems[1] != "b: invalid entry" {
+	want := []string{"a@0: invalid entry", "b@1440: invalid entry", "c@1440: invalid entry",
+		"d@1440: invalid entry", "e@1440: invalid entry"}
+	if !reflect.DeepEqual(problems, want) {
+		t.Errorf("problems=%v, want %v", problems, want)
+	}
+}
+
+// The stored verdict is for humans: a hand-edited "pass" over an overflowing
+// layout, or a screenshot path outside .znf/ui-verify, still requires a verdict.
+func TestCheck_RecomputesStoredVerdict(t *testing.T) {
+	cases := []struct {
+		name    string
+		screen  Screen
+		wantMsg string
+	}{
+		{"pass over overflow", Screen{Screen: "home", Viewport: 1920, Screenshot: "shot.png",
+			Layout: fitLayout(1920, 101), Verdict: "pass"}, "home@1920: fail (right 5px)"},
+		{"pass with fail reason", Screen{Screen: "home", Viewport: 1920, Screenshot: "shot.png",
+			Layout: fitLayout(1920, 90), FailReason: "label clipped", Verdict: "pass"}, "home@1920: fail (label clipped)"},
+		{"screenshot outside dir", Screen{Screen: "home", Viewport: 1920, Screenshot: "../../README.md",
+			Layout: fitLayout(1920, 90), Verdict: "pass"}, "home@1920: invalid entry"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, d := gateRepo(t, "", "fprecomp01")
+			if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("x"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			writeArtifact(t, repo, "fprecomp01", Artifact{FP: "fprecomp01", Screens: []Screen{tc.screen}})
+			state, msg, err := Check(d, repo, "origin/staging")
+			if state != "required" || exitcode.Code(err) != exitcode.Fail {
+				t.Fatalf("state=%q err=%v, want required", state, err)
+			}
+			if !strings.Contains(msg, tc.wantMsg) {
+				t.Errorf("msg=%q lacks %q", msg, tc.wantMsg)
+			}
+		})
+	}
+}
+
+// An entry from the previous kit (no viewport) can never be upserted away, so
+// a new record must drop it or check stays required at that fingerprint.
+func TestRecord_DropsLegacyEntries(t *testing.T) {
+	repo := t.TempDir()
+	writeArtifact(t, repo, "abc1234567", Artifact{FP: "abc1234567", Screens: []Screen{
+		{Screen: "home", Screenshot: "old.png", Verdict: "pass"},
+	}})
+	src := writeTempScreenshot(t, t.TempDir(), "shot.png", 16)
+	if _, err := Record(stubDeps("abc1234567"), repo, recIn("home", 1920, src)); err != nil {
+		t.Fatal(err)
+	}
+	art := readArtifactT(t, repo, "abc1234567")
+	if len(art.Screens) != 1 || art.Screens[0].Viewport != 1920 {
+		t.Fatalf("legacy entry kept: %+v", art.Screens)
+	}
+	if _, problems := Validate(repo, "abc1234567", []int{1920}); len(problems) != 0 {
 		t.Errorf("problems=%v", problems)
 	}
 }
