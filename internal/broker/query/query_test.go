@@ -479,6 +479,7 @@ func TestQuery_DevPrdDataReadLeadOnly(t *testing.T) { // SC-20
 		"explain of a write":   {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN DELETE FROM accounts"},
 		"explain no select":    {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FORMAT=JSON accounts"},
 		"audit target":         {Env: "prd", Engine: "mongo", Target: "audit", Op: "count", Coll: "audit_logs"},
+		"msghub target":        {Env: "prd", Engine: "mongo", Target: "msghub", Op: "indexes", Coll: "items"},
 		"desc for connection":  {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESC FOR CONNECTION 1"},
 		"describe format conn": {Env: "prd", Engine: "mysql", Op: "sql", SQL: "DESCRIBE FORMAT=JSON FOR CONNECTION 1"},
 		"explain for conn":     {Env: "prd", Engine: "mysql", Op: "sql", SQL: "EXPLAIN FOR CONNECTION 1"},
@@ -845,5 +846,62 @@ func TestQuery_UnknownRolePrdTreatedAsDev(t *testing.T) {
 	}
 	if n := atomic.LoadInt32(f.calls); n != 0 {
 		t.Fatalf("%d processes started, want 0", n)
+	}
+}
+
+func TestQuery_TargetMsghubUsesMsghubURLAndDB(t *testing.T) {
+	for _, env := range []string{"stg", "prd"} {
+		t.Run(env, func(t *testing.T) {
+			var gotArgs, gotEnv []string
+			f := newFixture(t, func(ctx context.Context, name string, args, env []string, out, errw io.Writer) error {
+				gotArgs, gotEnv = args, env
+				return okRun(ctx, name, args, env, out, errw)
+			})
+			f.h.Creds.MsghubMongoStg, f.h.Creds.MsghubMongoPrd, f.h.Creds.MsghubDB = "mongodb://msghub-stg", "mongodb://msghub-prd", "hubdb"
+			st, _, e := f.post(t, "octocat", api.QueryRequest{Env: env, Engine: "mongo", Target: "msghub", Op: "collections"})
+			if st != http.StatusOK {
+				t.Fatalf("got %d %+v", st, e)
+			}
+			if !strings.Contains(strings.Join(gotEnv, "\n"), "ZNF_MONGO_URL=mongodb://msghub-"+env) {
+				t.Errorf("env lacks msghub %s url: %v", env, gotEnv)
+			}
+			if !strings.Contains(strings.Join(gotArgs, " "), `getSiblingDB("hubdb")`) {
+				t.Errorf("script lacks msghub db: %v", gotArgs)
+			}
+		})
+	}
+}
+
+func TestQuery_TargetMsghubMySQLInvalid(t *testing.T) {
+	f := newFixture(t, okRun)
+	f.h.Creds.MsghubMongoPrd, f.h.Creds.MsghubDB = "mongodb://msghub-prd", "hubdb"
+	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "prd", Engine: "mysql", Target: "msghub", Op: "tables"})
+	if st != http.StatusBadRequest || e.Error != api.CodeInvalidTarget || atomic.LoadInt32(f.calls) != 0 {
+		t.Fatalf("got %d %+v calls=%d", st, e, atomic.LoadInt32(f.calls))
+	}
+}
+
+func TestQuery_TargetMsghubMissingCredential500(t *testing.T) {
+	f := newFixture(t, okRun)
+	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "prd", Engine: "mongo", Target: "msghub", Op: "collections"})
+	if st != http.StatusInternalServerError || e.Error != api.CodeBrokerMisconfigured || atomic.LoadInt32(f.calls) != 0 {
+		t.Fatalf("got %d %+v calls=%d", st, e, atomic.LoadInt32(f.calls))
+	}
+}
+
+func TestQuery_TargetMsghubStderrMasked(t *testing.T) {
+	f := newFixture(t, func(_ context.Context, _ string, _ []string, _ []string, _, errw io.Writer) error {
+		_, _ = io.WriteString(errw, "auth failed for hub_user (pw hub%2Fpass = hub/pass) at msghub-prd.example.test\n")
+		return errors.New("exit status 1")
+	})
+	f.h.Creds.MsghubMongoPrd, f.h.Creds.MsghubDB = "mongodb://hub_user:hub%2Fpass@msghub-prd.example.test:27017/hubdb", "hubdb"
+	st, _, e := f.post(t, "octocat", api.QueryRequest{Env: "prd", Engine: "mongo", Target: "msghub", Op: "collections"})
+	if st != http.StatusBadGateway {
+		t.Fatalf("got %d %+v", st, e)
+	}
+	for _, leak := range []string{"hub_user", "hub%2Fpass", "hub/pass", "msghub-prd.example.test"} {
+		if strings.Contains(e.Message, leak) {
+			t.Errorf("message leaks %q: %q", leak, e.Message)
+		}
 	}
 }
