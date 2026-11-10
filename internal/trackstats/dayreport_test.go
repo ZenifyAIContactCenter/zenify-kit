@@ -50,7 +50,7 @@ func TestDayReport(t *testing.T) {
 	got := DayReport(day, now, cache, "gh was down")
 	for _, w := range []string{
 		"# Track day close: 2026-11-09", "cook 2 done", "fix 1 cancelled",
-		"wall 2h15m", "agent 1h0m", "fix rounds 3", "PRs opened 2",
+		"agent time: 1h0m", "- merged: 1\n  - https://github.com/o/r/pull/10", "fix rounds 3", "PRs opened 2",
 		"pull/10", "estimate: 1/2 hit", "old cook kit impl age 6d (stale soon)",
 		"ready to merge", "CI red", "+2 more PRs waiting", "plan-todo", "note: gh was down",
 	} {
@@ -58,7 +58,7 @@ func TestDayReport(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", w, got)
 		}
 	}
-	for _, w := range []string{"pull/11", "pull/12", "plan-done"} {
+	for _, w := range []string{"pull/11", "pull/12", "plan-done", "wall"} {
 		if strings.Contains(got, w) {
 			t.Errorf("unexpected %q in:\n%s", w, got)
 		}
@@ -68,7 +68,7 @@ func TestDayReport(t *testing.T) {
 
 func TestDayReportEmpty(t *testing.T) {
 	got := DayReport(Result{Today: Today{Date: "2026-11-09"}}, Result{}, nil, "")
-	if strings.Count(got, "none") < 3 || strings.Contains(got, "note:") {
+	if strings.Count(got, "none") < 3 || strings.Contains(got, "agent time") || !strings.Contains(got, "- merged: none") || strings.Contains(got, "note:") {
 		t.Errorf("empty report:\n%s", got)
 	}
 }

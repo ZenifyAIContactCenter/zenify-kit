@@ -35,7 +35,9 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 		}
 	}
 	fmt.Fprintf(&b, "- outcome: %s\n", orNone(strings.Join(counts, ", ")))
-	fmt.Fprintf(&b, "- time: wall %s · agent %s\n", hm(day.Today.WallMin), hm(day.Today.AgentMin))
+	if day.Today.AgentMin > 0 {
+		fmt.Fprintf(&b, "- agent time: %s\n", hm(day.Today.AgentMin))
+	}
 	fmt.Fprintf(&b, "- fix rounds %d\n- PRs opened %d\n", day.Today.Rounds, day.Today.PRsOpened)
 
 	var merged []string
@@ -48,7 +50,14 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 		}
 	}
 	sort.Strings(merged)
-	fmt.Fprintf(&b, "- merged: %s\n", orNone(strings.Join(merged, ", ")))
+	if len(merged) == 0 {
+		b.WriteString("- merged: none\n")
+	} else {
+		fmt.Fprintf(&b, "- merged: %d\n", len(merged))
+		for _, u := range merged {
+			b.WriteString("  - " + u + "\n")
+		}
+	}
 
 	hit, n := 0, 0
 	for _, it := range day.Today.Items {
