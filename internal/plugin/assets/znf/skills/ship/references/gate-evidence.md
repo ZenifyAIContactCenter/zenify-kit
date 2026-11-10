@@ -92,6 +92,8 @@ Verified at fingerprint = <fp10>
             before concluding: `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` — non-zero →
             append "❌ BLOCKED" here and Shippable NO; a waiver appends "waived: <reason>"
       routes: +<N> added (<names>), <M> declined (<name>: <reason>) · or "none proposed"
+      a11y: <summary of the `a11y <route>:` lines from visual check> · or "not run"   (advisory, never changes Shippable)
+      evidence: <path printed by `ui-verify evidence`> · or "none"
       data checks: <which of the project-specific ones ran; which the diff could not trigger>
 ✅/❌ Independent review   (<fp10>)  round <R>: <N CRITICAL/HIGH → addressed> · diff <N> LOC
       not blocking: <MEDIUM/LOW findings, plus any out-of-scope observations>

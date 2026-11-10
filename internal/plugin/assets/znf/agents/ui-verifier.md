@@ -50,6 +50,11 @@ Print exactly one line per proposal, a single-line JSON object; omit unused fiel
 
 Never write a file and never run `zenify visual`. Do not propose when the screen is FAIL/PARTIAL or the path has parameters.
 
+## Design reference (optional)
+When the caller passes a Figma link and your tool list has a Figma MCP server (its tool names end in `get_screenshot`; load the schema with ToolSearch if it is deferred), fetch the screenshot of the linked node and compare it by eye with your own screenshot at the nearest viewport. Print one line per difference: `design-diff: <what differs>`. No difference: `design-diff: none`.
+
+`design-diff` is advisory. It never changes a verdict and never goes into `--fail-reason`. No link or no Figma MCP: print `design-diff: skipped (<reason>)`. Never write to the Figma file.
+
 ## Output (return ONLY this — it's your tool result, not a human message)
 - VERDICT: PASS / FAIL / BLOCKED / PARTIAL for each thing checked, plus the `verdict:`/`overflow:` lines `record` printed for every (screen, viewport).
 - Functional evidence: what you drove and what it did.

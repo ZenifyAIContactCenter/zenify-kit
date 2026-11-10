@@ -112,3 +112,8 @@ Only at ship step 4, never in `/cook`'s per-task verify: a baseline must capture
 If any of steps 1-4 fails, undo that route: unstage with `git -C <path> reset -q -- <files>`, restore `git -C <path> checkout -- .znf/visual/routes.json` (delete the file if you just created it), delete the baseline files just generated, and record the reason. A declined proposal never turns Shippable to NO. Adding a route changes the fingerprint, so any check stamped with the old `fp` must re-run.
 
 The optional route field `aria` is a root selector whose accessibility tree is compared against `.znf/visual/__snapshots__/<name>.aria.yml` with `deep-equal`, so an added element fails as well as a missing one. `visual check` refuses to run when `routes.json` or an on-disk baseline is untracked: `baseline not tracked by git — run: git -C <repo> add -f …`.
+
+### Evidence file and a11y
+After `ui-verify check` at step 7, run `zenify ui-verify evidence --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` and put the path it prints on the board's `evidence:` line. It exits 0 whatever the check found and writes one local Markdown file under `.znf/ui-verify/`; nothing is uploaded.
+
+`zenify visual check` also runs axe on every route and writes `.znf/visual/__a11y__/<route>.json` plus one `a11y <route>: …` stdout line. This is reference only: it is not a baseline, git need not track it, and it never changes Shippable. Copy the summary onto the `a11y:` line, or write "not run".

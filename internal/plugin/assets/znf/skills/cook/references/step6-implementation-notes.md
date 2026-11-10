@@ -223,3 +223,7 @@ to `sonnet` and above only.
 ### Stacked plan
 
 Applies only when the plan has a `## Stack` block. Before the first task run `gh stack --help`. If it fails, the `gh-stack` extension is missing: stop before the first task and tell the user to run `gh extension install github/gh-stack` (needs `gh` 2.90.0 or newer). Do not create the worktree layers or dispatch an implementer until it runs. How SDD builds and submits the layers is in the stacked-layers reference of `znf:subagent-driven-development`. A plan without `## Stack` skips all of this.
+
+### UI task with a Figma link
+
+When a UI task's spec links a Figma design, pass that link to the implementer and, if you dispatch one for that task, to `ui-verifier`. They read it through the Figma MCP when the session has one; without it they say so and follow the written spec.

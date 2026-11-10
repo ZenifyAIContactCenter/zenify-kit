@@ -116,6 +116,24 @@ Bạn không phải nhớ thêm route cho màn mới. Khi `ui-verifier` đo mộ
 zenify visual add-route --repo repos/contact-center-web --name settings --path /settings --aria main
 ```
 
+## A11y tham khảo
+
+Mỗi lần `zenify visual check` chụp một route, harness chạy thêm axe-core (`@axe-core/playwright`, ghim `4.14.0`) trên trang đó. Kết quả ghi vào `.znf/visual/__a11y__/<tên route>.json` (mã luật, mức ảnh hưởng, số node, tối đa 3 selector đầu) và in một dòng `a11y <route>: <n> violation(s) (<c> critical, <s> serious)`. Axe lỗi hoặc không import được thì dòng đó là `a11y <route>: skipped (<lý do>)`.
+
+A11y không bao giờ làm `visual check` fail: axe chỉ phủ khoảng 57% lỗi a11y, nên kit coi nó là thông tin tham khảo. Thư mục `__a11y__/` không phải baseline, không cần git track. Chỉ các route tĩnh trong `routes.json` được quét.
+
+## Gói bằng chứng local
+
+`zenify ui-verify evidence --repo <repo> --base <ref>` gom bằng chứng của fingerprint hiện tại vào `.znf/ui-verify/<fp>-evidence.md` và in đường dẫn file. File có state của `ui-verify check`, bảng màn hình × width (verdict, overflow, đường dẫn tuyệt đối tới ảnh), kết quả lint style, tổng kết a11y và thư mục ảnh lệch nếu có. Lệnh luôn thoát 0 dù không có artifact hay kiểm fail; chỉ config `uiVerify` sai (mã 2) hoặc không ghi được file mới khác 0. File a11y hoặc `routes.json` hỏng được ghi `unreadable` thay vì làm lệnh dừng. Bảng ship có hai dòng `a11y:` và `evidence:` trỏ tới nó.
+
+Bằng chứng chỉ nằm trên máy bạn: kit không tải gì lên PR hay nơi nào khác, và file không nhúng ảnh. Kit cũng không đưa Playwright trace hay video vào gói, vì trace ghi cả giá trị gõ vào form đăng nhập lẫn header mang token. Muốn người khác xem thì gửi file này và các ảnh nó trỏ tới.
+
+## Design từ Figma
+
+Task có link Figma và phiên có Figma MCP thì agent đọc design context của node trước khi viết UI, rồi ánh xạ sang primitive và token của repo thay vì dán màu hex từ design. Agent chỉ đọc, không ghi vào file Figma. Phiên không có Figma MCP thì agent ghi "design not read (no Figma MCP)" và làm theo spec chữ.
+
+Controller chuyển link Figma cho implementer và `ui-verifier`. Khi có link, `ui-verifier` lấy ảnh của node, so bằng mắt với ảnh thật ở width gần nhất và in mỗi khác biệt một dòng `design-diff: <mô tả>` (hoặc `design-diff: none`, `design-diff: skipped (<lý do>)`). Đây là nhận xét tham khảo, không đổi verdict và không phải phép đo pixel.
+
 ## Journey E2E
 
 Journey là một test Playwright điều khiển UI như người dùng, rồi xác nhận kết quả bằng cách gọi API đọc lại thực thể. Assert trên màn hình không đủ, vì màn hình có thể báo thành công khi dữ liệu chưa đổi.

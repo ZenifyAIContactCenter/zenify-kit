@@ -48,3 +48,16 @@ Put `znf:ui-style-ok: <reason>` in a comment on the offending line or on the lin
 right above it. The reason is required. It waives that line and the next added
 line only. Use it for a value that genuinely cannot be a token (a third-party
 brand color), never to silence the check.
+
+## 6. When the task links a Figma design
+
+If your tool list has a Figma MCP server (tool names look like
+`mcp__<server>__get_design_context`; read the server name from the list, do not
+assume it), fetch the design context of the linked node before writing markup.
+
+- Treat the result as a reference, not as code to paste. Map each element to a
+  primitive from section 1 and each color, size and font to a theme token from
+  section 2. Never copy hex values from the design.
+- The design is read-only: never write to the Figma file.
+- No Figma MCP in the session: state "design not read (no Figma MCP)" in your
+  report and follow the written spec. Do not guess what the design looks like.
