@@ -115,6 +115,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify track stats](./zenify_track_stats) | In số liệu hôm nay, độ chính xác estimate và chất lượng từ log.md và sessions/*.log. |
 | [zenify ui-verify](./zenify_ui-verify) | Nhóm lệnh ghi/kiểm tra bằng chứng UI-verify cho gate cơ học của /znf:ship. |
 | [zenify ui-verify check](./zenify_ui-verify_check) | Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint hiện tại. |
+| [zenify ui-verify evidence](./zenify_ui-verify_evidence) | Gom bằng chứng UI-verify của fingerprint hiện tại (screen, style, a11y, ảnh lệch) vào một file Markdown local. |
 | [zenify ui-verify files](./zenify_ui-verify_files) | In các file render UI đã đổi so với base, mỗi dòng một file; file test không tính. |
 | [zenify ui-verify record](./zenify_ui-verify_record) | Ghi lại artifact UI-verify (screenshot + số đo layout) cho fingerprint hiện tại. |
 | [zenify ui-verify style](./zenify_ui-verify_style) | Lint màu và giá trị viết cứng trên các dòng mới thêm của nhánh, theo luật khai trong `uiVerify.style`. |

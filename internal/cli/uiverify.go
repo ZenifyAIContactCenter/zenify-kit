@@ -62,6 +62,7 @@ func newUIVerifyCmd() *cobra.Command {
 	c.AddCommand(newUIVerifyFilesCmd())
 	c.AddCommand(newUIVerifyViewportsCmd())
 	c.AddCommand(newUIVerifyStyleCmd())
+	c.AddCommand(newUIVerifyEvidenceCmd())
 	return c
 }
 
@@ -220,6 +221,33 @@ func newUIVerifyStyleCmd() *cobra.Command {
 				return exitcode.New(exitcode.Fail, errors.New(summary))
 			}
 			return nil
+		},
+	}
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang
+	c.Flags().StringVar(&base, "base", "", "base ref để so sánh (bắt buộc)") //znf:allow-lang
+	return c
+}
+
+// newUIVerifyEvidenceCmd writes the local evidence file and prints its path; it never gates.
+func newUIVerifyEvidenceCmd() *cobra.Command {
+	var repo, base string
+	c := &cobra.Command{
+		SilenceUsage: true,
+		Use:          "evidence",
+		Short:        "Gom bằng chứng UI-verify của fingerprint hiện tại vào một file Markdown local", //znf:allow-lang
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if repo == "" {
+				repo, _ = os.Getwd()
+			}
+			if base == "" {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need --base <base ref>"))
+			}
+			path, err := uiverify.Evidence(defaultUIVerifyDeps(), repo, base)
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), path)
+			return err
 		},
 	}
 	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang

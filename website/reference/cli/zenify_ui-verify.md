@@ -22,6 +22,7 @@ Gồm `record` (agent `ui-verifier` ghi lại screenshot + số đo layout keyed
 
 - [zenify](./zenify): Binary dòng lệnh của ZenifyKit, chứa mọi lệnh workspace và plugin skill đi kèm.
 - [zenify ui-verify check](./zenify_ui-verify_check): Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint hiện tại.
+- [zenify ui-verify evidence](./zenify_ui-verify_evidence): Gom bằng chứng UI-verify của fingerprint hiện tại (screen, style, a11y, ảnh lệch) vào một file Markdown local.
 - [zenify ui-verify files](./zenify_ui-verify_files): In các file render UI đã đổi so với base, mỗi dòng một file; file test không tính.
 - [zenify ui-verify record](./zenify_ui-verify_record): Ghi lại artifact UI-verify (screenshot + số đo layout) cho fingerprint hiện tại.
 - [zenify ui-verify style](./zenify_ui-verify_style): Lint màu và giá trị viết cứng trên các dòng mới thêm của nhánh, theo luật khai trong `uiVerify.style`.

@@ -507,3 +507,21 @@ func TestUIVerifyStyleCmd(t *testing.T) {
 		}
 	})
 }
+
+func TestUIVerifyEvidenceCmd(t *testing.T) {
+	repo := initUIVerifyRepo(t)
+	var buf bytes.Buffer
+	c := newUIVerifyCmd()
+	c.SetOut(&buf)
+	c.SetArgs([]string{"evidence", "--repo", repo, "--base", "HEAD"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("evidence must exit 0 with no artifact: %v", err)
+	}
+	out := strings.TrimRight(buf.String(), "\n")
+	if strings.Contains(out, "\n") || !filepath.IsAbs(out) || !strings.HasSuffix(out, "-evidence.md") {
+		t.Fatalf("stdout must be one absolute path, got %q", buf.String())
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Errorf("file not written: %v", err)
+	}
+}
