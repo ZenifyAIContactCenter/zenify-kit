@@ -20,8 +20,9 @@ zenify ui-verify check [flags]
 
 ## Kết quả
 
-Bốn trạng thái:
+Năm trạng thái:
 - Render-set rỗng → "not required" (exit 0).
+- Repo khai `uiVerify.style` và dòng mới thêm có style viết cứng chưa được miễn → "style" (exit 1), thông điệp bắt đầu bằng `ui-verify style —`. Kiểm trước waiver và artifact; ở chế độ tự động vẫn là exit 1, không mở await. Xem [`zenify ui-verify style`](/reference/cli/zenify_ui-verify_style).
 - Một dòng THÊM trong diff của nhánh (working tree so với merge-base với `--base`, gồm cả thay đổi chưa commit) nằm trong file render và mang marker `znf:ui-verify-ok: <lý do>` với lý do không rỗng → "waived: <lý do>" (exit 0). File chỉ đổi tên không tính là dòng thêm, nên marker cũ trong file bị đổi tên không miễn được.
 - Artifact khớp fingerprint hiện tại có entry cho mọi viewport khai trong `uiVerify.viewports` (không khai thì một viewport bất kỳ mỗi màn hình), và mọi entry đều pass khi kit tính lại từ số đo layout và `failReason` đã ghi (bỏ qua `verdict` lưu trong file) → "verified" (exit 0).
 - Còn lại → exit khác 0, `/znf:ship` đọc là "ui-verify required" và đánh dòng `look:` thành `❌ BLOCKED`, `Shippable: NO`.

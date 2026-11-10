@@ -989,3 +989,36 @@ func TestFindWaiver_CommentCloserIsNotAReason(t *testing.T) {
 		t.Error("a bare comment closer waived the gate")
 	}
 }
+
+func TestParsePorcelainPath_Arrow(t *testing.T) {
+	for line, want := range map[string]string{
+		`?? "a -> b.tsx"`:              "a -> b.tsx",
+		`R  "o -> p.tsx" -> "n.tsx"`:   "n.tsx",
+		`R  old.tsx -> new.tsx`:        "new.tsx",
+		`R  old.tsx -> "new name.tsx"`: "new name.tsx",
+		` M src/components/A.tsx`:      "src/components/A.tsx",
+	} {
+		if got := parsePorcelainPath(line); got != want {
+			t.Errorf("%q: got %q, want %q", line, got, want)
+		}
+	}
+}
+
+// A closer is stripped only when its opener is on the line; a reason may end in "}".
+func TestMarkerReason_KeepsRealText(t *testing.T) {
+	for line, want := range map[string]string{
+		"// znf:ui-verify-ok: see {a}":         "see {a}",
+		"{/* znf:ui-verify-ok: copy only */}":  "copy only",
+		"<!-- znf:ui-verify-ok: copy only -->": "copy only",
+		"/* znf:ui-verify-ok: copy only */":    "copy only",
+	} {
+		if got, ok := markerReason(line, waiverMarker); !ok || got != want {
+			t.Errorf("%q: got (%q, %v), want %q", line, got, ok, want)
+		}
+	}
+	for _, line := range []string{"{/* znf:ui-verify-ok: */}", "<!-- znf:ui-verify-ok: -->", "// znf:ui-verify-ok: ---"} {
+		if _, ok := markerReason(line, waiverMarker); ok {
+			t.Errorf("%q: accepted without a reason", line)
+		}
+	}
+}

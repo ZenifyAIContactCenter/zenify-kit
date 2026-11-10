@@ -143,8 +143,13 @@ func parsePorcelainPath(line string) string {
 		return ""
 	}
 	path := strings.TrimSpace(line[3:])
-	if idx := strings.Index(path, " -> "); idx >= 0 {
-		path = path[idx+len(" -> "):]
+	// Only rename/copy lines carry "old -> new"; an untracked name may hold " -> ".
+	if line[0] == 'R' || line[0] == 'C' || line[1] == 'R' || line[1] == 'C' {
+		if q, err := strconv.QuotedPrefix(path); err == nil {
+			path = strings.TrimPrefix(path[len(q):], " -> ")
+		} else if idx := strings.Index(path, " -> "); idx >= 0 {
+			path = path[idx+len(" -> "):]
+		}
 	}
 	return unquoteGitPath(path)
 }
@@ -166,17 +171,24 @@ func diffHeaderPath(line string) string {
 	return strings.TrimPrefix(unquoteGitPath(strings.TrimRight(line[len("+++ "):], "\t")), "b/")
 }
 
-// markerReason returns the text after marker, minus trailing comment closers;
-// it must hold a letter or digit, so "{/* marker: */}" carries no reason.
+// markerReason returns the text after marker, minus the closer of the comment
+// it sits in; it must hold a letter or digit, so "{/* marker: */}" has none.
 func markerReason(line, marker string) (string, bool) {
 	idx := strings.Index(line, marker)
 	if idx < 0 {
 		return "", false
 	}
 	reason := strings.TrimSpace(line[idx+len(marker):])
-	for _, closer := range []string{"}", "*/", "-->"} {
-		reason = strings.TrimSpace(strings.TrimSuffix(reason, closer))
+	// Strip a comment closer only when its opener precedes the marker, so a
+	// reason that itself ends in "}" or "-->" stays whole.
+	head := line[:idx]
+	switch {
+	case strings.Contains(head, "<!--"):
+		reason = strings.TrimSuffix(reason, "-->")
+	case strings.Contains(head, "/*"):
+		reason = strings.TrimSuffix(strings.TrimSpace(strings.TrimSuffix(reason, "}")), "*/")
 	}
+	reason = strings.TrimSpace(reason)
 	if strings.IndexFunc(reason, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) < 0 {
 		return "", false
 	}

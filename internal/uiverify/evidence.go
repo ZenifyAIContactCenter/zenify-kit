@@ -114,6 +114,8 @@ func writeVisual(b *strings.Builder, repo string) {
 	b.WriteString("## Visual\n\n")
 	vdir := filepath.Join(repo, ".znf", "visual")
 
+	// A report left by a removed route is stale; nil means routes.json is unusable.
+	var listed map[string]bool
 	b.WriteString("**Routes:** ")
 	var routes []struct {
 		Name string `json:"name"`
@@ -123,16 +125,24 @@ func writeVisual(b *strings.Builder, repo string) {
 	} else if err := json.Unmarshal(raw, &routes); err != nil {
 		fmt.Fprintf(b, "unreadable: %s\n\n", oneLine(err.Error()))
 	} else {
+		listed = map[string]bool{}
 		names := make([]string, len(routes))
 		for i, r := range routes {
 			names[i] = oneLine(r.Name)
+			listed[r.Name] = true
 		}
 		fmt.Fprintf(b, "%s\n\n", strings.Join(names, ", "))
 	}
 
 	b.WriteString("**A11y (advisory):**\n\n")
-	files, _ := filepath.Glob(filepath.Join(vdir, "__a11y__", "*.json"))
-	sort.Strings(files)
+	all, _ := filepath.Glob(filepath.Join(vdir, "__a11y__", "*.json"))
+	sort.Strings(all)
+	var files []string
+	for _, f := range all {
+		if listed == nil || listed[strings.TrimSuffix(filepath.Base(f), ".json")] {
+			files = append(files, f)
+		}
+	}
 	if len(files) == 0 {
 		b.WriteString("- not run\n")
 	}

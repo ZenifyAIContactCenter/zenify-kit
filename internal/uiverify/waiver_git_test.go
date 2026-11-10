@@ -230,3 +230,13 @@ func TestStyle_UnreadableUntrackedFileErrors(t *testing.T) {
 		t.Fatal("want an error for an unreadable untracked file, got clean")
 	}
 }
+
+// A path the synthetic diff header cannot carry must fail closed, not go unlinted.
+func TestStyle_RealGitUntrackedOddNameErrors(t *testing.T) {
+	repo, _ := waiverRepo(t)
+	writeRepoFile(t, repo, ".claude/worktree.json", `{"uiVerify":{"style":["hex"]}}`)
+	writeRepoFile(t, repo, "src/components/q\"t.tsx", "x #ff0000\n")
+	if _, _, _, err := Style(Deps{RunGit: execGit}, repo, "main"); err == nil {
+		t.Fatal("an untracked file with a quote in its name was skipped without an error")
+	}
+}

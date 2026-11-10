@@ -26,10 +26,15 @@ for (const r of routes) {
       scale: 'css',
       mask: (r.mask ?? []).map((sel) => page.locator(sel)),
     });
-    // Advisory only: nothing here may fail the route.
+    // Advisory only: nothing here may fail the route. A test timeout cannot be
+    // caught, so axe gets its own budget and a deadline that lands in the catch.
+    test.setTimeout(test.info().timeout + 30_000);
     try {
       const { default: AxeBuilder } = await import('@axe-core/playwright');
-      const { violations } = await new AxeBuilder({ page }).analyze();
+      const { violations } = await Promise.race([
+        new AxeBuilder({ page }).analyze(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('axe took longer than 20s')), 20_000)),
+      ]);
       const out = violations.map((v) => ({
         id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.length,
         targets: v.nodes.slice(0, 3).map((n) => n.target.join(' ')),

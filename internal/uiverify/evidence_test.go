@@ -68,7 +68,7 @@ func TestEvidence_StyleNotDeclared(t *testing.T) {
 
 func TestEvidence_VisualSection(t *testing.T) {
 	repo, d := gateRepo(t, "", "fpevid0004")
-	writeRepoFile(t, repo, ".znf/visual/routes.json", `[{"name":"home","path":"/"}]`)
+	writeRepoFile(t, repo, ".znf/visual/routes.json", `[{"name":"home","path":"/"},{"name":"a","path":"/a"},{"name":"b","path":"/b"}]`)
 	writeRepoFile(t, repo, ".znf/visual/__a11y__/a.json",
 		`{"route":"a","violations":[{"id":"image-alt","impact":"critical","help":"x","nodes":1,"targets":["img"]},{"id":"c","impact":"serious","nodes":2}]}`)
 	writeRepoFile(t, repo, ".znf/visual/__a11y__/b.json", `{broken`)
@@ -108,5 +108,27 @@ func TestEvidence_BadConfig(t *testing.T) {
 	repo, d := gateRepo(t, `{"uiVerify":{"viewport":[1]}}`, "fpevid0007")
 	if _, err := Evidence(d, repo, "origin/staging"); exitcode.Code(err) != exitcode.BadArgs {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+// A report left behind by a removed route must not be shown as current.
+func TestEvidence_A11yOnlyForListedRoutes(t *testing.T) {
+	repo := t.TempDir()
+	vdir := filepath.Join(repo, ".znf", "visual", "__a11y__")
+	if err := os.MkdirAll(vdir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	write := func(p, s string) {
+		if err := os.WriteFile(p, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(repo, ".znf", "visual", "routes.json"), `[{"name":"home","path":"/"}]`)
+	write(filepath.Join(vdir, "home.json"), `{"route":"home","violations":[]}`)
+	write(filepath.Join(vdir, "gone.json"), `{"route":"gone","violations":[]}`)
+	var b strings.Builder
+	writeVisual(&b, repo)
+	if out := b.String(); !strings.Contains(out, "- home:") || strings.Contains(out, "gone") {
+		t.Errorf("visual section:\n%s", out)
 	}
 }

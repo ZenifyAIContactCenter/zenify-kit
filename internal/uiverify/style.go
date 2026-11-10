@@ -218,6 +218,10 @@ func untrackedDiff(d Deps, repo string, files []string) (string, error) {
 		if !inSet[path] {
 			continue
 		}
+		// newFileDiff writes the path into a diff header, which these would break.
+		if strings.ContainsAny(path, "\n\t\"") {
+			return "", fmt.Errorf("untracked %q: rename it (quote, tab or newline in the name) so it can be linted", path)
+		}
 		body, err := os.ReadFile(filepath.Join(repo, path)) //nolint:gosec // G304 -- path comes from git status of this repo
 		if err != nil {
 			return "", fmt.Errorf("read untracked %s: %w", path, err)
