@@ -48,6 +48,11 @@ func TestLoadConfig(t *testing.T) {
 		{name: "dup viewport", file: ptr(`{"uiVerify":{"viewports":[1366,1366]}}`), badField: "viewports"},
 		{name: "low viewport", file: ptr(`{"uiVerify":{"viewports":[200]}}`), badField: "viewports"},
 		{name: "high viewport", file: ptr(`{"uiVerify":{"viewports":[4000]}}`), badField: "viewports"},
+		{name: "style valid", file: ptr(`{"uiVerify":{"style":["hex","palette"]}}`),
+			declared: true, want: Config{Style: []string{StyleHex, StylePalette}}},
+		{name: "style unknown", file: ptr(`{"uiVerify":{"style":["hexx"]}}`), badField: "uiVerify.style"},
+		{name: "style empty", file: ptr(`{"uiVerify":{"style":[]}}`), badField: "uiVerify.style"},
+		{name: "style duplicate", file: ptr(`{"uiVerify":{"style":["hex","hex"]}}`), badField: "uiVerify.style"},
 		{name: "broken json", file: ptr(`{"uiVerify":`), badField: "worktree.json"},
 	}
 	for _, tc := range cases {

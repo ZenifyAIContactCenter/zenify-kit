@@ -19,10 +19,18 @@ const (
 	maxViewport = 3840
 )
 
+// Style rule names accepted in uiVerify.style.
+const (
+	StyleHex       = "hex"
+	StylePalette   = "palette"
+	StyleArbitrary = "arbitrary"
+)
+
 // Config is the per-repo uiVerify block of .claude/worktree.json.
 type Config struct {
 	RenderPaths []string
 	Viewports   []int
+	Style       []string
 }
 
 // rawConfig keeps the rest of worktree.json lenient (it has many other keys);
@@ -34,6 +42,7 @@ type rawConfig struct {
 type rawUIVerify struct {
 	RenderPaths []string `json:"renderPaths"`
 	Viewports   []int    `json:"viewports"`
+	Style       []string `json:"style"`
 }
 
 func badConfig(format string, a ...any) error {
@@ -86,7 +95,29 @@ func LoadConfig(repo string) (cfg Config, declared bool, err error) {
 		}
 		seen[v] = true
 	}
+	if u.Style != nil {
+		if err := checkStyle(u.Style); err != nil {
+			return Config{}, false, err
+		}
+	}
 	return Config(u), true, nil
+}
+
+func checkStyle(rules []string) error {
+	if len(rules) == 0 {
+		return badConfig("uiVerify.style must not be empty when present")
+	}
+	seen := map[string]bool{}
+	for _, r := range rules {
+		if r != StyleHex && r != StylePalette && r != StyleArbitrary {
+			return badConfig("uiVerify.style: unknown rule %q (want hex, palette or arbitrary)", r)
+		}
+		if seen[r] {
+			return badConfig("uiVerify.style: duplicate %q", r)
+		}
+		seen[r] = true
+	}
+	return nil
 }
 
 // checkRenderPath accepts only a literal, clean, relative prefix: underAny
