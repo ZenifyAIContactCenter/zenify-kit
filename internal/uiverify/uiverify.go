@@ -242,17 +242,27 @@ func findWaiver(diff string, files []string) (string, bool) {
 // lets git pair renames, so a moved file's old marker is not an addition.
 // Any git error means no waiver (fail-closed). FR-3.2, FR-4.1..4.3.
 func Waiver(d Deps, repo, base string, files []string) (string, bool) {
-	mb, err := d.RunGit(repo, "merge-base", base, "HEAD")
-	if mb = strings.TrimSpace(mb); err != nil || mb == "" {
-		return "", false
-	}
-	// The parser needs plain "+++ b/<path>" headers whatever the user's git config.
-	diff, err := d.RunGit(repo, "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff",
-		"--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "-M", mb)
+	diff, err := branchDiff(d, repo, base)
 	if err != nil {
 		return "", false
 	}
 	return findWaiver(diff, files)
+}
+
+// branchDiff is the working-tree diff since the merge-base with base, in the
+// pinned form findWaiver and scanAdded parse.
+func branchDiff(d Deps, repo, base string) (string, error) {
+	mb, err := d.RunGit(repo, "merge-base", base, "HEAD")
+	if err != nil {
+		return "", err
+	}
+	mb = strings.TrimSpace(mb)
+	if mb == "" {
+		return "", fmt.Errorf("no merge-base between %s and HEAD", base)
+	}
+	// The parser needs plain "+++ b/<path>" headers whatever the user's git config.
+	return d.RunGit(repo, "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff",
+		"--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "-M", mb)
 }
 
 // copyFile copies src to dst, creating/truncating dst.

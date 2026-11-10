@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -145,5 +146,51 @@ func TestCheck_RealGitRenameIsRequired(t *testing.T) {
 	state, msg, err := Check(Deps{RunGit: execGit}, repo, "main")
 	if state != "required" || err == nil {
 		t.Fatalf("state=%q msg=%q err=%v, want required", state, msg, err)
+	}
+}
+
+func realStyle(t *testing.T, repo string) []Violation {
+	t.Helper()
+	writeRepoFile(t, repo, ".claude/worktree.json", `{"uiVerify":{"style":["hex"]}}`)
+	got, _, declared, err := Style(Deps{RunGit: execGit}, repo, "main")
+	if err != nil || !declared {
+		t.Fatalf("Style: declared=%v err=%v", declared, err)
+	}
+	return got
+}
+
+func TestStyle_RealGit(t *testing.T) {
+	oldHex := "a #111111\nb #222222\nc\nd\n"
+	cases := []struct {
+		name string
+		act  func(t *testing.T, repo string, git func(...string))
+		want []Violation
+	}{
+		{"old hex on untouched lines is not counted (SC-2)", func(t *testing.T, repo string, _ func(...string)) {
+			writeRepoFile(t, repo, "src/components/Hex.tsx", "a #111111\nb #222222\nc\nd changed\n")
+		}, nil},
+		{"added hex is reported on its new line (SC-1)", func(t *testing.T, repo string, git func(...string)) {
+			writeRepoFile(t, repo, "src/components/Hex.tsx", "a #111111\nb #222222\nnew #ff0000\nc\nd\n")
+			git("commit", "-am", "add")
+		}, []Violation{{File: "src/components/Hex.tsx", Line: 3, Rule: "hex", Match: "#ff0000"}}},
+		{"pure rename adds nothing (SC-12)", func(_ *testing.T, _ string, git func(...string)) {
+			git("mv", "src/components/Hex.tsx", "src/components/Renamed.tsx")
+			git("commit", "-m", "rename")
+		}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, git := waiverRepo(t)
+			git("checkout", "main")
+			writeRepoFile(t, repo, "src/components/Hex.tsx", oldHex)
+			git("add", "-A")
+			git("commit", "-m", "hex base")
+			git("checkout", "feat")
+			git("merge", "--ff-only", "main")
+			tc.act(t, repo, git)
+			if got := realStyle(t, repo); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("got %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }
