@@ -122,6 +122,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify update](./zenify_update) | Nâng cấp binary ZenifyKit lên bản mới nhất bằng đúng kênh đã cài, hoặc chỉ kiểm tra có bản mới. |
 | [zenify version](./zenify_version) | In phiên bản binary ZenifyKit đang chạy. |
 | [zenify visual](./zenify_visual) | Nhóm lệnh visual regression: chụp từng route và so với ảnh baseline đã commit. |
+| [zenify visual add-route](./zenify_visual_add-route) | Thêm một route vào danh mục visual-regression của repo mà không sửa JSON bằng tay. |
 | [zenify visual check](./zenify_visual_check) | So ảnh chụp từng route với baseline, hoặc chụp lại baseline khi giao diện đổi có chủ ý. |
 | [zenify wt](./zenify_wt) | Nhóm lệnh quản lý worktree theo slug: tạo, liệt kê, gỡ, dọn, kèm port và môi trường dev riêng cho từng task. |
 | [zenify wt base](./zenify_wt_base) | In base thật của worktree hiện tại, để skill tính merge-base đúng. |

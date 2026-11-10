@@ -106,3 +106,50 @@ func ValidateRoutes(rs []Route) error {
 	}
 	return nil
 }
+
+// AddRoute appends r to routes.json. Existing elements are copied as raw JSON so no field of
+// theirs (e.g. an empty mask) is lost to a decode/encode round trip.
+func AddRoute(repo string, r Route) error {
+	p := RoutesPath(repo)
+	var existing []Route
+	var raw []json.RawMessage
+	if _, err := os.Stat(p); err == nil {
+		if existing, err = LoadRoutes(repo); err != nil {
+			return err
+		}
+		data, err := os.ReadFile(p) //nolint:gosec // G304 -- p is <repo>/.znf/visual/routes.json, repo chosen by the operator
+		if err != nil {
+			return exitcode.New(exitcode.Fail, err)
+		}
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return badArgs("%s: %v", p, err)
+		}
+	}
+	if err := ValidateRoutes(append(existing, r)); err != nil {
+		return err
+	}
+	nb, err := json.Marshal(r)
+	if err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	out, err := json.MarshalIndent(append(raw, nb), "", "  ")
+	if err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	if err := os.WriteFile(p, append(out, '\n'), 0o600); err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	return nil
+}
+
+// BaselineFiles lists the repo-relative baseline files a route produces.
+func BaselineFiles(r Route) []string {
+	files := []string{".znf/visual/__snapshots__/" + r.Name + "-chromium-linux.png"}
+	if r.Aria != "" {
+		files = append(files, ".znf/visual/__snapshots__/"+r.Name+".aria.yml")
+	}
+	return files
+}

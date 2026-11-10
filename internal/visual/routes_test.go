@@ -3,6 +3,7 @@ package visual
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -84,4 +85,71 @@ func TestLoadRoutes(t *testing.T) {
 			t.Fatalf("got %v, %v", rs, err)
 		}
 	})
+}
+
+const webRoutes = `[
+  {"name":"home","path":"/","waitFor":"[data-sidebar=\"sidebar\"]","mask":["[data-testid=\"app-header\"]","[data-testid=\"clock\"]"]},
+  {"name":"settings-webhook","path":"/settings/webhook","waitFor":"#content","mask":["[data-testid=\"app-header\"]","[data-testid=\"badge\"]"]}
+]
+`
+
+func TestAddRoute_KeepsExisting(t *testing.T) {
+	repo := t.TempDir()
+	writeRoutes(t, repo, webRoutes)
+	before, err := LoadRoutes(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nr := Route{Name: "ticket-list", Path: "/tickets", Mask: []string{`[data-testid="app-header"]`}}
+	if err := AddRoute(repo, nr); err != nil {
+		t.Fatal(err)
+	}
+	after, err := LoadRoutes(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 3 || !reflect.DeepEqual(after[:2], before) || !reflect.DeepEqual(after[2], nr) {
+		t.Fatalf("got %+v", after)
+	}
+	b, _ := os.ReadFile(RoutesPath(repo))
+	if !strings.HasSuffix(string(b), "]\n") {
+		t.Errorf("file must end with newline: %q", b)
+	}
+}
+
+func TestAddRoute_Duplicate(t *testing.T) {
+	for _, nr := range []Route{{Name: "home", Path: "/new"}, {Name: "new", Path: "/settings/webhook"}} {
+		repo := t.TempDir()
+		writeRoutes(t, repo, webRoutes)
+		err := AddRoute(repo, nr)
+		if exitcode.Code(err) != exitcode.BadArgs {
+			t.Errorf("%+v: want BadArgs, got %v", nr, err)
+		}
+		if b, _ := os.ReadFile(RoutesPath(repo)); string(b) != webRoutes {
+			t.Errorf("file changed on rejected add")
+		}
+	}
+}
+
+func TestAddRoute_CreatesFile(t *testing.T) {
+	repo := t.TempDir()
+	if err := AddRoute(repo, Route{Name: "a", Path: "/a"}); err != nil {
+		t.Fatal(err)
+	}
+	rs, err := LoadRoutes(repo)
+	if err != nil || len(rs) != 1 || rs[0].Name != "a" {
+		t.Fatalf("got %v, %v", rs, err)
+	}
+}
+
+func TestBaselineFiles(t *testing.T) {
+	got := BaselineFiles(Route{Name: "a", Path: "/a"})
+	if !reflect.DeepEqual(got, []string{".znf/visual/__snapshots__/a-chromium-linux.png"}) {
+		t.Errorf("got %v", got)
+	}
+	got = BaselineFiles(Route{Name: "a", Path: "/a", Aria: "#c"})
+	want := []string{".znf/visual/__snapshots__/a-chromium-linux.png", ".znf/visual/__snapshots__/a.aria.yml"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v", got)
+	}
 }

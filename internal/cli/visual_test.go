@@ -102,3 +102,38 @@ func TestRunVisualCheck_InvalidRoutesIsBadArgs(t *testing.T) {
 		t.Errorf("code=%d called=%v err=%v", exitcode.Code(err), called, err)
 	}
 }
+
+func TestVisualAddRouteCmd(t *testing.T) {
+	repo := t.TempDir()
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"visual", "add-route", "--repo", repo, "--name", "a", "--path", "/a",
+		"--mask", "x", "--mask", "y", "--aria", "#c"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(repo, ".znf", "visual", "routes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"x"`, `"y"`, `"aria": "#c"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("routes.json missing %s: %s", want, b)
+		}
+	}
+	for _, want := range []string{"added route a (1 routes)", "next: zenify visual check --repo " + repo,
+		"then: git add -f .znf/visual/routes.json", "a.aria.yml"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("stdout missing %q: %s", want, out.String())
+		}
+	}
+
+	root = NewRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"visual", "add-route", "--repo", repo, "--name", "b"})
+	if err := root.Execute(); err == nil {
+		t.Error("missing --path must fail")
+	}
+}

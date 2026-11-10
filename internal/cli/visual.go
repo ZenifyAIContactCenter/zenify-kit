@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/visual"
@@ -121,6 +122,44 @@ func newVisualCmd() *cobra.Command {
 	check.Flags().IntVar(&port, "port", 0, "port dev-server trên host")                         //znf:allow-lang
 	check.Flags().BoolVar(&update, "update", false, "chụp lại baseline thay vì so")             //znf:allow-lang
 	check.Flags().StringVar(&role, "role", "", "role tài khoản E2E lấy từ broker (cần broker)") //znf:allow-lang
-	c.AddCommand(check)
+	c.AddCommand(check, newVisualAddRouteCmd())
+	return c
+}
+
+func newVisualAddRouteCmd() *cobra.Command {
+	var repo string
+	r := visual.Route{}
+	c := &cobra.Command{
+		Use:   "add-route",
+		Short: "Thêm một route vào .znf/visual/routes.json (đã validate)", //znf:allow-lang
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if repo == "" {
+				repo, _ = os.Getwd()
+			}
+			if err := visual.AddRoute(repo, r); err != nil {
+				return err
+			}
+			rs, err := visual.LoadRoutes(repo)
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "added route %s (%d routes)\n", r.Name, len(rs))
+			_, _ = fmt.Fprintf(out, "next: zenify visual check --repo %s --port <P> --update\n", repo)
+			files := append([]string{".znf/visual/routes.json"}, visual.BaselineFiles(r)...)
+			_, _ = fmt.Fprintf(out, "then: git add -f %s\n", strings.Join(files, " "))
+			return nil
+		},
+	}
+	f := c.Flags()
+	f.StringVar(&repo, "repo", "", "target repo path (mặc định cwd)")                      //znf:allow-lang
+	f.StringVar(&r.Name, "name", "", "tên route, khớp [A-Za-z0-9_-]+")                     //znf:allow-lang
+	f.StringVar(&r.Path, "path", "", "đường dẫn route, bắt đầu bằng /")                    //znf:allow-lang
+	f.StringVar(&r.WaitFor, "wait-for", "", "selector cần chờ trước khi chụp")             //znf:allow-lang
+	f.StringArrayVar(&r.Mask, "mask", nil, "selector vùng động cần che (lặp được)")        //znf:allow-lang
+	f.StringVar(&r.Aria, "aria", "", "selector gốc để so snapshot aria (bật so cấu trúc)") //znf:allow-lang
+	_ = c.MarkFlagRequired("name")
+	_ = c.MarkFlagRequired("path")
 	return c
 }
