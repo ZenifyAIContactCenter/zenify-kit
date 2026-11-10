@@ -5,7 +5,7 @@ import type { TrackStats } from '../types'
 import { isInWorkspace, registerConfig, setInWorkspace, syncConfig, trackPaneOf } from './config'
 import { bindLine, cwdLine, isStartCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
-import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, parseTrackStats, statusText, tabLines } from './track-ui'
+import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, parseTrackStats, promptSkillOf, trackContext, trackSectionOf, statusText, tabLines } from './track-ui'
 import type { Line, Tab } from './track-ui'
 
 // FR-6.1: one pane; the five tabs are drawn inside it.
@@ -235,6 +235,7 @@ async function recordCall($: $, tool: string, command: string, isMain: boolean, 
     if (id) {
       // A printed id proves the feature is on, even before the first stats run sets `enabled`.
       if (!(await read($, enabled))) await update($, enabled, () => true)
+      lastKnownEnabled = true
       await update($, bound, () => ({ id, kind: kindOf(id), ending: false }))
       await appendSession($, bindLine(iso(now), id))
       // A bind runs inside a working turn: write busy with the new id, even after a mid-turn
@@ -279,6 +280,30 @@ async function recordIdle($: $): Promise<void> {
 }
 
 const timingError = ($: $) => (err: unknown) => $.ui.toast(`timing error: ${message(err)}`)
+// Settles with `enabled` of the last stats answer when a stats run ends after the session start (a
+// run already out may return early); trackContextFor waits on it until then.
+let firstStats: Promise<boolean> = Promise.resolve(false)
+let statsAnswered: (on: boolean) => void = () => {}
+// True once a stats run ended in this session.
+let isStatsSettled = true
+// `enabled` as last learnt: a stats answer, or a track start's printed id (proof the feature is on).
+let lastKnownEnabled = false
+const trackContextError = ($: $) => (err: unknown) => (void $.ui.toast(`track context error: ${message(err)}`), undefined)
+
+// The track steps of a cook/fix/hotfix/ship/ci-watch skill, from skills/_shared/track.md, only in a
+// workspace with track on; the digest's pointer to track.md alone was skipped by agents.
+async function trackContextFor($: $, skill: string): Promise<string | undefined> {
+  const section = trackSectionOf(skill)
+  if (!section || !isInWorkspace()) return undefined
+  // `enabled` as last learnt, kept in this module: a handler reads the atom as of its own start.
+  // Not known on yet before the session's first stats answer (bounded by STATS_TIMEOUT_MS): wait for
+  // it rather than drop the first skill's track steps.
+  if (!lastKnownEnabled && (isStatsSettled || !(await firstStats))) return undefined
+  const md = String(await $.fs.read(`${$.plugin.root}/skills/_shared/track.md`))
+  const text = trackContext(md, section)
+  if (!text) throw new Error(`skills/_shared/track.md has no "## Rules" or "## ${section}" section`)
+  return text
+}
 
 const firstLine = (s: string) => s.trim().split('\n')[0]
 
@@ -362,10 +387,13 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
       return
     }
     await update($, stats, () => ({ data }))
+    lastKnownEnabled = data.enabled
     if ((await read($, enabled)) !== data.enabled) await setTrackEnabled($, data.enabled)
     await updateStatus($)
   } finally {
     isStatting = false
+    isStatsSettled = true
+    statsAnswered(lastKnownEnabled)
     // Every exit path, early returns included, runs the queued forced run; the flag is cleared
     // first, so it recurses at most once per queued request.
     if (isRerunWanted) {
@@ -469,6 +497,9 @@ export const register: Register = (on, options: PluginOptions) => {
     if (trackPane !== 'off') await $.command.register({ name: 'track-pane', description: 'Toggle the zenify track pane' })
     // FR-17.3: not awaited, like the stats run: the reads must not hold the session start.
     void syncConfig($, options).catch(statsError($))
+    isStatsSettled = false
+    lastKnownEnabled = false
+    firstStats = new Promise<boolean>(r => (statsAnswered = r))
     // Not awaited: the stats run may ask gh for merged PRs and must not hold the session start.
     void refreshStats($, true).catch(statsError($))
     armTimers($)
@@ -488,7 +519,16 @@ export const register: Register = (on, options: PluginOptions) => {
       await syncLive($).catch(timingError($))
       if (isInWorkspace() && trackPane === 'auto' && isTrackPrompt(e)) await autoShow($).catch(statsError($))
     }
-    return next(e)
+    const ctx = await trackContextFor($, promptSkillOf(e)).catch(trackContextError($))
+    return next(ctx ? { ...e, context: [...(e.context ?? []), ctx] } : e)
+  })
+
+  // A skill the agent loads itself carries its track steps, read by the model after the skill.
+  on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
+    const ctx = await trackContextFor($, String((e as { skill?: unknown }).skill ?? '')).catch(trackContextError($))
+    const r = await next(e)
+    if (!ctx || r.deny !== undefined || r.isError) return r
+    return { ...r, context: [...(r.context ?? []), ctx] }
   })
 
   // zenify track (FR-4, FR-8.2): every tool call of a session, timed around `next(e)`; the
