@@ -66,10 +66,11 @@ Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall ti
 
 ## Chốt sổ hằng ngày
 
-Mỗi ngày một lần, ở session đầu tiên của ngày, SessionStart tự chạy `zenify track close-day`. Lệnh này cũng chạy tay được bất cứ lúc nào.
+Mỗi ngày một lần, ở session đầu tiên của ngày, SessionStart tự chạy `zenify track close-day`, nhưng chỉ khi workspace đã onboard (sổ có dòng `onboard memory`). Lệnh này cũng chạy tay được bất cứ lúc nào.
 
+- Trong SessionStart, báo cáo đọc trạng thái PR đã cache trên máy (`merged.json`, `pr-status.json`), không gọi `gh`, nên session mở nhanh; khi còn PR đang chờ, báo cáo có dòng `note: PR status from cache`. Chạy tay `zenify track close-day` (khi ngày chưa chốt) thì lệnh hỏi lại `gh` để lấy trạng thái PR mới nhất trước khi viết báo cáo.
 - Báo cáo ngày được ghi vào `.zenify/track/days/<D>.md` (tiêu đề `# Track day close: <D>`) và in ra đầu session để agent tóm tắt cho bạn: việc đã xong, PR đã merge, việc làm dở, PR đang chờ kèm bước tiếp theo.
-- Sổ `log.md` chỉ giữ 14 ngày gần nhất. Dòng cũ hơn được chuyển sang `.zenify/track/archive/<YYYY-MM>.md`; log session và báo cáo ngày cũ nằm ở `archive/sessions/` và `archive/days/`. Marker `.zenify/track/day.closed` ghi nhớ ngày đã chốt.
+- Sổ `log.md` chỉ giữ 14 ngày gần nhất. Dòng cũ hơn được chuyển sang `.zenify/track/archive/<YYYY-MM>.md` (dòng `history` luôn được chuyển, dòng `plan` được chuyển khi quá 14 ngày); log session và báo cáo ngày cũ nằm ở `archive/sessions/` và `archive/days/`. Marker `.zenify/track/day.closed` ghi nhớ ngày đã chốt.
 - Luôn được giữ lại, dù quá 14 ngày: việc đang mở, backlog đang mở, và các dòng mà cửa sổ stats cần (60 việc đã đo gần nhất, 30 dòng mỗi kind).
 - Mọi lệnh ghi vào `log.md` đều lấy `log.lock`; nếu đang bị giữ thì chờ tối đa 2 giây.
 
@@ -181,7 +182,7 @@ Các thiết lập của kit là các dòng của plugin `znf` trong `/config` c
 | **Dev track** (`znf.track`) | bật/tắt, mặc định tắt | Chạy `zenify feature track on\|off` cho workspace hiện tại |
 | **GitHub issues** (`znf.githubIssues`) | bật/tắt, mặc định tắt | Chạy `zenify feature github.issues on\|off` |
 | **Track pane** (`znf.trackPane`) | `auto` (mặc định), `command`, `off` | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở và không có lệnh `/track-pane`. Status line không đổi theo dòng này |
-| **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì status line không còn tip theo ngữ cảnh (Backlog, estimate, vượt est, PR chờ merge). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |
+| **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì status line không còn tip theo ngữ cảnh (Backlog, estimate, vượt est, PR chờ merge, PR CI đỏ, thread chưa resolve, bị yêu cầu sửa, sẵn sàng merge, việc mở từ 5 ngày). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |
 | **Reviewer** (`znf.reviewer`) | `agent` (mặc định), `codex` | Chạy [`zenify reviewer set`](/reference/cli/zenify_reviewer_set); có hiệu lực ở session mới |
 
 Env của kit không nằm trong `/config`: xem bằng [`zenify env list`](/reference/cli/zenify_env_list) và sửa bằng `zenify env set KEY` trong terminal (nhập ẩn).
