@@ -98,7 +98,7 @@ func TestRenderSet_UnionsWorkingTree(t *testing.T) {
 
 const (
 	waiverMergeBaseKey = "merge-base origin/staging HEAD"
-	waiverDiffKey      = "-c core.quotePath=false diff -M mb0001"
+	waiverDiffKey      = "-c core.quotePath=false diff --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ -M mb0001"
 )
 
 var waiverFiles = []string{"src/App.tsx", "src/b.css"}
@@ -475,7 +475,7 @@ func TestCheck_SC2_Waived(t *testing.T) {
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
 		"-c core.quotePath=false status --porcelain -uall":               "",
 		"merge-base origin/staging HEAD":                                 "mb0001\n",
-		"-c core.quotePath=false diff -M mb0001":                         fileDiff("src/App.tsx", "+// znf:ui-verify-ok: reviewed manually\n"),
+		waiverDiffKey:                                                    fileDiff("src/App.tsx", "+// znf:ui-verify-ok: reviewed manually\n"),
 	}, "fp000")
 	state, msg, err := Check(d, repo, "origin/staging")
 	if err != nil {

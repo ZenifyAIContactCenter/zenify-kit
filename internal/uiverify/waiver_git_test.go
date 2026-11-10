@@ -110,6 +110,13 @@ func TestWaiver_RealGit(t *testing.T) {
 			writeRepoFile(t, repo, "src/App.tsx", "export const app = 1\n// znf:ui-verify-ok: copy only\n")
 			git("commit", "-am", "waive")
 		}, true, "copy only"},
+		{"user diff config cannot hide an added marker", func(t *testing.T, repo string, git func(...string)) {
+			git("config", "color.ui", "always")
+			git("config", "diff.noprefix", "true")
+			git("config", "diff.mnemonicPrefix", "true")
+			writeRepoFile(t, repo, "src/App.tsx", "export const app = 1\n// znf:ui-verify-ok: copy only\n")
+			git("commit", "-am", "waive")
+		}, true, "copy only"},
 		{"marker added in working tree", func(t *testing.T, repo string, _ func(...string)) {
 			writeRepoFile(t, repo, "src/App.tsx", "export const app = 1\n// znf:ui-verify-ok: wip\n")
 		}, true, "wip"},

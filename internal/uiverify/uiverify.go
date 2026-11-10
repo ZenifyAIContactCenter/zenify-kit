@@ -246,7 +246,9 @@ func Waiver(d Deps, repo, base string, files []string) (string, bool) {
 	if mb = strings.TrimSpace(mb); err != nil || mb == "" {
 		return "", false
 	}
-	diff, err := d.RunGit(repo, "-c", "core.quotePath=false", "diff", "-M", mb)
+	// The parser needs plain "+++ b/<path>" headers whatever the user's git config.
+	diff, err := d.RunGit(repo, "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff",
+		"--src-prefix=a/", "--dst-prefix=b/", "-M", mb)
 	if err != nil {
 		return "", false
 	}
