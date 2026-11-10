@@ -58,6 +58,7 @@ func newUIVerifyCmd() *cobra.Command {
 	c.AddCommand(newUIVerifyRecordCmd())
 	c.AddCommand(newUIVerifyCheckCmd())
 	c.AddCommand(newUIVerifyFilesCmd())
+	c.AddCommand(newUIVerifyViewportsCmd())
 	return c
 }
 
@@ -169,5 +170,32 @@ func newUIVerifyCheckCmd() *cobra.Command {
 	}
 	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang
 	c.Flags().StringVar(&base, "base", "", "base ref để so sánh (bắt buộc)") //znf:allow-lang
+	return c
+}
+
+// newUIVerifyViewportsCmd prints the repo's declared viewport widths, one per line.
+func newUIVerifyViewportsCmd() *cobra.Command {
+	var repo string
+	c := &cobra.Command{
+		SilenceUsage: true,
+		Use:          "viewports",
+		Short:        "In các viewport width khai báo trong uiVerify (mỗi dòng một width)", //znf:allow-lang
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if repo == "" {
+				repo, _ = os.Getwd()
+			}
+			cfg, _, err := uiverify.LoadConfig(repo)
+			if err != nil {
+				return err
+			}
+			for _, w := range cfg.Viewports {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), w); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	}
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)") //znf:allow-lang
 	return c
 }

@@ -317,3 +317,48 @@ func uiGitOut(t *testing.T, repo string, args ...string) string {
 	}
 	return string(out)
 }
+
+func TestUIVerifyViewportsCmd(t *testing.T) {
+	cases := []struct {
+		name    string
+		file    string
+		want    string
+		badArgs bool
+	}{
+		{name: "configured", file: `{"uiVerify":{"viewports":[1920,1366,1280]}}`, want: "1920\n1366\n1280\n"},
+		{name: "no config"},
+		{name: "invalid", file: `{"uiVerify":{"viewports":[10]}}`, badArgs: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			if tc.file != "" {
+				p := filepath.Join(repo, ".claude", "worktree.json")
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(tc.file), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var out bytes.Buffer
+			root := NewRootCmd()
+			root.SetOut(&out)
+			root.SetErr(&bytes.Buffer{})
+			root.SetArgs([]string{"ui-verify", "viewports", "--repo", repo})
+			err := root.Execute()
+			if tc.badArgs {
+				if exitcode.Code(err) != exitcode.BadArgs {
+					t.Fatalf("code = %d, err = %v; want BadArgs", exitcode.Code(err), err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.String() != tc.want {
+				t.Fatalf("stdout = %q, want %q", out.String(), tc.want)
+			}
+		})
+	}
+}
