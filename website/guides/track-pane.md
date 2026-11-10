@@ -63,6 +63,15 @@ Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall ti
 - Mỗi việc đã bắt đầu từ trước hôm nay mà chưa kết thúc (đang chạy hoặc `stale`) có hai dòng: `- ⏳ 2d <worktree hoặc brief> · <kind> · <phase>` (việc stale dùng `🕸`; tuổi là `Nm`, `Nh` hoặc `Nd` theo wall time), rồi dòng mờ `<tên tab hoặc 8 ký tự session> · <id>`.
 - Không có việc dở và không có ngày làm việc cuối thì không có phần này. Khi có việc dở và tab không có việc mở, status line nhắc bằng tip `N items carried over`.
 
+## Chốt sổ hằng ngày
+
+Mỗi ngày một lần, ở session đầu tiên của ngày, SessionStart tự chạy `zenify track close-day`. Lệnh này cũng chạy tay được bất cứ lúc nào.
+
+- Báo cáo ngày được ghi vào `.zenify/track/days/<D>.md` (tiêu đề `# Track day close: <D>`) và in ra đầu session để agent tóm tắt cho bạn: việc đã xong, PR đã merge, việc làm dở, PR đang chờ kèm bước tiếp theo.
+- Sổ `log.md` chỉ giữ 14 ngày gần nhất. Dòng cũ hơn được chuyển sang `.zenify/track/archive/<YYYY-MM>.md`; log session và báo cáo ngày cũ nằm ở `archive/sessions/` và `archive/days/`. Marker `.zenify/track/day.closed` ghi nhớ ngày đã chốt.
+- Luôn được giữ lại, dù quá 14 ngày: việc đang mở, backlog đang mở, và các dòng mà cửa sổ stats cần (60 việc đã đo gần nhất, 30 dòng mỗi kind).
+- Mọi lệnh ghi vào `log.md` đều lấy `log.lock`; nếu đang bị giữ thì chờ tối đa 2 giây.
+
 ## Kitchen đồng bộ thế nào
 
 Tab `Kitchen` đọc cùng số liệu `zenify track stats --json` như các tab khác, thêm hai phần lấy từ trạng thái sống của từng tab Claude Code.

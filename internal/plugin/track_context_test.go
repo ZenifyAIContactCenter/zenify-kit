@@ -12,5 +12,6 @@ func TestTrackMdHasSectionsTheHookInjects(t *testing.T) {
 		"\n## hotfix\n",
 		"\n## ship\n",
 		"\n## ci-watch\n",
+		"\n## Day close\n",
 	})
 }
