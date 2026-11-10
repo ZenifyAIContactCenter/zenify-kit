@@ -19,6 +19,8 @@ type Box struct {
 }
 
 // Layout is the in-page measurement of one child against its container.
+// Container is the container's padding box (border and scrollbar excluded):
+// a child under the border is clipped just like one past the edge.
 type Layout struct {
 	InnerWidth float64 `json:"innerWidth"`
 	Child      Box     `json:"child"`

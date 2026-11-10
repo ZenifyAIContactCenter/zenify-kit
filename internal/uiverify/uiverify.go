@@ -248,7 +248,7 @@ func Waiver(d Deps, repo, base string, files []string) (string, bool) {
 	}
 	// The parser needs plain "+++ b/<path>" headers whatever the user's git config.
 	diff, err := d.RunGit(repo, "-c", "core.quotePath=false", "diff", "--no-color", "--no-ext-diff",
-		"--src-prefix=a/", "--dst-prefix=b/", "-M", mb)
+		"--no-textconv", "--src-prefix=a/", "--dst-prefix=b/", "-M", mb)
 	if err != nil {
 		return "", false
 	}
@@ -412,11 +412,22 @@ func Validate(repo, fp string, viewports []int) (screens int, problems []string)
 		return 0, []string{"no screens in artifact for fp=" + fp}
 	}
 
+	// Decoding into Layout turns a missing or null field into 0, which reads
+	// as "no overflow"; the raw copy goes through record's strict ParseLayout.
+	var raw struct {
+		Screens []struct {
+			Layout json.RawMessage `json:"layout"`
+		} `json:"screens"`
+	}
+	if err := json.Unmarshal(b, &raw); err != nil || len(raw.Screens) != len(art.Screens) {
+		return 0, []string{"unreadable artifact for fp=" + fp}
+	}
+
 	var names []string
 	have := map[string]map[int]bool{}
-	for _, s := range art.Screens {
+	for i, s := range art.Screens {
 		label := fmt.Sprintf("%s@%d", s.Screen, s.Viewport)
-		if !validEntry(s) {
+		if _, err := ParseLayout(string(raw.Screens[i].Layout)); err != nil || !validEntry(s) {
 			problems = append(problems, label+": invalid entry")
 			continue
 		}

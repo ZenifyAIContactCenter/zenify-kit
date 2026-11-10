@@ -64,7 +64,7 @@ func TestRenderSet_PathTable(t *testing.T) {
 	}
 	runGit := fakeRunGit(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": strings.Join(diffNames, "\n"),
-		"-c core.quotePath=false status --porcelain -uall":              "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
 	})
 	got, err := RenderSet(Deps{RunGit: runGit}, "/repo", "origin/staging")
 	if err != nil {
@@ -84,7 +84,7 @@ func TestRenderSet_PathTable(t *testing.T) {
 func TestRenderSet_UnionsWorkingTree(t *testing.T) {
 	runGit := fakeRunGit(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "main.go",
-		"-c core.quotePath=false status --porcelain -uall":              "?? src/pages/new.tsx\n M src/components/Old.jsx\n",
+		"-c core.quotePath=false status --porcelain -uall":               "?? src/pages/new.tsx\n M src/components/Old.jsx\n",
 	})
 	got, err := RenderSet(Deps{RunGit: runGit}, "/repo", "origin/staging")
 	if err != nil {
@@ -98,7 +98,7 @@ func TestRenderSet_UnionsWorkingTree(t *testing.T) {
 
 const (
 	waiverMergeBaseKey = "merge-base origin/staging HEAD"
-	waiverDiffKey      = "-c core.quotePath=false diff --no-color --no-ext-diff --src-prefix=a/ --dst-prefix=b/ -M mb0001"
+	waiverDiffKey      = "-c core.quotePath=false diff --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ -M mb0001"
 )
 
 var waiverFiles = []string{"src/App.tsx", "src/b.css"}
@@ -461,7 +461,7 @@ func TestCheck_SC1_NotRequired(t *testing.T) {
 	repo := t.TempDir()
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "main.go\nREADME.md",
-		"-c core.quotePath=false status --porcelain -uall":              "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
 	}, "fp000")
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "not_required" || err != nil {
@@ -640,7 +640,7 @@ func renderSetWithConfig(t *testing.T, cfg string, paths []string) map[string]bo
 	}
 	runGit := fakeRunGit(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": strings.Join(paths, "\n"),
-		"-c core.quotePath=false status --porcelain -uall":              "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
 	})
 	got, err := RenderSet(Deps{RunGit: runGit}, repo, "origin/staging")
 	if err != nil {
@@ -883,5 +883,46 @@ func TestValidate_LegacyArtifactIsInvalid(t *testing.T) {
 	}
 	if _, problems := Validate(repo, "fpbad00001", nil); len(problems) == 0 {
 		t.Error("unparsable artifact must be invalid")
+	}
+}
+
+// A hand-written artifact must not slip missing or null measurements past the
+// gate as zeros: Validate applies the same strict parse as record.
+func TestValidate_RejectsIncompleteLayout(t *testing.T) {
+	full := `{"innerWidth":1366,"child":{"left":0,"top":0,"right":10,"bottom":10},` +
+		`"container":{"left":0,"top":0,"right":100,"bottom":100},` +
+		`"padding":{"left":0,"top":0,"right":0,"bottom":0},"overflowX":"hidden","overflowY":"hidden"}`
+	cases := []struct {
+		name, layout string
+		wantProblems int
+	}{
+		{"complete", full, 0},
+		{"only innerWidth", `{"innerWidth":1366}`, 1},
+		{"null edge", strings.Replace(full, `"right":10`, `"right":null`, 1), 1},
+		{"unknown field", strings.Replace(full, `{"innerWidth"`, `{"extra":1,"innerWidth"`, 1), 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			dir := filepath.Join(repo, ".znf", "ui-verify")
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			art := `{"fp":"fp1","screens":[{"screen":"home","viewport":1366,"screenshot":"shot.png","layout":` +
+				tc.layout + `,"verdict":"pass"}]}`
+			if err := os.WriteFile(filepath.Join(dir, "fp1.json"), []byte(art), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, problems := Validate(repo, "fp1", []int{1366})
+			if len(problems) != tc.wantProblems {
+				t.Fatalf("problems=%v, want %d", problems, tc.wantProblems)
+			}
+			if tc.wantProblems == 1 && problems[0] != "home@1366: invalid entry" {
+				t.Errorf("problems=%v", problems)
+			}
+		})
 	}
 }

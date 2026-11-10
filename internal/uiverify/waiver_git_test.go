@@ -117,6 +117,11 @@ func TestWaiver_RealGit(t *testing.T) {
 			writeRepoFile(t, repo, "src/App.tsx", "export const app = 1\n// znf:ui-verify-ok: copy only\n")
 			git("commit", "-am", "waive")
 		}, true, "copy only"},
+		{"textconv cannot fold an old marker into an added line", func(t *testing.T, repo string, git func(...string)) {
+			git("config", "diff.flatten.textconv", `tr '\n' ' ' <`)
+			writeRepoFile(t, repo, ".gitattributes", "*.tsx diff=flatten\n")
+			writeRepoFile(t, repo, "src/components/Old.tsx", strings.Replace(oldWithMarker, "d = 4", "d = 5", 1))
+		}, false, ""},
 		{"marker added in working tree", func(t *testing.T, repo string, _ func(...string)) {
 			writeRepoFile(t, repo, "src/App.tsx", "export const app = 1\n// znf:ui-verify-ok: wip\n")
 		}, true, "wip"},
