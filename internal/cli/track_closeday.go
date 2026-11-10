@@ -172,6 +172,9 @@ func readSessionLogs(dir string) (map[string]string, error) {
 	out := map[string]string{}
 	for _, f := range files {
 		b, err := os.ReadFile(f) //nolint:gosec // G304 -- listed from the track dir
+		if errors.Is(err, os.ErrNotExist) {
+			continue // archived by a parallel close-day between the glob and the read
+		}
 		if err != nil {
 			return nil, err
 		}

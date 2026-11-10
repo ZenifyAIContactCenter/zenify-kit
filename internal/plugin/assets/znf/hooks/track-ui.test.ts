@@ -677,6 +677,13 @@ test('SC-7: Today lists open PRs with CI, review and threads; ready PRs say so',
   expect(`${row(2)?.text}${row(2)?.label}`).toContain('CI ❌ · changes requested · 2 threads')
 })
 
+test('a PR with unknown status (no createdAt, CI and review "-") renders without NaN', () => {
+  const prOpen = [{ url: 'https://github.com/o/r/pull/4', repo: 'r', number: 4, createdAt: '', ci: '-', review: '-', threads: 0, ready: false }]
+  const s = stats({ today: { ...stats().today, prOpen } } as Partial<TrackStats>)
+  const row = tabLines('today', s, A, undefined, NOW).find(l => l.href?.endsWith('/pull/4'))
+  expect(`${row?.text}${row?.label}`).toBe('🔗 r#4 · — · CI - · waiting')
+})
+
 test('SC-8: a PR status error is a warning line', () => {
   const s = stats({ today: { ...stats().today, prStatusError: 'x' } } as Partial<TrackStats>)
   expect(texts(tabLines('today', s, A, undefined, NOW))).toContain('⚠ pr status: x')

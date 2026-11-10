@@ -138,7 +138,7 @@ func TestPRStatusErrorKeepsOthers(t *testing.T) { // SC-8
 	if !strings.Contains(r.Today.PRStatusError, urls[1]) || !strings.Contains(r.Today.PRStatusError, "boom") {
 		t.Fatalf("prStatusError = %q", r.Today.PRStatusError)
 	}
-	if len(r.Today.PROpen) != 2 {
+	if len(r.Today.PROpen) != 3 {
 		t.Fatalf("other PRs lost: %+v", r.Today.PROpen)
 	}
 }
@@ -160,8 +160,27 @@ func TestPRStatusFromCacheWithoutFunc(t *testing.T) {
 	in := base(log)
 	in.PRStatusCache = map[string]PRStatus{urls[1]: {URL: urls[1], CI: "success", Review: "-"}}
 	r, _ := Compute(in)
-	if len(r.Today.PROpen) != 1 || r.Today.PROpen[0].URL != urls[1] {
+	if len(r.Today.PROpen) != 2 || r.Today.PROpen[0] != in.PRStatusCache[urls[1]] {
 		t.Fatalf("cache not used: %+v", r.Today.PROpen)
+	}
+}
+
+// A ledger PR neither asked nor cached stays listed, with its status unknown.
+func TestPRStatusUnknownWithoutCache(t *testing.T) {
+	log, urls := prOpenLog(2)
+	in := base(log)
+	in.PRStatusCache = map[string]PRStatus{urls[1]: {URL: urls[1], CI: "success", Review: "-", CreatedAt: "2026-10-30T08:00:00Z"}}
+	r, _ := Compute(in)
+	if len(r.Today.PROpen) != 2 {
+		t.Fatalf("uncached PR dropped: %+v", r.Today.PROpen)
+	}
+	_, _, name, number, err := prStatusURL(urls[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := PRStatus{URL: urls[0], Repo: name, Number: number, CI: "-", Review: "-"}
+	if got := r.Today.PROpen[1]; got != want {
+		t.Fatalf("unknown status = %+v, want %+v", got, want)
 	}
 }
 

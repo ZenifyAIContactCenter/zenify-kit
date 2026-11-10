@@ -71,7 +71,8 @@ Mỗi ngày một lần, ở session đầu tiên của ngày, SessionStart tự
 - Trong SessionStart, báo cáo đọc trạng thái PR đã cache trên máy (`merged.json`, `pr-status.json`), không gọi `gh`, nên session mở nhanh; khi còn PR đang chờ, báo cáo có dòng `note: PR status from cache`. Chạy tay `zenify track close-day` (khi ngày chưa chốt) thì lệnh hỏi lại `gh` để lấy trạng thái PR mới nhất trước khi viết báo cáo.
 - Báo cáo ngày được ghi vào `.zenify/track/days/<D>.md` (tiêu đề `# Track day close: <D>`) và in ra đầu session để agent tóm tắt cho bạn: việc đã xong, PR đã merge, việc làm dở, PR đang chờ kèm bước tiếp theo.
 - Sổ `log.md` chỉ giữ 14 ngày gần nhất. Dòng cũ hơn được chuyển sang `.zenify/track/archive/<YYYY-MM>.md` (dòng `history` luôn được chuyển, dòng `plan` được chuyển khi quá 14 ngày); log session và báo cáo ngày cũ nằm ở `archive/sessions/` và `archive/days/`. Marker `.zenify/track/day.closed` ghi nhớ ngày đã chốt.
-- Luôn được giữ lại, dù quá 14 ngày: việc đang mở, backlog đang mở, và các dòng mà cửa sổ stats cần (60 việc đã đo gần nhất, 30 dòng mỗi kind).
+- Luôn được giữ lại, dù quá 14 ngày: việc đang mở, backlog đang mở, việc có PR merge trong 14 ngày gần nhất, việc mà một dòng `plan` còn giữ nhắc tới (theo id hoặc bid), và các dòng mà cửa sổ stats cần (60 việc đã đo gần nhất, 30 dòng mỗi kind).
+- PR trong sổ chưa có trạng thái nào trong cache (SessionStart không hỏi `gh`) vẫn được liệt kê, với bước `status unknown`.
 - Mọi lệnh ghi vào `log.md` đều lấy `log.lock`; nếu đang bị giữ thì chờ tối đa 2 giây.
 
 ## Kitchen đồng bộ thế nào

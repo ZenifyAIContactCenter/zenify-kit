@@ -107,6 +107,10 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 			step = "CI red"
 		case p.Threads > 0:
 			step = fmt.Sprintf("%d unresolved threads", p.Threads)
+		case p.Review == "changes_requested":
+			step = "changes requested"
+		case p.CreatedAt == "":
+			step = "status unknown"
 		}
 		open = append(open, fmt.Sprintf("PR: %s %s", p.URL, step))
 	}

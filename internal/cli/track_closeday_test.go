@@ -51,7 +51,13 @@ func closeDayWS(t *testing.T, now time.Time) (ws string, oldID string) {
 		t.Fatal(err)
 	}
 	old := trackMerged
-	trackMerged = func(string) (string, error) { return yd.UTC().Format(time.RFC3339), nil }
+	// The old PR merged before the cut, so its turn can be archived; the rest merged yesterday.
+	trackMerged = func(u string) (string, error) {
+		if u == closeDayOldPR {
+			return oldAt.Add(2 * time.Hour).UTC().Format(time.RFC3339), nil
+		}
+		return yd.UTC().Format(time.RFC3339), nil
+	}
 	t.Cleanup(func() { trackMerged = old })
 	stubMergedAndTitleKeepMerged(t)
 	return ws, oldID
@@ -318,5 +324,28 @@ func TestCloseDayKeepsOwnReportAfterLongBreak(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "archive", "days", d+".md")); !os.IsNotExist(err) {
 		t.Errorf("own report must not be archived: %v", err)
+	}
+}
+
+// A session log a parallel run archived between the glob and the read is skipped.
+func TestReadSessionLogsSkipsVanished(t *testing.T) {
+	dir := t.TempDir()
+	sdir := filepath.Join(dir, "sessions")
+	if err := os.MkdirAll(sdir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sdir, "a.log"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A dangling symlink is listed by the glob and reads as ErrNotExist, like a file moved in between.
+	if err := os.Symlink(filepath.Join(dir, "gone.log"), filepath.Join(sdir, "b.log")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readSessionLogs(dir)
+	if err != nil {
+		t.Fatalf("vanished session log must be skipped, got %v", err)
+	}
+	if len(got) != 1 || got["a"] != "x" {
+		t.Fatalf("got %v", got)
 	}
 }

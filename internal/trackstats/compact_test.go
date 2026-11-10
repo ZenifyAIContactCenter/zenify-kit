@@ -101,6 +101,30 @@ func TestCompactPicksRows(t *testing.T) {
 			row(cAt(1, 7), "plan", "2026-11-01", "b-261101-cccc"),
 			row(cAt(16, 7), "plan", "2026-11-16", "b-261101-cccc"),
 		}, nil, []int{0}},
+		{"old turn with a PR merged after the cut stays", "cook", []string{
+			row(cAt(1, 8), "start", a, "cook", "repo", "M"),
+			row(cAt(1, 10), "end", a, "https://github.com/o/r/pull/1", "2", "1"),
+		}, map[string]string{"https://github.com/o/r/pull/1": "2026-11-20T00:00:00Z"}, nil},
+		{"old turn with one PR merged after the cut stays", "cook", []string{
+			row(cAt(1, 8), "start", a, "cook", "repo", "M"),
+			row(cAt(1, 10), "end", a, "https://github.com/o/r/pull/1,https://github.com/o/r/pull/2", "2", "1"),
+		}, map[string]string{"https://github.com/o/r/pull/1": merged, "https://github.com/o/r/pull/2": "2026-11-20T00:00:00Z"}, nil},
+		{"kept plan keeps the turn it names", "cook", []string{
+			row(cAt(1, 8), "start", f, "cook", "repo", "M"),
+			row(cAt(1, 9), "end", f, "cancelled", "-", "-"),
+			row(cAt(16, 7), "plan", "2026-11-16", f),
+		}, nil, nil},
+		{"kept plan keeps the turn started from its bid", "cook", []string{
+			row(cAt(1, 7), "backlog", "b-261101-aaaa", "repo", "M", "-", "do the thing"),
+			row(cAt(1, 8), "start", d, "cook", "repo", "M", "b-261101-aaaa"),
+			row(cAt(1, 10), "end", d, "branch:x", "1", "1"),
+			row(cAt(16, 7), "plan", "2026-11-16", "b-261101-aaaa"),
+		}, nil, nil},
+		{"old plan does not keep its turn", "cook", []string{
+			row(cAt(1, 8), "start", f, "cook", "repo", "M"),
+			row(cAt(1, 9), "end", f, "cancelled", "-", "-"),
+			row(cAt(1, 10), "plan", "2026-11-01", f),
+		}, nil, []int{0, 1, 2}},
 		{"onboard, malformed, comment and blank stay", "cook", []string{
 			row(cAt(1, 7), "onboard", "memory"),
 			row(cAt(1, 7), "nonsense", "x"),

@@ -105,3 +105,17 @@ func TestDayReportSanitizes(t *testing.T) {
 		t.Errorf("note not capped at 120 runes:\n%q", got)
 	}
 }
+
+func TestDayReportPRSteps(t *testing.T) {
+	now := Result{Today: Today{Date: "2026-11-10", PROpen: []PRStatus{
+		{URL: "https://github.com/o/r/pull/1", CI: "success", Review: "changes_requested", CreatedAt: "2026-11-01T00:00:00Z"},
+		{URL: "https://github.com/o/r/pull/2", CI: "-", Review: "-"},
+		{URL: "https://github.com/o/r/pull/3", CI: "-", Review: "-", CreatedAt: "2026-11-01T00:00:00Z"},
+	}}}
+	got := DayReport(Result{Today: Today{Date: "2026-11-09"}}, now, nil, "")
+	for _, w := range []string{"pull/1 changes requested\n", "pull/2 status unknown\n", "pull/3 waiting for review\n"} {
+		if !strings.Contains(got, w) {
+			t.Errorf("missing %q in:\n%s", w, got)
+		}
+	}
+}

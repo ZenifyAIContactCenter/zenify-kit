@@ -10,6 +10,7 @@ type turnRows struct {
 	started  bool
 	end      *time.Time // the first end with a valid outcome, as Compute reads it
 	prsKnown bool       // every PR of every end row is in the merged cache
+	recentPR bool       // a PR of an end row merged on or after the cut
 	fromOK   bool       // every start row came from nothing or a backlog id
 	from     []string   // the backlog ids its start rows came from
 }
@@ -28,6 +29,7 @@ func Compact(in Input, keepDays int) (keep string, moved []string, movedIDs map[
 	turns := map[string]*turnRows{}
 	hasBacklog := map[string]bool{}
 	oldDrop := map[string]bool{}
+	planned := map[string]bool{} // ids a kept plan row names: computeDailyPlan still reads them
 	for i, raw := range lines {
 		raw = strings.TrimSpace(raw)
 		if raw == "" || strings.HasPrefix(raw, "#") {
@@ -45,6 +47,13 @@ func Compact(in Input, keepDays int) (keep string, moved []string, movedIDs map[
 		case "drop":
 			if e.At.Before(cut) {
 				oldDrop[e.ID] = true
+			}
+			continue
+		case "plan":
+			if e.ID >= cutDay {
+				for _, id := range e.F {
+					planned[id] = true
+				}
 			}
 			continue
 		}
@@ -72,8 +81,13 @@ func Compact(in Input, keepDays int) (keep string, moved []string, movedIDs map[
 				t.end = &at
 			}
 			for _, p := range strings.Split(e.F[0], ",") {
-				if _, cached := in.Cache[p]; strings.HasPrefix(p, "http") && !cached {
+				at, cached := in.Cache[p]
+				if strings.HasPrefix(p, "http") && !cached {
 					t.prsKnown = false
+				}
+				// mergedToday still counts a PR merged inside the window.
+				if m, err := time.Parse(time.RFC3339, at); cached && at != ClosedUnmerged && err == nil && !m.Before(cut) {
+					t.recentPR = true
 				}
 			}
 		}
@@ -83,7 +97,7 @@ func Compact(in Input, keepDays int) (keep string, moved []string, movedIDs map[
 	movedFrom := map[string]bool{}
 	keptFrom := map[string]bool{}
 	for id, t := range turns {
-		if t.started && t.end != nil && t.end.Before(cut) && t.prsKnown && t.fromOK && !res.windowIDs[id] {
+		if t.started && t.end != nil && t.end.Before(cut) && t.prsKnown && !t.recentPR && t.fromOK && !res.windowIDs[id] && !planned[id] && !anyPlanned(planned, t.from) {
 			movedIDs[id] = true
 			for _, b := range t.from {
 				movedFrom[b] = true
@@ -124,4 +138,13 @@ func Compact(in Input, keepDays int) (keep string, moved []string, movedIDs map[
 		}
 	}
 	return strings.Join(kept, "\n"), moved, movedIDs
+}
+
+func anyPlanned(planned map[string]bool, ids []string) bool {
+	for _, id := range ids {
+		if planned[id] {
+			return true
+		}
+	}
+	return false
 }
