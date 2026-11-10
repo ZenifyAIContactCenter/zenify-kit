@@ -491,7 +491,7 @@ func failDetail(overflows []Overflow, reason string) string {
 }
 
 // Check orchestrates the gate: no rendering files changed → not_required;
-// a style violation on an added line → required (no waiver applies);
+// a style violation on an added line → style (no waiver applies);
 // a waiver marker present → waived; an artifact for the current fingerprint
 // with every declared viewport recorded and passing → verified; otherwise →
 // required (fail-closed). FR-2.2..2.5, FR-3.1.
@@ -510,7 +510,7 @@ func Check(d Deps, repo, base string) (state string, msg string, err error) {
 	}
 	if len(vs) > 0 {
 		msg = styleMessage(vs)
-		return "required", msg, exitcode.New(exitcode.Fail, fmt.Errorf("%s", msg))
+		return "style", msg, exitcode.New(exitcode.Fail, fmt.Errorf("%s", msg))
 	}
 
 	if reason, ok := Waiver(d, repo, base, rs); ok {

@@ -196,6 +196,36 @@ func TestUIVerifyCheckAutonomousAwaits(t *testing.T) {
 	}
 }
 
+// A style violation is something the agent fixes itself, so autonomous mode
+// keeps exit 1 and opens no await.
+func TestUIVerifyCheckAutonomousStyleStaysFail(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ZENIFY_HOME", home)
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	repo := initUIVerifyRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".claude", "worktree.json"), []byte(`{"uiVerify":{"style":["hex"]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeRenderChange(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "src", "components", "Foo.tsx"), []byte("const c = '#ff0000'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runUIVerifyCheck(repo, "HEAD")
+	if exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("want exit %d (Fail), got %d (%v)", exitcode.Fail, exitcode.Code(err), err)
+	}
+	if !strings.Contains(out, "ui-verify style —") {
+		t.Errorf("output %q lacks the style message", out)
+	}
+	if _, serr := os.Stat(filepath.Join(home, "await")); !os.IsNotExist(serr) {
+		t.Errorf("await opened for a style violation (stat err=%v)", serr)
+	}
+}
+
 func TestUIVerifyCheckInteractiveUnchanged(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("ZENIFY_HOME", home)

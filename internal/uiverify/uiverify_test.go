@@ -950,7 +950,7 @@ func styleCheckDeps(t *testing.T, addedLine string) (string, Deps) {
 func TestCheck_StyleBlocks(t *testing.T) {
 	repo, d := styleCheckDeps(t, "const c = '#ff0000'")
 	state, msg, err := Check(d, repo, "origin/staging")
-	if state != "required" || exitcode.Code(err) != exitcode.Fail {
+	if state != "style" || exitcode.Code(err) != exitcode.Fail {
 		t.Fatalf("state=%q err=%v", state, err)
 	}
 	if !strings.HasPrefix(msg, "ui-verify style —") || !strings.Contains(msg, "src/App.tsx:2 hex #ff0000") {
@@ -961,7 +961,7 @@ func TestCheck_StyleBlocks(t *testing.T) {
 func TestCheck_StyleBlocksEvenWhenWaived(t *testing.T) {
 	repo, d := styleCheckDeps(t, "const c = '#ff0000' // znf:ui-verify-ok: copy only")
 	state, msg, err := Check(d, repo, "origin/staging")
-	if state != "required" || err == nil || !strings.HasPrefix(msg, "ui-verify style —") {
+	if state != "style" || err == nil || !strings.HasPrefix(msg, "ui-verify style —") {
 		t.Fatalf("state=%q msg=%q err=%v", state, msg, err)
 	}
 }
