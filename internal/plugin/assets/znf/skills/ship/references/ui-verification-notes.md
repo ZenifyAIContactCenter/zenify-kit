@@ -105,6 +105,8 @@ Only at ship step 4, never in `/cook`'s per-task verify: a baseline must capture
 3. `git -C <path> add -f` the files `add-route` printed (`routes.json` and the route's baselines; staged counts as tracked)
 4. `zenify visual check --repo <path> --port <P>` (no update)
 
-If step 4 fails, or `add-route` exits 2, undo that route: unstage with `git -C <path> reset -q -- <files>`, restore `git -C <path> checkout -- .znf/visual/routes.json` (delete the file if you just created it), delete the baseline files just generated, and record the reason. A declined proposal never turns Shippable to NO. Adding a route changes the fingerprint, so any check stamped with the old `fp` must re-run.
+`--update` rewrites every baseline that differs, not only the new route's. After step 2, `git -C <path> status --porcelain -- .znf/visual/__snapshots__` must list only the new route's files; if it lists another baseline, restore it with `git -C <path> checkout -- <file>` and decline the proposal.
+
+If any of steps 1-4 fails, undo that route: unstage with `git -C <path> reset -q -- <files>`, restore `git -C <path> checkout -- .znf/visual/routes.json` (delete the file if you just created it), delete the baseline files just generated, and record the reason. A declined proposal never turns Shippable to NO. Adding a route changes the fingerprint, so any check stamped with the old `fp` must re-run.
 
 The optional route field `aria` is a root selector whose accessibility tree is compared against `.znf/visual/__snapshots__/<name>.aria.yml` with `deep-equal`, so an added element fails as well as a missing one. `visual check` refuses to run when `routes.json` or an on-disk baseline is untracked: `baseline not tracked by git — run: git -C <repo> add -f …`.

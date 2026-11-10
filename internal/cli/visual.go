@@ -102,10 +102,15 @@ func newVisualCmd() *cobra.Command {
 				repo, _ = os.Getwd()
 			}
 			// Fail on a broken routes.json before any broker/docker call can mask it.
-			if _, err := visual.LoadRoutes(repo); err != nil {
+			routes, err := visual.LoadRoutes(repo)
+			if err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()
+			if len(routes) == 0 {
+				_, _ = fmt.Fprintln(out, "0 routes")
+				return nil
+			}
 			bc, err := e2eBroker(role)
 			if err != nil {
 				return err

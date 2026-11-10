@@ -143,6 +143,25 @@ func TestVisualCheckCmd_BrokenRoutesBeforeDocker(t *testing.T) {
 	}
 }
 
+// FR-2.3 at the command level: an empty list needs neither --port nor Docker.
+func TestVisualCheckCmd_EmptyRoutesSkipsDocker(t *testing.T) {
+	repo := writeVisualRoutes(t, `[]`)
+	old := preflightDocker
+	preflightDocker = func() error { t.Error("docker preflight ran for an empty route list"); return nil }
+	defer func() { preflightDocker = old }()
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"visual", "check", "--repo", repo})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("want exit 0, got %v", err)
+	}
+	if !strings.Contains(out.String(), "0 routes") {
+		t.Errorf("out=%q lacks \"0 routes\"", out.String())
+	}
+}
+
 func TestVisualAddRouteCmd(t *testing.T) {
 	repo := t.TempDir()
 	root := NewRootCmd()

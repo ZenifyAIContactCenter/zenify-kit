@@ -130,10 +130,13 @@ func ValidateRoutes(rs []Route) error {
 		if !routeNameRe.MatchString(r.Name) {
 			return badArgs("routes[%d].name: %q must match [A-Za-z0-9_-]+", i, r.Name)
 		}
-		if names[r.Name] {
+		// Baseline files are named after the route; fold case so two names
+		// cannot collide on a case-insensitive filesystem.
+		key := strings.ToLower(r.Name)
+		if names[key] {
 			return badArgs("routes[%d].name: duplicate %q", i, r.Name)
 		}
-		names[r.Name] = true
+		names[key] = true
 		if len(r.Path) == 0 || r.Path[0] != '/' {
 			return badArgs("routes[%d].path: %q must start with /", i, r.Path)
 		}
@@ -205,8 +208,13 @@ func writeFileAtomic(p string, b []byte) error {
 		return err
 	}
 	_, werr := f.Write(b)
+	// CreateTemp makes 0600; keep the mode of the file being replaced.
+	var merr error
+	if info, serr := os.Stat(p); serr == nil {
+		merr = f.Chmod(info.Mode().Perm())
+	}
 	cerr := f.Close()
-	if err := errors.Join(werr, cerr); err != nil {
+	if err := errors.Join(werr, merr, cerr); err != nil {
 		_ = os.Remove(f.Name())
 		return err
 	}

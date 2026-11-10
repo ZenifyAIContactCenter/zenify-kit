@@ -324,3 +324,31 @@ func TestUntrackedBaselines_RealGit(t *testing.T) {
 		t.Fatalf("after staged add: %v %v", got, checked)
 	}
 }
+
+// Home.png and home.png are one file on a case-insensitive filesystem.
+func TestValidateRoutes_NameCaseCollision(t *testing.T) {
+	err := ValidateRoutes([]Route{{Name: "home", Path: "/a"}, {Name: "Home", Path: "/b"}})
+	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "routes[1].name") {
+		t.Fatalf("err=%v, want BadArgs on routes[1].name", err)
+	}
+}
+
+func TestAddRoute_KeepsFileMode(t *testing.T) {
+	repo := t.TempDir()
+	if err := AddRoute(repo, Route{Name: "a", Path: "/a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(RoutesPath(repo), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddRoute(repo, Route{Name: "b", Path: "/b"}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(RoutesPath(repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Errorf("mode=%v, want 0640", info.Mode().Perm())
+	}
+}
