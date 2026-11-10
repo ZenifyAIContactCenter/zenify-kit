@@ -21,7 +21,7 @@ out of the main context"*.
 It renders in a pinned Docker image so the baseline is OS-independent.
 
 #### Non-zero is non-negotiable — the skips that don't hold
-A non-zero `rg` count means the diff renders something; a verifier verdict is then required, or the ship
+A non-zero `zenify ui-verify files --count` means the diff renders something; a verifier verdict is then required, or the ship
 is BLOCKED (board line ❌, Shippable NO). None of the following earns a skip — each is the shape of
 rationalising one:
 
@@ -32,7 +32,7 @@ rationalising one:
 | the change only wires an existing component to new data | It still alters what the user sees. Look at it. |
 | the DB / backend was down when I got here | Then the look did **not** run: line ❌ and Shippable NO. Bring them up (recipe below), or STOP and tell the user — never green a check that never ran. |
 
-The escape phrase "nothing renders in this diff" belongs to a literal `0` from the `rg` count only —
+The escape phrase "nothing renders in this diff" belongs to a literal `0` from `zenify ui-verify files --count` only —
 never to an argument that the rendered output is unchanged.
 
 #### Recipe: bring the app to a testable state
@@ -72,20 +72,15 @@ Snapshots, console dumps and screenshots are the largest volume any step here pr
 a verdict plus evidence instead.
 
 #### Mechanical gate: ui-verify record/check
-`znf:ui-verifier` records its own artifact — before deleting its screenshot, if `zenify` is on PATH it
-runs `zenify ui-verify record --repo <repo> --screen <name> --screenshot <path> --child-right <n>
---container-right <n> --padding-right <n> --verdict <pass|fail>`. This computes a fingerprint `fp` over
-the caller-passed repo's working tree, copies the screenshot to `<repo>/.znf/ui-verify/<fp>-<screen>.png`,
-and upserts the screen's measurement into `<repo>/.znf/ui-verify/<fp>.json`. The `--repo` the caller
-passes to the verifier must be this worktree.
+`znf:ui-verifier` records its own artifact. It loops over every screen and every width printed by `zenify ui-verify viewports --repo <repo>` (nothing printed = no declared widths, it picks one). For each (screen, viewport), if `zenify` is on PATH, it runs `zenify ui-verify record --repo <repo> --screen <name> --viewport <w> --screenshot <path> --measurement '<json>' [--fail-reason '<text>']`, where `<json>` is the unedited stdout of the measurement snippet. The kit computes the verdict: it requires `innerWidth == --viewport`, computes overflow per edge beyond the container content edge (> 1px, skipping an axis whose container scrolls), and fails on any overflow or a non-empty `--fail-reason`. It prints `verdict:`, `overflow:` and `failReason:` lines. It computes a fingerprint `fp` over the caller-passed repo's working tree, copies the screenshot to `<repo>/.znf/ui-verify/<fp>-<screen>.png`, and upserts the entry keyed by (screen, viewport) into `<repo>/.znf/ui-verify/<fp>.json`. The `--repo` the caller passes to the verifier must be this worktree.
 
 `/ship` step 7 runs `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` before concluding Shippable —
-a deterministic, fail-closed gate with four outcomes:
+a deterministic, fail-closed gate with four outcomes. The render-trigger set comes from `uiVerify.renderPaths` in `.claude/worktree.json` when declared, else the built-in pattern; test files never count:
 - **not_required** (exit 0) — the render-trigger set (§4b) is empty; nothing to verify.
-- **waived** (exit 0) — the diff carries a `// znf:ui-verify-ok: <reason>` marker; the reason prints on
+- **waived** (exit 0) — an ADDED line (`+`) in a file that `zenify ui-verify files` lists carries `znf:ui-verify-ok: <reason>` with a non-empty reason (a marker in an untouched line, a test file or a non-render file does not count; git errors mean no waiver); the reason prints on
   the `look:` board line.
-- **verified** (exit 0) — a valid artifact exists for the *current* fingerprint.
-- **required** (exit non-zero) — render-trigger fired, no valid current-fp artifact: `look:` reads
+- **verified** (exit 0) — every screen has a `pass` entry for every declared viewport at the *current* fingerprint (no declared viewports: any one viewport per screen, still `pass`).
+- **required** (exit non-zero) — render-trigger fired, a screen/viewport is missing or failed (e.g. `ticket-detail: missing viewport 1280`, `home@1366: fail (right 5px)`): `look:` reads
   `❌ BLOCKED`, `Shippable: NO`.
 
 The fingerprint is what ties `record` to `check`: any working-tree change after `record` shifts `fp`,

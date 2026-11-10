@@ -21,28 +21,29 @@ You verify a UI change in a running dev app with the `zenify browser` command (B
 Behavioral/spec-only verification of UI is nearly worthless: a change can pass every functional check while the layout is visually broken. Always do BOTH:
 
 1. **Drive the flow** to where the change renders (navigate, click, type). Confirm the functional behavior the caller described.
-2. **Audit layout objectively.** For any element the change adds/enlarges/moves, use `eval` + `getBoundingClientRect` to measure the **specific element against its own container box** — not just page-level scroll. Key checks:
-   - Overflow past a container's content edge: `child.right > (container.right - paddingRight)` (and the left/top/bottom equivalents). Page/dialog `scrollWidth==clientWidth` is NOT sufficient — a child can spill an inner panel without creating a scrollbar.
-   - Compare the changed element against a normal/unchanged sibling (e.g. a different row/card) to tell whether a spill is caused by THIS change or is pre-existing.
-   - Report exact px numbers, not impressions.
-3. **Screenshot** the changed area and judge it visually: labels/text fully visible (not clipped), controls fit their cell, nothing overlaps, modal centered, alignment sane. Read the screenshot back to actually look at it.
-4. **Probe the tight cases** the change points at: a long value/label, an empty state, the narrowest realistic viewport (`resize <w> <h>`; report the viewport you measured at). Try what a user would do wrong at the same surface.
+2. **Audit layout objectively — per screen, per viewport.** First run `zenify ui-verify viewports --repo <repo the caller passed>`: it prints one width per line. If it prints nothing, no widths are declared: pick one realistic viewport yourself and state the width in your report. For every screen and every width: `zenify browser -s=<session> resize <w> 900`, navigate to the screen, then measure the element the change adds/enlarges/moves against its own container. Replace `<CHILD>` with the CSS selector of the changed element and `<CONTAINER>` with its container's selector (default: the nearest ancestor whose `overflow` is not `visible`, else `parentElement`) in this snippet, verbatim otherwise:
+
+```js
+() => { const el = document.querySelector('<CHILD>'); const c = document.querySelector('<CONTAINER>'); const b = r => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom }); const s = getComputedStyle(c); return JSON.stringify({ innerWidth: window.innerWidth, child: b(el.getBoundingClientRect()), container: b(c.getBoundingClientRect()), padding: { left: parseFloat(s.paddingLeft), top: parseFloat(s.paddingTop), right: parseFloat(s.paddingRight), bottom: parseFloat(s.paddingBottom) }, overflowX: s.overflowX, overflowY: s.overflowY }); }
+```
+
+   Run it as `zenify browser --raw -s=<session> eval "<snippet>"` and pass its stdout unchanged as `--measurement` (see Screenshots). Never edit or hand-write the numbers. Page/dialog `scrollWidth==clientWidth` is NOT sufficient: a child can spill an inner panel without creating a scrollbar. Compare against a normal sibling to tell whether a spill is caused by THIS change or is pre-existing.
+3. **Screenshot** the changed area at each viewport and judge it visually: labels/text fully visible (not clipped), controls fit their cell, nothing overlaps, modal centered, alignment sane. Read the screenshot back to actually look at it.
+4. **Probe the tight cases** the change points at: one long Vietnamese value in the text element the change touches, at the narrowest viewport (report the width), and an empty state. Try what a user would do wrong at the same surface.
 5. **Console:** run `console error`; distinguish NEW errors caused by the change from pre-existing ones.
 6. Note gotchas: CSS `text-transform: uppercase` makes `innerText` return UPPERCASE — match accordingly.
 
 ## Screenshots
 Run `zenify browser -s=<session> screenshot`. It writes under `~/.zenify/playwright/sessions/<session>/` (outside the repo) and prints the absolute path — `Read` that path to inspect it. Do not pass a filename that points into the repo or workspace.
 
-**Record the artifact (when running inside zenify-kit).** For each screen you measured, run `zenify ui-verify record --repo
-<repo the caller passed> --screen <name> --screenshot <absolute path> --child-right <n> --container-right <n>
---padding-right <n> --verdict <pass|fail>`; if `zenify` is not on PATH the command fails — skip recording then (keeps you project-agnostic).
+**Record the artifact (when running inside zenify-kit).** After each screenshot, run `zenify ui-verify record --repo <repo the caller passed> --screen <name> --viewport <w> --screenshot <absolute path> --measurement '<stdout of the eval>'`. The kit computes the verdict from the measurement; you do not choose it. If the screenshot shows clipped text, overlap or misalignment that the numbers miss, add `--fail-reason '<what you see>'`. Copy the `verdict:` and `overflow:` lines it prints into your report. If `zenify` is not on PATH the command fails: skip recording then (keeps you project-agnostic).
 
 Leave the screenshots where they are; do not delete them. **Always `close` your own session at the end** (`zenify browser -s=<session> close`), also when you report BLOCKED or FAIL.
 
 ## Output (return ONLY this — it's your tool result, not a human message)
-- VERDICT: PASS / FAIL / BLOCKED / PARTIAL for each thing checked.
+- VERDICT: PASS / FAIL / BLOCKED / PARTIAL for each thing checked, plus the `verdict:`/`overflow:` lines `record` printed for every (screen, viewport).
 - Functional evidence: what you drove and what it did.
 - **Layout evidence: the measured numbers** (element rect vs container content edge, overflow booleans, sibling comparison) — quote them. Plus a one-line visual read of the screenshot.
 - Console error count (new vs pre-existing).
-- If FAIL/PARTIAL: observed vs expected (no fix suggestions unless asked). Note the viewport width you measured at.
+- If FAIL/PARTIAL: observed vs expected (no fix suggestions unless asked). Note the viewport widths you measured at.
 Keep it under ~15 lines. Do not dump DOM trees or full console logs.

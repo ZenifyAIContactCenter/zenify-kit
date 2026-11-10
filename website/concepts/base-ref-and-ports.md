@@ -32,6 +32,7 @@ Ví dụ thật, `.claude/worktree.json` của chính repo `zenify-kit`:
 | `portRange` | khối 50 port riêng của repo này (3750–3799) |
 | `portEnv` | tên biến môi trường worktree đọc port từ đó |
 | `deps` | `none` ở đây vì kit không có `node_modules` để seed |
+| `uiVerify` | khối tùy chọn cho gate UI: `renderPaths` (tiền tố đường dẫn nguyên segment, thay hẳn pattern có sẵn) và `viewports` (các width mà verifier phải đo), ví dụ `{"renderPaths": ["src/"], "viewports": [1920, 1366, 1280]}`; xem [Kiểm thử UI](/workflows/ui-testing) |
 
 Hotfix có một hàm resolve base, dùng chung cho `zenify wt new --type hotfix` và `zenify hotfix baseref <repoPath>`, nên hai lệnh luôn ra cùng một ref.
 

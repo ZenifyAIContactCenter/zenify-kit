@@ -16,7 +16,7 @@ Cả ba lớp đều chạy trên dev server của worktree, không chạy trên
 
 ## Khi nào chạy
 
-`/znf:ship` quyết định ở bước verify. Nếu diff chạm file `.tsx`, `.jsx`, `.vue`, `.svelte`, file style, hoặc thư mục `components`, `pages`, `views`, ship coi thay đổi có render và bật kiểm thử UI. File test (`*.test.*`, `*.spec.*`, thư mục `__tests__/`) không tính, kể cả khi đuôi `.tsx` hoặc nằm trong `components/`. Danh sách lấy từ [`zenify ui-verify files`](/reference/cli/zenify_ui-verify_files), cùng tập file mà `zenify ui-verify check` chặn. Diff không chạm các file đó thì ship ghi "nothing renders in this diff" và bỏ qua.
+`/znf:ship` quyết định ở bước verify. Repo khai khối `uiVerify.renderPaths` trong `.claude/worktree.json` (danh sách tiền tố đường dẫn, khớp nguyên segment, ví dụ `["src/"]`) thì diff chạm file dưới các tiền tố đó là có render, và khai báo này thay hẳn pattern có sẵn. Không khai thì pattern có sẵn áp dụng: file `.tsx`, `.jsx`, `.vue`, `.svelte`, `.css`, `.scss`, `.less`, hoặc đường dẫn có segment `components`, `pages`, `views`; ship coi thay đổi có render và bật kiểm thử UI. Khối `uiVerify` sai định dạng làm lệnh thoát mã 2 và nêu tên field sai. File test (`*.test.*`, `*.spec.*`, thư mục `__tests__/`) không tính, kể cả khi đuôi `.tsx` hoặc nằm trong `components/`. Danh sách lấy từ [`zenify ui-verify files`](/reference/cli/zenify_ui-verify_files), cùng tập file mà `zenify ui-verify check` chặn. Diff không chạm các file đó thì ship ghi "nothing renders in this diff" và bỏ qua.
 
 Khi bật, thứ tự cố định:
 
@@ -48,13 +48,19 @@ Agent tự đăng nhập, bạn không gõ mật khẩu vào trình duyệt. Tr�
 Agent làm bốn việc trên phần tử bạn vừa đổi:
 
 - Đi tới màn hình có thay đổi và kiểm tra hành vi bạn mô tả.
-- Đo hộp của phần tử so với mép nội dung của container chứa nó, rồi đo một phần tử anh em chưa đổi để biết lệch là do bạn hay có sẵn.
-- Chụp ảnh vùng đổi và đọc lại ảnh để xem chữ có đủ, nút có vừa ô, có gì chồng lên nhau không.
-- Thử giá trị dài, trạng thái rỗng, viewport hẹp nhất có thể, và xem console có lỗi mới không.
+- Chạy `zenify ui-verify viewports --repo <repo>` để lấy các width repo khai trong `uiVerify.viewports` (không khai thì agent tự chọn một width và ghi rõ trong báo cáo). Với mỗi màn hình và mỗi width, agent `resize`, chạy đoạn JS đo hộp của phần tử so với mép nội dung của container chứa nó, rồi đo một phần tử anh em chưa đổi để biết lệch là do bạn hay có sẵn.
+- Chụp ảnh vùng đổi ở từng width và đọc lại ảnh để xem chữ có đủ, nút có vừa ô, có gì chồng lên nhau không.
+- Thử một giá trị tiếng Việt dài ở width hẹp nhất, trạng thái rỗng, và xem console có lỗi mới không.
+
+Verdict của gate không do agent quyết. Với mỗi (màn hình, width), agent chạy `zenify ui-verify record --repo <repo> --screen <tên> --viewport <w> --screenshot <đường dẫn> --measurement '<json>'`, trong đó `<json>` là stdout nguyên văn của đoạn đo. Kit parse chặt JSON, đòi `innerWidth` bằng `--viewport`, tự tính tràn theo từng cạnh vượt mép nội dung của container (quá 1px, bỏ qua trục mà container tự cuộn), rồi in `verdict: pass|fail` cùng các dòng `overflow: <cạnh> <px>px`. Khi ảnh cho thấy chữ cắt, chồng lấn hoặc lệch căn mà số đo không bắt, agent thêm `--fail-reason '<mô tả>'` và verdict thành fail. Agent không sửa số đo. `zenify ui-verify check` chỉ cho qua khi mọi màn hình có entry `pass` cho mọi width đã khai (không khai `viewports` thì một width bất kỳ mỗi màn hình, vẫn phải pass); thiếu hay fail thì in lý do như `ticket-detail: missing viewport 1280` hoặc `home@1366: fail (right 5px)`.
 
 Kết quả trả về là một verdict PASS, FAIL, BLOCKED hoặc PARTIAL cho từng điểm kiểm, kèm số đo bằng pixel. Ảnh chụp nằm ở `~/.zenify/playwright/sessions/<phiên>/.playwright-cli/`, ngoài repo; `zenify browser` in đường dẫn tuyệt đối. Mỗi verifier có một phiên riêng (`-s=<phiên>`) với trình duyệt và thư mục riêng, nên nhiều verifier chạy song song được, trong cùng session hay khác session. Kit cài `@playwright/cli@0.1.22` và Chromium 1247 vào `~/.zenify/playwright/cli/pkg` khi bạn chạy `zenify up`; `zenify up` cũng gỡ Playwright MCP do kit từng đăng ký và giữ bản bạn tự cấu hình.
 
 Agent chỉ kiểm phần tử bạn nói tới. Một thay đổi CSS chung có thể làm lệch màn hình khác mà agent không mở. Lớp so ảnh bù chỗ đó.
+
+## Miễn kiểm bằng znf:ui-verify-ok
+
+Khi thay đổi chạm file render nhưng không đổi giao diện thật, thêm một dòng comment `znf:ui-verify-ok: <lý do>` (theo cú pháp comment của file đó) vào file render bạn sửa. Gate chỉ chấp nhận khi dòng đó là dòng THÊM (`+`) trong diff, nằm trong file mà `zenify ui-verify files` liệt kê, và lý do không rỗng. Marker nằm ở dòng cũ, trong file test, hoặc trong file không render thì không có tác dụng; lỗi git cũng không cho miễn. Lý do in ra ở dòng `look:` của bảng ship.
 
 ## So ảnh với zenify visual check
 

@@ -88,7 +88,7 @@ Verified at fingerprint = <fp10>
 ✅/❌ Build / typecheck    (<fp10>)  <command run>
 ✅/❌ Contract gate        (<fp10>)  /gate: <N repos impacted, or clean>
 ✅/❌ Behaviour verified   (<fp10>)  <N tests passed — or what /run showed>
-      look: <verdict + overflow numbers · "nothing renders" ONLY if rg=0 · or "❌ BLOCKED: <missing thing>" → Shippable NO>
+      look: <verdict + overflow numbers · "nothing renders" ONLY if files --count = 0 · or "❌ BLOCKED: <missing thing>" → Shippable NO>
             before concluding: `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` — non-zero →
             append "❌ BLOCKED" here and Shippable NO; a waiver appends "waived: <reason>"
       data checks: <which of the project-specific ones ran; which the diff could not trigger>
