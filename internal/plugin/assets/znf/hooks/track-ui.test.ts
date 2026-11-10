@@ -538,7 +538,7 @@ test('SC-15: Running names the tab and shows wall/est and agent time', () => {
 
 test('FR-11.4: carried items tip first, before Backlog', () => {
   const s = stats({ kitchen: { ...stats().kitchen, carried: [carried({}), carried({ id: Y })] }, backlog: { items: [bl('manual')], ghError: '' } })
-  expect(statusText(s, A, undefined)).toContain('Tip: 2 items carried over — type "hey claude continue"')
+  expect(statusText(s, A, undefined, true, NOW)).toContain('Tip: 2 items carried over — type "hey claude continue"')
   expect(statusText(s, A, undefined)).not.toContain('Backlog')
 })
 
@@ -687,8 +687,8 @@ test('SC-9: no-plan tip sits after carried and before backlog; tips=false hides 
   expect(COPY.tipNoPlan).toBe(noPlan)
   expect(statusText(noPlanStats(), A, undefined).endsWith(` · ${noPlan}`)).toBe(true)
   expect(statusText(noPlanStats(), A, undefined, false)).not.toContain('Tip:')
-  expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined)).toContain('carried over')
-  expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined)).not.toContain('no plan')
+  expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined, true, NOW)).toContain('carried over')
+  expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined, true, NOW)).not.toContain('no plan')
   expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '' } }), A, undefined)).toContain('no plan today')
   expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '' } }), A, undefined)).not.toContain('in Backlog')
   expect(statusText(withPlan([], 0, 0), A, undefined)).not.toContain('no plan')
@@ -716,4 +716,34 @@ test('trackSectionOf names the track.md section of a tracked skill; promptSkillO
   const md = '## Rules\n\n- r\n\n## fix\n\n- f\n'
   expect(trackContext(md, 'fix')).toContain('## Rules\n\n- r\n\n## fix\n\n- f')
   expect(trackContext(md, 'ship')).toBeUndefined()
+})
+
+// FR-5.1/FR-5.2, SC-8: the tip points at the PR or item that needs action first.
+const pr = (over: Partial<TrackStats['today']['prOpen'][number]>) => ({
+  url: 'https://github.com/o/r/pull/12', repo: 'o/r', number: 12, createdAt: new Date(NOW).toISOString(), ci: 'success' as const, review: '-' as const, threads: 0, ready: false, ...over,
+})
+const withPrs = (prOpen: TrackStats['today']['prOpen'], extra: Partial<TrackStats> = {}) =>
+  stats({ today: { ...stats().today, prOpen }, kitchen: { ...stats().kitchen, carried: [carried({})] }, ...extra })
+
+test('SC-8: a PR with red CI is the first tip', () => {
+  expect(statusText(withPrs([pr({ ci: 'failure' })]), A, undefined, true, NOW)).toContain('Tip: PR #12 CI red — type "hey claude fix CI"')
+})
+test('SC-8: a PR with unresolved threads', () => {
+  expect(statusText(withPrs([pr({ threads: 2 })]), A, undefined, true, NOW)).toContain('Tip: PR #12 has 2 unresolved threads')
+})
+test('SC-8: two ready PRs beat carried items', () => {
+  const s = withPrs([pr({ ready: true }), pr({ number: 13, ready: true })])
+  expect(statusText(s, A, undefined, true, NOW)).toContain('Tip: 2 PRs ready to merge')
+})
+test('SC-8: a carried item open 6 days is flagged', () => {
+  const s = stats({ kitchen: { ...stats().kitchen, carried: [carried({ startedAt: new Date(NOW - 6 * 86_400_000).toISOString() })] } })
+  expect(statusText(s, A, undefined, true, NOW)).toContain(`Tip: ${X} open 6 days — continue or cancel it`)
+})
+test('SC-8: an open item in this tab hides the PR tips', () => {
+  const s = withPrs([pr({ ci: 'failure' })], { running: [item({})] })
+  expect(statusText(s, A, X, true, NOW)).not.toContain('CI red')
+})
+test('SC-8: no PR and a 1-day carried item keeps the old tip', () => {
+  const s = stats({ kitchen: { ...stats().kitchen, carried: [carried({ startedAt: new Date(NOW - 86_400_000).toISOString() })] } })
+  expect(statusText(s, A, undefined, true, NOW)).toContain('Tip: 1 items carried over')
 })

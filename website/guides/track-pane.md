@@ -29,6 +29,7 @@ Status line luôn hiện, kể cả khi pane đóng. Toàn bộ chữ trên pane
 - Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸ · Tip: onboard the agent to pick work — type "hey claude onboard track"`
 - Số đầu tiên là wall time (đồng hồ thật từ lúc bắt đầu), kèm `<est>` nếu việc có size; `(agent <n>m)` là thời gian agent thật sự làm, chỉ hiện khi lớn hơn 0. Chi tiết ở [Thời gian wall và thời gian agent](#thời-gian-wall-và-thời-gian-agent).
 - `hit n%` chỉ hiện khi đã có ít nhất 5 việc có est.
+- Khi tab này chưa có việc mở, tip việc cần xử lý ngay đứng trước các tip bên dưới: PR có CI đỏ, rồi PR còn thread chưa resolve, rồi PR bị yêu cầu sửa, rồi PR đã sẵn sàng merge, rồi việc carried over đã mở từ 5 ngày trở lên hoặc bị stale (`Tip: <id> open <n> days — continue or cancel it`).
 - Tip theo ngữ cảnh: mỗi lúc tối đa một tip, nối cuối dòng bằng ` · `, chọn theo thứ tự ưu tiên (onboard ở trên trước; rồi carried over, chưa có plan, Backlog):
   - tab này không có id mở và còn việc làm dở từ các ngày trước: `Tip: N items carried over — type "hey claude continue"`
   - tab này không có id mở, đã onboard và hôm nay chưa có plan: `Tip: no plan today — type "hey claude plan today"` (xem [Daily plan](#daily-plan))
