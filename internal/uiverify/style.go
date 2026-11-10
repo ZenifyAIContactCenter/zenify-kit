@@ -2,6 +2,8 @@ package uiverify
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -173,8 +175,56 @@ func Style(d Deps, repo, base string) (violations []Violation, checked int, decl
 	if err != nil {
 		return nil, 0, true, exitcode.New(exitcode.Fail, fmt.Errorf("ui-verify style: %w", err))
 	}
-	violations, checked = scanAdded(diff, files, cfg.Style)
+	extra, err := untrackedDiff(d, repo, files)
+	if err != nil {
+		return nil, 0, true, exitcode.New(exitcode.Fail, fmt.Errorf("ui-verify style: %w", err))
+	}
+	violations, checked = scanAdded(diff+extra, files, cfg.Style)
 	return violations, checked, true, nil
+}
+
+// newFileDiff renders body as the diff of a brand-new file, so scanAdded
+// treats every line as added with the same rules and waivers.
+func newFileDiff(path, body string) string {
+	body = strings.TrimSuffix(body, "\n")
+	if body == "" {
+		return ""
+	}
+	lines := strings.Split(body, "\n")
+	return fmt.Sprintf("diff --git a/%[1]s b/%[1]s\n+++ b/%[1]s\n@@ -0,0 +1,%d @@\n+%s\n",
+		path, len(lines), strings.Join(lines, "\n+"))
+}
+
+// untrackedDiff covers what `git diff <merge-base>` never shows: untracked
+// files in the render set. An unreadable file is an error, never "clean".
+func untrackedDiff(d Deps, repo string, files []string) (string, error) {
+	status, err := d.RunGit(repo, "-c", "core.quotePath=false", "status", "--porcelain", "-uall")
+	if err != nil {
+		return "", fmt.Errorf("git status --porcelain -uall: %w", err)
+	}
+	inSet := make(map[string]bool, len(files))
+	for _, f := range files {
+		if isStyleFile(f) {
+			inSet[f] = true
+		}
+	}
+	var sb strings.Builder
+	for _, line := range strings.Split(status, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if !strings.HasPrefix(line, "?? ") {
+			continue
+		}
+		path := parsePorcelainPath(line)
+		if !inSet[path] {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(repo, path)) //nolint:gosec // G304 -- path comes from git status of this repo
+		if err != nil {
+			return "", fmt.Errorf("read untracked %s: %w", path, err)
+		}
+		sb.WriteString(newFileDiff(path, string(body)))
+	}
+	return sb.String(), nil
 }
 
 const maxStyleLines = 10

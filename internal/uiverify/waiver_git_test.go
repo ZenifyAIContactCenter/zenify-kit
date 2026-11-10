@@ -194,3 +194,39 @@ func TestStyle_RealGit(t *testing.T) {
 		})
 	}
 }
+
+func TestStyle_RealGitUntracked(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want []Violation
+	}{
+		{"hex in a new untracked file is reported", "a\nb #ff0000\n",
+			[]Violation{{File: "src/components/New.tsx", Line: 2, Rule: "hex", Match: "#ff0000"}}},
+		{"marker line above waives it", "a\n// znf:ui-style-ok: brand\nb #ff0000\n", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, _ := waiverRepo(t)
+			writeRepoFile(t, repo, "src/components/New.tsx", tc.body)
+			if got := realStyle(t, repo); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("got %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestStyle_UnreadableUntrackedFileErrors(t *testing.T) {
+	repo, _ := waiverRepo(t)
+	writeRepoFile(t, repo, ".claude/worktree.json", `{"uiVerify":{"style":["hex"]}}`)
+	writeRepoFile(t, repo, "src/components/New.tsx", "x #ff0000\n")
+	if err := os.Chmod(filepath.Join(repo, "src/components/New.tsx"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any file")
+	}
+	if _, _, _, err := Style(Deps{RunGit: execGit}, repo, "main"); err == nil {
+		t.Fatal("want an error for an unreadable untracked file, got clean")
+	}
+}

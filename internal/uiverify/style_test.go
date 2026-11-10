@@ -112,3 +112,14 @@ func TestScanAdded_Scope(t *testing.T) {
 		t.Fatalf("got %+v checked=%d, want only src/A.tsx", got, checked)
 	}
 }
+
+func TestNewFileDiff_AllLinesAdded(t *testing.T) {
+	d := newFileDiff("src/A.tsx", "a\n// znf:ui-style-ok: brand\nb #fff\nc #000\n")
+	vs, checked := scanAdded(d, []string{"src/A.tsx"}, []string{StyleHex})
+	if checked != 4 || len(vs) != 1 || vs[0].Line != 4 || vs[0].Match != "#000" {
+		t.Fatalf("checked=%d vs=%+v, want 4 lines and only #000 on line 4", checked, vs)
+	}
+	if newFileDiff("src/A.tsx", "") != "" {
+		t.Fatal("empty file must yield no diff")
+	}
+}
