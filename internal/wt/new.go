@@ -26,6 +26,9 @@ type NewOptions struct {
 	Runner       gitx.Runner
 	RemoteRunner gitx.Runner // bounded runner for the push; nil = Runner
 	Stderr       io.Writer
+	// OnStart runs once the worktree exists; a non-empty return is printed
+	// as a warning and never fails RunNew. nil = no hook.
+	OnStart func(slug string) (warning string)
 }
 
 // validSlug allows lowercase letters, digits and dashes only (matching bash wt).
@@ -317,6 +320,12 @@ func RunNew(o NewOptions) error {
 		RewirePeers(ws, filepath.Base(o.RepoRoot), o.Slug, r, o.Stderr, o.Stderr)
 	} else {
 		_, _ = fmt.Fprintln(o.Stderr, "wt: no workspace marker above this repo — peers not rewired")
+	}
+
+	if o.OnStart != nil {
+		if w := o.OnStart(o.Slug); w != "" {
+			_, _ = fmt.Fprintf(o.Stderr, "wt: %s\n", w)
+		}
 	}
 
 	_, _ = fmt.Fprintf(o.Stderr, "wt: %s → %s\n", o.Slug, path)

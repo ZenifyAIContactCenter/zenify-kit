@@ -492,3 +492,30 @@ func TestRunNew_PushRejectedSaysBranchExists(t *testing.T) {
 		t.Fatalf("expected exists hint, got %q", errb.String())
 	}
 }
+
+// FR-09.2: a warning from OnStart is printed and never fails RunNew; the hook
+// runs only once the worktree exists.
+func TestRunNew_OnStartWarningDoesNotFail(t *testing.T) {
+	root, _ := pushRepo(t, true)
+	o, errb := realOpts(root)
+	var sawSlug string
+	var existed bool
+	o.OnStart = func(slug string) string {
+		sawSlug = slug
+		_, err := os.Stat(filepath.Join(root, ".worktrees", "my-task"))
+		existed = err == nil
+		return "plane said no"
+	}
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	if sawSlug != "my-task" || !existed {
+		t.Fatalf("OnStart slug=%q worktree-existed=%v", sawSlug, existed)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".worktrees", "my-task")); err != nil {
+		t.Fatalf("worktree missing: %v", err)
+	}
+	if !strings.Contains(errb.String(), "plane said no") {
+		t.Fatalf("warning not printed: %q", errb.String())
+	}
+}
