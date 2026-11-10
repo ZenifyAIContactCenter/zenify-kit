@@ -99,6 +99,10 @@ func TestCloseDayReportsAndArchives(t *testing.T) {
 		t.Fatalf("day.closed = %q", b)
 	}
 	arch := readAll(t, filepath.Join(dir, "archive", "*.md"))
+	month := now.AddDate(0, 0, -20).UTC().Format("2006-01")
+	if got := readAll(t, filepath.Join(dir, "archive", month+".md")); !strings.Contains(got, oldID) {
+		t.Errorf("archive/%s.md lacks %s:\n%s", month, oldID, got)
+	}
 	log := trackLog(t, ws)
 	for _, want := range []string{"history" + trackSep + "deadbeef", oldID} {
 		if !strings.Contains(arch, want) {
@@ -164,5 +168,55 @@ func TestCloseDayMovesOldSessions(t *testing.T) {
 	}
 	if _, err := os.Stat(live); err != nil {
 		t.Errorf("session of a kept id must stay: %v", err)
+	}
+}
+
+func TestCloseDayNoMarkOnError(t *testing.T) {
+	now := time.Now()
+	ws, _ := closeDayWS(t, now)
+	dir := filepath.Join(ws, ".zenify", "track")
+	before := trackLog(t, ws)
+	unlock, err := lockTrackLog(filepath.Join(dir, "log.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = unlock() }()
+	oldT := trackLockTimeout
+	trackLockTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { trackLockTimeout = oldT })
+	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now); err == nil {
+		t.Fatal("expected a lock error")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "day.closed")); !os.IsNotExist(err) {
+		t.Fatalf("day.closed must be absent: %v", err)
+	}
+	if trackLog(t, ws) != before {
+		t.Fatal("log.md changed")
+	}
+}
+
+func TestCloseDayKeepsExistingArchivedDay(t *testing.T) {
+	now := time.Now()
+	ws, _ := closeDayWS(t, now)
+	dir := filepath.Join(ws, ".zenify", "track")
+	d := now.AddDate(0, 0, -30).Format("2006-01-02")
+	for _, p := range []string{filepath.Join(dir, "days"), filepath.Join(dir, "archive", "days")} {
+		if err := os.MkdirAll(p, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "archive", "days", d+".md"), []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "days", d+".md"), []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := os.ReadFile(filepath.Join(dir, "archive", "days", d+".md"))
+	b, _ := os.ReadFile(filepath.Join(dir, "archive", "days", d+".md.1"))
+	if string(a) != "first" || string(b) != "second" {
+		t.Fatalf("got %q / %q", a, b)
 	}
 }

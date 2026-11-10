@@ -168,7 +168,7 @@ func compactTrackLog(errW io.Writer, dir string, now time.Time, today string) (s
 	byMonth := map[string][]string{}
 	for _, line := range moved {
 		month := today[:7]
-		if t, err := time.Parse(time.RFC3339, strings.SplitN(line, trackSep, 2)[0]); err == nil {
+		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(strings.SplitN(line, trackSep, 2)[0])); err == nil {
 			month = t.In(now.Location()).Format("2006-01")
 		}
 		byMonth[month] = append(byMonth[month], line)
@@ -244,9 +244,22 @@ func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bo
 	return nil
 }
 
+// moveInto renames src into destDir; an existing file of that name is never overwritten,
+// the new one gets a numeric suffix instead.
 func moveInto(src, destDir string) error {
 	if err := os.MkdirAll(destDir, 0o750); err != nil {
 		return err
 	}
-	return os.Rename(src, filepath.Join(destDir, filepath.Base(src)))
+	dst := filepath.Join(destDir, filepath.Base(src))
+	for i := 1; ; i++ {
+		_, err := os.Lstat(dst)
+		if errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		dst = filepath.Join(destDir, fmt.Sprintf("%s.%d", filepath.Base(src), i))
+	}
+	return os.Rename(src, dst)
 }
