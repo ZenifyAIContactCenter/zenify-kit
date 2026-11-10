@@ -103,6 +103,46 @@ func TestRunVisualCheck_InvalidRoutesIsBadArgs(t *testing.T) {
 	}
 }
 
+func TestRunVisualCheck_NullRoutesIsBadArgs(t *testing.T) {
+	repo := writeVisualRoutes(t, `null`)
+	var out bytes.Buffer
+	err := runVisualCheck(visualOpts{runner: func(string, []string) error { return nil }, repo: repo, port: 1, out: &out})
+	if exitcode.Code(err) != exitcode.BadArgs || strings.Contains(out.String(), "0 routes") {
+		t.Errorf("code=%d out=%q err=%v", exitcode.Code(err), out.String(), err)
+	}
+}
+
+func TestVisualAddRouteCmd_EmptyFlagIsBadArgs(t *testing.T) {
+	for _, flag := range []string{"--wait-for", "--aria", "--mask"} {
+		repo := t.TempDir()
+		root := NewRootCmd()
+		root.SetOut(&bytes.Buffer{})
+		root.SetErr(&bytes.Buffer{})
+		root.SetArgs([]string{"visual", "add-route", "--repo", repo, "--name", "a", "--path", "/a", flag, ""})
+		err := root.Execute()
+		if exitcode.Code(err) != exitcode.BadArgs {
+			t.Errorf("%s: want BadArgs, got %v", flag, err)
+		}
+		if _, serr := os.Stat(filepath.Join(repo, ".znf")); serr == nil {
+			t.Errorf("%s: nothing may be written", flag)
+		}
+	}
+}
+
+func TestVisualCheckCmd_BrokenRoutesBeforeDocker(t *testing.T) {
+	repo := writeVisualRoutes(t, `null`)
+	old := preflightDocker
+	preflightDocker = func() error { t.Error("docker preflight ran before routes validation"); return nil }
+	defer func() { preflightDocker = old }()
+	root := NewRootCmd()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"visual", "check", "--repo", repo, "--port", "1"})
+	if err := root.Execute(); exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("want BadArgs, got %v", err)
+	}
+}
+
 func TestVisualAddRouteCmd(t *testing.T) {
 	repo := t.TempDir()
 	root := NewRootCmd()
@@ -123,7 +163,7 @@ func TestVisualAddRouteCmd(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"added route a (1 routes)", "next: zenify visual check --repo " + repo,
-		"then: git add -f .znf/visual/routes.json", "a.aria.yml"} {
+		"then: git -C " + repo + " add -f .znf/visual/routes.json", "a.aria.yml"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("stdout missing %q: %s", want, out.String())
 		}
@@ -160,7 +200,7 @@ func TestRunVisualCheck_UntrackedIsFail(t *testing.T) {
 	if exitcode.Code(err) != exitcode.Fail || called {
 		t.Fatalf("code=%d called=%v err=%v", exitcode.Code(err), called, err)
 	}
-	for _, want := range []string{"git add -f", "a-chromium-linux.png"} {
+	for _, want := range []string{"git -C " + repo + " add -f", "a-chromium-linux.png"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error missing %q: %v", want, err)
 		}

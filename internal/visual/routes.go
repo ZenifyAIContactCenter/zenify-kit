@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -52,10 +54,8 @@ func LoadRoutes(repo string) ([]Route, error) {
 	if err != nil {
 		return nil, exitcode.New(exitcode.Fail, err)
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	var raw []rawRoute
-	if err := dec.Decode(&raw); err != nil {
+	raw, err := parseRawRoutes(data)
+	if err != nil {
 		return nil, badArgs("%s: %v", p, err)
 	}
 	rs := make([]Route, len(raw))
@@ -78,6 +78,48 @@ func LoadRoutes(repo string) ([]Route, error) {
 		return nil, err
 	}
 	return rs, nil
+}
+
+// routeKeys are the exact spellings the TS harness reads; encoding/json would also accept other cases.
+var routeKeys = map[string]bool{"name": true, "path": true, "waitFor": true, "mask": true, "aria": true}
+
+// parseRawRoutes requires a JSON array and nothing after it, then decodes element by element so
+// every error carries its index.
+func parseRawRoutes(data []byte) ([]rawRoute, error) {
+	if t := bytes.TrimSpace(data); len(t) == 0 || t[0] != '[' {
+		return nil, errors.New("must be a JSON array")
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	var elems []json.RawMessage
+	if err := dec.Decode(&elems); err != nil {
+		return nil, err
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, errors.New("unexpected content after the array")
+	}
+	raw := make([]rawRoute, len(elems))
+	for i, e := range elems {
+		if t := bytes.TrimSpace(e); len(t) == 0 || t[0] != '{' {
+			return nil, fmt.Errorf("routes[%d]: must be an object", i)
+		}
+		var keys map[string]json.RawMessage
+		if err := json.Unmarshal(e, &keys); err != nil {
+			return nil, fmt.Errorf("routes[%d]: %v", i, err)
+		}
+		for k := range keys {
+			if !routeKeys[k] {
+				return nil, fmt.Errorf("routes[%d]: unknown key %q", i, k)
+			}
+		}
+		if err := json.Unmarshal(e, &raw[i]); err != nil {
+			var te *json.UnmarshalTypeError
+			if errors.As(err, &te) {
+				return nil, fmt.Errorf("routes[%d].%s: must be %s", i, te.Field, te.Type)
+			}
+			return nil, fmt.Errorf("routes[%d]: %v", i, err)
+		}
+	}
+	return raw, nil
 }
 
 // ValidateRoutes checks names/paths are well-formed and unique.
@@ -111,37 +153,66 @@ func ValidateRoutes(rs []Route) error {
 // AddRoute appends r to routes.json. Existing elements are copied as raw JSON so no field of
 // theirs (e.g. an empty mask) is lost to a decode/encode round trip.
 func AddRoute(repo string, r Route) error {
+	if fi, err := os.Stat(repo); err != nil || !fi.IsDir() {
+		return badArgs("--repo %s is not an existing directory", repo)
+	}
 	p := RoutesPath(repo)
 	var existing []Route
 	var raw []json.RawMessage
-	if _, err := os.Stat(p); err == nil {
+	data, err := os.ReadFile(p) //nolint:gosec // G304 -- p is <repo>/.znf/visual/routes.json, repo chosen by the operator
+	switch {
+	case err == nil:
 		if existing, err = LoadRoutes(repo); err != nil {
 			return err
-		}
-		data, err := os.ReadFile(p) //nolint:gosec // G304 -- p is <repo>/.znf/visual/routes.json, repo chosen by the operator
-		if err != nil {
-			return exitcode.New(exitcode.Fail, err)
 		}
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return badArgs("%s: %v", p, err)
 		}
+	case !errors.Is(err, fs.ErrNotExist):
+		return exitcode.New(exitcode.Fail, err)
 	}
 	if err := ValidateRoutes(append(existing, r)); err != nil {
 		return err
 	}
-	nb, err := json.Marshal(r)
+	// Marshal would escape <>& in the new element; encode with HTML escaping off.
+	var nb bytes.Buffer
+	nenc := json.NewEncoder(&nb)
+	nenc.SetEscapeHTML(false)
+	if err := nenc.Encode(r); err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(append(raw, json.RawMessage(bytes.TrimSpace(nb.Bytes())))); err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	if err := writeFileAtomic(p, buf.Bytes()); err != nil {
+		return exitcode.New(exitcode.Fail, err)
+	}
+	return nil
+}
+
+// writeFileAtomic renames a same-directory temp file over p so a crash never leaves a torn routes.json.
+func writeFileAtomic(p string, b []byte) error {
+	dir := filepath.Dir(p)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".routes-*.tmp")
 	if err != nil {
-		return exitcode.New(exitcode.Fail, err)
+		return err
 	}
-	out, err := json.MarshalIndent(append(raw, nb), "", "  ")
-	if err != nil {
-		return exitcode.New(exitcode.Fail, err)
+	_, werr := f.Write(b)
+	cerr := f.Close()
+	if err := errors.Join(werr, cerr); err != nil {
+		_ = os.Remove(f.Name())
+		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
-		return exitcode.New(exitcode.Fail, err)
-	}
-	if err := os.WriteFile(p, append(out, '\n'), 0o600); err != nil {
-		return exitcode.New(exitcode.Fail, err)
+	if err := os.Rename(f.Name(), p); err != nil {
+		_ = os.Remove(f.Name())
+		return err
 	}
 	return nil
 }

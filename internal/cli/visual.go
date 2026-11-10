@@ -42,7 +42,7 @@ func runVisualCheck(o visualOpts) error {
 			_, _ = fmt.Fprintln(o.out, "warning: cannot check that baselines are tracked (not a git repo?)")
 		} else if len(untracked) > 0 {
 			return exitcode.New(exitcode.Fail,
-				fmt.Errorf("baseline not tracked by git — run: git add -f %s", strings.Join(untracked, " ")))
+				fmt.Errorf("baseline not tracked by git — run: git -C %s add -f %s", o.repo, strings.Join(untracked, " ")))
 		}
 	}
 	harnessDir, err := os.MkdirTemp("", "znf-visual-*")
@@ -101,6 +101,10 @@ func newVisualCmd() *cobra.Command {
 			if repo == "" {
 				repo, _ = os.Getwd()
 			}
+			// Fail on a broken routes.json before any broker/docker call can mask it.
+			if _, err := visual.LoadRoutes(repo); err != nil {
+				return err
+			}
 			out := cmd.OutOrStdout()
 			bc, err := e2eBroker(role)
 			if err != nil {
@@ -142,6 +146,22 @@ func gitOutput(dir string, args ...string) (string, error) {
 	return string(out), err
 }
 
+// emptyFlag reports whether a passed --wait-for/--aria/--mask carries an empty value.
+func emptyFlag(name string, r *visual.Route) bool {
+	switch name {
+	case "wait-for":
+		return r.WaitFor == ""
+	case "aria":
+		return r.Aria == ""
+	}
+	for _, m := range r.Mask {
+		if m == "" {
+			return true
+		}
+	}
+	return false
+}
+
 func newVisualAddRouteCmd() *cobra.Command {
 	var repo string
 	r := visual.Route{}
@@ -152,6 +172,11 @@ func newVisualAddRouteCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if repo == "" {
 				repo, _ = os.Getwd()
+			}
+			for _, name := range []string{"wait-for", "aria", "mask"} {
+				if cmd.Flags().Changed(name) && emptyFlag(name, &r) {
+					return exitcode.New(exitcode.BadArgs, fmt.Errorf("--%s must not be empty", name))
+				}
 			}
 			if err := visual.AddRoute(repo, r); err != nil {
 				return err
@@ -164,7 +189,7 @@ func newVisualAddRouteCmd() *cobra.Command {
 			_, _ = fmt.Fprintf(out, "added route %s (%d routes)\n", r.Name, len(rs))
 			_, _ = fmt.Fprintf(out, "next: zenify visual check --repo %s --port <P> --update\n", repo)
 			files := append([]string{".znf/visual/routes.json"}, visual.BaselineFiles(r)...)
-			_, _ = fmt.Fprintf(out, "then: git add -f %s\n", strings.Join(files, " "))
+			_, _ = fmt.Fprintf(out, "then: git -C %s add -f %s\n", repo, strings.Join(files, " "))
 			return nil
 		},
 	}
