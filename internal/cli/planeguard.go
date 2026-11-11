@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -23,17 +24,28 @@ var planeReadActions = map[string]bool{
 	"get_changelog": true, "worklog_summary": true, "read": true, "download_url": true,
 }
 
-// planeGuardDecision returns "allow" for a read-only Plane MCP call and "ask"
-// for everything else. get_pql_reference takes no action and only reads.
-func planeGuardDecision(tool, action string, hasAction bool) string {
-	if !hasAction {
-		if tool == planeToolPrefix+"get_pql_reference" {
-			return "allow"
-		}
-		return "ask"
+// planeGuardDecision returns "allow" for a read-only Plane MCP call. In
+// readOnly mode every other call is denied. In the default mode a workitem
+// create/update carrying a non-empty state is denied (Zenie moves state), and
+// everything else asks. get_pql_reference takes no action and only reads.
+func planeGuardDecision(tool, action string, hasAction bool, input map[string]json.RawMessage, readOnly bool) string {
+	isRead := planeReadActions[action] && hasAction
+	if !hasAction && tool == planeToolPrefix+"get_pql_reference" {
+		isRead = true
 	}
-	if planeReadActions[action] {
+	if isRead {
 		return "allow"
+	}
+	if readOnly {
+		return "deny"
+	}
+	if hasAction && tool == planeToolPrefix+"workitem" && (action == "create" || action == "update") {
+		// Any state value other than null or "" denies, whatever its JSON type.
+		if raw, ok := input["state"]; ok {
+			if v := strings.TrimSpace(string(raw)); v != "null" && v != `""` {
+				return "deny"
+			}
+		}
 	}
 	return "ask"
 }
@@ -46,6 +58,16 @@ type planeGuardPayload struct {
 // planeAskOut is the ask decision printed when a Plane tool's input cannot be read.
 const planeAskOut = `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Plane: không đọc được tham số, hỏi bạn trước"}}` + "\n" //znf:allow-lang
 
+// planeDenyReadOut is the deny decision printed in read mode when a Plane
+// tool's input cannot be read.
+const planeDenyReadOut = `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Plane: chế độ chỉ đọc, không đọc được tham số. Cần ghi thì chạy zenify await handoff hoặc gắn nhãn needs-human"}}` + "\n" //znf:allow-lang
+
+// planeReadOnlyReason / planeStateReason are the deny reasons for a blocked write.
+const (
+	planeReadOnlyReason = "Plane: chế độ chỉ đọc, không được ghi. Cần ghi thì chạy zenify await handoff hoặc gắn nhãn needs-human" //znf:allow-lang
+	planeStateReason    = "Plane: state do Zenie chuyển, không đặt state qua MCP"                                                  //znf:allow-lang
+)
+
 // runPlaneGuard is the plane-guard PreToolUse hook. It always returns 0: a
 // decision is printed as hookSpecificOutput JSON. Input whose tool_name cannot
 // be read, or a non-Plane tool, prints nothing (the harness's normal prompt).
@@ -53,26 +75,34 @@ const planeAskOut = `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permis
 // tool_input, a panic) prints ask, so bypassPermissions never runs it unprompted.
 func runPlaneGuard(stdin io.Reader, stdout io.Writer) (code int) {
 	isPlane := false
+	readOnly := strings.EqualFold(strings.TrimSpace(os.Getenv("ZENIFY_PLANE_GUARD")), "read")
+	failOut := planeAskOut
+	if readOnly {
+		failOut = planeDenyReadOut
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			if isPlane {
-				_, _ = io.WriteString(stdout, planeAskOut)
+				_, _ = io.WriteString(stdout, failOut)
 			}
 			code = 0
 		}
 	}()
 	raw, err := io.ReadAll(stdin)
-	if err != nil {
+	var p planeGuardPayload
+	if err != nil || json.Unmarshal(raw, &p) != nil {
+		if readOnly {
+			_, _ = io.WriteString(stdout, failOut)
+		}
 		return 0
 	}
-	var p planeGuardPayload
-	if json.Unmarshal(raw, &p) != nil || !strings.HasPrefix(p.ToolName, planeToolPrefix) {
+	if !strings.HasPrefix(p.ToolName, planeToolPrefix) {
 		return 0
 	}
 	isPlane = true
 	var input map[string]json.RawMessage
 	if len(p.ToolInput) > 0 && json.Unmarshal(p.ToolInput, &input) != nil {
-		_, _ = io.WriteString(stdout, planeAskOut)
+		_, _ = io.WriteString(stdout, failOut)
 		return 0
 	}
 	var action string
@@ -80,10 +110,15 @@ func runPlaneGuard(stdin io.Reader, stdout io.Writer) (code int) {
 	if hasAction && json.Unmarshal(rawAction, &action) != nil {
 		action, hasAction = "", true // non-string action: unknown, asks
 	}
-	decision := planeGuardDecision(p.ToolName, action, hasAction)
+	decision := planeGuardDecision(p.ToolName, action, hasAction, input, readOnly)
 	reason := "Plane: chỉ đọc" //znf:allow-lang
-	if decision == "ask" {
+	switch {
+	case decision == "ask":
 		reason = strings.Join(strings.Fields("Plane: "+p.ToolName+" "+action), " ") + " ghi bằng tài khoản của bạn" //znf:allow-lang
+	case decision == "deny" && readOnly:
+		reason = planeReadOnlyReason
+	case decision == "deny":
+		reason = planeStateReason
 	}
 	out, err := json.Marshal(map[string]any{"hookSpecificOutput": map[string]string{
 		"hookEventName":            "PreToolUse",
@@ -91,7 +126,7 @@ func runPlaneGuard(stdin io.Reader, stdout io.Writer) (code int) {
 		"permissionDecisionReason": reason,
 	}})
 	if err != nil {
-		_, _ = io.WriteString(stdout, planeAskOut)
+		_, _ = io.WriteString(stdout, failOut)
 		return 0
 	}
 	_, _ = stdout.Write(append(out, '\n'))

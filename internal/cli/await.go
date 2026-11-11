@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
@@ -19,7 +21,7 @@ import (
 )
 
 // awaitKinds are the only human gates an unattended run may stop at.
-var awaitKinds = []string{"spec", "plan", "data-write", "irreversible", "needs-human", "question"}
+var awaitKinds = []string{"spec", "plan", "data-write", "irreversible", "needs-human", "question", "handoff"}
 
 // awaitRecord is what the worker host picks up from $ZENIFY_HOME/await/.
 type awaitRecord struct {
@@ -35,6 +37,8 @@ type awaitRecord struct {
 	CreatedAt time.Time `json:"created_at"`
 	// Questions is set only for kind "question"; zenie reads it.
 	Questions []awaitQuestion `json:"questions,omitempty"`
+	// To is set only for kind "handoff": who takes the work (name or @username); zenie reads it.
+	To string `json:"to,omitempty"`
 }
 
 // awaitQuestion is one structured question put to people. Options is empty for
@@ -100,7 +104,7 @@ func awaitDir() string {
 const awaitEndTurnLine = "await recorded: end your turn now and do nothing else"
 
 func newAwaitCmd() *cobra.Command {
-	var summary, command, questions string
+	var summary, command, questions, to string
 	var files []string
 	cmd := &cobra.Command{
 		Use:   "await <kind>",
@@ -108,7 +112,7 @@ func newAwaitCmd() *cobra.Command {
 		Long:  "Các kind hợp lệ: " + strings.Join(awaitKinds, ", "),            //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := awaitNow(args[0], summary, command, questions, files)
+			id, err := awaitNow(args[0], summary, command, questions, to, files)
 			if err != nil {
 				return err
 			}
@@ -124,6 +128,7 @@ func newAwaitCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&files, "file", nil, "file người cần xem (lặp được)")                                    //znf:allow-lang
 	cmd.Flags().StringVar(&command, "command", "", "lệnh người cần chạy (data-write)")                                  //znf:allow-lang
 	cmd.Flags().StringVar(&questions, "questions", "", "file JSON các câu hỏi: [{text, options, audience}] (question)") //znf:allow-lang
+	cmd.Flags().StringVar(&to, "to", "", "tên hoặc @username người nhận việc (handoff)")                                //znf:allow-lang
 	cmd.AddCommand(newAwaitShowCmd())
 	return cmd
 }
@@ -150,8 +155,8 @@ func newAwaitShowCmd() *cobra.Command {
 
 // awaitNow builds and writes one await record and returns its id. An invalid
 // request (not autonomous, unknown kind, empty summary, …) is BadArgs.
-func awaitNow(kind, summary, command, questionsPath string, files []string) (string, error) {
-	rec, err := buildAwaitRecord(kind, summary, command, questionsPath, files)
+func awaitNow(kind, summary, command, questionsPath, to string, files []string) (string, error) {
+	rec, err := buildAwaitRecord(kind, summary, command, questionsPath, to, files)
 	if err != nil {
 		return "", exitcode.New(exitcode.BadArgs, err)
 	}
@@ -161,7 +166,7 @@ func awaitNow(kind, summary, command, questionsPath string, files []string) (str
 	return rec.ID, nil
 }
 
-func buildAwaitRecord(kind, summary, command, questionsPath string, files []string) (awaitRecord, error) {
+func buildAwaitRecord(kind, summary, command, questionsPath, to string, files []string) (awaitRecord, error) {
 	if os.Getenv("ZNF_AUTONOMOUS") != "1" {
 		return awaitRecord{}, fmt.Errorf("zenify await only works in autonomous mode (ZNF_AUTONOMOUS=1)")
 	}
@@ -192,6 +197,15 @@ func buildAwaitRecord(kind, summary, command, questionsPath string, files []stri
 	case questionsPath != "":
 		return awaitRecord{}, fmt.Errorf("--questions is only for kind question")
 	}
+	to = strings.TrimSpace(to)
+	switch {
+	case kind == "handoff" && to == "":
+		return awaitRecord{}, fmt.Errorf("handoff needs --to <name or @username>")
+	case kind != "handoff" && to != "":
+		return awaitRecord{}, fmt.Errorf("--to is only for kind handoff")
+	case utf8.RuneCountInString(to) > 100 || strings.IndexFunc(to, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0:
+		return awaitRecord{}, fmt.Errorf("--to must be one name or @username: at most 100 characters, printable characters only")
+	}
 	abs := make([]string, 0, len(files))
 	for _, f := range files {
 		a, err := filepath.Abs(f)
@@ -221,6 +235,7 @@ func buildAwaitRecord(kind, summary, command, questionsPath string, files []stri
 		Cwd:       cwd,
 		CreatedAt: now,
 		Questions: questions,
+		To:        to,
 	}
 	if task, ok := brokerclient.TaskHeader(); ok {
 		rec.Task = task

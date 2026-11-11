@@ -50,6 +50,7 @@ A `Ruling` or a question never replaces these; they win over the catch-all above
 ```
 zenify await <spec|plan|data-write|irreversible|needs-human> --summary "<what the person must decide>" [--file <abs path>]… [--command "<command>"]
 zenify await question --summary "<what is unclear>" --questions <abs path to JSON file>
+zenify await handoff --summary "<what the receiver must do>" --to "<name or @username>"
 ```
 
 `--questions` holds a JSON array of 1–5 `{text, options, audience}`: at most 4 options (none = free text), `audience` is `business` or `technical`.
