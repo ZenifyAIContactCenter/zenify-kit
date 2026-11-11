@@ -28,7 +28,7 @@ SHARED=$({ git diff "$BASE" -- ':(exclude)*.json' ':(exclude)*.md' ':(exclude)*.
     | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) '
   printf '%s\n' "$NEW" | grep -vE '\.(json|md|lock|snap)$' | grep . | tr '\n' '\0' | xargs -0 -r cat; } \
   | rg -c 'collection\(|@InjectModel|emit\(|publish\(|subscribe\(|\.route\(|router\.(get|post|put|delete)' >/dev/null && echo 1 || echo 0)
-CRITICAL=0                    # caller sets 1 for a sensitive area (auth/tenant/migration)
+CRITICAL=${CRITICAL:-0}       # caller sets 1 for a sensitive area (auth/tenant/migration)
 ```
 
 ## Step 1b — PRE mechanical-gate (short-circuit)

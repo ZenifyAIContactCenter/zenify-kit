@@ -42,3 +42,14 @@ func TestSelectTier(t *testing.T) {
 		}
 	}
 }
+
+// A size threshold no longer rescues a sensitive diff, so the caller's CRITICAL must survive step 1.
+func TestReviewKeepsCallerCritical(t *testing.T) {
+	skill := syncedAsset(t, "skills/review/SKILL.md")
+	if !strings.Contains(skill, "CRITICAL=${CRITICAL:-0}") {
+		t.Error("review SKILL.md step 1 must default CRITICAL without overwriting the caller's value")
+	}
+	if strings.Contains(skill, "\nCRITICAL=0 ") {
+		t.Error("review SKILL.md must not reset CRITICAL to 0")
+	}
+}
