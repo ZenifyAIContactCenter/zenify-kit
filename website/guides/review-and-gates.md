@@ -33,7 +33,7 @@ Engine review hợp nhất của kit, đi qua bốn gate: PRE, BUNDLE, REVIEW, V
 |---|---|
 | Nhỏ | T1: một reviewer độc lập |
 | Trên 200 dòng | T2: năm reviewer chạy song song, mỗi người phụ trách một trục: lỗi, bảo mật, hiệu năng, hợp đồng, ý định (`intent`) |
-| Chạm vùng nhạy cảm (auth, tenant, migration), bất kể kích thước | T3: năm trục như T2, cả năm reviewer chạy opus; không còn Workflow hay vòng skeptic |
+| Chạm vùng nhạy cảm, bất kể kích thước: một file đổi nằm trong thư mục, hoặc có tên, đúng bằng `auth`, `iam`, `oauth`, `security`, `permission(s)`, `tenant(s)`, `migration(s)` | T3: năm trục như T2, cả năm reviewer chạy opus; không còn Workflow hay vòng skeptic |
 
 Diff chạm hợp đồng chung (một collection, endpoint, queue, hoặc kênh pub/sub) được nâng mức soi tối thiểu lên mức vừa, kể cả khi diff nhỏ.
 

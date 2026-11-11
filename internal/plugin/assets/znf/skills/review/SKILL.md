@@ -28,7 +28,11 @@ SHARED=$({ git diff "$BASE" -- ':(exclude)*.json' ':(exclude)*.md' ':(exclude)*.
     | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) '
   printf '%s\n' "$NEW" | grep -vE '\.(json|md|lock|snap)$' | grep . | tr '\n' '\0' | xargs -0 -r cat; } \
   | rg -c 'collection\(|@InjectModel|emit\(|publish\(|subscribe\(|\.route\(|router\.(get|post|put|delete)' >/dev/null && echo 1 || echo 0)
-CRITICAL=${CRITICAL:-0}       # caller sets 1 for a sensitive area (auth/tenant/migration)
+# Sensitive area = a changed code path whose directory or file stem is named exactly like one below.
+# Only a caller's CRITICAL=1 overrides it; any other value is re-derived.
+[ "${CRITICAL:-}" = 1 ] || CRITICAL=$({ git -c core.quotePath=false diff --no-renames --name-only "$BASE"; printf '%s\n' "$NEW"; } \
+  | grep -vE '\.(md|json|lock|snap)$' \
+  | rg -qi '(^|/)(auth|iam|oauth|security|permissions?|tenants?|migrations?)(/|\.|$)' && echo 1 || echo 0)
 ```
 
 ## Step 1b — PRE mechanical-gate (short-circuit)
@@ -69,7 +73,7 @@ ENGINE=$(zenify reviewer 2>/dev/null | cut -d' ' -f1); [ -n "$ENGINE" ] || ENGIN
 ```
 
 Line 1 = tier, line 2 = the reason. **Print tier + reason on the report** before dispatching.
-Tier rule: `CRITICAL=1` → T3 at any size; else T1 ≤200 LOC / T2 >200, and `SHARED=1`
+Tier rule: `CRITICAL=1` (step 1's path match, or the caller) → T3 at any size; else T1 ≤200 LOC / T2 >200, and `SHARED=1`
 **floors at T2** (T2's `contracts` goes to opus when shared).
 
 ## Step 3 — REVIEW dispatch by tier
