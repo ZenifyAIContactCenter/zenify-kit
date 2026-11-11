@@ -11,7 +11,8 @@ Format: `**Việc Plane:** ZEN-<a>[, ZEN-<b>…]`. The first key is the main ite
   "fix ZEN-250", or pastes a work item link).
 - Never copy a key from a `**Liên quan:**` line, from prose, or from a description.
 - `/cook`: the line sits in the spec header; the plan copies it.
-- `/fix` and `/hotfix`: the line sits in the ship-pack `## Intent`.
+- `/fix` and `/hotfix`: write the line as the first line of the ship-pack `## Intent`, before
+  `wt new`. `/fix` Step 2b passes it in its handoff to `/hotfix`.
 
 ## Slug
 

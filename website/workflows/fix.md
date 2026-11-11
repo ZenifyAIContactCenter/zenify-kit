@@ -88,6 +88,8 @@ flowchart TD
 
 Worktree được tạo trước lần ghi file đầu tiên của vòng phản hồi (test, harness, log debug) hoặc trước lần khởi động server, chậm nhất trước bước 5. Các cách chỉ đọc (đọc log, chạy test có sẵn đang fail, request GET/HEAD vào môi trường đang chạy) không cần worktree. Request có side effect hoặc replay payload chỉ chạy trên port của worktree hoặc target local; ghi vào môi trường dùng chung hay production đi qua `zenify data run`: agent tự chạy dry-run trước rồi `--write`; production chỉ lead chạy được. Xem [Dùng credential broker](/guides/broker-client#data-run).
 
+Yêu cầu giao một việc Plane (ví dụ "sửa ZEN-250") thì agent ghi dòng `**Việc Plane:** ZEN-<a>` làm dòng đầu của `## Intent` trước `wt new`, nên slug bắt đầu bằng `zen-<a>-`; bước 2b chuyển dòng này sang `/znf:hotfix`. Xem [Worktree theo slug](/concepts/worktree-per-slug).
+
 ## Quyết định thuộc về bạn
 
 - Có leo thang sang `/znf:cook` hay không, khi fix vượt quá phạm vi một bug.

@@ -9,8 +9,9 @@ git -C <repo> fetch origin                                   # before resolving 
 cd <repo> && wt new <slug> --type fix --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
 ```
 
-One worktree per affected repo, same slug. When the Intent has `**Việc Plane:**`, the slug starts
-with `zen-<a>-` (`znf:_shared/plane-key.md`). No workspace handoff here, unlike `/cook`;
+One worktree per affected repo, same slug. A request that hands over a Plane item: write its
+`**Việc Plane:**` line into the Intent first; the slug then starts with `zen-<a>-`
+(`znf:_shared/plane-key.md`). No workspace handoff here, unlike `/cook`;
 `Skill(znf:run)` still gives the repo a `dev` pane when the fix needs it running.
 
 **A bug found mid-task is not a new task** — `cd` into the worktree that exists. Only unrelated
