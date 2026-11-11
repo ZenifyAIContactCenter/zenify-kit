@@ -32,7 +32,7 @@ SHARED=$({ git diff "$BASE" -- ':(exclude)*.json' ':(exclude)*.md' ':(exclude)*.
 # Only a caller's CRITICAL=1 overrides it; any other value is re-derived.
 [ "${CRITICAL:-}" = 1 ] || CRITICAL=$({ git -c core.quotePath=false diff --no-renames --name-only "$BASE"; printf '%s\n' "$NEW"; } \
   | grep -vE '\.(md|json|lock|snap)$' \
-  | rg -qi '(^|/)(auth|iam|oauth|security|permissions?|tenants?|migrations?)(/|\.|$)' && echo 1 || echo 0)
+  | rg -qi '(^|/)(auth|iam|oauth|security|permissions?|tenants?|migrations?)(/|\.[^/]*$|$)' && echo 1 || echo 0)
 ```
 
 ## Step 1b — PRE mechanical-gate (short-circuit)

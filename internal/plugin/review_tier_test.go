@@ -79,6 +79,7 @@ func TestReviewDerivesCriticalFromPaths(t *testing.T) {
 	for _, p := range []string{
 		"src/routes/_auth/settings/index.tsx", "app/services/campaign/authorizeCampaignDelete.js",
 		"src/models/oauth-client.model.ts", "scripts/clone-tenant/lib/run.js", "src/author/list.tsx",
+		"src/auth.mock/widget.ts", "src/tenant.assets/icon.svg",
 	} {
 		if re.MatchString(p) {
 			t.Errorf("%s must not be a sensitive area", p)
