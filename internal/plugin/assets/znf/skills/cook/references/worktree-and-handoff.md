@@ -2,6 +2,11 @@
 before a second worktree, or when SDD Setup wants to create its own. The per-user terminal-workspace
 handoff that used to live here is a personal skill, not part of the kit. -->
 
+### Slug and the Plane item line
+
+When the spec header has `**Việc Plane:**`, the slug starts with `zen-<a>-`; see
+`znf:_shared/plane-key.md`.
+
 ### From § First, the worktree — why spec/plan and paths must be absolute (extra, tier two)
 
 Spec and plan are gitignored, so they do not follow a worktree, and `wt rm` would delete them. A

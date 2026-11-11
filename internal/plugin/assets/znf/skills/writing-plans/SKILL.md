@@ -54,6 +54,8 @@ A task is the smallest unit with its own test cycle that is worth a fresh review
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use znf:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Việc Plane:** [copy from the spec header, only if it has one]
+
 **Goal:** [One sentence describing what this builds]
 
 **Architecture:** [2-3 sentences about approach]
