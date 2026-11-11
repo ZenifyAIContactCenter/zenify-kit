@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -756,5 +757,71 @@ func TestScaleCapsAtNewest60(t *testing.T) {
 	// newest 60 are walls 2..61 (nearest rank: index 14, 29, 53)
 	if r.Scale != (Scale{Source: "learned", N: 60, S: 16, M: 31, L: 55}) {
 		t.Fatalf("scale = %+v", r.Scale)
+	}
+}
+
+func TestParseTaskID(t *testing.T) {
+	if !idRe.MatchString("task-261111-0a1b") {
+		t.Fatal("idRe must match a task id")
+	}
+}
+
+func TestStatsTaskDone(t *testing.T) { // SC-5
+	var lg, ss []string
+	for i := 1; i <= 6; i++ {
+		endedWithAgent("cook", i, "M", 20+i, &lg, &ss)
+	}
+	without, _ := Compute(func() Input { in := base(lines(lg...)); in.Sessions = map[string]string{"s1": lines(ss...)}; return in }())
+
+	tid := "task-261030-0a1b"
+	lg = append(lg,
+		row(now.Add(-300*time.Minute), "start", tid, "task", "infra", "S"),
+		row(now.Add(-200*time.Minute), "end", tid, "done", "0", "0"),
+	)
+	in := base(lines(lg...))
+	in.Sessions = map[string]string{"s1": lines(ss...)}
+	r, _ := Compute(in)
+	var got *Item
+	for i := range r.Today.Items {
+		if r.Today.Items[i].ID == tid {
+			got = &r.Today.Items[i]
+		}
+	}
+	if got == nil || got.Status != "done" {
+		t.Fatalf("task item = %+v", got)
+	}
+	if r.Today.Done["task"] != 1 {
+		t.Fatalf("Done = %v", r.Today.Done)
+	}
+	if r.Scale != without.Scale {
+		t.Fatalf("scale %+v != %+v", r.Scale, without.Scale)
+	}
+}
+
+func TestStatsTaskEstimate(t *testing.T) { // SC-6
+	var lg, ss []string
+	endedWithAgent("cook", 1, "M", 30, &lg, &ss)
+	endedWithAgent("fix", 2, "S", 10, &lg, &ss)
+	in0 := base(lines(lg...))
+	in0.Sessions = map[string]string{"s1": lines(ss...)}
+	without, _ := Compute(in0)
+
+	for i, m := range []int{10, 20, 30, 40, 50} {
+		id := fmt.Sprintf("task-261030-%04x", i+1)
+		s := now.Add(-time.Duration(200-i*10) * time.Minute)
+		lg = append(lg, row(s, "start", id, "task", "infra", "-"), row(s.Add(time.Duration(m)*time.Minute), "end", id, "done", "0", "0"))
+	}
+	in := base(lines(lg...))
+	in.Sessions = map[string]string{"s1": lines(ss...)}
+	r, _ := Compute(in)
+	h := r.Estimate.Task
+	if h.N != 5 || h.MedianMin == nil || *h.MedianMin != 30 || h.P90Min == nil || *h.P90Min != 50 {
+		t.Fatalf("task = %+v", h)
+	}
+	if _, ok := r.Estimate.ByKind["task"]; ok {
+		t.Fatal("ByKind has task")
+	}
+	if !reflect.DeepEqual(r.Estimate.ByKind, without.Estimate.ByKind) || !reflect.DeepEqual(r.Rules, without.Rules) {
+		t.Fatalf("ByKind/Rules changed: %+v %v", r.Estimate.ByKind, r.Rules)
 	}
 }

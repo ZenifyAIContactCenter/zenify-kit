@@ -12,7 +12,7 @@ export type Usage = {
   cache_creation_input_tokens: number
 }
 
-const ID = '(?:cook|fix|hotfix)-\\d{6}-[0-9a-f]{4}'
+const ID = '(?:cook|fix|hotfix|task)-\\d{6}-[0-9a-f]{4}'
 const START_LINE = new RegExp(`^track: (${ID})$`)
 const ENDED_LINE = new RegExp(`^track: ended (${ID})$`)
 

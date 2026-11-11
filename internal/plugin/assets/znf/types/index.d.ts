@@ -1,6 +1,6 @@
 // The JSON of `zenify track stats --json` (Go `trackstats.Result`); names match the JSON exactly.
 // Go emits `null` for an empty slice or map it never filled, so those fields are nullable here.
-export type TrackKind = 'cook' | 'fix' | 'hotfix'
+export type TrackKind = 'cook' | 'fix' | 'hotfix' | 'task'
 
 export type TrackItem = {
   id: string
@@ -104,6 +104,7 @@ export type TrackStats = {
   estimate: {
     byKind: Record<string, { n: number; hit: number; low: number; high: number }> | null
     hotfix: { n: number; medianMin: number | null; p90Min: number | null }
+    task: { n: number; medianMin: number | null; p90Min: number | null }
     phaseShare: Record<string, Record<string, number>> | null
   }
   quality: {
@@ -145,7 +146,7 @@ declare module 'claude-code' {
       tab: Shaped<TrackTab>
       // zenify track: the id this session's turns are recorded under; `ending` once its
       // `zenify track end` ran, unbound at that turn's main-loop end
-      bound: Shaped<{ id: string; kind: 'cook' | 'fix' | 'hotfix'; ending: boolean } | null>
+      bound: Shaped<{ id: string; kind: TrackKind; ending: boolean } | null>
       // zenify track: `enabled` of `zenify track stats --json`; false writes nothing
       enabled: Shaped<boolean>
       // zenify track: epoch ms the last main-loop turn ended, until the next prompt reads it

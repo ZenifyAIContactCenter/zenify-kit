@@ -47,7 +47,7 @@ func trackLog(t *testing.T, ws string) string {
 	return string(b)
 }
 
-var trackOutRe = regexp.MustCompile(`^track: ((cook|fix|hotfix)-\d{6}-[0-9a-f]{4})\n$`)
+var trackOutRe = regexp.MustCompile(`^track: ((cook|fix|hotfix|task)-\d{6}-[0-9a-f]{4})\n$`)
 
 func startTrack(t *testing.T, ws, kind string) string {
 	t.Helper()
@@ -837,5 +837,31 @@ func TestTrackEndFailsWhenLockHeld(t *testing.T) {
 	_, err = runTrack(t, ws, "end", id, "--cancelled", "--rounds", "0")
 	if err == nil || !strings.Contains(err.Error(), "log is locked") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestTrackStartTaskKind(t *testing.T) {
+	ws := trackWS(t, true)
+	out, err := runTrack(t, ws, "start", "--kind", "task", "--repo", "infra", "--est", "S")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`^track: task-\d{6}-[0-9a-f]{4}\n$`).MatchString(out) {
+		t.Fatalf("out %q", out)
+	}
+}
+
+func TestTrackEndDone(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "task")
+	if _, err := runTrack(t, ws, "end", id, "--done", "--pr", "https://x/pull/1", "--rounds", "0"); err == nil ||
+		!strings.Contains(err.Error(), "pass exactly one of --pr, --branch, --rollback, --cancelled, --done") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := runTrack(t, ws, "end", id, "--done", "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(trackLog(t, ws), " · end · "+id+" · done · ") {
+		t.Fatalf("log:\n%s", trackLog(t, ws))
 	}
 }

@@ -6,6 +6,7 @@ Read this when the session digest says `features: track on`. Every command below
 
 - Run `zenify track start` before any investigation of the task (logs, code, DB reads): the measured time starts there.
 - `zenify track start` prints `track: <id>`. Keep that id for the whole task and pass it to every later call.
+- Ops work with no code and no PR (infra, data, config, investigation): `zenify track start --kind task --repo <repo> --est -`, close it with `zenify track end <id> --done --rounds 0`.
 - Stdout `track: off` (from any track command) → skip every later track call this task.
 - A track command that exits non-zero: report it in the final message; never retry blindly, never block the task on it.
 - Only record; never change what a skill does.

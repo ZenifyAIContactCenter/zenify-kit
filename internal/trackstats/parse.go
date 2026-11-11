@@ -23,7 +23,7 @@ type Event struct {
 }
 
 var (
-	idRe    = regexp.MustCompile(`^(cook|fix|hotfix)-\d{6}-[0-9a-f]{4}$`)
+	idRe    = regexp.MustCompile(`^(cook|fix|hotfix|task)-\d{6}-[0-9a-f]{4}$`)
 	bidRe   = regexp.MustCompile(`^b-\d{6}-[0-9a-f]{4}$`)
 	sddRe   = regexp.MustCompile(`^repos/.+/progress\.md:\d+$`)
 	hidRe   = regexp.MustCompile(`^[0-9a-f]{8}$`)
@@ -99,7 +99,7 @@ func parseLogLine(raw string) (Event, bool) {
 	switch p[1] {
 	case "start":
 		// The optional last field is the backlog id or issue URL the item came from.
-		ok = (len(f) == 3 || (len(f) == 4 && validFrom(f[3]))) && oneOf(f[0], "cook", "fix", "hotfix") && f[1] != "" && oneOf(f[2], "S", "M", "L", "-")
+		ok = (len(f) == 3 || (len(f) == 4 && validFrom(f[3]))) && oneOf(f[0], "cook", "fix", "hotfix", "task") && f[1] != "" && oneOf(f[2], "S", "M", "L", "-")
 	case "est":
 		ok = len(f) == 1 && oneOf(f[0], "S", "M", "L")
 	case "ship":
