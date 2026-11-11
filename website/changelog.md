@@ -8,6 +8,17 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.64.0
+
+*2026-11-11*
+
+- **Skill `/znf:track`:** gõ ngắn để thao tác sổ track trong hội thoại: `add`, `drop`, `ls`, `plan`, `go`, `done`, `cancel`, `est`. Xem [`/znf:track`](/guides/track-pane#znf-track).
+- **Mã ngắn cho item:** plan và backlog in mã ở đầu dòng: 4 hex cuối của id, `#<n>` cho issue/PR GitHub, `ZEN-<n>` cho việc Plane. `start --from`, `plan set`, `plan add`, `plan rm` và `backlog drop` nhận mã này thay cho id đầy đủ; mã trùng giữa nhiều item thì lệnh liệt kê ứng viên và gợi ý gõ `<repo>#<n>`. Xem [Mã ngắn](/guides/track-pane#ma-ngan).
+- **`plan add` / `plan rm`:** thêm hoặc bớt việc trong plan hôm nay mà không phải đặt lại cả plan. Xem [Daily plan](/guides/track-pane#daily-plan).
+- **Việc ops (kind `task`) và `end --done`:** `zenify track start --kind task` cho việc không qua ship (dọn server, chạy script…), đóng bằng `end --done`. Item `task` không làm đổi thang S/M/L hay hit rate; tab Estimate có khối `task` riêng. Xem [Việc ops](/guides/track-pane#viec-ops-kind-task).
+- **Việc Plane vào backlog:** work item Plane đang giao cho bạn và còn mở hiện trong backlog với nguồn `plane`, đứng ngay sau `manual`; `start --from ZEN-<n>` bắt đầu việc từ đó. Cần PAT Plane (`zenify up --apply`); Plane lỗi chỉ hiện dòng `⚠ plane: …`, backlog GitHub vẫn có. Xem [Backlog](/guides/track-pane#backlog).
+- **`zenify plane create "<title>"`:** tạo work item Plane giao cho chính bạn và in `ZEN-<n>` kèm URL; `/znf:track add --plane` gọi lệnh này. Xem [`zenify plane create`](/reference/cli/zenify_plane_create).
+
 ## v0.63.0
 
 *2026-11-10*
