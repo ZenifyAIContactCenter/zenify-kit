@@ -111,7 +111,7 @@ func newTrackBacklogAddCmd(ws *string) *cobra.Command {
 
 func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "drop <bid|sdd id>",
+		Use:   "drop <bid|sdd id|url|code>",
 		Short: "Bỏ một việc khỏi backlog", //znf:allow-lang
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -129,6 +129,15 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 			}
 			id := args[0]
 			logPath := trackLogPath(wsDir)
+			if !trackstats.IsFullID(id) {
+				if id, err = resolveRef(filepath.Dir(logPath), wsDir, id, scopeBacklog, time.Now()); err != nil {
+					return err
+				}
+			} else if strings.HasPrefix(id, "http") {
+				if err := checkBacklogURL(filepath.Dir(logPath), wsDir, id); err != nil {
+					return err
+				}
+			}
 			unlock, err := lockTrackLog(logPath)
 			if err != nil {
 				return err
@@ -143,7 +152,9 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 				if !rowsHave(rows, "backlog", id) {
 					return badTrack("unknown backlog id %s", id)
 				}
-			case trackSDDRe.MatchString(id):
+			case trackSDDRe.MatchString(id), strings.HasPrefix(id, "http"):
+			case trackIDRe.MatchString(id):
+				return badTrack("track: %s is an open tracked item; close it with zenify track end %s --cancelled --rounds 0", id, id)
 			default:
 				return badTrack("%q is neither a backlog id nor an sdd id (repos/<...>/progress.md:<line>)", id)
 			}
@@ -157,6 +168,20 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 			return err
 		},
 	}
+}
+
+// checkBacklogURL fails unless u is an item of the open backlog.
+func checkBacklogURL(dir, wsDir, u string) error {
+	cands, err := trackCandidates(dir, wsDir, scopeBacklog, time.Now())
+	if err != nil {
+		return err
+	}
+	for _, c := range cands {
+		if c.ID == u {
+			return nil
+		}
+	}
+	return badTrack("unknown backlog item %s", u)
 }
 
 func trackLogPath(wsDir string) string { return filepath.Join(wsDir, ".zenify", "track", "log.md") }

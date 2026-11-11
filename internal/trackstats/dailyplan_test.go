@@ -19,7 +19,6 @@ func TestParsePlanRow(t *testing.T) {
 	}
 	for _, l := range []string{
 		row(now, "plan", "2026-13-40", "b-261105-ab12"),
-		row(now, "plan", planDay),
 		row(now, "plan", planDay, "foo"),
 	} {
 		if ev, bad := ParseLog(lines(l)); bad != 1 || len(ev) != 0 {

@@ -103,6 +103,7 @@ type HotfixEstimate struct {
 type Estimate struct {
 	ByKind     map[string]KindEstimate       `json:"byKind"`
 	Hotfix     HotfixEstimate                `json:"hotfix"`
+	Task       HotfixEstimate                `json:"task"`
 	PhaseShare map[string]map[string]float64 `json:"phaseShare"`
 }
 
@@ -436,7 +437,7 @@ func Compute(in Input) (Result, map[string]string) {
 	var mins []int
 	var measured []Item
 	for _, it := range ended {
-		if (it.Status == "done" || it.Status == "pushed") && sizeRank[it.Est] > 0 && sizeRank[it.Est] < 4 && it.WallMin > 0 {
+		if it.Kind != "task" && (it.Status == "done" || it.Status == "pushed") && sizeRank[it.Est] > 0 && sizeRank[it.Est] < 4 && it.WallMin > 0 {
 			mins = append(mins, it.WallMin)
 			measured = append(measured, it)
 		}
@@ -462,7 +463,13 @@ func Compute(in Input) (Result, map[string]string) {
 		addWindow(win)
 		computeEstimate(k, win, res.Scale, &res)
 	}
-	computeHotfix(in, byKindEnded["hotfix"], &res)
+	var doneTasks []Item // FR-2.4: the task estimate counts done tasks only, not rollbacks
+	for _, it := range byKindEnded["task"] {
+		if it.Status == "done" {
+			doneTasks = append(doneTasks, it)
+		}
+	}
+	computeHotfix(in, byKindEnded["hotfix"], doneTasks, &res)
 
 	byStart := map[string][]Item{}
 	for _, it := range items {
@@ -497,7 +504,7 @@ func tail(s []Item, n int) []Item {
 }
 
 func validOutcome(out string) bool {
-	if out == "cancelled" || out == "rollback" || strings.HasPrefix(out, "branch:") {
+	if out == "cancelled" || out == "rollback" || out == "done" || strings.HasPrefix(out, "branch:") {
 		return true
 	}
 	for _, p := range strings.Split(out, ",") {
@@ -651,15 +658,24 @@ func computeEstimate(kind string, win []Item, scale Scale, res *Result) {
 	}
 }
 
-func computeHotfix(in Input, hotfixes []Item, res *Result) {
-	t, err := time.Parse(dateLayout, in.Today)
-	if err != nil {
+func computeHotfix(in Input, hotfixes []Item, tasks []Item, res *Result) {
+	if _, err := time.Parse(dateLayout, in.Today); err != nil {
 		res.Malformed++
 		return
 	}
+	res.Estimate.Hotfix = recentWallEstimate(in, hotfixes)
+	res.Estimate.Task = recentWallEstimate(in, tasks)
+}
+
+// recentWallEstimate is the median and p90 wall minutes of the items that ended in the last 7 days.
+func recentWallEstimate(in Input, items []Item) HotfixEstimate {
+	t, err := time.Parse(dateLayout, in.Today)
+	if err != nil {
+		return HotfixEstimate{}
+	}
 	from := t.AddDate(0, 0, -6).Format(dateLayout)
 	var mins []int
-	for _, it := range hotfixes {
+	for _, it := range items {
 		et, err := time.Parse(time.RFC3339, it.EndedAt)
 		if err != nil {
 			continue
@@ -674,7 +690,7 @@ func computeHotfix(in Input, hotfixes []Item, res *Result) {
 		med, p90 := nearestRank(mins, 50), nearestRank(mins, 90)
 		h.MedianMin, h.P90Min = &med, &p90
 	}
-	res.Estimate.Hotfix = h
+	return h
 }
 
 func ratio(n, d int) *float64 {

@@ -112,6 +112,17 @@ func TestBacklogGitHubHiddenByFrom(t *testing.T) {
 	}
 }
 
+func TestBacklogGitHubHiddenByDrop(t *testing.T) { // SC-8 stats part
+	in := base(lines(row(now, "drop", issue1)))
+	in.GitHub = func() ([]Issue, error) {
+		return []Issue{{URL: issue1, Repo: "r", Title: "one", CreatedAt: now}, {URL: issue2, Repo: "r", Title: "two", CreatedAt: now}}, nil
+	}
+	r, _ := Compute(in)
+	if len(r.Backlog.Items) != 1 || r.Backlog.Items[0].ID != issue2 || r.Malformed != 0 {
+		t.Fatalf("items = %+v malformed=%d", r.Backlog.Items, r.Malformed)
+	}
+}
+
 func TestBacklogSDDAndDrop(t *testing.T) { // SC-32
 	in := base("")
 	in.SDD = []SDDItem{

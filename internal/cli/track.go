@@ -39,8 +39,8 @@ var trackPRTitle = trackstats.GhPRTitle
 const mergedRecheck = 5 * time.Minute
 
 var (
-	trackIDRe     = regexp.MustCompile(`^(cook|fix|hotfix)-\d{6}-[0-9a-f]{4}$`)
-	trackKinds    = []string{"cook", "fix", "hotfix"}
+	trackIDRe     = regexp.MustCompile(`^(cook|fix|hotfix|task)-\d{6}-[0-9a-f]{4}$`)
+	trackKinds    = []string{"cook", "fix", "hotfix", "task"}
 	trackSteps    = []string{"lint", "build", "contract", "behaviour", "review"}
 	trackFindings = regexp.MustCompile(`^\d+,\d+,\d+,\d+$`)
 	trackTasksRe  = regexp.MustCompile(`^Task \d+: complete`)
@@ -245,7 +245,7 @@ func trackIDStarted(logPath, id string) (bool, error) {
 func newTrackStartCmd(ws *string) *cobra.Command {
 	var kind, repo, est, from string
 	c := &cobra.Command{
-		Use:   "start --kind cook|fix|hotfix --repo <repo> --est S|M|L|- [--from <bid|issue url|sdd id>]",
+		Use:   "start --kind cook|fix|hotfix|task --repo <repo> --est S|M|L|- [--from <bid|issue url|sdd id>]",
 		Short: "Mở một lượt theo dõi và in id của nó", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -267,6 +267,12 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 			if err := validTrackText("--repo", repo); err != nil {
 				return err
 			}
+			if from != "" {
+				// Resolve before the log lock: stats read the log and may wait on gh.
+				if from, err = resolveRef(filepath.Dir(trackLogPath(wsDir)), wsDir, from, scopeBacklog, time.Now()); err != nil {
+					return err
+				}
+			}
 			id, err := runTrackStart(cmd.ErrOrStderr(), trackLogPath(wsDir), kind, repo, est, from)
 			if err != nil {
 				return err
@@ -275,7 +281,7 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 			return err
 		},
 	}
-	c.Flags().StringVar(&kind, "kind", "", "cook|fix|hotfix")
+	c.Flags().StringVar(&kind, "kind", "", "cook|fix|hotfix|task")
 	c.Flags().StringVar(&repo, "repo", "", "target repo name")
 	c.Flags().StringVar(&est, "est", "-", "size estimate S|M|L, or - when not known yet")
 	c.Flags().StringVar(&from, "from", "", "backlog id, issue URL or SDD id (repos/<...>/progress.md:<line>) this run takes; fails when another item already took it")
@@ -476,10 +482,10 @@ func newTrackCICmd(ws *string) *cobra.Command {
 func newTrackEndCmd(ws *string) *cobra.Command {
 	var prs []string
 	var branch, ledger string
-	var rollback, cancelled bool
+	var rollback, cancelled, done bool
 	var rounds int
 	c := &cobra.Command{
-		Use:   "end <id> (--pr <url>... | --branch <name> | --rollback | --cancelled) [--ledger <path>] --rounds N",
+		Use:   "end <id> (--pr <url>... | --branch <name> | --rollback | --cancelled | --done) [--ledger <path>] --rounds N",
 		Short: "Đóng một lượt theo dõi", //znf:allow-lang
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -488,13 +494,13 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 					return "", nil, false, err
 				}
 				chosen := 0
-				for _, set := range []bool{len(prs) > 0, branch != "", rollback, cancelled} {
+				for _, set := range []bool{len(prs) > 0, branch != "", rollback, cancelled, done} {
 					if set {
 						chosen++
 					}
 				}
 				if chosen != 1 {
-					return "", nil, false, badTrack("pass exactly one of --pr, --branch, --rollback, --cancelled")
+					return "", nil, false, badTrack("pass exactly one of --pr, --branch, --rollback, --cancelled, --done")
 				}
 				var outcome string
 				switch {
@@ -512,6 +518,8 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 					outcome = "branch:" + branch
 				case rollback:
 					outcome = "rollback"
+				case done:
+					outcome = "done"
 				default:
 					outcome = "cancelled"
 				}
@@ -548,6 +556,7 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 	c.Flags().StringVar(&branch, "branch", "", "pushed branch name (hotfix; the human opens the PR)")
 	c.Flags().BoolVar(&rollback, "rollback", false, "the run ended in a rollback")
 	c.Flags().BoolVar(&cancelled, "cancelled", false, "the run was cancelled")
+	c.Flags().BoolVar(&done, "done", false, "the work is finished with no PR (ops work)")
 	c.Flags().StringVar(&ledger, "ledger", "", "SDD ledger file; its `Task <N>: complete` lines are counted and its first-line plan path is kept")
 	c.Flags().IntVar(&rounds, "rounds", 0, "fix rounds of the review in znf:ship")
 	return c

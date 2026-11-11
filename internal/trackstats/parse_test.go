@@ -48,3 +48,10 @@ func TestParseLogEndPlanField(t *testing.T) {
 		t.Fatalf("bad=%d ev=%+v", bad, ev)
 	}
 }
+
+func TestParseLogPlanRowWithoutIDs(t *testing.T) {
+	ev, bad := ParseLog("2026-11-05T01:00:00Z · plan · 2026-11-05\n")
+	if bad != 0 || len(ev) != 1 || ev[0].ID != "2026-11-05" || ev[0].F == nil || len(ev[0].F) != 0 {
+		t.Fatalf("bad=%d ev=%+v", bad, ev)
+	}
+}

@@ -6,6 +6,9 @@ Read this when the session digest says `features: track on`. Every command below
 
 - Run `zenify track start` before any investigation of the task (logs, code, DB reads): the measured time starts there.
 - `zenify track start` prints `track: <id>`. Keep that id for the whole task and pass it to every later call.
+- Ops work with no code and no PR (infra, data, config, investigation): `zenify track start --kind task --repo <repo> --est -`, close it with `zenify track end <id> --done --rounds 0`. Add `--from <code>` when it comes from the backlog.
+- When the user types a short code (`b81e`, `#581`, `<repo>#581`, `ZEN-288`), pass the code to the CLI as typed; the CLI resolves it and exits non-zero with the candidates when it is ambiguous. Never resolve a code yourself.
+- The user manages the ledger with `/znf:track` (add, drop, ls, plan, go, done, cancel, est); see `skills/track/SKILL.md`.
 - Stdout `track: off` (from any track command) → skip every later track call this task.
 - A track command that exits non-zero: report it in the final message; never retry blindly, never block the task on it.
 - Only record; never change what a skill does.
@@ -54,7 +57,7 @@ Read this when the session digest says `features: track on`. Every command below
 - Work that comes from the backlog: use `start --from <bid|issue url>`, i.e. `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <bid|issue url>`; the item leaves the backlog. An unknown or dropped `bid` exits non-zero and writes nothing.
 - Work that surfaces during a task and is not done now, including a minor issue you do not fix in the current task: `zenify track backlog add "<title>" --repo <repo> [--est S|M|L] [--ref <issue url|memory:<name>>]`; it prints the `bid`.
 - When the user asks to take the next work item, run `zenify track stats --brief` (compact JSON for agents; `--json` is the full pane data, several times larger), show its `backlog` list, let the user pick one, then start it by its `source`: `manual` or `github` → `zenify track start --kind <cook|fix|hotfix> --repo <repo> --est - --from <id>`; `sdd` (a ledger line) → the same command with `--from <ledger id>`; `stale` (a tracked item left open in an old session) → close it with `zenify track end <id> --cancelled --rounds 0`, then, if the user still wants the work, start a new id without `--from` (only a start binds the session, so a resumed old id would go unmeasured).
-- Source order: the `backlog` list first. Only when it is empty or `ghError` is set, run `gh search issues --assignee @me --state open` and `gh search prs --review-requested @me --state open`, let the user pick from the results, and start the pick with `--from <url>`.
+- Source order: the `backlog` list first (it includes `plane` items once PR2 lands). Only when it is empty or `ghError` is set, run `gh search issues --assignee @me --state open` and `gh search prs --review-requested @me --state open`, let the user pick from the results, and start the pick with `--from <url>`.
 - A start that prints `track: <x> is taken by <id> …` (or `was taken by`) means another tab owns that item: pick another item; never retry the same one.
 - A start that fails with `log is locked` means another track command holds the log: wait a few seconds and retry the same start once.
 - Drop an item that is no longer wanted: `zenify track backlog drop <bid>`.

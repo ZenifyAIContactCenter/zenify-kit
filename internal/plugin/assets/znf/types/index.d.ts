@@ -1,6 +1,6 @@
 // The JSON of `zenify track stats --json` (Go `trackstats.Result`); names match the JSON exactly.
 // Go emits `null` for an empty slice or map it never filled, so those fields are nullable here.
-export type TrackKind = 'cook' | 'fix' | 'hotfix'
+export type TrackKind = 'cook' | 'fix' | 'hotfix' | 'task'
 
 export type TrackItem = {
   id: string
@@ -26,6 +26,7 @@ export type TrackItem = {
 // One Backlog row; source is manual|github|sdd|stale (Go `trackstats.BacklogItem`).
 export type BacklogItem = {
   source: string
+  code: string
   id: string
   repo: string
   est: string
@@ -38,7 +39,7 @@ export type BacklogItem = {
 // `merged`: every PR of the item is merged (absent from an older binary: read as not merged).
 export type KitchenCooked = { id: string; brief: string; status: TrackItem['status']; endedAt: string; prs: string[] | null; merged?: boolean; est?: string; wallMin?: number }
 // One line of today's plan (Go `trackstats.DailyPlanItem`).
-export type DailyPlanItem = { id: string; repo: string; est: string; title: string; status: 'todo' | 'running' | 'done' | 'cancelled'; url: string }
+export type DailyPlanItem = { id: string; code: string; repo: string; est: string; title: string; status: 'todo' | 'running' | 'done' | 'cancelled'; url: string }
 export type DailyPlan = { items: DailyPlanItem[]; estMin: number; wallMin: number }
 // One open PR with its CI and review state (Go `trackstats.PRStatus`); '-' = unknown.
 export type PRStatus = {
@@ -104,6 +105,7 @@ export type TrackStats = {
   estimate: {
     byKind: Record<string, { n: number; hit: number; low: number; high: number }> | null
     hotfix: { n: number; medianMin: number | null; p90Min: number | null }
+    task?: { n: number; medianMin: number | null; p90Min: number | null }
     phaseShare: Record<string, Record<string, number>> | null
   }
   quality: {
@@ -145,7 +147,7 @@ declare module 'claude-code' {
       tab: Shaped<TrackTab>
       // zenify track: the id this session's turns are recorded under; `ending` once its
       // `zenify track end` ran, unbound at that turn's main-loop end
-      bound: Shaped<{ id: string; kind: 'cook' | 'fix' | 'hotfix'; ending: boolean } | null>
+      bound: Shaped<{ id: string; kind: TrackKind; ending: boolean } | null>
       // zenify track: `enabled` of `zenify track stats --json`; false writes nothing
       enabled: Shaped<boolean>
       // zenify track: epoch ms the last main-loop turn ended, until the next prompt reads it

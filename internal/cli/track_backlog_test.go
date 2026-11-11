@@ -696,17 +696,16 @@ func TestTrackStart_FromSDDRejectsSeparators(t *testing.T) {
 	if trackLog(t, ws) != "" {
 		t.Fatalf("log changed: %q", trackLog(t, ws))
 	}
-	// A mid-path CR passes trackSDDRe (.+ matches it), so the separator check reports it.
+	// A CR is whitespace, so the ref is no full id and goes to the short-code lookup, which finds nothing.
 	_, err := startFrom(t, ws, "repos/r/a\rb/progress.md:1")
-	if err == nil || !strings.Contains(err.Error(), "invalid --from") {
+	if err == nil || !strings.Contains(err.Error(), "track: no item matches") {
 		t.Fatalf("mid-path CR: err = %v", err)
 	}
 	if trackLog(t, ws) != "" {
 		t.Fatalf("log changed: %q", trackLog(t, ws))
 	}
-	// A trailing CR fails trackSDDRe ($ matches only at the very end), so the grammar error comes out.
 	_, err = startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:12\r")
-	if err == nil || !strings.Contains(err.Error(), "--from must be a backlog id, an SDD id or an http URL") {
+	if err == nil || !strings.Contains(err.Error(), "track: no item matches") {
 		t.Fatalf("CR: err = %v", err)
 	}
 }

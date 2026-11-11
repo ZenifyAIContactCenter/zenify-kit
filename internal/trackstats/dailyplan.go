@@ -10,6 +10,7 @@ type DailyPlanItem struct {
 	Title  string `json:"title"`
 	Status string `json:"status"`
 	URL    string `json:"url"`
+	Code   string `json:"code"`
 }
 
 // DailyPlan is today's plan: EstMin sums the scale bounds of the estimated items, WallMin the
@@ -116,7 +117,7 @@ func computeDailyPlan(in Input, logEv []Event, items []Item, works map[string]*w
 			continue
 		}
 		seen[id] = true
-		pi := DailyPlanItem{ID: id, Repo: "-", Est: "-", Title: id, Status: "todo"}
+		pi := DailyPlanItem{ID: id, Code: Code(id), Repo: "-", Est: "-", Title: id, Status: "todo"}
 		if strings.HasPrefix(id, "http") {
 			pi.URL = id
 		}

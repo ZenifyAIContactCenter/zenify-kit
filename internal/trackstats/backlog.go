@@ -32,6 +32,7 @@ type BacklogItem struct {
 	Ref     string `json:"ref"`
 	Title   string `json:"title"`
 	AgeDays int    `json:"ageDays"`
+	Code    string `json:"code"`
 }
 
 type Backlog struct {
@@ -62,7 +63,7 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		if e.Type != "backlog" || dropped[e.ID] || from[e.ID] {
 			continue
 		}
-		b.Items = append(b.Items, BacklogItem{Source: "manual", ID: e.ID, Repo: e.F[0], Est: e.F[1], Ref: e.F[2], Title: e.F[3], AgeDays: ageDays(in.Now, e.At)})
+		b.Items = append(b.Items, BacklogItem{Source: "manual", ID: e.ID, Code: Code(e.ID), Repo: e.F[0], Est: e.F[1], Ref: e.F[2], Title: e.F[3], AgeDays: ageDays(in.Now, e.At)})
 	}
 	var issues []Issue
 	if in.GitHub != nil {
@@ -73,18 +74,18 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		}
 		seen := map[string]bool{}
 		for _, is := range issues {
-			if seen[is.URL] || from[is.URL] {
+			if seen[is.URL] || from[is.URL] || dropped[is.URL] {
 				continue
 			}
 			seen[is.URL] = true
-			b.Items = append(b.Items, BacklogItem{Source: "github", ID: is.URL, Repo: is.Repo, Est: "-", Ref: is.URL, Title: is.Title, AgeDays: ageDays(in.Now, is.CreatedAt)})
+			b.Items = append(b.Items, BacklogItem{Source: "github", ID: is.URL, Code: Code(is.URL), Repo: is.Repo, Est: "-", Ref: is.URL, Title: is.Title, AgeDays: ageDays(in.Now, is.CreatedAt)})
 		}
 	}
 	for _, s := range in.SDD {
 		if dropped[s.ID] || from[s.ID] {
 			continue
 		}
-		b.Items = append(b.Items, BacklogItem{Source: "sdd", ID: s.ID, Repo: s.Repo, Est: "-", Ref: "-", Title: s.Title, AgeDays: ageDays(in.Now, s.ModTime)})
+		b.Items = append(b.Items, BacklogItem{Source: "sdd", ID: s.ID, Code: Code(s.ID), Repo: s.Repo, Est: "-", Ref: "-", Title: s.Title, AgeDays: ageDays(in.Now, s.ModTime)})
 	}
 	for _, it := range items {
 		if it.Status != "stale" {
@@ -94,7 +95,7 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 			continue // a live session still holds this item
 		}
 		started, _ := time.Parse(time.RFC3339, it.StartedAt) // written by Compute from a parsed time
-		b.Items = append(b.Items, BacklogItem{Source: "stale", ID: it.ID, Repo: it.Repo, Est: it.Est, Ref: "-", Title: it.Kind + " " + it.Repo + " (" + it.ID + ")", AgeDays: ageDays(in.Now, started)})
+		b.Items = append(b.Items, BacklogItem{Source: "stale", ID: it.ID, Code: Code(it.ID), Repo: it.Repo, Est: it.Est, Ref: "-", Title: it.Kind + " " + it.Repo + " (" + it.ID + ")", AgeDays: ageDays(in.Now, started)})
 	}
 	b.Items = dedupeAndSort(b.Items)
 	return b, issues

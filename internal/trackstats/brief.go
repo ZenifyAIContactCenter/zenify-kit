@@ -17,6 +17,7 @@ type BriefResult struct {
 	PRStatusError string         `json:"prStatusError"`
 	MergedError   string         `json:"mergedError"`
 	Backlog       []BriefBacklog `json:"backlog"`
+	Running       []BriefRunning `json:"running"`
 	GhError       string         `json:"ghError"`
 }
 
@@ -36,6 +37,15 @@ type BriefCarried struct {
 	Phase string `json:"phase"`
 }
 
+// BriefRunning is one open item, so the agent can find its own track id.
+type BriefRunning struct {
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
+	Repo    string `json:"repo"`
+	Est     string `json:"est"`
+	Session string `json:"session"`
+}
+
 type BriefPR struct {
 	URL     string `json:"url"`
 	Repo    string `json:"repo"`
@@ -49,6 +59,7 @@ type BriefPR struct {
 type BriefBacklog struct {
 	ID      string `json:"id"`
 	Source  string `json:"source"`
+	Code    string `json:"code"`
 	Repo    string `json:"repo"`
 	Est     string `json:"est"`
 	Title   string `json:"title"`
@@ -69,11 +80,15 @@ func Brief(r Result) BriefResult {
 		Carried:       []BriefCarried{},
 		PROpen:        []BriefPR{},
 		Backlog:       []BriefBacklog{},
+		Running:       []BriefRunning{},
 	}
 	// Carried items are open (running or stale), so Running holds their estimate.
 	est := map[string]string{}
 	for _, it := range r.Running {
 		est[it.ID] = it.Est
+	}
+	for _, it := range r.Running {
+		b.Running = append(b.Running, BriefRunning{ID: it.ID, Kind: it.Kind, Repo: it.Repo, Est: it.Est, Session: it.Session})
 	}
 	for _, c := range r.Kitchen.Carried {
 		e := est[c.ID]
@@ -86,7 +101,7 @@ func Brief(r Result) BriefResult {
 		b.PROpen = append(b.PROpen, BriefPR{URL: p.URL, Repo: p.Repo, Number: p.Number, CI: p.CI, Review: p.Review, Threads: p.Threads, Ready: p.Ready})
 	}
 	for _, it := range r.Backlog.Items {
-		b.Backlog = append(b.Backlog, BriefBacklog{ID: it.ID, Source: it.Source, Repo: it.Repo, Est: it.Est, Title: shorten(it.Title), AgeDays: it.AgeDays})
+		b.Backlog = append(b.Backlog, BriefBacklog{ID: it.ID, Source: it.Source, Code: it.Code, Repo: it.Repo, Est: it.Est, Title: shorten(it.Title), AgeDays: it.AgeDays})
 	}
 	return b
 }

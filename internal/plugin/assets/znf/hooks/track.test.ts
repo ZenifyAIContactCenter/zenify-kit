@@ -92,3 +92,11 @@ test('FR-4.8: turnLine carries the usage, or five dashes without it', () => {
   )
   expect(turnLine(ISO, 'cook-261030-a1b2', 1200.6, 'sub', undefined)).toBe(`${ISO} · turn · cook-261030-a1b2 · 1201 · sub · - · - · - · - · -`)
 })
+
+test('parseStartId reads a task id', () => {
+  expect(parseStartId('track: task-261111-0a1b')).toBe('task-261111-0a1b')
+})
+
+test('phaseFor returns undefined for a task without throwing', () => {
+  expect(phaseFor('task', 'scout')).toBeUndefined()
+})

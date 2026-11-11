@@ -11,7 +11,7 @@ Bỏ một việc khỏi backlog (bid hoặc id sdd).
 ## Cú pháp
 
 ```text
-zenify track backlog drop <bid|sdd id>
+zenify track backlog drop <bid|sdd id|url|code>
 ```
 
 ## Khi nào dùng

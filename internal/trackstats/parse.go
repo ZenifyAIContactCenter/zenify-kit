@@ -23,7 +23,7 @@ type Event struct {
 }
 
 var (
-	idRe    = regexp.MustCompile(`^(cook|fix|hotfix)-\d{6}-[0-9a-f]{4}$`)
+	idRe    = regexp.MustCompile(`^(cook|fix|hotfix|task)-\d{6}-[0-9a-f]{4}$`)
 	bidRe   = regexp.MustCompile(`^b-\d{6}-[0-9a-f]{4}$`)
 	sddRe   = regexp.MustCompile(`^repos/.+/progress\.md:\d+$`)
 	hidRe   = regexp.MustCompile(`^[0-9a-f]{8}$`)
@@ -99,7 +99,7 @@ func parseLogLine(raw string) (Event, bool) {
 	switch p[1] {
 	case "start":
 		// The optional last field is the backlog id or issue URL the item came from.
-		ok = (len(f) == 3 || (len(f) == 4 && validFrom(f[3]))) && oneOf(f[0], "cook", "fix", "hotfix") && f[1] != "" && oneOf(f[2], "S", "M", "L", "-")
+		ok = (len(f) == 3 || (len(f) == 4 && validFrom(f[3]))) && oneOf(f[0], "cook", "fix", "hotfix", "task") && f[1] != "" && oneOf(f[2], "S", "M", "L", "-")
 	case "est":
 		ok = len(f) == 1 && oneOf(f[0], "S", "M", "L")
 	case "ship":
@@ -157,13 +157,13 @@ func parseListRow(at time.Time, p []string) (Event, bool) {
 			ok = bidRe.MatchString(p[2]) && f[0] != "" && oneOf(f[1], "S", "M", "L", "-") && f[2] != "" && f[3] != ""
 		}
 	case "drop":
-		ok = len(f) == 0 && (bidRe.MatchString(p[2]) || sddRe.MatchString(p[2]))
+		ok = len(f) == 0 && (bidRe.MatchString(p[2]) || sddRe.MatchString(p[2]) || (strings.HasPrefix(p[2], "http") && validHTTPURL(p[2])))
 	case "onboard":
 		ok = len(f) == 0 && p[2] == "memory"
 	case "plan":
 		// The id field is the plan date; the fields are the planned ids.
 		_, err := time.Parse(dateLayout, p[2])
-		ok = err == nil && len(f) >= 1
+		ok = err == nil // a row with no ids is an emptied plan
 		for _, id := range f {
 			ok = ok && ValidPlanID(id)
 		}

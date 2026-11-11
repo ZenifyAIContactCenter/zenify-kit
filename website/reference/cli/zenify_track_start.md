@@ -11,7 +11,7 @@ Mở một lượt theo dõi và in id `track: <id>`.
 ## Cú pháp
 
 ```text
-zenify track start --kind cook|fix|hotfix --repo <repo> --est S|M|L|- [--from <bid|issue url|sdd id>] [flags]
+zenify track start --kind cook|fix|hotfix|task --repo <repo> --est S|M|L|- [--from <bid|issue url|sdd id>] [flags]
 ```
 
 ## Khi nào dùng
@@ -30,7 +30,7 @@ zenify track start --kind fix --repo contact-center-be --est -
 |---|---|
 | `--est` | size estimate S\|M\|L, or - when not known yet (mặc định `-`) |
 | `--from` | backlog id, issue URL or SDD id (repos/\<...\>/progress.md:\<line\>) this run takes; fails when another item already took it |
-| `--kind` | cook\|fix\|hotfix |
+| `--kind` | cook\|fix\|hotfix\|task |
 | `--repo` | target repo name |
 
 ## Lệnh liên quan
