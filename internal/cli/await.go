@@ -203,8 +203,8 @@ func buildAwaitRecord(kind, summary, command, questionsPath, to string, files []
 		return awaitRecord{}, fmt.Errorf("handoff needs --to <name or @username>")
 	case kind != "handoff" && to != "":
 		return awaitRecord{}, fmt.Errorf("--to is only for kind handoff")
-	case utf8.RuneCountInString(to) > 100 || strings.IndexFunc(to, unicode.IsControl) >= 0:
-		return awaitRecord{}, fmt.Errorf("--to must be one name or @username: at most 100 characters, no control characters")
+	case utf8.RuneCountInString(to) > 100 || strings.IndexFunc(to, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0:
+		return awaitRecord{}, fmt.Errorf("--to must be one name or @username: at most 100 characters, printable characters only")
 	}
 	abs := make([]string, 0, len(files))
 	for _, f := range files {
