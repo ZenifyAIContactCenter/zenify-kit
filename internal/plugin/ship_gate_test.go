@@ -39,3 +39,19 @@ func TestShipGate_AutonomousUI(t *testing.T) {
 	ref := syncedAsset(t, "skills/ship/references/autonomous-ui.md")
 	assertContainsAll(t, "autonomous-ui.md", ref, []string{"ZNF_SANDBOX_WEB_PORT", "exit 8"})
 }
+
+// FR-2: ship step 4 runs the tests affected by the branch; the rules live in a reference (SKILL.md is at its byte budget).
+func TestShipTestScope(t *testing.T) {
+	skill := syncedAsset(t, "skills/ship/SKILL.md")
+	if !strings.Contains(skill, "references/test-scope.md") {
+		t.Error("ship SKILL.md must link references/test-scope.md")
+	}
+	ref := syncedAsset(t, "skills/ship/references/test-scope.md")
+	assertContainsAll(t, "test-scope.md", ref, []string{
+		`"$(zenify wt base)"`, "--changed", "--changedSince", "git config --worktree --get wt.type",
+		"hotfix", "full suite", "timeout", "background", "count", "ship fix loop",
+	})
+	if strings.Contains(ref, "references/") {
+		t.Error("test-scope.md must not contain the string references/")
+	}
+}
