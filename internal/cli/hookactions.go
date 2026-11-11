@@ -251,8 +251,9 @@ func localTrackInput(dir, wsRoot string, now time.Time) (trackstats.Input, error
 		return trackstats.Input{}, err
 	}
 	if c != nil {
-		issues := c.Issues
+		issues, plane := c.Issues, c.Plane
 		in.GitHub = func() ([]trackstats.Issue, error) { return issues, nil }
+		in.Plane = func() ([]trackstats.PlaneItem, error) { return plane, nil }
 		in.SDD = c.SDD
 	}
 	return in, nil

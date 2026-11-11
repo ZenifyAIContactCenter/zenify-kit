@@ -249,3 +249,70 @@ func TestBacklogSortAndDedupe(t *testing.T) {
 		t.Fatalf("items = %+v", r.Backlog.Items)
 	}
 }
+
+const (
+	plane288 = "https://plane.example/zenify/browse/ZEN-288/"
+	plane256 = "https://plane.example/zenify/browse/ZEN-256/"
+)
+
+// FR-5.2, FR-5.3: Plane items enter the backlog as source plane, right after manual.
+func TestBacklogPlane(t *testing.T) {
+	in := base(lines(backlogRow(now, bidA, "manual one")))
+	in.GitHub = func() ([]Issue, error) {
+		return []Issue{{URL: issue1, Repo: "r", Title: "gh one", CreatedAt: now}}, nil
+	}
+	in.SDD = []SDDItem{{ID: sddID, Repo: "kit", Title: "sdd one", ModTime: now}}
+	in.Plane = func() ([]PlaneItem, error) {
+		return []PlaneItem{
+			{Key: "ZEN-288", URL: plane288, Title: "plane one", CreatedAt: now.Add(-48 * time.Hour)},
+			{Key: "ZEN-288", URL: plane288, Title: "plane one", CreatedAt: now.Add(-48 * time.Hour)},
+		}, nil
+	}
+	r, _ := Compute(in)
+	var got []string
+	for _, it := range r.Backlog.Items {
+		got = append(got, it.Source)
+	}
+	if strings.Join(got, ",") != "manual,plane,github,sdd" || r.Backlog.PlaneError != "" {
+		t.Fatalf("sources = %v, backlog = %+v", got, r.Backlog)
+	}
+	want := BacklogItem{Source: "plane", ID: plane288, Repo: "-", Est: "-", Ref: plane288, Title: "plane one", AgeDays: 2, Code: "ZEN-288"}
+	if r.Backlog.Items[1] != want {
+		t.Fatalf("plane item = %+v, want %+v", r.Backlog.Items[1], want)
+	}
+}
+
+// FR-5.3: a Plane error lands in planeError and leaves GitHub alone.
+func TestBacklogPlaneErrorIsolated(t *testing.T) {
+	in := base("")
+	in.GitHub = func() ([]Issue, error) {
+		return []Issue{{URL: issue1, Repo: "r", Title: "gh one", CreatedAt: now}}, nil
+	}
+	in.Plane = func() ([]PlaneItem, error) { return nil, errors.New("plane answered 401 Unauthorized") }
+	r, _ := Compute(in)
+	if r.Backlog.PlaneError != "plane answered 401 Unauthorized" || r.Backlog.GhError != "" || sources(r)["github"] != 1 {
+		t.Fatalf("backlog = %+v", r.Backlog)
+	}
+	if b := Brief(r); b.PlaneError != "plane answered 401 Unauthorized" {
+		t.Fatalf("brief planeError = %q", b.PlaneError)
+	}
+}
+
+// SC-12 stats part: a Plane item taken by start --from or dropped leaves the backlog.
+func TestBacklogPlaneHiddenByFromAndDrop(t *testing.T) {
+	in := base(lines(
+		row(now, "start", cid("fix", 1), "fix", "be", "S", plane288),
+		row(now, "drop", plane256),
+	))
+	in.Plane = func() ([]PlaneItem, error) {
+		return []PlaneItem{
+			{Key: "ZEN-288", URL: plane288, Title: "a", CreatedAt: now},
+			{Key: "ZEN-256", URL: plane256, Title: "b", CreatedAt: now},
+			{Key: "ZEN-227", URL: "https://plane.example/zenify/browse/ZEN-227/", Title: "c", CreatedAt: now},
+		}, nil
+	}
+	r, _ := Compute(in)
+	if len(r.Backlog.Items) != 1 || r.Backlog.Items[0].Code != "ZEN-227" || r.Malformed != 0 {
+		t.Fatalf("items = %+v malformed=%d", r.Backlog.Items, r.Malformed)
+	}
+}

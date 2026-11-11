@@ -382,17 +382,20 @@ func ghSearch(owner, role string) ([]trackstats.Issue, error) {
 }
 
 // backlogCacheFile is <dir>/backlog-gh.json: one TTL for the owner list, the gh
-// results and the SDD scan.
+// results, the Plane items and the SDD scan.
 type backlogCacheFile struct {
-	FetchedAt time.Time            `json:"fetchedAt"`
-	Owners    []string             `json:"owners"`
-	Issues    []trackstats.Issue   `json:"issues"`
-	SDD       []trackstats.SDDItem `json:"sdd"`
+	FetchedAt time.Time              `json:"fetchedAt"`
+	Owners    []string               `json:"owners"`
+	Issues    []trackstats.Issue     `json:"issues"`
+	SDD       []trackstats.SDDItem   `json:"sdd"`
+	Plane     []trackstats.PlaneItem `json:"plane"`
 }
 
-// backlogSources prepares Input.GitHub and Input.SDD. The gh searches start at
-// once and run beside the merged-PR lookups; the returned func waits for them.
-func backlogSources(dir, wsDir string, force bool, now time.Time) (func() ([]trackstats.Issue, error), []trackstats.SDDItem) {
+// backlogSources prepares Input.GitHub, Input.Plane and Input.SDD. The gh
+// searches and the Plane fetch start at once and run beside the merged-PR
+// lookups; the returned funcs wait for them. The cache is written only when
+// every source succeeded.
+func backlogSources(dir, wsDir string, force bool, now time.Time) (func() ([]trackstats.Issue, error), func() ([]trackstats.PlaneItem, error), []trackstats.SDDItem) {
 	cachePath := filepath.Join(dir, backlogCache)
 	var notes, errs []string // notes (an unreadable cache) never stop the cache from being rewritten
 	if !force {
@@ -401,17 +404,29 @@ func backlogSources(dir, wsDir string, force bool, now time.Time) (func() ([]tra
 		case err != nil:
 			notes = append(notes, err.Error())
 		case c != nil && now.Sub(c.FetchedAt) < backlogTTL && now.Sub(c.FetchedAt) >= 0:
-			issues := c.Issues
-			return func() ([]trackstats.Issue, error) { return issues, nil }, c.SDD
+			issues, plane := c.Issues, c.Plane
+			return func() ([]trackstats.Issue, error) { return issues, nil },
+				func() ([]trackstats.PlaneItem, error) { return plane, nil }, c.SDD
 		}
 	}
 	sdd, sddErrs := scanSDD(wsDir)
 	errs = append(errs, sddErrs...)
 	var (
-		wg     sync.WaitGroup
-		issues []trackstats.Issue
-		owners []string
+		wg       sync.WaitGroup
+		issues   []trackstats.Issue
+		owners   []string
+		plane    []trackstats.PlaneItem
+		planeErr error
 	)
+	done := make(chan struct{})
+	fetchPlane, planeErr := trackPlaneSource(wsDir)
+	if fetchPlane != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			plane, planeErr = fetchPlane()
+		}()
+	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -420,20 +435,27 @@ func backlogSources(dir, wsDir string, force bool, now time.Time) (func() ([]tra
 		errs = append(errs, searchErrs...)
 		issues, searchErrs = searchOwners(owners)
 		errs = append(errs, searchErrs...)
-		if len(errs) == 0 {
-			c := backlogCacheFile{FetchedAt: now.UTC(), Owners: owners, Issues: issues, SDD: sdd}
+	}()
+	go func() {
+		defer close(done)
+		wg.Wait()
+		if len(errs) == 0 && planeErr == nil {
+			c := backlogCacheFile{FetchedAt: now.UTC(), Owners: owners, Issues: issues, SDD: sdd, Plane: plane}
 			if err := writeBacklogCache(cachePath, c); err != nil {
 				errs = append(errs, err.Error())
 			}
 		}
 	}()
 	return func() ([]trackstats.Issue, error) {
-		wg.Wait()
-		if all := append(notes, errs...); len(all) > 0 {
-			return issues, errors.New(strings.Join(all, "; "))
-		}
-		return issues, nil
-	}, sdd
+			<-done
+			if all := append(notes, errs...); len(all) > 0 {
+				return issues, errors.New(strings.Join(all, "; "))
+			}
+			return issues, nil
+		}, func() ([]trackstats.PlaneItem, error) {
+			<-done
+			return plane, planeErr
+		}, sdd
 }
 
 func searchOwners(owners []string) ([]trackstats.Issue, []string) {
