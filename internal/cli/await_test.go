@@ -370,3 +370,62 @@ func TestAwaitEndTurn(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildAwaitRecordHandoffTo(t *testing.T) {
+	awaitEnv(t)
+	chdir(t, t.TempDir())
+	rec, err := buildAwaitRecord("handoff", "s", "", "", " Tân ", nil) //znf:allow-lang
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Kind != "handoff" || rec.To != "Tân" { //znf:allow-lang
+		t.Fatalf("rec = %+v", rec)
+	}
+	b, _ := json.Marshal(rec)
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["to"] != "Tân" { //znf:allow-lang
+		t.Errorf(`json "to" = %#v`, m["to"])
+	}
+	other, err := buildAwaitRecord("needs-human", "s", "", "", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ob, _ := json.Marshal(other)
+	var om map[string]any
+	_ = json.Unmarshal(ob, &om)
+	if _, has := om["to"]; has {
+		t.Errorf("non-handoff record has to: %s", ob)
+	}
+}
+
+func TestBuildAwaitRecordToRefusals(t *testing.T) {
+	awaitEnv(t)
+	chdir(t, t.TempDir())
+	cases := []struct{ kind, to, want string }{
+		{"handoff", "", "--to"},
+		{"handoff", "  ", "--to"},
+		{"needs-human", "X", "--to is only for kind handoff"},
+	}
+	for _, tc := range cases {
+		_, err := buildAwaitRecord(tc.kind, "s", "", "", tc.to, nil)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s/%q: err = %v, want contains %q", tc.kind, tc.to, err, tc.want)
+		}
+	}
+}
+
+func TestAwaitHandoffCLI(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	out, err := runAwait(t, "await", "handoff", "--summary", "s", "--to", "@tan")
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("code = %d (%v), want 8", exitcode.Code(err), err)
+	}
+	r, _ := readRecord(t, home, strings.TrimSpace(out))
+	if r.To != "@tan" {
+		t.Errorf("to = %q", r.To)
+	}
+}
