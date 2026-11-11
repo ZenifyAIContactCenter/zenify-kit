@@ -76,5 +76,6 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newBrowserCmd())
 	root.AddCommand(newAwaitCmd())
 	root.AddCommand(newPlaneMCPCmd())
+	root.AddCommand(newPlaneCmd())
 	return root
 }

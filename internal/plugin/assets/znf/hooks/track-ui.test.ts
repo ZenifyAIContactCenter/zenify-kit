@@ -37,7 +37,7 @@ const stats = (over: Partial<TrackStats> = {}): TrackStats => ({
   running: [],
   estimate: { byKind: {}, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: {} },
   quality: { byKind: {}, fix: { n: 0, roundAvg: null, wideRate: null, regressionRate: null } },
-  backlog: { items: [], ghError: '' },
+  backlog: { items: [], ghError: '', planeError: '' },
   onboarded: true,
   kitchen: { carried: [], lastDay: null, cooked: [], rollingBoil: [], cooking: [], titleError: '' },
   ...over,
@@ -59,7 +59,7 @@ const texts = (lines: { text: string }[]) => lines.map(l => l.text)
 
 test('SC-44: contextual tips by priority, one at most', () => {
   const tail = (s: TrackStats, id?: string) => statusText(s, A, id)
-  const backlog = { items: [bl('manual'), bl('github')], ghError: '' }
+  const backlog = { items: [bl('manual'), bl('github')], ghError: '', planeError: '' }
   const prs = { ...stats().today, prsOpened: 3, merged: 1, prsWaiting: 2 }
   // (2) no open id, backlog N > 0
   expect(tail(stats({ backlog }))).toBe('track ⏸ · Today: 0/0 · Tip: 2 items in Backlog — type "/znf:track ls"')
@@ -84,7 +84,7 @@ test('SC-44: contextual tips by priority, one at most', () => {
 })
 
 test('SC-45: tips false hides tips (2)-(5), keeps onboard and the off line', () => {
-  const backlog = { items: [bl('manual')], ghError: '' }
+  const backlog = { items: [bl('manual')], ghError: '', planeError: '' }
   const prs = { ...stats().today, prsOpened: 3, merged: 1, prsWaiting: 2 }
   const noTips = (s: TrackStats, id?: string) => statusText(s, A, id, false)
   expect(noTips(stats({ backlog }))).toBe('track ⏸ · Today: 0/0')
@@ -380,23 +380,26 @@ test('FR-6.1: cook/fix/hotfix/ship prompts and skills, with or without znf:, ope
   expect(isTrackSkill('znf:scout')).toBe(false)
 })
 
-test('FR-13.7: Backlog groups by source in manual, github, sdd, stale order, one repo · est · title · age line each', () => {
+test('FR-13.7: Backlog groups by source in manual, plane, github, sdd, stale order, one repo · est · title · age line each', () => {
   const s = stats({
     backlog: {
-      ghError: '',
+      ghError: '', planeError: '',
       items: [
         bl('stale', { repo: 'hub', est: 'L', title: 'cook hub (c1)', ageDays: 9 }),
         bl('sdd', { est: '-', title: 'spec A', ageDays: 1 }),
         bl('github', { repo: 'web', est: '-', title: 'issue B', ageDays: 0 }),
         bl('manual', { est: 'S', title: 'task C', ageDays: 5 }),
         bl('manual', { est: 'M', title: 'task D', ageDays: 2 }),
+        bl('plane', { repo: 'ZEN', est: '-', title: 'plane E', ageDays: 3 }),
       ],
     },
   })
-  expect(texts(tabLines('backlog', s, A, X, NOW)).slice(0, 9)).toEqual([
+  expect(texts(tabLines('backlog', s, A, X, NOW)).slice(0, 11)).toEqual([
     '📝 manual',
     'kit · S · task C · 5d',
     'kit · M · task D · 2d',
+    '✈️ plane',
+    'ZEN · - · plane E · 3d',
     '🐙 github',
     'web · - · issue B · 0d',
     '📒 sdd',
@@ -410,7 +413,7 @@ test('FR-5.2: a backlog item whose ref or id is an http URL is a Link line, othe
   const url = 'https://github.com/o/r/issues/1'
   const s = stats({
     backlog: {
-      ghError: '',
+      ghError: '', planeError: '',
       items: [
         bl('github', { repo: 'r', est: 'S', title: 'issue one', ageDays: 4, ref: url }),
         bl('github', { repo: 'r', est: 'M', title: 'issue two', ageDays: 1, id: 'https://github.com/o/r/issues/2' }),
@@ -428,11 +431,13 @@ test('FR-13.7: an empty backlog says Backlog is empty; a ghError adds a ⚠ gith
   expect(texts(tabLines('backlog', stats(), A, X, NOW))[0]).toBe('Backlog is empty')
   const t = tabLines('backlog', stats({ backlog: { items: [bl('manual')], ghError: 'gh: not logged in' } }), A, X, NOW)
   expect(t.some(l => l.text === '⚠ github: gh: not logged in' && l.tone === 'warn')).toBe(true)
+  const p = tabLines('backlog', stats({ backlog: { items: [bl('manual')], ghError: '', planeError: 'x' } }), A, X, NOW)
+  expect(p.some(l => l.text === '⚠ plane: x' && l.tone === 'warn')).toBe(true)
   expect(texts(t)).toContain('kit · M · manual title · 3d')
 })
 
 test('parseTrackStats fills a missing backlog so the tab never reads undefined', () => {
-  const raw = { ...stats(), backlog: { items: null, ghError: '' } }
+  const raw = { ...stats(), backlog: { items: null, ghError: '', planeError: '' } }
   expect(parseTrackStats(JSON.stringify(raw)).backlog.items).toEqual([])
 })
 
@@ -538,7 +543,7 @@ test('SC-15: Running names the tab and shows wall/est and agent time', () => {
 })
 
 test('FR-11.4: carried items tip first, before Backlog', () => {
-  const s = stats({ kitchen: { ...stats().kitchen, carried: [carried({}), carried({ id: Y })] }, backlog: { items: [bl('manual')], ghError: '' } })
+  const s = stats({ kitchen: { ...stats().kitchen, carried: [carried({}), carried({ id: Y })] }, backlog: { items: [bl('manual')], ghError: '', planeError: '' } })
   expect(statusText(s, A, undefined, true, NOW)).toContain('Tip: 2 items carried over — type "hey claude continue"')
   expect(statusText(s, A, undefined)).not.toContain('Backlog')
 })
@@ -614,7 +619,7 @@ test('parseTrackStats defaults the fields an older binary lacks', () => {
     today: { date: '2026-10-30', plans: null, started: null, ended: null, tasks: 0, rounds: 0, prsOpened: 0, merged: 0, prsWaiting: 0, mergedError: '', items: null },
     running: [{ id: X, kind: 'cook', repo: 'kit', est: 'S', session: A, cwd: '/w', phase: 'plan', status: 'running', startedAt: '', endedAt: '', prs: null, agentMin: 3, wait: { ask: 0, permission: 0, idle: 0, total: 0 }, phases: null, tokens: null }],
     estimate: { byKind: null, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: null },
-    quality: { byKind: null, fix: noFix }, backlog: { items: null, ghError: '' }, onboarded: true,
+    quality: { byKind: null, fix: noFix }, backlog: { items: null, ghError: '', planeError: '' }, onboarded: true,
     kitchen: { cooked: null, rollingBoil: null, titleError: '' },
   }
   const s = parseTrackStats(JSON.stringify(old))
@@ -645,12 +650,12 @@ test('FR-1.2: Plan row leads with the short code; an empty code keeps the old ro
 })
 
 test('FR-1.2: Backlog row leads with the code', () => {
-  const s = stats({ backlog: { ghError: '', items: [bl('github', { code: '#581', repo: 'chatting', est: '-', title: 't', ageDays: 0 })] } })
+  const s = stats({ backlog: { ghError: '', planeError: '', items: [bl('github', { code: '#581', repo: 'chatting', est: '-', title: 't', ageDays: 0 })] } })
   expect(texts(tabLines('backlog', s, A, X, NOW))).toContain('#581 · chatting · - · t · 0d')
 })
 
 test('FR-1.2: a binary without code parses with code empty', () => {
-  const s = stats({ backlog: { ghError: '', items: [{ ...bl('manual'), code: undefined } as unknown as BacklogItem] } })
+  const s = stats({ backlog: { ghError: '', planeError: '', items: [{ ...bl('manual'), code: undefined } as unknown as BacklogItem] } })
   expect(parseTrackStats(JSON.stringify(s)).backlog.items?.[0].code).toBe('')
   const p = withPlan([{ ...planItem('todo', 'S', 'a'), code: undefined } as unknown as ReturnType<typeof planItem>], 1, 0)
   expect(parseTrackStats(JSON.stringify(p)).today.dailyPlan?.items[0].code).toBe('')
@@ -721,8 +726,8 @@ test('SC-9: no-plan tip sits after carried and before backlog; tips=false hides 
   expect(statusText(noPlanStats(), A, undefined, false)).not.toContain('Tip:')
   expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined, true, NOW)).toContain('carried over')
   expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined, true, NOW)).not.toContain('no plan')
-  expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '' } }), A, undefined)).toContain('no plan today')
-  expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '' } }), A, undefined)).not.toContain('in Backlog')
+  expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '', planeError: '' } }), A, undefined)).toContain('no plan today')
+  expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '', planeError: '' } }), A, undefined)).not.toContain('in Backlog')
   expect(statusText(withPlan([], 0, 0), A, undefined)).not.toContain('no plan')
   expect(statusText(stats({ running: [item({})] }), A, X)).not.toContain('no plan')
 })

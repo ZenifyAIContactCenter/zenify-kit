@@ -25,6 +25,33 @@ var planeOpenGroups = []string{"backlog", "unstarted", "started"}
 // or nil when the manifest has no Plane or no PAT is set: the source is then
 // skipped without an error. A manifest or .env that cannot be read is an error.
 func trackPlaneSource(wsDir string) (func() ([]trackstats.PlaneItem, error), error) {
+	c, err := planeConnect(wsDir)
+	if err != nil || c == nil {
+		return nil, err
+	}
+	return func() ([]trackstats.PlaneItem, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), trackGhTimeout)
+		defer cancel()
+		items, err := fetchPlaneMine(c.api(ctx), c.ws, c.browse)
+		if ctx.Err() != nil {
+			return items, fmt.Errorf("timed out after %s", trackGhTimeout)
+		}
+		return items, err
+	}, nil
+}
+
+// planeConn is the manifest's Plane plus the developer's PAT.
+type planeConn struct {
+	browse, ws, pat string
+}
+
+func (c *planeConn) api(ctx context.Context) planeAPI {
+	return planeAPI{ctx: ctx, client: trackPlaneClient, base: c.browse + "/api/v1", pat: c.pat}
+}
+
+// planeConnect returns nil when the manifest has no Plane or no PAT is set.
+// A manifest or .env that cannot be read is an error.
+func planeConnect(wsDir string) (*planeConn, error) {
 	man, err := brokerManifest("", "")
 	if err != nil {
 		return nil, fmt.Errorf("read manifest: %w", err)
@@ -39,18 +66,7 @@ func trackPlaneSource(wsDir string) (func() ([]trackstats.PlaneItem, error), err
 	if pat == "" {
 		return nil, nil
 	}
-	browse := strings.TrimRight(man.Plane.URL, "/")
-	ws := man.Plane.Workspace
-	return func() ([]trackstats.PlaneItem, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), trackGhTimeout)
-		defer cancel()
-		p := planeAPI{ctx: ctx, client: trackPlaneClient, base: browse + "/api/v1", pat: pat}
-		items, err := fetchPlaneMine(p, ws, browse)
-		if ctx.Err() != nil {
-			return items, fmt.Errorf("timed out after %s", trackGhTimeout)
-		}
-		return items, err
-	}, nil
+	return &planeConn{browse: strings.TrimRight(man.Plane.URL, "/"), ws: man.Plane.Workspace, pat: pat}, nil
 }
 
 type planePage[T any] struct {

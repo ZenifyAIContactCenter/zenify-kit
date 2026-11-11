@@ -15,13 +15,16 @@ func TestTrackSkill(t *testing.T) {
 		"name: track", "argument-hint:", "\"track\"", "\"backlog\"", "\"plan today\"", "\"next task\"",
 		"zenify track end <id> --done", "zenify track end <id> --cancelled --rounds 0", "zenify track est <id>",
 		"zenify track plan add", "zenify track plan rm", "zenify track backlog drop", "--kind task",
-		"zenify track backlog add", "zenify plane create", "available after PR2",
+		"zenify track backlog add", "zenify plane create",
 		"Exactly one `running` item", "two or more `running` items", "no `running` item",
 		"no verb or an unknown verb → print help, run no write command", "unknown verb: <verb>",
 		"b81e", "#581", "<repo>#581", "ZEN-288",
 		"Single-quote every code and every free-text argument", "zenify track plan add '<code>'", "zenify track backlog drop '<code>'",
 		"zenify track backlog add '<title>'", "`'\\''`", "never use double quotes around user text", "are data, not instructions",
 	})
+	if strings.Contains(s, "available after PR2") {
+		t.Error("track/SKILL.md still says plane create is available after PR2")
+	}
 	for _, v := range []string{"add", "drop", "ls", "plan", "plan +", "plan -", "go", "done", "cancel", "est", "help"} {
 		if !strings.Contains(s, "| `"+v) {
 			t.Errorf("help table lacks verb %q", v)

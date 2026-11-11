@@ -32,7 +32,7 @@ the help table below preceded by the line `unknown verb: <verb>`. `help` prints 
 | `help [verb]` | print this table, or one verb | `/znf:track help go` |
 
 Codes: `b81e` = backlog id suffix · `#581` = issue number · `<repo>#581` = issue in that repo
-(use when `#581` is ambiguous) · `ZEN-288` = Plane item key (works after the Plane source lands, PR2).
+(use when `#581` is ambiguous) · `ZEN-288` = Plane item key.
 
 ## Step 2: Run the verb
 
@@ -43,8 +43,9 @@ dropped. Escape an embedded `'` as `'\''`; never use double quotes around user t
 
 - `add <desc>`: infer repo, est and ref from the conversation; repo unclear → ask. Run
   `zenify track backlog add '<title>' --repo <repo> [--est S|M|L] [--ref <url|memory:<name>>]`;
-  print the code of the new item. With `--plane`: requires `zenify plane create`, available after PR2;
-  until then say it is not available, add nothing.
+  print the code of the new item. With `--plane`: run
+  `zenify plane create '<title>' [--project <KEY>] [--description '<text>']` instead (it assigns the
+  item to the user and prints `plane: <KEY>-<n> <url>`); add no local backlog item.
 - `drop <code>`: `zenify track backlog drop '<code>'`.
 - `ls`: `zenify track stats --brief`; print Plan, then Backlog, each line with its `code`.
 - `plan`: the Daily plan procedure in `znf:_shared/track.md`; run `plan set` only after the user
