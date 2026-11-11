@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
+	"time"
 )
 
 // SC-2
@@ -77,5 +79,48 @@ func TestTrackPlanSet_CobraOnAndOff(t *testing.T) {
 	}
 	if !regexp.MustCompile(` · plan · \d{4}-\d{2}-\d{2} · b-261105-ab12\n$`).MatchString(trackLog(t, on)) {
 		t.Fatalf("log = %q", trackLog(t, on))
+	}
+}
+
+// SC-4
+func TestTrackPlanAddRm(t *testing.T) {
+	ws := trackWS(t, true)
+	a, b, c := "b-261105-aaaa", "b-261105-bbbb", "b-261105-cccc"
+	lastPlan := func() string {
+		lines := strings.Split(strings.TrimSpace(trackLog(t, ws)), "\n")
+		return lines[len(lines)-1]
+	}
+	today := time.Now().Local().Format("2006-01-02")
+	if _, err := runTrack(t, ws, "plan", "set", a, b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runTrack(t, ws, "plan", "add", c); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runTrack(t, ws, "plan", "add", b); err != nil || out != "track: plan 3 items\n" {
+		t.Fatalf("dup add: %q %v", out, err)
+	}
+	out, err := runTrack(t, ws, "plan", "rm", a)
+	if err != nil || out != "track: plan 2 items\n" {
+		t.Fatalf("rm: %q %v", out, err)
+	}
+	if !strings.HasSuffix(lastPlan(), " · plan · "+today+" · "+b+" · "+c) {
+		t.Fatalf("last row = %q", lastPlan())
+	}
+	before := trackLog(t, ws)
+	if _, err := runTrack(t, ws, "plan", "rm", a); err == nil {
+		t.Fatal("rm of an id outside the plan must fail")
+	}
+	if trackLog(t, ws) != before {
+		t.Fatal("failed rm changed the log")
+	}
+	if _, err := runTrack(t, ws, "plan", "rm", b, c); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(lastPlan(), " · plan · "+today) {
+		t.Fatalf("emptied row = %q", lastPlan())
+	}
+	if out, err := runTrack(t, ws, "plan", "add", a); err != nil || out != "track: plan 1 items\n" {
+		t.Fatalf("add after empty: %q %v", out, err)
 	}
 }

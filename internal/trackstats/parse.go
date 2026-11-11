@@ -163,7 +163,7 @@ func parseListRow(at time.Time, p []string) (Event, bool) {
 	case "plan":
 		// The id field is the plan date; the fields are the planned ids.
 		_, err := time.Parse(dateLayout, p[2])
-		ok = err == nil && len(f) >= 1
+		ok = err == nil // a row with no ids is an emptied plan
 		for _, id := range f {
 			ok = ok && ValidPlanID(id)
 		}

@@ -11,7 +11,7 @@ title: zenify track end
 ## Cú pháp
 
 ```text
-zenify track end <id> (--pr <url>... | --branch <name> | --rollback | --cancelled) [--ledger <path>] --rounds N [flags]
+zenify track end <id> (--pr <url>... | --branch <name> | --rollback | --cancelled | --done) [--ledger <path>] --rounds N [flags]
 ```
 
 ## Khi nào dùng
@@ -34,6 +34,7 @@ zenify track end fix-261030-ab12 --pr https://github.com/org/repo/pull/1 --ledge
 |---|---|
 | `--branch` | pushed branch name (hotfix; the human opens the PR) |
 | `--cancelled` | the run was cancelled |
+| `--done` | the work is finished with no PR (ops work) |
 | `--ledger` | SDD ledger file; its `Task \<N\>: complete` lines are counted and its first-line plan path is kept |
 | `--pr` | pull request URL (repeatable) |
 | `--rollback` | the run ended in a rollback |
