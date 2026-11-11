@@ -101,6 +101,8 @@ Bạn merge stack từ dưới lên; merge PR N thì mọi PR chưa merge bên d
 
 `/znf:ship --watch` gọi `znf:ci-watch` sau khi mở PR. Khi feature `track` bật (`zenify feature track on`), ship coi như luôn có `--watch` và truyền id track cho ci-watch để ghi kết quả CI vào sổ (`zenify track ci`). Ngoài chờ CI xanh, ci-watch còn chờ PR ở trạng thái CLEAN (CI xanh chưa đủ: review bắt buộc, review thread và check của app khác vẫn có thể chặn merge). Khi CLEAN, nó in URL PR đầy đủ và lệnh để bạn tự chạy: `! gh pr merge -R <owner/repo> <n> --merge`. Bị chặn thì nó liệt kê review thread chưa resolve (hoặc check bắt buộc đang đỏ) rồi dừng; ci-watch không resolve thread và không merge. Xem [`ci-watch`](/reference/skills/ci-watch).
 
+Nếu `CLAUDE.md` của project có dòng `PR review check:`, sau khi mở PR ship tự chờ đúng check review đó trên commit vừa push (tối đa 30 phút), sửa mọi finding blocking trong một commit mỗi vòng, tối đa 3 vòng, và chỉ chờ CI (như trên) khi check review đã xanh. Sau 3 vòng vẫn đỏ thì ship dừng và báo các finding còn mở. Không có dòng đó thì ship báo URL PR rồi dừng như cũ. Xem [`ship`](/workflows/ship).
+
 ## Quyết định thuộc về bạn
 
 - Merge PR. Ship không tự merge, kể cả PR nó vừa mở.

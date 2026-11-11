@@ -55,3 +55,22 @@ func TestShipTestScope(t *testing.T) {
 		t.Error("test-scope.md must not contain the string references/")
 	}
 }
+
+// FR-4 / SC-5: after opening the PR, ship runs the project's declared bot-review loop (SKILL.md is at its byte budget).
+func TestShipPRReviewLoop(t *testing.T) {
+	skill := syncedAsset(t, "skills/ship/SKILL.md")
+	assertContainsAll(t, "ship SKILL.md", skill, []string{
+		"references/pr-review-loop.md", "`--watch` → `Skill(znf:ci-watch)`",
+	})
+	ref := syncedAsset(t, "skills/ship/references/pr-review-loop.md")
+	assertContainsAll(t, "pr-review-loop.md", ref, []string{
+		"PR review check:", "CLAUDE.md", "headRefOid", "conclusion", "only that check", "ONE commit",
+		"MEDIUM", "decline syntax", "git fetch", "30 minutes", "never force-push", "Skill(znf:review)",
+		"3 rounds", "green", "ci-watch", "no such line",
+	})
+	for _, banned := range []string{"references/", "Zenie", "zenieai"} {
+		if strings.Contains(ref, banned) {
+			t.Errorf("pr-review-loop.md must not contain %q", banned)
+		}
+	}
+}
