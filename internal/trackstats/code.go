@@ -3,7 +3,7 @@ package trackstats
 import "regexp"
 
 var (
-	codeNumRe = regexp.MustCompile(`/(?:issues|pull)/(\d+)`)
+	codeNumRe = regexp.MustCompile(`^https://github\.com/[^/]+/[^/]+/(?:issues|pull)/(\d+)`)
 	codeKeyRe = regexp.MustCompile(`/browse/([A-Za-z]+-\d+)/?$`)
 	urlRepoRe = regexp.MustCompile(`^https://github\.com/[^/]+/([^/]+)/(?:issues|pull)/\d+`)
 )

@@ -45,7 +45,7 @@ func resolveRefs(dir, wsDir string, refs []string, scope resolveScope, now time.
 			}
 			loaded = true
 		}
-		id, err := resolveFrom(ref, cands)
+		id, err := resolveFrom(ref, cands, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -54,8 +54,24 @@ func resolveRefs(dir, wsDir string, refs []string, scope resolveScope, now time.
 	return ids, nil
 }
 
-func resolveFrom(ref string, cands []trackstats.Candidate) (string, error) {
+func resolveFrom(ref string, cands []trackstats.Candidate, scope resolveScope) (string, error) {
 	c, many, err := trackstats.Resolve(ref, cands)
+	if errors.Is(err, trackstats.ErrAmbiguous) && scope == scopeBacklog {
+		// start --from and backlog drop take no track id (FR-1.5): a stale track id sharing the code
+		// does not make it ambiguous. Alone it still resolves, so the caller can say how to close it.
+		var rest []trackstats.Candidate
+		for _, m := range many {
+			if !trackIDRe.MatchString(m.ID) {
+				rest = append(rest, m)
+			}
+		}
+		switch {
+		case len(rest) == 1:
+			c, many, err = rest[0], nil, nil
+		case len(rest) > 1:
+			many = rest
+		}
+	}
 	switch {
 	case errors.Is(err, trackstats.ErrNoMatch):
 		return "", badTrack("track: no item matches %s", ref)

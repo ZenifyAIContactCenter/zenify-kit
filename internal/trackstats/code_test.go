@@ -15,6 +15,7 @@ func TestCode(t *testing.T) {
 		{"https://plane.example/zenify/browse/ZEN-288/", "ZEN-288"},
 		{"repos/x/progress.md:7", ""},
 		{"https://example.com/a", ""},
+		{"https://example.com/issues/581", ""},
 	} {
 		if got := Code(c.in); got != c.want {
 			t.Errorf("Code(%q) = %q, want %q", c.in, got, c.want)

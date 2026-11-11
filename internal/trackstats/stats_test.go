@@ -811,6 +811,9 @@ func TestStatsTaskEstimate(t *testing.T) { // SC-6
 		s := now.Add(-time.Duration(200-i*10) * time.Minute)
 		lg = append(lg, row(s, "start", id, "task", "infra", "-"), row(s.Add(time.Duration(m)*time.Minute), "end", id, "done", "0", "0"))
 	}
+	// A rolled-back task is not a done sample (FR-2.4).
+	rb := now.Add(-150 * time.Minute)
+	lg = append(lg, row(rb.Add(-1000*time.Minute), "start", "task-261030-00ff", "task", "infra", "-"), row(rb, "end", "task-261030-00ff", "rollback", "0", "0"))
 	in := base(lines(lg...))
 	in.Sessions = map[string]string{"s1": lines(ss...)}
 	r, _ := Compute(in)

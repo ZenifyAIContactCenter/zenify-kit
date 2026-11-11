@@ -463,7 +463,13 @@ func Compute(in Input) (Result, map[string]string) {
 		addWindow(win)
 		computeEstimate(k, win, res.Scale, &res)
 	}
-	computeHotfix(in, byKindEnded["hotfix"], byKindEnded["task"], &res)
+	var doneTasks []Item // FR-2.4: the task estimate counts done tasks only, not rollbacks
+	for _, it := range byKindEnded["task"] {
+		if it.Status == "done" {
+			doneTasks = append(doneTasks, it)
+		}
+	}
+	computeHotfix(in, byKindEnded["hotfix"], doneTasks, &res)
 
 	byStart := map[string][]Item{}
 	for _, it := range items {

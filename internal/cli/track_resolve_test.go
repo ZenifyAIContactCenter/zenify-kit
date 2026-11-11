@@ -199,3 +199,30 @@ func TestTrackDropStaleItemRefused(t *testing.T) {
 		t.Fatal("log changed")
 	}
 }
+
+// FR-1.5: a stale track id sharing a backlog id's suffix does not make the code ambiguous in backlog scope.
+func TestResolveBacklogSkipsStaleTrackID(t *testing.T) {
+	noGh(t)
+	ws := trackWS(t, true)
+	seedGhCache(t, ws)
+	bid := addBacklog(t, ws, "x", "--repo", "kit")
+	code := bid[len(bid)-4:]
+	stale := "cook-" + time.Now().AddDate(0, 0, -10).Format("060102") + "-" + code
+	f, err := os.OpenFile(filepath.Join(ws, ".zenify", "track", "log.md"), os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.WriteString(time.Now().AddDate(0, 0, -10).UTC().Format(time.RFC3339) + " · start · " + stale + " · cook · kit · M\n")
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(ws, ".zenify", "track")
+	got, err := resolveRef(dir, ws, code, scopeBacklog, time.Now())
+	if err != nil || got != bid {
+		t.Fatalf("resolveRef(%s, backlog) = %q %v, want %s", code, got, err, bid)
+	}
+	if _, err := resolveRef(dir, ws, code, scopePlanAll, time.Now()); err == nil {
+		t.Fatal("plan scope keeps the stale track id, so the code must be ambiguous there")
+	}
+}
