@@ -49,6 +49,7 @@ type BriefPR struct {
 type BriefBacklog struct {
 	ID      string `json:"id"`
 	Source  string `json:"source"`
+	Code    string `json:"code"`
 	Repo    string `json:"repo"`
 	Est     string `json:"est"`
 	Title   string `json:"title"`
@@ -86,7 +87,7 @@ func Brief(r Result) BriefResult {
 		b.PROpen = append(b.PROpen, BriefPR{URL: p.URL, Repo: p.Repo, Number: p.Number, CI: p.CI, Review: p.Review, Threads: p.Threads, Ready: p.Ready})
 	}
 	for _, it := range r.Backlog.Items {
-		b.Backlog = append(b.Backlog, BriefBacklog{ID: it.ID, Source: it.Source, Repo: it.Repo, Est: it.Est, Title: shorten(it.Title), AgeDays: it.AgeDays})
+		b.Backlog = append(b.Backlog, BriefBacklog{ID: it.ID, Source: it.Source, Code: it.Code, Repo: it.Repo, Est: it.Est, Title: shorten(it.Title), AgeDays: it.AgeDays})
 	}
 	return b
 }
