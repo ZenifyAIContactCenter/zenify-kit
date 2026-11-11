@@ -119,7 +119,7 @@ type phaseWin struct {
 // session; events of other ids are ignored). A turn is the interval
 // [at-ms, at]. Agent time is the union of the main turns minus the ask and
 // permission waits, plus the sub turns. The first phase is design for a cook
-// and diagnose otherwise.
+// and diagnose otherwise; a task has no phases.
 func ComputeTiming(id, kind string, _ time.Time, ev []Event) Timing {
 	first := "diagnose"
 	if kind == "cook" {
@@ -205,6 +205,10 @@ func ComputeTiming(id, kind string, _ time.Time, ev []Event) Timing {
 	}
 	t.Malformed = malformed
 	t.Wait.Total = t.Wait.Ask + t.Wait.Permission + t.Wait.Idle
+
+	if kind == "task" {
+		return t // FR-2.5: phase timing does not apply to a task: no first phase, no phase share
+	}
 
 	sort.SliceStable(switches, func(i, j int) bool { return switches[i].at < switches[j].at })
 	const minT, maxT = int64(-1) << 62, int64(1) << 62

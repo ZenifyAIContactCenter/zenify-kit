@@ -825,3 +825,18 @@ func TestStatsTaskEstimate(t *testing.T) { // SC-6
 		t.Fatalf("ByKind/Rules changed: %+v %v", r.Estimate.ByKind, r.Rules)
 	}
 }
+
+func TestTaskHasNoPhases(t *testing.T) { // FR-2.5
+	id := "task-261030-0a1b"
+	s := now.Add(-60 * time.Minute)
+	in := base(lines(row(s, "start", id, "task", "infra", "-")))
+	in.Sessions = map[string]string{"s1": lines(row(s, "bind", id), agentTurn(s.Add(20*time.Minute), id, 20))}
+	r, _ := Compute(in)
+	if len(r.Running) != 1 {
+		t.Fatalf("running = %+v", r.Running)
+	}
+	it := r.Running[0]
+	if it.AgentMin != 20 || len(it.Phases) != 0 || it.Phase != "-" {
+		t.Fatalf("task item = %+v", it)
+	}
+}

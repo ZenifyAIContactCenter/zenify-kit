@@ -1,7 +1,7 @@
 // FR-4, FR-7.3, FR-8.2: the pure half of the zenify track hook — which Bash call binds or ends
 // an id, which Skill call changes the phase, and the sessions/<id>.log lines it writes.
 
-export type Kind = 'cook' | 'fix' | 'hotfix'
+export type Kind = 'cook' | 'fix' | 'hotfix' | 'task'
 export type Phase = 'design' | 'diagnose' | 'scout' | 'plan' | 'implement' | 'fix' | 'ship'
 export type WaitKind = 'ask' | 'permission' | 'idle'
 export type Usage = {
@@ -52,6 +52,7 @@ const PHASES: Record<Kind, Record<string, Phase>> = {
   cook: { scout: 'scout', 'writing-plans': 'plan', 'subagent-driven-development': 'implement', ship: 'ship' },
   fix: { scout: 'fix', ship: 'ship' },
   hotfix: { scout: 'fix', ship: 'ship' },
+  task: {},
 }
 
 // FR-8.2: the skill name matches with or without `znf:` (hotfix calls `Skill(scout)`).
