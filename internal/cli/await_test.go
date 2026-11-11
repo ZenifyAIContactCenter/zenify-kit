@@ -408,6 +408,8 @@ func TestBuildAwaitRecordToRefusals(t *testing.T) {
 		{"handoff", "", "--to"},
 		{"handoff", "  ", "--to"},
 		{"needs-human", "X", "--to is only for kind handoff"},
+		{"handoff", "Tan\nrm -rf", "control characters"},
+		{"handoff", strings.Repeat("a", 101), "at most 100"},
 	}
 	for _, tc := range cases {
 		_, err := buildAwaitRecord(tc.kind, "s", "", "", tc.to, nil)

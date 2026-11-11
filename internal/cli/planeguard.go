@@ -40,9 +40,11 @@ func planeGuardDecision(tool, action string, hasAction bool, input map[string]js
 		return "deny"
 	}
 	if hasAction && tool == planeToolPrefix+"workitem" && (action == "create" || action == "update") {
-		var state string
-		if raw, ok := input["state"]; ok && json.Unmarshal(raw, &state) == nil && state != "" {
-			return "deny"
+		// Any state value other than null or "" denies, whatever its JSON type.
+		if raw, ok := input["state"]; ok {
+			if v := strings.TrimSpace(string(raw)); v != "null" && v != `""` {
+				return "deny"
+			}
 		}
 	}
 	return "ask"
@@ -73,7 +75,7 @@ const (
 // tool_input, a panic) prints ask, so bypassPermissions never runs it unprompted.
 func runPlaneGuard(stdin io.Reader, stdout io.Writer) (code int) {
 	isPlane := false
-	readOnly := os.Getenv("ZENIFY_PLANE_GUARD") == "read"
+	readOnly := strings.EqualFold(strings.TrimSpace(os.Getenv("ZENIFY_PLANE_GUARD")), "read")
 	failOut := planeAskOut
 	if readOnly {
 		failOut = planeDenyReadOut
@@ -87,11 +89,14 @@ func runPlaneGuard(stdin io.Reader, stdout io.Writer) (code int) {
 		}
 	}()
 	raw, err := io.ReadAll(stdin)
-	if err != nil {
+	var p planeGuardPayload
+	if err != nil || json.Unmarshal(raw, &p) != nil {
+		if readOnly {
+			_, _ = io.WriteString(stdout, failOut)
+		}
 		return 0
 	}
-	var p planeGuardPayload
-	if json.Unmarshal(raw, &p) != nil || !strings.HasPrefix(p.ToolName, planeToolPrefix) {
+	if !strings.HasPrefix(p.ToolName, planeToolPrefix) {
 		return 0
 	}
 	isPlane = true

@@ -87,9 +87,46 @@ func TestRunPlaneGuard_ReadMode(t *testing.T) {
 	if h := planeGuardRunOut(t, `{`+tool+`,"tool_input":{"action":"list"}}`).HookSpecificOutput; h.PermissionDecision != "allow" {
 		t.Errorf("list: %+v", h)
 	}
+	// Unreadable payload: read mode denies instead of staying silent.
+	for _, in := range []string{`garbage`, `{"tool_name":1}`} {
+		if h := planeGuardRunOut(t, in).HookSpecificOutput; h.PermissionDecision != "deny" {
+			t.Errorf("%s: want deny, got %+v", in, h)
+		}
+	}
+	// A non-Plane tool still prints nothing.
+	var out bytes.Buffer
+	runPlaneGuard(strings.NewReader(`{"tool_name":"Bash","tool_input":{}}`), &out)
+	if out.Len() != 0 {
+		t.Errorf("Bash: stdout must be empty, got %q", out.String())
+	}
+}
+
+// The env value is matched case-insensitively and trimmed, so a near-miss
+// spelling never silently re-opens writes.
+func TestRunPlaneGuard_ReadModeSpellings(t *testing.T) {
+	in := `{"tool_name":"mcp__zenify-plane__workitem","tool_input":{"action":"create"}}`
+	for env, want := range map[string]string{"Read": "deny", "READ": "deny", " read ": "deny", "": "ask"} {
+		t.Setenv("ZENIFY_PLANE_GUARD", env)
+		if h := planeGuardRunOut(t, in).HookSpecificOutput; h.PermissionDecision != want {
+			t.Errorf("env %q: want %s, got %+v", env, want, h)
+		}
+	}
 }
 
 func TestRunPlaneGuard_DenyStateWrite(t *testing.T) {
+	t.Setenv("ZENIFY_PLANE_GUARD", "")
+	for _, st := range []string{`123`, `{"id":"x"}`, `["x"]`} {
+		in := `{"tool_name":"mcp__zenify-plane__workitem","tool_input":{"action":"update","state":` + st + `}}`
+		if h := planeGuardRunOut(t, in).HookSpecificOutput; h.PermissionDecision != "deny" {
+			t.Errorf("state %s: want deny, got %+v", st, h)
+		}
+	}
+	for _, st := range []string{`null`, `""`} {
+		in := `{"tool_name":"mcp__zenify-plane__workitem","tool_input":{"action":"update","state":` + st + `}}`
+		if h := planeGuardRunOut(t, in).HookSpecificOutput; h.PermissionDecision != "ask" {
+			t.Errorf("state %s: want ask, got %+v", st, h)
+		}
+	}
 	h := planeGuardRunOut(t, `{"tool_name":"mcp__zenify-plane__workitem","tool_input":{"action":"update","state":"abc"}}`).HookSpecificOutput
 	if h.PermissionDecision != "deny" || !strings.Contains(h.PermissionDecisionReason, "state do Zenie chuyển") { //znf:allow-lang
 		t.Fatalf("got %+v", h)
@@ -105,6 +142,7 @@ type planeGuardOut struct {
 }
 
 func TestRunPlaneGuard_Output(t *testing.T) {
+	t.Setenv("ZENIFY_PLANE_GUARD", "")
 	var out bytes.Buffer
 	code := runPlaneGuard(strings.NewReader(`{"tool_name":"mcp__zenify-plane__workitem","tool_input":{"action":"create"}}`), &out)
 	if code != 0 {
@@ -148,6 +186,7 @@ func TestRunPlaneGuard_Output(t *testing.T) {
 // A Plane tool whose tool_input cannot be decoded (or whose action is not a
 // readable string) must ask; input whose tool_name cannot be read stays silent.
 func TestRunPlaneGuard_UndecodableInput(t *testing.T) {
+	t.Setenv("ZENIFY_PLANE_GUARD", "")
 	const tool = `"tool_name":"mcp__zenify-plane__workitem"`
 	for in, want := range map[string]string{
 		`{` + tool + `,"tool_input":[1]}`:                      "ask",

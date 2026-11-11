@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/brokerclient"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
@@ -201,6 +203,8 @@ func buildAwaitRecord(kind, summary, command, questionsPath, to string, files []
 		return awaitRecord{}, fmt.Errorf("handoff needs --to <name or @username>")
 	case kind != "handoff" && to != "":
 		return awaitRecord{}, fmt.Errorf("--to is only for kind handoff")
+	case utf8.RuneCountInString(to) > 100 || strings.IndexFunc(to, unicode.IsControl) >= 0:
+		return awaitRecord{}, fmt.Errorf("--to must be one name or @username: at most 100 characters, no control characters")
 	}
 	abs := make([]string, 0, len(files))
 	for _, f := range files {
