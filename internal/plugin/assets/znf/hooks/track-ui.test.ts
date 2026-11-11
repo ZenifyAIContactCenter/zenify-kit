@@ -51,6 +51,7 @@ const bl = (source: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
   ref: '-',
   title: `${source} title`,
   ageDays: 3,
+  code: '',
   ...over,
 })
 
@@ -61,7 +62,7 @@ test('SC-44: contextual tips by priority, one at most', () => {
   const backlog = { items: [bl('manual'), bl('github')], ghError: '' }
   const prs = { ...stats().today, prsOpened: 3, merged: 1, prsWaiting: 2 }
   // (2) no open id, backlog N > 0
-  expect(tail(stats({ backlog }))).toBe('track ⏸ · Today: 0/0 · Tip: 2 items in Backlog — type "hey claude next task"')
+  expect(tail(stats({ backlog }))).toBe('track ⏸ · Today: 0/0 · Tip: 2 items in Backlog — type "/znf:track ls"')
   // (3) open id, est not a size, agentMin >= 5
   const noEst = stats({ running: [item({ est: '-', wallMin: 5 })] })
   expect(tail(noEst, X).endsWith(' · Tip: no estimate yet — type "hey claude estimate this"')).toBe(true)
@@ -633,11 +634,35 @@ test('rollback reads the same on Today and Carried over', () => {
 })
 
 const noPlanStats = (over: Partial<TrackStats> = {}) => stats({ today: { ...stats().today, dailyPlan: null }, ...over } as Partial<TrackStats>)
-const planItem = (status: string, est: string, title: string) => ({ id: `i-${title}`, repo: 'kit', est, title, status, url: '' })
+const planItem = (status: string, est: string, title: string, code = '') => ({ id: `i-${title}`, code, repo: 'kit', est, title, status, url: '' })
 const withPlan = (items: ReturnType<typeof planItem>[], estMin: number, wallMin: number) =>
   stats({ today: { ...stats().today, dailyPlan: { items, estMin, wallMin } } } as Partial<TrackStats>)
 
-test('FR-3.1: fmtDur renders minutes under an hour, else hours and minutes', () => {
+test('FR-1.2: Plan row leads with the short code; an empty code keeps the old row', () => {
+  const s = withPlan([planItem('todo', 'S', 'a', 'b81e'), planItem('todo', 'S', 'b', '')], 30, 0)
+  const t = texts(tabLines('kitchen', s, A, undefined, NOW))
+  expect(t.slice(0, 3)).toEqual(['🗓 Plan', '- ☐ b81e · kit · S · a', '- ☐ kit · S · b'])
+})
+
+test('FR-1.2: Backlog row leads with the code', () => {
+  const s = stats({ backlog: { ghError: '', items: [bl('github', { code: '#581', repo: 'chatting', est: '-', title: 't', ageDays: 0 })] } })
+  expect(texts(tabLines('backlog', s, A, X, NOW))).toContain('#581 · chatting · - · t · 0d')
+})
+
+test('FR-1.2: a binary without code parses with code empty', () => {
+  const s = stats({ backlog: { ghError: '', items: [{ ...bl('manual'), code: undefined } as unknown as BacklogItem] } })
+  expect(parseTrackStats(JSON.stringify(s)).backlog.items?.[0].code).toBe('')
+  const p = withPlan([{ ...planItem('todo', 'S', 'a'), code: undefined } as unknown as ReturnType<typeof planItem>], 1, 0)
+  expect(parseTrackStats(JSON.stringify(p)).today.dailyPlan?.items[0].code).toBe('')
+})
+
+test('FR-2.4: Estimate shows the task block like hotfix, gated at 5 samples', () => {
+  const est = (n: number) => stats({ estimate: { byKind: {}, hotfix: { n: 0, medianMin: null, p90Min: null }, task: { n, medianMin: 30, p90Min: 50 }, phaseShare: {} } })
+  expect(texts(tabLines('estimate', est(5), A, X, NOW))).toContain('task: 5 items · median 30m · p90 50m')
+  expect(texts(tabLines('estimate', est(3), A, X, NOW))).toContain('task: need 5 samples (have 3)')
+})
+
+test('FR-6.3: fmtDur renders minutes under an hour, else hours and minutes', () => {
   expect(fmtDur(50)).toBe('50m')
   expect(fmtDur(180)).toBe('3h')
   expect(fmtDur(270)).toBe('4h30m')
@@ -690,7 +715,7 @@ test('SC-8: a PR status error is a warning line', () => {
 })
 
 test('SC-9: no-plan tip sits after carried and before backlog; tips=false hides it', () => {
-  const noPlan = 'Tip: no plan today — type "hey claude plan today"'
+  const noPlan = 'Tip: no plan today — type "/znf:track plan"'
   expect(COPY.tipNoPlan).toBe(noPlan)
   expect(statusText(noPlanStats(), A, undefined).endsWith(` · ${noPlan}`)).toBe(true)
   expect(statusText(noPlanStats(), A, undefined, false)).not.toContain('Tip:')

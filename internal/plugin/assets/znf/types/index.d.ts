@@ -26,6 +26,7 @@ export type TrackItem = {
 // One Backlog row; source is manual|github|sdd|stale (Go `trackstats.BacklogItem`).
 export type BacklogItem = {
   source: string
+  code: string
   id: string
   repo: string
   est: string
@@ -38,7 +39,7 @@ export type BacklogItem = {
 // `merged`: every PR of the item is merged (absent from an older binary: read as not merged).
 export type KitchenCooked = { id: string; brief: string; status: TrackItem['status']; endedAt: string; prs: string[] | null; merged?: boolean; est?: string; wallMin?: number }
 // One line of today's plan (Go `trackstats.DailyPlanItem`).
-export type DailyPlanItem = { id: string; repo: string; est: string; title: string; status: 'todo' | 'running' | 'done' | 'cancelled'; url: string }
+export type DailyPlanItem = { id: string; code: string; repo: string; est: string; title: string; status: 'todo' | 'running' | 'done' | 'cancelled'; url: string }
 export type DailyPlan = { items: DailyPlanItem[]; estMin: number; wallMin: number }
 // One open PR with its CI and review state (Go `trackstats.PRStatus`); '-' = unknown.
 export type PRStatus = {

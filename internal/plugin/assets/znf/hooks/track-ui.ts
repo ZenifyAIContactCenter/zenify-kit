@@ -16,7 +16,7 @@ export const COPY = {
   // FR-11.6: the status line's next step for a workspace that is not onboarded yet.
   onboard: 'Tip: onboard the agent to pick work — type "hey claude onboard track"',
   // FR-11.7: contextual tips; {N}, {est}, {min}, {max} are filled by tipFor.
-  tipBacklog: 'Tip: {N} items in Backlog — type "hey claude next task"',
+  tipBacklog: 'Tip: {N} items in Backlog — type "/znf:track ls"',
   tipNoEst: 'Tip: no estimate yet — type "hey claude estimate this"',
   tipOver: 'Tip: over est {est} ({min}m/{max}m) — split the work or re-estimate',
   // FR-5.1/FR-5.2: what needs action first; {num}, {N}, {id}, {D} are filled by tipFor.
@@ -28,7 +28,7 @@ export const COPY = {
   tipStaleSoon: 'Tip: {id} open {D} days — continue or cancel it',
   tipPr: 'Tip: {N} PRs waiting to merge — type "hey claude check PR"',
   // FR-11.4 (track-metrics): unfinished work from earlier days.
-  tipNoPlan: 'Tip: no plan today — type "hey claude plan today"',
+  tipNoPlan: 'Tip: no plan today — type "/znf:track plan"',
   tipCarried: 'Tip: {N} items carried over — type "hey claude continue"',
   noWorkspace: 'not in a zenify workspace',
   // The main screen reports no clicks: the tabs are reached by keys once the pane holds the keyboard.
@@ -64,6 +64,7 @@ export function parseTrackStats(stdout: string): TrackStats {
   if (!data || typeof data !== 'object' || typeof data.enabled !== 'boolean') {
     throw new Error('stats output is not track stats JSON')
   }
+  const withCode = <T extends { code?: string }>(i: T) => ({ ...i, code: i.code ?? '' })
   const today = {
     ...data.today,
     done: data.today?.done ?? {},
@@ -71,12 +72,12 @@ export function parseTrackStats(stdout: string): TrackStats {
     rolledBack: data.today?.rolledBack ?? {},
     wallMin: data.today?.wallMin ?? 0,
     agentMin: data.today?.agentMin ?? 0,
-    dailyPlan: data.today?.dailyPlan ?? null,
+    dailyPlan: data.today?.dailyPlan ? { ...data.today.dailyPlan, items: data.today.dailyPlan.items.map(withCode) } : null,
     prOpen: data.today?.prOpen ?? [],
     prStatusError: data.today?.prStatusError ?? '',
   }
   const item = (i: TrackItem): TrackItem => ({ ...i, wallMin: i.wallMin ?? 0, tab: i.tab ?? '' })
-  const backlog = { ghError: '', ...data.backlog, items: data.backlog?.items ?? [] }
+  const backlog = { ghError: '', ...data.backlog, items: (data.backlog?.items ?? []).map(withCode) }
   const kitchen = {
     titleError: '',
     ...data.kitchen,
@@ -300,7 +301,7 @@ function planLines(s: TrackStats): Line[] {
   if (!p || p.items.length === 0) return []
   const lines: Line[] = [head(`${ICON.plan} Plan`)]
   for (const i of p.items) {
-    const row = `- ${ICON.item[i.status] ?? ''} ${[i.repo, i.est, i.title].join(SEP)}`
+    const row = `- ${ICON.item[i.status] ?? ''} ${[...(i.code ? [i.code] : []), i.repo, i.est, i.title].join(SEP)}`
     lines.push(i.url ? { text: '', href: i.url, label: row } : plain(row))
   }
   lines.push(dim(`est ${fmtDur(p.estMin)}${SEP}used ${fmtDur(p.wallMin)}`), plain(''))
@@ -407,12 +408,15 @@ function estimateLines(s: TrackStats): Line[] {
     lines.push(labelled(k, gate(e.n, () => plain(`hit ${e.hit}/${e.n}${SEP}under ${e.low}${SEP}over ${e.high}`))))
   }
   const h = s.estimate.hotfix
-  if (h.n > 0) {
+  // An older binary has no task block: skip it.
+  const t = s.estimate.task ?? { n: 0, medianMin: null, p90Min: null }
+  for (const [label, b] of [['hotfix', h], ['task', t]] as const) {
+    if (b.n === 0) continue
     rows++
-    lines.push(labelled('hotfix', gate(h.n, () => plain(`${h.n} items${SEP}median ${min(h.medianMin)}${SEP}p90 ${min(h.p90Min)}`))))
+    lines.push(labelled(label, gate(b.n, () => plain(`${b.n} items${SEP}median ${min(b.medianMin)}${SEP}p90 ${min(b.p90Min)}`))))
   }
   // FR-2.5: the share by phase needs its kind's own sample.
-  const share = Object.entries(s.estimate.phaseShare ?? {}).filter(([k]) => (byKind[k]?.n ?? (k === 'hotfix' ? h.n : 0)) >= MIN_SAMPLES)
+  const share = Object.entries(s.estimate.phaseShare ?? {}).filter(([k]) => (byKind[k]?.n ?? (k === 'hotfix' ? h.n : k === 'task' ? t.n : 0)) >= MIN_SAMPLES)
   if (share.length > 0) lines.push(head('agent time by phase'))
   for (const [k, phases] of share) {
     lines.push(plain(`${k}: ${Object.entries(phases).map(([p, v]) => `${p} ${pct(v)}`).join(SEP)}`))
@@ -469,7 +473,7 @@ function backlogLines(s: TrackStats): Line[] {
     if (group.length === 0) continue
     lines.push(head(`${ICON.source[src] ?? ''} ${src}`.trim()))
     for (const i of group) {
-      const row = [i.repo, i.est, i.title, `${i.ageDays}d`].join(SEP)
+      const row = [...(i.code ? [i.code] : []), i.repo, i.est, i.title, `${i.ageDays}d`].join(SEP)
       // FR-5.2: a URL item is a link, so a truncated line stays clickable.
       const url = [i.ref, i.id].find(v => /^https?:\/\//.test(v ?? ''))
       lines.push(url ? { text: '', href: url, label: row } : plain(row))
