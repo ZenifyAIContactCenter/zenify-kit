@@ -39,3 +39,39 @@ func TestShipGate_AutonomousUI(t *testing.T) {
 	ref := syncedAsset(t, "skills/ship/references/autonomous-ui.md")
 	assertContainsAll(t, "autonomous-ui.md", ref, []string{"ZNF_SANDBOX_WEB_PORT", "exit 8"})
 }
+
+// FR-2: ship step 4 runs the tests affected by the branch; the rules live in a reference (SKILL.md is at its byte budget).
+func TestShipTestScope(t *testing.T) {
+	skill := syncedAsset(t, "skills/ship/SKILL.md")
+	if !strings.Contains(skill, "references/test-scope.md") {
+		t.Error("ship SKILL.md must link references/test-scope.md")
+	}
+	ref := syncedAsset(t, "skills/ship/references/test-scope.md")
+	assertContainsAll(t, "test-scope.md", ref, []string{
+		`"$(zenify wt base)"`, "--changed", "--changedSince", "git config --worktree --get wt.type",
+		"hotfix", "full suite", "timeout", "background", "count", "ship fix loop",
+	})
+	if strings.Contains(ref, "references/") {
+		t.Error("test-scope.md must not contain the string references/")
+	}
+}
+
+// FR-4 / SC-5: after opening the PR, ship runs the project's declared bot-review loop (SKILL.md is at its byte budget).
+func TestShipPRReviewLoop(t *testing.T) {
+	skill := syncedAsset(t, "skills/ship/SKILL.md")
+	assertContainsAll(t, "ship SKILL.md", skill, []string{
+		"references/pr-review-loop.md", "`--watch` → `Skill(znf:ci-watch)`",
+	})
+	ref := syncedAsset(t, "skills/ship/references/pr-review-loop.md")
+	assertContainsAll(t, "pr-review-loop.md", ref, []string{
+		"PR review check:", "CLAUDE.md", "headRefOid", "conclusion", "only that check", "ONE commit",
+		"MEDIUM", "decline syntax", "git fetch", "30 minutes", "never force-push", "Skill(znf:review)",
+		"3 rounds", "green", "ci-watch", "no such line",
+		"Watch applies", "CI round", "Every stop below ends only this loop", "voids 2 and 3", "do not push",
+	})
+	for _, banned := range []string{"references/", "Zenie", "zenieai"} {
+		if strings.Contains(ref, banned) {
+			t.Errorf("pr-review-loop.md must not contain %q", banned)
+		}
+	}
+}

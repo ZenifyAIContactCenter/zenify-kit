@@ -52,8 +52,9 @@ Subagent (general-purpose):
     **While you work:** If you encounter something unexpected or unclear, **ask questions**.
     It's always OK to pause and clarify. Don't guess or make assumptions.
 
-    While iterating, run the focused test for what you're changing. Before you
-    report DONE, run the project's full suite (not only your own test files).
+    Run the focused tests for the files you change, while iterating and before DONE.
+    Do not run the full suite: CI runs it on the PR, and ship runs the branch's affected tests.
+    A test command that may run over 2 minutes gets an explicit `timeout` or runs in the background.
     A red test you did not cause: list its name in your report and do not fix it.
 
     ## Test quality
@@ -154,7 +155,7 @@ Subagent (general-purpose):
       - RED: command run, relevant failing output before implementation, and why the failure was expected
       - GREEN: command run and relevant passing output after implementation
       - Alternative to RED/GREEN, only when no independent expected value exists: `No TDD: <why>` + real-run output
-    - Full suite result; names of any red tests you did not cause
+    - Test command you ran and the number of tests it ran; names of any red tests you did not cause
     - Files changed
     - Skills invoked (names), or "no skills routed"
     - Self-review findings (if any)
