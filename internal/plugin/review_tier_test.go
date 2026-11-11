@@ -25,10 +25,14 @@ func TestSelectTier(t *testing.T) {
 		{"200", "0", "0", "T1"},
 		{"350", "0", "0", "T2"},
 		{"600", "0", "0", "T2"},
-		{"900", "0", "0", "T3"},
+		{"900", "0", "0", "T2"},
+		{"700", "0", "0", "T2"},
+		{"150", "0", "0", "T1"},
+		{"150", "1", "0", "T2"},
 		{"50", "1", "0", "T2"},  // W3: shared floors at T2 (was forced T3)
 		{"300", "1", "0", "T2"}, // shared + medium -> T2
-		{"700", "1", "0", "T3"}, // shared + large -> T3 by size
+		{"700", "1", "0", "T2"}, // shared + large -> T2: size never forces T3
+		{"5000", "1", "1", "T3"},
 		{"50", "0", "1", "T3"},  // critical forces T3 regardless of size
 		{"700", "0", "1", "T3"},
 	}

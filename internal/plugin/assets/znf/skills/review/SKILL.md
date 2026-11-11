@@ -69,7 +69,7 @@ ENGINE=$(zenify reviewer 2>/dev/null | cut -d' ' -f1); [ -n "$ENGINE" ] || ENGIN
 ```
 
 Line 1 = tier, line 2 = the reason. **Print tier + reason on the report** before dispatching.
-Tier rule: `CRITICAL=1` → T3 at any size; else T1 ≤200 LOC / T2 201–600 / T3 >600, and `SHARED=1`
+Tier rule: `CRITICAL=1` → T3 at any size; else T1 ≤200 LOC / T2 >200, and `SHARED=1`
 **floors at T2** (T2's `contracts` goes to opus when shared).
 
 ## Step 3 — REVIEW dispatch by tier

@@ -2,9 +2,9 @@
 # Mechanical tier selection for znf:review (no LLM guessing).
 # Input : ADDED_LOC (added+removed lines), SHARED (0|1 touches a shared contract), CRITICAL (0|1).
 # Output: line 1 = T1|T2|T3 ; line 2 = reason: <why>.
-# Rule (W3, size-aware):
+# Rule: size never forces T3
 #   CRITICAL=1           -> T3 regardless of size
-#   else size ladder     -> T1 <=200 | T2 201..600 | T3 >600
+#   else                 -> T1 <=200 | T2 >200
 #   SHARED=1 floor       -> never below T2 (T2 already runs a `contracts` dimension)
 set -euo pipefail
 
@@ -19,10 +19,8 @@ if [ "$critical" = "1" ]; then
   echo "T3"; echo "reason: critical area -> adversarial verify regardless of size"
   exit 0
 fi
-if [ "$loc" -gt 600 ]; then
-  echo "T3"; echo "reason: large diff (>600 LOC) -> adversarial verify"
-elif [ "$loc" -gt 200 ]; then
-  echo "T2"; echo "reason: medium diff (201-600 LOC) -> 5-dimension fan-out"
+if [ "$loc" -gt 200 ]; then
+  echo "T2"; echo "reason: diff >200 LOC -> 5-dimension fan-out"
 elif [ "$shared" = "1" ]; then
   echo "T2"; echo "reason: small diff touching a shared contract -> T2 floor (contracts dimension)"
 else
