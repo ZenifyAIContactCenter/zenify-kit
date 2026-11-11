@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.65.0
+
+*2026-11-11*
+
+- **`plane-guard` chặn hẳn việc đặt `state`:** `workitem create/update` có `state` (khác rỗng) qua MCP `zenify-plane` bị từ chối thay vì hỏi, vì Zenie là bên chuyển state. Đổi assignee và các thao tác ghi khác vẫn hỏi như cũ; `wt new zen-<n>` không đi qua MCP nên vẫn nhận việc được. Xem [Plane cho agent](/guides/broker-client#plane-cho-agent).
+- **Chế độ chỉ đọc cho Plane:** đặt env `ZENIFY_PLANE_GUARD=read` thì mọi thao tác ghi Plane qua MCP đều bị từ chối, kể cả khi input hỏng; dùng cho worker không người. Xem [Plane cho agent](/guides/broker-client#plane-cho-agent).
+- **`zenify await handoff --to <tên hoặc @username>`:** điểm dừng mới để agent đề nghị giao việc cho một người; host (Zenie) đọc trường `to` và thực hiện việc giao. Xem [Bảy điểm dừng](/guides/autonomous#bảy-điểm-dừng).
+
 ## v0.64.0
 
 *2026-11-11*
