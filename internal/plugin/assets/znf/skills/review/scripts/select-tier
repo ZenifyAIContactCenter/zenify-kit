@@ -2,6 +2,7 @@
 # Mechanical tier selection for znf:review (no LLM guessing).
 # Input : ADDED_LOC (added+removed lines), SHARED (0|1 touches a shared contract), CRITICAL (0|1).
 # Output: line 1 = T1|T2|T3 ; line 2 = reason: <why>.
+# znf:ui-verify-ok: regex false positive on review/ (views?/ is unanchored); this diff renders no UI
 # Rule: size never forces T3
 #   CRITICAL=1           -> T3 regardless of size
 #   else                 -> T1 <=200 | T2 >200
