@@ -39,13 +39,9 @@ func newTrackPlanSetCmd(ws *string) *cobra.Command {
 				return err
 			}
 			now := time.Now()
-			ids := make([]string, 0, len(args))
-			for _, a := range args {
-				id, err := resolveRef(filepath.Dir(trackLogPath(wsDir)), wsDir, a, scopePlanAll, now)
-				if err != nil {
-					return err
-				}
-				ids = append(ids, id)
+			ids, err := resolveRefs(filepath.Dir(trackLogPath(wsDir)), wsDir, args, scopePlanAll, now)
+			if err != nil {
+				return err
 			}
 			return runTrackPlanSet(w, cmd.ErrOrStderr(), trackLogPath(wsDir), now.Local().Format("2006-01-02"), ids)
 		},
@@ -101,13 +97,9 @@ func newTrackPlanEditCmd(ws *string, add bool) *cobra.Command {
 				return err
 			}
 			now := time.Now()
-			ids := make([]string, 0, len(args))
-			for _, a := range args {
-				id, err := resolveRef(filepath.Dir(trackLogPath(wsDir)), wsDir, a, scope, now)
-				if err != nil {
-					return err
-				}
-				ids = append(ids, id)
+			ids, err := resolveRefs(filepath.Dir(trackLogPath(wsDir)), wsDir, args, scope, now)
+			if err != nil {
+				return err
 			}
 			return runTrackPlanEdit(w, cmd.ErrOrStderr(), trackLogPath(wsDir), now.Local().Format("2006-01-02"), ids, add)
 		},

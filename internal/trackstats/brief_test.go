@@ -37,12 +37,12 @@ func TestBrief(t *testing.T) {
 	for _, want := range []string{`"enabled":true`, `"onboarded":true`, `"date":"2026-11-05"`, `"scale":{"S":15,"M":45,"L":120}`,
 		`"carried":[{"id":"cook-261104-bbbb","brief":"carry","kind":"cook","repo":"kit","est":"L","phase":"plan"}]`, `"mergedError":"merged boom"`,
 		`"dailyPlan":{"items":[`, `"prOpen":[{"url":"https://github.com/o/r/pull/1","repo":"r","number":1,"ci":"failure","review":"-","threads":2,"ready":false}]`,
-		`"prStatusError":"boom"`, `"ghError":"gh down"`, `"source":"github"`, `"code":"#3"`, `"ageDays":4`} {
+		`"prStatusError":"boom"`, `"ghError":"gh down"`, `"running":[{"id":"cook-261104-bbbb","kind":"","repo":"","est":"L","session":""}]`, `"source":"github"`, `"code":"#3"`, `"ageDays":4`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %s in %s", want, s)
 		}
 	}
-	for _, gone := range []string{`"quality"`, `"estimate"`, `"items":[{"id":"cook-261105-aaaa"`, `"session"`, `"createdAt"`, `"ref"`} {
+	for _, gone := range []string{`"quality"`, `"estimate"`, `"items":[{"id":"cook-261105-aaaa"`, `"cwd"`, `"createdAt"`, `"ref"`} {
 		if strings.Contains(s, gone) {
 			t.Errorf("brief must not carry %s: %s", gone, s)
 		}
@@ -55,7 +55,7 @@ func TestBriefEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"carried":[]`, `"prOpen":[]`, `"backlog":[]`, `"dailyPlan":null`} {
+	for _, want := range []string{`"carried":[]`, `"prOpen":[]`, `"backlog":[]`, `"running":[]`, `"dailyPlan":null`} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("missing %s in %s", want, out)
 		}

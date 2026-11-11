@@ -8,8 +8,8 @@ Khi bạn muốn thao tác với Plan và Backlog của pane track mà không g�
 ## Cách hoạt động
 
 1. Verb đầu tiên của args quyết định việc làm: `add`, `drop`, `ls`, `plan`, `plan +`, `plan -`, `go`, `done`, `cancel`, `est`, `help`. Không có verb hoặc verb lạ thì skill in bảng help và không chạy lệnh ghi nào.
-2. Mã ngắn (`b81e`, `#581`, `<repo>#581`, `ZEN-288`) được truyền nguyên cho CLI; CLI tự resolve. Mã trùng hoặc không khớp thì CLI thoát lỗi kèm danh sách ứng viên và skill đưa nguyên thông báo cho bạn chọn.
-3. `done`, `cancel`, `est` làm việc trên id đang mở của session; không còn id trong hội thoại thì skill đọc các item `running` của `zenify track stats --brief`: đúng một item thì dùng, từ hai item thì hỏi bạn, không có thì báo và không đoán.
+2. Mã ngắn (`b81e`, `#581`, `<repo>#581`; `ZEN-288` dùng được sau khi nguồn Plane vào ở PR2) được truyền nguyên cho CLI, bọc trong nháy đơn vì zsh coi từ bắt đầu bằng `#` là comment; CLI tự resolve. Mã trùng hoặc không khớp thì CLI thoát lỗi kèm danh sách ứng viên và skill đưa nguyên thông báo cho bạn chọn.
+3. `done`, `cancel`, `est` làm việc trên id đang mở của session; không còn id trong hội thoại thì skill đọc mảng `running` của `zenify track stats --brief`: đúng một item thì dùng, từ hai item thì hỏi bạn, không có thì báo và không đoán.
 4. `go <mã>` gọi `znf:cook` hoặc `znf:fix` cho việc có code, hoặc `zenify track start --kind task` cho việc ops không có PR.
 
 ## Lưu ý

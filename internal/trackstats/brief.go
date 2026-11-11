@@ -17,6 +17,7 @@ type BriefResult struct {
 	PRStatusError string         `json:"prStatusError"`
 	MergedError   string         `json:"mergedError"`
 	Backlog       []BriefBacklog `json:"backlog"`
+	Running       []BriefRunning `json:"running"`
 	GhError       string         `json:"ghError"`
 }
 
@@ -34,6 +35,15 @@ type BriefCarried struct {
 	Repo  string `json:"repo"`
 	Est   string `json:"est"`
 	Phase string `json:"phase"`
+}
+
+// BriefRunning is one open item, so the agent can find its own track id.
+type BriefRunning struct {
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
+	Repo    string `json:"repo"`
+	Est     string `json:"est"`
+	Session string `json:"session"`
 }
 
 type BriefPR struct {
@@ -70,11 +80,15 @@ func Brief(r Result) BriefResult {
 		Carried:       []BriefCarried{},
 		PROpen:        []BriefPR{},
 		Backlog:       []BriefBacklog{},
+		Running:       []BriefRunning{},
 	}
 	// Carried items are open (running or stale), so Running holds their estimate.
 	est := map[string]string{}
 	for _, it := range r.Running {
 		est[it.ID] = it.Est
+	}
+	for _, it := range r.Running {
+		b.Running = append(b.Running, BriefRunning{ID: it.ID, Kind: it.Kind, Repo: it.Repo, Est: it.Est, Session: it.Session})
 	}
 	for _, c := range r.Kitchen.Carried {
 		e := est[c.ID]

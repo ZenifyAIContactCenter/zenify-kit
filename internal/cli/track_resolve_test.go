@@ -129,3 +129,73 @@ func TestTrackDropGithubURL(t *testing.T) {
 		}
 	}
 }
+
+func TestResolvePlannedURLRepoDash(t *testing.T) {
+	noGh(t)
+	ws := trackWS(t, true)
+	seedGhCache(t, ws)
+	oldM := trackMerged
+	trackMerged = func(string) (string, error) { return "", nil }
+	t.Cleanup(func() { trackMerged = oldM })
+	u := "https://github.com/o/r/pull/4"
+	if _, err := runTrack(t, ws, "plan", "set", u); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runTrack(t, ws, "plan", "rm", "r#4"); err != nil {
+		t.Fatalf("plan rm r#4: %v", err)
+	}
+}
+
+func TestTrackPlanAddTwoShortCodes(t *testing.T) {
+	noGh(t)
+	ws := trackWS(t, true)
+	a := addBacklog(t, ws, "x", "--repo", "kit")
+	b := addBacklog(t, ws, "y", "--repo", "kit")
+	out, err := runTrack(t, ws, "plan", "add", a[len(a)-4:], b[len(b)-4:])
+	if err != nil || out != "track: plan 2 items\n" {
+		t.Fatalf("add two short codes: %q %v", out, err)
+	}
+}
+
+func TestResolveAmbiguousStripsControlChars(t *testing.T) {
+	noGh(t)
+	ws := trackWS(t, true)
+	seedGhCache(t, ws,
+		trackstats.Issue{URL: "https://github.com/Z/a/issues/5", Repo: "a", Title: "evil \x1b[31mred", CreatedAt: time.Now()},
+		trackstats.Issue{URL: "https://github.com/Z/b/issues/5", Repo: "b", Title: "ok", CreatedAt: time.Now()},
+	)
+	_, err := runTrack(t, ws, "plan", "set", "#5")
+	if err == nil {
+		t.Fatal("want ambiguous error")
+	}
+	if strings.ContainsRune(err.Error(), 0x1b) || !strings.Contains(err.Error(), "evil [31mred") {
+		t.Fatalf("err = %q", err.Error())
+	}
+}
+
+func TestTrackDropStaleItemRefused(t *testing.T) {
+	noGh(t)
+	ws := trackWS(t, true)
+	dir := filepath.Join(ws, ".zenify", "track")
+	for _, d := range []string{"sessions", "live"} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().UTC().Add(-8 * 24 * time.Hour).Format(time.RFC3339)
+	const id = "cook-261020-0001"
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(old+" · start · "+id+" · cook · kit · M\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sessions", "s.log"), []byte(old+" · bind · "+id+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := trackLog(t, ws)
+	_, err := runTrack(t, ws, "backlog", "drop", "0001")
+	if err == nil || !strings.Contains(err.Error(), "is an open tracked item; close it with zenify track end "+id+" --cancelled --rounds 0") {
+		t.Fatalf("err = %v", err)
+	}
+	if trackLog(t, ws) != before {
+		t.Fatal("log changed")
+	}
+}

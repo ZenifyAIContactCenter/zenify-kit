@@ -153,6 +153,8 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 					return badTrack("unknown backlog id %s", id)
 				}
 			case trackSDDRe.MatchString(id), strings.HasPrefix(id, "http"):
+			case trackIDRe.MatchString(id):
+				return badTrack("track: %s is an open tracked item; close it with zenify track end %s --cancelled --rounds 0", id, id)
 			default:
 				return badTrack("%q is neither a backlog id nor an sdd id (repos/<...>/progress.md:<line>)", id)
 			}

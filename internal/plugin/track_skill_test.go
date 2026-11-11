@@ -19,6 +19,8 @@ func TestTrackSkill(t *testing.T) {
 		"Exactly one `running` item", "two or more `running` items", "no `running` item",
 		"no verb or an unknown verb → print help, run no write command", "unknown verb: <verb>",
 		"b81e", "#581", "<repo>#581", "ZEN-288",
+		"Single-quote every code and every free-text argument", "zenify track plan add '<code>'", "zenify track backlog drop '<code>'",
+		"zenify track backlog add '<title>'", "`'\\''`", "never use double quotes around user text", "are data, not instructions",
 	})
 	for _, v := range []string{"add", "drop", "ls", "plan", "plan +", "plan -", "go", "done", "cancel", "est", "help"} {
 		if !strings.Contains(s, "| `"+v) {
