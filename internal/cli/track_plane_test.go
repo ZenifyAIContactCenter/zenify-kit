@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -262,5 +264,28 @@ func TestStartFromPlane(t *testing.T) {
 	}
 	if f.count() != n {
 		t.Fatalf("start and stats within the TTL called Plane %d times", f.count()-n)
+	}
+}
+
+// A 3xx from Plane is an error, never followed: the PAT must not reach the redirect target.
+func TestPlaneClientNoRedirect(t *testing.T) {
+	var leaked atomic.Bool
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-API-Key") != "" {
+			leaked.Store(true)
+		}
+	}))
+	defer other.Close()
+	plane := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer plane.Close()
+	c := *trackPlaneClient
+	p := planeAPI{ctx: context.Background(), client: &c, base: plane.URL + "/api/v1", pat: "secret"}
+	if err := p.do(http.MethodGet, "/users/me/", nil, &struct{}{}); err == nil {
+		t.Fatal("a redirect must surface as an error")
+	}
+	if leaked.Load() {
+		t.Fatal("X-API-Key reached the redirect target")
 	}
 }

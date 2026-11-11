@@ -16,7 +16,8 @@ import (
 )
 
 // trackPlaneClient sends the backlog's Plane calls; a test points it at an httptest server.
-var trackPlaneClient = &http.Client{}
+// Like planeHTTP it never follows a redirect, so X-API-Key cannot reach another host.
+var trackPlaneClient = &http.Client{CheckRedirect: planeHTTP.CheckRedirect}
 
 // planeOpenGroups are the state groups of a work item still to be done.
 var planeOpenGroups = []string{"backlog", "unstarted", "started"}
