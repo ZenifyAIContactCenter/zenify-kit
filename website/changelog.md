@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.66.0
+
+*2026-11-11*
+
+- **Test chạy đúng phạm vi:** implementer trong `/znf:cook` chỉ chạy test của phần mình sửa; `/znf:ship` chạy test bị ảnh hưởng so với base và báo số test đã chạy (0 test không tính là pass); worktree hotfix vẫn chạy full suite. Full suite của PR thường để CI chạy. Xem [Ship](/workflows/ship).
+- **Ship tự xử lý review trên PR:** sau khi mở PR, ship đọc dòng `PR review check:` trong `CLAUDE.md`, chờ riêng check đó (tối đa 30 phút), check đỏ thì tự sửa trong một commit mỗi vòng, chạy lại test và review cục bộ rồi mới push, tối đa 3 vòng; check xanh mới chờ CI. Project không khai báo dòng này thì ship giữ hành vi cũ. Xem [Ship](/workflows/ship).
+- **Chọn mức review theo vùng nhạy cảm, không theo kích thước:** diff lớn không còn tự lên T3 (5 reviewer opus); T3 chỉ chạy khi diff đổi file code nằm trong thư mục hoặc có tên đúng bằng `auth`, `iam`, `oauth`, `security`, `permission(s)`, `tenant(s)`, `migration(s)` (thư mục như `_auth` không tính). Xem [Review và gate](/guides/review-and-gates).
+
 ## v0.65.0
 
 *2026-11-11*
