@@ -13,11 +13,12 @@ If no such line exists, report the PR URL and stop (the step 7 behaviour without
 ```bash
 REPO=<owner/repo>; PR=<n>; SHA=<sha>; PREV=<sha or empty>; SINCE=<time or empty>; deadline=$((SECONDS+1800))
 while :; do
-  row=$(gh pr view "$PR" -R "$REPO" --json headRefOid,statusCheckRollup --jq '[.headRefOid] + ([.statusCheckRollup[] | select(.__typename=="CheckRun" and .name=="<check>")] | sort_by(.startedAt) | last | [.status, .conclusion, .startedAt]) | @tsv') || { sleep 30; continue; }
-  IFS=$'\t' read -r head st concl started <<<"$row"
-  if [ "$head" = "$SHA" ]; then
-    [ "$st" = COMPLETED ] && [[ "$started" > "$SINCE" ]] && { echo "$concl"; exit 0; }
-  elif [ "$head" != "$PREV" ]; then echo "head moved to $head"; exit 2; fi
+  if row=$(gh pr view "$PR" -R "$REPO" --json headRefOid,statusCheckRollup --jq '[.headRefOid] + ([.statusCheckRollup[] | select(.__typename=="CheckRun" and .name=="<check>")] | sort_by(.startedAt) | last | [.status, .conclusion, .startedAt]) | map(. // "-") | @tsv'); then
+    IFS=$'\t' read -r head st concl started <<<"$row"
+    if [ "$head" = "$SHA" ]; then
+      [ "$st" = COMPLETED ] && [[ "$started" > "$SINCE" ]] && { echo "$concl"; exit 0; }
+    elif [ "$head" != "$PREV" ]; then echo "head moved to $head"; exit 2; fi
+  fi
   [ "$SECONDS" -lt "$deadline" ] || { echo "no verdict after 30 minutes: $st $concl"; exit 1; }
   sleep 30
 done
@@ -40,7 +41,7 @@ A push or a re-run each counts as one round.
 1. `git fetch`. If the remote branch moved, rebase the unpushed fix commit onto it; never force-push. A rebase conflict → stop and report. The head the bot reviewed stays an ancestor, so `BASE` still resolves.
 2. Run the tests related to the fix, scoped as in `test-scope.md`.
 3. `Skill(znf:review)` with `BASE` = the head the bot last reviewed; fix what it finds in the same commit.
-4. Push, set `PREV` to the old head, `SHA` to the new head, `SINCE` empty, go back to 2.
+4. Push, set `PREV` to the remote head you fetched in 1 (the PR head before your push), `SHA` to the new head, `SINCE` empty, go back to 2.
 
 ## 6. Stop
 - The check is green → wait for the PR's other checks via ci-watch step 4 (with `--watch`, run the full `Skill(znf:ci-watch)` instead), then report.
