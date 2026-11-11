@@ -77,7 +77,7 @@ Khi tính năng bật, ship tìm issue theo thứ tự: số issue bạn đưa t
 
 ### Mã ticket trong tiêu đề PR
 
-Khi tên branch có `zen-<n>` ở ranh giới slug (regex `(^|[/-])zen-(\d+)(-|$)`, không phân biệt hoa thường, ví dụ `<user>/fix/zen-123-foo`; `frozen-12-x`, `citizen-3`, `dozen-5` không khớp; nhiều chỗ khớp thì lấy chỗ đầu tiên), ship đặt mã viết hoa ngay sau dấu hai chấm: `<type>(<scope>): ZEN-<n> <mô tả>`. Branch không có mã thì tiêu đề giữ nguyên. Với stacked PR, thân PR của mọi lớp trừ lớp trên cùng có dòng `Part of ZEN-<n>`.
+Khi tên branch có `zen-<n>` ở ranh giới slug (regex `(^|[/-])zen-(\d+)(-|$)`, không phân biệt hoa thường, ví dụ `<user>/fix/zen-123-foo`; `frozen-12-x`, `citizen-3`, `dozen-5` không khớp; nhiều chỗ khớp thì lấy chỗ đầu tiên), ship đặt mã viết hoa ngay sau dấu hai chấm: `<type>(<scope>): ZEN-<n> <mô tả>`. Mã đó đứng đầu; ship cộng thêm mọi mã trong dòng `**Việc Plane:**` của spec/plan (`/cook`) hoặc phần `## Intent` của ship-pack (`/fix`, `/hotfix`), bỏ trùng, nên tiêu đề có thể là `<type>(<scope>): ZEN-<a>, ZEN-<b> <mô tả>`; mã luôn ngay sau dấu hai chấm, không bao giờ ở cuối, và ship không quét `ZEN-n` ở chỗ khác (dòng `**Liên quan:**` không tính). Không có mã nào thì tiêu đề giữ nguyên, không cảnh báo. Với stacked PR, thân PR của mọi lớp trừ lớp trên cùng có dòng `Part of ZEN-<n>`.
 
 ### Stacked PR
 
