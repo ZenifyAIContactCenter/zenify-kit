@@ -10,10 +10,14 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 )
+
+// planeProjectWorkers bounds the projects fetched at once.
+const planeProjectWorkers = 4
 
 // trackPlaneClient sends the backlog's Plane calls; a test points it at an httptest server.
 // Like planeHTTP it never follows a redirect, so X-API-Key cannot reach another host.
@@ -121,17 +125,36 @@ func fetchPlaneMine(p planeAPI, ws, browse string) ([]trackstats.PlaneItem, erro
 	if err != nil {
 		return nil, err
 	}
-	var items []trackstats.PlaneItem
-	var errs []string
-	for _, pr := range projects {
+	// Projects run in parallel (bounded) so a workspace with many of them fits the one deadline;
+	// results keep the project order.
+	type result struct {
+		items []trackstats.PlaneItem
+		err   error
+	}
+	res := make([]result, len(projects))
+	sem := make(chan struct{}, planeProjectWorkers)
+	var wg sync.WaitGroup
+	for i, pr := range projects {
 		if pr.IsMember != nil && !*pr.IsMember {
 			continue // a public project the developer is not in answers 403 and holds none of their items
 		}
-		got, err := planeProjectMine(p, wsPath+url.PathEscape(pr.ID)+"/", pr.Identifier, me.ID, ws, browse)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("project %s: %v", pr.Identifier, err))
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			got, err := planeProjectMine(p, wsPath+url.PathEscape(pr.ID)+"/", pr.Identifier, me.ID, ws, browse)
+			res[i] = result{got, err}
+		}()
+	}
+	wg.Wait()
+	var items []trackstats.PlaneItem
+	var errs []string
+	for i, r := range res {
+		if r.err != nil {
+			errs = append(errs, fmt.Sprintf("project %s: %v", projects[i].Identifier, r.err))
 		}
-		items = append(items, got...)
+		items = append(items, r.items...)
 	}
 	if len(errs) > 0 {
 		return items, errors.New(strings.Join(errs, "; "))

@@ -289,3 +289,56 @@ func TestPlaneClientNoRedirect(t *testing.T) {
 		t.Fatal("X-API-Key reached the redirect target")
 	}
 }
+
+// Projects are fetched in parallel, so a workspace with many projects fits the one deadline; items
+// keep the project order of the list.
+func TestPlaneProjectsInParallel(t *testing.T) {
+	var inflight, peak atomic.Int32
+	idents := []string{"A", "B", "C", "D", "E", "F"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		switch {
+		case strings.HasSuffix(p, "/users/me/"):
+			io.WriteString(w, `{"id":"me"}`)
+		case strings.HasSuffix(p, "/workspaces/zenify/projects/"):
+			var rs []string
+			for _, id := range idents {
+				rs = append(rs, `{"id":"`+id+`","identifier":"`+id+`","is_member":true}`)
+			}
+			io.WriteString(w, `{"results":[`+strings.Join(rs, ",")+`],"next_page_results":false}`)
+		case strings.HasSuffix(p, "/states/"):
+			n := inflight.Add(1)
+			for {
+				if old := peak.Load(); n <= old || peak.CompareAndSwap(old, n) {
+					break
+				}
+			}
+			deadline := time.Now().Add(300 * time.Millisecond)
+			for inflight.Load() < 2 && time.Now().Before(deadline) {
+				time.Sleep(5 * time.Millisecond)
+			}
+			inflight.Add(-1)
+			io.WriteString(w, `{"results":[{"id":"s","group":"started"}],"next_page_results":false}`)
+		case strings.HasSuffix(p, "/work-items/"):
+			io.WriteString(w, `{"results":[{"sequence_id":1,"name":"x","state":"s","assignees":["me"],"created_at":"2026-11-09T19:53:02.803317Z"}],"next_page_results":false}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	p := planeAPI{ctx: context.Background(), client: srv.Client(), base: srv.URL + "/api/v1", pat: "k"}
+	items, err := fetchPlaneMine(p, "zenify", "https://plane.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for _, it := range items {
+		keys = append(keys, it.Key)
+	}
+	if strings.Join(keys, ",") != "A-1,B-1,C-1,D-1,E-1,F-1" {
+		t.Fatalf("keys = %v", keys)
+	}
+	if peak.Load() < 2 {
+		t.Fatalf("projects fetched one at a time (peak in-flight %d)", peak.Load())
+	}
+}
