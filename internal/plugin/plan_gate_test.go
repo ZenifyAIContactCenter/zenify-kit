@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestImplementerPromptMandatesTDDAndFullSuite(t *testing.T) {
+func TestImplementerPromptFocusedTestsOnly(t *testing.T) {
 	s := syncedAsset(t, "skills/subagent-driven-development/implementer-prompt.md")
-	assertContainsAll(t, "implementer-prompt", s, []string{"full suite", "did not cause", "skill-routing"})
-	for _, bad := range []string{"if task says to", "if TDD was required"} {
+	assertContainsAll(t, "implementer-prompt", s, []string{"full suite", "did not cause", "skill-routing", "CI", "affected tests", "timeout"})
+	for _, bad := range []string{"if task says to", "if TDD was required", "run the project's full suite", "Full suite result"} {
 		if strings.Contains(strings.ToLower(s), strings.ToLower(bad)) {
 			t.Errorf("implementer-prompt still contains %q", bad)
 		}
