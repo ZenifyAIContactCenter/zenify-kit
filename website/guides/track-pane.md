@@ -32,8 +32,8 @@ Status line luôn hiện, kể cả khi pane đóng. Toàn bộ chữ trên pane
 - Khi tab này chưa có việc mở, tip việc cần xử lý ngay đứng trước các tip bên dưới: PR có CI đỏ, rồi PR còn thread chưa resolve, rồi PR bị yêu cầu sửa, rồi PR đã sẵn sàng merge, rồi việc carried over đã mở từ 5 ngày trở lên hoặc bị stale (`Tip: <id> open <n> days — continue or cancel it`).
 - Tip theo ngữ cảnh: mỗi lúc tối đa một tip, nối cuối dòng bằng ` · `, chọn theo thứ tự ưu tiên (onboard ở trên trước; rồi carried over, chưa có plan, Backlog):
   - tab này không có id mở và còn việc làm dở từ các ngày trước: `Tip: N items carried over — type "hey claude continue"`
-  - tab này không có id mở, đã onboard và hôm nay chưa có plan: `Tip: no plan today — type "hey claude plan today"` (xem [Daily plan](#daily-plan))
-  - tab này không có id mở và Backlog còn việc: `Tip: N items in Backlog — type "hey claude next task"`
+  - tab này không có id mở, đã onboard và hôm nay chưa có plan: `Tip: no plan today — type "/znf:track plan"` (xem [Daily plan](#daily-plan))
+  - tab này không có id mở và Backlog còn việc: `Tip: N items in Backlog — type "/znf:track ls"`
   - có id mở, chưa có estimate và đã chạy từ 5 phút: `Tip: no estimate yet — type "hey claude estimate this"`
   - có id mở, đã vượt ngưỡng của size est: `Tip: over est M (50m/45m) — split the work or re-estimate`
   - còn PR đã mở (bất kỳ ngày nào) chưa merge: `Tip: N PRs waiting to merge — type "hey claude check PR"`
