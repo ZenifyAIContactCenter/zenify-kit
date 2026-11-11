@@ -10,10 +10,10 @@ Run the tests affected by the branch against `$(zenify wt base)`, using the proj
 Run in the background, or with an explicit `timeout` longer than the suite; a run cut by the 2-minute tool limit has no result.
 
 ## Report
-Give the command and the count of tests that ran; a run of zero tests is not a pass.
+Give the command and the count of tests that ran; a run of zero tests is not a pass. No test covers the change → `Skill(znf:run)`, as step 4 says.
 
 ## Fix loop
 The ship fix loop re-runs step 4 with this same scope, never wider.
 
 ## Why
-The full suite belongs to CI on the PR, which runs it on every push.
+The full suite belongs to CI on the PR.
