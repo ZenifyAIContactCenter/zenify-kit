@@ -105,7 +105,7 @@ export type TrackStats = {
   estimate: {
     byKind: Record<string, { n: number; hit: number; low: number; high: number }> | null
     hotfix: { n: number; medianMin: number | null; p90Min: number | null }
-    task: { n: number; medianMin: number | null; p90Min: number | null }
+    task?: { n: number; medianMin: number | null; p90Min: number | null }
     phaseShare: Record<string, Record<string, number>> | null
   }
   quality: {

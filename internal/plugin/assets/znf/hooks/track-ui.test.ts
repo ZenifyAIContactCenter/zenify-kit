@@ -662,7 +662,7 @@ test('FR-2.4: Estimate shows the task block like hotfix, gated at 5 samples', ()
   expect(texts(tabLines('estimate', est(3), A, X, NOW))).toContain('task: need 5 samples (have 3)')
 })
 
-test('FR-6.3: fmtDur renders minutes under an hour, else hours and minutes', () => {
+test('FR-3.1: fmtDur renders minutes under an hour, else hours and minutes', () => {
   expect(fmtDur(50)).toBe('50m')
   expect(fmtDur(180)).toBe('3h')
   expect(fmtDur(270)).toBe('4h30m')

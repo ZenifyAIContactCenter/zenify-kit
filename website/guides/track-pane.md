@@ -48,7 +48,7 @@ Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. 
 |---|---|
 | **Kitchen** | Tab mặc định, giống nhau ở mọi session. Thứ tự từ trên xuống: `🗓 Plan` (chỉ khi hôm nay đã có plan, xem [Daily plan](#daily-plan)), `📌 Carried over` (xem [Việc làm dở và ngày làm việc cuối](#việc-làm-dở-và-ngày-làm-việc-cuối)), `🥘 Cooking`, `🔥 Rolling boil`, `🍳 Cooked`. `🔥 Rolling boil`: các tab Claude Code đang chờ bạn, mỗi dòng `- <❓ hoặc 🔐> <thời gian chờ> <tab>` (`45s`, `2m`, `2h`, làm tròn xuống); không có thì hiện `no tab is waiting`. `🍳 Cooked`: các việc đã xong hôm nay, mỗi dòng `- <icon> <HH:MM> <brief>` (có est thì thêm ` · M→52m`: est và wall time thật; wall đã chạm mốc của size thì thêm ` ⚠`; giờ máy; icon cho biết kết quả: ✅ done và mọi PR đã merge, ⏳ done nhưng còn PR chưa merge, 🚀 pushed, ⛔ cancelled, ↩️ rollback), mỗi PR một dòng `  🔗 <repo>#<n>` là link bấm được tới PR; chưa có thì hiện `nothing finished today`. Lấy tiêu đề lỗi thì có dòng `⚠ title error: <nguyên nhân>` |
 | **Today** | Hôm nay của cả workspace: `Done`, `started`, `Cancelled`, `Rollback` (mục bằng 0 thì ẩn), `Time <wall>m · agent <n>m`, `SDD tasks` (chỉ khi hôm nay có cook xong), `Rounds`, `PR n opened · m merged` và mỗi PR đã mở chưa merge một dòng link (xem [PR cần hành động](#pr-cần-hành-động)), `Plans written today` theo repo; danh sách `Running` gom theo session, tab hiện tại ghi `(this tab)`; việc bị bỏ dở ghi `stale` |
-| **Estimate** | Với mỗi loại (cook, fix, hotfix): est đúng/thấp/cao so với thực tế (`hit`, `under`, `over`); hotfix hiện số việc, trung vị và p90; `agent time by phase` là tỉ lệ thời gian agent theo giai đoạn |
+| **Estimate** | Với mỗi loại (cook, fix, hotfix): est đúng/thấp/cao so với thực tế (`hit`, `under`, `over`); hotfix và `task` (việc ops, xem [Việc ops](#việc-ops-kind-task)) hiện số việc, trung vị và p90 (block `task` chỉ hiện khi đã có việc `task` xong; `task` không góp vào thang S/M/L); `agent time by phase` là tỉ lệ thời gian agent theo giai đoạn |
 | **Quality** | Với mỗi loại: tỉ lệ ship bị chặn và bước chặn nhiều nhất, finding C/H/M/L trung bình, số vòng fix loop, tỉ lệ CI đỏ lần đầu, tỉ lệ thời gian chờ; với fix/hotfix thêm ROUND trung bình, tỉ lệ sửa diện rộng và tỉ lệ có regression test. Pane không hiện token (JSON của `zenify track stats --json` vẫn giữ) |
 | **Backlog** | Việc chưa làm, nhóm theo nguồn: `manual`, `github`, `sdd`, `stale`. Mỗi dòng `repo · est · title · <số ngày>d`; mục có URL là link bấm được (xem [Backlog](#backlog)). Backlog rỗng hiện `Backlog is empty`; lấy issue GitHub lỗi thì có dòng `⚠ github: <nguyên nhân>` |
 
@@ -109,6 +109,8 @@ zenify track plan set b-261105-ab12 https://github.com/org/repo/pull/3 cook-2611
 ```
 
 - Id nhận được: `bid` của backlog, URL issue hoặc PR, id `sdd` (`repos/<...>/progress.md:<dòng>`), id track (`cook|fix|hotfix-YYMMDD-xxxx`). Id sai định dạng hoặc không có id nào thì lệnh thoát khác 0 và không ghi; id trùng trong một lệnh chỉ giữ một.
+- Mỗi dòng Plan bắt đầu bằng mã ngắn, ví dụ `- ☐ b81e · chatting · S · …` (xem [Mã ngắn](#mã-ngắn)).
+- Sửa plan mà không phải gõ lại cả danh sách: `zenify track plan add <mã>…` thêm vào plan hôm nay, `zenify track plan rm <mã>…` bỏ ra. Mã không khớp mục nào (hoặc `rm` mục không có trong plan) thì lệnh thoát khác 0 và không ghi. Bỏ hết mục thì pane không còn khối Plan.
 - Plan lại = chạy `plan set` lại với cả danh sách; dòng `plan` mới nhất của hôm nay thắng, plan của ngày khác bị bỏ qua.
 - Mỗi mục có trạng thái `todo`, `running`, `done` hoặc `cancelled`, lấy từ track item tương ứng; mục chỉ là URL PR thì `done` khi PR đã merge.
 - Trên tab `Kitchen`, phần `🗓 Plan` liệt kê `- ☐|▶|✅|⛔ <repo> · <est> · <title>` (có link nếu có URL) rồi dòng mờ `est <x> · used <y>`: tổng mốc của thang S/M/L hiện hành và tổng wall time của các việc trong plan (dưới 60 phút viết `Nm`, còn lại `3h` hoặc `4h30m`).
@@ -142,6 +144,8 @@ Tab `Backlog` gom việc chưa làm từ bốn nguồn:
 
 Thứ tự nguồn khi agent lấy việc tiếp theo: danh sách `backlog` trước. Chỉ khi nó rỗng hoặc `zenify track stats --brief` báo `ghError`, agent mới chạy `gh search issues --assignee @me --state open` và `gh search prs --review-requested @me --state open`, đưa kết quả cho bạn chọn rồi start bằng `--from <url>`. Digest đầu session nhắc agent chạy `zenify track stats --brief` trước khi chọn việc. `--brief` là JSON gọn cho agent (việc dở, plan, PR mở, backlog với tiêu đề cắt 80 ký tự, thang S/M/L), không có thời gian, token hay số liệu chất lượng; trên workspace thật nó nhỏ hơn `--json` khoảng 3 lần (7 KB so với 22 KB với 31 mục backlog). Pane vẫn dùng `--json`.
 
+Mỗi dòng Backlog cũng bắt đầu bằng mã ngắn (`b81e` cho việc thêm tay, `#581` cho issue GitHub). Đây là mã bạn gõ vào prompt hoặc vào `/znf:track`.
+
 Mục có `ref` hoặc `id` là URL `http…` hiện thành dòng link: chữ bấm được là `repo · est · title · <số ngày>d`, trỏ tới URL đó. Dòng là link thì dù bị cắt vẫn bấm được.
 
 Mở tab `Backlog` thì pane chạy lại số liệu và bỏ qua cache backlog 5 phút (`zenify track stats --json --force`), nên issue GitHub mới hiện ngay. Các lần chạy khác dùng cache. Lấy GitHub lỗi (ví dụ chưa `gh auth login`) thì tab báo `⚠ github: ...`, ba nguồn còn lại vẫn hiện.
@@ -153,9 +157,48 @@ zenify track start --kind fix --repo kit --est S --from b-261030-ab12
 ```
 
 - `backlog add "<title>" --repo <r> [--est S|M|L] [--ref <url|memory:<name>>]` thêm việc và in id `b-YYMMDD-xxxx`.
-- `backlog drop <bid|sdd id>` bỏ việc khỏi backlog; id `sdd` có dạng `repos/<...>/progress.md:<dòng>`.
-- `track start --from <bid|issue URL|sdd id>` ghi việc lấy từ backlog, nên nó biến khỏi tab khi đã bắt đầu. Mỗi mục chỉ được lấy một lần: nếu tab khác đã lấy (đang chạy hoặc đã kết thúc) thì lệnh thoát khác 0 và không ghi gì, kèm `is taken by <id> (session <8 ký tự>)` hoặc `was taken by <id> (ended)`. Hai lệnh start chạy cùng lúc thì chỉ một lệnh thành công.
+- `backlog drop <bid|mã ngắn|sdd id>` bỏ việc khỏi backlog (issue GitHub cũng bỏ được: bằng `#581` hoặc URL); id `sdd` có dạng `repos/<...>/progress.md:<dòng>`.
+- `track start --from <bid|mã ngắn|issue URL|sdd id>` ghi việc lấy từ backlog, nên nó biến khỏi tab khi đã bắt đầu. Mỗi mục chỉ được lấy một lần: nếu tab khác đã lấy (đang chạy hoặc đã kết thúc) thì lệnh thoát khác 0 và không ghi gì, kèm `is taken by <id> (session <8 ký tự>)` hoặc `was taken by <id> (ended)`. Hai lệnh start chạy cùng lúc thì chỉ một lệnh thành công.
 - Tab Backlog xếp theo size S, M, L, `-` (cùng size thì việc cũ hơn trước), bỏ việc `manual` trùng tiêu đề với issue github, và ẩn việc `stale` khi session của nó còn heartbeat trong 30 giây.
+
+## Mã ngắn
+
+Mỗi mục trong Plan và Backlog có một mã ngắn ở đầu dòng. Bốn dạng:
+
+- `b81e`: bốn ký tự cuối của `bid` (`b-261111-b81e`), cho việc thêm tay.
+- `#581`: số issue GitHub; `<repo>#581` khi hai repo có cùng số.
+- `ZEN-288`: khóa work item Plane.
+
+CLI nhận mã ở `start --from`, `plan set`, `plan add`, `plan rm` và `backlog drop`, rồi tự resolve ra id đầy đủ. Khớp đúng một mục thì chạy; không khớp mục nào hoặc khớp từ hai mục (ví dụ `#5` có ở hai repo) thì lệnh thoát khác 0, in danh sách ứng viên và không ghi gì; lúc đó gõ lại với `<repo>#<n>`. Agent truyền nguyên mã bạn gõ cho CLI, không tự resolve.
+
+## Việc ops (kind `task`)
+
+Việc không có code và không có PR (hạ tầng, dữ liệu, cấu hình, điều tra) vẫn đo được:
+
+```bash
+zenify track start --kind task --repo infrastructure --est - --from b81e
+zenify track end <id> --done --rounds 0
+```
+
+- `end --done` là outcome riêng (không kèm `--pr`, `--branch`, `--rollback` hay `--cancelled`: quá một outcome thì lệnh thoát khác 0). Việc có status `done` và tính vào `Done` của tab Today.
+- `task` không góp vào thang S/M/L hay `byKind`; tab Estimate hiện block `task` riêng (số việc, trung vị, p90 wall time) và tab Quality không có block này.
+
+## `/znf:track`
+
+Một skill, nhiều verb, dùng mã ngắn thay vì gõ `zenify track …`:
+
+| Verb | Việc làm |
+|---|---|
+| `add <mô tả> [--plane]` | thêm vào backlog, in mã mới (`--plane` chỉ dùng được khi có `zenify plane create`, sau PR2) |
+| `drop <mã>` | bỏ khỏi backlog |
+| `ls` | in Plan rồi Backlog, mỗi dòng có mã |
+| `plan` | lập plan hôm nay (chỉ ghi sau khi bạn duyệt) |
+| `plan +<mã>…`, `plan -<mã>…` | `plan add` và `plan rm` |
+| `go <mã>` | bắt đầu việc: việc code thì chạy `znf:cook` hoặc `znf:fix`, việc ops thì `start --kind task` |
+| `done [--pr <url>…]`, `cancel`, `est S\|M\|L` | đóng, huỷ, đặt est cho việc đang mở |
+| `help [verb]` | in bảng verb, không chạy lệnh ghi |
+
+Gõ `/znf:track` không kèm verb, hoặc kèm verb lạ, thì skill chỉ in bảng help. `done`, `cancel`, `est` dùng id session đã nhận lúc `start`; mất id thì skill đọc các item `running`: đúng một thì dùng, từ hai thì hỏi bạn, không có thì báo. CLI báo lỗi (mã trùng, `taken by`) thì skill đưa nguyên thông báo cho bạn chọn, không tự thử lại.
 
 ## Onboard
 
