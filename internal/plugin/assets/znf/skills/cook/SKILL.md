@@ -65,7 +65,7 @@ Before dispatching SDD, **`Skill(znf:analyze)`** on the spec+plan pair (absolute
 
 ## Step 6: Implement (`znf:subagent-driven-development`)
 
-> **Isolation & base-ref doctrine → znf:discipline §8** (single source). Below is only what `/cook` adds.
+> **Isolation & base-ref doctrine → znf:discipline §8**. Below is only what `/cook` adds.
 
 **A worktree, always — house rule #8, no conditions.**
 
@@ -75,7 +75,7 @@ cd <repo> && wt new <slug: plane-key.md> --type feat --base "$(node -e 'console.
 ```
 
 - **Polyrepo:** one worktree per repo, **same slug**; one implementer per repo, a dependent repo gated on the other's **contract-frozen** commit. Re-entering `/cook` is not a second worktree: `cd` into it.
-- A definition of done only the running app can show → **`Skill(znf:run)`** before the task loop.
+- A definition of done only the running app can show → **`Skill(znf:run)`** once before the task loop, kept up.
 
 If the plan has a `## Stack` block, `gh stack --help` must run; if not, stop before the first task and report `gh extension install github/gh-stack` (see `references/step6-implementation-notes.md`).
 
