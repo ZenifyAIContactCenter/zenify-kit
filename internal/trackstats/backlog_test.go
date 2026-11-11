@@ -298,6 +298,19 @@ func TestBacklogPlaneErrorIsolated(t *testing.T) {
 	}
 }
 
+// FR-5.3 the other way: a GitHub error leaves Plane items alone.
+func TestBacklogGitHubErrorKeepsPlane(t *testing.T) {
+	in := base("")
+	in.GitHub = func() ([]Issue, error) { return nil, errors.New("gh down") }
+	in.Plane = func() ([]PlaneItem, error) {
+		return []PlaneItem{{Key: "ZEN-288", URL: plane288, Title: "a", CreatedAt: now}}, nil
+	}
+	r, _ := Compute(in)
+	if r.Backlog.GhError == "" || r.Backlog.PlaneError != "" || sources(r)["plane"] != 1 {
+		t.Fatalf("backlog = %+v", r.Backlog)
+	}
+}
+
 // SC-12 stats part: a Plane item taken by start --from or dropped leaves the backlog.
 func TestBacklogPlaneHiddenByFromAndDrop(t *testing.T) {
 	in := base(lines(
