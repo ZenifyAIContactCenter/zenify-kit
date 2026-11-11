@@ -53,7 +53,7 @@ flowchart TD
 | 1 | Xác định vùng thay đổi từ file đã đổi | Không cần làm gì |
 | 2 | Lint và build/typecheck vùng đó, lấy output thật | Đọc output |
 | 3 | Nếu chạm DB collection, endpoint, queue hoặc channel chung, chạy contract gate | Đọc repo nào bị ảnh hưởng |
-| 4 | Verify hành vi: test nếu có, hoặc `/znf:run`. **Nếu diff chạm giao diện**, ship kiểm thử UI — golden-diff `zenify visual check` (khi repo có `.znf/visual/routes.json`) rồi `znf:ui-verifier` đo overflow phần tử đã đổi. Chi tiết ở [Kiểm thử UI](/workflows/ui-testing) | Đọc kết quả, kể cả số liệu overflow nếu là UI |
+| 4 | Verify hành vi: test bị ảnh hưởng so với base (hotfix: full suite), hoặc `/znf:run`. **Nếu diff chạm giao diện**, ship kiểm thử UI — golden-diff `zenify visual check` (khi repo có `.znf/visual/routes.json`) rồi `znf:ui-verifier` đo overflow phần tử đã đổi. Chi tiết ở [Kiểm thử UI](/workflows/ui-testing) | Đọc kết quả, kể cả số liệu overflow nếu là UI |
 | 5 | Review độc lập (gói ý định của `/znf:fix` và `/znf:hotfix` có dòng `Loop:`/`Regression:`) trên diff tính từ `git merge-base "$(zenify wt base)" HEAD` (xem [base thật của worktree](/concepts/base-ref-and-ports#wt-base)), nên commit mới trên base không hiện thành xoá giả. CRITICAL/HIGH vào vòng sửa, MEDIUM/LOW lên board | Đọc finding |
 | Vòng sửa | Sửa hết finding mở trong một wave, chạy lại check liên quan, tối đa 2 vòng | Nếu còn mở sau vòng 2, ship dừng, không commit, và báo bạn |
 | 6 | Xác định thứ tự deploy (đa service) | Đọc thứ tự |
@@ -100,6 +100,8 @@ Bạn merge stack từ dưới lên; merge PR N thì mọi PR chưa merge bên d
 ## Sau khi mở PR: `--watch`
 
 `/znf:ship --watch` gọi `znf:ci-watch` sau khi mở PR. Khi feature `track` bật (`zenify feature track on`), ship coi như luôn có `--watch` và truyền id track cho ci-watch để ghi kết quả CI vào sổ (`zenify track ci`). Ngoài chờ CI xanh, ci-watch còn chờ PR ở trạng thái CLEAN (CI xanh chưa đủ: review bắt buộc, review thread và check của app khác vẫn có thể chặn merge). Khi CLEAN, nó in URL PR đầy đủ và lệnh để bạn tự chạy: `! gh pr merge -R <owner/repo> <n> --merge`. Bị chặn thì nó liệt kê review thread chưa resolve (hoặc check bắt buộc đang đỏ) rồi dừng; ci-watch không resolve thread và không merge. Xem [`ci-watch`](/reference/skills/ci-watch).
+
+Nếu `CLAUDE.md` của project có dòng `PR review check:`, sau khi mở PR ship tự chờ đúng check review đó trên commit vừa push (tối đa 30 phút), sửa mọi finding blocking trong một commit mỗi vòng, tối đa 3 vòng, và chỉ chờ CI (như trên) khi check review đã xanh. Sau 3 vòng vẫn đỏ thì ship dừng và báo các finding còn mở. Không có dòng đó thì ship báo URL PR rồi dừng như cũ.
 
 ## Quyết định thuộc về bạn
 

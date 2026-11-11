@@ -23,11 +23,11 @@ Stamp each check with its `fp`; step 7 needs all current.
 
 1. **Scope**: list the changed areas from the changed files.
 
-2. **Static checks**: per changed area run lint and build/typecheck, reporting the real output — no pass without it. **Never assume `npm`**: `pm run lint` / `pm run build`. Then `zenify rules lint ~/.zenify/knowledge/.config/rules` (kit repo: `zenify rules lint --include-go` too) — one non-English agent-read line fails it.
+2. **Static checks**: per changed area run lint and build/typecheck, reporting the real output — no pass without it. **Never assume `npm`**: `pm run lint` / `pm run build`. Then `zenify rules lint ~/.zenify/knowledge/.config/rules` (kit repo: `zenify rules lint --include-go` too).
 
 3. **Contract gate**: anything shared touched (collection, endpoint, queue, pub/sub channel) → run the project's contract gate and report the repos it found. Never judge a change "local".
 
-4. **Behavioural verification**: tests if any exist, else **`Skill(znf:run)`**, which reports the URL `znf:ui-verifier` needs — "it builds" is not "it works". **A suite that ran nothing is not a pass**: report the count.
+4. **Behavioural verification**: affected tests (`references/test-scope.md`), else **`Skill(znf:run)`**, which reports the URL `znf:ui-verifier` needs — "it builds" is not "it works".
 
    ```bash
    zenify ui-verify files --base "$(zenify wt base)" --count
@@ -92,7 +92,7 @@ Fill the `look:`/review sub-lines per the template. **Before concluding: `zenify
 
 Then push and `zenify docs sync` (fails open).
 
-**On all-green, commit and push the FEATURE branch** — same branch name across repos, message in the repo's convention. **Then open the PR yourself and stop** (`--watch` → `Skill(znf:ci-watch)`): `gh pr create`, one per repo onto its base (protected is fine, a PR deploys nothing), title and body per `references/pr-message-language.md` (`zen-<n>` key: `ZEN-<n>` title, `Part of ZEN-<n>` non-top layers). Report URLs.
+**On all-green, commit and push the FEATURE branch** — same branch name across repos, message in the repo's convention. **Then open the PR yourself, then `references/pr-review-loop.md`** (`--watch` → `Skill(znf:ci-watch)`): `gh pr create`, one per repo onto its base (protected is fine, a PR deploys nothing), title and body per `references/pr-message-language.md` (`zen-<n>` key: `ZEN-<n>` title, `Part of ZEN-<n>` non-top layers). Report URLs.
 
 **Merging is the user's deploy decision — NEVER merge, including a PR you opened**: no `gh pr merge`, no merge or push into a deploy/protected branch (see `.claude/deploy-branches`). Any ❌ → fix, no commit.
 
@@ -106,3 +106,5 @@ Then push and `zenify docs sync` (fails open).
 - `references/stacked-ship.md` — per-layer review.
 - `references/autonomous-ui.md` — step 4 under `ZNF_AUTONOMOUS=1`.
 - `references/github-issues.md` — issues.
+- `references/test-scope.md`
+- `references/pr-review-loop.md`
