@@ -267,6 +267,12 @@ func newTrackStartCmd(ws *string) *cobra.Command {
 			if err := validTrackText("--repo", repo); err != nil {
 				return err
 			}
+			if from != "" {
+				// Resolve before the log lock: stats read the log and may wait on gh.
+				if from, err = resolveRef(filepath.Dir(trackLogPath(wsDir)), wsDir, from, scopeBacklog, time.Now()); err != nil {
+					return err
+				}
+			}
 			id, err := runTrackStart(cmd.ErrOrStderr(), trackLogPath(wsDir), kind, repo, est, from)
 			if err != nil {
 				return err

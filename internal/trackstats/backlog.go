@@ -74,7 +74,7 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		}
 		seen := map[string]bool{}
 		for _, is := range issues {
-			if seen[is.URL] || from[is.URL] {
+			if seen[is.URL] || from[is.URL] || dropped[is.URL] {
 				continue
 			}
 			seen[is.URL] = true

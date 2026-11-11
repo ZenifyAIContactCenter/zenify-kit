@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,8 +35,16 @@ func newTrackPlanSetCmd(ws *string) *cobra.Command {
 				_, err = fmt.Fprintln(w, "track: off")
 				return err
 			}
-			today := time.Now().Local().Format("2006-01-02")
-			return runTrackPlanSet(w, cmd.ErrOrStderr(), trackLogPath(wsDir), today, args)
+			now := time.Now()
+			ids := make([]string, 0, len(args))
+			for _, a := range args {
+				id, err := resolveRef(filepath.Dir(trackLogPath(wsDir)), wsDir, a, scopePlanAll, now)
+				if err != nil {
+					return err
+				}
+				ids = append(ids, id)
+			}
+			return runTrackPlanSet(w, cmd.ErrOrStderr(), trackLogPath(wsDir), now.Local().Format("2006-01-02"), ids)
 		},
 	}
 }

@@ -157,7 +157,7 @@ func parseListRow(at time.Time, p []string) (Event, bool) {
 			ok = bidRe.MatchString(p[2]) && f[0] != "" && oneOf(f[1], "S", "M", "L", "-") && f[2] != "" && f[3] != ""
 		}
 	case "drop":
-		ok = len(f) == 0 && (bidRe.MatchString(p[2]) || sddRe.MatchString(p[2]))
+		ok = len(f) == 0 && (bidRe.MatchString(p[2]) || sddRe.MatchString(p[2]) || (strings.HasPrefix(p[2], "http") && validHTTPURL(p[2])))
 	case "onboard":
 		ok = len(f) == 0 && p[2] == "memory"
 	case "plan":
