@@ -33,7 +33,7 @@ func TestSelectTier(t *testing.T) {
 		{"300", "1", "0", "T2"}, // shared + medium -> T2
 		{"700", "1", "0", "T2"}, // shared + large -> T2: size never forces T3
 		{"5000", "1", "1", "T3"},
-		{"50", "0", "1", "T3"},  // critical forces T3 regardless of size
+		{"50", "0", "1", "T3"}, // critical forces T3 regardless of size
 		{"700", "0", "1", "T3"},
 	}
 	for _, c := range cases {

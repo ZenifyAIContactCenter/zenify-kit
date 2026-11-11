@@ -67,6 +67,7 @@ func TestShipPRReviewLoop(t *testing.T) {
 		"PR review check:", "CLAUDE.md", "headRefOid", "conclusion", "only that check", "ONE commit",
 		"MEDIUM", "decline syntax", "git fetch", "30 minutes", "never force-push", "Skill(znf:review)",
 		"3 rounds", "green", "ci-watch", "no such line",
+		"Watch applies", "CI round", "Every stop below ends only this loop", "voids 2 and 3", "do not push",
 	})
 	for _, banned := range []string{"references/", "Zenie", "zenieai"} {
 		if strings.Contains(ref, banned) {
