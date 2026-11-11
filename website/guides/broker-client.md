@@ -131,7 +131,7 @@ Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn v�
 
 ## Plane cho agent
 
-`zenify-plane` là MCP server kiểu stdio: Claude Code chạy `zenify plane-mcp` bằng PAT Plane của chính bạn, không đi qua broker. Agent đọc work item, cycle, module trực tiếp; mọi thao tác ghi luôn hỏi bạn trước (hook `plane-guard`).
+`zenify-plane` là MCP server kiểu stdio: Claude Code chạy `zenify plane-mcp` bằng PAT Plane của chính bạn, không đi qua broker. Agent đọc work item, cycle, module trực tiếp; mọi thao tác ghi luôn hỏi bạn trước (hook `plane-guard`); đặt `state` cho work item qua `workitem create/update` bị chặn hẳn (Zenie tự chuyển state). Đặt env `ZENIFY_PLANE_GUARD=read` thì mọi thao tác ghi đều bị chặn, kể cả khi input hỏng.
 
 Cách bật:
 
