@@ -49,7 +49,7 @@ func newPlaneCreateCmd() *cobra.Command {
 				return exitcode.New(exitcode.Fail, err)
 			}
 			if conn == nil {
-				return exitcode.New(exitcode.BadArgs, errors.New("Plane is not set up: the manifest has no plane or "+planePATKey+" is empty; run `zenify up --apply`"))
+				return exitcode.New(exitcode.BadArgs, errors.New("plane is not set up: the manifest has no plane or "+planePATKey+" is empty; run `zenify up --apply`"))
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), trackGhTimeout)
 			defer cancel()
@@ -108,7 +108,7 @@ func planeCreate(p planeAPI, c *planeConn, project, title, description string) (
 		return "", err
 	}
 	if wi.SequenceID == 0 {
-		return "", errors.New("Plane created the work item but returned no sequence_id")
+		return "", errors.New("plane created the work item but returned no sequence_id")
 	}
 	key := fmt.Sprintf("%s-%d", ident, wi.SequenceID)
 	return fmt.Sprintf("plane: %s %s/%s/browse/%s/", key, c.browse, c.ws, key), nil
