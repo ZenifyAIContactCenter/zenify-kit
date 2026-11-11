@@ -23,7 +23,7 @@ export type TrackItem = {
   tokens: Record<string, { in: number; out: number; cacheRead: number; cacheCreation: number }> | null
 }
 
-// One Backlog row; source is manual|github|sdd|stale (Go `trackstats.BacklogItem`).
+// One Backlog row; source is manual|plane|github|sdd|stale (Go `trackstats.BacklogItem`).
 export type BacklogItem = {
   source: string
   code: string
@@ -124,7 +124,7 @@ export type TrackStats = {
     > | null
     fix: { n: number; roundAvg: number | null; wideRate: number | null; regressionRate: number | null }
   }
-  backlog: { items: BacklogItem[] | null; ghError: string }
+  backlog: { items: BacklogItem[] | null; ghError: string; planeError: string }
   onboarded: boolean
   kitchen: {
     carried: KitchenCarried[] | null

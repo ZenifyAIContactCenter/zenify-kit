@@ -19,6 +19,7 @@ type BriefResult struct {
 	Backlog       []BriefBacklog `json:"backlog"`
 	Running       []BriefRunning `json:"running"`
 	GhError       string         `json:"ghError"`
+	PlaneError    string         `json:"planeError"`
 }
 
 // BriefScale holds the S/M/L upper bounds in minutes, used to size a daily plan.
@@ -77,6 +78,7 @@ func Brief(r Result) BriefResult {
 		PRStatusError: r.Today.PRStatusError,
 		MergedError:   r.Today.MergedError,
 		GhError:       r.Backlog.GhError,
+		PlaneError:    r.Backlog.PlaneError,
 		Carried:       []BriefCarried{},
 		PROpen:        []BriefPR{},
 		Backlog:       []BriefBacklog{},

@@ -23,7 +23,16 @@ type SDDItem struct {
 	ModTime time.Time
 }
 
-// BacklogItem is one row of the Backlog tab; Source is manual|github|sdd|stale.
+// PlaneItem is one open Plane work item assigned to the developer. URL is the
+// browse URL <plane>/<workspace>/browse/<Key>/.
+type PlaneItem struct {
+	Key       string
+	URL       string
+	Title     string
+	CreatedAt time.Time
+}
+
+// BacklogItem is one row of the Backlog tab; Source is manual|plane|github|sdd|stale.
 type BacklogItem struct {
 	Source  string `json:"source"`
 	ID      string `json:"id"`
@@ -36,8 +45,9 @@ type BacklogItem struct {
 }
 
 type Backlog struct {
-	Items   []BacklogItem `json:"items"`
-	GhError string        `json:"ghError"`
+	Items      []BacklogItem `json:"items"`
+	GhError    string        `json:"ghError"`
+	PlaneError string        `json:"planeError"`
 }
 
 func ageDays(now, t time.Time) int {
@@ -48,7 +58,7 @@ func ageDays(now, t time.Time) int {
 	return d
 }
 
-// computeBacklog gathers manual, github, sdd and stale items. from holds the
+// computeBacklog gathers manual, plane, github, sdd and stale items. from holds the
 // ids and URLs already taken by a `start --from`, dropped the `drop` rows. It
 // also returns the issues GitHub gave, so the source is asked once.
 func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item) (Backlog, []Issue) {
@@ -64,6 +74,20 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 			continue
 		}
 		b.Items = append(b.Items, BacklogItem{Source: "manual", ID: e.ID, Code: Code(e.ID), Repo: e.F[0], Est: e.F[1], Ref: e.F[2], Title: e.F[3], AgeDays: ageDays(in.Now, e.At)})
+	}
+	if in.Plane != nil {
+		got, err := in.Plane()
+		if err != nil {
+			b.PlaneError = err.Error()
+		}
+		seen := map[string]bool{}
+		for _, p := range got {
+			if seen[p.URL] || from[p.URL] || dropped[p.URL] {
+				continue
+			}
+			seen[p.URL] = true
+			b.Items = append(b.Items, BacklogItem{Source: "plane", ID: p.URL, Code: Code(p.URL), Repo: "-", Est: "-", Ref: p.URL, Title: p.Title, AgeDays: ageDays(in.Now, p.CreatedAt)})
+		}
 	}
 	var issues []Issue
 	if in.GitHub != nil {
@@ -123,7 +147,7 @@ func dedupeAndSort(items []BacklogItem) []BacklogItem {
 		}
 		out = append(out, it)
 	}
-	srcRank := map[string]int{"manual": 0, "github": 1, "sdd": 2, "stale": 3}
+	srcRank := map[string]int{"manual": 0, "plane": 1, "github": 2, "sdd": 3, "stale": 4}
 	estRank := map[string]int{"S": 0, "M": 1, "L": 2}
 	rank := func(e string) int {
 		if r, ok := estRank[e]; ok {

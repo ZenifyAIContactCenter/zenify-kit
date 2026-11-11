@@ -679,7 +679,7 @@ func computeTrackStatsInput(dir, wsDir, today string, now time.Time, force bool)
 	if err != nil {
 		return trackstats.Result{}, trackstats.Input{}, err
 	}
-	in.GitHub, in.SDD = backlogSources(dir, wsDir, force, now)
+	in.GitHub, in.Plane, in.SDD = backlogSources(dir, wsDir, force, now)
 	b, err := os.ReadFile(filepath.Join(dir, "log.md")) //nolint:gosec // G304 -- dir is a CLI flag of a local helper
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return trackstats.Result{}, trackstats.Input{}, err

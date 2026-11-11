@@ -50,7 +50,7 @@ Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. 
 | **Today** | Hôm nay của cả workspace: `Done`, `started`, `Cancelled`, `Rollback` (mục bằng 0 thì ẩn), `Time <wall>m · agent <n>m`, `SDD tasks` (chỉ khi hôm nay có cook xong), `Rounds`, `PR n opened · m merged` và mỗi PR đã mở chưa merge một dòng link (xem [PR cần hành động](#pr-cần-hành-động)), `Plans written today` theo repo; danh sách `Running` gom theo session, tab hiện tại ghi `(this tab)`; việc bị bỏ dở ghi `stale` |
 | **Estimate** | Với mỗi loại (cook, fix, hotfix): est đúng/thấp/cao so với thực tế (`hit`, `under`, `over`); hotfix và `task` (việc ops, xem [Việc ops](#việc-ops-kind-task)) hiện số việc, trung vị và p90 (block `task` chỉ hiện khi đã có việc `task` xong; `task` không góp vào thang S/M/L); `agent time by phase` là tỉ lệ thời gian agent theo giai đoạn |
 | **Quality** | Với mỗi loại: tỉ lệ ship bị chặn và bước chặn nhiều nhất, finding C/H/M/L trung bình, số vòng fix loop, tỉ lệ CI đỏ lần đầu, tỉ lệ thời gian chờ; với fix/hotfix thêm ROUND trung bình, tỉ lệ sửa diện rộng và tỉ lệ có regression test. Pane không hiện token (JSON của `zenify track stats --json` vẫn giữ) |
-| **Backlog** | Việc chưa làm, nhóm theo nguồn: `manual`, `github`, `sdd`, `stale`. Mỗi dòng `<code> · repo · est · title · <số ngày>d`; mục có URL là link bấm được (xem [Backlog](#backlog)). Backlog rỗng hiện `Backlog is empty`; lấy issue GitHub lỗi thì có dòng `⚠ github: <nguyên nhân>` |
+| **Backlog** | Việc chưa làm, nhóm theo nguồn: `manual`, `plane`, `github`, `sdd`, `stale`. Mỗi dòng `<code> · repo · est · title · <số ngày>d`; mục có URL là link bấm được (xem [Backlog](#backlog)). Backlog rỗng hiện `Backlog is empty`; lấy issue GitHub lỗi thì có dòng `⚠ github: <nguyên nhân>` |
 
 Số trên Estimate và Quality chỉ hiện khi đủ mẫu: mỗi loại cần ít nhất 5 việc thật. Chưa đủ thì dòng đó hiện mờ `need 5 samples (have N)`. Tỉ lệ thời gian theo giai đoạn cũng chỉ hiện khi loại đó đủ 5 mẫu. Số từ 10000 trở lên viết gọn `12.3k`, `1.2M`.
 
@@ -135,20 +135,21 @@ Est (S, M hoặc L) do `znf:cook`, `znf:fix` và `znf:hotfix` ghi theo hướng 
 
 ## Backlog
 
-Tab `Backlog` gom việc chưa làm từ bốn nguồn:
+Tab `Backlog` gom việc chưa làm từ năm nguồn:
 
 - `manual`: việc bạn hoặc agent thêm bằng `zenify track backlog add`.
+- `plane`: work item Plane đang mở (state backlog, unstarted, started) giao cho bạn, lấy bằng PAT của chính bạn trong `.zenify/.env` và URL Plane trong manifest. Không có PAT hoặc manifest không khai báo Plane thì nguồn bị bỏ qua; lấy lỗi thì tab báo `⚠ plane: ...`. Tạo việc mới giao cho mình bằng `zenify plane create "<title>" [--project ZEN] [--description <text>]`, lệnh in `plane: ZEN-308 <url>`; thiếu PAT thì báo chạy `zenify up --apply`. Trong Claude Code: `/znf:track add <mô tả> --plane`.
 - `github`: issue đang mở trên GitHub mà bạn được giao hoặc do bạn tạo. Kit tìm theo owner (org) lấy từ remote `origin` của từng repo trong `repos/`. Repo không có `origin` và thư mục ẩn (ví dụ `repos/.claude`) được bỏ qua; thư mục khác không phải repo git thì tab báo `⚠ github: ...`.
 - `sdd`: mục `minor (deferred)` và `parked` trong `progress.md` của các plan.
 - `stale`: việc đã bắt đầu nhưng bị bỏ dở.
 
-Thứ tự nguồn khi agent lấy việc tiếp theo: danh sách `backlog` trước. Chỉ khi nó rỗng hoặc `zenify track stats --brief` báo `ghError`, agent mới chạy `gh search issues --assignee @me --state open` và `gh search prs --review-requested @me --state open`, đưa kết quả cho bạn chọn rồi start bằng `--from <url>`. Digest đầu session nhắc agent chạy `zenify track stats --brief` trước khi chọn việc. `--brief` là JSON gọn cho agent (việc dở, plan, PR mở, backlog với tiêu đề cắt 80 ký tự, thang S/M/L), không có thời gian, token hay số liệu chất lượng; trên workspace thật nó nhỏ hơn `--json` khoảng 3 lần (7 KB so với 22 KB với 31 mục backlog). Pane vẫn dùng `--json`.
+Việc `plane` có mã `ZEN-288`. Thứ tự nguồn khi agent lấy việc tiếp theo: danh sách `backlog` trước. Chỉ khi nó rỗng hoặc `zenify track stats --brief` báo `ghError`, agent mới chạy `gh search issues --assignee @me --state open` và `gh search prs --review-requested @me --state open`, đưa kết quả cho bạn chọn rồi start bằng `--from <url>`. Digest đầu session nhắc agent chạy `zenify track stats --brief` trước khi chọn việc. `--brief` là JSON gọn cho agent (việc dở, plan, PR mở, backlog với tiêu đề cắt 80 ký tự, thang S/M/L), không có thời gian, token hay số liệu chất lượng; trên workspace thật nó nhỏ hơn `--json` khoảng 3 lần (7 KB so với 22 KB với 31 mục backlog). Pane vẫn dùng `--json`.
 
 Mỗi dòng Backlog cũng bắt đầu bằng mã ngắn (`b81e` cho việc thêm tay, `#581` cho issue GitHub). Đây là mã bạn gõ vào prompt hoặc vào `/znf:track`.
 
 Mục có `ref` hoặc `id` là URL `http…` hiện thành dòng link: chữ bấm được là `<code> · repo · est · title · <số ngày>d`, trỏ tới URL đó. Dòng là link thì dù bị cắt vẫn bấm được.
 
-Mở tab `Backlog` thì pane chạy lại số liệu và bỏ qua cache backlog 5 phút (`zenify track stats --json --force`), nên issue GitHub mới hiện ngay. Các lần chạy khác dùng cache. Lấy GitHub lỗi (ví dụ chưa `gh auth login`) thì tab báo `⚠ github: ...`, ba nguồn còn lại vẫn hiện.
+Mở tab `Backlog` thì pane chạy lại số liệu và bỏ qua cache backlog 5 phút (`zenify track stats --json --force`), nên issue GitHub mới hiện ngay. Các lần chạy khác dùng cache. Lấy GitHub lỗi (ví dụ chưa `gh auth login`) thì tab báo `⚠ github: ...`, các nguồn còn lại vẫn hiện.
 
 ```bash
 zenify track backlog add "sửa lỗi export" --repo contact-center-hub --est S --ref https://github.com/org/repo/issues/12

@@ -693,3 +693,31 @@ func TestSessionStart_TrackCloseDayNoGh(t *testing.T) {
 		t.Fatalf("SessionStart made %d gh calls", n)
 	}
 }
+
+// The hook-side reader copies the cached Plane items too, and never calls Plane.
+func TestLocalTrackInput_CopiesPlaneFromCache(t *testing.T) {
+	f := newFakeTrackPlane(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	item := trackstats.PlaneItem{Key: "ZEN-288", URL: "https://plane.example/zenify/browse/ZEN-288/", Title: "cached", CreatedAt: now.Add(-24 * time.Hour).UTC()}
+	if err := writeBacklogCache(filepath.Join(dir, backlogCache), backlogCacheFile{FetchedAt: now.UTC(), Plane: []trackstats.PlaneItem{item}}); err != nil {
+		t.Fatal(err)
+	}
+	in, err := localTrackInput(dir, dir, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.Plane == nil {
+		t.Fatal("Input.Plane is nil")
+	}
+	got, err := in.Plane()
+	if err != nil || len(got) != 1 || got[0].URL != item.URL || got[0].Title != "cached" || !got[0].CreatedAt.Equal(item.CreatedAt) {
+		t.Fatalf("plane = %+v, %v", got, err)
+	}
+	if f.count() != 0 {
+		t.Fatalf("localTrackInput called Plane %d times", f.count())
+	}
+}

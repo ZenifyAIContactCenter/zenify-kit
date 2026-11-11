@@ -196,6 +196,9 @@ type Input struct {
 	PRTitles map[string]string
 	// SDD lists the deferred and parked ledger findings; nil skips the source.
 	SDD []SDDItem
+	// Plane lists the open Plane work items assigned to the developer; nil skips
+	// the source. On a partial failure it returns the items it got with the error.
+	Plane func() ([]PlaneItem, error)
 }
 
 // LearnScale derives the S/M/L bounds from the 60 most recent real wall

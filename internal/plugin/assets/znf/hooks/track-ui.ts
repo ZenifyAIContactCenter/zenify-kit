@@ -47,7 +47,7 @@ export const TABS: { id: Tab; label: string }[] = [
   { id: 'backlog', label: 'Backlog' },
 ]
 // FR-13.7: the order the Backlog tab groups its sources in.
-const BACKLOG_SOURCES = ['manual', 'github', 'sdd', 'stale']
+const BACKLOG_SOURCES = ['manual', 'plane', 'github', 'sdd', 'stale']
 
 // The English rule suffixes of internal/trackstats (RuleUp, RuleDown) and their display copy.
 const RULES: Record<string, string> = { 'est up 1 size': 'raise est 1 size', 'est down 1 size': 'lower est 1 size' }
@@ -77,7 +77,7 @@ export function parseTrackStats(stdout: string): TrackStats {
     prStatusError: data.today?.prStatusError ?? '',
   }
   const item = (i: TrackItem): TrackItem => ({ ...i, wallMin: i.wallMin ?? 0, tab: i.tab ?? '' })
-  const backlog = { ghError: '', ...data.backlog, items: (data.backlog?.items ?? []).map(withCode) }
+  const backlog = { ghError: '', planeError: '', ...data.backlog, items: (data.backlog?.items ?? []).map(withCode) }
   const kitchen = {
     titleError: '',
     ...data.kitchen,
@@ -221,7 +221,7 @@ const ICON = {
   carry: { open: '⏳', stale: '🕸' },
   // A done item whose PRs are not all merged yet; ✅ waits for the merge.
   unmerged: '⏳',
-  source: { manual: '📝', github: '🐙', sdd: '📒', stale: '🕸' } as Record<string, string>,
+  source: { manual: '📝', plane: '✈️', github: '🐙', sdd: '📒', stale: '🕸' } as Record<string, string>,
 } as const
 // `<repo>#<n>` of https://github.com/<owner>/<repo>/pull/<n>; the URL itself when it does not parse.
 export const prLabel = (url: string): string => {
@@ -479,6 +479,7 @@ function backlogLines(s: TrackStats): Line[] {
       lines.push(url ? { text: '', href: url, label: row } : plain(row))
     }
   }
+  if (s.backlog?.planeError) lines.push(warn(`⚠ plane: ${s.backlog.planeError}`))
   if (s.backlog?.ghError) lines.push(warn(`⚠ github: ${s.backlog.ghError}`))
   return lines
 }

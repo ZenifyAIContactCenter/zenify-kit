@@ -79,6 +79,8 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify observe report](./zenify_observe_report) | Tóm tắt số lần dispatch subagent và lượng tool output của từng phiên Claude Code. |
 | [zenify observe statusline](./zenify_observe_statusline) | Vẽ một dòng statusline cho Claude Code với model, ngữ cảnh, số dispatch, tool output và chi phí. |
 | [zenify observe statusline install](./zenify_observe_statusline_install) | Ghi key `statusLine` trỏ tới `zenify observe statusline` vào `~/.claude/settings.json`. |
+| [zenify plane](./zenify_plane) | Nhóm lệnh làm việc với Plane bằng PAT của chính dev. |
+| [zenify plane create](./zenify_plane_create) | Tạo work item Plane giao cho chính bạn và in key kèm URL. |
 | [zenify pm](./zenify_pm) | Chọn đúng package manager JS của project (pnpm, yarn, npm, bun) rồi chạy nó, để không sinh thêm lockfile thứ hai. |
 | [zenify redis-read](./zenify_redis-read) | Chạy một lệnh Redis chỉ đọc qua credential broker. |
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
