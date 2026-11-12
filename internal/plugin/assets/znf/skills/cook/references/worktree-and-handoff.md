@@ -1,6 +1,11 @@
-<!-- Moved verbatim from cook/SKILL.md § Step 6, First the worktree (W4 slim-skills). Read when:
+<!-- The "Slug and the Plane item line" section is new; the rest moved verbatim from cook/SKILL.md § Step 6, First the worktree (W4 slim-skills). Read when:
 before a second worktree, or when SDD Setup wants to create its own. The per-user terminal-workspace
 handoff that used to live here is a personal skill, not part of the kit. -->
+
+### Slug and the Plane item line
+
+When the spec header has `**Việc Plane:**`, the slug starts with `zen-<a>-`; see
+`znf:_shared/plane-key.md`.
 
 ### From § First, the worktree — why spec/plan and paths must be absolute (extra, tier two)
 

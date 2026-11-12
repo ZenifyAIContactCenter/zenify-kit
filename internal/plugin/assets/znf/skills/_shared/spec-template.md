@@ -7,6 +7,11 @@ project's own language (see the project's convention); the scaffolding here is g
 
 Any unsettled point uses the marker `[NEEDS CLARIFICATION: …]`.
 
+## Plane item line
+
+When the request names a Plane item, put `**Việc Plane:**` in the spec header; rules in
+`znf:_shared/plane-key.md`.
+
 ## Brief
 
 Eight fields, in order. The **floor** fields — required at every tier — are 1, 2, 5, 6, 8. Fields

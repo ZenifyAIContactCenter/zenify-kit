@@ -67,7 +67,7 @@ flowchart TD
 | 0 | Lấy log hoặc lỗi thật, rồi dựng vòng phản hồi: đúng một lệnh có tên, đã chạy, đỏ đúng triệu chứng bạn mô tả (thang các cách dựng nằm trong `references/feedback-loop.md`). Với triệu chứng trên staging hoặc production, nguồn bằng chứng được tra theo thứ tự log, trace, `db-read`/`redis-read`, PostHog, theo tài liệu tham chiếu chung `_shared/evidence-sources` (xem [Quan sát và an toàn](/guides/observe-and-safety#nguon-bang-chung-cho-agent)). Secret, dữ liệu cá nhân của khách hàng và id tenant/account được lọc thành `<REDACTED>` ngay trong lệnh | Xác nhận đúng log. Nếu không dựng được vòng, kit dừng và xin môi trường tái hiện, artifact đã che secret, hoặc quyền thêm log tạm. Bậc cuối của thang (bạn làm theo các bước thủ công rồi dán dòng `KEY=value`) chỉ dành cho bước trên UI hoặc thiết bị; đọc DB hay chạy script dữ liệu thì agent tự chạy `zenify db-read`, `redis-read` hoặc `zenify data run` |
 | 1 | Phân tích nguyên nhân. Hẹp thì một giả thuyết, rộng thì nhiều agent chạy song song, mỗi agent nhận lệnh đỏ cùng giả thuyết của nó | Đọc kết luận |
 | 2 | Chạy lệnh đỏ, xác nhận lỗi đúng triệu chứng rồi thu repro về kịch bản nhỏ nhất vẫn đỏ. Kiểm chứng nguyên nhân trước khi sửa bất cứ gì | Không sửa gì nếu chưa kiểm chứng được |
-| 2b | Nếu có bằng chứng production: `fetch --tags`, resolve base hotfix rồi kiểm dòng lỗi trên đó. Có dòng lỗi, hoặc không chỉ ra được, thì gọi `/znf:hotfix` với slug, nguyên nhân, lệnh đỏ, `track id:`, và `/znf:fix` dừng ở đó; hotfix làm tiếp từ bước 4. Không khớp nguyên văn trên base hotfix cũng tính là không chỉ ra được | Không cần làm gì. Không có bằng chứng production thì bước này bỏ qua |
+| 2b | Nếu có bằng chứng production: `fetch --tags`, resolve base hotfix rồi kiểm dòng lỗi trên đó. Có dòng lỗi, hoặc không chỉ ra được, thì gọi `/znf:hotfix` với slug, nguyên nhân, lệnh đỏ, `track id:` và dòng `**Việc Plane:**` nếu có, và `/znf:fix` dừng ở đó; hotfix làm tiếp từ bước 4. Không khớp nguyên văn trên base hotfix cũng tính là không chỉ ra được | Không cần làm gì. Không có bằng chứng production thì bước này bỏ qua |
 | 3 | Chạy `/znf:scout` tìm nơi gọi, đọc, ghi code sắp đổi | Đọc báo cáo scout |
 | 4 | Nếu có trade-off thật giữa hai cách sửa, trình bày cho bạn | Chọn cách sửa |
 | 4 (leo thang) | Nếu fix lan 4+ file hoặc cần quyết định thiết kế, dừng | Chuyển sang `/znf:cook` thay vì ép sửa trong fix |
@@ -87,6 +87,8 @@ flowchart TD
 ## Worktree
 
 Worktree được tạo trước lần ghi file đầu tiên của vòng phản hồi (test, harness, log debug) hoặc trước lần khởi động server, chậm nhất trước bước 5. Các cách chỉ đọc (đọc log, chạy test có sẵn đang fail, request GET/HEAD vào môi trường đang chạy) không cần worktree. Request có side effect hoặc replay payload chỉ chạy trên port của worktree hoặc target local; ghi vào môi trường dùng chung hay production đi qua `zenify data run`: agent tự chạy dry-run trước rồi `--write`; production chỉ lead chạy được. Xem [Dùng credential broker](/guides/broker-client#data-run).
+
+Yêu cầu giao một việc Plane (ví dụ "sửa ZEN-250") thì agent ghi dòng `**Việc Plane:** ZEN-<a>` làm dòng đầu của `## Intent` trước `wt new`, nên slug bắt đầu bằng `zen-<a>-`; bước 2b chuyển dòng này sang `/znf:hotfix`. Xem [Worktree theo slug](/concepts/worktree-per-slug).
 
 ## Quyết định thuộc về bạn
 

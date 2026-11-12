@@ -46,9 +46,11 @@ Call `Skill(znf:hotfix)` with these args, slug first and on its own line:
 cause: <the root cause, with the paths of the evidence that confirmed it>
 red: <the Step 0 red command, already run>
 track id: <the id Step 0 opened>
+**Việc Plane:** ZEN-<a>[, ZEN-<b>…]   (only when the request handed over a Plane item)
 ```
 
-`/hotfix` keeps that `track id:` instead of starting a second id (`_shared/track.md`); the record
+`/hotfix` copies the `**Việc Plane:**` line verbatim as the first line of its ship-pack `## Intent`
+(`znf:_shared/plane-key.md`), so every key reaches the PR title. It keeps that `track id:` instead of starting a second id (`_shared/track.md`); the record
 keeps kind `fix`, a cost accepted at the plan gate.
 
 Use `<slug>-hf` when this `/fix` already opened a worktree for `<slug>`: `wt new` refuses a second

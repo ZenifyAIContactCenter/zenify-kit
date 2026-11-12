@@ -14,8 +14,13 @@ A PR carries two audiences in one artifact. Keep them apart:
 
 - **Tracker key — machine.** If the current branch name matches `(^|[/-])zen-(\d+)(-|$)`
   (case-insensitive, at a slug boundary, for example `u/fix/zen-123-foo`; `frozen-12-x`, `citizen-3` and
-  `dozen-5` do not match; if several match, the first wins), the title becomes `<type>(<scope>): ZEN-<n> <description>` with the key
-  in uppercase, right after the colon. A branch without a key keeps the title unchanged. In a stack,
+  `dozen-5` do not match; if several match, the first wins), that key, if any, is the first one. Then add every key on the `**Việc Plane:**` line of the spec or plan
+  (`/cook`) or of the ship-pack `## Intent` (`/fix`, `/hotfix`); see `znf:_shared/plane-key`. Drop
+  duplicates, branch key first; with no branch key, the line's keys are the title keys. The title becomes `<type>(<scope>): ZEN-<a>, ZEN-<b> <description>`,
+  keys in uppercase, right after the colon, never at the end. Example: branch `natepxn/fix/zen-305-capi`
+  plus `**Việc Plane:** ZEN-305, ZEN-306` gives `fix(capi): ZEN-305, ZEN-306 …`. Do not scan for `ZEN-n`
+  anywhere else: a spec with `**Việc Plane:** ZEN-305` and `**Liên quan:** ZEN-12` yields only `ZEN-305`.
+  No key anywhere keeps the title unchanged, with no warning. In a stack,
   layer N>=2 branches are `<layer-1>-<N>`, so the key stays in every branch name. In a stacked plan
   (`## Stack`) every layer except the top one also gets the body line `Part of ZEN-<n>`, placed right
   before the attribution line; the top layer does not carry it.

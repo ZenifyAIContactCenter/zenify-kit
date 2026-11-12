@@ -70,16 +70,16 @@ never skips it. State the path and why in one line (rationale: references).
    this check: references.
 
    **If the answer is revert or disable: stop here.** Do it, verify the incident is over, and
-   skip to step 10 — no worktree, no scout, no fix. Plan the real fix calmly afterwards on the
+   skip to step 10 — no worktree, no scout, no fix. Plan the real fix after, on the
    repo's normal feature base.
 
 5. **Create the hotfix worktree** — forward fix only, always (house rule #8), one per affected
-   repo, same slug:
+   repo, same slug (`_shared/plane-key.md`):
    ```bash
    cd <repo> && wt new <slug> --type hotfix --base <ref>
    ```
    `<ref>` = step 2's printed ref, never empty; `--type hotfix` is **exempt** from the one-task
-   guard (references). `<worktree>` below is its path; work there, not in the main checkout.
+   guard. `<worktree>` below is its path; work there, not in the main checkout.
 
 6. **`Skill(scout)` the RESOLVED ref, not the default feature base** — as a call, briefed as
    `/fix` Step 3 does.

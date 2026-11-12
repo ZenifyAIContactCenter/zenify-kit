@@ -65,13 +65,13 @@ Before dispatching SDD, **`Skill(znf:analyze)`** on the spec+plan pair (absolute
 
 ## Step 6: Implement (`znf:subagent-driven-development`)
 
-> **Isolation & base-ref doctrine → znf:discipline §8** (single source). Below is only what `/cook` adds.
+> **Isolation & base-ref doctrine → znf:discipline §8**. Below is only what `/cook` adds.
 
 **A worktree, always — house rule #8, no conditions.**
 
 ```bash
 git -C <repo> fetch origin
-cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
+cd <repo> && wt new <slug: plane-key.md> --type feat --base "$(node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.json","utf8")).baseRef)')"
 ```
 
 - **Polyrepo:** one worktree per repo, **same slug**; one implementer per repo, a dependent repo gated on the other's **contract-frozen** commit. Re-entering `/cook` is not a second worktree: `cd` into it.
@@ -79,7 +79,7 @@ cd <repo> && wt new <slug> --type feat --base "$(node -e 'console.log(JSON.parse
 
 If the plan has a `## Stack` block, `gh stack --help` must run; if not, stop before the first task and report `gh extension install github/gh-stack` (see `references/step6-implementation-notes.md`).
 
-**`Skill(znf:subagent-driven-development)`** at every size, told it runs under `/cook` and the worktree exists (verify, not create). **Under `/cook` SDD skips its own final review**: `/ship` step 5 reviews the branch and picks up the ledger's `minor (deferred)` and `parked` lines.
+**`Skill(znf:subagent-driven-development)`** at every size, told it runs under `/cook`, worktree exists (verify, not create). **Under `/cook` SDD skips its own final review**: `/ship` step 5 reviews the branch and picks up the ledger's `minor (deferred)` and `parked` lines.
 
 **A task the plan flagged — and only the plan — is verified before its ledger line:** after its reviewer passes and **before** appending `Task <N>: complete`, `Skill(znf:run)` for the URL, then `znf:ui-verifier` on **that deliverable only**; the verdict joins the line; verifiers run in parallel, distinct session name each. Unlooked-at: `Task <N>: complete (commits …, review clean — appearance not checked)`.
 

@@ -44,8 +44,8 @@ A push or a re-run each counts as one round.
 
 ## 5. Before each push
 1. `git fetch`. If the remote branch moved, rebase the unpushed fix commit onto it; never force-push. A rebase conflict → stop and report. The head the bot reviewed stays an ancestor, so `BASE` still resolves.
-2. Run the tests related to the fix, scoped as in `test-scope.md`.
-3. `Skill(znf:review)` with `BASE` = the head the bot last reviewed. Fix what the review finds in the same commit; that fix voids 2 and 3, so re-run 2, then re-review only the fix (`git diff <head the last review saw>..HEAD`, its findings verbatim, each ADDRESSED or NOT ADDRESSED). These passes cost no round. A finding still NOT ADDRESSED after the second re-review → do not push; leave the commit local, stop and report the finding, what was tried and whether it is load-bearing.
+2. Re-run ship step 2 (lint, build/typecheck) on the fixed tree, then the tests related to the fix, scoped as in `test-scope.md`. A lint or build result from before the fix proves nothing about it.
+3. `Skill(znf:review)` with `BASE` = the head the bot last reviewed; pass `STATIC_OK=1` only when 2's lint and build ran on this exact tree. Fix what the review finds in the same commit; that fix voids 2 and 3, so re-run 2, then re-review only the fix (`git diff <head the last review saw>..HEAD`, its findings verbatim, each ADDRESSED or NOT ADDRESSED). These passes cost no round. A finding still NOT ADDRESSED after the second re-review → do not push; leave the commit local, stop and report the finding, what was tried and whether it is load-bearing.
 4. Push, set `PREV` to the remote head you fetched in 1 (the PR head before your push), `SHA` to the new head, `SINCE` empty, go back to 2.
 
 ## 6. Stop

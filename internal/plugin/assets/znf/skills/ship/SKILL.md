@@ -92,7 +92,7 @@ Fill the `look:`/review sub-lines per the template. **Before concluding: `zenify
 
 Then push and `zenify docs sync` (fails open).
 
-**On all-green, commit and push the FEATURE branch** — same branch name across repos, message in the repo's convention. **Then open the PR yourself, then `references/pr-review-loop.md`** (`--watch` → `Skill(znf:ci-watch)`): `gh pr create`, one per repo onto its base (protected is fine, a PR deploys nothing), title and body per `references/pr-message-language.md` (`zen-<n>` key: `ZEN-<n>` title, `Part of ZEN-<n>` non-top layers). Report URLs.
+**On all-green, commit and push the FEATURE branch** — same branch name across repos, message in the repo's convention. **Then open the PR yourself, then `references/pr-review-loop.md`** (`--watch` → `Skill(znf:ci-watch)`): `gh pr create`, one per repo onto its base (protected is fine, a PR deploys nothing), title and body per `references/pr-message-language.md` (ZEN keys: title per that file, `Part of ZEN-<n>` non-top layers). Report URLs.
 
 **Merging is the user's deploy decision — NEVER merge, including a PR you opened**: no `gh pr merge`, no merge or push into a deploy/protected branch (see `.claude/deploy-branches`). Any ❌ → fix, no commit.
 
