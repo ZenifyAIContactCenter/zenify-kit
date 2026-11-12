@@ -396,7 +396,9 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
       const argv = ['zenify', 'track', 'stats', '--json', '--workspace', ws, ...(fresh ? ['--force'] : [])]
       // The last answer stays shown, marked loading once the run outlasts LOADING_MARK_AFTER_MS,
       // until this run ends and replaces it.
-      const isOut = () => seq === runSeq && isStatting
+      // Cleared as soon as the process ends, before its answer is stored: a mark after that would stick.
+      let isRunning = true
+      const isOut = () => isRunning && seq === runSeq
       void $.clock
         .sleep(LOADING_MARK_AFTER_MS)
         .then(async () => {
@@ -405,7 +407,7 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
           await updateStatus($)
         })
         .catch(statsError($))
-      const out = await $.process.run(argv, { timeoutMs: STATS_TIMEOUT_MS })
+      const out = await $.process.run(argv, { timeoutMs: STATS_TIMEOUT_MS }).finally(() => (isRunning = false))
       if (out.exitCode !== 0) throw new Error(firstLine(out.stderr) || `zenify track stats: exit ${out.exitCode}`)
       data = parseTrackStats(out.stdout)
     } catch (err) {

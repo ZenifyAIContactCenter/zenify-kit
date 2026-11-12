@@ -51,6 +51,8 @@ type World = {
   holdLogStat?: Promise<void>
   // Holds the answer of a read of this session's live json after its content is taken (a read in flight).
   holdLiveRead?: Promise<void>
+  // Holds a read of the `enabled` atom until this resolves (a run that has stored its answer, not yet ended).
+  holdEnabledRead?: Promise<void>
   // Holds the answer of `zenify track stats` until this resolves (a slow gh behind it).
   holdStats?: Promise<void>
   // The timeoutMs each `zenify track stats` run was given.
@@ -121,13 +123,14 @@ function engine(on: any, world: World): Calls {
   on('tool.call', async (_: unknown, e: any) => (world.toolCall ? await world.toolCall(e) : { result: {} }))
   on('tool.check', () => ({ decision: world.verdict ?? 'allow' }))
   // A test's $ has no state noun: answer the `enabled` atom's read as the kit stores a shaped atom.
-  on('state.get', (_: unknown, e: { plugin: string; key: string }, next: any) =>
-    e.plugin === 'znf' && e.key === 'enabled' && world.trackEnabled !== undefined
+  on('state.get', async (_: unknown, e: { plugin: string; key: string }, next: any) => {
+    if (e.plugin === 'znf' && e.key === 'enabled' && world.holdEnabledRead) await world.holdEnabledRead
+    return e.plugin === 'znf' && e.key === 'enabled' && world.trackEnabled !== undefined
       ? { value: { value: { shape: 'track-1', value: world.trackEnabled }, version: 1 } }
       : e.plugin === 'znf' && e.key === 'tab' && world.storedTab !== undefined
         ? { value: { value: world.storedTab, version: 1 } }
-        : next(e),
-  )
+        : next(e)
+  })
   on('turn.complete', (_: unknown, e: { answer: string }) => ({ text: e.answer }))
   on('classic.PermissionRequest', () => ({}))
   on('classic.SubagentStart', () => ({}))
@@ -498,6 +501,23 @@ test('a slow stats run that then fails ends on the ⚠ line, never a stuck loadi
   release()
   await clock.settle()
   expect(lastStatus(calls)).toBe('⚠ track error: gh: timeout')
+})
+
+test('a run that stored its answer but has not ended yet never gets a late loading mark', async ($, on) => {
+  const world: World = {}
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  let release = () => {}
+  world.holdEnabledRead = new Promise<void>(r => (release = r))
+  world.stats = ok(statsJson({ onboarded: false }))
+  // The forced run answers at once and stores it, then waits on the enabled read past the 1s mark.
+  await clock.advance(5 * MIN)
+  await clock.advance(1000)
+  release()
+  world.holdEnabledRead = undefined
+  await clock.settle()
+  expect(lastStatus(calls)).toBe(`track ⏸ · ${COPY.onboard}`)
 })
 
 test('a first stats run that is still out after 20s does not hold a /znf:fix prompt', async ($, on) => {
