@@ -8,6 +8,15 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.67.0
+
+*2026-11-12*
+
+- **MCP `zenify-zenie`:** `zenify up --apply` đăng ký thêm MCP thứ ba qua broker, nối Claude Code với Zenie dưới danh tính GitHub của bạn, chỉ đọc. `review_wait` chờ Zenie review xong đúng commit của PR rồi trả điểm và các finding còn mở, nên agent không phải tự poll sau khi push; kèm `pr_review`, `pr_review_history`, `item_prs` và các tool tra việc, sản phẩm, lỗi mà Zenie đang bật cho bạn. Login chưa gắn với Zenie thì nhắn Zenie trên Telegram để gắn. Xem [Zenie cho agent](/guides/broker-client#zenie-cho-agent).
+- **Việc Plane ghi một lần, slug theo mã việc:** khi nhận một việc Plane (ví dụ "sửa ZEN-250"), `/znf:cook` ghi dòng `**Việc Plane:**` vào spec/plan, còn `/znf:fix` ghi vào `## Intent` trước `wt new`, nên slug bắt đầu bằng `zen-<n>-`. `/znf:fix` chuyển dòng này sang `/znf:hotfix` khi bàn giao lỗi production. Xem [Worktree theo slug](/concepts/worktree-per-slug) và [Fix](/workflows/fix).
+- **Tiêu đề PR mang mọi mã ZEN đã làm:** ship đặt mã từ tên branch lên đầu tiêu đề, rồi cộng thêm các mã trong dòng `**Việc Plane:**` (bỏ trùng), cùng một quy tắc cho ship thường và stacked PR. Xem [Ship](/workflows/ship).
+- **Vòng sửa review chạy lại lint/build trước khi push:** mỗi vòng tự sửa sau review trên PR chạy lại lint và build trên chính cây đã sửa rồi mới push. Không có `--watch` thì ship dừng sau khi mở PR hoặc sau vòng review. Xem [Ship](/workflows/ship).
+
 ## v0.66.0
 
 *2026-11-11*
