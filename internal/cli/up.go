@@ -368,7 +368,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 			localErrs = append(localErrs, "claude trust: "+err.Error())
 		}
 	}
-	// Broker-backed Grafana/PostHog MCP servers for Claude (FR-9). The broker
+	// Broker-backed Grafana/PostHog/Zenie MCP servers for Claude (FR-9). The broker
 	// comes from the trusted (embedded) manifest, never --manifest or cwd: the
 	// registered headersHelper `zenify broker headers` resolves it the same
 	// way, so the MCP URL and its token always name one broker.
@@ -411,7 +411,7 @@ func runApplyWith(w io.Writer, errW io.Writer, plans []reconcile.RepoPlan, m *ma
 			unwireLocalHooks(home, codexHomeDir(home, os.Getenv), workspace, errW)
 		}
 	case herr == nil && home != "":
-		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), localMCPs, keep, run, false)
+		removed, err := migrateUserInstalls(home, codexHomeDir(home, os.Getenv), userScoped(localMCPs), keep, run, false)
 		for _, r := range removed {
 			_, _ = fmt.Fprintln(w, "đã gỡ bản cài cấp user:", r) //znf:allow-lang
 		}
@@ -977,7 +977,7 @@ func newUpCmd() *cobra.Command {
 	return cmd
 }
 
-// registerBrokerMCP registers the kit's Grafana/PostHog HTTP MCP servers with
+// registerBrokerMCP registers the kit's Grafana/PostHog/Zenie HTTP MCP servers with
 // Claude at local scope when the manifest declares a broker and claude is on
 // PATH; otherwise it does nothing, so `zenify up` keeps its pre-broker
 // behaviour. run must execute claude with the workspace root as cwd (callers
@@ -991,7 +991,7 @@ func registerBrokerMCP(w, errW io.Writer, workspace string, m *manifest.Manifest
 	if _, err := lookPath("claude"); err != nil {
 		return nil, nil
 	}
-	for _, name := range []string{"grafana", "posthog"} {
+	for _, name := range []string{"grafana", "posthog", "zenie"} {
 		st, err := mcpreg.Bootstrap(mcpreg.Options{
 			Spec: mcpreg.Spec{Name: "zenify-" + name, URL: strings.TrimRight(m.Broker.URL, "/") + "/mcp/" + name},
 			Run:  run,

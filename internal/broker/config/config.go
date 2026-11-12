@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -41,6 +42,11 @@ type Config struct {
 		Upstream  string `yaml:"upstream"`
 		ProjectID string `yaml:"project_id"`
 	} `yaml:"posthog"`
+	// Zenie is optional: with upstream set the broker serves /mcp/zenie, the
+	// team bot's own MCP endpoint (review scores, ZEN items, product knowledge).
+	Zenie struct {
+		Upstream string `yaml:"upstream"`
+	} `yaml:"zenie"`
 	E2E struct {
 		HubURL      string `yaml:"hub_url"`
 		BEURL       string `yaml:"be_url"`
@@ -86,6 +92,9 @@ type Secrets struct {
 	ElasticStg, ElasticPrd                                     string
 	// Required only when Config.Catalog is set.
 	CatalogGitHubToken string
+	// Required only when Config.Zenie.Upstream is set: the bearer zenie's
+	// /zen/mcp route checks.
+	ZenieMCPSecret string
 }
 
 // DefaultGrafanaArgs is the flag set the team runs mcp-grafana with.
@@ -172,6 +181,14 @@ func Load(path string, getenv func(string) string) (Config, error) {
 	s.ElasticStg, s.ElasticPrd = getenv("ELASTIC_URL_STG"), getenv("ELASTIC_URL_PRD")
 	if c.Catalog != nil {
 		s.CatalogGitHubToken = get("CATALOG_GITHUB_TOKEN")
+	}
+	if c.Zenie.Upstream != "" {
+		s.ZenieMCPSecret = get("ZENIE_MCP_SECRET")
+		// A relative or non-HTTP URL would start fine and then answer 502 on
+		// every /mcp/zenie call.
+		if u, err := url.Parse(c.Zenie.Upstream); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			errs = append(errs, fmt.Errorf("config %s: zenie.upstream must be an absolute http(s) URL", path))
+		}
 	}
 	if (s.MsghubMongoStg != "" || s.MsghubMongoPrd != "") && c.Mongo.MsghubDB == "" {
 		errs = append(errs, fmt.Errorf("config %s: missing mongo.msghub_db (required when MSGHUB_MONGO_URL_* is set)", path))

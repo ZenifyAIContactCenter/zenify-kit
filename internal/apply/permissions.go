@@ -17,12 +17,13 @@ import (
 // refuses every subcommand outside its allowlist (run-code, upload, drop,
 // attach, show, …), so the wrapper, not this prompt, is the guard.
 //
-// zenify-grafana and zenify-posthog DO get server-wide wildcards: every tool
-// is read-only on the broker side (mcp-grafana runs --disable-write with a
-// Viewer service-account token; PostHog gets x-posthog-read-only), so the
-// broker, not this prompt, is the write guard. The zenify- prefix is reserved
-// for kit-registered servers, but the rule matches by name only: a user's own
-// server registered under one of these two names is auto-approved too.
+// zenify-grafana, zenify-posthog and zenify-zenie DO get server-wide
+// wildcards: every tool is read-only on the far side (mcp-grafana runs
+// --disable-write with a Viewer service-account token; PostHog gets
+// x-posthog-read-only; zenie's MCP endpoint offers read tools only), so the
+// far side, not this prompt, is the write guard. The zenify- prefix is
+// reserved for kit-registered servers, but the rule matches by name only: a
+// user's own server registered under one of these names is auto-approved too.
 var KitAllowRules = []string{
 	"Bash(zenify e2e *)",
 	"Bash(zenify visual *)",
@@ -41,6 +42,7 @@ var KitAllowRules = []string{
 	"Bash(gh stack view *)",
 	"mcp__zenify-grafana__*",
 	"mcp__zenify-posthog__*",
+	"mcp__zenify-zenie__*",
 }
 
 // KitSandboxExcluded are the commands the kit unions into

@@ -79,6 +79,12 @@ func run(cfgPath string) error {
 	if err != nil {
 		return fmt.Errorf("posthog.upstream: %w", err)
 	}
+	var zenieUp *url.URL
+	if cfg.Zenie.Upstream != "" {
+		if zenieUp, err = url.Parse(cfg.Zenie.Upstream); err != nil {
+			return fmt.Errorf("zenie.upstream: %w", err)
+		}
+	}
 
 	log := &audit.Logger{W: os.Stdout}
 	queryH := &query.Handler{
@@ -139,7 +145,7 @@ func run(cfgPath string) error {
 		return err
 	}
 
-	handler := server.New(server.Deps{
+	deps := server.Deps{
 		JWTKey:       s.JWTKey,
 		Org:          cfg.Org,
 		LeadTeam:     cfg.LeadTeam,
@@ -162,7 +168,13 @@ func run(cfgPath string) error {
 			"grafana": mcpproxy.New("grafana", grafanaUp, mcpproxy.BearerHeader(grafanaCaller), log),
 			"posthog": mcpproxy.New("posthog", posthogUp, mcpproxy.PostHogHeaders(s.POSTHOGAPIKey, cfg.PostHog.ProjectID), log),
 		},
-	})
+	}
+	// Optional (config.Zenie): zenie answers per person, so the caller's login
+	// goes along; its tools are read-only on zenie's side.
+	if zenieUp != nil {
+		deps.MCP["zenie"] = mcpproxy.New("zenie", zenieUp, mcpproxy.BearerHeader(s.ZenieMCPSecret), log, mcpproxy.WithLogin())
+	}
+	handler := server.New(deps)
 
 	// No WriteTimeout: it would cut MCP SSE streams.
 	srv := &http.Server{Addr: cfg.Listen, Handler: handler, ReadHeaderTimeout: 10 * time.Second}

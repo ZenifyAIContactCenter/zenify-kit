@@ -287,7 +287,7 @@ func TestKitSandbox_NonObjectSandboxSkips(t *testing.T) {
 }
 
 func TestKitAllowRules_BrokerMCPServers(t *testing.T) {
-	for _, want := range []string{"mcp__zenify-grafana__*", "mcp__zenify-posthog__*"} {
+	for _, want := range []string{"mcp__zenify-grafana__*", "mcp__zenify-posthog__*", "mcp__zenify-zenie__*"} {
 		found := false
 		for _, r := range KitAllowRules {
 			found = found || r == want

@@ -233,7 +233,7 @@ func removeLocalClaude(u *ui.Writer, workspace string, run func(string, ...strin
 		}
 	}
 	home, _ := os.UserHomeDir()
-	for _, name := range userKitMCPs {
+	for _, name := range localKitMCPs {
 		if owned, err := mcpreg.KitOwned(filepath.Join(home, ".claude.json"), workspace, name); err != nil {
 			u.Step(ui.StatusWarn, "mcp", fmt.Sprintf("bỏ qua (%v)", err)) //znf:allow-lang
 			planeGone = planeGone && name != "zenify-plane"

@@ -72,7 +72,8 @@ func StartGrafana(ctx context.Context, onExit context.CancelCauseFunc, bin, graf
 	return c, nil
 }
 
-// BearerHeader sets the caller token mcp-grafana requires (see StartGrafana).
+// BearerHeader sets an upstream's bearer credential: the caller token
+// mcp-grafana requires (see StartGrafana), zenie's MCP secret.
 func BearerHeader(callerToken string) func(http.Header) {
 	return func(h http.Header) { h.Set("Authorization", "Bearer "+callerToken) }
 }

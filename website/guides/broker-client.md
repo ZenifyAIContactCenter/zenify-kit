@@ -43,7 +43,7 @@ Muốn tự kiểm tra riêng bước đổi token: `zenify broker token` in JWT
 
 ### Broker từ chối token đang cache
 
-`zenify broker headers` (lệnh Claude Code gọi cho `zenify-grafana` và `zenify-posthog`) dùng JWT đang cache tới khi nó hết hạn, và Claude Code không báo lại cho kit khi broker trả 401. Nếu MCP báo lỗi đăng nhập trong khi `zenify doctor` mục `broker` đã ok, chạy `zenify broker token --refresh` để bỏ cache và xin JWT mới, rồi khởi động lại Claude Code.
+`zenify broker headers` (lệnh Claude Code gọi cho `zenify-grafana`, `zenify-posthog` và `zenify-zenie`) dùng JWT đang cache tới khi nó hết hạn, và Claude Code không báo lại cho kit khi broker trả 401. Nếu MCP báo lỗi đăng nhập trong khi `zenify doctor` mục `broker` đã ok, chạy `zenify broker token --refresh` để bỏ cache và xin JWT mới, rồi khởi động lại Claude Code.
 
 ## Lead và dev {#lead-dev}
 
@@ -123,11 +123,25 @@ zenify e2e login --port 3327 --role agent
 
 Broker cấp một tài khoản E2E riêng cho bạn theo role, trên tenant test của staging. Role hợp lệ: `administrator`, `supervisor`, `team_leader`, `agent`, `sale`, `sale_team_leader`. Lệnh ghi Playwright storage state vào `~/.zenify/playwright/state-<role>.json`; không có `--role` thì dùng `administrator` và ghi `~/.zenify/playwright/state.json` như cũ. Agent `znf:ui-verifier` nạp file này bằng `zenify browser -s=<phiên> state-load <file>`. `zenify e2e run` và `zenify visual check` cũng nhận `--role`. Xem [Kiểm thử UI](/workflows/ui-testing).
 
-## Grafana và PostHog cho agent
+## Grafana, PostHog và Zenie cho agent
 
-Khi manifest nhúng sẵn trong binary có `broker:` và lệnh `claude` có trên PATH, `zenify up --apply` đăng ký hai MCP server trong Claude Code ở local scope (chạy từ thư mục gốc workspace, chỉ có hiệu lực trong workspace đó): `zenify-grafana` (Loki, Prometheus, Tempo) và `zenify-posthog`. `--manifest` và file manifest ở thư mục hiện tại không bật bước này. Tên `zenify-grafana` và `zenify-posthog` dành riêng cho kit: entry local scope kiểu http dưới tên đó có đường dẫn `/mcp/grafana` hoặc `/mcp/posthog` bị ghi đè bằng URL broker hiện tại (đây là cách kit cập nhật khi URL broker đổi). Server cùng tên với đường dẫn khác, kiểu stdio, hoặc ở project scope thì kit giữ nguyên. Cả hai dùng `type: http` tới broker, và Claude Code lấy header đăng nhập bằng `zenify broker headers` mỗi lần kết nối, nên bạn không điền token nào. Skill `/znf:fix` dùng chúng ở Step 0 để lấy log, trace và latency khi gặp lỗi trên staging hay production.
+Khi manifest nhúng sẵn trong binary có `broker:` và lệnh `claude` có trên PATH, `zenify up --apply` đăng ký ba MCP server trong Claude Code ở local scope (chạy từ thư mục gốc workspace, chỉ có hiệu lực trong workspace đó): `zenify-grafana` (Loki, Prometheus, Tempo), `zenify-posthog` và `zenify-zenie` (xem [Zenie cho agent](#zenie-cho-agent)). `--manifest` và file manifest ở thư mục hiện tại không bật bước này. Tên `zenify-grafana`, `zenify-posthog` và `zenify-zenie` dành riêng cho kit: entry local scope kiểu http dưới tên đó có đường dẫn `/mcp/grafana`, `/mcp/posthog` hoặc `/mcp/zenie` bị ghi đè bằng URL broker hiện tại (đây là cách kit cập nhật khi URL broker đổi). Server cùng tên với đường dẫn khác, kiểu stdio, hoặc ở project scope thì kit giữ nguyên. Cả ba dùng `type: http` tới broker, và Claude Code lấy header đăng nhập bằng `zenify broker headers` mỗi lần kết nối, nên bạn không điền token nào. Skill `/znf:fix` dùng chúng ở Step 0 để lấy log, trace và latency khi gặp lỗi trên staging hay production.
 
 Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn vào phiên.
+
+## Zenie cho agent {#zenie-cho-agent}
+
+`zenify-zenie` nối Claude Code với bot Zenie qua broker (`/mcp/zenie`). Broker gửi kèm GitHub login của bạn, Zenie tra ra người tương ứng trong danh sách của nó; mọi tool đều chỉ đọc. Login chưa gắn với một người đang hoạt động trong Zenie thì mọi lần gọi đều bị từ chối kèm hướng dẫn: nhắn Zenie trên Telegram để gắn GitHub login.
+
+| Tool | Trả về |
+|---|---|
+| `review_wait` | Chờ Zenie review xong đúng commit `head_sha` của một PR rồi trả điểm n/5, check và các finding còn mở (file, dòng, cách sửa). Một lần gọi giữ kết nối tới khi có kết quả (mặc định 600 giây, trần 900), nên agent không phải tự poll sau khi tạo PR hay push. Hết giờ thì trả `done: false`; gọi lại để chờ tiếp |
+| `pr_review` | Kết quả review mới nhất của PR, không chờ |
+| `pr_review_history` | Các lượt review đã xong của PR: commit, điểm, số finding còn mở sau mỗi lượt |
+| `item_prs` | Việc ZEN-n và mọi PR gắn với nó (trạng thái, draft, tác giả, điểm mới nhất); tra theo `key` hoặc theo `repo` + `pr` |
+| `item_find`, `item_read`, `product_index`, `product_read`, `error_list`, `error_detail` | Chính các tool Zenie dùng khi bạn hỏi nó trên Telegram, chạy dưới danh tính của bạn. Chỉ có khi Zenie đang bật tool đó cho bạn |
+
+Finding do model viết từ nội dung PR: agent phải tự kiểm lại với code trước khi sửa. Ghi vào Plane vẫn đi qua `zenify-plane` (xem dưới); Zenie không nhận lệnh ghi qua MCP.
 
 ## Plane cho agent
 
@@ -143,7 +157,7 @@ Không có terminal (SessionStart, `--non-interactive`) thì lệnh không hỏi
 
 Chạy `zenify up` dạng tương tác thì bước nhập secret cuối wizard có thể hỏi `PLANE_API_KEY`; dán PAT ở đó thì kit đăng ký `zenify-plane` ngay sau bước đó, không cần chạy lại `zenify up --apply`. Ô này không kiểm token với Plane; token sai chỉ lộ ra khi `/mcp` báo lỗi, lúc đó xoá `PLANE_API_KEY` trong `<workspace>/.zenify/.env` rồi chạy lại `zenify up --apply` để dán token mới.
 
-Lần đầu `uvx` tải Python nên chậm; nếu `/mcp` báo lỗi kết nối thì mở lại Claude Code. Nếu bước kiểm tra `zenify-plane` quá thời gian, `zenify up` in một dòng gợi ý, không đổi gì; chạy lại `zenify up --apply` sau. Thiếu PAT hoặc `uv`, `zenify up` chỉ in gợi ý và không đăng ký. Plane MCP cũng đăng ký ở local scope (như `zenify-grafana` và `zenify-posthog`, chỉ có khi mở session ở gốc workspace); hook `plane-guard` nằm trong `.claude/settings.local.json` của workspace nên nạp bất kể `CLAUDE_CONFIG_DIR`.
+Lần đầu `uvx` tải Python nên chậm; nếu `/mcp` báo lỗi kết nối thì mở lại Claude Code. Nếu bước kiểm tra `zenify-plane` quá thời gian, `zenify up` in một dòng gợi ý, không đổi gì; chạy lại `zenify up --apply` sau. Thiếu PAT hoặc `uv`, `zenify up` chỉ in gợi ý và không đăng ký. Plane MCP cũng đăng ký ở local scope (như ba MCP qua broker, chỉ có khi mở session ở gốc workspace); hook `plane-guard` nằm trong `.claude/settings.local.json` của workspace nên nạp bất kể `CLAUDE_CONFIG_DIR`.
 
 Tên `zenify-plane` dành riêng cho kit, chỉ với `Type: stdio` và `Command: zenify`; server cùng tên kiểu khác thì kit giữ nguyên. Còn `PLANE_API_KEY` thì lần `zenify up --apply` sau sẽ đăng ký lại, nên muốn gỡ hẳn:
 
