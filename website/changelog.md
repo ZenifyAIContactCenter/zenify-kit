@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.67.1
+
+*2026-11-12*
+
+- **Track pane không còn báo lỗi khi tải stats lâu:** status line hết báo `⚠ track error: … still running after 20000ms`. Số liệu được tải ở nền: trong lúc `zenify track stats` chạy (có thể lâu khi phải hỏi `gh` từng PR đang mở), pane và status line vẫn hiện số liệu cũ; nếu quá 1s thì status line có thêm dấu `⟳` ở đầu, xong thì tự cập nhật. Chỉ báo lỗi khi lần chạy hỏng hoặc quá 2 phút. Xem [Track pane](/guides/track-pane#status-line).
+
 ## v0.67.0
 
 *2026-11-12*
