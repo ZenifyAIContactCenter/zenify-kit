@@ -806,3 +806,30 @@ func TestUp_UnreadableClaudeJSONKeepsPlaneGuard(t *testing.T) {
 }
 
 // znf:ui-verify-ok: no frontend in this diff; review/SKILL.md matches the unanchored views?/ regex (uiverify.go:25)
+
+// zenify-zenie was never a user-scope kit install: up must not take a
+// user-scope server of that name back, even one on the kit's /mcp/zenie path.
+func TestUserScoped_LeavesZenieAlone(t *testing.T) {
+	got := userScoped([]string{"zenify-grafana", "zenify-posthog", "zenify-zenie", "zenify-plane"})
+	if strings.Join(got, ",") != "zenify-grafana,zenify-posthog,zenify-plane" {
+		t.Fatalf("userScoped = %v", got)
+	}
+	if got := userScoped([]string{"zenify-zenie"}); len(got) != 0 {
+		t.Fatalf("userScoped(zenie) = %v", got)
+	}
+	home := t.TempDir()
+	mkfile(t, filepath.Join(home, ".claude.json"), `{"mcpServers":{"zenify-zenie":{"type":"http","url":"https://custom.example/mcp/zenie"}}}`)
+	var calls []string
+	run := func(n string, a ...string) ([]byte, error) {
+		calls = append(calls, strings.Join(a, " "))
+		return nil, nil
+	}
+	if _, err := migrateUserInstalls(home, filepath.Join(home, ".codex"), userScoped([]string{"zenify-zenie"}), userKeep{}, run, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range calls {
+		if strings.Contains(c, "mcp remove zenify-zenie") {
+			t.Fatalf("user-scope zenify-zenie removed: %v", calls)
+		}
+	}
+}

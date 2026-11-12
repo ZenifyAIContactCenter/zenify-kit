@@ -25,6 +25,20 @@ import (
 // upstream answered (nginx's 499).
 const statusClientClosed = 499
 
+// LoginHeader carries the caller's GitHub login to an upstream built
+// WithLogin. A client's own value never gets through (New drops it).
+const LoginHeader = "X-Zenify-Login"
+
+// Option adjusts one proxy.
+type Option func(*options)
+
+type options struct{ login bool }
+
+// WithLogin forwards the login the broker's JWT was issued for as
+// LoginHeader, for an upstream that answers per person. Only an upstream that
+// authenticates the broker itself (setHeaders) may trust it.
+func WithLogin() Option { return func(o *options) { o.login = true } }
+
 // stripClientHeaders drops what must not reach an upstream: the client's
 // broker JWT and cookies, Cloudflare and proxy headers, and X-Grafana-*.
 func stripClientHeaders(h http.Header) {
@@ -47,9 +61,13 @@ const maxBody = 4 << 20
 // headers are dropped (stripClientHeaders) before setHeaders (nil = none) adds
 // the upstream credential. a (nil = stdout) gets one line per request plus one
 // per tools/call message in the body.
-func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audit.Logger) http.Handler {
+func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audit.Logger, opts ...Option) http.Handler {
 	if a == nil {
 		a = &audit.Logger{W: os.Stdout}
+	}
+	var o options
+	for _, opt := range opts {
+		opt(&o)
 	}
 	endpoint := "/mcp/" + name
 	rp := newReverseProxy(name, upstream, setHeaders)
@@ -86,6 +104,11 @@ func New(name string, upstream *url.URL, setHeaders func(h http.Header), a *audi
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			r.ContentLength = int64(len(body))
 			calls = toolCalls(body)
+		}
+		// The identity an upstream sees is the JWT's, never the client's claim.
+		r.Header.Del(LoginHeader)
+		if o.login && login != "" {
+			r.Header.Set(LoginHeader, login)
 		}
 		rp.ServeHTTP(cw, r)
 	})

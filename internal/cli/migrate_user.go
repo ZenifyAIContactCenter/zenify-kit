@@ -17,6 +17,25 @@ import (
 // userKitMCPs are the MCP servers older kits registered at user scope.
 var userKitMCPs = []string{"zenify-grafana", "zenify-posthog", "zenify-plane"}
 
+// localKitMCPs are the MCP servers `up` registers at local scope, which `down`
+// takes back. zenify-zenie was never registered at user scope.
+var localKitMCPs = append(append([]string(nil), userKitMCPs...), "zenify-zenie")
+
+// userScoped keeps the names older kits registered at user scope: only those
+// may be taken back from there. A user-scope zenify-zenie is the user's own,
+// whatever its URL.
+func userScoped(names []string) []string {
+	var out []string
+	for _, n := range names {
+		for _, k := range userKitMCPs {
+			if n == k {
+				out = append(out, n)
+			}
+		}
+	}
+	return out
+}
+
 // userKeep names what `up` keeps at user level: CodexHooks (with the agents)
 // when codex is not on PATH, SkillsLink when <ws>/.agents/skills/znf is not the
 // kit's link (the workspace got no replacement), and Removals, a record of the

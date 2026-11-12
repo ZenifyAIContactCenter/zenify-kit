@@ -26,7 +26,7 @@ import (
 var jwtKey = []byte("jwt-test-key-0123456789abcdef0123")
 
 // stack is the full broker (server.New + auth.Require) with one MCP route.
-func stack(t *testing.T, name string, upstream string, set func(http.Header), out *bytes.Buffer) (*httptest.Server, string) {
+func stack(t *testing.T, name string, upstream string, set func(http.Header), out *bytes.Buffer, opts ...mcpproxy.Option) (*httptest.Server, string) {
 	t.Helper()
 	u, err := url.Parse(upstream)
 	if err != nil {
@@ -34,7 +34,7 @@ func stack(t *testing.T, name string, upstream string, set func(http.Header), ou
 	}
 	lg := &audit.Logger{W: out}
 	h := server.New(server.Deps{JWTKey: jwtKey, Audit: lg,
-		MCP: map[string]http.Handler{name: mcpproxy.New(name, u, set, lg)}})
+		MCP: map[string]http.Handler{name: mcpproxy.New(name, u, set, lg, opts...)}})
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	tok, _, _ := auth.Issue(jwtKey, "octocat", "lead", time.Now())
@@ -671,5 +671,41 @@ func TestBearerHeader(t *testing.T) {
 	mcpproxy.BearerHeader("caller-key")(h)
 	if got := h.Get("Authorization"); got != "Bearer caller-key" {
 		t.Fatalf("Authorization = %q", got)
+	}
+}
+
+// An upstream built WithLogin gets the JWT's login, never the client's own
+// claim; any other upstream gets no identity header at all.
+func TestProxy_WithLogin(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts []mcpproxy.Option
+		want string
+	}{
+		{"with login", []mcpproxy.Option{mcpproxy.WithLogin()}, "octocat"},
+		{"without", nil, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := make(chan *http.Request, 1)
+			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got <- r.Clone(context.Background())
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}}`))
+			}))
+			defer up.Close()
+			var out bytes.Buffer
+			srv, tok := stack(t, "zenie", up.URL+"/zen/mcp", mcpproxy.BearerHeader("up-secret"), &out, tc.opts...)
+			resp := do(t, http.MethodPost, srv.URL+"/mcp/zenie", tok, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+				map[string]string{"X-Zenify-Login": "someone-else", "x-zenify-login": "someone-else"})
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d", resp.StatusCode)
+			}
+			r := <-got
+			if v := r.Header.Values(mcpproxy.LoginHeader); strings.Join(v, ",") != tc.want {
+				t.Errorf("%s = %q, want %q", mcpproxy.LoginHeader, v, tc.want)
+			}
+			if r.Header.Get("Authorization") != "Bearer up-secret" || r.URL.Path != "/zen/mcp" {
+				t.Errorf("upstream got auth=%q path=%q", r.Header.Get("Authorization"), r.URL.Path)
+			}
+		})
 	}
 }

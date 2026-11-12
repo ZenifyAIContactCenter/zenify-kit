@@ -651,8 +651,11 @@ func TestRegisterBrokerMCP(t *testing.T) {
 	}
 	var out, errOut bytes.Buffer
 	registerBrokerMCP(&out, &errOut, "/ws", m, run)
-	if len(adds) != 2 || !strings.HasPrefix(adds[0], "zenify-grafana ") || !strings.Contains(adds[0], "https://broker.example/mcp/grafana") || !strings.HasPrefix(adds[1], "zenify-posthog ") || !strings.Contains(adds[1], "https://broker.example/mcp/posthog") {
+	if len(adds) != 3 || !strings.HasPrefix(adds[0], "zenify-grafana ") || !strings.Contains(adds[0], "https://broker.example/mcp/grafana") || !strings.HasPrefix(adds[1], "zenify-posthog ") || !strings.Contains(adds[1], "https://broker.example/mcp/posthog") {
 		t.Fatalf("adds=%v", adds)
+	}
+	if !strings.HasPrefix(adds[2], "zenify-zenie ") || !strings.Contains(adds[2], "https://broker.example/mcp/zenie") {
+		t.Fatalf("zenie add=%v", adds[2])
 	}
 	adds = nil
 	registerBrokerMCP(&out, &errOut, "/ws", &manifest.Manifest{}, run)
@@ -960,7 +963,7 @@ func TestRegisterBrokerMCP_LocalScopeAndError(t *testing.T) {
 		return nil, nil
 	}
 	var out, errOut bytes.Buffer
-	if _, err := registerBrokerMCP(&out, &errOut, "/ws", m, run); err != nil || !reflect.DeepEqual(scopes, []string{"-s local", "-s local"}) {
+	if _, err := registerBrokerMCP(&out, &errOut, "/ws", m, run); err != nil || !reflect.DeepEqual(scopes, []string{"-s local", "-s local", "-s local"}) {
 		t.Fatalf("err=%v scopes=%v", err, scopes)
 	}
 	fail = true

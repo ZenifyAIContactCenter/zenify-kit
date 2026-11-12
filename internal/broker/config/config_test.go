@@ -308,3 +308,27 @@ func TestLoad_MsghubURLNeedsDB(t *testing.T) {
 		t.Fatalf("want missing mongo.msghub_db error, got %v", err)
 	}
 }
+
+// zenie.upstream is optional; setting it makes ZENIE_MCP_SECRET required.
+func TestLoad_Zenie(t *testing.T) {
+	c, err := Load(writeCfg(t, sampleYAML), envOf(fullEnv()))
+	if err != nil || c.Zenie.Upstream != "" || c.Secrets.ZenieMCPSecret != "" {
+		t.Fatalf("without zenie: %+v %v", c.Zenie, err)
+	}
+	withZenie := sampleYAML + "zenie:\n  upstream: https://zenie.example.test/zen/mcp\n"
+	if _, err := Load(writeCfg(t, withZenie), envOf(fullEnv())); err == nil || !strings.Contains(err.Error(), "ZENIE_MCP_SECRET") {
+		t.Errorf("want error naming ZENIE_MCP_SECRET, got %v", err)
+	}
+	env := fullEnv()
+	env["ZENIE_MCP_SECRET"] = "s3"
+	for _, bad := range []string{"/zen/mcp", "zenie.example.test/zen/mcp", "ftp://zenie.example.test/zen/mcp", "https:///zen/mcp"} {
+		_, err := Load(writeCfg(t, sampleYAML+"zenie:\n  upstream: "+bad+"\n"), envOf(env))
+		if err == nil || !strings.Contains(err.Error(), "zenie.upstream") || strings.Contains(err.Error(), "s3") {
+			t.Errorf("upstream %q: want error naming zenie.upstream, got %v", bad, err)
+		}
+	}
+	c, err = Load(writeCfg(t, withZenie), envOf(env))
+	if err != nil || c.Zenie.Upstream != "https://zenie.example.test/zen/mcp" || c.Secrets.ZenieMCPSecret != "s3" {
+		t.Errorf("with zenie: %+v %v", c.Zenie, err)
+	}
+}

@@ -36,6 +36,8 @@ grafana:
 posthog:
   upstream: https://mcp.posthog.com/mcp?features=insights,flags  # danh sách feature chỉ là ví dụ
   project_id: "137053"
+# zenie:                    # tuỳ chọn: bật /mcp/zenie; cần env ZENIE_MCP_SECRET
+#   upstream: https://plane.zenify.vn/zen/mcp
 e2e:
   hub_url: https://hub.example.invalid
   be_url: https://be.example.invalid
@@ -54,6 +56,8 @@ Query trong `posthog.upstream` được giữ nguyên khi proxy chuyển tiếp.
 ::: warning Khi nâng cấp broker
 Bản broker này đổi cách chuyển tiếp một URL upstream MCP đã có sẵn query string: query của client giờ được nối thêm vào sau query của upstream (key của upstream thắng, cặp của client chứa `;` bị bỏ). Sau khi nâng cấp, kiểm tra lại từng URL upstream có query (ví dụ `posthog.upstream`) để chắc upstream vẫn nhận đúng tham số.
 :::
+
+Có `zenie.upstream` thì broker phục vụ `/mcp/zenie`: gửi `Authorization: Bearer $ZENIE_MCP_SECRET` (cùng giá trị với file secret `mcp_secret` trên host Zenie) và header `X-Zenify-Login` mang GitHub login của người gọi, lấy từ JWT; giá trị client tự gửi dưới tên đó bị bỏ. Không có khối `zenie` thì `/mcp/zenie` trả 404 và `ZENIE_MCP_SECRET` không bắt buộc. Bật khối này trước khi phát hành bản kit đăng ký `zenify-zenie`, nếu không MCP đó báo lỗi kết nối ở máy dev.
 
 Thay các giá trị `example.invalid` và placeholder bằng giá trị thật của staging. Broker không đọc secret từ YAML.
 

@@ -16,7 +16,7 @@ zenify broker headers [flags]
 
 ## Khi nào dùng
 
-Bạn không cần gõ lệnh này. `zenify up` đăng ký hai MCP server `zenify-grafana` và `zenify-posthog` trong Claude Code với `headersHelper` là `zenify broker headers`, và Claude Code tự gọi lệnh mỗi lần kết nối. Claude Code bỏ helper sau 10 giây nên lệnh dùng cache token, và một giới hạn 8 giây bao cả `gh auth token` lẫn lời gọi HTTP.
+Bạn không cần gõ lệnh này. `zenify up` đăng ký ba MCP server `zenify-grafana`, `zenify-posthog` và `zenify-zenie` trong Claude Code với `headersHelper` là `zenify broker headers`, và Claude Code tự gọi lệnh mỗi lần kết nối. Claude Code bỏ helper sau 10 giây nên lệnh dùng cache token, và một giới hạn 8 giây bao cả `gh auth token` lẫn lời gọi HTTP.
 
 ## Kết quả
 

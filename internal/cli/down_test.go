@@ -200,7 +200,7 @@ func runDown(t *testing.T, ws, repos string, extra ...string) string {
 
 func TestDown_KeepsLocalSettingsFile(t *testing.T) {
 	ws, home, repos := downWorkspace(t)
-	writeF(t, filepath.Join(home, ".claude.json"), `{"projects":{"`+ws+`":{"mcpServers":{`+kitMCPEntries+`}}}}`)
+	writeF(t, filepath.Join(home, ".claude.json"), `{"projects":{"`+ws+`":{"mcpServers":{`+kitMCPEntries+`,"zenify-zenie":{"type":"http","url":"https://broker.example/mcp/zenie"}}}}}`)
 	local := apply.WorkspaceLocalSettings(ws)
 	writeF(t, local, `{"autoMemoryDirectory":"/m","hooks":{"Stop":[{"hooks":[{"type":"command","command":"zenify hooks-run docs-sync"}]}]}}`)
 	writeF(t, pluginStampPath(ws), "v1")
@@ -222,7 +222,7 @@ func TestDown_KeepsLocalSettingsFile(t *testing.T) {
 	if !slices.Contains(calls, "plugin marketplace remove zenify-kit") {
 		t.Errorf("marketplace remove not run: %v", calls)
 	}
-	for _, n := range []string{"zenify-grafana", "zenify-posthog", "zenify-plane"} {
+	for _, n := range []string{"zenify-grafana", "zenify-posthog", "zenify-plane", "zenify-zenie"} {
 		if !slices.Contains(calls, "mcp remove "+n+" -s local") {
 			t.Errorf("mcp remove %s -s local not run: %v", n, calls)
 		}
