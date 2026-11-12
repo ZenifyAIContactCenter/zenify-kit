@@ -6,7 +6,7 @@ Only on the comment path: after each push (step 6.4), and after declines sent wi
 The bot is the app that owns the declared check, read from the check run on the head it reviewed:
 
 ```bash
-gh api "repos/<owner>/<repo>/commits/<sha>/check-runs" --jq '.check_runs[] | select(.name=="<check>") | .app.slug' | head -1
+gh api --paginate "repos/<owner>/<repo>/commits/<sha>/check-runs" --jq '.check_runs[] | select(.name=="<check>") | .app.slug' | head -1
 ```
 
 A thread is the bot's when its first comment's author has `__typename` `Bot` and `login` equal to that slug (GraphQL gives the bare slug; also accept `<slug>[bot]`). Every other thread belongs to a person.
