@@ -101,7 +101,11 @@ Bạn merge stack từ dưới lên; merge PR N thì mọi PR chưa merge bên d
 
 `/znf:ship --watch` gọi `znf:ci-watch` sau khi mở PR. Khi feature `track` bật (`zenify feature track on`), ship coi như luôn có `--watch` và truyền id track cho ci-watch để ghi kết quả CI vào sổ (`zenify track ci`). Ngoài chờ CI xanh, ci-watch còn chờ PR ở trạng thái CLEAN (CI xanh chưa đủ: review bắt buộc, review thread và check của app khác vẫn có thể chặn merge). Khi CLEAN, nó in URL PR đầy đủ và lệnh để bạn tự chạy: `! gh pr merge -R <owner/repo> <n> --merge`. Bị chặn thì nó liệt kê review thread chưa resolve (hoặc check bắt buộc đang đỏ) rồi dừng; ci-watch không resolve thread và không merge. Xem [`ci-watch`](/reference/skills/ci-watch).
 
-Nếu `CLAUDE.md` của project có dòng `PR review check:`, sau khi mở PR ship tự chờ đúng check review đó trên commit vừa push (tối đa 30 phút), sửa mọi finding blocking trong một commit mỗi vòng, tối đa 3 vòng, và chỉ chờ CI (như trên) khi check review đã xanh. Sau 3 vòng vẫn đỏ thì ship dừng và báo các finding còn mở. Không có dòng đó thì ship báo URL PR rồi dừng như cũ.
+Sau khi mở PR, ship gọi [`znf:pr-review`](/reference/skills/pr-review) cho từng PR; bạn cũng gọi tay được skill này trên một PR có sẵn (`/znf:pr-review <số PR hoặc link>`). Nếu `CLAUDE.md` của project có dòng `PR review check:`, skill chờ đúng check review đó trên commit vừa push (tối đa 30 phút), đọc lại code trước khi sửa, sửa mọi finding blocking trong một commit mỗi vòng (finding sai thì decline kèm bằng chứng), tối đa 3 vòng, và chỉ chờ CI (như trên) khi check review đã xanh. Sau 3 vòng vẫn đỏ thì skill dừng và báo các finding còn mở. Không có dòng đó thì ship báo URL PR rồi dừng như cũ.
+
+Dòng khai báo có thể nêu thêm tên tool để chờ kết quả, để decline và để chấm lại. Khi phiên có đủ các tool đó, skill trao đổi với bot qua tool và không đăng gì lên PR; bot tự đăng báo cáo từng lượt. Thiếu tool thì skill dùng comment như trước, và sau mỗi lần push nó trả lời các review thread đã xử lý, resolve thread do bot mở (thread do người mở thì chỉ trả lời).
+
+Lệnh `gh pr merge` chỉ được in ra khi check review đã xanh trên commit cuối hiện tại của PR; chưa xanh thì ci-watch và pr-review chỉ báo URL.
 
 ## Quyết định thuộc về bạn
 

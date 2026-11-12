@@ -121,3 +121,4 @@ The last line is `mergeStateStatus  reviewDecision  url`. When it wakes the sess
 - Never re-run, cancel or approve a workflow, never resolve a review thread, and never merge, from
   this skill.
 - Diagnosis, the fix and the push belong to `znf:fix` and `znf:ship`; do not duplicate them here.
+- A declared `PR review check:` (`znf:pr-review`) not green on the PR head → print no merge command.

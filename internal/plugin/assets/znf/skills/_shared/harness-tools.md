@@ -1,6 +1,6 @@
 # Harness tools — shared reference
 
-**Last updated:** 2026-09-18
+**Last updated:** 2026-11-12
 
 The kit's skills describe work at the **action** level ("dispatch a subagent", "open the task
 ledger") and this table is the single place that binds each action to a concrete harness tool.
@@ -30,6 +30,7 @@ Two rules for skill authors:
 | Wait on a condition or a background process | `Monitor` | poll with a shell loop |
 | Run a command in the background and be woken when it exits (waits longer than a `Monitor` deadline, e.g. CI) | `Bash` with `run_in_background: true` | run it in the foreground (blocks the turn) |
 | Run a data script against stg or prd with broker credentials | `Bash`: `zenify data run (--stg\|--prd) [--write] -- <cmd>`, a bare call (no pipe, redirect or `cd`) — see `data-scripts.md` | same command |
+| Call a tool the project declares by name (e.g. on its `PR review check:` line) | the MCP tool whose name ends in `__<name>`; load a deferred one with `ToolSearch` first. None in the session → the tool is missing | the same MCP tool when its server is configured; otherwise missing |
 | Query logs, traces, metrics or product analytics | MCP `mcp__<broker-grafana>__*`, `mcp__<broker-posthog>__exec` — see `evidence-sources.md` | same MCP servers |
 
 Codex notes: `zenify browser` runs inside Codex's shell sandbox and is not verified there; Codex in this workflow does CI review only. `Workflow` has no equivalent (only `contract-sweep` uses it); review T3 is a plain parallel `Agent` fan-out and runs the same on Codex. `context: fork` frontmatter is
