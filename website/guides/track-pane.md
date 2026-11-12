@@ -38,7 +38,7 @@ Status line luôn hiện, kể cả khi pane đóng. Toàn bộ chữ trên pane
   - có id mở, đã vượt ngưỡng của size est: `Tip: over est M (50m/45m) — split the work or re-estimate`
   - còn PR đã mở (bất kỳ ngày nào) chưa merge: `Tip: N PRs waiting to merge — type "hey claude check PR"`
 
-Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track error: <nguyên nhân>`.
+Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track error: <nguyên nhân>`. Số liệu được tải ở nền: trong lúc `zenify track stats` đang chạy (có thể quá 20s khi phải hỏi `gh` từng PR đang mở), status line vẫn giữ số liệu cũ, thêm dấu `⟳` ở đầu nếu lần chạy quá 1s, rồi tự cập nhật khi lần chạy xong; chỉ báo lỗi khi lần chạy hỏng hoặc quá 2 phút.
 
 ## Năm tab
 
