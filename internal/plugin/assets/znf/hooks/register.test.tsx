@@ -51,6 +51,10 @@ type World = {
   holdLogStat?: Promise<void>
   // Holds the answer of a read of this session's live json after its content is taken (a read in flight).
   holdLiveRead?: Promise<void>
+  // Holds the answer of `zenify track stats` until this resolves (a slow gh behind it).
+  holdStats?: Promise<void>
+  // The timeoutMs each `zenify track stats` run was given.
+  statsTimeouts?: (number | undefined)[]
 }
 
 type Calls = {
@@ -175,12 +179,14 @@ function engine(on: any, world: World): Calls {
     if (text === undefined) return { deny: `ENOENT: no such file, open '${e.path}'` }
     return { value: text }
   })
-  on('process.run', async (_: unknown, e: { argv: string[] }) => {
+  on('process.run', async (_: unknown, e: { argv: string[]; init?: { timeoutMs?: number } }) => {
     calls.run.push([...e.argv])
     // FR-17.3: the sources the /config rows are synced from, in step with the defaults.
     if (e.argv.join(' ') === 'zenify feature') return { value: ok('github.issues off\ntrack off\n') }
     if (e.argv.join(' ') === 'zenify reviewer get') return { value: ok('agent\n') }
     if (e.argv[0] === 'zenify') {
+      world.statsTimeouts = [...(world.statsTimeouts ?? []), e.init?.timeoutMs]
+      if (world.holdStats) await world.holdStats
       if (world.statsRejects) return { deny: world.statsRejects }
       return { value: world.stats ?? ok(statsJson()) }
     }
@@ -450,6 +456,60 @@ test('FR-6.3: stats re-run every 5 minutes for merged PRs and when the local dat
   expect(statsRuns(calls)).toHaveLength(2)
   await clock.advance(5 * MIN)
   expect(statsRuns(calls)).toHaveLength(3)
+})
+
+test('a slow stats run keeps the last numbers under a loading mark, then updates when it ends; no 20s cap', async ($, on) => {
+  const world: World = {}
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
+  let release = () => {}
+  world.holdStats = new Promise<void>(r => (release = r))
+  world.stats = ok(statsJson({ onboarded: false }))
+  // Runs that end at once never flash the mark.
+  expect(calls.status.some(t => t?.startsWith('⟳'))).toBe(false)
+  // The 5-minute forced run starts; still out after 1s, the old numbers stay, marked loading.
+  await clock.advance(5 * MIN)
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0')
+  await clock.advance(1000)
+  expect(lastStatus(calls)).toBe('⟳ track ⏸ · Today: 0/0')
+  // Still out well past 20s: no error, the mark stays.
+  await clock.advance(30000)
+  expect(lastStatus(calls)).toBe('⟳ track ⏸ · Today: 0/0')
+  expect(calls.toast).toEqual([])
+  release()
+  await clock.settle()
+  expect(lastStatus(calls)).toBe(`track ⏸ · ${COPY.onboard}`)
+  expect((world.statsTimeouts ?? []).every(t => (t ?? 0) > 20000)).toBe(true)
+})
+
+test('a slow stats run that then fails ends on the ⚠ line, never a stuck loading mark', async ($, on) => {
+  const world: World = {}
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  let release = () => {}
+  world.holdStats = new Promise<void>(r => (release = r))
+  world.stats = { exitCode: 1, stdout: '', stderr: 'gh: timeout' }
+  await clock.advance(5 * MIN)
+  await clock.advance(1000)
+  expect(lastStatus(calls)).toBe('⟳ track ⏸ · Today: 0/0')
+  release()
+  await clock.settle()
+  expect(lastStatus(calls)).toBe('⚠ track error: gh: timeout')
+})
+
+test('a first stats run that is still out after 20s does not hold a /znf:fix prompt', async ($, on) => {
+  const world: World = { trackMd: TRACK_MD, holdStats: new Promise<void>(() => {}) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: CWD, source: 'startup' } as any)
+  const submit = $.prompt.submit({ text: '/znf:fix x', command: { name: 'znf:fix', args: 'x' } } as any)
+  await clock.advance(20000)
+  await submit
+  expect(calls.toast).toEqual([])
+  expect(world.prompt?.context ?? []).toEqual([])
 })
 
 test('FR-2.3: the enabled flag comes from the stats run: on records, off does not', async ($, on) => {

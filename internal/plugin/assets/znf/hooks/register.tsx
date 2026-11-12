@@ -13,10 +13,18 @@ const PANE = { id: 'track', title: 'Track', columns: 44 } as const
 const isPane = (id: string) => id === PANE.id
 // FR-6.3/FR-11.5: how often the watched mtimes are compared, and the forced re-run for merged PRs.
 const MERGED_TICK_MS = 5 * 60000
-const STATS_TIMEOUT_MS = 20000
+// A safety cap only: the run is never awaited by the UI, which keeps the last answer marked
+// loading until it ends. gh behind it asks once per open PR, in sequence, so it can outlast 20s.
+const STATS_TIMEOUT_MS = 120000
+// How long a skill's track context waits for the session's first stats answer.
+const FIRST_STATS_WAIT_MS = 20000
 // FR-2.4: how often live/<session>.beat is rewritten. FR-1.4: how often stats re-run while a tab waits.
 const BEAT_MS = 10000
 const ROLLING_RERUN_MS = 10000
+// Leads the status line while a stats run is out longer than LOADING_MARK_AFTER_MS; most runs read
+// caches and end in tens of ms, so they never flash it.
+const LOADING_MARK = '⟳ '
+const LOADING_MARK_AFTER_MS = 1000
 
 // FR-4.1: the id this session's turns are recorded under; `ending` once its `zenify track end`
 // ran, so the turn that ran it is written before the unbind (SC-22).
@@ -28,9 +36,9 @@ const enabled = atom({ plugin: 'znf', key: 'enabled' } as const, false, { shape:
 const lastMainEnd = atom({ plugin: 'znf', key: 'lastMainEnd' } as const, null as number | null, { shape: 'track-1' })
 // FR-4.5: main-loop tool_use_ids a person was asked to allow.
 const personAsks = atom({ plugin: 'znf', key: 'personAsks' } as const, [] as string[], { shape: 'track-1' })
-// FR-6.4/FR-11.4: the last `zenify track stats --json` answer, or why it failed. The shape tag
-// declines what an earlier pane version stored under the same key.
-const stats = atom({ plugin: 'znf', key: 'stats' } as const, null as { data?: TrackStats; error?: string } | null, { shape: 'track-1' })
+// FR-6.4/FR-11.4: the last `zenify track stats --json` answer, or why it failed; `loading` while a
+// run is out. The shape tag declines what an earlier pane version stored under the same key.
+const stats = atom({ plugin: 'znf', key: 'stats' } as const, null as { data?: TrackStats; error?: string; loading?: boolean } | null, { shape: 'track-1' })
 // FR-6.2: the selected tab; `Kitchen` by default. track-3 declines a stored `total` or `this`.
 const tab = atom({ plugin: 'znf', key: 'tab' } as const, 'kitchen' as Tab, { shape: 'track-3' })
 
@@ -39,6 +47,8 @@ let timers: Timer[] = []
 // The watched mtimes and local date of the last stats run; undefined = none since session start.
 let lastKey: string | undefined
 let isStatting = false
+// Counts stats runs, so a late loading mark never lands on a run that already ended.
+let runSeq = 0
 // A forced run asked for while one was in flight; it runs when that one ends. A run that
 // bypasses the backlog cache (`--force`) stays that way when queued.
 let isRerunWanted = false
@@ -296,9 +306,10 @@ async function trackContextFor($: $, skill: string): Promise<string | undefined>
   const section = trackSectionOf(skill)
   if (!section || !isInWorkspace()) return undefined
   // `enabled` as last learnt, kept in this module: a handler reads the atom as of its own start.
-  // Not known on yet before the session's first stats answer (bounded by STATS_TIMEOUT_MS): wait for
+  // Not known on yet before the session's first stats answer (bounded by FIRST_STATS_WAIT_MS): wait for
   // it rather than drop the first skill's track steps.
-  if (!lastKnownEnabled && (isStatsSettled || !(await firstStats))) return undefined
+  if (!lastKnownEnabled && (isStatsSettled || !(await Promise.race([firstStats, $.clock.sleep(FIRST_STATS_WAIT_MS).then(() => false)]))))
+    return undefined
   const md = String(await $.fs.read(`${$.plugin.root}/skills/_shared/track.md`))
   const text = trackContext(md, section)
   if (!text) throw new Error(`skills/_shared/track.md has no "## Rules" or "## ${section}" section`)
@@ -328,12 +339,16 @@ let showTips = true
 
 async function updateStatus($: $): Promise<void> {
   const st = await read($, stats)
-  if (!st) return
+  // The first run is still out: nothing to show yet.
+  if (!st || (st.error === undefined && !st.data)) return
   if (st.error !== undefined || !st.data) {
     $.ui.status(errorStatus(st.error ?? 'no stats'))
     return
   }
-  $.ui.status(statusText(st.data, await $.session.id(), (await read($, bound))?.id, showTips))
+  const text = statusText(st.data, await $.session.id(), (await read($, bound))?.id, showTips)
+  // A run may have ended (or marked itself loading) during the awaits above: its own call sets the line.
+  if ((await read($, stats))?.loading !== st.loading) return
+  $.ui.status(st.loading ? `${LOADING_MARK}${text}` : text)
 }
 
 // FR-6.3/FR-11.5/FR-1.2: runs `zenify track stats --json` when log.md, sessions/, this session's own
@@ -350,6 +365,7 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
     return
   }
   isStatting = true
+  const seq = ++runSeq
   try {
     let data: TrackStats
     try {
@@ -378,6 +394,17 @@ async function refreshStats($: $, force = false, fresh = false): Promise<void> {
       lastKey = key
       lastRunAt = now
       const argv = ['zenify', 'track', 'stats', '--json', '--workspace', ws, ...(fresh ? ['--force'] : [])]
+      // The last answer stays shown, marked loading once the run outlasts LOADING_MARK_AFTER_MS,
+      // until this run ends and replaces it.
+      const isOut = () => seq === runSeq && isStatting
+      void $.clock
+        .sleep(LOADING_MARK_AFTER_MS)
+        .then(async () => {
+          if (!isOut()) return
+          await update($, stats, s => (isOut() ? { ...s, loading: true } : s))
+          await updateStatus($)
+        })
+        .catch(statsError($))
       const out = await $.process.run(argv, { timeoutMs: STATS_TIMEOUT_MS })
       if (out.exitCode !== 0) throw new Error(firstLine(out.stderr) || `zenify track stats: exit ${out.exitCode}`)
       data = parseTrackStats(out.stdout)
@@ -644,7 +671,7 @@ export const register: Register = (on, options: PluginOptions) => {
       </Text>
     )
     // FR-6.4: an error or the feature off is said in the pane, never an empty body.
-    const body: Line[] = !st
+    const body: Line[] = !st || (st.error === undefined && !st.data)
       ? [{ text: COPY.loading, tone: 'dim' }]
       : st.error !== undefined || !st.data
         ? [{ text: errorStatus(st.error ?? 'no stats'), tone: 'error' }]
