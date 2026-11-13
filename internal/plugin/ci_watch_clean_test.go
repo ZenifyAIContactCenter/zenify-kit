@@ -22,6 +22,8 @@ func TestCiWatchWaitsForClean(t *testing.T) {
 		"statusCheckRollup", // pending counted from JSON, not `gh pr checks`' exit code
 		"--paginate",        // every page of review threads
 		"pageInfo",
+		// a project with a declared review check gets the merge command only after that check is green on the head
+		"A declared `PR review check:` (`znf:pr-review`) not green on the PR head → print no merge command",
 	})
 }
 

@@ -26,7 +26,7 @@ Sau khi push một branch, khi bạn muốn Claude tự biết CI xanh hay đỏ
 4. CI xanh: báo một dòng, rồi nếu branch có PR mở thì sang bước 6. Có run `failure`, `timed_out` hoặc `startup_failure`: skill không tự đọc log hay sửa, mà gọi luôn `/znf:fix` với URL các run lỗi (không hỏi). `/znf:fix` đọc log, chẩn đoán, sửa và đi qua gate của `/znf:ship` để push; PR đã có thì push cập nhật vào PR đó.
 5. Sau khi `/znf:fix` push, skill theo dõi commit mới. Vòng 2 vẫn đỏ, hoặc `/znf:fix` dừng mà không push (nguyên nhân nằm ngoài repo, cần `/znf:cook`), skill dừng và báo từng vòng.
 6. Chờ PR merge được: CI xanh chưa chắc PR merge được (còn review bắt buộc, review thread, check của app khác). Skill chạy thêm một vòng lặp nền, cứ 30 giây đọc `mergeStateStatus` của PR (chỉ gọi thêm `gh pr checks` khi trạng thái là `BLOCKED` hoặc `UNSTABLE`), tối đa 60 phút. Kết quả:
-   - `CLEAN`: báo URL PR đầy đủ và lệnh merge để bạn tự chạy: `! gh pr merge -R <owner/repo> <n> --merge`.
+   - `CLEAN`: báo URL PR đầy đủ và lệnh merge để bạn tự chạy: `! gh pr merge -R <owner/repo> <n> --merge`. Project có khai báo `PR review check:` mà check đó chưa xanh trên commit cuối của PR thì skill chỉ báo URL, không in lệnh merge.
    - `UNSTABLE` (check không bắt buộc fail, không còn check chờ): báo check fail kèm lệnh merge, bạn tự quyết.
    - `BLOCKED` (không còn check chờ): liệt kê review thread chưa resolve (path + URL comment); không có thread thì báo `reviewDecision` và check bắt buộc đang fail. Skill không tự resolve thread và không chờ tiếp.
    - `DIRTY` (conflict), `BEHIND` (tụt base), `DRAFT`, hết 60 phút, hoặc `gh` lỗi 3 lần liên tiếp: báo trạng thái và dừng.

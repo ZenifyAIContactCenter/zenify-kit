@@ -20,13 +20,14 @@ func TestTrackSharedDoc(t *testing.T) {
 		"before any investigation", "end with `--pr <url>`", "--from <ledger id>", "is taken by", "`track id:` from `/fix`",
 		"## Daily plan", "360", "zenify track plan set", "gh search prs --review-requested @me",
 		"pass the code to the CLI as typed", "--kind task", "/znf:track",
+		"`znf:pr-review` makes that call when it runs the loop; give it the same line",
 		"elsewhere", "In another tab",
 	})
 }
 
-// FR-12.2: the four skills already at the byte cap stay at their pinned size (cook/hotfix re-pinned by the Plane-key pointer).
+// FR-12.2: the four skills already at the byte cap stay at their pinned size (cook/hotfix re-pinned by the Plane-key pointer, ship by the move of its PR review loop to znf:pr-review).
 func TestTrackLeavesCappedSkillsAlone(t *testing.T) {
-	sizes := map[string]int64{"cook": 8178, "fix": 8095, "hotfix": 8191, "ship": 8188}
+	sizes := map[string]int64{"cook": 8178, "fix": 8095, "hotfix": 8191, "ship": 8154}
 	for name, want := range sizes {
 		fi, err := os.Stat(filepath.Join("assets", "znf", "skills", name, "SKILL.md"))
 		if err != nil {
