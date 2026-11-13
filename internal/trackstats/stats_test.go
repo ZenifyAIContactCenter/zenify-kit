@@ -843,3 +843,38 @@ func TestTaskHasNoPhases(t *testing.T) { // FR-2.5
 		t.Fatalf("task item = %+v", it)
 	}
 }
+
+func TestBriefElsewhereFromLog(t *testing.T) { // SC-4
+	id, idle := cid("cook", 7), cid("cook", 8)
+	in := base(lines(
+		row(now.Add(-2*time.Hour), "start", id, "cook", "r", "M", "b-261111-c052"),
+		row(now.Add(-1*time.Hour), "start", idle, "cook", "r", "M"),
+	))
+	in.Sessions = map[string]string{"B": lines(row(now.Add(-2*time.Hour), "cwd", "/w/b"), row(now.Add(-2*time.Hour), "bind", id))}
+	in.Beats = map[string]time.Time{"B": now.Add(-5 * time.Second)}
+	in.TabTitle = func(string) (string, error) { return "Fix hub", nil }
+	res, _ := Compute(in)
+	var bound, unbound *Item
+	for i := range res.Running {
+		switch res.Running[i].ID {
+		case id:
+			bound = &res.Running[i]
+		case idle:
+			unbound = &res.Running[i]
+		}
+	}
+	if bound == nil || unbound == nil {
+		t.Fatalf("running = %+v", res.Running)
+	}
+	if bound.From != "b-261111-c052" || !bound.Live {
+		t.Fatalf("bound = %+v", *bound)
+	}
+	if unbound.Live {
+		t.Fatalf("unbound item must not be live: %+v", *unbound)
+	}
+	b := Brief(res, "A")
+	want := BriefElsewhere{ID: id, Code: "c052", From: "b-261111-c052", Kind: "cook", Repo: "r", Tab: "Fix hub", Session: "B"}
+	if len(b.Elsewhere) != 1 || b.Elsewhere[0] != want {
+		t.Fatalf("elsewhere = %+v", b.Elsewhere)
+	}
+}
