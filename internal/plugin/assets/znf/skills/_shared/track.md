@@ -67,7 +67,7 @@ Read this when the session digest says `features: track on`. Every command below
 Run this when the user says "plan today", "daily plan" or the Vietnamese equivalent.
 
 1. Run `zenify track stats --brief --force`.
-   - When `elsewhere` is not empty, print a section "Đang ở tab khác" before the plan, one line per entry: `<code, else from, else id> · <kind> <repo> → tab «<tab>»: sang tab đó làm` (empty `tab` → `session <first 8 chars of session>`). These items are already left out of `carried` and `prOpen`; never add them to the plan. Then plan the rest as below.
+   - When `elsewhere` is not empty, print a section "In another tab" (in the user's language) before the plan, one line per entry: `<code, else from, else id> · <kind> <repo> → tab «<tab>»`, telling the user to switch to that tab to work on it (empty `tab` → `session <first 8 chars of session>`). These items are already left out of `carried` and `prOpen`; never add them to the plan. Then plan the rest as below.
 2. Candidates in this order: `carried` (pass its `id`), then each `prOpen` entry with `ready == false` (pass its `url`), then `backlog` (pass its `id`; already ordered S, M, L, `-`); size each by `scale` (`carried` and `backlog` carry `est`). When `prStatusError` or `mergedError` is set, the `prOpen` list may be incomplete: say so to the user. Pass these fields to `zenify track plan set`.
 3. Take them one by one and stop at the first item that would push the total est over 360 minutes (S, M, L count as the current `scale` bounds). That item is not taken, unless the list is still empty.
 4. Show the list to the user for approval.
