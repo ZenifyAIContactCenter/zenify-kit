@@ -136,4 +136,21 @@ func TestBriefElsewhere(t *testing.T) {
 			t.Fatalf("code = %q", b.Elsewhere[0].Code)
 		}
 	})
+	t.Run("PR recorded by away item leaves prOpen", func(t *testing.T) {
+		it := live("B")
+		it.From = "b-261111-c052"
+		it.PRs = []string{"https://github.com/o/r/pull/11"}
+		r := elsewhereResult(it)
+		r.Today.PROpen = []PRStatus{{URL: "https://github.com/o/r/pull/11"}, {URL: "https://github.com/o/r/pull/10"}}
+		if b := Brief(r, "A"); len(b.PROpen) != 1 || b.PROpen[0].URL != "https://github.com/o/r/pull/10" {
+			t.Fatalf("prOpen = %+v", b.PROpen)
+		}
+	})
+	t.Run("long tab title is shortened", func(t *testing.T) {
+		it := live("B")
+		it.Tab = strings.Repeat("x", 200)
+		if b := Brief(elsewhereResult(it), "A"); b.Elsewhere[0].Tab != strings.Repeat("x", 80)+"…" {
+			t.Fatalf("tab = %q", b.Elsewhere[0].Tab)
+		}
+	})
 }

@@ -108,10 +108,14 @@ func Brief(r Result, self string) BriefResult {
 	}
 	for _, it := range r.Running {
 		if it.Live && it.Session != self {
-			e := BriefElsewhere{ID: it.ID, From: it.From, Kind: it.Kind, Repo: it.Repo, Tab: it.Tab, Session: it.Session}
+			e := BriefElsewhere{ID: it.ID, From: it.From, Kind: it.Kind, Repo: it.Repo, Tab: shorten(it.Tab), Session: it.Session}
 			if it.From != "" {
 				e.Code = Code(it.From)
 				awayFrom[it.From] = true
+			}
+			// A PR the item already recorded is that tab's work too.
+			for _, pr := range it.PRs {
+				awayFrom[pr] = true
 			}
 			b.Elsewhere = append(b.Elsewhere, e)
 			away[it.ID] = true
