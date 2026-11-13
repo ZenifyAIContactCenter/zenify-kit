@@ -41,12 +41,15 @@ type Scale struct {
 
 // Item is one tracked id.
 type Item struct {
-	ID        string              `json:"id"`
-	Kind      string              `json:"kind"`
-	Repo      string              `json:"repo"`
-	Est       string              `json:"est"`
-	Session   string              `json:"session"`
-	Cwd       string              `json:"cwd"`
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
+	Repo    string `json:"repo"`
+	Est     string `json:"est"`
+	Session string `json:"session"`
+	Cwd     string `json:"cwd"`
+	// From is the backlog id the item was started from, "" when none. Live is set only on Running.
+	From      string              `json:"from"`
+	Live      bool                `json:"live"`
 	Tab       string              `json:"tab"`
 	Phase     string              `json:"phase"`
 	Status    string              `json:"status"`
@@ -351,6 +354,7 @@ func Compute(in Input) (Result, map[string]string) {
 	for _, id := range order {
 		w := works[id]
 		it := w.item
+		it.From = w.from
 		if s, ok := sessOf[id]; ok {
 			it.Session, it.Cwd = s, cwdOf[id]
 		}

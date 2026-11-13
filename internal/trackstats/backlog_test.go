@@ -293,7 +293,7 @@ func TestBacklogPlaneErrorIsolated(t *testing.T) {
 	if r.Backlog.PlaneError != "plane answered 401 Unauthorized" || r.Backlog.GhError != "" || sources(r)["github"] != 1 {
 		t.Fatalf("backlog = %+v", r.Backlog)
 	}
-	if b := Brief(r); b.PlaneError != "plane answered 401 Unauthorized" {
+	if b := Brief(r, ""); b.PlaneError != "plane answered 401 Unauthorized" {
 		t.Fatalf("brief planeError = %q", b.PlaneError)
 	}
 }

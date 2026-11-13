@@ -25,7 +25,7 @@ func TestBrief(t *testing.T) {
 		Kitchen: Kitchen{Carried: []CarriedItem{{ID: "cook-261104-bbbb", Brief: "carry", Kind: "cook", Repo: "kit", Phase: "plan", Session: "s"}}},
 		Backlog: Backlog{Items: []BacklogItem{{Source: "github", ID: "https://github.com/o/r/issues/3", Repo: "r", Est: "-", Ref: "https://github.com/o/r/issues/3", Title: long, AgeDays: 4, Code: "#3"}}, GhError: "gh down"},
 	}
-	b := Brief(r)
+	b := Brief(r, "")
 	if got := b.Backlog[0].Title; got != strings.Repeat("x", 80)+"…" {
 		t.Fatalf("title = %q", got)
 	}
@@ -51,13 +51,106 @@ func TestBrief(t *testing.T) {
 
 // Empty lists stay arrays so an agent never has to handle null.
 func TestBriefEmpty(t *testing.T) {
-	out, err := json.Marshal(Brief(Result{Enabled: true}))
+	out, err := json.Marshal(Brief(Result{Enabled: true}, ""))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"carried":[]`, `"prOpen":[]`, `"backlog":[]`, `"running":[]`, `"dailyPlan":null`} {
+	for _, want := range []string{`"carried":[]`, `"prOpen":[]`, `"backlog":[]`, `"running":[]`, `"dailyPlan":null`, `"elsewhere":[]`} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("missing %s in %s", want, out)
 		}
 	}
+}
+
+func elsewhereResult(run Item) Result {
+	return Result{
+		Running: []Item{run},
+		Kitchen: Kitchen{Carried: []CarriedItem{{ID: run.ID}}},
+	}
+}
+
+func TestBriefElsewhere(t *testing.T) {
+	const id = "cook-261112-aaaa"
+	live := func(session string) Item {
+		return Item{ID: id, Kind: "cook", Repo: "r", Session: session, Live: true}
+	}
+	t.Run("SC-1 live in another session", func(t *testing.T) {
+		b := Brief(elsewhereResult(live("B")), "A")
+		if len(b.Carried) != 0 {
+			t.Fatalf("carried = %+v", b.Carried)
+		}
+		want := BriefElsewhere{ID: id, Kind: "cook", Repo: "r", Session: "B"}
+		if len(b.Elsewhere) != 1 || b.Elsewhere[0] != want {
+			t.Fatalf("elsewhere = %+v", b.Elsewhere)
+		}
+	})
+	t.Run("SC-2 beat expired", func(t *testing.T) {
+		it := live("B")
+		it.Live = false
+		b := Brief(elsewhereResult(it), "A")
+		if len(b.Carried) != 1 || len(b.Elsewhere) != 0 {
+			t.Fatalf("carried %+v elsewhere %+v", b.Carried, b.Elsewhere)
+		}
+	})
+	t.Run("SC-3 own session", func(t *testing.T) {
+		b := Brief(elsewhereResult(live("A")), "A")
+		if len(b.Carried) != 1 || len(b.Elsewhere) != 0 {
+			t.Fatalf("carried %+v elsewhere %+v", b.Carried, b.Elsewhere)
+		}
+	})
+	t.Run("FR-1.4 empty self", func(t *testing.T) {
+		b := Brief(elsewhereResult(live("A")), "")
+		if len(b.Elsewhere) != 1 {
+			t.Fatalf("elsewhere = %+v", b.Elsewhere)
+		}
+	})
+	t.Run("SC-5 code only for a trackable From", func(t *testing.T) {
+		b := Brief(elsewhereResult(live("B")), "A")
+		if e := b.Elsewhere[0]; e.From != "" || e.Code != "" {
+			t.Fatalf("no from: %+v", e)
+		}
+		it := live("B")
+		it.From = "repos/x/.znf/sdd/p/progress.md:3"
+		b = Brief(elsewhereResult(it), "A")
+		if e := b.Elsewhere[0]; e.From != it.From || e.Code != "" {
+			t.Fatalf("ledger from: %+v", e)
+		}
+	})
+	t.Run("SC-8 stale but live", func(t *testing.T) {
+		it := live("B")
+		it.Status = "stale"
+		if b := Brief(elsewhereResult(it), "A"); len(b.Elsewhere) != 1 {
+			t.Fatalf("elsewhere = %+v", b.Elsewhere)
+		}
+	})
+	t.Run("SC-9 PR of away item leaves prOpen", func(t *testing.T) {
+		it := live("B")
+		it.From = "https://github.com/o/r/pull/9"
+		r := elsewhereResult(it)
+		r.Today.PROpen = []PRStatus{{URL: "https://github.com/o/r/pull/9"}, {URL: "https://github.com/o/r/pull/10"}}
+		b := Brief(r, "A")
+		if len(b.PROpen) != 1 || b.PROpen[0].URL != "https://github.com/o/r/pull/10" {
+			t.Fatalf("prOpen = %+v", b.PROpen)
+		}
+		if b.Elsewhere[0].Code != "#9" {
+			t.Fatalf("code = %q", b.Elsewhere[0].Code)
+		}
+	})
+	t.Run("PR recorded by away item leaves prOpen", func(t *testing.T) {
+		it := live("B")
+		it.From = "b-261111-c052"
+		it.PRs = []string{"https://github.com/o/r/pull/11"}
+		r := elsewhereResult(it)
+		r.Today.PROpen = []PRStatus{{URL: "https://github.com/o/r/pull/11"}, {URL: "https://github.com/o/r/pull/10"}}
+		if b := Brief(r, "A"); len(b.PROpen) != 1 || b.PROpen[0].URL != "https://github.com/o/r/pull/10" {
+			t.Fatalf("prOpen = %+v", b.PROpen)
+		}
+	})
+	t.Run("long tab title is shortened", func(t *testing.T) {
+		it := live("B")
+		it.Tab = strings.Repeat("x", 200)
+		if b := Brief(elsewhereResult(it), "A"); b.Elsewhere[0].Tab != strings.Repeat("x", 80)+"…" {
+			t.Fatalf("tab = %q", b.Elsewhere[0].Tab)
+		}
+	})
 }

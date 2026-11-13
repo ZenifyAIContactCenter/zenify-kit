@@ -20,6 +20,7 @@ func TestTrackSharedDoc(t *testing.T) {
 		"before any investigation", "end with `--pr <url>`", "--from <ledger id>", "is taken by", "`track id:` from `/fix`",
 		"## Daily plan", "360", "zenify track plan set", "gh search prs --review-requested @me",
 		"pass the code to the CLI as typed", "--kind task", "/znf:track",
+		"elsewhere", "In another tab",
 	})
 }
 

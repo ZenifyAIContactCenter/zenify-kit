@@ -4,6 +4,9 @@ export type TrackKind = 'cook' | 'fix' | 'hotfix' | 'task'
 
 export type TrackItem = {
   id: string
+  from: string
+  // set only on `running`; false everywhere else
+  live: boolean
   kind: TrackKind
   repo: string
   est: string
