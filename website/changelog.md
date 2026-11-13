@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.69.0
+
+*2026-11-13*
+
+- **Skill mới `/znf:pr-review`:** vòng xử lý review của bot sau khi mở PR tách khỏi ship thành skill riêng. Ship vẫn tự gọi nó sau `gh pr create`; bạn cũng gọi tay được trên một PR có sẵn: `/znf:pr-review <số PR hoặc link>`. Skill đọc lại code trước khi sửa, finding sai thì decline kèm bằng chứng; decline gửi kèm một lần push không tính thêm vòng. Xem [`pr-review`](/reference/skills/pr-review).
+- **Trao đổi với bot qua tool khi project khai báo:** dòng `PR review check:` có thể nêu tên tool để chờ, decline và chấm lại; khi phiên có đủ các tool đó, skill không đăng gì lên PR. Thiếu tool thì dùng comment như trước, và sau mỗi lần push skill trả lời các review thread đã xử lý, resolve thread do bot mở (thread do người mở chỉ trả lời). Xem [Ship](/workflows/ship).
+- **Lệnh merge chỉ in khi review đã xanh:** `/znf:ci-watch` và `/znf:pr-review` chỉ in lệnh `gh pr merge` khi check review khai báo đã xanh trên commit cuối của PR; chưa xanh thì chỉ báo URL.
+
 ## v0.68.0
 
 *2026-11-13*
