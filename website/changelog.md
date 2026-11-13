@@ -8,7 +8,7 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
-## v0.67.2
+## v0.68.0
 
 *2026-11-13*
 
