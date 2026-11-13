@@ -7,19 +7,20 @@ const briefTitleMax = 80
 // pick the next work item or build a daily plan, so the agent reads a few KB instead of the pane's
 // full JSON (timing, tokens, estimate and quality stay out).
 type BriefResult struct {
-	Enabled       bool           `json:"enabled"`
-	Onboarded     bool           `json:"onboarded"`
-	Date          string         `json:"date"`
-	Scale         BriefScale     `json:"scale"`
-	Carried       []BriefCarried `json:"carried"`
-	DailyPlan     *DailyPlan     `json:"dailyPlan"`
-	PROpen        []BriefPR      `json:"prOpen"`
-	PRStatusError string         `json:"prStatusError"`
-	MergedError   string         `json:"mergedError"`
-	Backlog       []BriefBacklog `json:"backlog"`
-	Running       []BriefRunning `json:"running"`
-	GhError       string         `json:"ghError"`
-	PlaneError    string         `json:"planeError"`
+	Enabled       bool             `json:"enabled"`
+	Onboarded     bool             `json:"onboarded"`
+	Date          string           `json:"date"`
+	Scale         BriefScale       `json:"scale"`
+	Carried       []BriefCarried   `json:"carried"`
+	DailyPlan     *DailyPlan       `json:"dailyPlan"`
+	PROpen        []BriefPR        `json:"prOpen"`
+	PRStatusError string           `json:"prStatusError"`
+	MergedError   string           `json:"mergedError"`
+	Backlog       []BriefBacklog   `json:"backlog"`
+	Running       []BriefRunning   `json:"running"`
+	Elsewhere     []BriefElsewhere `json:"elsewhere"`
+	GhError       string           `json:"ghError"`
+	PlaneError    string           `json:"planeError"`
 }
 
 // BriefScale holds the S/M/L upper bounds in minutes, used to size a daily plan.
@@ -47,6 +48,18 @@ type BriefRunning struct {
 	Session string `json:"session"`
 }
 
+// BriefElsewhere is an open item that another live session is working on, so a daily plan must
+// not pull it in.
+type BriefElsewhere struct {
+	ID      string `json:"id"`
+	Code    string `json:"code"`
+	From    string `json:"from"`
+	Kind    string `json:"kind"`
+	Repo    string `json:"repo"`
+	Tab     string `json:"tab"`
+	Session string `json:"session"`
+}
+
 type BriefPR struct {
 	URL     string `json:"url"`
 	Repo    string `json:"repo"`
@@ -68,7 +81,9 @@ type BriefBacklog struct {
 }
 
 // Brief projects r onto the agent view. Lists are never nil, so they marshal as [].
-func Brief(r Result) BriefResult {
+// self is the caller's session id; an item live in any other session lands in Elsewhere and leaves
+// Carried and PROpen.
+func Brief(r Result, self string) BriefResult {
 	b := BriefResult{
 		Enabled:       r.Enabled,
 		Onboarded:     r.Onboarded,
@@ -83,16 +98,34 @@ func Brief(r Result) BriefResult {
 		PROpen:        []BriefPR{},
 		Backlog:       []BriefBacklog{},
 		Running:       []BriefRunning{},
+		Elsewhere:     []BriefElsewhere{},
 	}
+	away, awayFrom := map[string]bool{}, map[string]bool{}
 	// Carried items are open (running or stale), so Running holds their estimate.
 	est := map[string]string{}
 	for _, it := range r.Running {
 		est[it.ID] = it.Est
 	}
 	for _, it := range r.Running {
+		if it.Live && it.Session != self {
+			e := BriefElsewhere{ID: it.ID, From: it.From, Kind: it.Kind, Repo: it.Repo, Tab: shorten(it.Tab), Session: it.Session}
+			if it.From != "" {
+				e.Code = Code(it.From)
+				awayFrom[it.From] = true
+			}
+			// A PR the item already recorded is that tab's work too.
+			for _, pr := range it.PRs {
+				awayFrom[pr] = true
+			}
+			b.Elsewhere = append(b.Elsewhere, e)
+			away[it.ID] = true
+		}
 		b.Running = append(b.Running, BriefRunning{ID: it.ID, Kind: it.Kind, Repo: it.Repo, Est: it.Est, Session: it.Session})
 	}
 	for _, c := range r.Kitchen.Carried {
+		if away[c.ID] {
+			continue
+		}
 		e := est[c.ID]
 		if e == "" {
 			e = "-"
@@ -100,6 +133,9 @@ func Brief(r Result) BriefResult {
 		b.Carried = append(b.Carried, BriefCarried{ID: c.ID, Brief: c.Brief, Kind: c.Kind, Repo: c.Repo, Est: e, Phase: c.Phase})
 	}
 	for _, p := range r.Today.PROpen {
+		if awayFrom[p.URL] {
+			continue
+		}
 		b.PROpen = append(b.PROpen, BriefPR{URL: p.URL, Repo: p.Repo, Number: p.Number, CI: p.CI, Review: p.Review, Threads: p.Threads, Ready: p.Ready})
 	}
 	for _, it := range r.Backlog.Items {

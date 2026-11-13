@@ -38,7 +38,7 @@ Status line luôn hiện, kể cả khi pane đóng. Toàn bộ chữ trên pane
   - có id mở, đã vượt ngưỡng của size est: `Tip: over est M (50m/45m) — split the work or re-estimate`
   - còn PR đã mở (bất kỳ ngày nào) chưa merge: `Tip: N PRs waiting to merge — type "hey claude check PR"`
 
-Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track error: <nguyên nhân>`.
+Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track error: <nguyên nhân>`. Số liệu được tải ở nền: trong lúc `zenify track stats` đang chạy (có thể quá 20s khi phải hỏi `gh` từng PR đang mở), status line vẫn giữ số liệu cũ, thêm dấu `⟳` ở đầu nếu lần chạy quá 1s, rồi tự cập nhật khi lần chạy xong; chỉ báo lỗi khi lần chạy hỏng hoặc quá 2 phút.
 
 ## Năm tab
 
@@ -104,6 +104,8 @@ Plan là danh sách việc bạn chốt cho hôm nay. Nói "hey claude plan toda
 3. Lấy lần lượt và dừng ở mục đầu tiên làm tổng est vượt 360 phút (mục đó không lấy, trừ khi danh sách còn rỗng).
 4. Đưa danh sách cho bạn duyệt. Chỉ sau khi bạn đồng ý agent mới chạy `zenify track plan set`.
 
+Việc đang chạy ở một tab Claude Code khác còn mở (tín hiệu sống trong 30 giây) không vào plan. Agent in mục "Đang ở tab khác" kèm tên tab để bạn sang đó làm, rồi plan phần còn lại. Tab đã đóng thì việc vẫn là `carried`. Session hiện tại lấy từ `CLAUDE_CODE_SESSION_ID`; Codex không có biến này nên mọi việc đang chạy bị coi là ở tab khác.
+
 ```bash
 zenify track plan set b-261105-ab12 https://github.com/org/repo/pull/3 cook-261105-cd34
 ```
@@ -143,7 +145,7 @@ Tab `Backlog` gom việc chưa làm từ năm nguồn:
 - `sdd`: mục `minor (deferred)` và `parked` trong `progress.md` của các plan.
 - `stale`: việc đã bắt đầu nhưng bị bỏ dở.
 
-Việc `plane` có mã `ZEN-288`. Thứ tự nguồn khi agent lấy việc tiếp theo: danh sách `backlog` trước. Chỉ khi nó rỗng hoặc `zenify track stats --brief` báo `ghError`, agent mới chạy `gh search issues --assignee @me --state open` và `gh search prs --review-requested @me --state open`, đưa kết quả cho bạn chọn rồi start bằng `--from <url>`. Digest đầu session nhắc agent chạy `zenify track stats --brief` trước khi chọn việc. `--brief` là JSON gọn cho agent (việc dở, plan, PR mở, backlog với tiêu đề cắt 80 ký tự, thang S/M/L), không có thời gian, token hay số liệu chất lượng; trên workspace thật nó nhỏ hơn `--json` khoảng 3 lần (7 KB so với 22 KB với 31 mục backlog). Pane vẫn dùng `--json`.
+Việc `plane` có mã `ZEN-288`. Thứ tự nguồn khi agent lấy việc tiếp theo: danh sách `backlog` trước. Chỉ khi nó rỗng hoặc `zenify track stats --brief` báo `ghError`, agent mới chạy `gh search issues --assignee @me --state open` và `gh search prs --review-requested @me --state open`, đưa kết quả cho bạn chọn rồi start bằng `--from <url>`. Digest đầu session nhắc agent chạy `zenify track stats --brief` trước khi chọn việc. `--brief` là JSON gọn cho agent (việc dở, việc đang ở tab khác `elsewhere`, plan, PR mở, backlog với tiêu đề cắt 80 ký tự, thang S/M/L), không có thời gian, token hay số liệu chất lượng; trên workspace thật nó nhỏ hơn `--json` khoảng 3 lần (7 KB so với 22 KB với 31 mục backlog). Pane vẫn dùng `--json`.
 
 Mỗi dòng Backlog cũng bắt đầu bằng mã ngắn (`b81e` cho việc thêm tay, `#581` cho issue GitHub). Đây là mã bạn gõ vào prompt hoặc vào `/znf:track`.
 

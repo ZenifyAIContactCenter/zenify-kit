@@ -4,6 +4,9 @@ export type TrackKind = 'cook' | 'fix' | 'hotfix' | 'task'
 
 export type TrackItem = {
   id: string
+  from: string
+  // set only on `running`; false everywhere else
+  live: boolean
   kind: TrackKind
   repo: string
   est: string
@@ -141,8 +144,8 @@ export type TrackTab = 'kitchen' | 'today' | 'estimate' | 'quality' | 'backlog'
 declare module 'claude-code' {
   interface PluginState {
     znf: {
-      // the last `zenify track stats --json` answer, or why it failed
-      stats: Shaped<{ data?: TrackStats; error?: string } | null>
+      // the last `zenify track stats --json` answer, or why it failed; `loading` while a run is out
+      stats: Shaped<{ data?: TrackStats; error?: string; loading?: boolean } | null>
       // the selected tab of the track pane
       tab: Shaped<TrackTab>
       // zenify track: the id this session's turns are recorded under; `ending` once its

@@ -154,13 +154,18 @@ func computeKitchen(in Input, logEv []Event, works map[string]*work, order []str
 	}
 	// An item's tab is read only while its session still beats: a closed tab has no name to show,
 	// and each lookup reads up to 1 MiB of transcript.
+	isLive := func(session string) bool {
+		b, ok := in.Beats[session]
+		return ok && in.Now.Sub(b) <= liveTTL
+	}
 	liveTab := func(session string) string {
-		if b, ok := in.Beats[session]; !ok || in.Now.Sub(b) > liveTTL {
+		if !isLive(session) {
 			return ""
 		}
 		return tabOf(session)
 	}
 	for i := range res.Running {
+		res.Running[i].Live = isLive(res.Running[i].Session)
 		res.Running[i].Tab = liveTab(res.Running[i].Session)
 	}
 	itemOf := map[string]Item{}

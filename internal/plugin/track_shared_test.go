@@ -21,6 +21,7 @@ func TestTrackSharedDoc(t *testing.T) {
 		"## Daily plan", "360", "zenify track plan set", "gh search prs --review-requested @me",
 		"pass the code to the CLI as typed", "--kind task", "/znf:track",
 		"`znf:pr-review` makes that call when it runs the loop; give it the same line",
+		"elsewhere", "In another tab",
 	})
 }
 

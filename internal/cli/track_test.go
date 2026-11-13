@@ -865,3 +865,53 @@ func TestTrackEndDone(t *testing.T) {
 		t.Fatalf("log:\n%s", trackLog(t, ws))
 	}
 }
+
+func TestTrackStatsBriefSelfSession(t *testing.T) { // SC-7
+	ws := trackWS(t, true)
+	stubMergedAndTitle(t, "")
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.MkdirAll(filepath.Join(dir, "sessions"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "live"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Add(-time.Minute).Format("2006-01-02T15:04:05Z")
+	id := "cook-" + time.Now().Format("060102") + "-abcd"
+	if err := os.WriteFile(filepath.Join(dir, "log.md"), []byte(at+" · start · "+id+" · cook · r · M\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sessions", "A.log"), []byte(at+" · bind · "+id+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "live", "A.beat"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	type out struct {
+		Elsewhere []struct {
+			ID      string `json:"id"`
+			Session string `json:"session"`
+		} `json:"elsewhere"`
+	}
+	brief := func(self string) out {
+		t.Setenv("CLAUDE_CODE_SESSION_ID", self)
+		s, err := runTrack(t, ws, "stats", "--brief", "--force")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(s, `"elsewhere"`) {
+			t.Fatalf("no elsewhere key: %s", s)
+		}
+		var o out
+		if err := json.Unmarshal([]byte(s), &o); err != nil {
+			t.Fatalf("%v\n%s", err, s)
+		}
+		return o
+	}
+	if o := brief("A"); len(o.Elsewhere) != 0 {
+		t.Fatalf("own session: %+v", o.Elsewhere)
+	}
+	if o := brief("Z"); len(o.Elsewhere) != 1 || o.Elsewhere[0].Session != "A" || o.Elsewhere[0].ID != id {
+		t.Fatalf("other session: %+v", o.Elsewhere)
+	}
+}

@@ -624,7 +624,7 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 			}
 			res.Enabled = on
 			if brief {
-				out, err := json.Marshal(trackstats.Brief(res))
+				out, err := json.Marshal(trackstats.Brief(res, os.Getenv("CLAUDE_CODE_SESSION_ID")))
 				if err != nil {
 					return exitcode.New(exitcode.Fail, err)
 				}
