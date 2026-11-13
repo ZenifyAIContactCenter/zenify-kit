@@ -11,6 +11,7 @@ Khi bạn muốn thao tác với Plan và Backlog của pane track mà không g�
 2. Mã ngắn (`b81e`, `#581`, `<repo>#581`; `ZEN-288` dùng được sau khi nguồn Plane vào ở PR2) được truyền nguyên cho CLI, bọc trong nháy đơn vì zsh coi từ bắt đầu bằng `#` là comment; CLI tự resolve. Mã trùng hoặc không khớp thì CLI thoát lỗi kèm danh sách ứng viên và skill đưa nguyên thông báo cho bạn chọn.
 3. `done`, `cancel`, `est` làm việc trên id đang mở của session; không còn id trong hội thoại thì skill đọc mảng `running` của `zenify track stats --brief`: đúng một item thì dùng, từ hai item thì hỏi bạn, không có thì báo và không đoán.
 4. `go <mã>` gọi `znf:cook` hoặc `znf:fix` cho việc có code, hoặc `zenify track start --kind task` cho việc ops không có PR.
+5. Khi lập plan, việc đang chạy ở tab khác còn mở được in riêng ở mục "Đang ở tab khác" và không vào plan.
 
 ## Lưu ý
 

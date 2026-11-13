@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.67.2
+
+*2026-11-13*
+
+- **Daily plan không lấy việc đang chạy ở tab khác:** khi lập plan hôm nay, việc nào đang chạy ở một tab Claude Code khác còn mở thì không vào plan; agent in mục "Đang ở tab khác" kèm tên tab để bạn sang đó làm, rồi plan phần còn lại. `zenify track stats --brief` có thêm list `elsewhere`. Xem [Track pane](/guides/track-pane#daily-plan).
+
 ## v0.67.1
 
 *2026-11-12*
