@@ -9,6 +9,8 @@ const Y = 'fix-261030-0b0b'
 
 const item = (over: Partial<TrackItem>): TrackItem => ({
   id: X,
+  from: '',
+  live: false,
   kind: 'cook',
   repo: 'kit',
   est: 'M',
