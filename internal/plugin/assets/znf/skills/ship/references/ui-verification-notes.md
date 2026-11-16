@@ -82,11 +82,14 @@ and upserts the screen's measurement into `<repo>/.znf/ui-verify/<fp>.json`. The
 passes to the verifier must be this worktree.
 
 `/ship` step 7 runs `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` before concluding Shippable —
-a deterministic, fail-closed gate with four outcomes:
+a deterministic, fail-closed gate with five outcomes:
 - **not_required** (exit 0) — the render-trigger set (§4b) is empty; nothing to verify.
 - **waived** (exit 0) — the diff carries a `// znf:ui-verify-ok: <reason>` marker; the reason prints on
   the `look:` board line.
 - **verified** (exit 0) — a valid artifact (every screen `pass`) exists for the *current* fingerprint.
+- **infra-blocked: <code>** — `zenify ui-verify blocked` recorded broken sandbox infra for the current
+  fp and no non-pass verdict is recorded for it. Exits 0 only under `ZNF_AUTONOMOUS=1` (the PR carries
+  a `⚠️ UI chưa kiểm: <code>` line); otherwise non-zero.
 - **required** (exit non-zero) — render-trigger fired, no valid current-fp artifact: `look:` reads
   `❌ BLOCKED`, `Shippable: NO`.
 
