@@ -955,3 +955,11 @@ func TestTrackEnd_NoWarnAfterShip(t *testing.T) {
 		}
 	}
 }
+
+func TestTrack_EndWithPRAndNoIDWhenOff(t *testing.T) {
+	ws := trackWS(t, false)
+	out, err := runTrack(t, ws, "end", "--pr", "https://x/pr/1", "--rounds", "0")
+	if err != nil || out != "track: off\n" {
+		t.Fatalf("out %q err %v", out, err)
+	}
+}

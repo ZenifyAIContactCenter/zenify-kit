@@ -559,7 +559,7 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 				}
 				return "end", fields, true, nil
 			})
-			if err == nil && len(prs) > 0 {
+			if err == nil && len(prs) > 0 && len(args) == 1 {
 				warnEndWithoutShip(cmd.ErrOrStderr(), *ws, args[0])
 			}
 			return err
