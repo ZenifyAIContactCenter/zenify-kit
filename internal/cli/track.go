@@ -242,6 +242,15 @@ func trackIDStarted(logPath, id string) (bool, error) {
 	return strings.Contains(string(b), trackSep+"start"+trackSep+id+trackSep), nil
 }
 
+// trackIDShipped reports whether log.md has a ship row for id.
+func trackIDShipped(logPath, id string) (bool, error) {
+	b, err := os.ReadFile(logPath) //nolint:gosec // G304 -- computed from the resolved workspace
+	if err != nil {
+		return false, err
+	}
+	return strings.Contains(string(b), trackSep+"ship"+trackSep+id+trackSep), nil
+}
+
 func newTrackStartCmd(ws *string) *cobra.Command {
 	var kind, repo, est, from string
 	c := &cobra.Command{
@@ -489,7 +498,7 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 		Short: "Đóng một lượt theo dõi", //znf:allow-lang
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTrackWrite(cmd.OutOrStdout(), *ws, 1, args, func(a []string) (string, []string, bool, error) {
+			err := runTrackWrite(cmd.OutOrStdout(), *ws, 1, args, func(a []string) (string, []string, bool, error) {
 				if err := validTrackID(a[0]); err != nil {
 					return "", nil, false, err
 				}
@@ -550,6 +559,10 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 				}
 				return "end", fields, true, nil
 			})
+			if err == nil && len(prs) > 0 {
+				warnEndWithoutShip(cmd.ErrOrStderr(), *ws, args[0])
+			}
+			return err
 		},
 	}
 	c.Flags().StringArrayVar(&prs, "pr", nil, "pull request URL (repeatable)")
@@ -560,6 +573,27 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 	c.Flags().StringVar(&ledger, "ledger", "", "SDD ledger file; its `Task <N>: complete` lines are counted and its first-line plan path is kept")
 	c.Flags().IntVar(&rounds, "rounds", 0, "fix rounds of the review in znf:ship")
 	return c
+}
+
+// warnEndWithoutShip warns on w when id ended with a PR but log.md has no ship row.
+// It never fails the end: the end row is already written.
+func warnEndWithoutShip(w io.Writer, flag, id string) {
+	wsDir, on, err := trackWorkspace(flag)
+	if err != nil {
+		fmt.Fprintf(w, "track: check ship row: %v\n", err)
+		return
+	}
+	if !on {
+		return
+	}
+	shipped, err := trackIDShipped(filepath.Join(wsDir, ".zenify", "track", "log.md"), id)
+	if err != nil {
+		fmt.Fprintf(w, "track: check ship row: %v\n", err)
+		return
+	}
+	if !shipped {
+		fmt.Fprintf(w, "track: warning: %s ends with a PR but has no ship row — open PRs through znf:ship\n", id)
+	}
 }
 
 const ledgerPlanPrefix = "# SDD ledger — plan: "
