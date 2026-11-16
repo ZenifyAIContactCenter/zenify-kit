@@ -72,8 +72,8 @@ func newUIVerifyFilesCmd() *cobra.Command {
 	c := &cobra.Command{
 		// An error prints nothing on stdout, so a caller never reads usage text or a 0 as a count.
 		SilenceUsage: true,
-		Use:   "files",
-		Short: "In các file render UI đổi so với base (ship đếm để quyết định có cần ui-verifier)", //znf:allow-lang
+		Use:          "files",
+		Short:        "In các file render UI đổi so với base (ship đếm để quyết định có cần ui-verifier)", //znf:allow-lang
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if repo == "" {
 				repo, _ = os.Getwd()
@@ -131,7 +131,7 @@ func newUIVerifyRecordCmd() *cobra.Command {
 	c.Flags().Float64Var(&childRight, "child-right", 0, "child.right của element đã đổi (bắt buộc)")      //znf:allow-lang
 	c.Flags().Float64Var(&containerRight, "container-right", 0, "right của container chứa nó (bắt buộc)") //znf:allow-lang
 	c.Flags().Float64Var(&paddingRight, "padding-right", 0, "padding-right của container (bắt buộc)")     //znf:allow-lang
-	c.Flags().StringVar(&verdict, "verdict", "pass", "pass|fail")                                         //znf:allow-lang
+	c.Flags().StringVar(&verdict, "verdict", "pass", "pass|fail (fail never satisfies check)")            //znf:allow-lang
 	_ = c.MarkFlagRequired("screen")
 	_ = c.MarkFlagRequired("screenshot")
 	_ = c.MarkFlagRequired("child-right")

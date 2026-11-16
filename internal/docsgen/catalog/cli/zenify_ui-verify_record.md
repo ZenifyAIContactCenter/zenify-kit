@@ -3,7 +3,7 @@ summary: Ghi lại artifact UI-verify (screenshot + 3 số đo) cho fingerprint 
 ---
 ## Khi nào dùng
 
-Agent `ui-verifier` gọi lệnh này ngay trước khi xoá screenshot của nó, nếu `zenify` có trên PATH (guard giữ agent project-agnostic). Không tự chạy lệnh này trong `/znf:ship` — nó là mắt xích ghi bằng chứng, `check` mới là mắt xích gate.
+Agent `ui-verifier` gọi lệnh này khi mọi điểm kiểm đều PASS, nếu `zenify` có trên PATH (guard giữ agent project-agnostic). FAIL thì agent không ghi gì. Không tự chạy lệnh này trong `/znf:ship` — nó là mắt xích ghi bằng chứng, `check` mới là mắt xích gate.
 
 ## Kết quả
 
@@ -19,7 +19,7 @@ Lệnh tính fingerprint `fp` trên working tree của `--repo`, copy ảnh vào
 | `--child-right` | `child.right` (px) của element vừa đổi. Bắt buộc. |
 | `--container-right` | `right` (px) của container chứa element đó. Bắt buộc. |
 | `--padding-right` | `padding-right` (px) của container đó. Bắt buộc. |
-| `--verdict` | `pass` hoặc `fail`. Mặc định `pass`. |
+| `--verdict` | `pass` hoặc `fail`. Mặc định `pass`. `fail` vẫn được ghi nhưng không bao giờ làm `check` qua. |
 
 ## Ví dụ
 

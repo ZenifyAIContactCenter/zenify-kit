@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -56,7 +57,7 @@ func TestRenderSet_PathTable(t *testing.T) {
 	}
 	runGit := fakeRunGit(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": strings.Join(diffNames, "\n"),
-		"-c core.quotePath=false status --porcelain -uall":              "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
 	})
 	got, err := RenderSet(Deps{RunGit: runGit}, "/repo", "origin/staging")
 	if err != nil {
@@ -76,7 +77,7 @@ func TestRenderSet_PathTable(t *testing.T) {
 func TestRenderSet_UnionsWorkingTree(t *testing.T) {
 	runGit := fakeRunGit(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "main.go",
-		"-c core.quotePath=false status --porcelain -uall":              "?? src/pages/new.tsx\n M src/components/Old.jsx\n",
+		"-c core.quotePath=false status --porcelain -uall":               "?? src/pages/new.tsx\n M src/components/Old.jsx\n",
 	})
 	got, err := RenderSet(Deps{RunGit: runGit}, "/repo", "origin/staging")
 	if err != nil {
@@ -285,7 +286,7 @@ func TestValidate_Ok(t *testing.T) {
 	}
 	writeArtifact(t, repo, "fp1", Artifact{
 		FP:      "fp1",
-		Screens: []Screen{{Screen: "home", Screenshot: "shot.png"}},
+		Screens: []Screen{{Screen: "home", Screenshot: "shot.png", Verdict: "pass"}},
 	})
 	n, ok := Validate(repo, "fp1")
 	if !ok || n != 1 {
@@ -293,11 +294,43 @@ func TestValidate_Ok(t *testing.T) {
 	}
 }
 
+// A failing verdict never satisfies check: any non-pass screen makes the artifact invalid.
+func TestValidate_Verdicts(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		verdicts []string
+		ok       bool
+	}{
+		{"all pass", []string{"pass", "pass"}, true},
+		{"one fail among passes", []string{"pass", "fail", "pass"}, false},
+		{"single fail", []string{"fail"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			dir := filepath.Join(repo, ".znf", "ui-verify")
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var screens []Screen
+			for i, v := range tc.verdicts {
+				screens = append(screens, Screen{Screen: "s" + strconv.Itoa(i), Screenshot: "shot.png", Verdict: v})
+			}
+			writeArtifact(t, repo, "fp1", Artifact{FP: "fp1", Screens: screens})
+			if _, ok := Validate(repo, "fp1"); ok != tc.ok {
+				t.Errorf("ok=%v, want %v", ok, tc.ok)
+			}
+		})
+	}
+}
+
 func TestValidate_MissingScreenshot(t *testing.T) {
 	repo := t.TempDir()
 	writeArtifact(t, repo, "fp1", Artifact{
 		FP:      "fp1",
-		Screens: []Screen{{Screen: "home", Screenshot: "missing.png"}},
+		Screens: []Screen{{Screen: "home", Screenshot: "missing.png", Verdict: "pass"}},
 	})
 	_, ok := Validate(repo, "fp1")
 	if ok {
@@ -335,7 +368,7 @@ func TestCheck_SC1_NotRequired(t *testing.T) {
 	repo := t.TempDir()
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "main.go\nREADME.md",
-		"-c core.quotePath=false status --porcelain -uall":              "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
 	}, "fp000")
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "not_required" || err != nil {
@@ -347,9 +380,9 @@ func TestCheck_SC2_Waived(t *testing.T) {
 	repo := t.TempDir()
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "znf:ui-verify-ok: reviewed manually",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
+		"diff origin/staging..HEAD":                                      "znf:ui-verify-ok: reviewed manually",
+		"diff HEAD":                                                      "",
 	}, "fp000")
 	state, msg, err := Check(d, repo, "origin/staging")
 	if err != nil {
@@ -370,13 +403,13 @@ func TestCheck_SC3_Verified(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Screenshot: "shot.png"}}})
+	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Screenshot: "shot.png", Verdict: "pass"}}})
 
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
+		"diff origin/staging..HEAD":                                      "",
+		"diff HEAD":                                                      "",
 	}, fp)
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "verified" || err != nil {
@@ -388,9 +421,9 @@ func TestCheck_SC4_RequiredMissingArtifact(t *testing.T) {
 	repo := t.TempDir()
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
+		"diff origin/staging..HEAD":                                      "",
+		"diff HEAD":                                                      "",
 	}, "fpmissing")
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "required" {
@@ -404,13 +437,13 @@ func TestCheck_SC4_RequiredMissingArtifact(t *testing.T) {
 func TestCheck_SC5_RequiredInvalidArtifact(t *testing.T) {
 	repo := t.TempDir()
 	fp := "fpinvalid1"
-	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Screenshot: "missing.png"}}})
+	writeArtifact(t, repo, fp, Artifact{FP: fp, Screens: []Screen{{Screen: "home", Screenshot: "missing.png", Verdict: "pass"}}})
 
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
+		"diff origin/staging..HEAD":                                      "",
+		"diff HEAD":                                                      "",
 	}, fp)
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "required" || exitcode.Code(err) != exitcode.Fail {
@@ -430,14 +463,14 @@ func TestCheck_SC6_FPMismatchIsRequired(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeArtifact(t, repo, oldFP, Artifact{FP: oldFP, Screens: []Screen{{Screen: "home", Screenshot: "shot.png"}}})
+	writeArtifact(t, repo, oldFP, Artifact{FP: oldFP, Screens: []Screen{{Screen: "home", Screenshot: "shot.png", Verdict: "pass"}}})
 
 	newFP := "fpnew000002"
 	d := checkDeps(t, map[string]string{
 		"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
-		"-c core.quotePath=false status --porcelain -uall":              "",
-		"diff origin/staging..HEAD":             "",
-		"diff HEAD":                             "",
+		"-c core.quotePath=false status --porcelain -uall":               "",
+		"diff origin/staging..HEAD":                                      "",
+		"diff HEAD":                                                      "",
 	}, newFP)
 	state, _, err := Check(d, repo, "origin/staging")
 	if state != "required" || exitcode.Code(err) != exitcode.Fail {
@@ -537,7 +570,7 @@ func TestCheckBlockedTable(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
 					t.Fatal(err)
 				}
-				writeArtifact(t, repo, cur, Artifact{FP: cur, Screens: []Screen{{Screen: "home", Screenshot: "shot.png"}}})
+				writeArtifact(t, repo, cur, Artifact{FP: cur, Screens: []Screen{{Screen: "home", Screenshot: "shot.png", Verdict: "pass"}}})
 			}
 			if r.blocked {
 				if _, err := RecordBlocked(stubDeps(r.blockedFP), repo, reason); err != nil {

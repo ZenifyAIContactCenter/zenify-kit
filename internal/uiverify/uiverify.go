@@ -306,8 +306,9 @@ func Record(d Deps, repo string, s Screen, screenshotSrc string) error {
 	return nil
 }
 
-// Validate reports whether <fp>.json exists, has at least one screen, and
-// every screen's screenshot file exists and is non-zero bytes. The three
+// Validate reports whether <fp>.json exists, has at least one screen, every
+// screen's verdict is "pass", and every screen's screenshot file exists and is
+// non-zero bytes. The three
 // measurement floats are always present because the CLI (Task 2) makes those
 // flags required, so Validate does not need to distinguish a 0.0 measurement
 // from "absent". FR-2.4.
@@ -326,6 +327,10 @@ func Validate(repo, fp string) (int, bool) {
 		return 0, false
 	}
 	for _, s := range art.Screens {
+		// A failing verdict is evidence the UI is wrong, never that it was verified.
+		if s.Verdict != "pass" {
+			return len(art.Screens), false
+		}
 		info, err := os.Stat(filepath.Join(dir, s.Screenshot))
 		if err != nil || info.Size() == 0 {
 			return len(art.Screens), false
