@@ -915,3 +915,51 @@ func TestTrackStatsBriefSelfSession(t *testing.T) { // SC-7
 		t.Fatalf("other session: %+v", o.Elsewhere)
 	}
 }
+
+func TestTrackEnd_WarnsWithoutShipRow(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "fix")
+	stderr, err := runTrackErr(t, ws, "end", id, "--pr", "https://x/pr/1", "--rounds", "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr, "has no ship row") {
+		t.Fatalf("stderr %q lacks the ship-row warning", stderr)
+	}
+	if !strings.Contains(trackLog(t, ws), " · end · "+id+" · https://x/pr/1") {
+		t.Fatalf("end row missing in log:\n%s", trackLog(t, ws))
+	}
+}
+
+func TestTrackEnd_NoWarnAfterShip(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "fix")
+	if _, err := runTrackErr(t, ws, "ship", id, "--outcome", "shipped", "--findings", "-", "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := runTrackErr(t, ws, "end", id, "--pr", "https://x/pr/1", "--rounds", "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stderr, "ship row") {
+		t.Fatalf("unexpected warning after ship: %q", stderr)
+	}
+	for _, flag := range [][]string{{"--cancelled"}, {"--done"}, {"--rollback"}, {"--branch", "x"}} {
+		other := startTrack(t, ws, "fix")
+		stderr, err := runTrackErr(t, ws, append(append([]string{"end", other}, flag...), "--rounds", "0")...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(stderr, "ship row") {
+			t.Fatalf("%v: unexpected warning %q", flag, stderr)
+		}
+	}
+}
+
+func TestTrack_EndWithPRAndNoIDWhenOff(t *testing.T) {
+	ws := trackWS(t, false)
+	out, err := runTrack(t, ws, "end", "--pr", "https://x/pr/1", "--rounds", "0")
+	if err != nil || out != "track: off\n" {
+		t.Fatalf("out %q err %v", out, err)
+	}
+}

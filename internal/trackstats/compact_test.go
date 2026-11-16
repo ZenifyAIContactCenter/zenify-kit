@@ -356,3 +356,39 @@ func TestCompactKeepsStats(t *testing.T) { // SC-3
 		t.Fatalf("fixture too weak: %d old turns kept by a window, %d moved", keptByWindow, movedOld)
 	}
 }
+
+// Ids that ended the same PR are archived together: a follow-up kept by a guard keeps the
+// first ender too, or the next Compute would read the follow-up as the first ender.
+func TestCompactMovesSharedPRTogether(t *testing.T) {
+	pr := "https://github.com/o/r/pull/9"
+	a, b := ccid("cook", 1), ccid("cook", 2)
+	cases := []struct {
+		name  string
+		extra []string
+		moved []int
+	}{
+		{"follow-up kept by a plan keeps the first ender", []string{row(cAt(16, 7), "plan", "2026-11-16", b)}, nil},
+		{"both qualify and both move", nil, []int{0, 1, 2, 3}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cache := map[string]string{pr: "2026-11-02T00:00:00Z"}
+			rows := []string{
+				row(cAt(1, 8), "start", a, "cook", "repo", "M"),
+				row(cAt(1, 10), "end", a, pr, "1", "1"),
+				row(cAt(2, 8), "start", b, "cook", "repo", "M"),
+				row(cAt(2, 10), "end", b, pr, "1", "1"),
+			}
+			rows = append(rows, tc.extra...)
+			all := append(append([]string(nil), rows...), fillers("cook", maxLearn+1, cache)...)
+			_, moved, _ := Compact(Input{Log: strings.Join(all, "\n") + "\n", Now: cNow, Today: cToday, Cache: cache, Sessions: map[string]string{}}, 14)
+			var want []string
+			for _, i := range tc.moved {
+				want = append(want, all[i])
+			}
+			if !reflect.DeepEqual(moved, want) {
+				t.Fatalf("moved =\n%s\nwant\n%s", strings.Join(moved, "\n"), strings.Join(want, "\n"))
+			}
+		})
+	}
+}

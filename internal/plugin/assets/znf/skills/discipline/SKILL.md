@@ -67,7 +67,7 @@ always   verify with real output before saying it works
 ## 7 — Git safety
 - **Feature branches: commit + push freely** after verifying; atomic, per repo convention. On a deploy branch, branch off first.
 - **Deploy branches: never commit, push, or merge into them** (per-project list; a git-guard hook enforces it — if blocked, tell the user).
-- **Open the PR (`gh pr create`), never merge** — even one you opened; merging is the user's deploy decision. Never force-push unasked.
+- **Open PRs only through `znf:ship`** (subagents too: one ship run per PR), **never merge**; merging is the user's deploy decision. Never force-push unasked.
 
 ## 8 — Isolate every code change in a worktree
 

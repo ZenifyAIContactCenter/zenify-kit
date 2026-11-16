@@ -13,6 +13,7 @@ type turnRows struct {
 	recentPR bool       // a PR of an end row merged on or after the cut
 	fromOK   bool       // every start row came from nothing or a backlog id
 	from     []string   // the backlog ids its start rows came from
+	prs      []string   // every PR URL of its end rows
 }
 
 // Compact picks the log.md rows to archive: rows older than keepDays that no stat,
@@ -82,6 +83,9 @@ func Compact(in Input, keepDays int) (keep string, moved []string, movedIDs map[
 			}
 			for _, p := range strings.Split(e.F[0], ",") {
 				at, cached := in.Cache[p]
+				if strings.HasPrefix(p, "http") {
+					t.prs = append(t.prs, p)
+				}
 				if strings.HasPrefix(p, "http") && !cached {
 					t.prsKnown = false
 				}
@@ -94,18 +98,47 @@ func Compact(in Input, keepDays int) (keep string, moved []string, movedIDs map[
 	}
 
 	movedIDs = map[string]bool{}
-	movedFrom := map[string]bool{}
-	keptFrom := map[string]bool{}
 	for id, t := range turns {
 		if t.started && t.end != nil && t.end.Before(cut) && t.prsKnown && !t.recentPR && t.fromOK && !res.windowIDs[id] && !planned[id] && !anyPlanned(planned, t.from) {
 			movedIDs[id] = true
-			for _, b := range t.from {
-				movedFrom[b] = true
-			}
-			continue
 		}
+	}
+	// Ids that ended the same PR move together: Compute reads only log.md, so archiving the
+	// first ender of a PR would make a kept follow-up look like the first ender. Un-move
+	// until no moved id shares a PR with a kept one.
+	byPR := map[string][]string{}
+	for id, t := range turns {
+		for _, p := range t.prs {
+			byPR[p] = append(byPR[p], id)
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, ids := range byPR {
+			kept := false
+			for _, id := range ids {
+				kept = kept || !movedIDs[id]
+			}
+			if !kept {
+				continue
+			}
+			for _, id := range ids {
+				if movedIDs[id] {
+					delete(movedIDs, id)
+					changed = true
+				}
+			}
+		}
+	}
+	movedFrom := map[string]bool{}
+	keptFrom := map[string]bool{}
+	for id, t := range turns {
 		for _, b := range t.from {
-			keptFrom[b] = true
+			if movedIDs[id] {
+				movedFrom[b] = true
+			} else {
+				keptFrom[b] = true
+			}
 		}
 	}
 	// A backlog row goes with its archived start or its old drop, unless a kept turn still
