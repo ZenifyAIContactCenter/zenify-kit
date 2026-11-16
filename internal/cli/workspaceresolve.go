@@ -39,13 +39,18 @@ func zenifyHome(getenv func(string) string, userHome func() (string, error)) str
 }
 
 // resolveWorkspace finds the workspace for any command run from any cwd (FR-2.1):
-//  1. an explicit --workspace flag (anything but "" or ".") is used as given;
+//  1. an explicit --workspace flag is used as given ("." is cwd, never a
+//     fallback to the pointer — a probe in a scratch dir must not write the real workspace;
+//     from a subdirectory "." is that subdirectory, not the workspace root);
 //  2. the .zenify/manifest.json marker, walking up from cwd (findWorkspaceRoot);
 //  3. the pointer file <zenifyHome>/workspace, if it names a dir carrying the marker.
 //
 // ok=false means "no workspace" — the caller decides (wizard asks, headless errors).
 func resolveWorkspace(cwd, flag string, getenv func(string) string, userHome func() (string, error)) (string, wsSource, bool) {
-	if flag != "" && flag != "." {
+	if flag == "." {
+		return canonicalPath(cwd), wsFromFlag, true
+	}
+	if flag != "" {
 		return canonicalPath(flag), wsFromFlag, true
 	}
 	if root, ok := findWorkspaceRoot(cwd); ok {
