@@ -6,11 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // cacheDeps is the deps dir the standalone cache commands handle. Only npm
 // trees are cached, so unlike ApplyDeps it is not configurable.
 const cacheDeps = "node_modules"
+
+// cacheTempPrefix names CacheGet's staging dir inside the target dir.
+const cacheTempPrefix = ".wt-cache-"
 
 // cacheNameRe is the one path segment a cache repo name may be, so a name can
 // never point outside <cache>/ (no "/", no leading "." or "-").
@@ -75,14 +79,24 @@ func CachePut(dir, repoName string, lookupEnv func(string) (string, bool)) error
 // the current build env into dir/node_modules, replacing any existing one. A
 // miss (no slot, cache off, no readable lock) returns false, nil and leaves dir
 // untouched. The cache is only read, never written. The copy lands in a temp
-// dir beside dst first, so a failed copy leaves the existing node_modules as is.
+// dir beside dst first, so a failed copy leaves the existing node_modules as is;
+// a stale staging dir from a killed get is removed on the next hit.
 func CacheGet(dir, repoName string, lookupEnv func(string) (string, bool)) (hit bool, err error) {
 	src, found, err := cacheLookup(dir, repoName, lookupEnv)
 	if err != nil || !found {
 		return false, err
 	}
 	dst := filepath.Join(dir, cacheDeps)
-	temp, err := os.MkdirTemp(dir, ".wt-cache-")
+	// A get killed mid-copy leaves its temp dir behind; clear it (best effort)
+	// so the repo dir does not stay dirty.
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), cacheTempPrefix) {
+				_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	temp, err := os.MkdirTemp(dir, cacheTempPrefix)
 	if err != nil {
 		return false, fmt.Errorf("wt cache: temp dir in %s: %w", dir, err)
 	}

@@ -378,3 +378,30 @@ func TestCachePutPruneErrorOnlyWarns(t *testing.T) {
 		t.Fatalf("CachePut with a failing prune = %v, want nil", err)
 	}
 }
+
+// A get killed mid-copy leaves <dir>/.wt-cache-*; the next get removes it so the
+// repo dir does not stay dirty. Only that exact prefix is touched.
+func TestCacheGetRemovesStaleTempDirs(t *testing.T) {
+	stubProbes(t)
+	cache := t.TempDir()
+	if err := CachePut(installedTree(t, "src", lockJSON), "myrepo", cacheEnv(cache)); err != nil {
+		t.Fatal(err)
+	}
+	dst := bareDir(t, lockJSON)
+	for _, d := range []string{".wt-cache-stale/node_modules/x", ".wt-cachex", "wt-cache-keep"} {
+		if err := os.MkdirAll(filepath.Join(dst, d), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hit, err := CacheGet(dst, "myrepo", cacheEnv(cache)); err != nil || !hit {
+		t.Fatalf("CacheGet = (%v, %v)", hit, err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, ".wt-cache-stale")); !os.IsNotExist(err) {
+		t.Fatalf(".wt-cache-stale survived a get: %v", err)
+	}
+	for _, keep := range []string{".wt-cachex", "wt-cache-keep"} {
+		if _, err := os.Stat(filepath.Join(dst, keep)); err != nil {
+			t.Errorf("%s removed: %v", keep, err)
+		}
+	}
+}

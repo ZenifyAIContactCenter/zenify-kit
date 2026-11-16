@@ -20,7 +20,7 @@ Trước khi cài deps trong `<dir>`: nếu cache có sẵn thì bỏ qua `npm c
 
 ## Kết quả
 
-Lệnh tìm slot khớp `<dir>/package-lock.json` và môi trường Node hiện tại. Hit: chép bản từ slot vào một thư mục tạm cạnh `<dir>/node_modules`, rồi mới thay `node_modules` cũ (nếu có) và thoát 0; chép lỗi giữa chừng thì `node_modules` cũ còn nguyên. Miss (không có slot, cache tắt hoặc `<dir>` không có lock đọc được): thoát 1 và không đụng vào `<dir>`. Lệnh chỉ đọc cache nên chạy được trên thư mục cache chỉ đọc. Slot có `node_modules` là symlink được tính là miss.
+Lệnh tìm slot khớp `<dir>/package-lock.json` và môi trường Node hiện tại. Hit: chép bản từ slot vào một thư mục tạm cạnh `<dir>/node_modules`, rồi mới thay `node_modules` cũ (nếu có) và thoát 0; chép lỗi giữa chừng thì `node_modules` cũ còn nguyên. Thư mục tạm tên `.wt-cache-*` bị bỏ lại khi lệnh bị kill giữa chừng sẽ được xoá ở lần hit sau. Miss (không có slot, cache tắt hoặc `<dir>` không có lock đọc được): thoát 1 và không đụng vào `<dir>`. Lệnh chỉ đọc cache nên chạy được trên thư mục cache chỉ đọc. Slot có `node_modules` là symlink được tính là miss.
 
 Mã thoát: 0 hit, 1 miss, 2 lỗi (không dò được môi trường Node, `--name` sai dạng, chép lỗi). Phân biệt 1 với 2 để biết khi nào nên cài lại và khi nào chính phép kiểm hỏng.
 
