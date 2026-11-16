@@ -1,5 +1,5 @@
 ---
-summary: Chép `node_modules` từ cache deps vào một thư mục, thoát 0 khi hit và 1 khi miss.
+summary: Chép `node_modules` từ cache deps vào một thư mục, thoát 0 khi hit, 1 khi miss và 2 khi lỗi.
 ---
 ## Khi nào dùng
 
@@ -7,14 +7,16 @@ Trước khi cài deps trong `<dir>`: nếu cache có sẵn thì bỏ qua `npm c
 
 ## Kết quả
 
-Lệnh tìm slot khớp `<dir>/package-lock.json` và môi trường Node hiện tại. Hit: xoá `<dir>/node_modules` cũ (nếu có), chép bản từ slot vào và thoát 0. Miss (không có slot, cache tắt hoặc `<dir>` không có lock đọc được): thoát 1 và không đụng vào `<dir>`. Lệnh chỉ đọc cache nên chạy được trên thư mục cache chỉ đọc. Không dò được môi trường Node thì lệnh báo lỗi và thoát 1.
+Lệnh tìm slot khớp `<dir>/package-lock.json` và môi trường Node hiện tại. Hit: chép bản từ slot vào một thư mục tạm cạnh `<dir>/node_modules`, rồi mới thay `node_modules` cũ (nếu có) và thoát 0; chép lỗi giữa chừng thì `node_modules` cũ còn nguyên. Miss (không có slot, cache tắt hoặc `<dir>` không có lock đọc được): thoát 1 và không đụng vào `<dir>`. Lệnh chỉ đọc cache nên chạy được trên thư mục cache chỉ đọc. Slot có `node_modules` là symlink được tính là miss.
+
+Mã thoát: 0 hit, 1 miss, 2 lỗi (không dò được môi trường Node, `--name` sai dạng, chép lỗi). Phân biệt 1 với 2 để biết khi nào nên cài lại và khi nào chính phép kiểm hỏng.
 
 ## Cờ
 
 | Cờ | Ý nghĩa |
 |---|---|
-| `--name` | Tên repo trong cache. Mặc định là tên thư mục của `<dir>`. |
-| `--check` | Chỉ kiểm tra có hit không (thoát 0 hoặc 1), không chép gì và không đụng vào `<dir>`. |
+| `--name` | Tên repo trong cache, dạng `[A-Za-z0-9][A-Za-z0-9._-]*` (một đoạn đường dẫn, không `..`). Mặc định là tên thư mục của `<dir>`. |
+| `--check` | Chỉ kiểm tra có hit không (thoát 0, 1 hoặc 2 như trên), không chép gì và không đụng vào `<dir>`. |
 
 ## Ví dụ
 

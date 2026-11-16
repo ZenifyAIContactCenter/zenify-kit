@@ -1151,3 +1151,12 @@ func TestApplyDepsCurrentCloneFromMainNoPopulate(t *testing.T) {
 		t.Fatalf("branch (a) seeded the cache: %v", got)
 	}
 }
+
+// F9: GNU cp reads `-c` as --preserve=context, so the copy-on-write flag is per OS.
+func TestCowCopyFlag(t *testing.T) {
+	for goos, want := range map[string]string{"darwin": "-c", "linux": "--reflink=auto", "windows": ""} {
+		if got := cowCopyFlag(goos); got != want {
+			t.Errorf("cowCopyFlag(%q) = %q, want %q", goos, got, want)
+		}
+	}
+}

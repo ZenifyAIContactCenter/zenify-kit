@@ -60,23 +60,29 @@ func newWtCacheGetCmd() *cobra.Command {
 	var check bool
 	cmd := &cobra.Command{
 		Use:   "get <dir>",
-		Short: "Chép node_modules từ cache vào <dir>; thoát 0 khi hit, 1 khi miss", //znf:allow-lang
+		Short: "Chép node_modules từ cache vào <dir>; thoát 0 khi hit, 1 khi miss, 2 khi lỗi", //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Exit 2 (not 1) on a real error, so a caller can tell it from a miss.
+			fail := func(err error) error { return exitcode.New(exitcode.BadArgs, err) }
 			dir, repoName, err := cacheTarget(args, name)
 			if err != nil {
-				return err
+				return fail(err)
 			}
 			miss := exitcode.New(exitcode.Fail, errors.New("wt cache: miss"))
 			if check {
-				if !wt.CacheHas(dir, repoName, os.LookupEnv) {
+				has, err := wt.CacheHas(dir, repoName, os.LookupEnv)
+				if err != nil {
+					return fail(err)
+				}
+				if !has {
 					return miss
 				}
 				return nil
 			}
 			hit, err := wt.CacheGet(dir, repoName, os.LookupEnv)
 			if err != nil {
-				return err
+				return fail(err)
 			}
 			if !hit {
 				return miss

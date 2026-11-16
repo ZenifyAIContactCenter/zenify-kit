@@ -95,3 +95,40 @@ func TestWtCacheGetCheckCopiesNothing(t *testing.T) {
 		t.Fatalf("--check on a miss: err = %v, want exit code 1", err)
 	}
 }
+
+// F4: 0 hit, 1 miss, 2 a real error (bad name, node not on PATH), so a caller
+// can tell a failed check from a miss.
+func TestWtCacheGetErrorExitsTwo(t *testing.T) {
+	src, dst := cacheCLIFixture(t)
+	if _, err := runWt(t, t.TempDir(), "cache", "put", src, "--name", "myrepo"); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	for _, args := range [][]string{
+		{"cache", "get", dst, "--name", "../x"},
+		{"cache", "get", dst, "--name", "../x", "--check"},
+	} {
+		if _, err := runWt(t, t.TempDir(), args...); exitcode.Code(err) != 2 {
+			t.Errorf("%v: err = %v, want exit code 2", args, err)
+		}
+	}
+	// node not on PATH: the build env cannot be fingerprinted.
+	t.Setenv("PATH", t.TempDir())
+	for _, args := range [][]string{
+		{"cache", "get", dst, "--name", "myrepo"},
+		{"cache", "get", dst, "--name", "myrepo", "--check"},
+	} {
+		if _, err := runWt(t, t.TempDir(), args...); exitcode.Code(err) != 2 {
+			t.Errorf("%v: err = %v, want exit code 2", args, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dst, "node_modules")); !os.IsNotExist(err) {
+		t.Fatalf("an error touched dst: %v", err)
+	}
+}
+
+func TestWtCachePutRejectsTraversalName(t *testing.T) {
+	src, _ := cacheCLIFixture(t)
+	if _, err := runWt(t, t.TempDir(), "cache", "put", src, "--name", "../x"); err == nil {
+		t.Fatal("put --name ../x = nil, want error")
+	}
+}

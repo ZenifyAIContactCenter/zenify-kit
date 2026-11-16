@@ -19,8 +19,8 @@ import (
 // SeedCopyFiles copies each still-present copy-array target from repoRoot into
 // worktreePath, creating parent dirs. A declared target that does not exist in
 // the repo is NOT an error (matching bash wt) — it is returned as a warning
-// string. Uses `cp -c -R` (copy-on-write where the FS allows) with a plain
-// `cp -R` fallback, so large trees stay cheap.
+// string. Uses a copy-on-write cp where the OS and FS allow (see copyTree)
+// with a plain `cp -R` fallback, so large trees stay cheap.
 func SeedCopyFiles(repoRoot, worktreePath string, copyList []string) ([]string, error) {
 	var warns []string
 	for _, f := range copyList {
@@ -44,7 +44,20 @@ func SeedCopyFiles(repoRoot, worktreePath string, copyList []string) ([]string, 
 	return warns, nil
 }
 
-// copyTree copies src→dst preferring APFS copy-on-write (`cp -c -R`), falling
+// cowCopyFlag is cp's copy-on-write flag on goos: BSD cp's `-c` (APFS clone) on
+// darwin, GNU cp's `--reflink=auto` on linux (where `-c` means
+// --preserve=context, not a clone), none elsewhere.
+func cowCopyFlag(goos string) string {
+	switch goos {
+	case "darwin":
+		return "-c"
+	case "linux":
+		return "--reflink=auto"
+	}
+	return ""
+}
+
+// copyTree copies src→dst preferring copy-on-write (cowCopyFlag), falling
 // back to a plain recursive copy. Shelling to cp keeps CoW that a Go copy loses.
 //
 // The first attempt can fail partway through a large tree (ENOSPC, a file
@@ -55,8 +68,10 @@ func SeedCopyFiles(repoRoot, worktreePath string, copyList []string) ([]string, 
 // dst first. cp's own stderr is captured into the returned error: without it a
 // real failure (disk full, cross-device) surfaces only as "exit status 1".
 func copyTree(src, dst string) error {
-	if err := exec.Command("cp", "-c", "-R", src, dst).Run(); err == nil { //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
-		return nil
+	if flag := cowCopyFlag(runtime.GOOS); flag != "" {
+		if err := exec.Command("cp", flag, "-R", src, dst).Run(); err == nil { //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+			return nil
+		}
 	}
 	// Clear whatever the failed CoW attempt may have left, so the fallback does
 	// not nest into an existing dst.
@@ -429,7 +444,8 @@ func depsSource(repoName, own, worktreePath, depsDirName, tag string, lookupEnv 
 	}
 	slot := filepath.Join(dir, repoName, hash)
 	cached := filepath.Join(slot, depsDirName)
-	if fi, err := os.Stat(cached); err != nil || !fi.IsDir() {
+	// Lstat: a symlinked slot node_modules is a miss, never followed.
+	if fi, err := os.Lstat(cached); err != nil || !fi.IsDir() {
 		return own, false
 	}
 	a, errA := os.ReadFile(filepath.Join(slot, "package-lock.json")) //nolint:gosec // G304 -- path built from operator-set cache dir and repo basename

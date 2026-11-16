@@ -70,8 +70,8 @@ func TestCachePutWritesSlotThenGetHits(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dst, "node_modules", "x", "package.json")); err != nil {
 		t.Fatalf("node_modules/x/package.json missing at dst: %v", err)
 	}
-	if !CacheHas(dst, "myrepo", cacheEnv(cache)) {
-		t.Fatal("CacheHas = false, want true")
+	if has, err := CacheHas(dst, "myrepo", cacheEnv(cache)); err != nil || !has {
+		t.Fatalf("CacheHas = (%v, %v), want (true, nil)", has, err)
 	}
 }
 
@@ -163,8 +163,8 @@ func TestCacheGetMissLeavesDirUntouched(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dst, "node_modules")); !os.IsNotExist(err) {
 		t.Fatalf("node_modules created on a miss: %v", err)
 	}
-	if CacheHas(dst, "myrepo", cacheEnv(cache)) {
-		t.Fatal("CacheHas = true on a miss")
+	if has, err := CacheHas(dst, "myrepo", cacheEnv(cache)); err != nil || has {
+		t.Fatalf("CacheHas = (%v, %v) on a miss, want (false, nil)", has, err)
 	}
 }
 
@@ -246,5 +246,135 @@ func TestCachePutIdempotent(t *testing.T) {
 	got, err := os.ReadFile(marker)
 	if err != nil || string(got) != "sentinel" {
 		t.Fatalf("second put rewrote the slot: %q, %v", got, err)
+	}
+}
+
+// F3: a cache repo name is one path segment, so put/get/has never leave the cache root.
+func TestCacheRejectsUnsafeRepoName(t *testing.T) {
+	stubProbes(t)
+	root := t.TempDir()
+	cache := filepath.Join(root, "cache")
+	src := installedTree(t, "src", lockJSON)
+	dst := bareDir(t, lockJSON)
+	for _, name := range []string{"../x", "..", ".", "a/b", "", "-x", ".hidden"} {
+		if err := CachePut(src, name, cacheEnv(cache)); err == nil {
+			t.Errorf("CachePut(%q) = nil, want error", name)
+		}
+		if _, err := CacheGet(dst, name, cacheEnv(cache)); err == nil {
+			t.Errorf("CacheGet(%q) err = nil, want error", name)
+		}
+		if _, err := CacheHas(dst, name, cacheEnv(cache)); err == nil {
+			t.Errorf("CacheHas(%q) err = nil, want error", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "x")); !os.IsNotExist(err) {
+		t.Fatalf("put escaped the cache root: %v", err)
+	}
+	if err := CachePut(src, "contact-center-hub.v2_x", cacheEnv(cache)); err != nil {
+		t.Fatalf("safe name refused: %v", err)
+	}
+}
+
+// F5: a symlinked node_modules root is never cached.
+func TestCachePutRefusesSymlinkedNodeModules(t *testing.T) {
+	stubProbes(t)
+	cache := t.TempDir()
+	real := installedTree(t, "real", lockJSON)
+	src := installedTree(t, "src", lockJSON)
+	if err := os.RemoveAll(filepath.Join(src, "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(real, "node_modules"), filepath.Join(src, "node_modules")); err != nil {
+		t.Fatal(err)
+	}
+	if err := CachePut(src, "myrepo", cacheEnv(cache)); err == nil {
+		t.Fatal("CachePut on a symlinked node_modules = nil, want error")
+	}
+	if got := cacheEntries(t, cache); len(got) != 0 {
+		t.Fatalf("cache written from a symlink: %v", got)
+	}
+}
+
+// F5: a slot whose node_modules is a symlink is a miss, not a hit.
+func TestCacheSymlinkSlotIsMiss(t *testing.T) {
+	stubProbes(t)
+	cache := t.TempDir()
+	if err := CachePut(installedTree(t, "src", lockJSON), "myrepo", cacheEnv(cache)); err != nil {
+		t.Fatal(err)
+	}
+	slots, _ := filepath.Glob(filepath.Join(cache, "myrepo", "????????????????"))
+	if len(slots) != 1 {
+		t.Fatalf("slots = %v, want 1", slots)
+	}
+	nm := filepath.Join(slots[0], "node_modules")
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.Rename(nm, elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, nm); err != nil {
+		t.Fatal(err)
+	}
+	dst := bareDir(t, lockJSON)
+	if has, err := CacheHas(dst, "myrepo", cacheEnv(cache)); err != nil || has {
+		t.Fatalf("CacheHas = (%v, %v), want (false, nil)", has, err)
+	}
+	if hit, err := CacheGet(dst, "myrepo", cacheEnv(cache)); err != nil || hit {
+		t.Fatalf("CacheGet = (%v, %v), want (false, nil)", hit, err)
+	}
+}
+
+// F10: a copy that fails partway leaves the existing node_modules intact.
+func TestCacheGetFailedCopyKeepsExistingNodeModules(t *testing.T) {
+	stubProbes(t)
+	cache := t.TempDir()
+	if err := CachePut(installedTree(t, "src", lockJSON), "myrepo", cacheEnv(cache)); err != nil {
+		t.Fatal(err)
+	}
+	slots, _ := filepath.Glob(filepath.Join(cache, "myrepo", "????????????????"))
+	if len(slots) != 1 {
+		t.Fatalf("slots = %v, want 1", slots)
+	}
+	writable(t, cache)
+	unreadable := filepath.Join(slots[0], "node_modules", "x", "package.json")
+	if err := os.Chmod(unreadable, 0); err != nil {
+		t.Fatal(err)
+	}
+	dst := bareDir(t, lockJSON)
+	keep := filepath.Join(dst, "node_modules", "old", "keep.txt")
+	if err := os.MkdirAll(filepath.Dir(keep), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keep, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if hit, err := CacheGet(dst, "myrepo", cacheEnv(cache)); err == nil || hit {
+		t.Fatalf("CacheGet = (%v, %v), want a copy error", hit, err)
+	}
+	if got, err := os.ReadFile(keep); err != nil || string(got) != "keep" {
+		t.Fatalf("existing node_modules lost after a failed copy: %q, %v", got, err)
+	}
+	entries, _ := os.ReadDir(dst)
+	for _, e := range entries {
+		if e.Name() != "node_modules" && e.Name() != "package-lock.json" {
+			t.Errorf("leftover temp entry %q in dst", e.Name())
+		}
+	}
+}
+
+// F11: a prune failure after a successful put only warns; put still succeeds.
+func TestCachePutPruneErrorOnlyWarns(t *testing.T) {
+	stubProbes(t)
+	cache := t.TempDir()
+	parent := filepath.Join(cache, "myrepo")
+	if err := os.MkdirAll(parent, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	// write+search but no read: populate can create its slot, prune cannot list it.
+	if err := os.Chmod(parent, 0o300); err != nil { //nolint:gosec // G302 -- test fixture
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o750) }) //nolint:gosec // G302 -- test fixture
+	if err := CachePut(installedTree(t, "src", lockJSON), "myrepo", cacheEnv(cache)); err != nil {
+		t.Fatalf("CachePut with a failing prune = %v, want nil", err)
 	}
 }

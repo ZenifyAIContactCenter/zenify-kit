@@ -131,7 +131,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify wt](./zenify_wt) | Nhóm lệnh quản lý worktree theo slug: tạo, liệt kê, gỡ, dọn, kèm port và môi trường dev riêng cho từng task. |
 | [zenify wt base](./zenify_wt_base) | In base thật của worktree hiện tại, để skill tính merge-base đúng. |
 | [zenify wt cache](./zenify_wt_cache) | Nhóm lệnh ghi và đọc cache deps `node_modules`, dùng chung slot với `wt new`. |
-| [zenify wt cache get](./zenify_wt_cache_get) | Chép `node_modules` từ cache deps vào một thư mục, thoát 0 khi hit và 1 khi miss. |
+| [zenify wt cache get](./zenify_wt_cache_get) | Chép `node_modules` từ cache deps vào một thư mục, thoát 0 khi hit, 1 khi miss và 2 khi lỗi. |
 | [zenify wt cache put](./zenify_wt_cache_put) | Ghi `node_modules` của một thư mục vào cache deps, chỉ khi cây khớp `package-lock.json`. |
 | [zenify wt config](./zenify_wt_config) | In cấu hình worktree đã resolve của repo hiện tại, hoặc port sẽ cấp cho một key. |
 | [zenify wt ls](./zenify_wt_ls) | Liệt kê worktree trong repo hiện tại, kèm branch, port, trạng thái merge và dev server đang chạy. |
