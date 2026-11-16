@@ -111,7 +111,7 @@ Khi image đặt env `ZNF_SANDBOX_UI_STACK` (đường dẫn script `ui-stack` c
 - **Không lái được app** (login lỗi, không tới được màn, bước hoặc selector của mục feature map không còn): agent gọi `zenify ui-verify blocked --reason drive_failed:<tên mục hoặc route>`. Đây là hạ tầng hoặc map cũ, không phải lỗi UI.
 - **FAIL** (UI sai): vào vòng sửa của ship. Sau vòng hai vẫn FAIL thì không ghi gì, trạng thái còn `required`, và `zenify ui-verify check` dừng ở await `needs-human`. Đây là ca duy nhất cần người kiểm UI khi sandbox có web app.
 
-Bản ghi blocked gắn với tree lúc ghi. Nếu run đã gặp ca hạ tầng ở bước 4 (ui-stack báo chưa sẵn sàng, hoặc `drive_failed`) mà sau đó vòng review sửa thêm file, agent dựng lại ui-stack (hoặc lái lại app) cho HEAD mới trước khi chạy `check`; vẫn hỏng thì gọi lại `zenify ui-verify blocked --reason <mã>`. Không bao giờ làm vậy sau một FAIL.
+Bản ghi blocked gắn với tree lúc ghi. Nếu run đã gặp ca hạ tầng ở bước 4 (ui-stack báo chưa sẵn sàng, hoặc `drive_failed`) mà sau đó vòng review sửa thêm file, agent dựng lại ui-stack (hoặc lái lại app) cho HEAD mới trước khi chạy `check`; vẫn hỏng thì gọi lại `zenify ui-verify blocked --reason <mã> --repo <worktree web>` (cùng `--repo` như ở bước 4, không thì bản ghi lấy fingerprint của thư mục hiện tại). Không bao giờ làm vậy sau một FAIL.
 
 Với `infra-blocked: <mã>`, ship ghi dòng `⚠️ UI chưa kiểm: <mã>` lên board và thêm đúng dòng đó vào body PR. Không có `ZNF_SANDBOX_UI_STACK` thì agent tự chạy web như đoạn trên. `"$ZNF_SANDBOX_UI_STACK" stop` dừng cả bốn app, agent chạy lệnh này trước khi build web đầy đủ.
 
