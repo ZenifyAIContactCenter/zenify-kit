@@ -50,7 +50,7 @@ not optional prep:
    a permission/flag/tenant-setting row or a view-as user is reviewable. Dry-run it, then run it
    yourself with `zenify data run --stg --write` (`_shared/data-scripts.md`). Ground the real collection +
    user with `zenify db-read` first.
-4. Only then dispatch `znf:ui-verifier` onto the already-authenticated, already-enabled screen.
+4. Only then dispatch `znf:ui-verifier` onto the already-authenticated, already-enabled screen. Its brief gives the merge-base and lists the repo's `.znf/features/*.md` files, if any: the verifier checks the matching entries' proofs.
 
 If you genuinely cannot reach that state this session, the look is BLOCKED, not passed: mark the line ❌,
 set Shippable to NO, and hand the user the one concrete thing that is missing. A green ship whose UI was

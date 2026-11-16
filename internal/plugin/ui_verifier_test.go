@@ -21,7 +21,9 @@ func TestUIVerifierAgent_Shipped(t *testing.T) {
 		t.Fatalf("agents/ui-verifier.md not materialized: %v", err)
 	}
 	s := string(b)
-	for _, want := range []string{"name: ui-verifier", "model: sonnet", "zenify browser", "state-load", "zenify browser -s=<session> close", "Run it as the whole command, nothing appended"} {
+	for _, want := range []string{"name: ui-verifier", "model: sonnet", "zenify browser", "state-load", "zenify browser -s=<session> close", "Run it as the whole command, nothing appended",
+		// FR-3.3: feature map entries and network proofs.
+		".znf/features/", "zenify browser -s=<session> requests"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("ui-verifier.md missing %q", want)
 		}

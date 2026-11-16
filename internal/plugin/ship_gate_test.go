@@ -37,7 +37,9 @@ func TestShipGate_AutonomousUI(t *testing.T) {
 		t.Error("ship SKILL.md must link references/autonomous-ui.md")
 	}
 	ref := syncedAsset(t, "skills/ship/references/autonomous-ui.md")
-	assertContainsAll(t, "autonomous-ui.md", ref, []string{"ZNF_SANDBOX_WEB_PORT", "exit 8"})
+	assertContainsAll(t, "autonomous-ui.md", ref, []string{"ZNF_SANDBOX_WEB_PORT", "exit 8",
+		// FR-3.4, FR-4.4, FR-4.7: ui-stack branch, infra-blocked line on board and PR.
+		"ZNF_SANDBOX_UI_STACK", "zenify ui-verify blocked --reason", "infra-blocked", "⚠️ UI chưa kiểm:", "drive_failed:"}) //znf:allow-lang
 }
 
 // FR-2: ship step 4 runs the tests affected by the branch; the rules live in a reference (SKILL.md is at its byte budget).
