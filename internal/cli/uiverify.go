@@ -158,6 +158,13 @@ func newUIVerifyCheckCmd() *cobra.Command {
 				{"state", string(state)},
 				{"msg", msg},
 			})
+			// The host reads ZNF_UI_STATUS_FILE as "UI unchecked"; once the tree
+			// resolves to any other state, that report is stale.
+			if path := os.Getenv("ZNF_UI_STATUS_FILE"); path != "" && state != "" && !strings.HasPrefix(state, "infra-blocked: ") {
+				if rerr := os.Remove(path); rerr != nil && !os.IsNotExist(rerr) {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: cannot remove ZNF_UI_STATUS_FILE: %v\n", rerr)
+				}
+			}
 			// Autonomous runs have no person to dispatch a ui-verifier, so a
 			// missing verdict stops at a needs-human await (FR-08.4).
 			if state == "required" && os.Getenv("ZNF_AUTONOMOUS") == "1" {

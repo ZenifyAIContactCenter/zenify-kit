@@ -72,10 +72,12 @@ Snapshots, console dumps and screenshots are the largest volume any step here pr
 a verdict plus evidence instead.
 
 #### Mechanical gate: ui-verify record/check
-`znf:ui-verifier` records its own artifact only when every item it checked is PASS: if `zenify` is on
-PATH it runs `zenify ui-verify record --repo <repo> --screen <name> --screenshot <path> --child-right <n>
---container-right <n> --padding-right <n> --verdict pass` per screen. A FAIL records nothing, so `check`
-stays `required` (a `fail` screen never makes an artifact valid anyway); accepting a FAIL takes a
+`znf:ui-verifier` records its own artifact: if `zenify` is on PATH it runs `zenify ui-verify record
+--repo <repo> --screen <name> --screenshot <path> --child-right <n> --container-right <n>
+--padding-right <n> --verdict pass` per screen when every item is PASS, and records each failing
+screen with `--verdict fail` on a FAIL (BLOCKED or PARTIAL alone record nothing). A `fail` screen
+never makes an artifact valid and beats a blocked record, so after a FAIL `check` is `required` even
+if an older pass or a blocked record exists for the same `fp`; accepting a FAIL takes a
 `znf:ui-verify-ok: <reason>` waiver. This computes a fingerprint `fp` over
 the caller-passed repo's working tree, copies the screenshot to `<repo>/.znf/ui-verify/<fp>-<screen>.png`,
 and upserts the screen's measurement into `<repo>/.znf/ui-verify/<fp>.json`. The `--repo` the caller

@@ -472,3 +472,39 @@ func TestUIVerifyCheckInfraBlockedInteractiveFails(t *testing.T) {
 		t.Errorf("await dir created outside autonomous mode (stat err=%v)", serr)
 	}
 }
+
+// ZNF_UI_STATUS_FILE reports infra-blocked to the host; once check resolves to
+// any other state the stale file is removed, and a missing file is no error.
+func TestUIVerifyCheckClearsStaleStatusFile(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	status := filepath.Join(t.TempDir(), "s.json")
+	t.Setenv("ZNF_UI_STATUS_FILE", status)
+
+	// infra-blocked keeps the file.
+	repo := initUIVerifyRepo(t)
+	writeRenderChange(t, repo)
+	if _, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "app_wont_start"); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runUIVerifyCheck(repo, "HEAD"); err != nil {
+		t.Fatalf("infra-blocked check: %v (%s)", err, out)
+	}
+	if _, err := os.Stat(status); err != nil {
+		t.Fatalf("infra-blocked check removed the status file: %v", err)
+	}
+
+	// another state (not_required here) removes it.
+	clean := initUIVerifyRepo(t)
+	if out, err := runUIVerifyCheck(clean, "HEAD"); err != nil {
+		t.Fatalf("not_required check: %v (%s)", err, out)
+	}
+	if _, err := os.Stat(status); !os.IsNotExist(err) {
+		t.Fatalf("status file survived a non-blocked check: %v", err)
+	}
+
+	// already gone: still exit 0.
+	if out, err := runUIVerifyCheck(clean, "HEAD"); err != nil {
+		t.Fatalf("check with no status file: %v (%s)", err, out)
+	}
+}

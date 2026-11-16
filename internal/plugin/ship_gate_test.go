@@ -45,7 +45,9 @@ func TestShipGate_AutonomousUI(t *testing.T) {
 		// The re-block must target the web worktree, or it fingerprints the cwd.
 		"run `zenify ui-verify blocked --reason <code> --repo <web worktree>` again",
 		// Network evidence never carries credentials onto the board or PR.
-		"never copy headers, cookies, tokens or response bodies"})
+		"never copy headers, cookies, tokens or response bodies",
+		// The verifier records a FAIL, so blocked cannot mask it.
+		"The verifier records the failing screens with `--verdict fail`."})
 }
 
 // FR-2: ship step 4 runs the tests affected by the branch; the rules live in a reference (SKILL.md is at its byte budget).

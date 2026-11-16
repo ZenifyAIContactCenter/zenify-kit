@@ -638,3 +638,49 @@ func TestRecordBlocked_RefusedAfterFailVerdict(t *testing.T) {
 		t.Fatalf("other fp: %v", err)
 	}
 }
+
+// A verifier FAIL records `--verdict fail`: on an fp that already holds a PASS
+// artifact or a blocked record, check must then say required, never verified
+// or infra-blocked.
+func TestRecordFail_OverridesPassAndBlocked(t *testing.T) {
+	const cur = "fpcurrent1"
+	pass := Screen{Screen: "home", Verdict: "pass", Measurement: Measurement{ChildRight: 1, ContainerRight: 2, PaddingRight: 3}}
+	for _, tc := range []struct {
+		name       string
+		prior      func(t *testing.T, repo, shot string)
+		failScreen string
+	}{
+		{"pass then fail, same screen", func(t *testing.T, repo, shot string) {
+			if err := Record(stubDeps(cur), repo, pass, shot); err != nil {
+				t.Fatal(err)
+			}
+		}, "home"},
+		{"pass then fail, other screen", func(t *testing.T, repo, shot string) {
+			if err := Record(stubDeps(cur), repo, pass, shot); err != nil {
+				t.Fatal(err)
+			}
+		}, "deals"},
+		{"blocked then fail", func(t *testing.T, repo, _ string) {
+			if _, err := RecordBlocked(stubDeps(cur), repo, "app_wont_start"); err != nil {
+				t.Fatal(err)
+			}
+		}, "home"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			shot := writeTempScreenshot(t, t.TempDir(), "shot.png", 16)
+			tc.prior(t, repo, shot)
+			fail := Screen{Screen: tc.failScreen, Verdict: "fail", Measurement: Measurement{ChildRight: 9, ContainerRight: 2, PaddingRight: 3}}
+			if err := Record(stubDeps(cur), repo, fail, shot); err != nil {
+				t.Fatalf("Record(fail) = %v", err)
+			}
+			d := checkDeps(t, map[string]string{
+				"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
+			}, cur)
+			state, _, err := Check(d, repo, "origin/staging")
+			if state != "required" || err == nil {
+				t.Fatalf("state=%q err=%v, want required with an error", state, err)
+			}
+		})
+	}
+}
