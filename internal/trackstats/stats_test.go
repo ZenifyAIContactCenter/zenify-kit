@@ -878,3 +878,41 @@ func TestBriefElsewhereFromLog(t *testing.T) { // SC-4
 		t.Fatalf("elsewhere = %+v", b.Elsewhere)
 	}
 }
+
+func TestFollowUpNotEstimateSample(t *testing.T) {
+	var lg []string
+	for i := 1; i <= 20; i++ {
+		wallItem(i, "S", i, "https://x/pr/"+cid("fix", i), &lg)
+	}
+	r0, _ := Compute(base(lines(lg...)))
+	wallItem(21, "S", 500, "https://x/pr/"+cid("fix", 1), &lg) // a later round on item 1's PR
+	r1, _ := Compute(base(lines(lg...)))
+	if r1.Scale != r0.Scale {
+		t.Fatalf("scale = %+v, want %+v unchanged by a follow-up item", r1.Scale, r0.Scale)
+	}
+	if r1.Estimate.ByKind["fix"] != r0.Estimate.ByKind["fix"] {
+		t.Fatalf("fix estimate = %+v, want %+v unchanged by a follow-up item", r1.Estimate.ByKind["fix"], r0.Estimate.ByKind["fix"])
+	}
+}
+
+func TestFollowUpTieEarlierRowWins(t *testing.T) {
+	end := now.Add(-50 * time.Minute)
+	pr := "https://x/pr/shared"
+	a, b := cid("fix", 1), cid("fix", 2)
+	first := []string{
+		row(now.Add(-100*time.Minute), "start", a, "fix", "r", "S"),
+		row(end, "end", a, pr, "1", "0"),
+	}
+	second := []string{
+		row(now.Add(-90*time.Minute), "start", b, "fix", "r", "S"),
+		row(end, "end", b, pr, "1", "0"),
+	}
+	only, _ := Compute(base(lines(first...)))
+	both, _ := Compute(base(lines(append(append([]string{}, first...), second...)...)))
+	if only.Estimate.ByKind["fix"].N != 1 {
+		t.Fatalf("baseline N = %d, want 1", only.Estimate.ByKind["fix"].N)
+	}
+	if both.Estimate.ByKind["fix"] != only.Estimate.ByKind["fix"] {
+		t.Fatalf("fix estimate = %+v, want %+v: the later row on a tied end is the follow-up", both.Estimate.ByKind["fix"], only.Estimate.ByKind["fix"])
+	}
+}

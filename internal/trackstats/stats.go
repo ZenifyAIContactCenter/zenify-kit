@@ -350,6 +350,7 @@ func Compute(in Input) (Result, map[string]string) {
 	var items []Item
 	endedPRs := map[string]bool{}
 	firstEnd := map[string]time.Time{} // a PR counts as opened on the day of its first end
+	firstEndID := map[string]string{}  // the item that first ended each PR
 	var prOrder []string
 	for _, id := range order {
 		w := works[id]
@@ -414,6 +415,7 @@ func Compute(in Input) (Result, map[string]string) {
 			for _, p := range it.PRs {
 				if at, seen := firstEnd[p]; !seen || w.end.At.Before(at) {
 					firstEnd[p] = w.end.At
+					firstEndID[p] = id
 				}
 			}
 		}
@@ -439,12 +441,29 @@ func Compute(in Input) (Result, map[string]string) {
 	newCache, ghDown := mergedToday(in, prOrder, planURLs, &res)
 	res.Today.PROpen, ghDown = openPRStatus(in, prOrder, firstEnd, planURLs, newCache, ghDown, &res)
 
+	// followUp marks an item whose every PR another item ended first: a later round on a PR
+	// already counted, so it is no estimate sample.
+	followUp := map[string]bool{}
+	for _, it := range items {
+		if len(it.PRs) == 0 {
+			continue
+		}
+		all := true
+		for _, p := range it.PRs {
+			if firstEndID[p] == it.ID {
+				all = false
+				break
+			}
+		}
+		followUp[it.ID] = all
+	}
+
 	// Scale: wall minutes of the done and pushed items with a real estimate, oldest end first.
 	ended := byEnd(items)
 	var mins []int
 	var measured []Item
 	for _, it := range ended {
-		if it.Kind != "task" && (it.Status == "done" || it.Status == "pushed") && sizeRank[it.Est] > 0 && sizeRank[it.Est] < 4 && it.WallMin > 0 {
+		if it.Kind != "task" && !followUp[it.ID] && (it.Status == "done" || it.Status == "pushed") && sizeRank[it.Est] > 0 && sizeRank[it.Est] < 4 && it.WallMin > 0 {
 			mins = append(mins, it.WallMin)
 			measured = append(measured, it)
 		}
@@ -462,6 +481,9 @@ func Compute(in Input) (Result, map[string]string) {
 	for _, it := range ended {
 		if it.WallMin == 0 {
 			continue // zero wall time: not an estimate sample
+		}
+		if followUp[it.ID] {
+			continue
 		}
 		byKindEnded[it.Kind] = append(byKindEnded[it.Kind], it)
 	}
