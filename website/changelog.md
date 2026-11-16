@@ -8,6 +8,16 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.71.0
+
+*2026-11-16*
+
+- **UI verify chạy không người dùng feature map:** repo khai `.znf/features/*.md` (Route, Role, Tới đó, Chứng minh, File liên quan) cho từng màn. Ship đưa các map này cho verifier, verifier chọn mục khớp file đã đổi rồi tự đăng nhập, đi tới màn và kiểm theo `Chứng minh`. Màn chưa có mục thì verifier đề xuất một mục mới. Xem [Kiểm thử UI](/workflows/ui-testing).
+- **Kiểm request mạng trong UI verify:** `zenify browser` cho thêm `requests` và `request <n>`, để `Chứng minh` có thể là điều kiện trên request (ví dụ không có 5xx tới một endpoint). Báo cáo chỉ ghi method, đường dẫn và status, không chép header, cookie hay token.
+- **Verdict FAIL không còn qua gate:** verifier ghi screen hỏng bằng `--verdict fail`, nên `zenify ui-verify check` ra `required`. Muốn chấp nhận lệch thì thêm comment `znf:ui-verify-ok: <lý do>` vào một file nguồn đã đổi. Xem [Kiểm thử UI](/workflows/ui-testing).
+- **Hạ tầng hỏng không còn thành câu hỏi cho dev:** ở chế độ không người, khi không dựng được app để kiểm UI (cài deps lỗi, build hết bộ nhớ, login lỗi…), agent ghi `zenify ui-verify blocked --reason <mã> --repo <worktree web>` và vẫn mở PR kèm cảnh báo UI chưa kiểm. Host nhận trạng thái qua `ZNF_UI_STATUS_FILE` để báo admin. Xem [Chế độ không người](/guides/autonomous#ui).
+- **Cache deps dùng chung với máy không chạy `wt new`:** `zenify wt cache put` và `zenify wt cache get` ghi và đọc cùng slot cache mà `wt new` dùng (khoá theo lockfile và Node ABI/platform/arch), nên sandbox worker dùng lại được `node_modules` đã cài. Xem [Onboard workspace](/guides/onboard-workspace).
+
 ## v0.70.0
 
 *2026-11-16*
