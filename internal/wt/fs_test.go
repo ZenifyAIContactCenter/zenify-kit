@@ -505,6 +505,14 @@ func TestCloneIsCurrent(t *testing.T) {
 		lock: strings.Replace(wasmLock, `"dependencies":{"x":"^1.0.0"}},`, `"dependencies":{"x":"^1.0.0"},"optionalDependencies":{"@emnapi/core":"^1.0.0"}},`, 1),
 		pkg:  `{"name":"p","dependencies":{"x":"^1.0.0"},"optionalDependencies":{"@emnapi/core":"^1.0.0"}}`,
 	}, "npm ci"}
+	scopedLock := strings.Replace(wasmLock, `"node_modules/@emnapi/core":{"version":"1.0.0","optional":true}`, `"node_modules/@emnapi/core":{"version":"1.0.0","optional":true},"node_modules/@node_modules/rt":{"version":"1.0.0","optional":true}`, 1)
+	notCurrent["root optional in a scope named @node_modules, not installed"] = struct {
+		c   cloneCase
+		cmd string
+	}{cloneCase{
+		lock: strings.Replace(scopedLock, `"dependencies":{"x":"^1.0.0"}},`, `"dependencies":{"x":"^1.0.0"},"optionalDependencies":{"@node_modules/rt":"^1.0.0"}},`, 1),
+		pkg:  `{"name":"p","dependencies":{"x":"^1.0.0"},"optionalDependencies":{"@node_modules/rt":"^1.0.0"}}`,
+	}, "npm ci"}
 	for name, tc := range notCurrent {
 		t.Run(name, func(t *testing.T) {
 			repo, wtp := cloneFixture(t, tc.c)

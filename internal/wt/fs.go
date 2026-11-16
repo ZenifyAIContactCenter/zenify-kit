@@ -554,11 +554,13 @@ func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
 // npm ci produces. By name, not by nested path: a same-named dependency
 // elsewhere in the tree also counts, which errs towards reinstalling.
 func neededByInstalled(k string, root lockPkg, lock, hidden map[string]lockPkg) bool {
-	i := strings.LastIndex(k, "node_modules/")
+	// A path segment, so a scope named like "@node_modules" is not taken for one.
+	p := "/" + k
+	i := strings.LastIndex(p, "/node_modules/")
 	if i < 0 { // a workspace path, not an installed dependency: treat it as needed
 		return true
 	}
-	name := k[i+len("node_modules/"):]
+	name := p[i+len("/node_modules/"):]
 	declares := func(p lockPkg) bool {
 		for _, m := range []map[string]string{p.Dependencies, p.DevDependencies, p.OptionalDependencies, p.PeerDependencies} {
 			if _, ok := m[name]; ok {
