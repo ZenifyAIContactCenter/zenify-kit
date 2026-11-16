@@ -58,6 +58,8 @@ zenify up
 
 Wizard yêu cầu đăng nhập `gh` nếu bạn chưa đăng nhập. Sau đó nó phát hiện các repo của team và hỏi bạn chọn repo nào để clone hoặc liên kết vào workspace. Từ bước này, các lệnh sau tự tìm workspace qua `~/.zenify/workspace`. Bạn không cần truyền lại `--workspace`.
 
+Muốn trỏ tới đúng thư mục đang đứng, ví dụ khi thử binary trong thư mục tạm, thì truyền `--workspace .`. Giá trị `.` luôn là thư mục hiện tại: chạy từ thư mục con thì lấy chính thư mục con, và không bao giờ rơi về `~/.zenify/workspace`. Chỉ khi bỏ trống cờ, kit mới dò ngược tìm `.zenify/manifest.json` rồi mới dùng `~/.zenify/workspace`.
+
 ## Bước 3: kiểm tra môi trường với `zenify doctor`
 
 ```sh
