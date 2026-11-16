@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const cacheDepsDir = "node_modules"
@@ -388,10 +389,16 @@ func TestCacheGetRemovesStaleTempDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	dst := bareDir(t, lockJSON)
-	for _, d := range []string{".wt-cache-stale/node_modules/x", ".wt-cachex", "wt-cache-keep"} {
+	for _, d := range []string{".wt-cache-stale/node_modules/x", ".wt-cache-live/node_modules", ".wt-cachex", "wt-cache-keep"} {
 		if err := os.MkdirAll(filepath.Join(dst, d), 0o750); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Only a staging dir older than the sweep age is stale; a fresh one may be
+	// a concurrent get still copying.
+	old := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(filepath.Join(dst, ".wt-cache-stale"), old, old); err != nil {
+		t.Fatal(err)
 	}
 	if hit, err := CacheGet(dst, "myrepo", cacheEnv(cache)); err != nil || !hit {
 		t.Fatalf("CacheGet = (%v, %v)", hit, err)
@@ -399,7 +406,7 @@ func TestCacheGetRemovesStaleTempDirs(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dst, ".wt-cache-stale")); !os.IsNotExist(err) {
 		t.Fatalf(".wt-cache-stale survived a get: %v", err)
 	}
-	for _, keep := range []string{".wt-cachex", "wt-cache-keep"} {
+	for _, keep := range []string{".wt-cache-live", ".wt-cachex", "wt-cache-keep"} {
 		if _, err := os.Stat(filepath.Join(dst, keep)); err != nil {
 			t.Errorf("%s removed: %v", keep, err)
 		}

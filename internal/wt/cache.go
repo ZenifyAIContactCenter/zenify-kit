@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // cacheDeps is the deps dir the standalone cache commands handle. Only npm
@@ -15,6 +16,10 @@ const cacheDeps = "node_modules"
 
 // cacheTempPrefix names CacheGet's staging dir inside the target dir.
 const cacheTempPrefix = ".wt-cache-"
+
+// cacheTempStaleAge is how old a staging dir must be before a later get
+// removes it; a younger one may belong to a concurrent get still copying.
+const cacheTempStaleAge = time.Hour
 
 // cacheNameRe is the one path segment a cache repo name may be, so a name can
 // never point outside <cache>/ (no "/", no leading "." or "-").
@@ -80,18 +85,21 @@ func CachePut(dir, repoName string, lookupEnv func(string) (string, bool)) error
 // miss (no slot, cache off, no readable lock) returns false, nil and leaves dir
 // untouched. The cache is only read, never written. The copy lands in a temp
 // dir beside dst first, so a failed copy leaves the existing node_modules as is;
-// a stale staging dir from a killed get is removed on the next hit.
+// a staging dir over an hour old (a killed get) is removed on the next hit.
 func CacheGet(dir, repoName string, lookupEnv func(string) (string, bool)) (hit bool, err error) {
 	src, found, err := cacheLookup(dir, repoName, lookupEnv)
 	if err != nil || !found {
 		return false, err
 	}
 	dst := filepath.Join(dir, cacheDeps)
-	// A get killed mid-copy leaves its temp dir behind; clear it (best effort)
-	// so the repo dir does not stay dirty.
+	// A get killed mid-copy leaves its temp dir behind; clear old ones (best
+	// effort) so the repo dir does not stay dirty.
 	if entries, err := os.ReadDir(dir); err == nil {
 		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), cacheTempPrefix) {
+			if !strings.HasPrefix(e.Name(), cacheTempPrefix) {
+				continue
+			}
+			if fi, err := e.Info(); err == nil && time.Since(fi.ModTime()) > cacheTempStaleAge {
 				_ = os.RemoveAll(filepath.Join(dir, e.Name()))
 			}
 		}
