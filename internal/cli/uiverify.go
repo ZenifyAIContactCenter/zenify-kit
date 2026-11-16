@@ -292,8 +292,8 @@ func writeUIStatusFile(path, reason, repo, fp string) error {
 		_ = os.Remove(tmp.Name()) //nolint:gosec // G703 -- path is ZNF_UI_STATUS_FILE, set by the host that runs this agent; the kit never derives it from repo content
 		return err
 	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		_ = os.Remove(tmp.Name())
+	if err := os.Rename(tmp.Name(), path); err != nil { //nolint:gosec // G703 -- path is ZNF_UI_STATUS_FILE, set by the host that runs this agent; the kit never derives it from repo content
+		_ = os.Remove(tmp.Name()) //nolint:gosec // G703 -- path is ZNF_UI_STATUS_FILE, set by the host that runs this agent; the kit never derives it from repo content
 		return err
 	}
 	return nil
