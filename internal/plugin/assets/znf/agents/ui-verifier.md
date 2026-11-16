@@ -39,9 +39,9 @@ Behavioral/spec-only verification of UI is nearly worthless: a change can pass e
 ## Screenshots
 Run `zenify browser -s=<session> screenshot`. It writes under `~/.zenify/playwright/sessions/<session>/` (outside the repo) and prints the absolute path — `Read` that path to inspect it. Do not pass a filename that points into the repo or workspace.
 
-**Record the artifact (when running inside zenify-kit), only on PASS.** For each screen you measured and passed, run `zenify ui-verify record --repo
+**Record the artifact (when running inside zenify-kit), only when every item you checked is PASS.** Then, for each screen you measured, run `zenify ui-verify record --repo
 <repo the caller passed> --screen <name> --screenshot <absolute path> --child-right <n> --container-right <n>
---padding-right <n> --verdict pass`; if `zenify` is not on PATH the command fails — skip recording then (keeps you project-agnostic). FAIL or BLOCKED records nothing: a recorded artifact passes the ship gate.
+--padding-right <n> --verdict pass`; if `zenify` is not on PATH the command fails — skip recording then (keeps you project-agnostic). Any FAIL, BLOCKED or PARTIAL: record nothing for any screen, since one recorded screen passes the ship gate.
 
 Leave the screenshots where they are; do not delete them. **Always `close` your own session at the end** (`zenify browser -s=<session> close`), also when you report BLOCKED or FAIL.
 

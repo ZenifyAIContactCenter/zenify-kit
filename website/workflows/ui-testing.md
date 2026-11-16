@@ -122,7 +122,7 @@ Task chỉ ghi "test màn tạo ticket" không đủ. Skill sẽ hỏi lại th�
 
 ## Quyết định thuộc về bạn
 
-- Sửa layout theo verdict FAIL, hay chấp nhận vì lệch có sẵn ở phần tử anh em.
+- Sửa layout theo verdict FAIL, hay chấp nhận vì lệch có sẵn ở phần tử anh em. Verifier không ghi bằng chứng khi FAIL, nên muốn chấp nhận thì thêm comment `znf:ui-verify-ok: <lý do>` vào một file nguồn đã đổi để `zenify ui-verify check` ghi `waived`.
 - Cập nhật baseline ảnh khi giao diện đổi có chủ ý.
 - Thêm route mới vào `routes.json` khi bạn tạo màn mới.
 - Quyết định task nào cần journey, lúc lập plan.
