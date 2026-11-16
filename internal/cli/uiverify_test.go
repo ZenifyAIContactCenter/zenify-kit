@@ -317,3 +317,119 @@ func uiGitOut(t *testing.T, repo string, args ...string) string {
 	}
 	return string(out)
 }
+
+func runUIVerifyBlocked(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	c := newUIVerifyBlockedCmd()
+	buf := &bytes.Buffer{}
+	c.SetOut(buf)
+	c.SetErr(buf)
+	c.SetArgs(args)
+	err := c.Execute()
+	return buf.String(), err
+}
+
+func blockedFiles(repo string) []string {
+	m, _ := filepath.Glob(filepath.Join(repo, ".znf", "ui-verify", "*.blocked.json"))
+	return m
+}
+
+func TestUIVerifyBlockedRefusedOutsideAutonomous(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	repo := initUIVerifyRepo(t)
+	_, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "deps_auth_failed:x")
+	if exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("want exit %d (Fail), got %d (%v)", exitcode.Fail, exitcode.Code(err), err)
+	}
+	if got := blockedFiles(repo); len(got) != 0 {
+		t.Errorf("blocked record written outside autonomous mode: %v", got)
+	}
+}
+
+func TestUIVerifyBlockedEmptyReasonRefused(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	repo := initUIVerifyRepo(t)
+	_, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "")
+	if err == nil || exitcode.Code(err) == 0 {
+		t.Fatalf("want non-zero exit for empty reason, got %v", err)
+	}
+	if got := blockedFiles(repo); len(got) != 0 {
+		t.Errorf("blocked record written for empty reason: %v", got)
+	}
+}
+
+func TestUIVerifyBlockedWritesStatusFile(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	status := filepath.Join(t.TempDir(), "s.json")
+	t.Setenv("ZNF_UI_STATUS_FILE", status)
+	repo := initUIVerifyRepo(t)
+	out, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "app_wont_start")
+	if err != nil {
+		t.Fatalf("err=%v out=%s", err, out)
+	}
+	b, rerr := os.ReadFile(status) //nolint:gosec // G304 -- test temp dir
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if string(b) != `{"state":"infra-blocked","reason":"app_wont_start"}` && string(b) != `{"state":"infra-blocked","reason":"app_wont_start"}`+"\n" {
+		t.Errorf("status file = %q", b)
+	}
+	if got := blockedFiles(repo); len(got) != 1 {
+		t.Errorf("want one blocked record, got %v", got)
+	}
+}
+
+func TestUIVerifyBlockedStatusFileErrorStillExitsZero(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	t.Setenv("ZNF_UI_STATUS_FILE", filepath.Join(t.TempDir(), "missing-dir", "s.json"))
+	repo := initUIVerifyRepo(t)
+	out, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "app_wont_start")
+	if err != nil {
+		t.Fatalf("want exit 0, got %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "warning") {
+		t.Errorf("expected a warning in output, got %q", out)
+	}
+}
+
+func TestUIVerifyCheckInfraBlockedAutonomousNoAwait(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ZENIFY_HOME", home)
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	t.Setenv("ZNF_UI_STATUS_FILE", "")
+	repo := initUIVerifyRepo(t)
+	writeRenderChange(t, repo)
+	if _, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "deps_auth_failed:hub"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runUIVerifyCheck(repo, "HEAD")
+	if err != nil {
+		t.Fatalf("want exit 0, got %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "infra-blocked: deps_auth_failed:hub") {
+		t.Errorf("output %q lacks the infra-blocked state", out)
+	}
+	if _, serr := os.Stat(filepath.Join(home, "await")); !os.IsNotExist(serr) {
+		t.Errorf("await dir created for infra-blocked (stat err=%v)", serr)
+	}
+}
+
+func TestUIVerifyCheckInfraBlockedInteractiveFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ZENIFY_HOME", home)
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	t.Setenv("ZNF_UI_STATUS_FILE", "")
+	repo := initUIVerifyRepo(t)
+	writeRenderChange(t, repo)
+	if _, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "deps_auth_failed:hub"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	_, err := runUIVerifyCheck(repo, "HEAD")
+	if exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("want exit %d (Fail), got %d (%v)", exitcode.Fail, exitcode.Code(err), err)
+	}
+	if _, serr := os.Stat(filepath.Join(home, "await")); !os.IsNotExist(serr) {
+		t.Errorf("await dir created outside autonomous mode (stat err=%v)", serr)
+	}
+}

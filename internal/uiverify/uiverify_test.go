@@ -508,3 +508,76 @@ func TestRecord_ScreenNameWithSlash(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckBlockedTable(t *testing.T) {
+	const reason = "deps_auth_failed:contact-center-hub"
+	rows := []struct {
+		name       string
+		artifact   bool
+		blocked    bool
+		blockedFP  string // fp the blocked record was written under
+		wantState  string
+		wantErrNil bool
+	}{
+		{"artifact only", true, false, "", "verified", true},
+		{"blocked only, fp matches", false, true, "fpcurrent1", "infra-blocked: " + reason, true},
+		{"artifact wins over blocked", true, true, "fpcurrent1", "verified", true},
+		{"blocked recorded for an older fp", false, true, "fpolder001", "required", false},
+		{"neither", false, false, "", "required", false},
+	}
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			repo := t.TempDir()
+			const cur = "fpcurrent1"
+			if r.artifact {
+				dir := filepath.Join(repo, ".znf", "ui-verify")
+				if err := os.MkdirAll(dir, 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				writeArtifact(t, repo, cur, Artifact{FP: cur, Screens: []Screen{{Screen: "home", Screenshot: "shot.png"}}})
+			}
+			if r.blocked {
+				if _, err := RecordBlocked(stubDeps(r.blockedFP), repo, reason); err != nil {
+					t.Fatal(err)
+				}
+			}
+			d := checkDeps(t, map[string]string{
+				"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
+			}, cur)
+			state, msg, err := Check(d, repo, "origin/staging")
+			if state != r.wantState {
+				t.Errorf("state=%q, want %q", state, r.wantState)
+			}
+			if (err == nil) != r.wantErrNil {
+				t.Errorf("err=%v, wantErrNil=%v", err, r.wantErrNil)
+			}
+			if r.wantState != "required" && r.wantState != "verified" && msg != r.wantState {
+				t.Errorf("msg=%q, want %q", msg, r.wantState)
+			}
+		})
+	}
+}
+
+func TestRecordBlocked_WritesIgnoredJSON(t *testing.T) {
+	repo := t.TempDir()
+	fp, err := RecordBlocked(stubDeps("fpblocked1"), repo, "app_wont_start")
+	if err != nil || fp != "fpblocked1" {
+		t.Fatalf("fp=%q err=%v", fp, err)
+	}
+	b, rerr := os.ReadFile(filepath.Join(repo, ".znf", "ui-verify", "fpblocked1.blocked.json"))
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	for _, want := range []string{`"fp": "fpblocked1"`, `"reason": "app_wont_start"`, `"recorded_at": "2026-09-16T12:00:00Z"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("blocked.json missing %s: %s", want, b)
+		}
+	}
+	gi, gerr := os.ReadFile(filepath.Join(repo, ".znf", "ui-verify", ".gitignore"))
+	if gerr != nil || string(gi) != "*\n" {
+		t.Errorf("gitignore = %q err=%v", gi, gerr)
+	}
+}

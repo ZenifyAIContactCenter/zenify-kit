@@ -20,10 +20,11 @@ zenify ui-verify check [flags]
 
 ## Kết quả
 
-Bốn trạng thái:
+Năm trạng thái:
 - Render-set rỗng → "not required" (exit 0).
 - Diff mang marker `// znf:ui-verify-ok: <lý do>` → "waived: <lý do>" (exit 0).
 - Có artifact hợp lệ khớp fingerprint hiện tại → "verified" (exit 0).
+- Có bản ghi `zenify ui-verify blocked` cho fingerprint hiện tại (không có artifact hợp lệ) → `infra-blocked: <mã>`. Khi `ZNF_AUTONOMOUS=1` thoát 0 và không tạo await, để PR vẫn mở với dòng cảnh báo; ngoài autonomous thì như dưới (exit khác 0).
 - Còn lại → exit khác 0, `/znf:ship` đọc là "ui-verify required" và đánh dòng `look:` thành `❌ BLOCKED`, `Shippable: NO`.
 
 ## Cờ

@@ -119,6 +119,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify track start](./zenify_track_start) | Mở một lượt theo dõi và in id `track: <id>`. |
 | [zenify track stats](./zenify_track_stats) | In số liệu hôm nay, độ chính xác estimate và chất lượng từ log.md và sessions/*.log. |
 | [zenify ui-verify](./zenify_ui-verify) | Nhóm lệnh ghi/kiểm tra bằng chứng UI-verify cho gate cơ học của /znf:ship. |
+| [zenify ui-verify blocked](./zenify_ui-verify_blocked) | Ghi nhận hạ tầng sandbox hỏng nên không thể kiểm UI (chỉ chạy được khi ZNF_AUTONOMOUS=1). |
 | [zenify ui-verify check](./zenify_ui-verify_check) | Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint hiện tại. |
 | [zenify ui-verify files](./zenify_ui-verify_files) | In các file render UI đã đổi so với base, mỗi dòng một file; file test không tính. |
 | [zenify ui-verify record](./zenify_ui-verify_record) | Ghi lại artifact UI-verify (screenshot + 3 số đo) cho fingerprint hiện tại. |

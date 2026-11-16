@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -57,6 +59,7 @@ func newUIVerifyCmd() *cobra.Command {
 	}
 	c.AddCommand(newUIVerifyRecordCmd())
 	c.AddCommand(newUIVerifyCheckCmd())
+	c.AddCommand(newUIVerifyBlockedCmd())
 	c.AddCommand(newUIVerifyFilesCmd())
 	return c
 }
@@ -94,7 +97,7 @@ func newUIVerifyFilesCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                            //znf:allow-lang
 	c.Flags().StringVar(&base, "base", "", "base ref để so sánh (bắt buộc)") //znf:allow-lang
 	c.Flags().BoolVar(&count, "count", false, "print only the number of files (fails with no output on error)")
 	return c
@@ -122,7 +125,7 @@ func newUIVerifyRecordCmd() *cobra.Command {
 			return uiverify.Record(defaultUIVerifyDeps(), repo, s, screenshot)
 		},
 	}
-	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                                    //znf:allow-lang
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                            //znf:allow-lang
 	c.Flags().StringVar(&screen, "screen", "", "tên screen/route (bắt buộc)")                             //znf:allow-lang
 	c.Flags().StringVar(&screenshot, "screenshot", "", "đường dẫn ảnh chụp màn hình (bắt buộc)")          //znf:allow-lang
 	c.Flags().Float64Var(&childRight, "child-right", 0, "child.right của element đã đổi (bắt buộc)")      //znf:allow-lang
@@ -164,10 +167,83 @@ func newUIVerifyCheckCmd() *cobra.Command {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), id)
 				return exitcode.New(exitcode.Awaiting, fmt.Errorf("awaiting human: needs-human (%s)", id))
 			}
+			// The sandbox itself is broken: ship opens the PR with a warning
+			// line instead of stopping (FR-4.2).
+			if strings.HasPrefix(state, "infra-blocked: ") {
+				if os.Getenv("ZNF_AUTONOMOUS") == "1" {
+					return nil
+				}
+				return exitcode.New(exitcode.Fail, fmt.Errorf("%s", msg))
+			}
 			return err
 		},
 	}
-	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                            //znf:allow-lang
 	c.Flags().StringVar(&base, "base", "", "base ref để so sánh (bắt buộc)") //znf:allow-lang
 	return c
+}
+
+// newUIVerifyBlockedCmd records that the sandbox infra is broken so no UI
+// verdict is possible; `check` then reports infra-blocked instead of required.
+func newUIVerifyBlockedCmd() *cobra.Command {
+	var repo, reason string
+	c := &cobra.Command{
+		Use:   "blocked",
+		Short: "Ghi nhận hạ tầng sandbox hỏng nên không kiểm UI được (chỉ autonomous)", //znf:allow-lang
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if os.Getenv("ZNF_AUTONOMOUS") != "1" {
+				return exitcode.New(exitcode.Fail, fmt.Errorf("ui-verify blocked is only allowed under ZNF_AUTONOMOUS=1"))
+			}
+			if reason == "" {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need --reason <code>"))
+			}
+			if repo == "" {
+				repo, _ = os.Getwd()
+			}
+			fp, err := uiverify.RecordBlocked(defaultUIVerifyDeps(), repo, reason)
+			if err != nil {
+				return err
+			}
+			if path := os.Getenv("ZNF_UI_STATUS_FILE"); path != "" {
+				if werr := writeUIStatusFile(path, reason); werr != nil {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: cannot write ZNF_UI_STATUS_FILE: %v\n", werr)
+				}
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), fp)
+			return nil
+		},
+	}
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                            //znf:allow-lang
+	c.Flags().StringVar(&reason, "reason", "", "mã lý do, vd deps_auth_failed:<repo> (bắt buộc)") //znf:allow-lang
+	return c
+}
+
+// writeUIStatusFile writes the host-readable status JSON via a temp file in the
+// same directory, then renames it so a reader never sees a partial file.
+func writeUIStatusFile(path, reason string) error {
+	b, err := json.Marshal(struct {
+		State  string `json:"state"`
+		Reason string `json:"reason"`
+	}{"infra-blocked", reason})
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".ui-status-*")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	return nil
 }

@@ -334,9 +334,51 @@ func Validate(repo, fp string) (int, bool) {
 	return len(art.Screens), true
 }
 
+// blockedRecord is <fp>.blocked.json: the sandbox could not run the app, so no
+// verdict is possible for this fingerprint.
+type blockedRecord struct {
+	FP         string `json:"fp"`
+	Reason     string `json:"reason"`
+	RecordedAt string `json:"recorded_at"`
+}
+
+// RecordBlocked writes <fp>.blocked.json for the current fingerprint. The dir
+// is self-ignoring, so writing it does not change the fingerprint.
+func RecordBlocked(d Deps, repo, reason string) (string, error) {
+	fp, err := Fingerprint(d, repo)
+	if err != nil {
+		return "", err
+	}
+	dir := artifactDir(repo)
+	if err := ensureArtifactDir(dir); err != nil {
+		return "", exitcode.New(exitcode.Fail, err)
+	}
+	b, err := json.MarshalIndent(blockedRecord{FP: fp, Reason: reason, RecordedAt: d.now().UTC().Format(time.RFC3339)}, "", "  ")
+	if err != nil {
+		return "", exitcode.New(exitcode.Fail, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, fp+".blocked.json"), b, 0o600); err != nil {
+		return "", exitcode.New(exitcode.Fail, err)
+	}
+	return fp, nil
+}
+
+// Blocked returns the reason recorded for exactly this fingerprint, if any.
+func Blocked(repo, fp string) (string, bool) {
+	b, err := os.ReadFile(filepath.Join(artifactDir(repo), fp+".blocked.json")) //nolint:gosec // G304 -- path built from fp, not user input
+	if err != nil {
+		return "", false
+	}
+	var rec blockedRecord
+	if err := json.Unmarshal(b, &rec); err != nil || rec.Reason == "" {
+		return "", false
+	}
+	return rec.Reason, true
+}
+
 // Check orchestrates the gate: no rendering files changed → not_required;
 // a waiver marker present → waived; a valid artifact for the current
-// fingerprint → verified; otherwise → required (fail-closed).
+// fingerprint → verified; a blocked record for it → infra-blocked; otherwise → required (fail-closed).
 // FR-2.2..2.5, FR-3.1 (a stale fp means Validate reads a <fp>.json that
 // doesn't exist, which falls straight through to required).
 func Check(d Deps, repo, base string) (state string, msg string, err error) {
@@ -361,6 +403,11 @@ func Check(d Deps, repo, base string) (state string, msg string, err error) {
 	if ok {
 		msg = fmt.Sprintf("verified (%d screen(s), fp=%s)", n, fp)
 		return "verified", msg, nil
+	}
+
+	if reason, ok := Blocked(repo, fp); ok {
+		state = "infra-blocked: " + reason
+		return state, state, nil
 	}
 
 	msg = fmt.Sprintf("ui-verify required — no valid artifact for fp=%s (rendering files: %s)",
