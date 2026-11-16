@@ -97,7 +97,7 @@ func newUIVerifyFilesCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                            //znf:allow-lang
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang
 	c.Flags().StringVar(&base, "base", "", "base ref để so sánh (bắt buộc)") //znf:allow-lang
 	c.Flags().BoolVar(&count, "count", false, "print only the number of files (fails with no output on error)")
 	return c
@@ -125,7 +125,7 @@ func newUIVerifyRecordCmd() *cobra.Command {
 			return uiverify.Record(defaultUIVerifyDeps(), repo, s, screenshot)
 		},
 	}
-	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                            //znf:allow-lang
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                                    //znf:allow-lang
 	c.Flags().StringVar(&screen, "screen", "", "tên screen/route (bắt buộc)")                             //znf:allow-lang
 	c.Flags().StringVar(&screenshot, "screenshot", "", "đường dẫn ảnh chụp màn hình (bắt buộc)")          //znf:allow-lang
 	c.Flags().Float64Var(&childRight, "child-right", 0, "child.right của element đã đổi (bắt buộc)")      //znf:allow-lang
@@ -178,7 +178,7 @@ func newUIVerifyCheckCmd() *cobra.Command {
 			return err
 		},
 	}
-	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")                            //znf:allow-lang
+	c.Flags().StringVar(&repo, "repo", "", "repo path (mặc định cwd)")       //znf:allow-lang
 	c.Flags().StringVar(&base, "base", "", "base ref để so sánh (bắt buộc)") //znf:allow-lang
 	return c
 }
