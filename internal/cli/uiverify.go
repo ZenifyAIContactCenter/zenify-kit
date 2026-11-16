@@ -266,7 +266,7 @@ func clearUIStatusFile(path, repo string) error {
 	if json.Unmarshal(b, &st) != nil || st.Repo == "" || st.Repo != statusRepo(repo) {
 		return nil
 	}
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) { //nolint:gosec // G703 -- path is ZNF_UI_STATUS_FILE, set by the host that runs this agent; the kit never derives it from repo content
 		return err
 	}
 	return nil
@@ -285,11 +285,11 @@ func writeUIStatusFile(path, reason, repo, fp string) error {
 	}
 	if _, err := tmp.Write(b); err != nil {
 		_ = tmp.Close()
-		_ = os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name()) //nolint:gosec // G703 -- path is ZNF_UI_STATUS_FILE, set by the host that runs this agent; the kit never derives it from repo content
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name()) //nolint:gosec // G703 -- path is ZNF_UI_STATUS_FILE, set by the host that runs this agent; the kit never derives it from repo content
 		return err
 	}
 	if err := os.Rename(tmp.Name(), path); err != nil {
