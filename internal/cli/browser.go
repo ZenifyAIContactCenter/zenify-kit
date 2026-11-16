@@ -25,7 +25,7 @@ var (
 		"open": true, "goto": true, "go-back": true, "go-forward": true, "reload": true,
 		"snapshot": true, "find": true, "click": true, "dblclick": true, "hover": true,
 		"fill": true, "type": true, "press": true, "select": true, "check": true, "uncheck": true,
-		"eval": true, "screenshot": true, "console": true, "resize": true, "state-load": true,
+		"eval": true, "screenshot": true, "console": true, "requests": true, "request": true, "resize": true, "state-load": true,
 		"tab-list": true, "tab-new": true, "tab-select": true, "tab-close": true,
 		"dialog-accept": true, "dialog-dismiss": true, "close": true,
 	}

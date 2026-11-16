@@ -175,3 +175,18 @@ func TestBrowserFilenameBasenamePasses(t *testing.T) {
 		}
 	}
 }
+
+func TestBrowserAllowsRequests(t *testing.T) {
+	home := browserHome(t, true)
+	for _, args := range [][]string{{"-s=a", "requests"}, {"-s=a", "request", "3"}} {
+		var got *exec.Cmd
+		code := runBrowser(args, home, &bytes.Buffer{}, &bytes.Buffer{}, func(c *exec.Cmd) error { got = c; return nil })
+		if code != 0 || got == nil {
+			t.Fatalf("%v: code=%d cmd=%v", args, code, got)
+		}
+		want := append([]string{"node", playwright.CLIScript(home)}, args...)
+		if strings.Join(got.Args, "|") != strings.Join(want, "|") {
+			t.Errorf("%v: argv=%v want %v", args, got.Args, want)
+		}
+	}
+}
