@@ -916,3 +916,21 @@ func TestFollowUpTieEarlierRowWins(t *testing.T) {
 		t.Fatalf("fix estimate = %+v, want %+v: the later row on a tied end is the follow-up", both.Estimate.ByKind["fix"], only.Estimate.ByKind["fix"])
 	}
 }
+
+func TestFollowUpTieEarlierEndRowWins(t *testing.T) {
+	end := now.Add(-50 * time.Minute)
+	pr := "https://x/pr/shared"
+	a, b := cid("fix", 1), cid("fix", 2)
+	startA := row(now.Add(-400*time.Minute), "start", a, "fix", "r", "S")
+	startB := row(now.Add(-55*time.Minute), "start", b, "fix", "r", "S")
+	endB := row(end, "end", b, pr, "1", "0")
+	endA := row(end, "end", a, pr, "1", "0")
+	only, _ := Compute(base(lines(startB, endB)))
+	both, _ := Compute(base(lines(startA, startB, endB, endA)))
+	if only.Estimate.ByKind["fix"].N != 1 {
+		t.Fatalf("baseline N = %d, want 1", only.Estimate.ByKind["fix"].N)
+	}
+	if both.Estimate.ByKind["fix"] != only.Estimate.ByKind["fix"] {
+		t.Fatalf("fix estimate = %+v, want %+v: B's end row is first in the log, so A is the follow-up", both.Estimate.ByKind["fix"], only.Estimate.ByKind["fix"])
+	}
+}

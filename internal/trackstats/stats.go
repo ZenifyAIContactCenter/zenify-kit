@@ -256,6 +256,7 @@ type work struct {
 	item   Item
 	events []Event
 	end    *Event
+	endIdx int // index in logEv of the end row kept as end
 	start  time.Time
 	from   string // the `start --from` ref, "" when none
 }
@@ -338,6 +339,7 @@ func Compute(in Input) (Result, map[string]string) {
 			}
 			if w.end == nil {
 				w.end = &logEv[i]
+				w.endIdx = i
 			}
 		}
 		w.events = append(w.events, e)
@@ -350,7 +352,8 @@ func Compute(in Input) (Result, map[string]string) {
 	var items []Item
 	endedPRs := map[string]bool{}
 	firstEnd := map[string]time.Time{} // a PR counts as opened on the day of its first end
-	firstEndID := map[string]string{}  // the item that first ended each PR
+	firstEndIdx := map[string]int{}
+	firstEndID := map[string]string{} // the item that first ended each PR
 	var prOrder []string
 	for _, id := range order {
 		w := works[id]
@@ -413,8 +416,9 @@ func Compute(in Input) (Result, map[string]string) {
 				res.Today.Rounds += atoiDash(w.end.F[2])
 			}
 			for _, p := range it.PRs {
-				if at, seen := firstEnd[p]; !seen || w.end.At.Before(at) {
+				if at, seen := firstEnd[p]; !seen || w.end.At.Before(at) || (w.end.At.Equal(at) && w.endIdx < firstEndIdx[p]) {
 					firstEnd[p] = w.end.At
+					firstEndIdx[p] = w.endIdx
 					firstEndID[p] = id
 				}
 			}
