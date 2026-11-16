@@ -479,9 +479,32 @@ func TestCloneIsCurrent(t *testing.T) {
 		"npm-shrinkwrap.json":        {cloneCase{extra: map[string]string{"npm-shrinkwrap.json": lockJSON}}, "npm ci"},
 		"hidden lockfile garbage":    {cloneCase{hidden: "not json"}, "npm ci"},
 		"optional for this platform not installed": {cloneCase{
-			lock: strings.Replace(lockJSON, `"os":["aix"],"cpu":["ppc64"]`, `"os":[]`, 1),
+			// x needs it (as esbuild needs its platform binary), so a missing one is a broken tree.
+			lock: strings.Replace(strings.Replace(lockJSON, `"os":["aix"],"cpu":["ppc64"]`, `"os":[]`, 1),
+				`"integrity":"sha512-x"}`, `"integrity":"sha512-x","optionalDependencies":{"@esbuild/aix-ppc64":"0.1.0"}}`, 1),
 		}, "npm ci"},
 	}
+	// hub's tree: x optionally depends on a wasm32-only binding (excluded here), whose
+	// optional deps carry no os/cpu, so npm skips them with their excluded parent.
+	wasmLock := strings.Replace(lockJSON, `"integrity":"sha512-x"}`, `"integrity":"sha512-x","optionalDependencies":{"@unrs/b-wasm":"1.0.0"}},"node_modules/@unrs/b-wasm":{"version":"1.0.0","optional":true,"cpu":["wasm32"],"dependencies":{"@napi-rs/wasm-runtime":"^1.0.0"}},"node_modules/@napi-rs/wasm-runtime":{"version":"1.0.0","optional":true,"dependencies":{"@emnapi/core":"^1.0.0"}},"node_modules/@emnapi/core":{"version":"1.0.0","optional":true}`, 1)
+	t.Run("optional deps of an excluded optional are not installed", func(t *testing.T) {
+		repo, wtp := cloneFixture(t, cloneCase{lock: wasmLock})
+		src, dst := nm(repo, wtp)
+		if _, ok := cloneIsCurrent(src, dst, "npm ci"); !ok {
+			t.Fatal("want current: npm skips an optional whose only dependents are not installed")
+		}
+	})
+	notCurrent["unconstrained optional an installed package needs, not installed"] = struct {
+		c   cloneCase
+		cmd string
+	}{cloneCase{lock: strings.Replace(wasmLock, `"optionalDependencies":{"@unrs/b-wasm":"1.0.0"}`, `"optionalDependencies":{"@napi-rs/wasm-runtime":"1.0.0"}`, 1)}, "npm ci"}
+	notCurrent["unconstrained optional the root needs, not installed"] = struct {
+		c   cloneCase
+		cmd string
+	}{cloneCase{
+		lock: strings.Replace(wasmLock, `"dependencies":{"x":"^1.0.0"}},`, `"dependencies":{"x":"^1.0.0"},"optionalDependencies":{"@emnapi/core":"^1.0.0"}},`, 1),
+		pkg:  `{"name":"p","dependencies":{"x":"^1.0.0"},"optionalDependencies":{"@emnapi/core":"^1.0.0"}}`,
+	}, "npm ci"}
 	for name, tc := range notCurrent {
 		t.Run(name, func(t *testing.T) {
 			repo, wtp := cloneFixture(t, tc.c)

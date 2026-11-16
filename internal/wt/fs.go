@@ -473,7 +473,9 @@ func depsSource(repoName, own, worktreePath, depsDirName, tag string, lookupEnv 
 //     agrees with the lock: every installed package is in the lock with the
 //     same version, resolved and integrity, and is present on disk; every lock
 //     package not installed is optional and excluded on this platform by its
-//     os/cpu/libc; no linked (workspace) package.
+//     os/cpu/libc, or that neither the root nor any installed package
+//     depends on (it hangs only off skipped optionals); no linked (workspace)
+//     package.
 //
 // Content, not mtime, so a cache filled by copy is judged the same way.
 func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
@@ -533,7 +535,7 @@ func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
 		if lp.Link {
 			return nil, false
 		}
-		if _, installed := hidden.Packages[k]; !installed && (!lp.Optional || platformAllows(lp)) {
+		if _, installed := hidden.Packages[k]; !installed && (!lp.Optional || platformAllows(lp) && neededByInstalled(k, root, lock.Packages, hidden.Packages)) {
 			return nil, false
 		}
 	}
@@ -543,6 +545,37 @@ func cloneIsCurrent(src, dst, installCmd string) (scripts []string, ok bool) {
 		}
 	}
 	return scripts, true
+}
+
+// neededByInstalled reports whether the root or an installed package declares
+// lock key k's package name as a dependency of any kind. An optional package
+// with no os/cpu that npm skipped because every dependent was skipped too (the
+// deps of a wasm32-only binding) is needed by none, so its absence is what
+// npm ci produces. By name, not by nested path: a same-named dependency
+// elsewhere in the tree also counts, which errs towards reinstalling.
+func neededByInstalled(k string, root lockPkg, lock, hidden map[string]lockPkg) bool {
+	i := strings.LastIndex(k, "node_modules/")
+	if i < 0 { // a workspace path, not an installed dependency: treat it as needed
+		return true
+	}
+	name := k[i+len("node_modules/"):]
+	declares := func(p lockPkg) bool {
+		for _, m := range []map[string]string{p.Dependencies, p.DevDependencies, p.OptionalDependencies, p.PeerDependencies} {
+			if _, ok := m[name]; ok {
+				return true
+			}
+		}
+		return false
+	}
+	if declares(root) {
+		return true
+	}
+	for hk := range hidden {
+		if hk != "" && declares(lock[hk]) {
+			return true
+		}
+	}
+	return false
 }
 
 // lifecycleScripts are the root scripts npm ci runs after installing, in its

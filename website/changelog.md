@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.71.1
+
+*2026-11-17*
+
+- **Cache deps nhận cây có optional bị bỏ theo nền tảng:** `wt new` và `zenify wt cache put` không còn coi là "chưa khớp lockfile" khi thiếu một gói optional mà root và mọi gói đã cài đều không cần tới, ví dụ các gói `@emnapi/*`, `@napi-rs/wasm-runtime` chỉ treo dưới binding wasm32 đã bị loại trên máy này. Thiếu một optional mà gói đã cài vẫn cần (như binary nền tảng của esbuild) thì vẫn bị coi là lệch và `npm ci` lại. Repo như contact-center-hub giờ vào được cache thay vì `npm ci` lại mỗi lần. Xem [Onboard workspace](/guides/onboard-workspace).
+
 ## v0.71.0
 
 *2026-11-16*
