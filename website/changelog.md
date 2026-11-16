@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.70.0
+
+*2026-11-16*
+
+- **PR chỉ mở qua `/znf:ship`:** quy tắc làm việc của agent giờ ghi rõ mỗi PR phải qua một lượt `/znf:ship`, kể cả khi subagent làm song song nhiều PR. Không còn tự `gh pr create` để bỏ qua review và gate. Xem [Ship](/workflows/ship).
+- **`zenify track end --pr` cảnh báo khi PR chưa qua ship:** nếu lượt track chưa có dòng `ship`, lệnh in cảnh báo `has no ship row` ra stderr. Dòng `end` vẫn được ghi, kết quả lệnh không đổi. Xem [Track pane](/guides/track-pane).
+- **Ước lượng không còn bị vòng sửa sau làm lệch:** một lượt quay lại sửa PR mà lượt khác đã kết thúc trước sẽ không được tính vào thang S/M/L và tab Estimate, nhưng vẫn được đếm ở Today. Khi chốt ngày, các lượt cùng một PR được archive cùng nhau.
+
 ## v0.69.0
 
 *2026-11-13*
