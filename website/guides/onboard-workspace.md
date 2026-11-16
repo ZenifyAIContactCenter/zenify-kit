@@ -123,7 +123,7 @@ Mỗi repo tham gia workspace khai báo một file `.claude/worktree.json`, ví 
 | `portEnv` | tên biến môi trường worktree đọc port từ đó |
 | `portRange` | khối port riêng của repo, không trùng repo khác trong workspace |
 
-Lưu ý về cache deps: cache khoá theo hash của `package-lock.json` cộng với Node ABI/platform/arch, nên khi đổi Node (ví dụ qua nvm) `wt new` tự dùng một slot khác — đây là cache miss tự động, không phải việc xoá tay, và không còn nguy cơ dùng lại native module build cho ABI cũ. Cây `node_modules` cài với `ignore-scripts=true` (deps chưa build) không được ghi vào cache. `ZENIFY_DEPS_CACHE=off` và `--install` chỉ bỏ qua việc đọc cache, không xoá slot cũ.
+Lưu ý về cache deps: cache khoá theo hash của `package-lock.json` cộng với Node ABI/platform/arch, nên khi đổi Node (ví dụ qua nvm) `wt new` tự dùng một slot khác — đây là cache miss tự động, không phải việc xoá tay, và không còn nguy cơ dùng lại native module build cho ABI cũ. Cây `node_modules` cài với `ignore-scripts=true` (deps chưa build) không được ghi vào cache. `ZENIFY_DEPS_CACHE=off` và `--install` chỉ bỏ qua việc đọc cache, không xoá slot cũ. Máy không chạy `wt new` (ví dụ sandbox worker) ghi và đọc cùng cache này bằng [`zenify wt cache put`](/reference/cli/zenify_wt_cache_put) và [`zenify wt cache get`](/reference/cli/zenify_wt_cache_get).
 
 Chi tiết cách chọn `baseRef`, `hotfixBaseRef` và dải port cho repo mới: [Base ref và port block](/concepts/base-ref-and-ports).
 

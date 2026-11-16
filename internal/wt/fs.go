@@ -19,8 +19,8 @@ import (
 // SeedCopyFiles copies each still-present copy-array target from repoRoot into
 // worktreePath, creating parent dirs. A declared target that does not exist in
 // the repo is NOT an error (matching bash wt) — it is returned as a warning
-// string. Uses `cp -c -R` (copy-on-write where the FS allows) with a plain
-// `cp -R` fallback, so large trees stay cheap.
+// string. Uses a copy-on-write cp where the OS and FS allow (see copyTree)
+// with a plain `cp -R` fallback, so large trees stay cheap.
 func SeedCopyFiles(repoRoot, worktreePath string, copyList []string) ([]string, error) {
 	var warns []string
 	for _, f := range copyList {
@@ -44,7 +44,20 @@ func SeedCopyFiles(repoRoot, worktreePath string, copyList []string) ([]string, 
 	return warns, nil
 }
 
-// copyTree copies src→dst preferring APFS copy-on-write (`cp -c -R`), falling
+// cowCopyFlag is cp's copy-on-write flag on goos: BSD cp's `-c` (APFS clone) on
+// darwin, GNU cp's `--reflink=auto` on linux (where `-c` means
+// --preserve=context, not a clone), none elsewhere.
+func cowCopyFlag(goos string) string {
+	switch goos {
+	case "darwin":
+		return "-c"
+	case "linux":
+		return "--reflink=auto"
+	}
+	return ""
+}
+
+// copyTree copies src→dst preferring copy-on-write (cowCopyFlag), falling
 // back to a plain recursive copy. Shelling to cp keeps CoW that a Go copy loses.
 //
 // The first attempt can fail partway through a large tree (ENOSPC, a file
@@ -55,8 +68,10 @@ func SeedCopyFiles(repoRoot, worktreePath string, copyList []string) ([]string, 
 // dst first. cp's own stderr is captured into the returned error: without it a
 // real failure (disk full, cross-device) surfaces only as "exit status 1".
 func copyTree(src, dst string) error {
-	if err := exec.Command("cp", "-c", "-R", src, dst).Run(); err == nil { //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
-		return nil
+	if flag := cowCopyFlag(runtime.GOOS); flag != "" {
+		if err := exec.Command("cp", flag, "-R", src, dst).Run(); err == nil { //nolint:gosec // G204 -- fixed trusted binary, args are internally-computed subcommands, not attacker-controlled shell input
+			return nil
+		}
 	}
 	// Clear whatever the failed CoW attempt may have left, so the fallback does
 	// not nest into an existing dst.
@@ -172,7 +187,7 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		// read or written — rather than collapsing every env onto an empty tag.
 		tag, tagOK := probeEnvTag(worktreePath)
 		if tagOK {
-			src, _ = depsSource(repoRoot, worktreePath, depsDirName, tag, os.LookupEnv)
+			src, _ = depsSource(filepath.Base(repoRoot), src, worktreePath, depsDirName, tag, os.LookupEnv)
 		}
 		if _, err := os.Stat(src); err != nil {
 			return fmt.Errorf("wt: deps=clone but %s does not exist — install in the main checkout first", src)
@@ -206,9 +221,9 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		if current && tagOK {
 			if ignored, ok := probeIgnoreScripts(worktreePath); ok && !ignored {
 				if dir, enabled := resolveCacheDir(os.LookupEnv); enabled {
-					if err := populateCache(dir, repoRoot, worktreePath, depsDirName, tag); err != nil {
+					if err := populateCache(dir, filepath.Base(repoRoot), worktreePath, depsDirName, tag); err != nil {
 						fmt.Fprintf(os.Stderr, "wt: deps cache populate skipped: %v\n", err)
-					} else if err := pruneCache(dir, repoRoot, cacheSlotCap); err != nil {
+					} else if err := pruneCache(dir, filepath.Base(repoRoot), cacheSlotCap); err != nil {
 						fmt.Fprintf(os.Stderr, "wt: deps cache prune skipped: %v\n", err)
 					}
 				}
@@ -317,13 +332,13 @@ func isPlainNpmInstall(installCmd string) bool {
 // sole caller gates it on a content check of the just-installed worktree tree
 // (cloneIsCurrent(dst, dst, ...)) on branch (b) only, with ignore-scripts off,
 // so neither a stale, a partial, nor an unbuilt tree ever enters.
-func populateCache(cacheDir, repoRoot, worktreePath, depsDirName, tag string) error {
+func populateCache(cacheDir, repoName, worktreePath, depsDirName, tag string) error {
 	wtLock := filepath.Join(worktreePath, "package-lock.json")
 	hash, err := lockHash(wtLock, tag)
 	if err != nil {
 		return nil
 	}
-	parent := filepath.Join(cacheDir, filepath.Base(repoRoot))
+	parent := filepath.Join(cacheDir, repoName)
 	slot := filepath.Join(parent, hash)
 	if fi, err := os.Stat(filepath.Join(slot, depsDirName)); err == nil && fi.IsDir() {
 		return nil
@@ -371,8 +386,8 @@ func isSlotName(name string) bool {
 // pruneCache keeps at most max slots under <cacheDir>/<repo>, removing the
 // least recently used (oldest mtime) first. Only genuine slot dirs are touched;
 // an entry whose Info() fails is skipped (conservative: never deleted).
-func pruneCache(cacheDir, repoRoot string, max int) error {
-	parent := filepath.Join(cacheDir, filepath.Base(repoRoot))
+func pruneCache(cacheDir, repoName string, max int) error {
+	parent := filepath.Join(cacheDir, repoName)
 	entries, err := os.ReadDir(parent)
 	if os.IsNotExist(err) {
 		return nil
@@ -414,11 +429,10 @@ func pruneCache(cacheDir, repoRoot string, max int) error {
 // lock bytes AND the build-env fingerprint tag, so a slot built under one Node
 // ABI never matches a lookup under another. With the cache off, no such slot
 // <cache>/<repo>/<hash>/<depsDirName>, or a slot whose package-lock.json is not
-// byte-equal to the worktree's (hash collision), it is the repo root's dir
+// byte-equal to the worktree's (hash collision), it is own (the repo root's deps dir)
 // (fromCache=false) — silently, a miss is normal. On a hit it touches the slot's
 // mtime (LRU) and returns the slot's dir (fromCache=true).
-func depsSource(repoRoot, worktreePath, depsDirName, tag string, lookupEnv func(string) (string, bool)) (src string, fromCache bool) {
-	own := filepath.Join(repoRoot, depsDirName)
+func depsSource(repoName, own, worktreePath, depsDirName, tag string, lookupEnv func(string) (string, bool)) (src string, fromCache bool) {
 	dir, enabled := resolveCacheDir(lookupEnv)
 	if !enabled {
 		return own, false
@@ -428,9 +442,10 @@ func depsSource(repoRoot, worktreePath, depsDirName, tag string, lookupEnv func(
 	if err != nil {
 		return own, false
 	}
-	slot := filepath.Join(dir, filepath.Base(repoRoot), hash)
+	slot := filepath.Join(dir, repoName, hash)
 	cached := filepath.Join(slot, depsDirName)
-	if fi, err := os.Stat(cached); err != nil || !fi.IsDir() {
+	// Lstat: a symlinked slot node_modules is a miss, never followed.
+	if fi, err := os.Lstat(cached); err != nil || !fi.IsDir() {
 		return own, false
 	}
 	a, errA := os.ReadFile(filepath.Join(slot, "package-lock.json")) //nolint:gosec // G304 -- path built from operator-set cache dir and repo basename

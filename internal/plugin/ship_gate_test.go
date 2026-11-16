@@ -37,7 +37,17 @@ func TestShipGate_AutonomousUI(t *testing.T) {
 		t.Error("ship SKILL.md must link references/autonomous-ui.md")
 	}
 	ref := syncedAsset(t, "skills/ship/references/autonomous-ui.md")
-	assertContainsAll(t, "autonomous-ui.md", ref, []string{"ZNF_SANDBOX_WEB_PORT", "exit 8"})
+	assertContainsAll(t, "autonomous-ui.md", ref, []string{"ZNF_SANDBOX_WEB_PORT", "exit 8",
+		// FR-3.4, FR-4.4, FR-4.7: ui-stack branch, infra-blocked line on board and PR.
+		"ZNF_SANDBOX_UI_STACK", "zenify ui-verify blocked --reason", "infra-blocked", "⚠️ UI chưa kiểm:", "drive_failed:", //znf:allow-lang
+		// Reason shape the host accepts; re-block after a review-loop edit, never after a FAIL.
+		"`[A-Za-z0-9._-]{1,60}`", "`/deals/:id` becomes `deals-id`", "the tree changed since", "Never after a FAIL.",
+		// The re-block must target the web worktree, or it fingerprints the cwd.
+		"run `zenify ui-verify blocked --reason <code> --repo <web worktree>` again",
+		// Network evidence never carries credentials onto the board or PR.
+		"never copy headers, cookies, tokens or response bodies",
+		// The verifier records a FAIL, so blocked cannot mask it.
+		"The verifier records the failing screens with `--verdict fail`."})
 }
 
 // FR-2: ship step 4 runs the tests affected by the branch; the rules live in a reference (SKILL.md is at its byte budget).
@@ -107,4 +117,28 @@ func TestShipPRReviewLoop(t *testing.T) {
 	assertContainsAll(t, "harness-tools.md", syncedAsset(t, "skills/_shared/harness-tools.md"), []string{
 		"Call a tool the project declares",
 	})
+}
+
+// The --reason shape note must not split the verifier-report branch list (FAIL stays a sub-item of it).
+func TestShipGate_AutonomousUIBranchListIntact(t *testing.T) {
+	ref := syncedAsset(t, "skills/ship/references/autonomous-ui.md")
+	lines := strings.Split(ref, "\n")
+	start := -1
+	for i, l := range lines {
+		if strings.HasPrefix(l, "  - Branch on the verifier's report:") {
+			start = i
+		}
+	}
+	if start < 0 {
+		t.Fatal("branch line not found")
+	}
+	for _, l := range lines[start+1:] {
+		if strings.HasPrefix(l, "    - FAIL (") {
+			return
+		}
+		if !strings.HasPrefix(l, "    - ") {
+			t.Fatalf("branch list interrupted before FAIL by %q", l)
+		}
+	}
+	t.Fatal("FAIL sub-item not found")
 }

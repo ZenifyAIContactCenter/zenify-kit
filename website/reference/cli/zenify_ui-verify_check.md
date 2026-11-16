@@ -20,11 +20,14 @@ zenify ui-verify check [flags]
 
 ## Kết quả
 
-Bốn trạng thái:
+Năm trạng thái:
 - Render-set rỗng → "not required" (exit 0).
 - Diff mang marker `// znf:ui-verify-ok: <lý do>` → "waived: <lý do>" (exit 0).
-- Có artifact hợp lệ khớp fingerprint hiện tại → "verified" (exit 0).
+- Có artifact hợp lệ khớp fingerprint hiện tại → "verified" (exit 0). Artifact chỉ hợp lệ khi mọi screen có verdict `pass`; một screen `fail` làm cả artifact không hợp lệ.
+- Có bản ghi `zenify ui-verify blocked` cho fingerprint hiện tại (không có artifact hợp lệ, và không screen nào của fingerprint đó có verdict khác `pass`) → `infra-blocked: <mã>`. Khi `ZNF_AUTONOMOUS=1` thoát 0 và không tạo await, để PR vẫn mở với dòng cảnh báo; ngoài autonomous thì như dưới (exit khác 0). Một verdict `fail` đã ghi cho fingerprint hiện tại luôn thắng bản ghi blocked: trạng thái là `required`, vì UI đã đo và sai chứ không phải hạ tầng hỏng.
 - Còn lại → exit khác 0, `/znf:ship` đọc là "ui-verify required" và đánh dòng `look:` thành `❌ BLOCKED`, `Shippable: NO`.
+
+Khi env `ZNF_UI_STATUS_FILE` khác rỗng, trạng thái ra khác `infra-blocked` và `repo` trong file là đúng repo vừa kiểm (fp nào cũng được, vì tree mới hơn của repo đó đã qua), lệnh xoá file đó; file không có, không đọc được JSON, hoặc nói về repo khác thì để nguyên, vì báo cáo `infra-blocked` mà `zenify ui-verify blocked` ghi ở đó đã cũ. Xoá lỗi chỉ in cảnh báo ra stderr.
 
 ## Cờ
 

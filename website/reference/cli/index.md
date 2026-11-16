@@ -119,6 +119,7 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify track start](./zenify_track_start) | Mở một lượt theo dõi và in id `track: <id>`. |
 | [zenify track stats](./zenify_track_stats) | In số liệu hôm nay, độ chính xác estimate và chất lượng từ log.md và sessions/*.log. |
 | [zenify ui-verify](./zenify_ui-verify) | Nhóm lệnh ghi/kiểm tra bằng chứng UI-verify cho gate cơ học của /znf:ship. |
+| [zenify ui-verify blocked](./zenify_ui-verify_blocked) | Ghi nhận hạ tầng sandbox hỏng nên không thể kiểm UI (chỉ chạy được khi ZNF_AUTONOMOUS=1). |
 | [zenify ui-verify check](./zenify_ui-verify_check) | Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint hiện tại. |
 | [zenify ui-verify files](./zenify_ui-verify_files) | In các file render UI đã đổi so với base, mỗi dòng một file; file test không tính. |
 | [zenify ui-verify record](./zenify_ui-verify_record) | Ghi lại artifact UI-verify (screenshot + 3 số đo) cho fingerprint hiện tại. |
@@ -129,6 +130,9 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify visual check](./zenify_visual_check) | So ảnh chụp từng route với baseline, hoặc chụp lại baseline khi giao diện đổi có chủ ý. |
 | [zenify wt](./zenify_wt) | Nhóm lệnh quản lý worktree theo slug: tạo, liệt kê, gỡ, dọn, kèm port và môi trường dev riêng cho từng task. |
 | [zenify wt base](./zenify_wt_base) | In base thật của worktree hiện tại, để skill tính merge-base đúng. |
+| [zenify wt cache](./zenify_wt_cache) | Nhóm lệnh ghi và đọc cache deps `node_modules`, dùng chung slot với `wt new`. |
+| [zenify wt cache get](./zenify_wt_cache_get) | Chép `node_modules` từ cache deps vào một thư mục, thoát 0 khi hit, 1 khi miss và 2 khi lỗi. |
+| [zenify wt cache put](./zenify_wt_cache_put) | Ghi `node_modules` của một thư mục vào cache deps, chỉ khi cây khớp `package-lock.json`. |
 | [zenify wt config](./zenify_wt_config) | In cấu hình worktree đã resolve của repo hiện tại, hoặc port sẽ cấp cho một key. |
 | [zenify wt ls](./zenify_wt_ls) | Liệt kê worktree trong repo hiện tại, kèm branch, port, trạng thái merge và dev server đang chạy. |
 | [zenify wt new](./zenify_wt_new) | Tạo worktree mới cho một task, kèm branch, port riêng và môi trường dev đã seed. |

@@ -21,6 +21,7 @@ Gồm `record` (agent `ui-verifier` ghi lại screenshot + số đo layout keyed
 ## Lệnh liên quan
 
 - [zenify](./zenify): Binary dòng lệnh của ZenifyKit, chứa mọi lệnh workspace và plugin skill đi kèm.
+- [zenify ui-verify blocked](./zenify_ui-verify_blocked): Ghi nhận hạ tầng sandbox hỏng nên không thể kiểm UI (chỉ chạy được khi ZNF_AUTONOMOUS=1).
 - [zenify ui-verify check](./zenify_ui-verify_check): Gate fail-closed kiểm tra artifact UI-verify còn khớp fingerprint hiện tại.
 - [zenify ui-verify files](./zenify_ui-verify_files): In các file render UI đã đổi so với base, mỗi dòng một file; file test không tính.
 - [zenify ui-verify record](./zenify_ui-verify_record): Ghi lại artifact UI-verify (screenshot + 3 số đo) cho fingerprint hiện tại.

@@ -308,7 +308,6 @@ func TestUIVerifyFiles_CountErrorPrintsNothing(t *testing.T) {
 	}
 }
 
-
 func uiGitOut(t *testing.T, repo string, args ...string) string {
 	t.Helper()
 	out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).Output() //nolint:gosec // G204 -- test fixture, fixed argv
@@ -316,4 +315,244 @@ func uiGitOut(t *testing.T, repo string, args ...string) string {
 		t.Fatalf("git %v: %v", args, err)
 	}
 	return string(out)
+}
+
+func runUIVerifyBlocked(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	c := newUIVerifyBlockedCmd()
+	buf := &bytes.Buffer{}
+	c.SetOut(buf)
+	c.SetErr(buf)
+	c.SetArgs(args)
+	err := c.Execute()
+	return buf.String(), err
+}
+
+func blockedFiles(repo string) []string {
+	m, _ := filepath.Glob(filepath.Join(repo, ".znf", "ui-verify", "*.blocked.json"))
+	return m
+}
+
+func TestUIVerifyBlockedRefusedOutsideAutonomous(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	repo := initUIVerifyRepo(t)
+	_, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "deps_auth_failed:x")
+	if exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("want exit %d (Fail), got %d (%v)", exitcode.Fail, exitcode.Code(err), err)
+	}
+	if got := blockedFiles(repo); len(got) != 0 {
+		t.Errorf("blocked record written outside autonomous mode: %v", got)
+	}
+}
+
+func TestUIVerifyBlockedEmptyReasonRefused(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	repo := initUIVerifyRepo(t)
+	_, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "")
+	if err == nil || exitcode.Code(err) == 0 {
+		t.Fatalf("want non-zero exit for empty reason, got %v", err)
+	}
+	if got := blockedFiles(repo); len(got) != 0 {
+		t.Errorf("blocked record written for empty reason: %v", got)
+	}
+}
+
+// The reason is a machine code the zenie host matches with
+// ^[a-z_]{1,40}(?::[A-Za-z0-9._-]{1,60})?$; anything else must be refused here,
+// not silently dropped there.
+func TestUIVerifyBlockedReasonShape(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	for _, tc := range []struct {
+		reason string
+		ok     bool
+	}{
+		{"app_wont_start", true},
+		{"deps_auth_failed:contact-center-hub", true},
+		{"drive_failed:global-search", true},
+		{"drive_failed:deals-id", true},
+		{"  app_wont_start  ", true},
+		{"drive_failed:/deals/:id", false},
+		{"   ", false},
+		{"deps_auth_failed\nstate=verified", false},
+		{"Drive_failed:x", false},
+		{"drive failed", false},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			repo := initUIVerifyRepo(t)
+			reason := tc.reason
+			_, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", reason)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("valid reason %q refused: %v", reason, err)
+				}
+				return
+			}
+			if exitcode.Code(err) != exitcode.BadArgs {
+				t.Fatalf("reason %q: err=%v code=%d, want BadArgs", reason, err, exitcode.Code(err))
+			}
+			if got := blockedFiles(repo); len(got) != 0 {
+				t.Errorf("blocked record written for %q: %v", reason, got)
+			}
+		})
+	}
+}
+
+func TestUIVerifyBlockedWritesStatusFile(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	status := filepath.Join(t.TempDir(), "s.json")
+	t.Setenv("ZNF_UI_STATUS_FILE", status)
+	repo := initUIVerifyRepo(t)
+	out, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "app_wont_start")
+	if err != nil {
+		t.Fatalf("err=%v out=%s", err, out)
+	}
+	b, rerr := os.ReadFile(status) //nolint:gosec // G304 -- test temp dir
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	var rec struct{ State, Reason, Repo, FP string }
+	if err := json.Unmarshal(b, &rec); err != nil || rec.State != "infra-blocked" || rec.Reason != "app_wont_start" || rec.Repo != filepath.Clean(repo) || rec.FP == "" {
+		t.Errorf("status file = %q (%v)", b, err)
+	}
+	if got := blockedFiles(repo); len(got) != 1 {
+		t.Errorf("want one blocked record, got %v", got)
+	}
+}
+
+func TestUIVerifyBlockedStatusFileErrorStillExitsZero(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	t.Setenv("ZNF_UI_STATUS_FILE", filepath.Join(t.TempDir(), "missing-dir", "s.json"))
+	repo := initUIVerifyRepo(t)
+	out, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "app_wont_start")
+	if err != nil {
+		t.Fatalf("want exit 0, got %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "warning") {
+		t.Errorf("expected a warning in output, got %q", out)
+	}
+}
+
+func TestUIVerifyCheckInfraBlockedAutonomousNoAwait(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ZENIFY_HOME", home)
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	t.Setenv("ZNF_UI_STATUS_FILE", "")
+	repo := initUIVerifyRepo(t)
+	writeRenderChange(t, repo)
+	if _, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "deps_auth_failed:hub"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runUIVerifyCheck(repo, "HEAD")
+	if err != nil {
+		t.Fatalf("want exit 0, got %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "infra-blocked: deps_auth_failed:hub") {
+		t.Errorf("output %q lacks the infra-blocked state", out)
+	}
+	if _, serr := os.Stat(filepath.Join(home, "await")); !os.IsNotExist(serr) {
+		t.Errorf("await dir created for infra-blocked (stat err=%v)", serr)
+	}
+}
+
+func TestUIVerifyCheckInfraBlockedInteractiveFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ZENIFY_HOME", home)
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	t.Setenv("ZNF_UI_STATUS_FILE", "")
+	repo := initUIVerifyRepo(t)
+	writeRenderChange(t, repo)
+	if _, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", "deps_auth_failed:hub"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZNF_AUTONOMOUS", "")
+	_, err := runUIVerifyCheck(repo, "HEAD")
+	if exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("want exit %d (Fail), got %d (%v)", exitcode.Fail, exitcode.Code(err), err)
+	}
+	if _, serr := os.Stat(filepath.Join(home, "await")); !os.IsNotExist(serr) {
+		t.Errorf("await dir created outside autonomous mode (stat err=%v)", serr)
+	}
+}
+
+// ZNF_UI_STATUS_FILE reports infra-blocked to the host. It is one file per run,
+// so only a check of the repo that wrote it may clear it: a check of another repo
+// in the same ship (not_required) leaves it, a later verified check of the same
+// repo (newer fp) removes it, and a missing file is no error.
+func TestUIVerifyCheckClearsStaleStatusFile(t *testing.T) {
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	status := filepath.Join(t.TempDir(), "s.json")
+	t.Setenv("ZNF_UI_STATUS_FILE", status)
+
+	web := initUIVerifyRepo(t)
+	writeRenderChange(t, web)
+	if _, err := runUIVerifyBlocked(t, "--repo", web, "--reason", "app_wont_start"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(status) //nolint:gosec // G304 -- test temp dir
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec struct{ State, Reason, Repo, FP string }
+	if err := json.Unmarshal(b, &rec); err != nil {
+		t.Fatalf("status file %q: %v", b, err)
+	}
+	if rec.State != "infra-blocked" || rec.Reason != "app_wont_start" || rec.Repo != filepath.Clean(web) || rec.FP == "" {
+		t.Fatalf("status file = %+v, want state/reason/repo=%s/fp", rec, web)
+	}
+
+	// infra-blocked check of the same repo keeps it.
+	if out, err := runUIVerifyCheck(web, "HEAD"); err != nil {
+		t.Fatalf("infra-blocked check: %v (%s)", err, out)
+	}
+	if _, err := os.Stat(status); err != nil {
+		t.Fatalf("infra-blocked check removed the status file: %v", err)
+	}
+
+	// another repo of the same ship (not_required) leaves it.
+	be := initUIVerifyRepo(t)
+	if out, err := runUIVerifyCheck(be, "HEAD"); err != nil {
+		t.Fatalf("other-repo check: %v (%s)", err, out)
+	}
+	if _, err := os.Stat(status); err != nil {
+		t.Fatalf("a check of another repo removed the status file: %v", err)
+	}
+
+	// the same repo later verifies (new fp): the file goes.
+	if err := os.WriteFile(filepath.Join(web, "src", "components", "Foo.tsx"), []byte("export const a = 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	shot := filepath.Join(t.TempDir(), "s.png")
+	if err := os.WriteFile(shot, []byte{1, 2, 3}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rc := newUIVerifyRecordCmd()
+	rc.SetOut(&bytes.Buffer{})
+	rc.SetArgs([]string{"--repo", web, "--screen", "home", "--screenshot", shot, "--child-right", "1", "--container-right", "2", "--padding-right", "0"})
+	if err := rc.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runUIVerifyCheck(web, "HEAD")
+	if err != nil || !strings.Contains(out, "verified") {
+		t.Fatalf("verified check: %v (%s)", err, out)
+	}
+	if _, err := os.Stat(status); !os.IsNotExist(err) {
+		t.Fatalf("status file survived a verified check of its repo: %v", err)
+	}
+
+	// already gone: still exit 0.
+	if out, err := runUIVerifyCheck(web, "HEAD"); err != nil {
+		t.Fatalf("check with no status file: %v (%s)", err, out)
+	}
+
+	// unparseable file: left alone.
+	if err := os.WriteFile(status, []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runUIVerifyCheck(web, "HEAD"); err != nil {
+		t.Fatalf("check with a broken status file: %v (%s)", err, out)
+	}
+	if _, err := os.Stat(status); err != nil {
+		t.Fatalf("unparseable status file removed: %v", err)
+	}
 }

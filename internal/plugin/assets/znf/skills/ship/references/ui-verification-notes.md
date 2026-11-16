@@ -50,7 +50,7 @@ not optional prep:
    a permission/flag/tenant-setting row or a view-as user is reviewable. Dry-run it, then run it
    yourself with `zenify data run --stg --write` (`_shared/data-scripts.md`). Ground the real collection +
    user with `zenify db-read` first.
-4. Only then dispatch `znf:ui-verifier` onto the already-authenticated, already-enabled screen.
+4. Only then dispatch `znf:ui-verifier` onto the already-authenticated, already-enabled screen. Its brief gives the merge-base and lists the repo's `.znf/features/*.md` files, if any: the verifier checks the matching entries' proofs.
 
 If you genuinely cannot reach that state this session, the look is BLOCKED, not passed: mark the line ❌,
 set Shippable to NO, and hand the user the one concrete thing that is missing. A green ship whose UI was
@@ -72,19 +72,26 @@ Snapshots, console dumps and screenshots are the largest volume any step here pr
 a verdict plus evidence instead.
 
 #### Mechanical gate: ui-verify record/check
-`znf:ui-verifier` records its own artifact — before deleting its screenshot, if `zenify` is on PATH it
-runs `zenify ui-verify record --repo <repo> --screen <name> --screenshot <path> --child-right <n>
---container-right <n> --padding-right <n> --verdict <pass|fail>`. This computes a fingerprint `fp` over
+`znf:ui-verifier` records its own artifact: if `zenify` is on PATH it runs `zenify ui-verify record
+--repo <repo> --screen <name> --screenshot <path> --child-right <n> --container-right <n>
+--padding-right <n> --verdict pass` per screen when every item is PASS, and records each failing
+screen with `--verdict fail` on a FAIL (BLOCKED or PARTIAL alone record nothing). A `fail` screen
+never makes an artifact valid and beats a blocked record, so after a FAIL `check` is `required` even
+if an older pass or a blocked record exists for the same `fp`; accepting a FAIL takes a
+`znf:ui-verify-ok: <reason>` waiver. This computes a fingerprint `fp` over
 the caller-passed repo's working tree, copies the screenshot to `<repo>/.znf/ui-verify/<fp>-<screen>.png`,
 and upserts the screen's measurement into `<repo>/.znf/ui-verify/<fp>.json`. The `--repo` the caller
 passes to the verifier must be this worktree.
 
 `/ship` step 7 runs `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` before concluding Shippable —
-a deterministic, fail-closed gate with four outcomes:
+a deterministic, fail-closed gate with five outcomes:
 - **not_required** (exit 0) — the render-trigger set (§4b) is empty; nothing to verify.
 - **waived** (exit 0) — the diff carries a `// znf:ui-verify-ok: <reason>` marker; the reason prints on
   the `look:` board line.
-- **verified** (exit 0) — a valid artifact exists for the *current* fingerprint.
+- **verified** (exit 0) — a valid artifact (every screen `pass`) exists for the *current* fingerprint.
+- **infra-blocked: <code>** — `zenify ui-verify blocked` recorded broken sandbox infra for the current
+  fp and no non-pass verdict is recorded for it. Exits 0 only under `ZNF_AUTONOMOUS=1` (the PR carries
+  a `⚠️ UI chưa kiểm: <code>` line); otherwise non-zero.
 - **required** (exit non-zero) — render-trigger fired, no valid current-fp artifact: `look:` reads
   `❌ BLOCKED`, `Shippable: NO`.
 

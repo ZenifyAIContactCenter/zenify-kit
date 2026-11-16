@@ -16,7 +16,7 @@ zenify ui-verify record [flags]
 
 ## Khi nào dùng
 
-Agent `ui-verifier` gọi lệnh này ngay trước khi xoá screenshot của nó, nếu `zenify` có trên PATH (guard giữ agent project-agnostic). Không tự chạy lệnh này trong `/znf:ship` — nó là mắt xích ghi bằng chứng, `check` mới là mắt xích gate.
+Agent `ui-verifier` gọi lệnh này nếu `zenify` có trên PATH (guard giữ agent project-agnostic): mọi điểm kiểm PASS thì ghi từng screen với `--verdict pass`; có FAIL thì ghi từng screen hỏng với `--verdict fail`; chỉ BLOCKED hoặc PARTIAL thì không ghi gì. Không tự chạy lệnh này trong `/znf:ship` — nó là mắt xích ghi bằng chứng, `check` mới là mắt xích gate.
 
 ## Kết quả
 
@@ -32,7 +32,7 @@ Lệnh tính fingerprint `fp` trên working tree của `--repo`, copy ảnh vào
 | `--child-right` | `child.right` (px) của element vừa đổi. Bắt buộc. |
 | `--container-right` | `right` (px) của container chứa element đó. Bắt buộc. |
 | `--padding-right` | `padding-right` (px) của container đó. Bắt buộc. |
-| `--verdict` | `pass` hoặc `fail`. Mặc định `pass`. |
+| `--verdict` | `pass` hoặc `fail`. Mặc định `pass`. `fail` vẫn được ghi nhưng không bao giờ làm `check` qua, và thắng cả artifact pass cũ lẫn bản ghi blocked của cùng fingerprint (`check` ra `required`). |
 
 ## Ví dụ
 

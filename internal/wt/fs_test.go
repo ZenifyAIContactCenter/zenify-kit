@@ -331,7 +331,7 @@ func TestDepsSourceHashLookup(t *testing.T) {
 		if err := os.Chtimes(slot, old, old); err != nil {
 			t.Fatal(err)
 		}
-		got, from := depsSource(repo, wtp, "node_modules", testEnvTag, env(cache))
+		got, from := depsSource("repo", filepath.Join(repo, "node_modules"), wtp, "node_modules", testEnvTag, env(cache))
 		if want := filepath.Join(slot, "node_modules"); got != want || !from {
 			t.Fatalf("got (%q, %v), want (%q, true)", got, from, want)
 		}
@@ -345,7 +345,7 @@ func TestDepsSourceHashLookup(t *testing.T) {
 	})
 	t.Run("miss", func(t *testing.T) {
 		repo, wtp, cache, _ := cacheFixture(t, lock, `{"other":true}`)
-		got, from := depsSource(repo, wtp, "node_modules", testEnvTag, env(cache))
+		got, from := depsSource("repo", filepath.Join(repo, "node_modules"), wtp, "node_modules", testEnvTag, env(cache))
 		if want := filepath.Join(repo, "node_modules"); got != want || from {
 			t.Fatalf("got (%q, %v), want (%q, false)", got, from, want)
 		}
@@ -356,7 +356,7 @@ func TestDepsSourceHashLookup(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(cache, "repo", hash, "package-lock.json"), []byte(`{"collided":1}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		got, from := depsSource(repo, wtp, "node_modules", testEnvTag, env(cache))
+		got, from := depsSource("repo", filepath.Join(repo, "node_modules"), wtp, "node_modules", testEnvTag, env(cache))
 		if want := filepath.Join(repo, "node_modules"); got != want || from {
 			t.Fatalf("got (%q, %v), want (%q, false)", got, from, want)
 		}
@@ -364,7 +364,7 @@ func TestDepsSourceHashLookup(t *testing.T) {
 	t.Run("disabled", func(t *testing.T) {
 		repo, wtp, cache, _ := cacheFixture(t, lock, lock)
 		_ = cache
-		got, from := depsSource(repo, wtp, "node_modules", testEnvTag, env("off"))
+		got, from := depsSource("repo", filepath.Join(repo, "node_modules"), wtp, "node_modules", testEnvTag, env("off"))
 		if want := filepath.Join(repo, "node_modules"); got != want || from {
 			t.Fatalf("got (%q, %v), want (%q, false)", got, from, want)
 		}
@@ -733,7 +733,7 @@ func TestPopulateLoseRace(t *testing.T) { // SC-7
 	if err := os.WriteFile(filepath.Join(slot, "occupied"), []byte("1"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := populateCache(cache, filepath.Join(t.TempDir(), "repo"), wtp, "node_modules", testEnvTag); err != nil {
+	if err := populateCache(cache, "repo", wtp, "node_modules", testEnvTag); err != nil {
 		t.Fatalf("lost race must not be an error: %v", err)
 	}
 	ents, err := os.ReadDir(parent)
@@ -783,7 +783,7 @@ func TestPopulateOff(t *testing.T) { // SC-4 — branch (b) reaches the populate
 }
 
 func TestPopulateNoLock(t *testing.T) { // SC-6
-	repo, wtp := cloneFixture(t, cloneCase{})
+	_, wtp := cloneFixture(t, cloneCase{})
 	cache := t.TempDir()
 	if err := os.Remove(filepath.Join(wtp, "package-lock.json")); err != nil {
 		t.Fatal(err)
@@ -791,7 +791,7 @@ func TestPopulateNoLock(t *testing.T) { // SC-6
 	if err := os.MkdirAll(filepath.Join(wtp, "node_modules"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := populateCache(cache, repo, wtp, "node_modules", testEnvTag); err != nil {
+	if err := populateCache(cache, "repo", wtp, "node_modules", testEnvTag); err != nil {
 		t.Fatalf("no lock must be skipped silently, got %v", err)
 	}
 	if ents, _ := os.ReadDir(cache); len(ents) != 0 {
@@ -860,7 +860,6 @@ func TestIsSlotName(t *testing.T) {
 
 func TestPruneCacheCapLRU(t *testing.T) { // SC-5
 	cache := t.TempDir()
-	repo := filepath.Join(t.TempDir(), "myrepo")
 	parent := filepath.Join(cache, "myrepo")
 	names := []string{"0000000000000001", "0000000000000002", "0000000000000003", "0000000000000004", "0000000000000005", "0000000000000006"}
 	base := time.Now().Add(-time.Hour)
@@ -874,7 +873,7 @@ func TestPruneCacheCapLRU(t *testing.T) { // SC-5
 			t.Fatal(err)
 		}
 	}
-	if err := pruneCache(cache, repo, 5); err != nil {
+	if err := pruneCache(cache, "myrepo", 5); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(parent, names[0])); !os.IsNotExist(err) {
@@ -889,7 +888,6 @@ func TestPruneCacheCapLRU(t *testing.T) { // SC-5
 
 func TestPruneSkipsNonSlotDirs(t *testing.T) {
 	cache := t.TempDir()
-	repo := filepath.Join(t.TempDir(), "myrepo")
 	parent := filepath.Join(cache, "myrepo")
 	for _, n := range []string{"node_modules", ".tmp-abc", "aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"} {
 		if err := os.MkdirAll(filepath.Join(parent, n), 0o750); err != nil {
@@ -902,7 +900,7 @@ func TestPruneSkipsNonSlotDirs(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := pruneCache(cache, repo, 1); err != nil {
+	if err := pruneCache(cache, "myrepo", 1); err != nil {
 		t.Fatal(err)
 	}
 	for _, n := range []string{"node_modules", ".tmp-abc"} {
@@ -919,7 +917,7 @@ func TestPruneSkipsNonSlotDirs(t *testing.T) {
 }
 
 func TestPruneCacheMissingParent(t *testing.T) {
-	if err := pruneCache(t.TempDir(), "/x/nope", 5); err != nil {
+	if err := pruneCache(t.TempDir(), "nope", 5); err != nil {
 		t.Fatalf("want nil, got %v", err)
 	}
 }
@@ -1042,7 +1040,7 @@ func TestDepsCacheTagSeparatesSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache := t.TempDir()
-	if err := populateCache(cache, repo, wtp, "node_modules", "tagA"); err != nil {
+	if err := populateCache(cache, "repo", wtp, "node_modules", "tagA"); err != nil {
 		t.Fatal(err)
 	}
 	env := func(k string) (string, bool) {
@@ -1051,10 +1049,10 @@ func TestDepsCacheTagSeparatesSlots(t *testing.T) {
 		}
 		return "", false
 	}
-	if got, from := depsSource(repo, wtp, "node_modules", "tagB", env); from {
+	if got, from := depsSource("repo", filepath.Join(repo, "node_modules"), wtp, "node_modules", "tagB", env); from {
 		t.Fatalf("tag B must miss the tag-A slot, got (%q, %v)", got, from)
 	}
-	if _, from := depsSource(repo, wtp, "node_modules", "tagA", env); !from {
+	if _, from := depsSource("repo", filepath.Join(repo, "node_modules"), wtp, "node_modules", "tagA", env); !from {
 		t.Fatal("tag A must hit the slot it wrote")
 	}
 }
@@ -1151,5 +1149,14 @@ func TestApplyDepsCurrentCloneFromMainNoPopulate(t *testing.T) {
 	}
 	if got := cacheEntries(t, filepath.Join(cache, "repo")); len(got) != 0 {
 		t.Fatalf("branch (a) seeded the cache: %v", got)
+	}
+}
+
+// F9: GNU cp reads `-c` as --preserve=context, so the copy-on-write flag is per OS.
+func TestCowCopyFlag(t *testing.T) {
+	for goos, want := range map[string]string{"darwin": "-c", "linux": "--reflink=auto", "windows": ""} {
+		if got := cowCopyFlag(goos); got != want {
+			t.Errorf("cowCopyFlag(%q) = %q, want %q", goos, got, want)
+		}
 	}
 }

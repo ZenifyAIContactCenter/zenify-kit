@@ -23,7 +23,7 @@ func newWtCmd() *cobra.Command {
 		Use:   "wt",
 		Short: "Quản lý git worktree + môi trường dev: tạo, liệt kê, gỡ, dọn worktree theo slug", //znf:allow-lang
 	}
-	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd(), newWtSweepCmd(), newWtWireCmd(), newWtPromoteCmd(), newWtBaseCmd())
+	cmd.AddCommand(newWtPathCmd(), newWtConfigCmd(), newWtNewCmd(), newWtLsCmd(), newWtUrlCmd(), newWtRmCmd(), newWtSweepCmd(), newWtWireCmd(), newWtPromoteCmd(), newWtBaseCmd(), newWtCacheCmd())
 	return cmd
 }
 
