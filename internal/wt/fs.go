@@ -172,7 +172,7 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		// read or written — rather than collapsing every env onto an empty tag.
 		tag, tagOK := probeEnvTag(worktreePath)
 		if tagOK {
-			src, _ = depsSource(repoRoot, worktreePath, depsDirName, tag, os.LookupEnv)
+			src, _ = depsSource(filepath.Base(repoRoot), src, worktreePath, depsDirName, tag, os.LookupEnv)
 		}
 		if _, err := os.Stat(src); err != nil {
 			return fmt.Errorf("wt: deps=clone but %s does not exist — install in the main checkout first", src)
@@ -206,9 +206,9 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		if current && tagOK {
 			if ignored, ok := probeIgnoreScripts(worktreePath); ok && !ignored {
 				if dir, enabled := resolveCacheDir(os.LookupEnv); enabled {
-					if err := populateCache(dir, repoRoot, worktreePath, depsDirName, tag); err != nil {
+					if err := populateCache(dir, filepath.Base(repoRoot), worktreePath, depsDirName, tag); err != nil {
 						fmt.Fprintf(os.Stderr, "wt: deps cache populate skipped: %v\n", err)
-					} else if err := pruneCache(dir, repoRoot, cacheSlotCap); err != nil {
+					} else if err := pruneCache(dir, filepath.Base(repoRoot), cacheSlotCap); err != nil {
 						fmt.Fprintf(os.Stderr, "wt: deps cache prune skipped: %v\n", err)
 					}
 				}
@@ -317,13 +317,13 @@ func isPlainNpmInstall(installCmd string) bool {
 // sole caller gates it on a content check of the just-installed worktree tree
 // (cloneIsCurrent(dst, dst, ...)) on branch (b) only, with ignore-scripts off,
 // so neither a stale, a partial, nor an unbuilt tree ever enters.
-func populateCache(cacheDir, repoRoot, worktreePath, depsDirName, tag string) error {
+func populateCache(cacheDir, repoName, worktreePath, depsDirName, tag string) error {
 	wtLock := filepath.Join(worktreePath, "package-lock.json")
 	hash, err := lockHash(wtLock, tag)
 	if err != nil {
 		return nil
 	}
-	parent := filepath.Join(cacheDir, filepath.Base(repoRoot))
+	parent := filepath.Join(cacheDir, repoName)
 	slot := filepath.Join(parent, hash)
 	if fi, err := os.Stat(filepath.Join(slot, depsDirName)); err == nil && fi.IsDir() {
 		return nil
@@ -371,8 +371,8 @@ func isSlotName(name string) bool {
 // pruneCache keeps at most max slots under <cacheDir>/<repo>, removing the
 // least recently used (oldest mtime) first. Only genuine slot dirs are touched;
 // an entry whose Info() fails is skipped (conservative: never deleted).
-func pruneCache(cacheDir, repoRoot string, max int) error {
-	parent := filepath.Join(cacheDir, filepath.Base(repoRoot))
+func pruneCache(cacheDir, repoName string, max int) error {
+	parent := filepath.Join(cacheDir, repoName)
 	entries, err := os.ReadDir(parent)
 	if os.IsNotExist(err) {
 		return nil
@@ -414,11 +414,10 @@ func pruneCache(cacheDir, repoRoot string, max int) error {
 // lock bytes AND the build-env fingerprint tag, so a slot built under one Node
 // ABI never matches a lookup under another. With the cache off, no such slot
 // <cache>/<repo>/<hash>/<depsDirName>, or a slot whose package-lock.json is not
-// byte-equal to the worktree's (hash collision), it is the repo root's dir
+// byte-equal to the worktree's (hash collision), it is own (the repo root's deps dir)
 // (fromCache=false) — silently, a miss is normal. On a hit it touches the slot's
 // mtime (LRU) and returns the slot's dir (fromCache=true).
-func depsSource(repoRoot, worktreePath, depsDirName, tag string, lookupEnv func(string) (string, bool)) (src string, fromCache bool) {
-	own := filepath.Join(repoRoot, depsDirName)
+func depsSource(repoName, own, worktreePath, depsDirName, tag string, lookupEnv func(string) (string, bool)) (src string, fromCache bool) {
 	dir, enabled := resolveCacheDir(lookupEnv)
 	if !enabled {
 		return own, false
@@ -428,7 +427,7 @@ func depsSource(repoRoot, worktreePath, depsDirName, tag string, lookupEnv func(
 	if err != nil {
 		return own, false
 	}
-	slot := filepath.Join(dir, filepath.Base(repoRoot), hash)
+	slot := filepath.Join(dir, repoName, hash)
 	cached := filepath.Join(slot, depsDirName)
 	if fi, err := os.Stat(cached); err != nil || !fi.IsDir() {
 		return own, false
