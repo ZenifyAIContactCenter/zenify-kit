@@ -86,6 +86,7 @@ Tab `Kitchen` đọc cùng số liệu `zenify track stats --json` như các tab
 - Mỗi mục trong `Rolling boil` có hai dòng: dòng đầu là icon (❓ đang hỏi, 🔐 chờ quyền), thời gian chờ rồi tên tab Claude Code của session đó (đúng chữ hiện trên tab terminal, lấy từ tiêu đề trong transcript; không có thì dùng `<brief>`); dòng dưới (mờ) là trạng thái (đang hỏi hoặc chờ quyền), `<brief>` và 8 ký tự đầu của session id.
 - `<brief>` chọn theo thứ tự: tiêu đề plan, tiêu đề mục backlog, tiêu đề PR, cuối cùng là `<kind> <repo>`.
 - `zenify track end --ledger <ledger file>` đếm các dòng `Task <N>: complete` và lưu đường dẫn plan ở dòng đầu của ledger (`# SDD ledger — plan: <path>`) vào dòng `end` (bốn trường) để `Kitchen` lấy được tiêu đề plan. Đường dẫn plan chứa ` · ` hoặc xuống dòng thì dòng `end` giữ ba trường và lệnh cảnh báo trên stderr. File ledger không đọc được thì lệnh cảnh báo trên stderr và vẫn ghi dòng `end` ba trường với 0 task. Đường dẫn plan được lưu nguyên văn; đường dẫn tương đối được đọc tương đối với workspace.
+- `zenify track end --pr` khi id chưa có dòng `ship` sẽ cảnh báo trên stderr (`has no ship row`): PR phải mở qua `znf:ship`. Dòng `end` vẫn được ghi.
 
 ## Thời gian wall và thời gian agent
 
@@ -217,7 +218,7 @@ zenify track onboard history --write --since 2026-09-01
 - `onboard memory` đánh dấu workspace đã onboard từ memory của agent.
 - `onboard history` quét transcript Claude Code (`~/.claude/projects`), gom theo repo và worktree rồi in bảng xem trước. Thêm `--write` mới ghi dòng `history` vào sổ; chạy lại không tạo dòng trùng. `--since YYYY-MM-DD` giới hạn từ ngày đó.
 
-Thang mặc định là S<15m, M<45m, L<120m. Từ 20 việc thật đã xong có est, thang chuyển sang `learned` theo wall time. Dòng `history` không góp vào thang, Estimate, chất lượng hay số hôm nay.
+Thang mặc định là S<15m, M<45m, L<120m. Từ 20 việc thật đã xong có est, thang chuyển sang `learned` theo wall time. Dòng `history` không góp vào thang, Estimate, chất lượng hay số hôm nay. Một việc mà mọi PR của nó đã được việc khác kết thúc trước (vòng sửa sau trên cùng PR) không góp vào thang và Estimate; nó vẫn được đếm ở Today.
 
 Xem [`zenify track`](/reference/cli/zenify_track), trong đó `stats --force` bỏ qua cache backlog.
 

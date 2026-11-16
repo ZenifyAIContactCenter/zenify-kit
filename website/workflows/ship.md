@@ -10,6 +10,8 @@ title: "ship: verify và mở PR"
 
 Dùng `/znf:ship` khi code đã xong và sắp commit. Ba workflow `/znf:cook`, `/znf:fix`, `/znf:hotfix` gọi ship ở bước cuối. Khi đi đường không dùng workflow, bạn tự gọi.
 
+PR chỉ được mở qua `/znf:ship`, kể cả khi subagent làm việc song song: mỗi PR một lượt ship.
+
 Không dùng `/znf:ship` khi chưa verify được gì. Ship không thay thế bước tự chạy thử code.
 
 ## Cách gọi
