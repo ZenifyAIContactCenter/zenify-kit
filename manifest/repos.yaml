@@ -74,3 +74,8 @@ repos:
     path: repos/personal-zalo-gateway
     base: origin/staging
     tags: [backend, gateway]
+  - name: mobile-app
+    url: git@github.com:ZenifyAIContactCenter/mobile-app.git
+    path: repos/mobile-app
+    base: origin/main
+    tags: [mobile]

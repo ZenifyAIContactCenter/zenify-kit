@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -35,6 +36,23 @@ type Config struct {
 	GateSharedStore    bool
 	GateAccessPatterns []string
 	GateDBAccessor     string
+
+	// Variants are named checkout shapes a repo offers to `wt new --variant`
+	// (e.g. a light JS-only checkout vs a full native one). DefaultVariant is
+	// applied when no --variant is passed; empty = no variant, plain checkout.
+	Variants       map[string]Variant
+	DefaultVariant string
+}
+
+// Variant is one entry of the variants map: how `wt new` shapes the checkout.
+type Variant struct {
+	// SparseExclude lists repo-root-relative paths hidden from the worktree via
+	// a per-worktree non-cone sparse-checkout (the main checkout is untouched).
+	SparseExclude []string `json:"sparseExclude"`
+	// Submodules are initialised (`git submodule update --init`) in the worktree.
+	Submodules []string `json:"submodules"`
+	// Setup is a shell command run in the worktree after deps are in place.
+	Setup string `json:"setup"`
 }
 
 // PeerSpec is one entry of the peers map, keyed by the env var it sets.
@@ -64,6 +82,8 @@ type rawConfig struct {
 	Peers          map[string]PeerSpec `json:"peers"`
 	Hotfix         rawHotfix           `json:"hotfix"`
 	Gate           rawGate             `json:"gate"`
+	Variants       map[string]Variant  `json:"variants"`
+	DefaultVariant string              `json:"defaultVariant"`
 }
 
 // rawHotfix mirrors the on-disk "hotfix" stanza.
@@ -115,7 +135,82 @@ func Load(repoRoot string) (*Config, error) {
 	c.GateSharedStore = raw.Gate.SharedStore
 	c.GateAccessPatterns = raw.Gate.AccessPatterns
 	c.GateDBAccessor = raw.Gate.DBAccessor
+	c.Variants = raw.Variants
+	c.DefaultVariant = strings.TrimSpace(raw.DefaultVariant)
+	if err := validateVariants(c); err != nil {
+		return nil, fmt.Errorf("wt: %s: %w", path, err)
+	}
 	return c, nil
+}
+
+// validateVariants rejects a defaultVariant that names no variant and any
+// sparseExclude entry that is not a plain repo-relative path, so a bad config
+// fails at load time instead of half-way through `wt new`.
+func validateVariants(c *Config) error {
+	if c.DefaultVariant != "" {
+		if _, ok := c.Variants[c.DefaultVariant]; !ok {
+			return fmt.Errorf("defaultVariant %q is not declared in variants", c.DefaultVariant)
+		}
+	}
+	for name, v := range c.Variants {
+		if !validSlug(name) {
+			return fmt.Errorf("variant name %q must be lowercase letters, digits and dashes", name)
+		}
+		for _, p := range v.SparseExclude {
+			if sparseExcludePattern(p) == "" {
+				return fmt.Errorf("variant %q: sparseExclude entry %q must be a repo-relative path (no \"!\", \"..\", or glob)", name, p)
+			}
+		}
+		for _, sm := range v.Submodules {
+			sm = strings.TrimSpace(sm)
+			if sm == "" || strings.HasPrefix(sm, "-") || filepath.IsAbs(sm) || strings.Contains(sm, "..") {
+				return fmt.Errorf("variant %q: submodule path %q must be a repo-relative path", name, sm)
+			}
+		}
+	}
+	return nil
+}
+
+// sparseExcludePattern turns a repo-relative path ("android", "android/",
+// "/native/") into an anchored non-cone exclude pattern ("!/android/"). It
+// returns "" for anything that is not a plain path.
+func sparseExcludePattern(p string) string {
+	p = strings.Trim(strings.TrimSpace(p), "/")
+	if p == "" || strings.ContainsAny(p, "!*?[]\\") || strings.HasPrefix(p, "-") {
+		return ""
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return ""
+		}
+	}
+	return "!/" + p + "/"
+}
+
+// ResolveVariant picks the variant `wt new` applies: the requested name, else
+// defaultVariant, else none ("" with a zero Variant). A requested name the repo
+// does not declare is an error that lists what it does declare.
+func ResolveVariant(c *Config, requested string) (string, Variant, error) {
+	name := strings.TrimSpace(requested)
+	if name == "" {
+		name = c.DefaultVariant
+	}
+	if name == "" {
+		return "", Variant{}, nil
+	}
+	v, ok := c.Variants[name]
+	if !ok {
+		if len(c.Variants) == 0 {
+			return "", Variant{}, fmt.Errorf("--variant %q: this repo declares no variants in .claude/worktree.json", name)
+		}
+		names := make([]string, 0, len(c.Variants))
+		for n := range c.Variants {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		return "", Variant{}, fmt.Errorf("--variant %q is not declared; this repo has: %s", name, strings.Join(names, ", "))
+	}
+	return name, v, nil
 }
 
 func orDefault(v, def string) string {
