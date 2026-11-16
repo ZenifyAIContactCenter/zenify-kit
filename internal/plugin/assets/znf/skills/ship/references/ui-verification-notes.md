@@ -72,9 +72,11 @@ Snapshots, console dumps and screenshots are the largest volume any step here pr
 a verdict plus evidence instead.
 
 #### Mechanical gate: ui-verify record/check
-`znf:ui-verifier` records its own artifact — before deleting its screenshot, if `zenify` is on PATH it
-runs `zenify ui-verify record --repo <repo> --screen <name> --screenshot <path> --child-right <n>
---container-right <n> --padding-right <n> --verdict <pass|fail>`. This computes a fingerprint `fp` over
+`znf:ui-verifier` records its own artifact only when every item it checked is PASS: if `zenify` is on
+PATH it runs `zenify ui-verify record --repo <repo> --screen <name> --screenshot <path> --child-right <n>
+--container-right <n> --padding-right <n> --verdict pass` per screen. A FAIL records nothing, so `check`
+stays `required` (a `fail` screen never makes an artifact valid anyway); accepting a FAIL takes a
+`znf:ui-verify-ok: <reason>` waiver. This computes a fingerprint `fp` over
 the caller-passed repo's working tree, copies the screenshot to `<repo>/.znf/ui-verify/<fp>-<screen>.png`,
 and upserts the screen's measurement into `<repo>/.znf/ui-verify/<fp>.json`. The `--repo` the caller
 passes to the verifier must be this worktree.
@@ -84,7 +86,7 @@ a deterministic, fail-closed gate with four outcomes:
 - **not_required** (exit 0) — the render-trigger set (§4b) is empty; nothing to verify.
 - **waived** (exit 0) — the diff carries a `// znf:ui-verify-ok: <reason>` marker; the reason prints on
   the `look:` board line.
-- **verified** (exit 0) — a valid artifact exists for the *current* fingerprint.
+- **verified** (exit 0) — a valid artifact (every screen `pass`) exists for the *current* fingerprint.
 - **required** (exit non-zero) — render-trigger fired, no valid current-fp artifact: `look:` reads
   `❌ BLOCKED`, `Shippable: NO`.
 

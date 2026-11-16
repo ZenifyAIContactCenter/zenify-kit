@@ -9,7 +9,7 @@ The step 4 file-count command non-zero means the diff renders something. Branch 
     - `{"ready":true}`: go on below.
     - `{"ready":false,"reason":"<code>","log":"<path>"}`: run `zenify ui-verify blocked --reason <code> --repo <web worktree>`, do not dispatch the verifier, and continue the gate (step 7's check then reports `infra-blocked`).
   - `ZNF_SANDBOX_UI_STACK` unset: start the web app per the autonomous sandbox notes of the `znf:run` skill.
-  - Log in with `zenify e2e login --port $ZNF_SANDBOX_WEB_PORT --role <role>` and dispatch `znf:ui-verifier` exactly as in human mode. In its brief, give the merge-base and list the repo's feature map files (`ls <web worktree>/.znf/features/*.md`; none is fine). A journey runs with `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT`.
+  - Log in with `zenify e2e login --port $ZNF_SANDBOX_WEB_PORT --role <role>` (fails: run `zenify ui-verify blocked --reason drive_failed:login --repo <web worktree>`, do not dispatch) and dispatch `znf:ui-verifier` exactly as in human mode. In its brief, give the merge-base and list the `.md` files of the `<web worktree>/.znf/features/` directory (missing or empty = none). A journey runs with `zenify e2e run --local --port $ZNF_SANDBOX_WEB_PORT`.
   - Branch on the verifier's report: any FAIL wins, then any BLOCKED or PARTIAL; PASS only when every item is PASS.
     - PASS: it recorded the verdict; step 7 passes.
     - BLOCKED or PARTIAL (it could not drive the app: login failed, route unreachable, a feature map step or selector is gone): run `zenify ui-verify blocked --reason drive_failed:<entry name or route it names> --repo <web worktree>`. Not a UI bug, so no fix loop.

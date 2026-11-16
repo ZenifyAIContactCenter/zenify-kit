@@ -46,6 +46,7 @@ Run `zenify browser -s=<session> screenshot`. It writes under `~/.zenify/playwri
 Leave the screenshots where they are; do not delete them. **Always `close` your own session at the end** (`zenify browser -s=<session> close`), also when you report BLOCKED or FAIL.
 
 ## Output (return ONLY this — it's your tool result, not a human message)
+- Feature map: <files read> | none passed.
 - VERDICT: PASS / FAIL / BLOCKED / PARTIAL for each thing checked. BLOCKED = you could not drive the app (login failed, route unreachable, a feature map step or selector is gone): name the entry or route and what stopped you. FAIL = you drove it and the UI is wrong.
 - Functional evidence: what you drove and what it did.
 - **Layout evidence: the measured numbers** (element rect vs container content edge, overflow booleans, sibling comparison) — quote them. Plus a one-line visual read of the screenshot.
