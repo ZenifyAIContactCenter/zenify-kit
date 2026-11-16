@@ -41,7 +41,9 @@ func TestShipGate_AutonomousUI(t *testing.T) {
 		// FR-3.4, FR-4.4, FR-4.7: ui-stack branch, infra-blocked line on board and PR.
 		"ZNF_SANDBOX_UI_STACK", "zenify ui-verify blocked --reason", "infra-blocked", "⚠️ UI chưa kiểm:", "drive_failed:", //znf:allow-lang
 		// Reason shape the host accepts; re-block after a review-loop edit, never after a FAIL.
-		"`[A-Za-z0-9._-]{1,60}`", "`/deals/:id` becomes `deals-id`", "the tree changed since", "Never after a FAIL."})
+		"`[A-Za-z0-9._-]{1,60}`", "`/deals/:id` becomes `deals-id`", "the tree changed since", "Never after a FAIL.",
+		// Network evidence never carries credentials onto the board or PR.
+		"never copy headers, cookies, tokens or response bodies"})
 }
 
 // FR-2: ship step 4 runs the tests affected by the branch; the rules live in a reference (SKILL.md is at its byte budget).
