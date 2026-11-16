@@ -308,7 +308,6 @@ func TestUIVerifyFiles_CountErrorPrintsNothing(t *testing.T) {
 	}
 }
 
-
 func uiGitOut(t *testing.T, repo string, args ...string) string {
 	t.Helper()
 	out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).Output() //nolint:gosec // G204 -- test fixture, fixed argv
@@ -355,6 +354,46 @@ func TestUIVerifyBlockedEmptyReasonRefused(t *testing.T) {
 	}
 	if got := blockedFiles(repo); len(got) != 0 {
 		t.Errorf("blocked record written for empty reason: %v", got)
+	}
+}
+
+// The reason is a machine code the zenie host matches with
+// ^[a-z_]{1,40}(?::[A-Za-z0-9._-]{1,60})?$; anything else must be refused here,
+// not silently dropped there.
+func TestUIVerifyBlockedReasonShape(t *testing.T) {
+	t.Setenv("ZNF_AUTONOMOUS", "1")
+	for _, tc := range []struct {
+		reason string
+		ok     bool
+	}{
+		{"app_wont_start", true},
+		{"deps_auth_failed:contact-center-hub", true},
+		{"drive_failed:global-search", true},
+		{"drive_failed:deals-id", true},
+		{"  app_wont_start  ", true},
+		{"drive_failed:/deals/:id", false},
+		{"   ", false},
+		{"deps_auth_failed\nstate=verified", false},
+		{"Drive_failed:x", false},
+		{"drive failed", false},
+	} {
+		t.Run(tc.reason, func(t *testing.T) {
+			repo := initUIVerifyRepo(t)
+			reason := tc.reason
+			_, err := runUIVerifyBlocked(t, "--repo", repo, "--reason", reason)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("valid reason %q refused: %v", reason, err)
+				}
+				return
+			}
+			if exitcode.Code(err) != exitcode.BadArgs {
+				t.Fatalf("reason %q: err=%v code=%d, want BadArgs", reason, err, exitcode.Code(err))
+			}
+			if got := blockedFiles(repo); len(got) != 0 {
+				t.Errorf("blocked record written for %q: %v", reason, got)
+			}
+		})
 	}
 }
 

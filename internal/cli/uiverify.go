@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -183,6 +184,10 @@ func newUIVerifyCheckCmd() *cobra.Command {
 	return c
 }
 
+// blockedReasonRe is the reason shape the zenie host accepts (UI_BLOCKED_RE in
+// its src/agent/results.ts); a reason outside it would be dropped there silently.
+var blockedReasonRe = regexp.MustCompile(`^[a-z_]{1,40}(?::[A-Za-z0-9._-]{1,60})?$`)
+
 // newUIVerifyBlockedCmd records that the sandbox infra is broken so no UI
 // verdict is possible; `check` then reports infra-blocked instead of required.
 func newUIVerifyBlockedCmd() *cobra.Command {
@@ -194,8 +199,12 @@ func newUIVerifyBlockedCmd() *cobra.Command {
 			if os.Getenv("ZNF_AUTONOMOUS") != "1" {
 				return exitcode.New(exitcode.Fail, fmt.Errorf("ui-verify blocked is only allowed under ZNF_AUTONOMOUS=1"))
 			}
+			reason = strings.TrimSpace(reason)
 			if reason == "" {
 				return exitcode.New(exitcode.BadArgs, fmt.Errorf("need --reason <code>"))
+			}
+			if !blockedReasonRe.MatchString(reason) {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("--reason %q: want <code> or <code>:<detail>, code [a-z_]{1,40}, detail [A-Za-z0-9._-]{1,60} (a route /deals/:id becomes deals-id)", reason))
 			}
 			if repo == "" {
 				repo, _ = os.Getwd()

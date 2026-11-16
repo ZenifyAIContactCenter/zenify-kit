@@ -546,23 +546,31 @@ func TestCheckBlockedTable(t *testing.T) {
 	const reason = "deps_auth_failed:contact-center-hub"
 	rows := []struct {
 		name       string
-		artifact   bool
+		artifact   string // "" none, else the recorded verdict
 		blocked    bool
 		blockedFP  string // fp the blocked record was written under
 		wantState  string
 		wantErrNil bool
 	}{
-		{"artifact only", true, false, "", "verified", true},
-		{"blocked only, fp matches", false, true, "fpcurrent1", "infra-blocked: " + reason, true},
-		{"artifact wins over blocked", true, true, "fpcurrent1", "verified", true},
-		{"blocked recorded for an older fp", false, true, "fpolder001", "required", false},
-		{"neither", false, false, "", "required", false},
+		{"artifact only", "pass", false, "", "verified", true},
+		{"blocked only, fp matches", "", true, "fpcurrent1", "infra-blocked: " + reason, true},
+		{"artifact wins over blocked", "pass", true, "fpcurrent1", "verified", true},
+		// A measured FAIL is never laundered into infra-blocked (exit 0) by a blocked record.
+		{"fail artifact ignores blocked", "fail", true, "fpcurrent1", "required", false},
+		{"blocked recorded for an older fp", "", true, "fpolder001", "required", false},
+		{"neither", "", false, "", "required", false},
 	}
 	for _, r := range rows {
 		t.Run(r.name, func(t *testing.T) {
 			repo := t.TempDir()
 			const cur = "fpcurrent1"
-			if r.artifact {
+			// The blocked record goes first: RecordBlocked refuses once a non-pass artifact exists.
+			if r.blocked {
+				if _, err := RecordBlocked(stubDeps(r.blockedFP), repo, reason); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if r.artifact != "" {
 				dir := filepath.Join(repo, ".znf", "ui-verify")
 				if err := os.MkdirAll(dir, 0o750); err != nil {
 					t.Fatal(err)
@@ -570,12 +578,7 @@ func TestCheckBlockedTable(t *testing.T) {
 				if err := os.WriteFile(filepath.Join(dir, "shot.png"), []byte{1}, 0o600); err != nil {
 					t.Fatal(err)
 				}
-				writeArtifact(t, repo, cur, Artifact{FP: cur, Screens: []Screen{{Screen: "home", Screenshot: "shot.png", Verdict: "pass"}}})
-			}
-			if r.blocked {
-				if _, err := RecordBlocked(stubDeps(r.blockedFP), repo, reason); err != nil {
-					t.Fatal(err)
-				}
+				writeArtifact(t, repo, cur, Artifact{FP: cur, Screens: []Screen{{Screen: "home", Screenshot: "shot.png", Verdict: r.artifact}}})
 			}
 			d := checkDeps(t, map[string]string{
 				"-c core.quotePath=false diff --name-only origin/staging...HEAD": "src/App.tsx",
@@ -612,5 +615,26 @@ func TestRecordBlocked_WritesIgnoredJSON(t *testing.T) {
 	gi, gerr := os.ReadFile(filepath.Join(repo, ".znf", "ui-verify", ".gitignore"))
 	if gerr != nil || string(gi) != "*\n" {
 		t.Errorf("gitignore = %q err=%v", gi, gerr)
+	}
+}
+
+// A non-pass artifact for the current fp means the UI was measured and is wrong:
+// blocked is refused, so the FAIL cannot become an infra-blocked exit 0.
+func TestRecordBlocked_RefusedAfterFailVerdict(t *testing.T) {
+	repo := t.TempDir()
+	writeArtifact(t, repo, "fpfail0001", Artifact{FP: "fpfail0001", Screens: []Screen{
+		{Screen: "a", Screenshot: "a.png", Verdict: "pass"},
+		{Screen: "b", Screenshot: "b.png", Verdict: "fail"},
+	}})
+	_, err := RecordBlocked(stubDeps("fpfail0001"), repo, "app_wont_start")
+	if exitcode.Code(err) != exitcode.BadArgs {
+		t.Fatalf("err=%v code=%d, want BadArgs", err, exitcode.Code(err))
+	}
+	if _, serr := os.Stat(filepath.Join(repo, ".znf", "ui-verify", "fpfail0001.blocked.json")); !os.IsNotExist(serr) {
+		t.Fatalf("blocked.json written after a fail verdict: %v", serr)
+	}
+	// An all-pass artifact (or one for another fp) does not refuse.
+	if _, err := RecordBlocked(stubDeps("fpother001"), repo, "app_wont_start"); err != nil {
+		t.Fatalf("other fp: %v", err)
 	}
 }

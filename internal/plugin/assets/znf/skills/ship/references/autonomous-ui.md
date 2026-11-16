@@ -13,11 +13,14 @@ The step 4 file-count command non-zero means the diff renders something. Branch 
   - Branch on the verifier's report: any FAIL wins, then any BLOCKED or PARTIAL; PASS only when every item is PASS.
     - PASS: it recorded the verdict; step 7 passes.
     - BLOCKED or PARTIAL (it could not drive the app: login failed, route unreachable, a feature map step or selector is gone): run `zenify ui-verify blocked --reason drive_failed:<entry name or route it names> --repo <web worktree>`. Not a UI bug, so no fix loop.
+  - `--reason` is `<code>` or `<code>:<detail>`: code `[a-z_]{1,40}`, detail reduced to `[A-Za-z0-9._-]{1,60}` (a route `/deals/:id` becomes `deals-id`, an entry name keeps only those characters). Anything else is refused (exit 2). `blocked` is also refused once a non-pass verdict is recorded for the tree: a FAIL is never infra.
     - FAIL (it drove the app and the UI is wrong): enter the ship fix loop like any failing check, and re-dispatch the verifier after each fix. Still FAIL after round 2: record nothing and run no `blocked`; the state stays `required`, so `zenify ui-verify check` writes this fix loop's `needs-human` await (exit 8): end the session.
 - **Unset** (no web app in the image): do not dispatch the verifier. Run step 7's `zenify ui-verify check --repo … --base …`: exit 8 means the await is written, so end the session; verified or waived passes.
 
 ## Step 7 under ZNF_AUTONOMOUS=1
 
 `zenify ui-verify check` runs in every case above; with a verdict recorded for HEAD it passes. Exit 8 stays the await stop: end the session, no BLOCKED line.
+
+A blocked record is tied to the tree it was written for. If this run hit an infra-blocked outcome at step 4 (ui-stack not ready, or `drive_failed`) and the tree changed since (a review-loop edit), re-run ui-stack (or the driving attempt) for the current HEAD before `check`; still not ready, run `zenify ui-verify blocked --reason <code>` again. Never after a FAIL.
 
 State `infra-blocked: <code>` exits 0: add `⚠️ UI chưa kiểm: <code>` to the board and the exact same line to the PR body, then ship as usual (gate log `SHIPPED`).

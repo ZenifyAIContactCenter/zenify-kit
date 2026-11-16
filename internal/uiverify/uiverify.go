@@ -339,6 +339,25 @@ func Validate(repo, fp string) (int, bool) {
 	return len(art.Screens), true
 }
 
+// hasNonPass reports whether <fp>.json holds a screen whose verdict is not
+// "pass": the UI was measured and is wrong, which no blocked record may mask.
+func hasNonPass(repo, fp string) bool {
+	b, err := os.ReadFile(filepath.Join(artifactDir(repo), fp+".json")) //nolint:gosec // G304 -- path built from fp, not user input
+	if err != nil {
+		return false
+	}
+	var art Artifact
+	if err := json.Unmarshal(b, &art); err != nil {
+		return false
+	}
+	for _, s := range art.Screens {
+		if s.Verdict != "pass" {
+			return true
+		}
+	}
+	return false
+}
+
 // blockedRecord is <fp>.blocked.json: the sandbox could not run the app, so no
 // verdict is possible for this fingerprint.
 type blockedRecord struct {
@@ -348,11 +367,15 @@ type blockedRecord struct {
 }
 
 // RecordBlocked writes <fp>.blocked.json for the current fingerprint. The dir
-// is self-ignoring, so writing it does not change the fingerprint.
+// is self-ignoring, so writing it does not change the fingerprint. It refuses
+// when a non-pass verdict is already recorded for that fingerprint.
 func RecordBlocked(d Deps, repo, reason string) (string, error) {
 	fp, err := Fingerprint(d, repo)
 	if err != nil {
 		return "", err
+	}
+	if hasNonPass(repo, fp) {
+		return "", exitcode.New(exitcode.BadArgs, fmt.Errorf("a non-pass UI verdict is recorded for fp=%s: that is a UI failure, not blocked infra", fp))
 	}
 	dir := artifactDir(repo)
 	if err := ensureArtifactDir(dir); err != nil {
@@ -383,7 +406,8 @@ func Blocked(repo, fp string) (string, bool) {
 
 // Check orchestrates the gate: no rendering files changed → not_required;
 // a waiver marker present → waived; a valid artifact for the current
-// fingerprint → verified; a blocked record for it → infra-blocked; otherwise → required (fail-closed).
+// fingerprint → verified; a blocked record for it (and no non-pass verdict) →
+// infra-blocked; otherwise → required (fail-closed).
 // FR-2.2..2.5, FR-3.1 (a stale fp means Validate reads a <fp>.json that
 // doesn't exist, which falls straight through to required).
 func Check(d Deps, repo, base string) (state string, msg string, err error) {
@@ -410,7 +434,7 @@ func Check(d Deps, repo, base string) (state string, msg string, err error) {
 		return "verified", msg, nil
 	}
 
-	if reason, ok := Blocked(repo, fp); ok {
+	if reason, ok := Blocked(repo, fp); ok && !hasNonPass(repo, fp) {
 		state = "infra-blocked: " + reason
 		return state, state, nil
 	}

@@ -39,7 +39,9 @@ func TestShipGate_AutonomousUI(t *testing.T) {
 	ref := syncedAsset(t, "skills/ship/references/autonomous-ui.md")
 	assertContainsAll(t, "autonomous-ui.md", ref, []string{"ZNF_SANDBOX_WEB_PORT", "exit 8",
 		// FR-3.4, FR-4.4, FR-4.7: ui-stack branch, infra-blocked line on board and PR.
-		"ZNF_SANDBOX_UI_STACK", "zenify ui-verify blocked --reason", "infra-blocked", "⚠️ UI chưa kiểm:", "drive_failed:"}) //znf:allow-lang
+		"ZNF_SANDBOX_UI_STACK", "zenify ui-verify blocked --reason", "infra-blocked", "⚠️ UI chưa kiểm:", "drive_failed:", //znf:allow-lang
+		// Reason shape the host accepts; re-block after a review-loop edit, never after a FAIL.
+		"`[A-Za-z0-9._-]{1,60}`", "`/deals/:id` becomes `deals-id`", "the tree changed since", "Never after a FAIL."})
 }
 
 // FR-2: ship step 4 runs the tests affected by the branch; the rules live in a reference (SKILL.md is at its byte budget).
