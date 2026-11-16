@@ -24,7 +24,7 @@ Lệnh ghi `<repo>/.znf/ui-verify/<fp>.blocked.json` (`{"fp","reason","recorded_
 
 Lệnh từ chối (thoát 2) khi fingerprint hiện tại đã có screen mang verdict khác `pass`: đó là lỗi UI thật, không phải hạ tầng.
 
-Nếu env `ZNF_UI_STATUS_FILE` khác rỗng, lệnh ghi thêm file đó với `{"state":"infra-blocked","reason":"<mã>"}` để host cảnh báo admin. Ghi file này lỗi chỉ in cảnh báo ra stderr, lệnh vẫn thoát 0.
+Nếu env `ZNF_UI_STATUS_FILE` khác rỗng, lệnh ghi thêm file đó với `{"state":"infra-blocked","reason":"<mã>","repo":"<đường dẫn tuyệt đối của repo>","fp":"<fp>"}` để host cảnh báo admin; `repo` và `fp` cho biết bản ghi nói về tree nào, vì một run có thể kiểm nhiều repo. Ghi file này lỗi chỉ in cảnh báo ra stderr, lệnh vẫn thoát 0.
 
 ## Cờ
 

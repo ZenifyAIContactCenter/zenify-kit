@@ -158,10 +158,10 @@ func newUIVerifyCheckCmd() *cobra.Command {
 				{"state", string(state)},
 				{"msg", msg},
 			})
-			// The host reads ZNF_UI_STATUS_FILE as "UI unchecked"; once the tree
-			// resolves to any other state, that report is stale.
+			// The host reads ZNF_UI_STATUS_FILE as "UI unchecked"; once the repo
+			// that wrote it resolves to any other state, that report is stale.
 			if path := os.Getenv("ZNF_UI_STATUS_FILE"); path != "" && state != "" && !strings.HasPrefix(state, "infra-blocked: ") {
-				if rerr := os.Remove(path); rerr != nil && !os.IsNotExist(rerr) {
+				if rerr := clearUIStatusFile(path, repo); rerr != nil {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: cannot remove ZNF_UI_STATUS_FILE: %v\n", rerr)
 				}
 			}
@@ -221,7 +221,7 @@ func newUIVerifyBlockedCmd() *cobra.Command {
 				return err
 			}
 			if path := os.Getenv("ZNF_UI_STATUS_FILE"); path != "" {
-				if werr := writeUIStatusFile(path, reason); werr != nil {
+				if werr := writeUIStatusFile(path, reason, repo, fp); werr != nil {
 					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: cannot write ZNF_UI_STATUS_FILE: %v\n", werr)
 				}
 			}
@@ -234,13 +234,48 @@ func newUIVerifyBlockedCmd() *cobra.Command {
 	return c
 }
 
+// uiStatus is the ZNF_UI_STATUS_FILE JSON. The host reads state and reason;
+// repo (absolute, clean) and fp say which tree it is about, since one run may
+// check several repos.
+type uiStatus struct {
+	State  string `json:"state"`
+	Reason string `json:"reason"`
+	Repo   string `json:"repo"`
+	FP     string `json:"fp"`
+}
+
+// statusRepo is the form of a repo path stored in and compared against uiStatus.Repo.
+func statusRepo(repo string) string {
+	if abs, err := filepath.Abs(repo); err == nil {
+		return abs
+	}
+	return filepath.Clean(repo)
+}
+
+// clearUIStatusFile removes path only when it parses and names repo; a file
+// about another repo, an unparseable one or a missing one is left as is.
+func clearUIStatusFile(path, repo string) error {
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- path is the operator-set ZNF_UI_STATUS_FILE
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var st uiStatus
+	if json.Unmarshal(b, &st) != nil || st.Repo == "" || st.Repo != statusRepo(repo) {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // writeUIStatusFile writes the host-readable status JSON via a temp file in the
 // same directory, then renames it so a reader never sees a partial file.
-func writeUIStatusFile(path, reason string) error {
-	b, err := json.Marshal(struct {
-		State  string `json:"state"`
-		Reason string `json:"reason"`
-	}{"infra-blocked", reason})
+func writeUIStatusFile(path, reason, repo, fp string) error {
+	b, err := json.Marshal(uiStatus{State: "infra-blocked", Reason: reason, Repo: statusRepo(repo), FP: fp})
 	if err != nil {
 		return err
 	}
