@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.72.1
+
+*2026-11-17*
+
+- **`docs sync` không còn kẹt vì dòng trạng thái spec:** `wt sweep` (qua `docs sweep --apply`) giờ kéo store mới nhất trước khi ghi dòng `**Trạng thái:**` của spec; không kéo được hoặc store đang có thay đổi chưa commit thì lượt sweep chỉ chạy thử, không ghi. Nếu rebase của `zenify docs sync` xung đột ở một commit chỉ gồm các dòng trạng thái do sweep ghi, commit đó bị bỏ, bên remote thắng, và note ghi sha đã bỏ; xung đột ở nội dung khác vẫn hủy rebase và giữ nguyên commit local như trước. Trước đây một lần xung đột như vậy làm store kẹt mãi, mỗi lượt sync đều lỗi. Xem [Knowledge store](/concepts/knowledge-store).
+
 ## v0.72.0
 
 *2026-11-17*
