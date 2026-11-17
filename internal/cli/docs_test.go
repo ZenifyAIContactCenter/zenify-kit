@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsview"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
 // docs sync resolves the repo dir via discovery (repos/<repo> or flat).
@@ -201,5 +202,71 @@ func TestDocsSweep_DirScopesStore(t *testing.T) {
 	}
 	if exists(real) {
 		t.Fatal("default path did not resolve to the ZENIFY_HOME store")
+	}
+}
+
+// sweepStore builds a bare remote and a store clone tracking it, seeded with one spec and one
+// undated handoff, under temp dirs with an isolated git config.
+func sweepStore(t *testing.T) (store string, run func(dir string, args ...string)) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
+		t.Setenv(k, "t@example.invalid")
+	}
+	run = func(dir string, args ...string) {
+		if out, err := gitx.ExecRunner().Run(dir, args...); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote.git")
+	store = filepath.Join(root, "store")
+	run(root, "init", "-q", "--bare", "-b", "main", remote)
+	run(root, "clone", "-q", remote, store)
+	writeF(t, filepath.Join(store, "specs", "r", "2026-01-01-a-design.md"), "# a\n")
+	writeF(t, filepath.Join(store, "handoff", "old.md"), "x")
+	run(store, "add", "-A")
+	run(store, "commit", "-qm", "seed")
+	run(store, "push", "-q", "origin", "HEAD:main")
+	run(store, "branch", "-q", "--set-upstream-to=origin/main")
+	return store, run
+}
+
+// --apply on a store that cannot be brought up to date with its remote (here: dirty) writes
+// nothing and says so: a delete or header written onto a stale base conflicts on the next sync.
+func TestDocsSweep_ApplySkippedWhenStoreNotUpToDate(t *testing.T) {
+	store, _ := sweepStore(t)
+	writeF(t, filepath.Join(store, "notes.md"), "uncommitted")
+
+	var e bytes.Buffer
+	if err := docsSweepCore(t.TempDir(), store, true, true, &e); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(store, "handoff", "old.md")); err != nil {
+		t.Fatal("apply wrote into a store that is not up to date")
+	}
+	if !strings.Contains(e.String(), "bỏ --apply") { //znf:allow-lang
+		t.Fatalf("missing skip note: %s", e.String())
+	}
+}
+
+// The incident path: a clean store behind its remote is pulled BEFORE planning, so --apply acts
+// on the teammate's newer content (here: a handoff only the remote has is swept too).
+func TestDocsSweep_ApplyPullsBehindStoreBeforePlanning(t *testing.T) {
+	store, run := sweepStore(t)
+	mate := filepath.Join(filepath.Dir(store), "mate")
+	run(filepath.Dir(store), "clone", "-q", filepath.Join(filepath.Dir(store), "remote.git"), mate)
+	writeF(t, filepath.Join(mate, "handoff", "remote-only.md"), "y")
+	run(mate, "add", "-A")
+	run(mate, "commit", "-qm", "mate")
+	run(mate, "push", "-q")
+
+	if err := docsSweepCore(t.TempDir(), store, true, true, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(store, "notes", "remote-only.md")); err != nil {
+		t.Fatal("store was not pulled before planning: the remote-only handoff was not swept")
 	}
 }

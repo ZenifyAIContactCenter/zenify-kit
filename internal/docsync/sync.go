@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/docsweep"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
@@ -78,16 +79,108 @@ func aheadCommits(r gitx.Runner, dir string) int {
 // both the dirty path (just committed) and the clean-but-ahead path (commit
 // stuck from before).
 func pushPending(r gitx.Runner, dir string) []string {
-	if _, err := r.Run(dir, "pull", "--rebase"); err != nil {
-		// Most likely a rebase conflict. Do NOT commit over the marker: abort
-		// to return to our commit (safe, unpushed), report it and skip this sync.
-		_, _ = r.Run(dir, "rebase", "--abort")
+	dropped, err := pullRebase(r, dir)
+	if err != nil {
 		return note(fmt.Sprintf("docs sync: pull/rebase error: %s — aborted, local commit kept intact (not pushed). Skipping this sync (fail-open)", gitErr(err)))
 	}
 	if _, err := r.Run(dir, "push"); err != nil {
-		return note(fmt.Sprintf("docs sync: push error: %s (fail-open, local commit kept intact)", gitErr(err)))
+		msg := fmt.Sprintf("docs sync: push error: %s (fail-open, remaining local commits kept intact)", gitErr(err))
+		if len(dropped) > 0 {
+			msg += "; " + droppedNote(dropped)
+		}
+		return note(msg)
+	}
+	if len(dropped) > 0 {
+		return note("docs sync: pushed; " + droppedNote(dropped))
 	}
 	return note("docs sync: pushed")
+}
+
+func droppedNote(shas []string) string {
+	return fmt.Sprintf("dropped %d conflicting status-header-only commit(s) %s whole, the remote side wins (docs sweep rewrites headers)", len(shas), strings.Join(shas, " "))
+}
+
+// maxSkips caps how many machine-only commits one pull may drop.
+const maxSkips = 20
+
+// pullRebase runs pull --rebase. When the rebase stops on a commit that is only a docs sweep
+// status header rewrite (recomputed on the next sweep), that commit is dropped with rebase --skip
+// and the rebase goes on; otherwise a stuck header commit would make every later sync fail on the
+// same conflict forever. Any stop on a commit touching real content, or any other failure, aborts
+// — our commits stay intact, never committed over a conflict marker. dropped lists the short shas
+// skipped (only meaningful when err is nil).
+func pullRebase(r gitx.Runner, dir string) (dropped []string, err error) {
+	_, err = r.Run(dir, "pull", "--rebase")
+	for err != nil && len(dropped) < maxSkips {
+		sha, ok := stoppedOnHeaderOnly(r, dir)
+		if !ok {
+			break
+		}
+		dropped = append(dropped, sha)
+		_, err = r.Run(dir, "rebase", "--skip")
+	}
+	if err != nil {
+		_, _ = r.Run(dir, "rebase", "--abort")
+	}
+	return dropped, err
+}
+
+// stoppedOnHeaderOnly reports whether a rebase is stopped on a commit that only modifies files
+// under specs/ (no add, delete, rename or mode change), each exactly a docs sweep header rewrite
+// of its parent version (docsweep.IsHeaderRewrite). Paths come NUL-separated, so no quoting.
+func stoppedOnHeaderOnly(r gitx.Runner, dir string) (sha string, ok bool) {
+	out, err := r.Run(dir, "rev-parse", "-q", "--verify", "--short", "REBASE_HEAD")
+	if err != nil {
+		return "", false
+	}
+	sha = strings.TrimSpace(string(out))
+	out, err = r.Run(dir, "diff-tree", "--no-commit-id", "-r", "-z", "--raw", "--no-renames", "--no-abbrev", "REBASE_HEAD")
+	if err != nil {
+		return "", false
+	}
+	// Records: ":<mode> <mode> <blob> <blob> <status>\x00<path>\x00".
+	f := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	if len(f) < 2 || len(f)%2 != 0 {
+		return "", false
+	}
+	for i := 0; i < len(f); i += 2 {
+		meta := strings.Fields(strings.TrimPrefix(f[i], ":"))
+		if len(meta) != 5 || meta[4] != "M" || meta[0] != meta[1] || !strings.HasPrefix(f[i+1], "specs/") {
+			return "", false
+		}
+		before, err1 := r.Run(dir, "cat-file", "blob", meta[2])
+		after, err2 := r.Run(dir, "cat-file", "blob", meta[3])
+		if err1 != nil || err2 != nil || !docsweep.IsHeaderRewrite(before, after) {
+			return "", false
+		}
+	}
+	return sha, true
+}
+
+// Update brings the store level with its upstream before a machine writer (docs sweep --apply)
+// edits it, so its writes never land on a stale base and conflict with a teammate's newer edit.
+// nil when there is nothing to pull against (not a repo, no upstream); an error when the tree is
+// dirty or the pull fails (then nothing was changed and the caller must not write). The returned
+// note is non-empty when the pull dropped status-header-only commits.
+func Update(r gitx.Runner, dir string) (string, error) {
+	if _, err := r.Run(dir, "rev-parse", "--abbrev-ref", "@{upstream}"); err != nil {
+		return "", nil
+	}
+	st, err := r.Run(dir, "status", "--porcelain")
+	if err != nil {
+		return "", fmt.Errorf("status: %s", gitErr(err))
+	}
+	if strings.TrimSpace(string(st)) != "" {
+		return "", errors.New("uncommitted changes, docs sync has not run yet")
+	}
+	dropped, err := pullRebase(r, dir)
+	if err != nil {
+		return "", fmt.Errorf("pull --rebase: %s", gitErr(err))
+	}
+	if len(dropped) > 0 {
+		return "docs sync: " + droppedNote(dropped), nil
+	}
+	return "", nil
 }
 
 func note(s string) []string { return []string{s} }

@@ -66,6 +66,28 @@ var (
 	labelLine  = regexp.MustCompile(`^\*\*[^*]+:\*\*`)
 )
 
+// IsHeaderRewrite reports whether after is exactly what the sweep's header write makes of before:
+// the status header set to after's first status value, a state the sweep writes, and nothing
+// else changed. Only the header block (before the first "---" or "## ") counts. docsync uses it to
+// recognise a machine-only commit; a status-like line edited in the body, or a hand-written value,
+// does not qualify.
+func IsHeaderRewrite(before, after []byte) bool {
+	for _, l := range strings.Split(string(after), "\n") {
+		if l == "---" || strings.HasPrefix(l, "## ") {
+			return false // past the header block: a status-like line here is body content
+		}
+		if m := statusLine.FindStringSubmatch(l); m != nil {
+			switch st := speclife.State(strings.TrimSpace(m[2])); st {
+			case speclife.StatePlanned, speclife.StateInProgress, speclife.StateBuilt, speclife.StateBuiltFuzzy, speclife.StateSuperseded:
+				out, changed, _ := rewriteHeader(before, st)
+				return changed && string(out) == string(after)
+			}
+			return false // a value the sweep never writes is a person's edit
+		}
+	}
+	return false
+}
+
 // detailArrow separates the old and new value in a header action's Detail; Apply reads the new
 // state back from the text after it.
 const detailArrow = " → "
