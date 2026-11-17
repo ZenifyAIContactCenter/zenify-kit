@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.72.0
+
+*2026-11-17*
+
+- **`wt new --variant` chọn kiểu checkout:** repo khai `defaultVariant` và `variants` trong `.claude/worktree.json` thì `wt new` dựng worktree theo variant đó: `sparseExclude` ẩn đường dẫn chỉ trong worktree (checkout chính giữ nguyên), `submodules` được init, `setup` chạy sau khi cài deps. Ví dụ repo app mobile có bản `js` ẩn `android/` và `ios/`, bản `native` checkout đầy đủ rồi `pod install`. Repo không khai gì thì checkout đầy đủ như cũ. Xem [Worktree theo slug](/concepts/worktree-per-slug) và [`zenify wt new`](/reference/cli/zenify_wt_new).
+- **`review_wait` không còn bị cắt ở giây 60:** `zenify up --apply` đăng ký `zenify-zenie` với `"timeout": 960000`, và gỡ rồi đăng ký lại entry cũ thiếu timeout. Trước đây Claude Code cắt mọi request MCP HTTP ở giây 60 nên `/znf:pr-review` rơi về đường comment. Sau khi nâng cấp, chạy `zenify up --apply` rồi mở lại Claude Code; `claude mcp get zenify-zenie` phải in `Timeout: 960000ms`. Xem [Broker client](/guides/broker-client).
+- **`--workspace .` luôn là thư mục hiện tại:** chạy từ thư mục con thì lấy chính thư mục con, không bao giờ rơi về `~/.zenify/workspace`. Chỉ khi bỏ trống cờ, kit mới dò ngược tìm `.zenify/manifest.json`. Xem [Quickstart](/getting-started/quickstart).
+
 ## v0.71.1
 
 *2026-11-17*
