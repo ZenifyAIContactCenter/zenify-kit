@@ -25,6 +25,25 @@ Sau khi tạo xong, `wt new` đẩy branch lên `origin` (`push -u`) để việ
 | `--base` | Base ref tự chọn, thắng mọi giá trị trong `worktree.json`. |
 | `--another` | Cho phép mở task thứ hai trong repo khi đã có một worktree chưa merge. |
 | `--install` | Buộc cài deps mới dù config khai `symlink` hoặc `clone`. |
+| `--variant` | Chọn kiểu checkout trong khối `variants` của `worktree.json`. Không truyền thì lấy `defaultVariant`; repo không khai `defaultVariant` thì checkout đầy đủ như cũ. Tên không có trong `variants` bị từ chối trước khi tạo worktree. |
+
+### Variant
+
+Repo khai các kiểu checkout trong `.claude/worktree.json`, ví dụ bản nhẹ chỉ có code JS và bản đầy đủ có code native:
+
+```json
+"defaultVariant": "js",
+"variants": {
+  "js":     { "sparseExclude": ["android/", "ios/"] },
+  "native": { "submodules": ["vendor/engine"], "setup": "cd ios && pod install" }
+}
+```
+
+- `sparseExclude`: đường dẫn (tệp hoặc thư mục, tính từ gốc repo) bị ẩn khỏi worktree bằng sparse-checkout riêng của worktree đó. Checkout chính không bị thu hẹp, và các đường dẫn bị ẩn không hiện là đã xoá trong `git status`.
+- `submodules`: submodule được `git submodule update --init` trong worktree.
+- `setup`: lệnh shell chạy trong worktree sau khi cài deps.
+
+Bước nào lỗi thì lệnh xoá worktree và branch vừa tạo. Tên variant được ghi vào `git config --worktree wt.variant` và in ở dòng cuối.
 
 Slug mang mã ticket khi spec hoặc `## Intent` có dòng `**Việc Plane:**`, ví dụ `zen-123-session-timeout` cho branch `<user>/fix/zen-123-session-timeout`. Mã `zen-<n>` trong tên branch là thứ `/znf:ship` đọc để đặt `ZEN-<n>` vào tiêu đề PR.
 
@@ -33,6 +52,7 @@ Slug mang mã ticket khi spec hoặc `## Intent` có dòng `**Việc Plane:**`, 
 ```bash
 git fetch origin
 zenify wt new session-timeout --type fix
+zenify wt new push-sound --variant native   # repo có khai variants
 ```
 
 ## Lưu ý

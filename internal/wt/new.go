@@ -18,6 +18,9 @@ type NewOptions struct {
 	Slug         string
 	Type         string
 	BaseOverride string
+	// Variant names a checkout shape from worktree.json "variants"; empty
+	// falls back to "defaultVariant", and to a plain checkout without one.
+	Variant      string
 	Host         string
 	ForceInstall bool
 	Another      bool
@@ -89,6 +92,10 @@ func RunNew(o NewOptions) error {
 	cfg, err := Load(o.RepoRoot)
 	if err != nil {
 		return err
+	}
+	variantName, variant, err := ResolveVariant(cfg, o.Variant)
+	if err != nil {
+		return fmt.Errorf("wt: %w", err)
 	}
 	user := BranchUser(r, o.RepoRoot, cfg.User)
 	branch := fmt.Sprintf("%s/%s/%s", user, o.Type, o.Slug)
@@ -221,6 +228,13 @@ func RunNew(o NewOptions) error {
 		return abort(fmt.Errorf("wt: could not enable extensions.worktreeConfig: %w", err))
 	}
 
+	// Variant checkout shape first, so the copy/deps steps below see the final
+	// tree. Runs after extensions.worktreeConfig is on, so sparse-checkout lands
+	// in this worktree's config and never narrows the main checkout.
+	if err := applyVariantCheckout(r, path, variant); err != nil {
+		return abort(err)
+	}
+
 	copyList, skipped := dropTrackedInBase(r, o.RepoRoot, base, cfg.Copy)
 	for _, s := range skipped {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: skipped copy target %q — tracked in %s, the checkout already has it\n", s, base)
@@ -251,9 +265,18 @@ func RunNew(o NewOptions) error {
 	if err := ApplyDeps(o.RepoRoot, path, deps, cfg.DepsDir, cfg.Install); err != nil {
 		return abort(fmt.Errorf("wt: deps setup failed: %w", err))
 	}
+	if strings.TrimSpace(variant.Setup) != "" {
+		if err := runInstall(path, variant.Setup); err != nil {
+			return abort(fmt.Errorf("wt: variant %q setup failed: %w", variantName, err))
+		}
+	}
 
 	// Record worktree-scoped git config so `wt ls`/guards can rebuild from git.
-	for _, kv := range [][2]string{{"wt.slug", o.Slug}, {"wt.type", o.Type}, {"wt.port", fmt.Sprintf("%d", port)}, {"wt.deps", deps}, {"wt.base", base}} {
+	gitKV := [][2]string{{"wt.slug", o.Slug}, {"wt.type", o.Type}, {"wt.port", fmt.Sprintf("%d", port)}, {"wt.deps", deps}, {"wt.base", base}}
+	if variantName != "" {
+		gitKV = append(gitKV, [2]string{"wt.variant", variantName})
+	}
+	for _, kv := range gitKV {
 		if _, err := r.Run(path, "config", "--worktree", kv[0], kv[1]); err != nil {
 			return abort(fmt.Errorf("wt: could not record %s: %w", kv[0], err))
 		}
@@ -333,7 +356,32 @@ func RunNew(o NewOptions) error {
 	if pushed {
 		tail = ", pushed to origin"
 	}
+	if variantName != "" {
+		tail = ", variant=" + variantName + tail
+	}
 	_, _ = fmt.Fprintf(o.Stderr, "wt: branch %s, %s=%d, deps=%s%s\n", branch, cfg.PortEnv, port, deps, tail)
+	return nil
+}
+
+// applyVariantCheckout shapes a fresh worktree per v: a non-cone sparse-checkout
+// that hides every SparseExclude path, then `submodule update --init` for each
+// declared submodule. A zero Variant is a no-op.
+func applyVariantCheckout(r gitx.Runner, path string, v Variant) error {
+	if len(v.SparseExclude) > 0 {
+		args := []string{"sparse-checkout", "set", "--no-cone", "/*"}
+		for _, p := range v.SparseExclude {
+			args = append(args, sparseExcludePattern(p))
+		}
+		if _, err := r.Run(path, args...); err != nil {
+			return fmt.Errorf("wt: sparse-checkout failed: %w", err)
+		}
+	}
+	if len(v.Submodules) > 0 {
+		args := append([]string{"submodule", "update", "--init", "--"}, v.Submodules...)
+		if _, err := r.Run(path, args...); err != nil {
+			return fmt.Errorf("wt: submodule init failed: %w", err)
+		}
+	}
 	return nil
 }
 

@@ -133,7 +133,7 @@ func newWtConfigCmd() *cobra.Command {
 }
 
 func newWtNewCmd() *cobra.Command {
-	var typ, base string
+	var typ, base, variant string
 	var forceInstall, another bool
 	c := &cobra.Command{
 		Use:   "new <slug>",
@@ -154,6 +154,7 @@ func newWtNewCmd() *cobra.Command {
 				Slug:         args[0],
 				Type:         typ,
 				BaseOverride: base,
+				Variant:      variant,
 				ForceInstall: forceInstall,
 				Another:      another,
 				Host:         host,
@@ -172,6 +173,7 @@ func newWtNewCmd() *cobra.Command {
 	c.Flags().StringVar(&base, "base", "", "override the base ref (e.g. this week's release)")
 	c.Flags().BoolVar(&forceInstall, "install", false, "force deps=install even if config says symlink/clone")
 	c.Flags().BoolVar(&another, "another", false, "allow a second concurrent task in this repo")
+	c.Flags().StringVar(&variant, "variant", "", "checkout shape from worktree.json \"variants\" (default: its \"defaultVariant\")")
 	return c
 }
 
