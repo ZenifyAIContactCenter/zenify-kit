@@ -50,7 +50,8 @@ func TestResolveWorkspace_Table(t *testing.T) {
 		wantOK     bool
 	}{
 		{"flag wins", plain, wsA, noEnv, wsA, wsFromFlag, true},
-		{"flag dot means unset → marker", nested, ".", noEnv, wsA, wsFromMarker, true},
+		{"flag dot means cwd, no pointer fallback", plain, ".", noEnv, plain, wsFromFlag, true},
+		{"flag dot in nested dir is that dir", nested, ".", noEnv, canonicalPath(nested), wsFromFlag, true},
 		{"marker at cwd", wsA, "", noEnv, wsA, wsFromMarker, true},
 		{"marker at ancestor", nested, "", noEnv, wsA, wsFromMarker, true},
 		{"pointer when no marker", plain, "", noEnv, wsA, wsFromPointer, true},
