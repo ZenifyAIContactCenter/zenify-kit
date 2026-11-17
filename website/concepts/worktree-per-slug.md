@@ -42,6 +42,10 @@ Một plan chia thành nhiều SDD task (Task 1, Task 2, ...). Tất cả task �
 
 Slug bắt đầu bằng `zen-<n>` (ví dụ `zen-123-login`) thì `wt new` báo cho Plane bằng PAT của bạn (`PLANE_API_KEY`). Backlog và Todo chỉ cho biết việc nằm ngoài hay trong cycle, không cho biết ai giữ, nên kit xử lý hai cột như nhau. Việc `ZEN-<n>` ở Backlog hoặc Todo mà chưa có ai được giao thì chuyển sang In Progress và thêm bạn vào assignee. Việc ở Backlog hoặc Todo mà chỉ có bạn trong assignee thì chỉ chuyển state; nếu còn người khác cùng trong assignee (watcher hoặc người giữ khác) thì kit không biết ai giữ nên chỉ in cảnh báo, zenie sẽ chuyển khi thấy branch được push. Việc ở Backlog hoặc Todo do người khác giữ, hoặc ở Intake, Done, Cancelled thì chỉ in cảnh báo. Việc đã In Progress trở đi thì không làm gì. Plane lỗi, thiếu PAT hay quá 8 giây không phản hồi cũng chỉ in cảnh báo: worktree vẫn được tạo.
 
+### Variant: chọn kiểu checkout
+
+Repo khai `variants` trong `.claude/worktree.json` thì `wt new` dựng worktree theo một variant. Repo app mobile, chẳng hạn, có thể khai bản `js` ẩn `android/` và `ios/` (tạo nhanh, đủ để sửa code JS) và bản `native` checkout đầy đủ, init submodule rồi chạy `pod install`. Không truyền `--variant` thì lệnh lấy `defaultVariant`; repo không khai gì thì checkout đầy đủ như trước. Phần ẩn đường dẫn chỉ áp dụng cho worktree đó, checkout chính giữ nguyên. Cú pháp các khoá xem ở [`zenify wt new`](/reference/cli/zenify_wt_new).
+
 ## Liên quan
 
 - [Base ref, hotfix base, port block](/concepts/base-ref-and-ports): `--base` lấy từ đâu và vì sao hotfix khác.

@@ -49,13 +49,14 @@ func TestLoad_VariantsRejectBadConfig(t *testing.T) {
 
 func TestSparseExcludePattern(t *testing.T) {
 	for in, want := range map[string]string{
-		"android":    "!/android/",
-		"android/":   "!/android/",
-		"/native/":   "!/native/",
-		"a/b":        "!/a/b/",
-		"a//b":       "",
-		"./android":  "",
-		"android/..": "",
+		"android":     "!/android",
+		"android/":    "!/android",
+		"/native/":    "!/native",
+		"ios/Podfile": "!/ios/Podfile",
+		"a/b":         "!/a/b",
+		"a//b":        "",
+		"./android":   "",
+		"android/..":  "",
 	} {
 		if got := sparseExcludePattern(in); got != want {
 			t.Errorf("sparseExcludePattern(%q) = %q, want %q", in, got, want)
@@ -148,6 +149,30 @@ func TestRunNew_DefaultVariantHidesNativeDirs(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "variant=js") {
 		t.Fatalf("tail line must name the variant, got %q", errb.String())
+	}
+}
+
+// A sparseExclude entry naming a file hides that file only, not its directory.
+func TestRunNew_SparseExcludeHidesSingleFile(t *testing.T) {
+	root := variantRepo(t, `{"abbrev":"m","user":"namph","portRange":[3200,3249],"deps":"none",
+		"defaultVariant":"lean","variants":{"lean":{"sparseExclude":["ios/Podfile"]}}}`, false)
+	if err := os.WriteFile(filepath.Join(root, "ios", "keep.txt"), []byte("k"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, root, "add", "-A")
+	gitT(t, root, "commit", "-q", "-m", "keep")
+	gitT(t, root, "push", "-q", "origin", "main")
+	gitT(t, root, "fetch", "-q", "origin")
+	o, errb := realOpts(root)
+	if err := RunNew(o); err != nil {
+		t.Fatalf("RunNew: %v\n%s", err, errb)
+	}
+	wtPath := filepath.Join(root, ".worktrees", "my-task")
+	if exists(filepath.Join(wtPath, "ios", "Podfile")) {
+		t.Fatal("ios/Podfile must be hidden")
+	}
+	if !exists(filepath.Join(wtPath, "ios", "keep.txt")) {
+		t.Fatal("excluding one file must keep the rest of its directory")
 	}
 }
 

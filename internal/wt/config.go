@@ -46,7 +46,7 @@ type Config struct {
 
 // Variant is one entry of the variants map: how `wt new` shapes the checkout.
 type Variant struct {
-	// SparseExclude lists repo-root-relative paths hidden from the worktree via
+	// SparseExclude lists repo-root-relative paths (files or directories) hidden from the worktree via
 	// a per-worktree non-cone sparse-checkout (the main checkout is untouched).
 	SparseExclude []string `json:"sparseExclude"`
 	// Submodules are initialised (`git submodule update --init`) in the worktree.
@@ -172,8 +172,9 @@ func validateVariants(c *Config) error {
 }
 
 // sparseExcludePattern turns a repo-relative path ("android", "android/",
-// "/native/") into an anchored non-cone exclude pattern ("!/android/"). It
-// returns "" for anything that is not a plain path.
+// "/ios/Podfile") into an anchored non-cone exclude pattern ("!/android",
+// "!/ios/Podfile"). No trailing slash, so one pattern hides a file or a whole
+// directory alike. It returns "" for anything that is not a plain path.
 func sparseExcludePattern(p string) string {
 	p = strings.Trim(strings.TrimSpace(p), "/")
 	if p == "" || strings.ContainsAny(p, "!*?[]\\") || strings.HasPrefix(p, "-") {
@@ -184,7 +185,7 @@ func sparseExcludePattern(p string) string {
 			return ""
 		}
 	}
-	return "!/" + p + "/"
+	return "!/" + p
 }
 
 // ResolveVariant picks the variant `wt new` applies: the requested name, else
