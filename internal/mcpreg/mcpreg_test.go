@@ -98,6 +98,58 @@ func TestBootstrap_StaleKitEntryUpdated(t *testing.T) {
 	}
 }
 
+const zenieURL = "https://broker.example/mcp/zenie"
+
+var zenieSpec = Spec{Name: "zenify-zenie", URL: zenieURL, TimeoutMS: 960000}
+
+// A Spec with TimeoutMS writes it as a JSON number `timeout`.
+func TestBootstrap_AddsTimeout(t *testing.T) {
+	var calls []call
+	st, err := Bootstrap(Options{Spec: zenieSpec, Run: fakeRun(`No MCP server named "zenify-zenie".`, errors.New("exit 1"), &calls)})
+	if err != nil || st != playwright.RegAbsent || len(calls) != 2 {
+		t.Fatalf("st=%v err=%v calls=%v", st, err, calls)
+	}
+	var got map[string]any
+	if err := json.Unmarshal([]byte(calls[1].args[3]), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"type": "http", "url": zenieURL, "headersHelper": "zenify broker headers", "timeout": float64(960000)}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("json=%v", got)
+	}
+}
+
+// A local kit entry with the right URL but no or a lower `Timeout:` line (as
+// `claude mcp get` 2.1.325 prints it) is replaced; one at or above the wanted
+// timeout is left alone.
+func TestBootstrap_TimeoutUpgrade(t *testing.T) {
+	head := "zenify-zenie:\n  Scope: Local config (private to you in this project)\n  Status: ✔ Connected\n  Type: http\n  URL: " + zenieURL + "\n"
+	for name, tc := range map[string]struct {
+		out  string
+		want playwright.RegState
+	}{
+		"no timeout":     {head, playwright.RegLegacyDefault},
+		"lower timeout":  {head + "  Timeout: 60000ms\n", playwright.RegLegacyDefault},
+		"same timeout":   {head + "  Timeout: 960000ms\n", playwright.RegDesired},
+		"higher timeout": {head + "  Timeout: 1200000ms\n", playwright.RegDesired},
+	} {
+		var calls []call
+		st, err := Bootstrap(Options{Spec: zenieSpec, Run: fakeRun(tc.out, nil, &calls)})
+		if err != nil || st != tc.want {
+			t.Fatalf("%s: st=%v err=%v", name, st, err)
+		}
+		if tc.want == playwright.RegDesired {
+			if len(calls) != 1 {
+				t.Fatalf("%s: calls=%v", name, calls)
+			}
+			continue
+		}
+		if len(calls) != 3 || !reflect.DeepEqual(calls[1].args, []string{"mcp", "remove", "zenify-zenie", "-s", "local"}) || !strings.Contains(calls[2].args[3], `"timeout":960000`) {
+			t.Fatalf("%s: calls=%v", name, calls)
+		}
+	}
+}
+
 // A `claude mcp get` failure that is not "not found" adds nothing.
 func TestBootstrap_GetFailureNoAdd(t *testing.T) {
 	var calls []call
