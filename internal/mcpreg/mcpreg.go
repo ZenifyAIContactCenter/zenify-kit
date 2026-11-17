@@ -9,6 +9,7 @@ import (
 	"fmt"
 	neturl "net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/playwright"
@@ -26,7 +27,13 @@ func isNotFound(out string) bool {
 }
 
 // Spec names one kit-managed MCP server; URL is <broker.url>/mcp/<name>.
-type Spec struct{ Name, URL string }
+// TimeoutMS, when > 0, is written as the entry's `timeout`: Claude Code cuts each
+// HTTP MCP request at max(60s, timeout, MCP_TIMEOUT), so a tool that waits longer
+// than 60s needs it. 0 writes no timeout.
+type Spec struct {
+	Name, URL string
+	TimeoutMS int
+}
 
 // Options carries the Spec and the injected command runner. Run returns the
 // combined stdout+stderr of the command.
@@ -42,7 +49,9 @@ type Options struct {
 // stale broker host: it is removed (-s local) and re-added (RegLegacyDefault). A
 // user-scope entry with the same URL or path is a pre-workspace-scope install:
 // the local entry is added and the user one is left for RemoveUserScoped
-// (RegLegacyDefault). `claude mcp get` does not print headersHelper (verified on
+// (RegLegacyDefault). A local entry with the right URL but a `Timeout:` below
+// Spec.TimeoutMS (no line = none; printed as `Timeout: <n>ms` on 2.1.325) is
+// replaced the same way. `claude mcp get` does not print headersHelper (verified on
 // 2.1.300), so the path is the only ownership mark. zenify-* names are
 // kit-reserved: a user's own server under that name and path is overwritten
 // too. Anything else under that name is the user's own and is left alone
@@ -53,10 +62,10 @@ func Bootstrap(o Options) (playwright.RegState, error) {
 	state := playwright.RegAbsent
 	switch {
 	case err == nil:
-		url, scope := parseGet(string(out))
+		url, scope, timeout := parseGet(string(out))
 		local, user := strings.HasPrefix(scope, "Local config"), strings.HasPrefix(scope, "User config")
 		switch {
-		case url == o.Spec.URL && local:
+		case url == o.Spec.URL && local && timeout >= o.Spec.TimeoutMS:
 			return playwright.RegDesired, nil
 		case url == o.Spec.URL && user:
 			state = playwright.RegLegacyDefault
@@ -73,7 +82,11 @@ func Bootstrap(o Options) (playwright.RegState, error) {
 	case !isNotFound(string(out)):
 		return playwright.RegAbsent, fmt.Errorf("claude mcp get %s: %w: %s", o.Spec.Name, err, strings.TrimSpace(string(out)))
 	}
-	cfg, err := json.Marshal(map[string]string{"type": "http", "url": o.Spec.URL, "headersHelper": HeadersHelper})
+	entry := map[string]any{"type": "http", "url": o.Spec.URL, "headersHelper": HeadersHelper}
+	if o.Spec.TimeoutMS > 0 {
+		entry["timeout"] = o.Spec.TimeoutMS
+	}
+	cfg, err := json.Marshal(entry)
 	if err != nil {
 		return state, err
 	}
@@ -157,8 +170,9 @@ func samePath(got, want string) bool {
 	return err == nil && g.Path == w.Path && g.RawQuery == ""
 }
 
-// parseGet reads the `URL:` and `Scope:` lines of `claude mcp get` output.
-func parseGet(out string) (url, scope string) {
+// parseGet reads the `URL:`, `Scope:` and `Timeout: <n>ms` lines of `claude mcp
+// get` output; timeout is 0 when the line is absent or unreadable.
+func parseGet(out string) (url, scope string, timeout int) {
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
@@ -166,9 +180,11 @@ func parseGet(out string) (url, scope string) {
 			url = strings.TrimSpace(strings.TrimPrefix(line, "URL:"))
 		case strings.HasPrefix(line, "Scope:"):
 			scope = strings.TrimSpace(strings.TrimPrefix(line, "Scope:"))
+		case strings.HasPrefix(line, "Timeout:"):
+			timeout, _ = strconv.Atoi(strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(line, "Timeout:")), "ms"))
 		}
 	}
-	return url, scope
+	return url, scope, timeout
 }
 
 // StdioSpec names one kit-managed stdio MCP server (a local command).

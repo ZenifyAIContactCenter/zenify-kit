@@ -24,7 +24,7 @@ If no such line exists, skip the loop: run `Skill(znf:ci-watch)` when watch appl
 ## 3. Wait for the verdict
 `SHA` = the head you pushed, `PREV` = the head before it (empty on the first wait), `SINCE` = the `startedAt` of the run being replaced, from 5.5 (empty after a push).
 
-Tool path: first call the wait tool for `SHA` (same `SHA` as the last wait → pass the value it gave to tell runs apart). It returns when the bot is done; its findings are step 5's list. Not done → call again, for 30 minutes in all, then stop and report as exit 1 below. It reports a failed run → the re-run tool once, then wait again; failed twice → stop and report.
+Tool path: first call the wait tool for `SHA` (same `SHA` as the last wait → pass the value it gave to tell runs apart). It returns when the bot is done; its findings are step 5's list. Claude Code cuts every HTTP MCP request at 60s unless the server's registration sets a longer `timeout` (`claude mcp get <server>` prints a `Timeout:` line). No such line, or one shorter than the wait you ask for → keep the tool's wait parameter at 55 seconds or less per call: a cut call is a tool failure and step 2 would drop the run to the comment path. Not done (`done: false`) → call again, for 30 minutes in all, then stop and report as exit 1 below. It reports a failed run → the re-run tool once, then wait again; failed twice → stop and report.
 
 Then, on both paths, run in the background (`run_in_background`), like ci-watch's loops; on the tool path it exits at the first poll:
 

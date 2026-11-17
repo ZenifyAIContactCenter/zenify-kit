@@ -977,6 +977,12 @@ func newUpCmd() *cobra.Command {
 	return cmd
 }
 
+// zenieMCPTimeoutMS is the zenify-zenie request timeout: review_wait blocks up to
+// its timeout_s (max 900s), and Claude Code otherwise cuts every HTTP MCP request
+// at 60s (measured 2026-11-17: timeout_s 57 returns, 60 and above fail at 60s).
+// 960s leaves room past 900s for the reply.
+const zenieMCPTimeoutMS = 960_000
+
 // registerBrokerMCP registers the kit's Grafana/PostHog/Zenie HTTP MCP servers with
 // Claude at local scope when the manifest declares a broker and claude is on
 // PATH; otherwise it does nothing, so `zenify up` keeps its pre-broker
@@ -992,8 +998,12 @@ func registerBrokerMCP(w, errW io.Writer, workspace string, m *manifest.Manifest
 		return nil, nil
 	}
 	for _, name := range []string{"grafana", "posthog", "zenie"} {
+		timeout := 0
+		if name == "zenie" {
+			timeout = zenieMCPTimeoutMS
+		}
 		st, err := mcpreg.Bootstrap(mcpreg.Options{
-			Spec: mcpreg.Spec{Name: "zenify-" + name, URL: strings.TrimRight(m.Broker.URL, "/") + "/mcp/" + name},
+			Spec: mcpreg.Spec{Name: "zenify-" + name, URL: strings.TrimRight(m.Broker.URL, "/") + "/mcp/" + name, TimeoutMS: timeout},
 			Run:  run,
 		})
 		switch {
