@@ -84,7 +84,11 @@ func pushPending(r gitx.Runner, dir string) []string {
 		return note(fmt.Sprintf("docs sync: pull/rebase error: %s — aborted, local commit kept intact (not pushed). Skipping this sync (fail-open)", gitErr(err)))
 	}
 	if _, err := r.Run(dir, "push"); err != nil {
-		return note(fmt.Sprintf("docs sync: push error: %s (fail-open, local commit kept intact)", gitErr(err)))
+		msg := fmt.Sprintf("docs sync: push error: %s (fail-open, remaining local commits kept intact)", gitErr(err))
+		if len(dropped) > 0 {
+			msg += "; " + droppedNote(dropped)
+		}
+		return note(msg)
 	}
 	if len(dropped) > 0 {
 		return note("docs sync: pushed; " + droppedNote(dropped))
@@ -99,12 +103,12 @@ func droppedNote(shas []string) string {
 // maxSkips caps how many machine-only commits one pull may drop.
 const maxSkips = 20
 
-// pullRebase runs pull --rebase. When the rebase stops on a commit whose only changes are spec
-// status header lines (written by docs sweep, recomputed on the next sweep), that commit is
-// dropped with rebase --skip and the rebase goes on; otherwise a stuck header commit would make
-// every later sync fail on the same conflict forever. Any stop on a commit touching real content,
-// or any other failure, aborts — our commits stay intact, never committed over a conflict marker.
-// dropped lists the short shas skipped (only meaningful when err is nil).
+// pullRebase runs pull --rebase. When the rebase stops on a commit that is only a docs sweep
+// status header rewrite (recomputed on the next sweep), that commit is dropped with rebase --skip
+// and the rebase goes on; otherwise a stuck header commit would make every later sync fail on the
+// same conflict forever. Any stop on a commit touching real content, or any other failure, aborts
+// — our commits stay intact, never committed over a conflict marker. dropped lists the short shas
+// skipped (only meaningful when err is nil).
 func pullRebase(r gitx.Runner, dir string) (dropped []string, err error) {
 	_, err = r.Run(dir, "pull", "--rebase")
 	for err != nil && len(dropped) < maxSkips {
@@ -122,47 +126,35 @@ func pullRebase(r gitx.Runner, dir string) (dropped []string, err error) {
 }
 
 // stoppedOnHeaderOnly reports whether a rebase is stopped on a commit that only modifies files
-// under specs/ (no add, delete, rename, mode or binary change) and whose changed lines are all
-// status header lines or blank, with at least one status line. An empty or unreadable diff is not.
+// under specs/ (no add, delete, rename or mode change), each exactly a docs sweep header rewrite
+// of its parent version (docsweep.IsHeaderRewrite). Paths come NUL-separated, so no quoting.
 func stoppedOnHeaderOnly(r gitx.Runner, dir string) (sha string, ok bool) {
 	out, err := r.Run(dir, "rev-parse", "-q", "--verify", "--short", "REBASE_HEAD")
 	if err != nil {
 		return "", false
 	}
 	sha = strings.TrimSpace(string(out))
-	out, err = r.Run(dir, "show", "--format=", "--unified=0", "--no-color", "--no-renames", "--no-ext-diff", "--no-textconv", "REBASE_HEAD")
+	out, err = r.Run(dir, "diff-tree", "--no-commit-id", "-r", "-z", "--raw", "--no-renames", "--no-abbrev", "REBASE_HEAD")
 	if err != nil {
 		return "", false
 	}
-	status, inHunk := 0, false
-	for _, l := range strings.Split(string(out), "\n") {
-		switch {
-		case strings.HasPrefix(l, "diff "):
-			if !strings.HasPrefix(l, "diff --git a/specs/") || !strings.Contains(l, " b/specs/") {
-				return "", false
-			}
-			inHunk = false // file header lines follow until the first @@
-			continue
-		case strings.HasPrefix(l, "@@"):
-			inHunk = true
-			continue
-		case !inHunk:
-			// Plain modification headers only; "new file mode", "old mode", "Binary files"... reject.
-			if l != "" && !strings.HasPrefix(l, "index ") && !strings.HasPrefix(l, "--- a/") && !strings.HasPrefix(l, "+++ b/") {
-				return "", false
-			}
-			continue
-		case !strings.HasPrefix(l, "+") && !strings.HasPrefix(l, "-"):
-			continue
+	// Records: ":<mode> <mode> <blob> <blob> <status>\x00<path>\x00".
+	f := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	if len(f) < 2 || len(f)%2 != 0 {
+		return "", false
+	}
+	for i := 0; i < len(f); i += 2 {
+		meta := strings.Fields(strings.TrimPrefix(f[i], ":"))
+		if len(meta) != 5 || meta[4] != "M" || meta[0] != meta[1] || !strings.HasPrefix(f[i+1], "specs/") {
+			return "", false
 		}
-		switch body := l[1:]; {
-		case docsweep.IsStatusLine(body):
-			status++
-		case strings.TrimSpace(body) != "":
+		before, err1 := r.Run(dir, "cat-file", "blob", meta[2])
+		after, err2 := r.Run(dir, "cat-file", "blob", meta[3])
+		if err1 != nil || err2 != nil || !docsweep.IsHeaderRewrite(before, after) {
 			return "", false
 		}
 	}
-	return sha, status > 0
+	return sha, true
 }
 
 // Update brings the store level with its upstream before a machine writer (docs sweep --apply)

@@ -303,3 +303,42 @@ func TestSync_HeaderPlusStructuralChangeStillAborts(t *testing.T) {
 		t.Fatalf("local commit not kept: %s → %s", head, got)
 	}
 }
+
+// A status-like line in the spec body is real content, not the managed header: a conflict on it
+// aborts and keeps our commit.
+func TestSync_StatusLineInBodyStillAborts(t *testing.T) {
+	ours, mate := stores(t)
+	edit(t, mate, "# a\n\n**Trạng thái:** draft\n\nbody\n**Status:** mate example\n", "mate") //znf:allow-lang
+	git(t, mate, "push", "-q")
+	edit(t, ours, "# a\n\n**Trạng thái:** draft\n\nbody\n**Status:** our example\n", "ours") //znf:allow-lang
+	head := git(t, ours, "rev-parse", "HEAD")
+
+	notes := Sync(gitx.ExecRunner(), ours)
+	if len(notes) != 1 || !strings.Contains(notes[0], "aborted, local commit kept intact") {
+		t.Fatalf("notes = %v", notes)
+	}
+	if got := git(t, ours, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("local commit not kept: %s → %s", head, got)
+	}
+}
+
+// A spec name with Vietnamese letters (git quotes it in patch output) is still recognised.
+func TestSync_HeaderOnlyConflictNonASCIIPath(t *testing.T) {
+	ours, mate := stores(t)
+	p := "specs/r/2026-01-01-đăng-nhập-design.md"                          //znf:allow-lang
+	writeFile(t, filepath.Join(ours, p), "# b\n\n**Trạng thái:** draft\n") //znf:allow-lang
+	git(t, ours, "add", "-A")
+	git(t, ours, "commit", "-qm", "b")
+	git(t, ours, "push", "-q")
+	git(t, mate, "pull", "-q")
+	writeFile(t, filepath.Join(mate, p), "# b\n\n**Trạng thái:** superseded\n") //znf:allow-lang
+	git(t, mate, "commit", "-qam", "mate")
+	git(t, mate, "push", "-q")
+	writeFile(t, filepath.Join(ours, p), "# b\n\n**Trạng thái:** built\n") //znf:allow-lang
+	git(t, ours, "commit", "-qam", "sweep header")
+
+	notes := Sync(gitx.ExecRunner(), ours)
+	if len(notes) != 1 || !strings.HasPrefix(notes[0], "docs sync: pushed; dropped 1") {
+		t.Fatalf("notes = %v", notes)
+	}
+}
