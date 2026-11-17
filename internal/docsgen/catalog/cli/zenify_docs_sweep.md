@@ -27,4 +27,4 @@ zenify docs sweep --apply --no-fetch
 
 ## Lưu ý
 
-Lệnh không chạy git trong store. Thay đổi được `zenify docs sync` commit và đẩy ở lượt sau. `zenify wt sweep` gọi lệnh này tự động. Xem [Knowledge store](/concepts/knowledge-store).
+Trước khi `--apply` ghi gì, lệnh `pull --rebase` store cho bằng remote để không ghi lên bản cũ (header hay file xóa trên bản cũ sẽ xung đột với sửa đổi mới của đồng đội). Store có thay đổi chưa commit hoặc pull lỗi thì cả lượt chạy thành dry-run, kèm một dòng lý do. Store không có upstream thì chạy như cũ. Thay đổi được `zenify docs sync` commit và đẩy ở lượt sau. `zenify wt sweep` gọi lệnh này tự động. Xem [Knowledge store](/concepts/knowledge-store).

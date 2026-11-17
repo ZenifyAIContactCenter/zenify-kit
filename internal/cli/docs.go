@@ -17,6 +17,7 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/plugin"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/ui"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/workspace"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
 )
 
@@ -89,6 +90,19 @@ func docsSweepCore(workspaceDir, storeDir string, apply, noFetch bool, stderr io
 	if viewDir != store {
 		if _, err := os.Stat(viewDir); err != nil { // no view yet: demote next to the store
 			viewDir = store
+		}
+	}
+	// Bring the store level with its remote before planning, so --apply never writes onto a stale
+	// base (a header or delete there conflicts with a teammate's newer edit on the next sync). It
+	// cannot be brought up to date → the whole run is a dry-run (fail-open).
+	if apply {
+		n, err := docsync.Update(gitx.TimeoutRunner(wt.RemoteTimeout), store)
+		if n != "" {
+			u.Note(n)
+		}
+		if err != nil {
+			u.Note("docs sweep: store chưa cập nhật được với remote (" + err.Error() + ") — bỏ --apply, chỉ in kế hoạch") //znf:allow-lang
+			apply = false
 		}
 	}
 	resolve := func(name string) (string, bool) {

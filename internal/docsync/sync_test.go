@@ -1,9 +1,13 @@
 package docsync
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/gitx"
 )
 
 type fakeRunner struct {
@@ -144,5 +148,158 @@ func TestGitErr_CapsLongReason(t *testing.T) {
 	got := gitErr(err)
 	if n := len([]rune(got)); n > len("exit status 1: ")+maxReason+1 {
 		t.Fatalf("reason not capped: %d runes", n)
+	}
+}
+
+// gitEnv isolates real-git tests from the host config and gives them an identity.
+func gitEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
+		t.Setenv(k, "t")
+	}
+	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
+		t.Setenv(k, "t@example.invalid")
+	}
+}
+
+func git(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := gitx.ExecRunner().Run(dir, args...)
+	if err != nil {
+		t.Fatalf("git %v: %s", args, gitErr(err))
+	}
+	return string(out)
+}
+
+func writeFile(t *testing.T, p, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const specPath = "specs/r/2026-01-01-a-design.md"
+
+// stores builds a bare remote holding one spec, plus two clones: ours (the store) and a teammate's.
+func stores(t *testing.T) (ours, mate string) {
+	t.Helper()
+	gitEnv(t)
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote.git")
+	git(t, root, "init", "-q", "--bare", "-b", "main", remote)
+	seed := filepath.Join(root, "seed")
+	git(t, root, "clone", "-q", remote, seed)
+	writeFile(t, filepath.Join(seed, specPath), "# a\n\n**Trạng thái:** draft\n\nbody\n") //znf:allow-lang
+	git(t, seed, "add", "-A")
+	git(t, seed, "commit", "-qm", "seed")
+	git(t, seed, "push", "-q", "origin", "HEAD:main")
+	ours, mate = filepath.Join(root, "ours"), filepath.Join(root, "mate")
+	git(t, root, "clone", "-q", remote, ours)
+	git(t, root, "clone", "-q", remote, mate)
+	return ours, mate
+}
+
+// edit rewrites the spec in dir and commits it.
+func edit(t *testing.T, dir, body, msg string) {
+	t.Helper()
+	writeFile(t, filepath.Join(dir, specPath), body)
+	git(t, dir, "commit", "-qam", msg)
+}
+
+// The incident: our sweep rewrote a spec's status header on a stale store while a teammate changed
+// the same line on the remote. Sync must drop our header-only commit, take the teammate's line and
+// push the real commit stacked behind it — instead of failing the same rebase on every turn.
+func TestSync_HeaderOnlyConflictIsDroppedThenPushed(t *testing.T) {
+	ours, mate := stores(t)
+	edit(t, mate, "# a\n\n**Trạng thái:** superseded\n\nbody\n", "mate") //znf:allow-lang
+	git(t, mate, "push", "-q")
+	edit(t, ours, "# a\n\n**Trạng thái:** built\n\nbody\n", "sweep header") //znf:allow-lang
+	writeFile(t, filepath.Join(ours, "specs/r/2026-01-02-b-design.md"), "# b\n")
+	git(t, ours, "add", "-A")
+	git(t, ours, "commit", "-qm", "real")
+
+	notes := Sync(gitx.ExecRunner(), ours)
+	if len(notes) != 1 || !strings.HasPrefix(notes[0], "docs sync: pushed; dropped 1 conflicting status-header-only commit") {
+		t.Fatalf("notes = %v", notes)
+	}
+	git(t, mate, "pull", "-q")
+	b, _ := os.ReadFile(filepath.Join(mate, specPath))
+	if !strings.Contains(string(b), "superseded") {
+		t.Fatalf("teammate's header lost: %q", b)
+	}
+	if _, err := os.Stat(filepath.Join(mate, "specs/r/2026-01-02-b-design.md")); err != nil {
+		t.Fatal("real commit behind the header commit was not pushed")
+	}
+}
+
+// A conflict on real content still aborts and keeps our commit intact, unpushed, as before.
+func TestSync_RealContentConflictStillAborts(t *testing.T) {
+	ours, mate := stores(t)
+	edit(t, mate, "# a\n\n**Trạng thái:** draft\n\nmate body\n", "mate") //znf:allow-lang
+	git(t, mate, "push", "-q")
+	edit(t, ours, "# a\n\n**Trạng thái:** built\n\nour body\n", "ours") //znf:allow-lang
+	head := git(t, ours, "rev-parse", "HEAD")
+
+	notes := Sync(gitx.ExecRunner(), ours)
+	if len(notes) != 1 || !strings.Contains(notes[0], "aborted, local commit kept intact") {
+		t.Fatalf("notes = %v", notes)
+	}
+	if got := git(t, ours, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("local commit not kept: %s → %s", head, got)
+	}
+	if st := git(t, ours, "status", "--porcelain"); st != "" {
+		t.Fatalf("store left mid-rebase: %q", st)
+	}
+}
+
+// Update pulls a clean store that is behind its remote, so the sweep plans on the teammate's text.
+func TestUpdate_PullsBehindStore(t *testing.T) {
+	ours, mate := stores(t)
+	edit(t, mate, "# a\n\n**Trạng thái:** superseded\n\nbody\n", "mate") //znf:allow-lang
+	git(t, mate, "push", "-q")
+	if _, err := Update(gitx.ExecRunner(), ours); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ours, specPath)); !strings.Contains(string(b), "superseded") {
+		t.Fatalf("store not brought up to date: %q", b)
+	}
+}
+
+// A dirty store or a store with no upstream: dirty refuses, no upstream has nothing to pull.
+func TestUpdate_DirtyRefusesNoUpstreamPasses(t *testing.T) {
+	ours, _ := stores(t)
+	writeFile(t, filepath.Join(ours, specPath), "dirty\n")
+	if _, err := Update(gitx.ExecRunner(), ours); err == nil {
+		t.Fatal("dirty store must refuse")
+	}
+	if _, err := Update(gitx.ExecRunner(), t.TempDir()); err != nil {
+		t.Fatalf("non-repo must pass: %v", err)
+	}
+}
+
+// A header change bundled with anything that is not a plain line edit under specs/ (here a new
+// empty spec file, which shows no hunk line) is real content: the conflict aborts, nothing is dropped.
+func TestSync_HeaderPlusStructuralChangeStillAborts(t *testing.T) {
+	ours, mate := stores(t)
+	edit(t, mate, "# a\n\n**Trạng thái:** superseded\n\nbody\n", "mate") //znf:allow-lang
+	git(t, mate, "push", "-q")
+	writeFile(t, filepath.Join(ours, specPath), "# a\n\n**Trạng thái:** built\n\nbody\n") //znf:allow-lang
+	writeFile(t, filepath.Join(ours, "specs/r/2026-01-02-b-design.md"), "")
+	git(t, ours, "add", "-A")
+	git(t, ours, "commit", "-qm", "header + new empty spec")
+	head := git(t, ours, "rev-parse", "HEAD")
+
+	notes := Sync(gitx.ExecRunner(), ours)
+	if len(notes) != 1 || !strings.Contains(notes[0], "aborted, local commit kept intact") {
+		t.Fatalf("notes = %v", notes)
+	}
+	if got := git(t, ours, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("local commit not kept: %s → %s", head, got)
 	}
 }

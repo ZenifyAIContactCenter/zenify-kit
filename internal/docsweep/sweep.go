@@ -66,6 +66,10 @@ var (
 	labelLine  = regexp.MustCompile(`^\*\*[^*]+:\*\*`)
 )
 
+// IsStatusLine reports whether l is a spec status header line ("**Trạng thái:**"/"**Status:**"), //znf:allow-lang
+// the only line the sweep writes into a spec; docsync uses it to recognise a machine-only commit.
+func IsStatusLine(l string) bool { return statusLine.MatchString(l) }
+
 // detailArrow separates the old and new value in a header action's Detail; Apply reads the new
 // state back from the text after it.
 const detailArrow = " → "
