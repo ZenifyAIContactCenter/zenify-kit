@@ -342,3 +342,24 @@ func TestSync_HeaderOnlyConflictNonASCIIPath(t *testing.T) {
 		t.Fatalf("notes = %v", notes)
 	}
 }
+
+// A spec with no header status whose only status-like line sits in the body: editing it is body
+// content even when the value is one the sweep writes, so the conflict aborts.
+func TestSync_BodyStatusWithoutHeaderStillAborts(t *testing.T) {
+	ours, mate := stores(t)
+	edit(t, ours, "# a\n\n## Notes\n**Status:** planned\n", "no header") //znf:allow-lang
+	git(t, ours, "push", "-q")
+	git(t, mate, "pull", "-q")
+	edit(t, mate, "# a\n\n## Notes\n**Status:** superseded\n", "mate")
+	git(t, mate, "push", "-q")
+	edit(t, ours, "# a\n\n## Notes\n**Status:** built\n", "ours")
+	head := git(t, ours, "rev-parse", "HEAD")
+
+	notes := Sync(gitx.ExecRunner(), ours)
+	if len(notes) != 1 || !strings.Contains(notes[0], "aborted, local commit kept intact") {
+		t.Fatalf("notes = %v", notes)
+	}
+	if got := git(t, ours, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("local commit not kept: %s → %s", head, got)
+	}
+}
