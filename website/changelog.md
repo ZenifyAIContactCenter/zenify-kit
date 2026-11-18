@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.73.0
+
+*2026-11-18*
+
+- **Thang S/M/L của track học từ chính est:** mỗi mốc là p90 wall time của 60 việc gần nhất được chấm đúng size đó (cộng 1 phút); size có dưới 5 việc giữ mặc định 15/45/120, mốc luôn tăng dần. Mỗi loại cook/fix/hotfix có thang riêng (`scaleByKind` trong `zenify track stats --json`) và hit/under/over của loại đó đo theo thang của nó; thang chung `scale` vẫn dùng cho chân trang, daily plan và báo cáo ngày. Việc bắt đầu và kết thúc khác ngày (giờ local) không còn góp vào thang, Estimate hay hit của báo cáo ngày. Lưu ý: hit giờ đo độ nhất quán với cách chấm của chính bạn (việc S phần lớn tự trúng), không phải độ chính xác tuyệt đối; tín hiệu đáng xem là `over`, tức việc chấm M/L mà xong dưới mốc S. Xem [Pane track](/guides/track-pane).
+- **`close-day` dọn `live/`:** `zenify track close-day` xoá `live/<session>.beat` và `live/<session>.json` của session có file mới nhất quá 1 ngày; trước đây các file này không bao giờ bị xoá. Tab đang mở (beat mới) giữ nguyên file. Xem [Chốt sổ hằng ngày](/guides/track-pane#chốt-sổ-hằng-ngày).
+
 ## v0.72.1
 
 *2026-11-17*
