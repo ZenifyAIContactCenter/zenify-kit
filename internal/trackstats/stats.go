@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	minLearn   = 20 // measured items needed before the scale is learned
-	maxLearn   = 60 // most recent measured items used to learn it
+	minBound   = 5  // items estimated at a size before that size's bound is learned
+	maxLearn   = 60 // most recent items per size used to learn its bound
 	minRuleRow = 3  // items with an estimate before a calibration rule fires
 	ruleWindow = 30 // most recent items per kind the estimate and rules read
 	staleDays  = 7  // a start older than this with no end is stale
@@ -24,7 +24,7 @@ const (
 	RuleDown = "est down 1 size"
 )
 
-// Default scale bounds in minutes of wall time, used until minLearn real items exist.
+// Default scale bounds in minutes of wall time, used for a size with fewer than minBound items.
 const defaultS, defaultM, defaultL = 15, 45, 120
 
 var kinds = []string{"cook", "fix", "hotfix"}
@@ -150,17 +150,19 @@ type Quality struct {
 
 // Result is the JSON of `zenify track stats --json`. Enabled is set by the CLI.
 type Result struct {
-	Enabled   bool     `json:"enabled"`
-	Malformed int      `json:"malformed"`
-	Scale     Scale    `json:"scale"`
-	Rules     []string `json:"rules"`
-	Today     Today    `json:"today"`
-	Running   []Item   `json:"running"`
-	Estimate  Estimate `json:"estimate"`
-	Quality   Quality  `json:"quality"`
-	Backlog   Backlog  `json:"backlog"`
-	Kitchen   Kitchen  `json:"kitchen"`
-	Onboarded bool     `json:"onboarded"`
+	Enabled   bool  `json:"enabled"`
+	Malformed int   `json:"malformed"`
+	Scale     Scale `json:"scale"`
+	// ScaleByKind is the scale learned from one kind's items; the estimate hit rate of a kind reads it.
+	ScaleByKind map[string]Scale `json:"scaleByKind"`
+	Rules       []string         `json:"rules"`
+	Today       Today            `json:"today"`
+	Running     []Item           `json:"running"`
+	Estimate    Estimate         `json:"estimate"`
+	Quality     Quality          `json:"quality"`
+	Backlog     Backlog          `json:"backlog"`
+	Kitchen     Kitchen          `json:"kitchen"`
+	Onboarded   bool             `json:"onboarded"`
 	// windowIDs holds the ids read by the Scale, Estimate and Quality windows; Compact keeps them.
 	windowIDs map[string]bool `json:"-"`
 }
@@ -204,19 +206,31 @@ type Input struct {
 	Plane func() ([]PlaneItem, error)
 }
 
-// LearnScale derives the S/M/L bounds from the 60 most recent real wall
-// minutes (oldest first); below minLearn samples it returns the default scale.
-func LearnScale(mins []int) Scale {
-	mins = append([]int(nil), mins...)
-	if len(mins) > maxLearn {
-		mins = mins[len(mins)-maxLearn:]
+// LearnScale derives each S/M/L bound from the items estimated at that size
+// (oldest end first): the p90 wall minutes of its 60 most recent items, plus one
+// since a bound is exclusive. A size with fewer than minBound items keeps its default.
+func LearnScale(items []Item) Scale {
+	s := Scale{Source: "default", N: len(items), S: defaultS, M: defaultM, L: defaultL}
+	for _, b := range []struct {
+		size  string
+		bound *int
+	}{{"S", &s.S}, {"M", &s.M}, {"L", &s.L}} {
+		var mins []int
+		for _, it := range items {
+			if it.Est == b.size {
+				mins = append(mins, it.WallMin)
+			}
+		}
+		if len(mins) < minBound {
+			continue
+		}
+		if len(mins) > maxLearn {
+			mins = mins[len(mins)-maxLearn:]
+		}
+		sort.Ints(mins)
+		*b.bound = nearestRank(mins, 90) + 1
+		s.Source = "learned"
 	}
-	n := len(mins)
-	if n < minLearn {
-		return Scale{Source: "default", N: n, S: defaultS, M: defaultM, L: defaultL}
-	}
-	sort.Ints(mins)
-	s := Scale{Source: "learned", N: n, S: nearestRank(mins, 25), M: nearestRank(mins, 50), L: nearestRank(mins, 90)}
 	if s.M < s.S+1 {
 		s.M = s.S + 1
 	}
@@ -224,6 +238,21 @@ func LearnScale(mins []int) Scale {
 		s.L = s.M + 1
 	}
 	return s
+}
+
+// learnWindow returns the items LearnScale reads: the maxLearn most recent of each size.
+func learnWindow(items []Item) []Item {
+	var out []Item
+	for _, size := range []string{"S", "M", "L"} {
+		var of []Item
+		for _, it := range items {
+			if it.Est == size {
+				of = append(of, it)
+			}
+		}
+		out = append(out, tail(of, maxLearn)...)
+	}
+	return out
 }
 
 // nearestRank returns the value at index ceil(p*n/100)-1 of a sorted slice.
@@ -245,6 +274,17 @@ func sizeOf(min int, s Scale) string {
 		return "L"
 	}
 	return "XL"
+}
+
+// overnight reports whether an item started and ended on different local days:
+// its wall time holds a night nobody worked, so it is no estimate sample.
+func overnight(it Item, loc *time.Location) bool {
+	a, errA := time.Parse(time.RFC3339, it.StartedAt)
+	b, errB := time.Parse(time.RFC3339, it.EndedAt)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return a.In(loc).Format(dateLayout) != b.In(loc).Format(dateLayout)
 }
 
 func isEnded(it Item) bool {
@@ -462,29 +502,38 @@ func Compute(in Input) (Result, map[string]string) {
 		followUp[it.ID] = all
 	}
 
-	// Scale: wall minutes of the done and pushed items with a real estimate, oldest end first.
+	// Scale: the done and pushed items with a real estimate, oldest end first; an
+	// overnight item is left out, its wall time holds the night.
 	ended := byEnd(items)
-	var mins []int
+	loc := in.Now.Location()
 	var measured []Item
+	byKindMeasured := map[string][]Item{}
 	for _, it := range ended {
-		if it.Kind != "task" && !followUp[it.ID] && (it.Status == "done" || it.Status == "pushed") && sizeRank[it.Est] > 0 && sizeRank[it.Est] < 4 && it.WallMin > 0 {
-			mins = append(mins, it.WallMin)
+		if it.Kind != "task" && !followUp[it.ID] && (it.Status == "done" || it.Status == "pushed") && sizeRank[it.Est] > 0 && sizeRank[it.Est] < 4 && it.WallMin > 0 && !overnight(it, loc) {
 			measured = append(measured, it)
+			byKindMeasured[it.Kind] = append(byKindMeasured[it.Kind], it)
 		}
 	}
-	res.Scale = LearnScale(mins)
+	res.Scale = LearnScale(measured)
+	res.ScaleByKind = map[string]Scale{}
+	for _, k := range kinds {
+		res.ScaleByKind[k] = LearnScale(byKindMeasured[k])
+	}
 	res.windowIDs = map[string]bool{}
 	addWindow := func(win []Item) {
 		for _, it := range win {
 			res.windowIDs[it.ID] = true
 		}
 	}
-	addWindow(tail(measured, maxLearn))
+	addWindow(learnWindow(measured))
+	for _, k := range kinds {
+		addWindow(learnWindow(byKindMeasured[k]))
+	}
 
 	byKindEnded := map[string][]Item{}
 	for _, it := range ended {
-		if it.WallMin == 0 {
-			continue // zero wall time: not an estimate sample
+		if it.WallMin == 0 || overnight(it, loc) {
+			continue // zero or overnight wall time: not an estimate sample
 		}
 		if followUp[it.ID] {
 			continue
@@ -494,7 +543,7 @@ func Compute(in Input) (Result, map[string]string) {
 	for _, k := range kinds {
 		win := tail(byKindEnded[k], ruleWindow)
 		addWindow(win)
-		computeEstimate(k, win, res.Scale, &res)
+		computeEstimate(k, win, res.ScaleByKind[k], &res)
 	}
 	var doneTasks []Item // FR-2.4: the task estimate counts done tasks only, not rollbacks
 	for _, it := range byKindEnded["task"] {

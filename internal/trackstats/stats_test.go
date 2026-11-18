@@ -346,15 +346,62 @@ func TestRuleDown(t *testing.T) {
 
 func TestLearnedScale(t *testing.T) {
 	var lg, ss []string
-	for i := 1; i <= 20; i++ {
-		endedWithAgent("fix", i, "S", i, &lg, &ss) // 1..20 min
+	for i := 1; i <= 5; i++ {
+		endedWithAgent("fix", i, "S", i, &lg, &ss)       // S walls 1..5
+		endedWithAgent("fix", 10+i, "M", 10*i, &lg, &ss) // M walls 10..50
+	}
+	for i := 1; i <= 4; i++ {
+		endedWithAgent("fix", 20+i, "L", 90, &lg, &ss) // 4 L items: below minBound
 	}
 	in := base(lines(lg...))
 	in.Sessions = map[string]string{"s1": lines(ss...)}
 	r, _ := Compute(in)
-	// nearest rank: p25 of 1..20 = 5, p50 = 10, p90 = 18
-	if r.Scale.Source != "learned" || r.Scale.N != 20 || r.Scale.S != 5 || r.Scale.M != 10 || r.Scale.L != 18 {
-		t.Fatalf("scale = %+v", r.Scale)
+	// bound = p90 (nearest rank) of the items estimated at that size + 1; L keeps its default
+	want := Scale{Source: "learned", N: 14, S: 6, M: 51, L: 120}
+	if r.Scale != want {
+		t.Fatalf("scale = %+v, want %+v", r.Scale, want)
+	}
+	if r.ScaleByKind["fix"] != want {
+		t.Fatalf("fix scale = %+v, want %+v", r.ScaleByKind["fix"], want)
+	}
+	if c := r.ScaleByKind["cook"]; c != (Scale{Source: "default", N: 0, S: 15, M: 45, L: 120}) {
+		t.Fatalf("cook scale = %+v, want the default", c)
+	}
+}
+
+func TestEstimateReadsKindScale(t *testing.T) {
+	var lg, ss []string
+	for i := 1; i <= 5; i++ {
+		endedWithAgent("fix", i, "S", 40, &lg, &ss) // fix learns S < 41
+	}
+	endedWithAgent("cook", 6, "S", 40, &lg, &ss) // cook keeps the default S < 15
+	in := base(lines(lg...))
+	in.Sessions = map[string]string{"s1": lines(ss...)}
+	r, _ := Compute(in)
+	if f := r.Estimate.ByKind["fix"]; f.N != 5 || f.Hit != 5 {
+		t.Fatalf("fix = %+v, want 5 hits on its own scale", f)
+	}
+	if c := r.Estimate.ByKind["cook"]; c.N != 1 || c.Low != 1 {
+		t.Fatalf("cook = %+v, want low on the default scale", c)
+	}
+}
+
+func TestScaleDropsOvernight(t *testing.T) {
+	var lg, ss []string
+	for i := 1; i <= 5; i++ {
+		endedWithAgent("fix", i, "S", i, &lg, &ss) // same day, walls 1..5
+	}
+	for i := 6; i <= 10; i++ { // start the day before, end today: the night is in the wall
+		id := cid("fix", i)
+		st := now.Add(-time.Duration(20+i) * time.Hour)
+		lg = append(lg, row(st, "start", id, "fix", "r", "S"), row(now.Add(-time.Duration(i)*time.Minute), "end", id, "https://x/pr/"+id, "1", "0"))
+	}
+	r, _ := Compute(base(lines(lg...)))
+	if r.Scale != (Scale{Source: "learned", N: 5, S: 6, M: 45, L: 120}) {
+		t.Fatalf("scale = %+v, want the 5 same-day items only", r.Scale)
+	}
+	if f := r.Estimate.ByKind["fix"]; f.N != 5 || f.Hit != 5 {
+		t.Fatalf("fix = %+v, want the overnight items left out", f)
 	}
 }
 
@@ -640,14 +687,14 @@ func realItems(n int) []string {
 	return lg
 }
 
-func TestScaleDefaultUntil20Real(t *testing.T) { // SC-3
-	r, _ := Compute(base(lines(realItems(19)...)))
-	if r.Scale != (Scale{Source: "default", N: 19, S: 15, M: 45, L: 120}) {
-		t.Fatalf("19 items: scale = %+v", r.Scale)
+func TestScaleDefaultUntil5PerSize(t *testing.T) { // SC-3
+	r, _ := Compute(base(lines(realItems(4)...)))
+	if r.Scale != (Scale{Source: "default", N: 4, S: 15, M: 45, L: 120}) {
+		t.Fatalf("4 items: scale = %+v", r.Scale)
 	}
-	r, _ = Compute(base(lines(realItems(20)...)))
-	if r.Scale != (Scale{Source: "learned", N: 20, S: 5, M: 10, L: 18}) {
-		t.Fatalf("20 items: scale = %+v", r.Scale)
+	r, _ = Compute(base(lines(realItems(5)...)))
+	if r.Scale != (Scale{Source: "learned", N: 5, S: 6, M: 45, L: 120}) {
+		t.Fatalf("5 items: scale = %+v", r.Scale)
 	}
 	r, _ = Compute(base(lines(histLines(300, "fix")...)))
 	if r.Scale != (Scale{Source: "default", N: 0, S: 15, M: 45, L: 120}) {
@@ -721,8 +768,8 @@ func TestScaleFromWallNotAgent(t *testing.T) { // review: wall must differ from 
 	in := base(lines(lg...))
 	in.Sessions = map[string]string{"s": lines(ss...)}
 	r, _ := Compute(in)
-	if r.Scale != (Scale{Source: "learned", N: 20, S: 5, M: 10, L: 18}) {
-		t.Fatalf("scale = %+v, want wall-based 5/10/18 (agent is 1 min each)", r.Scale)
+	if r.Scale != (Scale{Source: "learned", N: 20, S: 19, M: 45, L: 120}) {
+		t.Fatalf("scale = %+v, want wall-based S 19 (agent is 1 min each)", r.Scale)
 	}
 }
 
@@ -741,8 +788,8 @@ func TestScaleSampleFilter(t *testing.T) {
 	wallItem(24, "S", 0, "https://x/pr/zero", &lg)    // zero wall
 	wallItem(25, "-", 500, "https://x/pr/noest", &lg) // no est
 	r, _ := Compute(base(lines(lg...)))
-	if r.Scale != (Scale{Source: "learned", N: 20, S: 5, M: 10, L: 18}) {
-		t.Fatalf("scale = %+v, want N 20 and 5/10/18 from the valid items only", r.Scale)
+	if r.Scale != (Scale{Source: "learned", N: 20, S: 19, M: 45, L: 120}) {
+		t.Fatalf("scale = %+v, want N 20 and S 19 from the valid items only", r.Scale)
 	}
 }
 
@@ -754,8 +801,8 @@ func TestScaleCapsAtNewest60(t *testing.T) {
 	in := base(lines(lg...))
 	in.Sessions = map[string]string{"s": lines(ss...)}
 	r, _ := Compute(in)
-	// newest 60 are walls 2..61 (nearest rank: index 14, 29, 53)
-	if r.Scale != (Scale{Source: "learned", N: 60, S: 16, M: 31, L: 55}) {
+	// newest 60 S items are walls 2..61, p90 (index 53) = 55 so S < 56; M rises to S+1
+	if r.Scale != (Scale{Source: "learned", N: 61, S: 56, M: 57, L: 120}) {
 		t.Fatalf("scale = %+v", r.Scale)
 	}
 }

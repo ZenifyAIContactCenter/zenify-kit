@@ -62,7 +62,7 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 
 	hit, n := 0, 0
 	for _, it := range day.Today.Items {
-		if it.Status != "done" && it.Status != "pushed" || it.WallMin <= 0 {
+		if it.Status != "done" && it.Status != "pushed" || it.WallMin <= 0 || overnight(it, time.Local) {
 			continue
 		}
 		if it.Est != "S" && it.Est != "M" && it.Est != "L" {
