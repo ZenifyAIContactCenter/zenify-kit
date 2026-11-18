@@ -310,10 +310,12 @@ test('FR-6.2: Estimate shows hit per kind, hotfix time and the agent share by ph
     },
   })
   const t = texts(tabLines('estimate', s, A, X, NOW))
-  expect(t).toContain('cook: hit 3/6 · under 1 · over 2')
-  expect(t).toContain('hotfix: 5 items · median 15m · p90 40m')
-  expect(t).toContain('agent time by phase')
-  expect(t).toContain('cook: plan 25% · implement 75%')
+  expect(t).toContain('🎯 Estimate · hit 50% (3/6)')
+  expect(t).toContain('█ hit · ▓ longer · ░ shorter')
+  expect(t).toContain(`cook   ${'█'.repeat(10)}${'▓'.repeat(3)}${'░'.repeat(7)} 50% · ⬆1 ⬇2`)
+  expect(t).toContain('hotfix median 15m · p90 40m')
+  expect(t).toContain('🧭 Agent time by phase')
+  expect(t).toContain(`cook   ${'█'.repeat(15)}${'▓'.repeat(5)} implement 75% · plan 25%`)
 })
 
 test('FR-6.2: Quality shows blocked rate, findings, fix loop, wait share, tokens and the fix block; null is —', () => {
@@ -335,11 +337,14 @@ test('FR-6.2: Quality shows blocked rate, findings, fix loop, wait share, tokens
     },
   })
   const t = texts(tabLines('quality', s, A, X, NOW))
-  expect(t).toContain('cook (5 items): ship blocked 40% · most blocked at: review')
-  expect(t).toContain('  finding C/H/M/L: 0/1.5/2/0.3 · fix loop 1.2')
-  expect(t).toContain('  CI red first: no CI runs recorded · wait 10%')
-  expect(t.some(l => /\bin \d|\bout \d/.test(l))).toBe(false)
-  expect(t).toContain('fix/hotfix (5 items): ROUND 1.5 · wide 50% · regression test —')
+  expect(t).toContain('cook · 5 items')
+  expect(t).toContain('  🟠 high     ████████░░ 1.5')
+  expect(t).toContain('  🚧 blocked 40% @review · 🔁 fix loop 1.2 · ❌ no CI runs recorded')
+  expect(t).toContain('  ⏳ wait     ██░░░░░░░░░░░░░░░░░░ 10%')
+  expect(t).toContain('  🪙 out/item opus 2000')
+  expect(t).toContain('🩹 fix/hotfix · 5 items')
+  expect(t).toContain('  wide 50% · rounds 1.5')
+  expect(t.some(l => l.includes('regression test'))).toBe(false)
 })
 
 test('FR-10.7/SC-14: the scale footer and rules are on Estimate only', () => {
@@ -348,7 +353,7 @@ test('FR-10.7/SC-14: the scale footer and rules are on Estimate only', () => {
     expect(texts(tabLines(tab, s, A, X, NOW)).some(t => t.startsWith('scale ('))).toBe(false)
   }
   const t = texts(tabLines('estimate', s, A, X, NOW))
-  expect(t).toContain('scale (default, 0 items): S<15m M<45m L<120m')
+  expect(t).toContain('scale (default, 0 items): S<15m M<45m L<2h')
   expect(t).toContain('cook: raise est 1 size')
   expect(t).toContain('fix: lower est 1 size')
   expect(ruleText('hotfix: something new')).toBe('hotfix: something new')
@@ -526,15 +531,15 @@ test('FR-9.1: titles carry their icon', () => {
 
 test('FR-2.5/10.6: phase share needs n >= 5 for its kind', () => {
   const est = (n: number) => stats({ estimate: { byKind: { cook: { n, hit: n, low: 0, high: 0 } }, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: { cook: { plan: 1 } } } })
-  expect(texts(tabLines('estimate', est(3), A, X, NOW)).some(l => l.startsWith('cook: plan'))).toBe(false)
+  expect(texts(tabLines('estimate', est(3), A, X, NOW)).some(l => l.includes('plan 100%'))).toBe(false)
   const six = texts(tabLines('estimate', est(6), A, X, NOW))
-  expect(six[six.indexOf('agent time by phase') + 1]).toBe('cook: plan 100%')
+  expect(six[six.indexOf('🧭 Agent time by phase') + 1]).toBe(`cook   ${'█'.repeat(20)} plan 100%`)
 })
 
-test('FR-7.2: all-zero Quality sub-lines are hidden', () => {
+test('FR-7.2: all-zero findings draw no severity lines', () => {
   const q = { n: 5, shipBlockedRate: 0, topBlockedStep: null, findingsAvg: { C: 0, H: 0, M: 0, L: 0 }, fixLoopAvg: 0, ciRedFirstRate: 0, waitShare: 0, tokensAvg: null }
   const t = texts(tabLines('quality', stats({ quality: { byKind: { cook: q }, fix: noFix } }), A, X, NOW))
-  expect(t.some(l => l.startsWith('  '))).toBe(false)
+  expect(t.some(l => /^ {2}(🔴|🟠|🟡|🔵)/.test(l))).toBe(false)
 })
 
 test('FR-11.3: Kitchen opens with Carried over: the last day, then each unfinished item in two lines', () => {
@@ -569,8 +574,8 @@ test('FR-7.3: null CI rate and null wait share still say no CI runs recorded; al
     texts(tabLines('quality', stats({ quality: { byKind: { cook: q(ci, wait) }, fix: noFix } }), A, X, NOW))
   expect(lines(null, null).some(l => l.includes('no CI runs recorded'))).toBe(true)
   expect(lines(null, 0).some(l => l.includes('no CI runs recorded'))).toBe(true)
-  expect(lines(0, 0).some(l => l.includes('CI red first'))).toBe(false)
-  expect(lines(0, null).some(l => l.includes('CI red first'))).toBe(false)
+  expect(lines(0, 0).some(l => l.includes('CI red first 0%'))).toBe(true)
+  expect(lines(0, null).some(l => l.includes('⏳'))).toBe(false)
 })
 
 test('fmtNum rolls 999999 over to M', () => {
@@ -628,7 +633,7 @@ test('FR-1.2: a binary without code parses with code empty', () => {
 
 test('FR-2.4: Estimate shows the task block like hotfix, gated at 5 samples', () => {
   const est = (n: number) => stats({ estimate: { byKind: {}, hotfix: { n: 0, medianMin: null, p90Min: null }, task: { n, medianMin: 30, p90Min: 50 }, phaseShare: {} } })
-  expect(texts(tabLines('estimate', est(5), A, X, NOW))).toContain('task: 5 items · median 30m · p90 50m')
+  expect(texts(tabLines('estimate', est(5), A, X, NOW))).toContain('task 5 items · median 30m · p90 50m')
   expect(texts(tabLines('estimate', est(3), A, X, NOW))).toContain('task: need 5 samples (have 3)')
 })
 
@@ -869,4 +874,68 @@ test('SC-5: Waiting on you shows the total, a 20-cell stacked bar and hides zero
   expect(t[i + 1]).not.toContain('ask')
   expect(t[i + 1]).toContain('🔐 permission 6m · 💤 idle 13m')
   expect([...t[i + 1].trim().split('  ')[0]]).toHaveLength(20)
+})
+
+const noQ = { n: 5, shipBlockedRate: null, topBlockedStep: null, findingsAvg: null, fixLoopAvg: null, ciRedFirstRate: null, waitShare: null, tokensAvg: null }
+const estOf = (byKind: Record<string, { n: number; hit: number; low: number; high: number }>, hotfix = { n: 0, medianMin: null, p90Min: null } as { n: number; medianMin: number | null; p90Min: number | null }, phaseShare: Record<string, Record<string, number>> = {}) =>
+  stats({ estimate: { byKind, hotfix, phaseShare } })
+
+test('SC-6: hotfix is one line with hit, median and p90', () => {
+  const t = texts(tabLines('estimate', estOf({ hotfix: { n: 10, hit: 9, low: 1, high: 0 } }, { n: 7, medianMin: 11, p90Min: 59 }), A, X, NOW))
+  const rows = t.filter(l => l.startsWith('hotfix'))
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toContain('90%')
+  expect(rows[0]).toContain('median 11m')
+  expect(rows[0]).toContain('p90 59m')
+})
+
+test('FR-2.4: hotfix hit and hotfix time gate on their own sample', () => {
+  const a = texts(tabLines('estimate', estOf({ hotfix: { n: 10, hit: 9, low: 1, high: 0 } }, { n: 3, medianMin: 11, p90Min: 59 }), A, X, NOW)).filter(l => l.startsWith('hotfix'))
+  expect(a).toHaveLength(1)
+  expect(a[0]).toContain('90%')
+  expect(a[0]).not.toContain('median')
+  const b = texts(tabLines('estimate', estOf({ hotfix: { n: 2, hit: 1, low: 1, high: 0 } }, { n: 3, medianMin: 11, p90Min: 59 }), A, X, NOW))
+  expect(b).toContain('hotfix: need 5 samples (have 3)')
+})
+
+test('SC-7: the title sums hit over cook, fix and hotfix', () => {
+  const t = texts(tabLines('estimate', estOf({ cook: { n: 25, hit: 13, low: 2, high: 10 }, fix: { n: 24, hit: 20, low: 2, high: 2 }, hotfix: { n: 10, hit: 9, low: 1, high: 0 } }), A, X, NOW))
+  expect(t[0]).toBe('🎯 Estimate · hit 71% (42/59)')
+})
+
+test('SC-9: phase line lists the top three, descending', () => {
+  const s = estOf({ cook: { n: 5, hit: 3, low: 1, high: 1 } }, undefined, { cook: { design: 0.49, ship: 0.29, implement: 0.18, plan: 0.04 } })
+  const row = texts(tabLines('estimate', s, A, X, NOW)).find(l => l.startsWith('cook') && l.includes('design'))
+  expect(row?.endsWith('design 49% · ship 29% · implement 18%')).toBe(true)
+})
+
+test('FR-2.1: under 5 samples in total the title has no hit', () => {
+  expect(texts(tabLines('estimate', estOf({ cook: { n: 3, hit: 1, low: 1, high: 1 } }), A, X, NOW))[0]).toBe('🎯 Estimate')
+})
+
+test('SC-8: findings are one bar line per severity, scaled to the largest', () => {
+  const q = { ...noQ, findingsAvg: { C: 0.037, H: 0.48, M: 2.2, L: 3.9 } }
+  const t = texts(tabLines('quality', stats({ quality: { byKind: { cook: q }, fix: noFix } }), A, X, NOW))
+  for (const p of ['  🔴 critical', '  🟠 high', '  🟡 medium', '  🔵 low']) expect(t.filter(l => l.startsWith(p))).toHaveLength(1)
+  expect(t.find(l => l.startsWith('  🔵 low'))).toContain('██████████ 3.9')
+  expect(t.find(l => l.startsWith('  🔴 critical'))).toContain('0.04')
+  expect(t.some(l => l.includes('most blocked') || l.includes('—'))).toBe(false)
+})
+
+test('SC-4: Quality shows out tokens per item by model', () => {
+  const q = { ...noQ, tokensAvg: { 'claude-opus-5-5': { in: 1, out: 72290.8 } } }
+  expect(texts(tabLines('quality', stats({ quality: { byKind: { cook: q }, fix: noFix } }), A, X, NOW))).toContain('  🪙 out/item opus 72.3k')
+})
+
+test('FR-3.3/3.4/3.7: blocked, no CI runs, wait share; empty says no work yet', () => {
+  const q = { ...noQ, shipBlockedRate: 0, waitShare: 0.61 }
+  const t = texts(tabLines('quality', stats({ quality: { byKind: { cook: q }, fix: noFix } }), A, X, NOW))
+  expect(t.some(l => l.includes('🚧 blocked 0%') && l.includes('no CI runs recorded'))).toBe(true)
+  expect(t.find(l => l.startsWith('  ⏳ wait'))).toContain('61%')
+  expect(texts(tabLines('quality', stats(), A, X, NOW))).toContain('no work yet')
+})
+
+test('FR-3 null: a fix block of nulls prints no dash on any tab', () => {
+  const s = stats({ quality: { byKind: { cook: noQ }, fix: { n: 5, roundAvg: null, wideRate: null, regressionRate: null, fixLoopAvg: null } as never } })
+  for (const t of TABS) expect(texts(tabLines(t.id, s, A, X, NOW)).some(l => l.includes('—'))).toBe(false)
 })

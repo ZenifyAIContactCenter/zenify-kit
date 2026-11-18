@@ -95,8 +95,6 @@ export const openItem = (s: TrackStats, session: string, boundId: string | undef
   boundId === undefined ? undefined : (s.running ?? []).find(i => i.id === boundId && i.session === session)
 
 const sum = (m: Record<string, number> | null | undefined) => Object.values(m ?? {}).reduce((n, v) => n + v, 0)
-const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`)
-const num = (v: number | null | undefined) => (v === null || v === undefined ? '—' : String(Math.round(v * 10) / 10))
 // FR-7.1: 12.3k and 1.2M from 10000 up.
 export const fmtNum = (n: number): string => {
   if (n < 10000) return String(n)
@@ -108,7 +106,6 @@ export const fmtDur = (m: number): string => {
   if (m >= 1440) return `${Math.floor(m / 1440)}d${Math.floor((m % 1440) / 60) > 0 ? `${Math.floor((m % 1440) / 60)}h` : ''}`
   return m < 60 ? `${m}m` : m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}m`
 }
-const min = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v}m`)
 const isSize = (est: string) => SIZES.includes(est)
 const wallText = (i: TrackItem) => (isSize(i.est) ? `${i.wallMin}m/${i.est}` : `${i.wallMin}m`)
 
@@ -484,35 +481,64 @@ function todayLines(s: TrackStats, _session: string, now: number): Line[] {
 const gate = (n: number, render: () => Line): Line => (n < MIN_SAMPLES ? dim(`need ${MIN_SAMPLES} samples (have ${n})`) : render())
 const labelled = (label: string, l: Line): Line => ({ ...l, text: `${label}: ${l.text}` })
 
+const zero = (v: number | null | undefined) => v === null || v === undefined || v === 0
+const rate = (v: number) => `${Math.round(v * 100)}%`
+const round2 = (v: number) => String(Math.round(v * 100) / 100)
+const round1 = (v: number) => String(Math.round(v * 10) / 10)
+const present = <T>(v: T | null | undefined): v is T => v !== null && v !== undefined
+
 function estimateLines(s: TrackStats): Line[] {
-  const lines: Line[] = [head(`${ICON.estimate} Estimate`)]
   const byKind = s.estimate.byKind ?? {}
+  const h = s.estimate.hotfix
+  const sumN = KINDS.reduce((a, k) => a + (byKind[k]?.n ?? 0), 0)
+  const sumHit = KINDS.reduce((a, k) => a + (byKind[k]?.hit ?? 0), 0)
+  const title = sumN < MIN_SAMPLES ? `${ICON.estimate} Estimate` : `${ICON.estimate} Estimate${SEP}hit ${rate(sumHit / sumN)} (${sumHit}/${sumN})`
+  const lines: Line[] = [head(title)]
+  const rowLines: Line[] = []
   let rows = 0
+  let charted = false
   for (const k of KINDS) {
     const e = byKind[k]
-    if (!e) continue
+    const hot = k === 'hotfix' && h.n > 0
+    if (!e && !hot) continue
     rows++
-    lines.push(labelled(k, gate(e.n, () => plain(`hit ${e.hit}/${e.n}${SEP}under ${e.low}${SEP}over ${e.high}`))))
+    const parts: string[] = []
+    if (e && e.n >= MIN_SAMPLES) {
+      charted = true
+      parts.push(`${stackBar([e.hit, e.low, e.high], BAR_W, '█▓░')} ${rate(e.hit / e.n)}${SEP}⬆${e.low} ⬇${e.high}`)
+    }
+    if (hot && h.n >= MIN_SAMPLES) {
+      const t = [present(h.medianMin) && `median ${fmtDur(h.medianMin)}`, present(h.p90Min) && `p90 ${fmtDur(h.p90Min)}`].filter(Boolean)
+      if (t.length > 0) parts.push(t.join(SEP))
+    }
+    rowLines.push(parts.length > 0 ? plain(`${k.padEnd(7)}${parts.join(SEP)}`) : labelled(k, gate(Math.max(e?.n ?? 0, hot ? h.n : 0), () => plain(''))))
   }
-  const h = s.estimate.hotfix
   // An older binary has no task block: skip it.
   const t = s.estimate.task ?? { n: 0, medianMin: null, p90Min: null }
-  for (const [label, b] of [['hotfix', h], ['task', t]] as const) {
-    if (b.n === 0) continue
+  if (t.n > 0) {
     rows++
-    lines.push(labelled(label, gate(b.n, () => plain(`${b.n} items${SEP}median ${min(b.medianMin)}${SEP}p90 ${min(b.p90Min)}`))))
+    rowLines.push(
+      t.n < MIN_SAMPLES
+        ? labelled('task', gate(t.n, () => plain('')))
+        : plain(`task ${t.n} items${[present(t.medianMin) && `median ${fmtDur(t.medianMin)}`, present(t.p90Min) && `p90 ${fmtDur(t.p90Min)}`].filter(Boolean).map(x => `${SEP}${x}`).join('')}`),
+    )
   }
+  if (charted) lines.push(dim('█ hit · ▓ longer · ░ shorter'))
+  lines.push(...rowLines)
   // FR-2.5: the share by phase needs its kind's own sample.
   const share = Object.entries(s.estimate.phaseShare ?? {}).filter(([k]) => (byKind[k]?.n ?? (k === 'hotfix' ? h.n : k === 'task' ? t.n : 0)) >= MIN_SAMPLES)
-  if (share.length > 0) lines.push(head('agent time by phase'))
+  if (share.length > 0) lines.push(head('🧭 Agent time by phase'))
   for (const [k, phases] of share) {
-    lines.push(plain(`${k}: ${Object.entries(phases).map(([p, v]) => `${p} ${pct(v)}`).join(SEP)}`))
+    const sorted = Object.entries(phases).sort((a, b) => b[1] - a[1])
+    const top = sorted.slice(0, 3)
+    const rest = sorted.slice(3).reduce((a, [, v]) => a + v, 0)
+    lines.push(plain(`${k.padEnd(7)}${stackBar([...top.map(x => x[1]), rest], BAR_W, '█▓▒░')} ${top.map(([p, v]) => `${p} ${rate(v)}`).join(SEP)}`))
   }
   if (rows === 0) lines.push(dim('no finished work to compare yet'))
   return [...lines, ...footerLines(s)]
 }
 
-const zero = (v: number | null | undefined) => v === null || v === undefined || v === 0
+const SEVERITY = [['🔴', 'critical', 'C'], ['🟠', 'high', 'H'], ['🟡', 'medium', 'M'], ['🔵', 'low', 'L']] as const
 
 function qualityLines(s: TrackStats): Line[] {
   const lines: Line[] = [head(`${ICON.quality} Quality`)]
@@ -526,25 +552,36 @@ function qualityLines(s: TrackStats): Line[] {
       lines.push(labelled(k, gate(q.n, () => plain(''))))
       continue
     }
+    lines.push(head(`${k}${SEP}${q.n} items`))
     const f = q.findingsAvg
-    lines.push(head(`${k} (${q.n} items): ship blocked ${pct(q.shipBlockedRate)}${SEP}most blocked at: ${q.topBlockedStep ?? '—'}`))
-    // FR-7.2: a sub-line whose figures are all 0 or unknown is hidden.
-    if (f && !(zero(f.C) && zero(f.H) && zero(f.M) && zero(f.L)) || !zero(q.fixLoopAvg)) {
-      lines.push(plain(`  finding C/H/M/L: ${f ? [f.C, f.H, f.M, f.L].map(num).join('/') : '—'}${SEP}fix loop ${num(q.fixLoopAvg)}`))
+    // FR-7.2: all four severities 0 or unknown draw nothing.
+    if (f && !(zero(f.C) && zero(f.H) && zero(f.M) && zero(f.L))) {
+      const max = Math.max(f.C ?? 0, f.H ?? 0, f.M ?? 0, f.L ?? 0)
+      for (const [emoji, label, key] of SEVERITY) {
+        const v = f[key] ?? 0
+        lines.push(plain(`  ${emoji} ${label.padEnd(8)} ${bar(v / max, 10)} ${round2(v)}`))
+      }
     }
-    if (q.ciRedFirstRate === null || !zero(q.ciRedFirstRate) || !zero(q.waitShare)) {
-      const ci = q.ciRedFirstRate === null ? 'no CI runs recorded' : pct(q.ciRedFirstRate)
-      lines.push(plain(`  CI red first: ${ci}${SEP}wait ${pct(q.waitShare)}`))
-    }
+    const blocked = [
+      present(q.shipBlockedRate) && `🚧 blocked ${rate(q.shipBlockedRate)}${q.topBlockedStep ? ` @${q.topBlockedStep}` : ''}`,
+      present(q.fixLoopAvg) && `🔁 fix loop ${round1(q.fixLoopAvg)}`,
+      q.ciRedFirstRate === null ? '❌ no CI runs recorded' : present(q.ciRedFirstRate) && `❌ CI red first ${rate(q.ciRedFirstRate)}`,
+    ].filter(Boolean)
+    if (blocked.length > 0) lines.push(plain(`  ${blocked.join(SEP)}`))
+    if (present(q.waitShare)) lines.push(plain(`  ⏳ ${'wait'.padEnd(8)} ${bar(q.waitShare, BAR_W)} ${rate(q.waitShare)}`))
+    const tok = Object.entries(q.tokensAvg ?? {}).sort((a, b) => b[1].out - a[1].out)
+    if (tok.length > 0) lines.push(plain(`  🪙 out/item ${tok.map(([m, v]) => `${modelName(m)} ${fmtNum(Math.round(v.out))}`).join(SEP)}`))
   }
   const fx = s.quality.fix
   if (fx.n > 0) {
     rows++
-    lines.push(
-      fx.n < MIN_SAMPLES
-        ? labelled('fix/hotfix', gate(fx.n, () => plain('')))
-        : head(`fix/hotfix (${fx.n} items): ROUND ${num(fx.roundAvg)}${SEP}wide ${pct(fx.wideRate)}${SEP}regression test ${pct(fx.regressionRate)}`),
-    )
+    if (fx.n < MIN_SAMPLES) lines.push(labelled('fix/hotfix', gate(fx.n, () => plain(''))))
+    else {
+      lines.push(head(`🩹 fix/hotfix${SEP}${fx.n} items`))
+      if (present(fx.regressionRate)) lines.push(plain(`  regression test ${bar(fx.regressionRate, BAR_W)} ${rate(fx.regressionRate)}`))
+      const w = [present(fx.wideRate) && `wide ${rate(fx.wideRate)}`, present(fx.roundAvg) && `rounds ${round1(fx.roundAvg)}`].filter(Boolean)
+      if (w.length > 0) lines.push(plain(`  ${w.join(SEP)}`))
+    }
   }
   if (rows === 0) lines.push(dim('no work yet'))
   return lines
@@ -575,7 +612,7 @@ function backlogLines(s: TrackStats): Line[] {
 function footerLines(s: TrackStats): Line[] {
   const sc = s.scale
   return [
-    dim(`scale (${sc.source}, ${sc.n} items): S<${sc.S}m M<${sc.M}m L<${sc.L}m`),
+    dim(`scale (${sc.source}, ${sc.n} items): S<${fmtDur(sc.S)} M<${fmtDur(sc.M)} L<${fmtDur(sc.L)}`),
     ...(s.rules ?? []).map(r => warn(ruleText(r))),
   ]
 }
