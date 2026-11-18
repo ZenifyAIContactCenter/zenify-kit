@@ -313,10 +313,11 @@ test('FR-6.2: Estimate shows hit per kind, hotfix time and the agent share by ph
   const t = texts(tabLines('estimate', s, A, X, NOW))
   expect(t).toContain('🎯 Estimate · hit 50% (3/6)')
   expect(t).toContain('█ hit · ▓ longer · ░ shorter')
-  expect(t).toContain(`cook   ${'█'.repeat(10)}${'▓'.repeat(3)}${'░'.repeat(7)} 50% · ⬆1 ⬇2`)
+  expect(t).toContain(`cook   ${'█'.repeat(10)}${'▓'.repeat(3)}${'░'.repeat(7)} 50% ⬆1 ⬇2`)
   expect(t).toContain('hotfix median 15m · p90 40m')
   expect(t).toContain('🧭 Agent time by phase')
-  expect(t).toContain(`cook   ${'█'.repeat(15)}${'▓'.repeat(5)} implement 75% · plan 25%`)
+  expect(t).toContain(`cook   ${'█'.repeat(15)}${'▓'.repeat(5)}`)
+  expect(t).toContain('   implement 75% · plan 25%')
 })
 
 test('FR-6.2: Quality shows blocked rate, findings, fix loop, wait share, tokens and the fix block; null is —', () => {
@@ -340,9 +341,12 @@ test('FR-6.2: Quality shows blocked rate, findings, fix loop, wait share, tokens
   const t = texts(tabLines('quality', s, A, X, NOW))
   expect(t).toContain('cook · 5 items')
   expect(t).toContain('  🟠 high     ████████░░ 1.5')
-  expect(t).toContain('  🚧 blocked 40% @review · 🔁 fix loop 1.2 · ❌ no CI runs recorded')
+  expect(t).toContain('  🚧 blocked 40% @review')
+  expect(t).toContain('  🔁 fix loop 1.2')
+  expect(t).toContain('  ❌ no CI runs recorded')
   expect(t).toContain('  ⏳ wait     ██░░░░░░░░░░░░░░░░░░ 10%')
-  expect(t).toContain('  🪙 out/item opus 2000')
+  expect(t).toContain('  🪙 out/item')
+  expect(t).toContain('     opus 2000')
   expect(t).toContain('🩹 fix/hotfix · 5 items')
   expect(t).toContain('  wide 50% · rounds 1.5')
   expect(t.some(l => l.includes('regression test'))).toBe(false)
@@ -354,7 +358,7 @@ test('FR-10.7/SC-14: the scale footer and rules are on Estimate only', () => {
     expect(texts(tabLines(tab, s, A, X, NOW)).some(t => t.startsWith('scale ('))).toBe(false)
   }
   const t = texts(tabLines('estimate', s, A, X, NOW))
-  expect(t).toContain('scale (default, 0 items): S<15m M<45m L<2h')
+  expect(t).toContain('scale (default, 0): S<15m M<45m L<2h')
   expect(t).toContain('cook: raise est 1 size')
   expect(t).toContain('fix: lower est 1 size')
   expect(ruleText('hotfix: something new')).toBe('hotfix: something new')
@@ -536,7 +540,8 @@ test('FR-2.5/10.6: phase share needs n >= 5 for its kind', () => {
   const est = (n: number) => stats({ estimate: { byKind: { cook: { n, hit: n, low: 0, high: 0 } }, hotfix: { n: 0, medianMin: null, p90Min: null }, phaseShare: { cook: { plan: 1 } } } })
   expect(texts(tabLines('estimate', est(3), A, X, NOW)).some(l => l.includes('plan 100%'))).toBe(false)
   const six = texts(tabLines('estimate', est(6), A, X, NOW))
-  expect(six[six.indexOf('🧭 Agent time by phase') + 1]).toBe(`cook   ${'█'.repeat(20)} plan 100%`)
+  expect(six[six.indexOf('🧭 Agent time by phase') + 1]).toBe(`cook   ${'█'.repeat(20)}`)
+  expect(six[six.indexOf('🧭 Agent time by phase') + 2]).toBe('   plan 100%')
 })
 
 test('FR-7.2: all-zero findings draw no severity lines', () => {
@@ -636,7 +641,8 @@ test('FR-1.2: a binary without code parses with code empty', () => {
 
 test('FR-2.4: Estimate shows the task block like hotfix, gated at 5 samples', () => {
   const est = (n: number) => stats({ estimate: { byKind: {}, hotfix: { n: 0, medianMin: null, p90Min: null }, task: { n, medianMin: 30, p90Min: 50 }, phaseShare: {} } })
-  expect(texts(tabLines('estimate', est(5), A, X, NOW))).toContain('task 5 items · median 30m · p90 50m')
+  expect(texts(tabLines('estimate', est(5), A, X, NOW))).toContain('task 5 items')
+  expect(texts(tabLines('estimate', est(5), A, X, NOW))).toContain('       median 30m · p90 50m')
   expect(texts(tabLines('estimate', est(3), A, X, NOW))).toContain('task: need 5 samples (have 3)')
 })
 
@@ -820,7 +826,7 @@ test('Today shows cancelled and rollback only when > 0', () => {
 test('SC-2: one warn line counts running items over size or open over a day', () => {
   const s = stats({ running: [item({ id: X, est: 'S', wallMin: 15 }), item({ id: Y, est: '-', wallMin: 5, startedAt: new Date(NOW - 30 * 3600_000).toISOString() })] })
   const w = tl(s).filter(l => l.text.includes('running over size'))
-  expect(w).toEqual([{ text: '⚠ 2 running over size or open >1d → Kitchen', tone: 'warn' }])
+  expect(w).toEqual([{ text: '⚠ 2 running over size or >1d → Kitchen', tone: 'warn' }])
   expect(tl(stats({ running: [item({ wallMin: 1, startedAt: new Date(NOW - 3600_000).toISOString() })] })).some(l => l.text.includes('running over'))).toBe(false)
 })
 
@@ -831,7 +837,8 @@ test('SC-3: hourBins sums overlapping minutes per local hour and the sparkline r
   expect(hourBins([a, b], now)).toEqual({ startHour: 8, values: [40, 0, 30] })
   expect(hourBins([], now)).toEqual({ startHour: 0, values: [] })
   const t = texts(tl(todayWith({ items: [a, b] }), now))
-  expect(t).toContain('⏱ Time by hour 08 █ ▆ 10')
+  expect(t).toContain('⏱ Time by hour')
+  expect(t).toContain('   08 █ ▆ 10')
 })
 
 test('SC-3b: an item from yesterday counts only from midnight', () => {
@@ -852,10 +859,11 @@ test('SC-4: Today tokens sort by out with bars relative to the max', () => {
   const t = texts(tl(s))
   const o = t.findIndex(l => l.includes('opus'))
   const so = t.findIndex(l => l.includes('sonnet'))
-  expect(t).toContain('🪙 Tokens today')
+  expect(t).toContain("🪙 Tokens · today's items")
   expect(o).toBeGreaterThan(-1)
   expect(o).toBeLessThan(so)
-  expect(t[o]).toContain('████████████████████ 100.0k out · 2000 cache')
+  expect(t[o]).toBe('   opus   ████████████████████ 100.0k')
+  expect(t[o + 1]).toBe('          cache 2000')
   expect(count(t[so] ?? '', '█')).toBe(10)
   expect(count(t[so] ?? '', '░')).toBe(10)
 })
@@ -873,22 +881,21 @@ test('SC-5: Waiting on you shows the total, a 20-cell stacked bar and hides zero
   const t = texts(tl(s))
   const i = t.indexOf('🙋 Waiting on you 19m')
   expect(i).toBeGreaterThan(-1)
-  expect(t[i + 1]).not.toContain('ask')
-  expect(t[i + 1]).toContain('🔐 permission 6m · 💤 idle 13m')
-  expect([...(t[i + 1] ?? '').trim().split('  ')[0] ?? '']).toHaveLength(20)
+  expect(t[i + 1]?.trim()).toHaveLength(20)
+  expect(t[i + 2]).not.toContain('ask')
+  expect(t[i + 2]).toBe('   🔐 permission 6m · 💤 idle 13m')
 })
 
 const noQ = { n: 5, shipBlockedRate: null, topBlockedStep: null, findingsAvg: null, fixLoopAvg: null, ciRedFirstRate: null, waitShare: null, tokensAvg: null }
 const estOf = (byKind: Record<string, { n: number; hit: number; low: number; high: number }>, hotfix = { n: 0, medianMin: null, p90Min: null } as { n: number; medianMin: number | null; p90Min: number | null }, phaseShare: Record<string, Record<string, number>> = {}) =>
   stats({ estimate: { byKind, hotfix, phaseShare } })
 
-test('SC-6: hotfix is one line with hit, median and p90', () => {
+test('SC-6: hotfix is a hit row with median and p90 on the next line', () => {
   const t = texts(tabLines('estimate', estOf({ hotfix: { n: 10, hit: 9, low: 1, high: 0 } }, { n: 7, medianMin: 11, p90Min: 59 }), A, X, NOW))
-  const rows = t.filter(l => l.startsWith('hotfix'))
-  expect(rows).toHaveLength(1)
-  expect(rows[0]).toContain('90%')
-  expect(rows[0]).toContain('median 11m')
-  expect(rows[0]).toContain('p90 59m')
+  const i = t.findIndex(l => l.startsWith('hotfix'))
+  expect(t.filter(l => l.startsWith('hotfix'))).toHaveLength(1)
+  expect(t[i]).toContain('90%')
+  expect(t[i + 1]).toBe('       median 11m · p90 59m')
 })
 
 test('FR-2.4: hotfix hit and hotfix time gate on their own sample', () => {
@@ -907,8 +914,8 @@ test('SC-7: the title sums hit over cook, fix and hotfix', () => {
 
 test('SC-9: phase line lists the top three, descending', () => {
   const s = estOf({ cook: { n: 5, hit: 3, low: 1, high: 1 } }, undefined, { cook: { design: 0.49, ship: 0.29, implement: 0.18, plan: 0.04 } })
-  const row = texts(tabLines('estimate', s, A, X, NOW)).find(l => l.startsWith('cook') && l.includes('design'))
-  expect(row?.endsWith('design 49% · ship 29% · implement 18%')).toBe(true)
+  const row = texts(tabLines('estimate', s, A, X, NOW)).find(l => l.includes('design'))
+  expect(row).toBe('   design 49% · ship 29% · implement 18%')
 })
 
 test('FR-2.1: under 5 samples in total the title has no hit', () => {
@@ -926,13 +933,13 @@ test('SC-8: findings are one bar line per severity, scaled to the largest', () =
 
 test('SC-4: Quality shows out tokens per item by model', () => {
   const q = { ...noQ, tokensAvg: { 'claude-opus-5-5': { in: 1, out: 72290.8 } } }
-  expect(texts(tabLines('quality', stats({ quality: { byKind: { cook: q }, fix: noFix } }), A, X, NOW))).toContain('  🪙 out/item opus 72.3k')
+  expect(texts(tabLines('quality', stats({ quality: { byKind: { cook: q }, fix: noFix } }), A, X, NOW))).toContain('     opus 72.3k')
 })
 
 test('FR-3.3/3.4/3.7: blocked, no CI runs, wait share; empty says no work yet', () => {
   const q = { ...noQ, shipBlockedRate: 0, waitShare: 0.61 }
   const t = texts(tabLines('quality', stats({ quality: { byKind: { cook: q }, fix: noFix } }), A, X, NOW))
-  expect(t.some(l => l.includes('🚧 blocked 0%') && l.includes('no CI runs recorded'))).toBe(true)
+  expect(t).toContain('  🚧 blocked 0% · ❌ no CI runs recorded')
   expect(t.find(l => l.startsWith('  ⏳ wait'))).toContain('61%')
   expect(texts(tabLines('quality', stats(), A, X, NOW))).toContain('no work yet')
 })
@@ -1022,4 +1029,99 @@ test('ship review: an older binary without prsWaiting or cacheRead renders no un
   const lines = texts(tl(st))
   expect(lines).toContain('🔗 PR 2 opened · 0 merged · 0 waiting')
   for (const l of lines) expect(l).not.toMatch(/undefined|NaN/)
+})
+
+// ---- Zenie review r1 (PR #379) ----
+// Display width of a line in terminal cells. Rule: emoji and pictographs (U+1F000 and up, U+2600-U+27BF,
+// and the emoji-presentation hourglass/clock block U+23E9-U+23F3) count 2; U+FE0F and U+200D count 0;
+// everything else, including the block and arrow glyphs used by the charts, counts 1.
+const cells = (text: string): number =>
+  [...text].reduce((n, ch) => {
+    const c = ch.codePointAt(0) ?? 0
+    if (c === 0xfe0f || c === 0x200d) return n
+    return n + (c >= 0x1f000 || (c >= 0x2600 && c <= 0x27bf) || (c >= 0x23e9 && c <= 0x23f3) ? 2 : 1)
+  }, 0)
+const PANE_BODY = 40
+
+test('cells counts emoji as 2, the variation selector as 0 and chart glyphs as 1', () => {
+  expect(cells('✅ ok')).toBe(5)
+  expect(cells('↩️')).toBe(1)
+  expect(cells('█▓▒░▁⬆⬇…')).toBe(8)
+  expect(cells('🔐')).toBe(2)
+})
+
+test('Zenie F1: every Today, Estimate and Quality line fits the 40-cell pane body', () => {
+  const tok = (out: number, cacheRead: number) => ({ in: 1, out, cacheRead, cacheCreation: 0 })
+  const now = new Date(2026, 10, 2, 17, 30).getTime()
+  const running = item({ id: X, est: 'S', wallMin: 30, startedAt: local(9, 0, 1) })
+  const s = stats({
+    running: [running],
+    rules: ['cook: est up 1 size'],
+    scale: { source: 'default', n: 120, S: 15, M: 45, L: 120 },
+    today: {
+      ...stats().today,
+      started: { cook: 12, fix: 10, hotfix: 5, task: 3 },
+      done: { cook: 10, fix: 9, hotfix: 5, task: 3 },
+      cancelled: { fix: 1 },
+      rolledBack: { fix: 1 },
+      wallMin: 2665,
+      agentMin: 90,
+      tasks: 7,
+      rounds: 12,
+      prsOpened: 12,
+      merged: 10,
+      prsWaiting: 3,
+      items: [
+        item({ id: Y, startedAt: local(8, 10), endedAt: local(15, 50), status: 'done', wait: { ask: 12, permission: 9, idle: 26, total: 47 }, tokens: { 'claude-opus-5-5': tok(1_234_567, 98_765_432), 'claude-sonnet-5': tok(50000, 2000) } }),
+      ],
+    },
+    estimate: {
+      byKind: { cook: { n: 25, hit: 13, low: 2, high: 10 }, fix: { n: 24, hit: 20, low: 2, high: 2 }, hotfix: { n: 10, hit: 9, low: 1, high: 0 } },
+      hotfix: { n: 7, medianMin: 665, p90Min: 2665 },
+      task: { n: 120, medianMin: 90, p90Min: 165 },
+      phaseShare: {
+        cook: { design: 0.3, implement: 0.25, ship: 0.2, plan: 0.15, review: 0.1 },
+        fix: { implement: 0.4, ship: 0.3, review: 0.2, plan: 0.07, design: 0.03 },
+        hotfix: { implement: 0.4, ship: 0.3, review: 0.2, plan: 0.07, design: 0.03 },
+      },
+    },
+    quality: {
+      byKind: {
+        cook: { n: 25, shipBlockedRate: 1, topBlockedStep: 'behaviour', findingsAvg: { C: 0.04, H: 0.5, M: 2.2, L: 3.9 }, fixLoopAvg: 12.5, ciRedFirstRate: 1, waitShare: 1, tokensAvg: { 'claude-opus-5-5': { in: 1, out: 76543 }, 'claude-sonnet-5': { in: 1, out: 12345 }, 'claude-haiku-5': { in: 1, out: 999 } } },
+      },
+      fix: { n: 20, roundAvg: 1.5, wideRate: 0.5, regressionRate: 1 },
+    },
+  })
+  const tooLong: string[] = []
+  for (const tab of ['today', 'estimate', 'quality'] as const) {
+    for (const l of tabLines(tab, s, A, X, now)) {
+      if (l.href) continue // PR links keep their pre-existing label
+      const text = l.text + (l.label ?? '')
+      if (cells(text) > PANE_BODY) tooLong.push(`${tab} (${cells(text)}): ${text}`)
+    }
+  }
+  expect(tooLong).toEqual([])
+})
+
+test('Zenie F2: the tokens header says the numbers are for today\'s items', () => {
+  const s = todayWith({ items: [item({})] })
+  expect(texts(tl(s))).toContain("🪙 Tokens · today's items")
+  expect(texts(tl(s)).some(l => l === '🪙 Tokens today')).toBe(false)
+})
+
+test('Zenie F3: a running item from yesterday shows in the sparkline once, even with no items today', () => {
+  const now = new Date(2026, 10, 2, 2, 30).getTime()
+  const r = item({ id: X, startedAt: local(23, 0, 1), endedAt: '' })
+  const t = texts(tl(stats({ running: [r] }), now))
+  expect(t).toContain('   00 ██▄ 02')
+  // the same id in items and running counts once
+  const both = texts(tl(stats({ running: [r], today: { ...stats().today, items: [r] } }), now))
+  expect(both).toContain('   00 ██▄ 02')
+})
+
+test('Zenie F4: a span under a minute still draws a sparkline cell', () => {
+  const now = new Date(2026, 10, 2, 8, 30).getTime()
+  const a = item({ startedAt: new Date(2026, 10, 2, 8, 10, 0).toISOString(), endedAt: new Date(2026, 10, 2, 8, 10, 20).toISOString(), status: 'done' })
+  expect(hourBins([a], now).values[0]).toBeGreaterThan(0)
+  expect(sparkline(hourBins([a], now).values)[0]).not.toBe(' ')
 })
