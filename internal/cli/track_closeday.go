@@ -18,12 +18,17 @@ import (
 // closeDayKeepDays is how long log.md rows, session logs and day reports stay live.
 const closeDayKeepDays = 14
 
+// liveKeep is how long a session's live/ files stay after the newest of them was written;
+// readers only treat a beat younger than trackstats.LiveTTL as live.
+const liveKeep = 24 * time.Hour
+
 func newTrackCloseDayCmd(ws *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "close-day",
 		Short: "Chốt ngày làm việc trước: báo cáo ngày và archive log cũ", //znf:allow-lang
 		Long: "Lần chạy đầu tiên trong ngày ghi báo cáo ngày làm việc gần nhất vào days/<ngày>.md,\n" + //znf:allow-lang
-			"chuyển các dòng log.md và session log cũ hơn 14 ngày sang archive/ rồi in báo cáo.\n" + //znf:allow-lang
+			"chuyển các dòng log.md và session log cũ hơn 14 ngày sang archive/, xoá file live/ của\n" + //znf:allow-lang
+			"session đã ngừng quá 1 ngày rồi in báo cáo.\n" + //znf:allow-lang
 			"Các lần sau trong cùng ngày không làm gì.", //znf:allow-lang
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -137,6 +142,9 @@ func closeDayLocked(dir, closedPath string, now time.Time, today, ownDay string)
 		return err
 	}
 	if err := moveOldFiles(dir, now, keep, movedIDs, ownDay); err != nil {
+		return err
+	}
+	if err := pruneLive(dir, now); err != nil {
 		return err
 	}
 	return writeFileAtomic(closedPath, []byte(today+"\n"), 0o644)
@@ -290,6 +298,73 @@ func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bo
 		}
 	}
 	return nil
+}
+
+// pruneLive removes the live/<session>.beat and .json of every session whose newest live file
+// is older than liveKeep. A file already gone was removed by another run.
+func pruneLive(dir string, now time.Time) error {
+	var files []string
+	for _, ext := range []string{"*.beat", "*.json"} {
+		m, err := filepath.Glob(filepath.Join(dir, "live", ext))
+		if err != nil {
+			return err
+		}
+		files = append(files, m...)
+	}
+	newest := map[string]time.Time{}
+	bySession := map[string][]string{}
+	for _, f := range files {
+		fi, err := os.Stat(f)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		s := strings.TrimSuffix(filepath.Base(f), filepath.Ext(f))
+		bySession[s] = append(bySession[s], f)
+		if fi.ModTime().After(newest[s]) {
+			newest[s] = fi.ModTime()
+		}
+	}
+	cut := now.Add(-liveKeep)
+	for s, fs := range bySession {
+		if !newest[s].Before(cut) {
+			continue
+		}
+		// The hook writes live/ without the log lock: re-check right before removing, so a tab
+		// that woke up since the first pass keeps its files.
+		fresh, err := anyNewer(fs, cut)
+		if err != nil {
+			return err
+		}
+		if fresh {
+			continue
+		}
+		for _, f := range fs {
+			if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// anyNewer reports whether a file of files was modified at or after cut; a gone file is skipped.
+func anyNewer(files []string, cut time.Time) (bool, error) {
+	for _, f := range files {
+		fi, err := os.Stat(f)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if !fi.ModTime().Before(cut) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // moveInto renames src into destDir; an existing file of that name is never overwritten,
