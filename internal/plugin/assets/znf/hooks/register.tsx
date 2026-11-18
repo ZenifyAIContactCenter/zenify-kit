@@ -5,7 +5,7 @@ import type { TrackStats } from '../types'
 import { isInWorkspace, registerConfig, setInWorkspace, syncConfig, trackPaneOf } from './config'
 import { bindLine, cwdLine, isStartCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
-import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, parseTrackStats, promptSkillOf, trackContext, trackSectionOf, statusText, tabLines } from './track-ui'
+import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, parseTrackStats, promptSkillOf, trackContext, trackSectionOf, statusText, tabLines, tipLine } from './track-ui'
 import type { Line, Tab } from './track-ui'
 
 // FR-6.1: one pane; the five tabs are drawn inside it.
@@ -336,6 +336,8 @@ async function mtimeOf($: $, path: string): Promise<string> {
 // FR-11.2–11.4: the status line from the last stats answer and this session's bound id.
 // FR-11.8: the `tips` option, read once in register (a /config change reloads the module).
 let showTips = true
+// FR-4.7: the trackPane option, read once in register; the pane invite shows while it is not off.
+let paneMode: ReturnType<typeof trackPaneOf> = 'auto'
 
 async function updateStatus($: $): Promise<void> {
   const st = await read($, stats)
@@ -495,6 +497,7 @@ export const register: Register = (on, options: PluginOptions) => {
   // FR-17.4: auto opens the pane on a tracked prompt, unless the person closed it; command only by /track-pane;
   // off neither, and /track-pane is not registered.
   const trackPane = trackPaneOf(options)
+  paneMode = trackPane
   showTips = options.tips !== false
   // FR-17.2: the /config rows' writes.
   registerConfig(on)
@@ -660,6 +663,23 @@ export const register: Register = (on, options: PluginOptions) => {
     return { text: COPY.opened }
   })
 
+  // FR-4.3: the tip is a dim italic row under the engine's own prompt hint.
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    // The stats atom outlives a session start outside the workspace, so the workspace check comes first.
+    if (!isInWorkspace()) return next(e)
+    const st = await read($, stats)
+    if (!st?.data) return next(e)
+    const tip = tipLine(st.data, await $.session.id(), (await read($, bound))?.id, showTips, await $.clock.now(), paneMode !== 'off' && !wasShown)
+    if (!tip) return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        {await next(e)}
+        <Text dimColor italic wrap="truncate-end">{`💡 ${tip}`}</Text>
+      </Box>
+    )
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE.id }, async ($, e) => {
     const { Box, Button, Link, Text } = $.ui.resolve(e)
     const selected = await read($, tab)
@@ -684,17 +704,20 @@ export const register: Register = (on, options: PluginOptions) => {
     const showTabKeys = e.surface === 'terminal' && e.viewport?.isFullscreen === false && !e.props.isFocused
     return (
       <Box flexDirection="column" paddingX={1}>
-        <Box flexDirection="row" marginBottom={showTabKeys ? 0 : 1}>
-          {TABS.map((t, i) => [
-            i > 0 && <Text dimColor> │ </Text>,
-            // A Button has no color prop, so the selected tab is a colored bold Text.
-            t.id === selected ? (
-              <Text color="claude" bold>{`▸${t.label}`}</Text>
-            ) : (
-              // The hotkey (its 1-based place) presses it while the pane holds the keyboard.
-              <Button key={`tab:${t.id}`} label={t.label} hotkey={String(i + 1)} plain dimColor onPress={() => selectTab($, t.id)} />
-            ),
-          ])}
+        {/* The five tabs are wider than the pane: the row wraps whole tabs instead of squeezing one into a column. */}
+        <Box flexDirection="row" flexWrap="wrap" marginBottom={showTabKeys ? 0 : 1}>
+          {TABS.map((t, i) => (
+            // The gap trails the tab, so a wrapped line never starts with a dangling separator.
+            <Box key={`tabcell:${t.id}`} flexShrink={0} marginRight={i < TABS.length - 1 ? 2 : 0}>
+              {/* A Button has no color prop, so the selected tab is a colored bold Text. */}
+              {t.id === selected ? (
+                <Text color="claude" bold>{`▸${t.label}`}</Text>
+              ) : (
+                // The hotkey (its 1-based place) presses it while the pane holds the keyboard.
+                <Button key={`tab:${t.id}`} label={t.label} hotkey={String(i + 1)} plain dimColor onPress={() => selectTab($, t.id)} />
+              )}
+            </Box>
+          ))}
         </Box>
         {showTabKeys && (
           <Box marginBottom={1}>

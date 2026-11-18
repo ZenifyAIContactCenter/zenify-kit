@@ -26,19 +26,35 @@ Status line luôn hiện, kể cả khi pane đóng. Toàn bộ chữ trên pane
 - Khi tắt: `⏸ track off · enable: /config → znf`
 - Khi bật và tab này đang có việc mở: `track ▶ <id> · <phase> · <wall>m/<est> (agent <n>m) · wait <n>m · Today: done/started · PR n (m merged) · hit n%`
 - Khi bật và tab này chưa có việc: `track ⏸ · Today: done/started · ...`
-- Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸ · Tip: onboard the agent to pick work — type "hey claude onboard track"`
+- Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸`
 - Số đầu tiên là wall time (đồng hồ thật từ lúc bắt đầu), kèm `<est>` nếu việc có size; `(agent <n>m)` là thời gian agent thật sự làm, chỉ hiện khi lớn hơn 0. Chi tiết ở [Thời gian wall và thời gian agent](#thời-gian-wall-và-thời-gian-agent).
 - `hit n%` chỉ hiện khi đã có ít nhất 5 việc có est.
-- Khi tab này chưa có việc mở, tip việc cần xử lý ngay đứng trước các tip bên dưới: PR có CI đỏ, rồi PR còn thread chưa resolve, rồi PR bị yêu cầu sửa, rồi PR đã sẵn sàng merge, rồi việc carried over đã mở từ 5 ngày trở lên hoặc bị stale (`Tip: <id> open <n> days — continue or cancel it`).
-- Tip theo ngữ cảnh: mỗi lúc tối đa một tip, nối cuối dòng bằng ` · `, chọn theo thứ tự ưu tiên (onboard ở trên trước; rồi carried over, chưa có plan, Backlog):
-  - tab này không có id mở và còn việc làm dở từ các ngày trước: `Tip: N items carried over — type "hey claude continue"`
-  - tab này không có id mở, đã onboard và hôm nay chưa có plan: `Tip: no plan today — type "/znf:track plan"` (xem [Daily plan](#daily-plan))
-  - tab này không có id mở và Backlog còn việc: `Tip: N items in Backlog — type "/znf:track ls"`
-  - có id mở, chưa có estimate và đã chạy từ 5 phút: `Tip: no estimate yet — type "hey claude estimate this"`
-  - có id mở, đã vượt ngưỡng của size est: `Tip: over est M (50m/45m) — split the work or re-estimate`
-  - còn PR đã mở (bất kỳ ngày nào) chưa merge: `Tip: N PRs waiting to merge — type "hey claude check PR"`
 
 Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track error: <nguyên nhân>`. Số liệu được tải ở nền: trong lúc `zenify track stats` đang chạy (có thể quá 20s khi phải hỏi `gh` từng PR đang mở), status line vẫn giữ số liệu cũ, thêm dấu `⟳` ở đầu nếu lần chạy quá 1s, rồi tự cập nhật khi lần chạy xong; chỉ báo lỗi khi lần chạy hỏng hoặc quá 2 phút.
+
+## Tip dưới prompt
+
+Tip không nằm trên status line nữa mà ở một dòng riêng, màu xám và in nghiêng, ngay dưới dòng hint của prompt: `💡 Tip: …`. Dòng này chỉ có khi Claude Code mở trong workspace và có tip để hiện; không có tip thì không thêm dòng nào. Mỗi lúc tối đa một tip, chọn theo thứ tự ưu tiên:
+
+1. Tab khác đang chờ bạn (tab chờ lâu nhất, không tính tab này): `Tip: "<tab>" waits on your answer · 3m` hoặc `... your permission · 3m`.
+2. Tab này đang có việc mở:
+   - chưa có estimate và đã chạy từ 5 phút: `Tip: no estimate yet — type "hey claude estimate this"`
+   - đã vượt ngưỡng của size est: `Tip: over est M (50m/45m) — split the work or re-estimate`
+   - không có tip est nào thì mời mở pane (xem dưới). Tip "PRs waiting to merge" không hiện khi tab đang có việc mở.
+3. Tab này chưa có việc, theo thứ tự:
+   - PR có CI đỏ, rồi PR còn thread chưa resolve, rồi PR bị yêu cầu sửa, rồi PR đã sẵn sàng merge
+   - kit có bản mới: `Tip: zenify v0.74.0 is out (running v0.73.0) — run "zenify update"`
+   - việc carried over đã mở từ 5 ngày trở lên hoặc bị stale: `Tip: <id> open <n> days — continue or cancel it`; rồi `Tip: N items carried over — type "hey claude continue"`
+   - plan hôm nay còn mục todo: `Tip: next in plan: <code> <title> — type "/znf:track go <code>"` (xem [Daily plan](#daily-plan)); plan đã xong hết: `Tip: plan done — type "/znf:track ls"`
+   - đã onboard và hôm nay chưa có plan: `Tip: no plan today — type "/znf:track plan"`
+   - Backlog còn việc: `Tip: N items in Backlog — type "/znf:track ls"`
+   - còn PR đã mở chưa merge: `Tip: N PRs waiting to merge — type "hey claude check PR"`
+   - mời mở pane khi pane chưa được hiện lần nào trong session này và `Track pane` khác `off`: `Tip: see today's work in the track pane — type "/track-pane"`
+   - không còn tip nào thì hiện một câu vui tiếng Việt (vd `🧋 Trà đá không?`), đổi mỗi 10 phút
+
+Workspace chưa onboard (và tab này chưa có việc) thì tip là `Tip: onboard the agent to pick work — type "hey claude onboard track"`, đứng trước mọi tip khác. Tùy chọn `znf.tips` tắt thì mọi tip ẩn, trừ tip onboard.
+
+Tip "kit có bản mới" đọc từ field `kitUpdate` của `zenify track stats --json`: `{ current, latest, newer }`, lấy từ cache update-check (không gọi mạng), là `null` khi chưa có cache hoặc là bản dev build.
 
 ## Năm tab
 
@@ -47,14 +63,14 @@ Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. 
 | Tab | Nội dung |
 |---|---|
 | **Kitchen** | Tab mặc định, giống nhau ở mọi session. Thứ tự từ trên xuống: `🗓 Plan` (chỉ khi hôm nay đã có plan, xem [Daily plan](#daily-plan)), `📌 Carried over` (xem [Việc làm dở và ngày làm việc cuối](#việc-làm-dở-và-ngày-làm-việc-cuối)), `🥘 Cooking`, `🔥 Rolling boil`, `🍳 Cooked`. `🔥 Rolling boil`: các tab Claude Code đang chờ bạn, mỗi dòng `- <❓ hoặc 🔐> <thời gian chờ> <tab>` (`45s`, `2m`, `2h`, làm tròn xuống); không có thì hiện `no tab is waiting`. `🍳 Cooked`: các việc đã xong hôm nay, mỗi dòng `- <icon> <HH:MM> <brief>` (có est thì thêm ` · M→52m`: est và wall time thật; wall đã chạm mốc của size thì thêm ` ⚠`; giờ máy; icon cho biết kết quả: ✅ done và mọi PR đã merge, ⏳ done nhưng còn PR chưa merge, 🚀 pushed, ⛔ cancelled, ↩️ rollback), mỗi PR một dòng `  🔗 <repo>#<n>` là link bấm được tới PR; chưa có thì hiện `nothing finished today`. Lấy tiêu đề lỗi thì có dòng `⚠ title error: <nguyên nhân>` |
-| **Today** | Hôm nay của cả workspace: `Done`, `started`, `Cancelled`, `Rollback` (mục bằng 0 thì ẩn), `Time <wall>m · agent <n>m`, `SDD tasks` (chỉ khi hôm nay có cook xong), `Rounds`, `PR n opened · m merged` và mỗi PR đã mở chưa merge một dòng link (xem [PR cần hành động](#pr-cần-hành-động)), `Plans written today` theo repo; danh sách `Running` gom theo session, tab hiện tại ghi `(this tab)`; việc bị bỏ dở ghi `stale` |
-| **Estimate** | Với mỗi loại (cook, fix, hotfix): est đúng/thấp/cao so với thực tế (`hit`, `under`, `over`); hotfix và `task` (việc ops, xem [Việc ops](#việc-ops-kind-task)) hiện số việc, trung vị và p90 (block `task` chỉ hiện khi đã có việc `task` xong; `task` không góp vào thang S/M/L); `agent time by phase` là tỉ lệ thời gian agent theo giai đoạn |
-| **Quality** | Với mỗi loại: tỉ lệ ship bị chặn và bước chặn nhiều nhất, finding C/H/M/L trung bình, số vòng fix loop, tỉ lệ CI đỏ lần đầu, tỉ lệ thời gian chờ; với fix/hotfix thêm ROUND trung bình, tỉ lệ sửa diện rộng và tỉ lệ có regression test. Pane không hiện token (JSON của `zenify track stats --json` vẫn giữ) |
+| **Today** | Hôm nay của cả workspace: `✅ Done <done>/<started>` kèm thanh tiến độ, mỗi loại (cook, fix, hotfix, task) một dòng `done/started` có thanh riêng; `Cancelled`, `Rollback` (mục bằng 0 thì ẩn); `⏱ Time by hour` là sparkline thời gian theo giờ trong ngày (tính cả việc đang chạy từ hôm trước và việc ngắn dưới một phút); `wall <n> · agent <n> (parallel)`; `🙋 Waiting on you` với thanh chia `ask`, `permission`, `idle`; `🪙 Tokens out · today's items` theo model (một dòng thanh `out`, dòng mờ bên dưới là `cache`); số này là token cả đời của các việc bắt đầu hoặc kết thúc hôm nay, không phải chỉ token tiêu trong hôm nay; `🔁 SDD tasks`, `rounds` (`tasks` chỉ hiện khi hôm nay có cook xong); `PR n opened · m merged · k waiting` và mỗi PR đã mở chưa merge một dòng link (xem [PR cần hành động](#pr-cần-hành-động)); `⚠ n running over size or >1d → Kitchen` khi có việc đang chạy quá size hoặc mở hơn một ngày. Thời gian dài hiển thị theo ngày (`1d20h`) |
+| **Estimate** | Tiêu đề `🎯 Estimate · hit <p>% (<hit>/<n>)` cộng trên cook, fix, hotfix (dưới 5 mẫu thì chỉ còn `🎯 Estimate`). Mỗi loại một dòng có thanh `█ hit · ▓ longer · ░ shorter` kèm `⬆` (thực tế lâu hơn est) và `⬇` (nhanh hơn est); hotfix thêm `median` và `p90` ở dòng ngay dưới. Dòng `task` (việc ops, xem [Việc ops](#việc-ops-kind-task)) hiện số việc, dòng dưới là trung vị và p90 (chỉ hiện khi đã có việc `task` xong; `task` không góp vào thang S/M/L). `🧭 Agent time by phase`: mỗi loại một thanh chia theo giai đoạn, dòng dưới ghi ba giai đoạn lớn nhất. Cuối tab là dòng `scale (<nguồn>, <n>)` của thang S/M/L và các rule |
+| **Quality** | `🛡 Quality`; với mỗi loại: `<loại> · <n> items`, mỗi mức finding một thanh (`🔴 critical`, `🟠 high`, `🟡 medium`, `🔵 low`, trung bình mỗi việc), dòng `🚧 blocked <p>% @<bước>` (tỉ lệ ship bị chặn và bước chặn nhiều nhất), `🔁 fix loop`, `❌ CI red first` (các mục này xuống dòng khi không vừa bề rộng pane), thanh `⏳ wait` (tỉ lệ thời gian chờ) và `🪙 out/item` (token output trung bình mỗi việc, mỗi model một dòng bên dưới); số nào chưa có thì ẩn khỏi dòng. Với fix/hotfix thêm `🩹 fix/hotfix · <n> items` gồm thanh `🧪 regression`, `wide` (tỉ lệ sửa diện rộng) và `rounds` |
 | **Backlog** | Việc chưa làm, nhóm theo nguồn: `manual`, `plane`, `github`, `sdd`, `stale`. Mỗi dòng `<code> · repo · est · title · <số ngày>d`; mục có URL là link bấm được (xem [Backlog](#backlog)). Backlog rỗng hiện `Backlog is empty`; lấy issue GitHub lỗi thì có dòng `⚠ github: <nguyên nhân>` |
 
 Số trên Estimate và Quality chỉ hiện khi đủ mẫu: mỗi loại cần ít nhất 5 việc thật. Chưa đủ thì dòng đó hiện mờ `need 5 samples (have N)`. Tỉ lệ thời gian theo giai đoạn cũng chỉ hiện khi loại đó đủ 5 mẫu. Số từ 10000 trở lên viết gọn `12.3k`, `1.2M`.
 
-Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall time; nguồn thang `learned` hoặc `default` hiện cạnh số việc, dạng `scale (default, 0 items): S<15m M<45m L<120m`) và các quy tắc hiệu chỉnh, ví dụ gợi ý `raise est 1 size` hoặc `lower est 1 size`. Các tab khác không có chân trang.
+Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall time; nguồn thang `learned` hoặc `default` hiện cạnh số việc, dạng `scale (default, 0): S<15m M<45m L<2h`; khi các mốc quá dài so với bề ngang pane thì chúng xuống dòng riêng) và các quy tắc hiệu chỉnh, ví dụ gợi ý `raise est 1 size` hoặc `lower est 1 size`. Các tab khác không có chân trang.
 
 ## Việc làm dở và ngày làm việc cuối
 
@@ -62,7 +78,7 @@ Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall ti
 
 - Dòng `📆 Fri 10/31: 3 done · 1 cancelled · 2 PRs · 2 left open` tóm tắt ngày làm việc cuối trước hôm nay (ngày làm việc, nên sáng thứ Hai là tóm tắt thứ Sáu). Mục bằng 0 thì ẩn.
 - Mỗi việc đã bắt đầu từ trước hôm nay mà chưa kết thúc (đang chạy hoặc `stale`) có hai dòng: `- ⏳ 2d <worktree hoặc brief> · <kind> · <phase>` (việc stale dùng `🕸`; tuổi là `Nm`, `Nh` hoặc `Nd` theo wall time), rồi dòng mờ `<tên tab hoặc 8 ký tự session> · <id>`.
-- Không có việc dở và không có ngày làm việc cuối thì không có phần này. Khi có việc dở và tab không có việc mở, status line nhắc bằng tip `N items carried over`.
+- Không có việc dở và không có ngày làm việc cuối thì không có phần này. Khi có việc dở và tab không có việc mở, [dòng tip dưới prompt](#tip-dưới-prompt) nhắc bằng `N items carried over`.
 
 ## Chốt sổ hằng ngày
 
@@ -91,7 +107,7 @@ Tab `Kitchen` đọc cùng số liệu `zenify track stats --json` như các tab
 
 ## Thời gian wall và thời gian agent
 
-Thời gian wall là đồng hồ thật từ lúc việc bắt đầu; status line hiện nó đầu tiên (`<wall>m/<est>`). Thời gian agent (`agent <n>m`) là phần Claude thực sự làm. Phần còn lại là thời gian chờ: chờ trả lời câu hỏi (`ask`), chờ cấp quyền (`permission`) hoặc phiên để rảnh (`idle`), hiện ở status line là `wait <n>m`. Est được so với thời gian wall, cùng thang S/M/L. Thời gian agent được tách theo giai đoạn của task (tab Estimate); token vẫn được ghi trong JSON nhưng pane không hiện.
+Thời gian wall là đồng hồ thật từ lúc việc bắt đầu; status line hiện nó đầu tiên (`<wall>m/<est>`). Thời gian agent (`agent <n>m`) là phần Claude thực sự làm. Phần còn lại là thời gian chờ: chờ trả lời câu hỏi (`ask`), chờ cấp quyền (`permission`) hoặc phiên để rảnh (`idle`), hiện ở status line là `wait <n>m`. Est được so với thời gian wall, cùng thang S/M/L. Thời gian agent được tách theo giai đoạn của task (tab Estimate); token hiện ở Today (token trong ngày) và Quality (trung bình mỗi việc).
 
 ## Chất lượng ship, fix và CI
 
@@ -118,7 +134,7 @@ zenify track plan set b-261105-ab12 https://github.com/org/repo/pull/3 cook-2611
 - Plan lại = chạy `plan set` lại với cả danh sách; dòng `plan` mới nhất của hôm nay thắng, plan của ngày khác bị bỏ qua.
 - Mỗi mục có trạng thái `todo`, `running`, `done` hoặc `cancelled`, lấy từ track item tương ứng; mục chỉ là URL PR thì `done` khi PR đã merge.
 - Trên tab `Kitchen`, phần `🗓 Plan` liệt kê `- ☐|▶|✅|⛔ <code> · <repo> · <est> · <title>` (có link nếu có URL) rồi dòng mờ `est <x> · used <y>`: tổng mốc của thang S/M/L hiện hành và tổng wall time của các việc trong plan (dưới 60 phút viết `Nm`, còn lại `3h` hoặc `4h30m`).
-- Chưa có plan hôm nay thì status line nhắc bằng tip `no plan today`.
+- Chưa có plan hôm nay thì [dòng tip dưới prompt](#tip-dưới-prompt) nhắc bằng `no plan today`.
 
 ## PR cần hành động
 
@@ -231,8 +247,8 @@ Các thiết lập của kit là các dòng của plugin `znf` trong `/config` c
 |---|---|---|
 | **Dev track** (`znf.track`) | bật/tắt, mặc định tắt | Chạy `zenify feature track on\|off` cho workspace hiện tại |
 | **GitHub issues** (`znf.githubIssues`) | bật/tắt, mặc định tắt | Chạy `zenify feature github.issues on\|off` |
-| **Track pane** (`znf.trackPane`) | `auto` (mặc định), `command`, `off` | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở và không có lệnh `/track-pane`. Status line không đổi theo dòng này |
-| **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì status line không còn tip theo ngữ cảnh (Backlog, estimate, vượt est, PR chờ merge, PR CI đỏ, thread chưa resolve, bị yêu cầu sửa, sẵn sàng merge, việc mở từ 5 ngày). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |
+| **Track pane** (`znf.trackPane`) | `auto` (mặc định), `command`, `off` | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở, không có lệnh `/track-pane` và dòng tip dưới prompt không mời mở pane. Status line không đổi theo dòng này |
+| **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì dòng tip dưới prompt ẩn mọi tip theo ngữ cảnh (xem [Tip dưới prompt](#tip-dưới-prompt)). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |
 | **Reviewer** (`znf.reviewer`) | `agent` (mặc định), `codex` | Chạy [`zenify reviewer set`](/reference/cli/zenify_reviewer_set); có hiệu lực ở session mới |
 
 Env của kit không nằm trong `/config`: xem bằng [`zenify env list`](/reference/cli/zenify_env_list) và sửa bằng `zenify env set KEY` trong terminal (nhập ẩn).

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 )
 
 func trackWS(t *testing.T, on bool) string {
@@ -961,5 +962,54 @@ func TestTrack_EndWithPRAndNoIDWhenOff(t *testing.T) {
 	out, err := runTrack(t, ws, "end", "--pr", "https://x/pr/1", "--rounds", "0")
 	if err != nil || out != "track: off\n" {
 		t.Fatalf("out %q err %v", out, err)
+	}
+}
+
+func TestTrackStats_KitUpdate(t *testing.T) {
+	oldV := version.Version
+	t.Cleanup(func() { version.Version = oldV })
+	t.Setenv("ZENIFY_UPDATE_URL", "http://127.0.0.1:1/unreachable")
+	kitUpdate := func(t *testing.T, home string) (raw string, null bool, newer bool) {
+		t.Helper()
+		t.Setenv("ZENIFY_HOME", home)
+		out, err := runTrack(t, trackWS(t, true), "stats", "--json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var res struct {
+			KitUpdate *struct {
+				Current string `json:"current"`
+				Latest  string `json:"latest"`
+				Newer   bool   `json:"newer"`
+			} `json:"kitUpdate"`
+		}
+		if err := json.Unmarshal([]byte(out), &res); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		if !strings.Contains(out, `"kitUpdate"`) {
+			t.Fatalf("kitUpdate key missing:\n%s", out)
+		}
+		if res.KitUpdate == nil {
+			return out, true, false
+		}
+		if res.KitUpdate.Current != "v0.73.0" || res.KitUpdate.Latest != "v0.74.0" {
+			t.Fatalf("kitUpdate = %+v", res.KitUpdate)
+		}
+		return out, false, res.KitUpdate.Newer
+	}
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, "update-check.json"), []byte(`{"checkedAt":"2020-01-01T00:00:00Z","latest":"v0.74.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	version.Version = "v0.73.0"
+	if _, null, newer := kitUpdate(t, home); null || !newer {
+		t.Fatalf("cached newer release: null=%v newer=%v", null, newer)
+	}
+	if _, null, _ := kitUpdate(t, t.TempDir()); !null {
+		t.Fatal("no cache must give kitUpdate null")
+	}
+	version.Version = "dev"
+	if _, null, _ := kitUpdate(t, home); !null {
+		t.Fatal("a dev build must give kitUpdate null")
 	}
 }

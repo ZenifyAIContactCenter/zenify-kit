@@ -21,6 +21,8 @@ import (
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/update"
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -792,6 +794,9 @@ func computeTrackStatsInput(dir, wsDir, today string, now time.Time, force bool)
 		return trackstats.Result{}, trackstats.Input{}, err
 	}
 	res, newCache := trackstats.Compute(in)
+	if latest, newer, ok := update.Cached(zenifyHome(os.Getenv, os.UserHomeDir), version.Current()); ok {
+		res.KitUpdate = &trackstats.KitUpdate{Current: version.Current(), Latest: latest, Newer: newer}
+	}
 	if in.Merged == nil {
 		res.Today.MergedError = string(lastErr)
 		res.Today.PRStatusError = string(lastStatusErr)

@@ -251,3 +251,36 @@ func TestCheck_CacheWriteFailureKeepsResult(t *testing.T) {
 		t.Fatalf("hits = %d, want 1", *hits)
 	}
 }
+
+func TestCachedReadsCacheWithoutNetwork(t *testing.T) {
+	dir := t.TempDir()
+	// checkedAt is years past the TTL: Cached must still use it.
+	if err := os.WriteFile(filepath.Join(dir, CacheFile), []byte(`{"checkedAt":"2020-01-01T00:00:00Z","latest":"v0.74.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	latest, newer, ok := Cached(dir, "v0.73.0")
+	if latest != "v0.74.0" || !newer || !ok {
+		t.Fatalf("Cached = (%q, %v, %v), want (v0.74.0, true, true)", latest, newer, ok)
+	}
+	if _, newer, ok := Cached(dir, "v0.74.0"); newer || !ok {
+		t.Fatalf("same version: newer=%v ok=%v, want false/true", newer, ok)
+	}
+	if _, _, ok := Cached(dir, "dev"); ok {
+		t.Fatal("a dev build must report ok=false")
+	}
+	if _, _, ok := Cached(t.TempDir(), "v0.73.0"); ok {
+		t.Fatal("no cache file must report ok=false")
+	}
+	if err := os.WriteFile(filepath.Join(dir, CacheFile), []byte(`{"checkedAt":"2020-01-01T00:00:00Z","latest":""}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := Cached(dir, "v0.73.0"); ok {
+		t.Fatal("empty latest (failed check) must report ok=false")
+	}
+	if err := os.WriteFile(filepath.Join(dir, CacheFile), []byte(`not json`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := Cached(dir, "v0.73.0"); ok {
+		t.Fatal("corrupt cache must report ok=false")
+	}
+}
