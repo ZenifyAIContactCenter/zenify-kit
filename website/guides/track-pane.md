@@ -26,19 +26,35 @@ Status line luôn hiện, kể cả khi pane đóng. Toàn bộ chữ trên pane
 - Khi tắt: `⏸ track off · enable: /config → znf`
 - Khi bật và tab này đang có việc mở: `track ▶ <id> · <phase> · <wall>m/<est> (agent <n>m) · wait <n>m · Today: done/started · PR n (m merged) · hit n%`
 - Khi bật và tab này chưa có việc: `track ⏸ · Today: done/started · ...`
-- Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸ · Tip: onboard the agent to pick work — type "hey claude onboard track"`
+- Khi bật, tab này chưa có việc và workspace chưa onboard: `track ⏸`
 - Số đầu tiên là wall time (đồng hồ thật từ lúc bắt đầu), kèm `<est>` nếu việc có size; `(agent <n>m)` là thời gian agent thật sự làm, chỉ hiện khi lớn hơn 0. Chi tiết ở [Thời gian wall và thời gian agent](#thời-gian-wall-và-thời-gian-agent).
 - `hit n%` chỉ hiện khi đã có ít nhất 5 việc có est.
-- Khi tab này chưa có việc mở, tip việc cần xử lý ngay đứng trước các tip bên dưới: PR có CI đỏ, rồi PR còn thread chưa resolve, rồi PR bị yêu cầu sửa, rồi PR đã sẵn sàng merge, rồi việc carried over đã mở từ 5 ngày trở lên hoặc bị stale (`Tip: <id> open <n> days — continue or cancel it`).
-- Tip theo ngữ cảnh: mỗi lúc tối đa một tip, nối cuối dòng bằng ` · `, chọn theo thứ tự ưu tiên (onboard ở trên trước; rồi carried over, chưa có plan, Backlog):
-  - tab này không có id mở và còn việc làm dở từ các ngày trước: `Tip: N items carried over — type "hey claude continue"`
-  - tab này không có id mở, đã onboard và hôm nay chưa có plan: `Tip: no plan today — type "/znf:track plan"` (xem [Daily plan](#daily-plan))
-  - tab này không có id mở và Backlog còn việc: `Tip: N items in Backlog — type "/znf:track ls"`
-  - có id mở, chưa có estimate và đã chạy từ 5 phút: `Tip: no estimate yet — type "hey claude estimate this"`
-  - có id mở, đã vượt ngưỡng của size est: `Tip: over est M (50m/45m) — split the work or re-estimate`
-  - còn PR đã mở (bất kỳ ngày nào) chưa merge: `Tip: N PRs waiting to merge — type "hey claude check PR"`
 
 Mục nào bằng 0 hoặc chưa biết thì ẩn, riêng `Today` luôn hiện. Đọc số liệu lỗi thì status line hiện `⚠ track error: <nguyên nhân>`. Số liệu được tải ở nền: trong lúc `zenify track stats` đang chạy (có thể quá 20s khi phải hỏi `gh` từng PR đang mở), status line vẫn giữ số liệu cũ, thêm dấu `⟳` ở đầu nếu lần chạy quá 1s, rồi tự cập nhật khi lần chạy xong; chỉ báo lỗi khi lần chạy hỏng hoặc quá 2 phút.
+
+## Tip dưới prompt
+
+Tip không nằm trên status line nữa mà ở một dòng riêng, màu xám và in nghiêng, ngay dưới dòng hint của prompt: `💡 Tip: …`. Dòng này chỉ có khi Claude Code mở trong workspace và có tip để hiện; không có tip thì không thêm dòng nào. Mỗi lúc tối đa một tip, chọn theo thứ tự ưu tiên:
+
+1. Tab khác đang chờ bạn (tab chờ lâu nhất, không tính tab này): `Tip: "<tab>" waits on your answer · 3m` hoặc `... your permission · 3m`.
+2. Tab này đang có việc mở:
+   - chưa có estimate và đã chạy từ 5 phút: `Tip: no estimate yet — type "hey claude estimate this"`
+   - đã vượt ngưỡng của size est: `Tip: over est M (50m/45m) — split the work or re-estimate`
+   - không có tip est nào thì mời mở pane (xem dưới). Tip "PRs waiting to merge" không hiện khi tab đang có việc mở.
+3. Tab này chưa có việc, theo thứ tự:
+   - PR có CI đỏ, rồi PR còn thread chưa resolve, rồi PR bị yêu cầu sửa, rồi PR đã sẵn sàng merge
+   - kit có bản mới: `Tip: zenify v0.74.0 is out (running v0.73.0) — run "zenify update"`
+   - việc carried over đã mở từ 5 ngày trở lên hoặc bị stale: `Tip: <id> open <n> days — continue or cancel it`; rồi `Tip: N items carried over — type "hey claude continue"`
+   - plan hôm nay còn mục todo: `Tip: next in plan: <code> <title> — type "/znf:track go <code>"` (xem [Daily plan](#daily-plan)); plan đã xong hết: `Tip: plan done — type "/znf:track ls"`
+   - đã onboard và hôm nay chưa có plan: `Tip: no plan today — type "/znf:track plan"`
+   - Backlog còn việc: `Tip: N items in Backlog — type "/znf:track ls"`
+   - còn PR đã mở chưa merge: `Tip: N PRs waiting to merge — type "hey claude check PR"`
+   - mời mở pane khi pane chưa được hiện lần nào trong session này và `Track pane` khác `off`: `Tip: see today's work in the track pane — type "/track-pane"`
+   - không còn tip nào thì hiện một câu vui tiếng Việt (vd `🧋 Trà đá không?`), đổi mỗi 10 phút
+
+Workspace chưa onboard (và tab này chưa có việc) thì tip là `Tip: onboard the agent to pick work — type "hey claude onboard track"`, đứng trước mọi tip khác. Tùy chọn `znf.tips` tắt thì mọi tip ẩn, trừ tip onboard.
+
+Tip "kit có bản mới" đọc từ field `kitUpdate` của `zenify track stats --json`: `{ current, latest, newer }`, lấy từ cache update-check (không gọi mạng), là `null` khi chưa có cache hoặc là bản dev build.
 
 ## Năm tab
 
@@ -232,7 +248,7 @@ Các thiết lập của kit là các dòng của plugin `znf` trong `/config` c
 | **Dev track** (`znf.track`) | bật/tắt, mặc định tắt | Chạy `zenify feature track on\|off` cho workspace hiện tại |
 | **GitHub issues** (`znf.githubIssues`) | bật/tắt, mặc định tắt | Chạy `zenify feature github.issues on\|off` |
 | **Track pane** (`znf.trackPane`) | `auto` (mặc định), `command`, `off` | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở và không có lệnh `/track-pane`. Status line không đổi theo dòng này |
-| **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì status line không còn tip theo ngữ cảnh (Backlog, estimate, vượt est, PR chờ merge, PR CI đỏ, thread chưa resolve, bị yêu cầu sửa, sẵn sàng merge, việc mở từ 5 ngày). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |
+| **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì dòng tip dưới prompt ẩn mọi tip theo ngữ cảnh (xem [Tip dưới prompt](#tip-dưới-prompt)). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |
 | **Reviewer** (`znf.reviewer`) | `agent` (mặc định), `codex` | Chạy [`zenify reviewer set`](/reference/cli/zenify_reviewer_set); có hiệu lực ở session mới |
 
 Env của kit không nằm trong `/config`: xem bằng [`zenify env list`](/reference/cli/zenify_env_list) và sửa bằng `zenify env set KEY` trong terminal (nhập ẩn).

@@ -27,6 +27,12 @@ export const COPY = {
   tipPrReady: 'Tip: {N} PRs ready to merge — type "hey claude check PR"',
   tipStaleSoon: 'Tip: {id} open {D} days — continue or cancel it',
   tipPr: 'Tip: {N} PRs waiting to merge — type "hey claude check PR"',
+  // FR-4.5: {tab}, {what}, {T}, {code}, {title}, {latest}, {current} are filled by tipFor.
+  tipBoil: 'Tip: "{tab}" waits on your {what} · {T}',
+  tipPlanNext: 'Tip: next in plan: {code} {title} — type "/znf:track go {code}"',
+  tipPlanDone: 'Tip: plan done — type "/znf:track ls"',
+  tipKitUpdate: 'Tip: zenify {latest} is out (running {current}) — run "zenify update"',
+  tipPane: 'Tip: see today\'s work in the track pane — type "/track-pane"',
   // FR-11.4 (track-metrics): unfinished work from earlier days.
   tipNoPlan: 'Tip: no plan today — type "/znf:track plan"',
   tipCarried: 'Tip: {N} items carried over — type "hey claude continue"',
@@ -36,6 +42,30 @@ export const COPY = {
   // FR-17.3: a /config row that could not be read back from its source.
   configToast: '⚠ /config sync error: ',
 } as const
+// FR-4.8: the one Vietnamese UI copy, by user decision 2026-11-18; excluded from SC-10.
+export const FUN_TIPS: readonly string[] = [
+  '🧋 Trà đá không?',
+  '💨 Làm bi thuốc lào không?',
+  '🍜 Bún chả không anh ei?',
+  '☕ Cà phê muối đi',
+  '😴 Chợp mắt 15 phút?',
+  '🏸 Làm ván cầu lông không?',
+  '🍉 Ăn dưa hấu không?',
+  '🎮 Một trận rồi làm tiếp?',
+  '🌻 Hạt hướng dương tách vỏ đi',
+  '🚶 Đi bộ vòng vòng cái nào',
+  '🥖 Bánh mì pate không?',
+  '🧃 Nước mía không?',
+  '🍢 Xiên bẩn không?',
+  '🎤 Karaoke tối nay?',
+  '🐟 Lướt TikTok 5 phút thôi',
+  '🧘 Vươn vai cái nào',
+  '🍌 Chuối không?',
+  '🍵 Trà chanh chém gió không?',
+  '🦐 Bánh tráng trộn không?',
+  '🛵 Đi đâu đó hóng gió không?',
+]
+const FUN_TIP_MS = 600_000
 const STATUS_HEAD = 'track'
 const ERROR_HEAD = '⚠ track error: '
 
@@ -116,50 +146,77 @@ function hitRate(s: TrackStats): number | undefined {
   return n >= MIN_SAMPLES ? byKind.reduce((a, k) => a + k.hit, 0) / n : undefined
 }
 
-// FR-11.7 (2)-(5): the one tip for this context, by priority; (1) onboard is handled in statusText.
-function tipFor(s: TrackStats, mine: TrackItem | undefined, now: number): string | undefined {
-  const carried = s.kitchen?.carried?.length ?? 0
-  if (!mine) {
-    const prs = s.today?.prOpen ?? []
-    const red = prs.find((p) => p.ci === 'failure')
-    if (red) return COPY.tipPrRed.replace('{num}', String(red.number))
-    const thr = prs.find((p) => p.threads > 0)
-    if (thr) return COPY.tipPrThreads.replace('{num}', String(thr.number)).replace('{N}', String(thr.threads))
-    const chg = prs.find((p) => p.review === 'changes_requested')
-    if (chg) return COPY.tipPrChanges.replace('{num}', String(chg.number))
-    const ready = prs.filter((p) => p.ready)
-    if (ready.length === 1) return COPY.tipPrReadyOne.replace('{num}', String(ready[0].number))
-    if (ready.length > 1) return COPY.tipPrReady.replace('{N}', String(ready.length))
-    const DAY = 86_400_000
-    const age = (c: { startedAt: string }) => (now - Date.parse(c.startedAt)) / DAY
-    const old = (s.kitchen?.carried ?? [])
-      .filter((c) => c.stale || age(c) >= 5)
-      .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))[0]
-    if (old) return COPY.tipStaleSoon.replace('{id}', old.id).replace('{D}', String(Math.max(0, Math.floor(age(old)))))
+// FR-4.5: the one tip for this context, by priority; onboard is handled in tipLine.
+function tipFor(s: TrackStats, mine: TrackItem | undefined, now: number, session: string, paneInvite: boolean): string | undefined {
+  const boil = (s.kitchen?.rollingBoil ?? [])
+    .filter((b) => b.session !== session)
+    .sort((a, b) => Date.parse(a.since) - Date.parse(b.since))[0]
+  if (boil) {
+    return COPY.tipBoil
+      .replace('{tab}', boil.tab || boil.brief)
+      .replace('{what}', boil.state === 'ask' ? 'answer' : 'permission')
+      .replace('{T}', waited(boil.since, now))
   }
-  if (!mine && carried > 0) return COPY.tipCarried.replace('{N}', String(carried))
-  if (!mine && s.onboarded && !s.today?.dailyPlan) return COPY.tipNoPlan
-  const n = s.backlog?.items?.length ?? 0
-  if (!mine && n > 0) return COPY.tipBacklog.replace('{N}', String(n))
-  if (mine && !isSize(mine.est) && mine.wallMin >= 5) return COPY.tipNoEst
-  if (mine && isSize(mine.est)) {
-    const max = s.scale[mine.est as 'S' | 'M' | 'L']
-    if (mine.wallMin >= max) {
-      return COPY.tipOver.replace('{est}', mine.est).replace('{min}', String(mine.wallMin)).replace('{max}', String(max))
+  if (mine) {
+    if (!isSize(mine.est) && mine.wallMin >= 5) return COPY.tipNoEst
+    if (isSize(mine.est)) {
+      const max = s.scale[mine.est as 'S' | 'M' | 'L']
+      if (mine.wallMin >= max) {
+        return COPY.tipOver.replace('{est}', mine.est).replace('{min}', String(mine.wallMin)).replace('{max}', String(max))
+      }
     }
+    return paneInvite ? COPY.tipPane : undefined
   }
-  const open = s.today.prsWaiting ?? 0
+  const carried = s.kitchen?.carried?.length ?? 0
+  const prs = s.today?.prOpen ?? []
+  const red = prs.find((p) => p.ci === 'failure')
+  if (red) return COPY.tipPrRed.replace('{num}', String(red.number))
+  const thr = prs.find((p) => p.threads > 0)
+  if (thr) return COPY.tipPrThreads.replace('{num}', String(thr.number)).replace('{N}', String(thr.threads))
+  const chg = prs.find((p) => p.review === 'changes_requested')
+  if (chg) return COPY.tipPrChanges.replace('{num}', String(chg.number))
+  const ready = prs.filter((p) => p.ready)
+  if (ready.length === 1) return COPY.tipPrReadyOne.replace('{num}', String(ready[0].number))
+  if (ready.length > 1) return COPY.tipPrReady.replace('{N}', String(ready.length))
+  if (s.kitUpdate?.newer) return COPY.tipKitUpdate.replace('{latest}', s.kitUpdate.latest).replace('{current}', s.kitUpdate.current)
+  const DAY = 86_400_000
+  const age = (c: { startedAt: string }) => (now - Date.parse(c.startedAt)) / DAY
+  const old = (s.kitchen?.carried ?? [])
+    .filter((c) => c.stale || age(c) >= 5)
+    .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))[0]
+  if (old) return COPY.tipStaleSoon.replace('{id}', old.id).replace('{D}', String(Math.max(0, Math.floor(age(old)))))
+  if (carried > 0) return COPY.tipCarried.replace('{N}', String(carried))
+  const plan = s.today?.dailyPlan?.items ?? []
+  const next = plan.find((i) => i.status === 'todo')
+  if (next) {
+    const code = next.code || next.id
+    return COPY.tipPlanNext.replaceAll('{code}', code).replace('{title}', next.title)
+  }
+  if (plan.length > 0 && !plan.some((i) => i.status === 'running')) return COPY.tipPlanDone
+  if (s.onboarded && !s.today?.dailyPlan) return COPY.tipNoPlan
+  const n = s.backlog?.items?.length ?? 0
+  if (n > 0) return COPY.tipBacklog.replace('{N}', String(n))
+  const open = s.today?.prsWaiting ?? 0
   if (open > 0) return COPY.tipPr.replace('{N}', String(open))
-  return undefined
+  if (paneInvite) return COPY.tipPane
+  return FUN_TIPS[Math.floor(now / FUN_TIP_MS) % FUN_TIPS.length]
+}
+
+// FR-4.2: the tip the PromptHint row shows, undefined for none. Onboard shows even with tips=false.
+export function tipLine(s: TrackStats, session: string, boundId: string | undefined, tips = true, now = Date.now(), paneInvite = false): string | undefined {
+  if (!s.enabled) return undefined
+  const mine = openItem(s, session, boundId)
+  if (!mine && !s.onboarded) return COPY.onboard
+  return tips ? tipFor(s, mine, now, session, paneInvite) : undefined
 }
 
 // FR-11.2/11.3: an item that is 0 or unknown is hidden, except `Today`.
-// FR-11.8: tips=false drops only the FR-11.7 (2)-(5) tips; onboard and the off line stay.
+// FR-4.1: the tip is not part of the line (see tipLine); `tips` and `now` stay for the callers.
 export function statusText(s: TrackStats, session: string, boundId: string | undefined, tips = true, now = Date.now()): string {
   if (!s.enabled) return STATUS_OFF
   const mine = openItem(s, session, boundId)
   const t = s.today
-  if (!mine && !s.onboarded) return `${STATUS_HEAD} ⏸${SEP}${COPY.onboard}`
+  if (!mine && !s.onboarded) return `${STATUS_HEAD} ⏸`
   const hit = hitRate(s)
   const parts: (string | false)[] = [
     `${STATUS_HEAD} ${mine ? '▶' : '⏸'}`,
@@ -170,7 +227,6 @@ export function statusText(s: TrackStats, session: string, boundId: string | und
     `Today: ${sum(t.done)}/${sum(t.started)}`,
     (t.prsOpened > 0 || t.merged > 0) && `PR ${t.prsOpened}${t.merged > 0 ? ` (${t.merged} merged)` : ''}`,
     hit !== undefined && `hit ${Math.round(hit * 100)}%`,
-    (tips && tipFor(s, mine, now)) || false,
   ]
   return parts.filter(Boolean).join(SEP)
 }

@@ -483,7 +483,7 @@ test('a slow stats run keeps the last numbers under a loading mark, then updates
   expect(calls.toast).toEqual([])
   release()
   await clock.settle()
-  expect(lastStatus(calls)).toBe(`track ⏸ · ${COPY.onboard}`)
+  expect(lastStatus(calls)).toBe('track ⏸')
   expect((world.statsTimeouts ?? []).every(t => (t ?? 0) > 20000)).toBe(true)
 })
 
@@ -517,7 +517,7 @@ test('a run that stored its answer but has not ended yet never gets a late loadi
   release()
   world.holdEnabledRead = undefined
   await clock.settle()
-  expect(lastStatus(calls)).toBe(`track ⏸ · ${COPY.onboard}`)
+  expect(lastStatus(calls)).toBe('track ⏸')
 })
 
 test('a first stats run that is still out after 20s does not hold a /znf:fix prompt', async ($, on) => {
@@ -737,18 +737,58 @@ test('a missing track.md is a toast; the skill still loads', async ($, on) => {
   expect(calls.toast).toEqual([expect.stringMatching(/^track context error: .*ENOENT/)])
 })
 
-test('SC-45: options tips false: the status line carries no contextual tip', { options: { tips: false } }, async ($, on) => {
-  const calls = engine(on, { stats: ok(statsJson({ today: { ...JSON.parse(statsJson()).today, prsOpened: 2, merged: 0, prsWaiting: 2 } })) })
+const hint = { plugin: 'znf', component: 'PromptHint', surface: 'terminal', props: { isDraft: false, isWorking: false, hint: '? for shortcuts' } } as const
+const PR_TIP = '💡 Tip: 2 PRs waiting to merge — type "hey claude check PR"'
+const PANE_TIP = '💡 Tip: see today\'s work in the track pane — type "/track-pane"'
+const waiting = () => ok(statsJson({ today: { ...JSON.parse(statsJson()).today, prsOpened: 2, merged: 0, prsWaiting: 2 } }))
+// The italic dim Text rows of a mounted PromptHint.
+const tipRows = async (ui: { findAll: (q: { type?: string }) => Promise<any[]> }) =>
+  (await ui.findAll({ type: 'Text' })).filter(t => t.props?.italic && t.props?.dimColor).map(t => t.text)
+
+test('SC-45: options tips false: the status line and the prompt row carry no tip', { options: { tips: false } }, async ($, on) => {
+  const calls = engine(on, { stats: waiting() })
   const clock = mock.clock(on)
   await start($, clock)
   expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0 · PR 2')
+  const ui = await $.ui.mount(hint)
+  expect(await tipRows(ui)).toEqual([])
 })
 
-test('SC-45: tips default: the status line carries the tip', async ($, on) => {
-  const calls = engine(on, { stats: ok(statsJson({ today: { ...JSON.parse(statsJson()).today, prsOpened: 2, merged: 0, prsWaiting: 2 } })) })
+test('SC-11: tips default: the status line has no tip, the PromptHint adds a dim italic row', { options: { trackPane: 'command' } }, async ($, on) => {
+  const calls = engine(on, { stats: waiting() })
   const clock = mock.clock(on)
   await start($, clock)
-  expect(lastStatus(calls)).toContain('Tip: 2 PRs waiting to merge')
+  expect(lastStatus(calls)).toBe('track ⏸ · Today: 0/0 · PR 2')
+  const ui = await $.ui.mount(hint)
+  expect(await tipRows(ui)).toEqual([PR_TIP])
+})
+
+test('SC-12: the onboard tip shows even with tips false', { options: { tips: false } }, async ($, on) => {
+  engine(on, { stats: ok(statsJson({ onboarded: false })) })
+  const clock = mock.clock(on)
+  await start($, clock)
+  const ui = await $.ui.mount(hint)
+  expect(await tipRows(ui)).toEqual([`💡 ${COPY.onboard}`])
+})
+
+test('SC-12: outside a workspace the PromptHint adds no row', async ($, on) => {
+  engine(on, { stats: waiting(), noWorkspace: true })
+  const clock = mock.clock(on)
+  await start($, clock)
+  const ui = await $.ui.mount(hint)
+  expect(await tipRows(ui)).toEqual([])
+})
+
+test('SC-14: the pane invite shows until the pane has been shown, then is gone', async ($, on) => {
+  engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(await tipRows(await $.ui.mount(hint))).toEqual([PANE_TIP])
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  await clock.settle()
+  const rows = await tipRows(await $.ui.mount(hint))
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).not.toBe(PANE_TIP)
 })
 
 test('SC-41: trackPane off: a /znf:fix prompt opens no pane and /track-pane is not registered', { options: { trackPane: 'off' } }, async ($, on) => {

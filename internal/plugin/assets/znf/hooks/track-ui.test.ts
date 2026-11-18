@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { BacklogItem, TrackItem, TrackStats } from '../types'
-import { COPY, STATUS_OFF, TABS, bar, errorStatus, fmtDur, fmtNum, hourBins, modelName, sparkline, stackBar, isTrackPrompt, isTrackSkill, parseTrackStats, prLabel, promptSkillOf, ruleText, statusText, tabLines, trackContext, trackSectionOf } from './track-ui'
+import { COPY, FUN_TIPS, STATUS_OFF, TABS, bar, errorStatus, fmtDur, fmtNum, hourBins, modelName, sparkline, stackBar, tipLine, isTrackPrompt, isTrackSkill, parseTrackStats, prLabel, promptSkillOf, ruleText, statusText, tabLines, trackContext, trackSectionOf } from './track-ui'
 
 const A = 'aaaaaaaa-1111-2222-3333-444444444444'
 const B = 'bbbbbbbb-5555-6666-7777-888888888888'
@@ -60,43 +60,42 @@ const bl = (source: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
 const texts = (lines: { text: string }[]) => lines.map(l => l.text)
 
 test('SC-44: contextual tips by priority, one at most', () => {
-  const tail = (s: TrackStats, id?: string) => statusText(s, A, id)
+  const tail = (s: TrackStats, id?: string) => tipLine(s, A, id, true, NOW)
   const backlog = { items: [bl('manual'), bl('github')], ghError: '', planeError: '' }
   const prs = { ...stats().today, prsOpened: 3, merged: 1, prsWaiting: 2 }
-  // (2) no open id, backlog N > 0
-  expect(tail(stats({ backlog }))).toBe('track ⏸ · Today: 0/0 · Tip: 2 items in Backlog — type "/znf:track ls"')
-  // (3) open id, est not a size, agentMin >= 5
-  const noEst = stats({ running: [item({ est: '-', wallMin: 5 })] })
-  expect(tail(noEst, X).endsWith(' · Tip: no estimate yet — type "hey claude estimate this"')).toBe(true)
-  // agentMin 4 and no est: no tip (3)
-  expect(tail(stats({ running: [item({ est: '-', wallMin: 4 })] }), X)).not.toContain('Tip:')
-  // (4) over est: M threshold is scale.M = 45, compared with wallMin
-  const over = stats({ running: [item({ est: 'M', wallMin: 50 })] })
-  expect(tail(over, X).endsWith(' · Tip: over est M (50m/45m) — split the work or re-estimate')).toBe(true)
-  expect(tail(stats({ running: [item({ est: 'M', wallMin: 44, agentMin: 99 })] }), X)).not.toContain('Tip:')
-  // (5) PRs waiting
-  expect(tail(stats({ today: prs }))).toBe('track ⏸ · Today: 0/0 · PR 3 (1 merged) · Tip: 2 PRs waiting to merge — type "hey claude check PR"')
-  // (2) beats (5)
-  expect(tail(stats({ backlog, today: prs }))).toContain('Tip: 2 items in Backlog')
-  expect(tail(stats({ backlog, today: prs }))).not.toContain('waiting to merge')
-  // (4) beats (5) with an open id
+  // idle, backlog N > 0
+  expect(tail(stats({ backlog }))).toBe('Tip: 2 items in Backlog — type "/znf:track ls"')
+  // open id, est not a size, wall >= 5
+  expect(tail(stats({ running: [item({ est: '-', wallMin: 5 })] }), X)).toBe('Tip: no estimate yet — type "hey claude estimate this"')
+  // wall 4 and no est: no tip
+  expect(tail(stats({ running: [item({ est: '-', wallMin: 4 })] }), X)).toBeUndefined()
+  // over est: M threshold is scale.M = 45, compared with wallMin
+  expect(tail(stats({ running: [item({ est: 'M', wallMin: 50 })] }), X)).toBe('Tip: over est M (50m/45m) — split the work or re-estimate')
+  expect(tail(stats({ running: [item({ est: 'M', wallMin: 44, agentMin: 99 })] }), X)).toBeUndefined()
+  // PRs waiting
+  expect(tail(stats({ today: prs }))).toBe('Tip: 2 PRs waiting to merge — type "hey claude check PR"')
+  // backlog beats PRs waiting
+  expect(tail(stats({ backlog, today: prs }))).toBe('Tip: 2 items in Backlog — type "/znf:track ls"')
+  // over est beats PRs waiting with an open id
   expect(tail(stats({ today: prs, running: [item({ est: 'S', wallMin: 15 })] }), X)).toContain('over est S (15m/15m)')
-  // none
-  expect(tail(stats())).not.toContain('Tip:')
+  // statusText never carries a tip
+  expect(statusText(stats({ backlog, today: prs }), A, undefined)).not.toContain('Tip:')
+  expect(statusText(stats({ today: prs }), A, undefined)).toBe('track ⏸ · Today: 0/0 · PR 3 (1 merged)')
 })
 
-test('SC-45: tips false hides tips (2)-(5), keeps onboard and the off line', () => {
+test('SC-45: tips false hides every tip, keeps onboard and the off line', () => {
   const backlog = { items: [bl('manual')], ghError: '', planeError: '' }
   const prs = { ...stats().today, prsOpened: 3, merged: 1, prsWaiting: 2 }
-  const noTips = (s: TrackStats, id?: string) => statusText(s, A, id, false)
-  expect(noTips(stats({ backlog }))).toBe('track ⏸ · Today: 0/0')
-  expect(noTips(stats({ today: prs }))).toBe('track ⏸ · Today: 0/0 · PR 3 (1 merged)')
-  expect(noTips(stats({ running: [item({ est: '-', wallMin: 5 })] }), X)).not.toContain('Tip:')
-  expect(noTips(stats({ running: [item({ est: 'M', wallMin: 95 })] }), X)).not.toContain('Tip:')
-  expect(noTips({ ...stats(), onboarded: false })).toContain('Tip: onboard the agent')
-  expect(noTips(stats({ enabled: false }))).toBe(STATUS_OFF)
+  const noTips = (s: TrackStats, id?: string) => tipLine(s, A, id, false, NOW, true)
+  expect(noTips(stats({ backlog }))).toBeUndefined()
+  expect(noTips(stats({ today: prs }))).toBeUndefined()
+  expect(noTips(stats({ running: [item({ est: '-', wallMin: 5 })] }), X)).toBeUndefined()
+  expect(noTips(stats({ running: [item({ est: 'M', wallMin: 95 })] }), X)).toBeUndefined()
+  expect(noTips({ ...stats(), onboarded: false })).toBe(COPY.onboard)
+  expect(noTips(stats({ enabled: false }))).toBeUndefined()
+  expect(statusText(stats({ enabled: false }), A, X, false)).toBe(STATUS_OFF)
   // default is tips on
-  expect(statusText(stats({ backlog }), A, undefined)).toContain('Tip: 1 items in Backlog')
+  expect(tipLine(stats({ backlog }), A, undefined, undefined, NOW)).toBe('Tip: 1 items in Backlog — type "/znf:track ls"')
 })
 
 test('FR-11.2/SC-20: enabled false is the off line, verbatim', () => {
@@ -116,12 +115,12 @@ test('FR-11.3: wait shows as wait <n>m; today shows done/started, PR, merged and
     today: { ...stats().today, started: { cook: 2, fix: 1 }, ended: { fix: 1 }, done: { fix: 1 }, prsOpened: 2, merged: 1, prsWaiting: 1 },
     estimate: { ...stats().estimate, byKind: { cook: { n: 4, hit: 2, low: 1, high: 0 }, fix: { n: 1, hit: 1, low: 0, high: 0 } } },
   })
-  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · plan · 12m/M (agent 12m) · wait 7m · Today: 1/3 · PR 2 (1 merged) · hit 60% · Tip: 1 PRs waiting to merge — type "hey claude check PR"`)
+  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · plan · 12m/M (agent 12m) · wait 7m · Today: 1/3 · PR 2 (1 merged) · hit 60%`)
 })
 
 test('FR-11.3: zero or unknown items are hidden, except Today', () => {
   const s = stats({ running: [item({ phase: '', agentMin: 0, wallMin: 0 })], today: { ...stats().today, prsOpened: 1, prsWaiting: 1 } })
-  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · Today: 0/0 · PR 1 · Tip: 1 PRs waiting to merge — type "hey claude check PR"`)
+  expect(statusText(s, A, X)).toBe(`track ▶ · ${X} · Today: 0/0 · PR 1`)
 })
 
 test('FR-11.3: an id of another session, or none bound, is ⏸', () => {
@@ -132,7 +131,8 @@ test('FR-11.3: an id of another session, or none bound, is ⏸', () => {
 
 test('SC-43: not onboarded and no open id asks to onboard; an open id keeps the normal line', () => {
   const s = stats({ onboarded: false })
-  expect(statusText(s, A, undefined)).toBe('track ⏸ · Tip: onboard the agent to pick work — type "hey claude onboard track"')
+  expect(statusText(s, A, undefined)).toBe('track ⏸')
+  expect(tipLine(s, A, undefined)).toBe(COPY.onboard)
   expect(statusText({ ...s, running: [item({})] }, A, X)).toBe(`track ▶ · ${X} · plan · 12m/M (agent 12m) · Today: 0/0`)
 })
 
@@ -456,10 +456,11 @@ test('FR-11.2: a PR merged today shows on the status line even when none was ope
   expect(statusText(s, A, undefined)).toContain('PR 0 (1 merged)')
 })
 
-test('FR-11.7 (5): the PR tip counts tracked PRs still waiting, not opened minus merged', () => {
-  // One PR opened today still waits; one from yesterday merged today: the tip stays.
+test('FR-11.7 (5): the PR tip counts tracked PRs still waiting, not opened minus merged; it hides while this tab has an open item', () => {
+  // One PR opened today still waits; one from yesterday merged today: the tip stays for an idle tab.
   const s = stats({ today: { ...stats().today, prsOpened: 1, merged: 1, prsWaiting: 1 } })
-  expect(statusText(s, A, X)).toContain('Tip: 1 PRs waiting to merge')
+  expect(tipLine(s, A, undefined, true, NOW)).toBe('Tip: 1 PRs waiting to merge — type "hey claude check PR"')
+  expect(tipLine({ ...s, running: [item({})] }, A, X, true, NOW)).toBeUndefined()
 })
 
 const VI = /[À-ỹđĐ]/
@@ -497,6 +498,7 @@ test('SC-10: no Vietnamese in any tab, the status line or COPY', () => {
     expect(statusText(st, A, X)).not.toMatch(VI)
     expect(statusText(st, A, undefined)).not.toMatch(VI)
   }
+  // FUN_TIPS is the one Vietnamese UI copy (user decision 2026-11-18, FR-4.8): it is not in COPY, so it is not scanned.
   for (const v of [...Object.values(COPY), STATUS_OFF, errorStatus('x'), ...TABS.map(t => t.label)]) expect(v).not.toMatch(VI)
 })
 
@@ -509,13 +511,13 @@ test('SC-12: fmtNum', () => {
 test('SC-13: the open item shows wall/est with agent time, and the over-est tip compares wall', () => {
   const line = statusText(stats({ running: [item({ est: 'S', wallMin: 20, agentMin: 8 })] }), A, X)
   expect(line).toContain('20m/S (agent 8m)')
-  expect(line).toContain('Tip: over est S (20m/15m) — split the work or re-estimate')
+  expect(line).not.toContain('Tip:')
+  expect(tipLine(stats({ running: [item({ est: 'S', wallMin: 20, agentMin: 8 })] }), A, X)).toBe('Tip: over est S (20m/15m) — split the work or re-estimate')
 })
 
 test('FR-11.4: carried items tip first, before Backlog', () => {
   const s = stats({ kitchen: { ...stats().kitchen, carried: [carried({}), carried({ id: Y })] }, backlog: { items: [bl('manual')], ghError: '', planeError: '' } })
-  expect(statusText(s, A, undefined, true, NOW)).toContain('Tip: 2 items carried over — type "hey claude continue"')
-  expect(statusText(s, A, undefined)).not.toContain('Backlog')
+  expect(tipLine(s, A, undefined, true, NOW)).toBe('Tip: 2 items carried over — type "hey claude continue"')
 })
 
 test('FR-7.3: a null CI rate with n >= 5 says no CI runs recorded', () => {
@@ -691,15 +693,14 @@ test('SC-8: a PR status error is a warning line', () => {
 
 test('SC-9: no-plan tip sits after carried and before backlog; tips=false hides it', () => {
   const noPlan = 'Tip: no plan today — type "/znf:track plan"'
+  const tip = (s: TrackStats, tips = true) => tipLine(s, A, undefined, tips, NOW)
   expect(COPY.tipNoPlan).toBe(noPlan)
-  expect(statusText(noPlanStats(), A, undefined).endsWith(` · ${noPlan}`)).toBe(true)
-  expect(statusText(noPlanStats(), A, undefined, false)).not.toContain('Tip:')
-  expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined, true, NOW)).toContain('carried over')
-  expect(statusText(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }), A, undefined, true, NOW)).not.toContain('no plan')
-  expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '', planeError: '' } }), A, undefined)).toContain('no plan today')
-  expect(statusText(noPlanStats({ backlog: { items: [bl('manual')], ghError: '', planeError: '' } }), A, undefined)).not.toContain('in Backlog')
-  expect(statusText(withPlan([], 0, 0), A, undefined)).not.toContain('no plan')
-  expect(statusText(stats({ running: [item({})] }), A, X)).not.toContain('no plan')
+  expect(tip(noPlanStats())).toBe(noPlan)
+  expect(tip(noPlanStats(), false)).toBeUndefined()
+  expect(tip(noPlanStats({ kitchen: { ...noPlanStats().kitchen, carried: [carried({})] } }))).toContain('carried over')
+  expect(tip(noPlanStats({ backlog: { items: [bl('manual')], ghError: '', planeError: '' } }))).toBe(noPlan)
+  expect(tip(withPlan([], 0, 0))).not.toContain('no plan')
+  expect(tipLine(stats({ running: [item({})] }), A, X, true, NOW)).toBeUndefined()
 })
 
 test('an old binary without dailyPlan, prOpen or est does not break the pane', () => {
@@ -733,29 +734,29 @@ const withPrs = (prOpen: TrackStats['today']['prOpen'], extra: Partial<TrackStat
   stats({ today: { ...stats().today, prOpen }, kitchen: { ...stats().kitchen, carried: [carried({})] }, ...extra })
 
 test('SC-8: a PR with red CI is the first tip', () => {
-  expect(statusText(withPrs([pr({ ci: 'failure' })]), A, undefined, true, NOW)).toContain('Tip: PR #12 CI red — type "hey claude fix CI"')
+  expect(tipLine(withPrs([pr({ ci: 'failure' })]), A, undefined, true, NOW)).toContain('Tip: PR #12 CI red — type "hey claude fix CI"')
 })
 test('SC-8: a PR with unresolved threads', () => {
-  expect(statusText(withPrs([pr({ threads: 2 })]), A, undefined, true, NOW)).toContain('Tip: PR #12 has 2 unresolved threads')
+  expect(tipLine(withPrs([pr({ threads: 2 })]), A, undefined, true, NOW)).toContain('Tip: PR #12 has 2 unresolved threads')
 })
 test('SC-8: two ready PRs beat carried items', () => {
   const s = withPrs([pr({ ready: true }), pr({ number: 13, ready: true })])
-  expect(statusText(s, A, undefined, true, NOW)).toContain('Tip: 2 PRs ready to merge')
+  expect(tipLine(s, A, undefined, true, NOW)).toContain('Tip: 2 PRs ready to merge')
 })
 test('FR-5.2: one ready PR is named', () => {
-  expect(statusText(withPrs([pr({ ready: true })]), A, undefined, true, NOW)).toContain('Tip: PR #12 ready to merge — type "hey claude check PR"')
+  expect(tipLine(withPrs([pr({ ready: true })]), A, undefined, true, NOW)).toContain('Tip: PR #12 ready to merge — type "hey claude check PR"')
 })
 test('SC-8: a carried item open 6 days is flagged', () => {
   const s = stats({ kitchen: { ...stats().kitchen, carried: [carried({ startedAt: new Date(NOW - 6 * 86_400_000).toISOString() })] } })
-  expect(statusText(s, A, undefined, true, NOW)).toContain(`Tip: ${X} open 6 days — continue or cancel it`)
+  expect(tipLine(s, A, undefined, true, NOW)).toContain(`Tip: ${X} open 6 days — continue or cancel it`)
 })
 test('SC-8: an open item in this tab hides the PR tips', () => {
   const s = withPrs([pr({ ci: 'failure' })], { running: [item({})] })
-  expect(statusText(s, A, X, true, NOW)).not.toContain('CI red')
+  expect(tipLine(s, A, X, true, NOW)).toBeUndefined()
 })
 test('SC-8: no PR and a 1-day carried item keeps the old tip', () => {
   const s = stats({ kitchen: { ...stats().kitchen, carried: [carried({ startedAt: new Date(NOW - 86_400_000).toISOString() })] } })
-  expect(statusText(s, A, undefined, true, NOW)).toContain('Tip: 1 items carried over')
+  expect(tipLine(s, A, undefined, true, NOW)).toContain('Tip: 1 items carried over')
 })
 
 // ---- Today charts (track-pane-charts Task 1) ----
@@ -938,4 +939,66 @@ test('FR-3.3/3.4/3.7: blocked, no CI runs, wait share; empty says no work yet', 
 test('FR-3 null: a fix block of nulls prints no dash on any tab', () => {
   const s = stats({ quality: { byKind: { cook: noQ }, fix: { n: 5, roundAvg: null, wideRate: null, regressionRate: null, fixLoopAvg: null } as never } })
   for (const t of TABS) expect(texts(tabLines(t.id, s, A, X, NOW)).some(l => l.includes('—'))).toBe(false)
+})
+
+// ---- Context tips (track-pane-charts Task 4, FR-4, SC-11..SC-17) ----
+const boil = (over: Partial<TrackStats['kitchen']['rollingBoil'][number]> = {}) => ({
+  session: B, tab: 'Other tab', brief: 'brief', state: 'permission' as const, since: new Date(NOW - 3 * 60_000).toISOString(), ...over,
+})
+
+test('SC-11: statusText carries no tip; the PR tip moves to tipLine', () => {
+  const s = stats({ today: { ...stats().today, prsWaiting: 2 } })
+  expect(statusText(s, A, undefined)).not.toContain('Tip:')
+  expect(tipLine(s, A, undefined, true, NOW)).toBe('Tip: 2 PRs waiting to merge — type "hey claude check PR"')
+})
+
+test('SC-13: another tab waiting on you beats the PR tip; this own session is ignored', () => {
+  const prs = { ...stats().today, prsWaiting: 2 }
+  const other = stats({ today: prs, kitchen: { ...stats().kitchen, rollingBoil: [boil()] } } as Partial<TrackStats>)
+  expect(tipLine(other, A, undefined, true, NOW)).toBe('Tip: "Other tab" waits on your permission · 3m')
+  const own = stats({ today: prs, kitchen: { ...stats().kitchen, rollingBoil: [boil({ session: A })] } } as Partial<TrackStats>)
+  expect(tipLine(own, A, undefined, true, NOW)).toBe('Tip: 2 PRs waiting to merge — type "hey claude check PR"')
+  // the longest waiter wins, an ask says answer, an empty tab name falls back to the brief
+  const two = stats({ kitchen: { ...stats().kitchen, rollingBoil: [boil({ tab: '', brief: 'late', state: 'ask', since: new Date(NOW - 10 * 60_000).toISOString() }), boil()] } } as Partial<TrackStats>)
+  expect(tipLine(two, A, X, true, NOW)).toBe('Tip: "late" waits on your answer · 10m')
+})
+
+test('SC-14: an open item with an est offers the pane; no tip once it has been shown', () => {
+  const s = stats({ running: [item({ est: 'M', wallMin: 10 })], today: { ...stats().today, prsWaiting: 2 } })
+  expect(tipLine(s, A, X, true, NOW, true)).toBe('Tip: see today\'s work in the track pane — type "/track-pane"')
+  expect(tipLine(s, A, X, true, NOW, false)).toBeUndefined()
+})
+
+test('SC-15: the next todo of today\'s plan, then plan done', () => {
+  const plan = withPlan([planItem('done', 'S', 'a', 'a1a1'), planItem('todo', 'S', 'fix x', 'b1c2')], 30, 0)
+  expect(tipLine(plan, A, undefined, true, NOW)).toBe('Tip: next in plan: b1c2 fix x — type "/znf:track go b1c2"')
+  // an item without a code falls back to its id
+  expect(tipLine(withPlan([planItem('todo', 'S', 'y')], 15, 0), A, undefined, true, NOW)).toBe('Tip: next in plan: i-y y — type "/znf:track go i-y"')
+  const done = withPlan([planItem('done', 'S', 'a'), planItem('done', 'S', 'b')], 30, 20)
+  expect(tipLine(done, A, undefined, true, NOW)).toBe('Tip: plan done — type "/znf:track ls"')
+  // a running item means the plan is not done yet: no plan tip, it falls through to the fun line
+  expect(FUN_TIPS).toContain(tipLine(withPlan([planItem('done', 'S', 'a'), planItem('running', 'S', 'b')], 30, 0), A, undefined, true, NOW) ?? '')
+})
+
+test('SC-16: a newer kit release is a tip for an idle tab, after the PR tips', () => {
+  const kitUpdate = { current: 'v0.73.0', latest: 'v0.74.0', newer: true }
+  expect(tipLine(stats({ kitUpdate }), A, undefined, true, NOW)).toBe('Tip: zenify v0.74.0 is out (running v0.73.0) — run "zenify update"')
+  expect(tipLine(stats({ kitUpdate: { ...kitUpdate, newer: false } }), A, undefined, true, NOW)).not.toContain('zenify v0.74.0')
+  expect(tipLine(withPrs([pr({ ci: 'failure' })], { kitUpdate }), A, undefined, true, NOW)).toContain('CI red')
+  expect(tipLine(stats({ kitUpdate, running: [item({})] }), A, X, true, NOW)).toBeUndefined()
+})
+
+test('SC-17: an idle tab with nothing else shows a fun line that changes every 10 minutes', () => {
+  const idle = stats()
+  const k = 7
+  expect(tipLine(idle, A, undefined, true, k * 600_000, false)).toBe(FUN_TIPS[k % FUN_TIPS.length])
+  expect(tipLine(idle, A, undefined, true, (k + 1) * 600_000 + 599_999, false)).toBe(FUN_TIPS[(k + 1) % FUN_TIPS.length])
+  // the pane invite comes first while the pane has not been shown
+  expect(tipLine(idle, A, undefined, true, k * 600_000, true)).toBe('Tip: see today\'s work in the track pane — type "/track-pane"')
+  // an open item or tips=false: no fun line
+  expect(tipLine(stats({ running: [item({})] }), A, X, true, k * 600_000, false)).toBeUndefined()
+  expect(tipLine(idle, A, undefined, false, k * 600_000, false)).toBeUndefined()
+  expect(FUN_TIPS.length).toBe(20)
+  expect(new Set(FUN_TIPS).size).toBe(FUN_TIPS.length)
+  for (const f of FUN_TIPS) expect(f).toMatch(/^\p{Extended_Pictographic}/u)
 })
