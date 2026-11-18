@@ -78,7 +78,7 @@ Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall ti
 
 - Dòng `📆 Fri 10/31: 3 done · 1 cancelled · 2 PRs · 2 left open` tóm tắt ngày làm việc cuối trước hôm nay (ngày làm việc, nên sáng thứ Hai là tóm tắt thứ Sáu). Mục bằng 0 thì ẩn.
 - Mỗi việc đã bắt đầu từ trước hôm nay mà chưa kết thúc (đang chạy hoặc `stale`) có hai dòng: `- ⏳ 2d <worktree hoặc brief> · <kind> · <phase>` (việc stale dùng `🕸`; tuổi là `Nm`, `Nh` hoặc `Nd` theo wall time), rồi dòng mờ `<tên tab hoặc 8 ký tự session> · <id>`.
-- Không có việc dở và không có ngày làm việc cuối thì không có phần này. Khi có việc dở và tab không có việc mở, status line nhắc bằng tip `N items carried over`.
+- Không có việc dở và không có ngày làm việc cuối thì không có phần này. Khi có việc dở và tab không có việc mở, [dòng tip dưới prompt](#tip-dưới-prompt) nhắc bằng `N items carried over`.
 
 ## Chốt sổ hằng ngày
 
@@ -134,7 +134,7 @@ zenify track plan set b-261105-ab12 https://github.com/org/repo/pull/3 cook-2611
 - Plan lại = chạy `plan set` lại với cả danh sách; dòng `plan` mới nhất của hôm nay thắng, plan của ngày khác bị bỏ qua.
 - Mỗi mục có trạng thái `todo`, `running`, `done` hoặc `cancelled`, lấy từ track item tương ứng; mục chỉ là URL PR thì `done` khi PR đã merge.
 - Trên tab `Kitchen`, phần `🗓 Plan` liệt kê `- ☐|▶|✅|⛔ <code> · <repo> · <est> · <title>` (có link nếu có URL) rồi dòng mờ `est <x> · used <y>`: tổng mốc của thang S/M/L hiện hành và tổng wall time của các việc trong plan (dưới 60 phút viết `Nm`, còn lại `3h` hoặc `4h30m`).
-- Chưa có plan hôm nay thì status line nhắc bằng tip `no plan today`.
+- Chưa có plan hôm nay thì [dòng tip dưới prompt](#tip-dưới-prompt) nhắc bằng `no plan today`.
 
 ## PR cần hành động
 
@@ -247,7 +247,7 @@ Các thiết lập của kit là các dòng của plugin `znf` trong `/config` c
 |---|---|---|
 | **Dev track** (`znf.track`) | bật/tắt, mặc định tắt | Chạy `zenify feature track on\|off` cho workspace hiện tại |
 | **GitHub issues** (`znf.githubIssues`) | bật/tắt, mặc định tắt | Chạy `zenify feature github.issues on\|off` |
-| **Track pane** (`znf.trackPane`) | `auto` (mặc định), `command`, `off` | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở và không có lệnh `/track-pane`. Status line không đổi theo dòng này |
+| **Track pane** (`znf.trackPane`) | `auto` (mặc định), `command`, `off` | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở, không có lệnh `/track-pane` và dòng tip dưới prompt không mời mở pane. Status line không đổi theo dòng này |
 | **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì dòng tip dưới prompt ẩn mọi tip theo ngữ cảnh (xem [Tip dưới prompt](#tip-dưới-prompt)). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |
 | **Reviewer** (`znf.reviewer`) | `agent` (mặc định), `codex` | Chạy [`zenify reviewer set`](/reference/cli/zenify_reviewer_set); có hiệu lực ở session mới |
 

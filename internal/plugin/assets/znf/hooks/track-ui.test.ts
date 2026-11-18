@@ -1003,3 +1003,23 @@ test('SC-17: an idle tab with nothing else shows a fun line that changes every 1
   expect(new Set(FUN_TIPS).size).toBe(FUN_TIPS.length)
   for (const f of FUN_TIPS) expect(f).toMatch(/^\p{Extended_Pictographic}/u)
 })
+
+test('ship review: a title with $ patterns renders literally in the plan tip', () => {
+  const st = withPlan([planItem('todo', 'S', "cost $$ and $& and $'", 'c0de')], 15, 0)
+  expect(tipLine(st, A, undefined, true, NOW)).toBe(`Tip: next in plan: c0de cost $$ and $& and $' — type "/znf:track go c0de"`)
+})
+
+test('ship review: Done counts items ended today even when none started today, capped at 100%', () => {
+  const none = stats({ today: { ...stats().today, started: {}, done: { cook: 2 } } } as Partial<TrackStats>)
+  expect(texts(tl(none))).toContain('✅ Done 2/0')
+  const more = stats({ today: { ...stats().today, started: { cook: 1 }, done: { cook: 2 } } } as Partial<TrackStats>)
+  expect(texts(tl(more)).find(l => l.startsWith('✅ Done 2/1'))).toContain('100%')
+})
+
+test('ship review: an older binary without prsWaiting or cacheRead renders no undefined or NaN', () => {
+  const old = item({ tokens: { 'claude-opus-5-5': { in: 1, out: 500 } } as unknown as TrackItem['tokens'] })
+  const st = stats({ today: { ...stats().today, prsOpened: 2, prsWaiting: undefined, items: [old] } } as unknown as Partial<TrackStats>)
+  const lines = texts(tl(st))
+  expect(lines).toContain('🔗 PR 2 opened · 0 merged · 0 waiting')
+  for (const l of lines) expect(l).not.toMatch(/undefined|NaN/)
+})

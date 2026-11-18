@@ -153,7 +153,7 @@ function tipFor(s: TrackStats, mine: TrackItem | undefined, now: number, session
     .sort((a, b) => Date.parse(a.since) - Date.parse(b.since))[0]
   if (boil) {
     return COPY.tipBoil
-      .replace('{tab}', boil.tab || boil.brief)
+      .replace('{tab}', () => boil.tab || boil.brief)
       .replace('{what}', boil.state === 'ask' ? 'answer' : 'permission')
       .replace('{T}', waited(boil.since, now))
   }
@@ -179,19 +179,19 @@ function tipFor(s: TrackStats, mine: TrackItem | undefined, now: number, session
   const [one] = ready
   if (ready.length === 1 && one) return COPY.tipPrReadyOne.replace('{num}', String(one.number))
   if (ready.length > 1) return COPY.tipPrReady.replace('{N}', String(ready.length))
-  if (s.kitUpdate?.newer) return COPY.tipKitUpdate.replace('{latest}', s.kitUpdate.latest).replace('{current}', s.kitUpdate.current)
+  if (s.kitUpdate?.newer) return COPY.tipKitUpdate.replace('{latest}', () => s.kitUpdate?.latest ?? '').replace('{current}', () => s.kitUpdate?.current ?? '')
   const DAY = 86_400_000
   const age = (c: { startedAt: string }) => (now - Date.parse(c.startedAt)) / DAY
   const old = (s.kitchen?.carried ?? [])
     .filter((c) => c.stale || age(c) >= 5)
     .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))[0]
-  if (old) return COPY.tipStaleSoon.replace('{id}', old.id).replace('{D}', String(Math.max(0, Math.floor(age(old)))))
+  if (old) return COPY.tipStaleSoon.replace('{id}', () => old.id).replace('{D}', String(Math.max(0, Math.floor(age(old)))))
   if (carried > 0) return COPY.tipCarried.replace('{N}', String(carried))
   const plan = s.today?.dailyPlan?.items ?? []
   const next = plan.find((i) => i.status === 'todo')
   if (next) {
     const code = next.code || next.id
-    return COPY.tipPlanNext.replaceAll('{code}', code).replace('{title}', next.title)
+    return COPY.tipPlanNext.replaceAll('{code}', () => code).replace('{title}', () => next.title)
   }
   if (plan.length > 0 && !plan.some((i) => i.status === 'running')) return COPY.tipPlanDone
   if (s.onboarded && !s.today?.dailyPlan) return COPY.tipNoPlan
@@ -463,9 +463,10 @@ function todayLines(s: TrackStats, _session: string, now: number): Line[] {
   const lines: Line[] = [head(`${ICON.today} Today${SEP}${dayLabel(t.date)}`)]
   const started = sum(t.started)
   const done = sum(t.done)
-  if (started === 0) lines.push(plain('✅ Done 0/0'))
+  // done counts items ended today, which may have started on an earlier day, so it can exceed started.
+  if (started === 0) lines.push(plain(`✅ Done ${done}/0`))
   else {
-    lines.push(plain(`✅ Done ${done}/${started} ${bar(done / started, BAR_W)} ${Math.round((done / started) * 100)}%`))
+    lines.push(plain(`✅ Done ${done}/${started} ${bar(done / started, BAR_W)} ${Math.min(100, Math.round((done / started) * 100))}%`))
     const kinds = Object.keys(t.started ?? {}).filter(k => (t.started?.[k] ?? 0) > 0)
     kinds.sort((a, b) => {
       const ia = KIND_ORDER.indexOf(a)
@@ -505,8 +506,8 @@ function todayLines(s: TrackStats, _session: string, now: number): Line[] {
   for (const i of items) {
     for (const [m, v] of Object.entries(i.tokens ?? {})) {
       const a = (tokens[m] ??= { out: 0, cacheRead: 0 })
-      a.out += v.out
-      a.cacheRead += v.cacheRead
+      a.out += v.out ?? 0
+      a.cacheRead += v.cacheRead ?? 0
     }
   }
   const models = Object.entries(tokens).sort((a, b) => b[1].out - a[1].out)
@@ -522,7 +523,7 @@ function todayLines(s: TrackStats, _session: string, now: number): Line[] {
   const sdd = [(t.done?.cook ?? 0) > 0 && t.tasks > 0 && `tasks ${fmtNum(t.tasks)}`, t.rounds > 0 && `rounds ${fmtNum(t.rounds)}`].filter(Boolean)
   if (sdd.length > 0) lines.push(plain(`🔁 SDD ${sdd.join(SEP)}`))
   if (t.prsOpened > 0 || t.merged > 0 || t.prsWaiting > 0) {
-    lines.push(plain(`${ICON.pr} PR ${t.prsOpened} opened${SEP}${t.merged} merged${SEP}${t.prsWaiting} waiting`))
+    lines.push(plain(`${ICON.pr} PR ${t.prsOpened} opened${SEP}${t.merged} merged${SEP}${t.prsWaiting ?? 0} waiting`))
   }
   for (const pr of t.prOpen ?? []) lines.push(prLine(pr, now))
   if (t.prStatusError) lines.push(warn(`⚠ pr status: ${t.prStatusError}`))
