@@ -12,17 +12,17 @@ A PR carries two audiences in one artifact. Keep them apart:
   English (`feat` / `fix` / `docs` / `perf` / `refactor` / `chore`) whatever the project's language
   is. This is the one machine token in the whole PR.
 
-- **Tracker key — machine.** If the current branch name matches `(^|[/-])zen-(\d+)(-|$)`
-  (case-insensitive, at a slug boundary, for example `u/fix/zen-123-foo`; `frozen-12-x`, `citizen-3` and
+- **Tracker key — machine.** If the current branch name matches `(^|[/-])(zen|ops)-(\d+)(-|$)`
+  (case-insensitive, at a slug boundary, for example `u/fix/zen-123-foo` or `u/feat/ops-38-alerts`; `frozen-12-x`, `citizen-3` and
   `dozen-5` do not match; if several match, the first wins), that key, if any, is the first one. Then add every key on the `**Việc Plane:**` line of the spec or plan
   (`/cook`) or of the ship-pack `## Intent` (`/fix`, `/hotfix`); see `znf:_shared/plane-key`. Drop
-  duplicates, branch key first; with no branch key, the line's keys are the title keys. The title becomes `<type>(<scope>): ZEN-<a>, ZEN-<b> <description>`,
+  duplicates, branch key first; with no branch key, the line's keys are the title keys. The title becomes `<type>(<scope>): <KEY>-<a>, <KEY>-<b> <description>` (`<KEY>` is `ZEN` or `OPS`; for example `ZEN-<n>`),
   keys in uppercase, right after the colon, never at the end. Example: branch `natepxn/fix/zen-305-capi`
-  plus `**Việc Plane:** ZEN-305, ZEN-306` gives `fix(capi): ZEN-305, ZEN-306 …`. Do not scan for `ZEN-n`
+  plus `**Việc Plane:** ZEN-305, ZEN-306` gives `fix(capi): ZEN-305, ZEN-306 …`; branch `u/feat/ops-38-alerts` plus `**Việc Plane:** OPS-38, OPS-32` gives `feat(workflow): OPS-38, OPS-32 …`. Do not scan for `ZEN-n`
   anywhere else: a spec with `**Việc Plane:** ZEN-305` and `**Liên quan:** ZEN-12` yields only `ZEN-305`.
   No key anywhere keeps the title unchanged, with no warning. In a stack,
   layer N>=2 branches are `<layer-1>-<N>`, so the key stays in every branch name. In a stacked plan
-  (`## Stack`) every layer except the top one also gets the body line `Part of ZEN-<n>`, placed right
+  (`## Stack`) every layer except the top one also gets the body line `Part of <KEY>-<n>` (for example `Part of ZEN-<n>` or `Part of OPS-<n>`), placed right
   before the attribution line; the top layer does not carry it.
 
 - **Description + body — human.** Everything a human reads — the description after the colon and the

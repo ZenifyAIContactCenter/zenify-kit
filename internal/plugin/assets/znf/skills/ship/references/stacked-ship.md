@@ -44,7 +44,7 @@ in that stripped form; git commands use `<baseRef>` itself.
    - (e) For each PR, bottom to top: `gh pr edit <n> --title "<title>" --body-file <file>`, the title
      taken from the plan's `## Stack` line for layer i, the body per `pr-message-language.md` and
      stating `lớp i/N`; the title keys follow `pr-message-language.md` (all delivered keys, after the colon) and
-     every layer except the top layer's body gets the line `Part of ZEN-<n>` (see `pr-message-language.md`); with `github.issues` on, `Closes #N` goes in the top layer's body only
+     every layer except the top layer's body gets the line `Part of <KEY>-<n>` (ZEN or OPS; see `pr-message-language.md`); with `github.issues` on, `Closes #N` goes in the top layer's body only
      (see `github-issues.md`).
    - (f) Replace each `<pending>` on the board with that layer's PR URL and `cat` the board again.
    - (g) `zenify docs sync` (fails open).

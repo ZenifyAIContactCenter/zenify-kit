@@ -161,9 +161,9 @@ func TestShipPRTitle_ZenKey(t *testing.T) {
 	ship := syncedAsset(t, "skills/ship/SKILL.md")
 	assertContainsAll(t, "ship/SKILL.md", ship, []string{"ZEN-<n>", "Part of ZEN-"})
 	pr := syncedAsset(t, "skills/ship/references/pr-message-language.md")
-	assertContainsAll(t, "pr-message-language.md", pr, []string{"(^|[/-])zen-(\\d+)(-|$)", "slug boundary", "frozen-12-x", "first wins", "ZEN-<n>", "Part of ZEN-<n>", "**Việc Plane:**", "ZEN-305, ZEN-306", "Liên quan", "never at the end"}) //znf:allow-lang
+	assertContainsAll(t, "pr-message-language.md", pr, []string{"(^|[/-])(zen|ops)-(\\d+)(-|$)", "OPS-38, OPS-32", "slug boundary", "frozen-12-x", "first wins", "ZEN-<n>", "Part of ZEN-<n>", "**Việc Plane:**", "ZEN-305, ZEN-306", "Liên quan", "never at the end"}) //znf:allow-lang
 	st := syncedAsset(t, "skills/ship/references/stacked-ship.md")
-	assertContainsAll(t, "stacked-ship.md", st, []string{"Part of ZEN-<n>", "every layer except the top"})
+	assertContainsAll(t, "stacked-ship.md", st, []string{"Part of <KEY>-<n>", "every layer except the top"})
 }
 
 func TestMergeBaseUsesWtBase(t *testing.T) {
@@ -199,7 +199,7 @@ func TestMergeBaseUsesWtBase(t *testing.T) {
 
 func TestPlaneKeyLine(t *testing.T) {
 	pk := syncedAsset(t, "skills/_shared/plane-key.md")
-	for _, want := range []string{"**Việc Plane:**", "zen-<a>-", "Liên quan", "## Intent"} { //znf:allow-lang -- literal tag the shared reference must carry
+	for _, want := range []string{"**Việc Plane:**", "zen-<a>-", "ops-<a>-", "Liên quan", "## Intent"} { //znf:allow-lang -- literal tag the shared reference must carry
 		if !strings.Contains(pk, want) {
 			t.Errorf("plane-key.md must contain %q", want)
 		}
