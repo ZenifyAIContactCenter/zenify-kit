@@ -17,10 +17,10 @@ import (
 // planeHookTimeoutVar bounds the whole hook, all requests together.
 var planeHookTimeoutVar = 8 * time.Second
 
-// zenSlugRe picks the ZEN work item number out of a `wt new` slug.
-var zenSlugRe = regexp.MustCompile(`^zen-(\d+)`)
+// zenSlugRe picks the project (ZEN or OPS) and work item number out of a `wt new` slug.
+var zenSlugRe = regexp.MustCompile(`^(zen|ops)-(\d+)`)
 
-// planeStartHook is wt.NewOptions.OnStart: for a zen-<n> slug it moves ZEN-<n>
+// planeStartHook is wt.NewOptions.OnStart: for a zen-<n> or ops-<n> slug it moves ZEN-<n> or OPS-<n>
 // on Plane to In Progress with the developer's PAT (spec workflow-state-notify
 // §2G). The returned string is a warning; "" means done or nothing to do.
 func planeStartHook(getenv func(string) string, ws string, client *http.Client) func(slug string) string {
@@ -29,7 +29,7 @@ func planeStartHook(getenv func(string) string, ws string, client *http.Client) 
 		if m == nil {
 			return ""
 		}
-		key := "ZEN-" + m[1]
+		key := strings.ToUpper(m[1]) + "-" + m[2]
 		pat, err := planePAT(getenv, ws)
 		if err != nil || pat == "" {
 			return fmt.Sprintf("plane: no %s, %s not moved to In Progress (run zenify up --apply to add it)", planePATKey, key)

@@ -4,7 +4,7 @@ handoff that used to live here is a personal skill, not part of the kit. -->
 
 ### Slug and the Plane item line
 
-When the spec header has `**Việc Plane:**`, the slug starts with `zen-<a>-`; see
+When the spec header has `**Việc Plane:**`, the slug starts with `zen-<a>-` or `ops-<a>-`; see
 `znf:_shared/plane-key.md`.
 
 ### From § First, the worktree — why spec/plan and paths must be absolute (extra, tier two)

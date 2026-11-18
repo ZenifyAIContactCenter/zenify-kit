@@ -58,7 +58,7 @@ Repo khai các kiểu checkout trong `.claude/worktree.json`, ví dụ bản nh�
 
 Bước nào lỗi thì lệnh xoá worktree và branch vừa tạo. Tên variant được ghi vào `git config --worktree wt.variant` và in ở dòng cuối.
 
-Slug mang mã ticket khi spec hoặc `## Intent` có dòng `**Việc Plane:**`, ví dụ `zen-123-session-timeout` cho branch `<user>/fix/zen-123-session-timeout`. Mã `zen-<n>` trong tên branch là thứ `/znf:ship` đọc để đặt `ZEN-<n>` vào tiêu đề PR.
+Slug mang mã ticket khi spec hoặc `## Intent` có dòng `**Việc Plane:**`, ví dụ `zen-123-session-timeout` hoặc `ops-38-alert-rules` cho branch `<user>/fix/zen-123-session-timeout`. Mã `zen-<n>` hoặc `ops-<n>` trong tên branch là thứ `/znf:ship` đọc để đặt `ZEN-<n>` hoặc `OPS-<n>` vào tiêu đề PR.
 
 ## Ví dụ
 

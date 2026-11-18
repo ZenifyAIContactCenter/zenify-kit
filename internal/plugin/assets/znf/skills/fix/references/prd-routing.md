@@ -46,7 +46,7 @@ Call `Skill(znf:hotfix)` with these args, slug first and on its own line:
 cause: <the root cause, with the paths of the evidence that confirmed it>
 red: <the Step 0 red command, already run>
 track id: <the id Step 0 opened>
-**Việc Plane:** ZEN-<a>[, ZEN-<b>…]   (only when the request handed over a Plane item)
+**Việc Plane:** <KEY>-<a>[, <KEY>-<b>…]   (ZEN or OPS; only when the request handed over a Plane item)
 ```
 
 `/hotfix` copies the `**Việc Plane:**` line verbatim as the first line of its ship-pack `## Intent`

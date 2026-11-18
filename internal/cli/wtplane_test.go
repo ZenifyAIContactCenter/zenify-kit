@@ -68,8 +68,16 @@ func newFakePlane(t *testing.T, state string, assignees ...string) *fakeWtPlane 
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/workspaces/zenify/work-items/ZEN-7/":
 			b, _ := json.Marshal(map[string]any{"id": "wi-7", "project": "p-zen", "sequence_id": 7, "state": f.state, "assignees": f.assign})
 			_, _ = w.Write(b)
-		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/workspaces/zenify/projects/p-zen/states/":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/workspaces/zenify/work-items/OPS-38/":
+			b, _ := json.Marshal(map[string]any{"id": "wi-38", "project": "p-ops", "sequence_id": 38, "state": f.state, "assignees": f.assign})
+			_, _ = w.Write(b)
+		case r.Method == http.MethodGet && (r.URL.Path == "/api/v1/workspaces/zenify/projects/p-zen/states/" || r.URL.Path == "/api/v1/workspaces/zenify/projects/p-ops/states/"):
 			_, _ = io.WriteString(w, zenStatesJSON)
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/workspaces/zenify/projects/p-ops/work-items/wi-38/":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			f.patches = append(f.patches, body)
+			_, _ = io.WriteString(w, `{"id":"wi-38"}`)
 		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/workspaces/zenify/projects/p-zen/work-items/wi-7/":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
@@ -285,6 +293,36 @@ func TestWtPlane_NoPAT_Warns(t *testing.T) {
 func TestWtPlane_NonZenSlug_NoRequest(t *testing.T) {
 	f := newFakePlane(t, stBacklog)
 	if w := runHook(t, f, "fix-login", patEnv); w != "" {
+		t.Fatalf("warning %q", w)
+	}
+	if len(f.requests) != 0 {
+		t.Fatalf("requests %v, want none", f.requests)
+	}
+}
+
+// An ops-<n> slug moves OPS-<n> in the OPS project.
+func TestWtPlane_OpsSlug_MovesAndAssigns(t *testing.T) {
+	f := newFakePlane(t, stTodo)
+	if w := runHook(t, f, "ops-38-fix-x", patEnv); w != "" {
+		t.Fatalf("warning %q, want none", w)
+	}
+	body := f.onlyPatch(t)
+	if body["state"] != stInProgress {
+		t.Fatalf("state = %v", body["state"])
+	}
+	if got := assigneesOf(t, body); !slices.Equal(got, []string{"u-dev"}) {
+		t.Fatalf("assignees = %v, want [u-dev]", got)
+	}
+	want := "PATCH /api/v1/workspaces/zenify/projects/p-ops/work-items/wi-38/"
+	if !slices.Contains(f.requests, want) {
+		t.Fatalf("requests %v, want %q", f.requests, want)
+	}
+}
+
+// A slug that merely contains "ops-" never reaches Plane.
+func TestWtPlane_OpsLikeSlug_NoRequest(t *testing.T) {
+	f := newFakePlane(t, stBacklog)
+	if w := runHook(t, f, "dropsy-9", patEnv); w != "" {
 		t.Fatalf("warning %q", w)
 	}
 	if len(f.requests) != 0 {
