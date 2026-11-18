@@ -707,8 +707,8 @@ export const register: Register = (on, options: PluginOptions) => {
         {/* The five tabs are wider than the pane: the row wraps whole tabs instead of squeezing one into a column. */}
         <Box flexDirection="row" flexWrap="wrap" marginBottom={showTabKeys ? 0 : 1}>
           {TABS.map((t, i) => (
-            <Box key={`tabcell:${t.id}`} flexShrink={0}>
-              {i > 0 && <Text dimColor> │ </Text>}
+            // The gap trails the tab, so a wrapped line never starts with a dangling separator.
+            <Box key={`tabcell:${t.id}`} flexShrink={0} marginRight={i < TABS.length - 1 ? 2 : 0}>
               {/* A Button has no color prop, so the selected tab is a colored bold Text. */}
               {t.id === selected ? (
                 <Text color="claude" bold>{`▸${t.label}`}</Text>

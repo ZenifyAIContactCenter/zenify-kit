@@ -910,9 +910,12 @@ test('tab row: wraps whole tabs and never shrinks one, so a narrow pane keeps ev
   await start($, clock)
   await $.command.run({ command: 'track-pane', args: '' } as any)
   const ui = await mountTab($)
-  const boxes = (await ui.findAll({ type: 'Box' })) as any[]
-  expect(boxes.some(b => b.props.flexDirection === 'row' && b.props.flexWrap === 'wrap')).toBe(true)
-  expect(boxes.filter(b => b.props.flexShrink === 0)).toHaveLength(5)
+  const cells = ((await ui.findAll({ type: 'Box' })) as any[]).filter(b => String(b.key ?? '').startsWith('tabcell:'))
+  expect(cells).toHaveLength(5)
+  for (const c of cells) expect(c.props.flexShrink).toBe(0)
+  // no separator glyph is drawn, so a wrapped line never starts with one
+  expect((await ui.findAll({ type: 'Text' })).some((e: any) => String(e.text ?? '').includes('│'))).toBe(false)
+  expect(((await ui.findAll({ type: 'Box' })) as any[]).some(b => b.props.flexDirection === 'row' && b.props.flexWrap === 'wrap')).toBe(true)
 })
 
 test('tab keys: the key hint shows on the main screen while the pane is unfocused, never in fullscreen or focused', async ($, on) => {
