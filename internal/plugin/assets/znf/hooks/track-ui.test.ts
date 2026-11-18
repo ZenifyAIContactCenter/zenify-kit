@@ -42,6 +42,7 @@ const stats = (over: Partial<TrackStats> = {}): TrackStats => ({
   backlog: { items: [], ghError: '', planeError: '' },
   onboarded: true,
   kitchen: { carried: [], lastDay: null, cooked: [], rollingBoil: [], cooking: [], titleError: '' },
+  kitUpdate: null,
   ...over,
 })
 
@@ -855,8 +856,8 @@ test('SC-4: Today tokens sort by out with bars relative to the max', () => {
   expect(o).toBeGreaterThan(-1)
   expect(o).toBeLessThan(so)
   expect(t[o]).toContain('████████████████████ 100.0k out · 2000 cache')
-  expect(count(t[so], '█')).toBe(10)
-  expect(count(t[so], '░')).toBe(10)
+  expect(count(t[so] ?? '', '█')).toBe(10)
+  expect(count(t[so] ?? '', '░')).toBe(10)
 })
 
 test('FR-1.7/1.8: SDD and PR summary lines', () => {
@@ -874,7 +875,7 @@ test('SC-5: Waiting on you shows the total, a 20-cell stacked bar and hides zero
   expect(i).toBeGreaterThan(-1)
   expect(t[i + 1]).not.toContain('ask')
   expect(t[i + 1]).toContain('🔐 permission 6m · 💤 idle 13m')
-  expect([...t[i + 1].trim().split('  ')[0]]).toHaveLength(20)
+  expect([...(t[i + 1] ?? '').trim().split('  ')[0] ?? '']).toHaveLength(20)
 })
 
 const noQ = { n: 5, shipBlockedRate: null, topBlockedStep: null, findingsAvg: null, fixLoopAvg: null, ciRedFirstRate: null, waitShare: null, tokensAvg: null }
@@ -942,7 +943,7 @@ test('FR-3 null: a fix block of nulls prints no dash on any tab', () => {
 })
 
 // ---- Context tips (track-pane-charts Task 4, FR-4, SC-11..SC-17) ----
-const boil = (over: Partial<TrackStats['kitchen']['rollingBoil'][number]> = {}) => ({
+const boil = (over: Partial<NonNullable<TrackStats['kitchen']['rollingBoil']>[number]> = {}) => ({
   session: B, tab: 'Other tab', brief: 'brief', state: 'permission' as const, since: new Date(NOW - 3 * 60_000).toISOString(), ...over,
 })
 

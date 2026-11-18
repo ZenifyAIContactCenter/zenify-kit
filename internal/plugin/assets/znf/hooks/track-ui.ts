@@ -176,7 +176,8 @@ function tipFor(s: TrackStats, mine: TrackItem | undefined, now: number, session
   const chg = prs.find((p) => p.review === 'changes_requested')
   if (chg) return COPY.tipPrChanges.replace('{num}', String(chg.number))
   const ready = prs.filter((p) => p.ready)
-  if (ready.length === 1) return COPY.tipPrReadyOne.replace('{num}', String(ready[0].number))
+  const [one] = ready
+  if (ready.length === 1 && one) return COPY.tipPrReadyOne.replace('{num}', String(one.number))
   if (ready.length > 1) return COPY.tipPrReady.replace('{N}', String(ready.length))
   if (s.kitUpdate?.newer) return COPY.tipKitUpdate.replace('{latest}', s.kitUpdate.latest).replace('{current}', s.kitUpdate.current)
   const DAY = 86_400_000
@@ -420,9 +421,9 @@ export function stackBar(parts: number[], width: number, chars: string): string 
   const cells = raw.map(Math.floor)
   const order = raw.map((r, i) => ({ i, f: r - Math.floor(r) })).sort((a, b) => b.f - a.f || a.i - b.i)
   const missing = width - cells.reduce((a, v) => a + v, 0)
-  for (let k = 0; k < missing; k++) cells[order[k].i]++
+  const bumped = new Set(order.slice(0, missing).map(o => o.i))
   const glyphs = [...chars]
-  return cells.map((n, i) => glyphs[i].repeat(n)).join('')
+  return cells.map((n, i) => (glyphs[i] ?? '░').repeat(n + (bumped.has(i) ? 1 : 0))).join('')
 }
 // A space for 0, else one of ▁…█ scaled to the largest value.
 export function sparkline(values: number[]): string {
@@ -511,7 +512,7 @@ function todayLines(s: TrackStats, _session: string, now: number): Line[] {
   const models = Object.entries(tokens).sort((a, b) => b[1].out - a[1].out)
   if (models.length > 0) {
     lines.push(plain('🪙 Tokens today'))
-    const maxOut = models[0][1].out
+    const maxOut = models[0]?.[1].out ?? 0
     for (const [m, v] of models) {
       lines.push(plain(`   ${modelName(m).padEnd(6)} ${bar(maxOut > 0 ? v.out / maxOut : 0, BAR_W)} ${fmtNum(v.out)} out${SEP}${fmtNum(v.cacheRead)} cache`))
     }
@@ -527,7 +528,7 @@ function todayLines(s: TrackStats, _session: string, now: number): Line[] {
   if (t.prStatusError) lines.push(warn(`⚠ pr status: ${t.prStatusError}`))
   if (t.mergedError) lines.push(warn(`⚠ merged check error: ${t.mergedError}`))
   const scale = s.scale as unknown as Record<string, number>
-  const over = (s.running ?? []).filter(i => (isSize(i.est) && i.wallMin >= scale[i.est]) || now - Date.parse(i.startedAt) > DAY_MS).length
+  const over = (s.running ?? []).filter(i => (isSize(i.est) && i.wallMin >= (scale[i.est] ?? Infinity)) || now - Date.parse(i.startedAt) > DAY_MS).length
   if (over > 0) lines.push(warn(`⚠ ${over} running over size or open >1d → Kitchen`))
   if (s.malformed > 0) lines.push(warn(`⚠ ${s.malformed} malformed log lines`))
   return lines
