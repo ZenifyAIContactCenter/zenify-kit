@@ -210,7 +210,7 @@ type Input struct {
 // (oldest end first): the p90 wall minutes of its 60 most recent items, plus one
 // since a bound is exclusive. A size with fewer than minBound items keeps its default.
 func LearnScale(items []Item) Scale {
-	s := Scale{Source: "default", N: len(items), S: defaultS, M: defaultM, L: defaultL}
+	s := Scale{Source: "default", N: len(learnWindow(items)), S: defaultS, M: defaultM, L: defaultL}
 	for _, b := range []struct {
 		size  string
 		bound *int

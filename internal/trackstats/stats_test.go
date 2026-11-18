@@ -802,7 +802,7 @@ func TestScaleCapsAtNewest60(t *testing.T) {
 	in.Sessions = map[string]string{"s": lines(ss...)}
 	r, _ := Compute(in)
 	// newest 60 S items are walls 2..61, p90 (index 53) = 55 so S < 56; M rises to S+1
-	if r.Scale != (Scale{Source: "learned", N: 61, S: 56, M: 57, L: 120}) {
+	if r.Scale != (Scale{Source: "learned", N: 60, S: 56, M: 57, L: 120}) {
 		t.Fatalf("scale = %+v", r.Scale)
 	}
 }
