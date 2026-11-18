@@ -103,12 +103,14 @@ export const fmtNum = (n: number): string => {
   const k = (n / 1e3).toFixed(1)
   return n < 1e6 && Number(k) < 1000 ? `${k}k` : `${(n / 1e6).toFixed(1)}M`
 }
-// 50 -> 50m, 180 -> 3h, 270 -> 4h30m.
-export const fmtDur = (m: number): string => (m < 60 ? `${m}m` : m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}m`)
+// 50 -> 50m, 180 -> 3h, 270 -> 4h30m, 2665 -> 1d20h.
+export const fmtDur = (m: number): string => {
+  if (m >= 1440) return `${Math.floor(m / 1440)}d${Math.floor((m % 1440) / 60) > 0 ? `${Math.floor((m % 1440) / 60)}h` : ''}`
+  return m < 60 ? `${m}m` : m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h${m % 60}m`
+}
 const min = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v}m`)
 const isSize = (est: string) => SIZES.includes(est)
 const wallText = (i: TrackItem) => (isSize(i.est) ? `${i.wallMin}m/${i.est}` : `${i.wallMin}m`)
-const base = (path: string) => path.replace(/\/+$/, '').split('/').pop() || path
 
 // The workspace's estimate hit rate over every kind, undefined under MIN_SAMPLES samples.
 function hitRate(s: TrackStats): number | undefined {
@@ -213,7 +215,6 @@ const ICON = {
   today: '📅',
   plan: '🗓',
   item: { todo: '☐', running: '▶', done: '✅', cancelled: '⛔' } as Record<string, string>,
-  running: '🏃',
   estimate: '🎯',
   quality: '🛡',
   status: { done: '✅', pushed: '🚀', cancelled: '⛔', rollback: '↩️' } as Partial<Record<TrackItem['status'], string>>,
@@ -350,46 +351,132 @@ function prLine(pr: PRStatus, now: number): Line {
   return { text: `${ICON.pr} `, href: pr.url, label: `${who}${SEP}${state}` }
 }
 
-function todayLines(s: TrackStats, session: string, now: number): Line[] {
+const BAR_W = 20
+const SPARKS = '▁▂▃▄▅▆▇█'
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n))
+// `frac` of `width` cells filled with █, the rest ░.
+export const bar = (frac: number, width: number): string => {
+  const full = Math.round(clamp01(frac) * width)
+  return '█'.repeat(full) + '░'.repeat(width - full)
+}
+// One cell run per part (chars[i]), `width` cells in all by largest remainder; ░ when every part is 0.
+export function stackBar(parts: number[], width: number, chars: string): string {
+  const total = parts.reduce((a, v) => a + v, 0)
+  if (total <= 0) return '░'.repeat(width)
+  const raw = parts.map(v => (v / total) * width)
+  const cells = raw.map(Math.floor)
+  const order = raw.map((r, i) => ({ i, f: r - Math.floor(r) })).sort((a, b) => b.f - a.f || a.i - b.i)
+  const missing = width - cells.reduce((a, v) => a + v, 0)
+  for (let k = 0; k < missing; k++) cells[order[k].i]++
+  const glyphs = [...chars]
+  return cells.map((n, i) => glyphs[i].repeat(n)).join('')
+}
+// A space for 0, else one of ▁…█ scaled to the largest value.
+export function sparkline(values: number[]): string {
+  const max = Math.max(0, ...values)
+  return values.map(v => (v > 0 ? SPARKS[Math.max(0, Math.ceil((v / max) * 8) - 1)] : ' ')).join('')
+}
+// Minutes of item time per local hour of today, from the earliest start (not before 00:00) to now's hour.
+export function hourBins(items: TrackItem[], now: number): { startHour: number; values: number[] } {
+  const d = new Date(now)
+  const at = (h: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), h).getTime()
+  const spans = items
+    .map(i => ({ from: Date.parse(i.startedAt), to: i.endedAt ? Date.parse(i.endedAt) : now }))
+    .filter(x => !Number.isNaN(x.from) && !Number.isNaN(x.to))
+  if (spans.length === 0) return { startHour: 0, values: [] }
+  const first = Math.min(...spans.map(x => x.from))
+  const endHour = d.getHours()
+  const startHour = first <= at(0) ? 0 : Math.min(endHour, new Date(first).getHours())
+  const values: number[] = []
+  for (let h = startHour; h <= endHour && values.length < 24; h++) {
+    const lo = at(h)
+    const hi = at(h + 1)
+    const ms = spans.reduce((a, x) => a + Math.max(0, Math.min(x.to, hi) - Math.max(x.from, lo)), 0)
+    values.push(Math.round(ms / 60000))
+  }
+  return { startHour, values }
+}
+// `claude-opus-5-5` -> `opus`; any other id stays.
+export const modelName = (id: string): string => /^claude-([a-z]+)-/.exec(id)?.[1] ?? id
+
+const KIND_ORDER = ['cook', 'fix', 'hotfix', 'task']
+const DAY_MS = 86_400_000
+const hh = (n: number) => String(n).padStart(2, '0')
+
+function todayLines(s: TrackStats, _session: string, now: number): Line[] {
   const t = s.today
-  const cancelled = sum(t.cancelled)
-  const rolledBack = sum(t.rolledBack)
-  const lines: Line[] = [
-    head(`${ICON.today} Today ${t.date}`),
-    plain(
-      [
-        `Done ${sum(t.done)}`,
-        `started ${sum(t.started)}`,
-        cancelled > 0 && `Cancelled ${cancelled}`,
-        rolledBack > 0 && `Rollback ${rolledBack}`,
-      ]
-        .filter(Boolean)
-        .join(SEP),
-    ),
-  ]
-  if (t.wallMin > 0 || t.agentMin > 0) lines.push(plain(`Time ${t.wallMin}m${SEP}agent ${t.agentMin}m`))
-  // FR-1.4: SDD tasks and rounds belong to cook work, so they show only after a cook is done today.
-  if ((t.done?.cook ?? 0) > 0) lines.push(plain(`SDD tasks ${fmtNum(t.tasks)}`))
-  if (t.rounds > 0) lines.push(plain(`Rounds ${fmtNum(t.rounds)}`))
-  if (t.prsOpened > 0 || t.merged > 0) lines.push(plain(`PR ${t.prsOpened} opened${SEP}${t.merged} merged`))
-  for (const pr of t.prOpen ?? []) lines.push(prLine(pr, now))
-  if (t.prStatusError) lines.push(warn(`⚠ pr status: ${t.prStatusError}`))
-  const plans = Object.entries(t.plans ?? {})
-  if (plans.length > 0) lines.push(plain(`Plans written today: ${plans.map(([repo, n]) => `${repo} ${n}`).join(SEP)}`))
-  if (t.mergedError) lines.push(warn(`⚠ merged check error: ${t.mergedError}`))
-  if (s.malformed > 0) lines.push(warn(`⚠ ${s.malformed} malformed log lines`))
-  lines.push(head(`${ICON.running} Running`))
-  const running = s.running ?? []
-  if (running.length === 0) lines.push(dim('nothing running'))
-  const sessions = [...new Set(running.map(i => i.session))]
-  for (const sid of sessions) {
-    const items = running.filter(i => i.session === sid)
-    lines.push(plain(`${items[0]?.tab || sid.slice(0, 8)} ${base(items[0]?.cwd ?? '')}${sid === session ? ' (this tab)' : ''}`))
-    for (const i of items) {
-      const tail = [i.phase, wallText(i), `agent ${i.agentMin}m`, i.status === 'stale' ? 'stale' : ''].filter(Boolean)
-      lines.push(plain(`  ${[i.id, ...tail].join(SEP)}`))
+  const items = t.items ?? []
+  const lines: Line[] = [head(`${ICON.today} Today${SEP}${dayLabel(t.date)}`)]
+  const started = sum(t.started)
+  const done = sum(t.done)
+  if (started === 0) lines.push(plain('✅ Done 0/0'))
+  else {
+    lines.push(plain(`✅ Done ${done}/${started} ${bar(done / started, BAR_W)} ${Math.round((done / started) * 100)}%`))
+    const kinds = Object.keys(t.started ?? {}).filter(k => (t.started?.[k] ?? 0) > 0)
+    kinds.sort((a, b) => {
+      const ia = KIND_ORDER.indexOf(a)
+      const ib = KIND_ORDER.indexOf(b)
+      return ia >= 0 || ib >= 0 ? (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) : a.localeCompare(b)
+    })
+    for (const k of kinds) {
+      const st = t.started?.[k] ?? 0
+      const dn = t.done?.[k] ?? 0
+      lines.push(plain(`   ${k.padEnd(6)} ${dn}/${st} ${bar(dn / st, BAR_W)}`))
     }
   }
+  const cancelled = sum(t.cancelled)
+  const rolledBack = sum(t.rolledBack)
+  const cr = [cancelled > 0 && `⛔ Cancelled ${cancelled}`, rolledBack > 0 && `↩️ Rollback ${rolledBack}`].filter(Boolean)
+  if (cr.length > 0) lines.push(plain(cr.join(SEP)))
+
+  const bins = hourBins(items, now)
+  if (bins.values.length > 0) {
+    lines.push(plain(`⏱ Time by hour ${hh(bins.startHour)} ${sparkline(bins.values)} ${hh(bins.startHour + bins.values.length - 1)}`))
+  }
+  if (t.wallMin > 0 || t.agentMin > 0) lines.push(plain(`   wall ${fmtDur(t.wallMin)}${SEP}agent ${fmtDur(t.agentMin)} (parallel)`))
+
+  const wait = { ask: 0, permission: 0, idle: 0, total: 0 }
+  for (const i of items) for (const k of ['ask', 'permission', 'idle', 'total'] as const) wait[k] += i.wait?.[k] ?? 0
+  if (wait.total > 0) {
+    lines.push(plain(`🙋 Waiting on you ${fmtDur(wait.total)}`))
+    const parts = [
+      wait.ask > 0 && `❓ ask ${fmtDur(wait.ask)}`,
+      wait.permission > 0 && `🔐 permission ${fmtDur(wait.permission)}`,
+      wait.idle > 0 && `💤 idle ${fmtDur(wait.idle)}`,
+    ].filter(Boolean)
+    lines.push(plain(`   ${stackBar([wait.ask, wait.permission, wait.idle], BAR_W, '█▓░')}  ${parts.join(SEP)}`))
+  }
+
+  const tokens: Record<string, { out: number; cacheRead: number }> = {}
+  for (const i of items) {
+    for (const [m, v] of Object.entries(i.tokens ?? {})) {
+      const a = (tokens[m] ??= { out: 0, cacheRead: 0 })
+      a.out += v.out
+      a.cacheRead += v.cacheRead
+    }
+  }
+  const models = Object.entries(tokens).sort((a, b) => b[1].out - a[1].out)
+  if (models.length > 0) {
+    lines.push(plain('🪙 Tokens today'))
+    const maxOut = models[0][1].out
+    for (const [m, v] of models) {
+      lines.push(plain(`   ${modelName(m).padEnd(6)} ${bar(maxOut > 0 ? v.out / maxOut : 0, BAR_W)} ${fmtNum(v.out)} out${SEP}${fmtNum(v.cacheRead)} cache`))
+    }
+  }
+
+  // FR-1.7: SDD tasks belong to cook work, so they show only after a cook is done today.
+  const sdd = [(t.done?.cook ?? 0) > 0 && t.tasks > 0 && `tasks ${fmtNum(t.tasks)}`, t.rounds > 0 && `rounds ${fmtNum(t.rounds)}`].filter(Boolean)
+  if (sdd.length > 0) lines.push(plain(`🔁 SDD ${sdd.join(SEP)}`))
+  if (t.prsOpened > 0 || t.merged > 0 || t.prsWaiting > 0) {
+    lines.push(plain(`${ICON.pr} PR ${t.prsOpened} opened${SEP}${t.merged} merged${SEP}${t.prsWaiting} waiting`))
+  }
+  for (const pr of t.prOpen ?? []) lines.push(prLine(pr, now))
+  if (t.prStatusError) lines.push(warn(`⚠ pr status: ${t.prStatusError}`))
+  if (t.mergedError) lines.push(warn(`⚠ merged check error: ${t.mergedError}`))
+  const scale = s.scale as unknown as Record<string, number>
+  const over = (s.running ?? []).filter(i => (isSize(i.est) && i.wallMin >= scale[i.est]) || now - Date.parse(i.startedAt) > DAY_MS).length
+  if (over > 0) lines.push(warn(`⚠ ${over} running over size or open >1d → Kitchen`))
+  if (s.malformed > 0) lines.push(warn(`⚠ ${s.malformed} malformed log lines`))
   return lines
 }
 

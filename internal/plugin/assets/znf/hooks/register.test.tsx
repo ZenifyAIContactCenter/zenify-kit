@@ -792,7 +792,7 @@ test('FR-6.1: the track-pane command toggles the pane', async ($, on) => {
   expect(calls.close.map((c: any) => c.id)).toEqual(['track'])
 })
 
-test('SC-11: Kitchen is the default tab; Today has x and y, A tagged (this tab)', async ($, on) => {
+test('SC-11: Kitchen is the default tab; Today has the Done chart and no Running list', async ($, on) => {
   const x = item()
   const y = item({ id: 'fix-261030-0b0b', kind: 'fix', session: OTHER, cwd: '/w/repos/hub', phase: 'fix' })
   const world: World = {}
@@ -810,10 +810,8 @@ test('SC-11: Kitchen is the default tab; Today has x and y, A tagged (this tab)'
   await ui.press({ key: 'tab:today' })
   const all = await allTexts(ui)
   expect(all).toContain('▸Today')
-  expect(all.some(t => t.includes(x.id))).toBe(true)
-  expect(all.some(t => t.includes(y.id))).toBe(true)
-  expect(all).toContain('aaaaaaaa app (this tab)')
-  expect(all).toContain('bbbbbbbb hub')
+  expect(all).toContain('✅ Done 0/0')
+  expect(all.some(t => t.includes(x.id) || t.includes('Running'))).toBe(false)
 })
 
 test('FR-10.8: a tab stored by the old shape (total) opens as Kitchen', async ($, on) => {
