@@ -19,7 +19,7 @@ func cdRow(at time.Time, parts ...string) string {
 }
 
 // closeDayWS builds a workspace whose log has: yesterday's ended turn (PR closeDayYPR),
-// one history row and a 20-day-old ended turn, plus 61 recent fillers so the old rows
+// one history row and a 20-day-old ended turn, plus 61 recent fillers per size so the old rows
 // fall out of every stat window.
 func closeDayWS(t *testing.T, now time.Time) (ws string, oldID string) {
 	t.Helper()
@@ -38,10 +38,10 @@ func closeDayWS(t *testing.T, now time.Time) (ws string, oldID string) {
 		cdRow(oldAt, "start", oldID, "cook", "repo", "M"),
 		cdRow(oldAt.Add(time.Hour), "end", oldID, closeDayOldPR, "1", "0"),
 	)
-	for i := 0; i < 61; i++ {
+	for i := 0; i < 3*61; i++ { // 61 of each size: every size's scale window is full
 		id := fmt.Sprintf("cook-261120-%04x", i)
 		st := now.AddDate(0, 0, -5).Add(time.Duration(i) * time.Minute)
-		l = append(l, cdRow(st, "start", id, "cook", "repo", "S"),
+		l = append(l, cdRow(st, "start", id, "cook", "repo", []string{"S", "M", "L"}[i%3]),
 			cdRow(st.Add(time.Second), "end", id, fmt.Sprintf("https://github.com/o/r/pull/f%d", i), "1", "0"))
 	}
 	l = append(l,
