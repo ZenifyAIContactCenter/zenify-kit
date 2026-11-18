@@ -332,6 +332,15 @@ func pruneLive(dir string, now time.Time) error {
 		if !newest[s].Before(cut) {
 			continue
 		}
+		// The hook writes live/ without the log lock: re-check right before removing, so a tab
+		// that woke up since the first pass keeps its files.
+		fresh, err := anyNewer(fs, cut)
+		if err != nil {
+			return err
+		}
+		if fresh {
+			continue
+		}
 		for _, f := range fs {
 			if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
@@ -339,6 +348,23 @@ func pruneLive(dir string, now time.Time) error {
 		}
 	}
 	return nil
+}
+
+// anyNewer reports whether a file of files was modified at or after cut; a gone file is skipped.
+func anyNewer(files []string, cut time.Time) (bool, error) {
+	for _, f := range files {
+		fi, err := os.Stat(f)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if !fi.ModTime().Before(cut) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // moveInto renames src into destDir; an existing file of that name is never overwritten,
