@@ -137,6 +137,8 @@ export type TrackStats = {
     cooking: KitchenCooking[] | null
     titleError: string
   }
+  // cached kit release check (no network); null when unknown or a dev build
+  kitUpdate: { current: string; latest: string; newer: boolean } | null
 }
 
 export type TrackTab = 'kitchen' | 'today' | 'estimate' | 'quality' | 'backlog'

@@ -87,7 +87,7 @@ export function parseTrackStats(stdout: string): TrackStats {
     rollingBoil: (data.kitchen?.rollingBoil ?? []).map(b => ({ ...b, tab: b.tab ?? '' })),
     cooking: (data.kitchen?.cooking ?? []).map(c => ({ ...c, tab: c.tab ?? '' })),
   }
-  return { ...data, rules: data.rules ?? [], running: (data.running ?? []).map(item), today, backlog, kitchen } as TrackStats
+  return { ...data, rules: data.rules ?? [], running: (data.running ?? []).map(item), today, backlog, kitchen, kitUpdate: data.kitUpdate ?? null } as TrackStats
 }
 
 // The id this session has open: the bound id, running under this session.

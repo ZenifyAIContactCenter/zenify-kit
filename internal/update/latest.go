@@ -185,3 +185,22 @@ func saveCache(dir string, c cacheEntry) error {
 	}
 	return os.WriteFile(filepath.Join(dir, CacheFile), raw, 0o644) //nolint:gosec // G306 -- non-secret cache (a version string + timestamp) under the kit's own home
 }
+
+// Cached reads the last stored check without touching the network and without
+// honouring the TTL: a stale answer is still the best offline answer. ok is
+// false when there is no usable cache (missing, corrupt, a failed check with an
+// empty latest) or current is a dev build, which has no version to compare.
+func Cached(dir, current string) (latest string, newer bool, ok bool) {
+	if dir == "" || current == "dev" {
+		return "", false, false
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, CacheFile)) //nolint:gosec // G304 -- path is <kit home>/update-check.json, computed from the kit's own home, not user input
+	if err != nil {
+		return "", false, false
+	}
+	var c cacheEntry
+	if err := json.Unmarshal(raw, &c); err != nil || c.Latest == "" {
+		return "", false, false
+	}
+	return c.Latest, version.Newer(c.Latest, current), true
+}

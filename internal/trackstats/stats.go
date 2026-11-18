@@ -148,6 +148,13 @@ type Quality struct {
 	Fix    FixQuality             `json:"fix"`
 }
 
+// KitUpdate is the kit release check read from the local cache, never the network.
+type KitUpdate struct {
+	Current string `json:"current"`
+	Latest  string `json:"latest"`
+	Newer   bool   `json:"newer"`
+}
+
 // Result is the JSON of `zenify track stats --json`. Enabled is set by the CLI.
 type Result struct {
 	Enabled   bool  `json:"enabled"`
@@ -163,6 +170,8 @@ type Result struct {
 	Backlog     Backlog          `json:"backlog"`
 	Kitchen     Kitchen          `json:"kitchen"`
 	Onboarded   bool             `json:"onboarded"`
+	// KitUpdate is the cached release check, set by the CLI; nil when unknown or a dev build.
+	KitUpdate *KitUpdate `json:"kitUpdate"`
 	// windowIDs holds the ids read by the Scale, Estimate and Quality windows; Compact keeps them.
 	windowIDs map[string]bool `json:"-"`
 }
