@@ -8,6 +8,13 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.73.0
+
+*2026-11-18*
+
+- **Thang S/M/L của track học từ chính est:** mỗi mốc là p90 wall time của 60 việc gần nhất được chấm đúng size đó (cộng 1 phút); size có dưới 5 việc giữ mặc định 15/45/120, mốc luôn tăng dần. Mỗi loại cook/fix/hotfix có thang riêng (`scaleByKind` trong `zenify track stats --json`) và hit/under/over của loại đó đo theo thang của nó; thang chung `scale` vẫn dùng cho chân trang, daily plan và báo cáo ngày. Việc bắt đầu và kết thúc khác ngày (giờ local) không còn góp vào thang, Estimate hay hit của báo cáo ngày. Lưu ý: hit giờ đo độ nhất quán với cách chấm của chính bạn (việc S phần lớn tự trúng), không phải độ chính xác tuyệt đối; tín hiệu đáng xem là `over`, tức việc chấm M/L mà xong dưới mốc S. Xem [Pane track](/guides/track-pane).
+- **`close-day` dọn `live/`:** `zenify track close-day` xoá `live/<session>.beat` và `live/<session>.json` của session có file mới nhất quá 1 ngày; trước đây các file này không bao giờ bị xoá. Tab đang mở (beat mới) giữ nguyên file. Xem [Chốt sổ hằng ngày](/guides/track-pane#chốt-sổ-hằng-ngày).
+
 ## v0.72.1
 
 *2026-11-17*
@@ -43,7 +50,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 *2026-11-16*
 
 - **PR chỉ mở qua `/znf:ship`:** quy tắc làm việc của agent giờ ghi rõ mỗi PR phải qua một lượt `/znf:ship`, kể cả khi subagent làm song song nhiều PR. Không còn tự `gh pr create` để bỏ qua review và gate. Xem [Ship](/workflows/ship).
-- **`zenify track end --pr` cảnh báo khi PR chưa qua ship:** nếu lượt track chưa có dòng `ship`, lệnh in cảnh báo `has no ship row` ra stderr. Dòng `end` vẫn được ghi, kết quả lệnh không đổi. Xem [Track pane](/guides/track-pane).
+- **`zenify track end --pr` cảnh báo khi PR chưa qua ship:** nếu lượt track chưa có dòng `ship`, lệnh in cảnh báo `has no ship row` ra stderr. Dòng `end` vẫn được ghi, kết quả lệnh không đổi. Xem [Pane track](/guides/track-pane).
 - **Ước lượng không còn bị vòng sửa sau làm lệch:** một lượt quay lại sửa PR mà lượt khác đã kết thúc trước sẽ không được tính vào thang S/M/L và tab Estimate, nhưng vẫn được đếm ở Today. Khi chốt ngày, các lượt cùng một PR được archive cùng nhau.
 
 ## v0.69.0
@@ -108,7 +115,7 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 
 - **`zenify wt new zen-<n>` xử lý Backlog như Todo:** trên Plane, Backlog và Todo giờ chỉ cho biết việc nằm ngoài hay trong cycle, không cho biết ai giữ. Việc ở Backlog hoặc Todo mà chưa ai được giao thì `wt new` chuyển sang In Progress và thêm bạn vào assignee; chỉ có bạn trong assignee thì chỉ chuyển state; có người khác trong assignee (watcher hoặc người giữ khác) thì chỉ in cảnh báo, zenie chuyển khi thấy branch được push. Xem [Worktree theo slug](/concepts/worktree-per-slug).
 - **Chốt sổ track hằng ngày:** session đầu tiên của ngày tự chạy `zenify track close-day` (chỉ khi workspace đã onboard), in báo cáo ngày làm việc trước (việc xong, PR đã merge, việc dở, PR đang chờ kèm bước tiếp theo) và lưu vào `.zenify/track/days/`. Sổ `log.md` chỉ giữ 14 ngày, dòng cũ chuyển sang `.zenify/track/archive/`; việc đang mở, việc có PR merge gần đây và dòng stats cần vẫn được giữ. Lệnh cũng chạy tay được. Xem [Track pane](/guides/track-pane#chốt-sổ-hằng-ngày).
-- **Tip track chỉ việc cần xử lý trước:** khi tab chưa có việc mở, tip ưu tiên PR có CI đỏ, rồi PR còn thread chưa resolve, PR bị yêu cầu sửa, PR sẵn sàng merge (nêu tên PR khi chỉ có một), rồi việc carried over đã mở từ 5 ngày hoặc bị stale. Xem [Track pane](/guides/track-pane).
+- **Tip track chỉ việc cần xử lý trước:** khi tab chưa có việc mở, tip ưu tiên PR có CI đỏ, rồi PR còn thread chưa resolve, PR bị yêu cầu sửa, PR sẵn sàng merge (nêu tên PR khi chỉ có một), rồi việc carried over đã mở từ 5 ngày hoặc bị stale. Xem [Pane track](/guides/track-pane).
 - **Sổ track an toàn khi nhiều session ghi cùng lúc:** mọi lệnh ghi `log.md` đều lấy `log.lock` (chờ tối đa 2 giây), nên các tab chạy song song không ghi đè dòng của nhau.
 
 ## v0.62.0
@@ -122,9 +129,9 @@ Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIConta
 
 *2026-11-10*
 
-- **Hết toast `timing error: no workspace` khi session rời workspace:** session mở trong workspace mà sau đó cwd chuyển sang thư mục ngoài (ví dụ knowledge store `~/.zenify/knowledge`) trước đây báo lỗi ở mỗi nhịp và mất dòng track. Giờ session vẫn ghi track vào workspace ban đầu; riêng `/clear` hay compact khi cwd đang ở ngoài thì tính là ngoài workspace. Xem [Track pane](/guides/track-pane).
-- **Track pane không tự bật lại sau khi bạn đã đóng:** với `Track pane` = `auto`, pane chỉ tự mở theo prompt bạn gõ (`cook`, `fix`, `hotfix`, `ship`), không mở khi agent tự gọi skill giữa chừng (ví dụ `znf:fix` gọi tiếp `znf:ship`). Đã đóng pane thì nó không tự mở lại cho tới lần `/clear` hoặc compact kế tiếp; gõ `/track-pane` để mở lại ngay. Xem [Track pane](/guides/track-pane).
-- **Track ghi lại cả khi agent tự gọi skill:** khi track đang bật, mỗi lần `cook`, `fix`, `hotfix`, `ship` hoặc `ci-watch` chạy (bạn gõ `/znf:<skill>` hay agent tự gọi giữa chừng), hook gắn luôn phần hướng dẫn tương ứng trong `skills/_shared/track.md` vào cho agent. Agent không còn bỏ qua bước ghi `zenify track`, nên số liệu track không còn trống dù PR vẫn merge đều. Xem [Track pane](/guides/track-pane).
+- **Hết toast `timing error: no workspace` khi session rời workspace:** session mở trong workspace mà sau đó cwd chuyển sang thư mục ngoài (ví dụ knowledge store `~/.zenify/knowledge`) trước đây báo lỗi ở mỗi nhịp và mất dòng track. Giờ session vẫn ghi track vào workspace ban đầu; riêng `/clear` hay compact khi cwd đang ở ngoài thì tính là ngoài workspace. Xem [Pane track](/guides/track-pane).
+- **Track pane không tự bật lại sau khi bạn đã đóng:** với `Track pane` = `auto`, pane chỉ tự mở theo prompt bạn gõ (`cook`, `fix`, `hotfix`, `ship`), không mở khi agent tự gọi skill giữa chừng (ví dụ `znf:fix` gọi tiếp `znf:ship`). Đã đóng pane thì nó không tự mở lại cho tới lần `/clear` hoặc compact kế tiếp; gõ `/track-pane` để mở lại ngay. Xem [Pane track](/guides/track-pane).
+- **Track ghi lại cả khi agent tự gọi skill:** khi track đang bật, mỗi lần `cook`, `fix`, `hotfix`, `ship` hoặc `ci-watch` chạy (bạn gõ `/znf:<skill>` hay agent tự gọi giữa chừng), hook gắn luôn phần hướng dẫn tương ứng trong `skills/_shared/track.md` vào cho agent. Agent không còn bỏ qua bước ghi `zenify track`, nên số liệu track không còn trống dù PR vẫn merge đều. Xem [Pane track](/guides/track-pane).
 - **`zenify obs` báo đúng lỗi khi Grafana chậm:** truy vấn qua broker hết thời gian chờ giờ báo `grafana timed out` thay vì `grafana unreachable`, để bạn phân biệt Grafana chậm với Grafana không kết nối được.
 
 ## v0.61.0
