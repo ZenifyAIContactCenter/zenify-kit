@@ -904,6 +904,17 @@ test('tab keys: each tab Button carries its 1-based place as hotkey', async ($, 
   expect(await keys()).toEqual([['Kitchen', '1'], ['Today', '2'], ['Estimate', '3'], ['Backlog', '5']])
 })
 
+test('tab row: wraps whole tabs and never shrinks one, so a narrow pane keeps every label on one line', async ($, on) => {
+  engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.command.run({ command: 'track-pane', args: '' } as any)
+  const ui = await mountTab($)
+  const boxes = (await ui.findAll({ type: 'Box' })) as any[]
+  expect(boxes.some(b => b.props.flexDirection === 'row' && b.props.flexWrap === 'wrap')).toBe(true)
+  expect(boxes.filter(b => b.props.flexShrink === 0)).toHaveLength(5)
+})
+
 test('tab keys: the key hint shows on the main screen while the pane is unfocused, never in fullscreen or focused', async ($, on) => {
   engine(on, {})
   const clock = mock.clock(on)
