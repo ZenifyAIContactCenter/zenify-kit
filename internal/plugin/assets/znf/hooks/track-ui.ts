@@ -698,8 +698,12 @@ function backlogLines(s: TrackStats): Line[] {
 // FR-10.7: the S/M/L scale and the calibration rules, under the Estimate tab only.
 function footerLines(s: TrackStats): Line[] {
   const sc = s.scale
+  const head = `scale (${sc.source}, ${sc.n}):`
+  const bounds = `S<${fmtDur(sc.S)} M<${fmtDur(sc.M)} L<${fmtDur(sc.L)}`
+  // Long bounds (days, a 3-digit count) would pass the pane edge: the bounds then take their own line.
+  const scale = cells(`${head} ${bounds}`) > BODY_W ? [dim(head), dim(`   ${bounds}`)] : [dim(`${head} ${bounds}`)]
   return [
-    dim(`scale (${sc.source}, ${sc.n}): S<${fmtDur(sc.S)} M<${fmtDur(sc.M)} L<${fmtDur(sc.L)}`),
+    ...scale,
     ...(s.rules ?? []).map(r => warn(ruleText(r))),
   ]
 }

@@ -70,7 +70,7 @@ Tip "kit có bản mới" đọc từ field `kitUpdate` của `zenify track stat
 
 Số trên Estimate và Quality chỉ hiện khi đủ mẫu: mỗi loại cần ít nhất 5 việc thật. Chưa đủ thì dòng đó hiện mờ `need 5 samples (have N)`. Tỉ lệ thời gian theo giai đoạn cũng chỉ hiện khi loại đó đủ 5 mẫu. Số từ 10000 trở lên viết gọn `12.3k`, `1.2M`.
 
-Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall time; nguồn thang `learned` hoặc `default` hiện cạnh số việc, dạng `scale (default, 0 items): S<15m M<45m L<2h`) và các quy tắc hiệu chỉnh, ví dụ gợi ý `raise est 1 size` hoặc `lower est 1 size`. Các tab khác không có chân trang.
+Chỉ tab Estimate có chân trang: thang S/M/L hiện hành (đo bằng wall time; nguồn thang `learned` hoặc `default` hiện cạnh số việc, dạng `scale (default, 0): S<15m M<45m L<2h`; khi các mốc quá dài so với bề ngang pane thì chúng xuống dòng riêng) và các quy tắc hiệu chỉnh, ví dụ gợi ý `raise est 1 size` hoặc `lower est 1 size`. Các tab khác không có chân trang.
 
 ## Việc làm dở và ngày làm việc cuối
 

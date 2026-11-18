@@ -1128,3 +1128,12 @@ test('Zenie F4: a span under a minute still draws a sparkline cell', () => {
   expect(hourBins([a], now).values[0]).toBeGreaterThan(0)
   expect(sparkline(hourBins([a], now).values)[0]).not.toBe(' ')
 })
+
+test('Zenie R2: a long scale footer wraps its bounds instead of passing the pane edge', () => {
+  const s = stats({ scale: { source: 'history', n: 123, S: 89, M: 659, L: 1439 } })
+  const lines = texts(tabLines('estimate', s, A, X, NOW))
+  expect(lines).toContain('scale (history, 123):')
+  expect(lines).toContain('   S<1h29m M<10h59m L<23h59m')
+  // the default scale still fits on one line
+  expect(texts(tabLines('estimate', stats(), A, X, NOW))).toContain('scale (default, 0): S<15m M<45m L<2h')
+})
