@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -174,6 +175,44 @@ func TestCloseDayMovesOldSessions(t *testing.T) {
 	}
 	if _, err := os.Stat(live); err != nil {
 		t.Errorf("session of a kept id must stay: %v", err)
+	}
+}
+
+func TestCloseDayPrunesOldLiveFiles(t *testing.T) {
+	now := time.Now()
+	ws, _ := closeDayWS(t, now)
+	ldir := filepath.Join(ws, ".zenify", "track", "live")
+	if err := os.MkdirAll(ldir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]time.Time{
+		"s-dead.beat":   now.Add(-48 * time.Hour), // both old: removed
+		"s-dead.json":   now.Add(-48 * time.Hour),
+		"s-alive.json":  now.Add(-72 * time.Hour), // old state, fresh beat: kept
+		"s-alive.beat":  now.Add(-10 * time.Second),
+		"s-nobeat.json": now.Add(-48 * time.Hour), // no beat, old: removed
+	}
+	for name, at := range files {
+		f := filepath.Join(ldir, name)
+		if err := os.WriteFile(f, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(f, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now, true); err != nil {
+		t.Fatal(err)
+	}
+	for name := range files {
+		_, err := os.Stat(filepath.Join(ldir, name))
+		gone := errors.Is(err, os.ErrNotExist)
+		if err != nil && !gone {
+			t.Fatal(err)
+		}
+		if want := !strings.HasPrefix(name, "s-alive"); gone != want {
+			t.Errorf("%s removed = %v, want %v", name, gone, want)
+		}
 	}
 }
 
