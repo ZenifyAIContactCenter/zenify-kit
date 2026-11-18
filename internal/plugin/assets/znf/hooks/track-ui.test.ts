@@ -1117,6 +1117,9 @@ test('Zenie F3: a running item from yesterday shows in the sparkline once, even 
   // the same id in items and running counts once
   const both = texts(tl(stats({ running: [r], today: { ...stats().today, items: [r] } }), now))
   expect(both).toContain('   00 ██▄ 02')
+  // a running item left open for more than a day is not counted as work
+  const left = item({ id: X, startedAt: new Date(2026, 9, 30, 23, 0).toISOString(), endedAt: '' })
+  expect(texts(tl(stats({ running: [left] }), now))).not.toContain('⏱ Time by hour')
 })
 
 test('Zenie F4: a span under a minute still draws a sparkline cell', () => {

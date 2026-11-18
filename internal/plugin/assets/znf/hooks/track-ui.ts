@@ -509,8 +509,10 @@ function todayLines(s: TrackStats, _session: string, now: number): Line[] {
   if (cr.length > 0) lines.push(plain(cr.join(SEP)))
 
   // A running item from an earlier day is only in s.running; hourBins clips its span to today's midnight.
+  // Only one started within the last day counts: an older one is left open, not worked on (it has the ⚠ line).
   const seen = new Set(items.map(i => i.id))
-  const bins = hourBins([...items, ...(s.running ?? []).filter(i => !seen.has(i.id))], now)
+  const overnight = (s.running ?? []).filter(i => !seen.has(i.id) && now - Date.parse(i.startedAt) <= DAY_MS)
+  const bins = hourBins([...items, ...overnight], now)
   if (bins.values.length > 0) {
     lines.push(plain('⏱ Time by hour'), plain(`   ${hh(bins.startHour)} ${sparkline(bins.values)} ${hh(bins.startHour + bins.values.length - 1)}`))
   }
