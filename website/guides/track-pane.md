@@ -71,7 +71,7 @@ Mỗi ngày một lần, ở session đầu tiên của ngày, SessionStart tự
 - Trong SessionStart, báo cáo đọc trạng thái PR đã cache trên máy (`merged.json`, `pr-status.json`), không gọi `gh`, nên session mở nhanh; khi còn PR đang chờ, báo cáo có dòng `note: PR status from cache`. Chạy tay `zenify track close-day` (khi ngày chưa chốt) thì lệnh hỏi lại `gh` để lấy trạng thái PR mới nhất trước khi viết báo cáo.
 - Báo cáo ngày được ghi vào `.zenify/track/days/<D>.md` (tiêu đề `# Track day close: <D>`) và in ra đầu session để agent tóm tắt cho bạn: việc đã xong, PR đã merge, việc làm dở, PR đang chờ kèm bước tiếp theo.
 - Sổ `log.md` chỉ giữ 14 ngày gần nhất. Dòng cũ hơn được chuyển sang `.zenify/track/archive/<YYYY-MM>.md` (dòng `history` luôn được chuyển, dòng `plan` được chuyển khi quá 14 ngày); log session và báo cáo ngày cũ nằm ở `archive/sessions/` và `archive/days/`. Marker `.zenify/track/day.closed` ghi nhớ ngày đã chốt.
-- Luôn được giữ lại, dù quá 14 ngày: việc đang mở, backlog đang mở, việc có PR merge trong 14 ngày gần nhất, việc mà một dòng `plan` còn giữ nhắc tới (theo id hoặc bid), và các dòng mà cửa sổ stats cần (60 việc đã đo gần nhất, 30 dòng mỗi kind).
+- Luôn được giữ lại, dù quá 14 ngày: việc đang mở, backlog đang mở, việc có PR merge trong 14 ngày gần nhất, việc mà một dòng `plan` còn giữ nhắc tới (theo id hoặc bid), và các dòng mà cửa sổ stats cần (60 việc đã đo gần nhất của mỗi size S/M/L, chung và theo từng kind; 30 dòng mỗi kind).
 - PR trong sổ chưa có trạng thái nào trong cache (SessionStart không hỏi `gh`) vẫn được liệt kê, với bước `status unknown`.
 - Mọi lệnh ghi vào `log.md` đều lấy `log.lock`; nếu đang bị giữ thì chờ tối đa 2 giây.
 
@@ -218,7 +218,7 @@ zenify track onboard history --write --since 2026-09-01
 - `onboard memory` đánh dấu workspace đã onboard từ memory của agent.
 - `onboard history` quét transcript Claude Code (`~/.claude/projects`), gom theo repo và worktree rồi in bảng xem trước. Thêm `--write` mới ghi dòng `history` vào sổ; chạy lại không tạo dòng trùng. `--since YYYY-MM-DD` giới hạn từ ngày đó.
 
-Thang mặc định là S<15m, M<45m, L<120m. Từ 20 việc thật đã xong có est, thang chuyển sang `learned` theo wall time. Dòng `history` không góp vào thang, Estimate, chất lượng hay số hôm nay. Một việc mà mọi PR của nó đã được việc khác kết thúc trước (vòng sửa sau trên cùng PR) không góp vào thang và Estimate; nó vẫn được đếm ở Today.
+Thang mặc định là S<15m, M<45m, L<120m. Mỗi mốc học riêng từ các việc đã xong được chấm đúng size đó: mốc S là p90 wall time của 60 việc chấm S gần nhất (cộng 1 phút), tương tự M và L; size nào có dưới 5 việc thì giữ mốc mặc định, và mốc luôn tăng dần (M ≥ S+1, L ≥ M+1). Có ít nhất một mốc học được thì thang là `learned`. Mỗi loại (cook, fix, hotfix) có thang riêng (`scaleByKind` trong `--json`) và hit/under/over của loại đó đo theo thang của nó; thang chung `scale` (gộp mọi loại) dùng cho chân trang, daily plan và báo cáo ngày. Việc bắt đầu và kết thúc khác ngày (giờ local) có wall time chứa cả đêm, nên không góp vào thang, Estimate hay hit của báo cáo ngày. Dòng `history` không góp vào thang, Estimate, chất lượng hay số hôm nay. Một việc mà mọi PR của nó đã được việc khác kết thúc trước (vòng sửa sau trên cùng PR) không góp vào thang và Estimate; nó vẫn được đếm ở Today.
 
 Xem [`zenify track`](/reference/cli/zenify_track), trong đó `stats --force` bỏ qua cache backlog.
 

@@ -16,16 +16,16 @@ func cAt(day, h int) time.Time { return time.Date(2026, 11, day, h, 0, 0, 0, tim
 
 func ccid(kind string, n int) string { return fmt.Sprintf("%s-261101-%04x", kind, n) }
 
-// fillers are n recent ended items of kind (started and ended after the cut, PR cached), so
-// the older items of a case fall out of every stat window of that kind.
+// fillers are n recent ended items of kind per size S, M and L (started and ended after the
+// cut, PR cached), so the older items of a case fall out of every stat window of that kind.
 func fillers(kind string, n int, cache map[string]string) []string {
 	var out []string
-	for i := 0; i < n; i++ {
+	for i := 0; i < 3*n; i++ {
 		id := fmt.Sprintf("%s-261120-%04x", kind, i)
 		start := cAt(20, 0).Add(time.Duration(i) * time.Hour)
 		pr := fmt.Sprintf("https://github.com/o/r/pull/f%d", i)
 		cache[pr] = "2026-11-21T00:00:00Z"
-		out = append(out, row(start, "start", id, kind, "repo", "S"), row(start.Add(10*time.Minute), "end", id, pr, "1", "1"))
+		out = append(out, row(start, "start", id, kind, "repo", []string{"S", "M", "L"}[i%3]), row(start.Add(10*time.Minute), "end", id, pr, "1", "1"))
 	}
 	return out
 }
@@ -36,7 +36,7 @@ func TestCompactPicksRows(t *testing.T) {
 	e, f, g, h := ccid("cook", 5), ccid("cook", 6), ccid("cook", 7), ccid("cook", 8)
 	cases := []struct {
 		name   string
-		filler string // kind of the 61 recent fillers
+		filler string // kind of the 61 recent fillers of each size
 		rows   []string
 		cache  map[string]string
 		moved  []int // indexes into rows
