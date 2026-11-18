@@ -349,7 +349,7 @@ test('FR-6.2: Quality shows blocked rate, findings, fix loop, wait share, tokens
   expect(t).toContain('     opus 2000')
   expect(t).toContain('🩹 fix/hotfix · 5 items')
   expect(t).toContain('  wide 50% · rounds 1.5')
-  expect(t.some(l => l.includes('regression test'))).toBe(false)
+  expect(t.some(l => l.includes('regression'))).toBe(false)
 })
 
 test('FR-10.7/SC-14: the scale footer and rules are on Estimate only', () => {
@@ -859,7 +859,7 @@ test('SC-4: Today tokens sort by out with bars relative to the max', () => {
   const t = texts(tl(s))
   const o = t.findIndex(l => l.includes('opus'))
   const so = t.findIndex(l => l.includes('sonnet'))
-  expect(t).toContain("🪙 Tokens · today's items")
+  expect(t).toContain("🪙 Tokens out · today's items")
   expect(o).toBeGreaterThan(-1)
   expect(o).toBeLessThan(so)
   expect(t[o]).toBe('   opus   ████████████████████ 100.0k')
@@ -1105,7 +1105,7 @@ test('Zenie F1: every Today, Estimate and Quality line fits the 40-cell pane bod
 
 test('Zenie F2: the tokens header says the numbers are for today\'s items', () => {
   const s = todayWith({ items: [item({})] })
-  expect(texts(tl(s))).toContain("🪙 Tokens · today's items")
+  expect(texts(tl(s))).toContain("🪙 Tokens out · today's items")
   expect(texts(tl(s)).some(l => l === '🪙 Tokens today')).toBe(false)
 })
 

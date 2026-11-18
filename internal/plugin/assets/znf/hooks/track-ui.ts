@@ -541,7 +541,7 @@ function todayLines(s: TrackStats, _session: string, now: number): Line[] {
   }
   const models = Object.entries(tokens).sort((a, b) => b[1].out - a[1].out)
   if (models.length > 0) {
-    lines.push(plain("🪙 Tokens · today's items"))
+    lines.push(plain("🪙 Tokens out · today's items"))
     const maxOut = models[0]?.[1].out ?? 0
     for (const [m, v] of models) {
       lines.push(plain(`   ${modelName(m).padEnd(6)} ${bar(maxOut > 0 ? v.out / maxOut : 0, BAR_W)} ${fmtNum(v.out)}`))
