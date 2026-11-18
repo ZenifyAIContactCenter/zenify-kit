@@ -779,6 +779,19 @@ test('SC-12: outside a workspace the PromptHint adds no row', async ($, on) => {
   expect(await tipRows(ui)).toEqual([])
 })
 
+test('SC-12: a /clear started outside the workspace drops the tip row of the earlier session', async ($, on) => {
+  const world: World = { stats: waiting() }
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(await tipRows(await $.ui.mount(hint))).toEqual([PR_TIP])
+  world.cwd = '/k/knowledge'
+  world.noWorkspace = true
+  await $.session.start({ cwd: world.cwd, source: 'clear' } as any)
+  await clock.settle()
+  expect(await tipRows(await $.ui.mount(hint))).toEqual([])
+})
+
 test('SC-14: the pane invite shows until the pane has been shown, then is gone', async ($, on) => {
   engine(on, {})
   const clock = mock.clock(on)

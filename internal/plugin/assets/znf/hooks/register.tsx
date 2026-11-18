@@ -665,6 +665,8 @@ export const register: Register = (on, options: PluginOptions) => {
 
   // FR-4.3: the tip is a dim italic row under the engine's own prompt hint.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    // The stats atom outlives a session start outside the workspace, so the workspace check comes first.
+    if (!isInWorkspace()) return next(e)
     const st = await read($, stats)
     if (!st?.data) return next(e)
     const tip = tipLine(st.data, await $.session.id(), (await read($, bound))?.id, showTips, await $.clock.now(), paneMode !== 'off' && !wasShown)
