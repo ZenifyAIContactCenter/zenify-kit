@@ -113,7 +113,11 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 	var ledgers []BacklogItem
 	count := map[string]int{}
 	for _, s := range in.SDD {
-		ledger := s.ID[:strings.LastIndex(s.ID, ":")]
+		// A cached id without ":<line>" (hand-edited or older cache) is its own ledger.
+		ledger := s.ID
+		if i := strings.LastIndex(s.ID, ":"); i > 0 {
+			ledger = s.ID[:i]
+		}
 		if dropped[s.ID] || from[s.ID] || dropped[ledger] || from[ledger] {
 			continue
 		}
@@ -123,8 +127,11 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 		count[ledger]++
 	}
 	for _, it := range ledgers {
-		n := count[it.ID]
-		it.Title = fmt.Sprintf("%s: %d SDD finding%s", path.Base(path.Dir(it.ID)), n, map[bool]string{true: "s"}[n > 1])
+		n, suffix := count[it.ID], ""
+		if n != 1 {
+			suffix = "s"
+		}
+		it.Title = fmt.Sprintf("%s: %d SDD finding%s", path.Base(path.Dir(it.ID)), n, suffix)
 		b.Items = append(b.Items, it)
 	}
 	for _, it := range items {

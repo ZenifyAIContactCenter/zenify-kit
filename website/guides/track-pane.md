@@ -178,7 +178,7 @@ zenify track start --kind fix --repo kit --est S --from b-261030-ab12
 ```
 
 - `backlog add "<title>" --repo <r> [--est S|M|L] [--ref <url|memory:<name>>]` thêm việc và in id `b-YYMMDD-xxxx`.
-- `backlog drop <bid|mã ngắn|sdd id>` bỏ việc khỏi backlog (issue GitHub cũng bỏ được: bằng `#581` hoặc URL); id `sdd` có dạng `repos/<...>/progress.md` (bỏ cả ledger) hoặc `repos/<...>/progress.md:<dòng>` (bỏ một mục, số đếm của ledger giảm đi một).
+- `backlog drop <bid|mã ngắn|sdd id>` bỏ việc khỏi backlog (issue GitHub cũng bỏ được: bằng `#581` hoặc URL); id `sdd` có dạng `repos/<...>/progress.md` (bỏ cả ledger, kể cả mục được thêm vào ledger sau này) hoặc `repos/<...>/progress.md:<dòng>` (bỏ một mục, số đếm của ledger giảm đi một).
 - `track start --from <bid|mã ngắn|issue URL|sdd id>` ghi việc lấy từ backlog, nên nó biến khỏi tab khi đã bắt đầu. Mỗi mục chỉ được lấy một lần: nếu tab khác đã lấy (đang chạy hoặc đã kết thúc) thì lệnh thoát khác 0 và không ghi gì, kèm `is taken by <id> (session <8 ký tự>)` hoặc `was taken by <id> (ended)`. Hai lệnh start chạy cùng lúc thì chỉ một lệnh thành công.
 - Tab Backlog xếp theo size S, M, L, `-` (cùng size thì việc cũ hơn trước), bỏ việc `manual` trùng tiêu đề với issue github, và ẩn việc `stale` khi session của nó còn heartbeat trong 30 giây.
 

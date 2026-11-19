@@ -148,6 +148,17 @@ func TestBacklogSDDAndDrop(t *testing.T) { // SC-32
 	if len(r.Backlog.Items) != 1 || r.Backlog.Items[0].Title != "p: 1 SDD finding" || r.Malformed != 0 {
 		t.Fatalf("items = %+v malformed=%d", r.Backlog.Items, r.Malformed)
 	}
+	// Every line dropped one by one: the ledger row goes too.
+	in.Log = lines(row(now, "drop", sddID), row(now, "drop", ledgerA+":42"), row(now, "drop", ledgerB))
+	if r, _ = Compute(in); len(r.Backlog.Items) != 0 {
+		t.Fatalf("items = %+v", r.Backlog.Items)
+	}
+	// An id without ":<line>" (a hand-edited cache) does not panic; it is its own ledger.
+	in.Log = ""
+	in.SDD = []SDDItem{{ID: ledgerB, Repo: "kit", Title: "x", ModTime: now}}
+	if r, _ = Compute(in); len(r.Backlog.Items) != 1 || r.Backlog.Items[0].ID != ledgerB {
+		t.Fatalf("items = %+v", r.Backlog.Items)
+	}
 }
 
 func TestBacklogNilSourcesSkipped(t *testing.T) {
