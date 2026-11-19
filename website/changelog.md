@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.74.0
+
+*2026-11-19*
+
+- **Câu hỏi của phiên tự động có đủ bối cảnh cho BA:** `zenify await question --questions` nhận khuôn mới: `situation` (bối cảnh viết bằng lời nghiệp vụ, tối đa 600 ký tự), mỗi phương án là `{label, detail, consequence}` (label tối đa 24 ký tự, hai trường sau tối đa 200), `recommended` bắt buộc, `default_if_silent` (phương án áp dụng khi hết hạn mà không ai trả lời, hoặc `null`) và `audience`. Câu hỏi thiếu `recommended` hoặc vượt độ dài thì bị từ chối kèm lý do. Luật autonomous đổi thành "quyết trước, hỏi sau": tìm được thì tự tìm, có phương án an toàn thì tự chọn và ghi `Assumption:` vào ship pack và PR, chỉ hỏi khi còn lại, mỗi lượt đúng một câu. Xem [Chế độ không người](/guides/autonomous) và [`zenify await`](/reference/cli/zenify_await).
+- **Pane track vẽ biểu đồ:** tab Today, Estimate và Quality hiển thị bằng bar và sparkline (việc xong theo loại, phút làm theo giờ, thời gian chờ bạn, token theo model, tỉ lệ hit, findings theo mức). Tip chuyển xuống một dòng xám in nghiêng dưới prompt. `zenify track stats --json` có thêm `kitUpdate`. Xem [Pane track](/guides/track-pane).
+- **Nhận mã việc OPS:** `wt new` với slug `ops-<n>-…` chuyển việc `OPS-<n>` sang In Progress và gán người làm, như `zen-<n>`. Dòng `**Việc Plane:**`, slug và title PR nhận cả mã ZEN lẫn OPS. Xem [`zenify wt new`](/reference/cli/zenify_wt_new).
+
 ## v0.73.0
 
 *2026-11-18*
