@@ -210,3 +210,22 @@ func TestDailyPlanBacklogRefURL(t *testing.T) {
 		t.Fatalf("plan = %+v", p)
 	}
 }
+
+// The backlog groups SDD findings per ledger; a plan holding one finding's path:line id
+// still shows that finding's repo and title, and a plan holding the ledger id shows the row.
+func TestDailyPlanSDDFindingAndLedger(t *testing.T) {
+	const ledger = "repos/kit/.znf/sdd/p/progress.md"
+	in := base(lines(planRow(now, planDay, ledger+":7", ledger)))
+	in.SDD = []SDDItem{{ID: ledger + ":7", Repo: "kit", Title: "rename the helper", ModTime: now}}
+	r, _ := Compute(in)
+	p := r.Today.DailyPlan
+	if p == nil || len(p.Items) != 2 {
+		t.Fatalf("plan = %+v", p)
+	}
+	if it := p.Items[0]; it.Repo != "kit" || it.Title != "rename the helper" {
+		t.Errorf("finding item = %+v", it)
+	}
+	if it := p.Items[1]; it.Repo != "kit" || it.Title != "p: 1 SDD finding" {
+		t.Errorf("ledger item = %+v", it)
+	}
+}

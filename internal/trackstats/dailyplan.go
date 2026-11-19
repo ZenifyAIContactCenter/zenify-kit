@@ -101,6 +101,11 @@ func computeDailyPlan(in Input, logEv []Event, items []Item, works map[string]*w
 			rows[e.ID] = brow{e.F[0], e.F[1], e.F[3], refURL(e.F[2])}
 		}
 	}
+	// The backlog lists one row per SDD ledger; a plan may still hold one finding's
+	// path:line id, so each finding keeps its own lookup row.
+	for _, f := range in.SDD {
+		rows[f.ID] = brow{f.Repo, "-", f.Title, ""}
+	}
 	for _, b := range backlog {
 		for _, k := range []string{b.ID, b.Ref} {
 			if _, ok := rows[k]; !ok && k != "" && k != "-" {
