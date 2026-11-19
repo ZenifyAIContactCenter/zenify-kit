@@ -47,11 +47,18 @@ runs them.
 
 - `verdict=block` (build/lint fail, conflict-marker) → **STOP**: gate `findings` into the report,
   `shippable:false`, print the reason, do NOT dispatch REVIEW.
-- `verdict=pass` → keep the mechanical `findings`, go to Step 2.
+- `verdict=pass` → keep the mechanical `findings`, then pick the engine:
+
+```bash
+ENGINE=$(zenify reviewer 2>/dev/null | cut -d' ' -f1); [ -n "$ENGINE" ] || ENGINE=agent
+```
+
+The caller's args say `engine agent` (ship after a project fallback) → `ENGINE=agent`, no `zenify reviewer`.
+`zenify reviewer` printing `agent (<reason>)` → board line `review … engine: agent (<reason>)`.
 
 ## Step 1c — BUNDLE (split a large diff)
 
-Only when `ADDED > 2000`; smaller diffs go to Step 2.
+Only when `ADDED > 2000` and `ENGINE` is not `project` (it reviews the whole head once; its fallback comes back here); otherwise go to Step 2.
 
 ```bash
 PLAN=$(zenify review-bundle "$BASE")   # {"verdict":..,"bundles":[{id,loc,files}],"total_loc":X}
@@ -69,11 +76,9 @@ Run via `bash` (materializes at 0o600, without +x), read line 1:
 SELECT_TIER=$(bash "${ZENIFY_HOME:-$HOME/.zenify}/plugin-marketplace/plugins/znf/skills/review/scripts/select-tier" "$ADDED" "$SHARED" "$CRITICAL")
 TIER=$(printf '%s\n' "$SELECT_TIER" | sed -n '1p')
 printf '%s\n' "$SELECT_TIER"                          # print on the report
-ENGINE=$(zenify reviewer 2>/dev/null | cut -d' ' -f1); [ -n "$ENGINE" ] || ENGINE=agent
 ```
 
 Line 1 = tier, line 2 = the reason. **Print tier + reason on the report** before dispatching.
-`zenify reviewer` printing `agent (<reason>)` → board line `review … engine: agent (<reason>)`.
 Tier rule: `CRITICAL=1` (step 1's path match, or the caller) → T3 at any size; else T1 ≤200 LOC / T2 >200, and `SHARED=1`
 **floors at T2** (T2's `contracts` goes to opus when shared).
 
