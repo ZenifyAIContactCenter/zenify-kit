@@ -720,3 +720,28 @@ func TestTrackStart_FromSDDRejectsSeparators(t *testing.T) {
 		t.Fatalf("CR: err = %v", err)
 	}
 }
+
+// A ledger and a finding inside it overlap: taking one blocks the other, both ways.
+func TestTrackStart_FromSDDLedgerOverlap(t *testing.T) {
+	const ledger = "repos/r/.znf/sdd/p/progress.md"
+	for _, c := range []struct{ first, second string }{{ledger, ledger + ":2"}, {ledger + ":2", ledger}} {
+		ws := trackWS(t, true)
+		out, err := startFrom(t, ws, c.first)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := trackOutRe.FindStringSubmatch(out)[1]
+		before := trackLog(t, ws)
+		_, err = startFrom(t, ws, c.second)
+		if err == nil || !strings.Contains(err.Error(), "track: "+c.second+" is taken by "+a) {
+			t.Fatalf("%s after %s: err = %v", c.second, c.first, err)
+		}
+		if trackLog(t, ws) != before {
+			t.Fatalf("log changed: %q", trackLog(t, ws))
+		}
+		// Another finding of another ledger is free.
+		if _, err := startFrom(t, ws, "repos/r/.znf/sdd/q/progress.md:2"); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
