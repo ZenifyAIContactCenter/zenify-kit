@@ -41,17 +41,33 @@ type awaitRecord struct {
 	To string `json:"to,omitempty"`
 }
 
-// awaitQuestion is one structured question put to people. Options is empty for
-// a free-text answer; Audience is "business" or "technical".
+// awaitOption is one answer a person can tap: a short label, what it means,
+// and what follows from choosing it.
+type awaitOption struct {
+	Label       string `json:"label"`
+	Detail      string `json:"detail"`
+	Consequence string `json:"consequence"`
+}
+
+// awaitQuestion is the one structured question put to people. Recommended is
+// the index of the option the agent suggests; DefaultIfSilent is the index
+// applied when nobody answers in time, or nil to apply none. Audience is
+// "business" or "technical".
 type awaitQuestion struct {
-	Text     string   `json:"text"`
-	Options  []string `json:"options"`
-	Audience string   `json:"audience"`
+	Text            string        `json:"text"`
+	Situation       string        `json:"situation"`
+	Options         []awaitOption `json:"options"`
+	Recommended     int           `json:"recommended"`
+	DefaultIfSilent *int          `json:"default_if_silent"`
+	Audience        string        `json:"audience"`
 }
 
 const (
-	maxAwaitQuestions = 5
+	maxAwaitQuestions = 1
+	minAwaitOptions   = 2
 	maxAwaitOptions   = 4
+	maxLabelRunes     = 24
+	maxTextRunes      = 300
 )
 
 // loadAwaitQuestions reads and validates the --questions file.
@@ -64,33 +80,49 @@ func loadAwaitQuestions(path string) ([]awaitQuestion, error) {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&qs); err != nil {
-		return nil, fmt.Errorf("--questions %s: want a JSON array of {text, options, audience}: %w", path, err)
+		return nil, fmt.Errorf("--questions %s: want a JSON array of one {text, situation, options[{label,detail,consequence}], recommended, default_if_silent, audience}: %w", path, err)
 	}
 	if _, err := dec.Token(); err != io.EOF {
 		return nil, fmt.Errorf("--questions %s: unexpected data after the JSON array", path)
 	}
-	if len(qs) < 1 || len(qs) > maxAwaitQuestions {
-		return nil, fmt.Errorf("--questions: want 1-%d questions, got %d", maxAwaitQuestions, len(qs))
+	if len(qs) != maxAwaitQuestions {
+		return nil, fmt.Errorf("--questions: want exactly %d question, got %d", maxAwaitQuestions, len(qs))
 	}
-	for i := range qs {
-		q := &qs[i]
-		if strings.TrimSpace(q.Text) == "" {
-			return nil, fmt.Errorf("--questions: question %d has empty text", i+1)
+	q := &qs[0]
+	if strings.TrimSpace(q.Text) == "" {
+		return nil, fmt.Errorf("--questions: question 1 text is empty")
+	}
+	if n := utf8.RuneCountInString(q.Text); n > maxTextRunes {
+		return nil, fmt.Errorf("--questions: question 1 text has %d characters, want at most %d", n, maxTextRunes)
+	}
+	if strings.TrimSpace(q.Situation) == "" {
+		return nil, fmt.Errorf("--questions: question 1 situation is empty")
+	}
+	if len(q.Options) < minAwaitOptions || len(q.Options) > maxAwaitOptions {
+		return nil, fmt.Errorf("--questions: question 1 options has %d entries, want %d-%d", len(q.Options), minAwaitOptions, maxAwaitOptions)
+	}
+	for i, o := range q.Options {
+		if strings.TrimSpace(o.Label) == "" {
+			return nil, fmt.Errorf("--questions: question 1 option %d label is empty", i+1)
 		}
-		if len(q.Options) > maxAwaitOptions {
-			return nil, fmt.Errorf("--questions: question %d has %d options, want at most %d", i+1, len(q.Options), maxAwaitOptions)
+		if n := utf8.RuneCountInString(o.Label); n > maxLabelRunes {
+			return nil, fmt.Errorf("--questions: question 1 option %d label has %d characters, want at most %d", i+1, n, maxLabelRunes)
 		}
-		for _, o := range q.Options {
-			if strings.TrimSpace(o) == "" {
-				return nil, fmt.Errorf("--questions: question %d has an empty option", i+1)
-			}
+		if strings.TrimSpace(o.Detail) == "" {
+			return nil, fmt.Errorf("--questions: question 1 option %d detail is empty", i+1)
 		}
-		if q.Options == nil {
-			q.Options = []string{}
+		if strings.TrimSpace(o.Consequence) == "" {
+			return nil, fmt.Errorf("--questions: question 1 option %d consequence is empty", i+1)
 		}
-		if q.Audience != "business" && q.Audience != "technical" {
-			return nil, fmt.Errorf("--questions: question %d audience %q, want business or technical", i+1, q.Audience)
-		}
+	}
+	if q.Recommended < 0 || q.Recommended >= len(q.Options) {
+		return nil, fmt.Errorf("--questions: question 1 recommended %d, want 0-%d", q.Recommended, len(q.Options)-1)
+	}
+	if d := q.DefaultIfSilent; d != nil && (*d < 0 || *d >= len(q.Options)) {
+		return nil, fmt.Errorf("--questions: question 1 default_if_silent %d, want null or 0-%d", *d, len(q.Options)-1)
+	}
+	if q.Audience != "business" && q.Audience != "technical" {
+		return nil, fmt.Errorf("--questions: question 1 audience %q, want business or technical", q.Audience)
 	}
 	return qs, nil
 }
@@ -124,11 +156,11 @@ func newAwaitCmd() *cobra.Command {
 			return exitcode.New(exitcode.Awaiting, fmt.Errorf("awaiting human: %s (%s)", args[0], id))
 		},
 	}
-	cmd.Flags().StringVar(&summary, "summary", "", "tóm tắt điều cần người quyết định")                                 //znf:allow-lang
-	cmd.Flags().StringArrayVar(&files, "file", nil, "file người cần xem (lặp được)")                                    //znf:allow-lang
-	cmd.Flags().StringVar(&command, "command", "", "lệnh người cần chạy (data-write)")                                  //znf:allow-lang
-	cmd.Flags().StringVar(&questions, "questions", "", "file JSON các câu hỏi: [{text, options, audience}] (question)") //znf:allow-lang
-	cmd.Flags().StringVar(&to, "to", "", "tên hoặc @username người nhận việc (handoff)")                                //znf:allow-lang
+	cmd.Flags().StringVar(&summary, "summary", "", "tóm tắt điều cần người quyết định")             //znf:allow-lang
+	cmd.Flags().StringArrayVar(&files, "file", nil, "file người cần xem (lặp được)")                //znf:allow-lang
+	cmd.Flags().StringVar(&command, "command", "", "lệnh người cần chạy (data-write)")              //znf:allow-lang
+	cmd.Flags().StringVar(&questions, "questions", "", "file JSON một câu hỏi có khuôn (question)") //znf:allow-lang
+	cmd.Flags().StringVar(&to, "to", "", "tên hoặc @username người nhận việc (handoff)")            //znf:allow-lang
 	cmd.AddCommand(newAwaitShowCmd())
 	return cmd
 }
@@ -187,7 +219,7 @@ func buildAwaitRecord(kind, summary, command, questionsPath, to string, files []
 	switch {
 	case kind == "question":
 		if questionsPath == "" {
-			return awaitRecord{}, fmt.Errorf("question needs --questions <file> with a JSON array of {text, options, audience}")
+			return awaitRecord{}, fmt.Errorf("question needs --questions <file> with a JSON array of one {text, situation, options[{label,detail,consequence}], recommended, default_if_silent, audience}")
 		}
 		qs, err := loadAwaitQuestions(questionsPath)
 		if err != nil {

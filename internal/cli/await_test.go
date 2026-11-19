@@ -198,7 +198,7 @@ func TestAwaitQuestionRecord(t *testing.T) {
 	home := awaitEnv(t)
 	chdir(t, t.TempDir())
 	qf := filepath.Join(t.TempDir(), "q.json")
-	const in = `[{"text":"Who sees this?","options":["agents","admins","everyone"],"audience":"business"},{"text":"Which index?","options":[],"audience":"technical"}]`
+	const in = `[{"text":"Khách đã huỷ đơn có được đặt lại không?","situation":"Luật hiện tại chưa nói gì về đơn đã huỷ.","options":[{"label":"Cho đặt lại","detail":"Khách bấm đặt lại ngay trên đơn cũ.","consequence":"Đơn cũ mở lại, báo cáo đếm hai lần."},{"label":"Giữ nguyên giới hạn ngày","detail":"Chỉ đặt lại trong 7 ngày.","consequence":"Sau 7 ngày khách phải tạo đơn mới."}],"recommended":1,"default_if_silent":0,"audience":"business"}]` //znf:allow-lang
 	if err := os.WriteFile(qf, []byte(in), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -207,17 +207,20 @@ func TestAwaitQuestionRecord(t *testing.T) {
 		t.Fatalf("code = %d (%v), want 8", exitcode.Code(err), err)
 	}
 	r, _ := readRecord(t, home, strings.TrimSpace(out))
-	if r.Kind != "question" || len(r.Questions) != 2 {
+	if r.Kind != "question" || len(r.Questions) != 1 {
 		t.Fatalf("record = %+v", r)
 	}
-	if q := r.Questions[0]; q.Text != "Who sees this?" || q.Audience != "business" || strings.Join(q.Options, ",") != "agents,admins,everyone" {
-		t.Errorf("q0 = %+v", q)
+	q := r.Questions[0]
+	if q.Text != "Khách đã huỷ đơn có được đặt lại không?" || q.Situation != "Luật hiện tại chưa nói gì về đơn đã huỷ." || q.Audience != "business" || q.Recommended != 1 { //znf:allow-lang
+		t.Errorf("q = %+v", q)
 	}
-	if q := r.Questions[1]; q.Text != "Which index?" || q.Audience != "technical" || len(q.Options) != 0 {
-		t.Errorf("q1 = %+v", q)
+	if q.DefaultIfSilent == nil || *q.DefaultIfSilent != 0 {
+		t.Errorf("default_if_silent = %v, want pointer to 0", q.DefaultIfSilent)
 	}
-	// Wire shape zenie reads: top-level "questions", each with text/options/audience;
-	// options is [] (not null) for a free-text question.
+	if len(q.Options) != 2 || q.Options[1] != (awaitOption{Label: "Giữ nguyên giới hạn ngày", Detail: "Chỉ đặt lại trong 7 ngày.", Consequence: "Sau 7 ngày khách phải tạo đơn mới."}) { //znf:allow-lang
+		t.Errorf("options = %+v", q.Options)
+	}
+	// Wire shape zenie reads, field names frozen.
 	raw, _ := os.ReadFile(filepath.Join(home, "await", strings.TrimSpace(out)+".json"))
 	var m struct {
 		Questions []map[string]any `json:"questions"`
@@ -225,16 +228,81 @@ func TestAwaitQuestionRecord(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatal(err)
 	}
-	if o, ok := m.Questions[1]["options"].([]any); !ok || len(o) != 0 {
-		t.Errorf("options = %#v, want []", m.Questions[1]["options"])
+	for _, k := range []string{"text", "situation", "options", "recommended", "default_if_silent", "audience"} {
+		if _, ok := m.Questions[0][k]; !ok {
+			t.Errorf("wire question lacks %q: %v", k, m.Questions[0])
+		}
 	}
+	if o := m.Questions[0]["options"].([]any)[0].(map[string]any); o["label"] != "Cho đặt lại" || o["detail"] == nil || o["consequence"] == nil { //znf:allow-lang
+		t.Errorf("wire option = %v", o)
+	}
+}
+
+func TestAwaitQuestionDefaultIfSilentNull(t *testing.T) {
+	home := awaitEnv(t)
+	chdir(t, t.TempDir())
+	qf := filepath.Join(t.TempDir(), "q.json")
+	if err := os.WriteFile(qf, []byte(`[`+awaitQ(`"default_if_silent":null`)+`]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runAwait(t, "await", "question", "--summary", "s", "--questions", qf)
+	if exitcode.Code(err) != exitcode.Awaiting {
+		t.Fatalf("code = %d (%v), want 8", exitcode.Code(err), err)
+	}
+	r, _ := readRecord(t, home, strings.TrimSpace(out))
+	if r.Questions[0].DefaultIfSilent != nil {
+		t.Errorf("default_if_silent = %v, want nil", *r.Questions[0].DefaultIfSilent)
+	}
+	raw, _ := os.ReadFile(filepath.Join(home, "await", strings.TrimSpace(out)+".json"))
+	var m struct {
+		Questions []map[string]any `json:"questions"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := m.Questions[0]["default_if_silent"]; !ok || v != nil {
+		t.Errorf("wire default_if_silent = %#v (present=%v), want null", v, ok)
+	}
+}
+
+// awaitOpt builds one option JSON object.
+func awaitOpt(label, detail, consequence string) string {
+	return `{"label":"` + label + `","detail":"` + detail + `","consequence":"` + consequence + `"}`
+}
+
+// awaitQ builds a valid question with two options; each override is a
+// `"key":value` fragment that replaces the same key in the base.
+func awaitQ(overrides ...string) string {
+	fields := map[string]string{
+		"text":              `"q"`,
+		"situation":         `"s"`,
+		"options":           `[` + awaitOpt("a", "d", "c") + `,` + awaitOpt("b", "d", "c") + `]`,
+		"recommended":       `0`,
+		"default_if_silent": `null`,
+		"audience":          `"business"`,
+	}
+	extra := ""
+	for _, o := range overrides {
+		k, v, _ := strings.Cut(o, ":")
+		k = strings.Trim(k, `"`)
+		if _, ok := fields[k]; ok {
+			fields[k] = v
+		} else {
+			extra = "," + o
+		}
+	}
+	return `{"text":` + fields["text"] + `,"situation":` + fields["situation"] + `,"options":` + fields["options"] +
+		`,"recommended":` + fields["recommended"] + `,"default_if_silent":` + fields["default_if_silent"] +
+		`,"audience":` + fields["audience"] + extra + `}`
 }
 
 func TestAwaitQuestionAcceptBoundary(t *testing.T) {
 	home := awaitEnv(t)
 	chdir(t, t.TempDir())
-	q := `{"text":"q","options":["a","b","c","d"],"audience":"technical"}`
-	in := `[` + strings.Repeat(q+",", 4) + q + `]`
+	four := `[` + awaitOpt("a", "d", "c") + `,` + awaitOpt("b", "d", "c") + `,` + awaitOpt("c", "d", "c") + `,` + awaitOpt("d", "d", "c") + `]`
+	label24 := strings.Repeat("ữ", 24)                                                                                               // 24 runes, 72 bytes //znf:allow-lang
+	in := `[` + awaitQ(`"options":`+four, `"recommended":3`, `"default_if_silent":3`, `"text":"`+strings.Repeat("ế", 300)+`"`) + `]` //znf:allow-lang
+	in = strings.Replace(in, `"label":"a"`, `"label":"`+label24+`"`, 1)
 	qf := filepath.Join(t.TempDir(), "q.json")
 	if err := os.WriteFile(qf, []byte(in), 0o600); err != nil {
 		t.Fatal(err)
@@ -244,37 +312,50 @@ func TestAwaitQuestionAcceptBoundary(t *testing.T) {
 		t.Fatalf("code = %d (%v), want 8", exitcode.Code(err), err)
 	}
 	r, _ := readRecord(t, home, strings.TrimSpace(out))
-	if len(r.Questions) != 5 || len(r.Questions[4].Options) != 4 {
+	q := r.Questions[0]
+	if len(q.Options) != 4 || q.Recommended != 3 || q.DefaultIfSilent == nil || *q.DefaultIfSilent != 3 || q.Options[0].Label != label24 {
 		t.Fatalf("record = %+v", r)
 	}
 }
 
 func TestAwaitRefusals(t *testing.T) {
+	q := []string{"await", "question", "--summary", "s"}
 	cases := []struct {
 		name string
 		env  string
 		args []string
 		qs   string // when set, written to a file and passed as --questions
+		want string // when set, the error must contain it
 	}{
-		{"not autonomous", "", []string{"await", "spec", "--summary", "s"}, ""},
-		{"bad kind", "1", []string{"await", "deploy", "--summary", "s"}, ""},
-		{"missing file", "1", []string{"await", "spec", "--summary", "s", "--file", "nope.md"}, ""},
-		{"no summary", "1", []string{"await", "spec"}, ""},
-		{"blank summary", "1", []string{"await", "plan", "--summary", " \t"}, ""},
-		{"data-write without command", "1", []string{"await", "data-write", "--summary", "s"}, ""},
-		{"data-write blank command", "1", []string{"await", "data-write", "--summary", "s", "--command", "  "}, ""},
-		{"data-write other command", "1", []string{"await", "data-write", "--summary", "s", "--command", "zenify data run --stg --write -- node x.js"}, ""},
-		{"question without --questions", "1", []string{"await", "question", "--summary", "s"}, ""},
-		{"six questions", "1", []string{"await", "question", "--summary", "s"}, `[` + strings.Repeat(`{"text":"q","options":[],"audience":"business"},`, 5) + `{"text":"q","options":[],"audience":"business"}]`},
-		{"zero questions", "1", []string{"await", "question", "--summary", "s"}, `[]`},
-		{"five options", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"q","options":["a","b","c","d","e"],"audience":"business"}]`},
-		{"blank question text", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"  ","options":[],"audience":"business"}]`},
-		{"blank option", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"q","options":["a",""],"audience":"business"}]`},
-		{"bad audience", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"q","options":[],"audience":"manager"}]`},
-		{"not json", "1", []string{"await", "question", "--summary", "s"}, `{`},
-		{"unknown key option", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"q","option":["a"],"options":[],"audience":"business"}]`},
-		{"trailing data", "1", []string{"await", "question", "--summary", "s"}, `[{"text":"q","options":[],"audience":"business"}] {}`},
-		{"--questions on spec", "1", []string{"await", "spec", "--summary", "s"}, `[{"text":"q","options":[],"audience":"business"}]`},
+		{"not autonomous", "", []string{"await", "spec", "--summary", "s"}, "", ""},
+		{"bad kind", "1", []string{"await", "deploy", "--summary", "s"}, "", ""},
+		{"missing file", "1", []string{"await", "spec", "--summary", "s", "--file", "nope.md"}, "", ""},
+		{"no summary", "1", []string{"await", "spec"}, "", ""},
+		{"blank summary", "1", []string{"await", "plan", "--summary", " \t"}, "", ""},
+		{"data-write without command", "1", []string{"await", "data-write", "--summary", "s"}, "", ""},
+		{"data-write blank command", "1", []string{"await", "data-write", "--summary", "s", "--command", "  "}, "", ""},
+		{"data-write other command", "1", []string{"await", "data-write", "--summary", "s", "--command", "zenify data run --stg --write -- node x.js"}, "", ""},
+		{"question without --questions", "1", []string{"await", "question", "--summary", "s"}, "", ""},
+		{"two questions", "1", q, `[` + awaitQ() + `,` + awaitQ() + `]`, "want exactly 1"},
+		{"zero questions", "1", q, `[]`, "want exactly 1"},
+		{"missing situation", "1", q, `[` + awaitQ(`"situation":""`) + `]`, "situation"},
+		{"one option", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "d", "c")+`]`, `"recommended":0`) + `]`, "options"},
+		{"five options", "1", q, `[` + awaitQ(`"options":[`+strings.Repeat(awaitOpt("a", "d", "c")+",", 4)+awaitOpt("a", "d", "c")+`]`) + `]`, "options"},
+		{"label 25 runes", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("Giữ nguyên giới hạn ngày!", "d", "c")+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "label"}, //znf:allow-lang
+		{"empty label", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("", "d", "c")+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "label"},
+		{"empty detail", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "", "c")+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "detail"},
+		{"empty consequence", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "d", "")+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "consequence"},
+		{"recommended too high", "1", q, `[` + awaitQ(`"recommended":5`) + `]`, "recommended"},
+		{"recommended negative", "1", q, `[` + awaitQ(`"recommended":-1`) + `]`, "recommended"},
+		{"default_if_silent out of range", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "d", "c")+`,`+awaitOpt("b", "d", "c")+`,`+awaitOpt("c", "d", "c")+`]`, `"default_if_silent":4`) + `]`, "default_if_silent"},
+		{"text 301 runes", "1", q, `[` + awaitQ(`"text":"`+strings.Repeat("ế", 301)+`"`) + `]`, "text"}, //znf:allow-lang
+		{"blank question text", "1", q, `[` + awaitQ(`"text":"  "`) + `]`, "text"},
+		{"bad audience", "1", q, `[` + awaitQ(`"audience":"manager"`) + `]`, "audience"},
+		{"unknown field", "1", q, `[` + awaitQ(`"foo":1`) + `]`, "foo"},
+		{"old shape: options are strings", "1", q, `[{"text":"q","options":["a","b"],"audience":"business"}]`, "JSON array of one"},
+		{"not json", "1", q, `{`, "JSON array of one"},
+		{"trailing data", "1", q, `[` + awaitQ() + `] {}`, "unexpected data"},
+		{"--questions on spec", "1", []string{"await", "spec", "--summary", "s"}, `[` + awaitQ() + `]`, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -292,6 +373,9 @@ func TestAwaitRefusals(t *testing.T) {
 			_, err := runAwait(t, args...)
 			if exitcode.Code(err) != exitcode.BadArgs {
 				t.Fatalf("code = %d (%v), want BadArgs", exitcode.Code(err), err)
+			}
+			if tc.want != "" && !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q lacks %q", err, tc.want)
 			}
 			if _, e := os.Stat(filepath.Join(home, "await")); e == nil {
 				ents, _ := os.ReadDir(filepath.Join(home, "await"))
