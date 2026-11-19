@@ -349,7 +349,10 @@ func TestAwaitRefusals(t *testing.T) {
 		{"recommended too high", "1", q, `[` + awaitQ(`"recommended":5`) + `]`, "recommended"},
 		{"recommended negative", "1", q, `[` + awaitQ(`"recommended":-1`) + `]`, "recommended"},
 		{"default_if_silent out of range", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "d", "c")+`,`+awaitOpt("b", "d", "c")+`,`+awaitOpt("c", "d", "c")+`]`, `"default_if_silent":4`) + `]`, "default_if_silent"},
-		{"text 301 runes", "1", q, `[` + awaitQ(`"text":"`+strings.Repeat("ế", 301)+`"`) + `]`, "text"}, //znf:allow-lang
+		{"situation 601 runes", "1", q, `[` + awaitQ(`"situation":"`+strings.Repeat("ế", 601)+`"`) + `]`, "situation has 601"},                                                   //znf:allow-lang
+		{"detail 201 runes", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", strings.Repeat("ế", 201), "c")+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "detail has 201"},           //znf:allow-lang
+		{"consequence 201 runes", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "d", strings.Repeat("ế", 201))+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "consequence has 201"}, //znf:allow-lang
+		{"text 301 runes", "1", q, `[` + awaitQ(`"text":"`+strings.Repeat("ế", 301)+`"`) + `]`, "text"},                                                                          //znf:allow-lang
 		{"blank question text", "1", q, `[` + awaitQ(`"text":"  "`) + `]`, "text"},
 		{"bad audience", "1", q, `[` + awaitQ(`"audience":"manager"`) + `]`, "audience"},
 		{"unknown field", "1", q, `[` + awaitQ(`"foo":1`) + `]`, "foo"},

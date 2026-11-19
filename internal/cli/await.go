@@ -68,6 +68,8 @@ const (
 	maxAwaitOptions   = 4
 	maxLabelRunes     = 24
 	maxTextRunes      = 300
+	maxSituationRunes = 600
+	maxDetailRunes    = 200
 )
 
 // loadAwaitQuestions reads and validates the --questions file.
@@ -98,6 +100,9 @@ func loadAwaitQuestions(path string) ([]awaitQuestion, error) {
 	if strings.TrimSpace(q.Situation) == "" {
 		return nil, fmt.Errorf("--questions: question 1 situation is empty")
 	}
+	if n := utf8.RuneCountInString(q.Situation); n > maxSituationRunes {
+		return nil, fmt.Errorf("--questions: question 1 situation has %d characters, want at most %d", n, maxSituationRunes)
+	}
 	if len(q.Options) < minAwaitOptions || len(q.Options) > maxAwaitOptions {
 		return nil, fmt.Errorf("--questions: question 1 options has %d entries, want %d-%d", len(q.Options), minAwaitOptions, maxAwaitOptions)
 	}
@@ -111,8 +116,14 @@ func loadAwaitQuestions(path string) ([]awaitQuestion, error) {
 		if strings.TrimSpace(o.Detail) == "" {
 			return nil, fmt.Errorf("--questions: question 1 option %d detail is empty", i+1)
 		}
+		if n := utf8.RuneCountInString(o.Detail); n > maxDetailRunes {
+			return nil, fmt.Errorf("--questions: question 1 option %d detail has %d characters, want at most %d", i+1, n, maxDetailRunes)
+		}
 		if strings.TrimSpace(o.Consequence) == "" {
 			return nil, fmt.Errorf("--questions: question 1 option %d consequence is empty", i+1)
+		}
+		if n := utf8.RuneCountInString(o.Consequence); n > maxDetailRunes {
+			return nil, fmt.Errorf("--questions: question 1 option %d consequence has %d characters, want at most %d", i+1, n, maxDetailRunes)
 		}
 	}
 	if q.Recommended == nil {
