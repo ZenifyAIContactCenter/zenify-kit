@@ -211,7 +211,7 @@ func TestAwaitQuestionRecord(t *testing.T) {
 		t.Fatalf("record = %+v", r)
 	}
 	q := r.Questions[0]
-	if q.Text != "Khách đã huỷ đơn có được đặt lại không?" || q.Situation != "Luật hiện tại chưa nói gì về đơn đã huỷ." || q.Audience != "business" || q.Recommended != 1 { //znf:allow-lang
+	if q.Text != "Khách đã huỷ đơn có được đặt lại không?" || q.Situation != "Luật hiện tại chưa nói gì về đơn đã huỷ." || q.Audience != "business" || q.Recommended == nil || *q.Recommended != 1 { //znf:allow-lang
 		t.Errorf("q = %+v", q)
 	}
 	if q.DefaultIfSilent == nil || *q.DefaultIfSilent != 0 {
@@ -313,7 +313,7 @@ func TestAwaitQuestionAcceptBoundary(t *testing.T) {
 	}
 	r, _ := readRecord(t, home, strings.TrimSpace(out))
 	q := r.Questions[0]
-	if len(q.Options) != 4 || q.Recommended != 3 || q.DefaultIfSilent == nil || *q.DefaultIfSilent != 3 || q.Options[0].Label != label24 {
+	if len(q.Options) != 4 || q.Recommended == nil || *q.Recommended != 3 || q.DefaultIfSilent == nil || *q.DefaultIfSilent != 3 || q.Options[0].Label != label24 {
 		t.Fatalf("record = %+v", r)
 	}
 }
@@ -345,6 +345,7 @@ func TestAwaitRefusals(t *testing.T) {
 		{"empty label", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("", "d", "c")+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "label"},
 		{"empty detail", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "", "c")+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "detail"},
 		{"empty consequence", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "d", "")+`,`+awaitOpt("b", "d", "c")+`]`) + `]`, "consequence"},
+		{"recommended missing", "1", q, `[{"text":"q","situation":"s","options":[` + awaitOpt("a", "d", "c") + `,` + awaitOpt("b", "d", "c") + `],"default_if_silent":null,"audience":"business"}]`, "recommended is required"},
 		{"recommended too high", "1", q, `[` + awaitQ(`"recommended":5`) + `]`, "recommended"},
 		{"recommended negative", "1", q, `[` + awaitQ(`"recommended":-1`) + `]`, "recommended"},
 		{"default_if_silent out of range", "1", q, `[` + awaitQ(`"options":[`+awaitOpt("a", "d", "c")+`,`+awaitOpt("b", "d", "c")+`,`+awaitOpt("c", "d", "c")+`]`, `"default_if_silent":4`) + `]`, "default_if_silent"},

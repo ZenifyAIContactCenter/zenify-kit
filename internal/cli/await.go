@@ -50,14 +50,14 @@ type awaitOption struct {
 }
 
 // awaitQuestion is the one structured question put to people. Recommended is
-// the index of the option the agent suggests; DefaultIfSilent is the index
+// the required index of the option the agent suggests; DefaultIfSilent is the index
 // applied when nobody answers in time, or nil to apply none. Audience is
 // "business" or "technical".
 type awaitQuestion struct {
 	Text            string        `json:"text"`
 	Situation       string        `json:"situation"`
 	Options         []awaitOption `json:"options"`
-	Recommended     int           `json:"recommended"`
+	Recommended     *int          `json:"recommended"`
 	DefaultIfSilent *int          `json:"default_if_silent"`
 	Audience        string        `json:"audience"`
 }
@@ -115,8 +115,11 @@ func loadAwaitQuestions(path string) ([]awaitQuestion, error) {
 			return nil, fmt.Errorf("--questions: question 1 option %d consequence is empty", i+1)
 		}
 	}
-	if q.Recommended < 0 || q.Recommended >= len(q.Options) {
-		return nil, fmt.Errorf("--questions: question 1 recommended %d, want 0-%d", q.Recommended, len(q.Options)-1)
+	if q.Recommended == nil {
+		return nil, fmt.Errorf("--questions: question 1 recommended is required")
+	}
+	if *q.Recommended < 0 || *q.Recommended >= len(q.Options) {
+		return nil, fmt.Errorf("--questions: question 1 recommended %d, want 0-%d", *q.Recommended, len(q.Options)-1)
 	}
 	if d := q.DefaultIfSilent; d != nil && (*d < 0 || *d >= len(q.Options)) {
 		return nil, fmt.Errorf("--questions: question 1 default_if_silent %d, want null or 0-%d", *d, len(q.Options)-1)
