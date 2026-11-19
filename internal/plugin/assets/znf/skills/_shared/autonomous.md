@@ -16,6 +16,18 @@ Applies when `ZNF_AUTONOMOUS=1`. It overrides every human gate in the znf skills
 - If `brainstorming` step 8 (clarify-lite) finds a point that meets the rule above, ask it through `zenify await question`; that round counts toward the same cap. Otherwise clarify-lite is a `Ruling`.
 - Before every `zenify await question`, write `.zenify/dialogue.md` at the workspace root (the workspace `.zenify/` dir; write-guard allows it): questions asked, answers received, draft decisions. On resume, read it and never re-ask an answered question.
 - A `business` question is read by a non-developer: plain domain language, no file names, no code.
+- A `business` question (`text`, `situation`, every option) contains no file path and no function name; say what the customer or the business sees.
+- Run this test on every unclear point, in order, before any `zenify await question`:
+  1. Discoverable: can code, logs, data or docs answer it? Then find it and do not ask.
+  2. Safe default: is there an option that keeps what the customer already sees and receives, or turns an error into a message the user can read, or matches the default acceptance outcome of the item, and is reversible before merge? Then take it, do not message anyone, and write one line `Assumption: <question> — <option chosen> — <why it is safe>` in the ship pack's `## Intent` and in the PR body section `Giả định Zenie tự chọn`.
+  3. Ask: only when neither applies, through `zenify await question`.
+- Ask exactly 1 question per stop, one decision. A point that depends on the first goes to the next round or becomes an `Assumption:`.
+- `default_if_silent` must be `null` when the option deletes data, messages an end customer, or changes money. Set it only to an option that is reversible before merge.
+- Example `--questions` file:
+
+```json
+[{"text": "Khách đã huỷ đơn có được đặt lại không?", "situation": "Luật hiện tại chưa nói gì về đơn đã huỷ.", "options": [{"label": "Cho đặt lại", "detail": "Khách bấm đặt lại ngay trên đơn cũ.", "consequence": "Đơn cũ mở lại, báo cáo đếm hai lần."}, {"label": "Tạo đơn mới", "detail": "Khách phải đặt đơn mới.", "consequence": "Đơn cũ giữ nguyên trạng thái huỷ."}], "recommended": 1, "default_if_silent": null, "audience": "business"}]
+```
 - A question after the spec is approved: commit work-in-progress, write `task N/M` in the SDD ledger, then await. If the answer changes the spec, edit it and send `zenify await spec` again with a summary starting `Spec changed`.
 
 ## Precedence
@@ -53,7 +65,7 @@ zenify await question --summary "<what is unclear>" --questions <abs path to JSO
 zenify await handoff --summary "<what the receiver must do>" --to "<name or @username>"
 ```
 
-`--questions` holds a JSON array of 1–5 `{text, options, audience}`: at most 4 options (none = free text), `audience` is `business` or `technical`.
+`--questions` holds a JSON array of exactly 1 `{text, situation, options[{label,detail,consequence}], recommended, default_if_silent, audience}`: `text` ≤ 300 characters, `situation` non-empty and ≤ 600, 2–4 options (`label` ≤ 24 characters, `detail` and `consequence` ≤ 200, all three fields non-empty), `recommended` (required) and `default_if_silent` are option indexes (`default_if_silent` may be `null`), `audience` is `business` or `technical`.
 
 Pass every file the person must read as an absolute `--file`. Exit 8 is the expected stop, not a failure: after the command prints its id, end the session at once, with no further step and no retry.
 

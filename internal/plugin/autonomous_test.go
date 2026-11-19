@@ -98,3 +98,22 @@ func TestAutonomousSandboxFE(t *testing.T) {
 		t.Error("autonomous-sandbox.md still claims there is no FE in the sandbox")
 	}
 }
+
+// FR-4.14.1, FR-4.14.4, FR-4.15.3, SC-4.14: decide before asking; every ask is one structured question.
+func TestAutonomousDecideBeforeAsking(t *testing.T) {
+	s := syncedAsset(t, "skills/_shared/autonomous.md")
+	assertContainsAll(t, "autonomous.md", s, []string{
+		"Discoverable", "Safe default", "Ask",
+		"keeps what the customer already sees and receives",
+		"turns an error into a message the user can read",
+		"the default acceptance outcome of the item",
+		"reversible before merge",
+		"`Assumption:`", "ship pack's `## Intent`", "`Giả định Zenie tự chọn`", //znf:allow-lang
+		"`default_if_silent` must be `null`",
+		"deletes data", "messages an end customer", "changes money",
+		"exactly 1 question per stop",
+		"A `business` question (`text`, `situation`, every option) contains no file path and no function name",
+		`"recommended": 1`, `"default_if_silent": null`, `"audience": "business"`,
+		`"situation":`, `"consequence":`, `"label":`, `"detail":`,
+	})
+}
