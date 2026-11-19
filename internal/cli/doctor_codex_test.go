@@ -61,7 +61,7 @@ func TestReviewerCheck_CodexMissingFromPath(t *testing.T) {
 		}
 		return ""
 	}
-	ok, d := reviewerCheck(env, false).Run()
+	ok, d := reviewerCheck(env, false, false).Run()
 	if !ok || !strings.Contains(d, "agent (codex không có trên PATH)") { //znf:allow-lang
 		t.Fatalf("%v %q", ok, d)
 	}

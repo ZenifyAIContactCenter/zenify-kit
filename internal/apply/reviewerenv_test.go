@@ -108,3 +108,24 @@ func TestCarryEnv_CopiesUserValueOnlyWhenTargetLacksKey(t *testing.T) {
 		t.Fatalf("absent source: changed=%v err=%v", changed, err)
 	}
 }
+
+func TestSetReviewerEnv_AcceptsProject(t *testing.T) {
+	home := t.TempDir()
+	if err := SetReviewerEnv(UserSettings(home), "project", false); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := readEnvKey(t, home, ReviewerEnv); v != "project" {
+		t.Fatalf("env = %q", v)
+	}
+}
+
+func TestReviewerEnvValue_Project(t *testing.T) {
+	home := t.TempDir()
+	if err := SetReviewerEnv(UserSettings(home), "project", false); err != nil {
+		t.Fatal(err)
+	}
+	v, err := ReviewerEnvValue(UserSettings(home))
+	if err != nil || v != "project" {
+		t.Fatalf("got (%q,%v)", v, err)
+	}
+}
