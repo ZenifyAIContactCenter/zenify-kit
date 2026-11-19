@@ -61,6 +61,8 @@ flowchart TD
 | 6 | Xác định thứ tự deploy (đa service) | Đọc thứ tự |
 | 7 | Ghi board vào file, commit và push branch, mở PR với body gồm tóm tắt, thay đổi, cách kiểm, rủi ro merge (một chiều/hai chiều) (không chép SC, tên test hay dòng ledger) | Đọc board bằng `cat`, không đọc bản tóm tắt. Nhận PR URL |
 
+Với engine review `project` (`zenify reviewer set project`, xem [Review và gate](/guides/review-and-gates)), thứ tự đổi: sau bước 4, ship commit, ghi note-commit release và push nhánh feature **trước** bước 5, vì reviewer của project đọc commit đã push. Mỗi vòng sửa commit, push rồi review lại; lỗi sai được decline trong lần gửi kế tiếp. Còn lỗi sau vòng 2 thì ship dừng và không mở PR (commit đã nằm trên nhánh). Bước 7 không ghi note-commit lần nữa và không push thêm khi `HEAD` vẫn là commit đã review cuối, nên PR mở đúng trên commit đó.
+
 ### Gắn issue GitHub (tuỳ chọn)
 
 Mặc định ship mở PR như trên. Khi bạn bật tính năng `github.issues`, phiên có dòng `features: github.issues on` (worker được giao việc nhận dòng `Features: github.issues on` trong brief) và ship gắn một issue GitHub trước khi mở PR. Bật bằng:

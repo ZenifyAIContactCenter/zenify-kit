@@ -25,7 +25,8 @@ Gọi trực tiếp qua `/znf:review` khi muốn review một diff độc lập.
 3. Gate REVIEW đo diff để chọn mức độ soi: diff nhỏ dùng một reviewer độc lập (T1); diff trên 200 dòng dùng năm reviewer chạy song song (T2), mỗi người phụ trách một trục: lỗi, bảo mật, hiệu năng, hợp đồng, và ý định (`intent`); diff chạm vùng nhạy cảm dùng T3, bất kể kích thước (vùng nhạy cảm = một file đổi nằm trong thư mục, hoặc có tên, đúng bằng `auth`, `iam`, `oauth`, `security`, `permission(s)`, `tenant(s)` hoặc `migration(s)`; thư mục như `_auth` không tính), nghĩa là năm trục như T2, cả năm reviewer chạy opus, không còn Workflow hay vòng skeptic. Diff chạm hợp đồng chung (một collection, endpoint, queue, hoặc kênh pub/sub) được nâng mức soi tối thiểu lên mức vừa.
 4. Trục `intent` so diff với phần `## Intent` trong gói ship; chạy độc lập, không có gói thì so với mục tiêu bạn đã nêu. Mỗi reviewer còn đọc `CLAUDE.md`/`AGENTS.md` của repo và các file `.claude/rules/` khớp với diff trước khi chấm, và trích `file:dòng` của quy ước bị vi phạm.
 5. Gate VERIFY kiểm cơ học: mọi phát hiện có kèm vị trí file phải trích đúng dòng code thật; skill loại bỏ phát hiện nào trích sai.
-6. Kết quả cuối gồm mức soi kèm lý do, danh sách phát hiện xếp theo mức độ nghiêm trọng và một câu trả lời có thể ship được hay không.
+6. Engine do `zenify reviewer` chọn: `agent` dùng các mức trên; `codex` chạy một lượt `codex review`; `project` gửi nhánh đã push cho reviewer mà dòng `Pre-PR review:` trong `CLAUDE.md` của project khai báo, chờ tối đa 30 phút, và quay về `agent` (ghi `project→agent: <lý do>` lên board) khi tool thiếu, lỗi hoặc hết giờ.
+7. Kết quả cuối gồm mức soi kèm lý do, danh sách phát hiện xếp theo mức độ nghiêm trọng và một câu trả lời có thể ship được hay không.
 
 ## Lưu ý
 

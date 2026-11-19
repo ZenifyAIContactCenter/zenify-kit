@@ -46,6 +46,8 @@ Stamp each check with its `fp`; step 7 needs all current.
 
 5. **Independent review** — never pick the reviewer. First `BASE=$(git merge-base "$(zenify wt base)" HEAD)`. Write the pack to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md`, then **`Skill(znf:review)`** with `BASE=$BASE` and the pack: it picks the tier and returns `findings[]` (`znf:review/_shared/finding-schema.md`) plus `shippable`. CRITICAL/HIGH enter the fix loop, MEDIUM/LOW and each `Declined:` line the board.
 
+   **`ENGINE=project`** (`zenify reviewer | cut -d' ' -f1`): 7b runs before the first push; then `references/project-review.md`.
+
    ```
    ## Intent      plan path (/cook) · root cause + Loop:/Regression: lines (/fix, /hotfix) · else the user's goal
    ## Diff        git log --oneline $BASE..HEAD · git diff --stat/-U10 $BASE..HEAD
@@ -98,12 +100,13 @@ Then push and `zenify docs sync` (fails open).
 
 ## References
 
-- `references/gate-evidence.md` — board template; why the gate exists.
-- `references/ui-verification-notes.md` — verifier stalls or logs out.
-- `references/false-green-and-data.md` — the three data checks.
+- `references/gate-evidence.md` — board template.
+- `references/ui-verification-notes.md`
+- `references/false-green-and-data.md`
 - `references/ship-pack-rationale.md`
-- `references/pr-message-language.md` — PR language.
-- `references/stacked-ship.md` — per-layer review.
+- `references/pr-message-language.md`
+- `references/stacked-ship.md`
 - `references/autonomous-ui.md` — step 4 under `ZNF_AUTONOMOUS=1`.
-- `references/github-issues.md` — issues.
+- `references/github-issues.md`
 - `references/test-scope.md`
+- `references/project-review.md`

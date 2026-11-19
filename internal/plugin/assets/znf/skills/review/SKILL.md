@@ -73,12 +73,14 @@ ENGINE=$(zenify reviewer 2>/dev/null | cut -d' ' -f1); [ -n "$ENGINE" ] || ENGIN
 ```
 
 Line 1 = tier, line 2 = the reason. **Print tier + reason on the report** before dispatching.
+`zenify reviewer` printing `agent (<reason>)` → board line `review … engine: agent (<reason>)`.
 Tier rule: `CRITICAL=1` (step 1's path match, or the caller) → T3 at any size; else T1 ≤200 LOC / T2 >200, and `SHARED=1`
 **floors at T2** (T2's `contracts` goes to opus when shared).
 
 ## Step 3 — REVIEW dispatch by tier
 
 `ENGINE=codex` → one codex pass replaces the tiers (`references/codex-engine.md`; a failure falls back to them).
+`ENGINE=project` → the project's pre-PR review replaces the tiers (`references/project-engine.md`; a failure falls back to them).
 
 **Doctrine preamble:** read it once —
 `DOCTRINE=$(awk '{print}' "${ZENIFY_HOME:-$HOME/.zenify}/plugin-marketplace/plugins/znf/skills/review/_shared/reviewer-doctrine.md" 2>/dev/null)`
@@ -128,3 +130,4 @@ unresolved CRITICAL/HIGH).
 - `references/bundling.md` — Step 1c.
 - `references/lifecycle-and-t3.md` — the four gates end to end.
 - `references/codex-engine.md` — the `ENGINE=codex` branch.
+- `references/project-engine.md` — the `ENGINE=project` branch.

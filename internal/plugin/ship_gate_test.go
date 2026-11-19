@@ -142,3 +142,40 @@ func TestShipGate_AutonomousUIBranchListIntact(t *testing.T) {
 	}
 	t.Fatal("FAIL sub-item not found")
 }
+
+// FR-4.11.2/4.11.3: the project engine's files name no project and no tool; the tools come from
+// the project's own `Pre-PR review:` line.
+func TestProjectEngineFilesStayNeutral(t *testing.T) {
+	for _, path := range []string{
+		"skills/review/SKILL.md", "skills/review/references/project-engine.md",
+		"skills/ship/SKILL.md", "skills/ship/references/project-review.md",
+	} {
+		body := strings.ToLower(syncedAsset(t, path))
+		for _, banned := range []string{"zenie", "zenieai", "review_wait", "review_decline", "review_request", "branch_review", "mcp__"} {
+			if strings.Contains(body, banned) {
+				t.Errorf("%s must not contain %q (case insensitive)", path, banned)
+			}
+		}
+	}
+}
+
+func TestReviewSkillRoutesProjectEngine(t *testing.T) {
+	assertContainsAll(t, "review/SKILL.md", syncedAsset(t, "skills/review/SKILL.md"), []string{
+		"ENGINE=project", "references/project-engine.md",
+	})
+	assertContainsAll(t, "project-engine.md", syncedAsset(t, "skills/review/references/project-engine.md"), []string{
+		"Pre-PR review:", "zenify wt base", "55", "30 minutes", "declines", "open[]", "blocks",
+		"project→agent:", "verify: project engine", "_shared/finding-schema.md",
+	})
+}
+
+// The project's reviewer reviews the pushed head and the PR later adopts that exact head, so the
+// note-commit and the push come before the review, and step 7 pushes nothing new.
+func TestShipProjectEnginePushesBeforeReview(t *testing.T) {
+	assertContainsAll(t, "ship/SKILL.md", syncedAsset(t, "skills/ship/SKILL.md"), []string{
+		"ENGINE=project", "7b runs before the first push", "references/project-review.md",
+	})
+	assertContainsAll(t, "project-review.md", syncedAsset(t, "skills/ship/references/project-review.md"), []string{
+		"declines", "last reviewed head", "zenify docs sync", "do not open the PR",
+	})
+}

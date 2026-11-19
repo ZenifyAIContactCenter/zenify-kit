@@ -75,6 +75,20 @@ PR sửa file hướng dẫn agent luôn nhận `failure` với tiêu đề "PR 
 
 Khi Zenie chưa review xong (lỗi giữa chừng, hoặc vẫn hết giờ sau khi đã chia nhỏ diff), check có tiêu đề "Zenie chưa review xong", kèm lý do và danh sách file chưa được review. Gõ `@zenieai review` để chạy lại, hoặc nhờ leader merge qua bypass.
 
+## Review trước khi mở PR
+
+Mặc định bước review của `/znf:ship` chạy bằng reviewer của kit, rồi Zenie review lại khi PR mở. Chọn engine `project` thì `/znf:ship` nhờ chính Zenie review nhánh đã push, trước khi mở PR:
+
+```bash
+zenify reviewer set project
+```
+
+- `CLAUDE.md` của workspace phải có dòng `Pre-PR review:`, nêu tool `branch_review` để gửi nhánh và `review_wait` để chờ kết quả. Không có dòng đó, `zenify reviewer` in `agent (không có dòng Pre-PR review)` và ship review bằng agent như cũ.
+- Sau khi lint, build và verify hành vi đã xanh, ship commit, ghi note-commit release, push nhánh feature rồi gọi `branch_review`. Ship chờ bằng `review_wait`, mỗi lần tối đa 55 giây, tổng tối đa 30 phút.
+- Lỗi CRITICAL/HIGH chặn merge đi vào vòng sửa của ship, tối đa 2 vòng; mỗi vòng sửa xong ship push rồi gửi lại. Lỗi sai được decline trong lần gửi kế tiếp kèm lý do, không cần dòng `Declined:`. HIGH "không chặn merge" chỉ lên board như MEDIUM.
+- Lượt review này không đăng gì lên GitHub. Sau lượt cuối ship không tạo commit nào nữa, nên PR mở đúng trên commit đã review và nhận lại kết quả đó thay vì review lại từ đầu.
+- Tool không gọi được (chưa đăng nhập broker, Zenie không chạy), gọi lỗi, hoặc hết 30 phút: ship review bằng agent và board ghi `project→agent: <lý do>`.
+
 ## Lệnh trên PR
 
 Comment phải bắt đầu bằng `@zenieai`, do thành viên org viết, trên PR đang mở, không phải draft và không phải từ fork.
@@ -99,7 +113,7 @@ Khi một lượt review còn lỗi có thể sửa, hoặc CI đỏ trên commi
 
 - Lỗi được sửa: CRITICAL và HIGH còn mở; MEDIUM chỉ khi server bật `ZENIE_AUTOFIX_MEDIUM`. Lỗi không chặn, lỗi đã `Declined:` và lỗi `zenie-dev` từng phản bác không được giao.
 - PR do `zenie-dev` mở được tự sửa tự động. PR của người chỉ được tự sửa khi server bật `ZENIE_AUTOFIX_HUMAN` và tác giả đã gõ `@zenieai fix`; PR đó còn phải đang mở, không phải draft, không từ fork, và nhánh nguồn không phải nhánh deploy.
-- Mỗi PR có tối đa 3 vòng tự sửa tự động, dùng chung cho lỗi review và CI đỏ. `@zenieai fix` vẫn chạy được khi đã hết 3 vòng.
+- Mỗi PR có tối đa 10 vòng tự sửa tự động, dùng chung cho lỗi review và CI đỏ. Vòng tự sửa dừng sớm hơn khi hai vòng gần nhất đã được giao đúng bộ lỗi review mà lượt review mới vẫn báo lại: Zenie báo dev xem và sửa tay, hoặc decline lỗi nào sai. `@zenieai fix` vẫn chạy được khi vòng tự sửa đã dừng.
 - Chỉ áp cho các repo mà agent được phép sửa.
 - Bạn push lên PR trong lúc `zenie-dev` đang sửa thì `zenie-dev` dừng và không tự sửa PR đó nữa cho tới khi có `@zenieai fix` mới.
 
@@ -124,7 +138,7 @@ Khi một lượt review lỗi giữa chừng, Zenie gỡ hết reaction của m
 
 ## Xem thêm
 
-[Review và gate](/guides/review-and-gates), [ship: verify và mở PR](/workflows/ship)
+[Review và gate](/guides/review-and-gates), [ship: verify và mở PR](/workflows/ship), [`zenify reviewer`](/reference/cli/zenify_reviewer)
 
 <!-- Nguồn (cho người bảo trì, không hiển thị): repo zenie origin/main
 - src/review/verdict.ts, rounds.ts, runner.ts, bundles.ts, pack.ts
