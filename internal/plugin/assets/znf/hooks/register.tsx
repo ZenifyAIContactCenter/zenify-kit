@@ -139,14 +139,15 @@ export async function appendSession($: $, line: string): Promise<void> {
 // Runs one live-state write at a time, so a slower write never lands after a newer state.
 let syncing: Promise<void> = Promise.resolve()
 
-// FR-2.1–2.3: writes live/<session>.json, then pulse, only when the state or the bound id changed.
-async function syncLive($: $): Promise<void> {
+// FR-2.1–2.3: writes live/<session>.json, then pulse, only when the state or the bound id changed,
+// or when `force` asks for a rewrite of an unchanged state.
+async function syncLive($: $, force = false): Promise<void> {
   const write = syncing.then(async () => {
     // Track may have been turned off while the call was open: write nothing, keep liveState.
     if (!(await isEnabled($))) return
     const state: LiveState = pendingAsk.size ? 'ask' : pendingPermission.size ? 'permission' : isMainIdle && !runningAgents.size ? 'idle' : 'busy'
     const boundId = (await read($, bound))?.id ?? ''
-    if (state === liveState && boundId === liveId) return
+    if (!force && state === liveState && boundId === liveId) return
     const track = `${await workspaceDir($)}/.zenify/track`
     const now = iso(await $.clock.now())
     // A new id under the same state is the same stretch of work: keep `since`.
@@ -222,9 +223,10 @@ async function beat($: $): Promise<void> {
 export async function setTrackEnabled($: $, on: boolean): Promise<void> {
   const wasOn = await read($, enabled)
   await update($, enabled, () => on)
-  // Turned back on: a state skipped while off (an ask answered then) is stale in live/<session>.json.
+  // Turned back on: a state skipped while off (an ask answered then) is stale in live/<session>.json,
+  // and close-day prunes the file after 24h off, so it is rewritten even under an unchanged state.
   // Only a tab that has written one is rewritten; a tab that never asked gets no file.
-  if (on && !wasOn && liveState !== undefined) void syncLive($).catch(timingError($))
+  if (on && !wasOn && liveState !== undefined) void syncLive($, true).catch(timingError($))
 }
 
 // FR-2.3: whether track records; a failed read is toasted and counts as off.
