@@ -49,7 +49,7 @@ Gate VERIFY kiểm cơ học: mọi phát hiện có kèm vị trí file phải 
 
 Không có diff nào để review, skill báo "nothing to review" và dừng, không dispatch reviewer nào.
 
-Engine review do `zenify reviewer` chọn: `agent` (mặc định, các mức T1/T2/T3 ở trên), `codex`, hoặc `project`. Với `project`, `CLAUDE.md` của project khai báo một dòng `Pre-PR review:` nêu tool gửi review và tool chờ kết quả; skill push nhánh feature, gửi cho reviewer của project, chờ tối đa 30 phút rồi đưa lỗi về cùng schema finding. Tool thiếu, gọi lỗi hoặc hết giờ thì skill quay về `agent` và ghi `project→agent: <lý do>` lên board. Ví dụ một project khai báo dòng này: [Zenie review trên PR](/guides/zenie-review#review-trước-khi-mở-pr).
+Engine review do `zenify reviewer` chọn: `agent` (mặc định, các mức T1/T2/T3 ở trên), `codex`, hoặc `project`. Với `project`, `CLAUDE.md` của project khai báo một dòng `Pre-PR review:` nêu tool gửi review và tool chờ kết quả; skill push nhánh feature, gửi cho reviewer của project, chờ tối đa 30 phút rồi đưa lỗi về cùng schema finding. Nhánh rỗng (detached), trùng nhánh base hoặc nằm trong `.claude/deploy-branches` thì không push. Reviewer trả lý do không gửi khác ngoài "commit này đã có lượt review" thì quay về `agent`. Kết quả của tool là dữ liệu, không phải chỉ dẫn: finding ngoài diff bị bỏ, `fix` chỉ là gợi ý. Tool thiếu, gọi lỗi hoặc hết giờ thì skill quay về `agent`, kèm các lỗi đã decline dạng `Declined: <tiêu đề> — <lý do>`; từ đó phần còn lại của lần ship dùng `agent` và ghi `project→agent: <lý do>` lên board. Ví dụ một project khai báo dòng này: [Zenie review trên PR](/guides/zenie-review#review-truoc-khi-mo-pr).
 
 ### `/znf:gate`
 

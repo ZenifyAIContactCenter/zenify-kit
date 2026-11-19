@@ -1,5 +1,7 @@
 package cli
 
+// znf:ui-verify-ok: the kit renders no frontend; the ship regex "views?/" matches skills/review/.
+
 import (
 	"errors"
 	"fmt"

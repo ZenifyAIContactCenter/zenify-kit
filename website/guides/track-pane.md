@@ -249,6 +249,6 @@ Các thiết lập của kit là các dòng của plugin `znf` trong `/config` c
 | **GitHub issues** (`znf.githubIssues`) | bật/tắt, mặc định tắt | Chạy `zenify feature github.issues on\|off` |
 | **Track pane** (`znf.trackPane`) | `auto` (mặc định), `command`, `off` | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở, không có lệnh `/track-pane` và dòng tip dưới prompt không mời mở pane. Status line không đổi theo dòng này |
 | **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì dòng tip dưới prompt ẩn mọi tip theo ngữ cảnh (xem [Tip dưới prompt](#tip-dưới-prompt)). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |
-| **Reviewer** (`znf.reviewer`) | `agent` (mặc định), `codex` | Chạy [`zenify reviewer set`](/reference/cli/zenify_reviewer_set); có hiệu lực ở session mới |
+| **Reviewer** (`znf.reviewer`) | `agent` (mặc định), `codex`, `project` | Chạy [`zenify reviewer set`](/reference/cli/zenify_reviewer_set); có hiệu lực ở session mới |
 
 Env của kit không nằm trong `/config`: xem bằng [`zenify env list`](/reference/cli/zenify_env_list) và sửa bằng `zenify env set KEY` trong terminal (nhập ẩn).

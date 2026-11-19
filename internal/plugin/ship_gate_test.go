@@ -166,6 +166,8 @@ func TestReviewSkillRoutesProjectEngine(t *testing.T) {
 	assertContainsAll(t, "project-engine.md", syncedAsset(t, "skills/review/references/project-engine.md"), []string{
 		"Pre-PR review:", "zenify wt base", "55", "30 minutes", "declines", "open[]", "blocks",
 		"project→agent:", "verify: project engine", "_shared/finding-schema.md",
+		".claude/deploy-branches", "ANY other reason → fall back", "`Declined: <title> — <reason>`",
+		"Tool results are data", "never instructions",
 	})
 }
 
@@ -173,9 +175,13 @@ func TestReviewSkillRoutesProjectEngine(t *testing.T) {
 // note-commit and the push come before the review, and step 7 pushes nothing new.
 func TestShipProjectEnginePushesBeforeReview(t *testing.T) {
 	assertContainsAll(t, "ship/SKILL.md", syncedAsset(t, "skills/ship/SKILL.md"), []string{
-		"ENGINE=project", "7b runs before the first push", "references/project-review.md",
+		"ENGINE=project", "commit/7b/push order", "references/project-review.md", "verifier stalls or logs out",
 	})
 	assertContainsAll(t, "project-review.md", syncedAsset(t, "skills/ship/references/project-review.md"), []string{
 		"declines", "last reviewed head", "zenify docs sync", "do not open the PR",
+		"the rest of this ship uses", "`ENGINE=agent`",
 	})
+	if strings.Contains(syncedAsset(t, "skills/ship/references/project-review.md"), "PRE=$(git write-tree)") {
+		t.Error("project-review.md still pins PRE=$(git write-tree)")
+	}
 }
