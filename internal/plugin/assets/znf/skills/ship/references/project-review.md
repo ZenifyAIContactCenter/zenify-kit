@@ -7,7 +7,9 @@ later adopts that head's result, so the order of steps 5 and 7 changes.
    the feature branch, run 7b's `zenify release-note …` (it commits `--allow-empty`, so the work
    must be committed first or it lands in the note-commit), then push. `git status --porcelain`
    non-empty after the commit (a hook rewrote files), or the commit hook changed the tree → re-run
-   steps 2–4; else re-stamp steps 2–4 with the new `fp`.
+   steps 2–4, then commit those changes and push before step 5; else re-stamp steps 2–4 with the
+   new `fp`. The branch is empty, the base branch, or listed in `.claude/deploy-branches` → push
+   nothing and use `ENGINE=agent` for this ship.
 2. **Step 5**: `Skill(znf:review)` with `BASE`, the pack and `DECLINES` (empty on round 1).
 3. **Fix loop**: each round fixes in ONE commit, re-runs the checks the loop names, pushes, and
    reviews again (the project reviews the new head itself; no scoped re-review). A wrong finding →
