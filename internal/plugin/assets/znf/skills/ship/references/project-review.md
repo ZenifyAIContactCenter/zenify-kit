@@ -20,7 +20,7 @@ later adopts that head's result, so the order of steps 5 and 7 changes.
 3. **Fix loop**: each round fixes in ONE commit, re-runs the checks the loop names, pushes, and
    reviews again (the project reviews the new head itself; no scoped re-review). A wrong finding →
    `{id, reason}` with the evidence as reason goes into `declines` of the next send instead of a
-   `Declined:` line. Still open after round 2: STOP; the commits are already pushed, so
+   `Declined:` line; a wrong mechanical (PRE) finding has no `id`, so it gets ship's `Declined:` board line instead. Still open after round 2: STOP; the commits are already pushed, so
    do not open the PR; report the finding, what was tried and whether it is load-bearing.
 4. **Step 7**: skip 7b (done) and the `ui-verify check` (run before each commit, also after a fallback). `HEAD` = the last reviewed head → push nothing; it differs → back to
    step 5 (that counts as a round). Run `zenify docs sync` once, then `gh pr create` on that head.

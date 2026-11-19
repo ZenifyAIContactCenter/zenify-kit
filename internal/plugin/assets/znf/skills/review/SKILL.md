@@ -64,7 +64,7 @@ Only when `ADDED > 2000` and `ENGINE` is not `project` (it reviews the whole hea
 PLAN=$(zenify review-bundle "$BASE")   # {"verdict":..,"bundles":[{id,loc,files}],"total_loc":X}
 ```
 
-Outcomes `missing` / `too-large` (STOP, split the PR) / `bundle` (per-bundle, skip Step 2) / `passthrough` → `references/bundling.md` § Bundler outcomes.
+Outcomes `missing` / `too-large` (STOP, split the PR) / `bundle` (per-bundle, skip Step 2; each bundle uses the agent tiers, never a whole-diff codex pass) / `passthrough` → `references/bundling.md` § Bundler outcomes.
 
 **Report must print** cluster count, LOC + tier per cluster, BEFORE dispatch.
 
@@ -84,7 +84,7 @@ Tier rule: `CRITICAL=1` (step 1's path match, or the caller) → T3 at any size;
 
 ## Step 3 — REVIEW dispatch by tier
 
-`ENGINE=codex` → one codex pass replaces the tiers (`references/codex-engine.md`; a failure falls back to them).
+`ENGINE=codex` → one codex pass replaces the tiers (`references/codex-engine.md`; a failure falls back to them; never per bundle, Step 1c).
 `ENGINE=project` → the project's pre-PR review replaces the tiers (`references/project-engine.md`; a failure falls back to them).
 
 **Doctrine preamble:** read it once —
