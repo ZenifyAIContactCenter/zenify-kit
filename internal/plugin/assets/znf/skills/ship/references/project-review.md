@@ -3,13 +3,15 @@
 `ENGINE=$(zenify reviewer | cut -d' ' -f1)`. The project's reviewer reads the pushed head and the PR
 later adopts that head's result, so the order of steps 5 and 7 changes.
 
-1. **Before step 5**, with steps 2–4 green, in separate Bash calls: `git add -A`, commit the work on
+1. **Before step 5**, with steps 2–4 green: first, `BRANCH` is one the project engine refuses
+   (empty/detached, the base, or a deploy branch, as in `znf:review` `project-engine.md` step 3) →
+   commit and push nothing here, record `project→agent: <reason>` on the board, and ship runs with
+   `ENGINE=agent` from step 5 on, with its normal 7b. Else, in separate Bash calls: `git add -A`, commit the work on
    the feature branch, run 7b's `zenify release-note …` (it commits `--allow-empty`, so the work
    must be committed first or it lands in the note-commit), then push. `git status --porcelain`
    non-empty after the commit (a hook rewrote files), or the commit hook changed the tree → re-run
    steps 2–4, then commit those changes and push before step 5; else re-stamp steps 2–4 with the
-   new `fp`. The branch is empty, the base branch, or listed in `.claude/deploy-branches` → push
-   nothing and use `ENGINE=agent` for this ship.
+   new `fp`.
 2. **Step 5**: `Skill(znf:review)` with `BASE`, the pack and `DECLINES` (empty on round 1).
 3. **Fix loop**: each round fixes in ONE commit, re-runs the checks the loop names, pushes, and
    reviews again (the project reviews the new head itself; no scoped re-review). A wrong finding →
