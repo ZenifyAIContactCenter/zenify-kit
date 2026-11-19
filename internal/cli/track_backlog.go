@@ -38,7 +38,7 @@ var trackGhSearch = ghSearch
 
 var (
 	trackBidRe = regexp.MustCompile(`^b-\d{6}-[0-9a-f]{4}$`)
-	trackSDDRe = regexp.MustCompile(`^repos/.+/progress\.md:\d+$`)
+	trackSDDRe = regexp.MustCompile(`^repos/.+/progress\.md(?::\d+)?$`)
 	// A multi-repo plan prefixes each ledger line with its repo, e.g. `[be] Task 3: …`.
 	sddMinorRe  = regexp.MustCompile(`^(?:\[[^\]]+\] )?Task \d+: minor \(deferred\): (.+)$`)
 	sddParkedRe = regexp.MustCompile(`^(?:\[[^\]]+\] )?Task \d+: parked — (.+)$`)
@@ -156,7 +156,7 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 			case trackIDRe.MatchString(id):
 				return badTrack("track: %s is an open tracked item; close it with zenify track end %s --cancelled --rounds 0", id, id)
 			default:
-				return badTrack("%q is neither a backlog id nor an sdd id (repos/<...>/progress.md:<line>)", id)
+				return badTrack("%q is neither a backlog id nor an sdd id (repos/<...>/progress.md[:<line>])", id)
 			}
 			if rowsHave(rows, "drop", id) {
 				return badTrack("%s was already dropped", id)

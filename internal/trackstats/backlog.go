@@ -1,6 +1,8 @@
 package trackstats
 
 import (
+	"fmt"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -105,11 +107,25 @@ func computeBacklog(in Input, logEv []Event, from map[string]bool, items []Item)
 			b.Items = append(b.Items, BacklogItem{Source: "github", ID: is.URL, Code: Code(is.URL), Repo: is.Repo, Est: "-", Ref: is.URL, Title: is.Title, AgeDays: ageDays(in.Now, is.CreatedAt)})
 		}
 	}
+	// One row per ledger: its findings stay in the ledger for /ship to triage, and a
+	// long ledger would bury every other source. A dropped or taken line leaves the count;
+	// a dropped or taken ledger leaves the row.
+	var ledgers []BacklogItem
+	count := map[string]int{}
 	for _, s := range in.SDD {
-		if dropped[s.ID] || from[s.ID] {
+		ledger := s.ID[:strings.LastIndex(s.ID, ":")]
+		if dropped[s.ID] || from[s.ID] || dropped[ledger] || from[ledger] {
 			continue
 		}
-		b.Items = append(b.Items, BacklogItem{Source: "sdd", ID: s.ID, Code: Code(s.ID), Repo: s.Repo, Est: "-", Ref: "-", Title: s.Title, AgeDays: ageDays(in.Now, s.ModTime)})
+		if count[ledger] == 0 {
+			ledgers = append(ledgers, BacklogItem{Source: "sdd", ID: ledger, Code: Code(ledger), Repo: s.Repo, Est: "-", Ref: "-", AgeDays: ageDays(in.Now, s.ModTime)})
+		}
+		count[ledger]++
+	}
+	for _, it := range ledgers {
+		n := count[it.ID]
+		it.Title = fmt.Sprintf("%s: %d SDD finding%s", path.Base(path.Dir(it.ID)), n, map[bool]string{true: "s"}[n > 1])
+		b.Items = append(b.Items, it)
 	}
 	for _, it := range items {
 		if it.Status != "stale" {
