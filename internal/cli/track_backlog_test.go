@@ -743,5 +743,12 @@ func TestTrackStart_FromSDDLedgerOverlap(t *testing.T) {
 		if _, err := startFrom(t, ws, "repos/r/.znf/sdd/q/progress.md:2"); err != nil {
 			t.Fatal(err)
 		}
+		// Once the first run ends, the rest of the ledger can be taken.
+		if _, err := runTrack(t, ws, "end", a, "--cancelled", "--rounds", "0"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := startFrom(t, ws, c.second); err != nil {
+			t.Fatalf("%s after %s ended: %v", c.second, c.first, err)
+		}
 	}
 }

@@ -330,6 +330,10 @@ func checkStartFrom(logPath, from string) error {
 		}
 		id := p[2]
 		if rowsHave(rows, "end", id) {
+			// An ended run on the ledger or one of its findings leaves the rest of the ledger free.
+			if p[6] != from {
+				continue
+			}
 			return badTrack("track: %s was taken by %s (ended)", from, id)
 		}
 		sess, err := bindSession(filepath.Join(filepath.Dir(logPath), "sessions"), id)
