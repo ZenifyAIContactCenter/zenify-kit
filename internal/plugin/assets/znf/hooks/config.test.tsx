@@ -93,7 +93,7 @@ function engine(on: any, world: World): Calls {
 }
 
 // The rows as the defaults hold them, matching the sources below unless a test says otherwise.
-const SYNCED = { 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback off\n'), 'zenify reviewer get': ok('agent\n') }
+const SYNCED = { 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback off\n'), 'zenify reviewer get': ok('agent+project\n') }
 
 async function start($: any, clock: { settle: () => Promise<void> }) {
   await $.session.start({ cwd: CWD, source: 'startup' } as any)

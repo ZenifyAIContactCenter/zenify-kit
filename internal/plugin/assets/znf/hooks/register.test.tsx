@@ -187,7 +187,7 @@ function engine(on: any, world: World): Calls {
     calls.run.push([...e.argv])
     // FR-17.3: the sources the /config rows are synced from, in step with the defaults.
     if (e.argv.join(' ') === 'zenify feature') return { value: ok('github.issues off\ntrack off\ntrack.feedback off\n') }
-    if (e.argv.join(' ') === 'zenify reviewer get') return { value: ok('agent\n') }
+    if (e.argv.join(' ') === 'zenify reviewer get') return { value: ok('agent+project\n') }
     if (e.argv[0] === 'zenify') {
       world.statsTimeouts = [...(world.statsTimeouts ?? []), e.init?.timeoutMs]
       if (world.holdStats) await world.holdStats
