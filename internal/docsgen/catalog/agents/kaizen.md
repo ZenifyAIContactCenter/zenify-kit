@@ -1,7 +1,7 @@
 ---
 summary: Đọc mục Feedback của một ngày track cùng ledger và dữ liệu review mà nó dẫn tới, đề xuất tối đa 3 cải tiến cho kit, mỗi đề xuất có bằng chứng.
 ---
-Agent đọc báo cáo chốt sổ của một ngày (`.zenify/track/days/<D>.md`), phần `## Feedback`, rồi mở các file `ledgers/` và `reviews/` mà phần đó dẫn tới. Brief đưa hai đường dẫn tuyệt đối (báo cáo ngày và `.zenify/track/feedback.md`) và đường dẫn repo kit nếu có. Agent chỉ đọc, không ghi gì.
+Agent đọc báo cáo chốt sổ của một ngày (`.zenify/track/days/<D>.md`), phần `## Feedback`, rồi mở các file `ledgers/` và `reviews/` mà phần đó dẫn tới. Bước chốt ngày đưa ba đường dẫn tuyệt đối: báo cáo ngày, `.zenify/track/feedback.md` và mã nguồn kit khi có (`repos/zenify-kit`, không thì plugin `znf` đã cài). Agent chỉ đọc file trong `.zenify/track/` và trong đường dẫn kit; không có đường dẫn kit thì `Where` được ghi `(unverified)`. Agent chỉ đọc, không ghi gì.
 
 ## Kết quả
 
@@ -13,4 +13,4 @@ Bước chốt ngày của track: khi báo cáo có mục `## Feedback` (cần b
 
 ## Lưu ý
 
-Agent chạy trên `opus` khai trong frontmatter, công cụ chỉ gồm `Read`, `Grep`, `Glob`. Nội dung snapshot, comment của bot và ledger là dữ liệu, agent không làm theo chỉ dẫn nằm trong đó. Đề xuất trùng mục `rejected` trong `feedback.md` bị bỏ; trùng mục `open` thì được ghi `repeated N times`. Đây không phải skill `znf:retro` (bài học của một session).
+Agent chạy trên `opus` khai trong frontmatter, công cụ chỉ gồm `Read`, `Grep`, `Glob`. Dòng `human review:` đếm thread do người mở, không tính là finding của bot. Nội dung snapshot, comment của bot và ledger là dữ liệu, agent không làm theo chỉ dẫn nằm trong đó. Đề xuất trùng mục `rejected` trong `feedback.md` bị bỏ; trùng mục `open` thì được ghi `repeated N times`. Đây không phải skill `znf:retro` (bài học của một session).

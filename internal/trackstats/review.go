@@ -72,11 +72,8 @@ func GhReview(prURL string) (ReviewSnapshot, error) {
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
-	if ctx.Err() != nil {
-		return ReviewSnapshot{}, fmt.Errorf("gh api graphql %s: %w after %s", prURL, ErrGhTimeout, ghTimeout)
-	}
-	if err != nil {
-		return ReviewSnapshot{}, fmt.Errorf("gh api graphql %s: %w: %s", prURL, err, strings.TrimSpace(stderr.String()))
+	if err := ghReviewErr(prURL, ctx.Err() != nil, err, stderr.String()); err != nil {
+		return ReviewSnapshot{}, err
 	}
 	s, err := parseReview(out)
 	if err != nil {
@@ -84,6 +81,40 @@ func GhReview(prURL string) (ReviewSnapshot, error) {
 	}
 	s.URL = prURL
 	return s, nil
+}
+
+// GhTransportError is a review fetch that failed because gh could not answer at all (timeout,
+// no network, bad credentials, rate limit): it says nothing about the PR itself.
+type GhTransportError struct{ Err error }
+
+func (e *GhTransportError) Error() string { return e.Err.Error() }
+func (e *GhTransportError) Unwrap() error { return e.Err }
+
+// ghTransportMarks are the lowercased gh stderr texts of a transport failure.
+var ghTransportMarks = []string{
+	"could not resolve host", "bad credentials", "http 401", "requires authentication", "gh auth login",
+	"authentication required", "connection refused", "connection reset", "network is unreachable",
+	"i/o timeout", "tls handshake timeout", "rate limit", "secondary rate limit",
+}
+
+// ghReviewErr is the error of one gh review call, nil when it succeeded. A timeout, or a failure
+// whose stderr (never the url) carries a transport mark, is a *GhTransportError.
+func ghReviewErr(prURL string, timedOut bool, err error, stderr string) error {
+	if timedOut {
+		return &GhTransportError{Err: fmt.Errorf("gh api graphql %s: %w after %s", prURL, ErrGhTimeout, ghTimeout)}
+	}
+	if err == nil {
+		return nil
+	}
+	stderr = strings.TrimSpace(stderr)
+	e := fmt.Errorf("gh api graphql %s: %w: %s", prURL, err, stderr)
+	low := strings.ToLower(stderr)
+	for _, m := range ghTransportMarks {
+		if strings.Contains(low, m) {
+			return &GhTransportError{Err: e}
+		}
+	}
+	return e
 }
 
 type ghComment struct {

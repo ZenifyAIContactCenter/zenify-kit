@@ -2,6 +2,9 @@ package trackstats
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -113,5 +116,50 @@ func TestOwnerRun_Review(t *testing.T) {
 	}
 	if got := OwnerRun(ev, "https://a/pull/9"); got != "-" {
 		t.Errorf("OwnerRun(unknown) = %q, want -", got)
+	}
+}
+
+// fakeGh puts a gh on PATH that prints stderr and exits 1.
+func fakeGh(t *testing.T, stderr string) {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/bin/sh\nprintf '%s\\n' '" + stderr + "' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil { //nolint:gosec // G306 -- test helper must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+// gh's stderr alone decides a transport failure; the url and per-PR GraphQL errors never do.
+func TestGhReview_TransportFromStderr(t *testing.T) {
+	cases := []struct {
+		url, stderr string
+		transport   bool
+	}{
+		{"https://github.com/o/r/pull/9", "could not resolve host: api.github.com", true},
+		{"https://github.com/o/r/pull/9", "HTTP 401: Bad credentials (https://api.github.com/graphql)", true},
+		{"https://github.com/o/r/pull/9", "API rate limit exceeded for user", true},
+		{"https://github.com/o/r/pull/9", "GraphQL: Could not resolve to a PullRequest with the number of 9. (repository.pullRequest)", false},
+		{"https://github.com/o/auth-service/pull/1", "GraphQL: Something went wrong", false},
+	}
+	for _, c := range cases {
+		fakeGh(t, c.stderr)
+		_, err := GhReview(c.url)
+		if err == nil {
+			t.Fatalf("%q: want an error", c.stderr)
+		}
+		var te *GhTransportError
+		if got := errors.As(err, &te); got != c.transport {
+			t.Errorf("%s %q: transport = %v, want %v (%v)", c.url, c.stderr, got, c.transport, err)
+		}
+	}
+}
+
+// A timed-out gh call is a transport failure that still wraps ErrGhTimeout.
+func TestGhReviewErr_Timeout(t *testing.T) {
+	err := ghReviewErr("https://github.com/o/r/pull/9", true, nil, "")
+	var te *GhTransportError
+	if !errors.As(err, &te) || !errors.Is(err, ErrGhTimeout) {
+		t.Fatalf("err = %v, want a GhTransportError wrapping ErrGhTimeout", err)
 	}
 }

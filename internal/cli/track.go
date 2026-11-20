@@ -1013,26 +1013,17 @@ func snapshotOf(path, url string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var s trackstats.ReviewSnapshot
+	var s struct {
+		URL string `json:"url"`
+	}
 	return json.Unmarshal(b, &s) == nil && s.URL == url, nil
 }
 
-// transportErrMarks are the lowercased gh error texts that mean gh could not answer at all.
-var transportErrMarks = []string{"auth", "could not resolve", "connection", "network", "rate limit"}
-
-// transportErr reports whether a review fetch failed because gh was unreachable, unauthenticated
-// or rate limited: such a failure says nothing about the PR and is not counted against it.
+// transportErr reports whether a review fetch failed because gh could not answer at all, as
+// classified by trackstats from gh's stderr: such a failure is not counted against the PR.
 func transportErr(err error) bool {
-	if errors.Is(err, trackstats.ErrGhTimeout) {
-		return true
-	}
-	msg := strings.ToLower(err.Error())
-	for _, m := range transportErrMarks {
-		if strings.Contains(msg, m) {
-			return true
-		}
-	}
-	return false
+	var te *trackstats.GhTransportError
+	return errors.As(err, &te)
 }
 
 // writeStatusCache stores the open PR statuses by url, so a run outside the recheck window can show them.

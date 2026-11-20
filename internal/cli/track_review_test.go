@@ -200,16 +200,14 @@ func TestTrackReview_FirstFailureOnlyOnStderr(t *testing.T) {
 	}
 }
 
-// Transport errors (timeout, auth, network, rate limit) never count; a per-PR error always does,
-// even when every fetch of the cycle fails.
+// Only a GhTransportError (gh could not answer) is not counted; a per-PR error always is, even
+// when its url or message holds words such as "auth" or "could not resolve".
 func TestTrackReview_TransportErrorsDoNotCount(t *testing.T) {
-	a, b := "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
+	a, b := "https://github.com/o/auth-service/pull/1", "https://github.com/o/network/pull/2"
 	ws, _ := reviewWS(t, []string{a, b}, map[string]string{a: mergedAgo(2 * time.Hour), b: mergedAgo(time.Hour)})
 	transport := []error{
-		fmt.Errorf("gh api graphql: %w after 10s", trackstats.ErrGhTimeout),
-		errors.New("gh: HTTP 401: Bad credentials (Auth required)"),
-		errors.New("dial tcp: lookup api.github.com: could not resolve host"),
-		errors.New("API rate limit exceeded"),
+		&trackstats.GhTransportError{Err: fmt.Errorf("gh api graphql: %w after 10s", trackstats.ErrGhTimeout)},
+		&trackstats.GhTransportError{Err: errors.New("gh api graphql: exit status 1: could not resolve host: api.github.com")},
 	}
 	cycleErr := transport[0]
 	var asked []string
@@ -227,14 +225,21 @@ func TestTrackReview_TransportErrorsDoNotCount(t *testing.T) {
 	if got := readFailed(t, ws); len(got) != 0 {
 		t.Fatalf("reviews.failed = %v after transport errors, want empty", got)
 	}
-	cycleErr = errors.New("parse gh output: no pullRequest in the answer")
-	asked = nil
-	reviewStatsErr(t, ws)
-	if len(asked) != 2 {
-		t.Fatalf("asked %v, want both PRs still tried", asked)
+	perPR := []error{
+		fmt.Errorf("gh api graphql %s: exit status 1: GraphQL: Could not resolve to a PullRequest with the number of 9", a),
+		errors.New("parse gh output: json: cannot unmarshal number into Go struct field ghComment.author of type struct"),
 	}
-	if got := readFailed(t, ws); got[a] != 1 || got[b] != 1 {
-		t.Fatalf("reviews.failed = %v, want both at 1 after a per-PR error", got)
+	for i, e := range perPR {
+		cycleErr = e
+		asked = nil
+		reviewStatsErr(t, ws)
+		dropChecked(t, ws)
+		if len(asked) != 2 {
+			t.Fatalf("asked %v, want both PRs still tried", asked)
+		}
+		if got := readFailed(t, ws); got[a] != i+1 || got[b] != i+1 {
+			t.Fatalf("reviews.failed = %v, want both at %d after %q", got, i+1, e)
+		}
 	}
 }
 
