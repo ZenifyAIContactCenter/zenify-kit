@@ -879,7 +879,7 @@ func computeTrackStatsInput(dir, wsDir, today string, now time.Time, force bool)
 }
 
 // snapshotReviews writes .zenify/track/reviews/<file> for up to reviewsPerCycle merged PRs
-// that have none yet. A gh or write failure goes to stderr and onto mergedErr, so the PR is
+// that have none yet, newest merge first. A gh or write failure goes to stderr and onto mergedErr, so the PR is
 // retried next cycle; only a failed stat of an existing file is returned.
 func snapshotReviews(dir, log string, merged map[string]string, now time.Time, mergedErr *string) error {
 	reviewsDir := filepath.Join(dir, "reviews")
@@ -892,13 +892,23 @@ func snapshotReviews(dir, log string, merged map[string]string, now time.Time, m
 		}
 		*mergedErr += msg
 	}
+	// Newest merge first, so a new PR gets a slot ahead of old PRs whose snapshot keeps failing.
+	var urls []string
+	for url, v := range merged {
+		if v != "" && v != trackstats.ClosedUnmerged {
+			urls = append(urls, url)
+		}
+	}
+	slices.SortFunc(urls, func(a, b string) int {
+		if c := strings.Compare(merged[b], merged[a]); c != 0 {
+			return c
+		}
+		return strings.Compare(a, b)
+	})
 	taken := 0
-	for _, url := range slices.Sorted(maps.Keys(merged)) {
+	for _, url := range urls {
 		if taken == reviewsPerCycle {
 			break
-		}
-		if v := merged[url]; v == "" || v == trackstats.ClosedUnmerged {
-			continue
 		}
 		name, ok := trackstats.ReviewFileName(url)
 		if !ok {

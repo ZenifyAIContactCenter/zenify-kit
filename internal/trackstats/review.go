@@ -134,7 +134,11 @@ func parseReview(out []byte) (ReviewSnapshot, error) {
 	if pr == nil {
 		return ReviewSnapshot{}, errors.New("parse gh output: no pullRequest in the answer")
 	}
-	s := ReviewSnapshot{CreatedAt: pr.CreatedAt, MergedAt: pr.MergedAt}
+	// Empty lists stay [] in the file, never null.
+	s := ReviewSnapshot{
+		CreatedAt: pr.CreatedAt, MergedAt: pr.MergedAt,
+		Commits: []ReviewCommit{}, BotComments: []ReviewComment{}, Threads: []ReviewThread{},
+	}
 	for _, n := range pr.Commits.Nodes {
 		s.Commits = append(s.Commits, n.Commit)
 	}
@@ -144,7 +148,7 @@ func parseReview(out []byte) (ReviewSnapshot, error) {
 		}
 	}
 	for _, n := range pr.ReviewThreads.Nodes {
-		th := ReviewThread{Path: n.Path, Line: n.Line, IsResolved: n.IsResolved}
+		th := ReviewThread{Path: n.Path, Line: n.Line, IsResolved: n.IsResolved, Comments: []ReviewComment{}}
 		for _, c := range n.Comments.Nodes {
 			th.Comments = append(th.Comments, toComment(c))
 		}

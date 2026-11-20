@@ -130,8 +130,8 @@ func TestTrackReview_ErrorReportedAndRetried(t *testing.T) {
 	}
 	oldErr := os.Stderr
 	os.Stderr = errFile
+	t.Cleanup(func() { os.Stderr = oldErr })
 	e := reviewStats(t, ws)
-	os.Stderr = oldErr
 	if !strings.Contains(e, "review snapshot "+pr) || !strings.Contains(e, "gh down") {
 		t.Fatalf("mergedError = %q, want the review snapshot error", e)
 	}
@@ -177,6 +177,43 @@ func TestTrackReview_FivePerCycle(t *testing.T) {
 	reviewStats(t, ws)
 	if len(*asked) != 7 {
 		t.Fatalf("next cycle total %d, want 7", len(*asked))
+	}
+}
+
+// A new merge gets a slot ahead of old PRs that always fail: candidates go newest merge first.
+func TestTrackReview_NewestMergeFirst(t *testing.T) {
+	cache := map[string]string{}
+	var prs []string
+	for i := 1; i <= 6; i++ {
+		u := fmt.Sprintf("https://github.com/o/r/pull/%d", i)
+		prs = append(prs, u)
+		cache[u] = fmt.Sprintf("2026-11-%02dT05:00:00Z", 10+i)
+	}
+	newest := prs[5]
+	ws, _ := reviewWS(t, prs, cache)
+	var asked []string
+	old := trackReview
+	trackReview = func(u string) (trackstats.ReviewSnapshot, error) {
+		asked = append(asked, u)
+		if u != newest {
+			return trackstats.ReviewSnapshot{}, errors.New("no pullRequest in the answer")
+		}
+		return trackstats.ReviewSnapshot{URL: u}, nil
+	}
+	t.Cleanup(func() { trackReview = old })
+	errFile, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldErr := os.Stderr
+	os.Stderr = errFile
+	t.Cleanup(func() { os.Stderr = oldErr })
+	reviewStats(t, ws)
+	if len(asked) != 5 || asked[0] != newest {
+		t.Fatalf("asked %v, want 5 calls starting with %s", asked, newest)
+	}
+	if _, err := os.Stat(reviewFile(ws, "o-r-6.json")); err != nil {
+		t.Fatalf("newest merge has no snapshot after one cycle: %v", err)
 	}
 }
 

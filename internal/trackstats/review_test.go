@@ -1,6 +1,8 @@
 package trackstats
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -40,6 +42,23 @@ func TestParseReview(t *testing.T) {
 	}
 	if s.TrackID != "" || s.FetchedAt != "" {
 		t.Errorf("TrackID %q FetchedAt %q, want both empty for the CLI to fill", s.TrackID, s.FetchedAt)
+	}
+}
+
+func TestParseReview_EmptyListsAreNotNull(t *testing.T) {
+	s, err := parseReview([]byte(`{"data":{"repository":{"pullRequest":{"createdAt":"2026-11-18T01:00:00Z","mergedAt":"2026-11-18T05:00:00Z",` +
+		`"commits":{"nodes":[]},"comments":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"commits":[]`, `"botComments":[]`, `"threads":[]`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("snapshot %s lacks %s", b, want)
+		}
 	}
 }
 
