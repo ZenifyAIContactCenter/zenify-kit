@@ -212,7 +212,7 @@ func TestShipAgentPlusProjectRunsBothReviews(t *testing.T) {
 	})
 	// A stacked ship must not open its PRs before the project pass (Zenie Review #393).
 	assertContainsAll(t, "stacked-ship.md", syncedAsset(t, "skills/ship/references/stacked-ship.md"), []string{
-		"**Project pass**", "`gh stack push`", "`base branch <layer i-1 branch>`", "first (c), then item 5", "its own 2 rounds", "steps 2-4 re-run only (no Claude",
+		"**Project pass**", "`gh stack push`", "`base branch <layer i-1 branch>`", "first `zenify ui-verify check`", "then (c), then item 5", "skips its `ui-verify check`", "its own 2 rounds", "steps 2-4 re-run only (no Claude",
 	})
 	assertContainsAll(t, "project-engine.md", syncedAsset(t, "skills/review/references/project-engine.md"), []string{
 		"`base branch <name>`", "`BASE_BRANCH=<name>`",

@@ -34,15 +34,19 @@ in that stripped form; git commands use `<baseRef>` itself.
    re-review layer k and every layer above it. The two-round cap still applies.
 
 4. **Step 7, in this order. Nothing is pushed until (b) is all ✅, except (pre)'s project pushes.**
-   - (pre) `ENGINE` `project` or `agent+project` → first (c), then item 5, which must end clean or
-     skipped; then (a) and (b) on the resulting `fp` (they stamp the board after every project fix),
-     then (d), skipping (c) there. Its pushes come before (b) by design, as in `project-review.md`.
+   - (pre) `ENGINE` `project` or `agent+project` → first `zenify ui-verify check` (as in step 7;
+     non-zero → BLOCKED, commit nothing), then (c), then item 5, which must end clean or skipped;
+     then (a) and (b) on the resulting `fp` (they stamp the board after every project fix), then (d),
+     skipping (c) there. Its pushes come before (b) by design, as in `project-review.md`. (b) then
+     skips its `ui-verify check`: the last pre-commit check (here or before an item-5 fix commit)
+     is the board's line, keeps that pre-commit `fp`, and is exempt from "every stamp equals the
+     current one", as in `project-review.md` item 4.
    - (a) Append ONE gate-log line for the ship run with step 7's `printf`, as in the one-PR flow:
      column 2 is the plain basename and `fp` is the top layer's. Read it back (`tail -30`); if this
      gate has never blocked, say so.
    - (b) Fill the board as in the one-PR flow (every check stamped by its `fp`, `Shippable: YES` only
      if every stamp equals the current one) plus one line per layer, bottom first:
-     `Layer <i>/<N> <branch> — <pending>`. Run `zenify ui-verify check` as in step 7 (non-zero → BLOCKED). Write
+     `Layer <i>/<N> <branch> — <pending>`. Run `zenify ui-verify check` as in step 7 (non-zero → BLOCKED), unless (pre) ran it before (c). Write
      the board to `ship-board-$(fp).md` and `cat` it. Any ❌ → STOP, push nothing.
    - (c) `zenify release-note` once for the whole stack.
    - (d) `gh stack submit --auto --open`. This replaces step 7's commit-and-push and its
