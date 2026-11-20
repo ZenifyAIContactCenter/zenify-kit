@@ -885,12 +885,11 @@ func computeTrackStatsInput(errW io.Writer, dir, wsDir, today string, now time.T
 const reviewGiveUp = 3
 
 // snapshotReviews writes .zenify/track/reviews/<file> for up to reviewsPerCycle PRs merged within
-// closeDayKeepDays that have none yet, newest merge first. A failed fetch or write is retried next
-// cycle; reviews.failed (url -> attempts) counts it only when another fetch of the same cycle
-// succeeded, since a cycle where every fetch fails is gh being down, and a url at reviewGiveUp stops
-// taking a slot. A success clears the count. Snapshots are best effort: every problem, its own
-// bookkeeping included, is reported on errW (the first fetch failure of a cycle only) and never
-// fails the stats run.
+// closeDayKeepDays that have no snapshot of their own yet, newest merge first. A failed fetch or
+// write is retried next cycle; reviews.failed (url -> attempts) counts it unless it is a transport
+// error (gh down, auth, network, rate limit), and a url at reviewGiveUp stops taking a slot. A
+// success clears the count. Snapshots are best effort: every problem, its own bookkeeping
+// included, is reported on errW (the first fetch failure of a cycle only) and never fails the run.
 func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, now time.Time) {
 	warn := func(format string, a ...any) {
 		_, _ = fmt.Fprintf(errW, format, a...) // a failed stderr write has nowhere else to go
@@ -933,7 +932,6 @@ func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, 
 		events     []trackstats.Event
 		parsed     bool
 		cycleFails []string
-		successes  int
 	)
 	taken := 0
 	for _, url := range urls {
@@ -948,11 +946,11 @@ func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, 
 			continue
 		}
 		path := filepath.Join(reviewsDir, name)
-		if _, err := os.Stat(path); err == nil {
-			delete(nextFailed, url)
-			continue
-		} else if !errors.Is(err, os.ErrNotExist) {
+		if have, err := snapshotOf(path, url); err != nil {
 			warn("track: review snapshot %s: %v\n", url, err)
+			continue
+		} else if have {
+			delete(nextFailed, url)
 			continue
 		}
 		if !parsed {
@@ -962,6 +960,7 @@ func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, 
 		taken++
 		snap, err := trackReview(url)
 		if err == nil {
+			snap.URL = url
 			snap.TrackID = trackstats.OwnerRun(events, url)
 			snap.FetchedAt = now.UTC().Format(time.RFC3339)
 			var out []byte
@@ -976,15 +975,12 @@ func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, 
 				warn("track: review snapshot %s: %v\n", url, err)
 			}
 			cycleFails = append(cycleFails, url)
+			if !transportErr(err) {
+				nextFailed[url]++
+			}
 			continue
 		}
-		successes++
 		delete(nextFailed, url)
-	}
-	if successes > 0 {
-		for _, u := range cycleFails {
-			nextFailed[u]++
-		}
 	}
 	if reflect.DeepEqual(nextFailed, failed) {
 		return
@@ -1004,6 +1000,39 @@ func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, 
 	if err != nil {
 		warn("track: reviews.failed: %v\n", err)
 	}
+}
+
+// snapshotOf reports whether path holds the snapshot of url. A missing file, one that does not
+// parse or one naming another url is no snapshot, so the PR is fetched again; only a failed read
+// of an existing file is an error.
+func snapshotOf(path, url string) (bool, error) {
+	b, err := os.ReadFile(path) //nolint:gosec // G304 -- a name built from a PR url under the track dir
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var s trackstats.ReviewSnapshot
+	return json.Unmarshal(b, &s) == nil && s.URL == url, nil
+}
+
+// transportErrMarks are the lowercased gh error texts that mean gh could not answer at all.
+var transportErrMarks = []string{"auth", "could not resolve", "connection", "network", "rate limit"}
+
+// transportErr reports whether a review fetch failed because gh was unreachable, unauthenticated
+// or rate limited: such a failure says nothing about the PR and is not counted against it.
+func transportErr(err error) bool {
+	if errors.Is(err, trackstats.ErrGhTimeout) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	for _, m := range transportErrMarks {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // writeStatusCache stores the open PR statuses by url, so a run outside the recheck window can show them.

@@ -40,6 +40,9 @@ func TestParseReview(t *testing.T) {
 	if th.Path != "internal/cli/track.go" || th.Line != 42 || !th.IsResolved || len(th.Comments) != 1 || th.Comments[0].Body != "nil check" {
 		t.Errorf("thread = %+v", th)
 	}
+	if th.Comments[0].AuthorType != "Bot" || s.BotComments[0].AuthorType != "Bot" {
+		t.Errorf("authorType thread %q bot comment %q, want Bot", th.Comments[0].AuthorType, s.BotComments[0].AuthorType)
+	}
 	if s.TrackID != "" || s.FetchedAt != "" {
 		t.Errorf("TrackID %q FetchedAt %q, want both empty for the CLI to fill", s.TrackID, s.FetchedAt)
 	}
@@ -69,17 +72,26 @@ func TestParseReview_NoPullRequest(t *testing.T) {
 }
 
 func TestReviewFileName(t *testing.T) {
-	if got, ok := ReviewFileName("https://github.com/o/r/pull/9"); !ok || got != "o-r-9.json" {
-		t.Errorf("ReviewFileName = %q %v, want o-r-9.json true", got, ok)
+	if got, ok := ReviewFileName("https://github.com/o/r/pull/9"); !ok || got != "o__r__9.json" {
+		t.Errorf("ReviewFileName = %q %v, want o__r__9.json true", got, ok)
 	}
-	if got, ok := ReviewFileName("http://github.com/o/r/pull/9"); !ok || got != "o-r-9.json" {
-		t.Errorf("ReviewFileName(http) = %q %v, want o-r-9.json true", got, ok)
+	if got, ok := ReviewFileName("http://github.com/o/r/pull/9"); !ok || got != "o__r__9.json" {
+		t.Errorf("ReviewFileName(http) = %q %v, want o__r__9.json true", got, ok)
 	}
 	for _, u := range []string{"https://x/y", "branch:x", "https://gitlab.com/o/r/pull/9", "https://github.com.evil.io/o/r/pull/9",
 		"https://ghe.corp/o/r/pull/9", "https://user@github.com:8443/o/r/pull/9", "https://github.com/o/r/issues/9", "https://github.com/o/r/pull/x"} {
 		if got, ok := ReviewFileName(u); ok {
 			t.Errorf("ReviewFileName(%q) = %q true, want false", u, got)
 		}
+	}
+}
+
+// Names cannot collide across look-alike repos: a-b/c and a/b-c differ.
+func TestReviewFileName_NoCollision(t *testing.T) {
+	x, _ := ReviewFileName("https://github.com/a-b/c/pull/1")
+	y, _ := ReviewFileName("https://github.com/a/b-c/pull/1")
+	if x == y {
+		t.Fatalf("both name %q", x)
 	}
 }
 

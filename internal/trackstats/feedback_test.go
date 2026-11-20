@@ -24,7 +24,7 @@ func fbEvents(t *testing.T, ship ...string) []Event {
 }
 
 func fbThread(first string, replies ...string) ReviewThread {
-	th := ReviewThread{Comments: []ReviewComment{{Body: first}}}
+	th := ReviewThread{Comments: []ReviewComment{{Body: first, AuthorType: "Bot"}}}
 	for _, r := range replies {
 		th.Comments = append(th.Comments, ReviewComment{Body: r})
 	}
@@ -80,7 +80,7 @@ func TestFeedback_NoMergedIsEmpty(t *testing.T) {
 // SC-8, SC-12 (missing side)
 func TestFeedback_MissingData(t *testing.T) {
 	got := Feedback(fbInput(t, nil, "shipped · - · 0,0,0,0 · 0"))
-	wantLines(t, got, "- ledger: none", "- review data: missing (.zenify/track/reviews/o-r-7.json)", "- run: "+fbID+" cook est M wall 60m")
+	wantLines(t, got, "- ledger: none", "- review data: missing (.zenify/track/reviews/o__r__7.json)", "- run: "+fbID+" cook est M wall 60m")
 	for _, no := range []string{"escaped:", "bot review:", "ledger counts:"} {
 		if strings.Contains(got, no) {
 			t.Errorf("unexpected %q in:\n%s", no, got)
@@ -110,7 +110,7 @@ func TestFeedback_FilePaths(t *testing.T) {
 	in := fbInput(t, &ReviewSnapshot{}, "shipped · - · 0,0,0,0 · 0")
 	in.Ledgers[fbID] = "# SDD ledger\n"
 	got := Feedback(in)
-	wantLines(t, got, "- ledger: .zenify/track/ledgers/"+fbID+".md", "- review data: .zenify/track/reviews/o-r-7.json")
+	wantLines(t, got, "- ledger: .zenify/track/ledgers/"+fbID+".md", "- review data: .zenify/track/reviews/o__r__7.json")
 }
 
 func TestFeedback_LedgerCounts(t *testing.T) {
@@ -169,4 +169,33 @@ func TestFeedback_LedgerIDRevalidated(t *testing.T) {
 			t.Errorf("unexpected %q in:\n%s", no, got)
 		}
 	}
+}
+
+// A thread a person opened is not bot review: no escaped:, counted on its own line.
+func TestFeedback_HumanThreadNotBot(t *testing.T) {
+	human := ReviewThread{Comments: []ReviewComment{{Body: "HIGH: race", AuthorType: "User"}}}
+	snap := &ReviewSnapshot{Threads: []ReviewThread{human, fbThread("LOW typo")}}
+	got := Feedback(fbInput(t, snap, "shipped · - · 0,0,0,0 · 0"))
+	wantLines(t, got, "threads CRITICAL 0 HIGH 0 MEDIUM 0 LOW 1", "- human review: threads 1")
+	if strings.Contains(got, "escaped:") {
+		t.Errorf("escaped from a human thread:\n%s", got)
+	}
+	if got := Feedback(fbInput(t, &ReviewSnapshot{Threads: []ReviewThread{fbThread("LOW x")}}, "shipped · - · 0,0,0,0 · 0")); strings.Contains(got, "human review:") {
+		t.Errorf("human line without human threads:\n%s", got)
+	}
+}
+
+// A run that ended before the merge day is not in the day's items: its wall comes from the log.
+func TestFeedback_EstimateFromLogOnLaterMerge(t *testing.T) {
+	rows := []string{
+		"2026-11-18T01:00:00Z · start · " + fbID + " · cook · repo · M",
+		"2026-11-18T03:00:00Z · end · " + fbID + " · " + fbURL + " · 1 · 0",
+	}
+	ev, bad := ParseLog(strings.Join(rows, "\n"))
+	if bad != 0 {
+		t.Fatalf("%d malformed rows", bad)
+	}
+	in := fbInput(t, nil)
+	in.Events, in.Items = ev, nil
+	wantLines(t, Feedback(in), "- run: "+fbID+" cook est M wall 120m", "estimate miss: est M, wall 120m is L")
 }

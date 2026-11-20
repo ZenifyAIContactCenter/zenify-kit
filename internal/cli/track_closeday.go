@@ -175,6 +175,9 @@ func feedbackSection(errW io.Writer, dir string, in trackstats.Input, day tracks
 			}
 			continue
 		}
+		if snap.URL != u {
+			continue // another PR's data under this name: counted as missing
+		}
 		fin.Snapshots[u] = &snap
 	}
 	return trackstats.Feedback(fin), nil

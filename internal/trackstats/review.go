@@ -36,9 +36,10 @@ type ReviewCommit struct {
 
 // ReviewComment is one comment on the PR or in a review thread.
 type ReviewComment struct {
-	Author    string `json:"author"`
-	CreatedAt string `json:"createdAt"`
-	Body      string `json:"body"`
+	Author     string `json:"author"`
+	AuthorType string `json:"authorType"` // GraphQL __typename of the author: "Bot", "User", ...
+	CreatedAt  string `json:"createdAt"`
+	Body       string `json:"body"`
 }
 
 // ReviewThread is one inline review thread.
@@ -95,7 +96,7 @@ type ghComment struct {
 }
 
 func toComment(c ghComment) ReviewComment {
-	return ReviewComment{Author: c.Author.Login, CreatedAt: c.CreatedAt, Body: c.Body}
+	return ReviewComment{Author: c.Author.Login, AuthorType: c.Author.Typename, CreatedAt: c.CreatedAt, Body: c.Body}
 }
 
 func parseReview(out []byte) (ReviewSnapshot, error) {
@@ -174,13 +175,15 @@ func splitPRURL(raw string) (owner, name, number string, ok bool) {
 	return p[0], p[1], p[3], true
 }
 
-// ReviewFileName is the snapshot file name of a PR url: ".../o/r/pull/9" → "o-r-9.json".
+// ReviewFileName is the snapshot file name of a PR url: ".../o/r/pull/9" → "o__r__9.json".
+// A GitHub owner has no "_", so the first "__" splits owner from repo and the name cannot collide
+// across look-alike repos; readers still check the snapshot's URL.
 func ReviewFileName(prURL string) (string, bool) {
 	owner, name, number, ok := splitPRURL(prURL)
 	if !ok {
 		return "", false
 	}
-	return owner + "-" + name + "-" + number + ".json", true
+	return owner + "__" + name + "__" + number + ".json", true
 }
 
 // OwnerRun is the id of the last end event whose PR list holds url, or "-".

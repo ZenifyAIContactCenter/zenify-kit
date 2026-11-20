@@ -128,7 +128,7 @@ func TestTrackReview_SnapshotOncePerMergedPR(t *testing.T) {
 	if len(*asked) != 1 || (*asked)[0] != merged {
 		t.Fatalf("asked %v, want only %s", *asked, merged)
 	}
-	b, err := os.ReadFile(reviewFile(ws, "o-r-1.json"))
+	b, err := os.ReadFile(reviewFile(ws, "o__r__1.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestTrackReview_SnapshotOncePerMergedPR(t *testing.T) {
 	if _, err := time.Parse(time.RFC3339, s.FetchedAt); err != nil {
 		t.Errorf("fetchedAt %q is not RFC 3339: %v", s.FetchedAt, err)
 	}
-	if _, err := os.Stat(reviewFile(ws, "o-r-2.json")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(reviewFile(ws, "o__r__2.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("closed PR got a snapshot: %v", err)
 	}
 	dropChecked(t, ws)
@@ -152,8 +152,8 @@ func TestTrackReview_SnapshotOncePerMergedPR(t *testing.T) {
 	}
 }
 
-// SC-4: a failed snapshot goes to stderr, not onto mergedError, writes no file and is retried
-// next cycle.
+// SC-4: a failed snapshot goes to stderr, not onto mergedError, writes no file, is counted in
+// reviews.failed and is retried next cycle; a success clears its count.
 func TestTrackReview_ErrorReportedAndRetried(t *testing.T) {
 	pr := "https://github.com/o/r/pull/1"
 	ws, _ := reviewWS(t, []string{pr}, map[string]string{pr: mergedAgo(48 * time.Hour)})
@@ -166,12 +166,11 @@ func TestTrackReview_ErrorReportedAndRetried(t *testing.T) {
 	if want := "track: review snapshot " + pr + ": gh down"; !strings.Contains(stderr, want) {
 		t.Errorf("stderr = %q, want %q", stderr, want)
 	}
-	if _, err := os.Stat(reviewFile(ws, "o-r-1.json")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(reviewFile(ws, "o__r__1.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("failed snapshot wrote a file: %v", err)
 	}
-	// The only fetch of the cycle failed: gh is down, nothing is counted.
-	if got := readFailed(t, ws); len(got) != 0 {
-		t.Fatalf("reviews.failed = %v, want empty", got)
+	if got := readFailed(t, ws); got[pr] != 1 {
+		t.Fatalf("reviews.failed = %v, want %s: 1", got, pr)
 	}
 	fail = false
 	dropChecked(t, ws)
@@ -181,7 +180,7 @@ func TestTrackReview_ErrorReportedAndRetried(t *testing.T) {
 	if len(*asked) != 2 {
 		t.Fatalf("asked %v, want a retry", *asked)
 	}
-	if _, err := os.Stat(reviewFile(ws, "o-r-1.json")); err != nil {
+	if _, err := os.Stat(reviewFile(ws, "o__r__1.json")); err != nil {
 		t.Fatalf("retry wrote no file: %v", err)
 	}
 	if got := readFailed(t, ws); len(got) != 0 {
@@ -201,40 +200,102 @@ func TestTrackReview_FirstFailureOnlyOnStderr(t *testing.T) {
 	}
 }
 
-// A cycle where every fetch fails is gh being down: nobody's count moves.
-func TestTrackReview_AllFailedCycleCountsNothing(t *testing.T) {
+// Transport errors (timeout, auth, network, rate limit) never count; a per-PR error always does,
+// even when every fetch of the cycle fails.
+func TestTrackReview_TransportErrorsDoNotCount(t *testing.T) {
 	a, b := "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
 	ws, _ := reviewWS(t, []string{a, b}, map[string]string{a: mergedAgo(2 * time.Hour), b: mergedAgo(time.Hour)})
-	failing := map[string]bool{a: true, b: true}
+	transport := []error{
+		fmt.Errorf("gh api graphql: %w after 10s", trackstats.ErrGhTimeout),
+		errors.New("gh: HTTP 401: Bad credentials (Auth required)"),
+		errors.New("dial tcp: lookup api.github.com: could not resolve host"),
+		errors.New("API rate limit exceeded"),
+	}
+	cycleErr := transport[0]
 	var asked []string
 	old := trackReview
 	trackReview = func(u string) (trackstats.ReviewSnapshot, error) {
 		asked = append(asked, u)
-		if failing[u] {
-			return trackstats.ReviewSnapshot{}, errors.New("gh down")
-		}
-		return trackstats.ReviewSnapshot{URL: u}, nil
+		return trackstats.ReviewSnapshot{}, cycleErr
 	}
 	t.Cleanup(func() { trackReview = old })
-	for cycle := 1; cycle <= 3; cycle++ {
+	for _, e := range transport {
+		cycleErr = e
 		reviewStatsErr(t, ws)
 		dropChecked(t, ws)
 	}
 	if got := readFailed(t, ws); len(got) != 0 {
-		t.Fatalf("reviews.failed = %v after all-failed cycles, want empty", got)
+		t.Fatalf("reviews.failed = %v after transport errors, want empty", got)
 	}
+	cycleErr = errors.New("parse gh output: no pullRequest in the answer")
 	asked = nil
-	failing[b] = false
 	reviewStatsErr(t, ws)
 	if len(asked) != 2 {
-		t.Fatalf("cycle 4 asked %v, want both PRs still tried", asked)
+		t.Fatalf("asked %v, want both PRs still tried", asked)
 	}
-	if got := readFailed(t, ws); len(got) != 1 || got[a] != 1 {
-		t.Fatalf("reviews.failed = %v, want only %s: 1", got, a)
+	if got := readFailed(t, ws); got[a] != 1 || got[b] != 1 {
+		t.Fatalf("reviews.failed = %v, want both at 1 after a per-PR error", got)
 	}
 }
 
-// A PR that fails three cycles in which another fetch succeeded stops taking a slot; an older PR gets it.
+// Five newest PRs that always fail per PR give up after three cycles, so the sixth gets fetched.
+func TestTrackReview_PermanentFailuresFreeTheSlots(t *testing.T) {
+	cache := map[string]string{}
+	var prs []string
+	for i := 1; i <= 6; i++ {
+		u := fmt.Sprintf("https://github.com/o/r/pull/%d", i)
+		prs = append(prs, u)
+		cache[u] = mergedAgo(time.Duration(10-i) * time.Hour)
+	}
+	good := prs[0] // the oldest: behind the five failing ones
+	ws, _ := reviewWS(t, prs, cache)
+	var asked []string
+	old := trackReview
+	trackReview = func(u string) (trackstats.ReviewSnapshot, error) {
+		asked = append(asked, u)
+		if u != good {
+			return trackstats.ReviewSnapshot{}, errors.New("parse gh output: no pullRequest in the answer")
+		}
+		return trackstats.ReviewSnapshot{URL: u}, nil
+	}
+	t.Cleanup(func() { trackReview = old })
+	for cycle := 1; cycle <= 4; cycle++ {
+		reviewStatsErr(t, ws)
+		dropChecked(t, ws)
+	}
+	if !slices.Contains(asked, good) {
+		t.Fatalf("asked %v, want %s fetched by cycle 4", asked, good)
+	}
+	if _, err := os.Stat(reviewFile(ws, "o__r__1.json")); err != nil {
+		t.Fatalf("good PR has no snapshot: %v", err)
+	}
+}
+
+// A snapshot file holding another PR's url does not count as taken: the PR is fetched.
+func TestTrackReview_SnapshotURLMismatchRefetched(t *testing.T) {
+	pr := "https://github.com/o/r/pull/1"
+	ws, _ := reviewWS(t, []string{pr}, map[string]string{pr: mergedAgo(time.Hour)})
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify", "track", "reviews"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(reviewFile(ws, "o__r__1.json"), []byte(`{"url":"https://github.com/x/y/pull/1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asked := stubReview(t, nil)
+	reviewStats(t, ws)
+	if len(*asked) != 1 {
+		t.Fatalf("asked %v, want a refetch", *asked)
+	}
+	b, err := os.ReadFile(reviewFile(ws, "o__r__1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"url":"`+pr+`"`) {
+		t.Fatalf("snapshot not replaced: %s", b)
+	}
+}
+
+// A PR that fails three cycles stops taking a slot; an older PR gets it.
 func TestTrackReview_GivesUpAfterThreeFailures(t *testing.T) {
 	cache := map[string]string{}
 	var prs []string
@@ -262,7 +323,7 @@ func TestTrackReview_GivesUpAfterThreeFailures(t *testing.T) {
 			t.Fatalf("cycle %d asked %v, want the 5 newest", cycle, asked)
 		}
 		// The good PR succeeds every cycle: drop its file so it is asked again.
-		if err := os.Remove(reviewFile(ws, "o-r-7.json")); err != nil {
+		if err := os.Remove(reviewFile(ws, "o__r__7.json")); err != nil {
 			t.Fatal(err)
 		}
 		dropChecked(t, ws)
@@ -351,7 +412,7 @@ func TestTrackReview_NewestMergeFirst(t *testing.T) {
 	if len(asked) != 5 || asked[0] != newest {
 		t.Fatalf("asked %v, want 5 calls starting with %s", asked, newest)
 	}
-	if _, err := os.Stat(reviewFile(ws, "o-r-6.json")); err != nil {
+	if _, err := os.Stat(reviewFile(ws, "o__r__6.json")); err != nil {
 		t.Fatalf("newest merge has no snapshot after one cycle: %v", err)
 	}
 }

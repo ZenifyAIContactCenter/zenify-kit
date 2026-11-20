@@ -225,8 +225,8 @@ func TestCloseDayPrunesOldReviewsAndLedgers(t *testing.T) {
 	dir := filepath.Join(ws, ".zenify", "track")
 	old, fresh := now.AddDate(0, 0, -(closeDayKeepDays+1)), now.AddDate(0, 0, -1)
 	files := map[string]time.Time{
-		filepath.Join(dir, "reviews", "o-r-1.json"):          old,
-		filepath.Join(dir, "reviews", "o-r-2.json"):          fresh,
+		filepath.Join(dir, "reviews", "o__r__1.json"):        old,
+		filepath.Join(dir, "reviews", "o__r__2.json"):        fresh,
 		filepath.Join(dir, "ledgers", "cook-261101-aaaa.md"): old,
 		filepath.Join(dir, "ledgers", "cook-261119-bbbb.md"): fresh,
 	}
@@ -454,9 +454,9 @@ func feedbackWS(t *testing.T, now time.Time, feedback bool) (ws, day string) {
 		cdRow(yd, "end", id, fbPR, "1", "0"),
 	}, "\n") + "\n"
 	files := map[string]string{
-		"log.md":             log,
-		"merged.json":        `{"` + fbPR + `":"` + yd.UTC().Format(time.RFC3339) + `"}`,
-		"reviews/o-r-1.json": `{"url":"` + fbPR + `","threads":[{"comments":[{"body":"HIGH: leak"}]}]}`,
+		"log.md":               log,
+		"merged.json":          `{"` + fbPR + `":"` + yd.UTC().Format(time.RFC3339) + `"}`,
+		"reviews/o__r__1.json": `{"url":"` + fbPR + `","threads":[{"comments":[{"authorType":"Bot","body":"HIGH: leak"}]}]}`,
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
@@ -496,7 +496,7 @@ func TestCloseDayFeedbackFollowsFeature(t *testing.T) {
 			t.Fatalf("track.feedback %t: Feedback section present = %t\n%s", on, got, b)
 		}
 		if on {
-			for _, want := range []string{"### https://github.com/o/r/pull/1", "- review data: .zenify/track/reviews/o-r-1.json", "escaped:"} {
+			for _, want := range []string{"### https://github.com/o/r/pull/1", "- review data: .zenify/track/reviews/o__r__1.json", "escaped:"} {
 				if !strings.Contains(string(b), want) {
 					t.Errorf("report lacks %q:\n%s", want, b)
 				}
@@ -510,18 +510,40 @@ func TestCloseDayFeedbackBrokenSnapshot(t *testing.T) {
 	now := time.Now()
 	noGhCalls(t)
 	ws, day := feedbackWS(t, now, true)
-	if err := os.WriteFile(filepath.Join(ws, ".zenify", "track", "reviews", "o-r-1.json"), []byte("{"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "track", "reviews", "o__r__1.json"), []byte("{"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var out, errb bytes.Buffer
 	if err := runCloseDay(&out, &errb, ws, now, false); err != nil {
 		t.Fatalf("%v\n%s", err, errb.String())
 	}
-	if !strings.Contains(errb.String(), "track: read review o-r-1.json: ") {
+	if !strings.Contains(errb.String(), "track: read review o__r__1.json: ") {
 		t.Errorf("stderr = %q", errb.String())
 	}
 	b, _ := os.ReadFile(filepath.Join(ws, ".zenify", "track", "days", day+".md"))
 	if !strings.Contains(string(b), "- review data: missing") {
+		t.Errorf("report:\n%s", b)
+	}
+}
+
+// A snapshot whose url is another PR's is counted as missing.
+func TestCloseDayFeedbackSnapshotURLMismatch(t *testing.T) {
+	now := time.Now()
+	noGhCalls(t)
+	ws, day := feedbackWS(t, now, true)
+	body := `{"url":"https://github.com/o/r/pull/99","threads":[{"comments":[{"authorType":"Bot","body":"HIGH: leak"}]}]}`
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "track", "reviews", "o__r__1.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if err := runCloseDay(&out, &errb, ws, now, false); err != nil {
+		t.Fatalf("%v\n%s", err, errb.String())
+	}
+	b, err := os.ReadFile(filepath.Join(ws, ".zenify", "track", "days", day+".md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "- review data: missing") || strings.Contains(string(b), "escaped:") {
 		t.Errorf("report:\n%s", b)
 	}
 }
@@ -547,7 +569,7 @@ func TestFeedbackOffStillCollects(t *testing.T) {
 	t.Cleanup(func() { trackMerged, trackPRTitle = oldM, oldT })
 	stubReview(t, nil)
 	reviewStats(t, ws)
-	for _, f := range []string{filepath.Join("ledgers", id+".md"), filepath.Join("reviews", "o-r-1.json")} {
+	for _, f := range []string{filepath.Join("ledgers", id+".md"), filepath.Join("reviews", "o__r__1.json")} {
 		if _, err := os.Stat(filepath.Join(ws, ".zenify", "track", f)); err != nil {
 			t.Errorf("%s: %v", f, err)
 		}

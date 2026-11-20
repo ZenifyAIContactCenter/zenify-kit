@@ -59,7 +59,18 @@ func feedbackBlock(b *strings.Builder, in FeedbackInput, prURL string) {
 			}
 		}
 	} else {
-		fmt.Fprintf(b, "- run: %s %s\n", id, runFromEvents(in.Events, id))
+		// The run ended on an earlier day than the merge: its figures come from the log.
+		it := runFromEvents(in.Events, id)
+		if it.WallMin > 0 {
+			fmt.Fprintf(b, "- run: %s %s est %s wall %dm\n", id, it.Kind, it.Est, it.WallMin)
+		} else {
+			fmt.Fprintf(b, "- run: %s %s est %s\n", id, it.Kind, it.Est)
+		}
+		if estimateScored(it) {
+			if size := sizeOf(it.WallMin, in.Scale); size != it.Est {
+				signals = append(signals, fmt.Sprintf("estimate miss: est %s, wall %dm is %s", it.Est, it.WallMin, size))
+			}
+		}
 	}
 
 	ledger, hasLedger := in.Ledgers[id]
@@ -118,9 +129,14 @@ func feedbackBlock(b *strings.Builder, in FeedbackInput, prURL string) {
 
 	if snap != nil {
 		sev := map[string]int{}
-		declined := 0
+		declined, human := 0, 0
 		for _, th := range snap.Threads {
 			if len(th.Comments) == 0 {
+				continue
+			}
+			// Only a thread a bot opened is bot review; a person's thread is counted apart.
+			if th.Comments[0].AuthorType != "Bot" {
+				human++
 				continue
 			}
 			firstLine, _, _ := strings.Cut(th.Comments[0].Body, "\n")
@@ -136,6 +152,9 @@ func feedbackBlock(b *strings.Builder, in FeedbackInput, prURL string) {
 		}
 		fmt.Fprintf(b, "- bot review: push rounds %d, threads CRITICAL %d HIGH %d MEDIUM %d LOW %d, Declined: %d\n",
 			pushRounds(snap), sev["CRITICAL"], sev["HIGH"], sev["MEDIUM"], sev["LOW"], declined)
+		if human > 0 {
+			fmt.Fprintf(b, "- human review: threads %d\n", human)
+		}
 		if ch, ok := criticalHigh(findings); ok && ch == 0 && sev["CRITICAL"]+sev["HIGH"] > 0 {
 			signals = append(signals, fmt.Sprintf("escaped: internal review %s, bot review CRITICAL %d HIGH %d", findings, sev["CRITICAL"], sev["HIGH"]))
 		}
@@ -155,21 +174,30 @@ func feedbackItem(in FeedbackInput, id string) (Item, bool) {
 	return Item{}, false
 }
 
-// runFromEvents is "<kind> est <est>" read from the log for a run outside the day's items.
-func runFromEvents(events []Event, id string) string {
-	kind, est := "-", "-"
+// runFromEvents is the run outside the day's items as read from the log: kind, est and, when both
+// its start and end rows exist, the wall minutes between them (an ended run counts as done).
+func runFromEvents(events []Event, id string) Item {
+	it := Item{ID: id, Kind: "-", Est: "-"}
+	var start, end time.Time
 	for _, e := range events {
 		if e.ID != id {
 			continue
 		}
 		switch e.Type {
 		case "start":
-			kind, est = e.F[0], e.F[2]
+			it.Kind, it.Est, start = e.F[0], e.F[2], e.At
 		case "est":
-			est = e.F[0]
+			it.Est = e.F[0]
+		case "end":
+			end = e.At
 		}
 	}
-	return fmt.Sprintf("%s est %s", kind, est)
+	if !start.IsZero() && !end.IsZero() && end.After(start) {
+		it.Status = "done"
+		it.WallMin = int(end.Sub(start).Minutes())
+		it.StartedAt, it.EndedAt = start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339)
+	}
+	return it
 }
 
 // lastShip is the fields of id's last ship row (outcome, step, findings, rounds), nil when none.
