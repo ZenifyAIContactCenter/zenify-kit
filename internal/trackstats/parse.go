@@ -25,7 +25,7 @@ type Event struct {
 var (
 	idRe    = regexp.MustCompile(`^(cook|fix|hotfix|task)-\d{6}-[0-9a-f]{4}$`)
 	bidRe   = regexp.MustCompile(`^b-\d{6}-[0-9a-f]{4}$`)
-	sddRe   = regexp.MustCompile(`^repos/.+/progress\.md:\d+$`)
+	sddRe   = regexp.MustCompile(`^repos/.+/progress\.md(?::\d+)?$`)
 	hidRe   = regexp.MustCompile(`^[0-9a-f]{8}$`)
 	noIDRow = map[string]bool{"backlog": true, "drop": true, "onboard": true, "history": true, "plan": true}
 )

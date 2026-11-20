@@ -2,6 +2,7 @@ package trackstats
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -124,19 +125,39 @@ func TestBacklogGitHubHiddenByDrop(t *testing.T) { // SC-8 stats part
 }
 
 func TestBacklogSDDAndDrop(t *testing.T) { // SC-32
+	const ledgerA = "repos/kit/.worktrees/x/.znf/sdd/p/progress.md"
+	const ledgerB = "repos/kit/.znf/sdd/q/progress.md"
 	in := base("")
 	in.SDD = []SDDItem{
 		{ID: sddID, Repo: "kit", Title: "a", ModTime: now.Add(-24 * time.Hour)},
-		{ID: "repos/kit/.znf/sdd/p/progress.md:7", Repo: "kit", Title: "b", ModTime: now},
+		{ID: ledgerA + ":42", Repo: "kit", Title: "a2", ModTime: now.Add(-24 * time.Hour)},
+		{ID: ledgerB + ":7", Repo: "kit", Title: "b", ModTime: now},
 	}
+	// One row per ledger, titled with its plan directory and open finding count.
 	r, _ := Compute(in)
-	if sources(r)["sdd"] != 2 || r.Backlog.Items[0].AgeDays != 1 || r.Backlog.Items[0].Repo != "kit" {
+	want := []BacklogItem{
+		{Source: "sdd", ID: ledgerA, Repo: "kit", Est: "-", Ref: "-", Title: "p: 2 SDD findings", AgeDays: 1},
+		{Source: "sdd", ID: ledgerB, Repo: "kit", Est: "-", Ref: "-", Title: "q: 1 SDD finding", AgeDays: 0},
+	}
+	if !reflect.DeepEqual(r.Backlog.Items, want) {
 		t.Fatalf("items = %+v", r.Backlog.Items)
 	}
-	in.Log = lines(row(now, "drop", sddID))
+	// A dropped line leaves the count; a dropped ledger leaves the row.
+	in.Log = lines(row(now, "drop", sddID), row(now, "drop", ledgerB))
 	r, _ = Compute(in)
-	if len(r.Backlog.Items) != 1 || r.Backlog.Items[0].Title != "b" || r.Malformed != 0 {
+	if len(r.Backlog.Items) != 1 || r.Backlog.Items[0].Title != "p: 1 SDD finding" || r.Malformed != 0 {
 		t.Fatalf("items = %+v malformed=%d", r.Backlog.Items, r.Malformed)
+	}
+	// Every line dropped one by one: the ledger row goes too.
+	in.Log = lines(row(now, "drop", sddID), row(now, "drop", ledgerA+":42"), row(now, "drop", ledgerB))
+	if r, _ = Compute(in); len(r.Backlog.Items) != 0 {
+		t.Fatalf("items = %+v", r.Backlog.Items)
+	}
+	// An id without ":<line>" (a hand-edited cache) does not panic; it is its own ledger.
+	in.Log = ""
+	in.SDD = []SDDItem{{ID: ledgerB, Repo: "kit", Title: "x", ModTime: now}}
+	if r, _ = Compute(in); len(r.Backlog.Items) != 1 || r.Backlog.Items[0].ID != ledgerB {
+		t.Fatalf("items = %+v", r.Backlog.Items)
 	}
 }
 
@@ -178,14 +199,16 @@ func TestBacklogMalformedAndOnboard(t *testing.T) {
 
 // SC-7
 func TestBacklogSDDHiddenByFrom(t *testing.T) {
-	id := cid("cook", 1)
-	in := base(lines(row(now, "start", id, "cook", "kit", "M", sddID)))
+	id, id2 := cid("cook", 1), cid("cook", 2)
+	const ledgerQ = "repos/kit/.znf/sdd/q/progress.md"
+	in := base(lines(row(now, "start", id, "cook", "kit", "M", sddID), row(now, "start", id2, "cook", "kit", "M", ledgerQ)))
 	in.SDD = []SDDItem{
 		{ID: sddID, Repo: "kit", Title: "a", ModTime: now},
-		{ID: "repos/kit/.znf/sdd/p/progress.md:7", Repo: "kit", Title: "b", ModTime: now},
+		{ID: "repos/kit/.worktrees/x/.znf/sdd/p/progress.md:7", Repo: "kit", Title: "b", ModTime: now},
+		{ID: ledgerQ + ":3", Repo: "kit", Title: "c", ModTime: now},
 	}
 	r, _ := Compute(in)
-	if r.Malformed != 0 || len(r.Backlog.Items) != 1 || r.Backlog.Items[0].Title != "b" {
+	if r.Malformed != 0 || len(r.Backlog.Items) != 1 || r.Backlog.Items[0].Title != "p: 1 SDD finding" {
 		t.Fatalf("malformed=%d items=%+v", r.Malformed, r.Backlog.Items)
 	}
 }

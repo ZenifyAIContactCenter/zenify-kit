@@ -509,11 +509,10 @@ func TestTrackStats_SDDScan(t *testing.T) {
 		}
 		got[it.ID] = it.Repo + "|" + it.Title
 	}
+	// One row per ledger; other.md is not a ledger.
 	want := map[string]string{
-		"repos/kit/.worktrees/x/.znf/sdd/p/progress.md:2": "kit|rename the helper",
-		"repos/kit/.worktrees/x/.znf/sdd/p/progress.md:3": "kit|dead branch in parse — Ruling: out of scope",
-		"repos/hub/.znf/sdd/q/progress.md:2":              "hub|tidy logs",
-		"repos/hub/.znf/sdd/q/progress.md:3":              "hub|prefixed line",
+		"repos/kit/.worktrees/x/.znf/sdd/p/progress.md": "kit|p: 2 SDD findings",
+		"repos/hub/.znf/sdd/q/progress.md":              "hub|q: 2 SDD findings",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %v", got)
@@ -526,9 +525,21 @@ func TestTrackStats_SDDScan(t *testing.T) {
 	if _, err := runTrack(t, ws, "backlog", "drop", "repos/hub/.znf/sdd/q/progress.md:2"); err != nil {
 		t.Fatal(err)
 	}
-	// The SDD items now come from the cache; the drop row still hides the item.
-	if s := trackBacklogStats(t, ws); len(s.Backlog.Items) != 3 {
-		t.Fatalf("drop must hide the sdd item: %+v", s.Backlog.Items)
+	// The SDD items now come from the cache; the dropped line leaves the ledger's count.
+	s = trackBacklogStats(t, ws)
+	titles := map[string]bool{}
+	for _, it := range s.Backlog.Items {
+		titles[it.Title] = true
+	}
+	if len(s.Backlog.Items) != 2 || !titles["q: 1 SDD finding"] {
+		t.Fatalf("drop must lower the ledger count: %+v", s.Backlog.Items)
+	}
+	// The whole ledger drops by its path.
+	if _, err := runTrack(t, ws, "backlog", "drop", "repos/hub/.znf/sdd/q/progress.md"); err != nil {
+		t.Fatal(err)
+	}
+	if s := trackBacklogStats(t, ws); len(s.Backlog.Items) != 1 || s.Backlog.Items[0].Repo != "kit" {
+		t.Fatalf("drop of the ledger must hide its row: %+v", s.Backlog.Items)
 	}
 }
 
@@ -707,5 +718,37 @@ func TestTrackStart_FromSDDRejectsSeparators(t *testing.T) {
 	_, err = startFrom(t, ws, "repos/r/.znf/sdd/p/progress.md:12\r")
 	if err == nil || !strings.Contains(err.Error(), "track: no item matches") {
 		t.Fatalf("CR: err = %v", err)
+	}
+}
+
+// A ledger and a finding inside it overlap: taking one blocks the other, both ways.
+func TestTrackStart_FromSDDLedgerOverlap(t *testing.T) {
+	const ledger = "repos/r/.znf/sdd/p/progress.md"
+	for _, c := range []struct{ first, second string }{{ledger, ledger + ":2"}, {ledger + ":2", ledger}} {
+		ws := trackWS(t, true)
+		out, err := startFrom(t, ws, c.first)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := trackOutRe.FindStringSubmatch(out)[1]
+		before := trackLog(t, ws)
+		_, err = startFrom(t, ws, c.second)
+		if err == nil || !strings.Contains(err.Error(), "track: "+c.second+" is taken by "+a) {
+			t.Fatalf("%s after %s: err = %v", c.second, c.first, err)
+		}
+		if trackLog(t, ws) != before {
+			t.Fatalf("log changed: %q", trackLog(t, ws))
+		}
+		// Another finding of another ledger is free.
+		if _, err := startFrom(t, ws, "repos/r/.znf/sdd/q/progress.md:2"); err != nil {
+			t.Fatal(err)
+		}
+		// Once the first run ends, the rest of the ledger can be taken.
+		if _, err := runTrack(t, ws, "end", a, "--cancelled", "--rounds", "0"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := startFrom(t, ws, c.second); err != nil {
+			t.Fatalf("%s after %s ended: %v", c.second, c.first, err)
+		}
 	}
 }

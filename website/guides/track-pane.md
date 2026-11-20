@@ -139,7 +139,7 @@ Việc đang chạy ở một tab Claude Code khác còn mở (tín hiệu sốn
 zenify track plan set b-261105-ab12 https://github.com/org/repo/pull/3 cook-261105-cd34
 ```
 
-- Id nhận được: `bid` của backlog, URL issue hoặc PR, id `sdd` (`repos/<...>/progress.md:<dòng>`), id track (`cook|fix|hotfix|task-YYMMDD-xxxx`). Id sai định dạng hoặc không có id nào thì lệnh thoát khác 0 và không ghi; id trùng trong một lệnh chỉ giữ một.
+- Id nhận được: `bid` của backlog, URL issue hoặc PR, id `sdd` (`repos/<...>/progress.md` cho cả ledger, hoặc `repos/<...>/progress.md:<dòng>` cho một dòng), id track (`cook|fix|hotfix|task-YYMMDD-xxxx`). Id sai định dạng hoặc không có id nào thì lệnh thoát khác 0 và không ghi; id trùng trong một lệnh chỉ giữ một.
 - Mỗi dòng Plan bắt đầu bằng mã ngắn, ví dụ `- ☐ b81e · chatting · S · …` (xem [Mã ngắn](#mã-ngắn)).
 - Sửa plan mà không phải gõ lại cả danh sách: `zenify track plan add <mã>…` thêm vào plan hôm nay, `zenify track plan rm <mã>…` bỏ ra. Mã không khớp mục nào (hoặc `rm` mục không có trong plan) thì lệnh thoát khác 0 và không ghi. Bỏ hết mục thì pane không còn khối Plan.
 - Plan lại = chạy `plan set` lại với cả danh sách; dòng `plan` mới nhất của hôm nay thắng, plan của ngày khác bị bỏ qua.
@@ -173,7 +173,7 @@ Tab `Backlog` gom việc chưa làm từ năm nguồn:
 - `manual`: việc bạn hoặc agent thêm bằng `zenify track backlog add`.
 - `plane`: work item Plane đang mở (state backlog, unstarted, started) giao cho bạn, lấy bằng PAT của chính bạn trong `.zenify/.env` và URL Plane trong manifest. Không có PAT hoặc manifest không khai báo Plane thì nguồn bị bỏ qua; lấy lỗi thì tab báo `⚠ plane: ...`. Tạo việc mới giao cho mình bằng `zenify plane create "<title>" [--project ZEN] [--description <text>]`, lệnh in `plane: ZEN-308 <url>`; thiếu PAT thì báo chạy `zenify up --apply`. Trong Claude Code: `/znf:track add <mô tả> --plane`.
 - `github`: issue đang mở trên GitHub mà bạn được giao hoặc do bạn tạo. Kit tìm theo owner (org) lấy từ remote `origin` của từng repo trong `repos/`. Repo không có `origin` và thư mục ẩn (ví dụ `repos/.claude`) được bỏ qua; thư mục khác không phải repo git thì tab báo `⚠ github: ...`.
-- `sdd`: mục `minor (deferred)` và `parked` trong `progress.md` của các plan.
+- `sdd`: mỗi ledger `progress.md` của một plan là một dòng `<plan>: N SDD findings`, đếm các mục `minor (deferred)` và `parked` còn mở; chi tiết từng mục nằm trong ledger để `/znf:ship` xử lý.
 - `stale`: việc đã bắt đầu nhưng bị bỏ dở.
 
 Việc `plane` có mã `ZEN-288`. Thứ tự nguồn khi agent lấy việc tiếp theo: danh sách `backlog` trước. Chỉ khi nó rỗng hoặc `zenify track stats --brief` báo `ghError`, agent mới chạy `gh search issues --assignee @me --state open` và `gh search prs --review-requested @me --state open`, đưa kết quả cho bạn chọn rồi start bằng `--from <url>`. Digest đầu session nhắc agent chạy `zenify track stats --brief` trước khi chọn việc. `--brief` là JSON gọn cho agent (việc dở, việc đang ở tab khác `elsewhere`, plan, PR mở, backlog với tiêu đề cắt 80 ký tự, thang S/M/L), không có thời gian, token hay số liệu chất lượng; trên workspace thật nó nhỏ hơn `--json` khoảng 3 lần (7 KB so với 22 KB với 31 mục backlog). Pane vẫn dùng `--json`.
@@ -191,7 +191,7 @@ zenify track start --kind fix --repo kit --est S --from b-261030-ab12
 ```
 
 - `backlog add "<title>" --repo <r> [--est S|M|L] [--ref <url|memory:<name>>]` thêm việc và in id `b-YYMMDD-xxxx`.
-- `backlog drop <bid|mã ngắn|sdd id>` bỏ việc khỏi backlog (issue GitHub cũng bỏ được: bằng `#581` hoặc URL); id `sdd` có dạng `repos/<...>/progress.md:<dòng>`.
+- `backlog drop <bid|mã ngắn|sdd id>` bỏ việc khỏi backlog (issue GitHub cũng bỏ được: bằng `#581` hoặc URL); id `sdd` có dạng `repos/<...>/progress.md` (bỏ cả ledger, kể cả mục được thêm vào ledger sau này) hoặc `repos/<...>/progress.md:<dòng>` (bỏ một mục, số đếm của ledger giảm đi một).
 - `track start --from <bid|mã ngắn|issue URL|sdd id>` ghi việc lấy từ backlog, nên nó biến khỏi tab khi đã bắt đầu. Mỗi mục chỉ được lấy một lần: nếu tab khác đã lấy (đang chạy hoặc đã kết thúc) thì lệnh thoát khác 0 và không ghi gì, kèm `is taken by <id> (session <8 ký tự>)` hoặc `was taken by <id> (ended)`. Hai lệnh start chạy cùng lúc thì chỉ một lệnh thành công.
 - Tab Backlog xếp theo size S, M, L, `-` (cùng size thì việc cũ hơn trước), bỏ việc `manual` trùng tiêu đề với issue github, và ẩn việc `stale` khi session của nó còn heartbeat trong 30 giây.
 

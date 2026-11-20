@@ -38,7 +38,7 @@ var trackGhSearch = ghSearch
 
 var (
 	trackBidRe = regexp.MustCompile(`^b-\d{6}-[0-9a-f]{4}$`)
-	trackSDDRe = regexp.MustCompile(`^repos/.+/progress\.md:\d+$`)
+	trackSDDRe = regexp.MustCompile(`^repos/.+/progress\.md(?::\d+)?$`)
 	// A multi-repo plan prefixes each ledger line with its repo, e.g. `[be] Task 3: …`.
 	sddMinorRe  = regexp.MustCompile(`^(?:\[[^\]]+\] )?Task \d+: minor \(deferred\): (.+)$`)
 	sddParkedRe = regexp.MustCompile(`^(?:\[[^\]]+\] )?Task \d+: parked — (.+)$`)
@@ -156,7 +156,7 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 			case trackIDRe.MatchString(id):
 				return badTrack("track: %s is an open tracked item; close it with zenify track end %s --cancelled --rounds 0", id, id)
 			default:
-				return badTrack("%q is neither a backlog id nor an sdd id (repos/<...>/progress.md:<line>)", id)
+				return badTrack("%q is neither a backlog id nor an sdd id (repos/<...>/progress.md[:<line>])", id)
 			}
 			if rowsHave(rows, "drop", id) {
 				return badTrack("%s was already dropped", id)
@@ -307,12 +307,33 @@ func checkStartFrom(logPath, from string) error {
 			return badTrack("backlog id %s was dropped", from)
 		}
 	}
+	// A ledger and a finding inside it overlap: the ledger id is the finding id minus ":<line>".
+	ledgerOf := func(id string) string {
+		if !trackSDDRe.MatchString(id) {
+			return ""
+		}
+		if i := strings.LastIndex(id, ":"); i > 0 && !strings.HasSuffix(id, "progress.md") {
+			return id[:i]
+		}
+		return id
+	}
+	overlaps := func(taken string) bool {
+		if taken == from {
+			return true
+		}
+		l := ledgerOf(from)
+		return l != "" && ledgerOf(taken) == l && (taken == l || from == l)
+	}
 	for _, p := range rows {
-		if len(p) != 7 || p[1] != "start" || p[6] != from {
+		if len(p) != 7 || p[1] != "start" || !overlaps(p[6]) {
 			continue
 		}
 		id := p[2]
 		if rowsHave(rows, "end", id) {
+			// An ended run on the ledger or one of its findings leaves the rest of the ledger free.
+			if p[6] != from {
+				continue
+			}
 			return badTrack("track: %s was taken by %s (ended)", from, id)
 		}
 		sess, err := bindSession(filepath.Join(filepath.Dir(logPath), "sessions"), id)
