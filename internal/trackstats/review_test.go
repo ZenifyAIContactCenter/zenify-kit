@@ -12,7 +12,7 @@ const reviewFixture = `{"data":{"repository":{"pullRequest":{
     {"commit":{"oid":"aaa111","committedDate":"2026-11-18T01:30:00Z"}},
     {"commit":{"oid":"bbb222","committedDate":"2026-11-18T03:00:00Z"}}]},
   "comments":{"nodes":[
-    {"author":{"__typename":"Bot","login":"zenie-reviewer"},"createdAt":"2026-11-18T02:00:00Z","body":"Lần review 1"},
+    {"author":{"__typename":"Bot","login":"zenie-reviewer"},"createdAt":"2026-11-18T02:00:00Z","body":"Review round 1"},
     {"author":{"__typename":"User","login":"dev"},"createdAt":"2026-11-18T02:10:00Z","body":"thanks"}]},
   "reviewThreads":{"nodes":[
     {"isResolved":true,"path":"internal/cli/track.go","line":42,"comments":{"nodes":[
@@ -30,7 +30,7 @@ func TestParseReview(t *testing.T) {
 	if len(s.Commits) != 2 || s.Commits[1].OID != "bbb222" || s.Commits[1].CommittedDate != "2026-11-18T03:00:00Z" {
 		t.Errorf("commits = %+v", s.Commits)
 	}
-	if len(s.BotComments) != 1 || s.BotComments[0].Author != "zenie-reviewer" || s.BotComments[0].Body != "Lần review 1" {
+	if len(s.BotComments) != 1 || s.BotComments[0].Author != "zenie-reviewer" || s.BotComments[0].Body != "Review round 1" {
 		t.Errorf("bot comments = %+v, want only the Bot one", s.BotComments)
 	}
 	if len(s.Threads) != 1 {
