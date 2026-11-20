@@ -43,8 +43,10 @@ The Claude review first, then the project's on the same branch; both use step 5'
    then steps 2–4 above with `engine project` in every `Skill(znf:review)`'s args. Its fix loop has
    its own 2 rounds; red after round 2 → the exception above.
 3. **Project path drops out** (step 1's refused `BRANCH`, or `znf:review` returns
-   `project bỏ qua: <reason>`, in any round): never re-run the Claude review. Board line
-   `review … project bỏ qua: <reason>`; the rest of ship runs as `agent` after review: 7b only if 7b has not run,
+   `project bỏ qua: <reason>`, in any round): never a second full Claude review. Board line
+   `review … project bỏ qua: <reason>`. Fix commits from an earlier project round → ONE scoped
+   re-review with `engine agent`: the project findings they fixed, verbatim, plus only `git diff <the head the Claude pass last saw>..HEAD`,
+   as ship's fix loop; dropped out before any fix → nothing more. The rest of ship runs as `agent` after review: 7b only if 7b has not run,
    then the missing commit or push, then `gh pr create`.
 4. **Board**: two review lines, `review … agent: …` and `review … project: …` (or
    `project bỏ qua: <reason>`). `Shippable: YES` only when the agent line is clean and the project

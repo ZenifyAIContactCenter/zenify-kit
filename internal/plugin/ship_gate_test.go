@@ -207,7 +207,7 @@ func TestShipAgentPlusProjectRunsBothReviews(t *testing.T) {
 		"`ENGINE=agent+project`",
 	})
 	assertContainsAll(t, "project-review.md", syncedAsset(t, "skills/ship/references/project-review.md"), []string{
-		"## `ENGINE=agent+project`", "`engine agent`", "`engine project`", "never re-run the Claude review",
+		"## `ENGINE=agent+project`", "`engine agent`", "`engine project`", "never a second full Claude review", "ONE scoped", "the head the Claude pass last saw",
 		"project bỏ qua: <reason>", "two review lines", "only if 7b has not run", //znf:allow-lang -- board literal from the spec
 	})
 }

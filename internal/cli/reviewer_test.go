@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 )
 
 func TestDecideReviewerMatrix(t *testing.T) {
@@ -210,5 +212,33 @@ func TestDecideReviewer_AgentPlusProject(t *testing.T) {
 	zr["CODEX_THREAD_ID"] = "1"
 	if got, reason := decideReviewer(envOf(zr), true, true); got != "agent+project" || reason != "" {
 		t.Fatalf("beats codex thread: got (%q,%q)", got, reason)
+	}
+}
+
+// FR-4.11.6: an explicit `reviewer set agent` made before the workspace's first new-kit session
+// start survives the one-time agent → agent+project migration.
+func TestReviewerSetSurvivesDefaultMigration(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := reviewerWorkspace(t)
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"reviewer", "set", "agent"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("reviewer set agent: %v", err)
+	}
+	ws := canonicalPath(filepath.Dir(filepath.Dir(path)))
+	changed, err := apply.MigrateReviewerDefault(apply.WorkspaceLocalSettings(ws), apply.KitReviewerDefaultRecord(home), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := apply.ReviewerEnvValue(apply.WorkspaceLocalSettings(ws))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || got != "agent" {
+		t.Fatalf("after migration: changed=%v value=%q, want false, \"agent\"", changed, got)
 	}
 }

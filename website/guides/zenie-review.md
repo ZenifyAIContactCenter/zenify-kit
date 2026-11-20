@@ -84,7 +84,7 @@ Khi Zenie chưa review xong (lỗi giữa chừng, hoặc vẫn hết giờ sau 
 - `project`: chỉ Zenie review nhánh đã push, trước khi mở PR.
 - `agent+project` (mặc định): reviewer của kit trước, với vòng sửa như `agent`; Claude sạch thì Zenie review cả nhánh đã push như `project`. Board có hai dòng review, `agent` và `project`.
 
-Workspace đang giữ `agent` (do kit cũ seed hay do bạn tự đặt) được chuyển sang `agent+project` một lần, ở lần đầu bản kit mới chạy trong workspace đó. Sau lần chuyển đó, muốn quay lại chỉ dùng reviewer của kit:
+Workspace đang giữ `agent` (do kit cũ seed hay do bạn tự đặt bằng kit cũ) được chuyển sang `agent+project` một lần, ở lần đầu bản kit mới chạy trong workspace đó. Muốn quay lại chỉ dùng reviewer của kit (giá trị đặt bằng lệnh này không bị chuyển nữa):
 
 ```bash
 zenify reviewer set agent
@@ -96,7 +96,7 @@ Phần dưới tả lượt Zenie review trước khi mở PR, chung cho `projec
 - Sau khi lint, build và verify hành vi đã xanh, ship commit, ghi note-commit release, push nhánh feature rồi gọi `branch_review`. Ship chờ bằng `review_wait`, mỗi lần tối đa 55 giây (dài hơn chỉ khi `claude mcp get <server>` in `Timeout:` lớn hơn thời gian chờ được yêu cầu), tổng tối đa 30 phút tính từ lần chờ đầu tiên.
 - Lỗi CRITICAL/HIGH chặn merge đi vào vòng sửa của ship, tối đa 2 vòng; mỗi vòng sửa xong ship push rồi gửi lại. Lỗi sai được decline trong lần gửi kế tiếp kèm lý do, không cần dòng `Declined:`. HIGH "không chặn merge" chỉ lên board như MEDIUM.
 - Lượt review này không đăng gì lên GitHub. Sau lượt cuối ship không tạo commit nào nữa, nên PR mở đúng trên commit đã review và nhận lại kết quả đó thay vì review lại từ đầu.
-- Tool không gọi được (chưa đăng nhập broker, Zenie không chạy), gọi lỗi, hoặc hết 30 phút: với `project` ship review bằng agent và board ghi `project→agent: <lý do>`; với `agent+project` Claude đã sạch nên ship không review lại, board ghi `project bỏ qua: <lý do>`, rồi commit, push và mở PR như `agent`.
+- Tool không gọi được (chưa đăng nhập broker, Zenie không chạy), gọi lỗi, hoặc hết 30 phút: với `project` ship review bằng agent và board ghi `project→agent: <lý do>`; với `agent+project` Claude đã sạch nên ship không review lại toàn bộ (chỉ soát lại phần sửa của các vòng Zenie trước đó, nếu có), board ghi `project bỏ qua: <lý do>`, rồi commit, push và mở PR như `agent`.
 
 ## Lệnh trên PR
 

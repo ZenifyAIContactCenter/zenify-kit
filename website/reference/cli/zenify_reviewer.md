@@ -31,7 +31,7 @@ zenify up --reviewer codex --apply
 
 ## Lưu ý
 
-`ZNF_REVIEWER` nằm trong `env` của `<workspace>/.claude/settings.local.json`; `zenify up` seed giá trị `agent+project` (mặc định) khi chưa có và không đè giá trị bạn đã đặt. Workspace đang giữ `agent` (do kit cũ seed hay do bạn tự đặt) được chuyển sang `agent+project` một lần, ở lần đầu bản kit mới chạy trong workspace đó (đầu session hoặc `zenify up`); sau lần chuyển đó, `zenify reviewer set agent` đưa về `agent` và giá trị này được giữ. `zenify up --reviewer <agent|codex|project|agent+project>` ghi đè giá trị đó khi chạy kèm `--apply`; [`zenify reviewer set`](/reference/cli/zenify_reviewer_set) ghi đè ngay.
+`ZNF_REVIEWER` nằm trong `env` của `<workspace>/.claude/settings.local.json`; `zenify up` seed giá trị `agent+project` (mặc định) khi chưa có và không đè giá trị bạn đã đặt. Workspace đang giữ `agent` (do kit cũ seed hay do bạn tự đặt bằng kit cũ) được chuyển sang `agent+project` một lần, ở lần đầu bản kit mới chạy trong workspace đó (đầu session hoặc `zenify up`). Giá trị đặt bằng `zenify reviewer set` hoặc `zenify up --reviewer` của bản kit mới không bao giờ bị chuyển, nên `zenify reviewer set agent` đưa về `agent` bất kỳ lúc nào. `zenify up --reviewer <agent|codex|project|agent+project>` ghi đè giá trị đó khi chạy kèm `--apply`; [`zenify reviewer set`](/reference/cli/zenify_reviewer_set) ghi đè ngay.
 
 ## Lệnh liên quan
 
