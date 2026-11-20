@@ -1369,6 +1369,23 @@ test('FR-2.3: track turned off during an ask and back on rewrites the stale ask 
   expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy'])
 })
 
+test('FR-2.3: track back on rewrites the live file under an unchanged state (close-day may have pruned it while off)', async ($, on) => {
+  const world: World = { mtimes: withMtimes(1) }
+  const calls = engine(on, world)
+  const clock = mock.clock(on, { now: T0 })
+  await start($, clock)
+  await $.tool.call({ ...ASK, tool_use_id: 'u1' } as any)
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy'])
+  world.stats = ok(statsJson({ enabled: false }))
+  world.mtimes = withMtimes(2)
+  await clock.advance(2000)
+  world.stats = undefined
+  world.mtimes = withMtimes(3)
+  await clock.advance(2000)
+  await clock.settle()
+  expect(liveWrites(calls).map(w => JSON.parse(w.text).state)).toEqual(['ask', 'busy', 'busy'])
+})
+
 test('FR-2.3: turning track back on writes nothing for a tab that never wrote a live file', async ($, on) => {
   const world: World = { mtimes: withMtimes(1) }
   const calls = engine(on, world)
