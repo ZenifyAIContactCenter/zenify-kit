@@ -192,3 +192,26 @@ func TestInspect_BehindLocalBase(t *testing.T) {
 		t.Fatal("Stop mode must skip the behind check")
 	}
 }
+
+// wt keeps worktrees under <repo>/.worktrees/; a repo that does not gitignore it must not
+// read as uncommitted work, or the deploy-branch alarm fires on a clean checkout.
+func TestInspect_IgnoresWorktreesDir(t *testing.T) {
+	ws := t.TempDir()
+	repo := mkRepo(t, ws, "a", "staging")
+	if err := os.MkdirAll(filepath.Join(repo, ".worktrees", "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".worktrees", "x", "f"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := Inspect(repo, Stop).Dirty; got != 0 {
+		t.Fatalf("Dirty = %d with only .worktrees/ untracked, want 0", got)
+	}
+	if got := Run(repo, ws, Stop); got != "" {
+		t.Fatalf("stop alarm on a clean deploy checkout: %q", got)
+	}
+	dirty(t, repo)
+	if got := Inspect(repo, Stop).Dirty; got != 1 {
+		t.Fatalf("Dirty = %d with a real untracked file, want 1", got)
+	}
+}

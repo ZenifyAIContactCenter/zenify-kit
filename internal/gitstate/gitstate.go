@@ -170,7 +170,8 @@ func Inspect(repo string, mode Mode) RepoState {
 		return st
 	}
 	st.Branch = branch
-	if status, ok := git(repo, "status", "--porcelain"); ok && status != "" {
+	// wt keeps worktrees in <repo>/.worktrees/; a repo that does not gitignore it is still clean.
+	if status, ok := git(repo, "status", "--porcelain", "--", ":(exclude).worktrees"); ok && status != "" {
 		st.Dirty = len(strings.Split(status, "\n"))
 	}
 	if mode == Stop {
