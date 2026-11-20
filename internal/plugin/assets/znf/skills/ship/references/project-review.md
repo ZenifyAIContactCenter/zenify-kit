@@ -47,7 +47,7 @@ The Claude review first, then the project's on the same branch; both use step 5'
    its own 2 rounds; red after round 2 → the exception above.
 3. **Project path drops out** (step 1's refused `BRANCH`, or `znf:review` returns
    `project bỏ qua: <reason>`, in any round): never a second full Claude review. Board line
-   `review … project bỏ qua: <reason>`. Then `git diff "$CLAUDE_TREE" HEAD` (the kept sha) covers
+   `review … project bỏ qua: <reason>`. Then `git diff <the kept sha> HEAD` (paste the sha: a variable does not survive between Bash calls) covers
    every change since the Claude pass (hook rewrites at commit, re-run-check commits, fix commits):
    non-empty → ONE scoped re-review with `engine agent` of only that diff, plus the project findings
    any fix commits fixed, verbatim, as ship's fix loop; empty, or step 1 refused `BRANCH` (nothing
