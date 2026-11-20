@@ -77,6 +77,8 @@ Run this when the user says "plan today", "daily plan" or the Vietnamese equival
 
 When SessionStart output has `# Track day close:`, summarize it for the user in your first reply: done, merged PRs, carried-over work, waiting PRs with the next step. Then offer `## Daily plan`; run `plan set` only after the user approves. `zenify track close-day` can be run by hand; older log lines live in `.zenify/track/archive/`.
 
+When the report has a `## Feedback` section, dispatch `Agent(znf:kaizen)` with two absolute paths: the report `.zenify/track/days/<D>.md` and `.zenify/track/feedback.md` (it may not exist yet). Show its proposals to the user once, as one list. After the user answers, append one line per proposal to `.zenify/track/feedback.md` (create it when missing): `<D> · picked|rejected|open · <short title>`. This is the only exception to "a skill never edits `.zenify/track/`". For each `picked` proposal run `zenify track backlog add 'feedback: <title>' --repo zenify-kit`. When the agent returns no report, say `kaizen: no report` and do not analyze the day yourself.
+
 ## Onboard
 
 Run this when the digest says `track: not onboarded`.
