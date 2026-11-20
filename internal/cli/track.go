@@ -840,9 +840,7 @@ func computeTrackStatsInput(errW io.Writer, dir, wsDir, today string, now time.T
 		if newCache != nil {
 			merged = newCache
 		}
-		if err := snapshotReviews(errW, dir, in.Log, merged, now); err != nil {
-			return trackstats.Result{}, trackstats.Input{}, err
-		}
+		snapshotReviews(errW, dir, in.Log, merged, now)
 	}
 	if in.Merged == nil {
 		res.Today.MergedError = string(lastErr)
@@ -887,11 +885,16 @@ func computeTrackStatsInput(errW io.Writer, dir, wsDir, today string, now time.T
 const reviewGiveUp = 3
 
 // snapshotReviews writes .zenify/track/reviews/<file> for up to reviewsPerCycle PRs merged within
-// closeDayKeepDays that have none yet, newest merge first. A gh or write failure is counted in
-// reviews.failed (url -> attempts) and retried next cycle until reviewGiveUp; a success clears the
-// count. Only the first failure of a cycle goes to errW. A failed stat, read or write of the
-// bookkeeping files is returned.
-func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, now time.Time) error {
+// closeDayKeepDays that have none yet, newest merge first. A failed fetch or write is retried next
+// cycle; reviews.failed (url -> attempts) counts it only when another fetch of the same cycle
+// succeeded, since a cycle where every fetch fails is gh being down, and a url at reviewGiveUp stops
+// taking a slot. A success clears the count. Snapshots are best effort: every problem, its own
+// bookkeeping included, is reported on errW (the first fetch failure of a cycle only) and never
+// fails the stats run.
+func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, now time.Time) {
+	warn := func(format string, a ...any) {
+		_, _ = fmt.Fprintf(errW, format, a...) // a failed stderr write has nowhere else to go
+	}
 	reviewsDir := filepath.Join(dir, "reviews")
 	failedPath := filepath.Join(dir, "reviews.failed")
 	failed := map[string]int{}
@@ -899,10 +902,11 @@ func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, 
 	switch {
 	case err == nil:
 		if err := json.Unmarshal(fb, &failed); err != nil {
-			return fmt.Errorf("parse %s: %w", failedPath, err)
+			warn("track: reviews.failed: %v; starting over\n", err)
+			failed = map[string]int{}
 		}
 	case !errors.Is(err, os.ErrNotExist):
-		return err
+		warn("track: reviews.failed: %v; starting over\n", err)
 	}
 	cut := now.Add(-closeDayKeepDays * 24 * time.Hour)
 	// Newest merge first, so a new PR gets a slot ahead of old PRs whose snapshot keeps failing.
@@ -925,17 +929,12 @@ func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, 
 			nextFailed[u] = n
 		}
 	}
-	var events []trackstats.Event
-	parsed, reported := false, false
-	fail := func(url string, err error) error {
-		nextFailed[url]++
-		if reported {
-			return nil
-		}
-		reported = true
-		_, werr := fmt.Fprintf(errW, "track: review snapshot %s: %v\n", url, err)
-		return werr
-	}
+	var (
+		events     []trackstats.Event
+		parsed     bool
+		cycleFails []string
+		successes  int
+	)
 	taken := 0
 	for _, url := range urls {
 		if taken == reviewsPerCycle {
@@ -953,7 +952,8 @@ func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, 
 			delete(nextFailed, url)
 			continue
 		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
+			warn("track: review snapshot %s: %v\n", url, err)
+			continue
 		}
 		if !parsed {
 			events, _ = trackstats.ParseLog(log)
@@ -972,30 +972,38 @@ func snapshotReviews(errW io.Writer, dir, log string, merged map[string]string, 
 			}
 		}
 		if err != nil {
-			if werr := fail(url, err); werr != nil {
-				return werr
+			if len(cycleFails) == 0 {
+				warn("track: review snapshot %s: %v\n", url, err)
 			}
+			cycleFails = append(cycleFails, url)
 			continue
 		}
+		successes++
 		delete(nextFailed, url)
 	}
+	if successes > 0 {
+		for _, u := range cycleFails {
+			nextFailed[u]++
+		}
+	}
 	if reflect.DeepEqual(nextFailed, failed) {
-		return nil
+		return
 	}
 	if len(nextFailed) == 0 {
 		if err := os.Remove(failedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+			warn("track: reviews.failed: %v\n", err)
 		}
-		return nil
+		return
 	}
 	out, err := json.Marshal(nextFailed)
+	if err == nil {
+		if err = os.MkdirAll(dir, 0o750); err == nil {
+			err = writeFileAtomic(failedPath, out, 0o644)
+		}
+	}
 	if err != nil {
-		return err
+		warn("track: reviews.failed: %v\n", err)
 	}
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return err
-	}
-	return writeFileAtomic(failedPath, out, 0o644)
 }
 
 // writeStatusCache stores the open PR statuses by url, so a run outside the recheck window can show them.
