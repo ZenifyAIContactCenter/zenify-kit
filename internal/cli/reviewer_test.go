@@ -6,7 +6,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 )
 
 func TestDecideReviewerMatrix(t *testing.T) {
@@ -27,6 +30,28 @@ func TestDecideReviewerMatrix(t *testing.T) {
 					t.Errorf("thread=%q zr=%q onPath=%v: got (%q,%q) want (%q,%q)", thread, zr, onPath, got, reason, want, wantReason)
 				}
 			}
+		}
+	}
+	// Unset ZNF_REVIEWER is the kit default (agent+project); agent+project without a Pre-PR
+	// line behaves exactly as agent (codex inside a Codex session).
+	noLine := "không có dòng Pre-PR review" //znf:allow-lang
+	for _, r := range []struct {
+		zr, thread       string
+		onPath, prePR    bool
+		want, wantReason string
+	}{
+		{"", "", true, true, "agent+project", ""},
+		{"", "", true, false, "agent", noLine},
+		{"", "1", true, false, "codex", ""},
+		{"agent+project", "1", true, false, "codex", ""},
+		{"agent+project", "1", false, false, "agent", noLine},
+		{"agent+project", "1", true, true, "agent+project", ""},
+		{"agent+project", "", false, false, "agent", noLine},
+	} {
+		env := map[string]string{"CODEX_THREAD_ID": r.thread, "ZNF_REVIEWER": r.zr}
+		got, reason := decideReviewer(func(k string) string { return env[k] }, r.onPath, r.prePR)
+		if got != r.want || reason != r.wantReason {
+			t.Errorf("zr=%q thread=%q onPath=%v prePR=%v: got (%q,%q) want (%q,%q)", r.zr, r.thread, r.onPath, r.prePR, got, reason, r.want, r.wantReason)
 		}
 	}
 }
@@ -127,8 +152,8 @@ func TestReviewerGetPrintsStoredValue(t *testing.T) {
 		err := root.Execute()
 		return out.String(), err
 	}
-	if out, err := get(); err != nil || out != "agent\n" {
-		t.Fatalf("no settings file: %q %v, want agent", out, err)
+	if out, err := get(); err != nil || out != "agent+project\n" {
+		t.Fatalf("no settings file: %q %v, want agent+project", out, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
@@ -196,5 +221,76 @@ func TestHasPrePRLine_WalksUpThenHome(t *testing.T) {
 	files["/ws/CLAUDE.md"] = "  Pre-PR review: indented\nxPre-PR review: x\n"
 	if hasPrePRLine("/ws/repos/a/src", "/home/u", read) {
 		t.Fatal("only a line that starts with the marker counts")
+	}
+}
+
+func TestDecideReviewer_AgentPlusProject(t *testing.T) {
+	zr := map[string]string{"ZNF_REVIEWER": "agent+project"}
+	if got, reason := decideReviewer(envOf(zr), false, true); got != "agent+project" || reason != "" {
+		t.Fatalf("with line: got (%q,%q)", got, reason)
+	}
+	if got, reason := decideReviewer(envOf(zr), true, false); got != "agent" || reason != "không có dòng Pre-PR review" { //znf:allow-lang
+		t.Fatalf("without line: got (%q,%q)", got, reason)
+	}
+	zr["CODEX_THREAD_ID"] = "1"
+	if got, reason := decideReviewer(envOf(zr), true, true); got != "agent+project" || reason != "" {
+		t.Fatalf("beats codex thread: got (%q,%q)", got, reason)
+	}
+}
+
+// FR-4.11.6: an explicit `reviewer set agent` made before the workspace's first new-kit session
+// start survives the one-time agent → agent+project migration.
+func TestReviewerSetSurvivesDefaultMigration(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := reviewerWorkspace(t)
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"reviewer", "set", "agent"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("reviewer set agent: %v", err)
+	}
+	ws := canonicalPath(filepath.Dir(filepath.Dir(path)))
+	changed, err := apply.MigrateReviewerDefault(apply.WorkspaceLocalSettings(ws), apply.KitReviewerDefaultRecord(home), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := apply.ReviewerEnvValue(apply.WorkspaceLocalSettings(ws))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || got != "agent" {
+		t.Fatalf("after migration: changed=%v value=%q, want false, \"agent\"", changed, got)
+	}
+}
+
+// A record that cannot be written does not fail a set whose value landed: the value line
+// still prints and the record error is a warning (Zenie Review #393, fix review).
+func TestReviewerSetRecordFailureStillSucceeds(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := reviewerWorkspace(t)
+	record := apply.KitReviewerDefaultRecord(home)
+	if err := os.MkdirAll(filepath.Dir(record), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(record, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := NewRootCmd()
+	var out, errOut bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errOut)
+	root.SetArgs([]string{"reviewer", "set", "codex"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("reviewer set codex: %v", err)
+	}
+	if !strings.Contains(out.String(), "ZNF_REVIEWER=codex") || !strings.Contains(errOut.String(), "malformed") {
+		t.Fatalf("out=%q err=%q", out.String(), errOut.String())
+	}
+	if got, _ := apply.ReviewerEnvValue(path); got != "codex" {
+		t.Fatalf("value = %q, want codex", got)
 	}
 }

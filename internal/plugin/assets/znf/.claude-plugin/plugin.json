@@ -38,9 +38,9 @@
     "reviewer": {
       "type": "string",
       "title": "Reviewer",
-      "description": "The engine znf:review uses. Runs zenify reviewer set agent|codex|project; applies to new sessions.",
-      "default": "agent",
-      "options": ["agent", "codex", "project"]
+      "description": "The engine znf:review uses. Runs zenify reviewer set agent|codex|project|agent+project; applies to new sessions.",
+      "default": "agent+project",
+      "options": ["agent", "codex", "project", "agent+project"]
     }
   }
 }

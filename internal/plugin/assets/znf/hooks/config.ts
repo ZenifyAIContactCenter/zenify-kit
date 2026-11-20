@@ -8,7 +8,7 @@ import { COPY } from './track-ui'
 const RUN_TIMEOUT_MS = 20000
 // Row field -> `zenify feature` key (FR-17.1).
 const FEATURES: Record<string, string> = { track: 'track', githubIssues: 'github.issues', trackFeedback: 'track.feedback' }
-const REVIEWERS = ['agent', 'codex', 'project']
+const REVIEWERS = ['agent', 'codex', 'project', 'agent+project']
 const FEATURE_LINE = /^(\S+) (on|off)$/
 
 export type TrackPane = 'auto' | 'command' | 'off'

@@ -1,7 +1,8 @@
 # Project engine (Step 3, `ENGINE=project`)
 
-`zenify reviewer` prints `project` only when `ZNF_REVIEWER=project` and a CLAUDE.md declares a
-`Pre-PR review:` line. The project's reviewer reads a pushed branch head before any PR exists. `BASE`
+This engine is reached via `ZNF_REVIEWER=project` (`zenify reviewer` prints `project`), or via
+ship's `engine project` arg under `agent+project` (`zenify reviewer` prints `agent+project`); both
+need a CLAUDE.md that declares a `Pre-PR review:` line. The project's reviewer reads a pushed branch head before any PR exists. `BASE`
 and `PACK` are Step 1's; `DECLINES` is ship's list for this round (empty standalone and on round 1).
 
 1. **Declaration.** Walk up from the worktree to `/` reading each `CLAUDE.md`, then
@@ -15,6 +16,8 @@ and `PACK` are Step 1's; `DECLINES` is ship's list for this round (empty standal
    BRANCH=$(git branch --show-current)
    BASE_BRANCH=$(zenify wt base | sed 's#^origin/##')
    ```
+
+   The caller's args say `base branch <name>` (a stacked ship's upper layer) → `BASE_BRANCH=<name>`.
 
 3. **Push.** Uncommitted or untracked changes → fall back (this engine reviews pushed commits only;
    never commit for it). `BRANCH` empty (detached), equal to `BASE_BRANCH`, or listed in the repo's
@@ -48,4 +51,7 @@ and `PACK` are Step 1's; `DECLINES` is ship's list for this round (empty standal
 7. **Fall back.** Tool missing from this session, a call errors, no verdict after 30 minutes, or a
    case above → board line `review … project→agent: <reason>`, then set `ENGINE=agent`, Step 1c (bundling, when `ADDED > 2000`) and T1/T2/T3, passing the accumulated `DECLINES` to the reviewers as
    `Declined: <title> — <reason>` lines (title from the finding the id named).
+   The caller's args say `engine project` (ship under `agent+project`, the Claude review already
+   clean) → instead board line `review … project bỏ qua: <reason>`, run no tiers, and return Step 1b's
+   mechanical findings with `shippable` set on them.
    Never fail silently.

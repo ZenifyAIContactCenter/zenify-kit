@@ -843,8 +843,8 @@ func newUpCmd() *cobra.Command {
 			if err := dryRunApplyConflict(applyFlag, cmd.Flags().Changed("dry-run"), dryRun); err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
-			if reviewer != "" && reviewer != "agent" && reviewer != "codex" && reviewer != "project" {
-				return exitcode.New(exitcode.BadArgs, fmt.Errorf("--reviewer %q: want agent, codex or project", reviewer))
+			if reviewer != "" && reviewer != "agent" && reviewer != "codex" && reviewer != "project" && reviewer != "agent+project" {
+				return exitcode.New(exitcode.BadArgs, fmt.Errorf("--reviewer %q: want agent, codex, project or agent+project", reviewer))
 			}
 			cwd, _ := os.Getwd()
 			isTTY := term.IsTerminal(int(os.Stdout.Fd()))
@@ -883,8 +883,17 @@ func newUpCmd() *cobra.Command {
 			}
 			workspace = ws
 			if reviewer != "" {
-				if err := apply.SetReviewerEnv(apply.WorkspaceLocalSettings(workspace), reviewer, !applyFlag); err != nil {
-					fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
+				settings := apply.WorkspaceLocalSettings(workspace)
+				var rerr error
+				if home, herr := os.UserHomeDir(); applyFlag && herr == nil {
+					// An explicit choice must survive the one-time default migration: the
+					// write and the record happen under the migration's lock.
+					_, rerr = apply.SetReviewerExplicit(settings, apply.KitReviewerDefaultRecord(home), reviewer)
+				} else {
+					rerr = apply.SetReviewerEnv(settings, reviewer, !applyFlag)
+				}
+				if rerr != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", rerr)
 				}
 			}
 			if overlayPath == "" {
@@ -972,7 +981,7 @@ func newUpCmd() *cobra.Command {
 	cmd.Flags().StringVar(&workspace, "workspace", "", "workspace root (default: the workspace found from cwd or ~/.zenify/workspace; the wizard asks when there is none)")
 	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to repos.yaml (default: manifest/repos.yaml under cwd when present, else the copy embedded in the binary)")
 	cmd.Flags().StringVar(&overlayPath, "overlay", "", "path to personal overlay (default <workspace>/.zenify-overlay.yaml)")
-	cmd.Flags().StringVar(&reviewer, "reviewer", "", "review engine written to ZNF_REVIEWER in <workspace>/.claude/settings.local.json: agent, codex or project (written only with --apply)")
+	cmd.Flags().StringVar(&reviewer, "reviewer", "", "review engine written to ZNF_REVIEWER in <workspace>/.claude/settings.local.json: agent, codex, project or agent+project (written only with --apply)")
 	cmd.Flags().BoolVar(&applyFlag, "apply", false, "apply changes without the interactive wizard (required for non-interactive/CI runs)")
 	return cmd
 }

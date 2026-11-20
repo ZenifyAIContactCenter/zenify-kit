@@ -17,6 +17,7 @@ const ALLOWED = [
   'zenify reviewer set agent',
   'zenify reviewer set codex',
   'zenify reviewer set project',
+  'zenify reviewer set agent+project',
 ]
 
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -92,7 +93,7 @@ function engine(on: any, world: World): Calls {
 }
 
 // The rows as the defaults hold them, matching the sources below unless a test says otherwise.
-const SYNCED = { 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback off\n'), 'zenify reviewer get': ok('agent\n') }
+const SYNCED = { 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback off\n'), 'zenify reviewer get': ok('agent+project\n') }
 
 async function start($: any, clock: { settle: () => Promise<void> }) {
   await $.session.start({ cwd: CWD, source: 'startup' } as any)
@@ -184,6 +185,13 @@ test('FR-4.11.1: a reviewer source of project sets znf.reviewer project without 
   const clock = mock.clock(on)
   await start($, clock)
   expect(calls.set).toEqual([{ key: 'znf.reviewer', value: 'project' }])
+})
+
+test('FR-4.11.6: a reviewer source of agent+project sets znf.reviewer agent+project without throwing', { options: { reviewer: 'agent' } }, async ($, on) => {
+  const calls = engine(on, { runs: { ...SYNCED, 'zenify reviewer get': ok('agent+project\n') } })
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(calls.set).toEqual([{ key: 'znf.reviewer', value: 'agent+project' }])
 })
 
 test('FR-17.3: a reviewer source of codex sets znf.reviewer codex', { options: { reviewer: 'agent' } }, async ($, on) => {

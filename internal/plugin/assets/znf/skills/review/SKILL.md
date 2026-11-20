@@ -53,7 +53,10 @@ runs them.
 ENGINE=$(zenify reviewer 2>/dev/null | cut -d' ' -f1); [ -n "$ENGINE" ] || ENGINE=agent
 ```
 
-The caller's args say `engine agent` (ship after a project fallback) → `ENGINE=agent`, no `zenify reviewer`.
+The caller's args say `engine agent` (ship after a project fallback, or ship's Claude pass under
+`agent+project`) → `ENGINE=agent`; `engine project` (ship's project pass under `agent+project`) →
+`ENGINE=project`. Either way, no `zenify reviewer`. No such arg and `zenify reviewer` prints `agent+project`
+(standalone `/review`) → `ENGINE=agent`.
 `zenify reviewer` printing `agent (<reason>)` → board line `review … engine: agent (<reason>)`.
 
 ## Step 1c — BUNDLE (split a large diff)

@@ -193,3 +193,34 @@ func TestShipProjectEnginePushesBeforeReview(t *testing.T) {
 		t.Error("project-review.md still pins PRE=$(git write-tree)")
 	}
 }
+
+// FR-4.11.6: agent+project runs the Claude review first, then the project's on the whole branch;
+// a project fallback never re-runs Claude and is recorded as skipped.
+func TestShipAgentPlusProjectRunsBothReviews(t *testing.T) {
+	assertContainsAll(t, "review/SKILL.md", syncedAsset(t, "skills/review/SKILL.md"), []string{
+		"`engine project`", "prints `agent+project`",
+	})
+	assertContainsAll(t, "project-engine.md", syncedAsset(t, "skills/review/references/project-engine.md"), []string{
+		"`engine project`", "project bỏ qua: <reason>", "run no tiers", //znf:allow-lang -- board literal from the spec
+	})
+	assertContainsAll(t, "ship/SKILL.md", syncedAsset(t, "skills/ship/SKILL.md"), []string{
+		"`ENGINE=agent+project`",
+	})
+	assertContainsAll(t, "project-review.md", syncedAsset(t, "skills/ship/references/project-review.md"), []string{
+		"## `ENGINE=agent+project`", "`engine agent`", "`engine project`", "never a second full Claude review", "ONE scoped", `CLAUDE_TREE=$(git add -A && git write-tree)`, "`git diff <the kept sha> HEAD`", "`ENGINE=project` only (under `agent+project`, item 3 below applies)", "follow its item 3 below instead",
+		"project bỏ qua: <reason>", "two review lines", "only if 7b has not run", //znf:allow-lang -- board literal from the spec
+	})
+	// A stacked ship must not open its PRs before the project pass (Zenie Review #393).
+	assertContainsAll(t, "stacked-ship.md", syncedAsset(t, "skills/ship/references/stacked-ship.md"), []string{
+		"**Project pass**", "`gh stack push`", "`base branch <layer i-1 branch>`", "first `zenify ui-verify check`", "then (c), then item 5", "skips its `ui-verify check`", "its own 2 rounds", "steps 2-4 re-run only (no Claude",
+	})
+	assertContainsAll(t, "project-engine.md", syncedAsset(t, "skills/review/references/project-engine.md"), []string{
+		"`base branch <name>`", "`BASE_BRANCH=<name>`",
+	})
+	if strings.Contains(syncedAsset(t, "skills/ship/references/project-review.md"), "the head the Claude pass last saw") {
+		t.Error("project-review.md still names the undefined head the Claude pass last saw")
+	}
+	if strings.Contains(syncedAsset(t, "skills/review/references/project-engine.md"), "prints `project` only when") {
+		t.Error("project-engine.md still says project is reached only via ZNF_REVIEWER=project")
+	}
+}
