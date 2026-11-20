@@ -3,7 +3,7 @@ import type { EngineInterface as $, PluginOptions, Register, Timer } from 'claud
 
 import type { TrackStats } from '../types'
 import { isInWorkspace, registerConfig, setInWorkspace, syncConfig, trackPaneOf } from './config'
-import { bindLine, cwdLine, isStartCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
+import { START_REMINDER, bindLine, cwdLine, isStartCommand, isTaskOpenCommand, kindOf, parseEndedId, parseStartId, phaseFor, phaseLine, stdoutOf, turnLine, unbindLine, waitLine } from './track'
 import type { Kind, Usage, WaitKind } from './track'
 import { COPY, SPIN_TICK_MS, STATUS_OFF, TABS, WATCH_TICK_MS, errorStatus, isTrackPrompt, parseTrackStats, promptSkillOf, trackContext, trackSectionOf, statusText, tabLines, tipLine } from './track-ui'
 import type { Line, Tab } from './track-ui'
@@ -227,6 +227,13 @@ export async function setTrackEnabled($: $, on: boolean): Promise<void> {
   // and close-day prunes the file after 24h off, so it is rewritten even under an unchanged state.
   // Only a tab that has written one is rewritten; a tab that never asked gets no file.
   if (on && !wasOn && liveState !== undefined) void syncLive($, true).catch(timingError($))
+}
+
+// Track on in a workspace and no open id: an unbound session, or one whose id ended this turn.
+async function needsStart($: $): Promise<boolean> {
+  if (!isInWorkspace() || !(await isEnabled($))) return false
+  const b = await read($, bound)
+  return !b || b.ending
 }
 
 // FR-2.3: whether track records; a failed read is toasted and counts as off.
@@ -563,6 +570,17 @@ export const register: Register = (on, options: PluginOptions) => {
     const r = await next(e)
     if (!ctx || r.deny !== undefined || r.isError) return r
     return { ...r, context: [...(r.context ?? []), ctx] }
+  })
+
+  // A worktree or PR opened in the main loop with no open id: remind the agent to start one, so a
+  // follow-up task in the same session is not left out of track. A reminder, not a deny.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const r = await next(e)
+    const command = String((e as { command?: unknown }).command ?? '')
+    // A command that starts an id itself (`track start && wt new`) needs no reminder.
+    if (e.agentId || !isTaskOpenCommand(command) || isStartCommand(command) || r.deny !== undefined || r.isError) return r
+    const remind = await needsStart($).catch(trackContextError($))
+    return remind ? { ...r, context: [...(r.context ?? []), START_REMINDER] } : r
   })
 
   // zenify track (FR-4, FR-8.2): every tool call of a session, timed around `next(e)`; the

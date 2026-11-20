@@ -36,6 +36,15 @@ export function stdoutOf(answer: unknown): string {
 
 export const isStartCommand = (command: string): boolean => /\bzenify\s+track\s+start\b/.test(command)
 
+// A command that opens a task's worktree or PR: the work it starts must sit under a track id.
+export const isTaskOpenCommand = (command: string): boolean => /\bwt\s+new\b|\bgh\b[^|;&\n]*\bpr\s+create\b/.test(command)
+
+// The context a task-open command carries when this session has no open id (a reminder, never a deny).
+export const START_REMINDER =
+  'track is on and this session has no open track id: run `zenify track start --kind <cook|fix|hotfix|task> --repo <repo> --est -` now, ' +
+  'keep the printed id, and close it with `zenify track end <id> --pr <url>` once the PR is open. ' +
+  'A new ask mid-session (a new PR or repo) is a new task: start a new id for it.'
+
 // The id a successful `zenify track end` closed: only its `track: ended <id>` stdout line
 // counts, so a rejected end, or a script that merely contains the command, unbinds nothing.
 export function parseEndedId(stdout: string): string | undefined {
