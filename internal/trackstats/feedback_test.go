@@ -80,7 +80,7 @@ func TestFeedback_NoMergedIsEmpty(t *testing.T) {
 // SC-8, SC-12 (missing side)
 func TestFeedback_MissingData(t *testing.T) {
 	got := Feedback(fbInput(t, nil, "shipped · - · 0,0,0,0 · 0"))
-	wantLines(t, got, "- ledger: none", "- review data: missing", "- run: "+fbID+" cook est M wall 60m")
+	wantLines(t, got, "- ledger: none", "- review data: missing (.zenify/track/reviews/o-r-7.json)", "- run: "+fbID+" cook est M wall 60m")
 	for _, no := range []string{"escaped:", "bot review:", "ledger counts:"} {
 		if strings.Contains(got, no) {
 			t.Errorf("unexpected %q in:\n%s", no, got)
@@ -154,4 +154,19 @@ func TestFeedback_BotReview(t *testing.T) {
 	}
 	got := Feedback(fbInput(t, snap, "shipped · - · 0,0,0,0 · 0"))
 	wantLines(t, got, "- bot review: push rounds 2, threads CRITICAL 1 HIGH 0 MEDIUM 1 LOW 1, Declined: 1")
+}
+
+// A ledger keyed by an id that is not a track id is never named as a path.
+func TestFeedback_LedgerIDRevalidated(t *testing.T) {
+	bad := "../../etc/passwd"
+	in := fbInput(t, nil, "shipped · - · 0,0,0,0 · 0")
+	in.Events = append(in.Events, Event{Type: "end", ID: bad, F: []string{fbURL, "1", "0"}})
+	in.Ledgers[bad] = "Ruling: x\n"
+	got := Feedback(in)
+	wantLines(t, got, "- ledger: none")
+	for _, no := range []string{"ledgers/" + bad, "ledger counts:"} {
+		if strings.Contains(got, no) {
+			t.Errorf("unexpected %q in:\n%s", no, got)
+		}
+	}
 }

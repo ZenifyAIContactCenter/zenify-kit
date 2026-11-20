@@ -157,10 +157,11 @@ func parseReview(out []byte) (ReviewSnapshot, error) {
 	return s, nil
 }
 
-// splitPRURL splits https://<host>/<owner>/<repo>/pull/<number>.
+// splitPRURL splits https://github.com/<owner>/<repo>/pull/<number>.
 func splitPRURL(raw string) (owner, name, number string, ok bool) {
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	// Only github.com: a snapshot is fetched with gh, and a look-alike host must never be asked.
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host != "github.com" || u.User != nil {
 		return "", "", "", false
 	}
 	p := strings.Split(strings.Trim(u.Path, "/"), "/")

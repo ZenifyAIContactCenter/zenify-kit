@@ -63,7 +63,8 @@ func feedbackBlock(b *strings.Builder, in FeedbackInput, prURL string) {
 	}
 
 	ledger, hasLedger := in.Ledgers[id]
-	if hasLedger && id != "-" {
+	// The id names a file path: only a real track id may, whatever the caller put in Ledgers.
+	if hasLedger && idRe.MatchString(id) {
 		fmt.Fprintf(b, "- ledger: .zenify/track/ledgers/%s.md\n", id)
 	} else {
 		b.WriteString("- ledger: none\n")
@@ -74,7 +75,12 @@ func feedbackBlock(b *strings.Builder, in FeedbackInput, prURL string) {
 	if snap != nil && okName {
 		fmt.Fprintf(b, "- review data: .zenify/track/reviews/%s\n", file)
 	} else {
-		b.WriteString("- review data: missing\n")
+		// The expected path, so a reader can check later whether the snapshot has arrived.
+		if okName {
+			fmt.Fprintf(b, "- review data: missing (.zenify/track/reviews/%s)\n", file)
+		} else {
+			b.WriteString("- review data: missing\n")
+		}
 		snap = nil
 	}
 

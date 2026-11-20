@@ -72,7 +72,11 @@ func TestReviewFileName(t *testing.T) {
 	if got, ok := ReviewFileName("https://github.com/o/r/pull/9"); !ok || got != "o-r-9.json" {
 		t.Errorf("ReviewFileName = %q %v, want o-r-9.json true", got, ok)
 	}
-	for _, u := range []string{"https://x/y", "branch:x", "https://github.com/o/r/issues/9", "https://github.com/o/r/pull/x"} {
+	if got, ok := ReviewFileName("http://github.com/o/r/pull/9"); !ok || got != "o-r-9.json" {
+		t.Errorf("ReviewFileName(http) = %q %v, want o-r-9.json true", got, ok)
+	}
+	for _, u := range []string{"https://x/y", "branch:x", "https://gitlab.com/o/r/pull/9", "https://github.com.evil.io/o/r/pull/9",
+		"https://ghe.corp/o/r/pull/9", "https://user@github.com:8443/o/r/pull/9", "https://github.com/o/r/issues/9", "https://github.com/o/r/pull/x"} {
 		if got, ok := ReviewFileName(u); ok {
 			t.Errorf("ReviewFileName(%q) = %q true, want false", u, got)
 		}
