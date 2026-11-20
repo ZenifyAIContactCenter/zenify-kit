@@ -230,3 +230,28 @@ func TestMigrateReviewerDefault_CodexUntouchedButRecorded(t *testing.T) {
 		t.Fatalf("record = %v", l)
 	}
 }
+
+// An explicit "agent" followed by the record must survive the first-run migration.
+func TestMigrateReviewerDefault_ExplicitChoiceRecordedSurvives(t *testing.T) {
+	dir := t.TempDir()
+	settings := filepath.Join(dir, "ws", ".claude", "settings.local.json")
+	record := filepath.Join(dir, "kit-reviewer-default.json")
+	if err := os.MkdirAll(filepath.Dir(settings), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetReviewerEnv(settings, "agent", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordReviewerDefaultMigrated(settings, record); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := MigrateReviewerDefault(settings, record, false); err != nil || changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	if v, _ := ReviewerEnvValue(settings); v != "agent" {
+		t.Fatalf("explicit value overwritten: %q", v)
+	}
+	if l := readRecordList(t, record); len(l) != 1 {
+		t.Fatalf("record = %v", l)
+	}
+}

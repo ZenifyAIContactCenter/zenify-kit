@@ -885,6 +885,13 @@ func newUpCmd() *cobra.Command {
 			if reviewer != "" {
 				if err := apply.SetReviewerEnv(apply.WorkspaceLocalSettings(workspace), reviewer, !applyFlag); err != nil {
 					fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
+				} else if applyFlag {
+					// An explicit choice must survive the one-time default migration.
+					if home, herr := os.UserHomeDir(); herr == nil {
+						if err := apply.RecordReviewerDefaultMigrated(apply.WorkspaceLocalSettings(workspace), apply.KitReviewerDefaultRecord(home)); err != nil {
+							fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
+						}
+					}
 				}
 			}
 			if overlayPath == "" {

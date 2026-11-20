@@ -127,12 +127,8 @@ func KitReviewerDefaultRecord(home string) string {
 // Returns whether the value changed; dryRun writes nothing.
 func MigrateReviewerDefault(settingsPath, recordPath string, dryRun bool) (bool, error) {
 	ws := filepath.Dir(filepath.Dir(settingsPath))
-	var seen []string
-	if raw, err := os.ReadFile(recordPath); err == nil { //nolint:gosec // G304 -- fixed path under the caller's home dir
-		if err := json.Unmarshal(raw, &seen); err != nil {
-			return false, fmt.Errorf("%s record malformed: %w", filepath.Base(recordPath), err)
-		}
-	} else if !os.IsNotExist(err) {
+	seen, err := readMigrationRecord(recordPath)
+	if err != nil {
 		return false, err
 	}
 	for _, p := range seen {
@@ -160,12 +156,44 @@ func MigrateReviewerDefault(settingsPath, recordPath string, dryRun bool) (bool,
 			return false, err
 		}
 	}
-	out, err := json.Marshal(append(seen, ws))
+	return changed, writeMigrationRecord(recordPath, append(seen, ws))
+}
+
+// RecordReviewerDefaultMigrated adds the workspace to the migration record
+// without touching its value, so an explicit choice made now is never migrated.
+func RecordReviewerDefaultMigrated(settingsPath, recordPath string) error {
+	ws := filepath.Dir(filepath.Dir(settingsPath))
+	seen, err := readMigrationRecord(recordPath)
 	if err != nil {
-		return changed, err
+		return err
+	}
+	for _, p := range seen {
+		if p == ws {
+			return nil
+		}
+	}
+	return writeMigrationRecord(recordPath, append(seen, ws))
+}
+
+func readMigrationRecord(recordPath string) ([]string, error) {
+	var seen []string
+	if raw, err := os.ReadFile(recordPath); err == nil { //nolint:gosec // G304 -- fixed path under the caller's home dir
+		if err := json.Unmarshal(raw, &seen); err != nil {
+			return nil, fmt.Errorf("%s record malformed: %w", filepath.Base(recordPath), err)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+	return seen, nil
+}
+
+func writeMigrationRecord(recordPath string, list []string) error {
+	out, err := json.Marshal(list)
+	if err != nil {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(recordPath), 0o750); err != nil {
-		return changed, err
+		return err
 	}
-	return changed, writeAtomic(recordPath, out, 0o600)
+	return writeAtomic(recordPath, out, 0o600)
 }
