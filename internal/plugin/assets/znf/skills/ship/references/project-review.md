@@ -25,10 +25,28 @@ later adopts that head's result, so the order of steps 5 and 7 changes.
 4. **Step 7**: skip 7b (done) and the `ui-verify check` (run before each commit, also after a fallback). `HEAD` = the last reviewed head → push nothing; it differs → back to
    step 5 (that counts as a round). Run `zenify docs sync` once, then `gh pr create` on that head.
 
-Review fell back (`project→agent:` on the board) in any round → the rest of this ship uses
+Review fell back (`project→agent:` on the board) in any round, with `ENGINE=project` → the rest of this ship uses
 `ENGINE=agent` (every later `Skill(znf:review)` gets `engine agent` in its args), the normal flow from there, and 7b does not run again. A
 fallback round counts as a fix-loop round.
 
 **Exception to ship's "Any ❌ → fix, no commit" and "On all-green, commit and push":** with
 `ENGINE=project` the commits and push happen before review, so red after round 2 leaves pushed
 commits and opens no PR.
+
+## `ENGINE=agent+project`
+
+The Claude review first, then the project's on the same branch; both use step 5's `BASE`.
+
+1. **Claude pass**: step 5 with `engine agent` in `Skill(znf:review)`'s args, and ship's own fix loop
+   (scoped re-review, 2 rounds; still open after round 2 → STOP, commit nothing), exactly as `agent`.
+2. **Project pass**, once the Claude pass is clean: step 1 above (ui-verify check, commit, 7b, push),
+   then steps 2–4 above with `engine project` in every `Skill(znf:review)`'s args. Its fix loop has
+   its own 2 rounds; red after round 2 → the exception above.
+3. **Project path drops out** (step 1's refused `BRANCH`, or `znf:review` returns
+   `project bỏ qua: <reason>`, in any round): never re-run the Claude review. Board line
+   `review … project bỏ qua: <reason>`; the rest of ship runs as `agent` after review: 7b only if 7b has not run,
+   then the missing commit or push, then `gh pr create`.
+4. **Board**: two review lines, `review … agent: …` and `review … project: …` (or
+   `project bỏ qua: <reason>`). `Shippable: YES` only when the agent line is clean and the project
+   line is clean or skipped. The agent line keeps its pre-commit `fp`; step 7's "every fingerprint
+   == the current one" exempts it, as it does the pre-commit `ui-verify check`.

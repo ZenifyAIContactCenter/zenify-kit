@@ -57,7 +57,7 @@ Gõ `zenify <lệnh> --help` để xem cú pháp của từng lệnh. Lệnh có
 - [zenify redis-read](./zenify_redis-read): Chạy một lệnh Redis chỉ đọc qua credential broker.
 - [zenify release-note](./zenify_release-note): Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau.
 - [zenify release-report](./zenify_release-report): Sinh báo cáo rủi ro cho một release tag từ lịch sử git của mọi repo trong workspace.
-- [zenify reviewer](./zenify_reviewer): In ra engine review mà kit sẽ dùng ở phiên này, agent, codex hoặc project, kèm lý do khi rơi về agent.
+- [zenify reviewer](./zenify_reviewer): In ra engine review mà kit sẽ dùng ở phiên này, agent, codex, project hoặc agent+project, kèm lý do khi rơi về agent.
 - [zenify route-log](./zenify_route-log): Xem các record routing model do skill ghi (số liệu plan từ znf:analyze), đếm theo site, model và gate.
 - [zenify rules](./zenify_rules): Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc.
 - [zenify secret-scan](./zenify_secret-scan): Quét một cây thư mục để tìm secret bị lộ, dùng trong CI và kiểm tra tay trước khi push.

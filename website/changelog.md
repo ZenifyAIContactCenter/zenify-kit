@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.77.0
+
+*2026-11-20*
+
+- **Engine review mặc định mới `agent+project`:** `/znf:ship` review bằng Claude trước (vòng sửa như `agent`); Claude sạch thì gửi cả nhánh cho reviewer mà dòng `Pre-PR review:` trong `CLAUDE.md` khai báo, theo đúng thứ tự commit, note-commit release, push và vòng sửa của engine `project`, rồi mở PR trên commit đã review. Board có hai dòng review. Đường `project` không chạy được thì ship không review lại bằng Claude, ghi `project bỏ qua: <lý do>` và mở PR như `agent`. Project không khai `Pre-PR review:` thì chạy như `agent`. `zenify up` seed `agent+project`, và workspace đang giữ `agent` (kể cả giá trị bạn tự đặt) được chuyển một lần, ở lần đầu bản kit mới chạy trong workspace; sau đó quay lại bằng `zenify reviewer set agent`. Xem [Review và gate](/guides/review-and-gates) và [Zenie review trên PR](/guides/zenie-review#review-truoc-khi-mo-pr).
+
 ## v0.76.0
 
 *2026-11-20*

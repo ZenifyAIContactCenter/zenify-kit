@@ -48,4 +48,7 @@ and `PACK` are Step 1's; `DECLINES` is ship's list for this round (empty standal
 7. **Fall back.** Tool missing from this session, a call errors, no verdict after 30 minutes, or a
    case above → board line `review … project→agent: <reason>`, then set `ENGINE=agent`, Step 1c (bundling, when `ADDED > 2000`) and T1/T2/T3, passing the accumulated `DECLINES` to the reviewers as
    `Declined: <title> — <reason>` lines (title from the finding the id named).
+   The caller's args say `engine project` (ship under `agent+project`, the Claude review already
+   clean) → instead board line `review … project bỏ qua: <reason>`, run no tiers, and return Step 1b's
+   mechanical findings with `shippable` set on them.
    Never fail silently.

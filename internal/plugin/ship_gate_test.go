@@ -193,3 +193,21 @@ func TestShipProjectEnginePushesBeforeReview(t *testing.T) {
 		t.Error("project-review.md still pins PRE=$(git write-tree)")
 	}
 }
+
+// FR-4.11.6: agent+project runs the Claude review first, then the project's on the whole branch;
+// a project fallback never re-runs Claude and is recorded as skipped.
+func TestShipAgentPlusProjectRunsBothReviews(t *testing.T) {
+	assertContainsAll(t, "review/SKILL.md", syncedAsset(t, "skills/review/SKILL.md"), []string{
+		"`engine project`", "prints `agent+project`",
+	})
+	assertContainsAll(t, "project-engine.md", syncedAsset(t, "skills/review/references/project-engine.md"), []string{
+		"`engine project`", "project bỏ qua: <reason>", "run no tiers", //znf:allow-lang -- board literal from the spec
+	})
+	assertContainsAll(t, "ship/SKILL.md", syncedAsset(t, "skills/ship/SKILL.md"), []string{
+		"`ENGINE=agent+project`",
+	})
+	assertContainsAll(t, "project-review.md", syncedAsset(t, "skills/ship/references/project-review.md"), []string{
+		"## `ENGINE=agent+project`", "`engine agent`", "`engine project`", "never re-run the Claude review",
+		"project bỏ qua: <reason>", "two review lines", "only if 7b has not run", //znf:allow-lang -- board literal from the spec
+	})
+}

@@ -46,7 +46,7 @@ Stamp each check with its `fp`; step 7 needs all current.
 
 5. **Independent review** — never pick the reviewer. First `BASE=$(git merge-base "$(zenify wt base)" HEAD)`. Write the pack to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md`, then **`Skill(znf:review)`** with `BASE` and the pack: it picks the tier, returns `findings[]` (`znf:review/_shared/finding-schema.md`) plus `shippable`. CRITICAL/HIGH enter the fix loop, MEDIUM/LOW and each `Declined:` line the board.
 
-   **`ENGINE=project`** (`zenify reviewer | cut -d' ' -f1`) changes the commit/7b/push order, the fix loop (no scoped re-review; declines, not `Declined:` lines) and the red exit: `references/project-review.md`.
+   **`ENGINE=project`** (`zenify reviewer | cut -d' ' -f1`) changes the commit/7b/push order, the fix loop and the red exit; `ENGINE=agent+project` does that after a clean `engine agent` pass: `references/project-review.md`.
 
    ```
    ## Intent      plan path (/cook) · root cause + Loop:/Regression: lines (/fix, /hotfix) · else the user's goal
