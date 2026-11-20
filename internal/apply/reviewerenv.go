@@ -164,11 +164,22 @@ func MigrateReviewerDefault(settingsPath, recordPath string, dryRun bool) (bool,
 	return changed, writeMigrationRecord(recordPath, append(seen, ws))
 }
 
-// RecordReviewerDefaultMigrated adds the workspace to the migration record
-// without touching its value, so an explicit choice made now is never migrated.
-func RecordReviewerDefaultMigrated(settingsPath, recordPath string) error {
-	ws := migrationKey(settingsPath)
+// SetReviewerExplicit writes value as the workspace's ZNF_REVIEWER and records the
+// workspace as migrated, both under the migration record's lock, so a concurrent
+// MigrateReviewerDefault can neither overwrite the choice between the write and the
+// record nor read the old value before it. written reports whether the value reached
+// the settings, so a record-only failure can be told from a failed write.
+func SetReviewerExplicit(settingsPath, recordPath, value string) (written bool, err error) {
 	defer lockMigrationRecord(recordPath)()
+	if err := SetReviewerEnv(settingsPath, value, false); err != nil {
+		return false, err
+	}
+	return true, recordMigratedLocked(settingsPath, recordPath)
+}
+
+// recordMigratedLocked adds the workspace to the record; the caller holds the lock.
+func recordMigratedLocked(settingsPath, recordPath string) error {
+	ws := migrationKey(settingsPath)
 	seen, err := readMigrationRecord(recordPath)
 	if err != nil {
 		return err

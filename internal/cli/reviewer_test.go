@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
@@ -262,5 +263,34 @@ func TestReviewerSetSurvivesDefaultMigration(t *testing.T) {
 	}
 	if changed || got != "agent" {
 		t.Fatalf("after migration: changed=%v value=%q, want false, \"agent\"", changed, got)
+	}
+}
+
+// A record that cannot be written does not fail a set whose value landed: the value line
+// still prints and the record error is a warning (Zenie Review #393, fix review).
+func TestReviewerSetRecordFailureStillSucceeds(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := reviewerWorkspace(t)
+	record := apply.KitReviewerDefaultRecord(home)
+	if err := os.MkdirAll(filepath.Dir(record), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(record, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := NewRootCmd()
+	var out, errOut bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errOut)
+	root.SetArgs([]string{"reviewer", "set", "codex"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("reviewer set codex: %v", err)
+	}
+	if !strings.Contains(out.String(), "ZNF_REVIEWER=codex") || !strings.Contains(errOut.String(), "malformed") {
+		t.Fatalf("out=%q err=%q", out.String(), errOut.String())
+	}
+	if got, _ := apply.ReviewerEnvValue(path); got != "codex" {
+		t.Fatalf("value = %q, want codex", got)
 	}
 }

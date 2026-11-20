@@ -125,14 +125,18 @@ func newReviewerSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := apply.SetReviewerEnv(path, args[0], false); err != nil {
-				return err
-			}
-			// An explicit choice must survive the one-time default migration.
+			// An explicit choice must survive the one-time default migration: the
+			// write and the record happen under the migration's lock.
 			if home, herr := os.UserHomeDir(); herr == nil {
-				if err := apply.RecordReviewerDefaultMigrated(path, apply.KitReviewerDefaultRecord(home)); err != nil {
-					fmt.Fprintln(cmd.ErrOrStderr(), "zenify reviewer set:", err)
+				written, serr := apply.SetReviewerExplicit(path, apply.KitReviewerDefaultRecord(home), args[0])
+				if serr != nil && !written {
+					return serr
 				}
+				if serr != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "zenify reviewer set:", serr)
+				}
+			} else if err := apply.SetReviewerEnv(path, args[0], false); err != nil {
+				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s=%s\n", apply.ReviewerEnv, args[0])
 			return nil

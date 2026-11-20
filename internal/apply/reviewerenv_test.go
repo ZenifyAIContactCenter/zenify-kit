@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestEnsureReviewerEnv_CreatesThenNoop(t *testing.T) {
@@ -240,10 +241,7 @@ func TestMigrateReviewerDefault_ExplicitChoiceRecordedSurvives(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(settings), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetReviewerEnv(settings, "agent", false); err != nil {
-		t.Fatal(err)
-	}
-	if err := RecordReviewerDefaultMigrated(settings, record); err != nil {
+	if _, err := SetReviewerExplicit(settings, record, "agent"); err != nil {
 		t.Fatal(err)
 	}
 	if changed, err := MigrateReviewerDefault(settings, record, false); err != nil || changed {
@@ -321,10 +319,7 @@ func TestMigrateReviewerDefault_SymlinkedWorkspaceSameKey(t *testing.T) {
 	}
 	record := filepath.Join(dir, "kit-reviewer-default.json")
 	realSettings := filepath.Join(real, ".claude", "settings.local.json")
-	if err := SetReviewerEnv(realSettings, "agent", false); err != nil {
-		t.Fatal(err)
-	}
-	if err := RecordReviewerDefaultMigrated(realSettings, record); err != nil {
+	if _, err := SetReviewerExplicit(realSettings, record, "agent"); err != nil {
 		t.Fatal(err)
 	}
 	if changed, err := MigrateReviewerDefault(filepath.Join(link, ".claude", "settings.local.json"), record, false); err != nil || changed {
@@ -347,4 +342,41 @@ func realPath(t *testing.T, p string) string {
 		t.Fatal(err)
 	}
 	return r
+}
+
+// An explicit set waits for a migration holding the record lock, so the migration can
+// never write the default over the choice after it lands (Zenie Review #393).
+func TestSetReviewerExplicit_WaitsForMigrationLock(t *testing.T) {
+	dir := t.TempDir()
+	settings := filepath.Join(dir, "ws", ".claude", "settings.local.json")
+	record := filepath.Join(dir, "kit-reviewer-default.json")
+	if err := os.MkdirAll(filepath.Dir(settings), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetReviewerEnv(settings, "agent", false); err != nil {
+		t.Fatal(err)
+	}
+	release := lockMigrationRecord(record) // a migration mid-run
+	done := make(chan error, 1)
+	go func() { _, err := SetReviewerExplicit(settings, record, "codex"); done <- err }()
+	select {
+	case err := <-done:
+		release()
+		t.Fatalf("set did not wait for the lock: err=%v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if v, _ := ReviewerEnvValue(settings); v != "agent" {
+		release()
+		t.Fatalf("settings written while the lock was held: %q", v)
+	}
+	release()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := MigrateReviewerDefault(settings, record, false); err != nil || changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	if v, _ := ReviewerEnvValue(settings); v != "codex" {
+		t.Fatalf("explicit value overwritten: %q", v)
+	}
 }

@@ -883,15 +883,17 @@ func newUpCmd() *cobra.Command {
 			}
 			workspace = ws
 			if reviewer != "" {
-				if err := apply.SetReviewerEnv(apply.WorkspaceLocalSettings(workspace), reviewer, !applyFlag); err != nil {
-					fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
-				} else if applyFlag {
-					// An explicit choice must survive the one-time default migration.
-					if home, herr := os.UserHomeDir(); herr == nil {
-						if err := apply.RecordReviewerDefaultMigrated(apply.WorkspaceLocalSettings(workspace), apply.KitReviewerDefaultRecord(home)); err != nil {
-							fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", err)
-						}
-					}
+				settings := apply.WorkspaceLocalSettings(workspace)
+				var rerr error
+				if home, herr := os.UserHomeDir(); applyFlag && herr == nil {
+					// An explicit choice must survive the one-time default migration: the
+					// write and the record happen under the migration's lock.
+					_, rerr = apply.SetReviewerExplicit(settings, apply.KitReviewerDefaultRecord(home), reviewer)
+				} else {
+					rerr = apply.SetReviewerEnv(settings, reviewer, !applyFlag)
+				}
+				if rerr != nil {
+					fmt.Fprintln(cmd.ErrOrStderr(), "znf up: reviewer:", rerr)
 				}
 			}
 			if overlayPath == "" {

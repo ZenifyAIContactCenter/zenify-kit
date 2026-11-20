@@ -17,6 +17,8 @@ and `PACK` are Step 1's; `DECLINES` is ship's list for this round (empty standal
    BASE_BRANCH=$(zenify wt base | sed 's#^origin/##')
    ```
 
+   The caller's args say `base branch <name>` (a stacked ship's upper layer) → `BASE_BRANCH=<name>`.
+
 3. **Push.** Uncommitted or untracked changes → fall back (this engine reviews pushed commits only;
    never commit for it). `BRANCH` empty (detached), equal to `BASE_BRANCH`, or listed in the repo's
    `.claude/deploy-branches` (baseline `main master staging develop production` when the file is
