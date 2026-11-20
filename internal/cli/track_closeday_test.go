@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 )
 
 const closeDayYPR = "https://github.com/o/r/pull/501"
@@ -386,5 +388,147 @@ func TestReadSessionLogsSkipsVanished(t *testing.T) {
 	}
 	if len(got) != 1 || got["a"] != "x" {
 		t.Fatalf("got %v", got)
+	}
+}
+
+// feedbackWS is a workspace whose yesterday has one ended run with PR fbPR, merged yesterday
+// in merged.json, with a review snapshot; feedback sets the track.feedback feature.
+func feedbackWS(t *testing.T, now time.Time, feedback bool) (ws, day string) {
+	t.Helper()
+	const fbPR = "https://github.com/o/r/pull/1"
+	ws = t.TempDir()
+	overlay := "features:\n  track: true\n"
+	if feedback {
+		overlay += "  track.feedback: true\n"
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte(overlay), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(ws, ".zenify", "track")
+	if err := os.MkdirAll(filepath.Join(dir, "reviews"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	yd := now.AddDate(0, 0, -1)
+	id := "cook-" + yd.Format("060102") + "-aaaa"
+	log := strings.Join([]string{
+		cdRow(yd.Add(-time.Hour), "start", id, "cook", "repo", "M"),
+		cdRow(yd.Add(-30*time.Minute), "ship", id, "shipped", "-", "0,0,0,0", "1"),
+		cdRow(yd, "end", id, fbPR, "1", "0"),
+	}, "\n") + "\n"
+	files := map[string]string{
+		"log.md":             log,
+		"merged.json":        `{"` + fbPR + `":"` + yd.UTC().Format(time.RFC3339) + `"}`,
+		"reviews/o-r-1.json": `{"url":"` + fbPR + `","threads":[{"comments":[{"body":"HIGH: leak"}]}]}`,
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return ws, yd.Format("2006-01-02")
+}
+
+// noGhCalls fails the test when close-day reaches gh.
+func noGhCalls(t *testing.T) {
+	t.Helper()
+	oldM, oldR := trackMerged, trackReview
+	trackMerged = func(u string) (string, error) { t.Errorf("gh merged call for %s", u); return "", nil }
+	trackReview = func(u string) (trackstats.ReviewSnapshot, error) {
+		t.Errorf("gh review call for %s", u)
+		return trackstats.ReviewSnapshot{}, nil
+	}
+	t.Cleanup(func() { trackMerged, trackReview = oldM, oldR })
+}
+
+// SC-13, SC-9
+func TestCloseDayFeedbackFollowsFeature(t *testing.T) {
+	now := time.Now()
+	noGhCalls(t)
+	for _, on := range []bool{false, true} {
+		ws, day := feedbackWS(t, now, on)
+		var out, errb bytes.Buffer
+		if err := runCloseDay(&out, &errb, ws, now, false); err != nil {
+			t.Fatalf("%v\n%s", err, errb.String())
+		}
+		b, err := os.ReadFile(filepath.Join(ws, ".zenify", "track", "days", day+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(string(b), "## Feedback"); got != on {
+			t.Fatalf("track.feedback %t: Feedback section present = %t\n%s", on, got, b)
+		}
+		if on {
+			for _, want := range []string{"### https://github.com/o/r/pull/1", "- review data: .zenify/track/reviews/o-r-1.json", "escaped:"} {
+				if !strings.Contains(string(b), want) {
+					t.Errorf("report lacks %q:\n%s", want, b)
+				}
+			}
+		}
+	}
+}
+
+// A broken snapshot is reported on stderr and counted as missing.
+func TestCloseDayFeedbackBrokenSnapshot(t *testing.T) {
+	now := time.Now()
+	noGhCalls(t)
+	ws, day := feedbackWS(t, now, true)
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "track", "reviews", "o-r-1.json"), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if err := runCloseDay(&out, &errb, ws, now, false); err != nil {
+		t.Fatalf("%v\n%s", err, errb.String())
+	}
+	if !strings.Contains(errb.String(), "track: read review o-r-1.json: ") {
+		t.Errorf("stderr = %q", errb.String())
+	}
+	b, _ := os.ReadFile(filepath.Join(ws, ".zenify", "track", "days", day+".md"))
+	if !strings.Contains(string(b), "- review data: missing") {
+		t.Errorf("report:\n%s", b)
+	}
+}
+
+// SC-14: with track.feedback off the ledger copy and the review snapshot still happen.
+func TestFeedbackOffStillCollects(t *testing.T) {
+	pr := "https://github.com/o/r/pull/1"
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "cook")
+	ledger := filepath.Join(t.TempDir(), "progress.md")
+	if err := os.WriteFile(ledger, []byte("# SDD ledger — plan: docs/plans/x.md\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runTrackErr(t, ws, "end", id, "--pr", pr, "--ledger", ledger, "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify", "track", "merged.json"), []byte(`{"`+pr+`":"2026-11-18T05:00:00Z"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oldM, oldT := trackMerged, trackPRTitle
+	trackMerged = func(string) (string, error) { return "", nil }
+	trackPRTitle = func(string) (string, error) { return "", nil }
+	t.Cleanup(func() { trackMerged, trackPRTitle = oldM, oldT })
+	stubReview(t, nil)
+	reviewStats(t, ws)
+	for _, f := range []string{filepath.Join("ledgers", id+".md"), filepath.Join("reviews", "o-r-1.json")} {
+		if _, err := os.Stat(filepath.Join(ws, ".zenify", "track", f)); err != nil {
+			t.Errorf("%s: %v", f, err)
+		}
+	}
+}
+
+// FR-6.4
+func TestTrackStatsFeedbackField(t *testing.T) {
+	for _, on := range []bool{false, true} {
+		ws, _ := feedbackWS(t, time.Now(), on)
+		if err := os.WriteFile(filepath.Join(ws, ".zenify", "track", "merged.checked"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out, err := runTrack(t, ws, "stats", "--json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := fmt.Sprintf(`"feedback": %t`, on); !strings.Contains(out, want) {
+			t.Errorf("stats lacks %s", want)
+		}
 	}
 }

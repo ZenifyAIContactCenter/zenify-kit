@@ -692,6 +692,11 @@ func newTrackStatsCmd(ws *string) *cobra.Command {
 				}
 			}
 			res.Enabled = on
+			feats, err := manifest.ReadFeatures(filepath.Join(wsDir, ".zenify-overlay.yaml"))
+			if err != nil {
+				return exitcode.New(exitcode.Fail, err)
+			}
+			res.Feedback = feats["track.feedback"]
 			if brief {
 				out, err := json.Marshal(trackstats.Brief(res, os.Getenv("CLAUDE_CODE_SESSION_ID")))
 				if err != nil {

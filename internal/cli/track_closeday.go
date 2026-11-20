@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 )
 
@@ -95,6 +96,19 @@ func runCloseDay(w, errW io.Writer, wsDir string, now time.Time, refresh bool) e
 		dayIn.Merged, dayIn.PRStatus, dayIn.PRTitle, dayIn.GitHub, dayIn.SDD = nil, nil, nil, nil, nil
 		dayRes, _ := trackstats.Compute(dayIn)
 		report = trackstats.DayReport(dayRes, nowRes, in.Cache, prNote)
+		feats, err := manifest.ReadFeatures(filepath.Join(wsDir, ".zenify-overlay.yaml"))
+		if err != nil {
+			return err
+		}
+		if feats["track.feedback"] {
+			fb, err := feedbackSection(errW, dir, in, dayRes)
+			if err != nil {
+				return err
+			}
+			if fb != "" {
+				report += "\n" + fb
+			}
+		}
 		if err := os.MkdirAll(filepath.Join(dir, "days"), 0o750); err != nil {
 			return err
 		}
@@ -117,6 +131,52 @@ func runCloseDay(w, errW io.Writer, wsDir string, now time.Time, refresh bool) e
 		_, err = io.WriteString(w, report)
 	}
 	return err
+}
+
+// feedbackSection renders the Feedback section of day's report from local files only: the
+// ledger copies and review snapshots of the PRs merged that day. A missing file is no data;
+// a snapshot that does not parse is reported on errW and counted as missing.
+func feedbackSection(errW io.Writer, dir string, in trackstats.Input, day trackstats.Result) (string, error) {
+	merged := trackstats.MergedOn(in.Cache, day.Today.Date)
+	if len(merged) == 0 {
+		return "", nil
+	}
+	events, _ := trackstats.ParseLog(in.Log)
+	fin := trackstats.FeedbackInput{
+		Day: day.Today.Date, Merged: merged, Events: events, Items: day.Today.Items, Scale: day.Scale,
+		Ledgers: map[string]string{}, Snapshots: map[string]*trackstats.ReviewSnapshot{},
+	}
+	for _, u := range merged {
+		if id := trackstats.OwnerRun(events, u); id != "-" {
+			b, err := os.ReadFile(filepath.Join(dir, "ledgers", id+".md")) //nolint:gosec // G304 -- a track id under the track dir
+			switch {
+			case err == nil:
+				fin.Ledgers[id] = string(b)
+			case !errors.Is(err, os.ErrNotExist):
+				return "", err
+			}
+		}
+		name, ok := trackstats.ReviewFileName(u)
+		if !ok {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, "reviews", name)) //nolint:gosec // G304 -- a name built from a PR url under the track dir
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		var snap trackstats.ReviewSnapshot
+		if err := json.Unmarshal(b, &snap); err != nil {
+			if _, werr := fmt.Fprintf(errW, "track: read review %s: %v\n", name, err); werr != nil {
+				return "", werr
+			}
+			continue
+		}
+		fin.Snapshots[u] = &snap
+	}
+	return trackstats.Feedback(fin), nil
 }
 
 // dayClosed reports whether day.closed already holds today.

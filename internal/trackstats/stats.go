@@ -157,7 +157,9 @@ type KitUpdate struct {
 
 // Result is the JSON of `zenify track stats --json`. Enabled is set by the CLI.
 type Result struct {
-	Enabled   bool  `json:"enabled"`
+	Enabled bool `json:"enabled"`
+	// Feedback is the track.feedback feature, set by the CLI.
+	Feedback  bool  `json:"feedback"`
 	Malformed int   `json:"malformed"`
 	Scale     Scale `json:"scale"`
 	// ScaleByKind is the scale learned from one kind's items; the estimate hit rate of a kind reads it.
