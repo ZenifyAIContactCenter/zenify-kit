@@ -94,7 +94,7 @@ func (e *GhTransportError) Unwrap() error { return e.Err }
 var ghTransportMarks = []string{
 	"could not resolve host", "bad credentials", "http 401", "requires authentication", "gh auth login",
 	"authentication required", "connection refused", "connection reset", "network is unreachable",
-	"i/o timeout", "tls handshake timeout", "rate limit", "secondary rate limit",
+	"i/o timeout", "tls handshake timeout", "rate limit", "secondary rate limit", "error connecting to", "no such host",
 }
 
 // ghReviewErr is the error of one gh review call, nil when it succeeded. A timeout, or a failure

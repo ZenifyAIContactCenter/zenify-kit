@@ -139,6 +139,8 @@ func TestGhReview_TransportFromStderr(t *testing.T) {
 		{"https://github.com/o/r/pull/9", "could not resolve host: api.github.com", true},
 		{"https://github.com/o/r/pull/9", "HTTP 401: Bad credentials (https://api.github.com/graphql)", true},
 		{"https://github.com/o/r/pull/9", "API rate limit exceeded for user", true},
+		{"https://github.com/o/r/pull/9", "error connecting to api.github.com", true},
+		{"https://github.com/o/r/pull/9", "dial tcp: lookup api.github.com: no such host", true},
 		{"https://github.com/o/r/pull/9", "GraphQL: Could not resolve to a PullRequest with the number of 9. (repository.pullRequest)", false},
 		{"https://github.com/o/auth-service/pull/1", "GraphQL: Something went wrong", false},
 	}
