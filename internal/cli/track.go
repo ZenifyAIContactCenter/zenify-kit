@@ -564,6 +564,9 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 			if err == nil && len(prs) > 0 && len(args) == 1 {
 				warnEndWithoutShip(cmd.ErrOrStderr(), *ws, args[0])
 			}
+			if err == nil && ledger != "" && len(args) == 1 {
+				copyEndLedger(cmd.ErrOrStderr(), *ws, args[0], ledger)
+			}
 			return err
 		},
 	}
@@ -575,6 +578,29 @@ func newTrackEndCmd(ws *string) *cobra.Command {
 	c.Flags().StringVar(&ledger, "ledger", "", "SDD ledger file; its `Task <N>: complete` lines are counted and its first-line plan path is kept")
 	c.Flags().IntVar(&rounds, "rounds", 0, "fix rounds of the review in znf:ship")
 	return c
+}
+
+// copyEndLedger keeps a copy of the ledger at .zenify/track/ledgers/<id>.md.
+// A failure goes to w and never fails the end: the end row is already written.
+func copyEndLedger(w io.Writer, flag, id, ledger string) {
+	wsDir, on, err := trackWorkspace(flag)
+	if err != nil {
+		fmt.Fprintf(w, "track: copy --ledger %s: %v\n", ledger, err)
+		return
+	}
+	if !on {
+		return
+	}
+	b, err := os.ReadFile(ledger) //nolint:gosec // G304 -- a CLI flag naming a local ledger
+	if err == nil {
+		dir := filepath.Join(wsDir, ".zenify", "track", "ledgers")
+		if err = os.MkdirAll(dir, 0o750); err == nil {
+			err = writeFileAtomic(filepath.Join(dir, id+".md"), b, 0o644)
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(w, "track: copy --ledger %s: %v\n", ledger, err)
+	}
 }
 
 // warnEndWithoutShip warns on w when id ended with a PR but log.md has no ship row.

@@ -1031,3 +1031,55 @@ func TestTrackStats_KitUpdate(t *testing.T) {
 		t.Fatal("a dev build must give kitUpdate null")
 	}
 }
+
+func TestTrackEnd_LedgerCopied(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "cook")
+	body := "# SDD ledger — plan: docs/plans/x.md\nTask 1: complete\n"
+	ledger := filepath.Join(t.TempDir(), "progress.md")
+	if err := os.WriteFile(ledger, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runTrackErr(t, ws, "end", id, "--pr", "https://github.com/o/r/pull/1", "--ledger", ledger, "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(ws, ".zenify", "track", "ledgers", id+".md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != body {
+		t.Fatalf("copy = %q, want %q", got, body)
+	}
+	if !strings.Contains(trackLog(t, ws), " · end · "+id+" · ") {
+		t.Fatalf("end row missing:\n%s", trackLog(t, ws))
+	}
+}
+
+func TestTrackEnd_LedgerMissingStillEnds(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "cook")
+	stderr, err := runTrackErr(t, ws, "end", id, "--cancelled", "--ledger", "/nonexistent/progress.md", "--rounds", "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr, "track:") {
+		t.Fatalf("stderr %q lacks a track: line", stderr)
+	}
+	if !strings.Contains(trackLog(t, ws), " · end · "+id+" · ") {
+		t.Fatalf("end row missing:\n%s", trackLog(t, ws))
+	}
+	if entries, _ := os.ReadDir(filepath.Join(ws, ".zenify", "track", "ledgers")); len(entries) != 0 {
+		t.Fatalf("ledgers/ has %d files, want none", len(entries))
+	}
+}
+
+func TestTrackEnd_NoLedgerNoCopy(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "cook")
+	if _, err := runTrackErr(t, ws, "end", id, "--cancelled", "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(ws, ".zenify", "track", "ledgers")); len(entries) != 0 {
+		t.Fatalf("ledgers/ has %d files, want none", len(entries))
+	}
+}
