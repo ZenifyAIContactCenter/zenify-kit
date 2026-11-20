@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import { COPY, TABS } from './track-ui'
+import { START_REMINDER } from './track'
 
 const CWD = '/w/app'
 const WS = '/w'
@@ -1901,4 +1902,66 @@ test('SC-16: no trackPane option: /track-pane is not registered and a /znf:cook 
   await clock.settle()
   expect(calls.open).toHaveLength(0)
   expect(calls.registered).not.toContain('track-pane')
+})
+
+test('a worktree or PR opened with no open track id carries the start reminder; a bound id carries none', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  const unbound: any = await $.tool.call({ tool: 'Bash', command: 'zenify wt new ci-trim --type chore --another' })
+  expect(unbound.context).toEqual([START_REMINDER])
+  const pr: any = await $.tool.call({ tool: 'Bash', command: 'gh pr create --base main --title t --body-file b.md' })
+  expect(pr.context).toEqual([START_REMINDER])
+  await bindTo($, world, COOK_ID, START_COOK)
+  const bound: any = await $.tool.call({ tool: 'Bash', command: 'zenify wt new ci-trim --type chore --another' })
+  expect(bound.context).toBeUndefined()
+  const other: any = await $.tool.call({ tool: 'Bash', command: 'git status' })
+  expect(other.context).toBeUndefined()
+})
+
+test('the start reminder returns once the bound id has ended', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  await bindTo($, world, COOK_ID, START_COOK)
+  world.toolCall = () => stdoutAnswer(`track: ended ${COOK_ID}\n`)
+  await $.tool.call({ tool: 'Bash', command: `zenify track end ${COOK_ID} --pr https://github.com/Z/kit/pull/1 --rounds 1` })
+  world.toolCall = undefined
+  // Ended this turn (not yet unbound) already counts as no open id.
+  expect(((await $.tool.call({ tool: 'Bash', command: 'zenify wt new next-task' })) as any).context).toEqual([START_REMINDER])
+  await $.turn.complete(turnEnd(1000))
+  expect(((await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })) as any).context).toEqual([START_REMINDER])
+})
+
+test('no start reminder with track off, in a subagent, or on a denied call', async ($, on) => {
+  const world = trackWorld({ trackEnabled: false, stats: ok(statsJson({ enabled: false })) })
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(((await $.tool.call({ tool: 'Bash', command: 'zenify wt new x' })) as any).context).toBeUndefined()
+  world.trackEnabled = true
+  expect(((await $.tool.call({ tool: 'Bash', command: 'zenify wt new x', agentId: 'a-1' } as any)) as any).context).toBeUndefined()
+  world.toolCall = () => ({ deny: 'blocked by git-guard' })
+  expect(((await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })) as any).context).toBeUndefined()
+  world.toolCall = () => ({ isError: true, result: {} })
+  expect(((await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })) as any).context).toBeUndefined()
+})
+
+test('no start reminder outside a zenify workspace', async ($, on) => {
+  engine(on, trackWorld({ noWorkspace: true }))
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(((await $.tool.call({ tool: 'Bash', command: 'zenify wt new x' })) as any).context).toBeUndefined()
+})
+
+test('a command that starts an id and opens a worktree carries no start reminder', async ($, on) => {
+  const world = trackWorld()
+  engine(on, world)
+  const clock = mock.clock(on)
+  await start($, clock)
+  world.toolCall = () => stdoutAnswer(`track: ${COOK_ID}\n`)
+  const r: any = await $.tool.call({ tool: 'Bash', command: `${START_COOK} && zenify wt new x` })
+  expect(r.context).toBeUndefined()
 })

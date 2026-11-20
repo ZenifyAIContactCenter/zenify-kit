@@ -4,6 +4,7 @@ import {
   cwdLine,
   parseEndedId,
   isStartCommand,
+  isTaskOpenCommand,
   kindOf,
   parseStartId,
   phaseFor,
@@ -99,4 +100,15 @@ test('parseStartId reads a task id', () => {
 
 test('phaseFor returns undefined for a task without throwing', () => {
   expect(phaseFor('task', 'scout')).toBeUndefined()
+})
+
+test('isTaskOpenCommand matches a worktree or PR open, nothing else', () => {
+  expect(isTaskOpenCommand('zenify wt new ci-trim --type chore --another')).toBe(true)
+  expect(isTaskOpenCommand('cd repos/x && zenify wt new fix-y')).toBe(true)
+  expect(isTaskOpenCommand('gh pr create --base main --fill')).toBe(true)
+  expect(isTaskOpenCommand('gh -R org/repo pr create --fill')).toBe(true)
+  expect(isTaskOpenCommand('gh pr view 12')).toBe(false)
+  expect(isTaskOpenCommand('gh pr view 12 && echo done; pr create')).toBe(false)
+  expect(isTaskOpenCommand('zenify wt ls')).toBe(false)
+  expect(isTaskOpenCommand('git status')).toBe(false)
 })

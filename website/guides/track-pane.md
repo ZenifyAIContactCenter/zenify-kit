@@ -162,6 +162,10 @@ File nằm trong workspace:
 - `<workspace>/.zenify/track/log.md`: sổ chung, mỗi lượt có dòng `start`, `est`, `end` và các dòng kết quả ship, fix, CI, và dòng `plan` (`<ts> · plan · <ngày> · <id> · <id> …`) do `zenify track plan set`, `plan add` và `plan rm` ghi; dòng `plan` chỉ có ngày (không có id) nghĩa là plan rỗng.
 - `<workspace>/.zenify/track/sessions/<session-id>.log`: số liệu theo từng session (gắn id với session, lượt chạy, giai đoạn).
 
+## Nhắc mở lượt track
+
+Track chỉ ghi khi session đã chạy `zenify track start` và in ra `track: <id>`. Nếu track đang bật mà session chưa có lượt nào mở (chưa start, hoặc lượt trước đã `track end`), thì mỗi lần agent chạy `wt new` hay `gh pr create` trong main loop, hook chèn thêm một lời nhắc vào kết quả lệnh: mở lượt mới bằng `zenify track start …` rồi đóng bằng `zenify track end <id> --pr <url>`. Lệnh vẫn chạy bình thường, hook chỉ nhắc chứ không chặn. Không có lời nhắc khi lệnh chạy trong subagent, bị từ chối hoặc lỗi, khi lệnh tự mở lượt (`zenify track start … && zenify wt new …`), khi track tắt, hoặc khi đang ở ngoài workspace zenify. Nhờ vậy việc phát sinh giữa session (một PR mới, một repo mới) không bị sót khỏi sổ.
+
 ## Est do ai ghi
 
 Est (S, M hoặc L) do `znf:cook`, `znf:fix` và `znf:hotfix` ghi theo hướng dẫn trong `_shared/track.md`: cook ghi sau khi design được duyệt, fix ghi sau khi nguyên nhân được xác nhận, hotfix ghi ngay lúc bắt đầu. Ghi est muộn hơn thì dòng `est` sau cùng thắng.
