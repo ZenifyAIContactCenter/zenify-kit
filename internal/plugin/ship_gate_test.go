@@ -207,7 +207,13 @@ func TestShipAgentPlusProjectRunsBothReviews(t *testing.T) {
 		"`ENGINE=agent+project`",
 	})
 	assertContainsAll(t, "project-review.md", syncedAsset(t, "skills/ship/references/project-review.md"), []string{
-		"## `ENGINE=agent+project`", "`engine agent`", "`engine project`", "never a second full Claude review", "ONE scoped", "the head the Claude pass last saw",
+		"## `ENGINE=agent+project`", "`engine agent`", "`engine project`", "never a second full Claude review", "ONE scoped", `CLAUDE_TREE=$(git add -A && git write-tree)`, `git diff "$CLAUDE_TREE" HEAD`, "`ENGINE=project` only (under `agent+project`, item 3 below applies)", "follow its item 3 below instead",
 		"project bỏ qua: <reason>", "two review lines", "only if 7b has not run", //znf:allow-lang -- board literal from the spec
 	})
+	if strings.Contains(syncedAsset(t, "skills/ship/references/project-review.md"), "the head the Claude pass last saw") {
+		t.Error("project-review.md still names the undefined head the Claude pass last saw")
+	}
+	if strings.Contains(syncedAsset(t, "skills/review/references/project-engine.md"), "prints `project` only when") {
+		t.Error("project-engine.md still says project is reached only via ZNF_REVIEWER=project")
+	}
 }

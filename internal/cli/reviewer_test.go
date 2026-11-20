@@ -31,6 +31,28 @@ func TestDecideReviewerMatrix(t *testing.T) {
 			}
 		}
 	}
+	// Unset ZNF_REVIEWER is the kit default (agent+project); agent+project without a Pre-PR
+	// line behaves exactly as agent (codex inside a Codex session).
+	noLine := "không có dòng Pre-PR review" //znf:allow-lang
+	for _, r := range []struct {
+		zr, thread       string
+		onPath, prePR    bool
+		want, wantReason string
+	}{
+		{"", "", true, true, "agent+project", ""},
+		{"", "", true, false, "agent", noLine},
+		{"", "1", true, false, "codex", ""},
+		{"agent+project", "1", true, false, "codex", ""},
+		{"agent+project", "1", false, false, "agent", noLine},
+		{"agent+project", "1", true, true, "agent+project", ""},
+		{"agent+project", "", false, false, "agent", noLine},
+	} {
+		env := map[string]string{"CODEX_THREAD_ID": r.thread, "ZNF_REVIEWER": r.zr}
+		got, reason := decideReviewer(func(k string) string { return env[k] }, r.onPath, r.prePR)
+		if got != r.want || reason != r.wantReason {
+			t.Errorf("zr=%q thread=%q onPath=%v prePR=%v: got (%q,%q) want (%q,%q)", r.zr, r.thread, r.onPath, r.prePR, got, reason, r.want, r.wantReason)
+		}
+	}
 }
 
 func TestReviewerCmdPrints(t *testing.T) {

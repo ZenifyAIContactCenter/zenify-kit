@@ -198,8 +198,10 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 			fmt.Fprintf(stdout, "set %s=%s in .claude/settings.local.json (zenify reviewer picks the review engine from it)\n",
 				apply.ReviewerEnv, apply.ReviewerDefault)
 		}
+		// A record failure is a warning, not a local error: it must not block up's
+		// user-install migration, and a failed migrate changes no setting.
 		if changed, err := apply.MigrateReviewerDefault(local, apply.KitReviewerDefaultRecord(home), false); err != nil {
-			localErr("reviewer default", err)
+			fmt.Fprintln(stderr, "warning: znf ensure: reviewer default:", err)
 		} else if changed {
 			fmt.Fprintf(stdout, "set %s=%s in .claude/settings.local.json (kit default changed; zenify reviewer set agent to go back)\n",
 				apply.ReviewerEnv, apply.ReviewerDefault)

@@ -1,6 +1,7 @@
 package apply
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -194,7 +195,7 @@ func TestMigrateReviewerDefault(t *testing.T) {
 	if v, _ := ReviewerEnvValue(settings); v != "agent+project" {
 		t.Fatalf("value = %q", v)
 	}
-	if l := readRecordList(t, record); len(l) != 1 || l[0] != ws {
+	if l := readRecordList(t, record); len(l) != 1 || l[0] != realPath(t, ws) {
 		t.Fatalf("record = %v", l)
 	}
 	// user sets agent again: second run keeps it
@@ -226,7 +227,7 @@ func TestMigrateReviewerDefault_CodexUntouchedButRecorded(t *testing.T) {
 	if v, _ := ReviewerEnvValue(settings); v != "codex" {
 		t.Fatalf("value = %q", v)
 	}
-	if l := readRecordList(t, record); len(l) != 1 || l[0] != ws {
+	if l := readRecordList(t, record); len(l) != 1 || l[0] != realPath(t, ws) {
 		t.Fatalf("record = %v", l)
 	}
 }
@@ -254,4 +255,96 @@ func TestMigrateReviewerDefault_ExplicitChoiceRecordedSurvives(t *testing.T) {
 	if l := readRecordList(t, record); len(l) != 1 {
 		t.Fatalf("record = %v", l)
 	}
+}
+
+// A malformed record cannot prove the workspace was never explicitly set: migrate errors and
+// changes neither the settings nor the record.
+func TestMigrateReviewerDefault_MalformedRecordChangesNothing(t *testing.T) {
+	dir := t.TempDir()
+	settings := filepath.Join(dir, "ws", ".claude", "settings.local.json")
+	record := filepath.Join(dir, "kit-reviewer-default.json")
+	if err := os.MkdirAll(filepath.Dir(settings), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	want := []byte(`{"env":{"ZNF_REVIEWER":"agent"}}`)
+	if err := os.WriteFile(settings, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(record, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := MigrateReviewerDefault(settings, record, false); err == nil || changed {
+		t.Fatalf("changed=%v err=%v, want an error and no change", changed, err)
+	}
+	if got, _ := os.ReadFile(settings); !bytes.Equal(got, want) {
+		t.Fatalf("settings rewritten: %s", got)
+	}
+	if got, _ := os.ReadFile(record); string(got) != "{not json" {
+		t.Fatalf("record rewritten: %s", got)
+	}
+}
+
+// No ZNF_REVIEWER key: nothing to migrate, the key stays absent, the workspace is recorded.
+func TestMigrateReviewerDefault_AbsentKey(t *testing.T) {
+	dir := t.TempDir()
+	settings := filepath.Join(dir, "ws", ".claude", "settings.local.json")
+	record := filepath.Join(dir, "kit-reviewer-default.json")
+	if err := os.MkdirAll(filepath.Dir(settings), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settings, []byte(`{"env":{"OTHER":"x"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := MigrateReviewerDefault(settings, record, false); err != nil || changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	raw, _ := os.ReadFile(settings)
+	if bytes.Contains(raw, []byte(ReviewerEnv)) {
+		t.Fatalf("key added: %s", raw)
+	}
+	if l := readRecordList(t, record); len(l) != 1 || l[0] != realPath(t, filepath.Join(dir, "ws")) {
+		t.Fatalf("record = %v", l)
+	}
+}
+
+// The record key is the symlink-resolved workspace: a choice recorded through the real path
+// survives a migration reached through a symlink to it.
+func TestMigrateReviewerDefault_SymlinkedWorkspaceSameKey(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "ws")
+	link := filepath.Join(dir, "link")
+	if err := os.MkdirAll(filepath.Join(real, ".claude"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	record := filepath.Join(dir, "kit-reviewer-default.json")
+	realSettings := filepath.Join(real, ".claude", "settings.local.json")
+	if err := SetReviewerEnv(realSettings, "agent", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecordReviewerDefaultMigrated(realSettings, record); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := MigrateReviewerDefault(filepath.Join(link, ".claude", "settings.local.json"), record, false); err != nil || changed {
+		t.Fatalf("via symlink: changed=%v err=%v", changed, err)
+	}
+	if v, _ := ReviewerEnvValue(realSettings); v != "agent" {
+		t.Fatalf("explicit value overwritten via symlink: %q", v)
+	}
+	if l := readRecordList(t, record); len(l) != 1 || l[0] != realPath(t, real) {
+		t.Fatalf("record = %v", l)
+	}
+}
+
+// realPath is p with symlinks resolved, the form the migration record keys on
+// (t.TempDir sits under a symlink on macOS).
+func realPath(t *testing.T, p string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }

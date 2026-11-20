@@ -870,3 +870,26 @@ func TestEnsureWorkspace_UserSkillsFileDoesNotBlock(t *testing.T) {
 		t.Fatalf("workspace link missing with a regular user file: %v", err)
 	}
 }
+
+// A malformed reviewer-default record is a stderr warning, never a local error: it must not block
+// up's user-install migration (LocalErrs), and it changes no setting.
+func TestEnsureWorkspace_MalformedReviewerRecordWarnsOnly(t *testing.T) {
+	home, ws, _ := localFixture(t)
+	record := apply.KitReviewerDefaultRecord(home)
+	if err := os.MkdirAll(filepath.Dir(record), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(record, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var o, e bytes.Buffer
+	rep := ensureWorkspace(ws, home, &o, &e, ensureOpts{})
+	for _, s := range rep.LocalErrs {
+		if strings.HasPrefix(s, "reviewer default") {
+			t.Errorf("LocalErrs carries the record failure: %v", rep.LocalErrs)
+		}
+	}
+	if !strings.Contains(e.String(), "warning: znf ensure: reviewer default:") {
+		t.Errorf("no stderr warning: %s", e.String())
+	}
+}

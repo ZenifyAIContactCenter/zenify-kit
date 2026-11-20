@@ -96,7 +96,7 @@ Phần dưới tả lượt Zenie review trước khi mở PR, chung cho `projec
 - Sau khi lint, build và verify hành vi đã xanh, ship commit, ghi note-commit release, push nhánh feature rồi gọi `branch_review`. Ship chờ bằng `review_wait`, mỗi lần tối đa 55 giây (dài hơn chỉ khi `claude mcp get <server>` in `Timeout:` lớn hơn thời gian chờ được yêu cầu), tổng tối đa 30 phút tính từ lần chờ đầu tiên.
 - Lỗi CRITICAL/HIGH chặn merge đi vào vòng sửa của ship, tối đa 2 vòng; mỗi vòng sửa xong ship push rồi gửi lại. Lỗi sai được decline trong lần gửi kế tiếp kèm lý do, không cần dòng `Declined:`. HIGH "không chặn merge" chỉ lên board như MEDIUM.
 - Lượt review này không đăng gì lên GitHub. Sau lượt cuối ship không tạo commit nào nữa, nên PR mở đúng trên commit đã review và nhận lại kết quả đó thay vì review lại từ đầu.
-- Tool không gọi được (chưa đăng nhập broker, Zenie không chạy), gọi lỗi, hoặc hết 30 phút: với `project` ship review bằng agent và board ghi `project→agent: <lý do>`; với `agent+project` Claude đã sạch nên ship không review lại toàn bộ (chỉ soát lại phần sửa của các vòng Zenie trước đó, nếu có), board ghi `project bỏ qua: <lý do>`, rồi commit, push và mở PR như `agent`.
+- Tool không gọi được (chưa đăng nhập broker, Zenie không chạy), gọi lỗi, hoặc hết 30 phút: với `project` ship review bằng agent và board ghi `project→agent: <lý do>`; với `agent+project` Claude đã sạch nên ship không review lại toàn bộ (chỉ soát lại một lượt phần đã đổi sau lượt Claude, như file hook sửa lúc commit và phần sửa của các vòng Zenie; không đổi gì thì thôi), board ghi `project bỏ qua: <lý do>`, rồi commit, push và mở PR như `agent`.
 
 ## Lệnh trên PR
 

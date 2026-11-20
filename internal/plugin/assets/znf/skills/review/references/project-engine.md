@@ -1,7 +1,8 @@
 # Project engine (Step 3, `ENGINE=project`)
 
-`zenify reviewer` prints `project` only when `ZNF_REVIEWER=project` and a CLAUDE.md declares a
-`Pre-PR review:` line. The project's reviewer reads a pushed branch head before any PR exists. `BASE`
+This engine is reached via `ZNF_REVIEWER=project` (`zenify reviewer` prints `project`), or via
+ship's `engine project` arg under `agent+project` (`zenify reviewer` prints `agent+project`); both
+need a CLAUDE.md that declares a `Pre-PR review:` line. The project's reviewer reads a pushed branch head before any PR exists. `BASE`
 and `PACK` are Step 1's; `DECLINES` is ship's list for this round (empty standalone and on round 1).
 
 1. **Declaration.** Walk up from the worktree to `/` reading each `CLAUDE.md`, then

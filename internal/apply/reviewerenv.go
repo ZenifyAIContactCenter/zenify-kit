@@ -122,11 +122,16 @@ func KitReviewerDefaultRecord(home string) string {
 
 // MigrateReviewerDefault moves a workspace the old kit seeded with "agent" to
 // ReviewerDefault, once: the workspace (the directory two levels above
-// settingsPath) is then added to the record at recordPath, and a later "agent"
-// stays. Any other value is left alone, but the workspace is still recorded.
-// Returns whether the value changed; dryRun writes nothing.
+// settingsPath, symlinks resolved) is then added to the record at recordPath, and
+// a later "agent" stays. Any other value is left alone, but the workspace is still
+// recorded. A malformed record is an error and changes nothing: it cannot prove the
+// workspace was never set explicitly. Returns whether the value changed; dryRun
+// writes nothing.
 func MigrateReviewerDefault(settingsPath, recordPath string, dryRun bool) (bool, error) {
-	ws := filepath.Dir(filepath.Dir(settingsPath))
+	ws := migrationKey(settingsPath)
+	if !dryRun {
+		defer lockMigrationRecord(recordPath)()
+	}
 	seen, err := readMigrationRecord(recordPath)
 	if err != nil {
 		return false, err
@@ -162,7 +167,8 @@ func MigrateReviewerDefault(settingsPath, recordPath string, dryRun bool) (bool,
 // RecordReviewerDefaultMigrated adds the workspace to the migration record
 // without touching its value, so an explicit choice made now is never migrated.
 func RecordReviewerDefaultMigrated(settingsPath, recordPath string) error {
-	ws := filepath.Dir(filepath.Dir(settingsPath))
+	ws := migrationKey(settingsPath)
+	defer lockMigrationRecord(recordPath)()
 	seen, err := readMigrationRecord(recordPath)
 	if err != nil {
 		return err
@@ -173,6 +179,39 @@ func RecordReviewerDefaultMigrated(settingsPath, recordPath string) error {
 		}
 	}
 	return writeMigrationRecord(recordPath, append(seen, ws))
+}
+
+// migrationKey is the record key of the workspace two levels above settingsPath:
+// the cleaned path with symlinks resolved, or the cleaned path when that fails.
+func migrationKey(settingsPath string) string {
+	ws := filepath.Clean(filepath.Dir(filepath.Dir(settingsPath)))
+	if r, err := filepath.EvalSymlinks(ws); err == nil {
+		return r
+	}
+	return ws
+}
+
+// lockMigrationRecord takes a blocking exclusive advisory lock on <recordPath>.lock
+// so concurrent ensures do not lose each other's read-modify-write of the record,
+// and returns its release. Any failure proceeds unlocked (fail-open): the record
+// only keeps a one-time migration from repeating, and a session start must never
+// block or fail on it.
+func lockMigrationRecord(recordPath string) func() {
+	if err := os.MkdirAll(filepath.Dir(recordPath), 0o750); err != nil {
+		return func() {}
+	}
+	f, err := os.OpenFile(recordPath+".lock", os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // G304 -- fixed path under the caller's home dir
+	if err != nil {
+		return func() {}
+	}
+	if err := lockFileBlocking(f); err != nil {
+		_ = f.Close()
+		return func() {}
+	}
+	return func() {
+		_ = unlockFileBlocking(f)
+		_ = f.Close()
+	}
 }
 
 func readMigrationRecord(recordPath string) ([]string, error) {

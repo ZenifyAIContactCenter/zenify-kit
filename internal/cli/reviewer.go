@@ -14,21 +14,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// decideReviewer picks the review engine: project (or agent+project) when ZNF_REVIEWER
-// says so and a CLAUDE.md declares a Pre-PR review line (it beats CODEX_THREAD_ID); otherwise codex
-// only when the session asks for it (running inside Codex, or ZNF_REVIEWER=codex)
-// and the binary is on PATH.
+// decideReviewer picks the review engine. An unset ZNF_REVIEWER is the kit default
+// (apply.ReviewerDefault). project (or agent+project) wins when a CLAUDE.md declares a Pre-PR
+// review line (it beats CODEX_THREAD_ID); project without one falls back to agent. agent+project
+// without one behaves exactly as agent: codex only when the session asks for it (running inside
+// Codex, or ZNF_REVIEWER=codex) and the binary is on PATH, else agent with the Pre-PR reason.
 func decideReviewer(getenv func(string) string, onPath bool, prePR bool) (engine, reason string) {
-	if zr := getenv(apply.ReviewerEnv); zr == "project" || zr == "agent+project" {
+	zr := getenv(apply.ReviewerEnv)
+	if zr == "" {
+		zr = apply.ReviewerDefault
+	}
+	noLine := "không có dòng Pre-PR review" //znf:allow-lang
+	if zr == "project" || zr == "agent+project" {
 		if prePR {
 			return zr, ""
 		}
-		return "agent", "không có dòng Pre-PR review" //znf:allow-lang
+		if zr == "project" {
+			return "agent", noLine
+		}
 	}
-	wantsCodex := getenv("CODEX_THREAD_ID") != "" || getenv(apply.ReviewerEnv) == "codex"
+	wantsCodex := getenv("CODEX_THREAD_ID") != "" || zr == "codex"
 	switch {
 	case wantsCodex && onPath:
 		return "codex", ""
+	case zr == "agent+project":
+		return "agent", noLine
 	case wantsCodex:
 		return "agent", "codex không có trên PATH" //znf:allow-lang
 	default:
