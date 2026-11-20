@@ -35,11 +35,11 @@ func codexHooksCheck(codexHome string, onPath bool) Check {
 }
 
 // reviewerCheck reports the env override and the engine `zenify reviewer` picks.
-func reviewerCheck(getenv func(string) string, onPath bool) Check {
+func reviewerCheck(getenv func(string) string, onPath, prePR bool) Check {
 	return Check{
 		Name: "reviewer",
 		Run: func() (bool, string) {
-			engine, reason := decideReviewer(getenv, onPath)
+			engine, reason := decideReviewer(getenv, onPath, prePR)
 			var sb strings.Builder
 			printReviewer(&sb, engine, reason)
 			return true, fmt.Sprintf("%s=%s; engine: %s", apply.ReviewerEnv, getenv(apply.ReviewerEnv), strings.TrimSpace(sb.String()))
@@ -102,7 +102,7 @@ func registerCodexChecks() {
 		return codexHooksCheck(filepath.Join(ws, ".codex"), codexOnPath()).Run()
 	}})
 	RegisterCheck(Check{Name: "reviewer", Run: func() (bool, string) {
-		return reviewerCheck(os.Getenv, codexOnPath()).Run()
+		return reviewerCheck(os.Getenv, codexOnPath(), prePRDeclared()).Run()
 	}})
 	RegisterCheck(Check{Name: "agents-md", Run: func() (bool, string) {
 		cwd, _ := os.Getwd()

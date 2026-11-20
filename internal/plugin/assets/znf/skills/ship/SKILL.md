@@ -17,34 +17,36 @@ fp
 
 Stamp each check with its `fp`; step 7 needs all current.
 
-**Plan has a `## Stack` block** → steps 2–7 run per `references/stacked-ship.md`; below is the one-PR flow.
+**Plan has a `## Stack` block** → steps 2–7 per `references/stacked-ship.md`; below is the one-PR flow.
 
 ## Steps
 
 1. **Scope**: list the changed areas from the changed files.
 
-2. **Static checks**: per changed area run lint and build/typecheck, reporting the real output — no pass without it. **Never assume `npm`**: `pm run lint` / `pm run build`. Then `zenify rules lint ~/.zenify/knowledge/.config/rules` (kit repo: `zenify rules lint --include-go` too).
+2. **Static checks**: per changed area run lint and build/typecheck, reporting the real output — no pass without it. **Never assume `npm`**: `pm run lint`/`build`. Then `zenify rules lint ~/.zenify/knowledge/.config/rules` (kit repo: `zenify rules lint --include-go` too).
 
 3. **Contract gate**: anything shared touched (collection, endpoint, queue, pub/sub channel) → run the project's contract gate and report the repos it found. Never judge a change "local".
 
-4. **Behavioural verification**: affected tests (`references/test-scope.md`), else **`Skill(znf:run)`**, which reports the URL `znf:ui-verifier` needs — "it builds" is not "it works".
+4. **Behavioural verification**: affected tests (`references/test-scope.md`), else **`Skill(znf:run)`**, which reports the URL `znf:ui-verifier` needs — "it builds" ≠ "it works".
 
    ```bash
    zenify ui-verify files --base "$(zenify wt base)" --count
    ```
 
-   The command erroring = BLOCKED, never zero. Non-zero → dispatch **`znf:ui-verifier`**; **do not drive the browser yourself**. Zero (literally, never a judgement) → "nothing renders in this diff". **A non-zero with no verdict = BLOCKED (❌, Shippable NO).** Setup (flag ON, seed, FE+BE up) is work you perform, never a skip; cannot → BLOCKED, naming what is missing. `ZNF_AUTONOMOUS=1`: `references/autonomous-ui.md`.
+   Command error = BLOCKED, never zero. Non-zero → dispatch **`znf:ui-verifier`**; **never drive the browser yourself**. Zero (literally, never a judgement) → "nothing renders in this diff". **A non-zero with no verdict = BLOCKED (❌, Shippable NO).** Setup (flag ON, seed, FE+BE up) is your work, never a skip; cannot → BLOCKED, naming what is missing. `ZNF_AUTONOMOUS=1`: `references/autonomous-ui.md`.
 
-   - **`.znf/visual/routes.json` present → `zenify visual check --repo <path> --port <P>` FIRST**, a hard gate on non-zero exit; then still dispatch `znf:ui-verifier`. `.znf/e2e/` → `zenify e2e lint`.
-   - The verifier logs itself in (`zenify e2e login --role <r>`, also on `visual check`: a role the screen needs, never admin by default); require **both** a screenshot **and** a `getBoundingClientRect` of the changed element against its container. `--repo` = this worktree; it records via `zenify ui-verify record`. Distinct session name per verifier.
-   - **A negative result that lets you proceed is not evidence** until a second mechanism agrees.
+   - **`.znf/visual/routes.json` present → `zenify visual check --repo <path> --port <P>` FIRST**, a hard gate on non-zero exit; still dispatch `znf:ui-verifier` after. `.znf/e2e/` → `zenify e2e lint`.
+   - The verifier logs itself in (`zenify e2e login --role <r>`, also on `visual check`: a role the screen needs, never admin by default); require **both** a screenshot **and** a `getBoundingClientRect` of the changed element against its container. `--repo` = this worktree; it records via `zenify ui-verify record`. One session name per verifier.
+   - **A negative result that lets you proceed is no evidence** until a second mechanism agrees.
 
    **Three data checks, triggered mechanically** — trigger commands, tenant and pagination rules in
    `references/false-green-and-data.md`; run them and say which the diff could not trigger. **A DB
    query added or changed → `Skill(znf:explain-plan)`** (`COLLSCAN` / `Seq Scan` / MySQL `type=ALL` / scan-ratio): an unwaived **BLOCKING** finding
    (`// znf:db-perf-ok: <reason>`) means **ship does not complete**; ADVISORY prints under `## DB-Perf`.
 
-5. **Independent review** — never pick the reviewer. First `BASE=$(git merge-base "$(zenify wt base)" HEAD)`. Write the pack to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md`, then **`Skill(znf:review)`** with `BASE=$BASE` and the pack: it picks the tier and returns `findings[]` (`znf:review/_shared/finding-schema.md`) plus `shippable`. CRITICAL/HIGH enter the fix loop, MEDIUM/LOW and each `Declined:` line the board.
+5. **Independent review** — never pick the reviewer. First `BASE=$(git merge-base "$(zenify wt base)" HEAD)`. Write the pack to `${TMPDIR:-/tmp}/ship-pack-<fp10>.md`, then **`Skill(znf:review)`** with `BASE` and the pack: it picks the tier, returns `findings[]` (`znf:review/_shared/finding-schema.md`) plus `shippable`. CRITICAL/HIGH enter the fix loop, MEDIUM/LOW and each `Declined:` line the board.
+
+   **`ENGINE=project`** (`zenify reviewer | cut -d' ' -f1`) changes the commit/7b/push order, the fix loop (no scoped re-review; declines, not `Declined:` lines) and the red exit: `references/project-review.md`.
 
    ```
    ## Intent      plan path (/cook) · root cause + Loop:/Regression: lines (/fix, /hotfix) · else the user's goal
@@ -59,11 +61,11 @@ Stamp each check with its `fp`; step 7 needs all current.
 
 6. **Deploy order** (multi-service): schema/migration → backend → subscriber → frontend; subscriber first for a breaking pub/sub change.
 
-**Start the agents first**: dispatch sweeps and `znf:ui-verifier` in **ONE message**, do lint/build/data checks inline, collect each report **by name**, review last. A missing report = gate **incomplete**.
+**Start the agents first**: sweeps and `znf:ui-verifier` in **ONE message**, lint/build/data checks inline, collect each report **by name**, review last. Missing report = gate **incomplete**.
 
 ## The fix loop — it wraps every check, not just the review
 
-**Any failing check enters this loop.** Fix ALL open findings in ONE wave, never one fixer per finding, then recompute `fp`: any check stamped with the old one is VOID.
+**Any failing check enters this loop.** Fix ALL open findings in ONE wave (no fixer per finding), then recompute `fp`: any check stamped with the old one is VOID.
 
 - Re-run step 2 always; step 3 if a shape, payload, endpoint or queue changed; step 4 if behaviour could differ (the default). A step not re-run stays ❌.
 - Step 5 re-runs **scoped**: findings verbatim plus ONLY the fix diff (`git diff <the-head-the-last-review-saw>..HEAD`), each verdicted ADDRESSED / NOT ADDRESSED.
@@ -78,11 +80,11 @@ printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$(basename "$PWD")" "$(fp)" 
   "SHIPPED|BLOCKED" "<step that blocked, or -->" >> ~/.cache/claude-ship-gate.tsv
 ```
 
-Read it back (`tail -30`); **if never blocked, say so.** Trailer `Spec: <spec path>` when a spec exists. Then fill the board (template: `references/gate-evidence.md`) — a `✅/❌ <check> (<fp10>) <evidence>` line for lint, build, contract gate, behaviour and review, plus `Deploy order:`, `Gate log: <SHIPPED|BLOCKED> · blocked <N> of last <M>`, `Shippable: YES only if every fingerprint above == the current one`.
+Read it back (`tail -30`); **never blocked → say so.** Trailer `Spec: <path>` if a spec exists. Then fill the board (`references/gate-evidence.md`, incl. `look:`/review sub-lines) — a `✅/❌ <check> (<fp10>) <evidence>` line for lint, build, contract gate, behaviour and review, plus `Deploy order:`, `Gate log: <SHIPPED|BLOCKED> · blocked <N> of last <M>`, `Shippable: YES only if every fingerprint above == the current one`.
 
-Fill the `look:`/review sub-lines per the template. **Before concluding: `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` — non-zero → append `❌ BLOCKED` and Shippable NO (`ZNF_AUTONOMOUS=1` exit 8 = the await stop: end the session, no BLOCKED line); a waiver appends `waived: <reason>`.**
+**Before concluding: `zenify ui-verify check --repo <path> --base "$(git merge-base "$(zenify wt base)" HEAD)"` — non-zero → append `❌ BLOCKED` and Shippable NO (`ZNF_AUTONOMOUS=1` exit 8 = the await stop: end the session, no BLOCKED line); a waiver appends `waived: <reason>`.**
 
-**Every ✅ carries the fingerprint it was earned at**; a differing one: re-run. **Write the board to `${TMPDIR:-/tmp}/ship-board-$(fp).md`**, `cat` it, report path.
+**Every ✅ carries its fingerprint**; a differing one: re-run. **Write the board to `${TMPDIR:-/tmp}/ship-board-$(fp).md`**, `cat` it, report the path.
 
 **7b.** Before pushing, write the risk-metadata note-commit (`_Blast-radius:`/`_DB:`/`_Rollback:` from the Brief spec's tags, else blank):
 
@@ -90,20 +92,21 @@ Fill the `look:`/review sub-lines per the template. **Before concluding: `zenify
       --blast "<Brief _Blast-radius>" --db "<Brief _DB>" --rollback "<Brief _Rollback>" \
       --spec "<spec path if any>"
 
-Then push and `zenify docs sync` (fails open).
+Then push, `zenify docs sync` (fails open).
 
-**On all-green, commit and push the FEATURE branch** — same branch name across repos, message in the repo's convention. **Then open the PR yourself, then `Skill(znf:pr-review)` per PR** (`--watch` → `Skill(znf:ci-watch)`): `gh pr create`, one per repo onto its base (protected is fine, a PR deploys nothing), title and body per `references/pr-message-language.md` (ZEN keys: title per that file, `Part of ZEN-<n>` non-top layers). Report URLs.
+**On all-green, commit and push the FEATURE branch** — same branch name across repos, message in the repo's convention. **Then open the PR yourself, then `Skill(znf:pr-review)` per PR** (`--watch` → `Skill(znf:ci-watch)`): `gh pr create`, one per repo onto its base (protected is fine: a PR deploys nothing), title and body per `references/pr-message-language.md` (incl. ZEN keys, `Part of ZEN-<n>` on non-top layers). Report URLs.
 
 **Merging is the user's deploy decision — NEVER merge, including a PR you opened**: no `gh pr merge`, no merge or push into a deploy/protected branch (see `.claude/deploy-branches`). Any ❌ → fix, no commit.
 
 ## References
 
-- `references/gate-evidence.md` — board template; why the gate exists.
+- `references/gate-evidence.md` — board template.
 - `references/ui-verification-notes.md` — verifier stalls or logs out.
-- `references/false-green-and-data.md` — the three data checks.
+- `references/false-green-and-data.md`
 - `references/ship-pack-rationale.md`
-- `references/pr-message-language.md` — PR language.
-- `references/stacked-ship.md` — per-layer review.
+- `references/pr-message-language.md`
+- `references/stacked-ship.md`
 - `references/autonomous-ui.md` — step 4 under `ZNF_AUTONOMOUS=1`.
-- `references/github-issues.md` — issues.
+- `references/github-issues.md`
 - `references/test-scope.md`
+- `references/project-review.md`

@@ -25,9 +25,9 @@ func TestTrackSharedDoc(t *testing.T) {
 	})
 }
 
-// FR-12.2: the four skills already at the byte cap stay at their pinned size (cook/hotfix re-pinned by the Plane-key pointer, ship by the move of its PR review loop to znf:pr-review).
+// FR-12.2: the four skills already at the byte cap stay at their pinned size (cook/hotfix re-pinned by the Plane-key pointer, ship by the move of its PR review loop to znf:pr-review and again by the ENGINE=project pointer).
 func TestTrackLeavesCappedSkillsAlone(t *testing.T) {
-	sizes := map[string]int64{"cook": 8178, "fix": 8095, "hotfix": 8191, "ship": 8154}
+	sizes := map[string]int64{"cook": 8178, "fix": 8095, "hotfix": 8191, "ship": 8171}
 	for name, want := range sizes {
 		fi, err := os.Stat(filepath.Join("assets", "znf", "skills", name, "SKILL.md"))
 		if err != nil {

@@ -8,7 +8,7 @@ import (
 )
 
 // ReviewerEnv is the env var `zenify reviewer` reads to pick the review
-// engine. Values: "agent" (the Claude reviewer subagents) or "codex".
+// engine. Values: "agent" (the Claude reviewer subagents), "codex", or "project" (the review the project's CLAUDE.md declares).
 const ReviewerEnv = "ZNF_REVIEWER"
 
 // ReviewerDefault is what the kit seeds: agent.
@@ -36,10 +36,10 @@ func EnsureReviewerEnv(settingsPath string, dryRun bool) (bool, error) {
 	return true, writeEnv(settingsPath, root, env, mode)
 }
 
-// SetReviewerEnv overwrites env.ZNF_REVIEWER with value (agent or codex).
+// SetReviewerEnv overwrites env.ZNF_REVIEWER with value (agent, codex or project).
 func SetReviewerEnv(settingsPath, value string, dryRun bool) error {
-	if value != "agent" && value != "codex" {
-		return fmt.Errorf("reviewer %q: want agent or codex", value)
+	if value != "agent" && value != "codex" && value != "project" {
+		return fmt.Errorf("reviewer %q: want agent, codex or project", value)
 	}
 	root, mode, err := readSettingsRoot(settingsPath)
 	if err != nil {
@@ -73,8 +73,8 @@ func ReviewerEnvValue(settingsPath string) (string, error) {
 		return ReviewerDefault, nil
 	}
 	var v string
-	if err := json.Unmarshal(raw, &v); err != nil || (v != "agent" && v != "codex") {
-		return "", fmt.Errorf("settings.json env.%s = %s: want agent or codex", ReviewerEnv, raw)
+	if err := json.Unmarshal(raw, &v); err != nil || (v != "agent" && v != "codex" && v != "project") {
+		return "", fmt.Errorf("settings.json env.%s = %s: want agent, codex or project", ReviewerEnv, raw)
 	}
 	return v, nil
 }

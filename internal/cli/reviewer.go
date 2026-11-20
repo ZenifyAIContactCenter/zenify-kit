@@ -1,18 +1,30 @@
 package cli
 
+// znf:ui-verify-ok: the kit renders no frontend; the ship regex "views?/" matches skills/review/.
+
 import (
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/spf13/cobra"
 )
 
-// decideReviewer picks the review engine: codex only when the session asks for
-// it (running inside Codex, or ZNF_REVIEWER=codex) and the binary is on PATH.
-func decideReviewer(getenv func(string) string, onPath bool) (engine, reason string) {
+// decideReviewer picks the review engine: project when ZNF_REVIEWER=project and a
+// CLAUDE.md declares a Pre-PR review line (it beats CODEX_THREAD_ID); otherwise codex
+// only when the session asks for it (running inside Codex, or ZNF_REVIEWER=codex)
+// and the binary is on PATH.
+func decideReviewer(getenv func(string) string, onPath bool, prePR bool) (engine, reason string) {
+	if getenv(apply.ReviewerEnv) == "project" {
+		if prePR {
+			return "project", ""
+		}
+		return "agent", "không có dòng Pre-PR review" //znf:allow-lang
+	}
 	wantsCodex := getenv("CODEX_THREAD_ID") != "" || getenv(apply.ReviewerEnv) == "codex"
 	switch {
 	case wantsCodex && onPath:
@@ -22,6 +34,39 @@ func decideReviewer(getenv func(string) string, onPath bool) (engine, reason str
 	default:
 		return "agent", "ZNF_REVIEWER=agent"
 	}
+}
+
+// hasPrePRLine reports whether a CLAUDE.md from cwd up to / or home/.claude/CLAUDE.md
+// has a line starting "Pre-PR review:".
+func hasPrePRLine(cwd, home string, read func(string) ([]byte, error)) bool {
+	has := func(path string) bool {
+		b, err := read(path)
+		if err != nil {
+			return false
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			if strings.HasPrefix(line, "Pre-PR review:") {
+				return true
+			}
+		}
+		return false
+	}
+	for dir := filepath.Clean(cwd); ; dir = filepath.Dir(dir) {
+		if has(filepath.Join(dir, "CLAUDE.md")) {
+			return true
+		}
+		if filepath.Dir(dir) == dir {
+			break
+		}
+	}
+	return has(filepath.Join(home, ".claude", "CLAUDE.md"))
+}
+
+// prePRDeclared is hasPrePRLine over the real filesystem from the current directory.
+func prePRDeclared() bool {
+	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
+	return hasPrePRLine(cwd, home, os.ReadFile)
 }
 
 func printReviewer(w io.Writer, engine, reason string) {
@@ -35,10 +80,10 @@ func printReviewer(w io.Writer, engine, reason string) {
 func newReviewerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reviewer",
-		Short: "In engine review được chọn (agent hoặc codex) và lý do", //znf:allow-lang
+		Short: "In engine review được chọn (agent, codex hoặc project) và lý do", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			engine, reason := decideReviewer(os.Getenv, codexOnPath())
+			engine, reason := decideReviewer(os.Getenv, codexOnPath(), prePRDeclared())
 			printReviewer(cmd.OutOrStdout(), engine, reason)
 			return nil
 		},
@@ -62,8 +107,8 @@ func reviewerSettings() (string, error) {
 // a session reads it at start, so the change applies to new sessions.
 func newReviewerSetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "set <agent|codex>",
-		Short: "Đặt engine review (agent hoặc codex) vào env của <workspace>/.claude/settings.local.json", //znf:allow-lang
+		Use:   "set <agent|codex|project>",
+		Short: "Đặt engine review (agent, codex hoặc project) vào env của <workspace>/.claude/settings.local.json", //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path, err := reviewerSettings()
@@ -84,7 +129,7 @@ func newReviewerSetCmd() *cobra.Command {
 func newReviewerGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get",
-		Short: "In engine review đã lưu trong env của <workspace>/.claude/settings.local.json (agent hoặc codex)", //znf:allow-lang
+		Short: "In engine review đã lưu trong env của <workspace>/.claude/settings.local.json (agent, codex hoặc project)", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, err := reviewerSettings()

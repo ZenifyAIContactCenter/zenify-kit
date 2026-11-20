@@ -13,6 +13,7 @@ const ALLOWED = [
   'zenify reviewer get',
   'zenify reviewer set agent',
   'zenify reviewer set codex',
+  'zenify reviewer set project',
 ]
 
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -173,6 +174,13 @@ test('FR-17.3: rows in step with their sources are left alone', { options: { tra
   await clock.settle()
   expect(calls.run).toEqual(['zenify feature', 'zenify reviewer get'])
   expect(calls.set).toEqual([])
+})
+
+test('FR-4.11.1: a reviewer source of project sets znf.reviewer project without throwing', { options: { reviewer: 'agent' } }, async ($, on) => {
+  const calls = engine(on, { runs: { ...SYNCED, 'zenify reviewer get': ok('project\n') } })
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(calls.set).toEqual([{ key: 'znf.reviewer', value: 'project' }])
 })
 
 test('FR-17.3: a reviewer source of codex sets znf.reviewer codex', { options: { reviewer: 'agent' } }, async ($, on) => {

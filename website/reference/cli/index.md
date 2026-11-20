@@ -85,9 +85,9 @@ Mỗi lệnh có một trang riêng với cú pháp, cờ và ví dụ. Nội du
 | [zenify redis-read](./zenify_redis-read) | Chạy một lệnh Redis chỉ đọc qua credential broker. |
 | [zenify release-note](./zenify_release-note) | Ghi một commit ghi chú release mang metadata rủi ro, để release report đọc sau. |
 | [zenify release-report](./zenify_release-report) | Sinh báo cáo rủi ro cho một release tag từ lịch sử git của mọi repo trong workspace. |
-| [zenify reviewer](./zenify_reviewer) | In ra engine review mà kit sẽ dùng ở phiên này, agent hoặc codex, kèm lý do khi rơi về agent. |
-| [zenify reviewer get](./zenify_reviewer_get) | In engine review đã lưu trong `env.ZNF_REVIEWER` của `<workspace>/.claude/settings.local.json`, agent hoặc codex. |
-| [zenify reviewer set](./zenify_reviewer_set) | Đặt engine review của kit, agent hoặc codex, vào `env.ZNF_REVIEWER` của `<workspace>/.claude/settings.local.json`. |
+| [zenify reviewer](./zenify_reviewer) | In ra engine review mà kit sẽ dùng ở phiên này, agent, codex hoặc project, kèm lý do khi rơi về agent. |
+| [zenify reviewer get](./zenify_reviewer_get) | In engine review đã lưu trong `env.ZNF_REVIEWER` của `<workspace>/.claude/settings.local.json`, agent, codex hoặc project. |
+| [zenify reviewer set](./zenify_reviewer_set) | Đặt engine review của kit, agent, codex hoặc project, vào `env.ZNF_REVIEWER` của `<workspace>/.claude/settings.local.json`. |
 | [zenify route-log](./zenify_route-log) | Xem các record routing model do skill ghi (số liệu plan từ znf:analyze), đếm theo site, model và gate. |
 | [zenify rules](./zenify_rules) | Nhóm lệnh kiểm tra rule team, hiện có lệnh lint ngôn ngữ cho file agent đọc. |
 | [zenify rules lint](./zenify_rules_lint) | Kiểm file mà agent đọc (skill, rule, mã nguồn kit): chặn tiếng Việt, và bắt frontmatter khai sai key `globs:` thay cho `paths:`. |

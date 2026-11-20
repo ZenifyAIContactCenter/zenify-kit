@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.75.0
+
+*2026-11-20*
+
+- **Review trước khi mở PR bằng reviewer của project:** engine review mới `project` (`zenify reviewer set project`, hoặc dòng `Reviewer` trong `/config`). Khi `CLAUDE.md` có dòng `Pre-PR review:` nêu tool gửi review và tool chờ kết quả, `/znf:ship` commit, ghi note-commit release và push nhánh feature trước bước review, gửi nhánh cho reviewer của project, chờ tối đa 30 phút, đưa lỗi vào vòng sửa (mỗi vòng push rồi gửi lại; lỗi sai decline trong lần gửi kế tiếp), và mở PR đúng trên commit đã review. Không có dòng đó thì `zenify reviewer` in `agent (không có dòng Pre-PR review)`; tool thiếu, lỗi hoặc hết giờ thì review bằng agent và board ghi `project→agent: <lý do>`. Mặc định vẫn là `agent`. Xem [Review và gate](/guides/review-and-gates) và [Zenie review trên PR](/guides/zenie-review#review-truoc-khi-mo-pr).
+
 ## v0.74.0
 
 *2026-11-19*

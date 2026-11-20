@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,7 +14,7 @@ func TestDecideReviewerMatrix(t *testing.T) {
 		for _, zr := range []string{"agent", "codex"} {
 			for _, onPath := range []bool{true, false} {
 				env := map[string]string{"CODEX_THREAD_ID": thread, "ZNF_REVIEWER": zr}
-				got, reason := decideReviewer(func(k string) string { return env[k] }, onPath)
+				got, reason := decideReviewer(func(k string) string { return env[k] }, onPath, false)
 				want, wantReason := "agent", ""
 				if (thread != "" || zr == "codex") && onPath {
 					want = "codex"
@@ -143,5 +144,57 @@ func TestReviewerGetPrintsStoredValue(t *testing.T) {
 	}
 	if _, err := get(); err == nil {
 		t.Fatal("stored foo: want an error")
+	}
+}
+
+func envOf(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+
+func TestDecideReviewer_ProjectWithLine(t *testing.T) {
+	got, reason := decideReviewer(envOf(map[string]string{"ZNF_REVIEWER": "project"}), false, true)
+	if got != "project" || reason != "" {
+		t.Fatalf("got (%q,%q)", got, reason)
+	}
+}
+
+func TestDecideReviewer_ProjectWithoutLine(t *testing.T) {
+	got, reason := decideReviewer(envOf(map[string]string{"ZNF_REVIEWER": "project"}), true, false)
+	if got != "agent" || reason != "không có dòng Pre-PR review" { //znf:allow-lang
+		t.Fatalf("got (%q,%q)", got, reason)
+	}
+}
+
+func TestDecideReviewer_ProjectBeatsCodexThread(t *testing.T) {
+	got, reason := decideReviewer(envOf(map[string]string{"ZNF_REVIEWER": "project", "CODEX_THREAD_ID": "1"}), true, true)
+	if got != "project" || reason != "" {
+		t.Fatalf("got (%q,%q)", got, reason)
+	}
+}
+
+func TestHasPrePRLine_WalksUpThenHome(t *testing.T) {
+	files := map[string]string{
+		"/ws/repos/a/CLAUDE.md":     "# a\nnothing here\n",
+		"/ws/CLAUDE.md":             "intro\nPre-PR review: run the bot\n",
+		"/home/u/.claude/CLAUDE.md": "Pre-PR review: x\n",
+	}
+	read := func(p string) ([]byte, error) {
+		if c, ok := files[p]; ok {
+			return []byte(c), nil
+		}
+		return nil, fs.ErrNotExist
+	}
+	if !hasPrePRLine("/ws/repos/a/src", "/home/u", read) {
+		t.Fatal("line in ancestor CLAUDE.md must count")
+	}
+	delete(files, "/ws/CLAUDE.md")
+	if !hasPrePRLine("/ws/repos/a/src", "/home/u", read) {
+		t.Fatal("line only in home CLAUDE.md must count")
+	}
+	delete(files, "/home/u/.claude/CLAUDE.md")
+	if hasPrePRLine("/ws/repos/a/src", "/home/u", read) {
+		t.Fatal("no line anywhere must be false")
+	}
+	files["/ws/CLAUDE.md"] = "  Pre-PR review: indented\nxPre-PR review: x\n"
+	if hasPrePRLine("/ws/repos/a/src", "/home/u", read) {
+		t.Fatal("only a line that starts with the marker counts")
 	}
 }

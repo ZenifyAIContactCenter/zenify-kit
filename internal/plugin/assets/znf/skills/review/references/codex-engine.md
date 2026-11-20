@@ -1,6 +1,6 @@
 # Codex engine (Step 3, `ENGINE=codex`)
 
-`ENGINE` comes from `zenify reviewer` (Step 2; empty → `agent`). Only `codex` takes this branch;
+`ENGINE` comes from `zenify reviewer` (Step 1b; empty → `agent`). Only `codex` takes this branch;
 `agent` runs T1/T2/T3 as written in SKILL.md. `BASE` is Step 1's; `PACK` is the ship-pack path from
 ship step 5 (empty standalone).
 
