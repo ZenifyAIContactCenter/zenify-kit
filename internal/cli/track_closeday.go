@@ -68,7 +68,7 @@ func runCloseDay(w, errW io.Writer, wsDir string, now time.Time, refresh bool) e
 		if err := os.Remove(filepath.Join(dir, "merged.checked")); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		if nowRes, in, err = computeTrackStatsInput(dir, wsDir, today, now, false); err != nil {
+		if nowRes, in, err = computeTrackStatsInput(errW, dir, wsDir, today, now, false); err != nil {
 			return err
 		}
 		if e := firstNonEmpty(nowRes.Today.MergedError, nowRes.Today.PRStatusError); e != "" {
@@ -147,7 +147,8 @@ func feedbackSection(errW io.Writer, dir string, in trackstats.Input, day tracks
 		Ledgers: map[string]string{}, Snapshots: map[string]*trackstats.ReviewSnapshot{},
 	}
 	for _, u := range merged {
-		if id := trackstats.OwnerRun(events, u); id != "-" {
+		// The id names a file: only a real track id is read; any other counts as no ledger.
+		if id := trackstats.OwnerRun(events, u); trackIDRe.MatchString(id) {
 			b, err := os.ReadFile(filepath.Join(dir, "ledgers", id+".md")) //nolint:gosec // G304 -- a track id under the track dir
 			switch {
 			case err == nil:
@@ -304,7 +305,8 @@ func compactTrackLog(dir string, now time.Time, today string) (string, map[strin
 	return keep, movedIDs, nil
 }
 
-// moveOldFiles moves session logs and day reports past the keep window into archive/.
+// moveOldFiles moves session logs and day reports past the keep window into archive/ and
+// deletes the review snapshots and ledger copies past it.
 // A session log moves when it is old and none of its bound ids is still in the log; ownDay's
 // report, written by this run, always stays. A file already gone was moved by another run.
 func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bool, ownDay string) error {
@@ -355,6 +357,35 @@ func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bo
 			if err := moveInto(f, filepath.Join(dir, "archive", "days")); err != nil {
 				return err
 			}
+		}
+	}
+	return pruneFeedbackFiles(dir, cut)
+}
+
+// pruneFeedbackFiles deletes the review snapshots and ledger copies last written before cut: the
+// Feedback only reads PRs merged inside the keep window. A file already gone was removed by another run.
+func pruneFeedbackFiles(dir string, cut time.Time) error {
+	var files []string
+	for _, pat := range []string{filepath.Join("reviews", "*.json"), filepath.Join("ledgers", "*.md")} {
+		m, err := filepath.Glob(filepath.Join(dir, pat))
+		if err != nil {
+			return err
+		}
+		files = append(files, m...)
+	}
+	for _, f := range files {
+		fi, err := os.Stat(f)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !fi.ModTime().Before(cut) {
+			continue
+		}
+		if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 	}
 	return nil

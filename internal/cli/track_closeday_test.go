@@ -218,6 +218,44 @@ func TestCloseDayPrunesOldLiveFiles(t *testing.T) {
 	}
 }
 
+// Review snapshots and ledger copies past the keep window are deleted; newer ones stay.
+func TestCloseDayPrunesOldReviewsAndLedgers(t *testing.T) {
+	now := time.Now()
+	ws, _ := closeDayWS(t, now)
+	dir := filepath.Join(ws, ".zenify", "track")
+	old, fresh := now.AddDate(0, 0, -(closeDayKeepDays+1)), now.AddDate(0, 0, -1)
+	files := map[string]time.Time{
+		filepath.Join(dir, "reviews", "o-r-1.json"):          old,
+		filepath.Join(dir, "reviews", "o-r-2.json"):          fresh,
+		filepath.Join(dir, "ledgers", "cook-261101-aaaa.md"): old,
+		filepath.Join(dir, "ledgers", "cook-261119-bbbb.md"): fresh,
+	}
+	for f, at := range files {
+		if err := os.MkdirAll(filepath.Dir(f), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(f, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runCloseDay(&bytes.Buffer{}, &bytes.Buffer{}, ws, now, true); err != nil {
+		t.Fatal(err)
+	}
+	for f, at := range files {
+		_, err := os.Stat(f)
+		gone := errors.Is(err, os.ErrNotExist)
+		if err != nil && !gone {
+			t.Fatal(err)
+		}
+		if want := at.Equal(old); gone != want {
+			t.Errorf("%s removed = %v, want %v", filepath.Base(f), gone, want)
+		}
+	}
+}
+
 func TestCloseDayNoMarkOnError(t *testing.T) {
 	now := time.Now()
 	ws, _ := closeDayWS(t, now)

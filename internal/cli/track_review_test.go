@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -57,8 +59,19 @@ func stubReview(t *testing.T, fail *bool) *[]string {
 
 func reviewStats(t *testing.T, ws string) string {
 	t.Helper()
-	out, err := runTrack(t, ws, "stats", "--json")
-	if err != nil {
+	e, _ := reviewStatsErr(t, ws)
+	return e
+}
+
+// reviewStatsErr runs stats --json and returns Today.MergedError and what went to stderr.
+func reviewStatsErr(t *testing.T, ws string) (mergedErr, stderr string) {
+	t.Helper()
+	root := NewRootCmd()
+	var out, errOut bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errOut)
+	root.SetArgs([]string{"track", "stats", "--json", "--workspace", ws})
+	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	var r struct {
@@ -66,10 +79,31 @@ func reviewStats(t *testing.T, ws string) string {
 			MergedError string `json:"mergedError"`
 		} `json:"today"`
 	}
-	if err := json.Unmarshal([]byte(out), &r); err != nil {
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
 		t.Fatal(err)
 	}
-	return r.Today.MergedError
+	return r.Today.MergedError, errOut.String()
+}
+
+// mergedAgo is a merged.json value for a merge d before now.
+func mergedAgo(d time.Duration) string {
+	return time.Now().Add(-d).UTC().Format(time.RFC3339)
+}
+
+func readFailed(t *testing.T, ws string) map[string]int {
+	t.Helper()
+	m := map[string]int{}
+	b, err := os.ReadFile(filepath.Join(ws, ".zenify", "track", "reviews.failed"))
+	if errors.Is(err, os.ErrNotExist) {
+		return m
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m
 }
 
 func reviewFile(ws, name string) string {
@@ -86,7 +120,7 @@ func dropChecked(t *testing.T, ws string) {
 // SC-3: a merged PR is snapshotted once with its run id; a closed PR never is.
 func TestTrackReview_SnapshotOncePerMergedPR(t *testing.T) {
 	merged, closed := "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
-	ws, id := reviewWS(t, []string{merged, closed}, map[string]string{merged: "2026-11-18T05:00:00Z", closed: trackstats.ClosedUnmerged})
+	ws, id := reviewWS(t, []string{merged, closed}, map[string]string{merged: mergedAgo(48 * time.Hour), closed: trackstats.ClosedUnmerged})
 	asked := stubReview(t, nil)
 	if e := reviewStats(t, ws); e != "" {
 		t.Fatalf("mergedError = %q", e)
@@ -118,32 +152,25 @@ func TestTrackReview_SnapshotOncePerMergedPR(t *testing.T) {
 	}
 }
 
-// SC-4: a failed snapshot is reported, writes no file and is retried next cycle.
+// SC-4: a failed snapshot goes to stderr, not onto mergedError, writes no file, is counted in
+// reviews.failed and is retried next cycle; a success clears its count.
 func TestTrackReview_ErrorReportedAndRetried(t *testing.T) {
 	pr := "https://github.com/o/r/pull/1"
-	ws, _ := reviewWS(t, []string{pr}, map[string]string{pr: "2026-11-18T05:00:00Z"})
+	ws, _ := reviewWS(t, []string{pr}, map[string]string{pr: mergedAgo(48 * time.Hour)})
 	fail := true
 	asked := stubReview(t, &fail)
-	errFile, err := os.CreateTemp(t.TempDir(), "stderr")
-	if err != nil {
-		t.Fatal(err)
+	e, stderr := reviewStatsErr(t, ws)
+	if e != "" {
+		t.Fatalf("mergedError = %q, want empty: a snapshot failure is not a merged-check failure", e)
 	}
-	oldErr := os.Stderr
-	os.Stderr = errFile
-	t.Cleanup(func() { os.Stderr = oldErr })
-	e := reviewStats(t, ws)
-	if !strings.Contains(e, "review snapshot "+pr) || !strings.Contains(e, "gh down") {
-		t.Fatalf("mergedError = %q, want the review snapshot error", e)
-	}
-	stderr, err := os.ReadFile(errFile.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := "track: review snapshot " + pr + ": gh down"; !strings.Contains(string(stderr), want) {
+	if want := "track: review snapshot " + pr + ": gh down"; !strings.Contains(stderr, want) {
 		t.Errorf("stderr = %q, want %q", stderr, want)
 	}
 	if _, err := os.Stat(reviewFile(ws, "o-r-1.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("failed snapshot wrote a file: %v", err)
+	}
+	if got := readFailed(t, ws); got[pr] != 1 {
+		t.Fatalf("reviews.failed = %v, want %s: 1", got, pr)
 	}
 	fail = false
 	dropChecked(t, ws)
@@ -156,6 +183,64 @@ func TestTrackReview_ErrorReportedAndRetried(t *testing.T) {
 	if _, err := os.Stat(reviewFile(ws, "o-r-1.json")); err != nil {
 		t.Fatalf("retry wrote no file: %v", err)
 	}
+	if got := readFailed(t, ws); len(got) != 0 {
+		t.Fatalf("reviews.failed = %v after success, want empty", got)
+	}
+}
+
+// Only the first failure of a cycle reaches stderr.
+func TestTrackReview_FirstFailureOnlyOnStderr(t *testing.T) {
+	a, b := "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
+	ws, _ := reviewWS(t, []string{a, b}, map[string]string{a: mergedAgo(time.Hour), b: mergedAgo(2 * time.Hour)})
+	fail := true
+	stubReview(t, &fail)
+	_, stderr := reviewStatsErr(t, ws)
+	if n := strings.Count(stderr, "track: review snapshot "); n != 1 {
+		t.Fatalf("stderr has %d snapshot lines, want 1:\n%s", n, stderr)
+	}
+	if got := readFailed(t, ws); got[a] != 1 || got[b] != 1 {
+		t.Fatalf("reviews.failed = %v, want both counted", got)
+	}
+}
+
+// A PR that fails three cycles stops taking a slot; an older PR gets it.
+func TestTrackReview_GivesUpAfterThreeFailures(t *testing.T) {
+	cache := map[string]string{}
+	var prs []string
+	for i := 1; i <= 6; i++ {
+		u := fmt.Sprintf("https://github.com/o/r/pull/%d", i)
+		prs = append(prs, u)
+		cache[u] = mergedAgo(time.Duration(10-i) * time.Hour)
+	}
+	ws, _ := reviewWS(t, prs, cache)
+	fail := true
+	asked := stubReview(t, &fail)
+	for cycle := 1; cycle <= 3; cycle++ {
+		*asked = nil
+		reviewStatsErr(t, ws)
+		if len(*asked) != 5 || slices.Contains(*asked, prs[0]) {
+			t.Fatalf("cycle %d asked %v, want the 5 newest", cycle, *asked)
+		}
+		dropChecked(t, ws)
+	}
+	*asked = nil
+	reviewStatsErr(t, ws)
+	if len(*asked) != 1 || (*asked)[0] != prs[0] {
+		t.Fatalf("cycle 4 asked %v, want only the oldest %s", *asked, prs[0])
+	}
+}
+
+// A PR merged before the keep window is never fetched.
+func TestTrackReview_OnlyRecentMerges(t *testing.T) {
+	old, recent := "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2"
+	ws, _ := reviewWS(t, []string{old, recent}, map[string]string{
+		old: mergedAgo((closeDayKeepDays + 1) * 24 * time.Hour), recent: mergedAgo(time.Hour),
+	})
+	asked := stubReview(t, nil)
+	reviewStats(t, ws)
+	if len(*asked) != 1 || (*asked)[0] != recent {
+		t.Fatalf("asked %v, want only %s", *asked, recent)
+	}
 }
 
 // SC-5: at most five snapshots per cycle.
@@ -165,7 +250,7 @@ func TestTrackReview_FivePerCycle(t *testing.T) {
 	for i := 1; i <= 7; i++ {
 		u := fmt.Sprintf("https://github.com/o/r/pull/%d", i)
 		prs = append(prs, u)
-		cache[u] = "2026-11-18T05:00:00Z"
+		cache[u] = mergedAgo(48 * time.Hour)
 	}
 	ws, _ := reviewWS(t, prs, cache)
 	asked := stubReview(t, nil)
@@ -187,7 +272,7 @@ func TestTrackReview_NewestMergeFirst(t *testing.T) {
 	for i := 1; i <= 6; i++ {
 		u := fmt.Sprintf("https://github.com/o/r/pull/%d", i)
 		prs = append(prs, u)
-		cache[u] = fmt.Sprintf("2026-11-%02dT05:00:00Z", 10+i)
+		cache[u] = mergedAgo(time.Duration(10-i) * time.Hour)
 	}
 	newest := prs[5]
 	ws, _ := reviewWS(t, prs, cache)
@@ -201,14 +286,7 @@ func TestTrackReview_NewestMergeFirst(t *testing.T) {
 		return trackstats.ReviewSnapshot{URL: u}, nil
 	}
 	t.Cleanup(func() { trackReview = old })
-	errFile, err := os.CreateTemp(t.TempDir(), "stderr")
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldErr := os.Stderr
-	os.Stderr = errFile
-	t.Cleanup(func() { os.Stderr = oldErr })
-	reviewStats(t, ws)
+	reviewStatsErr(t, ws)
 	if len(asked) != 5 || asked[0] != newest {
 		t.Fatalf("asked %v, want 5 calls starting with %s", asked, newest)
 	}
@@ -220,7 +298,7 @@ func TestTrackReview_NewestMergeFirst(t *testing.T) {
 // Inside the recheck window stats never asks gh for a review.
 func TestTrackReview_NoCallInsideRecheckWindow(t *testing.T) {
 	pr := "https://github.com/o/r/pull/1"
-	ws, _ := reviewWS(t, []string{pr}, map[string]string{pr: "2026-11-18T05:00:00Z"})
+	ws, _ := reviewWS(t, []string{pr}, map[string]string{pr: mergedAgo(48 * time.Hour)})
 	if err := os.WriteFile(filepath.Join(ws, ".zenify", "track", "merged.checked"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}

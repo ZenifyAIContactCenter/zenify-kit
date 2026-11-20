@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,11 +39,11 @@ func TestResolveFullIDPassthrough(t *testing.T) {
 		t.Fatal(err)
 	}
 	bid := "b-261111-b81e"
-	got, err := resolveRef(dir, ws, bid, scopeBacklog, time.Now())
+	got, err := resolveRef(io.Discard, dir, ws, bid, scopeBacklog, time.Now())
 	if err != nil || got != bid {
 		t.Fatalf("resolveRef(full id) = %q %v", got, err)
 	}
-	if _, err := resolveRef(dir, ws, "b81e", scopeBacklog, time.Now()); err == nil {
+	if _, err := resolveRef(io.Discard, dir, ws, "b81e", scopeBacklog, time.Now()); err == nil {
 		t.Fatal("a short code must read stats, which fail here")
 	}
 }
@@ -218,11 +219,11 @@ func TestResolveBacklogSkipsStaleTrackID(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(ws, ".zenify", "track")
-	got, err := resolveRef(dir, ws, code, scopeBacklog, time.Now())
+	got, err := resolveRef(io.Discard, dir, ws, code, scopeBacklog, time.Now())
 	if err != nil || got != bid {
 		t.Fatalf("resolveRef(%s, backlog) = %q %v, want %s", code, got, err, bid)
 	}
-	if _, err := resolveRef(dir, ws, code, scopePlanAll, time.Now()); err == nil {
+	if _, err := resolveRef(io.Discard, dir, ws, code, scopePlanAll, time.Now()); err == nil {
 		t.Fatal("plan scope keeps the stale track id, so the code must be ambiguous there")
 	}
 }
