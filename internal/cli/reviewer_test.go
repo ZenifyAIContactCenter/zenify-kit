@@ -127,8 +127,8 @@ func TestReviewerGetPrintsStoredValue(t *testing.T) {
 		err := root.Execute()
 		return out.String(), err
 	}
-	if out, err := get(); err != nil || out != "agent\n" {
-		t.Fatalf("no settings file: %q %v, want agent", out, err)
+	if out, err := get(); err != nil || out != "agent+project\n" {
+		t.Fatalf("no settings file: %q %v, want agent+project", out, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
@@ -196,5 +196,19 @@ func TestHasPrePRLine_WalksUpThenHome(t *testing.T) {
 	files["/ws/CLAUDE.md"] = "  Pre-PR review: indented\nxPre-PR review: x\n"
 	if hasPrePRLine("/ws/repos/a/src", "/home/u", read) {
 		t.Fatal("only a line that starts with the marker counts")
+	}
+}
+
+func TestDecideReviewer_AgentPlusProject(t *testing.T) {
+	zr := map[string]string{"ZNF_REVIEWER": "agent+project"}
+	if got, reason := decideReviewer(envOf(zr), false, true); got != "agent+project" || reason != "" {
+		t.Fatalf("with line: got (%q,%q)", got, reason)
+	}
+	if got, reason := decideReviewer(envOf(zr), true, false); got != "agent" || reason != "không có dòng Pre-PR review" { //znf:allow-lang
+		t.Fatalf("without line: got (%q,%q)", got, reason)
+	}
+	zr["CODEX_THREAD_ID"] = "1"
+	if got, reason := decideReviewer(envOf(zr), true, true); got != "agent+project" || reason != "" {
+		t.Fatalf("beats codex thread: got (%q,%q)", got, reason)
 	}
 }

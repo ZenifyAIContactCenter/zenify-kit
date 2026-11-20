@@ -14,14 +14,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// decideReviewer picks the review engine: project when ZNF_REVIEWER=project and a
-// CLAUDE.md declares a Pre-PR review line (it beats CODEX_THREAD_ID); otherwise codex
+// decideReviewer picks the review engine: project (or agent+project) when ZNF_REVIEWER
+// says so and a CLAUDE.md declares a Pre-PR review line (it beats CODEX_THREAD_ID); otherwise codex
 // only when the session asks for it (running inside Codex, or ZNF_REVIEWER=codex)
 // and the binary is on PATH.
 func decideReviewer(getenv func(string) string, onPath bool, prePR bool) (engine, reason string) {
-	if getenv(apply.ReviewerEnv) == "project" {
+	if zr := getenv(apply.ReviewerEnv); zr == "project" || zr == "agent+project" {
 		if prePR {
-			return "project", ""
+			return zr, ""
 		}
 		return "agent", "không có dòng Pre-PR review" //znf:allow-lang
 	}
@@ -80,7 +80,7 @@ func printReviewer(w io.Writer, engine, reason string) {
 func newReviewerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "reviewer",
-		Short: "In engine review được chọn (agent, codex hoặc project) và lý do", //znf:allow-lang
+		Short: "In engine review được chọn (agent, codex, project hoặc agent+project) và lý do", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			engine, reason := decideReviewer(os.Getenv, codexOnPath(), prePRDeclared())
@@ -107,8 +107,8 @@ func reviewerSettings() (string, error) {
 // a session reads it at start, so the change applies to new sessions.
 func newReviewerSetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "set <agent|codex|project>",
-		Short: "Đặt engine review (agent, codex hoặc project) vào env của <workspace>/.claude/settings.local.json", //znf:allow-lang
+		Use:   "set <agent|codex|project|agent+project>",
+		Short: "Đặt engine review (agent, codex, project hoặc agent+project) vào env của <workspace>/.claude/settings.local.json", //znf:allow-lang
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path, err := reviewerSettings()
@@ -129,7 +129,7 @@ func newReviewerSetCmd() *cobra.Command {
 func newReviewerGetCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "get",
-		Short: "In engine review đã lưu trong env của <workspace>/.claude/settings.local.json (agent, codex hoặc project)", //znf:allow-lang
+		Short: "In engine review đã lưu trong env của <workspace>/.claude/settings.local.json (agent, codex, project hoặc agent+project)", //znf:allow-lang
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, err := reviewerSettings()

@@ -198,6 +198,12 @@ func ensureWorkspace(workspace, home string, stdout, stderr io.Writer, opts ensu
 			fmt.Fprintf(stdout, "set %s=%s in .claude/settings.local.json (zenify reviewer picks the review engine from it)\n",
 				apply.ReviewerEnv, apply.ReviewerDefault)
 		}
+		if changed, err := apply.MigrateReviewerDefault(local, apply.KitReviewerDefaultRecord(home), false); err != nil {
+			localErr("reviewer default", err)
+		} else if changed {
+			fmt.Fprintf(stdout, "set %s=%s in .claude/settings.local.json (kit default changed; zenify reviewer set agent to go back)\n",
+				apply.ReviewerEnv, apply.ReviewerDefault)
+		}
 
 		// Rules the user removed at user level stay removed here; when that is
 		// unknown, no kit rule is added rather than re-grant a removed one.
