@@ -19,17 +19,17 @@ func TestFeatureCmd_OnThenList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "github.issues on\ntrack off\n" {
+	if out != "github.issues on\ntrack on\ntrack.feedback off\n" {
 		t.Fatalf("list output = %q", out)
 	}
 }
 
-func TestFeatureCmd_DefaultOff(t *testing.T) {
+func TestFeatureCmd_Defaults(t *testing.T) {
 	out, _, err := execCmd(newFeatureCmd(), "--workspace", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "github.issues off\ntrack off\n" {
+	if out != "github.issues off\ntrack on\ntrack.feedback off\n" {
 		t.Fatalf("output = %q", out)
 	}
 }
@@ -60,7 +60,7 @@ func TestFeatureCmd_TrackOnThenList(t *testing.T) {
 		t.Fatalf("set output = %q err %v", out, err)
 	}
 	out, _, err = execCmd(newFeatureCmd(), "--workspace", ws)
-	if err != nil || out != "github.issues off\ntrack on\n" {
+	if err != nil || out != "github.issues off\ntrack on\ntrack.feedback off\n" {
 		t.Fatalf("list output = %q err %v", out, err)
 	}
 }

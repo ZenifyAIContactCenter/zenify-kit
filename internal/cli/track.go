@@ -54,7 +54,7 @@ func newTrackCmd() *cobra.Command {
 		Use:   "track",
 		Short: "Ghi và báo cáo các lượt cook/fix/hotfix cho pane dev track", //znf:allow-lang
 		Long: "Ghi các dòng start/est/ship/fix/ci/end/plan vào <workspace>/.zenify/track/log.md và in số liệu\n" + //znf:allow-lang
-			"cho pane. Bật bằng `zenify feature track on`; khi tắt, mọi lệnh ghi in `track: off` và\n" + //znf:allow-lang
+			"cho pane. Mặc định bật; tắt bằng `zenify feature track off` — khi tắt, mọi lệnh ghi in `track: off` và\n" + //znf:allow-lang
 			"không ghi gì.", //znf:allow-lang
 	}
 	c.PersistentFlags().StringVar(&ws, "workspace", "", "workspace root (default: resolved from the current directory)")

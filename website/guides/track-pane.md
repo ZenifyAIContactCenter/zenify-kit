@@ -10,6 +10,8 @@ Khi tính năng bật, mỗi lần một trong các skill đó (hoặc `znf:ci-w
 
 ## Bật và tắt
 
+Track bật mặc định khi overlay chưa đặt `track`; chỉ `track: false` tường minh mới tắt.
+
 ```bash
 zenify feature track on
 zenify feature track off
@@ -245,7 +247,7 @@ Các thiết lập của kit là các dòng của plugin `znf` trong `/config` c
 
 | Dòng | Giá trị | Tác dụng |
 |---|---|---|
-| **Dev track** (`znf.track`) | bật/tắt, mặc định tắt | Chạy `zenify feature track on\|off` cho workspace hiện tại |
+| **Dev track** (`znf.track`) | bật/tắt, mặc định bật | Chạy `zenify feature track on\|off` cho workspace hiện tại |
 | **GitHub issues** (`znf.githubIssues`) | bật/tắt, mặc định tắt | Chạy `zenify feature github.issues on\|off` |
 | **Track pane** (`znf.trackPane`) | `auto` (mặc định), `command`, `off` | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở, không có lệnh `/track-pane` và dòng tip dưới prompt không mời mở pane. Status line không đổi theo dòng này |
 | **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì dòng tip dưới prompt ẩn mọi tip theo ngữ cảnh (xem [Tip dưới prompt](#tip-dưới-prompt)). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |

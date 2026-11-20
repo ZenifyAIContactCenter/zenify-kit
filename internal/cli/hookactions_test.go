@@ -313,7 +313,7 @@ func TestSessionStart_FeaturesLine(t *testing.T) {
 			if c.wantOn && !strings.Contains(out, want) {
 				t.Errorf("missing line %q in %q", want, out)
 			}
-			if !c.wantOn && strings.Contains(out, "features:") {
+			if !c.wantOn && strings.Contains(out, "features: github.issues") {
 				t.Errorf("unexpected features line in %q", out)
 			}
 		})
@@ -334,7 +334,8 @@ func TestSessionStart_TrackLine(t *testing.T) {
 	}{
 		{"on", "features:\n  track: true\n", true},
 		{"off", "features:\n  track: false\n", false},
-		{"github only", "features:\n  github.issues: true\n", false},
+		{"github only, track defaults on", "features:\n  github.issues: true\n", true},
+		{"github only, track off", "features:\n  github.issues: true\n  track: false\n", false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

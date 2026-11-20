@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,10 +21,8 @@ import (
 func trackWS(t *testing.T, on bool) string {
 	t.Helper()
 	ws := t.TempDir()
-	if on {
-		if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte("features:\n  track: true\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte(fmt.Sprintf("features:\n  track: %t\n", on)), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	return ws
 }
@@ -849,6 +848,25 @@ func TestTrackStartTaskKind(t *testing.T) {
 	}
 	if !regexp.MustCompile(`^track: task-\d{6}-[0-9a-f]{4}\n$`).MatchString(out) {
 		t.Fatalf("out %q", out)
+	}
+}
+
+// SC-18: no overlay means track is on.
+func TestTrackStartDefaultOn(t *testing.T) {
+	ws := t.TempDir()
+	if _, err := runTrack(t, ws, "start", "--kind", "task", "--repo", "r", "--est", "S"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(trackLog(t, ws), " · start · ") {
+		t.Fatalf("log:\n%s", trackLog(t, ws))
+	}
+	off := trackWS(t, false)
+	out, err := runTrack(t, off, "start", "--kind", "task", "--repo", "r", "--est", "S")
+	if err != nil || out != "track: off\n" {
+		t.Fatalf("out %q err %v", out, err)
+	}
+	if _, err := os.Stat(filepath.Join(off, ".zenify", "track")); !os.IsNotExist(err) {
+		t.Fatalf("explicit off must not write, stat err = %v", err)
 	}
 }
 
