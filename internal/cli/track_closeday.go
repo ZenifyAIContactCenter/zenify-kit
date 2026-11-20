@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/manifest"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 )
 
@@ -67,7 +68,7 @@ func runCloseDay(w, errW io.Writer, wsDir string, now time.Time, refresh bool) e
 		if err := os.Remove(filepath.Join(dir, "merged.checked")); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		if nowRes, in, err = computeTrackStatsInput(dir, wsDir, today, now, false); err != nil {
+		if nowRes, in, err = computeTrackStatsInput(errW, dir, wsDir, today, now, false); err != nil {
 			return err
 		}
 		if e := firstNonEmpty(nowRes.Today.MergedError, nowRes.Today.PRStatusError); e != "" {
@@ -95,6 +96,19 @@ func runCloseDay(w, errW io.Writer, wsDir string, now time.Time, refresh bool) e
 		dayIn.Merged, dayIn.PRStatus, dayIn.PRTitle, dayIn.GitHub, dayIn.SDD = nil, nil, nil, nil, nil
 		dayRes, _ := trackstats.Compute(dayIn)
 		report = trackstats.DayReport(dayRes, nowRes, in.Cache, prNote)
+		feats, err := manifest.ReadFeatures(filepath.Join(wsDir, ".zenify-overlay.yaml"))
+		if err != nil {
+			return err
+		}
+		if feats["track.feedback"] {
+			fb, err := feedbackSection(errW, dir, in, dayRes)
+			if err != nil {
+				return err
+			}
+			if fb != "" {
+				report += "\n" + fb
+			}
+		}
 		if err := os.MkdirAll(filepath.Join(dir, "days"), 0o750); err != nil {
 			return err
 		}
@@ -117,6 +131,56 @@ func runCloseDay(w, errW io.Writer, wsDir string, now time.Time, refresh bool) e
 		_, err = io.WriteString(w, report)
 	}
 	return err
+}
+
+// feedbackSection renders the Feedback section of day's report from local files only: the
+// ledger copies and review snapshots of the PRs merged that day. A missing file is no data;
+// a snapshot that does not parse is reported on errW and counted as missing.
+func feedbackSection(errW io.Writer, dir string, in trackstats.Input, day trackstats.Result) (string, error) {
+	merged := trackstats.MergedOn(in.Cache, day.Today.Date)
+	if len(merged) == 0 {
+		return "", nil
+	}
+	events, _ := trackstats.ParseLog(in.Log)
+	fin := trackstats.FeedbackInput{
+		Day: day.Today.Date, Merged: merged, Events: events, Items: day.Today.Items, Scale: day.Scale,
+		Ledgers: map[string]string{}, Snapshots: map[string]*trackstats.ReviewSnapshot{},
+	}
+	for _, u := range merged {
+		// The id names a file: only a real track id is read; any other counts as no ledger.
+		if id := trackstats.OwnerRun(events, u); trackIDRe.MatchString(id) {
+			b, err := os.ReadFile(filepath.Join(dir, "ledgers", id+".md")) //nolint:gosec // G304 -- a track id under the track dir
+			switch {
+			case err == nil:
+				fin.Ledgers[id] = string(b)
+			case !errors.Is(err, os.ErrNotExist):
+				return "", err
+			}
+		}
+		name, ok := trackstats.ReviewFileName(u)
+		if !ok {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, "reviews", name)) //nolint:gosec // G304 -- a name built from a PR url under the track dir
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		var snap trackstats.ReviewSnapshot
+		if err := json.Unmarshal(b, &snap); err != nil {
+			if _, werr := fmt.Fprintf(errW, "track: read review %s: %v\n", name, err); werr != nil {
+				return "", werr
+			}
+			continue
+		}
+		if snap.URL != u {
+			continue // another PR's data under this name: counted as missing
+		}
+		fin.Snapshots[u] = &snap
+	}
+	return trackstats.Feedback(fin), nil
 }
 
 // dayClosed reports whether day.closed already holds today.
@@ -244,7 +308,8 @@ func compactTrackLog(dir string, now time.Time, today string) (string, map[strin
 	return keep, movedIDs, nil
 }
 
-// moveOldFiles moves session logs and day reports past the keep window into archive/.
+// moveOldFiles moves session logs and day reports past the keep window into archive/ and
+// deletes the review snapshots and ledger copies past it.
 // A session log moves when it is old and none of its bound ids is still in the log; ownDay's
 // report, written by this run, always stays. A file already gone was moved by another run.
 func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bool, ownDay string) error {
@@ -295,6 +360,35 @@ func moveOldFiles(dir string, now time.Time, keep string, movedIDs map[string]bo
 			if err := moveInto(f, filepath.Join(dir, "archive", "days")); err != nil {
 				return err
 			}
+		}
+	}
+	return pruneFeedbackFiles(dir, cut)
+}
+
+// pruneFeedbackFiles deletes the review snapshots and ledger copies last written before cut: the
+// Feedback only reads PRs merged inside the keep window. A file already gone was removed by another run.
+func pruneFeedbackFiles(dir string, cut time.Time) error {
+	var files []string
+	for _, pat := range []string{filepath.Join("reviews", "*.json"), filepath.Join("ledgers", "*.md")} {
+		m, err := filepath.Glob(filepath.Join(dir, pat))
+		if err != nil {
+			return err
+		}
+		files = append(files, m...)
+	}
+	for _, f := range files {
+		fi, err := os.Stat(f)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !fi.ModTime().Before(cut) {
+			continue
+		}
+		if err := os.Remove(f); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 	}
 	return nil

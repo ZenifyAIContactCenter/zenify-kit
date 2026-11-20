@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,10 +21,8 @@ import (
 func trackWS(t *testing.T, on bool) string {
 	t.Helper()
 	ws := t.TempDir()
-	if on {
-		if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte("features:\n  track: true\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(filepath.Join(ws, ".zenify-overlay.yaml"), []byte(fmt.Sprintf("features:\n  track: %t\n", on)), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	return ws
 }
@@ -852,6 +851,25 @@ func TestTrackStartTaskKind(t *testing.T) {
 	}
 }
 
+// SC-18: no overlay means track is on.
+func TestTrackStartDefaultOn(t *testing.T) {
+	ws := t.TempDir()
+	if _, err := runTrack(t, ws, "start", "--kind", "task", "--repo", "r", "--est", "S"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(trackLog(t, ws), " · start · ") {
+		t.Fatalf("log:\n%s", trackLog(t, ws))
+	}
+	off := trackWS(t, false)
+	out, err := runTrack(t, off, "start", "--kind", "task", "--repo", "r", "--est", "S")
+	if err != nil || out != "track: off\n" {
+		t.Fatalf("out %q err %v", out, err)
+	}
+	if _, err := os.Stat(filepath.Join(off, ".zenify", "track")); !os.IsNotExist(err) {
+		t.Fatalf("explicit off must not write, stat err = %v", err)
+	}
+}
+
 func TestTrackEndDone(t *testing.T) {
 	ws := trackWS(t, true)
 	id := startTrack(t, ws, "task")
@@ -1011,5 +1029,57 @@ func TestTrackStats_KitUpdate(t *testing.T) {
 	version.Version = "dev"
 	if _, null, _ := kitUpdate(t, home); !null {
 		t.Fatal("a dev build must give kitUpdate null")
+	}
+}
+
+func TestTrackEnd_LedgerCopied(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "cook")
+	body := "# SDD ledger — plan: docs/plans/x.md\nTask 1: complete\n"
+	ledger := filepath.Join(t.TempDir(), "progress.md")
+	if err := os.WriteFile(ledger, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runTrackErr(t, ws, "end", id, "--pr", "https://github.com/o/r/pull/1", "--ledger", ledger, "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(ws, ".zenify", "track", "ledgers", id+".md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != body {
+		t.Fatalf("copy = %q, want %q", got, body)
+	}
+	if !strings.Contains(trackLog(t, ws), " · end · "+id+" · ") {
+		t.Fatalf("end row missing:\n%s", trackLog(t, ws))
+	}
+}
+
+func TestTrackEnd_LedgerMissingStillEnds(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "cook")
+	stderr, err := runTrackErr(t, ws, "end", id, "--cancelled", "--ledger", "/nonexistent/progress.md", "--rounds", "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr, "track: copy --ledger ") {
+		t.Fatalf("stderr %q lacks the copy warning", stderr)
+	}
+	if !strings.Contains(trackLog(t, ws), " · end · "+id+" · ") {
+		t.Fatalf("end row missing:\n%s", trackLog(t, ws))
+	}
+	if entries, _ := os.ReadDir(filepath.Join(ws, ".zenify", "track", "ledgers")); len(entries) != 0 {
+		t.Fatalf("ledgers/ has %d files, want none", len(entries))
+	}
+}
+
+func TestTrackEnd_NoLedgerNoCopy(t *testing.T) {
+	ws := trackWS(t, true)
+	id := startTrack(t, ws, "cook")
+	if _, err := runTrackErr(t, ws, "end", id, "--cancelled", "--rounds", "0"); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(ws, ".zenify", "track", "ledgers")); len(entries) != 0 {
+		t.Fatalf("ledgers/ has %d files, want none", len(entries))
 	}
 }

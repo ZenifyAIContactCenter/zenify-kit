@@ -34,7 +34,8 @@ export const COPY = {
   tipKitUpdate: 'Tip: zenify {latest} is out (running {current}) — run "zenify update"',
   tipPane: 'Tip: see today\'s work in the track pane — type "/track-pane"',
   // FR-11.4 (track-metrics): unfinished work from earlier days.
-  tipNoPlan: 'Tip: no plan today — type "/znf:track plan"',
+  tipNoPlan: 'Tip: no plan today — type "plan my day"',
+  tipFeedback: 'Tip: get kit improvement ideas at day close — turn on "Track feedback" in /config',
   tipCarried: 'Tip: {N} items carried over — type "hey claude continue"',
   noWorkspace: 'not in a zenify workspace',
   // The main screen reports no clicks: the tabs are reached by keys once the pane holds the keyboard.
@@ -194,7 +195,9 @@ function tipFor(s: TrackStats, mine: TrackItem | undefined, now: number, session
     return COPY.tipPlanNext.replaceAll('{code}', () => code).replace('{title}', () => next.title)
   }
   if (plan.length > 0 && !plan.some((i) => i.status === 'running')) return COPY.tipPlanDone
-  if (s.onboarded && !s.today?.dailyPlan) return COPY.tipNoPlan
+  if (s.onboarded && !s.today?.dailyPlan) {
+    return s.feedback === false && Math.floor(now / FUN_TIP_MS) % 2 === 1 ? COPY.tipFeedback : COPY.tipNoPlan
+  }
   const n = s.backlog?.items?.length ?? 0
   if (n > 0) return COPY.tipBacklog.replace('{N}', String(n))
   const open = s.today?.prsWaiting ?? 0

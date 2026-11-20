@@ -11,12 +11,19 @@ import (
 )
 
 // KnownFeatures lists the feature keys the personal overlay's `features:` map accepts.
-var KnownFeatures = []string{"github.issues", "track"}
+var KnownFeatures = []string{"github.issues", "track", "track.feedback"}
 
-// ReadFeatures returns the known feature toggles set in the overlay. A missing
-// file yields an empty map; keys outside KnownFeatures are ignored.
+// featureDefaults holds the features that are on until the overlay says otherwise.
+var featureDefaults = map[string]bool{"track": true}
+
+// ReadFeatures returns the known feature toggles set in the overlay, on top of
+// featureDefaults (track is on unless set false). A missing file yields the
+// defaults; keys outside KnownFeatures are ignored.
 func ReadFeatures(overlayPath string) (map[string]bool, error) {
 	out := map[string]bool{}
+	for k, v := range featureDefaults {
+		out[k] = v
+	}
 	b, err := os.ReadFile(overlayPath) //nolint:gosec // G304 -- path is computed internally by this tool from its own workspace state
 	if os.IsNotExist(err) {
 		return out, nil

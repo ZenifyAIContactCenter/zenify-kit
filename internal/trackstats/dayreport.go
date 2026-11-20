@@ -41,16 +41,7 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 	}
 	fmt.Fprintf(&b, "- fix rounds %d\n- PRs opened %d\n", day.Today.Rounds, day.Today.PRsOpened)
 
-	var merged []string
-	for url, at := range cache {
-		if at == ClosedUnmerged {
-			continue
-		}
-		if t, err := time.Parse(time.RFC3339, at); err == nil && t.In(time.Local).Format(dateLayout) == d {
-			merged = append(merged, url)
-		}
-	}
-	sort.Strings(merged)
+	merged := MergedOn(cache, d)
 	if len(merged) == 0 {
 		b.WriteString("- merged: none\n")
 	} else {
@@ -62,10 +53,7 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 
 	hit, n := 0, 0
 	for _, it := range day.Today.Items {
-		if it.Status != "done" && it.Status != "pushed" || it.WallMin <= 0 || overnight(it, time.Local) {
-			continue
-		}
-		if it.Est != "S" && it.Est != "M" && it.Est != "L" {
+		if !estimateScored(it) {
 			continue
 		}
 		t, err := time.Parse(time.RFC3339, it.EndedAt)
@@ -134,6 +122,30 @@ func DayReport(day, now Result, cache map[string]string, prNote string) string {
 		b.WriteString("\nnote: " + oneLine(prNote) + "\n")
 	}
 	return b.String()
+}
+
+// MergedOn is the sorted PR urls the merged cache records as merged on day d (local date).
+func MergedOn(cache map[string]string, d string) []string {
+	var merged []string
+	for url, at := range cache {
+		if at == ClosedUnmerged {
+			continue
+		}
+		if t, err := time.Parse(time.RFC3339, at); err == nil && t.In(time.Local).Format(dateLayout) == d {
+			merged = append(merged, url)
+		}
+	}
+	sort.Strings(merged)
+	return merged
+}
+
+// estimateScored reports whether an item counts toward the estimate hit rate: finished,
+// timed within one local day, with an S/M/L estimate.
+func estimateScored(it Item) bool {
+	if it.Status != "done" && it.Status != "pushed" || it.WallMin <= 0 || overnight(it, time.Local) {
+		return false
+	}
+	return it.Est == "S" || it.Est == "M" || it.Est == "L"
 }
 
 // maxReportText caps a title or note the report prints into the session context.

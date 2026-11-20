@@ -699,7 +699,7 @@ test('SC-8: a PR status error is a warning line', () => {
 })
 
 test('SC-9: no-plan tip sits after carried and before backlog; tips=false hides it', () => {
-  const noPlan = 'Tip: no plan today — type "/znf:track plan"'
+  const noPlan = 'Tip: no plan today — type "plan my day"'
   const tip = (s: TrackStats, tips = true) => tipLine(s, A, undefined, tips, NOW)
   expect(COPY.tipNoPlan).toBe(noPlan)
   expect(tip(noPlanStats())).toBe(noPlan)
@@ -1136,4 +1136,18 @@ test('Zenie R2: a long scale footer wraps its bounds instead of passing the pane
   expect(lines).toContain('   S<1h29m M<10h59m L<23h59m')
   // the default scale still fits on one line
   expect(texts(tabLines('estimate', stats(), A, X, NOW))).toContain('scale (default, 0): S<15m M<45m L<2h')
+})
+
+test('SC-17: feedback off alternates the no-plan tip with the feedback tip; on or absent shows only no-plan', () => {
+  const tip = (s: TrackStats, now: number, tips = true) => tipLine(s, A, undefined, tips, now)
+  const off = noPlanStats({ feedback: false } as Partial<TrackStats>)
+  expect(tip(off, 0)).toBe(COPY.tipNoPlan)
+  expect(tip(off, 600_000)).toBe(COPY.tipFeedback)
+  expect(COPY.tipNoPlan).toContain('plan my day')
+  expect(COPY.tipFeedback).toBe('Tip: get kit improvement ideas at day close — turn on "Track feedback" in /config')
+  for (const s of [noPlanStats({ feedback: true } as Partial<TrackStats>), noPlanStats()]) {
+    expect(tip(s, 0)).toBe(COPY.tipNoPlan)
+    expect(tip(s, 600_000)).toBe(COPY.tipNoPlan)
+  }
+  expect(tip(off, 600_000, false)).toBeUndefined()
 })

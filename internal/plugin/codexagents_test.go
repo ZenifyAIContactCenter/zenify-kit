@@ -24,8 +24,8 @@ func TestSyncCodexAgentsMapsFrontmatter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Written) != 5 {
-		t.Fatalf("written = %v, want 5", res.Written)
+	if len(res.Written) != 6 {
+		t.Fatalf("written = %v, want 6", res.Written)
 	}
 	for _, n := range []string{"scout", "code-reviewer", "ui-verifier", "researcher", "spec-reviewer"} {
 		s := readAgent(t, home, n)
@@ -71,7 +71,7 @@ func TestSyncCodexAgentsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Written) != 0 || len(res.Unchanged) != 5 {
+	if len(res.Written) != 0 || len(res.Unchanged) != 6 {
 		t.Fatalf("second run: %+v", res)
 	}
 }
@@ -79,7 +79,7 @@ func TestSyncCodexAgentsIdempotent(t *testing.T) {
 func TestSyncCodexAgentsDryRunWritesNothing(t *testing.T) {
 	home := t.TempDir()
 	res, err := SyncCodexAgents(home, true)
-	if err != nil || len(res.Written) != 5 {
+	if err != nil || len(res.Written) != 6 {
 		t.Fatalf("%+v %v", res, err)
 	}
 	if _, err := os.Stat(filepath.Join(home, "agents")); !os.IsNotExist(err) {
@@ -141,7 +141,7 @@ func TestSyncCodexAgentsPrunesRetiredMarked(t *testing.T) {
 	if _, err := os.Stat(foreign); err != nil {
 		t.Error("foreign agent removed")
 	}
-	if len(res.Written) != 5 {
+	if len(res.Written) != 6 {
 		t.Errorf("written = %v", res.Written)
 	}
 }
@@ -156,7 +156,7 @@ func TestRemoveCodexAgentsKeepsForeign(t *testing.T) {
 		t.Fatal(err)
 	}
 	removed, err := RemoveCodexAgents(home, false)
-	if err != nil || len(removed) != 5 {
+	if err != nil || len(removed) != 6 {
 		t.Fatalf("%v %v", removed, err)
 	}
 	if _, err := os.Stat(foreign); err != nil {

@@ -4,11 +4,13 @@ title: "Pane track: đo thời gian, token và chất lượng của từng lư�
 
 # Pane track
 
-`track` ghi lại mỗi lượt `znf:cook`, `znf:fix`, `znf:hotfix` và `znf:ship` để bạn thấy việc tốn bao lâu, tốn bao nhiêu token và ship có suôn sẻ không. Số liệu hiện trong một pane bên cạnh chat và một status line ở đáy, tự cập nhật, không tốn lượt chat nào. Tính năng mặc định tắt.
+`track` ghi lại mỗi lượt `znf:cook`, `znf:fix`, `znf:hotfix` và `znf:ship` để bạn thấy việc tốn bao lâu, tốn bao nhiêu token và ship có suôn sẻ không. Số liệu hiện trong một pane bên cạnh chat và một status line ở đáy, tự cập nhật, không tốn lượt chat nào. Tính năng bật mặc định; `zenify feature track off` để tắt.
 
 Khi tính năng bật, mỗi lần một trong các skill đó (hoặc `znf:ci-watch`) được nạp, dù do agent tự gọi hay do bạn gõ `/znf:…`, plugin gắn kèm đúng các bước `zenify track` của skill ấy (lấy từ `skills/_shared/track.md`) vào ngữ cảnh của agent. Nhờ vậy agent ghi track mà không cần tự nhớ đọc `track.md`.
 
 ## Bật và tắt
+
+Track bật mặc định khi overlay chưa đặt `track`; chỉ `track: false` tường minh mới tắt.
 
 ```bash
 zenify feature track on
@@ -17,7 +19,7 @@ zenify feature track off
 
 Ngay trong Claude Code, gõ `/config` rồi bật dòng `Dev track` của plugin `znf` để làm tương tự (xem [Settings](#settings)); status line tự cập nhật trong vài giây. Lệnh áp dụng cho cả workspace. Khi bật, digest đầu session nhắc agent đọc `_shared/track.md`; agent gọi các lệnh [`zenify track`](/reference/cli/zenify_track) để ghi số liệu, bạn không cần gõ gì. Digest còn kèm một dòng tóm tắt việc đang mở, ví dụ `track: 2 carried · plan 1/4 done · 3 PR waiting · 21 backlog` (mục bằng 0 thì ẩn, không có gì mở thì không in dòng này), để agent biết trạng thái ngay từ đầu session. Dòng này chỉ đọc file trong `.zenify/track/` (log, cache PR đã merge, cache backlog), không gọi `gh`, nên số PR và số issue GitHub trong backlog chỉ đúng tới lần chạy stats gần nhất. Mục plan đã huỷ không tính vào tổng. Tắt thì mọi lệnh ghi của `zenify track` in `track: off` và không ghi.
 
-Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Gõ `/track-pane` để mở hoặc đóng pane. Pane cũng tự mở khi prompt của bạn là `cook`, `fix`, `hotfix` hoặc `ship` (có hoặc không có tiền tố `znf:`), nếu dòng `Track pane` trong `/config` là `auto` (mặc định). Pane chỉ tự mở theo prompt bạn gõ, không mở khi agent tự gọi skill giữa chừng (vd `znf:fix` gọi tiếp `znf:ship`). Bạn đã đóng pane thì nó không tự mở lại cho tới lần `/clear` hoặc compact kế tiếp; muốn mở lại ngay thì gõ `/track-pane`. Pane, lệnh, các dòng `znf` trong `/config` và status line chỉ có khi Claude Code mở trong một zenify workspace (có `.zenify/manifest.json` ở thư mục hiện tại hoặc thư mục cha); ngoài workspace chúng ẩn hết. Session đã mở trong workspace mà sau đó `cd` sang thư mục ngoài (vd knowledge store `~/.zenify/knowledge`) vẫn ghi track vào workspace ban đầu; riêng `/clear` hay compact khi cwd đang ở ngoài thì tính là ngoài workspace.
+Pane là một mod trong plugin `znf`, có sẵn sau `zenify skills sync`. Mặc định dòng `Track pane` trong `/config` là `off`: pane không mở và không có lệnh `/track-pane`. Đặt dòng đó là `command` hoặc `auto` trước. Rồi gõ `/track-pane` để mở hoặc đóng pane. Với `auto`, pane cũng tự mở khi prompt của bạn là `cook`, `fix`, `hotfix` hoặc `ship` (có hoặc không có tiền tố `znf:`). Pane chỉ tự mở theo prompt bạn gõ, không mở khi agent tự gọi skill giữa chừng (vd `znf:fix` gọi tiếp `znf:ship`). Bạn đã đóng pane thì nó không tự mở lại cho tới lần `/clear` hoặc compact kế tiếp; muốn mở lại ngay thì gõ `/track-pane`. Pane, lệnh, các dòng `znf` trong `/config` và status line chỉ có khi Claude Code mở trong một zenify workspace (có `.zenify/manifest.json` ở thư mục hiện tại hoặc thư mục cha); ngoài workspace chúng ẩn hết. Session đã mở trong workspace mà sau đó `cd` sang thư mục ngoài (vd knowledge store `~/.zenify/knowledge`) vẫn ghi track vào workspace ban đầu; riêng `/clear` hay compact khi cwd đang ở ngoài thì tính là ngoài workspace.
 
 ## Status line
 
@@ -46,7 +48,7 @@ Tip không nằm trên status line nữa mà ở một dòng riêng, màu xám v
    - kit có bản mới: `Tip: zenify v0.74.0 is out (running v0.73.0) — run "zenify update"`
    - việc carried over đã mở từ 5 ngày trở lên hoặc bị stale: `Tip: <id> open <n> days — continue or cancel it`; rồi `Tip: N items carried over — type "hey claude continue"`
    - plan hôm nay còn mục todo: `Tip: next in plan: <code> <title> — type "/znf:track go <code>"` (xem [Daily plan](#daily-plan)); plan đã xong hết: `Tip: plan done — type "/znf:track ls"`
-   - đã onboard và hôm nay chưa có plan: `Tip: no plan today — type "/znf:track plan"`
+   - đã onboard và hôm nay chưa có plan: `Tip: no plan today — type "plan my day"`; khi `Track feedback` đang tắt, tip này luân phiên mỗi 10 phút với `Tip: get kit improvement ideas at day close — turn on "Track feedback" in /config`
    - Backlog còn việc: `Tip: N items in Backlog — type "/znf:track ls"`
    - còn PR đã mở chưa merge: `Tip: N PRs waiting to merge — type "hey claude check PR"`
    - mời mở pane khi pane chưa được hiện lần nào trong session này và `Track pane` khác `off`: `Tip: see today's work in the track pane — type "/track-pane"`
@@ -86,11 +88,20 @@ Mỗi ngày một lần, ở session đầu tiên của ngày, SessionStart tự
 
 - Trong SessionStart, báo cáo đọc trạng thái PR đã cache trên máy (`merged.json`, `pr-status.json`), không gọi `gh`, nên session mở nhanh; khi còn PR đang chờ, báo cáo có dòng `note: PR status from cache`. Chạy tay `zenify track close-day` (khi ngày chưa chốt) thì lệnh hỏi lại `gh` để lấy trạng thái PR mới nhất trước khi viết báo cáo.
 - Báo cáo ngày được ghi vào `.zenify/track/days/<D>.md` (tiêu đề `# Track day close: <D>`) và in ra đầu session để agent tóm tắt cho bạn: việc đã xong, PR đã merge, việc làm dở, PR đang chờ kèm bước tiếp theo.
+- Khi `track.feedback` bật, báo cáo có thêm mục `## Feedback` (xem [Feedback cho kit](#feedback-cho-kit)).
 - Sổ `log.md` chỉ giữ 14 ngày gần nhất. Dòng cũ hơn được chuyển sang `.zenify/track/archive/<YYYY-MM>.md` (dòng `history` luôn được chuyển, dòng `plan` được chuyển khi quá 14 ngày); log session và báo cáo ngày cũ nằm ở `archive/sessions/` và `archive/days/`. Marker `.zenify/track/day.closed` ghi nhớ ngày đã chốt.
 - Luôn được giữ lại, dù quá 14 ngày: việc đang mở, backlog đang mở, việc có PR merge trong 14 ngày gần nhất, việc mà một dòng `plan` còn giữ nhắc tới (theo id hoặc bid), và các dòng mà cửa sổ stats cần (60 việc đã đo gần nhất của mỗi size S/M/L, chung và theo từng kind; 30 dòng mỗi kind).
 - File `live/<session>.beat` và `live/<session>.json` của session đã ngừng (file mới nhất của session quá 1 ngày) bị xoá; tab chỉ được coi là đang mở khi beat còn trong 30 giây, nên file cũ hơn không còn ai đọc.
 - PR trong sổ chưa có trạng thái nào trong cache (SessionStart không hỏi `gh`) vẫn được liệt kê, với bước `status unknown`.
 - Mọi lệnh ghi vào `log.md` đều lấy `log.lock`; nếu đang bị giữ thì chờ tối đa 2 giây.
+
+## Feedback cho kit
+
+Tính năng `track.feedback` mặc định tắt; bật bằng `zenify feature track.feedback on` hoặc dòng `Track feedback` trong `/config`. Việc thu dữ liệu (ledger SDD, snapshot review) luôn chạy khi track bật; tính năng này chỉ quyết định báo cáo chốt ngày có mục `## Feedback` hay không.
+
+- `zenify track end --ledger <file>` chép ledger vào `.zenify/track/ledgers/<id>.md`; dữ liệu review của PR đã merge nằm ở `.zenify/track/reviews/<owner>__<repo>__<n>.json` (xem [PR cần hành động](#pr-cần-hành-động)); các đề xuất bạn đã trả lời nằm ở `.zenify/track/feedback.md`.
+- Mục `## Feedback` trong `days/<D>.md` có một khối cho mỗi PR merge trong ngày: lượt track, ledger, dữ liệu review của bot, kết quả review nội bộ, kèm các dòng tín hiệu `escaped:`, `estimate miss:`, `parked:`, `ruling:`. Chỉ thread do bot mở mới tính vào `bot review` và `escaped:`; thread do người mở được đếm riêng ở dòng `human review: threads N`. Lượt track kết thúc trước ngày merge vẫn có thời gian thực và `estimate miss:`, tính từ dòng `start` và `end` trong log. Chưa có snapshot thì dòng là `review data: missing (.zenify/track/reviews/<file>)`, ghi đường dẫn dự kiến để kiểm tra lại sau. Chốt ngày xóa snapshot review và bản chép ledger cũ hơn 14 ngày. Chốt ngày trong SessionStart chỉ đọc file trên máy, không gọi `gh`.
+- Khi báo cáo có mục này, agent dispatch [`kaizen`](/reference/agents/kaizen) kèm đường dẫn mã nguồn kit (`repos/zenify-kit` nếu có, không thì plugin `znf` đã cài; agent chỉ đọc file kit trong đó), trình tối đa 3 đề xuất cải tiến kit kèm bằng chứng cho bạn một lần. Mỗi đề xuất được ghi vào `feedback.md` dạng `<D> · picked|rejected|open · <tiêu đề>`; đề xuất `picked` thành mục backlog `feedback: <tiêu đề>` của repo `zenify-kit`. Đề xuất đã `rejected` không được nêu lại, đề xuất `open` lặp lại thì được ghi `repeated N times`.
 
 ## Kitchen đồng bộ thế nào
 
@@ -102,7 +113,7 @@ Tab `Kitchen` đọc cùng số liệu `zenify track stats --json` như các tab
 - `🥘 Cooking` nằm giữa `📌 Carried over` và `🔥 Rolling boil`: các tab đang làm việc ngay lúc này (state `busy`, `.beat` còn sống), tab làm lâu nhất lên đầu. Mỗi tab hai dòng: `- <spinner> <Ns|Nm|Nh> <tab hoặc brief>[ · <kind> · <phase>]` rồi dòng mờ `<8 ký tự session>[ · <id>]`. Spinner và số giây nhảy mỗi 1 giây (chỉ vẽ lại pane, không chạy lệnh nào; việc dò file và chạy lại số liệu vẫn theo nhịp 2 giây), mỗi dòng lệch một khung. Tab ngồi chờ prompt (`idle`) không hiện; không có tab nào thì hiện `no tab is cooking`. Plugin cũ chưa ghi `idle` thì tab chờ prompt vẫn hiện là Cooking cho tới khi plugin của tab đó được cập nhật.
 - Mỗi mục trong `Rolling boil` có hai dòng: dòng đầu là icon (❓ đang hỏi, 🔐 chờ quyền), thời gian chờ rồi tên tab Claude Code của session đó (đúng chữ hiện trên tab terminal, lấy từ tiêu đề trong transcript; không có thì dùng `<brief>`); dòng dưới (mờ) là trạng thái (đang hỏi hoặc chờ quyền), `<brief>` và 8 ký tự đầu của session id.
 - `<brief>` chọn theo thứ tự: tiêu đề plan, tiêu đề mục backlog, tiêu đề PR, cuối cùng là `<kind> <repo>`.
-- `zenify track end --ledger <ledger file>` đếm các dòng `Task <N>: complete` và lưu đường dẫn plan ở dòng đầu của ledger (`# SDD ledger — plan: <path>`) vào dòng `end` (bốn trường) để `Kitchen` lấy được tiêu đề plan. Đường dẫn plan chứa ` · ` hoặc xuống dòng thì dòng `end` giữ ba trường và lệnh cảnh báo trên stderr. File ledger không đọc được thì lệnh cảnh báo trên stderr và vẫn ghi dòng `end` ba trường với 0 task. Đường dẫn plan được lưu nguyên văn; đường dẫn tương đối được đọc tương đối với workspace.
+- `zenify track end --ledger <ledger file>` đếm các dòng `Task <N>: complete` và lưu đường dẫn plan ở dòng đầu của ledger (`# SDD ledger — plan: <path>`) vào dòng `end` (bốn trường) để `Kitchen` lấy được tiêu đề plan. Đường dẫn plan chứa ` · ` hoặc xuống dòng thì dòng `end` giữ ba trường và lệnh cảnh báo trên stderr. File ledger không đọc được thì lệnh cảnh báo trên stderr và vẫn ghi dòng `end` ba trường với 0 task. Đường dẫn plan được lưu nguyên văn; đường dẫn tương đối được đọc tương đối với workspace. Sau khi ghi dòng `end`, lệnh chép nguyên văn file ledger vào `.zenify/track/ledgers/<id>.md`; chép lỗi thì cảnh báo `track: copy --ledger …` trên stderr và lệnh vẫn thành công.
 - `zenify track end --pr` khi id chưa có dòng `ship` sẽ cảnh báo trên stderr (`has no ship row`): PR phải mở qua `znf:ship`. Dòng `end` vẫn được ghi.
 
 ## Thời gian wall và thời gian agent
@@ -139,6 +150,8 @@ zenify track plan set b-261105-ab12 https://github.com/org/repo/pull/3 cook-2611
 ## PR cần hành động
 
 Tab `Today` liệt kê mỗi PR đã ghi vào track (bất kỳ ngày nào) hoặc nằm trong plan hôm nay, chưa merge và chưa đóng (tối đa 10, mới nhất trước) một dòng link `🔗 <repo>#<n> · <tuổi> · CI ✅|❌|⏳|- · waiting|changes requested|approved · N threads`. PR sạch (mergeable và không còn thread chưa resolve) hiện `🔗 <repo>#<n> · <tuổi> · ready to merge`. Trạng thái lấy bằng `gh api graphql`, một lần mỗi PR, cùng nhịp 5 phút với việc tra PR đã merge; lỗi thì có dòng `⚠ pr status: <nguyên nhân>`.
+
+PR đã merge (không tính PR đóng mà không merge) được chụp dữ liệu review một lần vào `.zenify/track/reviews/<owner>__<repo>__<n>.json`: thời điểm tạo và merge, các commit, comment của bot và các thread review, kèm id lượt track có dòng `end` ghi PR đó (`-` khi không có). Dữ liệu có giới hạn và không phân trang: 100 commit cuối, 100 comment, 100 thread, mỗi thread 50 comment. Việc chụp dùng một lệnh `gh api graphql` mỗi PR, chỉ chạy trong nhịp 5 phút của việc tra PR đã merge, tối đa 5 PR mỗi nhịp, chỉ PR merge trong 14 ngày gần nhất, PR merge mới nhất trước; PR đã có file thì không hỏi lại. Chụp lỗi thì stderr có `track: review snapshot <url>: <nguyên nhân>` (chỉ lỗi đầu tiên của mỗi nhịp; dòng `merged check failed` không bị ảnh hưởng), không có file nào được ghi và nhịp sau thử lại; số lần lỗi đếm trong `.zenify/track/reviews.failed` (lỗi đường truyền — `gh` hết giờ, lỗi xác thực, mạng, rate limit — không đếm), PR lỗi 3 lần thì thôi chụp và nhường chỗ cho PR khác. File snapshot ghi URL của PR; file mang URL khác bị coi như chưa có. Lỗi của chính file này chỉ in cảnh báo ra stderr, không làm `stats` thất bại.
 
 ## Sổ chung giữa các tab Claude Code
 
@@ -245,9 +258,10 @@ Các thiết lập của kit là các dòng của plugin `znf` trong `/config` c
 
 | Dòng | Giá trị | Tác dụng |
 |---|---|---|
-| **Dev track** (`znf.track`) | bật/tắt, mặc định tắt | Chạy `zenify feature track on\|off` cho workspace hiện tại |
+| **Dev track** (`znf.track`) | bật/tắt, mặc định bật | Chạy `zenify feature track on\|off` cho workspace hiện tại |
 | **GitHub issues** (`znf.githubIssues`) | bật/tắt, mặc định tắt | Chạy `zenify feature github.issues on\|off` |
-| **Track pane** (`znf.trackPane`) | `auto` (mặc định), `command`, `off` | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở, không có lệnh `/track-pane` và dòng tip dưới prompt không mời mở pane. Status line không đổi theo dòng này |
+| **Track feedback** (`znf.trackFeedback`) | bật/tắt, mặc định tắt | Chạy `zenify feature track.feedback on\|off`: khi bật, báo cáo chốt ngày có thêm mục `## Feedback` (xem [Feedback cho kit](#feedback-cho-kit)) |
+| **Track pane** (`znf.trackPane`) | `auto`, `command`, `off` (mặc định) | `auto`: pane tự mở khi bạn gõ cook/fix/hotfix/ship, trừ khi bạn đã đóng nó; `command`: chỉ mở bằng `/track-pane`; `off`: không mở, không có lệnh `/track-pane` và dòng tip dưới prompt không mời mở pane. Status line không đổi theo dòng này |
 | **Status line tips** (`znf.tips`) | bật/tắt, mặc định bật | Tắt thì dòng tip dưới prompt ẩn mọi tip theo ngữ cảnh (xem [Tip dưới prompt](#tip-dưới-prompt)). Tip onboard và câu bật track khi track off vẫn hiện. Chỉ là tùy chọn của plugin, không chạy lệnh nào |
 | **Reviewer** (`znf.reviewer`) | `agent` (mặc định), `codex`, `project` | Chạy [`zenify reviewer set`](/reference/cli/zenify_reviewer_set); có hiệu lực ở session mới |
 

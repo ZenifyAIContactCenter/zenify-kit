@@ -7,15 +7,15 @@ import { COPY } from './track-ui'
 
 const RUN_TIMEOUT_MS = 20000
 // Row field -> `zenify feature` key (FR-17.1).
-const FEATURES: Record<string, string> = { track: 'track', githubIssues: 'github.issues' }
+const FEATURES: Record<string, string> = { track: 'track', githubIssues: 'github.issues', trackFeedback: 'track.feedback' }
 const REVIEWERS = ['agent', 'codex', 'project']
 const FEATURE_LINE = /^(\S+) (on|off)$/
 
 export type TrackPane = 'auto' | 'command' | 'off'
 
-// FR-17.4: a value outside the options reads as unset, so the default `auto`.
+// FR-17.4: a value outside the options reads as unset, so the default `off`.
 export const trackPaneOf = (options: PluginOptions): TrackPane =>
-  options.trackPane === 'command' || options.trackPane === 'off' ? options.trackPane : 'auto'
+  options.trackPane === 'auto' || options.trackPane === 'command' ? options.trackPane : 'off'
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 

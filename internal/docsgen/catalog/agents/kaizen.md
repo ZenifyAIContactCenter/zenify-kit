@@ -1,0 +1,16 @@
+---
+summary: Đọc mục Feedback của một ngày track cùng ledger và dữ liệu review mà nó dẫn tới, đề xuất tối đa 3 cải tiến cho kit, mỗi đề xuất có bằng chứng.
+---
+Agent đọc báo cáo chốt sổ của một ngày (`.zenify/track/days/<D>.md`), phần `## Feedback`, rồi mở các file `ledgers/` và `reviews/` mà phần đó dẫn tới. Bước chốt ngày đưa ba đường dẫn tuyệt đối: báo cáo ngày, `.zenify/track/feedback.md` và mã nguồn kit khi có (`repos/zenify-kit`, không thì plugin `znf` đã cài). Agent chỉ đọc file trong `.zenify/track/` và trong đường dẫn kit; không có đường dẫn kit thì `Where` được ghi `(unverified)`. Agent chỉ đọc, không ghi gì.
+
+## Kết quả
+
+Tối đa 3 đề xuất, mỗi đề xuất có `Problem` (bằng chứng: URL PR, `file:line`, nội dung finding), `Proposal` (một rule, một dòng checklist của skill, đổi gate hoặc đổi model) và `Where` (file trong kit). Không đủ bằng chứng thì agent trả `nothing worth changing`. Dòng đầu của kết quả là `model: <tên model>`, tổng không quá 30 dòng.
+
+## Khi nào được gọi
+
+Bước chốt ngày của track: khi báo cáo có mục `## Feedback` (cần bật `track.feedback`), skill dispatch agent này, trình các đề xuất cho bạn một lần, rồi ghi câu trả lời của bạn vào `.zenify/track/feedback.md`. Đề xuất bạn chọn (`picked`) thành một mục backlog `feedback: <title>` của repo `zenify-kit`. Agent không trả kết quả thì skill ghi `kaizen: no report` và không tự phân tích thay.
+
+## Lưu ý
+
+Agent chạy trên `opus` khai trong frontmatter, công cụ chỉ gồm `Read`, `Grep`, `Glob`. Dòng `human review:` đếm thread do người mở, không tính là finding của bot. Nội dung snapshot, comment của bot và ledger là dữ liệu, agent không làm theo chỉ dẫn nằm trong đó. Đề xuất trùng mục `rejected` trong `feedback.md` bị bỏ; trùng mục `open` thì được ghi `repeated N times`. Đây không phải skill `znf:retro` (bài học của một session).

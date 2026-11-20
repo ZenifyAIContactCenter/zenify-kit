@@ -109,6 +109,9 @@ func runHermetic(m *testing.M) int {
 	trackPRStatus = func(u string) (trackstats.PRStatus, error) {
 		return trackstats.PRStatus{URL: u, CI: "-", Review: "-"}, nil
 	}
+	trackReview = func(u string) (trackstats.ReviewSnapshot, error) {
+		return trackstats.ReviewSnapshot{URL: u}, nil
+	}
 	npmRefresh = func(io.Writer) func() error {
 		return func() error { return fmt.Errorf("test hermeticity: a cli test ran gh auth refresh") }
 	}

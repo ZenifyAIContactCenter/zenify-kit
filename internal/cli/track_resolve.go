@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -19,8 +20,8 @@ const (
 )
 
 // resolveRef turns one short code into a full id; see resolveRefs.
-func resolveRef(dir, wsDir, ref string, scope resolveScope, now time.Time) (string, error) {
-	ids, err := resolveRefs(dir, wsDir, []string{ref}, scope, now)
+func resolveRef(errW io.Writer, dir, wsDir, ref string, scope resolveScope, now time.Time) (string, error) {
+	ids, err := resolveRefs(errW, dir, wsDir, []string{ref}, scope, now)
 	if err != nil {
 		return "", err
 	}
@@ -29,7 +30,7 @@ func resolveRef(dir, wsDir, ref string, scope resolveScope, now time.Time) (stri
 
 // resolveRefs turns short codes into full ids from the items the pane shows, reading the stats
 // once for all of them. A full id is returned as is; when every ref is a full id no stats are read.
-func resolveRefs(dir, wsDir string, refs []string, scope resolveScope, now time.Time) ([]string, error) {
+func resolveRefs(errW io.Writer, dir, wsDir string, refs []string, scope resolveScope, now time.Time) ([]string, error) {
 	ids := make([]string, len(refs))
 	var cands []trackstats.Candidate
 	loaded := false
@@ -40,7 +41,7 @@ func resolveRefs(dir, wsDir string, refs []string, scope resolveScope, now time.
 		}
 		if !loaded {
 			var err error
-			if cands, err = trackCandidates(dir, wsDir, scope, now); err != nil {
+			if cands, err = trackCandidates(errW, dir, wsDir, scope, now); err != nil {
 				return nil, err
 			}
 			loaded = true
@@ -100,8 +101,8 @@ func stripCtl(s string) string {
 }
 
 // trackCandidates lists the items of scope from the same stats the pane shows.
-func trackCandidates(dir, wsDir string, scope resolveScope, now time.Time) ([]trackstats.Candidate, error) {
-	res, err := computeTrackStats(dir, wsDir, now.Local().Format("2006-01-02"), now, false)
+func trackCandidates(errW io.Writer, dir, wsDir string, scope resolveScope, now time.Time) ([]trackstats.Candidate, error) {
+	res, err := computeTrackStats(errW, dir, wsDir, now.Local().Format("2006-01-02"), now, false)
 	if err != nil {
 		return nil, err
 	}

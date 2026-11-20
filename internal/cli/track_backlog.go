@@ -130,11 +130,11 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 			id := args[0]
 			logPath := trackLogPath(wsDir)
 			if !trackstats.IsFullID(id) {
-				if id, err = resolveRef(filepath.Dir(logPath), wsDir, id, scopeBacklog, time.Now()); err != nil {
+				if id, err = resolveRef(cmd.ErrOrStderr(), filepath.Dir(logPath), wsDir, id, scopeBacklog, time.Now()); err != nil {
 					return err
 				}
 			} else if strings.HasPrefix(id, "http") {
-				if err := checkBacklogURL(filepath.Dir(logPath), wsDir, id); err != nil {
+				if err := checkBacklogURL(cmd.ErrOrStderr(), filepath.Dir(logPath), wsDir, id); err != nil {
 					return err
 				}
 			}
@@ -171,8 +171,8 @@ func newTrackBacklogDropCmd(ws *string) *cobra.Command {
 }
 
 // checkBacklogURL fails unless u is an item of the open backlog.
-func checkBacklogURL(dir, wsDir, u string) error {
-	cands, err := trackCandidates(dir, wsDir, scopeBacklog, time.Now())
+func checkBacklogURL(errW io.Writer, dir, wsDir, u string) error {
+	cands, err := trackCandidates(errW, dir, wsDir, scopeBacklog, time.Now())
 	if err != nil {
 		return err
 	}

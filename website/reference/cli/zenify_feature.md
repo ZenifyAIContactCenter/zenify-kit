@@ -38,7 +38,7 @@ zenify feature github.issues off
 
 ## Lưu ý
 
-Mặc định mọi tính năng đều tắt. Trạng thái nằm ở khóa `features:` trong `.zenify-overlay.yaml` của workspace; lệnh giữ nguyên các khóa và comment khác trong file.
+Mặc định `track` bật, các tính năng còn lại (`github.issues`, `track.feedback`) tắt; `track: false` trong overlay mới tắt `track`. Trạng thái nằm ở khóa `features:` trong `.zenify-overlay.yaml` của workspace; lệnh giữ nguyên các khóa và comment khác trong file.
 
 ## Lệnh liên quan
 

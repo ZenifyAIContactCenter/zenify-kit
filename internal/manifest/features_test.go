@@ -21,7 +21,7 @@ func TestSetFeature_PreservesReposAndComments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[string]bool{"github.issues": true}; !reflect.DeepEqual(got, want) {
+	if want := map[string]bool{"github.issues": true, "track": true}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v want %v", got, want)
 	}
 	m, err := ParseWithOverlay([]byte("org: acme\nrepos:\n  - name: a\n    path: repos/a\n"), "embedded", p)
@@ -74,20 +74,13 @@ func TestSetFeature_BrokenYAMLNotOverwritten(t *testing.T) {
 	}
 }
 
-func TestReadFeatures_Missing(t *testing.T) {
-	got, err := ReadFeatures(filepath.Join(t.TempDir(), "nope.yaml"))
-	if err != nil || got == nil || len(got) != 0 {
-		t.Fatalf("got %v err %v", got, err)
-	}
-}
-
 func TestReadFeatures_IgnoresUnknownKeys(t *testing.T) {
 	p := writeTmp(t, "ov.yaml", "features:\n  github.issues: true\n  other: true\n")
 	got, err := ReadFeatures(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[string]bool{"github.issues": true}; !reflect.DeepEqual(got, want) {
+	if want := map[string]bool{"github.issues": true, "track": true}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
 	}
 }
@@ -132,7 +125,7 @@ func TestReadFeatures_UnknownNonBoolIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[string]bool{"github.issues": true}; !reflect.DeepEqual(got, want) {
+	if want := map[string]bool{"github.issues": true, "track": true}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v", got)
 	}
 }
@@ -194,5 +187,51 @@ func TestReadFeatures_Track(t *testing.T) {
 	b, _ := os.ReadFile(p)
 	if !strings.Contains(string(b), "track: false") {
 		t.Fatalf("overlay = %q", b)
+	}
+}
+
+func TestReadFeatures_Missing(t *testing.T) {
+	got, err := ReadFeatures(filepath.Join(t.TempDir(), "none.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"track": true}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+func TestReadFeatures_TrackDefaultOn(t *testing.T) {
+	p := writeTmp(t, "ov.yaml", "features:\n  github.issues: true\n")
+	got, err := ReadFeatures(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"github.issues": true, "track": true}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+func TestReadFeatures_TrackExplicitOff(t *testing.T) {
+	p := writeTmp(t, "ov.yaml", "features:\n  track: false\n")
+	got, err := ReadFeatures(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"track": false}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+func TestReadFeatures_Feedback(t *testing.T) {
+	p := writeTmp(t, "ov.yaml", "features:\n  track.feedback: true\n")
+	got, err := ReadFeatures(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"track": true, "track.feedback": true}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	if err := SetFeature(p, "track.feedback", false); err != nil {
+		t.Fatal(err)
 	}
 }
