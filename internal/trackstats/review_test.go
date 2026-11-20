@@ -165,3 +165,13 @@ func TestGhReviewErr_Timeout(t *testing.T) {
 		t.Fatalf("err = %v, want a GhTransportError wrapping ErrGhTimeout", err)
 	}
 }
+
+// A gh that cannot be started is a transport failure, never a per-PR one.
+func TestGhReview_NoGhBinary(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	_, err := GhReview("https://github.com/o/r/pull/9")
+	var te *GhTransportError
+	if !errors.As(err, &te) {
+		t.Fatalf("err = %v, want a GhTransportError", err)
+	}
+}

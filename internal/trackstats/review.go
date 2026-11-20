@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os/exec"
 	"slices"
@@ -108,6 +109,12 @@ func ghReviewErr(prURL string, timedOut bool, err error, stderr string) error {
 	}
 	stderr = strings.TrimSpace(stderr)
 	e := fmt.Errorf("gh api graphql %s: %w: %s", prURL, err, stderr)
+	// gh could not be started at all: missing binary, bad PATH entry, no permission.
+	var execErr *exec.Error
+	var pathErr *fs.PathError
+	if errors.Is(err, exec.ErrNotFound) || errors.As(err, &execErr) || errors.As(err, &pathErr) {
+		return &GhTransportError{Err: e}
+	}
 	low := strings.ToLower(stderr)
 	for _, m := range ghTransportMarks {
 		if strings.Contains(low, m) {

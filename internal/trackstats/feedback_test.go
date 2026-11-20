@@ -199,3 +199,19 @@ func TestFeedback_EstimateFromLogOnLaterMerge(t *testing.T) {
 	in.Events, in.Items = ev, nil
 	wantLines(t, Feedback(in), "- run: "+fbID+" cook est M wall 120m", "estimate miss: est M, wall 120m is L")
 }
+
+// The log-recovered wall rounds up like Compute: 14m30s is 15m, M on the default scale.
+func TestFeedback_LogWallRoundsLikeCompute(t *testing.T) {
+	rows := []string{
+		"2026-11-18T01:00:00Z · start · " + fbID + " · cook · repo · S",
+		"2026-11-18T01:14:30Z · end · " + fbID + " · " + fbURL + " · 1 · 0",
+	}
+	ev, bad := ParseLog(strings.Join(rows, "\n"))
+	if bad != 0 {
+		t.Fatalf("%d malformed rows", bad)
+	}
+	in := fbInput(t, nil)
+	in.Events, in.Items = ev, nil
+	in.Scale = Scale{S: defaultS, M: defaultM, L: defaultL}
+	wantLines(t, Feedback(in), "wall 15m", "estimate miss: est S, wall 15m is M")
+}

@@ -194,7 +194,7 @@ func runFromEvents(events []Event, id string) Item {
 	}
 	if !start.IsZero() && !end.IsZero() && end.After(start) {
 		it.Status = "done"
-		it.WallMin = int(end.Sub(start).Minutes())
+		it.WallMin = wallMin(start, end)
 		it.StartedAt, it.EndedAt = start.UTC().Format(time.RFC3339), end.UTC().Format(time.RFC3339)
 	}
 	return it
