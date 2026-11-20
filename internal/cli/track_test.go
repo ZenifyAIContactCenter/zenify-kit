@@ -1062,8 +1062,8 @@ func TestTrackEnd_LedgerMissingStillEnds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr, "track:") {
-		t.Fatalf("stderr %q lacks a track: line", stderr)
+	if !strings.Contains(stderr, "track: copy --ledger ") {
+		t.Fatalf("stderr %q lacks the copy warning", stderr)
 	}
 	if !strings.Contains(trackLog(t, ws), " · end · "+id+" · ") {
 		t.Fatalf("end row missing:\n%s", trackLog(t, ws))
