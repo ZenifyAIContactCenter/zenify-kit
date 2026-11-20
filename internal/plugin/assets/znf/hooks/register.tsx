@@ -337,7 +337,7 @@ async function mtimeOf($: $, path: string): Promise<string> {
 // FR-11.8: the `tips` option, read once in register (a /config change reloads the module).
 let showTips = true
 // FR-4.7: the trackPane option, read once in register; the pane invite shows while it is not off.
-let paneMode: ReturnType<typeof trackPaneOf> = 'auto'
+let paneMode: ReturnType<typeof trackPaneOf> = 'off'
 
 async function updateStatus($: $): Promise<void> {
   const st = await read($, stats)

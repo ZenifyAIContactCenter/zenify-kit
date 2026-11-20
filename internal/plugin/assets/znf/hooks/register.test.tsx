@@ -185,7 +185,7 @@ function engine(on: any, world: World): Calls {
   on('process.run', async (_: unknown, e: { argv: string[]; init?: { timeoutMs?: number } }) => {
     calls.run.push([...e.argv])
     // FR-17.3: the sources the /config rows are synced from, in step with the defaults.
-    if (e.argv.join(' ') === 'zenify feature') return { value: ok('github.issues off\ntrack off\n') }
+    if (e.argv.join(' ') === 'zenify feature') return { value: ok('github.issues off\ntrack off\ntrack.feedback off\n') }
     if (e.argv.join(' ') === 'zenify reviewer get') return { value: ok('agent\n') }
     if (e.argv[0] === 'zenify') {
       world.statsTimeouts = [...(world.statsTimeouts ?? []), e.init?.timeoutMs]
@@ -262,7 +262,7 @@ test('FR-18.3: outside a workspace a cook prompt does not open the pane', async 
   expect(calls.open).toHaveLength(0)
 })
 
-test('FR-18.3: inside a workspace /track-pane is registered', async ($, on) => {
+test('FR-18.3: inside a workspace /track-pane is registered', { options: { trackPane: 'auto' } }, async ($, on) => {
   const calls = engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
@@ -364,7 +364,7 @@ test('a cwd moved outside the workspace mid-session keeps beating into the start
   expect(calls.write.some(w => w.path === BEAT)).toBe(true)
 })
 
-test('FR-18.3: a session start after the cwd moved outside the workspace runs nothing', async ($, on) => {
+test('FR-18.3: a session start after the cwd moved outside the workspace runs nothing', { options: { trackPane: 'auto' } }, async ($, on) => {
   const world = trackWorld()
   const calls = engine(on, world)
   const clock = mock.clock(on)
@@ -461,7 +461,7 @@ test('FR-6.3: stats re-run every 5 minutes for merged PRs and when the local dat
   expect(statsRuns(calls)).toHaveLength(3)
 })
 
-test('a slow stats run keeps the last numbers under a loading mark, then updates when it ends; no 20s cap', async ($, on) => {
+test('a slow stats run keeps the last numbers under a loading mark, then updates when it ends; no 20s cap', { options: { trackPane: 'auto' } }, async ($, on) => {
   const world: World = {}
   const calls = engine(on, world)
   const clock = mock.clock(on)
@@ -520,7 +520,7 @@ test('a run that stored its answer but has not ended yet never gets a late loadi
   expect(lastStatus(calls)).toBe('track ⏸')
 })
 
-test('a first stats run that is still out after 20s does not hold a /znf:fix prompt', async ($, on) => {
+test('a first stats run that is still out after 20s does not hold a /znf:fix prompt', { options: { trackPane: 'auto' } }, async ($, on) => {
   const world: World = { trackMd: TRACK_MD, holdStats: new Promise<void>(() => {}) }
   const calls = engine(on, world)
   const clock = mock.clock(on)
@@ -567,7 +567,7 @@ test('FR-4.1: a rejected track end (no confirmation line) keeps the binding', as
   expect(fields(world).filter(f => f.startsWith('turn'))).toHaveLength(2)
 })
 
-test('SC-8: feature on, a /znf:fix prompt opens the track pane', async ($, on) => {
+test('SC-8: feature on, a /znf:fix prompt opens the track pane', { options: { trackPane: 'auto' } }, async ($, on) => {
   const calls = engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
@@ -597,7 +597,7 @@ test('FR-6.1: a Skill call the agent makes opens no pane; only the person prompt
   expect(calls.open).toHaveLength(0)
 })
 
-test('FR-6.1: a pane the person closed stays closed on the next cook prompt; /track-pane still opens it', async ($, on) => {
+test('FR-6.1: a pane the person closed stays closed on the next cook prompt; /track-pane still opens it', { options: { trackPane: 'auto' } }, async ($, on) => {
   const calls = engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
@@ -613,7 +613,7 @@ test('FR-6.1: a pane the person closed stays closed on the next cook prompt; /tr
   expect(calls.open).toEqual([PANE, PANE])
 })
 
-test('FR-6.1: a new session start forgets the close; the next cook prompt opens the pane again', async ($, on) => {
+test('FR-6.1: a new session start forgets the close; the next cook prompt opens the pane again', { options: { trackPane: 'auto' } }, async ($, on) => {
   const calls = engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
@@ -652,7 +652,7 @@ test('track off, outside a workspace, or another skill: a Skill call carries no 
   expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:scout' } as any)) as any).context).toBeUndefined()
 })
 
-test('a first /znf:fix prompt while the first stats run is still out waits for it and carries the fix section', async ($, on) => {
+test('a first /znf:fix prompt while the first stats run is still out waits for it and carries the fix section', { options: { trackPane: 'auto' } }, async ($, on) => {
   let release = () => {}
   // `enabled` is left as the plugin writes it: false until the stats run answers enabled: true.
   const world: World = { trackMd: TRACK_MD, holdLogStat: new Promise<void>(r => (release = r)) }
@@ -692,7 +692,7 @@ test('track off at start, then a track start succeeds: the next Skill call carri
   expect(((await $.tool.call({ tool: 'Skill', skill: 'znf:ship' } as any)) as any).context?.[0]).toContain('## ship')
 })
 
-test('track turned off then /clear while the new stats run is out: a /znf:fix prompt carries no track steps', async ($, on) => {
+test('track turned off then /clear while the new stats run is out: a /znf:fix prompt carries no track steps', { options: { trackPane: 'auto' } }, async ($, on) => {
   const world: World = { trackMd: TRACK_MD }
   const calls = engine(on, world)
   const clock = mock.clock(on)
@@ -728,7 +728,7 @@ test('a /znf:ship prompt the person types carries the ship section as prompt con
   expect(world.prompt?.context?.[0]).toContain('## ship\n\n- ship step')
 })
 
-test('a missing track.md is a toast; the skill still loads', async ($, on) => {
+test('a missing track.md is a toast; the skill still loads', { options: { trackPane: 'auto' } }, async ($, on) => {
   const calls = engine(on, trackWorld())
   const clock = mock.clock(on)
   await start($, clock)
@@ -792,7 +792,7 @@ test('SC-12: a /clear started outside the workspace drops the tip row of the ear
   expect(await tipRows(await $.ui.mount(hint))).toEqual([])
 })
 
-test('SC-14: the pane invite shows until the pane has been shown, then is gone', async ($, on) => {
+test('SC-14: the pane invite shows until the pane has been shown, then is gone', { options: { trackPane: 'auto' } }, async ($, on) => {
   engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
@@ -828,7 +828,7 @@ test('SC-41: trackPane command: a /znf:fix prompt opens no pane; /track-pane ope
   expect(calls.open).toEqual([PANE])
 })
 
-test('FR-17.5: track-pane is the only command registered', async ($, on) => {
+test('FR-17.5: track-pane is the only command registered', { options: { trackPane: 'auto' } }, async ($, on) => {
   const calls = engine(on, {})
   const clock = mock.clock(on)
   await start($, clock)
@@ -1873,4 +1873,15 @@ test('FR-2.2: same arguments in a subagent and the main loop: the main dialog ma
   expect(liveDoc(world).state).toBe('permission')
   await $.tool.call({ tool: 'Bash', command: 'sleep 600', tool_use_id: 'main-s' } as any)
   expect(liveDoc(world).state).toBe('busy')
+})
+
+test('SC-16: no trackPane option: /track-pane is not registered and a /znf:cook prompt opens no pane', async ($, on) => {
+  const calls = engine(on, {})
+  const clock = mock.clock(on)
+  await start($, clock)
+  await $.prompt.submit({ text: '/znf:cook x', command: { name: 'znf:cook', args: 'x' } } as any)
+  await $.tool.call({ tool: 'Skill', skill: 'znf:cook' } as any)
+  await clock.settle()
+  expect(calls.open).toHaveLength(0)
+  expect(calls.registered).not.toContain('track-pane')
 })

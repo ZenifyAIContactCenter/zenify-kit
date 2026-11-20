@@ -129,6 +129,7 @@ export type TrackStats = {
   }
   backlog: { items: BacklogItem[] | null; ghError: string; planeError: string }
   onboarded: boolean
+  feedback?: boolean
   kitchen: {
     carried: KitchenCarried[] | null
     lastDay: KitchenLastDay | null

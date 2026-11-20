@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import { trackPaneOf } from './config'
 
 const CWD = '/w/app'
 const WS_MARKER = '/w/.zenify/manifest.json'
@@ -10,6 +11,8 @@ const ALLOWED = [
   'zenify feature track off',
   'zenify feature github.issues on',
   'zenify feature github.issues off',
+  'zenify feature track.feedback on',
+  'zenify feature track.feedback off',
   'zenify reviewer get',
   'zenify reviewer set agent',
   'zenify reviewer set codex',
@@ -89,7 +92,7 @@ function engine(on: any, world: World): Calls {
 }
 
 // The rows as the defaults hold them, matching the sources below unless a test says otherwise.
-const SYNCED = { 'zenify feature': ok('github.issues off\ntrack off\n'), 'zenify reviewer get': ok('agent\n') }
+const SYNCED = { 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback off\n'), 'zenify reviewer get': ok('agent\n') }
 
 async function start($: any, clock: { settle: () => Promise<void> }) {
   await $.session.start({ cwd: CWD, source: 'startup' } as any)
@@ -157,8 +160,8 @@ test('FR-11.8: znf.tips runs no command', async ($, on) => {
   expect(calls.run).toEqual([])
 })
 
-test('SC-41: `zenify feature` says track on while the option is false: session start sets znf.track true', async ($, on) => {
-  const calls = engine(on, { runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\n') } })
+test('SC-41: `zenify feature` says track on while the option is false: session start sets znf.track true', { options: { track: false } }, async ($, on) => {
+  const calls = engine(on, { runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback off\n') } })
   const clock = mock.clock(on)
   await start($, clock)
   expect(calls.toast).toEqual([])
@@ -168,7 +171,7 @@ test('SC-41: `zenify feature` says track on while the option is false: session s
 })
 
 test('FR-17.3: rows in step with their sources are left alone', { options: { track: true, githubIssues: true, reviewer: 'codex' } }, async ($, on) => {
-  const calls = engine(on, { runs: { 'zenify feature': ok('github.issues on\ntrack on\n'), 'zenify reviewer get': ok('codex\n') } })
+  const calls = engine(on, { runs: { 'zenify feature': ok('github.issues on\ntrack on\ntrack.feedback off\n'), 'zenify reviewer get': ok('codex\n') } })
   const clock = mock.clock(on)
   await $.session.start({ cwd: CWD, source: 'startup' } as any)
   await clock.settle()
@@ -206,10 +209,10 @@ const deferred = () => {
 // A person's change in the /config menu.
 const COMPOSER = { kind: 'composer' } as const
 
-test('a person setting a row while the startup sync sets the same row still runs its command', async ($, on) => {
+test('a person setting a row while the startup sync sets the same row still runs its command', { options: { track: false } }, async ($, on) => {
   const gate = deferred()
   const calls = engine(on, {
-    runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\n'), 'zenify feature track off': ok('track off\n') },
+    runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback off\n'), 'zenify feature track off': ok('track off\n') },
     holdSet: { 'znf.track': gate.promise },
   })
   const clock = mock.clock(on)
@@ -223,10 +226,10 @@ test('a person setting a row while the startup sync sets the same row still runs
   expect(calls.run).toContain('zenify feature track off')
 })
 
-test('the startup sync does not overwrite a row a person changed after its read', async ($, on) => {
+test('the startup sync does not overwrite a row a person changed after its read', { options: { track: false } }, async ($, on) => {
   const gate = deferred()
   const calls = engine(on, {
-    runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\n'), 'zenify feature track off': ok('track off\n') },
+    runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback off\n'), 'zenify feature track off': ok('track off\n') },
     holdRun: { 'zenify feature': gate.promise },
   })
   const clock = mock.clock(on)
@@ -240,10 +243,10 @@ test('the startup sync does not overwrite a row a person changed after its read'
   expect(calls.toast).toEqual([])
 })
 
-test('a person change landing while the sync set of that row is in flight is the final value', async ($, on) => {
+test('a person change landing while the sync set of that row is in flight is the final value', { options: { track: false } }, async ($, on) => {
   const gate = deferred()
   const calls = engine(on, {
-    runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\n'), 'zenify feature track off': ok('track off\n') },
+    runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback off\n'), 'zenify feature track off': ok('track off\n') },
     holdSet: { 'znf.track': gate.promise },
   })
   const clock = mock.clock(on)
@@ -259,7 +262,7 @@ test('a person change landing while the sync set of that row is in flight is the
 })
 
 const ROW = (key: string) => ({ key, label: key, isHidden: false, provider: { kind: 'plugin', name: 'znf' } }) as any
-const KEYS = ['znf.track', 'znf.githubIssues', 'znf.trackPane', 'znf.tips', 'znf.reviewer']
+const KEYS = ['znf.track', 'znf.githubIssues', 'znf.trackFeedback', 'znf.trackPane', 'znf.tips', 'znf.reviewer']
 
 test('SC-42: outside a workspace the znf rows are hidden, others stay, nothing runs and sets are denied', async ($, on) => {
   const calls = engine(on, { runs: SYNCED, noWorkspace: true })
@@ -280,4 +283,28 @@ test('SC-42: inside a workspace the znf rows show', async ($, on) => {
   const clock = mock.clock(on)
   await start($, clock)
   for (const key of KEYS) expect((await $.config.describe(ROW(key))).isHidden).toBe(false)
+})
+
+test('SC-15: setting znf.trackFeedback to true runs `zenify feature track.feedback on`', async ($, on) => {
+  const calls = engine(on, { runs: { ...SYNCED, 'zenify feature track.feedback on': ok('track.feedback on\n') } })
+  const clock = mock.clock(on)
+  await start($, clock)
+  calls.run.length = 0
+  expect(await $.config.set({ key: 'znf.trackFeedback', value: true })).toEqual({ value: true })
+  expect(calls.run).toEqual(['zenify feature track.feedback on'])
+})
+
+test('SC-15: `zenify feature` says track.feedback on: session start sets znf.trackFeedback true', async ($, on) => {
+  const calls = engine(on, { runs: { ...SYNCED, 'zenify feature': ok('github.issues off\ntrack on\ntrack.feedback on\n') } })
+  const clock = mock.clock(on)
+  await start($, clock)
+  expect(calls.toast).toEqual([])
+  expect(calls.set).toContainEqual({ key: 'znf.trackFeedback', value: true })
+})
+
+test('SC-16: trackPaneOf defaults to off; an explicit auto or command is kept', () => {
+  expect(trackPaneOf({})).toBe('off')
+  expect(trackPaneOf({ trackPane: 'bogus' })).toBe('off')
+  expect(trackPaneOf({ trackPane: 'auto' })).toBe('auto')
+  expect(trackPaneOf({ trackPane: 'command' })).toBe('command')
 })
