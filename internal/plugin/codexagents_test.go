@@ -25,7 +25,7 @@ func TestSyncCodexAgentsMapsFrontmatter(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(res.Written) != 6 {
-		t.Fatalf("written = %v, want 5", res.Written)
+		t.Fatalf("written = %v, want 6", res.Written)
 	}
 	for _, n := range []string{"scout", "code-reviewer", "ui-verifier", "researcher", "spec-reviewer"} {
 		s := readAgent(t, home, n)
