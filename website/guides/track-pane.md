@@ -142,6 +142,8 @@ zenify track plan set b-261105-ab12 https://github.com/org/repo/pull/3 cook-2611
 
 Tab `Today` liệt kê mỗi PR đã ghi vào track (bất kỳ ngày nào) hoặc nằm trong plan hôm nay, chưa merge và chưa đóng (tối đa 10, mới nhất trước) một dòng link `🔗 <repo>#<n> · <tuổi> · CI ✅|❌|⏳|- · waiting|changes requested|approved · N threads`. PR sạch (mergeable và không còn thread chưa resolve) hiện `🔗 <repo>#<n> · <tuổi> · ready to merge`. Trạng thái lấy bằng `gh api graphql`, một lần mỗi PR, cùng nhịp 5 phút với việc tra PR đã merge; lỗi thì có dòng `⚠ pr status: <nguyên nhân>`.
 
+PR đã merge (không tính PR đóng mà không merge) được chụp dữ liệu review một lần vào `.zenify/track/reviews/<owner>-<repo>-<n>.json`: thời điểm tạo và merge, các commit, comment của bot và các thread review, kèm id lượt track có dòng `end` ghi PR đó (`-` khi không có). Việc chụp dùng một lệnh `gh api graphql` mỗi PR, chỉ chạy trong nhịp 5 phút của việc tra PR đã merge, tối đa 5 PR mỗi nhịp; PR đã có file thì không hỏi lại. Chụp lỗi thì stderr có `track: review snapshot <url>: <nguyên nhân>`, lỗi được nối vào dòng `merged check failed`, không có file nào được ghi và nhịp sau thử lại.
+
 ## Sổ chung giữa các tab Claude Code
 
 Mọi tab Claude Code trong cùng workspace ghi vào một sổ chung, nên tab `Today` thấy việc của tất cả các tab, còn tab `Kitchen` cho thấy các việc đã xong hôm nay và các tab đang chờ bạn. Mỗi session có file riêng để ghi thời gian và token, nên hai tab chạy song song không đè lên nhau.

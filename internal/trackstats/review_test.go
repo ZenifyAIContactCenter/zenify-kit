@@ -1,0 +1,82 @@
+package trackstats
+
+import (
+	"testing"
+)
+
+const reviewFixture = `{"data":{"repository":{"pullRequest":{
+  "createdAt":"2026-11-18T01:00:00Z","mergedAt":"2026-11-18T05:00:00Z",
+  "commits":{"nodes":[
+    {"commit":{"oid":"aaa111","committedDate":"2026-11-18T01:30:00Z"}},
+    {"commit":{"oid":"bbb222","committedDate":"2026-11-18T03:00:00Z"}}]},
+  "comments":{"nodes":[
+    {"author":{"__typename":"Bot","login":"zenie-reviewer"},"createdAt":"2026-11-18T02:00:00Z","body":"Lần review 1"},
+    {"author":{"__typename":"User","login":"dev"},"createdAt":"2026-11-18T02:10:00Z","body":"thanks"}]},
+  "reviewThreads":{"nodes":[
+    {"isResolved":true,"path":"internal/cli/track.go","line":42,"comments":{"nodes":[
+      {"author":{"__typename":"Bot","login":"zenie-reviewer"},"createdAt":"2026-11-18T02:01:00Z","body":"nil check"}]}}]}
+}}}}`
+
+func TestParseReview(t *testing.T) {
+	s, err := parseReview([]byte(reviewFixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.CreatedAt != "2026-11-18T01:00:00Z" || s.MergedAt != "2026-11-18T05:00:00Z" {
+		t.Errorf("times = %q %q", s.CreatedAt, s.MergedAt)
+	}
+	if len(s.Commits) != 2 || s.Commits[1].OID != "bbb222" || s.Commits[1].CommittedDate != "2026-11-18T03:00:00Z" {
+		t.Errorf("commits = %+v", s.Commits)
+	}
+	if len(s.BotComments) != 1 || s.BotComments[0].Author != "zenie-reviewer" || s.BotComments[0].Body != "Lần review 1" {
+		t.Errorf("bot comments = %+v, want only the Bot one", s.BotComments)
+	}
+	if len(s.Threads) != 1 {
+		t.Fatalf("threads = %+v", s.Threads)
+	}
+	th := s.Threads[0]
+	if th.Path != "internal/cli/track.go" || th.Line != 42 || !th.IsResolved || len(th.Comments) != 1 || th.Comments[0].Body != "nil check" {
+		t.Errorf("thread = %+v", th)
+	}
+	if s.TrackID != "" || s.FetchedAt != "" {
+		t.Errorf("TrackID %q FetchedAt %q, want both empty for the CLI to fill", s.TrackID, s.FetchedAt)
+	}
+}
+
+func TestParseReview_NoPullRequest(t *testing.T) {
+	if _, err := parseReview([]byte(`{"data":{"repository":{"pullRequest":null}}}`)); err == nil {
+		t.Fatal("want an error when the PR is missing")
+	}
+}
+
+func TestReviewFileName(t *testing.T) {
+	if got, ok := ReviewFileName("https://github.com/o/r/pull/9"); !ok || got != "o-r-9.json" {
+		t.Errorf("ReviewFileName = %q %v, want o-r-9.json true", got, ok)
+	}
+	for _, u := range []string{"https://x/y", "branch:x", "https://github.com/o/r/issues/9", "https://github.com/o/r/pull/x"} {
+		if got, ok := ReviewFileName(u); ok {
+			t.Errorf("ReviewFileName(%q) = %q true, want false", u, got)
+		}
+	}
+}
+
+func TestOwnerRun_Review(t *testing.T) {
+	a, b := "cook-261118-0001", "fix-261118-0002"
+	ev, _ := ParseLog(lines(
+		row(cAt(18, 1), "end", a, "https://a/pull/1,https://a/pull/2", "1", "1"),
+		row(cAt(18, 2), "end", b, "https://a/pull/3", "0", "1"),
+		row(cAt(18, 3), "end", b, "https://a/pull/1", "0", "1"),
+	))
+	if got := OwnerRun(ev, "https://a/pull/1"); got != b {
+		t.Errorf("OwnerRun(pull/1) = %q, want the last end %q", got, b)
+	}
+	if got := OwnerRun(ev, "https://a/pull/2"); got != a {
+		t.Errorf("OwnerRun(pull/2) = %q, want %q", got, a)
+	}
+	if got := OwnerRun(ev, "https://a/pull/3"); got != b {
+		t.Errorf("OwnerRun(pull/3) = %q, want %q", got, b)
+	}
+	if got := OwnerRun(ev, "https://a/pull/9"); got != "-" {
+		t.Errorf("OwnerRun(unknown) = %q, want -", got)
+	}
+}

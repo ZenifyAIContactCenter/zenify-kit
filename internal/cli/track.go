@@ -37,6 +37,13 @@ var trackPRStatus trackstats.PRStatusFunc = trackstats.GhPRStatus
 // trackPRTitle fetches a PR title; a test replaces it at the gh boundary.
 var trackPRTitle = trackstats.GhPRTitle
 
+// trackReview fetches a merged PR's review data; a test replaces it at the gh boundary.
+var trackReview trackstats.ReviewFunc = trackstats.GhReview
+
+// reviewsPerCycle caps the review snapshots one stats run takes, so a backlog of merged PRs
+// costs a few gh calls per recheck window instead of one long pass.
+const reviewsPerCycle = 5
+
 // mergedRecheck is how long a gh merged check stays fresh before stats asks again.
 const mergedRecheck = 5 * time.Minute
 
@@ -823,6 +830,15 @@ func computeTrackStatsInput(dir, wsDir, today string, now time.Time, force bool)
 	if latest, newer, ok := update.Cached(zenifyHome(os.Getenv, os.UserHomeDir), version.Current()); ok {
 		res.KitUpdate = &trackstats.KitUpdate{Current: version.Current(), Latest: latest, Newer: newer}
 	}
+	if in.Merged != nil {
+		merged := cache
+		if newCache != nil {
+			merged = newCache
+		}
+		if err := snapshotReviews(dir, in.Log, merged, now, &res.Today.MergedError); err != nil {
+			return trackstats.Result{}, trackstats.Input{}, err
+		}
+	}
 	if in.Merged == nil {
 		res.Today.MergedError = string(lastErr)
 		res.Today.PRStatusError = string(lastStatusErr)
@@ -860,6 +876,62 @@ func computeTrackStatsInput(dir, wsDir, today string, now time.Time, force bool)
 		in.Cache = newCache
 	}
 	return res, in, nil
+}
+
+// snapshotReviews writes .zenify/track/reviews/<file> for up to reviewsPerCycle merged PRs
+// that have none yet. A gh or write failure goes to stderr and onto mergedErr, so the PR is
+// retried next cycle; only a failed stat of an existing file is returned.
+func snapshotReviews(dir, log string, merged map[string]string, now time.Time, mergedErr *string) error {
+	reviewsDir := filepath.Join(dir, "reviews")
+	events, _ := trackstats.ParseLog(log)
+	report := func(url string, err error) {
+		fmt.Fprintf(os.Stderr, "track: review snapshot %s: %v\n", url, err)
+		msg := fmt.Sprintf("review snapshot %s: %v", url, err)
+		if *mergedErr != "" {
+			msg = "; " + msg
+		}
+		*mergedErr += msg
+	}
+	taken := 0
+	for _, url := range slices.Sorted(maps.Keys(merged)) {
+		if taken == reviewsPerCycle {
+			break
+		}
+		if v := merged[url]; v == "" || v == trackstats.ClosedUnmerged {
+			continue
+		}
+		name, ok := trackstats.ReviewFileName(url)
+		if !ok {
+			continue
+		}
+		path := filepath.Join(reviewsDir, name)
+		if _, err := os.Stat(path); err == nil {
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		taken++
+		snap, err := trackReview(url)
+		if err != nil {
+			report(url, err)
+			continue
+		}
+		snap.TrackID = trackstats.OwnerRun(events, url)
+		snap.FetchedAt = now.UTC().Format(time.RFC3339)
+		out, err := json.Marshal(snap)
+		if err != nil {
+			report(url, err)
+			continue
+		}
+		if err := os.MkdirAll(reviewsDir, 0o750); err != nil {
+			report(url, err)
+			continue
+		}
+		if err := writeFileAtomic(path, out, 0o644); err != nil {
+			report(url, err)
+		}
+	}
+	return nil
 }
 
 // writeStatusCache stores the open PR statuses by url, so a run outside the recheck window can show them.
