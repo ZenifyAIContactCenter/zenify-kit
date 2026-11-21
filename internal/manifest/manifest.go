@@ -205,7 +205,8 @@ func validateGroups(m *Manifest, label string) error {
 }
 
 // LoadWithOverlay loads base, then lets a personal overlay override each repo's
-// Path by Name (FR-068 local overlay). A missing overlay file is not an error.
+// Path by Name (FR-068 local overlay), and append repos the base lacks when the
+// overlay entry carries a url. A missing overlay file is not an error.
 func LoadWithOverlay(basePath, overlayPath string) (*Manifest, error) {
 	m, err := Load(basePath)
 	if err != nil {
@@ -233,20 +234,32 @@ func applyOverlay(m *Manifest, overlayPath string) (*Manifest, error) {
 		return nil, fmt.Errorf("read overlay: %w", err)
 	}
 	var ov struct {
-		Repos []struct {
-			Name string `yaml:"name"`
-			Path string `yaml:"path"`
-		} `yaml:"repos"`
+		Repos []Repo `yaml:"repos"`
 	}
 	if err := yaml.Unmarshal(ob, &ov); err != nil {
 		return nil, fmt.Errorf("parse overlay: %w", err)
 	}
 	for _, o := range ov.Repos {
-		for i := range m.Repos {
-			if m.Repos[i].Name == o.Name && o.Path != "" {
-				m.Repos[i].Path = o.Path
+		if _, known := m.ByName(o.Name); known {
+			for i := range m.Repos {
+				if m.Repos[i].Name == o.Name && o.Path != "" {
+					m.Repos[i].Path = o.Path
+				}
 			}
+			continue
 		}
+		// A repo the base lacks is added only when it carries a url: workspace-private
+		// repos live here, never in the embedded manifest (ARCHITECTURE.md).
+		if o.URL == "" {
+			continue
+		}
+		if o.Name == "" || o.Path == "" {
+			return nil, fmt.Errorf("overlay %s: repo %q needs name and path", overlayPath, o.URL)
+		}
+		m.Repos = append(m.Repos, o)
+	}
+	if err := validateGroups(m, overlayPath); err != nil {
+		return nil, err
 	}
 	return m, nil
 }
