@@ -51,7 +51,7 @@ func newWtCachePutCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "tên repo trong cache (mặc định: tên thư mục của <dir>)") //znf:allow-lang
+	cmd.Flags().StringVar(&name, "name", "", "tên repo trong cache (mặc định: tên remote origin của <dir>, không có thì tên thư mục)") //znf:allow-lang
 	return cmd
 }
 
@@ -91,7 +91,7 @@ func newWtCacheGetCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "tên repo trong cache (mặc định: tên thư mục của <dir>)") //znf:allow-lang
+	cmd.Flags().StringVar(&name, "name", "", "tên repo trong cache (mặc định: tên remote origin của <dir>, không có thì tên thư mục)") //znf:allow-lang
 	cmd.Flags().BoolVar(&check, "check", false, "chỉ kiểm tra có hit không, không chép gì")            //znf:allow-lang
 	return cmd
 }
