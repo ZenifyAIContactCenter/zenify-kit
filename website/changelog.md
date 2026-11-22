@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.78.0
+
+*2026-11-22*
+
+- **Thư mục store mới `agent-memory`:** knowledge store có thêm thư mục `agent-memory/`, nơi worker Zenie lưu memory nghề nghiệp (bài học rút ra sau mỗi task, gộp tự động sau khi kiểm tra). Kit coi nó là thư mục store như `specs` hay `plans`: `zenify docs sync` đồng bộ nó, view `docs/` có symlink tới nó, và write-guard cho phép ghi vào đó. Bạn không cần làm gì. Xem [Bố cục workspace](/concepts/workspace-layout) và [Knowledge store](/concepts/knowledge-store). ([#396](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/396))
+
 ## v0.77.0
 
 *2026-11-20*
