@@ -159,7 +159,8 @@ func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
 
 // seedDepsSource runs seed (a cache fill of the absent src). A seed error or miss
 // is not fatal when src exists as a directory by then: a concurrent `wt new`
-// seeded it first (both write the same dst, so the loser's rename can fail).
+// seeded it first (seed never replaces an existing dst, so the loser misses or
+// its rename fails, and the winner's tree stays in use).
 // Otherwise it returns the original missing error plus the seed's reason.
 func seedDepsSource(src string, missing error, seed func() (bool, error)) error {
 	hit, gerr := seed()
@@ -177,7 +178,7 @@ func seedDepsSource(src string, missing error, seed func() (bool, error)) error 
 
 // ApplyDeps sets up the dependency dir (e.g. node_modules) in the worktree per
 // mode: "symlink" links to the main checkout's dir; when that dir is missing and
-// is node_modules, it is first seeded from the deps cache (CacheGet, keyed by the
+// is node_modules, it is first seeded from the deps cache (cacheSeed, keyed by the
 // main checkout's package-lock.json and build env), never otherwise reading the
 // cache and never writing a slot; "clone" CoW-copies it then runs install, unless cloneIsCurrent says
 // the copy already matches the worktree's package-lock.json (then only the root
@@ -202,12 +203,12 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		if _, err := os.Stat(src); err != nil {
 			missing := fmt.Errorf("wt: deps=symlink but %s does not exist — install in the main checkout first", src)
 			// Seed only from a truly absent dir: a dangling symlink or an
-			// unreadable one is left alone (CacheGet would replace it).
+			// unreadable one is left alone.
 			if _, lerr := os.Lstat(src); depsDirName != cacheDeps || !errors.Is(lerr, fs.ErrNotExist) {
 				return missing
 			}
 			if err := seedDepsSource(src, missing, func() (bool, error) {
-				return CacheGet(repoRoot, CacheRepoName(repoRoot), os.LookupEnv)
+				return cacheSeed(repoRoot, CacheRepoName(repoRoot), os.LookupEnv)
 			}); err != nil {
 				return err
 			}

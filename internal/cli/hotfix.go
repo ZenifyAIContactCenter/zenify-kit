@@ -31,7 +31,9 @@ func newHotfixCmd() *cobra.Command {
 			if len(args) == 1 {
 				repo = args[0]
 			} else {
-				out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output() //nolint:gosec // G204 -- fixed argv
+				git := exec.Command("git", "rev-parse", "--show-toplevel") //nolint:gosec // G204 -- fixed argv
+				git.Env = wt.GitEnvWithoutRepoSelectors()                  // the cwd's repo, not one GIT_DIR names
+				out, err := git.Output()
 				if err != nil {
 					return exitcode.New(exitcode.Fail, fmt.Errorf("hotfix baseref: not inside a git repo; pass <repoPath>: %w", err))
 				}

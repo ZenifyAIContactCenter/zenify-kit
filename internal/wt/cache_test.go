@@ -191,6 +191,34 @@ func TestCacheGetReplacesExistingNodeModules(t *testing.T) {
 	}
 }
 
+func TestCacheSeedKeepsExistingNodeModules(t *testing.T) {
+	stubProbes(t)
+	cache := t.TempDir()
+	if err := CachePut(installedTree(t, "src", lockJSON), "myrepo", cacheEnv(cache)); err != nil {
+		t.Fatal(err)
+	}
+	dst := bareDir(t, lockJSON)
+	if err := os.MkdirAll(filepath.Join(dst, "node_modules", "winner"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if hit, err := cacheSeed(dst, "myrepo", cacheEnv(cache)); err != nil || hit {
+		t.Fatalf("cacheSeed over an existing tree = (%v, %v), want (false, nil)", hit, err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "node_modules", "winner")); err != nil {
+		t.Fatalf("existing node_modules was replaced: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "node_modules", "x")); !os.IsNotExist(err) {
+		t.Fatalf("cache content written over the existing tree: %v", err)
+	}
+	fresh := bareDir(t, lockJSON)
+	if hit, err := cacheSeed(fresh, "myrepo", cacheEnv(cache)); err != nil || !hit {
+		t.Fatalf("cacheSeed into an absent dir = (%v, %v), want (true, nil)", hit, err)
+	}
+	if _, err := os.Stat(filepath.Join(fresh, "node_modules", "x", "package.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // writable restores u+w on root's whole tree so t.TempDir removal can succeed.
 func writable(t *testing.T, root string) {
 	t.Helper()

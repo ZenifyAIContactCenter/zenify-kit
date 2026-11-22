@@ -105,3 +105,21 @@ func TestHotfixBaserefNoArgOutsideRepoFails(t *testing.T) {
 		t.Fatalf("error lacks the repoPath hint: %v", err)
 	}
 }
+
+func TestHotfixBaserefNoArgIgnoresAmbientGitDir(t *testing.T) {
+	other := seedRepoCfg(t, `{"abbrev":"lumi","baseRef":"origin/staging","hotfix":{"baseStrategy":"standalone"}}`)
+	if out, err := exec.Command("git", "-C", other, "init", "-q").CombinedOutput(); err != nil {
+		t.Skipf("git init unavailable: %v: %s", err, out)
+	}
+	t.Chdir(t.TempDir())
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(t.TempDir()))
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	t.Setenv("GIT_WORK_TREE", other)
+	out, err := runHotfixBaseref(t)
+	if err == nil {
+		t.Fatalf("cwd outside a repo must fail even with GIT_DIR set, got %q", out)
+	}
+	if !strings.Contains(err.Error(), "not inside a git repo; pass <repoPath>") {
+		t.Fatalf("error lacks the repoPath hint: %v", err)
+	}
+}
