@@ -78,16 +78,16 @@ func TestDocsSyncEnsureViewSkippedWhenViewEqualsDir(t *testing.T) {
 }
 
 func TestStoreDirsPinned(t *testing.T) {
-	want := []string{"specs", "plans", "reference", "handoff", "releases"}
+	want := []string{"specs", "plans", "reference", "handoff", "releases", "agent-memory"}
 	if !reflect.DeepEqual(storeDirs, want) {
 		t.Fatalf("storeDirs = %v, want %v", storeDirs, want)
 	}
-	if len(docsDirs) != 10 {
+	if len(docsDirs) != 11 {
 		t.Fatalf("docsDirs = %v", docsDirs)
 	}
 }
 
-// SC-1 (migrated): five local dirs are real dirs, five store dirs are links; second run adds no note.
+// SC-1 (migrated): five local dirs are real dirs, six store dirs are links; second run adds no note.
 func TestDocsSyncCreatesLocalDirs(t *testing.T) {
 	ws, store := t.TempDir(), t.TempDir()
 	os.MkdirAll(filepath.Join(store, "specs"), 0o755)

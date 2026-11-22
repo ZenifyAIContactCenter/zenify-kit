@@ -27,7 +27,7 @@ const defaultDocsRepo = "docs"
 
 // storeDirs are the docs/ entries linked into the knowledge store; localDirs are
 // real directories that stay on this machine. docsDirs is every known entry.
-var storeDirs = []string{"specs", "plans", "reference", "handoff", "releases"}
+var storeDirs = []string{"specs", "plans", "reference", "handoff", "releases", "agent-memory"}
 var localDirs = []string{"research", "notes", "scripts", "exports", "external"}
 var docsDirs = append(append([]string{}, storeDirs...), localDirs...)
 
