@@ -15,7 +15,7 @@ Mã thoát: 0 hit, 1 miss, 2 lỗi (không dò được môi trường Node, `--
 
 | Cờ | Ý nghĩa |
 |---|---|
-| `--name` | Tên repo trong cache, dạng `[A-Za-z0-9][A-Za-z0-9._-]*` (một đoạn đường dẫn, không `..`). Mặc định là tên thư mục của `<dir>`. |
+| `--name` | Tên repo trong cache, dạng `[A-Za-z0-9][A-Za-z0-9._-]*` (một đoạn đường dẫn, không `..`). Mặc định là tên remote `origin` của `<dir>`; không có `origin` (hoặc tên không hợp lệ) thì dùng tên thư mục. |
 | `--check` | Chỉ kiểm tra có hit không (thoát 0, 1 hoặc 2 như trên), không chép gì và không đụng vào `<dir>`. |
 
 ## Ví dụ

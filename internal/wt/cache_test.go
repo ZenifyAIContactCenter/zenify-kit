@@ -2,6 +2,7 @@ package wt
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -186,6 +187,34 @@ func TestCacheGetReplacesExistingNodeModules(t *testing.T) {
 		t.Fatalf("old node_modules content survived: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dst, "node_modules", "x", "package.json")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCacheSeedKeepsExistingNodeModules(t *testing.T) {
+	stubProbes(t)
+	cache := t.TempDir()
+	if err := CachePut(installedTree(t, "src", lockJSON), "myrepo", cacheEnv(cache)); err != nil {
+		t.Fatal(err)
+	}
+	dst := bareDir(t, lockJSON)
+	if err := os.MkdirAll(filepath.Join(dst, "node_modules", "winner"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if hit, err := cacheSeed(dst, "myrepo", cacheEnv(cache)); err != nil || hit {
+		t.Fatalf("cacheSeed over an existing tree = (%v, %v), want (false, nil)", hit, err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "node_modules", "winner")); err != nil {
+		t.Fatalf("existing node_modules was replaced: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "node_modules", "x")); !os.IsNotExist(err) {
+		t.Fatalf("cache content written over the existing tree: %v", err)
+	}
+	fresh := bareDir(t, lockJSON)
+	if hit, err := cacheSeed(fresh, "myrepo", cacheEnv(cache)); err != nil || !hit {
+		t.Fatalf("cacheSeed into an absent dir = (%v, %v), want (true, nil)", hit, err)
+	}
+	if _, err := os.Stat(filepath.Join(fresh, "node_modules", "x", "package.json")); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -410,5 +439,53 @@ func TestCacheGetRemovesStaleTempDirs(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dst, keep)); err != nil {
 			t.Errorf("%s removed: %v", keep, err)
 		}
+	}
+}
+
+// gitRepoNamed makes <tmp>/<name> a git repo; a non-empty remote becomes origin.
+func gitRepoNamed(t *testing.T, name, remote string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), name)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	args := [][]string{{"init", "-q"}}
+	if remote != "" {
+		args = append(args, []string{"remote", "add", "origin", remote})
+	}
+	for _, a := range args {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, a...)...).CombinedOutput(); err != nil { //nolint:gosec // G204 -- fixed git subcommands in a test
+			t.Fatalf("git %v: %v\n%s", a, err, out)
+		}
+	}
+	return dir
+}
+
+func TestCacheRepoName(t *testing.T) {
+	const dirName = "ZenifyAIContactCenter-contact-center-web"
+	cases := []struct{ name, remote, want string }{
+		{"https with .git", "https://github.com/ZenifyAIContactCenter/contact-center-web.git", "contact-center-web"},
+		{"ssh", "git@github.com:ZenifyAIContactCenter/contact-center-web.git", "contact-center-web"},
+		{"trailing slash", "https://github.com/ZenifyAIContactCenter/contact-center-web/", "contact-center-web"},
+		{"no remote", "", dirName},
+		{"invalid name", "https://x/.hidden.git", dirName},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := gitRepoNamed(t, dirName, c.remote)
+			if got := CacheRepoName(dir); got != c.want {
+				t.Fatalf("CacheRepoName = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestCacheRepoNameIgnoresAmbientGitDir(t *testing.T) {
+	other := gitRepoNamed(t, "other", "https://x/other-repo.git")
+	dir := gitRepoNamed(t, "ZenifyAIContactCenter-contact-center-web", "https://github.com/ZenifyAIContactCenter/contact-center-web.git")
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	t.Setenv("GIT_WORK_TREE", other)
+	if got := CacheRepoName(dir); got != "contact-center-web" {
+		t.Fatalf("CacheRepoName = %q, want contact-center-web", got)
 	}
 }

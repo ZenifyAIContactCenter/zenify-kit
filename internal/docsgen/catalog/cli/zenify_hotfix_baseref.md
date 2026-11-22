@@ -7,7 +7,7 @@ Trước khi mở worktree hotfix, để xác nhận base mà production đang c
 
 ## Kết quả
 
-Lệnh đọc `.claude/worktree.json` của repo và in một ref. `zenify wt new --type hotfix` dùng đúng hàm resolve này, nên hai lệnh luôn ra cùng một kết quả.
+Lệnh đọc `.claude/worktree.json` của repo và in một ref. Không truyền `repoPath` thì lệnh lấy repo chứa thư mục hiện tại (`git rev-parse --show-toplevel`), và báo lỗi nếu thư mục đó không nằm trong repo git. `zenify wt new --type hotfix` dùng đúng hàm resolve này, nên hai lệnh luôn ra cùng một kết quả.
 
 | Chiến lược (`hotfix.baseStrategy`) | Ref in ra |
 |---|---|

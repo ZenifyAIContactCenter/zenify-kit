@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -30,6 +31,47 @@ func checkCacheName(repoName string) error {
 		return fmt.Errorf("wt cache: invalid repo name %q (want [A-Za-z0-9][A-Za-z0-9._-]*)", repoName)
 	}
 	return nil
+}
+
+// CacheRepoName is the cache slot name for the checkout at repoRoot: the last
+// path segment of its origin remote URL (".git" and trailing "/" dropped), so a
+// clone dir named after org+repo still shares the slot the nightly refresh
+// writes. No origin, a git error, or a name checkCacheName rejects falls back to
+// filepath.Base(repoRoot).
+func CacheRepoName(repoRoot string) string {
+	fallback := filepath.Base(repoRoot)
+	// safe.directory=* so a checkout owned by another uid (a worker container)
+	// still answers; the ambient GIT_* repo selectors are dropped so -C wins.
+	cmd := exec.Command("git", "-c", "safe.directory=*", "-C", repoRoot, "remote", "get-url", "origin") //nolint:gosec // G204 -- fixed git subcommand, repoRoot is a path argument
+	cmd.Env = GitEnvWithoutRepoSelectors()
+	out, err := cmd.Output()
+	if err != nil {
+		return fallback
+	}
+	u := strings.TrimRight(strings.TrimSpace(string(out)), "/")
+	if i := strings.LastIndexAny(u, "/:"); i >= 0 {
+		u = u[i+1:]
+	}
+	u = strings.TrimSuffix(u, ".git")
+	if checkCacheName(u) != nil {
+		return fallback
+	}
+	return u
+}
+
+// GitEnvWithoutRepoSelectors is os.Environ() minus GIT_DIR, GIT_WORK_TREE,
+// GIT_INDEX_FILE and GIT_COMMON_DIR, so a git child resolves the repo from its
+// -C path or cwd instead of a repo the caller's environment points at.
+func GitEnvWithoutRepoSelectors() []string {
+	env := []string{}
+	for _, kv := range os.Environ() {
+		switch strings.SplitN(kv, "=", 2)[0] {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR":
+		default:
+			env = append(env, kv)
+		}
+	}
+	return env
 }
 
 // CachePut stores dir's installed node_modules in the deps cache, in the same
@@ -87,11 +129,27 @@ func CachePut(dir, repoName string, lookupEnv func(string) (string, bool)) error
 // dir beside dst first, so a failed copy leaves the existing node_modules as is;
 // a staging dir over an hour old (a killed get) is removed on the next hit.
 func CacheGet(dir, repoName string, lookupEnv func(string) (string, bool)) (hit bool, err error) {
+	return cacheGet(dir, repoName, lookupEnv, true)
+}
+
+// cacheSeed is CacheGet that never replaces: an existing dir/node_modules (a
+// concurrent seed that won) is left as is and reported as a miss, and the final
+// rename fails rather than overwrite one that appeared during the copy.
+func cacheSeed(dir, repoName string, lookupEnv func(string) (string, bool)) (hit bool, err error) {
+	return cacheGet(dir, repoName, lookupEnv, false)
+}
+
+func cacheGet(dir, repoName string, lookupEnv func(string) (string, bool), replace bool) (hit bool, err error) {
 	src, found, err := cacheLookup(dir, repoName, lookupEnv)
 	if err != nil || !found {
 		return false, err
 	}
 	dst := filepath.Join(dir, cacheDeps)
+	if !replace {
+		if _, err := os.Lstat(dst); err == nil {
+			return false, nil
+		}
+	}
 	// A get killed mid-copy leaves its temp dir behind; clear old ones (best
 	// effort) so the repo dir does not stay dirty.
 	if entries, err := os.ReadDir(dir); err == nil {
@@ -118,8 +176,10 @@ func CacheGet(dir, repoName string, lookupEnv func(string) (string, bool)) (hit 
 	if fi, err := os.Stat(staged); err == nil {
 		_ = os.Chmod(staged, fi.Mode().Perm()|0o700) //nolint:gosec // G302 -- the copied node_modules root, owner rwx only added
 	}
-	if err := os.RemoveAll(dst); err != nil {
-		return false, fmt.Errorf("wt cache: clear %s: %w", dst, err)
+	if replace {
+		if err := os.RemoveAll(dst); err != nil {
+			return false, fmt.Errorf("wt cache: clear %s: %w", dst, err)
+		}
 	}
 	if err := os.Rename(staged, dst); err != nil {
 		return false, fmt.Errorf("wt cache: move into %s: %w", dst, err)

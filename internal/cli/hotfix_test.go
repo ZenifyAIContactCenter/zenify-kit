@@ -1,9 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 )
 
 // seedRepoCfg writes .claude/worktree.json for a fake repo, returning repoRoot.
@@ -45,5 +50,76 @@ func TestHotfixBaserefReleaseLatestRetired(t *testing.T) {
 	dir := seedRepoCfg(t, `{"abbrev":"x","hotfix":{"baseStrategy":"release-latest"}}`)
 	if out, err := resolveHotfixBaseRef(dir); err == nil {
 		t.Fatalf("release-latest must fail instead of guessing a release branch, got %q", out)
+	}
+}
+
+func runHotfixBaseref(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	cmd := newHotfixCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs(append([]string{"baseref"}, args...))
+	err := cmd.Execute()
+	return out.String(), err
+}
+
+func TestHotfixBaserefDefaultsToCwdRepo(t *testing.T) {
+	dir := seedRepoCfg(t, `{"abbrev":"lumi","baseRef":"origin/staging","hotfix":{"baseStrategy":"standalone"}}`)
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Skipf("git init unavailable: %v: %s", err, out)
+	}
+	sub := filepath.Join(dir, "pkg", "deep")
+	if err := os.MkdirAll(sub, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub)
+
+	got, err := runHotfixBaseref(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "origin/staging\n" {
+		t.Fatalf("no-arg baseref → %q, want %q", got, "origin/staging\n")
+	}
+	withArg, err := runHotfixBaseref(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != withArg {
+		t.Fatalf("no-arg %q != explicit-arg %q", got, withArg)
+	}
+}
+
+func TestHotfixBaserefNoArgOutsideRepoFails(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(t.TempDir()))
+	out, err := runHotfixBaseref(t)
+	if err == nil {
+		t.Fatalf("outside a git repo must fail, got %q", out)
+	}
+	if exitcode.Code(err) != exitcode.Fail {
+		t.Fatalf("exit code %d, want Fail", exitcode.Code(err))
+	}
+	if !strings.Contains(err.Error(), "not inside a git repo; pass <repoPath>") {
+		t.Fatalf("error lacks the repoPath hint: %v", err)
+	}
+}
+
+func TestHotfixBaserefNoArgIgnoresAmbientGitDir(t *testing.T) {
+	other := seedRepoCfg(t, `{"abbrev":"lumi","baseRef":"origin/staging","hotfix":{"baseStrategy":"standalone"}}`)
+	if out, err := exec.Command("git", "-C", other, "init", "-q").CombinedOutput(); err != nil {
+		t.Skipf("git init unavailable: %v: %s", err, out)
+	}
+	t.Chdir(t.TempDir())
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(t.TempDir()))
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	t.Setenv("GIT_WORK_TREE", other)
+	out, err := runHotfixBaseref(t)
+	if err == nil {
+		t.Fatalf("cwd outside a repo must fail even with GIT_DIR set, got %q", out)
+	}
+	if !strings.Contains(err.Error(), "not inside a git repo; pass <repoPath>") {
+		t.Fatalf("error lacks the repoPath hint: %v", err)
 	}
 }

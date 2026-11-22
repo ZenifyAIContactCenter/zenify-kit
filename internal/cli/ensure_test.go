@@ -893,3 +893,54 @@ func TestEnsureWorkspace_MalformedReviewerRecordWarnsOnly(t *testing.T) {
 		t.Errorf("no stderr warning: %s", e.String())
 	}
 }
+
+func runEnsureCmd(t *testing.T, home string) (out, errOut string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	stampManifest(t, home, version.Current())
+	t.Setenv("ZENIFY_HOME", t.TempDir())
+	cmd := newEnsureCmd()
+	var o, e bytes.Buffer
+	cmd.SetOut(&o)
+	cmd.SetErr(&e)
+	cmd.SetArgs([]string{"--workspace", t.TempDir()})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("ensure: %v (stderr=%s)", err, e.String())
+	}
+	return o.String(), e.String()
+}
+
+// FR-6.7 / SC-6.5: a machine that never runs `zenify up` still gets wt and pm.
+func TestEnsureCmdInstallsShims(t *testing.T) {
+	home := t.TempDir()
+	runEnsureCmd(t, home)
+	for name, want := range map[string]string{
+		"wt": "#!/bin/sh\n# managed by zenify\nexec zenify wt \"$@\"\n",
+		"pm": "#!/bin/sh\n# managed by zenify\nexec zenify pm \"$@\"\n",
+	} {
+		got, err := os.ReadFile(filepath.Join(home, ".local", "bin", name))
+		if err != nil {
+			t.Fatalf("%s shim: %v", name, err)
+		}
+		if string(got) != want {
+			t.Errorf("%s shim = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestEnsureCmdKeepsForeignShim(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	foreign := "#!/bin/sh\necho mine\n"
+	if err := os.WriteFile(filepath.Join(dir, "wt"), []byte(foreign), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runEnsureCmd(t, home)
+	got, _ := os.ReadFile(filepath.Join(dir, "wt"))
+	if string(got) != foreign {
+		t.Errorf("foreign wt overwritten: %q", got)
+	}
+}

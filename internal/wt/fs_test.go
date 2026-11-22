@@ -1,6 +1,7 @@
 package wt
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -267,11 +268,18 @@ func cacheEntries(t *testing.T, dir string) []string {
 	return names
 }
 
-// SC-10: symlink mode never reads the cache, even when a matching slot exists.
+// SC-10: symlink mode never reads the cache while the main checkout has its own
+// node_modules, even when a matching slot exists.
 func TestApplyDepsSymlinkIgnoresMatchingCache(t *testing.T) {
 	repo, wtp, cache, _ := cacheFixture(t, `{"lockfileVersion":3}`, `{"lockfileVersion":3}`)
 	own := filepath.Join(repo, "node_modules")
 	if err := os.MkdirAll(own, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(`{"lockfileVersion":3}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(own, "mine"), []byte("mine"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	parent := filepath.Join(cache, filepath.Base(repo))
@@ -288,6 +296,9 @@ func TestApplyDepsSymlinkIgnoresMatchingCache(t *testing.T) {
 	}
 	if got != own {
 		t.Fatalf("symlink target = %q, want own %q", got, own)
+	}
+	if es := cacheEntries(t, own); !reflect.DeepEqual(es, []string{"mine"}) {
+		t.Fatalf("main checkout node_modules changed: %v", es)
 	}
 }
 
@@ -297,6 +308,12 @@ func TestApplyDepsSymlinkIgnoresMismatchedCache(t *testing.T) {
 	if err := os.MkdirAll(own, 0o750); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(`{"lockfileVersion":3}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(own, "mine"), []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	parent := filepath.Join(cache, filepath.Base(repo))
 	before := cacheEntries(t, parent)
 	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
@@ -311,6 +328,88 @@ func TestApplyDepsSymlinkIgnoresMismatchedCache(t *testing.T) {
 	}
 	if got != own {
 		t.Fatalf("symlink target = %q, want own %q", got, own)
+	}
+	if es := cacheEntries(t, own); !reflect.DeepEqual(es, []string{"mine"}) {
+		t.Fatalf("main checkout node_modules changed: %v", es)
+	}
+}
+
+// FR-6.6: a missing main-checkout node_modules is seeded from the matching slot.
+func TestApplyDepsSymlinkSeedsMissingFromCache(t *testing.T) {
+	stubProbes(t)
+	repo, wtp, cache, _ := cacheFixture(t, lockJSON, lockJSON)
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(lockJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
+		t.Fatal(err)
+	}
+	own := filepath.Join(repo, "node_modules")
+	if fi, err := os.Lstat(own); err != nil || !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("main checkout node_modules is not a real dir: %v %v", fi, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(own, "x")); err != nil || string(b) != "x" {
+		t.Fatalf("slot marker not copied: %q %v", b, err)
+	}
+	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
+	if err != nil || got != own {
+		t.Fatalf("worktree link = %q (%v), want %q", got, err, own)
+	}
+	for _, e := range cacheEntries(t, repo) {
+		if strings.HasPrefix(e, cacheTempPrefix) {
+			t.Fatalf("staging dir left in repoRoot: %s", e)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(cache, "repo")); err != nil {
+		t.Fatalf("slot dir gone: %v", err)
+	}
+}
+
+func TestApplyDepsSymlinkMissNoSlot(t *testing.T) {
+	stubProbes(t)
+	repo, wtp, _, _ := cacheFixture(t, `{"a":1}`, lockJSON)
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(`{"a":2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := ApplyDeps(repo, wtp, "symlink", "node_modules", "")
+	if err == nil || !strings.Contains(err.Error(), "does not exist") || !strings.Contains(err.Error(), "no deps cache slot") {
+		t.Fatalf("err = %v, want 'does not exist' + 'no deps cache slot'", err)
+	}
+	if _, err := os.Lstat(filepath.Join(repo, "node_modules")); !os.IsNotExist(err) {
+		t.Fatalf("repoRoot node_modules created on a miss: %v", err)
+	}
+}
+
+// A dangling node_modules symlink is an existing entry: never replaced from the cache.
+func TestApplyDepsSymlinkDanglingLinkUntouched(t *testing.T) {
+	stubProbes(t)
+	repo, wtp, _, _ := cacheFixture(t, lockJSON, lockJSON)
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(lockJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	own := filepath.Join(repo, "node_modules")
+	if err := os.Symlink(filepath.Join(repo, "nowhere"), own); err != nil {
+		t.Fatal(err)
+	}
+	err := ApplyDeps(repo, wtp, "symlink", "node_modules", "")
+	if err == nil || !strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "no deps cache slot") {
+		t.Fatalf("err = %v, want the old 'does not exist' error only", err)
+	}
+	got, lerr := os.Readlink(own)
+	if lerr != nil || got != filepath.Join(repo, "nowhere") {
+		t.Fatalf("dangling link changed: %q %v", got, lerr)
+	}
+}
+
+// Node unreadable while seeding: no panic, the old error plus CacheGet's reason.
+func TestApplyDepsSymlinkNoNodeKeepsError(t *testing.T) {
+	orig := probeEnvTag
+	probeEnvTag = func(string) (string, bool) { return "", false }
+	t.Cleanup(func() { probeEnvTag = orig })
+	repo, wtp, _, _ := cacheFixture(t, lockJSON, lockJSON)
+	err := ApplyDeps(repo, wtp, "symlink", "node_modules", "")
+	if err == nil || !strings.Contains(err.Error(), "does not exist") || !strings.Contains(err.Error(), "is node on PATH") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -1190,4 +1289,72 @@ func TestCowCopyFlag(t *testing.T) {
 			t.Errorf("cowCopyFlag(%q) = %q, want %q", goos, got, want)
 		}
 	}
+}
+
+// The zenie worker clones into a dir named after org+repo; the nightly refresh
+// writes the slot under the bare repo name from the origin remote (FR-6.5).
+func TestApplyDepsCloneUsesRemoteNameSlot(t *testing.T) {
+	stubProbes(t)
+	_, wtp, cache, _ := cacheFixture(t, lockJSON, lockJSON)
+	if err := os.Rename(filepath.Join(cache, "repo"), filepath.Join(cache, "contact-center-web")); err != nil {
+		t.Fatal(err)
+	}
+	slotNM := filepath.Join(cache, "contact-center-web")
+	matches, err := filepath.Glob(filepath.Join(slotNM, "*", "node_modules"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("slot node_modules = %v (err %v)", matches, err)
+	}
+	for p, v := range map[string]string{
+		filepath.Join(matches[0], ".package-lock.json"): hiddenJSON,
+		filepath.Join(wtp, "package.json"):              pkgJSON,
+	} {
+		if err := os.WriteFile(p, []byte(v), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo := gitRepoNamed(t, "ZenifyAIContactCenter-contact-center-web", "https://github.com/ZenifyAIContactCenter/contact-center-web.git")
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "x")); err != nil {
+		t.Fatalf("clone not seeded from the remote-named slot: %v", err)
+	}
+}
+
+func TestSeedDepsSource(t *testing.T) {
+	missing := errors.New("missing")
+	dirAt := func(t *testing.T) string {
+		d := filepath.Join(t.TempDir(), "node_modules")
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	absent := filepath.Join(t.TempDir(), "node_modules")
+	t.Run("seed error but src appeared (concurrent seeder won)", func(t *testing.T) {
+		if err := seedDepsSource(dirAt(t), missing, func() (bool, error) { return false, errors.New("rename failed") }); err != nil {
+			t.Fatalf("want nil, got %v", err)
+		}
+	})
+	t.Run("miss and src appeared", func(t *testing.T) {
+		if err := seedDepsSource(dirAt(t), missing, func() (bool, error) { return false, nil }); err != nil {
+			t.Fatalf("want nil, got %v", err)
+		}
+	})
+	t.Run("seed error, src absent", func(t *testing.T) {
+		err := seedDepsSource(absent, missing, func() (bool, error) { return false, errors.New("boom") })
+		if err == nil || !errors.Is(err, missing) || !strings.Contains(err.Error(), "boom") {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("miss, src absent", func(t *testing.T) {
+		if err := seedDepsSource(absent, missing, func() (bool, error) { return false, nil }); err == nil {
+			t.Fatal("want error")
+		}
+	})
+	t.Run("hit", func(t *testing.T) {
+		if err := seedDepsSource(absent, missing, func() (bool, error) { return true, nil }); err != nil {
+			t.Fatal(err)
+		}
+	})
 }

@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -155,9 +157,30 @@ func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
 	return nil
 }
 
+// seedDepsSource runs seed (a cache fill of the absent src). A seed error or miss
+// is not fatal when src exists as a directory by then: a concurrent `wt new`
+// seeded it first (seed never replaces an existing dst, so the loser misses or
+// its rename fails, and the winner's tree stays in use).
+// Otherwise it returns the original missing error plus the seed's reason.
+func seedDepsSource(src string, missing error, seed func() (bool, error)) error {
+	hit, gerr := seed()
+	if gerr == nil && hit {
+		return nil
+	}
+	if fi, err := os.Stat(src); err == nil && fi.IsDir() {
+		return nil
+	}
+	if gerr != nil {
+		return fmt.Errorf("%w; %s", missing, gerr.Error())
+	}
+	return fmt.Errorf("%w; no deps cache slot matches its package-lock.json", missing)
+}
+
 // ApplyDeps sets up the dependency dir (e.g. node_modules) in the worktree per
-// mode: "symlink" links to the main checkout's dir (never touches the deps
-// cache); "clone" CoW-copies it then runs install, unless cloneIsCurrent says
+// mode: "symlink" links to the main checkout's dir; when that dir is missing and
+// is node_modules, it is first seeded from the deps cache (cacheSeed, keyed by the
+// main checkout's package-lock.json and build env), never otherwise reading the
+// cache and never writing a slot; "clone" CoW-copies it then runs install, unless cloneIsCurrent says
 // the copy already matches the worktree's package-lock.json (then only the root
 // lifecycle scripts run); "install" just runs install. symlink/clone require the
 // source dir to exist in repoRoot (or a cache slot, for clone). installCmd empty
@@ -178,7 +201,17 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 	switch mode {
 	case "symlink":
 		if _, err := os.Stat(src); err != nil {
-			return fmt.Errorf("wt: deps=symlink but %s does not exist — install in the main checkout first", src)
+			missing := fmt.Errorf("wt: deps=symlink but %s does not exist — install in the main checkout first", src)
+			// Seed only from a truly absent dir: a dangling symlink or an
+			// unreadable one is left alone.
+			if _, lerr := os.Lstat(src); depsDirName != cacheDeps || !errors.Is(lerr, fs.ErrNotExist) {
+				return missing
+			}
+			if err := seedDepsSource(src, missing, func() (bool, error) {
+				return cacheSeed(repoRoot, CacheRepoName(repoRoot), os.LookupEnv)
+			}); err != nil {
+				return err
+			}
 		}
 		return os.Symlink(src, dst)
 	case "clone":
@@ -186,8 +219,10 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		// cache is disabled for this run — src stays the main checkout, nothing is
 		// read or written — rather than collapsing every env onto an empty tag.
 		tag, tagOK := probeEnvTag(worktreePath)
+		var cacheName string // only read when tagOK (the cache is in use)
 		if tagOK {
-			src, _ = depsSource(filepath.Base(repoRoot), src, worktreePath, depsDirName, tag, os.LookupEnv)
+			cacheName = CacheRepoName(repoRoot)
+			src, _ = depsSource(cacheName, src, worktreePath, depsDirName, tag, os.LookupEnv)
 		}
 		if _, err := os.Stat(src); err != nil {
 			return fmt.Errorf("wt: deps=clone but %s does not exist — install in the main checkout first", src)
@@ -221,9 +256,9 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		if current && tagOK {
 			if ignored, ok := probeIgnoreScripts(worktreePath); ok && !ignored {
 				if dir, enabled := resolveCacheDir(os.LookupEnv); enabled {
-					if err := populateCache(dir, filepath.Base(repoRoot), worktreePath, depsDirName, tag); err != nil {
+					if err := populateCache(dir, cacheName, worktreePath, depsDirName, tag); err != nil {
 						fmt.Fprintf(os.Stderr, "wt: deps cache populate skipped: %v\n", err)
-					} else if err := pruneCache(dir, filepath.Base(repoRoot), cacheSlotCap); err != nil {
+					} else if err := pruneCache(dir, cacheName, cacheSlotCap); err != nil {
 						fmt.Fprintf(os.Stderr, "wt: deps cache prune skipped: %v\n", err)
 					}
 				}

@@ -21,14 +21,14 @@ func newWtCacheCmd() *cobra.Command {
 }
 
 // cacheTarget resolves <dir> to an absolute path and the cache repo name
-// (--name, default the dir's base name).
+// (--name, default the name of the dir's origin remote).
 func cacheTarget(args []string, name string) (dir, repoName string, err error) {
 	dir, err = filepath.Abs(args[0])
 	if err != nil {
 		return "", "", err
 	}
 	if name == "" {
-		name = filepath.Base(dir)
+		name = wt.CacheRepoName(dir)
 	}
 	return dir, name, nil
 }
@@ -51,7 +51,7 @@ func newWtCachePutCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "tên repo trong cache (mặc định: tên thư mục của <dir>)") //znf:allow-lang
+	cmd.Flags().StringVar(&name, "name", "", "tên repo trong cache (mặc định: tên remote origin của <dir>, không có thì tên thư mục)") //znf:allow-lang
 	return cmd
 }
 
@@ -91,7 +91,7 @@ func newWtCacheGetCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "tên repo trong cache (mặc định: tên thư mục của <dir>)") //znf:allow-lang
-	cmd.Flags().BoolVar(&check, "check", false, "chỉ kiểm tra có hit không, không chép gì")            //znf:allow-lang
+	cmd.Flags().StringVar(&name, "name", "", "tên repo trong cache (mặc định: tên remote origin của <dir>, không có thì tên thư mục)") //znf:allow-lang
+	cmd.Flags().BoolVar(&check, "check", false, "chỉ kiểm tra có hit không, không chép gì")                                            //znf:allow-lang
 	return cmd
 }
