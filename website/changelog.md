@@ -8,6 +8,15 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.79.0
+
+*2026-11-23*
+
+- **Slot deps cache đặt theo tên remote:** `wt new`, `wt cache get` và `wt cache put` đặt tên slot theo tên repo trong remote `origin` (vd `contact-center-be`), không theo tên thư mục checkout nữa. Nhờ vậy checkout có tên thư mục khác vẫn dùng chung slot do bản refresh hằng đêm tạo ra. Nếu thư mục checkout của bạn đặt tên khác tên repo, `wt new` đầu tiên sau khi nâng cấp sẽ trượt cache một lần. Slot cũ đặt theo tên thư mục không bị dọn tự động, bạn có thể xoá tay trong thư mục cache. Xem [`zenify wt cache get`](/reference/cli/zenify_wt_cache_get). ([#399](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/399))
+- **`deps: symlink` tự nạp từ cache:** khi checkout chính chưa có `node_modules`, `wt new` lấy cây khớp `package-lock.json` từ deps cache trước rồi mới symlink, thay vì báo lỗi bắt bạn tự cài. Hai `wt new` chạy cùng lúc không đè cây của nhau. Xem [Onboard workspace](/guides/onboard-workspace). ([#399](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/399))
+- **`zenify ensure` cài shim `wt` và `pm`:** `zenify ensure --workspace <dir>` (dùng ở máy không chạy `zenify up`, vd worker Zenie) đặt shim `wt`/`pm` vào `~/.local/bin`, không đè file bạn tự tạo. Lỗi cài shim chỉ in cảnh báo. Xem [Định tuyến model](/concepts/model-routing). ([#399](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/399))
+- **`zenify hotfix baseref` không cần đối số:** chạy trong repo thì lệnh tự lấy repo chứa thư mục hiện tại. Ngoài repo git thì báo lỗi kèm gợi ý truyền `<repoPath>`. Xem [Hotfix](/workflows/hotfix) và [`zenify hotfix baseref`](/reference/cli/zenify_hotfix_baseref). ([#399](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/399))
+
 ## v0.78.0
 
 *2026-11-22*
