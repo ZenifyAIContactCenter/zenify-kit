@@ -2,6 +2,7 @@ package wt
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -410,5 +411,43 @@ func TestCacheGetRemovesStaleTempDirs(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dst, keep)); err != nil {
 			t.Errorf("%s removed: %v", keep, err)
 		}
+	}
+}
+
+// gitRepoNamed makes <tmp>/<name> a git repo; a non-empty remote becomes origin.
+func gitRepoNamed(t *testing.T, name, remote string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), name)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	args := [][]string{{"init", "-q"}}
+	if remote != "" {
+		args = append(args, []string{"remote", "add", "origin", remote})
+	}
+	for _, a := range args {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, a...)...).CombinedOutput(); err != nil { //nolint:gosec // G204 -- fixed git subcommands in a test
+			t.Fatalf("git %v: %v\n%s", a, err, out)
+		}
+	}
+	return dir
+}
+
+func TestCacheRepoName(t *testing.T) {
+	const dirName = "ZenifyAIContactCenter-contact-center-web"
+	cases := []struct{ name, remote, want string }{
+		{"https with .git", "https://github.com/ZenifyAIContactCenter/contact-center-web.git", "contact-center-web"},
+		{"ssh", "git@github.com:ZenifyAIContactCenter/contact-center-web.git", "contact-center-web"},
+		{"trailing slash", "https://github.com/ZenifyAIContactCenter/contact-center-web/", "contact-center-web"},
+		{"no remote", "", dirName},
+		{"invalid name", "https://x/.hidden.git", dirName},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := gitRepoNamed(t, dirName, c.remote)
+			if got := CacheRepoName(dir); got != c.want {
+				t.Fatalf("CacheRepoName = %q, want %q", got, c.want)
+			}
+		})
 	}
 }

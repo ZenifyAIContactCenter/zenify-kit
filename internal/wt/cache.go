@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -30,6 +31,28 @@ func checkCacheName(repoName string) error {
 		return fmt.Errorf("wt cache: invalid repo name %q (want [A-Za-z0-9][A-Za-z0-9._-]*)", repoName)
 	}
 	return nil
+}
+
+// CacheRepoName is the cache slot name for the checkout at repoRoot: the last
+// path segment of its origin remote URL (".git" and trailing "/" dropped), so a
+// clone dir named after org+repo still shares the slot the nightly refresh
+// writes. No origin, a git error, or a name checkCacheName rejects falls back to
+// filepath.Base(repoRoot).
+func CacheRepoName(repoRoot string) string {
+	fallback := filepath.Base(repoRoot)
+	out, err := exec.Command("git", "-C", repoRoot, "remote", "get-url", "origin").Output() //nolint:gosec // G204 -- fixed git subcommand, repoRoot is a path argument
+	if err != nil {
+		return fallback
+	}
+	u := strings.TrimRight(strings.TrimSpace(string(out)), "/")
+	if i := strings.LastIndexAny(u, "/:"); i >= 0 {
+		u = u[i+1:]
+	}
+	u = strings.TrimSuffix(u, ".git")
+	if checkCacheName(u) != nil {
+		return fallback
+	}
+	return u
 }
 
 // CachePut stores dir's installed node_modules in the deps cache, in the same

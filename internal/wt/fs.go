@@ -186,8 +186,9 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		// cache is disabled for this run — src stays the main checkout, nothing is
 		// read or written — rather than collapsing every env onto an empty tag.
 		tag, tagOK := probeEnvTag(worktreePath)
+		cacheName := CacheRepoName(repoRoot)
 		if tagOK {
-			src, _ = depsSource(filepath.Base(repoRoot), src, worktreePath, depsDirName, tag, os.LookupEnv)
+			src, _ = depsSource(cacheName, src, worktreePath, depsDirName, tag, os.LookupEnv)
 		}
 		if _, err := os.Stat(src); err != nil {
 			return fmt.Errorf("wt: deps=clone but %s does not exist — install in the main checkout first", src)
@@ -221,9 +222,9 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		if current && tagOK {
 			if ignored, ok := probeIgnoreScripts(worktreePath); ok && !ignored {
 				if dir, enabled := resolveCacheDir(os.LookupEnv); enabled {
-					if err := populateCache(dir, filepath.Base(repoRoot), worktreePath, depsDirName, tag); err != nil {
+					if err := populateCache(dir, cacheName, worktreePath, depsDirName, tag); err != nil {
 						fmt.Fprintf(os.Stderr, "wt: deps cache populate skipped: %v\n", err)
-					} else if err := pruneCache(dir, filepath.Base(repoRoot), cacheSlotCap); err != nil {
+					} else if err := pruneCache(dir, cacheName, cacheSlotCap); err != nil {
 						fmt.Fprintf(os.Stderr, "wt: deps cache prune skipped: %v\n", err)
 					}
 				}

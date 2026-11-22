@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -130,5 +131,22 @@ func TestWtCachePutRejectsTraversalName(t *testing.T) {
 	src, _ := cacheCLIFixture(t)
 	if _, err := runWt(t, t.TempDir(), "cache", "put", src, "--name", "../x"); err == nil {
 		t.Fatal("put --name ../x = nil, want error")
+	}
+}
+
+func TestWtCachePutDefaultNameFromRemote(t *testing.T) {
+	src, _ := cacheCLIFixture(t)
+	if out, err := exec.Command("git", "-C", src, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	if out, err := exec.Command("git", "-C", src, "remote", "add", "origin", "https://github.com/Org/contact-center-be.git").CombinedOutput(); err != nil {
+		t.Fatalf("git remote add: %v\n%s", err, out)
+	}
+	if _, err := runWt(t, t.TempDir(), "cache", "put", src); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	slots, err := filepath.Glob(filepath.Join(os.Getenv("ZENIFY_DEPS_CACHE"), "contact-center-be", "????????????????"))
+	if err != nil || len(slots) != 1 {
+		t.Fatalf("slots under contact-center-be = %v (err %v), want 1", slots, err)
 	}
 }

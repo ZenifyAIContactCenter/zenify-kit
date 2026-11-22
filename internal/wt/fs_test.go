@@ -1191,3 +1191,33 @@ func TestCowCopyFlag(t *testing.T) {
 		}
 	}
 }
+
+// The zenie worker clones into a dir named after org+repo; the nightly refresh
+// writes the slot under the bare repo name from the origin remote (FR-6.5).
+func TestApplyDepsCloneUsesRemoteNameSlot(t *testing.T) {
+	stubProbes(t)
+	_, wtp, cache, _ := cacheFixture(t, lockJSON, lockJSON)
+	if err := os.Rename(filepath.Join(cache, "repo"), filepath.Join(cache, "contact-center-web")); err != nil {
+		t.Fatal(err)
+	}
+	slotNM := filepath.Join(cache, "contact-center-web")
+	matches, err := filepath.Glob(filepath.Join(slotNM, "*", "node_modules"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("slot node_modules = %v (err %v)", matches, err)
+	}
+	for p, v := range map[string]string{
+		filepath.Join(matches[0], ".package-lock.json"): hiddenJSON,
+		filepath.Join(wtp, "package.json"):              pkgJSON,
+	} {
+		if err := os.WriteFile(p, []byte(v), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo := gitRepoNamed(t, "ZenifyAIContactCenter-contact-center-web", "https://github.com/ZenifyAIContactCenter/contact-center-web.git")
+	if err := ApplyDeps(repo, wtp, "clone", "node_modules", "npm ci"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "x")); err != nil {
+		t.Fatalf("clone not seeded from the remote-named slot: %v", err)
+	}
+}

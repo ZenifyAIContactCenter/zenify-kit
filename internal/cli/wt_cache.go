@@ -21,14 +21,14 @@ func newWtCacheCmd() *cobra.Command {
 }
 
 // cacheTarget resolves <dir> to an absolute path and the cache repo name
-// (--name, default the dir's base name).
+// (--name, default the name of the dir's origin remote).
 func cacheTarget(args []string, name string) (dir, repoName string, err error) {
 	dir, err = filepath.Abs(args[0])
 	if err != nil {
 		return "", "", err
 	}
 	if name == "" {
-		name = filepath.Base(dir)
+		name = wt.CacheRepoName(dir)
 	}
 	return dir, name, nil
 }
