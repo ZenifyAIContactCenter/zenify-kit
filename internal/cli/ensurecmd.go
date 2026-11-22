@@ -2,8 +2,10 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/apply"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/wt"
 	"github.com/spf13/cobra"
@@ -35,6 +37,10 @@ func newEnsureCmd() *cobra.Command {
 				return exitcode.New(exitcode.Fail, errors.New("không xác định được thư mục home")) //znf:allow-lang
 			}
 			ensureWorkspace(ws, home, cmd.OutOrStdout(), cmd.ErrOrStderr(), ensureOpts{})
+			// The worker never runs `zenify up`, which is what installs wt and pm.
+			if _, _, err := apply.InstallShims(home, false); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "zenify ensure: shims: %v\n", err)
+			}
 			return nil
 		},
 	}
