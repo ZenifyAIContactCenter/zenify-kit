@@ -379,6 +379,27 @@ func TestApplyDepsSymlinkMissNoSlot(t *testing.T) {
 	}
 }
 
+// A dangling node_modules symlink is an existing entry: never replaced from the cache.
+func TestApplyDepsSymlinkDanglingLinkUntouched(t *testing.T) {
+	stubProbes(t)
+	repo, wtp, _, _ := cacheFixture(t, lockJSON, lockJSON)
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(lockJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	own := filepath.Join(repo, "node_modules")
+	if err := os.Symlink(filepath.Join(repo, "nowhere"), own); err != nil {
+		t.Fatal(err)
+	}
+	err := ApplyDeps(repo, wtp, "symlink", "node_modules", "")
+	if err == nil || !strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "no deps cache slot") {
+		t.Fatalf("err = %v, want the old 'does not exist' error only", err)
+	}
+	got, lerr := os.Readlink(own)
+	if lerr != nil || got != filepath.Join(repo, "nowhere") {
+		t.Fatalf("dangling link changed: %q %v", got, lerr)
+	}
+}
+
 // Node unreadable while seeding: no panic, the old error plus CacheGet's reason.
 func TestApplyDepsSymlinkNoNodeKeepsError(t *testing.T) {
 	orig := probeEnvTag

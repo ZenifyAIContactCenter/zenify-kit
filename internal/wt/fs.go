@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -181,7 +183,9 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 	case "symlink":
 		if _, err := os.Stat(src); err != nil {
 			missing := fmt.Errorf("wt: deps=symlink but %s does not exist — install in the main checkout first", src)
-			if depsDirName != cacheDeps {
+			// Seed only from a truly absent dir: a dangling symlink or an
+			// unreadable one is left alone (CacheGet would replace it).
+			if _, lerr := os.Lstat(src); depsDirName != cacheDeps || !errors.Is(lerr, fs.ErrNotExist) {
 				return missing
 			}
 			hit, gerr := CacheGet(repoRoot, CacheRepoName(repoRoot), os.LookupEnv)
