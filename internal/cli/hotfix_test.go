@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/exitcode"
@@ -99,5 +100,8 @@ func TestHotfixBaserefNoArgOutsideRepoFails(t *testing.T) {
 	}
 	if exitcode.Code(err) != exitcode.Fail {
 		t.Fatalf("exit code %d, want Fail", exitcode.Code(err))
+	}
+	if !strings.Contains(err.Error(), "not inside a git repo; pass <repoPath>") {
+		t.Fatalf("error lacks the repoPath hint: %v", err)
 	}
 }

@@ -1,6 +1,7 @@
 package wt
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1318,4 +1319,42 @@ func TestApplyDepsCloneUsesRemoteNameSlot(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(wtp, "node_modules", "x")); err != nil {
 		t.Fatalf("clone not seeded from the remote-named slot: %v", err)
 	}
+}
+
+func TestSeedDepsSource(t *testing.T) {
+	missing := errors.New("missing")
+	dirAt := func(t *testing.T) string {
+		d := filepath.Join(t.TempDir(), "node_modules")
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	absent := filepath.Join(t.TempDir(), "node_modules")
+	t.Run("seed error but src appeared (concurrent seeder won)", func(t *testing.T) {
+		if err := seedDepsSource(dirAt(t), missing, func() (bool, error) { return false, errors.New("rename failed") }); err != nil {
+			t.Fatalf("want nil, got %v", err)
+		}
+	})
+	t.Run("miss and src appeared", func(t *testing.T) {
+		if err := seedDepsSource(dirAt(t), missing, func() (bool, error) { return false, nil }); err != nil {
+			t.Fatalf("want nil, got %v", err)
+		}
+	})
+	t.Run("seed error, src absent", func(t *testing.T) {
+		err := seedDepsSource(absent, missing, func() (bool, error) { return false, errors.New("boom") })
+		if err == nil || !errors.Is(err, missing) || !strings.Contains(err.Error(), "boom") {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("miss, src absent", func(t *testing.T) {
+		if err := seedDepsSource(absent, missing, func() (bool, error) { return false, nil }); err == nil {
+			t.Fatal("want error")
+		}
+	})
+	t.Run("hit", func(t *testing.T) {
+		if err := seedDepsSource(absent, missing, func() (bool, error) { return true, nil }); err != nil {
+			t.Fatal(err)
+		}
+	})
 }

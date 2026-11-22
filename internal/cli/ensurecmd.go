@@ -39,7 +39,7 @@ func newEnsureCmd() *cobra.Command {
 			ensureWorkspace(ws, home, cmd.OutOrStdout(), cmd.ErrOrStderr(), ensureOpts{})
 			// The worker never runs `zenify up`, which is what installs wt and pm.
 			if _, _, err := apply.InstallShims(home, false); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "zenify ensure: shims: %v\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "znf ensure: shims: %v\n", err)
 			}
 			return nil
 		},

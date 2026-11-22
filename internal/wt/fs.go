@@ -157,6 +157,24 @@ func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
 	return nil
 }
 
+// seedDepsSource runs seed (a cache fill of the absent src). A seed error or miss
+// is not fatal when src exists as a directory by then: a concurrent `wt new`
+// seeded it first (both write the same dst, so the loser's rename can fail).
+// Otherwise it returns the original missing error plus the seed's reason.
+func seedDepsSource(src string, missing error, seed func() (bool, error)) error {
+	hit, gerr := seed()
+	if gerr == nil && hit {
+		return nil
+	}
+	if fi, err := os.Stat(src); err == nil && fi.IsDir() {
+		return nil
+	}
+	if gerr != nil {
+		return fmt.Errorf("%w; %s", missing, gerr.Error())
+	}
+	return fmt.Errorf("%w; no deps cache slot matches its package-lock.json", missing)
+}
+
 // ApplyDeps sets up the dependency dir (e.g. node_modules) in the worktree per
 // mode: "symlink" links to the main checkout's dir; when that dir is missing and
 // is node_modules, it is first seeded from the deps cache (CacheGet, keyed by the
@@ -188,12 +206,10 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 			if _, lerr := os.Lstat(src); depsDirName != cacheDeps || !errors.Is(lerr, fs.ErrNotExist) {
 				return missing
 			}
-			hit, gerr := CacheGet(repoRoot, CacheRepoName(repoRoot), os.LookupEnv)
-			switch {
-			case gerr != nil:
-				return fmt.Errorf("%w; %s", missing, gerr.Error())
-			case !hit:
-				return fmt.Errorf("%w; no deps cache slot matches its package-lock.json", missing)
+			if err := seedDepsSource(src, missing, func() (bool, error) {
+				return CacheGet(repoRoot, CacheRepoName(repoRoot), os.LookupEnv)
+			}); err != nil {
+				return err
 			}
 		}
 		return os.Symlink(src, dst)
@@ -202,8 +218,9 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 		// cache is disabled for this run — src stays the main checkout, nothing is
 		// read or written — rather than collapsing every env onto an empty tag.
 		tag, tagOK := probeEnvTag(worktreePath)
-		cacheName := CacheRepoName(repoRoot)
+		var cacheName string // only read when tagOK (the cache is in use)
 		if tagOK {
+			cacheName = CacheRepoName(repoRoot)
 			src, _ = depsSource(cacheName, src, worktreePath, depsDirName, tag, os.LookupEnv)
 		}
 		if _, err := os.Stat(src); err != nil {

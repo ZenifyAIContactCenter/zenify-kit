@@ -33,7 +33,7 @@ func newHotfixCmd() *cobra.Command {
 			} else {
 				out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output() //nolint:gosec // G204 -- fixed argv
 				if err != nil {
-					return exitcode.New(exitcode.Fail, err)
+					return exitcode.New(exitcode.Fail, fmt.Errorf("hotfix baseref: not inside a git repo; pass <repoPath>: %w", err))
 				}
 				repo = strings.TrimSpace(string(out))
 			}

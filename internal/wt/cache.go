@@ -40,7 +40,17 @@ func checkCacheName(repoName string) error {
 // filepath.Base(repoRoot).
 func CacheRepoName(repoRoot string) string {
 	fallback := filepath.Base(repoRoot)
-	out, err := exec.Command("git", "-C", repoRoot, "remote", "get-url", "origin").Output() //nolint:gosec // G204 -- fixed git subcommand, repoRoot is a path argument
+	// safe.directory=* so a checkout owned by another uid (a worker container)
+	// still answers; the ambient GIT_* repo selectors are dropped so -C wins.
+	cmd := exec.Command("git", "-c", "safe.directory=*", "-C", repoRoot, "remote", "get-url", "origin") //nolint:gosec // G204 -- fixed git subcommand, repoRoot is a path argument
+	for _, kv := range os.Environ() {
+		switch strings.SplitN(kv, "=", 2)[0] {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR":
+		default:
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	out, err := cmd.Output()
 	if err != nil {
 		return fallback
 	}

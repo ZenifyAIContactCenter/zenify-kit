@@ -451,3 +451,13 @@ func TestCacheRepoName(t *testing.T) {
 		})
 	}
 }
+
+func TestCacheRepoNameIgnoresAmbientGitDir(t *testing.T) {
+	other := gitRepoNamed(t, "other", "https://x/other-repo.git")
+	dir := gitRepoNamed(t, "ZenifyAIContactCenter-contact-center-web", "https://github.com/ZenifyAIContactCenter/contact-center-web.git")
+	t.Setenv("GIT_DIR", filepath.Join(other, ".git"))
+	t.Setenv("GIT_WORK_TREE", other)
+	if got := CacheRepoName(dir); got != "contact-center-web" {
+		t.Fatalf("CacheRepoName = %q, want contact-center-web", got)
+	}
+}
