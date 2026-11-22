@@ -55,6 +55,17 @@ func TestWriteGuard_Table(t *testing.T) { // SC-12 + Review Focus 1
 	}
 }
 
+func TestWriteGuard_AllowsAgentMemory(t *testing.T) {
+	var e bytes.Buffer
+	payload := `{"tool_name":"Write","tool_input":{"file_path":"/w/docs/agent-memory/zenie-dev/x.md"}}`
+	if got := runWriteGuard(strings.NewReader(payload), &e, wsW); got != 0 {
+		t.Fatalf("docs/agent-memory denied: %d %s", got, e.String())
+	}
+	if e.Len() != 0 {
+		t.Fatalf("allow must be silent, got %q", e.String())
+	}
+}
+
 // Repo roots come from the manifest/overlay: a repo placed outside repos/ must stay writable.
 func TestWriteGuard_OverlayRepoRoot(t *testing.T) {
 	ws := t.TempDir()

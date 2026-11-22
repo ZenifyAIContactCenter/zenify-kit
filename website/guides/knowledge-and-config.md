@@ -28,7 +28,7 @@ flowchart LR
 
 *Đường đi của một record từ agent đến người đọc*
 
-Store thật nằm ở `~/.zenify/knowledge`, theo quy ước như `~/.npm` hay `~/.m2`. `docs/` trong workspace là thư mục thật. Năm dir của store (`specs/ plans/ handoff/ reference/ releases/`) là symlink; năm dir local (`research/ notes/ scripts/ exports/ external/`) là thư mục thật, không git, không sync. Đọc và ghi qua `docs/specs/...` vẫn hoạt động bình thường vì đi xuyên symlink.
+Store thật nằm ở `~/.zenify/knowledge`, theo quy ước như `~/.npm` hay `~/.m2`. `docs/` trong workspace là thư mục thật. Sáu dir của store (`specs/ plans/ handoff/ reference/ releases/ agent-memory/`) là symlink; năm dir local (`research/ notes/ scripts/ exports/ external/`) là thư mục thật, không git, không sync. Đọc và ghi qua `docs/specs/...` vẫn hoạt động bình thường vì đi xuyên symlink.
 
 Agent là writer duy nhất. Bạn chỉ mở file qua `docs/...` trong editor để đọc, không `git clone`, không chạy git trong store. File tracked là 0644; kit không chmod, guardrail là quy ước không sửa tay.
 
