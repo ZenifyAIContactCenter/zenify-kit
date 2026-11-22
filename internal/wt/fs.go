@@ -156,8 +156,10 @@ func SeedIdentityEnv(envPath string, cfg *Config, slug string) error {
 }
 
 // ApplyDeps sets up the dependency dir (e.g. node_modules) in the worktree per
-// mode: "symlink" links to the main checkout's dir (never touches the deps
-// cache); "clone" CoW-copies it then runs install, unless cloneIsCurrent says
+// mode: "symlink" links to the main checkout's dir; when that dir is missing and
+// is node_modules, it is first seeded from the deps cache (CacheGet, keyed by the
+// main checkout's package-lock.json and build env), never otherwise reading the
+// cache and never writing a slot; "clone" CoW-copies it then runs install, unless cloneIsCurrent says
 // the copy already matches the worktree's package-lock.json (then only the root
 // lifecycle scripts run); "install" just runs install. symlink/clone require the
 // source dir to exist in repoRoot (or a cache slot, for clone). installCmd empty
@@ -178,7 +180,17 @@ func ApplyDeps(repoRoot, worktreePath, mode, depsDirName, installCmd string) err
 	switch mode {
 	case "symlink":
 		if _, err := os.Stat(src); err != nil {
-			return fmt.Errorf("wt: deps=symlink but %s does not exist — install in the main checkout first", src)
+			missing := fmt.Errorf("wt: deps=symlink but %s does not exist — install in the main checkout first", src)
+			if depsDirName != cacheDeps {
+				return missing
+			}
+			hit, gerr := CacheGet(repoRoot, CacheRepoName(repoRoot), os.LookupEnv)
+			switch {
+			case gerr != nil:
+				return fmt.Errorf("%w; %s", missing, gerr.Error())
+			case !hit:
+				return fmt.Errorf("%w; no deps cache slot matches its package-lock.json", missing)
+			}
 		}
 		return os.Symlink(src, dst)
 	case "clone":

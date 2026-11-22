@@ -267,11 +267,18 @@ func cacheEntries(t *testing.T, dir string) []string {
 	return names
 }
 
-// SC-10: symlink mode never reads the cache, even when a matching slot exists.
+// SC-10: symlink mode never reads the cache while the main checkout has its own
+// node_modules, even when a matching slot exists.
 func TestApplyDepsSymlinkIgnoresMatchingCache(t *testing.T) {
 	repo, wtp, cache, _ := cacheFixture(t, `{"lockfileVersion":3}`, `{"lockfileVersion":3}`)
 	own := filepath.Join(repo, "node_modules")
 	if err := os.MkdirAll(own, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(`{"lockfileVersion":3}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(own, "mine"), []byte("mine"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	parent := filepath.Join(cache, filepath.Base(repo))
@@ -288,6 +295,9 @@ func TestApplyDepsSymlinkIgnoresMatchingCache(t *testing.T) {
 	}
 	if got != own {
 		t.Fatalf("symlink target = %q, want own %q", got, own)
+	}
+	if es := cacheEntries(t, own); !reflect.DeepEqual(es, []string{"mine"}) {
+		t.Fatalf("main checkout node_modules changed: %v", es)
 	}
 }
 
@@ -297,6 +307,12 @@ func TestApplyDepsSymlinkIgnoresMismatchedCache(t *testing.T) {
 	if err := os.MkdirAll(own, 0o750); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(`{"lockfileVersion":3}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(own, "mine"), []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	parent := filepath.Join(cache, filepath.Base(repo))
 	before := cacheEntries(t, parent)
 	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
@@ -311,6 +327,67 @@ func TestApplyDepsSymlinkIgnoresMismatchedCache(t *testing.T) {
 	}
 	if got != own {
 		t.Fatalf("symlink target = %q, want own %q", got, own)
+	}
+	if es := cacheEntries(t, own); !reflect.DeepEqual(es, []string{"mine"}) {
+		t.Fatalf("main checkout node_modules changed: %v", es)
+	}
+}
+
+// FR-6.6: a missing main-checkout node_modules is seeded from the matching slot.
+func TestApplyDepsSymlinkSeedsMissingFromCache(t *testing.T) {
+	stubProbes(t)
+	repo, wtp, cache, _ := cacheFixture(t, lockJSON, lockJSON)
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(lockJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyDeps(repo, wtp, "symlink", "node_modules", ""); err != nil {
+		t.Fatal(err)
+	}
+	own := filepath.Join(repo, "node_modules")
+	if fi, err := os.Lstat(own); err != nil || !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("main checkout node_modules is not a real dir: %v %v", fi, err)
+	}
+	if b, err := os.ReadFile(filepath.Join(own, "x")); err != nil || string(b) != "x" {
+		t.Fatalf("slot marker not copied: %q %v", b, err)
+	}
+	got, err := os.Readlink(filepath.Join(wtp, "node_modules"))
+	if err != nil || got != own {
+		t.Fatalf("worktree link = %q (%v), want %q", got, err, own)
+	}
+	for _, e := range cacheEntries(t, repo) {
+		if strings.HasPrefix(e, cacheTempPrefix) {
+			t.Fatalf("staging dir left in repoRoot: %s", e)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(cache, "repo")); err != nil {
+		t.Fatalf("slot dir gone: %v", err)
+	}
+}
+
+func TestApplyDepsSymlinkMissNoSlot(t *testing.T) {
+	stubProbes(t)
+	repo, wtp, _, _ := cacheFixture(t, `{"a":1}`, lockJSON)
+	if err := os.WriteFile(filepath.Join(repo, "package-lock.json"), []byte(`{"a":2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := ApplyDeps(repo, wtp, "symlink", "node_modules", "")
+	if err == nil || !strings.Contains(err.Error(), "does not exist") || !strings.Contains(err.Error(), "no deps cache slot") {
+		t.Fatalf("err = %v, want 'does not exist' + 'no deps cache slot'", err)
+	}
+	if _, err := os.Lstat(filepath.Join(repo, "node_modules")); !os.IsNotExist(err) {
+		t.Fatalf("repoRoot node_modules created on a miss: %v", err)
+	}
+}
+
+// Node unreadable while seeding: no panic, the old error plus CacheGet's reason.
+func TestApplyDepsSymlinkNoNodeKeepsError(t *testing.T) {
+	orig := probeEnvTag
+	probeEnvTag = func(string) (string, bool) { return "", false }
+	t.Cleanup(func() { probeEnvTag = orig })
+	repo, wtp, _, _ := cacheFixture(t, lockJSON, lockJSON)
+	err := ApplyDeps(repo, wtp, "symlink", "node_modules", "")
+	if err == nil || !strings.Contains(err.Error(), "does not exist") || !strings.Contains(err.Error(), "is node on PATH") {
+		t.Fatalf("err = %v", err)
 	}
 }
 
