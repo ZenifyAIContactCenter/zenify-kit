@@ -24,7 +24,8 @@ type fakeTrackPlane struct {
 	mu       sync.Mutex
 	requests []string // "METHOD path?query"
 	keys     []string
-	status   int // non-zero: answer every request with it
+	status   int               // non-zero: answer every request with it
+	hdr      map[string]string // headers sent with that answer
 }
 
 const (
@@ -45,9 +46,12 @@ func newFakeTrackPlane(t *testing.T) *fakeTrackPlane {
 		f.mu.Lock()
 		f.requests = append(f.requests, r.Method+" "+r.URL.RequestURI())
 		f.keys = append(f.keys, r.Header.Get("X-API-Key"))
-		status := f.status
+		status, hdr := f.status, f.hdr
 		f.mu.Unlock()
 		if status != 0 {
+			for k, v := range hdr {
+				w.Header().Set(k, v)
+			}
 			http.Error(w, `{"detail":"no"}`, status)
 			return
 		}
@@ -218,8 +222,11 @@ func TestPlaneErrorIsolated(t *testing.T) {
 	if len(s.Backlog.Items) != 1 || s.Backlog.Items[0].Source != "github" {
 		t.Fatalf("items = %+v", s.Backlog.Items)
 	}
-	if _, err := os.Stat(filepath.Join(ws, ".zenify", "track", backlogCache)); !os.IsNotExist(err) {
-		t.Fatalf("%s written after a Plane error: %v", backlogCache, err)
+	// The failure is cached as a backoff: the next run asks Plane nothing and still reports the 401.
+	n := f.count()
+	s = planeTrackStats(t, ws)
+	if f.count() != n || !strings.Contains(s.Backlog.PlaneError, "401") {
+		t.Fatalf("during backoff: %d new requests, planeError = %q", f.count()-n, s.Backlog.PlaneError)
 	}
 }
 
@@ -327,7 +334,7 @@ func TestPlaneProjectsInParallel(t *testing.T) {
 	}))
 	defer srv.Close()
 	p := planeAPI{ctx: context.Background(), client: srv.Client(), base: srv.URL + "/api/v1", pat: "k"}
-	items, err := fetchPlaneMine(p, "zenify", "https://plane.example")
+	items, err := fetchPlaneMine(p, "zenify", "https://plane.example", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
