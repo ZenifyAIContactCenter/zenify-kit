@@ -8,6 +8,12 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.79.1
+
+*2026-11-23*
+
+- **Track pane không còn làm Plane trả 429:** `zenify track stats` (pane, hook đầu phiên, mọi session) không còn gọi Plane dồn dập. Chỉ một tiến trình làm mới backlog tại một thời điểm, các phiên khác đọc cache. Plane hoặc GitHub lỗi thì backlog giữ dữ liệu tốt gần nhất của nguồn đó và chờ theo `X-RateLimit-Reset`/`Retry-After` (tối đa 15 phút) trước khi gọi lại, kể cả với `--force`; lỗi vẫn hiện ở `planeError`/`ghError`. Danh sách state của mỗi project Plane được cache 24 giờ, nên mỗi lần làm mới bớt một request mỗi project. Xem [Track pane](/guides/track-pane). ([#403](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/403))
+
 ## v0.79.0
 
 *2026-11-23*
