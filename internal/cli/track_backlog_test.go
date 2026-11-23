@@ -446,12 +446,17 @@ func TestTrackStats_GhErrorNamesOwnerAndRole(t *testing.T) {
 	if len(s.Backlog.Items) != 2 {
 		t.Fatalf("items of the successful search and other sources must stay: %+v", s.Backlog.Items)
 	}
-	// A failed fetch is not cached, so the next run asks again.
+	// The failure sets a backoff: the next run makes no search and still shows the error.
 	var n atomic.Int32
 	fakeGh(t, func(string, string) ([]trackstats.Issue, error) { n.Add(1); return nil, nil })
-	trackBacklogStats(t, ws)
+	s = trackBacklogStats(t, ws)
+	if n.Load() != 0 || !strings.Contains(s.Backlog.GhError, "boom") {
+		t.Fatalf("calls during backoff = %d, ghError = %q", n.Load(), s.Backlog.GhError)
+	}
+	// --force retries a plain failure (only a rate limit is waited out).
+	trackBacklogStats(t, ws, "--force")
 	if n.Load() != 2 {
-		t.Fatalf("calls after a failed run = %d", n.Load())
+		t.Fatalf("calls after --force = %d", n.Load())
 	}
 }
 

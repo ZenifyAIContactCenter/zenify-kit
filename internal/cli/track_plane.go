@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
@@ -29,7 +30,7 @@ var planeOpenGroups = []string{"backlog", "unstarted", "started"}
 // trackPlaneSource returns the fetch of the developer's open Plane work items,
 // or nil when the manifest has no Plane or no PAT is set: the source is then
 // skipped without an error. A manifest or .env that cannot be read is an error.
-func trackPlaneSource(wsDir string) (func() ([]trackstats.PlaneItem, error), error) {
+func trackPlaneSource(dir, wsDir string, now time.Time) (func() ([]trackstats.PlaneItem, error), error) {
 	c, err := planeConnect(wsDir)
 	if err != nil || c == nil {
 		return nil, err
@@ -37,7 +38,9 @@ func trackPlaneSource(wsDir string) (func() ([]trackstats.PlaneItem, error), err
 	return func() ([]trackstats.PlaneItem, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), trackGhTimeout)
 		defer cancel()
-		items, err := fetchPlaneMine(c.api(ctx), c.ws, c.browse)
+		states, serr := loadPlaneStates(dir, now) // unreadable: refetched below and overwritten, but reported once
+		items, err := fetchPlaneMine(c.api(ctx), c.ws, c.browse, states)
+		err = errors.Join(err, serr, states.save()) // save even after a 429: the states it fetched are not lost
 		if ctx.Err() != nil {
 			return items, fmt.Errorf("timed out after %s", trackGhTimeout)
 		}
@@ -106,7 +109,7 @@ func planeList[T any](p planeAPI, path string) ([]T, error) {
 // is not a member of. browse is the Plane web root
 // the item URLs are built on. A failed project is named in the error and the
 // items of the other projects are still returned.
-func fetchPlaneMine(p planeAPI, ws, browse string) ([]trackstats.PlaneItem, error) {
+func fetchPlaneMine(p planeAPI, ws, browse string, states *planeStatesCache) ([]trackstats.PlaneItem, error) {
 	var me struct {
 		ID string `json:"id"`
 	}
@@ -134,6 +137,7 @@ func fetchPlaneMine(p planeAPI, ws, browse string) ([]trackstats.PlaneItem, erro
 	res := make([]result, len(projects))
 	sem := make(chan struct{}, planeProjectWorkers)
 	var wg sync.WaitGroup
+	var limited atomic.Bool // a 429 stops the projects not yet started: more requests only deepen the limit
 	for i, pr := range projects {
 		if pr.IsMember != nil && !*pr.IsMember {
 			continue // a public project the developer is not in answers 403 and holds none of their items
@@ -143,35 +147,51 @@ func fetchPlaneMine(p planeAPI, ws, browse string) ([]trackstats.PlaneItem, erro
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			got, err := planeProjectMine(p, wsPath+url.PathEscape(pr.ID)+"/", pr.Identifier, me.ID, ws, browse)
+			if limited.Load() {
+				return // the error of the 429 itself is reported
+			}
+			got, err := planeProjectMine(p, wsPath+url.PathEscape(pr.ID)+"/", pr.ID, pr.Identifier, me.ID, ws, browse, states)
+			if rl, _ := planeRateLimit(err); rl {
+				limited.Store(true)
+			}
 			res[i] = result{got, err}
 		}()
 	}
 	wg.Wait()
 	var items []trackstats.PlaneItem
 	var errs []string
+	var causes []error
 	for i, r := range res {
 		if r.err != nil {
 			errs = append(errs, fmt.Sprintf("project %s: %v", projects[i].Identifier, r.err))
+			causes = append(causes, r.err)
 		}
 		items = append(items, r.items...)
 	}
 	if len(errs) > 0 {
-		return items, errors.New(strings.Join(errs, "; "))
+		return items, &multiErr{msg: strings.Join(errs, "; "), errs: causes}
 	}
 	return items, nil
 }
 
-func planeProjectMine(p planeAPI, proj, ident, me, ws, browse string) ([]trackstats.PlaneItem, error) {
-	states, err := planeList[planeState](p, proj+"states/")
-	if err != nil {
-		return nil, err
+func planeProjectMine(p planeAPI, proj, projID, ident, me, ws, browse string, cache *planeStatesCache) ([]trackstats.PlaneItem, error) {
+	openIDs, ok := cache.get(projID)
+	if !ok {
+		states, err := planeList[planeState](p, proj+"states/")
+		if err != nil {
+			return nil, err
+		}
+		openIDs = []string{}
+		for _, s := range states {
+			if slices.Contains(planeOpenGroups, s.Group) {
+				openIDs = append(openIDs, s.ID)
+			}
+		}
+		cache.put(projID, openIDs)
 	}
 	open := map[string]bool{}
-	for _, s := range states {
-		if slices.Contains(planeOpenGroups, s.Group) {
-			open[s.ID] = true
-		}
+	for _, id := range openIDs {
+		open[id] = true
 	}
 	wis, err := planeList[struct {
 		SequenceID int       `json:"sequence_id"`

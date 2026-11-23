@@ -167,7 +167,11 @@ func (p planeAPI) do(method, path string, in, out any) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("plane answered %s for %s %s", resp.Status, method, path)
+		err := fmt.Errorf("plane answered %s for %s %s", resp.Status, method, path)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return &rateLimitError{err: err, until: rateLimitUntil(resp.Header, time.Now())}
+		}
+		return err
 	}
 	if out == nil {
 		return nil
