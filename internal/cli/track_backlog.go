@@ -553,7 +553,7 @@ func backlogSources(dir, wsDir string, force bool, now time.Time) (func() ([]tra
 				out.Plane, out.PlaneState, out.PlaneAt = plane, sourceState{}, now.UTC()
 			} else {
 				limited, until := planeRateLimit(planeErr)
-				out.Plane = mergeBy(plane, c.Plane, func(i trackstats.PlaneItem) string { return i.Key }) // the projects that answered, then the last good rest
+				out.Plane = keepOldPlane(plane, c.Plane, planeErr) // the projects that answered in full, then the old items of the rest
 				out.PlaneState = c.PlaneState.failed(planeErr, limited, until, now)
 			}
 		}

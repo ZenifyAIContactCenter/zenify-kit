@@ -300,3 +300,22 @@ func TestLockReleaseKeepsForeignLock(t *testing.T) {
 		t.Fatalf("release removed a lock it no longer owned: %v", err)
 	}
 }
+
+// A project fetched in full replaces its old items (a closed one leaves); the
+// old items of a project that failed or was skipped stay.
+func TestKeepOldPlane(t *testing.T) {
+	item := func(k string) trackstats.PlaneItem { return trackstats.PlaneItem{Key: k} }
+	old := []trackstats.PlaneItem{item("A-1"), item("A-2"), item("B-7")}
+	err := &multiErr{msg: "project B: 500", ok: []string{"A"}}
+	got := keepOldPlane([]trackstats.PlaneItem{item("A-2")}, old, err)
+	keys := []string{}
+	for _, g := range got {
+		keys = append(keys, g.Key)
+	}
+	if strings.Join(keys, ",") != "A-2,B-7" {
+		t.Fatalf("got %v, want A-2,B-7 (A-1 closed, B kept)", keys)
+	}
+	if n := len(keepOldPlane(nil, old, os.ErrClosed)); n != 3 {
+		t.Fatalf("an error that is not per project must keep all old items, got %d", n)
+	}
+}

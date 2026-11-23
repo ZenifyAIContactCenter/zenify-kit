@@ -134,6 +134,7 @@ func fetchPlaneMine(p planeAPI, ws, browse string, states *planeStatesCache) ([]
 	type result struct {
 		items []trackstats.PlaneItem
 		err   error
+		ran   bool // false for a project skipped after a 429
 	}
 	res := make([]result, len(projects))
 	sem := make(chan struct{}, planeProjectWorkers)
@@ -155,14 +156,18 @@ func fetchPlaneMine(p planeAPI, ws, browse string, states *planeStatesCache) ([]
 			if rl, _ := planeRateLimit(err); rl {
 				limited.Store(true)
 			}
-			res[i] = result{got, err}
+			res[i] = result{got, err, true}
 		}()
 	}
 	wg.Wait()
 	var items []trackstats.PlaneItem
 	var errs []string
 	var causes []error
+	var ok []string
 	for i, r := range res {
+		if r.err == nil && r.ran && (projects[i].IsMember == nil || *projects[i].IsMember) {
+			ok = append(ok, projects[i].Identifier)
+		}
 		if r.err != nil {
 			errs = append(errs, fmt.Sprintf("project %s: %v", projects[i].Identifier, r.err))
 			causes = append(causes, r.err)
@@ -170,7 +175,7 @@ func fetchPlaneMine(p planeAPI, ws, browse string, states *planeStatesCache) ([]
 		items = append(items, r.items...)
 	}
 	if len(errs) > 0 {
-		return items, &multiErr{msg: strings.Join(errs, "; "), errs: causes}
+		return items, &multiErr{msg: strings.Join(errs, "; "), errs: causes, ok: ok}
 	}
 	return items, nil
 }

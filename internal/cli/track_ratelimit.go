@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ZenifyAIContactCenter/zenify-kit/internal/trackstats"
 )
 
 const (
@@ -56,10 +58,31 @@ func rateLimitUntil(h http.Header, now time.Time) time.Time {
 type multiErr struct {
 	msg  string
 	errs []error
+	ok   []string // identifiers of the projects fetched in full, even when they held nothing
 }
 
 func (e *multiErr) Error() string   { return e.msg }
 func (e *multiErr) Unwrap() []error { return e.errs }
+
+// keepOldPlane is fresh plus the old items of the projects that did not
+// answer in full: a project that did is replaced wholesale, so what closed
+// there leaves the list.
+func keepOldPlane(fresh, old []trackstats.PlaneItem, err error) []trackstats.PlaneItem {
+	answered := map[string]bool{}
+	var m *multiErr
+	if errors.As(err, &m) {
+		for _, id := range m.ok {
+			answered[id] = true
+		}
+	}
+	out := append([]trackstats.PlaneItem{}, fresh...)
+	for _, it := range old {
+		if i := strings.LastIndex(it.Key, "-"); i < 0 || !answered[it.Key[:i]] {
+			out = append(out, it)
+		}
+	}
+	return out
+}
 
 // sourceState is what the cache remembers about the last failed refresh of one
 // source: the error to keep showing and the moment refetching may resume.
