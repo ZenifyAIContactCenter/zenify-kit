@@ -186,7 +186,7 @@ Mỗi dòng Backlog cũng bắt đầu bằng mã ngắn (`b81e` cho việc thê
 
 Mục có `ref` hoặc `id` là URL `http…` hiện thành dòng link: chữ bấm được là `<code> · repo · est · title · <số ngày>d`, trỏ tới URL đó. Dòng là link thì dù bị cắt vẫn bấm được.
 
-Mở tab `Backlog` thì pane chạy lại số liệu và bỏ qua cache backlog 5 phút (`zenify track stats --json --force`), nên issue GitHub mới hiện ngay. Các lần chạy khác dùng cache. Lấy GitHub lỗi (ví dụ chưa `gh auth login`) thì tab báo `⚠ github: ...`, các nguồn còn lại vẫn hiện.
+Mở tab `Backlog` thì pane chạy lại số liệu và bỏ qua cache backlog 5 phút (`zenify track stats --json --force`), nên issue GitHub mới hiện ngay. Các lần chạy khác dùng cache. Chỉ một tiến trình làm mới cache tại một lúc (file khóa `backlog-gh.lock` cạnh `backlog-gh.json`); các tiến trình khác đọc cache, kể cả cache đã cũ. Khi một nguồn lỗi (Plane trả 429, `gh` bị giới hạn), cache giữ dữ liệu tốt gần nhất của nguồn đó, lỗi vẫn hiện ở `planeError` hoặc `ghError`, và nguồn đó không được gọi lại cho đến hết thời gian chờ (theo `X-RateLimit-Reset` hoặc `Retry-After`, nếu không có thì 30 giây hoặc 1 phút, nhân đôi mỗi lần lỗi, tối đa 15 phút). `--force` bỏ qua thời gian chờ của lỗi thường nhưng vẫn chờ hết giới hạn 429. Trạng thái (state) của từng project Plane được cache 24 giờ trong `plane-states.json`, nên mỗi lần làm mới Plane chỉ tốn khoảng 2+N request. Lấy GitHub lỗi (ví dụ chưa `gh auth login`) thì tab báo `⚠ github: ...`, các nguồn còn lại vẫn hiện.
 
 ```bash
 zenify track backlog add "sửa lỗi export" --repo contact-center-hub --est S --ref https://github.com/org/repo/issues/12

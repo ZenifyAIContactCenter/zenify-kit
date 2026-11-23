@@ -255,3 +255,48 @@ func TestPlaneStatesCached(t *testing.T) {
 		t.Fatalf("expired states not refetched: %d", states())
 	}
 }
+
+// GitHub ages on its own clock: a Plane retry that refreshes FetchedAt must not keep an old gh list alive.
+func TestSourcesAgeSeparately(t *testing.T) {
+	var gh atomic.Int32
+	fakeGh(t, func(string, string) ([]trackstats.Issue, error) { gh.Add(1); return nil, nil })
+	ws := trackWS(t, true)
+	gitRepoWithOrigin(t, ws, "a", "git@github.com:Z/a.git")
+	dir := filepath.Join(ws, ".zenify", "track")
+	now := time.Now()
+	seed := func(ghAt time.Time) {
+		if err := writeBacklogCache(filepath.Join(dir, backlogCache), backlogCacheFile{FetchedAt: now.UTC(), GhAt: ghAt.UTC()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed(now.Add(-time.Minute))
+	backlogSources(dir, ws, false, now)
+	if gh.Load() != 0 {
+		t.Fatalf("fresh gh list refetched: %d", gh.Load())
+	}
+	seed(now.Add(-backlogTTL - time.Minute))
+	g, _, _ := backlogSources(dir, ws, false, now)
+	if _, err := g(); err != nil {
+		t.Fatal(err)
+	}
+	if gh.Load() != 2 {
+		t.Fatalf("old gh list not refetched although FetchedAt is fresh: %d", gh.Load())
+	}
+}
+
+// release removes only the lock it took: a lock another process retook is left alone.
+func TestLockReleaseKeepsForeignLock(t *testing.T) {
+	dir := t.TempDir()
+	rel, ok, err := tryBacklogLock(dir, time.Now())
+	if err != nil || !ok {
+		t.Fatalf("lock: %v %v", ok, err)
+	}
+	p := filepath.Join(dir, backlogLock)
+	if err := os.WriteFile(p, []byte("someone-else"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rel()
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("release removed a lock it no longer owned: %v", err)
+	}
+}

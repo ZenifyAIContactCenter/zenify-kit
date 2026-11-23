@@ -407,6 +407,8 @@ func ghSearch(owner, role string) ([]trackstats.Issue, error) {
 // last good items here, plus the error and the backoff in its state.
 type backlogCacheFile struct {
 	FetchedAt  time.Time              `json:"fetchedAt"`
+	GhAt       time.Time              `json:"ghAt,omitempty"`    // last good gh refresh; zero = FetchedAt
+	PlaneAt    time.Time              `json:"planeAt,omitempty"` // last good Plane refresh; zero = FetchedAt
 	Owners     []string               `json:"owners"`
 	Issues     []trackstats.Issue     `json:"issues"`
 	SDD        []trackstats.SDDItem   `json:"sdd"`
@@ -427,6 +429,7 @@ type backlogCacheFile struct {
 func backlogSources(dir, wsDir string, force bool, now time.Time) (func() ([]trackstats.Issue, error), func() ([]trackstats.PlaneItem, error), []trackstats.SDDItem) {
 	cachePath := filepath.Join(dir, backlogCache)
 	var notes []string // an unreadable cache never stops the cache from being rewritten
+	fetchPlane, planeSrcErr := trackPlaneSource(dir, wsDir, now)
 	load := func() *backlogCacheFile {
 		notes = nil
 		c, err := readBacklogCache(cachePath)
@@ -436,15 +439,29 @@ func backlogSources(dir, wsDir string, force bool, now time.Time) (func() ([]tra
 		if c == nil {
 			c = &backlogCacheFile{}
 		}
+		if fetchPlane == nil && planeSrcErr == nil {
+			c.Plane, c.PlaneState = nil, sourceState{} // no PAT or no Plane in the manifest: a cached list is no longer ours to show
+		}
 		return c
 	}
-	fetchPlane, planeSrcErr := trackPlaneSource(dir, wsDir, now)
 	decide := func(c *backlogCacheFile) (needGh, needPlane bool) {
-		stale := force || now.Sub(c.FetchedAt) >= backlogTTL || now.Before(c.FetchedAt)
-		need := func(st sourceState) bool { return (stale || st.Err != "") && !st.active(now, force) }
-		return need(c.GhState), fetchPlane != nil && need(c.PlaneState)
+		// Each source ages on its own clock: a retry of one must not keep the other from expiring.
+		stale := func(at time.Time) bool {
+			if at.IsZero() || c.FetchedAt.Before(at) {
+				at = c.FetchedAt // the whole file is never newer than its last refresh
+			}
+			return force || now.Sub(at) >= backlogTTL || now.Before(at)
+		}
+		need := func(at time.Time, st sourceState) bool { return (stale(at) || st.Err != "") && !st.active(now, force) }
+		return need(c.GhAt, c.GhState), fetchPlane != nil && need(c.PlaneAt, c.PlaneState)
 	}
 	serve := func(c *backlogCacheFile, extra ...string) (func() ([]trackstats.Issue, error), func() ([]trackstats.PlaneItem, error), []trackstats.SDDItem) {
+		if force { // the SDD scan is local: --force rescans it even while the network sources back off
+			sdd, errs := scanSDD(wsDir)
+			cc := *c
+			cc.SDD, cc.SDDErr = sdd, strings.Join(errs, "; ")
+			c = &cc
+		}
 		ghErrs := append(append([]string{}, notes...), extra...)
 		if c.SDDErr != "" {
 			ghErrs = append(ghErrs, c.SDDErr)
@@ -524,21 +541,19 @@ func backlogSources(dir, wsDir string, force bool, now time.Time) (func() ([]tra
 		out.FetchedAt, out.SDD, out.SDDErr = now.UTC(), sdd, strings.Join(sddErrs, "; ")
 		if needGh {
 			if len(ghErrs) == 0 {
-				out.Issues, out.Owners, out.GhState = issues, owners, sourceState{}
+				out.Issues, out.Owners, out.GhState, out.GhAt = issues, owners, sourceState{}, now.UTC()
 			} else {
 				err := errors.New(strings.Join(ghErrs, "; "))
 				out.GhState = c.GhState.failed(err, ghRateLimited(err), time.Time{}, now)
-				out.Issues = mergeIssues(issues, c.Issues) // the searches that worked first, then the last good rest
+				out.Issues = mergeBy(issues, c.Issues, func(i trackstats.Issue) string { return i.URL }) // the searches that worked first, then the last good rest
 			}
 		}
 		if needPlane {
 			if planeErr == nil {
-				out.Plane, out.PlaneState = plane, sourceState{}
+				out.Plane, out.PlaneState, out.PlaneAt = plane, sourceState{}, now.UTC()
 			} else {
 				limited, until := planeRateLimit(planeErr)
-				if !limited && len(plane) > 0 {
-					out.Plane = plane // one project failed: keep the others' fresh items
-				}
+				out.Plane = mergeBy(plane, c.Plane, func(i trackstats.PlaneItem) string { return i.Key }) // the projects that answered, then the last good rest
 				out.PlaneState = c.PlaneState.failed(planeErr, limited, until, now)
 			}
 		}
@@ -569,15 +584,15 @@ func backlogSources(dir, wsDir string, force bool, now time.Time) (func() ([]tra
 		}, sdd
 }
 
-// mergeIssues is fresh followed by the issues of old that fresh lacks (by URL).
-func mergeIssues(fresh, old []trackstats.Issue) []trackstats.Issue {
+// mergeBy is fresh followed by the items of old whose key fresh lacks.
+func mergeBy[T any](fresh, old []T, key func(T) string) []T {
 	seen := make(map[string]bool, len(fresh))
-	out := append([]trackstats.Issue{}, fresh...)
+	out := append([]T{}, fresh...)
 	for _, i := range fresh {
-		seen[i.URL] = true
+		seen[key(i)] = true
 	}
 	for _, i := range old {
-		if !seen[i.URL] {
+		if !seen[key(i)] {
 			out = append(out, i)
 		}
 	}

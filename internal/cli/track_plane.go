@@ -42,7 +42,8 @@ func trackPlaneSource(dir, wsDir string, now time.Time) (func() ([]trackstats.Pl
 		items, err := fetchPlaneMine(c.api(ctx), c.ws, c.browse, states)
 		err = errors.Join(err, serr, states.save()) // save even after a 429: the states it fetched are not lost
 		if ctx.Err() != nil {
-			return items, fmt.Errorf("timed out after %s", trackGhTimeout)
+			// Keep the cause: a 429 seen before the deadline must still set a rate-limit backoff.
+			return items, errors.Join(fmt.Errorf("timed out after %s", trackGhTimeout), err)
 		}
 		return items, err
 	}, nil

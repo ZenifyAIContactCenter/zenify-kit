@@ -133,17 +133,28 @@ func planeRateLimit(err error) (bool, time.Time) {
 const lockStale = 2 * trackGhTimeout
 
 // tryBacklogLock takes the cross-process refresh lock; ok is false when another
-// process holds it. The lock is a file created exclusively (portable to Windows).
+// process holds it. The lock is a file created exclusively (portable to Windows)
+// that holds the owner's token: release removes the file only while it is still
+// ours, and a stale lock is taken by renaming it away, which one process wins.
 func tryBacklogLock(dir string, now time.Time) (release func(), ok bool, err error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, false, fmt.Errorf("create %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, backlogLock)
+	token := strconv.Itoa(os.Getpid()) + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	for attempt := 0; attempt < 2; attempt++ {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600) //nolint:gosec // G304 -- computed from the resolved workspace
 		if err == nil {
-			_ = f.Close()
-			return func() { _ = os.Remove(path) }, true, nil
+			_, werr := f.WriteString(token)
+			if cerr := errors.Join(werr, f.Close()); cerr != nil {
+				_ = os.Remove(path)
+				return nil, false, fmt.Errorf("lock %s: %w", path, cerr)
+			}
+			return func() {
+				if b, rerr := os.ReadFile(path); rerr == nil && string(b) == token { //nolint:gosec // G304 -- computed from the resolved workspace
+					_ = os.Remove(path)
+				}
+			}, true, nil
 		}
 		if !errors.Is(err, os.ErrExist) {
 			return nil, false, fmt.Errorf("lock %s: %w", path, err)
@@ -152,7 +163,16 @@ func tryBacklogLock(dir string, now time.Time) (release func(), ok bool, err err
 		if serr != nil || now.Sub(fi.ModTime()) < lockStale {
 			return nil, false, nil
 		}
-		_ = os.Remove(path) // a crashed holder: retry once
+		// Rename the stale file away: of two processes that saw it, only one rename succeeds.
+		aside := path + "." + token + ".stale"
+		if os.Rename(path, aside) != nil {
+			return nil, false, nil
+		}
+		if afi, aerr := os.Stat(aside); aerr == nil && now.Sub(afi.ModTime()) < lockStale {
+			_ = os.Rename(aside, path) // we moved a lock another process had just retaken: put it back
+			return nil, false, nil
+		}
+		_ = os.Remove(aside)
 	}
 	return nil, false, nil
 }
