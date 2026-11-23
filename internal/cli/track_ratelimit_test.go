@@ -315,6 +315,10 @@ func TestKeepOldPlane(t *testing.T) {
 	if strings.Join(keys, ",") != "A-2,B-7" {
 		t.Fatalf("got %v, want A-2,B-7 (A-1 closed, B kept)", keys)
 	}
+	// A project cut off after its first page: its fresh item is not listed twice.
+	if n := len(keepOldPlane([]trackstats.PlaneItem{item("B-7")}, old, &multiErr{ok: []string{}})); n != 3 {
+		t.Fatalf("duplicate kept: %d items, want 3 (B-7 once)", n)
+	}
 	if n := len(keepOldPlane(nil, old, os.ErrClosed)); n != 3 {
 		t.Fatalf("an error that is not per project must keep all old items, got %d", n)
 	}

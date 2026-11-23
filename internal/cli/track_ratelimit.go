@@ -76,7 +76,14 @@ func keepOldPlane(fresh, old []trackstats.PlaneItem, err error) []trackstats.Pla
 		}
 	}
 	out := append([]trackstats.PlaneItem{}, fresh...)
+	have := map[string]bool{}
+	for _, it := range fresh {
+		have[it.Key] = true
+	}
 	for _, it := range old {
+		if have[it.Key] {
+			continue // a project cut off mid-way already returned this one
+		}
 		if i := strings.LastIndex(it.Key, "-"); i < 0 || !answered[it.Key[:i]] {
 			out = append(out, it)
 		}
