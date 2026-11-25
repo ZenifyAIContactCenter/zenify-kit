@@ -8,6 +8,14 @@ Mỗi release một mục, viết cho người dùng kit, không phải danh sá
 
 Bản trước `v0.22.0`: xem [GitHub Releases](https://github.com/ZenifyAIContactCenter/zenify-kit/releases).
 
+## v0.80.0
+
+*2026-11-25*
+
+- **Skill đọc việc Plane qua MCP trước khi làm:** `/znf:cook`, `/znf:fix` và `/znf:hotfix` nhận prompt có key `ZEN-<n>` hoặc `OPS-<n>` thì đọc việc đó trước khi viết spec, chẩn đoán hay `wt new`: việc ZEN đọc bằng `item_read` của Zenie, việc OPS (hoặc khi `item_read` lỗi hay chưa gắn) đọc bằng MCP Plane cả mô tả lẫn comment. Prompt bạn dán chỉ cần lệnh, key và tiêu đề (vd `/znf:cook ZEN-<n> <tiêu đề>`), không cần link Plane. Không tool nào gắn thì skill làm theo prompt và không tự bịa nội dung việc. Xem [Một worktree cho mỗi slug](/concepts/worktree-per-slug). ([#407](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/407))
+- **`wt rm` dọn Xcode DerivedData:** trên macOS, `wt rm` và `wt sweep` xoá thư mục DerivedData (vài GB) mà Xcode tạo cho worktree vừa xoá, giữ nguyên thư mục của checkout chính và worktree khác. Xem [Một worktree cho mỗi slug](/concepts/worktree-per-slug). ([#404](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/404))
+- **Overlay thêm được repo riêng của workspace:** `.zenify-overlay.yaml` trước chỉ đổi được `path` của repo kit đã biết; giờ một mục có `name` mà kit chưa có, kèm `url` và `path`, được thêm làm repo mới (vd repo app mobile chỉ team bạn dùng). Mục trùng tên vẫn chỉ đổi `path`, mục lạ không có `url` vẫn bị bỏ qua. Xem [Bố cục workspace](/concepts/workspace-layout). ([#394](https://github.com/ZenifyAIContactCenter/zenify-kit/pull/394))
+
 ## v0.79.1
 
 *2026-11-23*
