@@ -95,8 +95,29 @@ func fakeInfra(t *testing.T, alreadyThere bool) (infraDeps, *[]string, *infraRun
 			}
 			return true, nil
 		},
-		appExists: func(context.Context, infra.Runner, string) (bool, error) { return false, nil },
 		saveState: func(string, *infra.State) error { rec("save-state"); return nil },
+		livePlatform: func(context.Context, infra.Runner) (infra.PlatformTarget, bool, error) {
+			return infra.PlatformTarget{}, false, nil
+		},
+		k3sVersion:  func(context.Context, infra.Runner) (string, error) { return infra.K3sVersion, nil },
+		argoVersion: func(context.Context, infra.Runner) (string, error) { return infra.ArgoCDVersion, nil },
+		envApps: func(context.Context, infra.Runner) ([]string, error) {
+			return []string{"env-base"}, nil
+		},
+		deleteApp: func(_ context.Context, _ infra.Runner, name string, _ bool) error {
+			rec("delete-app " + name)
+			return nil
+		},
+		deleteNamespace: func(_ context.Context, _ infra.Runner, ns string) error {
+			rec("delete-ns " + ns)
+			return nil
+		},
+		removeTrust:  func(context.Context, infra.Runner, string) error { rec("remove-trust"); return nil },
+		uninstallK3s: func(context.Context, infra.Runner) error { rec("uninstall-k3s"); return nil },
+		removeState:  func(string) error { rec("remove-state"); return nil },
+	}
+	d.appExists = func(_ context.Context, _ infra.Runner, name string) (bool, error) {
+		return name == infra.PlatformApp, nil
 	}
 	return d, steps, r
 }
@@ -293,5 +314,173 @@ func TestInfraConfig_ValidatesAndSaves(t *testing.T) {
 	cfg, err := infra.LoadConfig(home)
 	if err != nil || cfg.Domain != "dev1.test" || cfg.MaxEnvs != 2 {
 		t.Fatalf("cfg = %+v err=%v", cfg, err)
+	}
+}
+
+var deployed = infra.PlatformTarget{Domain: "quyentm.test", ChartRef: "feat/local"}
+
+func withLive(d infraDeps) infraDeps {
+	d.livePlatform = func(context.Context, infra.Runner) (infra.PlatformTarget, bool, error) { return deployed, true, nil }
+	return d
+}
+
+// With no config and no state, up keeps the deployed platform's domain and
+// chart ref instead of retargeting it to <gh login>.test at main.
+func TestInfraUp_FollowsDeployedPlatform(t *testing.T) {
+	d, _, _ := fakeInfra(t, true)
+	d = withLive(d)
+	var gotDomain, gotRef string
+	d.applyPlatform = func(_ context.Context, _ infra.Runner, domain, ref string) error {
+		gotDomain, gotRef = domain, ref
+		return nil
+	}
+	out, _, err := runInfra(d, "up", "--local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotDomain != "quyentm.test" || gotRef != "feat/local" || !strings.Contains(out, "https://web-base.quyentm.test") {
+		t.Fatalf("platform applied with %s@%s\n%s", gotDomain, gotRef, out)
+	}
+}
+
+// A state domain that differs from the deployed platform is not a choice the
+// user made now: stop before touching anything and say how to resolve it.
+func TestInfraUp_DriftStopsBeforeAnyChange(t *testing.T) {
+	d, steps, _ := fakeInfra(t, true)
+	d = withLive(d)
+	home, _ := d.home()
+	if err := infra.SaveState(home, &infra.State{Domain: "old.test"}); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := runInfra(d, "up", "--local")
+	if exitcode.Code(err) == 0 || !strings.Contains(err.Error(), `"old.test"`) || !strings.Contains(err.Error(), `"quyentm.test"`) ||
+		!strings.Contains(err.Error(), "zenify infra config --local --domain") {
+		t.Fatalf("err = %v", err)
+	}
+	if indexOf(*steps, "k3s") >= 0 || indexOf(*steps, "platform") >= 0 {
+		t.Errorf("steps ran past the drift check: %v", *steps)
+	}
+}
+
+// A domain set in config or a --chart-ref flag is a change on purpose.
+func TestInfraUp_ExplicitValuesRetarget(t *testing.T) {
+	d, _, _ := fakeInfra(t, true)
+	d = withLive(d)
+	home, _ := d.home()
+	if err := infra.SaveConfig(home, infra.Config{Domain: "new.test", MaxEnvs: 3}); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	d.applyPlatform = func(_ context.Context, _ infra.Runner, domain, ref string) error {
+		got = domain + "@" + ref
+		return nil
+	}
+	if _, _, err := runInfra(d, "up", "--local", "--chart-ref", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if got != "new.test@main" {
+		t.Fatalf("platform applied with %s", got)
+	}
+}
+
+// status shows the deployed domain, not the github-login default.
+func TestInfraStatus_UsesDeployedDomain(t *testing.T) {
+	d, _, _ := fakeInfra(t, true)
+	d = withLive(d)
+	var got string
+	d.status = func(_ context.Context, _ infra.Runner, _, domain string) (infra.Report, error) {
+		got = domain
+		return infra.Report{Envs: []infra.EnvStatus{}}, nil
+	}
+	if _, _, err := runInfra(d, "status", "--local", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	if got != "quyentm.test" {
+		t.Fatalf("status domain = %s", got)
+	}
+}
+
+// A typo in --ref would otherwise build every repo from its baseRef silently.
+func TestInfraUp_UnknownRefRepoIsBadArgs(t *testing.T) {
+	d, steps, _ := fakeInfra(t, true)
+	_, _, err := runInfra(d, "up", "--local", "--ref", "contact-center-wbe=origin/x")
+	if exitcode.Code(err) != exitcode.BadArgs || !strings.Contains(err.Error(), "contact-center-web") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(*steps) != 0 {
+		t.Errorf("steps ran: %v", *steps)
+	}
+}
+
+// A rerun keeps when the devbox was first set up.
+func TestInfraUp_KeepsCreatedAt(t *testing.T) {
+	d, _, _ := fakeInfra(t, true)
+	home, _ := d.home()
+	first := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	if err := infra.SaveState(home, &infra.State{Domain: "quyentm.test", CreatedAt: first}); err != nil {
+		t.Fatal(err)
+	}
+	var saved *infra.State
+	d.saveState = func(_ string, s *infra.State) error { saved = s; return nil }
+	if _, _, err := runInfra(d, "up", "--local"); err != nil {
+		t.Fatal(err)
+	}
+	if saved == nil || !saved.CreatedAt.Equal(first) {
+		t.Fatalf("saved = %+v", saved)
+	}
+}
+
+// down --apply removes envs before the platform (their finalizers need Argo)
+// and, without --purge, leaves k3s, trust and state alone.
+func TestInfraDown_ApplyEnvsThenPlatformOnly(t *testing.T) {
+	d, steps, _ := fakeInfra(t, true)
+	if _, _, err := runInfra(d, "down", "--local", "--apply"); err != nil {
+		t.Fatal(err)
+	}
+	want := "delete-app env-base,delete-ns env-base,delete-app local-platform,delete-ns zenify-system"
+	if got := strings.Join(*steps, ","); got != want {
+		t.Fatalf("steps = %s, want %s", got, want)
+	}
+}
+
+// --purge order: envs, platform, trust/DNS, k3s (then its firewall), state.
+func TestInfraDown_PurgeOrder(t *testing.T) {
+	d, steps, _ := fakeInfra(t, true)
+	if _, _, err := runInfra(d, "down", "--local", "--purge", "--apply"); err != nil {
+		t.Fatal(err)
+	}
+	want := "delete-app env-base,delete-ns env-base,delete-app local-platform,delete-ns zenify-system,remove-trust,uninstall-k3s,remove-state"
+	if got := strings.Join(*steps, ","); got != want {
+		t.Fatalf("steps = %s, want %s", got, want)
+	}
+}
+
+// A failed step stops the rest and is named, so state is never removed while
+// k3s is still installed.
+func TestInfraDown_FailureStopsLaterSteps(t *testing.T) {
+	d, steps, _ := fakeInfra(t, true)
+	d.uninstallK3s = func(context.Context, infra.Runner) error { return errors.New("k3s-uninstall.sh: exit status 1") }
+	_, _, err := runInfra(d, "down", "--local", "--purge", "--apply")
+	if exitcode.Code(err) == 0 || !strings.HasPrefix(err.Error(), "purge: ") {
+		t.Fatalf("err = %v", err)
+	}
+	if indexOf(*steps, "remove-state") >= 0 {
+		t.Errorf("state removed after a failed uninstall: %v", *steps)
+	}
+	d2, steps2, _ := fakeInfra(t, true)
+	d2.deleteApp = func(context.Context, infra.Runner, string, bool) error { return errors.New("timed out") }
+	_, _, err = runInfra(d2, "down", "--local", "--purge", "--apply")
+	if err == nil || !strings.HasPrefix(err.Error(), "envs: ") || len(*steps2) != 0 {
+		t.Fatalf("err = %v steps = %v", err, *steps2)
+	}
+}
+
+// Nothing installed: say so instead of printing nothing.
+func TestInfraDown_NothingInstalled(t *testing.T) {
+	d, steps, _ := fakeInfra(t, true)
+	d.k3sVersion = func(context.Context, infra.Runner) (string, error) { return "", nil }
+	out, _, err := runInfra(d, "down", "--local", "--apply")
+	if err != nil || !strings.Contains(out, "nothing to remove") || len(*steps) != 0 {
+		t.Fatalf("err=%v out=%q steps=%v", err, out, *steps)
 	}
 }

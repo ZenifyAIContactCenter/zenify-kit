@@ -8,7 +8,8 @@ import (
 
 func TestLoadConfigDefaults(t *testing.T) {
 	c, err := LoadConfig(t.TempDir())
-	if err != nil || c.MaxEnvs != 3 || c.ChartRef != "main" {
+	// no default domain or chartRef: up must follow the deployed platform
+	if err != nil || c.MaxEnvs != 3 || c.ChartRef != "" || c.Domain != "" {
 		t.Fatalf("got %+v, %v", c, err)
 	}
 }

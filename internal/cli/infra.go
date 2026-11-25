@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ type infraDeps struct {
 	apply          func(ctx context.Context, r infra.Runner, manifest []byte) (bool, error)
 	appExists      func(ctx context.Context, r infra.Runner, name string) (bool, error)
 	saveState      func(home string, s *infra.State) error
+	livePlatform   func(ctx context.Context, r infra.Runner) (infra.PlatformTarget, bool, error)
 
 	status          func(ctx context.Context, r infra.Runner, home, domain string) (infra.Report, error)
 	removeTrust     func(ctx context.Context, r infra.Runner, home string) error
@@ -57,6 +59,9 @@ type infraDeps struct {
 	removeState     func(home string) error
 	deleteApp       func(ctx context.Context, r infra.Runner, name string, cascade bool) error
 	deleteNamespace func(ctx context.Context, r infra.Runner, ns string) error
+	k3sVersion      func(ctx context.Context, r infra.Runner) (string, error)
+	argoVersion     func(ctx context.Context, r infra.Runner) (string, error)
+	envApps         func(ctx context.Context, r infra.Runner) ([]string, error)
 }
 
 func defaultInfraDeps() infraDeps {
@@ -93,6 +98,10 @@ func defaultInfraDeps() infraDeps {
 		removeState:     infra.RemoveState,
 		deleteApp:       infra.DeleteApp,
 		deleteNamespace: infra.DeleteNamespace,
+		livePlatform:    infra.LivePlatform,
+		k3sVersion:      infra.K3sInstalledVersion,
+		argoVersion:     infra.ArgoInstalledVersion,
+		envApps:         infra.EnvApps,
 	}
 }
 
@@ -145,16 +154,76 @@ func (d infraDeps) loadConfig() (string, infra.Config, error) {
 	return home, cfg, nil
 }
 
-// domain is the configured domain, else <gh login>.test.
-func (d infraDeps) domain(ctx context.Context, cfg infra.Config) (string, error) {
-	if cfg.Domain != "" {
-		return cfg.Domain, nil
+// infraTarget is the domain and helm chart ref a command works on, with where
+// each came from; an explicit source (flag or config) is a change on purpose.
+type infraTarget struct {
+	domain, domainFrom string
+	chartRef, refFrom  string
+	live               infra.PlatformTarget
+	hasLive            bool
+	state              *infra.State
+}
+
+func explicitSource(from string) bool { return from == "flag" || from == "config" }
+
+// resolveTarget picks the domain (config, state, deployed platform, github
+// login) and chart ref (flag, config, deployed platform, main).
+func (d infraDeps) resolveTarget(ctx context.Context, home string, cfg infra.Config, flagRef string) (infraTarget, error) {
+	var t infraTarget
+	var err error
+	if t.state, err = infra.LoadState(home); err != nil {
+		return t, err
 	}
-	out, err := d.runner.Run(ctx, nil, "gh", "api", "user", "--jq", ".login")
-	if err != nil {
-		return "", fmt.Errorf("read github login: %w", err)
+	if t.live, t.hasLive, err = d.livePlatform(ctx, d.runner); err != nil {
+		return t, fmt.Errorf("read deployed platform: %w", err)
 	}
-	return infra.DefaultDomain(strings.TrimSpace(string(out)))
+	switch {
+	case cfg.Domain != "":
+		t.domain, t.domainFrom = cfg.Domain, "config"
+	case t.state != nil && t.state.Domain != "":
+		t.domain, t.domainFrom = t.state.Domain, "state"
+	case t.hasLive && t.live.Domain != "":
+		t.domain, t.domainFrom = t.live.Domain, "deployed platform"
+	default:
+		out, err := d.runner.Run(ctx, nil, "gh", "api", "user", "--jq", ".login")
+		if err != nil {
+			return t, fmt.Errorf("read github login: %w", err)
+		}
+		if t.domain, err = infra.DefaultDomain(strings.TrimSpace(string(out))); err != nil {
+			return t, err
+		}
+		t.domainFrom = "github login"
+	}
+	switch {
+	case flagRef != "":
+		t.chartRef, t.refFrom = flagRef, "flag"
+	case cfg.ChartRef != "":
+		t.chartRef, t.refFrom = cfg.ChartRef, "config"
+	case t.hasLive && t.live.ChartRef != "":
+		t.chartRef, t.refFrom = t.live.ChartRef, "deployed platform"
+	default:
+		t.chartRef, t.refFrom = infra.DefaultChartRef, "default"
+	}
+	return t, nil
+}
+
+// drift refuses to retarget a deployed platform unless the new value was asked for.
+func (t infraTarget) drift() error {
+	if !t.hasLive {
+		return nil
+	}
+	var diffs []string
+	if t.domain != t.live.Domain && !explicitSource(t.domainFrom) {
+		diffs = append(diffs, fmt.Sprintf("domain %q (from %s) but the deployed platform runs %q", t.domain, t.domainFrom, t.live.Domain))
+	}
+	if t.chartRef != t.live.ChartRef && !explicitSource(t.refFrom) {
+		diffs = append(diffs, fmt.Sprintf("chart ref %q (from %s) but the deployed platform runs %q", t.chartRef, t.refFrom, t.live.ChartRef))
+	}
+	if len(diffs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s; to keep the deployed platform run: zenify infra config --local --domain %s (and pass --chart-ref %s); to change it on purpose set the new value with zenify infra config --local --domain <x>.test or --chart-ref <ref>",
+		strings.Join(diffs, "; "), t.live.Domain, t.live.ChartRef)
 }
 
 func parseRefs(in []string) (map[string]string, error) {
@@ -187,11 +256,17 @@ func (d infraDeps) upCmd() *cobra.Command {
 			if err != nil {
 				return exitcode.New(exitcode.BadArgs, err)
 			}
+			valid := infra.CoreRepos()
+			for repo := range refs {
+				if !slices.Contains(valid, repo) {
+					return exitcode.New(exitcode.BadArgs, fmt.Errorf("--ref: unknown repo %q (valid: %s)", repo, strings.Join(valid, ", ")))
+				}
+			}
 			return d.runUp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), chartRef, refs)
 		},
 	}
 	cmd.Flags().BoolVar(&local, "local", false, "target the local k3s devbox (required)")
-	cmd.Flags().StringVar(&chartRef, "chart-ref", "", "helm repo ref for the platform and env charts (default: chartRef in config, main)")
+	cmd.Flags().StringVar(&chartRef, "chart-ref", "", "helm repo ref for the platform and env charts (default: config, else the deployed platform's, else main)")
 	cmd.Flags().StringArrayVar(&refFlags, "ref", nil, "build <repo>=<ref> instead of the repo's baseRef (repeatable)")
 	return cmd
 }
@@ -204,9 +279,6 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	if err != nil {
 		return failStep("config", err)
 	}
-	if chartRef == "" {
-		chartRef = cfg.ChartRef
-	}
 	ws, ok := d.workspace()
 	if !ok {
 		return failStep("workspace", errors.New("no zenify workspace found (run zenify up first)"))
@@ -218,11 +290,15 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 		return failStep("preflight", fmt.Errorf("%d problem(s), nothing was changed", len(ps)))
 	}
 	fmt.Fprintln(out, "preflight      ok")
-	domain, err := d.domain(ctx, cfg)
+	tg, err := d.resolveTarget(ctx, home, cfg, chartRef)
 	if err != nil {
-		return failStep("domain", err)
+		return failStep("target", err)
 	}
-	fmt.Fprintf(out, "domain         %s\n", domain)
+	if err := tg.drift(); err != nil {
+		return failStep("target", err)
+	}
+	domain, chartRef := tg.domain, tg.chartRef
+	fmt.Fprintf(out, "target         domain %s (%s), chart ref %s (%s)\n", domain, tg.domainFrom, chartRef, tg.refFrom)
 	r := d.runner
 
 	changed, err := d.installK3s(ctx, r)
@@ -274,7 +350,11 @@ func (d infraDeps) runUp(ctx context.Context, out, errW io.Writer, chartRef stri
 	if err := d.applyEnv(ctx, out, slug, domain, chartRef, images); err != nil {
 		return err
 	}
-	if err := d.saveState(home, &infra.State{Domain: domain, K3sVersion: infra.K3sVersion, ArgoCDVersion: infra.ArgoCDVersion, CreatedAt: time.Now().UTC()}); err != nil {
+	created := time.Now().UTC()
+	if tg.state != nil && !tg.state.CreatedAt.IsZero() {
+		created = tg.state.CreatedAt // a rerun keeps when the devbox was first set up
+	}
+	if err := d.saveState(home, &infra.State{Domain: domain, K3sVersion: infra.K3sVersion, ArgoCDVersion: infra.ArgoCDVersion, CreatedAt: created}); err != nil {
 		return failStep("state", err)
 	}
 	fmt.Fprintf(out, "\nready: https://%s\n", infra.Host("web", slug, domain))
@@ -354,11 +434,11 @@ func (d infraDeps) statusCmd() *cobra.Command {
 			if err != nil {
 				return failStep("config", err)
 			}
-			domain, err := d.domain(ctx, cfg)
+			tg, err := d.resolveTarget(ctx, home, cfg, "")
 			if err != nil {
-				return failStep("domain", err)
+				return failStep("target", err)
 			}
-			rep, err := d.status(ctx, d.runner, home, domain)
+			rep, err := d.status(ctx, d.runner, home, tg.domain)
 			if err != nil {
 				return failStep("status", err)
 			}
@@ -424,18 +504,18 @@ func (d infraDeps) runDown(ctx context.Context, out io.Writer, purge, applyFlag 
 		return failStep("home", err)
 	}
 	r := d.runner
-	k3s, err := infra.K3sInstalledVersion(ctx, r)
+	k3s, err := d.k3sVersion(ctx, r)
 	if err != nil {
 		return failStep("k3s", err)
 	}
 	argo := ""
 	if k3s != "" {
-		if argo, err = infra.ArgoInstalledVersion(ctx, r); err != nil {
+		if argo, err = d.argoVersion(ctx, r); err != nil {
 			return failStep("argocd", err)
 		}
 	}
 	if argo != "" {
-		envs, err := infra.EnvApps(ctx, r)
+		envs, err := d.envApps(ctx, r)
 		if err != nil {
 			return failStep("envs", err)
 		}
@@ -461,6 +541,9 @@ func (d infraDeps) runDown(ctx context.Context, out io.Writer, purge, applyFlag 
 			return failStep("platform", err)
 		}
 		fmt.Fprintf(out, "platform       deleted %s\n", infra.PlatformApp)
+	}
+	if argo == "" {
+		fmt.Fprintln(out, "cluster        nothing to remove (k3s or ArgoCD not installed)")
 	}
 	if !purge {
 		return nil
@@ -523,11 +606,14 @@ func (d infraDeps) configCmd() *cobra.Command {
 					return failStep("config", err)
 				}
 			}
-			dom := cfg.Domain
+			dom, ref := cfg.Domain, cfg.ChartRef
 			if dom == "" {
-				dom = "(from github login)"
+				dom = "(unset: state, else the deployed platform, else <github login>.test)"
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "domain    %s\nmaxEnvs   %d\nchartRef  %s\n", dom, cfg.MaxEnvs, cfg.ChartRef)
+			if ref == "" {
+				ref = "(unset: the deployed platform, else main)"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "domain    %s\nmaxEnvs   %d\nchartRef  %s\n", dom, cfg.MaxEnvs, ref)
 			return nil
 		},
 	}

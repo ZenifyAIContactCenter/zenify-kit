@@ -22,7 +22,7 @@ zenify infra up --local
 zenify infra status --local
 ```
 
-`up` chạy lại được: bước đã xong in `unchanged`. Khi xong, lệnh in `https://web-base.<domain>` và email, domain của tài khoản seed. Nếu URL không mở được, [`zenify infra status --local`](/reference/cli/zenify_infra_status) cho biết DNS có resolve không và CA đã được tin chưa.
+`up` chạy lại được: bước đã xong in `unchanged`. Khi đã có platform, `up` giữ domain và chart ref đang chạy; muốn đổi thì đặt rõ bằng `zenify infra config --local --domain <x>.test` hoặc `--chart-ref <ref>`, nếu không lệnh dừng và báo khác biệt. Khi xong, lệnh in `https://web-base.<domain>` và email, domain của tài khoản seed. Nếu URL không mở được, [`zenify infra status --local`](/reference/cli/zenify_infra_status) cho biết DNS có resolve không và CA đã được tin chưa.
 
 ## Gỡ
 

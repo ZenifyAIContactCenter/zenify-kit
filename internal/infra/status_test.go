@@ -9,7 +9,7 @@ import (
 
 const appsJSON = `{"items":[
  {"metadata":{"name":"local-platform"},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}},
- {"metadata":{"name":"env-base"},"status":{"sync":{"status":"OutOfSync"},"health":{"status":"Progressing"}}},
+ {"metadata":{"name":"env-base"},"spec":{"source":{"helm":{"valuesObject":{"local-env":{"values":{"domain":"old.test"}}}}}},"status":{"sync":{"status":"OutOfSync"},"health":{"status":"Progressing"}}},
  {"metadata":{"name":"local-env-base-local"},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}]}`
 
 // status reads the platform and root env apps from the local cluster only, and
@@ -34,6 +34,9 @@ func TestStatus_ReadsAppsAndRealDNS(t *testing.T) {
 	}
 	if rep.Platform != (AppState{"Synced", "Healthy"}) || len(rep.Envs) != 1 || rep.Envs[0].Slug != "base" || rep.Envs[0].Health != "Progressing" {
 		t.Fatalf("report = %+v", rep)
+	}
+	if rep.Envs[0].URLs[0] != "https://web-base.old.test" {
+		t.Errorf("env url must use the env's own domain: %v", rep.Envs[0].URLs)
 	}
 	if rep.DNS.Host != "web-base.quyentm.test" || rep.DNS.Resolves {
 		t.Fatalf("dns = %+v", rep.DNS)
@@ -77,5 +80,34 @@ func TestDNSResolves_RequiresIngressIP(t *testing.T) {
 		if err != nil || got != want {
 			t.Errorf("%q: got %v err %v, want %v", out, got, err, want)
 		}
+	}
+}
+
+// up compares against what is deployed; the read must come from the live
+// local-platform Application and report "absent" without k3s.
+func TestLivePlatform(t *testing.T) {
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		switch {
+		case c.name == "k3s":
+			return []byte("k3s version " + K3sVersion + " (x)\n"), nil
+		case strings.Contains(c.line(), "deploy argocd-server"):
+			return []byte("quay.io/argoproj/argocd:" + ArgoCDVersion), nil
+		case strings.Contains(c.line(), "application local-platform --ignore-not-found"):
+			return []byte(`{"spec":{"source":{"targetRevision":"feat/x","helm":{"valuesObject":{"domain":"quyentm.test"}}}}}`), nil
+		}
+		return nil, nil
+	}}
+	got, ok, err := LivePlatform(context.Background(), r)
+	if err != nil || !ok || got != (PlatformTarget{"quyentm.test", "feat/x"}) {
+		t.Fatalf("got %+v ok=%v err=%v", got, ok, err)
+	}
+	none := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.name == "k3s" {
+			return nil, exec.ErrNotFound
+		}
+		return nil, nil
+	}}
+	if _, ok, err := LivePlatform(context.Background(), none); ok || err != nil || none.ran("kubectl") {
+		t.Fatalf("ok=%v err=%v calls=%v", ok, err, none.calls)
 	}
 }

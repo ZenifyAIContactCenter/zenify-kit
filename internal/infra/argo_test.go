@@ -188,3 +188,57 @@ func TestWaitAppGivesUpAfterRepeatedErrors(t *testing.T) {
 		t.Fatalf("err=%v calls=%d", err, len(r.calls))
 	}
 }
+
+const (
+	staleApp = `{"spec":{"source":{"targetRevision":"main","helm":{"valuesObject":{"image":{"tag":"sha-new"}}}}},
+"status":{"sync":{"status":"Synced","comparedTo":{"source":{"targetRevision":"main","helm":{"valuesObject":{"image":{"tag":"sha-old"}}}}}},"health":{"status":"Healthy"}}}`
+	freshApp = `{"spec":{"source":{"targetRevision":"main","helm":{"valuesObject":{"image":{"tag":"sha-new"}}}}},
+"status":{"sync":{"status":"Synced","comparedTo":{"source":{"helm":{"valuesObject":{"image":{"tag":"sha-new"}}},"targetRevision":"main"}}},"health":{"status":"Healthy"}}}`
+)
+
+// Business rule: right after an apply Argo still shows the old comparison as
+// Synced/Healthy; accepting it would report an env ready on the old images.
+func TestWaitAppIgnoresStatusOfPreviousSpec(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = old }()
+	stale := &fakeRunner{respond: func(call) ([]byte, error) { return []byte(staleApp), nil }}
+	if err := WaitApp(context.Background(), stale, "env-base", 20*time.Millisecond); err == nil || !strings.Contains(err.Error(), "fresh=false") {
+		t.Fatalf("stale status accepted or unnamed: %v", err)
+	}
+	n := 0
+	r := &fakeRunner{respond: func(call) ([]byte, error) {
+		if n++; n <= 3 {
+			return []byte(staleApp), nil
+		}
+		return []byte(freshApp), nil
+	}}
+	if err := WaitApp(context.Background(), r, "env-base", time.Second); err != nil || n != 4 {
+		t.Fatalf("err=%v reads=%d", err, n)
+	}
+}
+
+// Business rule: a child Application appears only after its app-of-apps
+// synced; NotFound while waiting is "not yet", not a failure.
+func TestWaitAppWaitsForAppToBeCreated(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = old }()
+	n := 0
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if !strings.Contains(c.line(), "--ignore-not-found") {
+			t.Errorf("get without --ignore-not-found: %s", c.line())
+		}
+		if n++; n <= 4*maxGetFailures { // absent far longer than the read-failure budget
+			return nil, nil
+		}
+		return []byte(freshApp), nil
+	}}
+	if err := WaitApp(context.Background(), r, "local-env-base-local", time.Second); err != nil {
+		t.Fatal(err)
+	}
+	absent := &fakeRunner{respond: func(call) ([]byte, error) { return nil, nil }}
+	if err := WaitApp(context.Background(), absent, "x", 10*time.Millisecond); err == nil || !strings.Contains(err.Error(), "not created") {
+		t.Fatalf("err = %v", err)
+	}
+}

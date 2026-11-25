@@ -48,6 +48,67 @@ type appList struct {
 	} `json:"items"`
 }
 
+// envDomain is the domain an env root Application was rendered with
+// (valuesObject.local-env.values.domain), or "".
+func (a appStatus) envDomain() string {
+	var src struct {
+		Helm struct {
+			ValuesObject struct {
+				LocalEnv struct {
+					Values struct {
+						Domain string `json:"domain"`
+					} `json:"values"`
+				} `json:"local-env"`
+			} `json:"valuesObject"`
+		} `json:"helm"`
+	}
+	if len(a.Spec.Source) == 0 || json.Unmarshal(a.Spec.Source, &src) != nil {
+		return ""
+	}
+	return src.Helm.ValuesObject.LocalEnv.Values.Domain
+}
+
+// PlatformTarget is what the deployed local-platform Application runs.
+type PlatformTarget struct {
+	Domain, ChartRef string
+}
+
+// LivePlatform reads the deployed local-platform's domain and targetRevision;
+// ok is false when k3s, ArgoCD or the Application is absent.
+func LivePlatform(ctx context.Context, r Runner) (PlatformTarget, bool, error) {
+	k3s, err := installedK3s(ctx, r)
+	if err != nil || k3s == "" {
+		return PlatformTarget{}, false, err
+	}
+	argo, err := ArgoInstalledVersion(ctx, r)
+	if err != nil || argo == "" {
+		return PlatformTarget{}, false, err
+	}
+	out, err := kubectl(ctx, r, nil, "-n", argoNS, "get", "application", PlatformApp, "--ignore-not-found", "-o", "json")
+	if err != nil {
+		return PlatformTarget{}, false, fmt.Errorf("read %s: %w", PlatformApp, err)
+	}
+	if len(strings.TrimSpace(string(out))) == 0 {
+		return PlatformTarget{}, false, nil
+	}
+	var app struct {
+		Spec struct {
+			Source struct {
+				TargetRevision string `json:"targetRevision"`
+				Helm           struct {
+					ValuesObject struct {
+						Domain string `json:"domain"`
+					} `json:"valuesObject"`
+				} `json:"helm"`
+			} `json:"source"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal(out, &app); err != nil {
+		return PlatformTarget{}, false, fmt.Errorf("read %s: parse: %w", PlatformApp, err)
+	}
+	return PlatformTarget{Domain: app.Spec.Source.Helm.ValuesObject.Domain, ChartRef: app.Spec.Source.TargetRevision}, true, nil
+}
+
 // K3sInstalledVersion returns the installed k3s version, or "" when absent.
 func K3sInstalledVersion(ctx context.Context, r Runner) (string, error) {
 	return installedK3s(ctx, r)
@@ -106,7 +167,11 @@ func Status(ctx context.Context, r Runner, home, domain string) (Report, error) 
 					rep.Platform = st
 				case strings.HasPrefix(name, "env-"):
 					slug := strings.TrimPrefix(name, "env-")
-					rep.Envs = append(rep.Envs, EnvStatus{Slug: slug, Sync: st.Sync, Health: st.Health, URLs: EnvURLs(slug, domain)})
+					envDomain := it.envDomain()
+					if envDomain == "" {
+						envDomain = domain
+					}
+					rep.Envs = append(rep.Envs, EnvStatus{Slug: slug, Sync: st.Sync, Health: st.Health, URLs: EnvURLs(slug, envDomain)})
 				}
 			}
 		}

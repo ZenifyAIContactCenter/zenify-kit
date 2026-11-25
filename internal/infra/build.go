@@ -72,7 +72,26 @@ func CoreTargets(ws, domain, slug string) ([]BuildTarget, error) {
 	if domain == "" || slug == "" {
 		return nil, fmt.Errorf("build targets: domain %q and slug %q are both required", domain, slug)
 	}
-	ts := []BuildTarget{
+	ts := coreTargets(domain, slug)
+	for _, t := range ts {
+		if _, err := os.Stat(filepath.Join(ws, "repos", t.Repo)); err != nil { //nolint:gosec // G703 -- t.Repo is a literal from coreTargets, ws is the kit's own workspace root
+			return nil, fmt.Errorf("build targets: repo %s: %w", t.Repo, err)
+		}
+	}
+	return ts, nil
+}
+
+// CoreRepos lists the repos CoreTargets builds, in build order.
+func CoreRepos() []string {
+	var out []string
+	for _, t := range coreTargets("x.test", BaseSlug) {
+		out = append(out, t.Repo)
+	}
+	return out
+}
+
+func coreTargets(domain, slug string) []BuildTarget {
+	return []BuildTarget{
 		{Repo: "zenify-ci", Dir: "stacks/spa", Dockerfile: "base.Dockerfile", Image: RegistryHost + "/zenify/base-spa", Tag: BaseSpaTag,
 			Args: map[string]string{"VERSION": BaseSpaTag}},
 		{Repo: "contact-center-be", Dir: ".", Dockerfile: "Dockerfile", Target: "api", Image: RegistryHost + "/contact-center-be/api",
@@ -85,12 +104,6 @@ func CoreTargets(ws, domain, slug string) ([]BuildTarget, error) {
 			Secrets: []string{"npm_token"}},
 		{Repo: "zenify-data-seed", Dir: ".", Dockerfile: "Dockerfile", Image: RegistryHost + "/zenify-data-seed"},
 	}
-	for _, t := range ts {
-		if _, err := os.Stat(filepath.Join(ws, "repos", t.Repo)); err != nil { //nolint:gosec // G703 -- t.Repo is a literal from the list above, ws is the kit's own workspace root
-			return nil, fmt.Errorf("build targets: repo %s: %w", t.Repo, err)
-		}
-	}
-	return ts, nil
 }
 
 // BuildResult reports one target of BuildFromBase.

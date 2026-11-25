@@ -20,7 +20,7 @@ Khi domain mặc định `<github login>.test` không hợp, hoặc muốn giớ
 
 ## Kết quả
 
-Không có cờ đặt giá trị, lệnh in `domain`, `maxEnvs`, `chartRef` hiện tại. Có cờ, lệnh kiểm rồi ghi `~/.zenify/infra/config.json` (quyền 0600). Domain phải là nhãn DNS chữ thường và kết thúc bằng `.test`; `--max-envs` phải từ 1 trở lên. `maxEnvs` nhỏ hơn 1 trong file config cũng bị báo lỗi kèm đường dẫn file, ở mọi lệnh `zenify infra`.
+Không có cờ đặt giá trị, lệnh in `domain`, `maxEnvs`, `chartRef` hiện tại; `domain` và `chartRef` để trống nghĩa là `zenify infra up` theo platform đang chạy. Có cờ, lệnh kiểm rồi ghi `~/.zenify/infra/config.json` (quyền 0600). Domain phải là nhãn DNS chữ thường và kết thúc bằng `.test`; `--max-envs` phải từ 1 trở lên. `maxEnvs` nhỏ hơn 1 trong file config cũng bị báo lỗi kèm đường dẫn file, ở mọi lệnh `zenify infra`.
 
 ## Cờ
 

@@ -315,7 +315,8 @@ func CATrusted(ctx context.Context, r Runner, home string) (bool, error) {
 
 // DNSResolves runs a real `resolvectl query host` and reports whether it
 // answers the ingress IP; a positive exit code means the name does not resolve.
-// Another local resolver (e.g. a *.test wildcard to 127.0.0.1) does not count.
+// Another local resolver (e.g. a *.test wildcard to 127.0.0.1) does not count,
+// and false also covers systemd-resolved not running (resolvectl exits non-zero).
 func DNSResolves(ctx context.Context, r Runner, host string) (bool, error) {
 	out, err := r.Run(ctx, nil, "resolvectl", "query", host)
 	if err != nil {

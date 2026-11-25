@@ -11,12 +11,18 @@ import (
 
 // Config is the user-editable local infra configuration.
 type Config struct {
-	Domain   string `json:"domain"`
+	Domain   string `json:"domain,omitempty"`
 	MaxEnvs  int    `json:"maxEnvs"`
-	ChartRef string `json:"chartRef"`
+	ChartRef string `json:"chartRef,omitempty"`
 }
 
-func defaultConfig() Config { return Config{MaxEnvs: 3, ChartRef: "main"} }
+// DefaultChartRef is the helm ref used when neither a flag, the config nor a
+// deployed platform names one.
+const DefaultChartRef = "main"
+
+// Domain and ChartRef stay empty unless set on purpose: up then follows what
+// is deployed instead of silently retargeting it.
+func defaultConfig() Config { return Config{MaxEnvs: 3} }
 
 // LoadConfig reads config.json over the defaults; a missing file yields the
 // defaults, a corrupt file is an error.
@@ -66,8 +72,8 @@ func (c Config) Validate() error {
 			return err
 		}
 	}
-	if c.ChartRef == "" {
-		return errors.New("chartRef must not be empty")
+	if strings.HasPrefix(c.ChartRef, "-") {
+		return fmt.Errorf("chartRef %q must not start with '-'", c.ChartRef)
 	}
 	return nil
 }

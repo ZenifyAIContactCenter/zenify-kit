@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -104,9 +105,15 @@ func ApplyPlatform(ctx context.Context, r Runner, domain, chartRef string) error
 }
 
 type appStatus struct {
+	Spec struct {
+		Source json.RawMessage `json:"source"`
+	} `json:"spec"`
 	Status struct {
 		Sync struct {
-			Status string `json:"status"`
+			Status     string `json:"status"`
+			ComparedTo struct {
+				Source json.RawMessage `json:"source"`
+			} `json:"comparedTo"`
 		} `json:"sync"`
 		Health struct {
 			Status  string `json:"status"`
@@ -133,10 +140,27 @@ type appStatus struct {
 	} `json:"status"`
 }
 
+// fresh reports whether the status was computed against the current spec:
+// right after an apply the controller still shows the previous comparison.
+func (a appStatus) fresh() bool {
+	var spec, compared any
+	if len(a.Spec.Source) > 0 {
+		if err := json.Unmarshal(a.Spec.Source, &spec); err != nil {
+			return false
+		}
+	}
+	if len(a.Status.Sync.ComparedTo.Source) > 0 {
+		if err := json.Unmarshal(a.Status.Sync.ComparedTo.Source, &compared); err != nil {
+			return false
+		}
+	}
+	return reflect.DeepEqual(spec, compared)
+}
+
 // problems lists what keeps the app from Synced+Healthy, one line each.
 func (a appStatus) problems() string {
 	s := a.Status
-	lines := []string{fmt.Sprintf("app sync=%s health=%s", s.Sync.Status, s.Health.Status)}
+	lines := []string{fmt.Sprintf("app sync=%s health=%s fresh=%v", s.Sync.Status, s.Health.Status, a.fresh())}
 	if s.OperationState.Message != "" {
 		lines = append(lines, fmt.Sprintf("operation %s: %s", s.OperationState.Phase, s.OperationState.Message))
 	}
@@ -160,15 +184,19 @@ func (a appStatus) problems() string {
 	return strings.Join(lines, "\n  ")
 }
 
-// WaitApp polls the Application until it is Synced and Healthy. On timeout the
-// error lists the app's conditions and every resource not Synced+Healthy.
+// WaitApp polls the Application until it is Synced and Healthy against its
+// current spec (status.sync.comparedTo.source equals spec.source), so a status
+// left from before an apply is not accepted. An Application that does not
+// exist yet (a child its app-of-apps has still to create) is waited for until
+// the timeout. On timeout the error lists the app's conditions and every
+// resource not Synced+Healthy.
 func WaitApp(ctx context.Context, r Runner, name string, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var last appStatus
 	failures := 0
 	for {
-		out, err := kubectl(ctx, r, nil, "-n", argoNS, "get", "application", name, "-o", "json")
+		out, err := kubectl(ctx, r, nil, "-n", argoNS, "get", "application", name, "--ignore-not-found", "-o", "json")
 		if err != nil {
 			if ctx.Err() != nil {
 				return fmt.Errorf("wait app %s: not ready within %s (%w):\n  %s", name, timeout, ctx.Err(), last.problems())
@@ -182,12 +210,18 @@ func WaitApp(ctx context.Context, r Runner, name string, timeout time.Duration) 
 			continue
 		}
 		failures = 0
+		if len(bytes.TrimSpace(out)) == 0 { // not created yet
+			if err := sleepCtx(ctx, pollInterval); err != nil {
+				return fmt.Errorf("wait app %s: not created within %s (%w)", name, timeout, err)
+			}
+			continue
+		}
 		var a appStatus
 		if err := json.Unmarshal(out, &a); err != nil {
 			return fmt.Errorf("wait app %s: parse status: %w", name, err)
 		}
 		last = a
-		if a.Status.Sync.Status == "Synced" && a.Status.Health.Status == "Healthy" {
+		if a.fresh() && a.Status.Sync.Status == "Synced" && a.Status.Health.Status == "Healthy" {
 			return nil
 		}
 		if err := sleepCtx(ctx, pollInterval); err != nil {
