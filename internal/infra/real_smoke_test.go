@@ -53,3 +53,54 @@ func TestRealInstall(t *testing.T) {
 	}
 	t.Log("WaitApp: Synced + Healthy")
 }
+
+// TestRealBuild builds the core images on this host into the local registry,
+// then checks every tag exists and a second pass skips them all. Needs a
+// running platform; only runs with ZNF_INFRA_REAL_BUILD=1 and ZNF_INFRA_WS.
+// Optional: ZNF_INFRA_DOMAIN, ZNF_INFRA_ONLY (comma-separated repos),
+// ZNF_INFRA_REF_<repo with - as _> (ref override, e.g. ZNF_INFRA_REF_contact_center_web).
+func TestRealBuild(t *testing.T) {
+	if os.Getenv("ZNF_INFRA_REAL_BUILD") != "1" {
+		t.Skip("set ZNF_INFRA_REAL_BUILD=1 and ZNF_INFRA_WS to build on the real host")
+	}
+	ws, domain := os.Getenv("ZNF_INFRA_WS"), os.Getenv("ZNF_INFRA_DOMAIN")
+	if domain == "" {
+		domain = "quyentm.test"
+	}
+	ts, err := CoreTargets(ws, domain, BaseSlug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	only := map[string]bool{}
+	for _, repo := range strings.Split(os.Getenv("ZNF_INFRA_ONLY"), ",") {
+		if repo != "" {
+			only[repo] = true
+		}
+	}
+	refs := map[string]string{}
+	for _, x := range ts {
+		if v := os.Getenv("ZNF_INFRA_REF_" + strings.ReplaceAll(x.Repo, "-", "_")); v != "" {
+			refs[x.Repo] = v
+		}
+	}
+	ctx := context.Background()
+	r := ExecBuildRunner()
+	for pass := 1; pass <= 2; pass++ {
+		for _, x := range ts {
+			if len(only) > 0 && !only[x.Repo] {
+				continue
+			}
+			res, err := BuildFromBase(ctx, r, ws, x, refs)
+			t.Logf("pass %d %s:%s built=%v duration=%s err=%v", pass, res.Image, res.Tag, res.Built, res.Duration.Round(time.Second), err)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if pass == 2 && res.Built {
+				t.Fatalf("pass 2 rebuilt %s:%s: an existing tag must be skipped", res.Image, res.Tag)
+			}
+			if ok, err := tagExists(ctx, res.Image, res.Tag); err != nil || !ok {
+				t.Fatalf("%s:%s not in the registry after build (exists=%v err=%v)", res.Image, res.Tag, ok, err)
+			}
+		}
+	}
+}

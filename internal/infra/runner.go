@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path"
 	"strings"
@@ -38,10 +39,74 @@ func (execRunner) Run(ctx context.Context, stdin io.Reader, name string, args ..
 	return stdout.Bytes(), nil
 }
 
+// BuildRunner is a Runner that can also hand a child extra env (secrets that
+// must stay off argv) and keep a background process such as a port-forward.
+type BuildRunner interface {
+	Runner
+	// RunEnv runs name with the current env plus env; a failure carries only
+	// the tail of stderr (build logs are long).
+	RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
+	// Start launches name in the background; stop kills it and waits for it.
+	Start(ctx context.Context, name string, args ...string) (stop func() error, err error)
+}
+
+// ExecBuildRunner runs build commands on the real host.
+func ExecBuildRunner() BuildRunner { return execRunner{} }
+
+// stderrTail bounds the stderr a failed RunEnv carries.
+const stderrTail = 4000
+
+func (execRunner) RunEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204 -- callers pass fixed command names; secrets go via env
+	cmd.Env = append(os.Environ(), env...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if len(msg) > stderrTail {
+			msg = "..." + msg[len(msg)-stderrTail:]
+		}
+		if msg != "" {
+			return stdout.Bytes(), fmt.Errorf("%w: %s", err, msg)
+		}
+		return stdout.Bytes(), err
+	}
+	return stdout.Bytes(), nil
+}
+
+func (execRunner) Start(ctx context.Context, name string, args ...string) (func() error, error) {
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204 -- callers pass fixed command names
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start %s: %w", name, err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	return func() error {
+		select {
+		case err := <-done: // exited on its own before stop
+			if err != nil {
+				return fmt.Errorf("%s exited early: %w", name, err)
+			}
+			return nil
+		default:
+		}
+		if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return fmt.Errorf("stop %s: %w", name, err)
+		}
+		<-done // killed: its exit status is the kill, not a failure
+		return nil
+	}, nil
+}
+
+// kubectlArgs prefixes args with the local k3s kubeconfig (see kubectl).
+func kubectlArgs(args ...string) []string {
+	return append([]string{"--kubeconfig", K3sKubeconfig}, args...)
+}
+
 // kubectl targets the local k3s cluster explicitly: the user's default context
 // may point at a shared remote cluster.
 func kubectl(ctx context.Context, r Runner, stdin io.Reader, args ...string) ([]byte, error) {
-	return r.Run(ctx, stdin, "kubectl", append([]string{"--kubeconfig", K3sKubeconfig}, args...)...)
+	return r.Run(ctx, stdin, "kubectl", kubectlArgs(args...)...)
 }
 
 // exitCode returns the process exit code carried by err, or -1.
