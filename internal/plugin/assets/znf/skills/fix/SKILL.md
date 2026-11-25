@@ -21,6 +21,7 @@ parallel hypotheses) — criteria in `references/why-diagnosis-first.md`. State 
 
 **Input:** no argument (latest `*.log` + `pm test`), a description, or a GitHub Actions URL
 (`gh run view --log-failed`) — `references/feedback-loop.md` § Inputs.
+A `ZEN-<a>`/`OPS-<a>` key → read the item first (`_shared/plane-key.md`).
 
 **Prod/staging symptom (any input):** pull evidence in order: Loki, Tempo,
 `zenify db-read`/`redis-read`, PostHog — recipes: `references/feedback-loop.md`.

@@ -7,15 +7,15 @@ allowed-tools: Read Grep Glob Bash Agent
 
 **Every gate is kept, at every size.** No "small enough to skip" path.
 
-Tool names for each action: `znf:_shared/harness-tools` (harness mapping table).
+Tool names for each action: `znf:_shared/harness-tools`.
 
 ```
 0 fetch → 1 ground → 2 brainstorm→spec → 3 ground → 4 scout → 5 plan → 6 wt+SDD → 7 /ship
 ```
 
 - Worktree at **Step 6**, not Step 0.
-- **No complexity triage** — scale the design, never the step count.
-- **A `.md` path argument** → Step 0, ground **every name the file uses**, then Steps 4 and 6; skip 1, 2, 5. SDD's Setup resumes from the ledger: a `Task <N>: complete` line is not re-dispatched. **A description** → all steps.
+- **No complexity triage**: scale the design, not the step count.
+- **A `.md` path argument** → Step 0, ground **every name the file uses**, then Steps 4 and 6; skip 1, 2, 5. SDD resumes from the ledger: a `Task <N>: complete` line is not re-run. **A description** → all steps.
 - **Every step leaves a named line** — `Skill(znf:ground)` ×3, `Agent(znf:scout)` ×1, `Skill(znf:brainstorming)`, `Skill(znf:writing-plans)`, `Skill(znf:subagent-driven-development)`, `Skill(znf:ship)`. A missing line is a skipped step.
 
 ## Step 0: Sync the base
@@ -26,11 +26,11 @@ node -e 'console.log(JSON.parse(require("fs").readFileSync(".claude/worktree.jso
 git -C <repo> rev-list --count HEAD..<baseRef> # how far behind
 ```
 
-**`fetch`, never `pull`; never switch the checkout's branch.** Report per repo: base · on it · behind · dirty.
+**`fetch`, never `pull`; never switch the checkout branch.** Report per repo: base · on it · behind · dirty.
 
 ## Step 1: Ground the request — before brainstorming
 
-**`Skill(znf:ground)`** on the entities the request names, before any clarifying question; field detail waits for Step 3.
+A `ZEN-<a>`/`OPS-<a>` key → read the item first (`_shared/plane-key.md`). **`Skill(znf:ground)`** on the entities the request names, before any question; fields wait for Step 3.
 
 ```bash
 zenify db-read collections <term-from-the-request>   # real names
