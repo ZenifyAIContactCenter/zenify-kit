@@ -263,6 +263,9 @@ func (realProbe) GhTokenAvailable() error {
 }
 
 func (p realProbe) LookupKey(name string) (bool, error) {
+	if os.Getenv(name) != "" { // the process env always wins over the store
+		return true, nil
+	}
 	path := devenv.Path(p.workspace)
 	f, err := devenv.Load(path)
 	if err != nil {

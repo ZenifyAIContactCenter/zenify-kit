@@ -179,3 +179,15 @@ func TestRealProbe_LookupKeyMissingStoreIsNotAnError(t *testing.T) {
 		t.Fatalf("got ok=%v err=%v", ok, err)
 	}
 }
+
+func TestRealProbe_LookupKeyEnvWinsOverUnreadableStore(t *testing.T) {
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".zenify", ".env"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZNF_TEST_EXPORTED_KEY", "present")
+	ok, err := RealHostProbe(ws).LookupKey("ZNF_TEST_EXPORTED_KEY")
+	if err != nil || !ok {
+		t.Fatalf("exported key must pass despite broken store, got ok=%v err=%v", ok, err)
+	}
+}
