@@ -187,12 +187,17 @@ func (realProbe) InstalledK3sVersion() (string, bool, error) {
 	if err != nil {
 		return "", true, fmt.Errorf("k3s --version: %w", withStderr(err))
 	}
-	// first line: "k3s version v1.30.0+k3s1 (hash)"
+	v, err := parseK3sVersion(out)
+	return v, true, err
+}
+
+// parseK3sVersion reads `k3s --version`; first line: "k3s version v1.30.0+k3s1 (hash)".
+func parseK3sVersion(out []byte) (string, error) {
 	f := strings.Fields(string(out))
 	if len(f) >= 3 && f[0] == "k3s" {
-		return f[2], true, nil
+		return f[2], nil
 	}
-	return "", true, fmt.Errorf("unexpected k3s --version output %q", strings.TrimSpace(string(out)))
+	return "", fmt.Errorf("unexpected k3s --version output %q", strings.TrimSpace(string(out)))
 }
 
 func (realProbe) K3sServicelbDisabled() (bool, error) {

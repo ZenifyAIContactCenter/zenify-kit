@@ -1,0 +1,13 @@
+#!/usr/sbin/nft -f
+# Managed by zenify infra. Only the k3s API server (6443) and kubelet (10250)
+# ports are filtered: loopback and the pod/service CIDRs may reach them.
+table inet {{ .Table }}
+delete table inet {{ .Table }}
+table inet {{ .Table }} {
+	chain input {
+		type filter hook input priority filter; policy accept;
+		iifname "lo" accept
+		ip saddr { 10.42.0.0/16, 10.43.0.0/16 } accept
+		tcp dport { 6443, 10250 } drop
+	}
+}

@@ -14,6 +14,12 @@ const (
 	PlatformNamespace = "zenify-system"
 	// BaseSlug is the slug of the always-on base environment.
 	BaseSlug = "base"
+	// K3sVersion is the pinned k3s release (measured working on Ubuntu 24.04).
+	K3sVersion = "v1.37.2+k3s1"
+	// ArgoCDVersion is the pinned ArgoCD release.
+	ArgoCDVersion = "v3.6.1"
+	// K3sKubeconfig is the kubeconfig k3s writes for the local cluster.
+	K3sKubeconfig = "/etc/rancher/k3s/k3s.yaml"
 	// BuildkitVersion is the pinned buildkit release.
 	BuildkitVersion = "v0.34.2"
 )
