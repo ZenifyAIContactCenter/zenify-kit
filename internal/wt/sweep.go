@@ -256,6 +256,7 @@ func sweepStale(o SweepOptions, r gitx.Runner, it SweepItem) error {
 	if _, e := r.Run(o.RepoRoot, "worktree", "prune"); e != nil {
 		_, _ = fmt.Fprintf(o.Stderr, "wt:   worktree prune failed: %v\n", e)
 	}
+	clearXcodeDerivedData(o.Stderr, it.Path)
 	_, _ = fmt.Fprintf(o.Stdout, "wt:   %s — state dropped, branch %s kept (unmerged)\n", it.Slug, orDash(it.Branch))
 	return nil
 }

@@ -47,6 +47,7 @@ func RunRm(o RmOptions) error {
 		return err
 	}
 	path := filepath.Join(o.RepoRoot, cfg.WorktreeDir, o.Slug)
+	realPath := canon(path) // resolved now: once the dir is gone EvalSymlinks cannot
 	base := cfg.BaseRef
 
 	gone := false
@@ -150,6 +151,8 @@ func RunRm(o RmOptions) error {
 			}
 		}
 	}
+
+	clearXcodeDerivedData(o.Stderr, path, realPath)
 
 	if branch == "" {
 		_, _ = fmt.Fprintf(o.Stderr, "wt: %q was on a detached HEAD — no branch to delete\n", o.Slug)
