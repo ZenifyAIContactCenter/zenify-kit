@@ -64,8 +64,8 @@ const planeDenyReadOut = `{"hookSpecificOutput":{"hookEventName":"PreToolUse","p
 
 // planeReadOnlyReason / planeStateReason are the deny reasons for a blocked write.
 const (
-	planeReadOnlyReason = "Plane: chế độ chỉ đọc, không được ghi. Cần ghi thì chạy zenify await handoff hoặc gắn nhãn needs-human"                                                //znf:allow-lang
-	planeStateReason    = "Plane: state do Zenie chuyển, không đặt state qua MCP Plane. Dùng mcp__zenify-zenie__item_move (key, to): Zenie kiểm tra trạng thái rồi đồng bộ Plane" //znf:allow-lang
+	planeReadOnlyReason = "Plane: chế độ chỉ đọc, không được ghi. Cần ghi thì chạy zenify await handoff hoặc gắn nhãn needs-human"                                                                 //znf:allow-lang
+	planeStateReason    = "Plane: state do Zenie chuyển, không đặt state qua MCP Plane. Dùng mcp__zenify-zenie__item_move (key, to) nếu Zenie đã bật: Zenie kiểm tra trạng thái rồi đồng bộ Plane" //znf:allow-lang
 )
 
 // runPlaneGuard is the plane-guard PreToolUse hook. It always returns 0: a

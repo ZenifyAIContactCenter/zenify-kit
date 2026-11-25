@@ -131,7 +131,7 @@ Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn v�
 
 ## Zenie cho agent {#zenie-cho-agent}
 
-`zenify-zenie` nối Claude Code với bot Zenie qua broker (`/mcp/zenie`). Broker gửi kèm GitHub login của bạn, Zenie tra ra người tương ứng trong danh sách của nó; các tool chỉ đọc, trừ `item_move`. Login chưa gắn với một người đang hoạt động trong Zenie thì mọi lần gọi đều bị từ chối kèm hướng dẫn: nhắn Zenie trên Telegram để gắn GitHub login.
+`zenify-zenie` nối Claude Code với bot Zenie qua broker (`/mcp/zenie`). Broker gửi kèm GitHub login của bạn, Zenie tra ra người tương ứng trong danh sách của nó; các tool chỉ đọc, trừ `item_move` và hai tool `review_decline`/`review_request` (chỉ tác động lên PR của chính bạn). Login chưa gắn với một người đang hoạt động trong Zenie thì mọi lần gọi đều bị từ chối kèm hướng dẫn: nhắn Zenie trên Telegram để gắn GitHub login.
 
 | Tool | Trả về |
 |---|---|
@@ -142,11 +142,11 @@ Sau khi `zenify up --apply`, khởi động lại Claude Code để MCP gắn v�
 | `item_move` | Chuyển việc ZEN-n/OPS-n sang Backlog, Todo, In Progress, On Staging, Ready for Release, Done hoặc Cancelled dưới danh tính của bạn; Zenie kiểm quyền và trạng thái rồi đồng bộ Plane. Claude Code luôn hỏi bạn trước khi chạy (luật ask của kit). Chỉ có khi Zenie bật `ZENIE_MCP_ITEM_MOVE` |
 | `item_find`, `item_read`, `product_index`, `product_read`, `error_list`, `error_detail` | Chính các tool Zenie dùng khi bạn hỏi nó trên Telegram, chạy dưới danh tính của bạn. Chỉ có khi Zenie đang bật tool đó cho bạn |
 
-Finding do model viết từ nội dung PR: agent phải tự kiểm lại với code trước khi sửa. Ghi vào Plane vẫn đi qua `zenify-plane` (xem dưới); ngoài `item_move`, Zenie không nhận lệnh ghi qua MCP; đặt state qua `zenify-plane` bị hook chặn và chỉ sang `item_move`.
+Finding do model viết từ nội dung PR: agent phải tự kiểm lại với code trước khi sửa. Ghi vào Plane vẫn đi qua `zenify-plane` (xem dưới); ngoài `item_move` và hai tool review trên, Zenie không nhận lệnh ghi qua MCP; đặt state qua `zenify-plane` bị hook chặn và chỉ sang `item_move`.
 
 ## Plane cho agent
 
-`zenify-plane` là MCP server kiểu stdio: Claude Code chạy `zenify plane-mcp` bằng PAT Plane của chính bạn, không đi qua broker. Agent đọc work item, cycle, module trực tiếp; mọi thao tác ghi luôn hỏi bạn trước (hook `plane-guard`); đặt `state` cho work item qua `workitem create/update` bị chặn hẳn (Zenie tự chuyển state). Đặt env `ZENIFY_PLANE_GUARD=read` (không phân biệt hoa thường) thì mọi thao tác ghi đều bị chặn, kể cả khi input hỏng.
+`zenify-plane` là MCP server kiểu stdio: Claude Code chạy `zenify plane-mcp` bằng PAT Plane của chính bạn, không đi qua broker. Agent đọc work item, cycle, module trực tiếp; mọi thao tác ghi luôn hỏi bạn trước (hook `plane-guard`); đặt `state` cho work item qua `workitem create/update` bị chặn hẳn (Zenie tự chuyển state; agent dùng `item_move` của `zenify-zenie`). Đặt env `ZENIFY_PLANE_GUARD=read` (không phân biệt hoa thường) thì mọi thao tác ghi đều bị chặn, kể cả khi input hỏng.
 
 Cách bật:
 
