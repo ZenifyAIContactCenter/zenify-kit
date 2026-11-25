@@ -6,8 +6,10 @@ const (
 	TraefikClusterIP = "10.43.200.80"
 	// DNSClusterIP is the fixed ClusterIP of the cluster DNS for the local domain.
 	DNSClusterIP = "10.43.200.53"
-	// RegistryAddr is the in-cluster image registry address.
-	RegistryAddr = "10.43.200.10:5000"
+	// RegistryClusterIP is the fixed ClusterIP of the in-cluster image registry.
+	RegistryClusterIP = "10.43.200.10"
+	// RegistryHost is the registry alias (host:port) images are tagged and pulled with.
+	RegistryHost = "registry.zenify.internal:5000"
 	// PlatformNamespace is the namespace holding platform components.
 	PlatformNamespace = "zenify-system"
 	// BaseSlug is the slug of the always-on base environment.
