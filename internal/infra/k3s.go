@@ -24,6 +24,8 @@ const (
 	firewallUnit = "zenify-k3s-firewall.service"
 	unitPath     = "/etc/systemd/system/" + firewallUnit
 	k3sInstaller = "https://get.k3s.io"
+	// restartMarker exists while a k3s config change awaits a successful installer run.
+	restartMarker = "/etc/rancher/k3s/.zenify-restart-pending"
 )
 
 // renderAsset executes the embedded template assets/<name> with data.
@@ -73,26 +75,51 @@ func k3sHostFiles() []hostFile {
 
 // InstallK3s writes the k3s config, registry mirror, Traefik HelmChartConfig and
 // the API/kubelet firewall, then runs the pinned k3s installer when k3s is not
-// at the pinned version or its config or registry mirror changed.
+// at the pinned version or its config or registry mirror changed. A restart
+// marker written before such a change and removed only after the installer
+// succeeded makes a run after a failed install retry the restart.
 func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
-	var k3sDirty, fwDirty bool
+	_, pending, err := readRootFile(ctx, r, restartMarker)
+	if err != nil {
+		return false, fmt.Errorf("install k3s: %w", err)
+	}
+	var fwDirty bool
 	for _, f := range k3sHostFiles() {
 		content, err := f.render()
 		if err != nil {
 			return changed, fmt.Errorf("install k3s: %w", err)
 		}
-		c, err := ensureRootFile(ctx, r, f.path, content)
+		cur, exists, err := readRootFile(ctx, r, f.path)
 		if err != nil {
 			return changed, fmt.Errorf("install k3s: %w", err)
 		}
-		if c {
-			changed = true
-			k3sDirty = k3sDirty || f.apply == applyK3s
-			fwDirty = fwDirty || f.apply == applyFirewall
+		if exists && bytes.Equal(cur, content) {
+			continue
 		}
+		if f.apply == applyK3s && !pending {
+			if err := writeRootFile(ctx, r, restartMarker, []byte("k3s restart pending\n")); err != nil {
+				return changed, fmt.Errorf("install k3s: restart marker: %w", err)
+			}
+			pending = true
+		}
+		if err := writeRootFile(ctx, r, f.path, content); err != nil {
+			return changed, fmt.Errorf("install k3s: %w", err)
+		}
+		changed = true
+		fwDirty = fwDirty || f.apply == applyFirewall
 	}
 
+	if !fwDirty {
+		// a failed restart in an earlier run leaves the unit inactive
+		if _, err := r.Run(ctx, nil, "sudo", "systemctl", "is-active", "--quiet", firewallUnit); err != nil {
+			if exitCode(err) <= 0 {
+				return changed, fmt.Errorf("install k3s: firewall: is-active: %w", err)
+			}
+			fwDirty = true
+		}
+	}
 	if fwDirty {
+		changed = true
 		for _, args := range [][]string{
 			{"systemctl", "daemon-reload"},
 			{"systemctl", "enable", firewallUnit},
@@ -108,7 +135,7 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 	if err != nil {
 		return changed, fmt.Errorf("install k3s: %w", err)
 	}
-	if ver == K3sVersion && !k3sDirty {
+	if ver == K3sVersion && !pending {
 		return changed, nil
 	}
 	script, err := r.Run(ctx, nil, "curl", "-sfL", k3sInstaller)
@@ -117,6 +144,9 @@ func InstallK3s(ctx context.Context, r Runner) (changed bool, err error) {
 	}
 	if _, err := r.Run(ctx, bytes.NewReader(script), "sudo", "env", "INSTALL_K3S_VERSION="+K3sVersion, "sh", "-s", "-"); err != nil {
 		return true, fmt.Errorf("install k3s: run installer %s: %w", K3sVersion, err)
+	}
+	if _, err := r.Run(ctx, nil, "sudo", "rm", "-f", restartMarker); err != nil {
+		return true, fmt.Errorf("install k3s: remove restart marker: %w", err)
 	}
 	return true, nil
 }

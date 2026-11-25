@@ -97,7 +97,7 @@ func TestInstallK3sUpToDateIsNoop(t *testing.T) {
 	if changed {
 		t.Fatal("changed = true on an up-to-date host")
 	}
-	if r.ran("sudo env INSTALL_K3S_VERSION") || r.ran("sudo tee") || r.ran("sudo systemctl") {
+	if r.ran("sudo env INSTALL_K3S_VERSION") || r.ran("sudo tee") || r.ran("sudo systemctl restart") {
 		t.Fatalf("unexpected mutation: %v", r.calls)
 	}
 }
@@ -144,7 +144,7 @@ func TestInstallK3sStepErrorNamesStep(t *testing.T) {
 	delete(files, k3sConfigPath)
 	base := hostFiles(files, K3sVersion)
 	r := &fakeRunner{respond: func(c call) ([]byte, error) {
-		if c.name == "sudo" && c.args[0] == "tee" {
+		if c.name == "sudo" && c.args[0] == "tee" && c.args[1] == k3sConfigPath+".zenify.tmp" {
 			return nil, errors.New("disk full")
 		}
 		return base(c)
@@ -152,5 +152,56 @@ func TestInstallK3sStepErrorNamesStep(t *testing.T) {
 	_, err := InstallK3s(context.Background(), r)
 	if err == nil || !strings.Contains(err.Error(), k3sConfigPath) || !strings.Contains(err.Error(), "disk full") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// Business rule: if the installer failed after a config change, the next run
+// must still restart k3s even though the files now match.
+func TestInstallK3sRetriesPendingRestart(t *testing.T) {
+	files := desiredHostFiles(t)
+	files[restartMarker] = "k3s restart pending\n"
+	r := &fakeRunner{respond: hostFiles(files, K3sVersion)}
+	changed, err := InstallK3s(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || !r.ran("sudo env INSTALL_K3S_VERSION="+K3sVersion) || !r.ran("sudo rm -f "+restartMarker) {
+		t.Fatalf("changed=%v calls=%v", changed, r.calls)
+	}
+}
+
+// Business rule: a failed installer keeps the marker so the restart is retried.
+func TestInstallK3sFailedInstallerKeepsMarker(t *testing.T) {
+	files := desiredHostFiles(t)
+	delete(files, registriesPath)
+	base := hostFiles(files, K3sVersion)
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.name == "sudo" && c.args[0] == "env" {
+			return nil, errors.New("installer failed")
+		}
+		return base(c)
+	}}
+	if _, err := InstallK3s(context.Background(), r); err == nil {
+		t.Fatal("want installer error")
+	}
+	if !r.ran("sudo tee "+restartMarker) || r.ran("sudo rm -f "+restartMarker) {
+		t.Fatalf("marker not kept: %v", r.calls)
+	}
+}
+
+// Business rule: a firewall unit left inactive by a failed earlier run is restarted.
+func TestInstallK3sInactiveFirewallRestarts(t *testing.T) {
+	base := hostFiles(desiredHostFiles(t), K3sVersion)
+	r := &fakeRunner{respond: func(c call) ([]byte, error) {
+		if c.name == "sudo" && c.args[0] == "systemctl" && c.args[1] == "is-active" {
+			return nil, exitErr(3)
+		}
+		return base(c)
+	}}
+	if _, err := InstallK3s(context.Background(), r); err != nil {
+		t.Fatal(err)
+	}
+	if !r.ran("sudo systemctl restart " + firewallUnit) {
+		t.Fatalf("firewall not restarted: %v", r.calls)
 	}
 }

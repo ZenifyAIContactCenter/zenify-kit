@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,22 @@ func TestSetRepoCredentialTokenOnlyOnStdin(t *testing.T) {
 	}
 	if !inStdin {
 		t.Fatal("token not sent on stdin")
+	}
+}
+
+// Business rule: the token must not be copied into the last-applied annotation
+// (server-side apply) nor surface in an error message.
+func TestSetRepoCredentialServerSideAndRedacted(t *testing.T) {
+	const token = "ghp_secretTOKEN123"
+	r := &fakeRunner{respond: func(call) ([]byte, error) {
+		return nil, errors.New("admission denied: password " + token)
+	}}
+	err := SetRepoCredential(context.Background(), r, token)
+	if err == nil || strings.Contains(err.Error(), token) || !strings.Contains(err.Error(), "***") {
+		t.Fatalf("err = %v", err)
+	}
+	if !r.ran("kubectl --kubeconfig " + K3sKubeconfig + " apply --server-side") {
+		t.Fatalf("not server-side: %v", r.calls)
 	}
 }
 
@@ -90,6 +107,10 @@ func TestInstallArgoPinnedIsNoop(t *testing.T) {
 	if r.ran("kubectl --kubeconfig " + K3sKubeconfig + " apply") {
 		t.Fatal("apply ran on a pinned install")
 	}
+	// an earlier run may have applied and then failed its wait
+	if !r.ran("kubectl --kubeconfig " + K3sKubeconfig + " -n argocd rollout status statefulset/argocd-application-controller") {
+		t.Fatalf("workloads not awaited: %v", r.calls)
+	}
 }
 
 func TestInstallArgoAppliesPinnedManifest(t *testing.T) {
@@ -137,5 +158,33 @@ func TestWaitAppHealthy(t *testing.T) {
 	}}
 	if err := WaitApp(context.Background(), r, "local-platform", time.Second); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Business rule: a brief API outage (k3s restart) must not abort the wait.
+func TestWaitAppToleratesTransientErrors(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = old }()
+	n := 0
+	r := &fakeRunner{respond: func(call) ([]byte, error) {
+		if n++; n <= maxGetFailures-1 {
+			return nil, errors.New("connection refused")
+		}
+		return []byte(`{"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}`), nil
+	}}
+	if err := WaitApp(context.Background(), r, "local-platform", time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWaitAppGivesUpAfterRepeatedErrors(t *testing.T) {
+	old := pollInterval
+	pollInterval = time.Millisecond
+	defer func() { pollInterval = old }()
+	r := &fakeRunner{respond: func(call) ([]byte, error) { return nil, errors.New("connection refused") }}
+	err := WaitApp(context.Background(), r, "local-platform", time.Second)
+	if err == nil || !strings.Contains(err.Error(), "connection refused") || len(r.calls) != maxGetFailures {
+		t.Fatalf("err=%v calls=%d", err, len(r.calls))
 	}
 }

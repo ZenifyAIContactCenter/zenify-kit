@@ -68,25 +68,17 @@ func readRootFile(ctx context.Context, r Runner, p string) (data []byte, exists 
 	return out, true, nil
 }
 
-// ensureRootFile writes content to p (via a temp file + rename) unless p
-// already holds exactly that content; changed reports whether it wrote.
-func ensureRootFile(ctx context.Context, r Runner, p string, content []byte) (changed bool, err error) {
-	cur, exists, err := readRootFile(ctx, r, p)
-	if err != nil {
-		return false, err
-	}
-	if exists && bytes.Equal(cur, content) {
-		return false, nil
-	}
+// writeRootFile writes content to p via a temp file + rename.
+func writeRootFile(ctx context.Context, r Runner, p string, content []byte) error {
 	if _, err := r.Run(ctx, nil, "sudo", "install", "-d", "-m", "0755", path.Dir(p)); err != nil {
-		return false, fmt.Errorf("mkdir %s: %w", path.Dir(p), err)
+		return fmt.Errorf("mkdir %s: %w", path.Dir(p), err)
 	}
 	tmp := p + ".zenify.tmp"
 	if _, err := r.Run(ctx, bytes.NewReader(content), "sudo", "tee", tmp); err != nil {
-		return false, fmt.Errorf("write %s: %w", tmp, err)
+		return fmt.Errorf("write %s: %w", tmp, err)
 	}
 	if _, err := r.Run(ctx, nil, "sudo", "mv", "-f", tmp, p); err != nil {
-		return false, fmt.Errorf("rename %s to %s: %w", tmp, p, err)
+		return fmt.Errorf("rename %s to %s: %w", tmp, p, err)
 	}
-	return true, nil
+	return nil
 }

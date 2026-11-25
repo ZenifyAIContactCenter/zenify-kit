@@ -21,34 +21,46 @@ const (
 // pollInterval is how often WaitApp re-reads the Application (tests shorten it).
 var pollInterval = 5 * time.Second
 
+// maxGetFailures is how many consecutive failed Application reads WaitApp
+// tolerates (e.g. the API server restarting) before it gives up.
+const maxGetFailures = 3
+
 func argoManifestURL() string {
 	return "https://raw.githubusercontent.com/argoproj/argo-cd/" + ArgoCDVersion + "/manifests/install.yaml"
 }
 
-// InstallArgo applies the pinned ArgoCD manifest and waits for its workloads;
-// it does nothing when argocd-server already runs the pinned image.
+// InstallArgo applies the pinned ArgoCD manifest unless argocd-server already
+// runs the pinned image, then waits for the ArgoCD workloads either way.
 func InstallArgo(ctx context.Context, r Runner) (changed bool, err error) {
 	img, err := kubectl(ctx, r, nil, "-n", argoNS, "get", "deploy", "argocd-server", "--ignore-not-found",
 		"-o", "jsonpath={.spec.template.spec.containers[0].image}")
 	if err != nil {
 		return false, fmt.Errorf("install argocd: read installed version: %w", err)
 	}
-	if strings.HasSuffix(strings.TrimSpace(string(img)), ":"+ArgoCDVersion) {
-		return false, nil
+	if !strings.HasSuffix(strings.TrimSpace(string(img)), ":"+ArgoCDVersion) {
+		if err := applyArgo(ctx, r); err != nil {
+			return true, err
+		}
+		changed = true
 	}
-	ns := "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: " + argoNS + "\n"
-	if _, err := kubectl(ctx, r, strings.NewReader(ns), "apply", "-f", "-"); err != nil {
-		return false, fmt.Errorf("install argocd: create namespace: %w", err)
-	}
-	if _, err := kubectl(ctx, r, nil, "apply", "--server-side", "--force-conflicts", "-n", argoNS, "-f", argoManifestURL()); err != nil {
-		return true, fmt.Errorf("install argocd %s: apply manifest: %w", ArgoCDVersion, err)
-	}
+	// always wait: an earlier run may have applied the manifest and failed here
 	for _, w := range []string{"deploy/argocd-server", "deploy/argocd-repo-server", "statefulset/argocd-application-controller"} {
 		if _, err := kubectl(ctx, r, nil, "-n", argoNS, "rollout", "status", w, "--timeout=5m"); err != nil {
-			return true, fmt.Errorf("install argocd: wait %s: %w", w, err)
+			return changed, fmt.Errorf("install argocd: wait %s: %w", w, err)
 		}
 	}
-	return true, nil
+	return changed, nil
+}
+
+func applyArgo(ctx context.Context, r Runner) error {
+	ns := "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: " + argoNS + "\n"
+	if _, err := kubectl(ctx, r, strings.NewReader(ns), "apply", "-f", "-"); err != nil {
+		return fmt.Errorf("install argocd: create namespace: %w", err)
+	}
+	if _, err := kubectl(ctx, r, nil, "apply", "--server-side", "--force-conflicts", "-n", argoNS, "-f", argoManifestURL()); err != nil {
+		return fmt.Errorf("install argocd %s: apply manifest: %w", ArgoCDVersion, err)
+	}
+	return nil
 }
 
 // SetRepoCredential stores the GitHub token ArgoCD uses to read the helm repo.
@@ -61,8 +73,10 @@ func SetRepoCredential(ctx context.Context, r Runner, token string) error {
 	if err != nil {
 		return fmt.Errorf("set repo credential: %w", err)
 	}
-	if _, err := kubectl(ctx, r, bytes.NewReader(b), "apply", "-f", "-"); err != nil {
-		return fmt.Errorf("set repo credential: apply secret %s/repo-helm: %w", argoNS, err)
+	// server-side apply: client-side apply would copy stringData (the token)
+	// into the last-applied-configuration annotation
+	if _, err := kubectl(ctx, r, bytes.NewReader(b), "apply", "--server-side", "--field-manager=zenify", "-f", "-"); err != nil {
+		return fmt.Errorf("set repo credential: apply secret %s/repo-helm: %s", argoNS, strings.ReplaceAll(err.Error(), token, "***"))
 	}
 	return nil
 }
@@ -152,14 +166,22 @@ func WaitApp(ctx context.Context, r Runner, name string, timeout time.Duration) 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var last appStatus
+	failures := 0
 	for {
 		out, err := kubectl(ctx, r, nil, "-n", argoNS, "get", "application", name, "-o", "json")
 		if err != nil {
 			if ctx.Err() != nil {
 				return fmt.Errorf("wait app %s: not ready within %s (%w):\n  %s", name, timeout, ctx.Err(), last.problems())
 			}
-			return fmt.Errorf("wait app %s: %w", name, err)
+			if failures++; failures >= maxGetFailures {
+				return fmt.Errorf("wait app %s: %d consecutive reads failed: %w", name, failures, err)
+			}
+			if err := sleepCtx(ctx, pollInterval); err != nil {
+				return fmt.Errorf("wait app %s: not ready within %s (%w):\n  %s", name, timeout, err, last.problems())
+			}
+			continue
 		}
+		failures = 0
 		var a appStatus
 		if err := json.Unmarshal(out, &a); err != nil {
 			return fmt.Errorf("wait app %s: parse status: %w", name, err)
@@ -168,10 +190,17 @@ func WaitApp(ctx context.Context, r Runner, name string, timeout time.Duration) 
 		if a.Status.Sync.Status == "Synced" && a.Status.Health.Status == "Healthy" {
 			return nil
 		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("wait app %s: not ready within %s (%w):\n  %s", name, timeout, ctx.Err(), last.problems())
-		case <-time.After(pollInterval):
+		if err := sleepCtx(ctx, pollInterval); err != nil {
+			return fmt.Errorf("wait app %s: not ready within %s (%w):\n  %s", name, timeout, err, last.problems())
 		}
+	}
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
 	}
 }
