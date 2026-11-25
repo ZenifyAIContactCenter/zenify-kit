@@ -45,6 +45,24 @@ write-guard: <path> is outside the workspace layout. temp → $TMPDIR · researc
 
 Cách đọc: `<path>` là đích agent định ghi. Chọn đúng một chỗ trong danh sách theo loại file (cùng bảng ở trên) và ghi lại ở đó. Hook fail-open: lỗi bất ngờ không chặn phiên, chỉ deny đúng vi phạm quy ước.
 
+## Overlay: đổi path hoặc thêm repo riêng
+
+`.zenify-overlay.yaml` ở root workspace được đọc lúc chạy, không nhúng vào binary. Khóa `repos:` của nó làm hai việc:
+
+- Mục có `name` trùng repo trong manifest nhúng: chỉ đổi `path` của repo đó, các trường khác giữ nguyên.
+- Mục có `name` mà manifest nhúng không có: được thêm vào như một repo mới khi có `url`. Cần đủ `name`, `url`, `path`; `base`, `tags` tùy chọn. Mục không có `url` bị bỏ qua.
+
+Repo nội bộ chưa có trong manifest nhúng (vd app mobile) khai ở đây, không mở PR vào `manifest/repos.yaml`, vì binary là public (xem `ARCHITECTURE.md`):
+
+```yaml
+repos:
+  - name: mobile-app
+    url: git@github.com:<org>/mobile-app.git
+    path: repos/mobile-app
+    base: origin/main
+    tags: [mobile]
+```
+
 ## Tìm file đã bị sweep xóa
 
 `zenify docs sweep` (mặc định chỉ in kế hoạch, `--apply` mới xóa) chép mỗi file bị xóa sang dir local trước khi xóa: reference → `docs/research/<repo>/`, handoff và plan → `docs/notes/`. Tìm ở đó trước. Bản gốc trong store vẫn còn trong git history:
@@ -62,5 +80,6 @@ Dùng lệnh này chỉ để đọc lịch sử; đừng sửa gì trong store 
 
 <!-- Nguồn (cho người bảo trì, không hiển thị):
 - `docs/specs/zenify-kit/2026-10-12-knowledge-hygiene-design.md` (mục "Quy ước thư mục", bảng nguyên văn)
+- `internal/manifest/manifest.go` (applyOverlay)
 - `internal/cli/writeguard.go` (message deny), `internal/apply/globalhooks.go` (matcher), `internal/cli/doctor_context.go`
 -->

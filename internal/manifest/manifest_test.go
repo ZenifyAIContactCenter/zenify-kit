@@ -89,6 +89,41 @@ repos:
 	}
 }
 
+func TestParseWithOverlay_AddsRepo(t *testing.T) {
+	base := []byte("org: acme\nrepos:\n  - name: a\n    url: ua\n    path: repos/a\n    base: origin/staging\n")
+	ov := writeTmp(t, "overlay.yaml", `repos:
+  - name: a
+    url: ignored
+    base: ignored
+  - name: mobile
+    url: git@github.com:acme/mobile.git
+    path: repos/mobile
+    base: origin/main
+    tags: [mobile]
+  - name: ghost
+    path: repos/ghost
+`)
+	m, err := ParseWithOverlay(base, "embedded", ov)
+	if err != nil {
+		t.Fatalf("ParseWithOverlay: %v", err)
+	}
+	if len(m.Repos) != 2 {
+		t.Fatalf("repos = %+v, want a + mobile (ghost has no url)", m.Repos)
+	}
+	if a, _ := m.ByName("a"); a.URL != "ua" || a.Base != "origin/staging" || a.Path != "repos/a" {
+		t.Errorf("known repo clobbered: %+v", a)
+	}
+	mo, ok := m.ByName("mobile")
+	if !ok || mo.URL != "git@github.com:acme/mobile.git" || mo.Path != "repos/mobile" || mo.Base != "origin/main" || len(mo.Tags) != 1 {
+		t.Errorf("added repo = %+v", mo)
+	}
+
+	bad := writeTmp(t, "bad.yaml", "repos:\n  - name: x\n    url: u\n")
+	if _, err := ParseWithOverlay(base, "embedded", bad); err == nil {
+		t.Error("added repo without path must error")
+	}
+}
+
 func TestParseWithOverlay_FromBytes(t *testing.T) {
 	base := []byte("org: acme\nrepos:\n  - name: a\n    path: repos/a\n")
 	dir := t.TempDir()
