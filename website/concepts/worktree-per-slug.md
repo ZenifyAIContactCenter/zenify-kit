@@ -34,6 +34,8 @@ zenify wt new <slug> --type feat --base origin/<base>
 
 Slug đặt tên cho toàn bộ vòng đời này. Nó trở thành tên branch `<user>/<type>/<slug>` và tên thư mục worktree. `<user>` là `git config user.name` của bạn (ký tự không hợp lệ trong tên branch đổi thành `-`); chưa đặt `user.name` thì lấy phần trước `@` trong `git config user.email`. Repo khai `user` trong `worktree.json` thì dùng giá trị đó.
 
+Yêu cầu nêu một việc Plane (ví dụ Copy prompt của Zenie: `/znf:cook ZEN-<a> <tiêu đề>`) thì trước spec, chẩn đoán hay `wt new`, agent đọc toàn bộ việc qua MCP: `item_read` (`zenify-zenie`) cho `ZEN-<a>`, `workitem` (`zenify-plane`) cho `OPS-<a>` hoặc khi `item_read` lỗi. Vì vậy prompt chỉ cần mã việc, không cần dán link hay mô tả.
+
 Slug có thể bắt đầu bằng mã ticket, ví dụ `zen-123-session-timeout` hoặc `ops-38-alert-rules` (branch `<user>/fix/zen-123-session-timeout`). Slug lấy mã đầu tiên trong dòng `**Việc Plane:**` của spec/plan hoặc `## Intent` (`zen-<a>-…` hoặc `ops-<a>-…`). `/znf:ship` đọc mã `zen-<n>` hoặc `ops-<n>` trong tên branch, cộng các mã trong dòng `**Việc Plane:**`, để đặt `ZEN-<a>, ZEN-<b>` vào tiêu đề PR; stack nhiều lớp dùng branch `<lớp-1>-<N>` nên mã vẫn nằm trong mọi branch.
 
 Một plan chia thành nhiều SDD task (Task 1, Task 2, ...). Tất cả task đó dùng chung một worktree. Cấp thêm worktree cho từng task vi phạm quy tắc "một repo, một worktree" mà slug tồn tại để giữ. Gọi `zenify wt new` lần nữa với cùng slug trong cùng phiên sẽ bị từ chối, kèm dòng `cd` tới worktree đã mở.
